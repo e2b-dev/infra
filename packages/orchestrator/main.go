@@ -12,7 +12,6 @@ import (
 	"os/signal"
 	"slices"
 	"syscall"
-	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -56,7 +55,6 @@ func main() {
 	port := flag.Uint("port", defaultPort, "orchestrator server port")
 	proxyPort := flag.Uint("proxy-port", defaultProxyPort, "orchestrator proxy port")
 	eventProxyPort := flag.Uint("event-proxy-port", defaultEventProxyPort, "orchestrator event proxy port")
-	wait := flag.Uint("wait", defaultWait, "orchestrator proxy port")
 	flag.Parse()
 
 	if *port > math.MaxUint16 {
@@ -65,12 +63,6 @@ func main() {
 
 	if *proxyPort > math.MaxUint16 {
 		log.Fatalf("%d is larger than maximum possible proxy port %d", proxyPort, math.MaxInt16)
-	}
-
-	// TODO: Remove after the orchestrator is fully migrated to the new job definition
-	if *wait > 0 {
-		log.Printf("waiting %d seconds before starting orchestrator", *wait)
-		time.Sleep(time.Duration(*wait) * time.Second)
 	}
 
 	success := run(*port, *proxyPort, *eventProxyPort)

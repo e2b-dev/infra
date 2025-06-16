@@ -339,7 +339,6 @@ locals {
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
     otel_collector_grpc_endpoint = "localhost:4317"
-    write_to_loki                = var.write_loki_metrics
     write_to_clickhouse          = var.environment == "dev" ? true : var.write_clickhouse_metrics
     allow_sandbox_internet       = var.allow_sandbox_internet
   }

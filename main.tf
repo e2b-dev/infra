@@ -72,7 +72,8 @@ module "buckets" {
   gcp_project_id            = var.gcp_project_id
   gcp_region                = var.gcp_region
 
-  fc_template_bucket_name     = var.template_bucket_name != "" ? var.template_bucket_name : "${var.gcp_project_id}-fc-templates"
+  fc_template_bucket_name = (var.template_bucket_name != "" ?
+  var.template_bucket_name : "${var.gcp_project_id}-fc-templates")
   fc_template_bucket_location = var.template_bucket_location
 
   labels = var.labels
@@ -114,7 +115,8 @@ module "cluster" {
   nomad_port                   = var.nomad_port
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
-  additional_domains           = var.additional_domains != "" ? [for item in split(",", var.additional_domains) : trimspace(item)] : []
+  additional_domains = (var.additional_domains != "" ?
+  [for item in split(",", var.additional_domains) : trimspace(item)] : [])
 
   docker_contexts_bucket_name = module.buckets.envs_docker_context_bucket_name
   cluster_setup_bucket_name   = module.buckets.cluster_setup_bucket_name
@@ -243,7 +245,6 @@ module "nomad" {
   orchestrator_port           = var.orchestrator_port
   orchestrator_proxy_port     = var.orchestrator_proxy_port
   fc_env_pipeline_bucket_name = module.buckets.fc_env_pipeline_bucket_name
-  write_loki_metrics          = var.write_loki_metrics
   write_clickhouse_metrics    = var.write_clickhouse_metrics
 
   # Template manager

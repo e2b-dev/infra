@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
@@ -29,7 +30,10 @@ type SandboxObserver struct {
 	memoryUsed  metric.Int64ObservableGauge
 }
 
-const shiftFromMiBToBytes = 20 // Shift to convert MiB to bytes
+const (
+	shiftFromMiBToBytes        = 20 // Shift to convert MiB to bytes
+	sandboxMetricsExportPeriod = 5 * time.Second
+)
 
 func NewSandboxObserver(ctx context.Context, commitSHA, clientID string) (*SandboxObserver, error) {
 	deltaTemporality := otlpmetricgrpc.WithTemporalitySelector(func(kind sdkmetric.InstrumentKind) metricdata.Temporality {
@@ -46,7 +50,7 @@ func NewSandboxObserver(ctx context.Context, commitSHA, clientID string) (*Sandb
 		return nil, fmt.Errorf("failed to create external meter exporter: %w", err)
 	}
 
-	meterProvider, err := NewMeterProvider(ctx, externalMeterExporter, metricExportPeriod, "external-metrics", commitSHA, clientID, sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter))
+	meterProvider, err := NewMeterProvider(ctx, externalMeterExporter, sandboxMetricsExportPeriod, "external-metrics", commitSHA, clientID, sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create external metric provider: %w", err)
 	}

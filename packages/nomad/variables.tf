@@ -289,8 +289,3 @@ variable "write_clickhouse_metrics" {
   description = "Whether to write metrics to ClickHouse"
   type        = bool
 }
-
-variable "write_loki_metrics" {
-  description = "Whether to write metrics to Loki"
-  type        = bool
-}
