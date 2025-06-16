@@ -155,7 +155,7 @@ type SandboxConfig struct {
 	AutoPause          *bool              `json:"autoPause,omitempty"`
 	BaseTemplateId     *string            `json:"baseTemplateId"`
 	BuildId            string             `json:"buildId"`
-	EnvVars            *map[string]string `json:"envVars,omitempty"`
+	EnvVars            *map[string]string `json:"envVars"`
 	EnvdAccessToken    *string            `json:"envdAccessToken,omitempty"`
 	EnvdVersion        string             `json:"envdVersion"`
 	FirecrackerVersion string             `json:"firecrackerVersion"`

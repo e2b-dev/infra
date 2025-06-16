@@ -298,6 +298,7 @@ components:
           description: Maximum duration in hours
         envVars:
           type: object
+          nullable: true
           additionalProperties:
             type: string
         metadata:

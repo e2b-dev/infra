@@ -37,11 +37,6 @@ func (a *APIStore) V1ListSandboxes(c *gin.Context, params api.V1ListSandboxesPar
 		startTime := sbx.StartTime.AsTime()
 		endTime := sbx.EndTime.AsTime()
 
-		envVars := make(map[string]string)
-		for k, v := range sbx.Config.EnvVars {
-			envVars[k] = v
-		}
-
 		metadata := make(map[string]string)
 		for k, v := range sbx.Config.Metadata {
 			metadata[k] = v
@@ -56,7 +51,6 @@ func (a *APIStore) V1ListSandboxes(c *gin.Context, params api.V1ListSandboxesPar
 			BaseTemplateId: &sbx.Config.BaseTemplateId,
 			Alias:          sbx.Config.Alias,
 
-			EnvVars:         &envVars,
 			EnvdAccessToken: sbx.Config.EnvdAccessToken,
 			EnvdVersion:     sbx.Config.EnvdVersion,
 
