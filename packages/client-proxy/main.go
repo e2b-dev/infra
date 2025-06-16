@@ -251,8 +251,6 @@ func run() int {
 			time.Sleep(shutdownUnhealthyWait)
 		}
 
-		edgeApiStore.GracefullyShutdown()
-
 		ginErr := edgeGinServer.Shutdown(ctx)
 		if ginErr != nil {
 			exitCode.Add(1)

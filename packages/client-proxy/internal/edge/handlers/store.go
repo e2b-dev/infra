@@ -90,7 +90,7 @@ func (a *APIStore) SetUnhealthy() {
 }
 
 func (a *APIStore) GracefullyShutdown() {
-	a.SetUnhealthy()
+
 }
 
 func (a *APIStore) sendAPIStoreError(c *gin.Context, code int, message string) {
