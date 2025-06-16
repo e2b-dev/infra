@@ -15,16 +15,19 @@ var LaunchDarklyOfflineStore = ldtestdata.DataSource()
 
 var launchDarklyApiKey = os.Getenv("LAUNCH_DARKLY_API_KEY")
 
+const waitForInit = 5 * time.Second
+
 type Client struct {
 	Ld *ldclient.LDClient
 }
 
-func NewClient(waitForInitialize time.Duration) (*Client, error) {
+func NewClient() (*Client, error) {
 	var ldClient *ldclient.LDClient
 	var err error
 
 	if launchDarklyApiKey == "" {
-		ldClient, err = ldclient.MakeCustomClient("", ldclient.Config{DataSource: LaunchDarklyOfflineStore}, waitForInitialize)
+		// waitFor has to be 0 for offline store
+		ldClient, err = ldclient.MakeCustomClient("", ldclient.Config{DataSource: LaunchDarklyOfflineStore}, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -32,7 +35,7 @@ func NewClient(waitForInitialize time.Duration) (*Client, error) {
 		return &Client{Ld: ldClient}, nil
 	}
 
-	ldClient, err = ldclient.MakeClient(launchDarklyApiKey, waitForInitialize)
+	ldClient, err = ldclient.MakeClient(launchDarklyApiKey, waitForInit)
 	if err != nil {
 		return nil, err
 	}
