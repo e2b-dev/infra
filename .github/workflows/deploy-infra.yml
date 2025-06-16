@@ -56,6 +56,8 @@ jobs:
 
       - name: Migrate database
         if: inputs.plan_only == 'false'
+        env:
+          AUTO_CONFIRM_DEPLOY: true
         run: |
           make migrate
 
@@ -65,6 +67,8 @@ jobs:
 
       - name: Apply infrastructure
         if: inputs.plan_only == 'false'
+        env:
+          AUTO_CONFIRM_DEPLOY: true
         run: |
           make apply
         
