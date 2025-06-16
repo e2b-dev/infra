@@ -117,13 +117,12 @@ func runBenchmark(ctx context.Context, cfg benchmarkConfig) error {
 	// Calculate and print benchmark results
 	duration := time.Since(startTime)
 	totalMetrics := cfg.nodeCount * cfg.sandboxesPerNodeCount * int(cfg.duration.Seconds()/cfg.emitInterval.Seconds())
-	emitIntervalMs := float64(cfg.emitInterval.Milliseconds())
 	metricsPerSecond := float64(totalMetrics) / duration.Seconds()
 
 	fmt.Printf("\nBenchmark Results:\n")
 	fmt.Printf("Total Duration: %v\n", duration)
 	fmt.Printf("Total Metrics: %d\n", totalMetrics)
-	fmt.Printf("Metrics emit interval: %.2f\n", emitIntervalMs)
+	fmt.Printf("Metrics emit interval: %.2fs\n", cfg.emitInterval.Seconds())
 	fmt.Printf("Metrics per second: %.2f\n", metricsPerSecond)
 	fmt.Printf("Nodes: %d\n", cfg.nodeCount)
 	fmt.Printf("Metrics per node: %d\n", totalMetrics/cfg.sandboxesPerNodeCount)
@@ -134,10 +133,10 @@ func runBenchmark(ctx context.Context, cfg benchmarkConfig) error {
 func main() {
 	// Parse command line flags
 	cfg := benchmarkConfig{}
-	flag.IntVar(&cfg.nodeCount, "nodes", 10, "Number of concurrent nodes")
-	flag.IntVar(&cfg.sandboxesPerNodeCount, "sandboxes", 100, "Number of concurrent sandboxes per node")
+	flag.IntVar(&cfg.nodeCount, "nodes", 50, "Number of concurrent nodes")
+	flag.IntVar(&cfg.sandboxesPerNodeCount, "sandboxes", 200, "Number of concurrent sandboxes per node")
 	flag.DurationVar(&cfg.emitInterval, "emit-interval", 5*time.Second, "Metrics emit interval")
-	flag.DurationVar(&cfg.duration, "duration", time.Hour, "Benchmark duration")
+	flag.DurationVar(&cfg.duration, "duration", 10*time.Minute, "Benchmark duration")
 	flag.Parse()
 
 	// Initialize logger
