@@ -21,6 +21,7 @@ func (b *TemplateBuilder) runReadyCommand(
 	postProcessor *writer.PostProcessor,
 	template *TemplateConfig,
 	sandboxID string,
+	envVars map[string]string,
 ) error {
 	ctx, span := b.tracer.Start(ctx, "run-ready-command")
 	defer span.End()
@@ -47,6 +48,7 @@ func (b *TemplateBuilder) runReadyCommand(
 			template.ReadyCmd,
 			"root",
 			&cwd,
+			envVars,
 		)
 
 		if err == nil {

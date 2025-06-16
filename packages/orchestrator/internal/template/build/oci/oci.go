@@ -87,3 +87,22 @@ func ToExt4(ctx context.Context, img v1.Image, rootfsPath string, sizeLimit int6
 
 	return nil
 }
+
+func ParseEnvs(envs []string) map[string]string {
+	envMap := make(map[string]string, len(envs))
+	for _, env := range envs {
+		if strings.TrimSpace(env) == "" {
+			continue
+		}
+		parts := strings.SplitN(env, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		if key != "" && value != "" {
+			envMap[key] = value
+		}
+	}
+	return envMap
+}
