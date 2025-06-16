@@ -268,6 +268,10 @@ variable "clickhouse_metrics_port" {
   default = 9363
 }
 
+variable "otel_collector_grpc_port" {
+  type = number
+  default = 4317
+}
 variable "clickhouse_server_port" {
   type = object({
     name = string
