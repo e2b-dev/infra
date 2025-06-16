@@ -103,7 +103,7 @@ func (sd *DnsServiceDiscovery) sync(ctx context.Context) {
 	}
 
 	// create or update the entries
-	for ip, _ := range ips {
+	for ip := range ips {
 		key := fmt.Sprintf("%s:%d", ip, sd.servicePort)
 		sd.entries.Insert(
 			key, &ServiceDiscoveryItem{NodeIp: ip, NodePort: sd.servicePort},
