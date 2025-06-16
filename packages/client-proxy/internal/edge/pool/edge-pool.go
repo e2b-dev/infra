@@ -142,7 +142,7 @@ func (p *EdgePool) syncNodes(ctx context.Context) {
 	wg.Wait()
 
 	// disconnect nodes that are not in the list anymore
-	for _, node := range p.nodes.Items() {
+	for _, node := range p.GetNodes() {
 		wg.Add(1)
 		go func(node *EdgeNode) {
 			defer wg.Done()
@@ -161,7 +161,7 @@ func (p *EdgePool) syncNodes(ctx context.Context) {
 			if !found {
 				err := p.removeNode(spanCtx, node)
 				if err != nil {
-					p.logger.Error("Error during edge node sync", zap.Error(err))
+					p.logger.Error("Error during edge node removal", zap.Error(err))
 				}
 			}
 		}(node)
@@ -191,7 +191,7 @@ func (p *EdgePool) connectNode(ctx context.Context, node *sd.ServiceDiscoveryIte
 }
 
 func (p *EdgePool) removeNode(ctx context.Context, node *EdgeNode) error {
-	_, childSpan := p.tracer.Start(ctx, "sync-edge-node")
+	_, childSpan := p.tracer.Start(ctx, "remove-edge-node")
 	defer childSpan.End()
 
 	p.logger.Info("Edge node connection is not active anymore, closing.", zap.String("node_id", node.ServiceId))

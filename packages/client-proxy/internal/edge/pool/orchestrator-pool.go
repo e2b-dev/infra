@@ -15,7 +15,9 @@ import (
 
 type OrchestratorsPool struct {
 	discovery sd.ServiceDiscoveryAdapter
-	nodes     *smap.Map[*OrchestratorNode]
+
+	nodes *smap.Map[*OrchestratorNode]
+	mutex sync.RWMutex
 
 	tracer trace.Tracer
 	logger *zap.Logger
@@ -30,6 +32,7 @@ func NewOrchestratorsPool(ctx context.Context, logger *zap.Logger, discovery sd.
 		discovery: discovery,
 
 		nodes: smap.New[*OrchestratorNode](),
+		mutex: sync.RWMutex{},
 
 		logger: logger,
 		tracer: tracer,
@@ -42,10 +45,16 @@ func NewOrchestratorsPool(ctx context.Context, logger *zap.Logger, discovery sd.
 }
 
 func (p *OrchestratorsPool) GetOrchestrators() map[string]*OrchestratorNode {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+
 	return p.nodes.Items()
 }
 
 func (p *OrchestratorsPool) GetOrchestrator(id string) (node *OrchestratorNode, ok bool) {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+
 	return p.nodes.Get(id)
 }
 
@@ -107,12 +116,6 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 
 				return
 			}
-
-			// already discovered orchestrator, just sync status etc
-			err := p.syncNode(spanCtx, found, true)
-			if err != nil {
-				p.logger.Error("Error syncing orchestrator node", zap.Error(err))
-			}
 		}(sdNode)
 	}
 
@@ -120,7 +123,7 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 	wg.Wait()
 
 	// disconnect nodes that are not in the list anymore
-	for _, node := range p.nodes.Items() {
+	for _, node := range p.GetOrchestrators() {
 		wg.Add(1)
 		go func(node *OrchestratorNode) {
 			defer wg.Done()
@@ -137,9 +140,9 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 
 			// orchestrator is no longer in the list coming from service discovery
 			if !found {
-				err := p.syncNode(spanCtx, node, false)
+				err := p.removeNode(spanCtx, node)
 				if err != nil {
-					p.logger.Error("Error during node sync", zap.Error(err))
+					p.logger.Error("Error during node removal", zap.Error(err))
 				}
 			}
 		}(node)
@@ -159,35 +162,35 @@ func (p *OrchestratorsPool) connectNode(ctx context.Context, node *sd.ServiceDis
 		return err
 	}
 
-	p.nodes.Insert(o.ServiceId, o)
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
 
-	// call initial node sync
-	return p.syncNode(ctx, o, true)
+	p.nodes.Insert(o.ServiceId, o)
+	return nil
 }
 
-func (p *OrchestratorsPool) syncNode(ctx context.Context, node *OrchestratorNode, foundWithDiscovery bool) error {
-	_, childSpan := p.tracer.Start(ctx, "sync-orchestrator-node")
+func (p *OrchestratorsPool) removeNode(ctx context.Context, node *OrchestratorNode) error {
+	_, childSpan := p.tracer.Start(ctx, "remove-orchestrator-node")
 	defer childSpan.End()
 
-	// close connection with node
-	if !foundWithDiscovery {
-		p.logger.Info("Orchestrator node node connection is not active anymore, closing.", zap.String("node_id", node.ServiceId))
+	p.logger.Info("Orchestrator node node connection is not active anymore, closing.", zap.String("node_id", node.ServiceId))
 
-		err := node.Close()
-		if err != nil {
-			p.logger.Error("Error closing connection to node", zap.Error(err))
-		}
-
-		// stop background sync and close everything
-		err = node.Kill()
-		if err != nil {
-			p.logger.Error("Error closing connection to node", zap.Error(err))
-		}
-
-		p.nodes.Remove(node.ServiceId) // remove from pool
-		p.logger.Info("Orchestrator node node connection has been closed.", zap.String("node_id", node.ServiceId))
-		return nil
+	err := node.Close()
+	if err != nil {
+		p.logger.Error("Error closing connection to node", zap.Error(err))
 	}
 
+	// stop background sync and close everything
+	err = node.Kill()
+	if err != nil {
+		p.logger.Error("Error closing connection to node", zap.Error(err))
+	}
+
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	p.nodes.Remove(node.ServiceId)
+
+	p.logger.Info("Orchestrator node node connection has been closed.", zap.String("node_id", node.ServiceId))
 	return nil
 }
