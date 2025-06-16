@@ -1,1 +1,1 @@
-FROM ubuntu:latest
+FROM e2bdev/base:latest
