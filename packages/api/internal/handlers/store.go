@@ -115,38 +115,35 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		zap.L().Fatal("initializing Nomad client", zap.Error(err))
 	}
 
-	var redisClient *redis.Client
-	if rurl := os.Getenv("REDIS_URL"); rurl != "" {
-		opts, err := redis.ParseURL(rurl)
-		if err != nil {
-			zap.L().Fatal("invalid redis URL", zap.String("url", rurl), zap.Error(err))
-		}
-
-		redisClient = redis.NewClient(opts)
-	} else {
-		zap.L().Warn("REDIS_URL not set, using local caches")
-	}
-
-	var redisClusterClient *redis.ClusterClient
+	var redisClient redis.UniversalClient
 	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
 		// For managed Redis Cluster in GCP we should use Cluster Client, because
 		// > Redis node endpoints can change and can be recycled as nodes are added and removed over time.
 		// https://cloud.google.com/memorystore/docs/cluster/cluster-node-specification#cluster_endpoints
 		// https://cloud.google.com/memorystore/docs/cluster/client-library-code-samples#go-redis
-		redisClusterClient = redis.NewClusterClient(&redis.ClusterOptions{
+		redisClient = redis.NewClusterClient(&redis.ClusterOptions{
 			Addrs:        []string{redisClusterUrl},
 			MinIdleConns: 1,
 		})
+	} else if rurl := os.Getenv("REDIS_URL"); rurl != "" {
+		redisClient = redis.NewClient(&redis.Options{
+			Addr:         rurl,
+			MinIdleConns: 1,
+		})
+	} else {
+		zap.L().Warn("REDIS_URL not set, using local caches")
+	}
 
-		_, err := redisClusterClient.Ping(ctx).Result()
+	if redisClient != nil {
+		_, err := redisClient.Ping(ctx).Result()
 		if err != nil {
 			zap.L().Fatal("could not connect to Redis", zap.Error(err))
 		}
 
-		zap.L().Info("connected to Redis cluster", zap.String("url", redisClusterUrl))
+		zap.L().Info("connected to Redis cluster")
 	}
 
-	orch, err := orchestrator.New(ctx, tel, tracer, nomadClient, posthogClient, redisClient, redisClusterClient, dbClient)
+	orch, err := orchestrator.New(ctx, tel, tracer, nomadClient, posthogClient, redisClient, dbClient)
 	if err != nil {
 		zap.L().Fatal("initializing Orchestrator client", zap.Error(err))
 	}

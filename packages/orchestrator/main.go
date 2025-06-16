@@ -27,6 +27,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -40,7 +41,6 @@ type Closeable interface {
 const (
 	defaultPort      = 5008
 	defaultProxyPort = 5007
-	defaultWait      = 30
 
 	version = "0.1.0"
 
@@ -151,10 +151,11 @@ func run(port, proxyPort uint) (success bool) {
 	}()
 
 	globalLogger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
-		ServiceName: serviceName,
-		IsInternal:  true,
-		IsDebug:     env.IsDebug(),
-		Cores:       []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
+		ServiceName:   serviceName,
+		IsInternal:    true,
+		IsDebug:       env.IsDebug(),
+		Cores:         []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
+		EnableConsole: true,
 	}))
 	defer func(l *zap.Logger) {
 		err := l.Sync()
@@ -228,7 +229,12 @@ func run(port, proxyPort uint) (success bool) {
 
 	grpcSrv := grpcserver.New(tel.TracerProvider, tel.MeterProvider, serviceInfo)
 
-	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes)
+	featureFlags, err := featureflags.NewClient()
+	if err != nil {
+		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
+	}
+
+	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
@@ -256,6 +262,7 @@ func run(port, proxyPort uint) (success bool) {
 		networkPool,
 		devicePool,
 		sandboxProxy,
+		featureFlags,
 	)
 
 	// Initialize the template manager only if the service is enabled

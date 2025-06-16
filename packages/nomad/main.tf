@@ -58,8 +58,7 @@ resource "nomad_job" "api" {
     otel_tracing_print             = var.otel_tracing_print
     nomad_acl_token                = var.nomad_acl_token_secret
     admin_token                    = var.api_admin_token
-    redis_url                      = "redis://redis.service.consul:${var.redis_port.port}"
-    redis_cluster_url              = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
+    redis_url                      = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : "redis.service.consul:${var.redis_port.port}"
     dns_port_number                = var.api_dns_port_number
     clickhouse_connection_string   = "clickhouse.service.consul:9000"
     clickhouse_username            = var.clickhouse_username
@@ -339,8 +338,8 @@ locals {
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
     otel_collector_grpc_endpoint = "localhost:4317"
-    write_to_clickhouse          = var.environment == "dev" ? true : var.write_clickhouse_metrics
     allow_sandbox_internet       = var.allow_sandbox_internet
+    launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   }
 
   orchestrator_job_check = templatefile("${path.module}/orchestrator.hcl", merge(
