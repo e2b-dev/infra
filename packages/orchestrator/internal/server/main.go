@@ -68,6 +68,7 @@ func New(
 	tracer trace.Tracer,
 	info *service.ServiceInfo,
 	proxy *proxy.SandboxProxy,
+	eventProxy *proxy.EventProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 ) (*Service, error) {
 	srv := &Service{info: info}

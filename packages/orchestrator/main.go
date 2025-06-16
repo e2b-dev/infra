@@ -39,9 +39,10 @@ type Closeable interface {
 }
 
 const (
-	defaultPort      = 5008
-	defaultProxyPort = 5007
-	defaultWait      = 30
+	defaultPort           = 5008
+	defaultProxyPort      = 5007
+	defaultEventProxyPort = 5010
+	defaultWait           = 30
 
 	version = "0.1.0"
 
@@ -54,6 +55,7 @@ var commitSHA string
 func main() {
 	port := flag.Uint("port", defaultPort, "orchestrator server port")
 	proxyPort := flag.Uint("proxy-port", defaultProxyPort, "orchestrator proxy port")
+	eventProxyPort := flag.Uint("event-proxy-port", defaultEventProxyPort, "orchestrator event proxy port")
 	wait := flag.Uint("wait", defaultWait, "orchestrator proxy port")
 	flag.Parse()
 
@@ -71,7 +73,7 @@ func main() {
 		time.Sleep(time.Duration(*wait) * time.Second)
 	}
 
-	success := run(*port, *proxyPort)
+	success := run(*port, *proxyPort, *eventProxyPort)
 
 	log.Println("Stopping orchestrator, success:", success)
 
@@ -80,7 +82,7 @@ func main() {
 	}
 }
 
-func run(port, proxyPort uint) (success bool) {
+func run(port, proxyPort, eventProxyPort uint) (success bool) {
 	success = true
 
 	services := service.GetServices()
@@ -220,6 +222,8 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 
+	eventProxy := proxy.NewEventProxy(eventProxyPort)
+
 	tracer := tel.TracerProvider.Tracer(serviceName)
 
 	networkPool, err := network.NewPool(ctx, tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID, tracer)
@@ -236,7 +240,7 @@ func run(port, proxyPort uint) (success bool) {
 
 	grpcSrv := grpcserver.New(tel.TracerProvider, tel.MeterProvider, serviceInfo)
 
-	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes)
+	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, eventProxy, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
@@ -305,6 +309,25 @@ func run(port, proxyPort uint) (success bool) {
 			}
 
 			return proxyErr
+		}
+
+		return nil
+	})
+
+	g.Go(func() error {
+		zap.L().Info("~~~Starting event proxy")
+		eventProxyErr := eventProxy.Start()
+		if eventProxyErr != nil && !errors.Is(eventProxyErr, http.ErrServerClosed) {
+			zap.L().Error("~~~error starting event proxy", zap.Error(eventProxyErr))
+
+			select {
+			case serviceError <- eventProxyErr:
+			default:
+				// Don't block if the serviceError channel is already closed
+				// or if the error is already sent
+			}
+
+			return eventProxyErr
 		}
 
 		return nil

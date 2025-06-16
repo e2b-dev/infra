@@ -217,6 +217,12 @@ func (s *Slot) CreateNetwork() error {
 		return fmt.Errorf("error creating postrouting rule: %w", err)
 	}
 
+	// Redirect HTTP traffic destined for 10.20.7.67 to local prox
+	err = tables.Append("nat", "PREROUTING", "-i", s.VethName(), "-p", "tcp", "-d", "10.20.7.67", "--dport", "80", "-j", "REDIRECT", "--to-port", "5010")
+	if err != nil {
+		return fmt.Errorf("error creating HTTP redirect rule to proxy: %w", err)
+	}
+
 	return nil
 }
 
