@@ -45,7 +45,7 @@ processors:
       include:
         match_type: strict
         metric_names:
-          - "nomad.client.host.cpu.total_percent"
+          - "nomad_client.host_cpu_total_percent"
           - "nomad_client_host_cpu_idle"
           - "nomad_client_host_disk_available"
           - "nomad_client_host_disk_size"
