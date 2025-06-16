@@ -115,22 +115,19 @@ func run() int {
 		return 1
 	}
 
-	var redisClient *redis.Client
 	var catalog sandboxes.SandboxesCatalog
 
-	redisUrl := os.Getenv("REDIS_URL")
-	if redisUrl == "" {
-		logger.Warn("Redis URL environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
-		catalog = sandboxes.NewMemorySandboxesCatalog(ctx, tracer)
-	} else {
-		opts, err := redis.ParseURL(redisUrl)
-		if err != nil {
-			zap.L().Fatal("invalid redis URL", zap.String("url", redisUrl), zap.Error(err))
-		}
-
-		redisClient = redis.NewClient(opts)
+	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
+		redisClient := redis.NewClusterClient(&redis.ClusterOptions{Addrs: []string{redisClusterUrl}, MinIdleConns: 1})
 		redisSync := redsync.New(goredis.NewPool(redisClient))
 		catalog = sandboxes.NewRedisSandboxesCatalog(ctx, tracer, redisClient, redisSync)
+	} else if redisUrl := os.Getenv("REDIS_URL"); redisUrl != "" {
+		redisClient := redis.NewClient(&redis.Options{Addr: redisUrl, MinIdleConns: 1})
+		redisSync := redsync.New(goredis.NewPool(redisClient))
+		catalog = sandboxes.NewRedisSandboxesCatalog(ctx, tracer, redisClient, redisSync)
+	} else {
+		logger.Warn("Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
+		catalog = sandboxes.NewMemorySandboxesCatalog(ctx, tracer)
 	}
 
 	orchestrators := e2borchestrators.NewOrchestratorsPool(ctx, logger, orchestratorsSD, tracer)

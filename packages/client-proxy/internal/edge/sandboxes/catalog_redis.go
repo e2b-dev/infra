@@ -23,14 +23,14 @@ const (
 
 type RedisSandboxCatalog struct {
 	clusterMutex *redsync.Mutex
-	redisClient  *redis.Client
+	redisClient  redis.UniversalClient
 
 	cache  *ttlcache.Cache[string, *SandboxInfo]
 	ctx    context.Context
 	tracer trace.Tracer
 }
 
-func NewRedisSandboxesCatalog(ctx context.Context, tracer trace.Tracer, redisClient *redis.Client, redisSync *redsync.Redsync) SandboxesCatalog {
+func NewRedisSandboxesCatalog(ctx context.Context, tracer trace.Tracer, redisClient redis.UniversalClient, redisSync *redsync.Redsync) SandboxesCatalog {
 	clusterLockMutex := redisSync.NewMutex(catalogClusterLockName)
 
 	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogRedisLocalCacheTtl))
