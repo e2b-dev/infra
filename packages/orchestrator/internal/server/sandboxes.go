@@ -51,9 +51,9 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}
 
 	flagCtx := ldcontext.NewBuilder(featureflags.MetricsWriteFlagName).SetString("sandbox_id", req.Sandbox.SandboxId).Build()
-	flag, flagErr := s.featureFlags.Ld.BoolVariation(featureflags.MetricsWriteFlagName, flagCtx, featureflags.MetricsWriteDefault)
+	metricsWriteFlag, flagErr := s.featureFlags.Ld.BoolVariation(featureflags.MetricsWriteFlagName, flagCtx, featureflags.MetricsWriteDefault)
 	if flagErr != nil {
-		zap.L().Error("soft failing during feature flag receive", zap.Error(flagErr))
+		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
 	}
 
 	sbx, cleanup, err := sandbox.ResumeSandbox(
@@ -69,7 +69,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		req.Sandbox.BaseTemplateId,
 		s.devicePool,
 		config.AllowSandboxInternet,
-		flag,
+		metricsWriteFlag,
 	)
 	if err != nil {
 		zap.L().Error("failed to create sandbox, cleaning up", zap.Error(err))
