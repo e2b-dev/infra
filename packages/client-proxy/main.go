@@ -76,7 +76,7 @@ func run() int {
 		e2bLogger.NewLogger(
 			ctx, e2bLogger.LoggerConfig{
 				ServiceName:   serviceName,
-				IsInternal:    true,Add commentMore actions
+				IsInternal:    true,
 				IsDebug:       env.IsDebug(),
 				Cores:         []zapcore.Core{e2bLogger.GetOTELCore(tel.LogsProvider, serviceName)},
 				EnableConsole: true,
