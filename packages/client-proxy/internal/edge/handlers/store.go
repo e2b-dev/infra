@@ -37,6 +37,10 @@ type APIUserFacingError struct {
 	prettyErrorCode    int
 }
 
+const (
+	orchestratorsReadinessCheckInterval = 100 * time.Millisecond
+)
+
 var (
 	skipInitialOrchestratorCheck = os.Getenv("SKIP_ORCHESTRATOR_READINESS_CHECK") == "true"
 )
@@ -74,8 +78,9 @@ func NewStore(ctx context.Context, logger *zap.Logger, tracer trace.Tracer, info
 			store.info.SetStatus(api.Healthy)
 			return
 		}
+
 		zap.L().Info("Waiting for at least one orchestrator to be available before marking API as healthy")
-		ticker := time.NewTicker(100 * time.Millisecond)
+		ticker := time.NewTicker(orchestratorsReadinessCheckInterval)
 		for {
 			select {
 			case <-ctx.Done():
@@ -100,10 +105,6 @@ func (a *APIStore) SetDraining() {
 
 func (a *APIStore) SetUnhealthy() {
 	a.info.SetStatus(api.Unhealthy)
-}
-
-func (a *APIStore) GracefullyShutdown() {
-
 }
 
 func (a *APIStore) sendAPIStoreError(c *gin.Context, code int, message string) {
