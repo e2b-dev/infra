@@ -181,7 +181,7 @@ ExecStart=-/sbin/agetty --noissue --autologin root %I 115200,38400,9600 vt102
 `
 
 	hostname := "e2b.local"
-	eventProxyHostname := "event.e2b.com"
+	eventProxyHostname := "event.e2b.dev"
 
 	hosts := fmt.Sprintf(`127.0.0.1	localhost
 ::1	localhost ip6-localhost ip6-loopback
@@ -190,7 +190,7 @@ ff00::	ip6-mcastprefix
 ff02::1	ip6-allnodes
 ff02::2	ip6-allrouters
 127.0.1.1	%s
-10.20.7.67	%s
+8.8.8.7		%s
 `, hostname, eventProxyHostname)
 
 	e2bFile := fmt.Sprintf(`ENV_ID=%s

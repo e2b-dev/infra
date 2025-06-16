@@ -41,7 +41,6 @@ const (
 	defaultPort           = 5008
 	defaultProxyPort      = 5007
 	defaultEventProxyPort = 5010
-	defaultWait           = 30
 
 	version = "0.1.0"
 
@@ -307,11 +306,8 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 	})
 
 	g.Go(func() error {
-		zap.L().Info("~~~Starting event proxy")
 		eventProxyErr := eventProxy.Start()
 		if eventProxyErr != nil && !errors.Is(eventProxyErr, http.ErrServerClosed) {
-			zap.L().Error("~~~error starting event proxy", zap.Error(eventProxyErr))
-
 			select {
 			case serviceError <- eventProxyErr:
 			default:

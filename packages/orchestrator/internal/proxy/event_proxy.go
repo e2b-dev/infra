@@ -3,9 +3,7 @@ package proxy
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
-	"time"
 
 	"go.uber.org/zap"
 )
@@ -25,21 +23,9 @@ func NewEventProxy(port uint) *EventProxy {
 	}
 }
 func (p *EventProxy) Start() error {
-	serverTransport := &http.Transport{
-		MaxIdleConns:          1024,
-		MaxIdleConnsPerHost:   8192,
-		IdleConnTimeout:       620 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ResponseHeaderTimeout: 24 * time.Hour,
-		DisableKeepAlives:     true,
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			zap.L().Info("Dialing", zap.String("network", network), zap.String("addr", addr))
-			return net.Dial(network, addr)
-		},
-	}
-	p.server.Handler = http.HandlerFunc(p.proxyHandler(serverTransport))
+	p.server.Handler = http.HandlerFunc(p.proxyHandler())
 
-	return p.server.ListenAndServeTLS("/etc/ssl/certs/cert.pem", "/etc/ssl/certs/key.pem")
+	return p.server.ListenAndServe()
 }
 
 func (p *EventProxy) Close(ctx context.Context) error {
@@ -57,16 +43,16 @@ func (p *EventProxy) Close(ctx context.Context) error {
 	return nil
 }
 
-func (p *EventProxy) proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http.Request) {
+func (p *EventProxy) proxyHandler() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		zap.L().Info("Forwarding request", zap.String("url", r.URL.String()), zap.String("method", r.Method))
-		handleHTTP(w, r, transport)
+		handleHTTP(w, r)
 	}
 }
 
 // handleHTTP handles regular HTTP requests
-func handleHTTP(w http.ResponseWriter, r *http.Request, transport *http.Transport) {
-	zap.L().Info("[EVENT] handle HTTP request", zap.String("url", r.URL.String()))
+func handleHTTP(w http.ResponseWriter, r *http.Request) {
+	zap.L().Info("[EVENT] handle event HTTP request", zap.String("url", r.URL.String()))
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
