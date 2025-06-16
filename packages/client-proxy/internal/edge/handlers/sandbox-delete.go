@@ -42,7 +42,7 @@ func (a *APIStore) V1DeleteSandbox(c *gin.Context, sandboxId api.SandboxId) {
 
 	_, err = orchestrator.Client.Sandbox.Delete(ctx, &grpcorchestrator.SandboxDeleteRequest{SandboxId: sandboxId})
 	if err != nil {
-		zap.L().Error("Error when deleting sandbox", zap.Error(err))
+		zap.L().Error("Error when deleting sandbox", l.WithSandboxID(sandboxId), zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting sandbox")
 		telemetry.ReportCriticalError(ctx, "error when deleting sandbox", err)
 		return
@@ -50,7 +50,7 @@ func (a *APIStore) V1DeleteSandbox(c *gin.Context, sandboxId api.SandboxId) {
 
 	err = a.sandboxes.DeleteSandbox(sandboxId)
 	if err != nil {
-		zap.L().Error("Error when deleting sandbox from cache", zap.Error(err))
+		zap.L().Error("Error when deleting sandbox from cache", l.WithSandboxID(sandboxId), zap.Error(err))
 	}
 
 	zap.L().Info("Sandbox deleted", l.WithSandboxID(sandboxId))
