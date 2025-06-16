@@ -19,18 +19,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
-// Rediser generalize RedisClient and RedisClusterClient, taken from github.com/go-redis/cache/v9
-type Rediser interface {
-	Set(ctx context.Context, key string, value interface{}, ttl time.Duration) *redis.StatusCmd
-	SetXX(ctx context.Context, key string, value interface{}, ttl time.Duration) *redis.BoolCmd
-	SetNX(ctx context.Context, key string, value interface{}, ttl time.Duration) *redis.BoolCmd
-
-	Get(ctx context.Context, key string) *redis.StringCmd
-	Del(ctx context.Context, keys ...string) *redis.IntCmd
-
-	Ping(ctx context.Context) *redis.StatusCmd
-}
-
 const ttl = 0
 const redisTTL = 24 * time.Hour
 
@@ -53,7 +41,7 @@ type DNS struct {
 	}
 }
 
-func New(ctx context.Context, redisClient Rediser) *DNS {
+func New(ctx context.Context, redisClient redis.UniversalClient) *DNS {
 	d := &DNS{}
 
 	if redisClient != nil && !reflect.ValueOf(redisClient).IsNil() {
