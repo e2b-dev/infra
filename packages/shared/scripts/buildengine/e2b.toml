@@ -10,7 +10,6 @@
 # import { Sandbox } from 'e2b'
 # const sandbox = await Sandbox.create('p9kw2u9cc1zj1cov2zru')
 
-team_id = "65d165ab-69f6-4b5c-9165-6b93cd341503"
 ready_cmd = 'curl -s -o /dev/null -w "%{http_code}" http://localhost:1234 | grep -q "500"'
 start_cmd = "nerdctl pull registry.dagger.io/engine:v0.18.10 >/dev/null && nerdctl run -d -v /dagger:/etc/dagger -v /dagger/data:/var/lib/dagger --privileged -p 1234:1234 registry.dagger.io/engine:v0.18.10"
 dockerfile = "e2b.Dockerfile"
