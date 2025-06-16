@@ -269,7 +269,7 @@ variable "clickhouse_metrics_port" {
 }
 
 variable "otel_collector_grpc_port" {
-  type = number
+  type    = number
   default = 4317
 }
 variable "clickhouse_server_port" {

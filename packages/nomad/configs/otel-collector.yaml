@@ -45,6 +45,7 @@ processors:
       include:
         match_type: strict
         metric_names:
+          - "nomad.client.host.cpu.total_percent"
           - "nomad_client_host_cpu_idle"
           - "nomad_client_host_disk_available"
           - "nomad_client_host_disk_size"
@@ -100,6 +101,12 @@ processors:
 
   transform/set-name:
     metric_statements:
+      - delete_key(datapoint.attributes, "instance")
+      - delete_key(datapoint.attributes, "node_id")
+      - delete_key(datapoint.attributes, "node_scheduling_eligibility")
+      - delete_key(datapoint.attributes, "node_class")
+      - delete_key(datapoint.attributes, "node_status")
+      - delete_key(datapoint.attributes, "service_name")
       - set(datapoint.attributes["service.instance.id"], resource.attributes["gcp.gce.instance.name"])
 
   filter/rpc_duration_only:
@@ -151,7 +158,7 @@ service:
     metrics:
       receivers:
         - otlp
-      processors: [filter/otlp, batch, metricstransform]
+      processors: [filter/otlp, batch]
       exporters:
         - otlphttp/grafana_cloud
     metrics/prometheus:
