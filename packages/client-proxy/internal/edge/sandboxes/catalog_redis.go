@@ -22,6 +22,7 @@ const (
 )
 
 type RedisSandboxCatalog struct {
+	// todo: ideally we want to support per sandbox locking, but for now we are using one global lock per cluster
 	clusterMutex *redsync.Mutex
 	redisClient  redis.UniversalClient
 
