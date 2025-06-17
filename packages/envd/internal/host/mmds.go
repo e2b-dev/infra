@@ -1,4 +1,4 @@
-package exporter
+package host
 
 import (
 	"bytes"
@@ -15,15 +15,15 @@ const (
 	mmdsTokenExpiration = 60 * time.Second
 )
 
-type opts struct {
-	TraceID    string `json:"traceID"`
-	InstanceID string `json:"instanceID"`
-	EnvID      string `json:"envID"`
-	Address    string `json:"address"`
-	TeamID     string `json:"teamID"`
+type MMDSOpts struct {
+	TraceID   string `json:"traceID"`
+	SandboxID string `json:"instanceID"`
+	EnvID     string `json:"envID"`
+	Address   string `json:"address"`
+	TeamID    string `json:"teamID"`
 }
 
-func (opts *opts) addOptsToJSON(jsonLogs []byte) ([]byte, error) {
+func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
 	parsed := make(map[string]interface{})
 
 	err := json.Unmarshal(jsonLogs, &parsed)
@@ -31,7 +31,7 @@ func (opts *opts) addOptsToJSON(jsonLogs []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	parsed["instanceID"] = opts.InstanceID
+	parsed["instanceID"] = opts.SandboxID
 	parsed["envID"] = opts.EnvID
 	parsed["traceID"] = opts.TraceID
 	parsed["teamID"] = opts.TeamID
@@ -41,7 +41,7 @@ func (opts *opts) addOptsToJSON(jsonLogs []byte) ([]byte, error) {
 	return data, err
 }
 
-func (w *HTTPExporter) getMMDSToken(ctx context.Context) (string, error) {
+func getMMDSToken(ctx context.Context, client *http.Client) (string, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodPut, "http://"+mmdsDefaultAddress+"/latest/api/token", new(bytes.Buffer))
 	if err != nil {
 		return "", err
@@ -49,7 +49,7 @@ func (w *HTTPExporter) getMMDSToken(ctx context.Context) (string, error) {
 
 	request.Header["X-metadata-token-ttl-seconds"] = []string{fmt.Sprint(mmdsTokenExpiration.Seconds())}
 
-	response, err := w.client.Do(request)
+	response, err := client.Do(request)
 	if err != nil {
 		return "", err
 	}
@@ -69,7 +69,7 @@ func (w *HTTPExporter) getMMDSToken(ctx context.Context) (string, error) {
 	return token, nil
 }
 
-func (w *HTTPExporter) doMmdsRequest(ctx context.Context, token string) (*opts, error) {
+func getMMDSOpts(ctx context.Context, client *http.Client, token string) (*MMDSOpts, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+mmdsDefaultAddress, new(bytes.Buffer))
 	if err != nil {
 		return nil, err
@@ -78,7 +78,7 @@ func (w *HTTPExporter) doMmdsRequest(ctx context.Context, token string) (*opts, 
 	request.Header["X-metadata-token"] = []string{token}
 	request.Header["Accept"] = []string{"application/json"}
 
-	response, err := w.client.Do(request)
+	response, err := client.Do(request)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +90,7 @@ func (w *HTTPExporter) doMmdsRequest(ctx context.Context, token string) (*opts, 
 		return nil, err
 	}
 
-	var opts opts
+	var opts MMDSOpts
 
 	err = json.Unmarshal(body, &opts)
 	if err != nil {
@@ -100,51 +100,39 @@ func (w *HTTPExporter) doMmdsRequest(ctx context.Context, token string) (*opts, 
 	return &opts, nil
 }
 
-func (w *HTTPExporter) waitForMMDS(ctx context.Context) {
+func WaitAndGetMMDSOpts(ctx context.Context, debug bool) (*MMDSOpts, error) {
+	if debug {
+		return &MMDSOpts{
+			Address: "http://localhost:8080",
+		}, nil
+	}
+
+	httpClient := &http.Client{}
+	defer httpClient.CloseIdleConnections()
+
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return nil, fmt.Errorf("context cancelled while waiting for mmds opts")
 		case <-ticker.C:
-			token, err := w.getMMDSToken(ctx)
+			token, err := getMMDSToken(ctx, httpClient)
 			if err != nil {
 				fmt.Printf("error getting mmds token: %v\n", err)
 				continue
 			}
 
-			mmdsOpts, err := w.doMmdsRequest(ctx, token)
+			mmdsOpts, err := getMMDSOpts(ctx, httpClient, token)
 			if err != nil {
 				fmt.Printf("error getting mmds opts: %v\n", err)
 				continue
 			}
 
 			if mmdsOpts.Address != "" {
-				return
+				return mmdsOpts, nil
 			}
 		}
 	}
-}
-
-func (w *HTTPExporter) getMMDSOpts(ctx context.Context, token string) (opts *opts, err error) {
-	opts, err = w.doMmdsRequest(ctx, token)
-	if err != nil {
-		return nil, err
-	}
-
-	if opts.Address == "" {
-		return nil, fmt.Errorf("no 'address' in mmds opts")
-	}
-
-	if opts.EnvID == "" {
-		return nil, fmt.Errorf("no 'envID' in mmds opts")
-	}
-
-	if opts.InstanceID == "" {
-		return nil, fmt.Errorf("no 'instanceID' in mmds opts")
-	}
-
-	return opts, nil
 }

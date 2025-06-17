@@ -9,6 +9,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/e2b-dev/infra/packages/envd/internal/host"
 )
 
 const ExporterTimeout = 10 * time.Second
@@ -22,7 +24,7 @@ type HTTPExporter struct {
 	debug bool
 }
 
-func NewHTTPLogsExporter(ctx context.Context, debug bool) *HTTPExporter {
+func NewHTTPLogsExporter(ctx context.Context, debug bool, mmdsOpts *host.MMDSOpts) *HTTPExporter {
 	exporter := &HTTPExporter{
 		client: http.Client{
 			Timeout: ExporterTimeout,
@@ -32,7 +34,7 @@ func NewHTTPLogsExporter(ctx context.Context, debug bool) *HTTPExporter {
 		ctx:      ctx,
 	}
 
-	go exporter.start()
+	go exporter.start(mmdsOpts)
 
 	return exporter
 }
@@ -58,8 +60,7 @@ func printLog(logs []byte) {
 	fmt.Fprintf(os.Stdout, "%v", string(logs))
 }
 
-func (w *HTTPExporter) start() {
-	w.waitForMMDS(w.ctx)
+func (w *HTTPExporter) start(mmdsOpts *host.MMDSOpts) {
 
 	for range w.triggers {
 		logs := w.getAllLogs()
@@ -76,30 +77,8 @@ func (w *HTTPExporter) start() {
 			continue
 		}
 
-		token, err := w.getMMDSToken(w.ctx)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error getting mmds token: %v\n", err)
-
-			for _, log := range logs {
-				printLog(log)
-			}
-
-			continue
-		}
-
-		mmdsOpts, err := w.getMMDSOpts(w.ctx, token)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error getting instance logging options from mmds (token %s): %v\n", token, err)
-
-			for _, log := range logs {
-				printLog(log)
-			}
-
-			continue
-		}
-
 		for _, logLine := range logs {
-			logsWithOpts, jsonErr := mmdsOpts.addOptsToJSON(logLine)
+			logsWithOpts, jsonErr := mmdsOpts.AddOptsToJSON(logLine)
 			if jsonErr != nil {
 				log.Printf("error adding instance logging options (%+v) to JSON (%+v) with logs : %v\n", mmdsOpts, logLine, jsonErr)
 
@@ -108,7 +87,7 @@ func (w *HTTPExporter) start() {
 				continue
 			}
 
-			err = w.sendInstanceLogs(logsWithOpts, mmdsOpts.Address)
+			err := w.sendInstanceLogs(logsWithOpts, mmdsOpts.Address)
 			if err != nil {
 				log.Printf("error sending instance logs: %+v", err)
 

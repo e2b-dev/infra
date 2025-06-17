@@ -14,6 +14,7 @@ import (
 	"github.com/rs/cors"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/api"
+	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	filesystemRpc "github.com/e2b-dev/infra/packages/envd/internal/services/filesystem"
@@ -31,7 +32,7 @@ const (
 )
 
 var (
-	Version = "0.2.0"
+	Version = "0.2.1"
 
 	commitSHA string
 
@@ -143,7 +144,12 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	l := logs.NewLogger(ctx, debug)
+	mmdsOpts, err := host.WaitAndGetMMDSOpts(ctx, debug)
+	if err != nil {
+		log.Fatalf("error getting mmds opts: %v", err)
+	}
+
+	l := logs.NewLogger(ctx, debug, mmdsOpts)
 
 	m := chi.NewRouter()
 
@@ -152,7 +158,15 @@ func main() {
 	filesystemRpc.Handle(m, &fsLogger)
 
 	envVars := utils.NewMap[string, string]()
-	envVars.Store("E2B_SANDBOX", "true")
+
+	if !debug {
+		envVars.Store("E2B_SANDBOX", "true")
+		envVars.Store("E2B_SANDBOX_ID", mmdsOpts.SandboxID)
+		envVars.Store("E2B_ENV_ID", mmdsOpts.EnvID)
+		envVars.Store("E2B_TEAM_ID", mmdsOpts.TeamID)
+	} else {
+		envVars.Store("E2B_SANDBOX", "false")
+	}
 
 	processLogger := l.With().Str("logger", "process").Logger()
 	processService := processRpc.Handle(m, &processLogger, envVars)
@@ -194,7 +208,7 @@ func main() {
 		}
 	}
 
-	err := s.ListenAndServe()
+	err = s.ListenAndServe()
 	if err != nil {
 		log.Fatalf("error starting server: %v", err)
 	}
