@@ -73,7 +73,7 @@ job "clickhouse" {
         ]
 
         volumes = [
-          "/clickhouse/data/clickhouse-server-${i + 1}:/var/lib/clickhouse",
+          "/clickhouse/data:/var/lib/clickhouse",
           "local/config.xml:/etc/clickhouse-server/config.d/config.xml",
           "local/users.xml:/etc/clickhouse-server/users.d/users.xml",
         ]
@@ -117,29 +117,6 @@ job "clickhouse" {
 
     <default_replica_path>/var/lib/clickhouse/tables/{shard}/{database}/{table}</default_replica_path>
 
-    <storage_configuration>
-         <disks>
-            <s3>
-                <type>s3</type>
-                <endpoint>https://storage.googleapis.com/${gcs_bucket}/${gcs_folder}/server-${i + 1}/</endpoint>
-                <access_key_id>${hmac_key}</access_key_id>
-                <secret_access_key>${hmac_secret}</secret_access_key>
-                <support_batch_delete>false</support_batch_delete>
-                <object_removal_strategy>async</object_removal_strategy>
-<!--            <metadata_type>plain_rewritable</metadata_type> -->
-            </s3>
-        </disks>
-           <policies>
-            <s3>
-                <volumes>
-                    <main>
-                        <disk>s3</disk>
-                    </main>
-                </volumes>
-            </s3>
-        </policies>
-    </storage_configuration>
-
     <remote_servers replace="true">
       <cluster>
         <!-- a secret for servers to use to communicate to each other  -->
@@ -160,8 +137,48 @@ job "clickhouse" {
     <listen_host>0.0.0.0</listen_host>
 
     <asynchronous_metric_log>
-        <max_age>86400</max_age>  <!-- 1 day TTL -->
+        <ttl>event_date + INTERVAL 7 DAY</ttl>
     </asynchronous_metric_log>
+
+    <trace_log>
+        <ttl>event_date + INTERVAL 7 DAY</ttl>
+    </trace_log>
+
+    <text_log>
+        <ttl>event_date + INTERVAL 7 DAY</ttl>
+    </text_log>
+
+    <latency_log>
+        <ttl>event_date + INTERVAL 7 DAY</ttl>
+    </latency_log>
+
+    <query_log>
+        <ttl>event_date + INTERVAL 7 DAY</ttl>
+    </query_log>
+
+    <metric_log>
+        <ttl>event_date + INTERVAL 7 DAY</ttl>
+    </metric_log>
+
+    <processors_profile_log>
+        <ttl>event_date + INTERVAL 7 DAY</ttl>
+    </processors_profile_log>
+
+    <asynchronous_metric_log>
+        <ttl>event_date + INTERVAL 7 DAY</ttl>
+    </asynchronous_metric_log>
+
+    <part_log>
+        <ttl>event_date + INTERVAL 7 DAY</ttl>
+    </part_log>
+
+    <query_metrics_log>
+        <ttl>event_date + INTERVAL 7 DAY</ttl>
+    </query_metrics_log>
+
+    <error_log>
+        <ttl>event_date + INTERVAL 30 DAY</ttl>
+    </error_log>
 
     <prometheus>
         <port>${clickhouse_metrics_port}</port>
