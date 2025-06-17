@@ -81,18 +81,18 @@ func New(
 
 	srv.persistence = persistence
 
-		srv.server = &server{
-			info:            info,
-			tracer:          tracer,
-			proxy:           srv.proxy,
-			sandboxes:       sandboxes,
-			networkPool:     networkPool,
-			templateCache:   templateCache,
-			devicePool:      devicePool,
-			sandboxObserver: sandboxObserver,
-			persistence:     persistence,
-			featureFlags:    featureFlags,
-		}
+	srv.server = &server{
+		info:            info,
+		tracer:          tracer,
+		proxy:           srv.proxy,
+		sandboxes:       sandboxes,
+		networkPool:     networkPool,
+		templateCache:   templateCache,
+		devicePool:      devicePool,
+		sandboxObserver: sandboxObserver,
+		persistence:     persistence,
+		featureFlags:    featureFlags,
+	}
 
 	meter := tel.MeterProvider.Meter("orchestrator.sandbox")
 	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
