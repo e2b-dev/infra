@@ -2,13 +2,17 @@ job "clickhouse" {
   type        = "service"
   node_pool   = "${node_pool}"
 
-// TODO: Add rolling updates
-
 %{ for i in range("${server_count}") }
   group "server-${i + 1}" {
     count = 1
 
-// TODO: Set restarts
+
+    restart {
+      interval         = "5m"
+      attempts         = 5
+      delay            = "15s"
+      mode             = "delay"
+    }
 
     constraint {
       attribute = "$${meta.job_constraint}"
@@ -55,9 +59,8 @@ job "clickhouse" {
     task "clickhouse-server" {
       driver = "docker"
 
-      # TODO: Ipv6 isn't working, will be fixed later (works like this for now)
       env {
-           AWS_ENABLE_IPV6="false"
+           CLICKHOUSE_USER="${username}"
       }
 
       config {
@@ -80,8 +83,8 @@ job "clickhouse" {
       }
 
       resources {
-        cpu    = 4000
-        memory = 8192
+        cpu    = ${cpu_count * 1000}
+        memory = ${memory_mb}
       }
 
       template {
@@ -194,7 +197,6 @@ job "clickhouse" {
 EOF
       }
 
-# TODO: make sure default user isn't created or drop it (it has no password and it's superuser)
       template {
         destination = "local/users.xml"
         data        = <<EOF

@@ -248,6 +248,16 @@ variable "otel_collector_resources_cpu_count" {
   default = 0.5
 }
 
+variable "clickhouse_resources_memory_mb" {
+  type    = number
+  default = 8192
+}
+
+variable "clickhouse_resources_cpu_count" {
+  type    = number
+  default = 4
+}
+
 variable "otel_tracing_print" {
   description = "Whether to print OTEL traces to stdout"
   type        = bool
