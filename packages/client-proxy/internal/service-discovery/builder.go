@@ -63,10 +63,9 @@ func createDnsProvider(ctx context.Context, prefix string, port int, logger *zap
 	dnsResolverRaw := os.Getenv(dnsResolverEnv)
 	if dnsResolverRaw == "" {
 		return nil, fmt.Errorf("missing %s environment variable", dnsResolverEnv)
-	} else {
-		dnsResolverAddress = dnsResolverRaw
 	}
 
+	dnsResolverAddress = dnsResolverRaw
 	dnsHosts := strings.Split(dnsHostsRaw, ",")
 	return NewDnsServiceDiscovery(ctx, logger, dnsHosts, dnsResolverAddress, port), nil
 }

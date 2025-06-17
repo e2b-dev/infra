@@ -41,7 +41,7 @@ func NewOrchestratorsPool(ctx context.Context, logger *zap.Logger, discovery sd.
 
 	// Background synchronization of orchestrators available in pool
 	go func() { pool.keepInSync(ctx) }()
-	go func() { pool.analyticsSync(ctx) }()
+	go func() { pool.statusLogSync(ctx) }()
 
 	return pool
 }
@@ -78,7 +78,7 @@ func (p *OrchestratorsPool) keepInSync(ctx context.Context) {
 	}
 }
 
-func (p *OrchestratorsPool) analyticsSync(ctx context.Context) {
+func (p *OrchestratorsPool) statusLogSync(ctx context.Context) {
 	ticker := time.NewTicker(statusLogInterval)
 	defer ticker.Stop()
 
