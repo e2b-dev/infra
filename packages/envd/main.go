@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
 	"time"
 
 	"connectrpc.com/authn"
@@ -144,29 +146,26 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	mmdsOpts, err := host.WaitAndGetMMDSOpts(ctx, debug)
-	if err != nil {
-		log.Fatalf("error getting mmds opts: %v", err)
+	envVars := utils.NewMap[string, string]()
+	isSandboxBoolStr := strconv.FormatBool(!debug)
+	envVars.Store("E2B_SANDBOX", isSandboxBoolStr)
+	if err := os.WriteFile("/etc/.E2B_SANDBOX", []byte(isSandboxBoolStr), 0444); err != nil {
+		fmt.Fprintf(os.Stderr, "error writing sandbox file: %v\n", err)
 	}
 
-	l := logs.NewLogger(ctx, debug, mmdsOpts)
+	mmdsChan := make(chan *host.MMDSOpts, 1)
+	defer close(mmdsChan)
+	if !debug {
+		go host.PollForMMDSOpts(ctx, mmdsChan, envVars)
+	}
+
+	l := logs.NewLogger(ctx, debug, mmdsChan)
 
 	m := chi.NewRouter()
 
 	envLogger := l.With().Str("logger", "envd").Logger()
 	fsLogger := l.With().Str("logger", "filesystem").Logger()
 	filesystemRpc.Handle(m, &fsLogger)
-
-	envVars := utils.NewMap[string, string]()
-
-	if !debug {
-		envVars.Store("E2B_SANDBOX", "true")
-		envVars.Store("E2B_SANDBOX_ID", mmdsOpts.SandboxID)
-		envVars.Store("E2B_ENV_ID", mmdsOpts.EnvID)
-		envVars.Store("E2B_TEAM_ID", mmdsOpts.TeamID)
-	} else {
-		envVars.Store("E2B_SANDBOX", "false")
-	}
 
 	processLogger := l.With().Str("logger", "process").Logger()
 	processService := processRpc.Handle(m, &processLogger, envVars)
@@ -208,7 +207,7 @@ func main() {
 		}
 	}
 
-	err = s.ListenAndServe()
+	err := s.ListenAndServe()
 	if err != nil {
 		log.Fatalf("error starting server: %v", err)
 	}

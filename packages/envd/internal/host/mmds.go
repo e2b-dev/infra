@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
+
+	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
 const (
@@ -31,7 +34,7 @@ func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	parsed["instanceID"] = opts.SandboxID
+	parsed["sandboxID"] = opts.SandboxID
 	parsed["envID"] = opts.EnvID
 	parsed["traceID"] = opts.TraceID
 	parsed["teamID"] = opts.TeamID
@@ -100,13 +103,7 @@ func getMMDSOpts(ctx context.Context, client *http.Client, token string) (*MMDSO
 	return &opts, nil
 }
 
-func WaitAndGetMMDSOpts(ctx context.Context, debug bool) (*MMDSOpts, error) {
-	if debug {
-		return &MMDSOpts{
-			Address: "http://localhost:8080",
-		}, nil
-	}
-
+func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *utils.Map[string, string]) {
 	httpClient := &http.Client{}
 	defer httpClient.CloseIdleConnections()
 
@@ -116,22 +113,36 @@ func WaitAndGetMMDSOpts(ctx context.Context, debug bool) (*MMDSOpts, error) {
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("context cancelled while waiting for mmds opts")
+			fmt.Fprintf(os.Stderr, "context cancelled while waiting for mmds opts")
 		case <-ticker.C:
 			token, err := getMMDSToken(ctx, httpClient)
 			if err != nil {
-				fmt.Printf("error getting mmds token: %v\n", err)
+				fmt.Fprintf(os.Stderr, "error getting mmds token: %v\n", err)
 				continue
 			}
 
 			mmdsOpts, err := getMMDSOpts(ctx, httpClient, token)
 			if err != nil {
-				fmt.Printf("error getting mmds opts: %v\n", err)
+				fmt.Fprintf(os.Stderr, "error getting mmds opts: %v\n", err)
 				continue
 			}
 
 			if mmdsOpts.Address != "" {
-				return mmdsOpts, nil
+				envVars.Store("E2B_SANDBOX_ID", mmdsOpts.SandboxID)
+				envVars.Store("E2B_ENV_ID", mmdsOpts.EnvID)
+				envVars.Store("E2B_TEAM_ID", mmdsOpts.TeamID)
+				if err := os.WriteFile("/etc/.E2B_SANDBOX_ID", []byte(mmdsOpts.SandboxID), 0444); err != nil {
+					fmt.Fprintf(os.Stderr, "error writing sandbox ID file: %v\n", err)
+				}
+				if err := os.WriteFile("/etc/.E2B_ENV_ID", []byte(mmdsOpts.EnvID), 0444); err != nil {
+					fmt.Fprintf(os.Stderr, "error writing env ID file: %v\n", err)
+				}
+				if err := os.WriteFile("/etc/.E2B_TEAM_ID", []byte(mmdsOpts.TeamID), 0444); err != nil {
+					fmt.Fprintf(os.Stderr, "error writing team ID file: %v\n", err)
+				}
+				mmdsChan <- mmdsOpts
+
+				return
 			}
 		}
 	}

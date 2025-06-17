@@ -12,7 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/logs/exporter"
 )
 
-func NewLogger(ctx context.Context, debug bool, mmdsOpts *host.MMDSOpts) *zerolog.Logger {
+func NewLogger(ctx context.Context, debug bool, mmdsChan <-chan *host.MMDSOpts) *zerolog.Logger {
 	zerolog.TimestampFieldName = "timestamp"
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 
@@ -21,7 +21,7 @@ func NewLogger(ctx context.Context, debug bool, mmdsOpts *host.MMDSOpts) *zerolo
 	if debug {
 		exporters = append(exporters, os.Stdout)
 	} else {
-		exporters = append(exporters, exporter.NewHTTPLogsExporter(ctx, false, mmdsOpts), os.Stdout)
+		exporters = append(exporters, exporter.NewHTTPLogsExporter(ctx, debug, mmdsChan), os.Stdout)
 	}
 
 	l := zerolog.

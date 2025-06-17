@@ -24,7 +24,7 @@ type HTTPExporter struct {
 	debug bool
 }
 
-func NewHTTPLogsExporter(ctx context.Context, debug bool, mmdsOpts *host.MMDSOpts) *HTTPExporter {
+func NewHTTPLogsExporter(ctx context.Context, debug bool, mmdsChan <-chan *host.MMDSOpts) *HTTPExporter {
 	exporter := &HTTPExporter{
 		client: http.Client{
 			Timeout: ExporterTimeout,
@@ -34,7 +34,7 @@ func NewHTTPLogsExporter(ctx context.Context, debug bool, mmdsOpts *host.MMDSOpt
 		ctx:      ctx,
 	}
 
-	go exporter.start(mmdsOpts)
+	go exporter.start(mmdsChan)
 
 	return exporter
 }
@@ -60,7 +60,17 @@ func printLog(logs []byte) {
 	fmt.Fprintf(os.Stdout, "%v", string(logs))
 }
 
-func (w *HTTPExporter) start(mmdsOpts *host.MMDSOpts) {
+func (w *HTTPExporter) start(mmdsChan <-chan *host.MMDSOpts) {
+	mmdsOpts, ok := <-mmdsChan
+	if !ok {
+		fmt.Fprintf(os.Stderr, "channel closed when starting exporter")
+		return
+	}
+
+	if mmdsOpts == nil {
+		fmt.Fprintf(os.Stderr, "nil mmds opts received on channel when starting exporter")
+		return
+	}
 
 	for range w.triggers {
 		logs := w.getAllLogs()

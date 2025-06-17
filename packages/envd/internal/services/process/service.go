@@ -17,19 +17,19 @@ import (
 type Service struct {
 	processes *utils.Map[uint32, *handler.Handler]
 	logger    *zerolog.Logger
-	envs      *utils.Map[string, string]
+	envVars   *utils.Map[string, string]
 }
 
-func newService(l *zerolog.Logger, envs *utils.Map[string, string]) *Service {
+func newService(l *zerolog.Logger, envVars *utils.Map[string, string]) *Service {
 	return &Service{
 		logger:    l,
 		processes: utils.NewMap[uint32, *handler.Handler](),
-		envs:      envs,
+		envVars:   envVars,
 	}
 }
 
-func Handle(server *chi.Mux, l *zerolog.Logger, envs *utils.Map[string, string]) *Service {
-	service := newService(l, envs)
+func Handle(server *chi.Mux, l *zerolog.Logger, envVars *utils.Map[string, string]) *Service {
+	service := newService(l, envVars)
 
 	interceptors := connect.WithInterceptors(logs.NewUnaryLogInterceptor(l))
 
