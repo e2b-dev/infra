@@ -14,6 +14,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/builder"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/templateconfig"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 )
@@ -29,7 +31,7 @@ var ConfigureScriptTemplate = tt.Must(tt.New("provisioning-finish-script").Parse
 func Build(
 	ctx context.Context,
 	tracer trace.Tracer,
-	templateConfig *TemplateConfig,
+	templateConfig *templateconfig.TemplateConfig,
 	postProcessor *writer.PostProcessor,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	networkPool *network.Pool,
@@ -41,13 +43,19 @@ func Build(
 	childCtx, childSpan := tracer.Start(ctx, "template-build")
 	defer childSpan.End()
 
+	b := builder.NewImageBuilder(
+		artifactRegistry,
+		networkPool,
+		templateCache,
+		devicePool,
+		templateConfig,
+	)
+
 	// Create a rootfs file
 	rtfs := NewRootfs(
 		artifactRegistry,
 		templateConfig,
-		networkPool,
-		templateCache,
-		devicePool,
+		b,
 	)
 	config, err := rtfs.createExt4Filesystem(childCtx, tracer, postProcessor, rootfsPath)
 	if err != nil {

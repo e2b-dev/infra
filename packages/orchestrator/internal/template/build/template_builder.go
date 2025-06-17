@@ -24,6 +24,7 @@ import (
 	templatelocal "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/ext4"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/oci"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/templateconfig"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
@@ -106,7 +107,7 @@ type Result struct {
 //
 // 6. Snapshot
 // 7. Upload template
-func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (r *Result, e error) {
+func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.TemplateConfig) (r *Result, e error) {
 	ctx, childSpan := b.tracer.Start(ctx, "build")
 	defer childSpan.End()
 
@@ -431,7 +432,7 @@ func (b *TemplateBuilder) uploadTemplate(
 func (b *TemplateBuilder) provisionSandbox(
 	ctx context.Context,
 	postProcessor *writer.PostProcessor,
-	template *TemplateConfig,
+	template *templateconfig.TemplateConfig,
 	envdVersion string,
 	localTemplate *templatelocal.LocalTemplate,
 	rootfsPath string,
@@ -501,7 +502,7 @@ func (b *TemplateBuilder) provisionSandbox(
 
 func (b *TemplateBuilder) enlargeDiskAfterProvisioning(
 	ctx context.Context,
-	template *TemplateConfig,
+	template *templateconfig.TemplateConfig,
 	rootfsPath string,
 ) error {
 	// Resize rootfs to accommodate for the provisioning script size change
@@ -528,7 +529,7 @@ func (b *TemplateBuilder) enlargeDiskAfterProvisioning(
 
 		return fmt.Errorf("error enlarging rootfs: %w", err)
 	}
-	template.rootfsSize = rootfsFinalSize
+	template.RootfsSize = rootfsFinalSize
 
 	// Check the rootfs filesystem corruption
 	ext4Check, err := ext4.CheckIntegrity(rootfsPath, false)
@@ -538,7 +539,7 @@ func (b *TemplateBuilder) enlargeDiskAfterProvisioning(
 			zap.Error(err),
 		)
 
-		// Occasionally there is Block bitmap differences. For this reason, we retry with fix.
+		// Occasionally there are Block bitmap differences. For this reason, we retry with fix.
 		ext4Check, err := ext4.CheckIntegrity(rootfsPath, true)
 		zap.L().Error("final enlarge filesystem ext4 integrity - retry with fix",
 			zap.String("result", ext4Check),
