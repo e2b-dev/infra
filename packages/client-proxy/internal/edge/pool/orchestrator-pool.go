@@ -24,8 +24,8 @@ type OrchestratorsPool struct {
 }
 
 const (
-	orchestratorsCacheRefreshInterval    = 10 * time.Second
-	orchestratorsAnalyticsReportInterval = 1 * time.Minute
+	orchestratorsCacheRefreshInterval = 10 * time.Second
+	statusLogInterval                 = 1 * time.Minute
 )
 
 func NewOrchestratorsPool(ctx context.Context, logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, tracer trace.Tracer) *OrchestratorsPool {
@@ -79,7 +79,7 @@ func (p *OrchestratorsPool) keepInSync(ctx context.Context) {
 }
 
 func (p *OrchestratorsPool) analyticsSync(ctx context.Context) {
-	ticker := time.NewTicker(orchestratorsAnalyticsReportInterval)
+	ticker := time.NewTicker(statusLogInterval)
 	defer ticker.Stop()
 
 	for {
