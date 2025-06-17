@@ -198,6 +198,40 @@ EOF
 EOF
       }
     }
+
+    task "otel-collector" {
+          driver = "docker"
+
+          config {
+            network_mode = "host"
+
+            image = "otel/opentelemetry-collector-contrib:0.123.0"
+            args = [
+              "--config=local/otel.yaml",
+              "--feature-gates=pkg.translator.prometheus.NormalizeName",
+            ]
+          }
+
+
+          resources {
+            cpu    = 250
+            memory = 128
+          }
+
+          template {
+            data        =<<EOF
+${otel_agent_config}
+EOF
+            destination = "local/otel.yaml"
+          }
+
+          # Order the sidecar BEFORE the app so it’s ready to receive traffic
+          lifecycle {
+            sidecar = "true"
+            hook = "prestart"
+          }
+        }
+
   }
 %{ endfor }
 }

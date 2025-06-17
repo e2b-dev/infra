@@ -42,7 +42,7 @@ resource "nomad_job" "api" {
     prevent_colocation             = var.api_machine_count > 2
     orchestrator_port              = var.orchestrator_port
     template_manager_address       = "http://template-manager.service.consul:${var.template_manager_port}"
-    otel_collector_grpc_endpoint   = "localhost:4317"
+    otel_collector_grpc_endpoint   = "localhost:${var.otel_collector_grpc_port}"
     loki_address                   = "http://loki.service.consul:${var.loki_service_port.port}"
     logs_collector_address         = "http://localhost:${var.logs_proxy_port.port}"
     gcp_zone                       = var.gcp_zone
@@ -117,7 +117,7 @@ resource "nomad_job" "client_proxy" {
 
       image_name = var.client_proxy_docker_image_digest
 
-      otel_collector_grpc_endpoint = "localhost:4317"
+      otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
       logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
       launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   })
@@ -203,20 +203,22 @@ resource "nomad_job" "otel_collector" {
   jobspec = templatefile("${path.module}/otel-collector.hcl", {
     memory_mb = var.otel_collector_resources_memory_mb
     cpu_count = var.otel_collector_resources_cpu_count
+    gcp_zone  = var.gcp_zone
 
-    grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
-    grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
-    grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
-    consul_token                 = var.consul_acl_token_secret
-    clickhouse_metrics_port      = var.clickhouse_metrics_port
+    otel_collector_grpc_port = var.otel_collector_grpc_port
 
-    clickhouse_username = var.clickhouse_username
-    clickhouse_password = random_password.clickhouse_password.result
-    clickhouse_port     = var.clickhouse_server_port.port
-    clickhouse_host     = "clickhouse.service.consul"
-    clickhouse_database = var.clickhouse_database
+    otel_collector_config = templatefile("${path.module}/configs/otel-collector.yaml", {
+      grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
+      grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
+      grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
+      consul_token                 = var.consul_acl_token_secret
 
-    gcp_zone = var.gcp_zone
+      clickhouse_username = var.clickhouse_username
+      clickhouse_password = random_password.clickhouse_password.result
+      clickhouse_port     = var.clickhouse_server_port.port
+      clickhouse_host     = "clickhouse.service.consul"
+      clickhouse_database = var.clickhouse_database
+    })
   })
 }
 
@@ -337,7 +339,7 @@ locals {
     logs_collector_public_ip     = var.logs_proxy_address
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
-    otel_collector_grpc_endpoint = "localhost:4317"
+    otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
     allow_sandbox_internet       = var.allow_sandbox_internet
     launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   }
@@ -417,7 +419,7 @@ resource "nomad_job" "template_manager" {
     template_manager_checksum    = data.external.template_manager.result.hex
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
-    otel_collector_grpc_endpoint = "localhost:4317"
+    otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
     logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
     logs_collector_public_ip     = var.logs_proxy_address
     orchestrator_services        = "template-manager"
@@ -510,6 +512,11 @@ resource "nomad_job" "clickhouse" {
     clickhouse_server_port  = var.clickhouse_server_port.port
     server_count            = var.clickhouse_server_count
     resources_memory_gib    = 8
+
+    otel_agent_config = templatefile("${path.module}/configs/clickhouse-otel-agent.yaml", {
+      clickhouse_metrics_port  = var.clickhouse_metrics_port
+      otel_collector_grpc_port = var.otel_collector_grpc_port
+    })
 
     job_constraint_prefix = var.clickhouse_job_constraint_prefix
     node_pool             = var.clickhouse_node_pool
