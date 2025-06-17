@@ -102,20 +102,27 @@ resource "nomad_job" "docker_reverse_proxy" {
 }
 
 resource "nomad_job" "client_proxy" {
-  jobspec = templatefile("${path.module}/client-proxy.hcl",
+  jobspec = templatefile("${path.module}/edge.hcl",
     {
       update_stanza = var.api_machine_count > 1
       count         = var.client_proxy_count
       cpu_count     = var.client_proxy_resources_cpu_count
       memory_mb     = var.client_proxy_resources_memory_mb
 
-      gcp_zone           = var.gcp_zone
-      port_name          = var.client_proxy_port.name
-      port_number        = var.client_proxy_port.port
-      health_port_number = var.client_proxy_health_port.port
-      environment        = var.environment
+      gcp_zone    = var.gcp_zone
+      environment = var.environment
 
-      image_name = var.client_proxy_docker_image_digest
+      redis_url = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : "redis.service.consul:${var.redis_port.port}"
+      loki_url  = "http://loki.service.consul:${var.loki_service_port.port}"
+
+      proxy_port_name   = var.edge_proxy_port.name
+      proxy_port        = var.edge_proxy_port.port
+      api_port_name     = var.edge_api_port.name
+      api_port          = var.edge_api_port.port
+      api_secret        = var.edge_api_secret
+      orchestrator_port = var.orchestrator_port
+
+      image_name = var.edge_docker_image_digest
 
       otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
       logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
