@@ -69,8 +69,11 @@ func (c *RedisSandboxCatalog) GetSandbox(sandboxId string) (*SandboxInfo, error)
 		return nil, fmt.Errorf("failed to unmarshal sandbox info: %w", err)
 	}
 
-	lifetime := time.Duration(info.MaxSandboxLengthInHours) * time.Hour
-	err = c.StoreSandbox(sandboxId, info, lifetime)
+	deadline := info.SandboxStartedAt.
+		Add(time.Duration(info.SandboxMaxLengthInHours) * time.Hour).
+		Add(sandboxTtlBuffer)
+
+	err = c.StoreSandbox(sandboxId, info, time.Until(deadline))
 	if err != nil {
 		return nil, fmt.Errorf("failed to store sandbox info taken from redis: %w", err)
 	}
