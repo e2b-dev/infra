@@ -43,6 +43,8 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("path is not a directory: %s", dirPath))
 	}
 
+	sdkVersion := req.Header().Get("package_version")
+
 	var entries []*rpc.EntryInfo
 	err = filepath.WalkDir(dirPath, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
@@ -65,11 +67,14 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 			return filepath.SkipDir
 		}
 
-		entries = append(entries, &rpc.EntryInfo{
-			Name: entry.Name(),
-			Type: getEntryType(entry),
-			Path: path,
-		})
+		fileInfo, err := entry.Info()
+		if err != nil {
+			return err
+		}
+
+		entryInfo := entryInfoFromFileInfo(fileInfo, path, sdkVersion)
+
+		entries = append(entries, entryInfo)
 
 		return nil
 	})
