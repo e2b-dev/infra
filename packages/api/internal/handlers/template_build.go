@@ -166,8 +166,8 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		"starting build",
 	)
 	if err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when setting build status")
 		telemetry.ReportCriticalError(ctx, "error when setting build status", err)
-
 		return
 	}
 
