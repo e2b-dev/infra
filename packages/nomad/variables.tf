@@ -254,6 +254,14 @@ variable "redis_port" {
 }
 
 # Clickhouse
+variable "clickhouse_resources_memory_mb" {
+  type = number
+}
+
+variable "clickhouse_resources_cpu_count" {
+  type = number
+}
+
 variable "clickhouse_username" {
   type    = string
   default = "e2b"

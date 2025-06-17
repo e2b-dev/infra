@@ -186,6 +186,8 @@ module "nomad" {
   otel_tracing_print      = var.otel_tracing_print
 
   # Clickhouse
+  clickhouse_resources_cpu_count   = var.clickhouse_resources_cpu_count
+  clickhouse_resources_memory_mb   = var.clickhouse_resources_memory_mb
   clickhouse_database              = var.clickhouse_database_name
   clickhouse_backups_bucket_name   = module.buckets.clickhouse_backups_bucket_name
   clickhouse_server_count          = var.clickhouse_cluster_size

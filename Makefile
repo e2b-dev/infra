@@ -38,6 +38,8 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, CLIENT_PROXY_COUNT) \
 	$(call tfvar, CLIENT_PROXY_CPU_COUNT) \
 	$(call tfvar, CLIENT_PROXY_RESOURCES_MEMORY_MB) \
+	$(call tfvar, CLICKHOUSE_RESOURCES_CPU_COUNT) \
+	$(call tfvar, CLICKHOUSE_RESOURCES_MEMORY_MB) \
 	$(call tfvar, LOKI_RESOURCES_CPU_COUNT) \
 	$(call tfvar, LOKI_RESOURCES_MEMORY_MB) \
 	$(call tfvar, OTEL_TRACING_PRINT) \
