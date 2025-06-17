@@ -60,7 +60,7 @@ job "clickhouse" {
       driver = "docker"
 
       env {
-           CLICKHOUSE_USER="e2b"
+           CLICKHOUSE_USER="${username}"
       }
 
       config {
