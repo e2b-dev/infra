@@ -509,6 +509,9 @@ resource "nomad_job" "clickhouse" {
     server_secret      = random_password.clickhouse_server_secret.result
     clickhouse_version = "25.4.5.24"
 
+    cpu_count = var.clickhouse_resources_cpu_count
+    memory_mb = var.clickhouse_resources_memory_mb
+
     username                = var.clickhouse_username
     password                = random_password.clickhouse_password.result
     clickhouse_metrics_port = var.clickhouse_metrics_port
