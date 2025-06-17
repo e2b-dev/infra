@@ -97,7 +97,7 @@ func (c *InstanceCache) Add(ctx context.Context, instance *InstanceInfo, newlyCr
 		instance.SetEndTime(instance.StartTime.Add(instance.MaxInstanceLength))
 	}
 
-	c.Set(instance.Instance.SandboxID, instance)
+	c.Set(instance.Instance.SandboxID, instance, newlyCreated)
 	c.UpdateCounters(ctx, instance, 1, newlyCreated)
 
 	// Release the reservation if it exists

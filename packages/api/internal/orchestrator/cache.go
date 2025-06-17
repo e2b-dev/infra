@@ -308,8 +308,8 @@ func reportInstanceStopAnalytics(
 	}
 }
 
-func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, timeout time.Duration) func(info *instance.InstanceInfo) error {
-	return func(info *instance.InstanceInfo) error {
+func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, timeout time.Duration) func(info *instance.InstanceInfo, created bool) error {
+	return func(info *instance.InstanceInfo, created bool) error {
 		ctx, cancel := context.WithTimeout(parentCtx, timeout)
 		defer cancel()
 
@@ -333,17 +333,19 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 			o.instanceCache.MarkAsPausing(info)
 		}
 
-		// Run in separate goroutine to not block sandbox creation
-		// Also use parentCtx to not cancel the request with this hook timeout
-		go reportInstanceStartAnalytics(
-			parentCtx,
-			o.analytics,
-			info.TeamID.String(),
-			info.Instance.SandboxID,
-			info.ExecutionID,
-			info.Instance.TemplateID,
-			info.BuildID.String(),
-		)
+		if created {
+			// Run in separate goroutine to not block sandbox creation
+			// Also use parentCtx to not cancel the request with this hook timeout
+			go reportInstanceStartAnalytics(
+				parentCtx,
+				o.analytics,
+				info.TeamID.String(),
+				info.Instance.SandboxID,
+				info.ExecutionID,
+				info.Instance.TemplateID,
+				info.BuildID.String(),
+			)
+		}
 
 		sbxlogger.I(info).Debug("Inserted sandbox to cache hook",
 			zap.Time("start_time", info.StartTime),
