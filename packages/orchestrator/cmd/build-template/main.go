@@ -21,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/templateconfig"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
@@ -149,7 +150,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 			With(zap.Field{Type: zapcore.StringType, Key: "envID", String: templateID}).
 			With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: buildID}),
 	)
-	config := &build.TemplateConfig{
+	config := &templateconfig.TemplateConfig{
 		TemplateFiles: storage.NewTemplateFiles(
 			templateID,
 			buildID,

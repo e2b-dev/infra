@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/templateconfig"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -46,7 +46,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 			With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: config.BuildID}),
 	)
 
-	template := &build.TemplateConfig{
+	template := &templateconfig.TemplateConfig{
 		TemplateFiles: storage.NewTemplateFiles(
 			config.TemplateID,
 			config.BuildID,
@@ -83,7 +83,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		res, err := s.builder.Build(buildContext, template)
 		// Wait for the CLI to load all the logs
 		// This is a temporary ~fix for the CLI to load most of the logs before finishing the template build
-		// Ideally we should wait in the CLI for the last log message
+		// Ideally, we should wait in the CLI for the last log message
 		time.Sleep(8 * time.Second)
 		if err != nil {
 			s.reportBuildFailed(buildContext, template, err)
@@ -103,7 +103,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	return nil, nil
 }
 
-func (s *ServerStore) reportBuildFailed(ctx context.Context, config *build.TemplateConfig, err error) {
+func (s *ServerStore) reportBuildFailed(ctx context.Context, config *templateconfig.TemplateConfig, err error) {
 	telemetry.ReportCriticalError(ctx, "error while building template", err)
 	cacheErr := s.buildCache.SetFailed(config.BuildId)
 	if cacheErr != nil {

@@ -1,4 +1,4 @@
-package build
+package templateconfig
 
 import (
 	"io"
@@ -33,7 +33,7 @@ type TemplateConfig struct {
 	BuildLogsWriter io.Writer
 
 	// Real size of the rootfs after building the template.
-	rootfsSize int64
+	RootfsSize int64
 
 	// HugePages sets whether the VM use huge pages.
 	HugePages bool
@@ -50,7 +50,7 @@ type TemplateConfig struct {
 
 // Real size in MB of rootfs after building the template
 func (e *TemplateConfig) RootfsSizeMB() int64 {
-	return e.rootfsSize >> 20
+	return e.RootfsSize >> 20
 }
 
 func (e *TemplateConfig) MemfilePageSize() int64 {

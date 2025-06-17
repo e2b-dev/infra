@@ -78,8 +78,8 @@ func (g *GCPArtifactsRegistry) GetImage(ctx context.Context, templateId string, 
 	return img, nil
 }
 
-func (g *GCPArtifactsRegistry) GetLayer(ctx context.Context, buildId string, layerHash string, platform containerregistry.Platform) (containerregistry.Image, error) {
-	imageUrl, err := g.GetTag(ctx, buildId, layerHash)
+func (g *GCPArtifactsRegistry) GetLayer(ctx context.Context, templateId string, layerHash string, platform containerregistry.Platform) (containerregistry.Image, error) {
+	imageUrl, err := g.GetTag(ctx, templateId, layerHash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get image URL: %w", err)
 	}
@@ -102,8 +102,8 @@ func (g *GCPArtifactsRegistry) GetLayer(ctx context.Context, buildId string, lay
 	return img, nil
 }
 
-func (g *GCPArtifactsRegistry) PushLayer(ctx context.Context, buildId string, layerHash string, layer containerregistry.Image) error {
-	imageUrl, err := g.GetTag(ctx, buildId, layerHash)
+func (g *GCPArtifactsRegistry) PushLayer(ctx context.Context, templateId string, layerHash string, layer containerregistry.Image) error {
+	imageUrl, err := g.GetTag(ctx, templateId, layerHash)
 	if err != nil {
 		return fmt.Errorf("failed to get image URL: %w", err)
 	}
@@ -118,12 +118,7 @@ func (g *GCPArtifactsRegistry) PushLayer(ctx context.Context, buildId string, la
 		return fmt.Errorf("failed to get auth: %w", err)
 	}
 
-	platform := containerregistry.Platform{
-		OS:           "linux",
-		Architecture: "amd64",
-	}
-
-	if err := remote.Write(ref, layer, remote.WithAuth(auth), remote.WithPlatform(platform), remote.WithContext(ctx)); err != nil {
+	if err := remote.Write(ref, layer, remote.WithAuth(auth), remote.WithContext(ctx)); err != nil {
 		return fmt.Errorf("error pushing layer: %w", err)
 	}
 

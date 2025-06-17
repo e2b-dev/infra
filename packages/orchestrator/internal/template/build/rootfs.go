@@ -3,34 +3,24 @@ package build
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"math"
 	"os"
-	"strings"
-	"time"
 
-	"dagger.io/dagger"
 	"github.com/dustin/go-humanize"
-	"github.com/google/go-containerregistry/pkg/crane"
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/builder"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/ext4"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/oci"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/templateconfig"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -52,31 +42,11 @@ const (
 	systemdInitPath   = "/sbin/init"
 )
 
-// Template builder sandbox configuration
-var builderConfig = orchestrator.SandboxConfig{
-	TemplateId:         "p9kw2u9cc1zj1cov2zru",
-	BuildId:            "6bea9b8c-7344-4e8d-bfdc-16b10876606c",
-	KernelVersion:      "vmlinux-6.1.102",
-	FirecrackerVersion: "v1.10.1_1fcdaec",
-	HugePages:          true,
-	EnvdVersion:        "0.2.0",
-	Vcpu:               8,
-	RamMb:              8 * 1024,
-
-	BaseTemplateId: "p9kw2u9cc1zj1cov2zru",
-}
-
-const (
-	builderTimeout = 60 * time.Minute
-)
-
 type Rootfs struct {
-	template         *TemplateConfig
+	template         *templateconfig.TemplateConfig
 	artifactRegistry artifactsregistry.ArtifactsRegistry
 
-	networkPool   *network.Pool
-	templateCache *template.Cache
-	devicePool    *nbd.DevicePool
+	builder *builder.ImageBuilder
 }
 
 type MultiWriter struct {
@@ -96,17 +66,13 @@ func (mw *MultiWriter) Write(p []byte) (int, error) {
 
 func NewRootfs(
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
-	template *TemplateConfig,
-	networkPool *network.Pool,
-	templateCache *template.Cache,
-	devicePool *nbd.DevicePool,
+	template *templateconfig.TemplateConfig,
+	builder *builder.ImageBuilder,
 ) *Rootfs {
 	return &Rootfs{
 		template:         template,
 		artifactRegistry: artifactRegistry,
-		networkPool:      networkPool,
-		templateCache:    templateCache,
-		devicePool:       devicePool,
+		builder:          builder,
 	}
 }
 
@@ -145,7 +111,7 @@ func (r *Rootfs) createExt4Filesystem(
 	postProcessor.WriteMsg(fmt.Sprintf("Base Docker image size: %s", humanize.Bytes(uint64(imageSize))))
 
 	// Template build layers
-	imagePath, err := r.buildLayers(ctx, tracer, postProcessor, img)
+	imagePath, err := r.builder.BuildLayers(ctx, tracer, postProcessor, img)
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error building layers: %w", err)
 	}
@@ -173,7 +139,7 @@ func (r *Rootfs) createExt4Filesystem(
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error creating ext4 filesystem: %w", err)
 	}
-	r.template.rootfsSize = ext4Size
+	r.template.RootfsSize = ext4Size
 	telemetry.ReportEvent(childCtx, "created rootfs ext4 file")
 
 	postProcessor.WriteMsg("Filesystem cleanup")
@@ -202,7 +168,7 @@ func (r *Rootfs) createExt4Filesystem(
 		if err != nil {
 			return containerregistry.Config{}, fmt.Errorf("error enlarging rootfs: %w", err)
 		}
-		r.template.rootfsSize = rootfsFinalSize
+		r.template.RootfsSize = rootfsFinalSize
 	}
 
 	// Check the rootfs filesystem corruption
@@ -225,7 +191,7 @@ func (r *Rootfs) createExt4Filesystem(
 
 func additionalOCILayers(
 	ctx context.Context,
-	config *TemplateConfig,
+	config *templateconfig.TemplateConfig,
 ) ([]containerregistry.Layer, error) {
 	var scriptDef bytes.Buffer
 	err := ProvisionScriptTemplate.Execute(&scriptDef, struct {
@@ -358,274 +324,4 @@ echo "System Init"`), 0o777},
 		filesLayer,
 		symlinkLayer,
 	}, nil
-}
-
-func (r *Rootfs) buildLayers(
-	ctx context.Context,
-	tracer trace.Tracer,
-	postProcessor *writer.PostProcessor,
-	img containerregistry.Image,
-) (path string, e error) {
-	ctx, span := tracer.Start(ctx, "build-layers")
-	defer span.End()
-
-	// Start Virtual Dagger runner
-	config := builderConfig
-	config.SandboxId = instanceBuildPrefix + id.Generate()
-	config.ExecutionId = uuid.New().String()
-
-	sbx, cleanup, err := sandbox.ResumeSandbox(
-		ctx,
-		tracer,
-		nil,
-		r.networkPool,
-		r.templateCache,
-		&config,
-		uuid.New().String(),
-		time.Now(),
-		time.Now().Add(builderTimeout),
-		config.BaseTemplateId,
-		r.devicePool,
-		true,
-		false,
-	)
-	defer func() {
-		cleanupErr := cleanup.Run(ctx)
-		if cleanupErr != nil {
-			e = errors.Join(e, fmt.Errorf("error cleaning up sandbox: %w", cleanupErr))
-		}
-	}()
-	if err != nil {
-		return "", fmt.Errorf("error creating sandbox: %w", err)
-	}
-	// Start Virtual Dagger runner
-
-	err = os.Setenv("_EXPERIMENTAL_DAGGER_RUNNER_HOST", fmt.Sprintf("tcp://%s:1234", sbx.Slot.HostIPString()))
-	if err != nil {
-		return "", fmt.Errorf("failed to set Dagger environment variable: %w", err)
-	}
-
-	logsBuffer := &bytes.Buffer{}
-	defer func() {
-		zap.L().Debug("Dagger logs",
-			zap.String("logs", logsBuffer.String()),
-			zap.Int("length", logsBuffer.Len()),
-		)
-	}()
-	client, err := dagger.Connect(ctx, dagger.WithLogOutput(logsBuffer))
-	if err != nil {
-		return "", fmt.Errorf("failed to connect to Dagger: %w", err)
-	}
-	defer client.Close()
-
-	layerSourceImage, err := os.CreateTemp("", "layer-image-*.tar")
-	if err != nil {
-		return "", fmt.Errorf("failed to create temporary file: %w", err)
-	}
-	defer layerSourceImage.Close()
-
-	isCached := false
-	hash, lastImg, err := findLastCachedLayer(ctx, tracer, r.artifactRegistry, r.template)
-	if err == nil {
-		postProcessor.WriteMsg(fmt.Sprintf("Found last cached layer: %s", hash))
-		zap.L().Debug("found last cached layer",
-			zap.String("hash", hash),
-		)
-		// Use the last cached layer as the source image for the next layer
-		img = lastImg
-		isCached = true
-	} else {
-		postProcessor.WriteMsg("No cached layers found")
-		zap.L().Debug("no cached layers found", zap.Error(err))
-	}
-
-	err = crane.Save(img, uuid.New().String(), layerSourceImage.Name())
-	if err != nil {
-		return "", fmt.Errorf("failed to write source image to temporary file: %w", err)
-	}
-	layerSourceImagePath := layerSourceImage.Name()
-
-	for i, step := range r.template.Steps {
-		cmd := fmt.Sprintf("%s %s", step.Type, strings.Join(step.Args, " "))
-		zap.L().Debug("building layer",
-			zap.String("source_file_path", layerSourceImagePath),
-			zap.String("command", cmd),
-		)
-
-		cached := ""
-		if isCached {
-			cached = "CACHED "
-		}
-		prefix := fmt.Sprintf("[builder %d/%d]", i+1, len(r.template.Steps))
-		postProcessor.WriteMsg(fmt.Sprintf("%s%s: %s", cached, prefix, cmd))
-
-		// Process only the layers after the cached layer
-		if isCached {
-			if step.Hash == hash {
-				isCached = false
-			}
-			continue
-		}
-
-		err := func() error {
-			defer os.Remove(layerSourceImagePath)
-
-			layerOutputImage, err := os.CreateTemp("", "layer-image-*.tar")
-			if err != nil {
-				return fmt.Errorf("failed to create temporary file: %w", err)
-			}
-			defer layerOutputImage.Close()
-			layerOutputImagePath := layerOutputImage.Name()
-
-			_, err = r.buildAndCacheLayer(
-				ctx,
-				tracer,
-				postProcessor,
-				client,
-				prefix,
-				layerSourceImagePath,
-				layerOutputImagePath,
-				img,
-				step.Hash,
-				cmd,
-			)
-			if err != nil {
-				return err
-			}
-
-			zap.L().Debug("built layer",
-				zap.String("layer_hash", step.Hash),
-				zap.String("layer_source_image", layerSourceImagePath),
-				zap.String("layer_output_image", layerOutputImagePath),
-			)
-
-			layerSourceImagePath = layerOutputImagePath
-			return nil
-		}()
-		if err != nil {
-			return "", fmt.Errorf("error building layer %d: %w", i+1, err)
-		}
-	}
-
-	return layerSourceImagePath, nil
-}
-
-func (r *Rootfs) buildAndCacheLayer(
-	ctx context.Context,
-	tracer trace.Tracer,
-	postProcessor *writer.PostProcessor,
-	client *dagger.Client,
-	prefix string,
-	sourceFilePath string,
-	targetFilePath string,
-	img containerregistry.Image,
-	hash string,
-	command string,
-) (string, error) {
-	ctx, span := tracer.Start(ctx, "build-layer")
-	defer span.End()
-
-	sourceLayer := client.Host().File(sourceFilePath)
-	container := client.Container().
-		Import(sourceLayer).
-		WithExec([]string{"sh", "-c", command})
-
-	stderr, err := container.Stderr(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to get container stderr: %w", err)
-	}
-	stdout, err := container.Stdout(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to get container stdout: %w", err)
-	}
-
-	if stderr != "" {
-		postProcessor.WriteMsg(fmt.Sprintf("%s [stderr]: %s", prefix, stderr))
-	}
-	if stdout != "" {
-		postProcessor.WriteMsg(fmt.Sprintf("%s [stdout]: %s", prefix, stdout))
-	}
-
-	zap.L().Debug("container output",
-		zap.String("stdout", stdout),
-		zap.String("stderr", stderr),
-	)
-
-	export, err := container.Export(ctx, targetFilePath)
-	if err != nil {
-		return "", err
-	}
-
-	zap.L().Debug("exported layer",
-		zap.String("source_file_path", sourceFilePath),
-		zap.String("target_file_path", targetFilePath),
-		zap.String("command", command),
-		zap.String("export", export),
-	)
-
-	img, err = tarball.ImageFromPath(targetFilePath, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to read image from build export: %w", err)
-	}
-
-	err = r.artifactRegistry.PushLayer(ctx, r.template.TemplateId, hash, img)
-	if err != nil {
-		return "", err
-	}
-
-	zap.L().Debug("pushed layer",
-		zap.String("source_file_path", sourceFilePath),
-		zap.String("target_file_path", targetFilePath),
-		zap.String("command", command),
-	)
-
-	return hash, nil
-}
-
-// findLastCachedLayer finds the last cached layer in the artifact registry using binary search.
-func findLastCachedLayer(
-	ctx context.Context,
-	tracer trace.Tracer,
-	artifactRegistry artifactsregistry.ArtifactsRegistry,
-	template *TemplateConfig,
-) (string, containerregistry.Image, error) {
-	ctx, span := tracer.Start(ctx, "find-last-cached-layer")
-	defer span.End()
-
-	if len(template.Steps) == 0 {
-		return "", nil, nil
-	}
-
-	platform := containerregistry.Platform{
-		OS:           "linux",
-		Architecture: "amd64",
-	}
-
-	// Binary search to find the last cached layer
-	left, right := 0, len(template.Steps)-1
-	lastCachedIndex := -1
-	var lastCachedImage containerregistry.Image
-
-	for left <= right {
-		mid := (left + right) / 2
-		step := template.Steps[mid]
-
-		// Check if this layer exists in the artifact registry
-		img, err := artifactRegistry.GetLayer(ctx, template.TemplateId, step.Hash, platform)
-		if err != nil {
-			// Layer doesn't exist, search in the left half
-			right = mid - 1
-		} else {
-			// Layer exists, this could be our answer, search in the right half for a later one
-			lastCachedIndex = mid
-			lastCachedImage = img
-			left = mid + 1
-		}
-	}
-
-	if lastCachedIndex == -1 {
-		return "", nil, fmt.Errorf("no cached layers found for template %s", template.TemplateId)
-	}
-
-	return template.Steps[lastCachedIndex].Hash, lastCachedImage, nil
 }
