@@ -34,7 +34,7 @@ type RedisSandboxCatalog struct {
 func NewRedisSandboxesCatalog(ctx context.Context, tracer trace.Tracer, redisClient redis.UniversalClient, redisSync *redsync.Redsync) SandboxesCatalog {
 	clusterLockMutex := redisSync.NewMutex(catalogClusterLockName)
 
-	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogRedisLocalCacheTtl))
+	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogRedisLocalCacheTtl), ttlcache.WithDisableTouchOnHit[string, *SandboxInfo]())
 	go cache.Start()
 
 	return &RedisSandboxCatalog{
