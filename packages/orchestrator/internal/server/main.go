@@ -68,7 +68,6 @@ func New(
 ) (*Service, error) {
 	srv := &Service{info: info}
 
-
 	srv.proxy = proxy
 
 	persistence, err := storage.GetTemplateStorageProvider(ctx)
