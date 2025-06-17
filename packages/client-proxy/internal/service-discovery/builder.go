@@ -52,14 +52,23 @@ func resolveServiceDiscoveryConfig(ctx context.Context, prefix string, port int,
 }
 
 func createDnsProvider(ctx context.Context, prefix string, port int, logger *zap.Logger) (ServiceDiscoveryAdapter, error) {
-	env := fmt.Sprintf("%s_DNS_QUERY", prefix)
-	dnsHostsRaw := os.Getenv(env)
+	dnsHostsEnv := fmt.Sprintf("%s_DNS_QUERY", prefix)
+	dnsHostsRaw := os.Getenv(dnsHostsEnv)
 	if dnsHostsRaw == "" {
-		return nil, fmt.Errorf("missing %s environment variable", env)
+		return nil, fmt.Errorf("missing %s environment variable", dnsHostsEnv)
+	}
+
+	var dnsResolverAddress string
+	dnsResolverEnv := fmt.Sprintf("%s_DNS_RESOLVER_ADDRESS", prefix)
+	dnsResolverRaw := os.Getenv(dnsResolverEnv)
+	if dnsResolverRaw == "" {
+		return nil, fmt.Errorf("missing %s environment variable", dnsResolverEnv)
+	} else {
+		dnsResolverAddress = dnsResolverRaw
 	}
 
 	dnsHosts := strings.Split(dnsHostsRaw, ",")
-	return NewDnsServiceDiscovery(ctx, dnsHosts, port, logger), nil
+	return NewDnsServiceDiscovery(ctx, logger, dnsHosts, dnsResolverAddress, port), nil
 }
 
 func createEc2Provider(ctx context.Context, prefix string, port int, logger *zap.Logger) (ServiceDiscoveryAdapter, error) {

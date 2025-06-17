@@ -3,17 +3,18 @@ package service_discovery
 import (
 	"context"
 	"fmt"
-	"net"
 	"time"
 
+	"github.com/miekg/dns"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 type DnsServiceDiscovery struct {
-	logger  *zap.Logger
-	entries *smap.Map[*ServiceDiscoveryItem]
+	logger   *zap.Logger
+	entries  *smap.Map[*ServiceDiscoveryItem]
+	resolver string
 
 	hosts       []string
 	servicePort int
@@ -27,16 +28,20 @@ const (
 )
 
 var (
-	dnsResolver = net.DefaultResolver
+	dnsClient = dns.Client{
+		Net:     "udp",
+		Timeout: time.Second * 2,
+	}
 )
 
-func NewDnsServiceDiscovery(ctx context.Context, hosts []string, servicePort int, logger *zap.Logger) *DnsServiceDiscovery {
+func NewDnsServiceDiscovery(ctx context.Context, logger *zap.Logger, hosts []string, resolver string, servicePort int) *DnsServiceDiscovery {
 	sd := &DnsServiceDiscovery{
-		hosts:   hosts,
-		logger:  logger,
-		entries: smap.New[*ServiceDiscoveryItem](),
-
+		hosts:       hosts,
+		logger:      logger,
+		resolver:    resolver,
 		servicePort: servicePort,
+
+		entries: smap.New[*ServiceDiscoveryItem](),
 	}
 
 	go func() { sd.keepInSync(ctx) }()
@@ -85,16 +90,22 @@ func (sd *DnsServiceDiscovery) sync(ctx context.Context) {
 		return
 	default:
 		for _, host := range sd.hosts {
+			msg := new(dns.Msg)
+			msg.SetQuestion(dns.Fqdn(host), dns.TypeA)
+
 			for range dnsMaxRetries {
-				hostIps, err := dnsResolver.LookupIP(ctxTimeout, "ip", host)
+				response, _, err := dnsClient.Exchange(msg, sd.resolver)
 				if err != nil {
 					sd.logger.Error("DNS service discovery failed", zap.Error(err))
 					time.Sleep(dnsRetryWait)
 					continue
 				}
 
-				for _, ip := range hostIps {
-					ips[ip.String()] = struct{}{}
+				for _, ans := range response.Answer {
+					switch rr := ans.(type) {
+					case *dns.A:
+						ips[rr.A.String()] = struct{}{}
+					}
 				}
 
 				break
