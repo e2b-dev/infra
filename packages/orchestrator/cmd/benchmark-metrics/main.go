@@ -89,10 +89,8 @@ func runBenchmark(ctx context.Context, cfg benchmarkConfig) error {
 			}
 
 			// Wait for the duration of the benchmark
-			select {
-			case <-ctx.Done():
-				zap.L().Info("Benchmark duration reached, stopping node", zap.Int("nodeID", nodeID))
-			}
+			<-ctx.Done()
+			zap.L().Info("Benchmark duration reached, stopping node", zap.Int("nodeID", nodeID))
 
 			// Unregister all sandboxes
 			for _, unregister := range unregistres {
