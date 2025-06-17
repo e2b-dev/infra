@@ -166,6 +166,9 @@ type Cluster struct {
 }
 
 func NewCluster(ctx context.Context, endpoint string, secret string, id uuid.UUID) (*Cluster, error) {
+	// so we during cluster disconnect we don't cancel the upper context
+	ctx = context.WithoutCancel(ctx)
+
 	clientAuthMiddleware := func(c *api.Client) error {
 		c.RequestEditors = append(
 			c.RequestEditors,
@@ -192,8 +195,6 @@ func NewCluster(ctx context.Context, endpoint string, secret string, id uuid.UUI
 
 func (c *Cluster) Disconnect() {
 	c.ctx.Done()
-	// todo: what we should do here if template/sandbox is running?
-	// theoretically nothing, because we are just shutting down api and we want to gracefully disconnect
 }
 
 func (c *Cluster) getTemplateBuilders(ctx context.Context) ([]*api.ClusterOrchestratorNode, error) {
