@@ -243,6 +243,9 @@ func run(port, proxyPort uint) (success bool) {
 	}
 
 	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes, sandboxObserver, featureFlags)
+	if err != nil {
+		zap.L().Fatal("failed to create server", zap.Error(err))
+	}
 
 	tmplSbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
