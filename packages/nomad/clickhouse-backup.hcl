@@ -3,9 +3,9 @@ job "clickhouse-backup" {
   node_pool   = "${node_pool}"
 
   periodic {
-    cron            = "0 2/6 * * *" # run daily at 2AM, 8AM, 2PM and 8PM
+    cron            = "0 2,8,14,20 * * *"
     prohibit_overlap = true
-    time_zone       = "UTC"
+    time_zone       = "America/Los_Angeles"
   }
 
 
