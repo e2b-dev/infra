@@ -485,7 +485,7 @@ resource "google_service_account" "clickhouse_service_account" {
 }
 
 resource "google_storage_bucket_iam_member" "clickhouse_service_account_iam" {
-  bucket = var.clickhouse_bucket_name
+  bucket = var.clickhouse_backups_bucket_name
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.clickhouse_service_account.email}"
 }
@@ -522,7 +522,7 @@ resource "nomad_job" "clickhouse-backup" {
   jobspec = templatefile("${path.module}/clickhouse-backup.hcl", {
     clickhouse_backup_version = "2.6.22"
 
-    gcs_bucket                   = var.clickhouse_bucket_name
+    gcs_bucket                   = var.clickhouse_backups_bucket_name
     gcs_folder                   = "clickhouse-data"
     gcs_credentials_json_encoded = google_service_account_key.clickhouse_service_account_key.private_key
 
@@ -541,7 +541,7 @@ resource "nomad_job" "clickhouse-backup-restore" {
   jobspec = templatefile("${path.module}/clickhouse-backup-restore.hcl", {
     clickhouse_backup_version = "2.6.22"
 
-    gcs_bucket                   = var.clickhouse_bucket_name
+    gcs_bucket                   = var.clickhouse_backups_bucket_name
     gcs_folder                   = "clickhouse-data"
     gcs_credentials_json_encoded = google_service_account_key.clickhouse_service_account_key.private_key
 
