@@ -19,7 +19,7 @@ build-and-upload:
 	@rm -rf .shared/
 
 openapi := ../../spec/openapi-edge.yml
-codegen := go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+codegen := go tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
 .PHONY: generate
 generate:
