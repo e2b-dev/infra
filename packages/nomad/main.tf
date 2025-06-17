@@ -494,7 +494,7 @@ resource "google_service_account" "clickhouse_service_account" {
 }
 
 resource "google_storage_bucket_iam_member" "clickhouse_service_account_iam" {
-  bucket = var.clickhouse_bucket_name
+  bucket = var.clickhouse_backups_bucket_name
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.clickhouse_service_account.email}"
 }
@@ -506,13 +506,9 @@ resource "google_storage_hmac_key" "clickhouse_hmac_key" {
 resource "nomad_job" "clickhouse" {
   count = var.clickhouse_server_count > 0 ? 1 : 0
   jobspec = templatefile("${path.module}/clickhouse.hcl", {
-    zone                    = var.gcp_zone
-    server_secret           = random_password.clickhouse_server_secret.result
-    clickhouse_version      = "25.4.5.24"
-    gcs_bucket              = var.clickhouse_bucket_name
-    gcs_folder              = "clickhouse-data"
-    hmac_key                = google_storage_hmac_key.clickhouse_hmac_key.access_id
-    hmac_secret             = google_storage_hmac_key.clickhouse_hmac_key.secret
+    server_secret      = random_password.clickhouse_server_secret.result
+    clickhouse_version = "25.4.5.24"
+
     username                = var.clickhouse_username
     password                = random_password.clickhouse_password.result
     clickhouse_metrics_port = var.clickhouse_metrics_port
@@ -524,6 +520,49 @@ resource "nomad_job" "clickhouse" {
       clickhouse_metrics_port  = var.clickhouse_metrics_port
       otel_collector_grpc_port = var.otel_collector_grpc_port
     })
+
+    job_constraint_prefix = var.clickhouse_job_constraint_prefix
+    node_pool             = var.clickhouse_node_pool
+  })
+}
+
+resource "google_service_account_key" "clickhouse_service_account_key" {
+  service_account_id = google_service_account.clickhouse_service_account.id
+}
+
+
+resource "nomad_job" "clickhouse-backup" {
+  count = var.clickhouse_server_count > 0 ? 1 : 0
+  jobspec = templatefile("${path.module}/clickhouse-backup.hcl", {
+    clickhouse_backup_version = "2.6.22"
+
+    gcs_bucket                   = var.clickhouse_backups_bucket_name
+    gcs_folder                   = "clickhouse-data"
+    gcs_credentials_json_encoded = google_service_account_key.clickhouse_service_account_key.private_key
+
+    server_count        = var.clickhouse_server_count
+    clickhouse_username = var.clickhouse_username
+    clickhouse_password = random_password.clickhouse_password.result
+    clickhouse_port     = var.clickhouse_server_port.port
+
+    job_constraint_prefix = var.clickhouse_job_constraint_prefix
+    node_pool             = var.clickhouse_node_pool
+  })
+}
+
+resource "nomad_job" "clickhouse-backup-restore" {
+  count = var.clickhouse_server_count > 0 ? 1 : 0
+  jobspec = templatefile("${path.module}/clickhouse-backup-restore.hcl", {
+    clickhouse_backup_version = "2.6.22"
+
+    gcs_bucket                   = var.clickhouse_backups_bucket_name
+    gcs_folder                   = "clickhouse-data"
+    gcs_credentials_json_encoded = google_service_account_key.clickhouse_service_account_key.private_key
+
+    server_count        = var.clickhouse_server_count
+    clickhouse_username = var.clickhouse_username
+    clickhouse_password = random_password.clickhouse_password.result
+    clickhouse_port     = var.clickhouse_server_port.port
 
     job_constraint_prefix = var.clickhouse_job_constraint_prefix
     node_pool             = var.clickhouse_node_pool

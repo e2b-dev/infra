@@ -187,7 +187,7 @@ module "nomad" {
 
   # Clickhouse
   clickhouse_database              = var.clickhouse_database_name
-  clickhouse_bucket_name           = module.buckets.clickhouse_bucket_name
+  clickhouse_backups_bucket_name   = module.buckets.clickhouse_backups_bucket_name
   clickhouse_server_count          = var.clickhouse_cluster_size
   clickhouse_server_port           = var.clickhouse_server_service_port
   clickhouse_job_constraint_prefix = var.clickhouse_job_constraint_prefix
