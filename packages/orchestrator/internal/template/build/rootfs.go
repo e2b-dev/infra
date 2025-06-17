@@ -52,6 +52,24 @@ const (
 	systemdInitPath   = "/sbin/init"
 )
 
+// Template builder sandbox configuration
+var builderConfig = orchestrator.SandboxConfig{
+	TemplateId:         "p9kw2u9cc1zj1cov2zru",
+	BuildId:            "6bea9b8c-7344-4e8d-bfdc-16b10876606c",
+	KernelVersion:      "vmlinux-6.1.102",
+	FirecrackerVersion: "v1.10.1_1fcdaec",
+	HugePages:          true,
+	EnvdVersion:        "0.2.0",
+	Vcpu:               8,
+	RamMb:              8 * 1024,
+
+	BaseTemplateId: "p9kw2u9cc1zj1cov2zru",
+}
+
+const (
+	builderTimeout = 60 * time.Minute
+)
+
 type Rootfs struct {
 	template         *TemplateConfig
 	artifactRegistry artifactsregistry.ArtifactsRegistry
@@ -124,10 +142,10 @@ func (r *Rootfs) createExt4Filesystem(
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error getting image size: %w", err)
 	}
-	postProcessor.WriteMsg(fmt.Sprintf("Docker image size: %s", humanize.Bytes(uint64(imageSize))))
+	postProcessor.WriteMsg(fmt.Sprintf("Base Docker image size: %s", humanize.Bytes(uint64(imageSize))))
 
 	// Template build layers
-	imagePath, err := r.todoBuildLayers(ctx, tracer, postProcessor, img)
+	imagePath, err := r.buildLayers(ctx, tracer, postProcessor, img)
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error building layers: %w", err)
 	}
@@ -342,7 +360,7 @@ echo "System Init"`), 0o777},
 	}, nil
 }
 
-func (r *Rootfs) todoBuildLayers(
+func (r *Rootfs) buildLayers(
 	ctx context.Context,
 	tracer trace.Tracer,
 	postProcessor *writer.PostProcessor,
@@ -352,31 +370,21 @@ func (r *Rootfs) todoBuildLayers(
 	defer span.End()
 
 	// Start Virtual Dagger runner
-	config := &orchestrator.SandboxConfig{
-		TemplateId:         "p9kw2u9cc1zj1cov2zru",
-		BuildId:            "6bea9b8c-7344-4e8d-bfdc-16b10876606c",
-		KernelVersion:      "vmlinux-6.1.102",
-		FirecrackerVersion: "v1.10.1_1fcdaec",
-		HugePages:          true,
-		SandboxId:          instanceBuildPrefix + id.Generate(),
-		ExecutionId:        uuid.New().String(),
-		EnvdVersion:        "0.2.0",
-		Vcpu:               8,
-		RamMb:              8 * 1024,
+	config := builderConfig
+	config.SandboxId = instanceBuildPrefix + id.Generate()
+	config.ExecutionId = uuid.New().String()
 
-		BaseTemplateId: "p9kw2u9cc1zj1cov2zru",
-	}
 	sbx, cleanup, err := sandbox.ResumeSandbox(
 		ctx,
 		tracer,
 		nil,
 		r.networkPool,
 		r.templateCache,
-		config,
+		&config,
 		uuid.New().String(),
 		time.Now(),
-		time.Now().Add(60*time.Minute),
-		"p9kw2u9cc1zj1cov2zru",
+		time.Now().Add(builderTimeout),
+		config.BaseTemplateId,
 		r.devicePool,
 		true,
 		false,
@@ -416,6 +424,21 @@ func (r *Rootfs) todoBuildLayers(
 	}
 	defer layerSourceImage.Close()
 
+	isCached := false
+	hash, lastImg, err := findLastCachedLayer(ctx, tracer, r.artifactRegistry, r.template)
+	if err == nil {
+		postProcessor.WriteMsg(fmt.Sprintf("Found last cached layer: %s", hash))
+		zap.L().Debug("found last cached layer",
+			zap.String("hash", hash),
+		)
+		// Use the last cached layer as the source image for the next layer
+		img = lastImg
+		isCached = true
+	} else {
+		postProcessor.WriteMsg("No cached layers found")
+		zap.L().Debug("no cached layers found", zap.Error(err))
+	}
+
 	err = crane.Save(img, uuid.New().String(), layerSourceImage.Name())
 	if err != nil {
 		return "", fmt.Errorf("failed to write source image to temporary file: %w", err)
@@ -423,6 +446,27 @@ func (r *Rootfs) todoBuildLayers(
 	layerSourceImagePath := layerSourceImage.Name()
 
 	for i, step := range r.template.Steps {
+		cmd := fmt.Sprintf("%s %s", step.Type, strings.Join(step.Args, " "))
+		zap.L().Debug("building layer",
+			zap.String("source_file_path", layerSourceImagePath),
+			zap.String("command", cmd),
+		)
+
+		cached := ""
+		if isCached {
+			cached = "CACHED "
+		}
+		prefix := fmt.Sprintf("[builder %d/%d]", i+1, len(r.template.Steps))
+		postProcessor.WriteMsg(fmt.Sprintf("%s%s: %s", cached, prefix, cmd))
+
+		// Process only the layers after the cached layer
+		if isCached {
+			if step.Hash == hash {
+				isCached = false
+			}
+			continue
+		}
+
 		err := func() error {
 			defer os.Remove(layerSourceImagePath)
 
@@ -433,20 +477,7 @@ func (r *Rootfs) todoBuildLayers(
 			defer layerOutputImage.Close()
 			layerOutputImagePath := layerOutputImage.Name()
 
-			cmd := fmt.Sprintf("%s %s", step.Type, strings.Join(step.Args, " "))
-			zap.L().Debug("building layer",
-				zap.String("source_file_path", layerSourceImagePath),
-				zap.String("target_file_path", layerOutputImagePath),
-				zap.String("command", cmd),
-			)
-
-			cached := ""
-			if false {
-				cached = "CACHED "
-			}
-			prefix := fmt.Sprintf("[builder %d/%d]", i+1, len(r.template.Steps))
-			postProcessor.WriteMsg(fmt.Sprintf("%s%s: %s", cached, prefix, cmd))
-			hash, err := r.buildLayer(
+			_, err = r.buildAndCacheLayer(
 				ctx,
 				tracer,
 				postProcessor,
@@ -455,6 +486,7 @@ func (r *Rootfs) todoBuildLayers(
 				layerSourceImagePath,
 				layerOutputImagePath,
 				img,
+				step.Hash,
 				cmd,
 			)
 			if err != nil {
@@ -462,7 +494,7 @@ func (r *Rootfs) todoBuildLayers(
 			}
 
 			zap.L().Debug("built layer",
-				zap.String("layer_hash", hash),
+				zap.String("layer_hash", step.Hash),
 				zap.String("layer_source_image", layerSourceImagePath),
 				zap.String("layer_output_image", layerOutputImagePath),
 			)
@@ -478,7 +510,7 @@ func (r *Rootfs) todoBuildLayers(
 	return layerSourceImagePath, nil
 }
 
-func (r *Rootfs) buildLayer(
+func (r *Rootfs) buildAndCacheLayer(
 	ctx context.Context,
 	tracer trace.Tracer,
 	postProcessor *writer.PostProcessor,
@@ -487,6 +519,7 @@ func (r *Rootfs) buildLayer(
 	sourceFilePath string,
 	targetFilePath string,
 	img containerregistry.Image,
+	hash string,
 	command string,
 ) (string, error) {
 	ctx, span := tracer.Start(ctx, "build-layer")
@@ -518,8 +551,7 @@ func (r *Rootfs) buildLayer(
 		zap.String("stderr", stderr),
 	)
 
-	tar := container.AsTarball()
-	export, err := tar.Export(ctx, targetFilePath)
+	export, err := container.Export(ctx, targetFilePath)
 	if err != nil {
 		return "", err
 	}
@@ -533,11 +565,10 @@ func (r *Rootfs) buildLayer(
 
 	img, err = tarball.ImageFromPath(targetFilePath, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to get image from Dagger: %w", err)
+		return "", fmt.Errorf("failed to read image from build export: %w", err)
 	}
 
-	hash := uuid.New().String()
-	err = r.artifactRegistry.PushLayer(ctx, r.template.BuildId, hash, img)
+	err = r.artifactRegistry.PushLayer(ctx, r.template.TemplateId, hash, img)
 	if err != nil {
 		return "", err
 	}
@@ -549,4 +580,52 @@ func (r *Rootfs) buildLayer(
 	)
 
 	return hash, nil
+}
+
+// findLastCachedLayer finds the last cached layer in the artifact registry using binary search.
+func findLastCachedLayer(
+	ctx context.Context,
+	tracer trace.Tracer,
+	artifactRegistry artifactsregistry.ArtifactsRegistry,
+	template *TemplateConfig,
+) (string, containerregistry.Image, error) {
+	ctx, span := tracer.Start(ctx, "find-last-cached-layer")
+	defer span.End()
+
+	if len(template.Steps) == 0 {
+		return "", nil, nil
+	}
+
+	platform := containerregistry.Platform{
+		OS:           "linux",
+		Architecture: "amd64",
+	}
+
+	// Binary search to find the last cached layer
+	left, right := 0, len(template.Steps)-1
+	lastCachedIndex := -1
+	var lastCachedImage containerregistry.Image
+
+	for left <= right {
+		mid := (left + right) / 2
+		step := template.Steps[mid]
+
+		// Check if this layer exists in the artifact registry
+		img, err := artifactRegistry.GetLayer(ctx, template.TemplateId, step.Hash, platform)
+		if err != nil {
+			// Layer doesn't exist, search in the left half
+			right = mid - 1
+		} else {
+			// Layer exists, this could be our answer, search in the right half for a later one
+			lastCachedIndex = mid
+			lastCachedImage = img
+			left = mid + 1
+		}
+	}
+
+	if lastCachedIndex == -1 {
+		return "", nil, fmt.Errorf("no cached layers found for template %s", template.TemplateId)
+	}
+
+	return template.Steps[lastCachedIndex].Hash, lastCachedImage, nil
 }

@@ -70,7 +70,7 @@ func (g *GCPArtifactsRegistry) GetImage(ctx context.Context, templateId string, 
 		return nil, fmt.Errorf("failed to get auth: %w", err)
 	}
 
-	img, err := remote.Image(ref, remote.WithAuth(auth), remote.WithPlatform(platform))
+	img, err := remote.Image(ref, remote.WithAuth(auth), remote.WithPlatform(platform), remote.WithContext(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("error pulling image: %w", err)
 	}
@@ -94,7 +94,7 @@ func (g *GCPArtifactsRegistry) GetLayer(ctx context.Context, buildId string, lay
 		return nil, fmt.Errorf("failed to get auth: %w", err)
 	}
 
-	img, err := remote.Image(ref, remote.WithAuth(auth), remote.WithPlatform(platform))
+	img, err := remote.Image(ref, remote.WithAuth(auth), remote.WithPlatform(platform), remote.WithContext(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("error pulling image: %w", err)
 	}
@@ -118,7 +118,12 @@ func (g *GCPArtifactsRegistry) PushLayer(ctx context.Context, buildId string, la
 		return fmt.Errorf("failed to get auth: %w", err)
 	}
 
-	if err := remote.Write(ref, layer, remote.WithAuth(auth)); err != nil {
+	platform := containerregistry.Platform{
+		OS:           "linux",
+		Architecture: "amd64",
+	}
+
+	if err := remote.Write(ref, layer, remote.WithAuth(auth), remote.WithPlatform(platform), remote.WithContext(ctx)); err != nil {
 		return fmt.Errorf("error pushing layer: %w", err)
 	}
 
