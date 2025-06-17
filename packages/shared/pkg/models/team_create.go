@@ -103,6 +103,20 @@ func (tc *TeamCreate) SetEmail(s string) *TeamCreate {
 	return tc
 }
 
+// SetClusterID sets the "cluster_id" field.
+func (tc *TeamCreate) SetClusterID(u uuid.UUID) *TeamCreate {
+	tc.mutation.SetClusterID(u)
+	return tc
+}
+
+// SetNillableClusterID sets the "cluster_id" field if the given value is not nil.
+func (tc *TeamCreate) SetNillableClusterID(u *uuid.UUID) *TeamCreate {
+	if u != nil {
+		tc.SetClusterID(*u)
+	}
+	return tc
+}
+
 // SetID sets the "id" field.
 func (tc *TeamCreate) SetID(u uuid.UUID) *TeamCreate {
 	tc.mutation.SetID(u)
@@ -303,6 +317,10 @@ func (tc *TeamCreate) createSpec() (*Team, *sqlgraph.CreateSpec) {
 	if value, ok := tc.mutation.Email(); ok {
 		_spec.SetField(team.FieldEmail, field.TypeString, value)
 		_node.Email = value
+	}
+	if value, ok := tc.mutation.ClusterID(); ok {
+		_spec.SetField(team.FieldClusterID, field.TypeUUID, value)
+		_node.ClusterID = &value
 	}
 	if nodes := tc.mutation.UsersIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -536,6 +554,24 @@ func (u *TeamUpsert) UpdateEmail() *TeamUpsert {
 	return u
 }
 
+// SetClusterID sets the "cluster_id" field.
+func (u *TeamUpsert) SetClusterID(v uuid.UUID) *TeamUpsert {
+	u.Set(team.FieldClusterID, v)
+	return u
+}
+
+// UpdateClusterID sets the "cluster_id" field to the value that was provided on create.
+func (u *TeamUpsert) UpdateClusterID() *TeamUpsert {
+	u.SetExcluded(team.FieldClusterID)
+	return u
+}
+
+// ClearClusterID clears the value of the "cluster_id" field.
+func (u *TeamUpsert) ClearClusterID() *TeamUpsert {
+	u.SetNull(team.FieldClusterID)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
 // Using this option is equivalent to using:
 //
@@ -689,6 +725,27 @@ func (u *TeamUpsertOne) SetEmail(v string) *TeamUpsertOne {
 func (u *TeamUpsertOne) UpdateEmail() *TeamUpsertOne {
 	return u.Update(func(s *TeamUpsert) {
 		s.UpdateEmail()
+	})
+}
+
+// SetClusterID sets the "cluster_id" field.
+func (u *TeamUpsertOne) SetClusterID(v uuid.UUID) *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.SetClusterID(v)
+	})
+}
+
+// UpdateClusterID sets the "cluster_id" field to the value that was provided on create.
+func (u *TeamUpsertOne) UpdateClusterID() *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.UpdateClusterID()
+	})
+}
+
+// ClearClusterID clears the value of the "cluster_id" field.
+func (u *TeamUpsertOne) ClearClusterID() *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.ClearClusterID()
 	})
 }
 
@@ -1012,6 +1069,27 @@ func (u *TeamUpsertBulk) SetEmail(v string) *TeamUpsertBulk {
 func (u *TeamUpsertBulk) UpdateEmail() *TeamUpsertBulk {
 	return u.Update(func(s *TeamUpsert) {
 		s.UpdateEmail()
+	})
+}
+
+// SetClusterID sets the "cluster_id" field.
+func (u *TeamUpsertBulk) SetClusterID(v uuid.UUID) *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.SetClusterID(v)
+	})
+}
+
+// UpdateClusterID sets the "cluster_id" field to the value that was provided on create.
+func (u *TeamUpsertBulk) UpdateClusterID() *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.UpdateClusterID()
+	})
+}
+
+// ClearClusterID clears the value of the "cluster_id" field.
+func (u *TeamUpsertBulk) ClearClusterID() *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.ClearClusterID()
 	})
 }
 
