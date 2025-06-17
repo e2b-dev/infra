@@ -8,7 +8,7 @@ job "clickhouse" {
 
 
     restart {
-      interval         = "10m"
+      interval         = "5m"
       attempts         = 5
       delay            = "15s"
       mode             = "delay"
