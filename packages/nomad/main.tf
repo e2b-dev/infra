@@ -495,8 +495,7 @@ resource "google_storage_hmac_key" "clickhouse_hmac_key" {
 }
 
 resource "nomad_job" "clickhouse" {
-  # TODO: Currently only in dev
-  count = var.environment == "dev" ? 1 : 0
+  count = var.clickhouse_server_count ? 1 : 0
   jobspec = templatefile("${path.module}/clickhouse.hcl", {
     zone                    = var.gcp_zone
     server_secret           = random_password.clickhouse_server_secret.result
