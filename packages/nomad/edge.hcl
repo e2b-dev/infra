@@ -13,27 +13,40 @@ job "client-proxy" {
   }
 
     network {
-      port "${port_name}" {
-        static = "${port_number}"
+      port "${proxy_port_name}" {
+        static = "${proxy_port}"
       }
 
-      port "health" {
-        static = "${health_port_number}"
+      port "${api_port_name}" {
+        static = "${api_port}"
       }
     }
 
     service {
       name = "proxy"
-      port = "${port_name}"
-
+      port = "${proxy_port_name}"
 
       check {
         type     = "http"
         name     = "health"
-        path     = "/"
+        path     = "/health/traffic"
         interval = "3s"
         timeout  = "3s"
-        port     = "health"
+        port     = "${api_port_name}"
+      }
+    }
+
+    service {
+      name = "edge-api"
+      port = "${api_port}"
+
+      check {
+        type     = "http"
+        name     = "health"
+        path     = "/health"
+        interval = "3s"
+        timeout  = "3s"
+        port     = "${api_port_name}"
       }
     }
 
@@ -71,19 +84,39 @@ job "client-proxy" {
       }
 
       env {
+        NODE_ID = "$${node.unique.id}"
+        NODE_IP = "$${attr.unique.network.ip-address}"
+
+        EDGE_PORT         = "${api_port}"
+        EDGE_SECRET       = "${api_secret}"
+        PROXY_PORT        = "${proxy_port}"
+        ORCHESTRATOR_PORT = "${orchestrator_port}"
+
+        SERVICE_DISCOVERY_ORCHESTRATOR_PROVIDER             = "DNS"
+        SERVICE_DISCOVERY_ORCHESTRATOR_DNS_RESOLVER_ADDRESS = "127.0.0.1:8600" // consul dns resolver
+        SERVICE_DISCOVERY_ORCHESTRATOR_DNS_QUERY            = "orchestrator.service.consul,template-manager.service.consul"
+
+        SERVICE_DISCOVERY_EDGE_PROVIDER             = "DNS"
+        SERVICE_DISCOVERY_EDGE_DNS_RESOLVER_ADDRESS = "127.0.0.1:8600" // consul dns resolver
+        SERVICE_DISCOVERY_EDGE_DNS_QUERY            = "edge-api.service.consul"
+
+        // use legacy dns resolution for orchestrator services
+        USE_PROXY_CATALOG_RESOLUTION = "false"
+
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
         LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"
+        REDIS_URL                     = "${redis_url}"
+        LOKI_URL                      = "${loki_url}"
 
-%{ if launch_darkly_api_key != "" }
+        %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
-%{ endif }
+        %{ endif }
       }
 
       config {
         network_mode = "host"
         image        = "${image_name}"
-        ports        = ["${port_name}"]
-        args         = ["--port", "${port_number}"]
+        ports        = ["${proxy_port_name}", "${api_port_name}"]
       }
     }
   }

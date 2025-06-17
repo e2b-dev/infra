@@ -116,11 +116,11 @@ variable "client_proxy_resources_cpu_count" {
   type = number
 }
 
-variable "client_proxy_docker_image_digest" {
+variable "edge_docker_image_digest" {
   type = string
 }
 
-variable "client_proxy_health_port" {
+variable "edge_api_port" {
   type = object({
     name = string
     port = number
@@ -128,7 +128,11 @@ variable "client_proxy_health_port" {
   })
 }
 
-variable "client_proxy_port" {
+variable "edge_api_secret" {
+  type = string
+}
+
+variable "edge_proxy_port" {
   type = object({
     name = string
     port = number
@@ -167,7 +171,7 @@ variable "launch_darkly_api_key_secret_name" {
   type = string
 }
 
-variable "clickhouse_bucket_name" {
+variable "clickhouse_backups_bucket_name" {
   type = string
 }
 
