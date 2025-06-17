@@ -85,7 +85,7 @@ resource "google_storage_bucket" "clickhouse_backups_bucket" {
 
   lifecycle_rule {
     condition {
-      age = 14
+      age = 30
     }
 
     action {
