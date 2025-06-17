@@ -9,8 +9,8 @@ type SandboxInfo struct {
 	OrchestratorId string `json:"orchestrator_id"`
 	TemplateId     string `json:"template_id"`
 
-	// how long can sandbox can possibly run (in seconds)
-	MaxSandboxLength int64 `json:"max_sandbox_length"`
+	// how long can sandbox can possibly run (in hours)
+	MaxSandboxLengthInHours int64 `json:"max_sandbox_length_in_hours"`
 }
 
 type SandboxesCatalog interface {

@@ -84,11 +84,11 @@ func (a *APIStore) V1CreateSandbox(c *gin.Context) {
 		return
 	}
 
-	sbxMaxLifetime := time.Duration(body.Sandbox.MaxSandboxLength) * time.Second
+	sbxMaxLifetime := time.Duration(body.Sandbox.MaxSandboxLength) * time.Hour
 	sbxInfo := &sandboxes.SandboxInfo{
-		OrchestratorId:   body.Sandbox.OrchestratorId,
-		TemplateId:       body.Sandbox.TemplateId,
-		MaxSandboxLength: body.Sandbox.MaxSandboxLength,
+		OrchestratorId:          body.Sandbox.OrchestratorId,
+		TemplateId:              body.Sandbox.TemplateId,
+		MaxSandboxLengthInHours: body.Sandbox.MaxSandboxLength,
 	}
 
 	err = a.sandboxes.StoreSandbox(body.Sandbox.SandboxId, sbxInfo, sbxMaxLifetime)
