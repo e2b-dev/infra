@@ -24,7 +24,8 @@ type OrchestratorsPool struct {
 }
 
 const (
-	orchestratorsCacheRefreshInterval = 10 * time.Second
+	orchestratorsCacheRefreshInterval    = 10 * time.Second
+	orchestratorsAnalyticsReportInterval = 1 * time.Minute
 )
 
 func NewOrchestratorsPool(ctx context.Context, logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, tracer trace.Tracer) *OrchestratorsPool {
@@ -40,6 +41,7 @@ func NewOrchestratorsPool(ctx context.Context, logger *zap.Logger, discovery sd.
 
 	// Background synchronization of orchestrators available in pool
 	go func() { pool.keepInSync(ctx) }()
+	go func() { pool.analyticsSync(ctx) }()
 
 	return pool
 }
@@ -72,6 +74,26 @@ func (p *OrchestratorsPool) keepInSync(ctx context.Context) {
 			return
 		case <-ticker.C:
 			p.syncNodes(ctx)
+		}
+	}
+}
+
+func (p *OrchestratorsPool) analyticsSync(ctx context.Context) {
+	ticker := time.NewTicker(orchestratorsAnalyticsReportInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			p.logger.Info("Stopping analytics sync")
+			return
+		case <-ticker.C:
+			orchestrators := len(p.GetOrchestrators())
+			if orchestrators > 0 {
+				p.logger.Info(fmt.Sprintf("Orchestrator pool: %d nodes currently in pool", orchestrators))
+			} else {
+				p.logger.Warn("Orchestrator pool: no orchestrators currently in pool")
+			}
 		}
 	}
 }
