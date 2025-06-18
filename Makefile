@@ -165,14 +165,14 @@ build-and-upload:build-and-upload/docker-reverse-proxy
 build-and-upload:build-and-upload/orchestrator
 build-and-upload:build-and-upload/template-manager
 build-and-upload:build-and-upload/envd
-build-and-upload:build-and-upload/clickhouse-migrations
+build-and-upload:build-and-upload/clickhouse-migrator
 build-and-upload/template-manager:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/template-manager
 build-and-upload/orchestrator:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/orchestrator
-build-and-upload/clickhouse-migrations:
+build-and-upload/clickhouse-migrator:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/clickhouse build-and-upload
 build-and-upload/%:
