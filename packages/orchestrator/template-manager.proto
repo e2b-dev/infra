@@ -4,6 +4,21 @@ import "google/protobuf/empty.proto";
 
 option go_package = "https://github.com/e2b-dev/infra/template-manager";
 
+
+message EngineConfig {
+  string template_id = 1;
+  string build_id = 2;
+  string kernel_version = 3;
+  string firecracker_version = 4;
+  bool huge_pages = 5;
+  string envd_version = 6;
+  int64 vcpu = 7;
+  int64 ram_mb = 8;
+
+  string base_template_id = 9;
+}
+
+
 message TemplateLayerFilesUploadRequest {
   string templateID = 1;
   string hash = 2;
@@ -45,6 +60,7 @@ message TemplateConfig {
 
 message TemplateCreateRequest {
   TemplateConfig template = 1;
+  optional EngineConfig engineConfig = 2;
 }
 
 message TemplateStatusRequest {

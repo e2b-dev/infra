@@ -80,7 +80,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		)
 		defer buildSpan.End()
 
-		res, err := s.builder.Build(buildContext, template)
+		res, err := s.builder.Build(buildContext, template, templateRequest.EngineConfig)
 		// Wait for the CLI to load all the logs
 		// This is a temporary ~fix for the CLI to load most of the logs before finishing the template build
 		// Ideally, we should wait in the CLI for the last log message

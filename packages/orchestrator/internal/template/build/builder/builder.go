@@ -46,7 +46,8 @@ type ImageBuilder struct {
 	templateCache *template.Cache
 	devicePool    *nbd.DevicePool
 
-	template *templateconfig.TemplateConfig
+	template     *templateconfig.TemplateConfig
+	engineConfig *templatemanager.EngineConfig
 }
 
 func NewImageBuilder(
@@ -56,6 +57,7 @@ func NewImageBuilder(
 	templateCache *template.Cache,
 	devicePool *nbd.DevicePool,
 	template *templateconfig.TemplateConfig,
+	engineConfig *templatemanager.EngineConfig,
 ) *ImageBuilder {
 	return &ImageBuilder{
 		artifactRegistry: artifactRegistry,
@@ -64,6 +66,7 @@ func NewImageBuilder(
 		templateCache:    templateCache,
 		devicePool:       devicePool,
 		template:         template,
+		engineConfig:     engineConfig,
 	}
 }
 
@@ -77,7 +80,7 @@ func (ib *ImageBuilder) BuildLayers(
 	defer span.End()
 
 	// Start the build engine runner
-	buildEngine := NewDaggerEngine(ib.networkPool, ib.templateCache, ib.devicePool)
+	buildEngine := NewDaggerEngine(ib.networkPool, ib.templateCache, ib.devicePool, ib.engineConfig)
 	engineUrl, err := buildEngine.Start(ctx, tracer)
 	if err != nil {
 		return "", fmt.Errorf("failed to start build engine: %w", err)

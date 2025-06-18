@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/templateconfig"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -33,6 +34,7 @@ func Build(
 	ctx context.Context,
 	tracer trace.Tracer,
 	templateConfig *templateconfig.TemplateConfig,
+	engineConfig *templatemanager.EngineConfig,
 	postProcessor *writer.PostProcessor,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	storage storage.StorageProvider,
@@ -52,6 +54,7 @@ func Build(
 		templateCache,
 		devicePool,
 		templateConfig,
+		engineConfig,
 	)
 
 	// Create a rootfs file

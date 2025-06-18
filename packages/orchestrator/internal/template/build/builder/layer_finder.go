@@ -22,7 +22,7 @@ func findLastCachedLayer(
 	defer span.End()
 
 	if len(template.Steps) == 0 {
-		return "", nil, nil
+		return "", nil, fmt.Errorf("template %s has no steps defined", template.TemplateId)
 	}
 
 	platform := containerregistry.Platform{

@@ -26,11 +26,12 @@ type processingBuilds struct {
 }
 
 type TemplateManager struct {
-	grpc       *GRPCClient
-	db         *db.DB
-	lock       sync.Mutex
-	processing map[uuid.UUID]processingBuilds
-	buildCache *templatecache.TemplatesBuildCache
+	grpc          *GRPCClient
+	db            *db.DB
+	lock          sync.Mutex
+	processing    map[uuid.UUID]processingBuilds
+	buildCache    *templatecache.TemplatesBuildCache
+	templateCache *templatecache.TemplateCache
 }
 
 const (
@@ -39,18 +40,26 @@ const (
 	syncWaitingStateDeadline = time.Minute * 40
 )
 
-func New(ctx context.Context, tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, db *db.DB, buildCache *templatecache.TemplatesBuildCache) (*TemplateManager, error) {
+func New(
+	ctx context.Context,
+	tracerProvider trace.TracerProvider,
+	meterProvider metric.MeterProvider,
+	db *db.DB,
+	buildCache *templatecache.TemplatesBuildCache,
+	templateCache *templatecache.TemplateCache,
+) (*TemplateManager, error) {
 	client, err := NewClient(ctx, tracerProvider, meterProvider)
 	if err != nil {
 		return nil, err
 	}
 
 	return &TemplateManager{
-		grpc:       client,
-		db:         db,
-		lock:       sync.Mutex{},
-		processing: make(map[uuid.UUID]processingBuilds),
-		buildCache: buildCache,
+		grpc:          client,
+		db:            db,
+		lock:          sync.Mutex{},
+		processing:    make(map[uuid.UUID]processingBuilds),
+		buildCache:    buildCache,
+		templateCache: templateCache,
 	}, nil
 }
 

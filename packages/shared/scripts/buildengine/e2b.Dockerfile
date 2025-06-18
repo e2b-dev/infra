@@ -1,4 +1,4 @@
-FROM ubuntu:latest
+FROM ubuntu:24.04
 
 ARG NERDCTL_VERSION=2.1.2
 ARG ARCH_TYPE=amd64
