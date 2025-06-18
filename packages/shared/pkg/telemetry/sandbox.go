@@ -13,14 +13,16 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
-type GetSandboxMetricsFunc func(ctx context.Context) (*SandboxMetrics, error)
-type SandboxMetrics struct {
-	Timestamp      int64   `json:"ts"`            // Unix Timestamp in UTC
-	CPUCount       int64   `json:"cpu_count"`     // Total CPU cores
-	CPUUsedPercent float64 `json:"cpu_used_pct"`  // Percent rounded to 2 decimal places
-	MemTotalMiB    int64   `json:"mem_total_mib"` // Total virtual memory in MiB
-	MemUsedMiB     int64   `json:"mem_used_mib"`  // Used virtual memory in MiB
-}
+type (
+	GetSandboxMetricsFunc func(ctx context.Context) (*SandboxMetrics, error)
+	SandboxMetrics        struct {
+		Timestamp      int64   `json:"ts"`            // Unix Timestamp in UTC
+		CPUCount       int64   `json:"cpu_count"`     // Total CPU cores
+		CPUUsedPercent float64 `json:"cpu_used_pct"`  // Percent rounded to 2 decimal places
+		MemTotalMiB    int64   `json:"mem_total_mib"` // Total virtual memory in MiB
+		MemUsedMiB     int64   `json:"mem_used_mib"`  // Used virtual memory in MiB
+	}
+)
 
 type SandboxObserver struct {
 	meter       metric.Meter
@@ -102,7 +104,6 @@ func (mp *SandboxObserver) StartObserving(sandboxID, teamID string, getMetrics G
 			o.ObserveInt64(mp.memoryUsed, sbxMetrics.MemUsedMiB<<shiftFromMiBToBytes, attributes)
 			return nil
 		}, mp.cpuTotal, mp.cpuUsed, mp.memoryTotal, mp.memoryUsed)
-
 	if err != nil {
 		return nil, err
 	}

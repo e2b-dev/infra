@@ -24,7 +24,6 @@ func TestSandboxCreate(t *testing.T) {
 		TemplateID: setup.SandboxTemplateID,
 		Timeout:    &sbxTimeout,
 	}, setup.WithAPIKey())
-
 	if err != nil {
 		t.Fatal(err)
 	}

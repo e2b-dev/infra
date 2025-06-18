@@ -47,8 +47,10 @@ const (
 	fileLockName = "/orchestrator.lock"
 )
 
-var forceStop = env.GetEnv("FORCE_STOP", "false") == "true"
-var commitSHA string
+var (
+	forceStop = env.GetEnv("FORCE_STOP", "false") == "true"
+	commitSHA string
+)
 
 func main() {
 	port := flag.Uint("port", defaultPort, "orchestrator server port")

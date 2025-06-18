@@ -267,7 +267,6 @@ func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authca
 	team, tier, err := a.authCache.GetOrSet(ctx, apiKey, func(ctx context.Context, key string) (*models.Team, *models.Tier, error) {
 		return a.db.GetTeamAuth(ctx, key)
 	})
-
 	if err != nil {
 		var usageErr *db.TeamForbiddenError
 		if errors.As(err, &usageErr) {

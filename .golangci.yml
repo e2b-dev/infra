@@ -3,6 +3,7 @@ version: "2"
 formatters:
   enable:
     - gci
+    - gofumpt
   settings:
     gci:
       sections:

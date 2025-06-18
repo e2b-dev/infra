@@ -9,9 +9,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
-var (
-	localNamespaceStorageSwitch = os.Getenv("USE_LOCAL_NAMESPACE_STORAGE")
-)
+var localNamespaceStorageSwitch = os.Getenv("USE_LOCAL_NAMESPACE_STORAGE")
 
 type Storage interface {
 	Acquire(ctx context.Context) (*Slot, error)

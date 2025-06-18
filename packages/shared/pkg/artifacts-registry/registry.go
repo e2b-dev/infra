@@ -23,9 +23,7 @@ const (
 	storageProviderEnv = "ARTIFACTS_REGISTRY_PROVIDER"
 )
 
-var (
-	ErrImageNotExists = errors.New("image does not exist")
-)
+var ErrImageNotExists = errors.New("image does not exist")
 
 type ArtifactsRegistry interface {
 	GetTag(ctx context.Context, templateId string, buildId string) (string, error)
@@ -34,7 +32,7 @@ type ArtifactsRegistry interface {
 }
 
 func GetArtifactsRegistryProvider() (ArtifactsRegistry, error) {
-	var provider = RegistryProvider(env.GetEnv(storageProviderEnv, string(DefaultRegistryProvider)))
+	provider := RegistryProvider(env.GetEnv(storageProviderEnv, string(DefaultRegistryProvider)))
 
 	setupCtx, setupCtxCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer setupCtxCancel()

@@ -99,7 +99,6 @@ func New(
 			OrchestratorAddress: fmt.Sprintf("%s:%s", "127.0.0.1", consts.OrchestratorPort),
 			IPAddress:           "127.0.0.1",
 		})
-
 		if err != nil {
 			zap.L().Error("Error connecting to local node. If you're starting the API server locally, make sure you run 'make connect-orchestrator' to connect to the node remotely before starting the local API server.", zap.Error(err))
 			return nil, err
@@ -171,7 +170,6 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 	if o.dns != nil {
 		if err := o.dns.Close(ctx); err != nil {
 			errs = append(errs, err)
-
 		}
 	}
 

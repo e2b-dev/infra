@@ -9,8 +9,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 )
 
-type apiClient struct {
-}
+type apiClient struct{}
 
 func newApiClient(socketPath string) *apiClient {
 	return nil

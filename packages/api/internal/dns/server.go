@@ -19,8 +19,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
-const ttl = 0
-const redisTTL = 24 * time.Hour
+const (
+	ttl      = 0
+	redisTTL = 24 * time.Hour
+)
 
 // This allows us to return a different error message when the sandbox is not found instead of generic 502 Bad Gateway
 const defaultRoutingIP = "127.0.0.1"

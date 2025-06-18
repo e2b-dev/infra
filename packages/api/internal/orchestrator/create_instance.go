@@ -31,9 +31,7 @@ const (
 	maxStartingInstancesPerNode = 3
 )
 
-var (
-	errSandboxCreateFailed = fmt.Errorf("failed to create a new sandbox, if the problem persists, contact us")
-)
+var errSandboxCreateFailed = fmt.Errorf("failed to create a new sandbox, if the problem persists, contact us")
 
 func (o *Orchestrator) CreateSandbox(
 	ctx context.Context,
