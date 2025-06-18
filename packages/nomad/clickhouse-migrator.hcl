@@ -24,7 +24,6 @@ job "clickhouse-migrator" {
 
       env {
         GOOSE_DBSTRING="clickhouse://${clickhouse_username}:${clickhouse_password}@localhost:${clickhouse_port}/default"
-        GOOSE_DRIVER="clickhouse"
       }
 
       config {
