@@ -109,6 +109,9 @@ type ServerInterface interface {
 
 	// (POST /v2/templates)
 	PostV2Templates(c *gin.Context)
+
+	// (POST /v2/templates/{templateID}/builds/{buildID})
+	PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templateID TemplateID, buildID BuildID)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -1012,6 +1015,43 @@ func (siw *ServerInterfaceWrapper) PostV2Templates(c *gin.Context) {
 	siw.Handler.PostV2Templates(c)
 }
 
+// PostV2TemplatesTemplateIDBuildsBuildID operation middleware
+func (siw *ServerInterfaceWrapper) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "templateID" -------------
+	var templateID TemplateID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "templateID", c.Param("templateID"), &templateID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter templateID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "buildID" -------------
+	var buildID BuildID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "buildID", c.Param("buildID"), &buildID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter buildID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(AccessTokenAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostV2TemplatesTemplateIDBuildsBuildID(c, templateID, buildID)
+}
+
 // GinServerOptions provides options for the Gin server.
 type GinServerOptions struct {
 	BaseURL      string
@@ -1071,4 +1111,5 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/templates/:templateID/files/:hash", wrapper.GetTemplatesTemplateIDFilesHash)
 	router.GET(options.BaseURL+"/v2/sandboxes", wrapper.GetV2Sandboxes)
 	router.POST(options.BaseURL+"/v2/templates", wrapper.PostV2Templates)
+	router.POST(options.BaseURL+"/v2/templates/:templateID/builds/:buildID", wrapper.PostV2TemplatesTemplateIDBuildsBuildID)
 }
