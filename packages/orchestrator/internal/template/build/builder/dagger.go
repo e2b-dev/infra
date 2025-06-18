@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 
@@ -50,12 +51,12 @@ func NewDaggerEngine(
 	templateCache *template.Cache,
 	devicePool *nbd.DevicePool,
 ) *DaggerEngine {
-	config := builderConfig
+	config := proto.Clone(&builderConfig).(*orchestrator.SandboxConfig)
 	config.SandboxId = instanceBuilderPrefix + id.Generate()
 	config.ExecutionId = uuid.New().String()
 
 	return &DaggerEngine{
-		config:        &config,
+		config:        config,
 		networkPool:   networkPool,
 		templateCache: templateCache,
 		devicePool:    devicePool,

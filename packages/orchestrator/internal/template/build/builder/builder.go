@@ -410,7 +410,7 @@ func untar(r io.Reader, destDir string) error {
 
 		case tar.TypeReg:
 			// Ensure parent directory exists
-			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 				return fmt.Errorf("mkdir for file parent failed: %w", err)
 			}
 
