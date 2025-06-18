@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
@@ -141,6 +143,12 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		return
 	}
 
+	var dockerfileParsed DockerfileSteps
+	err = json.Unmarshal([]byte(*build.Dockerfile), &dockerfileParsed)
+	if err != nil {
+		zap.L().Warn("failed to parse dockerfile", zap.Error(err))
+	}
+
 	// Call the Template Manager to build the environment
 	buildErr := a.templateManager.CreateTemplate(
 		a.Tracer,
@@ -154,8 +162,8 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		build.FreeDiskSizeMB,
 		build.RAMMB,
 		build.ReadyCmd,
-		"",
-		nil,
+		dockerfileParsed.FromImage,
+		dockerfileParsed.Steps,
 	)
 
 	if buildErr != nil {

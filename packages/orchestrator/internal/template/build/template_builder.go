@@ -149,6 +149,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 		template,
 		postProcessor,
 		b.artifactRegistry,
+		b.storage,
 		b.networkPool,
 		b.templateCache,
 		b.devicePool,

@@ -544,7 +544,7 @@ components:
           type: string
           description: Image to use as a base for the template build
         steps:
-          default: []
+          default: [ ]
           description: List of steps to execute in the template build
           type: array
           items:
@@ -559,6 +559,17 @@ components:
           $ref: "#/components/schemas/CPUCount"
         memoryMB:
           $ref: "#/components/schemas/MemoryMB"
+
+    TemplateBuildFileUpload:
+      required:
+        - present
+      properties:
+        present:
+          type: boolean
+          description: Whether the file is already present in the cache
+        url:
+          description: Url where the file should be uploaded to
+          type: string
 
     TemplateBuild:
       required:
@@ -1256,7 +1267,7 @@ paths:
 
       responses:
         "202":
-          description: The build was built successfully
+          description: The build was requested successfully
           content:
             application/json:
               schema:
@@ -1267,6 +1278,39 @@ paths:
           $ref: "#/components/responses/401"
         "500":
           $ref: "#/components/responses/500"
+
+  /templates/{templateID}/files/{hash}:
+    get:
+      description: Get an upload link for a file that should be uploaded to the template build cache
+      tags: [ templates ]
+      security:
+        - AccessTokenAuth: [ ]
+        - Supabase1TokenAuth: [ ]
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+        - in: path
+          name: hash
+          required: true
+          schema:
+            type: string
+            description: Hash of the files
+
+      responses:
+        "201":
+          description: The upload link where to upload the file
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateBuildFileUpload"
+        "204":
+          description: The file with this hash is already in the cache
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
   /templates:
     get:
       description: List all templates

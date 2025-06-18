@@ -1,10 +1,13 @@
 package builder
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"dagger.io/dagger"
@@ -21,19 +24,34 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/templateconfig"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
+
+const filesLayerCachePath = "/orchestrator/builder/files-cache"
+
+type MissingFilesError struct {
+	Steps []*templatemanager.TemplateStep
+}
+
+func (e *MissingFilesError) Error() string {
+	return fmt.Sprintf("missing files for steps: %d", len(e.Steps))
+}
 
 type ImageBuilder struct {
 	artifactRegistry artifactsregistry.ArtifactsRegistry
-	networkPool      *network.Pool
-	templateCache    *template.Cache
-	devicePool       *nbd.DevicePool
+	storage          storage.StorageProvider
+
+	networkPool   *network.Pool
+	templateCache *template.Cache
+	devicePool    *nbd.DevicePool
 
 	template *templateconfig.TemplateConfig
 }
 
 func NewImageBuilder(
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
+	storage storage.StorageProvider,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
 	devicePool *nbd.DevicePool,
@@ -41,6 +59,7 @@ func NewImageBuilder(
 ) *ImageBuilder {
 	return &ImageBuilder{
 		artifactRegistry: artifactRegistry,
+		storage:          storage,
 		networkPool:      networkPool,
 		templateCache:    templateCache,
 		devicePool:       devicePool,
@@ -156,9 +175,7 @@ func (ib *ImageBuilder) BuildLayers(
 				layerSourceImagePath,
 				layerOutputImagePath,
 				img,
-				step.Hash,
-				step.Type,
-				step.Args,
+				step,
 			)
 			if err != nil {
 				return err
@@ -190,9 +207,7 @@ func (ib *ImageBuilder) buildAndCacheLayer(
 	sourceFilePath string,
 	targetFilePath string,
 	img containerregistry.Image,
-	hash string,
-	commandType string,
-	commandArgs []string,
+	step *templatemanager.TemplateStep,
 ) (string, error) {
 	ctx, span := tracer.Start(ctx, "build-layer")
 	defer span.End()
@@ -202,7 +217,7 @@ func (ib *ImageBuilder) buildAndCacheLayer(
 		Import(sourceLayer)
 
 	var err error
-	container, err = applyCommand(ctx, tracer, postProcessor, client, prefix, container, commandType, commandArgs)
+	container, err = ib.applyCommand(ctx, tracer, postProcessor, client, prefix, container, step)
 	if err != nil {
 		return "", fmt.Errorf("failed to apply command: %w", err)
 	}
@@ -215,8 +230,8 @@ func (ib *ImageBuilder) buildAndCacheLayer(
 	zap.L().Debug("exported layer",
 		zap.String("source_file_path", sourceFilePath),
 		zap.String("target_file_path", targetFilePath),
-		zap.String("command_type", commandType),
-		zap.Strings("command_args", commandArgs),
+		zap.String("command_type", step.Type),
+		zap.Strings("command_args", step.Args),
 		zap.String("export", export),
 	)
 
@@ -225,7 +240,7 @@ func (ib *ImageBuilder) buildAndCacheLayer(
 		return "", fmt.Errorf("failed to read image from build export: %w", err)
 	}
 
-	err = ib.artifactRegistry.PushLayer(ctx, ib.template.TemplateId, hash, img)
+	err = ib.artifactRegistry.PushLayer(ctx, ib.template.TemplateId, step.Hash, img)
 	if err != nil {
 		// Soft fail, the build can continue even if the layer push fails
 		zap.L().Error("failed to push layer to artifact registry", zap.Error(err))
@@ -233,42 +248,76 @@ func (ib *ImageBuilder) buildAndCacheLayer(
 		zap.L().Debug("pushed layer",
 			zap.String("source_file_path", sourceFilePath),
 			zap.String("target_file_path", targetFilePath),
-			zap.String("command_type", commandType),
-			zap.Strings("command_args", commandArgs),
+			zap.String("command_type", step.Type),
+			zap.Strings("command_args", step.Args),
 		)
 	}
 
-	return hash, nil
+	return step.Hash, nil
 }
 
-func applyCommand(
+func (ib *ImageBuilder) applyCommand(
 	ctx context.Context,
 	tracer trace.Tracer,
 	postProcessor *writer.PostProcessor,
 	client *dagger.Client,
 	prefix string,
 	container *dagger.Container,
-	cmdType string,
-	args []string,
+	step *templatemanager.TemplateStep,
 ) (*dagger.Container, error) {
 	ctx, span := tracer.Start(ctx, "apply-command")
 	defer span.End()
 
-	switch strings.ToUpper(cmdType) {
+	cmdType := strings.ToUpper(step.Type)
+	args := step.Args
+
+	switch cmdType {
 	case "ADD":
 		// args: [localPath containerPath]
-		if len(args) != 2 {
-			return nil, fmt.Errorf("ADD requires [localPath containerPath]")
-		}
-		return container.WithMountedFile(args[1], client.Host().File(args[0])), nil
-
+		fallthrough
 	case "COPY":
 		// args: [localPath containerPath]
 		if len(args) != 2 {
-			return nil, fmt.Errorf("COPY requires [localPath containerPath]")
+			return nil, fmt.Errorf("%s requires [localPath containerPath]", cmdType)
 		}
-		return container.WithMountedFile(args[1], client.Host().File(args[0])), nil
+		if step.FilesHash == nil || *step.FilesHash == "" {
+			return nil, fmt.Errorf("%s requires files hash to be set", cmdType)
+		}
 
+		obj, err := ib.storage.OpenObject(ctx, GetLayerFilesCachePath(ib.template.TemplateId, *step.FilesHash))
+		if err != nil {
+			return nil, fmt.Errorf("failed to open files object from storage: %w", err)
+		}
+
+		cachePath := filepath.Join(filesLayerCachePath, ib.template.TemplateId, *step.FilesHash)
+		if err := os.MkdirAll(cachePath, os.ModePerm); err != nil {
+			return nil, fmt.Errorf("failed to create directory for file: %w", err)
+		}
+		defer os.RemoveAll(cachePath)
+
+		pr, pw := io.Pipe()
+		// Start writing tar data to the pipe writer in a goroutine
+		go func() {
+			defer pw.Close()
+			if _, err := obj.WriteTo(pw); err != nil {
+				pw.CloseWithError(err)
+			}
+		}()
+
+		// Extract the tar file to the specified directory
+		if err := untar(pr, cachePath); err != nil {
+			return nil, fmt.Errorf("failed to untar contents: %w", err)
+		}
+
+		if args[0] == "." {
+			// If the local path is ".", use the directory
+			dir := client.Host().Directory(cachePath)
+			return container.WithDirectory(args[1], dir), nil
+		} else {
+			// Otherwise, copy just the specified file
+			f := client.Host().File(cachePath)
+			return container.WithFile(args[1], f), nil
+		}
 	case "ARG":
 		// args: [key value]
 		if len(args) != 2 {
@@ -329,4 +378,65 @@ func applyCommand(
 	default:
 		return nil, fmt.Errorf("unsupported command type: %s", cmdType)
 	}
+}
+
+// untar extracts a tar archive from the reader `r` into the directory `destDir`.
+// It preserves file permissions and structure.
+func untar(r io.Reader, destDir string) error {
+	tr := tar.NewReader(r)
+
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break // End of archive
+		}
+		if err != nil {
+			return fmt.Errorf("error reading tar entry: %w", err)
+		}
+
+		// Prevent path traversal vulnerabilities
+		name := filepath.Clean(hdr.Name)
+		if strings.HasPrefix(name, "..") || filepath.IsAbs(name) {
+			return fmt.Errorf("invalid file path: %s", hdr.Name)
+		}
+		targetPath := filepath.Join(destDir, name)
+
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			// Create a directory with correct permissions
+			if err := os.MkdirAll(targetPath, os.FileMode(hdr.Mode)); err != nil {
+				return fmt.Errorf("mkdir failed for %s: %w", targetPath, err)
+			}
+
+		case tar.TypeReg:
+			// Ensure parent directory exists
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+				return fmt.Errorf("mkdir for file parent failed: %w", err)
+			}
+
+			outFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(hdr.Mode))
+			if err != nil {
+				return fmt.Errorf("create file %s failed: %w", targetPath, err)
+			}
+
+			if _, err := io.Copy(outFile, tr); err != nil {
+				outFile.Close()
+				return fmt.Errorf("copy to %s failed: %w", targetPath, err)
+			}
+			outFile.Close()
+
+		case tar.TypeSymlink:
+			// Symlinks are safe to create only within the target directory
+			linkTarget := filepath.Join(filepath.Dir(targetPath), hdr.Linkname)
+			if err := os.Symlink(linkTarget, targetPath); err != nil {
+				return fmt.Errorf("symlink %s -> %s failed: %w", targetPath, linkTarget, err)
+			}
+
+		default:
+			// Other types can be ignored or handled as needed
+			continue
+		}
+	}
+
+	return nil
 }

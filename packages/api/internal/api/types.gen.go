@@ -462,6 +462,15 @@ type TemplateBuild struct {
 // TemplateBuildStatus Status of the template
 type TemplateBuildStatus string
 
+// TemplateBuildFileUpload defines model for TemplateBuildFileUpload.
+type TemplateBuildFileUpload struct {
+	// Present Whether the file is already present in the cache
+	Present bool `json:"present"`
+
+	// Url Url where the file should be uploaded to
+	Url *string `json:"url,omitempty"`
+}
+
 // TemplateBuildRequest defines model for TemplateBuildRequest.
 type TemplateBuildRequest struct {
 	// Alias Alias of the template
