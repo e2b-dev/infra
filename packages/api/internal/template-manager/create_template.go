@@ -7,17 +7,22 @@ import (
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+const engineTemplateAlias = "e2b-build-engine"
 
 func (tm *TemplateManager) CreateTemplate(
 	t trace.Tracer,
 	ctx context.Context,
+	teamID uuid.UUID,
 	templateID string,
 	buildID uuid.UUID,
 	kernelVersion,
@@ -39,9 +44,7 @@ func (tm *TemplateManager) CreateTemplate(
 
 	features, err := sandbox.NewVersionInfo(firecrackerVersion)
 	if err != nil {
-		errMsg := fmt.Errorf("failed to get features for firecracker version '%s': %w", firecrackerVersion, err)
-
-		return errMsg
+		return fmt.Errorf("failed to get features for firecracker version '%s': %w", firecrackerVersion, err)
 	}
 
 	if !tm.grpc.IsReadyForBuildPlacement() {
@@ -56,6 +59,28 @@ func (tm *TemplateManager) CreateTemplate(
 	var readyCmd string
 	if readyCommand != nil {
 		readyCmd = *readyCommand
+	}
+
+	var engineConfig *template_manager.EngineConfig
+	env, build, checkErr := tm.templateCache.Get(ctx, engineTemplateAlias, teamID, true)
+	if checkErr != nil {
+		zap.L().Error("failed to get template from cache", logger.WithTemplateID(templateID), logger.WithBuildID(buildID.String()))
+	} else {
+		if build.EnvdVersion != nil {
+			engineConfig = &template_manager.EngineConfig{
+				TemplateId:         env.TemplateID,
+				BuildId:            build.ID.String(),
+				KernelVersion:      build.KernelVersion,
+				FirecrackerVersion: build.FirecrackerVersion,
+				// TODO: This might not be needed anymore,
+				// needs a follow up in the future PR to remove from the SandboxConfig too.
+				HugePages:      features.HasHugePages(),
+				EnvdVersion:    *build.EnvdVersion,
+				Vcpu:           build.Vcpu,
+				RamMb:          build.RamMb,
+				BaseTemplateId: env.TemplateID,
+			}
+		}
 	}
 
 	_, err = tm.grpc.TemplateClient.TemplateCreate(ctx, &template_manager.TemplateCreateRequest{
@@ -73,6 +98,7 @@ func (tm *TemplateManager) CreateTemplate(
 			FromImage:          fromImage,
 			Steps:              convertTemplateSteps(steps),
 		},
+		EngineConfig: engineConfig,
 	})
 
 	err = utils.UnwrapGRPCError(err)

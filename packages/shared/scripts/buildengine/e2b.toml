@@ -1,16 +1,19 @@
 # This is a config for E2B sandbox template.
-# You can use template ID (p9kw2u9cc1zj1cov2zru) to create a sandbox:
+# You can use template ID (p9kw2u9cc1zj1cov2zru) or template name (e2b-build-engine) to create a sandbox:
 
 # Python SDK
 # from e2b import Sandbox, AsyncSandbox
-# sandbox = Sandbox("p9kw2u9cc1zj1cov2zru") # Sync sandbox
-# sandbox = await AsyncSandbox.create("p9kw2u9cc1zj1cov2zru") # Async sandbox
+# sandbox = Sandbox("e2b-build-engine") # Sync sandbox
+# sandbox = await AsyncSandbox.create("e2b-build-engine") # Async sandbox
 
 # JS SDK
 # import { Sandbox } from 'e2b'
-# const sandbox = await Sandbox.create('p9kw2u9cc1zj1cov2zru')
+# const sandbox = await Sandbox.create('e2b-build-engine')
 
-ready_cmd = 'curl -s -o /dev/null -w "%{http_code}" http://localhost:1234 | grep -q "500"'
-start_cmd = "nerdctl pull registry.dagger.io/engine:v0.18.10 >/dev/null && nerdctl run -d -v /dagger:/etc/dagger -v /dagger/data:/var/lib/dagger --privileged -p 1234:1234 registry.dagger.io/engine:v0.18.10"
-dockerfile = "e2b.Dockerfile"
 template_id = "p9kw2u9cc1zj1cov2zru"
+dockerfile = "e2b.Dockerfile"
+template_name = "e2b-build-engine"
+start_cmd = "nerdctl pull registry.dagger.io/engine:v0.18.10 >/dev/null && nerdctl run -d -v /dagger:/etc/dagger -v /dagger/data:/var/lib/dagger --privileged -p 1234:1234 registry.dagger.io/engine:v0.18.10"
+ready_cmd = 'curl -s -o /dev/null -w "%{http_code}" http://localhost:1234 | grep -q "500"'
+cpu_count = 8
+memory_mb = 8_192

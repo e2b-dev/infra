@@ -28,6 +28,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -106,7 +107,7 @@ type Result struct {
 //
 // 6. Snapshot
 // 7. Upload template
-func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.TemplateConfig) (r *Result, e error) {
+func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.TemplateConfig, engineConfig *templatemanager.EngineConfig) (r *Result, e error) {
 	ctx, childSpan := b.tracer.Start(ctx, "build")
 	defer childSpan.End()
 
@@ -146,6 +147,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 		ctx,
 		b.tracer,
 		template,
+		engineConfig,
 		postProcessor,
 		b.artifactRegistry,
 		b.storage,

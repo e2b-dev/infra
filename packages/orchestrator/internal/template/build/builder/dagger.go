@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 
@@ -14,27 +13,29 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 )
-
-// Template builder sandbox configuration
-var builderConfig = orchestrator.SandboxConfig{
-	TemplateId:         "p9kw2u9cc1zj1cov2zru",
-	BuildId:            "6bea9b8c-7344-4e8d-bfdc-16b10876606c",
-	KernelVersion:      "vmlinux-6.1.102",
-	FirecrackerVersion: "v1.10.1_1fcdaec",
-	HugePages:          true,
-	EnvdVersion:        "0.2.0",
-	Vcpu:               8,
-	RamMb:              8 * 1024, // 8 GB of RAM
-
-	BaseTemplateId: "p9kw2u9cc1zj1cov2zru",
-}
 
 const (
 	instanceBuilderPrefix = "bd"
 	engineTimeout         = 60 * time.Minute
 )
+
+type Engine interface {
+	Start(ctx context.Context, tracer trace.Tracer) (string, error)
+	Stop(ctx context.Context, tracer trace.Tracer) error
+}
+
+type NoopEngine struct{}
+
+func (n *NoopEngine) Start(_ context.Context, _ trace.Tracer) (string, error) {
+	return "", nil
+}
+
+func (n *NoopEngine) Stop(_ context.Context, _ trace.Tracer) error {
+	return nil
+}
 
 type DaggerEngine struct {
 	config *orchestrator.SandboxConfig
@@ -50,10 +51,27 @@ func NewDaggerEngine(
 	networkPool *network.Pool,
 	templateCache *template.Cache,
 	devicePool *nbd.DevicePool,
-) *DaggerEngine {
-	config := proto.Clone(&builderConfig).(*orchestrator.SandboxConfig)
-	config.SandboxId = instanceBuilderPrefix + id.Generate()
-	config.ExecutionId = uuid.New().String()
+	engineConfig *templatemanager.EngineConfig,
+) Engine {
+	if engineConfig == nil {
+		return &NoopEngine{}
+	}
+
+	config := &orchestrator.SandboxConfig{
+		TemplateId:         engineConfig.TemplateId,
+		BuildId:            engineConfig.BuildId,
+		KernelVersion:      engineConfig.KernelVersion,
+		FirecrackerVersion: engineConfig.FirecrackerVersion,
+		HugePages:          engineConfig.HugePages,
+		EnvdVersion:        engineConfig.EnvdVersion,
+		Vcpu:               engineConfig.Vcpu,
+		RamMb:              engineConfig.RamMb,
+
+		BaseTemplateId: engineConfig.BaseTemplateId,
+
+		SandboxId:   instanceBuilderPrefix + id.Generate(),
+		ExecutionId: uuid.New().String(),
+	}
 
 	return &DaggerEngine{
 		config:        config,
