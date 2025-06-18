@@ -40,7 +40,7 @@ job "clickhouse-backup" {
       }
 
       env {
-        CLICKHOUSE_HOST         = "server-${i + 1}.clickhouse.service.consul"
+        CLICKHOUSE_HOST         = "localhost"
         CLICKHOUSE_PORT         = "${clickhouse_port}"
         CLICKHOUSE_USERNAME     = "${clickhouse_username}"
         CLICKHOUSE_PASSWORD     = "${clickhouse_password}"

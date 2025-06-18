@@ -10,7 +10,3 @@ variable "gcp_project_id" {
 variable "gcp_region" {
   type = string
 }
-
-variable "orchestration_repository_name" {
-  type = string
-}
