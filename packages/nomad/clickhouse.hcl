@@ -206,7 +206,8 @@ EOF
         <${username}>
             <password>${password}</password>
             <networks>
-              <ip>172.26.64.1/16</ip> <!-- allow Nomad access -->
+              <!-- Allow Nomad access https://web.archive.org/web/20250618172506/https://developer.hashicorp.com/nomad/docs/configuration/client#bridge_network_subnet -->
+              <ip>172.26.64.0/20</ip>
               <ip>::1</ip> <!-- allow localhost access -->
               <ip>10.0.0.0/8</ip> <!-- restrict to internal traffic -->
             </networks>
