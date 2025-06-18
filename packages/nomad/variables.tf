@@ -6,6 +6,10 @@ variable "gcp_zone" {
   type = string
 }
 
+variable "orchestration_repository_name" {
+  type = string
+}
+
 variable "consul_acl_token_secret" {
   type = string
 }
@@ -35,10 +39,6 @@ variable "otel_tracing_print" {
 }
 
 # API
-variable "api_docker_image_digest" {
-  type = string
-}
-
 variable "api_port" {
   type = object({
     name        = string
@@ -114,10 +114,6 @@ variable "client_proxy_resources_memory_mb" {
 
 variable "client_proxy_resources_cpu_count" {
   type = number
-}
-
-variable "edge_docker_image_digest" {
-  type = string
 }
 
 variable "edge_api_port" {
@@ -199,10 +195,6 @@ variable "redis_url_secret_version" {
 }
 
 # Docker reverse proxy
-variable "docker_reverse_proxy_docker_image_digest" {
-  type = string
-}
-
 variable "docker_reverse_proxy_port" {
   type = object({
     name        = string
@@ -299,9 +291,4 @@ variable "clickhouse_job_constraint_prefix" {
 variable "clickhouse_node_pool" {
   description = "The name of the Nomad pool."
   type        = string
-}
-
-variable "write_clickhouse_metrics" {
-  description = "Whether to write metrics to ClickHouse"
-  type        = bool
 }
