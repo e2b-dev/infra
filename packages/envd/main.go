@@ -146,10 +146,14 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	if err := os.MkdirAll(host.E2BRunDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "error creating E2B run directory: %v\n", err)
+	}
+
 	envVars := utils.NewMap[string, string]()
 	isSandboxBoolStr := strconv.FormatBool(!debug)
 	envVars.Store("E2B_SANDBOX", isSandboxBoolStr)
-	if err := os.WriteFile("/etc/.E2B_SANDBOX", []byte(isSandboxBoolStr), 0444); err != nil {
+	if err := os.WriteFile(host.E2BRunDir+"/.E2B_SANDBOX", []byte(isSandboxBoolStr), 0444); err != nil {
 		fmt.Fprintf(os.Stderr, "error writing sandbox file: %v\n", err)
 	}
 

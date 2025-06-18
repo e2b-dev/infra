@@ -14,6 +14,8 @@ import (
 )
 
 const (
+	E2BRunDir = "/run/e2b"
+
 	mmdsDefaultAddress  = "169.254.169.254"
 	mmdsTokenExpiration = 60 * time.Second
 )
@@ -34,7 +36,7 @@ func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	parsed["sandboxID"] = opts.SandboxID
+	parsed["instanceID"] = opts.SandboxID
 	parsed["envID"] = opts.EnvID
 	parsed["traceID"] = opts.TraceID
 	parsed["teamID"] = opts.TeamID
@@ -131,13 +133,13 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 				envVars.Store("E2B_SANDBOX_ID", mmdsOpts.SandboxID)
 				envVars.Store("E2B_ENV_ID", mmdsOpts.EnvID)
 				envVars.Store("E2B_TEAM_ID", mmdsOpts.TeamID)
-				if err := os.WriteFile("/etc/.E2B_SANDBOX_ID", []byte(mmdsOpts.SandboxID), 0444); err != nil {
+				if err := os.WriteFile(E2BRunDir+"/.E2B_SANDBOX_ID", []byte(mmdsOpts.SandboxID), 0444); err != nil {
 					fmt.Fprintf(os.Stderr, "error writing sandbox ID file: %v\n", err)
 				}
-				if err := os.WriteFile("/etc/.E2B_ENV_ID", []byte(mmdsOpts.EnvID), 0444); err != nil {
+				if err := os.WriteFile(E2BRunDir+"/.E2B_ENV_ID", []byte(mmdsOpts.EnvID), 0444); err != nil {
 					fmt.Fprintf(os.Stderr, "error writing env ID file: %v\n", err)
 				}
-				if err := os.WriteFile("/etc/.E2B_TEAM_ID", []byte(mmdsOpts.TeamID), 0444); err != nil {
+				if err := os.WriteFile(E2BRunDir+"/.E2B_TEAM_ID", []byte(mmdsOpts.TeamID), 0444); err != nil {
 					fmt.Fprintf(os.Stderr, "error writing team ID file: %v\n", err)
 				}
 				mmdsChan <- mmdsOpts

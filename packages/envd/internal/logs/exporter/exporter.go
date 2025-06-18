@@ -88,16 +88,19 @@ func (w *HTTPExporter) start(mmdsChan <-chan *host.MMDSOpts) {
 		}
 
 		for _, logLine := range logs {
-			logsWithOpts, jsonErr := mmdsOpts.AddOptsToJSON(logLine)
-			if jsonErr != nil {
-				log.Printf("error adding instance logging options (%+v) to JSON (%+v) with logs : %v\n", mmdsOpts, logLine, jsonErr)
+			if mmdsOpts != nil {
+				var err error
+				logLine, err := mmdsOpts.AddOptsToJSON(logLine)
+				if err != nil {
+					log.Printf("error adding instance logging options (%+v) to JSON (%+v) with logs : %v\n", mmdsOpts, logLine, err)
 
-				printLog(logLine)
+					printLog(logLine)
 
-				continue
+					continue
+				}
 			}
 
-			err := w.sendInstanceLogs(logsWithOpts, mmdsOpts.Address)
+			err := w.sendInstanceLogs(logLine, mmdsOpts.Address)
 			if err != nil {
 				log.Printf("error sending instance logs: %+v", err)
 
