@@ -38,7 +38,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 			return
 		}
 
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(fErr, sql.ErrNoRows) {
 			zap.L().Debug("Snapshot not found", logger.WithSandboxID(sandboxID))
 			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error pausing sandbox - snapshot for sandbox '%s' was not found", sandboxID))
 			return
