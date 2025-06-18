@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -26,6 +27,7 @@ const (
 
 type StorageProvider interface {
 	DeleteObjectsWithPrefix(ctx context.Context, prefix string) error
+	SignedURL(ctx context.Context, path string, ttl time.Duration) (string, error)
 	OpenObject(ctx context.Context, path string) (StorageObjectProvider, error)
 	GetDetails() string
 }

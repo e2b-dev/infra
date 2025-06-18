@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/templateconfig"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 //go:embed provision.sh
@@ -34,6 +35,7 @@ func Build(
 	templateConfig *templateconfig.TemplateConfig,
 	postProcessor *writer.PostProcessor,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
+	storage storage.StorageProvider,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
 	devicePool *nbd.DevicePool,
@@ -45,6 +47,7 @@ func Build(
 
 	b := builder.NewImageBuilder(
 		artifactRegistry,
+		storage,
 		networkPool,
 		templateCache,
 		devicePool,

@@ -31,6 +31,8 @@ type TemplateServiceClient interface {
 	TemplateBuildDelete(ctx context.Context, in *TemplateBuildDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// todo (2025-05): this is deprecated, please use InfoService that is used for both orchestrator and template manager
 	HealthStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*HealthStatusResponse, error)
+	// TemplateLayerFilesUpload requests an upload URL for a file to be cached for the template build.
+	TemplateLayerFilesUpload(ctx context.Context, in *TemplateLayerFilesUploadRequest, opts ...grpc.CallOption) (*TemplateLayerFilesUploadResponse, error)
 }
 
 type templateServiceClient struct {
@@ -77,6 +79,15 @@ func (c *templateServiceClient) HealthStatus(ctx context.Context, in *emptypb.Em
 	return out, nil
 }
 
+func (c *templateServiceClient) TemplateLayerFilesUpload(ctx context.Context, in *TemplateLayerFilesUploadRequest, opts ...grpc.CallOption) (*TemplateLayerFilesUploadResponse, error) {
+	out := new(TemplateLayerFilesUploadResponse)
+	err := c.cc.Invoke(ctx, "/TemplateService/TemplateLayerFilesUpload", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TemplateServiceServer is the server API for TemplateService service.
 // All implementations must embed UnimplementedTemplateServiceServer
 // for forward compatibility
@@ -89,6 +100,8 @@ type TemplateServiceServer interface {
 	TemplateBuildDelete(context.Context, *TemplateBuildDeleteRequest) (*emptypb.Empty, error)
 	// todo (2025-05): this is deprecated, please use InfoService that is used for both orchestrator and template manager
 	HealthStatus(context.Context, *emptypb.Empty) (*HealthStatusResponse, error)
+	// TemplateLayerFilesUpload requests an upload URL for a file to be cached for the template build.
+	TemplateLayerFilesUpload(context.Context, *TemplateLayerFilesUploadRequest) (*TemplateLayerFilesUploadResponse, error)
 	mustEmbedUnimplementedTemplateServiceServer()
 }
 
@@ -107,6 +120,9 @@ func (UnimplementedTemplateServiceServer) TemplateBuildDelete(context.Context, *
 }
 func (UnimplementedTemplateServiceServer) HealthStatus(context.Context, *emptypb.Empty) (*HealthStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method HealthStatus not implemented")
+}
+func (UnimplementedTemplateServiceServer) TemplateLayerFilesUpload(context.Context, *TemplateLayerFilesUploadRequest) (*TemplateLayerFilesUploadResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method TemplateLayerFilesUpload not implemented")
 }
 func (UnimplementedTemplateServiceServer) mustEmbedUnimplementedTemplateServiceServer() {}
 
@@ -193,6 +209,24 @@ func _TemplateService_HealthStatus_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TemplateService_TemplateLayerFilesUpload_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TemplateLayerFilesUploadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TemplateServiceServer).TemplateLayerFilesUpload(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/TemplateService/TemplateLayerFilesUpload",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TemplateServiceServer).TemplateLayerFilesUpload(ctx, req.(*TemplateLayerFilesUploadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // TemplateService_ServiceDesc is the grpc.ServiceDesc for TemplateService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -215,6 +249,10 @@ var TemplateService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "HealthStatus",
 			Handler:    _TemplateService_HealthStatus_Handler,
+		},
+		{
+			MethodName: "TemplateLayerFilesUpload",
+			Handler:    _TemplateService_TemplateLayerFilesUpload_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

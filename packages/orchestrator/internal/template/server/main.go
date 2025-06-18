@@ -36,6 +36,7 @@ type ServerStore struct {
 	buildLogger       *zap.Logger
 	templateStorage   *template.Storage
 	artifactsregistry artifactsregistry.ArtifactsRegistry
+	storage           storage.StorageProvider
 	healthStatus      templatemanager.HealthState
 	wg                *sync.WaitGroup // wait group for running builds
 }
@@ -88,6 +89,7 @@ func New(
 		buildCache:        buildCache,
 		buildLogger:       buildLogger,
 		artifactsregistry: artifactsregistry,
+		storage:           persistence,
 		templateStorage:   templateStorage,
 		healthStatus:      templatemanager.HealthState_Healthy,
 		wg:                &sync.WaitGroup{},
