@@ -15,6 +15,7 @@ require (
 	github.com/edsrzf/mmap-go v1.2.0
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.0
 	github.com/go-openapi/strfmt v0.23.0
+	github.com/golang/protobuf v1.5.4
 	github.com/google/go-containerregistry v0.20.5
 	github.com/google/nftables v0.3.0
 	github.com/google/uuid v1.6.0
