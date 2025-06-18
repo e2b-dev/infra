@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
@@ -21,11 +22,11 @@ const (
 )
 
 type MMDSOpts struct {
-	TraceID   string `json:"traceID"`
-	SandboxID string `json:"instanceID"`
-	EnvID     string `json:"envID"`
-	Address   string `json:"address"`
-	TeamID    string `json:"teamID"`
+	TraceID    string `json:"traceID"`
+	InstanceID string `json:"instanceID"`
+	EnvID      string `json:"envID"`
+	Address    string `json:"address"`
+	TeamID     string `json:"teamID"`
 }
 
 func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
@@ -36,7 +37,7 @@ func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	parsed["instanceID"] = opts.SandboxID
+	parsed["instanceID"] = opts.InstanceID
 	parsed["envID"] = opts.EnvID
 	parsed["traceID"] = opts.TraceID
 	parsed["teamID"] = opts.TeamID
@@ -130,16 +131,16 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 			}
 
 			if mmdsOpts.Address != "" {
-				envVars.Store("E2B_SANDBOX_ID", mmdsOpts.SandboxID)
-				envVars.Store("E2B_ENV_ID", mmdsOpts.EnvID)
+				envVars.Store("E2B_SANDBOX_ID", mmdsOpts.InstanceID)
+				envVars.Store("E2B_TEMPLATE_ID", mmdsOpts.EnvID)
 				envVars.Store("E2B_TEAM_ID", mmdsOpts.TeamID)
-				if err := os.WriteFile(E2BRunDir+"/.E2B_SANDBOX_ID", []byte(mmdsOpts.SandboxID), 0444); err != nil {
+				if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_SANDBOX_ID"), []byte(mmdsOpts.InstanceID), 0444); err != nil {
 					fmt.Fprintf(os.Stderr, "error writing sandbox ID file: %v\n", err)
 				}
-				if err := os.WriteFile(E2BRunDir+"/.E2B_ENV_ID", []byte(mmdsOpts.EnvID), 0444); err != nil {
+				if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_TEMPLATE_ID"), []byte(mmdsOpts.EnvID), 0444); err != nil {
 					fmt.Fprintf(os.Stderr, "error writing env ID file: %v\n", err)
 				}
-				if err := os.WriteFile(E2BRunDir+"/.E2B_TEAM_ID", []byte(mmdsOpts.TeamID), 0444); err != nil {
+				if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_TEAM_ID"), []byte(mmdsOpts.TeamID), 0444); err != nil {
 					fmt.Fprintf(os.Stderr, "error writing team ID file: %v\n", err)
 				}
 				mmdsChan <- mmdsOpts

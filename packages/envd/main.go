@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -153,7 +154,7 @@ func main() {
 	envVars := utils.NewMap[string, string]()
 	isSandboxBoolStr := strconv.FormatBool(!debug)
 	envVars.Store("E2B_SANDBOX", isSandboxBoolStr)
-	if err := os.WriteFile(host.E2BRunDir+"/.E2B_SANDBOX", []byte(isSandboxBoolStr), 0444); err != nil {
+	if err := os.WriteFile(filepath.Join(host.E2BRunDir, ".E2B_SANDBOX"), []byte(isSandboxBoolStr), 0444); err != nil {
 		fmt.Fprintf(os.Stderr, "error writing sandbox file: %v\n", err)
 	}
 

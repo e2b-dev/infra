@@ -67,11 +67,6 @@ func (w *HTTPExporter) start(mmdsChan <-chan *host.MMDSOpts) {
 		return
 	}
 
-	if mmdsOpts == nil {
-		fmt.Fprintf(os.Stderr, "nil mmds opts received on channel when starting exporter")
-		return
-	}
-
 	for range w.triggers {
 		logs := w.getAllLogs()
 
@@ -88,19 +83,25 @@ func (w *HTTPExporter) start(mmdsChan <-chan *host.MMDSOpts) {
 		}
 
 		for _, logLine := range logs {
-			if mmdsOpts != nil {
-				var err error
-				logLine, err := mmdsOpts.AddOptsToJSON(logLine)
-				if err != nil {
-					log.Printf("error adding instance logging options (%+v) to JSON (%+v) with logs : %v\n", mmdsOpts, logLine, err)
-
-					printLog(logLine)
-
-					continue
+			if mmdsOpts == nil {
+				mmdsOpts = &host.MMDSOpts{
+					InstanceID: "unknown",
+					EnvID:      "unknown",
+					TeamID:     "unknown",
+					Address:    "http://localhost:30006", // default logs collector address
 				}
 			}
 
-			err := w.sendInstanceLogs(logLine, mmdsOpts.Address)
+			logLineWithOpts, err := mmdsOpts.AddOptsToJSON(logLine)
+			if err != nil {
+				log.Printf("error adding instance logging options (%+v) to JSON (%+v) with logs : %v\n", mmdsOpts, logLine, err)
+
+				printLog(logLine)
+
+				continue
+			}
+
+			err = w.sendInstanceLogs(logLineWithOpts, mmdsOpts.Address)
 			if err != nil {
 				log.Printf("error sending instance logs: %+v", err)
 
