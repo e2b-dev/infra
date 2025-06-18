@@ -532,7 +532,6 @@ components:
       required:
         - alias
         - teamID
-        - fromImage
       properties:
         alias:
           description: Alias of the template
@@ -540,6 +539,15 @@ components:
         teamID:
           type: string
           description: Identifier of the team
+        cpuCount:
+          $ref: "#/components/schemas/CPUCount"
+        memoryMB:
+          $ref: "#/components/schemas/MemoryMB"
+          
+    TemplateBuildStartV2:
+      required:
+        - fromImage
+      properties:
         fromImage:
           type: string
           description: Image to use as a base for the template build
@@ -555,10 +563,6 @@ components:
         readyCmd:
           description: Ready check command to execute in the template after the build
           type: string
-        cpuCount:
-          $ref: "#/components/schemas/CPUCount"
-        memoryMB:
-          $ref: "#/components/schemas/MemoryMB"
 
     TemplateBuildFileUpload:
       required:
@@ -1442,6 +1446,30 @@ paths:
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
+      responses:
+        "202":
+          description: The build has started
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v2/templates/{templateID}/builds/{buildID}:
+    post:
+      description: Start the build
+      tags: [templates]
+      security:
+        - AccessTokenAuth: []
+        - Supabase1TokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+        - $ref: "#/components/parameters/buildID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TemplateBuildStartV2"
       responses:
         "202":
           description: The build has started

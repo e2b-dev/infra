@@ -503,11 +503,17 @@ type TemplateBuildRequestV2 struct {
 	// CpuCount CPU cores for the sandbox
 	CpuCount *CPUCount `json:"cpuCount,omitempty"`
 
-	// FromImage Image to use as a base for the template build
-	FromImage string `json:"fromImage"`
-
 	// MemoryMB Memory for the sandbox in MB
 	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
+
+	// TeamID Identifier of the team
+	TeamID string `json:"teamID"`
+}
+
+// TemplateBuildStartV2 defines model for TemplateBuildStartV2.
+type TemplateBuildStartV2 struct {
+	// FromImage Image to use as a base for the template build
+	FromImage string `json:"fromImage"`
 
 	// ReadyCmd Ready check command to execute in the template after the build
 	ReadyCmd *string `json:"readyCmd,omitempty"`
@@ -517,9 +523,6 @@ type TemplateBuildRequestV2 struct {
 
 	// Steps List of steps to execute in the template build
 	Steps *[]TemplateStep `json:"steps,omitempty"`
-
-	// TeamID Identifier of the team
-	TeamID string `json:"teamID"`
 }
 
 // TemplateStep Step in the template build process
@@ -682,3 +685,6 @@ type PostTemplatesTemplateIDJSONRequestBody = TemplateBuildRequest
 
 // PostV2TemplatesJSONRequestBody defines body for PostV2Templates for application/json ContentType.
 type PostV2TemplatesJSONRequestBody = TemplateBuildRequestV2
+
+// PostV2TemplatesTemplateIDBuildsBuildIDJSONRequestBody defines body for PostV2TemplatesTemplateIDBuildsBuildID for application/json ContentType.
+type PostV2TemplatesTemplateIDBuildsBuildIDJSONRequestBody = TemplateBuildStartV2

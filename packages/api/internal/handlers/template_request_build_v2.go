@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -15,11 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
-
-type DockerfileSteps struct {
-	FromImage string              `json:"from_image"`
-	Steps     *[]api.TemplateStep `json:"steps"`
-}
 
 // PostV2Templates triggers a new template build
 func (a *APIStore) PostV2Templates(c *gin.Context) {
@@ -69,25 +63,13 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		isNew = false
 	}
 
-	stepsMarshal, err := json.Marshal(DockerfileSteps{
-		FromImage: body.FromImage,
-		Steps:     body.Steps,
-	})
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Failed serializing template steps: %s", err))
-		telemetry.ReportCriticalError(ctx, "failed serializing template steps", err)
-		return
-	}
 	buildReq := BuildTemplateRequest{
 		IsNew:      isNew,
 		TemplateID: templateID,
 		UserID:     *userID,
 		Team:       team,
 		Tier:       tier,
-		Dockerfile: string(stepsMarshal),
 		Alias:      &body.Alias,
-		StartCmd:   body.StartCmd,
-		ReadyCmd:   body.ReadyCmd,
 		CpuCount:   body.CpuCount,
 		MemoryMB:   body.MemoryMB,
 	}
