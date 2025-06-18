@@ -14,14 +14,6 @@ job "clickhouse-migrator" {
       mode             = "delay"
     }
 
-    network {
-      mode = "host"
-
-      dns {
-        servers = ["172.17.0.1", "8.8.8.8", "8.8.4.4", "169.254.169.254"]
-      }
-    }
-
     constraint {
       attribute = "$${meta.job_constraint}"
       value     = "${job_constraint_prefix}-${i + 1}"
@@ -38,7 +30,7 @@ job "clickhouse-migrator" {
       config {
         image = "${clickhouse_migrator_version}"
         entrypoint = ["/bin/sh", "-c"]
-        args = ["sleep 1000 && goose -table _migrations -dir migrations up"]
+        args = ["goose -table _migrations -dir migrations up"]
       }
 
       resources {
