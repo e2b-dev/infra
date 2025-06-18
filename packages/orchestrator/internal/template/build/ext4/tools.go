@@ -10,12 +10,87 @@ import (
 	"strconv"
 	"strings"
 
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+const (
+	// creates an inode for every bytes-per-inode byte of space on the disk
+	inodesRatio = int64(4096)
+	// Percentage of reserved blocks in the filesystem
+	reservedBlocksPercentage = int64(0)
+
+	ToMBShift = 20
+)
+
+func Make(ctx context.Context, tracer trace.Tracer, rootfsPath string, sizeMb int64, blockSize int64) error {
+	ctx, tuneSpan := tracer.Start(ctx, "make-ext4")
+	defer tuneSpan.End()
+
+	if blockSize < inodesRatio {
+		return fmt.Errorf("block size must be greater than inodes ratio")
+	}
+
+	cmd := exec.CommandContext(ctx,
+		"mkfs.ext4",
+		// Matches the final ext4 features used by tar2ext4 tool
+		// But enables resize_inode, sparse_super (default, required for resize_inode)
+		"-O", `^has_journal,^dir_index,^64bit,^dir_nlink,^metadata_csum,ext_attr,sparse_super2,filetype,extent,flex_bg,large_file,huge_file,extra_isize`,
+		"-b", strconv.FormatInt(blockSize, 10),
+		"-m", strconv.FormatInt(reservedBlocksPercentage, 10),
+		"-i", strconv.FormatInt(inodesRatio, 10),
+		rootfsPath,
+		strconv.FormatInt(sizeMb, 10)+"M",
+	)
+
+	tuneStdoutWriter := telemetry.NewEventWriter(ctx, "stdout")
+	cmd.Stdout = tuneStdoutWriter
+
+	tuneStderrWriter := telemetry.NewEventWriter(ctx, "stderr")
+	cmd.Stderr = tuneStderrWriter
+
+	return cmd.Run()
+}
+
+func Mount(ctx context.Context, tracer trace.Tracer, rootfsPath string, mountPoint string) error {
+	ctx, mountSpan := tracer.Start(ctx, "mount-ext4")
+	defer mountSpan.End()
+
+	cmd := exec.CommandContext(ctx, "mount", "-o", "loop", rootfsPath, mountPoint)
+
+	mountStdoutWriter := telemetry.NewEventWriter(ctx, "stdout")
+	cmd.Stdout = mountStdoutWriter
+
+	mountStderrWriter := telemetry.NewEventWriter(ctx, "stderr")
+	cmd.Stderr = mountStderrWriter
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("error mounting ext4 filesystem: %w", err)
+	}
+
+	return nil
+}
+
+func Unmount(ctx context.Context, tracer trace.Tracer, rootfsPath string) error {
+	ctx, unmountSpan := tracer.Start(ctx, "unmount-ext4")
+	defer unmountSpan.End()
+
+	cmd := exec.CommandContext(ctx, "umount", rootfsPath)
+
+	unmountStdoutWriter := telemetry.NewEventWriter(ctx, "stdout")
+	cmd.Stdout = unmountStdoutWriter
+
+	unmountStderrWriter := telemetry.NewEventWriter(ctx, "stderr")
+	cmd.Stderr = unmountStderrWriter
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("error unmounting ext4 filesystem: %w", err)
+	}
+
+	return nil
+}
 
 func MakeWritable(ctx context.Context, tracer trace.Tracer, rootfsPath string) error {
 	ctx, tuneSpan := tracer.Start(ctx, "tune-ext4-writable")
@@ -33,28 +108,66 @@ func MakeWritable(ctx context.Context, tracer trace.Tracer, rootfsPath string) e
 }
 
 func Enlarge(ctx context.Context, tracer trace.Tracer, rootfsPath string, addSize int64) (int64, error) {
+	ctx, resizeSpan := tracer.Start(ctx, "enlarge-ext4")
+	defer resizeSpan.End()
+
+	stat, err := os.Stat(rootfsPath)
+	if err != nil {
+		return 0, fmt.Errorf("error stating rootfs file: %w", err)
+	}
+	finalSize := stat.Size() + addSize
+
+	return Resize(ctx, tracer, rootfsPath, finalSize)
+}
+
+func Resize(ctx context.Context, tracer trace.Tracer, rootfsPath string, targetSize int64) (int64, error) {
 	ctx, resizeSpan := tracer.Start(ctx, "resize-ext4")
 	defer resizeSpan.End()
 
-	rootfsSize, err := enlargeFile(ctx, tracer, rootfsPath, addSize)
-	if err != nil {
-		return 0, fmt.Errorf("error enlarging rootfs file: %w", err)
-	}
-
 	// Resize the ext4 filesystem
 	// The underlying file must be synced to the filesystem
-	cmd := exec.CommandContext(ctx, "resize2fs", rootfsPath)
+	cmd := exec.CommandContext(ctx, "resize2fs", rootfsPath, strconv.FormatInt(targetSize>>ToMBShift, 10)+"M")
 	resizeStdoutWriter := telemetry.NewEventWriter(ctx, "stdout")
 	cmd.Stdout = resizeStdoutWriter
 	resizeStderrWriter := telemetry.NewEventWriter(ctx, "stderr")
 	cmd.Stderr = resizeStderrWriter
-	err = cmd.Run()
+	err := cmd.Run()
 	if err != nil {
-		logMetadata(rootfsPath)
+		LogMetadata(rootfsPath)
 		return 0, fmt.Errorf("error resizing rootfs file: %w", err)
 	}
 
-	return rootfsSize, err
+	stat, err := os.Stat(rootfsPath)
+	if err != nil {
+		return 0, fmt.Errorf("error stating rootfs file after resize: %w", err)
+	}
+
+	return stat.Size(), err
+}
+
+func Shrink(ctx context.Context, tracer trace.Tracer, rootfsPath string) (int64, error) {
+	ctx, resizeSpan := tracer.Start(ctx, "resize-ext4")
+	defer resizeSpan.End()
+
+	// Shrink the ext4 filesystem
+	// The underlying file must be synced to the filesystem
+	cmd := exec.CommandContext(ctx, "resize2fs", "-M", rootfsPath)
+	resizeStdoutWriter := telemetry.NewEventWriter(ctx, "stdout")
+	cmd.Stdout = resizeStdoutWriter
+	resizeStderrWriter := telemetry.NewEventWriter(ctx, "stderr")
+	cmd.Stderr = resizeStderrWriter
+	err := cmd.Run()
+	if err != nil {
+		LogMetadata(rootfsPath)
+		return 0, fmt.Errorf("error shrinking rootfs file: %w", err)
+	}
+
+	stat, err := os.Stat(rootfsPath)
+	if err != nil {
+		return 0, fmt.Errorf("error stating rootfs file after resize: %w", err)
+	}
+
+	return stat.Size(), err
 }
 
 func GetFreeSpace(ctx context.Context, tracer trace.Tracer, rootfsPath string, blockSize int64) (int64, error) {
@@ -65,23 +178,29 @@ func GetFreeSpace(ctx context.Context, tracer trace.Tracer, rootfsPath string, b
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err := cmd.Run()
+	output := out.String()
 	if err != nil {
-		zap.L().Error("Error getting free space", zap.Error(err), zap.String("output", out.String()))
+		zap.L().Error("Error getting free space", zap.Error(err), zap.String("output", output))
 		return 0, fmt.Errorf("error statting ext4: %w", err)
 	}
 
 	// Extract block size and free blocks
-	freeBlocks, err := parseFreeBlocks(out.String())
+	freeBlocks, err := parseFreeBlocks(output)
 	if err != nil {
 		return 0, fmt.Errorf("could not parse free blocks: %w", err)
 	}
 
-	freeBytes := freeBlocks * blockSize
+	reservedBlocks, err := parseReservedBlocks(output)
+	if err != nil {
+		return 0, fmt.Errorf("could not parse reserved blocks: %w", err)
+	}
+
+	freeBytes := (freeBlocks - reservedBlocks) * blockSize
 	return freeBytes, nil
 }
 
 func CheckIntegrity(rootfsPath string, fix bool) (string, error) {
-	logMetadata(rootfsPath)
+	LogMetadata(rootfsPath)
 	accExitCode := 0
 	args := "-nfv"
 	if fix {
@@ -132,11 +251,11 @@ func RemoveFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, fil
 	return nil
 }
 
-func logMetadata(rootfsPath string) {
+func LogMetadata(rootfsPath string, extraFields ...zap.Field) {
 	cmd := exec.Command("tune2fs", "-l", rootfsPath)
 	output, err := cmd.CombinedOutput()
 
-	zap.L().Debug("tune2fs -l output", zap.String("path", rootfsPath), zap.String("output", string(output)), zap.Error(err))
+	zap.L().With(extraFields...).Debug("tune2fs -l output", zap.String("path", rootfsPath), zap.String("output", string(output)), zap.Error(err))
 }
 
 // parseFreeBlocks extracts the "Free blocks:" value from debugfs output
@@ -153,37 +272,16 @@ func parseFreeBlocks(debugfsOutput string) (int64, error) {
 	return freeBlocks, nil
 }
 
-func enlargeFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, addSize int64) (int64, error) {
-	ctx, resizeSpan := tracer.Start(ctx, "resize-ext4-file")
-	defer resizeSpan.End()
-
-	rootfsFile, err := os.OpenFile(rootfsPath, os.O_RDWR, 0)
+// parseReservedBlocks extracts the "Reserved block count:" value from debugfs output
+func parseReservedBlocks(debugfsOutput string) (int64, error) {
+	re := regexp.MustCompile(`Reserved block count:\s+(\d+)`)
+	matches := re.FindStringSubmatch(debugfsOutput)
+	if len(matches) < 2 {
+		return 0, fmt.Errorf("could not find reserved blocks in debugfs output")
+	}
+	reservedBlocks, err := strconv.ParseInt(matches[1], 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("error opening rootfs file: %w", err)
+		return 0, fmt.Errorf("could not parse reserved blocks: %w", err)
 	}
-	defer rootfsFile.Close()
-
-	rootfsStats, err := rootfsFile.Stat()
-	if err != nil {
-		return 0, fmt.Errorf("error statting rootfs file: %w", err)
-	}
-
-	telemetry.ReportEvent(ctx, fmt.Sprintf("statted rootfs file (size: %d)", rootfsStats.Size()))
-
-	// In bytes
-	rootfsSize := rootfsStats.Size() + addSize
-
-	err = rootfsFile.Truncate(rootfsSize)
-	if err != nil {
-		return 0, fmt.Errorf("error truncating rootfs file: %w", err)
-	}
-
-	// Sync the metadata and data to disk.
-	// This is important to ensure that the file is fully written when used by other processes, like FC.
-	if err := rootfsFile.Sync(); err != nil {
-		return 0, fmt.Errorf("error syncing rootfs file: %w", err)
-	}
-
-	telemetry.ReportEvent(ctx, "truncated rootfs file to size of build + defaultDiskSizeMB", attribute.Int64("size", rootfsSize))
-	return rootfsSize, err
+	return reservedBlocks, nil
 }

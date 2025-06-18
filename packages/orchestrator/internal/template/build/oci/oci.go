@@ -1,16 +1,20 @@
 package oci
 
 import (
+	"archive/tar"
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
-	"github.com/Microsoft/hcsshim/ext4/tar2ext4"
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/ext4"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -54,35 +58,56 @@ func GetImageSize(img containerregistry.Image) (int64, error) {
 	return imageSize, nil
 }
 
-func ToExt4(ctx context.Context, img containerregistry.Image, rootfsPath string, sizeLimit int64) error {
-	r := mutate.Extract(img)
-	defer r.Close()
-
-	rootfsFile, err := os.Create(rootfsPath)
+func ToExt4(ctx context.Context, tracer trace.Tracer, img containerregistry.Image, rootfsPath string, maxSize int64, blockSize int64) (int64, error) {
+	err := ext4.Make(ctx, tracer, rootfsPath, maxSize>>ToMBShift, blockSize)
 	if err != nil {
-		return fmt.Errorf("error creating rootfs file: %w", err)
+		return 0, fmt.Errorf("error creating ext4 file: %w", err)
+	}
+
+	err = ExtractToExt4(ctx, tracer, img, rootfsPath)
+	if err != nil {
+		return 0, fmt.Errorf("error extracting image to ext4 filesystem: %w", err)
+	}
+
+	// The filesystem is first created with the maximum size, so we need to shrink it to the actual size
+	size, err := ext4.Shrink(ctx, tracer, rootfsPath)
+	if err != nil {
+		return 0, fmt.Errorf("error shrinking ext4 filesystem: %w", err)
+	}
+
+	ext4.LogMetadata(rootfsPath, zap.Int64("size", size))
+
+	return size, nil
+}
+
+func ExtractToExt4(ctx context.Context, tracer trace.Tracer, img containerregistry.Image, rootfsPath string) error {
+	tmpMount, err := os.MkdirTemp("", "ext4-mount")
+	if err != nil {
+		return fmt.Errorf("error creating temporary mount point: %w", err)
 	}
 	defer func() {
-		rootfsErr := rootfsFile.Close()
-		if rootfsErr != nil {
-			telemetry.ReportError(ctx, "error closing rootfs file", rootfsErr)
-		} else {
-			telemetry.ReportEvent(ctx, "closed rootfs file")
+		if removeErr := os.RemoveAll(tmpMount); removeErr != nil {
+			zap.L().Error("error removing temporary mount point", zap.Error(removeErr))
 		}
 	}()
 
-	// Convert tar to ext4 image
-	if err := tar2ext4.Convert(r, rootfsFile, tar2ext4.ConvertWhiteout, tar2ext4.MaximumDiskSize(sizeLimit)); err != nil {
-		if strings.Contains(err.Error(), "disk exceeded maximum size") {
-			return fmt.Errorf("build failed - exceeded maximum size %v MB", sizeLimit>>ToMBShift)
-		}
-		return fmt.Errorf("error converting tar to ext4: %w", err)
+	err = ext4.Mount(ctx, tracer, rootfsPath, tmpMount)
+	if err != nil {
+		return fmt.Errorf("error mounting ext4 filesystem: %w", err)
 	}
+	defer func() {
+		if unmountErr := ext4.Unmount(ctx, tracer, tmpMount); unmountErr != nil {
+			zap.L().Error("error unmounting ext4 filesystem", zap.Error(unmountErr))
+		}
+	}()
 
-	// Sync the metadata and data to disk.
-	// This is important to ensure that the file is fully written when used by other processes, like FC.
-	if err := rootfsFile.Sync(); err != nil {
-		return fmt.Errorf("error syncing rootfs file: %w", err)
+	r := mutate.Extract(img)
+	defer r.Close()
+
+	tr := tar.NewReader(r)
+	err = extractTarToDir(tr, tmpMount)
+	if err != nil {
+		return fmt.Errorf("error extracting tar to directory: %w", err)
 	}
 
 	return nil
@@ -105,4 +130,55 @@ func ParseEnvs(envs []string) map[string]string {
 		}
 	}
 	return envMap
+}
+
+func extractTarToDir(tr *tar.Reader, targetDir string) error {
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		outPath := filepath.Join(targetDir, hdr.Name)
+
+		// Sanitize a path to avoid traversal
+		if !strings.HasPrefix(filepath.Clean(outPath), filepath.Clean(targetDir)) {
+			return fmt.Errorf("illegal file path: %s", hdr.Name)
+		}
+
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(outPath, os.FileMode(hdr.Mode)); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+				return err
+			}
+			f, err := os.OpenFile(outPath, os.O_CREATE|os.O_WRONLY, os.FileMode(hdr.Mode))
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(f, tr); err != nil {
+				f.Close()
+				return err
+			}
+			f.Close()
+		case tar.TypeSymlink:
+			// Ensure parent directory exists
+			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+				return err
+			}
+			if _, err := os.Lstat(outPath); err == nil {
+				os.Remove(outPath)
+			}
+			if err := os.Symlink(hdr.Linkname, outPath); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

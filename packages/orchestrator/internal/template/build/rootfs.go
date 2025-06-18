@@ -101,7 +101,7 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 	telemetry.ReportEvent(childCtx, "set up filesystem")
 
 	postProcessor.WriteMsg("Creating file system and pulling Docker image")
-	err = oci.ToExt4(ctx, img, rootfsPath, maxRootfsSize)
+	ext4Size, err := oci.ToExt4(ctx, tracer, img, rootfsPath, maxRootfsSize, r.template.RootfsBlockSize())
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error creating ext4 filesystem: %w", err)
 	}
@@ -115,6 +115,15 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 	}
 
 	// Resize rootfs
+	rootfsFreeSpace, err := ext4.GetFreeSpace(ctx, tracer, rootfsPath, r.template.RootfsBlockSize())
+	if err != nil {
+		return containerregistry.Config{}, fmt.Errorf("error getting free space: %w", err)
+	}
+	zap.L().Debug("adding disk size diff to rootfs",
+		zap.Int64("size_current", ext4Size),
+		zap.Int64("size_add", r.template.DiskSizeMB<<ToMBShift),
+		zap.Int64("size_free", rootfsFreeSpace),
+	)
 	rootfsFinalSize, err := ext4.Enlarge(ctx, tracer, rootfsPath, r.template.DiskSizeMB<<ToMBShift)
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error enlarging rootfs: %w", err)
