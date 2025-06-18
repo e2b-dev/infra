@@ -27,9 +27,7 @@ const (
 	InstanceAutoPauseDefault = false
 )
 
-var (
-	ErrPausingInstanceNotFound = errors.New("pausing instance not found")
-)
+var ErrPausingInstanceNotFound = errors.New("pausing instance not found")
 
 func NewInstanceInfo(
 	Instance *api.Sandbox,

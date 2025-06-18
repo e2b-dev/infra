@@ -121,6 +121,6 @@ func (c *RedisSandboxCatalog) DeleteSandbox(sandboxId string) error {
 	return nil
 }
 
-func (c *RedisSandboxCatalog) getCatalogKey(sandboxId string) string {
+func (_ *RedisSandboxCatalog) getCatalogKey(sandboxId string) string {
 	return fmt.Sprintf("sandbox-%s", sandboxId)
 }

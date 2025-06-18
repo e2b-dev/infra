@@ -16,15 +16,19 @@ type noopMetricExporter struct{}
 func (noopMetricExporter) Temporality(sdkmetric.InstrumentKind) metricdata.Temporality {
 	return metricdata.CumulativeTemporality
 }
+
 func (noopMetricExporter) Aggregation(sdkmetric.InstrumentKind) sdkmetric.Aggregation {
 	return sdkmetric.AggregationDrop{}
 }
+
 func (noopMetricExporter) Export(context.Context, *metricdata.ResourceMetrics) error {
 	return nil
 }
+
 func (noopMetricExporter) ForceFlush(context.Context) error {
 	return nil
 }
+
 func (noopMetricExporter) Shutdown(context.Context) error {
 	return nil
 }

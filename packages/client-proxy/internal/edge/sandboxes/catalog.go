@@ -28,6 +28,4 @@ const (
 	sandboxTtlBuffer = 1 * time.Minute
 )
 
-var (
-	ErrSandboxNotFound = errors.New("sandbox not found")
-)
+var ErrSandboxNotFound = errors.New("sandbox not found")

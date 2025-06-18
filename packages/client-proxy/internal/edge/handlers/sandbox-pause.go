@@ -56,7 +56,6 @@ func (a *APIStore) V1PauseSandbox(c *gin.Context, sandboxId api.SandboxId) {
 			BuildId:    body.BuildId,
 		},
 	)
-
 	if err != nil {
 		zap.L().Error("Error when pausing sandbox", l.WithSandboxID(sandboxId), zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when pausing sandbox")

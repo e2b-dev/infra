@@ -27,12 +27,10 @@ const (
 	cacheRefreshInterval = 10 * time.Second
 )
 
-var (
-	dnsClient = dns.Client{
-		Net:     "udp",
-		Timeout: time.Second * 2,
-	}
-)
+var dnsClient = dns.Client{
+	Net:     "udp",
+	Timeout: time.Second * 2,
+}
 
 func NewDnsServiceDiscovery(ctx context.Context, logger *zap.Logger, hosts []string, resolver string, servicePort int) *DnsServiceDiscovery {
 	sd := &DnsServiceDiscovery{

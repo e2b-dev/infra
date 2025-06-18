@@ -170,7 +170,6 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(
 	)
 
 	metrics, err := a.readMetricsBasedOnConfig(ctx, sandboxID, teamID, a)
-
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error returning metrics for sandbox", err, telemetry.WithSandboxID(sandboxID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning metrics for sandbox '%s'", sandboxID))

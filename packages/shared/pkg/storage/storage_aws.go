@@ -145,7 +145,6 @@ func (a *AWSBucketStorageObjectProvider) ReadFrom(src io.Reader) (int64, error) 
 			Body:   src,
 		},
 	)
-
 	if err != nil {
 		return 0, err
 	}

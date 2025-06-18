@@ -41,9 +41,7 @@ const (
 	orchestratorsReadinessCheckInterval = 100 * time.Millisecond
 )
 
-var (
-	skipInitialOrchestratorCheck = os.Getenv("SKIP_ORCHESTRATOR_READINESS_CHECK") == "true"
-)
+var skipInitialOrchestratorCheck = os.Getenv("SKIP_ORCHESTRATOR_READINESS_CHECK") == "true"
 
 func NewStore(ctx context.Context, logger *zap.Logger, tracer trace.Tracer, info *info.ServiceInfo, orchestratorsPool *e2borchestrators.OrchestratorsPool, edgePool *e2borchestrators.EdgePool, catalog sandboxes.SandboxesCatalog) (*APIStore, error) {
 	queryLogsProvider, err := logger_provider.GetLogsQueryProvider()

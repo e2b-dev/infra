@@ -29,9 +29,7 @@ const (
 	edgePoolCacheRefreshInterval = 10 * time.Second
 )
 
-var (
-	ErrEdgeNodeNotFound = errors.New("edge node not found")
-)
+var ErrEdgeNodeNotFound = errors.New("edge node not found")
 
 func NewEdgePool(ctx context.Context, logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, tracer trace.Tracer, nodeSelfHost string) *EdgePool {
 	pool := &EdgePool{

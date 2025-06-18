@@ -9,8 +9,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/daemon"
 )
 
-type LocalArtifactsRegistry struct {
-}
+type LocalArtifactsRegistry struct{}
 
 func NewLocalArtifactsRegistry() (*LocalArtifactsRegistry, error) {
 	return &LocalArtifactsRegistry{}, nil
