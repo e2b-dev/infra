@@ -30,14 +30,13 @@ func (a *APIStore) V1TemplateBuildStatus(c *gin.Context, buildId string, params 
 			BuildID:    buildId,
 		},
 	)
-
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when fetching template build status")
 		telemetry.ReportCriticalError(ctx, "error when fetching template build", err)
 		return
 	}
 
-	var status = api.TemplateBuildStatusResponseStatusBuilding
+	status := api.TemplateBuildStatusResponseStatusBuilding
 
 	switch resp.Status {
 	case e2btemplatemanager.TemplateBuildState_Building:

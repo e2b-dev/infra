@@ -25,7 +25,6 @@ func doRequestWithInfiniteRetries(ctx context.Context, method, address string, r
 	for {
 		reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
 		request, err := http.NewRequestWithContext(reqCtx, method, address, bytes.NewReader(requestBody))
-
 		if err != nil {
 			cancel()
 			return nil, err

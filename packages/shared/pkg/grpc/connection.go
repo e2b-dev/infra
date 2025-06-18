@@ -59,7 +59,6 @@ func GetConnection(host string, safe bool, options ...grpc.DialOption) (ClientCo
 
 	options = append(options, grpc.WithAuthority(host), grpc.WithTransportCredentials(cred))
 	conn, err := grpc.Dial(host+":443", options...)
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial: %w", err)
 	}

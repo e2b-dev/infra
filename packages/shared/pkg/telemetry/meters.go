@@ -2,11 +2,13 @@ package telemetry
 
 import "go.opentelemetry.io/otel/metric"
 
-type CounterType string
-type GaugeFloatType string
-type GaugeIntType string
-type UpDownCounterType string
-type ObservableUpDownCounterType string
+type (
+	CounterType                 string
+	GaugeFloatType              string
+	GaugeIntType                string
+	UpDownCounterType           string
+	ObservableUpDownCounterType string
+)
 
 const (
 	SandboxCreateMeterName CounterType = "api.env.instance.started"

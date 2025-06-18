@@ -29,7 +29,6 @@ func (a *APIStore) V1TemplateBuildDelete(c *gin.Context, buildId string, params 
 			BuildID:    buildId,
 		},
 	)
-
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting template build")
 		telemetry.ReportCriticalError(ctx, "error when deleting template build", err)

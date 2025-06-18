@@ -65,7 +65,6 @@ func (a *APIStore) sendNodeRequest(ctx context.Context, serviceId string, status
 		_, err := o.Client.Info.ServiceStatusOverride(
 			findCtx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: orchestratorStatus},
 		)
-
 		if err != nil {
 			logger.Error("failed to request orchestrator status change", zap.Error(err))
 			return errors.New("failed to request orchestrator status change")

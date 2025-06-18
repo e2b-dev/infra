@@ -29,16 +29,14 @@ const (
 	metricTemplateAlias = metrics.MetricPrefix + "template.alias"
 )
 
-var (
-	// mostUsedTemplates is a map of the most used template aliases.
-	// It is used for monitoring and to reduce metric cardinality.
-	mostUsedTemplates = map[string]struct{}{
-		"base":                  {},
-		"code-interpreter-v1":   {},
-		"code-interpreter-beta": {},
-		"desktop":               {},
-	}
-)
+// mostUsedTemplates is a map of the most used template aliases.
+// It is used for monitoring and to reduce metric cardinality.
+var mostUsedTemplates = map[string]struct{}{
+	"base":                  {},
+	"code-interpreter-v1":   {},
+	"code-interpreter-beta": {},
+	"desktop":               {},
+}
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -204,7 +202,6 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 	}
 
 	return key, nil
-
 }
 
 func setTemplateNameMetric(c *gin.Context, aliases []string) {

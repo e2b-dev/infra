@@ -56,7 +56,6 @@ func NewCache(ctx context.Context) (*Cache, error) {
 		buildCacheDelayEviction,
 		buildCacheMaxUsedPercentage,
 	)
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build store: %w", err)
 	}

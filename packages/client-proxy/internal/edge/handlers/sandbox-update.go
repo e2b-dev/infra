@@ -56,7 +56,6 @@ func (a *APIStore) V1UpdateSandbox(c *gin.Context, sandboxId api.SandboxId) {
 			EndTime:   timestamppb.New(body.EndTime),
 		},
 	)
-
 	if err != nil {
 		zap.L().Error("Error when updating sandbox", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when updating sandbox")
