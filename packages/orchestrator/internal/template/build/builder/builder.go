@@ -174,7 +174,6 @@ func (ib *ImageBuilder) BuildLayers(
 				prefix,
 				layerSourceImagePath,
 				layerOutputImagePath,
-				img,
 				step,
 			)
 			if err != nil {
@@ -206,7 +205,6 @@ func (ib *ImageBuilder) buildAndCacheLayer(
 	prefix string,
 	sourceFilePath string,
 	targetFilePath string,
-	img containerregistry.Image,
 	step *templatemanager.TemplateStep,
 ) (string, error) {
 	ctx, span := tracer.Start(ctx, "build-layer")
@@ -235,7 +233,7 @@ func (ib *ImageBuilder) buildAndCacheLayer(
 		zap.String("export", export),
 	)
 
-	img, err = tarball.ImageFromPath(targetFilePath, nil)
+	img, err := tarball.ImageFromPath(targetFilePath, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to read image from build export: %w", err)
 	}
@@ -381,9 +379,11 @@ func (ib *ImageBuilder) applyCommand(
 }
 
 // untar extracts a tar archive from the reader `r` into the directory `destDir`.
-// It preserves file permissions and structure.
+// It preserves file permissions and structure, while preventing path traversal and symlink attacks.
 func untar(r io.Reader, destDir string) error {
 	tr := tar.NewReader(r)
+
+	destDir = filepath.Clean(destDir)
 
 	for {
 		hdr, err := tr.Next()
@@ -394,22 +394,21 @@ func untar(r io.Reader, destDir string) error {
 			return fmt.Errorf("error reading tar entry: %w", err)
 		}
 
-		// Prevent path traversal vulnerabilities
 		name := filepath.Clean(hdr.Name)
-		if strings.HasPrefix(name, "..") || filepath.IsAbs(name) {
+		targetPath := filepath.Join(destDir, name)
+
+		// Prevent path traversal
+		if !strings.HasPrefix(targetPath, destDir+string(os.PathSeparator)) {
 			return fmt.Errorf("invalid file path: %s", hdr.Name)
 		}
-		targetPath := filepath.Join(destDir, name)
 
 		switch hdr.Typeflag {
 		case tar.TypeDir:
-			// Create a directory with correct permissions
 			if err := os.MkdirAll(targetPath, os.FileMode(hdr.Mode)); err != nil {
 				return fmt.Errorf("mkdir failed for %s: %w", targetPath, err)
 			}
 
 		case tar.TypeReg:
-			// Ensure parent directory exists
 			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 				return fmt.Errorf("mkdir for file parent failed: %w", err)
 			}
@@ -418,22 +417,27 @@ func untar(r io.Reader, destDir string) error {
 			if err != nil {
 				return fmt.Errorf("create file %s failed: %w", targetPath, err)
 			}
+			defer outFile.Close()
 
 			if _, err := io.Copy(outFile, tr); err != nil {
-				outFile.Close()
 				return fmt.Errorf("copy to %s failed: %w", targetPath, err)
 			}
-			outFile.Close()
 
 		case tar.TypeSymlink:
-			// Symlinks are safe to create only within the target directory
-			linkTarget := filepath.Join(filepath.Dir(targetPath), hdr.Linkname)
+			linkTarget := hdr.Linkname
+			linkPath := filepath.Join(filepath.Dir(targetPath), linkTarget)
+			resolvedPath := filepath.Clean(linkPath)
+
+			if !strings.HasPrefix(resolvedPath, destDir+string(os.PathSeparator)) {
+				return fmt.Errorf("symlink %s points outside destination", hdr.Linkname)
+			}
+
 			if err := os.Symlink(linkTarget, targetPath); err != nil {
 				return fmt.Errorf("symlink %s -> %s failed: %w", targetPath, linkTarget, err)
 			}
 
 		default:
-			// Other types can be ignored or handled as needed
+			// skipping unsupported tar entry: %s (type: %c)", hdr.Name, hdr.Typeflag
 			continue
 		}
 	}
