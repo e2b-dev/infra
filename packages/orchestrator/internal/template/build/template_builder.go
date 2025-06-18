@@ -21,7 +21,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
-	templatelocal "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/ext4"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/oci"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/templateconfig"
@@ -160,7 +159,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 		return nil, fmt.Errorf("error building environment: %w", err)
 	}
 
-	localTemplate := templatelocal.NewLocalTemplate(templateCacheFiles, rootfs, memfile)
+	localTemplate := sbxtemplate.NewLocalTemplate(templateCacheFiles, rootfs, memfile)
 	defer localTemplate.Close()
 
 	// Provision sandbox with systemd and other vital parts
@@ -435,7 +434,7 @@ func (b *TemplateBuilder) provisionSandbox(
 	postProcessor *writer.PostProcessor,
 	template *templateconfig.TemplateConfig,
 	envdVersion string,
-	localTemplate *templatelocal.LocalTemplate,
+	localTemplate *sbxtemplate.LocalTemplate,
 	rootfsPath string,
 ) (e error) {
 	ctx, childSpan := b.tracer.Start(ctx, "provision-sandbox")
