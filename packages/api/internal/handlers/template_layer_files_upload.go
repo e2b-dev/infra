@@ -42,7 +42,7 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 	resp, err := a.templateManager.UploadLayerFiles(ctx, templateID, hash)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when requesting layer files upload", err, telemetry.WithTemplateID(templateID), attribute.String("hash", hash))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when requesting layer files upload"))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when requesting layer files upload")
 		return
 	}
 
