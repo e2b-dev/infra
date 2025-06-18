@@ -1,7 +1,3 @@
-output "api_docker_image_digest" {
-  value = docker_image.api_image.repo_digest
-}
-
 output "api_secret" {
   value = random_password.api_secret.result
 }

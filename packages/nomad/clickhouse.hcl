@@ -206,6 +206,8 @@ EOF
         <${username}>
             <password>${password}</password>
             <networks>
+              <ip>172.26.64.1/16</ip> <!-- allow Nomad access -->
+              <ip>::1</ip> <!-- allow localhost access -->
               <ip>10.0.0.0/8</ip> <!-- restrict to internal traffic -->
             </networks>
             <profile>default</profile>
@@ -219,38 +221,36 @@ EOF
     }
 
     task "otel-collector" {
-          driver = "docker"
+      driver = "docker"
 
-          config {
-            network_mode = "host"
+      config {
+        network_mode = "host"
 
-            image = "otel/opentelemetry-collector-contrib:0.123.0"
-            args = [
-              "--config=local/otel.yaml",
-              "--feature-gates=pkg.translator.prometheus.NormalizeName",
-            ]
-          }
+        image = "otel/opentelemetry-collector-contrib:0.123.0"
+        args = [
+          "--config=local/otel.yaml",
+          "--feature-gates=pkg.translator.prometheus.NormalizeName",
+        ]
+      }
 
+      resources {
+        cpu    = 250
+        memory = 128
+      }
 
-          resources {
-            cpu    = 250
-            memory = 128
-          }
-
-          template {
-            data        =<<EOF
+      template {
+        data        =<<EOF
 ${otel_agent_config}
 EOF
-            destination = "local/otel.yaml"
-          }
+        destination = "local/otel.yaml"
+      }
 
-          # Order the sidecar BEFORE the app so it’s ready to receive traffic
-          lifecycle {
-            sidecar = "true"
-            hook = "prestart"
-          }
-        }
-
+      # Order the sidecar BEFORE the app so it’s ready to receive traffic
+      lifecycle {
+        sidecar = "true"
+        hook = "prestart"
+      }
+    }
   }
 %{ endfor }
 }

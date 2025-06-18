@@ -165,6 +165,7 @@ build-and-upload:build-and-upload/docker-reverse-proxy
 build-and-upload:build-and-upload/orchestrator
 build-and-upload:build-and-upload/template-manager
 build-and-upload:build-and-upload/envd
+build-and-upload:build-and-upload/clickhouse
 build-and-upload/template-manager:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/template-manager

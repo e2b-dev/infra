@@ -1,3 +1,12 @@
+terraform {
+  required_providers {
+    docker = {
+      source  = "kreuzwerker/docker"
+      version = "3.0.2"
+    }
+  }
+}
+
 # API
 data "google_secret_manager_secret_version" "postgres_connection_string" {
   secret = var.postgres_connection_string_secret_name
@@ -34,6 +43,17 @@ data "google_secret_manager_secret_version" "redis_url" {
   secret = var.redis_url_secret_version.secret
 }
 
+
+data "docker_registry_image" "api_image" {
+  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/api:latest"
+}
+
+resource "docker_image" "api_image" {
+  name          = data.docker_registry_image.api_image.name
+  pull_triggers = [data.docker_registry_image.api_image.sha256_digest]
+  platform      = "linux/amd64/v8"
+}
+
 resource "nomad_job" "api" {
   jobspec = templatefile("${path.module}/api.hcl", {
     update_stanza = var.api_machine_count > 1
@@ -48,7 +68,7 @@ resource "nomad_job" "api" {
     gcp_zone                       = var.gcp_zone
     port_name                      = var.api_port.name
     port_number                    = var.api_port.port
-    api_docker_image               = var.api_docker_image_digest
+    api_docker_image               = docker_image.api_image.repo_digest
     postgres_connection_string     = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
     supabase_jwt_secrets           = data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data
     posthog_api_key                = data.google_secret_manager_secret_version.posthog_api_key.secret_data
@@ -81,13 +101,24 @@ resource "nomad_job" "redis" {
   )
 }
 
+data "docker_registry_image" "docker_reverse_proxy_image" {
+  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/docker-reverse-proxy"
+}
+
+resource "docker_image" "docker_reverse_proxy_image" {
+  name          = data.docker_registry_image.docker_reverse_proxy_image.name
+  pull_triggers = [data.docker_registry_image.docker_reverse_proxy_image.sha256_digest]
+  platform      = "linux/amd64/v8"
+}
+
+
 resource "nomad_job" "docker_reverse_proxy" {
   jobspec = file("${path.module}/docker-reverse-proxy.hcl")
 
   hcl2 {
     vars = {
       gcp_zone                      = var.gcp_zone
-      image_name                    = var.docker_reverse_proxy_docker_image_digest
+      image_name                    = docker_image.docker_reverse_proxy_image.repo_digest
       postgres_connection_string    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
       google_service_account_secret = var.docker_reverse_proxy_service_account_key
       port_number                   = var.docker_reverse_proxy_port.port
@@ -99,6 +130,16 @@ resource "nomad_job" "docker_reverse_proxy" {
       docker_registry               = var.custom_envs_repository_name
     }
   }
+}
+
+data "docker_registry_image" "proxy_image" {
+  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/client-proxy"
+}
+
+resource "docker_image" "client_proxy_image" {
+  name          = data.docker_registry_image.proxy_image.name
+  pull_triggers = [data.docker_registry_image.proxy_image.sha256_digest]
+  platform      = "linux/amd64/v8"
 }
 
 resource "nomad_job" "client_proxy" {
@@ -122,7 +163,7 @@ resource "nomad_job" "client_proxy" {
       api_secret        = var.edge_api_secret
       orchestrator_port = var.orchestrator_port
 
-      image_name = var.edge_docker_image_digest
+      image_name = docker_image.client_proxy_image.repo_digest
 
       otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
       logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
@@ -503,6 +544,7 @@ resource "google_storage_hmac_key" "clickhouse_hmac_key" {
   service_account_email = google_service_account.clickhouse_service_account.email
 }
 
+
 resource "nomad_job" "clickhouse" {
   count = var.clickhouse_server_count > 0 ? 1 : 0
   jobspec = templatefile("${path.module}/clickhouse.hcl", {
@@ -569,5 +611,32 @@ resource "nomad_job" "clickhouse-backup-restore" {
 
     job_constraint_prefix = var.clickhouse_job_constraint_prefix
     node_pool             = var.clickhouse_node_pool
+  })
+}
+
+
+data "docker_registry_image" "clickouse_migratior_image" {
+  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/clickhouse-migrator:latest"
+}
+
+resource "docker_image" "clickouse_migratior_image" {
+  name          = data.docker_registry_image.clickouse_migratior_image.name
+  pull_triggers = [data.docker_registry_image.clickouse_migratior_image.sha256_digest]
+  platform      = "linux/amd64/v8"
+}
+
+
+resource "nomad_job" "clickhouse_migrator" {
+  count = var.clickhouse_server_count > 0 ? 1 : 0
+  jobspec = templatefile("${path.module}/clickhouse-migrator.hcl", {
+    clickhouse_migrator_version = docker_image.clickouse_migratior_image.repo_digest
+
+    server_count          = var.clickhouse_server_count
+    job_constraint_prefix = var.clickhouse_job_constraint_prefix
+    node_pool             = var.clickhouse_node_pool
+
+    clickhouse_username = var.clickhouse_username
+    clickhouse_password = random_password.clickhouse_password.result
+    clickhouse_port     = var.clickhouse_server_port.port
   })
 }
