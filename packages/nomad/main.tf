@@ -576,7 +576,7 @@ resource "google_service_account_key" "clickhouse_service_account_key" {
 }
 
 
-resource "nomad_job" "clickhouse-backup" {
+resource "nomad_job" "clickhouse_backup" {
   count = var.clickhouse_server_count > 0 ? 1 : 0
   jobspec = templatefile("${path.module}/clickhouse-backup.hcl", {
     clickhouse_backup_version = "2.6.22"
@@ -595,7 +595,7 @@ resource "nomad_job" "clickhouse-backup" {
   })
 }
 
-resource "nomad_job" "clickhouse-backup-restore" {
+resource "nomad_job" "clickhouse_backup_restore" {
   count = var.clickhouse_server_count > 0 ? 1 : 0
   jobspec = templatefile("${path.module}/clickhouse-backup-restore.hcl", {
     clickhouse_backup_version = "2.6.22"
@@ -615,13 +615,13 @@ resource "nomad_job" "clickhouse-backup-restore" {
 }
 
 
-data "docker_registry_image" "clickouse_migratior_image" {
+data "docker_registry_image" "clickhouse_migrator_image" {
   name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/clickhouse-migrator:latest"
 }
 
-resource "docker_image" "clickouse_migratior_image" {
-  name          = data.docker_registry_image.clickouse_migratior_image.name
-  pull_triggers = [data.docker_registry_image.clickouse_migratior_image.sha256_digest]
+resource "docker_image" "clickhouse_migrator_image" {
+  name          = data.docker_registry_image.clickhouse_migrator_image.name
+  pull_triggers = [data.docker_registry_image.clickhouse_migrator_image.sha256_digest]
   platform      = "linux/amd64/v8"
 }
 
@@ -629,7 +629,7 @@ resource "docker_image" "clickouse_migratior_image" {
 resource "nomad_job" "clickhouse_migrator" {
   count = var.clickhouse_server_count > 0 ? 1 : 0
   jobspec = templatefile("${path.module}/clickhouse-migrator.hcl", {
-    clickhouse_migrator_version = docker_image.clickouse_migratior_image.repo_digest
+    clickhouse_migrator_version = docker_image.clickhouse_migrator_image.repo_digest
 
     server_count          = var.clickhouse_server_count
     job_constraint_prefix = var.clickhouse_job_constraint_prefix
