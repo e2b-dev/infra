@@ -30,8 +30,6 @@ job "clickhouse-migrator" {
       config {
         image = "${clickhouse_migrator_version}"
         network_mode = "host"
-        entrypoint = ["/bin/sh", "-c"]
-        args = ["goose -table _migrations -dir migrations up"]
       }
 
       resources {

@@ -13,3 +13,6 @@ COPY --from=builder /go/bin/goose /usr/local/bin/goose
 
 WORKDIR /app
 COPY /migrations ./migrations
+
+ENV GOOSE_DRIVER=clickhouse
+ENTRYPOINT ["goose", "-table", "_migrations", "-dir", "migrations", "up"]
