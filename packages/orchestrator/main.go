@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"slices"
 	"syscall"
+	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -41,6 +42,8 @@ type Closeable interface {
 const (
 	defaultPort      = 5008
 	defaultProxyPort = 5007
+
+	sandboxMetricExportPeriod = 5 * time.Second
 
 	version = "0.1.0"
 
@@ -236,7 +239,12 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
 
-	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags)
+	sandboxObserver, err := telemetry.NewSandboxObserver(ctx, serviceInfo.SourceCommit, serviceInfo.ClientId, sandboxMetricExportPeriod)
+	if err != nil {
+		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
+	}
+
+	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes, sandboxObserver, featureFlags)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
@@ -265,6 +273,7 @@ func run(port, proxyPort uint) (success bool) {
 		devicePool,
 		sandboxProxy,
 		featureFlags,
+		sandboxObserver,
 	)
 
 	// Initialize the template manager only if the service is enabled
