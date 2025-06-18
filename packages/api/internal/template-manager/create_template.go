@@ -98,7 +98,6 @@ func convertTemplateSteps(steps *[]api.TemplateStep) []*template_manager.Templat
 		}
 
 		result[i] = &template_manager.TemplateStep{
-			Id:        step.Id.String(),
 			Type:      step.Type,
 			Args:      args,
 			Hash:      step.Hash,
