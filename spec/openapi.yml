@@ -500,14 +500,9 @@ components:
     TemplateStep:
       description: Step in the template build process
       required:
-        - id
         - type
         - hash
       properties:
-        id:
-          type: string
-          format: uuid
-          description: Identifier of the step
         type:
           type: string
           description: Type of the step

@@ -15,14 +15,13 @@ message TemplateLayerFilesUploadResponse{
 }
 
 message TemplateStep {
-  string id = 1;
-  string type = 2;
-  repeated string args = 3;
+  string type = 1;
+  repeated string args = 2;
 
-  string hash = 4;
-  optional string filesHash = 5;
+  string hash = 3;
+  optional string filesHash = 4;
 
-  optional bool force = 6;
+  optional bool force = 5;
 }
 
 message TemplateConfig {

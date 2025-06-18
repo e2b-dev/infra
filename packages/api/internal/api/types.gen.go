@@ -539,9 +539,6 @@ type TemplateStep struct {
 	// Hash Hash of the step
 	Hash string `json:"hash"`
 
-	// Id Identifier of the step
-	Id openapi_types.UUID `json:"id"`
-
 	// Type Type of the step
 	Type string `json:"type"`
 }
