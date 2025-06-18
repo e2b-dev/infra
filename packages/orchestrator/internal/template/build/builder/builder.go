@@ -426,14 +426,17 @@ func untar(r io.Reader, destDir string) error {
 		case tar.TypeSymlink:
 			linkTarget := hdr.Linkname
 			linkPath := filepath.Join(filepath.Dir(targetPath), linkTarget)
-			resolvedPath := filepath.Clean(linkPath)
+			resolvedPath, err := filepath.EvalSymlinks(filepath.Clean(linkPath))
+			if err != nil {
+				return fmt.Errorf("failed to resolve symlink %s: %w", linkPath, err)
+			}
 
 			if !strings.HasPrefix(resolvedPath, destDir+string(os.PathSeparator)) {
 				return fmt.Errorf("symlink %s points outside destination", hdr.Linkname)
 			}
 
-			if err := os.Symlink(linkTarget, targetPath); err != nil {
-				return fmt.Errorf("symlink %s -> %s failed: %w", targetPath, linkTarget, err)
+			if err := os.Symlink(resolvedPath, targetPath); err != nil {
+				return fmt.Errorf("symlink %s -> %s failed: %w", targetPath, resolvedPath, err)
 			}
 
 		default:
