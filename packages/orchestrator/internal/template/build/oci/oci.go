@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
+	"github.com/google/go-containerregistry/pkg/name"
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/layout"
+	"github.com/google/go-containerregistry/pkg/v1/tarball"
+	"github.com/google/go-containerregistry/pkg/v1/types"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -147,11 +151,11 @@ func unpackRootfs(ctx context.Context, tracer trace.Tracer, srcImage containerre
 
 	tag := "latest"
 
-	// Create an OCI layout in the temporary directory
-	err = createOCIExport(ctx, tracer, srcImage, tag, ociPath)
+	// Create export in the temporary directory
+	imagePath, err := createExport(ctx, tracer, srcImage, tag, ociPath)
 
-	// Extract the rootfs from the OCI layout
-	containerName, err := buildah.From(ctx, tracer, "oci:"+ociPath+":"+tag)
+	// Extract the rootfs from the image path
+	containerName, err := buildah.From(ctx, tracer, imagePath)
 	if err != nil {
 		return fmt.Errorf("while creating buildah container from OCI layout: %w", err)
 	}
@@ -190,21 +194,47 @@ func copyFiles(ctx context.Context, tracer trace.Tracer, src, dest string) error
 	return nil
 }
 
-func createOCIExport(ctx context.Context, tracer trace.Tracer, srcImage containerregistry.Image, tag, path string) error {
+func createExport(ctx context.Context, tracer trace.Tracer, srcImage containerregistry.Image, tag, path string) (string, error) {
 	_, childSpan := tracer.Start(ctx, "create-oci-export")
 	defer childSpan.End()
 
-	p, err := layout.Write(path, empty.Index)
+	mediaType, err := srcImage.MediaType()
 	if err != nil {
-		return fmt.Errorf("while creating OCI layout: %w", err)
+		return "", fmt.Errorf("while getting media type of source image: %w", err)
 	}
-	err = p.AppendImage(srcImage, layout.WithAnnotations(map[string]string{
-		"org.opencontainers.image.ref.name": tag,
-	}))
-	if err != nil {
-		return fmt.Errorf("while appending image to OCI layout: %w", err)
-	}
-	telemetry.ReportEvent(ctx, "created oci layout")
+	switch mediaType {
+	case types.OCIManifestSchema1:
+		// OCI export layout
 
-	return nil
+		p, err := layout.Write(path, empty.Index)
+		if err != nil {
+			return "", fmt.Errorf("while creating OCI layout: %w", err)
+		}
+		err = p.AppendImage(srcImage, layout.WithAnnotations(map[string]string{
+			"org.opencontainers.image.ref.name": tag,
+		}))
+		if err != nil {
+			return "", fmt.Errorf("while appending image to OCI layout: %w", err)
+		}
+		telemetry.ReportEvent(ctx, "created oci layout")
+
+		return "oci:" + path + ":" + tag, nil
+	case types.DockerManifestSchema2:
+		// Docker tarball export
+
+		filePath := filepath.Join(path, "docker-image.tar")
+
+		ref, err := name.ParseReference(tag)
+		if err != nil {
+			return "", fmt.Errorf("while parsing image reference: %w", err)
+		}
+		err = tarball.WriteToFile(filePath, ref, srcImage)
+		if err != nil {
+			return "", fmt.Errorf("while writing Docker image to file: %w", err)
+		}
+
+		return "docker-archive:" + filePath, nil
+	default:
+		return "", fmt.Errorf("source image is not an OCI image index or Docker manifest, got: %s", mediaType)
+	}
 }
