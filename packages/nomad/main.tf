@@ -54,6 +54,16 @@ resource "docker_image" "api_image" {
   platform      = "linux/amd64/v8"
 }
 
+data "docker_registry_image" "db_migrator_image" {
+  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/db-migrator:latest"
+}
+
+resource "docker_image" "db_migrator_image" {
+  name          = data.docker_registry_image.db_migrator_image.name
+  pull_triggers = [data.docker_registry_image.db_migrator_image.sha256_digest]
+  platform      = "linux/amd64/v8"
+}
+
 resource "nomad_job" "api" {
   jobspec = templatefile("${path.module}/api.hcl", {
     update_stanza = var.api_machine_count > 1
@@ -85,6 +95,7 @@ resource "nomad_job" "api" {
     clickhouse_password            = random_password.clickhouse_password.result
     clickhouse_database            = var.clickhouse_database
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
+    db_migrator_docker_image       = docker_image.db_migrator_image.repo_digest
   })
 }
 
