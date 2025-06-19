@@ -203,7 +203,6 @@ func NewCluster(ctx context.Context, endpoint string, endpointTls bool, secret s
 
 func (c *Cluster) Disconnect() {
 	c.ctxCancel()
-	<-c.ctx.Done()
 }
 
 func (c *Cluster) getTemplateBuilders() ([]*api.ClusterOrchestratorNode, error) {
