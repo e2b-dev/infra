@@ -178,7 +178,7 @@ func getMappedStatus(s e2bgrpcorchestratorinfo.ServiceInfoStatus) OrchestratorSt
 func newClient(host string) (*OrchestratorGRPCClient, error) {
 	conn, err := e2bgrpc.GetConnection(host, false, grpc.WithStatsHandler(otelgrpc.NewClientHandler()), grpc.WithBlock(), grpc.WithTimeout(time.Second))
 	if err != nil {
-		return nil, fmt.Errorf("failed to establish GRPC Connection: %w", err)
+		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}
 
 	return &OrchestratorGRPCClient{
@@ -192,7 +192,7 @@ func newClient(host string) (*OrchestratorGRPCClient, error) {
 func (a *OrchestratorGRPCClient) close() error {
 	err := a.Connection.Close()
 	if err != nil {
-		return fmt.Errorf("failed to close Connection: %w", err)
+		return fmt.Errorf("failed to close connection: %w", err)
 	}
 
 	return nil

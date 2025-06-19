@@ -195,12 +195,12 @@ func (p *OrchestratorsPool) removeNode(ctx context.Context, node *OrchestratorNo
 	_, childSpan := p.tracer.Start(ctx, "remove-orchestrator-node")
 	defer childSpan.End()
 
-	p.logger.Info("Orchestrator node node Connection is not active anymore, closing.", zap.String("node_id", node.ServiceId))
+	p.logger.Info("Orchestrator node node connection is not active anymore, closing.", zap.String("node_id", node.ServiceId))
 
 	// stop background sync and close everything
 	err := node.Close()
 	if err != nil {
-		p.logger.Error("Error closing Connection to node", zap.Error(err))
+		p.logger.Error("Error closing connection to node", zap.Error(err))
 	}
 
 	p.mutex.Lock()
@@ -208,6 +208,6 @@ func (p *OrchestratorsPool) removeNode(ctx context.Context, node *OrchestratorNo
 
 	p.nodes.Remove(node.ServiceId)
 
-	p.logger.Info("Orchestrator node node Connection has been closed.", zap.String("node_id", node.ServiceId))
+	p.logger.Info("Orchestrator node node connection has been closed.", zap.String("node_id", node.ServiceId))
 	return nil
 }
