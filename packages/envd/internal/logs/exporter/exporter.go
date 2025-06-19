@@ -21,20 +21,23 @@ type HTTPExporter struct {
 	triggers chan struct{}
 	logs     [][]byte
 	sync.Mutex
-	debug bool
+	isNotFC   bool
+	mmdsOpts  *host.MMDSOpts
+	startOnce sync.Once
 }
 
-func NewHTTPLogsExporter(ctx context.Context, debug bool, mmdsChan <-chan *host.MMDSOpts) *HTTPExporter {
+func NewHTTPLogsExporter(ctx context.Context, isNotFC bool, mmdsChan <-chan *host.MMDSOpts) *HTTPExporter {
 	exporter := &HTTPExporter{
+		ctx: ctx,
 		client: http.Client{
 			Timeout: ExporterTimeout,
 		},
-		triggers: make(chan struct{}, 1),
-		debug:    debug,
-		ctx:      ctx,
+		triggers:  make(chan struct{}, 1),
+		isNotFC:   isNotFC,
+		startOnce: sync.Once{},
 	}
 
-	go exporter.start(mmdsChan)
+	go exporter.listenForMMDSOptsAndStart(mmdsChan)
 
 	return exporter
 }
@@ -60,29 +63,16 @@ func printLog(logs []byte) {
 	fmt.Fprintf(os.Stdout, "%v", string(logs))
 }
 
-func (w *HTTPExporter) start(mmdsChan <-chan *host.MMDSOpts) {
-	mmdsOpts, ok := <-mmdsChan
-	if !ok {
-		fmt.Fprintf(os.Stderr, "channel closed when starting exporter")
-		return
-	}
-
-	for range w.triggers {
-		logs := w.getAllLogs()
-
-		if len(logs) == 0 {
-			continue
-		}
-
-		if w.debug {
-			for _, log := range logs {
-				fmt.Fprintf(os.Stdout, "%v", string(log))
+func (w *HTTPExporter) listenForMMDSOptsAndStart(mmdsChan <-chan *host.MMDSOpts) *host.MMDSOpts {
+	for {
+		select {
+		case <-w.ctx.Done():
+			return nil
+		case mmdsOpts, ok := <-mmdsChan:
+			if !ok {
+				return nil
 			}
-
-			continue
-		}
-
-		for _, logLine := range logs {
+			w.Lock()
 			if mmdsOpts == nil {
 				mmdsOpts = &host.MMDSOpts{
 					InstanceID: "unknown",
@@ -91,17 +81,43 @@ func (w *HTTPExporter) start(mmdsChan <-chan *host.MMDSOpts) {
 					Address:    "http://localhost:30006", // default logs collector address
 				}
 			}
+			w.mmdsOpts = mmdsOpts
+			w.Unlock()
 
-			logLineWithOpts, err := mmdsOpts.AddOptsToJSON(logLine)
+			w.startOnce.Do(func() {
+				w.start()
+			})
+		}
+	}
+}
+
+func (w *HTTPExporter) start() {
+	for range w.triggers {
+		logs := w.getAllLogs()
+
+		if len(logs) == 0 {
+			continue
+		}
+
+		if w.isNotFC {
+			for _, log := range logs {
+				fmt.Fprintf(os.Stdout, "%v", string(log))
+			}
+
+			continue
+		}
+
+		for _, logLine := range logs {
+			logLineWithOpts, err := w.mmdsOpts.AddOptsToJSON(logLine)
 			if err != nil {
-				log.Printf("error adding instance logging options (%+v) to JSON (%+v) with logs : %v\n", mmdsOpts, logLine, err)
+				log.Printf("error adding instance logging options (%+v) to JSON (%+v) with logs : %v\n", w.mmdsOpts, logLine, err)
 
 				printLog(logLine)
 
 				continue
 			}
 
-			err = w.sendInstanceLogs(logLineWithOpts, mmdsOpts.Address)
+			err = w.sendInstanceLogs(logLineWithOpts, w.mmdsOpts.Address)
 			if err != nil {
 				log.Printf("error sending instance logs: %+v", err)
 

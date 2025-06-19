@@ -51,7 +51,7 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	logger.Debug().Msg("Syncing host")
 
 	go func() {
-		err := host.Sync()
+		err := host.SyncClock()
 		if err != nil {
 			logger.Error().Msgf("Failed to sync clock: %v", err)
 		} else {

@@ -27,7 +27,7 @@ func updateClock() error {
 	return nil
 }
 
-func Sync() error {
+func SyncClock() error {
 	syncingLock.Lock()
 	defer syncingLock.Unlock()
 

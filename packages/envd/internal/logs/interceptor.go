@@ -162,7 +162,7 @@ func LogClientStreamWithoutEvents[T any, R any](
 	return res, err
 }
 
-// Return logger with error level if err is not nil, otherwise return logger with debug level
+// Return logger with error level if err is not nil, otherwise return logger with isNotFClevel
 func getErrDebugLogEvent(logger *zerolog.Logger, err error) *zerolog.Event {
 	if err != nil {
 		return logger.Error().Err(err)

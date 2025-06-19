@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	E2BRunDir = "/run/e2b"
+	E2BRunDir = "/run/e2b" // We store sandbox metadata files here
 
 	mmdsDefaultAddress  = "169.254.169.254"
 	mmdsTokenExpiration = 60 * time.Second
@@ -134,13 +134,13 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 				envVars.Store("E2B_SANDBOX_ID", mmdsOpts.InstanceID)
 				envVars.Store("E2B_TEMPLATE_ID", mmdsOpts.EnvID)
 				envVars.Store("E2B_TEAM_ID", mmdsOpts.TeamID)
-				if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_SANDBOX_ID"), []byte(mmdsOpts.InstanceID), 0o444); err != nil {
+				if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_SANDBOX_ID"), []byte(mmdsOpts.InstanceID), 0o666); err != nil {
 					fmt.Fprintf(os.Stderr, "error writing sandbox ID file: %v\n", err)
 				}
-				if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_TEMPLATE_ID"), []byte(mmdsOpts.EnvID), 0o444); err != nil {
-					fmt.Fprintf(os.Stderr, "error writing env ID file: %v\n", err)
+				if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_TEMPLATE_ID"), []byte(mmdsOpts.EnvID), 0o666); err != nil {
+					fmt.Fprintf(os.Stderr, "error writing template ID file: %v\n", err)
 				}
-				if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_TEAM_ID"), []byte(mmdsOpts.TeamID), 0o444); err != nil {
+				if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_TEAM_ID"), []byte(mmdsOpts.TeamID), 0o666); err != nil {
 					fmt.Fprintf(os.Stderr, "error writing team ID file: %v\n", err)
 				}
 				mmdsChan <- mmdsOpts

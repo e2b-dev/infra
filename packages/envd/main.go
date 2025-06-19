@@ -39,8 +39,8 @@ var (
 
 	commitSHA string
 
-	debug bool
-	port  int64
+	isNotFC bool
+	port    int64
 
 	versionFlag  bool
 	commitFlag   bool
@@ -49,10 +49,10 @@ var (
 
 func parseFlags() {
 	flag.BoolVar(
-		&debug,
+		&isNotFC,
 		"debug",
 		false,
-		"debug mode prints all logs to stdout",
+		"isNotFCmode prints all logs to stdout",
 	)
 
 	flag.BoolVar(
@@ -152,19 +152,19 @@ func main() {
 	}
 
 	envVars := utils.NewMap[string, string]()
-	isSandboxBoolStr := strconv.FormatBool(!debug)
-	envVars.Store("E2B_SANDBOX", isSandboxBoolStr)
-	if err := os.WriteFile(filepath.Join(host.E2BRunDir, ".E2B_SANDBOX"), []byte(isSandboxBoolStr), 0o444); err != nil {
+	isFCBoolStr := strconv.FormatBool(!isNotFC)
+	envVars.Store("E2B_SANDBOX", isFCBoolStr)
+	if err := os.WriteFile(filepath.Join(host.E2BRunDir, ".E2B_SANDBOX"), []byte(isFCBoolStr), 0o444); err != nil {
 		fmt.Fprintf(os.Stderr, "error writing sandbox file: %v\n", err)
 	}
 
 	mmdsChan := make(chan *host.MMDSOpts, 1)
 	defer close(mmdsChan)
-	if !debug {
+	if !isNotFC {
 		go host.PollForMMDSOpts(ctx, mmdsChan, envVars)
 	}
 
-	l := logs.NewLogger(ctx, debug, mmdsChan)
+	l := logs.NewLogger(ctx, isNotFC, mmdsChan)
 
 	m := chi.NewRouter()
 
@@ -175,7 +175,7 @@ func main() {
 	processLogger := l.With().Str("logger", "process").Logger()
 	processService := processRpc.Handle(m, &processLogger, envVars)
 
-	service := api.New(&envLogger, envVars)
+	service := api.New(&envLogger, envVars, mmdsChan, isNotFC)
 	handler := api.HandlerFromMux(service, m)
 	middleware := authn.NewMiddleware(permissions.AuthenticateUsername)
 
