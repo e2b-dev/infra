@@ -192,12 +192,12 @@ func (p *EdgePool) removeNode(ctx context.Context, node *EdgeNode) error {
 	_, childSpan := p.tracer.Start(ctx, "remove-edge-node")
 	defer childSpan.End()
 
-	p.logger.Info("Edge node connection is not active anymore, closing.", zap.String("node_id", node.ServiceId))
+	p.logger.Info("Edge node Connection is not active anymore, closing.", zap.String("node_id", node.ServiceId))
 
 	// stop background sync and close everything
 	err := node.Close()
 	if err != nil {
-		p.logger.Error("Error closing connection to node", zap.Error(err))
+		p.logger.Error("Error closing Connection to node", zap.Error(err))
 	}
 
 	p.mutex.Lock()
@@ -205,6 +205,6 @@ func (p *EdgePool) removeNode(ctx context.Context, node *EdgeNode) error {
 
 	p.nodes.Remove(node.ServiceId)
 
-	p.logger.Info("Edge node node connection has been closed.", zap.String("node_id", node.ServiceId))
+	p.logger.Info("Edge node node Connection has been closed.", zap.String("node_id", node.ServiceId))
 	return nil
 }

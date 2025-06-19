@@ -62,7 +62,7 @@ type OrchestratorGRPCClient struct {
 	Template e2bgrpctemplatemanager.TemplateServiceClient
 	Info     e2bgrpcorchestratorinfo.InfoServiceClient
 
-	connection *grpc.ClientConn
+	Connection *grpc.ClientConn
 }
 
 func NewOrchestrator(ctx context.Context, ip string, port int) (*OrchestratorNode, error) {
@@ -178,21 +178,21 @@ func getMappedStatus(s e2bgrpcorchestratorinfo.ServiceInfoStatus) OrchestratorSt
 func newClient(host string) (*OrchestratorGRPCClient, error) {
 	conn, err := e2bgrpc.GetConnection(host, false, grpc.WithStatsHandler(otelgrpc.NewClientHandler()), grpc.WithBlock(), grpc.WithTimeout(time.Second))
 	if err != nil {
-		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
+		return nil, fmt.Errorf("failed to establish GRPC Connection: %w", err)
 	}
 
 	return &OrchestratorGRPCClient{
 		Sandbox:    e2bgrpcorchestrator.NewSandboxServiceClient(conn),
 		Template:   e2bgrpctemplatemanager.NewTemplateServiceClient(conn),
 		Info:       e2bgrpcorchestratorinfo.NewInfoServiceClient(conn),
-		connection: conn,
+		Connection: conn,
 	}, nil
 }
 
 func (a *OrchestratorGRPCClient) close() error {
-	err := a.connection.Close()
+	err := a.Connection.Close()
 	if err != nil {
-		return fmt.Errorf("failed to close connection: %w", err)
+		return fmt.Errorf("failed to close Connection: %w", err)
 	}
 
 	return nil

@@ -4,7 +4,9 @@ import (
 	"context"
 	_ "embed"
 	"errors"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,11 +19,15 @@ import (
 	"github.com/go-redsync/redsync/v4/redis/goredis/v9"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"github.com/soheilhy/cmux"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/proxy/internal"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge"
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge-pass-through"
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
+	e2binfo "github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	e2bproxy "github.com/e2b-dev/infra/packages/proxy/internal/proxy"
@@ -106,7 +112,6 @@ func run() int {
 	defer sigCancel()
 
 	logger.Info("Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
-
 	tracer := tel.TracerProvider.Tracer(serviceName)
 
 	edgeSD, orchestratorsSD, err := service_discovery.NewServiceDiscoveryProvider(ctx, edgePort, orchestratorPort, logger)
@@ -132,18 +137,31 @@ func run() int {
 
 	orchestrators := e2borchestrators.NewOrchestratorsPool(ctx, logger, orchestratorsSD, tracer)
 
+	info := &e2binfo.ServiceInfo{
+		NodeId:        internal.GetNodeID(),
+		ServiceId:     uuid.NewString(),
+		SourceVersion: version,
+		SourceCommit:  commitSHA,
+		Startup:       time.Now(),
+		Host:          fmt.Sprintf("%s:%d", internal.GetNodeIP(), edgePort),
+	}
+
+	// service starts in unhealthy state, and we are waiting for initial health check to pass
+	info.SetStatus(api.Unhealthy)
+
 	if !useProxyCatalogResolution {
 		logger.Warn("Skipping proxy catalog resolution, using just DNS resolution instead. This is not recommended for production use, as it may lead to issues with sandbox resolution.")
 	}
 
-	// Proxy request to the correct node
-	proxy, err := e2bproxy.NewClientProxy(tel.MeterProvider, serviceName, uint(proxyPort), catalog, orchestrators, useProxyCatalogResolution)
+	// Proxy sandbox http traffic to orchestrator nodes
+	trafficProxy, err := e2bproxy.NewClientProxy(tel.MeterProvider, serviceName, uint(proxyPort), catalog, orchestrators, useProxyCatalogResolution)
 	if err != nil {
 		logger.Error("failed to create client proxy", zap.Error(err))
 		return 1
 	}
 
-	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, logger, tracer, commitSHA, version, edgeSD, orchestrators, catalog)
+	authorizationManager := authorization.NewStaticTokenAuthorizationService(edgeSecret)
+	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, logger, tracer, info, edgeSD, orchestrators, catalog)
 	if err != nil {
 		logger.Error("failed to create edge api store", zap.Error(err))
 		return 1
@@ -155,8 +173,36 @@ func run() int {
 		return 1
 	}
 
-	// Edge API server
-	edgeGinServer := edge.NewGinServer(ctx, logger, edgeApiStore, edgeApiSwagger, tracer, edgePort, edgeSecret)
+	// Edge REST API
+	edgeHttpHandler := edge.NewGinServer(logger, edgeApiStore, edgeApiSwagger, tracer, authorizationManager)
+
+	// Edge Pass Through Proxy for direct communication with orchestrator nodes
+	edgePassThroughHandler := edgepassthrough.NewNodePassThrough(ctx, orchestrators, info, authorizationManager)
+
+	lisAddr := fmt.Sprintf("0.0.0.0:%d", edgePort)
+	lis, err := net.Listen("tcp", lisAddr)
+	if err != nil {
+		logger.Error("failed to listen on edge port", zap.Int("port", edgePort), zap.Error(err))
+		return 1
+	}
+
+	muxServer := cmux.New(lis)
+	muxRpcListener := muxServer.MatchWithWriters(cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc")) // handler requests for gRPC pass through
+	muxRestListener := muxServer.Match(cmux.Any())                                                                           // handler requests for REST API
+
+	go func() {
+		grpcSrv := edgePassThroughHandler.GetServer()
+		if err := grpcSrv.Serve(muxRpcListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("gRPC Serve: %v", err)
+		}
+	}()
+
+	go func() {
+		httpSrv := &http.Server{Handler: edgeHttpHandler}
+		if err := httpSrv.Serve(muxRestListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("HTTP Serve: %v", err)
+		}
+	}()
 
 	wg.Add(1)
 	go func() {
@@ -171,7 +217,7 @@ func run() int {
 		edgeRunLogger := logger.With(zap.Int("edge_port", edgePort))
 		edgeRunLogger.Info("edge api starting")
 
-		err := edgeGinServer.ListenAndServe()
+		err := muxServer.Serve()
 		if err != nil {
 			switch {
 			case errors.Is(err, http.ErrServerClosed):
@@ -198,7 +244,7 @@ func run() int {
 		proxyRunLogger := logger.With(zap.Int("proxy_port", proxyPort))
 		proxyRunLogger.Info("http proxy starting")
 
-		err := proxy.ListenAndServe()
+		err := trafficProxy.ListenAndServe()
 		// Add different handling for the error
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
@@ -230,7 +276,7 @@ func run() int {
 		defer proxyShutdownCtxCancel()
 
 		// gracefully shutdown the proxy http server
-		err := proxy.Shutdown(proxyShutdownCtx)
+		err := trafficProxy.Shutdown(proxyShutdownCtx)
 		if err != nil {
 			exitCode.Add(1)
 			shutdownLogger.Error("http proxy shutdown error", zap.Error(err))
@@ -244,11 +290,19 @@ func run() int {
 		shutdownLogger.Info("waiting for unhealthy state propagation", zap.Float64("wait_in_seconds", shutdownUnhealthyWait.Seconds()))
 		time.Sleep(shutdownUnhealthyWait)
 
-		ginErr := edgeGinServer.Shutdown(ctx)
-		if ginErr != nil {
-			exitCode.Add(1)
-			shutdownLogger.Error("edge api shutdown error", zap.Error(ginErr))
+		// shut down the edge pass through proxy service and rest api listeners
+		// after closed services listeners, close mux server
+		err = muxRestListener.Close()
+		if err != nil {
+			shutdownLogger.Error("edge rest api service shutdown error", zap.Error(err))
 		}
+
+		err = muxRpcListener.Close()
+		if err != nil {
+			shutdownLogger.Error("edge pass through proxy service shutdown error", zap.Error(err))
+		}
+
+		muxServer.Close()
 	}()
 
 	wg.Wait()
