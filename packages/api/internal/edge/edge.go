@@ -156,7 +156,8 @@ func (p *Pool) sync(ctx context.Context) error {
 }
 
 type Cluster struct {
-	ctx context.Context
+	ctx       context.Context
+	ctxCancel context.CancelFunc
 
 	Id     uuid.UUID
 	Client *api.ClientWithResponses
@@ -164,7 +165,7 @@ type Cluster struct {
 
 func NewCluster(ctx context.Context, endpoint string, endpointTls bool, secret string, id uuid.UUID) (*Cluster, error) {
 	// so we during cluster disconnect we don't cancel the upper context
-	ctx = context.WithoutCancel(ctx)
+	ctx, ctxCancel := context.WithCancel(ctx)
 
 	clientAuthMiddleware := func(c *api.Client) error {
 		c.RequestEditors = append(
@@ -187,11 +188,13 @@ func NewCluster(ctx context.Context, endpoint string, endpointTls bool, secret s
 
 	endpointClient, err := api.NewClientWithResponses(endpointBaseUrl, clientAuthMiddleware)
 	if err != nil {
+		ctxCancel()
 		return nil, err
 	}
 
 	return &Cluster{
-		ctx: ctx,
+		ctx:       ctx,
+		ctxCancel: ctxCancel,
 
 		Id:     id,
 		Client: endpointClient,
@@ -199,6 +202,7 @@ func NewCluster(ctx context.Context, endpoint string, endpointTls bool, secret s
 }
 
 func (c *Cluster) Disconnect() {
+	c.ctxCancel()
 	<-c.ctx.Done()
 }
 
