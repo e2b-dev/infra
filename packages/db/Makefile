@@ -2,7 +2,7 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
 goose := GOOSE_DBSTRING=$(POSTGRES_CONNECTION_STRING) go tool goose -table "_migrations" -dir "migrations" postgres
-IMAGE := e2b-orchestration/api-migrator
+IMAGE := e2b-orchestration/db-migrator
 
 .PHONY: migrate
 migrate:migrate/up

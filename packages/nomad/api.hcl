@@ -104,7 +104,7 @@ job "api" {
       }
     }
 
-    task "migrator" {
+    task "db-migrator" {
       driver = "docker"
 
       env {
@@ -112,7 +112,7 @@ job "api" {
       }
 
       config {
-        image = "${api_migrator_docker_image}"
+        image = "${db_migrator_docker_image}"
       }
 
       resources {
