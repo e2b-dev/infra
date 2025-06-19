@@ -192,15 +192,31 @@ func run() int {
 
 	go func() {
 		grpcSrv := edgePassThroughHandler.GetServer()
-		if err := grpcSrv.Serve(muxRpcListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("gRPC Serve: %v", err)
+		err := grpcSrv.Serve(muxRpcListener)
+		switch {
+		case errors.Is(err, http.ErrServerClosed):
+			zap.L().Info("edge grpc service shutdown successfully")
+		case err != nil:
+			exitCode.Add(1)
+			zap.L().Error("edge grpc service encountered error", zap.Error(err))
+		default:
+			// this probably shouldn't happen...
+			zap.L().Error("edge grpc service exited without error")
 		}
 	}()
 
 	go func() {
 		httpSrv := &http.Server{Handler: edgeHttpHandler}
-		if err := httpSrv.Serve(muxRestListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("HTTP Serve: %v", err)
+		err := httpSrv.Serve(muxRestListener)
+		switch {
+		case errors.Is(err, http.ErrServerClosed):
+			zap.L().Info("edge api service shutdown successfully")
+		case err != nil:
+			exitCode.Add(1)
+			zap.L().Error("edge api service encountered error", zap.Error(err))
+		default:
+			// this probably shouldn't happen...
+			zap.L().Error("edge api service exited without error")
 		}
 	}()
 
