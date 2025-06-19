@@ -68,7 +68,7 @@ func main() {
 	}
 
 	for _, res := range results {
-		fmt.Printf("%s %d (%s)\n", res.Direction, res.Source.Version, res.Duration)
+		fmt.Printf("Applied migration %s %s (%s)\n", res.Direction, res.Source.Path, res.Duration)
 	}
 
 	fmt.Println("Migrations applied successfully.")
