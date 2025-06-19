@@ -7,6 +7,8 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/daemon"
+	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/google/go-containerregistry/pkg/v1/types"
 )
 
 type LocalArtifactsRegistry struct{}
@@ -35,5 +37,10 @@ func (g *LocalArtifactsRegistry) GetImage(ctx context.Context, templateId string
 		return nil, fmt.Errorf("invalid image reference: %w", err)
 	}
 
-	return daemon.Image(ref, daemon.WithContext(ctx))
+	img, err := daemon.Image(ref, daemon.WithContext(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get image from local registry: %w", err)
+	}
+
+	return mutate.MediaType(img, types.OCIManifestSchema1), nil
 }
