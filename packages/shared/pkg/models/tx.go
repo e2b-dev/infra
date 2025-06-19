@@ -14,6 +14,8 @@ type Tx struct {
 	config
 	// AccessToken is the client for interacting with the AccessToken builders.
 	AccessToken *AccessTokenClient
+	// Cluster is the client for interacting with the Cluster builders.
+	Cluster *ClusterClient
 	// Env is the client for interacting with the Env builders.
 	Env *EnvClient
 	// EnvAlias is the client for interacting with the EnvAlias builders.
@@ -164,6 +166,7 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.AccessToken = NewAccessTokenClient(tx.config)
+	tx.Cluster = NewClusterClient(tx.config)
 	tx.Env = NewEnvClient(tx.config)
 	tx.EnvAlias = NewEnvAliasClient(tx.config)
 	tx.EnvBuild = NewEnvBuildClient(tx.config)

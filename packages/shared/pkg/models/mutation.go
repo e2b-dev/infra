@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/cluster"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
@@ -35,6 +36,7 @@ const (
 
 	// Node types.
 	TypeAccessToken = "AccessToken"
+	TypeCluster     = "Cluster"
 	TypeEnv         = "Env"
 	TypeEnvAlias    = "EnvAlias"
 	TypeEnvBuild    = "EnvBuild"
@@ -920,6 +922,446 @@ func (m *AccessTokenMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown AccessToken edge %s", name)
+}
+
+// ClusterMutation represents an operation that mutates the Cluster nodes in the graph.
+type ClusterMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	endpoint      *string
+	endpoint_tls  *bool
+	token         *string
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*Cluster, error)
+	predicates    []predicate.Cluster
+}
+
+var _ ent.Mutation = (*ClusterMutation)(nil)
+
+// clusterOption allows management of the mutation configuration using functional options.
+type clusterOption func(*ClusterMutation)
+
+// newClusterMutation creates new mutation for the Cluster entity.
+func newClusterMutation(c config, op Op, opts ...clusterOption) *ClusterMutation {
+	m := &ClusterMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCluster,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withClusterID sets the ID field of the mutation.
+func withClusterID(id uuid.UUID) clusterOption {
+	return func(m *ClusterMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Cluster
+		)
+		m.oldValue = func(ctx context.Context) (*Cluster, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Cluster.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCluster sets the old Cluster of the mutation.
+func withCluster(node *Cluster) clusterOption {
+	return func(m *ClusterMutation) {
+		m.oldValue = func(context.Context) (*Cluster, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ClusterMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ClusterMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("models: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of Cluster entities.
+func (m *ClusterMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ClusterMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ClusterMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Cluster.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetEndpoint sets the "endpoint" field.
+func (m *ClusterMutation) SetEndpoint(s string) {
+	m.endpoint = &s
+}
+
+// Endpoint returns the value of the "endpoint" field in the mutation.
+func (m *ClusterMutation) Endpoint() (r string, exists bool) {
+	v := m.endpoint
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEndpoint returns the old "endpoint" field's value of the Cluster entity.
+// If the Cluster object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClusterMutation) OldEndpoint(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEndpoint is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEndpoint requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEndpoint: %w", err)
+	}
+	return oldValue.Endpoint, nil
+}
+
+// ResetEndpoint resets all changes to the "endpoint" field.
+func (m *ClusterMutation) ResetEndpoint() {
+	m.endpoint = nil
+}
+
+// SetEndpointTLS sets the "endpoint_tls" field.
+func (m *ClusterMutation) SetEndpointTLS(b bool) {
+	m.endpoint_tls = &b
+}
+
+// EndpointTLS returns the value of the "endpoint_tls" field in the mutation.
+func (m *ClusterMutation) EndpointTLS() (r bool, exists bool) {
+	v := m.endpoint_tls
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEndpointTLS returns the old "endpoint_tls" field's value of the Cluster entity.
+// If the Cluster object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClusterMutation) OldEndpointTLS(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEndpointTLS is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEndpointTLS requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEndpointTLS: %w", err)
+	}
+	return oldValue.EndpointTLS, nil
+}
+
+// ResetEndpointTLS resets all changes to the "endpoint_tls" field.
+func (m *ClusterMutation) ResetEndpointTLS() {
+	m.endpoint_tls = nil
+}
+
+// SetToken sets the "token" field.
+func (m *ClusterMutation) SetToken(s string) {
+	m.token = &s
+}
+
+// Token returns the value of the "token" field in the mutation.
+func (m *ClusterMutation) Token() (r string, exists bool) {
+	v := m.token
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldToken returns the old "token" field's value of the Cluster entity.
+// If the Cluster object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClusterMutation) OldToken(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldToken is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldToken requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldToken: %w", err)
+	}
+	return oldValue.Token, nil
+}
+
+// ResetToken resets all changes to the "token" field.
+func (m *ClusterMutation) ResetToken() {
+	m.token = nil
+}
+
+// Where appends a list predicates to the ClusterMutation builder.
+func (m *ClusterMutation) Where(ps ...predicate.Cluster) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ClusterMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ClusterMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Cluster, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ClusterMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ClusterMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Cluster).
+func (m *ClusterMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ClusterMutation) Fields() []string {
+	fields := make([]string, 0, 3)
+	if m.endpoint != nil {
+		fields = append(fields, cluster.FieldEndpoint)
+	}
+	if m.endpoint_tls != nil {
+		fields = append(fields, cluster.FieldEndpointTLS)
+	}
+	if m.token != nil {
+		fields = append(fields, cluster.FieldToken)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ClusterMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case cluster.FieldEndpoint:
+		return m.Endpoint()
+	case cluster.FieldEndpointTLS:
+		return m.EndpointTLS()
+	case cluster.FieldToken:
+		return m.Token()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ClusterMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case cluster.FieldEndpoint:
+		return m.OldEndpoint(ctx)
+	case cluster.FieldEndpointTLS:
+		return m.OldEndpointTLS(ctx)
+	case cluster.FieldToken:
+		return m.OldToken(ctx)
+	}
+	return nil, fmt.Errorf("unknown Cluster field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ClusterMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case cluster.FieldEndpoint:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEndpoint(v)
+		return nil
+	case cluster.FieldEndpointTLS:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEndpointTLS(v)
+		return nil
+	case cluster.FieldToken:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetToken(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Cluster field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ClusterMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ClusterMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ClusterMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Cluster numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ClusterMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ClusterMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ClusterMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown Cluster nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ClusterMutation) ResetField(name string) error {
+	switch name {
+	case cluster.FieldEndpoint:
+		m.ResetEndpoint()
+		return nil
+	case cluster.FieldEndpointTLS:
+		m.ResetEndpointTLS()
+		return nil
+	case cluster.FieldToken:
+		m.ResetToken()
+		return nil
+	}
+	return fmt.Errorf("unknown Cluster field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ClusterMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ClusterMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ClusterMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ClusterMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ClusterMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ClusterMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ClusterMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown Cluster unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ClusterMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown Cluster edge %s", name)
 }
 
 // EnvMutation represents an operation that mutates the Env nodes in the graph.
@@ -4682,6 +5124,7 @@ type TeamMutation struct {
 	blocked_reason       *string
 	name                 *string
 	email                *string
+	cluster_id           *uuid.UUID
 	clearedFields        map[string]struct{}
 	users                map[uuid.UUID]struct{}
 	removedusers         map[uuid.UUID]struct{}
@@ -5097,6 +5540,55 @@ func (m *TeamMutation) ResetEmail() {
 	m.email = nil
 }
 
+// SetClusterID sets the "cluster_id" field.
+func (m *TeamMutation) SetClusterID(u uuid.UUID) {
+	m.cluster_id = &u
+}
+
+// ClusterID returns the value of the "cluster_id" field in the mutation.
+func (m *TeamMutation) ClusterID() (r uuid.UUID, exists bool) {
+	v := m.cluster_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClusterID returns the old "cluster_id" field's value of the Team entity.
+// If the Team object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamMutation) OldClusterID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClusterID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClusterID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClusterID: %w", err)
+	}
+	return oldValue.ClusterID, nil
+}
+
+// ClearClusterID clears the value of the "cluster_id" field.
+func (m *TeamMutation) ClearClusterID() {
+	m.cluster_id = nil
+	m.clearedFields[team.FieldClusterID] = struct{}{}
+}
+
+// ClusterIDCleared returns if the "cluster_id" field was cleared in this mutation.
+func (m *TeamMutation) ClusterIDCleared() bool {
+	_, ok := m.clearedFields[team.FieldClusterID]
+	return ok
+}
+
+// ResetClusterID resets all changes to the "cluster_id" field.
+func (m *TeamMutation) ResetClusterID() {
+	m.cluster_id = nil
+	delete(m.clearedFields, team.FieldClusterID)
+}
+
 // AddUserIDs adds the "users" edge to the User entity by ids.
 func (m *TeamMutation) AddUserIDs(ids ...uuid.UUID) {
 	if m.users == nil {
@@ -5387,7 +5879,7 @@ func (m *TeamMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TeamMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.created_at != nil {
 		fields = append(fields, team.FieldCreatedAt)
 	}
@@ -5408,6 +5900,9 @@ func (m *TeamMutation) Fields() []string {
 	}
 	if m.email != nil {
 		fields = append(fields, team.FieldEmail)
+	}
+	if m.cluster_id != nil {
+		fields = append(fields, team.FieldClusterID)
 	}
 	return fields
 }
@@ -5431,6 +5926,8 @@ func (m *TeamMutation) Field(name string) (ent.Value, bool) {
 		return m.Tier()
 	case team.FieldEmail:
 		return m.Email()
+	case team.FieldClusterID:
+		return m.ClusterID()
 	}
 	return nil, false
 }
@@ -5454,6 +5951,8 @@ func (m *TeamMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldTier(ctx)
 	case team.FieldEmail:
 		return m.OldEmail(ctx)
+	case team.FieldClusterID:
+		return m.OldClusterID(ctx)
 	}
 	return nil, fmt.Errorf("unknown Team field %s", name)
 }
@@ -5512,6 +6011,13 @@ func (m *TeamMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetEmail(v)
 		return nil
+	case team.FieldClusterID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClusterID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Team field %s", name)
 }
@@ -5551,6 +6057,9 @@ func (m *TeamMutation) ClearedFields() []string {
 	if m.FieldCleared(team.FieldBlockedReason) {
 		fields = append(fields, team.FieldBlockedReason)
 	}
+	if m.FieldCleared(team.FieldClusterID) {
+		fields = append(fields, team.FieldClusterID)
+	}
 	return fields
 }
 
@@ -5573,6 +6082,9 @@ func (m *TeamMutation) ClearField(name string) error {
 		return nil
 	case team.FieldBlockedReason:
 		m.ClearBlockedReason()
+		return nil
+	case team.FieldClusterID:
+		m.ClearClusterID()
 		return nil
 	}
 	return fmt.Errorf("unknown Team nullable field %s", name)
@@ -5602,6 +6114,9 @@ func (m *TeamMutation) ResetField(name string) error {
 		return nil
 	case team.FieldEmail:
 		m.ResetEmail()
+		return nil
+	case team.FieldClusterID:
+		m.ResetClusterID()
 		return nil
 	}
 	return fmt.Errorf("unknown Team field %s", name)

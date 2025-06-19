@@ -92,6 +92,11 @@ func Email(v string) predicate.Team {
 	return predicate.Team(sql.FieldEQ(FieldEmail, v))
 }
 
+// ClusterID applies equality check predicate on the "cluster_id" field. It's identical to ClusterIDEQ.
+func ClusterID(v uuid.UUID) predicate.Team {
+	return predicate.Team(sql.FieldEQ(FieldClusterID, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Team {
 	return predicate.Team(sql.FieldEQ(FieldCreatedAt, v))
@@ -440,6 +445,56 @@ func EmailEqualFold(v string) predicate.Team {
 // EmailContainsFold applies the ContainsFold predicate on the "email" field.
 func EmailContainsFold(v string) predicate.Team {
 	return predicate.Team(sql.FieldContainsFold(FieldEmail, v))
+}
+
+// ClusterIDEQ applies the EQ predicate on the "cluster_id" field.
+func ClusterIDEQ(v uuid.UUID) predicate.Team {
+	return predicate.Team(sql.FieldEQ(FieldClusterID, v))
+}
+
+// ClusterIDNEQ applies the NEQ predicate on the "cluster_id" field.
+func ClusterIDNEQ(v uuid.UUID) predicate.Team {
+	return predicate.Team(sql.FieldNEQ(FieldClusterID, v))
+}
+
+// ClusterIDIn applies the In predicate on the "cluster_id" field.
+func ClusterIDIn(vs ...uuid.UUID) predicate.Team {
+	return predicate.Team(sql.FieldIn(FieldClusterID, vs...))
+}
+
+// ClusterIDNotIn applies the NotIn predicate on the "cluster_id" field.
+func ClusterIDNotIn(vs ...uuid.UUID) predicate.Team {
+	return predicate.Team(sql.FieldNotIn(FieldClusterID, vs...))
+}
+
+// ClusterIDGT applies the GT predicate on the "cluster_id" field.
+func ClusterIDGT(v uuid.UUID) predicate.Team {
+	return predicate.Team(sql.FieldGT(FieldClusterID, v))
+}
+
+// ClusterIDGTE applies the GTE predicate on the "cluster_id" field.
+func ClusterIDGTE(v uuid.UUID) predicate.Team {
+	return predicate.Team(sql.FieldGTE(FieldClusterID, v))
+}
+
+// ClusterIDLT applies the LT predicate on the "cluster_id" field.
+func ClusterIDLT(v uuid.UUID) predicate.Team {
+	return predicate.Team(sql.FieldLT(FieldClusterID, v))
+}
+
+// ClusterIDLTE applies the LTE predicate on the "cluster_id" field.
+func ClusterIDLTE(v uuid.UUID) predicate.Team {
+	return predicate.Team(sql.FieldLTE(FieldClusterID, v))
+}
+
+// ClusterIDIsNil applies the IsNil predicate on the "cluster_id" field.
+func ClusterIDIsNil() predicate.Team {
+	return predicate.Team(sql.FieldIsNull(FieldClusterID))
+}
+
+// ClusterIDNotNil applies the NotNil predicate on the "cluster_id" field.
+func ClusterIDNotNil() predicate.Team {
+	return predicate.Team(sql.FieldNotNull(FieldClusterID))
 }
 
 // HasUsers applies the HasEdge predicate on the "users" edge.
