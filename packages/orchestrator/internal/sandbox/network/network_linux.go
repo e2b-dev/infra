@@ -220,7 +220,7 @@ func (s *Slot) CreateNetwork() error {
 	// Redirect http://event.e2b.dev traffic destined to event server
 	err = tables.Append("nat", "PREROUTING", "-i", s.VethName(), "-p", "tcp", "-d", "8.8.8.7", "--dport", "80", "-j", "REDIRECT", "--to-port", "5010")
 	if err != nil {
-		return fmt.Errorf("error creating HTTP redirect rule to proxy: %w", err)
+		return fmt.Errorf("error creating HTTP redirect rule to sandbox event server: %w", err)
 	}
 
 	return nil

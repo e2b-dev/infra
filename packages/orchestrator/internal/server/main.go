@@ -12,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/event"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -61,7 +62,7 @@ func New(
 	tracer trace.Tracer,
 	info *service.ServiceInfo,
 	proxy *proxy.SandboxProxy,
-	eventProxy *proxy.EventProxy,
+	eventServer *event.EventServer,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 	sandboxObserver *telemetry.SandboxObserver,
 	featureFlags *featureflags.Client,

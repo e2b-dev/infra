@@ -21,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/event"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
@@ -220,7 +221,7 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 
-	eventProxy := proxy.NewEventProxy(eventProxyPort)
+	sbxEventServer := event.NewEventServer(eventProxyPort, event.EventHandlers)
 
 	tracer := tel.TracerProvider.Tracer(serviceName)
 
@@ -248,7 +249,7 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
 
-	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, eventProxy, sandboxes, sandboxObserver, featureFlags)
+	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sbxEventServer, sandboxes, sandboxObserver, featureFlags)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
@@ -325,7 +326,7 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 	})
 
 	g.Go(func() error {
-		eventProxyErr := eventProxy.Start()
+		eventProxyErr := sbxEventServer.Start()
 		if eventProxyErr != nil && !errors.Is(eventProxyErr, http.ErrServerClosed) {
 			select {
 			case serviceError <- eventProxyErr:
