@@ -119,12 +119,16 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error getting free space: %w", err)
 	}
+	// We need to remove the remaining free space from the ext4 file size
+	// This is a residual space that could not be shrunk when creating the filesystem,
+	// but is still available for use
+	diskAdd := r.template.DiskSizeMB<<ToMBShift - rootfsFreeSpace
 	zap.L().Debug("adding disk size diff to rootfs",
 		zap.Int64("size_current", ext4Size),
-		zap.Int64("size_add", r.template.DiskSizeMB<<ToMBShift),
+		zap.Int64("size_add", diskAdd),
 		zap.Int64("size_free", rootfsFreeSpace),
 	)
-	rootfsFinalSize, err := ext4.Enlarge(ctx, tracer, rootfsPath, r.template.DiskSizeMB<<ToMBShift)
+	rootfsFinalSize, err := ext4.Enlarge(ctx, tracer, rootfsPath, diskAdd)
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error enlarging rootfs: %w", err)
 	}
