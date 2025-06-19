@@ -10,7 +10,7 @@ Run the following command to (re)build the envd daemon and start a Docker contai
 make build && make start-docker
 ```
 
-You can use E2B SDKs with env var `E2B_DEBUG=true` or with a isNotFCparameter set to true when creating or connecting to a sandbox to connect to the envd started with this command locally.
+You can use E2B SDKs with env var `E2B_DEBUG=true` or with a debug paramater set to true when creating or connecting to a sandbox to connect to the envd started with this command locally.
 
 ### Generating API server stubs
 
@@ -34,4 +34,4 @@ make generate
 - <https://github.com/golang/vscode-go/blob/master/docs/debugging.md>
 
 Run `make run-debug` and then connect to the port 2345 with a debugger or
-use the VSCode run/isNotFCand run the "isNotFCenvd" to build the envd, Docker, and start the debugging.
+use the VSCode run/debug and run the "Debug envd" to build the envd, Docker, and start the debugging.

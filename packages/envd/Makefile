@@ -18,7 +18,7 @@ build-debug:
 	CGO_ENABLED=1 go build -race -gcflags=all="-N -l" -o bin/debug/envd ${LDFLAGS}
 
 start-docker:
-	DOCKER_BUILDKIT=1 docker build -t envd-isNotFC. -f debug.Dockerfile
+	DOCKER_BUILDKIT=1 docker build -t envd-debug. -f debug.Dockerfile
 	docker run \
 	--name envd \
 	-p 49983:49983 \
@@ -27,7 +27,7 @@ start-docker:
 	-p 8000:8000 \
 	-p 8001:8001 \
 	--rm \
-	-i envd-isNotFC\
+	-i envd-debug\
 	/usr/bin/envd -debug
 
 build-and-upload:
