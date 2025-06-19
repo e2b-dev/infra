@@ -9,6 +9,7 @@ import (
 	"time"
 
 	nomadapi "github.com/hashicorp/nomad/api"
+	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -48,8 +49,7 @@ func New(
 	tracer trace.Tracer,
 	nomadClient *nomadapi.Client,
 	posthogClient *analyticscollector.PosthogClient,
-	redisClient dns.Rediser,
-	redisClusterClient dns.Rediser,
+	redisClient redis.UniversalClient,
 	dbClient *db.DB,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics()
@@ -57,7 +57,7 @@ func New(
 		zap.L().Error("Error initializing Analytics client", zap.Error(err))
 	}
 
-	dnsServer := dns.New(ctx, redisClient, redisClusterClient)
+	dnsServer := dns.New(ctx, redisClient)
 
 	if env.IsLocal() {
 		zap.L().Info("Running locally, skipping starting DNS server")
@@ -99,7 +99,6 @@ func New(
 			OrchestratorAddress: fmt.Sprintf("%s:%s", "127.0.0.1", consts.OrchestratorPort),
 			IPAddress:           "127.0.0.1",
 		})
-
 		if err != nil {
 			zap.L().Error("Error connecting to local node. If you're starting the API server locally, make sure you run 'make connect-orchestrator' to connect to the node remotely before starting the local API server.", zap.Error(err))
 			return nil, err
@@ -171,7 +170,6 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 	if o.dns != nil {
 		if err := o.dns.Close(ctx); err != nil {
 			errs = append(errs, err)
-
 		}
 	}
 

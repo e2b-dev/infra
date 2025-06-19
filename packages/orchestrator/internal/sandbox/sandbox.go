@@ -406,6 +406,7 @@ func ResumeSandbox(
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create health check: %w", err)
 	}
+
 	sbx.Checks = checks
 
 	cleanup.AddPriority(func(ctx context.Context) error {

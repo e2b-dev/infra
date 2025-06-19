@@ -87,7 +87,6 @@ job "api" {
         OTEL_COLLECTOR_GRPC_ENDPOINT   = "${otel_collector_grpc_endpoint}"
         ADMIN_TOKEN                    = "${admin_token}"
         REDIS_URL                      = "${redis_url}"
-        REDIS_CLUSTER_URL              = "${redis_cluster_url}"
         DNS_PORT                       = "${dns_port_number}"
         SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
 
@@ -102,6 +101,28 @@ job "api" {
         args         = [
           "--port", "${port_number}",
         ]
+      }
+    }
+
+    task "db-migrator" {
+      driver = "docker"
+
+      env {
+        POSTGRES_CONNECTION_STRING="${postgres_connection_string}"
+      }
+
+      config {
+        image = "${db_migrator_docker_image}"
+      }
+
+      resources {
+        cpu    = 250
+        memory = 128
+      }
+
+      lifecycle {
+        hook = "prestart"
+        sidecar = false
       }
     }
   }

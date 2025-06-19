@@ -124,7 +124,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 	}
 
 	templateBuildDir := filepath.Join(templatesDirectory, template.BuildId)
-	err = os.MkdirAll(templateBuildDir, 0777)
+	err = os.MkdirAll(templateBuildDir, 0o777)
 	if err != nil {
 		return nil, fmt.Errorf("error creating template build directory: %w", err)
 	}

@@ -219,7 +219,6 @@ func (c *PollBuildStatus) setStatus(ctx context.Context) error {
 
 	c.status = status
 	return nil
-
 }
 
 func (c *PollBuildStatus) dispatchBasedOnStatus(ctx context.Context, status *template_manager.TemplateBuildStatusResponse) (error, bool) {
@@ -307,7 +306,6 @@ func (tm *TemplateManager) SetStatus(ctx context.Context, templateID string, bui
 func (tm *TemplateManager) SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string) error {
 	// first do database update to prevent race condition while calling status
 	err := tm.db.FinishEnvBuild(ctx, templateID, buildID, rootfsSize, envdVersion)
-
 	if err != nil {
 		tm.buildCache.SetStatus(buildID, envbuild.StatusFailed, "error when finishing build")
 		return err

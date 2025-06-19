@@ -179,7 +179,6 @@ func TestFilePermissions(t *testing.T) {
 			assert.Contains(t, line, "user user")
 		}
 	}
-
 }
 
 func createTextFile(tb testing.TB, path string, content string) (*bytes.Buffer, string) {

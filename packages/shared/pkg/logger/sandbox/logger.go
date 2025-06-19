@@ -23,6 +23,7 @@ type SandboxLoggerConfig struct {
 func NewLogger(ctx context.Context, loggerProvider log.LoggerProvider, config SandboxLoggerConfig) *zap.Logger {
 	level := zap.NewAtomicLevelAt(zap.DebugLevel)
 
+	enableConsole := false
 	var core zapcore.Core
 	if !config.IsInternal && config.CollectorAddress != "" {
 		// Add Vector exporter to the core
@@ -35,6 +36,7 @@ func NewLogger(ctx context.Context, loggerProvider log.LoggerProvider, config Sa
 		)
 	} else {
 		core = logger.GetOTELCore(loggerProvider, config.ServiceName)
+		enableConsole = true
 	}
 
 	lg, err := logger.NewLogger(ctx, logger.LoggerConfig{
@@ -45,7 +47,8 @@ func NewLogger(ctx context.Context, loggerProvider log.LoggerProvider, config Sa
 		InitialFields: []zap.Field{
 			zap.String("logger", config.ServiceName),
 		},
-		Cores: []zapcore.Core{core},
+		Cores:         []zapcore.Core{core},
+		EnableConsole: enableConsole,
 	})
 	if err != nil {
 		panic(err)

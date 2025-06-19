@@ -6,6 +6,10 @@ variable "gcp_zone" {
   type = string
 }
 
+variable "orchestration_repository_name" {
+  type = string
+}
+
 variable "consul_acl_token_secret" {
   type = string
 }
@@ -35,10 +39,6 @@ variable "otel_tracing_print" {
 }
 
 # API
-variable "api_docker_image_digest" {
-  type = string
-}
-
 variable "api_port" {
   type = object({
     name        = string
@@ -116,11 +116,7 @@ variable "client_proxy_resources_cpu_count" {
   type = number
 }
 
-variable "client_proxy_docker_image_digest" {
-  type = string
-}
-
-variable "client_proxy_health_port" {
+variable "edge_api_port" {
   type = object({
     name = string
     port = number
@@ -128,7 +124,11 @@ variable "client_proxy_health_port" {
   })
 }
 
-variable "client_proxy_port" {
+variable "edge_api_secret" {
+  type = string
+}
+
+variable "edge_proxy_port" {
   type = object({
     name = string
     port = number
@@ -167,7 +167,7 @@ variable "launch_darkly_api_key_secret_name" {
   type = string
 }
 
-variable "clickhouse_bucket_name" {
+variable "clickhouse_backups_bucket_name" {
   type = string
 }
 
@@ -195,10 +195,6 @@ variable "redis_url_secret_version" {
 }
 
 # Docker reverse proxy
-variable "docker_reverse_proxy_docker_image_digest" {
-  type = string
-}
-
 variable "docker_reverse_proxy_port" {
   type = object({
     name        = string
@@ -250,6 +246,14 @@ variable "redis_port" {
 }
 
 # Clickhouse
+variable "clickhouse_resources_memory_mb" {
+  type = number
+}
+
+variable "clickhouse_resources_cpu_count" {
+  type = number
+}
+
 variable "clickhouse_username" {
   type    = string
   default = "e2b"
@@ -268,6 +272,10 @@ variable "clickhouse_metrics_port" {
   default = 9363
 }
 
+variable "otel_collector_grpc_port" {
+  type    = number
+  default = 4317
+}
 variable "clickhouse_server_port" {
   type = object({
     name = string
@@ -283,9 +291,4 @@ variable "clickhouse_job_constraint_prefix" {
 variable "clickhouse_node_pool" {
   description = "The name of the Nomad pool."
   type        = string
-}
-
-variable "write_clickhouse_metrics" {
-  description = "Whether to write metrics to ClickHouse"
-  type        = bool
 }

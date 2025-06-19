@@ -13,16 +13,20 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
-type GetSandboxMetricsFunc func(ctx context.Context) (*SandboxMetrics, error)
-type SandboxMetrics struct {
-	Timestamp      int64   `json:"ts"`            // Unix Timestamp in UTC
-	CPUCount       int64   `json:"cpu_count"`     // Total CPU cores
-	CPUUsedPercent float64 `json:"cpu_used_pct"`  // Percent rounded to 2 decimal places
-	MemTotalMiB    int64   `json:"mem_total_mib"` // Total virtual memory in MiB
-	MemUsedMiB     int64   `json:"mem_used_mib"`  // Used virtual memory in MiB
-}
+type (
+	GetSandboxMetricsFunc func(ctx context.Context) (*SandboxMetrics, error)
+	SandboxMetrics        struct {
+		Timestamp      int64   `json:"ts"`            // Unix Timestamp in UTC
+		CPUCount       int64   `json:"cpu_count"`     // Total CPU cores
+		CPUUsedPercent float64 `json:"cpu_used_pct"`  // Percent rounded to 2 decimal places
+		MemTotalMiB    int64   `json:"mem_total_mib"` // Total virtual memory in MiB
+		MemUsedMiB     int64   `json:"mem_used_mib"`  // Used virtual memory in MiB
+	}
+)
 
 type SandboxObserver struct {
+	meterExporter sdkmetric.Exporter
+
 	meter       metric.Meter
 	cpuTotal    metric.Int64ObservableGauge
 	cpuUsed     metric.Float64ObservableGauge
@@ -30,12 +34,9 @@ type SandboxObserver struct {
 	memoryUsed  metric.Int64ObservableGauge
 }
 
-const (
-	shiftFromMiBToBytes        = 20 // Shift to convert MiB to bytes
-	sandboxMetricsExportPeriod = 5 * time.Second
-)
+const shiftFromMiBToBytes = 20 // Shift to convert MiB to bytes
 
-func NewSandboxObserver(ctx context.Context, commitSHA, clientID string) (*SandboxObserver, error) {
+func NewSandboxObserver(ctx context.Context, commitSHA, clientID string, sandboxMetricsExportPeriod time.Duration) (*SandboxObserver, error) {
 	deltaTemporality := otlpmetricgrpc.WithTemporalitySelector(func(kind sdkmetric.InstrumentKind) metricdata.Temporality {
 		// Use delta temporality for gauges and cumulative for all other instrument kinds.
 		// This is used to prevent reporting sandbox metrics indefinitely.
@@ -77,11 +78,12 @@ func NewSandboxObserver(ctx context.Context, commitSHA, clientID string) (*Sandb
 	}
 
 	return &SandboxObserver{
-		meter:       meter,
-		cpuTotal:    cpuTotal,
-		cpuUsed:     cpuUsed,
-		memoryTotal: memoryTotal,
-		memoryUsed:  memoryUsed,
+		meterExporter: externalMeterExporter,
+		meter:         meter,
+		cpuTotal:      cpuTotal,
+		cpuUsed:       cpuUsed,
+		memoryTotal:   memoryTotal,
+		memoryUsed:    memoryUsed,
 	}, nil
 }
 
@@ -102,10 +104,21 @@ func (mp *SandboxObserver) StartObserving(sandboxID, teamID string, getMetrics G
 			o.ObserveInt64(mp.memoryUsed, sbxMetrics.MemUsedMiB<<shiftFromMiBToBytes, attributes)
 			return nil
 		}, mp.cpuTotal, mp.cpuUsed, mp.memoryTotal, mp.memoryUsed)
-
 	if err != nil {
 		return nil, err
 	}
 
 	return unregister, nil
+}
+
+func (mp *SandboxObserver) Close(ctx context.Context) error {
+	if mp == nil {
+		return nil
+	}
+
+	if err := mp.meterExporter.Shutdown(ctx); err != nil {
+		return fmt.Errorf("failed to shutdown sandbox observer meter provider: %w", err)
+	}
+
+	return nil
 }

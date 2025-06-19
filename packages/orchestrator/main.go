@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"slices"
 	"syscall"
+	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -27,6 +28,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -42,13 +44,17 @@ const (
 	defaultProxyPort      = 5007
 	defaultEventProxyPort = 5010
 
+	sandboxMetricExportPeriod = 5 * time.Second
+
 	version = "0.1.0"
 
 	fileLockName = "/orchestrator.lock"
 )
 
-var forceStop = env.GetEnv("FORCE_STOP", "false") == "true"
-var commitSHA string
+var (
+	forceStop = env.GetEnv("FORCE_STOP", "false") == "true"
+	commitSHA string
+)
 
 func main() {
 	port := flag.Uint("port", defaultPort, "orchestrator server port")
@@ -152,10 +158,11 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 	}()
 
 	globalLogger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
-		ServiceName: serviceName,
-		IsInternal:  true,
-		IsDebug:     env.IsDebug(),
-		Cores:       []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
+		ServiceName:   serviceName,
+		IsInternal:    true,
+		IsDebug:       env.IsDebug(),
+		Cores:         []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
+		EnableConsole: true,
 	}))
 	defer func(l *zap.Logger) {
 		err := l.Sync()
@@ -231,7 +238,17 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 
 	grpcSrv := grpcserver.New(tel.TracerProvider, tel.MeterProvider, serviceInfo)
 
-	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, eventProxy, sandboxes)
+	featureFlags, err := featureflags.NewClient()
+	if err != nil {
+		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
+	}
+
+	sandboxObserver, err := telemetry.NewSandboxObserver(ctx, serviceInfo.SourceCommit, serviceInfo.ClientId, sandboxMetricExportPeriod)
+	if err != nil {
+		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
+	}
+
+	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, eventProxy, sandboxes, sandboxObserver, featureFlags)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
@@ -259,6 +276,8 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 		networkPool,
 		devicePool,
 		sandboxProxy,
+		featureFlags,
+		sandboxObserver,
 	)
 
 	// Initialize the template manager only if the service is enabled

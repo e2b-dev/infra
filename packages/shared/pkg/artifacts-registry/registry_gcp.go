@@ -39,7 +39,6 @@ func NewGCPArtifactsRegistry(ctx context.Context) (*GCPArtifactsRegistry, error)
 func (g *GCPArtifactsRegistry) Delete(ctx context.Context, templateId string, buildId string) error {
 	tagPath := g.getDockerImageTagPath(templateId, buildId)
 	err := g.registry.DeleteTag(ctx, &artifactregistrypb.DeleteTagRequest{Name: tagPath})
-
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
 			return ErrImageNotExists

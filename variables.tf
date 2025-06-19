@@ -106,7 +106,6 @@ variable "client_proxy_count" {
   default = 1
 }
 
-
 variable "client_proxy_resources_memory_mb" {
   type    = number
   default = 1024
@@ -117,20 +116,21 @@ variable "client_proxy_resources_cpu_count" {
   default = 1
 }
 
-variable "client_proxy_health_port" {
+
+variable "edge_api_port" {
   type = object({
     name = string
     port = number
     path = string
   })
   default = {
-    name = "health"
+    name = "edge-api"
     port = 3001
     path = "/health"
   }
 }
 
-variable "client_proxy_port" {
+variable "edge_proxy_port" {
   type = object({
     name = string
     port = number
@@ -230,7 +230,7 @@ variable "orchestrator_proxy_port" {
 
 variable "template_manager_port" {
   type    = number
-  default = 5009
+  default = 5008 // we want to use the same port for both because of edge api
 }
 
 variable "environment" {
@@ -246,6 +246,16 @@ variable "otel_collector_resources_memory_mb" {
 variable "otel_collector_resources_cpu_count" {
   type    = number
   default = 0.5
+}
+
+variable "clickhouse_resources_memory_mb" {
+  type    = number
+  default = 8192
+}
+
+variable "clickhouse_resources_cpu_count" {
+  type    = number
+  default = 4
 }
 
 variable "otel_tracing_print" {

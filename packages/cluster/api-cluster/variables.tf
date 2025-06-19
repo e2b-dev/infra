@@ -151,7 +151,7 @@ variable "instance_group_update_policy_max_unavailable_percent" {
   default     = null
 }
 
-variable "client_proxy_health_port" {
+variable "edge_api_port" {
   type = object({
     name = string
     port = number
@@ -159,7 +159,7 @@ variable "client_proxy_health_port" {
   })
 }
 
-variable "client_proxy_port" {
+variable "edge_proxy_port" {
   type = object({
     name = string
     port = number

@@ -27,6 +27,6 @@ output "fc_template_bucket_name" {
   value = google_storage_bucket.fc_template_bucket.name
 }
 
-output "clickhouse_bucket_name" {
-  value = google_storage_bucket.clickhouse_bucket.name
+output "clickhouse_backups_bucket_name" {
+  value = google_storage_bucket.clickhouse_backups_bucket.name
 }

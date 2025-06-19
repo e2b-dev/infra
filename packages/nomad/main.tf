@@ -1,3 +1,12 @@
+terraform {
+  required_providers {
+    docker = {
+      source  = "kreuzwerker/docker"
+      version = "3.0.2"
+    }
+  }
+}
+
 # API
 data "google_secret_manager_secret_version" "postgres_connection_string" {
   secret = var.postgres_connection_string_secret_name
@@ -34,6 +43,27 @@ data "google_secret_manager_secret_version" "redis_url" {
   secret = var.redis_url_secret_version.secret
 }
 
+
+data "docker_registry_image" "api_image" {
+  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/api:latest"
+}
+
+resource "docker_image" "api_image" {
+  name          = data.docker_registry_image.api_image.name
+  pull_triggers = [data.docker_registry_image.api_image.sha256_digest]
+  platform      = "linux/amd64/v8"
+}
+
+data "docker_registry_image" "db_migrator_image" {
+  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/db-migrator:latest"
+}
+
+resource "docker_image" "db_migrator_image" {
+  name          = data.docker_registry_image.db_migrator_image.name
+  pull_triggers = [data.docker_registry_image.db_migrator_image.sha256_digest]
+  platform      = "linux/amd64/v8"
+}
+
 resource "nomad_job" "api" {
   jobspec = templatefile("${path.module}/api.hcl", {
     update_stanza = var.api_machine_count > 1
@@ -42,13 +72,13 @@ resource "nomad_job" "api" {
     prevent_colocation             = var.api_machine_count > 2
     orchestrator_port              = var.orchestrator_port
     template_manager_address       = "http://template-manager.service.consul:${var.template_manager_port}"
-    otel_collector_grpc_endpoint   = "localhost:4317"
+    otel_collector_grpc_endpoint   = "localhost:${var.otel_collector_grpc_port}"
     loki_address                   = "http://loki.service.consul:${var.loki_service_port.port}"
     logs_collector_address         = "http://localhost:${var.logs_proxy_port.port}"
     gcp_zone                       = var.gcp_zone
     port_name                      = var.api_port.name
     port_number                    = var.api_port.port
-    api_docker_image               = var.api_docker_image_digest
+    api_docker_image               = docker_image.api_image.repo_digest
     postgres_connection_string     = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
     supabase_jwt_secrets           = data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data
     posthog_api_key                = data.google_secret_manager_secret_version.posthog_api_key.secret_data
@@ -58,14 +88,14 @@ resource "nomad_job" "api" {
     otel_tracing_print             = var.otel_tracing_print
     nomad_acl_token                = var.nomad_acl_token_secret
     admin_token                    = var.api_admin_token
-    redis_url                      = "redis://redis.service.consul:${var.redis_port.port}"
-    redis_cluster_url              = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
+    redis_url                      = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : "redis.service.consul:${var.redis_port.port}"
     dns_port_number                = var.api_dns_port_number
     clickhouse_connection_string   = "clickhouse.service.consul:9000"
     clickhouse_username            = var.clickhouse_username
     clickhouse_password            = random_password.clickhouse_password.result
     clickhouse_database            = var.clickhouse_database
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
+    db_migrator_docker_image       = docker_image.db_migrator_image.repo_digest
   })
 }
 
@@ -82,13 +112,24 @@ resource "nomad_job" "redis" {
   )
 }
 
+data "docker_registry_image" "docker_reverse_proxy_image" {
+  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/docker-reverse-proxy"
+}
+
+resource "docker_image" "docker_reverse_proxy_image" {
+  name          = data.docker_registry_image.docker_reverse_proxy_image.name
+  pull_triggers = [data.docker_registry_image.docker_reverse_proxy_image.sha256_digest]
+  platform      = "linux/amd64/v8"
+}
+
+
 resource "nomad_job" "docker_reverse_proxy" {
   jobspec = file("${path.module}/docker-reverse-proxy.hcl")
 
   hcl2 {
     vars = {
       gcp_zone                      = var.gcp_zone
-      image_name                    = var.docker_reverse_proxy_docker_image_digest
+      image_name                    = docker_image.docker_reverse_proxy_image.repo_digest
       postgres_connection_string    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
       google_service_account_secret = var.docker_reverse_proxy_service_account_key
       port_number                   = var.docker_reverse_proxy_port.port
@@ -102,23 +143,40 @@ resource "nomad_job" "docker_reverse_proxy" {
   }
 }
 
+data "docker_registry_image" "proxy_image" {
+  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/client-proxy"
+}
+
+resource "docker_image" "client_proxy_image" {
+  name          = data.docker_registry_image.proxy_image.name
+  pull_triggers = [data.docker_registry_image.proxy_image.sha256_digest]
+  platform      = "linux/amd64/v8"
+}
+
 resource "nomad_job" "client_proxy" {
-  jobspec = templatefile("${path.module}/client-proxy.hcl",
+  jobspec = templatefile("${path.module}/edge.hcl",
     {
       update_stanza = var.api_machine_count > 1
       count         = var.client_proxy_count
       cpu_count     = var.client_proxy_resources_cpu_count
       memory_mb     = var.client_proxy_resources_memory_mb
 
-      gcp_zone           = var.gcp_zone
-      port_name          = var.client_proxy_port.name
-      port_number        = var.client_proxy_port.port
-      health_port_number = var.client_proxy_health_port.port
-      environment        = var.environment
+      gcp_zone    = var.gcp_zone
+      environment = var.environment
 
-      image_name = var.client_proxy_docker_image_digest
+      redis_url = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : "redis.service.consul:${var.redis_port.port}"
+      loki_url  = "http://loki.service.consul:${var.loki_service_port.port}"
 
-      otel_collector_grpc_endpoint = "localhost:4317"
+      proxy_port_name   = var.edge_proxy_port.name
+      proxy_port        = var.edge_proxy_port.port
+      api_port_name     = var.edge_api_port.name
+      api_port          = var.edge_api_port.port
+      api_secret        = var.edge_api_secret
+      orchestrator_port = var.orchestrator_port
+
+      image_name = docker_image.client_proxy_image.repo_digest
+
+      otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
       logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
       launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   })
@@ -204,20 +262,22 @@ resource "nomad_job" "otel_collector" {
   jobspec = templatefile("${path.module}/otel-collector.hcl", {
     memory_mb = var.otel_collector_resources_memory_mb
     cpu_count = var.otel_collector_resources_cpu_count
+    gcp_zone  = var.gcp_zone
 
-    grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
-    grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
-    grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
-    consul_token                 = var.consul_acl_token_secret
-    clickhouse_metrics_port      = var.clickhouse_metrics_port
+    otel_collector_grpc_port = var.otel_collector_grpc_port
 
-    clickhouse_username = var.clickhouse_username
-    clickhouse_password = random_password.clickhouse_password.result
-    clickhouse_port     = var.clickhouse_server_port.port
-    clickhouse_host     = "clickhouse.service.consul"
-    clickhouse_database = var.clickhouse_database
+    otel_collector_config = templatefile("${path.module}/configs/otel-collector.yaml", {
+      grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
+      grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
+      grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
+      consul_token                 = var.consul_acl_token_secret
 
-    gcp_zone = var.gcp_zone
+      clickhouse_username = var.clickhouse_username
+      clickhouse_password = random_password.clickhouse_password.result
+      clickhouse_port     = var.clickhouse_server_port.port
+      clickhouse_host     = "clickhouse.service.consul"
+      clickhouse_database = var.clickhouse_database
+    })
   })
 }
 
@@ -338,9 +398,9 @@ locals {
     logs_collector_public_ip     = var.logs_proxy_address
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
-    otel_collector_grpc_endpoint = "localhost:4317"
-    write_to_clickhouse          = var.environment == "dev" ? true : var.write_clickhouse_metrics
+    otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
     allow_sandbox_internet       = var.allow_sandbox_internet
+    launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   }
 
   orchestrator_job_check = templatefile("${path.module}/orchestrator.hcl", merge(
@@ -418,7 +478,7 @@ resource "nomad_job" "template_manager" {
     template_manager_checksum    = data.external.template_manager.result.hex
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
-    otel_collector_grpc_endpoint = "localhost:4317"
+    otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
     logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
     logs_collector_public_ip     = var.logs_proxy_address
     orchestrator_services        = "template-manager"
@@ -486,7 +546,7 @@ resource "google_service_account" "clickhouse_service_account" {
 }
 
 resource "google_storage_bucket_iam_member" "clickhouse_service_account_iam" {
-  bucket = var.clickhouse_bucket_name
+  bucket = var.clickhouse_backups_bucket_name
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.clickhouse_service_account.email}"
 }
@@ -495,17 +555,16 @@ resource "google_storage_hmac_key" "clickhouse_hmac_key" {
   service_account_email = google_service_account.clickhouse_service_account.email
 }
 
+
 resource "nomad_job" "clickhouse" {
-  # TODO: Currently only in dev
-  count = var.environment == "dev" ? 1 : 0
+  count = var.clickhouse_server_count > 0 ? 1 : 0
   jobspec = templatefile("${path.module}/clickhouse.hcl", {
-    zone                    = var.gcp_zone
-    server_secret           = random_password.clickhouse_server_secret.result
-    clickhouse_version      = "25.4.5.24"
-    gcs_bucket              = var.clickhouse_bucket_name
-    gcs_folder              = "clickhouse-data"
-    hmac_key                = google_storage_hmac_key.clickhouse_hmac_key.access_id
-    hmac_secret             = google_storage_hmac_key.clickhouse_hmac_key.secret
+    server_secret      = random_password.clickhouse_server_secret.result
+    clickhouse_version = "25.4.5.24"
+
+    cpu_count = var.clickhouse_resources_cpu_count
+    memory_mb = var.clickhouse_resources_memory_mb
+
     username                = var.clickhouse_username
     password                = random_password.clickhouse_password.result
     clickhouse_metrics_port = var.clickhouse_metrics_port
@@ -513,7 +572,82 @@ resource "nomad_job" "clickhouse" {
     server_count            = var.clickhouse_server_count
     resources_memory_gib    = 8
 
+    otel_agent_config = templatefile("${path.module}/configs/clickhouse-otel-agent.yaml", {
+      clickhouse_metrics_port  = var.clickhouse_metrics_port
+      otel_collector_grpc_port = var.otel_collector_grpc_port
+    })
+
     job_constraint_prefix = var.clickhouse_job_constraint_prefix
     node_pool             = var.clickhouse_node_pool
+  })
+}
+
+resource "google_service_account_key" "clickhouse_service_account_key" {
+  service_account_id = google_service_account.clickhouse_service_account.id
+}
+
+
+resource "nomad_job" "clickhouse_backup" {
+  count = var.clickhouse_server_count > 0 ? 1 : 0
+  jobspec = templatefile("${path.module}/clickhouse-backup.hcl", {
+    clickhouse_backup_version = "2.6.22"
+
+    gcs_bucket                   = var.clickhouse_backups_bucket_name
+    gcs_folder                   = "clickhouse-data"
+    gcs_credentials_json_encoded = google_service_account_key.clickhouse_service_account_key.private_key
+
+    server_count        = var.clickhouse_server_count
+    clickhouse_username = var.clickhouse_username
+    clickhouse_password = random_password.clickhouse_password.result
+    clickhouse_port     = var.clickhouse_server_port.port
+
+    job_constraint_prefix = var.clickhouse_job_constraint_prefix
+    node_pool             = var.clickhouse_node_pool
+  })
+}
+
+resource "nomad_job" "clickhouse_backup_restore" {
+  count = var.clickhouse_server_count > 0 ? 1 : 0
+  jobspec = templatefile("${path.module}/clickhouse-backup-restore.hcl", {
+    clickhouse_backup_version = "2.6.22"
+
+    gcs_bucket                   = var.clickhouse_backups_bucket_name
+    gcs_folder                   = "clickhouse-data"
+    gcs_credentials_json_encoded = google_service_account_key.clickhouse_service_account_key.private_key
+
+    server_count        = var.clickhouse_server_count
+    clickhouse_username = var.clickhouse_username
+    clickhouse_password = random_password.clickhouse_password.result
+    clickhouse_port     = var.clickhouse_server_port.port
+
+    job_constraint_prefix = var.clickhouse_job_constraint_prefix
+    node_pool             = var.clickhouse_node_pool
+  })
+}
+
+
+data "docker_registry_image" "clickhouse_migrator_image" {
+  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/clickhouse-migrator:latest"
+}
+
+resource "docker_image" "clickhouse_migrator_image" {
+  name          = data.docker_registry_image.clickhouse_migrator_image.name
+  pull_triggers = [data.docker_registry_image.clickhouse_migrator_image.sha256_digest]
+  platform      = "linux/amd64/v8"
+}
+
+
+resource "nomad_job" "clickhouse_migrator" {
+  count = var.clickhouse_server_count > 0 ? 1 : 0
+  jobspec = templatefile("${path.module}/clickhouse-migrator.hcl", {
+    clickhouse_migrator_version = docker_image.clickhouse_migrator_image.repo_digest
+
+    server_count          = var.clickhouse_server_count
+    job_constraint_prefix = var.clickhouse_job_constraint_prefix
+    node_pool             = var.clickhouse_node_pool
+
+    clickhouse_username = var.clickhouse_username
+    clickhouse_password = random_password.clickhouse_password.result
+    clickhouse_port     = var.clickhouse_server_port.port
   })
 }

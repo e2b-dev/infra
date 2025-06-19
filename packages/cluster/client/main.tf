@@ -1,7 +1,3 @@
-locals {
-  max_replicas = max(var.cluster_size, var.cluster_size_max)
-}
-
 resource "google_compute_health_check" "nomad_check" {
   name                = "${var.cluster_name}-nomad-client-check"
   check_interval_sec  = 15
@@ -20,6 +16,7 @@ resource "google_compute_health_check" "nomad_check" {
 }
 
 resource "google_compute_region_autoscaler" "client" {
+  count    = var.cluster_size < var.cluster_size_max ? 1 : 0
   provider = google-beta
 
   name   = "${var.cluster_name}-client-autoscaler"
@@ -27,11 +24,11 @@ resource "google_compute_region_autoscaler" "client" {
   target = google_compute_region_instance_group_manager.client_cluster.id
 
   autoscaling_policy {
-    max_replicas    = max(local.max_replicas, var.cluster_size)
+    max_replicas    = var.cluster_size_max
     min_replicas    = var.cluster_size
     cooldown_period = 240
     # Turn off autoscaling when the cluster size is equal to the maximum size.
-    mode = local.max_replicas != var.cluster_size ? "ONLY_SCALE_OUT" : "OFF"
+    mode = "ONLY_SCALE_OUT"
 
     cpu_utilization {
       target = 0.6
@@ -42,6 +39,8 @@ resource "google_compute_region_autoscaler" "client" {
 resource "google_compute_region_instance_group_manager" "client_cluster" {
   name   = "${var.cluster_name}-rig"
   region = var.gcp_region
+
+  target_size = var.cluster_size < var.cluster_size_max ? null : var.cluster_size
 
   version {
     name              = google_compute_instance_template.client.id

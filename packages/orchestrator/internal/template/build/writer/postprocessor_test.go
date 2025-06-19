@@ -55,7 +55,6 @@ func TestPostProcessor_Start(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			tw := &testWriter{}
 			ctx := context.TODO()
 			errChan := make(chan error)
@@ -82,7 +81,6 @@ func TestPostProcessor_Start(t *testing.T) {
 			if !strings.Contains(logs, tt.fields.shouldContain) {
 				t.Errorf("expected data to contain %s, got %s", tt.fields.shouldContain, logs)
 			}
-
 		})
 	}
 }

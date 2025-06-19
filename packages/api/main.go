@@ -142,7 +142,7 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 		// so that we can log team ID.
 		customMiddleware.ExcludeRoutes(
 			func(c *gin.Context) {
-				var teamID = ""
+				teamID := ""
 
 				// Get team from context, use TeamContextKey
 				teamInfo := c.Value(auth.TeamContextKey)
@@ -225,10 +225,11 @@ func run() int {
 	}()
 
 	logger := zap.Must(l.NewLogger(ctx, l.LoggerConfig{
-		ServiceName: serviceName,
-		IsInternal:  true,
-		IsDebug:     env.IsDebug(),
-		Cores:       []zapcore.Core{l.GetOTELCore(tel.LogsProvider, serviceName)},
+		ServiceName:   serviceName,
+		IsInternal:    true,
+		IsDebug:       env.IsDebug(),
+		Cores:         []zapcore.Core{l.GetOTELCore(tel.LogsProvider, serviceName)},
+		EnableConsole: true,
 	}))
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)
@@ -380,7 +381,6 @@ func run() int {
 			// this probably shouldn't happen...
 			logger.Info("http service exited without error", zap.Int("port", port))
 		}
-
 	}()
 
 	wg.Add(1)
@@ -411,7 +411,6 @@ func run() int {
 			exitCode.Add(1)
 			logger.Error("http service shutdown error", zap.Int("port", port), zap.Error(err))
 		}
-
 	}()
 
 	// wait for the HTTP service to complete shutting down first

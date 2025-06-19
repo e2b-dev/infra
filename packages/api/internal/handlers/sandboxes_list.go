@@ -45,7 +45,6 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 			SnapshotExcludeSbxIds: runningSandboxesIDs,
 		},
 	)
-
 	if err != nil {
 		return nil, fmt.Errorf("error getting team snapshots: %s", err)
 	}

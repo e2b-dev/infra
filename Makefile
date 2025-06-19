@@ -38,6 +38,8 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, CLIENT_PROXY_COUNT) \
 	$(call tfvar, CLIENT_PROXY_CPU_COUNT) \
 	$(call tfvar, CLIENT_PROXY_RESOURCES_MEMORY_MB) \
+	$(call tfvar, CLICKHOUSE_RESOURCES_CPU_COUNT) \
+	$(call tfvar, CLICKHOUSE_RESOURCES_MEMORY_MB) \
 	$(call tfvar, LOKI_RESOURCES_CPU_COUNT) \
 	$(call tfvar, LOKI_RESOURCES_MEMORY_MB) \
 	$(call tfvar, OTEL_TRACING_PRINT) \
@@ -60,7 +62,7 @@ login-gcloud:
 .PHONY: init
 init:
 	@ printf "Initializing Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	gcloud storage buckets create gs://$(TERRAFORM_STATE_BUCKET) --location $(GCP_REGION) --project $(GCP_PROJECT_ID) --default-storage-class STANDARD  --uniform-bucket-level-access > /dev/null 2>&1 || true
 	$(TF) init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
 	$(tf_vars) $(TF) apply -target=module.init -target=module.buckets -auto-approve -input=false -compact-warnings
@@ -116,7 +118,7 @@ plan-only-jobs/%:
 .PHONY: apply
 apply:
 	@ printf "Applying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	$(tf_vars) \
 	$(TF) apply \
 	-auto-approve \
@@ -141,7 +143,7 @@ plan-without-jobs:
 .PHONY: destroy
 destroy:
 	@ printf "Destroying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	$(tf_vars) \
 	$(TF) destroy \
 	-compact-warnings \
@@ -163,14 +165,22 @@ build-and-upload:build-and-upload/docker-reverse-proxy
 build-and-upload:build-and-upload/orchestrator
 build-and-upload:build-and-upload/template-manager
 build-and-upload:build-and-upload/envd
+build-and-upload:build-and-upload/clickhouse-migrator
 build-and-upload/template-manager:
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/template-manager
 build-and-upload/orchestrator:
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/orchestrator
+build-and-upload/api:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/api build-and-upload
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/db build-and-upload
+build-and-upload/clickhouse-migrator:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/clickhouse build-and-upload
 build-and-upload/%:
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/$(notdir $@) build-and-upload
 
 .PHONY: copy-public-builds
@@ -180,7 +190,7 @@ copy-public-builds:
 
 
 .PHONY: generate
-generate: generate/api generate/orchestrator generate/envd generate/db
+generate: generate/api generate/orchestrator generate/client-proxy generate/envd generate/db
 generate/%:
 	@echo "Generating code for *$(notdir $@)*"
 	$(MAKE) -C packages/$(notdir $@) generate
@@ -203,7 +213,7 @@ switch-env:
 .PHONY: import
 import:
 	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	$(tf_vars) $(TF) import $(TARGET) $(ID)
 
 .PHONY: setup-ssh

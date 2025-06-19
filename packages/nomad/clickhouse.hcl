@@ -2,13 +2,17 @@ job "clickhouse" {
   type        = "service"
   node_pool   = "${node_pool}"
 
-// TODO: Add rolling updates
-
 %{ for i in range("${server_count}") }
   group "server-${i + 1}" {
     count = 1
 
-// TODO: Set restarts
+
+    restart {
+      interval         = "5m"
+      attempts         = 5
+      delay            = "15s"
+      mode             = "delay"
+    }
 
     constraint {
       attribute = "$${meta.job_constraint}"
@@ -55,9 +59,8 @@ job "clickhouse" {
     task "clickhouse-server" {
       driver = "docker"
 
-      # TODO: Ipv6 isn't working, will be fixed later (works like this for now)
       env {
-           AWS_ENABLE_IPV6="false"
+           CLICKHOUSE_USER="${username}"
       }
 
       config {
@@ -73,15 +76,15 @@ job "clickhouse" {
         ]
 
         volumes = [
-          "/clickhouse/data/clickhouse-server-${i + 1}:/var/lib/clickhouse",
+          "/clickhouse/data:/var/lib/clickhouse",
           "local/config.xml:/etc/clickhouse-server/config.d/config.xml",
           "local/users.xml:/etc/clickhouse-server/users.d/users.xml",
         ]
       }
 
       resources {
-        cpu    = 4000
-        memory = 8192
+        cpu    = ${cpu_count * 1000}
+        memory = ${memory_mb}
       }
 
       template {
@@ -117,29 +120,6 @@ job "clickhouse" {
 
     <default_replica_path>/var/lib/clickhouse/tables/{shard}/{database}/{table}</default_replica_path>
 
-    <storage_configuration>
-         <disks>
-            <s3>
-                <type>s3</type>
-                <endpoint>https://storage.googleapis.com/${gcs_bucket}/${gcs_folder}/server-${i + 1}/</endpoint>
-                <access_key_id>${hmac_key}</access_key_id>
-                <secret_access_key>${hmac_secret}</secret_access_key>
-                <support_batch_delete>false</support_batch_delete>
-                <object_removal_strategy>async</object_removal_strategy>
-<!--            <metadata_type>plain_rewritable</metadata_type> -->
-            </s3>
-        </disks>
-           <policies>
-            <s3>
-                <volumes>
-                    <main>
-                        <disk>s3</disk>
-                    </main>
-                </volumes>
-            </s3>
-        </policies>
-    </storage_configuration>
-
     <remote_servers replace="true">
       <cluster>
         <!-- a secret for servers to use to communicate to each other  -->
@@ -160,8 +140,48 @@ job "clickhouse" {
     <listen_host>0.0.0.0</listen_host>
 
     <asynchronous_metric_log>
-        <max_age>86400</max_age>  <!-- 1 day TTL -->
+        <ttl>event_date + INTERVAL 7 DAY</ttl>
     </asynchronous_metric_log>
+
+    <trace_log>
+        <ttl>event_date + INTERVAL 7 DAY</ttl>
+    </trace_log>
+
+    <text_log>
+        <ttl>event_date + INTERVAL 7 DAY</ttl>
+    </text_log>
+
+    <latency_log>
+        <ttl>event_date + INTERVAL 7 DAY</ttl>
+    </latency_log>
+
+    <query_log>
+        <ttl>event_date + INTERVAL 7 DAY</ttl>
+    </query_log>
+
+    <metric_log>
+        <ttl>event_date + INTERVAL 7 DAY</ttl>
+    </metric_log>
+
+    <processors_profile_log>
+        <ttl>event_date + INTERVAL 7 DAY</ttl>
+    </processors_profile_log>
+
+    <asynchronous_metric_log>
+        <ttl>event_date + INTERVAL 7 DAY</ttl>
+    </asynchronous_metric_log>
+
+    <part_log>
+        <ttl>event_date + INTERVAL 7 DAY</ttl>
+    </part_log>
+
+    <query_metrics_log>
+        <ttl>event_date + INTERVAL 7 DAY</ttl>
+    </query_metrics_log>
+
+    <error_log>
+        <ttl>event_date + INTERVAL 30 DAY</ttl>
+    </error_log>
 
     <prometheus>
         <port>${clickhouse_metrics_port}</port>
@@ -177,7 +197,6 @@ job "clickhouse" {
 EOF
       }
 
-# TODO: make sure default user isn't created or drop it (it has no password and it's superuser)
       template {
         destination = "local/users.xml"
         data        = <<EOF
@@ -187,6 +206,9 @@ EOF
         <${username}>
             <password>${password}</password>
             <networks>
+              <!-- Allow Nomad access https://web.archive.org/web/20250618172506/https://developer.hashicorp.com/nomad/docs/configuration/client#bridge_network_subnet -->
+              <ip>172.26.64.0/20</ip>
+              <ip>::1</ip> <!-- allow localhost access -->
               <ip>10.0.0.0/8</ip> <!-- restrict to internal traffic -->
             </networks>
             <profile>default</profile>
@@ -196,6 +218,38 @@ EOF
     </users>
 </clickhouse>
 EOF
+      }
+    }
+
+    task "otel-collector" {
+      driver = "docker"
+
+      config {
+        network_mode = "host"
+
+        image = "otel/opentelemetry-collector-contrib:0.123.0"
+        args = [
+          "--config=local/otel.yaml",
+          "--feature-gates=pkg.translator.prometheus.NormalizeName",
+        ]
+      }
+
+      resources {
+        cpu    = 250
+        memory = 128
+      }
+
+      template {
+        data        =<<EOF
+${otel_agent_config}
+EOF
+        destination = "local/otel.yaml"
+      }
+
+      # Order the sidecar BEFORE the app so it’s ready to receive traffic
+      lifecycle {
+        sidecar = "true"
+        hook = "prestart"
       }
     }
   }
