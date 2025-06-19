@@ -5,7 +5,6 @@ go 1.24.3
 require (
 	connectrpc.com/connect v1.18.1
 	github.com/Merovius/nbd v0.0.0-20240812113926-fd65a54c9949
-	github.com/Microsoft/hcsshim v0.12.9
 	github.com/bits-and-blooms/bitset v1.22.0
 	github.com/containernetworking/plugins v1.6.0
 	github.com/coreos/go-iptables v0.8.0
@@ -86,7 +85,6 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20250121191232-2f005788dc42 // indirect
-	github.com/containerd/cgroups/v3 v3.0.5 // indirect
 	github.com/containerd/fifo v1.1.0 // indirect
 	github.com/containerd/stargz-snapshotter/estargz v0.16.3 // indirect
 	github.com/containernetworking/cni v1.2.3 // indirect
