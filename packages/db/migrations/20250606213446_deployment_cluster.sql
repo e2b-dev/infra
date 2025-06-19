@@ -10,7 +10,7 @@ ALTER TABLE teams
     ADD COLUMN IF NOT EXISTS cluster_id UUID NULL
     REFERENCES clusters(id);
 
-CREATE UNIQUE INDEX IF NOT EXISTS teams_cluster_id_uq
+CREATE INDEX IF NOT EXISTS teams_cluster_id_uq
     ON teams (cluster_id)
     WHERE cluster_id IS NOT NULL;
 -- +goose StatementEnd
