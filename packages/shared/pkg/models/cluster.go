@@ -19,6 +19,8 @@ type Cluster struct {
 	ID uuid.UUID `json:"id,omitempty"`
 	// Endpoint holds the value of the "endpoint" field.
 	Endpoint string `json:"endpoint,omitempty"`
+	// EndpointTLS holds the value of the "endpoint_tls" field.
+	EndpointTLS bool `json:"endpoint_tls,omitempty"`
 	// Token holds the value of the "token" field.
 	Token        string `json:"token,omitempty"`
 	selectValues sql.SelectValues
@@ -29,6 +31,8 @@ func (*Cluster) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case cluster.FieldEndpointTLS:
+			values[i] = new(sql.NullBool)
 		case cluster.FieldEndpoint, cluster.FieldToken:
 			values[i] = new(sql.NullString)
 		case cluster.FieldID:
@@ -59,6 +63,12 @@ func (c *Cluster) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field endpoint", values[i])
 			} else if value.Valid {
 				c.Endpoint = value.String
+			}
+		case cluster.FieldEndpointTLS:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field endpoint_tls", values[i])
+			} else if value.Valid {
+				c.EndpointTLS = value.Bool
 			}
 		case cluster.FieldToken:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -104,6 +114,9 @@ func (c *Cluster) String() string {
 	builder.WriteString(fmt.Sprintf("id=%v, ", c.ID))
 	builder.WriteString("endpoint=")
 	builder.WriteString(c.Endpoint)
+	builder.WriteString(", ")
+	builder.WriteString("endpoint_tls=")
+	builder.WriteString(fmt.Sprintf("%v", c.EndpointTLS))
 	builder.WriteString(", ")
 	builder.WriteString("token=")
 	builder.WriteString(c.Token)

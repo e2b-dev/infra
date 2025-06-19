@@ -10,7 +10,7 @@ import (
 )
 
 const getActiveClusters = `-- name: GetActiveClusters :many
-SELECT DISTINCT c.id, c.endpoint, c.token
+SELECT DISTINCT c.id, c.endpoint, c.endpoint_tls, c.token
 FROM public.clusters c
 JOIN public.teams t ON t.cluster_id = c.id
 `
@@ -28,7 +28,12 @@ func (q *Queries) GetActiveClusters(ctx context.Context) ([]GetActiveClustersRow
 	var items []GetActiveClustersRow
 	for rows.Next() {
 		var i GetActiveClustersRow
-		if err := rows.Scan(&i.Cluster.ID, &i.Cluster.Endpoint, &i.Cluster.Token); err != nil {
+		if err := rows.Scan(
+			&i.Cluster.ID,
+			&i.Cluster.Endpoint,
+			&i.Cluster.EndpointTls,
+			&i.Cluster.Token,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

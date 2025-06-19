@@ -24,6 +24,8 @@ func (Cluster) Fields() []ent.Field {
 		field.String("endpoint").
 			NotEmpty().
 			SchemaType(map[string]string{dialect.Postgres: "text"}),
+		field.Bool("endpoint_tls").
+			Default(true),
 		field.String("token").
 			NotEmpty().
 			SchemaType(map[string]string{dialect.Postgres: "text"}),

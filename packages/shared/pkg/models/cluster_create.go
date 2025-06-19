@@ -29,6 +29,20 @@ func (cc *ClusterCreate) SetEndpoint(s string) *ClusterCreate {
 	return cc
 }
 
+// SetEndpointTLS sets the "endpoint_tls" field.
+func (cc *ClusterCreate) SetEndpointTLS(b bool) *ClusterCreate {
+	cc.mutation.SetEndpointTLS(b)
+	return cc
+}
+
+// SetNillableEndpointTLS sets the "endpoint_tls" field if the given value is not nil.
+func (cc *ClusterCreate) SetNillableEndpointTLS(b *bool) *ClusterCreate {
+	if b != nil {
+		cc.SetEndpointTLS(*b)
+	}
+	return cc
+}
+
 // SetToken sets the "token" field.
 func (cc *ClusterCreate) SetToken(s string) *ClusterCreate {
 	cc.mutation.SetToken(s)
@@ -48,6 +62,7 @@ func (cc *ClusterCreate) Mutation() *ClusterMutation {
 
 // Save creates the Cluster in the database.
 func (cc *ClusterCreate) Save(ctx context.Context) (*Cluster, error) {
+	cc.defaults()
 	return withHooks(ctx, cc.sqlSave, cc.mutation, cc.hooks)
 }
 
@@ -73,6 +88,14 @@ func (cc *ClusterCreate) ExecX(ctx context.Context) {
 	}
 }
 
+// defaults sets the default values of the builder before save.
+func (cc *ClusterCreate) defaults() {
+	if _, ok := cc.mutation.EndpointTLS(); !ok {
+		v := cluster.DefaultEndpointTLS
+		cc.mutation.SetEndpointTLS(v)
+	}
+}
+
 // check runs all checks and user-defined validators on the builder.
 func (cc *ClusterCreate) check() error {
 	if _, ok := cc.mutation.Endpoint(); !ok {
@@ -82,6 +105,9 @@ func (cc *ClusterCreate) check() error {
 		if err := cluster.EndpointValidator(v); err != nil {
 			return &ValidationError{Name: "endpoint", err: fmt.Errorf(`models: validator failed for field "Cluster.endpoint": %w`, err)}
 		}
+	}
+	if _, ok := cc.mutation.EndpointTLS(); !ok {
+		return &ValidationError{Name: "endpoint_tls", err: errors.New(`models: missing required field "Cluster.endpoint_tls"`)}
 	}
 	if _, ok := cc.mutation.Token(); !ok {
 		return &ValidationError{Name: "token", err: errors.New(`models: missing required field "Cluster.token"`)}
@@ -131,6 +157,10 @@ func (cc *ClusterCreate) createSpec() (*Cluster, *sqlgraph.CreateSpec) {
 	if value, ok := cc.mutation.Endpoint(); ok {
 		_spec.SetField(cluster.FieldEndpoint, field.TypeString, value)
 		_node.Endpoint = value
+	}
+	if value, ok := cc.mutation.EndpointTLS(); ok {
+		_spec.SetField(cluster.FieldEndpointTLS, field.TypeBool, value)
+		_node.EndpointTLS = value
 	}
 	if value, ok := cc.mutation.Token(); ok {
 		_spec.SetField(cluster.FieldToken, field.TypeString, value)
@@ -197,6 +227,18 @@ func (u *ClusterUpsert) SetEndpoint(v string) *ClusterUpsert {
 // UpdateEndpoint sets the "endpoint" field to the value that was provided on create.
 func (u *ClusterUpsert) UpdateEndpoint() *ClusterUpsert {
 	u.SetExcluded(cluster.FieldEndpoint)
+	return u
+}
+
+// SetEndpointTLS sets the "endpoint_tls" field.
+func (u *ClusterUpsert) SetEndpointTLS(v bool) *ClusterUpsert {
+	u.Set(cluster.FieldEndpointTLS, v)
+	return u
+}
+
+// UpdateEndpointTLS sets the "endpoint_tls" field to the value that was provided on create.
+func (u *ClusterUpsert) UpdateEndpointTLS() *ClusterUpsert {
+	u.SetExcluded(cluster.FieldEndpointTLS)
 	return u
 }
 
@@ -274,6 +316,20 @@ func (u *ClusterUpsertOne) UpdateEndpoint() *ClusterUpsertOne {
 	})
 }
 
+// SetEndpointTLS sets the "endpoint_tls" field.
+func (u *ClusterUpsertOne) SetEndpointTLS(v bool) *ClusterUpsertOne {
+	return u.Update(func(s *ClusterUpsert) {
+		s.SetEndpointTLS(v)
+	})
+}
+
+// UpdateEndpointTLS sets the "endpoint_tls" field to the value that was provided on create.
+func (u *ClusterUpsertOne) UpdateEndpointTLS() *ClusterUpsertOne {
+	return u.Update(func(s *ClusterUpsert) {
+		s.UpdateEndpointTLS()
+	})
+}
+
 // SetToken sets the "token" field.
 func (u *ClusterUpsertOne) SetToken(v string) *ClusterUpsertOne {
 	return u.Update(func(s *ClusterUpsert) {
@@ -345,6 +401,7 @@ func (ccb *ClusterCreateBulk) Save(ctx context.Context) ([]*Cluster, error) {
 	for i := range ccb.builders {
 		func(i int, root context.Context) {
 			builder := ccb.builders[i]
+			builder.defaults()
 			var mut Mutator = MutateFunc(func(ctx context.Context, m Mutation) (Value, error) {
 				mutation, ok := m.(*ClusterMutation)
 				if !ok {
@@ -513,6 +570,20 @@ func (u *ClusterUpsertBulk) SetEndpoint(v string) *ClusterUpsertBulk {
 func (u *ClusterUpsertBulk) UpdateEndpoint() *ClusterUpsertBulk {
 	return u.Update(func(s *ClusterUpsert) {
 		s.UpdateEndpoint()
+	})
+}
+
+// SetEndpointTLS sets the "endpoint_tls" field.
+func (u *ClusterUpsertBulk) SetEndpointTLS(v bool) *ClusterUpsertBulk {
+	return u.Update(func(s *ClusterUpsert) {
+		s.SetEndpointTLS(v)
+	})
+}
+
+// UpdateEndpointTLS sets the "endpoint_tls" field to the value that was provided on create.
+func (u *ClusterUpsertBulk) UpdateEndpointTLS() *ClusterUpsertBulk {
+	return u.Update(func(s *ClusterUpsert) {
+		s.UpdateEndpointTLS()
 	})
 }
 

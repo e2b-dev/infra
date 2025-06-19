@@ -931,6 +931,7 @@ type ClusterMutation struct {
 	typ           string
 	id            *uuid.UUID
 	endpoint      *string
+	endpoint_tls  *bool
 	token         *string
 	clearedFields map[string]struct{}
 	done          bool
@@ -1078,6 +1079,42 @@ func (m *ClusterMutation) ResetEndpoint() {
 	m.endpoint = nil
 }
 
+// SetEndpointTLS sets the "endpoint_tls" field.
+func (m *ClusterMutation) SetEndpointTLS(b bool) {
+	m.endpoint_tls = &b
+}
+
+// EndpointTLS returns the value of the "endpoint_tls" field in the mutation.
+func (m *ClusterMutation) EndpointTLS() (r bool, exists bool) {
+	v := m.endpoint_tls
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEndpointTLS returns the old "endpoint_tls" field's value of the Cluster entity.
+// If the Cluster object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClusterMutation) OldEndpointTLS(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEndpointTLS is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEndpointTLS requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEndpointTLS: %w", err)
+	}
+	return oldValue.EndpointTLS, nil
+}
+
+// ResetEndpointTLS resets all changes to the "endpoint_tls" field.
+func (m *ClusterMutation) ResetEndpointTLS() {
+	m.endpoint_tls = nil
+}
+
 // SetToken sets the "token" field.
 func (m *ClusterMutation) SetToken(s string) {
 	m.token = &s
@@ -1148,9 +1185,12 @@ func (m *ClusterMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ClusterMutation) Fields() []string {
-	fields := make([]string, 0, 2)
+	fields := make([]string, 0, 3)
 	if m.endpoint != nil {
 		fields = append(fields, cluster.FieldEndpoint)
+	}
+	if m.endpoint_tls != nil {
+		fields = append(fields, cluster.FieldEndpointTLS)
 	}
 	if m.token != nil {
 		fields = append(fields, cluster.FieldToken)
@@ -1165,6 +1205,8 @@ func (m *ClusterMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case cluster.FieldEndpoint:
 		return m.Endpoint()
+	case cluster.FieldEndpointTLS:
+		return m.EndpointTLS()
 	case cluster.FieldToken:
 		return m.Token()
 	}
@@ -1178,6 +1220,8 @@ func (m *ClusterMutation) OldField(ctx context.Context, name string) (ent.Value,
 	switch name {
 	case cluster.FieldEndpoint:
 		return m.OldEndpoint(ctx)
+	case cluster.FieldEndpointTLS:
+		return m.OldEndpointTLS(ctx)
 	case cluster.FieldToken:
 		return m.OldToken(ctx)
 	}
@@ -1195,6 +1239,13 @@ func (m *ClusterMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetEndpoint(v)
+		return nil
+	case cluster.FieldEndpointTLS:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEndpointTLS(v)
 		return nil
 	case cluster.FieldToken:
 		v, ok := value.(string)
@@ -1254,6 +1305,9 @@ func (m *ClusterMutation) ResetField(name string) error {
 	switch name {
 	case cluster.FieldEndpoint:
 		m.ResetEndpoint()
+		return nil
+	case cluster.FieldEndpointTLS:
+		m.ResetEndpointTLS()
 		return nil
 	case cluster.FieldToken:
 		m.ResetToken()

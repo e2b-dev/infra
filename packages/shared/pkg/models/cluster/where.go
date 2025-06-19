@@ -58,6 +58,11 @@ func Endpoint(v string) predicate.Cluster {
 	return predicate.Cluster(sql.FieldEQ(FieldEndpoint, v))
 }
 
+// EndpointTLS applies equality check predicate on the "endpoint_tls" field. It's identical to EndpointTLSEQ.
+func EndpointTLS(v bool) predicate.Cluster {
+	return predicate.Cluster(sql.FieldEQ(FieldEndpointTLS, v))
+}
+
 // Token applies equality check predicate on the "token" field. It's identical to TokenEQ.
 func Token(v string) predicate.Cluster {
 	return predicate.Cluster(sql.FieldEQ(FieldToken, v))
@@ -126,6 +131,16 @@ func EndpointEqualFold(v string) predicate.Cluster {
 // EndpointContainsFold applies the ContainsFold predicate on the "endpoint" field.
 func EndpointContainsFold(v string) predicate.Cluster {
 	return predicate.Cluster(sql.FieldContainsFold(FieldEndpoint, v))
+}
+
+// EndpointTLSEQ applies the EQ predicate on the "endpoint_tls" field.
+func EndpointTLSEQ(v bool) predicate.Cluster {
+	return predicate.Cluster(sql.FieldEQ(FieldEndpointTLS, v))
+}
+
+// EndpointTLSNEQ applies the NEQ predicate on the "endpoint_tls" field.
+func EndpointTLSNEQ(v bool) predicate.Cluster {
+	return predicate.Cluster(sql.FieldNEQ(FieldEndpointTLS, v))
 }
 
 // TokenEQ applies the EQ predicate on the "token" field.

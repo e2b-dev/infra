@@ -43,6 +43,20 @@ func (cu *ClusterUpdate) SetNillableEndpoint(s *string) *ClusterUpdate {
 	return cu
 }
 
+// SetEndpointTLS sets the "endpoint_tls" field.
+func (cu *ClusterUpdate) SetEndpointTLS(b bool) *ClusterUpdate {
+	cu.mutation.SetEndpointTLS(b)
+	return cu
+}
+
+// SetNillableEndpointTLS sets the "endpoint_tls" field if the given value is not nil.
+func (cu *ClusterUpdate) SetNillableEndpointTLS(b *bool) *ClusterUpdate {
+	if b != nil {
+		cu.SetEndpointTLS(*b)
+	}
+	return cu
+}
+
 // SetToken sets the "token" field.
 func (cu *ClusterUpdate) SetToken(s string) *ClusterUpdate {
 	cu.mutation.SetToken(s)
@@ -125,6 +139,9 @@ func (cu *ClusterUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if value, ok := cu.mutation.Endpoint(); ok {
 		_spec.SetField(cluster.FieldEndpoint, field.TypeString, value)
 	}
+	if value, ok := cu.mutation.EndpointTLS(); ok {
+		_spec.SetField(cluster.FieldEndpointTLS, field.TypeBool, value)
+	}
 	if value, ok := cu.mutation.Token(); ok {
 		_spec.SetField(cluster.FieldToken, field.TypeString, value)
 	}
@@ -162,6 +179,20 @@ func (cuo *ClusterUpdateOne) SetEndpoint(s string) *ClusterUpdateOne {
 func (cuo *ClusterUpdateOne) SetNillableEndpoint(s *string) *ClusterUpdateOne {
 	if s != nil {
 		cuo.SetEndpoint(*s)
+	}
+	return cuo
+}
+
+// SetEndpointTLS sets the "endpoint_tls" field.
+func (cuo *ClusterUpdateOne) SetEndpointTLS(b bool) *ClusterUpdateOne {
+	cuo.mutation.SetEndpointTLS(b)
+	return cuo
+}
+
+// SetNillableEndpointTLS sets the "endpoint_tls" field if the given value is not nil.
+func (cuo *ClusterUpdateOne) SetNillableEndpointTLS(b *bool) *ClusterUpdateOne {
+	if b != nil {
+		cuo.SetEndpointTLS(*b)
 	}
 	return cuo
 }
@@ -277,6 +308,9 @@ func (cuo *ClusterUpdateOne) sqlSave(ctx context.Context) (_node *Cluster, err e
 	}
 	if value, ok := cuo.mutation.Endpoint(); ok {
 		_spec.SetField(cluster.FieldEndpoint, field.TypeString, value)
+	}
+	if value, ok := cuo.mutation.EndpointTLS(); ok {
+		_spec.SetField(cluster.FieldEndpointTLS, field.TypeBool, value)
 	}
 	if value, ok := cuo.mutation.Token(); ok {
 		_spec.SetField(cluster.FieldToken, field.TypeString, value)

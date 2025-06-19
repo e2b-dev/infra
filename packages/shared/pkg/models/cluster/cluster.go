@@ -13,6 +13,8 @@ const (
 	FieldID = "id"
 	// FieldEndpoint holds the string denoting the endpoint field in the database.
 	FieldEndpoint = "endpoint"
+	// FieldEndpointTLS holds the string denoting the endpoint_tls field in the database.
+	FieldEndpointTLS = "endpoint_tls"
 	// FieldToken holds the string denoting the token field in the database.
 	FieldToken = "token"
 	// Table holds the table name of the cluster in the database.
@@ -23,6 +25,7 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldEndpoint,
+	FieldEndpointTLS,
 	FieldToken,
 }
 
@@ -39,6 +42,8 @@ func ValidColumn(column string) bool {
 var (
 	// EndpointValidator is a validator for the "endpoint" field. It is called by the builders before save.
 	EndpointValidator func(string) error
+	// DefaultEndpointTLS holds the default value on creation for the "endpoint_tls" field.
+	DefaultEndpointTLS bool
 	// TokenValidator is a validator for the "token" field. It is called by the builders before save.
 	TokenValidator func(string) error
 )
@@ -54,6 +59,11 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 // ByEndpoint orders the results by the endpoint field.
 func ByEndpoint(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEndpoint, opts...).ToFunc()
+}
+
+// ByEndpointTLS orders the results by the endpoint_tls field.
+func ByEndpointTLS(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEndpointTLS, opts...).ToFunc()
 }
 
 // ByToken orders the results by the token field.

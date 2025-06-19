@@ -40,6 +40,7 @@ var (
 	ClustersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true, Default: "gen_random_uuid()"},
 		{Name: "endpoint", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "endpoint_tls", Type: field.TypeBool, Default: true},
 		{Name: "token", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 	}
 	// ClustersTable holds the schema information for the "clusters" table.

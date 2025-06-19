@@ -3,6 +3,7 @@ package edge
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"sync"
@@ -109,7 +110,7 @@ func (p *Pool) sync(ctx context.Context) error {
 			logger := zap.L().With(l.WithClusterID(c.ID))
 			logger.Info("initializing newly discovered cluster")
 
-			cluster, err := NewCluster(p.ctx, c.Endpoint, c.Token, c.ID)
+			cluster, err := NewCluster(p.ctx, c.Endpoint, c.EndpointSsl, c.Token, c.ID)
 			if err != nil {
 				logger.Error("initializing cluster failed", zap.Error(err))
 			} else {
@@ -161,7 +162,7 @@ type Cluster struct {
 	Client *api.ClientWithResponses
 }
 
-func NewCluster(ctx context.Context, endpoint string, secret string, id uuid.UUID) (*Cluster, error) {
+func NewCluster(ctx context.Context, endpoint string, endpointTls bool, secret string, id uuid.UUID) (*Cluster, error) {
 	// so we during cluster disconnect we don't cancel the upper context
 	ctx = context.WithoutCancel(ctx)
 
@@ -176,7 +177,15 @@ func NewCluster(ctx context.Context, endpoint string, secret string, id uuid.UUI
 		return nil
 	}
 
-	client, err := api.NewClientWithResponses(endpoint, clientAuthMiddleware)
+	// generate the full endpoint URL
+	var endpointBaseUrl string
+	if endpointTls {
+		endpointBaseUrl = fmt.Sprintf("https://%s", endpoint)
+	} else {
+		endpointBaseUrl = fmt.Sprintf("http://%s", endpoint)
+	}
+
+	endpointClient, err := api.NewClientWithResponses(endpointBaseUrl, clientAuthMiddleware)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +194,7 @@ func NewCluster(ctx context.Context, endpoint string, secret string, id uuid.UUI
 		ctx: ctx,
 
 		Id:     id,
-		Client: client,
+		Client: endpointClient,
 	}, nil
 }
 

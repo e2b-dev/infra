@@ -1,9 +1,10 @@
 -- +goose Up
 -- +goose StatementBegin
 CREATE TABLE IF NOT EXISTS clusters (
-    id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    endpoint  TEXT NOT NULL,
-    token     TEXT NOT NULL
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    endpoint      TEXT NOT NULL,
+    endpoint_tls  BOOLEAN NOT NULL DEFAULT TRUE,
+    token         TEXT NOT NULL
 );
 
 ALTER TABLE teams
