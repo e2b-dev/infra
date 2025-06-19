@@ -101,7 +101,7 @@ func (c *RedisSandboxCatalog) StoreSandbox(sandboxId string, sandboxInfo *Sandbo
 	return nil
 }
 
-func (c *RedisSandboxCatalog) DeleteSandbox(sandboxId string) error {
+func (c *RedisSandboxCatalog) DeleteSandbox(sandboxId string, executionId string) error {
 	spanCtx, span := c.tracer.Start(c.ctx, "sandbox-catalog-delete")
 	defer span.End()
 
@@ -115,9 +115,25 @@ func (c *RedisSandboxCatalog) DeleteSandbox(sandboxId string) error {
 	ctx, ctxCancel := context.WithTimeout(spanCtx, catalogRedisTimeout)
 	defer ctxCancel()
 
+	data, err := c.redisClient.Get(ctx, c.getCatalogKey(sandboxId)).Bytes()
+	// If sandbox does not exist, we can return early
+	if err != nil {
+		return nil
+	}
+
+	var info *SandboxInfo
+	err = json.Unmarshal(data, &info)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal sandbox info: %w", err)
+	}
+
+	// Different execution is stored in the cache, we don't want to remove it
+	if info.ExecutionId != executionId {
+		return nil
+	}
+
 	c.redisClient.Del(ctx, c.getCatalogKey(sandboxId))
 	c.cache.Delete(sandboxId)
-
 	return nil
 }
 
