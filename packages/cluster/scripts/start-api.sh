@@ -50,16 +50,42 @@ cat <<EOF >/root/docker/config.json
 }
 EOF
 
+# Configure dnsmasq for Consul DNS routing
+# Detect the current DNS server dynamically
+PRIMARY_INTERFACE=$(ip route show default | awk '/default/ { print $5 }' | head -1)
+CLOUD_DNS=$(resolvectl status "$PRIMARY_INTERFACE" 2>/dev/null | grep "DNS Servers:" | sed 's/.*DNS Servers: *//' | awk '{print $1}')
 
-mkdir -p /etc/systemd/resolved.conf.d/
-touch /etc/systemd/resolved.conf.d/consul.conf
-cat <<EOF >/etc/systemd/resolved.conf.d/consul.conf
-[Resolve]
-DNS=127.0.0.1:8600
-DNSSEC=false
-Domains=~consul
+# Configure dnsmasq for domain-based DNS forwarding
+cat > /etc/dnsmasq.d/consul.conf << EOF
+# Use port 5353 to avoid conflict with systemd-resolved
+port=5353
+
+# Forward .consul domains to Consul DNS
+server=/consul/127.0.0.1#8600
+
+# Forward everything else to detected cloud DNS server
+server=${CLOUD_DNS}
+
+# Configuration
+no-resolv
+no-hosts
+listen-address=127.0.0.1
+no-dhcp-interface=
 EOF
+
+mkdir -p /etc/systemd/resolved.conf.d
+# Configure systemd-resolved to use dnsmasq
+cat > /etc/systemd/resolved.conf.d/dnsmasq.conf << EOF
+[Resolve]
+DNS=127.0.0.1:5353
+DNSSEC=false
+FallbackDNS=
+EOF
+
+# Start services
+systemctl restart dnsmasq
 systemctl restart systemd-resolved
+
 
 # These variables are passed in via Terraform template interpolation
 /opt/consul/bin/run-consul.sh --client \
