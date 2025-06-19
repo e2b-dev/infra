@@ -146,7 +146,7 @@ func Resize(ctx context.Context, tracer trace.Tracer, rootfsPath string, targetS
 }
 
 func Shrink(ctx context.Context, tracer trace.Tracer, rootfsPath string) (int64, error) {
-	ctx, resizeSpan := tracer.Start(ctx, "resize-ext4")
+	ctx, resizeSpan := tracer.Start(ctx, "shrink-ext4")
 	defer resizeSpan.End()
 
 	// Shrink the ext4 filesystem

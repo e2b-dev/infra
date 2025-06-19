@@ -1,16 +1,16 @@
 package oci
 
 import (
-	"archive/tar"
 	"context"
 	"fmt"
-	"io"
 	"os"
-	"path/filepath"
+	"os/exec"
 	"strings"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildah"
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/google/go-containerregistry/pkg/v1/empty"
+	"github.com/google/go-containerregistry/pkg/v1/layout"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -101,11 +101,12 @@ func ExtractToExt4(ctx context.Context, tracer trace.Tracer, img containerregist
 		}
 	}()
 
-	r := mutate.Extract(img)
-	defer r.Close()
+	zap.L().Debug("extracting image to ext4 filesystem",
+		zap.String("rootfs_path", rootfsPath),
+		zap.String("tmp_mount", tmpMount),
+	)
 
-	tr := tar.NewReader(r)
-	err = extractTarToDir(tr, tmpMount)
+	err = unpackRootfs(ctx, tracer, img, tmpMount)
 	if err != nil {
 		return fmt.Errorf("error extracting tar to directory: %w", err)
 	}
@@ -132,53 +133,78 @@ func ParseEnvs(envs []string) map[string]string {
 	return envMap
 }
 
-func extractTarToDir(tr *tar.Reader, targetDir string) error {
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
+func unpackRootfs(ctx context.Context, tracer trace.Tracer, srcImage containerregistry.Image, destDir string) (err error) {
+	_, childSpan := tracer.Start(ctx, "unpack-rootfs")
+	defer childSpan.End()
 
-		outPath := filepath.Join(targetDir, hdr.Name)
-
-		// Sanitize a path to avoid traversal
-		if !strings.HasPrefix(filepath.Clean(outPath), filepath.Clean(targetDir)) {
-			return fmt.Errorf("illegal file path: %s", hdr.Name)
-		}
-
-		switch hdr.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(outPath, os.FileMode(hdr.Mode)); err != nil {
-				return err
-			}
-		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
-				return err
-			}
-			f, err := os.OpenFile(outPath, os.O_CREATE|os.O_WRONLY, os.FileMode(hdr.Mode))
-			if err != nil {
-				return err
-			}
-			if _, err := io.Copy(f, tr); err != nil {
-				f.Close()
-				return err
-			}
-			f.Close()
-		case tar.TypeSymlink:
-			// Ensure parent directory exists
-			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
-				return err
-			}
-			if _, err := os.Lstat(outPath); err == nil {
-				os.Remove(outPath)
-			}
-			if err := os.Symlink(hdr.Linkname, outPath); err != nil {
-				return err
-			}
-		}
+	ociPath, err := os.MkdirTemp("", "oci-image")
+	if err != nil {
+		return fmt.Errorf("while creating temporary file for squashed image: %w", err)
 	}
+	defer func() {
+		os.Remove(ociPath)
+	}()
+
+	tag := "latest"
+
+	// Create an OCI layout in the temporary directory
+	err = createOCIExport(ctx, tracer, srcImage, tag, ociPath)
+
+	// Extract the rootfs from the OCI layout
+	containerName, err := buildah.From(ctx, tracer, "oci:"+ociPath+":"+tag)
+	if err != nil {
+		return fmt.Errorf("while creating buildah container from OCI layout: %w", err)
+	}
+	defer func() {
+		if removeErr := buildah.Remove(ctx, tracer, containerName); removeErr != nil {
+			zap.L().Error("error removing buildah container", zap.Error(removeErr))
+		}
+	}()
+
+	mountPath, err := buildah.Mount(ctx, tracer, containerName)
+	if err != nil {
+		return fmt.Errorf("while mounting buildah container: %w", err)
+	}
+	defer func() {
+		if unmountErr := buildah.Unmount(ctx, tracer, containerName); unmountErr != nil {
+			zap.L().Error("error unmounting buildah container", zap.Error(unmountErr))
+		}
+	}()
+
+	err = copyFiles(ctx, tracer, mountPath, destDir)
+	if err != nil {
+		return fmt.Errorf("while copying files from buildah container mount point to destination directory: %w", err)
+	}
+
+	return nil
+}
+
+func copyFiles(ctx context.Context, tracer trace.Tracer, src, dest string) error {
+	_, childSpan := tracer.Start(ctx, "copy-files")
+	defer childSpan.End()
+
+	cmd := exec.Command("rsync", "-a", "--whole-file", "--inplace", src+"/", dest)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("while copying files from %s to %s: %w: %s", src, dest, err, string(out))
+	}
+	return nil
+}
+
+func createOCIExport(ctx context.Context, tracer trace.Tracer, srcImage containerregistry.Image, tag, path string) error {
+	_, childSpan := tracer.Start(ctx, "create-oci-export")
+	defer childSpan.End()
+
+	p, err := layout.Write(path, empty.Index)
+	if err != nil {
+		return fmt.Errorf("while creating OCI layout: %w", err)
+	}
+	err = p.AppendImage(srcImage, layout.WithAnnotations(map[string]string{
+		"org.opencontainers.image.ref.name": tag,
+	}))
+	if err != nil {
+		return fmt.Errorf("while appending image to OCI layout: %w", err)
+	}
+	telemetry.ReportEvent(ctx, "created oci layout")
+
 	return nil
 }

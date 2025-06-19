@@ -8,6 +8,7 @@ import (
 
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
+	"github.com/google/go-containerregistry/pkg/v1/types"
 )
 
 type layerFile struct {
@@ -47,7 +48,7 @@ func LayerFile(filemap map[string]layerFile) (containerregistry.Layer, error) {
 	// Return a new copy of the buffer each time it's opened.
 	return tarball.LayerFromOpener(func() (io.ReadCloser, error) {
 		return io.NopCloser(bytes.NewBuffer(b.Bytes())), nil
-	})
+	}, tarball.WithMediaType(types.OCILayer))
 }
 
 // LayerSymlink creates a layer from a single symlink map. These layers are reproducible and consistent.
@@ -79,5 +80,5 @@ func LayerSymlink(symlinks map[string]string) (containerregistry.Layer, error) {
 
 	return tarball.LayerFromOpener(func() (io.ReadCloser, error) {
 		return io.NopCloser(bytes.NewBuffer(b.Bytes())), nil
-	})
+	}, tarball.WithMediaType(types.OCILayer))
 }
