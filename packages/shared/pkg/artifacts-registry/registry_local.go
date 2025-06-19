@@ -42,5 +42,7 @@ func (g *LocalArtifactsRegistry) GetImage(ctx context.Context, templateId string
 		return nil, fmt.Errorf("failed to get image from local registry: %w", err)
 	}
 
-	return mutate.MediaType(img, types.OCIManifestSchema1), nil
+	img = mutate.MediaType(img, types.OCIManifestSchema1)
+	img = mutate.ConfigMediaType(img, types.OCIConfigJSON)
+	return img, nil
 }
