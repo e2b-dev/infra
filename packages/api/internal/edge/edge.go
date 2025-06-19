@@ -209,8 +209,12 @@ func (c *Cluster) getTemplateBuilders() ([]*api.ClusterOrchestratorNode, error) 
 		return nil, err
 	}
 
+	if res.StatusCode() != http.StatusOK {
+		return nil, fmt.Errorf("failed to get builders from api: %s", res.Status())
+	}
+
 	if res.JSON200 == nil {
-		return nil, errors.New("api request failed")
+		return nil, errors.New("request to get builders returned nil response")
 	}
 
 	builders := make([]*api.ClusterOrchestratorNode, 0)
