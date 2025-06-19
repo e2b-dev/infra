@@ -110,7 +110,7 @@ func (p *Pool) sync(ctx context.Context) error {
 			logger := zap.L().With(l.WithClusterID(c.ID))
 			logger.Info("initializing newly discovered cluster")
 
-			cluster, err := NewCluster(p.ctx, c.Endpoint, c.EndpointSsl, c.Token, c.ID)
+			cluster, err := NewCluster(p.ctx, c.Endpoint, c.EndpointTls, c.Token, c.ID)
 			if err != nil {
 				logger.Error("initializing cluster failed", zap.Error(err))
 			} else {
@@ -199,10 +199,7 @@ func NewCluster(ctx context.Context, endpoint string, endpointTls bool, secret s
 }
 
 func (c *Cluster) Disconnect() {
-	select {
-	case <-c.ctx.Done():
-		return
-	}
+	<-c.ctx.Done()
 }
 
 func (c *Cluster) getTemplateBuilders() ([]*api.ClusterOrchestratorNode, error) {
