@@ -71,6 +71,8 @@ function install_dependencies {
   if os_is_ubuntu; then
     sudo apt-get update -y
     sudo apt-get install -y curl unzip jq
+    # install dnsmasq for consul dns routing 
+    sudo apt-get install -y dnsmasq
   else
     log_error "Could not find apt-get. Cannot install dependencies on this OS."
     exit 1
