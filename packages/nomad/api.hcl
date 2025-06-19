@@ -103,5 +103,27 @@ job "api" {
         ]
       }
     }
+
+    task "migrator" {
+      driver = "docker"
+
+      env {
+        GOOSE_DBSTRING="${postgres_connection_string}"
+      }
+
+      config {
+        image = "${api_migrator_docker_image}"
+      }
+
+      resources {
+        cpu    = 250
+        memory = 128
+      }
+
+      lifecycle {
+        hook = "prestart"
+        sidecar = false
+      }
+    }
   }
 }
