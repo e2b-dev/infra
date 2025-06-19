@@ -60,10 +60,6 @@ func NewPool(ctx context.Context, db *client.Client, tracer trace.Tracer) (*Pool
 	return p, nil
 }
 
-func (p *Pool) GetClusterById(clusterId uuid.UUID) (*Cluster, bool) {
-	return p.pool.Get(clusterId.String())
-}
-
 func (p *Pool) syncBackground() {
 	timer := time.NewTicker(poolSyncInterval)
 	defer timer.Stop()
@@ -144,9 +140,9 @@ func (p *Pool) sync(ctx context.Context) error {
 
 		// cluster disconnect takes time
 		wg.Add(1)
-		go func(custer *Cluster) {
+		go func(cluster *Cluster) {
 			zap.L().Info("removing cluster from pool", l.WithClusterID(cluster.Id))
-			custer.Disconnect()
+			cluster.Disconnect()
 			p.pool.Remove(cluster.Id.String())
 			wg.Done()
 		}(cluster)
@@ -194,13 +190,16 @@ func NewCluster(ctx context.Context, endpoint string, secret string, id uuid.UUI
 }
 
 func (c *Cluster) Disconnect() {
-	c.ctx.Done()
+	select {
+	case <-c.ctx.Done():
+		return
+	}
 }
 
-func (c *Cluster) getTemplateBuilders(ctx context.Context) ([]*api.ClusterOrchestratorNode, error) {
+func (c *Cluster) getTemplateBuilders() ([]*api.ClusterOrchestratorNode, error) {
 	res, err := c.Client.V1ServiceDiscoveryGetOrchestratorsWithResponse(c.ctx)
 	if err != nil {
-		zap.L().Error("failed to get orchestrators", zap.Error(err), l.WithClusterID(c.Id))
+		zap.L().Error("failed to get builders", zap.Error(err), l.WithClusterID(c.Id))
 		return nil, err
 	}
 
@@ -208,25 +207,25 @@ func (c *Cluster) getTemplateBuilders(ctx context.Context) ([]*api.ClusterOrches
 		return nil, errors.New("api request failed")
 	}
 
-	orchestrators := make([]*api.ClusterOrchestratorNode, 0)
+	builders := make([]*api.ClusterOrchestratorNode, 0)
 	for _, o := range *res.JSON200 {
 		if o.Status == api.Unhealthy || !slices.Contains(o.Roles, api.ClusterOrchestratorRoleTemplateManager) {
 			continue
 		}
 
-		orchestrators = append(orchestrators, &o)
+		builders = append(builders, &o)
 	}
 
-	return orchestrators, nil
+	return builders, nil
 }
 
 func (c *Cluster) GetTemplateBuilderById(nodeId string) (*api.ClusterOrchestratorNode, error) {
-	orchestrators, err := c.getTemplateBuilders(c.ctx)
+	builders, err := c.getTemplateBuilders()
 	if err != nil {
 		return nil, err
 	}
 
-	for _, o := range orchestrators {
+	for _, o := range builders {
 		if o.Id == nodeId {
 			return o, nil
 		}
@@ -236,13 +235,13 @@ func (c *Cluster) GetTemplateBuilderById(nodeId string) (*api.ClusterOrchestrato
 }
 
 func (c *Cluster) GetAvailableTemplateBuilder() (*api.ClusterOrchestratorNode, error) {
-	orchestrators, err := c.getTemplateBuilders(c.ctx)
+	builders, err := c.getTemplateBuilders()
 	if err != nil {
 		return nil, err
 	}
 
 	// todo: for now we are returning first healthy one
-	for _, o := range orchestrators {
+	for _, o := range builders {
 		if o.Status == api.Healthy {
 			return o, nil
 		}
