@@ -211,20 +211,6 @@ func (ebc *EnvBuildCreate) SetNillableEnvdVersion(s *string) *EnvBuildCreate {
 	return ebc
 }
 
-// SetClusterNodeID sets the "cluster_node_id" field.
-func (ebc *EnvBuildCreate) SetClusterNodeID(s string) *EnvBuildCreate {
-	ebc.mutation.SetClusterNodeID(s)
-	return ebc
-}
-
-// SetNillableClusterNodeID sets the "cluster_node_id" field if the given value is not nil.
-func (ebc *EnvBuildCreate) SetNillableClusterNodeID(s *string) *EnvBuildCreate {
-	if s != nil {
-		ebc.SetClusterNodeID(*s)
-	}
-	return ebc
-}
-
 // SetID sets the "id" field.
 func (ebc *EnvBuildCreate) SetID(u uuid.UUID) *EnvBuildCreate {
 	ebc.mutation.SetID(u)
@@ -416,10 +402,6 @@ func (ebc *EnvBuildCreate) createSpec() (*EnvBuild, *sqlgraph.CreateSpec) {
 	if value, ok := ebc.mutation.EnvdVersion(); ok {
 		_spec.SetField(envbuild.FieldEnvdVersion, field.TypeString, value)
 		_node.EnvdVersion = &value
-	}
-	if value, ok := ebc.mutation.ClusterNodeID(); ok {
-		_spec.SetField(envbuild.FieldClusterNodeID, field.TypeString, value)
-		_node.ClusterNodeID = &value
 	}
 	if nodes := ebc.mutation.EnvIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -722,24 +704,6 @@ func (u *EnvBuildUpsert) UpdateEnvdVersion() *EnvBuildUpsert {
 // ClearEnvdVersion clears the value of the "envd_version" field.
 func (u *EnvBuildUpsert) ClearEnvdVersion() *EnvBuildUpsert {
 	u.SetNull(envbuild.FieldEnvdVersion)
-	return u
-}
-
-// SetClusterNodeID sets the "cluster_node_id" field.
-func (u *EnvBuildUpsert) SetClusterNodeID(v string) *EnvBuildUpsert {
-	u.Set(envbuild.FieldClusterNodeID, v)
-	return u
-}
-
-// UpdateClusterNodeID sets the "cluster_node_id" field to the value that was provided on create.
-func (u *EnvBuildUpsert) UpdateClusterNodeID() *EnvBuildUpsert {
-	u.SetExcluded(envbuild.FieldClusterNodeID)
-	return u
-}
-
-// ClearClusterNodeID clears the value of the "cluster_node_id" field.
-func (u *EnvBuildUpsert) ClearClusterNodeID() *EnvBuildUpsert {
-	u.SetNull(envbuild.FieldClusterNodeID)
 	return u
 }
 
@@ -1064,27 +1028,6 @@ func (u *EnvBuildUpsertOne) UpdateEnvdVersion() *EnvBuildUpsertOne {
 func (u *EnvBuildUpsertOne) ClearEnvdVersion() *EnvBuildUpsertOne {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.ClearEnvdVersion()
-	})
-}
-
-// SetClusterNodeID sets the "cluster_node_id" field.
-func (u *EnvBuildUpsertOne) SetClusterNodeID(v string) *EnvBuildUpsertOne {
-	return u.Update(func(s *EnvBuildUpsert) {
-		s.SetClusterNodeID(v)
-	})
-}
-
-// UpdateClusterNodeID sets the "cluster_node_id" field to the value that was provided on create.
-func (u *EnvBuildUpsertOne) UpdateClusterNodeID() *EnvBuildUpsertOne {
-	return u.Update(func(s *EnvBuildUpsert) {
-		s.UpdateClusterNodeID()
-	})
-}
-
-// ClearClusterNodeID clears the value of the "cluster_node_id" field.
-func (u *EnvBuildUpsertOne) ClearClusterNodeID() *EnvBuildUpsertOne {
-	return u.Update(func(s *EnvBuildUpsert) {
-		s.ClearClusterNodeID()
 	})
 }
 
@@ -1576,27 +1519,6 @@ func (u *EnvBuildUpsertBulk) UpdateEnvdVersion() *EnvBuildUpsertBulk {
 func (u *EnvBuildUpsertBulk) ClearEnvdVersion() *EnvBuildUpsertBulk {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.ClearEnvdVersion()
-	})
-}
-
-// SetClusterNodeID sets the "cluster_node_id" field.
-func (u *EnvBuildUpsertBulk) SetClusterNodeID(v string) *EnvBuildUpsertBulk {
-	return u.Update(func(s *EnvBuildUpsert) {
-		s.SetClusterNodeID(v)
-	})
-}
-
-// UpdateClusterNodeID sets the "cluster_node_id" field to the value that was provided on create.
-func (u *EnvBuildUpsertBulk) UpdateClusterNodeID() *EnvBuildUpsertBulk {
-	return u.Update(func(s *EnvBuildUpsert) {
-		s.UpdateClusterNodeID()
-	})
-}
-
-// ClearClusterNodeID clears the value of the "cluster_node_id" field.
-func (u *EnvBuildUpsertBulk) ClearClusterNodeID() *EnvBuildUpsertBulk {
-	return u.Update(func(s *EnvBuildUpsert) {
-		s.ClearClusterNodeID()
 	})
 }
 

@@ -36,8 +36,6 @@ type Env struct {
 	SpawnCount int64 `json:"spawn_count,omitempty"`
 	// Timestamp of the last time the env was spawned
 	LastSpawnedAt time.Time `json:"last_spawned_at,omitempty"`
-	// ClusterID holds the value of the "cluster_id" field.
-	ClusterID *uuid.UUID `json:"cluster_id,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the EnvQuery when eager-loading is set.
 	Edges        EnvEdges `json:"edges"`
@@ -119,7 +117,7 @@ func (*Env) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case env.FieldCreatedBy, env.FieldClusterID:
+		case env.FieldCreatedBy:
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case env.FieldPublic:
 			values[i] = new(sql.NullBool)
@@ -200,13 +198,6 @@ func (e *Env) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field last_spawned_at", values[i])
 			} else if value.Valid {
 				e.LastSpawnedAt = value.Time
-			}
-		case env.FieldClusterID:
-			if value, ok := values[i].(*sql.NullScanner); !ok {
-				return fmt.Errorf("unexpected type %T for field cluster_id", values[i])
-			} else if value.Valid {
-				e.ClusterID = new(uuid.UUID)
-				*e.ClusterID = *value.S.(*uuid.UUID)
 			}
 		default:
 			e.selectValues.Set(columns[i], values[i])
@@ -294,11 +285,6 @@ func (e *Env) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("last_spawned_at=")
 	builder.WriteString(e.LastSpawnedAt.Format(time.ANSIC))
-	builder.WriteString(", ")
-	if v := e.ClusterID; v != nil {
-		builder.WriteString("cluster_id=")
-		builder.WriteString(fmt.Sprintf("%v", *v))
-	}
 	builder.WriteByte(')')
 	return builder.String()
 }

@@ -30,7 +30,6 @@ func (Env) Fields() []ent.Field {
 		field.Int32("build_count").Default(1),
 		field.Int64("spawn_count").Default(0).Comment("Number of times the env was spawned"),
 		field.Time("last_spawned_at").Optional().Comment("Timestamp of the last time the env was spawned"),
-		field.UUID("cluster_id", uuid.UUID{}).Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "uuid"}),
 	}
 }
 

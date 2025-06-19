@@ -30,8 +30,6 @@ const (
 	FieldSpawnCount = "spawn_count"
 	// FieldLastSpawnedAt holds the string denoting the last_spawned_at field in the database.
 	FieldLastSpawnedAt = "last_spawned_at"
-	// FieldClusterID holds the string denoting the cluster_id field in the database.
-	FieldClusterID = "cluster_id"
 	// EdgeTeam holds the string denoting the team edge name in mutations.
 	EdgeTeam = "team"
 	// EdgeCreator holds the string denoting the creator edge name in mutations.
@@ -94,7 +92,6 @@ var Columns = []string{
 	FieldBuildCount,
 	FieldSpawnCount,
 	FieldLastSpawnedAt,
-	FieldClusterID,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -164,11 +161,6 @@ func BySpawnCount(opts ...sql.OrderTermOption) OrderOption {
 // ByLastSpawnedAt orders the results by the last_spawned_at field.
 func ByLastSpawnedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLastSpawnedAt, opts...).ToFunc()
-}
-
-// ByClusterID orders the results by the cluster_id field.
-func ByClusterID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldClusterID, opts...).ToFunc()
 }
 
 // ByTeamField orders the results by team field.

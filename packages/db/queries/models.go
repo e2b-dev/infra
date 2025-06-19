@@ -18,9 +18,13 @@ type AccessToken struct {
 	CreatedAt   time.Time
 	ID          *uuid.UUID
 	// sensitive
-	AccessTokenHash *string
-	AccessTokenMask *string
-	Name            string
+	AccessTokenHash       *string
+	AccessTokenMask       *string
+	Name                  string
+	AccessTokenPrefix     *string
+	AccessTokenLength     *int32
+	AccessTokenMaskPrefix *string
+	AccessTokenMaskSuffix *string
 }
 
 type Cluster struct {
@@ -41,7 +45,6 @@ type Env struct {
 	LastSpawnedAt *time.Time
 	TeamID        uuid.UUID
 	CreatedBy     *uuid.UUID
-	ClusterID     *uuid.UUID
 }
 
 type EnvAlias struct {
@@ -67,7 +70,6 @@ type EnvBuild struct {
 	EnvID              *string
 	EnvdVersion        *string
 	ReadyCmd           *string
-	ClusterNodeID      *string
 }
 
 type Snapshot struct {
@@ -103,8 +105,12 @@ type TeamApiKey struct {
 	CreatedBy *uuid.UUID
 	ID        uuid.UUID
 	// sensitive
-	ApiKeyHash *string
-	ApiKeyMask *string
+	ApiKeyHash       *string
+	ApiKeyMask       *string
+	ApiKeyPrefix     *string
+	ApiKeyLength     *int32
+	ApiKeyMaskPrefix *string
+	ApiKeyMaskSuffix *string
 }
 
 type Tier struct {

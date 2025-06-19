@@ -160,26 +160,6 @@ func (eu *EnvUpdate) ClearLastSpawnedAt() *EnvUpdate {
 	return eu
 }
 
-// SetClusterID sets the "cluster_id" field.
-func (eu *EnvUpdate) SetClusterID(u uuid.UUID) *EnvUpdate {
-	eu.mutation.SetClusterID(u)
-	return eu
-}
-
-// SetNillableClusterID sets the "cluster_id" field if the given value is not nil.
-func (eu *EnvUpdate) SetNillableClusterID(u *uuid.UUID) *EnvUpdate {
-	if u != nil {
-		eu.SetClusterID(*u)
-	}
-	return eu
-}
-
-// ClearClusterID clears the value of the "cluster_id" field.
-func (eu *EnvUpdate) ClearClusterID() *EnvUpdate {
-	eu.mutation.ClearClusterID()
-	return eu
-}
-
 // SetTeam sets the "team" edge to the Team entity.
 func (eu *EnvUpdate) SetTeam(t *Team) *EnvUpdate {
 	return eu.SetTeamID(t.ID)
@@ -405,12 +385,6 @@ func (eu *EnvUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if eu.mutation.LastSpawnedAtCleared() {
 		_spec.ClearField(env.FieldLastSpawnedAt, field.TypeTime)
-	}
-	if value, ok := eu.mutation.ClusterID(); ok {
-		_spec.SetField(env.FieldClusterID, field.TypeUUID, value)
-	}
-	if eu.mutation.ClusterIDCleared() {
-		_spec.ClearField(env.FieldClusterID, field.TypeUUID)
 	}
 	if eu.mutation.TeamCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -766,26 +740,6 @@ func (euo *EnvUpdateOne) ClearLastSpawnedAt() *EnvUpdateOne {
 	return euo
 }
 
-// SetClusterID sets the "cluster_id" field.
-func (euo *EnvUpdateOne) SetClusterID(u uuid.UUID) *EnvUpdateOne {
-	euo.mutation.SetClusterID(u)
-	return euo
-}
-
-// SetNillableClusterID sets the "cluster_id" field if the given value is not nil.
-func (euo *EnvUpdateOne) SetNillableClusterID(u *uuid.UUID) *EnvUpdateOne {
-	if u != nil {
-		euo.SetClusterID(*u)
-	}
-	return euo
-}
-
-// ClearClusterID clears the value of the "cluster_id" field.
-func (euo *EnvUpdateOne) ClearClusterID() *EnvUpdateOne {
-	euo.mutation.ClearClusterID()
-	return euo
-}
-
 // SetTeam sets the "team" edge to the Team entity.
 func (euo *EnvUpdateOne) SetTeam(t *Team) *EnvUpdateOne {
 	return euo.SetTeamID(t.ID)
@@ -1041,12 +995,6 @@ func (euo *EnvUpdateOne) sqlSave(ctx context.Context) (_node *Env, err error) {
 	}
 	if euo.mutation.LastSpawnedAtCleared() {
 		_spec.ClearField(env.FieldLastSpawnedAt, field.TypeTime)
-	}
-	if value, ok := euo.mutation.ClusterID(); ok {
-		_spec.SetField(env.FieldClusterID, field.TypeUUID, value)
-	}
-	if euo.mutation.ClusterIDCleared() {
-		_spec.ClearField(env.FieldClusterID, field.TypeUUID)
 	}
 	if euo.mutation.TeamCleared() {
 		edge := &sqlgraph.EdgeSpec{
