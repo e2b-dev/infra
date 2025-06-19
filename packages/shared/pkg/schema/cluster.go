@@ -28,6 +28,7 @@ func (Cluster) Fields() []ent.Field {
 			Default(true),
 		field.String("token").
 			NotEmpty().
+			Sensitive().
 			SchemaType(map[string]string{dialect.Postgres: "text"}),
 	}
 }

@@ -22,7 +22,7 @@ type Cluster struct {
 	// EndpointTLS holds the value of the "endpoint_tls" field.
 	EndpointTLS bool `json:"endpoint_tls,omitempty"`
 	// Token holds the value of the "token" field.
-	Token        string `json:"token,omitempty"`
+	Token        string `json:"-"`
 	selectValues sql.SelectValues
 }
 
@@ -118,8 +118,7 @@ func (c *Cluster) String() string {
 	builder.WriteString("endpoint_tls=")
 	builder.WriteString(fmt.Sprintf("%v", c.EndpointTLS))
 	builder.WriteString(", ")
-	builder.WriteString("token=")
-	builder.WriteString(c.Token)
+	builder.WriteString("token=<sensitive>")
 	builder.WriteByte(')')
 	return builder.String()
 }
