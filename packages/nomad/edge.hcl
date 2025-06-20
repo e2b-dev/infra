@@ -100,6 +100,8 @@ job "client-proxy" {
         SERVICE_DISCOVERY_EDGE_DNS_RESOLVER_ADDRESS = "127.0.0.1:8600" // consul dns resolver
         SERVICE_DISCOVERY_EDGE_DNS_QUERY            = "edge-api.service.consul"
 
+        ENVIRONMENT = "${environment}"
+
         // use legacy dns resolution for orchestrator services
         USE_PROXY_CATALOG_RESOLUTION = "false"
 
