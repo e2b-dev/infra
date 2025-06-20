@@ -3,7 +3,6 @@ package oci
 import (
 	"archive/tar"
 	"bytes"
-	"context"
 	"io"
 	"path/filepath"
 	"strings"
@@ -44,8 +43,7 @@ func createFileTar(t *testing.T, fileName string) *bytes.Buffer {
 }
 
 func TestCreateExportLayersOrder(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	tracer := noop.NewTracerProvider().Tracer("test")
 	postProcessor := writer.NewPostProcessor(ctx, io.Discard)

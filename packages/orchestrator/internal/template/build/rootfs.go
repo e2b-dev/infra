@@ -105,6 +105,7 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error creating ext4 filesystem: %w", err)
 	}
+	r.template.rootfsSize = ext4Size
 	telemetry.ReportEvent(childCtx, "created rootfs ext4 file")
 
 	postProcessor.WriteMsg("Filesystem cleanup")
@@ -128,11 +129,13 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 		zap.Int64("size_add", diskAdd),
 		zap.Int64("size_free", rootfsFreeSpace),
 	)
-	rootfsFinalSize, err := ext4.Enlarge(ctx, tracer, rootfsPath, diskAdd)
-	if err != nil {
-		return containerregistry.Config{}, fmt.Errorf("error enlarging rootfs: %w", err)
+	if diskAdd > 0 {
+		rootfsFinalSize, err := ext4.Enlarge(ctx, tracer, rootfsPath, diskAdd)
+		if err != nil {
+			return containerregistry.Config{}, fmt.Errorf("error enlarging rootfs: %w", err)
+		}
+		r.template.rootfsSize = rootfsFinalSize
 	}
-	r.template.rootfsSize = rootfsFinalSize
 
 	// Check the rootfs filesystem corruption
 	ext4Check, err := ext4.CheckIntegrity(rootfsPath, true)
