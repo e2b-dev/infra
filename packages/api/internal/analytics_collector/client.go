@@ -16,12 +16,12 @@ var host = os.Getenv("ANALYTICS_COLLECTOR_HOST")
 
 type Analytics struct {
 	client     AnalyticsCollectorClient
-	connection e2bgrpc.ClientConnInterface
+	connection *grpc.ClientConn
 }
 
 func NewAnalytics() (*Analytics, error) {
 	var client AnalyticsCollectorClient
-	var connection e2bgrpc.ClientConnInterface
+	var connection *grpc.ClientConn
 
 	if host == "" {
 		zap.L().Warn("Running dummy implementation of analytics collector client, no host provided")
