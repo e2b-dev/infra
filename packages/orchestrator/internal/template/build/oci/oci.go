@@ -267,7 +267,9 @@ func createExport(ctx context.Context, tracer trace.Tracer, postProcessor *write
 			}
 			defer rc.Close()
 
-			err = archive.Untar(rc, layerPath, &archive.TarOptions{})
+			err = archive.Untar(rc, layerPath, &archive.TarOptions{
+				IgnoreChownErrors: true,
+			})
 			if err != nil {
 				return fmt.Errorf("failed to untar layer %d: %w", i, err)
 			}
