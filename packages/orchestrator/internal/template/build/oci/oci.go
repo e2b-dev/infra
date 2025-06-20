@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -150,12 +151,13 @@ func unpackRootfs(ctx context.Context, tracer trace.Tracer, postProcessor *write
 		os.Remove(ociPath)
 	}()
 
-	// Create export in the temporary directory
+	// Create export of layers in the temporary directory
 	layers, err := createExport(ctx, tracer, postProcessor, srcImage, ociPath)
 	if err != nil {
 		return fmt.Errorf("while creating export of source image: %w", err)
 	}
 
+	// Mount the overlay filesystem with the extracted layers
 	mountPath, err := os.MkdirTemp("", "overlayfs-mount")
 	if err != nil {
 		return fmt.Errorf("while creating temporary file for squashed image: %w", err)
@@ -180,6 +182,7 @@ func unpackRootfs(ctx context.Context, tracer trace.Tracer, postProcessor *write
 	postProcessor.WriteMsg("Root filesystem structure:")
 	postProcessor.WriteMsg(strings.Join(files, ", "))
 
+	// Copy files from the overlayfs mount point to the destination directory
 	err = copyFiles(ctx, tracer, mountPath, destDir)
 	if err != nil {
 		return fmt.Errorf("while copying files from overlayfs to destination directory: %w", err)
@@ -196,14 +199,13 @@ func listFiles(ctx context.Context, tracer trace.Tracer, dir string) ([]string, 
 	if err != nil {
 		return nil, fmt.Errorf("while reading directory %s: %w", dir, err)
 	}
-	var fileList []string
-	for _, file := range files {
-		fileList = append(fileList, file.Name())
-	}
 
-	return fileList, nil
+	return utils.Map(files, func(file os.DirEntry) string {
+		return file.Name()
+	}), nil
 }
 
+// copyFiles uses rsync to copy files from the source directory to the destination directory.
 func copyFiles(ctx context.Context, tracer trace.Tracer, src, dest string) error {
 	_, childSpan := tracer.Start(ctx, "copy-files")
 	defer childSpan.End()
@@ -215,6 +217,10 @@ func copyFiles(ctx context.Context, tracer trace.Tracer, src, dest string) error
 	return nil
 }
 
+// createExport extracts the layers of the source image into a temporary directory
+// and returns the paths of the extracted layers. The layers are extracted in reverse order
+// to maintain the correct order for overlayFS.
+// The layers are extracted in parallel to speed up the process.
 func createExport(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, srcImage containerregistry.Image, path string) ([]string, error) {
 	ctx, childSpan := tracer.Start(ctx, "create-oci-export")
 	defer childSpan.End()

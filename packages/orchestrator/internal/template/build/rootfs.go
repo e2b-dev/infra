@@ -87,7 +87,7 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error getting image size: %w", err)
 	}
-	postProcessor.WriteMsg(fmt.Sprintf("Estimated Docker image size: %s", humanize.Bytes(uint64(imageSize))))
+	postProcessor.WriteMsg(fmt.Sprintf("Docker image size: %s", humanize.Bytes(uint64(imageSize))))
 
 	postProcessor.WriteMsg("Setting up system files")
 	layers, err := additionalOCILayers(childCtx, r.template)
