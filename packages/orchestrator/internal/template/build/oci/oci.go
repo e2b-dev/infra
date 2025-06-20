@@ -94,7 +94,7 @@ func ToExt4(ctx context.Context, tracer trace.Tracer, postProcessor *writer.Post
 	// Check the FS integrity after shrinking
 	_, err = ext4.CheckIntegrity(rootfsPath, true)
 	if err != nil {
-		return 0, fmt.Errorf("error checking filesystem integrity after ext4 creation: %w", err)
+		return 0, fmt.Errorf("error checking filesystem integrity after shrinking: %w", err)
 	}
 
 	return size, nil
