@@ -1,7 +1,6 @@
 package builder
 
 import (
-	"archive/tar"
 	"bytes"
 	"context"
 	"fmt"
@@ -11,6 +10,7 @@ import (
 	"strings"
 
 	"dagger.io/dagger"
+	"github.com/containers/storage/pkg/archive"
 	"github.com/google/go-containerregistry/pkg/crane"
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
@@ -217,8 +217,20 @@ func (ib *ImageBuilder) buildAndCacheLayer(
 	container := client.Container().
 		Import(sourceLayer)
 
+	// Create working directory for the layer
+	// This is used e.g. for ADD/COPY commands to extract files
+	filesLayerHash := step.Hash
+	if step.FilesHash != nil && *step.FilesHash != "" {
+		filesLayerHash = *step.FilesHash
+	}
+	cachePath := filepath.Join(filesLayerCachePath, ib.template.TemplateId, filesLayerHash)
+	if err := os.MkdirAll(cachePath, os.ModePerm); err != nil {
+		return "", fmt.Errorf("failed to create layer directory: %w", err)
+	}
+	defer os.RemoveAll(cachePath)
+
 	var err error
-	container, err = ib.applyCommand(ctx, tracer, postProcessor, client, prefix, container, step)
+	container, err = ib.applyCommand(ctx, tracer, postProcessor, client, prefix, container, step, cachePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to apply command: %w", err)
 	}
@@ -265,6 +277,7 @@ func (ib *ImageBuilder) applyCommand(
 	prefix string,
 	container *dagger.Container,
 	step *templatemanager.TemplateStep,
+	cachePath string,
 ) (*dagger.Container, error) {
 	ctx, span := tracer.Start(ctx, "apply-command")
 	defer span.End()
@@ -290,12 +303,6 @@ func (ib *ImageBuilder) applyCommand(
 			return nil, fmt.Errorf("failed to open files object from storage: %w", err)
 		}
 
-		cachePath := filepath.Join(filesLayerCachePath, ib.template.TemplateId, *step.FilesHash)
-		if err := os.MkdirAll(cachePath, os.ModePerm); err != nil {
-			return nil, fmt.Errorf("failed to create directory for file: %w", err)
-		}
-		defer os.RemoveAll(cachePath)
-
 		pr, pw := io.Pipe()
 		// Start writing tar data to the pipe writer in a goroutine
 		go func() {
@@ -306,7 +313,7 @@ func (ib *ImageBuilder) applyCommand(
 		}()
 
 		// Extract the tar file to the specified directory
-		if err := untar(pr, cachePath); err != nil {
+		if err := archive.Untar(pr, cachePath, &archive.TarOptions{}); err != nil {
 			return nil, fmt.Errorf("failed to untar contents: %w", err)
 		}
 
@@ -379,74 +386,4 @@ func (ib *ImageBuilder) applyCommand(
 	default:
 		return nil, fmt.Errorf("unsupported command type: %s", cmdType)
 	}
-}
-
-// untar extracts a tar archive from the reader `r` into the directory `destDir`.
-// It preserves file permissions and structure, while preventing path traversal and symlink attacks.
-func untar(r io.Reader, destDir string) error {
-	tr := tar.NewReader(r)
-
-	destDir = filepath.Clean(destDir)
-
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			break // End of archive
-		}
-		if err != nil {
-			return fmt.Errorf("error reading tar entry: %w", err)
-		}
-
-		name := filepath.Clean(hdr.Name)
-		targetPath := filepath.Join(destDir, name)
-
-		// Prevent path traversal
-		if !strings.HasPrefix(targetPath, destDir+string(os.PathSeparator)) {
-			return fmt.Errorf("invalid file path: %s", hdr.Name)
-		}
-
-		switch hdr.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(targetPath, os.FileMode(hdr.Mode)); err != nil {
-				return fmt.Errorf("mkdir failed for %s: %w", targetPath, err)
-			}
-
-		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
-				return fmt.Errorf("mkdir for file parent failed: %w", err)
-			}
-
-			outFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(hdr.Mode))
-			if err != nil {
-				return fmt.Errorf("create file %s failed: %w", targetPath, err)
-			}
-			defer outFile.Close()
-
-			if _, err := io.Copy(outFile, tr); err != nil {
-				return fmt.Errorf("copy to %s failed: %w", targetPath, err)
-			}
-
-		case tar.TypeSymlink:
-			linkTarget := hdr.Linkname
-			linkPath := filepath.Join(filepath.Dir(targetPath), linkTarget)
-			resolvedPath, err := filepath.EvalSymlinks(filepath.Clean(linkPath))
-			if err != nil {
-				return fmt.Errorf("failed to resolve symlink %s: %w", linkPath, err)
-			}
-
-			if !strings.HasPrefix(resolvedPath, destDir+string(os.PathSeparator)) {
-				return fmt.Errorf("symlink %s points outside destination", hdr.Linkname)
-			}
-
-			if err := os.Symlink(resolvedPath, targetPath); err != nil {
-				return fmt.Errorf("symlink %s -> %s failed: %w", targetPath, resolvedPath, err)
-			}
-
-		default:
-			// skipping unsupported tar entry: %s (type: %c)", hdr.Name, hdr.Typeflag
-			continue
-		}
-	}
-
-	return nil
 }
