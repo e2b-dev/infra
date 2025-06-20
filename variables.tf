@@ -116,7 +116,6 @@ variable "client_proxy_resources_cpu_count" {
   default = 1
 }
 
-
 variable "edge_api_port" {
   type = object({
     name = string
@@ -126,7 +125,7 @@ variable "edge_api_port" {
   default = {
     name = "edge-api"
     port = 3001
-    path = "/health"
+    path = "/health/traffic"
   }
 }
 
