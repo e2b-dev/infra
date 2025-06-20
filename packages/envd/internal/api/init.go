@@ -61,8 +61,11 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	ctx, _ := context.WithTimeout(context.Background(), 60*time.Second)
-	go host.PollForMMDSOpts(ctx, a.mmdsChan, a.envVars)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		host.PollForMMDSOpts(ctx, a.mmdsChan, a.envVars)
+	}()
 
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "")
