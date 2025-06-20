@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/containers/storage/pkg/archive"
+	"github.com/dustin/go-humanize"
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -232,19 +233,26 @@ func createExport(ctx context.Context, tracer trace.Tracer, postProcessor *write
 
 	layerPaths := make([]string, len(layers))
 	var eg errgroup.Group
-	// Need to iterate in reverse order to maintain the correct layer order for overlayfs
-	for i := len(layers) - 1; i >= 0; i-- {
-		l := layers[i]
+	for i, l := range layers {
 		digest, err := l.Digest()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get digest of layer %d: %w", i, err)
 		}
-		telemetry.ReportEvent(ctx, "uncompressing layer", attribute.Int("layer.index", i), attribute.String("layer.digest", digest.String()))
-		postProcessor.WriteMsg(fmt.Sprintf("Uncompressing layer: %s", digest))
+		size, err := l.Size()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get size of layer %d: %w", i, err)
+		}
+		telemetry.ReportEvent(ctx, "uncompressing layer",
+			attribute.Int("layer.index", i),
+			attribute.String("layer.digest", digest.String()),
+			attribute.Int64("layer.size", size),
+		)
+		postProcessor.WriteMsg(fmt.Sprintf("Uncompressing layer: %s (%s)", digest, humanize.Bytes(uint64(size))))
 
 		// Each layer has to be uniquely named, even if the digest is the same across different layers
 		layerPath := filepath.Join(path, fmt.Sprintf("layer-%d-%s", i, strings.ReplaceAll(digest.String(), ":", "-")))
-		layerPaths[i] = layerPath
+		// Layers need to be reported in reverse order to maintain the correct layer order for overlayfs
+		layerPaths[len(layers)-i-1] = layerPath
 		eg.Go(func() error {
 			err := os.MkdirAll(layerPath, 0o755)
 			if err != nil {
