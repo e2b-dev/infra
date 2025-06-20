@@ -149,7 +149,7 @@ func unpackRootfs(ctx context.Context, tracer trace.Tracer, postProcessor *write
 		return fmt.Errorf("while creating temporary file for squashed image: %w", err)
 	}
 	defer func() {
-		os.Remove(ociPath)
+		go os.RemoveAll(ociPath)
 	}()
 
 	// Create export of layers in the temporary directory
@@ -163,7 +163,9 @@ func unpackRootfs(ctx context.Context, tracer trace.Tracer, postProcessor *write
 	if err != nil {
 		return fmt.Errorf("while creating temporary file for squashed image: %w", err)
 	}
-	defer os.RemoveAll(mountPath)
+	defer func() {
+		go os.RemoveAll(mountPath)
+	}()
 
 	err = ext4.MountOverlayFS(ctx, tracer, layers, mountPath)
 	if err != nil {
@@ -247,7 +249,7 @@ func createExport(ctx context.Context, tracer trace.Tracer, postProcessor *write
 			attribute.String("layer.digest", digest.String()),
 			attribute.Int64("layer.size", size),
 		)
-		postProcessor.WriteMsg(fmt.Sprintf("Uncompressing layer: %s (%s)", digest, humanize.Bytes(uint64(size))))
+		postProcessor.WriteMsg(fmt.Sprintf("Uncompressing layer %s %s", digest, humanize.Bytes(uint64(size))))
 
 		// Each layer has to be uniquely named, even if the digest is the same across different layers
 		layerPath := filepath.Join(path, fmt.Sprintf("layer-%d-%s", i, strings.ReplaceAll(digest.String(), ":", "-")))
