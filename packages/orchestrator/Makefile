@@ -84,6 +84,7 @@ build-template:
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) \
 	GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) \
 	GCP_REGION=$(GCP_REGION) \
+	ENVIRONMENT=local \
 	go run cmd/build-template/main.go \
 	-template $(TEMPLATE_ID) \
 	-build $(BUILD_ID) \
