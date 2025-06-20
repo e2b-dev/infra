@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -43,7 +44,7 @@ func NewChecks(sandboxObserver *telemetry.SandboxObserver, sandbox *Sandbox, use
 	// By default, the sandbox should be healthy, if the status change we report it.
 	h.healthy.Store(true)
 
-	if sandboxObserver != nil && useClickhouseMetrics {
+	if sandboxObserver != nil && useClickhouseMetrics && isGTEVersion(sandbox.Config.EnvdVersion, minEnvdVersionForMetrics) {
 		unregister, err := sandboxObserver.StartObserving(sandbox.Config.SandboxId, sandbox.Config.TeamId, h.getMetrics)
 		if err != nil {
 			return nil, err
@@ -56,16 +57,13 @@ func NewChecks(sandboxObserver *telemetry.SandboxObserver, sandbox *Sandbox, use
 }
 
 func (c *Checks) getMetrics(ctx context.Context) (*telemetry.SandboxMetrics, error) {
-	if !isGTEVersion(c.sandbox.Config.EnvdVersion, minEnvdVersionForMetrics) {
-		return nil, nil
-	}
-
 	envdMetrics, err := c.sandbox.GetMetrics(ctx)
 	if err != nil {
 		sbxlogger.E(c.sandbox).Warn("failed to get metrics from envd", zap.Error(err))
+		return nil, fmt.Errorf("failed to get metrics from envd: %w", err)
 	}
 
-	return envdMetrics, err
+	return envdMetrics, nil
 }
 
 func (c *Checks) IsHealthy() bool {
