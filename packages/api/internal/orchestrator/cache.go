@@ -295,7 +295,7 @@ func reportInstanceStopAnalytics(
 			Set("duration", duration),
 	)
 
-	_, err := analytics.Client.InstanceStopped(childCtx, &analyticscollector.InstanceStoppedEvent{
+	_, err := analytics.InstanceStopped(childCtx, &analyticscollector.InstanceStoppedEvent{
 		TeamId:        teamID,
 		EnvironmentId: templateID,
 		InstanceId:    sandboxID,
@@ -369,7 +369,7 @@ func reportInstanceStartAnalytics(
 	childCtx, cancel := context.WithTimeout(ctx, reportTimeout)
 	defer cancel()
 
-	_, err := analytics.Client.InstanceStarted(childCtx, &analyticscollector.InstanceStartedEvent{
+	_, err := analytics.InstanceStarted(childCtx, &analyticscollector.InstanceStartedEvent{
 		InstanceId:    sandboxID,
 		ExecutionId:   executionID,
 		EnvironmentId: templateID,

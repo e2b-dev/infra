@@ -57,7 +57,7 @@ func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyt
 		executionIds[idx] = i.ExecutionID
 	}
 
-	_, err := analytics.Client.RunningInstances(childCtx,
+	_, err := analytics.RunningInstances(childCtx,
 		&analyticscollector.RunningInstancesEvent{
 			InstanceIds:  instanceIds,
 			ExecutionIds: executionIds,
