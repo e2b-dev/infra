@@ -12,7 +12,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
-	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -142,7 +141,6 @@ type InstanceCache struct {
 
 	sandboxCounter metric.Int64UpDownCounter
 	createdCounter metric.Int64Counter
-	analytics      analyticscollector.AnalyticsCollectorClient
 
 	mu sync.Mutex
 }
@@ -150,7 +148,6 @@ type InstanceCache struct {
 func NewCache(
 	ctx context.Context,
 	meterProvider metric.MeterProvider,
-	analytics analyticscollector.AnalyticsCollectorClient,
 	insertInstance func(data *InstanceInfo, created bool) error,
 	deleteInstance func(data *InstanceInfo) error,
 ) *InstanceCache {
@@ -172,7 +169,6 @@ func NewCache(
 	instanceCache := &InstanceCache{
 		cache:          cache,
 		insertInstance: insertInstance,
-		analytics:      analytics,
 		sandboxCounter: sandboxCounter,
 		createdCounter: createdCounter,
 		reservations:   NewReservationCache(),

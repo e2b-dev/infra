@@ -18,7 +18,7 @@ var teamID = uuid.New()
 
 func newInstanceCache() (*InstanceCache, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(context.Background())
-	cache := NewCache(ctx, noop.MeterProvider{}, nil, nil, nil)
+	cache := NewCache(ctx, noop.MeterProvider{}, nil, nil)
 	return cache, cancel
 }
 

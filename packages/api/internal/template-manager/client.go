@@ -28,7 +28,7 @@ type GRPCClient struct {
 	TemplateClient templatemanager.TemplateServiceClient
 	InfoClient     orchestratorinfo.InfoServiceClient
 
-	connection e2bgrpc.ClientConnInterface
+	connection *grpc.ClientConn
 
 	lastHealthCheckAt *time.Time
 	health            orchestratorinfo.ServiceInfoStatus
