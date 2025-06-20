@@ -150,6 +150,12 @@ func Shrink(ctx context.Context, tracer trace.Tracer, rootfsPath string) (int64,
 	ctx, resizeSpan := tracer.Start(ctx, "shrink-ext4")
 	defer resizeSpan.End()
 
+	// Check the FS integrity first so no errors occur during shrinking
+	_, err := CheckIntegrity(rootfsPath, true)
+	if err != nil {
+		return 0, fmt.Errorf("error checking filesystem integrity before shrink: %w", err)
+	}
+
 	// Shrink the ext4 filesystem
 	// The underlying file must be synced to the filesystem
 	cmd := exec.CommandContext(ctx, "resize2fs", "-M", rootfsPath)
@@ -157,7 +163,7 @@ func Shrink(ctx context.Context, tracer trace.Tracer, rootfsPath string) (int64,
 	cmd.Stdout = resizeStdoutWriter
 	resizeStderrWriter := telemetry.NewEventWriter(ctx, "stderr")
 	cmd.Stderr = resizeStderrWriter
-	err := cmd.Run()
+	err = cmd.Run()
 	if err != nil {
 		LogMetadata(rootfsPath)
 		return 0, fmt.Errorf("error shrinking rootfs file: %w", err)
