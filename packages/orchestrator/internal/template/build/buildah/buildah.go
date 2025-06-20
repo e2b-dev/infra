@@ -45,25 +45,6 @@ func Mount(ctx context.Context, tracer trace.Tracer, containerName string) (stri
 	return strings.TrimSpace(string(out)), nil
 }
 
-func Unmount(ctx context.Context, tracer trace.Tracer, containerName string) error {
-	ctx, mountSpan := tracer.Start(ctx, "buildah-unmount")
-	defer mountSpan.End()
-
-	cmd := exec.CommandContext(ctx, "buildah", "umount", containerName)
-
-	mountStdoutWriter := telemetry.NewEventWriter(ctx, "stdout")
-	cmd.Stdout = mountStdoutWriter
-
-	mountStderrWriter := telemetry.NewEventWriter(ctx, "stderr")
-	cmd.Stderr = mountStderrWriter
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("error running buildah umount command: %w", err)
-	}
-
-	return nil
-}
-
 func Remove(ctx context.Context, tracer trace.Tracer, containerName string) error {
 	ctx, mountSpan := tracer.Start(ctx, "buildah-rm")
 	defer mountSpan.End()
@@ -78,6 +59,25 @@ func Remove(ctx context.Context, tracer trace.Tracer, containerName string) erro
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("error running buildah remove command: %w", err)
+	}
+
+	return nil
+}
+
+func RemoveImage(ctx context.Context, tracer trace.Tracer, imageName string) error {
+	ctx, mountSpan := tracer.Start(ctx, "buildah-rm-image")
+	defer mountSpan.End()
+
+	cmd := exec.CommandContext(ctx, "buildah", "rmi", "-f", imageName)
+
+	mountStdoutWriter := telemetry.NewEventWriter(ctx, "stdout")
+	cmd.Stdout = mountStdoutWriter
+
+	mountStderrWriter := telemetry.NewEventWriter(ctx, "stderr")
+	cmd.Stderr = mountStderrWriter
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("error running buildah remove image command: %w", err)
 	}
 
 	return nil
