@@ -213,7 +213,18 @@ func copyFiles(ctx context.Context, tracer trace.Tracer, src, dest string) error
 	_, childSpan := tracer.Start(ctx, "copy-files")
 	defer childSpan.End()
 
-	cmd := exec.Command("rsync", "-a", "--whole-file", "--inplace", src+"/", dest)
+	// Does the following:
+	// Recursion into directories
+	// Symlinks
+	// Permissions
+	// Modification times
+	// Group/owner (if possible)
+	// Device files and special files
+	// Hard links (-H)
+	//
+	// --whole-file: Copy files without using the delta algorithm, which is faster for local copies
+	// --inplace: Update destination files in place, no need to create temporary files
+	cmd := exec.Command("rsync", "-aH", "--whole-file", "--inplace", src+"/", dest)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("while copying files from %s to %s: %w: %s", src, dest, err, string(out))
 	}
