@@ -5,7 +5,7 @@ import (
 	"strconv"
 )
 
-var environment = GetEnv("ENVIRONMENT", "local")
+var environment = GetEnv("ENVIRONMENT", "prod")
 
 func IsLocal() bool {
 	return environment == "local"
