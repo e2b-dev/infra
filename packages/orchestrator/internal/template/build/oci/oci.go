@@ -66,6 +66,9 @@ func GetImageSize(img containerregistry.Image) (int64, error) {
 }
 
 func ToExt4(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, img containerregistry.Image, rootfsPath string, maxSize int64, blockSize int64) (int64, error) {
+	ctx, childSpan := tracer.Start(ctx, "oci-to-ext4")
+	defer childSpan.End()
+
 	err := ext4.Make(ctx, tracer, rootfsPath, maxSize>>ToMBShift, blockSize)
 	if err != nil {
 		return 0, fmt.Errorf("error creating ext4 file: %w", err)
@@ -76,18 +79,31 @@ func ToExt4(ctx context.Context, tracer trace.Tracer, postProcessor *writer.Post
 		return 0, fmt.Errorf("error extracting image to ext4 filesystem: %w", err)
 	}
 
+	// Check the FS integrity first so no errors occur during shrinking
+	_, err = ext4.CheckIntegrity(rootfsPath, true)
+	if err != nil {
+		return 0, fmt.Errorf("error checking filesystem integrity after ext4 creation: %w", err)
+	}
+
 	// The filesystem is first created with the maximum size, so we need to shrink it to the actual size
 	size, err := ext4.Shrink(ctx, tracer, rootfsPath)
 	if err != nil {
 		return 0, fmt.Errorf("error shrinking ext4 filesystem: %w", err)
 	}
 
-	ext4.LogMetadata(rootfsPath, zap.Int64("size", size))
+	// Check the FS integrity after shrinking
+	_, err = ext4.CheckIntegrity(rootfsPath, true)
+	if err != nil {
+		return 0, fmt.Errorf("error checking filesystem integrity after ext4 creation: %w", err)
+	}
 
 	return size, nil
 }
 
 func ExtractToExt4(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, img containerregistry.Image, rootfsPath string) error {
+	ctx, childSpan := tracer.Start(ctx, "extract-to-ext4")
+	defer childSpan.End()
+
 	tmpMount, err := os.MkdirTemp("", "ext4-mount")
 	if err != nil {
 		return fmt.Errorf("error creating temporary mount point: %w", err)
