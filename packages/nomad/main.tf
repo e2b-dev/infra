@@ -174,7 +174,8 @@ resource "nomad_job" "client_proxy" {
       api_secret        = var.edge_api_secret
       orchestrator_port = var.orchestrator_port
 
-      image_name = docker_image.client_proxy_image.repo_digest
+      environment = var.environment
+      image_name  = docker_image.client_proxy_image.repo_digest
 
       otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
       logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"

@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -18,4 +19,12 @@ func WithBuildID(buildID string) zap.Field {
 
 func WithTeamID(teamID string) zap.Field {
 	return zap.String("team.id", teamID)
+}
+
+func WithClusterID(clusterId uuid.UUID) zap.Field {
+	return zap.String("cluster.id", clusterId.String())
+}
+
+func WithClusterNodeID(nodeId string) zap.Field {
+	return zap.String("cluster.node.id", nodeId)
 }

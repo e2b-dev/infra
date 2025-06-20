@@ -53,6 +53,7 @@ runs:
         TEMPLATE_MANAGER_ADDRESS: "http://localhost:5008"
         ARTIFACTS_REGISTRY_PROVIDER: "Local"
         STORAGE_PROVIDER: "Local"
+        ENVIRONMENT: "local"
       run: |
         mkdir -p ~/logs
         

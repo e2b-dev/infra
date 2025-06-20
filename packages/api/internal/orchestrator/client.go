@@ -32,7 +32,7 @@ type GRPCClient struct {
 	Sandbox orchestrator.SandboxServiceClient
 	Info    orchestratorinfo.InfoServiceClient
 
-	connection e2bgrpc.ClientConnInterface
+	connection *grpc.ClientConn
 }
 
 var (

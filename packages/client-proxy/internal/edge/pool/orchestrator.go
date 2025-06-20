@@ -62,7 +62,7 @@ type OrchestratorGRPCClient struct {
 	Template e2bgrpctemplatemanager.TemplateServiceClient
 	Info     e2bgrpcorchestratorinfo.InfoServiceClient
 
-	connection e2bgrpc.ClientConnInterface
+	connection *grpc.ClientConn
 }
 
 func NewOrchestrator(ctx context.Context, ip string, port int) (*OrchestratorNode, error) {
