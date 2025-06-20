@@ -175,12 +175,12 @@ func run() int {
 		if err != nil {
 			switch {
 			case errors.Is(err, http.ErrServerClosed):
-				edgeRunLogger.Info("edge http service shutdown successfully")
+				edgeRunLogger.Info("edge service shutdown successfully")
 			case err != nil:
 				exitCode.Add(1)
-				edgeRunLogger.Error("edge http service encountered error", zap.Error(err))
+				edgeRunLogger.Error("edge service encountered error", zap.Error(err))
 			default:
-				edgeRunLogger.Info("edge http service exited without error")
+				edgeRunLogger.Info("edge service exited without error")
 			}
 		}
 	}()
@@ -202,13 +202,13 @@ func run() int {
 		// Add different handling for the error
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
-			proxyRunLogger.Info("http service shutdown successfully")
+			proxyRunLogger.Info("proxy http service shutdown successfully")
 		case err != nil:
 			exitCode.Add(1)
-			proxyRunLogger.Error("http service encountered error", zap.Error(err))
+			proxyRunLogger.Error("proxy http service encountered error", zap.Error(err))
 		default:
 			// this probably shouldn't happen...
-			proxyRunLogger.Error("http service exited without error")
+			proxyRunLogger.Error("proxy http service exited without error")
 		}
 	}()
 
