@@ -10,7 +10,7 @@ Run the following command to (re)build the envd daemon and start a Docker contai
 make build && make start-docker
 ```
 
-You can use E2B SDKs with env var `E2B_DEBUG=true` or with a debug paramater set to true when creating or connecting to a sandbox to connect to the envd started with this command locally.
+You can use E2B SDKs with env var `E2B_DEBUG=true` or with a debug parameter set to true when creating or connecting to a sandbox to connect to the envd started with this command locally.
 
 ### Generating API server stubs
 

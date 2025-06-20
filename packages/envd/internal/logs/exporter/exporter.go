@@ -18,11 +18,14 @@ const ExporterTimeout = 10 * time.Second
 type HTTPExporter struct {
 	ctx      context.Context
 	client   http.Client
-	triggers chan struct{}
 	logs     [][]byte
-	sync.Mutex
-	isNotFC   bool
-	mmdsOpts  *host.MMDSOpts
+	isNotFC  bool
+	mmdsOpts *host.MMDSOpts
+
+	// Concurrency coordination
+	triggers  chan struct{}
+	logLock   sync.RWMutex
+	mmdsLock  sync.RWMutex
 	startOnce sync.Once
 }
 
@@ -76,7 +79,7 @@ func (w *HTTPExporter) listenForMMDSOptsAndStart(mmdsChan <-chan *host.MMDSOpts)
 			if !ok {
 				return nil
 			}
-			w.Lock()
+			w.mmdsLock.Lock()
 			if mmdsOpts == nil {
 				mmdsOpts = &host.MMDSOpts{
 					InstanceID: "unknown",
@@ -86,7 +89,7 @@ func (w *HTTPExporter) listenForMMDSOptsAndStart(mmdsChan <-chan *host.MMDSOpts)
 				}
 			}
 			w.mmdsOpts = mmdsOpts
-			w.Unlock()
+			w.mmdsLock.Unlock()
 
 			w.startOnce.Do(func() {
 				w.start()
@@ -112,7 +115,9 @@ func (w *HTTPExporter) start() {
 		}
 
 		for _, logLine := range logs {
+			w.mmdsOpts.RLock()
 			logLineWithOpts, err := w.mmdsOpts.AddOptsToJSON(logLine)
+			w.mmdsOpts.RUnlock()
 			if err != nil {
 				log.Printf("error adding instance logging options (%+v) to JSON (%+v) with logs : %v\n", w.mmdsOpts, logLine, err)
 
@@ -152,8 +157,8 @@ func (w *HTTPExporter) Write(logs []byte) (int, error) {
 }
 
 func (w *HTTPExporter) getAllLogs() [][]byte {
-	w.Lock()
-	defer w.Unlock()
+	w.logLock.Lock()
+	defer w.logLock.Unlock()
 
 	logs := w.logs
 	w.logs = nil
@@ -162,8 +167,8 @@ func (w *HTTPExporter) getAllLogs() [][]byte {
 }
 
 func (w *HTTPExporter) addLogs(logs []byte) {
-	w.Lock()
-	defer w.Unlock()
+	w.logLock.Lock()
+	defer w.logLock.Unlock()
 
 	w.logs = append(w.logs, logs)
 

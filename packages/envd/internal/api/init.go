@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
@@ -58,6 +60,9 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 			logger.Trace().Msg("Clock synced")
 		}
 	}()
+
+	ctx, _ := context.WithTimeout(context.Background(), 60*time.Second)
+	go host.PollForMMDSOpts(ctx, a.mmdsChan, a.envVars)
 
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "")
