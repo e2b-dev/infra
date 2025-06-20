@@ -35,8 +35,8 @@ import (
 const (
 	serviceName = "client-proxy"
 
-	shutdownDrainingWait  = 30 * time.Second
-	shutdownUnhealthyWait = 30 * time.Second
+	shutdownDrainingWait  = 15 * time.Second
+	shutdownUnhealthyWait = 15 * time.Second
 
 	version = "1.0.0"
 )
