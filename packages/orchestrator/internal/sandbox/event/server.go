@@ -21,11 +21,6 @@ func validateHeaders(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		// Add sandbox and team IDs to request context
-		ctx := context.WithValue(r.Context(), "sandboxID", sandboxID)
-		ctx = context.WithValue(ctx, "teamID", teamID)
-		r = r.WithContext(ctx)
-
 		next.ServeHTTP(w, r)
 	}
 }
