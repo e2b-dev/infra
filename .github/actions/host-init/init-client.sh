@@ -166,7 +166,3 @@ overcommitment_hugepages=$(($hugepages * $overcommitment_hugepages_percentage / 
 overcommitment_hugepages=$(remove_decimal $overcommitment_hugepages)
 echo "- Allocating $overcommitment_hugepages huge pages ($overcommitment_hugepages_percentage%) for overcommitment"
 echo $overcommitment_hugepages >/proc/sys/vm/nr_overcommit_hugepages
-
-# Install buildah for template building
-apt-get update
-apt-get install -y buildah

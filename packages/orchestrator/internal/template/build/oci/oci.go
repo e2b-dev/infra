@@ -2,27 +2,19 @@ package oci
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
-	"github.com/dustin/go-humanize"
-	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/containers/storage/pkg/archive"
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/google/go-containerregistry/pkg/v1/empty"
-	"github.com/google/go-containerregistry/pkg/v1/layout"
-	"github.com/google/go-containerregistry/pkg/v1/tarball"
-	"github.com/google/go-containerregistry/pkg/v1/types"
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildah"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/ext4"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
@@ -154,56 +146,43 @@ func unpackRootfs(ctx context.Context, tracer trace.Tracer, postProcessor *write
 	if err != nil {
 		return fmt.Errorf("while creating temporary file for squashed image: %w", err)
 	}
-	//defer func() {
-	//	os.Remove(ociPath)
-	//}()
-
-	tag := uuid.New().String()
+	defer func() {
+		os.Remove(ociPath)
+	}()
 
 	// Create export in the temporary directory
-	prefix, imageName, err := createExport(ctx, tracer, postProcessor, srcImage, tag, ociPath)
+	layers, err := createExport(ctx, tracer, postProcessor, srcImage, ociPath)
 	if err != nil {
 		return fmt.Errorf("while creating export of source image: %w", err)
 	}
-	telemetry.ReportEvent(ctx, "created export", attribute.String("prefix", prefix), attribute.String("image.name", imageName))
 
-	// Extract the rootfs from the image path
-	containerName, err := buildah.From(ctx, tracer, fmt.Sprintf("%s:%s:%s", prefix, imageName, tag))
+	mountPath, err := os.MkdirTemp("", "overlayfs-mount")
 	if err != nil {
-		return fmt.Errorf("while creating buildah container from OCI layout: %w", err)
+		return fmt.Errorf("while creating temporary file for squashed image: %w", err)
+	}
+	defer os.RemoveAll(mountPath)
+
+	err = ext4.MountOverlayFS(ctx, tracer, layers, mountPath)
+	if err != nil {
+		return fmt.Errorf("while mounting overlayfs with layers: %w", err)
 	}
 	defer func() {
-		// Will remove the container as well as the mount point
-		if removeErr := buildah.Remove(ctx, tracer, containerName); removeErr != nil {
-			zap.L().Error("error removing buildah container", zap.Error(removeErr))
+		if unmountErr := ext4.Unmount(ctx, tracer, mountPath); unmountErr != nil {
+			zap.L().Error("error unmounting overlayfs mount point", zap.Error(unmountErr))
 		}
-
-		go func() {
-			// Removing the image will remove the container as well as the mount point (if not already removed)
-			if removeErr := buildah.RemoveImage(ctx, tracer, imageName); removeErr != nil {
-				zap.L().Error("error removing buildah image", zap.Error(removeErr))
-			}
-		}()
 	}()
-
-	mountPath, err := buildah.Mount(ctx, tracer, containerName)
-	if err != nil {
-		return fmt.Errorf("while mounting buildah container: %w", err)
-	}
 
 	// List files in the mount point
 	files, err := listFiles(ctx, tracer, mountPath)
 	if err != nil {
-		return fmt.Errorf("while listing files in buildah container mount point: %w", err)
+		return fmt.Errorf("while listing files in overlayfs: %w", err)
 	}
-	postProcessor.WriteMsg("Filesystem root structure:")
-	for _, file := range files {
-		postProcessor.WriteMsg(fmt.Sprintf("  %s", file))
-	}
+	postProcessor.WriteMsg("Root filesystem structure:")
+	postProcessor.WriteMsg(strings.Join(files, ", "))
 
 	err = copyFiles(ctx, tracer, mountPath, destDir)
 	if err != nil {
-		return fmt.Errorf("while copying files from buildah container mount point to destination directory: %w", err)
+		return fmt.Errorf("while copying files from overlayfs to destination directory: %w", err)
 	}
 
 	return nil
@@ -236,73 +215,55 @@ func copyFiles(ctx context.Context, tracer trace.Tracer, src, dest string) error
 	return nil
 }
 
-func createExport(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, srcImage containerregistry.Image, tag, path string) (string, string, error) {
+func createExport(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, srcImage containerregistry.Image, path string) ([]string, error) {
 	ctx, childSpan := tracer.Start(ctx, "create-oci-export")
 	defer childSpan.End()
 
-	mediaType, err := srcImage.MediaType()
+	layers, err := srcImage.Layers()
 	if err != nil {
-		return "", "", fmt.Errorf("while getting media type of source image: %w", err)
+		return nil, fmt.Errorf("while getting layers of source image: %w", err)
 	}
-	switch mediaType {
-	case types.OCIManifestSchema1:
-		// OCI export layout
-		p, err := layout.Write(path, empty.Index)
-		if err != nil {
-			return "", "", fmt.Errorf("while creating OCI layout: %w", err)
-		}
-		err = p.AppendImage(srcImage, layout.WithAnnotations(map[string]string{
-			"org.opencontainers.image.ref.name": tag,
-		}))
-		if err != nil {
-			return "", "", fmt.Errorf("while appending image to OCI layout: %w", err)
-		}
-		telemetry.ReportEvent(ctx, "created oci layout")
 
-		return "oci", path, nil
-	case types.DockerManifestSchema2:
-		// Docker tarball export
-		filePath := filepath.Join(path, "docker-image.tar")
-
-		ref, err := name.ParseReference("docker-archive")
+	layerPaths := make([]string, len(layers))
+	var eg errgroup.Group
+	// Need to iterate in reverse order to maintain the correct layer order for overlayfs
+	for i := len(layers) - 1; i >= 0; i-- {
+		l := layers[i]
+		digest, err := l.Digest()
 		if err != nil {
-			return "", "", fmt.Errorf("while parsing image reference: %w", err)
+			return nil, fmt.Errorf("failed to get digest of layer %d: %w", i, err)
 		}
-		progress := make(chan containerregistry.Update, 200)
-		go func() {
-			defer close(progress)
+		telemetry.ReportEvent(ctx, "uncompressing layer", attribute.Int("layer.index", i), attribute.String("layer.digest", digest.String()))
+		postProcessor.WriteMsg(fmt.Sprintf("Uncompressing layer: %s", digest))
 
-			err := tarball.WriteToFile(filePath, ref, srcImage, tarball.WithProgress(progress))
+		// Each layer has to be uniquely named, even if the digest is the same across different layers
+		layerPath := filepath.Join(path, fmt.Sprintf("layer-%d-%s", i, strings.ReplaceAll(digest.String(), ":", "-")))
+		layerPaths[i] = layerPath
+		eg.Go(func() error {
+			err := os.MkdirAll(layerPath, 0o755)
 			if err != nil {
-				progress <- containerregistry.Update{Error: fmt.Errorf("while writing Docker image tarball: %w", err)}
-				return
+				return fmt.Errorf("failed to create directory for layer %d: %w", i, err)
 			}
-		}()
 
-		nextReport := int64(0)
-	progressLoop:
-		for update := range progress {
-			switch {
-			case update.Error != nil && errors.Is(update.Error, io.EOF):
-				break progressLoop
-			case update.Error != nil:
-				return "", "", fmt.Errorf("error exporting Docker image: %w", update.Error)
-			default:
-				if nextReport <= update.Complete || update.Complete == update.Total {
-					nextReport = update.Complete + (update.Total / tarballExportUpdates)
-					telemetry.ReportEvent(ctx, "docker tarball export progress",
-						attribute.Int64("complete", update.Complete),
-						attribute.Int64("total", update.Total),
-					)
-					postProcessor.WriteMsg(fmt.Sprintf("Exporting Docker image: %s / %s", humanize.Bytes(uint64(update.Complete)), humanize.Bytes(uint64(update.Total))))
-				}
+			rc, err := l.Uncompressed()
+			if err != nil {
+				return fmt.Errorf("failed to get uncompressed layer %d: %w", i, err)
 			}
-		}
-		postProcessor.WriteMsg("Docker image exported")
-		telemetry.ReportEvent(ctx, "created docker tarball")
+			defer rc.Close()
 
-		return "docker-archive", filePath, nil
-	default:
-		return "", "", fmt.Errorf("source image is not an OCI image index or Docker manifest, got: %s", mediaType)
+			err = archive.Untar(rc, layerPath, &archive.TarOptions{})
+			if err != nil {
+				return fmt.Errorf("failed to untar layer %d: %w", i, err)
+			}
+			return nil
+		})
 	}
+
+	if err := eg.Wait(); err != nil {
+		return nil, fmt.Errorf("while extracting layers: %w", err)
+	}
+
+	postProcessor.WriteMsg("Layers extracted")
+
+	return layerPaths, nil
 }

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -246,6 +247,26 @@ func RemoveFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, fil
 	if err != nil {
 		zap.L().Error("error removing file", zap.Error(err), zap.String("output", string(out)))
 		return fmt.Errorf("error removing file: %w", err)
+	}
+
+	return nil
+}
+
+func MountOverlayFS(ctx context.Context, tracer trace.Tracer, layers []string, mountPoint string) error {
+	ctx, mountSpan := tracer.Start(ctx, "mount-overlay-fs")
+	defer mountSpan.End()
+
+	cmd := exec.CommandContext(ctx, "mount", "-t", "overlay", "overlay", "-o", "lowerdir="+strings.Join(layers, ":"), mountPoint)
+	telemetry.ReportEvent(ctx, "mount-ext4-filesystem", attribute.String("cmd", cmd.String()))
+
+	mountStdoutWriter := telemetry.NewEventWriter(ctx, "stdout")
+	cmd.Stdout = mountStdoutWriter
+
+	mountStderrWriter := telemetry.NewEventWriter(ctx, "stderr")
+	cmd.Stderr = mountStderrWriter
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("error mounting ext4 filesystem: %w", err)
 	}
 
 	return nil

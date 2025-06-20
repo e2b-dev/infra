@@ -65,14 +65,6 @@ build {
     ]
   }
 
-  # Install Buildah (necessary for mounting OCI images in template building)
-  provisioner "shell" {
-    inline = [
-      "sudo apt-get update",
-      "sudo apt-get install -y buildah",
-    ]
-  }
-
   provisioner "shell" {
     inline = [
       "export GCSFUSE_REPO=gcsfuse-`lsb_release -c -s`",
