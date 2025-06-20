@@ -2,13 +2,13 @@ package edgepassthrough
 
 import (
 	"context"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"io"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
 	e2binfo "github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
@@ -96,7 +96,7 @@ func (s *NodePassThrough) director(ctx context.Context) (*grpc.ClientConn, error
 func (s *NodePassThrough) handler(srv interface{}, serverStream grpc.ServerStream) error {
 	fullMethodName, ok := grpc.MethodFromServerStream(serverStream)
 	if !ok {
-		return status.Errorf(codes.Internal, "lowLevelServerStream not exists in context")
+		return status.Errorf(codes.Internal, "low lever server stream not exists in context")
 	}
 
 	// AWS ALB health check does not allow us to do health check on different HTTP protocol that
@@ -112,7 +112,7 @@ func (s *NodePassThrough) handler(srv interface{}, serverStream grpc.ServerStrea
 	}
 
 	// We require that the director's returned context inherits from the serverStream.Context().
-	backendConn, err := s.director(serverStream.Context())
+	clientConnection, err := s.director(serverStream.Context())
 	if err != nil {
 		return err
 	}
@@ -120,7 +120,7 @@ func (s *NodePassThrough) handler(srv interface{}, serverStream grpc.ServerStrea
 	clientCtx, clientCancel := context.WithCancel(s.ctx)
 	defer clientCancel()
 
-	clientStream, err := grpc.NewClientStream(clientCtx, clientStreamDescForProxying, backendConn, fullMethodName)
+	clientStream, err := grpc.NewClientStream(clientCtx, clientStreamDescForProxying, clientConnection, fullMethodName)
 	if err != nil {
 		return err
 	}
