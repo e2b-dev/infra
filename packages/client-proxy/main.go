@@ -169,18 +169,18 @@ func run() int {
 		defer sigCancel()
 
 		edgeRunLogger := logger.With(zap.Int("edge_port", edgePort))
-		edgeRunLogger.Info("edge http service starting")
+		edgeRunLogger.Info("edge api starting")
 
 		err := edgeGinServer.ListenAndServe()
 		if err != nil {
 			switch {
 			case errors.Is(err, http.ErrServerClosed):
-				edgeRunLogger.Info("edge service shutdown successfully")
+				edgeRunLogger.Info("edge api shutdown successfully")
 			case err != nil:
 				exitCode.Add(1)
-				edgeRunLogger.Error("edge service encountered error", zap.Error(err))
+				edgeRunLogger.Error("edge api encountered error", zap.Error(err))
 			default:
-				edgeRunLogger.Info("edge service exited without error")
+				edgeRunLogger.Info("edge api exited without error")
 			}
 		}
 	}()
@@ -196,19 +196,19 @@ func run() int {
 		defer sigCancel()
 
 		proxyRunLogger := logger.With(zap.Int("proxy_port", proxyPort))
-		proxyRunLogger.Info("proxy http service starting")
+		proxyRunLogger.Info("http proxy starting")
 
 		err := proxy.ListenAndServe()
 		// Add different handling for the error
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
-			proxyRunLogger.Info("proxy http service shutdown successfully")
+			proxyRunLogger.Info("http proxy shutdown successfully")
 		case err != nil:
 			exitCode.Add(1)
-			proxyRunLogger.Error("proxy http service encountered error", zap.Error(err))
+			proxyRunLogger.Error("http proxy encountered error", zap.Error(err))
 		default:
 			// this probably shouldn't happen...
-			proxyRunLogger.Error("proxy http service exited without error")
+			proxyRunLogger.Error("http proxy exited without error")
 		}
 	}()
 
@@ -233,9 +233,9 @@ func run() int {
 		err := proxy.Shutdown(proxyShutdownCtx)
 		if err != nil {
 			exitCode.Add(1)
-			shutdownLogger.Error("proxy http service shutdown error", zap.Error(err))
+			shutdownLogger.Error("http proxy shutdown error", zap.Error(err))
 		} else {
-			shutdownLogger.Info("proxy http service shutdown successfully")
+			shutdownLogger.Info("http proxy shutdown successfully")
 		}
 
 		edgeApiStore.SetUnhealthy()
@@ -247,7 +247,7 @@ func run() int {
 		ginErr := edgeGinServer.Shutdown(ctx)
 		if ginErr != nil {
 			exitCode.Add(1)
-			shutdownLogger.Error("edge http service shutdown error", zap.Error(ginErr))
+			shutdownLogger.Error("edge api shutdown error", zap.Error(ginErr))
 		}
 	}()
 
