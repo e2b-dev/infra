@@ -187,12 +187,15 @@ func run() int {
 	}
 
 	muxServer := cmux.New(lis)
-	muxRpcListener := muxServer.MatchWithWriters(cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc")) // handler requests for gRPC pass through
-	muxRestListener := muxServer.Match(cmux.Any())                                                                           // handler requests for REST API
+
+	grpcListener := muxServer.MatchWithWriters(cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc")) // handler requests for gRPC pass through
+	grpcSrv := edgePassThroughHandler.GetServer()
+
+	restListener := muxServer.Match(cmux.Any())
+	restSrv := &http.Server{Handler: edgeHttpHandler} // handler requests for REST API
 
 	go func() {
-		grpcSrv := edgePassThroughHandler.GetServer()
-		err := grpcSrv.Serve(muxRpcListener)
+		err := grpcSrv.Serve(grpcListener)
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
 			zap.L().Info("edge grpc service shutdown successfully")
@@ -206,8 +209,7 @@ func run() int {
 	}()
 
 	go func() {
-		httpSrv := &http.Server{Handler: edgeHttpHandler}
-		err := httpSrv.Serve(muxRestListener)
+		err := restSrv.Serve(restListener)
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
 			zap.L().Info("edge api service shutdown successfully")
@@ -306,18 +308,19 @@ func run() int {
 		shutdownLogger.Info("waiting for unhealthy state propagation", zap.Float64("wait_in_seconds", shutdownUnhealthyWait.Seconds()))
 		time.Sleep(shutdownUnhealthyWait)
 
-		// shut down the edge pass through proxy service and rest api listeners
-		// after closed services listeners, close mux server
-		err = muxRestListener.Close()
+		// wait for graceful shutdown of the gRPC server with  pass through proxy
+		grpcSrv.GracefulStop()
+
+		// wait for graceful shutdown of the rest api server with health check
+		restShutdownCtx, restShutdownCtxCancel := context.WithTimeout(ctx, shutdownDrainingWait)
+		defer restShutdownCtxCancel()
+
+		err = restSrv.Shutdown(restShutdownCtx)
 		if err != nil {
-			shutdownLogger.Error("edge rest api service shutdown error", zap.Error(err))
+			shutdownLogger.Error("edge rest api shutdown error", zap.Error(err))
 		}
 
-		err = muxRpcListener.Close()
-		if err != nil {
-			shutdownLogger.Error("edge pass through proxy service shutdown error", zap.Error(err))
-		}
-
+		// close the mux server
 		muxServer.Close()
 	}()
 
