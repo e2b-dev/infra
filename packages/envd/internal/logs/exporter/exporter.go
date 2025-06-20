@@ -43,6 +43,10 @@ func NewHTTPLogsExporter(ctx context.Context, isNotFC bool, mmdsChan <-chan *hos
 }
 
 func (w *HTTPExporter) sendInstanceLogs(logs []byte, address string) error {
+	if address == "" {
+		return nil
+	}
+
 	request, err := http.NewRequestWithContext(w.ctx, http.MethodPost, address, bytes.NewBuffer(logs))
 	if err != nil {
 		return err
@@ -78,7 +82,7 @@ func (w *HTTPExporter) listenForMMDSOptsAndStart(mmdsChan <-chan *host.MMDSOpts)
 					InstanceID: "unknown",
 					EnvID:      "unknown",
 					TeamID:     "unknown",
-					Address:    "http://localhost:30006", // default logs collector address
+					Address:    "",
 				}
 			}
 			w.mmdsOpts = mmdsOpts
