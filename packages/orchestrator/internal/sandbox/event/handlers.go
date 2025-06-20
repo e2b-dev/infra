@@ -7,6 +7,7 @@ type EventHandler struct {
 	HandlerFunc func(w http.ResponseWriter, r *http.Request)
 }
 
+// TODO: write an actual metrics handler
 var MetricsHandler = EventHandler{
 	Path: "/metrics",
 	HandlerFunc: func(w http.ResponseWriter, r *http.Request) {

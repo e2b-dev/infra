@@ -30,7 +30,7 @@ import (
 )
 
 const proxyPort = 5007
-const eventProxyPort = 5010
+const sbxEventServerPort = 5010
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())

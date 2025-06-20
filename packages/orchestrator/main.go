@@ -80,7 +80,7 @@ func main() {
 	}
 }
 
-func run(port, proxyPort, eventProxyPort uint) (success bool) {
+func run(port, proxyPort, sbxEventServerPort uint) (success bool) {
 	success = true
 
 	services := service.GetServices()
@@ -221,7 +221,7 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 
-	sbxEventServer := event.NewEventServer(eventProxyPort, event.EventHandlers)
+	sbxEventServer := event.NewEventServer(sbxEventServerPort, event.EventHandlers)
 
 	tracer := tel.TracerProvider.Tracer(serviceName)
 
@@ -326,16 +326,16 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 	})
 
 	g.Go(func() error {
-		eventProxyErr := sbxEventServer.Start()
-		if eventProxyErr != nil && !errors.Is(eventProxyErr, http.ErrServerClosed) {
+		sbxEventServerErr := sbxEventServer.Start()
+		if sbxEventServerErr != nil && !errors.Is(sbxEventServerErr, http.ErrServerClosed) {
 			select {
-			case serviceError <- eventProxyErr:
+			case serviceError <- sbxEventServerErr:
 			default:
 				// Don't block if the serviceError channel is already closed
 				// or if the error is already sent
 			}
 
-			return eventProxyErr
+			return sbxEventServerErr
 		}
 
 		return nil
