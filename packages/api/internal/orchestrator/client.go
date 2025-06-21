@@ -20,8 +20,9 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	orchestratorinfogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	tempaltemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	e2bhealth "github.com/e2b-dev/infra/packages/shared/pkg/health"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
@@ -29,39 +30,63 @@ import (
 const nodeHealthCheckTimeout = time.Second * 2
 
 type GRPCClient struct {
-	Sandbox orchestrator.SandboxServiceClient
-	Info    orchestratorinfo.InfoServiceClient
+	Sandbox   orchestratorgrpc.SandboxServiceClient
+	Info      orchestratorinfogrpc.InfoServiceClient
+	Templates tempaltemanagergrpc.TemplateServiceClient
 
 	connection *grpc.ClientConn
 }
 
 var (
-	OrchestratorToApiNodeStateMapper = map[orchestratorinfo.ServiceInfoStatus]api.NodeStatus{
-		orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy:   api.NodeStatusReady,
-		orchestratorinfo.ServiceInfoStatus_OrchestratorDraining:  api.NodeStatusDraining,
-		orchestratorinfo.ServiceInfoStatus_OrchestratorUnhealthy: api.NodeStatusUnhealthy,
+	OrchestratorToApiNodeStateMapper = map[orchestratorinfogrpc.ServiceInfoStatus]api.NodeStatus{
+		orchestratorinfogrpc.ServiceInfoStatus_OrchestratorHealthy:   api.NodeStatusReady,
+		orchestratorinfogrpc.ServiceInfoStatus_OrchestratorDraining:  api.NodeStatusDraining,
+		orchestratorinfogrpc.ServiceInfoStatus_OrchestratorUnhealthy: api.NodeStatusUnhealthy,
 	}
 
-	ApiNodeToOrchestratorStateMapper = map[api.NodeStatus]orchestratorinfo.ServiceInfoStatus{
-		api.NodeStatusReady:     orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy,
-		api.NodeStatusDraining:  orchestratorinfo.ServiceInfoStatus_OrchestratorDraining,
-		api.NodeStatusUnhealthy: orchestratorinfo.ServiceInfoStatus_OrchestratorUnhealthy,
+	ApiNodeToOrchestratorStateMapper = map[api.NodeStatus]orchestratorinfogrpc.ServiceInfoStatus{
+		api.NodeStatusReady:     orchestratorinfogrpc.ServiceInfoStatus_OrchestratorHealthy,
+		api.NodeStatusDraining:  orchestratorinfogrpc.ServiceInfoStatus_OrchestratorDraining,
+		api.NodeStatusUnhealthy: orchestratorinfogrpc.ServiceInfoStatus_OrchestratorUnhealthy,
 	}
 )
 
-func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string) (*GRPCClient, error) {
-	conn, err := e2bgrpc.GetConnection(host, false, grpc.WithStatsHandler(otelgrpc.NewClientHandler(
-		otelgrpc.WithTracerProvider(tracerProvider),
-		otelgrpc.WithMeterProvider(meterProvider),
-	)), grpc.WithBlock(), grpc.WithTimeout(time.Second))
+func NewClientWithOptions(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string, tls bool, options []grpc.DialOption) (*GRPCClient, error) {
+	options = append(
+		options,
+		grpc.WithStatsHandler(
+			otelgrpc.NewClientHandler(
+				otelgrpc.WithTracerProvider(tracerProvider),
+				otelgrpc.WithMeterProvider(meterProvider),
+			),
+		),
+		grpc.WithBlock(),
+
+		// we are using client for over-internet connections that needs a bit more time to establish
+		grpc.WithTimeout(5*time.Second),
+	)
+
+	conn, err := e2bgrpc.GetConnection(host, tls, options...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}
 
-	sandboxClient := orchestrator.NewSandboxServiceClient(conn)
-	infoClient := orchestratorinfo.NewInfoServiceClient(conn)
+	infoClient := orchestratorinfogrpc.NewInfoServiceClient(conn)
+	sandboxClient := orchestratorgrpc.NewSandboxServiceClient(conn)
+	templateClient := tempaltemanagergrpc.NewTemplateServiceClient(conn)
 
-	return &GRPCClient{Sandbox: sandboxClient, Info: infoClient, connection: conn}, nil
+	return &GRPCClient{
+		Sandbox:   sandboxClient,
+		Info:      infoClient,
+		Templates: templateClient,
+
+		connection: conn,
+	}, nil
+}
+
+func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string, tls bool) (*GRPCClient, error) {
+	var options []grpc.DialOption
+	return NewClientWithOptions(tracerProvider, meterProvider, host, tls, options)
 }
 
 func (a *GRPCClient) Close() error {
@@ -79,7 +104,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 
 	defer childSpan.End()
 
-	client, err := NewClient(o.tel.TracerProvider, o.tel.MeterProvider, node.OrchestratorAddress)
+	client, err := NewClient(o.tel.TracerProvider, o.tel.MeterProvider, node.OrchestratorAddress, false)
 	if err != nil {
 		return err
 	}
