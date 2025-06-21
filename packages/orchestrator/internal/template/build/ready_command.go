@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/templateconfig"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 )
 
@@ -19,7 +20,7 @@ const (
 func (b *TemplateBuilder) runReadyCommand(
 	ctx context.Context,
 	postProcessor *writer.PostProcessor,
-	template *TemplateConfig,
+	template *templateconfig.TemplateConfig,
 	sandboxID string,
 	envVars map[string]string,
 ) error {
@@ -72,7 +73,7 @@ func (b *TemplateBuilder) runReadyCommand(
 	}
 }
 
-func getDefaultReadyCommand(template *TemplateConfig) string {
+func getDefaultReadyCommand(template *templateconfig.TemplateConfig) string {
 	if template.StartCmd == "" {
 		return fmt.Sprintf("sleep %d", 0)
 	}

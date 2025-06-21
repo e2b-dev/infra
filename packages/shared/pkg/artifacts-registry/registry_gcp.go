@@ -70,12 +70,59 @@ func (g *GCPArtifactsRegistry) GetImage(ctx context.Context, templateId string, 
 		return nil, fmt.Errorf("failed to get auth: %w", err)
 	}
 
-	img, err := remote.Image(ref, remote.WithAuth(auth), remote.WithPlatform(platform))
+	img, err := remote.Image(ref, remote.WithAuth(auth), remote.WithPlatform(platform), remote.WithContext(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("error pulling image: %w", err)
 	}
 
 	return img, nil
+}
+
+func (g *GCPArtifactsRegistry) GetLayer(ctx context.Context, templateId string, layerHash string, platform containerregistry.Platform) (containerregistry.Image, error) {
+	imageUrl, err := g.GetTag(ctx, templateId, layerHash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get image URL: %w", err)
+	}
+
+	ref, err := name.ParseReference(imageUrl)
+	if err != nil {
+		return nil, fmt.Errorf("invalid image reference: %w", err)
+	}
+
+	auth, err := g.getAuthToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get auth: %w", err)
+	}
+
+	img, err := remote.Image(ref, remote.WithAuth(auth), remote.WithPlatform(platform), remote.WithContext(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("error pulling image: %w", err)
+	}
+
+	return img, nil
+}
+
+func (g *GCPArtifactsRegistry) PushLayer(ctx context.Context, templateId string, layerHash string, layer containerregistry.Image) error {
+	imageUrl, err := g.GetTag(ctx, templateId, layerHash)
+	if err != nil {
+		return fmt.Errorf("failed to get image URL: %w", err)
+	}
+
+	ref, err := name.ParseReference(imageUrl)
+	if err != nil {
+		return fmt.Errorf("invalid image reference: %w", err)
+	}
+
+	auth, err := g.getAuthToken(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get auth: %w", err)
+	}
+
+	if err := remote.Write(ref, layer, remote.WithAuth(auth), remote.WithContext(ctx)); err != nil {
+		return fmt.Errorf("error pushing layer: %w", err)
+	}
+
+	return nil
 }
 
 func (g *GCPArtifactsRegistry) getAuthToken(ctx context.Context) (*authn.Basic, error) {
