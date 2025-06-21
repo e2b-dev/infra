@@ -150,15 +150,6 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		zap.L().Fatal("initializing Orchestrator client", zap.Error(err))
 	}
 
-	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
-	templateManager, err := template_manager.New(ctx, tel.TracerProvider, tel.MeterProvider, dbClient, templateBuildsCache)
-	if err != nil {
-		zap.L().Fatal("initializing Template manager client", zap.Error(err))
-	}
-
-	// Start the periodic sync of template builds statuses
-	go templateManager.BuildsStatusPeriodicalSync(ctx)
-
 	var lokiClient *loki.DefaultClient
 	if laddr := os.Getenv("LOKI_ADDRESS"); laddr != "" {
 		lokiClient = &loki.DefaultClient{
@@ -177,10 +168,19 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		zap.L().Fatal("initializing access token generator failed", zap.Error(err))
 	}
 
-	clustersPool, err := edge.NewPool(ctx, sqlcDB, tracer)
+	clustersPool, err := edge.NewPool(ctx, tel, sqlcDB, tracer)
 	if err != nil {
 		zap.L().Fatal("initializing edge clusters pool failed", zap.Error(err))
 	}
+
+	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
+	templateManager, err := template_manager.New(ctx, tracer, tel.TracerProvider, tel.MeterProvider, dbClient, sqlcDB, clustersPool, lokiClient, templateBuildsCache)
+	if err != nil {
+		zap.L().Fatal("initializing Template manager client", zap.Error(err))
+	}
+
+	// Start the periodic sync of template builds statuses
+	go templateManager.BuildsStatusPeriodicalSync(ctx)
 
 	a := &APIStore{
 		Healthy:                   false,

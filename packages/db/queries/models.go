@@ -46,6 +46,7 @@ type Env struct {
 	LastSpawnedAt *time.Time
 	TeamID        uuid.UUID
 	CreatedBy     *uuid.UUID
+	ClusterID     *uuid.UUID
 }
 
 type EnvAlias struct {
@@ -71,6 +72,7 @@ type EnvBuild struct {
 	EnvID              *string
 	EnvdVersion        *string
 	ReadyCmd           *string
+	ClusterNodeID      *string
 }
 
 type Snapshot struct {

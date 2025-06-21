@@ -26,6 +26,7 @@ func NewAnalytics() (*Analytics, error) {
 	if host == "" {
 		zap.L().Warn("Running dummy implementation of analytics collector client, no host provided")
 	} else {
+		host := fmt.Sprintf("%s:443", host)
 		conn, err := e2bgrpc.GetConnection(host, true, grpc.WithPerRPCCredentials(&gRPCApiKey{}))
 		if err != nil {
 			return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
