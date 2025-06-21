@@ -58,7 +58,7 @@ const (
 
 func New(ctx context.Context, tracer trace.Tracer, tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, db *db.DB, sqlcDB *sqlcdb.Client, edgePool *edge.Pool, lokiClient *loki.DefaultClient, buildCache *templatecache.TemplatesBuildCache) (*TemplateManager, error) {
 	// todo
-	host = os.Getenv("TEMPLATE_MANAGER_ADDRESS")
+	host := os.Getenv("TEMPLATE_MANAGER_ADDRESS")
 	client, err := orchestrator.NewClient(tracerProvider, meterProvider, host, false)
 	if err != nil {
 		return nil, err
