@@ -2,17 +2,20 @@ package analyticscollector
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"os"
+	"regexp"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/types/known/emptypb"
-
-	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 )
 
-var host = os.Getenv("ANALYTICS_COLLECTOR_HOST")
+// This isn't host, but a url. Remove the protocol part
+var host = regexp.MustCompile(`https?://`).ReplaceAllString(os.Getenv("ANALYTICS_COLLECTOR_HOST"), "")
 
 type Analytics struct {
 	client     AnalyticsCollectorClient
@@ -26,9 +29,26 @@ func NewAnalytics() (*Analytics, error) {
 	if host == "" {
 		zap.L().Warn("Running dummy implementation of analytics collector client, no host provided")
 	} else {
-		conn, err := e2bgrpc.GetConnection(host, true, grpc.WithPerRPCCredentials(&gRPCApiKey{}))
+		systemRoots, err := x509.SystemCertPool()
 		if err != nil {
-			return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
+			errMsg := fmt.Errorf("failed to read system root certificate pool: %w", err)
+
+			return nil, errMsg
+		}
+
+		cred := credentials.NewTLS(&tls.Config{
+			RootCAs:    systemRoots,
+			MinVersion: tls.VersionTLS13,
+		})
+
+		conn, err := grpc.NewClient(
+			fmt.Sprintf("%s:443", host),
+			grpc.WithPerRPCCredentials(&gRPCApiKey{}),
+			grpc.WithAuthority(host),
+			grpc.WithTransportCredentials(cred),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create GRPC client: %w", err)
 		}
 
 		connection = conn

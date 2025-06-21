@@ -11,10 +11,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
@@ -35,16 +35,20 @@ type GRPCClient struct {
 }
 
 func NewClient(ctx context.Context, tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider) (*GRPCClient, error) {
-	keepaliveParam := grpc.WithKeepaliveParams(keepalive.ClientParameters{
-		Time:                10 * time.Second, // Send ping every 10s
-		Timeout:             2 * time.Second,  // Wait 2s for response
-		PermitWithoutStream: true,
-	})
-
-	conn, err := e2bgrpc.GetConnection(host, false, grpc.WithStatsHandler(otelgrpc.NewClientHandler(
-		otelgrpc.WithTracerProvider(tracerProvider),
-		otelgrpc.WithMeterProvider(meterProvider),
-	)), keepaliveParam)
+	conn, err := grpc.NewClient(host,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(
+			otelgrpc.NewClientHandler(
+				otelgrpc.WithTracerProvider(tracerProvider),
+				otelgrpc.WithMeterProvider(meterProvider),
+			),
+		),
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{
+			Time:                10 * time.Second, // Send ping every 10s
+			Timeout:             2 * time.Second,  // Wait 2s for response
+			PermitWithoutStream: true,
+		}),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}

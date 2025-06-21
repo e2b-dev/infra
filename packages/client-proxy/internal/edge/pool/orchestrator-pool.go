@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -21,6 +22,9 @@ type OrchestratorsPool struct {
 
 	tracer trace.Tracer
 	logger *zap.Logger
+
+	metricProvider metric.MeterProvider
+	tracerProvider trace.TracerProvider
 }
 
 const (
@@ -28,15 +32,24 @@ const (
 	statusLogInterval                 = 1 * time.Minute
 )
 
-func NewOrchestratorsPool(ctx context.Context, logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, tracer trace.Tracer) *OrchestratorsPool {
+func NewOrchestratorsPool(
+	ctx context.Context,
+	logger *zap.Logger,
+	tracerProvider trace.TracerProvider,
+	metricProvider metric.MeterProvider,
+	discovery sd.ServiceDiscoveryAdapter,
+) *OrchestratorsPool {
 	pool := &OrchestratorsPool{
 		discovery: discovery,
 
 		nodes: smap.New[*OrchestratorNode](),
 		mutex: sync.RWMutex{},
 
+		tracer: tracerProvider.Tracer("orchestrators-pool"),
 		logger: logger,
-		tracer: tracer,
+
+		metricProvider: metricProvider,
+		tracerProvider: tracerProvider,
 	}
 
 	// Background synchronization of orchestrators available in pool
@@ -179,7 +192,7 @@ func (p *OrchestratorsPool) connectNode(ctx context.Context, node *sd.ServiceDis
 	ctx, childSpan := p.tracer.Start(ctx, "connect-orchestrator-node")
 	defer childSpan.End()
 
-	o, err := NewOrchestrator(ctx, node.NodeIp, node.NodePort)
+	o, err := NewOrchestrator(ctx, p.tracerProvider, p.metricProvider, node.NodeIp, node.NodePort)
 	if err != nil {
 		return err
 	}
