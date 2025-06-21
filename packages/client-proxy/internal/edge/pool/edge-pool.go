@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	sd "github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
+	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -78,7 +79,7 @@ func (p *EdgePool) keepInSync(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			p.logger.Info("Stopping keepInSync")
+			p.logger.Info("Stopping keep-in-sync")
 			return
 		case <-ticker.C:
 			p.syncNodes(ctx)
@@ -128,7 +129,7 @@ func (p *EdgePool) syncNodes(ctx context.Context) {
 				// newly discovered orchestrator
 				err := p.connectNode(ctx, sdNode)
 				if err != nil {
-					p.logger.Error("Error connecting to node", zap.Error(err))
+					p.logger.Error("Error connecting to node", zap.String("host", host), zap.Error(err))
 				}
 
 				return
@@ -192,12 +193,12 @@ func (p *EdgePool) removeNode(ctx context.Context, node *EdgeNode) error {
 	_, childSpan := p.tracer.Start(ctx, "remove-edge-node")
 	defer childSpan.End()
 
-	p.logger.Info("Edge node connection is not active anymore, closing.", zap.String("node_id", node.ServiceId))
+	p.logger.Info("Edge node connection is not active anymore, closing.", l.WithClusterNodeID(node.ServiceId))
 
 	// stop background sync and close everything
 	err := node.Close()
 	if err != nil {
-		p.logger.Error("Error closing connection to node", zap.Error(err))
+		p.logger.Error("Error closing connection to node", zap.Error(err), l.WithClusterNodeID(node.ServiceId))
 	}
 
 	p.mutex.Lock()
@@ -205,6 +206,6 @@ func (p *EdgePool) removeNode(ctx context.Context, node *EdgeNode) error {
 
 	p.nodes.Remove(node.ServiceId)
 
-	p.logger.Info("Edge node node connection has been closed.", zap.String("node_id", node.ServiceId))
+	p.logger.Info("Edge node node connection has been closed.", l.WithClusterNodeID(node.ServiceId))
 	return nil
 }

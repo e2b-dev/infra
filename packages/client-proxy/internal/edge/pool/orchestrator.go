@@ -17,6 +17,7 @@ import (
 	e2bgrpcorchestrator "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	e2bgrpcorchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	e2bgrpctemplatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type OrchestratorStatus string
@@ -62,7 +63,7 @@ type OrchestratorGRPCClient struct {
 	Template e2bgrpctemplatemanager.TemplateServiceClient
 	Info     e2bgrpcorchestratorinfo.InfoServiceClient
 
-	connection *grpc.ClientConn
+	Connection *grpc.ClientConn
 }
 
 func NewOrchestrator(ctx context.Context, ip string, port int) (*OrchestratorNode, error) {
@@ -103,7 +104,6 @@ func (o *OrchestratorNode) sync() {
 	for {
 		select {
 		case <-o.ctx.Done():
-			zap.L().Info("context done", zap.String("orchestrator sync id", o.ServiceId))
 			return
 		case <-ticker.C:
 			o.syncRun()
@@ -121,7 +121,7 @@ func (o *OrchestratorNode) syncRun() error {
 	for i := 0; i < orchestratorSyncMaxRetries; i++ {
 		status, err := o.Client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 		if err != nil {
-			zap.L().Error("failed to check health", zap.String("orchestrator id", o.ServiceId), zap.Error(err))
+			zap.L().Error("failed to check orchestrator health", l.WithClusterNodeID(o.ServiceId), zap.Error(err))
 			continue
 		}
 
@@ -185,12 +185,12 @@ func newClient(host string) (*OrchestratorGRPCClient, error) {
 		Sandbox:    e2bgrpcorchestrator.NewSandboxServiceClient(conn),
 		Template:   e2bgrpctemplatemanager.NewTemplateServiceClient(conn),
 		Info:       e2bgrpcorchestratorinfo.NewInfoServiceClient(conn),
-		connection: conn,
+		Connection: conn,
 	}, nil
 }
 
 func (a *OrchestratorGRPCClient) close() error {
-	err := a.connection.Close()
+	err := a.Connection.Close()
 	if err != nil {
 		return fmt.Errorf("failed to close connection: %w", err)
 	}

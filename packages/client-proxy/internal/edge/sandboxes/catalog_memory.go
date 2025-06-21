@@ -53,12 +53,24 @@ func (c *MemorySandboxCatalog) StoreSandbox(sandboxId string, sandboxInfo *Sandb
 	return nil
 }
 
-func (c *MemorySandboxCatalog) DeleteSandbox(sandboxId string) error {
+func (c *MemorySandboxCatalog) DeleteSandbox(sandboxId string, executionId string) error {
 	_, span := c.tracer.Start(c.ctx, "sandbox-catalog-delete")
 	defer span.End()
 
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
+
+	item := c.cache.Get(sandboxId)
+
+	// No need for removal here
+	if item.IsExpired() || item.Value() == nil {
+		return nil
+	}
+
+	// Different execution is stored in the cache, we don't want to remove it
+	if item.Value().ExecutionId != executionId {
+		return nil
+	}
 
 	c.cache.Delete(sandboxId)
 	return nil

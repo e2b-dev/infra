@@ -30,14 +30,6 @@ const (
 	ClusterOrchestratorRoleTemplateManager ClusterOrchestratorRole = "templateManager"
 )
 
-// Defines values for TemplateBuildStatusResponseStatus.
-const (
-	TemplateBuildStatusResponseStatusBuilding TemplateBuildStatusResponseStatus = "building"
-	TemplateBuildStatusResponseStatusError    TemplateBuildStatusResponseStatus = "error"
-	TemplateBuildStatusResponseStatusReady    TemplateBuildStatusResponseStatus = "ready"
-	TemplateBuildStatusResponseStatusWaiting  TemplateBuildStatusResponseStatus = "waiting"
-)
-
 // ClusterNode defines model for ClusterNode.
 type ClusterNode struct {
 	// Commit Source code version of the node
@@ -141,81 +133,23 @@ type Error struct {
 	Message string `json:"message"`
 }
 
-// RunningSandbox defines model for RunningSandbox.
-type RunningSandbox struct {
-	ClientId  *string        `json:"client_id,omitempty"`
-	Config    *SandboxConfig `json:"config,omitempty"`
-	EndTime   *Timestamp     `json:"endTime,omitempty"`
-	StartTime *Timestamp     `json:"startTime,omitempty"`
+// SandboxCreateCatalogRequest defines model for SandboxCreateCatalogRequest.
+type SandboxCreateCatalogRequest struct {
+	ExecutionId string `json:"executionId"`
+
+	// OrchestratorId Orchestrator where the sandbox is placed
+	OrchestratorId string `json:"orchestratorId"`
+	SandboxId      string `json:"sandboxId"`
+
+	// SandboxMaxLength Maximum duration in hours
+	SandboxMaxLength int64     `json:"sandboxMaxLength"`
+	SandboxStartTime Timestamp `json:"sandboxStartTime"`
 }
 
-// SandboxConfig defines model for SandboxConfig.
-type SandboxConfig struct {
-	Alias              *string            `json:"alias"`
-	AutoPause          *bool              `json:"autoPause,omitempty"`
-	BaseTemplateId     *string            `json:"baseTemplateId"`
-	BuildId            string             `json:"buildId"`
-	EnvVars            *map[string]string `json:"envVars"`
-	EnvdAccessToken    *string            `json:"envdAccessToken,omitempty"`
-	EnvdVersion        string             `json:"envdVersion"`
-	FirecrackerVersion string             `json:"firecrackerVersion"`
-	HugePages          bool               `json:"hugePages"`
-	KernelVersion      string             `json:"kernelVersion"`
-
-	// MaxSandboxLength Maximum duration in hours
-	MaxSandboxLength int64              `json:"maxSandboxLength"`
-	Metadata         *map[string]string `json:"metadata"`
-	OrchestratorId   string             `json:"orchestratorId"`
-	RamMB            int64              `json:"ramMB"`
-	SandboxId        string             `json:"sandboxId"`
-	Snapshot         bool               `json:"snapshot"`
-	TeamId           string             `json:"teamId"`
-	TemplateId       string             `json:"templateId"`
-	TotalDiskSizeMB  int64              `json:"totalDiskSizeMB"`
-	VCPU             int64              `json:"vCPU"`
-}
-
-// SandboxCreateRequest defines model for SandboxCreateRequest.
-type SandboxCreateRequest struct {
-	EndTime   Timestamp     `json:"endTime"`
-	Sandbox   SandboxConfig `json:"sandbox"`
-	StartTime Timestamp     `json:"startTime"`
-}
-
-// SandboxCreateResponse defines model for SandboxCreateResponse.
-type SandboxCreateResponse struct {
-	ClientId string `json:"clientId"`
-}
-
-// SandboxListResponse defines model for SandboxListResponse.
-type SandboxListResponse struct {
-	Sandboxes []RunningSandbox `json:"sandboxes"`
-}
-
-// SandboxPauseRequest defines model for SandboxPauseRequest.
-type SandboxPauseRequest struct {
-	BuildId    string `json:"buildId"`
-	TemplateId string `json:"templateId"`
-}
-
-// SandboxUpdateRequest defines model for SandboxUpdateRequest.
-type SandboxUpdateRequest struct {
-	EndTime Timestamp `json:"endTime"`
-}
-
-// TemplateBuildCreateRequest defines model for TemplateBuildCreateRequest.
-type TemplateBuildCreateRequest struct {
-	BuildId            string `json:"buildId"`
-	DiskSizeMB         int64  `json:"diskSizeMB"`
-	FirecrackerVersion string `json:"firecrackerVersion"`
-	HugePages          bool   `json:"hugePages"`
-	KernelVersion      string `json:"kernelVersion"`
-	OrchestratorId     string `json:"orchestratorId"`
-	RamMB              int64  `json:"ramMB"`
-	ReadyCommand       string `json:"readyCommand"`
-	StartCommand       string `json:"startCommand"`
-	TemplateId         string `json:"templateId"`
-	VCPU               int64  `json:"vCPU"`
+// SandboxDeleteCatalogRequest defines model for SandboxDeleteCatalogRequest.
+type SandboxDeleteCatalogRequest struct {
+	ExecutionId string `json:"executionId"`
+	SandboxId   string `json:"sandboxId"`
 }
 
 // TemplateBuildLogsResponse defines model for TemplateBuildLogsResponse.
@@ -224,36 +158,8 @@ type TemplateBuildLogsResponse struct {
 	Logs []string `json:"logs"`
 }
 
-// TemplateBuildMetadata defines model for TemplateBuildMetadata.
-type TemplateBuildMetadata struct {
-	// EnvdVersionKey Key for the version of envd used in the build
-	EnvdVersionKey string `json:"envdVersionKey"`
-
-	// RootfsSizeKey Key for the root filesystem size
-	RootfsSizeKey int32 `json:"rootfsSizeKey"`
-}
-
-// TemplateBuildStatusResponse defines model for TemplateBuildStatusResponse.
-type TemplateBuildStatusResponse struct {
-	// BuildID Identifier of the build
-	BuildID  string                 `json:"buildID"`
-	Metadata *TemplateBuildMetadata `json:"metadata,omitempty"`
-
-	// Status Status of the template
-	Status TemplateBuildStatusResponseStatus `json:"status"`
-
-	// TemplateID Identifier of the template
-	TemplateID string `json:"templateID"`
-}
-
-// TemplateBuildStatusResponseStatus Status of the template
-type TemplateBuildStatusResponseStatus string
-
 // Timestamp defines model for Timestamp.
 type Timestamp = time.Time
-
-// SandboxId defines model for sandbox_id.
-type SandboxId = string
 
 // N400 defines model for 400.
 type N400 = Error
@@ -267,23 +173,6 @@ type N404 = Error
 // N500 defines model for 500.
 type N500 = Error
 
-// V1ListSandboxesParams defines parameters for V1ListSandboxes.
-type V1ListSandboxesParams struct {
-	OrchestratorId string `form:"orchestratorId" json:"orchestratorId"`
-}
-
-// V1TemplateBuildStatusParams defines parameters for V1TemplateBuildStatus.
-type V1TemplateBuildStatusParams struct {
-	OrchestratorId string `form:"orchestrator_id" json:"orchestrator_id"`
-	TemplateId     string `form:"template_id" json:"template_id"`
-}
-
-// V1TemplateBuildDeleteParams defines parameters for V1TemplateBuildDelete.
-type V1TemplateBuildDeleteParams struct {
-	TemplateId     string `form:"template_id" json:"template_id"`
-	OrchestratorId string `form:"orchestrator_id" json:"orchestrator_id"`
-}
-
 // V1TemplateBuildLogsParams defines parameters for V1TemplateBuildLogs.
 type V1TemplateBuildLogsParams struct {
 	OrchestratorId string `form:"orchestrator_id" json:"orchestrator_id"`
@@ -293,14 +182,8 @@ type V1TemplateBuildLogsParams struct {
 	Offset *int32 `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
-// V1CreateSandboxJSONRequestBody defines body for V1CreateSandbox for application/json ContentType.
-type V1CreateSandboxJSONRequestBody = SandboxCreateRequest
+// V1SandboxCatalogDeleteJSONRequestBody defines body for V1SandboxCatalogDelete for application/json ContentType.
+type V1SandboxCatalogDeleteJSONRequestBody = SandboxDeleteCatalogRequest
 
-// V1UpdateSandboxJSONRequestBody defines body for V1UpdateSandbox for application/json ContentType.
-type V1UpdateSandboxJSONRequestBody = SandboxUpdateRequest
-
-// V1PauseSandboxJSONRequestBody defines body for V1PauseSandbox for application/json ContentType.
-type V1PauseSandboxJSONRequestBody = SandboxPauseRequest
-
-// V1TemplateBuildCreateJSONRequestBody defines body for V1TemplateBuildCreate for application/json ContentType.
-type V1TemplateBuildCreateJSONRequestBody = TemplateBuildCreateRequest
+// V1SandboxCatalogCreateJSONRequestBody defines body for V1SandboxCatalogCreate for application/json ContentType.
+type V1SandboxCatalogCreateJSONRequestBody = SandboxCreateCatalogRequest

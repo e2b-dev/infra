@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"slices"
 	"strings"
@@ -19,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/handlers"
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -33,10 +33,6 @@ const (
 
 	maxMultipartMemory = 1 << 27 // 128 MiB
 	maxUploadLimit     = 1 << 28 // 256 MiB
-
-	maxReadHeaderTimeout = 60 * time.Second
-	maxReadTimeout       = 75 * time.Second
-	maxWriteTimeout      = 75 * time.Second
 )
 
 var (
@@ -44,7 +40,7 @@ var (
 	ErrInvalidAuth       = errors.New("authorization is invalid")
 )
 
-func NewGinServer(ctx context.Context, logger *zap.Logger, store *handlers.APIStore, swagger *openapi3.T, tracer trace.Tracer, port int, authSecret string) *http.Server {
+func NewGinServer(logger *zap.Logger, store *handlers.APIStore, swagger *openapi3.T, tracer trace.Tracer, auth authorization.AuthorizationService) *gin.Engine {
 	// Clear out the servers array in the swagger spec, that skips validating
 	// that server names match. We don't know how this thing will be run.
 	swagger.Servers = nil
@@ -64,7 +60,7 @@ func NewGinServer(ctx context.Context, logger *zap.Logger, store *handlers.APISt
 			&middleware.Options{
 				ErrorHandler: ginErrorHandler,
 				Options: openapi3filter.Options{
-					AuthenticationFunc: ginBuildAuthenticationHandler(tracer, authSecret),
+					AuthenticationFunc: ginBuildAuthenticationHandler(tracer, auth),
 					MultiError:         false,
 				},
 			},
@@ -72,7 +68,7 @@ func NewGinServer(ctx context.Context, logger *zap.Logger, store *handlers.APISt
 
 		func(c *gin.Context) {
 			path := c.Request.URL.Path
-			pathSkipped := []string{"/health", "/health/traffic"}
+			pathSkipped := []string{"/health", "/health/traffic", "/v1/info"}
 
 			if slices.Contains(pathSkipped, path) {
 				c.Next()
@@ -87,20 +83,10 @@ func NewGinServer(ctx context.Context, logger *zap.Logger, store *handlers.APISt
 	)
 
 	api.RegisterHandlersWithOptions(handler, store, api.GinServerOptions{})
-
-	s := &http.Server{
-		Handler:           handler,
-		Addr:              fmt.Sprintf("0.0.0.0:%d", port),
-		BaseContext:       func(net.Listener) context.Context { return ctx },
-		ReadHeaderTimeout: maxReadHeaderTimeout,
-		ReadTimeout:       maxReadTimeout,
-		WriteTimeout:      maxWriteTimeout,
-	}
-
-	return s
+	return handler
 }
 
-func ginBuildAuthenticationHandler(tracer trace.Tracer, authSecret string) func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
+func ginBuildAuthenticationHandler(tracer trace.Tracer, auth authorization.AuthorizationService) func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
 	return func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
 		ginContext := ctx.Value(middleware.GinContextKey).(*gin.Context)
 		requestContext := ginContext.Request.Context()
@@ -113,15 +99,16 @@ func ginBuildAuthenticationHandler(tracer trace.Tracer, authSecret string) func(
 		}
 
 		request := input.RequestValidationInput.Request
-		key := request.Header.Get(securityHeaderName)
 
 		// Check for the Authorization header.
+		key := request.Header.Get(securityHeaderName)
 		if key == "" {
 			return ErrMissingAuthHeader
 		}
 
 		// Check if the key matches the secret.
-		if key != authSecret {
+		err := auth.VerifyAuthorization(key)
+		if err != nil {
 			return ErrInvalidAuth
 		}
 
