@@ -21,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/event"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
@@ -40,8 +41,9 @@ type Closeable interface {
 }
 
 const (
-	defaultPort      = 5008
-	defaultProxyPort = 5007
+	defaultPort           = 5008
+	defaultProxyPort      = 5007
+	defaultEventProxyPort = 5010
 
 	sandboxMetricExportPeriod = 5 * time.Second
 
@@ -58,6 +60,7 @@ var (
 func main() {
 	port := flag.Uint("port", defaultPort, "orchestrator server port")
 	proxyPort := flag.Uint("proxy-port", defaultProxyPort, "orchestrator proxy port")
+	eventProxyPort := flag.Uint("event-proxy-port", defaultEventProxyPort, "orchestrator event proxy port")
 	flag.Parse()
 
 	if *port > math.MaxUint16 {
@@ -68,7 +71,7 @@ func main() {
 		log.Fatalf("%d is larger than maximum possible proxy port %d", proxyPort, math.MaxInt16)
 	}
 
-	success := run(*port, *proxyPort)
+	success := run(*port, *proxyPort, *eventProxyPort)
 
 	log.Println("Stopping orchestrator, success:", success)
 
@@ -77,7 +80,7 @@ func main() {
 	}
 }
 
-func run(port, proxyPort uint) (success bool) {
+func run(port, proxyPort, sbxEventServerPort uint) (success bool) {
 	success = true
 
 	services := service.GetServices()
@@ -218,6 +221,8 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 
+	sbxEventServer := event.NewEventServer(sbxEventServerPort, event.EventHandlers)
+
 	tracer := tel.TracerProvider.Tracer(serviceName)
 
 	networkPool, err := network.NewPool(ctx, tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID, tracer)
@@ -244,7 +249,7 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
 
-	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes, sandboxObserver, featureFlags)
+	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sbxEventServer, sandboxes, sandboxObserver, featureFlags)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
@@ -315,6 +320,22 @@ func run(port, proxyPort uint) (success bool) {
 			}
 
 			return proxyErr
+		}
+
+		return nil
+	})
+
+	g.Go(func() error {
+		sbxEventServerErr := sbxEventServer.Start()
+		if sbxEventServerErr != nil && !errors.Is(sbxEventServerErr, http.ErrServerClosed) {
+			select {
+			case serviceError <- sbxEventServerErr:
+			default:
+				// Don't block if the serviceError channel is already closed
+				// or if the error is already sent
+			}
+
+			return sbxEventServerErr
 		}
 
 		return nil
