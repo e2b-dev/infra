@@ -34,6 +34,7 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/redis/go-redis/v9"
 )
 
 type Closeable interface {
@@ -221,7 +222,24 @@ func run(port, proxyPort, sbxEventServerPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 
-	sbxEventServer := event.NewEventServer(sbxEventServerPort, event.EventHandlers)
+	var redisClient redis.UniversalClient
+	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
+		redisClient = redis.NewClusterClient(&redis.ClusterOptions{
+			Addrs:        []string{redisClusterUrl},
+			MinIdleConns: 1,
+		})
+	} else if redisUrl := os.Getenv("REDIS_URL"); redisUrl != "" {
+		redisClient = redis.NewClient(&redis.Options{
+			Addr:         redisUrl,
+			MinIdleConns: 1,
+		})
+	} else {
+		zap.L().Fatal("REDIS_URL not set")
+	}
+
+	sbxEventHandlers := event.NewEventHandlers(redisClient)
+
+	sbxEventServer := event.NewEventServer(sbxEventServerPort, sbxEventHandlers)
 
 	tracer := tel.TracerProvider.Tracer(serviceName)
 
