@@ -120,7 +120,8 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 			wg := errgroup.Group{}
 			// Get all sandbox metrics at most in the export interval (there is a 1-second timeout for each sandbox metrics request)
 			concurrentRequests := math.Ceil(float64(sbxCount) / so.exportInterval.Seconds())
-			wg.SetLimit(int(concurrentRequests))
+			// Multiply by 2 to leave some room for other callbacks
+			wg.SetLimit(int(2 * concurrentRequests))
 
 			for _, sbx := range so.sandboxes.Items() {
 				if !utils.IsGTEVersion(sbx.Config.EnvdVersion, minEnvdVersionForMetrics) {
