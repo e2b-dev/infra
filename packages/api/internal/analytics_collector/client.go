@@ -6,7 +6,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
-	"regexp"
+	"strings"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -14,8 +14,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-// This isn't host, but a url. Remove the protocol part
-var host = regexp.MustCompile(`https?://`).ReplaceAllString(os.Getenv("ANALYTICS_COLLECTOR_HOST"), "")
+var host = strings.TrimSpace(os.Getenv("ANALYTICS_COLLECTOR_HOST"))
 
 type Analytics struct {
 	client     AnalyticsCollectorClient
@@ -27,7 +26,7 @@ func NewAnalytics() (*Analytics, error) {
 	var connection *grpc.ClientConn
 
 	if host == "" {
-		zap.L().Warn("Running dummy implementation of analytics collector client, no host provided")
+		zap.L().Warn("Running dummy implementation of analytics collector client, no url provided")
 	} else {
 		systemRoots, err := x509.SystemCertPool()
 		if err != nil {
