@@ -133,8 +133,8 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 
 				wg.Go(func() error {
 					// Make sure the sandbox doesn't change while we are getting metrics (the slot could be assigned to another sandbox)
-					sbx.Checks.Lock()
 					childCtx, cancel := context.WithTimeout(ctx, time.Second)
+					sbx.Checks.Lock()
 					sbxMetrics, err := sbx.GetMetrics(childCtx)
 					cancel()
 					sbx.Checks.Unlock()
