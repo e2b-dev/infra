@@ -10,7 +10,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"golang.org/x/mod/semver"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -22,11 +21,13 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
-	InstanceIDPrefix    = "i"
-	metricTemplateAlias = metrics.MetricPrefix + "template.alias"
+	InstanceIDPrefix            = "i"
+	metricTemplateAlias         = metrics.MetricPrefix + "template.alias"
+	minEnvdVersionForSecureFlag = "0.2.0" // Minimum version of envd that supports secure flag
 )
 
 // mostUsedTemplates is a map of the most used template aliases.
@@ -184,7 +185,7 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 	}
 
 	// check if the envd version is newer than 0.2.0
-	if semver.Compare(fmt.Sprintf("v%s", *envdVersion), "v0.2.0") < 0 {
+	if !sharedUtils.IsGTEVersion(*envdVersion, minEnvdVersionForSecureFlag) {
 		return "", &api.APIError{
 			Code:      http.StatusBadRequest,
 			ClientMsg: "current template build does not support access flag, you need to re-build template to allow it",

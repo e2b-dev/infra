@@ -59,7 +59,6 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	sbx, cleanup, err := sandbox.ResumeSandbox(
 		childCtx,
 		s.tracer,
-		s.sandboxObserver,
 		s.networkPool,
 		s.templateCache,
 		req.Sandbox,
@@ -204,7 +203,6 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	// Check health metrics before stopping the sandbox
 	sbx.Checks.Healthcheck(loggingCtx, true)
-	sbx.Checks.LogMetricsThresholdExceeded(loggingCtx)
 
 	err := sbx.Stop(ctx)
 	if err != nil {

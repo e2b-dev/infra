@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -239,12 +240,12 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
 
-	sandboxObserver, err := telemetry.NewSandboxObserver(ctx, serviceInfo.SourceCommit, serviceInfo.ClientId, sandboxMetricExportPeriod)
+	sandboxObserver, err := metrics.NewSandboxObserver(ctx, serviceInfo.SourceCommit, serviceInfo.ClientId, sandboxMetricExportPeriod, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
 
-	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes, sandboxObserver, featureFlags)
+	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}

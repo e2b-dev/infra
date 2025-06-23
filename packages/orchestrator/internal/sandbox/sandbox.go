@@ -212,7 +212,7 @@ func CreateSandbox(
 		cleanup: cleanup,
 	}
 
-	checks, err := NewChecks(nil, sbx, false)
+	checks, err := NewChecks(ctx, tracer, sbx, false)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create health check: %w", err)
 	}
@@ -231,7 +231,6 @@ func CreateSandbox(
 func ResumeSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
-	sandboxObserver *telemetry.SandboxObserver,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
 	config *orchestrator.SandboxConfig,
@@ -402,7 +401,7 @@ func ResumeSandbox(
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
-	checks, err := NewChecks(sandboxObserver, sbx, useClickhouseMetrics)
+	checks, err := NewChecks(ctx, tracer, sbx, useClickhouseMetrics)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create health check: %w", err)
 	}

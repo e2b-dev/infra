@@ -4,22 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
 	"net/http"
 
-	"go.uber.org/zap"
-
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const (
-	sbxMemThresholdPct = 80
-	sbxCpuThresholdPct = 80
-)
+type Metrics struct {
+	Timestamp      int64   `json:"ts"`            // Unix Timestamp in UTC
+	CPUCount       int64   `json:"cpu_count"`     // Total CPU cores
+	CPUUsedPercent float64 `json:"cpu_used_pct"`  // Percent rounded to 2 decimal places
+	MemTotalMiB    int64   `json:"mem_total_mib"` // Total virtual memory in MiB
+	MemUsedMiB     int64   `json:"mem_used_mib"`  // Used virtual memory in MiB
+}
 
-func (s *Sandbox) GetMetrics(ctx context.Context) (*telemetry.SandboxMetrics, error) {
+func (s *Sandbox) GetMetrics(ctx context.Context) (*Metrics, error) {
 	address := fmt.Sprintf("http://%s:%d/metrics", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
 
 	request, err := http.NewRequestWithContext(ctx, "GET", address, nil)
@@ -42,36 +40,11 @@ func (s *Sandbox) GetMetrics(ctx context.Context) (*telemetry.SandboxMetrics, er
 		return nil, err
 	}
 
-	var m telemetry.SandboxMetrics
+	var m Metrics
 	err = json.NewDecoder(response.Body).Decode(&m)
 	if err != nil {
 		return nil, err
 	}
 
 	return &m, nil
-}
-
-func (s *Sandbox) LogMetricsThresholdExceeded(ctx context.Context) {
-	if isGTEVersion(s.Config.EnvdVersion, minEnvdVersionForMetrics) {
-		m, err := s.GetMetrics(ctx)
-		if err != nil {
-			sbxlogger.E(s).Warn("failed to get metrics", zap.Error(err))
-		} else {
-			// Round percentage to 2 decimal places
-			memUsedPct := float32(math.Floor(float64(m.MemUsedMiB)/float64(m.MemTotalMiB)*10000) / 100)
-			if memUsedPct >= sbxMemThresholdPct {
-				sbxlogger.E(s).Warn("Memory usage threshold exceeded",
-					zap.Float32("mem_used_percent", memUsedPct),
-					zap.Float32("mem_threshold_percent", sbxMemThresholdPct),
-				)
-			}
-
-			if m.CPUUsedPercent >= sbxCpuThresholdPct {
-				sbxlogger.E(s).Warn("CPU usage threshold exceeded",
-					zap.Float32("cpu_used_percent", float32(m.CPUUsedPercent)),
-					zap.Float32("cpu_threshold_percent", sbxCpuThresholdPct),
-				)
-			}
-		}
-	}
 }
