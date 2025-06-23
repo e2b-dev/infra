@@ -20,7 +20,7 @@ import (
 )
 
 var (
-	host                = os.Getenv("TEMPLATE_MANAGER_ADDRESS")
+	host                = os.Getenv("TEMPLATE_MANAGER_HOST")
 	healthCheckInterval = 5 * time.Second
 )
 

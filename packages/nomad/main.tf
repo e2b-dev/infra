@@ -71,7 +71,7 @@ resource "nomad_job" "api" {
     // It might be possible there could be problems if we are rolling updates for both API and Loki at the same time., so maybe increasing this to > 3 makes sense.
     prevent_colocation             = var.api_machine_count > 2
     orchestrator_port              = var.orchestrator_port
-    template_manager_address       = "http://template-manager.service.consul:${var.template_manager_port}"
+    template_manager_host          = "template-manager.service.consul:${var.template_manager_port}"
     otel_collector_grpc_endpoint   = "localhost:${var.otel_collector_grpc_port}"
     loki_address                   = "http://loki.service.consul:${var.loki_service_port.port}"
     logs_collector_address         = "http://localhost:${var.logs_proxy_port.port}"
