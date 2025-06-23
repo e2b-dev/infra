@@ -15,6 +15,7 @@ import (
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -26,6 +27,7 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const filesLayerCachePath = "/orchestrator/builder/files-cache"
@@ -132,6 +134,9 @@ func (ib *ImageBuilder) BuildLayers(
 		return "", fmt.Errorf("failed to write source image to temporary file: %w", err)
 	}
 	layerSourceImagePath := layerSourceImage.Name()
+	telemetry.ReportEvent(ctx, "saved source image to temporary file",
+		attribute.String("temporary_file_path", layerSourceImagePath),
+	)
 
 	for i, step := range ib.template.Steps {
 		// Force rebuild if the step has a Force flag set to true
@@ -183,10 +188,10 @@ func (ib *ImageBuilder) BuildLayers(
 				return err
 			}
 
-			zap.L().Debug("built layer",
-				zap.String("layer_hash", step.Hash),
-				zap.String("layer_source_image", layerSourceImagePath),
-				zap.String("layer_output_image", layerOutputImagePath),
+			telemetry.ReportEvent(ctx, "built layer",
+				attribute.String("layer_hash", step.Hash),
+				attribute.String("layer_source_image", layerSourceImagePath),
+				attribute.String("layer_output_image", layerOutputImagePath),
 			)
 
 			layerSourceImagePath = layerOutputImagePath
@@ -235,17 +240,18 @@ func (ib *ImageBuilder) buildAndCacheLayer(
 		return "", fmt.Errorf("failed to apply command: %w", err)
 	}
 
+	// TODO: Takes 6 seconds to export a layer, can we optimize this?
 	export, err := container.Export(ctx, targetFilePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to export container: %w", err)
 	}
 
-	zap.L().Debug("exported layer",
-		zap.String("source_file_path", sourceFilePath),
-		zap.String("target_file_path", targetFilePath),
-		zap.String("command_type", step.Type),
-		zap.Strings("command_args", step.Args),
-		zap.String("export", export),
+	telemetry.ReportEvent(ctx, "exported layer",
+		attribute.String("source_file_path", sourceFilePath),
+		attribute.String("target_file_path", targetFilePath),
+		attribute.String("command_type", step.Type),
+		attribute.StringSlice("command_args", step.Args),
+		attribute.String("export", export),
 	)
 
 	img, err := tarball.ImageFromPath(targetFilePath, nil)
@@ -253,18 +259,28 @@ func (ib *ImageBuilder) buildAndCacheLayer(
 		return "", fmt.Errorf("failed to read image from build export: %w", err)
 	}
 
-	err = ib.artifactRegistry.PushLayer(ctx, ib.template.TemplateId, step.Hash, img)
-	if err != nil {
-		// Soft fail, the build can continue even if the layer push fails
-		zap.L().Error("failed to push layer to artifact registry", zap.Error(err))
-	} else {
-		zap.L().Debug("pushed layer",
-			zap.String("source_file_path", sourceFilePath),
-			zap.String("target_file_path", targetFilePath),
-			zap.String("command_type", step.Type),
-			zap.Strings("command_args", step.Args),
-		)
-	}
+	telemetry.ReportEvent(ctx, "loaded layer from path",
+		attribute.String("source_file_path", sourceFilePath),
+		attribute.String("target_file_path", targetFilePath),
+		attribute.String("command_type", step.Type),
+		attribute.StringSlice("command_args", step.Args),
+		attribute.String("export", export),
+	)
+
+	go func() {
+		err = ib.artifactRegistry.PushLayer(ctx, ib.template.TemplateId, step.Hash, img)
+		if err != nil {
+			// Soft fail, the build can continue even if the layer push fails
+			telemetry.ReportError(ctx, "failed to push layer to artifact registry", err)
+		} else {
+			telemetry.ReportEvent(ctx, "pushed layer",
+				attribute.String("source_file_path", sourceFilePath),
+				attribute.String("target_file_path", targetFilePath),
+				attribute.String("command_type", step.Type),
+				attribute.StringSlice("command_args", step.Args),
+			)
+		}
+	}()
 
 	return step.Hash, nil
 }
