@@ -24,10 +24,9 @@ import (
 )
 
 const (
-	sbxMemThresholdPct           = 80
-	sbxCpuThresholdPct           = 80
-	minEnvdVersionForMetrics     = "0.1.5"
-	maxConcurrentMetricsRequests = 10 // Maximum number of concurrent requests to get metrics from sandboxes
+	sbxMemThresholdPct       = 80
+	sbxCpuThresholdPct       = 80
+	minEnvdVersionForMetrics = "0.1.5"
 )
 
 type (
@@ -35,8 +34,9 @@ type (
 )
 
 type SandboxObserver struct {
-	meterExporter sdkmetric.Exporter
-	registration  metric.Registration
+	meterExporter  sdkmetric.Exporter
+	registration   metric.Registration
+	exportInterval time.Duration
 
 	sandboxes *smap.Map[*sandbox.Sandbox]
 
@@ -91,13 +91,14 @@ func NewSandboxObserver(ctx context.Context, commitSHA, clientID string, sandbox
 	}
 
 	so := &SandboxObserver{
-		meterExporter: externalMeterExporter,
-		sandboxes:     sandboxes,
-		meter:         meter,
-		cpuTotal:      cpuTotal,
-		cpuUsed:       cpuUsed,
-		memoryTotal:   memoryTotal,
-		memoryUsed:    memoryUsed,
+		exportInterval: sandboxMetricsExportPeriod,
+		meterExporter:  externalMeterExporter,
+		sandboxes:      sandboxes,
+		meter:          meter,
+		cpuTotal:       cpuTotal,
+		cpuUsed:        cpuUsed,
+		memoryTotal:    memoryTotal,
+		memoryUsed:     memoryUsed,
 	}
 
 	registration, err := so.startObserving()
@@ -114,8 +115,12 @@ func NewSandboxObserver(ctx context.Context, commitSHA, clientID string, sandbox
 func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 	unregister, err := so.meter.RegisterCallback(
 		func(ctx context.Context, o metric.Observer) error {
+			sbxCount := so.sandboxes.Count()
+
 			wg := errgroup.Group{}
-			wg.SetLimit(maxConcurrentMetricsRequests)
+			// Get all sandbox metrics at most in the export interval (there is a 1-second timeout for each sandbox metrics request)
+			concurrentRequests := math.Ceil(float64(sbxCount) / so.exportInterval.Seconds())
+			wg.SetLimit(int(concurrentRequests))
 
 			for _, sbx := range so.sandboxes.Items() {
 				if !utils.IsGTEVersion(sbx.Config.EnvdVersion, minEnvdVersionForMetrics) {
