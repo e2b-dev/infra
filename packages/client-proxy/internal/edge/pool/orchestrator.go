@@ -9,11 +9,13 @@ import (
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	e2bgrpcorchestrator "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	e2bgrpcorchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	e2bgrpctemplatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -65,10 +67,10 @@ type OrchestratorGRPCClient struct {
 	connection *grpc.ClientConn
 }
 
-func NewOrchestrator(ctx context.Context, ip string, port int) (*OrchestratorNode, error) {
+func NewOrchestrator(ctx context.Context, tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, ip string, port int) (*OrchestratorNode, error) {
 	host := fmt.Sprintf("%s:%d", ip, port)
 
-	client, err := newClient(host)
+	client, err := newClient(tracerProvider, meterProvider, host)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GRPC client: %w", err)
 	}
@@ -175,10 +177,18 @@ func getMappedStatus(s e2bgrpcorchestratorinfo.ServiceInfoStatus) OrchestratorSt
 	return OrchestratorStatusUnhealthy
 }
 
-func newClient(host string) (*OrchestratorGRPCClient, error) {
-	conn, err := e2bgrpc.GetConnection(host, false, grpc.WithStatsHandler(otelgrpc.NewClientHandler()), grpc.WithBlock(), grpc.WithTimeout(time.Second))
+func newClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string) (*OrchestratorGRPCClient, error) {
+	conn, err := grpc.NewClient(host,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(
+			otelgrpc.NewClientHandler(
+				otelgrpc.WithTracerProvider(tracerProvider),
+				otelgrpc.WithMeterProvider(meterProvider),
+			),
+		),
+	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
+		return nil, fmt.Errorf("failed to create GRPC client: %w", err)
 	}
 
 	return &OrchestratorGRPCClient{
