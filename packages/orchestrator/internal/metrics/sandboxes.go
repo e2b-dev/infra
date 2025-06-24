@@ -27,6 +27,8 @@ const (
 	sbxMemThresholdPct       = 80
 	sbxCpuThresholdPct       = 80
 	minEnvdVersionForMetrics = "0.1.5"
+	timeoutGetMetrics        = 50 * time.Millisecond
+	metricsParallelismFactor = 5 // Used to calculate number of concurrently sandbox metrics requests
 )
 
 type (
@@ -118,10 +120,9 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 			sbxCount := so.sandboxes.Count()
 
 			wg := errgroup.Group{}
-			// Get all sandbox metrics at most in the export interval (there is a 1-second timeout for each sandbox metrics request)
-			concurrentRequests := math.Ceil(float64(sbxCount) / so.exportInterval.Seconds())
-			// Multiply by 2 to leave some room for other callbacks
-			wg.SetLimit(int(2 * concurrentRequests))
+			// Run concurrently to prevent blocking if there are many sandboxes other callbacks
+			limit := math.Ceil(float64(sbxCount / metricsParallelismFactor))
+			wg.SetLimit(int(limit))
 
 			for _, sbx := range so.sandboxes.Items() {
 				if !utils.IsGTEVersion(sbx.Config.EnvdVersion, minEnvdVersionForMetrics) {
@@ -134,7 +135,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 
 				wg.Go(func() error {
 					// Make sure the sandbox doesn't change while we are getting metrics (the slot could be assigned to another sandbox)
-					childCtx, cancel := context.WithTimeout(ctx, time.Second)
+					childCtx, cancel := context.WithTimeout(ctx, timeoutGetMetrics)
 					sbx.Checks.Lock()
 					sbxMetrics, err := sbx.GetMetrics(childCtx)
 					cancel()
