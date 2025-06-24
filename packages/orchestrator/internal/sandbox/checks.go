@@ -14,7 +14,7 @@ import (
 
 const (
 	healthCheckInterval = 20 * time.Second
-	healthCheckTimeout  = 50 * time.Millisecond
+	healthCheckTimeout  = 100 * time.Millisecond
 )
 
 type Checks struct {

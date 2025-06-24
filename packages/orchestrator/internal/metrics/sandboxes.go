@@ -27,7 +27,7 @@ const (
 	sbxMemThresholdPct       = 80
 	sbxCpuThresholdPct       = 80
 	minEnvdVersionForMetrics = "0.1.5"
-	timeoutGetMetrics        = 50 * time.Millisecond
+	timeoutGetMetrics        = 100 * time.Millisecond
 	metricsParallelismFactor = 5 // Used to calculate number of concurrently sandbox metrics requests
 
 	shiftFromMiBToBytes = 20 // Shift to convert MiB to bytes
