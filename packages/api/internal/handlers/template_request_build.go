@@ -211,6 +211,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		SetTeamID(team.ID).
 		SetCreatedBy(*userID).
 		SetPublic(false).
+		SetNillableClusterID(team.ClusterID).
 		OnConflictColumns(env.FieldID).
 		UpdateUpdatedAt().
 		Update(func(e *models.EnvUpsert) {
@@ -238,6 +239,25 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		return nil
 	}
 
+	var builderNodeId *string
+	if team.ClusterID != nil {
+		cluster, found := a.clustersPool.GetClusterById(*team.ClusterID)
+		if !found {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Cluster with ID '%s' not found", *team.ClusterID))
+			telemetry.ReportCriticalError(ctx, "cluster not found", fmt.Errorf("cluster with ID '%s' not found", *team.ClusterID), telemetry.WithTemplateID(templateID))
+			return nil
+		}
+
+		clusterNode, err := cluster.GetAvailableTemplateBuilder()
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting available template builder: %s", err))
+			telemetry.ReportCriticalError(ctx, "error when getting available template builder", err, telemetry.WithTemplateID(templateID))
+			return nil
+		}
+
+		builderNodeId = &clusterNode.Id
+	}
+
 	// Insert the new build
 	err = tx.EnvBuild.Create().
 		SetID(buildID).
@@ -250,6 +270,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		SetFreeDiskSizeMB(tier.DiskMb).
 		SetNillableStartCmd(body.StartCmd).
 		SetNillableReadyCmd(body.ReadyCmd).
+		SetNillableClusterNodeID(builderNodeId).
 		SetDockerfile(body.Dockerfile).
 		Exec(ctx)
 	if err != nil {
