@@ -139,7 +139,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 					sbxMetrics, err := sbx.Checks.GetMetrics(timeoutGetMetrics)
 					if err != nil {
 						// Sandbox has stopped
-						if sbx.Checks.IsErrStopped(err) {
+						if errors.Is(err, sandbox.ErrChecksStopped) {
 							return nil
 						}
 

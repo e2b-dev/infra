@@ -56,14 +56,6 @@ func (c *Checks) Stop() {
 	c.cancelCtx(ErrChecksStopped)
 }
 
-func (c *Checks) IsErrStopped(err error) bool {
-	if errors.Is(err, ErrChecksStopped) {
-		return true
-	}
-
-	return false
-}
-
 func (c *Checks) logHealth() {
 	healthTicker := time.NewTicker(healthCheckInterval)
 	defer func() {
@@ -86,7 +78,7 @@ func (c *Checks) logHealth() {
 func (c *Checks) Healthcheck(alwaysReport bool) {
 	ok, err := c.GetHealth(healthCheckTimeout)
 	// Sandbox stopped
-	if c.IsErrStopped(err) {
+	if errors.Is(err, ErrChecksStopped) {
 		return
 	}
 
