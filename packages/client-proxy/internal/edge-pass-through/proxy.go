@@ -16,7 +16,7 @@ import (
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 )
 
-type NodePassThrough struct {
+type NodePassThroughServer struct {
 	nodes  *e2borchestrators.OrchestratorsPool
 	info   *e2binfo.ServiceInfo
 	server *grpc.Server
@@ -36,8 +36,8 @@ const (
 
 var clientStreamDescForProxying = &grpc.StreamDesc{ServerStreams: true, ClientStreams: true}
 
-func NewNodePassThrough(ctx context.Context, nodes *e2borchestrators.OrchestratorsPool, info *e2binfo.ServiceInfo, authorization authorization.AuthorizationService) *grpc.Server {
-	nodePassThrough := &NodePassThrough{
+func NewNodePassThroughServer(ctx context.Context, nodes *e2borchestrators.OrchestratorsPool, info *e2binfo.ServiceInfo, authorization authorization.AuthorizationService) *grpc.Server {
+	nodePassThrough := &NodePassThroughServer{
 		authorization: authorization,
 		nodes:         nodes,
 		info:          info,
@@ -50,7 +50,7 @@ func NewNodePassThrough(ctx context.Context, nodes *e2borchestrators.Orchestrato
 	)
 }
 
-func (s *NodePassThrough) director(ctx context.Context) (*grpc.ClientConn, error) {
+func (s *NodePassThroughServer) director(ctx context.Context) (*grpc.ClientConn, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return nil, status.Error(codes.InvalidArgument, "error getting metadata from context")
@@ -87,7 +87,7 @@ func (s *NodePassThrough) director(ctx context.Context) (*grpc.ClientConn, error
 //
 // Core implementation is just following methods that are handling forwarding, proper closing and propagating of errors from both sides of the stream.
 // The handler is called for every request that is not handled by any other gRPC service.
-func (s *NodePassThrough) Handler(srv interface{}, serverStream grpc.ServerStream) error {
+func (s *NodePassThroughServer) Handler(srv interface{}, serverStream grpc.ServerStream) error {
 	fullMethodName, ok := grpc.MethodFromServerStream(serverStream)
 	if !ok {
 		return status.Errorf(codes.Internal, "low lever server stream not exists in context")
@@ -156,7 +156,7 @@ func (s *NodePassThrough) Handler(srv interface{}, serverStream grpc.ServerStrea
 	return status.Errorf(codes.Internal, "gRPC proxying should never reach this stage.")
 }
 
-func (s *NodePassThrough) forwardClientToServer(src grpc.ClientStream, dst grpc.ServerStream) chan error {
+func (s *NodePassThroughServer) forwardClientToServer(src grpc.ClientStream, dst grpc.ServerStream) chan error {
 	ret := make(chan error, 1)
 
 	go func() {
@@ -188,7 +188,7 @@ func (s *NodePassThrough) forwardClientToServer(src grpc.ClientStream, dst grpc.
 	return ret
 }
 
-func (s *NodePassThrough) forwardServerToClient(src grpc.ServerStream, dst grpc.ClientStream) chan error {
+func (s *NodePassThroughServer) forwardServerToClient(src grpc.ServerStream, dst grpc.ClientStream) chan error {
 	ret := make(chan error, 1)
 
 	go func() {
