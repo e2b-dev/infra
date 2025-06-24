@@ -116,7 +116,7 @@ func run() int {
 
 	edgeSD, orchestratorsSD, err := service_discovery.NewServiceDiscoveryProvider(ctx, edgePort, orchestratorPort, logger)
 	if err != nil {
-		logger.Error("failed to resolve service discovery config", zap.Error(err))
+		logger.Error("Failed to resolve service discovery config", zap.Error(err))
 		return 1
 	}
 
@@ -156,7 +156,7 @@ func run() int {
 	// Proxy sandbox http traffic to orchestrator nodes
 	trafficProxy, err := e2bproxy.NewClientProxy(tel.MeterProvider, serviceName, uint(proxyPort), catalog, orchestrators, useProxyCatalogResolution)
 	if err != nil {
-		logger.Error("failed to create client proxy", zap.Error(err))
+		logger.Error("Failed to create client proxy", zap.Error(err))
 		return 1
 	}
 
@@ -169,14 +169,14 @@ func run() int {
 
 	edgeApiSwagger, err := api.GetSwagger()
 	if err != nil {
-		logger.Error("failed to get swagger", zap.Error(err))
+		logger.Error("Failed to get swagger", zap.Error(err))
 		return 1
 	}
 
 	lisAddr := fmt.Sprintf("0.0.0.0:%d", edgePort)
 	lis, err := net.Listen("tcp", lisAddr)
 	if err != nil {
-		logger.Error("failed to listen on edge port", zap.Int("port", edgePort), zap.Error(err))
+		logger.Error("Failed to listen on edge port", zap.Int("port", edgePort), zap.Error(err))
 		return 1
 	}
 
@@ -198,13 +198,13 @@ func run() int {
 		err := grpcSrv.Serve(grpcListener)
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
-			zap.L().Info("edge grpc service shutdown successfully")
+			zap.L().Info("Edge grpc service shutdown successfully")
 		case err != nil:
 			exitCode.Add(1)
-			zap.L().Error("edge grpc service encountered error", zap.Error(err))
+			zap.L().Error("Edge grpc service encountered error", zap.Error(err))
 		default:
 			// this probably shouldn't happen...
-			zap.L().Error("edge grpc service exited without error")
+			zap.L().Error("Edge grpc service exited without error")
 		}
 	}()
 
@@ -215,13 +215,13 @@ func run() int {
 		err := restSrv.Serve(restListener)
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
-			zap.L().Info("edge api service shutdown successfully")
+			zap.L().Info("Edge api service shutdown successfully")
 		case err != nil:
 			exitCode.Add(1)
-			zap.L().Error("edge api service encountered error", zap.Error(err))
+			zap.L().Error("Edge api service encountered error", zap.Error(err))
 		default:
 			// this probably shouldn't happen...
-			zap.L().Error("edge api service exited without error")
+			zap.L().Error("Edge api service exited without error")
 		}
 	}()
 
@@ -236,18 +236,18 @@ func run() int {
 		defer sigCancel()
 
 		edgeRunLogger := logger.With(zap.Int("edge_port", edgePort))
-		edgeRunLogger.Info("edge api starting")
+		edgeRunLogger.Info("Edge api starting")
 
 		err := muxServer.Serve()
 		if err != nil {
 			switch {
 			case errors.Is(err, http.ErrServerClosed):
-				edgeRunLogger.Info("edge api shutdown successfully")
+				edgeRunLogger.Info("Edge api shutdown successfully")
 			case err != nil:
 				exitCode.Add(1)
-				edgeRunLogger.Error("edge api encountered error", zap.Error(err))
+				edgeRunLogger.Error("Edge api encountered error", zap.Error(err))
 			default:
-				edgeRunLogger.Info("edge api exited without error")
+				edgeRunLogger.Info("Edge api exited without error")
 			}
 		}
 	}()
@@ -263,19 +263,19 @@ func run() int {
 		defer sigCancel()
 
 		proxyRunLogger := logger.With(zap.Int("proxy_port", proxyPort))
-		proxyRunLogger.Info("http proxy starting")
+		proxyRunLogger.Info("Http proxy starting")
 
 		err := trafficProxy.ListenAndServe()
 		// Add different handling for the error
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
-			proxyRunLogger.Info("http proxy shutdown successfully")
+			proxyRunLogger.Info("Http proxy shutdown successfully")
 		case err != nil:
 			exitCode.Add(1)
-			proxyRunLogger.Error("http proxy encountered error", zap.Error(err))
+			proxyRunLogger.Error("Http proxy encountered error", zap.Error(err))
 		default:
 			// this probably shouldn't happen...
-			proxyRunLogger.Error("http proxy exited without error")
+			proxyRunLogger.Error("Http proxy exited without error")
 		}
 	}()
 
@@ -301,12 +301,12 @@ func run() int {
 		<-signalCtx.Done()
 
 		shutdownLogger := logger.With(zap.Int("proxy_port", proxyPort), zap.Int("edge_port", edgePort))
-		shutdownLogger.Info("shutting down services")
+		shutdownLogger.Info("Shutting down services")
 
 		edgeApiStore.SetDraining()
 
 		// we should wait for health check manager to notice that we are not ready for new traffic
-		shutdownLogger.Info("waiting for draining state propagation", zap.Float64("wait_in_seconds", shutdownDrainingWait.Seconds()))
+		shutdownLogger.Info("Waiting for draining state propagation", zap.Float64("wait_in_seconds", shutdownDrainingWait.Seconds()))
 		time.Sleep(shutdownDrainingWait)
 
 		proxyShutdownCtx, proxyShutdownCtxCancel := context.WithTimeout(ctx, 24*time.Hour)
@@ -316,15 +316,15 @@ func run() int {
 		err := trafficProxy.Shutdown(proxyShutdownCtx)
 		if err != nil {
 			exitCode.Add(1)
-			shutdownLogger.Error("http proxy shutdown error", zap.Error(err))
+			shutdownLogger.Error("Http proxy shutdown error", zap.Error(err))
 		} else {
-			shutdownLogger.Info("http proxy shutdown successfully")
+			shutdownLogger.Info("Http proxy shutdown successfully")
 		}
 
 		edgeApiStore.SetUnhealthy()
 
 		// wait for the health check manager to notice that we are not healthy at all
-		shutdownLogger.Info("waiting for unhealthy state propagation", zap.Float64("wait_in_seconds", shutdownUnhealthyWait.Seconds()))
+		shutdownLogger.Info("Waiting for unhealthy state propagation", zap.Float64("wait_in_seconds", shutdownUnhealthyWait.Seconds()))
 		time.Sleep(shutdownUnhealthyWait)
 
 		// wait for graceful shutdown of the gRPC server with  pass through proxy
@@ -337,7 +337,7 @@ func run() int {
 
 		err = restSrv.Shutdown(restShutdownCtx)
 		if err != nil {
-			shutdownLogger.Error("edge rest api shutdown error", zap.Error(err))
+			shutdownLogger.Error("Edge rest api shutdown error", zap.Error(err))
 		}
 
 		// used by instances management for notify that instance is ready for termination
