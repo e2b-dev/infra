@@ -163,7 +163,7 @@ func (c *Cluster) GetAvailableTemplateBuilder() (*ClusterNode, error) {
 		node.mutex.RLock()
 
 		// we don't want to place new builds to not healthy nodes
-		if node.Status != infogrpc.ServiceInfoStatus_OrchestratorUnhealthy {
+		if node.Status != infogrpc.ServiceInfoStatus_OrchestratorHealthy {
 			node.mutex.RUnlock()
 			continue
 		}
