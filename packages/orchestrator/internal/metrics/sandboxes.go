@@ -174,7 +174,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 			err := wg.Wait()
 			if err != nil {
 				// Log the error but continue to observe other sandboxes
-				zap.L().Error("error during observing sandbox metrics", zap.Error(err))
+				zap.L().Warn("error during observing sandbox metrics", zap.Error(err))
 			}
 
 			return nil
