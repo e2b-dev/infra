@@ -5,6 +5,10 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net/http"
+	"slices"
+	"time"
+
 	"github.com/google/uuid"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/trace"
@@ -13,9 +17,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
-	"net/http"
-	"slices"
-	"time"
 
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
