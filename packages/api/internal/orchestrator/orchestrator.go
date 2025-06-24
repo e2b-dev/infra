@@ -107,6 +107,12 @@ func New(
 		go o.reportLongRunningSandboxes(ctx)
 	}
 
+	err = o.setupMetrics(tel.MeterProvider)
+	if err != nil {
+		zap.L().Error("Failed to setup metrics", zap.Error(err))
+		return nil, fmt.Errorf("failed to setup metrics: %w", err)
+	}
+
 	go o.startStatusLogging(ctx)
 
 	return &o, nil

@@ -22,6 +22,8 @@ const (
 )
 
 const (
+	ApiOrchestratorCountMeterName ObservableUpDownCounterType = "api.orchestrator.running"
+
 	OrchestratorSandboxCountMeterName ObservableUpDownCounterType = "orchestrator.env.sandbox.running"
 
 	ClientProxyServerConnectionsMeterCounterName ObservableUpDownCounterType = "client_proxy.proxy.server.connections.open"
@@ -68,6 +70,7 @@ var upDownCounterUnits = map[UpDownCounterType]string{
 }
 
 var observableUpDownCounterDesc = map[ObservableUpDownCounterType]string{
+	ApiOrchestratorCountMeterName:                      "Counter of running orchestrators.",
 	OrchestratorSandboxCountMeterName:                  "Counter of running sandboxes on the orchestrator.",
 	ClientProxyServerConnectionsMeterCounterName:       "Open connections to the client proxy from load balancer.",
 	ClientProxyPoolConnectionsMeterCounterName:         "Open connections from the client proxy to the orchestrator proxy.",
@@ -79,6 +82,7 @@ var observableUpDownCounterDesc = map[ObservableUpDownCounterType]string{
 }
 
 var observableUpDownCounterUnits = map[ObservableUpDownCounterType]string{
+	ApiOrchestratorCountMeterName:                      "{orchestrator}",
 	OrchestratorSandboxCountMeterName:                  "{sandbox}",
 	ClientProxyServerConnectionsMeterCounterName:       "{connection}",
 	ClientProxyPoolConnectionsMeterCounterName:         "{connection}",
