@@ -112,9 +112,8 @@ func (p *EdgePool) syncNodes(ctx context.Context) {
 
 			host := fmt.Sprintf("%s:%d", sdNode.NodeIp, sdNode.NodePort)
 
-			//// skip self registration
+			// skip self registration
 			if host == p.nodeSelfHost {
-				p.logger.Debug("Skipping self registration", zap.String("host", host))
 				return
 			}
 
