@@ -57,7 +57,7 @@ func (c *Checks) Stop() {
 }
 
 func (c *Checks) IsErrStopped(err error) bool {
-	if errors.Is(err, context.Canceled) && errors.Is(context.Cause(c.ctx), ErrChecksStopped) {
+	if errors.Is(err, ErrChecksStopped) {
 		return true
 	}
 
