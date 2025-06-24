@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
@@ -71,7 +72,6 @@ func (o *EdgeNode) sync() {
 	for {
 		select {
 		case <-o.ctx.Done():
-			zap.L().Info("context done", zap.String("edge sync id", o.ServiceId))
 			return
 		case <-ticker.C:
 			o.syncRun()
@@ -89,12 +89,12 @@ func (o *EdgeNode) syncRun() error {
 	for i := 0; i < edgeSyncMaxRetries; i++ {
 		res, err := o.Client.V1InfoWithResponse(ctx)
 		if err != nil {
-			zap.L().Error("failed to check edge node status", zap.String("edge node id", o.ServiceId), zap.Error(err))
+			zap.L().Error("failed to check edge node status", l.WithClusterNodeID(o.ServiceId), zap.Error(err))
 			continue
 		}
 
 		if res.JSON200 == nil {
-			zap.L().Error("failed to check edge node status", zap.String("edge node id", o.ServiceId), zap.Int("status code", res.StatusCode()))
+			zap.L().Error("failed to check edge node status", l.WithClusterNodeID(o.ServiceId), zap.Int("status", res.StatusCode()))
 			continue
 		}
 

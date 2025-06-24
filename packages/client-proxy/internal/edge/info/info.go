@@ -19,8 +19,9 @@ type ServiceInfo struct {
 	Startup time.Time
 	Host    string
 
-	status   api.ClusterNodeStatus
-	statusMu sync.RWMutex
+	terminating bool
+	status      api.ClusterNodeStatus
+	statusMu    sync.RWMutex
 }
 
 func (s *ServiceInfo) GetStatus() api.ClusterNodeStatus {
@@ -38,4 +39,17 @@ func (s *ServiceInfo) SetStatus(status api.ClusterNodeStatus) {
 		zap.L().Info("Service status changed", zap.String("status", string(status)))
 		s.status = status
 	}
+}
+
+func (s *ServiceInfo) SetTerminating() {
+	s.statusMu.Lock()
+	defer s.statusMu.Unlock()
+	s.terminating = true
+}
+
+func (s *ServiceInfo) IsTerminating() bool {
+	s.statusMu.RLock()
+	defer s.statusMu.RUnlock()
+
+	return s.terminating
 }
