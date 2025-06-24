@@ -207,199 +207,6 @@ components:
           type: string
           description: Error
 
-    SandboxCreateRequest:
-      type: object
-      properties:
-        sandbox:
-          $ref: '#/components/schemas/SandboxConfig'
-        startTime:
-          $ref: '#/components/schemas/Timestamp'
-        endTime:
-          $ref: '#/components/schemas/Timestamp'
-      required: [sandbox, startTime, endTime]
-
-    SandboxCreateResponse:
-      type: object
-      properties:
-        clientId:
-          type: string
-      required: [clientId]
-
-    SandboxUpdateRequest:
-      type: object
-      properties:
-        endTime:
-          $ref: '#/components/schemas/Timestamp'
-      required: [endTime]
-
-    SandboxPauseRequest:
-      type: object
-      properties:
-        templateId:
-          type: string
-        buildId:
-          type: string
-      required: [templateId, buildId]
-
-    SandboxListResponse:
-      type: object
-      properties:
-        sandboxes:
-          type: array
-          items:
-            $ref: '#/components/schemas/RunningSandbox'
-      required: [sandboxes]
-
-    SandboxConfig:
-      type: object
-      properties:
-        orchestratorId:
-          type: string
-        templateId:
-          type: string
-        buildId:
-          type: string
-        sandboxId:
-          type: string
-        teamId:
-          type: string
-        baseTemplateId:
-          type: string
-          nullable: true
-        kernelVersion:
-          type: string
-        firecrackerVersion:
-          type: string
-        envdVersion:
-          type: string
-        alias:
-          type: string
-          nullable: true
-        envdAccessToken:
-          type: string
-        snapshot:
-          type: boolean
-        autoPause:
-          type: boolean
-        hugePages:
-          type: boolean
-        ramMB:
-          type: integer
-          format: int64
-        vCPU:
-          type: integer
-          format: int64
-        totalDiskSizeMB:
-          type: integer
-          format: int64
-        maxSandboxLength:
-          type: integer
-          format: int64
-          description: Maximum duration in hours
-        envVars:
-          type: object
-          nullable: true
-          additionalProperties:
-            type: string
-        metadata:
-          type: object
-          nullable: true
-          additionalProperties:
-            type: string
-      required: [orchestratorId, templateId, buildId, sandboxId, teamId, kernelVersion, firecrackerVersion, envdVersion, snapshot, hugePages, totalDiskSizeMB, vCPU, ramMB, maxSandboxLength]
-
-    RunningSandbox:
-      type: object
-      properties:
-        config:
-          $ref: '#/components/schemas/SandboxConfig'
-        client_id:
-          type: string
-        startTime:
-          $ref: '#/components/schemas/Timestamp'
-        endTime:
-          $ref: '#/components/schemas/Timestamp'
-
-    TemplateBuildMetadata:
-      required:
-        - rootfsSizeKey
-        - envdVersionKey
-      properties:
-        rootfsSizeKey:
-          type: integer
-          format: int32
-          description: Key for the root filesystem size
-        envdVersionKey:
-          type: string
-          description: Key for the version of envd used in the build
-
-    TemplateBuildCreateRequest:
-      type: object
-      properties:
-        orchestratorId:
-          type: string
-        buildId:
-          type: string
-        templateId:
-          type: string
-        hugePages:
-          type: boolean
-        ramMB:
-          type: integer
-          format: int64
-        vCPU:
-          type: integer
-          format: int64
-        diskSizeMB:
-          type: integer
-          format: int64
-        kernelVersion:
-          type: string
-        firecrackerVersion:
-          type: string
-        startCommand:
-          type: string
-        readyCommand:
-          type: string
-      required:
-        - orchestratorId
-        - templateId
-        - buildId
-
-        - hugePages
-        - ramMB
-        - vCPU
-        - diskSizeMB
-
-        - kernelVersion
-        - firecrackerVersion
-
-        - startCommand
-        - readyCommand
-
-    TemplateBuildStatusResponse:
-      required:
-        - templateID
-        - buildID
-        - status
-      properties:
-        templateID:
-          type: string
-          description: Identifier of the template
-        buildID:
-          type: string
-          description: Identifier of the build
-        status:
-          type: string
-          description: Status of the template
-          enum:
-            - building
-            - waiting
-            - ready
-            - error
-        metadata:
-          $ref: '#/components/schemas/TemplateBuildMetadata'
-
     TemplateBuildLogsResponse:
       required:
         - logs
@@ -410,6 +217,40 @@ components:
           type: array
           items:
             type: string
+
+    SandboxCreateCatalogRequest:
+      type: object
+      required:
+        - orchestratorId
+        - executionId
+        - sandboxId
+        - sandboxMaxLength
+        - sandboxStartTime
+      properties:
+        orchestratorId:
+          type: string
+          description: Orchestrator where the sandbox is placed
+        executionId:
+          type: string
+        sandboxId:
+          type: string
+        sandboxMaxLength:
+          type: integer
+          format: int64
+          description: Maximum duration in hours
+        sandboxStartTime:
+           $ref: '#/components/schemas/Timestamp'
+
+    SandboxDeleteCatalogRequest:
+      type: object
+      required:
+        - executionId
+        - sandboxId
+      properties:
+        executionId:
+          type: string
+        sandboxId:
+          type: string
 
     Timestamp:
       type: string
@@ -432,6 +273,14 @@ paths:
     get:
       operationId: healthCheckTraffic
       description: Health check for traffic proxy
+      responses:
+        "200":
+          description: Request was successful
+
+  /health/machine:
+    get:
+      operationId: healthCheckMachine
+      description: Health check for machine status
       responses:
         "200":
           description: Request was successful
@@ -547,10 +396,10 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /v1/sandboxes:
+  /v1/sandboxes/catalog:
     post:
-      operationId: v1CreateSandbox
-      summary: Create a new sandbox
+      operationId: v1SandboxCatalogCreate
+      summary: Create a sandbox catalog entry
       security:
         - ApiKeyAuth: [ ]
       tags: [sandboxes]
@@ -559,71 +408,10 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SandboxCreateRequest'
+              $ref: "#/components/schemas/SandboxCreateCatalogRequest"
       responses:
         "200":
-          description: Sandbox created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SandboxCreateResponse'
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "500":
-          $ref: "#/components/responses/500"
-
-    get:
-      operationId: v1ListSandboxes
-      summary: List running sandboxes for an orchestrator
-      security:
-        - ApiKeyAuth: [ ]
-      tags: [sandboxes]
-      parameters:
-        - name: orchestratorId
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: List of sandboxes
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SandboxListResponse'
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "500":
-          $ref: "#/components/responses/500"
-
-  /v1/sandboxes/{sandbox_id}:
-    parameters:
-      - $ref: '#/components/parameters/sandbox_id'
-    patch:
-      operationId: v1UpdateSandbox
-      summary: Update an existing sandbox
-      security:
-        - ApiKeyAuth: [ ]
-      tags: [sandboxes]
-      parameters:
-        - name: sandbox_id
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/SandboxUpdateRequest'
-      responses:
-        "204":
-          description: Updated (no content)
+          description: Successfully created the sandbox catalog entry
         "400":
           $ref: "#/components/responses/400"
         "401":
@@ -632,117 +420,26 @@ paths:
           $ref: "#/components/responses/500"
 
     delete:
-      operationId: v1DeleteSandbox
-      summary: Delete a sandbox
-      security:
-        - ApiKeyAuth: [ ]
-      tags: [sandboxes]
-      parameters:
-        - name: sandbox_id
-          in: path
+        operationId: v1SandboxCatalogDelete
+        summary: Delete a sandbox catalog entry
+        security:
+            - ApiKeyAuth: [ ]
+        tags: [sandboxes]
+        requestBody:
           required: true
-          schema:
-            type: string
-      responses:
-        "204":
-          description: Deleted (no content)
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "500":
-          $ref: "#/components/responses/500"
-
-  /v1/sandboxes/{sandbox_id}/pause:
-    parameters:
-      - $ref: '#/components/parameters/sandbox_id'
-    post:
-      operationId: v1PauseSandbox
-      summary: Pause a running sandbox
-      security:
-        - ApiKeyAuth: [ ]
-      tags: [sandboxes]
-      parameters:
-        - name: sandbox_id
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/SandboxPauseRequest'
-      responses:
-        "204":
-          description: Paused (no content)
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "500":
-          $ref: "#/components/responses/500"
-
-  /v1/templates/builds:
-    post:
-      operationId: v1TemplateBuildCreate
-      summary: Create a new template build
-      security:
-        - ApiKeyAuth: [ ]
-      tags: [templates]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TemplateBuildCreateRequest'
-      responses:
-        "201":
-          description: Build started
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "500":
-          $ref: "#/components/responses/500"
-
-  /v1/templates/builds/{build_id}:
-    get:
-      operationId: v1TemplateBuildStatus
-      summary: Template build status
-      security:
-        - ApiKeyAuth: [ ]
-      tags: [templates]
-      parameters:
-        - name: build_id
-          in: path
-          required: true
-          schema:
-            type: string
-        - in: query
-          name: orchestrator_id
-          required: true
-          schema:
-            type: string
-        - in: query
-          name: template_id
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Successfully returned the template build status
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TemplateBuildStatusResponse"
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "500":
-          $ref: "#/components/responses/500"
+                $ref: "#/components/schemas/SandboxDeleteCatalogRequest"
+        responses:
+          "200":
+            description: Successfully deleted the sandbox catalog entry
+          "400":
+            $ref: "#/components/responses/400"
+          "401":
+            $ref: "#/components/responses/401"
+          "500":
+            $ref: "#/components/responses/500"
 
   /v1/templates/builds/{build_id}/logs:
     get:
@@ -782,38 +479,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TemplateBuildLogsResponse"
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "500":
-          $ref: "#/components/responses/500"
-
-    delete:
-      operationId: v1TemplateBuildDelete
-      summary: Template build delete
-      security:
-        - ApiKeyAuth: [ ]
-      tags: [templates]
-      parameters:
-        - name: build_id
-          in: path
-          required: true
-          schema:
-            type: string
-        - in: query
-          name: template_id
-          required: true
-          schema:
-            type: string
-        - in: query
-          name: orchestrator_id
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Successfully deleted template build
         "400":
           $ref: "#/components/responses/400"
         "401":

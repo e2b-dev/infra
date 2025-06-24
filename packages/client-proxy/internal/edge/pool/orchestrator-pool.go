@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	sd "github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
+	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -83,7 +84,7 @@ func (p *OrchestratorsPool) keepInSync(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			p.logger.Info("Stopping keepInSync")
+			p.logger.Info("Stopping orchestrators keep-in-sync")
 			return
 		case <-ticker.C:
 			p.syncNodes(ctx)
@@ -146,7 +147,7 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 				// newly discovered orchestrator
 				err := p.connectNode(ctx, sdNode)
 				if err != nil {
-					p.logger.Error("Error connecting to node", zap.Error(err))
+					p.logger.Error("Error connecting to node", zap.Error(err), zap.String("host", host))
 				}
 
 				return
@@ -177,7 +178,7 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 			if !found {
 				err := p.removeNode(spanCtx, node)
 				if err != nil {
-					p.logger.Error("Error during node removal", zap.Error(err))
+					p.logger.Error("Error during node removal", zap.Error(err), l.WithClusterNodeID(node.ServiceId))
 				}
 			}
 		}(node)
@@ -208,12 +209,12 @@ func (p *OrchestratorsPool) removeNode(ctx context.Context, node *OrchestratorNo
 	_, childSpan := p.tracer.Start(ctx, "remove-orchestrator-node")
 	defer childSpan.End()
 
-	p.logger.Info("Orchestrator node node connection is not active anymore, closing.", zap.String("node_id", node.ServiceId))
+	p.logger.Info("Orchestrator node node connection is not active anymore, closing.", l.WithClusterNodeID(node.ServiceId))
 
 	// stop background sync and close everything
 	err := node.Close()
 	if err != nil {
-		p.logger.Error("Error closing connection to node", zap.Error(err))
+		p.logger.Error("Error closing connection to node", zap.Error(err), l.WithClusterNodeID(node.ServiceId))
 	}
 
 	p.mutex.Lock()
@@ -221,6 +222,6 @@ func (p *OrchestratorsPool) removeNode(ctx context.Context, node *OrchestratorNo
 
 	p.nodes.Remove(node.ServiceId)
 
-	p.logger.Info("Orchestrator node node connection has been closed.", zap.String("node_id", node.ServiceId))
+	p.logger.Info("Orchestrator node node connection has been closed.", l.WithClusterNodeID(node.ServiceId))
 	return nil
 }
