@@ -212,7 +212,7 @@ func CreateSandbox(
 		cleanup: cleanup,
 	}
 
-	checks, err := NewChecks(nil, sbx, false)
+	checks, err := NewChecks(ctx, tracer, sbx, false)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create health check: %w", err)
 	}
@@ -231,7 +231,6 @@ func CreateSandbox(
 func ResumeSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
-	sandboxObserver *telemetry.SandboxObserver,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
 	config *orchestrator.SandboxConfig,
@@ -402,7 +401,7 @@ func ResumeSandbox(
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
-	checks, err := NewChecks(sandboxObserver, sbx, useClickhouseMetrics)
+	checks, err := NewChecks(ctx, tracer, sbx, useClickhouseMetrics)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create health check: %w", err)
 	}
@@ -459,6 +458,9 @@ func (s *Sandbox) Close(ctx context.Context, tracer trace.Tracer) error {
 
 	var errs []error
 
+	// Stop the health checks before stopping the sandbox
+	s.Checks.Stop()
+
 	fcStopErr := s.process.Stop()
 	if fcStopErr != nil {
 		errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
@@ -468,8 +470,6 @@ func (s *Sandbox) Close(ctx context.Context, tracer trace.Tracer) error {
 	if uffdStopErr != nil {
 		errs = append(errs, fmt.Errorf("failed to stop uffd: %w", uffdStopErr))
 	}
-
-	s.Checks.Stop()
 
 	return errors.Join(errs...)
 }

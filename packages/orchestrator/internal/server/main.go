@@ -26,17 +26,16 @@ import (
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 
-	info            *service.ServiceInfo
-	sandboxes       *smap.Map[*sandbox.Sandbox]
-	proxy           *proxy.SandboxProxy
-	tracer          trace.Tracer
-	networkPool     *network.Pool
-	templateCache   *template.Cache
-	pauseMu         sync.Mutex
-	devicePool      *nbd.DevicePool
-	persistence     storage.StorageProvider
-	sandboxObserver *telemetry.SandboxObserver
-	featureFlags    *featureflags.Client
+	info          *service.ServiceInfo
+	sandboxes     *smap.Map[*sandbox.Sandbox]
+	proxy         *proxy.SandboxProxy
+	tracer        trace.Tracer
+	networkPool   *network.Pool
+	templateCache *template.Cache
+	pauseMu       sync.Mutex
+	devicePool    *nbd.DevicePool
+	persistence   storage.StorageProvider
+	featureFlags  *featureflags.Client
 }
 
 type Service struct {
@@ -62,7 +61,6 @@ func New(
 	info *service.ServiceInfo,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
-	sandboxObserver *telemetry.SandboxObserver,
 	featureFlags *featureflags.Client,
 ) (*Service, error) {
 	srv := &Service{info: info}
@@ -82,16 +80,15 @@ func New(
 	srv.persistence = persistence
 
 	srv.server = &server{
-		info:            info,
-		tracer:          tracer,
-		proxy:           srv.proxy,
-		sandboxes:       sandboxes,
-		networkPool:     networkPool,
-		templateCache:   templateCache,
-		devicePool:      devicePool,
-		sandboxObserver: sandboxObserver,
-		persistence:     persistence,
-		featureFlags:    featureFlags,
+		info:          info,
+		tracer:        tracer,
+		proxy:         srv.proxy,
+		sandboxes:     sandboxes,
+		networkPool:   networkPool,
+		templateCache: templateCache,
+		devicePool:    devicePool,
+		persistence:   persistence,
+		featureFlags:  featureFlags,
 	}
 
 	meter := tel.MeterProvider.Meter("orchestrator.sandbox")
