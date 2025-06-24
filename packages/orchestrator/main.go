@@ -223,6 +223,8 @@ func run(port, proxyPort, sbxEventServerPort uint) (success bool) {
 	}
 
 	var redisClient redis.UniversalClient
+	defer redisClient.Close()
+
 	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
 		redisClient = redis.NewClusterClient(&redis.ClusterOptions{
 			Addrs:        []string{redisClusterUrl},
@@ -237,11 +239,13 @@ func run(port, proxyPort, sbxEventServerPort uint) (success bool) {
 		zap.L().Fatal("REDIS_URL not set")
 	}
 
-	sbxEventHandlers := event.NewEventHandlers(redisClient)
+	tracer := tel.TracerProvider.Tracer(serviceName)
+
+	eventStore := event.NewMemorySandboxesEvent(ctx, tracer, redisClient)
+	defer eventStore.Close()
+	sbxEventHandlers := event.NewEventHandlers(ctx, eventStore)
 
 	sbxEventServer := event.NewEventServer(sbxEventServerPort, sbxEventHandlers)
-
-	tracer := tel.TracerProvider.Tracer(serviceName)
 
 	networkPool, err := network.NewPool(ctx, tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID, tracer)
 	if err != nil {

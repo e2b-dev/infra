@@ -30,8 +30,7 @@ import (
 )
 
 const (
-	proxyPort          = 5007
-	sbxEventServerPort = 5010
+	proxyPort = 5007
 )
 
 func main() {

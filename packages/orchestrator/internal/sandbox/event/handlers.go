@@ -1,21 +1,17 @@
 package event
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 
-	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 type EventHandler interface {
 	Path() string
 	HandlerFunc(w http.ResponseWriter, r *http.Request)
-}
-
-type EventData struct {
-	Path string         `json:"path"`
-	Body map[string]any `json:"body"`
 }
 
 type MetricsHandler struct{}
@@ -41,7 +37,7 @@ func (h *MetricsHandler) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 // This handler is used to store event data for all paths that are not registered in the event server.
 // This is used to track ad-hoc events that are not handled by the event server.
 type DefaultHandler struct {
-	redisClient redis.UniversalClient
+	store SandboxEventStore
 }
 
 func (h *DefaultHandler) Path() string {
@@ -50,15 +46,17 @@ func (h *DefaultHandler) Path() string {
 
 func (h *DefaultHandler) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	sandboxID := r.Header.Get("E2B_SANDBOX_ID")
+	zap.L().Info("~~~[DefaultHandler] Received event", zap.String("method", r.Method), zap.String("path", r.URL.Path), zap.String("sandboxID", sandboxID))
 
 	if r.Method == http.MethodGet {
-		body, err := h.redisClient.Get(r.Context(), sandboxID).Result()
+		body, err := h.store.GetSandbox(sandboxID)
 		if err != nil {
+			zap.L().Error("Failed to get event data for sandbox "+sandboxID, zap.Error(err))
 			http.Error(w, "Failed to get event data for sandbox "+sandboxID, http.StatusInternalServerError)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(body))
+		w.Write([]byte(body.Path))
 		return
 	}
 
@@ -68,7 +66,7 @@ func (h *DefaultHandler) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create event data with path and body
-	eventData := EventData{
+	eventData := SandboxEvent{
 		Path: r.URL.Path,
 	}
 
@@ -86,8 +84,9 @@ func (h *DefaultHandler) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Store in Redis with sandboxID as key
-	err = h.redisClient.Set(r.Context(), sandboxID, eventData, 0).Err()
+	err = h.store.StoreSandbox(sandboxID, &eventData, 0)
 	if err != nil {
+		zap.L().Error("Failed to store event data", zap.Error(err))
 		http.Error(w, "Failed to store event data", http.StatusInternalServerError)
 		return
 	}
@@ -96,9 +95,9 @@ func (h *DefaultHandler) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"event_ack":true}`))
 }
 
-func NewEventHandlers(redisClient redis.UniversalClient) []EventHandler {
+func NewEventHandlers(ctx context.Context, store SandboxEventStore) []EventHandler {
 	return []EventHandler{
 		&MetricsHandler{},
-		&DefaultHandler{redisClient},
+		&DefaultHandler{store},
 	}
 }
