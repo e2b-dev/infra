@@ -91,7 +91,7 @@ func (g *AWSArtifactsRegistry) GetImage(ctx context.Context, templateId string, 
 		return nil, fmt.Errorf("invalid image reference: %w", err)
 	}
 
-	auth, err := g.getAuthToken(ctx)
+	auth, err := g.GetAuthToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get auth: %w", err)
 	}
@@ -115,7 +115,7 @@ func (g *AWSArtifactsRegistry) GetLayer(ctx context.Context, templateId string, 
 		return nil, fmt.Errorf("invalid image reference: %w", err)
 	}
 
-	auth, err := g.getAuthToken(ctx)
+	auth, err := g.GetAuthToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get auth: %w", err)
 	}
@@ -139,7 +139,7 @@ func (g *AWSArtifactsRegistry) PushLayer(ctx context.Context, templateId string,
 		return fmt.Errorf("invalid image reference: %w", err)
 	}
 
-	auth, err := g.getAuthToken(ctx)
+	auth, err := g.GetAuthToken(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get auth: %w", err)
 	}
@@ -151,7 +151,7 @@ func (g *AWSArtifactsRegistry) PushLayer(ctx context.Context, templateId string,
 	return nil
 }
 
-func (g *AWSArtifactsRegistry) getAuthToken(ctx context.Context) (*authn.Basic, error) {
+func (g *AWSArtifactsRegistry) GetAuthToken(ctx context.Context) (*authn.Basic, error) {
 	res, err := g.client.GetAuthorizationToken(ctx, &ecr.GetAuthorizationTokenInput{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get aws ecr auth token: %w", err)

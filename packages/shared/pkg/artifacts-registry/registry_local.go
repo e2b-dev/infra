@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/daemon"
@@ -74,4 +75,9 @@ func (g *LocalArtifactsRegistry) PushLayer(ctx context.Context, templateId strin
 	}
 
 	return nil
+}
+
+func (g *LocalArtifactsRegistry) GetAuthToken(ctx context.Context) (*authn.Basic, error) {
+	// Local registry does not require authentication
+	return &authn.Basic{}, nil
 }

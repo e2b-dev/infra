@@ -17,17 +17,13 @@ func findLastCachedLayer(
 	tracer trace.Tracer,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	template *templateconfig.TemplateConfig,
+	platform containerregistry.Platform,
 ) (string, containerregistry.Image, error) {
 	ctx, span := tracer.Start(ctx, "find-last-cached-layer")
 	defer span.End()
 
 	if len(template.Steps) == 0 {
 		return "", nil, fmt.Errorf("template %s has no steps defined", template.TemplateId)
-	}
-
-	platform := containerregistry.Platform{
-		OS:           "linux",
-		Architecture: "amd64",
 	}
 
 	// Binary search to find the last cached layer
@@ -40,9 +36,10 @@ func findLastCachedLayer(
 		step := template.Steps[mid]
 
 		// Check if this layer exists in the artifact registry
+		isForced := step.Force != nil && *step.Force
 		img, err := artifactRegistry.GetLayer(ctx, template.TemplateId, step.Hash, platform)
-		if err != nil {
-			// Layer doesn't exist, search in the left half
+		if err != nil || isForced {
+			// Layer doesn't exist or is forced to rebuild, search in the left half
 			right = mid - 1
 		} else {
 			// Layer exists, this could be our answer, search in the right half for a later one

@@ -65,7 +65,7 @@ func (g *GCPArtifactsRegistry) GetImage(ctx context.Context, templateId string, 
 		return nil, fmt.Errorf("invalid image reference: %w", err)
 	}
 
-	auth, err := g.getAuthToken(ctx)
+	auth, err := g.GetAuthToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get auth: %w", err)
 	}
@@ -89,7 +89,7 @@ func (g *GCPArtifactsRegistry) GetLayer(ctx context.Context, templateId string, 
 		return nil, fmt.Errorf("invalid image reference: %w", err)
 	}
 
-	auth, err := g.getAuthToken(ctx)
+	auth, err := g.GetAuthToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get auth: %w", err)
 	}
@@ -113,7 +113,7 @@ func (g *GCPArtifactsRegistry) PushLayer(ctx context.Context, templateId string,
 		return fmt.Errorf("invalid image reference: %w", err)
 	}
 
-	auth, err := g.getAuthToken(ctx)
+	auth, err := g.GetAuthToken(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get auth: %w", err)
 	}
@@ -125,7 +125,7 @@ func (g *GCPArtifactsRegistry) PushLayer(ctx context.Context, templateId string,
 	return nil
 }
 
-func (g *GCPArtifactsRegistry) getAuthToken(ctx context.Context) (*authn.Basic, error) {
+func (g *GCPArtifactsRegistry) GetAuthToken(_ context.Context) (*authn.Basic, error) {
 	authCfg := consts.DockerAuthConfig
 	if authCfg == "" {
 		return &gcpAuthConfig, nil

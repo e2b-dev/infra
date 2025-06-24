@@ -11,7 +11,6 @@ import (
 	"github.com/dustin/go-humanize"
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
-	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -111,15 +110,9 @@ func (r *Rootfs) createExt4Filesystem(
 	postProcessor.WriteMsg(fmt.Sprintf("Base Docker image size: %s", humanize.Bytes(uint64(imageSize))))
 
 	// Template build layers
-	imagePath, err := r.builder.BuildLayers(ctx, tracer, postProcessor, img)
+	img, err = r.builder.BuildLayers(ctx, tracer, postProcessor, img)
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error building layers: %w", err)
-	}
-	defer os.Remove(imagePath)
-
-	img, err = tarball.ImageFromPath(imagePath, nil)
-	if err != nil {
-		return containerregistry.Config{}, fmt.Errorf("error requesting docker image: %w", err)
 	}
 	// Template build layers
 
