@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/connectivity"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -28,7 +29,7 @@ type sbxInProgress struct {
 type Node struct {
 	CPUUsage atomic.Int64
 	RamUsage atomic.Int64
-	Client   *GRPCClient
+	Client   *grpclient.GRPCClient
 
 	Info           *node.NodeInfo
 	orchestratorID string
@@ -52,7 +53,7 @@ func (n *Node) Status() api.NodeStatus {
 		return n.status
 	}
 
-	switch n.Client.connection.GetState() {
+	switch n.Client.Connection.GetState() {
 	case connectivity.Shutdown:
 		return api.NodeStatusUnhealthy
 	case connectivity.TransientFailure:
