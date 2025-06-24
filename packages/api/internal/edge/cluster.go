@@ -5,10 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"net/http"
-	"slices"
-	"time"
-
 	"github.com/google/uuid"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/trace"
@@ -17,6 +13,9 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
+	"net/http"
+	"slices"
+	"time"
 
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
@@ -82,6 +81,19 @@ func NewCluster(ctx context.Context, tracer trace.Tracer, tel *telemetry.Client,
 	grpcAuthorization := clientAuthorization{secret: secret, tls: endpointTls}
 	grpcOptions := []grpc.DialOption{
 		grpc.WithPerRPCCredentials(grpcAuthorization),
+		grpc.WithStatsHandler(
+			otelgrpc.NewClientHandler(
+				otelgrpc.WithTracerProvider(tel.TracerProvider),
+				otelgrpc.WithMeterProvider(tel.MeterProvider),
+			),
+		),
+		grpc.WithKeepaliveParams(
+			keepalive.ClientParameters{
+				Time:                10 * time.Second, // Send ping every 10s
+				Timeout:             2 * time.Second,  // Wait 2s for response
+				PermitWithoutStream: true,
+			},
+		),
 	}
 
 	if endpointTls {
@@ -91,20 +103,7 @@ func NewCluster(ctx context.Context, tracer trace.Tracer, tel *telemetry.Client,
 		grpcOptions = append(grpcOptions, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
-	conn, err := grpc.NewClient(endpoint,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithStatsHandler(
-			otelgrpc.NewClientHandler(
-				otelgrpc.WithTracerProvider(tel.TracerProvider),
-				otelgrpc.WithMeterProvider(tel.MeterProvider),
-			),
-		),
-		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                10 * time.Second, // Send ping every 10s
-			Timeout:             2 * time.Second,  // Wait 2s for response
-			PermitWithoutStream: true,
-		}),
-	)
+	conn, err := grpc.NewClient(endpoint, grpcOptions...)
 	if err != nil {
 		ctxCancel()
 		return nil, fmt.Errorf("failed to create grpc client: %w", err)
