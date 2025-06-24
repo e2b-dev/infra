@@ -9,7 +9,7 @@ require (
 	github.com/creack/pty v1.1.23
 	github.com/e2b-dev/fsnotify v0.0.0-20241216145137-2fe5d32bcb51
 	github.com/e2b-dev/infra/packages/shared v0.0.0
-	github.com/go-chi/chi/v5 v5.2.1
+	github.com/go-chi/chi/v5 v5.2.2
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/rs/cors v1.11.1
 	github.com/rs/zerolog v1.34.0
