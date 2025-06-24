@@ -135,12 +135,13 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 
 				wg.Go(func() error {
 					// Make sure the sandbox doesn't change while we are getting metrics (the slot could be assigned to another sandbox)
-					childCtx, cancel := context.WithTimeout(ctx, timeoutGetMetrics)
-					sbx.Checks.Lock()
-					sbxMetrics, err := sbx.GetMetrics(childCtx)
-					cancel()
-					sbx.Checks.Unlock()
+					sbxMetrics, err := sbx.Checks.GetMetrics(timeoutGetMetrics)
 					if err != nil {
+						// Sandbox has stopped
+						if sbx.Checks.IsErrStopped(err) {
+							return nil
+						}
+
 						return err
 					}
 
@@ -173,7 +174,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 
 			err := wg.Wait()
 			if err != nil {
-				// Log the error but continue to observe other sandboxes
+				// Log the error but observe other sandboxes
 				zap.L().Warn("error during observing sandbox metrics", zap.Error(err))
 			}
 

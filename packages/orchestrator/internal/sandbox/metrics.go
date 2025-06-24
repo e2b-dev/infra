@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
@@ -17,16 +18,19 @@ type Metrics struct {
 	MemUsedMiB     int64   `json:"mem_used_mib"`  // Used virtual memory in MiB
 }
 
-func (s *Sandbox) GetMetrics(ctx context.Context) (*Metrics, error) {
-	address := fmt.Sprintf("http://%s:%d/metrics", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
+func (c *Checks) GetMetrics(timeout time.Duration) (*Metrics, error) {
+	ctx, cancel := context.WithTimeout(c.ctx, timeout)
+	defer cancel()
+
+	address := fmt.Sprintf("http://%s:%d/metrics", c.sandbox.Slot.HostIPString(), consts.DefaultEnvdServerPort)
 
 	request, err := http.NewRequestWithContext(ctx, "GET", address, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	if s.Metadata.Config.EnvdAccessToken != nil {
-		request.Header.Set("X-Access-Token", *s.Metadata.Config.EnvdAccessToken)
+	if c.sandbox.Metadata.Config.EnvdAccessToken != nil {
+		request.Header.Set("X-Access-Token", *c.sandbox.Metadata.Config.EnvdAccessToken)
 	}
 
 	response, err := httpClient.Do(request)

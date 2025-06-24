@@ -458,6 +458,9 @@ func (s *Sandbox) Close(ctx context.Context, tracer trace.Tracer) error {
 
 	var errs []error
 
+	// Stop the health checks before stopping the sandbox
+	s.Checks.Stop()
+
 	fcStopErr := s.process.Stop()
 	if fcStopErr != nil {
 		errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
@@ -467,8 +470,6 @@ func (s *Sandbox) Close(ctx context.Context, tracer trace.Tracer) error {
 	if uffdStopErr != nil {
 		errs = append(errs, fmt.Errorf("failed to stop uffd: %w", uffdStopErr))
 	}
-
-	s.Checks.Stop()
 
 	return errors.Join(errs...)
 }

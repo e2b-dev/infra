@@ -198,11 +198,8 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	// Don't allow connecting to the sandbox anymore.
 	s.sandboxes.Remove(in.SandboxId)
 
-	loggingCtx, cancelLogginCtx := context.WithTimeout(ctx, 2*time.Second)
-	defer cancelLogginCtx()
-
 	// Check health metrics before stopping the sandbox
-	sbx.Checks.Healthcheck(loggingCtx, true)
+	sbx.Checks.Healthcheck(true)
 
 	err := sbx.Stop(ctx)
 	if err != nil {

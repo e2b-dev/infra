@@ -2,7 +2,7 @@ package sandbox
 
 import (
 	"context"
-	"sync"
+	"errors"
 	"sync/atomic"
 	"time"
 
@@ -14,31 +14,32 @@ import (
 
 const (
 	healthCheckInterval = 20 * time.Second
+	healthCheckTimeout  = 50 * time.Millisecond
 )
 
 type Checks struct {
 	sandbox *Sandbox
 
 	ctx       context.Context
-	cancelCtx context.CancelFunc
+	cancelCtx context.CancelCauseFunc
 
-	mu      sync.Mutex
 	healthy atomic.Bool
 
 	UseClickhouseMetrics bool
 }
 
+var ErrChecksStopped = errors.New("checks stopped")
+
 func NewChecks(ctx context.Context, tracer trace.Tracer, sandbox *Sandbox, useClickhouseMetrics bool) (*Checks, error) {
 	_, childSpan := tracer.Start(ctx, "checks-create")
 	defer childSpan.End()
 
-	// Create background context, passed ctx is from create/resume request and will be cancelled after the request is processed.
-	ctx, cancel := context.WithCancel(context.Background())
+	// Create background context, passed ctx is from create/resume request and will be canceled after the request is processed.
+	ctx, cancel := context.WithCancelCause(context.Background())
 	h := &Checks{
 		sandbox:              sandbox,
 		ctx:                  ctx,
 		cancelCtx:            cancel,
-		mu:                   sync.Mutex{},
 		healthy:              atomic.Bool{}, // defaults to `false`
 		UseClickhouseMetrics: useClickhouseMetrics,
 	}
@@ -47,27 +48,20 @@ func NewChecks(ctx context.Context, tracer trace.Tracer, sandbox *Sandbox, useCl
 	return h, nil
 }
 
-func (c *Checks) IsHealthy() bool {
-	return c.healthy.Load()
-}
-
-func (c *Checks) Lock() {
-	c.mu.Lock()
-}
-
-func (c *Checks) Unlock() {
-	c.mu.Unlock()
-}
-
 func (c *Checks) Start() {
 	c.logHealth()
 }
 
 func (c *Checks) Stop() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.cancelCtx(ErrChecksStopped)
+}
 
-	c.cancelCtx()
+func (c *Checks) IsErrStopped(err error) bool {
+	if errors.Is(err, context.Canceled) && errors.Is(context.Cause(c.ctx), ErrChecksStopped) {
+		return true
+	}
+
+	return false
 }
 
 func (c *Checks) logHealth() {
@@ -77,27 +71,24 @@ func (c *Checks) logHealth() {
 	}()
 
 	// Get metrics and health status on sandbox startup
-
-	go c.Healthcheck(c.ctx, false)
+	go c.Healthcheck(false)
 
 	for {
 		select {
 		case <-healthTicker.C:
-			childCtx, cancel := context.WithTimeout(c.ctx, time.Second)
-
-			c.mu.Lock()
-			c.Healthcheck(childCtx, false)
-			c.mu.Unlock()
-
-			cancel()
+			c.Healthcheck(false)
 		case <-c.ctx.Done():
 			return
 		}
 	}
 }
 
-func (c *Checks) Healthcheck(ctx context.Context, alwaysReport bool) {
-	ok, err := c.sandbox.HealthCheck(ctx)
+func (c *Checks) Healthcheck(alwaysReport bool) {
+	ok, err := c.GetHealth(healthCheckTimeout)
+	// Sandbox stopped
+	if c.IsErrStopped(err) {
+		return
+	}
 
 	if !ok && c.healthy.CompareAndSwap(true, false) {
 		sbxlogger.E(c.sandbox).Healthcheck(sbxlogger.Fail)
