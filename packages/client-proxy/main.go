@@ -194,7 +194,10 @@ func run() int {
 	restListener := muxServer.Match(cmux.Any())
 	restSrv := &http.Server{Handler: edgeHttpHandler} // handler requests for REST API
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
+
 		err := grpcSrv.Serve(grpcListener)
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
@@ -208,7 +211,10 @@ func run() int {
 		}
 	}()
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
+
 		err := restSrv.Serve(restListener)
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
