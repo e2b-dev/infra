@@ -166,8 +166,6 @@ func (s *NodePassThrough) forwardClientToServer(src grpc.ClientStream, dst grpc.
 	ret := make(chan error, 1)
 
 	go func() {
-		f := &emptypb.Empty{}
-
 		md, err := src.Header()
 		if err != nil {
 			ret <- err
@@ -179,6 +177,7 @@ func (s *NodePassThrough) forwardClientToServer(src grpc.ClientStream, dst grpc.
 			return
 		}
 
+		f := &emptypb.Empty{}
 		for {
 			if err := src.RecvMsg(f); err != nil {
 				ret <- err // this can be io.EOF which is happy case
