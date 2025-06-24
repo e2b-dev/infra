@@ -74,7 +74,7 @@ func (p *Pool) syncBackground() {
 }
 
 func (p *Pool) sync(ctx context.Context) error {
-	spanCtx, span := p.tracer.Start(ctx, "keep-in-sync")
+	spanCtx, span := p.tracer.Start(ctx, "keep-in-sync-clusters")
 	defer span.End()
 
 	// we want to fetch only clusters that are connected to teams

@@ -159,6 +159,10 @@ func (c *Cluster) GetTemplateBuilderById(nodeID string) (*ClusterNode, error) {
 }
 
 func (c *Cluster) GetAvailableTemplateBuilder() (*ClusterNode, error) {
+	_, span := c.tracer.Start(c.ctx, "template-builder-get-available-node")
+	span.SetAttributes(telemetry.WithClusterID(c.Id))
+	defer span.End()
+
 	for _, node := range c.nodes.Items() {
 		node.mutex.RLock()
 

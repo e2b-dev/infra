@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 type ClusterNode struct {
@@ -56,7 +57,8 @@ func (c *Cluster) syncBackground() {
 }
 
 func (c *Cluster) sync(ctx context.Context) error {
-	_, span := c.tracer.Start(ctx, "keep-in-sync-cluster-nodes")
+	spanCtx, span := c.tracer.Start(ctx, "keep-in-sync-cluster-nodes")
+	span.SetAttributes(telemetry.WithClusterID(c.Id))
 	defer span.End()
 
 	// fetch cluster nodes with use of service discovery
@@ -77,6 +79,7 @@ func (c *Cluster) sync(ctx context.Context) error {
 	var wg sync.WaitGroup
 
 	// register newly discovered nodes
+	_, spanNewlyDiscovered := c.tracer.Start(spanCtx, "cluster-nodes-sync-newly-discovered")
 	for _, sdNode := range *res.JSON200 {
 		clusterId := sdNode.Id
 		if _, ok := c.nodes.Get(clusterId); ok {
@@ -109,8 +112,10 @@ func (c *Cluster) sync(ctx context.Context) error {
 
 	// wait for all new nodes to be added
 	wg.Wait()
+	spanNewlyDiscovered.End()
 
 	// remove nodes that are no longer present in the service discovery
+	_, spanOutdatedNodes := c.tracer.Start(spanCtx, "cluster-nodes-sync-outdated-nodes")
 	for nodeId, node := range c.nodes.Items() {
 		found := false
 		for _, sdNode := range *res.JSON200 {
@@ -137,6 +142,7 @@ func (c *Cluster) sync(ctx context.Context) error {
 
 	// wait for all nodes to be synced
 	wg.Wait()
+	spanOutdatedNodes.End()
 
 	return nil
 }
