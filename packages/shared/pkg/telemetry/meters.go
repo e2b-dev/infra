@@ -22,7 +22,7 @@ const (
 )
 
 const (
-	ApiOrchestratorCountMeterName ObservableUpDownCounterType = "api.orchestrator.running"
+	ApiOrchestratorCountMeterName ObservableUpDownCounterType = "api.orchestrator.status"
 
 	OrchestratorSandboxCountMeterName ObservableUpDownCounterType = "orchestrator.env.sandbox.running"
 
