@@ -36,7 +36,7 @@ const (
 
 var clientStreamDescForProxying = &grpc.StreamDesc{ServerStreams: true, ClientStreams: true}
 
-func NewNodePassThrough(ctx context.Context, nodes *e2borchestrators.OrchestratorsPool, info *e2binfo.ServiceInfo, authorization authorization.AuthorizationService) *NodePassThrough {
+func NewNodePassThrough(ctx context.Context, nodes *e2borchestrators.OrchestratorsPool, info *e2binfo.ServiceInfo, authorization authorization.AuthorizationService) *grpc.Server {
 	nodePassThrough := &NodePassThrough{
 		authorization: authorization,
 		nodes:         nodes,
@@ -44,16 +44,10 @@ func NewNodePassThrough(ctx context.Context, nodes *e2borchestrators.Orchestrato
 		ctx:           ctx,
 	}
 
-	nodePassThrough.server = grpc.NewServer(
-		grpc.UnknownServiceHandler(nodePassThrough.handler),
+	return grpc.NewServer(
+		grpc.UnknownServiceHandler(nodePassThrough.Handler),
 		grpc.MaxRecvMsgSize(grpcMaxMsgSize),
 	)
-
-	return nodePassThrough
-}
-
-func (s *NodePassThrough) GetServer() *grpc.Server {
-	return s.server
 }
 
 func (s *NodePassThrough) director(ctx context.Context) (*grpc.ClientConn, error) {
@@ -88,12 +82,12 @@ func (s *NodePassThrough) director(ctx context.Context) (*grpc.ClientConn, error
 	return node.Client.Connection, nil
 }
 
-// Following code implement a gRPC pass-through proxy that forwards requests to the appropriate node
+// Handler - following code implement a gRPC pass-through proxy that forwards requests to the appropriate node
 // Code is based on following source: https://github.com/siderolabs/grpc-proxy/tree/main
 //
 // Core implementation is just following methods that are handling forwarding, proper closing and propagating of errors from both sides of the stream.
 // The handler is called for every request that is not handled by any other gRPC service.
-func (s *NodePassThrough) handler(srv interface{}, serverStream grpc.ServerStream) error {
+func (s *NodePassThrough) Handler(srv interface{}, serverStream grpc.ServerStream) error {
 	fullMethodName, ok := grpc.MethodFromServerStream(serverStream)
 	if !ok {
 		return status.Errorf(codes.Internal, "low lever server stream not exists in context")

@@ -173,12 +173,6 @@ func run() int {
 		return 1
 	}
 
-	// Edge REST API
-	edgeHttpHandler := edge.NewGinServer(logger, edgeApiStore, edgeApiSwagger, tracer, authorizationManager)
-
-	// Edge Pass Through Proxy for direct communication with orchestrator nodes
-	edgePassThroughHandler := edgepassthrough.NewNodePassThrough(ctx, orchestrators, info, authorizationManager)
-
 	lisAddr := fmt.Sprintf("0.0.0.0:%d", edgePort)
 	lis, err := net.Listen("tcp", lisAddr)
 	if err != nil {
@@ -188,11 +182,14 @@ func run() int {
 
 	muxServer := cmux.New(lis)
 
+	// Edge Pass Through Proxy for direct communication with orchestrator nodes
 	grpcListener := muxServer.MatchWithWriters(cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc")) // handler requests for gRPC pass through
-	grpcSrv := edgePassThroughHandler.GetServer()
+	grpcSrv := edgepassthrough.NewNodePassThrough(ctx, orchestrators, info, authorizationManager)
 
+	// Edge REST API
+	restHttpHandler := edge.NewGinServer(logger, edgeApiStore, edgeApiSwagger, tracer, authorizationManager)
 	restListener := muxServer.Match(cmux.Any())
-	restSrv := &http.Server{Handler: edgeHttpHandler} // handler requests for REST API
+	restSrv := &http.Server{Handler: restHttpHandler} // handler requests for REST API
 
 	wg.Add(1)
 	go func() {
