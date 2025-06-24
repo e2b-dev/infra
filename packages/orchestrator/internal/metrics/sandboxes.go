@@ -121,7 +121,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 
 			wg := errgroup.Group{}
 			// Run concurrently to prevent blocking if there are many sandboxes other callbacks
-			limit := math.Ceil(float64(sbxCount / metricsParallelismFactor))
+			limit := math.Ceil(float64(sbxCount) / metricsParallelismFactor)
 			wg.SetLimit(int(limit))
 
 			for _, sbx := range so.sandboxes.Items() {
