@@ -29,6 +29,8 @@ const (
 	minEnvdVersionForMetrics = "0.1.5"
 	timeoutGetMetrics        = 50 * time.Millisecond
 	metricsParallelismFactor = 5 // Used to calculate number of concurrently sandbox metrics requests
+
+	shiftFromMiBToBytes = 20 // Shift to convert MiB to bytes
 )
 
 type (
@@ -48,8 +50,6 @@ type SandboxObserver struct {
 	memoryTotal metric.Int64ObservableGauge
 	memoryUsed  metric.Int64ObservableGauge
 }
-
-const shiftFromMiBToBytes = 20 // Shift to convert MiB to bytes
 
 func NewSandboxObserver(ctx context.Context, commitSHA, clientID string, sandboxMetricsExportPeriod time.Duration, sandboxes *smap.Map[*sandbox.Sandbox]) (*SandboxObserver, error) {
 	deltaTemporality := otlpmetricgrpc.WithTemporalitySelector(func(kind sdkmetric.InstrumentKind) metricdata.Temporality {
