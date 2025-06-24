@@ -133,6 +133,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 					continue
 				}
 
+				sbx := sbx // Capture the sandbox in the loop variable to avoid data race
 				wg.Go(func() error {
 					// Make sure the sandbox doesn't change while we are getting metrics (the slot could be assigned to another sandbox)
 					sbxMetrics, err := sbx.Checks.GetMetrics(timeoutGetMetrics)
