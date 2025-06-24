@@ -166,7 +166,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 
 	if !syncRetrySuccess {
 		zap.L().Error("Failed to sync node after max retries, temporarily marking as draining", zap.String("node_id", node.Info.ID))
-		node.setStatus(api.NodeStatusDraining)
+		node.setStatus(api.NodeStatusUnhealthy)
 		return
 	}
 
