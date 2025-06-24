@@ -17,6 +17,9 @@ type ServerInterface interface {
 	// (GET /health)
 	HealthCheck(c *gin.Context)
 
+	// (GET /health/machine)
+	HealthCheckMachine(c *gin.Context)
+
 	// (GET /health/traffic)
 	HealthCheckTraffic(c *gin.Context)
 
@@ -65,6 +68,19 @@ func (siw *ServerInterfaceWrapper) HealthCheck(c *gin.Context) {
 	}
 
 	siw.Handler.HealthCheck(c)
+}
+
+// HealthCheckMachine operation middleware
+func (siw *ServerInterfaceWrapper) HealthCheckMachine(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.HealthCheckMachine(c)
 }
 
 // HealthCheckTraffic operation middleware
@@ -300,6 +316,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	}
 
 	router.GET(options.BaseURL+"/health", wrapper.HealthCheck)
+	router.GET(options.BaseURL+"/health/machine", wrapper.HealthCheckMachine)
 	router.GET(options.BaseURL+"/health/traffic", wrapper.HealthCheckTraffic)
 	router.GET(options.BaseURL+"/v1/info", wrapper.V1Info)
 	router.DELETE(options.BaseURL+"/v1/sandboxes/catalog", wrapper.V1SandboxCatalogDelete)

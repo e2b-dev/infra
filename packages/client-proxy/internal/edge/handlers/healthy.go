@@ -31,3 +31,14 @@ func (a *APIStore) HealthCheckTraffic(c *gin.Context) {
 	c.Status(http.StatusServiceUnavailable)
 	c.Writer.Write([]byte("unhealthy"))
 }
+
+func (a *APIStore) HealthCheckMachine(c *gin.Context) {
+	if a.info.GetTerminating() {
+		c.Status(http.StatusServiceUnavailable)
+		c.Writer.Write([]byte("service is terminating"))
+		return
+	}
+
+	c.Status(http.StatusOK)
+	c.Writer.Write([]byte("running"))
+}

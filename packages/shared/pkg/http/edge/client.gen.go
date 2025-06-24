@@ -92,6 +92,9 @@ type ClientInterface interface {
 	// HealthCheck request
 	HealthCheck(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// HealthCheckMachine request
+	HealthCheckMachine(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// HealthCheckTraffic request
 	HealthCheckTraffic(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -126,6 +129,18 @@ type ClientInterface interface {
 
 func (c *Client) HealthCheck(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewHealthCheckRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) HealthCheckMachine(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewHealthCheckMachineRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -278,6 +293,33 @@ func NewHealthCheckRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/health")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewHealthCheckMachineRequest generates requests for HealthCheckMachine
+func NewHealthCheckMachineRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/health/machine")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -677,6 +719,9 @@ type ClientWithResponsesInterface interface {
 	// HealthCheckWithResponse request
 	HealthCheckWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthCheckResponse, error)
 
+	// HealthCheckMachineWithResponse request
+	HealthCheckMachineWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthCheckMachineResponse, error)
+
 	// HealthCheckTrafficWithResponse request
 	HealthCheckTrafficWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthCheckTrafficResponse, error)
 
@@ -724,6 +769,27 @@ func (r HealthCheckResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r HealthCheckResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type HealthCheckMachineResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// Status returns HTTPResponse.Status
+func (r HealthCheckMachineResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r HealthCheckMachineResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -955,6 +1021,15 @@ func (c *ClientWithResponses) HealthCheckWithResponse(ctx context.Context, reqEd
 	return ParseHealthCheckResponse(rsp)
 }
 
+// HealthCheckMachineWithResponse request returning *HealthCheckMachineResponse
+func (c *ClientWithResponses) HealthCheckMachineWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthCheckMachineResponse, error) {
+	rsp, err := c.HealthCheckMachine(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseHealthCheckMachineResponse(rsp)
+}
+
 // HealthCheckTrafficWithResponse request returning *HealthCheckTrafficResponse
 func (c *ClientWithResponses) HealthCheckTrafficWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthCheckTrafficResponse, error) {
 	rsp, err := c.HealthCheckTraffic(ctx, reqEditors...)
@@ -1061,6 +1136,22 @@ func ParseHealthCheckResponse(rsp *http.Response) (*HealthCheckResponse, error) 
 	}
 
 	response := &HealthCheckResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseHealthCheckMachineResponse parses an HTTP response from a HealthCheckMachineWithResponse call
+func ParseHealthCheckMachineResponse(rsp *http.Response) (*HealthCheckMachineResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &HealthCheckMachineResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

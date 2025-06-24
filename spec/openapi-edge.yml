@@ -277,6 +277,14 @@ paths:
         "200":
           description: Request was successful
 
+  /health/machine:
+    get:
+      operationId: healthCheckMachine
+      description: Health check for machine status
+      responses:
+        "200":
+          description: Request was successful
+
   /v1/info:
     get:
         operationId: v1Info

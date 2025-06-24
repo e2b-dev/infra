@@ -279,6 +279,22 @@ func run() int {
 		}
 	}()
 
+	// Service gracefully shutdown flow
+	//
+	// Endpoints reporting health status for different consumers
+	// -> Edge API and GRPC proxy /health
+	// -> Sandbox traffic proxy   /health/traffic
+	// -> Edge machine            /health/machine
+	//
+	// When service shut-downs we need to info all services that depends on us gracefully shutting down existing connections.
+	// Shutdown phase starts with marking sandbox traffic as draining.
+	// After that we will wait some time so all dependent services will recognize that we are draining and will stop sending new requests.
+	// Following phase marks the service as unhealthy, we are waiting for some time to let dependent services recognize new state.
+	// After that we are shutting down the GRPC proxy and edge API servers. This can take some time,
+	// because we are waiting for all in-progress requests to finish.
+	// After GRPC proxy and edge API servers are gracefully shutdown, we are marking the service as terminating,
+	// this is message primary for instances management that we are ready to be terminated and everything is properly cleaned up.
+	// Finally, we are closing the mux server just to clean up, new connections will not be accepted anymore because we already closed listeners.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -312,6 +328,7 @@ func run() int {
 		time.Sleep(shutdownUnhealthyWait)
 
 		// wait for graceful shutdown of the gRPC server with  pass through proxy
+		// it can take some time, because we are waiting for all in-progress requests to finish (sandbox spawning, pausing...)
 		grpcSrv.GracefulStop()
 
 		// wait for graceful shutdown of the rest api server with health check
@@ -322,6 +339,9 @@ func run() int {
 		if err != nil {
 			shutdownLogger.Error("edge rest api shutdown error", zap.Error(err))
 		}
+
+		// used by instances management for notify that instance is ready for termination
+		edgeApiStore.SetTerminating()
 
 		// close the mux server
 		muxServer.Close()
