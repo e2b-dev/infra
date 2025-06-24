@@ -7,33 +7,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
 
-	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 )
-
-type testStatusClient interface {
-	TemplateBuildStatus(ctx context.Context, in *template_manager.TemplateStatusRequest, opts ...grpc.CallOption) (*template_manager.TemplateBuildStatusResponse, error)
-}
-
-type testTemplateManagerClient interface {
-	SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason string) error
-	SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string) error
-}
-
-type fakeStatusClient struct {
-	templateBuildStatusResponse *template_manager.TemplateBuildStatusResponse
-	err                         error
-}
-
-func (f *fakeStatusClient) TemplateBuildStatus(ctx context.Context, in *template_manager.TemplateStatusRequest, opts ...grpc.CallOption) (*template_manager.TemplateBuildStatusResponse, error) {
-	return f.templateBuildStatusResponse, f.err
-}
 
 type fakeTemplateManagerClient struct {
 	setStatusError   error
 	setFinishedError error
+
+	getStatusResponse *templatemanagergrpc.TemplateBuildStatusResponse
+	getStatusErr      error
 }
 
 func (f fakeTemplateManagerClient) SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason string) error {
@@ -44,24 +28,28 @@ func (f fakeTemplateManagerClient) SetFinished(ctx context.Context, templateID s
 	return f.setFinishedError
 }
 
+func (f fakeTemplateManagerClient) GetStatus(ctx context.Context, buildId uuid.UUID, templateId string, clusterId *uuid.UUID, clusterNodeId *string) (*templatemanagergrpc.TemplateBuildStatusResponse, error) {
+	return f.getStatusResponse, f.getStatusErr
+}
+
 func TestPollBuildStatus_setStatus(t *testing.T) {
 	type fields struct {
-		statusClient testStatusClient
-		buildID      uuid.UUID
+		buildID               uuid.UUID
+		templateManagerClient *fakeTemplateManagerClient
 	}
 
 	tests := []struct {
 		name    string
 		fields  fields
 		wantErr bool
-		status  *template_manager.TemplateBuildStatusResponse
+		status  *templatemanagergrpc.TemplateBuildStatusResponse
 		err     error
 	}{
 		{
 			name: "should return error if status is nil",
 			fields: fields{
-				statusClient: &fakeStatusClient{
-					templateBuildStatusResponse: nil,
+				templateManagerClient: &fakeTemplateManagerClient{
+					getStatusResponse: nil,
 				},
 				buildID: uuid.New(),
 			},
@@ -71,8 +59,8 @@ func TestPollBuildStatus_setStatus(t *testing.T) {
 		{
 			name: "should return context deadline exceeded",
 			fields: fields{
-				statusClient: &fakeStatusClient{
-					err: errors.New("context deadline exceeded"),
+				templateManagerClient: &fakeTemplateManagerClient{
+					getStatusErr: errors.New("context deadline exceeded"),
 				},
 			},
 			wantErr: true,
@@ -82,43 +70,35 @@ func TestPollBuildStatus_setStatus(t *testing.T) {
 		{
 			name: "should return error if error is not context deadline exceeded",
 			fields: fields{
-				statusClient: &fakeStatusClient{
-					err: errors.New("some other error"),
+				templateManagerClient: &fakeTemplateManagerClient{
+					getStatusErr: errors.New("some other error"),
 				},
 			},
 			wantErr: true,
 			status:  nil,
 		},
-		// if status client and err are nil, return err
-		{
-			name: "should return error if status client and err are nil",
-			fields: fields{
-				statusClient: nil,
-			},
-			wantErr: true,
-		},
 		// if status client present and err is nil, return nil
 		{
 			name: "should return nil if status client present and err is nil",
 			fields: fields{
-				statusClient: &fakeStatusClient{
-					err: nil,
-					templateBuildStatusResponse: &template_manager.TemplateBuildStatusResponse{
-						Status: template_manager.TemplateBuildState_Completed,
+				templateManagerClient: &fakeTemplateManagerClient{
+					getStatusErr: nil,
+					getStatusResponse: &templatemanagergrpc.TemplateBuildStatusResponse{
+						Status: templatemanagergrpc.TemplateBuildState_Completed,
 					},
 				},
 			},
 			wantErr: false,
-			status: &template_manager.TemplateBuildStatusResponse{
-				Status: template_manager.TemplateBuildState_Completed,
+			status: &templatemanagergrpc.TemplateBuildStatusResponse{
+				Status: templatemanagergrpc.TemplateBuildState_Completed,
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &PollBuildStatus{
-				statusClient: tt.fields.statusClient,
-				logger:       zap.NewNop(),
+				client: tt.fields.templateManagerClient,
+				logger: zap.NewNop(),
 			}
 			err := c.setStatus(context.TODO())
 			if tt.wantErr {
@@ -143,7 +123,7 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 		templateManagerClient *fakeTemplateManagerClient
 	}
 	type args struct {
-		status *template_manager.TemplateBuildStatusResponse
+		status *templatemanagergrpc.TemplateBuildStatusResponse
 	}
 	tests := []struct {
 		name              string
@@ -171,8 +151,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 				},
 			},
 			args: args{
-				status: &template_manager.TemplateBuildStatusResponse{
-					Status: template_manager.TemplateBuildState_Failed,
+				status: &templatemanagergrpc.TemplateBuildStatusResponse{
+					Status: templatemanagergrpc.TemplateBuildState_Failed,
 				},
 			},
 			wantCompleteState: false,
@@ -184,8 +164,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 				templateManagerClient: &fakeTemplateManagerClient{},
 			},
 			args: args{
-				status: &template_manager.TemplateBuildStatusResponse{
-					Status: template_manager.TemplateBuildState_Completed,
+				status: &templatemanagergrpc.TemplateBuildStatusResponse{
+					Status: templatemanagergrpc.TemplateBuildState_Completed,
 				},
 			},
 			wantCompleteState: false,
@@ -199,9 +179,9 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 				},
 			},
 			args: args{
-				status: &template_manager.TemplateBuildStatusResponse{
-					Status: template_manager.TemplateBuildState_Completed,
-					Metadata: &template_manager.TemplateBuildMetadata{
+				status: &templatemanagergrpc.TemplateBuildStatusResponse{
+					Status: templatemanagergrpc.TemplateBuildState_Completed,
+					Metadata: &templatemanagergrpc.TemplateBuildMetadata{
 						RootfsSizeKey:  100,
 						EnvdVersionKey: "1.0.0",
 					},
@@ -216,8 +196,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 				templateManagerClient: &fakeTemplateManagerClient{},
 			},
 			args: args{
-				status: &template_manager.TemplateBuildStatusResponse{
-					Status: template_manager.TemplateBuildState_Building,
+				status: &templatemanagergrpc.TemplateBuildStatusResponse{
+					Status: templatemanagergrpc.TemplateBuildState_Building,
 				},
 			},
 			wantCompleteState: false,
@@ -230,8 +210,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 				templateManagerClient: &fakeTemplateManagerClient{},
 			},
 			args: args{
-				status: &template_manager.TemplateBuildStatusResponse{
-					Status: template_manager.TemplateBuildState_Building,
+				status: &templatemanagergrpc.TemplateBuildStatusResponse{
+					Status: templatemanagergrpc.TemplateBuildState_Building,
 				},
 			},
 			wantErr:           false,
@@ -244,9 +224,9 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 				templateManagerClient: &fakeTemplateManagerClient{},
 			},
 			args: args{
-				status: &template_manager.TemplateBuildStatusResponse{
-					Status: template_manager.TemplateBuildState_Completed,
-					Metadata: &template_manager.TemplateBuildMetadata{
+				status: &templatemanagergrpc.TemplateBuildStatusResponse{
+					Status: templatemanagergrpc.TemplateBuildState_Completed,
+					Metadata: &templatemanagergrpc.TemplateBuildMetadata{
 						RootfsSizeKey:  100,
 						EnvdVersionKey: "1.0.0",
 					},
@@ -262,8 +242,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 				templateManagerClient: &fakeTemplateManagerClient{},
 			},
 			args: args{
-				status: &template_manager.TemplateBuildStatusResponse{
-					Status: template_manager.TemplateBuildState_Completed,
+				status: &templatemanagergrpc.TemplateBuildStatusResponse{
+					Status: templatemanagergrpc.TemplateBuildState_Completed,
 				},
 			},
 			wantErr:           true,
@@ -276,8 +256,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 				templateManagerClient: &fakeTemplateManagerClient{},
 			},
 			args: args{
-				status: &template_manager.TemplateBuildStatusResponse{
-					Status: template_manager.TemplateBuildState_Failed,
+				status: &templatemanagergrpc.TemplateBuildStatusResponse{
+					Status: templatemanagergrpc.TemplateBuildState_Failed,
 				},
 			},
 
@@ -288,8 +268,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &PollBuildStatus{
-				templateManagerClient: tt.fields.templateManagerClient,
-				logger:                zap.NewNop(),
+				client: tt.fields.templateManagerClient,
+				logger: zap.NewNop(),
 			}
 
 			err, completed := c.dispatchBasedOnStatus(context.TODO(), tt.args.status)
