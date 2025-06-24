@@ -3,7 +3,6 @@ package event
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -26,13 +25,13 @@ type sandboxEventStore struct {
 }
 
 type SandboxEventStore interface {
-	GetSandbox(sandboxId string) (*SandboxEvent, error)
-	StoreSandbox(sandboxId string, SandboxEvent *SandboxEvent, expiration time.Duration) error
-	DeleteSandbox(sandboxId string) error
+	GetEvent(sandboxId string) (*SandboxEvent, error)
+	SetEvent(sandboxId string, SandboxEvent *SandboxEvent, expiration time.Duration) error
+	DelEvent(sandboxId string) error
 	Close() error
 }
 
-func NewMemorySandboxesEvent(ctx context.Context, tracer trace.Tracer, redisClient redis.UniversalClient) SandboxEventStore {
+func NewSandboxEventStore(ctx context.Context, tracer trace.Tracer, redisClient redis.UniversalClient) SandboxEventStore {
 	return &sandboxEventStore{
 		ctx:         ctx,
 		tracer:      tracer,
@@ -40,37 +39,31 @@ func NewMemorySandboxesEvent(ctx context.Context, tracer trace.Tracer, redisClie
 	}
 }
 
-func (c *sandboxEventStore) GetSandbox(sandboxId string) (*SandboxEvent, error) {
+func (c *sandboxEventStore) GetEvent(sandboxId string) (*SandboxEvent, error) {
 	_, span := c.tracer.Start(c.ctx, "sandbox-event-get")
 	defer span.End()
 
-	body, err := c.redisClient.Get(c.ctx, sandboxId).Result()
+	rawEvent, err := c.redisClient.Get(c.ctx, sandboxId).Result()
 	if err != nil {
 		return nil, err
 	}
 
-	return &SandboxEvent{
-		Path: string(body),
-		Body: make(map[string]any),
-	}, nil
+	var event SandboxEvent
+	err = json.Unmarshal([]byte(rawEvent), &event)
+	if err != nil {
+		return nil, err
+	}
+	return &event, nil
 }
 
-func (c *sandboxEventStore) StoreSandbox(sandboxId string, SandboxEvent *SandboxEvent, expiration time.Duration) error {
+func (c *sandboxEventStore) SetEvent(sandboxId string, event *SandboxEvent, expiration time.Duration) error {
 	_, span := c.tracer.Start(c.ctx, "sandbox-event-store")
 	defer span.End()
 
-	body, err := c.redisClient.Get(c.ctx, sandboxId).Result()
-	if err != nil {
-		if err == redis.Nil {
-			return fmt.Errorf("sandbox event not found: %w", err)
-		}
-		return err
-	}
-
-	return c.redisClient.Set(c.ctx, sandboxId, body, expiration).Err()
+	return c.redisClient.Set(c.ctx, sandboxId, event, expiration).Err()
 }
 
-func (c *sandboxEventStore) DeleteSandbox(sandboxId string) error {
+func (c *sandboxEventStore) DelEvent(sandboxId string) error {
 	_, span := c.tracer.Start(c.ctx, "sandbox-event-delete")
 	defer span.End()
 

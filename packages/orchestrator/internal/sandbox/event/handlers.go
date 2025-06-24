@@ -46,17 +46,24 @@ func (h *DefaultHandler) Path() string {
 
 func (h *DefaultHandler) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	sandboxID := r.Header.Get("E2B_SANDBOX_ID")
-	zap.L().Info("~~~[DefaultHandler] Received event", zap.String("method", r.Method), zap.String("path", r.URL.Path), zap.String("sandboxID", sandboxID))
-
 	if r.Method == http.MethodGet {
-		body, err := h.store.GetSandbox(sandboxID)
+		event, err := h.store.GetEvent(sandboxID)
 		if err != nil {
 			zap.L().Error("Failed to get event data for sandbox "+sandboxID, zap.Error(err))
 			http.Error(w, "Failed to get event data for sandbox "+sandboxID, http.StatusInternalServerError)
 			return
 		}
+
+		eventJSON, err := json.Marshal(event)
+		if err != nil {
+			zap.L().Error("Failed to marshal event data", zap.Error(err))
+			http.Error(w, "Failed to marshal event data", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(body.Path))
+		w.Write(eventJSON)
 		return
 	}
 
@@ -84,7 +91,7 @@ func (h *DefaultHandler) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Store in Redis with sandboxID as key
-	err = h.store.StoreSandbox(sandboxID, &eventData, 0)
+	err = h.store.SetEvent(sandboxID, &eventData, 0)
 	if err != nil {
 		zap.L().Error("Failed to store event data", zap.Error(err))
 		http.Error(w, "Failed to store event data", http.StatusInternalServerError)

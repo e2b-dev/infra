@@ -4,12 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-
-	"go.uber.org/zap"
 )
 
-// EventServer handles outbound HTTP requests from sandboxes calling the event.e2b.com endpoint
-type EventServer struct {
+// SandboxEventServer handles outbound HTTP requests from sandboxes calling the event.e2b.com endpoint
+type SandboxEventServer struct {
 	server *http.Server
 }
 
@@ -27,7 +25,7 @@ func validateHeaders(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func NewEventServer(port uint, handlers []EventHandler) *EventServer {
+func NewSandboxEventServer(port uint, handlers []EventHandler) *SandboxEventServer {
 	mux := http.NewServeMux()
 
 	for _, handler := range handlers {
@@ -39,17 +37,16 @@ func NewEventServer(port uint, handlers []EventHandler) *EventServer {
 		Handler: mux,
 	}
 
-	return &EventServer{
+	return &SandboxEventServer{
 		server: server,
 	}
 }
 
-func (p *EventServer) Start() error {
-	zap.L().Info("Starting event server")
+func (p *SandboxEventServer) Start() error {
 	return p.server.ListenAndServe()
 }
 
-func (p *EventServer) Close(ctx context.Context) error {
+func (p *SandboxEventServer) Close(ctx context.Context) error {
 	var err error
 	select {
 	case <-ctx.Done():

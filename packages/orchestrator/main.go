@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/event"
@@ -223,8 +224,6 @@ func run(port, proxyPort, sbxEventServerPort uint) (success bool) {
 	}
 
 	var redisClient redis.UniversalClient
-	defer redisClient.Close()
-
 	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
 		redisClient = redis.NewClusterClient(&redis.ClusterOptions{
 			Addrs:        []string{redisClusterUrl},
@@ -238,14 +237,15 @@ func run(port, proxyPort, sbxEventServerPort uint) (success bool) {
 	} else {
 		zap.L().Fatal("REDIS_URL not set")
 	}
+	defer redisClient.Close()
 
 	tracer := tel.TracerProvider.Tracer(serviceName)
 
-	eventStore := event.NewMemorySandboxesEvent(ctx, tracer, redisClient)
+	eventStore := event.NewSandboxEventStore(ctx, tracer, redisClient)
 	defer eventStore.Close()
 	sbxEventHandlers := event.NewEventHandlers(ctx, eventStore)
 
-	sbxEventServer := event.NewEventServer(sbxEventServerPort, sbxEventHandlers)
+	sbxEventServer := event.NewSandboxEventServer(sbxEventServerPort, sbxEventHandlers)
 
 	networkPool, err := network.NewPool(ctx, tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID, tracer)
 	if err != nil {
@@ -266,12 +266,12 @@ func run(port, proxyPort, sbxEventServerPort uint) (success bool) {
 		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
 
-	sandboxObserver, err := telemetry.NewSandboxObserver(ctx, serviceInfo.SourceCommit, serviceInfo.ClientId, sandboxMetricExportPeriod)
+	sandboxObserver, err := metrics.NewSandboxObserver(ctx, serviceInfo.SourceCommit, serviceInfo.ClientId, sandboxMetricExportPeriod, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
 
-	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sbxEventServer, sandboxes, sandboxObserver, featureFlags)
+	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}

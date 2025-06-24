@@ -97,6 +97,9 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 		// API Key header
 		"Authorization",
 		"X-API-Key",
+		// Supabase headers
+		"X-Supabase-Token",
+		"X-Supabase-Team",
 		// Custom headers sent from SDK
 		"browser",
 		"lang",

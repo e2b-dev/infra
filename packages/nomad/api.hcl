@@ -69,7 +69,7 @@ job "api" {
 
       env {
         ORCHESTRATOR_PORT              = "${orchestrator_port}"
-        TEMPLATE_MANAGER_ADDRESS       = "${template_manager_address}"
+        TEMPLATE_MANAGER_HOST          = "${template_manager_host}"
         POSTGRES_CONNECTION_STRING     = "${postgres_connection_string}"
         SUPABASE_JWT_SECRETS           = "${supabase_jwt_secrets}"
         CLICKHOUSE_CONNECTION_STRING   = "${clickhouse_connection_string}"

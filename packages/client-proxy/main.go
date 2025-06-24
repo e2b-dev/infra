@@ -130,7 +130,7 @@ func run() int {
 		catalog = sandboxes.NewMemorySandboxesCatalog(ctx, tracer)
 	}
 
-	orchestrators := e2borchestrators.NewOrchestratorsPool(ctx, logger, orchestratorsSD, tracer)
+	orchestrators := e2borchestrators.NewOrchestratorsPool(ctx, logger, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
 
 	if !useProxyCatalogResolution {
 		logger.Warn("Skipping proxy catalog resolution, using just DNS resolution instead. This is not recommended for production use, as it may lead to issues with sandbox resolution.")

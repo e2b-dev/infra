@@ -44,7 +44,7 @@ Recommended for monitoring and logging
 Check if you can use config for terraform state management
 
 1. Go to `console.cloud.google.com` and create a new GCP project
-    > Make sure your Quota allows you to have at least 1000G for `Persistent Disk SSD (GB)` 
+    > Make sure your Quota allows you to have at least 1200G for `Persistent Disk SSD (GB)` 
 2. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.template`](.env.template). You can pick any of them. Make sure to fill in the values. All are required if not specified otherwise.
     > Get Postgres database connection string from your database, e.g. [from Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres#direct-connection): Create a new project in Supabase and go to your project in Supabase -> Settings -> Database -> Connection Strings -> Postgres -> Direct
     
@@ -146,3 +146,18 @@ You can build your own kernel and Firecracker version from source by running `ma
 - `make import TARGET={resource} ID={resource_id}` - imports the already created resources into the terraform state
 - `make setup-ssh` - sets up the ssh key for the environment (useful for remote-debugging)
 - `make connect-orchestrator` - establish the ssh connection to the remote orchestrator (for testing API locally)
+
+---
+
+## Google Cloud Troubleshooting
+**Quotas not available** 
+
+If you can't find the quota in `All Quotas` in GCP's Console, then create and delete a dummy VM before proceeding to step 2 in self-deploy guide. This will create additional quotas and policies in GCP 
+```
+gcloud compute instances create dummy-init   --project=YOUR-PROJECT-ID   --zone=YOUR-ZONE   --machine-type=e2-medium   --boot-disk-type=pd-ssd   --no-address
+```
+Wait a minute and destroy the VM:
+```
+gcloud compute instances delete dummy-init --zone=YOUR-ZONE --quiet
+```
+Now, you should see the right quota options in `All Quotas` and be able to request the correct size. 

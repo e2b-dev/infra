@@ -4,18 +4,17 @@ import (
 	"context"
 	"fmt"
 	"testing"
-	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
-	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
 func GetOrchestratorClient(tb testing.TB, ctx context.Context) orchestrator.SandboxServiceClient {
 	tb.Helper()
 
-	conn, err := e2bgrpc.GetConnection(OrchestratorHost, false, grpc.WithBlock(), grpc.WithTimeout(time.Second))
+	conn, err := grpc.NewClient(OrchestratorHost, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		tb.Fatal(fmt.Errorf("failed to establish GRPC connection: %w", err))
 
