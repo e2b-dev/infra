@@ -47,7 +47,7 @@ func (s *ServiceInfo) SetTerminating() {
 	s.terminating = true
 }
 
-func (s *ServiceInfo) GetTerminating() bool {
+func (s *ServiceInfo) IsTerminating() bool {
 	s.statusMu.RLock()
 	defer s.statusMu.RUnlock()
 

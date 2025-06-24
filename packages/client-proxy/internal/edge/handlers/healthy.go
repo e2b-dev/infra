@@ -33,7 +33,7 @@ func (a *APIStore) HealthCheckTraffic(c *gin.Context) {
 }
 
 func (a *APIStore) HealthCheckMachine(c *gin.Context) {
-	if a.info.GetTerminating() {
+	if a.info.IsTerminating() {
 		c.Status(http.StatusServiceUnavailable)
 		c.Writer.Write([]byte("service is terminating"))
 		return
