@@ -51,6 +51,7 @@ enum TemplateBuildState {
 message TemplateBuildStatusResponse {
   TemplateBuildState status = 1;
   TemplateBuildMetadata metadata = 2;
+  optional string reason = 3;
 }
 
 enum HealthState {

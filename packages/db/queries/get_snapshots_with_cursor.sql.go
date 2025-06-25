@@ -14,7 +14,7 @@ import (
 )
 
 const getSnapshotsWithCursor = `-- name: GetSnapshotsWithCursor :many
-SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, s.created_at, s.env_id, s.sandbox_id, s.id, s.metadata, s.base_env_id, s.sandbox_started_at, s.env_secure, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id
+SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, s.created_at, s.env_id, s.sandbox_id, s.id, s.metadata, s.base_env_id, s.sandbox_started_at, s.env_secure, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason
 FROM "public"."snapshots" s
 JOIN "public"."envs" e ON e.id = s.env_id
 LEFT JOIN LATERAL (
@@ -23,7 +23,7 @@ LEFT JOIN LATERAL (
     WHERE env_id = s.base_env_id
 ) ea ON TRUE
 JOIN LATERAL (
-    SELECT eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id
+    SELECT eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason
     FROM "public"."env_builds" eb
     WHERE
         eb.env_id = s.env_id
@@ -102,6 +102,7 @@ func (q *Queries) GetSnapshotsWithCursor(ctx context.Context, arg GetSnapshotsWi
 			&i.EnvBuild.EnvdVersion,
 			&i.EnvBuild.ReadyCmd,
 			&i.EnvBuild.ClusterNodeID,
+			&i.EnvBuild.Reason,
 		); err != nil {
 			return nil, err
 		}

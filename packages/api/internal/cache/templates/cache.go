@@ -139,6 +139,7 @@ type TemplateBuildInfo struct {
 	TeamID      uuid.UUID
 	TemplateID  string
 	BuildStatus envbuild.Status
+	Reason      string
 
 	ClusterID     *uuid.UUID
 	ClusterNodeID *string
@@ -183,6 +184,7 @@ func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Statu
 	)
 
 	item.Value().BuildStatus = status
+	item.Value().Reason = reason
 }
 
 func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templateID string) (*TemplateBuildInfo, error) {
@@ -209,12 +211,18 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 			return nil, fmt.Errorf("failed to get template build '%s': %w", buildID, envBuildDBErr)
 		}
 
+		reason := ""
+		if envBuildDB.Reason != nil {
+			reason = *envBuildDB.Reason
+		}
+
 		item = c.cache.Set(
 			buildID,
 			&TemplateBuildInfo{
 				TeamID:      envDB.TeamID,
 				TemplateID:  envDB.ID,
 				BuildStatus: envBuildDB.Status,
+				Reason:      reason,
 
 				ClusterID:     envDB.ClusterID,
 				ClusterNodeID: envBuildDB.ClusterNodeID,

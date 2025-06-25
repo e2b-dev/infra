@@ -452,6 +452,9 @@ type TemplateBuild struct {
 	// Logs Build logs
 	Logs []string `json:"logs"`
 
+	// Reason Message with the reason about the status code
+	Reason string `json:"reason"`
+
 	// Status Status of the template
 	Status TemplateBuildStatus `json:"status"`
 
