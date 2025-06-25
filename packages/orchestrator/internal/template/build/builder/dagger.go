@@ -88,7 +88,6 @@ func (d *DaggerEngine) Start(ctx context.Context, tracer trace.Tracer) (string, 
 	sbx, cleanup, err := sandbox.ResumeSandbox(
 		ctx,
 		tracer,
-		nil,
 		d.networkPool,
 		d.templateCache,
 		d.config,
