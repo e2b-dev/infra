@@ -46,6 +46,10 @@ type TemplateManager struct {
 	buildCache *templatecache.TemplatesBuildCache
 	lokiClient *loki.DefaultClient
 	sqlcDB     *sqlcdb.Client
+
+	localClient       *grpclient.GRPCClient
+	localClientMutex  sync.RWMutex
+	localClientStatus infogrpc.ServiceInfoStatus
 }
 
 type DeleteBuild struct {
@@ -62,7 +66,11 @@ const (
 	syncWaitingStateDeadline = time.Minute * 40
 )
 
-var templateManagerHost = os.Getenv("TEMPLATE_MANAGER_HOST")
+var (
+	templateManagerHost = os.Getenv("TEMPLATE_MANAGER_HOST")
+
+	ErrLocalTemplateManagerNotAvailable = errors.New("local template manager is not available")
+)
 
 func New(ctx context.Context, tracer trace.Tracer, tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, db *db.DB, sqlcDB *sqlcdb.Client, edgePool *edge.Pool, lokiClient *loki.DefaultClient, buildCache *templatecache.TemplatesBuildCache) (*TemplateManager, error) {
 	conn, err := grpc.NewClient(templateManagerHost,
@@ -90,7 +98,7 @@ func New(ctx context.Context, tracer trace.Tracer, tracerProvider trace.TracerPr
 		Connection: conn,
 	}
 
-	return &TemplateManager{
+	tm := &TemplateManager{
 		grpc:       client,
 		db:         db,
 		sqlcDB:     sqlcDB,
@@ -99,9 +107,18 @@ func New(ctx context.Context, tracer trace.Tracer, tracerProvider trace.TracerPr
 		edgePool:   edgePool,
 		lokiClient: lokiClient,
 
+		localClient:       client,
+		localClientMutex:  sync.RWMutex{},
+		localClientStatus: infogrpc.ServiceInfoStatus_OrchestratorHealthy,
+
 		lock:       sync.Mutex{},
 		processing: make(map[uuid.UUID]processingBuilds),
-	}, nil
+	}
+
+	// periodically check for local template manager health status
+	go tm.localBuilderHealthCheckSync(ctx)
+
+	return tm, nil
 }
 
 func (tm *TemplateManager) Close() error {
@@ -134,8 +151,25 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 	}
 }
 
-func (tm *TemplateManager) getBuilderClient(clusterId *uuid.UUID, nodeId *string) (*grpclient.GRPCClient, metadata.MD, PlacementLogsProvider, error) {
+func (tm *TemplateManager) getBuilderClient(clusterId *uuid.UUID, nodeId *string, placement bool) (*grpclient.GRPCClient, metadata.MD, PlacementLogsProvider, error) {
 	if clusterId == nil || nodeId == nil {
+		tm.localClientMutex.RLock()
+
+		// build placement requires healthy template builder
+		if placement && tm.localClientStatus != infogrpc.ServiceInfoStatus_OrchestratorHealthy {
+			tm.localClientMutex.RUnlock()
+			zap.L().Error("Local template manager is not fully healthy, cannot use it for placement new builds")
+			return nil, nil, nil, ErrLocalTemplateManagerNotAvailable
+		}
+
+		// for getting build information only not valid state is getting already unhealthy builder
+		if tm.localClientStatus == infogrpc.ServiceInfoStatus_OrchestratorUnhealthy {
+			tm.localClientMutex.RUnlock()
+			zap.L().Error("Local template manager is unhealthy")
+			return nil, nil, nil, ErrLocalTemplateManagerNotAvailable
+		}
+
+		tm.localClientMutex.RUnlock()
 		meta := metadata.New(map[string]string{})
 		logs := NewLokiPlacementLogsProvider(tm.lokiClient)
 		return tm.grpc, meta, logs, nil
@@ -165,15 +199,14 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, t trace.Tracer, buil
 	)
 	defer span.End()
 
-	client, clientMd, _, err := tm.getBuilderClient(clusterId, clusterNodeId)
+	client, clientMd, _, err := tm.getBuilderClient(clusterId, clusterNodeId, false)
 	if err != nil {
 		return fmt.Errorf("failed to get builder client: %w", err)
 	}
 
 	reqCtx := metadata.NewOutgoingContext(ctx, clientMd)
 	_, err = client.Template.TemplateBuildDelete(
-		reqCtx,
-		&tempaltemanagergrpc.TemplateBuildDeleteRequest{
+		reqCtx, &tempaltemanagergrpc.TemplateBuildDeleteRequest{
 			BuildID:    buildId.String(),
 			TemplateID: templateId,
 		},
@@ -211,15 +244,14 @@ func (tm *TemplateManager) CreateTemplate(t trace.Tracer, ctx context.Context, t
 		return fmt.Errorf("failed to get features for firecracker version '%s': %w", firecrackerVersion, err)
 	}
 
-	client, clientMd, _, err := tm.getBuilderClient(clusterId, clusterNodeId)
+	client, clientMd, _, err := tm.getBuilderClient(clusterId, clusterNodeId, true)
 	if err != nil {
 		return fmt.Errorf("failed to get builder client: %w", err)
 	}
 
 	reqCtx := metadata.NewOutgoingContext(ctx, clientMd)
 	_, err = client.Template.TemplateCreate(
-		reqCtx,
-		&tempaltemanagergrpc.TemplateCreateRequest{
+		reqCtx, &tempaltemanagergrpc.TemplateCreateRequest{
 			Template: &tempaltemanagergrpc.TemplateConfig{
 				TemplateID:         templateID,
 				BuildID:            buildID.String(),
@@ -245,7 +277,7 @@ func (tm *TemplateManager) CreateTemplate(t trace.Tracer, ctx context.Context, t
 }
 
 func (tm *TemplateManager) GetStatus(ctx context.Context, buildId uuid.UUID, templateId string, clusterId *uuid.UUID, clusterNodeId *string) (*tempaltemanagergrpc.TemplateBuildStatusResponse, error) {
-	client, clientMd, _, err := tm.getBuilderClient(clusterId, clusterNodeId)
+	client, clientMd, _, err := tm.getBuilderClient(clusterId, clusterNodeId, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get builder client: %w", err)
 	}
@@ -270,7 +302,7 @@ func (tm *TemplateManager) GetLogs(ctx context.Context, buildId uuid.UUID, templ
 	)
 	defer span.End()
 
-	_, _, logs, err := tm.getBuilderClient(clusterId, clusterNodeId)
+	_, _, logs, err := tm.getBuilderClient(clusterId, clusterNodeId, false)
 	if err != nil {
 		emptyLogs := make([]string, 0)
 		return &emptyLogs, fmt.Errorf("failed to get builder client: %w", err)
