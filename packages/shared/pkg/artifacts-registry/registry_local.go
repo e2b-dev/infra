@@ -58,25 +58,6 @@ func (g *LocalArtifactsRegistry) GetLayer(ctx context.Context, templateId string
 	return daemon.Image(ref, daemon.WithContext(ctx))
 }
 
-func (g *LocalArtifactsRegistry) PushLayer(ctx context.Context, templateId string, layerHash string, layer containerregistry.Image) error {
-	imageUrl, err := g.GetTag(ctx, templateId, layerHash)
-	if err != nil {
-		return fmt.Errorf("failed to get image URL: %w", err)
-	}
-
-	tag, err := name.NewTag(imageUrl)
-	if err != nil {
-		return fmt.Errorf("invalid image tag: %w", err)
-	}
-
-	_, err = daemon.Write(tag, layer, daemon.WithContext(ctx))
-	if err != nil {
-		return fmt.Errorf("error writing image to local registry: %w", err)
-	}
-
-	return nil
-}
-
 func (g *LocalArtifactsRegistry) GetAuthToken(ctx context.Context) (*authn.Basic, error) {
 	// Local registry does not require authentication
 	return &authn.Basic{}, nil
