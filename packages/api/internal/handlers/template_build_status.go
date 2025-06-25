@@ -1,31 +1,21 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"go.uber.org/zap"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/template-manager/buildlogs"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-)
-
-const (
-	templateBuildLogsLimit       = 1_000
-	templateBuildOldestLogsLimit = 24 * time.Hour // 1 day
 )
 
 // GetTemplatesTemplateIDBuildsBuildIDStatus serves to get a template build status (e.g. to CLI)
@@ -93,60 +83,38 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	// Sanitize env ID
-	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
-	templateIdSanitized := strings.ReplaceAll(templateID, "`", "")
-	query := fmt.Sprintf("{service=\"template-manager\", buildID=\"%s\", envID=`%s`}", buildUUID.String(), templateIdSanitized)
-
-	end := time.Now()
-	start := end.Add(-templateBuildOldestLogsLimit)
-	logs := make([]string, 0)
-
-	res, err := a.lokiClient.QueryRange(query, templateBuildLogsLimit, start, end, logproto.FORWARD, time.Duration(0), time.Duration(0), true)
-	if err == nil {
-		logsCrawled := 0
-
-		offset := 0
-		if params.LogsOffset != nil {
-			offset = int(*params.LogsOffset)
-		}
-
-		if res.Data.Result.Type() != loghttp.ResultTypeStream {
-			zap.L().Error("unexpected value type received from loki query fetch", zap.String("type", string(res.Data.Result.Type())))
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Unexpected error during fetching logs")
-			return
-		}
-
-		for _, stream := range res.Data.Result.(loghttp.Streams) {
-			for _, entry := range stream.Entries {
-				logsCrawled++
-
-				// loki does not support offset pagination, so we need to skip logs manually
-				if logsCrawled <= offset {
-					continue
-				}
-
-				line := make(map[string]interface{})
-				err := json.Unmarshal([]byte(entry.Line), &line)
-				if err != nil {
-					zap.L().Error("error parsing log line", zap.Error(err), logger.WithBuildID(buildID), zap.String("line", entry.Line))
-				}
-
-				logs = append(logs, line["message"].(string))
-			}
-		}
-	} else {
-		telemetry.ReportError(ctx, "error when returning logs for template build", err)
-		zap.L().Error("error when returning logs for template build", zap.Error(err), zap.String("buildID", buildID))
-	}
-
+	// Needs to be before logs request so the status is not set to done too early
 	result := api.TemplateBuild{
-		Logs:       logs,
+		Logs:       nil,
 		TemplateID: templateID,
 		BuildID:    buildID,
 		Status:     getCorrespondingTemplateBuildStatus(buildInfo.BuildStatus),
 		Reason:     buildInfo.Reason,
 	}
+
+	offset := 0
+	if params.LogsOffset != nil {
+		offset = int(*params.LogsOffset)
+	}
+
+	logsProviders := make([]buildlogs.Provider, 0)
+	logsProviders = append(logsProviders, &buildlogs.LokiProvider{LokiClient: a.lokiClient})
+	logsProviders = append(logsProviders, &buildlogs.TemplateManagerProvider{TemplateManager: a.templateManager})
+
+	logsTotal := make([]string, 0)
+	for _, provider := range logsProviders {
+		logs, err := provider.GetLogs(ctx, templateID, buildUUID, offset)
+		if err == nil {
+			// Return the logs that have the most entries, which means they're the most up to date
+			if len(logs) > len(logsTotal) {
+				logsTotal = logs
+			}
+		} else {
+			telemetry.ReportEvent(ctx, "error when getting logs for template build", telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildUUID.String()), attribute.String("provider", fmt.Sprintf("%T", provider)))
+		}
+	}
+
+	result.Logs = logsTotal
 
 	c.JSON(http.StatusOK, result)
 }

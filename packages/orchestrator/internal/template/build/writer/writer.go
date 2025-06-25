@@ -17,3 +17,11 @@ func New(logger *zap.Logger) BuildLogsWriter {
 	writer := BuildLogsWriter{logger: logger}
 	return writer
 }
+
+func (w BuildLogsWriter) Sync() error {
+	return w.logger.Sync()
+}
+
+func (w BuildLogsWriter) Close() error {
+	return w.logger.Sync()
+}
