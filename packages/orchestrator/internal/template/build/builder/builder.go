@@ -89,30 +89,32 @@ func (ib *ImageBuilder) BuildLayers(
 	}()
 
 	// Dagger Client
-	logsBuffer := &bytes.Buffer{}
+	var logsBuffer bytes.Buffer
 	defer func() {
 		zap.L().Debug("Dagger logs",
 			zap.String("logs", logsBuffer.String()),
 			zap.Int("length", logsBuffer.Len()),
 		)
 	}()
-	client, err := dagger.Connect(ctx, dagger.WithLogOutput(logsBuffer), dagger.WithRunnerHost(engineUrl))
+	client, err := dagger.Connect(ctx, dagger.WithLogOutput(&logsBuffer), dagger.WithRunnerHost(engineUrl))
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Dagger: %w", err)
 	}
 	defer client.Close()
 
 	// Set force for all steps after first step
-	setForce := false
+	shouldRebuild := false
 	for _, step := range ib.template.Steps {
 		// Force rebuild if the step has a Force flag set to true
 		if step.Force != nil && *step.Force {
-			setForce = true
-		} else {
+			shouldRebuild = true
+		}
+
+		if !shouldRebuild {
 			continue
 		}
 
-		force := setForce
+		force := true
 		step.Force = &force
 	}
 
@@ -143,9 +145,9 @@ func (ib *ImageBuilder) BuildLayers(
 	for i, step := range ib.template.Steps {
 		layerIndex := i + 1
 		cmd := fmt.Sprintf("%s %s", strings.ToUpper(step.Type), strings.Join(step.Args, " "))
-		zap.L().Debug("building layer",
-			zap.String("source_file_path", layerSourceImagePath),
-			zap.String("command", cmd),
+		telemetry.ReportEvent(ctx, "building layer",
+			attribute.String("source_file_path", layerSourceImagePath),
+			attribute.String("command", cmd),
 		)
 
 		cached := ""
@@ -153,7 +155,7 @@ func (ib *ImageBuilder) BuildLayers(
 			cached = "CACHED "
 		}
 		prefix := fmt.Sprintf("[builder %d/%d]", layerIndex, len(ib.template.Steps))
-		postProcessor.WriteMsg(fmt.Sprintf("%s%s: %s", cached, prefix, cmd))
+		postProcessor.WriteMsg(fmt.Sprintf("%s%s %s [%s]", cached, prefix, cmd, step.Hash))
 
 		// Process only the layers after the cached layer
 		if isCached {
@@ -171,6 +173,7 @@ func (ib *ImageBuilder) BuildLayers(
 					return fmt.Errorf("failed to get auth token: %w", err)
 				}
 
+				// Needs to be the cached layer hash, not the current step hash
 				layerTag, err := ib.artifactRegistry.GetTag(ctx, ib.template.TemplateId, hash)
 				if err != nil {
 					return fmt.Errorf("failed to get layer tag: %w", err)
@@ -218,37 +221,8 @@ func (ib *ImageBuilder) BuildLayers(
 		return img, nil
 	}
 
-	// // Export the Dagger last layer to a tarball
-	// exportPath, err := os.MkdirTemp("", "last-layer-image-*")
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to create temporary file: %w", err)
-	// }
-	// // TODO: defer os.RemoveAll(exportPath)
-
-	// export, err := container.Rootfs().Export(ctx, exportPath)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to export container: %w", err)
-	// }
-
-	// telemetry.ReportEvent(ctx, "exported image",
-	// 	attribute.String("export", export),
-	// )
-
-	// rootfsLayer, err := tarball.LayerFromOpener(func() (io.ReadCloser, error) {
-	// 	return archive.Tar(exportPath, archive.Uncompressed)
-	// })
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to create layer from directory: %w", err)
-	// }
-
-	// img, err = mutate.AppendLayers(empty.Image, rootfsLayer)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to append exported layer: %w", err)
-	// }
-
-	return ib.artifactRegistry.GetLayer(ctx, ib.template.TemplateId, ib.template.Steps[len(ib.template.Steps)-1].Hash, platform)
-
-	// return img, nil
+	lastStep := ib.template.Steps[len(ib.template.Steps)-1]
+	return ib.artifactRegistry.GetLayer(ctx, ib.template.TemplateId, lastStep.Hash, platform)
 }
 
 func (ib *ImageBuilder) buildAndCacheLayer(
@@ -273,7 +247,7 @@ func (ib *ImageBuilder) buildAndCacheLayer(
 	if err := os.MkdirAll(cachePath, os.ModePerm); err != nil {
 		return nil, fmt.Errorf("failed to create layer directory: %w", err)
 	}
-	// defer os.RemoveAll(cachePath)
+	defer os.RemoveAll(cachePath)
 
 	var err error
 	container, err = ib.applyCommand(ctx, tracer, postProcessor, client, prefix, container, step, cachePath)
@@ -395,15 +369,15 @@ func (ib *ImageBuilder) applyCommand(
 		if err != nil {
 			return nil, fmt.Errorf("failed to get container stdout: %w", err)
 		}
-		if stderr != "" {
-			postProcessor.WriteMsg(fmt.Sprintf("%s [stderr]: %s", prefix, stderr))
-		}
 		if stdout != "" {
-			postProcessor.WriteMsg(fmt.Sprintf("%s [stdout]: %s", prefix, stdout))
+			postProcessor.WriteLines(fmt.Sprintf("%s [stdout] ", prefix), stdout)
 		}
-		zap.L().Debug("container output",
-			zap.String("stdout", stdout),
-			zap.String("stderr", stderr),
+		if stderr != "" {
+			postProcessor.WriteLines(fmt.Sprintf("%s [stderr] ", prefix), stderr)
+		}
+		telemetry.ReportEvent(ctx, "container output",
+			attribute.String("stdout", stdout),
+			attribute.String("stderr", stderr),
 		)
 		return c, nil
 	case "USER":
