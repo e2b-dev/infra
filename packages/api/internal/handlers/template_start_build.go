@@ -141,6 +141,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		return
 	}
 
+	// team is part of the cluster but template build is not assigned to a cluster node so its invalid stats
 	if team.ClusterID != nil && build.ClusterNodeID == nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "build is not assigned to a cluster node")
 		telemetry.ReportCriticalError(ctx, "build is not assigned to a cluster node", fmt.Errorf("build is not assigned to a cluster node"), telemetry.WithTemplateID(templateID))
