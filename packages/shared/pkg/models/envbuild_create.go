@@ -211,6 +211,20 @@ func (ebc *EnvBuildCreate) SetNillableEnvdVersion(s *string) *EnvBuildCreate {
 	return ebc
 }
 
+// SetReason sets the "reason" field.
+func (ebc *EnvBuildCreate) SetReason(s string) *EnvBuildCreate {
+	ebc.mutation.SetReason(s)
+	return ebc
+}
+
+// SetNillableReason sets the "reason" field if the given value is not nil.
+func (ebc *EnvBuildCreate) SetNillableReason(s *string) *EnvBuildCreate {
+	if s != nil {
+		ebc.SetReason(*s)
+	}
+	return ebc
+}
+
 // SetID sets the "id" field.
 func (ebc *EnvBuildCreate) SetID(u uuid.UUID) *EnvBuildCreate {
 	ebc.mutation.SetID(u)
@@ -402,6 +416,10 @@ func (ebc *EnvBuildCreate) createSpec() (*EnvBuild, *sqlgraph.CreateSpec) {
 	if value, ok := ebc.mutation.EnvdVersion(); ok {
 		_spec.SetField(envbuild.FieldEnvdVersion, field.TypeString, value)
 		_node.EnvdVersion = &value
+	}
+	if value, ok := ebc.mutation.Reason(); ok {
+		_spec.SetField(envbuild.FieldReason, field.TypeString, value)
+		_node.Reason = &value
 	}
 	if nodes := ebc.mutation.EnvIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -704,6 +722,24 @@ func (u *EnvBuildUpsert) UpdateEnvdVersion() *EnvBuildUpsert {
 // ClearEnvdVersion clears the value of the "envd_version" field.
 func (u *EnvBuildUpsert) ClearEnvdVersion() *EnvBuildUpsert {
 	u.SetNull(envbuild.FieldEnvdVersion)
+	return u
+}
+
+// SetReason sets the "reason" field.
+func (u *EnvBuildUpsert) SetReason(v string) *EnvBuildUpsert {
+	u.Set(envbuild.FieldReason, v)
+	return u
+}
+
+// UpdateReason sets the "reason" field to the value that was provided on create.
+func (u *EnvBuildUpsert) UpdateReason() *EnvBuildUpsert {
+	u.SetExcluded(envbuild.FieldReason)
+	return u
+}
+
+// ClearReason clears the value of the "reason" field.
+func (u *EnvBuildUpsert) ClearReason() *EnvBuildUpsert {
+	u.SetNull(envbuild.FieldReason)
 	return u
 }
 
@@ -1028,6 +1064,27 @@ func (u *EnvBuildUpsertOne) UpdateEnvdVersion() *EnvBuildUpsertOne {
 func (u *EnvBuildUpsertOne) ClearEnvdVersion() *EnvBuildUpsertOne {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.ClearEnvdVersion()
+	})
+}
+
+// SetReason sets the "reason" field.
+func (u *EnvBuildUpsertOne) SetReason(v string) *EnvBuildUpsertOne {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.SetReason(v)
+	})
+}
+
+// UpdateReason sets the "reason" field to the value that was provided on create.
+func (u *EnvBuildUpsertOne) UpdateReason() *EnvBuildUpsertOne {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.UpdateReason()
+	})
+}
+
+// ClearReason clears the value of the "reason" field.
+func (u *EnvBuildUpsertOne) ClearReason() *EnvBuildUpsertOne {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.ClearReason()
 	})
 }
 
@@ -1519,6 +1576,27 @@ func (u *EnvBuildUpsertBulk) UpdateEnvdVersion() *EnvBuildUpsertBulk {
 func (u *EnvBuildUpsertBulk) ClearEnvdVersion() *EnvBuildUpsertBulk {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.ClearEnvdVersion()
+	})
+}
+
+// SetReason sets the "reason" field.
+func (u *EnvBuildUpsertBulk) SetReason(v string) *EnvBuildUpsertBulk {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.SetReason(v)
+	})
+}
+
+// UpdateReason sets the "reason" field to the value that was provided on create.
+func (u *EnvBuildUpsertBulk) UpdateReason() *EnvBuildUpsertBulk {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.UpdateReason()
+	})
+}
+
+// ClearReason clears the value of the "reason" field.
+func (u *EnvBuildUpsertBulk) ClearReason() *EnvBuildUpsertBulk {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.ClearReason()
 	})
 }
 

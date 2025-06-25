@@ -21,6 +21,7 @@ const (
 
 type BuildInfo struct {
 	status    template_manager.TemplateBuildState
+	reason    *string
 	metadata  *template_manager.TemplateBuildMetadata
 	mu        sync.RWMutex
 	ctx       context.Context
@@ -53,6 +54,13 @@ func (b *BuildInfo) GetStatus() template_manager.TemplateBuildState {
 	defer b.mu.RUnlock()
 
 	return b.status
+}
+
+func (b *BuildInfo) GetReason() *string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	return b.reason
 }
 
 func (b *BuildInfo) GetContext() context.Context {
@@ -151,10 +159,11 @@ func (c *BuildCache) SetSucceeded(buildID string, metadata *template_manager.Tem
 
 	item.status = template_manager.TemplateBuildState_Completed
 	item.metadata = metadata
+	item.reason = nil
 	return nil
 }
 
-func (c *BuildCache) SetFailed(buildID string) error {
+func (c *BuildCache) SetFailed(buildID string, reason string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -164,6 +173,7 @@ func (c *BuildCache) SetFailed(buildID string) error {
 	}
 
 	item.status = template_manager.TemplateBuildState_Failed
+	item.reason = &reason
 	return nil
 }
 

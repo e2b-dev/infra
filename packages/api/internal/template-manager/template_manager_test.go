@@ -17,11 +17,6 @@ type testStatusClient interface {
 	TemplateBuildStatus(ctx context.Context, in *template_manager.TemplateStatusRequest, opts ...grpc.CallOption) (*template_manager.TemplateBuildStatusResponse, error)
 }
 
-type testTemplateManagerClient interface {
-	SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason string) error
-	SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string) error
-}
-
 type fakeStatusClient struct {
 	templateBuildStatusResponse *template_manager.TemplateBuildStatusResponse
 	err                         error
@@ -40,7 +35,7 @@ func (f fakeTemplateManagerClient) SetStatus(ctx context.Context, templateID str
 	return f.setStatusError
 }
 
-func (f fakeTemplateManagerClient) SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string) error {
+func (f fakeTemplateManagerClient) SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string, reason string) error {
 	return f.setFinishedError
 }
 

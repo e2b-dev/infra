@@ -8,7 +8,7 @@ generate-fc:
 .PHONY: generate-models
 generate-models:
 	@echo "Generating models..."
-	@find pkg/models/* -not -path "pkg/models/clickhouse*" -delete
+	@rm -rf pkg/models/*
 	@go generate ./pkg/generate_models.go
 	@echo "Done"
 
