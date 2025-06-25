@@ -10,6 +10,7 @@ import (
 
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -32,15 +33,16 @@ const (
 )
 
 type Orchestrator struct {
-	httpClient    *http.Client
-	nomadClient   *nomadapi.Client
-	instanceCache *instance.InstanceCache
-	nodes         *smap.Map[*Node]
-	tracer        trace.Tracer
-	analytics     *analyticscollector.Analytics
-	dns           *dns.DNS
-	dbClient      *db.DB
-	tel           *telemetry.Client
+	httpClient          *http.Client
+	nomadClient         *nomadapi.Client
+	instanceCache       *instance.InstanceCache
+	nodes               *smap.Map[*Node]
+	tracer              trace.Tracer
+	analytics           *analyticscollector.Analytics
+	dns                 *dns.DNS
+	dbClient            *db.DB
+	tel                 *telemetry.Client
+	metricsRegistration metric.Registration
 }
 
 func New(
@@ -107,11 +109,13 @@ func New(
 		go o.reportLongRunningSandboxes(ctx)
 	}
 
-	err = o.setupMetrics(tel.MeterProvider)
+	registration, err := o.setupMetrics(tel.MeterProvider)
 	if err != nil {
 		zap.L().Error("Failed to setup metrics", zap.Error(err))
 		return nil, fmt.Errorf("failed to setup metrics: %w", err)
 	}
+
+	o.metricsRegistration = registration
 
 	go o.startStatusLogging(ctx)
 
@@ -167,6 +171,12 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 	}
 
 	zap.L().Info("shutting down node clients", zap.Int("error_count", len(errs)), zap.Int("node_count", len(nodes)))
+
+	if o.metricsRegistration != nil {
+		if err := o.metricsRegistration.Unregister(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to unregister metrics: %w", err))
+		}
+	}
 
 	if err := o.analytics.Close(); err != nil {
 		errs = append(errs, err)

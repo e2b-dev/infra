@@ -10,21 +10,27 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (o *Orchestrator) setupMetrics(meterProvider metric.MeterProvider) error {
+func (o *Orchestrator) setupMetrics(meterProvider metric.MeterProvider) (metric.Registration, error) {
 	meter := meterProvider.Meter("api.orchestrator")
-	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.ApiOrchestratorCountMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
-		for _, node := range o.nodes.Items() {
-			observer.Observe(1, metric.WithAttributes(
-				attribute.String("status", string(node.status)),
-				attribute.String("node_id", node.orchestratorID),
-			))
-		}
-
-		return nil
-	})
+	gauge, err := telemetry.GetGaugeInt(meter, telemetry.ApiOrchestratorCountMeterName)
 	if err != nil {
-		return fmt.Errorf("failed to create orchestrators counter: %w", err)
+		return nil, fmt.Errorf("failed to create orchestrators gauge: %w", err)
 	}
 
-	return nil
+	registration, err := meter.RegisterCallback(
+		func(ctx context.Context, obs metric.Observer) error {
+			for _, node := range o.nodes.Items() {
+				obs.ObserveInt64(gauge, 1, metric.WithAttributes(
+					attribute.String("status", string(node.status)),
+					attribute.String("node.id", node.orchestratorID),
+				))
+			}
+
+			return nil
+		}, gauge)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register orchestrators gauge: %w", err)
+	}
+
+	return registration, nil
 }
