@@ -7,13 +7,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"go.uber.org/zap"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	buildlogs "github.com/e2b-dev/infra/packages/api/internal/template-manager/logs"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -83,21 +83,43 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	logs := make([]string, 0)
-	l, err := a.templateManager.GetLogs(ctx, buildUUID, templateID, team.ClusterID, buildInfo.ClusterNodeID, params.LogsOffset)
-	if err != nil {
-		zap.L().Error("Failed to get build logs", zap.Error(err), logger.WithBuildID(buildID), logger.WithTemplateID(templateID))
-	} else {
-		logs = l
-	}
-
+	// Needs to be before logs request so the status is not set to done too early
 	result := api.TemplateBuild{
-		Logs:       logs,
+		Logs:       nil,
 		TemplateID: templateID,
 		BuildID:    buildID,
 		Status:     getCorrespondingTemplateBuildStatus(buildInfo.BuildStatus),
 		Reason:     buildInfo.Reason,
 	}
+
+	offset := params.LogsOffset
+
+	logsProviders := make([]buildlogs.Provider, 0)
+	logsProviders = append(logsProviders, &buildlogs.TemplateManagerProvider{TemplateManager: a.templateManager})
+	logsProviders = append(logsProviders, &buildlogs.LokiProvider{LokiClient: a.lokiClient})
+	logsProviders = append(logsProviders, &buildlogs.ClusterPlacementProvider{TemplateManager: a.templateManager})
+
+	logsTotal := make([]string, 0)
+	for _, provider := range logsProviders {
+		logs, err := provider.GetLogs(ctx, templateID, buildUUID, team.ClusterID, buildInfo.ClusterNodeID, offset)
+		if err != nil {
+			var skippedProviderError *buildlogs.SkippedProviderError
+			if errors.As(err, &skippedProviderError) {
+				continue
+			}
+
+			telemetry.ReportEvent(ctx, "soft error when getting logs for template build", telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildUUID.String()), attribute.String("provider", fmt.Sprintf("%T", provider)))
+			continue
+		}
+
+		// Return the first non-empty logs, the providers are ordered by most up-to-date data
+		if len(logs) > 0 {
+			logsTotal = logs
+			break
+		}
+	}
+
+	result.Logs = logsTotal
 
 	c.JSON(http.StatusOK, result)
 }
