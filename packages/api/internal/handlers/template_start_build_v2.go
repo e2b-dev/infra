@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -20,6 +21,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+type dockerfileStore struct {
+	FromImage string              `json:"from_image"`
+	Steps     *[]api.TemplateStep `json:"steps"`
+}
 
 // PostV2TemplatesTemplateIDBuildsBuildID triggers a new build
 func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templateID api.TemplateID, buildID api.BuildID) {
@@ -109,9 +115,20 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
+	stepsMarshalled, err := json.Marshal(dockerfileStore{
+		FromImage: body.FromImage,
+		Steps:     body.Steps,
+	})
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when processing steps: %s", err))
+		telemetry.ReportCriticalError(ctx, "error when processing steps", err, telemetry.WithTemplateID(templateID))
+		return
+	}
+
 	err = a.db.Client.EnvBuild.Update().
 		SetNillableStartCmd(body.StartCmd).
 		SetNillableReadyCmd(body.ReadyCmd).
+		SetDockerfile(string(stepsMarshalled)).
 		Where(envbuild.ID(buildUUID)).
 		Exec(ctx)
 	if err != nil {
