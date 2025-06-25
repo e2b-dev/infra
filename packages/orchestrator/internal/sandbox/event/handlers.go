@@ -83,9 +83,12 @@ func (h *DefaultHandler) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	zap.L().Info("Received event", zap.String("body", string(body)))
+
 	eventData.Body = make(map[string]any)
 	err = json.Unmarshal(body, &eventData.Body)
 	if err != nil {
+		zap.L().Error("Failed to unmarshal request body", zap.Error(err))
 		http.Error(w, "Failed to unmarshal request body", http.StatusInternalServerError)
 		return
 	}
