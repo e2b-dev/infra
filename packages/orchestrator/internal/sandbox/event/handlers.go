@@ -47,14 +47,14 @@ func (h *DefaultHandler) Path() string {
 func (h *DefaultHandler) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	sandboxID := r.Header.Get("E2B_SANDBOX_ID")
 	if r.Method == http.MethodGet {
-		event, err := h.store.GetEvent(sandboxID)
+		events, err := h.store.GetLastNEvents(sandboxID, 10)
 		if err != nil {
 			zap.L().Error("Failed to get event data for sandbox "+sandboxID, zap.Error(err))
 			http.Error(w, "Failed to get event data for sandbox "+sandboxID, http.StatusInternalServerError)
 			return
 		}
 
-		eventJSON, err := json.Marshal(event)
+		eventJSON, err := json.Marshal(events)
 		if err != nil {
 			zap.L().Error("Failed to marshal event data", zap.Error(err))
 			http.Error(w, "Failed to marshal event data", http.StatusInternalServerError)
@@ -91,7 +91,7 @@ func (h *DefaultHandler) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Store in Redis with sandboxID as key
-	err = h.store.SetEvent(sandboxID, &eventData, 0)
+	err = h.store.AddEvent(sandboxID, &eventData, 0)
 	if err != nil {
 		zap.L().Error("Failed to store event data", zap.Error(err))
 		http.Error(w, "Failed to store event data", http.StatusInternalServerError)
