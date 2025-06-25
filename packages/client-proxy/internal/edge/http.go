@@ -68,7 +68,7 @@ func NewGinServer(logger *zap.Logger, store *handlers.APIStore, swagger *openapi
 
 		func(c *gin.Context) {
 			path := c.Request.URL.Path
-			pathSkipped := []string{"/health", "/health/traffic", "/v1/info"}
+			pathSkipped := []string{"/health", "/health/traffic", "/health/machine", "/v1/info"}
 
 			if slices.Contains(pathSkipped, path) {
 				c.Next()
