@@ -25,7 +25,6 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
-	github.com/sergi/go-diff v1.3.1 // indirect
 	github.com/zclconf/go-cty v1.14.1 // indirect
 	golang.org/x/mod v0.25.0 // indirect
 	golang.org/x/sync v0.15.0 // indirect
