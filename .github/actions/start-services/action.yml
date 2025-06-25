@@ -44,6 +44,11 @@ runs:
         make -C tests/integration seed
       shell: bash
 
+    - name: Start Redis
+      run: |
+        docker run -d --name redis -p 6379:6379 redis:7.4.2-alpine
+      shell: bash
+
     - name: Start Services
       env:
         ENVD_TIMEOUT: "60s"
@@ -51,6 +56,7 @@ runs:
         SANDBOX_ACCESS_TOKEN_HASH_SEED: "abcdefghijklmnopqrstuvwxyz"
         SUPABASE_JWT_SECRETS: "supabasejwtsecretsupabasejwtsecret"
         TEMPLATE_MANAGER_ADDRESS: "http://localhost:5008"
+        REDIS_URL: "redis://localhost:6379"
         ARTIFACTS_REGISTRY_PROVIDER: "Local"
         STORAGE_PROVIDER: "Local"
         ENVIRONMENT: "local"
