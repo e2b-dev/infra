@@ -485,6 +485,7 @@ resource "nomad_job" "template_manager" {
     logs_collector_public_ip     = var.logs_proxy_address
     orchestrator_services        = "template-manager"
     allow_sandbox_internet       = var.allow_sandbox_internet
+    redis_url                    = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : "redis.service.consul:${var.redis_port.port}"
   })
 }
 resource "nomad_job" "loki" {

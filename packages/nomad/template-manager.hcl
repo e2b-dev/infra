@@ -64,6 +64,7 @@ job "template-manager" {
         ORCHESTRATOR_SERVICES         = "${orchestrator_services}"
         LOGS_COLLECTOR_PUBLIC_IP      = "${logs_collector_public_ip}"
         ALLOW_SANDBOX_INTERNET        = "${allow_sandbox_internet}"
+        REDIS_URL                     = "${redis_url}"
 %{ if !update_stanza }
         FORCE_STOP                    = "true"
 %{ endif }
