@@ -82,7 +82,7 @@ func dnsResolution(sandboxId string, logger *zap.Logger) (string, error) {
 	return node, nil
 }
 
-func catalogResolution(sandboxId string, logger *zap.Logger, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool) (string, error) {
+func catalogResolution(sandboxId string, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool) (string, error) {
 	s, err := catalog.GetSandbox(sandboxId)
 	if err != nil {
 		if errors.Is(err, sandboxes.ErrSandboxNotFound) {
@@ -120,7 +120,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 			var nodeIp string
 
 			if useCatalogResolution {
-				nodeIp, err = catalogResolution(sandboxId, logger, catalog, orchestrators)
+				nodeIp, err = catalogResolution(sandboxId, catalog, orchestrators)
 				if err != nil {
 					if !errors.Is(err, ErrNodeNotFound) {
 						logger.Warn("failed to resolve node ip with Redis resolution", zap.Error(err))
