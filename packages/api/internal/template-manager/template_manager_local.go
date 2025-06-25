@@ -7,6 +7,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
 
@@ -25,6 +26,7 @@ func (tm *TemplateManager) localBuilderHealthCheckSync(ctx context.Context) {
 			res, err := tm.localClient.Info.ServiceInfo(reqCtx, &emptypb.Empty{})
 			reqCtxCancel()
 
+			err = utils.UnwrapGRPCError(err)
 			if err != nil {
 				zap.L().Error("Failed to get health status of template manager", zap.Error(err))
 				tm.localClientMutex.Lock()
