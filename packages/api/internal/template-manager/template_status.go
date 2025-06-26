@@ -20,24 +20,21 @@ var (
 	syncWaitingStateDeadline = time.Minute * 40
 )
 
-func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUID, templateID string, clusterId *uuid.UUID, clusterNodeId *string) {
+func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUID, templateID string, clusterId *uuid.UUID, clusterNodeId *string) error {
 	childCtx, childCtxCancel := context.WithTimeout(ctx, syncTimeout)
 	defer childCtxCancel()
 
 	if tm.createInProcessingQueue(buildID, templateID) {
 		// already processing, skip
-		return
+		return nil
 	}
 
 	// remove from processing queue when done
 	defer tm.removeFromProcessingQueue(buildID)
 
-	logger := zap.L().With(logger.WithBuildID(buildID.String()), logger.WithTemplateID(templateID))
-
 	envBuildDb, err := tm.db.GetEnvBuild(childCtx, buildID)
 	if err != nil {
-		logger.Error("Error when fetching env build for background sync", zap.Error(err))
-		return
+		return fmt.Errorf("failed to get env build: %w", err)
 	}
 
 	// waiting for build to start, local docker build and push can take some time
@@ -45,22 +42,17 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 	if envBuildDb.Status == envbuild.StatusWaiting {
 		// if waiting for too long, fail the build
 		if time.Since(envBuildDb.CreatedAt) > syncWaitingStateDeadline {
-			logger.Error("Build is in waiting state for too long, failing it")
 			err = tm.SetStatus(childCtx, templateID, buildID, envbuild.StatusFailed, "build is in waiting state for too long")
-			if err != nil {
-				logger.Error("error when setting build status", zap.Error(err))
-			}
-
-			return
+			return fmt.Errorf("build is in waiting state for too long, failing it: %w", err)
 		}
 
 		// just wait for next sync
-		return
+		return nil
 	}
 
 	checker := &PollBuildStatus{
 		client: tm,
-		logger: logger,
+		logger: zap.L().With(logger.WithBuildID(buildID.String()), logger.WithTemplateID(templateID)),
 
 		templateID: templateID,
 		buildID:    buildID,
