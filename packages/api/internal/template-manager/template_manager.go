@@ -92,7 +92,6 @@ func New(ctx context.Context, tracer trace.Tracer, tracerProvider trace.TracerPr
 }
 
 func (tm *TemplateManager) Close() error {
-	// todo: we should track all in-progress requests and wait for them to finish
 	return tm.grpc.Close()
 }
 
