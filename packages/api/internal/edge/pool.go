@@ -37,7 +37,7 @@ func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, trac
 		tel:    tel,
 		tracer: tracer,
 		pool:   smap.New[*Cluster](),
-		close:  make(chan struct{}, 1),
+		close:  make(chan struct{}),
 	}
 
 	syncTimeout, syncCancel := context.WithTimeout(ctx, poolSyncTimeout)

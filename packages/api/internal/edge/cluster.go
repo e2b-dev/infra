@@ -74,7 +74,7 @@ func NewCluster(tracer trace.Tracer, tel *telemetry.Client, endpoint string, end
 		httpClient: httpClient,
 		grpcClient: grpcClient,
 
-		close: make(chan struct{}, 1),
+		close: make(chan struct{}),
 	}
 
 	// periodically sync cluster nodes
