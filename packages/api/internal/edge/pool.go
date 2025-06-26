@@ -19,6 +19,7 @@ import (
 
 const (
 	poolSyncInterval = 60 * time.Second
+	poolSyncTimeout  = 15 * time.Second
 )
 
 type Pool struct {
@@ -39,7 +40,7 @@ func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, trac
 		close:  make(chan struct{}, 1),
 	}
 
-	syncTimeout, syncCancel := context.WithTimeout(p.ctx, poolSyncInterval)
+	syncTimeout, syncCancel := context.WithTimeout(ctx, poolSyncTimeout)
 	defer syncCancel()
 
 	err := p.sync(syncTimeout)
