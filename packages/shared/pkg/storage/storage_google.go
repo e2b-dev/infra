@@ -78,7 +78,7 @@ func (g *GCPBucketStorageProvider) GetDetails() string {
 	return fmt.Sprintf("[GCP Storage, bucket set to %s]", g.bucket.BucketName())
 }
 
-func (g *GCPBucketStorageProvider) SignedURL(_ context.Context, path string, ttl time.Duration) (string, error) {
+func (g *GCPBucketStorageProvider) UploadSignedURL(_ context.Context, path string, ttl time.Duration) (string, error) {
 	token, err := parseServiceAccountBase64(consts.GoogleServiceAccountSecret)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse GCP service account: %w", err)

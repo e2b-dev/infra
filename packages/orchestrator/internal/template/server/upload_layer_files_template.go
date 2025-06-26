@@ -27,7 +27,7 @@ func (s *ServerStore) TemplateLayerFilesUpload(ctx context.Context, in *template
 	if err != nil {
 		zap.L().Warn("layer files not found", zap.Error(err))
 
-		signedUrl, err := s.storage.SignedURL(ctx, path, signedUrlExpiration)
+		signedUrl, err := s.storage.UploadSignedURL(ctx, path, signedUrlExpiration)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get signed url: %w", err)
 		}

@@ -27,7 +27,7 @@ const (
 
 type StorageProvider interface {
 	DeleteObjectsWithPrefix(ctx context.Context, prefix string) error
-	SignedURL(ctx context.Context, path string, ttl time.Duration) (string, error)
+	UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error)
 	OpenObject(ctx context.Context, path string) (StorageObjectProvider, error)
 	GetDetails() string
 }

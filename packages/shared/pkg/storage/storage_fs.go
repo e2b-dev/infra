@@ -37,7 +37,7 @@ func (fs *FileSystemStorageProvider) GetDetails() string {
 	return fmt.Sprintf("[Local file storage, base path set to %s]", fs.basePath)
 }
 
-func (fs *FileSystemStorageProvider) SignedURL(_ context.Context, _ string, _ time.Duration) (string, error) {
+func (fs *FileSystemStorageProvider) UploadSignedURL(_ context.Context, _ string, _ time.Duration) (string, error) {
 	return "", fmt.Errorf("file system storage does not support signed URLs")
 }
 

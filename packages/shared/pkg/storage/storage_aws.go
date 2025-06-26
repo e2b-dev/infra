@@ -78,7 +78,7 @@ func (a *AWSBucketStorageProvider) GetDetails() string {
 	return fmt.Sprintf("[AWS Storage, bucket set to %s]", a.bucketName)
 }
 
-func (a *AWSBucketStorageProvider) SignedURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
+func (a *AWSBucketStorageProvider) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
 	input := &s3.PutObjectInput{
 		Bucket: aws.String(a.bucketName),
 		Key:    aws.String(path),
