@@ -101,7 +101,7 @@ func (p *Pool) sync(ctx context.Context) error {
 		go func(c queries.Cluster) {
 			zap.L().Info("Initializing newly discovered cluster", l.WithClusterID(c.ID))
 
-			cluster, err := NewCluster(p.ctx, p.tracer, p.tel, c.Endpoint, c.EndpointTls, c.Token, c.ID)
+			cluster, err := NewCluster(p.tracer, p.tel, c.Endpoint, c.EndpointTls, c.Token, c.ID)
 			if err != nil {
 				zap.L().Error("Initializing cluster failed", zap.Error(err), l.WithClusterID(c.ID))
 			} else {

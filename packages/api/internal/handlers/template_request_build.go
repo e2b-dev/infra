@@ -248,7 +248,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 			return nil
 		}
 
-		clusterNode, err := cluster.GetAvailableTemplateBuilder()
+		clusterNode, err := cluster.GetAvailableTemplateBuilder(ctx)
 		if err != nil {
 			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting available template builder: %s", err))
 			telemetry.ReportCriticalError(ctx, "error when getting available template builder", err, telemetry.WithTemplateID(templateID))

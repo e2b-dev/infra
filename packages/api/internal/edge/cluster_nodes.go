@@ -41,11 +41,11 @@ func (c *Cluster) syncBackground() {
 
 	for {
 		select {
-		case <-c.ctx.Done():
+		case <-c.cancel:
 			zap.L().Info("Cluster nodes sync ended", l.WithClusterID(c.ID))
 			return
 		case <-timer.C:
-			syncTimeout, syncCancel := context.WithTimeout(c.ctx, clusterNodesSyncInterval)
+			syncTimeout, syncCancel := context.WithTimeout(context.Background(), clusterNodesSyncInterval)
 			err := c.sync(syncTimeout)
 			syncCancel()
 

@@ -27,8 +27,7 @@ type Cluster struct {
 	nodes  *smap.Map[*ClusterNode]
 	tracer trace.Tracer
 
-	ctx       context.Context
-	ctxCancel context.CancelFunc
+	cancel chan struct{}
 }
 
 var (
@@ -36,9 +35,7 @@ var (
 	ErrAvailableTemplateBuilderNotFound = errors.New("available template builder not found")
 )
 
-func NewCluster(ctx context.Context, tracer trace.Tracer, tel *telemetry.Client, endpoint string, endpointTls bool, secret string, id uuid.UUID) (*Cluster, error) {
-	ctx, ctxCancel := context.WithCancel(ctx)
-
+func NewCluster(tracer trace.Tracer, tel *telemetry.Client, endpoint string, endpointTls bool, secret string, id uuid.UUID) (*Cluster, error) {
 	clientAuthMiddleware := func(c *api.Client) error {
 		c.RequestEditors = append(
 			c.RequestEditors,
@@ -60,27 +57,24 @@ func NewCluster(ctx context.Context, tracer trace.Tracer, tel *telemetry.Client,
 
 	httpClient, err := api.NewClientWithResponses(endpointBaseUrl, clientAuthMiddleware)
 	if err != nil {
-		ctxCancel()
 		return nil, fmt.Errorf("failed to create http client: %w", err)
 	}
 
 	grpcAuthorization := clientAuthorization{secret: secret, tls: endpointTls}
 	grpcClient, err := createClusterClient(tel, grpcAuthorization, endpoint, endpointTls)
 	if err != nil {
-		ctxCancel()
 		return nil, fmt.Errorf("failed to create grpc client: %w", err)
 	}
 
 	c := &Cluster{
 		ID: id,
 
-		ctx:       ctx,
-		ctxCancel: ctxCancel,
-
 		nodes:      smap.New[*ClusterNode](),
 		tracer:     tracer,
 		httpClient: httpClient,
 		grpcClient: grpcClient,
+
+		cancel: make(chan struct{}, 1),
 	}
 
 	// periodically sync cluster nodes
@@ -91,7 +85,7 @@ func NewCluster(ctx context.Context, tracer trace.Tracer, tel *telemetry.Client,
 
 func (c *Cluster) Close() error {
 	err := c.grpcClient.Close()
-	c.ctxCancel()
+	c.cancel <- struct{}{}
 	return err
 }
 
@@ -108,8 +102,8 @@ func (c *Cluster) GetTemplateBuilderById(nodeID string) (*ClusterNode, error) {
 	return node, nil
 }
 
-func (c *Cluster) GetAvailableTemplateBuilder() (*ClusterNode, error) {
-	_, span := c.tracer.Start(c.ctx, "template-builder-get-available-node")
+func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterNode, error) {
+	_, span := c.tracer.Start(ctx, "template-builder-get-available-node")
 	span.SetAttributes(telemetry.WithClusterID(c.ID))
 	defer span.End()
 
