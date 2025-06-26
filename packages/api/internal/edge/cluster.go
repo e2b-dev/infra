@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
@@ -38,12 +39,6 @@ type Cluster struct {
 	ctxCancel context.CancelFunc
 }
 
-const (
-	edgeApiAuthHeader = "X-API-Key"
-	edgeRpcAuthHeader = "authorization"
-	edgeRpcNodeHeader = "node-id"
-)
-
 var (
 	ErrTemplateBuilderNotFound          = errors.New("template builder not found")
 	ErrAvailableTemplateBuilderNotFound = errors.New("available template builder not found")
@@ -56,7 +51,7 @@ func NewCluster(ctx context.Context, tracer trace.Tracer, tel *telemetry.Client,
 		c.RequestEditors = append(
 			c.RequestEditors,
 			func(ctx context.Context, req *http.Request) error {
-				req.Header.Set(edgeApiAuthHeader, secret)
+				req.Header.Set(consts.EdgeApiAuthHeader, secret)
 				return nil
 			},
 		)
@@ -176,7 +171,7 @@ func (c *Cluster) GetAvailableTemplateBuilder() (*ClusterNode, error) {
 }
 
 func (c *Cluster) GetGrpcClient(nodeID string) (*grpclient.GRPCClient, metadata.MD) {
-	return c.grpcClient, metadata.New(map[string]string{edgeRpcNodeHeader: nodeID})
+	return c.grpcClient, metadata.New(map[string]string{consts.EdgeRpcNodeHeader: nodeID})
 }
 
 func (c *Cluster) GetHttpClient() *api.ClientWithResponses {
