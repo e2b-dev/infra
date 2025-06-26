@@ -124,6 +124,17 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterNode
 	return nil, ErrAvailableTemplateBuilderNotFound
 }
 
+func (c *Cluster) GetOrchestratorNodes() []*ClusterNode {
+	nodes := make([]*ClusterNode, 0, len(c.nodes.Items()))
+	for _, node := range c.nodes.Items() {
+		if slices.Contains(node.Roles, infogrpc.ServiceInfoRole_Orchestrator) {
+			nodes = append(nodes, node)
+		}
+	}
+
+	return nodes
+}
+
 func (c *Cluster) GetGrpcClient(nodeID string) (*grpclient.GRPCClient, metadata.MD) {
 	return c.grpcClient, metadata.New(map[string]string{consts.EdgeRpcNodeHeader: nodeID})
 }
