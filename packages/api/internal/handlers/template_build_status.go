@@ -88,7 +88,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	if err != nil {
 		zap.L().Error("Failed to get build logs", zap.Error(err), logger.WithBuildID(buildID), logger.WithTemplateID(templateID))
 	} else {
-		logs = *l
+		logs = l
 	}
 
 	result := api.TemplateBuild{
