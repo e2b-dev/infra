@@ -98,16 +98,17 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	}
 
 	logsProviders := make([]buildlogs.Provider, 0)
-	logsProviders = append(logsProviders, &buildlogs.LokiProvider{LokiClient: a.lokiClient})
 	logsProviders = append(logsProviders, &buildlogs.TemplateManagerProvider{TemplateManager: a.templateManager})
+	logsProviders = append(logsProviders, &buildlogs.LokiProvider{LokiClient: a.lokiClient})
 
 	logsTotal := make([]string, 0)
 	for _, provider := range logsProviders {
 		logs, err := provider.GetLogs(ctx, templateID, buildUUID, offset)
 		if err == nil {
-			// Return the logs that have the most entries, which means they're the most up to date
-			if len(logs) > len(logsTotal) {
+			// Return the first non-empty logs, the providers are ordered by most up-to-date data
+			if len(logs) > 0 {
 				logsTotal = logs
+				break
 			}
 		} else {
 			telemetry.ReportEvent(ctx, "error when getting logs for template build", telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildUUID.String()), attribute.String("provider", fmt.Sprintf("%T", provider)))
