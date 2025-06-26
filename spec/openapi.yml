@@ -931,6 +931,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - name: metadata
           in: query

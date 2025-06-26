@@ -2,157 +2,47 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"slices"
-	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"go.opentelemetry.io/otel/attribute"
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const defaultLimit = 100
-
-func (a *APIStore) LegacyGetSandboxIDMetrics(
+func getSandboxesSandboxIDMetrics(
 	ctx context.Context,
-	sandboxID string,
+	clickhouse clickhouse.Clickhouse,
+	sandboxIDs []string,
 	teamID string,
-	limit int,
-	duration time.Duration,
-) ([]api.SandboxMetric, error) {
-	sandboxID = utils.ShortID(sandboxID)
-
-	end := time.Now()
-	start := end.Add(-duration)
-
-	// Sanitize ID
-	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
-	id := strings.ReplaceAll(sandboxID, "`", "")
-
-	// equivalent CLI query:
-	// logcli query '{source="logs-collector", service="envd", teamID="65d165ab-69f6-4b5c-9165-6b93cd341503", sandboxID="izuhqjlfabd8ataeixrtl", category="metrics"}' --from="2025-01-19T10:00:00Z"
-	query := fmt.Sprintf(
-		"{teamID=`%s`, sandboxID=`%s`, category=\"metrics\"}", teamID, id)
-
-	res, err := a.lokiClient.QueryRange(query, limit, start, end, logproto.BACKWARD, time.Duration(0), time.Duration(0), true)
+) (map[string]api.SandboxMetric, error) {
+	metrics, err := clickhouse.QueryLatestMetrics(ctx, sandboxIDs, teamID)
 	if err != nil {
-		return nil, fmt.Errorf("error when returning metrics for sandbox: %w", err)
-	}
-
-	if res.Data.Result.Type() != loghttp.ResultTypeStream {
-		return nil, fmt.Errorf("unexpected value type %T", res.Data.Result.Type())
-	}
-
-	value := res.Data.Result.(loghttp.Streams)
-	metrics := make([]api.SandboxMetric, 0)
-
-	for _, stream := range value {
-		for _, entry := range stream.Entries {
-
-			var metric struct {
-				Timestamp   time.Time `json:"timestamp"`
-				CPUUsedPct  float32   `json:"cpuUsedPct"`
-				CPUCount    int32     `json:"cpuCount"`
-				MemTotalMiB int64     `json:"memTotalMiB"`
-				MemUsedMiB  int64     `json:"memUsedMiB"`
-			}
-
-			err := json.Unmarshal([]byte(entry.Line), &metric)
-			if err != nil {
-				telemetry.ReportCriticalError(ctx, "failed to unmarshal metric", err, telemetry.WithSandboxID(sandboxID))
-
-				continue
-			}
-
-			metrics = append(metrics, api.SandboxMetric{
-				Timestamp:   entry.Timestamp,
-				CpuUsedPct:  metric.CPUUsedPct,
-				CpuCount:    metric.CPUCount,
-				MemTotalMiB: metric.MemTotalMiB,
-				MemUsedMiB:  metric.MemUsedMiB,
-			})
-		}
-	}
-
-	// Sort metrics by timestamp (they are returned by the time they arrived in Loki)
-	slices.SortFunc(metrics, func(a, b api.SandboxMetric) int {
-		return a.Timestamp.Compare(b.Timestamp)
-	})
-
-	return metrics, nil
-}
-
-func (a *APIStore) GetSandboxesSandboxIDMetricsFromClickhouse(
-	ctx context.Context,
-	sandboxID string,
-	teamID string,
-	limit int,
-	duration time.Duration,
-) ([]api.SandboxMetric, error) {
-	end := time.Now().UTC()
-	start := end.Add(-duration)
-
-	metrics, err := a.clickhouseStore.QueryMetrics(ctx, sandboxID, teamID, start.Unix(), limit)
-	if err != nil {
-		return nil, fmt.Errorf("error when returning metrics for sandbox: %w", err)
+		return nil, fmt.Errorf("error querying metrics: %w", err)
 	}
 
 	// XXX avoid this conversion to be more efficient
-	apiMetrics := make([]api.SandboxMetric, len(metrics))
-	for i, m := range metrics {
-		apiMetrics[i] = api.SandboxMetric{
+	apiMetrics := make(map[string]api.SandboxMetric)
+	for _, m := range metrics {
+		apiMetrics[m.SandboxID] = api.SandboxMetric{
 			Timestamp:   m.Timestamp,
-			CpuUsedPct:  m.CPUUsedPercent,
+			CpuUsedPct:  float32(m.CPUUsedPercent),
 			CpuCount:    int32(m.CPUCount),
-			MemTotalMiB: int64(m.MemTotalMiB),
-			MemUsedMiB:  int64(m.MemUsedMiB),
+			MemTotalMiB: int64(m.MemTotal / 1024 / 1024), // Convert from bytes to MiB
+			MemUsedMiB:  int64(m.MemUsed / 1024 / 1024),  // Convert from bytes to MiB
 		}
 	}
 
 	return apiMetrics, nil
-}
-
-type metricReader interface {
-	LegacyGetSandboxIDMetrics(
-		ctx context.Context,
-		sandboxID string,
-		teamID string,
-		limit int,
-		duration time.Duration,
-	) ([]api.SandboxMetric, error)
-	GetSandboxesSandboxIDMetricsFromClickhouse(
-		ctx context.Context,
-		sandboxID string,
-		teamID string,
-		limit int,
-		duration time.Duration,
-	) ([]api.SandboxMetric, error)
-}
-
-func (a *APIStore) readMetricsBasedOnConfig(
-	ctx context.Context,
-	sandboxID string,
-	teamID string,
-	reader metricReader,
-) ([]api.SandboxMetric, error) {
-	// Get metrics and health status on sandbox startup
-	readMetricsFromClickhouse := a.readMetricsFromClickHouse == "true"
-
-	if readMetricsFromClickhouse {
-		return reader.GetSandboxesSandboxIDMetricsFromClickhouse(ctx, sandboxID, teamID, defaultLimit, oldestLogsLimit)
-	}
-
-	return reader.LegacyGetSandboxIDMetrics(ctx, sandboxID, teamID, defaultLimit, oldestLogsLimit)
 }
 
 func (a *APIStore) GetSandboxesSandboxIDMetrics(
@@ -165,17 +55,23 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(
 	teamID := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo).Team.ID.String()
 
 	telemetry.SetAttributes(ctx,
-		attribute.String("instance.id", sandboxID),
+		telemetry.WithSandboxID(sandboxID),
 		telemetry.WithTeamID(teamID),
 	)
 
-	metrics, err := a.readMetricsBasedOnConfig(ctx, sandboxID, teamID, a)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error returning metrics for sandbox", err, telemetry.WithSandboxID(sandboxID))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning metrics for sandbox '%s'", sandboxID))
+	flagCtx := ldcontext.NewBuilder(featureflags.MetricsReadFlagName).SetString("sandbox_id", sandboxID).Build()
+	metricsReadFlag, flagErr := a.featureFlags.Ld.BoolVariation(featureflags.MetricsReadFlagName, flagCtx, featureflags.MetricsReadDefault)
+	if flagErr != nil {
+		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
+	}
 
+	if !metricsReadFlag {
+		zap.L().Debug("sandbox metrics read feature flag is disabled", logger.WithSandboxID(sandboxID))
+		// If we are not reading from ClickHouse, we can return an empty slice
+		// This is here just to have possibility to turn off ClickHouse metrics reading
+		c.JSON(http.StatusOK, []api.SandboxMetric{})
 		return
 	}
 
-	c.JSON(http.StatusOK, metrics)
+	c.JSON(http.StatusOK, []api.SandboxMetric{})
 }
