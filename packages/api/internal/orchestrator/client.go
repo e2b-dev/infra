@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -108,7 +109,9 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 
 	o.nodes.Insert(
 		node.ID, &Node{
-			Client:         client,
+			Client:   client,
+			ClientMd: make(metadata.MD),
+
 			Info:           node,
 			orchestratorID: orchestratorID,
 			buildCache:     buildCache,
@@ -123,13 +126,13 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 	return nil
 }
 
-func (o *Orchestrator) GetClient(nodeID string) (*grpclient.GRPCClient, error) {
+func (o *Orchestrator) GetClient(nodeID string) (*grpclient.GRPCClient, metadata.MD, error) {
 	n := o.GetNode(nodeID)
 	if n == nil {
-		return nil, fmt.Errorf("node '%s' not found", nodeID)
+		return nil, nil, fmt.Errorf("node '%s' not found", nodeID)
 	}
 
-	return n.Client, nil
+	return n.Client, n.ClientMd, nil
 }
 
 func (o *Orchestrator) getNodeHealth(node *node.NodeInfo) (bool, error) {

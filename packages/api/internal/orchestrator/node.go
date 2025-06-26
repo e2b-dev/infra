@@ -11,6 +11,7 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
@@ -30,6 +31,7 @@ type Node struct {
 	CPUUsage atomic.Int64
 	RamUsage atomic.Int64
 	Client   *grpclient.GRPCClient
+	ClientMd metadata.MD
 
 	Info           *node.NodeInfo
 	orchestratorID string
@@ -84,7 +86,8 @@ func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
 		return fmt.Errorf("unknown service info status: %s", s)
 	}
 
-	_, err := n.Client.Info.ServiceStatusOverride(ctx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: nodeStatus})
+	reqCtx := metadata.NewOutgoingContext(ctx, n.ClientMd)
+	_, err := n.Client.Info.ServiceStatusOverride(reqCtx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: nodeStatus})
 	if err != nil {
 		zap.L().Error("Failed to send status change", zap.Error(err))
 		return err

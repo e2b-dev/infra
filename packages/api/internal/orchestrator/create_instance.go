@@ -11,6 +11,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
+	metadata2 "google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -182,7 +183,8 @@ func (o *Orchestrator) CreateSandbox(
 			CPUs:      build.Vcpu,
 		})
 
-		_, err = node.Client.Sandbox.Create(childCtx, sbxRequest)
+		reqCtx := metadata2.NewOutgoingContext(childCtx, node.ClientMd)
+		_, err = node.Client.Sandbox.Create(reqCtx, sbxRequest)
 		// The request is done, we will either add it to the cache or remove it from the node
 		if err == nil {
 			// The sandbox was created successfully

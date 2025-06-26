@@ -9,6 +9,7 @@ import (
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -138,7 +139,8 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 	syncRetrySuccess := false
 
 	for range syncMaxRetries {
-		nodeInfo, err := node.Client.Info.ServiceInfo(ctx, &emptypb.Empty{})
+		reqCtx := metadata.NewOutgoingContext(ctx, node.ClientMd)
+		nodeInfo, err := node.Client.Info.ServiceInfo(reqCtx, &emptypb.Empty{})
 		if err != nil {
 			zap.L().Error("Error getting node info", zap.Error(err))
 			continue
@@ -255,7 +257,8 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			info.PauseDone(nil)
 		} else {
 			req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}
-			_, err := node.Client.Sandbox.Delete(ctx, req)
+			reqCtx := metadata.NewOutgoingContext(ctx, node.ClientMd)
+			_, err := node.Client.Sandbox.Delete(reqCtx, req)
 			if err != nil {
 				return fmt.Errorf("failed to delete sandbox '%s': %w", info.Instance.SandboxID, err)
 			}
