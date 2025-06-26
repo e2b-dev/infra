@@ -39,7 +39,7 @@ var (
 	ErrMissingAuthHeader = errors.New("authorization header is missing")
 	ErrInvalidAuth       = errors.New("authorization is invalid")
 
-	skippedPaths = regexp.MustCompile(`^(?:/health(?:/(?:traffic|machine))?|/v1/info)$`)
+	skippedPaths = regexp.MustCompile(`^(?:/health(?:/.*)?|/v1/info)$`)
 )
 
 func NewGinServer(logger *zap.Logger, store *handlers.APIStore, swagger *openapi3.T, tracer trace.Tracer, auth authorization.AuthorizationService) *gin.Engine {
