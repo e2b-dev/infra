@@ -27,7 +27,7 @@ type Cluster struct {
 	nodes  *smap.Map[*ClusterNode]
 	tracer trace.Tracer
 
-	cancel chan struct{}
+	close chan struct{}
 }
 
 var (
@@ -74,7 +74,7 @@ func NewCluster(tracer trace.Tracer, tel *telemetry.Client, endpoint string, end
 		httpClient: httpClient,
 		grpcClient: grpcClient,
 
-		cancel: make(chan struct{}, 1),
+		close: make(chan struct{}, 1),
 	}
 
 	// periodically sync cluster nodes
@@ -85,7 +85,7 @@ func NewCluster(tracer trace.Tracer, tel *telemetry.Client, endpoint string, end
 
 func (c *Cluster) Close() error {
 	err := c.grpcClient.Close()
-	c.cancel <- struct{}{}
+	close(c.close)
 	return err
 }
 

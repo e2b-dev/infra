@@ -26,16 +26,17 @@ type Pool struct {
 	pool   *smap.Map[*Cluster]
 	tel    *telemetry.Client
 	tracer trace.Tracer
-	ctx    context.Context
+
+	close chan struct{}
 }
 
 func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, tracer trace.Tracer) (*Pool, error) {
 	p := &Pool{
-		ctx:    ctx,
 		db:     db,
 		tel:    tel,
 		tracer: tracer,
 		pool:   smap.New[*Cluster](),
+		close:  make(chan struct{}, 1),
 	}
 
 	syncTimeout, syncCancel := context.WithTimeout(p.ctx, poolSyncInterval)
@@ -46,8 +47,14 @@ func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, trac
 		return nil, fmt.Errorf("failed to initialize edge pool: %w", err)
 	}
 
-	// periodically sync clusters with the database
+	// Periodically sync clusters with the database
 	go p.syncBackground()
+
+	// Shutdown function to gracefully close the pool
+	go func() {
+		<-ctx.Done()
+		p.Close()
+	}()
 
 	return p, nil
 }
@@ -58,11 +65,11 @@ func (p *Pool) syncBackground() {
 
 	for {
 		select {
-		case <-p.ctx.Done():
+		case <-p.close:
 			zap.L().Info("Clusters pool sync ended")
 			return
 		case <-timer.C:
-			syncTimeout, syncCancel := context.WithTimeout(p.ctx, poolSyncInterval)
+			syncTimeout, syncCancel := context.WithTimeout(context.Background(), poolSyncTimeout)
 			err := p.sync(syncTimeout)
 			syncCancel()
 
@@ -160,4 +167,24 @@ func (p *Pool) GetClusterById(id uuid.UUID) (*Cluster, bool) {
 	}
 
 	return cluster, true
+}
+
+func (p *Pool) Close() {
+	// Close pool, this needs to be called before closing the clusters
+	// so background jobs syncing cluster will not try to update the pool nodes
+	close(p.close)
+
+	wg := &sync.WaitGroup{}
+	for _, cluster := range p.pool.Items() {
+		wg.Add(1)
+		go func(c *Cluster) {
+			defer wg.Done()
+			zap.L().Info("Closing cluster", l.WithClusterID(c.ID))
+			err := c.Close()
+			if err != nil {
+				zap.L().Error("Error closing cluster", zap.Error(err), l.WithClusterID(c.ID))
+			}
+		}(cluster)
+	}
+	wg.Wait()
 }

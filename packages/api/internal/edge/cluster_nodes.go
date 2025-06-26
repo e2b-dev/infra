@@ -41,7 +41,7 @@ func (c *Cluster) syncBackground() {
 
 	for {
 		select {
-		case <-c.cancel:
+		case <-c.close:
 			zap.L().Info("Cluster nodes sync ended", l.WithClusterID(c.ID))
 			return
 		case <-timer.C:
