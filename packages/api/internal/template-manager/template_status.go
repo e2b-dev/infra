@@ -62,6 +62,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 	}
 
 	checker.poll(ctx)
+	return nil
 }
 
 type templateManagerClient interface {
