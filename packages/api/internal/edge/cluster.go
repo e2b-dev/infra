@@ -2,25 +2,17 @@ package edge
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
-	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -73,42 +65,10 @@ func NewCluster(ctx context.Context, tracer trace.Tracer, tel *telemetry.Client,
 	}
 
 	grpcAuthorization := clientAuthorization{secret: secret, tls: endpointTls}
-	grpcOptions := []grpc.DialOption{
-		grpc.WithPerRPCCredentials(grpcAuthorization),
-		grpc.WithStatsHandler(
-			otelgrpc.NewClientHandler(
-				otelgrpc.WithTracerProvider(tel.TracerProvider),
-				otelgrpc.WithMeterProvider(tel.MeterProvider),
-			),
-		),
-		grpc.WithKeepaliveParams(
-			keepalive.ClientParameters{
-				Time:                10 * time.Second, // Send ping every 10s
-				Timeout:             2 * time.Second,  // Wait 2s for response
-				PermitWithoutStream: true,
-			},
-		),
-	}
-
-	if endpointTls {
-		// (2025-06) AWS ALB with TLS termination is using TLS 1.2 as default so this is why we are not using TLS 1.3+ here
-		cred := credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
-		grpcOptions = append(grpcOptions, grpc.WithAuthority(endpoint), grpc.WithTransportCredentials(cred))
-	} else {
-		grpcOptions = append(grpcOptions, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	}
-
-	conn, err := grpc.NewClient(endpoint, grpcOptions...)
+	grpcClient, err := createClusterClient(tel, grpcAuthorization, endpoint, endpointTls)
 	if err != nil {
 		ctxCancel()
 		return nil, fmt.Errorf("failed to create grpc client: %w", err)
-	}
-
-	grpcClient := &grpclient.GRPCClient{
-		Sandbox:    nil,
-		Info:       infogrpc.NewInfoServiceClient(conn),
-		Template:   templatemanagergrpc.NewTemplateServiceClient(conn),
-		Connection: conn,
 	}
 
 	c := &Cluster{
