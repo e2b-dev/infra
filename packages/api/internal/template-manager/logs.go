@@ -24,7 +24,7 @@ const (
 )
 
 type PlacementLogsProvider interface {
-	GetLogs(ctx context.Context, buildId string, templateId string, offset *int32) (*[]string, error)
+	GetLogs(ctx context.Context, buildId string, templateId string, offset *int32) ([]string, error)
 }
 
 type LokiPlacementLogsProvider struct {
@@ -32,16 +32,16 @@ type LokiPlacementLogsProvider struct {
 }
 
 type ClusterPlacementLogsProvider struct {
-	client *api.ClientWithResponses
-	nodeId string
+	edgeHttpClient *api.ClientWithResponses
+	nodeId         string
 }
 
-func NewClusterPlacementLogsProvider(client *api.ClientWithResponses, nodeId string) PlacementLogsProvider {
-	return &ClusterPlacementLogsProvider{client: client, nodeId: nodeId}
+func NewClusterPlacementLogsProvider(edgeHttpClient *api.ClientWithResponses, nodeId string) PlacementLogsProvider {
+	return &ClusterPlacementLogsProvider{edgeHttpClient: edgeHttpClient, nodeId: nodeId}
 }
 
-func (l *ClusterPlacementLogsProvider) GetLogs(ctx context.Context, buildId string, templateId string, offset *int32) (*[]string, error) {
-	res, err := l.client.V1TemplateBuildLogsWithResponse(
+func (l *ClusterPlacementLogsProvider) GetLogs(ctx context.Context, buildId string, templateId string, offset *int32) ([]string, error) {
+	res, err := l.edgeHttpClient.V1TemplateBuildLogsWithResponse(
 		ctx, buildId, &api.V1TemplateBuildLogsParams{TemplateId: templateId, OrchestratorId: l.nodeId, Offset: offset},
 	)
 	if err != nil {
@@ -53,16 +53,16 @@ func (l *ClusterPlacementLogsProvider) GetLogs(ctx context.Context, buildId stri
 		return nil, errors.New("failed to get build logs in template manager")
 	}
 
-	return &res.JSON200.Logs, nil
+	return res.JSON200.Logs, nil
 }
 
 func NewLokiPlacementLogsProvider(lokiClient *loki.DefaultClient) PlacementLogsProvider {
 	return &LokiPlacementLogsProvider{lokiClient: lokiClient}
 }
 
-func (l *LokiPlacementLogsProvider) GetLogs(ctx context.Context, buildId string, templateId string, offset *int32) (*[]string, error) {
+func (l *LokiPlacementLogsProvider) GetLogs(ctx context.Context, buildId string, templateId string, offset *int32) ([]string, error) {
 	if l.lokiClient == nil {
-		return nil, fmt.Errorf("loki client is not configured")
+		return nil, fmt.Errorf("loki edgeHttpClient is not configured")
 	}
 
 	// Sanitize env ID
@@ -110,5 +110,5 @@ func (l *LokiPlacementLogsProvider) GetLogs(ctx context.Context, buildId string,
 		zap.L().Error("error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildId))
 	}
 
-	return &logs, nil
+	return logs, nil
 }

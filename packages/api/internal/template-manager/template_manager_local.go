@@ -29,15 +29,22 @@ func (tm *TemplateManager) localBuilderHealthCheckSync(ctx context.Context) {
 			err = utils.UnwrapGRPCError(err)
 			if err != nil {
 				zap.L().Error("Failed to get health status of template manager", zap.Error(err))
-				tm.localClientMutex.Lock()
-				tm.localClientStatus = orchestratorinfo.ServiceInfoStatus_OrchestratorDraining
-				tm.localClientMutex.Unlock()
+				tm.setLocalClientStatus(orchestratorinfo.ServiceInfoStatus_OrchestratorDraining)
 			}
 
-			tm.localClientMutex.Lock()
-			tm.localClientStatus = res.ServiceStatus
-			zap.L().Debug("Template manager health status", zap.String("status", tm.localClientStatus.String()))
-			tm.localClientMutex.Unlock()
+			tm.setLocalClientStatus(res.ServiceStatus)
 		}
 	}
+}
+
+func (tm *TemplateManager) setLocalClientStatus(s orchestratorinfo.ServiceInfoStatus) {
+	tm.localClientMutex.RLock()
+	defer tm.localClientMutex.RUnlock()
+	tm.localClientStatus = s
+}
+
+func (tm *TemplateManager) GetLocalClientStatus() orchestratorinfo.ServiceInfoStatus {
+	tm.localClientMutex.Lock()
+	defer tm.localClientMutex.Unlock()
+	return tm.localClientStatus
 }

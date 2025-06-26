@@ -255,7 +255,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 			return nil
 		}
 
-		builderNodeId = &clusterNode.Id
+		builderNodeId = &clusterNode.ID
 	}
 
 	// Insert the new build

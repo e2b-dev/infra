@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -19,16 +20,15 @@ import (
 )
 
 type ClusterNode struct {
-	Id     string // service id (will change on restart)
-	NodeId string // machine id
-
-	Status infogrpc.ServiceInfoStatus
-	Roles  []infogrpc.ServiceInfoRole
+	ID     string // service id (will change on restart)
+	NodeID string // machine id
 
 	Version       string
 	VersionCommit string
 
-	mutex sync.RWMutex // mutex to protect the node state
+	roles  []infogrpc.ServiceInfoRole
+	status infogrpc.ServiceInfoStatus
+	mutex  sync.RWMutex
 }
 
 const (
@@ -42,7 +42,7 @@ func (c *Cluster) syncBackground() {
 	for {
 		select {
 		case <-c.ctx.Done():
-			zap.L().Info("Cluster nodes sync ended", l.WithClusterID(c.Id))
+			zap.L().Info("Cluster nodes sync ended", l.WithClusterID(c.ID))
 			return
 		case <-timer.C:
 			syncTimeout, syncCancel := context.WithTimeout(c.ctx, clusterNodesSyncInterval)
@@ -50,7 +50,7 @@ func (c *Cluster) syncBackground() {
 			syncCancel()
 
 			if err != nil {
-				zap.L().Error("Failed to sync cluster nodes", zap.Error(err), l.WithClusterID(c.Id))
+				zap.L().Error("Failed to sync cluster nodes", zap.Error(err), l.WithClusterID(c.ID))
 			}
 		}
 	}
@@ -58,14 +58,13 @@ func (c *Cluster) syncBackground() {
 
 func (c *Cluster) sync(ctx context.Context) error {
 	spanCtx, span := c.tracer.Start(ctx, "keep-in-sync-cluster-nodes")
-	span.SetAttributes(telemetry.WithClusterID(c.Id))
+	span.SetAttributes(telemetry.WithClusterID(c.ID))
 	defer span.End()
 
 	// fetch cluster nodes with use of service discovery
-	res, err := c.httpClient.V1ServiceDiscoveryGetOrchestratorsWithResponse(c.ctx)
+	res, err := c.httpClient.V1ServiceDiscoveryGetOrchestratorsWithResponse(spanCtx)
 	if err != nil {
-		zap.L().Error("Failed to get cluster nodes", zap.Error(err), l.WithClusterID(c.Id))
-		return err
+		return fmt.Errorf("failed to get cluster nodes from service discovery: %w", err)
 	}
 
 	if res.StatusCode() != http.StatusOK {
@@ -87,14 +86,14 @@ func (c *Cluster) sync(ctx context.Context) error {
 			continue
 		}
 
-		zap.L().Info("Adding new node into cluster nodes pool", l.WithClusterID(c.Id), l.WithClusterNodeID(sdNode.Id))
+		zap.L().Info("Adding new node into cluster nodes pool", l.WithClusterID(c.ID), l.WithClusterNodeID(sdNode.Id))
 		node := &ClusterNode{
-			Id:     sdNode.Id,
-			NodeId: sdNode.NodeId,
+			ID:     sdNode.Id,
+			NodeID: sdNode.NodeId,
 
 			// initial values before first sync
-			Status: infogrpc.ServiceInfoStatus_OrchestratorDraining,
-			Roles:  make([]infogrpc.ServiceInfoRole, 0),
+			status: infogrpc.ServiceInfoStatus_OrchestratorUnhealthy,
+			roles:  make([]infogrpc.ServiceInfoRole, 0),
 
 			Version:       sdNode.Version,
 			VersionCommit: sdNode.Commit,
@@ -136,7 +135,7 @@ func (c *Cluster) sync(ctx context.Context) error {
 			continue
 		}
 
-		zap.L().Info("Removing node from cluster nodes pool", l.WithClusterID(c.Id), l.WithClusterNodeID(nodeId))
+		zap.L().Info("Removing node from cluster nodes pool", l.WithClusterID(c.ID), l.WithClusterNodeID(nodeId))
 		c.nodes.Remove(nodeId)
 	}
 
@@ -148,7 +147,7 @@ func (c *Cluster) sync(ctx context.Context) error {
 }
 
 func (c *Cluster) syncNode(ctx context.Context, node *ClusterNode) {
-	client, clientMetadata := c.GetGrpcClient(node.Id)
+	client, clientMetadata := c.GetGrpcClient(node.ID)
 
 	// we are taking service info directly from the node to avoid timing delays in service discovery
 	reqCtx := metadata.NewOutgoingContext(ctx, clientMetadata)
@@ -156,13 +155,33 @@ func (c *Cluster) syncNode(ctx context.Context, node *ClusterNode) {
 
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
-		zap.L().Error("Failed to get node service info", zap.Error(err), l.WithClusterID(c.Id), l.WithClusterNodeID(node.Id))
+		zap.L().Error("Failed to get node service info", zap.Error(err), l.WithClusterID(c.ID), l.WithClusterNodeID(node.ID))
 		return
 	}
 
 	node.mutex.Lock()
 	defer node.mutex.Unlock()
 
-	node.Status = info.ServiceStatus
-	node.Roles = info.ServiceRoles
+	node.status = info.ServiceStatus
+	node.roles = info.ServiceRoles
+}
+
+func (n *ClusterNode) GetStatus() infogrpc.ServiceInfoStatus {
+	n.mutex.RLock()
+	defer n.mutex.RUnlock()
+	return n.status
+}
+
+func (n *ClusterNode) hasRole(r infogrpc.ServiceInfoRole) bool {
+	n.mutex.RLock()
+	defer n.mutex.RUnlock()
+	return slices.Contains(n.roles, r)
+}
+
+func (n *ClusterNode) IsBuilderNode() bool {
+	return n.hasRole(infogrpc.ServiceInfoRole_TemplateManager)
+}
+
+func (n *ClusterNode) IsOrchestratorNode() bool {
+	return n.hasRole(infogrpc.ServiceInfoRole_Orchestrator)
 }

@@ -15,6 +15,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 )
 
+var (
+	syncTimeout              = time.Minute * 15
+	syncWaitingStateDeadline = time.Minute * 40
+)
+
 func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUID, templateID string, clusterId *uuid.UUID, clusterNodeId *string) {
 	childCtx, childCtxCancel := context.WithTimeout(ctx, syncTimeout)
 	defer childCtxCancel()

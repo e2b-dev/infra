@@ -7,13 +7,13 @@ import (
 
 	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
-	tempaltemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
 type GRPCClient struct {
 	Info     infogrpc.InfoServiceClient
 	Sandbox  orchestratorgrpc.SandboxServiceClient
-	Template tempaltemanagergrpc.TemplateServiceClient
+	Template templatemanagergrpc.TemplateServiceClient
 
 	Connection *grpc.ClientConn
 }

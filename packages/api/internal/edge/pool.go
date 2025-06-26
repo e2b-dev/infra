@@ -2,6 +2,7 @@ package edge
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -42,8 +43,7 @@ func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, trac
 
 	err := p.sync(syncTimeout)
 	if err != nil {
-		zap.L().Error("Failed to initialize edge pool", zap.Error(err))
-		return nil, err
+		return nil, fmt.Errorf("failed to initialize edge pool: %w", err)
 	}
 
 	// periodically sync clusters with the database
@@ -136,12 +136,12 @@ func (p *Pool) sync(ctx context.Context) error {
 		// cluster disconnect takes time
 		wg.Add(1)
 		go func(cluster *Cluster) {
-			zap.L().Info("Removing cluster from pool", l.WithClusterID(cluster.Id))
-			err := cluster.Disconnect()
+			zap.L().Info("Removing cluster from pool", l.WithClusterID(cluster.ID))
+			err := cluster.Close()
 			if err != nil {
-				zap.L().Error("Error during removing cluster from pool", zap.Error(err), l.WithClusterID(cluster.Id))
+				zap.L().Error("Error during removing cluster from pool", zap.Error(err), l.WithClusterID(cluster.ID))
 			}
-			p.pool.Remove(cluster.Id.String())
+			p.pool.Remove(cluster.ID.String())
 			wg.Done()
 		}(cluster)
 	}

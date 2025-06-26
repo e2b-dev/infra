@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,14 +19,14 @@ import (
 
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
-	tempaltemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 type Cluster struct {
-	Id uuid.UUID
+	ID uuid.UUID
 
 	httpClient *api.ClientWithResponses
 	grpcClient *grpclient.GRPCClient
@@ -113,12 +112,12 @@ func NewCluster(ctx context.Context, tracer trace.Tracer, tel *telemetry.Client,
 	grpcClient := &grpclient.GRPCClient{
 		Sandbox:    nil,
 		Info:       infogrpc.NewInfoServiceClient(conn),
-		Template:   tempaltemanagergrpc.NewTemplateServiceClient(conn),
+		Template:   templatemanagergrpc.NewTemplateServiceClient(conn),
 		Connection: conn,
 	}
 
 	c := &Cluster{
-		Id: id,
+		ID: id,
 
 		ctx:       ctx,
 		ctxCancel: ctxCancel,
@@ -135,7 +134,7 @@ func NewCluster(ctx context.Context, tracer trace.Tracer, tel *telemetry.Client,
 	return c, nil
 }
 
-func (c *Cluster) Disconnect() error {
+func (c *Cluster) Close() error {
 	err := c.grpcClient.Close()
 	c.ctxCancel()
 	return err
@@ -147,11 +146,7 @@ func (c *Cluster) GetTemplateBuilderById(nodeID string) (*ClusterNode, error) {
 		return nil, ErrTemplateBuilderNotFound
 	}
 
-	// protect node state with mutex
-	node.mutex.RLock()
-	defer node.mutex.RUnlock()
-
-	if node.Status == infogrpc.ServiceInfoStatus_OrchestratorUnhealthy || !slices.Contains(node.Roles, infogrpc.ServiceInfoRole_TemplateManager) {
+	if node.GetStatus() == infogrpc.ServiceInfoStatus_OrchestratorUnhealthy || !node.IsBuilderNode() {
 		return nil, ErrTemplateBuilderNotFound
 	}
 
@@ -160,21 +155,17 @@ func (c *Cluster) GetTemplateBuilderById(nodeID string) (*ClusterNode, error) {
 
 func (c *Cluster) GetAvailableTemplateBuilder() (*ClusterNode, error) {
 	_, span := c.tracer.Start(c.ctx, "template-builder-get-available-node")
-	span.SetAttributes(telemetry.WithClusterID(c.Id))
+	span.SetAttributes(telemetry.WithClusterID(c.ID))
 	defer span.End()
 
 	for _, node := range c.nodes.Items() {
-		node.mutex.RLock()
-
 		// we don't want to place new builds to not healthy nodes
-		if node.Status != infogrpc.ServiceInfoStatus_OrchestratorHealthy {
-			node.mutex.RUnlock()
+		if node.GetStatus() != infogrpc.ServiceInfoStatus_OrchestratorHealthy {
 			continue
 		}
-		node.mutex.RUnlock()
 
 		// we want to use only template builders
-		if !slices.Contains(node.Roles, infogrpc.ServiceInfoRole_TemplateManager) {
+		if !node.IsBuilderNode() {
 			continue
 		}
 
