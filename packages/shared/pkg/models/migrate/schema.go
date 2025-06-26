@@ -36,6 +36,19 @@ var (
 			},
 		},
 	}
+	// ClustersColumns holds the columns for the "clusters" table.
+	ClustersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true, Default: "gen_random_uuid()"},
+		{Name: "endpoint", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "endpoint_tls", Type: field.TypeBool, Default: true},
+		{Name: "token", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+	}
+	// ClustersTable holds the schema information for the "clusters" table.
+	ClustersTable = &schema.Table{
+		Name:       "clusters",
+		Columns:    ClustersColumns,
+		PrimaryKey: []*schema.Column{ClustersColumns[0]},
+	}
 	// EnvsColumns holds the columns for the "envs" table.
 	EnvsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "text"}},
@@ -155,6 +168,7 @@ var (
 		{Name: "blocked_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "name", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "email", Type: field.TypeString, Size: 255, SchemaType: map[string]string{"postgres": "character varying(255)"}},
+		{Name: "cluster_id", Type: field.TypeUUID, Nullable: true, SchemaType: map[string]string{"postgres": "uuid"}},
 		{Name: "tier", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 	}
 	// TeamsTable holds the schema information for the "teams" table.
@@ -165,7 +179,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "teams_tiers_teams",
-				Columns:    []*schema.Column{TeamsColumns[7]},
+				Columns:    []*schema.Column{TeamsColumns[8]},
 				RefColumns: []*schema.Column{TiersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -269,6 +283,7 @@ var (
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AccessTokensTable,
+		ClustersTable,
 		EnvsTable,
 		EnvAliasesTable,
 		EnvBuildsTable,
@@ -284,6 +299,7 @@ var (
 func init() {
 	AccessTokensTable.ForeignKeys[0].RefTable = UsersTable
 	AccessTokensTable.Annotation = &entsql.Annotation{}
+	ClustersTable.Annotation = &entsql.Annotation{}
 	EnvsTable.ForeignKeys[0].RefTable = TeamsTable
 	EnvsTable.ForeignKeys[1].RefTable = UsersTable
 	EnvsTable.Annotation = &entsql.Annotation{}

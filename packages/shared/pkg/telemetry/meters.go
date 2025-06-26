@@ -2,11 +2,13 @@ package telemetry
 
 import "go.opentelemetry.io/otel/metric"
 
-type CounterType string
-type GaugeFloatType string
-type GaugeIntType string
-type UpDownCounterType string
-type ObservableUpDownCounterType string
+type (
+	CounterType                 string
+	GaugeFloatType              string
+	GaugeIntType                string
+	UpDownCounterType           string
+	ObservableUpDownCounterType string
+)
 
 const (
 	SandboxCreateMeterName CounterType = "api.env.instance.started"
@@ -38,6 +40,8 @@ const (
 )
 
 const (
+	ApiOrchestratorCountMeterName GaugeIntType = "api.orchestrator.status"
+
 	SandboxRamUsedGaugeName  GaugeIntType = "e2b.sandbox.ram.used"
 	SandboxRamTotalGaugeName GaugeIntType = "e2b.sandbox.ram.total"
 	SandboxCpuTotalGaugeName GaugeIntType = "e2b.sandbox.cpu.total"
@@ -96,17 +100,17 @@ var gaugeFloatUnits = map[GaugeFloatType]string{
 }
 
 var gaugeIntDesc = map[GaugeIntType]string{
-	SandboxRamUsedGaugeName:  "Amount of RAM used by the sandbox.",
-	SandboxRamTotalGaugeName: "Amount of RAM available to the sandbox.",
-	SandboxCpuTotalGaugeName: "Amount of CPU available to the sandbox.",
+	ApiOrchestratorCountMeterName: "Counter of running orchestrators.",
+	SandboxRamUsedGaugeName:       "Amount of RAM used by the sandbox.",
+	SandboxRamTotalGaugeName:      "Amount of RAM available to the sandbox.",
+	SandboxCpuTotalGaugeName:      "Amount of CPU available to the sandbox.",
 }
 
 var gaugeIntUnits = map[GaugeIntType]string{
-	// TODO: mebibyte may not be small enough,
-	//  we may need to improve how envd reports memory usage
-	SandboxRamUsedGaugeName:  "{MiBy}",
-	SandboxRamTotalGaugeName: "{MiBy}",
-	SandboxCpuTotalGaugeName: "{count}",
+	ApiOrchestratorCountMeterName: "{orchestrator}",
+	SandboxRamUsedGaugeName:       "{By}",
+	SandboxRamTotalGaugeName:      "{By}",
+	SandboxCpuTotalGaugeName:      "{count}",
 }
 
 func GetCounter(meter metric.Meter, name CounterType) (metric.Int64Counter, error) {

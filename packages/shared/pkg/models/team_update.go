@@ -137,6 +137,26 @@ func (tu *TeamUpdate) SetNillableEmail(s *string) *TeamUpdate {
 	return tu
 }
 
+// SetClusterID sets the "cluster_id" field.
+func (tu *TeamUpdate) SetClusterID(u uuid.UUID) *TeamUpdate {
+	tu.mutation.SetClusterID(u)
+	return tu
+}
+
+// SetNillableClusterID sets the "cluster_id" field if the given value is not nil.
+func (tu *TeamUpdate) SetNillableClusterID(u *uuid.UUID) *TeamUpdate {
+	if u != nil {
+		tu.SetClusterID(*u)
+	}
+	return tu
+}
+
+// ClearClusterID clears the value of the "cluster_id" field.
+func (tu *TeamUpdate) ClearClusterID() *TeamUpdate {
+	tu.mutation.ClearClusterID()
+	return tu
+}
+
 // AddUserIDs adds the "users" edge to the User entity by IDs.
 func (tu *TeamUpdate) AddUserIDs(ids ...uuid.UUID) *TeamUpdate {
 	tu.mutation.AddUserIDs(ids...)
@@ -384,6 +404,12 @@ func (tu *TeamUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if value, ok := tu.mutation.Email(); ok {
 		_spec.SetField(team.FieldEmail, field.TypeString, value)
+	}
+	if value, ok := tu.mutation.ClusterID(); ok {
+		_spec.SetField(team.FieldClusterID, field.TypeUUID, value)
+	}
+	if tu.mutation.ClusterIDCleared() {
+		_spec.ClearField(team.FieldClusterID, field.TypeUUID)
 	}
 	if tu.mutation.UsersCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -746,6 +772,26 @@ func (tuo *TeamUpdateOne) SetNillableEmail(s *string) *TeamUpdateOne {
 	return tuo
 }
 
+// SetClusterID sets the "cluster_id" field.
+func (tuo *TeamUpdateOne) SetClusterID(u uuid.UUID) *TeamUpdateOne {
+	tuo.mutation.SetClusterID(u)
+	return tuo
+}
+
+// SetNillableClusterID sets the "cluster_id" field if the given value is not nil.
+func (tuo *TeamUpdateOne) SetNillableClusterID(u *uuid.UUID) *TeamUpdateOne {
+	if u != nil {
+		tuo.SetClusterID(*u)
+	}
+	return tuo
+}
+
+// ClearClusterID clears the value of the "cluster_id" field.
+func (tuo *TeamUpdateOne) ClearClusterID() *TeamUpdateOne {
+	tuo.mutation.ClearClusterID()
+	return tuo
+}
+
 // AddUserIDs adds the "users" edge to the User entity by IDs.
 func (tuo *TeamUpdateOne) AddUserIDs(ids ...uuid.UUID) *TeamUpdateOne {
 	tuo.mutation.AddUserIDs(ids...)
@@ -1023,6 +1069,12 @@ func (tuo *TeamUpdateOne) sqlSave(ctx context.Context) (_node *Team, err error) 
 	}
 	if value, ok := tuo.mutation.Email(); ok {
 		_spec.SetField(team.FieldEmail, field.TypeString, value)
+	}
+	if value, ok := tuo.mutation.ClusterID(); ok {
+		_spec.SetField(team.FieldClusterID, field.TypeUUID, value)
+	}
+	if tuo.mutation.ClusterIDCleared() {
+		_spec.ClearField(team.FieldClusterID, field.TypeUUID)
 	}
 	if tuo.mutation.UsersCleared() {
 		edge := &sqlgraph.EdgeSpec{

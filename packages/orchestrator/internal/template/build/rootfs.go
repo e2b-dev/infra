@@ -9,7 +9,7 @@ import (
 	"os"
 
 	"github.com/dustin/go-humanize"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
+	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -66,7 +66,7 @@ func NewRootfs(artifactRegistry artifactsregistry.ArtifactsRegistry, template *T
 	}
 }
 
-func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, rootfsPath string) (e error) {
+func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, rootfsPath string) (c containerregistry.Config, e error) {
 	childCtx, childSpan := tracer.Start(ctx, "create-ext4-file")
 	defer childSpan.End()
 
@@ -80,46 +80,62 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 
 	img, err := oci.GetImage(childCtx, tracer, r.artifactRegistry, r.template.TemplateId, r.template.BuildId)
 	if err != nil {
-		return fmt.Errorf("error requesting docker image: %w", err)
+		return containerregistry.Config{}, fmt.Errorf("error requesting docker image: %w", err)
 	}
 
 	imageSize, err := oci.GetImageSize(img)
 	if err != nil {
-		return fmt.Errorf("error getting image size: %w", err)
+		return containerregistry.Config{}, fmt.Errorf("error getting image size: %w", err)
 	}
 	postProcessor.WriteMsg(fmt.Sprintf("Docker image size: %s", humanize.Bytes(uint64(imageSize))))
 
 	postProcessor.WriteMsg("Setting up system files")
 	layers, err := additionalOCILayers(childCtx, r.template)
 	if err != nil {
-		return fmt.Errorf("error populating filesystem: %w", err)
+		return containerregistry.Config{}, fmt.Errorf("error populating filesystem: %w", err)
 	}
 	img, err = mutate.AppendLayers(img, layers...)
 	if err != nil {
-		return fmt.Errorf("error appending layers: %w", err)
+		return containerregistry.Config{}, fmt.Errorf("error appending layers: %w", err)
 	}
 	telemetry.ReportEvent(childCtx, "set up filesystem")
 
 	postProcessor.WriteMsg("Creating file system and pulling Docker image")
-	err = oci.ToExt4(ctx, img, rootfsPath, maxRootfsSize)
+	ext4Size, err := oci.ToExt4(ctx, tracer, postProcessor, img, rootfsPath, maxRootfsSize, r.template.RootfsBlockSize())
 	if err != nil {
-		return fmt.Errorf("error creating ext4 filesystem: %w", err)
+		return containerregistry.Config{}, fmt.Errorf("error creating ext4 filesystem: %w", err)
 	}
+	r.template.rootfsSize = ext4Size
 	telemetry.ReportEvent(childCtx, "created rootfs ext4 file")
 
 	postProcessor.WriteMsg("Filesystem cleanup")
 	// Make rootfs writable, be default it's readonly
 	err = ext4.MakeWritable(ctx, tracer, rootfsPath)
 	if err != nil {
-		return fmt.Errorf("error making rootfs file writable: %w", err)
+		return containerregistry.Config{}, fmt.Errorf("error making rootfs file writable: %w", err)
 	}
 
 	// Resize rootfs
-	rootfsFinalSize, err := ext4.Enlarge(ctx, tracer, rootfsPath, r.template.DiskSizeMB<<ToMBShift)
+	rootfsFreeSpace, err := ext4.GetFreeSpace(ctx, tracer, rootfsPath, r.template.RootfsBlockSize())
 	if err != nil {
-		return fmt.Errorf("error enlarging rootfs: %w", err)
+		return containerregistry.Config{}, fmt.Errorf("error getting free space: %w", err)
 	}
-	r.template.rootfsSize = rootfsFinalSize
+	// We need to remove the remaining free space from the ext4 file size
+	// This is a residual space that could not be shrunk when creating the filesystem,
+	// but is still available for use
+	diskAdd := r.template.DiskSizeMB<<ToMBShift - rootfsFreeSpace
+	zap.L().Debug("adding disk size diff to rootfs",
+		zap.Int64("size_current", ext4Size),
+		zap.Int64("size_add", diskAdd),
+		zap.Int64("size_free", rootfsFreeSpace),
+	)
+	if diskAdd > 0 {
+		rootfsFinalSize, err := ext4.Enlarge(ctx, tracer, rootfsPath, diskAdd)
+		if err != nil {
+			return containerregistry.Config{}, fmt.Errorf("error enlarging rootfs: %w", err)
+		}
+		r.template.rootfsSize = rootfsFinalSize
+	}
 
 	// Check the rootfs filesystem corruption
 	ext4Check, err := ext4.CheckIntegrity(rootfsPath, true)
@@ -128,16 +144,21 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 		zap.Error(err),
 	)
 	if err != nil {
-		return fmt.Errorf("error checking ext4 filesystem integrity: %w", err)
+		return containerregistry.Config{}, fmt.Errorf("error checking ext4 filesystem integrity: %w", err)
 	}
 
-	return nil
+	config, err := img.ConfigFile()
+	if err != nil {
+		return containerregistry.Config{}, fmt.Errorf("error getting image config file: %w", err)
+	}
+
+	return config.Config, nil
 }
 
 func additionalOCILayers(
 	ctx context.Context,
 	config *TemplateConfig,
-) ([]v1.Layer, error) {
+) ([]containerregistry.Layer, error) {
 	var scriptDef bytes.Buffer
 	err := ProvisionScriptTemplate.Execute(&scriptDef, struct {
 		ResultPath string
@@ -265,7 +286,7 @@ echo "System Init"`), 0o777},
 		return nil, fmt.Errorf("error creating layer from symlinks: %w", err)
 	}
 
-	return []v1.Layer{
+	return []containerregistry.Layer{
 		filesLayer,
 		symlinkLayer,
 	}, nil

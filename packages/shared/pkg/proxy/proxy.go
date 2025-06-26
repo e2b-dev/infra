@@ -11,8 +11,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/tracking"
 )
 
-const maxClientConns = 16384 // Reasonably big number that is lower than the number of available ports.
-const idleTimeoutBufferUpstreamDownstream = 10
+const (
+	maxClientConns                      = 16384 // Reasonably big number that is lower than the number of available ports.
+	idleTimeoutBufferUpstreamDownstream = 10
+)
 
 type Proxy struct {
 	http.Server

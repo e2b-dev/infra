@@ -79,12 +79,22 @@ resource "google_storage_bucket" "fc_env_pipeline_bucket" {
   labels = var.labels
 }
 
-resource "google_storage_bucket" "clickhouse_bucket" {
-  name     = "${var.gcp_project_id}-clickhouse"
+resource "google_storage_bucket" "clickhouse_backups_bucket" {
+  name     = "${var.gcp_project_id}-clickhouse-backups"
   location = var.gcp_region
 
+  lifecycle_rule {
+    condition {
+      age = 30
+    }
+
+    action {
+      type = "Delete"
+    }
+  }
+
   public_access_prevention    = "enforced"
-  storage_class               = "STANDARD"
+  storage_class               = "NEARLINE"
   uniform_bucket_level_access = true
 
   soft_delete_policy {

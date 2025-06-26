@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/cluster"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
@@ -27,6 +28,20 @@ func init() {
 	accesstokenDescName := accesstokenFields[7].Descriptor()
 	// accesstoken.DefaultName holds the default value on creation for the name field.
 	accesstoken.DefaultName = accesstokenDescName.Default.(string)
+	clusterFields := schema.Cluster{}.Fields()
+	_ = clusterFields
+	// clusterDescEndpoint is the schema descriptor for endpoint field.
+	clusterDescEndpoint := clusterFields[1].Descriptor()
+	// cluster.EndpointValidator is a validator for the "endpoint" field. It is called by the builders before save.
+	cluster.EndpointValidator = clusterDescEndpoint.Validators[0].(func(string) error)
+	// clusterDescEndpointTLS is the schema descriptor for endpoint_tls field.
+	clusterDescEndpointTLS := clusterFields[2].Descriptor()
+	// cluster.DefaultEndpointTLS holds the default value on creation for the endpoint_tls field.
+	cluster.DefaultEndpointTLS = clusterDescEndpointTLS.Default.(bool)
+	// clusterDescToken is the schema descriptor for token field.
+	clusterDescToken := clusterFields[3].Descriptor()
+	// cluster.TokenValidator is a validator for the "token" field. It is called by the builders before save.
+	cluster.TokenValidator = clusterDescToken.Validators[0].(func(string) error)
 	envFields := schema.Env{}.Fields()
 	_ = envFields
 	// envDescCreatedAt is the schema descriptor for created_at field.

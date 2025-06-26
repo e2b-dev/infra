@@ -25,7 +25,7 @@ func (a *APIStore) GetTeams(c *gin.Context) {
 
 	teams := make([]api.Team, len(results))
 	for i, row := range results {
-
+		// We create a new API key for the CLI and backwards compatibility with API Keys hashing
 		apiKey, err := team.CreateAPIKey(ctx, a.db, row.Team.ID, userID, "CLI login/configure")
 		if err != nil {
 			zap.L().Error("error when creating API key", zap.Error(err))

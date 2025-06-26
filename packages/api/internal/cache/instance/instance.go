@@ -12,7 +12,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
-	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -27,9 +26,7 @@ const (
 	InstanceAutoPauseDefault = false
 )
 
-var (
-	ErrPausingInstanceNotFound = errors.New("pausing instance not found")
-)
+var ErrPausingInstanceNotFound = errors.New("pausing instance not found")
 
 func NewInstanceInfo(
 	Instance *api.Sandbox,
@@ -140,11 +137,10 @@ type InstanceCache struct {
 	pausing      *smap.Map[*InstanceInfo]
 
 	cache          *lifecycleCache[*InstanceInfo]
-	insertInstance func(data *InstanceInfo) error
+	insertInstance func(data *InstanceInfo, created bool) error
 
 	sandboxCounter metric.Int64UpDownCounter
 	createdCounter metric.Int64Counter
-	analytics      analyticscollector.AnalyticsCollectorClient
 
 	mu sync.Mutex
 }
@@ -152,8 +148,7 @@ type InstanceCache struct {
 func NewCache(
 	ctx context.Context,
 	meterProvider metric.MeterProvider,
-	analytics analyticscollector.AnalyticsCollectorClient,
-	insertInstance func(data *InstanceInfo) error,
+	insertInstance func(data *InstanceInfo, created bool) error,
 	deleteInstance func(data *InstanceInfo) error,
 ) *InstanceCache {
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
@@ -174,7 +169,6 @@ func NewCache(
 	instanceCache := &InstanceCache{
 		cache:          cache,
 		insertInstance: insertInstance,
-		analytics:      analytics,
 		sandboxCounter: sandboxCounter,
 		createdCounter: createdCounter,
 		reservations:   NewReservationCache(),
@@ -199,11 +193,11 @@ func (c *InstanceCache) Len() int {
 	return c.cache.Len()
 }
 
-func (c *InstanceCache) Set(key string, value *InstanceInfo) {
+func (c *InstanceCache) Set(key string, value *InstanceInfo, created bool) {
 	inserted := c.cache.SetIfAbsent(key, value)
 	if inserted {
 		go func() {
-			err := c.insertInstance(value)
+			err := c.insertInstance(value, created)
 			if err != nil {
 				zap.L().Error("error inserting instance", zap.Error(err))
 			}

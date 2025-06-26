@@ -17,6 +17,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/cluster"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
@@ -37,6 +38,8 @@ type Client struct {
 	Schema *migrate.Schema
 	// AccessToken is the client for interacting with the AccessToken builders.
 	AccessToken *AccessTokenClient
+	// Cluster is the client for interacting with the Cluster builders.
+	Cluster *ClusterClient
 	// Env is the client for interacting with the Env builders.
 	Env *EnvClient
 	// EnvAlias is the client for interacting with the EnvAlias builders.
@@ -67,6 +70,7 @@ func NewClient(opts ...Option) *Client {
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.AccessToken = NewAccessTokenClient(c.config)
+	c.Cluster = NewClusterClient(c.config)
 	c.Env = NewEnvClient(c.config)
 	c.EnvAlias = NewEnvAliasClient(c.config)
 	c.EnvBuild = NewEnvBuildClient(c.config)
@@ -172,6 +176,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ctx:         ctx,
 		config:      cfg,
 		AccessToken: NewAccessTokenClient(cfg),
+		Cluster:     NewClusterClient(cfg),
 		Env:         NewEnvClient(cfg),
 		EnvAlias:    NewEnvAliasClient(cfg),
 		EnvBuild:    NewEnvBuildClient(cfg),
@@ -201,6 +206,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ctx:         ctx,
 		config:      cfg,
 		AccessToken: NewAccessTokenClient(cfg),
+		Cluster:     NewClusterClient(cfg),
 		Env:         NewEnvClient(cfg),
 		EnvAlias:    NewEnvAliasClient(cfg),
 		EnvBuild:    NewEnvBuildClient(cfg),
@@ -239,8 +245,8 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AccessToken, c.Env, c.EnvAlias, c.EnvBuild, c.Snapshot, c.Team, c.TeamAPIKey,
-		c.Tier, c.User, c.UsersTeams,
+		c.AccessToken, c.Cluster, c.Env, c.EnvAlias, c.EnvBuild, c.Snapshot, c.Team,
+		c.TeamAPIKey, c.Tier, c.User, c.UsersTeams,
 	} {
 		n.Use(hooks...)
 	}
@@ -250,8 +256,8 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AccessToken, c.Env, c.EnvAlias, c.EnvBuild, c.Snapshot, c.Team, c.TeamAPIKey,
-		c.Tier, c.User, c.UsersTeams,
+		c.AccessToken, c.Cluster, c.Env, c.EnvAlias, c.EnvBuild, c.Snapshot, c.Team,
+		c.TeamAPIKey, c.Tier, c.User, c.UsersTeams,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -262,6 +268,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
 	case *AccessTokenMutation:
 		return c.AccessToken.mutate(ctx, m)
+	case *ClusterMutation:
+		return c.Cluster.mutate(ctx, m)
 	case *EnvMutation:
 		return c.Env.mutate(ctx, m)
 	case *EnvAliasMutation:
@@ -434,6 +442,139 @@ func (c *AccessTokenClient) mutate(ctx context.Context, m *AccessTokenMutation) 
 		return (&AccessTokenDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("models: unknown AccessToken mutation op: %q", m.Op())
+	}
+}
+
+// ClusterClient is a client for the Cluster schema.
+type ClusterClient struct {
+	config
+}
+
+// NewClusterClient returns a client for the Cluster from the given config.
+func NewClusterClient(c config) *ClusterClient {
+	return &ClusterClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `cluster.Hooks(f(g(h())))`.
+func (c *ClusterClient) Use(hooks ...Hook) {
+	c.hooks.Cluster = append(c.hooks.Cluster, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `cluster.Intercept(f(g(h())))`.
+func (c *ClusterClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Cluster = append(c.inters.Cluster, interceptors...)
+}
+
+// Create returns a builder for creating a Cluster entity.
+func (c *ClusterClient) Create() *ClusterCreate {
+	mutation := newClusterMutation(c.config, OpCreate)
+	return &ClusterCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Cluster entities.
+func (c *ClusterClient) CreateBulk(builders ...*ClusterCreate) *ClusterCreateBulk {
+	return &ClusterCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ClusterClient) MapCreateBulk(slice any, setFunc func(*ClusterCreate, int)) *ClusterCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ClusterCreateBulk{err: fmt.Errorf("calling to ClusterClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ClusterCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ClusterCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Cluster.
+func (c *ClusterClient) Update() *ClusterUpdate {
+	mutation := newClusterMutation(c.config, OpUpdate)
+	return &ClusterUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ClusterClient) UpdateOne(cl *Cluster) *ClusterUpdateOne {
+	mutation := newClusterMutation(c.config, OpUpdateOne, withCluster(cl))
+	return &ClusterUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ClusterClient) UpdateOneID(id uuid.UUID) *ClusterUpdateOne {
+	mutation := newClusterMutation(c.config, OpUpdateOne, withClusterID(id))
+	return &ClusterUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Cluster.
+func (c *ClusterClient) Delete() *ClusterDelete {
+	mutation := newClusterMutation(c.config, OpDelete)
+	return &ClusterDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ClusterClient) DeleteOne(cl *Cluster) *ClusterDeleteOne {
+	return c.DeleteOneID(cl.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ClusterClient) DeleteOneID(id uuid.UUID) *ClusterDeleteOne {
+	builder := c.Delete().Where(cluster.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ClusterDeleteOne{builder}
+}
+
+// Query returns a query builder for Cluster.
+func (c *ClusterClient) Query() *ClusterQuery {
+	return &ClusterQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCluster},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Cluster entity by its id.
+func (c *ClusterClient) Get(ctx context.Context, id uuid.UUID) (*Cluster, error) {
+	return c.Query().Where(cluster.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ClusterClient) GetX(ctx context.Context, id uuid.UUID) *Cluster {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ClusterClient) Hooks() []Hook {
+	return c.hooks.Cluster
+}
+
+// Interceptors returns the client interceptors.
+func (c *ClusterClient) Interceptors() []Interceptor {
+	return c.inters.Cluster
+}
+
+func (c *ClusterClient) mutate(ctx context.Context, m *ClusterMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ClusterCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ClusterUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ClusterUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ClusterDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("models: unknown Cluster mutation op: %q", m.Op())
 	}
 }
 
@@ -2074,12 +2215,12 @@ func (c *UsersTeamsClient) mutate(ctx context.Context, m *UsersTeamsMutation) (V
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AccessToken, Env, EnvAlias, EnvBuild, Snapshot, Team, TeamAPIKey, Tier, User,
-		UsersTeams []ent.Hook
+		AccessToken, Cluster, Env, EnvAlias, EnvBuild, Snapshot, Team, TeamAPIKey, Tier,
+		User, UsersTeams []ent.Hook
 	}
 	inters struct {
-		AccessToken, Env, EnvAlias, EnvBuild, Snapshot, Team, TeamAPIKey, Tier, User,
-		UsersTeams []ent.Interceptor
+		AccessToken, Cluster, Env, EnvAlias, EnvBuild, Snapshot, Team, TeamAPIKey, Tier,
+		User, UsersTeams []ent.Interceptor
 	}
 )
 
@@ -2087,6 +2228,7 @@ var (
 	// DefaultSchemaConfig represents the default schema names for all tables as defined in ent/schema.
 	DefaultSchemaConfig = SchemaConfig{
 		AccessToken: tableSchemas[1],
+		Cluster:     tableSchemas[1],
 		Env:         tableSchemas[1],
 		EnvAlias:    tableSchemas[1],
 		EnvBuild:    tableSchemas[1],

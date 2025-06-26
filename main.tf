@@ -73,7 +73,8 @@ module "buckets" {
   gcp_region                = var.gcp_region
   gcp_zone                  = var.gcp_zone
 
-  fc_template_bucket_name     = var.template_bucket_name != "" ? var.template_bucket_name : "${var.gcp_project_id}-fc-templates"
+  fc_template_bucket_name = (var.template_bucket_name != "" ?
+  var.template_bucket_name : "${var.gcp_project_id}-fc-templates")
   fc_template_bucket_location = var.template_bucket_location
 
   labels = var.labels
@@ -108,14 +109,15 @@ module "cluster" {
   logs_health_proxy_port = var.logs_health_proxy_port
   logs_proxy_port        = var.logs_proxy_port
 
-  client_proxy_health_port     = var.client_proxy_health_port
-  client_proxy_port            = var.client_proxy_port
+  edge_api_port                = var.edge_api_port
+  edge_proxy_port              = var.edge_proxy_port
   api_port                     = var.api_port
   docker_reverse_proxy_port    = var.docker_reverse_proxy_port
   nomad_port                   = var.nomad_port
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
-  additional_domains           = var.additional_domains != "" ? [for item in split(",", var.additional_domains) : trimspace(item)] : []
+  additional_domains = (var.additional_domains != "" ?
+  [for item in split(",", var.additional_domains) : trimspace(item)] : [])
 
   docker_contexts_bucket_name = module.buckets.envs_docker_context_bucket_name
   cluster_setup_bucket_name   = module.buckets.cluster_setup_bucket_name
@@ -137,11 +139,7 @@ module "cluster" {
 module "api" {
   source = "./packages/api"
 
-  gcp_project_id = var.gcp_project_id
-  gcp_region     = var.gcp_region
-
-  google_service_account_email  = module.init.service_account_email
-  orchestration_repository_name = module.init.orchestration_repository_name
+  google_service_account_email = module.init.service_account_email
 
   labels = var.labels
   prefix = var.prefix
@@ -150,23 +148,17 @@ module "api" {
 module "docker_reverse_proxy" {
   source = "./packages/docker-reverse-proxy"
 
-  gcp_project_id = var.gcp_project_id
-  gcp_region     = var.gcp_region
+  custom_envs_repository_name = module.api.custom_envs_repository_name
 
-  custom_envs_repository_name   = module.api.custom_envs_repository_name
-  orchestration_repository_name = module.init.orchestration_repository_name
-
-  labels = var.labels
   prefix = var.prefix
 }
 
 module "client_proxy" {
   source = "./packages/client-proxy"
 
+  prefix         = var.prefix
   gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region
-
-  orchestration_repository_name = module.init.orchestration_repository_name
 }
 
 module "nomad" {
@@ -178,14 +170,17 @@ module "nomad" {
   gcp_zone            = var.gcp_zone
   client_machine_type = var.client_machine_type
 
-  consul_acl_token_secret = module.init.consul_acl_token_secret
-  nomad_acl_token_secret  = module.init.nomad_acl_token_secret
-  nomad_port              = var.nomad_port
-  otel_tracing_print      = var.otel_tracing_print
+  consul_acl_token_secret       = module.init.consul_acl_token_secret
+  nomad_acl_token_secret        = module.init.nomad_acl_token_secret
+  nomad_port                    = var.nomad_port
+  otel_tracing_print            = var.otel_tracing_print
+  orchestration_repository_name = module.init.orchestration_repository_name
 
   # Clickhouse
+  clickhouse_resources_cpu_count   = var.clickhouse_resources_cpu_count
+  clickhouse_resources_memory_mb   = var.clickhouse_resources_memory_mb
   clickhouse_database              = var.clickhouse_database_name
-  clickhouse_bucket_name           = module.buckets.clickhouse_bucket_name
+  clickhouse_backups_bucket_name   = module.buckets.clickhouse_backups_bucket_name
   clickhouse_server_count          = var.clickhouse_cluster_size
   clickhouse_server_port           = var.clickhouse_server_service_port
   clickhouse_job_constraint_prefix = var.clickhouse_job_constraint_prefix
@@ -197,7 +192,6 @@ module "nomad" {
   api_port                                  = var.api_port
   environment                               = var.environment
   google_service_account_key                = module.init.google_service_account_key
-  api_docker_image_digest                   = module.api.api_docker_image_digest
   api_secret                                = module.api.api_secret
   custom_envs_repository_name               = module.api.custom_envs_repository_name
   postgres_connection_string_secret_name    = module.api.postgres_connection_string_secret_name
@@ -213,9 +207,10 @@ module "nomad" {
   client_proxy_count               = var.client_proxy_count
   client_proxy_resources_cpu_count = var.client_proxy_resources_cpu_count
   client_proxy_resources_memory_mb = var.client_proxy_resources_memory_mb
-  client_proxy_port                = var.client_proxy_port
-  client_proxy_health_port         = var.client_proxy_health_port
-  client_proxy_docker_image_digest = module.client_proxy.client_proxy_docker_image_digest
+
+  edge_proxy_port = var.edge_proxy_port
+  edge_api_port   = var.edge_api_port
+  edge_api_secret = module.client_proxy.edge_api_secret
 
   domain_name = var.domain_name
 
@@ -235,7 +230,6 @@ module "nomad" {
   otel_collector_resources_cpu_count = var.otel_collector_resources_cpu_count
 
   # Docker reverse proxy
-  docker_reverse_proxy_docker_image_digest = module.docker_reverse_proxy.docker_reverse_proxy_docker_image_digest
   docker_reverse_proxy_port                = var.docker_reverse_proxy_port
   docker_reverse_proxy_service_account_key = module.docker_reverse_proxy.docker_reverse_proxy_service_account_key
 

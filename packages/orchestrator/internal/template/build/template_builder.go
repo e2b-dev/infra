@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	templatelocal "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/ext4"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/oci"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
@@ -123,7 +124,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 	}
 
 	templateBuildDir := filepath.Join(templatesDirectory, template.BuildId)
-	err = os.MkdirAll(templateBuildDir, 0777)
+	err = os.MkdirAll(templateBuildDir, 0o777)
 	if err != nil {
 		return nil, fmt.Errorf("error creating template build directory: %w", err)
 	}
@@ -137,7 +138,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 	// Created here to be able to pass it to CreateSandbox for populating COW cache
 	rootfsPath := filepath.Join(templateBuildDir, rootfsBuildFileName)
 
-	rootfs, memfile, err := Build(
+	rootfs, memfile, buildConfig, err := Build(
 		ctx,
 		b.tracer,
 		template,
@@ -250,10 +251,14 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		scriptDef.String(),
 		"root",
 		nil,
+		map[string]string{},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error running configuration script: %w", err)
 	}
+
+	// Env variables for the start command and ready command
+	envVars := oci.ParseEnvs(buildConfig.Env)
 
 	// Start command
 	commandsCtx, commandsCancel := context.WithCancel(ctx)
@@ -273,6 +278,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 				template.StartCmd,
 				"root",
 				&cwd,
+				envVars,
 				startCmdConfirm,
 			)
 			// If the ctx is canceled, the ready command succeeded and no start command await is necessary.
@@ -295,6 +301,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		postProcessor,
 		template,
 		sbx.Metadata.Config.SandboxId,
+		envVars,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error running ready command: %w", err)
@@ -496,11 +503,15 @@ func (b *TemplateBuilder) enlargeDiskAfterProvisioning(
 		return fmt.Errorf("error getting free space: %w", err)
 	}
 	sizeDiff := template.DiskSizeMB<<ToMBShift - rootfsFreeSpace
+	zap.L().Debug("adding provision size diff to rootfs",
+		zap.Int64("size_add", sizeDiff),
+		zap.Int64("size_free", rootfsFreeSpace),
+		zap.Int64("size_target", template.DiskSizeMB<<ToMBShift),
+	)
 	if sizeDiff <= 0 {
 		zap.L().Debug("no need to enlarge rootfs, skipping")
 		return nil
 	}
-	zap.L().Debug("adding provision size diff to rootfs", zap.Int64("size", sizeDiff))
 	rootfsFinalSize, err := ext4.Enlarge(ctx, b.tracer, rootfsPath, sizeDiff)
 	if err != nil {
 		// Debug filesystem stats on error

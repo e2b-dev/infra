@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -28,6 +29,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -41,20 +43,22 @@ type Closeable interface {
 const (
 	defaultPort      = 5008
 	defaultProxyPort = 5007
-	defaultWait      = 30
+
+	sandboxMetricExportPeriod = 5 * time.Second
 
 	version = "0.1.0"
 
 	fileLockName = "/orchestrator.lock"
 )
 
-var forceStop = env.GetEnv("FORCE_STOP", "false") == "true"
-var commitSHA string
+var (
+	forceStop = env.GetEnv("FORCE_STOP", "false") == "true"
+	commitSHA string
+)
 
 func main() {
 	port := flag.Uint("port", defaultPort, "orchestrator server port")
 	proxyPort := flag.Uint("proxy-port", defaultProxyPort, "orchestrator proxy port")
-	wait := flag.Uint("wait", defaultWait, "orchestrator proxy port")
 	flag.Parse()
 
 	if *port > math.MaxUint16 {
@@ -63,12 +67,6 @@ func main() {
 
 	if *proxyPort > math.MaxUint16 {
 		log.Fatalf("%d is larger than maximum possible proxy port %d", proxyPort, math.MaxInt16)
-	}
-
-	// TODO: Remove after the orchestrator is fully migrated to the new job definition
-	if *wait > 0 {
-		log.Printf("waiting %d seconds before starting orchestrator", *wait)
-		time.Sleep(time.Duration(*wait) * time.Second)
 	}
 
 	success := run(*port, *proxyPort)
@@ -159,10 +157,11 @@ func run(port, proxyPort uint) (success bool) {
 	}()
 
 	globalLogger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
-		ServiceName: serviceName,
-		IsInternal:  true,
-		IsDebug:     env.IsDebug(),
-		Cores:       []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
+		ServiceName:   serviceName,
+		IsInternal:    true,
+		IsDebug:       env.IsDebug(),
+		Cores:         []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
+		EnableConsole: true,
 	}))
 	defer func(l *zap.Logger) {
 		err := l.Sync()
@@ -236,7 +235,17 @@ func run(port, proxyPort uint) (success bool) {
 
 	grpcSrv := grpcserver.New(tel.TracerProvider, tel.MeterProvider, serviceInfo)
 
-	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes)
+	featureFlags, err := featureflags.NewClient()
+	if err != nil {
+		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
+	}
+
+	sandboxObserver, err := metrics.NewSandboxObserver(ctx, serviceInfo.SourceCommit, serviceInfo.ClientId, sandboxMetricExportPeriod, sandboxes)
+	if err != nil {
+		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
+	}
+
+	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
@@ -264,6 +273,8 @@ func run(port, proxyPort uint) (success bool) {
 		networkPool,
 		devicePool,
 		sandboxProxy,
+		featureFlags,
+		sandboxObserver,
 	)
 
 	// Initialize the template manager only if the service is enabled

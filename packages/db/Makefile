@@ -2,6 +2,7 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
 goose := GOOSE_DBSTRING=$(POSTGRES_CONNECTION_STRING) go tool goose -table "_migrations" -dir "migrations" postgres
+IMAGE := e2b-orchestration/db-migrator
 
 .PHONY: migrate
 migrate:migrate/up
@@ -33,3 +34,10 @@ generate:
 	rm -rf queries/*.go
 	go tool sqlc generate
 
+
+.PHONY: build-and-upload
+build-and-upload:
+	@rm -rf .shared/
+	@cp -r ../shared .shared/
+	@docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push .
+	@rm -rf .shared/

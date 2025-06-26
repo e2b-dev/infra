@@ -165,8 +165,8 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 	}
 
 	if !syncRetrySuccess {
-		zap.L().Error("Failed to sync node after max retries, temporarily marking as draining", zap.String("node_id", node.Info.ID))
-		node.setStatus(api.NodeStatusDraining)
+		zap.L().Error("Failed to sync node after max retries, temporarily marking as unhealthy", zap.String("node_id", node.Info.ID))
+		node.setStatus(api.NodeStatusUnhealthy)
 		return
 	}
 
@@ -295,7 +295,7 @@ func reportInstanceStopAnalytics(
 			Set("duration", duration),
 	)
 
-	_, err := analytics.Client.InstanceStopped(childCtx, &analyticscollector.InstanceStoppedEvent{
+	_, err := analytics.InstanceStopped(childCtx, &analyticscollector.InstanceStoppedEvent{
 		TeamId:        teamID,
 		EnvironmentId: templateID,
 		InstanceId:    sandboxID,
@@ -308,8 +308,8 @@ func reportInstanceStopAnalytics(
 	}
 }
 
-func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, timeout time.Duration) func(info *instance.InstanceInfo) error {
-	return func(info *instance.InstanceInfo) error {
+func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, timeout time.Duration) func(info *instance.InstanceInfo, created bool) error {
+	return func(info *instance.InstanceInfo, created bool) error {
 		ctx, cancel := context.WithTimeout(parentCtx, timeout)
 		defer cancel()
 
@@ -333,17 +333,19 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 			o.instanceCache.MarkAsPausing(info)
 		}
 
-		// Run in separate goroutine to not block sandbox creation
-		// Also use parentCtx to not cancel the request with this hook timeout
-		go reportInstanceStartAnalytics(
-			parentCtx,
-			o.analytics,
-			info.TeamID.String(),
-			info.Instance.SandboxID,
-			info.ExecutionID,
-			info.Instance.TemplateID,
-			info.BuildID.String(),
-		)
+		if created {
+			// Run in separate goroutine to not block sandbox creation
+			// Also use parentCtx to not cancel the request with this hook timeout
+			go reportInstanceStartAnalytics(
+				parentCtx,
+				o.analytics,
+				info.TeamID.String(),
+				info.Instance.SandboxID,
+				info.ExecutionID,
+				info.Instance.TemplateID,
+				info.BuildID.String(),
+			)
+		}
 
 		sbxlogger.I(info).Debug("Inserted sandbox to cache hook",
 			zap.Time("start_time", info.StartTime),
@@ -367,7 +369,7 @@ func reportInstanceStartAnalytics(
 	childCtx, cancel := context.WithTimeout(ctx, reportTimeout)
 	defer cancel()
 
-	_, err := analytics.Client.InstanceStarted(childCtx, &analyticscollector.InstanceStartedEvent{
+	_, err := analytics.InstanceStarted(childCtx, &analyticscollector.InstanceStartedEvent{
 		InstanceId:    sandboxID,
 		ExecutionId:   executionID,
 		EnvironmentId: templateID,

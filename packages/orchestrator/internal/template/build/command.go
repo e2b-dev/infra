@@ -26,6 +26,7 @@ func (b *TemplateBuilder) runCommand(
 	command string,
 	runAsUser string,
 	cwd *string,
+	envVars map[string]string,
 ) error {
 	return b.runCommandWithConfirmation(
 		ctx,
@@ -35,6 +36,7 @@ func (b *TemplateBuilder) runCommand(
 		command,
 		runAsUser,
 		cwd,
+		envVars,
 		// No confirmation needed for this command
 		make(chan struct{}),
 	)
@@ -48,6 +50,7 @@ func (b *TemplateBuilder) runCommandWithConfirmation(
 	command string,
 	runAsUser string,
 	cwd *string,
+	envVars map[string]string,
 	confirmCh chan<- struct{},
 ) error {
 	runCmdReq := connect.NewRequest(&process.StartRequest{
@@ -57,6 +60,7 @@ func (b *TemplateBuilder) runCommandWithConfirmation(
 			Args: []string{
 				"-l", "-c", command,
 			},
+			Envs: envVars,
 		},
 	})
 

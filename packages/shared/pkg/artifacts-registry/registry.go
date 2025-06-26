@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	v1 "github.com/google/go-containerregistry/pkg/v1"
+	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
@@ -23,18 +23,16 @@ const (
 	storageProviderEnv = "ARTIFACTS_REGISTRY_PROVIDER"
 )
 
-var (
-	ErrImageNotExists = errors.New("image does not exist")
-)
+var ErrImageNotExists = errors.New("image does not exist")
 
 type ArtifactsRegistry interface {
 	GetTag(ctx context.Context, templateId string, buildId string) (string, error)
-	GetImage(ctx context.Context, templateId string, buildId string, platform v1.Platform) (v1.Image, error)
+	GetImage(ctx context.Context, templateId string, buildId string, platform containerregistry.Platform) (containerregistry.Image, error)
 	Delete(ctx context.Context, templateId string, buildId string) error
 }
 
 func GetArtifactsRegistryProvider() (ArtifactsRegistry, error) {
-	var provider = RegistryProvider(env.GetEnv(storageProviderEnv, string(DefaultRegistryProvider)))
+	provider := RegistryProvider(env.GetEnv(storageProviderEnv, string(DefaultRegistryProvider)))
 
 	setupCtx, setupCtxCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer setupCtxCancel()

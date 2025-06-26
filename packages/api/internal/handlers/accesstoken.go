@@ -49,7 +49,6 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 		SetAccessTokenMaskSuffix(accessToken.Masked.MaskedValueSuffix).
 		SetName(body.Name).
 		Save(ctx)
-
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when creating access token: %s", err))
 

@@ -12,8 +12,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 )
 
-const authInfoExpiration = 5 * time.Minute
-const refreshInterval = 1 * time.Minute
+const (
+	authInfoExpiration = 5 * time.Minute
+	refreshInterval    = 1 * time.Minute
+)
 
 type AuthTeamInfo struct {
 	Team *models.Team

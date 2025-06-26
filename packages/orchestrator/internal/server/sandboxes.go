@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -17,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -48,6 +50,12 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		req.Sandbox.ExecutionId = uuid.New().String()
 	}
 
+	flagCtx := ldcontext.NewBuilder(featureflags.MetricsWriteFlagName).SetString("sandbox_id", req.Sandbox.SandboxId).Build()
+	metricsWriteFlag, flagErr := s.featureFlags.Ld.BoolVariation(featureflags.MetricsWriteFlagName, flagCtx, featureflags.MetricsWriteDefault)
+	if flagErr != nil {
+		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
+	}
+
 	sbx, cleanup, err := sandbox.ResumeSandbox(
 		childCtx,
 		s.tracer,
@@ -60,9 +68,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		req.Sandbox.BaseTemplateId,
 		s.devicePool,
 		config.AllowSandboxInternet,
-		s.clickhouseStore,
-		s.useLokiMetrics,
-		s.useClickhouseMetrics,
+		metricsWriteFlag,
 	)
 	if err != nil {
 		zap.L().Error("failed to create sandbox, cleaning up", zap.Error(err))
@@ -192,12 +198,8 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	// Don't allow connecting to the sandbox anymore.
 	s.sandboxes.Remove(in.SandboxId)
 
-	loggingCtx, cancelLogginCtx := context.WithTimeout(ctx, 2*time.Second)
-	defer cancelLogginCtx()
-
 	// Check health metrics before stopping the sandbox
-	sbx.Checks.Healthcheck(loggingCtx, true)
-	sbx.Checks.LogMetrics(loggingCtx)
+	sbx.Checks.Healthcheck(true)
 
 	err := sbx.Stop(ctx)
 	if err != nil {

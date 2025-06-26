@@ -44,7 +44,7 @@ run-debug:
 	ORCHESTRATOR_SERVICES=$(ORCHESTRATOR_SERVICES) \
 	GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) \
 	GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) \
-	./bin/orchestrator --wait 0
+	./bin/orchestrator
 
 .PHONY: upload/orchestrator
 upload/orchestrator:
@@ -84,6 +84,7 @@ build-template:
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) \
 	GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) \
 	GCP_REGION=$(GCP_REGION) \
+	ENVIRONMENT=local \
 	go run cmd/build-template/main.go \
 	-template $(TEMPLATE_ID) \
 	-build $(BUILD_ID) \
