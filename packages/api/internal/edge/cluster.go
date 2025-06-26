@@ -146,3 +146,31 @@ func (c *Cluster) GetGrpcClient(nodeID string) (*grpclient.GRPCClient, metadata.
 func (c *Cluster) GetHttpClient() *api.ClientWithResponses {
 	return c.httpClient
 }
+
+func (c *Cluster) RegisterSandboxInCatalog(clusterNodeID string, sandboxStartTime time.Time, sandboxConfig *orchestratorgrpc.SandboxConfig) error {
+	ctx := context.TODO()
+	body := api.V1SandboxCatalogCreateJSONRequestBody{
+		OrchestratorId: clusterNodeID,
+
+		ExecutionId:      sandboxConfig.ExecutionId,
+		SandboxId:        sandboxConfig.SandboxId,
+		SandboxMaxLength: sandboxConfig.MaxSandboxLength,
+		SandboxStartTime: sandboxStartTime,
+	}
+
+	// todo: proper timeout and error handling
+	_, err := c.httpClient.V1SandboxCatalogCreate(ctx, body)
+	return err
+}
+
+func (c *Cluster) RemoveSandboxFromCatalog(sandboxID string, executionID string) error {
+	ctx := context.TODO()
+	body := api.V1SandboxCatalogDeleteJSONRequestBody{
+		SandboxId:   sandboxID,
+		ExecutionId: executionID,
+	}
+
+	// todo: proper timeout and error handling
+	_, err := c.httpClient.V1SandboxCatalogDelete(ctx, body)
+	return err
+}

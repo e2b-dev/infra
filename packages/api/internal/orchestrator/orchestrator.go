@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/uuid"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/metric"
@@ -22,6 +23,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -160,6 +163,34 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 				zap.Int("nodes_count", o.nodes.Count()),
 				zap.Any("nodes", nodes),
 			)
+		}
+	}
+}
+
+func (o *Orchestrator) RegisterSandboxInsideClusterCatalog(node *Node, sbxStartTime time.Time, sandboxConfig *orchestrator.SandboxConfig) {
+	if node.ClusterID != uuid.Nil {
+		cluster, ok := o.clusters.GetClusterById(node.ClusterID)
+		if !ok {
+			return
+		}
+
+		err := cluster.RegisterSandboxInCatalog(node.ClusterNodeID, sbxStartTime, sandboxConfig)
+		if err != nil {
+			zap.L().Error("failed to register sandbox in cluster catalog", logger.WithClusterID(cluster.Id), logger.WithClusterNodeID(node.ClusterNodeID))
+		}
+	}
+}
+
+func (o *Orchestrator) RemoveSandboxFromClusterCatalog(node *Node, sandboxID string, executionID string) {
+	if node.ClusterID != uuid.Nil {
+		cluster, ok := o.clusters.GetClusterById(node.ClusterID)
+		if !ok {
+			return
+		}
+
+		err := cluster.RemoveSandboxFromCatalog(sandboxID, executionID)
+		if err != nil {
+			zap.L().Error("failed to remove sandbox from cluster catalog", logger.WithClusterID(cluster.Id), logger.WithClusterNodeID(node.ClusterNodeID))
 		}
 	}
 }

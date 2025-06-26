@@ -268,6 +268,9 @@ func (o *Orchestrator) CreateSandbox(
 		}
 	}
 
+	// we need to inform remote cluster proxy about newly spawned sandbox so its registered in sandbox traffic proxy
+	go o.RegisterSandboxInsideClusterCatalog(node, startTime, sbxRequest.Sandbox)
+
 	return &sbx, nil
 }
 
