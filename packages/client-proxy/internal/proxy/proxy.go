@@ -82,12 +82,14 @@ func dnsResolution(sandboxId string, logger *zap.Logger) (string, error) {
 	return node, nil
 }
 
-func catalogResolution(sandboxId string, logger *zap.Logger, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool) (string, error) {
+func catalogResolution(sandboxId string, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool) (string, error) {
 	s, err := catalog.GetSandbox(sandboxId)
 	if err != nil {
-		if !errors.Is(err, sandboxes.ErrSandboxNotFound) {
+		if errors.Is(err, sandboxes.ErrSandboxNotFound) {
 			return "", ErrNodeNotFound
 		}
+
+		return "", fmt.Errorf("failed to get sandbox from catalog: %w", err)
 	}
 
 	o, ok := orchestrators.GetOrchestrator(s.OrchestratorId)
@@ -98,7 +100,11 @@ func catalogResolution(sandboxId string, logger *zap.Logger, catalog sandboxes.S
 	return o.Ip, nil
 }
 
-func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool, useCatalogResolution bool) (*reverseproxy.Proxy, error) {
+func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool, useCatalogResolution bool, useDnsResolution bool) (*reverseproxy.Proxy, error) {
+	if !useCatalogResolution && !useDnsResolution {
+		return nil, errors.New("catalog resolution and DNS resolution are both disabled, at least one must be enabled")
+	}
+
 	proxy := reverseproxy.New(
 		port,
 		idleTimeout,
@@ -115,26 +121,30 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				zap.String("sandbox_req_path", r.URL.Path),
 			)
 
-			var nodeIp string
+			var nodeIP string
 
 			if useCatalogResolution {
-				nodeIp, err = catalogResolution(sandboxId, logger, catalog, orchestrators)
+				nodeIP, err = catalogResolution(sandboxId, catalog, orchestrators)
 				if err != nil {
 					if !errors.Is(err, ErrNodeNotFound) {
 						logger.Warn("failed to resolve node ip with Redis resolution", zap.Error(err))
 					}
 
-					nodeIp, err = dnsResolution(sandboxId, logger)
-					if err != nil {
-						if !errors.Is(err, ErrNodeNotFound) {
-							logger.Warn("failed to resolve node ip with DNS resolution", zap.Error(err))
-						}
-
+					if !useDnsResolution {
 						return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
+					} else {
+						nodeIP, err = dnsResolution(sandboxId, logger)
+						if err != nil {
+							if !errors.Is(err, ErrNodeNotFound) {
+								logger.Warn("failed to resolve node ip with DNS resolution", zap.Error(err))
+							}
+
+							return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
+						}
 					}
 				}
 			} else {
-				nodeIp, err = dnsResolution(sandboxId, logger)
+				nodeIP, err = dnsResolution(sandboxId, logger)
 				if err != nil {
 					if !errors.Is(err, ErrNodeNotFound) {
 						logger.Warn("failed to resolve node ip with DNS resolution", zap.Error(err))
@@ -144,7 +154,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				}
 			}
 
-			logger.Debug("Proxying request", zap.String("node_ip", nodeIp))
+			logger.Debug("Proxying request", zap.String("node_ip", nodeIP))
 
 			return &pool.Destination{
 				SandboxId:     sandboxId,
@@ -153,7 +163,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				ConnectionKey: clientProxyConnectionKey,
 				Url: &url.URL{
 					Scheme: "http",
-					Host:   fmt.Sprintf("%s:%d", nodeIp, orchestratorProxyPort),
+					Host:   fmt.Sprintf("%s:%d", nodeIP, orchestratorProxyPort),
 				},
 			}, nil
 		},
