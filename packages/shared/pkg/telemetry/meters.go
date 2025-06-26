@@ -40,6 +40,8 @@ const (
 )
 
 const (
+	ApiOrchestratorCountMeterName GaugeIntType = "api.orchestrator.status"
+
 	SandboxRamUsedGaugeName  GaugeIntType = "e2b.sandbox.ram.used"
 	SandboxRamTotalGaugeName GaugeIntType = "e2b.sandbox.ram.total"
 	SandboxCpuTotalGaugeName GaugeIntType = "e2b.sandbox.cpu.total"
@@ -98,15 +100,17 @@ var gaugeFloatUnits = map[GaugeFloatType]string{
 }
 
 var gaugeIntDesc = map[GaugeIntType]string{
-	SandboxRamUsedGaugeName:  "Amount of RAM used by the sandbox.",
-	SandboxRamTotalGaugeName: "Amount of RAM available to the sandbox.",
-	SandboxCpuTotalGaugeName: "Amount of CPU available to the sandbox.",
+	ApiOrchestratorCountMeterName: "Counter of running orchestrators.",
+	SandboxRamUsedGaugeName:       "Amount of RAM used by the sandbox.",
+	SandboxRamTotalGaugeName:      "Amount of RAM available to the sandbox.",
+	SandboxCpuTotalGaugeName:      "Amount of CPU available to the sandbox.",
 }
 
 var gaugeIntUnits = map[GaugeIntType]string{
-	SandboxRamUsedGaugeName:  "{By}",
-	SandboxRamTotalGaugeName: "{By}",
-	SandboxCpuTotalGaugeName: "{count}",
+	ApiOrchestratorCountMeterName: "{orchestrator}",
+	SandboxRamUsedGaugeName:       "{By}",
+	SandboxRamTotalGaugeName:      "{By}",
+	SandboxCpuTotalGaugeName:      "{count}",
 }
 
 func GetCounter(meter metric.Meter, name CounterType) (metric.Int64Counter, error) {

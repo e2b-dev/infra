@@ -30,12 +30,12 @@ type Node struct {
 	RamUsage atomic.Int64
 	Client   *GRPCClient
 
-	Info *node.NodeInfo
-
-	commit   string
-	version  string
-	status   api.NodeStatus
-	statusMu sync.RWMutex
+	Info           *node.NodeInfo
+	orchestratorID string
+	commit         string
+	version        string
+	status         api.NodeStatus
+	statusMu       sync.RWMutex
 
 	sbxsInProgress *smap.Map[*sbxInProgress]
 
