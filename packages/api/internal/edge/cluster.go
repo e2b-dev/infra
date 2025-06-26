@@ -50,7 +50,6 @@ var (
 )
 
 func NewCluster(ctx context.Context, tracer trace.Tracer, tel *telemetry.Client, endpoint string, endpointTls bool, secret string, id uuid.UUID) (*Cluster, error) {
-	// so we during cluster disconnect we don't cancel the upper context
 	ctx, ctxCancel := context.WithCancel(ctx)
 
 	clientAuthMiddleware := func(c *api.Client) error {
@@ -97,6 +96,7 @@ func NewCluster(ctx context.Context, tracer trace.Tracer, tel *telemetry.Client,
 	}
 
 	if endpointTls {
+		// (2025-06) AWS ALB with TLS termination is using TLS 1.2 as default so this is why we are not using TLS 1.3+ here
 		cred := credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
 		grpcOptions = append(grpcOptions, grpc.WithAuthority(endpoint), grpc.WithTransportCredentials(cred))
 	} else {
