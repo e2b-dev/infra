@@ -72,6 +72,10 @@ func (p *Pool) GetClusterById(id uuid.UUID) (*Cluster, bool) {
 	return cluster, true
 }
 
+func (p *Pool) GetClusters() map[string]*Cluster {
+	return p.clusters.Items()
+}
+
 func (p *Pool) Close() {
 	// Close pool, this needs to be called before closing the clusters
 	// so background jobs syncing cluster will not try to update the pool nodes

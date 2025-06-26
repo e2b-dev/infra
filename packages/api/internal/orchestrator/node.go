@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/jellydator/ttlcache/v3"
 	"go.uber.org/zap"
@@ -30,8 +31,12 @@ type sbxInProgress struct {
 type Node struct {
 	CPUUsage atomic.Int64
 	RamUsage atomic.Int64
+
 	Client   *grpclient.GRPCClient
 	ClientMd metadata.MD
+
+	ClusterID     uuid.UUID
+	ClusterNodeID string
 
 	Info           *node.NodeInfo
 	orchestratorID string
@@ -124,6 +129,11 @@ func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]*node.NodeInfo, er
 func (o *Orchestrator) GetNode(nodeID string) *Node {
 	n, _ := o.nodes.Get(nodeID)
 	return n
+}
+
+// GetClusterNodeID - this way we don't need to worry about multiple clusters with the same node ID in shared pool
+func (o *Orchestrator) GetClusterNodeID(clusterID uuid.UUID, nodeID string) string {
+	return fmt.Sprintf("cluster-%s-node-%s", clusterID.String(), nodeID)
 }
 
 func (o *Orchestrator) GetNodes() []*api.Node {

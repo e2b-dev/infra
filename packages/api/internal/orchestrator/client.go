@@ -20,6 +20,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -124,6 +125,39 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 	)
 
 	return nil
+}
+
+func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, clusterNode *edge.ClusterNode) {
+	// this way we don't need to worry about multiple clusters with the same node ID in shared pool
+	orchestratorPoolNodeId := o.GetClusterNodeID(cluster.Id, clusterNode.Id)
+	client, clientMetadata := cluster.GetGrpcClient(clusterNode.Id)
+
+	buildCache := ttlcache.New[string, interface{}]()
+	go buildCache.Start()
+
+	orchestratorNode := &Node{
+		Client:   client,
+		ClientMd: clientMetadata,
+
+		ClusterID:     cluster.Id,
+		ClusterNodeID: clusterNode.Id,
+
+		// some places are using this id to get node from orchestrator pool
+		// probably we can get rid of this and just create ID directly on Node struct
+		Info: &node.NodeInfo{
+			ID: orchestratorPoolNodeId,
+		},
+
+		status:  OrchestratorToApiNodeStateMapper[clusterNode.Status],
+		version: clusterNode.Version,
+		commit:  clusterNode.VersionCommit,
+
+		buildCache:     buildCache,
+		sbxsInProgress: smap.New[*sbxInProgress](),
+		createFails:    atomic.Uint64{},
+	}
+
+	o.nodes.Insert(orchestratorPoolNodeId, orchestratorNode)
 }
 
 func (o *Orchestrator) GetClient(nodeID string) (*grpclient.GRPCClient, metadata.MD, error) {

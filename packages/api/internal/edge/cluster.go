@@ -102,6 +102,10 @@ func (c *Cluster) GetTemplateBuilderById(nodeID string) (*ClusterNode, error) {
 	return node, nil
 }
 
+func (c *Cluster) GetNodeById(nodeID string) (*ClusterNode, bool) {
+	return c.nodes.Get(nodeID)
+}
+
 func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterNode, error) {
 	_, span := c.tracer.Start(ctx, "template-builder-get-available-node")
 	span.SetAttributes(telemetry.WithClusterID(c.ID))
