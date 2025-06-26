@@ -75,8 +75,6 @@ func (c *Cluster) sync(ctx context.Context) error {
 		return errors.New("request to get builders returned nil response")
 	}
 
-	var wg sync.WaitGroup
-
 	// register newly discovered nodes
 	_, spanNewlyDiscovered := c.tracer.Start(spanCtx, "cluster-nodes-sync-newly-discovered")
 	for _, sdNode := range *res.JSON200 {
@@ -102,18 +100,11 @@ func (c *Cluster) sync(ctx context.Context) error {
 		}
 
 		c.nodes.Insert(sdNode.Id, node)
-		wg.Add(1)
-		go func() {
-			c.syncNode(ctx, node)
-			wg.Done()
-		}()
 	}
-
-	// wait for all new nodes to be added
-	wg.Wait()
 	spanNewlyDiscovered.End()
 
 	// remove nodes that are no longer present in the service discovery
+	var wg sync.WaitGroup
 	_, spanOutdatedNodes := c.tracer.Start(spanCtx, "cluster-nodes-sync-outdated-nodes")
 	for nodeId, node := range c.nodes.Items() {
 		found := false
