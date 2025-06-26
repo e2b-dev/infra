@@ -224,6 +224,22 @@ components:
           type: integer
           format: int64
           description: Total memory in MiB
+    
+    SandboxEvent:
+      required:
+        - timestamp
+        - path
+      properties:
+        timestamp:
+          type: integer
+          format: int64
+          description: Unix timestamp of the event in UTC
+        path:
+          type: string
+          description: Path of the event
+        body:
+          type: object
+          description: Body of the event
 
     Sandbox:
       required:
@@ -1141,6 +1157,49 @@ paths:
       responses:
         "204":
           description: Successfully set the sandbox timeout
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /sandboxes/{sandboxID}/events:
+    get:
+      description: Get sandbox events
+      tags: [sandboxes]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/sandboxID"
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+            default: 0
+          description: Number of events to skip
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            default: 100
+            maximum: 1000
+          description: Maximum number of events to return
+      responses:
+        "200":
+          description: Sandbox events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SandboxEvent"
         "401":
           $ref: "#/components/responses/401"
         "404":
