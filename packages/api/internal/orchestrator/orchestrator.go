@@ -17,6 +17,7 @@ import (
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
+	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
@@ -42,6 +43,7 @@ type Orchestrator struct {
 	dns                 *dns.DNS
 	dbClient            *db.DB
 	tel                 *telemetry.Client
+	clusters            *edge.Pool
 	metricsRegistration metric.Registration
 }
 
@@ -53,6 +55,7 @@ func New(
 	posthogClient *analyticscollector.PosthogClient,
 	redisClient redis.UniversalClient,
 	dbClient *db.DB,
+	clusters *edge.Pool,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics()
 	if err != nil {
@@ -81,6 +84,7 @@ func New(
 		dns:         dnsServer,
 		dbClient:    dbClient,
 		tel:         tel,
+		clusters:    clusters,
 	}
 
 	cache := instance.NewCache(
