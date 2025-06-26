@@ -4,19 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	loki "github.com/grafana/loki/pkg/logcli/client"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
@@ -25,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -64,36 +60,12 @@ const (
 	syncInterval = time.Minute * 1
 )
 
-var (
-	templateManagerHost = os.Getenv("TEMPLATE_MANAGER_HOST")
-
-	ErrLocalTemplateManagerNotAvailable = errors.New("local template manager is not available")
-)
+var ErrLocalTemplateManagerNotAvailable = errors.New("local template manager is not available")
 
 func New(ctx context.Context, tracer trace.Tracer, tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, db *db.DB, sqlcDB *sqlcdb.Client, edgePool *edge.Pool, lokiClient *loki.DefaultClient, buildCache *templatecache.TemplatesBuildCache) (*TemplateManager, error) {
-	conn, err := grpc.NewClient(templateManagerHost,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithStatsHandler(
-			otelgrpc.NewClientHandler(
-				otelgrpc.WithTracerProvider(tracerProvider),
-				otelgrpc.WithMeterProvider(meterProvider),
-			),
-		),
-		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                10 * time.Second, // Send ping every 10s
-			Timeout:             2 * time.Second,  // Wait 2s for response
-			PermitWithoutStream: true,
-		}),
-	)
+	client, err := createClient(tracerProvider, meterProvider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
-	}
-
-	client := &grpclient.GRPCClient{
-		Sandbox:    nil,
-		Info:       infogrpc.NewInfoServiceClient(conn),
-		Template:   templatemanagergrpc.NewTemplateServiceClient(conn),
-		Connection: conn,
 	}
 
 	tm := &TemplateManager{
