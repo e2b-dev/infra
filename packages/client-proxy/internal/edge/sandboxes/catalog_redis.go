@@ -11,6 +11,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
@@ -103,7 +105,7 @@ func (c *RedisSandboxCatalog) StoreSandbox(sandboxId string, sandboxInfo *Sandbo
 
 	status := c.redisClient.Set(ctx, c.getCatalogKey(sandboxId), string(bytes), expiration)
 	if status.Err() != nil {
-		zap.L().Error("Error while storing sandbox in redis", zap.String("sandboxId", sandboxId), zap.Error(status.Err()))
+		zap.L().Error("Error while storing sandbox in redis", logger.WithSandboxID(sandboxId), zap.Error(status.Err()))
 		return fmt.Errorf("failed to store sandbox info in redis: %w", status.Err())
 	}
 
