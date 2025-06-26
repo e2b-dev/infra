@@ -51,7 +51,7 @@ var (
 	commitSHA string
 
 	useProxyCatalogResolution = os.Getenv("USE_CATALOG_RESOLUTION") == "true"
-	skipDnsResolution         = os.Getenv("SKIP_DNS_RESOLUTION") == "true"
+	useDnsResolution          = os.Getenv("USE_DNS_RESOLUTION") != "true"
 )
 
 func run() int {
@@ -155,7 +155,7 @@ func run() int {
 	}
 
 	// Proxy sandbox http traffic to orchestrator nodes
-	trafficProxy, err := e2bproxy.NewClientProxy(tel.MeterProvider, serviceName, uint(proxyPort), catalog, orchestrators, useProxyCatalogResolution, skipDnsResolution)
+	trafficProxy, err := e2bproxy.NewClientProxy(tel.MeterProvider, serviceName, uint(proxyPort), catalog, orchestrators, useProxyCatalogResolution, useDnsResolution)
 	if err != nil {
 		logger.Error("Failed to create client proxy", zap.Error(err))
 		return 1

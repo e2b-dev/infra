@@ -100,8 +100,8 @@ func catalogResolution(sandboxId string, catalog sandboxes.SandboxesCatalog, orc
 	return o.Ip, nil
 }
 
-func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool, useCatalogResolution bool, skipDnsResolution bool) (*reverseproxy.Proxy, error) {
-	if !useCatalogResolution && skipDnsResolution {
+func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool, useCatalogResolution bool, useDnsResolution bool) (*reverseproxy.Proxy, error) {
+	if !useCatalogResolution && !useDnsResolution {
 		return nil, errors.New("catalog resolution and DNS resolution are both disabled, at least one must be enabled")
 	}
 
@@ -130,7 +130,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 						logger.Warn("failed to resolve node ip with Redis resolution", zap.Error(err))
 					}
 
-					if skipDnsResolution {
+					if !useDnsResolution {
 						return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
 					} else {
 						nodeIp, err = dnsResolution(sandboxId, logger)
