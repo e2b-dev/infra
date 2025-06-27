@@ -64,12 +64,7 @@ func (p *Pool) syncBackground() {
 }
 
 func (p *Pool) GetClusterById(id uuid.UUID) (*Cluster, bool) {
-	cluster, ok := p.clusters.Get(id.String())
-	if !ok {
-		return nil, false
-	}
-
-	return cluster, true
+	return p.clusters.Get(id.String())
 }
 
 func (p *Pool) GetClusters() map[string]*Cluster {
