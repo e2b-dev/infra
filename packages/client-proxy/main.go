@@ -51,7 +51,7 @@ var (
 	commitSHA string
 
 	useProxyCatalogResolution = os.Getenv("USE_CATALOG_RESOLUTION") == "true"
-	useDnsResolution          = os.Getenv("USE_DNS_RESOLUTION") != "true"
+	useDnsResolution          = os.Getenv("USE_DNS_RESOLUTION") != "false"
 )
 
 func run() int {
