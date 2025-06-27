@@ -24,6 +24,10 @@ func WithBuildID(buildID string) attribute.KeyValue {
 	return zapFieldToOTELAttribute(logger.WithBuildID(buildID))
 }
 
+func WithNodeID(nodeID string) attribute.KeyValue {
+	return zapFieldToOTELAttribute(logger.WithNodeID(nodeID))
+}
+
 func WithClusterID(clusterID uuid.UUID) attribute.KeyValue {
 	return zapFieldToOTELAttribute(logger.WithClusterID(clusterID))
 }

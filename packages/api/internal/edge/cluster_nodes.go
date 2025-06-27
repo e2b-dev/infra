@@ -151,8 +151,8 @@ func (d clusterSynchronizationStore) PoolSynchronize(ctx context.Context, nodeID
 	d.cluster.syncNode(ctx, node)
 }
 
-func (d clusterSynchronizationStore) PoolRemove(ctx context.Context, cluster *ClusterNode) error {
-	zap.L().Info("Removing node from cluster nodes pool", l.WithClusterID(d.cluster.ID), l.WithClusterNodeID(cluster.ID))
-	d.cluster.nodes.Remove(cluster.ID)
+func (d clusterSynchronizationStore) PoolRemove(ctx context.Context, node *ClusterNode) error {
+	zap.L().Info("Removing node from cluster nodes pool", l.WithClusterID(d.cluster.ID), l.WithClusterNodeID(node.ID))
+	d.cluster.nodes.Remove(node.ID)
 	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
@@ -12,6 +13,7 @@ import (
 
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -102,6 +104,10 @@ func (c *Cluster) GetTemplateBuilderById(nodeID string) (*ClusterNode, error) {
 	return node, nil
 }
 
+func (c *Cluster) GetNodeById(nodeID string) (*ClusterNode, bool) {
+	return c.nodes.Get(nodeID)
+}
+
 func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterNode, error) {
 	_, span := c.tracer.Start(ctx, "template-builder-get-available-node")
 	span.SetAttributes(telemetry.WithClusterID(c.ID))
@@ -124,10 +130,49 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterNode
 	return nil, ErrAvailableTemplateBuilderNotFound
 }
 
+func (c *Cluster) GetOrchestratorNodes() []*ClusterNode {
+	nodes := make([]*ClusterNode, 0)
+	for _, node := range c.nodes.Items() {
+		if node.IsOrchestratorNode() {
+			nodes = append(nodes, node)
+		}
+	}
+
+	return nodes
+}
+
 func (c *Cluster) GetGrpcClient(nodeID string) (*grpclient.GRPCClient, metadata.MD) {
 	return c.grpcClient, metadata.New(map[string]string{consts.EdgeRpcNodeHeader: nodeID})
 }
 
 func (c *Cluster) GetHttpClient() *api.ClientWithResponses {
 	return c.httpClient
+}
+
+func (c *Cluster) RegisterSandboxInCatalog(clusterNodeID string, sandboxStartTime time.Time, sandboxConfig *orchestratorgrpc.SandboxConfig) error {
+	ctx := context.TODO()
+	body := api.V1SandboxCatalogCreateJSONRequestBody{
+		OrchestratorId: clusterNodeID,
+
+		ExecutionId:      sandboxConfig.ExecutionId,
+		SandboxId:        sandboxConfig.SandboxId,
+		SandboxMaxLength: sandboxConfig.MaxSandboxLength,
+		SandboxStartTime: sandboxStartTime,
+	}
+
+	// todo: proper timeout and error handling
+	_, err := c.httpClient.V1SandboxCatalogCreate(ctx, body)
+	return err
+}
+
+func (c *Cluster) RemoveSandboxFromCatalog(sandboxID string, executionID string) error {
+	ctx := context.TODO()
+	body := api.V1SandboxCatalogDeleteJSONRequestBody{
+		SandboxId:   sandboxID,
+		ExecutionId: executionID,
+	}
+
+	// todo: proper timeout and error handling
+	_, err := c.httpClient.V1SandboxCatalogDelete(ctx, body)
+	return err
 }

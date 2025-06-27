@@ -16,9 +16,11 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -108,7 +110,9 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 
 	o.nodes.Insert(
 		node.ID, &Node{
-			Client:         client,
+			Client:   client,
+			ClientMd: make(metadata.MD),
+
 			Info:           node,
 			orchestratorID: orchestratorID,
 			buildCache:     buildCache,
@@ -123,13 +127,46 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 	return nil
 }
 
-func (o *Orchestrator) GetClient(nodeID string) (*grpclient.GRPCClient, error) {
-	n := o.GetNode(nodeID)
-	if n == nil {
-		return nil, fmt.Errorf("node '%s' not found", nodeID)
+func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, clusterNode *edge.ClusterNode) {
+	// this way we don't need to worry about multiple clusters with the same node ID in shared pool
+	orchestratorPoolNodeId := o.GetClusterNodeID(cluster.ID, clusterNode.ID)
+	client, clientMetadata := cluster.GetGrpcClient(clusterNode.ID)
+
+	buildCache := ttlcache.New[string, interface{}]()
+	go buildCache.Start()
+
+	orchestratorNode := &Node{
+		Client:   client,
+		ClientMd: clientMetadata,
+
+		ClusterID:     cluster.ID,
+		ClusterNodeID: clusterNode.ID,
+
+		// some places are using this id to get node from orchestrator pool
+		// probably we can get rid of this and just create ID directly on Node struct
+		Info: &node.NodeInfo{
+			ID: orchestratorPoolNodeId,
+		},
+
+		status:  OrchestratorToApiNodeStateMapper[clusterNode.GetStatus()],
+		version: clusterNode.Version,
+		commit:  clusterNode.VersionCommit,
+
+		buildCache:     buildCache,
+		sbxsInProgress: smap.New[*sbxInProgress](),
+		createFails:    atomic.Uint64{},
 	}
 
-	return n.Client, nil
+	o.nodes.Insert(orchestratorPoolNodeId, orchestratorNode)
+}
+
+func (o *Orchestrator) GetClient(nodeID string) (*grpclient.GRPCClient, metadata.MD, error) {
+	n := o.GetNode(nodeID)
+	if n == nil {
+		return nil, nil, fmt.Errorf("node '%s' not found", nodeID)
+	}
+
+	return n.Client, n.ClientMd, nil
 }
 
 func (o *Orchestrator) getNodeHealth(node *node.NodeInfo) (bool, error) {
