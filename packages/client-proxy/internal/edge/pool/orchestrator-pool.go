@@ -219,9 +219,6 @@ func (p *OrchestratorsPool) removeNode(ctx context.Context, node *OrchestratorNo
 		p.logger.Error("Error closing connection to node", zap.Error(err), l.WithClusterNodeID(info.ServiceId))
 	}
 
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
 	p.nodes.Remove(info.ServiceId)
 	p.logger.Info("Orchestrator node node connection has been closed.", l.WithClusterNodeID(info.ServiceId))
 	return nil
