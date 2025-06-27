@@ -45,6 +45,8 @@ const (
 	FieldFirecrackerVersion = "firecracker_version"
 	// FieldEnvdVersion holds the string denoting the envd_version field in the database.
 	FieldEnvdVersion = "envd_version"
+	// FieldReason holds the string denoting the reason field in the database.
+	FieldReason = "reason"
 	// EdgeEnv holds the string denoting the env edge name in mutations.
 	EdgeEnv = "env"
 	// Table holds the table name of the envbuild in the database.
@@ -76,6 +78,7 @@ var Columns = []string{
 	FieldKernelVersion,
 	FieldFirecrackerVersion,
 	FieldEnvdVersion,
+	FieldReason,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -210,6 +213,11 @@ func ByFirecrackerVersion(opts ...sql.OrderTermOption) OrderOption {
 // ByEnvdVersion orders the results by the envd_version field.
 func ByEnvdVersion(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEnvdVersion, opts...).ToFunc()
+}
+
+// ByReason orders the results by the reason field.
+func ByReason(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReason, opts...).ToFunc()
 }
 
 // ByEnvField orders the results by env field.

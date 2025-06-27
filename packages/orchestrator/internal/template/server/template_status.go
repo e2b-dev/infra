@@ -19,6 +19,7 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 
 	return &template_manager.TemplateBuildStatusResponse{
 		Status:   buildInfo.GetStatus(),
+		Reason:   buildInfo.GetReason(),
 		Metadata: buildInfo.GetMetadata(),
 	}, nil
 }

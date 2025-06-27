@@ -538,7 +538,7 @@ components:
           $ref: "#/components/schemas/CPUCount"
         memoryMB:
           $ref: "#/components/schemas/MemoryMB"
-          
+
     TemplateBuildStartV2:
       required:
         - fromImage
@@ -547,7 +547,7 @@ components:
           type: string
           description: Image to use as a base for the template build
         steps:
-          default: [ ]
+          default: []
           description: List of steps to execute in the template build
           type: array
           items:
@@ -576,6 +576,7 @@ components:
         - buildID
         - status
         - logs
+        - reason
       properties:
         logs:
           default: []
@@ -597,6 +598,9 @@ components:
             - waiting
             - ready
             - error
+        reason:
+          type: string
+          description: Message with the reason about the status code
 
     NodeStatus:
       type: string
@@ -1281,10 +1285,10 @@ paths:
   /templates/{templateID}/files/{hash}:
     get:
       description: Get an upload link for a file that should be uploaded to the template build cache
-      tags: [ templates ]
+      tags: [templates]
       security:
-        - AccessTokenAuth: [ ]
-        - Supabase1TokenAuth: [ ]
+        - AccessTokenAuth: []
+        - Supabase1TokenAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - in: path

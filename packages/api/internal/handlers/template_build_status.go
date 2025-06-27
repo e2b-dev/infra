@@ -145,6 +145,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		TemplateID: templateID,
 		BuildID:    buildID,
 		Status:     getCorrespondingTemplateBuildStatus(buildInfo.BuildStatus),
+		Reason:     buildInfo.Reason,
 	}
 
 	c.JSON(http.StatusOK, result)

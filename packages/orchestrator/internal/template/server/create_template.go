@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -84,7 +83,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		// Wait for the CLI to load all the logs
 		// This is a temporary ~fix for the CLI to load most of the logs before finishing the template build
 		// Ideally, we should wait in the CLI for the last log message
-		time.Sleep(8 * time.Second)
+		// time.Sleep(8 * time.Second)
 		if err != nil {
 			s.reportBuildFailed(buildContext, template, err)
 			return
@@ -105,7 +104,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 
 func (s *ServerStore) reportBuildFailed(ctx context.Context, config *templateconfig.TemplateConfig, err error) {
 	telemetry.ReportCriticalError(ctx, "error while building template", err)
-	cacheErr := s.buildCache.SetFailed(config.BuildId)
+	cacheErr := s.buildCache.SetFailed(config.BuildId, err.Error())
 	if cacheErr != nil {
 		s.logger.Error("Error while setting build state to failed", zap.Error(err))
 	}
