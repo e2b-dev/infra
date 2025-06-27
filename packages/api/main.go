@@ -265,7 +265,7 @@ func run() int {
 	expectedMigration, err := strconv.ParseInt(expectedMigrationTimestamp, 10, 64)
 	if err != nil {
 		// If expectedMigrationTimestamp is not set, we set it to 0
-		logger.Warn("failed to parse expected migration timestamp", zap.Error(err))
+		logger.Warn("Failed to parse expected migration timestamp", zap.Error(err))
 		expectedMigration = 0
 	}
 
@@ -283,7 +283,7 @@ func run() int {
 	if err != nil {
 		// this will call os.Exit: defers won't run, but none
 		// need to yet. Change this if this is called later.
-		logger.Error("error loading swagger spec", zap.Error(err))
+		logger.Error("Error loading swagger spec", zap.Error(err))
 		return 1
 	}
 
@@ -312,7 +312,7 @@ func run() int {
 					defer cwg.Done()
 					if err := op(ctx); err != nil {
 						exitCode.Add(1)
-						logger.Error("cleanup operation error", zap.Int("index", idx), zap.Error(err))
+						logger.Error("Cleanup operation error", zap.Int("index", idx), zap.Error(err))
 					}
 				}(cleanup, idx)
 
@@ -323,9 +323,9 @@ func run() int {
 			logger.Info("no cleanup operations")
 			return
 		}
-		logger.Info("running cleanup operations", zap.Int("count", count))
+		logger.Info("Running cleanup operations", zap.Int("count", count))
 		cwg.Wait() // this doesn't have a timeout
-		logger.Info("cleanup operations completed", zap.Int("count", count), zap.Duration("duration", time.Since(start)))
+		logger.Info("Cleanup operations completed", zap.Int("count", count), zap.Duration("duration", time.Since(start)))
 	}
 	cleanupOnce := &sync.Once{}
 	cleanup := func() { cleanupOnce.Do(cleanupOp) }
@@ -369,20 +369,20 @@ func run() int {
 		// signaled.
 		defer cancel()
 
-		logger.Info("http service starting", zap.Int("port", port))
+		logger.Info("Http service starting", zap.Int("port", port))
 
 		// Serve HTTP until shutdown.
 		err := s.ListenAndServe()
 
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
-			logger.Info("http service shutdown successfully", zap.Int("port", port))
+			logger.Info("Http service shutdown successfully", zap.Int("port", port))
 		case err != nil:
 			exitCode.Add(1)
-			logger.Error("http service encountered error", zap.Int("port", port), zap.Error(err))
+			logger.Error("Http service encountered error", zap.Int("port", port), zap.Error(err))
 		default:
 			// this probably shouldn't happen...
-			logger.Info("http service exited without error", zap.Int("port", port))
+			logger.Info("Http service exited without error", zap.Int("port", port))
 		}
 	}()
 
@@ -412,7 +412,7 @@ func run() int {
 
 		if err := s.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
-			logger.Error("http service shutdown error", zap.Int("port", port), zap.Error(err))
+			logger.Error("Http service shutdown error", zap.Int("port", port), zap.Error(err))
 		}
 	}()
 

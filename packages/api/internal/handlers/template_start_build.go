@@ -11,6 +11,7 @@ import (
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
@@ -141,6 +142,13 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		return
 	}
 
+	// team is part of the cluster but template build is not assigned to a cluster node so its invalid stats
+	if team.ClusterID != nil && build.ClusterNodeID == nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "build is not assigned to a cluster node")
+		telemetry.ReportCriticalError(ctx, "build is not assigned to a cluster node", nil, telemetry.WithTemplateID(templateID))
+		return
+	}
+
 	// Call the Template Manager to build the environment
 	buildErr := a.templateManager.CreateTemplate(
 		a.Tracer,
@@ -154,11 +162,12 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		build.FreeDiskSizeMB,
 		build.RAMMB,
 		readyCmd,
+		team.ClusterID,
+		build.ClusterNodeID,
 	)
 
 	if buildErr != nil {
 		telemetry.ReportCriticalError(ctx, "build failed", buildErr, telemetry.WithTemplateID(templateID))
-
 		err = a.templateManager.SetStatus(
 			ctx,
 			templateID,
@@ -184,7 +193,6 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when setting build status", err)
-
 		return
 	}
 
@@ -198,7 +206,10 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		)
 		defer buildSpan.End()
 
-		a.templateManager.BuildStatusSync(buildContext, buildUUID, templateID)
+		err := a.templateManager.BuildStatusSync(buildContext, buildUUID, templateID, team.ClusterID, build.ClusterNodeID)
+		if err != nil {
+			zap.L().Error("error syncing build status", zap.Error(err))
+		}
 
 		// Invalidate the cache
 		a.templateCache.Invalidate(templateID)

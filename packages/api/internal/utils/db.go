@@ -20,7 +20,7 @@ func CheckMigrationVersion(expectedMigration int64) error {
 	defer func() {
 		dbErr := db.Close()
 		if dbErr != nil {
-			zap.L().Error("failed to close database connection", zap.Error(dbErr))
+			zap.L().Error("Failed to close database connection", zap.Error(dbErr))
 		}
 	}()
 
@@ -37,6 +37,6 @@ func CheckMigrationVersion(expectedMigration int64) error {
 		return fmt.Errorf("database version %d is less than expected %d", version, expectedMigration)
 	}
 
-	zap.L().Info("database version", zap.Int64("version", version), zap.Int64("expected_migration", expectedMigration))
+	zap.L().Info("Database version", zap.Int64("version", version), zap.Int64("expected_migration", expectedMigration))
 	return nil
 }

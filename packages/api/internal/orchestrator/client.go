@@ -19,6 +19,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
@@ -27,13 +28,6 @@ import (
 )
 
 const nodeHealthCheckTimeout = time.Second * 2
-
-type GRPCClient struct {
-	Sandbox orchestrator.SandboxServiceClient
-	Info    orchestratorinfo.InfoServiceClient
-
-	connection *grpc.ClientConn
-}
 
 var (
 	OrchestratorToApiNodeStateMapper = map[orchestratorinfo.ServiceInfoStatus]api.NodeStatus{
@@ -49,7 +43,7 @@ var (
 	}
 )
 
-func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string) (*GRPCClient, error) {
+func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string) (*grpclient.GRPCClient, error) {
 	conn, err := grpc.NewClient(host,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithStatsHandler(
@@ -66,16 +60,7 @@ func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterPr
 	sandboxClient := orchestrator.NewSandboxServiceClient(conn)
 	infoClient := orchestratorinfo.NewInfoServiceClient(conn)
 
-	return &GRPCClient{Sandbox: sandboxClient, Info: infoClient, connection: conn}, nil
-}
-
-func (a *GRPCClient) Close() error {
-	err := a.connection.Close()
-	if err != nil {
-		return fmt.Errorf("failed to close connection: %w", err)
-	}
-
-	return nil
+	return &grpclient.GRPCClient{Sandbox: sandboxClient, Info: infoClient, Connection: conn}, nil
 }
 
 func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) error {
@@ -138,7 +123,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 	return nil
 }
 
-func (o *Orchestrator) GetClient(nodeID string) (*GRPCClient, error) {
+func (o *Orchestrator) GetClient(nodeID string) (*grpclient.GRPCClient, error) {
 	n := o.GetNode(nodeID)
 	if n == nil {
 		return nil, fmt.Errorf("node '%s' not found", nodeID)

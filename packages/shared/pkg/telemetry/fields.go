@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -21,6 +22,14 @@ func WithTemplateID(templateID string) attribute.KeyValue {
 
 func WithBuildID(buildID string) attribute.KeyValue {
 	return zapFieldToOTELAttribute(logger.WithBuildID(buildID))
+}
+
+func WithClusterID(clusterID uuid.UUID) attribute.KeyValue {
+	return zapFieldToOTELAttribute(logger.WithClusterID(clusterID))
+}
+
+func WithClusterNodeID(nodeID string) attribute.KeyValue {
+	return zapFieldToOTELAttribute(logger.WithClusterNodeID(nodeID))
 }
 
 func WithTeamID(teamID string) attribute.KeyValue {

@@ -26,7 +26,7 @@ func NewAnalytics() (*Analytics, error) {
 	var connection *grpc.ClientConn
 
 	if host == "" {
-		zap.L().Warn("Running dummy implementation of analytics collector client, no host provided")
+		zap.L().Info("Running dummy implementation of analytics collector client, no host provided")
 	} else {
 		systemRoots, err := x509.SystemCertPool()
 		if err != nil {

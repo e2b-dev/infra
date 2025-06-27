@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
 	e2binfo "github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 )
 
@@ -26,11 +27,7 @@ type NodePassThroughServer struct {
 }
 
 const (
-	grpcMaxMsgSize = 5 * 1024 * 1024 // 5 MiB
-
-	grpcMetadataNodeIdKey        = "node-id"
-	grpcMetadataAuthorizationKey = "authorization"
-
+	grpcMaxMsgSize       = 5 * 1024 * 1024 // 5 MiB
 	grpcHealthMethodName = "/EdgePassThrough/healthcheck"
 )
 
@@ -56,7 +53,7 @@ func (s *NodePassThroughServer) director(ctx context.Context) (*grpc.ClientConn,
 		return nil, status.Error(codes.InvalidArgument, "error getting metadata from context")
 	}
 
-	auths := md.Get(grpcMetadataAuthorizationKey)
+	auths := md.Get(consts.EdgeRpcAuthHeader)
 	if len(auths) == 0 || len(auths) > 1 {
 		return nil, status.Error(codes.Unauthenticated, "error getting authentication metadata from context")
 	}
@@ -68,7 +65,7 @@ func (s *NodePassThroughServer) director(ctx context.Context) (*grpc.ClientConn,
 		return nil, status.Error(codes.PermissionDenied, err.Error())
 	}
 
-	nodeIds := md.Get(grpcMetadataNodeIdKey)
+	nodeIds := md.Get(consts.EdgeRpcNodeHeader)
 	if len(nodeIds) == 0 || len(nodeIds) > 1 {
 		return nil, status.Error(codes.InvalidArgument, "node id header missing or invalid")
 	}
