@@ -17,6 +17,8 @@ import (
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
 )
 
+const entryInfoSupportedSDKVersion = "1.6.0"
+
 type osEntry interface {
 	IsDir() bool
 }
@@ -73,7 +75,7 @@ func entryInfoFromFileInfo(fileInfo os.FileInfo, path string, sdkVersion string)
 		Path: path,
 	}
 
-	if sdkVersion != "" && sdkVersion >= "1.5.2" {
+	if sdkVersion != "" && sdkVersion >= entryInfoSupportedSDKVersion {
 		entry.Size = fileInfo.Size()
 		entry.Mode = uint32(fileMode.Perm())
 		entry.Permissions = fileMode.String()
