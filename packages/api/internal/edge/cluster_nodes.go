@@ -43,6 +43,7 @@ func (c *Cluster) syncBackground() {
 	synchronize := synchronization.Synchronize[api.ClusterOrchestratorNode, string, *ClusterNode]{
 		Tracer:           c.tracer,
 		TracerSpanPrefix: "cluster-nodes",
+		LogsPrefix:       "Cluster nodes",
 		Store:            clusterSynchronizationStore{cluster: c},
 	}
 

@@ -56,6 +56,7 @@ func (p *Pool) syncBackground() {
 	synchronize := synchronization.Synchronize[queries.GetActiveClustersRow, string, *Cluster]{
 		Tracer:           p.tracer,
 		TracerSpanPrefix: "clusters-pool",
+		LogsPrefix:       "Clusters pool",
 		Store:            poolSynchronizationStore{pool: p},
 	}
 
@@ -128,9 +129,8 @@ func (d poolSynchronizationStore) PoolInsert(ctx context.Context, clusterID stri
 	return nil
 }
 
-// PoolSynchronize - Item exists in the pool, calling this method so custom logic can be applied
 func (d poolSynchronizationStore) PoolSynchronize(ctx context.Context, clusterID string, cluster *Cluster) {
-	// todo
+	// Clusters pool currently does not do something special during synchronization
 }
 
 func (d poolSynchronizationStore) PoolRemove(ctx context.Context, cluster *Cluster) error {

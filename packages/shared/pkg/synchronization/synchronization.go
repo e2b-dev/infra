@@ -28,6 +28,7 @@ type Synchronize[SourceItem any, SourceKey comparable, PoolItem any] struct {
 
 	Tracer           trace.Tracer
 	TracerSpanPrefix string
+	LogsPrefix       string
 }
 
 func (s *Synchronize[SourceItem, SourceKey, PoolItem]) Sync(ctx context.Context) error {
@@ -51,7 +52,7 @@ func (s *Synchronize[SourceItem, SourceKey, PoolItem]) SyncInBackground(cancel c
 		err := s.Sync(initialSyncTimeout)
 		initialSyncCancel()
 		if err != nil {
-			zap.L().Error("Initial sync failed", zap.Error(err))
+			zap.L().Error(s.getLog("Initial sync failed"), zap.Error(err))
 		}
 	}
 
@@ -61,14 +62,14 @@ func (s *Synchronize[SourceItem, SourceKey, PoolItem]) SyncInBackground(cancel c
 	for {
 		select {
 		case <-cancel:
-			zap.L().Info("Background synchronization ended")
+			zap.L().Info(s.getLog("Background synchronization ended"))
 			return
 		case <-timer.C:
 			syncTimeout, syncCancel := context.WithTimeout(context.Background(), syncRoundTimeout)
 			err := s.Sync(syncTimeout)
 			syncCancel()
 			if err != nil {
-				zap.L().Error("Failed to synchronize", zap.Error(err))
+				zap.L().Error(s.getLog("Failed to synchronize"), zap.Error(err))
 			}
 		}
 	}
@@ -95,7 +96,7 @@ func (s *Synchronize[SourceItem, SourceKey, PoolItem]) runSyncDiscovered(ctx con
 			defer wg.Done()
 			err := s.Store.PoolInsert(spanCtx, itemKey, item)
 			if err != nil {
-				zap.L().Error("Failed to insert item into pool", zap.Error(err), zap.Any("key", itemKey))
+				zap.L().Error(s.getLog("Failed to insert item into pool"), zap.Error(err), zap.Any("key", itemKey))
 			}
 		}(sourceItemKey, sourceItem)
 	}
@@ -128,7 +129,7 @@ func (s *Synchronize[SourceItem, SourceKey, PoolItem]) runSyncOutdated(ctx conte
 			defer wg.Done()
 			err := s.Store.PoolRemove(spanCtx, poolItem)
 			if err != nil {
-				zap.L().Error("Error during removing item from pool", zap.Error(err), zap.Any("key", poolItemKey))
+				zap.L().Error(s.getLog("Error during removing item from pool"), zap.Error(err), zap.Any("key", poolItemKey))
 			}
 		}(poolItem)
 	}
@@ -136,4 +137,8 @@ func (s *Synchronize[SourceItem, SourceKey, PoolItem]) runSyncOutdated(ctx conte
 
 func (s *Synchronize[SourceItem, SourceKey, PoolItem]) getSpanName(name string) string {
 	return fmt.Sprintf("%s-%s", s.TracerSpanPrefix, name)
+}
+
+func (s *Synchronize[SourceItem, SourceKey, PoolItem]) getLog(message string) string {
+	return fmt.Sprintf("%s: %s", s.LogsPrefix, message)
 }
