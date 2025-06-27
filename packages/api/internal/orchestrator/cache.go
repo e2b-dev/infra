@@ -110,7 +110,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 	_, connectClusteredSpan := o.tracer.Start(ctxTimeout, "keep-in-sync-connect-clustered-nodes")
 	for _, cluster := range o.clusters.GetClusters() {
 		for _, n := range cluster.GetOrchestratorNodes() {
-			clusterNodeID := o.GetClusterNodeID(cluster.Id, n.Id)
+			clusterNodeID := o.GetClusterNodeID(cluster.ID, n.ID)
 
 			// If the node is not in the list, connect to it
 			wg.Add(1)

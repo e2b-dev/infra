@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
+	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
@@ -12,6 +14,7 @@ import (
 
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -131,7 +134,7 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterNode
 func (c *Cluster) GetOrchestratorNodes() []*ClusterNode {
 	nodes := make([]*ClusterNode, 0, len(c.nodes.Items()))
 	for _, node := range c.nodes.Items() {
-		if slices.Contains(node.Roles, infogrpc.ServiceInfoRole_Orchestrator) {
+		if slices.Contains(node.roles, infogrpc.ServiceInfoRole_Orchestrator) {
 			nodes = append(nodes, node)
 		}
 	}

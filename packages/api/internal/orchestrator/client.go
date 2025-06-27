@@ -129,8 +129,8 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 
 func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, clusterNode *edge.ClusterNode) {
 	// this way we don't need to worry about multiple clusters with the same node ID in shared pool
-	orchestratorPoolNodeId := o.GetClusterNodeID(cluster.Id, clusterNode.Id)
-	client, clientMetadata := cluster.GetGrpcClient(clusterNode.Id)
+	orchestratorPoolNodeId := o.GetClusterNodeID(cluster.ID, clusterNode.ID)
+	client, clientMetadata := cluster.GetGrpcClient(clusterNode.ID)
 
 	buildCache := ttlcache.New[string, interface{}]()
 	go buildCache.Start()
@@ -139,8 +139,8 @@ func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, clusterNode *
 		Client:   client,
 		ClientMd: clientMetadata,
 
-		ClusterID:     cluster.Id,
-		ClusterNodeID: clusterNode.Id,
+		ClusterID:     cluster.ID,
+		ClusterNodeID: clusterNode.ID,
 
 		// some places are using this id to get node from orchestrator pool
 		// probably we can get rid of this and just create ID directly on Node struct
@@ -148,7 +148,7 @@ func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, clusterNode *
 			ID: orchestratorPoolNodeId,
 		},
 
-		status:  OrchestratorToApiNodeStateMapper[clusterNode.Status],
+		status:  OrchestratorToApiNodeStateMapper[clusterNode.GetStatus()],
 		version: clusterNode.Version,
 		commit:  clusterNode.VersionCommit,
 

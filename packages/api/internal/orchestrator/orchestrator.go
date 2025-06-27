@@ -176,7 +176,7 @@ func (o *Orchestrator) RegisterSandboxInsideClusterCatalog(node *Node, sbxStartT
 
 		err := cluster.RegisterSandboxInCatalog(node.ClusterNodeID, sbxStartTime, sandboxConfig)
 		if err != nil {
-			zap.L().Error("failed to register sandbox in cluster catalog", logger.WithClusterID(cluster.Id), logger.WithClusterNodeID(node.ClusterNodeID))
+			zap.L().Error("failed to register sandbox in cluster catalog", logger.WithClusterID(cluster.ID), logger.WithClusterNodeID(node.ClusterNodeID))
 		}
 	}
 }
@@ -190,7 +190,7 @@ func (o *Orchestrator) RemoveSandboxFromClusterCatalog(node *Node, sandboxID str
 
 		err := cluster.RemoveSandboxFromCatalog(sandboxID, executionID)
 		if err != nil {
-			zap.L().Error("failed to remove sandbox from cluster catalog", logger.WithClusterID(cluster.Id), logger.WithClusterNodeID(node.ClusterNodeID))
+			zap.L().Error("failed to remove sandbox from cluster catalog", logger.WithClusterID(cluster.ID), logger.WithClusterNodeID(node.ClusterNodeID))
 		}
 	}
 }
