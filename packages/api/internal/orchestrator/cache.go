@@ -113,8 +113,8 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 			clusterNodeID := o.GetClusterNodeID(cluster.ID, n.ID)
 
 			// If the node is not in the list, connect to it
-			wg.Add(1)
 			if o.GetNode(clusterNodeID) == nil {
+				wg.Add(1)
 				go func(n *edge.ClusterNode) {
 					defer wg.Done()
 					o.connectToClusterNode(cluster, n)
