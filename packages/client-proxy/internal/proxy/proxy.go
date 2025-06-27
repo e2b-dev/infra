@@ -97,7 +97,7 @@ func catalogResolution(sandboxId string, catalog sandboxes.SandboxesCatalog, orc
 		return "", errors.New("orchestrator not found")
 	}
 
-	return o.Ip, nil
+	return o.GetInfo().Ip, nil
 }
 
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool, useCatalogResolution bool, useDnsResolution bool) (*reverseproxy.Proxy, error) {

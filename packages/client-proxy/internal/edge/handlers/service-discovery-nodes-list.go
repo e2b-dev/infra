@@ -17,17 +17,18 @@ func (a *APIStore) V1ServiceDiscoveryNodes(c *gin.Context) {
 
 	// iterate orchestrator pool
 	for _, orchestrator := range a.orchestratorPool.GetOrchestrators() {
+		info := orchestrator.GetInfo()
 		response = append(
 			response,
 			api.ClusterNode{
-				NodeID:               orchestrator.NodeID,
-				ServiceInstanceID:    orchestrator.ServiceInstanceId,
-				ServiceStatus:        getOrchestratorStatusResolved(orchestrator.ServiceStatus),
+				NodeID:               info.NodeID,
+				ServiceInstanceID:    info.ServiceInstanceId,
+				ServiceStatus:        getOrchestratorStatusResolved(info.ServiceStatus),
 				ServiceType:          api.ClusterNodeTypeOrchestrator,
-				ServiceVersion:       orchestrator.ServiceVersion,
-				ServiceVersionCommit: orchestrator.ServiceVersionCommit,
-				ServiceHost:          orchestrator.Host,
-				ServiceStartedAt:     orchestrator.ServiceStartup,
+				ServiceVersion:       info.ServiceVersion,
+				ServiceVersionCommit: info.ServiceVersionCommit,
+				ServiceHost:          info.Host,
+				ServiceStartedAt:     info.ServiceStartup,
 			},
 		)
 	}

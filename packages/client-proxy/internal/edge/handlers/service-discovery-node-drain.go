@@ -62,7 +62,7 @@ func (a *APIStore) sendNodeRequest(ctx context.Context, serviceID string, status
 			return errors.New("failed to transform node status to orchestrator status")
 		}
 
-		_, err := o.Client.Info.ServiceStatusOverride(
+		_, err := o.GetClient().Info.ServiceStatusOverride(
 			findCtx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: orchestratorStatus},
 		)
 		if err != nil {
