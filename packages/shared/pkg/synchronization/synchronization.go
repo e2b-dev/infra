@@ -1,0 +1,139 @@
+package synchronization
+
+import (
+	"context"
+	"fmt"
+	"sync"
+	"time"
+
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
+)
+
+type Store[SourceItem any, SourceKey comparable, PoolItem any] interface {
+	SourceList(ctx context.Context) ([]SourceItem, error)
+	SourceKey(item SourceItem) SourceKey
+
+	PoolList(ctx context.Context) map[SourceKey]PoolItem
+	PoolExists(ctx context.Context, key SourceKey) bool
+	PoolInsert(ctx context.Context, key SourceKey, value SourceItem) error
+	PoolSynchronize(ctx context.Context, key SourceKey, value PoolItem)
+	PoolRemove(ctx context.Context, item PoolItem) error
+}
+
+// Synchronize is a generic type that provides methods for synchronizing a pool of items with a source.
+// It uses a Store interface to interact with the source and pool, allowing for flexible synchronization logic.
+type Synchronize[SourceItem any, SourceKey comparable, PoolItem any] struct {
+	Store Store[SourceItem, SourceKey, PoolItem]
+
+	Tracer           trace.Tracer
+	TracerSpanPrefix string
+}
+
+func (s *Synchronize[SourceItem, SourceKey, PoolItem]) Sync(ctx context.Context) error {
+	spanCtx, span := s.Tracer.Start(ctx, s.getSpanName("sync-items"))
+	defer span.End()
+
+	sourceItems, err := s.Store.SourceList(ctx)
+	if err != nil {
+		return err
+	}
+
+	s.runSyncDiscovered(spanCtx, sourceItems)
+	s.runSyncOutdated(spanCtx, sourceItems)
+
+	return nil
+}
+
+func (s *Synchronize[SourceItem, SourceKey, PoolItem]) SyncInBackground(cancel chan struct{}, syncInterval time.Duration, syncRoundTimeout time.Duration, runInitialSync bool) {
+	if runInitialSync {
+		initialSyncTimeout, initialSyncCancel := context.WithTimeout(context.Background(), syncRoundTimeout)
+		err := s.Sync(initialSyncTimeout)
+		initialSyncCancel()
+		if err != nil {
+			zap.L().Error("Initial sync failed", zap.Error(err))
+		}
+	}
+
+	timer := time.NewTicker(syncInterval)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-cancel:
+			zap.L().Info("Background synchronization ended")
+			return
+		case <-timer.C:
+			syncTimeout, syncCancel := context.WithTimeout(context.Background(), syncRoundTimeout)
+			err := s.Sync(syncTimeout)
+			syncCancel()
+			if err != nil {
+				zap.L().Error("Failed to synchronize", zap.Error(err))
+			}
+		}
+	}
+}
+
+func (s *Synchronize[SourceItem, SourceKey, PoolItem]) runSyncDiscovered(ctx context.Context, sourceItems []SourceItem) {
+	spanCtx, span := s.Tracer.Start(ctx, s.getSpanName("sync-discovered-items"))
+	defer span.End()
+
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	for _, sourceItem := range sourceItems {
+		sourceItemKey := s.Store.SourceKey(sourceItem)
+
+		// item already exists in the pool, skip it
+		if ok := s.Store.PoolExists(spanCtx, sourceItemKey); ok {
+			continue
+		}
+
+		// initialize the item
+		wg.Add(1)
+		go func(itemKey SourceKey, item SourceItem) {
+			defer wg.Done()
+			err := s.Store.PoolInsert(spanCtx, itemKey, item)
+			if err != nil {
+				zap.L().Error("Failed to insert item into pool", zap.Error(err), zap.Any("key", itemKey))
+			}
+		}(sourceItemKey, sourceItem)
+	}
+}
+
+func (s *Synchronize[SourceItem, SourceKey, PoolItem]) runSyncOutdated(ctx context.Context, sourceItems []SourceItem) {
+	spanCtx, span := s.Tracer.Start(ctx, s.getSpanName("sync-outdated-items"))
+	defer span.End()
+
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	for poolItemKey, poolItem := range s.Store.PoolList(ctx) {
+		found := false
+		for _, sourceItem := range sourceItems {
+			if s.Store.SourceKey(sourceItem) == poolItemKey {
+				found = true
+				break
+			}
+		}
+
+		// item is still present in the source, no need to remove it
+		if found {
+			continue
+		}
+
+		// remove the item that is no longer present in the source
+		wg.Add(1)
+		go func(poolItem PoolItem) {
+			defer wg.Done()
+			err := s.Store.PoolRemove(spanCtx, poolItem)
+			if err != nil {
+				zap.L().Error("Error during removing item from pool", zap.Error(err), zap.Any("key", poolItemKey))
+			}
+		}(poolItem)
+	}
+}
+
+func (s *Synchronize[SourceItem, SourceKey, PoolItem]) getSpanName(name string) string {
+	return fmt.Sprintf("%s-%s", s.TracerSpanPrefix, name)
+}
