@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -132,9 +131,9 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterNode
 }
 
 func (c *Cluster) GetOrchestratorNodes() []*ClusterNode {
-	nodes := make([]*ClusterNode, 0, len(c.nodes.Items()))
+	nodes := make([]*ClusterNode, 0)
 	for _, node := range c.nodes.Items() {
-		if slices.Contains(node.roles, infogrpc.ServiceInfoRole_Orchestrator) {
+		if node.IsOrchestratorNode() {
 			nodes = append(nodes, node)
 		}
 	}
