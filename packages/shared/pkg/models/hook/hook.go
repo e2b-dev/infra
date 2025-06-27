@@ -21,6 +21,18 @@ func (f AccessTokenFunc) Mutate(ctx context.Context, m models.Mutation) (models.
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *models.AccessTokenMutation", m)
 }
 
+// The ClusterFunc type is an adapter to allow the use of ordinary
+// function as Cluster mutator.
+type ClusterFunc func(context.Context, *models.ClusterMutation) (models.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ClusterFunc) Mutate(ctx context.Context, m models.Mutation) (models.Value, error) {
+	if mv, ok := m.(*models.ClusterMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *models.ClusterMutation", m)
+}
+
 // The EnvFunc type is an adapter to allow the use of ordinary
 // function as Env mutator.
 type EnvFunc func(context.Context, *models.EnvMutation) (models.Value, error)

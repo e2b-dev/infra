@@ -6,8 +6,7 @@ import (
 	"fmt"
 )
 
-type Sha256Hashing struct {
-}
+type Sha256Hashing struct{}
 
 func NewSHA256Hashing() *Sha256Hashing {
 	return &Sha256Hashing{}

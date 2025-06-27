@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -25,8 +24,7 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting teams")
 
-		err = fmt.Errorf("error when getting teams: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "error when getting teams", err)
 
 		return
 	}
@@ -36,7 +34,7 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 		if err != nil {
 			a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid team ID")
 
-			telemetry.ReportError(ctx, err)
+			telemetry.ReportError(ctx, "invalid team ID", err)
 
 			return
 		}
@@ -51,7 +49,7 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 		if team == nil {
 			a.sendAPIStoreError(c, http.StatusNotFound, "Team not found")
 
-			telemetry.ReportError(ctx, fmt.Errorf("team not found"))
+			telemetry.ReportError(ctx, "team not found", err)
 
 			return
 		}
@@ -66,7 +64,7 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 		if team == nil {
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "Default team not found")
 
-			telemetry.ReportError(ctx, fmt.Errorf("default team not found"))
+			telemetry.ReportError(ctx, "default team not found", err)
 
 			return
 		}
@@ -74,15 +72,14 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("user.id", userID.String()),
-		attribute.String("team.id", team.ID.String()),
+		telemetry.WithTeamID(team.ID.String()),
 	)
 
 	envs, err := a.db.GetEnvs(ctx, team.ID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting sandbox templates")
 
-		err = fmt.Errorf("error when getting envs: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "error when getting envs", err)
 
 		return
 	}

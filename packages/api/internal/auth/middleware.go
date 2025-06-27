@@ -78,9 +78,9 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openap
 	// Now, we need to get the API key from the request
 	headerKey, err := a.getHeaderKeysFromRequest(input.RequestValidationInput.Request)
 	if err != nil {
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("%v %w", a.errorMessage, err))
+		telemetry.ReportCriticalError(ctx, a.errorMessage, err)
 
-		return fmt.Errorf("%v %w", a.errorMessage, err)
+		return fmt.Errorf("%s %w", a.errorMessage, err)
 	}
 
 	telemetry.ReportEvent(ctx, "api key extracted")
@@ -89,11 +89,16 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openap
 	result, validationError := a.validationFunction(ctx, headerKey)
 	if validationError != nil {
 		zap.L().Info("validation error", zap.Error(validationError.Err))
-		telemetry.ReportError(ctx, fmt.Errorf("%s %w", a.errorMessage, validationError.Err))
+		telemetry.ReportError(ctx, a.errorMessage, validationError.Err)
 
 		var forbiddenError *db.TeamForbiddenError
 		if errors.As(validationError.Err, &forbiddenError) {
 			return fmt.Errorf("forbidden: %w", validationError.Err)
+		}
+
+		var blockedError *db.TeamBlockedError
+		if errors.As(validationError.Err, &blockedError) {
+			return fmt.Errorf("blocked: %w", validationError.Err)
 		}
 
 		return fmt.Errorf("%s\n%s (%w)", a.errorMessage, validationError.ClientMsg, validationError.Err)

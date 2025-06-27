@@ -52,33 +52,29 @@ func (o *Orchestrator) PauseInstance(
 		teamID,
 	)
 	if err != nil {
-		errMsg := fmt.Errorf("error pausing sandbox: %w", err)
+		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)
 
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		return errMsg
+		return err
 	}
 
 	err = snapshotInstance(ctx, o, sbx, *envBuild.EnvID, envBuild.ID.String())
 	if errors.Is(err, ErrPauseQueueExhausted{}) {
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("pause queue exhausted %w", err))
+		telemetry.ReportCriticalError(ctx, "pause queue exhausted", err)
 
 		return ErrPauseQueueExhausted{}
 	}
 
 	if err != nil && !errors.Is(err, ErrPauseQueueExhausted{}) {
-		errMsg := fmt.Errorf("error pausing sandbox: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)
 
-		return errMsg
+		return fmt.Errorf("error pausing sandbox: %w", err)
 	}
 
 	err = o.dbClient.EnvBuildSetStatus(ctx, *envBuild.EnvID, envBuild.ID, envbuild.StatusSuccess)
 	if err != nil {
-		errMsg := fmt.Errorf("error pausing sandbox: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)
 
-		return errMsg
+		return fmt.Errorf("error pausing sandbox: %w", err)
 	}
 
 	return nil

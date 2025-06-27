@@ -10,7 +10,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"golang.org/x/mod/semver"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -19,25 +18,26 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
-	InstanceIDPrefix    = "i"
-	metricTemplateAlias = metrics.MetricPrefix + "template.alias"
+	InstanceIDPrefix            = "i"
+	metricTemplateAlias         = metrics.MetricPrefix + "template.alias"
+	minEnvdVersionForSecureFlag = "0.2.0" // Minimum version of envd that supports secure flag
 )
 
-var (
-	// mostUsedTemplates is a map of the most used template aliases.
-	// It is used for monitoring and to reduce metric cardinality.
-	mostUsedTemplates = map[string]struct{}{
-		"base":                  {},
-		"code-interpreter-v1":   {},
-		"code-interpreter-beta": {},
-		"desktop":               {},
-	}
-)
+// mostUsedTemplates is a map of the most used template aliases.
+// It is used for monitoring and to reduce metric cardinality.
+var mostUsedTemplates = map[string]struct{}{
+	"base":                  {},
+	"code-interpreter-v1":   {},
+	"code-interpreter-beta": {},
+	"desktop":               {},
+}
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -55,8 +55,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 
-		errMsg := fmt.Errorf("error when parsing request: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
 
 		return
 	}
@@ -67,8 +66,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid environment ID: %s", err))
 
-		errMsg := fmt.Errorf("error when cleaning env ID: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when cleaning env ID", err)
 
 		return
 	}
@@ -81,7 +79,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	// Check if team has access to the environment
 	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, teamInfo.Team.ID, true)
 	if checkErr != nil {
-		telemetry.ReportCriticalError(ctx, checkErr.Err)
+		telemetry.ReportCriticalError(ctx, "error when getting template", checkErr.Err)
 		a.sendAPIStoreError(c, checkErr.Code, checkErr.ClientMsg)
 		return
 	}
@@ -107,7 +105,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	alias := firstAlias(env.Aliases)
 	telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", teamInfo.Team.ID.String()),
-		attribute.String("env.id", env.TemplateID),
+		telemetry.WithTemplateID(env.TemplateID),
 		attribute.String("env.alias", alias),
 		attribute.String("env.kernel.version", build.KernelVersion),
 		attribute.String("env.firecracker.version", build.FirecrackerVersion),
@@ -142,7 +140,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	if body.Secure != nil && *body.Secure == true {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
 		if tokenErr != nil {
-			zap.L().Error("Secure envd access token error", zap.Error(tokenErr.Err), zap.String("sandboxID", sandboxID), zap.String("buildID", build.ID.String()))
+			zap.L().Error("Secure envd access token error", zap.Error(tokenErr.Err), logger.WithSandboxID(sandboxID), logger.WithBuildID(build.ID.String()))
 			a.sendAPIStoreError(c, tokenErr.Code, tokenErr.ClientMsg)
 			return
 		}
@@ -187,7 +185,7 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 	}
 
 	// check if the envd version is newer than 0.2.0
-	if semver.Compare(fmt.Sprintf("v%s", *envdVersion), "v0.2.0") < 0 {
+	if !sharedUtils.IsGTEVersion(*envdVersion, minEnvdVersionForSecureFlag) {
 		return "", &api.APIError{
 			Code:      http.StatusBadRequest,
 			ClientMsg: "current template build does not support access flag, you need to re-build template to allow it",
@@ -205,7 +203,6 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 	}
 
 	return key, nil
-
 }
 
 func setTemplateNameMetric(c *gin.Context, aliases []string) {

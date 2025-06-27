@@ -12,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -30,7 +31,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	if err == nil {
 		// Check if sandbox belongs to the team
 		if *info.TeamID != team.ID {
-			zap.L().Error("sandbox %s doesn't exist or you don't have access to it", zap.String("sandbox_id", id))
+			zap.L().Error("sandbox %s doesn't exist or you don't have access to it", logger.WithSandboxID(id))
 			c.JSON(http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 			return
 		}
@@ -62,7 +63,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	// If sandbox not found try to get the latest snapshot
 	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxId, TeamID: team.ID})
 	if err != nil {
-		zap.L().Error("error getting last snapshot for sandbox", zap.String("sandbox_id", id), zap.Error(err))
+		zap.L().Error("error getting last snapshot for sandbox", logger.WithSandboxID(id), zap.Error(err))
 		c.JSON(http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 		return
 	}
@@ -74,7 +75,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	if lastSnapshot.Snapshot.EnvSecure {
 		key, err := a.envdAccessTokenGenerator.GenerateAccessToken(lastSnapshot.Snapshot.SandboxID)
 		if err != nil {
-			zap.L().Error("error generating sandbox access token", zap.String("sandbox_id", id), zap.Error(err))
+			zap.L().Error("error generating sandbox access token", logger.WithSandboxID(id), zap.Error(err))
 			c.JSON(http.StatusInternalServerError, fmt.Sprintf("error generating sandbox access token: %s", err))
 			return
 		}

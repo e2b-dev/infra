@@ -16,7 +16,6 @@ import (
 	nomadapi "github.com/hashicorp/nomad/api"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"github.com/redis/go-redis/v9"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -24,15 +23,17 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
+	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/api/internal/template-manager"
+	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 var supabaseJWTSecretsString = strings.TrimSpace(os.Getenv("SUPABASE_JWT_SECRETS"))
@@ -50,6 +51,7 @@ type APIStore struct {
 	Healthy                  bool
 	posthog                  *analyticscollector.PosthogClient
 	Tracer                   trace.Tracer
+	Telemetry                *telemetry.Client
 	orchestrator             *orchestrator.Orchestrator
 	templateManager          *template_manager.TemplateManager
 	db                       *db.DB
@@ -64,10 +66,11 @@ type APIStore struct {
 	// should use something like this: https://github.com/spf13/viper
 	// but for now this is good
 	readMetricsFromClickHouse string
+	clustersPool              *edge.Pool
 }
 
-func NewAPIStore(ctx context.Context) *APIStore {
-	tracer := otel.Tracer("api")
+func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
+	tracer := tel.TracerProvider.Tracer("api")
 
 	zap.L().Info("initializing API store and services")
 
@@ -114,44 +117,41 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		zap.L().Fatal("initializing Nomad client", zap.Error(err))
 	}
 
-	var redisClient *redis.Client
-	if rurl := os.Getenv("REDIS_URL"); rurl != "" {
-		opts, err := redis.ParseURL(rurl)
-		if err != nil {
-			zap.L().Fatal("invalid redis URL", zap.String("url", rurl), zap.Error(err))
-		}
-
-		redisClient = redis.NewClient(opts)
-	} else {
-		zap.L().Warn("REDIS_URL not set, using local caches")
-	}
-
-	var redisClusterClient *redis.ClusterClient
+	var redisClient redis.UniversalClient
 	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
 		// For managed Redis Cluster in GCP we should use Cluster Client, because
 		// > Redis node endpoints can change and can be recycled as nodes are added and removed over time.
 		// https://cloud.google.com/memorystore/docs/cluster/cluster-node-specification#cluster_endpoints
 		// https://cloud.google.com/memorystore/docs/cluster/client-library-code-samples#go-redis
-		redisClusterClient = redis.NewClusterClient(&redis.ClusterOptions{
+		redisClient = redis.NewClusterClient(&redis.ClusterOptions{
 			Addrs:        []string{redisClusterUrl},
 			MinIdleConns: 1,
 		})
+	} else if rurl := os.Getenv("REDIS_URL"); rurl != "" {
+		redisClient = redis.NewClient(&redis.Options{
+			Addr:         rurl,
+			MinIdleConns: 1,
+		})
+	} else {
+		zap.L().Warn("REDIS_URL not set, using local caches")
+	}
 
-		_, err := redisClusterClient.Ping(ctx).Result()
+	if redisClient != nil {
+		_, err := redisClient.Ping(ctx).Result()
 		if err != nil {
 			zap.L().Fatal("could not connect to Redis", zap.Error(err))
 		}
 
-		zap.L().Info("connected to Redis cluster", zap.String("url", redisClusterUrl))
+		zap.L().Info("connected to Redis cluster")
 	}
 
-	orch, err := orchestrator.New(ctx, tracer, nomadClient, posthogClient, redisClient, redisClusterClient, dbClient)
+	orch, err := orchestrator.New(ctx, tel, tracer, nomadClient, posthogClient, redisClient, dbClient)
 	if err != nil {
 		zap.L().Fatal("initializing Orchestrator client", zap.Error(err))
 	}
 
 	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
-	templateManager, err := template_manager.New(ctx, dbClient, templateBuildsCache)
+	templateManager, err := template_manager.New(ctx, tel.TracerProvider, tel.MeterProvider, dbClient, templateBuildsCache)
 	if err != nil {
 		zap.L().Fatal("initializing Template manager client", zap.Error(err))
 	}
@@ -177,12 +177,18 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		zap.L().Fatal("initializing access token generator failed", zap.Error(err))
 	}
 
+	clustersPool, err := edge.NewPool(ctx, sqlcDB, tracer)
+	if err != nil {
+		zap.L().Fatal("initializing edge clusters pool failed", zap.Error(err))
+	}
+
 	a := &APIStore{
 		Healthy:                   false,
 		orchestrator:              orch,
 		templateManager:           templateManager,
 		db:                        dbClient,
 		sqlcDB:                    sqlcDB,
+		Telemetry:                 tel,
 		Tracer:                    tracer,
 		posthog:                   posthogClient,
 		lokiClient:                lokiClient,
@@ -193,6 +199,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		clickhouseStore:           clickhouseStore,
 		envdAccessTokenGenerator:  accessTokenGenerator,
 		readMetricsFromClickHouse: readMetricsFromClickHouse,
+		clustersPool:              clustersPool,
 	}
 
 	// Wait till there's at least one, otherwise we can't create sandboxes yet
@@ -271,6 +278,15 @@ func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authca
 	if err != nil {
 		var usageErr *db.TeamForbiddenError
 		if errors.As(err, &usageErr) {
+			return authcache.AuthTeamInfo{}, &api.APIError{
+				Err:       err,
+				ClientMsg: err.Error(),
+				Code:      http.StatusForbidden,
+			}
+		}
+
+		var blockedErr *db.TeamBlockedError
+		if errors.As(err, &blockedErr) {
 			return authcache.AuthTeamInfo{}, &api.APIError{
 				Err:       err,
 				ClientMsg: err.Error(),
@@ -384,14 +400,25 @@ func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) 
 	team, tier, err := a.authCache.GetOrSet(ctx, teamID, func(ctx context.Context, key string) (*models.Team, *models.Tier, error) {
 		return a.db.GetTeamByIDAndUserIDAuth(ctx, teamID, userID)
 	})
-	if errors.Is(err, &db.TeamForbiddenError{}) {
-		return authcache.AuthTeamInfo{}, &api.APIError{
-			Err:       fmt.Errorf("failed getting team: %w", err),
-			ClientMsg: fmt.Sprintf("Forbidden: %s", err.Error()),
-			Code:      http.StatusUnauthorized,
-		}
-	}
 	if err != nil {
+		var usageErr *db.TeamForbiddenError
+		if errors.As(err, &usageErr) {
+			return authcache.AuthTeamInfo{}, &api.APIError{
+				Err:       fmt.Errorf("failed getting team: %w", err),
+				ClientMsg: fmt.Sprintf("Forbidden: %s", err.Error()),
+				Code:      http.StatusForbidden,
+			}
+		}
+
+		var blockedErr *db.TeamBlockedError
+		if errors.As(err, &blockedErr) {
+			return authcache.AuthTeamInfo{}, &api.APIError{
+				Err:       fmt.Errorf("failed getting team: %w", err),
+				ClientMsg: fmt.Sprintf("Blocked: %s", err.Error()),
+				Code:      http.StatusForbidden,
+			}
+		}
+
 		return authcache.AuthTeamInfo{}, &api.APIError{
 			Err:       fmt.Errorf("failed getting team: %w", err),
 			ClientMsg: "Backend authentication failed",

@@ -3,6 +3,7 @@ package sbxlogger
 import (
 	"context"
 
+	"go.opentelemetry.io/otel/log"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -19,21 +20,23 @@ type SandboxLoggerConfig struct {
 	CollectorAddress string
 }
 
-func NewLogger(ctx context.Context, config SandboxLoggerConfig) *zap.Logger {
+func NewLogger(ctx context.Context, loggerProvider log.LoggerProvider, config SandboxLoggerConfig) *zap.Logger {
 	level := zap.NewAtomicLevelAt(zap.DebugLevel)
 
+	enableConsole := false
 	var core zapcore.Core
 	if !config.IsInternal && config.CollectorAddress != "" {
 		// Add Vector exporter to the core
-		vectorEncoder := zapcore.NewJSONEncoder(logger.GetEncoderConfig(zapcore.DefaultLineEnding))
-		httpWriter := logger.NewBufferedHTTPWriter(ctx, config.CollectorAddress)
+		vectorEncoder := zapcore.NewJSONEncoder(GetSandboxEncoderConfig())
+		httpWriter := logger.NewHTTPWriter(ctx, config.CollectorAddress)
 		core = zapcore.NewCore(
 			vectorEncoder,
 			httpWriter,
 			level,
 		)
 	} else {
-		core = logger.GetOTELCore(config.ServiceName)
+		core = logger.GetOTELCore(loggerProvider, config.ServiceName)
+		enableConsole = true
 	}
 
 	lg, err := logger.NewLogger(ctx, logger.LoggerConfig{
@@ -44,11 +47,25 @@ func NewLogger(ctx context.Context, config SandboxLoggerConfig) *zap.Logger {
 		InitialFields: []zap.Field{
 			zap.String("logger", config.ServiceName),
 		},
-		Cores: []zapcore.Core{core},
+		Cores:         []zapcore.Core{core},
+		EnableConsole: enableConsole,
 	})
 	if err != nil {
 		panic(err)
 	}
 
 	return lg
+}
+
+func GetSandboxEncoderConfig() zapcore.EncoderConfig {
+	return zapcore.EncoderConfig{
+		TimeKey:       "timestamp",
+		MessageKey:    "message",
+		LevelKey:      "level",
+		EncodeLevel:   zapcore.LowercaseLevelEncoder,
+		NameKey:       "logger",
+		StacktraceKey: "stacktrace",
+		EncodeTime:    zapcore.RFC3339NanoTimeEncoder,
+		LineEnding:    zapcore.DefaultLineEnding,
+	}
 }

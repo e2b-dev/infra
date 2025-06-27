@@ -12,12 +12,11 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
-	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -27,9 +26,7 @@ const (
 	InstanceAutoPauseDefault = false
 )
 
-var (
-	ErrPausingInstanceNotFound = errors.New("pausing instance not found")
-)
+var ErrPausingInstanceNotFound = errors.New("pausing instance not found")
 
 func NewInstanceInfo(
 	Instance *api.Sandbox,
@@ -140,31 +137,31 @@ type InstanceCache struct {
 	pausing      *smap.Map[*InstanceInfo]
 
 	cache          *lifecycleCache[*InstanceInfo]
-	insertInstance func(data *InstanceInfo) error
+	insertInstance func(data *InstanceInfo, created bool) error
 
 	sandboxCounter metric.Int64UpDownCounter
 	createdCounter metric.Int64Counter
-	analytics      analyticscollector.AnalyticsCollectorClient
 
 	mu sync.Mutex
 }
 
 func NewCache(
 	ctx context.Context,
-	analytics analyticscollector.AnalyticsCollectorClient,
-	insertInstance func(data *InstanceInfo) error,
+	meterProvider metric.MeterProvider,
+	insertInstance func(data *InstanceInfo, created bool) error,
 	deleteInstance func(data *InstanceInfo) error,
 ) *InstanceCache {
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
 	// right now we load them from Orchestrator
 	cache := newLifecycleCache[*InstanceInfo]()
 
-	sandboxCounter, err := meters.GetUpDownCounter(meters.SandboxCountMeterName)
+	meter := meterProvider.Meter("api.cache.sandbox")
+	sandboxCounter, err := telemetry.GetUpDownCounter(meter, telemetry.SandboxCountMeterName)
 	if err != nil {
 		zap.L().Error("error getting counter", zap.Error(err))
 	}
 
-	createdCounter, err := meters.GetCounter(meters.SandboxCreateMeterName)
+	createdCounter, err := telemetry.GetCounter(meter, telemetry.SandboxCreateMeterName)
 	if err != nil {
 		zap.L().Error("error getting counter", zap.Error(err))
 	}
@@ -172,7 +169,6 @@ func NewCache(
 	instanceCache := &InstanceCache{
 		cache:          cache,
 		insertInstance: insertInstance,
-		analytics:      analytics,
 		sandboxCounter: sandboxCounter,
 		createdCounter: createdCounter,
 		reservations:   NewReservationCache(),
@@ -197,13 +193,13 @@ func (c *InstanceCache) Len() int {
 	return c.cache.Len()
 }
 
-func (c *InstanceCache) Set(key string, value *InstanceInfo) {
+func (c *InstanceCache) Set(key string, value *InstanceInfo, created bool) {
 	inserted := c.cache.SetIfAbsent(key, value)
 	if inserted {
 		go func() {
-			err := c.insertInstance(value)
+			err := c.insertInstance(value, created)
 			if err != nil {
-				fmt.Printf("error inserting instance: %v", err)
+				zap.L().Error("error inserting instance", zap.Error(err))
 			}
 		}()
 	}

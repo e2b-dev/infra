@@ -57,7 +57,7 @@ resource "google_compute_disk" "stateful_disk" {
   type = "pd-ssd"
   zone = var.gcp_zone
 
-  size = 10
+  size = 100
 }
 
 resource "google_compute_per_instance_config" "instances" {

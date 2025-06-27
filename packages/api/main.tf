@@ -1,16 +1,3 @@
-terraform {
-  required_providers {
-    docker = {
-      source  = "kreuzwerker/docker"
-      version = "3.0.2"
-    }
-    random = {
-      source  = "hashicorp/random"
-      version = "3.5.1"
-    }
-  }
-}
-
 resource "google_artifact_registry_repository" "custom_environments_repository" {
   format        = "DOCKER"
   repository_id = "${var.prefix}custom-environments"
@@ -21,16 +8,6 @@ resource "google_artifact_registry_repository_iam_member" "custom_environments_r
   repository = google_artifact_registry_repository.custom_environments_repository.name
   role       = "roles/artifactregistry.repoAdmin"
   member     = "serviceAccount:${var.google_service_account_email}"
-}
-
-data "docker_registry_image" "api_image" {
-  name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/api:latest"
-}
-
-resource "docker_image" "api_image" {
-  name          = data.docker_registry_image.api_image.name
-  pull_triggers = [data.docker_registry_image.api_image.sha256_digest]
-  platform      = "linux/amd64/v8"
 }
 
 resource "google_secret_manager_secret" "postgres_connection_string" {

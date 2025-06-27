@@ -16,8 +16,8 @@ endef
 tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, CLIENT_MACHINE_TYPE) \
 	$(call tfvar, CLIENT_CLUSTER_SIZE) \
-	$(call tfvar, CLIENT_REGIONAL_CLUSTER_SIZE) \
-	$(call tfvar, CLIENT_CLUSTER_AUTO_SCALING_MAX) \
+	$(call tfvar, CLIENT_CLUSTER_SIZE_MAX) \
+	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_SIZE_GB) \
 	$(call tfvar, API_MACHINE_TYPE) \
 	$(call tfvar, API_CLUSTER_SIZE) \
 	$(call tfvar, BUILD_MACHINE_TYPE) \
@@ -34,6 +34,17 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, PREFIX) \
 	$(call tfvar, TERRAFORM_STATE_BUCKET) \
 	$(call tfvar, OTEL_TRACING_PRINT) \
+	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
+	$(call tfvar, CLIENT_PROXY_COUNT) \
+	$(call tfvar, CLIENT_PROXY_CPU_COUNT) \
+	$(call tfvar, CLIENT_PROXY_RESOURCES_MEMORY_MB) \
+	$(call tfvar, CLICKHOUSE_RESOURCES_CPU_COUNT) \
+	$(call tfvar, CLICKHOUSE_RESOURCES_MEMORY_MB) \
+	$(call tfvar, LOKI_RESOURCES_CPU_COUNT) \
+	$(call tfvar, LOKI_RESOURCES_MEMORY_MB) \
+	$(call tfvar, OTEL_TRACING_PRINT) \
+	$(call tfvar, OTEL_COLLECTOR_RESOURCES_CPU_COUNT) \
+	$(call tfvar, OTEL_COLLECTOR_RESOURCES_MEMORY_MB) \
 	$(call tfvar, TEMPLATE_BUCKET_NAME) \
 	$(call tfvar, TEMPLATE_BUCKET_LOCATION) \
 	$(call tfvar, REDIS_MANAGED) \
@@ -51,7 +62,7 @@ login-gcloud:
 .PHONY: init
 init:
 	@ printf "Initializing Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	gcloud storage buckets create gs://$(TERRAFORM_STATE_BUCKET) --location $(GCP_REGION) --project $(GCP_PROJECT_ID) --default-storage-class STANDARD  --uniform-bucket-level-access > /dev/null 2>&1 || true
 	$(TF) init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
 	$(tf_vars) $(TF) apply -target=module.init -target=module.buckets -auto-approve -input=false -compact-warnings
@@ -64,10 +75,7 @@ init:
 download-prod-env:
 	@ hcp auth login
 	@ hcp profile init --vault-secrets
-	@ hcp vault-secrets secrets read env_$(ENV) >/dev/null 2>&1 && echo "Environment found, writing to the .env.$(ENV) file" || { echo "Environment $(ENV) does not exist"; exit 1; }
-	@ rm -f ".env.$(ENV)"
-	@ hcp vault-secrets secrets open env_$(ENV) -o ".env.$(ENV)"
-	@ DECODED=$$(cat ".env.$(ENV)" | base64 -d) && echo "$$DECODED" > ".env.$(ENV)"
+	@  ./scripts/download-prod-env.sh ${ENV}
 
 # Updates production environment from .env file, this is used only for E2B.dev production
 # Uses HCP CLI to update secrets from HCP Vault Secrets
@@ -75,13 +83,22 @@ download-prod-env:
 update-prod-env:
 	@ hcp auth login
 	@ hcp profile init --vault-secrets
-	@ cat ".env.$(ENV)" | base64 -w 0 | tr -d '\n' | hcp vault-secrets secrets create env_$(ENV) --data-file=-
+	@ ./scripts/update-prod-env.sh ${ENV}
 
 .PHONY: plan
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	$(TF) fmt -recursive
-	$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode
+	@ $(TF) fmt -recursive
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode; \
+	status=$$?; \
+	if [ $$status -eq 0 ]; then \
+		echo "No changes."; \
+	elif [ $$status -eq 2 ]; then \
+		echo "Changes detected."; \
+	else \
+		echo "Error during plan."; \
+		exit $$status; \
+	fi
 
 # Deploy all jobs in Nomad
 .PHONY: plan-only-jobs
@@ -101,7 +118,7 @@ plan-only-jobs/%:
 .PHONY: apply
 apply:
 	@ printf "Applying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	$(tf_vars) \
 	$(TF) apply \
 	-auto-approve \
@@ -126,7 +143,7 @@ plan-without-jobs:
 .PHONY: destroy
 destroy:
 	@ printf "Destroying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	$(tf_vars) \
 	$(TF) destroy \
 	-compact-warnings \
@@ -148,14 +165,22 @@ build-and-upload:build-and-upload/docker-reverse-proxy
 build-and-upload:build-and-upload/orchestrator
 build-and-upload:build-and-upload/template-manager
 build-and-upload:build-and-upload/envd
+build-and-upload:build-and-upload/clickhouse-migrator
 build-and-upload/template-manager:
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/template-manager
 build-and-upload/orchestrator:
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/orchestrator
+build-and-upload/api:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/api build-and-upload
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/db build-and-upload
+build-and-upload/clickhouse-migrator:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/clickhouse build-and-upload
 build-and-upload/%:
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/$(notdir $@) build-and-upload
 
 .PHONY: copy-public-builds
@@ -165,7 +190,7 @@ copy-public-builds:
 
 
 .PHONY: generate
-generate: generate/api generate/orchestrator generate/envd generate/db
+generate: generate/api generate/orchestrator generate/client-proxy generate/envd generate/db
 generate/%:
 	@echo "Generating code for *$(notdir $@)*"
 	$(MAKE) -C packages/$(notdir $@) generate
@@ -188,7 +213,7 @@ switch-env:
 .PHONY: import
 import:
 	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	$(tf_vars) $(TF) import $(TARGET) $(ID)
 
 .PHONY: setup-ssh

@@ -25,12 +25,7 @@ variable "client_cluster_size" {
   default = 0
 }
 
-variable "client_regional_cluster_size" {
-  type    = number
-  default = 0
-}
-
-variable "client_cluster_auto_scaling_max" {
+variable "client_cluster_size_max" {
   type    = number
   default = 0
 }
@@ -106,20 +101,35 @@ variable "clickhouse_health_port" {
   }
 }
 
-variable "client_proxy_health_port" {
+variable "client_proxy_count" {
+  type    = number
+  default = 1
+}
+
+variable "client_proxy_resources_memory_mb" {
+  type    = number
+  default = 1024
+}
+
+variable "client_proxy_resources_cpu_count" {
+  type    = number
+  default = 1
+}
+
+variable "edge_api_port" {
   type = object({
     name = string
     port = number
     path = string
   })
   default = {
-    name = "health"
+    name = "edge-api"
     port = 3001
-    path = "/health"
+    path = "/health/traffic"
   }
 }
 
-variable "client_proxy_port" {
+variable "edge_proxy_port" {
   type = object({
     name = string
     port = number
@@ -196,6 +206,17 @@ variable "nomad_port" {
   default = 4646
 }
 
+variable "allow_sandbox_internet" {
+  type    = bool
+  default = true
+}
+
+variable "client_cluster_cache_disk_size_gb" {
+  type        = number
+  description = "The size of the root disk for the orchestrator machines in GB"
+  default     = 500
+}
+
 variable "orchestrator_port" {
   type    = number
   default = 5008
@@ -208,12 +229,32 @@ variable "orchestrator_proxy_port" {
 
 variable "template_manager_port" {
   type    = number
-  default = 5009
+  default = 5008 // we want to use the same port for both because of edge api
 }
 
 variable "environment" {
   type    = string
   default = "prod"
+}
+
+variable "otel_collector_resources_memory_mb" {
+  type    = number
+  default = 1024
+}
+
+variable "otel_collector_resources_cpu_count" {
+  type    = number
+  default = 0.5
+}
+
+variable "clickhouse_resources_memory_mb" {
+  type    = number
+  default = 8192
+}
+
+variable "clickhouse_resources_cpu_count" {
+  type    = number
+  default = 4
 }
 
 variable "otel_tracing_print" {
@@ -253,6 +294,16 @@ variable "terraform_state_bucket" {
   type        = string
 }
 
+variable "loki_resources_memory_mb" {
+  type    = number
+  default = 2048
+}
+
+variable "loki_resources_cpu_count" {
+  type    = number
+  default = 1
+}
+
 variable "loki_service_port" {
   type = object({
     name = string
@@ -283,4 +334,10 @@ variable "redis_managed" {
 variable "grafana_managed" {
   default = false
   type    = bool
+}
+
+variable "write_clickhouse_metrics" {
+  description = "Whether to write metrics to ClickHouse"
+  type        = bool
+  default     = false
 }

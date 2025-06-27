@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/cluster"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
@@ -24,9 +25,23 @@ func init() {
 	accesstokenFields := schema.AccessToken{}.Fields()
 	_ = accesstokenFields
 	// accesstokenDescName is the schema descriptor for name field.
-	accesstokenDescName := accesstokenFields[4].Descriptor()
+	accesstokenDescName := accesstokenFields[7].Descriptor()
 	// accesstoken.DefaultName holds the default value on creation for the name field.
 	accesstoken.DefaultName = accesstokenDescName.Default.(string)
+	clusterFields := schema.Cluster{}.Fields()
+	_ = clusterFields
+	// clusterDescEndpoint is the schema descriptor for endpoint field.
+	clusterDescEndpoint := clusterFields[1].Descriptor()
+	// cluster.EndpointValidator is a validator for the "endpoint" field. It is called by the builders before save.
+	cluster.EndpointValidator = clusterDescEndpoint.Validators[0].(func(string) error)
+	// clusterDescEndpointTLS is the schema descriptor for endpoint_tls field.
+	clusterDescEndpointTLS := clusterFields[2].Descriptor()
+	// cluster.DefaultEndpointTLS holds the default value on creation for the endpoint_tls field.
+	cluster.DefaultEndpointTLS = clusterDescEndpointTLS.Default.(bool)
+	// clusterDescToken is the schema descriptor for token field.
+	clusterDescToken := clusterFields[3].Descriptor()
+	// cluster.TokenValidator is a validator for the "token" field. It is called by the builders before save.
+	cluster.TokenValidator = clusterDescToken.Validators[0].(func(string) error)
 	envFields := schema.Env{}.Fields()
 	_ = envFields
 	// envDescCreatedAt is the schema descriptor for created_at field.
@@ -92,11 +107,11 @@ func init() {
 	teamapikeyFields := schema.TeamAPIKey{}.Fields()
 	_ = teamapikeyFields
 	// teamapikeyDescCreatedAt is the schema descriptor for created_at field.
-	teamapikeyDescCreatedAt := teamapikeyFields[4].Descriptor()
+	teamapikeyDescCreatedAt := teamapikeyFields[7].Descriptor()
 	// teamapikey.DefaultCreatedAt holds the default value on creation for the created_at field.
 	teamapikey.DefaultCreatedAt = teamapikeyDescCreatedAt.Default.(func() time.Time)
 	// teamapikeyDescName is the schema descriptor for name field.
-	teamapikeyDescName := teamapikeyFields[7].Descriptor()
+	teamapikeyDescName := teamapikeyFields[10].Descriptor()
 	// teamapikey.DefaultName holds the default value on creation for the name field.
 	teamapikey.DefaultName = teamapikeyDescName.Default.(string)
 	userFields := schema.User{}.Fields()

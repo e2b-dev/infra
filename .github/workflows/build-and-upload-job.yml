@@ -60,6 +60,8 @@ jobs:
             ${{ runner.os }}-go-mod-
 
       - name: Build and upload jobs
+        env:
+          AUTO_CONFIRM_DEPLOY: true
         run: |
           # Parse semicolon-separated job names
           IFS=';' read -ra JOBS <<< "${{ inputs.job_names }}"

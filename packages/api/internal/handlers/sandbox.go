@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -57,8 +56,7 @@ func (a *APIStore) startSandbox(
 		envdAccessToken,
 	)
 	if instanceErr != nil {
-		errMsg := fmt.Errorf("error when creating instance: %w", instanceErr.Err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when creating instance", instanceErr.Err)
 		return nil, instanceErr
 	}
 

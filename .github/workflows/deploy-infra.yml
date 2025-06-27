@@ -54,17 +54,14 @@ jobs:
         run: |
           make copy-public-builds
 
-      - name: Migrate database
-        if: inputs.plan_only == 'false'
-        run: |
-          make migrate
-
       - name: Plan infrastructure
         run: |
           make plan-without-jobs
 
       - name: Apply infrastructure
         if: inputs.plan_only == 'false'
+        env:
+          AUTO_CONFIRM_DEPLOY: true
         run: |
           make apply
         

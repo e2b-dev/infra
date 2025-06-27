@@ -63,6 +63,7 @@ job "template-manager" {
         LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"
         ORCHESTRATOR_SERVICES         = "${orchestrator_services}"
         LOGS_COLLECTOR_PUBLIC_IP      = "${logs_collector_public_ip}"
+        ALLOW_SANDBOX_INTERNET        = "${allow_sandbox_internet}"
 %{ if !update_stanza }
         FORCE_STOP                    = "true"
 %{ endif }
@@ -70,7 +71,7 @@ job "template-manager" {
 
       config {
         command = "/bin/bash"
-        args    = ["-c", " chmod +x local/template-manager && local/template-manager --port ${port} --wait 0"]
+        args    = ["-c", " chmod +x local/template-manager && local/template-manager --port ${port}"]
       }
 
       artifact {

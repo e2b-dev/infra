@@ -6,7 +6,7 @@ import (
 	"io"
 	"sort"
 
-	v1 "github.com/google/go-containerregistry/pkg/v1"
+	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 )
 
@@ -17,7 +17,7 @@ type layerFile struct {
 
 // LayerFile creates a layer from a single file map. These layers are reproducible and consistent.
 // A filemap is a path -> file content map representing a file system.
-func LayerFile(filemap map[string]layerFile) (v1.Layer, error) {
+func LayerFile(filemap map[string]layerFile) (containerregistry.Layer, error) {
 	b := &bytes.Buffer{}
 	w := tar.NewWriter(b)
 
@@ -51,7 +51,7 @@ func LayerFile(filemap map[string]layerFile) (v1.Layer, error) {
 }
 
 // LayerSymlink creates a layer from a single symlink map. These layers are reproducible and consistent.
-func LayerSymlink(symlinks map[string]string) (v1.Layer, error) {
+func LayerSymlink(symlinks map[string]string) (containerregistry.Layer, error) {
 	b := &bytes.Buffer{}
 	w := tar.NewWriter(b)
 

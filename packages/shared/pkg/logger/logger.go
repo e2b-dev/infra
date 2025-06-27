@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"go.opentelemetry.io/contrib/bridges/otelzap"
-	"go.opentelemetry.io/otel/log/global"
+	"go.opentelemetry.io/otel/log"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -26,9 +26,11 @@ type LoggerConfig struct {
 	InitialFields []zap.Field
 	// Cores additional processing cores for the logger.
 	Cores []zapcore.Core
+	// EnableConsole enables console logging.
+	EnableConsole bool
 }
 
-func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, error) {
+func NewLogger(_ context.Context, loggerConfig LoggerConfig) (*zap.Logger, error) {
 	var level zap.AtomicLevel
 	if loggerConfig.IsDebug {
 		level = zap.NewAtomicLevelAt(zap.DebugLevel)
@@ -36,20 +38,22 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 		level = zap.NewAtomicLevelAt(zap.InfoLevel)
 	}
 
+	// Console logging configuration
 	config := zap.Config{
-		Level:             level,
 		DisableStacktrace: loggerConfig.DisableStacktrace,
 		// Takes stacktraces more liberally
-		Development:   true,
-		Sampling:      nil,
-		Encoding:      "json",
-		EncoderConfig: GetEncoderConfig(zapcore.DefaultLineEnding),
-		OutputPaths: []string{
-			"stdout",
-		},
-		ErrorOutputPaths: []string{
-			"stderr",
-		},
+		Development: true,
+		Sampling:    nil,
+
+		Encoding:         "console",
+		EncoderConfig:    GetConsoleEncoderConfig(),
+		Level:            level,
+		OutputPaths:      []string{},
+		ErrorOutputPaths: []string{},
+	}
+	if loggerConfig.EnableConsole {
+		config.OutputPaths = []string{"stdout"}
+		config.ErrorOutputPaths = []string{"stderr"}
 	}
 
 	cores := make([]zapcore.Core, 0)
@@ -75,21 +79,15 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 	return logger, nil
 }
 
-func GetEncoderConfig(lineEnding string) zapcore.EncoderConfig {
-	return zapcore.EncoderConfig{
-		TimeKey:       "timestamp",
-		MessageKey:    "message",
-		LevelKey:      "level",
-		EncodeLevel:   zapcore.LowercaseLevelEncoder,
-		NameKey:       "logger",
-		StacktraceKey: "stacktrace",
-		EncodeTime:    zapcore.RFC3339NanoTimeEncoder,
-		LineEnding:    lineEnding,
-	}
+func GetConsoleEncoderConfig() zapcore.EncoderConfig {
+	cfg := zap.NewDevelopmentEncoderConfig()
+	cfg.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	cfg.CallerKey = zapcore.OmitKey
+	cfg.ConsoleSeparator = "  "
+
+	return cfg
 }
 
-func GetOTELCore(serviceName string) zapcore.Core {
-	provider := global.GetLoggerProvider()
-
+func GetOTELCore(provider log.LoggerProvider, serviceName string) zapcore.Core {
 	return otelzap.NewCore(serviceName, otelzap.WithLoggerProvider(provider))
 }

@@ -294,7 +294,7 @@ func (p *Process) Create(
 		// Forward kernel logs to the ttyS0, which will be picked up by the stdout of FC process
 		delete(args, "quiet")
 		args["console"] = "ttyS0"
-		args["loglevel"] = "5" //KERN_NOTICE
+		args["loglevel"] = "5" // KERN_NOTICE
 	}
 
 	kernelArgs := args.String()

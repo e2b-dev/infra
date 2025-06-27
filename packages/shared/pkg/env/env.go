@@ -1,8 +1,11 @@
 package env
 
-import "os"
+import (
+	"os"
+	"strconv"
+)
 
-var environment = GetEnv("ENVIRONMENT", "local")
+var environment = GetEnv("ENVIRONMENT", "prod")
 
 func IsLocal() bool {
 	return environment == "local"
@@ -22,4 +25,17 @@ func GetEnv(key, defaultValue string) string {
 		return defaultValue
 	}
 	return value
+}
+
+func GetEnvAsInt(key string, defaultValue int) (int, error) {
+	if v := os.Getenv(key); v != "" {
+		value, err := strconv.Atoi(v)
+		if err != nil {
+			return defaultValue, err
+		}
+
+		return value, nil
+	}
+
+	return defaultValue, nil
 }

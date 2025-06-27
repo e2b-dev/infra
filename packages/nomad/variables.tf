@@ -6,6 +6,10 @@ variable "gcp_zone" {
   type = string
 }
 
+variable "orchestration_repository_name" {
+  type = string
+}
+
 variable "consul_acl_token_secret" {
   type = string
 }
@@ -22,15 +26,19 @@ variable "nomad_port" {
   type = number
 }
 
+variable "otel_collector_resources_memory_mb" {
+  type = number
+}
+
+variable "otel_collector_resources_cpu_count" {
+  type = number
+}
+
 variable "otel_tracing_print" {
   type = bool
 }
 
 # API
-variable "api_docker_image_digest" {
-  type = string
-}
-
 variable "api_port" {
   type = object({
     name        = string
@@ -96,11 +104,19 @@ variable "supabase_jwt_secrets_secret_name" {
   type = string
 }
 
-variable "client_proxy_docker_image_digest" {
-  type = string
+variable "client_proxy_count" {
+  type = number
 }
 
-variable "client_proxy_health_port" {
+variable "client_proxy_resources_memory_mb" {
+  type = number
+}
+
+variable "client_proxy_resources_cpu_count" {
+  type = number
+}
+
+variable "edge_api_port" {
   type = object({
     name = string
     port = number
@@ -108,7 +124,11 @@ variable "client_proxy_health_port" {
   })
 }
 
-variable "client_proxy_port" {
+variable "edge_api_secret" {
+  type = string
+}
+
+variable "edge_proxy_port" {
   type = object({
     name = string
     port = number
@@ -147,8 +167,16 @@ variable "launch_darkly_api_key_secret_name" {
   type = string
 }
 
-variable "clickhouse_bucket_name" {
+variable "clickhouse_backups_bucket_name" {
   type = string
+}
+
+variable "loki_resources_memory_mb" {
+  type = number
+}
+
+variable "loki_resources_cpu_count" {
+  type = number
 }
 
 variable "loki_bucket_name" {
@@ -167,10 +195,6 @@ variable "redis_url_secret_version" {
 }
 
 # Docker reverse proxy
-variable "docker_reverse_proxy_docker_image_digest" {
-  type = string
-}
-
 variable "docker_reverse_proxy_port" {
   type = object({
     name        = string
@@ -200,6 +224,9 @@ variable "client_machine_type" {
   type = string
 }
 
+variable "allow_sandbox_internet" {
+  type = bool
+}
 
 # Template manager
 variable "template_manager_port" {
@@ -219,6 +246,14 @@ variable "redis_port" {
 }
 
 # Clickhouse
+variable "clickhouse_resources_memory_mb" {
+  type = number
+}
+
+variable "clickhouse_resources_cpu_count" {
+  type = number
+}
+
 variable "clickhouse_username" {
   type    = string
   default = "e2b"
@@ -232,6 +267,15 @@ variable "clickhouse_server_count" {
   type = number
 }
 
+variable "clickhouse_metrics_port" {
+  type    = number
+  default = 9363
+}
+
+variable "otel_collector_grpc_port" {
+  type    = number
+  default = 4317
+}
 variable "clickhouse_server_port" {
   type = object({
     name = string

@@ -104,7 +104,6 @@ func TestAPIStore_getSandboxesSandboxIDMetricsClickhouse(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			a := &APIStore{
-
 				clickhouseStore: tt.fields.clickhouseStore,
 			}
 			got, err := a.GetSandboxesSandboxIDMetricsFromClickhouse(tt.args.ctx, tt.args.sandboxID, tt.args.teamID, tt.args.limit, tt.args.duration)

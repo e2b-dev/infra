@@ -154,8 +154,10 @@ func (fw *Firewall) AddBlockedIP(cidr string) error {
 
 		toAppend := []nftables.SetElement{
 			{Key: netip.MustParseAddr("0.0.0.0").AsSlice()},
-			{Key: netip.MustParseAddr("255.255.255.255").AsSlice(),
-				IntervalEnd: true},
+			{
+				Key:         netip.MustParseAddr("255.255.255.255").AsSlice(),
+				IntervalEnd: true,
+			},
 		}
 
 		if err := fw.conn.SetAddElements(fw.blockSet.Set(), toAppend); err != nil {

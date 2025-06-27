@@ -9,7 +9,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -30,16 +29,18 @@ type Pool struct {
 	slotStorage Storage
 }
 
-func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int, clientID string, tracer trace.Tracer) (*Pool, error) {
+func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPoolSize, reusedSlotsPoolSize int, clientID string, tracer trace.Tracer) (*Pool, error) {
 	newSlots := make(chan *Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan *Slot, reusedSlotsPoolSize)
 
-	newSlotCounter, err := meters.GetUpDownCounter(meters.NewNetworkSlotSPoolCounterMeterName)
+	meter := meterProvider.Meter("orchestrator.network.pool")
+
+	newSlotCounter, err := telemetry.GetUpDownCounter(meter, telemetry.NewNetworkSlotSPoolCounterMeterName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new slot counter: %w", err)
 	}
 
-	reusedSlotsCounter, err := meters.GetUpDownCounter(meters.ReusedNetworkSlotSPoolCounterMeterName)
+	reusedSlotsCounter, err := telemetry.GetUpDownCounter(meter, telemetry.ReusedNetworkSlotSPoolCounterMeterName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create reused slot counter: %w", err)
 	}

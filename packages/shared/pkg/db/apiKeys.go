@@ -19,17 +19,21 @@ func (e *TeamForbiddenError) Error() string {
 	return e.message
 }
 
+type TeamBlockedError struct {
+	message string
+}
+
+func (e *TeamBlockedError) Error() string {
+	return e.message
+}
+
 func validateTeamUsage(team *models.Team) error {
 	if team.IsBanned {
 		return &TeamForbiddenError{message: "team is banned"}
 	}
 
 	if team.IsBlocked {
-		if team.BlockedReason == nil {
-			return &TeamForbiddenError{message: "team was blocked"}
-		}
-
-		return &TeamForbiddenError{message: fmt.Sprintf("team was blocked, reason: %s", *team.BlockedReason)}
+		return &TeamBlockedError{message: "team is blocked"}
 	}
 
 	return nil
@@ -45,7 +49,6 @@ func (db *DB) GetTeamAuth(ctx context.Context, apiKey string) (*models.Team, *mo
 		QueryTeam().
 		WithTeamTier().
 		Only(ctx)
-
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get team from API key: %w", err)
 
@@ -67,7 +70,6 @@ func (db *DB) GetUserID(ctx context.Context, token string) (*uuid.UUID, error) {
 		Query().
 		Where(accesstoken.AccessToken(token)).
 		Only(ctx)
-
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get user from access token: %w", err)
 
@@ -84,7 +86,6 @@ func (db *DB) GetTeamAPIKeys(ctx context.Context, teamID uuid.UUID) ([]*models.T
 		Query().
 		Where(teamapikey.TeamID(teamID)).
 		All(ctx)
-
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get team API keys: %w", err)
 

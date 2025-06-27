@@ -8,9 +8,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 
-var (
-	seedKey = os.Getenv("SANDBOX_ACCESS_TOKEN_HASH_SEED")
-)
+var seedKey = os.Getenv("SANDBOX_ACCESS_TOKEN_HASH_SEED")
 
 type EnvdAccessTokenGenerator struct {
 	hasher *keys.HMACSha256Hashing

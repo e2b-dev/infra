@@ -11,13 +11,15 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
-	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	e2bhealth "github.com/e2b-dev/infra/packages/shared/pkg/health"
@@ -30,7 +32,7 @@ type GRPCClient struct {
 	Sandbox orchestrator.SandboxServiceClient
 	Info    orchestratorinfo.InfoServiceClient
 
-	connection e2bgrpc.ClientConnInterface
+	connection *grpc.ClientConn
 }
 
 var (
@@ -47,8 +49,16 @@ var (
 	}
 )
 
-func NewClient(host string) (*GRPCClient, error) {
-	conn, err := e2bgrpc.GetConnection(host, false, grpc.WithStatsHandler(otelgrpc.NewClientHandler()), grpc.WithBlock(), grpc.WithTimeout(time.Second))
+func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string) (*GRPCClient, error) {
+	conn, err := grpc.NewClient(host,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(
+			otelgrpc.NewClientHandler(
+				otelgrpc.WithTracerProvider(tracerProvider),
+				otelgrpc.WithMeterProvider(meterProvider),
+			),
+		),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}
@@ -74,7 +84,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 
 	defer childSpan.End()
 
-	client, err := NewClient(node.OrchestratorAddress)
+	client, err := NewClient(o.tel.TracerProvider, o.tel.MeterProvider, node.OrchestratorAddress)
 	if err != nil {
 		return err
 	}
@@ -85,6 +95,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 	nodeStatus := api.NodeStatusUnhealthy
 	nodeVersion := "unknown"
 	nodeCommit := "unknown"
+	orchestratorID := node.ID
 
 	ok, err := o.getNodeHealth(node)
 	if err != nil {
@@ -107,12 +118,14 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 
 		nodeVersion = nodeInfo.ServiceVersion
 		nodeCommit = nodeInfo.ServiceCommit
+		orchestratorID = nodeInfo.NodeId
 	}
 
 	o.nodes.Insert(
 		node.ID, &Node{
 			Client:         client,
 			Info:           node,
+			orchestratorID: orchestratorID,
 			buildCache:     buildCache,
 			status:         nodeStatus,
 			version:        nodeVersion,

@@ -39,6 +39,7 @@ type fakeTemplateManagerClient struct {
 func (f fakeTemplateManagerClient) SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason string) error {
 	return f.setStatusError
 }
+
 func (f fakeTemplateManagerClient) SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string) error {
 	return f.setFinishedError
 }

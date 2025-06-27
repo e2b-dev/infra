@@ -38,9 +38,27 @@ func (takc *TeamAPIKeyCreate) SetAPIKeyHash(s string) *TeamAPIKeyCreate {
 	return takc
 }
 
-// SetAPIKeyMask sets the "api_key_mask" field.
-func (takc *TeamAPIKeyCreate) SetAPIKeyMask(s string) *TeamAPIKeyCreate {
-	takc.mutation.SetAPIKeyMask(s)
+// SetAPIKeyPrefix sets the "api_key_prefix" field.
+func (takc *TeamAPIKeyCreate) SetAPIKeyPrefix(s string) *TeamAPIKeyCreate {
+	takc.mutation.SetAPIKeyPrefix(s)
+	return takc
+}
+
+// SetAPIKeyLength sets the "api_key_length" field.
+func (takc *TeamAPIKeyCreate) SetAPIKeyLength(i int) *TeamAPIKeyCreate {
+	takc.mutation.SetAPIKeyLength(i)
+	return takc
+}
+
+// SetAPIKeyMaskPrefix sets the "api_key_mask_prefix" field.
+func (takc *TeamAPIKeyCreate) SetAPIKeyMaskPrefix(s string) *TeamAPIKeyCreate {
+	takc.mutation.SetAPIKeyMaskPrefix(s)
+	return takc
+}
+
+// SetAPIKeyMaskSuffix sets the "api_key_mask_suffix" field.
+func (takc *TeamAPIKeyCreate) SetAPIKeyMaskSuffix(s string) *TeamAPIKeyCreate {
+	takc.mutation.SetAPIKeyMaskSuffix(s)
 	return takc
 }
 
@@ -203,8 +221,17 @@ func (takc *TeamAPIKeyCreate) check() error {
 	if _, ok := takc.mutation.APIKeyHash(); !ok {
 		return &ValidationError{Name: "api_key_hash", err: errors.New(`models: missing required field "TeamAPIKey.api_key_hash"`)}
 	}
-	if _, ok := takc.mutation.APIKeyMask(); !ok {
-		return &ValidationError{Name: "api_key_mask", err: errors.New(`models: missing required field "TeamAPIKey.api_key_mask"`)}
+	if _, ok := takc.mutation.APIKeyPrefix(); !ok {
+		return &ValidationError{Name: "api_key_prefix", err: errors.New(`models: missing required field "TeamAPIKey.api_key_prefix"`)}
+	}
+	if _, ok := takc.mutation.APIKeyLength(); !ok {
+		return &ValidationError{Name: "api_key_length", err: errors.New(`models: missing required field "TeamAPIKey.api_key_length"`)}
+	}
+	if _, ok := takc.mutation.APIKeyMaskPrefix(); !ok {
+		return &ValidationError{Name: "api_key_mask_prefix", err: errors.New(`models: missing required field "TeamAPIKey.api_key_mask_prefix"`)}
+	}
+	if _, ok := takc.mutation.APIKeyMaskSuffix(); !ok {
+		return &ValidationError{Name: "api_key_mask_suffix", err: errors.New(`models: missing required field "TeamAPIKey.api_key_mask_suffix"`)}
 	}
 	if _, ok := takc.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`models: missing required field "TeamAPIKey.created_at"`)}
@@ -263,9 +290,21 @@ func (takc *TeamAPIKeyCreate) createSpec() (*TeamAPIKey, *sqlgraph.CreateSpec) {
 		_spec.SetField(teamapikey.FieldAPIKeyHash, field.TypeString, value)
 		_node.APIKeyHash = value
 	}
-	if value, ok := takc.mutation.APIKeyMask(); ok {
-		_spec.SetField(teamapikey.FieldAPIKeyMask, field.TypeString, value)
-		_node.APIKeyMask = value
+	if value, ok := takc.mutation.APIKeyPrefix(); ok {
+		_spec.SetField(teamapikey.FieldAPIKeyPrefix, field.TypeString, value)
+		_node.APIKeyPrefix = value
+	}
+	if value, ok := takc.mutation.APIKeyLength(); ok {
+		_spec.SetField(teamapikey.FieldAPIKeyLength, field.TypeInt, value)
+		_node.APIKeyLength = value
+	}
+	if value, ok := takc.mutation.APIKeyMaskPrefix(); ok {
+		_spec.SetField(teamapikey.FieldAPIKeyMaskPrefix, field.TypeString, value)
+		_node.APIKeyMaskPrefix = value
+	}
+	if value, ok := takc.mutation.APIKeyMaskSuffix(); ok {
+		_spec.SetField(teamapikey.FieldAPIKeyMaskSuffix, field.TypeString, value)
+		_node.APIKeyMaskSuffix = value
 	}
 	if value, ok := takc.mutation.CreatedAt(); ok {
 		_spec.SetField(teamapikey.FieldCreatedAt, field.TypeTime, value)
@@ -395,18 +434,6 @@ func (u *TeamAPIKeyUpsert) UpdateAPIKeyHash() *TeamAPIKeyUpsert {
 	return u
 }
 
-// SetAPIKeyMask sets the "api_key_mask" field.
-func (u *TeamAPIKeyUpsert) SetAPIKeyMask(v string) *TeamAPIKeyUpsert {
-	u.Set(teamapikey.FieldAPIKeyMask, v)
-	return u
-}
-
-// UpdateAPIKeyMask sets the "api_key_mask" field to the value that was provided on create.
-func (u *TeamAPIKeyUpsert) UpdateAPIKeyMask() *TeamAPIKeyUpsert {
-	u.SetExcluded(teamapikey.FieldAPIKeyMask)
-	return u
-}
-
 // SetUpdatedAt sets the "updated_at" field.
 func (u *TeamAPIKeyUpsert) SetUpdatedAt(v time.Time) *TeamAPIKeyUpsert {
 	u.Set(teamapikey.FieldUpdatedAt, v)
@@ -502,6 +529,18 @@ func (u *TeamAPIKeyUpsertOne) UpdateNewValues() *TeamAPIKeyUpsertOne {
 		if _, exists := u.create.mutation.ID(); exists {
 			s.SetIgnore(teamapikey.FieldID)
 		}
+		if _, exists := u.create.mutation.APIKeyPrefix(); exists {
+			s.SetIgnore(teamapikey.FieldAPIKeyPrefix)
+		}
+		if _, exists := u.create.mutation.APIKeyLength(); exists {
+			s.SetIgnore(teamapikey.FieldAPIKeyLength)
+		}
+		if _, exists := u.create.mutation.APIKeyMaskPrefix(); exists {
+			s.SetIgnore(teamapikey.FieldAPIKeyMaskPrefix)
+		}
+		if _, exists := u.create.mutation.APIKeyMaskSuffix(); exists {
+			s.SetIgnore(teamapikey.FieldAPIKeyMaskSuffix)
+		}
 		if _, exists := u.create.mutation.CreatedAt(); exists {
 			s.SetIgnore(teamapikey.FieldCreatedAt)
 		}
@@ -561,20 +600,6 @@ func (u *TeamAPIKeyUpsertOne) SetAPIKeyHash(v string) *TeamAPIKeyUpsertOne {
 func (u *TeamAPIKeyUpsertOne) UpdateAPIKeyHash() *TeamAPIKeyUpsertOne {
 	return u.Update(func(s *TeamAPIKeyUpsert) {
 		s.UpdateAPIKeyHash()
-	})
-}
-
-// SetAPIKeyMask sets the "api_key_mask" field.
-func (u *TeamAPIKeyUpsertOne) SetAPIKeyMask(v string) *TeamAPIKeyUpsertOne {
-	return u.Update(func(s *TeamAPIKeyUpsert) {
-		s.SetAPIKeyMask(v)
-	})
-}
-
-// UpdateAPIKeyMask sets the "api_key_mask" field to the value that was provided on create.
-func (u *TeamAPIKeyUpsertOne) UpdateAPIKeyMask() *TeamAPIKeyUpsertOne {
-	return u.Update(func(s *TeamAPIKeyUpsert) {
-		s.UpdateAPIKeyMask()
 	})
 }
 
@@ -852,6 +877,18 @@ func (u *TeamAPIKeyUpsertBulk) UpdateNewValues() *TeamAPIKeyUpsertBulk {
 			if _, exists := b.mutation.ID(); exists {
 				s.SetIgnore(teamapikey.FieldID)
 			}
+			if _, exists := b.mutation.APIKeyPrefix(); exists {
+				s.SetIgnore(teamapikey.FieldAPIKeyPrefix)
+			}
+			if _, exists := b.mutation.APIKeyLength(); exists {
+				s.SetIgnore(teamapikey.FieldAPIKeyLength)
+			}
+			if _, exists := b.mutation.APIKeyMaskPrefix(); exists {
+				s.SetIgnore(teamapikey.FieldAPIKeyMaskPrefix)
+			}
+			if _, exists := b.mutation.APIKeyMaskSuffix(); exists {
+				s.SetIgnore(teamapikey.FieldAPIKeyMaskSuffix)
+			}
 			if _, exists := b.mutation.CreatedAt(); exists {
 				s.SetIgnore(teamapikey.FieldCreatedAt)
 			}
@@ -912,20 +949,6 @@ func (u *TeamAPIKeyUpsertBulk) SetAPIKeyHash(v string) *TeamAPIKeyUpsertBulk {
 func (u *TeamAPIKeyUpsertBulk) UpdateAPIKeyHash() *TeamAPIKeyUpsertBulk {
 	return u.Update(func(s *TeamAPIKeyUpsert) {
 		s.UpdateAPIKeyHash()
-	})
-}
-
-// SetAPIKeyMask sets the "api_key_mask" field.
-func (u *TeamAPIKeyUpsertBulk) SetAPIKeyMask(v string) *TeamAPIKeyUpsertBulk {
-	return u.Update(func(s *TeamAPIKeyUpsert) {
-		s.SetAPIKeyMask(v)
-	})
-}
-
-// UpdateAPIKeyMask sets the "api_key_mask" field to the value that was provided on create.
-func (u *TeamAPIKeyUpsertBulk) UpdateAPIKeyMask() *TeamAPIKeyUpsertBulk {
-	return u.Update(func(s *TeamAPIKeyUpsert) {
-		s.UpdateAPIKeyMask()
 	})
 }
 

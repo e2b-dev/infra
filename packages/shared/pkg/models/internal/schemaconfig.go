@@ -8,6 +8,7 @@ import "context"
 // that can be passed at runtime.
 type SchemaConfig struct {
 	AccessToken string // AccessToken table.
+	Cluster     string // Cluster table.
 	Env         string // Env table.
 	EnvAlias    string // EnvAlias table.
 	EnvBuild    string // EnvBuild table.

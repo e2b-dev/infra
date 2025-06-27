@@ -43,7 +43,6 @@ func NewPosthogClient() (*PosthogClient, error) {
 		Verbose:   false,
 		Logger:    posthogLogger,
 	})
-
 	if err != nil {
 		zap.L().Fatal("error initializing Posthog client", zap.Error(err))
 	}

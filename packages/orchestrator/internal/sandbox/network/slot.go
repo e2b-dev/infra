@@ -30,9 +30,11 @@ const (
 	tapMAC           = "02:FC:00:00:00:05"
 )
 
-var hostNetworkCIDR = getHostNetworkCIDR()
-var vrtNetworkCIDR = getVrtNetworkCIDR()
-var vrtSlotsSize = GetVrtSlotsSize()
+var (
+	hostNetworkCIDR = getHostNetworkCIDR()
+	vrtNetworkCIDR  = getVrtNetworkCIDR()
+	vrtSlotsSize    = GetVrtSlotsSize()
+)
 
 // Slot network allocation
 //

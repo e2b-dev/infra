@@ -24,7 +24,6 @@ func TestSandboxCreate(t *testing.T) {
 		TemplateID: setup.SandboxTemplateID,
 		Timeout:    &sbxTimeout,
 	}, setup.WithAPIKey())
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,4 +104,19 @@ func TestSandboxResumeWithSecuredEnvd(t *testing.T) {
 
 	assert.Equal(t, sbxResume.JSON201.SandboxID, sbxCreate.JSON201.SandboxID)
 	assert.Equal(t, sbxResume.JSON201.EnvdAccessToken, sbxCreate.JSON201.EnvdAccessToken)
+}
+
+func TestSandboxPauseNonFound(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	c := setup.GetAPIClient()
+
+	r, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, "not-found", setup.WithAPIKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assert.Equal(t, http.StatusNotFound, r.StatusCode())
+	require.NotNil(t, r.JSON404)
 }

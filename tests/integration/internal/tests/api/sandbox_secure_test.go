@@ -26,7 +26,6 @@ func TestCreateSandboxWithSecuredEnvd(t *testing.T) {
 		Timeout:    &sbxTimeout,
 		Secure:     &sbxSecure,
 	}, setup.WithAPIKey())
-
 	if err != nil {
 		t.Fatal(err)
 	}

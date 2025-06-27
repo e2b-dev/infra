@@ -44,7 +44,6 @@ func (p *PostProcessor) Start() {
 			p.WriteMsg(msg)
 		}
 	}
-
 }
 
 func (p *PostProcessor) Stop(err error) {

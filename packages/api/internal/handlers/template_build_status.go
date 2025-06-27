@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -34,19 +35,16 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	userID := c.Value(auth.UserIDContextKey).(uuid.UUID)
 	teams, err := a.sqlcDB.GetTeamsWithUsersTeams(ctx, userID)
 	if err != nil {
-		errMsg := fmt.Errorf("error when getting teams: %w", err)
-
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get the default team")
 
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting teams", err)
 
 		return
 	}
 
 	buildUUID, err := uuid.Parse(buildID)
 	if err != nil {
-		errMsg := fmt.Errorf("error when parsing build id: %w", err)
-		telemetry.ReportError(ctx, errMsg)
+		telemetry.ReportError(ctx, "error when parsing build id", err)
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid build id")
 		return
 	}
@@ -63,8 +61,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 			return
 		}
 
-		errMsg := fmt.Errorf("error when getting template: %w", err)
-		telemetry.ReportError(ctx, errMsg)
+		telemetry.ReportError(ctx, "error when getting template", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting template")
 		return
 	}
@@ -78,8 +75,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	}
 
 	if team == nil {
-		msg := fmt.Errorf("user doesn't have access to env '%s'", templateID)
-		telemetry.ReportError(ctx, msg)
+		telemetry.ReportError(ctx, "user doesn't have access to env", fmt.Errorf("user doesn't have access to env '%s'", templateID), telemetry.WithTemplateID(templateID))
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to this sandbox template (%s)", templateID))
 		return
 	}
@@ -133,15 +129,14 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 				line := make(map[string]interface{})
 				err := json.Unmarshal([]byte(entry.Line), &line)
 				if err != nil {
-					zap.L().Error("error parsing log line", zap.Error(err), zap.String("buildID", buildID), zap.String("line", entry.Line))
+					zap.L().Error("error parsing log line", zap.Error(err), logger.WithBuildID(buildID), zap.String("line", entry.Line))
 				}
 
 				logs = append(logs, line["message"].(string))
 			}
 		}
 	} else {
-		errMsg := fmt.Errorf("error when returning logs for template build: %w", err)
-		telemetry.ReportError(ctx, errMsg)
+		telemetry.ReportError(ctx, "error when returning logs for template build", err)
 		zap.L().Error("error when returning logs for template build", zap.Error(err), zap.String("buildID", buildID))
 	}
 

@@ -61,7 +61,7 @@ variable "build_machine_type" {
   type = string
 }
 
-variable "client_proxy_health_port" {
+variable "edge_api_port" {
   type = object({
     name = string
     port = number
@@ -69,7 +69,7 @@ variable "client_proxy_health_port" {
   })
 }
 
-variable "client_proxy_port" {
+variable "edge_proxy_port" {
   type = object({
     name = string
     port = number
@@ -106,16 +106,16 @@ variable "client_cluster_size" {
   type = number
 }
 
-variable "client_regional_cluster_size" {
-  type = number
-}
-
-variable "client_cluster_auto_scaling_max" {
+variable "client_cluster_size_max" {
   type = number
 }
 
 variable "client_machine_type" {
   type = string
+}
+
+variable "client_cluster_cache_disk_size_gb" {
+  type = number
 }
 
 variable "gcp_project_id" {

@@ -24,12 +24,10 @@ type ServiceInfo struct {
 	statusMu sync.RWMutex
 }
 
-var (
-	serviceRolesMapper = map[ServiceType]orchestratorinfo.ServiceInfoRole{
-		Orchestrator:    orchestratorinfo.ServiceInfoRole_Orchestrator,
-		TemplateManager: orchestratorinfo.ServiceInfoRole_TemplateManager,
-	}
-)
+var serviceRolesMapper = map[ServiceType]orchestratorinfo.ServiceInfoRole{
+	Orchestrator:    orchestratorinfo.ServiceInfoRole_Orchestrator,
+	TemplateManager: orchestratorinfo.ServiceInfoRole_TemplateManager,
+}
 
 func (s *ServiceInfo) GetStatus() orchestratorinfo.ServiceInfoStatus {
 	s.statusMu.RLock()

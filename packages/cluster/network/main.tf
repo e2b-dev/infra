@@ -483,19 +483,6 @@ module "gce_lb_http_logs" {
           max_rate_per_endpoint        = null
           max_utilization              = null
         },
-        {
-          group                        = var.client_regional_instance_group
-          balancing_mode               = null
-          capacity_scaler              = null
-          description                  = null
-          max_connections              = null
-          max_connections_per_instance = null
-          max_connections_per_endpoint = null
-          max_rate                     = null
-          max_rate_per_instance        = null
-          max_rate_per_endpoint        = null
-          max_utilization              = null
-        },
       ]
 
       iap_config = {
@@ -646,8 +633,8 @@ resource "google_compute_security_policy_rule" "api-throttling-api-key" {
     }
 
     rate_limit_threshold {
-      count        = var.domain_name == "e2b.dev" ? 5000 : 5000
-      interval_sec = 30
+      count        = 900
+      interval_sec = 10
     }
   }
 

@@ -18,14 +18,12 @@ const (
 	accessTokenHeader = "X-Access-Token"
 )
 
-var (
-	// paths that are always allowed without general authentication
-	allowedPaths = []string{
-		"GET/health",
-		"GET/files",
-		"POST/files",
-	}
-)
+// paths that are always allowed without general authentication
+var allowedPaths = []string{
+	"GET/health",
+	"GET/files",
+	"POST/files",
+}
 
 func (a *API) WithAuthorization(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {

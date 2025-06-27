@@ -172,7 +172,6 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 		setup.WithSandbox(sbx.JSON201.SandboxID),
 		setup.WithEnvdAccessToken(*sbxMeta.EnvdAccessToken),
 	)
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +239,6 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 		&envdapi.GetFilesParams{Path: &filePath, Username: "user"},
 		setup.WithSandbox(sbx.JSON201.SandboxID),
 	)
-
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,14 +10,15 @@ packer {
 
 source "googlecompute" "orch" {
   image_family = "e2b-orch"
+
   # TODO: Overwrite the image instead of creating timestamped images every time we build its
-  image_name          = "e2b-orch-${formatdate("YYYY-MM-DD-hh-mm-ss", timestamp())}"
-  project_id          = var.gcp_project_id
-  source_image_family = "ubuntu-2204-lts"
-  ssh_username        = "ubuntu"
-  zone                = var.gcp_zone
-  disk_size           = 10
-  disk_type           = "pd-ssd"
+  image_name    = "e2b-orch-${formatdate("YYYY-MM-DD-hh-mm-ss", timestamp())}"
+  project_id    = var.gcp_project_id
+  source_image  = "ubuntu-2204-jammy-v20250228"
+  ssh_username  = "ubuntu"
+  zone          = var.gcp_zone
+  disk_size     = 10
+  disk_type     = "pd-ssd"
 
   # This is used only for building the image and the GCE VM is then deleted
   machine_type = "n1-standard-4"

@@ -41,10 +41,10 @@ type config struct {
 // Middleware returns middleware that will trace incoming requests.
 // The service parameter should describe the name of the (virtual)
 // server handling the request.
-func Middleware(service string) gin.HandlerFunc {
+func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.HandlerFunc {
 	cfg := config{}
 	if cfg.TracerProvider == nil {
-		cfg.TracerProvider = otel.GetTracerProvider()
+		cfg.TracerProvider = tracerProvider
 	}
 	tracer := cfg.TracerProvider.Tracer(
 		tracerName,

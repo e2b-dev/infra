@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pojntfx/go-nbd/pkg/backend"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -67,7 +68,7 @@ func main() {
 
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt)
-	devicePool, err := nbd.NewDevicePool(ctx)
+	devicePool, err := nbd.NewDevicePool(ctx, noop.MeterProvider{})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create device pool: %v\n", err)
 
