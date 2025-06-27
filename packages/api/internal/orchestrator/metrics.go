@@ -22,7 +22,7 @@ func (o *Orchestrator) setupMetrics(meterProvider metric.MeterProvider) (metric.
 			for _, node := range o.nodes.Items() {
 				obs.ObserveInt64(gauge, 1, metric.WithAttributes(
 					attribute.String("status", string(node.status)),
-					attribute.String("node.id", node.orchestratorID),
+					attribute.String("node.id", node.metadata.orchestratorID),
 				))
 			}
 

@@ -26,17 +26,21 @@ type sbxInProgress struct {
 	CPUs      int64
 }
 
+type nodeMetadata struct {
+	orchestratorID string
+	commit         string
+	version        string
+}
 type Node struct {
 	CPUUsage atomic.Int64
 	RamUsage atomic.Int64
 	Client   *grpclient.GRPCClient
 
-	Info           *node.NodeInfo
-	orchestratorID string
-	commit         string
-	version        string
-	status         api.NodeStatus
-	statusMu       sync.RWMutex
+	Info     *node.NodeInfo
+	metadata *nodeMetadata
+
+	status   api.NodeStatus
+	statusMu sync.RWMutex
 
 	sbxsInProgress *smap.Map[*sbxInProgress]
 
@@ -131,8 +135,8 @@ func (o *Orchestrator) GetNodes() []*api.Node {
 			Status:               n.Status(),
 			CreateFails:          n.createFails.Load(),
 			SandboxStartingCount: n.sbxsInProgress.Count(),
-			Version:              n.version,
-			Commit:               n.commit,
+			Version:              n.metadata.version,
+			Commit:               n.metadata.commit,
 		}
 	}
 
@@ -167,8 +171,8 @@ func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
 				Status:       n.Status(),
 				CachedBuilds: builds,
 				CreateFails:  n.createFails.Load(),
-				Version:      n.version,
-				Commit:       n.commit,
+				Version:      n.metadata.version,
+				Commit:       n.metadata.commit,
 			}
 		}
 	}
@@ -219,4 +223,20 @@ func (n *Node) InsertBuild(buildID string) {
 
 func (o *Orchestrator) NodeCount() int {
 	return o.nodes.Count()
+}
+
+func getNodeMetadata(n *orchestratorinfo.ServiceInfoResponse) *nodeMetadata {
+	if n == nil {
+		return &nodeMetadata{
+			orchestratorID: "",
+			commit:         "unknown",
+			version:        "unknown",
+		}
+	}
+
+	return &nodeMetadata{
+		orchestratorID: n.NodeId,
+		commit:         n.ServiceCommit,
+		version:        n.ServiceVersion,
+	}
 }
