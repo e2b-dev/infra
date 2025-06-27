@@ -63,7 +63,6 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 		select {
 		case <-ctx.Done():
 			zap.L().Info("Stopping keepInSync")
-
 			return
 		case <-ticker.C:
 			o.syncNodes(ctx, instanceCache)
@@ -78,36 +77,70 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 	spanCtx, span := o.tracer.Start(ctxTimeout, "keep-in-sync")
 	defer span.End()
 
-	nodes, err := o.listNomadNodes(spanCtx)
+	nodes, err := o.listNomadNodes(ctx)
 	if err != nil {
-		zap.L().Error("Error listing nodes", zap.Error(err))
-
+		zap.L().Error("Error listing orchestrator nodes", zap.Error(err))
 		return
 	}
 
-	// Connect local nodes that are not in the list, yet
-	connectLocalSpanCtx, connectLocalSpan := o.tracer.Start(ctxTimeout, "keep-in-sync-connect-local-nodes")
+	o.syncLocalDiscoveredNodes(spanCtx, nodes)
+	o.syncClusterDiscoveredNodes(spanCtx)
+
 	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	// Sync state of all nodes currently in the pool
+	syncNodesSpanCtx, syncNodesSpan := o.tracer.Start(spanCtx, "keep-in-sync-existing")
+	defer syncNodesSpan.End()
+
+	for _, n := range o.nodes.Items() {
+		wg.Add(1)
+		go func(n *Node) {
+			defer wg.Done()
+
+			// cluster and local nodes needs to by synced differently,
+			// because each of them is taken from different source pool
+			if n.ClusterID == uuid.Nil {
+				o.syncNode(syncNodesSpanCtx, n, nodes, instanceCache)
+			} else {
+				o.syncClusterNode(syncNodesSpanCtx, n, instanceCache)
+			}
+		}(n)
+	}
+}
+
+func (o *Orchestrator) syncLocalDiscoveredNodes(ctx context.Context, nodes []*node.NodeInfo) {
+	// Connect local nodes that are not in the list, yet
+	connectLocalSpanCtx, connectLocalSpan := o.tracer.Start(ctx, "keep-in-sync-connect-local-nodes")
+	defer connectLocalSpan.End()
+
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
 	for _, n := range nodes {
 		// If the node is not in the list, connect to it
 		if o.GetNode(n.ID) == nil {
 			wg.Add(1)
 			go func(n *node.NodeInfo) {
 				defer wg.Done()
-				err = o.connectToNode(connectLocalSpanCtx, n)
+				err := o.connectToNode(connectLocalSpanCtx, n)
 				if err != nil {
 					zap.L().Error("Error connecting to node", zap.Error(err))
 				}
 			}(n)
 		}
 	}
+}
 
-	wg.Wait()
-	connectLocalSpan.End()
+func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	_, connectClusteredSpan := o.tracer.Start(ctx, "keep-in-sync-connect-clustered-nodes")
+	defer connectClusteredSpan.End()
 
 	// Connect clustered nodes that are not in the list, yet
 	// We need to iterate over all clusters and their nodes
-	_, connectClusteredSpan := o.tracer.Start(ctxTimeout, "keep-in-sync-connect-clustered-nodes")
 	for _, cluster := range o.clusters.GetClusters() {
 		for _, n := range cluster.GetOrchestratorNodes() {
 			clusterNodeID := o.GetClusterNodeID(cluster.ID, n.ID)
@@ -122,28 +155,6 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 			}
 		}
 	}
-	wg.Wait()
-	connectClusteredSpan.End()
-
-	// Sync state of all nodes currently in the pool
-	_, syncNodesSpan := o.tracer.Start(ctxTimeout, "keep-in-sync-existing")
-	defer syncNodesSpan.End()
-
-	for _, n := range o.nodes.Items() {
-		wg.Add(1)
-		go func(n *Node) {
-			defer wg.Done()
-
-			// cluster and local nodes needs to by synced differently,
-			// because each of them is taken from different source pool
-			if n.ClusterID == uuid.Nil {
-				o.syncNode(spanCtx, n, nodes, instanceCache)
-			} else {
-				o.syncClusterNode(spanCtx, n, instanceCache)
-			}
-		}(n)
-	}
-	wg.Wait()
 }
 
 func (o *Orchestrator) syncClusterNode(ctx context.Context, node *Node, instanceCache *instance.InstanceCache) {
@@ -168,8 +179,7 @@ func (o *Orchestrator) syncClusterNode(ctx context.Context, node *Node, instance
 	}
 
 	if !nodeFound {
-		zap.L().Info("Node is not active anymore", logger.WithNodeID(node.Info.ID), logger.WithClusterID(node.ClusterID))
-		// we are not closing grpc connection, because it is shared between all cluster nodes and it's handled by the cluster
+		// we are not closing grpc connection, because it is shared between all cluster nodes, and it's handled by the cluster
 		o.nodes.Remove(node.Info.ID)
 		return
 	}
