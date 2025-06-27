@@ -25,16 +25,9 @@ SELECT
     Attributes['team_id']                                               AS team_id,
 
     argMaxIf(Value,  TimeUnix, MetricName = 'e2b.sandbox.cpu.total')    AS cpu_total,
---     argMaxIf(TimeUnix, TimeUnix, MetricName = 'e2b.sandbox.cpu.total')  AS cpu_total_ts,
-
     argMaxIf(Value,  TimeUnix, MetricName = 'e2b.sandbox.cpu.used')     AS cpu_used,
---     argMaxIf(TimeUnix, TimeUnix, MetricName = 'e2b.sandbox.cpu.used')   AS cpu_used_ts,
-
     argMaxIf(Value,  TimeUnix, MetricName = 'e2b.sandbox.ram.total')    AS ram_total,
---     argMaxIf(TimeUnix, TimeUnix, MetricName = 'e2b.sandbox.ram.total')  AS ram_total_ts,
-
     argMaxIf(Value,  TimeUnix, MetricName = 'e2b.sandbox.ram.used')     AS ram_used
---     argMaxIf(TimeUnix, TimeUnix, MetricName = 'e2b.sandbox.ram.used')   AS ram_used_ts
 FROM metrics_gauge
 WHERE 
     Attributes['sandbox_id'] = {sandbox_id:String}
@@ -59,7 +52,6 @@ func (c *Client) QueryLatestMetrics(ctx context.Context, sandboxIDs []string, te
 	}
 	defer rows.Close()
 
-	zap.L().Debug("query metrics", zap.Any("rows", rows))
 	var out []Metrics
 	for rows.Next() {
 		var m Metrics

@@ -19,26 +19,35 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+const shiftToMiB = 20
+
 func getSandboxesSandboxIDMetrics(
 	ctx context.Context,
 	clickhouse clickhouse.Clickhouse,
+	metricsReadFlag bool,
 	sandboxIDs []string,
 	teamID string,
 ) (map[string]api.SandboxMetric, error) {
+	if !metricsReadFlag {
+		zap.L().Debug("sandbox metrics read feature flag is disabled")
+		// If we are not reading from ClickHouse, we can return an empty map
+		// This is here just to have possibility to turn off ClickHouse metrics reading
+		return make(map[string]api.SandboxMetric), nil
+	}
+
 	metrics, err := clickhouse.QueryLatestMetrics(ctx, sandboxIDs, teamID)
 	if err != nil {
 		return nil, fmt.Errorf("error querying metrics: %w", err)
 	}
 
-	// XXX avoid this conversion to be more efficient
 	apiMetrics := make(map[string]api.SandboxMetric)
 	for _, m := range metrics {
 		apiMetrics[m.SandboxID] = api.SandboxMetric{
 			Timestamp:   m.Timestamp,
 			CpuUsedPct:  float32(m.CPUUsedPercent),
 			CpuCount:    int32(m.CPUCount),
-			MemTotalMiB: int64(m.MemTotal / 1024 / 1024), // Convert from bytes to MiB
-			MemUsedMiB:  int64(m.MemUsed / 1024 / 1024),  // Convert from bytes to MiB
+			MemTotalMiB: int64(m.MemTotal) >> shiftToMiB, // Convert from bytes to MiB
+			MemUsedMiB:  int64(m.MemUsed) >> shiftToMiB,  // Convert from bytes to MiB
 		}
 	}
 
@@ -73,5 +82,6 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(
 		return
 	}
 
+	// TODO: Implement
 	c.JSON(http.StatusOK, []api.SandboxMetric{})
 }

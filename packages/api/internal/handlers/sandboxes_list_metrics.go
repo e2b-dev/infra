@@ -49,32 +49,26 @@ func (a *APIStore) getSandboxesMetrics(
 		sandboxIds = append(sandboxIds, s.SandboxID)
 	}
 
-	var metrics map[string]api.SandboxMetric
 	flagCtx := ldcontext.NewBuilder(featureflags.MetricsReadFlagName).Build()
 	metricsReadFlag, err := a.featureFlags.Ld.BoolVariation(featureflags.MetricsReadFlagName, flagCtx, featureflags.MetricsReadDefault)
 	if err != nil {
 		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(err))
 	}
 
-	if metricsReadFlag {
-		// Get metrics for all sandboxes
-		metrics, err = getSandboxesSandboxIDMetrics(
-			ctx,
-			a.clickhouseStore,
-			sandboxIds,
-			teamID.String(),
+	// Get metrics for all sandboxes
+	metrics, err := getSandboxesSandboxIDMetrics(
+		ctx,
+		a.clickhouseStore,
+		metricsReadFlag,
+		sandboxIds,
+		teamID.String(),
+	)
+	if err != nil {
+		zap.L().Error("Error fetching sandbox metrics from ClickHouse",
+			logger.WithTeamID(teamID.String()),
+			zap.Error(err),
 		)
-		if err != nil {
-			zap.L().Error("Error fetching sandbox metrics from ClickHouse",
-				logger.WithTeamID(teamID.String()),
-				zap.Error(err),
-			)
-			return nil, fmt.Errorf("error fetching sandbox metrics: %w", err)
-		}
-	} else {
-		// If we are not reading from ClickHouse, we can return an empty slice
-		// This is here just to have possibility to turn off ClickHouse metrics reading
-		zap.L().Debug("sandbox metrics read feature flag is disabled")
+		return nil, fmt.Errorf("error fetching sandbox metrics: %w", err)
 	}
 
 	// Collect results and build final response
@@ -85,6 +79,7 @@ func (a *APIStore) getSandboxesMetrics(
 		var sbxMetrics *[]api.SandboxMetric
 		m, ok := metrics[sbx.SandboxID]
 		if ok {
+			// TODO: Does this need to be an array? and also pointer?
 			sbxMetrics = &[]api.SandboxMetric{m}
 		}
 
