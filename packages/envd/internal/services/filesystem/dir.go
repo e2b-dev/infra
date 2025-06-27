@@ -43,6 +43,7 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("path is not a directory: %s", dirPath))
 	}
 
+	sdkLanguage := req.Header().Get("lang")
 	sdkVersion := req.Header().Get("package_version")
 
 	var entries []*rpc.EntryInfo
@@ -72,7 +73,7 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 			return err
 		}
 
-		entryInfo := entryInfoFromFileInfo(fileInfo, path, sdkVersion)
+		entryInfo := entryInfoFromFileInfo(fileInfo, path, sdkLanguage, sdkVersion)
 
 		entries = append(entries, entryInfo)
 
