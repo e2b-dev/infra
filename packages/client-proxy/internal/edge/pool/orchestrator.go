@@ -118,9 +118,6 @@ func (o *OrchestratorNode) sync() {
 }
 
 func (o *OrchestratorNode) syncRun() error {
-	o.mutex.Lock()
-	defer o.mutex.Unlock()
-
 	ctx, cancel := context.WithTimeout(o.ctx, orchestratorSyncInterval)
 	defer cancel()
 

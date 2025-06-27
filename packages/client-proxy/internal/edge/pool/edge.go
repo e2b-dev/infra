@@ -85,9 +85,6 @@ func (o *EdgeNode) sync() {
 }
 
 func (o *EdgeNode) syncRun() error {
-	o.mutex.Lock()
-	defer o.mutex.Unlock()
-
 	ctx, cancel := context.WithTimeout(o.ctx, edgeSyncInterval)
 	defer cancel()
 
