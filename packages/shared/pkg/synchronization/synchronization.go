@@ -120,6 +120,7 @@ func (s *Synchronize[SourceItem, SourceKey, PoolItem]) runSyncOutdated(ctx conte
 
 		// item is still present in the source, no need to remove it
 		if found {
+			s.Store.PoolSynchronize(ctx, poolItemKey, poolItem)
 			continue
 		}
 
