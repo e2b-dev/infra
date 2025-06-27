@@ -6,7 +6,6 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
 
 type Clickhouse interface {
@@ -18,8 +17,6 @@ type Clickhouse interface {
 
 type Client struct {
 	conn driver.Conn
-
-	mp *sdkmetric.MeterProvider
 }
 
 func New(connectionString string) (*Client, error) {
@@ -28,9 +25,8 @@ func New(connectionString string) (*Client, error) {
 		return nil, fmt.Errorf("failed to parse ClickHouse DSN: %w", err)
 	}
 
-	// There should be only one connection per client as we are sending data only from one goroutine, this is to prevent connection leaks.
-	options.MaxOpenConns = 3
-	options.MaxIdleConns = 1
+	options.MaxOpenConns = 10
+	options.MaxIdleConns = 3
 	options.TLS = nil
 
 	conn, err := clickhouse.Open(options)
