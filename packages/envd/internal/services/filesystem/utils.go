@@ -12,10 +12,10 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
+	"golang.org/x/mod/semver"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
-	"golang.org/x/mod/semver"
 )
 
 const entryInfoSupportedSDKVersion = "1.6.0"
