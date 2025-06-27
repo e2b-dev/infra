@@ -151,6 +151,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 			nodeStatus = api.NodeStatusUnhealthy
 		}
 		node.setStatus(nodeStatus)
+		node.metadata = getNodeMetadata(nodeInfo)
 
 		activeInstances, instancesErr := o.getSandboxes(ctx, node.Info)
 		if instancesErr != nil {
