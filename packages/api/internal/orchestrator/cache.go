@@ -216,6 +216,9 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			info.Instance.SandboxID,
 			info.ExecutionID,
 			info.Instance.TemplateID,
+			info.VCpu,
+			info.RamMB,
+			info.TotalDiskSizeMB,
 			stopTime,
 			ct,
 			duration,
@@ -279,6 +282,9 @@ func reportInstanceStopAnalytics(
 	sandboxID string,
 	executionID string,
 	templateID string,
+	cpuCount int64,
+	ramMB int64,
+	diskSizeMB int64,
 	stopTime time.Time,
 	ct closeType,
 	duration float64,
@@ -302,6 +308,9 @@ func reportInstanceStopAnalytics(
 		ExecutionId:   executionID,
 		Timestamp:     timestamppb.New(stopTime),
 		Duration:      float32(duration),
+		CpuCount:      cpuCount,
+		RamMb:         ramMB,
+		DiskSizeMb:    diskSizeMB,
 	})
 	if err != nil {
 		zap.L().Error("error sending Analytics event", zap.Error(err))
@@ -344,6 +353,9 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 				info.ExecutionID,
 				info.Instance.TemplateID,
 				info.BuildID.String(),
+				info.VCpu,
+				info.RamMB,
+				info.TotalDiskSizeMB,
 			)
 		}
 
@@ -365,6 +377,9 @@ func reportInstanceStartAnalytics(
 	executionID string,
 	templateID string,
 	buildID string,
+	cpuCount int64,
+	ramMB int64,
+	diskSizeMB int64,
 ) {
 	childCtx, cancel := context.WithTimeout(ctx, reportTimeout)
 	defer cancel()
@@ -375,6 +390,9 @@ func reportInstanceStartAnalytics(
 		EnvironmentId: templateID,
 		BuildId:       buildID,
 		TeamId:        teamID,
+		CpuCount:      cpuCount,
+		RamMb:         ramMB,
+		DiskSizeMb:    diskSizeMB,
 		Timestamp:     timestamppb.Now(),
 	})
 	if err != nil {
