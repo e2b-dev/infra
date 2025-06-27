@@ -17,9 +17,7 @@ import (
 
 type OrchestratorsPool struct {
 	discovery sd.ServiceDiscoveryAdapter
-
-	nodes *smap.Map[*OrchestratorNode]
-	mutex sync.RWMutex
+	nodes     *smap.Map[*OrchestratorNode]
 
 	tracer trace.Tracer
 	logger *zap.Logger
@@ -42,9 +40,7 @@ func NewOrchestratorsPool(
 ) *OrchestratorsPool {
 	pool := &OrchestratorsPool{
 		discovery: discovery,
-
-		nodes: smap.New[*OrchestratorNode](),
-		mutex: sync.RWMutex{},
+		nodes:     smap.New[*OrchestratorNode](),
 
 		tracer: tracerProvider.Tracer("orchestrators-pool"),
 		logger: logger,
@@ -61,17 +57,18 @@ func NewOrchestratorsPool(
 }
 
 func (p *OrchestratorsPool) GetOrchestrators() map[string]*OrchestratorNode {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-
 	return p.nodes.Items()
 }
 
 func (p *OrchestratorsPool) GetOrchestrator(instanceID string) (node *OrchestratorNode, ok bool) {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
+	orchestrators := p.GetOrchestrators()
+	for _, node = range orchestrators {
+		if node.GetInfo().ServiceInstanceId == instanceID {
+			return node, ok
+		}
+	}
 
-	return p.nodes.Get(instanceID)
+	return nil, false
 }
 
 func (p *OrchestratorsPool) keepInSync(ctx context.Context) {
@@ -134,7 +131,6 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 			defer wg.Done()
 
 			var found *OrchestratorNode = nil
-
 			host := fmt.Sprintf("%s:%d", sdNode.NodeIp, sdNode.NodePort)
 			for _, node := range p.nodes.Items() {
 				if host == node.GetInfo().Host {
@@ -200,9 +196,6 @@ func (p *OrchestratorsPool) connectNode(ctx context.Context, node *sd.ServiceDis
 	}
 
 	info := o.GetInfo()
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
 	p.nodes.Insert(info.ServiceInstanceId, o)
 	return nil
 }

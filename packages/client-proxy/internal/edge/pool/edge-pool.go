@@ -53,12 +53,13 @@ func (p *EdgePool) GetNodes() map[string]*EdgeNode {
 }
 
 func (p *EdgePool) GetNode(id string) (*EdgeNode, error) {
-	o, ok := p.nodes.Get(id)
-	if !ok {
-		return nil, ErrEdgeNodeNotFound
+	for _, node := range p.nodes.Items() {
+		if node.GetInfo().ServiceId == id {
+			return node, nil
+		}
 	}
 
-	return o, nil
+	return nil, ErrEdgeNodeNotFound
 }
 
 func (p *EdgePool) keepInSync(ctx context.Context) {
@@ -101,7 +102,6 @@ func (p *EdgePool) syncNodes(ctx context.Context) {
 			defer wg.Done()
 
 			var found *EdgeNode = nil
-
 			host := fmt.Sprintf("%s:%d", sdNode.NodeIp, sdNode.NodePort)
 
 			// skip self registration
