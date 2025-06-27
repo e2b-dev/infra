@@ -73,3 +73,7 @@ func SetUserHeader(header http.Header, user string) {
 func SetPackageVersionHeader(header http.Header, version string) {
 	header.Set("package_version", version)
 }
+
+func SetSDKLanguageHeader(header http.Header, language string) {
+	header.Set("lang", language)
+}

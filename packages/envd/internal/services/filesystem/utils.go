@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
+	"golang.org/x/mod/semver"
 )
 
 const entryInfoSupportedSDKVersion = "1.6.0"
@@ -65,7 +66,19 @@ func getFileOwnership(fileInfo os.FileInfo) (owner, group string) {
 	return owner, group
 }
 
-func entryInfoFromFileInfo(fileInfo os.FileInfo, path string, sdkVersion string) *rpc.EntryInfo {
+func IsGTEVersion(curVersion, minVersion string) bool {
+	if len(curVersion) > 0 && curVersion[0] != 'v' {
+		curVersion = "v" + curVersion
+	}
+
+	if !semver.IsValid(curVersion) {
+		return false
+	}
+
+	return semver.Compare(curVersion, minVersion) >= 0
+}
+
+func entryInfoFromFileInfo(fileInfo os.FileInfo, path string, sdkLanguage string, sdkVersion string) *rpc.EntryInfo {
 	owner, group := getFileOwnership(fileInfo)
 	fileMode := fileInfo.Mode()
 
@@ -75,7 +88,9 @@ func entryInfoFromFileInfo(fileInfo os.FileInfo, path string, sdkVersion string)
 		Path: path,
 	}
 
-	if sdkVersion != "" && sdkVersion >= entryInfoSupportedSDKVersion {
+	shouldIncludeFields := sdkLanguage == "" || (sdkLanguage == "python" && IsGTEVersion(sdkVersion, entryInfoSupportedSDKVersion))
+
+	if shouldIncludeFields {
 		entry.Size = fileInfo.Size()
 		entry.Mode = uint32(fileMode.Perm())
 		entry.Permissions = fileMode.String()

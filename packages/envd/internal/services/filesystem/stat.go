@@ -31,8 +31,9 @@ func (Service) Stat(ctx context.Context, req *connect.Request[rpc.StatRequest]) 
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error statting file: %w", err))
 	}
 
+	sdkLanguage := req.Header().Get("lang")
 	sdkVersion := req.Header().Get("package_version")
-	entry := entryInfoFromFileInfo(fileInfo, path, sdkVersion)
+	entry := entryInfoFromFileInfo(fileInfo, path, sdkLanguage, sdkVersion)
 
 	return connect.NewResponse(&rpc.StatResponse{Entry: entry}), nil
 }
