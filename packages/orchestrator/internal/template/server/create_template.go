@@ -1,8 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -25,7 +27,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	config := templateRequest.Template
 	childSpan.SetAttributes(
 		telemetry.WithTemplateID(config.TemplateID),
-		attribute.String("env.build.id", config.BuildID),
+		telemetry.WithBuildID(config.BuildID),
 		attribute.String("env.kernel.version", config.KernelVersion),
 		attribute.String("env.firecracker.version", config.FirecrackerVersion),
 		attribute.String("env.start_cmd", config.StartCommand),
@@ -39,12 +41,6 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		return nil, fmt.Errorf("server is draining")
 	}
 
-	logsWriter := writer.New(
-		s.buildLogger.
-			With(zap.Field{Type: zapcore.StringType, Key: "envID", String: config.TemplateID}).
-			With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: config.BuildID}),
-	)
-
 	template := &templateconfig.TemplateConfig{
 		TemplateFiles: storage.NewTemplateFiles(
 			config.TemplateID,
@@ -52,18 +48,22 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 			config.KernelVersion,
 			config.FirecrackerVersion,
 		),
-		VCpuCount:       int64(config.VCpuCount),
-		MemoryMB:        int64(config.MemoryMB),
-		StartCmd:        config.StartCommand,
-		ReadyCmd:        config.ReadyCommand,
-		DiskSizeMB:      int64(config.DiskSizeMB),
-		BuildLogsWriter: logsWriter,
-		HugePages:       config.HugePages,
-		FromImage:       config.FromImage,
-		Steps:           config.Steps,
+		VCpuCount:  int64(config.VCpuCount),
+		MemoryMB:   int64(config.MemoryMB),
+		StartCmd:   config.StartCommand,
+		ReadyCmd:   config.ReadyCommand,
+		DiskSizeMB: int64(config.DiskSizeMB),
+		HugePages:  config.HugePages,
+		FromImage:  config.FromImage,
+		Steps:      config.Steps,
 	}
 
-	buildInfo, err := s.buildCache.Create(config.BuildID)
+	logger := s.buildLogger.
+		With(zap.Field{Type: zapcore.StringType, Key: "envID", String: config.TemplateID}).
+		With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: config.BuildID})
+
+	var logs bytes.Buffer
+	buildInfo, err := s.buildCache.Create(config.BuildID, &logs)
 	if err != nil {
 		return nil, fmt.Errorf("error while creating build cache: %w", err)
 	}
@@ -79,11 +79,12 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		)
 		defer buildSpan.End()
 
-		res, err := s.builder.Build(buildContext, template, templateRequest.EngineConfig)
-		// Wait for the CLI to load all the logs
-		// This is a temporary ~fix for the CLI to load most of the logs before finishing the template build
-		// Ideally, we should wait in the CLI for the last log message
-		// time.Sleep(8 * time.Second)
+		externalWriter := writer.New(logger)
+		defer externalWriter.Close()
+
+		logsWriter := io.MultiWriter(&logs, externalWriter)
+		res, err := s.builder.Build(buildContext, template, logsWriter, templateRequest.EngineConfig)
+		externalWriter.Sync()
 		if err != nil {
 			s.reportBuildFailed(buildContext, template, err)
 			return

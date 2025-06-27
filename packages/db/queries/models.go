@@ -71,6 +71,7 @@ type EnvBuild struct {
 	EnvID              *string
 	EnvdVersion        *string
 	ReadyCmd           *string
+	Reason             *string
 }
 
 type Snapshot struct {

@@ -325,3 +325,15 @@ func (tm *TemplateManager) SetFinished(ctx context.Context, templateID string, b
 
 	return nil
 }
+
+func (tm *TemplateManager) GetBuildLogs(ctx context.Context, templateID string, buildID uuid.UUID) ([]string, error) {
+	status, err := tm.grpc.TemplateClient.TemplateBuildStatus(ctx, &template_manager.TemplateStatusRequest{
+		TemplateID: templateID,
+		BuildID:    buildID.String(),
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "error while getting build logs")
+	}
+
+	return status.GetLogs(), nil
+}

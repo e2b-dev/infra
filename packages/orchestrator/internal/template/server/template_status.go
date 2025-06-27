@@ -21,5 +21,6 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 		Status:   buildInfo.GetStatus(),
 		Reason:   buildInfo.GetReason(),
 		Metadata: buildInfo.GetMetadata(),
+		Logs:     buildInfo.GetLogs(),
 	}, nil
 }
