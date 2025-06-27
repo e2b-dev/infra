@@ -17,9 +17,7 @@ import (
 
 type OrchestratorsPool struct {
 	discovery sd.ServiceDiscoveryAdapter
-
-	nodes *smap.Map[*OrchestratorNode]
-	mutex sync.RWMutex
+	nodes     *smap.Map[*OrchestratorNode]
 
 	tracer trace.Tracer
 	logger *zap.Logger
@@ -42,9 +40,7 @@ func NewOrchestratorsPool(
 ) *OrchestratorsPool {
 	pool := &OrchestratorsPool{
 		discovery: discovery,
-
-		nodes: smap.New[*OrchestratorNode](),
-		mutex: sync.RWMutex{},
+		nodes:     smap.New[*OrchestratorNode](),
 
 		tracer: tracerProvider.Tracer("orchestrators-pool"),
 		logger: logger,
@@ -61,17 +57,18 @@ func NewOrchestratorsPool(
 }
 
 func (p *OrchestratorsPool) GetOrchestrators() map[string]*OrchestratorNode {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-
 	return p.nodes.Items()
 }
 
 func (p *OrchestratorsPool) GetOrchestrator(id string) (node *OrchestratorNode, ok bool) {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
+	orchestrators := p.GetOrchestrators()
+	for _, node = range orchestrators {
+		if node.GetInfo().ServiceId == id {
+			return node, ok
+		}
+	}
 
-	return p.nodes.Get(id)
+	return nil, false
 }
 
 func (p *OrchestratorsPool) keepInSync(ctx context.Context) {
@@ -134,7 +131,6 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 			defer wg.Done()
 
 			var found *OrchestratorNode = nil
-
 			host := fmt.Sprintf("%s:%d", sdNode.NodeIp, sdNode.NodePort)
 			for _, node := range p.nodes.Items() {
 				if host == node.GetInfo().Host {
@@ -200,9 +196,7 @@ func (p *OrchestratorsPool) connectNode(ctx context.Context, node *sd.ServiceDis
 	}
 
 	info := o.GetInfo()
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-	p.nodes.Insert(info.ServiceId, o)
+	p.nodes.Insert(info.NodeId, o)
 	return nil
 }
 
@@ -219,7 +213,7 @@ func (p *OrchestratorsPool) removeNode(ctx context.Context, node *OrchestratorNo
 		p.logger.Error("Error closing connection to node", zap.Error(err), l.WithClusterNodeID(info.ServiceId))
 	}
 
-	p.nodes.Remove(info.ServiceId)
+	p.nodes.Remove(info.NodeId)
 	p.logger.Info("Orchestrator node node connection has been closed.", l.WithClusterNodeID(info.ServiceId))
 	return nil
 }
