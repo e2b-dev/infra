@@ -93,9 +93,6 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 	go buildCache.Start()
 
 	nodeStatus := api.NodeStatusUnhealthy
-	nodeVersion := "unknown"
-	nodeCommit := "unknown"
-	orchestratorID := node.ID
 
 	ok, err := o.getNodeHealth(node)
 	if err != nil {
@@ -115,21 +112,15 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 			zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.ServiceStatus), zap.String("node_id", node.ID))
 			nodeStatus = api.NodeStatusUnhealthy
 		}
-
-		nodeVersion = nodeInfo.ServiceVersion
-		nodeCommit = nodeInfo.ServiceCommit
-		orchestratorID = nodeInfo.NodeId
 	}
 
 	o.nodes.Insert(
 		node.ID, &Node{
 			Client:         client,
 			Info:           node,
-			orchestratorID: orchestratorID,
+			metadata:       getNodeMetadata(nodeInfo),
 			buildCache:     buildCache,
 			status:         nodeStatus,
-			version:        nodeVersion,
-			commit:         nodeCommit,
 			sbxsInProgress: smap.New[*sbxInProgress](),
 			createFails:    atomic.Uint64{},
 		},
