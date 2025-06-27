@@ -20,7 +20,6 @@ type EdgePool struct {
 
 	nodeSelfHost string
 	nodes        *smap.Map[*EdgeNode]
-	mutex        sync.RWMutex
 
 	tracer trace.Tracer
 	logger *zap.Logger
@@ -38,7 +37,6 @@ func NewEdgePool(ctx context.Context, logger *zap.Logger, discovery sd.ServiceDi
 
 		nodeSelfHost: nodeSelfHost,
 		nodes:        smap.New[*EdgeNode](),
-		mutex:        sync.RWMutex{},
 
 		logger: logger,
 		tracer: tracer,
@@ -51,16 +49,10 @@ func NewEdgePool(ctx context.Context, logger *zap.Logger, discovery sd.ServiceDi
 }
 
 func (p *EdgePool) GetNodes() map[string]*EdgeNode {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-
 	return p.nodes.Items()
 }
 
 func (p *EdgePool) GetNode(id string) (*EdgeNode, error) {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-
 	o, ok := p.nodes.Get(id)
 	if !ok {
 		return nil, ErrEdgeNodeNotFound
@@ -118,7 +110,7 @@ func (p *EdgePool) syncNodes(ctx context.Context) {
 			}
 
 			for _, node := range p.nodes.Items() {
-				if host == node.Host {
+				if host == node.GetInfo().Host {
 					found = node
 					break
 				}
@@ -149,7 +141,7 @@ func (p *EdgePool) syncNodes(ctx context.Context) {
 
 			for _, sdNode := range sdNodes {
 				host := fmt.Sprintf("%s:%d", sdNode.NodeIp, sdNode.NodePort)
-				if host == node.Host {
+				if host == node.GetInfo().Host {
 					found = true
 					break
 				}
@@ -180,10 +172,7 @@ func (p *EdgePool) connectNode(ctx context.Context, node *sd.ServiceDiscoveryIte
 		return err
 	}
 
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
-	p.nodes.Insert(o.ServiceInstanceID, o)
+	p.nodes.Insert(o.GetInfo().ServiceInstanceID, o)
 	return nil
 }
 
@@ -191,18 +180,16 @@ func (p *EdgePool) removeNode(ctx context.Context, node *EdgeNode) error {
 	_, childSpan := p.tracer.Start(ctx, "remove-edge-node")
 	defer childSpan.End()
 
-	p.logger.Info("Edge node connection is not active anymore, closing.", l.WithClusterNodeID(node.NodeID))
+	info := node.GetInfo()
+	p.logger.Info("Edge node connection is not active anymore, closing.", l.WithClusterNodeID(info.NodeID))
 
 	// stop background sync and close everything
 	err := node.Close()
 	if err != nil {
-		p.logger.Error("Error closing connection to node", zap.Error(err), l.WithClusterNodeID(node.NodeID))
+		p.logger.Error("Error closing connection to node", zap.Error(err), l.WithClusterNodeID(info.NodeID))
 	}
 
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
-	p.nodes.Remove(node.ServiceInstanceID)
-	p.logger.Info("Edge node node connection has been closed.", l.WithClusterNodeID(node.NodeID))
+	p.nodes.Remove(info.ServiceInstanceID)
+	p.logger.Info("Edge node node connection has been closed.", l.WithClusterNodeID(info.NodeID))
 	return nil
 }

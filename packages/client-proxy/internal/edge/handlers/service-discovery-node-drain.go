@@ -82,9 +82,9 @@ func (a *APIStore) sendNodeRequest(ctx context.Context, serviceID string, status
 
 	switch status {
 	case api.Draining:
-		_, err = e.Client.V1ServiceDiscoveryNodeDrain(ctx, serviceID)
+		_, err = e.GetClient().V1ServiceDiscoveryNodeDrain(ctx, serviceID)
 	case api.Unhealthy:
-		_, err = e.Client.V1ServiceDiscoveryNodeKill(ctx, serviceID)
+		_, err = e.GetClient().V1ServiceDiscoveryNodeKill(ctx, serviceID)
 	default:
 		return errors.New("failed to transform node status to api call")
 	}

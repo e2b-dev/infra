@@ -179,7 +179,6 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 			if !found {
 				err := p.removeNode(spanCtx, node)
 				if err != nil {
-					p.logger.Error("Error during node removal", zap.Error(err), l.WithClusterNodeID(nodeInfo.ServiceId))
 					p.logger.Error("Error during node removal", zap.Error(err), l.WithClusterNodeID(node.NodeID))
 				}
 			}
@@ -213,18 +212,15 @@ func (p *OrchestratorsPool) removeNode(ctx context.Context, node *OrchestratorNo
 	defer childSpan.End()
 
 	info := node.GetInfo()
-	p.logger.Info("Orchestrator node node connection is not active anymore, closing.", l.WithClusterNodeID(info.ServiceInstanceId))
+	p.logger.Info("Orchestrator node node connection is not active anymore, closing.", l.WithClusterNodeID(info.NodeID))
 
 	// stop background sync and close everything
 	err := node.Close()
 	if err != nil {
-		p.logger.Error("Error closing connection to node", zap.Error(err), l.WithClusterNodeID(info.ServiceInstanceId))
+		p.logger.Error("Error closing connection to node", zap.Error(err), l.WithClusterNodeID(info.NodeID))
 	}
 
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
 	p.nodes.Remove(info.ServiceInstanceId)
-	p.logger.Info("Orchestrator node node connection has been closed.", l.WithClusterNodeID(info.ServiceInstanceId))
+	p.logger.Info("Orchestrator node node connection has been closed.", l.WithClusterNodeID(info.NodeID))
 	return nil
 }

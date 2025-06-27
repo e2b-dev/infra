@@ -35,17 +35,18 @@ func (a *APIStore) V1ServiceDiscoveryNodes(c *gin.Context) {
 
 	// iterate edge apis
 	for _, edge := range a.edgePool.GetNodes() {
+		info := edge.GetInfo()
 		response = append(
 			response,
 			api.ClusterNode{
-				NodeID:               edge.NodeID,
-				ServiceInstanceID:    edge.ServiceInstanceID,
-				ServiceStatus:        edge.ServiceStatus,
+				NodeID:               info.NodeID,
+				ServiceInstanceID:    info.ServiceInstanceID,
+				ServiceStatus:        info.ServiceStatus,
 				ServiceType:          api.ClusterNodeTypeEdge,
-				ServiceVersion:       edge.ServiceVersion,
-				ServiceVersionCommit: edge.ServiceVersionCommit,
-				ServiceHost:          edge.Host,
-				ServiceStartedAt:     edge.ServiceStartup,
+				ServiceVersion:       info.ServiceVersion,
+				ServiceVersionCommit: info.ServiceVersionCommit,
+				ServiceHost:          info.Host,
+				ServiceStartedAt:     info.ServiceStartup,
 			},
 		)
 	}
