@@ -62,7 +62,7 @@ func (a *APIStore) sendNodeRequest(ctx context.Context, serviceId string, status
 			return errors.New("failed to transform node status to orchestrator status")
 		}
 
-		_, err := o.Client.Info.ServiceStatusOverride(
+		_, err := o.GetClient().Info.ServiceStatusOverride(
 			findCtx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: orchestratorStatus},
 		)
 		if err != nil {
@@ -82,9 +82,9 @@ func (a *APIStore) sendNodeRequest(ctx context.Context, serviceId string, status
 
 	switch status {
 	case api.Draining:
-		_, err = e.Client.V1ServiceDiscoveryNodeDrain(ctx, serviceId)
+		_, err = e.GetClient().V1ServiceDiscoveryNodeDrain(ctx, serviceId)
 	case api.Unhealthy:
-		_, err = e.Client.V1ServiceDiscoveryNodeKill(ctx, serviceId)
+		_, err = e.GetClient().V1ServiceDiscoveryNodeKill(ctx, serviceId)
 	default:
 		return errors.New("failed to transform node status to api call")
 	}

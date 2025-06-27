@@ -17,34 +17,36 @@ func (a *APIStore) V1ServiceDiscoveryNodes(c *gin.Context) {
 
 	// iterate orchestrator pool
 	for _, orchestrator := range a.orchestratorPool.GetOrchestrators() {
+		info := orchestrator.GetInfo()
 		response = append(
 			response,
 			api.ClusterNode{
-				Id:        orchestrator.ServiceId,
-				NodeId:    orchestrator.NodeId,
-				Status:    getOrchestratorStatusResolved(orchestrator.Status),
+				Id:        info.ServiceId,
+				NodeId:    info.NodeId,
+				Status:    getOrchestratorStatusResolved(info.Status),
 				Type:      api.ClusterNodeTypeOrchestrator,
-				Version:   orchestrator.SourceVersion,
-				Commit:    orchestrator.SourceCommit,
-				Host:      orchestrator.Host,
-				StartedAt: orchestrator.Startup,
+				Version:   info.SourceVersion,
+				Commit:    info.SourceCommit,
+				Host:      info.Host,
+				StartedAt: info.Startup,
 			},
 		)
 	}
 
 	// iterate edge apis
 	for _, edge := range a.edgePool.GetNodes() {
+		info := edge.GetInfo()
 		response = append(
 			response,
 			api.ClusterNode{
-				Id:        edge.ServiceId,
-				NodeId:    edge.NodeId,
-				Status:    edge.Status,
+				Id:        info.ServiceId,
+				NodeId:    info.NodeId,
+				Status:    info.Status,
 				Type:      api.ClusterNodeTypeEdge,
-				Version:   edge.SourceVersion,
-				Commit:    edge.SourceCommit,
-				Host:      edge.Host,
-				StartedAt: edge.Startup,
+				Version:   info.SourceVersion,
+				Commit:    info.SourceCommit,
+				Host:      info.Host,
+				StartedAt: info.Startup,
 			},
 		)
 	}

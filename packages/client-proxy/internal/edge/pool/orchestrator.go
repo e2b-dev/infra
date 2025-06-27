@@ -33,7 +33,7 @@ const (
 	OrchestratorStatusUnhealthy OrchestratorStatus = "unhealthy"
 )
 
-type OrchestratorNode struct {
+type OrchestratorNodeInfo struct {
 	ServiceId string
 	NodeId    string
 
@@ -46,15 +46,17 @@ type OrchestratorNode struct {
 	Status  OrchestratorStatus
 	Startup time.Time
 	Roles   []e2bgrpcorchestratorinfo.ServiceInfoRole
+}
 
-	Client *OrchestratorGRPCClient
-
+type OrchestratorNode struct {
 	MetricVCpuUsed         atomic.Int64
 	MetricMemoryUsedInMB   atomic.Int64
 	MetricDiskUsedInMB     atomic.Int64
 	MetricSandboxesRunning atomic.Int64
 
-	mutex sync.Mutex
+	client *OrchestratorGRPCClient
+	info   OrchestratorNodeInfo
+	mutex  sync.RWMutex
 
 	ctx       context.Context
 	ctxCancel context.CancelFunc
@@ -79,9 +81,11 @@ func NewOrchestrator(ctx context.Context, tracerProvider trace.TracerProvider, m
 	ctx, ctxCancel := context.WithCancel(ctx)
 
 	o := &OrchestratorNode{
-		Host:   host,
-		Ip:     ip,
-		Client: client,
+		client: client,
+		info: OrchestratorNodeInfo{
+			Host: host,
+			Ip:   ip,
+		},
 
 		ctx:       ctx,
 		ctxCancel: ctxCancel,
@@ -114,27 +118,27 @@ func (o *OrchestratorNode) sync() {
 }
 
 func (o *OrchestratorNode) syncRun() error {
-	o.mutex.Lock()
-	defer o.mutex.Unlock()
-
 	ctx, cancel := context.WithTimeout(o.ctx, orchestratorSyncInterval)
 	defer cancel()
 
 	for i := 0; i < orchestratorSyncMaxRetries; i++ {
-		status, err := o.Client.Info.ServiceInfo(ctx, &emptypb.Empty{})
+		freshInfo := o.GetInfo()
+
+		status, err := o.client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 		if err != nil {
-			zap.L().Error("failed to check orchestrator health", l.WithClusterNodeID(o.ServiceId), zap.Error(err))
+			zap.L().Error("failed to check orchestrator health", l.WithClusterNodeID(freshInfo.ServiceId), zap.Error(err))
 			continue
 		}
 
-		o.NodeId = status.NodeId
-		o.ServiceId = status.ServiceId
-		o.Startup = status.ServiceStartup.AsTime()
-		o.Status = getMappedStatus(status.ServiceStatus)
-		o.Roles = status.ServiceRoles
+		freshInfo.NodeId = status.NodeId
+		freshInfo.ServiceId = status.ServiceId
+		freshInfo.Startup = status.ServiceStartup.AsTime()
+		freshInfo.Status = getMappedStatus(status.ServiceStatus)
+		freshInfo.Roles = status.ServiceRoles
 
-		o.SourceVersion = status.ServiceVersion
-		o.SourceCommit = status.ServiceCommit
+		freshInfo.SourceVersion = status.ServiceVersion
+		freshInfo.SourceCommit = status.ServiceCommit
+		o.setInfo(freshInfo)
 
 		o.MetricSandboxesRunning.Store(status.MetricSandboxesRunning)
 		o.MetricMemoryUsedInMB.Store(status.MetricMemoryUsedMb)
@@ -147,14 +151,36 @@ func (o *OrchestratorNode) syncRun() error {
 	return errors.New("failed to check orchestrator status")
 }
 
+func (o *OrchestratorNode) setStatus(status OrchestratorStatus) {
+	o.mutex.Lock()
+	defer o.mutex.Unlock()
+	o.info.Status = status
+}
+
+func (o *OrchestratorNode) setInfo(i OrchestratorNodeInfo) {
+	o.mutex.Lock()
+	defer o.mutex.Unlock()
+	o.info = i
+}
+
+func (o *OrchestratorNode) GetInfo() OrchestratorNodeInfo {
+	o.mutex.RLock()
+	defer o.mutex.RUnlock()
+	return o.info
+}
+
+func (o *OrchestratorNode) GetClient() *OrchestratorGRPCClient {
+	return o.client
+}
+
 func (o *OrchestratorNode) Close() error {
 	// close sync context
 	o.ctxCancel()
-	o.Status = OrchestratorStatusUnhealthy
+	o.setStatus(OrchestratorStatusUnhealthy)
 
 	// close grpc client
-	if o.Client != nil {
-		err := o.Client.close()
+	if o.client != nil {
+		err := o.client.close()
 		if err != nil {
 			return err
 		}

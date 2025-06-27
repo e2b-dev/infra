@@ -19,18 +19,19 @@ func (a *APIStore) V1ServiceDiscoveryGetOrchestrators(c *gin.Context) {
 	response := make([]api.ClusterOrchestratorNode, 0)
 
 	for _, node := range a.orchestratorPool.GetOrchestrators() {
+		info := node.GetInfo()
 		response = append(
 			response,
 			api.ClusterOrchestratorNode{
-				Id:        node.ServiceId,
-				NodeId:    node.NodeId,
-				Version:   node.SourceVersion,
-				Commit:    node.SourceCommit,
-				Host:      node.Host,
-				StartedAt: node.Startup,
+				Id:        info.ServiceId,
+				NodeId:    info.NodeId,
+				Version:   info.SourceVersion,
+				Commit:    info.SourceCommit,
+				Host:      info.Host,
+				StartedAt: info.Startup,
 
-				Status: getOrchestratorStatusResolved(node.Status),
-				Roles:  getOrchestratorRolesResolved(node.Roles),
+				Status: getOrchestratorStatusResolved(info.Status),
+				Roles:  getOrchestratorRolesResolved(info.Roles),
 
 				MetricRamMBUsed:        node.MetricMemoryUsedInMB.Load(),
 				MetricVCpuUsed:         node.MetricVCpuUsed.Load(),

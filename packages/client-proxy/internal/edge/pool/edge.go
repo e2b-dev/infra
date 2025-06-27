@@ -18,7 +18,7 @@ const (
 	edgeSyncMaxRetries = 3
 )
 
-type EdgeNode struct {
+type EdgeNodeInfo struct {
 	ServiceId string
 	NodeId    string
 
@@ -28,9 +28,12 @@ type EdgeNode struct {
 	Host    string
 	Status  api.ClusterNodeStatus
 	Startup time.Time
-	Client  *api.ClientWithResponses
+}
 
-	mutex sync.Mutex
+type EdgeNode struct {
+	info   EdgeNodeInfo
+	client *api.ClientWithResponses
+	mutex  sync.RWMutex
 
 	ctx       context.Context
 	ctxCancel context.CancelFunc
@@ -46,8 +49,10 @@ func NewEdgeNode(ctx context.Context, host string) (*EdgeNode, error) {
 	}
 
 	o := &EdgeNode{
-		Host:   host,
-		Client: client,
+		client: client,
+		info: EdgeNodeInfo{
+			Host: host,
+		},
 
 		ctx:       ctx,
 		ctxCancel: ctxCancel,
@@ -80,32 +85,31 @@ func (o *EdgeNode) sync() {
 }
 
 func (o *EdgeNode) syncRun() error {
-	o.mutex.Lock()
-	defer o.mutex.Unlock()
-
 	ctx, cancel := context.WithTimeout(o.ctx, edgeSyncInterval)
 	defer cancel()
 
 	for i := 0; i < edgeSyncMaxRetries; i++ {
-		res, err := o.Client.V1InfoWithResponse(ctx)
+		info := o.GetInfo()
+		res, err := o.client.V1InfoWithResponse(ctx)
 		if err != nil {
-			zap.L().Error("failed to check edge node status", l.WithClusterNodeID(o.ServiceId), zap.Error(err))
+			zap.L().Error("failed to check edge node status", l.WithClusterNodeID(info.ServiceId), zap.Error(err))
 			continue
 		}
 
 		if res.JSON200 == nil {
-			zap.L().Error("failed to check edge node status", l.WithClusterNodeID(o.ServiceId), zap.Int("status", res.StatusCode()))
+			zap.L().Error("failed to check edge node status", l.WithClusterNodeID(info.ServiceId), zap.Int("status", res.StatusCode()))
 			continue
 		}
 
 		body := res.JSON200
 
-		o.ServiceId = body.Id
-		o.NodeId = body.NodeId
-		o.Startup = body.Startup
-		o.Status = body.Status
-		o.SourceVersion = body.Version
-		o.SourceCommit = body.Commit
+		info.ServiceId = body.Id
+		info.NodeId = body.NodeId
+		info.Startup = body.Startup
+		info.Status = body.Status
+		info.SourceVersion = body.Version
+		info.SourceCommit = body.Commit
+		o.setInfo(info)
 
 		return nil
 	}
@@ -113,10 +117,32 @@ func (o *EdgeNode) syncRun() error {
 	return errors.New("failed to check edge node status")
 }
 
+func (o *EdgeNode) GetClient() *api.ClientWithResponses {
+	return o.client
+}
+
+func (o *EdgeNode) GetInfo() EdgeNodeInfo {
+	o.mutex.RLock()
+	defer o.mutex.RUnlock()
+	return o.info
+}
+
+func (o *EdgeNode) setInfo(info EdgeNodeInfo) {
+	o.mutex.Lock()
+	defer o.mutex.Unlock()
+	o.info = info
+}
+
+func (o *EdgeNode) setStatus(s api.ClusterNodeStatus) {
+	o.mutex.Lock()
+	defer o.mutex.Unlock()
+	o.info.Status = s
+}
+
 func (o *EdgeNode) Close() error {
 	// close sync context
 	o.ctxCancel()
-	o.Status = api.Unhealthy
+	o.setStatus(api.Unhealthy)
 	return nil
 }
 

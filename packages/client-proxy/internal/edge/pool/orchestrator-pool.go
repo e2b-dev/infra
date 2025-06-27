@@ -17,9 +17,7 @@ import (
 
 type OrchestratorsPool struct {
 	discovery sd.ServiceDiscoveryAdapter
-
-	nodes *smap.Map[*OrchestratorNode]
-	mutex sync.RWMutex
+	nodes     *smap.Map[*OrchestratorNode]
 
 	tracer trace.Tracer
 	logger *zap.Logger
@@ -42,9 +40,7 @@ func NewOrchestratorsPool(
 ) *OrchestratorsPool {
 	pool := &OrchestratorsPool{
 		discovery: discovery,
-
-		nodes: smap.New[*OrchestratorNode](),
-		mutex: sync.RWMutex{},
+		nodes:     smap.New[*OrchestratorNode](),
 
 		tracer: tracerProvider.Tracer("orchestrators-pool"),
 		logger: logger,
@@ -61,17 +57,18 @@ func NewOrchestratorsPool(
 }
 
 func (p *OrchestratorsPool) GetOrchestrators() map[string]*OrchestratorNode {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-
 	return p.nodes.Items()
 }
 
 func (p *OrchestratorsPool) GetOrchestrator(id string) (node *OrchestratorNode, ok bool) {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
+	orchestrators := p.GetOrchestrators()
+	for _, node = range orchestrators {
+		if node.GetInfo().ServiceId == id {
+			return node, true
+		}
+	}
 
-	return p.nodes.Get(id)
+	return nil, false
 }
 
 func (p *OrchestratorsPool) keepInSync(ctx context.Context) {
@@ -134,10 +131,9 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 			defer wg.Done()
 
 			var found *OrchestratorNode = nil
-
 			host := fmt.Sprintf("%s:%d", sdNode.NodeIp, sdNode.NodePort)
 			for _, node := range p.nodes.Items() {
-				if host == node.Host {
+				if host == node.GetInfo().Host {
 					found = node
 					break
 				}
@@ -162,13 +158,14 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 	for _, node := range p.GetOrchestrators() {
 		wg.Add(1)
 		go func(node *OrchestratorNode) {
+			nodeInfo := node.GetInfo()
 			defer wg.Done()
 
 			found := false
 
 			for _, sdNode := range sdNodes {
 				host := fmt.Sprintf("%s:%d", sdNode.NodeIp, sdNode.NodePort)
-				if host == node.Host {
+				if host == nodeInfo.Host {
 					found = true
 					break
 				}
@@ -178,7 +175,7 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 			if !found {
 				err := p.removeNode(spanCtx, node)
 				if err != nil {
-					p.logger.Error("Error during node removal", zap.Error(err), l.WithClusterNodeID(node.ServiceId))
+					p.logger.Error("Error during node removal", zap.Error(err), l.WithClusterNodeID(nodeInfo.ServiceId))
 				}
 			}
 		}(node)
@@ -198,10 +195,8 @@ func (p *OrchestratorsPool) connectNode(ctx context.Context, node *sd.ServiceDis
 		return err
 	}
 
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
-	p.nodes.Insert(o.ServiceId, o)
+	info := o.GetInfo()
+	p.nodes.Insert(info.NodeId, o)
 	return nil
 }
 
@@ -209,19 +204,16 @@ func (p *OrchestratorsPool) removeNode(ctx context.Context, node *OrchestratorNo
 	_, childSpan := p.tracer.Start(ctx, "remove-orchestrator-node")
 	defer childSpan.End()
 
-	p.logger.Info("Orchestrator node node connection is not active anymore, closing.", l.WithClusterNodeID(node.ServiceId))
+	info := node.GetInfo()
+	p.logger.Info("Orchestrator node node connection is not active anymore, closing.", l.WithClusterNodeID(info.ServiceId))
 
 	// stop background sync and close everything
 	err := node.Close()
 	if err != nil {
-		p.logger.Error("Error closing connection to node", zap.Error(err), l.WithClusterNodeID(node.ServiceId))
+		p.logger.Error("Error closing connection to node", zap.Error(err), l.WithClusterNodeID(info.ServiceId))
 	}
 
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
-	p.nodes.Remove(node.ServiceId)
-
-	p.logger.Info("Orchestrator node node connection has been closed.", l.WithClusterNodeID(node.ServiceId))
+	p.nodes.Remove(info.NodeId)
+	p.logger.Info("Orchestrator node node connection has been closed.", l.WithClusterNodeID(info.ServiceId))
 	return nil
 }
