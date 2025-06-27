@@ -64,7 +64,7 @@ func (p *OrchestratorsPool) GetOrchestrator(id string) (node *OrchestratorNode, 
 	orchestrators := p.GetOrchestrators()
 	for _, node = range orchestrators {
 		if node.GetInfo().ServiceId == id {
-			return node, ok
+			return node, true
 		}
 	}
 
