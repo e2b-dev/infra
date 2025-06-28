@@ -777,3 +777,56 @@ resource "google_compute_security_policy" "disable-bots-log-collector" {
     }
   }
 }
+
+resource "google_compute_network" "vpc_network" {
+  name                    = "cluster-vpc"
+  auto_create_subnetworks = false
+}
+
+# Configure a Private DNS Zone for private.googleapis.com
+#resource "google_dns_managed_zone" "private_googleapis" {
+#  name       = "private-googleapis-zone"
+#  dns_name   = "googleapis.com."
+#  visibility = "private"
+#
+#  private_visibility_config {
+#    networks {
+#      network_url = "projects/${var.gcp_project_id}/global/networks/${google_compute_network.vpc_network.name}"
+#    }
+#  }
+#}
+#
+#resource "google_dns_record_set" "private_googleapis_a_record" {
+#  name         = "private.googleapis.com."
+#  type         = "A"
+#  ttl          = 300
+#  managed_zone = "private-googleapis-zone"
+#
+#  rrdatas = ["199.36.153.8"]
+#}
+
+module "private_service_connect" {
+  source  = "terraform-google-modules/network/google//modules/private-service-connect"
+  version = "~> 11.1"
+
+  project_id                 = var.gcp_project_id
+  network_self_link          = google_compute_network.vpc_network.self_link
+  private_service_connect_ip = "10.3.0.5"
+  forwarding_rule_target     = "all-apis"
+}
+
+# Allow egress to specific IP ranges
+resource "google_compute_firewall" "allow_egress_specific_ranges" {
+  name    = "allow-egress-specific-ranges"
+  network = google_compute_network.vpc_network.id
+
+  direction = "EGRESS"
+
+  allow {
+    protocol = "all"
+  }
+
+  destination_ranges = [
+    "34.126.0.0/18",
+  ]
+}

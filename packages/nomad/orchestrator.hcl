@@ -68,6 +68,7 @@ EOT
         LOGS_COLLECTOR_PUBLIC_IP     = "${logs_collector_public_ip}"
         ENVIRONMENT                  = "${environment}"
         TEMPLATE_BUCKET_NAME         = "${template_bucket_name}"
+        TEMPLATE_CACHE_PROXY_URL     = "${template_cache_proxy_url}"
         OTEL_COLLECTOR_GRPC_ENDPOINT = "${otel_collector_grpc_endpoint}"
         ALLOW_SANDBOX_INTERNET       = "${allow_sandbox_internet}"
 
