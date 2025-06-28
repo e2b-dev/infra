@@ -1,4 +1,4 @@
-package build
+package templateconfig
 
 import (
 	"io"
@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -32,18 +33,24 @@ type TemplateConfig struct {
 	BuildLogsWriter io.Writer
 
 	// Real size of the rootfs after building the template.
-	rootfsSize int64
+	RootfsSize int64
 
 	// HugePages sets whether the VM use huge pages.
 	HugePages bool
 
 	// Command to run to check if the template is ready.
 	ReadyCmd string
+
+	// FromImage is the base image to use for building the template.
+	FromImage string
+
+	// Steps to build the template.
+	Steps []*templatemanager.TemplateStep
 }
 
 // Real size in MB of rootfs after building the template
 func (e *TemplateConfig) RootfsSizeMB() int64 {
-	return e.rootfsSize >> 20
+	return e.RootfsSize >> 20
 }
 
 func (e *TemplateConfig) MemfilePageSize() int64 {

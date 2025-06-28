@@ -18,11 +18,18 @@ build-base-template:
 	@E2B_DOMAIN=$(DOMAIN_NAME) DOCKER_CLI_DEBUG=1 e2b tpl build -p scripts
 	@echo "Done"
 
+.PHONY: build-engine-template
+build-engine-template:
+	@echo "Building build engine template..."
+	@E2B_DOMAIN=$(DOMAIN_NAME) DOCKER_CLI_DEBUG=1 e2b tpl build -p scripts/buildengine
+	@echo "Done"
+
 .PHONY: prep-cluster
 prep-cluster:
 	@echo "Seeding database..."
 	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/seed/postgres/seed-db.go
 	$(MAKE) build-base-template
+	$(MAKE) build-engine-template
 
 .PHONY: migrate-postgres
 migrate-postgres:migrate-postgres/up

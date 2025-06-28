@@ -14,8 +14,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/builder"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/ext4"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/oci"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/templateconfig"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -40,8 +42,10 @@ const (
 )
 
 type Rootfs struct {
-	template         *TemplateConfig
+	template         *templateconfig.TemplateConfig
 	artifactRegistry artifactsregistry.ArtifactsRegistry
+
+	builder *builder.ImageBuilder
 }
 
 type MultiWriter struct {
@@ -59,14 +63,24 @@ func (mw *MultiWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func NewRootfs(artifactRegistry artifactsregistry.ArtifactsRegistry, template *TemplateConfig) *Rootfs {
+func NewRootfs(
+	artifactRegistry artifactsregistry.ArtifactsRegistry,
+	template *templateconfig.TemplateConfig,
+	builder *builder.ImageBuilder,
+) *Rootfs {
 	return &Rootfs{
 		template:         template,
 		artifactRegistry: artifactRegistry,
+		builder:          builder,
 	}
 }
 
-func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, rootfsPath string) (c containerregistry.Config, e error) {
+func (r *Rootfs) createExt4Filesystem(
+	ctx context.Context,
+	tracer trace.Tracer,
+	postProcessor *writer.PostProcessor,
+	rootfsPath string,
+) (c containerregistry.Config, e error) {
 	childCtx, childSpan := tracer.Start(ctx, "create-ext4-file")
 	defer childSpan.End()
 
@@ -78,7 +92,13 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 
 	postProcessor.WriteMsg("Requesting Docker Image")
 
-	img, err := oci.GetImage(childCtx, tracer, r.artifactRegistry, r.template.TemplateId, r.template.BuildId)
+	var img containerregistry.Image
+	var err error
+	if r.template.FromImage != "" {
+		img, err = oci.GetPublicImage(childCtx, tracer, r.template.FromImage)
+	} else {
+		img, err = oci.GetImage(childCtx, tracer, r.artifactRegistry, r.template.TemplateId, r.template.BuildId)
+	}
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error requesting docker image: %w", err)
 	}
@@ -87,7 +107,14 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error getting image size: %w", err)
 	}
-	postProcessor.WriteMsg(fmt.Sprintf("Docker image size: %s", humanize.Bytes(uint64(imageSize))))
+	postProcessor.WriteMsg(fmt.Sprintf("Base Docker image size: %s", humanize.Bytes(uint64(imageSize))))
+
+	// Template build layers
+	img, err = r.builder.BuildLayers(ctx, tracer, postProcessor, img)
+	if err != nil {
+		return containerregistry.Config{}, fmt.Errorf("error building layers: %w", err)
+	}
+	// Template build layers
 
 	postProcessor.WriteMsg("Setting up system files")
 	layers, err := additionalOCILayers(childCtx, r.template)
@@ -105,7 +132,7 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error creating ext4 filesystem: %w", err)
 	}
-	r.template.rootfsSize = ext4Size
+	r.template.RootfsSize = ext4Size
 	telemetry.ReportEvent(childCtx, "created rootfs ext4 file")
 
 	postProcessor.WriteMsg("Filesystem cleanup")
@@ -134,7 +161,7 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 		if err != nil {
 			return containerregistry.Config{}, fmt.Errorf("error enlarging rootfs: %w", err)
 		}
-		r.template.rootfsSize = rootfsFinalSize
+		r.template.RootfsSize = rootfsFinalSize
 	}
 
 	// Check the rootfs filesystem corruption
@@ -157,7 +184,7 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 
 func additionalOCILayers(
 	ctx context.Context,
-	config *TemplateConfig,
+	config *templateconfig.TemplateConfig,
 ) ([]containerregistry.Layer, error) {
 	var scriptDef bytes.Buffer
 	err := ProvisionScriptTemplate.Execute(&scriptDef, struct {

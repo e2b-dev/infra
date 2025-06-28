@@ -150,8 +150,9 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		zap.L().Fatal("initializing Orchestrator client", zap.Error(err))
 	}
 
+	templateCache := templatecache.NewTemplateCache(sqlcDB)
 	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
-	templateManager, err := template_manager.New(ctx, tel.TracerProvider, tel.MeterProvider, dbClient, templateBuildsCache)
+	templateManager, err := template_manager.New(ctx, tel.TracerProvider, tel.MeterProvider, dbClient, templateBuildsCache, templateCache)
 	if err != nil {
 		zap.L().Fatal("initializing Template manager client", zap.Error(err))
 	}
@@ -169,7 +170,6 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 	}
 
 	authCache := authcache.NewTeamAuthCache()
-	templateCache := templatecache.NewTemplateCache(sqlcDB)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
 
 	accessTokenGenerator, err := sandbox.NewEnvdAccessTokenGenerator()
