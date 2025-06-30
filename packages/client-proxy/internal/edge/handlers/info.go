@@ -14,12 +14,12 @@ func (a *APIStore) V1Info(c *gin.Context) {
 	c.JSON(
 		http.StatusOK,
 		api.ClusterNodeInfo{
-			Id:      info.ServiceId,
-			NodeId:  info.NodeId,
-			Status:  info.GetStatus(),
-			Startup: info.Startup,
-			Version: info.SourceVersion,
-			Commit:  info.SourceCommit,
+			NodeID:               info.NodeID,
+			ServiceInstanceID:    info.ServiceInstanceID,
+			ServiceStatus:        info.GetStatus(),
+			ServiceStartup:       info.ServiceStartup,
+			ServiceVersion:       info.ServiceVersion,
+			ServiceVersionCommit: info.ServiceVersionCommit,
 		},
 	)
 }

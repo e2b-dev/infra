@@ -22,15 +22,16 @@ func (a *APIStore) V1ServiceDiscoveryGetOrchestrators(c *gin.Context) {
 		response = append(
 			response,
 			api.ClusterOrchestratorNode{
-				Id:        node.ServiceId,
-				NodeId:    node.NodeId,
-				Version:   node.SourceVersion,
-				Commit:    node.SourceCommit,
-				Host:      node.Host,
-				StartedAt: node.Startup,
+				NodeID:            node.NodeID,
+				ServiceInstanceID: node.ServiceInstanceId,
 
-				Status: getOrchestratorStatusResolved(node.Status),
-				Roles:  getOrchestratorRolesResolved(node.Roles),
+				ServiceVersion:       node.ServiceVersion,
+				ServiceVersionCommit: node.ServiceVersionCommit,
+				ServiceHost:          node.Host,
+				ServiceStartedAt:     node.ServiceStartup,
+				ServiceStatus:        getOrchestratorStatusResolved(node.ServiceStatus),
+
+				Roles: getOrchestratorRolesResolved(node.Roles),
 
 				MetricRamMBUsed:        node.MetricMemoryUsedInMB.Load(),
 				MetricVCpuUsed:         node.MetricVCpuUsed.Load(),
@@ -44,7 +45,7 @@ func (a *APIStore) V1ServiceDiscoveryGetOrchestrators(c *gin.Context) {
 		response,
 		func(i, j int) bool {
 			// older dates first
-			return response[i].StartedAt.Before(response[j].StartedAt)
+			return response[i].ServiceStartedAt.Before(response[j].ServiceStartedAt)
 		},
 	)
 
@@ -73,7 +74,7 @@ func getOrchestratorRolesResolved(r []e2bgrpcorchestratorinfo.ServiceInfoRole) [
 		case e2bgrpcorchestratorinfo.ServiceInfoRole_Orchestrator:
 			roles = append(roles, api.ClusterOrchestratorRoleOrchestrator)
 		case e2bgrpcorchestratorinfo.ServiceInfoRole_TemplateManager:
-			roles = append(roles, api.ClusterOrchestratorRoleTemplateManager)
+			roles = append(roles, api.ClusterOrchestratorRoleBuilder)
 		default:
 			zap.L().Error("Unknown orchestrator role", zap.String("role", string(role)))
 		}

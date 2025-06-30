@@ -10,14 +10,14 @@ import (
 )
 
 type ServiceInfo struct {
-	NodeId    string
-	ServiceId string
+	NodeID string
 
-	SourceVersion string
-	SourceCommit  string
+	ServiceInstanceID    string
+	ServiceVersion       string
+	ServiceVersionCommit string
+	ServiceStartup       time.Time
 
-	Startup time.Time
-	Host    string
+	Host string
 
 	terminating bool
 	status      api.ClusterNodeStatus

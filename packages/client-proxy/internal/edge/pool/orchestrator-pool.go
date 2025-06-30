@@ -178,7 +178,7 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 			if !found {
 				err := p.removeNode(spanCtx, node)
 				if err != nil {
-					p.logger.Error("Error during node removal", zap.Error(err), l.WithClusterNodeID(node.ServiceId))
+					p.logger.Error("Error during node removal", zap.Error(err), l.WithClusterNodeID(node.NodeID))
 				}
 			}
 		}(node)
@@ -201,7 +201,7 @@ func (p *OrchestratorsPool) connectNode(ctx context.Context, node *sd.ServiceDis
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
-	p.nodes.Insert(o.ServiceId, o)
+	p.nodes.Insert(o.ServiceInstanceId, o)
 	return nil
 }
 
@@ -209,19 +209,18 @@ func (p *OrchestratorsPool) removeNode(ctx context.Context, node *OrchestratorNo
 	_, childSpan := p.tracer.Start(ctx, "remove-orchestrator-node")
 	defer childSpan.End()
 
-	p.logger.Info("Orchestrator node node connection is not active anymore, closing.", l.WithClusterNodeID(node.ServiceId))
+	p.logger.Info("Orchestrator node node connection is not active anymore, closing.", l.WithClusterNodeID(node.NodeID))
 
 	// stop background sync and close everything
 	err := node.Close()
 	if err != nil {
-		p.logger.Error("Error closing connection to node", zap.Error(err), l.WithClusterNodeID(node.ServiceId))
+		p.logger.Error("Error closing connection to node", zap.Error(err), l.WithClusterNodeID(node.NodeID))
 	}
 
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
-	p.nodes.Remove(node.ServiceId)
-
-	p.logger.Info("Orchestrator node node connection has been closed.", l.WithClusterNodeID(node.ServiceId))
+	p.nodes.Remove(node.ServiceInstanceId)
+	p.logger.Info("Orchestrator node node connection has been closed.", l.WithClusterNodeID(node.NodeID))
 	return nil
 }

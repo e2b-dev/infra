@@ -13,12 +13,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 )
 
-func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context, serviceId string) {
+func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context, serviceID string) {
 	_, templateSpan := a.tracer.Start(c, "service-discovery-node-drain-handler")
 	defer templateSpan.End()
 
 	// requests was for this node
-	if serviceId == a.info.ServiceId {
+	if serviceID == a.info.ServiceInstanceID {
 		a.info.SetStatus(api.Draining)
 		c.Status(http.StatusOK)
 		return
@@ -28,7 +28,7 @@ func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context, serviceId string)
 	defer reqTimeoutCancel()
 
 	// send request to neighboring node
-	err := a.sendNodeRequest(reqTimeout, serviceId, api.Draining)
+	err := a.sendNodeRequest(reqTimeout, serviceID, api.Draining)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Error when calling service discovery service")
 		return
@@ -37,14 +37,14 @@ func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context, serviceId string)
 	c.Status(http.StatusOK)
 }
 
-func (a *APIStore) sendNodeRequest(ctx context.Context, serviceId string, status api.ClusterNodeStatus) error {
+func (a *APIStore) sendNodeRequest(ctx context.Context, serviceID string, status api.ClusterNodeStatus) error {
 	findCtx, findCtxCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer findCtxCancel()
 
-	logger := a.logger.With(zap.String("service_id", serviceId))
+	logger := a.logger.With(zap.String("service_id", serviceID))
 
 	// try to find orchestrator node first
-	o, ok := a.orchestratorPool.GetOrchestrator(serviceId)
+	o, ok := a.orchestratorPool.GetOrchestrator(serviceID)
 	if ok {
 		logger.Info("found orchestrator node, calling status change request")
 
@@ -74,7 +74,7 @@ func (a *APIStore) sendNodeRequest(ctx context.Context, serviceId string, status
 	}
 
 	// try to find edge node
-	e, err := a.edgePool.GetNode(serviceId)
+	e, err := a.edgePool.GetNode(serviceID)
 	if err != nil {
 		logger.Error("failed to get node from edge pool", zap.Error(err))
 		return errors.New("failed to get edge node")
@@ -82,9 +82,9 @@ func (a *APIStore) sendNodeRequest(ctx context.Context, serviceId string, status
 
 	switch status {
 	case api.Draining:
-		_, err = e.Client.V1ServiceDiscoveryNodeDrain(ctx, serviceId)
+		_, err = e.Client.V1ServiceDiscoveryNodeDrain(ctx, serviceID)
 	case api.Unhealthy:
-		_, err = e.Client.V1ServiceDiscoveryNodeKill(ctx, serviceId)
+		_, err = e.Client.V1ServiceDiscoveryNodeKill(ctx, serviceID)
 	default:
 		return errors.New("failed to transform node status to api call")
 	}
