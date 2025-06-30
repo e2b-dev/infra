@@ -116,9 +116,8 @@ func (w *HTTPExporter) start() {
 
 		for _, logLine := range logs {
 			w.mmdsLock.RLock()
-			defer w.mmdsLock.RUnlock()
-
 			logLineWithOpts, err := w.mmdsOpts.AddOptsToJSON(logLine)
+			w.mmdsLock.RUnlock()
 			if err != nil {
 				log.Printf("error adding instance logging options (%+v) to JSON (%+v) with logs : %v\n", w.mmdsOpts, logLine, err)
 
