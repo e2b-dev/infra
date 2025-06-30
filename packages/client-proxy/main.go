@@ -162,7 +162,16 @@ func run() int {
 	}
 
 	authorizationManager := authorization.NewStaticTokenAuthorizationService(edgeSecret)
-	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, logger, tracer, info, edgeSD, orchestrators, catalog)
+
+	edges := e2borchestrators.NewEdgePool(logger, edgeSD, tracer, info.Host)
+	go func() {
+		select {
+		case <-signalCtx.Done():
+			edges.Close()
+		}
+	}()
+
+	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, logger, tracer, info, edges, orchestrators, catalog)
 	if err != nil {
 		logger.Error("failed to create edge api store", zap.Error(err))
 		return 1
