@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -252,21 +253,46 @@ func RemoveFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, fil
 	return nil
 }
 
+// MountOverlayFS mounts an overlay filesystem with the specified layers at the given mount point.
+// It requires kernel version 6.8 or later to use the fsconfig interface for overlayfs.
+// Older mount syscall is not used because it has lowerdirs character limit (4096 characters).
 func MountOverlayFS(ctx context.Context, tracer trace.Tracer, layers []string, mountPoint string) error {
-	ctx, mountSpan := tracer.Start(ctx, "mount-overlay-fs")
+	_, mountSpan := tracer.Start(ctx, "mount-overlay-fs", trace.WithAttributes(
+		attribute.String("mount", mountPoint),
+		attribute.StringSlice("layers", layers),
+	))
 	defer mountSpan.End()
 
-	cmd := exec.CommandContext(ctx, "mount", "-t", "overlay", "overlay", "-o", "lowerdir="+strings.Join(layers, ":"), mountPoint)
-	telemetry.ReportEvent(ctx, "mount-ext4-filesystem", attribute.String("cmd", cmd.String()))
+	// Open the filesystem for configuration
+	fsfd, err := unix.Fsopen("overlay", unix.FSOPEN_CLOEXEC)
+	if err != nil {
+		return fmt.Errorf("fsopen failed: %w", err)
+	}
+	defer unix.Close(fsfd)
 
-	mountStdoutWriter := telemetry.NewEventWriter(ctx, "stdout")
-	cmd.Stdout = mountStdoutWriter
+	// Set lowerdir using FSCONFIG_SET_STRING
+	for _, layer := range layers {
+		// https://docs.kernel.org/filesystems/overlayfs.html
+		if err := unix.FsconfigSetString(fsfd, "lowerdir+", layer); err != nil {
+			return fmt.Errorf("fsconfig lowerdir failed: %w", err)
+		}
+	}
 
-	mountStderrWriter := telemetry.NewEventWriter(ctx, "stderr")
-	cmd.Stderr = mountStderrWriter
+	// Finalize configuration
+	if err := unix.FsconfigCreate(fsfd); err != nil {
+		return fmt.Errorf("fsconfig create failed: %w", err)
+	}
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("error mounting ext4 filesystem: %w", err)
+	// Create the mount
+	mfd, err := unix.Fsmount(fsfd, 0, 0)
+	if err != nil {
+		return fmt.Errorf("fsmount failed: %w", err)
+	}
+	defer unix.Close(mfd)
+
+	// Mount to target
+	if err := unix.MoveMount(mfd, "", -1, mountPoint, unix.MOVE_MOUNT_F_EMPTY_PATH); err != nil {
+		return fmt.Errorf("move mount failed: %w", err)
 	}
 
 	return nil
