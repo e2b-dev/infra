@@ -116,9 +116,8 @@ func (d clusterSynchronizationStore) SourceExists(ctx context.Context, s []api.C
 }
 
 func (d clusterSynchronizationStore) PoolList(ctx context.Context) []*ClusterNode {
-	items := d.cluster.nodes.Items()
-	mapped := make([]*ClusterNode, len(items))
-	for _, item := range items {
+	mapped := make([]*ClusterNode, 0)
+	for _, item := range d.cluster.nodes.Items() {
 		mapped = append(mapped, item)
 	}
 
