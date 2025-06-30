@@ -79,14 +79,14 @@ func New(ctx context.Context, tracer trace.Tracer, tracerProvider trace.TracerPr
 
 		localClient:       client,
 		localClientMutex:  sync.RWMutex{},
-		localClientStatus: infogrpc.ServiceInfoStatus_OrchestratorHealthy,
+		localClientStatus: infogrpc.ServiceInfoStatus_OrchestratorUnhealthy,
 
 		lock:       sync.Mutex{},
 		processing: make(map[uuid.UUID]processingBuilds),
 	}
 
-	// periodically check for local template manager health status
-	go tm.localBuilderHealthCheckSync(ctx)
+	// Periodically check for local template manager health status
+	go tm.localClientPeriodicHealthSync(ctx)
 
 	return tm, nil
 }
@@ -128,22 +128,20 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 func (tm *TemplateManager) getBuilderClient(clusterID *uuid.UUID, nodeID *string, placement bool) (*grpclient.GRPCClient, metadata.MD, PlacementLogsProvider, error) {
 	if clusterID == nil || nodeID == nil {
 		tm.localClientMutex.RLock()
+		defer tm.localClientMutex.RUnlock()
 
 		// build placement requires healthy template builder
 		if placement && tm.GetLocalClientStatus() != infogrpc.ServiceInfoStatus_OrchestratorHealthy {
-			tm.localClientMutex.RUnlock()
 			zap.L().Error("Local template manager is not fully healthy, cannot use it for placement new builds")
 			return nil, nil, nil, ErrLocalTemplateManagerNotAvailable
 		}
 
 		// for getting build information only not valid state is getting already unhealthy builder
 		if tm.GetLocalClientStatus() == infogrpc.ServiceInfoStatus_OrchestratorUnhealthy {
-			tm.localClientMutex.RUnlock()
 			zap.L().Error("Local template manager is unhealthy")
 			return nil, nil, nil, ErrLocalTemplateManagerNotAvailable
 		}
 
-		tm.localClientMutex.RUnlock()
 		meta := metadata.New(map[string]string{})
 		logs := NewLokiPlacementLogsProvider(tm.lokiClient)
 		return tm.grpc, meta, logs, nil
