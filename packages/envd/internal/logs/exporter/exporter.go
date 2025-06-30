@@ -38,6 +38,12 @@ func NewHTTPLogsExporter(ctx context.Context, isNotFC bool, mmdsChan <-chan *hos
 		triggers:  make(chan struct{}, 1),
 		isNotFC:   isNotFC,
 		startOnce: sync.Once{},
+		mmdsOpts: &host.MMDSOpts{
+			InstanceID: "unknown",
+			EnvID:      "unknown",
+			TeamID:     "unknown",
+			Address:    "",
+		},
 	}
 
 	go exporter.listenForMMDSOptsAndStart(mmdsChan)
@@ -70,26 +76,17 @@ func printLog(logs []byte) {
 	fmt.Fprintf(os.Stdout, "%v", string(logs))
 }
 
-func (w *HTTPExporter) listenForMMDSOptsAndStart(mmdsChan <-chan *host.MMDSOpts) *host.MMDSOpts {
+func (w *HTTPExporter) listenForMMDSOptsAndStart(mmdsChan <-chan *host.MMDSOpts) {
 	for {
 		select {
 		case <-w.ctx.Done():
-			return nil
+			return
 		case mmdsOpts, ok := <-mmdsChan:
 			if !ok {
-				return nil
+				return
 			}
-			w.mmdsLock.Lock()
-			if mmdsOpts == nil {
-				mmdsOpts = &host.MMDSOpts{
-					InstanceID: "unknown",
-					EnvID:      "unknown",
-					TeamID:     "unknown",
-					Address:    "",
-				}
-			}
-			w.mmdsOpts = mmdsOpts
-			w.mmdsLock.Unlock()
+			w.mmdsOpts.Update(
+				mmdsOpts.TraceID, mmdsOpts.InstanceID, mmdsOpts.EnvID, mmdsOpts.Address, mmdsOpts.TeamID)
 
 			w.startOnce.Do(func() {
 				w.start()

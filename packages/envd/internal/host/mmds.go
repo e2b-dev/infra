@@ -31,18 +31,6 @@ type MMDSOpts struct {
 	TeamID     string `json:"teamID"`
 }
 
-func (opts *MMDSOpts) Read() MMDSOpts {
-	opts.RLock()
-	defer opts.RUnlock()
-	return MMDSOpts{
-		TraceID:    opts.TraceID,
-		InstanceID: opts.InstanceID,
-		EnvID:      opts.EnvID,
-		Address:    opts.Address,
-		TeamID:     opts.TeamID,
-	}
-}
-
 func (opts *MMDSOpts) Update(traceID, instanceID, envID, address, teamID string) {
 	opts.Lock()
 	defer opts.Unlock()
@@ -61,6 +49,9 @@ func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	opts.RLock()
+	defer opts.RUnlock()
 
 	parsed["instanceID"] = opts.InstanceID
 	parsed["envID"] = opts.EnvID
