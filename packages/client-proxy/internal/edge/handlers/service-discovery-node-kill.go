@@ -10,12 +10,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 )
 
-func (a *APIStore) V1ServiceDiscoveryNodeKill(c *gin.Context, serviceID string) {
+func (a *APIStore) V1ServiceDiscoveryNodeKill(c *gin.Context, serviceInstanceID string) {
 	_, templateSpan := a.tracer.Start(c, "service-discovery-node-kill-handler")
 	defer templateSpan.End()
 
-	// requests was for this node
-	if serviceID == a.info.ServiceInstanceID {
+	// requests was for this service instance
+	if serviceInstanceID == a.info.ServiceInstanceID {
 		a.info.SetStatus(api.Unhealthy)
 		c.Status(http.StatusOK)
 		return
@@ -25,7 +25,7 @@ func (a *APIStore) V1ServiceDiscoveryNodeKill(c *gin.Context, serviceID string) 
 	defer reqTimeoutCancel()
 
 	// send request to neighboring node
-	err := a.sendNodeRequest(reqTimeout, serviceID, api.Unhealthy)
+	err := a.sendNodeRequest(reqTimeout, serviceInstanceID, api.Unhealthy)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Error when calling service discovery node")
 		return

@@ -118,10 +118,10 @@ type ClientInterface interface {
 	V1ServiceDiscoveryGetOrchestrators(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// V1ServiceDiscoveryNodeDrain request
-	V1ServiceDiscoveryNodeDrain(ctx context.Context, nodeID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	V1ServiceDiscoveryNodeDrain(ctx context.Context, serviceInstanceID string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// V1ServiceDiscoveryNodeKill request
-	V1ServiceDiscoveryNodeKill(ctx context.Context, nodeID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	V1ServiceDiscoveryNodeKill(ctx context.Context, serviceInstanceID string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// V1TemplateBuildLogs request
 	V1TemplateBuildLogs(ctx context.Context, buildID string, params *V1TemplateBuildLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -247,8 +247,8 @@ func (c *Client) V1ServiceDiscoveryGetOrchestrators(ctx context.Context, reqEdit
 	return c.Client.Do(req)
 }
 
-func (c *Client) V1ServiceDiscoveryNodeDrain(ctx context.Context, nodeID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewV1ServiceDiscoveryNodeDrainRequest(c.Server, nodeID)
+func (c *Client) V1ServiceDiscoveryNodeDrain(ctx context.Context, serviceInstanceID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewV1ServiceDiscoveryNodeDrainRequest(c.Server, serviceInstanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -259,8 +259,8 @@ func (c *Client) V1ServiceDiscoveryNodeDrain(ctx context.Context, nodeID string,
 	return c.Client.Do(req)
 }
 
-func (c *Client) V1ServiceDiscoveryNodeKill(ctx context.Context, nodeID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewV1ServiceDiscoveryNodeKillRequest(c.Server, nodeID)
+func (c *Client) V1ServiceDiscoveryNodeKill(ctx context.Context, serviceInstanceID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewV1ServiceDiscoveryNodeKillRequest(c.Server, serviceInstanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -526,12 +526,12 @@ func NewV1ServiceDiscoveryGetOrchestratorsRequest(server string) (*http.Request,
 }
 
 // NewV1ServiceDiscoveryNodeDrainRequest generates requests for V1ServiceDiscoveryNodeDrain
-func NewV1ServiceDiscoveryNodeDrainRequest(server string, nodeID string) (*http.Request, error) {
+func NewV1ServiceDiscoveryNodeDrainRequest(server string, serviceInstanceID string) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
 
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "nodeID", runtime.ParamLocationPath, nodeID)
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "serviceInstanceID", runtime.ParamLocationPath, serviceInstanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -560,12 +560,12 @@ func NewV1ServiceDiscoveryNodeDrainRequest(server string, nodeID string) (*http.
 }
 
 // NewV1ServiceDiscoveryNodeKillRequest generates requests for V1ServiceDiscoveryNodeKill
-func NewV1ServiceDiscoveryNodeKillRequest(server string, nodeID string) (*http.Request, error) {
+func NewV1ServiceDiscoveryNodeKillRequest(server string, serviceInstanceID string) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
 
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "nodeID", runtime.ParamLocationPath, nodeID)
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "serviceInstanceID", runtime.ParamLocationPath, serviceInstanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -745,10 +745,10 @@ type ClientWithResponsesInterface interface {
 	V1ServiceDiscoveryGetOrchestratorsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryGetOrchestratorsResponse, error)
 
 	// V1ServiceDiscoveryNodeDrainWithResponse request
-	V1ServiceDiscoveryNodeDrainWithResponse(ctx context.Context, nodeID string, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeDrainResponse, error)
+	V1ServiceDiscoveryNodeDrainWithResponse(ctx context.Context, serviceInstanceID string, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeDrainResponse, error)
 
 	// V1ServiceDiscoveryNodeKillWithResponse request
-	V1ServiceDiscoveryNodeKillWithResponse(ctx context.Context, nodeID string, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeKillResponse, error)
+	V1ServiceDiscoveryNodeKillWithResponse(ctx context.Context, serviceInstanceID string, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeKillResponse, error)
 
 	// V1TemplateBuildLogsWithResponse request
 	V1TemplateBuildLogsWithResponse(ctx context.Context, buildID string, params *V1TemplateBuildLogsParams, reqEditors ...RequestEditorFn) (*V1TemplateBuildLogsResponse, error)
@@ -1101,8 +1101,8 @@ func (c *ClientWithResponses) V1ServiceDiscoveryGetOrchestratorsWithResponse(ctx
 }
 
 // V1ServiceDiscoveryNodeDrainWithResponse request returning *V1ServiceDiscoveryNodeDrainResponse
-func (c *ClientWithResponses) V1ServiceDiscoveryNodeDrainWithResponse(ctx context.Context, nodeID string, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeDrainResponse, error) {
-	rsp, err := c.V1ServiceDiscoveryNodeDrain(ctx, nodeID, reqEditors...)
+func (c *ClientWithResponses) V1ServiceDiscoveryNodeDrainWithResponse(ctx context.Context, serviceInstanceID string, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeDrainResponse, error) {
+	rsp, err := c.V1ServiceDiscoveryNodeDrain(ctx, serviceInstanceID, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -1110,8 +1110,8 @@ func (c *ClientWithResponses) V1ServiceDiscoveryNodeDrainWithResponse(ctx contex
 }
 
 // V1ServiceDiscoveryNodeKillWithResponse request returning *V1ServiceDiscoveryNodeKillResponse
-func (c *ClientWithResponses) V1ServiceDiscoveryNodeKillWithResponse(ctx context.Context, nodeID string, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeKillResponse, error) {
-	rsp, err := c.V1ServiceDiscoveryNodeKill(ctx, nodeID, reqEditors...)
+func (c *ClientWithResponses) V1ServiceDiscoveryNodeKillWithResponse(ctx context.Context, serviceInstanceID string, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeKillResponse, error) {
+	rsp, err := c.V1ServiceDiscoveryNodeKill(ctx, serviceInstanceID, reqEditors...)
 	if err != nil {
 		return nil, err
 	}

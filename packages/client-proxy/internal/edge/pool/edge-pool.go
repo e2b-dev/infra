@@ -29,7 +29,7 @@ const (
 	edgePoolCacheRefreshInterval = 10 * time.Second
 )
 
-var ErrEdgeNodeNotFound = errors.New("edge node not found")
+var ErrEdgeServiceInstanceNotFound = errors.New("edge service instance not found")
 
 func NewEdgePool(ctx context.Context, logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, tracer trace.Tracer, nodeSelfHost string) *EdgePool {
 	pool := &EdgePool{
@@ -59,7 +59,7 @@ func (p *EdgePool) GetInstanceByID(instanceID string) (*EdgeNode, error) {
 		}
 	}
 
-	return nil, ErrEdgeNodeNotFound
+	return nil, ErrEdgeServiceInstanceNotFound
 }
 
 func (p *EdgePool) keepInSync(ctx context.Context) {
@@ -102,7 +102,7 @@ func (p *EdgePool) syncNodes(ctx context.Context) {
 			defer wg.Done()
 
 			var found *EdgeNode = nil
-			host := fmt.Sprintf("%s:%d", sdNode.NodeIp, sdNode.NodePort)
+			host := fmt.Sprintf("%s:%d", sdNode.NodeIP, sdNode.NodePort)
 
 			// skip self registration
 			if host == p.nodeSelfHost {
@@ -140,7 +140,7 @@ func (p *EdgePool) syncNodes(ctx context.Context) {
 			found := false
 
 			for _, sdNode := range sdNodes {
-				host := fmt.Sprintf("%s:%d", sdNode.NodeIp, sdNode.NodePort)
+				host := fmt.Sprintf("%s:%d", sdNode.NodeIP, sdNode.NodePort)
 				if host == node.GetInfo().Host {
 					found = true
 					break
@@ -166,7 +166,7 @@ func (p *EdgePool) connectNode(ctx context.Context, node *sd.ServiceDiscoveryIte
 	ctx, childSpan := p.tracer.Start(ctx, "connect-edge-node")
 	defer childSpan.End()
 
-	host := fmt.Sprintf("%s:%d", node.NodeIp, node.NodePort)
+	host := fmt.Sprintf("%s:%d", node.NodeIP, node.NodePort)
 	o, err := NewEdgeNode(ctx, host)
 	if err != nil {
 		return err

@@ -11,7 +11,7 @@ func NewStaticServiceDiscovery(results []string, port int) *StaticServiceDiscove
 
 	for _, result := range results {
 		items = append(
-			items, &ServiceDiscoveryItem{NodeIp: result, NodePort: port},
+			items, &ServiceDiscoveryItem{NodeIP: result, NodePort: port},
 		)
 	}
 

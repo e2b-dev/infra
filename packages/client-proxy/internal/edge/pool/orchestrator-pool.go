@@ -63,7 +63,7 @@ func (p *OrchestratorsPool) GetOrchestrators() map[string]*OrchestratorNode {
 func (p *OrchestratorsPool) GetOrchestrator(instanceID string) (node *OrchestratorNode, ok bool) {
 	orchestrators := p.GetOrchestrators()
 	for _, node = range orchestrators {
-		if node.GetInfo().ServiceInstanceId == instanceID {
+		if node.GetInfo().ServiceInstanceID == instanceID {
 			return node, true
 		}
 	}
@@ -131,7 +131,7 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 			defer wg.Done()
 
 			var found *OrchestratorNode = nil
-			host := fmt.Sprintf("%s:%d", sdNode.NodeIp, sdNode.NodePort)
+			host := fmt.Sprintf("%s:%d", sdNode.NodeIP, sdNode.NodePort)
 			for _, node := range p.nodes.Items() {
 				if host == node.GetInfo().Host {
 					found = node
@@ -164,7 +164,7 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 			found := false
 
 			for _, sdNode := range sdNodes {
-				host := fmt.Sprintf("%s:%d", sdNode.NodeIp, sdNode.NodePort)
+				host := fmt.Sprintf("%s:%d", sdNode.NodeIP, sdNode.NodePort)
 				if host == nodeInfo.Host {
 					found = true
 					break
@@ -190,13 +190,13 @@ func (p *OrchestratorsPool) connectNode(ctx context.Context, node *sd.ServiceDis
 	ctx, childSpan := p.tracer.Start(ctx, "connect-orchestrator-node")
 	defer childSpan.End()
 
-	o, err := NewOrchestrator(ctx, p.tracerProvider, p.metricProvider, node.NodeIp, node.NodePort)
+	o, err := NewOrchestrator(ctx, p.tracerProvider, p.metricProvider, node.NodeIP, node.NodePort)
 	if err != nil {
 		return err
 	}
 
 	info := o.GetInfo()
-	p.nodes.Insert(info.ServiceInstanceId, o)
+	p.nodes.Insert(info.ServiceInstanceID, o)
 	return nil
 }
 
@@ -213,7 +213,7 @@ func (p *OrchestratorsPool) removeNode(ctx context.Context, node *OrchestratorNo
 		p.logger.Error("Error closing connection to node", zap.Error(err), l.WithClusterNodeID(info.NodeID))
 	}
 
-	p.nodes.Remove(info.ServiceInstanceId)
+	p.nodes.Remove(info.ServiceInstanceID)
 	p.logger.Info("Orchestrator node node connection has been closed.", l.WithClusterNodeID(info.NodeID))
 	return nil
 }

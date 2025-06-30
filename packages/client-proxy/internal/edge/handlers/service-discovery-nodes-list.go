@@ -22,7 +22,7 @@ func (a *APIStore) V1ServiceDiscoveryNodes(c *gin.Context) {
 			response,
 			api.ClusterNode{
 				NodeID:               info.NodeID,
-				ServiceInstanceID:    info.ServiceInstanceId,
+				ServiceInstanceID:    info.ServiceInstanceID,
 				ServiceStatus:        getOrchestratorStatusResolved(info.ServiceStatus),
 				ServiceType:          api.ClusterNodeTypeOrchestrator,
 				ServiceVersion:       info.ServiceVersion,

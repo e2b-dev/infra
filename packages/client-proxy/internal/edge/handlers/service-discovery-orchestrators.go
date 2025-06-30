@@ -24,7 +24,7 @@ func (a *APIStore) V1ServiceDiscoveryGetOrchestrators(c *gin.Context) {
 			response,
 			api.ClusterOrchestratorNode{
 				NodeID:            info.NodeID,
-				ServiceInstanceID: info.ServiceInstanceId,
+				ServiceInstanceID: info.ServiceInstanceID,
 
 				ServiceVersion:       info.ServiceVersion,
 				ServiceVersionCommit: info.ServiceVersionCommit,

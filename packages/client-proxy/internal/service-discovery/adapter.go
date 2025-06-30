@@ -5,7 +5,7 @@ import (
 )
 
 type ServiceDiscoveryItem struct {
-	NodeIp   string `json:"node_ip"`
+	NodeIP   string `json:"node_ip"`
 	NodePort int    `json:"node_port"`
 }
 

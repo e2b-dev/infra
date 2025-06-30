@@ -27,14 +27,14 @@ func NewMemorySandboxesCatalog(ctx context.Context, tracer trace.Tracer) Sandbox
 	}
 }
 
-func (c *MemorySandboxCatalog) GetSandbox(sandboxId string) (*SandboxInfo, error) {
+func (c *MemorySandboxCatalog) GetSandbox(sandboxID string) (*SandboxInfo, error) {
 	_, span := c.tracer.Start(c.ctx, "sandbox-catalog-get")
 	defer span.End()
 
 	c.mtx.RLock()
 	defer c.mtx.RUnlock()
 
-	sandboxInfo := c.cache.Get(sandboxId)
+	sandboxInfo := c.cache.Get(sandboxID)
 	if sandboxInfo != nil {
 		return sandboxInfo.Value(), nil
 	}
@@ -42,25 +42,25 @@ func (c *MemorySandboxCatalog) GetSandbox(sandboxId string) (*SandboxInfo, error
 	return nil, ErrSandboxNotFound
 }
 
-func (c *MemorySandboxCatalog) StoreSandbox(sandboxId string, sandboxInfo *SandboxInfo, expiration time.Duration) error {
+func (c *MemorySandboxCatalog) StoreSandbox(sandboxID string, sandboxInfo *SandboxInfo, expiration time.Duration) error {
 	_, span := c.tracer.Start(c.ctx, "sandbox-catalog-store")
 	defer span.End()
 
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	c.cache.Set(sandboxId, sandboxInfo, expiration)
+	c.cache.Set(sandboxID, sandboxInfo, expiration)
 	return nil
 }
 
-func (c *MemorySandboxCatalog) DeleteSandbox(sandboxId string, executionId string) error {
+func (c *MemorySandboxCatalog) DeleteSandbox(sandboxID string, executionID string) error {
 	_, span := c.tracer.Start(c.ctx, "sandbox-catalog-delete")
 	defer span.End()
 
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	item := c.cache.Get(sandboxId)
+	item := c.cache.Get(sandboxID)
 
 	// No need for removal here
 	if item.IsExpired() || item.Value() == nil {
@@ -68,10 +68,10 @@ func (c *MemorySandboxCatalog) DeleteSandbox(sandboxId string, executionId strin
 	}
 
 	// Different execution is stored in the cache, we don't want to remove it
-	if item.Value().ExecutionId != executionId {
+	if item.Value().ExecutionID != executionID {
 		return nil
 	}
 
-	c.cache.Delete(sandboxId)
+	c.cache.Delete(sandboxID)
 	return nil
 }

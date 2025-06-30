@@ -38,11 +38,11 @@ type ServerInterface interface {
 	// (GET /v1/service-discovery/nodes/orchestrators)
 	V1ServiceDiscoveryGetOrchestrators(c *gin.Context)
 
-	// (POST /v1/service-discovery/nodes/{nodeID}/drain)
-	V1ServiceDiscoveryNodeDrain(c *gin.Context, nodeID string)
+	// (POST /v1/service-discovery/nodes/{serviceInstanceID}/drain)
+	V1ServiceDiscoveryNodeDrain(c *gin.Context, serviceInstanceID string)
 
-	// (POST /v1/service-discovery/nodes/{nodeID}/kill)
-	V1ServiceDiscoveryNodeKill(c *gin.Context, nodeID string)
+	// (POST /v1/service-discovery/nodes/{serviceInstanceID}/kill)
+	V1ServiceDiscoveryNodeKill(c *gin.Context, serviceInstanceID string)
 	// Template build logs
 	// (GET /v1/templates/builds/{buildID}/logs)
 	V1TemplateBuildLogs(c *gin.Context, buildID string, params V1TemplateBuildLogsParams)
@@ -174,12 +174,12 @@ func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryNodeDrain(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "nodeID" -------------
-	var nodeID string
+	// ------------- Path parameter "serviceInstanceID" -------------
+	var serviceInstanceID string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "nodeID", c.Param("nodeID"), &nodeID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "serviceInstanceID", c.Param("serviceInstanceID"), &serviceInstanceID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter nodeID: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter serviceInstanceID: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -192,7 +192,7 @@ func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryNodeDrain(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.V1ServiceDiscoveryNodeDrain(c, nodeID)
+	siw.Handler.V1ServiceDiscoveryNodeDrain(c, serviceInstanceID)
 }
 
 // V1ServiceDiscoveryNodeKill operation middleware
@@ -200,12 +200,12 @@ func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryNodeKill(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "nodeID" -------------
-	var nodeID string
+	// ------------- Path parameter "serviceInstanceID" -------------
+	var serviceInstanceID string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "nodeID", c.Param("nodeID"), &nodeID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "serviceInstanceID", c.Param("serviceInstanceID"), &serviceInstanceID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter nodeID: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter serviceInstanceID: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -218,7 +218,7 @@ func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryNodeKill(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.V1ServiceDiscoveryNodeKill(c, nodeID)
+	siw.Handler.V1ServiceDiscoveryNodeKill(c, serviceInstanceID)
 }
 
 // V1TemplateBuildLogs operation middleware
@@ -323,7 +323,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/v1/sandboxes/catalog", wrapper.V1SandboxCatalogCreate)
 	router.GET(options.BaseURL+"/v1/service-discovery/nodes", wrapper.V1ServiceDiscoveryNodes)
 	router.GET(options.BaseURL+"/v1/service-discovery/nodes/orchestrators", wrapper.V1ServiceDiscoveryGetOrchestrators)
-	router.POST(options.BaseURL+"/v1/service-discovery/nodes/:nodeID/drain", wrapper.V1ServiceDiscoveryNodeDrain)
-	router.POST(options.BaseURL+"/v1/service-discovery/nodes/:nodeID/kill", wrapper.V1ServiceDiscoveryNodeKill)
+	router.POST(options.BaseURL+"/v1/service-discovery/nodes/:serviceInstanceID/drain", wrapper.V1ServiceDiscoveryNodeDrain)
+	router.POST(options.BaseURL+"/v1/service-discovery/nodes/:serviceInstanceID/kill", wrapper.V1ServiceDiscoveryNodeKill)
 	router.GET(options.BaseURL+"/v1/templates/builds/:buildID/logs", wrapper.V1TemplateBuildLogs)
 }

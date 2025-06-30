@@ -117,7 +117,7 @@ func (sd *AwsEc2ServiceDiscovery) sync(ctx context.Context) {
 				key := fmt.Sprintf("%s:%d", ip, sd.port)
 
 				sd.entries.Insert(
-					key, &ServiceDiscoveryItem{NodeIp: ip, NodePort: sd.port},
+					key, &ServiceDiscoveryItem{NodeIP: ip, NodePort: sd.port},
 				)
 
 				instancesHosts[key] = key

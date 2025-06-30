@@ -92,7 +92,7 @@ func catalogResolution(sandboxId string, catalog sandboxes.SandboxesCatalog, orc
 		return "", fmt.Errorf("failed to get sandbox from catalog: %w", err)
 	}
 
-	o, ok := orchestrators.GetOrchestrator(s.OrchestratorId)
+	o, ok := orchestrators.GetOrchestrator(s.OrchestratorID)
 	if !ok {
 		return "", errors.New("orchestrator not found")
 	}

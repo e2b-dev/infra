@@ -36,7 +36,7 @@ const (
 type OrchestratorNodeInfo struct {
 	NodeID string
 
-	ServiceInstanceId    string
+	ServiceInstanceID    string
 	ServiceVersion       string
 	ServiceVersionCommit string
 	ServiceStatus        OrchestratorStatus
@@ -125,12 +125,12 @@ func (o *OrchestratorNode) syncRun() error {
 
 		status, err := o.client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 		if err != nil {
-			zap.L().Error("failed to check orchestrator health", l.WithClusterNodeID(freshInfo.ServiceInstanceId), zap.Error(err))
+			zap.L().Error("failed to check orchestrator health", l.WithClusterNodeID(freshInfo.ServiceInstanceID), zap.Error(err))
 			continue
 		}
 
 		freshInfo.NodeID = status.NodeId
-		freshInfo.ServiceInstanceId = status.ServiceId
+		freshInfo.ServiceInstanceID = status.ServiceId
 		freshInfo.ServiceStartup = status.ServiceStartup.AsTime()
 		freshInfo.ServiceStatus = getMappedStatus(status.ServiceStatus)
 		freshInfo.ServiceVersion = status.ServiceVersion

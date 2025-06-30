@@ -213,18 +213,18 @@ components:
     SandboxCreateCatalogRequest:
       type: object
       required:
-        - orchestratorId
-        - executionId
-        - sandboxId
+        - orchestratorID
+        - executionID
+        - sandboxID
         - sandboxMaxLength
         - sandboxStartTime
       properties:
-        orchestratorId:
+        orchestratorID:
           type: string
           description: Orchestrator where the sandbox is placed
-        executionId:
+        executionID:
           type: string
-        sandboxId:
+        sandboxID:
           type: string
         sandboxMaxLength:
           type: integer
@@ -236,12 +236,12 @@ components:
     SandboxDeleteCatalogRequest:
       type: object
       required:
-        - executionId
-        - sandboxId
+        - executionID
+        - sandboxID
       properties:
-        executionId:
+        executionID:
           type: string
-        sandboxId:
+        sandboxID:
           type: string
 
     Timestamp:
@@ -315,18 +315,18 @@ paths:
           "500":
             $ref: "#/components/responses/500"
 
-  /v1/service-discovery/nodes/{nodeID}/drain:
+  /v1/service-discovery/nodes/{serviceInstanceID}/drain:
     post:
       operationId: v1ServiceDiscoveryNodeDrain
-      description: Mark node as draining
+      description: Mark service places on node as draining
       security:
         - ApiKeyAuth: [ ]
       tags: [service-discovery]
       parameters:
-        - name: nodeID
+        - name: serviceInstanceID
           in: path
           required: true
-          description: Node ID
+          description: Service instance ID
           schema:
             type: string
       responses:
@@ -341,7 +341,7 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /v1/service-discovery/nodes/{nodeID}/kill:
+  /v1/service-discovery/nodes/{serviceInstanceID}/kill:
     post:
       operationId: v1ServiceDiscoveryNodeKill
       description: Kill the node
@@ -349,10 +349,10 @@ paths:
         - ApiKeyAuth: [ ]
       tags: [service-discovery]
       parameters:
-        - name: nodeID
+        - name: serviceInstanceID
           in: path
           required: true
-          description: Node ID
+          description: Service instance ID
           schema:
             type: string
       responses:

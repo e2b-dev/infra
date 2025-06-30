@@ -115,13 +115,13 @@ func (sd *DnsServiceDiscovery) sync(ctx context.Context) {
 	for ip := range ips {
 		key := fmt.Sprintf("%s:%d", ip, sd.servicePort)
 		sd.entries.Insert(
-			key, &ServiceDiscoveryItem{NodeIp: ip, NodePort: sd.servicePort},
+			key, &ServiceDiscoveryItem{NodeIP: ip, NodePort: sd.servicePort},
 		)
 	}
 
 	// remove entries that are no longer in DNS response
 	for key, item := range sd.entries.Items() {
-		if _, ok := ips[item.NodeIp]; !ok {
+		if _, ok := ips[item.NodeIP]; !ok {
 			sd.entries.Remove(key)
 		}
 	}
