@@ -503,11 +503,15 @@ func (b *TemplateBuilder) enlargeDiskAfterProvisioning(
 		return fmt.Errorf("error getting free space: %w", err)
 	}
 	sizeDiff := template.DiskSizeMB<<ToMBShift - rootfsFreeSpace
+	zap.L().Debug("adding provision size diff to rootfs",
+		zap.Int64("size_add", sizeDiff),
+		zap.Int64("size_free", rootfsFreeSpace),
+		zap.Int64("size_target", template.DiskSizeMB<<ToMBShift),
+	)
 	if sizeDiff <= 0 {
 		zap.L().Debug("no need to enlarge rootfs, skipping")
 		return nil
 	}
-	zap.L().Debug("adding provision size diff to rootfs", zap.Int64("size", sizeDiff))
 	rootfsFinalSize, err := ext4.Enlarge(ctx, b.tracer, rootfsPath, sizeDiff)
 	if err != nil {
 		// Debug filesystem stats on error

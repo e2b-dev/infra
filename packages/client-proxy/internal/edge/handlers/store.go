@@ -105,6 +105,11 @@ func (a *APIStore) SetUnhealthy() {
 	a.info.SetStatus(api.Unhealthy)
 }
 
+func (a *APIStore) SetTerminating() {
+	a.info.SetTerminating()
+	a.info.SetStatus(api.Unhealthy)
+}
+
 func (a *APIStore) sendAPIStoreError(c *gin.Context, code int, message string) {
 	apiErr := api.Error{
 		Code:    int32(code),

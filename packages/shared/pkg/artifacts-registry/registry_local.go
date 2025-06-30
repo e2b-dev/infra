@@ -35,5 +35,10 @@ func (g *LocalArtifactsRegistry) GetImage(ctx context.Context, templateId string
 		return nil, fmt.Errorf("invalid image reference: %w", err)
 	}
 
-	return daemon.Image(ref, daemon.WithContext(ctx))
+	img, err := daemon.Image(ref, daemon.WithContext(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get image from local registry: %w", err)
+	}
+
+	return img, nil
 }

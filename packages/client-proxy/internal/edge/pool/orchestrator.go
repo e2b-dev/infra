@@ -9,14 +9,17 @@ import (
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	e2bgrpcorchestrator "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	e2bgrpcorchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	e2bgrpctemplatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type OrchestratorStatus string
@@ -62,13 +65,13 @@ type OrchestratorGRPCClient struct {
 	Template e2bgrpctemplatemanager.TemplateServiceClient
 	Info     e2bgrpcorchestratorinfo.InfoServiceClient
 
-	connection *grpc.ClientConn
+	Connection *grpc.ClientConn
 }
 
-func NewOrchestrator(ctx context.Context, ip string, port int) (*OrchestratorNode, error) {
+func NewOrchestrator(ctx context.Context, tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, ip string, port int) (*OrchestratorNode, error) {
 	host := fmt.Sprintf("%s:%d", ip, port)
 
-	client, err := newClient(host)
+	client, err := newClient(tracerProvider, meterProvider, host)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GRPC client: %w", err)
 	}
@@ -103,7 +106,6 @@ func (o *OrchestratorNode) sync() {
 	for {
 		select {
 		case <-o.ctx.Done():
-			zap.L().Info("context done", zap.String("orchestrator sync id", o.ServiceId))
 			return
 		case <-ticker.C:
 			o.syncRun()
@@ -121,7 +123,7 @@ func (o *OrchestratorNode) syncRun() error {
 	for i := 0; i < orchestratorSyncMaxRetries; i++ {
 		status, err := o.Client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 		if err != nil {
-			zap.L().Error("failed to check health", zap.String("orchestrator id", o.ServiceId), zap.Error(err))
+			zap.L().Error("failed to check orchestrator health", l.WithClusterNodeID(o.ServiceId), zap.Error(err))
 			continue
 		}
 
@@ -175,22 +177,30 @@ func getMappedStatus(s e2bgrpcorchestratorinfo.ServiceInfoStatus) OrchestratorSt
 	return OrchestratorStatusUnhealthy
 }
 
-func newClient(host string) (*OrchestratorGRPCClient, error) {
-	conn, err := e2bgrpc.GetConnection(host, false, grpc.WithStatsHandler(otelgrpc.NewClientHandler()), grpc.WithBlock(), grpc.WithTimeout(time.Second))
+func newClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string) (*OrchestratorGRPCClient, error) {
+	conn, err := grpc.NewClient(host,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(
+			otelgrpc.NewClientHandler(
+				otelgrpc.WithTracerProvider(tracerProvider),
+				otelgrpc.WithMeterProvider(meterProvider),
+			),
+		),
+	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
+		return nil, fmt.Errorf("failed to create GRPC client: %w", err)
 	}
 
 	return &OrchestratorGRPCClient{
 		Sandbox:    e2bgrpcorchestrator.NewSandboxServiceClient(conn),
 		Template:   e2bgrpctemplatemanager.NewTemplateServiceClient(conn),
 		Info:       e2bgrpcorchestratorinfo.NewInfoServiceClient(conn),
-		connection: conn,
+		Connection: conn,
 	}, nil
 }
 
 func (a *OrchestratorGRPCClient) close() error {
-	err := a.connection.Close()
+	err := a.Connection.Close()
 	if err != nil {
 		return fmt.Errorf("failed to close connection: %w", err)
 	}

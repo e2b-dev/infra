@@ -10,6 +10,9 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
@@ -95,13 +98,23 @@ func (c *RedisSandboxCatalog) StoreSandbox(sandboxId string, sandboxInfo *Sandbo
 	ctx, ctxCancel := context.WithTimeout(spanCtx, catalogRedisTimeout)
 	defer ctxCancel()
 
-	c.redisClient.Set(ctx, c.getCatalogKey(sandboxId), sandboxInfo, expiration)
+	bytes, err := json.Marshal(*sandboxInfo)
+	if err != nil {
+		return fmt.Errorf("failed to marshal sandbox info: %w", err)
+	}
+
+	status := c.redisClient.Set(ctx, c.getCatalogKey(sandboxId), string(bytes), expiration)
+	if status.Err() != nil {
+		zap.L().Error("Error while storing sandbox in redis", logger.WithSandboxID(sandboxId), zap.Error(status.Err()))
+		return fmt.Errorf("failed to store sandbox info in redis: %w", status.Err())
+	}
+
 	c.cache.Set(sandboxId, sandboxInfo, catalogRedisLocalCacheTtl)
 
 	return nil
 }
 
-func (c *RedisSandboxCatalog) DeleteSandbox(sandboxId string) error {
+func (c *RedisSandboxCatalog) DeleteSandbox(sandboxId string, executionId string) error {
 	spanCtx, span := c.tracer.Start(c.ctx, "sandbox-catalog-delete")
 	defer span.End()
 
@@ -115,9 +128,25 @@ func (c *RedisSandboxCatalog) DeleteSandbox(sandboxId string) error {
 	ctx, ctxCancel := context.WithTimeout(spanCtx, catalogRedisTimeout)
 	defer ctxCancel()
 
+	data, err := c.redisClient.Get(ctx, c.getCatalogKey(sandboxId)).Bytes()
+	// If sandbox does not exist, we can return early
+	if err != nil {
+		return nil
+	}
+
+	var info *SandboxInfo
+	err = json.Unmarshal(data, &info)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal sandbox info: %w", err)
+	}
+
+	// Different execution is stored in the cache, we don't want to remove it
+	if info.ExecutionId != executionId {
+		return nil
+	}
+
 	c.redisClient.Del(ctx, c.getCatalogKey(sandboxId))
 	c.cache.Delete(sandboxId)
-
 	return nil
 }
 

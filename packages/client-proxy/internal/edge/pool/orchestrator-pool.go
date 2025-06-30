@@ -6,10 +6,12 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	sd "github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
+	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -21,6 +23,9 @@ type OrchestratorsPool struct {
 
 	tracer trace.Tracer
 	logger *zap.Logger
+
+	metricProvider metric.MeterProvider
+	tracerProvider trace.TracerProvider
 }
 
 const (
@@ -28,15 +33,24 @@ const (
 	statusLogInterval                 = 1 * time.Minute
 )
 
-func NewOrchestratorsPool(ctx context.Context, logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, tracer trace.Tracer) *OrchestratorsPool {
+func NewOrchestratorsPool(
+	ctx context.Context,
+	logger *zap.Logger,
+	tracerProvider trace.TracerProvider,
+	metricProvider metric.MeterProvider,
+	discovery sd.ServiceDiscoveryAdapter,
+) *OrchestratorsPool {
 	pool := &OrchestratorsPool{
 		discovery: discovery,
 
 		nodes: smap.New[*OrchestratorNode](),
 		mutex: sync.RWMutex{},
 
+		tracer: tracerProvider.Tracer("orchestrators-pool"),
 		logger: logger,
-		tracer: tracer,
+
+		metricProvider: metricProvider,
+		tracerProvider: tracerProvider,
 	}
 
 	// Background synchronization of orchestrators available in pool
@@ -70,7 +84,7 @@ func (p *OrchestratorsPool) keepInSync(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			p.logger.Info("Stopping keepInSync")
+			p.logger.Info("Stopping orchestrators keep-in-sync")
 			return
 		case <-ticker.C:
 			p.syncNodes(ctx)
@@ -133,7 +147,7 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 				// newly discovered orchestrator
 				err := p.connectNode(ctx, sdNode)
 				if err != nil {
-					p.logger.Error("Error connecting to node", zap.Error(err))
+					p.logger.Error("Error connecting to node", zap.Error(err), zap.String("host", host))
 				}
 
 				return
@@ -164,7 +178,7 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 			if !found {
 				err := p.removeNode(spanCtx, node)
 				if err != nil {
-					p.logger.Error("Error during node removal", zap.Error(err))
+					p.logger.Error("Error during node removal", zap.Error(err), l.WithClusterNodeID(node.ServiceId))
 				}
 			}
 		}(node)
@@ -179,7 +193,7 @@ func (p *OrchestratorsPool) connectNode(ctx context.Context, node *sd.ServiceDis
 	ctx, childSpan := p.tracer.Start(ctx, "connect-orchestrator-node")
 	defer childSpan.End()
 
-	o, err := NewOrchestrator(ctx, node.NodeIp, node.NodePort)
+	o, err := NewOrchestrator(ctx, p.tracerProvider, p.metricProvider, node.NodeIp, node.NodePort)
 	if err != nil {
 		return err
 	}
@@ -195,12 +209,12 @@ func (p *OrchestratorsPool) removeNode(ctx context.Context, node *OrchestratorNo
 	_, childSpan := p.tracer.Start(ctx, "remove-orchestrator-node")
 	defer childSpan.End()
 
-	p.logger.Info("Orchestrator node node connection is not active anymore, closing.", zap.String("node_id", node.ServiceId))
+	p.logger.Info("Orchestrator node node connection is not active anymore, closing.", l.WithClusterNodeID(node.ServiceId))
 
 	// stop background sync and close everything
 	err := node.Close()
 	if err != nil {
-		p.logger.Error("Error closing connection to node", zap.Error(err))
+		p.logger.Error("Error closing connection to node", zap.Error(err), l.WithClusterNodeID(node.ServiceId))
 	}
 
 	p.mutex.Lock()
@@ -208,6 +222,6 @@ func (p *OrchestratorsPool) removeNode(ctx context.Context, node *OrchestratorNo
 
 	p.nodes.Remove(node.ServiceId)
 
-	p.logger.Info("Orchestrator node node connection has been closed.", zap.String("node_id", node.ServiceId))
+	p.logger.Info("Orchestrator node node connection has been closed.", l.WithClusterNodeID(node.ServiceId))
 	return nil
 }

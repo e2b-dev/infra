@@ -2,130 +2,85 @@ package sandbox
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"golang.org/x/mod/semver"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
-	healthCheckInterval      = 20 * time.Second
-	metricsCheckInterval     = 5 * time.Second
-	minEnvdVersionForMetrics = "0.1.5"
+	healthCheckInterval = 20 * time.Second
+	healthCheckTimeout  = 100 * time.Millisecond
 )
 
 type Checks struct {
 	sandbox *Sandbox
 
-	ctx     *utils.LockableCancelableContext
+	ctx       context.Context
+	cancelCtx context.CancelCauseFunc
+
 	healthy atomic.Bool
 
-	// Metrics target
-	unregisterMetrics func() error
+	UseClickhouseMetrics bool
 }
 
-func NewChecks(sandboxObserver *telemetry.SandboxObserver, sandbox *Sandbox, useClickhouseMetrics bool) (*Checks, error) {
-	zap.L().Info("creating checks", logger.WithSandboxID(sandbox.Metadata.Config.SandboxId), zap.Bool("use_clickhouse_metrics", useClickhouseMetrics))
+var ErrChecksStopped = errors.New("checks stopped")
 
-	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
+func NewChecks(ctx context.Context, tracer trace.Tracer, sandbox *Sandbox, useClickhouseMetrics bool) (*Checks, error) {
+	_, childSpan := tracer.Start(ctx, "checks-create")
+	defer childSpan.End()
 
+	// Create background context, passed ctx is from create/resume request and will be canceled after the request is processed.
+	ctx, cancel := context.WithCancelCause(context.Background())
 	h := &Checks{
-		sandbox: sandbox,
-		ctx:     healthcheckCtx,
-		healthy: atomic.Bool{}, // defaults to `false`
+		sandbox:              sandbox,
+		ctx:                  ctx,
+		cancelCtx:            cancel,
+		healthy:              atomic.Bool{}, // defaults to `false`
+		UseClickhouseMetrics: useClickhouseMetrics,
 	}
 	// By default, the sandbox should be healthy, if the status change we report it.
 	h.healthy.Store(true)
-
-	if sandboxObserver != nil && useClickhouseMetrics {
-		unregister, err := sandboxObserver.StartObserving(sandbox.Config.SandboxId, sandbox.Config.TeamId, h.getMetrics)
-		if err != nil {
-			return nil, err
-		}
-
-		h.unregisterMetrics = unregister.Unregister
-	}
-
 	return h, nil
 }
 
-func (c *Checks) getMetrics(ctx context.Context) (*telemetry.SandboxMetrics, error) {
-	if !isGTEVersion(c.sandbox.Config.EnvdVersion, minEnvdVersionForMetrics) {
-		return nil, nil
-	}
-
-	envdMetrics, err := c.sandbox.GetMetrics(ctx)
-	if err != nil {
-		sbxlogger.E(c.sandbox).Warn("failed to get metrics from envd", zap.Error(err))
-	}
-
-	return envdMetrics, err
-}
-
-func (c *Checks) IsHealthy() bool {
-	return c.healthy.Load()
-}
-
 func (c *Checks) Start() {
-	c.logHeathAndUsage()
+	c.logHealth()
 }
 
 func (c *Checks) Stop() {
-	c.ctx.Lock()
-	defer c.ctx.Unlock()
-
-	c.ctx.Cancel()
-
-	if c.unregisterMetrics != nil {
-		if err := c.unregisterMetrics(); err != nil {
-			sbxlogger.I(c.sandbox).Error("failed to unregister metrics", zap.Error(err))
-		}
-	}
+	c.cancelCtx(ErrChecksStopped)
 }
 
-func (c *Checks) LogMetricsThresholdExceeded(ctx context.Context) {
-	c.sandbox.LogMetricsThresholdExceeded(ctx)
-}
-
-func (c *Checks) logHeathAndUsage() {
+func (c *Checks) logHealth() {
 	healthTicker := time.NewTicker(healthCheckInterval)
-	metricsTicker := time.NewTicker(metricsCheckInterval)
 	defer func() {
 		healthTicker.Stop()
-		metricsTicker.Stop()
 	}()
 
 	// Get metrics and health status on sandbox startup
-
-	go c.LogMetricsThresholdExceeded(c.ctx)
-	go c.Healthcheck(c.ctx, false)
+	go c.Healthcheck(false)
 
 	for {
 		select {
 		case <-healthTicker.C:
-			childCtx, cancel := context.WithTimeout(c.ctx, time.Second)
-
-			c.ctx.Lock()
-			c.Healthcheck(childCtx, false)
-			c.ctx.Unlock()
-
-			cancel()
-		case <-metricsTicker.C:
-			go c.LogMetricsThresholdExceeded(c.ctx)
+			c.Healthcheck(false)
 		case <-c.ctx.Done():
 			return
 		}
 	}
 }
 
-func (c *Checks) Healthcheck(ctx context.Context, alwaysReport bool) {
-	ok, err := c.sandbox.HealthCheck(ctx)
+func (c *Checks) Healthcheck(alwaysReport bool) {
+	ok, err := c.GetHealth(healthCheckTimeout)
+	// Sandbox stopped
+	if errors.Is(err, ErrChecksStopped) {
+		return
+	}
 
 	if !ok && c.healthy.CompareAndSwap(true, false) {
 		sbxlogger.E(c.sandbox).Healthcheck(sbxlogger.Fail)
@@ -146,16 +101,4 @@ func (c *Checks) Healthcheck(ctx context.Context, alwaysReport bool) {
 			sbxlogger.I(c.sandbox).Error("control healthcheck failed", zap.Error(err))
 		}
 	}
-}
-
-func isGTEVersion(curVersion, minVersion string) bool {
-	if len(curVersion) > 0 && curVersion[0] != 'v' {
-		curVersion = "v" + curVersion
-	}
-
-	if !semver.IsValid(curVersion) {
-		return false
-	}
-
-	return semver.Compare(curVersion, minVersion) >= 0
 }

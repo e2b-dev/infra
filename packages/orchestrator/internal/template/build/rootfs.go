@@ -101,10 +101,11 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 	telemetry.ReportEvent(childCtx, "set up filesystem")
 
 	postProcessor.WriteMsg("Creating file system and pulling Docker image")
-	err = oci.ToExt4(ctx, img, rootfsPath, maxRootfsSize)
+	ext4Size, err := oci.ToExt4(ctx, tracer, postProcessor, img, rootfsPath, maxRootfsSize, r.template.RootfsBlockSize())
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error creating ext4 filesystem: %w", err)
 	}
+	r.template.rootfsSize = ext4Size
 	telemetry.ReportEvent(childCtx, "created rootfs ext4 file")
 
 	postProcessor.WriteMsg("Filesystem cleanup")
@@ -115,11 +116,26 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 	}
 
 	// Resize rootfs
-	rootfsFinalSize, err := ext4.Enlarge(ctx, tracer, rootfsPath, r.template.DiskSizeMB<<ToMBShift)
+	rootfsFreeSpace, err := ext4.GetFreeSpace(ctx, tracer, rootfsPath, r.template.RootfsBlockSize())
 	if err != nil {
-		return containerregistry.Config{}, fmt.Errorf("error enlarging rootfs: %w", err)
+		return containerregistry.Config{}, fmt.Errorf("error getting free space: %w", err)
 	}
-	r.template.rootfsSize = rootfsFinalSize
+	// We need to remove the remaining free space from the ext4 file size
+	// This is a residual space that could not be shrunk when creating the filesystem,
+	// but is still available for use
+	diskAdd := r.template.DiskSizeMB<<ToMBShift - rootfsFreeSpace
+	zap.L().Debug("adding disk size diff to rootfs",
+		zap.Int64("size_current", ext4Size),
+		zap.Int64("size_add", diskAdd),
+		zap.Int64("size_free", rootfsFreeSpace),
+	)
+	if diskAdd > 0 {
+		rootfsFinalSize, err := ext4.Enlarge(ctx, tracer, rootfsPath, diskAdd)
+		if err != nil {
+			return containerregistry.Config{}, fmt.Errorf("error enlarging rootfs: %w", err)
+		}
+		r.template.rootfsSize = rootfsFinalSize
+	}
 
 	// Check the rootfs filesystem corruption
 	ext4Check, err := ext4.CheckIntegrity(rootfsPath, true)
