@@ -32,38 +32,45 @@ func (s *testStore) SourceList(ctx context.Context) ([]string, error) {
 	return append([]string(nil), s.source...), nil
 }
 
-func (s *testStore) SourceKey(item string) string {
-	return item
+func (s *testStore) SourceExists(ctx context.Context, source []string, p string) bool {
+	for _, v := range source {
+		if v == p {
+			return true
+		}
+	}
+
+	return false
 }
 
-func (s *testStore) PoolList(ctx context.Context) map[string]string {
+func (s *testStore) PoolList(ctx context.Context) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	out := make(map[string]string, len(s.pool))
-	for k, v := range s.pool {
-		out[k] = v
+	out := make([]string, 0)
+	for k := range s.pool {
+		out = append(out, k)
 	}
+
 	return out
 }
 
-func (s *testStore) PoolExists(ctx context.Context, key string) bool {
+func (s *testStore) PoolExists(ctx context.Context, item string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, ok := s.pool[key]
+	_, ok := s.pool[item]
 	return ok
 }
 
-func (s *testStore) PoolInsert(ctx context.Context, key string, value string) error {
+func (s *testStore) PoolInsert(ctx context.Context, value string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.pool[key] = value
+	s.pool[value] = value
 	s.inserts++
-	return nil
 }
 
-func (s *testStore) PoolSynchronize(ctx context.Context, key string, value string) { /* not used */ }
-func (s *testStore) PoolRemove(ctx context.Context, item string) error {
+func (s *testStore) PoolUpdate(ctx context.Context, value string) { /* not used */ }
+
+func (s *testStore) PoolRemove(ctx context.Context, item string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -75,16 +82,15 @@ func (s *testStore) PoolRemove(ctx context.Context, item string) error {
 	}
 
 	s.removes++
-	return nil
 }
 
-func newSynchronizer(store Store[string, string, string]) *Synchronize[string, string, string] {
+func newSynchronizer(store Store[string, string]) *Synchronize[string, string] {
 	zap.ReplaceGlobals(zap.NewNop())
-	return &Synchronize[string, string, string]{
-		Store:            store,
-		Tracer:           noop.NewTracerProvider().Tracer("test"),
-		TracerSpanPrefix: "test synchronization",
-		LogsPrefix:       "test synchronization",
+	return &Synchronize[string, string]{
+		store:            store,
+		tracer:           noop.NewTracerProvider().Tracer("test"),
+		tracerSpanPrefix: "test synchronization",
+		logsPrefix:       "test synchronization",
 	}
 }
 
@@ -95,7 +101,7 @@ func TestSynchronize_InsertAndRemove(t *testing.T) {
 	s := newTestStore([]string{"a", "b"}, nil)
 	syncer := newSynchronizer(s)
 
-	if err := syncer.Sync(ctx); err != nil {
+	if err := syncer.sync(ctx); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -109,7 +115,7 @@ func TestSynchronize_InsertAndRemove(t *testing.T) {
 
 	// Now remove "b" from the source – should trigger exactly one removal.
 	s.source = []string{"a"}
-	if err := syncer.Sync(ctx); err != nil {
+	if err := syncer.sync(ctx); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
