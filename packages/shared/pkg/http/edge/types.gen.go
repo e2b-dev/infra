@@ -175,8 +175,8 @@ type N500 = Error
 
 // V1TemplateBuildLogsParams defines parameters for V1TemplateBuildLogs.
 type V1TemplateBuildLogsParams struct {
-	OrchestratorId string `form:"orchestrator_id" json:"orchestrator_id"`
-	TemplateId     string `form:"template_id" json:"template_id"`
+	OrchestratorID string `form:"orchestratorID" json:"orchestratorID"`
+	TemplateID     string `form:"templateID" json:"templateID"`
 
 	// Offset Index of the starting build log that should be returned with the template
 	Offset *int32 `form:"offset,omitempty" json:"offset,omitempty"`

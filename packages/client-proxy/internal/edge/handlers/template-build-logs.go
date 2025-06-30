@@ -15,7 +15,7 @@ const (
 	templateBuildOldestLogsLimit = 24 * time.Hour // 1 day
 )
 
-func (a *APIStore) V1TemplateBuildLogs(c *gin.Context, buildId string, params api.V1TemplateBuildLogsParams) {
+func (a *APIStore) V1TemplateBuildLogs(c *gin.Context, buildID string, params api.V1TemplateBuildLogsParams) {
 	ctx := c.Request.Context()
 
 	_, templateSpan := a.tracer.Start(c, "template-build-logs-handler")
@@ -29,7 +29,7 @@ func (a *APIStore) V1TemplateBuildLogs(c *gin.Context, buildId string, params ap
 		offset = int(*params.Offset)
 	}
 
-	logsRaw, err := a.queryLogsProvider.QueryBuildLogs(ctx, params.TemplateId, buildId, start, end, templateBuildLogsLimit, offset)
+	logsRaw, err := a.queryLogsProvider.QueryBuildLogs(ctx, params.TemplateID, buildID, start, end, templateBuildLogsLimit, offset)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when fetching template build logs")
 		telemetry.ReportCriticalError(ctx, "error when fetching template build logs", err)

@@ -38,14 +38,14 @@ type ServerInterface interface {
 	// (GET /v1/service-discovery/nodes/orchestrators)
 	V1ServiceDiscoveryGetOrchestrators(c *gin.Context)
 
-	// (POST /v1/service-discovery/nodes/{node_id}/drain)
-	V1ServiceDiscoveryNodeDrain(c *gin.Context, nodeId string)
+	// (POST /v1/service-discovery/nodes/{nodeID}/drain)
+	V1ServiceDiscoveryNodeDrain(c *gin.Context, nodeID string)
 
-	// (POST /v1/service-discovery/nodes/{node_id}/kill)
-	V1ServiceDiscoveryNodeKill(c *gin.Context, nodeId string)
+	// (POST /v1/service-discovery/nodes/{nodeID}/kill)
+	V1ServiceDiscoveryNodeKill(c *gin.Context, nodeID string)
 	// Template build logs
-	// (GET /v1/templates/builds/{build_id}/logs)
-	V1TemplateBuildLogs(c *gin.Context, buildId string, params V1TemplateBuildLogsParams)
+	// (GET /v1/templates/builds/{buildID}/logs)
+	V1TemplateBuildLogs(c *gin.Context, buildID string, params V1TemplateBuildLogsParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -174,12 +174,12 @@ func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryNodeDrain(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "node_id" -------------
-	var nodeId string
+	// ------------- Path parameter "nodeID" -------------
+	var nodeID string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "node_id", c.Param("node_id"), &nodeId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "nodeID", c.Param("nodeID"), &nodeID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter node_id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter nodeID: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -192,7 +192,7 @@ func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryNodeDrain(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.V1ServiceDiscoveryNodeDrain(c, nodeId)
+	siw.Handler.V1ServiceDiscoveryNodeDrain(c, nodeID)
 }
 
 // V1ServiceDiscoveryNodeKill operation middleware
@@ -200,12 +200,12 @@ func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryNodeKill(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "node_id" -------------
-	var nodeId string
+	// ------------- Path parameter "nodeID" -------------
+	var nodeID string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "node_id", c.Param("node_id"), &nodeId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "nodeID", c.Param("nodeID"), &nodeID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter node_id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter nodeID: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -218,7 +218,7 @@ func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryNodeKill(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.V1ServiceDiscoveryNodeKill(c, nodeId)
+	siw.Handler.V1ServiceDiscoveryNodeKill(c, nodeID)
 }
 
 // V1TemplateBuildLogs operation middleware
@@ -226,12 +226,12 @@ func (siw *ServerInterfaceWrapper) V1TemplateBuildLogs(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "build_id" -------------
-	var buildId string
+	// ------------- Path parameter "buildID" -------------
+	var buildID string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "build_id", c.Param("build_id"), &buildId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "buildID", c.Param("buildID"), &buildID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter build_id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter buildID: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -240,33 +240,33 @@ func (siw *ServerInterfaceWrapper) V1TemplateBuildLogs(c *gin.Context) {
 	// Parameter object where we will unmarshal all parameters from the context
 	var params V1TemplateBuildLogsParams
 
-	// ------------- Required query parameter "orchestrator_id" -------------
+	// ------------- Required query parameter "orchestratorID" -------------
 
-	if paramValue := c.Query("orchestrator_id"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Query argument orchestrator_id is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	err = runtime.BindQueryParameter("form", true, true, "orchestrator_id", c.Request.URL.Query(), &params.OrchestratorId)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter orchestrator_id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Required query parameter "template_id" -------------
-
-	if paramValue := c.Query("template_id"); paramValue != "" {
+	if paramValue := c.Query("orchestratorID"); paramValue != "" {
 
 	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Query argument template_id is required, but not found"), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Query argument orchestratorID is required, but not found"), http.StatusBadRequest)
 		return
 	}
 
-	err = runtime.BindQueryParameter("form", true, true, "template_id", c.Request.URL.Query(), &params.TemplateId)
+	err = runtime.BindQueryParameter("form", true, true, "orchestratorID", c.Request.URL.Query(), &params.OrchestratorID)
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter template_id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter orchestratorID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Required query parameter "templateID" -------------
+
+	if paramValue := c.Query("templateID"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Query argument templateID is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "templateID", c.Request.URL.Query(), &params.TemplateID)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter templateID: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -285,7 +285,7 @@ func (siw *ServerInterfaceWrapper) V1TemplateBuildLogs(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.V1TemplateBuildLogs(c, buildId, params)
+	siw.Handler.V1TemplateBuildLogs(c, buildID, params)
 }
 
 // GinServerOptions provides options for the Gin server.
@@ -323,7 +323,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/v1/sandboxes/catalog", wrapper.V1SandboxCatalogCreate)
 	router.GET(options.BaseURL+"/v1/service-discovery/nodes", wrapper.V1ServiceDiscoveryNodes)
 	router.GET(options.BaseURL+"/v1/service-discovery/nodes/orchestrators", wrapper.V1ServiceDiscoveryGetOrchestrators)
-	router.POST(options.BaseURL+"/v1/service-discovery/nodes/:node_id/drain", wrapper.V1ServiceDiscoveryNodeDrain)
-	router.POST(options.BaseURL+"/v1/service-discovery/nodes/:node_id/kill", wrapper.V1ServiceDiscoveryNodeKill)
-	router.GET(options.BaseURL+"/v1/templates/builds/:build_id/logs", wrapper.V1TemplateBuildLogs)
+	router.POST(options.BaseURL+"/v1/service-discovery/nodes/:nodeID/drain", wrapper.V1ServiceDiscoveryNodeDrain)
+	router.POST(options.BaseURL+"/v1/service-discovery/nodes/:nodeID/kill", wrapper.V1ServiceDiscoveryNodeKill)
+	router.GET(options.BaseURL+"/v1/templates/builds/:buildID/logs", wrapper.V1TemplateBuildLogs)
 }

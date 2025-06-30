@@ -4,15 +4,6 @@ info:
   title: E2B Edge
 
 components:
-  parameters:
-    sandbox_id:
-      name: sandbox_id
-      in: path
-      required: true
-      schema:
-        type: string
-      description: Unique identifier of the sandbox
-
   securitySchemes:
     ApiKeyAuth:
       type: apiKey
@@ -324,7 +315,7 @@ paths:
           "500":
             $ref: "#/components/responses/500"
 
-  /v1/service-discovery/nodes/{node_id}/drain:
+  /v1/service-discovery/nodes/{nodeID}/drain:
     post:
       operationId: v1ServiceDiscoveryNodeDrain
       description: Mark node as draining
@@ -332,7 +323,7 @@ paths:
         - ApiKeyAuth: [ ]
       tags: [service-discovery]
       parameters:
-        - name: node_id
+        - name: nodeID
           in: path
           required: true
           description: Node ID
@@ -350,7 +341,7 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /v1/service-discovery/nodes/{node_id}/kill:
+  /v1/service-discovery/nodes/{nodeID}/kill:
     post:
       operationId: v1ServiceDiscoveryNodeKill
       description: Kill the node
@@ -358,7 +349,7 @@ paths:
         - ApiKeyAuth: [ ]
       tags: [service-discovery]
       parameters:
-        - name: node_id
+        - name: nodeID
           in: path
           required: true
           description: Node ID
@@ -442,7 +433,7 @@ paths:
           "500":
             $ref: "#/components/responses/500"
 
-  /v1/templates/builds/{build_id}/logs:
+  /v1/templates/builds/{buildID}/logs:
     get:
       operationId: v1TemplateBuildLogs
       summary: Template build logs
@@ -450,18 +441,18 @@ paths:
         - ApiKeyAuth: [ ]
       tags: [templates]
       parameters:
-        - name: build_id
+        - name: buildID
           in: path
           required: true
           schema:
             type: string
         - in: query
-          name: orchestrator_id
+          name: orchestratorID
           required: true
           schema:
             type: string
         - in: query
-          name: template_id
+          name: templateID
           required: true
           schema:
             type: string

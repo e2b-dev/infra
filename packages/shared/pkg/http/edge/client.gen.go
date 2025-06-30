@@ -118,13 +118,13 @@ type ClientInterface interface {
 	V1ServiceDiscoveryGetOrchestrators(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// V1ServiceDiscoveryNodeDrain request
-	V1ServiceDiscoveryNodeDrain(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	V1ServiceDiscoveryNodeDrain(ctx context.Context, nodeID string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// V1ServiceDiscoveryNodeKill request
-	V1ServiceDiscoveryNodeKill(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	V1ServiceDiscoveryNodeKill(ctx context.Context, nodeID string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// V1TemplateBuildLogs request
-	V1TemplateBuildLogs(ctx context.Context, buildId string, params *V1TemplateBuildLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	V1TemplateBuildLogs(ctx context.Context, buildID string, params *V1TemplateBuildLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) HealthCheck(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -247,8 +247,8 @@ func (c *Client) V1ServiceDiscoveryGetOrchestrators(ctx context.Context, reqEdit
 	return c.Client.Do(req)
 }
 
-func (c *Client) V1ServiceDiscoveryNodeDrain(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewV1ServiceDiscoveryNodeDrainRequest(c.Server, nodeId)
+func (c *Client) V1ServiceDiscoveryNodeDrain(ctx context.Context, nodeID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewV1ServiceDiscoveryNodeDrainRequest(c.Server, nodeID)
 	if err != nil {
 		return nil, err
 	}
@@ -259,8 +259,8 @@ func (c *Client) V1ServiceDiscoveryNodeDrain(ctx context.Context, nodeId string,
 	return c.Client.Do(req)
 }
 
-func (c *Client) V1ServiceDiscoveryNodeKill(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewV1ServiceDiscoveryNodeKillRequest(c.Server, nodeId)
+func (c *Client) V1ServiceDiscoveryNodeKill(ctx context.Context, nodeID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewV1ServiceDiscoveryNodeKillRequest(c.Server, nodeID)
 	if err != nil {
 		return nil, err
 	}
@@ -271,8 +271,8 @@ func (c *Client) V1ServiceDiscoveryNodeKill(ctx context.Context, nodeId string, 
 	return c.Client.Do(req)
 }
 
-func (c *Client) V1TemplateBuildLogs(ctx context.Context, buildId string, params *V1TemplateBuildLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewV1TemplateBuildLogsRequest(c.Server, buildId, params)
+func (c *Client) V1TemplateBuildLogs(ctx context.Context, buildID string, params *V1TemplateBuildLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewV1TemplateBuildLogsRequest(c.Server, buildID, params)
 	if err != nil {
 		return nil, err
 	}
@@ -526,12 +526,12 @@ func NewV1ServiceDiscoveryGetOrchestratorsRequest(server string) (*http.Request,
 }
 
 // NewV1ServiceDiscoveryNodeDrainRequest generates requests for V1ServiceDiscoveryNodeDrain
-func NewV1ServiceDiscoveryNodeDrainRequest(server string, nodeId string) (*http.Request, error) {
+func NewV1ServiceDiscoveryNodeDrainRequest(server string, nodeID string) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
 
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "node_id", runtime.ParamLocationPath, nodeId)
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "nodeID", runtime.ParamLocationPath, nodeID)
 	if err != nil {
 		return nil, err
 	}
@@ -560,12 +560,12 @@ func NewV1ServiceDiscoveryNodeDrainRequest(server string, nodeId string) (*http.
 }
 
 // NewV1ServiceDiscoveryNodeKillRequest generates requests for V1ServiceDiscoveryNodeKill
-func NewV1ServiceDiscoveryNodeKillRequest(server string, nodeId string) (*http.Request, error) {
+func NewV1ServiceDiscoveryNodeKillRequest(server string, nodeID string) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
 
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "node_id", runtime.ParamLocationPath, nodeId)
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "nodeID", runtime.ParamLocationPath, nodeID)
 	if err != nil {
 		return nil, err
 	}
@@ -594,12 +594,12 @@ func NewV1ServiceDiscoveryNodeKillRequest(server string, nodeId string) (*http.R
 }
 
 // NewV1TemplateBuildLogsRequest generates requests for V1TemplateBuildLogs
-func NewV1TemplateBuildLogsRequest(server string, buildId string, params *V1TemplateBuildLogsParams) (*http.Request, error) {
+func NewV1TemplateBuildLogsRequest(server string, buildID string, params *V1TemplateBuildLogsParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
 
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "build_id", runtime.ParamLocationPath, buildId)
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "buildID", runtime.ParamLocationPath, buildID)
 	if err != nil {
 		return nil, err
 	}
@@ -622,7 +622,7 @@ func NewV1TemplateBuildLogsRequest(server string, buildId string, params *V1Temp
 	if params != nil {
 		queryValues := queryURL.Query()
 
-		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "orchestrator_id", runtime.ParamLocationQuery, params.OrchestratorId); err != nil {
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "orchestratorID", runtime.ParamLocationQuery, params.OrchestratorID); err != nil {
 			return nil, err
 		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 			return nil, err
@@ -634,7 +634,7 @@ func NewV1TemplateBuildLogsRequest(server string, buildId string, params *V1Temp
 			}
 		}
 
-		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "template_id", runtime.ParamLocationQuery, params.TemplateId); err != nil {
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "templateID", runtime.ParamLocationQuery, params.TemplateID); err != nil {
 			return nil, err
 		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 			return nil, err
@@ -745,13 +745,13 @@ type ClientWithResponsesInterface interface {
 	V1ServiceDiscoveryGetOrchestratorsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryGetOrchestratorsResponse, error)
 
 	// V1ServiceDiscoveryNodeDrainWithResponse request
-	V1ServiceDiscoveryNodeDrainWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeDrainResponse, error)
+	V1ServiceDiscoveryNodeDrainWithResponse(ctx context.Context, nodeID string, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeDrainResponse, error)
 
 	// V1ServiceDiscoveryNodeKillWithResponse request
-	V1ServiceDiscoveryNodeKillWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeKillResponse, error)
+	V1ServiceDiscoveryNodeKillWithResponse(ctx context.Context, nodeID string, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeKillResponse, error)
 
 	// V1TemplateBuildLogsWithResponse request
-	V1TemplateBuildLogsWithResponse(ctx context.Context, buildId string, params *V1TemplateBuildLogsParams, reqEditors ...RequestEditorFn) (*V1TemplateBuildLogsResponse, error)
+	V1TemplateBuildLogsWithResponse(ctx context.Context, buildID string, params *V1TemplateBuildLogsParams, reqEditors ...RequestEditorFn) (*V1TemplateBuildLogsResponse, error)
 }
 
 type HealthCheckResponse struct {
@@ -1101,8 +1101,8 @@ func (c *ClientWithResponses) V1ServiceDiscoveryGetOrchestratorsWithResponse(ctx
 }
 
 // V1ServiceDiscoveryNodeDrainWithResponse request returning *V1ServiceDiscoveryNodeDrainResponse
-func (c *ClientWithResponses) V1ServiceDiscoveryNodeDrainWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeDrainResponse, error) {
-	rsp, err := c.V1ServiceDiscoveryNodeDrain(ctx, nodeId, reqEditors...)
+func (c *ClientWithResponses) V1ServiceDiscoveryNodeDrainWithResponse(ctx context.Context, nodeID string, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeDrainResponse, error) {
+	rsp, err := c.V1ServiceDiscoveryNodeDrain(ctx, nodeID, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -1110,8 +1110,8 @@ func (c *ClientWithResponses) V1ServiceDiscoveryNodeDrainWithResponse(ctx contex
 }
 
 // V1ServiceDiscoveryNodeKillWithResponse request returning *V1ServiceDiscoveryNodeKillResponse
-func (c *ClientWithResponses) V1ServiceDiscoveryNodeKillWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeKillResponse, error) {
-	rsp, err := c.V1ServiceDiscoveryNodeKill(ctx, nodeId, reqEditors...)
+func (c *ClientWithResponses) V1ServiceDiscoveryNodeKillWithResponse(ctx context.Context, nodeID string, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodeKillResponse, error) {
+	rsp, err := c.V1ServiceDiscoveryNodeKill(ctx, nodeID, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -1119,8 +1119,8 @@ func (c *ClientWithResponses) V1ServiceDiscoveryNodeKillWithResponse(ctx context
 }
 
 // V1TemplateBuildLogsWithResponse request returning *V1TemplateBuildLogsResponse
-func (c *ClientWithResponses) V1TemplateBuildLogsWithResponse(ctx context.Context, buildId string, params *V1TemplateBuildLogsParams, reqEditors ...RequestEditorFn) (*V1TemplateBuildLogsResponse, error) {
-	rsp, err := c.V1TemplateBuildLogs(ctx, buildId, params, reqEditors...)
+func (c *ClientWithResponses) V1TemplateBuildLogsWithResponse(ctx context.Context, buildID string, params *V1TemplateBuildLogsParams, reqEditors ...RequestEditorFn) (*V1TemplateBuildLogsResponse, error) {
+	rsp, err := c.V1TemplateBuildLogs(ctx, buildID, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
