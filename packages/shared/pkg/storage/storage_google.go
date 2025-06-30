@@ -11,7 +11,6 @@ import (
 	"cloud.google.com/go/storage"
 	"github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/iterator"
-	"google.golang.org/api/option"
 )
 
 const (
@@ -37,7 +36,7 @@ type GCPBucketStorageObjectProvider struct {
 }
 
 func NewGCPBucketStorageProvider(ctx context.Context, bucketName string) (*GCPBucketStorageProvider, error) {
-	client, err := storage.NewClient(ctx, option.WithUniverseDomain("private.googleapis.com"))
+	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
 	}
