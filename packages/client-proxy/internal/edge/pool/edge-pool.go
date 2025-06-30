@@ -29,6 +29,7 @@ type EdgePool struct {
 const (
 	edgeInstancesPoolInterval     = 10 * time.Second
 	edgeInstancesPoolRoundTimeout = 10 * time.Second
+	edgeInstanceSyncTimeout       = 10 * time.Second
 )
 
 var ErrEdgeServiceInstanceNotFound = errors.New("edge service instance not found")
@@ -111,9 +112,20 @@ func (e edgeInstancesSyncStore) PoolExists(ctx context.Context, source *sd.Servi
 
 func (e edgeInstancesSyncStore) PoolInsert(ctx context.Context, source *sd.ServiceDiscoveryItem) {
 	host := e.getHost(source.NodeIP, source.NodePort)
-	o, err := NewEdgeNode(ctx, host)
+	o, err := NewEdgeNode(host)
 	if err != nil {
 		zap.L().Error("failed to register new edge instance", zap.String("host", host), zap.Error(err))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, edgeInstanceSyncTimeout)
+	defer cancel()
+
+	// Initial synchronization of the edge instance
+	// We want to do it separately here so failed init will cause not adding the instance to the pool
+	err = o.sync(ctx)
+	if err != nil {
+		zap.L().Error("Failed to finish initial edge instance sync", zap.Error(err), l.WithClusterNodeID(o.GetInfo().NodeID))
 		return
 	}
 
@@ -121,18 +133,18 @@ func (e edgeInstancesSyncStore) PoolInsert(ctx context.Context, source *sd.Servi
 }
 
 func (e edgeInstancesSyncStore) PoolUpdate(ctx context.Context, item *EdgeNode) {
-	// todo: implement
+	ctx, cancel := context.WithTimeout(ctx, edgeInstanceSyncTimeout)
+	defer cancel()
+
+	err := item.sync(ctx)
+	if err != nil {
+		zap.L().Error("Failed to sync edge instance", zap.Error(err), l.WithClusterNodeID(item.GetInfo().NodeID))
+	}
 }
 
 func (e edgeInstancesSyncStore) PoolRemove(ctx context.Context, item *EdgeNode) {
 	info := item.GetInfo()
 	zap.L().Info("Edge instance connection is not active anymore, closing.", l.WithClusterNodeID(info.NodeID))
-
-	// stop background sync and close everything
-	err := item.Close()
-	if err != nil {
-		zap.L().Error("Error closing connection to instance", zap.Error(err), l.WithClusterNodeID(info.NodeID))
-	}
 
 	e.pool.instances.Remove(item.info.Host)
 	zap.L().Info("Edge instance connection has been closed.", l.WithClusterNodeID(info.NodeID))
