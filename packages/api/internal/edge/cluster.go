@@ -130,8 +130,8 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterNode
 	return nil, ErrAvailableTemplateBuilderNotFound
 }
 
-func (c *Cluster) GetGrpcClient(nodeID string) (*grpclient.GRPCClient, metadata.MD) {
-	return c.grpcClient, metadata.New(map[string]string{consts.EdgeRpcNodeHeader: nodeID})
+func (c *Cluster) GetGrpcClient(serviceInstanceID string) (*grpclient.GRPCClient, metadata.MD) {
+	return c.grpcClient, metadata.New(map[string]string{consts.EdgeRpcServiceInstanceIDHeader: serviceInstanceID})
 }
 
 func (c *Cluster) GetHttpClient() *api.ClientWithResponses {

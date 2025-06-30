@@ -65,18 +65,18 @@ func (s *NodePassThroughServer) director(ctx context.Context) (*grpc.ClientConn,
 		return nil, status.Error(codes.PermissionDenied, err.Error())
 	}
 
-	nodeIds := md.Get(consts.EdgeRpcNodeHeader)
-	if len(nodeIds) == 0 || len(nodeIds) > 1 {
-		return nil, status.Error(codes.InvalidArgument, "node id header missing or invalid")
+	serviceInstanceIDs := md.Get(consts.EdgeRpcServiceInstanceIDHeader)
+	if len(serviceInstanceIDs) == 0 || len(serviceInstanceIDs) > 1 {
+		return nil, status.Error(codes.InvalidArgument, "service instance id header missing or invalid")
 	}
 
-	nodeId := nodeIds[0]
-	node, ok := s.nodes.GetOrchestrator(nodeId)
+	serviceInstanceID := serviceInstanceIDs[0]
+	serviceInstance, ok := s.nodes.GetOrchestrator(serviceInstanceID)
 	if !ok {
-		return nil, status.Error(codes.NotFound, "node not found")
+		return nil, status.Error(codes.NotFound, "service instance not found")
 	}
 
-	return node.Client.Connection, nil
+	return serviceInstance.Client.Connection, nil
 }
 
 // Handler - following code implement a gRPC pass-through proxy that forwards requests to the appropriate node

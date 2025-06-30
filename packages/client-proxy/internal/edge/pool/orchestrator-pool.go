@@ -67,11 +67,11 @@ func (p *OrchestratorsPool) GetOrchestrators() map[string]*OrchestratorNode {
 	return p.nodes.Items()
 }
 
-func (p *OrchestratorsPool) GetOrchestrator(id string) (node *OrchestratorNode, ok bool) {
+func (p *OrchestratorsPool) GetOrchestrator(instanceID string) (node *OrchestratorNode, ok bool) {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 
-	return p.nodes.Get(id)
+	return p.nodes.Get(instanceID)
 }
 
 func (p *OrchestratorsPool) keepInSync(ctx context.Context) {
