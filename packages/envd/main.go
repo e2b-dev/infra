@@ -50,7 +50,7 @@ var (
 func parseFlags() {
 	flag.BoolVar(
 		&isNotFC,
-		"debug",
+		"isnotfc",
 		false,
 		"isNotFCmode prints all logs to stdout",
 	)

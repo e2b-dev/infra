@@ -85,6 +85,9 @@ func (w *HTTPExporter) listenForMMDSOptsAndStart(mmdsChan <-chan *host.MMDSOpts)
 			if !ok {
 				return
 			}
+
+			w.mmdsLock.Lock()
+			defer w.mmdsLock.Unlock()
 			w.mmdsOpts.Update(
 				mmdsOpts.TraceID, mmdsOpts.InstanceID, mmdsOpts.EnvID, mmdsOpts.Address, mmdsOpts.TeamID)
 
@@ -112,9 +115,10 @@ func (w *HTTPExporter) start() {
 		}
 
 		for _, logLine := range logs {
-			w.mmdsOpts.RLock()
+			w.mmdsLock.RLock()
+			defer w.mmdsLock.RUnlock()
+
 			logLineWithOpts, err := w.mmdsOpts.AddOptsToJSON(logLine)
-			w.mmdsOpts.RUnlock()
 			if err != nil {
 				log.Printf("error adding instance logging options (%+v) to JSON (%+v) with logs : %v\n", w.mmdsOpts, logLine, err)
 

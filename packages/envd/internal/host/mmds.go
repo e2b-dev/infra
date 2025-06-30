@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
@@ -23,7 +22,6 @@ const (
 )
 
 type MMDSOpts struct {
-	sync.RWMutex
 	TraceID    string `json:"traceID"`
 	InstanceID string `json:"instanceID"`
 	EnvID      string `json:"envID"`
@@ -32,9 +30,6 @@ type MMDSOpts struct {
 }
 
 func (opts *MMDSOpts) Update(traceID, instanceID, envID, address, teamID string) {
-	opts.Lock()
-	defer opts.Unlock()
-
 	opts.TraceID = traceID
 	opts.InstanceID = instanceID
 	opts.EnvID = envID
@@ -49,9 +44,6 @@ func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	opts.RLock()
-	defer opts.RUnlock()
 
 	parsed["instanceID"] = opts.InstanceID
 	parsed["envID"] = opts.EnvID
