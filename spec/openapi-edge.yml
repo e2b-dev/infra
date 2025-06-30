@@ -54,66 +54,66 @@ components:
   schemas:
     ClusterNodeInfo:
       required:
-        - id
-        - nodeId
-        - version
-        - commit
-        - startup
-        - status
+        - nodeID
+        - serviceInstanceID
+        - serviceVersion
+        - serviceVersionCommit
+        - serviceStartup
+        - serviceStatus
       properties:
-        id:
-          type: string
-          description: Service ID
-        nodeId:
+        nodeID:
           type: string
           description: Node ID
-        version:
+        serviceInstanceID:
           type: string
-          description: Version of the node
-        commit:
+          description: Service ID
+        serviceVersion:
           type: string
-          description: Version of the node
-        startup:
+          description: Version of the service
+        serviceVersionCommit:
+          type: string
+          description: Version of the service
+        serviceStartup:
           type: string
           format: date-time
           description: Time when the node started
-        status:
+        serviceStatus:
           $ref: "#/components/schemas/ClusterNodeStatus"
 
     ClusterNode:
       required:
-        - id
-        - nodeId
-        - version
-        - commit
-        - type
-        - host
-        - startedAt
-        - status
+        - nodeID
+        - serviceInstanceID
+        - serviceVersion
+        - serviceVersionCommit
+        - serviceStartedAt
+        - serviceType
+        - serviceStatus
+        - serviceHost
       properties:
-        id:
-          type: string
-          description: Service ID
-        nodeId:
+        nodeID:
           type: string
           description: Node ID
-        version:
+        serviceInstanceID:
+          type: string
+          description: Service instance ID
+        serviceVersion:
             type: string
-            description: Version of the node
-        commit:
+            description: Version of the service
+        serviceVersionCommit:
           type: string
-          description: Source code version of the node
-        host:
-          type: string
-          description: Node private host address and service port
-        startedAt:
+          description: Source code version of the service
+        serviceStartedAt:
           type: string
           format: date-time
           description: Time when the node was registered
-        type:
+        serviceType:
           $ref: "#/components/schemas/ClusterNodeType"
-        status:
+        serviceStatus:
           $ref: "#/components/schemas/ClusterNodeStatus"
+        serviceHost:
+          type: string
+          description: Node private host address and service port
 
     ClusterNodeStatus:
       type: string
@@ -135,35 +135,49 @@ components:
       description: Capability of the orchestrator
       enum:
         - orchestrator
-        - templateManager
+        - builder
 
     ClusterOrchestratorNode:
+      required:
+        - nodeID
+        - serviceInstanceID
+        - serviceVersion
+        - serviceVersionCommit
+        - serviceStartedAt
+        - serviceHost
+        - serviceStatus
+        - roles
+        - metricVCpuUsed
+        - metricRamMBUsed
+        - metricDiskMBUsed
+        - metricSandboxesRunning
+
       properties:
-        id:
-          type: string
-          description: Service ID
-        nodeId:
+        nodeID:
           type: string
           description: Node ID
-        version:
+        serviceInstanceID:
+          type: string
+          description: Service instance ID
+        serviceVersion:
           type: string
           description: Service Version
-        commit:
+        serviceVersionCommit:
           type: string
           description: Service Version
-        host:
+        serviceHost:
           type: string
           description: Node private host address and service port
-        startedAt:
+        serviceStartedAt:
           type: string
           format: date-time
           description: Time when the node was registered
+        serviceStatus:
+          $ref: "#/components/schemas/ClusterNodeStatus"
         roles:
           type: array
           items:
             $ref: '#/components/schemas/ClusterOrchestratorRole'
-        status:
-          $ref: "#/components/schemas/ClusterNodeStatus"
         metricVCpuUsed:
           type: integer
           format: int64
@@ -180,19 +194,6 @@ components:
           type: integer
           format: int64
           description: Amount of disk space currently used in MB
-      required:
-        - id
-        - nodeId
-        - version
-        - commit
-        - host
-        - startedAt
-        - status
-        - roles
-        - metricVCpuUsed
-        - metricRamMBUsed
-        - metricDiskMBUsed
-        - metricSandboxesRunning
 
     Error:
       required:
@@ -288,7 +289,7 @@ paths:
   /v1/info:
     get:
         operationId: v1Info
-        description: Edge node information
+        description: Edge service information
         responses:
           "200":
             description: Successfully returned node information

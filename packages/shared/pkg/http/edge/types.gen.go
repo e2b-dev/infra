@@ -26,56 +26,56 @@ const (
 
 // Defines values for ClusterOrchestratorRole.
 const (
-	ClusterOrchestratorRoleOrchestrator    ClusterOrchestratorRole = "orchestrator"
-	ClusterOrchestratorRoleTemplateManager ClusterOrchestratorRole = "templateManager"
+	ClusterOrchestratorRoleBuilder      ClusterOrchestratorRole = "builder"
+	ClusterOrchestratorRoleOrchestrator ClusterOrchestratorRole = "orchestrator"
 )
 
 // ClusterNode defines model for ClusterNode.
 type ClusterNode struct {
-	// Commit Source code version of the node
-	Commit string `json:"commit"`
+	// NodeID Node ID
+	NodeID string `json:"nodeID"`
 
-	// Host Node private host address and service port
-	Host string `json:"host"`
+	// ServiceHost Node private host address and service port
+	ServiceHost string `json:"serviceHost"`
 
-	// Id Service ID
-	Id string `json:"id"`
+	// ServiceInstanceID Service instance ID
+	ServiceInstanceID string `json:"serviceInstanceID"`
 
-	// NodeId Node ID
-	NodeId string `json:"nodeId"`
+	// ServiceStartedAt Time when the node was registered
+	ServiceStartedAt time.Time `json:"serviceStartedAt"`
 
-	// StartedAt Time when the node was registered
-	StartedAt time.Time `json:"startedAt"`
+	// ServiceStatus State of the cluster node
+	ServiceStatus ClusterNodeStatus `json:"serviceStatus"`
 
-	// Status State of the cluster node
-	Status ClusterNodeStatus `json:"status"`
+	// ServiceType Cluster node type
+	ServiceType ClusterNodeType `json:"serviceType"`
 
-	// Type Cluster node type
-	Type ClusterNodeType `json:"type"`
+	// ServiceVersion Version of the service
+	ServiceVersion string `json:"serviceVersion"`
 
-	// Version Version of the node
-	Version string `json:"version"`
+	// ServiceVersionCommit Source code version of the service
+	ServiceVersionCommit string `json:"serviceVersionCommit"`
 }
 
 // ClusterNodeInfo defines model for ClusterNodeInfo.
 type ClusterNodeInfo struct {
-	// Commit Version of the node
-	Commit string `json:"commit"`
+	// NodeID Node ID
+	NodeID string `json:"nodeID"`
 
-	// Id Service ID
-	Id string `json:"id"`
+	// ServiceInstanceID Service ID
+	ServiceInstanceID string `json:"serviceInstanceID"`
 
-	// NodeId Node ID
-	NodeId string `json:"nodeId"`
+	// ServiceStartup Time when the node started
+	ServiceStartup time.Time `json:"serviceStartup"`
 
-	// Startup Time when the node started
-	Startup time.Time `json:"startup"`
+	// ServiceStatus State of the cluster node
+	ServiceStatus ClusterNodeStatus `json:"serviceStatus"`
 
-	// Status State of the cluster node
-	Status ClusterNodeStatus `json:"status"`
+	// ServiceVersion Version of the service
+	ServiceVersion string `json:"serviceVersion"`
 
-	// Version Version of the node
-	Version string `json:"version"`
+	// ServiceVersionCommit Version of the service
+	ServiceVersionCommit string `json:"serviceVersionCommit"`
 }
 
 // ClusterNodeStatus State of the cluster node
@@ -86,15 +86,6 @@ type ClusterNodeType string
 
 // ClusterOrchestratorNode defines model for ClusterOrchestratorNode.
 type ClusterOrchestratorNode struct {
-	// Commit Service Version
-	Commit string `json:"commit"`
-
-	// Host Node private host address and service port
-	Host string `json:"host"`
-
-	// Id Service ID
-	Id string `json:"id"`
-
 	// MetricDiskMBUsed Amount of disk space currently used in MB
 	MetricDiskMBUsed int64 `json:"metricDiskMBUsed"`
 
@@ -107,18 +98,27 @@ type ClusterOrchestratorNode struct {
 	// MetricVCpuUsed Number of vCPUs currently in use
 	MetricVCpuUsed int64 `json:"metricVCpuUsed"`
 
-	// NodeId Node ID
-	NodeId string                    `json:"nodeId"`
+	// NodeID Node ID
+	NodeID string                    `json:"nodeID"`
 	Roles  []ClusterOrchestratorRole `json:"roles"`
 
-	// StartedAt Time when the node was registered
-	StartedAt time.Time `json:"startedAt"`
+	// ServiceHost Node private host address and service port
+	ServiceHost string `json:"serviceHost"`
 
-	// Status State of the cluster node
-	Status ClusterNodeStatus `json:"status"`
+	// ServiceInstanceID Service instance ID
+	ServiceInstanceID string `json:"serviceInstanceID"`
 
-	// Version Service Version
-	Version string `json:"version"`
+	// ServiceStartedAt Time when the node was registered
+	ServiceStartedAt time.Time `json:"serviceStartedAt"`
+
+	// ServiceStatus State of the cluster node
+	ServiceStatus ClusterNodeStatus `json:"serviceStatus"`
+
+	// ServiceVersion Service Version
+	ServiceVersion string `json:"serviceVersion"`
+
+	// ServiceVersionCommit Service Version
+	ServiceVersionCommit string `json:"serviceVersionCommit"`
 }
 
 // ClusterOrchestratorRole Capability of the orchestrator
