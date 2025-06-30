@@ -125,7 +125,7 @@ func (o *OrchestratorNode) syncRun() error {
 
 		status, err := o.client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 		if err != nil {
-			zap.L().Error("failed to check orchestrator health", l.WithClusterNodeID(freshInfo.ServiceInstanceID), zap.Error(err))
+			zap.L().Error("failed to check orchestrator health", l.WithClusterNodeID(freshInfo.NodeID), zap.Error(err))
 			continue
 		}
 
