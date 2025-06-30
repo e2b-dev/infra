@@ -13,7 +13,7 @@ enum ServiceInfoStatus {
 }
 
 enum ServiceInfoRole {
-  TemplateManager = 0;
+  TemplateBuilder = 0;
   Orchestrator = 1;
 }
 

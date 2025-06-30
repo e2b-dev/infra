@@ -126,7 +126,7 @@ components:
       description: Capability of the orchestrator
       enum:
         - orchestrator
-        - builder
+        - template-builder
 
     ClusterOrchestratorNode:
       required:

@@ -73,8 +73,8 @@ func getOrchestratorRolesResolved(r []e2bgrpcorchestratorinfo.ServiceInfoRole) [
 		switch role {
 		case e2bgrpcorchestratorinfo.ServiceInfoRole_Orchestrator:
 			roles = append(roles, api.ClusterOrchestratorRoleOrchestrator)
-		case e2bgrpcorchestratorinfo.ServiceInfoRole_TemplateManager:
-			roles = append(roles, api.ClusterOrchestratorRoleBuilder)
+		case e2bgrpcorchestratorinfo.ServiceInfoRole_TemplateBuilder:
+			roles = append(roles, api.ClusterOrchestratorRoleTemplateBuilder)
 		default:
 			zap.L().Error("Unknown orchestrator role", zap.String("role", string(role)))
 		}

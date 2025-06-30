@@ -26,8 +26,8 @@ const (
 
 // Defines values for ClusterOrchestratorRole.
 const (
-	ClusterOrchestratorRoleBuilder      ClusterOrchestratorRole = "builder"
-	ClusterOrchestratorRoleOrchestrator ClusterOrchestratorRole = "orchestrator"
+	ClusterOrchestratorRoleOrchestrator    ClusterOrchestratorRole = "orchestrator"
+	ClusterOrchestratorRoleTemplateBuilder ClusterOrchestratorRole = "template-builder"
 )
 
 // ClusterNode defines model for ClusterNode.

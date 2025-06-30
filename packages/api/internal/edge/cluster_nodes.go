@@ -75,7 +75,7 @@ func (n *ClusterNode) hasRole(r infogrpc.ServiceInfoRole) bool {
 }
 
 func (n *ClusterNode) IsBuilderNode() bool {
-	return n.hasRole(infogrpc.ServiceInfoRole_TemplateManager)
+	return n.hasRole(infogrpc.ServiceInfoRole_TemplateBuilder)
 }
 
 func (n *ClusterNode) IsOrchestratorNode() bool {
