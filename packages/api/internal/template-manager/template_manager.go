@@ -152,7 +152,7 @@ func (tm *TemplateManager) getBuilderClient(clusterID *uuid.UUID, nodeID *string
 		return nil, nil, nil, errors.New("cluster not found")
 	}
 
-	node, err := cluster.GetTemplateBuilderById(*nodeID)
+	node, err := cluster.GetTemplateBuilderByID(*nodeID)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to get builder by id '%s': %w", *nodeID, err)
 	}

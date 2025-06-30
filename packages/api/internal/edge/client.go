@@ -32,7 +32,7 @@ func (a clientAuthorization) RequireTransportSecurity() bool {
 	return a.tls
 }
 
-func createClusterClient(tel *telemetry.Client, auth clientAuthorization, endpoint string, endpointTls bool) (*grpclient.GRPCClient, error) {
+func createClusterClient(tel *telemetry.Client, auth clientAuthorization, endpoint string, endpointTLS bool) (*grpclient.GRPCClient, error) {
 	grpcOptions := []grpc.DialOption{
 		grpc.WithPerRPCCredentials(auth),
 		grpc.WithStatsHandler(
@@ -50,7 +50,7 @@ func createClusterClient(tel *telemetry.Client, auth clientAuthorization, endpoi
 		),
 	}
 
-	if endpointTls {
+	if endpointTLS {
 		// (2025-06) AWS ALB with TLS termination is using TLS 1.2 as default so this is why we are not using TLS 1.3+ here
 		cred := credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
 		grpcOptions = append(grpcOptions, grpc.WithAuthority(endpoint), grpc.WithTransportCredentials(cred))

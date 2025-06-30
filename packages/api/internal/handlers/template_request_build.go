@@ -239,7 +239,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		return nil
 	}
 
-	var builderNodeId *string
+	var builderNodeID *string
 	if team.ClusterID != nil {
 		cluster, found := a.clustersPool.GetClusterById(*team.ClusterID)
 		if !found {
@@ -255,7 +255,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 			return nil
 		}
 
-		builderNodeId = &clusterNode.NodeID
+		builderNodeID = &clusterNode.NodeID
 	}
 
 	// Insert the new build
@@ -270,7 +270,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		SetFreeDiskSizeMB(tier.DiskMb).
 		SetNillableStartCmd(body.StartCmd).
 		SetNillableReadyCmd(body.ReadyCmd).
-		SetNillableClusterNodeID(builderNodeId).
+		SetNillableClusterNodeID(builderNodeID).
 		SetDockerfile(body.Dockerfile).
 		Exec(ctx)
 	if err != nil {

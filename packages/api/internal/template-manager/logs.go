@@ -33,16 +33,16 @@ type LokiPlacementLogsProvider struct {
 
 type ClusterPlacementLogsProvider struct {
 	edgeHttpClient *api.ClientWithResponses
-	nodeId         string
+	nodeID         string
 }
 
-func NewClusterPlacementLogsProvider(edgeHttpClient *api.ClientWithResponses, nodeId string) PlacementLogsProvider {
-	return &ClusterPlacementLogsProvider{edgeHttpClient: edgeHttpClient, nodeId: nodeId}
+func NewClusterPlacementLogsProvider(edgeHttpClient *api.ClientWithResponses, nodeID string) PlacementLogsProvider {
+	return &ClusterPlacementLogsProvider{edgeHttpClient: edgeHttpClient, nodeID: nodeID}
 }
 
 func (l *ClusterPlacementLogsProvider) GetLogs(ctx context.Context, buildID string, templateID string, offset *int32) ([]string, error) {
 	res, err := l.edgeHttpClient.V1TemplateBuildLogsWithResponse(
-		ctx, buildID, &api.V1TemplateBuildLogsParams{TemplateID: templateID, OrchestratorID: l.nodeId, Offset: offset},
+		ctx, buildID, &api.V1TemplateBuildLogsParams{TemplateID: templateID, OrchestratorID: l.nodeID, Offset: offset},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build logs in template manager: %w", err)

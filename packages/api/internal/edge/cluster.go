@@ -37,7 +37,7 @@ var (
 	ErrAvailableTemplateBuilderNotFound = errors.New("available template builder not found")
 )
 
-func NewCluster(tracer trace.Tracer, tel *telemetry.Client, endpoint string, endpointTls bool, secret string, id uuid.UUID) (*Cluster, error) {
+func NewCluster(tracer trace.Tracer, tel *telemetry.Client, endpoint string, endpointTLS bool, secret string, clusterID uuid.UUID) (*Cluster, error) {
 	clientAuthMiddleware := func(c *api.Client) error {
 		c.RequestEditors = append(
 			c.RequestEditors,
@@ -51,7 +51,7 @@ func NewCluster(tracer trace.Tracer, tel *telemetry.Client, endpoint string, end
 
 	// generate the full endpoint URL
 	var endpointBaseUrl string
-	if endpointTls {
+	if endpointTLS {
 		endpointBaseUrl = fmt.Sprintf("https://%s", endpoint)
 	} else {
 		endpointBaseUrl = fmt.Sprintf("http://%s", endpoint)
@@ -62,14 +62,14 @@ func NewCluster(tracer trace.Tracer, tel *telemetry.Client, endpoint string, end
 		return nil, fmt.Errorf("failed to create http client: %w", err)
 	}
 
-	grpcAuthorization := clientAuthorization{secret: secret, tls: endpointTls}
-	grpcClient, err := createClusterClient(tel, grpcAuthorization, endpoint, endpointTls)
+	grpcAuthorization := clientAuthorization{secret: secret, tls: endpointTLS}
+	grpcClient, err := createClusterClient(tel, grpcAuthorization, endpoint, endpointTLS)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create grpc client: %w", err)
 	}
 
 	c := &Cluster{
-		ID: id,
+		ID: clusterID,
 
 		nodes:      smap.New[*ClusterNode](),
 		tracer:     tracer,
@@ -95,7 +95,7 @@ func (c *Cluster) Close() error {
 	return err
 }
 
-func (c *Cluster) GetTemplateBuilderById(nodeID string) (*ClusterNode, error) {
+func (c *Cluster) GetTemplateBuilderByID(nodeID string) (*ClusterNode, error) {
 	node, found := c.nodes.Get(nodeID)
 	if !found {
 		return nil, ErrTemplateBuilderNotFound

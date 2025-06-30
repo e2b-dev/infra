@@ -20,7 +20,7 @@ var (
 	syncWaitingStateDeadline = time.Minute * 40
 )
 
-func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUID, templateID string, clusterId *uuid.UUID, clusterNodeId *string) error {
+func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUID, templateID string, clusterID *uuid.UUID, clusterNodeID *string) error {
 	childCtx, childCtxCancel := context.WithTimeout(ctx, syncTimeout)
 	defer childCtxCancel()
 
@@ -57,8 +57,8 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 		templateID: templateID,
 		buildID:    buildID,
 
-		clusterID:     clusterId,
-		clusterNodeID: clusterNodeId,
+		clusterID:     clusterID,
+		clusterNodeID: clusterNodeID,
 	}
 
 	checker.poll(ctx)
