@@ -42,10 +42,10 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 				envBuildIDs,
 				template_manager.DeleteBuild{
 					BuildID:    build.ID,
-					TemplateId: *build.EnvID,
+					TemplateID: *build.EnvID,
 
-					ClusterId:     teamClusterID,
-					ClusterNodeId: build.ClusterNodeID,
+					ClusterID:     teamClusterID,
+					ClusterNodeID: build.ClusterNodeID,
 				},
 			)
 		}

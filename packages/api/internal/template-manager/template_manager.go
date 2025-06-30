@@ -50,10 +50,10 @@ type TemplateManager struct {
 
 type DeleteBuild struct {
 	BuildID    uuid.UUID
-	TemplateId string
+	TemplateID string
 
-	ClusterId     *uuid.UUID
-	ClusterNodeId *string
+	ClusterID     *uuid.UUID
+	ClusterNodeID *string
 }
 
 const (
@@ -196,7 +196,7 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, t trace.Tracer, buil
 
 func (tm *TemplateManager) DeleteBuilds(ctx context.Context, builds []DeleteBuild) error {
 	for _, build := range builds {
-		err := tm.DeleteBuild(ctx, tm.tracer, build.BuildID, build.TemplateId, build.ClusterId, build.ClusterNodeId)
+		err := tm.DeleteBuild(ctx, tm.tracer, build.BuildID, build.TemplateID, build.ClusterID, build.ClusterNodeID)
 		if err != nil {
 			return fmt.Errorf("failed to delete env build '%s': %w", build.BuildID, err)
 		}

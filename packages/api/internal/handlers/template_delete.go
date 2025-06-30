@@ -121,7 +121,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	for i, build := range template.Edges.Builds {
 		buildIds[i] = template_manager.DeleteBuild{
 			BuildID:    build.ID,
-			TemplateId: *build.EnvID,
+			TemplateID: *build.EnvID,
 		}
 	}
 

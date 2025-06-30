@@ -40,9 +40,9 @@ func NewClusterPlacementLogsProvider(edgeHttpClient *api.ClientWithResponses, no
 	return &ClusterPlacementLogsProvider{edgeHttpClient: edgeHttpClient, nodeId: nodeId}
 }
 
-func (l *ClusterPlacementLogsProvider) GetLogs(ctx context.Context, buildId string, templateId string, offset *int32) ([]string, error) {
+func (l *ClusterPlacementLogsProvider) GetLogs(ctx context.Context, buildID string, templateID string, offset *int32) ([]string, error) {
 	res, err := l.edgeHttpClient.V1TemplateBuildLogsWithResponse(
-		ctx, buildId, &api.V1TemplateBuildLogsParams{TemplateId: templateId, OrchestratorId: l.nodeId, Offset: offset},
+		ctx, buildID, &api.V1TemplateBuildLogsParams{TemplateID: templateID, OrchestratorID: l.nodeId, Offset: offset},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build logs in template manager: %w", err)
@@ -60,15 +60,15 @@ func NewLokiPlacementLogsProvider(lokiClient *loki.DefaultClient) PlacementLogsP
 	return &LokiPlacementLogsProvider{lokiClient: lokiClient}
 }
 
-func (l *LokiPlacementLogsProvider) GetLogs(ctx context.Context, buildId string, templateId string, offset *int32) ([]string, error) {
+func (l *LokiPlacementLogsProvider) GetLogs(ctx context.Context, buildID string, templateID string, offset *int32) ([]string, error) {
 	if l.lokiClient == nil {
 		return nil, fmt.Errorf("loki edgeHttpClient is not configured")
 	}
 
 	// Sanitize env ID
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
-	templateIdSanitized := strings.ReplaceAll(templateId, "`", "")
-	query := fmt.Sprintf("{service=\"template-manager\", buildID=\"%s\", envID=`%s`}", buildId, templateIdSanitized)
+	templateIdSanitized := strings.ReplaceAll(templateID, "`", "")
+	query := fmt.Sprintf("{service=\"template-manager\", buildID=\"%s\", envID=`%s`}", buildID, templateIdSanitized)
 
 	end := time.Now()
 	start := end.Add(-lokiTemplateBuildOldestLogsLimit)
@@ -99,7 +99,7 @@ func (l *LokiPlacementLogsProvider) GetLogs(ctx context.Context, buildId string,
 				line := make(map[string]interface{})
 				err := json.Unmarshal([]byte(entry.Line), &line)
 				if err != nil {
-					zap.L().Error("error parsing log line", zap.Error(err), logger.WithBuildID(buildId), zap.String("line", entry.Line))
+					zap.L().Error("error parsing log line", zap.Error(err), logger.WithBuildID(buildID), zap.String("line", entry.Line))
 				}
 
 				logs = append(logs, line["message"].(string))
@@ -107,7 +107,7 @@ func (l *LokiPlacementLogsProvider) GetLogs(ctx context.Context, buildId string,
 		}
 	} else {
 		telemetry.ReportError(ctx, "error when returning logs for template build", err)
-		zap.L().Error("error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildId))
+		zap.L().Error("error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildID))
 	}
 
 	return logs, nil

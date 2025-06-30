@@ -107,12 +107,12 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	if len(concurrentlyRunningBuilds) > 0 {
 		buildIDs := utils.Map(concurrentlyRunningBuilds, func(b *models.EnvBuild) template_manager.DeleteBuild {
 			return template_manager.DeleteBuild{
-				TemplateId: envDB.ID,
+				TemplateID: envDB.ID,
 				BuildID:    b.ID,
 			}
 		})
 		telemetry.ReportEvent(ctx, "canceling running builds", attribute.StringSlice("ids", utils.Map(buildIDs, func(b template_manager.DeleteBuild) string {
-			return fmt.Sprintf("%s/%s", b.TemplateId, b.BuildID)
+			return fmt.Sprintf("%s/%s", b.TemplateID, b.BuildID)
 		})))
 		deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIDs)
 		if deleteJobErr != nil {
