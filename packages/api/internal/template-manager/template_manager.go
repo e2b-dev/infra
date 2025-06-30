@@ -160,7 +160,7 @@ func (tm *TemplateManager) getBuilderClient(clusterID *uuid.UUID, nodeID *string
 	}
 
 	logs := NewClusterPlacementLogsProvider(cluster.GetHttpClient(), *nodeID)
-	client, clientMetadata := cluster.GetGrpcClient(node.ID)
+	client, clientMetadata := cluster.GetGrpcClient(node.NodeID)
 
 	return client, clientMetadata, logs, nil
 }

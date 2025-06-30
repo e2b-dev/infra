@@ -22,11 +22,11 @@ import (
 )
 
 type ClusterNode struct {
-	ID     string // service id (will change on restart)
-	NodeID string // machine id
+	NodeID string
 
-	Version       string
-	VersionCommit string
+	ServiceInstanceID    string
+	ServiceVersion       string
+	ServiceVersionCommit string
 
 	roles  []infogrpc.ServiceInfoRole
 	status infogrpc.ServiceInfoStatus
@@ -51,7 +51,7 @@ func (c *Cluster) syncBackground() {
 }
 
 func (c *Cluster) syncNode(ctx context.Context, node *ClusterNode) {
-	client, clientMetadata := c.GetGrpcClient(node.ID)
+	client, clientMetadata := c.GetGrpcClient(node.ServiceInstanceID)
 
 	// we are taking service info directly from the node to avoid timing delays in service discovery
 	reqCtx := metadata.NewOutgoingContext(ctx, clientMetadata)
@@ -59,7 +59,7 @@ func (c *Cluster) syncNode(ctx context.Context, node *ClusterNode) {
 
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
-		zap.L().Error("Failed to get node service info", zap.Error(err), l.WithClusterID(c.ID), l.WithClusterNodeID(node.ID))
+		zap.L().Error("Failed to get node service info", zap.Error(err), l.WithClusterID(c.ID), l.WithClusterNodeID(node.NodeID))
 		return
 	}
 
@@ -114,7 +114,7 @@ func (d clusterSynchronizationStore) SourceList(ctx context.Context) ([]api.Clus
 }
 
 func (d clusterSynchronizationStore) SourceKey(item api.ClusterOrchestratorNode) string {
-	return item.Id
+	return item.NodeID
 }
 
 func (d clusterSynchronizationStore) PoolList(ctx context.Context) map[string]*ClusterNode {
@@ -127,23 +127,23 @@ func (d clusterSynchronizationStore) PoolExists(ctx context.Context, key string)
 }
 
 func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, sdNodeID string, sdNode api.ClusterOrchestratorNode) error {
-	zap.L().Info("Adding new node into cluster nodes pool", l.WithClusterID(d.cluster.ID), l.WithClusterNodeID(sdNode.Id))
+	zap.L().Info("Adding new node into cluster nodes pool", l.WithClusterID(d.cluster.ID), l.WithClusterNodeID(sdNode.NodeID))
 	node := &ClusterNode{
-		ID:     sdNode.Id,
-		NodeID: sdNode.NodeId,
+		NodeID: sdNode.NodeID,
+
+		ServiceInstanceID:    sdNode.ServiceInstanceID,
+		ServiceVersion:       sdNode.ServiceVersion,
+		ServiceVersionCommit: sdNode.ServiceVersionCommit,
 
 		// initial values before first sync
 		status: infogrpc.ServiceInfoStatus_OrchestratorUnhealthy,
 		roles:  make([]infogrpc.ServiceInfoRole, 0),
 
-		Version:       sdNode.Version,
-		VersionCommit: sdNode.Commit,
-
 		tracer: d.cluster.tracer,
 		mutex:  sync.RWMutex{},
 	}
 
-	d.cluster.nodes.Insert(sdNode.Id, node)
+	d.cluster.nodes.Insert(sdNode.NodeID, node)
 	return nil
 }
 
@@ -152,7 +152,7 @@ func (d clusterSynchronizationStore) PoolSynchronize(ctx context.Context, nodeID
 }
 
 func (d clusterSynchronizationStore) PoolRemove(ctx context.Context, cluster *ClusterNode) error {
-	zap.L().Info("Removing node from cluster nodes pool", l.WithClusterID(d.cluster.ID), l.WithClusterNodeID(cluster.ID))
-	d.cluster.nodes.Remove(cluster.ID)
+	zap.L().Info("Removing node from cluster nodes pool", l.WithClusterID(d.cluster.ID), l.WithClusterNodeID(cluster.NodeID))
+	d.cluster.nodes.Remove(cluster.NodeID)
 	return nil
 }
