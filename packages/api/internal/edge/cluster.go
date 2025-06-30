@@ -15,6 +15,7 @@ import (
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/synchronization"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -24,8 +25,9 @@ type Cluster struct {
 	httpClient *api.ClientWithResponses
 	grpcClient *grpclient.GRPCClient
 
-	nodes  *smap.Map[*ClusterNode]
-	tracer trace.Tracer
+	nodes           *smap.Map[*ClusterNode]
+	synchronization *synchronization.Synchronize[api.ClusterOrchestratorNode, *ClusterNode]
+	tracer          trace.Tracer
 
 	close chan struct{}
 }
@@ -77,6 +79,9 @@ func NewCluster(tracer trace.Tracer, tel *telemetry.Client, endpoint string, end
 		close: make(chan struct{}),
 	}
 
+	store := clusterSynchronizationStore{cluster: c}
+	c.synchronization = synchronization.NewSynchronize(tracer, "cluster-nodes", "Cluster nodes", store)
+
 	// periodically sync cluster nodes
 	go c.startSync()
 
@@ -84,6 +89,7 @@ func NewCluster(tracer trace.Tracer, tel *telemetry.Client, endpoint string, end
 }
 
 func (c *Cluster) Close() error {
+	c.synchronization.Close()
 	err := c.grpcClient.Close()
 	close(c.close)
 	return err

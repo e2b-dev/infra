@@ -23,10 +23,13 @@ const (
 )
 
 type Pool struct {
-	db       *client.Client
-	tel      *telemetry.Client
-	clusters *smap.Map[*Cluster]
-	tracer   trace.Tracer
+	db  *client.Client
+	tel *telemetry.Client
+
+	clusters        *smap.Map[*Cluster]
+	synchronization *synchronization.Synchronize[queries.GetActiveClustersRow, *Cluster]
+
+	tracer trace.Tracer
 
 	close chan struct{}
 }
@@ -49,18 +52,14 @@ func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, trac
 		p.Close()
 	}()
 
+	store := poolSynchronizationStore{pool: p}
+	p.synchronization = synchronization.NewSynchronize(p.tracer, "clusters-pool", "Clusters pool", store)
+
 	return p, nil
 }
 
 func (p *Pool) startSync() {
-	synchronize := synchronization.Synchronize[queries.GetActiveClustersRow, *Cluster]{
-		Tracer:           p.tracer,
-		TracerSpanPrefix: "clusters-pool",
-		LogsPrefix:       "Clusters pool",
-		Store:            poolSynchronizationStore{pool: p},
-	}
-
-	synchronize.StartSync(p.close, poolSyncInterval, poolSyncTimeout, true)
+	p.synchronization.Start(poolSyncInterval, poolSyncTimeout, true)
 }
 
 func (p *Pool) GetClusterById(id uuid.UUID) (*Cluster, bool) {
@@ -73,6 +72,8 @@ func (p *Pool) GetClusterById(id uuid.UUID) (*Cluster, bool) {
 }
 
 func (p *Pool) Close() {
+	p.synchronization.Close()
+
 	// Close pool, this needs to be called before closing the clusters
 	// so background jobs syncing cluster will not try to update the pool nodes
 	close(p.close)

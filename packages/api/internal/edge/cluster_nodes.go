@@ -18,7 +18,6 @@ import (
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/synchronization"
 )
 
 type ClusterNode struct {
@@ -40,14 +39,7 @@ const (
 )
 
 func (c *Cluster) startSync() {
-	synchronize := synchronization.Synchronize[api.ClusterOrchestratorNode, *ClusterNode]{
-		Tracer:           c.tracer,
-		TracerSpanPrefix: "cluster-nodes",
-		LogsPrefix:       "Cluster nodes",
-		Store:            clusterSynchronizationStore{cluster: c},
-	}
-
-	synchronize.StartSync(c.close, clusterNodesSyncInterval, clusterNodesSyncTimeout, true)
+	c.synchronization.Start(clusterNodesSyncInterval, clusterNodesSyncTimeout, true)
 }
 
 func (c *Cluster) syncNode(ctx context.Context, node *ClusterNode) {
