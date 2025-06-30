@@ -278,8 +278,7 @@ func (tm *TemplateManager) GetLogs(ctx context.Context, buildID uuid.UUID, templ
 
 	_, _, logs, err := tm.getBuilderClient(clusterID, clusterNodeID, false)
 	if err != nil {
-		emptyLogs := make([]string, 0)
-		return emptyLogs, fmt.Errorf("failed to get builder edgeHttpClient: %w", err)
+		return nil, fmt.Errorf("failed to get builder edgeHttpClient: %w", err)
 	}
 
 	return logs.GetLogs(ctx, buildID.String(), templateID, offset)

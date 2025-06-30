@@ -84,7 +84,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	}
 
 	logs := make([]string, 0)
-	l, err := a.templateManager.GetLogs(ctx, buildUUID, templateID, team.ClusterID, buildInfo.ClusterNodeId, params.LogsOffset)
+	l, err := a.templateManager.GetLogs(ctx, buildUUID, templateID, team.ClusterID, buildInfo.ClusterNodeID, params.LogsOffset)
 	if err != nil {
 		zap.L().Error("Failed to get build logs", zap.Error(err), logger.WithBuildID(buildID), logger.WithTemplateID(templateID))
 	} else {
