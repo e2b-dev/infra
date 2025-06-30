@@ -125,7 +125,7 @@ func (o *OrchestratorNode) syncRun() error {
 
 		status, err := o.client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 		if err != nil {
-			zap.L().Error("failed to check orchestrator health", l.WithClusterNodeID(o.ServiceInstanceId), zap.Error(err))
+			zap.L().Error("failed to check orchestrator health", l.WithClusterNodeID(freshInfo.ServiceInstanceId), zap.Error(err))
 			continue
 		}
 
@@ -137,8 +137,8 @@ func (o *OrchestratorNode) syncRun() error {
 		freshInfo.ServiceVersionCommit = status.ServiceCommit
 		freshInfo.Roles = status.ServiceRoles
 
-		freshInfo.SourceVersion = status.ServiceVersion
-		freshInfo.SourceCommit = status.ServiceCommit
+		freshInfo.ServiceVersion = status.ServiceVersion
+		freshInfo.ServiceVersionCommit = status.ServiceCommit
 		o.setInfo(freshInfo)
 
 		o.MetricSandboxesRunning.Store(status.MetricSandboxesRunning)
@@ -155,7 +155,7 @@ func (o *OrchestratorNode) syncRun() error {
 func (o *OrchestratorNode) setStatus(status OrchestratorStatus) {
 	o.mutex.Lock()
 	defer o.mutex.Unlock()
-	o.info.Status = status
+	o.info.ServiceStatus = status
 }
 
 func (o *OrchestratorNode) setInfo(i OrchestratorNodeInfo) {

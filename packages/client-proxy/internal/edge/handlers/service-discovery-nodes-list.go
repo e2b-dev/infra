@@ -34,7 +34,7 @@ func (a *APIStore) V1ServiceDiscoveryNodes(c *gin.Context) {
 	}
 
 	// iterate edge apis
-	for _, edge := range a.edgePool.GetNodes() {
+	for _, edge := range a.edgePool.GetInstances() {
 		info := edge.GetInfo()
 		response = append(
 			response,

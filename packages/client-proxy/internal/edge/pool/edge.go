@@ -136,7 +136,7 @@ func (o *EdgeNode) setInfo(info EdgeNodeInfo) {
 func (o *EdgeNode) setStatus(s api.ClusterNodeStatus) {
 	o.mutex.Lock()
 	defer o.mutex.Unlock()
-	o.info.Status = s
+	o.info.ServiceStatus = s
 }
 
 func (o *EdgeNode) Close() error {

@@ -48,13 +48,13 @@ func NewEdgePool(ctx context.Context, logger *zap.Logger, discovery sd.ServiceDi
 	return pool
 }
 
-func (p *EdgePool) GetNodes() map[string]*EdgeNode {
+func (p *EdgePool) GetInstances() map[string]*EdgeNode {
 	return p.nodes.Items()
 }
 
-func (p *EdgePool) GetNode(id string) (*EdgeNode, error) {
+func (p *EdgePool) GetInstanceByID(instanceID string) (*EdgeNode, error) {
 	for _, node := range p.nodes.Items() {
-		if node.GetInfo().ServiceId == id {
+		if node.GetInfo().ServiceInstanceID == instanceID {
 			return node, nil
 		}
 	}
@@ -132,7 +132,7 @@ func (p *EdgePool) syncNodes(ctx context.Context) {
 	wg.Wait()
 
 	// disconnect nodes that are not in the list anymore
-	for _, node := range p.GetNodes() {
+	for _, node := range p.GetInstances() {
 		wg.Add(1)
 		go func(node *EdgeNode) {
 			defer wg.Done()

@@ -74,7 +74,7 @@ func (a *APIStore) sendNodeRequest(ctx context.Context, serviceID string, status
 	}
 
 	// try to find edge node
-	e, err := a.edgePool.GetNode(serviceID)
+	e, err := a.edgePool.GetInstanceByID(serviceID)
 	if err != nil {
 		logger.Error("failed to get node from edge pool", zap.Error(err))
 		return errors.New("failed to get edge node")

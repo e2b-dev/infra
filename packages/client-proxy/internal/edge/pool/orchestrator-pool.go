@@ -175,7 +175,7 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 			if !found {
 				err := p.removeNode(spanCtx, node)
 				if err != nil {
-					p.logger.Error("Error during node removal", zap.Error(err), l.WithClusterNodeID(node.NodeID))
+					p.logger.Error("Error during node removal", zap.Error(err), l.WithClusterNodeID(nodeInfo.NodeID))
 				}
 			}
 		}(node)
