@@ -10,28 +10,28 @@ import (
 	"go.uber.org/zap"
 )
 
-type Store[SourceItem any, SourceKey comparable, PoolItem any] interface {
+type Store[SourceItem any, PoolItem any] interface {
 	SourceList(ctx context.Context) ([]SourceItem, error)
-	SourceKey(item SourceItem) SourceKey
+	SourceExists(ctx context.Context, s []SourceItem, p PoolItem) bool
 
-	PoolList(ctx context.Context) map[SourceKey]PoolItem
-	PoolExists(ctx context.Context, key SourceKey) bool
-	PoolInsert(ctx context.Context, key SourceKey, value SourceItem) error
-	PoolSynchronize(ctx context.Context, key SourceKey, value PoolItem)
-	PoolRemove(ctx context.Context, item PoolItem) error
+	PoolList(ctx context.Context) []PoolItem
+	PoolExists(ctx context.Context, s SourceItem) bool
+	PoolInsert(ctx context.Context, s SourceItem)
+	PoolUpdate(ctx context.Context, s PoolItem)
+	PoolRemove(ctx context.Context, s PoolItem)
 }
 
 // Synchronize is a generic type that provides methods for synchronizing a pool of items with a source.
 // It uses a Store interface to interact with the source and pool, allowing for flexible synchronization logic.
-type Synchronize[SourceItem any, SourceKey comparable, PoolItem any] struct {
-	Store Store[SourceItem, SourceKey, PoolItem]
+type Synchronize[SourceItem any, PoolItem any] struct {
+	Store Store[SourceItem, PoolItem]
 
 	Tracer           trace.Tracer
 	TracerSpanPrefix string
 	LogsPrefix       string
 }
 
-func (s *Synchronize[SourceItem, SourceKey, PoolItem]) Sync(ctx context.Context) error {
+func (s *Synchronize[SourceItem, PoolItem]) Sync(ctx context.Context) error {
 	spanCtx, span := s.Tracer.Start(ctx, s.getSpanName("sync-items"))
 	defer span.End()
 
@@ -40,13 +40,13 @@ func (s *Synchronize[SourceItem, SourceKey, PoolItem]) Sync(ctx context.Context)
 		return err
 	}
 
-	s.runSyncDiscovered(spanCtx, sourceItems)
-	s.runSyncOutdated(spanCtx, sourceItems)
+	s.syncDiscovered(spanCtx, sourceItems)
+	s.syncOutdated(spanCtx, sourceItems)
 
 	return nil
 }
 
-func (s *Synchronize[SourceItem, SourceKey, PoolItem]) SyncInBackground(cancel chan struct{}, syncInterval time.Duration, syncRoundTimeout time.Duration, runInitialSync bool) {
+func (s *Synchronize[SourceItem, PoolItem]) StartSync(cancel chan struct{}, syncInterval time.Duration, syncRoundTimeout time.Duration, runInitialSync bool) {
 	if runInitialSync {
 		initialSyncTimeout, initialSyncCancel := context.WithTimeout(context.Background(), syncRoundTimeout)
 		err := s.Sync(initialSyncTimeout)
@@ -75,52 +75,39 @@ func (s *Synchronize[SourceItem, SourceKey, PoolItem]) SyncInBackground(cancel c
 	}
 }
 
-func (s *Synchronize[SourceItem, SourceKey, PoolItem]) runSyncDiscovered(ctx context.Context, sourceItems []SourceItem) {
+func (s *Synchronize[SourceItem, PoolItem]) syncDiscovered(ctx context.Context, sourceItems []SourceItem) {
 	spanCtx, span := s.Tracer.Start(ctx, s.getSpanName("sync-discovered-items"))
 	defer span.End()
 
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	for _, sourceItem := range sourceItems {
-		sourceItemKey := s.Store.SourceKey(sourceItem)
-
+	for _, item := range sourceItems {
 		// item already exists in the pool, skip it
-		if ok := s.Store.PoolExists(spanCtx, sourceItemKey); ok {
+		if ok := s.Store.PoolExists(ctx, item); ok {
 			continue
 		}
 
-		// initialize the item
+		// initialize newly discovered item
 		wg.Add(1)
-		go func(itemKey SourceKey, item SourceItem) {
+		go func(item SourceItem) {
 			defer wg.Done()
-			err := s.Store.PoolInsert(spanCtx, itemKey, item)
-			if err != nil {
-				zap.L().Error(s.getLog("Failed to insert item into pool"), zap.Error(err), zap.Any("key", itemKey))
-			}
-		}(sourceItemKey, sourceItem)
+			s.Store.PoolInsert(spanCtx, item)
+		}(item)
 	}
 }
 
-func (s *Synchronize[SourceItem, SourceKey, PoolItem]) runSyncOutdated(ctx context.Context, sourceItems []SourceItem) {
+func (s *Synchronize[SourceItem, PoolItem]) syncOutdated(ctx context.Context, sourceItems []SourceItem) {
 	spanCtx, span := s.Tracer.Start(ctx, s.getSpanName("sync-outdated-items"))
 	defer span.End()
 
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	for poolItemKey, poolItem := range s.Store.PoolList(ctx) {
-		found := false
-		for _, sourceItem := range sourceItems {
-			if s.Store.SourceKey(sourceItem) == poolItemKey {
-				found = true
-				break
-			}
-		}
-
-		// item is still present in the source, no need to remove it
+	for _, poolItem := range s.Store.PoolList(ctx) {
+		found := s.Store.SourceExists(ctx, sourceItems, poolItem)
 		if found {
-			s.Store.PoolSynchronize(ctx, poolItemKey, poolItem)
+			s.Store.PoolUpdate(ctx, poolItem)
 			continue
 		}
 
@@ -128,18 +115,15 @@ func (s *Synchronize[SourceItem, SourceKey, PoolItem]) runSyncOutdated(ctx conte
 		wg.Add(1)
 		go func(poolItem PoolItem) {
 			defer wg.Done()
-			err := s.Store.PoolRemove(spanCtx, poolItem)
-			if err != nil {
-				zap.L().Error(s.getLog("Error during removing item from pool"), zap.Error(err), zap.Any("key", poolItemKey))
-			}
+			s.Store.PoolRemove(spanCtx, poolItem)
 		}(poolItem)
 	}
 }
 
-func (s *Synchronize[SourceItem, SourceKey, PoolItem]) getSpanName(name string) string {
+func (s *Synchronize[SourceItem, PoolItem]) getSpanName(name string) string {
 	return fmt.Sprintf("%s-%s", s.TracerSpanPrefix, name)
 }
 
-func (s *Synchronize[SourceItem, SourceKey, PoolItem]) getLog(message string) string {
+func (s *Synchronize[SourceItem, PoolItem]) getLog(message string) string {
 	return fmt.Sprintf("%s: %s", s.LogsPrefix, message)
 }

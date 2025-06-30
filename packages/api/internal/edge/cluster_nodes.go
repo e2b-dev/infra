@@ -39,15 +39,15 @@ const (
 	clusterNodesSyncTimeout  = 15 * time.Second
 )
 
-func (c *Cluster) syncBackground() {
-	synchronize := synchronization.Synchronize[api.ClusterOrchestratorNode, string, *ClusterNode]{
+func (c *Cluster) startSync() {
+	synchronize := synchronization.Synchronize[api.ClusterOrchestratorNode, *ClusterNode]{
 		Tracer:           c.tracer,
 		TracerSpanPrefix: "cluster-nodes",
 		LogsPrefix:       "Cluster nodes",
 		Store:            clusterSynchronizationStore{cluster: c},
 	}
 
-	synchronize.SyncInBackground(c.close, clusterNodesSyncInterval, clusterNodesSyncTimeout, true)
+	synchronize.StartSync(c.close, clusterNodesSyncInterval, clusterNodesSyncTimeout, true)
 }
 
 func (c *Cluster) syncNode(ctx context.Context, node *ClusterNode) {
@@ -113,27 +113,40 @@ func (d clusterSynchronizationStore) SourceList(ctx context.Context) ([]api.Clus
 	return *res.JSON200, nil
 }
 
-func (d clusterSynchronizationStore) SourceKey(item api.ClusterOrchestratorNode) string {
-	return item.NodeID
+func (d clusterSynchronizationStore) SourceExists(ctx context.Context, s []api.ClusterOrchestratorNode, p *ClusterNode) bool {
+	for _, item := range s {
+		if item.NodeID == p.NodeID {
+			return true
+		}
+	}
+
+	return false
 }
 
-func (d clusterSynchronizationStore) PoolList(ctx context.Context) map[string]*ClusterNode {
-	return d.cluster.nodes.Items()
+func (d clusterSynchronizationStore) PoolList(ctx context.Context) []*ClusterNode {
+	items := d.cluster.nodes.Items()
+	mapped := make([]*ClusterNode, len(items))
+	for _, item := range items {
+		mapped = append(mapped, item)
+	}
+
+	return mapped
 }
 
-func (d clusterSynchronizationStore) PoolExists(ctx context.Context, key string) bool {
-	_, found := d.cluster.nodes.Get(key)
+func (d clusterSynchronizationStore) PoolExists(ctx context.Context, s api.ClusterOrchestratorNode) bool {
+	_, found := d.cluster.nodes.Get(s.NodeID)
 	return found
 }
 
-func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, sdNodeID string, sdNode api.ClusterOrchestratorNode) error {
-	zap.L().Info("Adding new node into cluster nodes pool", l.WithClusterID(d.cluster.ID), l.WithClusterNodeID(sdNode.NodeID))
-	node := &ClusterNode{
-		NodeID: sdNode.NodeID,
+func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, item api.ClusterOrchestratorNode) {
+	zap.L().Info("Adding new node into cluster nodes pool", l.WithClusterID(d.cluster.ID), l.WithClusterNodeID(item.NodeID))
 
-		ServiceInstanceID:    sdNode.ServiceInstanceID,
-		ServiceVersion:       sdNode.ServiceVersion,
-		ServiceVersionCommit: sdNode.ServiceVersionCommit,
+	node := &ClusterNode{
+		NodeID: item.NodeID,
+
+		ServiceInstanceID:    item.ServiceInstanceID,
+		ServiceVersion:       item.ServiceVersion,
+		ServiceVersionCommit: item.ServiceVersionCommit,
 
 		// initial values before first sync
 		status: infogrpc.ServiceInfoStatus_OrchestratorUnhealthy,
@@ -143,16 +156,14 @@ func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, sdNodeID st
 		mutex:  sync.RWMutex{},
 	}
 
-	d.cluster.nodes.Insert(sdNode.NodeID, node)
-	return nil
+	d.cluster.nodes.Insert(item.NodeID, node)
 }
 
-func (d clusterSynchronizationStore) PoolSynchronize(ctx context.Context, nodeID string, node *ClusterNode) {
+func (d clusterSynchronizationStore) PoolUpdate(ctx context.Context, node *ClusterNode) {
 	d.cluster.syncNode(ctx, node)
 }
 
-func (d clusterSynchronizationStore) PoolRemove(ctx context.Context, cluster *ClusterNode) error {
+func (d clusterSynchronizationStore) PoolRemove(ctx context.Context, cluster *ClusterNode) {
 	zap.L().Info("Removing node from cluster nodes pool", l.WithClusterID(d.cluster.ID), l.WithClusterNodeID(cluster.NodeID))
 	d.cluster.nodes.Remove(cluster.NodeID)
-	return nil
 }

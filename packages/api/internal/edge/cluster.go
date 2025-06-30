@@ -78,7 +78,7 @@ func NewCluster(tracer trace.Tracer, tel *telemetry.Client, endpoint string, end
 	}
 
 	// periodically sync cluster nodes
-	go c.syncBackground()
+	go c.startSync()
 
 	return c, nil
 }
