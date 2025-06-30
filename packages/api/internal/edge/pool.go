@@ -41,7 +41,7 @@ func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, trac
 	}
 
 	// Periodically sync clusters with the database
-	go p.syncBackground()
+	go p.start()
 
 	// Shutdown function to gracefully close the pool
 	go func() {
@@ -52,7 +52,7 @@ func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, trac
 	return p, nil
 }
 
-func (p *Pool) syncBackground() {
+func (p *Pool) start() {
 	synchronize := synchronization.Synchronize[queries.GetActiveClustersRow, string, *Cluster]{
 		Tracer:           p.tracer,
 		TracerSpanPrefix: "clusters-pool",
