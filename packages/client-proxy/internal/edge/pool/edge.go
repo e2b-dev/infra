@@ -27,7 +27,7 @@ type EdgeNodeInfo struct {
 	ServiceStatus        api.ClusterNodeStatus
 	ServiceStartup       time.Time
 
-	Host   string
+	Host string
 }
 
 type EdgeNode struct {

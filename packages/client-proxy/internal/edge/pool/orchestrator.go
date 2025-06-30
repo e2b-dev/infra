@@ -36,11 +36,11 @@ const (
 type OrchestratorNodeInfo struct {
 	NodeID string
 
-	ServiceInstanceId string
-	ServiceVersion string
-	ServiceVersionCommit  string
-	ServiceStatus  OrchestratorStatus
-	ServiceStartup time.Time
+	ServiceInstanceId    string
+	ServiceVersion       string
+	ServiceVersionCommit string
+	ServiceStatus        OrchestratorStatus
+	ServiceStartup       time.Time
 
 	Host  string
 	Ip    string
