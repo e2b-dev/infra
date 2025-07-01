@@ -801,6 +801,7 @@ module "private_service_connect" {
   source  = "terraform-google-modules/network/google//modules/private-service-connect"
   version = "~> 11.1"
 
+
   project_id                 = var.gcp_project_id
   network_self_link          = google_compute_network.vpc_network.self_link
   private_service_connect_ip = "10.3.0.5"
@@ -811,7 +812,7 @@ resource "google_dns_record_set" "private_googleapis_a_record" {
   name         = "private.googleapis.com."
   type         = "A"
   ttl          = 300
-  managed_zone = "private-googleapis-zone"
+  managed_zone = module.private_service_connect.dns_zone_googleapis_name
 
   rrdatas = ["199.36.153.8"]
 }
