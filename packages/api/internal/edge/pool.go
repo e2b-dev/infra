@@ -30,8 +30,6 @@ type Pool struct {
 	synchronization *synchronization.Synchronize[queries.GetActiveClustersRow, *Cluster]
 
 	tracer trace.Tracer
-
-	close chan struct{}
 }
 
 func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, tracer trace.Tracer) (*Pool, error) {
@@ -40,7 +38,6 @@ func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, trac
 		tel:      tel,
 		tracer:   tracer,
 		clusters: smap.New[*Cluster](),
-		close:    make(chan struct{}),
 	}
 
 	// Periodically sync clusters with the database
@@ -73,10 +70,6 @@ func (p *Pool) GetClusterById(id uuid.UUID) (*Cluster, bool) {
 
 func (p *Pool) Close() {
 	p.synchronization.Close()
-
-	// Close pool, this needs to be called before closing the clusters
-	// so background jobs syncing cluster will not try to update the pool nodes
-	close(p.close)
 
 	wg := &sync.WaitGroup{}
 	for _, cluster := range p.clusters.Items() {

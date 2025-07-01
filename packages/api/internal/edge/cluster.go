@@ -28,8 +28,6 @@ type Cluster struct {
 	nodes           *smap.Map[*ClusterNode]
 	synchronization *synchronization.Synchronize[api.ClusterOrchestratorNode, *ClusterNode]
 	tracer          trace.Tracer
-
-	close chan struct{}
 }
 
 var (
@@ -75,8 +73,6 @@ func NewCluster(tracer trace.Tracer, tel *telemetry.Client, endpoint string, end
 		tracer:     tracer,
 		httpClient: httpClient,
 		grpcClient: grpcClient,
-
-		close: make(chan struct{}),
 	}
 
 	store := clusterSynchronizationStore{cluster: c}
@@ -91,7 +87,6 @@ func NewCluster(tracer trace.Tracer, tel *telemetry.Client, endpoint string, end
 func (c *Cluster) Close() error {
 	c.synchronization.Close()
 	err := c.grpcClient.Close()
-	close(c.close)
 	return err
 }
 
