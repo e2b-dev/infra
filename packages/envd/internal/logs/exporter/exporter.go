@@ -87,9 +87,9 @@ func (w *HTTPExporter) listenForMMDSOptsAndStart(mmdsChan <-chan *host.MMDSOpts)
 			}
 
 			w.mmdsLock.Lock()
-			defer w.mmdsLock.Unlock()
 			w.mmdsOpts.Update(
 				mmdsOpts.TraceID, mmdsOpts.InstanceID, mmdsOpts.EnvID, mmdsOpts.Address, mmdsOpts.TeamID)
+			w.mmdsLock.Unlock()
 
 			w.startOnce.Do(func() {
 				w.start()
