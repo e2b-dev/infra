@@ -152,7 +152,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 		}
 
 		node.setStatus(nodeStatus)
-		node.setMetadata(nodeInfo)
+		node.setMetadata(nodeInfo, nodeInfo.NodeId)
 
 		activeInstances, instancesErr := o.getSandboxes(ctx, node.Info)
 		if instancesErr != nil {

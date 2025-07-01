@@ -81,10 +81,10 @@ func (n *Node) setStatus(status api.NodeStatus) {
 	}
 }
 
-func (n *Node) setMetadata(i *orchestratorinfo.ServiceInfoResponse) {
+func (n *Node) setMetadata(i *orchestratorinfo.ServiceInfoResponse, nodeID string) {
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
-	n.meta = getNodeMetadata(i)
+	n.meta = getNodeMetadata(i, nodeID)
 }
 
 func (n *Node) metadata() nodeMetadata {
@@ -239,10 +239,10 @@ func (o *Orchestrator) NodeCount() int {
 	return o.nodes.Count()
 }
 
-func getNodeMetadata(n *orchestratorinfo.ServiceInfoResponse) nodeMetadata {
+func getNodeMetadata(n *orchestratorinfo.ServiceInfoResponse, orchestratorID string) nodeMetadata {
 	if n == nil {
 		return nodeMetadata{
-			orchestratorID: "",
+			orchestratorID: orchestratorID,
 			commit:         "unknown",
 			version:        "unknown",
 		}
