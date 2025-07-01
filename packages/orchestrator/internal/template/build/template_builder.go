@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -28,11 +29,10 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 type TemplateBuilder struct {
@@ -51,14 +51,12 @@ type TemplateBuilder struct {
 }
 
 const (
-	templatesDirectory = "/tmp/build-templates"
+	templatesDirectory = "/orchestrator/build-templates"
 
 	sbxTimeout           = time.Hour
 	provisionTimeout     = 5 * time.Minute
 	configurationTimeout = 5 * time.Minute
 	waitEnvdTimeout      = 60 * time.Second
-
-	cleanupTimeout = time.Second * 10
 )
 
 func NewBuilder(
@@ -118,17 +116,37 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 		postProcessor.Stop(e)
 	}()
 
+	// defer func() {
+	// 	// Remove build files if build fails or times out
+	// 	removeErr := b.templateStorage.Remove(ctx, snapshotTemplateFiles.BuildId)
+	// 	if removeErr != nil {
+	// 		uploadErr = errors.Join(uploadErr, fmt.Errorf("error removing build files: %w", removeErr))
+	// 	}
+	// }()
+
 	envdVersion, err := GetEnvdVersion(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting envd version: %w", err)
 	}
 
-	templateCacheFiles, err := template.NewTemplateCacheFiles()
+	templateBuildID := template.BuildID
+	template.BuildID = uuid.NewString()
+	defer func() {
+		template.BuildID = templateBuildID
+	}()
+
+	templateFiles := storage.NewTemplateFiles(
+		template.TemplateID,
+		template.BuildID,
+		template.KernelVersion,
+		template.FirecrackerVersion,
+	)
+	templateCacheFiles, err := templateFiles.NewTemplateCacheFiles()
 	if err != nil {
 		return nil, fmt.Errorf("error creating template files: %w", err)
 	}
 
-	templateBuildDir := filepath.Join(templatesDirectory, template.BuildId)
+	templateBuildDir := filepath.Join(templatesDirectory, template.BuildID)
 	err = os.MkdirAll(templateBuildDir, 0o777)
 	if err != nil {
 		return nil, fmt.Errorf("error creating template build directory: %w", err)
@@ -332,7 +350,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 	}
 
 	// Pause sandbox
-	postProcessor.WriteMsg("Pausing sandbox template")
+	postProcessor.WriteMsg(fmt.Sprintf("Pausing sandbox template: %s/%s", sbx.Metadata.Config.TemplateId, sbx.Metadata.Config.BuildId))
 	snapshot, err := sbx.Pause(
 		ctx,
 		b.tracer,
@@ -341,16 +359,87 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 	if err != nil {
 		return nil, fmt.Errorf("error processing vm: %w", err)
 	}
+	defer snapshot.Close(ctx)
 
 	// Upload
 	postProcessor.WriteMsg("Uploading template")
-	uploadErrCh := b.uploadTemplate(
+	uploadErr := snapshot.Upload(
 		ctx,
-		template.TemplateFiles,
-		snapshot,
+		b.storage,
+		templateFiles,
 	)
+	if uploadErr != nil {
+		return nil, fmt.Errorf("error uploading template: %w", uploadErr)
+	}
 
-	uploadErr := <-uploadErrCh
+	// TESTING RESUME AND PAUSE AFTER UPLOAD
+	postProcessor.WriteMsg("Resuming template")
+	sbxRes, cleanupRes, err := sandbox.ResumeSandbox(
+		ctx,
+		b.tracer,
+		b.networkPool,
+		b.templateCache,
+		&orchestrator.SandboxConfig{
+			TemplateId:         sbx.Metadata.Config.TemplateId,
+			BuildId:            sbx.Metadata.Config.BuildId,
+			ExecutionId:        uuid.NewString(),
+			KernelVersion:      sbx.Config.KernelVersion,
+			FirecrackerVersion: sbx.Config.FirecrackerVersion,
+			HugePages:          sbx.Config.HugePages,
+			SandboxId:          sbx.Config.SandboxId,
+			EnvdVersion:        sbx.Config.EnvdVersion,
+			Vcpu:               sbx.Config.Vcpu,
+			RamMb:              sbx.Config.RamMb,
+
+			BaseTemplateId: sbx.Config.TemplateId,
+		},
+		uuid.New().String(),
+		time.Now(),
+		time.Now().Add(time.Minute),
+		sbx.Metadata.Config.BaseTemplateId,
+		b.devicePool,
+		config.AllowSandboxInternet,
+		false,
+	)
+	defer func() {
+		cleanupErr := cleanupRes.Run(ctx)
+		if cleanupErr != nil {
+			b.logger.Error("Error cleaning up sandbox", zap.Error(cleanupErr))
+		}
+	}()
+	if err != nil {
+		return nil, fmt.Errorf("error resuming sandbox: %w", err)
+	}
+
+	postProcessor.WriteMsg(fmt.Sprintf("Pausing template: %s/%s", sbxRes.Config.TemplateId, templateBuildID))
+	// Pause sandbox
+	snapshotTemplateFiles := storage.NewTemplateFiles(
+		sbxRes.Config.TemplateId,
+		templateBuildID,
+		sbx.Config.KernelVersion,
+		sbx.Config.FirecrackerVersion,
+	)
+	snapshotTemplateCacheFiles, err := snapshotTemplateFiles.NewTemplateCacheFiles()
+	if err != nil {
+		return nil, fmt.Errorf("error creating template files: %w", err)
+	}
+	snapshot, err = sbxRes.Pause(
+		ctx,
+		b.tracer,
+		snapshotTemplateCacheFiles,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error processing vm: %w", err)
+	}
+	defer snapshot.Close(ctx)
+
+	// Upload
+	postProcessor.WriteMsg("Uploading template")
+	uploadErr = snapshot.Upload(
+		ctx,
+		b.storage,
+		snapshotTemplateFiles,
+	)
 	if uploadErr != nil {
 		return nil, fmt.Errorf("error uploading template: %w", uploadErr)
 	}
@@ -359,76 +448,6 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 		EnvdVersion:  envdVersion,
 		RootfsSizeMB: template.RootfsSizeMB(),
 	}, nil
-}
-
-func (b *TemplateBuilder) uploadTemplate(
-	ctx context.Context,
-	templateFiles *storage.TemplateFiles,
-	snapshot *sandbox.Snapshot,
-) chan error {
-	errCh := make(chan error, 1)
-
-	go func() {
-		// Remove build files if build fails or times out
-		var err error
-		defer func() {
-			if err != nil {
-				removeCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
-				defer cancel()
-
-				removeErr := b.templateStorage.Remove(removeCtx, templateFiles.BuildId)
-				if removeErr != nil {
-					telemetry.ReportError(ctx, "error while removing build files", removeErr)
-				}
-			}
-		}()
-		defer func() {
-			err := snapshot.Close(ctx)
-			if err != nil {
-				zap.L().Error("error closing snapshot", zap.Error(err), logger.WithBuildID(templateFiles.BuildId), logger.WithTemplateID(templateFiles.TemplateId))
-			}
-		}()
-		defer close(errCh)
-
-		templateBuild := storage.NewTemplateBuild(
-			snapshot.MemfileDiffHeader,
-			snapshot.RootfsDiffHeader,
-			b.storage,
-			templateFiles,
-		)
-
-		memfileDiffPath, err := snapshot.MemfileDiff.CachePath()
-		if err != nil {
-			errCh <- fmt.Errorf("error getting memfile diff path: %w", err)
-			return
-		}
-
-		rootfsDiffPath, err := snapshot.RootfsDiff.CachePath()
-		if err != nil {
-			errCh <- fmt.Errorf("error getting rootfs diff path: %w", err)
-			return
-		}
-
-		snapfilePath := snapshot.Snapfile.Path()
-
-		uploadErrCh := templateBuild.Upload(
-			ctx,
-			snapfilePath,
-			&memfileDiffPath,
-			&rootfsDiffPath,
-		)
-
-		// Wait for the upload to finish
-		err = <-uploadErrCh
-		if err != nil {
-			errCh <- fmt.Errorf("error uploading template build: %w", err)
-			return
-		}
-
-		errCh <- nil
-	}()
-
-	return errCh
 }
 
 func (b *TemplateBuilder) provisionSandbox(

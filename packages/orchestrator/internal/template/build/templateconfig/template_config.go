@@ -8,14 +8,16 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 const instanceBuildPrefix = "b"
 
 type TemplateConfig struct {
-	*storage.TemplateFiles
+	TemplateID         string
+	BuildID            string
+	KernelVersion      string
+	FirecrackerVersion string
 
 	// Command to run when building the template.
 	StartCmd string
@@ -67,8 +69,8 @@ func (e *TemplateConfig) RootfsBlockSize() int64 {
 
 func (e *TemplateConfig) ToSandboxConfig(envdVersion string) *orchestrator.SandboxConfig {
 	return &orchestrator.SandboxConfig{
-		TemplateId:         e.TemplateId,
-		BuildId:            e.BuildId,
+		TemplateId:         e.TemplateID,
+		BuildId:            e.BuildID,
 		KernelVersion:      e.KernelVersion,
 		FirecrackerVersion: e.FirecrackerVersion,
 		HugePages:          e.HugePages,
@@ -78,6 +80,6 @@ func (e *TemplateConfig) ToSandboxConfig(envdVersion string) *orchestrator.Sandb
 		Vcpu:               e.VCpuCount,
 		RamMb:              e.MemoryMB,
 
-		BaseTemplateId: e.TemplateId,
+		BaseTemplateId: e.TemplateID,
 	}
 }

@@ -23,7 +23,7 @@ func findLastCachedLayer(
 	defer span.End()
 
 	if len(template.Steps) == 0 {
-		return "", nil, fmt.Errorf("template %s has no steps defined", template.TemplateId)
+		return "", nil, fmt.Errorf("template %s has no steps defined", template.TemplateID)
 	}
 
 	// Binary search to find the last cached layer
@@ -37,7 +37,7 @@ func findLastCachedLayer(
 
 		// Check if this layer exists in the artifact registry
 		isForced := step.Force != nil && *step.Force
-		img, err := artifactRegistry.GetLayer(ctx, template.TemplateId, step.Hash, platform)
+		img, err := artifactRegistry.GetLayer(ctx, template.TemplateID, step.Hash, platform)
 		if err != nil || isForced {
 			// Layer doesn't exist or is forced to rebuild, search in the left half
 			right = mid - 1
@@ -50,7 +50,7 @@ func findLastCachedLayer(
 	}
 
 	if lastCachedIndex == -1 {
-		return "", nil, fmt.Errorf("no cached layers found for template %s", template.TemplateId)
+		return "", nil, fmt.Errorf("no cached layers found for template %s", template.TemplateID)
 	}
 
 	return template.Steps[lastCachedIndex].Hash, lastCachedImage, nil

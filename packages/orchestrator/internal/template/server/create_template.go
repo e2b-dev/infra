@@ -15,7 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -47,21 +46,19 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	)
 
 	template := &templateconfig.TemplateConfig{
-		TemplateFiles: storage.NewTemplateFiles(
-			config.TemplateID,
-			config.BuildID,
-			config.KernelVersion,
-			config.FirecrackerVersion,
-		),
-		VCpuCount:       int64(config.VCpuCount),
-		MemoryMB:        int64(config.MemoryMB),
-		StartCmd:        config.StartCommand,
-		ReadyCmd:        config.ReadyCommand,
-		DiskSizeMB:      int64(config.DiskSizeMB),
+		TemplateID:         config.TemplateID,
+		BuildID:            config.BuildID,
+		KernelVersion:      config.KernelVersion,
+		FirecrackerVersion: config.FirecrackerVersion,
+		VCpuCount:          int64(config.VCpuCount),
+		MemoryMB:           int64(config.MemoryMB),
+		StartCmd:           config.StartCommand,
+		ReadyCmd:           config.ReadyCommand,
+		DiskSizeMB:         int64(config.DiskSizeMB),
 		BuildLogsWriter: logsWriter,
-		HugePages:       config.HugePages,
-		FromImage:       config.FromImage,
-		Steps:           config.Steps,
+		HugePages:          config.HugePages,
+		FromImage:          config.FromImage,
+		Steps:              config.Steps,
 	}
 
 	buildInfo, err := s.buildCache.Create(config.BuildID)
@@ -91,7 +88,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		}
 
 		buildMetadata := &templatemanager.TemplateBuildMetadata{RootfsSizeKey: int32(template.RootfsSizeMB()), EnvdVersionKey: res.EnvdVersion}
-		err = s.buildCache.SetSucceeded(template.BuildId, buildMetadata)
+		err = s.buildCache.SetSucceeded(template.BuildID, buildMetadata)
 		if err != nil {
 			s.reportBuildFailed(buildContext, template, fmt.Errorf("error while setting build state to succeeded: %w", err))
 			return
