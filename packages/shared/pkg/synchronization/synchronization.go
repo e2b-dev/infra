@@ -30,7 +30,8 @@ type Synchronize[SourceItem any, PoolItem any] struct {
 	tracerSpanPrefix string
 	logsPrefix       string
 
-	cancel chan struct{} // channel for cancellation of synchronization
+	cancel     chan struct{} // channel for cancellation of synchronization
+	cancelOnce sync.Once
 }
 
 func NewSynchronize[SourceItem any, PoolItem any](tracer trace.Tracer, spanPrefix string, logsPrefix string, store Store[SourceItem, PoolItem]) *Synchronize[SourceItem, PoolItem] {
@@ -75,7 +76,9 @@ func (s *Synchronize[SourceItem, PoolItem]) Start(syncInterval time.Duration, sy
 }
 
 func (s *Synchronize[SourceItem, PoolItem]) Close() {
-	close(s.cancel)
+	s.cancelOnce.Do(
+		func() { close(s.cancel) },
+	)
 }
 
 func (s *Synchronize[SourceItem, PoolItem]) sync(ctx context.Context) error {
