@@ -38,6 +38,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+type Closeable interface {
+	Close(context.Context) error
+}
+
 const (
 	serviceName = "client-proxy"
 
@@ -137,12 +141,6 @@ func run() int {
 	}
 
 	orchestrators := e2borchestrators.NewOrchestratorsPool(logger, tracer, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
-	go func() {
-		select {
-		case <-signalCtx.Done():
-			orchestrators.Close()
-		}
-	}()
 
 	info := &e2binfo.ServiceInfo{
 		NodeID:               internal.GetNodeID(),
@@ -169,12 +167,9 @@ func run() int {
 
 	authorizationManager := authorization.NewStaticTokenAuthorizationService(edgeSecret)
 	edges := e2borchestrators.NewEdgePool(logger, edgeSD, tracer, info.Host, authorizationManager)
-	go func() {
-		select {
-		case <-signalCtx.Done():
-			edges.Close()
-		}
-	}()
+
+	var closers []Closeable
+	closers = append(closers, orchestrators, edges)
 
 	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, logger, tracer, info, edges, orchestrators, catalog)
 	if err != nil {
@@ -360,6 +355,17 @@ func run() int {
 
 		// close the mux server
 		muxServer.Close()
+
+		closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
+		defer cancelCloseCtx()
+
+		// close all resources that needs to be closed gracefully
+		for _, c := range closers {
+			zap.L().Info(fmt.Sprintf("Closing %T", c))
+			if err := c.Close(closeCtx); err != nil {
+				zap.L().Error("error during shutdown", zap.Error(err))
+			}
+		}
 	}()
 
 	wg.Wait()

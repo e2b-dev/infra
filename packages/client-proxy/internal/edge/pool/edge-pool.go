@@ -57,8 +57,9 @@ func NewEdgePool(logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, trace
 	return pool
 }
 
-func (p *EdgePool) Close() {
+func (p *EdgePool) Close(ctx context.Context) error {
 	p.synchronization.Close()
+	return nil
 }
 
 func (p *EdgePool) GetInstances() map[string]*EdgeNode {

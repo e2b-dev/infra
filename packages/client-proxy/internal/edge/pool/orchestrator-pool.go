@@ -105,7 +105,7 @@ func (p *OrchestratorsPool) statusLogSync() {
 	}
 }
 
-func (p *OrchestratorsPool) Close() {
+func (p *OrchestratorsPool) Close(ctx context.Context) error {
 	p.synchronization.Close()
 
 	// Close all orchestrator instances in the pool
@@ -122,6 +122,8 @@ func (p *OrchestratorsPool) Close() {
 		close(p.close)
 		p.closed.Store(true)
 	}
+
+	return nil
 }
 
 // SynchronizationStore is an interface that defines methods for synchronizing the orchestrator instances inside the pool.
