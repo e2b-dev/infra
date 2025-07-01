@@ -47,7 +47,7 @@ type GCPBucketStorageProviderOptions struct {
 
 func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, proxyURL string) (*GCPBucketStorageProvider, error) {
 	// Create the legacy GCP storage client with proper credentials
-	client, err := storage.NewClient(ctx)
+	client, err := storage.NewClient(ctx, option.WithUniverseDomain("private.googleapis.com"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
 	}
@@ -148,7 +148,7 @@ func (g *GCPBucketStorageObjectProvider) Size() (int64, error) {
 	return attrs.Size, nil
 }
 func (g *GCPBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, err error) {
-	if g.proxiedHandle == nil {
+	if g.proxiedHandle == nil || true {
 		return g.readAt(buff, off, false)
 	}
 
@@ -202,7 +202,7 @@ func (g *GCPBucketStorageObjectProvider) readAt(buff []byte, off int64, proxied 
 }
 
 func (g *GCPBucketStorageObjectProvider) ReadFrom(src io.Reader) (int64, error) {
-	if g.proxiedHandle == nil {
+	if g.proxiedHandle == nil || true {
 		return g.readFrom(src, false)
 	}
 
