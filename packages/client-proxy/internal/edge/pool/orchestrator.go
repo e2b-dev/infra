@@ -25,7 +25,6 @@ import (
 type OrchestratorStatus string
 
 const (
-	orchestratorSyncInterval   = 10 * time.Second
 	orchestratorSyncMaxRetries = 3
 
 	OrchestratorStatusHealthy   OrchestratorStatus = "healthy"
@@ -56,9 +55,6 @@ type OrchestratorNode struct {
 	client *OrchestratorGRPCClient
 	info   OrchestratorNodeInfo
 	mutex  sync.RWMutex
-
-	ctx       context.Context
-	ctxCancel context.CancelFunc
 }
 
 type OrchestratorGRPCClient struct {
@@ -69,7 +65,7 @@ type OrchestratorGRPCClient struct {
 	Connection *grpc.ClientConn
 }
 
-func NewOrchestrator(ctx context.Context, tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, ip string, port int) (*OrchestratorNode, error) {
+func NewOrchestrator(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, ip string, port int) (*OrchestratorNode, error) {
 	host := fmt.Sprintf("%s:%d", ip, port)
 
 	client, err := newClient(tracerProvider, meterProvider, host)
@@ -77,49 +73,18 @@ func NewOrchestrator(ctx context.Context, tracerProvider trace.TracerProvider, m
 		return nil, fmt.Errorf("failed to create GRPC client: %w", err)
 	}
 
-	ctx, ctxCancel := context.WithCancel(ctx)
-
 	o := &OrchestratorNode{
 		client: client,
 		info: OrchestratorNodeInfo{
 			Host: host,
 			Ip:   ip,
 		},
-
-		ctx:       ctx,
-		ctxCancel: ctxCancel,
 	}
-
-	// run the first sync immediately
-	err = o.syncRun()
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize orchestrator, maybe its not ready yet: %w", err)
-	}
-
-	// initialize background sync to update orchestrator running sandboxes
-	go func() { o.sync() }()
 
 	return o, nil
 }
 
-func (o *OrchestratorNode) sync() {
-	ticker := time.NewTicker(orchestratorSyncInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-o.ctx.Done():
-			return
-		case <-ticker.C:
-			o.syncRun()
-		}
-	}
-}
-
-func (o *OrchestratorNode) syncRun() error {
-	ctx, cancel := context.WithTimeout(o.ctx, orchestratorSyncInterval)
-	defer cancel()
-
+func (o *OrchestratorNode) sync(ctx context.Context) error {
 	for i := 0; i < orchestratorSyncMaxRetries; i++ {
 		freshInfo := o.GetInfo()
 
@@ -176,7 +141,6 @@ func (o *OrchestratorNode) GetClient() *OrchestratorGRPCClient {
 
 func (o *OrchestratorNode) Close() error {
 	// close sync context
-	o.ctxCancel()
 	o.setStatus(OrchestratorStatusUnhealthy)
 
 	// close grpc client

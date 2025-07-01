@@ -150,5 +150,5 @@ func (e edgeInstancesSyncStore) PoolRemove(ctx context.Context, item *EdgeNode) 
 	zap.L().Info("Edge instance connection is not active anymore, closing.", l.WithClusterNodeID(info.NodeID))
 
 	e.pool.instances.Remove(item.info.Host)
-	zap.L().Info("Edge instance connection has been closed.", l.WithClusterNodeID(info.NodeID))
+	zap.L().Info("Edge instance connection has been deregistered.", l.WithClusterNodeID(info.NodeID))
 }

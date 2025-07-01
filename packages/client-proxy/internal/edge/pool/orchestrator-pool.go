@@ -3,7 +3,6 @@ package pool
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
@@ -13,11 +12,13 @@ import (
 	sd "github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/synchronization"
 )
 
 type OrchestratorsPool struct {
-	discovery sd.ServiceDiscoveryAdapter
-	nodes     *smap.Map[*OrchestratorNode]
+	discovery       sd.ServiceDiscoveryAdapter
+	instances       *smap.Map[*OrchestratorNode]
+	synchronization *synchronization.Synchronize[sd.ServiceDiscoveryItem, *OrchestratorNode]
 
 	tracer trace.Tracer
 	logger *zap.Logger
@@ -27,20 +28,24 @@ type OrchestratorsPool struct {
 }
 
 const (
-	orchestratorsCacheRefreshInterval = 10 * time.Second
-	statusLogInterval                 = 1 * time.Minute
+	orchestratorsPoolInterval        = 10 * time.Second
+	orchestratorsPoolRoundTimeout    = 10 * time.Second
+	orchestratorsInstanceSyncTimeout = 10 * time.Second
+
+	statusLogInterval = 1 * time.Minute
 )
 
 func NewOrchestratorsPool(
 	ctx context.Context,
 	logger *zap.Logger,
+	tracer trace.Tracer,
 	tracerProvider trace.TracerProvider,
 	metricProvider metric.MeterProvider,
 	discovery sd.ServiceDiscoveryAdapter,
 ) *OrchestratorsPool {
 	pool := &OrchestratorsPool{
 		discovery: discovery,
-		nodes:     smap.New[*OrchestratorNode](),
+		instances: smap.New[*OrchestratorNode](),
 
 		tracer: tracerProvider.Tracer("orchestrators-pool"),
 		logger: logger,
@@ -49,15 +54,18 @@ func NewOrchestratorsPool(
 		tracerProvider: tracerProvider,
 	}
 
-	// Background synchronization of orchestrators available in pool
-	go func() { pool.keepInSync(ctx) }()
+	store := orchestratorInstancesSyncStore{pool: pool}
+	pool.synchronization = synchronization.NewSynchronize(tracer, "orchestrator-instances", "Orchestrator instances", store)
+
+	// Background synchronization of orchestrators pool
+	go func() { pool.synchronization.Start(orchestratorsPoolInterval, orchestratorsPoolRoundTimeout, true) }()
 	go func() { pool.statusLogSync(ctx) }()
 
 	return pool
 }
 
 func (p *OrchestratorsPool) GetOrchestrators() map[string]*OrchestratorNode {
-	return p.nodes.Items()
+	return p.instances.Items()
 }
 
 func (p *OrchestratorsPool) GetOrchestrator(instanceID string) (node *OrchestratorNode, ok bool) {
@@ -69,24 +77,6 @@ func (p *OrchestratorsPool) GetOrchestrator(instanceID string) (node *Orchestrat
 	}
 
 	return nil, false
-}
-
-func (p *OrchestratorsPool) keepInSync(ctx context.Context) {
-	// Run the first sync immediately
-	p.syncNodes(ctx)
-
-	ticker := time.NewTicker(orchestratorsCacheRefreshInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			p.logger.Info("Stopping orchestrators keep-in-sync")
-			return
-		case <-ticker.C:
-			p.syncNodes(ctx)
-		}
-	}
 }
 
 func (p *OrchestratorsPool) statusLogSync(ctx context.Context) {
@@ -109,111 +99,85 @@ func (p *OrchestratorsPool) statusLogSync(ctx context.Context) {
 	}
 }
 
-func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
-	ctxTimeout, cancel := context.WithTimeout(ctx, orchestratorsCacheRefreshInterval)
-	defer cancel()
+// SynchronizationStore is an interface that defines methods for synchronizing the orchestrator instances inside the pool.
+type orchestratorInstancesSyncStore struct {
+	pool *OrchestratorsPool
+}
 
-	spanCtx, span := p.tracer.Start(ctxTimeout, "pool-keep-in-sync")
-	defer span.End()
+func (e orchestratorInstancesSyncStore) getHost(ip string, port int) string {
+	return fmt.Sprintf("%s:%d", ip, port)
+}
 
-	// Service discovery targets
-	sdNodes, err := p.discovery.ListNodes(spanCtx)
+func (e orchestratorInstancesSyncStore) SourceList(ctx context.Context) ([]sd.ServiceDiscoveryItem, error) {
+	return e.pool.discovery.ListNodes(ctx)
+}
+
+func (e orchestratorInstancesSyncStore) SourceExists(ctx context.Context, s []sd.ServiceDiscoveryItem, p *OrchestratorNode) bool {
+	for _, item := range s {
+		itemHost := e.getHost(item.NodeIP, item.NodePort)
+		if itemHost == p.GetInfo().Host {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (e orchestratorInstancesSyncStore) PoolList(ctx context.Context) []*OrchestratorNode {
+	items := make([]*OrchestratorNode, 0)
+	for _, item := range e.pool.instances.Items() {
+		items = append(items, item)
+	}
+	return items
+}
+
+func (e orchestratorInstancesSyncStore) PoolExists(ctx context.Context, source sd.ServiceDiscoveryItem) bool {
+	host := e.getHost(source.NodeIP, source.NodePort)
+	_, found := e.pool.instances.Get(host)
+	return found
+}
+
+func (e orchestratorInstancesSyncStore) PoolInsert(ctx context.Context, source sd.ServiceDiscoveryItem) {
+	host := e.getHost(source.NodeIP, source.NodePort)
+	o, err := NewOrchestrator(e.pool.tracerProvider, e.pool.metricProvider, source.NodeIP, source.NodePort)
 	if err != nil {
+		zap.L().Error("failed to register new orchestrator instance", zap.String("host", host), zap.Error(err))
 		return
 	}
 
-	var wg sync.WaitGroup
+	ctx, cancel := context.WithTimeout(ctx, orchestratorsInstanceSyncTimeout)
+	defer cancel()
 
-	// connect / refresh discovered orchestrators
-	for _, sdNode := range sdNodes {
-		wg.Add(1)
-		go func(sdNode sd.ServiceDiscoveryItem) {
-			defer wg.Done()
-
-			var found *OrchestratorNode = nil
-			host := fmt.Sprintf("%s:%d", sdNode.NodeIP, sdNode.NodePort)
-			for _, node := range p.nodes.Items() {
-				if host == node.GetInfo().Host {
-					found = node
-					break
-				}
-			}
-
-			if found == nil {
-				// newly discovered orchestrator
-				err := p.connectNode(ctx, sdNode)
-				if err != nil {
-					p.logger.Error("Error connecting to node", zap.Error(err), zap.String("host", host))
-				}
-
-				return
-			}
-		}(sdNode)
+	// Initial synchronization of the orchestrator instance
+	// We want to do it separately here so failed init will cause not adding the instance to the pool
+	err = o.sync(ctx)
+	if err != nil {
+		zap.L().Error("Failed to finish initial orchestrator instance sync", zap.Error(err), l.WithClusterNodeID(o.GetInfo().NodeID))
+		return
 	}
 
-	// wait for all connections to finish
-	wg.Wait()
-
-	// disconnect nodes that are not in the list anymore
-	for _, node := range p.GetOrchestrators() {
-		wg.Add(1)
-		go func(node *OrchestratorNode) {
-			nodeInfo := node.GetInfo()
-			defer wg.Done()
-
-			found := false
-
-			for _, sdNode := range sdNodes {
-				host := fmt.Sprintf("%s:%d", sdNode.NodeIP, sdNode.NodePort)
-				if host == nodeInfo.Host {
-					found = true
-					break
-				}
-			}
-
-			// orchestrator is no longer in the list coming from service discovery
-			if !found {
-				err := p.removeNode(spanCtx, node)
-				if err != nil {
-					p.logger.Error("Error during node removal", zap.Error(err), l.WithClusterNodeID(nodeInfo.NodeID))
-				}
-			}
-		}(node)
-
-	}
-
-	// wait for all node removals to finish
-	wg.Wait()
+	e.pool.instances.Insert(host, o)
 }
 
-func (p *OrchestratorsPool) connectNode(ctx context.Context, node sd.ServiceDiscoveryItem) error {
-	ctx, childSpan := p.tracer.Start(ctx, "connect-orchestrator-node")
-	defer childSpan.End()
+func (e orchestratorInstancesSyncStore) PoolUpdate(ctx context.Context, item *OrchestratorNode) {
+	ctx, cancel := context.WithTimeout(ctx, orchestratorsInstanceSyncTimeout)
+	defer cancel()
 
-	o, err := NewOrchestrator(ctx, p.tracerProvider, p.metricProvider, node.NodeIP, node.NodePort)
+	err := item.sync(ctx)
 	if err != nil {
-		return err
+		zap.L().Error("Failed to sync orchestrator instance", zap.Error(err), l.WithClusterNodeID(item.GetInfo().NodeID))
 	}
-
-	info := o.GetInfo()
-	p.nodes.Insert(info.ServiceInstanceID, o)
-	return nil
 }
 
-func (p *OrchestratorsPool) removeNode(ctx context.Context, node *OrchestratorNode) error {
-	_, childSpan := p.tracer.Start(ctx, "remove-orchestrator-node")
-	defer childSpan.End()
+func (e orchestratorInstancesSyncStore) PoolRemove(ctx context.Context, item *OrchestratorNode) {
+	info := item.GetInfo()
+	zap.L().Info("Orchestrator instance connection is not active anymore, closing.", l.WithClusterNodeID(info.NodeID))
 
-	info := node.GetInfo()
-	p.logger.Info("Orchestrator node node connection is not active anymore, closing.", l.WithClusterNodeID(info.NodeID))
-
-	// stop background sync and close everything
-	err := node.Close()
+	err := item.Close()
 	if err != nil {
-		p.logger.Error("Error closing connection to node", zap.Error(err), l.WithClusterNodeID(info.NodeID))
+		zap.L().Error("Error closing connection to orchestrator instance", zap.Error(err), l.WithClusterNodeID(info.NodeID))
 	}
 
-	p.nodes.Remove(info.ServiceInstanceID)
-	p.logger.Info("Orchestrator node node connection has been closed.", l.WithClusterNodeID(info.NodeID))
-	return nil
+	e.pool.instances.Remove(item.info.Host)
+	zap.L().Info("Orchestrator instance connection has been deregistered.", l.WithClusterNodeID(info.NodeID))
 }
