@@ -38,9 +38,9 @@ type Node struct {
 
 	Info *node.NodeInfo
 
-	metadata nodeMetadata
-	status   api.NodeStatus
-	mutex    sync.RWMutex
+	meta   nodeMetadata
+	status api.NodeStatus
+	mutex  sync.RWMutex
 
 	sbxsInProgress *smap.Map[*sbxInProgress]
 
@@ -84,13 +84,13 @@ func (n *Node) setStatus(status api.NodeStatus) {
 func (n *Node) setMetadata(i *orchestratorinfo.ServiceInfoResponse) {
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
-	n.metadata = getNodeMetadata(i)
+	n.meta = getNodeMetadata(i)
 }
 
-func (n *Node) getMetadata() nodeMetadata {
+func (n *Node) metadata() nodeMetadata {
 	n.mutex.RLock()
 	defer n.mutex.RUnlock()
-	return n.metadata
+	return n.meta
 }
 
 func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
@@ -142,7 +142,7 @@ func (o *Orchestrator) GetNode(nodeID string) *Node {
 func (o *Orchestrator) GetNodes() []*api.Node {
 	nodes := make(map[string]*api.Node)
 	for key, n := range o.nodes.Items() {
-		metadata := n.getMetadata()
+		metadata := n.metadata()
 		nodes[key] = &api.Node{
 			NodeID:               key,
 			Status:               n.Status(),
@@ -179,7 +179,7 @@ func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
 	for key, n := range o.nodes.Items() {
 		if key == nodeID {
 			builds := n.buildCache.Keys()
-			metadata := n.getMetadata()
+			metadata := n.metadata()
 			node = &api.NodeDetail{
 				NodeID:       key,
 				Status:       n.Status(),
