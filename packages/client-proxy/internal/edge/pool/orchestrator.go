@@ -16,9 +16,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	e2bgrpcorchestrator "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	e2bgrpcorchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
-	e2bgrpctemplatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -58,10 +56,7 @@ type OrchestratorInstance struct {
 }
 
 type OrchestratorGRPCClient struct {
-	Sandbox  e2bgrpcorchestrator.SandboxServiceClient
-	Template e2bgrpctemplatemanager.TemplateServiceClient
-	Info     e2bgrpcorchestratorinfo.InfoServiceClient
-
+	Info       e2bgrpcorchestratorinfo.InfoServiceClient
 	Connection *grpc.ClientConn
 }
 
