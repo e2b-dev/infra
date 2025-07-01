@@ -20,12 +20,12 @@ import (
 
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/handlers"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
-	securityHeaderName = "X-API-Key"
 	securitySchemaName = "ApiKeyAuth"
 
 	forbiddenErrPrefix = "access forbidden: "
@@ -100,7 +100,7 @@ func ginBuildAuthenticationHandler(tracer trace.Tracer, auth authorization.Autho
 		request := input.RequestValidationInput.Request
 
 		// Check for the Authorization header.
-		key := request.Header.Get(securityHeaderName)
+		key := request.Header.Get(consts.EdgeApiAuthHeader)
 		if key == "" {
 			return ErrMissingAuthHeader
 		}

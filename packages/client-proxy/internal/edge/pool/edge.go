@@ -19,16 +19,16 @@ const (
 )
 
 type EdgeNode struct {
-	ServiceId string
-	NodeId    string
+	NodeID string
 
-	SourceVersion string
-	SourceCommit  string
+	ServiceInstanceID    string
+	ServiceVersion       string
+	ServiceVersionCommit string
+	ServiceStatus        api.ClusterNodeStatus
+	ServiceStartup       time.Time
 
-	Host    string
-	Status  api.ClusterNodeStatus
-	Startup time.Time
-	Client  *api.ClientWithResponses
+	Host   string
+	Client *api.ClientWithResponses
 
 	mutex sync.Mutex
 
@@ -89,23 +89,23 @@ func (o *EdgeNode) syncRun() error {
 	for i := 0; i < edgeSyncMaxRetries; i++ {
 		res, err := o.Client.V1InfoWithResponse(ctx)
 		if err != nil {
-			zap.L().Error("failed to check edge node status", l.WithClusterNodeID(o.ServiceId), zap.Error(err))
+			zap.L().Error("failed to check edge node status", l.WithClusterNodeID(o.NodeID), zap.Error(err))
 			continue
 		}
 
 		if res.JSON200 == nil {
-			zap.L().Error("failed to check edge node status", l.WithClusterNodeID(o.ServiceId), zap.Int("status", res.StatusCode()))
+			zap.L().Error("failed to check edge node status", l.WithClusterNodeID(o.NodeID), zap.Int("status", res.StatusCode()))
 			continue
 		}
 
 		body := res.JSON200
 
-		o.ServiceId = body.Id
-		o.NodeId = body.NodeId
-		o.Startup = body.Startup
-		o.Status = body.Status
-		o.SourceVersion = body.Version
-		o.SourceCommit = body.Commit
+		o.NodeID = body.NodeID
+		o.ServiceInstanceID = body.ServiceInstanceID
+		o.ServiceStartup = body.ServiceStartup
+		o.ServiceStatus = body.ServiceStatus
+		o.ServiceVersion = body.ServiceVersion
+		o.ServiceVersionCommit = body.ServiceVersionCommit
 
 		return nil
 	}
@@ -116,7 +116,7 @@ func (o *EdgeNode) syncRun() error {
 func (o *EdgeNode) Close() error {
 	// close sync context
 	o.ctxCancel()
-	o.Status = api.Unhealthy
+	o.ServiceStatus = api.Unhealthy
 	return nil
 }
 

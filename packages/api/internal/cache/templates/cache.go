@@ -139,6 +139,9 @@ type TemplateBuildInfo struct {
 	TeamID      uuid.UUID
 	TemplateID  string
 	BuildStatus envbuild.Status
+
+	ClusterID     *uuid.UUID
+	ClusterNodeID *string
 }
 
 type TemplateBuildInfoNotFound struct{ error }
@@ -212,6 +215,9 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 				TeamID:      envDB.TeamID,
 				TemplateID:  envDB.ID,
 				BuildStatus: envBuildDB.Status,
+
+				ClusterID:     envDB.ClusterID,
+				ClusterNodeID: envBuildDB.ClusterNodeID,
 			},
 			templateInfoExpiration,
 		)
