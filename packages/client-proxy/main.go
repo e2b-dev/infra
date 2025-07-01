@@ -162,8 +162,7 @@ func run() int {
 	}
 
 	authorizationManager := authorization.NewStaticTokenAuthorizationService(edgeSecret)
-
-	edges := e2borchestrators.NewEdgePool(logger, edgeSD, tracer, info.Host)
+	edges := e2borchestrators.NewEdgePool(logger, edgeSD, tracer, info.Host, authorizationManager)
 	go func() {
 		select {
 		case <-signalCtx.Done():

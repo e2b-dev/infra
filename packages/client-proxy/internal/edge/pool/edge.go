@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -36,8 +39,8 @@ type EdgeNode struct {
 	mutex  sync.RWMutex
 }
 
-func NewEdgeNode(host string) (*EdgeNode, error) {
-	client, err := newEdgeApiClient(host)
+func NewEdgeNode(host string, auth authorization.AuthorizationService) (*EdgeNode, error) {
+	client, err := newEdgeApiClient(host, auth)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create http client: %w", err)
 	}
@@ -104,7 +107,19 @@ func (o *EdgeNode) setStatus(s api.ClusterNodeStatus) {
 	o.info.ServiceStatus = s
 }
 
-func newEdgeApiClient(host string) (*api.ClientWithResponses, error) {
-	hostUrl := fmt.Sprintf("http://%s", host)
-	return api.NewClientWithResponses(hostUrl)
+func newEdgeApiClient(host string, auth authorization.AuthorizationService) (*api.ClientWithResponses, error) {
+	clientURL := fmt.Sprintf("http://%s", host)
+	clientSecret := auth.GetSecret()
+	clientAuthMiddleware := func(c *api.Client) error {
+		c.RequestEditors = append(
+			c.RequestEditors,
+			func(ctx context.Context, req *http.Request) error {
+				req.Header.Set(consts.EdgeApiAuthHeader, clientSecret)
+				return nil
+			},
+		)
+		return nil
+	}
+
+	return api.NewClientWithResponses(clientURL, clientAuthMiddleware)
 }

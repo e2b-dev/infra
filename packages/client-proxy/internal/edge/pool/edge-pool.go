@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
 	sd "github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -17,6 +18,7 @@ import (
 
 type EdgePool struct {
 	discovery sd.ServiceDiscoveryAdapter
+	auth      authorization.AuthorizationService
 
 	instanceSelfHost string
 	instances        *smap.Map[*EdgeNode]
@@ -34,9 +36,10 @@ const (
 
 var ErrEdgeServiceInstanceNotFound = errors.New("edge service instance not found")
 
-func NewEdgePool(logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, tracer trace.Tracer, instanceSelfHost string) *EdgePool {
+func NewEdgePool(logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, tracer trace.Tracer, instanceSelfHost string, auth authorization.AuthorizationService) *EdgePool {
 	pool := &EdgePool{
 		discovery: discovery,
+		auth:      auth,
 
 		instanceSelfHost: instanceSelfHost,
 		instances:        smap.New[*EdgeNode](),
@@ -112,7 +115,7 @@ func (e edgeInstancesSyncStore) PoolExists(ctx context.Context, source *sd.Servi
 
 func (e edgeInstancesSyncStore) PoolInsert(ctx context.Context, source *sd.ServiceDiscoveryItem) {
 	host := e.getHost(source.NodeIP, source.NodePort)
-	o, err := NewEdgeNode(host)
+	o, err := NewEdgeNode(host, e.pool.auth)
 	if err != nil {
 		zap.L().Error("failed to register new edge instance", zap.String("host", host), zap.Error(err))
 		return
