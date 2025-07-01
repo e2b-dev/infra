@@ -136,7 +136,13 @@ func run() int {
 		catalog = sandboxes.NewMemorySandboxesCatalog(ctx, tracer)
 	}
 
-	orchestrators := e2borchestrators.NewOrchestratorsPool(ctx, logger, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
+	orchestrators := e2borchestrators.NewOrchestratorsPool(logger, tracer, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
+	go func() {
+		select {
+		case <-signalCtx.Done():
+			orchestrators.Close()
+		}
+	}()
 
 	info := &e2binfo.ServiceInfo{
 		NodeID:               internal.GetNodeID(),

@@ -48,7 +48,7 @@ func NewEdgePool(logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, trace
 		tracer: tracer,
 	}
 
-	store := edgeInstancesSyncStore{pool: pool}
+	store := &edgeInstancesSyncStore{pool: pool}
 	pool.synchronization = synchronization.NewSynchronize(tracer, "edge-instances", "Edge instances", store)
 
 	// Background synchronization of edge instances available in cluster
@@ -80,15 +80,15 @@ type edgeInstancesSyncStore struct {
 	pool *EdgePool
 }
 
-func (e edgeInstancesSyncStore) getHost(ip string, port int) string {
+func (e *edgeInstancesSyncStore) getHost(ip string, port int) string {
 	return fmt.Sprintf("%s:%d", ip, port)
 }
 
-func (e edgeInstancesSyncStore) SourceList(ctx context.Context) ([]sd.ServiceDiscoveryItem, error) {
+func (e *edgeInstancesSyncStore) SourceList(ctx context.Context) ([]sd.ServiceDiscoveryItem, error) {
 	return e.pool.discovery.ListNodes(ctx)
 }
 
-func (e edgeInstancesSyncStore) SourceExists(ctx context.Context, s []sd.ServiceDiscoveryItem, p *EdgeNode) bool {
+func (e *edgeInstancesSyncStore) SourceExists(ctx context.Context, s []sd.ServiceDiscoveryItem, p *EdgeNode) bool {
 	for _, item := range s {
 		itemHost := e.getHost(item.NodeIP, item.NodePort)
 		if itemHost == p.GetInfo().Host {
@@ -99,7 +99,7 @@ func (e edgeInstancesSyncStore) SourceExists(ctx context.Context, s []sd.Service
 	return false
 }
 
-func (e edgeInstancesSyncStore) PoolList(ctx context.Context) []*EdgeNode {
+func (e *edgeInstancesSyncStore) PoolList(ctx context.Context) []*EdgeNode {
 	items := make([]*EdgeNode, 0)
 	for _, item := range e.pool.instances.Items() {
 		items = append(items, item)
@@ -107,13 +107,13 @@ func (e edgeInstancesSyncStore) PoolList(ctx context.Context) []*EdgeNode {
 	return items
 }
 
-func (e edgeInstancesSyncStore) PoolExists(ctx context.Context, source sd.ServiceDiscoveryItem) bool {
+func (e *edgeInstancesSyncStore) PoolExists(ctx context.Context, source sd.ServiceDiscoveryItem) bool {
 	host := e.getHost(source.NodeIP, source.NodePort)
 	_, found := e.pool.instances.Get(host)
 	return found
 }
 
-func (e edgeInstancesSyncStore) PoolInsert(ctx context.Context, source sd.ServiceDiscoveryItem) {
+func (e *edgeInstancesSyncStore) PoolInsert(ctx context.Context, source sd.ServiceDiscoveryItem) {
 	host := e.getHost(source.NodeIP, source.NodePort)
 	o, err := NewEdgeNode(host, e.pool.auth)
 	if err != nil {
@@ -135,7 +135,7 @@ func (e edgeInstancesSyncStore) PoolInsert(ctx context.Context, source sd.Servic
 	e.pool.instances.Insert(host, o)
 }
 
-func (e edgeInstancesSyncStore) PoolUpdate(ctx context.Context, item *EdgeNode) {
+func (e *edgeInstancesSyncStore) PoolUpdate(ctx context.Context, item *EdgeNode) {
 	ctx, cancel := context.WithTimeout(ctx, edgeInstanceSyncTimeout)
 	defer cancel()
 
@@ -145,7 +145,7 @@ func (e edgeInstancesSyncStore) PoolUpdate(ctx context.Context, item *EdgeNode) 
 	}
 }
 
-func (e edgeInstancesSyncStore) PoolRemove(ctx context.Context, item *EdgeNode) {
+func (e *edgeInstancesSyncStore) PoolRemove(ctx context.Context, item *EdgeNode) {
 	info := item.GetInfo()
 	zap.L().Info("Edge instance connection is not active anymore, closing.", l.WithClusterNodeID(info.NodeID))
 

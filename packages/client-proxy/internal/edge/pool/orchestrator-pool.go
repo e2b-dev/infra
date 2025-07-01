@@ -3,6 +3,7 @@ package pool
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
@@ -25,6 +26,9 @@ type OrchestratorsPool struct {
 
 	metricProvider metric.MeterProvider
 	tracerProvider trace.TracerProvider
+
+	closed atomic.Bool
+	close  chan struct{}
 }
 
 const (
@@ -36,7 +40,6 @@ const (
 )
 
 func NewOrchestratorsPool(
-	ctx context.Context,
 	logger *zap.Logger,
 	tracer trace.Tracer,
 	tracerProvider trace.TracerProvider,
@@ -52,14 +55,17 @@ func NewOrchestratorsPool(
 
 		metricProvider: metricProvider,
 		tracerProvider: tracerProvider,
+
+		closed: atomic.Bool{},
+		close:  make(chan struct{}),
 	}
 
-	store := orchestratorInstancesSyncStore{pool: pool}
+	store := &orchestratorInstancesSyncStore{pool: pool}
 	pool.synchronization = synchronization.NewSynchronize(tracer, "orchestrator-instances", "Orchestrator instances", store)
 
 	// Background synchronization of orchestrators pool
 	go func() { pool.synchronization.Start(orchestratorsPoolInterval, orchestratorsPoolRoundTimeout, true) }()
-	go func() { pool.statusLogSync(ctx) }()
+	go func() { pool.statusLogSync() }()
 
 	return pool
 }
@@ -79,13 +85,13 @@ func (p *OrchestratorsPool) GetOrchestrator(instanceID string) (node *Orchestrat
 	return nil, false
 }
 
-func (p *OrchestratorsPool) statusLogSync(ctx context.Context) {
+func (p *OrchestratorsPool) statusLogSync() {
 	ticker := time.NewTicker(statusLogInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-ctx.Done():
+		case <-p.close:
 			p.logger.Info("Stopping analytics sync")
 			return
 		case <-ticker.C:
@@ -99,20 +105,39 @@ func (p *OrchestratorsPool) statusLogSync(ctx context.Context) {
 	}
 }
 
+func (p *OrchestratorsPool) Close() {
+	p.synchronization.Close()
+
+	// Close all orchestrator instances in the pool
+	for _, instance := range p.instances.Items() {
+		err := instance.Close()
+		if err != nil {
+			p.logger.Error("Error closing orchestrator instance", zap.Error(err), l.WithClusterNodeID(instance.GetInfo().NodeID))
+		}
+	}
+
+	// Close orchestrators status log sync
+	alreadyClosed := p.closed.Load()
+	if !alreadyClosed {
+		close(p.close)
+		p.closed.Store(true)
+	}
+}
+
 // SynchronizationStore is an interface that defines methods for synchronizing the orchestrator instances inside the pool.
 type orchestratorInstancesSyncStore struct {
 	pool *OrchestratorsPool
 }
 
-func (e orchestratorInstancesSyncStore) getHost(ip string, port int) string {
+func (e *orchestratorInstancesSyncStore) getHost(ip string, port int) string {
 	return fmt.Sprintf("%s:%d", ip, port)
 }
 
-func (e orchestratorInstancesSyncStore) SourceList(ctx context.Context) ([]sd.ServiceDiscoveryItem, error) {
+func (e *orchestratorInstancesSyncStore) SourceList(ctx context.Context) ([]sd.ServiceDiscoveryItem, error) {
 	return e.pool.discovery.ListNodes(ctx)
 }
 
-func (e orchestratorInstancesSyncStore) SourceExists(ctx context.Context, s []sd.ServiceDiscoveryItem, p *OrchestratorNode) bool {
+func (e *orchestratorInstancesSyncStore) SourceExists(ctx context.Context, s []sd.ServiceDiscoveryItem, p *OrchestratorNode) bool {
 	for _, item := range s {
 		itemHost := e.getHost(item.NodeIP, item.NodePort)
 		if itemHost == p.GetInfo().Host {
@@ -123,7 +148,7 @@ func (e orchestratorInstancesSyncStore) SourceExists(ctx context.Context, s []sd
 	return false
 }
 
-func (e orchestratorInstancesSyncStore) PoolList(ctx context.Context) []*OrchestratorNode {
+func (e *orchestratorInstancesSyncStore) PoolList(ctx context.Context) []*OrchestratorNode {
 	items := make([]*OrchestratorNode, 0)
 	for _, item := range e.pool.instances.Items() {
 		items = append(items, item)
@@ -131,13 +156,13 @@ func (e orchestratorInstancesSyncStore) PoolList(ctx context.Context) []*Orchest
 	return items
 }
 
-func (e orchestratorInstancesSyncStore) PoolExists(ctx context.Context, source sd.ServiceDiscoveryItem) bool {
+func (e *orchestratorInstancesSyncStore) PoolExists(ctx context.Context, source sd.ServiceDiscoveryItem) bool {
 	host := e.getHost(source.NodeIP, source.NodePort)
 	_, found := e.pool.instances.Get(host)
 	return found
 }
 
-func (e orchestratorInstancesSyncStore) PoolInsert(ctx context.Context, source sd.ServiceDiscoveryItem) {
+func (e *orchestratorInstancesSyncStore) PoolInsert(ctx context.Context, source sd.ServiceDiscoveryItem) {
 	host := e.getHost(source.NodeIP, source.NodePort)
 	o, err := NewOrchestrator(e.pool.tracerProvider, e.pool.metricProvider, source.NodeIP, source.NodePort)
 	if err != nil {
@@ -159,7 +184,7 @@ func (e orchestratorInstancesSyncStore) PoolInsert(ctx context.Context, source s
 	e.pool.instances.Insert(host, o)
 }
 
-func (e orchestratorInstancesSyncStore) PoolUpdate(ctx context.Context, item *OrchestratorNode) {
+func (e *orchestratorInstancesSyncStore) PoolUpdate(ctx context.Context, item *OrchestratorNode) {
 	ctx, cancel := context.WithTimeout(ctx, orchestratorsInstanceSyncTimeout)
 	defer cancel()
 
@@ -169,7 +194,7 @@ func (e orchestratorInstancesSyncStore) PoolUpdate(ctx context.Context, item *Or
 	}
 }
 
-func (e orchestratorInstancesSyncStore) PoolRemove(ctx context.Context, item *OrchestratorNode) {
+func (e *orchestratorInstancesSyncStore) PoolRemove(ctx context.Context, item *OrchestratorNode) {
 	info := item.GetInfo()
 	zap.L().Info("Orchestrator instance connection is not active anymore, closing.", l.WithClusterNodeID(info.NodeID))
 
