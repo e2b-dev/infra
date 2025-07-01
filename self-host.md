@@ -44,7 +44,7 @@ Recommended for monitoring and logging
 Check if you can use config for terraform state management
 
 1. Go to `console.cloud.google.com` and create a new GCP project
-    > Make sure your Quota allows you to have at least 1200G for `Persistent Disk SSD (GB)` 
+    > Make sure your Quota allows you to have at least 2500G for `Persistent Disk SSD (GB)` and at least 24 for `CPUs`
 2. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.template`](.env.template). You can pick any of them. Make sure to fill in the values. All are required if not specified otherwise.
     > Get Postgres database connection string from your database, e.g. [from Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres#direct-connection): Create a new project in Supabase and go to your project in Supabase -> Settings -> Database -> Connection Strings -> Postgres -> Direct
     
