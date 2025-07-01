@@ -153,16 +153,6 @@ source = '''
 del(.internal)
 '''
 
-# Enable internal vector logs
-[sources.vector_logs]
-type = "internal_logs"
-
-# Print internal vector logs to console
-[sinks.console]
-type = "console"
-inputs = ["vector_logs"]
-encoding.codec = "text"
-
 # Enable debuging of logs to the console
 # [sinks.console_loki]
 # type = "console"
