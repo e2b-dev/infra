@@ -21,8 +21,8 @@ func (o *Orchestrator) setupMetrics(meterProvider metric.MeterProvider) (metric.
 		func(ctx context.Context, obs metric.Observer) error {
 			for _, node := range o.nodes.Items() {
 				obs.ObserveInt64(gauge, 1, metric.WithAttributes(
-					attribute.String("status", string(node.status)),
-					attribute.String("node.id", node.orchestratorID),
+					attribute.String("status", string(node.Status())),
+					attribute.String("node.id", node.metadata().orchestratorID),
 				))
 			}
 

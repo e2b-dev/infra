@@ -150,7 +150,9 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 			zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.ServiceStatus), zap.String("node_id", node.Info.ID))
 			nodeStatus = api.NodeStatusUnhealthy
 		}
+
 		node.setStatus(nodeStatus)
+		node.setMetadata(nodeInfo, nodeInfo.NodeId)
 
 		activeInstances, instancesErr := o.getSandboxes(ctx, node.Info)
 		if instancesErr != nil {

@@ -26,17 +26,21 @@ type sbxInProgress struct {
 	CPUs      int64
 }
 
+type nodeMetadata struct {
+	orchestratorID string
+	commit         string
+	version        string
+}
 type Node struct {
 	CPUUsage atomic.Int64
 	RamUsage atomic.Int64
 	Client   *grpclient.GRPCClient
 
-	Info           *node.NodeInfo
-	orchestratorID string
-	commit         string
-	version        string
-	status         api.NodeStatus
-	statusMu       sync.RWMutex
+	Info *node.NodeInfo
+
+	meta   nodeMetadata
+	status api.NodeStatus
+	mutex  sync.RWMutex
 
 	sbxsInProgress *smap.Map[*sbxInProgress]
 
@@ -46,8 +50,8 @@ type Node struct {
 }
 
 func (n *Node) Status() api.NodeStatus {
-	n.statusMu.RLock()
-	defer n.statusMu.RUnlock()
+	n.mutex.RLock()
+	defer n.mutex.RUnlock()
 
 	if n.status != api.NodeStatusReady {
 		return n.status
@@ -68,13 +72,25 @@ func (n *Node) Status() api.NodeStatus {
 }
 
 func (n *Node) setStatus(status api.NodeStatus) {
-	n.statusMu.Lock()
-	defer n.statusMu.Unlock()
+	n.mutex.Lock()
+	defer n.mutex.Unlock()
 
 	if n.status != status {
 		zap.L().Info("Node status changed", zap.String("node_id", n.Info.ID), zap.String("status", string(status)))
 		n.status = status
 	}
+}
+
+func (n *Node) setMetadata(i *orchestratorinfo.ServiceInfoResponse, nodeID string) {
+	n.mutex.Lock()
+	defer n.mutex.Unlock()
+	n.meta = getNodeMetadata(i, nodeID)
+}
+
+func (n *Node) metadata() nodeMetadata {
+	n.mutex.RLock()
+	defer n.mutex.RUnlock()
+	return n.meta
 }
 
 func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
@@ -126,13 +142,14 @@ func (o *Orchestrator) GetNode(nodeID string) *Node {
 func (o *Orchestrator) GetNodes() []*api.Node {
 	nodes := make(map[string]*api.Node)
 	for key, n := range o.nodes.Items() {
+		metadata := n.metadata()
 		nodes[key] = &api.Node{
 			NodeID:               key,
 			Status:               n.Status(),
 			CreateFails:          n.createFails.Load(),
 			SandboxStartingCount: n.sbxsInProgress.Count(),
-			Version:              n.version,
-			Commit:               n.commit,
+			Version:              metadata.version,
+			Commit:               metadata.commit,
 		}
 	}
 
@@ -162,13 +179,14 @@ func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
 	for key, n := range o.nodes.Items() {
 		if key == nodeID {
 			builds := n.buildCache.Keys()
+			metadata := n.metadata()
 			node = &api.NodeDetail{
 				NodeID:       key,
 				Status:       n.Status(),
 				CachedBuilds: builds,
 				CreateFails:  n.createFails.Load(),
-				Version:      n.version,
-				Commit:       n.commit,
+				Version:      metadata.version,
+				Commit:       metadata.commit,
 			}
 		}
 	}
@@ -219,4 +237,20 @@ func (n *Node) InsertBuild(buildID string) {
 
 func (o *Orchestrator) NodeCount() int {
 	return o.nodes.Count()
+}
+
+func getNodeMetadata(n *orchestratorinfo.ServiceInfoResponse, orchestratorID string) nodeMetadata {
+	if n == nil {
+		return nodeMetadata{
+			orchestratorID: orchestratorID,
+			commit:         "unknown",
+			version:        "unknown",
+		}
+	}
+
+	return nodeMetadata{
+		orchestratorID: n.NodeId,
+		commit:         n.ServiceCommit,
+		version:        n.ServiceVersion,
+	}
 }
