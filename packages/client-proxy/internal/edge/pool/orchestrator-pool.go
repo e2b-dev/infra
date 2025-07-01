@@ -3,7 +3,7 @@ package pool
 import (
 	"context"
 	"fmt"
-	"sync/atomic"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
@@ -27,8 +27,8 @@ type OrchestratorsPool struct {
 	metricProvider metric.MeterProvider
 	tracerProvider trace.TracerProvider
 
-	closed atomic.Bool
-	close  chan struct{}
+	close     chan struct{}
+	closeOnce sync.Once
 }
 
 const (
@@ -56,8 +56,7 @@ func NewOrchestratorsPool(
 		metricProvider: metricProvider,
 		tracerProvider: tracerProvider,
 
-		closed: atomic.Bool{},
-		close:  make(chan struct{}),
+		close: make(chan struct{}),
 	}
 
 	store := &orchestratorInstancesSyncStore{pool: pool}
@@ -117,11 +116,9 @@ func (p *OrchestratorsPool) Close(ctx context.Context) error {
 	}
 
 	// Close orchestrators status log sync
-	alreadyClosed := p.closed.Load()
-	if !alreadyClosed {
-		close(p.close)
-		p.closed.Store(true)
-	}
+	p.closeOnce.Do(
+		func() { close(p.close) },
+	)
 
 	return nil
 }
