@@ -127,9 +127,6 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 
 func (tm *TemplateManager) getBuilderClient(clusterID *uuid.UUID, nodeID *string, placement bool) (*grpclient.GRPCClient, metadata.MD, PlacementLogsProvider, error) {
 	if clusterID == nil || nodeID == nil {
-		tm.localClientMutex.RLock()
-		defer tm.localClientMutex.RUnlock()
-
 		// build placement requires healthy template builder
 		if placement && tm.GetLocalClientStatus() != infogrpc.ServiceInfoStatus_OrchestratorHealthy {
 			zap.L().Error("Local template manager is not fully healthy, cannot use it for placement new builds")
