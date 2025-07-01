@@ -153,7 +153,7 @@ source = '''
 del(.internal)
 '''
 
-# Enable debuging of logs to the console
+# Enable debugging of logs to the console
 # [sinks.console_loki]
 # type = "console"
 # inputs = ["remove_internal"]
