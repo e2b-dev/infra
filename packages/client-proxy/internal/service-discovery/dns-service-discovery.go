@@ -13,7 +13,7 @@ import (
 
 type DnsServiceDiscovery struct {
 	logger   *zap.Logger
-	entries  *smap.Map[*ServiceDiscoveryItem]
+	entries  *smap.Map[ServiceDiscoveryItem]
 	resolver string
 
 	hosts       []string
@@ -39,7 +39,7 @@ func NewDnsServiceDiscovery(ctx context.Context, logger *zap.Logger, hosts []str
 		resolver:    resolver,
 		servicePort: servicePort,
 
-		entries: smap.New[*ServiceDiscoveryItem](),
+		entries: smap.New[ServiceDiscoveryItem](),
 	}
 
 	go func() { sd.keepInSync(ctx) }()
@@ -47,9 +47,9 @@ func NewDnsServiceDiscovery(ctx context.Context, logger *zap.Logger, hosts []str
 	return sd
 }
 
-func (sd *DnsServiceDiscovery) ListNodes(_ context.Context) ([]*ServiceDiscoveryItem, error) {
+func (sd *DnsServiceDiscovery) ListNodes(_ context.Context) ([]ServiceDiscoveryItem, error) {
 	entries := sd.entries.Items()
-	items := make([]*ServiceDiscoveryItem, 0)
+	items := make([]ServiceDiscoveryItem, 0)
 
 	for _, item := range entries {
 		items = append(items, item)
@@ -115,7 +115,7 @@ func (sd *DnsServiceDiscovery) sync(ctx context.Context) {
 	for ip := range ips {
 		key := fmt.Sprintf("%s:%d", ip, sd.servicePort)
 		sd.entries.Insert(
-			key, &ServiceDiscoveryItem{NodeIP: ip, NodePort: sd.servicePort},
+			key, ServiceDiscoveryItem{NodeIP: ip, NodePort: sd.servicePort},
 		)
 	}
 

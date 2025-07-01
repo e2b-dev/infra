@@ -22,7 +22,7 @@ type EdgePool struct {
 
 	instanceSelfHost string
 	instances        *smap.Map[*EdgeNode]
-	synchronization  *synchronization.Synchronize[*sd.ServiceDiscoveryItem, *EdgeNode]
+	synchronization  *synchronization.Synchronize[sd.ServiceDiscoveryItem, *EdgeNode]
 
 	tracer trace.Tracer
 	logger *zap.Logger
@@ -84,11 +84,11 @@ func (e edgeInstancesSyncStore) getHost(ip string, port int) string {
 	return fmt.Sprintf("%s:%d", ip, port)
 }
 
-func (e edgeInstancesSyncStore) SourceList(ctx context.Context) ([]*sd.ServiceDiscoveryItem, error) {
+func (e edgeInstancesSyncStore) SourceList(ctx context.Context) ([]sd.ServiceDiscoveryItem, error) {
 	return e.pool.discovery.ListNodes(ctx)
 }
 
-func (e edgeInstancesSyncStore) SourceExists(ctx context.Context, s []*sd.ServiceDiscoveryItem, p *EdgeNode) bool {
+func (e edgeInstancesSyncStore) SourceExists(ctx context.Context, s []sd.ServiceDiscoveryItem, p *EdgeNode) bool {
 	for _, item := range s {
 		itemHost := e.getHost(item.NodeIP, item.NodePort)
 		if itemHost == p.GetInfo().Host {
@@ -107,13 +107,13 @@ func (e edgeInstancesSyncStore) PoolList(ctx context.Context) []*EdgeNode {
 	return items
 }
 
-func (e edgeInstancesSyncStore) PoolExists(ctx context.Context, source *sd.ServiceDiscoveryItem) bool {
+func (e edgeInstancesSyncStore) PoolExists(ctx context.Context, source sd.ServiceDiscoveryItem) bool {
 	host := e.getHost(source.NodeIP, source.NodePort)
 	_, found := e.pool.instances.Get(host)
 	return found
 }
 
-func (e edgeInstancesSyncStore) PoolInsert(ctx context.Context, source *sd.ServiceDiscoveryItem) {
+func (e edgeInstancesSyncStore) PoolInsert(ctx context.Context, source sd.ServiceDiscoveryItem) {
 	host := e.getHost(source.NodeIP, source.NodePort)
 	o, err := NewEdgeNode(host, e.pool.auth)
 	if err != nil {

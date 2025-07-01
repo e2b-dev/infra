@@ -10,5 +10,5 @@ type ServiceDiscoveryItem struct {
 }
 
 type ServiceDiscoveryAdapter interface {
-	ListNodes(ctx context.Context) ([]*ServiceDiscoveryItem, error)
+	ListNodes(ctx context.Context) ([]ServiceDiscoveryItem, error)
 }

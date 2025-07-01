@@ -127,7 +127,7 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 	// connect / refresh discovered orchestrators
 	for _, sdNode := range sdNodes {
 		wg.Add(1)
-		go func(sdNode *sd.ServiceDiscoveryItem) {
+		go func(sdNode sd.ServiceDiscoveryItem) {
 			defer wg.Done()
 
 			var found *OrchestratorNode = nil
@@ -186,7 +186,7 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 	wg.Wait()
 }
 
-func (p *OrchestratorsPool) connectNode(ctx context.Context, node *sd.ServiceDiscoveryItem) error {
+func (p *OrchestratorsPool) connectNode(ctx context.Context, node sd.ServiceDiscoveryItem) error {
 	ctx, childSpan := p.tracer.Start(ctx, "connect-orchestrator-node")
 	defer childSpan.End()
 
