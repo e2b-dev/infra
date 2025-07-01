@@ -65,10 +65,10 @@ func Build(
 	)
 	config, err := rtfs.createExt4Filesystem(childCtx, tracer, postProcessor, rootfsPath)
 	if err != nil {
-		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating rootfs for template '%s' during build '%s': %w", templateConfig.TemplateId, templateConfig.BuildId, err)
+		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating rootfs for template '%s' during build '%s': %w", templateConfig.TemplateID, templateConfig.BuildID, err)
 	}
 
-	buildIDParsed, err := uuid.Parse(templateConfig.BuildId)
+	buildIDParsed, err := uuid.Parse(templateConfig.BuildID)
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("failed to parse build id: %w", err)
 	}

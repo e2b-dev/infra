@@ -81,7 +81,7 @@ func getDefaultReadyCommand(template *templateconfig.TemplateConfig) string {
 	// HACK: This is a temporary fix for a customer that needs a bigger time to start the command.
 	// TODO: Remove this after we can add customizable wait time for building templates.
 	// TODO: Make this user configurable, with health check too
-	if template.TemplateId == "zegbt9dl3l2ixqem82mm" || template.TemplateId == "ot5bidkk3j2so2j02uuz" || template.TemplateId == "0zeou1s7agaytqitvmzc" {
+	if template.TemplateID == "zegbt9dl3l2ixqem82mm" || template.TemplateID == "ot5bidkk3j2so2j02uuz" || template.TemplateID == "0zeou1s7agaytqitvmzc" {
 		return fmt.Sprintf("sleep %d", int((120 * time.Second).Seconds()))
 	}
 

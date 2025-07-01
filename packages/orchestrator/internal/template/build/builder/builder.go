@@ -174,7 +174,7 @@ func (ib *ImageBuilder) BuildLayers(
 				}
 
 				// Needs to be the cached layer hash, not the current step hash
-				layerTag, err := ib.artifactRegistry.GetTag(ctx, ib.template.TemplateId, hash)
+				layerTag, err := ib.artifactRegistry.GetTag(ctx, ib.template.TemplateID, hash)
 				if err != nil {
 					return fmt.Errorf("failed to get layer tag: %w", err)
 				}
@@ -222,7 +222,7 @@ func (ib *ImageBuilder) BuildLayers(
 	}
 
 	lastStep := ib.template.Steps[len(ib.template.Steps)-1]
-	return ib.artifactRegistry.GetLayer(ctx, ib.template.TemplateId, lastStep.Hash, platform)
+	return ib.artifactRegistry.GetLayer(ctx, ib.template.TemplateID, lastStep.Hash, platform)
 }
 
 func (ib *ImageBuilder) buildAndCacheLayer(
@@ -243,7 +243,7 @@ func (ib *ImageBuilder) buildAndCacheLayer(
 	if step.FilesHash != nil && *step.FilesHash != "" {
 		filesLayerHash = *step.FilesHash
 	}
-	cachePath := filepath.Join(filesLayerCachePath, ib.template.TemplateId, filesLayerHash)
+	cachePath := filepath.Join(filesLayerCachePath, ib.template.TemplateID, filesLayerHash)
 	if err := os.MkdirAll(cachePath, os.ModePerm); err != nil {
 		return nil, fmt.Errorf("failed to create layer directory: %w", err)
 	}
@@ -255,7 +255,7 @@ func (ib *ImageBuilder) buildAndCacheLayer(
 		return nil, fmt.Errorf("failed to apply command: %w", err)
 	}
 
-	layerTag, err := ib.artifactRegistry.GetTag(ctx, ib.template.TemplateId, step.Hash)
+	layerTag, err := ib.artifactRegistry.GetTag(ctx, ib.template.TemplateID, step.Hash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get layer tag: %w", err)
 	}
@@ -309,7 +309,7 @@ func (ib *ImageBuilder) applyCommand(
 			return nil, fmt.Errorf("%s requires files hash to be set", cmdType)
 		}
 
-		obj, err := ib.storage.OpenObject(ctx, GetLayerFilesCachePath(ib.template.TemplateId, *step.FilesHash))
+		obj, err := ib.storage.OpenObject(ctx, GetLayerFilesCachePath(ib.template.TemplateID, *step.FilesHash))
 		if err != nil {
 			return nil, fmt.Errorf("failed to open files object from storage: %w", err)
 		}

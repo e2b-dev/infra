@@ -578,32 +578,6 @@ func (s *Sandbox) Pause(
 	}, nil
 }
 
-type Snapshot struct {
-	MemfileDiff       build.Diff
-	MemfileDiffHeader *header.Header
-	RootfsDiff        build.Diff
-	RootfsDiffHeader  *header.Header
-	Snapfile          *template.LocalFileLink
-}
-
-func (s *Snapshot) Close(_ context.Context) error {
-	var errs []error
-
-	if err := s.MemfileDiff.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("failed to close memfile diff: %w", err))
-	}
-
-	if err := s.RootfsDiff.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("failed to close rootfs diff: %w", err))
-	}
-
-	if err := s.Snapfile.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("failed to close snapfile: %w", err))
-	}
-
-	return errors.Join(errs...)
-}
-
 func pauseProcessMemory(
 	ctx context.Context,
 	tracer trace.Tracer,

@@ -97,7 +97,7 @@ func (r *Rootfs) createExt4Filesystem(
 	if r.template.FromImage != "" {
 		img, err = oci.GetPublicImage(childCtx, tracer, r.template.FromImage)
 	} else {
-		img, err = oci.GetImage(childCtx, tracer, r.artifactRegistry, r.template.TemplateId, r.template.BuildId)
+		img, err = oci.GetImage(childCtx, tracer, r.artifactRegistry, r.template.TemplateID, r.template.BuildID)
 	}
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error requesting docker image: %w", err)
@@ -236,7 +236,7 @@ ff02::2	ip6-allrouters
 
 	e2bFile := fmt.Sprintf(`ENV_ID=%s
 BUILD_ID=%s
-`, config.TemplateId, config.BuildId)
+`, config.TemplateID, config.BuildID)
 
 	envdFileData, err := os.ReadFile(storage.HostEnvdPath)
 	if err != nil {
