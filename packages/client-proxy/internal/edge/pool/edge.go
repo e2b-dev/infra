@@ -20,7 +20,7 @@ const (
 	edgeSyncMaxRetries = 3
 )
 
-type EdgeNodeInfo struct {
+type EdgeInstanceInfo struct {
 	NodeID string
 
 	ServiceInstanceID    string
@@ -32,22 +32,22 @@ type EdgeNodeInfo struct {
 	Host string
 }
 
-type EdgeNode struct {
-	info EdgeNodeInfo
+type EdgeInstance struct {
+	info EdgeInstanceInfo
 
 	client *api.ClientWithResponses
 	mutex  sync.RWMutex
 }
 
-func NewEdgeNode(host string, auth authorization.AuthorizationService) (*EdgeNode, error) {
+func NewEdgeInstance(host string, auth authorization.AuthorizationService) (*EdgeInstance, error) {
 	client, err := newEdgeApiClient(host, auth)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create http client: %w", err)
 	}
 
-	o := &EdgeNode{
+	o := &EdgeInstance{
 		client: client,
-		info: EdgeNodeInfo{
+		info: EdgeInstanceInfo{
 			Host: host,
 		},
 	}
@@ -55,17 +55,17 @@ func NewEdgeNode(host string, auth authorization.AuthorizationService) (*EdgeNod
 	return o, nil
 }
 
-func (o *EdgeNode) sync(ctx context.Context) error {
+func (o *EdgeInstance) sync(ctx context.Context) error {
 	for i := 0; i < edgeSyncMaxRetries; i++ {
 		info := o.GetInfo()
 		res, err := o.client.V1InfoWithResponse(ctx)
 		if err != nil {
-			zap.L().Error("failed to check edge node status", l.WithClusterNodeID(info.NodeID), zap.Error(err))
+			zap.L().Error("failed to check edge instance status", l.WithClusterNodeID(info.NodeID), zap.Error(err))
 			continue
 		}
 
 		if res.JSON200 == nil {
-			zap.L().Error("failed to check edge node status", l.WithClusterNodeID(info.NodeID), zap.Int("status", res.StatusCode()))
+			zap.L().Error("failed to check edge instance status", l.WithClusterNodeID(info.NodeID), zap.Int("status", res.StatusCode()))
 			continue
 		}
 
@@ -82,26 +82,26 @@ func (o *EdgeNode) sync(ctx context.Context) error {
 		return nil
 	}
 
-	return errors.New("failed to check edge node status")
+	return errors.New("failed to check edge instance status")
 }
 
-func (o *EdgeNode) GetClient() *api.ClientWithResponses {
+func (o *EdgeInstance) GetClient() *api.ClientWithResponses {
 	return o.client
 }
 
-func (o *EdgeNode) GetInfo() EdgeNodeInfo {
+func (o *EdgeInstance) GetInfo() EdgeInstanceInfo {
 	o.mutex.RLock()
 	defer o.mutex.RUnlock()
 	return o.info
 }
 
-func (o *EdgeNode) setInfo(info EdgeNodeInfo) {
+func (o *EdgeInstance) setInfo(info EdgeInstanceInfo) {
 	o.mutex.Lock()
 	defer o.mutex.Unlock()
 	o.info = info
 }
 
-func (o *EdgeNode) setStatus(s api.ClusterNodeStatus) {
+func (o *EdgeInstance) setStatus(s api.ClusterNodeStatus) {
 	o.mutex.Lock()
 	defer o.mutex.Unlock()
 	o.info.ServiceStatus = s

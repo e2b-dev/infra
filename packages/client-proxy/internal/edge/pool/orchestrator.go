@@ -32,7 +32,7 @@ const (
 	OrchestratorStatusUnhealthy OrchestratorStatus = "unhealthy"
 )
 
-type OrchestratorNodeInfo struct {
+type OrchestratorInstanceInfo struct {
 	NodeID string
 
 	ServiceInstanceID    string
@@ -46,14 +46,14 @@ type OrchestratorNodeInfo struct {
 	Roles []e2bgrpcorchestratorinfo.ServiceInfoRole
 }
 
-type OrchestratorNode struct {
+type OrchestratorInstance struct {
 	MetricVCpuUsed         atomic.Int64
 	MetricMemoryUsedInMB   atomic.Int64
 	MetricDiskUsedInMB     atomic.Int64
 	MetricSandboxesRunning atomic.Int64
 
 	client *OrchestratorGRPCClient
-	info   OrchestratorNodeInfo
+	info   OrchestratorInstanceInfo
 	mutex  sync.RWMutex
 }
 
@@ -65,7 +65,7 @@ type OrchestratorGRPCClient struct {
 	Connection *grpc.ClientConn
 }
 
-func NewOrchestrator(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, ip string, port int) (*OrchestratorNode, error) {
+func NewOrchestratorInstance(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, ip string, port int) (*OrchestratorInstance, error) {
 	host := fmt.Sprintf("%s:%d", ip, port)
 
 	client, err := newClient(tracerProvider, meterProvider, host)
@@ -73,9 +73,9 @@ func NewOrchestrator(tracerProvider trace.TracerProvider, meterProvider metric.M
 		return nil, fmt.Errorf("failed to create GRPC client: %w", err)
 	}
 
-	o := &OrchestratorNode{
+	o := &OrchestratorInstance{
 		client: client,
-		info: OrchestratorNodeInfo{
+		info: OrchestratorInstanceInfo{
 			Host: host,
 			Ip:   ip,
 		},
@@ -84,7 +84,7 @@ func NewOrchestrator(tracerProvider trace.TracerProvider, meterProvider metric.M
 	return o, nil
 }
 
-func (o *OrchestratorNode) sync(ctx context.Context) error {
+func (o *OrchestratorInstance) sync(ctx context.Context) error {
 	for i := 0; i < orchestratorSyncMaxRetries; i++ {
 		freshInfo := o.GetInfo()
 
@@ -117,29 +117,29 @@ func (o *OrchestratorNode) sync(ctx context.Context) error {
 	return errors.New("failed to check orchestrator status")
 }
 
-func (o *OrchestratorNode) setStatus(status OrchestratorStatus) {
+func (o *OrchestratorInstance) setStatus(status OrchestratorStatus) {
 	o.mutex.Lock()
 	defer o.mutex.Unlock()
 	o.info.ServiceStatus = status
 }
 
-func (o *OrchestratorNode) setInfo(i OrchestratorNodeInfo) {
+func (o *OrchestratorInstance) setInfo(i OrchestratorInstanceInfo) {
 	o.mutex.Lock()
 	defer o.mutex.Unlock()
 	o.info = i
 }
 
-func (o *OrchestratorNode) GetInfo() OrchestratorNodeInfo {
+func (o *OrchestratorInstance) GetInfo() OrchestratorInstanceInfo {
 	o.mutex.RLock()
 	defer o.mutex.RUnlock()
 	return o.info
 }
 
-func (o *OrchestratorNode) GetClient() *OrchestratorGRPCClient {
+func (o *OrchestratorInstance) GetClient() *OrchestratorGRPCClient {
 	return o.client
 }
 
-func (o *OrchestratorNode) Close() error {
+func (o *OrchestratorInstance) Close() error {
 	// close sync context
 	o.setStatus(OrchestratorStatusUnhealthy)
 
@@ -183,8 +183,6 @@ func newClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterPr
 	}
 
 	return &OrchestratorGRPCClient{
-		Sandbox:    e2bgrpcorchestrator.NewSandboxServiceClient(conn),
-		Template:   e2bgrpctemplatemanager.NewTemplateServiceClient(conn),
 		Info:       e2bgrpcorchestratorinfo.NewInfoServiceClient(conn),
 		Connection: conn,
 	}, nil
