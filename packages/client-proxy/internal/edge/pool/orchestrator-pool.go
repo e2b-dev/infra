@@ -202,6 +202,6 @@ func (e *orchestratorInstancesSyncStore) PoolRemove(ctx context.Context, item *O
 		zap.L().Error("Error closing connection to orchestrator instance", zap.Error(err), l.WithClusterNodeID(info.NodeID))
 	}
 
-	e.pool.instances.Remove(item.info.Host)
+	e.pool.instances.Remove(info.Host)
 	zap.L().Info("Orchestrator instance connection has been deregistered.", l.WithClusterNodeID(info.NodeID))
 }
