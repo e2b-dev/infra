@@ -110,10 +110,10 @@ func (r *Rootfs) createExt4Filesystem(
 	postProcessor.WriteMsg(fmt.Sprintf("Base Docker image size: %s", humanize.Bytes(uint64(imageSize))))
 
 	// Template build layers
-	img, err = r.builder.BuildLayers(ctx, tracer, postProcessor, img)
-	if err != nil {
-		return containerregistry.Config{}, fmt.Errorf("error building layers: %w", err)
-	}
+	// img, err = r.builder.BuildLayers(ctx, tracer, postProcessor, img)
+	// if err != nil {
+	// 	return containerregistry.Config{}, fmt.Errorf("error building layers: %w", err)
+	// }
 	// Template build layers
 
 	postProcessor.WriteMsg("Setting up system files")
