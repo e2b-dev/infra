@@ -47,7 +47,7 @@ type GCPBucketStorageProviderOptions struct {
 
 func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, proxyURL string) (*GCPBucketStorageProvider, error) {
 	// Create the legacy GCP storage client with proper credentials
-	client, err := storage.NewClient(ctx, option.WithUniverseDomain("private.googleapis.com"))
+	client, err := storage.NewClient(ctx, option.WithEndpoint("private.googleapis.com"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
 	}

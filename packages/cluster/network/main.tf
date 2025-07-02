@@ -94,6 +94,10 @@ resource "google_compute_global_address" "orch_logs_ip" {
   name = "${var.prefix}logs-ip"
 }
 
+resource "google_compute_global_address" "orch_ip" {
+  name = "${var.prefix}orch-ip"
+}
+
 
 # ======== CLOUDFLARE ====================
 
@@ -797,24 +801,36 @@ resource "google_compute_network" "vpc_network" {
 #}
 #
 
-module "private_service_connect" {
-  source  = "terraform-google-modules/network/google//modules/private-service-connect"
-  version = "~> 11.1"
+# module "private_service_connect" {
+#   source  = "terraform-google-modules/network/google//modules/private-service-connect"
+#   version = "~> 11.1"
+# 
+#   service_directory_namespace = var.service_directory_namespace
+#   service_directory_region    = var.gcp_region
+# 
+#   project_id                 = var.gcp_project_id
+#   network_self_link          = google_compute_network.vpc_network.self_link
+#   private_service_connect_ip = "10.3.0.5"
+#   forwarding_rule_target     = "all-apis"
+# }
+# 
+# resource "google_dns_record_set" "private_googleapis_a_record" {
+#   name         = "private.googleapis.com."
+#   type         = "A"
+#   ttl          = 300
+#   managed_zone = module.private_service_connect.dns_zone_googleapis_name
+# 
+#   rrdatas = ["199.36.153.8"]
+# }
 
-
-  project_id                 = var.gcp_project_id
-  network_self_link          = google_compute_network.vpc_network.self_link
-  private_service_connect_ip = "10.3.0.5"
-  forwarding_rule_target     = "all-apis"
-}
-
-resource "google_dns_record_set" "private_googleapis_a_record" {
-  name         = "private.googleapis.com."
-  type         = "A"
-  ttl          = 300
-  managed_zone = module.private_service_connect.dns_zone_googleapis_name
-
-  rrdatas = ["199.36.153.8"]
+########### Create a VPC Peering Connection:
+resource "google_service_networking_connection" "private_access_connection" {
+  network                 = google_compute_network.vpc_network.id
+  service                 = "storage.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.orch_ip.name]
+  depends_on = [
+    google_compute_network.vpc_network
+  ]
 }
 
 # Allow egress to specific IP ranges
