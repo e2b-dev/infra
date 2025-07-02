@@ -20,14 +20,14 @@ func (a *APIStore) V1ServiceDiscoveryNodes(c *gin.Context) {
 		response = append(
 			response,
 			api.ClusterNode{
-				Id:        orchestrator.ServiceId,
-				NodeId:    orchestrator.NodeId,
-				Status:    getOrchestratorStatusResolved(orchestrator.Status),
-				Type:      api.ClusterNodeTypeOrchestrator,
-				Version:   orchestrator.SourceVersion,
-				Commit:    orchestrator.SourceCommit,
-				Host:      orchestrator.Host,
-				StartedAt: orchestrator.Startup,
+				NodeID:               orchestrator.NodeID,
+				ServiceInstanceID:    orchestrator.ServiceInstanceId,
+				ServiceStatus:        getOrchestratorStatusResolved(orchestrator.ServiceStatus),
+				ServiceType:          api.ClusterNodeTypeOrchestrator,
+				ServiceVersion:       orchestrator.ServiceVersion,
+				ServiceVersionCommit: orchestrator.ServiceVersionCommit,
+				ServiceHost:          orchestrator.Host,
+				ServiceStartedAt:     orchestrator.ServiceStartup,
 			},
 		)
 	}
@@ -37,14 +37,14 @@ func (a *APIStore) V1ServiceDiscoveryNodes(c *gin.Context) {
 		response = append(
 			response,
 			api.ClusterNode{
-				Id:        edge.ServiceId,
-				NodeId:    edge.NodeId,
-				Status:    edge.Status,
-				Type:      api.ClusterNodeTypeEdge,
-				Version:   edge.SourceVersion,
-				Commit:    edge.SourceCommit,
-				Host:      edge.Host,
-				StartedAt: edge.Startup,
+				NodeID:               edge.NodeID,
+				ServiceInstanceID:    edge.ServiceInstanceID,
+				ServiceStatus:        edge.ServiceStatus,
+				ServiceType:          api.ClusterNodeTypeEdge,
+				ServiceVersion:       edge.ServiceVersion,
+				ServiceVersionCommit: edge.ServiceVersionCommit,
+				ServiceHost:          edge.Host,
+				ServiceStartedAt:     edge.ServiceStartup,
 			},
 		)
 	}
@@ -53,14 +53,14 @@ func (a *APIStore) V1ServiceDiscoveryNodes(c *gin.Context) {
 	response = append(
 		response,
 		api.ClusterNode{
-			Id:        a.info.ServiceId,
-			NodeId:    a.info.NodeId,
-			Status:    a.info.GetStatus(),
-			Type:      api.ClusterNodeTypeEdge,
-			Version:   a.info.SourceVersion,
-			Commit:    a.info.SourceCommit,
-			Host:      a.info.Host,
-			StartedAt: a.info.Startup,
+			NodeID:               a.info.NodeID,
+			ServiceInstanceID:    a.info.ServiceInstanceID,
+			ServiceStatus:        a.info.GetStatus(),
+			ServiceType:          api.ClusterNodeTypeEdge,
+			ServiceVersion:       a.info.ServiceVersion,
+			ServiceVersionCommit: a.info.ServiceVersionCommit,
+			ServiceHost:          a.info.Host,
+			ServiceStartedAt:     a.info.ServiceStartup,
 		},
 	)
 
@@ -68,7 +68,7 @@ func (a *APIStore) V1ServiceDiscoveryNodes(c *gin.Context) {
 		response,
 		func(i, j int) bool {
 			// older dates first
-			return response[i].StartedAt.Before(response[j].StartedAt)
+			return response[i].ServiceStartedAt.Before(response[j].ServiceStartedAt)
 		},
 	)
 

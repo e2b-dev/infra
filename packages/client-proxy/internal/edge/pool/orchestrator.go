@@ -34,18 +34,18 @@ const (
 )
 
 type OrchestratorNode struct {
-	ServiceId string
-	NodeId    string
+	ServiceInstanceId string
+	NodeID            string
 
-	SourceVersion string
-	SourceCommit  string
+	ServiceVersion       string
+	ServiceVersionCommit string
 
 	Host string
 	Ip   string
 
-	Status  OrchestratorStatus
-	Startup time.Time
-	Roles   []e2bgrpcorchestratorinfo.ServiceInfoRole
+	ServiceStatus  OrchestratorStatus
+	ServiceStartup time.Time
+	Roles          []e2bgrpcorchestratorinfo.ServiceInfoRole
 
 	Client *OrchestratorGRPCClient
 
@@ -123,18 +123,18 @@ func (o *OrchestratorNode) syncRun() error {
 	for i := 0; i < orchestratorSyncMaxRetries; i++ {
 		status, err := o.Client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 		if err != nil {
-			zap.L().Error("failed to check orchestrator health", l.WithClusterNodeID(o.ServiceId), zap.Error(err))
+			zap.L().Error("failed to check orchestrator health", l.WithClusterNodeID(o.ServiceInstanceId), zap.Error(err))
 			continue
 		}
 
-		o.NodeId = status.NodeId
-		o.ServiceId = status.ServiceId
-		o.Startup = status.ServiceStartup.AsTime()
-		o.Status = getMappedStatus(status.ServiceStatus)
-		o.Roles = status.ServiceRoles
+		o.NodeID = status.NodeId
+		o.ServiceInstanceId = status.ServiceId
+		o.ServiceStartup = status.ServiceStartup.AsTime()
+		o.ServiceStatus = getMappedStatus(status.ServiceStatus)
+		o.ServiceVersion = status.ServiceVersion
+		o.ServiceVersionCommit = status.ServiceCommit
 
-		o.SourceVersion = status.ServiceVersion
-		o.SourceCommit = status.ServiceCommit
+		o.Roles = status.ServiceRoles
 
 		o.MetricSandboxesRunning.Store(status.MetricSandboxesRunning)
 		o.MetricMemoryUsedInMB.Store(status.MetricMemoryUsedMb)
@@ -150,7 +150,7 @@ func (o *OrchestratorNode) syncRun() error {
 func (o *OrchestratorNode) Close() error {
 	// close sync context
 	o.ctxCancel()
-	o.Status = OrchestratorStatusUnhealthy
+	o.ServiceStatus = OrchestratorStatusUnhealthy
 
 	// close grpc client
 	if o.Client != nil {

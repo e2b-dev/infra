@@ -26,7 +26,7 @@ type ServiceInfo struct {
 
 var serviceRolesMapper = map[ServiceType]orchestratorinfo.ServiceInfoRole{
 	Orchestrator:    orchestratorinfo.ServiceInfoRole_Orchestrator,
-	TemplateManager: orchestratorinfo.ServiceInfoRole_TemplateManager,
+	TemplateManager: orchestratorinfo.ServiceInfoRole_TemplateBuilder,
 }
 
 func (s *ServiceInfo) GetStatus() orchestratorinfo.ServiceInfoStatus {

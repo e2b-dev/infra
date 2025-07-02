@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
+	"regexp"
 	"strings"
 	"time"
 
@@ -20,12 +20,12 @@ import (
 
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/handlers"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
-	securityHeaderName = "X-API-Key"
 	securitySchemaName = "ApiKeyAuth"
 
 	forbiddenErrPrefix = "access forbidden: "
@@ -38,6 +38,8 @@ const (
 var (
 	ErrMissingAuthHeader = errors.New("authorization header is missing")
 	ErrInvalidAuth       = errors.New("authorization is invalid")
+
+	skippedPaths = regexp.MustCompile(`^(?:/health(?:/.*)?|/v1/info)$`)
 )
 
 func NewGinServer(logger *zap.Logger, store *handlers.APIStore, swagger *openapi3.T, tracer trace.Tracer, auth authorization.AuthorizationService) *gin.Engine {
@@ -67,10 +69,7 @@ func NewGinServer(logger *zap.Logger, store *handlers.APIStore, swagger *openapi
 		),
 
 		func(c *gin.Context) {
-			path := c.Request.URL.Path
-			pathSkipped := []string{"/health", "/health/traffic", "/v1/info"}
-
-			if slices.Contains(pathSkipped, path) {
+			if skippedPaths.MatchString(c.Request.URL.Path) {
 				c.Next()
 				return
 			}
@@ -101,7 +100,7 @@ func ginBuildAuthenticationHandler(tracer trace.Tracer, auth authorization.Autho
 		request := input.RequestValidationInput.Request
 
 		// Check for the Authorization header.
-		key := request.Header.Get(securityHeaderName)
+		key := request.Header.Get(consts.EdgeApiAuthHeader)
 		if key == "" {
 			return ErrMissingAuthHeader
 		}

@@ -50,7 +50,8 @@ const (
 var (
 	commitSHA string
 
-	useProxyCatalogResolution = os.Getenv("USE_PROXY_CATALOG_RESOLUTION") == "true"
+	useProxyCatalogResolution = os.Getenv("USE_CATALOG_RESOLUTION") == "true"
+	useDnsResolution          = os.Getenv("USE_DNS_RESOLUTION") != "true"
 )
 
 func run() int {
@@ -138,12 +139,12 @@ func run() int {
 	orchestrators := e2borchestrators.NewOrchestratorsPool(ctx, logger, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
 
 	info := &e2binfo.ServiceInfo{
-		NodeId:        internal.GetNodeID(),
-		ServiceId:     uuid.NewString(),
-		SourceVersion: version,
-		SourceCommit:  commitSHA,
-		Startup:       time.Now(),
-		Host:          fmt.Sprintf("%s:%d", internal.GetNodeIP(), edgePort),
+		NodeID:               internal.GetNodeID(),
+		ServiceInstanceID:    uuid.NewString(),
+		ServiceVersion:       version,
+		ServiceVersionCommit: commitSHA,
+		ServiceStartup:       time.Now(),
+		Host:                 fmt.Sprintf("%s:%d", internal.GetNodeIP(), edgePort),
 	}
 
 	// service starts in unhealthy state, and we are waiting for initial health check to pass
@@ -154,7 +155,7 @@ func run() int {
 	}
 
 	// Proxy sandbox http traffic to orchestrator nodes
-	trafficProxy, err := e2bproxy.NewClientProxy(tel.MeterProvider, serviceName, uint(proxyPort), catalog, orchestrators, useProxyCatalogResolution)
+	trafficProxy, err := e2bproxy.NewClientProxy(tel.MeterProvider, serviceName, uint(proxyPort), catalog, orchestrators, useProxyCatalogResolution, useDnsResolution)
 	if err != nil {
 		logger.Error("Failed to create client proxy", zap.Error(err))
 		return 1

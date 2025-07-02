@@ -72,19 +72,19 @@ type APIStore struct {
 func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 	tracer := tel.TracerProvider.Tracer("api")
 
-	zap.L().Info("initializing API store and services")
+	zap.L().Info("Initializing API store and services")
 
 	dbClient, err := db.NewClient(40, 20)
 	if err != nil {
-		zap.L().Fatal("initializing Supabase client", zap.Error(err))
+		zap.L().Fatal("Initializing Supabase client", zap.Error(err))
 	}
 
 	sqlcDB, err := sqlcdb.NewClient(ctx, sqlcdb.WithMaxConnections(40), sqlcdb.WithMinIdle(5))
 	if err != nil {
-		zap.L().Fatal("initializing SQLC client", zap.Error(err))
+		zap.L().Fatal("Initializing SQLC client", zap.Error(err))
 	}
 
-	zap.L().Info("created database client")
+	zap.L().Info("Created database client")
 
 	readMetricsFromClickHouse := os.Getenv("READ_METRICS_FROM_CLICKHOUSE")
 	var clickhouseStore chdb.Store = nil
@@ -104,7 +104,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 
 	posthogClient, posthogErr := analyticscollector.NewPosthogClient()
 	if posthogErr != nil {
-		zap.L().Fatal("initializing Posthog client", zap.Error(posthogErr))
+		zap.L().Fatal("Initializing Posthog client", zap.Error(posthogErr))
 	}
 
 	nomadConfig := &nomadapi.Config{
@@ -114,7 +114,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 
 	nomadClient, err := nomadapi.NewClient(nomadConfig)
 	if err != nil {
-		zap.L().Fatal("initializing Nomad client", zap.Error(err))
+		zap.L().Fatal("Initializing Nomad client", zap.Error(err))
 	}
 
 	var redisClient redis.UniversalClient
@@ -139,25 +139,16 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 	if redisClient != nil {
 		_, err := redisClient.Ping(ctx).Result()
 		if err != nil {
-			zap.L().Fatal("could not connect to Redis", zap.Error(err))
+			zap.L().Fatal("Could not connect to Redis", zap.Error(err))
 		}
 
-		zap.L().Info("connected to Redis cluster")
+		zap.L().Info("Connected to Redis cluster")
 	}
 
 	orch, err := orchestrator.New(ctx, tel, tracer, nomadClient, posthogClient, redisClient, dbClient)
 	if err != nil {
-		zap.L().Fatal("initializing Orchestrator client", zap.Error(err))
+		zap.L().Fatal("Initializing Orchestrator client", zap.Error(err))
 	}
-
-	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
-	templateManager, err := template_manager.New(ctx, tel.TracerProvider, tel.MeterProvider, dbClient, templateBuildsCache)
-	if err != nil {
-		zap.L().Fatal("initializing Template manager client", zap.Error(err))
-	}
-
-	// Start the periodic sync of template builds statuses
-	go templateManager.BuildsStatusPeriodicalSync(ctx)
 
 	var lokiClient *loki.DefaultClient
 	if laddr := os.Getenv("LOKI_ADDRESS"); laddr != "" {
@@ -174,13 +165,22 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 
 	accessTokenGenerator, err := sandbox.NewEnvdAccessTokenGenerator()
 	if err != nil {
-		zap.L().Fatal("initializing access token generator failed", zap.Error(err))
+		zap.L().Fatal("Initializing access token generator failed", zap.Error(err))
 	}
 
-	clustersPool, err := edge.NewPool(ctx, sqlcDB, tracer)
+	clustersPool, err := edge.NewPool(ctx, tel, sqlcDB, tracer)
 	if err != nil {
 		zap.L().Fatal("initializing edge clusters pool failed", zap.Error(err))
 	}
+
+	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
+	templateManager, err := template_manager.New(ctx, tracer, tel.TracerProvider, tel.MeterProvider, dbClient, sqlcDB, clustersPool, lokiClient, templateBuildsCache)
+	if err != nil {
+		zap.L().Fatal("Initializing Template manager client", zap.Error(err))
+	}
+
+	// Start the periodic sync of template builds statuses
+	go templateManager.BuildsStatusPeriodicalSync(ctx)
 
 	a := &APIStore{
 		Healthy:                   false,

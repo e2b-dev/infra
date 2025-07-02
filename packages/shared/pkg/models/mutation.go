@@ -1378,6 +1378,7 @@ type EnvMutation struct {
 	spawn_count        *int64
 	addspawn_count     *int64
 	last_spawned_at    *time.Time
+	cluster_id         *uuid.UUID
 	clearedFields      map[string]struct{}
 	team               *uuid.UUID
 	clearedteam        bool
@@ -1855,6 +1856,55 @@ func (m *EnvMutation) ResetLastSpawnedAt() {
 	delete(m.clearedFields, env.FieldLastSpawnedAt)
 }
 
+// SetClusterID sets the "cluster_id" field.
+func (m *EnvMutation) SetClusterID(u uuid.UUID) {
+	m.cluster_id = &u
+}
+
+// ClusterID returns the value of the "cluster_id" field in the mutation.
+func (m *EnvMutation) ClusterID() (r uuid.UUID, exists bool) {
+	v := m.cluster_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClusterID returns the old "cluster_id" field's value of the Env entity.
+// If the Env object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnvMutation) OldClusterID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClusterID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClusterID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClusterID: %w", err)
+	}
+	return oldValue.ClusterID, nil
+}
+
+// ClearClusterID clears the value of the "cluster_id" field.
+func (m *EnvMutation) ClearClusterID() {
+	m.cluster_id = nil
+	m.clearedFields[env.FieldClusterID] = struct{}{}
+}
+
+// ClusterIDCleared returns if the "cluster_id" field was cleared in this mutation.
+func (m *EnvMutation) ClusterIDCleared() bool {
+	_, ok := m.clearedFields[env.FieldClusterID]
+	return ok
+}
+
+// ResetClusterID resets all changes to the "cluster_id" field.
+func (m *EnvMutation) ResetClusterID() {
+	m.cluster_id = nil
+	delete(m.clearedFields, env.FieldClusterID)
+}
+
 // ClearTeam clears the "team" edge to the Team entity.
 func (m *EnvMutation) ClearTeam() {
 	m.clearedteam = true
@@ -2118,7 +2168,7 @@ func (m *EnvMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *EnvMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 9)
 	if m.created_at != nil {
 		fields = append(fields, env.FieldCreatedAt)
 	}
@@ -2142,6 +2192,9 @@ func (m *EnvMutation) Fields() []string {
 	}
 	if m.last_spawned_at != nil {
 		fields = append(fields, env.FieldLastSpawnedAt)
+	}
+	if m.cluster_id != nil {
+		fields = append(fields, env.FieldClusterID)
 	}
 	return fields
 }
@@ -2167,6 +2220,8 @@ func (m *EnvMutation) Field(name string) (ent.Value, bool) {
 		return m.SpawnCount()
 	case env.FieldLastSpawnedAt:
 		return m.LastSpawnedAt()
+	case env.FieldClusterID:
+		return m.ClusterID()
 	}
 	return nil, false
 }
@@ -2192,6 +2247,8 @@ func (m *EnvMutation) OldField(ctx context.Context, name string) (ent.Value, err
 		return m.OldSpawnCount(ctx)
 	case env.FieldLastSpawnedAt:
 		return m.OldLastSpawnedAt(ctx)
+	case env.FieldClusterID:
+		return m.OldClusterID(ctx)
 	}
 	return nil, fmt.Errorf("unknown Env field %s", name)
 }
@@ -2257,6 +2314,13 @@ func (m *EnvMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetLastSpawnedAt(v)
 		return nil
+	case env.FieldClusterID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClusterID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Env field %s", name)
 }
@@ -2320,6 +2384,9 @@ func (m *EnvMutation) ClearedFields() []string {
 	if m.FieldCleared(env.FieldLastSpawnedAt) {
 		fields = append(fields, env.FieldLastSpawnedAt)
 	}
+	if m.FieldCleared(env.FieldClusterID) {
+		fields = append(fields, env.FieldClusterID)
+	}
 	return fields
 }
 
@@ -2339,6 +2406,9 @@ func (m *EnvMutation) ClearField(name string) error {
 		return nil
 	case env.FieldLastSpawnedAt:
 		m.ClearLastSpawnedAt()
+		return nil
+	case env.FieldClusterID:
+		m.ClearClusterID()
 		return nil
 	}
 	return fmt.Errorf("unknown Env nullable field %s", name)
@@ -2371,6 +2441,9 @@ func (m *EnvMutation) ResetField(name string) error {
 		return nil
 	case env.FieldLastSpawnedAt:
 		m.ResetLastSpawnedAt()
+		return nil
+	case env.FieldClusterID:
+		m.ResetClusterID()
 		return nil
 	}
 	return fmt.Errorf("unknown Env field %s", name)
@@ -3012,6 +3085,7 @@ type EnvBuildMutation struct {
 	kernel_version        *string
 	firecracker_version   *string
 	envd_version          *string
+	cluster_node_id       *string
 	clearedFields         map[string]struct{}
 	env                   *string
 	clearedenv            bool
@@ -3836,6 +3910,55 @@ func (m *EnvBuildMutation) ResetEnvdVersion() {
 	delete(m.clearedFields, envbuild.FieldEnvdVersion)
 }
 
+// SetClusterNodeID sets the "cluster_node_id" field.
+func (m *EnvBuildMutation) SetClusterNodeID(s string) {
+	m.cluster_node_id = &s
+}
+
+// ClusterNodeID returns the value of the "cluster_node_id" field in the mutation.
+func (m *EnvBuildMutation) ClusterNodeID() (r string, exists bool) {
+	v := m.cluster_node_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClusterNodeID returns the old "cluster_node_id" field's value of the EnvBuild entity.
+// If the EnvBuild object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnvBuildMutation) OldClusterNodeID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClusterNodeID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClusterNodeID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClusterNodeID: %w", err)
+	}
+	return oldValue.ClusterNodeID, nil
+}
+
+// ClearClusterNodeID clears the value of the "cluster_node_id" field.
+func (m *EnvBuildMutation) ClearClusterNodeID() {
+	m.cluster_node_id = nil
+	m.clearedFields[envbuild.FieldClusterNodeID] = struct{}{}
+}
+
+// ClusterNodeIDCleared returns if the "cluster_node_id" field was cleared in this mutation.
+func (m *EnvBuildMutation) ClusterNodeIDCleared() bool {
+	_, ok := m.clearedFields[envbuild.FieldClusterNodeID]
+	return ok
+}
+
+// ResetClusterNodeID resets all changes to the "cluster_node_id" field.
+func (m *EnvBuildMutation) ResetClusterNodeID() {
+	m.cluster_node_id = nil
+	delete(m.clearedFields, envbuild.FieldClusterNodeID)
+}
+
 // ClearEnv clears the "env" edge to the Env entity.
 func (m *EnvBuildMutation) ClearEnv() {
 	m.clearedenv = true
@@ -3897,7 +4020,7 @@ func (m *EnvBuildMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *EnvBuildMutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 16)
 	if m.created_at != nil {
 		fields = append(fields, envbuild.FieldCreatedAt)
 	}
@@ -3943,6 +4066,9 @@ func (m *EnvBuildMutation) Fields() []string {
 	if m.envd_version != nil {
 		fields = append(fields, envbuild.FieldEnvdVersion)
 	}
+	if m.cluster_node_id != nil {
+		fields = append(fields, envbuild.FieldClusterNodeID)
+	}
 	return fields
 }
 
@@ -3981,6 +4107,8 @@ func (m *EnvBuildMutation) Field(name string) (ent.Value, bool) {
 		return m.FirecrackerVersion()
 	case envbuild.FieldEnvdVersion:
 		return m.EnvdVersion()
+	case envbuild.FieldClusterNodeID:
+		return m.ClusterNodeID()
 	}
 	return nil, false
 }
@@ -4020,6 +4148,8 @@ func (m *EnvBuildMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldFirecrackerVersion(ctx)
 	case envbuild.FieldEnvdVersion:
 		return m.OldEnvdVersion(ctx)
+	case envbuild.FieldClusterNodeID:
+		return m.OldClusterNodeID(ctx)
 	}
 	return nil, fmt.Errorf("unknown EnvBuild field %s", name)
 }
@@ -4134,6 +4264,13 @@ func (m *EnvBuildMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetEnvdVersion(v)
 		return nil
+	case envbuild.FieldClusterNodeID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClusterNodeID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild field %s", name)
 }
@@ -4236,6 +4373,9 @@ func (m *EnvBuildMutation) ClearedFields() []string {
 	if m.FieldCleared(envbuild.FieldEnvdVersion) {
 		fields = append(fields, envbuild.FieldEnvdVersion)
 	}
+	if m.FieldCleared(envbuild.FieldClusterNodeID) {
+		fields = append(fields, envbuild.FieldClusterNodeID)
+	}
 	return fields
 }
 
@@ -4270,6 +4410,9 @@ func (m *EnvBuildMutation) ClearField(name string) error {
 		return nil
 	case envbuild.FieldEnvdVersion:
 		m.ClearEnvdVersion()
+		return nil
+	case envbuild.FieldClusterNodeID:
+		m.ClearClusterNodeID()
 		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild nullable field %s", name)
@@ -4323,6 +4466,9 @@ func (m *EnvBuildMutation) ResetField(name string) error {
 		return nil
 	case envbuild.FieldEnvdVersion:
 		m.ResetEnvdVersion()
+		return nil
+	case envbuild.FieldClusterNodeID:
+		m.ResetClusterNodeID()
 		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild field %s", name)

@@ -55,7 +55,7 @@ runs:
         ORCHESTRATOR_SERVICES: "orchestrator,template-manager"
         SANDBOX_ACCESS_TOKEN_HASH_SEED: "abcdefghijklmnopqrstuvwxyz"
         SUPABASE_JWT_SECRETS: "supabasejwtsecretsupabasejwtsecret"
-        TEMPLATE_MANAGER_ADDRESS: "http://localhost:5008"
+        TEMPLATE_MANAGER_HOST: "localhost:5008"
         REDIS_URL: "localhost:6379"
         ARTIFACTS_REGISTRY_PROVIDER: "Local"
         STORAGE_PROVIDER: "Local"

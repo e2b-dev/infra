@@ -10,6 +10,7 @@ import (
 
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -32,15 +33,16 @@ const (
 )
 
 type Orchestrator struct {
-	httpClient    *http.Client
-	nomadClient   *nomadapi.Client
-	instanceCache *instance.InstanceCache
-	nodes         *smap.Map[*Node]
-	tracer        trace.Tracer
-	analytics     *analyticscollector.Analytics
-	dns           *dns.DNS
-	dbClient      *db.DB
-	tel           *telemetry.Client
+	httpClient          *http.Client
+	nomadClient         *nomadapi.Client
+	instanceCache       *instance.InstanceCache
+	nodes               *smap.Map[*Node]
+	tracer              trace.Tracer
+	analytics           *analyticscollector.Analytics
+	dns                 *dns.DNS
+	dbClient            *db.DB
+	tel                 *telemetry.Client
+	metricsRegistration metric.Registration
 }
 
 func New(
@@ -107,6 +109,14 @@ func New(
 		go o.reportLongRunningSandboxes(ctx)
 	}
 
+	registration, err := o.setupMetrics(tel.MeterProvider)
+	if err != nil {
+		zap.L().Error("Failed to setup metrics", zap.Error(err))
+		return nil, fmt.Errorf("failed to setup metrics: %w", err)
+	}
+
+	o.metricsRegistration = registration
+
 	go o.startStatusLogging(ctx)
 
 	return &o, nil
@@ -134,7 +144,7 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 					nodes = append(nodes, map[string]interface{}{
 						"id":                    nodeItem.Info.ID,
 						"status":                nodeItem.Status(),
-						"socket_status":         nodeItem.Client.connection.GetState().String(),
+						"socket_status":         nodeItem.Client.Connection.GetState().String(),
 						"in_progress_count":     nodeItem.sbxsInProgress.Count(),
 						"failed_to_start_count": nodeItem.createFails.Load(),
 					})
@@ -160,7 +170,13 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 		}
 	}
 
-	zap.L().Info("shutting down node clients", zap.Int("error_count", len(errs)), zap.Int("node_count", len(nodes)))
+	zap.L().Info("Shutting down node clients", zap.Int("error_count", len(errs)), zap.Int("node_count", len(nodes)))
+
+	if o.metricsRegistration != nil {
+		if err := o.metricsRegistration.Unregister(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to unregister metrics: %w", err))
+		}
+	}
 
 	if err := o.analytics.Close(); err != nil {
 		errs = append(errs, err)
