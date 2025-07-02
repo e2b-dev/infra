@@ -3,14 +3,17 @@ package build
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -22,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/builder"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/ext4"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/oci"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/templateconfig"
@@ -58,6 +62,14 @@ const (
 	configurationTimeout = 5 * time.Minute
 	waitEnvdTimeout      = 60 * time.Second
 )
+
+var defaultUser = "root"
+
+type buildMetadata struct {
+	envVars map[string]string
+	user    string
+	workdir *string
+}
 
 func NewBuilder(
 	logger *zap.Logger,
@@ -129,319 +141,368 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 		return nil, fmt.Errorf("error getting envd version: %w", err)
 	}
 
-	templateBuildID := template.BuildID
-	template.BuildID = uuid.NewString()
-	defer func() {
-		template.BuildID = templateBuildID
-	}()
-
-	templateFiles := storage.NewTemplateFiles(
-		template.TemplateID,
-		template.BuildID,
-		template.KernelVersion,
-		template.FirecrackerVersion,
-	)
-	templateCacheFiles, err := templateFiles.NewTemplateCacheFiles()
+	envdHash, err := GetEnvdHash(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error creating template files: %w", err)
+		return nil, fmt.Errorf("error getting envd binary hash: %w", err)
 	}
 
-	templateBuildDir := filepath.Join(templatesDirectory, template.BuildID)
-	err = os.MkdirAll(templateBuildDir, 0o777)
-	if err != nil {
-		return nil, fmt.Errorf("error creating template build directory: %w", err)
-	}
+	var uploadErrGroup errgroup.Group
 	defer func() {
-		err := os.RemoveAll(templateBuildDir)
+		err := uploadErrGroup.Wait()
 		if err != nil {
-			b.logger.Error("Error while removing template build directory", zap.Error(err))
+			e = errors.Join(e, fmt.Errorf("error uploading template layers: %w", err))
 		}
 	}()
 
-	// Created here to be able to pass it to CreateSandbox for populating COW cache
-	rootfsPath := filepath.Join(templateBuildDir, rootfsBuildFileName)
+	buildMetadata := &buildMetadata{
+		envVars: make(map[string]string),
+		user:    defaultUser,
+		workdir: nil,
+	}
+	lastCached := false
 
-	rootfs, memfile, buildConfig, err := Build(
-		ctx,
-		b.tracer,
-		template,
-		engineConfig,
-		postProcessor,
-		b.artifactRegistry,
-		b.storage,
-		b.networkPool,
-		b.templateCache,
-		b.devicePool,
-		templateBuildDir,
-		rootfsPath,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error building environment: %w", err)
+	finalTemplateBuildID := template.BuildID
+	// Stable hash of base
+	baseSHA := sha256.New()
+	baseSHA.Write([]byte(template.FromImage))
+	baseSHA.Write([]byte(envdHash))
+	baseSHA.Write([]byte(provisionScriptFile))
+	baseSHA.Write([]byte(string(template.DiskSizeMB)))
+	baseSHA.Write([]byte(string(template.VCpuCount)))
+	baseSHA.Write([]byte(string(template.MemoryMB)))
+	baseHash := fmt.Sprintf("%x", baseSHA.Sum(nil))
+	lastBuildID := getUUIDFromHash(ctx, b.storage, template.TemplateID, "", baseHash).String()
+
+	template.BuildID = lastBuildID
+	defer func() {
+		template.BuildID = finalTemplateBuildID
+	}()
+
+	// Set force for all steps after first step
+	shouldRebuild := false
+	for _, step := range template.Steps {
+		// Force rebuild if the step has a Force flag set to true
+		if step.Force != nil && *step.Force {
+			shouldRebuild = true
+		}
+
+		if !shouldRebuild {
+			continue
+		}
+
+		force := true
+		step.Force = &force
 	}
 
-	localTemplate := sbxtemplate.NewLocalTemplate(templateCacheFiles, rootfs, memfile)
-	defer localTemplate.Close()
+	baseSandboxConfig := template.ToSandboxConfig(envdVersion)
 
-	// Provision sandbox with systemd and other vital parts
-	postProcessor.WriteMsg("Provisioning sandbox template")
-	// Just a symlink to the rootfs build file, so when the COW cache deletes the underlying file (here symlink),
-	// it will not delete the rootfs file. We use the rootfs again later on to start the sandbox template.
-	rootfsProvisionPath := filepath.Join(templateBuildDir, rootfsProvisionLink)
-	err = os.Symlink(rootfsPath, rootfsProvisionPath)
+	baseCached, err := isCached(ctx, b.storage, template.BuildID)
 	if err != nil {
-		return nil, fmt.Errorf("error creating provision rootfs: %w", err)
+		return nil, fmt.Errorf("error checking if base layer is cached: %w", err)
 	}
 
-	err = b.provisionSandbox(ctx, postProcessor, template, envdVersion, localTemplate, rootfsProvisionPath)
-	if err != nil {
-		return nil, fmt.Errorf("error provisioning sandbox: %w", err)
-	}
-
-	// Check the rootfs filesystem corruption
-	ext4Check, err := ext4.CheckIntegrity(rootfsPath, true)
-	if err != nil {
-		zap.L().Error("provisioned filesystem ext4 integrity",
-			zap.String("result", ext4Check),
-			zap.Error(err),
+	if baseCached {
+		lastCached = true
+		postProcessor.WriteMsg("Base layer is cached, skipping build")
+	} else {
+		templateFiles := storage.NewTemplateFiles(
+			template.TemplateID,
+			template.BuildID,
+			template.KernelVersion,
+			template.FirecrackerVersion,
 		)
-		return nil, fmt.Errorf("error checking provisioned filesystem integrity: %w", err)
-	}
-	zap.L().Debug("provisioned filesystem ext4 integrity",
-		zap.String("result", ext4Check),
-	)
-
-	err = b.enlargeDiskAfterProvisioning(ctx, template, rootfsPath)
-	if err != nil {
-		return nil, fmt.Errorf("error enlarging disk after provisioning: %w", err)
-	}
-
-	err = rootfs.UpdateSize()
-	if err != nil {
-		return nil, fmt.Errorf("error updating rootfs size: %w", err)
-	}
-
-	// Create sandbox for building template
-	postProcessor.WriteMsg("Creating sandbox template")
-	sbx, cleanup, err := sandbox.CreateSandbox(
-		ctx,
-		b.tracer,
-		b.networkPool,
-		b.devicePool,
-		template.ToSandboxConfig(envdVersion),
-		localTemplate,
-		sbxTimeout,
-		rootfsPath,
-		fc.ProcessOptions{
-			InitScriptPath:      systemdInitPath,
-			KernelLogs:          env.IsDevelopment(),
-			SystemdToKernelLogs: false,
-		},
-		config.AllowSandboxInternet,
-	)
-	defer func() {
-		cleanupErr := cleanup.Run(ctx)
-		if cleanupErr != nil {
-			b.logger.Error("Error cleaning up sandbox", zap.Error(cleanupErr))
+		templateCacheFiles, err := templateFiles.NewTemplateCacheFiles()
+		if err != nil {
+			return nil, fmt.Errorf("error creating template files: %w", err)
 		}
-	}()
-	if err != nil {
-		return nil, fmt.Errorf("error creating sandbox: %w", err)
+
+		templateBuildDir := filepath.Join(templatesDirectory, template.BuildID)
+		err = os.MkdirAll(templateBuildDir, 0o777)
+		if err != nil {
+			return nil, fmt.Errorf("error creating template build directory: %w", err)
+		}
+		defer func() {
+			err := os.RemoveAll(templateBuildDir)
+			if err != nil {
+				b.logger.Error("Error while removing template build directory", zap.Error(err))
+			}
+		}()
+
+		// Created here to be able to pass it to CreateSandbox for populating COW cache
+		rootfsPath := filepath.Join(templateBuildDir, rootfsBuildFileName)
+
+		rootfs, memfile, envsImg, err := Build(
+			ctx,
+			b.tracer,
+			template,
+			engineConfig,
+			postProcessor,
+			b.artifactRegistry,
+			b.storage,
+			b.networkPool,
+			b.templateCache,
+			b.devicePool,
+			templateBuildDir,
+			rootfsPath,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("error building environment: %w", err)
+		}
+
+		// Env variables from the Docker image
+		buildMetadata.envVars = oci.ParseEnvs(envsImg.Env)
+
+		localTemplate := sbxtemplate.NewLocalTemplate(templateCacheFiles, rootfs, memfile)
+		defer localTemplate.Close()
+
+		// Provision sandbox with systemd and other vital parts
+		postProcessor.WriteMsg("Provisioning sandbox template")
+		// Just a symlink to the rootfs build file, so when the COW cache deletes the underlying file (here symlink),
+		// it will not delete the rootfs file. We use the rootfs again later on to start the sandbox template.
+		rootfsProvisionPath := filepath.Join(templateBuildDir, rootfsProvisionLink)
+		err = os.Symlink(rootfsPath, rootfsProvisionPath)
+		if err != nil {
+			return nil, fmt.Errorf("error creating provision rootfs: %w", err)
+		}
+
+		err = b.provisionSandbox(ctx, postProcessor, template, envdVersion, localTemplate, rootfsProvisionPath)
+		if err != nil {
+			return nil, fmt.Errorf("error provisioning sandbox: %w", err)
+		}
+
+		// Check the rootfs filesystem corruption
+		ext4Check, err := ext4.CheckIntegrity(rootfsPath, true)
+		if err != nil {
+			zap.L().Error("provisioned filesystem ext4 integrity",
+				zap.String("result", ext4Check),
+				zap.Error(err),
+			)
+			return nil, fmt.Errorf("error checking provisioned filesystem integrity: %w", err)
+		}
+		zap.L().Debug("provisioned filesystem ext4 integrity",
+			zap.String("result", ext4Check),
+		)
+
+		err = b.enlargeDiskAfterProvisioning(ctx, template, rootfsPath)
+		if err != nil {
+			return nil, fmt.Errorf("error enlarging disk after provisioning: %w", err)
+		}
+
+		err = rootfs.UpdateSize()
+		if err != nil {
+			return nil, fmt.Errorf("error updating rootfs size: %w", err)
+		}
+
+		// Create sandbox for building template
+		postProcessor.WriteMsg("Creating sandbox template")
+		sourceSbx, cleanup, err := sandbox.CreateSandbox(
+			ctx,
+			b.tracer,
+			b.networkPool,
+			b.devicePool,
+			baseSandboxConfig,
+			localTemplate,
+			sbxTimeout,
+			rootfsPath,
+			fc.ProcessOptions{
+				InitScriptPath:      systemdInitPath,
+				KernelLogs:          env.IsDevelopment(),
+				SystemdToKernelLogs: false,
+			},
+			config.AllowSandboxInternet,
+		)
+		defer func() {
+			cleanupErr := cleanup.Run(ctx)
+			if cleanupErr != nil {
+				b.logger.Error("Error cleaning up sandbox", zap.Error(cleanupErr))
+			}
+		}()
+		if err != nil {
+			return nil, fmt.Errorf("error creating sandbox: %w", err)
+		}
+		err = sourceSbx.WaitForEnvd(
+			ctx,
+			b.tracer,
+			waitEnvdTimeout,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
+		}
+
+		err = b.pauseAndUpload(ctx, b.tracer, postProcessor, b.storage, &uploadErrGroup, sourceSbx, "", baseHash, lastBuildID)
+		if err != nil {
+			return nil, fmt.Errorf("error pausing and uploading template: %w", err)
+		}
 	}
-	err = sbx.WaitForEnvd(
+
+	// TMP
+	for i, step := range template.Steps {
+		layerIndex := i + 1
+		force := step.Force != nil && *step.Force
+		cmd := fmt.Sprintf("%s %s", strings.ToUpper(step.Type), strings.Join(step.Args, " "))
+
+		// Stable uuid from the step hash
+		newBuildID := getUUIDFromHash(ctx, b.storage, template.TemplateID, baseHash, step.Hash).String()
+		if force {
+			// Force rebuild: generate a new build ID
+			newBuildID = uuid.NewString()
+		}
+
+		// Check if the layer is cached
+		found, err := isCached(ctx, b.storage, newBuildID)
+		if err != nil {
+			return nil, fmt.Errorf("error checking if layer is cached: %w", err)
+		}
+		isCached := (found && !force) || (lastCached && !force)
+
+		cached := ""
+		if isCached {
+			cached = "CACHED "
+		}
+		prefix := fmt.Sprintf("builder %d/%d", layerIndex, len(template.Steps))
+		postProcessor.WriteMsg(fmt.Sprintf("%s[%s] %s [%s]", cached, prefix, cmd, step.Hash))
+
+		// Apply changes like env vars or workdir locally only, no need to run in sandbox
+		// These changes are not cached and run every time
+		executed, err := b.applyLocalCommand(ctx, prefix, step, buildMetadata)
+		if err != nil {
+			return nil, fmt.Errorf("error applying command: %w", err)
+		}
+
+		if executed {
+			// lastBuildID is not updated here because no new sandbox is run
+			// this layer is never cached
+			continue
+		}
+
+		// Run commands in sandbox only if not cached
+		lastCached = isCached
+		if isCached {
+			lastBuildID = newBuildID
+			continue
+		}
+
+		err = b.runInSandbox(
+			ctx,
+			postProcessor,
+			&uploadErrGroup,
+			baseSandboxConfig,
+			baseHash,
+			step.Hash,
+			lastBuildID,
+			newBuildID,
+			func(ctx context.Context, sbx *sandbox.Sandbox) error {
+				return b.applyCommand(ctx, postProcessor, template.TemplateID, sbx, prefix, step, buildMetadata)
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("error running configuration script in sandbox: %w", err)
+		}
+
+		lastBuildID = newBuildID
+	}
+	// TMP
+
+	// Run post-processing actions in the sandbox
+	err = b.runInSandbox(
 		ctx,
-		b.tracer,
-		waitEnvdTimeout,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
-	}
-	// Add to proxy so we can call envd commands
-	b.sandboxes.Insert(sbx.Metadata.Config.SandboxId, sbx)
-	defer func() {
-		b.sandboxes.Remove(sbx.Metadata.Config.SandboxId)
-		b.proxy.RemoveFromPool(sbx.Metadata.Config.ExecutionId)
-	}()
-
-	// Run configuration script
-	var scriptDef bytes.Buffer
-	err = ConfigureScriptTemplate.Execute(&scriptDef, map[string]string{})
-	if err != nil {
-		return nil, fmt.Errorf("error executing provision script: %w", err)
-	}
-
-	configCtx, configCancel := context.WithTimeout(ctx, configurationTimeout)
-	defer configCancel()
-	err = b.runCommand(
-		configCtx,
 		postProcessor,
-		"config",
-		sbx.Metadata.Config.SandboxId,
-		scriptDef.String(),
-		"root",
-		nil,
-		map[string]string{},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error running configuration script: %w", err)
-	}
+		&uploadErrGroup,
+		baseSandboxConfig,
+		"config-run-cmd",
+		baseHash,
+		lastBuildID,
+		finalTemplateBuildID,
+		func(ctx context.Context, sbx *sandbox.Sandbox) error {
+			// Run configuration script
+			var scriptDef bytes.Buffer
+			err = ConfigureScriptTemplate.Execute(&scriptDef, map[string]string{})
+			if err != nil {
+				return fmt.Errorf("error executing provision script: %w", err)
+			}
 
-	// Env variables for the start command and ready command
-	envVars := oci.ParseEnvs(buildConfig.Env)
+			configCtx, configCancel := context.WithTimeout(ctx, configurationTimeout)
+			defer configCancel()
+			err = b.runCommand(
+				configCtx,
+				postProcessor,
+				"config",
+				sbx.Metadata.Config.SandboxId,
+				scriptDef.String(),
+				"root",
+				nil,
+				map[string]string{},
+			)
+			if err != nil {
+				return fmt.Errorf("error running configuration script: %w", err)
+			}
 
-	// Start command
-	commandsCtx, commandsCancel := context.WithCancel(ctx)
-	defer commandsCancel()
+			// Start command
+			commandsCtx, commandsCancel := context.WithCancel(ctx)
+			defer commandsCancel()
 
-	var startCmd errgroup.Group
-	startCmdConfirm := make(chan struct{})
-	if template.StartCmd != "" {
-		postProcessor.WriteMsg("Running start command")
-		startCmd.Go(func() error {
-			cwd := "/home/user"
-			err := b.runCommandWithConfirmation(
+			var startCmd errgroup.Group
+			startCmdConfirm := make(chan struct{})
+			if template.StartCmd != "" {
+				postProcessor.WriteMsg("Running start command")
+				startCmd.Go(func() error {
+					cwd := "/home/user"
+					err := b.runCommandWithConfirmation(
+						commandsCtx,
+						postProcessor,
+						"start",
+						sbx.Metadata.Config.SandboxId,
+						template.StartCmd,
+						"root",
+						&cwd,
+						buildMetadata.envVars,
+						startCmdConfirm,
+					)
+					// If the ctx is canceled, the ready command succeeded and no start command await is necessary.
+					if err != nil && !errors.Is(err, context.Canceled) {
+						// Cancel the ready command context, so the ready command does not wait anymore if an error occurs.
+						commandsCancel()
+						return fmt.Errorf("error running start command: %w", err)
+					}
+
+					return nil
+				})
+			} else {
+				// If no start command is defined, we still need to confirm that the start command has started.
+				close(startCmdConfirm)
+			}
+
+			// Ready command
+			err = b.runReadyCommand(
 				commandsCtx,
 				postProcessor,
-				"start",
+				template,
 				sbx.Metadata.Config.SandboxId,
-				template.StartCmd,
-				"root",
-				&cwd,
-				envVars,
-				startCmdConfirm,
+				buildMetadata.envVars,
 			)
-			// If the ctx is canceled, the ready command succeeded and no start command await is necessary.
-			if err != nil && !errors.Is(err, context.Canceled) {
-				// Cancel the ready command context, so the ready command does not wait anymore if an error occurs.
-				commandsCancel()
+			if err != nil {
+				return fmt.Errorf("error running ready command: %w", err)
+			}
+
+			// Wait for the start command to start executing.
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("error waiting for start command: %w", commandsCtx.Err())
+			case <-startCmdConfirm:
+			}
+			// Cancel the start command context (it's running in the background anyway).
+			// If it has already finished, check the error.
+			commandsCancel()
+			err = startCmd.Wait()
+			if err != nil {
 				return fmt.Errorf("error running start command: %w", err)
 			}
 
 			return nil
-		})
-	} else {
-		// If no start command is defined, we still need to confirm that the start command has started.
-		close(startCmdConfirm)
-	}
-
-	// Ready command
-	err = b.runReadyCommand(
-		commandsCtx,
-		postProcessor,
-		template,
-		sbx.Metadata.Config.SandboxId,
-		envVars,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error running ready command: %w", err)
-	}
-
-	// Wait for the start command to start executing.
-	select {
-	case <-ctx.Done():
-		return nil, fmt.Errorf("error waiting for start command: %w", commandsCtx.Err())
-	case <-startCmdConfirm:
-	}
-	// Cancel the start command context (it's running in the background anyway).
-	// If it has already finished, check the error.
-	commandsCancel()
-	err = startCmd.Wait()
-	if err != nil {
-		return nil, fmt.Errorf("error running start command: %w", err)
-	}
-
-	// Pause sandbox
-	postProcessor.WriteMsg(fmt.Sprintf("Pausing sandbox template: %s/%s", sbx.Metadata.Config.TemplateId, sbx.Metadata.Config.BuildId))
-	snapshot, err := sbx.Pause(
-		ctx,
-		b.tracer,
-		templateCacheFiles,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error processing vm: %w", err)
-	}
-	defer snapshot.Close(ctx)
-
-	// Upload
-	postProcessor.WriteMsg("Uploading template")
-	uploadErr := snapshot.Upload(
-		ctx,
-		b.storage,
-		templateFiles,
-	)
-	if uploadErr != nil {
-		return nil, fmt.Errorf("error uploading template: %w", uploadErr)
-	}
-
-	// TESTING RESUME AND PAUSE AFTER UPLOAD
-	postProcessor.WriteMsg("Resuming template")
-	sbxRes, cleanupRes, err := sandbox.ResumeSandbox(
-		ctx,
-		b.tracer,
-		b.networkPool,
-		b.templateCache,
-		&orchestrator.SandboxConfig{
-			TemplateId:         sbx.Metadata.Config.TemplateId,
-			BuildId:            sbx.Metadata.Config.BuildId,
-			ExecutionId:        uuid.NewString(),
-			KernelVersion:      sbx.Config.KernelVersion,
-			FirecrackerVersion: sbx.Config.FirecrackerVersion,
-			HugePages:          sbx.Config.HugePages,
-			SandboxId:          sbx.Config.SandboxId,
-			EnvdVersion:        sbx.Config.EnvdVersion,
-			Vcpu:               sbx.Config.Vcpu,
-			RamMb:              sbx.Config.RamMb,
-
-			BaseTemplateId: sbx.Config.TemplateId,
 		},
-		uuid.New().String(),
-		time.Now(),
-		time.Now().Add(time.Minute),
-		sbx.Metadata.Config.BaseTemplateId,
-		b.devicePool,
-		config.AllowSandboxInternet,
-		false,
-	)
-	defer func() {
-		cleanupErr := cleanupRes.Run(ctx)
-		if cleanupErr != nil {
-			b.logger.Error("Error cleaning up sandbox", zap.Error(cleanupErr))
-		}
-	}()
-	if err != nil {
-		return nil, fmt.Errorf("error resuming sandbox: %w", err)
-	}
-
-	postProcessor.WriteMsg(fmt.Sprintf("Pausing template: %s/%s", sbxRes.Config.TemplateId, templateBuildID))
-	// Pause sandbox
-	snapshotTemplateFiles := storage.NewTemplateFiles(
-		sbxRes.Config.TemplateId,
-		templateBuildID,
-		sbx.Config.KernelVersion,
-		sbx.Config.FirecrackerVersion,
-	)
-	snapshotTemplateCacheFiles, err := snapshotTemplateFiles.NewTemplateCacheFiles()
-	if err != nil {
-		return nil, fmt.Errorf("error creating template files: %w", err)
-	}
-	snapshot, err = sbxRes.Pause(
-		ctx,
-		b.tracer,
-		snapshotTemplateCacheFiles,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error processing vm: %w", err)
-	}
-	defer snapshot.Close(ctx)
-
-	// Upload
-	postProcessor.WriteMsg("Uploading template")
-	uploadErr = snapshot.Upload(
-		ctx,
-		b.storage,
-		snapshotTemplateFiles,
-	)
-	if uploadErr != nil {
-		return nil, fmt.Errorf("error uploading template: %w", uploadErr)
+		return nil, fmt.Errorf("error running start and ready commands in sandbox: %w", err)
 	}
 
 	return &Result{
@@ -575,4 +636,399 @@ func (b *TemplateBuilder) enlargeDiskAfterProvisioning(
 		)
 	}
 	return nil
+}
+
+func (b *TemplateBuilder) runInSandbox(
+	ctx context.Context,
+	postProcessor *writer.PostProcessor,
+	uploadErrGroup *errgroup.Group,
+	sourceSbxConfig *orchestrator.SandboxConfig,
+	baseHash,
+	hash string,
+	sourceBuildID string,
+	exportBuildID string,
+	fun func(ctx context.Context, sbx *sandbox.Sandbox) error,
+) error {
+	ctx, childSpan := b.tracer.Start(ctx, "run-in-sandbox")
+	defer childSpan.End()
+
+	postProcessor.WriteMsg(fmt.Sprintf("Running action in: %s/%s", sourceSbxConfig.TemplateId, sourceBuildID))
+
+	sbx, cleanupRes, err := sandbox.ResumeSandbox(
+		ctx,
+		b.tracer,
+		b.networkPool,
+		b.templateCache,
+		&orchestrator.SandboxConfig{
+			TemplateId:         sourceSbxConfig.TemplateId,
+			BuildId:            sourceBuildID,
+			ExecutionId:        uuid.NewString(),
+			KernelVersion:      sourceSbxConfig.KernelVersion,
+			FirecrackerVersion: sourceSbxConfig.FirecrackerVersion,
+			HugePages:          sourceSbxConfig.HugePages,
+			SandboxId:          sourceSbxConfig.SandboxId,
+			EnvdVersion:        sourceSbxConfig.EnvdVersion,
+			Vcpu:               sourceSbxConfig.Vcpu,
+			RamMb:              sourceSbxConfig.RamMb,
+
+			BaseTemplateId: sourceSbxConfig.BaseTemplateId,
+		},
+		uuid.New().String(),
+		time.Now(),
+		time.Now().Add(time.Minute),
+		sourceSbxConfig.BaseTemplateId,
+		b.devicePool,
+		config.AllowSandboxInternet,
+		false,
+	)
+	defer func() {
+		cleanupErr := cleanupRes.Run(ctx)
+		if cleanupErr != nil {
+			b.logger.Error("Error cleaning up sandbox", zap.Error(cleanupErr))
+		}
+	}()
+	if err != nil {
+		return fmt.Errorf("error resuming sandbox: %w", err)
+	}
+
+	// Add to proxy so we can call envd commands
+	b.sandboxes.Insert(sbx.Metadata.Config.SandboxId, sbx)
+	defer func() {
+		b.sandboxes.Remove(sbx.Metadata.Config.SandboxId)
+		b.proxy.RemoveFromPool(sbx.Metadata.Config.ExecutionId)
+	}()
+
+	err = fun(ctx, sbx)
+	if err != nil {
+		return fmt.Errorf("error running action in sandbox: %w", err)
+	}
+
+	err = b.pauseAndUpload(ctx, b.tracer, postProcessor, b.storage, uploadErrGroup, sbx, baseHash, hash, exportBuildID)
+	if err != nil {
+		return fmt.Errorf("error pausing and uploading template: %w", err)
+	}
+
+	return nil
+}
+
+func (b *TemplateBuilder) pauseAndUpload(
+	ctx context.Context,
+	tracer trace.Tracer,
+	postProcessor *writer.PostProcessor,
+	persistance storage.StorageProvider,
+	uploadErrGroup *errgroup.Group,
+	sbx *sandbox.Sandbox,
+	baseHash,
+	hash string,
+	buildID string,
+) error {
+	ctx, childSpan := tracer.Start(ctx, "pause-and-upload")
+	defer childSpan.End()
+
+	postProcessor.WriteMsg(fmt.Sprintf("Caching template layer: %s/%s", sbx.Config.TemplateId, buildID))
+
+	// Pause sandbox
+	snapshotTemplateFiles := storage.NewTemplateFiles(
+		sbx.Config.TemplateId,
+		buildID,
+		sbx.Config.KernelVersion,
+		sbx.Config.FirecrackerVersion,
+	)
+	snapshotTemplateCacheFiles, err := snapshotTemplateFiles.NewTemplateCacheFiles()
+	if err != nil {
+		return fmt.Errorf("error creating template files: %w", err)
+	}
+	snapshot, err := sbx.Pause(
+		ctx,
+		tracer,
+		snapshotTemplateCacheFiles,
+	)
+	if err != nil {
+		return fmt.Errorf("error processing vm: %w", err)
+	}
+	// TODO: Do proper cleanup of the snapshot
+	// defer snapshot.Close(ctx)
+
+	// Add snapshot to template cache so it can be used immediately
+	err = b.templateCache.AddSnapshot(
+		snapshotTemplateFiles.TemplateId,
+		snapshotTemplateFiles.BuildId,
+		snapshotTemplateFiles.KernelVersion,
+		snapshotTemplateFiles.FirecrackerVersion,
+		snapshot.MemfileDiffHeader,
+		snapshot.RootfsDiffHeader,
+		snapshot.Snapfile,
+		snapshot.MemfileDiff,
+		snapshot.RootfsDiff,
+	)
+
+	// Upload snapshot async, it's added to the template cache immediately
+	uploadErrGroup.Go(func() error {
+		return snapshot.Upload(
+			ctx,
+			persistance,
+			snapshotTemplateFiles,
+		)
+	})
+
+	err = saveUUIDToHash(ctx, persistance, sbx.Config.TemplateId, baseHash, hash, uuid.MustParse(buildID))
+	if err != nil {
+		return fmt.Errorf("error saving UUID to hash mapping: %w", err)
+	}
+
+	return nil
+}
+
+func (b *TemplateBuilder) applyLocalCommand(
+	ctx context.Context,
+	prefix string,
+	step *templatemanager.TemplateStep,
+	buildMetadata *buildMetadata,
+) (bool, error) {
+	ctx, span := b.tracer.Start(ctx, "apply-command-local", trace.WithAttributes(
+		attribute.String("prefix", prefix),
+		attribute.String("step.type", step.Type),
+		attribute.StringSlice("step.args", step.Args),
+		attribute.String("step.hash", step.Hash),
+		attribute.String("step.files.hash", Sprintp(step.FilesHash)),
+		attribute.String("metadata.user", buildMetadata.user),
+		attribute.String("metadata.workdir", Sprintp(buildMetadata.workdir)),
+		attribute.String("metadata.env_vars", fmt.Sprintf("%v", buildMetadata.envVars)),
+	))
+	defer span.End()
+
+	cmdType := strings.ToUpper(step.Type)
+	args := step.Args
+
+	switch cmdType {
+	case "ARG":
+		// args: [key value]
+		if len(args) < 2 {
+			return false, fmt.Errorf("ARG requires a key and value argument")
+		}
+		buildMetadata.envVars[args[0]] = args[1]
+		return true, nil
+	case "ENV":
+		// args: [key value]
+		if len(args) < 2 {
+			return false, fmt.Errorf("ENV requires a key and value argument")
+		}
+		buildMetadata.envVars[args[0]] = args[1]
+		return true, nil
+	case "WORKDIR":
+		// args: [path]
+		if len(args) < 1 {
+			return false, fmt.Errorf("WORKDIR requires a path argument")
+		}
+		cwd := args[0]
+		buildMetadata.workdir = &cwd
+		return false, nil
+	case "USER":
+		// args: [username]
+		if len(args) < 1 {
+			return false, fmt.Errorf("USER requires a username argument")
+		}
+		buildMetadata.user = args[0]
+		return false, nil
+	default:
+		return false, nil
+	}
+}
+
+func (b *TemplateBuilder) applyCommand(
+	ctx context.Context,
+	postProcessor *writer.PostProcessor,
+	templateID string,
+	sbx *sandbox.Sandbox,
+	prefix string,
+	step *templatemanager.TemplateStep,
+	buildMetadata *buildMetadata,
+) error {
+	ctx, span := b.tracer.Start(ctx, "apply-command", trace.WithAttributes(
+		attribute.String("prefix", prefix),
+		attribute.String("sandbox.id", sbx.Metadata.Config.SandboxId),
+		attribute.String("step.type", step.Type),
+		attribute.StringSlice("step.args", step.Args),
+		attribute.String("step.hash", step.Hash),
+		attribute.String("step.files.hash", Sprintp(step.FilesHash)),
+		attribute.String("metadata.user", buildMetadata.user),
+		attribute.String("metadata.workdir", Sprintp(buildMetadata.workdir)),
+		attribute.String("metadata.env_vars", fmt.Sprintf("%v", buildMetadata.envVars)),
+	))
+	defer span.End()
+
+	cmdType := strings.ToUpper(step.Type)
+	args := step.Args
+
+	switch cmdType {
+	case "ADD":
+		// args: [localPath containerPath]
+		fallthrough
+	case "COPY":
+		// args: [localPath containerPath]
+		if len(args) < 2 {
+			return fmt.Errorf("%s requires a local path and a container path argument", cmdType)
+		}
+
+		if step.FilesHash == nil || *step.FilesHash == "" {
+			return fmt.Errorf("%s requires files hash to be set", cmdType)
+		}
+
+		obj, err := b.storage.OpenObject(ctx, builder.GetLayerFilesCachePath(templateID, *step.FilesHash))
+		if err != nil {
+			return fmt.Errorf("failed to open files object from storage: %w", err)
+		}
+
+		pr, pw := io.Pipe()
+		// Start writing tar data to the pipe writer in a goroutine
+		go func() {
+			defer pw.Close()
+			if _, err := obj.WriteTo(pw); err != nil {
+				pw.CloseWithError(err)
+			}
+		}()
+
+		tmpFile, err := os.CreateTemp("", "layer-file-*.tar")
+		if err != nil {
+			return fmt.Errorf("failed to create temporary file for layer tar: %w", err)
+		}
+		defer os.Remove(tmpFile.Name())
+		defer tmpFile.Close()
+
+		_, err = io.Copy(tmpFile, pr)
+		if err != nil {
+			return fmt.Errorf("failed to copy layer tar data to temporary file: %w", err)
+		}
+
+		sbxTargetPath := fmt.Sprintf("/tmp/%s.tar", *step.FilesHash)
+		err = b.copyFile(ctx, postProcessor, sbx.Metadata.Config.SandboxId, buildMetadata.user, tmpFile.Name(), sbxTargetPath)
+		if err != nil {
+			return fmt.Errorf("failed to copy layer tar data to sandbox: %w", err)
+		}
+
+		return b.runCommand(
+			ctx,
+			postProcessor,
+			prefix,
+			sbx.Metadata.Config.SandboxId,
+			fmt.Sprintf(`tar -xzvf "%s" -C "%s" --strip-components=1; rm "%s"`, sbxTargetPath, args[1], sbxTargetPath),
+			buildMetadata.user,
+			buildMetadata.workdir,
+			buildMetadata.envVars,
+		)
+	case "RUN":
+		// args: command and args, e.g., ["sh", "-c", "echo hi"]
+		if len(args) < 1 {
+			return fmt.Errorf("RUN requires command arguments")
+		}
+
+		cmd := strings.Join(args, " ")
+		return b.runCommand(
+			ctx,
+			postProcessor,
+			prefix,
+			sbx.Metadata.Config.SandboxId,
+			cmd,
+			buildMetadata.user,
+			buildMetadata.workdir,
+			buildMetadata.envVars,
+		)
+	case "USER":
+		// args: [username]
+		if len(args) < 1 {
+			return fmt.Errorf("USER requires a username argument")
+		}
+
+		return b.runCommand(
+			ctx,
+			postProcessor,
+			prefix,
+			sbx.Metadata.Config.SandboxId,
+			"adduser "+args[0],
+			"root",
+			nil,
+			buildMetadata.envVars,
+		)
+	case "WORKDIR":
+		// args: [path]
+		if len(args) < 1 {
+			return fmt.Errorf("WORKDIR requires a path argument")
+		}
+
+		return b.runCommand(
+			ctx,
+			postProcessor,
+			prefix,
+			sbx.Metadata.Config.SandboxId,
+			fmt.Sprintf(`mkdir -p "%s"`, Sprintp(buildMetadata.workdir)),
+			buildMetadata.user,
+			nil,
+			buildMetadata.envVars,
+		)
+	default:
+		return fmt.Errorf("unsupported command type: %s", cmdType)
+	}
+}
+
+func isCached(
+	ctx context.Context,
+	s storage.StorageProvider,
+	buildID string,
+) (bool, error) {
+	obj, err := s.OpenObject(ctx, fmt.Sprintf("%s/rootfs.ext4.header", buildID))
+	if err != nil {
+		return false, fmt.Errorf("error checking if layer is cached: %w", err)
+	}
+	_, err = obj.Size()
+	if err == nil {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func getUUIDFromHash(ctx context.Context, s storage.StorageProvider, templateID string, baseHash string, hash string) uuid.UUID {
+	obj, err := s.OpenObject(ctx, uuidToHashPath(templateID, baseHash, hash))
+	if err != nil {
+		return uuid.New()
+	}
+
+	var buf bytes.Buffer
+	_, err = obj.WriteTo(&buf)
+	if err != nil {
+		return uuid.New()
+	}
+
+	return uuid.MustParse(buf.String())
+}
+
+func saveUUIDToHash(ctx context.Context, s storage.StorageProvider, templateID string, baseHash, hash string, uuid uuid.UUID) error {
+	obj, err := s.OpenObject(ctx, uuidToHashPath(templateID, baseHash, hash))
+	if err != nil {
+		return fmt.Errorf("error creating object for saving UUID: %w", err)
+	}
+
+	buf := bytes.NewBufferString(uuid.String())
+	_, err = obj.ReadFrom(buf)
+	if err != nil {
+		return fmt.Errorf("error writing UUID to object: %w", err)
+	}
+
+	return nil
+}
+
+func uuidToHashPath(templateID, baseHash, hash string) string {
+	reSHA := sha256.New()
+	reSHA.Write([]byte(baseHash))
+	reSHA.Write([]byte(hash))
+	reHash := fmt.Sprintf("%x", reSHA.Sum(nil))
+	return fmt.Sprintf("builder/cache/%s/index/%s", templateID, reHash)
+}
+
+func Sprintp(s *string) string {
+	if s == nil {
+		return "<nil>"
+	}
+
+	return *s
 }

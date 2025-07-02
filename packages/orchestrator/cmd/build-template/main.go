@@ -151,18 +151,12 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 			With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: buildID}),
 	)
 	config := &templateconfig.TemplateConfig{
-		TemplateFiles: storage.NewTemplateFiles(
-			templateID,
-			buildID,
-			kernelVersion,
-			fcVersion,
-		),
-		VCpuCount:       2,
-		MemoryMB:        1024,
-		StartCmd:        "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
-		DiskSizeMB:      1024,
+		VCpuCount:  2,
+		MemoryMB:   1024,
+		StartCmd:   "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
+		DiskSizeMB: 1024,
 		BuildLogsWriter: logsWriter,
-		HugePages:       true,
+		HugePages:  true,
 	}
 
 	_, err = builder.Build(ctx, config, nil)
