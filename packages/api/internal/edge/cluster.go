@@ -109,7 +109,7 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterNode
 	defer span.End()
 
 	for _, node := range c.nodes.Items() {
-		// we don't want to place new builds to not healthy nodes
+		// we don't want to place new builds to unhealthy nodes
 		if node.GetStatus() != infogrpc.ServiceInfoStatus_OrchestratorHealthy {
 			continue
 		}
