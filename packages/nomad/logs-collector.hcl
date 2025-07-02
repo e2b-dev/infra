@@ -97,6 +97,26 @@ if exists(.env_id) {
 if exists(.team_id) {
   .teamID = .team_id
 }
+if exists(."template.id") {
+  .templateID = ."template.id"
+  del(."template.id")
+}
+if exists(."sandbox.id") {
+  .sandboxID = ."sandbox.id"
+  del(."sandbox.id")
+}
+if exists(."build.id") {
+  .buildID = ."build.id"
+  del(."build.id")
+}
+if exists(."env.id") {
+  .envID = ."env.id"
+  del(."env.id")
+}
+if exists(."team.id") {
+  .teamID = ."team.id"
+  del(."team.id")
+}
 
 # Apply defaults if not already set
 if !exists(.envID) {
@@ -132,6 +152,12 @@ inputs = [ "internal_routing._unmatched" ]
 source = '''
 del(.internal)
 '''
+
+# Enable debugging of logs to the console
+# [sinks.console_loki]
+# type = "console"
+# inputs = ["remove_internal"]
+# encoding.codec = "json"
 
 [sinks.local_loki_logs]
 type = "loki"
