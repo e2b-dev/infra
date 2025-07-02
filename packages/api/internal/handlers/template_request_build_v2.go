@@ -52,8 +52,8 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	isNew := true
 	templateAlias, err := a.db.Client.EnvAlias.Query().Where(envalias.ID(body.Alias)).Only(ctx)
 	if err != nil {
-		var notFoundErr *db.ErrNotFound
-		if !errors.As(err, notFoundErr) {
+		var notFoundErr db.ErrNotFound
+		if !errors.As(err, &notFoundErr) {
 			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting template alias: %s", err))
 			telemetry.ReportCriticalError(ctx, "error when getting template alias", err)
 			return
