@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
+	metadata2 "google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -164,7 +166,12 @@ func (o *Orchestrator) CreateSandbox(
 		}
 
 		if node == nil {
-			node, err = o.getLeastBusyNode(childCtx, nodesExcluded)
+			nodeClusterID := uuid.Nil
+			if team.Team.ClusterID != nil {
+				nodeClusterID = *team.Team.ClusterID
+			}
+
+			node, err = o.getLeastBusyNode(childCtx, nodesExcluded, nodeClusterID)
 			if err != nil {
 				telemetry.ReportError(childCtx, "failed to get least busy node", err)
 
@@ -182,7 +189,8 @@ func (o *Orchestrator) CreateSandbox(
 			CPUs:      build.Vcpu,
 		})
 
-		_, err = node.Client.Sandbox.Create(childCtx, sbxRequest)
+		reqCtx := metadata2.NewOutgoingContext(childCtx, node.ClientMd)
+		_, err = node.Client.Sandbox.Create(reqCtx, sbxRequest)
 		// The request is done, we will either add it to the cache or remove it from the node
 		if err == nil {
 			// The sandbox was created successfully
@@ -264,7 +272,7 @@ func (o *Orchestrator) CreateSandbox(
 }
 
 // getLeastBusyNode returns the least busy node, if there are no eligible nodes, it tries until one is available or the context timeouts
-func (o *Orchestrator) getLeastBusyNode(parentCtx context.Context, nodesExcluded map[string]*Node) (leastBusyNode *Node, err error) {
+func (o *Orchestrator) getLeastBusyNode(parentCtx context.Context, nodesExcluded map[string]*Node, clusterID uuid.UUID) (leastBusyNode *Node, err error) {
 	ctx, cancel := context.WithTimeout(parentCtx, leastBusyNodeTimeout)
 	defer cancel()
 
@@ -272,7 +280,7 @@ func (o *Orchestrator) getLeastBusyNode(parentCtx context.Context, nodesExcluded
 	defer childSpan.End()
 
 	// Try to find a node without waiting
-	leastBusyNode, err = o.findLeastBusyNode(nodesExcluded)
+	leastBusyNode, err = o.findLeastBusyNode(nodesExcluded, clusterID)
 	if err == nil {
 		return leastBusyNode, nil
 	}
@@ -285,7 +293,7 @@ func (o *Orchestrator) getLeastBusyNode(parentCtx context.Context, nodesExcluded
 			return nil, childCtx.Err()
 		case <-ticker.C:
 			// If no node is available, wait for a bit and try again
-			leastBusyNode, err = o.findLeastBusyNode(nodesExcluded)
+			leastBusyNode, err = o.findLeastBusyNode(nodesExcluded, clusterID)
 			if err == nil {
 				return leastBusyNode, nil
 			}
@@ -295,7 +303,7 @@ func (o *Orchestrator) getLeastBusyNode(parentCtx context.Context, nodesExcluded
 
 // findLeastBusyNode finds the least busy node that is ready and not in the excluded list
 // if no node is available, returns an error
-func (o *Orchestrator) findLeastBusyNode(nodesExcluded map[string]*Node) (leastBusyNode *Node, err error) {
+func (o *Orchestrator) findLeastBusyNode(nodesExcluded map[string]*Node, clusterID uuid.UUID) (leastBusyNode *Node, err error) {
 	for _, node := range o.nodes.Items() {
 		// The node might be nil if it was removed from the list while iterating
 		if node == nil {
@@ -309,6 +317,11 @@ func (o *Orchestrator) findLeastBusyNode(nodesExcluded map[string]*Node) (leastB
 
 		// Skip already tried nodes
 		if nodesExcluded[node.Info.ID] != nil {
+			continue
+		}
+
+		// Node must be in the same cluster as requested
+		if node.ClusterID != clusterID {
 			continue
 		}
 

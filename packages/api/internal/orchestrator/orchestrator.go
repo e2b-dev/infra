@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/uuid"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/metric"
@@ -17,10 +18,13 @@ import (
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
+	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -42,6 +46,7 @@ type Orchestrator struct {
 	dns                 *dns.DNS
 	dbClient            *db.DB
 	tel                 *telemetry.Client
+	clusters            *edge.Pool
 	metricsRegistration metric.Registration
 }
 
@@ -53,6 +58,7 @@ func New(
 	posthogClient *analyticscollector.PosthogClient,
 	redisClient redis.UniversalClient,
 	dbClient *db.DB,
+	clusters *edge.Pool,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics()
 	if err != nil {
@@ -81,6 +87,7 @@ func New(
 		dns:         dnsServer,
 		dbClient:    dbClient,
 		tel:         tel,
+		clusters:    clusters,
 	}
 
 	cache := instance.NewCache(
@@ -156,6 +163,42 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 				zap.Int("nodes_count", o.nodes.Count()),
 				zap.Any("nodes", nodes),
 			)
+		}
+	}
+}
+
+func (o *Orchestrator) RegisterSandboxInsideClusterCatalog(node *Node, sbxStartTime time.Time, sandboxConfig *orchestrator.SandboxConfig) {
+	if node.ClusterID != uuid.Nil {
+		cluster, ok := o.clusters.GetClusterById(node.ClusterID)
+		if !ok {
+			zap.L().Error("Failed to get cluster by ID", logger.WithClusterID(node.ClusterID))
+			return
+		}
+
+		i, ok := cluster.GetInstanceByNodeID(node.ClusterNodeID)
+		if !ok {
+			zap.L().Error("Failed to get cluster instance by ID", logger.WithClusterID(cluster.ID), logger.WithClusterNodeID(node.ClusterNodeID))
+			return
+		}
+
+		err := cluster.RegisterSandboxInCatalog(i.ServiceInstanceID, sbxStartTime, sandboxConfig)
+		if err != nil {
+			zap.L().Error("Failed to register sandbox in cluster catalog", logger.WithClusterID(cluster.ID), logger.WithClusterNodeID(node.ClusterNodeID))
+		}
+	}
+}
+
+func (o *Orchestrator) RemoveSandboxFromClusterCatalog(node *Node, sandboxID string, executionID string) {
+	if node.ClusterID != uuid.Nil {
+		cluster, ok := o.clusters.GetClusterById(node.ClusterID)
+		if !ok {
+			zap.L().Error("Failed to get cluster by ID", logger.WithClusterID(node.ClusterID))
+			return
+		}
+
+		err := cluster.RemoveSandboxFromCatalog(sandboxID, executionID)
+		if err != nil {
+			zap.L().Error("Failed to remove sandbox from cluster catalog", logger.WithClusterID(cluster.ID), logger.WithClusterNodeID(node.ClusterNodeID))
 		}
 	}
 }
