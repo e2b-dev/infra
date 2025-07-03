@@ -18,7 +18,10 @@ import (
 )
 
 // maxSlotsReady is the number of slots that are ready to be used.
-const maxSlotsReady = 64
+const (
+	maxSlotsReady  = 64
+	waitOnNBDError = 50 * time.Millisecond
+)
 
 // ErrNoFreeSlots is returned when there are no free slots.
 // You can retry the request after some time.
@@ -117,6 +120,7 @@ func getMaxDevices() (uint, error) {
 func (d *DevicePool) Populate() error {
 	defer close(d.slots)
 
+	failedCount := 0
 	for {
 		select {
 		case <-d.ctx.Done():
@@ -126,10 +130,15 @@ func (d *DevicePool) Populate() error {
 		default:
 			device, err := d.getFreeDeviceSlot()
 			if err != nil {
-				zap.L().Error("[nbd pool]: failed to create network", zap.Error(err))
+				failedCount++
+				if failedCount%100 == 0 {
+					zap.L().Error("[nbd pool]: failed to create network", zap.Error(err), zap.Int("failed_count", failedCount))
+				}
 
+				time.Sleep(waitOnNBDError)
 				continue
 			}
+			failedCount = 0
 
 			d.slotCounter.Add(d.ctx, 1)
 
