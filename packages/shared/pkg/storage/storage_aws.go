@@ -169,7 +169,7 @@ func (a *AWSBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, 
 
 	defer resp.Body.Close()
 
-	// When the object is smaller thant requested range there will be unexpected EOF,
+	// When the object is smaller than requested range there will be unexpected EOF,
 	// but backend expects to return EOF in this case.
 	n, err = io.ReadFull(resp.Body, buff)
 	if errors.Is(err, io.ErrUnexpectedEOF) {
