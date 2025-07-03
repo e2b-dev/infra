@@ -29,7 +29,9 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-const proxyPort = 5007
+const (
+	proxyPort = 5007
+)
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
