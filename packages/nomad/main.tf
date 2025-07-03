@@ -88,7 +88,8 @@ resource "nomad_job" "api" {
     otel_tracing_print             = var.otel_tracing_print
     nomad_acl_token                = var.nomad_acl_token_secret
     admin_token                    = var.api_admin_token
-    redis_url                      = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : "redis.service.consul:${var.redis_port.port}"
+    redis_url                      = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "" : "redis.service.consul:${var.redis_port.port}"
+    redis_cluster_url              = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
     dns_port_number                = var.api_dns_port_number
     clickhouse_connection_string   = "clickhouse.service.consul:9000"
     clickhouse_username            = var.clickhouse_username
@@ -164,8 +165,10 @@ resource "nomad_job" "client_proxy" {
       gcp_zone    = var.gcp_zone
       environment = var.environment
 
-      redis_url = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : "redis.service.consul:${var.redis_port.port}"
-      loki_url  = "http://loki.service.consul:${var.loki_service_port.port}"
+      redis_url         = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "" : "redis.service.consul:${var.redis_port.port}"
+      redis_cluster_url = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
+
+      loki_url = "http://loki.service.consul:${var.loki_service_port.port}"
 
       proxy_port_name   = var.edge_proxy_port.name
       proxy_port        = var.edge_proxy_port.port

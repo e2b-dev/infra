@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
 	"time"
 
 	"connectrpc.com/authn"
@@ -14,6 +17,7 @@ import (
 	"github.com/rs/cors"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/api"
+	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	filesystemRpc "github.com/e2b-dev/infra/packages/envd/internal/services/filesystem"
@@ -31,12 +35,12 @@ const (
 )
 
 var (
-	Version = "0.2.0"
+	Version = "0.2.1"
 
 	commitSHA string
 
-	debug bool
-	port  int64
+	isNotFC bool
+	port    int64
 
 	versionFlag  bool
 	commitFlag   bool
@@ -45,10 +49,10 @@ var (
 
 func parseFlags() {
 	flag.BoolVar(
-		&debug,
-		"debug",
+		&isNotFC,
+		"isnotfc",
 		false,
-		"debug mode prints all logs to stdout",
+		"isNotFCmode prints all logs to stdout",
 	)
 
 	flag.BoolVar(
@@ -143,7 +147,24 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	l := logs.NewLogger(ctx, debug)
+	if err := os.MkdirAll(host.E2BRunDir, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "error creating E2B run directory: %v\n", err)
+	}
+
+	envVars := utils.NewMap[string, string]()
+	isFCBoolStr := strconv.FormatBool(!isNotFC)
+	envVars.Store("E2B_SANDBOX", isFCBoolStr)
+	if err := os.WriteFile(filepath.Join(host.E2BRunDir, ".E2B_SANDBOX"), []byte(isFCBoolStr), 0o444); err != nil {
+		fmt.Fprintf(os.Stderr, "error writing sandbox file: %v\n", err)
+	}
+
+	mmdsChan := make(chan *host.MMDSOpts, 1)
+	defer close(mmdsChan)
+	if !isNotFC {
+		go host.PollForMMDSOpts(ctx, mmdsChan, envVars)
+	}
+
+	l := logs.NewLogger(ctx, isNotFC, mmdsChan)
 
 	m := chi.NewRouter()
 
@@ -151,13 +172,10 @@ func main() {
 	fsLogger := l.With().Str("logger", "filesystem").Logger()
 	filesystemRpc.Handle(m, &fsLogger)
 
-	envVars := utils.NewMap[string, string]()
-	envVars.Store("E2B_SANDBOX", "true")
-
 	processLogger := l.With().Str("logger", "process").Logger()
 	processService := processRpc.Handle(m, &processLogger, envVars)
 
-	service := api.New(&envLogger, envVars)
+	service := api.New(&envLogger, envVars, mmdsChan, isNotFC)
 	handler := api.HandlerFromMux(service, m)
 	middleware := authn.NewMiddleware(permissions.AuthenticateUsername)
 

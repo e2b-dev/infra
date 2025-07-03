@@ -1,4 +1,4 @@
-package exporter
+package host
 
 import (
 	"bytes"
@@ -7,15 +7,21 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
+
+	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
 const (
+	E2BRunDir = "/run/e2b" // store sandbox metadata files here
+
 	mmdsDefaultAddress  = "169.254.169.254"
 	mmdsTokenExpiration = 60 * time.Second
 )
 
-type opts struct {
+type MMDSOpts struct {
 	TraceID    string `json:"traceID"`
 	InstanceID string `json:"instanceID"`
 	EnvID      string `json:"envID"`
@@ -23,7 +29,15 @@ type opts struct {
 	TeamID     string `json:"teamID"`
 }
 
-func (opts *opts) addOptsToJSON(jsonLogs []byte) ([]byte, error) {
+func (opts *MMDSOpts) Update(traceID, instanceID, envID, address, teamID string) {
+	opts.TraceID = traceID
+	opts.InstanceID = instanceID
+	opts.EnvID = envID
+	opts.Address = address
+	opts.TeamID = teamID
+}
+
+func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
 	parsed := make(map[string]interface{})
 
 	err := json.Unmarshal(jsonLogs, &parsed)
@@ -41,7 +55,7 @@ func (opts *opts) addOptsToJSON(jsonLogs []byte) ([]byte, error) {
 	return data, err
 }
 
-func (w *HTTPExporter) getMMDSToken(ctx context.Context) (string, error) {
+func getMMDSToken(ctx context.Context, client *http.Client) (string, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodPut, "http://"+mmdsDefaultAddress+"/latest/api/token", new(bytes.Buffer))
 	if err != nil {
 		return "", err
@@ -49,7 +63,7 @@ func (w *HTTPExporter) getMMDSToken(ctx context.Context) (string, error) {
 
 	request.Header["X-metadata-token-ttl-seconds"] = []string{fmt.Sprint(mmdsTokenExpiration.Seconds())}
 
-	response, err := w.client.Do(request)
+	response, err := client.Do(request)
 	if err != nil {
 		return "", err
 	}
@@ -69,7 +83,7 @@ func (w *HTTPExporter) getMMDSToken(ctx context.Context) (string, error) {
 	return token, nil
 }
 
-func (w *HTTPExporter) doMmdsRequest(ctx context.Context, token string) (*opts, error) {
+func getMMDSOpts(ctx context.Context, client *http.Client, token string) (*MMDSOpts, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+mmdsDefaultAddress, new(bytes.Buffer))
 	if err != nil {
 		return nil, err
@@ -78,7 +92,7 @@ func (w *HTTPExporter) doMmdsRequest(ctx context.Context, token string) (*opts, 
 	request.Header["X-metadata-token"] = []string{token}
 	request.Header["Accept"] = []string{"application/json"}
 
-	response, err := w.client.Do(request)
+	response, err := client.Do(request)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +104,7 @@ func (w *HTTPExporter) doMmdsRequest(ctx context.Context, token string) (*opts, 
 		return nil, err
 	}
 
-	var opts opts
+	var opts MMDSOpts
 
 	err = json.Unmarshal(body, &opts)
 	if err != nil {
@@ -100,51 +114,48 @@ func (w *HTTPExporter) doMmdsRequest(ctx context.Context, token string) (*opts, 
 	return &opts, nil
 }
 
-func (w *HTTPExporter) waitForMMDS(ctx context.Context) {
+func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *utils.Map[string, string]) {
+	httpClient := &http.Client{}
+	defer httpClient.CloseIdleConnections()
+
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
+			fmt.Fprintf(os.Stderr, "context cancelled while waiting for mmds opts")
 			return
 		case <-ticker.C:
-			token, err := w.getMMDSToken(ctx)
+			token, err := getMMDSToken(ctx, httpClient)
 			if err != nil {
-				fmt.Printf("error getting mmds token: %v\n", err)
+				fmt.Fprintf(os.Stderr, "error getting mmds token: %v\n", err)
 				continue
 			}
 
-			mmdsOpts, err := w.doMmdsRequest(ctx, token)
+			mmdsOpts, err := getMMDSOpts(ctx, httpClient, token)
 			if err != nil {
-				fmt.Printf("error getting mmds opts: %v\n", err)
+				fmt.Fprintf(os.Stderr, "error getting mmds opts: %v\n", err)
 				continue
+			}
+
+			envVars.Store("E2B_SANDBOX_ID", mmdsOpts.InstanceID)
+			envVars.Store("E2B_TEMPLATE_ID", mmdsOpts.EnvID)
+			envVars.Store("E2B_TEAM_ID", mmdsOpts.TeamID)
+			if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_SANDBOX_ID"), []byte(mmdsOpts.InstanceID), 0o666); err != nil {
+				fmt.Fprintf(os.Stderr, "error writing sandbox ID file: %v\n", err)
+			}
+			if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_TEMPLATE_ID"), []byte(mmdsOpts.EnvID), 0o666); err != nil {
+				fmt.Fprintf(os.Stderr, "error writing template ID file: %v\n", err)
+			}
+			if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_TEAM_ID"), []byte(mmdsOpts.TeamID), 0o666); err != nil {
+				fmt.Fprintf(os.Stderr, "error writing team ID file: %v\n", err)
 			}
 
 			if mmdsOpts.Address != "" {
-				return
+				mmdsChan <- mmdsOpts
 			}
+			return
 		}
 	}
-}
-
-func (w *HTTPExporter) getMMDSOpts(ctx context.Context, token string) (opts *opts, err error) {
-	opts, err = w.doMmdsRequest(ctx, token)
-	if err != nil {
-		return nil, err
-	}
-
-	if opts.Address == "" {
-		return nil, fmt.Errorf("no 'address' in mmds opts")
-	}
-
-	if opts.EnvID == "" {
-		return nil, fmt.Errorf("no 'envID' in mmds opts")
-	}
-
-	if opts.InstanceID == "" {
-		return nil, fmt.Errorf("no 'instanceID' in mmds opts")
-	}
-
-	return opts, nil
 }
