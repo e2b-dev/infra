@@ -116,6 +116,12 @@ func (e *edgeInstancesSyncStore) PoolExists(ctx context.Context, source sd.Servi
 
 func (e *edgeInstancesSyncStore) PoolInsert(ctx context.Context, source sd.ServiceDiscoveryItem) {
 	host := e.getHost(source.NodeIP, source.NodePort)
+
+	// skip registering itself
+	if e.pool.instanceSelfHost == host {
+		return
+	}
+
 	o, err := NewEdgeInstance(host, e.pool.auth)
 	if err != nil {
 		zap.L().Error("failed to register new edge instance", zap.String("host", host), zap.Error(err))
