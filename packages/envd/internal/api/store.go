@@ -11,13 +11,15 @@ import (
 )
 
 type API struct {
+	isNotFC     bool
 	logger      *zerolog.Logger
 	accessToken *string
 	envVars     *utils.Map[string, string]
+	mmdsChan    chan *host.MMDSOpts
 }
 
-func New(l *zerolog.Logger, envVars *utils.Map[string, string]) *API {
-	return &API{logger: l, envVars: envVars}
+func New(l *zerolog.Logger, envVars *utils.Map[string, string], mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
+	return &API{logger: l, envVars: envVars, mmdsChan: mmdsChan, isNotFC: isNotFC}
 }
 
 func (a *API) GetHealth(w http.ResponseWriter, r *http.Request) {
