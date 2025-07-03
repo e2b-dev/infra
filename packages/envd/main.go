@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
+	publicport "github.com/e2b-dev/infra/packages/envd/internal/port"
 	filesystemRpc "github.com/e2b-dev/infra/packages/envd/internal/services/filesystem"
 	processRpc "github.com/e2b-dev/infra/packages/envd/internal/services/process"
 	processSpec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
@@ -32,6 +33,8 @@ const (
 	maxAge      = 2 * time.Hour
 
 	defaultPort = 49983
+
+	portScannerInterval = 1000 * time.Millisecond
 )
 
 var (
@@ -211,6 +214,16 @@ func main() {
 			log.Fatalf("error getting user: %v", err)
 		}
 	}
+
+	// Bind all open ports on 127.0.0.1 and localhost to the eth0 interface
+	portScanner := publicport.NewScanner(portScannerInterval)
+	defer portScanner.Destroy()
+
+	portLogger := l.With().Str("logger", "envd").Logger()
+	portForwarder := publicport.NewForwarder(&portLogger, portScanner)
+	go portForwarder.StartForwarding()
+
+	go portScanner.ScanAndBroadcast()
 
 	err := s.ListenAndServe()
 	if err != nil {
