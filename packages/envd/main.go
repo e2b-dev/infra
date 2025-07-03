@@ -219,7 +219,7 @@ func main() {
 	portScanner := publicport.NewScanner(portScannerInterval)
 	defer portScanner.Destroy()
 
-	portLogger := l.With().Str("logger", "envd").Logger()
+	portLogger := l.With().Str("logger", "port-forwarder").Logger()
 	portForwarder := publicport.NewForwarder(&portLogger, portScanner)
 	go portForwarder.StartForwarding()
 
