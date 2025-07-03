@@ -98,7 +98,7 @@ func (f *Forwarder) StartForwarding() {
 					f.logger.Debug().
 						Str("ip", p.Laddr.IP).
 						Uint32("port", p.Laddr.Port).
-						Uint32("family", p.Family).
+						Uint32("family", familyToIPVersion(p.Family)).
 						Str("state", p.Status).
 						Msg("Detected new opened port on localhost that is not forwarded")
 
