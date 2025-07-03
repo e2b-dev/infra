@@ -121,7 +121,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 
 func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, i *edge.ClusterOrchestratorInstance) {
 	// this way we don't need to worry about multiple clusters with the same node ID in shared pool
-	orchestratorPoolNodeID := o.GetClusterNodeID(cluster.ID, i.NodeID)
+	poolNodeID := o.clusterNodeID(cluster.ID, i.NodeID)
 	client, clientMetadata := cluster.GetGrpcClient(i.ServiceInstanceID)
 
 	buildCache := ttlcache.New[string, interface{}]()
@@ -137,12 +137,12 @@ func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, i *edge.Clust
 		// some places are using this id to get node from orchestrator pool
 		// probably we can get rid of this and just create ID directly on Node struct
 		Info: &node.NodeInfo{
-			ID: orchestratorPoolNodeID,
+			ID: poolNodeID,
 		},
 
 		status: OrchestratorToApiNodeStateMapper[i.GetStatus()],
 		meta: nodeMetadata{
-			orchestratorID: orchestratorPoolNodeID,
+			orchestratorID: poolNodeID,
 			version:        i.ServiceVersion,
 			commit:         i.ServiceVersionCommit,
 		},
@@ -152,7 +152,7 @@ func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, i *edge.Clust
 		createFails:    atomic.Uint64{},
 	}
 
-	o.nodes.Insert(orchestratorPoolNodeID, orchestratorNode)
+	o.nodes.Insert(poolNodeID, orchestratorNode)
 }
 
 func (o *Orchestrator) GetClient(nodeID string) (*grpclient.GRPCClient, metadata.MD, error) {

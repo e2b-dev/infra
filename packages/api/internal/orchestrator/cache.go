@@ -143,10 +143,10 @@ func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
 	// We need to iterate over all clusters and their nodes
 	for _, cluster := range o.clusters.GetClusters() {
 		for _, n := range cluster.GetOrchestrators() {
-			clusterNodeID := o.GetClusterNodeID(cluster.ID, n.NodeID)
+			poolNodeID := o.clusterNodeID(cluster.ID, n.NodeID)
 
 			// If the node is not in the list, connect to it
-			if o.GetNode(clusterNodeID) == nil {
+			if o.GetNode(poolNodeID) == nil {
 				wg.Add(1)
 				go func(n *edge.ClusterOrchestratorInstance) {
 					defer wg.Done()
