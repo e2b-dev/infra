@@ -128,31 +128,43 @@ func (f *Forwarder) StartForwarding() {
 func (f *Forwarder) starPortForwarding(p *PortToForward) {
 	// https://unix.stackexchange.com/questions/311492/redirect-application-listening-on-localhost-to-listening-on-external-interface
 	// socat -d -d TCP4-LISTEN:4000,bind=169.254.0.21,fork TCP4:localhost:4000
-	socatCmd := fmt.Sprintf(
-		"socat -d -d -d TCP4-LISTEN:%v,bind=%s,fork TCP%d:localhost:%v",
-		p.port,
-		f.sourceIP.To4(),
-		p.family,
-		p.port,
+	// reuseaddr is used to fix the "Address already in use" error when restarting socat quickly.
+	cmd := exec.Command(
+		"socat", "-d", "-d", "-d",
+		fmt.Sprintf("TCP4-LISTEN:%v,bind=%s,reuseaddr,fork", p.port, f.sourceIP.To4()),
+		fmt.Sprintf("TCP%d:localhost:%v", p.family, p.port),
 	)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
 
 	f.logger.Debug().
-		Str("socatCmd", socatCmd).
+		Str("socatCmd", cmd.String()).
 		Int32("pid", p.pid).
 		Uint32("family", p.family).
 		IPAddr("sourceIP", f.sourceIP.To4()).
 		Uint32("port", p.port).
 		Msg("About to start port forwarding")
 
-	cmd := exec.Command("sh", "-c", socatCmd)
 	if err := cmd.Start(); err != nil {
 		f.logger.
 			Error().
-			Str("socatCmd", socatCmd).
+			Str("socatCmd", cmd.String()).
+			Err(err).
 			Msg("Failed to start port forwarding - failed to start socat")
 
 		return
 	}
+
+	go func() {
+		if err := cmd.Wait(); err != nil {
+			f.logger.
+				Debug().
+				Str("socatCmd", cmd.String()).
+				Err(err).
+				Msg("Port forwarding socat process exited")
+		}
+	}()
 
 	p.socat = cmd
 }
@@ -174,9 +186,8 @@ func (f *Forwarder) stopPortForwarding(p *PortToForward) {
 
 	logger.Debug().Msg("Stopping port forwarding")
 
-	if err := p.socat.Process.Kill(); err != nil {
-		logger.Debug().Msg("Error when stopping port forwarding")
-
+	if err := syscall.Kill(-p.socat.Process.Pid, syscall.SIGKILL); err != nil {
+		logger.Error().Err(err).Msg("Failed to kill process group")
 		return
 	}
 
