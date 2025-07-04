@@ -244,6 +244,18 @@ components:
         sandboxID:
           type: string
 
+    ServiceDiscoveryNodeStatusRequest:
+      type: object
+      required:
+        - serviceType
+        - serviceInstanceID
+      properties:
+        serviceType:
+          $ref: "#/components/schemas/ClusterNodeType"
+        serviceInstanceID:
+          type: string
+          description: Service instance ID that should be handled by the request
+
     Timestamp:
       type: string
       format: date-time
@@ -315,20 +327,19 @@ paths:
           "500":
             $ref: "#/components/responses/500"
 
-  /v1/service-discovery/nodes/{serviceInstanceID}/drain:
+  /v1/service-discovery/nodes/drain:
     post:
       operationId: v1ServiceDiscoveryNodeDrain
       description: Mark service places on node as draining
       security:
         - ApiKeyAuth: [ ]
       tags: [service-discovery]
-      parameters:
-        - name: serviceInstanceID
-          in: path
-          required: true
-          description: Service instance ID
-          schema:
-            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceDiscoveryNodeStatusRequest"
       responses:
         "200":
           description: Successfully start of node draining
@@ -341,20 +352,19 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /v1/service-discovery/nodes/{serviceInstanceID}/kill:
+  /v1/service-discovery/nodes/kill:
     post:
       operationId: v1ServiceDiscoveryNodeKill
       description: Kill the node
       security:
         - ApiKeyAuth: [ ]
       tags: [service-discovery]
-      parameters:
-        - name: serviceInstanceID
-          in: path
-          required: true
-          description: Service instance ID
-          schema:
-            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceDiscoveryNodeStatusRequest"
       responses:
         "200":
           description: Successfully start of node kill

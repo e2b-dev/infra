@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -12,14 +13,24 @@ import (
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context, serviceInstanceID string) {
-	_, templateSpan := a.tracer.Start(c, "service-discovery-node-drain-handler")
+func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	_, templateSpan := a.tracer.Start(ctx, "service-discovery-node-drain-handler")
 	defer templateSpan.End()
 
+	body, err := parseBody[api.V1ServiceDiscoveryNodeDrainJSONRequestBody](ctx, c)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
+		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
+		return
+	}
+
 	// requests was for this service instance
-	if serviceInstanceID == a.info.ServiceInstanceID {
+	if body.ServiceInstanceID == a.info.ServiceInstanceID && body.ServiceType == api.ClusterNodeTypeEdge {
 		a.info.SetStatus(api.Draining)
 		c.Status(http.StatusOK)
 		return
@@ -29,7 +40,7 @@ func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context, serviceInstanceID
 	defer reqTimeoutCancel()
 
 	// send request to neighboring node
-	err := a.sendNodeRequest(reqTimeout, serviceInstanceID, api.Draining)
+	err = a.sendNodeRequest(reqTimeout, body.ServiceInstanceID, body.ServiceType, api.Draining)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Error when calling service discovery service")
 		return
@@ -38,15 +49,19 @@ func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context, serviceInstanceID
 	c.Status(http.StatusOK)
 }
 
-func (a *APIStore) sendNodeRequest(ctx context.Context, serviceInstanceID string, status api.ClusterNodeStatus) error {
+func (a *APIStore) sendNodeRequest(ctx context.Context, serviceInstanceID string, serviceType api.ClusterNodeType, status api.ClusterNodeStatus) error {
 	findCtx, findCtxCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer findCtxCancel()
 
 	logger := a.logger.With(l.WithServiceInstanceID(serviceInstanceID))
 
-	// try to find orchestrator node first
-	o, ok := a.orchestratorPool.GetOrchestrator(serviceInstanceID)
-	if ok {
+	if serviceType == api.ClusterNodeTypeOrchestrator {
+		// try to find orchestrator node first
+		o, ok := a.orchestratorPool.GetOrchestrator(serviceInstanceID)
+		if !ok {
+			return errors.New("orchestrator instance doesn't found")
+		}
+
 		logger.Info("orchestrator instance found, calling status change request")
 		var orchestratorStatus orchestratorinfo.ServiceInfoStatus
 
@@ -82,9 +97,11 @@ func (a *APIStore) sendNodeRequest(ctx context.Context, serviceInstanceID string
 
 	switch status {
 	case api.Draining:
-		_, err = e.GetClient().V1ServiceDiscoveryNodeDrain(ctx, serviceInstanceID)
+		req := api.V1ServiceDiscoveryNodeDrainJSONRequestBody{ServiceType: api.ClusterNodeTypeEdge, ServiceInstanceID: serviceInstanceID}
+		_, err = e.GetClient().V1ServiceDiscoveryNodeDrain(ctx, req)
 	case api.Unhealthy:
-		_, err = e.GetClient().V1ServiceDiscoveryNodeKill(ctx, serviceInstanceID)
+		req := api.V1ServiceDiscoveryNodeKillJSONRequestBody{ServiceType: api.ClusterNodeTypeEdge, ServiceInstanceID: serviceInstanceID}
+		_, err = e.GetClient().V1ServiceDiscoveryNodeKill(ctx, req)
 	default:
 		return errors.New("failed to transform service instance status to api call")
 	}

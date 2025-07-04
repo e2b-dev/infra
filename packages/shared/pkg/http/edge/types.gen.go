@@ -152,6 +152,15 @@ type SandboxDeleteCatalogRequest struct {
 	SandboxID   string `json:"sandboxID"`
 }
 
+// ServiceDiscoveryNodeStatusRequest defines model for ServiceDiscoveryNodeStatusRequest.
+type ServiceDiscoveryNodeStatusRequest struct {
+	// ServiceInstanceID Service instance ID that should be handled by the request
+	ServiceInstanceID string `json:"serviceInstanceID"`
+
+	// ServiceType Cluster node type
+	ServiceType ClusterNodeType `json:"serviceType"`
+}
+
 // TemplateBuildLogsResponse defines model for TemplateBuildLogsResponse.
 type TemplateBuildLogsResponse struct {
 	// Logs Build logs
@@ -187,3 +196,9 @@ type V1SandboxCatalogDeleteJSONRequestBody = SandboxDeleteCatalogRequest
 
 // V1SandboxCatalogCreateJSONRequestBody defines body for V1SandboxCatalogCreate for application/json ContentType.
 type V1SandboxCatalogCreateJSONRequestBody = SandboxCreateCatalogRequest
+
+// V1ServiceDiscoveryNodeDrainJSONRequestBody defines body for V1ServiceDiscoveryNodeDrain for application/json ContentType.
+type V1ServiceDiscoveryNodeDrainJSONRequestBody = ServiceDiscoveryNodeStatusRequest
+
+// V1ServiceDiscoveryNodeKillJSONRequestBody defines body for V1ServiceDiscoveryNodeKill for application/json ContentType.
+type V1ServiceDiscoveryNodeKillJSONRequestBody = ServiceDiscoveryNodeStatusRequest
