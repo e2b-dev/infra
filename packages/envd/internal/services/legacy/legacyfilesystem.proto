@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package filesystem;
+package legacyfilesystem;
 
 service Filesystem {
     rpc Stat(StatRequest) returns (StatResponse);
@@ -24,7 +24,6 @@ message MoveRequest {
 
 message MoveResponse {
     EntryInfo entry = 1;
-    bool testing = 2;
 }
 
 message MakeDirRequest {
