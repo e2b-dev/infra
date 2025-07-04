@@ -6,8 +6,8 @@ import (
 )
 
 type LogsQueryProvider interface {
-	QueryBuildLogs(ctx context.Context, templateId string, buildId string, start time.Time, end time.Time, limit int, offset int) ([]LogEntry, error)
-	QuerySandboxLogs(ctx context.Context, teamId string, sandboxId string, start time.Time, end time.Time, limit int, offset int) ([]LogEntry, error)
+	QueryBuildLogs(ctx context.Context, templateID string, buildID string, start time.Time, end time.Time, limit int, offset int) ([]LogEntry, error)
+	QuerySandboxLogs(ctx context.Context, teamID string, sandboxID string, start time.Time, end time.Time, limit int, offset int) ([]LogEntry, error)
 }
 
 type LogEntry struct {
