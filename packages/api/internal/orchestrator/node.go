@@ -7,10 +7,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/jellydator/ttlcache/v3"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
@@ -18,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -31,10 +34,16 @@ type nodeMetadata struct {
 	commit         string
 	version        string
 }
+
 type Node struct {
 	CPUUsage atomic.Int64
 	RamUsage atomic.Int64
+
 	Client   *grpclient.GRPCClient
+	ClientMd metadata.MD
+
+	ClusterID     uuid.UUID
+	ClusterNodeID string
 
 	Info *node.NodeInfo
 
@@ -100,7 +109,8 @@ func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
 		return fmt.Errorf("unknown service info status: %s", s)
 	}
 
-	_, err := n.Client.Info.ServiceStatusOverride(ctx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: nodeStatus})
+	reqCtx := metadata.NewOutgoingContext(ctx, n.ClientMd)
+	_, err := n.Client.Info.ServiceStatusOverride(reqCtx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: nodeStatus})
 	if err != nil {
 		zap.L().Error("Failed to send status change", zap.Error(err))
 		return err
@@ -139,12 +149,25 @@ func (o *Orchestrator) GetNode(nodeID string) *Node {
 	return n
 }
 
+// clusterNodeID - this way we don't need to worry about multiple clusters with the same node ID in shared pool
+func (o *Orchestrator) clusterNodeID(clusterID uuid.UUID, nodeID string) string {
+	clusterPrefix := clusterID.String()[0:7]
+	return fmt.Sprintf("%s-%s", clusterPrefix, nodeID)
+}
+
 func (o *Orchestrator) GetNodes() []*api.Node {
 	nodes := make(map[string]*api.Node)
 	for key, n := range o.nodes.Items() {
+		var clusterID *string
+		if n.ClusterID != uuid.Nil {
+			clusterIDRaw := n.ClusterID.String()
+			clusterID = &clusterIDRaw
+		}
+
 		metadata := n.metadata()
 		nodes[key] = &api.Node{
 			NodeID:               key,
+			ClusterID:            clusterID,
 			Status:               n.Status(),
 			CreateFails:          n.createFails.Load(),
 			SandboxStartingCount: n.sbxsInProgress.Count(),
@@ -154,9 +177,9 @@ func (o *Orchestrator) GetNodes() []*api.Node {
 	}
 
 	for _, sbx := range o.instanceCache.Items() {
-		n, ok := nodes[sbx.Instance.ClientID]
+		n, ok := nodes[sbx.Node.ID]
 		if !ok {
-			zap.L().Error("node for sandbox wasn't found", zap.String("client_id", sbx.Instance.ClientID), zap.String("sandbox_id", sbx.Instance.SandboxID))
+			zap.L().Error("node for sandbox wasn't found", logger.WithNodeID(sbx.Node.ID), logger.WithSandboxID(sbx.Instance.SandboxID))
 			continue
 		}
 
@@ -178,10 +201,17 @@ func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
 
 	for key, n := range o.nodes.Items() {
 		if key == nodeID {
+			var clusterID *string
+			if n.ClusterID != uuid.Nil {
+				clusterIDRaw := n.ClusterID.String()
+				clusterID = &clusterIDRaw
+			}
+
 			builds := n.buildCache.Keys()
 			metadata := n.metadata()
 			node = &api.NodeDetail{
 				NodeID:       key,
+				ClusterID:    clusterID,
 				Status:       n.Status(),
 				CachedBuilds: builds,
 				CreateFails:  n.createFails.Load(),
@@ -196,7 +226,7 @@ func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
 	}
 
 	for _, sbx := range o.instanceCache.Items() {
-		if sbx.Instance.ClientID == nodeID {
+		if sbx.Node.ID == nodeID {
 			var metadata *api.SandboxMetadata
 			if sbx.Metadata != nil {
 				meta := api.SandboxMetadata(sbx.Metadata)

@@ -149,13 +149,13 @@ func (tm *TemplateManager) getBuilderClient(clusterID *uuid.UUID, nodeID *string
 		return nil, nil, nil, errors.New("cluster not found")
 	}
 
-	node, err := cluster.GetTemplateBuilderByID(*nodeID)
+	i, err := cluster.GetTemplateBuilderByNodeID(*nodeID)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to get builder by id '%s': %w", *nodeID, err)
 	}
 
 	logs := NewClusterPlacementLogsProvider(cluster.GetHttpClient(), *nodeID)
-	client, clientMetadata := cluster.GetGrpcClient(node.ServiceInstanceID)
+	client, clientMetadata := cluster.GetGrpcClient(i.ServiceInstanceID)
 
 	return client, clientMetadata, logs, nil
 }
