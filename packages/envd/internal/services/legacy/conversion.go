@@ -15,19 +15,8 @@ func convertEntryInfo(info *filesystem.EntryInfo) *EntryInfo {
 
 	return &EntryInfo{
 		Name: info.Name,
-		Type: convertFileType(info.Type),
+		Type: FileType(info.Type),
 		Path: info.Path,
-	}
-}
-
-func convertFileType(fileType filesystem.FileType) FileType {
-	switch fileType {
-	case filesystem.FileType_FILE_TYPE_FILE:
-		return FileType_FILE_TYPE_DIRECTORY
-	case filesystem.FileType_FILE_TYPE_DIRECTORY:
-		return FileType_FILE_TYPE_DIRECTORY
-	default:
-		return FileType_FILE_TYPE_UNSPECIFIED
 	}
 }
 
@@ -42,6 +31,21 @@ func Convert() connect.Interceptor {
 
 				return connect.NewResponse(&MoveResponse{
 					Entry: convertEntryInfo(mr.Entry),
+				})
+			},
+			reflect.TypeFor[*filesystem.ListDirResponse](): func(a protoreflect.ProtoMessage) connect.AnyResponse {
+				mr, ok := a.(*filesystem.ListDirResponse)
+				if !ok {
+					panic("wrong type")
+				}
+
+				var old []*EntryInfo
+				for _, item := range mr.Entries {
+					old = append(old, convertEntryInfo(item))
+				}
+
+				return connect.NewResponse(&ListDirResponse{
+					Entries: old,
 				})
 			},
 		},

@@ -24,7 +24,7 @@ func Handle(server *chi.Mux, l *zerolog.Logger) {
 
 	interceptors := connect.WithInterceptors(
 		logs.NewUnaryLogInterceptor(l),
-		legacy.Convert,
+		legacy.Convert(),
 	)
 
 	path, handler := spec.NewFilesystemHandler(service, interceptors)
