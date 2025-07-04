@@ -27,6 +27,15 @@ variable "gcp_project_id" {
   type = string
 }
 
+variable "gcp_region" {
+  type = string
+}
+
+variable "service_directory_namespace" {
+  type        = string
+  description = "The service directory namespace to use for private Google API access"
+  default     = "private-googleapis-service-attachment"
+}
 
 variable "cloudflare_api_token_secret_name" {
   type = string

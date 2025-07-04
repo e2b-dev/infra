@@ -56,7 +56,7 @@ func GetTemplateStorageProvider(ctx context.Context) (StorageProvider, error) {
 	case AWSStorageProvider:
 		return NewAWSBucketStorageProvider(ctx, bucketName)
 	case GCPStorageProvider:
-		return NewGCPBucketStorageProvider(ctx, bucketName)
+		return NewGCPBucketStorageProvider(ctx, bucketName, env.GetEnv("TEMPLATE_CACHE_PROXY_URL", ""))
 	}
 
 	return nil, fmt.Errorf("unknown storage provider: %s", provider)

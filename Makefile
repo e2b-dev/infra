@@ -47,6 +47,7 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, OTEL_COLLECTOR_RESOURCES_MEMORY_MB) \
 	$(call tfvar, TEMPLATE_BUCKET_NAME) \
 	$(call tfvar, TEMPLATE_BUCKET_LOCATION) \
+	$(call tfvar, TEMPLATE_CACHE_PROXY_URL) \
 	$(call tfvar, REDIS_MANAGED) \
 	$(call tfvar, GRAFANA_MANAGED)
 

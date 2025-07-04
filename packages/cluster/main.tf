@@ -298,6 +298,7 @@ module "network" {
   cloudflare_api_token_secret_name = var.cloudflare_api_token_secret_name
 
   gcp_project_id = var.gcp_project_id
+  gcp_region     = var.gcp_region
 
   api_port                  = var.api_port
   docker_reverse_proxy_port = var.docker_reverse_proxy_port
