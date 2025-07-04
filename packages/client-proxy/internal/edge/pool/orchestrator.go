@@ -96,9 +96,6 @@ func (o *OrchestratorInstance) sync(ctx context.Context) error {
 		freshInfo.ServiceVersion = status.ServiceVersion
 		freshInfo.ServiceVersionCommit = status.ServiceCommit
 		freshInfo.Roles = status.ServiceRoles
-
-		freshInfo.ServiceVersion = status.ServiceVersion
-		freshInfo.ServiceVersionCommit = status.ServiceCommit
 		o.setInfo(freshInfo)
 
 		o.MetricSandboxesRunning.Store(status.MetricSandboxesRunning)
