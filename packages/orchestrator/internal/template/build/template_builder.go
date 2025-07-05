@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -35,6 +36,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -69,6 +71,11 @@ type buildMetadata struct {
 	envVars map[string]string
 	user    string
 	workdir *string
+}
+
+type TemplateMetadata struct {
+	TemplateID string
+	BuildID    string
 }
 
 func NewBuilder(
@@ -159,9 +166,11 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 		user:    defaultUser,
 		workdir: nil,
 	}
-	lastCached := false
 
-	finalTemplateBuildID := template.BuildID
+	finalTemplate := TemplateMetadata{
+		TemplateID: template.TemplateID,
+		BuildID:    template.BuildID,
+	}
 	// Stable hash of base
 	baseSHA := sha256.New()
 	baseSHA.Write([]byte(template.FromImage))
@@ -169,12 +178,22 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 	baseSHA.Write([]byte(provisionScriptFile))
 	baseSHA.Write([]byte(string(template.DiskSizeMB)))
 	baseHash := fmt.Sprintf("%x", baseSHA.Sum(nil))
-	baseBuildID := getUUIDFromHash(ctx, b.storage, template.TemplateID, "", baseHash).String()
-	lastBuildID := baseBuildID
 
-	template.BuildID = lastBuildID
+	baseTemplate := getTemplateFromHash(ctx, b.storage, finalTemplate.TemplateID, "", baseHash)
+	// Invalidate base cache if the first step has Force set to true
+	if len(template.Steps) > 0 && template.Steps[0].Force != nil && *template.Steps[0].Force {
+		baseTemplate = TemplateMetadata{
+			TemplateID: id.Generate(),
+			BuildID:    uuid.NewString(),
+		}
+	}
+
+	lastTemplate := baseTemplate
+	template.TemplateID = baseTemplate.TemplateID
+	template.BuildID = baseTemplate.BuildID
 	defer func() {
-		template.BuildID = finalTemplateBuildID
+		template.BuildID = finalTemplate.BuildID
+		template.TemplateID = finalTemplate.TemplateID
 	}()
 
 	// Set force for all steps after first step
@@ -195,23 +214,18 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 
 	baseSandboxConfig := template.ToSandboxConfig(envdVersion)
 
-	baseCached, err := isCached(ctx, b.storage, template.BuildID)
+	lastCached := false
+	baseCached, err := isCached(ctx, b.storage, baseTemplate.BuildID)
 	if err != nil {
 		return nil, fmt.Errorf("error checking if base layer is cached: %w", err)
 	}
-
-	// Invalidate base cache if the first step has Force set to true
-	if len(template.Steps) > 0 && template.Steps[0].Force != nil && *template.Steps[0].Force {
-		baseCached = false
-	}
-
 	if baseCached {
 		lastCached = true
 		postProcessor.WriteMsg("Base layer is cached, skipping build")
 	} else {
 		templateFiles := storage.NewTemplateFiles(
-			template.TemplateID,
-			template.BuildID,
+			baseTemplate.TemplateID,
+			baseTemplate.BuildID,
 			template.KernelVersion,
 			template.FirecrackerVersion,
 		)
@@ -220,7 +234,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 			return nil, fmt.Errorf("error creating template files: %w", err)
 		}
 
-		templateBuildDir := filepath.Join(templatesDirectory, template.BuildID)
+		templateBuildDir := filepath.Join(templatesDirectory, baseTemplate.BuildID)
 		err = os.MkdirAll(templateBuildDir, 0o777)
 		if err != nil {
 			return nil, fmt.Errorf("error creating template build directory: %w", err)
@@ -333,7 +347,19 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 			return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 		}
 
-		err = b.pauseAndUpload(ctx, b.tracer, postProcessor, b.storage, uploadErrGroup, sourceSbx, "", baseHash, lastBuildID)
+		err = b.pauseAndUpload(
+			ctx,
+			b.tracer,
+			postProcessor,
+			b.storage,
+			uploadErrGroup,
+			sourceSbx,
+			finalTemplate.TemplateID,
+			"",
+			baseHash,
+			sourceSbx.Config.TemplateId,
+			sourceSbx.Config.BuildId,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("error pausing and uploading template: %w", err)
 		}
@@ -345,11 +371,14 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 		force := step.Force != nil && *step.Force
 		cmd := fmt.Sprintf("%s %s", strings.ToUpper(step.Type), strings.Join(step.Args, " "))
 
-		// Stable uuid from the step hash
-		newBuildID := getUUIDFromHash(ctx, b.storage, template.TemplateID, baseHash, step.Hash).String()
-		if force {
-			// Force rebuild: generate a new build ID
-			newBuildID = uuid.NewString()
+		// Generate a new template ID and build ID for the step
+		newTemplate := TemplateMetadata{
+			TemplateID: id.Generate(),
+			BuildID:    uuid.NewString(),
+		}
+		if !force {
+			// Fetch stable uuid from the step hash
+			newTemplate = getTemplateFromHash(ctx, b.storage, finalTemplate.TemplateID, baseHash, step.Hash)
 		}
 
 		// Apply changes like env vars or workdir locally only, no need to run in sandbox
@@ -360,7 +389,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 		}
 
 		// Check if the layer is cached
-		found, err := isCached(ctx, b.storage, newBuildID)
+		found, err := isCached(ctx, b.storage, newTemplate.BuildID)
 		if err != nil {
 			return nil, fmt.Errorf("error checking if layer is cached: %w", err)
 		}
@@ -386,16 +415,33 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 				postProcessor,
 				uploadErrGroup,
 				baseSandboxConfig,
+				finalTemplate.TemplateID,
 				baseHash,
 				step.Hash,
-				lastBuildID,
-				newBuildID,
+				lastTemplate,
+				newTemplate,
 				true,
 				func(ctx context.Context, sbx *sandbox.Sandbox) error {
-					err := b.applyCommand(ctx, postProcessor, template.TemplateID, sbx, prefix, step, buildMetadata)
+					err := b.applyCommand(ctx, postProcessor, finalTemplate.TemplateID, sbx, prefix, step, buildMetadata)
 					if err != nil {
 						return fmt.Errorf("error processing layer: %w", err)
 					}
+
+					// Sync FS changes to the FS after exectution
+					err = b.runCommand(
+						ctx,
+						postProcessor,
+						prefix,
+						sbx.Metadata.Config.SandboxId,
+						"sync",
+						"root",
+						nil,
+						nil,
+					)
+					if err != nil {
+						return fmt.Errorf("error running sync command: %w", err)
+					}
+
 					return nil
 				},
 			)
@@ -404,15 +450,9 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 			}
 		}
 
-		lastBuildID = newBuildID
+		lastTemplate = newTemplate
 	}
 	// TMP
-
-	postProcessor.WriteMsg("All steps executed, configuring template")
-	err = uploadErrGroup.Wait()
-	if err != nil {
-		return nil, fmt.Errorf("error uploading template layers: %w", err)
-	}
 
 	// Run post-processing actions in the sandbox
 	err = b.runInSandbox(
@@ -420,10 +460,11 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 		postProcessor,
 		uploadErrGroup,
 		baseSandboxConfig,
+		finalTemplate.TemplateID,
 		"config-run-cmd",
 		baseHash,
-		lastBuildID,
-		finalTemplateBuildID,
+		lastTemplate,
+		finalTemplate,
 		false,
 		func(ctx context.Context, sbx *sandbox.Sandbox) error {
 			// Run configuration script
@@ -655,21 +696,23 @@ func (b *TemplateBuilder) runInSandbox(
 	postProcessor *writer.PostProcessor,
 	uploadErrGroup *errgroup.Group,
 	sourceSbxConfig *orchestrator.SandboxConfig,
+	finalTemplateID string,
 	baseHash,
 	hash string,
-	sourceBuildID string,
-	exportBuildID string,
+	sourceTemplate TemplateMetadata,
+	exportTemplate TemplateMetadata,
 	resumeSandbox bool,
 	fun func(ctx context.Context, sbx *sandbox.Sandbox) error,
 ) error {
 	ctx, childSpan := b.tracer.Start(ctx, "run-in-sandbox")
 	defer childSpan.End()
 
-	postProcessor.WriteMsg(fmt.Sprintf("Running action in: %s/%s", sourceSbxConfig.TemplateId, sourceBuildID))
+	postProcessor.WriteMsg(fmt.Sprintf("Running action in: %s/%s", sourceTemplate.TemplateID, sourceTemplate.BuildID))
 
+	// Resume sandbox source files/config
 	sbxConfig := &orchestrator.SandboxConfig{
-		TemplateId:         sourceSbxConfig.TemplateId,
-		BuildId:            sourceBuildID,
+		TemplateId:         sourceTemplate.TemplateID,
+		BuildId:            sourceTemplate.BuildID,
 		ExecutionId:        uuid.NewString(),
 		KernelVersion:      sourceSbxConfig.KernelVersion,
 		FirecrackerVersion: sourceSbxConfig.FirecrackerVersion,
@@ -696,7 +739,6 @@ func (b *TemplateBuilder) runInSandbox(
 			uuid.New().String(),
 			time.Now(),
 			time.Now().Add(time.Minute),
-			sourceSbxConfig.BaseTemplateId,
 			b.devicePool,
 			config.AllowSandboxInternet,
 			false,
@@ -705,6 +747,7 @@ func (b *TemplateBuilder) runInSandbox(
 		postProcessor.WriteMsg("Creating new sandbox")
 		var localTemplate sbxtemplate.Template
 
+		// Sandbox source files
 		localTemplate, err = b.templateCache.GetTemplate(
 			sbxConfig.TemplateId,
 			sbxConfig.BuildId,
@@ -714,6 +757,10 @@ func (b *TemplateBuilder) runInSandbox(
 		if err != nil {
 			return fmt.Errorf("failed to get template snapshot data: %w", err)
 		}
+		// New sandbox config
+		sbxConfig.TemplateId = exportTemplate.TemplateID
+		sbxConfig.BuildId = exportTemplate.BuildID
+		sbxConfig.BaseTemplateId = exportTemplate.TemplateID
 		sbx, cleanupRes, err = sandbox.CreateSandbox(
 			ctx,
 			b.tracer,
@@ -763,7 +810,19 @@ func (b *TemplateBuilder) runInSandbox(
 		return fmt.Errorf("error running action in sandbox: %w", err)
 	}
 
-	err = b.pauseAndUpload(ctx, b.tracer, postProcessor, b.storage, uploadErrGroup, sbx, baseHash, hash, exportBuildID)
+	err = b.pauseAndUpload(
+		ctx,
+		b.tracer,
+		postProcessor,
+		b.storage,
+		uploadErrGroup,
+		sbx,
+		finalTemplateID,
+		baseHash,
+		hash,
+		exportTemplate.TemplateID,
+		exportTemplate.BuildID,
+	)
 	if err != nil {
 		return fmt.Errorf("error pausing and uploading template: %w", err)
 	}
@@ -778,8 +837,10 @@ func (b *TemplateBuilder) pauseAndUpload(
 	persistance storage.StorageProvider,
 	uploadErrGroup *errgroup.Group,
 	sbx *sandbox.Sandbox,
+	finalTemplateID string,
 	baseHash,
 	hash string,
+	templateID string,
 	buildID string,
 ) error {
 	ctx, childSpan := tracer.Start(ctx, "pause-and-upload")
@@ -787,7 +848,7 @@ func (b *TemplateBuilder) pauseAndUpload(
 
 	// Pause sandbox
 	snapshotTemplateFiles := storage.NewTemplateFiles(
-		sbx.Config.TemplateId,
+		templateID,
 		buildID,
 		sbx.Config.KernelVersion,
 		sbx.Config.FirecrackerVersion,
@@ -834,7 +895,10 @@ func (b *TemplateBuilder) pauseAndUpload(
 			return fmt.Errorf("error uploading snapshot: %w", err)
 		}
 
-		err = saveUUIDToHash(ctx, persistance, snapshotTemplateFiles.TemplateId, baseHash, hash, uuid.MustParse(snapshotTemplateFiles.BuildId))
+		err = saveTemplateToHash(ctx, persistance, finalTemplateID, baseHash, hash, TemplateMetadata{
+			TemplateID: snapshotTemplateFiles.TemplateId,
+			BuildID:    snapshotTemplateFiles.BuildId,
+		})
 		if err != nil {
 			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
 		}
@@ -965,6 +1029,7 @@ func (b *TemplateBuilder) applyCommand(
 			return fmt.Errorf("failed to copy layer tar data to temporary file: %w", err)
 		}
 
+		// TODO: Cleanup the temporary file from the sandbox
 		sbxTargetPath := fmt.Sprintf("/tmp/%s.tar", *step.FilesHash)
 		err = b.copyFile(ctx, postProcessor, sbx.Metadata.Config.SandboxId, buildMetadata.user, tmpFile.Name(), sbxTargetPath)
 		if err != nil {
@@ -976,7 +1041,7 @@ func (b *TemplateBuilder) applyCommand(
 			postProcessor,
 			prefix,
 			sbx.Metadata.Config.SandboxId,
-			fmt.Sprintf(`tar -xzvf "%s" -C "%s" --strip-components=1; rm "%s"`, sbxTargetPath, args[1], sbxTargetPath),
+			fmt.Sprintf(`tar -xzvf "%s" -C "%s" --strip-components=1`, sbxTargetPath, args[1]),
 			buildMetadata.user,
 			buildMetadata.workdir,
 			buildMetadata.envVars,
@@ -1052,28 +1117,49 @@ func isCached(
 	return false, nil
 }
 
-func getUUIDFromHash(ctx context.Context, s storage.StorageProvider, templateID string, baseHash string, hash string) uuid.UUID {
+func getTemplateFromHash(ctx context.Context, s storage.StorageProvider, templateID string, baseHash string, hash string) TemplateMetadata {
 	obj, err := s.OpenObject(ctx, uuidToHashPath(templateID, baseHash, hash))
 	if err != nil {
-		return uuid.New()
+		return TemplateMetadata{
+			TemplateID: id.Generate(),
+			BuildID:    uuid.New().String(),
+		}
 	}
 
 	var buf bytes.Buffer
 	_, err = obj.WriteTo(&buf)
 	if err != nil {
-		return uuid.New()
+		return TemplateMetadata{
+			TemplateID: id.Generate(),
+			BuildID:    uuid.New().String(),
+		}
 	}
 
-	return uuid.MustParse(buf.String())
+	var templateMetadata TemplateMetadata
+	err = json.Unmarshal(buf.Bytes(), &templateMetadata)
+	if err != nil {
+		zap.L().Error("error unmarshalling template metadata from hash", zap.Error(err))
+		return TemplateMetadata{
+			TemplateID: id.Generate(),
+			BuildID:    uuid.New().String(),
+		}
+	}
+
+	return templateMetadata
 }
 
-func saveUUIDToHash(ctx context.Context, s storage.StorageProvider, templateID string, baseHash, hash string, uuid uuid.UUID) error {
+func saveTemplateToHash(ctx context.Context, s storage.StorageProvider, templateID string, baseHash, hash string, template TemplateMetadata) error {
 	obj, err := s.OpenObject(ctx, uuidToHashPath(templateID, baseHash, hash))
 	if err != nil {
 		return fmt.Errorf("error creating object for saving UUID: %w", err)
 	}
 
-	buf := bytes.NewBufferString(uuid.String())
+	marshalled, err := json.Marshal(template)
+	if err != nil {
+		return fmt.Errorf("error marshalling template metadata: %w", err)
+	}
+
+	buf := bytes.NewBuffer(marshalled)
 	_, err = obj.ReadFrom(buf)
 	if err != nil {
 		return fmt.Errorf("error writing UUID to object: %w", err)

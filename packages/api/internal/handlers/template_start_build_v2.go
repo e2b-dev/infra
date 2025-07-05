@@ -146,11 +146,11 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		buildUUID,
 		build.KernelVersion,
 		build.FirecrackerVersion,
-		build.StartCmd,
+		body.StartCmd,
 		build.Vcpu,
 		build.FreeDiskSizeMB,
 		build.RAMMB,
-		build.ReadyCmd,
+		body.ReadyCmd,
 		body.FromImage,
 		body.Steps,
 	)
