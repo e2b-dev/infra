@@ -172,7 +172,10 @@ func CreateSandbox(
 		ips.slot,
 		sandboxFiles,
 		rootfsPath,
-		config.BaseTemplateId,
+		// The BaseTemplateID is always the same as config value for new sandboxes
+		config.TemplateId,
+		// The rootfs build ID is from the header, because it needs to be the same from
+		// the first FS creation.
 		rootFS.Header().Metadata.BaseBuildId.String(),
 	)
 	if err != nil {
@@ -247,7 +250,6 @@ func ResumeSandbox(
 	traceID string,
 	startedAt time.Time,
 	endAt time.Time,
-	baseTemplateID string,
 	devicePool *nbd.DevicePool,
 	allowInternet,
 	useClickhouseMetrics bool,
@@ -352,7 +354,7 @@ func ResumeSandbox(
 		ips.slot,
 		sandboxFiles,
 		rootfsPath,
-		baseTemplateID,
+		config.BaseTemplateId,
 		readonlyRootfs.Header().Metadata.BaseBuildId.String(),
 	)
 	if fcErr != nil {
