@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"net/http"
 	"os"
 	"time"
@@ -91,7 +92,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		}
 	}()
 
-	persistence, err := storage.GetTemplateStorageProvider(ctx)
+	persistence, err := storage.GetTemplateStorageProvider(ctx, block.ChunkSize)
 	if err != nil {
 		return fmt.Errorf("could not create storage provider: %w", err)
 	}

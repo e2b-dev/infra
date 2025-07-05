@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"sync"
 	"time"
 
@@ -53,7 +54,7 @@ func New(
 ) (*ServerStore, error) {
 	logger.Info("Initializing template manager")
 
-	persistence, err := storage.GetTemplateStorageProvider(ctx)
+	persistence, err := storage.GetTemplateStorageProvider(ctx, block.ChunkSize)
 	if err != nil {
 		return nil, fmt.Errorf("error getting template storage provider: %v", err)
 	}
