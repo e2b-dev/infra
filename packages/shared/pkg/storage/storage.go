@@ -41,7 +41,20 @@ type StorageObjectProvider interface {
 	Delete() error
 }
 
-func GetTemplateStorageProvider(ctx context.Context) (StorageProvider, error) {
+func GetTemplateStorageProvider(ctx context.Context, chunkSize int) (StorageProvider, error) {
+	provider, err := getTemplateStorageProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if path := env.GetEnv("LOCAL_TEMPLATE_CACHE_PATH", ""); path != "" {
+		provider = NewCachedProvider(path, chunkSize, provider)
+	}
+
+	return provider, nil
+}
+
+func getTemplateStorageProvider(ctx context.Context) (StorageProvider, error) {
 	provider := Provider(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
 
 	if provider == LocalStorageProvider {
