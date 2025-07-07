@@ -34,7 +34,6 @@ require (
 	github.com/gin-contrib/zap v1.1.5
 	github.com/go-redis/cache/v9 v9.0.0
 	github.com/golang-jwt/jwt/v5 v5.2.2
-	github.com/google/go-cmp v0.7.0
 	github.com/jackc/pgx/v5 v5.7.4
 	github.com/launchdarkly/go-sdk-common/v3 v3.1.0
 	github.com/pkg/errors v0.9.1
@@ -112,6 +111,7 @@ require (
 	github.com/gohugoio/hugo v0.139.4 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/btree v1.1.3 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/grafana/dskit v0.0.0-20231120170505-765e343eda4f // indirect
 	github.com/grafana/gomemcache v0.0.0-20231023152154-6947259a0586 // indirect
 	github.com/grafana/loki/pkg/push v0.0.0-20231124142027-e52380921608 // indirect
