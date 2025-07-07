@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	"go.uber.org/zap"
 )
 
 type Metrics struct {
