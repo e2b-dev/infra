@@ -201,8 +201,8 @@ components:
         - timestamp
         - cpuCount
         - cpuUsedPct
-        - memUsedMiB
-        - memTotalMiB
+        - memUsed
+        - memTotal
       properties:
         timestamp:
           type: string
@@ -216,14 +216,14 @@ components:
           type: number
           format: float
           description: CPU usage percentage
-        memUsedMiB:
+        memUsed:
           type: integer
           format: int64
-          description: Memory used in MiB
-        memTotalMiB:
+          description: Memory used in bytes
+        memTotal:
           type: integer
           format: int64
-          description: Total memory in MiB
+          description: Total memory in bytes
 
     Sandbox:
       required:
@@ -374,9 +374,7 @@ components:
         metadata:
           $ref: "#/components/schemas/SandboxMetadata"
         metrics:
-          type: array
-          items:
-            $ref: "#/components/schemas/SandboxMetric"
+          $ref: "#/components/schemas/SandboxMetric"
 
     NewSandbox:
       required:
@@ -989,32 +987,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SandboxLogs"
-        "404":
-          $ref: "#/components/responses/404"
-        "401":
-          $ref: "#/components/responses/401"
-        "500":
-          $ref: "#/components/responses/500"
-
-  /sandboxes/{sandboxID}/metrics:
-    get:
-      description: Get sandbox metrics
-      tags: [sandboxes]
-      security:
-        - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
-      parameters:
-        - $ref: "#/components/parameters/sandboxID"
-      responses:
-        "200":
-          description: Successfully returned the sandbox metrics
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/SandboxMetric"
         "404":
           $ref: "#/components/responses/404"
         "401":

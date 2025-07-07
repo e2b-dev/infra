@@ -56,19 +56,32 @@ func (a *APIStore) getSandboxesMetrics(
 	}
 
 	// Get metrics for all sandboxes
-	metrics, err := getSandboxesSandboxIDMetrics(
-		ctx,
-		a.clickhouseStore,
-		metricsReadFlag,
-		sandboxIds,
-		teamID.String(),
-	)
+	if !metricsReadFlag {
+		zap.L().Debug("sandbox metrics read feature flag is disabled")
+		// If we are not reading from ClickHouse, we can return an empty map
+		// This is here just to have possibility to turn off ClickHouse metrics reading
+		return nil, nil
+	}
+
+	metrics, err := a.clickhouseStore.QueryLatestMetrics(ctx, sandboxIds, teamID.String())
 	if err != nil {
 		zap.L().Error("Error fetching sandbox metrics from ClickHouse",
 			logger.WithTeamID(teamID.String()),
 			zap.Error(err),
 		)
-		return nil, fmt.Errorf("error fetching sandbox metrics: %w", err)
+
+		return nil, fmt.Errorf("error querying metrics: %w", err)
+	}
+
+	apiMetrics := make(map[string]api.SandboxMetric)
+	for _, m := range metrics {
+		apiMetrics[m.SandboxID] = api.SandboxMetric{
+			Timestamp:  m.Timestamp,
+			CpuUsedPct: float32(m.CPUUsedPercent),
+			CpuCount:   int32(m.CPUCount),
+			MemTotal:   int64(m.MemTotal),
+			MemUsed:    int64(m.MemUsed),
+		}
 	}
 
 	// Collect results and build final response
@@ -76,11 +89,10 @@ func (a *APIStore) getSandboxesMetrics(
 
 	// Process each result as it arrives
 	for _, sbx := range sandboxes {
-		var sbxMetrics *[]api.SandboxMetric
-		m, ok := metrics[sbx.SandboxID]
+		var sbxMetrics *api.SandboxMetric
+		m, ok := apiMetrics[sbx.SandboxID]
 		if ok {
-			// TODO: Does this need to be an array? and also pointer?
-			sbxMetrics = &[]api.SandboxMetric{m}
+			sbxMetrics = &m
 		}
 
 		sbxWithMetrics := api.RunningSandboxWithMetrics{
