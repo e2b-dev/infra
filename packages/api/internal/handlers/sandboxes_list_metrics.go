@@ -44,7 +44,7 @@ func (a *APIStore) getSandboxesMetrics(
 	flagCtx := ldcontext.NewBuilder(featureflags.MetricsReadFlagName).Build()
 	metricsReadFlag, err := a.featureFlags.Ld.BoolVariation(featureflags.MetricsReadFlagName, flagCtx, featureflags.MetricsReadDefault)
 	if err != nil {
-		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(err))
+		zap.L().Error("error getting metrics read feature flag, soft failing", zap.Error(err))
 	}
 
 	// Get metrics for all sandboxes
