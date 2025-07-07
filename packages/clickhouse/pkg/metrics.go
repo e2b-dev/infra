@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"time"
-
-	"github.com/ClickHouse/clickhouse-go/v2"
 )
 
 type Metrics struct {
@@ -29,8 +27,8 @@ SELECT
     argMaxIf(Value,  TimeUnix, MetricName = 'e2b.sandbox.ram.used')     AS ram_used
 FROM metrics_gauge
 WHERE 
-    Attributes['sandbox_id'] = {sandbox_id:String}
-AND Attributes['team_id'] = {team_id:String}
+    Attributes['sandbox_id'] IN ?
+AND Attributes['team_id'] = ?
 AND MetricName IN (
 	  'e2b.sandbox.cpu.total',
 	  'e2b.sandbox.cpu.used',
@@ -42,9 +40,13 @@ GROUP BY sandbox_id, team_id
 
 // QueryLatestMetrics returns rows ordered by timestamp, paged by limit.
 func (c *Client) QueryLatestMetrics(ctx context.Context, sandboxIDs []string, teamID string) ([]Metrics, error) {
+	if len(sandboxIDs) == 0 {
+		return make([]Metrics, 0), nil
+	}
+
 	rows, err := c.conn.Query(ctx, metricsSelectQuery,
-		clickhouse.Named("sandbox_id", sandboxIDs[0]),
-		clickhouse.Named("team_id", teamID),
+		sandboxIDs,
+		teamID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query metrics: %w", err)
