@@ -28,21 +28,13 @@ func (a *APIStore) getSandboxesMetrics(
 	teamID uuid.UUID,
 	sandboxes []utils.PaginatedSandbox,
 ) ([]api.RunningSandboxWithMetrics, error) {
-	// Add operation telemetry
-	telemetry.ReportEvent(ctx, "fetch metrics for sandboxes")
+	ctx, span := a.Tracer.Start(ctx, "fetch-sandboxes-metrics")
+	defer span.End()
+
 	telemetry.SetAttributes(ctx,
 		telemetry.WithTeamID(teamID.String()),
 		attribute.Int("sandboxes.count", len(sandboxes)),
 	)
-
-	startTime := time.Now()
-	defer func() {
-		// Report operation duration
-		duration := time.Since(startTime)
-		telemetry.SetAttributes(ctx,
-			attribute.Float64("operation.duration_ms", float64(duration.Milliseconds())),
-		)
-	}()
 
 	sandboxIds := make([]string, 0, len(sandboxes))
 	for _, s := range sandboxes {
@@ -59,7 +51,7 @@ func (a *APIStore) getSandboxesMetrics(
 	if !metricsReadFlag {
 		zap.L().Debug("sandbox metrics read feature flag is disabled")
 		// If we are not reading from ClickHouse, we can return an empty map
-		// This is here just to have possibility to turn off ClickHouse metrics reading
+		// This is here just to have the possibility to turn off ClickHouse metrics reading
 		return nil, nil
 	}
 
