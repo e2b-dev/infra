@@ -167,6 +167,42 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 	}
 }
 
+func (o *Orchestrator) RegisterSandboxInsideClusterCatalog(node *Node, sbxStartTime time.Time, sandboxConfig *orchestrator.SandboxConfig) {
+	if node.ClusterID != uuid.Nil {
+		cluster, ok := o.clusters.GetClusterById(node.ClusterID)
+		if !ok {
+			zap.L().Error("Failed to get cluster by ID", logger.WithClusterID(node.ClusterID))
+			return
+		}
+
+		i, ok := cluster.GetInstanceByNodeID(node.ClusterNodeID)
+		if !ok {
+			zap.L().Error("Failed to get cluster instance by ID", logger.WithClusterID(cluster.ID), logger.WithClusterNodeID(node.ClusterNodeID))
+			return
+		}
+
+		err := cluster.RegisterSandboxInCatalog(i.ServiceInstanceID, sbxStartTime, sandboxConfig)
+		if err != nil {
+			zap.L().Error("Failed to register sandbox in cluster catalog", logger.WithClusterID(cluster.ID), logger.WithClusterNodeID(node.ClusterNodeID))
+		}
+	}
+}
+
+func (o *Orchestrator) RemoveSandboxFromClusterCatalog(node *Node, sandboxID string, executionID string) {
+	if node.ClusterID != uuid.Nil {
+		cluster, ok := o.clusters.GetClusterById(node.ClusterID)
+		if !ok {
+			zap.L().Error("Failed to get cluster by ID", logger.WithClusterID(node.ClusterID))
+			return
+		}
+
+		err := cluster.RemoveSandboxFromCatalog(sandboxID, executionID)
+		if err != nil {
+			zap.L().Error("Failed to remove sandbox from cluster catalog", logger.WithClusterID(cluster.ID), logger.WithClusterNodeID(node.ClusterNodeID))
+		}
+	}
+}
+
 func (o *Orchestrator) Close(ctx context.Context) error {
 	var errs []error
 
