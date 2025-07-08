@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
@@ -85,12 +86,15 @@ func snapshotInstance(ctx context.Context, orch *Orchestrator, sbx *instance.Ins
 	_, childSpan := orch.tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
 
-	client, err := orch.GetClient(sbx.Node.ID)
+	// todo fix
+	//client, err := orch.GetClient(sbx.Node.ID)
+	client, clientMd, err := orch.GetClient(sbx.Node.ID)
 	if err != nil {
 		return fmt.Errorf("failed to get client '%s': %w", sbx.Node.ID, err)
 	}
 
-	_, err = client.Sandbox.Pause(ctx, &orchestrator.SandboxPauseRequest{
+	reqCtx := metadata.NewOutgoingContext(ctx, clientMd)
+	_, err = client.Sandbox.Pause(reqCtx, &orchestrator.SandboxPauseRequest{
 		SandboxId:  sbx.Instance.SandboxID,
 		TemplateId: templateID,
 		BuildId:    buildID,

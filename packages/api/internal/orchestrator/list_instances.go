@@ -8,6 +8,7 @@ import (
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/google/uuid"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
@@ -19,12 +20,13 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 	childCtx, childSpan := o.tracer.Start(ctx, "get-sandboxes-from-orchestrator")
 	defer childSpan.End()
 
-	client, err := o.GetClient(node.ID)
+	client, clientMd, err := o.GetClient(node.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GRPC client: %w", err)
 	}
 
-	res, err := client.Sandbox.List(childCtx, &empty.Empty{})
+	reqCtx := metadata.NewOutgoingContext(childCtx, clientMd)
+	res, err := client.Sandbox.List(reqCtx, &empty.Empty{})
 
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {

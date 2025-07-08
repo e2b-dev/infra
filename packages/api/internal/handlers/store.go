@@ -140,7 +140,12 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		zap.L().Info("Connected to Redis cluster")
 	}
 
-	orch, err := orchestrator.New(ctx, tel, tracer, nomadClient, posthogClient, redisClient, dbClient)
+	clustersPool, err := edge.NewPool(ctx, tel, sqlcDB, tracer)
+	if err != nil {
+		zap.L().Fatal("initializing edge clusters pool failed", zap.Error(err))
+	}
+
+	orch, err := orchestrator.New(ctx, tel, tracer, nomadClient, posthogClient, redisClient, dbClient, clustersPool)
 	if err != nil {
 		zap.L().Fatal("Initializing Orchestrator client", zap.Error(err))
 	}
@@ -161,11 +166,6 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 	accessTokenGenerator, err := sandbox.NewEnvdAccessTokenGenerator()
 	if err != nil {
 		zap.L().Fatal("Initializing access token generator failed", zap.Error(err))
-	}
-
-	clustersPool, err := edge.NewPool(ctx, tel, sqlcDB, tracer)
-	if err != nil {
-		zap.L().Fatal("initializing edge clusters pool failed", zap.Error(err))
 	}
 
 	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)

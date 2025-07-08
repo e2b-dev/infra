@@ -6,15 +6,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/posthog/posthog-go"
-	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -61,7 +63,6 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 		select {
 		case <-ctx.Done():
 			zap.L().Info("Stopping keepInSync")
-
 			return
 		case <-ticker.C:
 			o.syncNodes(ctx, instanceCache)
@@ -76,42 +77,120 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 	spanCtx, span := o.tracer.Start(ctxTimeout, "keep-in-sync")
 	defer span.End()
 
-	nodes, err := o.listNomadNodes(spanCtx)
+	nodes, err := o.listNomadNodes(ctx)
 	if err != nil {
-		zap.L().Error("Error listing nodes", zap.Error(err))
-
+		zap.L().Error("Error listing orchestrator nodes", zap.Error(err))
 		return
 	}
 
+	o.syncLocalDiscoveredNodes(spanCtx, nodes)
+	o.syncClusterDiscoveredNodes(spanCtx)
+
 	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	// Sync state of all nodes currently in the pool
+	syncNodesSpanCtx, syncNodesSpan := o.tracer.Start(spanCtx, "keep-in-sync-existing")
+	defer syncNodesSpan.End()
+
+	for _, n := range o.nodes.Items() {
+		wg.Add(1)
+		go func(n *Node) {
+			defer wg.Done()
+
+			// cluster and local nodes needs to by synced differently,
+			// because each of them is taken from different source pool
+			if n.ClusterID == uuid.Nil {
+				o.syncNode(syncNodesSpanCtx, n, nodes, instanceCache)
+			} else {
+				o.syncClusterNode(syncNodesSpanCtx, n, instanceCache)
+			}
+		}(n)
+	}
+}
+
+func (o *Orchestrator) syncLocalDiscoveredNodes(ctx context.Context, nodes []*node.NodeInfo) {
+	// Connect local nodes that are not in the list, yet
+	connectLocalSpanCtx, connectLocalSpan := o.tracer.Start(ctx, "keep-in-sync-connect-local-nodes")
+	defer connectLocalSpan.End()
+
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
 	for _, n := range nodes {
 		// If the node is not in the list, connect to it
 		if o.GetNode(n.ID) == nil {
 			wg.Add(1)
 			go func(n *node.NodeInfo) {
 				defer wg.Done()
-				err = o.connectToNode(spanCtx, n)
+				err := o.connectToNode(connectLocalSpanCtx, n)
 				if err != nil {
 					zap.L().Error("Error connecting to node", zap.Error(err))
 				}
 			}(n)
 		}
 	}
-	wg.Wait()
+}
 
-	for _, n := range o.nodes.Items() {
-		wg.Add(1)
-		go func(n *Node) {
-			defer wg.Done()
-			o.syncNode(spanCtx, n, nodes, instanceCache)
-		}(n)
+func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	_, connectClusteredSpan := o.tracer.Start(ctx, "keep-in-sync-connect-clustered-nodes")
+	defer connectClusteredSpan.End()
+
+	// Connect clustered nodes that are not in the list, yet
+	// We need to iterate over all clusters and their nodes
+	for _, cluster := range o.clusters.GetClusters() {
+		for _, n := range cluster.GetOrchestrators() {
+			poolNodeID := o.clusterNodeID(cluster.ID, n.NodeID)
+
+			// If the node is not in the list, connect to it
+			if o.GetNode(poolNodeID) == nil {
+				wg.Add(1)
+				go func(n *edge.ClusterOrchestratorInstance) {
+					defer wg.Done()
+					o.connectToClusterNode(cluster, n)
+				}(n)
+			}
+		}
 	}
-	wg.Wait()
+}
+
+func (o *Orchestrator) syncClusterNode(ctx context.Context, node *Node, instanceCache *instance.InstanceCache) {
+	ctx, childSpan := o.tracer.Start(ctx, "sync-cluster-node")
+	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.Info.ID), telemetry.WithClusterID(node.ClusterID), telemetry.WithClusterNodeID(node.ClusterNodeID))
+	defer childSpan.End()
+
+	nodeFound := false
+	for range syncMaxRetries {
+		cluster, clusterFound := o.clusters.GetClusterById(node.ClusterID)
+		if !clusterFound {
+			continue
+		}
+
+		_, found := cluster.GetInstanceByNodeID(node.ClusterNodeID)
+		if !found {
+			continue
+		}
+
+		nodeFound = true
+		break
+	}
+
+	if !nodeFound {
+		// we are not closing grpc connection, because it is shared between all cluster nodes, and it's handled by the cluster
+		o.nodes.Remove(node.Info.ID)
+		return
+	}
+
+	// Unified call for syncing node state across different node types
+	o.syncNodeState(ctx, node, instanceCache)
 }
 
 func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.NodeInfo, instanceCache *instance.InstanceCache) {
 	ctx, childSpan := o.tracer.Start(ctx, "sync-node")
-	telemetry.SetAttributes(ctx, attribute.String("node.id", node.Info.ID))
+	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.Info.ID))
 	defer childSpan.End()
 
 	found := false
@@ -128,20 +207,25 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 		// Close the connection to the node
 		err := node.Client.Close()
 		if err != nil {
-			zap.L().Error("Error closing connection to node", zap.Error(err))
+			zap.L().Error("Error closing connection to node", zap.Error(err), logger.WithNodeID(node.Info.ID))
 		}
 
 		o.nodes.Remove(node.Info.ID)
-
 		return
 	}
 
+	// Unified call for syncing node state across different node types
+	o.syncNodeState(ctx, node, instanceCache)
+}
+
+func (o *Orchestrator) syncNodeState(ctx context.Context, node *Node, instanceCache *instance.InstanceCache) {
 	syncRetrySuccess := false
 
 	for range syncMaxRetries {
-		nodeInfo, err := node.Client.Info.ServiceInfo(ctx, &emptypb.Empty{})
+		reqCtx := metadata.NewOutgoingContext(ctx, node.ClientMd)
+		nodeInfo, err := node.Client.Info.ServiceInfo(reqCtx, &emptypb.Empty{})
 		if err != nil {
-			zap.L().Error("Error getting node info", zap.Error(err))
+			zap.L().Error("Error getting node info", zap.Error(err), logger.WithNodeID(node.Info.ID))
 			continue
 		}
 
@@ -157,7 +241,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 
 		activeInstances, instancesErr := o.getSandboxes(ctx, node.Info)
 		if instancesErr != nil {
-			zap.L().Error("Error getting instances", zap.Error(instancesErr))
+			zap.L().Error("Error getting instances", zap.Error(instancesErr), logger.WithNodeID(node.Info.ID))
 			continue
 		}
 
@@ -175,7 +259,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 
 	builds, buildsErr := o.listCachedBuilds(ctx, node.Info.ID)
 	if buildsErr != nil {
-		zap.L().Error("Error listing cached builds", zap.Error(buildsErr))
+		zap.L().Error("Error listing cached builds", zap.Error(buildsErr), logger.WithNodeID(node.Info.ID))
 		return
 	}
 
@@ -259,7 +343,8 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			info.PauseDone(nil)
 		} else {
 			req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}
-			_, err := node.Client.Sandbox.Delete(ctx, req)
+			reqCtx := metadata.NewOutgoingContext(ctx, node.ClientMd)
+			_, err := node.Client.Sandbox.Delete(reqCtx, req)
 			if err != nil {
 				return fmt.Errorf("failed to delete sandbox '%s': %w", info.Instance.SandboxID, err)
 			}
