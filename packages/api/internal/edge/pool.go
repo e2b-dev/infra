@@ -56,12 +56,11 @@ func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, trac
 }
 
 func (p *Pool) GetClusterById(id uuid.UUID) (*Cluster, bool) {
-	cluster, ok := p.clusters.Get(id.String())
-	if !ok {
-		return nil, false
-	}
+	return p.clusters.Get(id.String())
+}
 
-	return cluster, true
+func (p *Pool) GetClusters() map[string]*Cluster {
+	return p.clusters.Items()
 }
 
 func (p *Pool) Close() {
