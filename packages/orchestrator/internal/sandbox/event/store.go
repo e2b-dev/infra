@@ -9,6 +9,13 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+const (
+	cacheTL = time.Hour * 24 * 30
+
+	EventPrefix = "ev:"
+	IPPrefix    = "ip:"
+)
+
 type SandboxEvent struct {
 	Path string         `json:"path"`
 	Body map[string]any `json:"body"`
@@ -25,10 +32,15 @@ type sandboxEventStore struct {
 }
 
 type SandboxEventStore interface {
+	SetSandboxIP(sandboxId string, ip string) error
+	GetSandboxIP(sandboxId string) (string, error)
+	DelSandboxIP(sandboxId string) error
+
 	GetLastEvent(sandboxId string) (*SandboxEvent, error)
 	GetLastNEvents(sandboxId string, n int) ([]*SandboxEvent, error)
 	AddEvent(sandboxId string, SandboxEvent *SandboxEvent, expiration time.Duration) error
 	DelEvent(sandboxId string) error
+
 	Close() error
 }
 
@@ -40,11 +52,23 @@ func NewSandboxEventStore(ctx context.Context, tracer trace.Tracer, redisClient 
 	}
 }
 
+func (c *sandboxEventStore) SetSandboxIP(sandboxId string, ip string) error {
+	return c.redisClient.Set(c.ctx, IPPrefix+ip, sandboxId, cacheTL).Err()
+}
+
+func (c *sandboxEventStore) GetSandboxIP(ip string) (string, error) {
+	return c.redisClient.Get(c.ctx, IPPrefix+ip).Result()
+}
+
+func (c *sandboxEventStore) DelSandboxIP(ip string) error {
+	return c.redisClient.Del(c.ctx, IPPrefix+ip).Err()
+}
+
 func (c *sandboxEventStore) GetLastEvent(sandboxId string) (*SandboxEvent, error) {
 	_, span := c.tracer.Start(c.ctx, "sandbox-event-get-last")
 	defer span.End()
 
-	result, err := c.redisClient.ZRevRangeWithScores(c.ctx, sandboxId, 0, 0).Result()
+	result, err := c.redisClient.ZRevRangeWithScores(c.ctx, EventPrefix+sandboxId, 0, 0).Result()
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +89,7 @@ func (c *sandboxEventStore) GetLastNEvents(sandboxId string, n int) ([]*SandboxE
 	_, span := c.tracer.Start(c.ctx, "sandbox-event-get-last-n")
 	defer span.End()
 
-	result, err := c.redisClient.ZRevRangeWithScores(c.ctx, sandboxId, 0, int64(n-1)).Result()
+	result, err := c.redisClient.ZRevRangeWithScores(c.ctx, EventPrefix+sandboxId, 0, int64(n-1)).Result()
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +115,7 @@ func (c *sandboxEventStore) AddEvent(sandboxId string, event *SandboxEvent, expi
 	_, span := c.tracer.Start(c.ctx, "sandbox-event-store")
 	defer span.End()
 
-	return c.redisClient.ZAdd(c.ctx, sandboxId, redis.Z{
+	return c.redisClient.ZAdd(c.ctx, EventPrefix+sandboxId, redis.Z{
 		Score:  float64(time.Now().UnixNano()),
 		Member: event,
 	}).Err()
@@ -101,7 +125,7 @@ func (c *sandboxEventStore) DelEvent(sandboxId string) error {
 	_, span := c.tracer.Start(c.ctx, "sandbox-event-delete")
 	defer span.End()
 
-	return c.redisClient.Del(c.ctx, sandboxId).Err()
+	return c.redisClient.Del(c.ctx, EventPrefix+sandboxId).Err()
 }
 
 func (c *sandboxEventStore) Close() error {

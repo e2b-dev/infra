@@ -18,6 +18,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/event"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
@@ -241,6 +242,7 @@ func ResumeSandbox(
 	devicePool *nbd.DevicePool,
 	allowInternet,
 	useClickhouseMetrics bool,
+	eventStore event.SandboxEventStore,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
@@ -420,6 +422,12 @@ func ResumeSandbox(
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
+
+	sandboxIP := ips.slot.HostIPString()
+	eventStore.SetSandboxIP(config.SandboxId, sandboxIP)
+	cleanup.AddPriority(func(ctx context.Context) error {
+		return eventStore.DelSandboxIP(sandboxIP)
+	})
 
 	go sbx.Checks.Start()
 

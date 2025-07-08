@@ -12,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/event"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -36,6 +37,7 @@ type server struct {
 	devicePool    *nbd.DevicePool
 	persistence   storage.StorageProvider
 	featureFlags  *featureflags.Client
+	eventStore    event.SandboxEventStore
 }
 
 type Service struct {
@@ -62,6 +64,7 @@ func New(
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 	featureFlags *featureflags.Client,
+	eventStore event.SandboxEventStore,
 ) (*Service, error) {
 	srv := &Service{info: info}
 
@@ -89,6 +92,7 @@ func New(
 		devicePool:    devicePool,
 		persistence:   persistence,
 		featureFlags:  featureFlags,
+		eventStore:    eventStore,
 	}
 
 	meter := tel.MeterProvider.Meter("orchestrator.sandbox")

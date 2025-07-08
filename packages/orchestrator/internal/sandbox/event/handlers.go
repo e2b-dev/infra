@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 
 	"go.uber.org/zap"
 )
@@ -34,7 +35,6 @@ func (h *MetricsHandler) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// This handler is used to store event data for all paths that are not registered in the event server.
 // This is used to track ad-hoc events that are not handled by the event server.
 type DefaultHandler struct {
 	store SandboxEventStore
@@ -45,7 +45,17 @@ func (h *DefaultHandler) Path() string {
 }
 
 func (h *DefaultHandler) HandlerFunc(w http.ResponseWriter, r *http.Request) {
-	sandboxID := r.Header.Get("E2B_SANDBOX_ID")
+	addr := r.RemoteAddr
+	ip := strings.Split(addr, ":")[0]
+	sandboxID, err := h.store.GetSandboxIP(ip)
+	if err != nil {
+		zap.L().Error("Failed to get sandbox ID from IP", zap.Error(err))
+		http.Error(w, "Error handling event", http.StatusInternalServerError)
+		return
+	}
+
+	zap.L().Debug("Received request from sandbox", zap.String("sandbox_id", sandboxID), zap.String("ip", ip))
+
 	if r.Method == http.MethodGet {
 		events, err := h.store.GetLastNEvents(sandboxID, 10)
 		if err != nil {

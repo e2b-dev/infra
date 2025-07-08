@@ -246,6 +246,7 @@ func run(port, proxyPort, sbxEventServerPort uint) (success bool) {
 	sbxEventHandlers := event.NewEventHandlers(ctx, eventStore)
 
 	sbxEventServer := event.NewSandboxEventServer(sbxEventServerPort, sbxEventHandlers)
+	defer sbxEventServer.Close(ctx)
 
 	networkPool, err := network.NewPool(ctx, tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID, tracer)
 	if err != nil {
@@ -271,7 +272,7 @@ func run(port, proxyPort, sbxEventServerPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
 
-	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags)
+	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags, eventStore)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
