@@ -4,205 +4,158 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
 	sd "github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/synchronization"
 )
 
 type EdgePool struct {
 	discovery sd.ServiceDiscoveryAdapter
+	auth      authorization.AuthorizationService
 
-	nodeSelfHost string
-	nodes        *smap.Map[*EdgeNode]
-	mutex        sync.RWMutex
+	instanceSelfHost string
+	instances        *smap.Map[*EdgeInstance]
+	synchronization  *synchronization.Synchronize[sd.ServiceDiscoveryItem, *EdgeInstance]
 
 	tracer trace.Tracer
 	logger *zap.Logger
 }
 
 const (
-	edgePoolCacheRefreshInterval = 10 * time.Second
+	edgeInstancesPoolInterval     = 10 * time.Second
+	edgeInstancesPoolRoundTimeout = 10 * time.Second
+	edgeInstanceSyncTimeout       = 10 * time.Second
 )
 
-var ErrEdgeNodeNotFound = errors.New("edge node not found")
+var ErrEdgeServiceInstanceNotFound = errors.New("edge service instance not found")
 
-func NewEdgePool(ctx context.Context, logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, tracer trace.Tracer, nodeSelfHost string) *EdgePool {
+func NewEdgePool(logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, tracer trace.Tracer, instanceSelfHost string, auth authorization.AuthorizationService) *EdgePool {
 	pool := &EdgePool{
 		discovery: discovery,
+		auth:      auth,
 
-		nodeSelfHost: nodeSelfHost,
-		nodes:        smap.New[*EdgeNode](),
-		mutex:        sync.RWMutex{},
+		instanceSelfHost: instanceSelfHost,
+		instances:        smap.New[*EdgeInstance](),
 
 		logger: logger,
 		tracer: tracer,
 	}
 
-	// Background synchronization of orchestrators available in pool
-	go func() { pool.keepInSync(ctx) }()
+	store := &edgeInstancesSyncStore{pool: pool}
+	pool.synchronization = synchronization.NewSynchronize(tracer, "edge-instances", "Edge instances", store)
+
+	// Background synchronization of edge instances available in cluster
+	go func() { pool.synchronization.Start(edgeInstancesPoolInterval, edgeInstancesPoolRoundTimeout, true) }()
 
 	return pool
 }
 
-func (p *EdgePool) GetNodes() map[string]*EdgeNode {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-
-	return p.nodes.Items()
+func (p *EdgePool) Close(ctx context.Context) error {
+	p.synchronization.Close()
+	return nil
 }
 
-func (p *EdgePool) GetNode(id string) (*EdgeNode, error) {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-
-	o, ok := p.nodes.Get(id)
-	if !ok {
-		return nil, ErrEdgeNodeNotFound
-	}
-
-	return o, nil
+func (p *EdgePool) GetInstances() map[string]*EdgeInstance {
+	return p.instances.Items()
 }
 
-func (p *EdgePool) keepInSync(ctx context.Context) {
-	// Run the first sync immediately
-	p.syncNodes(ctx)
-
-	ticker := time.NewTicker(edgePoolCacheRefreshInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			p.logger.Info("Stopping keep-in-sync")
-			return
-		case <-ticker.C:
-			p.syncNodes(ctx)
+func (p *EdgePool) GetInstanceByID(instanceID string) (*EdgeInstance, error) {
+	for _, i := range p.instances.Items() {
+		if i.GetInfo().ServiceInstanceID == instanceID {
+			return i, nil
 		}
 	}
+
+	return nil, ErrEdgeServiceInstanceNotFound
 }
 
-func (p *EdgePool) syncNodes(ctx context.Context) {
-	ctxTimeout, cancel := context.WithTimeout(ctx, edgePoolCacheRefreshInterval)
-	defer cancel()
+// SynchronizationStore is an interface that defines methods for synchronizing the edge instances inside the pool.
+type edgeInstancesSyncStore struct {
+	pool *EdgePool
+}
 
-	spanCtx, span := p.tracer.Start(ctxTimeout, "pool-keep-in-sync")
-	defer span.End()
+func (e *edgeInstancesSyncStore) getHost(ip string, port int) string {
+	return fmt.Sprintf("%s:%d", ip, port)
+}
 
-	// Service discovery targets
-	sdNodes, err := p.discovery.ListNodes(spanCtx)
-	if err != nil {
+func (e *edgeInstancesSyncStore) SourceList(ctx context.Context) ([]sd.ServiceDiscoveryItem, error) {
+	return e.pool.discovery.ListNodes(ctx)
+}
+
+func (e *edgeInstancesSyncStore) SourceExists(ctx context.Context, s []sd.ServiceDiscoveryItem, p *EdgeInstance) bool {
+	for _, item := range s {
+		itemHost := e.getHost(item.NodeIP, item.NodePort)
+		if itemHost == p.GetInfo().Host {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (e *edgeInstancesSyncStore) PoolList(ctx context.Context) []*EdgeInstance {
+	items := make([]*EdgeInstance, 0)
+	for _, item := range e.pool.instances.Items() {
+		items = append(items, item)
+	}
+	return items
+}
+
+func (e *edgeInstancesSyncStore) PoolExists(ctx context.Context, source sd.ServiceDiscoveryItem) bool {
+	host := e.getHost(source.NodeIP, source.NodePort)
+	_, found := e.pool.instances.Get(host)
+	return found
+}
+
+func (e *edgeInstancesSyncStore) PoolInsert(ctx context.Context, source sd.ServiceDiscoveryItem) {
+	host := e.getHost(source.NodeIP, source.NodePort)
+
+	// skip registering itself
+	if e.pool.instanceSelfHost == host {
 		return
 	}
 
-	var wg sync.WaitGroup
-
-	// connect / refresh discovered orchestrators
-	for _, sdNode := range sdNodes {
-		wg.Add(1)
-		go func(sdNode *sd.ServiceDiscoveryItem) {
-			defer wg.Done()
-
-			var found *EdgeNode = nil
-
-			host := fmt.Sprintf("%s:%d", sdNode.NodeIp, sdNode.NodePort)
-
-			// skip self registration
-			if host == p.nodeSelfHost {
-				return
-			}
-
-			for _, node := range p.nodes.Items() {
-				if host == node.Host {
-					found = node
-					break
-				}
-			}
-
-			if found == nil {
-				// newly discovered orchestrator
-				err := p.connectNode(ctx, sdNode)
-				if err != nil {
-					p.logger.Error("Error connecting to node", zap.String("host", host), zap.Error(err))
-				}
-
-				return
-			}
-		}(sdNode)
+	o, err := NewEdgeInstance(host, e.pool.auth)
+	if err != nil {
+		zap.L().Error("failed to register new edge instance", zap.String("host", host), zap.Error(err))
+		return
 	}
 
-	// wait for all connections to finish
-	wg.Wait()
+	ctx, cancel := context.WithTimeout(ctx, edgeInstanceSyncTimeout)
+	defer cancel()
 
-	// disconnect nodes that are not in the list anymore
-	for _, node := range p.GetNodes() {
-		wg.Add(1)
-		go func(node *EdgeNode) {
-			defer wg.Done()
-
-			found := false
-
-			for _, sdNode := range sdNodes {
-				host := fmt.Sprintf("%s:%d", sdNode.NodeIp, sdNode.NodePort)
-				if host == node.Host {
-					found = true
-					break
-				}
-			}
-
-			// orchestrator is no longer in the list coming from service discovery
-			if !found {
-				err := p.removeNode(spanCtx, node)
-				if err != nil {
-					p.logger.Error("Error during edge node removal", zap.Error(err))
-				}
-			}
-		}(node)
-
+	// Initial synchronization of the edge instance
+	// We want to do it separately here so failed init will cause not adding the instance to the pool
+	err = o.sync(ctx)
+	if err != nil {
+		zap.L().Error("Failed to finish initial edge instance sync", zap.Error(err), l.WithClusterNodeID(o.GetInfo().NodeID))
+		return
 	}
 
-	// wait for all node removals to finish
-	wg.Wait()
+	e.pool.instances.Insert(host, o)
 }
 
-func (p *EdgePool) connectNode(ctx context.Context, node *sd.ServiceDiscoveryItem) error {
-	ctx, childSpan := p.tracer.Start(ctx, "connect-edge-node")
-	defer childSpan.End()
+func (e *edgeInstancesSyncStore) PoolUpdate(ctx context.Context, item *EdgeInstance) {
+	ctx, cancel := context.WithTimeout(ctx, edgeInstanceSyncTimeout)
+	defer cancel()
 
-	host := fmt.Sprintf("%s:%d", node.NodeIp, node.NodePort)
-	o, err := NewEdgeNode(ctx, host)
+	err := item.sync(ctx)
 	if err != nil {
-		return err
+		zap.L().Error("Failed to sync edge instance", zap.Error(err), l.WithClusterNodeID(item.GetInfo().NodeID))
 	}
-
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
-	p.nodes.Insert(o.ServiceInstanceID, o)
-	return nil
 }
 
-func (p *EdgePool) removeNode(ctx context.Context, node *EdgeNode) error {
-	_, childSpan := p.tracer.Start(ctx, "remove-edge-node")
-	defer childSpan.End()
+func (e *edgeInstancesSyncStore) PoolRemove(ctx context.Context, item *EdgeInstance) {
+	info := item.GetInfo()
+	zap.L().Info("Edge instance connection is not active anymore, closing.", l.WithClusterNodeID(info.NodeID))
 
-	p.logger.Info("Edge node connection is not active anymore, closing.", l.WithClusterNodeID(node.NodeID))
-
-	// stop background sync and close everything
-	err := node.Close()
-	if err != nil {
-		p.logger.Error("Error closing connection to node", zap.Error(err), l.WithClusterNodeID(node.NodeID))
-	}
-
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
-	p.nodes.Remove(node.ServiceInstanceID)
-	p.logger.Info("Edge node node connection has been closed.", l.WithClusterNodeID(node.NodeID))
-	return nil
+	e.pool.instances.Remove(item.info.Host)
+	zap.L().Info("Edge instance connection has been deregistered.", l.WithClusterNodeID(info.NodeID))
 }
