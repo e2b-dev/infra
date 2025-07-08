@@ -170,8 +170,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		return
 	}
 
-	c.Set("nodeID", sbx.ClientID)
-
 	c.JSON(http.StatusCreated, &sbx)
 }
 
