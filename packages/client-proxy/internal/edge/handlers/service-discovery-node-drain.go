@@ -50,43 +50,56 @@ func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context) {
 }
 
 func (a *APIStore) sendNodeRequest(ctx context.Context, serviceInstanceID string, serviceType api.ClusterNodeType, status api.ClusterNodeStatus) error {
+	switch serviceType {
+	case api.ClusterNodeTypeEdge:
+		return a.sendEdgeRequest(ctx, serviceInstanceID, status)
+	case api.ClusterNodeTypeOrchestrator:
+		return a.sendOrchestratorRequest(ctx, serviceInstanceID, status)
+	}
+
+	return errors.New("invalid service type")
+}
+
+func (a *APIStore) sendOrchesmtratorRequest(ctx context.Context, serviceInstanceID string, status api.ClusterNodeStatus) error {
+	logger := a.logger.With(l.WithServiceInstanceID(serviceInstanceID))
+
+	// try to find orchestrator node first
+	o, ok := a.orchestratorPool.GetOrchestrator(serviceInstanceID)
+	if !ok {
+		return errors.New("orchestrator instance doesn't found")
+	}
+
+	logger.Info("orchestrator instance found, calling status change request")
+	var orchestratorStatus orchestratorinfo.ServiceInfoStatus
+
+	switch status {
+	case api.Draining:
+		orchestratorStatus = orchestratorinfo.ServiceInfoStatus_OrchestratorDraining
+	case api.Unhealthy:
+		orchestratorStatus = orchestratorinfo.ServiceInfoStatus_OrchestratorUnhealthy
+	case api.Healthy:
+		orchestratorStatus = orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy
+	default:
+		logger.Error("failed to transform service status to orchestrator status", zap.String("status", string(status)))
+		return errors.New("failed to transform service status to orchestrator status")
+	}
+
 	findCtx, findCtxCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer findCtxCancel()
 
-	logger := a.logger.With(l.WithServiceInstanceID(serviceInstanceID))
-
-	if serviceType == api.ClusterNodeTypeOrchestrator {
-		// try to find orchestrator node first
-		o, ok := a.orchestratorPool.GetOrchestrator(serviceInstanceID)
-		if !ok {
-			return errors.New("orchestrator instance doesn't found")
-		}
-
-		logger.Info("orchestrator instance found, calling status change request")
-		var orchestratorStatus orchestratorinfo.ServiceInfoStatus
-
-		switch status {
-		case api.Draining:
-			orchestratorStatus = orchestratorinfo.ServiceInfoStatus_OrchestratorDraining
-		case api.Unhealthy:
-			orchestratorStatus = orchestratorinfo.ServiceInfoStatus_OrchestratorUnhealthy
-		case api.Healthy:
-			orchestratorStatus = orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy
-		default:
-			logger.Error("failed to transform service status to orchestrator status", zap.String("status", string(status)))
-			return errors.New("failed to transform service status to orchestrator status")
-		}
-
-		_, err := o.GetClient().Info.ServiceStatusOverride(
-			findCtx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: orchestratorStatus},
-		)
-		if err != nil {
-			logger.Error("failed to request orchestrator status change", zap.Error(err))
-			return errors.New("failed to request orchestrator status change")
-		}
-
-		return nil
+	_, err := o.GetClient().Info.ServiceStatusOverride(
+		findCtx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: orchestratorStatus},
+	)
+	if err != nil {
+		logger.Error("failed to request orchestrator status change", zap.Error(err))
+		return errors.New("failed to request orchestrator status change")
 	}
+
+	return nil
+}
+
+func (a *APIStore) sendEdgeRequest(ctx context.Context, serviceInstanceID string, status api.ClusterNodeStatus) error {
+	logger := a.logger.With(l.WithServiceInstanceID(serviceInstanceID))
 
 	// try to find edge node
 	e, err := a.edgePool.GetInstanceByID(serviceInstanceID)
