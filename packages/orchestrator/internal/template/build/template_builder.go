@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
@@ -757,6 +758,23 @@ func (b *TemplateBuilder) runInSandbox(
 		if err != nil {
 			return fmt.Errorf("failed to get template snapshot data: %w", err)
 		}
+
+		oldMemfile, err := localTemplate.Memfile()
+		if err != nil {
+			return fmt.Errorf("error getting memfile from local template: %w", err)
+		}
+
+		// Create new memfile with the size of the sandbox RAM, this updates the underlying memfile.
+		// This is ok as the sandbox is started from the beginning.
+		memfile, err := block.NewEmpty(sbxConfig.RamMb<<ToMBShift, oldMemfile.BlockSize(), uuid.MustParse(sbxConfig.BuildId))
+		if err != nil {
+			return fmt.Errorf("error creating memfile: %w", err)
+		}
+		err = localTemplate.ReplaceMemfile(memfile)
+		if err != nil {
+			return fmt.Errorf("error setting memfile for local template: %w", err)
+		}
+
 		// New sandbox config
 		sbxConfig.TemplateId = exportTemplate.TemplateID
 		sbxConfig.BuildId = exportTemplate.BuildID
