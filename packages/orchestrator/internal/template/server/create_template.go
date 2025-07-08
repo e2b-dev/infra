@@ -55,7 +55,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		StartCmd:           config.StartCommand,
 		ReadyCmd:           config.ReadyCommand,
 		DiskSizeMB:         int64(config.DiskSizeMB),
-		BuildLogsWriter: logsWriter,
+		BuildLogsWriter:    logsWriter,
 		HugePages:          config.HugePages,
 		FromImage:          config.FromImage,
 		Steps:              config.Steps,
@@ -102,7 +102,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 
 func (s *ServerStore) reportBuildFailed(ctx context.Context, config *templateconfig.TemplateConfig, err error) {
 	telemetry.ReportCriticalError(ctx, "error while building template", err)
-	cacheErr := s.buildCache.SetFailed(config.BuildId)
+	cacheErr := s.buildCache.SetFailed(config.BuildID)
 	if cacheErr != nil {
 		s.logger.Error("Error while setting build state to failed", zap.Error(err))
 	}
