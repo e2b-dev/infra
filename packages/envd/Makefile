@@ -18,9 +18,11 @@ build-debug:
 	CGO_ENABLED=1 go build -race -gcflags=all="-N -l" -o bin/debug/envd ${LDFLAGS}
 
 start-docker:
-	DOCKER_BUILDKIT=1 docker build -t envd-debug . -f debug.Dockerfile
+	make build
+	DOCKER_BUILDKIT=1 docker build --platform linux/amd64 -t envd-debug . -f debug.Dockerfile
 	docker run \
 	--name envd \
+	--platform linux/amd64 \
 	-p 49983:49983 \
 	-p 2345:2345 \
 	-p 9999:9999 \
@@ -28,7 +30,7 @@ start-docker:
 	-p 8001:8001 \
 	--rm \
 	-i envd-debug \
-	/usr/bin/envd -isnotfc
+	/usr/bin/envd
 
 build-and-upload:
 	make build

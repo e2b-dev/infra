@@ -1,11 +1,13 @@
 package filesystem
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -30,7 +32,22 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	stat, err := os.Stat(dirPath)
+	// Resolve symlinks
+	resolved, err := filepath.EvalSymlinks(dirPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("directory not found: %w", err))
+		}
+
+		if strings.Contains(err.Error(), "too many links") {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cyclic symlink or chain >255 links at %q", dirPath))
+		}
+
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error resolving symlink: %w", err))
+	}
+
+	// Check if the path is a directory
+	stat, err := os.Stat(resolved)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("directory not found: %w", err))
@@ -68,6 +85,7 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 		entries = append(entries, &rpc.EntryInfo{
 			Name: entry.Name(),
 			Type: getEntryType(entry),
+			// Returns the "real" path - resolved symlinks
 			Path: path,
 		})
 
@@ -76,6 +94,18 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error reading directory: %w", err))
 	}
+
+	// Sort entries by type and name
+	slices.SortFunc(entries, func(a, b *rpc.EntryInfo) int {
+		if a.Type != b.Type { // DIRECTORY before FILE/LINK
+			if a.Type == rpc.FileType_FILE_TYPE_DIRECTORY {
+				return -1
+			}
+			return 1
+		}
+
+		return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
 
 	return connect.NewResponse(&rpc.ListDirResponse{
 		Entries: entries,

@@ -133,7 +133,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 	fileContent := "Hello, world!"
 
 	// create test file
-	textFile, contentType := createTextFile(t, filePath, fileContent)
+	textFile, contentType := utils.CreateTextFile(t, filePath, fileContent)
 
 	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
 		ctx,
@@ -201,7 +201,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 	fileContent := "Hello, world!"
 
 	// create test file
-	textFile, contentType := createTextFile(t, filePath, fileContent)
+	textFile, contentType := utils.CreateTextFile(t, filePath, fileContent)
 
 	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
 		ctx,
