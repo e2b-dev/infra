@@ -108,7 +108,7 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterNode
 	span.SetAttributes(telemetry.WithClusterID(c.ID))
 	defer span.End()
 
-	for _, node := range c.nodes.Items() {		
+	for _, node := range c.nodes.Items() {
 		if node.GetStatus() != infogrpc.ServiceInfoStatus_OrchestratorHealthy {
 			continue
 		}
