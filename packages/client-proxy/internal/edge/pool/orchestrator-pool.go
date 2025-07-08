@@ -137,9 +137,10 @@ func (e *orchestratorInstancesSyncStore) SourceList(ctx context.Context) ([]sd.S
 }
 
 func (e *orchestratorInstancesSyncStore) SourceExists(ctx context.Context, s []sd.ServiceDiscoveryItem, p *OrchestratorInstance) bool {
+	itself := p.GetInfo()
 	for _, item := range s {
 		itemHost := e.getHost(item.NodeIP, item.NodePort)
-		if itemHost == p.GetInfo().Host {
+		if itemHost == itself.Host {
 			return true
 		}
 	}
