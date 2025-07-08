@@ -152,6 +152,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		build.RAMMB,
 		body.ReadyCmd,
 		body.FromImage,
+		body.Force,
 		body.Steps,
 		team.ClusterID,
 		build.ClusterNodeID,

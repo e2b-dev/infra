@@ -41,6 +41,9 @@ type TemplateConfig struct {
 	// FromImage is the base image to use for building the template.
 	FromImage string
 
+	// Force rebuild of the template even if it is already cached.
+	Force *bool
+
 	// Steps to build the template.
 	Steps []*templatemanager.TemplateStep
 }

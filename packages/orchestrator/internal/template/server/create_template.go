@@ -52,6 +52,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		DiskSizeMB:         int64(config.DiskSizeMB),
 		HugePages:          config.HugePages,
 		FromImage:          config.FromImage,
+		Force:              config.Force,
 		Steps:              config.Steps,
 	}
 

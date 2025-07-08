@@ -150,6 +150,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	}
 
 	// Call the Template Manager to build the environment
+	forceRebuild := true
 	buildErr := a.templateManager.CreateTemplate(
 		a.Tracer,
 		ctx,
@@ -163,6 +164,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		build.RAMMB,
 		build.ReadyCmd,
 		"",
+		&forceRebuild,
 		nil,
 		team.ClusterID,
 		build.ClusterNodeID,
