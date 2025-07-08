@@ -22,6 +22,8 @@ func (b *TemplateBuilder) runReadyCommand(
 	postProcessor *writer.PostProcessor,
 	template *templateconfig.TemplateConfig,
 	sandboxID string,
+	runAsUser string,
+	cwd *string,
 	envVars map[string]string,
 ) error {
 	ctx, span := b.tracer.Start(ctx, "run-ready-command")
@@ -40,15 +42,14 @@ func (b *TemplateBuilder) runReadyCommand(
 
 	// Start the ready check
 	for {
-		cwd := "/home/user"
 		err := b.runCommand(
 			ctx,
 			postProcessor,
 			"ready",
 			sandboxID,
 			template.ReadyCmd,
-			"root",
-			&cwd,
+			runAsUser,
+			cwd,
 			envVars,
 		)
 

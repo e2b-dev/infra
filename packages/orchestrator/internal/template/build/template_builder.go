@@ -167,6 +167,11 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 		user:    defaultUser,
 		workdir: nil,
 	}
+	// This is a compability for old template builds
+	if template.FromImage == "" {
+		cwd := "/home/user"
+		buildMetadata.workdir = &cwd
+	}
 
 	finalTemplate := TemplateMetadata{
 		TemplateID: template.TemplateID,
@@ -500,15 +505,14 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 			if template.StartCmd != "" {
 				postProcessor.WriteMsg("Running start command")
 				startCmd.Go(func() error {
-					cwd := "/home/user"
 					err := b.runCommandWithConfirmation(
 						commandsCtx,
 						postProcessor,
 						"start",
 						sbx.Metadata.Config.SandboxId,
 						template.StartCmd,
-						"root",
-						&cwd,
+						buildMetadata.user,
+						buildMetadata.workdir,
 						buildMetadata.envVars,
 						startCmdConfirm,
 					)
@@ -532,6 +536,8 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 				postProcessor,
 				template,
 				sbx.Metadata.Config.SandboxId,
+				buildMetadata.user,
+				buildMetadata.workdir,
 				buildMetadata.envVars,
 			)
 			if err != nil {
@@ -1047,11 +1053,26 @@ func (b *TemplateBuilder) applyCommand(
 			return fmt.Errorf("failed to copy layer tar data to temporary file: %w", err)
 		}
 
-		// TODO: Cleanup the temporary file from the sandbox
+		// The file is automatically cleaned up by the sandbox restart in the last step.
+		// This is happening because the /tmp is mounted as a tmpfs and deleted on restart.
 		sbxTargetPath := fmt.Sprintf("/tmp/%s.tar", *step.FilesHash)
 		err = b.copyFile(ctx, postProcessor, sbx.Metadata.Config.SandboxId, buildMetadata.user, tmpFile.Name(), sbxTargetPath)
 		if err != nil {
 			return fmt.Errorf("failed to copy layer tar data to sandbox: %w", err)
+		}
+
+		err = b.runCommand(
+			ctx,
+			postProcessor,
+			prefix,
+			sbx.Metadata.Config.SandboxId,
+			fmt.Sprintf(`mkdir -p "%s"`, args[1]),
+			buildMetadata.user,
+			buildMetadata.workdir,
+			buildMetadata.envVars,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to create directory in sandbox: %w", err)
 		}
 
 		return b.runCommand(
