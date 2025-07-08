@@ -16,16 +16,13 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	e2bgrpcorchestrator "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	e2bgrpcorchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
-	e2bgrpctemplatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type OrchestratorStatus string
 
 const (
-	orchestratorSyncInterval   = 10 * time.Second
 	orchestratorSyncMaxRetries = 3
 
 	OrchestratorStatusHealthy   OrchestratorStatus = "healthy"
@@ -33,42 +30,37 @@ const (
 	OrchestratorStatusUnhealthy OrchestratorStatus = "unhealthy"
 )
 
-type OrchestratorNode struct {
-	ServiceInstanceId string
-	NodeID            string
+type OrchestratorInstanceInfo struct {
+	NodeID string
 
+	ServiceInstanceID    string
 	ServiceVersion       string
 	ServiceVersionCommit string
+	ServiceStatus        OrchestratorStatus
+	ServiceStartup       time.Time
 
-	Host string
-	Ip   string
+	Host  string
+	Ip    string
+	Roles []e2bgrpcorchestratorinfo.ServiceInfoRole
+}
 
-	ServiceStatus  OrchestratorStatus
-	ServiceStartup time.Time
-	Roles          []e2bgrpcorchestratorinfo.ServiceInfoRole
-
-	Client *OrchestratorGRPCClient
-
+type OrchestratorInstance struct {
 	MetricVCpuUsed         atomic.Int64
 	MetricMemoryUsedInMB   atomic.Int64
 	MetricDiskUsedInMB     atomic.Int64
 	MetricSandboxesRunning atomic.Int64
 
-	mutex sync.Mutex
-
-	ctx       context.Context
-	ctxCancel context.CancelFunc
+	client *OrchestratorGRPCClient
+	info   OrchestratorInstanceInfo
+	mutex  sync.RWMutex
 }
 
 type OrchestratorGRPCClient struct {
-	Sandbox  e2bgrpcorchestrator.SandboxServiceClient
-	Template e2bgrpctemplatemanager.TemplateServiceClient
-	Info     e2bgrpcorchestratorinfo.InfoServiceClient
-
+	Info       e2bgrpcorchestratorinfo.InfoServiceClient
 	Connection *grpc.ClientConn
 }
 
-func NewOrchestrator(ctx context.Context, tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, ip string, port int) (*OrchestratorNode, error) {
+func NewOrchestratorInstance(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, ip string, port int) (*OrchestratorInstance, error) {
 	host := fmt.Sprintf("%s:%d", ip, port)
 
 	client, err := newClient(tracerProvider, meterProvider, host)
@@ -76,65 +68,35 @@ func NewOrchestrator(ctx context.Context, tracerProvider trace.TracerProvider, m
 		return nil, fmt.Errorf("failed to create GRPC client: %w", err)
 	}
 
-	ctx, ctxCancel := context.WithCancel(ctx)
-
-	o := &OrchestratorNode{
-		Host:   host,
-		Ip:     ip,
-		Client: client,
-
-		ctx:       ctx,
-		ctxCancel: ctxCancel,
+	o := &OrchestratorInstance{
+		client: client,
+		info: OrchestratorInstanceInfo{
+			Host: host,
+			Ip:   ip,
+		},
 	}
-
-	// run the first sync immediately
-	err = o.syncRun()
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize orchestrator, maybe its not ready yet: %w", err)
-	}
-
-	// initialize background sync to update orchestrator running sandboxes
-	go func() { o.sync() }()
 
 	return o, nil
 }
 
-func (o *OrchestratorNode) sync() {
-	ticker := time.NewTicker(orchestratorSyncInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-o.ctx.Done():
-			return
-		case <-ticker.C:
-			o.syncRun()
-		}
-	}
-}
-
-func (o *OrchestratorNode) syncRun() error {
-	o.mutex.Lock()
-	defer o.mutex.Unlock()
-
-	ctx, cancel := context.WithTimeout(o.ctx, orchestratorSyncInterval)
-	defer cancel()
-
+func (o *OrchestratorInstance) sync(ctx context.Context) error {
 	for i := 0; i < orchestratorSyncMaxRetries; i++ {
-		status, err := o.Client.Info.ServiceInfo(ctx, &emptypb.Empty{})
+		freshInfo := o.GetInfo()
+
+		status, err := o.client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 		if err != nil {
-			zap.L().Error("failed to check orchestrator health", l.WithClusterNodeID(o.ServiceInstanceId), zap.Error(err))
+			zap.L().Error("failed to check orchestrator health", l.WithClusterNodeID(freshInfo.NodeID), zap.Error(err))
 			continue
 		}
 
-		o.NodeID = status.NodeId
-		o.ServiceInstanceId = status.ServiceId
-		o.ServiceStartup = status.ServiceStartup.AsTime()
-		o.ServiceStatus = getMappedStatus(status.ServiceStatus)
-		o.ServiceVersion = status.ServiceVersion
-		o.ServiceVersionCommit = status.ServiceCommit
-
-		o.Roles = status.ServiceRoles
+		freshInfo.NodeID = status.NodeId
+		freshInfo.ServiceInstanceID = status.ServiceId
+		freshInfo.ServiceStartup = status.ServiceStartup.AsTime()
+		freshInfo.ServiceStatus = getMappedStatus(status.ServiceStatus)
+		freshInfo.ServiceVersion = status.ServiceVersion
+		freshInfo.ServiceVersionCommit = status.ServiceCommit
+		freshInfo.Roles = status.ServiceRoles
+		o.setInfo(freshInfo)
 
 		o.MetricSandboxesRunning.Store(status.MetricSandboxesRunning)
 		o.MetricMemoryUsedInMB.Store(status.MetricMemoryUsedMb)
@@ -147,14 +109,35 @@ func (o *OrchestratorNode) syncRun() error {
 	return errors.New("failed to check orchestrator status")
 }
 
-func (o *OrchestratorNode) Close() error {
+func (o *OrchestratorInstance) setStatus(status OrchestratorStatus) {
+	o.mutex.Lock()
+	defer o.mutex.Unlock()
+	o.info.ServiceStatus = status
+}
+
+func (o *OrchestratorInstance) setInfo(i OrchestratorInstanceInfo) {
+	o.mutex.Lock()
+	defer o.mutex.Unlock()
+	o.info = i
+}
+
+func (o *OrchestratorInstance) GetInfo() OrchestratorInstanceInfo {
+	o.mutex.RLock()
+	defer o.mutex.RUnlock()
+	return o.info
+}
+
+func (o *OrchestratorInstance) GetClient() *OrchestratorGRPCClient {
+	return o.client
+}
+
+func (o *OrchestratorInstance) Close() error {
 	// close sync context
-	o.ctxCancel()
-	o.ServiceStatus = OrchestratorStatusUnhealthy
+	o.setStatus(OrchestratorStatusUnhealthy)
 
 	// close grpc client
-	if o.Client != nil {
-		err := o.Client.close()
+	if o.client != nil {
+		err := o.client.close()
 		if err != nil {
 			return err
 		}
@@ -192,8 +175,6 @@ func newClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterPr
 	}
 
 	return &OrchestratorGRPCClient{
-		Sandbox:    e2bgrpcorchestrator.NewSandboxServiceClient(conn),
-		Template:   e2bgrpctemplatemanager.NewTemplateServiceClient(conn),
 		Info:       e2bgrpcorchestratorinfo.NewInfoServiceClient(conn),
 		Connection: conn,
 	}, nil
