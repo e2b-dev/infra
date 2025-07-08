@@ -11,25 +11,11 @@ type SandboxEventServer struct {
 	server *http.Server
 }
 
-func validateHeaders(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		sandboxID := r.Header.Get("E2B_SANDBOX_ID")
-		teamID := r.Header.Get("E2B_TEAM_ID")
-
-		if sandboxID == "" || teamID == "" {
-			http.Error(w, "missing required headers", http.StatusBadRequest)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	}
-}
-
 func NewSandboxEventServer(port uint, handlers []EventHandler) *SandboxEventServer {
 	mux := http.NewServeMux()
 
 	for _, handler := range handlers {
-		mux.HandleFunc(handler.Path(), validateHeaders(handler.HandlerFunc))
+		mux.HandleFunc(handler.Path(), handler.HandlerFunc)
 	}
 
 	server := &http.Server{
