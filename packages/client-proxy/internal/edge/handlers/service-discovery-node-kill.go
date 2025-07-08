@@ -15,7 +15,7 @@ import (
 func (a *APIStore) V1ServiceDiscoveryNodeKill(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	_, templateSpan := a.tracer.Start(ctx, "service-discovery-node-kill-handler")
+	spanCtx, templateSpan := a.tracer.Start(ctx, "service-discovery-node-kill-handler")
 	defer templateSpan.End()
 
 	body, err := parseBody[api.V1ServiceDiscoveryNodeKillJSONRequestBody](ctx, c)
@@ -32,7 +32,7 @@ func (a *APIStore) V1ServiceDiscoveryNodeKill(c *gin.Context) {
 		return
 	}
 
-	reqTimeout, reqTimeoutCancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	reqTimeout, reqTimeoutCancel := context.WithTimeout(spanCtx, 5*time.Second)
 	defer reqTimeoutCancel()
 
 	// send request to neighboring node
