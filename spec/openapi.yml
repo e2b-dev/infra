@@ -516,7 +516,7 @@ components:
           $ref: "#/components/schemas/CPUCount"
         memoryMB:
           $ref: "#/components/schemas/MemoryMB"
-          
+
     TemplateBuildStartV2:
       required:
         - fromImage
@@ -524,8 +524,12 @@ components:
         fromImage:
           type: string
           description: Image to use as a base for the template build
+        force:
+          default: false
+          type: boolean
+          description: Whether the whole build should be forced to run regardless of the cache
         steps:
-          default: [ ]
+          default: []
           description: List of steps to execute in the template build
           type: array
           items:
@@ -1301,11 +1305,11 @@ paths:
 
   /templates/{templateID}/files/{hash}:
     get:
-      description: Get an upload link for a file that should be uploaded to the template build cache
-      tags: [ templates ]
+      description: Get an upload link for a tar file containing build layer files
+      tags: [templates]
       security:
-        - AccessTokenAuth: [ ]
-        - Supabase1TokenAuth: [ ]
+        - AccessTokenAuth: []
+        - Supabase1TokenAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - in: path
@@ -1317,7 +1321,7 @@ paths:
 
       responses:
         "201":
-          description: The upload link where to upload the file
+          description: The upload link where to upload the tar file
           content:
             application/json:
               schema:

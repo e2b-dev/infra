@@ -180,15 +180,14 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *templateconfig.Te
 	}
 	// Stable hash of base
 	baseSHA := sha256.New()
-	baseSHA.Write([]byte(template.FromImage))
 	baseSHA.Write([]byte(envdHash))
 	baseSHA.Write([]byte(provisionScriptFile))
 	baseSHA.Write([]byte(strconv.FormatInt(template.DiskSizeMB, 10)))
 	baseHash := fmt.Sprintf("%x", baseSHA.Sum(nil))
 
-	baseTemplate := getTemplateFromHash(ctx, b.storage, finalTemplate.TemplateID, "", baseHash)
-	// Invalidate base cache if the first step has Force set to true
-	if len(template.Steps) > 0 && template.Steps[0].Force != nil && *template.Steps[0].Force {
+	baseTemplate := getTemplateFromHash(ctx, b.storage, finalTemplate.TemplateID, baseHash, template.FromImage)
+	// Invalidate base cache
+	if template.Force != nil && *template.Force {
 		baseTemplate = TemplateMetadata{
 			TemplateID: id.Generate(),
 			BuildID:    uuid.NewString(),

@@ -41,7 +41,8 @@ message TemplateConfig {
   string readyCommand = 10;
 
   string fromImage = 11;
-  repeated TemplateStep steps = 12;
+  optional bool force = 12;
+  repeated TemplateStep steps = 13;
 }
 
 message TemplateCreateRequest {

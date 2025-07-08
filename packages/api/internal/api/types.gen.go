@@ -512,6 +512,9 @@ type TemplateBuildRequestV2 struct {
 
 // TemplateBuildStartV2 defines model for TemplateBuildStartV2.
 type TemplateBuildStartV2 struct {
+	// Force Whether the whole build should be forced to run regardless of the cache
+	Force *bool `json:"force,omitempty"`
+
 	// FromImage Image to use as a base for the template build
 	FromImage string `json:"fromImage"`
 

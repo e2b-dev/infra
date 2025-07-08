@@ -23,14 +23,14 @@ func (s *ServerStore) TemplateLayerFilesUpload(ctx context.Context, in *template
 		return nil, fmt.Errorf("failed to open layer files cache: %w", err)
 	}
 
+	signedUrl, err := s.storage.UploadSignedURL(ctx, path, signedUrlExpiration)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get signed url: %w", err)
+	}
+
 	_, err = obj.Size()
 	if err != nil {
 		zap.L().Warn("layer files not found", zap.Error(err))
-
-		signedUrl, err := s.storage.UploadSignedURL(ctx, path, signedUrlExpiration)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get signed url: %w", err)
-		}
 
 		return &templatemanager.TemplateLayerFilesUploadResponse{
 			Present: false,
@@ -39,6 +39,7 @@ func (s *ServerStore) TemplateLayerFilesUpload(ctx context.Context, in *template
 	} else {
 		return &templatemanager.TemplateLayerFilesUploadResponse{
 			Present: true,
+			Url:     &signedUrl,
 		}, nil
 	}
 }
