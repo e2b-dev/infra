@@ -16,6 +16,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+var ApiNodeToOrchestratorStateMapper = map[api.ClusterNodeStatus]orchestratorinfo.ServiceInfoStatus{
+	api.Healthy:   orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy,
+	api.Draining:  orchestratorinfo.ServiceInfoStatus_OrchestratorDraining,
+	api.Unhealthy: orchestratorinfo.ServiceInfoStatus_OrchestratorUnhealthy,
+}
+
 func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -70,23 +76,11 @@ func (a *APIStore) sendOrchestratorRequest(ctx context.Context, serviceInstanceI
 	}
 
 	logger.Info("orchestrator instance found, calling status change request")
-	var orchestratorStatus orchestratorinfo.ServiceInfoStatus
-
-	switch status {
-	case api.Draining:
-		orchestratorStatus = orchestratorinfo.ServiceInfoStatus_OrchestratorDraining
-	case api.Unhealthy:
-		orchestratorStatus = orchestratorinfo.ServiceInfoStatus_OrchestratorUnhealthy
-	case api.Healthy:
-		orchestratorStatus = orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy
-	default:
-		logger.Error("failed to transform service status to orchestrator status", zap.String("status", string(status)))
-		return errors.New("failed to transform service status to orchestrator status")
-	}
 
 	findCtx, findCtxCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer findCtxCancel()
 
+	orchestratorStatus := ApiNodeToOrchestratorStateMapper[status]
 	_, err := o.GetClient().Info.ServiceStatusOverride(
 		findCtx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: orchestratorStatus},
 	)
