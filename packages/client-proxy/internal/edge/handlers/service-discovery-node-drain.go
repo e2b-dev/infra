@@ -60,7 +60,7 @@ func (a *APIStore) sendNodeRequest(ctx context.Context, serviceInstanceID string
 	return errors.New("invalid service type")
 }
 
-func (a *APIStore) sendOrchesmtratorRequest(ctx context.Context, serviceInstanceID string, status api.ClusterNodeStatus) error {
+func (a *APIStore) sendOrchestratorRequest(ctx context.Context, serviceInstanceID string, status api.ClusterNodeStatus) error {
 	logger := a.logger.With(l.WithServiceInstanceID(serviceInstanceID))
 
 	// try to find orchestrator node first
