@@ -34,6 +34,8 @@ type Snapshot struct {
 	SandboxStartedAt time.Time `json:"sandbox_started_at,omitempty"`
 	// EnvSecure holds the value of the "env_secure" field.
 	EnvSecure bool `json:"env_secure,omitempty"`
+	// OriginNodeID holds the value of the "origin_node_id" field.
+	OriginNodeID string `json:"origin_node_id,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the SnapshotQuery when eager-loading is set.
 	Edges        SnapshotEdges `json:"edges"`
@@ -71,7 +73,7 @@ func (*Snapshot) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case snapshot.FieldEnvSecure:
 			values[i] = new(sql.NullBool)
-		case snapshot.FieldBaseEnvID, snapshot.FieldEnvID, snapshot.FieldSandboxID:
+		case snapshot.FieldBaseEnvID, snapshot.FieldEnvID, snapshot.FieldSandboxID, snapshot.FieldOriginNodeID:
 			values[i] = new(sql.NullString)
 		case snapshot.FieldCreatedAt, snapshot.FieldSandboxStartedAt:
 			values[i] = new(sql.NullTime)
@@ -142,6 +144,12 @@ func (s *Snapshot) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				s.EnvSecure = value.Bool
 			}
+		case snapshot.FieldOriginNodeID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field origin_node_id", values[i])
+			} else if value.Valid {
+				s.OriginNodeID = value.String
+			}
 		default:
 			s.selectValues.Set(columns[i], values[i])
 		}
@@ -203,6 +211,9 @@ func (s *Snapshot) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("env_secure=")
 	builder.WriteString(fmt.Sprintf("%v", s.EnvSecure))
+	builder.WriteString(", ")
+	builder.WriteString("origin_node_id=")
+	builder.WriteString(s.OriginNodeID)
 	builder.WriteByte(')')
 	return builder.String()
 }

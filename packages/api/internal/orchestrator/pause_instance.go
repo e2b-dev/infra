@@ -50,6 +50,7 @@ func (o *Orchestrator) PauseInstance(
 		ctx,
 		snapshotConfig,
 		teamID,
+		sbx.Node.ID,
 	)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)
