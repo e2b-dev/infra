@@ -109,12 +109,11 @@ func (o *EdgeInstance) setStatus(s api.ClusterNodeStatus) {
 
 func newEdgeApiClient(host string, auth authorization.AuthorizationService) (*api.ClientWithResponses, error) {
 	clientURL := fmt.Sprintf("http://%s", host)
-	clientSecret := auth.GetSecret()
 	clientAuthMiddleware := func(c *api.Client) error {
 		c.RequestEditors = append(
 			c.RequestEditors,
 			func(ctx context.Context, req *http.Request) error {
-				req.Header.Set(consts.EdgeApiAuthHeader, clientSecret)
+				req.Header.Set(consts.EdgeApiAuthHeader, auth.GetSecret())
 				return nil
 			},
 		)
