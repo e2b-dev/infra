@@ -21,6 +21,10 @@ func WithTeamID(teamID string) zap.Field {
 	return zap.String("team.id", teamID)
 }
 
+func WithNodeID(nodeID string) zap.Field {
+	return zap.String("node.id", nodeID)
+}
+
 func WithClusterID(clusterID uuid.UUID) zap.Field {
 	return zap.String("cluster.id", clusterID.String())
 }

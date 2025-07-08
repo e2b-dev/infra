@@ -5,7 +5,6 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
@@ -191,7 +190,7 @@ func (o *Orchestrator) CreateSandbox(
 
 		node.sbxsInProgress.Remove(sandboxID)
 
-		log.Printf("failed to create sandbox '%s' on node '%s', attempt #%d: %v", sandboxID, node.Info.ID, attempt, utils.UnwrapGRPCError(err))
+		zap.L().Error("Failed to create sandbox", logger.WithSandboxID(sandboxID), logger.WithNodeID(node.Info.ID), zap.Int("attempt", attempt), zap.Error(utils.UnwrapGRPCError(err)))
 
 		// The node is not available, try again with another node
 		node.createFails.Add(1)
