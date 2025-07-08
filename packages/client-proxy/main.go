@@ -38,6 +38,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+type Closeable interface {
+	Close(context.Context) error
+}
+
 const (
 	serviceName = "client-proxy"
 
@@ -51,7 +55,7 @@ var (
 	commitSHA string
 
 	useProxyCatalogResolution = os.Getenv("USE_CATALOG_RESOLUTION") == "true"
-	useDnsResolution          = os.Getenv("USE_DNS_RESOLUTION") != "true"
+	useDnsResolution          = os.Getenv("USE_DNS_RESOLUTION") != "false"
 )
 
 func run() int {
@@ -136,7 +140,7 @@ func run() int {
 		catalog = sandboxes.NewMemorySandboxesCatalog(ctx, tracer)
 	}
 
-	orchestrators := e2borchestrators.NewOrchestratorsPool(ctx, logger, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
+	orchestrators := e2borchestrators.NewOrchestratorsPool(logger, tracer, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
 
 	info := &e2binfo.ServiceInfo{
 		NodeID:               internal.GetNodeID(),
@@ -162,7 +166,12 @@ func run() int {
 	}
 
 	authorizationManager := authorization.NewStaticTokenAuthorizationService(edgeSecret)
-	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, logger, tracer, info, edgeSD, orchestrators, catalog)
+	edges := e2borchestrators.NewEdgePool(logger, edgeSD, tracer, info.Host, authorizationManager)
+
+	var closers []Closeable
+	closers = append(closers, orchestrators, edges)
+
+	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, logger, tracer, info, edges, orchestrators, catalog)
 	if err != nil {
 		logger.Error("failed to create edge api store", zap.Error(err))
 		return 1
@@ -346,6 +355,17 @@ func run() int {
 
 		// close the mux server
 		muxServer.Close()
+
+		closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
+		defer cancelCloseCtx()
+
+		// close all resources that needs to be closed gracefully
+		for _, c := range closers {
+			zap.L().Info(fmt.Sprintf("Closing %T", c))
+			if err := c.Close(closeCtx); err != nil {
+				zap.L().Error("error during shutdown", zap.Error(err))
+			}
+		}
 	}()
 
 	wg.Wait()

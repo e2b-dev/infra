@@ -6,17 +6,17 @@ import (
 )
 
 type SandboxInfo struct {
-	OrchestratorId string `json:"orchestrator_id"`
-	ExecutionId    string `json:"execution_id"`
+	OrchestratorID string `json:"orchestrator_id"`
+	ExecutionID    string `json:"execution_id"`
 
 	SandboxStartedAt        time.Time `json:"sandbox_started_at"`          // when sandbox was started
 	SandboxMaxLengthInHours int64     `json:"sandbox_max_length_in_hours"` // how long can sandbox can possibly run (in hours)
 }
 
 type SandboxesCatalog interface {
-	GetSandbox(sandboxId string) (*SandboxInfo, error)
-	StoreSandbox(sandboxId string, sandboxInfo *SandboxInfo, expiration time.Duration) error
-	DeleteSandbox(sandboxId string, executionId string) error
+	GetSandbox(sandboxID string) (*SandboxInfo, error)
+	StoreSandbox(sandboxID string, sandboxInfo *SandboxInfo, expiration time.Duration) error
+	DeleteSandbox(sandboxID string, executionID string) error
 }
 
 type CatalogProvider string

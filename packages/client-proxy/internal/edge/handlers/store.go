@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
-	logger_provider "github.com/e2b-dev/infra/packages/proxy/internal/edge/logger-provider"
+	loggerprovider "github.com/e2b-dev/infra/packages/proxy/internal/edge/logger-provider"
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -27,7 +27,7 @@ type APIStore struct {
 	orchestratorPool  *e2borchestrators.OrchestratorsPool
 	edgePool          *e2borchestrators.EdgePool
 	sandboxes         sandboxes.SandboxesCatalog
-	queryLogsProvider logger_provider.LogsQueryProvider
+	queryLogsProvider loggerprovider.LogsQueryProvider
 }
 
 type APIUserFacingError struct {
@@ -44,7 +44,7 @@ const (
 var skipInitialOrchestratorCheck = os.Getenv("SKIP_ORCHESTRATOR_READINESS_CHECK") == "true"
 
 func NewStore(ctx context.Context, logger *zap.Logger, tracer trace.Tracer, info *info.ServiceInfo, orchestratorsPool *e2borchestrators.OrchestratorsPool, edgePool *e2borchestrators.EdgePool, catalog sandboxes.SandboxesCatalog) (*APIStore, error) {
-	queryLogsProvider, err := logger_provider.GetLogsQueryProvider()
+	queryLogsProvider, err := loggerprovider.GetLogsQueryProvider()
 	if err != nil {
 		return nil, fmt.Errorf("error when getting logs query provider: %w", err)
 	}
