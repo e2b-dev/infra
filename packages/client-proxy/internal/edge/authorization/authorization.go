@@ -6,6 +6,7 @@ import (
 
 type AuthorizationService interface {
 	VerifyAuthorization(token string) error
+	GetSecret() string
 }
 
 type StaticTokenAuthorizationService struct {
@@ -24,4 +25,8 @@ func (s *StaticTokenAuthorizationService) VerifyAuthorization(token string) erro
 	}
 
 	return nil
+}
+
+func (s *StaticTokenAuthorizationService) GetSecret() string {
+	return s.secret
 }

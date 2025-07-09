@@ -76,7 +76,7 @@ func (s *NodePassThroughServer) director(ctx context.Context) (*grpc.ClientConn,
 		return nil, status.Error(codes.NotFound, "service instance not found")
 	}
 
-	return serviceInstance.Client.Connection, nil
+	return serviceInstance.GetClient().Connection, nil
 }
 
 // Handler - following code implement a gRPC pass-through proxy that forwards requests to the appropriate node

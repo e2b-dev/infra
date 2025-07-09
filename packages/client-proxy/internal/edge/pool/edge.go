@@ -4,21 +4,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
-	edgeSyncInterval   = 10 * time.Second
 	edgeSyncMaxRetries = 3
 )
 
-type EdgeNode struct {
+type EdgeInstanceInfo struct {
 	NodeID string
 
 	ServiceInstanceID    string
@@ -27,100 +29,96 @@ type EdgeNode struct {
 	ServiceStatus        api.ClusterNodeStatus
 	ServiceStartup       time.Time
 
-	Host   string
-	Client *api.ClientWithResponses
-
-	mutex sync.Mutex
-
-	ctx       context.Context
-	ctxCancel context.CancelFunc
+	Host string
 }
 
-func NewEdgeNode(ctx context.Context, host string) (*EdgeNode, error) {
-	ctx, ctxCancel := context.WithCancel(ctx)
+type EdgeInstance struct {
+	info EdgeInstanceInfo
 
-	client, err := newEdgeApiClient(host)
+	client *api.ClientWithResponses
+	mutex  sync.RWMutex
+}
+
+func NewEdgeInstance(host string, auth authorization.AuthorizationService) (*EdgeInstance, error) {
+	client, err := newEdgeApiClient(host, auth)
 	if err != nil {
-		ctxCancel()
 		return nil, fmt.Errorf("failed to create http client: %w", err)
 	}
 
-	o := &EdgeNode{
-		Host:   host,
-		Client: client,
-
-		ctx:       ctx,
-		ctxCancel: ctxCancel,
+	o := &EdgeInstance{
+		client: client,
+		info: EdgeInstanceInfo{
+			Host: host,
+		},
 	}
-
-	// run the first sync immediately
-	err = o.syncRun()
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch inital setup of edge node, maybe its not ready yet: %w", err)
-	}
-
-	// initialize background sync to update orchestrator running sandboxes
-	go func() { o.sync() }()
 
 	return o, nil
 }
 
-func (o *EdgeNode) sync() {
-	ticker := time.NewTicker(orchestratorSyncInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-o.ctx.Done():
-			return
-		case <-ticker.C:
-			o.syncRun()
-		}
-	}
-}
-
-func (o *EdgeNode) syncRun() error {
-	o.mutex.Lock()
-	defer o.mutex.Unlock()
-
-	ctx, cancel := context.WithTimeout(o.ctx, edgeSyncInterval)
-	defer cancel()
-
+func (o *EdgeInstance) sync(ctx context.Context) error {
 	for i := 0; i < edgeSyncMaxRetries; i++ {
-		res, err := o.Client.V1InfoWithResponse(ctx)
+		info := o.GetInfo()
+		res, err := o.client.V1InfoWithResponse(ctx)
 		if err != nil {
-			zap.L().Error("failed to check edge node status", l.WithClusterNodeID(o.NodeID), zap.Error(err))
+			zap.L().Error("failed to check edge instance status", l.WithClusterNodeID(info.NodeID), zap.Error(err))
 			continue
 		}
 
 		if res.JSON200 == nil {
-			zap.L().Error("failed to check edge node status", l.WithClusterNodeID(o.NodeID), zap.Int("status", res.StatusCode()))
+			zap.L().Error("failed to check edge instance status", l.WithClusterNodeID(info.NodeID), zap.Int("status", res.StatusCode()))
 			continue
 		}
 
 		body := res.JSON200
 
-		o.NodeID = body.NodeID
-		o.ServiceInstanceID = body.ServiceInstanceID
-		o.ServiceStartup = body.ServiceStartup
-		o.ServiceStatus = body.ServiceStatus
-		o.ServiceVersion = body.ServiceVersion
-		o.ServiceVersionCommit = body.ServiceVersionCommit
+		info.NodeID = body.NodeID
+		info.ServiceInstanceID = body.ServiceInstanceID
+		info.ServiceStartup = body.ServiceStartup
+		info.ServiceStatus = body.ServiceStatus
+		info.ServiceVersion = body.ServiceVersion
+		info.ServiceVersionCommit = body.ServiceVersionCommit
+		o.setInfo(info)
 
 		return nil
 	}
 
-	return errors.New("failed to check edge node status")
+	return errors.New("failed to check edge instance status")
 }
 
-func (o *EdgeNode) Close() error {
-	// close sync context
-	o.ctxCancel()
-	o.ServiceStatus = api.Unhealthy
-	return nil
+func (o *EdgeInstance) GetClient() *api.ClientWithResponses {
+	return o.client
 }
 
-func newEdgeApiClient(host string) (*api.ClientWithResponses, error) {
-	hostUrl := fmt.Sprintf("http://%s", host)
-	return api.NewClientWithResponses(hostUrl)
+func (o *EdgeInstance) GetInfo() EdgeInstanceInfo {
+	o.mutex.RLock()
+	defer o.mutex.RUnlock()
+	return o.info
+}
+
+func (o *EdgeInstance) setInfo(info EdgeInstanceInfo) {
+	o.mutex.Lock()
+	defer o.mutex.Unlock()
+	o.info = info
+}
+
+func (o *EdgeInstance) setStatus(s api.ClusterNodeStatus) {
+	o.mutex.Lock()
+	defer o.mutex.Unlock()
+	o.info.ServiceStatus = s
+}
+
+func newEdgeApiClient(host string, auth authorization.AuthorizationService) (*api.ClientWithResponses, error) {
+	clientURL := fmt.Sprintf("http://%s", host)
+	clientAuthMiddleware := func(c *api.Client) error {
+		c.RequestEditors = append(
+			c.RequestEditors,
+			func(ctx context.Context, req *http.Request) error {
+				req.Header.Set(consts.EdgeApiAuthHeader, auth.GetSecret())
+				return nil
+			},
+		)
+		return nil
+	}
+
+	return api.NewClientWithResponses(clientURL, clientAuthMiddleware)
 }

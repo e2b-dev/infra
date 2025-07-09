@@ -25,7 +25,7 @@ func (a *APIStore) V1SandboxCatalogDelete(c *gin.Context) {
 	_, span := a.tracer.Start(ctx, "delete-sandbox-catalog-entry-handler")
 	defer span.End()
 
-	err = a.sandboxes.DeleteSandbox(body.SandboxId, body.ExecutionId)
+	err = a.sandboxes.DeleteSandbox(body.SandboxID, body.ExecutionID)
 	if err != nil {
 		zap.L().Error("Error when deleting sandbox from catalog", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting sandbox from catalog")
@@ -33,6 +33,6 @@ func (a *APIStore) V1SandboxCatalogDelete(c *gin.Context) {
 		return
 	}
 
-	zap.L().Info("Sandbox successfully removed from catalog", l.WithSandboxID(body.SandboxId))
+	zap.L().Info("Sandbox successfully removed from catalog", l.WithSandboxID(body.SandboxID))
 	c.Status(http.StatusOK)
 }

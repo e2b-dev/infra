@@ -34,15 +34,15 @@ type ServerInterface interface {
 
 	// (GET /v1/service-discovery/nodes)
 	V1ServiceDiscoveryNodes(c *gin.Context)
+
+	// (POST /v1/service-discovery/nodes/drain)
+	V1ServiceDiscoveryNodeDrain(c *gin.Context)
+
+	// (POST /v1/service-discovery/nodes/kill)
+	V1ServiceDiscoveryNodeKill(c *gin.Context)
 	// Get the orchestrators
 	// (GET /v1/service-discovery/nodes/orchestrators)
 	V1ServiceDiscoveryGetOrchestrators(c *gin.Context)
-
-	// (POST /v1/service-discovery/nodes/{nodeID}/drain)
-	V1ServiceDiscoveryNodeDrain(c *gin.Context, nodeID string)
-
-	// (POST /v1/service-discovery/nodes/{nodeID}/kill)
-	V1ServiceDiscoveryNodeKill(c *gin.Context, nodeID string)
 	// Template build logs
 	// (GET /v1/templates/builds/{buildID}/logs)
 	V1TemplateBuildLogs(c *gin.Context, buildID string, params V1TemplateBuildLogsParams)
@@ -154,6 +154,36 @@ func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryNodes(c *gin.Context) {
 	siw.Handler.V1ServiceDiscoveryNodes(c)
 }
 
+// V1ServiceDiscoveryNodeDrain operation middleware
+func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryNodeDrain(c *gin.Context) {
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.V1ServiceDiscoveryNodeDrain(c)
+}
+
+// V1ServiceDiscoveryNodeKill operation middleware
+func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryNodeKill(c *gin.Context) {
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.V1ServiceDiscoveryNodeKill(c)
+}
+
 // V1ServiceDiscoveryGetOrchestrators operation middleware
 func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryGetOrchestrators(c *gin.Context) {
 
@@ -167,58 +197,6 @@ func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryGetOrchestrators(c *gin.Con
 	}
 
 	siw.Handler.V1ServiceDiscoveryGetOrchestrators(c)
-}
-
-// V1ServiceDiscoveryNodeDrain operation middleware
-func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryNodeDrain(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "nodeID" -------------
-	var nodeID string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "nodeID", c.Param("nodeID"), &nodeID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter nodeID: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ApiKeyAuthScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.V1ServiceDiscoveryNodeDrain(c, nodeID)
-}
-
-// V1ServiceDiscoveryNodeKill operation middleware
-func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryNodeKill(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "nodeID" -------------
-	var nodeID string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "nodeID", c.Param("nodeID"), &nodeID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter nodeID: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ApiKeyAuthScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.V1ServiceDiscoveryNodeKill(c, nodeID)
 }
 
 // V1TemplateBuildLogs operation middleware
@@ -322,8 +300,8 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.DELETE(options.BaseURL+"/v1/sandboxes/catalog", wrapper.V1SandboxCatalogDelete)
 	router.POST(options.BaseURL+"/v1/sandboxes/catalog", wrapper.V1SandboxCatalogCreate)
 	router.GET(options.BaseURL+"/v1/service-discovery/nodes", wrapper.V1ServiceDiscoveryNodes)
+	router.POST(options.BaseURL+"/v1/service-discovery/nodes/drain", wrapper.V1ServiceDiscoveryNodeDrain)
+	router.POST(options.BaseURL+"/v1/service-discovery/nodes/kill", wrapper.V1ServiceDiscoveryNodeKill)
 	router.GET(options.BaseURL+"/v1/service-discovery/nodes/orchestrators", wrapper.V1ServiceDiscoveryGetOrchestrators)
-	router.POST(options.BaseURL+"/v1/service-discovery/nodes/:nodeID/drain", wrapper.V1ServiceDiscoveryNodeDrain)
-	router.POST(options.BaseURL+"/v1/service-discovery/nodes/:nodeID/kill", wrapper.V1ServiceDiscoveryNodeKill)
 	router.GET(options.BaseURL+"/v1/templates/builds/:buildID/logs", wrapper.V1TemplateBuildLogs)
 }
