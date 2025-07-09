@@ -31,7 +31,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	if err == nil {
 		// Check if sandbox belongs to the team
 		if *info.TeamID != team.ID {
-			zap.L().Error("sandbox %s doesn't exist or you don't have access to it", logger.WithSandboxID(id))
+			zap.L().Warn("sandbox doesn't exist or you don't have access to it", logger.WithSandboxID(id))
 			c.JSON(http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 			return
 		}
@@ -63,7 +63,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	// If sandbox not found try to get the latest snapshot
 	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxId, TeamID: team.ID})
 	if err != nil {
-		zap.L().Error("error getting last snapshot for sandbox", logger.WithSandboxID(id), zap.Error(err))
+		zap.L().Warn("error getting last snapshot for sandbox", logger.WithSandboxID(id), zap.Error(err))
 		c.JSON(http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 		return
 	}
