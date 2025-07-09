@@ -27,15 +27,17 @@ func (t *TemplateManagerProvider) GetLogs(ctx context.Context, templateID string
 		},
 	)
 
-	logs := make([]string, 0)
-	if err == nil {
-		for _, entry := range res.GetLogs() {
-			logs = append(logs, fmt.Sprintf("%s\n", entry))
-		}
-	} else {
+	if err != nil {
 		telemetry.ReportError(ctx, "error when returning logs for template build", err)
 		zap.L().Error("error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildID))
+		return nil, err
 	}
 
-	return logs, err
+	logs := res.GetLogs()
+	// Add an extra newline
+	for i := range res.GetLogs() {
+		logs[i] += "\n"
+	}
+
+	return logs, nil
 }
