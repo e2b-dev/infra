@@ -24,7 +24,7 @@ type BuildInfo struct {
 	status    template_manager.TemplateBuildState
 	reason    *string
 	metadata  *template_manager.TemplateBuildMetadata
-	logs      *bytes.Buffer
+	logs      *SafeBuffer
 	mu        sync.RWMutex
 	ctx       context.Context
 	ctxCancel context.CancelFunc
@@ -138,7 +138,7 @@ func (c *BuildCache) Get(buildID string) (*BuildInfo, error) {
 }
 
 // Create creates a new build if it doesn't exist in the cache or the build was already finished.
-func (c *BuildCache) Create(buildID string, logs *bytes.Buffer) (*BuildInfo, error) {
+func (c *BuildCache) Create(buildID string, logs *SafeBuffer) (*BuildInfo, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

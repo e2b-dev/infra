@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -59,7 +59,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		With(zap.Field{Type: zapcore.StringType, Key: "envID", String: config.TemplateID}).
 		With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: config.BuildID})
 
-	var logs bytes.Buffer
+	var logs cache.SafeBuffer
 	buildInfo, err := s.buildCache.Create(config.BuildID, &logs)
 	if err != nil {
 		return nil, fmt.Errorf("error while creating build cache: %w", err)
