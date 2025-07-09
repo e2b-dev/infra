@@ -73,6 +73,7 @@ type EnvBuild struct {
 	EnvdVersion        *string
 	ReadyCmd           *string
 	ClusterNodeID      *string
+	Reason             *string
 }
 
 type Snapshot struct {

@@ -524,6 +524,9 @@ components:
             - waiting
             - ready
             - error
+        reason:
+          type: string
+          description: Message with the status reason, currently reporting only for error status
 
     NodeStatus:
       type: string
