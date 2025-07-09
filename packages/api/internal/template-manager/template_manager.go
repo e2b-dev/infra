@@ -128,13 +128,13 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 
 func (tm *TemplateManager) GetBuildClient(clusterID *uuid.UUID, nodeID *string, placement bool) (*BuildClient, error) {
 	if clusterID == nil || nodeID == nil {
-		return tm.GetLocalBuildClient(clusterID, nodeID, placement)
+		return tm.GetLocalBuildClient(placement)
 	} else {
 		return tm.GetClusterBuildClient(*clusterID, *nodeID)
 	}
 }
 
-func (tm *TemplateManager) GetLocalBuildClient(clusterID *uuid.UUID, nodeID *string, placement bool) (*BuildClient, error) {
+func (tm *TemplateManager) GetLocalBuildClient(placement bool) (*BuildClient, error) {
 	// build placement requires healthy template builder
 	if placement && tm.GetLocalClientStatus() != infogrpc.ServiceInfoStatus_OrchestratorHealthy {
 		zap.L().Error("Local template manager is not fully healthy, cannot use it for placement new builds")
