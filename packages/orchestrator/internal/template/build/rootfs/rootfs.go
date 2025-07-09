@@ -1,8 +1,8 @@
-package build
+package rootfs
 
 import (
-	"bytes"
 	"context"
+	_ "embed"
 	"fmt"
 	"io"
 	"math"
@@ -14,34 +14,27 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/ext4"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/oci"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/templateconfig"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
-	ToMBShift = 20
 	// Max size of the rootfs file in MB.
-	maxRootfsSize = 15000 << ToMBShift
-
-	rootfsBuildFileName = "rootfs.ext4.build"
-	rootfsProvisionLink = "rootfs.ext4.build.provision"
-
-	// provisionScriptFileName is a path where the provision script stores it's exit code.
-	provisionScriptResultPath = "/provision.result"
-	logExternalPrefix         = "[external] "
+	maxRootfsSize = 15000 << constants.ToMBShift
 
 	busyBoxBinaryPath = "/bin/busybox"
-	busyBoxInitPath   = "usr/bin/init"
-	systemdInitPath   = "/sbin/init"
+	BusyBoxInitPath   = "usr/bin/init"
 )
 
 type Rootfs struct {
-	template         *templateconfig.TemplateConfig
+	metadata         config.TemplateMetadata
+	template         *config.TemplateConfig
 	artifactRegistry artifactsregistry.ArtifactsRegistry
 }
 
@@ -60,21 +53,25 @@ func (mw *MultiWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func NewRootfs(
+func New(
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
-	template *templateconfig.TemplateConfig,
+	metadata config.TemplateMetadata,
+	template *config.TemplateConfig,
 ) *Rootfs {
 	return &Rootfs{
+		metadata:         metadata,
 		template:         template,
 		artifactRegistry: artifactRegistry,
 	}
 }
 
-func (r *Rootfs) createExt4Filesystem(
+func (r *Rootfs) CreateExt4Filesystem(
 	ctx context.Context,
 	tracer trace.Tracer,
 	postProcessor *writer.PostProcessor,
 	rootfsPath string,
+	provisionScript string,
+	provisionLogPrefix string,
 ) (c containerregistry.Config, e error) {
 	childCtx, childSpan := tracer.Start(ctx, "create-ext4-file")
 	defer childSpan.End()
@@ -92,7 +89,7 @@ func (r *Rootfs) createExt4Filesystem(
 	if r.template.FromImage != "" {
 		img, err = oci.GetPublicImage(childCtx, tracer, r.template.FromImage)
 	} else {
-		img, err = oci.GetImage(childCtx, tracer, r.artifactRegistry, r.template.TemplateID, r.template.BuildID)
+		img, err = oci.GetImage(childCtx, tracer, r.artifactRegistry, r.metadata.TemplateID, r.metadata.BuildID)
 	}
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error requesting docker image: %w", err)
@@ -105,7 +102,7 @@ func (r *Rootfs) createExt4Filesystem(
 	postProcessor.WriteMsg(fmt.Sprintf("Base Docker image size: %s", humanize.Bytes(uint64(imageSize))))
 
 	postProcessor.WriteMsg("Setting up system files")
-	layers, err := additionalOCILayers(childCtx, r.template)
+	layers, err := additionalOCILayers(childCtx, r.metadata, r.template, provisionScript, provisionLogPrefix)
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error populating filesystem: %w", err)
 	}
@@ -138,7 +135,7 @@ func (r *Rootfs) createExt4Filesystem(
 	// We need to remove the remaining free space from the ext4 file size
 	// This is a residual space that could not be shrunk when creating the filesystem,
 	// but is still available for use
-	diskAdd := r.template.DiskSizeMB<<ToMBShift - rootfsFreeSpace
+	diskAdd := r.template.DiskSizeMB<<constants.ToMBShift - rootfsFreeSpace
 	zap.L().Debug("adding disk size diff to rootfs",
 		zap.Int64("size_current", ext4Size),
 		zap.Int64("size_add", diskAdd),
@@ -171,20 +168,12 @@ func (r *Rootfs) createExt4Filesystem(
 }
 
 func additionalOCILayers(
-	ctx context.Context,
-	config *templateconfig.TemplateConfig,
+	_ context.Context,
+	metadata config.TemplateMetadata,
+	config *config.TemplateConfig,
+	provisionScript string,
+	provisionLogPrefix string,
 ) ([]containerregistry.Layer, error) {
-	var scriptDef bytes.Buffer
-	err := ProvisionScriptTemplate.Execute(&scriptDef, struct {
-		ResultPath string
-	}{
-		ResultPath: provisionScriptResultPath,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("error executing provision script: %w", err)
-	}
-	telemetry.ReportEvent(ctx, "executed provision script env")
-
 	memoryLimit := int(math.Min(float64(config.MemoryMB)/2, 512))
 	envdService := fmt.Sprintf(`[Unit]
 Description=Env Daemon Service
@@ -224,7 +213,7 @@ ff02::2	ip6-allrouters
 
 	e2bFile := fmt.Sprintf(`ENV_ID=%s
 BUILD_ID=%s
-`, config.TemplateID, config.BuildID)
+`, metadata.TemplateID, metadata.BuildID)
 
 	envdFileData, err := os.ReadFile(storage.HostEnvdPath)
 	if err != nil {
@@ -236,26 +225,26 @@ BUILD_ID=%s
 		return nil, fmt.Errorf("error reading busybox binary: %w", err)
 	}
 
-	filesLayer, err := LayerFile(
-		map[string]layerFile{
+	filesLayer, err := oci.LayerFile(
+		map[string]oci.File{
 			// Setup system
-			"etc/hostname":    {[]byte(hostname), 0o644},
-			"etc/hosts":       {[]byte(hosts), 0o644},
-			"etc/resolv.conf": {[]byte("nameserver 8.8.8.8"), 0o644},
+			"etc/hostname":    {Bytes: []byte(hostname), Mode: 0o644},
+			"etc/hosts":       {Bytes: []byte(hosts), Mode: 0o644},
+			"etc/resolv.conf": {Bytes: []byte("nameserver 8.8.8.8"), Mode: 0o644},
 
-			".e2b":                            {[]byte(e2bFile), 0o644},
-			storage.GuestEnvdPath:             {envdFileData, 0o777},
-			"etc/systemd/system/envd.service": {[]byte(envdService), 0o644},
-			"etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf": {[]byte(autologinService), 0o644},
+			".e2b":                            {Bytes: []byte(e2bFile), Mode: 0o644},
+			storage.GuestEnvdPath:             {Bytes: envdFileData, Mode: 0o777},
+			"etc/systemd/system/envd.service": {Bytes: []byte(envdService), Mode: 0o644},
+			"etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf": {Bytes: []byte(autologinService), Mode: 0o644},
 
 			// Provision script
-			"usr/local/bin/provision.sh": {scriptDef.Bytes(), 0o777},
+			"usr/local/bin/provision.sh": {Bytes: []byte(provisionScript), Mode: 0o777},
 			// Setup init system
-			"usr/bin/busybox": {busyBox, 0o755},
+			"usr/bin/busybox": {Bytes: busyBox, Mode: 0o755},
 			// Set to bin/init so it's not in conflict with systemd
 			// Any rewrite of the init file when booted from it will corrupt the filesystem
-			busyBoxInitPath: {busyBox, 0o755},
-			"etc/init.d/rcS": {[]byte(`#!/usr/bin/busybox ash
+			BusyBoxInitPath: {Bytes: busyBox, Mode: 0o755},
+			"etc/init.d/rcS": {Bytes: []byte(`#!/usr/bin/busybox ash
 echo "Mounting essential filesystems"
 # Ensure necessary mount points exist
 mkdir -p /proc /sys /dev /tmp /run
@@ -267,8 +256,8 @@ mount -t devtmpfs devtmpfs /dev
 mount -t tmpfs tmpfs /tmp
 mount -t tmpfs tmpfs /run
 
-echo "System Init"`), 0o777},
-			"etc/inittab": {[]byte(fmt.Sprintf(`# Run system init
+echo "System Init"`), Mode: 0o777},
+			"etc/inittab": {Bytes: []byte(fmt.Sprintf(`# Run system init
 ::sysinit:/etc/init.d/rcS
 
 # Run the provision script, prefix the output with a log prefix
@@ -282,14 +271,14 @@ echo "System Init"`), 0o777},
 # Clean shutdown of filesystems and swap
 ::shutdown:/usr/bin/busybox swapoff -a
 ::shutdown:/usr/bin/busybox umount -a -r -v
-`, logExternalPrefix)), 0o777},
+`, provisionLogPrefix)), Mode: 0o777},
 		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating layer from files: %w", err)
 	}
 
-	symlinkLayer, err := LayerSymlink(
+	symlinkLayer, err := oci.LayerSymlink(
 		map[string]string{
 			// Enable envd service autostart
 			"etc/systemd/system/multi-user.target.wants/envd.service": "etc/systemd/system/envd.service",

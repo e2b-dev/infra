@@ -31,7 +31,7 @@ type ServerStore struct {
 	templatemanager.UnimplementedTemplateServiceServer
 	tracer            trace.Tracer
 	logger            *zap.Logger
-	builder           *build.TemplateBuilder
+	builder           *build.Builder
 	buildCache        *cache.BuildCache
 	buildLogger       *zap.Logger
 	templateStorage   *template.Storage

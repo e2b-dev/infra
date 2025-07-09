@@ -1,4 +1,4 @@
-package build
+package envd
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -19,5 +20,5 @@ func GetEnvdVersion(ctx context.Context) (string, error) {
 }
 
 func GetEnvdHash(ctx context.Context) (string, error) {
-	return GetFileHash(ctx, storage.HostEnvdPath)
+	return utils.GetFileHash(ctx, storage.HostEnvdPath)
 }

@@ -1,4 +1,4 @@
-package build
+package sandboxtools
 
 import (
 	"context"
@@ -8,18 +8,23 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
 )
 
-const httpTimeout = 600 * time.Second
+const commandTimeout = 600 * time.Second
 
-func (b *TemplateBuilder) runCommand(
+func RunCommand(
 	ctx context.Context,
+	tracer trace.Tracer,
+	proxy *proxy.SandboxProxy,
+	logger *zap.Logger,
 	postProcessor *writer.PostProcessor,
 	id string,
 	sandboxID string,
@@ -28,8 +33,11 @@ func (b *TemplateBuilder) runCommand(
 	cwd *string,
 	envVars map[string]string,
 ) error {
-	return b.runCommandWithConfirmation(
+	return RunCommandWithConfirmation(
 		ctx,
+		tracer,
+		proxy,
+		logger,
 		postProcessor,
 		id,
 		sandboxID,
@@ -42,8 +50,11 @@ func (b *TemplateBuilder) runCommand(
 	)
 }
 
-func (b *TemplateBuilder) runCommandWithConfirmation(
+func RunCommandWithConfirmation(
 	ctx context.Context,
+	tracer trace.Tracer,
+	proxy *proxy.SandboxProxy,
+	logger *zap.Logger,
 	postProcessor *writer.PostProcessor,
 	id string,
 	sandboxID string,
@@ -65,9 +76,9 @@ func (b *TemplateBuilder) runCommandWithConfirmation(
 	})
 
 	hc := http.Client{
-		Timeout: httpTimeout,
+		Timeout: commandTimeout,
 	}
-	proxyHost := fmt.Sprintf("http://localhost%s", b.proxy.GetAddr())
+	proxyHost := fmt.Sprintf("http://localhost%s", proxy.GetAddr())
 	processC := processconnect.NewProcessClient(&hc, proxyHost)
 	err := grpc.SetSandboxHeader(runCmdReq.Header(), proxyHost, sandboxID)
 	if err != nil {
@@ -109,13 +120,13 @@ func (b *TemplateBuilder) runCommandWithConfirmation(
 			switch {
 			case e.GetData() != nil:
 				data := e.GetData()
-				b.logStream(postProcessor, id, "stdout", string(data.GetStdout()))
-				b.logStream(postProcessor, id, "stderr", string(data.GetStderr()))
+				logStream(logger, postProcessor, id, "stdout", string(data.GetStdout()))
+				logStream(logger, postProcessor, id, "stderr", string(data.GetStderr()))
 
 			case e.GetEnd() != nil:
 				end := e.GetEnd()
 				name := fmt.Sprintf("exit %d", end.GetExitCode())
-				b.logStream(postProcessor, id, name, end.GetStatus())
+				logStream(logger, postProcessor, id, name, end.GetStatus())
 
 				if end.GetExitCode() != 0 {
 					return fmt.Errorf("command failed: %s", end.GetStatus())
@@ -125,7 +136,7 @@ func (b *TemplateBuilder) runCommandWithConfirmation(
 	}
 }
 
-func (b *TemplateBuilder) logStream(postProcessor *writer.PostProcessor, id string, name string, content string) {
+func logStream(logger *zap.Logger, postProcessor *writer.PostProcessor, id string, name string, content string) {
 	if content == "" {
 		return
 	}
@@ -136,6 +147,6 @@ func (b *TemplateBuilder) logStream(postProcessor *writer.PostProcessor, id stri
 		}
 		msg := fmt.Sprintf("[%s] [%s]: %s", id, name, line)
 		postProcessor.WriteMsg(msg)
-		b.buildLogger.Info(msg)
+		logger.Info(msg)
 	}
 }

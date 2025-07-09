@@ -1,4 +1,4 @@
-package templateconfig
+package config
 
 import (
 	"github.com/google/uuid"
@@ -12,8 +12,6 @@ import (
 const instanceBuildPrefix = "b"
 
 type TemplateConfig struct {
-	TemplateID         string
-	BuildID            string
 	KernelVersion      string
 	FirecrackerVersion string
 
@@ -65,10 +63,10 @@ func (e *TemplateConfig) RootfsBlockSize() int64 {
 	return header.RootfsBlockSize
 }
 
-func (e *TemplateConfig) ToSandboxConfig(envdVersion string) *orchestrator.SandboxConfig {
+func (e *TemplateConfig) ToSandboxConfig(metadata TemplateMetadata, envdVersion string) *orchestrator.SandboxConfig {
 	return &orchestrator.SandboxConfig{
-		TemplateId:         e.TemplateID,
-		BuildId:            e.BuildID,
+		TemplateId:         metadata.TemplateID,
+		BuildId:            metadata.BuildID,
 		KernelVersion:      e.KernelVersion,
 		FirecrackerVersion: e.FirecrackerVersion,
 		HugePages:          e.HugePages,
@@ -78,6 +76,6 @@ func (e *TemplateConfig) ToSandboxConfig(envdVersion string) *orchestrator.Sandb
 		Vcpu:               e.VCpuCount,
 		RamMb:              e.MemoryMB,
 
-		BaseTemplateId: e.TemplateID,
+		BaseTemplateId: metadata.TemplateID,
 	}
 }

@@ -1,4 +1,4 @@
-package build
+package sandboxtools
 
 import (
 	"context"
@@ -10,23 +10,28 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (b *TemplateBuilder) copyFile(
+const fileCopyTimeout = 10 * time.Minute
+
+func CopyFile(
 	ctx context.Context,
-	postProcessor *writer.PostProcessor,
+	tracer trace.Tracer,
+	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	user string,
 	sourcePath string,
 	targetPath string,
 ) error {
-	ctx, span := b.tracer.Start(ctx, "copy-file")
+	ctx, span := tracer.Start(ctx, "copy-file")
 	defer span.End()
 
 	file, err := os.Open(sourcePath)
@@ -52,7 +57,7 @@ func (b *TemplateBuilder) copyFile(
 	}()
 
 	// Prepare query parameters
-	proxyHost := fmt.Sprintf("http://localhost%s", b.proxy.GetAddr())
+	proxyHost := fmt.Sprintf("http://localhost%s", proxy.GetAddr())
 	params := url.Values{}
 	params.Add("path", targetPath)
 	params.Add("username", user)
@@ -79,7 +84,7 @@ func (b *TemplateBuilder) copyFile(
 
 	// Send request
 	client := http.Client{
-		Timeout: httpTimeout,
+		Timeout: fileCopyTimeout,
 	}
 	resp, err := client.Do(req)
 	if err != nil {

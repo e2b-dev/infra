@@ -17,7 +17,6 @@ import (
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	buildlogs "github.com/e2b-dev/infra/packages/api/internal/template-manager/logs"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
@@ -236,51 +235,6 @@ func (tm *TemplateManager) DeleteBuilds(ctx context.Context, builds []DeleteBuil
 		}
 	}
 
-	return nil
-}
-
-func (tm *TemplateManager) CreateTemplate(t trace.Tracer, ctx context.Context, templateID string, buildID uuid.UUID, kernelVersion, firecrackerVersion, startCommand string, vCpuCount, diskSizeMB, memoryMB int64, readyCommand string, clusterID *uuid.UUID, clusterNodeID *string) error {
-	ctx, span := t.Start(ctx, "create-template",
-		trace.WithAttributes(
-			telemetry.WithTemplateID(templateID),
-		),
-	)
-	defer span.End()
-
-	features, err := sandbox.NewVersionInfo(firecrackerVersion)
-	if err != nil {
-		return fmt.Errorf("failed to get features for firecracker version '%s': %w", firecrackerVersion, err)
-	}
-
-	cli, err := tm.GetBuildClient(clusterID, clusterNodeID, true)
-	if err != nil {
-		return fmt.Errorf("failed to get builder edgeHttpClient: %w", err)
-	}
-
-	reqCtx := metadata.NewOutgoingContext(ctx, cli.GRPC.Metadata)
-	_, err = cli.GRPC.Client.Template.TemplateCreate(
-		reqCtx, &templatemanagergrpc.TemplateCreateRequest{
-			Template: &templatemanagergrpc.TemplateConfig{
-				TemplateID:         templateID,
-				BuildID:            buildID.String(),
-				VCpuCount:          int32(vCpuCount),
-				MemoryMB:           int32(memoryMB),
-				DiskSizeMB:         int32(diskSizeMB),
-				KernelVersion:      kernelVersion,
-				FirecrackerVersion: firecrackerVersion,
-				HugePages:          features.HasHugePages(),
-				StartCommand:       startCommand,
-				ReadyCommand:       readyCommand,
-			},
-		},
-	)
-
-	err = utils.UnwrapGRPCError(err)
-	if err != nil {
-		return fmt.Errorf("failed to create template '%s': %w", templateID, err)
-	}
-
-	telemetry.ReportEvent(ctx, "Template build started")
 	return nil
 }
 

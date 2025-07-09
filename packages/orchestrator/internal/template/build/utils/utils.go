@@ -1,4 +1,4 @@
-package build
+package utils
 
 import (
 	"context"
@@ -7,6 +7,14 @@ import (
 	"io"
 	"os"
 )
+
+func Sprintp(s *string) string {
+	if s == nil {
+		return "<nil>"
+	}
+
+	return *s
+}
 
 func GetFileHash(ctx context.Context, path string) (string, error) {
 	file, err := os.Open(path)

@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/templateconfig"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 )
 
@@ -17,10 +18,11 @@ const (
 	readyCommandTimeout       = 5 * time.Minute
 )
 
-func (b *TemplateBuilder) runReadyCommand(
+func (b *Builder) runReadyCommand(
 	ctx context.Context,
 	postProcessor *writer.PostProcessor,
-	template *templateconfig.TemplateConfig,
+	metadata config.TemplateMetadata,
+	template *config.TemplateConfig,
 	sandboxID string,
 	runAsUser string,
 	cwd *string,
@@ -32,7 +34,7 @@ func (b *TemplateBuilder) runReadyCommand(
 	postProcessor.WriteMsg("Waiting for template to be ready")
 
 	if template.ReadyCmd == "" {
-		template.ReadyCmd = getDefaultReadyCommand(template)
+		template.ReadyCmd = getDefaultReadyCommand(metadata, template)
 	}
 	postProcessor.WriteMsg(fmt.Sprintf("[ready cmd]: %s", template.ReadyCmd))
 
@@ -42,8 +44,11 @@ func (b *TemplateBuilder) runReadyCommand(
 
 	// Start the ready check
 	for {
-		err := b.runCommand(
+		err := sandboxtools.RunCommand(
 			ctx,
+			b.tracer,
+			b.proxy,
+			b.buildLogger,
 			postProcessor,
 			"ready",
 			sandboxID,
@@ -74,7 +79,7 @@ func (b *TemplateBuilder) runReadyCommand(
 	}
 }
 
-func getDefaultReadyCommand(template *templateconfig.TemplateConfig) string {
+func getDefaultReadyCommand(metadata config.TemplateMetadata, template *config.TemplateConfig) string {
 	if template.StartCmd == "" {
 		return fmt.Sprintf("sleep %d", 0)
 	}
@@ -82,7 +87,7 @@ func getDefaultReadyCommand(template *templateconfig.TemplateConfig) string {
 	// HACK: This is a temporary fix for a customer that needs a bigger time to start the command.
 	// TODO: Remove this after we can add customizable wait time for building templates.
 	// TODO: Make this user configurable, with health check too
-	if template.TemplateID == "zegbt9dl3l2ixqem82mm" || template.TemplateID == "ot5bidkk3j2so2j02uuz" || template.TemplateID == "0zeou1s7agaytqitvmzc" {
+	if metadata.TemplateID == "zegbt9dl3l2ixqem82mm" || metadata.TemplateID == "ot5bidkk3j2so2j02uuz" || metadata.TemplateID == "0zeou1s7agaytqitvmzc" {
 		return fmt.Sprintf("sleep %d", int((120 * time.Second).Seconds()))
 	}
 

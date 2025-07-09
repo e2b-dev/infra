@@ -229,18 +229,18 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 	return nil
 }
 
-type gCPServiceToken struct {
+type gcpServiceToken struct {
 	ClientEmail string `json:"client_email"`
 	PrivateKey  string `json:"private_key"`
 }
 
-func parseServiceAccountBase64(serviceAccount string) (*gCPServiceToken, error) {
+func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) {
 	decoded, err := base64.StdEncoding.DecodeString(serviceAccount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode base64: %w", err)
 	}
 
-	var sa gCPServiceToken
+	var sa gcpServiceToken
 	if err := json.Unmarshal(decoded, &sa); err != nil {
 		return nil, fmt.Errorf("failed to parse service account JSON: %w", err)
 	}
