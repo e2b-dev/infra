@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 	"sync"
 	"time"
 )
@@ -69,16 +68,6 @@ func (p *PostProcessor) Stop(ctx context.Context, err error) {
 func (p *PostProcessor) WriteMsg(message string) {
 	p.ticker.Reset(tickerInterval)
 	p.writer.Write([]byte(prefixWithTimestamp(message + "\n")))
-}
-
-func (p *PostProcessor) WriteLines(prefix, message string) {
-	messages := strings.SplitSeq(message, "\n")
-	for line := range messages {
-		if line == "" {
-			continue
-		}
-		p.WriteMsg(fmt.Sprintf("%s%s", prefix, line))
-	}
 }
 
 func (p *PostProcessor) Write(b []byte) (n int, err error) {

@@ -21,7 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/templateconfig"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
@@ -150,15 +150,19 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 			With(zap.Field{Type: zapcore.StringType, Key: "envID", String: templateID}).
 			With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: buildID}),
 	)
-	config := &templateconfig.TemplateConfig{
-		VCpuCount:       2,
-		MemoryMB:        1024,
-		StartCmd:        "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
-		DiskSizeMB:      1024,
-		HugePages:       true,
+	template := &config.TemplateConfig{
+		VCpuCount:  2,
+		MemoryMB:   1024,
+		StartCmd:   "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
+		DiskSizeMB: 1024,
+		HugePages:  true,
 	}
 
-	_, err = builder.Build(ctx, config, logsWriter)
+	metadata := config.TemplateMetadata{
+		TemplateID: templateID,
+		BuildID:    buildID,
+	}
+	_, err = builder.Build(ctx, metadata, template, logsWriter)
 	if err != nil {
 		return fmt.Errorf("error building template: %w", err)
 	}

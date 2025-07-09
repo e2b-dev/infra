@@ -161,12 +161,13 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	if buildErr != nil {
 		telemetry.ReportCriticalError(ctx, "build failed", buildErr, telemetry.WithTemplateID(templateID))
 
+		msg := fmt.Sprintf("error when building env: %s", buildErr)
 		err = a.templateManager.SetStatus(
 			ctx,
 			templateID,
 			buildUUID,
 			envbuild.StatusFailed,
-			fmt.Sprintf("error when building env: %s", buildErr),
+			&msg,
 		)
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error when setting build status", err)
@@ -182,7 +183,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		templateID,
 		buildUUID,
 		envbuild.StatusBuilding,
-		"starting build",
+		nil,
 	)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when setting build status", err)

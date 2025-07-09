@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/builder"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
@@ -17,7 +17,7 @@ func (s *ServerStore) TemplateLayerFilesUpload(ctx context.Context, in *template
 	_, childSpan := s.tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
-	path := builder.GetLayerFilesCachePath(in.TemplateID, in.Hash)
+	path := build.GetLayerFilesCachePath(in.TemplateID, in.Hash)
 	obj, err := s.storage.OpenObject(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open layer files cache: %w", err)
