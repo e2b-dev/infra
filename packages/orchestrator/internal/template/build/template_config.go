@@ -1,8 +1,6 @@
 package build
 
 import (
-	"io"
-
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -27,9 +25,6 @@ type TemplateConfig struct {
 
 	// The amount of free disk to allocate to the VM, in MiB.
 	DiskSizeMB int64
-
-	// Path to the directory where the temporary files for the build are stored.
-	BuildLogsWriter io.Writer
 
 	// Real size of the rootfs after building the template.
 	rootfsSize int64

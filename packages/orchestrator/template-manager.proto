@@ -28,6 +28,7 @@ message TemplateCreateRequest {
 message TemplateStatusRequest {
   string templateID = 1;
   string buildID = 2;
+  optional int32 offset = 3;
 }
 
 // Data required for deleting a template.
@@ -52,6 +53,7 @@ message TemplateBuildStatusResponse {
   TemplateBuildState status = 1;
   TemplateBuildMetadata metadata = 2;
   optional string reason = 3;
+  repeated string logs = 4;
 }
 
 enum HealthState {

@@ -30,6 +30,16 @@ type Cluster struct {
 	tracer          trace.Tracer
 }
 
+type ClusterGRPC struct {
+	Client   *grpclient.GRPCClient
+	Metadata metadata.MD
+}
+
+type ClusterHTTP struct {
+	Client *api.ClientWithResponses
+	NodeID string
+}
+
 var (
 	ErrTemplateBuilderNotFound          = errors.New("template builder not found")
 	ErrAvailableTemplateBuilderNotFound = errors.New("available template builder not found")
@@ -124,10 +134,10 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterNode
 	return nil, ErrAvailableTemplateBuilderNotFound
 }
 
-func (c *Cluster) GetGrpcClient(serviceInstanceID string) (*grpclient.GRPCClient, metadata.MD) {
-	return c.grpcClient, metadata.New(map[string]string{consts.EdgeRpcServiceInstanceIDHeader: serviceInstanceID})
+func (c *Cluster) GetGRPC(serviceInstanceID string) *ClusterGRPC {
+	return &ClusterGRPC{c.grpcClient, metadata.New(map[string]string{consts.EdgeRpcServiceInstanceIDHeader: serviceInstanceID})}
 }
 
-func (c *Cluster) GetHttpClient() *api.ClientWithResponses {
-	return c.httpClient
+func (c *Cluster) GetHTTP(nodeID string) *ClusterHTTP {
+	return &ClusterHTTP{c.httpClient, nodeID}
 }

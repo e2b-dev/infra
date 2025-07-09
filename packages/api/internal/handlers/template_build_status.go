@@ -7,13 +7,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -83,21 +81,23 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	logs := make([]string, 0)
-	l, err := a.templateManager.GetLogs(ctx, buildUUID, templateID, team.ClusterID, buildInfo.ClusterNodeID, params.LogsOffset)
-	if err != nil {
-		zap.L().Error("Failed to get build logs", zap.Error(err), logger.WithBuildID(buildID), logger.WithTemplateID(templateID))
-	} else {
-		logs = l
-	}
-
+	// Needs to be before logs request so the status is not set to done too early
 	result := api.TemplateBuild{
-		Logs:       logs,
+		Logs:       nil,
 		TemplateID: templateID,
 		BuildID:    buildID,
 		Status:     getCorrespondingTemplateBuildStatus(buildInfo.BuildStatus),
 		Reason:     buildInfo.Reason,
 	}
+
+	cli, err := a.templateManager.GetBuildClient(team.ClusterID, buildInfo.ClusterNodeID, false)
+	if err != nil {
+		telemetry.ReportError(ctx, "error when getting build client", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting build client")
+		return
+	}
+
+	result.Logs = cli.GetLogs(ctx, templateID, buildID, params.LogsOffset)
 
 	c.JSON(http.StatusOK, result)
 }

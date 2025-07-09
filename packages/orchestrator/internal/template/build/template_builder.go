@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -102,15 +103,14 @@ type Result struct {
 //
 // 6. Snapshot
 // 7. Upload template
-func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (r *Result, e error) {
+func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, logsWriter io.Writer) (r *Result, e error) {
 	ctx, childSpan := b.tracer.Start(ctx, "build")
 	defer childSpan.End()
 
-	logsWriter := template.BuildLogsWriter
 	postProcessor := writer.NewPostProcessor(ctx, logsWriter)
 	go postProcessor.Start()
 	defer func() {
-		postProcessor.Stop(e)
+		postProcessor.Stop(ctx, e)
 	}()
 
 	envdVersion, err := GetEnvdVersion(ctx)
