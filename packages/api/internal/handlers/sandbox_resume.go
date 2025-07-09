@@ -106,7 +106,8 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	if snap.OriginNodeID != nil {
 		nodeID = snap.OriginNodeID
 	} else {
-		// After migration period, we can remove this part, because all actively used snapshots will be stored in the database with the node ID.
+		// TODO: After migration period, we can remove this part, because all actively used snapshots will be stored in the database with the node ID.
+		// https://linear.app/e2b/issue/E2B-2662/remove-taking-client-from-sandbox-during-resume
 		sbxClientID, ok := getSandboxIDClient(sandboxID)
 		if ok {
 			nodeID = &sbxClientID
