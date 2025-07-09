@@ -144,6 +144,8 @@ func (b *Builder) applyCommand(
 			return fmt.Errorf("failed to copy layer tar data to sandbox: %w", err)
 		}
 
+		sbxUnpackPath := fmt.Sprintf("/tmp/%s", *step.FilesHash)
+
 		err = sandboxtools.RunCommand(
 			ctx,
 			b.tracer,
@@ -152,7 +154,7 @@ func (b *Builder) applyCommand(
 			postProcessor,
 			prefix,
 			sbx.Metadata.Config.SandboxId,
-			fmt.Sprintf(`mkdir -p "%s"`, args[1]),
+			fmt.Sprintf(`mkdir -p "%s"`, sbxUnpackPath),
 			buildMetadata.user,
 			buildMetadata.workdir,
 			buildMetadata.envVars,
@@ -161,7 +163,7 @@ func (b *Builder) applyCommand(
 			return fmt.Errorf("failed to create directory in sandbox: %w", err)
 		}
 
-		return sandboxtools.RunCommand(
+		err = sandboxtools.RunCommand(
 			ctx,
 			b.tracer,
 			b.proxy,
@@ -169,11 +171,63 @@ func (b *Builder) applyCommand(
 			postProcessor,
 			prefix,
 			sbx.Metadata.Config.SandboxId,
-			fmt.Sprintf(`tar -xzvf "%s" -C "%s" --strip-components=1`, sbxTargetPath, args[1]),
+			fmt.Sprintf(`tar -xzvf "%s" -C "%s"`, sbxTargetPath, sbxUnpackPath),
 			buildMetadata.user,
 			buildMetadata.workdir,
 			buildMetadata.envVars,
 		)
+		if err != nil {
+			return fmt.Errorf("failed to extract files in sandbox: %w", err)
+		}
+
+		moveScript := fmt.Sprintf(`
+#!/bin/bash
+
+sourceFolder="%s"
+# Set targetPath relative to current working directory
+targetPath="$(pwd)/%s"
+
+cd "$sourceFolder" || exit 1
+
+entry=$(ls -A | head -n 1)
+
+if [ -z "$entry" ]; then
+  echo "Error: sourceFolder is empty"
+  exit 1
+fi
+
+if [ -f "$entry" ]; then
+  # It's a file – create parent folders and move+rename it to the exact path
+  mkdir -p "$(dirname "$targetPath")"
+  mv "$entry" "$targetPath"
+elif [ -d "$entry" ]; then
+  # It's a directory – move all its contents into the destination folder
+  mkdir -p "$targetPath"
+  mv "$entry"/* "$targetPath/"
+else
+  echo "Error: entry is neither file nor directory"
+  exit 1
+fi
+`, sbxUnpackPath, args[1])
+
+		err = sandboxtools.RunCommand(
+			ctx,
+			b.tracer,
+			b.proxy,
+			b.buildLogger,
+			postProcessor,
+			prefix,
+			sbx.Metadata.Config.SandboxId,
+			moveScript,
+			buildMetadata.user,
+			buildMetadata.workdir,
+			buildMetadata.envVars,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to extract files in sandbox: %w", err)
+		}
+
+		return nil
 	case "RUN":
 		// args: command and args, e.g., ["sh", "-c", "echo hi"]
 		if len(args) < 1 {
