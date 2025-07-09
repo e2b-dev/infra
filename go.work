@@ -4,6 +4,7 @@ toolchain go1.24.3
 
 use (
 	./packages/api
+	./packages/clickhouse
 	./packages/client-proxy
 	./packages/db
 	./packages/docker-reverse-proxy
