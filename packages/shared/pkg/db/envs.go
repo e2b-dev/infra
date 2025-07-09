@@ -185,14 +185,13 @@ func (db *DB) FinishEnvBuild(
 	buildID uuid.UUID,
 	totalDiskSizeMB int64,
 	envdVersion string,
-	reason *string,
 ) error {
 	err := db.Client.EnvBuild.Update().Where(envbuild.ID(buildID), envbuild.EnvID(envID)).
 		SetFinishedAt(time.Now()).
 		SetTotalDiskSizeMB(totalDiskSizeMB).
 		SetStatus(envbuild.StatusUploaded).
 		SetEnvdVersion(envdVersion).
-		SetNillableReason(reason).
+		SetNillableReason(nil).
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to finish template build '%s': %w", buildID, err)

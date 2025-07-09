@@ -68,7 +68,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 
 type templateManagerClient interface {
 	SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason *string) error
-	SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string, reason *string) error
+	SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string) error
 	GetStatus(ctx context.Context, buildId uuid.UUID, templateID string, clusterID *uuid.UUID, clusterNodeID *string) (*templatemanagergrpc.TemplateBuildStatusResponse, error)
 }
 
@@ -172,7 +172,7 @@ func (c *PollBuildStatus) dispatchBasedOnStatus(ctx context.Context, status *tem
 			return errors.New("nil metadata"), false
 		}
 
-		err := c.client.SetFinished(ctx, c.templateID, c.buildID, int64(meta.RootfsSizeKey), meta.EnvdVersionKey, status.Reason)
+		err := c.client.SetFinished(ctx, c.templateID, c.buildID, int64(meta.RootfsSizeKey), meta.EnvdVersionKey)
 		if err != nil {
 			return errors.Wrap(err, "error when finishing build"), false
 		}
@@ -235,16 +235,16 @@ func (tm *TemplateManager) SetStatus(ctx context.Context, templateID string, bui
 	return err
 }
 
-func (tm *TemplateManager) SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string, reason *string) error {
+func (tm *TemplateManager) SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string) error {
 	// first do database update to prevent race condition while calling status
-	err := tm.db.FinishEnvBuild(ctx, templateID, buildID, rootfsSize, envdVersion, reason)
+	err := tm.db.FinishEnvBuild(ctx, templateID, buildID, rootfsSize, envdVersion)
 	if err != nil {
 		msg := fmt.Sprintf("error when finishing build: %s", err.Error())
 		tm.buildCache.SetStatus(buildID, envbuild.StatusFailed, &msg)
 		return err
 	}
 
-	tm.buildCache.SetStatus(buildID, envbuild.StatusUploaded, reason)
+	tm.buildCache.SetStatus(buildID, envbuild.StatusUploaded, nil)
 
 	return nil
 }
