@@ -12,7 +12,9 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 )
 
-func ExecCommand(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, command string, args ...string) error {
+func ExecCommand(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, command string, args ...string) error {
+	tb.Helper()
+
 	req := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
 			Cmd:  command,
@@ -33,18 +35,18 @@ func ExecCommand(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient
 		cancel()
 		streamErr := stream.Close()
 		if streamErr != nil {
-			t.Logf("Error closing stream: %v", streamErr)
+			tb.Logf("Error closing stream: %v", streamErr)
 		}
 	}()
 
 	for stream.Receive() {
-
 		select {
 		case <-ctx.Done():
 			// Context canceled, exit the goroutine
 			return ctx.Err()
 		default:
-			_ = stream.Msg()
+			msg := stream.Msg()
+			tb.Logf("Command [%s] output: %s", command, msg.String())
 		}
 	}
 

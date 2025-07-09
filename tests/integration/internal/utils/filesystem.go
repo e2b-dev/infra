@@ -14,13 +14,21 @@ import (
 )
 
 func UploadFile(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, path string, content []byte) error {
+	tb.Helper()
+
 	buffer, contentType := CreateTextFile(tb, path, string(content))
+
+	reqEditors := []envdapi.RequestEditorFn{setup.WithSandbox(sbx.SandboxID)}
+	if sbx.EnvdAccessToken != nil {
+		reqEditors = append(reqEditors, setup.WithEnvdAccessToken(*(sbx.EnvdAccessToken)))
+	}
+
 	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
 		ctx,
 		&envdapi.PostFilesParams{Path: &path, Username: "user"},
 		contentType,
 		buffer,
-		setup.WithSandbox(sbx.SandboxID),
+		reqEditors...,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to upload file %s: %w", path, err)
@@ -34,6 +42,8 @@ func UploadFile(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient
 }
 
 func CreateTextFile(tb testing.TB, path string, content string) (*bytes.Buffer, string) {
+	tb.Helper()
+
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 	part, err := writer.CreateFormFile("file", path)

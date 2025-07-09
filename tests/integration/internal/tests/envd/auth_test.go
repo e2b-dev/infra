@@ -132,20 +132,9 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 	filePath := "demo.txt"
 	fileContent := "Hello, world!"
 
-	// create test file
-	textFile, contentType := utils.CreateTextFile(t, filePath, fileContent)
-
-	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
-		ctx,
-		&envdapi.PostFilesParams{Path: &filePath, Username: "user"},
-		contentType,
-		textFile,
-		setup.WithSandbox(sbxMeta.SandboxID),
-		setup.WithEnvdAccessToken(*sbxMeta.EnvdAccessToken),
-	)
-
+	// create a test file
+	err := utils.UploadFile(t, ctx, sbxMeta, envdClient, filePath, []byte(fileContent))
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, writeRes.StatusCode())
 
 	c := setup.GetAPIClient()
 
@@ -200,20 +189,9 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 	filePath := "demo.txt"
 	fileContent := "Hello, world!"
 
-	// create test file
-	textFile, contentType := utils.CreateTextFile(t, filePath, fileContent)
-
-	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
-		ctx,
-		&envdapi.PostFilesParams{Path: &filePath, Username: "user"},
-		contentType,
-		textFile,
-		setup.WithSandbox(sbxMeta.SandboxID),
-		setup.WithEnvdAccessToken(*sbxMeta.EnvdAccessToken),
-	)
-
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, writeRes.StatusCode())
+	// create a test file
+	err := utils.UploadFile(t, ctx, sbxMeta, envdClient, filePath, []byte(fileContent))
+	require.NoError(t, err)
 
 	c := setup.GetAPIClient()
 
