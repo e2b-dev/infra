@@ -28,6 +28,7 @@ message TemplateCreateRequest {
 message TemplateStatusRequest {
   string templateID = 1;
   string buildID = 2;
+  optional int32 offset = 3;
 }
 
 // Data required for deleting a template.

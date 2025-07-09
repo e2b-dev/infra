@@ -18,25 +18,18 @@ type TemplateManagerProvider struct {
 }
 
 func (t *TemplateManagerProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset *int32) ([]string, error) {
-	logs := make([]string, 0)
-
 	reqCtx := metadata.NewOutgoingContext(ctx, t.GRPC.Metadata)
 	res, err := t.GRPC.Client.Template.TemplateBuildStatus(
 		reqCtx, &templatemanagergrpc.TemplateStatusRequest{
 			TemplateID: templateID,
 			BuildID:    buildID,
+			Offset:     offset,
 		},
 	)
+
+	logs := make([]string, 0)
 	if err == nil {
-		logsCrawled := int32(0)
-
 		for _, entry := range res.GetLogs() {
-			logsCrawled++
-
-			// does not support offset pagination, so we need to skip logs manually
-			if offset != nil && logsCrawled <= *offset {
-				continue
-			}
 			logs = append(logs, fmt.Sprintf("%s\n", entry))
 		}
 	} else {
