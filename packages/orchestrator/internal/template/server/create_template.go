@@ -81,7 +81,6 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 
 		logsWriter := io.MultiWriter(&logs, externalWriter)
 		res, err := s.builder.Build(buildContext, template, logsWriter)
-		_ = externalWriter.Sync()
 		if err != nil {
 			s.reportBuildFailed(buildContext, template, err)
 			return
