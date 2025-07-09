@@ -22,7 +22,7 @@ type Snapshot struct {
 func (s *Snapshot) Upload(
 	ctx context.Context,
 	persistance storage.StorageProvider,
-	templateFiles *storage.TemplateFiles,
+	templateFiles storage.TemplateFiles,
 ) error {
 	var memfilePath *string
 	switch r := s.MemfileDiff.(type) {

@@ -21,12 +21,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-func ConstructBaseTemplateFiles(
+func constructBaseLayerFiles(
 	ctx context.Context,
 	tracer trace.Tracer,
-	metadata config.TemplateMetadata,
+	metadata storage.TemplateFiles,
 	buildID string,
-	templateConfig *config.TemplateConfig,
+	templateConfig config.TemplateConfig,
 	postProcessor *writer.PostProcessor,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	storage storage.StorageProvider,
@@ -35,8 +35,6 @@ func ConstructBaseTemplateFiles(
 	devicePool *nbd.DevicePool,
 	templateBuildDir string,
 	rootfsPath string,
-	provisionScript string,
-	provisionLogPrefix string,
 ) (r *block.Local, m *block.Local, c containerregistry.Config, e error) {
 	childCtx, childSpan := tracer.Start(ctx, "template-build")
 	defer childSpan.End()
@@ -47,6 +45,12 @@ func ConstructBaseTemplateFiles(
 		metadata,
 		templateConfig,
 	)
+	provisionScript, err := getProvisionScript(ctx, ProvisionScriptParams{
+		ResultPath: provisionScriptResultPath,
+	})
+	if err != nil {
+		return nil, nil, containerregistry.Config{}, fmt.Errorf("error getting provision script: %w", err)
+	}
 	imgConfig, err := rtfs.CreateExt4Filesystem(childCtx, tracer, postProcessor, rootfsPath, provisionScript, provisionLogPrefix)
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating rootfs for template '%s' during build '%s': %w", metadata.TemplateID, metadata.BuildID, err)

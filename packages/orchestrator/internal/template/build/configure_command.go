@@ -49,9 +49,9 @@ func runConfiguration(
 		"config",
 		sandboxID,
 		scriptDef.String(),
-		"root",
-		nil,
-		map[string]string{},
+		sandboxtools.CommandMetadata{
+			User: "root",
+		},
 	)
 	if err != nil {
 		return fmt.Errorf("error running configuration script: %w", err)

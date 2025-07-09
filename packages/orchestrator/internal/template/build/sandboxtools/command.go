@@ -20,6 +20,12 @@ import (
 
 const commandTimeout = 600 * time.Second
 
+type CommandMetadata struct {
+	User    string
+	WorkDir *string
+	EnvVars map[string]string
+}
+
 func RunCommand(
 	ctx context.Context,
 	tracer trace.Tracer,
@@ -29,9 +35,7 @@ func RunCommand(
 	id string,
 	sandboxID string,
 	command string,
-	runAsUser string,
-	cwd *string,
-	envVars map[string]string,
+	metadata CommandMetadata,
 ) error {
 	return RunCommandWithConfirmation(
 		ctx,
@@ -42,9 +46,7 @@ func RunCommand(
 		id,
 		sandboxID,
 		command,
-		runAsUser,
-		cwd,
-		envVars,
+		metadata,
 		// No confirmation needed for this command
 		make(chan struct{}),
 	)
@@ -59,19 +61,17 @@ func RunCommandWithConfirmation(
 	id string,
 	sandboxID string,
 	command string,
-	runAsUser string,
-	cwd *string,
-	envVars map[string]string,
+	metadata CommandMetadata,
 	confirmCh chan<- struct{},
 ) error {
 	runCmdReq := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
 			Cmd: "/bin/bash",
-			Cwd: cwd,
+			Cwd: metadata.WorkDir,
 			Args: []string{
 				"-l", "-c", command,
 			},
-			Envs: envVars,
+			Envs: metadata.EnvVars,
 		},
 	})
 
@@ -84,7 +84,7 @@ func RunCommandWithConfirmation(
 	if err != nil {
 		return fmt.Errorf("failed to set sandbox header: %w", err)
 	}
-	grpc.SetUserHeader(runCmdReq.Header(), runAsUser)
+	grpc.SetUserHeader(runCmdReq.Header(), metadata.User)
 
 	processCtx, processCancel := context.WithCancel(ctx)
 	defer processCancel()
@@ -146,7 +146,11 @@ func logStream(logger *zap.Logger, postProcessor *writer.PostProcessor, id strin
 			continue
 		}
 		msg := fmt.Sprintf("[%s] [%s]: %s", id, name, line)
-		postProcessor.WriteMsg(msg)
-		logger.Info(msg)
+		if postProcessor != nil {
+			postProcessor.WriteMsg(msg)
+		}
+		if logger != nil {
+			logger.Info(msg)
+		}
 	}
 }

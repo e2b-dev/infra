@@ -245,7 +245,7 @@ func ResumeSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
 	networkPool *network.Pool,
-	templateCache *template.Cache,
+	t template.Template,
 	config *orchestrator.SandboxConfig,
 	traceID string,
 	startedAt time.Time,
@@ -258,16 +258,6 @@ func ResumeSandbox(
 	defer childSpan.End()
 
 	cleanup := NewCleanup()
-
-	t, err := templateCache.GetTemplate(
-		config.TemplateId,
-		config.BuildId,
-		config.KernelVersion,
-		config.FirecrackerVersion,
-	)
-	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to get template snapshot data: %w", err)
-	}
 
 	ipsCh := getNetworkSlotAsync(childCtx, tracer, networkPool, cleanup, allowInternet)
 	defer func() {
@@ -489,12 +479,12 @@ func (s *Sandbox) Close(ctx context.Context, tracer trace.Tracer) error {
 func (s *Sandbox) Pause(
 	ctx context.Context,
 	tracer trace.Tracer,
-	snapshotTemplateFiles *storage.TemplateCacheFiles,
+	snapshotTemplateFiles storage.TemplateCacheFiles,
 ) (*Snapshot, error) {
 	childCtx, childSpan := tracer.Start(ctx, "sandbox-snapshot")
 	defer childSpan.End()
 
-	buildID, err := uuid.Parse(snapshotTemplateFiles.BuildId)
+	buildID, err := uuid.Parse(snapshotTemplateFiles.BuildID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse build id: %w", err)
 	}

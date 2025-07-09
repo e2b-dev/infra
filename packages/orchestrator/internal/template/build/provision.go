@@ -5,6 +5,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"os"
 	"os/exec"
 	tt "text/template"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -52,9 +54,7 @@ func getProvisionScript(
 func (b *Builder) provisionSandbox(
 	ctx context.Context,
 	postProcessor *writer.PostProcessor,
-	metadata config.TemplateMetadata,
-	template *config.TemplateConfig,
-	envdVersion string,
+	sandboxConfig *orchestrator.SandboxConfig,
 	localTemplate *sbxtemplate.LocalTemplate,
 	rootfsPath string,
 	provisionScriptResultPath string,
@@ -71,7 +71,7 @@ func (b *Builder) provisionSandbox(
 		b.tracer,
 		b.networkPool,
 		b.devicePool,
-		template.ToSandboxConfig(metadata, envdVersion),
+		sandboxConfig,
 		localTemplate,
 		provisionTimeout,
 		rootfsPath,
@@ -125,13 +125,13 @@ func (b *Builder) provisionSandbox(
 
 func (b *Builder) enlargeDiskAfterProvisioning(
 	ctx context.Context,
-	template *config.TemplateConfig,
+	template config.TemplateConfig,
 	rootfsPath string,
-) error {
+) (int64, error) {
 	// Resize rootfs to accommodate for the provisioning script size change
 	rootfsFreeSpace, err := ext4.GetFreeSpace(ctx, b.tracer, rootfsPath, template.RootfsBlockSize())
 	if err != nil {
-		return fmt.Errorf("error getting free space: %w", err)
+		return 0, fmt.Errorf("error getting free space: %w", err)
 	}
 	sizeDiff := template.DiskSizeMB<<constants.ToMBShift - rootfsFreeSpace
 	zap.L().Debug("adding provision size diff to rootfs",
@@ -141,7 +141,12 @@ func (b *Builder) enlargeDiskAfterProvisioning(
 	)
 	if sizeDiff <= 0 {
 		zap.L().Debug("no need to enlarge rootfs, skipping")
-		return nil
+
+		stat, err := os.Stat(rootfsPath)
+		if err != nil {
+			return 0, fmt.Errorf("error stating rootfs file: %w", err)
+		}
+		return stat.Size(), nil
 	}
 	rootfsFinalSize, err := ext4.Enlarge(ctx, b.tracer, rootfsPath, sizeDiff)
 	if err != nil {
@@ -150,9 +155,8 @@ func (b *Builder) enlargeDiskAfterProvisioning(
 		output, dErr := cmd.Output()
 		zap.L().Error(string(output), zap.Error(dErr))
 
-		return fmt.Errorf("error enlarging rootfs: %w", err)
+		return 0, fmt.Errorf("error enlarging rootfs: %w", err)
 	}
-	template.RootfsSize = rootfsFinalSize
 
 	// Check the rootfs filesystem corruption
 	ext4Check, err := ext4.CheckIntegrity(rootfsPath, false)
@@ -169,12 +173,12 @@ func (b *Builder) enlargeDiskAfterProvisioning(
 			zap.Error(err),
 		)
 		if err != nil {
-			return fmt.Errorf("error checking final enlarge filesystem integrity: %w", err)
+			return 0, fmt.Errorf("error checking final enlarge filesystem integrity: %w", err)
 		}
 	} else {
 		zap.L().Debug("final enlarge filesystem ext4 integrity",
 			zap.String("result", ext4Check),
 		)
 	}
-	return nil
+	return rootfsFinalSize, nil
 }

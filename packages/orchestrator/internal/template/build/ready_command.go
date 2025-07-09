@@ -9,6 +9,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const (
@@ -21,22 +22,21 @@ const (
 func (b *Builder) runReadyCommand(
 	ctx context.Context,
 	postProcessor *writer.PostProcessor,
-	metadata config.TemplateMetadata,
-	template *config.TemplateConfig,
+	metadata storage.TemplateFiles,
+	template config.TemplateConfig,
 	sandboxID string,
-	runAsUser string,
-	cwd *string,
-	envVars map[string]string,
+	cmdMetadata sandboxtools.CommandMetadata,
 ) error {
 	ctx, span := b.tracer.Start(ctx, "run-ready-command")
 	defer span.End()
 
 	postProcessor.WriteMsg("Waiting for template to be ready")
 
-	if template.ReadyCmd == "" {
-		template.ReadyCmd = getDefaultReadyCommand(metadata, template)
+	readyCmd := template.ReadyCmd
+	if readyCmd == "" {
+		readyCmd = getDefaultReadyCommand(metadata, template)
 	}
-	postProcessor.WriteMsg(fmt.Sprintf("[ready cmd]: %s", template.ReadyCmd))
+	postProcessor.WriteMsg(fmt.Sprintf("[ready cmd]: %s", readyCmd))
 
 	startTime := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, readyCommandTimeout)
@@ -52,10 +52,8 @@ func (b *Builder) runReadyCommand(
 			postProcessor,
 			"ready",
 			sandboxID,
-			template.ReadyCmd,
-			runAsUser,
-			cwd,
-			envVars,
+			readyCmd,
+			cmdMetadata,
 		)
 
 		if err == nil {
@@ -79,7 +77,7 @@ func (b *Builder) runReadyCommand(
 	}
 }
 
-func getDefaultReadyCommand(metadata config.TemplateMetadata, template *config.TemplateConfig) string {
+func getDefaultReadyCommand(metadata storage.TemplateFiles, template config.TemplateConfig) string {
 	if template.StartCmd == "" {
 		return fmt.Sprintf("sleep %d", 0)
 	}

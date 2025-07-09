@@ -78,14 +78,14 @@ func (c *Cache) Items() map[string]*ttlcache.Item[string, Template] {
 }
 
 func (c *Cache) GetTemplate(
-	templateId,
-	buildId,
+	templateID,
+	buildID,
 	kernelVersion,
 	firecrackerVersion string,
 ) (Template, error) {
 	storageTemplate, err := newTemplateFromStorage(
-		templateId,
-		buildId,
+		templateID,
+		buildID,
 		kernelVersion,
 		firecrackerVersion,
 		nil,

@@ -34,15 +34,13 @@ func (p *PostProcessor) Start() {
 
 		select {
 		case postprocessingErr := <-p.errChan:
-			p.WriteMsg(msg)
-
 			if postprocessingErr != nil {
 				p.WriteMsg(fmt.Sprintf("Postprocessing failed: %s", postprocessingErr))
 				return
+			} else {
+				p.WriteMsg(fmt.Sprintf("Postprocessing finished. Took %s. Cleaning up...", time.Since(startTime).Truncate(time.Second).String()))
+				return
 			}
-			p.WriteMsg(fmt.Sprintf("Postprocessing finished. Took %s. Cleaning up...", time.Since(startTime).Truncate(time.Second).String()))
-
-			return
 		case <-p.ctx.Done():
 			return
 		case <-p.ticker.C:

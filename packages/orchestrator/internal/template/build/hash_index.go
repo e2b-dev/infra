@@ -17,7 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-func getBaseHash(ctx context.Context, template *config.TemplateConfig) (string, error) {
+func getBaseHash(ctx context.Context, template config.TemplateConfig) (string, error) {
 	envdHash, err := envd.GetEnvdHash(ctx)
 	if err != nil {
 		return "", fmt.Errorf("error getting envd binary hash: %w", err)
@@ -31,39 +31,45 @@ func getBaseHash(ctx context.Context, template *config.TemplateConfig) (string, 
 	return fmt.Sprintf("%x", baseSHA.Sum(nil)), nil
 }
 
-func getTemplateFromHash(ctx context.Context, s storage.StorageProvider, templateID string, baseHash string, hash string) config.TemplateMetadata {
-	obj, err := s.OpenObject(ctx, uuidToHashPath(templateID, baseHash, hash))
+func getTemplateFromHash(ctx context.Context, s storage.StorageProvider, m storage.TemplateFiles, finalTemplateID string, baseHash string, hash string) storage.TemplateFiles {
+	obj, err := s.OpenObject(ctx, hashesToHashPath(finalTemplateID, baseHash, hash))
 	if err != nil {
-		return config.TemplateMetadata{
-			TemplateID: id.Generate(),
-			BuildID:    uuid.New().String(),
+		return storage.TemplateFiles{
+			TemplateID:         id.Generate(),
+			BuildID:            uuid.New().String(),
+			KernelVersion:      m.KernelVersion,
+			FirecrackerVersion: m.FirecrackerVersion,
 		}
 	}
 
 	var buf bytes.Buffer
 	_, err = obj.WriteTo(&buf)
 	if err != nil {
-		return config.TemplateMetadata{
-			TemplateID: id.Generate(),
-			BuildID:    uuid.New().String(),
+		return storage.TemplateFiles{
+			TemplateID:         id.Generate(),
+			BuildID:            uuid.New().String(),
+			KernelVersion:      m.KernelVersion,
+			FirecrackerVersion: m.FirecrackerVersion,
 		}
 	}
 
-	var templateMetadata config.TemplateMetadata
+	var templateMetadata storage.TemplateFiles
 	err = json.Unmarshal(buf.Bytes(), &templateMetadata)
 	if err != nil {
 		zap.L().Error("error unmarshalling template metadata from hash", zap.Error(err))
-		return config.TemplateMetadata{
-			TemplateID: id.Generate(),
-			BuildID:    uuid.New().String(),
+		return storage.TemplateFiles{
+			TemplateID:         id.Generate(),
+			BuildID:            uuid.New().String(),
+			KernelVersion:      m.KernelVersion,
+			FirecrackerVersion: m.FirecrackerVersion,
 		}
 	}
 
 	return templateMetadata
 }
 
-func saveTemplateToHash(ctx context.Context, s storage.StorageProvider, templateID string, baseHash, hash string, template config.TemplateMetadata) error {
-	obj, err := s.OpenObject(ctx, uuidToHashPath(templateID, baseHash, hash))
+func saveTemplateToHash(ctx context.Context, s storage.StorageProvider, finalTemplateID string, baseHash, hash string, template storage.TemplateFiles) error {
+	obj, err := s.OpenObject(ctx, hashesToHashPath(finalTemplateID, baseHash, hash))
 	if err != nil {
 		return fmt.Errorf("error creating object for saving UUID: %w", err)
 	}
@@ -82,7 +88,7 @@ func saveTemplateToHash(ctx context.Context, s storage.StorageProvider, template
 	return nil
 }
 
-func uuidToHashPath(templateID, baseHash, hash string) string {
+func hashesToHashPath(templateID, baseHash, hash string) string {
 	reSHA := sha256.New()
 	reSHA.Write([]byte(baseHash))
 	reSHA.Write([]byte(hash))
