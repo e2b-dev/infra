@@ -170,7 +170,6 @@ func walkDir(dirPath string, depth int) (entries []*rpc.EntryInfo, err error) {
 
 		return nil
 	})
-
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error reading directory %s: %w", dirPath, err))
 	}
