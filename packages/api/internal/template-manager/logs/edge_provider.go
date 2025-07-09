@@ -5,25 +5,19 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
+	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 )
 
 type ClusterPlacementProvider struct {
-	TemplateManager *template_manager.TemplateManager
+	HTTP *edge.ClusterHTTP
 }
 
-func (c *ClusterPlacementProvider) GetLogs(ctx context.Context, templateID string, buildUUID uuid.UUID, clusterID *uuid.UUID, clusterNodeID *string, offset *int32) ([]string, error) {
-	_, http, err := c.TemplateManager.GetBuilderClient(clusterID, clusterNodeID, false)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get builder edgeHttpClient: %w", err)
-	}
-
-	res, err := http.Client.V1TemplateBuildLogsWithResponse(
-		ctx, buildUUID.String(), &api.V1TemplateBuildLogsParams{TemplateID: templateID, OrchestratorID: http.NodeID, Offset: offset},
+func (c *ClusterPlacementProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset *int32) ([]string, error) {
+	res, err := c.HTTP.Client.V1TemplateBuildLogsWithResponse(
+		ctx, buildID, &api.V1TemplateBuildLogsParams{TemplateID: templateID, OrchestratorID: c.HTTP.NodeID, Offset: offset},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build logs in template manager: %w", err)

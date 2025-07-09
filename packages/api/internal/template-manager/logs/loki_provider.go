@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -26,16 +25,11 @@ type LokiProvider struct {
 	LokiClient *client.DefaultClient
 }
 
-func (l *LokiProvider) GetLogs(ctx context.Context, templateID string, buildUUID uuid.UUID, clusterID *uuid.UUID, clusterNodeID *string, offset *int32) ([]string, error) {
-	if clusterID != nil && clusterNodeID != nil {
-		// If clusterID and clusterNodeID are not nil, we should not use loki provider.
-		return nil, &SkippedProviderError{}
-	}
-
+func (l *LokiProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset *int32) ([]string, error) {
 	// Sanitize env ID
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 	templateIdSanitized := strings.ReplaceAll(templateID, "`", "")
-	query := fmt.Sprintf("{service=\"template-manager\", buildID=\"%s\", envID=`%s`}", buildUUID.String(), templateIdSanitized)
+	query := fmt.Sprintf("{service=\"template-manager\", buildID=\"%s\", envID=`%s`}", buildID, templateIdSanitized)
 
 	end := time.Now()
 	start := end.Add(-templateBuildOldestLogsLimit)
@@ -66,7 +60,7 @@ func (l *LokiProvider) GetLogs(ctx context.Context, templateID string, buildUUID
 				line := make(map[string]any)
 				err := json.Unmarshal([]byte(entry.Line), &line)
 				if err != nil {
-					zap.L().Error("error parsing log line", zap.Error(err), logger.WithBuildID(buildUUID.String()), zap.String("line", entry.Line))
+					zap.L().Error("error parsing log line", zap.Error(err), logger.WithBuildID(buildID), zap.String("line", entry.Line))
 				}
 
 				logs = append(logs, line["message"].(string))
@@ -74,7 +68,7 @@ func (l *LokiProvider) GetLogs(ctx context.Context, templateID string, buildUUID
 		}
 	} else {
 		telemetry.ReportError(ctx, "error when returning logs for template build", err)
-		zap.L().Error("error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildUUID.String()))
+		zap.L().Error("error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildID))
 	}
 
 	return logs, nil

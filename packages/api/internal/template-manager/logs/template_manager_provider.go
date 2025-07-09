@@ -4,33 +4,27 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
 
-	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
+	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 type TemplateManagerProvider struct {
-	TemplateManager *template_manager.TemplateManager
+	GRPC *edge.ClusterGRPC
 }
 
-func (t *TemplateManagerProvider) GetLogs(ctx context.Context, templateID string, buildUUID uuid.UUID, clusterID *uuid.UUID, clusterNodeID *string, offset *int32) ([]string, error) {
-	grpc, _, err := t.TemplateManager.GetBuilderClient(clusterID, clusterNodeID, false)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get builder edgeHttpClient: %w", err)
-	}
-
+func (t *TemplateManagerProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset *int32) ([]string, error) {
 	logs := make([]string, 0)
 
-	reqCtx := metadata.NewOutgoingContext(ctx, grpc.Metadata)
-	res, err := grpc.Client.Template.TemplateBuildStatus(
+	reqCtx := metadata.NewOutgoingContext(ctx, t.GRPC.Metadata)
+	res, err := t.GRPC.Client.Template.TemplateBuildStatus(
 		reqCtx, &templatemanagergrpc.TemplateStatusRequest{
 			TemplateID: templateID,
-			BuildID:    buildUUID.String(),
+			BuildID:    buildID,
 		},
 	)
 	if err == nil {
@@ -47,7 +41,7 @@ func (t *TemplateManagerProvider) GetLogs(ctx context.Context, templateID string
 		}
 	} else {
 		telemetry.ReportError(ctx, "error when returning logs for template build", err)
-		zap.L().Error("error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildUUID.String()))
+		zap.L().Error("error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildID))
 	}
 
 	return logs, err

@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	buildlogs "github.com/e2b-dev/infra/packages/api/internal/template-manager/logs"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -125,38 +126,64 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 	}
 }
 
-func (tm *TemplateManager) GetBuilderClient(clusterID *uuid.UUID, nodeID *string, placement bool) (*edge.ClusterGRPC, *edge.ClusterHTTP, error) {
+func (tm *TemplateManager) GetBuildClient(clusterID *uuid.UUID, nodeID *string, placement bool) (*BuildClient, error) {
 	if clusterID == nil || nodeID == nil {
-		// build placement requires healthy template builder
-		if placement && tm.GetLocalClientStatus() != infogrpc.ServiceInfoStatus_OrchestratorHealthy {
-			zap.L().Error("Local template manager is not fully healthy, cannot use it for placement new builds")
-			return nil, nil, ErrLocalTemplateManagerNotAvailable
-		}
+		return tm.GetLocalBuildClient(clusterID, nodeID, placement)
+	} else {
+		return tm.GetClusterBuildClient(*clusterID, *nodeID)
+	}
+}
 
-		// for getting build information only not valid state is getting already unhealthy builder
-		if tm.GetLocalClientStatus() == infogrpc.ServiceInfoStatus_OrchestratorUnhealthy {
-			zap.L().Error("Local template manager is unhealthy")
-			return nil, nil, ErrLocalTemplateManagerNotAvailable
-		}
-
-		meta := metadata.New(map[string]string{})
-		return &edge.ClusterGRPC{Client: tm.grpc, Metadata: meta}, nil, nil
+func (tm *TemplateManager) GetLocalBuildClient(clusterID *uuid.UUID, nodeID *string, placement bool) (*BuildClient, error) {
+	// build placement requires healthy template builder
+	if placement && tm.GetLocalClientStatus() != infogrpc.ServiceInfoStatus_OrchestratorHealthy {
+		zap.L().Error("Local template manager is not fully healthy, cannot use it for placement new builds")
+		return nil, ErrLocalTemplateManagerNotAvailable
 	}
 
-	cluster, ok := tm.edgePool.GetClusterById(*clusterID)
+	// for getting build information only not valid state is getting already unhealthy builder
+	if tm.GetLocalClientStatus() == infogrpc.ServiceInfoStatus_OrchestratorUnhealthy {
+		zap.L().Error("Local template manager is unhealthy")
+		return nil, ErrLocalTemplateManagerNotAvailable
+	}
+
+	meta := metadata.New(map[string]string{})
+	grpc := &edge.ClusterGRPC{Client: tm.grpc, Metadata: meta}
+
+	logProviders := []buildlogs.Provider{
+		&buildlogs.TemplateManagerProvider{GRPC: grpc},
+		&buildlogs.LokiProvider{LokiClient: tm.lokiClient},
+	}
+
+	return &BuildClient{
+		GRPC:         grpc,
+		logProviders: logProviders,
+	}, nil
+}
+
+func (tm *TemplateManager) GetClusterBuildClient(clusterID uuid.UUID, nodeID string) (*BuildClient, error) {
+	cluster, ok := tm.edgePool.GetClusterById(clusterID)
 	if !ok {
-		return nil, nil, errors.New("cluster not found")
+		return nil, errors.New("cluster not found")
 	}
 
-	node, err := cluster.GetTemplateBuilderByID(*nodeID)
+	node, err := cluster.GetTemplateBuilderByID(nodeID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get builder by id '%s': %w", *nodeID, err)
+		return nil, fmt.Errorf("failed to get builder by id '%s': %w", nodeID, err)
 	}
 
 	grpc := cluster.GetGRPC(node.ServiceInstanceID)
 	http := cluster.GetHTTP(node.NodeID)
 
-	return grpc, http, nil
+	logProviders := []buildlogs.Provider{
+		&buildlogs.TemplateManagerProvider{GRPC: grpc},
+		&buildlogs.ClusterPlacementProvider{HTTP: http},
+	}
+
+	return &BuildClient{
+		GRPC:         grpc,
+		logProviders: logProviders,
+	}, nil
 }
 
 func (tm *TemplateManager) DeleteBuild(ctx context.Context, t trace.Tracer, buildID uuid.UUID, templateID string, clusterID *uuid.UUID, clusterNodeID *string) error {
@@ -167,13 +194,13 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, t trace.Tracer, buil
 	)
 	defer span.End()
 
-	grpc, _, err := tm.GetBuilderClient(clusterID, clusterNodeID, false)
+	client, err := tm.GetBuildClient(clusterID, clusterNodeID, false)
 	if err != nil {
 		return fmt.Errorf("failed to get builder edgeHttpClient: %w", err)
 	}
 
-	reqCtx := metadata.NewOutgoingContext(ctx, grpc.Metadata)
-	_, err = grpc.Client.Template.TemplateBuildDelete(
+	reqCtx := metadata.NewOutgoingContext(ctx, client.GRPC.Metadata)
+	_, err = client.GRPC.Client.Template.TemplateBuildDelete(
 		reqCtx, &templatemanagergrpc.TemplateBuildDeleteRequest{
 			BuildID:    buildID.String(),
 			TemplateID: templateID,
@@ -212,13 +239,13 @@ func (tm *TemplateManager) CreateTemplate(t trace.Tracer, ctx context.Context, t
 		return fmt.Errorf("failed to get features for firecracker version '%s': %w", firecrackerVersion, err)
 	}
 
-	grpc, _, err := tm.GetBuilderClient(clusterID, clusterNodeID, true)
+	cli, err := tm.GetBuildClient(clusterID, clusterNodeID, true)
 	if err != nil {
 		return fmt.Errorf("failed to get builder edgeHttpClient: %w", err)
 	}
 
-	reqCtx := metadata.NewOutgoingContext(ctx, grpc.Metadata)
-	_, err = grpc.Client.Template.TemplateCreate(
+	reqCtx := metadata.NewOutgoingContext(ctx, cli.GRPC.Metadata)
+	_, err = cli.GRPC.Client.Template.TemplateCreate(
 		reqCtx, &templatemanagergrpc.TemplateCreateRequest{
 			Template: &templatemanagergrpc.TemplateConfig{
 				TemplateID:         templateID,
@@ -245,15 +272,15 @@ func (tm *TemplateManager) CreateTemplate(t trace.Tracer, ctx context.Context, t
 }
 
 func (tm *TemplateManager) GetStatus(ctx context.Context, buildID uuid.UUID, templateID string, clusterID *uuid.UUID, clusterNodeID *string) (*templatemanagergrpc.TemplateBuildStatusResponse, error) {
-	grpc, _, err := tm.GetBuilderClient(clusterID, clusterNodeID, false)
+	cli, err := tm.GetBuildClient(clusterID, clusterNodeID, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get builder edgeHttpClient: %w", err)
 	}
 
-	reqCtx := metadata.NewOutgoingContext(ctx, grpc.Metadata)
+	reqCtx := metadata.NewOutgoingContext(ctx, cli.GRPC.Metadata)
 
 	// error unwrapping is done in the caller
-	return grpc.Client.Template.TemplateBuildStatus(
+	return cli.GRPC.Client.Template.TemplateBuildStatus(
 		reqCtx,
 		&templatemanagergrpc.TemplateStatusRequest{
 			BuildID: buildID.String(), TemplateID: templateID,

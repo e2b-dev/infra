@@ -7,11 +7,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	buildlogs "github.com/e2b-dev/infra/packages/api/internal/template-manager/logs"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
@@ -92,34 +90,14 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		Reason:     buildInfo.Reason,
 	}
 
-	offset := params.LogsOffset
-
-	logsProviders := make([]buildlogs.Provider, 0)
-	logsProviders = append(logsProviders, &buildlogs.TemplateManagerProvider{TemplateManager: a.templateManager})
-	logsProviders = append(logsProviders, &buildlogs.LokiProvider{LokiClient: a.lokiClient})
-	logsProviders = append(logsProviders, &buildlogs.ClusterPlacementProvider{TemplateManager: a.templateManager})
-
-	logsTotal := make([]string, 0)
-	for _, provider := range logsProviders {
-		logs, err := provider.GetLogs(ctx, templateID, buildUUID, team.ClusterID, buildInfo.ClusterNodeID, offset)
-		if err != nil {
-			var skippedProviderError *buildlogs.SkippedProviderError
-			if errors.As(err, &skippedProviderError) {
-				continue
-			}
-
-			telemetry.ReportEvent(ctx, "soft error when getting logs for template build", telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildUUID.String()), attribute.String("provider", fmt.Sprintf("%T", provider)))
-			continue
-		}
-
-		// Return the first non-empty logs, the providers are ordered by most up-to-date data
-		if len(logs) > 0 {
-			logsTotal = logs
-			break
-		}
+	cli, err := a.templateManager.GetBuildClient(team.ClusterID, buildInfo.ClusterNodeID, false)
+	if err != nil {
+		telemetry.ReportError(ctx, "error when getting build client", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting build client")
+		return
 	}
 
-	result.Logs = logsTotal
+	result.Logs = cli.GetLogs(ctx, templateID, buildID, params.LogsOffset)
 
 	c.JSON(http.StatusOK, result)
 }
