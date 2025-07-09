@@ -503,7 +503,6 @@ components:
         - buildID
         - status
         - logs
-        - reason
       properties:
         logs:
           default: []
@@ -527,7 +526,7 @@ components:
             - error
         reason:
           type: string
-          description: Message with the reason about the status code
+          description: Message with the status reason, currently reporting only for error status
 
     NodeStatus:
       type: string

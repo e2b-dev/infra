@@ -139,7 +139,7 @@ type TemplateBuildInfo struct {
 	TeamID      uuid.UUID
 	TemplateID  string
 	BuildStatus envbuild.Status
-	Reason      string
+	Reason      *string
 
 	ClusterID     *uuid.UUID
 	ClusterNodeID *string
@@ -167,7 +167,7 @@ func NewTemplateBuildCache(db *db.DB) *TemplatesBuildCache {
 	}
 }
 
-func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Status, reason string) {
+func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Status, reason *string) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
@@ -180,7 +180,7 @@ func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Statu
 		logger.WithBuildID(buildID.String()),
 		zap.String("to_status", status.String()),
 		zap.String("from_status", item.Value().BuildStatus.String()),
-		zap.String("reason", reason),
+		zap.Stringp("reason", reason),
 	)
 
 	item.Value().BuildStatus = status
@@ -211,18 +211,13 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 			return nil, fmt.Errorf("failed to get template build '%s': %w", buildID, envBuildDBErr)
 		}
 
-		reason := ""
-		if envBuildDB.Reason != nil {
-			reason = *envBuildDB.Reason
-		}
-
 		item = c.cache.Set(
 			buildID,
 			&TemplateBuildInfo{
 				TeamID:      envDB.TeamID,
 				TemplateID:  envDB.ID,
 				BuildStatus: envBuildDB.Status,
-				Reason:      reason,
+				Reason:      envBuildDB.Reason,
 
 				ClusterID:     envDB.ClusterID,
 				ClusterNodeID: envBuildDB.ClusterNodeID,
