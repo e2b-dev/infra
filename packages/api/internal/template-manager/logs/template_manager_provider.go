@@ -2,7 +2,6 @@ package logs
 
 import (
 	"context"
-	"fmt"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
@@ -26,7 +25,6 @@ func (t *TemplateManagerProvider) GetLogs(ctx context.Context, templateID string
 			Offset:     offset,
 		},
 	)
-
 	if err != nil {
 		telemetry.ReportError(ctx, "error when returning logs for template build", err)
 		zap.L().Error("error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildID))
@@ -34,8 +32,8 @@ func (t *TemplateManagerProvider) GetLogs(ctx context.Context, templateID string
 	}
 
 	logs := res.GetLogs()
-	// Add an extra newline
-	for i := range res.GetLogs() {
+	// Add an extra newline to each log entry to ensure proper formatting in the CLI
+	for i := range len(logs) {
 		logs[i] += "\n"
 	}
 

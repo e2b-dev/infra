@@ -18,10 +18,6 @@ func New(logger *zap.Logger) BuildLogsWriter {
 	return writer
 }
 
-func (w BuildLogsWriter) Sync() error {
-	return w.logger.Sync()
-}
-
 func (w BuildLogsWriter) Close() error {
 	return w.logger.Sync()
 }
