@@ -34,7 +34,7 @@ func createSandbox(t *testing.T, sbxWithAuth bool, reqEditors ...api.RequestEdit
 		Secure:     &sbxWithAuth,
 	}, reqEditors...)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, resp.StatusCode())
 
 	t.Cleanup(func() {
