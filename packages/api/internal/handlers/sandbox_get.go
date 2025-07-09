@@ -31,7 +31,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	if err == nil {
 		// Check if sandbox belongs to the team
 		if *info.TeamID != team.ID {
-			zap.L().Error("sandbox doesn't exist or you don't have access to it", logger.WithSandboxID(id))
+			zap.L().Warn("sandbox doesn't exist or you don't have access to it", logger.WithSandboxID(id))
 			c.JSON(http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 			return
 		}
