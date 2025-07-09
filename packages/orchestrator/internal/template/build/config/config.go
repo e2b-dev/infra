@@ -1,20 +1,13 @@
 package config
 
 import (
-	"github.com/google/uuid"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-const instanceBuildPrefix = "b"
+const InstanceBuildPrefix = "b"
 
 type TemplateConfig struct {
-	KernelVersion      string
-	FirecrackerVersion string
-
 	// Command to run when building the template.
 	StartCmd string
 
@@ -26,9 +19,6 @@ type TemplateConfig struct {
 
 	// The amount of free disk to allocate to the VM, in MiB.
 	DiskSizeMB int64
-
-	// Real size of the rootfs after building the template.
-	RootfsSize int64
 
 	// HugePages sets whether the VM use huge pages.
 	HugePages bool
@@ -46,12 +36,7 @@ type TemplateConfig struct {
 	Steps []*templatemanager.TemplateStep
 }
 
-// Real size in MB of rootfs after building the template
-func (e *TemplateConfig) RootfsSizeMB() int64 {
-	return e.RootfsSize >> 20
-}
-
-func (e *TemplateConfig) MemfilePageSize() int64 {
+func (e TemplateConfig) MemfilePageSize() int64 {
 	if e.HugePages {
 		return header.HugepageSize
 	}
@@ -59,23 +44,6 @@ func (e *TemplateConfig) MemfilePageSize() int64 {
 	return header.PageSize
 }
 
-func (e *TemplateConfig) RootfsBlockSize() int64 {
+func (e TemplateConfig) RootfsBlockSize() int64 {
 	return header.RootfsBlockSize
-}
-
-func (e *TemplateConfig) ToSandboxConfig(metadata TemplateMetadata, envdVersion string) *orchestrator.SandboxConfig {
-	return &orchestrator.SandboxConfig{
-		TemplateId:         metadata.TemplateID,
-		BuildId:            metadata.BuildID,
-		KernelVersion:      e.KernelVersion,
-		FirecrackerVersion: e.FirecrackerVersion,
-		HugePages:          e.HugePages,
-		SandboxId:          instanceBuildPrefix + id.Generate(),
-		ExecutionId:        uuid.New().String(),
-		EnvdVersion:        envdVersion,
-		Vcpu:               e.VCpuCount,
-		RamMb:              e.MemoryMB,
-
-		BaseTemplateId: metadata.TemplateID,
-	}
 }

@@ -33,8 +33,8 @@ const (
 )
 
 type Rootfs struct {
-	metadata         config.TemplateMetadata
-	template         *config.TemplateConfig
+	metadata         storage.TemplateFiles
+	template         config.TemplateConfig
 	artifactRegistry artifactsregistry.ArtifactsRegistry
 }
 
@@ -55,8 +55,8 @@ func (mw *MultiWriter) Write(p []byte) (int, error) {
 
 func New(
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
-	metadata config.TemplateMetadata,
-	template *config.TemplateConfig,
+	metadata storage.TemplateFiles,
+	template config.TemplateConfig,
 ) *Rootfs {
 	return &Rootfs{
 		metadata:         metadata,
@@ -117,7 +117,6 @@ func (r *Rootfs) CreateExt4Filesystem(
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error creating ext4 filesystem: %w", err)
 	}
-	r.template.RootfsSize = ext4Size
 	telemetry.ReportEvent(childCtx, "created rootfs ext4 file")
 
 	postProcessor.WriteMsg("Filesystem cleanup")
@@ -142,11 +141,10 @@ func (r *Rootfs) CreateExt4Filesystem(
 		zap.Int64("size_free", rootfsFreeSpace),
 	)
 	if diskAdd > 0 {
-		rootfsFinalSize, err := ext4.Enlarge(ctx, tracer, rootfsPath, diskAdd)
+		_, err := ext4.Enlarge(ctx, tracer, rootfsPath, diskAdd)
 		if err != nil {
 			return containerregistry.Config{}, fmt.Errorf("error enlarging rootfs: %w", err)
 		}
-		r.template.RootfsSize = rootfsFinalSize
 	}
 
 	// Check the rootfs filesystem corruption
@@ -169,8 +167,8 @@ func (r *Rootfs) CreateExt4Filesystem(
 
 func additionalOCILayers(
 	_ context.Context,
-	metadata config.TemplateMetadata,
-	config *config.TemplateConfig,
+	metadata storage.TemplateFiles,
+	config config.TemplateConfig,
 	provisionScript string,
 	provisionLogPrefix string,
 ) ([]containerregistry.Layer, error) {

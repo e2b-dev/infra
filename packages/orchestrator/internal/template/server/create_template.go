@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -40,22 +41,22 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		return nil, fmt.Errorf("server is draining")
 	}
 
-	metadata := config.TemplateMetadata{
-		TemplateID: cfg.TemplateID,
-		BuildID:    cfg.BuildID,
-	}
-	template := &config.TemplateConfig{
+	metadata := storage.TemplateFiles{
+		TemplateID:         cfg.TemplateID,
+		BuildID:            cfg.BuildID,
 		KernelVersion:      cfg.KernelVersion,
 		FirecrackerVersion: cfg.FirecrackerVersion,
-		VCpuCount:          int64(cfg.VCpuCount),
-		MemoryMB:           int64(cfg.MemoryMB),
-		StartCmd:           cfg.StartCommand,
-		ReadyCmd:           cfg.ReadyCommand,
-		DiskSizeMB:         int64(cfg.DiskSizeMB),
-		HugePages:          cfg.HugePages,
-		FromImage:          cfg.FromImage,
-		Force:              cfg.Force,
-		Steps:              cfg.Steps,
+	}
+	template := config.TemplateConfig{
+		VCpuCount:  int64(cfg.VCpuCount),
+		MemoryMB:   int64(cfg.MemoryMB),
+		StartCmd:   cfg.StartCommand,
+		ReadyCmd:   cfg.ReadyCommand,
+		DiskSizeMB: int64(cfg.DiskSizeMB),
+		HugePages:  cfg.HugePages,
+		FromImage:  cfg.FromImage,
+		Force:      cfg.Force,
+		Steps:      cfg.Steps,
 	}
 
 	logger := s.buildLogger.
@@ -89,7 +90,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 			return
 		}
 
-		buildMetadata := &templatemanager.TemplateBuildMetadata{RootfsSizeKey: int32(template.RootfsSizeMB()), EnvdVersionKey: res.EnvdVersion}
+		buildMetadata := &templatemanager.TemplateBuildMetadata{RootfsSizeKey: int32(res.RootfsSizeMB), EnvdVersionKey: res.EnvdVersion}
 		err = s.buildCache.SetSucceeded(metadata.BuildID, buildMetadata)
 		if err != nil {
 			s.reportBuildFailed(buildContext, metadata.BuildID, fmt.Errorf("error while setting build state to succeeded: %w", err))

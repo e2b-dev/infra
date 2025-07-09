@@ -20,16 +20,16 @@ import (
 func (b *Builder) applyLocalCommand(
 	ctx context.Context,
 	step *templatemanager.TemplateStep,
-	buildMetadata *buildMetadata,
+	buildMetadata *sandboxtools.CommandMetadata,
 ) (bool, error) {
 	_, span := b.tracer.Start(ctx, "apply-command-local", trace.WithAttributes(
 		attribute.String("step.type", step.Type),
 		attribute.StringSlice("step.args", step.Args),
 		attribute.String("step.hash", step.Hash),
 		attribute.String("step.files.hash", utils.Sprintp(step.FilesHash)),
-		attribute.String("metadata.user", buildMetadata.user),
-		attribute.String("metadata.workdir", utils.Sprintp(buildMetadata.workdir)),
-		attribute.String("metadata.env_vars", fmt.Sprintf("%v", buildMetadata.envVars)),
+		attribute.String("metadata.user", buildMetadata.User),
+		attribute.String("metadata.workdir", utils.Sprintp(buildMetadata.WorkDir)),
+		attribute.String("metadata.env_vars", fmt.Sprintf("%v", buildMetadata.EnvVars)),
 	))
 	defer span.End()
 
@@ -42,14 +42,14 @@ func (b *Builder) applyLocalCommand(
 		if len(args) < 2 {
 			return false, fmt.Errorf("ARG requires a key and value argument")
 		}
-		buildMetadata.envVars[args[0]] = args[1]
+		buildMetadata.EnvVars[args[0]] = args[1]
 		return true, nil
 	case "ENV":
 		// args: [key value]
 		if len(args) < 2 {
 			return false, fmt.Errorf("ENV requires a key and value argument")
 		}
-		buildMetadata.envVars[args[0]] = args[1]
+		buildMetadata.EnvVars[args[0]] = args[1]
 		return true, nil
 	case "WORKDIR":
 		// args: [path]
@@ -57,14 +57,14 @@ func (b *Builder) applyLocalCommand(
 			return false, fmt.Errorf("WORKDIR requires a path argument")
 		}
 		cwd := args[0]
-		buildMetadata.workdir = &cwd
+		buildMetadata.WorkDir = &cwd
 		return false, nil
 	case "USER":
 		// args: [username]
 		if len(args) < 1 {
 			return false, fmt.Errorf("USER requires a username argument")
 		}
-		buildMetadata.user = args[0]
+		buildMetadata.User = args[0]
 		return false, nil
 	default:
 		return false, nil
@@ -78,7 +78,7 @@ func (b *Builder) applyCommand(
 	sbx *sandbox.Sandbox,
 	prefix string,
 	step *templatemanager.TemplateStep,
-	buildMetadata *buildMetadata,
+	cmdMetadata sandboxtools.CommandMetadata,
 ) error {
 	ctx, span := b.tracer.Start(ctx, "apply-command", trace.WithAttributes(
 		attribute.String("prefix", prefix),
@@ -87,9 +87,9 @@ func (b *Builder) applyCommand(
 		attribute.StringSlice("step.args", step.Args),
 		attribute.String("step.hash", step.Hash),
 		attribute.String("step.files.hash", utils.Sprintp(step.FilesHash)),
-		attribute.String("metadata.user", buildMetadata.user),
-		attribute.String("metadata.workdir", utils.Sprintp(buildMetadata.workdir)),
-		attribute.String("metadata.env_vars", fmt.Sprintf("%v", buildMetadata.envVars)),
+		attribute.String("metadata.user", cmdMetadata.User),
+		attribute.String("metadata.workdir", utils.Sprintp(cmdMetadata.WorkDir)),
+		attribute.String("metadata.env_vars", fmt.Sprintf("%v", cmdMetadata.EnvVars)),
 	))
 	defer span.End()
 
@@ -139,7 +139,7 @@ func (b *Builder) applyCommand(
 		// The file is automatically cleaned up by the sandbox restart in the last step.
 		// This is happening because the /tmp is mounted as a tmpfs and deleted on restart.
 		sbxTargetPath := fmt.Sprintf("/tmp/%s.tar", *step.FilesHash)
-		err = sandboxtools.CopyFile(ctx, b.tracer, b.proxy, sbx.Metadata.Config.SandboxId, buildMetadata.user, tmpFile.Name(), sbxTargetPath)
+		err = sandboxtools.CopyFile(ctx, b.tracer, b.proxy, sbx.Metadata.Config.SandboxId, cmdMetadata.User, tmpFile.Name(), sbxTargetPath)
 		if err != nil {
 			return fmt.Errorf("failed to copy layer tar data to sandbox: %w", err)
 		}
@@ -151,13 +151,11 @@ func (b *Builder) applyCommand(
 			b.tracer,
 			b.proxy,
 			b.buildLogger,
-			postProcessor,
+			nil,
 			prefix,
 			sbx.Metadata.Config.SandboxId,
 			fmt.Sprintf(`mkdir -p "%s"`, sbxUnpackPath),
-			buildMetadata.user,
-			buildMetadata.workdir,
-			buildMetadata.envVars,
+			cmdMetadata,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to create directory in sandbox: %w", err)
@@ -168,13 +166,11 @@ func (b *Builder) applyCommand(
 			b.tracer,
 			b.proxy,
 			b.buildLogger,
-			postProcessor,
+			nil,
 			prefix,
 			sbx.Metadata.Config.SandboxId,
 			fmt.Sprintf(`tar -xzvf "%s" -C "%s"`, sbxTargetPath, sbxUnpackPath),
-			buildMetadata.user,
-			buildMetadata.workdir,
-			buildMetadata.envVars,
+			cmdMetadata,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to extract files in sandbox: %w", err)
@@ -215,16 +211,14 @@ fi
 			b.tracer,
 			b.proxy,
 			b.buildLogger,
-			postProcessor,
+			nil,
 			prefix,
 			sbx.Metadata.Config.SandboxId,
 			moveScript,
-			buildMetadata.user,
-			buildMetadata.workdir,
-			buildMetadata.envVars,
+			cmdMetadata,
 		)
 		if err != nil {
-			return fmt.Errorf("failed to extract files in sandbox: %w", err)
+			return fmt.Errorf("failed to move files in sandbox: %w", err)
 		}
 
 		return nil
@@ -244,9 +238,7 @@ fi
 			prefix,
 			sbx.Metadata.Config.SandboxId,
 			cmd,
-			buildMetadata.user,
-			buildMetadata.workdir,
-			buildMetadata.envVars,
+			cmdMetadata,
 		)
 	case "USER":
 		// args: [username]
@@ -263,9 +255,10 @@ fi
 			prefix,
 			sbx.Metadata.Config.SandboxId,
 			"adduser "+args[0],
-			"root",
-			nil,
-			buildMetadata.envVars,
+			sandboxtools.CommandMetadata{
+				User:    "root",
+				EnvVars: cmdMetadata.EnvVars,
+			},
 		)
 	case "WORKDIR":
 		// args: [path]
@@ -281,10 +274,11 @@ fi
 			postProcessor,
 			prefix,
 			sbx.Metadata.Config.SandboxId,
-			fmt.Sprintf(`mkdir -p "%s"`, utils.Sprintp(buildMetadata.workdir)),
-			buildMetadata.user,
-			nil,
-			buildMetadata.envVars,
+			fmt.Sprintf(`mkdir -p "%s"`, utils.Sprintp(cmdMetadata.WorkDir)),
+			sandboxtools.CommandMetadata{
+				User:    cmdMetadata.User,
+				EnvVars: cmdMetadata.EnvVars,
+			},
 		)
 	default:
 		return fmt.Errorf("unsupported command type: %s", cmdType)

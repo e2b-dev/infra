@@ -150,7 +150,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 			With(zap.Field{Type: zapcore.StringType, Key: "envID", String: templateID}).
 			With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: buildID}),
 	)
-	template := &config.TemplateConfig{
+	template := config.TemplateConfig{
 		VCpuCount:  2,
 		MemoryMB:   1024,
 		StartCmd:   "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
@@ -158,9 +158,11 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		HugePages:  true,
 	}
 
-	metadata := config.TemplateMetadata{
-		TemplateID: templateID,
-		BuildID:    buildID,
+	metadata := storage.TemplateFiles{
+		TemplateID:         templateID,
+		BuildID:            buildID,
+		KernelVersion:      kernelVersion,
+		FirecrackerVersion: fcVersion,
 	}
 	_, err = builder.Build(ctx, metadata, template, logsWriter)
 	if err != nil {

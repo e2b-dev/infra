@@ -55,11 +55,21 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
 	}
 
+	template, err := s.templateCache.GetTemplate(
+		req.Sandbox.TemplateId,
+		req.Sandbox.BuildId,
+		req.Sandbox.KernelVersion,
+		req.Sandbox.FirecrackerVersion,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
+	}
+
 	sbx, cleanup, err := sandbox.ResumeSandbox(
 		childCtx,
 		s.tracer,
 		s.networkPool,
-		s.templateCache,
+		template,
 		req.Sandbox,
 		childSpan.SpanContext().TraceID().String(),
 		req.StartTime.AsTime(),
@@ -231,7 +241,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		in.BuildId,
 		sbx.Config.KernelVersion,
 		sbx.Config.FirecrackerVersion,
-	).NewTemplateCacheFiles()
+	).CacheFiles()
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error creating template files", err)
 
@@ -260,8 +270,8 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}
 
 	err = s.templateCache.AddSnapshot(
-		snapshotTemplateFiles.TemplateId,
-		snapshotTemplateFiles.BuildId,
+		snapshotTemplateFiles.TemplateID,
+		snapshotTemplateFiles.BuildID,
 		snapshotTemplateFiles.KernelVersion,
 		snapshotTemplateFiles.FirecrackerVersion,
 		snapshot.MemfileDiffHeader,
