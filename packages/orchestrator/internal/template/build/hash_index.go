@@ -32,37 +32,36 @@ func getBaseHash(ctx context.Context, template config.TemplateConfig) (string, e
 }
 
 func getTemplateFromHash(ctx context.Context, s storage.StorageProvider, m storage.TemplateFiles, finalTemplateID string, baseHash string, hash string) storage.TemplateFiles {
+	newTemplate := storage.TemplateFiles{
+		TemplateID:         id.Generate(),
+		BuildID:            uuid.New().String(),
+		KernelVersion:      m.KernelVersion,
+		FirecrackerVersion: m.FirecrackerVersion,
+	}
+
 	obj, err := s.OpenObject(ctx, hashesToHashPath(finalTemplateID, baseHash, hash))
 	if err != nil {
-		return storage.TemplateFiles{
-			TemplateID:         id.Generate(),
-			BuildID:            uuid.New().String(),
-			KernelVersion:      m.KernelVersion,
-			FirecrackerVersion: m.FirecrackerVersion,
-		}
+		return newTemplate
 	}
 
 	var buf bytes.Buffer
 	_, err = obj.WriteTo(&buf)
 	if err != nil {
-		return storage.TemplateFiles{
-			TemplateID:         id.Generate(),
-			BuildID:            uuid.New().String(),
-			KernelVersion:      m.KernelVersion,
-			FirecrackerVersion: m.FirecrackerVersion,
-		}
+		return newTemplate
 	}
 
 	var templateMetadata storage.TemplateFiles
 	err = json.Unmarshal(buf.Bytes(), &templateMetadata)
 	if err != nil {
 		zap.L().Error("error unmarshalling template metadata from hash", zap.Error(err))
-		return storage.TemplateFiles{
-			TemplateID:         id.Generate(),
-			BuildID:            uuid.New().String(),
-			KernelVersion:      m.KernelVersion,
-			FirecrackerVersion: m.FirecrackerVersion,
-		}
+		return newTemplate
+	}
+
+	if templateMetadata.TemplateID == "" ||
+		templateMetadata.BuildID == "" ||
+		templateMetadata.KernelVersion == "" ||
+		templateMetadata.FirecrackerVersion == "" {
+		return newTemplate
 	}
 
 	return templateMetadata

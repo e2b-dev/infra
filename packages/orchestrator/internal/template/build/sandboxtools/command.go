@@ -125,10 +125,12 @@ func RunCommandWithConfirmation(
 
 			case e.GetEnd() != nil:
 				end := e.GetEnd()
-				name := fmt.Sprintf("exit %d", end.GetExitCode())
-				logStream(logger, postProcessor, id, name, end.GetStatus())
+				success := end.GetExitCode() == 0
 
-				if end.GetExitCode() != 0 {
+				if !success {
+					name := fmt.Sprintf("exit %d", end.GetExitCode())
+					logStream(logger, postProcessor, id, name, end.GetStatus())
+
 					return fmt.Errorf("command failed: %s", end.GetStatus())
 				}
 			}

@@ -26,7 +26,6 @@ func (p *PostProcessor) Start() {
 		// Signal the stop channel to indicate that postprocessing is done
 		p.stopCh <- struct{}{}
 	}()
-	p.WriteMsg("Starting postprocessing")
 	startTime := time.Now()
 
 	for {

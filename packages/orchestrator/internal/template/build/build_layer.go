@@ -57,7 +57,6 @@ func (b *Builder) buildLayer(
 	}
 
 	if resumeSandbox {
-		postProcessor.WriteMsg("Resuming sandbox")
 		sbxConfig := &orchestrator.SandboxConfig{
 			SandboxId:   config.InstanceBuildPrefix + id.Generate(),
 			ExecutionId: uuid.NewString(),
@@ -88,8 +87,6 @@ func (b *Builder) buildLayer(
 			false,
 		)
 	} else {
-		postProcessor.WriteMsg("Creating new sandbox")
-
 		var oldMemfile block.ReadonlyDevice
 		oldMemfile, err = localTemplate.Memfile()
 		if err != nil {
@@ -213,7 +210,7 @@ func pauseAndUpload(
 	ctx, childSpan := tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
 
-	postProcessor.WriteMsg(fmt.Sprintf("Caching template layer: %s/%s", template.TemplateID, template.BuildID))
+	postProcessor.WriteMsg(fmt.Sprintf("Saving layer: %s/%s", template.TemplateID, template.BuildID))
 
 	cacheFiles, err := template.CacheFiles()
 	if err != nil {
