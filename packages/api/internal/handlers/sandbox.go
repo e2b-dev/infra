@@ -12,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -90,7 +91,7 @@ func (a *APIStore) startSandbox(
 	}).Info("Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
 
 	return &api.Sandbox{
-		ClientID:        sandbox.ClientID,
+		ClientID:        consts.ClientID,
 		SandboxID:       sandbox.SandboxID,
 		TemplateID:      *build.EnvID,
 		Alias:           &alias,
