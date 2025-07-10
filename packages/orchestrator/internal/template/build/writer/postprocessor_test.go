@@ -63,6 +63,7 @@ func TestPostProcessor_Start(t *testing.T) {
 				ctx:     ctx,
 				writer:  tw,
 				errChan: errChan,
+				stopCh:  make(chan struct{}, 1),
 				ticker:  time.NewTicker(tickerInterval),
 			}
 
@@ -72,7 +73,7 @@ func TestPostProcessor_Start(t *testing.T) {
 
 				end <- struct{}{}
 			}()
-			p.Stop(tt.fields.testErr)
+			p.Stop(ctx, tt.fields.testErr)
 
 			// Wait for the start goroutine to finish
 			<-end

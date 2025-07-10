@@ -28,6 +28,8 @@ const (
 	FieldSandboxStartedAt = "sandbox_started_at"
 	// FieldEnvSecure holds the string denoting the env_secure field in the database.
 	FieldEnvSecure = "env_secure"
+	// FieldOriginNodeID holds the string denoting the origin_node_id field in the database.
+	FieldOriginNodeID = "origin_node_id"
 	// EdgeEnv holds the string denoting the env edge name in mutations.
 	EdgeEnv = "env"
 	// Table holds the table name of the snapshot in the database.
@@ -51,6 +53,7 @@ var Columns = []string{
 	FieldMetadata,
 	FieldSandboxStartedAt,
 	FieldEnvSecure,
+	FieldOriginNodeID,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -106,6 +109,11 @@ func BySandboxStartedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByEnvSecure orders the results by the env_secure field.
 func ByEnvSecure(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEnvSecure, opts...).ToFunc()
+}
+
+// ByOriginNodeID orders the results by the origin_node_id field.
+func ByOriginNodeID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOriginNodeID, opts...).ToFunc()
 }
 
 // ByEnvField orders the results by env field.

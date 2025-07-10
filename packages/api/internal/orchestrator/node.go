@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -154,9 +155,9 @@ func (o *Orchestrator) GetNodes() []*api.Node {
 	}
 
 	for _, sbx := range o.instanceCache.Items() {
-		n, ok := nodes[sbx.Instance.ClientID]
+		n, ok := nodes[sbx.Node.ID]
 		if !ok {
-			zap.L().Error("node for sandbox wasn't found", zap.String("client_id", sbx.Instance.ClientID), zap.String("sandbox_id", sbx.Instance.SandboxID))
+			zap.L().Error("node for sandbox wasn't found", logger.WithNodeID(sbx.Node.ID), logger.WithSandboxID(sbx.Instance.SandboxID))
 			continue
 		}
 
@@ -196,7 +197,7 @@ func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
 	}
 
 	for _, sbx := range o.instanceCache.Items() {
-		if sbx.Instance.ClientID == nodeID {
+		if sbx.Node.ID == nodeID {
 			var metadata *api.SandboxMetadata
 			if sbx.Metadata != nil {
 				meta := api.SandboxMetadata(sbx.Metadata)

@@ -257,7 +257,9 @@ type RunningSandboxWithMetrics struct {
 	// MemoryMB Memory for the sandbox in MB
 	MemoryMB MemoryMB         `json:"memoryMB"`
 	Metadata *SandboxMetadata `json:"metadata,omitempty"`
-	Metrics  *[]SandboxMetric `json:"metrics,omitempty"`
+
+	// Metrics Metric entry with timestamp and line
+	Metrics *SandboxMetric `json:"metrics,omitempty"`
 
 	// SandboxID Identifier of the sandbox
 	SandboxID string `json:"sandboxID"`
@@ -353,11 +355,11 @@ type SandboxMetric struct {
 	// CpuUsedPct CPU usage percentage
 	CpuUsedPct float32 `json:"cpuUsedPct"`
 
-	// MemTotalMiB Total memory in MiB
-	MemTotalMiB int64 `json:"memTotalMiB"`
+	// MemTotal Total memory in bytes
+	MemTotal int64 `json:"memTotal"`
 
-	// MemUsedMiB Memory used in MiB
-	MemUsedMiB int64 `json:"memUsedMiB"`
+	// MemUsed Memory used in bytes
+	MemUsed int64 `json:"memUsed"`
 
 	// Timestamp Timestamp of the metric entry
 	Timestamp time.Time `json:"timestamp"`
@@ -451,6 +453,9 @@ type TemplateBuild struct {
 
 	// Logs Build logs
 	Logs []string `json:"logs"`
+
+	// Reason Message with the status reason, currently reporting only for error status
+	Reason *string `json:"reason,omitempty"`
 
 	// Status Status of the template
 	Status TemplateBuildStatus `json:"status"`

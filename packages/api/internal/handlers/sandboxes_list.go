@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/db/types"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -215,7 +216,7 @@ func snapshotsToPaginatedSandboxes(snapshots []queries.GetSnapshotsWithCursorRow
 
 		sandbox := utils.PaginatedSandbox{
 			ListedSandbox: api.ListedSandbox{
-				ClientID:   "00000000", // for backwards compatibility we need to return a client id
+				ClientID:   consts.ClientID, // for backwards compatibility we need to return a client id
 				Alias:      alias,
 				TemplateID: snapshot.BaseEnvID,
 				SandboxID:  snapshot.SandboxID,
@@ -246,7 +247,7 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []*instance.InstanceInfo)
 	for _, info := range runningSandboxes {
 		sandbox := utils.PaginatedSandbox{
 			ListedSandbox: api.ListedSandbox{
-				ClientID:   info.Instance.ClientID,
+				ClientID:   info.Node.ID,
 				TemplateID: info.BaseTemplateID,
 				Alias:      info.Instance.Alias,
 				SandboxID:  info.Instance.SandboxID,

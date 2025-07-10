@@ -17,8 +17,21 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 		return nil, errors.Wrap(err, "error while getting build info, maybe already expired")
 	}
 
+	logs := make([]string, 0)
+	logsCrawled := int32(0)
+	for _, entry := range buildInfo.GetLogs() {
+		logsCrawled++
+
+		if logsCrawled <= in.GetOffset() {
+			continue
+		}
+		logs = append(logs, entry)
+	}
+
 	return &template_manager.TemplateBuildStatusResponse{
 		Status:   buildInfo.GetStatus(),
+		Reason:   buildInfo.GetReason(),
 		Metadata: buildInfo.GetMetadata(),
+		Logs:     logs,
 	}, nil
 }

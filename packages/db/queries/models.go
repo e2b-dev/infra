@@ -73,6 +73,7 @@ type EnvBuild struct {
 	EnvdVersion        *string
 	ReadyCmd           *string
 	ClusterNodeID      *string
+	Reason             *string
 }
 
 type Snapshot struct {
@@ -84,6 +85,7 @@ type Snapshot struct {
 	BaseEnvID        string
 	SandboxStartedAt pgtype.Timestamptz
 	EnvSecure        bool
+	OriginNodeID     *string
 }
 
 type Team struct {

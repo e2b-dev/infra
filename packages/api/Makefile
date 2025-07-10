@@ -34,8 +34,8 @@ run:
 	SUPABASE_JWT_SECRETS=$(SUPABASE_JWT_SECRETS) \
 	GOTRACEBACK=crash \
 	GODEBUG=madvdontneed=1 \
-	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
 	SANDBOX_ACCESS_TOKEN_HASH_SEED=$(SANDBOX_ACCESS_TOKEN_HASH_SEED) \
+	CLICKHOUSE_CONNECTION_STRING=$(CLICKHOUSE_CONNECTION_STRING) \
 	ENVIRONMENT=$(ENVIRONMENT) \
 	ORCHESTRATOR_PORT=5008 \
 	./bin/api --port 3000
@@ -55,13 +55,13 @@ profiler:
 build-and-upload:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	$(eval EXPECTED_MIGRATION_TIMESTAMP := $(expectedMigration))
-	@rm -rf .shared/ .db/
+	@rm -rf .shared/ .db/ .clickhouse/
 	@cp -r ../shared .shared/
 	@cp -r ../db .db/
+	@cp -r ../clickhouse .clickhouse/
 	@docker buildx install # sets up the buildx as default docker builder (otherwise the command below won't work)
 	@docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" --build-arg EXPECTED_MIGRATION_TIMESTAMP="$(EXPECTED_MIGRATION_TIMESTAMP)" .
-	@rm -rf .shared/
-	@rm -rf .db/
+	@rm -rf .shared/ .db/ .clickhouse/
 
 .PHONY: test
 test:

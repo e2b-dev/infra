@@ -43,7 +43,7 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 
 	apiErr := a.orchestrator.KeepAliveFor(ctx, sandboxID, duration, false)
 	if apiErr != nil {
-		telemetry.ReportCriticalError(ctx, "error when refreshing sandbox", apiErr.Err)
+		telemetry.ReportError(ctx, "error when refreshing sandbox", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return

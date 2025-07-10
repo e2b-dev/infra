@@ -17,10 +17,15 @@ type PostProcessor struct {
 	ticker  *time.Ticker
 
 	stopOnce sync.Once
+	stopCh   chan struct{}
 }
 
 // Start starts the post-processing.
 func (p *PostProcessor) Start() {
+	defer func() {
+		// Signal the stop channel to indicate that postprocessing is done
+		p.stopCh <- struct{}{}
+	}()
 	p.WriteMsg("Starting postprocessing")
 	startTime := time.Now()
 
@@ -46,9 +51,17 @@ func (p *PostProcessor) Start() {
 	}
 }
 
-func (p *PostProcessor) Stop(err error) {
+func (p *PostProcessor) Stop(ctx context.Context, err error) {
 	p.stopOnce.Do(func() {
 		p.errChan <- err
+
+		// Wait for the postprocessing to finish
+		select {
+		case <-p.stopCh:
+			return
+		case <-ctx.Done():
+			return
+		}
 	})
 }
 
@@ -67,6 +80,7 @@ func NewPostProcessor(ctx context.Context, writer io.Writer) *PostProcessor {
 		ctx:     ctx,
 		writer:  writer,
 		errChan: make(chan error, 1),
+		stopCh:  make(chan struct{}, 1),
 		ticker:  time.NewTicker(tickerInterval),
 	}
 }
