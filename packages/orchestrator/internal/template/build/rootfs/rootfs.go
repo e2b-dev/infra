@@ -33,7 +33,6 @@ const (
 )
 
 type Rootfs struct {
-	metadata         storage.TemplateFiles
 	template         config.TemplateConfig
 	artifactRegistry artifactsregistry.ArtifactsRegistry
 }
@@ -55,11 +54,9 @@ func (mw *MultiWriter) Write(p []byte) (int, error) {
 
 func New(
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
-	metadata storage.TemplateFiles,
 	template config.TemplateConfig,
 ) *Rootfs {
 	return &Rootfs{
-		metadata:         metadata,
 		template:         template,
 		artifactRegistry: artifactRegistry,
 	}
@@ -84,13 +81,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 
 	postProcessor.WriteMsg("Requesting Docker Image")
 
-	var img containerregistry.Image
-	var err error
-	if r.template.FromImage != "" {
-		img, err = oci.GetPublicImage(childCtx, tracer, r.template.FromImage)
-	} else {
-		img, err = oci.GetImage(childCtx, tracer, r.artifactRegistry, r.metadata.TemplateID, r.metadata.BuildID)
-	}
+	img, err := oci.GetImage(childCtx, tracer, r.artifactRegistry, r.template.FromImage)
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error requesting docker image: %w", err)
 	}
