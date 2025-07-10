@@ -103,10 +103,11 @@ func (a *APIStore) getStartEndTime(ctx context.Context, teamID, sandboxID string
 	}
 
 	if start.IsZero() || end.IsZero() {
+		var sbxStart, sbxEnd time.Time
 		sandbox, err := a.orchestrator.GetSandbox(sandboxID)
 		if err != nil {
 			// Sandbox isn't running anymore, get the time range from ClickHouse
-			start, end, err = a.clickhouseStore.QuerySandboxTimeRange(ctx, sandboxID, teamID)
+			sbxStart, sbxEnd, err = a.clickhouseStore.QuerySandboxTimeRange(ctx, sandboxID, teamID)
 			if err != nil {
 				zap.L().Error("Error fetching sandbox time range from ClickHouse",
 					logger.WithSandboxID(sandboxID),
@@ -117,9 +118,17 @@ func (a *APIStore) getStartEndTime(ctx context.Context, teamID, sandboxID string
 				return time.Time{}, time.Time{}, fmt.Errorf("error querying sandbox time range: %w", err)
 			}
 		} else {
-			start = sandbox.StartTime
+			sbxStart = sandbox.StartTime
 			// The sandbox is currently running, so we use the current time as the end time
-			end = time.Now()
+			sbxEnd = time.Now()
+		}
+
+		if start.IsZero() {
+			start = sbxStart
+		}
+
+		if end.IsZero() {
+			end = sbxEnd
 		}
 	}
 	return start, end, nil
