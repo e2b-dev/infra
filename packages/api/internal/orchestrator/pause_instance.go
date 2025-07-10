@@ -86,8 +86,6 @@ func snapshotInstance(ctx context.Context, orch *Orchestrator, sbx *instance.Ins
 	_, childSpan := orch.tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
 
-	// todo fix
-	//client, err := orch.GetClient(sbx.Node.ID)
 	client, clientMd, err := orch.GetClient(sbx.Node.ID)
 	if err != nil {
 		return fmt.Errorf("failed to get client '%s': %w", sbx.Node.ID, err)

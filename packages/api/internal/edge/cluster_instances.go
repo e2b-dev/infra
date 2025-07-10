@@ -45,7 +45,6 @@ func (c *Cluster) startSync() {
 func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterOrchestratorInstance) {
 	grpc := c.GetGRPC(instance.ServiceInstanceID)
 
-
 	// we are taking service info directly from the instance to avoid timing delays in service discovery
 	reqCtx := metadata.NewOutgoingContext(ctx, grpc.Metadata)
 	info, err := grpc.Client.Info.ServiceInfo(reqCtx, &emptypb.Empty{})
