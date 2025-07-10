@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -39,7 +40,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 		return
 	}
 
-	start, end, err := a.getStartEndTime(ctx, team.ID.String(), sandboxID, params)
+	start, end, err := getStartEndTime(ctx, a.clickhouseStore, team.ID.String(), sandboxID, params)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("error when getting metrics time range: %s", err))
 		return
@@ -90,7 +91,7 @@ func calculateStep(start, end time.Time) time.Duration {
 	}
 }
 
-func (a *APIStore) getStartEndTime(ctx context.Context, teamID, sandboxID string, params api.GetSandboxesSandboxIDMetricsParams) (time.Time, time.Time, error) {
+func getStartEndTime(ctx context.Context, clickhouseStore clickhouse.Clickhouse, teamID, sandboxID string, params api.GetSandboxesSandboxIDMetricsParams) (time.Time, time.Time, error) {
 
 	// Check if the sandbox exists
 	var start, end time.Time
@@ -103,24 +104,15 @@ func (a *APIStore) getStartEndTime(ctx context.Context, teamID, sandboxID string
 	}
 
 	if start.IsZero() || end.IsZero() {
-		var sbxStart, sbxEnd time.Time
-		sandbox, err := a.orchestrator.GetSandbox(sandboxID)
+		sbxStart, sbxEnd, err := clickhouseStore.QuerySandboxTimeRange(ctx, sandboxID, teamID)
 		if err != nil {
-			// Sandbox isn't running anymore, get the time range from ClickHouse
-			sbxStart, sbxEnd, err = a.clickhouseStore.QuerySandboxTimeRange(ctx, sandboxID, teamID)
-			if err != nil {
-				zap.L().Error("Error fetching sandbox time range from ClickHouse",
-					logger.WithSandboxID(sandboxID),
-					logger.WithTeamID(teamID),
-					zap.Error(err),
-				)
+			zap.L().Error("Error fetching sandbox time range from ClickHouse",
+				logger.WithSandboxID(sandboxID),
+				logger.WithTeamID(teamID),
+				zap.Error(err),
+			)
 
-				return time.Time{}, time.Time{}, fmt.Errorf("error querying sandbox time range: %w", err)
-			}
-		} else {
-			sbxStart = sandbox.StartTime
-			// The sandbox is currently running, so we use the current time as the end time
-			sbxEnd = time.Now()
+			return time.Time{}, time.Time{}, fmt.Errorf("error querying sandbox time range: %w", err)
 		}
 
 		if start.IsZero() {
