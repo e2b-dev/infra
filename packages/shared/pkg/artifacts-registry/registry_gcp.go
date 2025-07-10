@@ -54,13 +54,8 @@ func (g *GCPArtifactsRegistry) GetTag(ctx context.Context, templateId string, bu
 	return fmt.Sprintf("%s-docker.pkg.dev/%s/%s/%s:%s", consts.GCPRegion, consts.GCPProject, consts.DockerRegistry, templateId, buildId), nil
 }
 
-func (g *GCPArtifactsRegistry) GetImage(ctx context.Context, templateId string, buildId string, platform containerregistry.Platform) (containerregistry.Image, error) {
-	imageUrl, err := g.GetTag(ctx, templateId, buildId)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get image URL: %w", err)
-	}
-
-	ref, err := name.ParseReference(imageUrl)
+func (g *GCPArtifactsRegistry) GetImage(ctx context.Context, tag string, platform containerregistry.Platform) (containerregistry.Image, error) {
+	ref, err := name.ParseReference(tag)
 	if err != nil {
 		return nil, fmt.Errorf("invalid image reference: %w", err)
 	}
