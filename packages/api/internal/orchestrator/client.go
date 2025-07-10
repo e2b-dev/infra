@@ -122,14 +122,14 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, i *edge.ClusterOrchestratorInstance) {
 	// this way we don't need to worry about multiple clusters with the same node ID in shared pool
 	poolNodeID := o.clusterNodeID(cluster.ID, i.NodeID)
-	grpc := cluster.GetGRPC(i.ServiceInstanceID)
+	poolGrpc := cluster.GetGRPC(i.ServiceInstanceID)
 
 	buildCache := ttlcache.New[string, interface{}]()
 	go buildCache.Start()
 
 	orchestratorNode := &Node{
-		Client:   grpc.Client,
-		ClientMd: grpc.Metadata,
+		Client:   poolGrpc.Client,
+		ClientMd: poolGrpc.Metadata,
 
 		ClusterID:     cluster.ID,
 		ClusterNodeID: i.NodeID,
