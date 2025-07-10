@@ -24,7 +24,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -167,40 +166,45 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 	}
 }
 
-func (o *Orchestrator) RegisterSandboxInsideClusterCatalog(node *Node, sbxStartTime time.Time, sandboxConfig *orchestrator.SandboxConfig) {
-	if node.ClusterID != uuid.Nil {
-		cluster, ok := o.clusters.GetClusterById(node.ClusterID)
-		if !ok {
-			zap.L().Error("Failed to get cluster by ID", logger.WithClusterID(node.ClusterID))
-			return
-		}
-
-		i, ok := cluster.GetInstanceByNodeID(node.ClusterNodeID)
-		if !ok {
-			zap.L().Error("Failed to get cluster instance by ID", logger.WithClusterID(cluster.ID), logger.WithClusterNodeID(node.ClusterNodeID))
-			return
-		}
-
-		err := cluster.RegisterSandboxInCatalog(i.ServiceInstanceID, sbxStartTime, sandboxConfig)
-		if err != nil {
-			zap.L().Error("Failed to register sandbox in cluster catalog", logger.WithClusterID(cluster.ID), logger.WithClusterNodeID(node.ClusterNodeID))
-		}
+func (o *Orchestrator) RegisterSandboxInsideClusterCatalog(node *Node, sbxStartTime time.Time, sandboxConfig *orchestrator.SandboxConfig) error {
+	if node.ClusterID == uuid.Nil {
+		return nil
 	}
+
+	cluster, ok := o.clusters.GetClusterById(node.ClusterID)
+	if !ok {
+		return fmt.Errorf("failed to get cluster by ID: %s", node.ClusterID.String())
+	}
+
+	i, ok := cluster.GetInstanceByNodeID(node.ClusterNodeID)
+	if !ok {
+		return fmt.Errorf("failed to get cluster instance by cluster %s and node ID: %s", node.ClusterID.String(), node.ClusterNodeID)
+	}
+
+	err := cluster.RegisterSandboxInCatalog(i.ServiceInstanceID, sbxStartTime, sandboxConfig)
+	if err != nil {
+		return fmt.Errorf("failed to register sandbox in cluster catalog: %w", err)
+	}
+
+	return nil
 }
 
-func (o *Orchestrator) RemoveSandboxFromClusterCatalog(node *Node, sandboxID string, executionID string) {
-	if node.ClusterID != uuid.Nil {
-		cluster, ok := o.clusters.GetClusterById(node.ClusterID)
-		if !ok {
-			zap.L().Error("Failed to get cluster by ID", logger.WithClusterID(node.ClusterID))
-			return
-		}
-
-		err := cluster.RemoveSandboxFromCatalog(sandboxID, executionID)
-		if err != nil {
-			zap.L().Error("Failed to remove sandbox from cluster catalog", logger.WithClusterID(cluster.ID), logger.WithClusterNodeID(node.ClusterNodeID))
-		}
+func (o *Orchestrator) RemoveSandboxFromClusterCatalog(node *Node, sandboxID string, executionID string) error {
+	if node.ClusterID == uuid.Nil {
+		return nil
 	}
+
+	cluster, ok := o.clusters.GetClusterById(node.ClusterID)
+	if !ok {
+		return fmt.Errorf("failed to get cluster by ID: %s", node.ClusterID.String())
+	}
+
+	err := cluster.RemoveSandboxFromCatalog(sandboxID, executionID)
+	if err != nil {
+		return fmt.Errorf("failed to register sandbox in cluster catalog: %w", err)
+	}
+
+	return nil
 }
 
 func (o *Orchestrator) Close(ctx context.Context) error {
