@@ -119,14 +119,14 @@ func (c *Client) QuerySandboxTimeRange(ctx context.Context, sandboxID string, te
 	return start, end, nil
 }
 
-func (c *Client) QuerySandboxMetrics(ctx context.Context, sandboxID string, teamID string, start time.Time, end time.Time, stepSeconds time.Duration) ([]Metrics, error) {
+func (c *Client) QuerySandboxMetrics(ctx context.Context, sandboxID string, teamID string, start time.Time, end time.Time, step time.Duration) ([]Metrics, error) {
 	rows, err := c.conn.Query(ctx, sandboxMetricsSelectQuery,
 		clickhouse.Named("sandbox_id", sandboxID),
 		clickhouse.Named("team_id", teamID),
 		clickhouse.DateNamed("start_time", start, clickhouse.Seconds),
 		// Add an extra second to include the end time in the range
 		clickhouse.DateNamed("end_time", end.Add(time.Second), clickhouse.Seconds),
-		clickhouse.Named("step", strconv.Itoa(int(stepSeconds.Seconds()))),
+		clickhouse.Named("step", strconv.Itoa(int(step.Seconds()))),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query metrics5: %w", err)

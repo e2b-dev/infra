@@ -14,7 +14,7 @@ type Clickhouse interface {
 
 	// Metrics queries
 	QuerySandboxTimeRange(ctx context.Context, sandboxID string, teamID string) (start time.Time, end time.Time, err error)
-	QuerySandboxMetrics(ctx context.Context, sandboxID string, teamID string, start time.Time, end time.Time, stepSeconds time.Duration) ([]Metrics, error)
+	QuerySandboxMetrics(ctx context.Context, sandboxID string, teamID string, start time.Time, end time.Time, step time.Duration) ([]Metrics, error)
 	QueryLatestMetrics(ctx context.Context, sandboxIDs []string, teamID string) ([]Metrics, error)
 }
 
