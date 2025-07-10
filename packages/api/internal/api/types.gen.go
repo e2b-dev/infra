@@ -569,6 +569,13 @@ type GetSandboxesSandboxIDLogsParams struct {
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// GetSandboxesSandboxIDMetricsParams defines parameters for GetSandboxesSandboxIDMetrics.
+type GetSandboxesSandboxIDMetricsParams struct {
+	// Start Starting timestamp of the metrics that should be returned in milliseconds
+	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
+	End   *int64 `form:"end,omitempty" json:"end,omitempty"`
+}
+
 // PostSandboxesSandboxIDRefreshesJSONBody defines parameters for PostSandboxesSandboxIDRefreshes.
 type PostSandboxesSandboxIDRefreshesJSONBody struct {
 	// Duration Duration for which the sandbox should be kept alive in seconds
