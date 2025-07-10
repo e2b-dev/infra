@@ -106,7 +106,6 @@ func convertTemplateSteps(steps *[]api.TemplateStep) []*templatemanagergrpc.Temp
 		result[i] = &templatemanagergrpc.TemplateStep{
 			Type:      step.Type,
 			Args:      args,
-			Hash:      step.Hash,
 			FilesHash: step.FilesHash,
 			Force:     step.Force,
 		}

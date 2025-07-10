@@ -539,9 +539,6 @@ type TemplateStep struct {
 	// Force Whether the step should be forced to run regardless of the cache
 	Force *bool `json:"force,omitempty"`
 
-	// Hash Hash of the step
-	Hash string `json:"hash"`
-
 	// Type Type of the step
 	Type string `json:"type"`
 }

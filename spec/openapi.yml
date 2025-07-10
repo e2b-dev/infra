@@ -479,7 +479,6 @@ components:
       description: Step in the template build process
       required:
         - type
-        - hash
       properties:
         type:
           type: string
@@ -490,9 +489,6 @@ components:
           description: Arguments for the step
           items:
             type: string
-        hash:
-          type: string
-          description: Hash of the step
         filesHash:
           type: string
           description: Hash of the files used in the step

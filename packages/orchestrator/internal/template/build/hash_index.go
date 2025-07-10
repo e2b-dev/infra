@@ -7,31 +7,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/envd"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/utils"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-func getBaseHash(ctx context.Context, template config.TemplateConfig) (string, error) {
-	envdHash, err := envd.GetEnvdHash(ctx)
-	if err != nil {
-		return "", fmt.Errorf("error getting envd binary hash: %w", err)
-	}
+const hashingVersion = "v1"
 
-	baseSHA := sha256.New()
-	baseSHA.Write([]byte(envdHash))
-	baseSHA.Write([]byte(provisionScriptFile))
-	baseSHA.Write([]byte(strconv.FormatInt(template.DiskSizeMB, 10)))
-
-	return fmt.Sprintf("%x", baseSHA.Sum(nil)), nil
-}
-
-func getTemplateFromHash(ctx context.Context, s storage.StorageProvider, m storage.TemplateFiles, finalTemplateID string, baseHash string, hash string) storage.TemplateFiles {
+func getTemplateFromHash(ctx context.Context, s storage.StorageProvider, m storage.TemplateFiles, finalTemplateID string, hash string) storage.TemplateFiles {
 	newTemplate := storage.TemplateFiles{
 		TemplateID:         id.Generate(),
 		BuildID:            uuid.New().String(),
@@ -39,7 +30,7 @@ func getTemplateFromHash(ctx context.Context, s storage.StorageProvider, m stora
 		FirecrackerVersion: m.FirecrackerVersion,
 	}
 
-	obj, err := s.OpenObject(ctx, hashesToHashPath(finalTemplateID, baseHash, hash))
+	obj, err := s.OpenObject(ctx, hashToHashPath(finalTemplateID, hash))
 	if err != nil {
 		return newTemplate
 	}
@@ -67,8 +58,8 @@ func getTemplateFromHash(ctx context.Context, s storage.StorageProvider, m stora
 	return templateMetadata
 }
 
-func saveTemplateToHash(ctx context.Context, s storage.StorageProvider, finalTemplateID string, baseHash, hash string, template storage.TemplateFiles) error {
-	obj, err := s.OpenObject(ctx, hashesToHashPath(finalTemplateID, baseHash, hash))
+func saveTemplateToHash(ctx context.Context, s storage.StorageProvider, finalTemplateID string, hash string, template storage.TemplateFiles) error {
+	obj, err := s.OpenObject(ctx, hashToHashPath(finalTemplateID, hash))
 	if err != nil {
 		return fmt.Errorf("error creating object for saving UUID: %w", err)
 	}
@@ -87,10 +78,28 @@ func saveTemplateToHash(ctx context.Context, s storage.StorageProvider, finalTem
 	return nil
 }
 
-func hashesToHashPath(templateID, baseHash, hash string) string {
-	reSHA := sha256.New()
-	reSHA.Write([]byte(baseHash))
-	reSHA.Write([]byte(hash))
-	reHash := fmt.Sprintf("%x", reSHA.Sum(nil))
-	return fmt.Sprintf("builder/cache/%s/index/%s", templateID, reHash)
+func hashToHashPath(templateID, hash string) string {
+	return fmt.Sprintf("builder/cache/%s/index/%s", templateID, hash)
+}
+
+func hashKeys(previousHash string, keys ...string) string {
+	sha := sha256.New()
+	sha.Write([]byte(previousHash))
+	for _, key := range keys {
+		sha.Write([]byte(key))
+	}
+	return fmt.Sprintf("%x", sha.Sum(nil))
+}
+
+func hashBase(ctx context.Context, template config.TemplateConfig) (string, error) {
+	envdHash, err := envd.GetEnvdHash(ctx)
+	if err != nil {
+		return "", fmt.Errorf("error getting envd binary hash: %w", err)
+	}
+
+	return hashKeys(hashingVersion, envdHash, provisionScriptFile, strconv.FormatInt(template.DiskSizeMB, 10), template.FromImage), nil
+}
+
+func hashStep(previousHash string, step *templatemanager.TemplateStep) string {
+	return hashKeys(previousHash, step.Type, strings.Join(step.Args, " "), utils.Sprintp(step.FilesHash))
 }
