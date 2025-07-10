@@ -31,7 +31,6 @@ func (b *Builder) buildLayer(
 	uploadErrGroup *errgroup.Group,
 	sourceSbxConfig *orchestrator.SandboxConfig,
 	finalTemplateID string,
-	baseHash,
 	hash string,
 	sourceMeta storage.TemplateFiles,
 	exportMeta storage.TemplateFiles,
@@ -183,7 +182,6 @@ func (b *Builder) buildLayer(
 		b.templateCache,
 		sbx,
 		finalTemplateID,
-		baseHash,
 		hash,
 		exportMeta,
 	)
@@ -203,7 +201,6 @@ func pauseAndUpload(
 	templateCache *sbxtemplate.Cache,
 	sbx *sandbox.Sandbox,
 	finalTemplateID string,
-	baseHash,
 	hash string,
 	template storage.TemplateFiles,
 ) error {
@@ -253,7 +250,7 @@ func pauseAndUpload(
 			return fmt.Errorf("error uploading snapshot: %w", err)
 		}
 
-		err = saveTemplateToHash(ctx, persistance, finalTemplateID, baseHash, hash, cacheFiles.TemplateFiles)
+		err = saveTemplateToHash(ctx, persistance, finalTemplateID, hash, cacheFiles.TemplateFiles)
 		if err != nil {
 			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
 		}

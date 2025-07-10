@@ -25,7 +25,6 @@ func (b *Builder) applyLocalCommand(
 	_, span := b.tracer.Start(ctx, "apply-command-local", trace.WithAttributes(
 		attribute.String("step.type", step.Type),
 		attribute.StringSlice("step.args", step.Args),
-		attribute.String("step.hash", step.Hash),
 		attribute.String("step.files.hash", utils.Sprintp(step.FilesHash)),
 		attribute.String("metadata.user", buildMetadata.User),
 		attribute.String("metadata.workdir", utils.Sprintp(buildMetadata.WorkDir)),
@@ -85,7 +84,6 @@ func (b *Builder) applyCommand(
 		attribute.String("sandbox.id", sbx.Metadata.Config.SandboxId),
 		attribute.String("step.type", step.Type),
 		attribute.StringSlice("step.args", step.Args),
-		attribute.String("step.hash", step.Hash),
 		attribute.String("step.files.hash", utils.Sprintp(step.FilesHash)),
 		attribute.String("metadata.user", cmdMetadata.User),
 		attribute.String("metadata.workdir", utils.Sprintp(cmdMetadata.WorkDir)),

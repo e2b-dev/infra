@@ -170,21 +170,18 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		cmdMeta.WorkDir = &cwd
 	}
 
-	hash := template.FromImage
-	baseHash, err := getBaseHash(ctx, template)
+	lastHash, err := hashBase(ctx, template)
 	if err != nil {
 		return nil, fmt.Errorf("error getting base hash: %w", err)
 	}
 
-	lastCached, baseMetadata, err := b.setupBase(ctx, finalMetadata, template, envdVersion, baseHash, hash)
+	lastCached, baseMetadata, err := b.setupBase(ctx, finalMetadata, template, envdVersion, lastHash)
 	if err != nil {
 		return nil, fmt.Errorf("error setting up build: %w", err)
 	}
 
-	if lastCached {
-		postProcessor.WriteMsg("CACHED [base] FROM " + template.FromImage)
-	} else {
-		postProcessor.WriteMsg("[base] FROM " + template.FromImage)
+	postProcessor.WriteMsg(layerInfo(lastCached, "base", "FROM "+template.FromImage, lastHash))
+	if !lastCached {
 		templateBuildDir := filepath.Join(templatesDirectory, finalMetadata.BuildID)
 		err = os.MkdirAll(templateBuildDir, 0o777)
 		if err != nil {
@@ -338,8 +335,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			b.templateCache,
 			sourceSbx,
 			finalMetadata.TemplateID,
-			baseHash,
-			hash,
+			lastHash,
 			baseMetadata,
 		)
 		if err != nil {
@@ -352,6 +348,8 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 	// Build Steps
 	for i, step := range template.Steps {
 		layerIndex := i + 1
+		lastHash = hashStep(lastHash, step)
+
 		force := step.Force != nil && *step.Force
 
 		// Generate a new template ID and build ID for the step
@@ -363,7 +361,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		}
 		if !force {
 			// Fetch stable uuid from the step hash
-			stepMetadata = getTemplateFromHash(ctx, b.storage, sourceMetadata, finalMetadata.TemplateID, baseHash, step.Hash)
+			stepMetadata = getTemplateFromHash(ctx, b.storage, sourceMetadata, finalMetadata.TemplateID, lastHash)
 		}
 
 		// Apply changes like env vars or workdir locally only, no need to run in sandbox
@@ -381,16 +379,12 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		isCached := !force && (found || (lastCached && fullyProcessed))
 		lastCached = isCached
 
-		cached := ""
-		if isCached {
-			cached = "CACHED "
-		}
 		prefix := fmt.Sprintf("builder %d/%d", layerIndex, len(template.Steps))
 		cmd := fmt.Sprintf("%s %s", strings.ToUpper(step.Type), strings.Join(step.Args, " "))
-		postProcessor.WriteMsg(fmt.Sprintf("%s[%s] %s [%s]", cached, prefix, cmd, step.Hash))
+		postProcessor.WriteMsg(layerInfo(isCached, prefix, cmd, lastHash))
 
 		if fullyProcessed {
-			// lastBuildID is not updated here because no new sandbox is run
+			// sourceMetadata is not updated here because no new sandbox is run
 			continue
 		}
 
@@ -410,8 +404,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 					EnvdVersion: envdVersion,
 				},
 				finalMetadata.TemplateID,
-				baseHash,
-				step.Hash,
+				lastHash,
 				sourceMetadata,
 				stepMetadata,
 				true,
@@ -455,6 +448,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 	// Build Steps
 
 	// Run post-processing actions in the sandbox
+	lastHash = hashKeys(lastHash, "config-run-cmd")
 	err = b.buildLayer(
 		ctx,
 		postProcessor,
@@ -466,8 +460,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			EnvdVersion: envdVersion,
 		},
 		finalMetadata.TemplateID,
-		baseHash,
-		"config-run-cmd",
+		lastHash,
 		sourceMetadata,
 		finalMetadata,
 		false,
@@ -558,10 +551,9 @@ func (b *Builder) setupBase(
 	finalMetadata storage.TemplateFiles,
 	template config.TemplateConfig,
 	envdVersion string,
-	baseHash string,
 	hash string,
 ) (bool, storage.TemplateFiles, error) {
-	baseMetadata := getTemplateFromHash(ctx, b.storage, finalMetadata, finalMetadata.TemplateID, baseHash, hash)
+	baseMetadata := getTemplateFromHash(ctx, b.storage, finalMetadata, finalMetadata.TemplateID, hash)
 	// Invalidate base cache
 	if template.Force != nil && *template.Force {
 		baseMetadata = storage.TemplateFiles{
@@ -668,4 +660,17 @@ func (b *Builder) runPostprocessing(
 
 		return nil
 	}
+}
+
+func layerInfo(
+	cached bool,
+	prefix string,
+	text string,
+	hash string,
+) string {
+	cachedPrefix := ""
+	if cached {
+		cachedPrefix = "CACHED "
+	}
+	return fmt.Sprintf("%s[%s] %s [%s]", cachedPrefix, prefix, text, hash)
 }
