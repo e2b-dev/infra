@@ -151,8 +151,7 @@ func (o *Orchestrator) GetNode(nodeID string) *Node {
 
 // clusterNodeID - this way we don't need to worry about multiple clusters with the same node ID in shared pool
 func (o *Orchestrator) clusterNodeID(clusterID uuid.UUID, nodeID string) string {
-	clusterPrefix := clusterID.String()[0:7]
-	return fmt.Sprintf("%s-%s", clusterPrefix, nodeID)
+	return fmt.Sprintf("%s-%s", clusterID.String(), nodeID)
 }
 
 func (o *Orchestrator) GetNodes() []*api.Node {
