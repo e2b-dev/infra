@@ -10,6 +10,7 @@ import (
 	"runtime"
 
 	"github.com/coreos/go-iptables/iptables"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"go.uber.org/zap"
@@ -217,8 +218,9 @@ func (s *Slot) CreateNetwork() error {
 		return fmt.Errorf("error creating postrouting rule: %w", err)
 	}
 
-	// Redirect http://event.e2b.dev traffic destined to event server
-	err = tables.Append("nat", "PREROUTING", "-i", s.VethName(), "-p", "tcp", "-d", "8.8.8.7", "--dport", "80", "-j", "REDIRECT", "--to-port", "5010")
+	// Redirect traffic destined to event server
+	eventIP := env.GetEnv("SANDBOX_EVENT_IP", "203.0.113.0")
+	err = tables.Append("nat", "PREROUTING", "-i", s.VethName(), "-p", "tcp", "-d", eventIP, "--dport", "80", "-j", "REDIRECT", "--to-port", "5010")
 	if err != nil {
 		return fmt.Errorf("error creating HTTP redirect rule to sandbox event server: %w", err)
 	}
