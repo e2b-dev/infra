@@ -50,13 +50,9 @@ func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, trac
 	p.synchronization = synchronization.NewSynchronize(p.tracer, "clusters-pool", "Clusters pool", store)
 
 	// Periodically sync clusters with the database
-	go p.startSync()
+	go p.synchronization.Start(poolSyncInterval, poolSyncTimeout, true)
 
 	return p, nil
-}
-
-func (p *Pool) startSync() {
-	p.synchronization.Start(poolSyncInterval, poolSyncTimeout, true)
 }
 
 func (p *Pool) GetClusterById(id uuid.UUID) (*Cluster, bool) {
