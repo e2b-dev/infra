@@ -45,7 +45,7 @@ func (o *Orchestrator) CreateSandbox(
 	endTime time.Time,
 	timeout time.Duration,
 	isResume bool,
-	clientID *string,
+	nodeID *string,
 	baseTemplateID string,
 	autoPause bool,
 	envdAuthToken *string,
@@ -131,10 +131,10 @@ func (o *Orchestrator) CreateSandbox(
 
 	var node *Node
 
-	if isResume && clientID != nil {
+	if isResume && nodeID != nil {
 		telemetry.ReportEvent(childCtx, "Placing sandbox on the node where the snapshot was taken")
 
-		node, _ = o.nodes.Get(*clientID)
+		node, _ = o.nodes.Get(*nodeID)
 		if node != nil && node.Status() != api.NodeStatusReady {
 			node = nil
 		}

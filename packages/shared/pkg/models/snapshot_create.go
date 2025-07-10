@@ -83,6 +83,12 @@ func (sc *SnapshotCreate) SetNillableEnvSecure(b *bool) *SnapshotCreate {
 	return sc
 }
 
+// SetOriginNodeID sets the "origin_node_id" field.
+func (sc *SnapshotCreate) SetOriginNodeID(s string) *SnapshotCreate {
+	sc.mutation.SetOriginNodeID(s)
+	return sc
+}
+
 // SetID sets the "id" field.
 func (sc *SnapshotCreate) SetID(u uuid.UUID) *SnapshotCreate {
 	sc.mutation.SetID(u)
@@ -162,6 +168,9 @@ func (sc *SnapshotCreate) check() error {
 	if _, ok := sc.mutation.EnvSecure(); !ok {
 		return &ValidationError{Name: "env_secure", err: errors.New(`models: missing required field "Snapshot.env_secure"`)}
 	}
+	if _, ok := sc.mutation.OriginNodeID(); !ok {
+		return &ValidationError{Name: "origin_node_id", err: errors.New(`models: missing required field "Snapshot.origin_node_id"`)}
+	}
 	if _, ok := sc.mutation.EnvID(); !ok {
 		return &ValidationError{Name: "env", err: errors.New(`models: missing required edge "Snapshot.env"`)}
 	}
@@ -225,6 +234,10 @@ func (sc *SnapshotCreate) createSpec() (*Snapshot, *sqlgraph.CreateSpec) {
 	if value, ok := sc.mutation.EnvSecure(); ok {
 		_spec.SetField(snapshot.FieldEnvSecure, field.TypeBool, value)
 		_node.EnvSecure = value
+	}
+	if value, ok := sc.mutation.OriginNodeID(); ok {
+		_spec.SetField(snapshot.FieldOriginNodeID, field.TypeString, value)
+		_node.OriginNodeID = value
 	}
 	if nodes := sc.mutation.EnvIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -368,6 +381,18 @@ func (u *SnapshotUpsert) UpdateEnvSecure() *SnapshotUpsert {
 	return u
 }
 
+// SetOriginNodeID sets the "origin_node_id" field.
+func (u *SnapshotUpsert) SetOriginNodeID(v string) *SnapshotUpsert {
+	u.Set(snapshot.FieldOriginNodeID, v)
+	return u
+}
+
+// UpdateOriginNodeID sets the "origin_node_id" field to the value that was provided on create.
+func (u *SnapshotUpsert) UpdateOriginNodeID() *SnapshotUpsert {
+	u.SetExcluded(snapshot.FieldOriginNodeID)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
 // Using this option is equivalent to using:
 //
@@ -500,6 +525,20 @@ func (u *SnapshotUpsertOne) SetEnvSecure(v bool) *SnapshotUpsertOne {
 func (u *SnapshotUpsertOne) UpdateEnvSecure() *SnapshotUpsertOne {
 	return u.Update(func(s *SnapshotUpsert) {
 		s.UpdateEnvSecure()
+	})
+}
+
+// SetOriginNodeID sets the "origin_node_id" field.
+func (u *SnapshotUpsertOne) SetOriginNodeID(v string) *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetOriginNodeID(v)
+	})
+}
+
+// UpdateOriginNodeID sets the "origin_node_id" field to the value that was provided on create.
+func (u *SnapshotUpsertOne) UpdateOriginNodeID() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateOriginNodeID()
 	})
 }
 
@@ -802,6 +841,20 @@ func (u *SnapshotUpsertBulk) SetEnvSecure(v bool) *SnapshotUpsertBulk {
 func (u *SnapshotUpsertBulk) UpdateEnvSecure() *SnapshotUpsertBulk {
 	return u.Update(func(s *SnapshotUpsert) {
 		s.UpdateEnvSecure()
+	})
+}
+
+// SetOriginNodeID sets the "origin_node_id" field.
+func (u *SnapshotUpsertBulk) SetOriginNodeID(v string) *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetOriginNodeID(v)
+	})
+}
+
+// UpdateOriginNodeID sets the "origin_node_id" field to the value that was provided on create.
+func (u *SnapshotUpsertBulk) UpdateOriginNodeID() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateOriginNodeID()
 	})
 }
 
