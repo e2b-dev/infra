@@ -92,7 +92,6 @@ func calculateStep(start, end time.Time) time.Duration {
 }
 
 func getStartEndTime(ctx context.Context, clickhouseStore clickhouse.Clickhouse, teamID, sandboxID string, params api.GetSandboxesSandboxIDMetricsParams) (time.Time, time.Time, error) {
-
 	// Check if the sandbox exists
 	var start, end time.Time
 	if params.Start != nil {
