@@ -12,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -38,7 +39,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 		// Sandbox exists and belongs to the team - return running sandbox info
 		sandbox := api.SandboxDetail{
-			ClientID:        info.Instance.ClientID,
+			ClientID:        consts.ClientID,
 			TemplateID:      info.Instance.TemplateID,
 			Alias:           info.Instance.Alias,
 			SandboxID:       info.Instance.SandboxID,
@@ -84,7 +85,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	sandbox := api.SandboxDetail{
-		ClientID:        "00000000", // for backwards compatibility we need to return a client id
+		ClientID:        consts.ClientID, // for backwards compatibility we need to return a client id
 		TemplateID:      lastSnapshot.Snapshot.EnvID,
 		SandboxID:       lastSnapshot.Snapshot.SandboxID,
 		StartedAt:       lastSnapshot.Snapshot.SandboxStartedAt.Time,

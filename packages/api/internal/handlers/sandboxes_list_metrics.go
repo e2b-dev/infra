@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -88,8 +89,8 @@ func (a *APIStore) getSandboxesMetrics(
 		}
 
 		sbxWithMetrics := api.RunningSandboxWithMetrics{
+			ClientID:   consts.ClientID,
 			Alias:      sbx.Alias,
-			ClientID:   sbx.ClientID,
 			CpuCount:   sbx.CpuCount,
 			EndAt:      sbx.EndAt,
 			MemoryMB:   sbx.MemoryMB,
