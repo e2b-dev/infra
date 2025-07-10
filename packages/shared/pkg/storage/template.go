@@ -28,10 +28,10 @@ const (
 )
 
 type TemplateFiles struct {
-	TemplateID         string
-	BuildID            string
-	KernelVersion      string
-	FirecrackerVersion string
+	TemplateID         string `json:"template_id"`
+	BuildID            string `json:"build_id"`
+	KernelVersion      string `json:"kernel_version"`
+	FirecrackerVersion string `json:"firecracker_version"`
 }
 
 // Deprecated: Use TemplateFiles directly instead.

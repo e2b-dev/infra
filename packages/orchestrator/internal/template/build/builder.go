@@ -131,6 +131,8 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		postProcessor.Stop(ctx, e)
 	}()
 
+	postProcessor.WriteMsg(fmt.Sprintf("Building template %s/%s", finalMetadata.TemplateID, finalMetadata.BuildID))
+
 	defer func() {
 		if e == nil {
 			return
@@ -180,8 +182,9 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 	}
 
 	if lastCached {
-		postProcessor.WriteMsg("Base layer is cached, skipping build")
+		postProcessor.WriteMsg("CACHED [base] FROM " + template.FromImage)
 	} else {
+		postProcessor.WriteMsg("[base] FROM " + template.FromImage)
 		templateBuildDir := filepath.Join(templatesDirectory, finalMetadata.BuildID)
 		err = os.MkdirAll(templateBuildDir, 0o777)
 		if err != nil {
@@ -593,6 +596,7 @@ func (b *Builder) runPostprocessing(
 			b.buildLogger,
 			// TODO: Make this debug level
 			nil,
+			finalMetadata,
 			sbx.Metadata.Config.SandboxId,
 		)
 		if err != nil {

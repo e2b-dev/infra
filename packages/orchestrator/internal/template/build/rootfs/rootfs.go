@@ -102,7 +102,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	postProcessor.WriteMsg(fmt.Sprintf("Base Docker image size: %s", humanize.Bytes(uint64(imageSize))))
 
 	postProcessor.WriteMsg("Setting up system files")
-	layers, err := additionalOCILayers(childCtx, r.metadata, r.template, provisionScript, provisionLogPrefix)
+	layers, err := additionalOCILayers(childCtx, r.template, provisionScript, provisionLogPrefix)
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error populating filesystem: %w", err)
 	}
@@ -167,7 +167,6 @@ func (r *Rootfs) CreateExt4Filesystem(
 
 func additionalOCILayers(
 	_ context.Context,
-	metadata storage.TemplateFiles,
 	config config.TemplateConfig,
 	provisionScript string,
 	provisionLogPrefix string,
@@ -209,10 +208,6 @@ ff02::2	ip6-allrouters
 127.0.1.1	%s
 `, hostname)
 
-	e2bFile := fmt.Sprintf(`ENV_ID=%s
-BUILD_ID=%s
-`, metadata.TemplateID, metadata.BuildID)
-
 	envdFileData, err := os.ReadFile(storage.HostEnvdPath)
 	if err != nil {
 		return nil, fmt.Errorf("error reading envd file: %w", err)
@@ -230,9 +225,8 @@ BUILD_ID=%s
 			"etc/hosts":       {Bytes: []byte(hosts), Mode: 0o644},
 			"etc/resolv.conf": {Bytes: []byte("nameserver 8.8.8.8"), Mode: 0o644},
 
-			".e2b":                            {Bytes: []byte(e2bFile), Mode: 0o644},
-			storage.GuestEnvdPath:             {Bytes: envdFileData, Mode: 0o777},
-			"etc/systemd/system/envd.service": {Bytes: []byte(envdService), Mode: 0o644},
+			storage.GuestEnvdPath:                                            {Bytes: envdFileData, Mode: 0o777},
+			"etc/systemd/system/envd.service":                                {Bytes: []byte(envdService), Mode: 0o644},
 			"etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf": {Bytes: []byte(autologinService), Mode: 0o644},
 
 			// Provision script
@@ -255,7 +249,7 @@ mount -t tmpfs tmpfs /tmp
 mount -t tmpfs tmpfs /run
 
 echo "System Init"`), Mode: 0o777},
-			"etc/inittab": {Bytes: []byte(fmt.Sprintf(`# Run system init
+			"etc/inittab": {Bytes: fmt.Appendf(nil, `# Run system init
 ::sysinit:/etc/init.d/rcS
 
 # Run the provision script, prefix the output with a log prefix
@@ -269,7 +263,7 @@ echo "System Init"`), Mode: 0o777},
 # Clean shutdown of filesystems and swap
 ::shutdown:/usr/bin/busybox swapoff -a
 ::shutdown:/usr/bin/busybox umount -a -r -v
-`, provisionLogPrefix)), Mode: 0o777},
+`, provisionLogPrefix), Mode: 0o777},
 		},
 	)
 	if err != nil {
