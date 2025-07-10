@@ -4,10 +4,10 @@ go 1.24.0
 
 toolchain go1.24.3
 
-require github.com/ClickHouse/clickhouse-go/v2 v2.34.0
+require github.com/ClickHouse/clickhouse-go/v2 v2.37.2
 
 require (
-	github.com/ClickHouse/ch-go v0.65.1 // indirect
+	github.com/ClickHouse/ch-go v0.66.1 // indirect
 	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/go-faster/city v1.0.1 // indirect
