@@ -1,15 +1,16 @@
 package feature_flags
 
-// Flag for enabling writing metrics for sandbox
-// https://app.launchdarkly.com/projects/default/flags/sandbox-metrics-write
-const (
-	MetricsWriteFlagName = "sandbox-metrics-write"
-	MetricsWriteDefault  = false
-)
+import "github.com/e2b-dev/infra/packages/shared/pkg/env"
 
 // Flag for enabling writing metrics for sandbox
+// https://app.launchdarkly.com/projects/default/flags/sandbox-metrics-write
 // https://app.launchdarkly.com/projects/default/flags/sandbox-metrics-read
 const (
-	MetricsReadFlagName = "sandbox-metrics-read"
-	MetricsReadDefault  = false
+	MetricsWriteFlagName = "sandbox-metrics-write"
+	MetricsReadFlagName  = "sandbox-metrics-read"
+)
+
+var (
+	MetricsWriteDefault = env.IsDevelopment()
+	MetricsReadDefault  = env.IsDevelopment()
 )
