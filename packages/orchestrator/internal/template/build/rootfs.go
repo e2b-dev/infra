@@ -14,11 +14,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/ext4"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/oci"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -200,7 +200,7 @@ ExecStart=-/sbin/agetty --noissue --autologin root %I 115200,38400,9600 vt102
 	hostname := "e2b.local"
 	eventProxyHostname := "events.e2b.dev"
 
-	eventIP := env.GetEnv("SANDBOX_EVENT_IP", "203.0.113.0")
+	eventIP := internal.GetSandboxEventIP()
 
 	hosts := fmt.Sprintf(`127.0.0.1	localhost
 ::1	localhost ip6-localhost ip6-loopback
