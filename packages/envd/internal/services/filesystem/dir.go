@@ -1,14 +1,12 @@
 package filesystem
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"os"
 	"os/user"
 	"path"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -43,39 +41,6 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 	if err != nil {
 		return nil, err
 	}
-
-	// Sort depth-first: parent folders first, dirs before files, case-insensitive names.
-	slices.SortFunc(entries, func(a, b *rpc.EntryInfo) int {
-		// Parent folder for files, full path for directories.
-		fa, fb := getFolder(a), getFolder(b)
-
-		// Different directories
-		// Order directories by path, but make a file come AFTER anything that lives inside its folder.
-		if fa != fb {
-			// A is a file, B is inside A’s folder
-			if a.Type == rpc.FileType_FILE_TYPE_FILE && strings.HasPrefix(fb, fa) {
-				return 1
-			}
-			if b.Type == rpc.FileType_FILE_TYPE_FILE && strings.HasPrefix(fa, fb) {
-				return -1 // B is a file, A is inside B’s folder
-			}
-			if fa < fb {
-				return -1
-			}
-			return 1
-		}
-
-		// directories before files.
-		if a.Type != b.Type {
-			if a.Type == rpc.FileType_FILE_TYPE_DIRECTORY {
-				return -1
-			}
-			return 1
-		}
-
-		// Same directory, sort by name case-insensitively.
-		return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
-	})
 
 	return connect.NewResponse(&rpc.ListDirResponse{
 		Entries: entries,

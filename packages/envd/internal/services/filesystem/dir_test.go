@@ -119,47 +119,6 @@ func TestListDirNonExistingPath(t *testing.T) {
 	assert.Equal(t, connect.CodeNotFound, connectErr.Code())
 }
 
-func TestListDirSort(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	u, err := user.Current()
-	require.NoError(t, err)
-
-	testFolder := filepath.Join(root, "test")
-	require.NoError(t, os.MkdirAll(filepath.Join(testFolder, "test-dir", "sub-dir-1"), 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Join(testFolder, "test-dir", "sub-dir-2"), 0o755))
-	// Create files
-	require.NoError(t, os.WriteFile(filepath.Join(testFolder, "file.txt"), []byte(""), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(testFolder, "test-dir", "file.txt"), []byte(""), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(testFolder, "test-dir", "sub-dir-1", "file.txt"), []byte(""), 0o644))
-
-	svc := Service{}
-	ctx := authn.SetInfo(context.Background(), u)
-
-	req := connect.NewRequest(&filesystem.ListDirRequest{
-		Path:  testFolder,
-		Depth: 3,
-	})
-	res, err := svc.ListDir(ctx, req)
-	require.NoError(t, err)
-
-	expected := []string{
-		filepath.Join(testFolder, "test-dir"),
-		filepath.Join(testFolder, "test-dir", "sub-dir-1"),
-		filepath.Join(testFolder, "test-dir", "sub-dir-1", "file.txt"),
-		filepath.Join(testFolder, "test-dir", "sub-dir-2"),
-		filepath.Join(testFolder, "test-dir", "file.txt"),
-		filepath.Join(testFolder, "file.txt"),
-	}
-	actual := make([]string, len(res.Msg.Entries))
-	for i, e := range res.Msg.Entries {
-		actual[i] = e.Path
-	}
-
-	assert.Equal(t, expected, actual, "symlinks should not be resolved when listing the symlink root directory")
-}
-
 func TestListDir_Symlinks(t *testing.T) {
 	t.Parallel()
 
