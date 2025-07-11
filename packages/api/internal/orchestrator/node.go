@@ -7,10 +7,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/jellydator/ttlcache/v3"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
@@ -32,10 +34,16 @@ type nodeMetadata struct {
 	commit         string
 	version        string
 }
+
 type Node struct {
 	CPUUsage atomic.Int64
 	RamUsage atomic.Int64
-	Client   *grpclient.GRPCClient
+
+	client   *grpclient.GRPCClient
+	clientMd metadata.MD
+
+	ClusterID     uuid.UUID
+	ClusterNodeID string
 
 	Info *node.NodeInfo
 
@@ -50,6 +58,19 @@ type Node struct {
 	createFails atomic.Uint64
 }
 
+func (n *Node) Close() {
+	n.buildCache.Stop()
+}
+
+func (n *Node) CloseWithClient() {
+	err := n.client.Close()
+	if err != nil {
+		zap.L().Error("Error closing connection to node", zap.Error(err), logger.WithNodeID(n.Info.ID))
+	}
+
+	n.Close()
+}
+
 func (n *Node) Status() api.NodeStatus {
 	n.mutex.RLock()
 	defer n.mutex.RUnlock()
@@ -58,7 +79,7 @@ func (n *Node) Status() api.NodeStatus {
 		return n.status
 	}
 
-	switch n.Client.Connection.GetState() {
+	switch n.client.Connection.GetState() {
 	case connectivity.Shutdown:
 		return api.NodeStatusUnhealthy
 	case connectivity.TransientFailure:
@@ -101,7 +122,8 @@ func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
 		return fmt.Errorf("unknown service info status: %s", s)
 	}
 
-	_, err := n.Client.Info.ServiceStatusOverride(ctx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: nodeStatus})
+	client, ctx := n.GetClient(ctx)
+	_, err := client.Info.ServiceStatusOverride(ctx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: nodeStatus})
 	if err != nil {
 		zap.L().Error("Failed to send status change", zap.Error(err))
 		return err
@@ -140,12 +162,24 @@ func (o *Orchestrator) GetNode(nodeID string) *Node {
 	return n
 }
 
+// clusterNodeID - this way we don't need to worry about multiple clusters with the same node ID in shared pool
+func (o *Orchestrator) clusterNodeID(clusterID uuid.UUID, nodeID string) string {
+	return fmt.Sprintf("%s-%s", clusterID.String(), nodeID)
+}
+
 func (o *Orchestrator) GetNodes() []*api.Node {
 	nodes := make(map[string]*api.Node)
 	for key, n := range o.nodes.Items() {
+		var clusterID *string
+		if n.ClusterID != uuid.Nil {
+			clusterIDRaw := n.ClusterID.String()
+			clusterID = &clusterIDRaw
+		}
+
 		metadata := n.metadata()
 		nodes[key] = &api.Node{
 			NodeID:               key,
+			ClusterID:            clusterID,
 			Status:               n.Status(),
 			CreateFails:          n.createFails.Load(),
 			SandboxStartingCount: n.sbxsInProgress.Count(),
@@ -179,10 +213,17 @@ func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
 
 	for key, n := range o.nodes.Items() {
 		if key == nodeID {
+			var clusterID *string
+			if n.ClusterID != uuid.Nil {
+				clusterIDRaw := n.ClusterID.String()
+				clusterID = &clusterIDRaw
+			}
+
 			builds := n.buildCache.Keys()
 			metadata := n.metadata()
 			node = &api.NodeDetail{
 				NodeID:       key,
+				ClusterID:    clusterID,
 				Status:       n.Status(),
 				CachedBuilds: builds,
 				CreateFails:  n.createFails.Load(),
@@ -220,6 +261,10 @@ func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
 	return node
 }
 
+func (o *Orchestrator) NodeCount() int {
+	return o.nodes.Count()
+}
+
 func (n *Node) SyncBuilds(builds []*orchestrator.CachedBuildInfo) {
 	for _, build := range builds {
 		n.buildCache.Set(build.BuildId, struct{}{}, time.Until(build.ExpirationTime.AsTime()))
@@ -236,8 +281,8 @@ func (n *Node) InsertBuild(buildID string) {
 	n.buildCache.Set(buildID, struct{}{}, 2*time.Minute)
 }
 
-func (o *Orchestrator) NodeCount() int {
-	return o.nodes.Count()
+func (n *Node) GetClient(ctx context.Context) (*grpclient.GRPCClient, context.Context) {
+	return n.client, metadata.NewOutgoingContext(ctx, n.clientMd)
 }
 
 func getNodeMetadata(n *orchestratorinfo.ServiceInfoResponse, orchestratorID string) nodeMetadata {

@@ -34,7 +34,7 @@ func createSandbox(t *testing.T, sbxWithAuth bool, reqEditors ...api.RequestEdit
 		Secure:     &sbxWithAuth,
 	}, reqEditors...)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, resp.StatusCode())
 
 	t.Cleanup(func() {
@@ -132,25 +132,13 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 	filePath := "demo.txt"
 	fileContent := "Hello, world!"
 
-	// create test file
-	textFile, contentType := createTextFile(t, filePath, fileContent)
-
-	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
-		ctx,
-		&envdapi.PostFilesParams{Path: &filePath, Username: "user"},
-		contentType,
-		textFile,
-		setup.WithSandbox(sbxMeta.SandboxID),
-		setup.WithEnvdAccessToken(*sbxMeta.EnvdAccessToken),
-	)
-
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, writeRes.StatusCode())
+	// create a test file
+	utils.UploadFile(t, ctx, sbxMeta, envdClient, filePath, []byte(fileContent))
 
 	c := setup.GetAPIClient()
 
 	// stop sandbox
-	_, err = c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxMeta.SandboxID, setup.WithAPIKey())
+	_, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxMeta.SandboxID, setup.WithAPIKey())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,25 +188,13 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 	filePath := "demo.txt"
 	fileContent := "Hello, world!"
 
-	// create test file
-	textFile, contentType := createTextFile(t, filePath, fileContent)
-
-	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
-		ctx,
-		&envdapi.PostFilesParams{Path: &filePath, Username: "user"},
-		contentType,
-		textFile,
-		setup.WithSandbox(sbxMeta.SandboxID),
-		setup.WithEnvdAccessToken(*sbxMeta.EnvdAccessToken),
-	)
-
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, writeRes.StatusCode())
+	// create a test file
+	utils.UploadFile(t, ctx, sbxMeta, envdClient, filePath, []byte(fileContent))
 
 	c := setup.GetAPIClient()
 
 	// stop sandbox
-	_, err = c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxMeta.SandboxID, setup.WithAPIKey())
+	_, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxMeta.SandboxID, setup.WithAPIKey())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,11 +1,8 @@
 package envd
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"mime/multipart"
-	"net/http"
 	"strings"
 	"testing"
 
@@ -14,8 +11,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
-	"github.com/e2b-dev/infra/tests/integration/internal/api"
-	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -30,26 +25,13 @@ func TestListDir(t *testing.T) {
 	sbx := utils.SetupSandboxWithCleanup(t, c)
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	createDir(t, sbx, testFolder)
-	createDir(t, sbx, fmt.Sprintf("%s/test-dir", testFolder))
-	createDir(t, sbx, fmt.Sprintf("%s/test-dir/sub-dir-1", testFolder))
-	createDir(t, sbx, fmt.Sprintf("%s/test-dir/sub-dir-2", testFolder))
+	utils.CreateDir(t, sbx, testFolder)
+	utils.CreateDir(t, sbx, fmt.Sprintf("%s/test-dir", testFolder))
+	utils.CreateDir(t, sbx, fmt.Sprintf("%s/test-dir/sub-dir-1", testFolder))
+	utils.CreateDir(t, sbx, fmt.Sprintf("%s/test-dir/sub-dir-2", testFolder))
 
 	filePath := fmt.Sprintf("%s/test-dir/sub-dir-1/file.txt", testFolder)
-	textFile, contentType := createTextFile(t, filePath, "Hello, World!")
-
-	createFileResp, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
-		ctx,
-		&envdapi.PostFilesParams{
-			Path:     &filePath,
-			Username: "user",
-		},
-		contentType,
-		textFile,
-		setup.WithSandbox(sbx.SandboxID),
-	)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, createFileResp.StatusCode())
+	utils.UploadFile(t, ctx, sbx, envdClient, filePath, []byte("Hello, World!"))
 
 	tests := []struct {
 		name          string
@@ -114,32 +96,6 @@ func TestListDir(t *testing.T) {
 	}
 }
 
-func TestCreateFile(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	c := setup.GetAPIClient()
-	sbx := utils.SetupSandboxWithCleanup(t, c)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-	filePath := "test.txt"
-	textFile, contentType := createTextFile(t, filePath, "Hello, World!")
-
-	createFileResp, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
-		ctx,
-		&envdapi.PostFilesParams{
-			Path:     &filePath,
-			Username: "user",
-		},
-		contentType,
-		textFile,
-		setup.WithSandbox(sbx.SandboxID),
-	)
-	assert.NoError(t, err)
-
-	assert.Equal(t, http.StatusOK, createFileResp.StatusCode())
-}
-
 func TestFilePermissions(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -178,42 +134,5 @@ func TestFilePermissions(t *testing.T) {
 			assert.Contains(t, line, "-rw-r--r--")
 			assert.Contains(t, line, "user user")
 		}
-	}
-}
-
-func createTextFile(tb testing.TB, path string, content string) (*bytes.Buffer, string) {
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("file", path)
-	if err != nil {
-		tb.Fatal(err)
-	}
-	_, err = part.Write([]byte(content))
-	if err != nil {
-		tb.Fatal(err)
-	}
-	err = writer.Close()
-	if err != nil {
-		tb.Fatal(err)
-	}
-
-	return body, writer.FormDataContentType()
-}
-
-func createDir(tb testing.TB, sbx *api.Sandbox, path string) {
-	tb.Helper()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	client := setup.GetEnvdClient(tb, ctx)
-	req := connect.NewRequest(&filesystem.MakeDirRequest{
-		Path: path,
-	})
-	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
-	setup.SetUserHeader(req.Header(), "user")
-	_, err := client.FilesystemClient.MakeDir(ctx, req)
-	if err != nil {
-		tb.Fatal(err)
 	}
 }

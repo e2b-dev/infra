@@ -20,7 +20,7 @@ import (
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-type ClusterNode struct {
+type ClusterInstance struct {
 	NodeID string
 
 	ServiceInstanceID    string
@@ -34,64 +34,64 @@ type ClusterNode struct {
 }
 
 const (
-	clusterNodesSyncInterval = 15 * time.Second
-	clusterNodesSyncTimeout  = 15 * time.Second
+	instancesSyncInterval = 15 * time.Second
+	instancesSyncTimeout  = 15 * time.Second
 )
 
 func (c *Cluster) startSync() {
-	c.synchronization.Start(clusterNodesSyncInterval, clusterNodesSyncTimeout, true)
+	c.synchronization.Start(instancesSyncInterval, instancesSyncTimeout, true)
 }
 
-func (c *Cluster) syncNode(ctx context.Context, node *ClusterNode) {
-	grpc := c.GetGRPC(node.ServiceInstanceID)
+func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
+	grpc := c.GetGRPC(instance.ServiceInstanceID)
 
-	// we are taking service info directly from the node to avoid timing delays in service discovery
+	// we are taking service info directly from the instance to avoid timing delays in service discovery
 	reqCtx := metadata.NewOutgoingContext(ctx, grpc.Metadata)
 	info, err := grpc.Client.Info.ServiceInfo(reqCtx, &emptypb.Empty{})
 
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
-		zap.L().Error("Failed to get node service info", zap.Error(err), l.WithClusterID(c.ID), l.WithClusterNodeID(node.NodeID))
+		zap.L().Error("Failed to get instance info", zap.Error(err), l.WithClusterID(c.ID), l.WithClusterNodeID(instance.NodeID))
 		return
 	}
 
-	node.mutex.Lock()
-	defer node.mutex.Unlock()
+	instance.mutex.Lock()
+	defer instance.mutex.Unlock()
 
-	node.status = info.ServiceStatus
-	node.roles = info.ServiceRoles
+	instance.status = info.ServiceStatus
+	instance.roles = info.ServiceRoles
 }
 
-func (n *ClusterNode) GetStatus() infogrpc.ServiceInfoStatus {
+func (n *ClusterInstance) GetStatus() infogrpc.ServiceInfoStatus {
 	n.mutex.RLock()
 	defer n.mutex.RUnlock()
 	return n.status
 }
 
-func (n *ClusterNode) hasRole(r infogrpc.ServiceInfoRole) bool {
+func (n *ClusterInstance) hasRole(r infogrpc.ServiceInfoRole) bool {
 	n.mutex.RLock()
 	defer n.mutex.RUnlock()
 	return slices.Contains(n.roles, r)
 }
 
-func (n *ClusterNode) IsBuilderNode() bool {
+func (n *ClusterInstance) IsBuilder() bool {
 	return n.hasRole(infogrpc.ServiceInfoRole_TemplateBuilder)
 }
 
-func (n *ClusterNode) IsOrchestratorNode() bool {
+func (n *ClusterInstance) IsOrchestrator() bool {
 	return n.hasRole(infogrpc.ServiceInfoRole_Orchestrator)
 }
 
-// SynchronizationStore defines methods for synchronizing cluster nodes
+// SynchronizationStore defines methods for synchronizing cluster instances
 type clusterSynchronizationStore struct {
 	cluster *Cluster
 }
 
 func (d clusterSynchronizationStore) SourceList(ctx context.Context) ([]api.ClusterOrchestratorNode, error) {
-	// fetch cluster nodes with use of service discovery
+	// fetch cluster instances with use of service discovery
 	res, err := d.cluster.httpClient.V1ServiceDiscoveryGetOrchestratorsWithResponse(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get cluster nodes from service discovery: %w", err)
+		return nil, fmt.Errorf("failed to get cluster instances from service discovery: %w", err)
 	}
 
 	if res.StatusCode() != http.StatusOK {
@@ -105,7 +105,7 @@ func (d clusterSynchronizationStore) SourceList(ctx context.Context) ([]api.Clus
 	return *res.JSON200, nil
 }
 
-func (d clusterSynchronizationStore) SourceExists(ctx context.Context, s []api.ClusterOrchestratorNode, p *ClusterNode) bool {
+func (d clusterSynchronizationStore) SourceExists(ctx context.Context, s []api.ClusterOrchestratorNode, p *ClusterInstance) bool {
 	for _, item := range s {
 		if item.NodeID == p.NodeID {
 			return true
@@ -115,9 +115,9 @@ func (d clusterSynchronizationStore) SourceExists(ctx context.Context, s []api.C
 	return false
 }
 
-func (d clusterSynchronizationStore) PoolList(ctx context.Context) []*ClusterNode {
-	mapped := make([]*ClusterNode, 0)
-	for _, item := range d.cluster.nodes.Items() {
+func (d clusterSynchronizationStore) PoolList(ctx context.Context) []*ClusterInstance {
+	mapped := make([]*ClusterInstance, 0)
+	for _, item := range d.cluster.instances.Items() {
 		mapped = append(mapped, item)
 	}
 
@@ -125,14 +125,14 @@ func (d clusterSynchronizationStore) PoolList(ctx context.Context) []*ClusterNod
 }
 
 func (d clusterSynchronizationStore) PoolExists(ctx context.Context, s api.ClusterOrchestratorNode) bool {
-	_, found := d.cluster.nodes.Get(s.NodeID)
+	_, found := d.cluster.instances.Get(s.NodeID)
 	return found
 }
 
 func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, item api.ClusterOrchestratorNode) {
-	zap.L().Info("Adding new node into cluster nodes pool", l.WithClusterID(d.cluster.ID), l.WithClusterNodeID(item.NodeID))
+	zap.L().Info("Adding new instance into cluster pool", l.WithClusterID(d.cluster.ID), l.WithClusterNodeID(item.NodeID))
 
-	node := &ClusterNode{
+	instance := &ClusterInstance{
 		NodeID: item.NodeID,
 
 		ServiceInstanceID:    item.ServiceInstanceID,
@@ -147,14 +147,14 @@ func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, item api.Cl
 		mutex:  sync.RWMutex{},
 	}
 
-	d.cluster.nodes.Insert(item.NodeID, node)
+	d.cluster.instances.Insert(item.NodeID, instance)
 }
 
-func (d clusterSynchronizationStore) PoolUpdate(ctx context.Context, node *ClusterNode) {
-	d.cluster.syncNode(ctx, node)
+func (d clusterSynchronizationStore) PoolUpdate(ctx context.Context, instance *ClusterInstance) {
+	d.cluster.syncInstance(ctx, instance)
 }
 
-func (d clusterSynchronizationStore) PoolRemove(ctx context.Context, cluster *ClusterNode) {
-	zap.L().Info("Removing node from cluster nodes pool", l.WithClusterID(d.cluster.ID), l.WithClusterNodeID(cluster.NodeID))
-	d.cluster.nodes.Remove(cluster.NodeID)
+func (d clusterSynchronizationStore) PoolRemove(ctx context.Context, cluster *ClusterInstance) {
+	zap.L().Info("Removing instance from cluster pool", l.WithClusterID(d.cluster.ID), l.WithClusterNodeID(cluster.NodeID))
+	d.cluster.instances.Remove(cluster.NodeID)
 }
