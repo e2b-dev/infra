@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -22,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/event"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
@@ -41,8 +43,9 @@ type Closeable interface {
 }
 
 const (
-	defaultPort      = 5008
-	defaultProxyPort = 5007
+	defaultPort           = 5008
+	defaultProxyPort      = 5007
+	defaultEventProxyPort = 5010
 
 	sandboxMetricExportPeriod = 5 * time.Second
 
@@ -59,6 +62,7 @@ var (
 func main() {
 	port := flag.Uint("port", defaultPort, "orchestrator server port")
 	proxyPort := flag.Uint("proxy-port", defaultProxyPort, "orchestrator proxy port")
+	eventProxyPort := flag.Uint("event-proxy-port", defaultEventProxyPort, "orchestrator event proxy port")
 	flag.Parse()
 
 	if *port > math.MaxUint16 {
@@ -69,7 +73,7 @@ func main() {
 		log.Fatalf("%d is larger than maximum possible proxy port %d", proxyPort, math.MaxInt16)
 	}
 
-	success := run(*port, *proxyPort)
+	success := run(*port, *proxyPort, *eventProxyPort)
 
 	log.Println("Stopping orchestrator, success:", success)
 
@@ -78,7 +82,7 @@ func main() {
 	}
 }
 
-func run(port, proxyPort uint) (success bool) {
+func run(port, proxyPort, sbxEventServerPort uint) (success bool) {
 	success = true
 
 	services := service.GetServices()
@@ -219,7 +223,30 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 
+	var redisClient redis.UniversalClient
+	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
+		redisClient = redis.NewClusterClient(&redis.ClusterOptions{
+			Addrs:        []string{redisClusterUrl},
+			MinIdleConns: 1,
+		})
+	} else if redisUrl := os.Getenv("REDIS_URL"); redisUrl != "" {
+		redisClient = redis.NewClient(&redis.Options{
+			Addr:         redisUrl,
+			MinIdleConns: 1,
+		})
+	} else {
+		zap.L().Fatal("REDIS_URL not set")
+	}
+	defer redisClient.Close()
+
 	tracer := tel.TracerProvider.Tracer(serviceName)
+
+	eventStore := event.NewSandboxEventStore(ctx, tracer, redisClient)
+	defer eventStore.Close()
+	sbxEventHandlers := event.NewEventHandlers(ctx, eventStore)
+
+	sbxEventServer := event.NewSandboxEventServer(sbxEventServerPort, sbxEventHandlers)
+	defer sbxEventServer.Close(ctx)
 
 	networkPool, err := network.NewPool(ctx, tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID, tracer)
 	if err != nil {
@@ -245,7 +272,7 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
 
-	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags)
+	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags, eventStore)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
@@ -316,6 +343,22 @@ func run(port, proxyPort uint) (success bool) {
 			}
 
 			return proxyErr
+		}
+
+		return nil
+	})
+
+	g.Go(func() error {
+		sbxEventServerErr := sbxEventServer.Start()
+		if sbxEventServerErr != nil && !errors.Is(sbxEventServerErr, http.ErrServerClosed) {
+			select {
+			case serviceError <- sbxEventServerErr:
+			default:
+				// Don't block if the serviceError channel is already closed
+				// or if the error is already sent
+			}
+
+			return sbxEventServerErr
 		}
 
 		return nil
