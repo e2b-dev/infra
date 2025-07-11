@@ -17,6 +17,30 @@ func (o *Orchestrator) setupMetrics(meterProvider metric.MeterProvider) (metric.
 		return nil, fmt.Errorf("failed to create orchestrators gauge: %w", err)
 	}
 
+	_, err = telemetry.GetObservableCounter(meter, telemetry.ApiOrchestratorSbxCreateSuccess, func(ctx context.Context, observer metric.Int64Observer) error {
+		for _, node := range o.nodes.Items() {
+			observer.Observe(int64(node.createSuccess.Load()), metric.WithAttributes(
+				attribute.String("node.id", node.metadata().orchestratorID),
+			))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sandbox create success counter: %w", err)
+	}
+
+	_, err = telemetry.GetObservableCounter(meter, telemetry.ApiOrchestratorSbxCreateFailure, func(ctx context.Context, observer metric.Int64Observer) error {
+		for _, node := range o.nodes.Items() {
+			observer.Observe(int64(node.createFails.Load()), metric.WithAttributes(
+				attribute.String("node.id", node.metadata().orchestratorID),
+			))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sandbox create failure counter: %w", err)
+	}
+
 	registration, err := meter.RegisterCallback(
 		func(ctx context.Context, obs metric.Observer) error {
 			for _, node := range o.nodes.Items() {

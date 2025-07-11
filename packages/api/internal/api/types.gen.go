@@ -182,6 +182,9 @@ type Node struct {
 	// CreateFails Number of sandbox create fails
 	CreateFails uint64 `json:"createFails"`
 
+	// CreateSuccesses Number of sandbox create successes
+	CreateSuccesses uint64 `json:"createSuccesses"`
+
 	// NodeID Identifier of the node
 	NodeID string `json:"nodeID"`
 
@@ -208,6 +211,9 @@ type NodeDetail struct {
 
 	// CreateFails Number of sandbox create fails
 	CreateFails uint64 `json:"createFails"`
+
+	// CreateSuccesses Number of sandbox create successes
+	CreateSuccesses uint64 `json:"createSuccesses"`
 
 	// NodeID Identifier of the node
 	NodeID string `json:"nodeID"`

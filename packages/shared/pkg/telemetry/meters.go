@@ -4,6 +4,7 @@ import "go.opentelemetry.io/otel/metric"
 
 type (
 	CounterType                 string
+	ObservableCounterType       string
 	GaugeFloatType              string
 	GaugeIntType                string
 	UpDownCounterType           string
@@ -12,6 +13,11 @@ type (
 
 const (
 	SandboxCreateMeterName CounterType = "api.env.instance.started"
+)
+
+const (
+	ApiOrchestratorSbxCreateSuccess ObservableCounterType = "api.orchestrator.sandbox.create.success"
+	ApiOrchestratorSbxCreateFailure ObservableCounterType = "api.orchestrator.sandbox.create.failure"
 )
 
 const (
@@ -53,6 +59,16 @@ var counterDesc = map[CounterType]string{
 
 var counterUnits = map[CounterType]string{
 	SandboxCreateMeterName: "{sandbox}",
+}
+
+var observableCounterDesc = map[ObservableCounterType]string{
+	ApiOrchestratorSbxCreateSuccess: "Counter of successful sandbox creation requests.",
+	ApiOrchestratorSbxCreateFailure: "Counter of failed sandbox creation requests.",
+}
+
+var observableCounterUnits = map[ObservableCounterType]string{
+	ApiOrchestratorSbxCreateSuccess: "{sandbox}",
+	ApiOrchestratorSbxCreateFailure: "{sandbox}",
 }
 
 var upDownCounterDesc = map[UpDownCounterType]string{
@@ -128,6 +144,16 @@ func GetUpDownCounter(meter metric.Meter, name UpDownCounterType) (metric.Int64U
 	return meter.Int64UpDownCounter(string(name),
 		metric.WithDescription(desc),
 		metric.WithUnit(unit),
+	)
+}
+
+func GetObservableCounter(meter metric.Meter, name ObservableCounterType, callback metric.Int64Callback) (metric.Int64ObservableCounter, error) {
+	desc := observableCounterDesc[name]
+	unit := observableCounterUnits[name]
+	return meter.Int64ObservableCounter(string(name),
+		metric.WithDescription(desc),
+		metric.WithUnit(unit),
+		metric.WithInt64Callback(callback),
 	)
 }
 
