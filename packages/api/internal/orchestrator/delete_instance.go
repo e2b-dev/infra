@@ -21,7 +21,7 @@ func (o *Orchestrator) DeleteInstance(ctx context.Context, sandboxID string, pau
 	if err != nil && c != nil {
 		node := o.GetNode(c.Node.ID)
 		if node != nil {
-			err := o.RemoveSandboxFromClusterCatalog(node, sandboxID, c.ExecutionID)
+			err := o.RemoveSandboxFromClusterCatalog(ctx, node, sandboxID, c.ExecutionID)
 			if err != nil {
 				zap.L().Error("Failed to remove sandbox from cluster catalog", logger.WithSandboxID(sandboxID), zap.Error(err))
 			}

@@ -268,7 +268,7 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	// we need to inform remote cluster proxy about newly spawned sandbox so it's registered in sandbox traffic proxy
-	err = o.RegisterSandboxInsideClusterCatalog(node, startTime, sbxRequest.Sandbox)
+	err = o.RegisterSandboxInsideClusterCatalog(childCtx, node, startTime, sbxRequest.Sandbox)
 	if err != nil {
 		telemetry.ReportError(ctx, "failed to register sandbox in cluster catalog", err)
 		zap.L().Error("Failed to register sandbox in cluster catalog", logger.WithSandboxID(sbx.SandboxID), zap.Error(err))

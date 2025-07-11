@@ -166,7 +166,7 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 	}
 }
 
-func (o *Orchestrator) RegisterSandboxInsideClusterCatalog(node *Node, sbxStartTime time.Time, sandboxConfig *orchestrator.SandboxConfig) error {
+func (o *Orchestrator) RegisterSandboxInsideClusterCatalog(ctx context.Context, node *Node, sbxStartTime time.Time, sandboxConfig *orchestrator.SandboxConfig) error {
 	if node.ClusterID == uuid.Nil {
 		return nil
 	}
@@ -181,7 +181,7 @@ func (o *Orchestrator) RegisterSandboxInsideClusterCatalog(node *Node, sbxStartT
 		return fmt.Errorf("failed to get cluster instance by cluster %s and node ID: %s", node.ClusterID.String(), node.ClusterNodeID)
 	}
 
-	err := cluster.RegisterSandboxInCatalog(i.ServiceInstanceID, sbxStartTime, sandboxConfig)
+	err := cluster.RegisterSandboxInCatalog(ctx, i.ServiceInstanceID, sbxStartTime, sandboxConfig)
 	if err != nil {
 		return fmt.Errorf("failed to register sandbox in cluster catalog: %w", err)
 	}
@@ -189,7 +189,7 @@ func (o *Orchestrator) RegisterSandboxInsideClusterCatalog(node *Node, sbxStartT
 	return nil
 }
 
-func (o *Orchestrator) RemoveSandboxFromClusterCatalog(node *Node, sandboxID string, executionID string) error {
+func (o *Orchestrator) RemoveSandboxFromClusterCatalog(ctx context.Context, node *Node, sandboxID string, executionID string) error {
 	if node.ClusterID == uuid.Nil {
 		return nil
 	}
@@ -199,7 +199,7 @@ func (o *Orchestrator) RemoveSandboxFromClusterCatalog(node *Node, sandboxID str
 		return fmt.Errorf("failed to get cluster by ID: %s", node.ClusterID.String())
 	}
 
-	err := cluster.RemoveSandboxFromCatalog(sandboxID, executionID)
+	err := cluster.RemoveSandboxFromCatalog(ctx, sandboxID, executionID)
 	if err != nil {
 		return fmt.Errorf("failed to register sandbox in cluster catalog: %w", err)
 	}

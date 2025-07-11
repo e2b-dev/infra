@@ -162,7 +162,7 @@ func (c *Cluster) GetHttpClient() *api.ClientWithResponses {
 	return c.httpClient
 }
 
-func (c *Cluster) RegisterSandboxInCatalog(serviceInstanceID string, sandboxStartTime time.Time, sandboxConfig *orchestratorgrpc.SandboxConfig) error {
+func (c *Cluster) RegisterSandboxInCatalog(ctx context.Context, serviceInstanceID string, sandboxStartTime time.Time, sandboxConfig *orchestratorgrpc.SandboxConfig) error {
 	body := api.V1SandboxCatalogCreateJSONRequestBody{
 		OrchestratorID: serviceInstanceID,
 
@@ -172,7 +172,7 @@ func (c *Cluster) RegisterSandboxInCatalog(serviceInstanceID string, sandboxStar
 		SandboxStartTime: sandboxStartTime,
 	}
 
-	_, err := c.httpClient.V1SandboxCatalogCreate(context.Background(), body)
+	_, err := c.httpClient.V1SandboxCatalogCreate(ctx, body)
 	if err != nil {
 		return fmt.Errorf("failed to register sandbox in catalog: %w", err)
 	}
@@ -180,13 +180,13 @@ func (c *Cluster) RegisterSandboxInCatalog(serviceInstanceID string, sandboxStar
 	return nil
 }
 
-func (c *Cluster) RemoveSandboxFromCatalog(sandboxID string, executionID string) error {
+func (c *Cluster) RemoveSandboxFromCatalog(ctx context.Context, sandboxID string, executionID string) error {
 	body := api.V1SandboxCatalogDeleteJSONRequestBody{
 		SandboxID:   sandboxID,
 		ExecutionID: executionID,
 	}
 
-	_, err := c.httpClient.V1SandboxCatalogDelete(context.Background(), body)
+	_, err := c.httpClient.V1SandboxCatalogDelete(ctx, body)
 	if err != nil {
 		return fmt.Errorf("failed to remove sandbox from catalog: %w", err)
 	}
