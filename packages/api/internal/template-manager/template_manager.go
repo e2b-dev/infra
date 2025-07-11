@@ -17,7 +17,6 @@ import (
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	buildlogs "github.com/e2b-dev/infra/packages/api/internal/template-manager/logs"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
@@ -37,12 +36,13 @@ type TemplateManager struct {
 	edgePool *edge.Pool
 	db       *db.DB
 
-	lock       sync.Mutex
-	tracer     trace.Tracer
-	processing map[uuid.UUID]processingBuilds
-	buildCache *templatecache.TemplatesBuildCache
-	lokiClient *loki.DefaultClient
-	sqlcDB     *sqlcdb.Client
+	lock          sync.Mutex
+	tracer        trace.Tracer
+	processing    map[uuid.UUID]processingBuilds
+	buildCache    *templatecache.TemplatesBuildCache
+	templateCache *templatecache.TemplateCache
+	lokiClient    *loki.DefaultClient
+	sqlcDB        *sqlcdb.Client
 
 	localClient       *grpclient.GRPCClient
 	localClientMutex  sync.RWMutex
@@ -63,20 +63,32 @@ const (
 
 var ErrLocalTemplateManagerNotAvailable = errors.New("local template manager is not available")
 
-func New(ctx context.Context, tracer trace.Tracer, tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, db *db.DB, sqlcDB *sqlcdb.Client, edgePool *edge.Pool, lokiClient *loki.DefaultClient, buildCache *templatecache.TemplatesBuildCache) (*TemplateManager, error) {
+func New(
+	ctx context.Context,
+	tracer trace.Tracer,
+	tracerProvider trace.TracerProvider,
+	meterProvider metric.MeterProvider,
+	db *db.DB,
+	sqlcDB *sqlcdb.Client,
+	edgePool *edge.Pool,
+	lokiClient *loki.DefaultClient,
+	buildCache *templatecache.TemplatesBuildCache,
+	templateCache *templatecache.TemplateCache,
+) (*TemplateManager, error) {
 	client, err := createClient(tracerProvider, meterProvider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}
 
 	tm := &TemplateManager{
-		grpc:       client,
-		db:         db,
-		sqlcDB:     sqlcDB,
-		tracer:     tracer,
-		buildCache: buildCache,
-		edgePool:   edgePool,
-		lokiClient: lokiClient,
+		grpc:          client,
+		db:            db,
+		sqlcDB:        sqlcDB,
+		tracer:        tracer,
+		buildCache:    buildCache,
+		templateCache: templateCache,
+		edgePool:      edgePool,
+		lokiClient:    lokiClient,
 
 		localClient:       client,
 		localClientMutex:  sync.RWMutex{},
@@ -223,51 +235,6 @@ func (tm *TemplateManager) DeleteBuilds(ctx context.Context, builds []DeleteBuil
 		}
 	}
 
-	return nil
-}
-
-func (tm *TemplateManager) CreateTemplate(t trace.Tracer, ctx context.Context, templateID string, buildID uuid.UUID, kernelVersion, firecrackerVersion, startCommand string, vCpuCount, diskSizeMB, memoryMB int64, readyCommand string, clusterID *uuid.UUID, clusterNodeID *string) error {
-	ctx, span := t.Start(ctx, "create-template",
-		trace.WithAttributes(
-			telemetry.WithTemplateID(templateID),
-		),
-	)
-	defer span.End()
-
-	features, err := sandbox.NewVersionInfo(firecrackerVersion)
-	if err != nil {
-		return fmt.Errorf("failed to get features for firecracker version '%s': %w", firecrackerVersion, err)
-	}
-
-	cli, err := tm.GetBuildClient(clusterID, clusterNodeID, true)
-	if err != nil {
-		return fmt.Errorf("failed to get builder edgeHttpClient: %w", err)
-	}
-
-	reqCtx := metadata.NewOutgoingContext(ctx, cli.GRPC.Metadata)
-	_, err = cli.GRPC.Client.Template.TemplateCreate(
-		reqCtx, &templatemanagergrpc.TemplateCreateRequest{
-			Template: &templatemanagergrpc.TemplateConfig{
-				TemplateID:         templateID,
-				BuildID:            buildID.String(),
-				VCpuCount:          int32(vCpuCount),
-				MemoryMB:           int32(memoryMB),
-				DiskSizeMB:         int32(diskSizeMB),
-				KernelVersion:      kernelVersion,
-				FirecrackerVersion: firecrackerVersion,
-				HugePages:          features.HasHugePages(),
-				StartCommand:       startCommand,
-				ReadyCommand:       readyCommand,
-			},
-		},
-	)
-
-	err = utils.UnwrapGRPCError(err)
-	if err != nil {
-		return fmt.Errorf("failed to create template '%s': %w", templateID, err)
-	}
-
-	telemetry.ReportEvent(ctx, "Template build started")
 	return nil
 }
 

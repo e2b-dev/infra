@@ -140,7 +140,7 @@ func main() {
 		panic(err)
 	}
 
-	// Create template
+	// Create init template
 	_, err = database.Client.Env.Create().SetTeam(t).SetID("rki5dems9wqfm4r03t7g").SetPublic(true).Save(ctx)
 	if err != nil {
 		panic(err)

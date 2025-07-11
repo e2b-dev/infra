@@ -22,8 +22,9 @@ const (
 )
 
 type AWSBucketStorageProvider struct {
-	client     *s3.Client
-	bucketName string
+	client        *s3.Client
+	presignClient *s3.PresignClient
+	bucketName    string
 }
 
 type AWSBucketStorageObjectProvider struct {
@@ -40,10 +41,12 @@ func NewAWSBucketStorageProvider(ctx context.Context, bucketName string) (*AWSBu
 	}
 
 	client := s3.NewFromConfig(cfg)
+	presignClient := s3.NewPresignClient(client)
 
 	return &AWSBucketStorageProvider{
-		client:     client,
-		bucketName: bucketName,
+		client:        client,
+		presignClient: presignClient,
+		bucketName:    bucketName,
 	}, nil
 }
 
@@ -63,7 +66,7 @@ func (a *AWSBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, 
 
 	_, err = a.client.DeleteObjects(
 		ctx, &s3.DeleteObjectsInput{
-			Bucket: &a.bucketName,
+			Bucket: aws.String(a.bucketName),
 			Delete: &types.Delete{Objects: objects},
 		},
 	)
@@ -73,6 +76,20 @@ func (a *AWSBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, 
 
 func (a *AWSBucketStorageProvider) GetDetails() string {
 	return fmt.Sprintf("[AWS Storage, bucket set to %s]", a.bucketName)
+}
+
+func (a *AWSBucketStorageProvider) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
+	input := &s3.PutObjectInput{
+		Bucket: aws.String(a.bucketName),
+		Key:    aws.String(path),
+	}
+	resp, err := a.presignClient.PresignPutObject(ctx, input, func(opts *s3.PresignOptions) {
+		opts.Expires = ttl
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to presign PUT URL: %w", err)
+	}
+	return resp.URL, nil
 }
 
 func (a *AWSBucketStorageProvider) OpenObject(ctx context.Context, path string) (StorageObjectProvider, error) {
@@ -157,7 +174,11 @@ func (a *AWSBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, 
 	defer cancel()
 
 	readRange := aws.String(fmt.Sprintf("bytes=%d-%d", off, off+int64(len(buff))-1))
-	resp, err := a.client.GetObject(ctx, &s3.GetObjectInput{Bucket: &a.bucketName, Key: &a.path, Range: readRange})
+	resp, err := a.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(a.bucketName),
+		Key:    aws.String(a.path),
+		Range:  readRange,
+	})
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
@@ -197,8 +218,8 @@ func (a *AWSBucketStorageObjectProvider) Delete() error {
 
 	_, err := a.client.DeleteObject(
 		ctx, &s3.DeleteObjectInput{
-			Bucket: &a.bucketName,
-			Key:    &a.path,
+			Bucket: aws.String(a.bucketName),
+			Key:    aws.String(a.path),
 		},
 	)
 

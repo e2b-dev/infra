@@ -4,6 +4,12 @@ set -euo pipefail
 
 echo "Starting configuration script"
 
+cat <<EOF > /.e2b
+ENV_ID={{ .TemplateID }}
+TEMPLATE_ID={{ .TemplateID }}
+BUILD_ID={{ .BuildID }}
+EOF
+
 echo "Enable swap"
 echo 0 > /proc/sys/vm/swappiness
 swapon /swap/swapfile

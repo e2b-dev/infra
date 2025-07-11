@@ -92,13 +92,18 @@ func (d *Local) Header() *header.Header {
 	return d.header
 }
 
-func (d *Local) UpdateSize() error {
+func (d *Local) UpdateSize(size int64) error {
 	info, err := d.f.Stat()
 	if err != nil {
 		return fmt.Errorf("failed to get file info: %w", err)
 	}
 
-	d.header.Metadata.Size = uint64(info.Size())
+	// Safety check to ensure the size matches the file size
+	if size != info.Size() {
+		return fmt.Errorf("size mismatch: expected %d, got %d", size, info.Size())
+	}
+
+	d.header.Metadata.Size = uint64(size)
 
 	return nil
 }

@@ -1,4 +1,4 @@
-package build
+package oci
 
 import (
 	"archive/tar"
@@ -10,14 +10,14 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 )
 
-type layerFile struct {
+type File struct {
 	Bytes []byte
 	Mode  int64 // Permission and mode bits
 }
 
 // LayerFile creates a layer from a single file map. These layers are reproducible and consistent.
 // A filemap is a path -> file content map representing a file system.
-func LayerFile(filemap map[string]layerFile) (containerregistry.Layer, error) {
+func LayerFile(filemap map[string]File) (containerregistry.Layer, error) {
 	b := &bytes.Buffer{}
 	w := tar.NewWriter(b)
 

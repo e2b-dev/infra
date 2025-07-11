@@ -25,7 +25,3 @@ func (t *Storage) Remove(ctx context.Context, buildId string) error {
 
 	return nil
 }
-
-func (t *Storage) NewBuild(files *storage.TemplateFiles, persistence storage.StorageProvider) *storage.TemplateBuild {
-	return storage.NewTemplateBuild(nil, nil, persistence, files)
-}
