@@ -227,7 +227,7 @@ func TestListDir_Symlinks(t *testing.T) {
 		var connectErr *connect.Error
 		ok := errors.As(err, &connectErr)
 		assert.True(t, ok, "expected error to be of type *connect.Error")
-		assert.Equal(t, connect.CodeInvalidArgument, connectErr.Code())
+		assert.Equal(t, connect.CodeFailedPrecondition, connectErr.Code())
 		assert.Contains(t, connectErr.Error(), "cyclic symlink")
 	})
 
@@ -352,7 +352,7 @@ func TestResolvePath_CyclicSymlink(t *testing.T) {
 
 	var cerr *connect.Error
 	require.ErrorAs(t, err, &cerr)
-	require.Equal(t, connect.CodeInvalidArgument, cerr.Code())
+	require.Equal(t, connect.CodeFailedPrecondition, cerr.Code())
 	require.Contains(t, cerr.Message(), "cyclic")
 }
 
