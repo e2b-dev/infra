@@ -24,8 +24,13 @@ func (g *LocalArtifactsRegistry) GetTag(ctx context.Context, templateId string, 
 	return fmt.Sprintf("%s:%s", templateId, buildId), nil
 }
 
-func (g *LocalArtifactsRegistry) GetImage(ctx context.Context, tag string, _ containerregistry.Platform) (containerregistry.Image, error) {
-	ref, err := name.ParseReference(tag)
+func (g *LocalArtifactsRegistry) GetImage(ctx context.Context, templateId string, buildId string, _ containerregistry.Platform) (containerregistry.Image, error) {
+	imageUrl, err := g.GetTag(ctx, templateId, buildId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get image URL: %w", err)
+	}
+
+	ref, err := name.ParseReference(imageUrl)
 	if err != nil {
 		return nil, fmt.Errorf("invalid image reference: %w", err)
 	}

@@ -42,6 +42,7 @@ func constructBaseLayerFiles(
 	// Create a rootfs file
 	rtfs := rootfs.New(
 		artifactRegistry,
+		metadata,
 		templateConfig,
 	)
 	provisionScript, err := getProvisionScript(ctx, ProvisionScriptParams{
