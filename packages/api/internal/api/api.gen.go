@@ -390,11 +390,18 @@ func (siw *ServerInterfaceWrapper) GetSandboxesMetrics(c *gin.Context) {
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSandboxesMetricsParams
 
-	// ------------- Optional query parameter "metadata" -------------
+	// ------------- Required query parameter "sandbox_ids" -------------
 
-	err = runtime.BindQueryParameter("form", true, false, "metadata", c.Request.URL.Query(), &params.Metadata)
+	if paramValue := c.Query("sandbox_ids"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Query argument sandbox_ids is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", false, true, "sandbox_ids", c.Request.URL.Query(), &params.SandboxIds)
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter metadata: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandbox_ids: %w", err), http.StatusBadRequest)
 		return
 	}
 

@@ -340,45 +340,13 @@ components:
         state:
           $ref: "#/components/schemas/SandboxState"
 
-    RunningSandboxWithMetrics:
+    SandboxesWithMetrics:
       required:
-        - templateID
-        - sandboxID
-        - clientID
-        - startedAt
-        - cpuCount
-        - memoryMB
-        - endAt
+        - sandboxes
       properties:
-        templateID:
-          type: string
-          description: Identifier of the template from which is the sandbox created
-        alias:
-          type: string
-          description: Alias of the template
-        sandboxID:
-          type: string
-          description: Identifier of the sandbox
-        clientID:
-          type: string
-          deprecated: true
-          description: Identifier of the client
-        startedAt:
-          type: string
-          format: date-time
-          description: Time when the sandbox was started
-        endAt:
-          type: string
-          format: date-time
-          description: Time when the sandbox will expire
-        cpuCount:
-          $ref: "#/components/schemas/CPUCount"
-        memoryMB:
-          $ref: "#/components/schemas/MemoryMB"
-        metadata:
-          $ref: "#/components/schemas/SandboxMetadata"
-        metrics:
-          $ref: "#/components/schemas/SandboxMetric"
+        sandboxes:
+          additionalProperties:
+            $ref: "#/components/schemas/SandboxMetric"
 
     NewSandbox:
       required:
@@ -947,29 +915,31 @@ paths:
 
   /sandboxes/metrics:
     get:
-      description: List all running sandboxes with metrics
+      description: List metrics for given sandboxes
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
       parameters:
-        - name: metadata
+        - name: sandbox_ids
           in: query
-          description: Metadata query used to filter the sandboxes (e.g. "user=abc&app=prod"). Each key and values must be URL encoded.
-          required: false
+          required: true
+          description: Comma-separated list of sandbox IDs to get metrics for
+          explode: false
           schema:
-            type: string
+            type: array
+            items:
+              type: string
+            maxItems: 100
+            uniqueItems: true
       responses:
         "200":
           description: Successfully returned all running sandboxes with metrics
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  allOf:
-                    - $ref: "#/components/schemas/RunningSandboxWithMetrics"
+                $ref: "#/components/schemas/SandboxesWithMetrics"
         "401":
           $ref: "#/components/responses/401"
         "400":
