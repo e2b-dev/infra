@@ -1,14 +1,258 @@
 package filesystem
 
 import (
+	"context"
+	"errors"
 	"os"
 	"os/user"
 	"path/filepath"
 	"testing"
 
+	"connectrpc.com/authn"
 	"connectrpc.com/connect"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
 )
+
+func TestListDir(t *testing.T) {
+	t.Parallel()
+
+	// Setup temp root and user
+	root := t.TempDir()
+	u, err := user.Current()
+	require.NoError(t, err)
+
+	// Setup directory structure
+	testFolder := filepath.Join(root, "test")
+	require.NoError(t, os.MkdirAll(filepath.Join(testFolder, "test-dir", "sub-dir-1"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(testFolder, "test-dir", "sub-dir-2"), 0o755))
+	filePath := filepath.Join(testFolder, "test-dir", "sub-dir-1", "file.txt")
+	require.NoError(t, os.WriteFile(filePath, []byte("Hello, World!"), 0o644))
+
+	// Service instance
+	svc := Service{}
+
+	// Helper to inject user into context
+	injectUser := func(ctx context.Context, u *user.User) context.Context {
+		return authn.SetInfo(ctx, u)
+	}
+
+	tests := []struct {
+		name          string
+		depth         uint32
+		expectedPaths []string
+	}{
+		{
+			name:  "depth 0 lists only root directory",
+			depth: 0,
+			expectedPaths: []string{
+				filepath.Join(testFolder, "test-dir"),
+			},
+		},
+		{
+			name:  "depth 1 lists root directory",
+			depth: 1,
+			expectedPaths: []string{
+				filepath.Join(testFolder, "test-dir"),
+			},
+		},
+		{
+			name:  "depth 2 lists first level of subdirectories (in this case the root directory)",
+			depth: 2,
+			expectedPaths: []string{
+				filepath.Join(testFolder, "test-dir"),
+				filepath.Join(testFolder, "test-dir", "sub-dir-1"),
+				filepath.Join(testFolder, "test-dir", "sub-dir-2"),
+			},
+		},
+		{
+			name:  "depth 3 lists all directories and files",
+			depth: 3,
+			expectedPaths: []string{
+				filepath.Join(testFolder, "test-dir"),
+				filepath.Join(testFolder, "test-dir", "sub-dir-1"),
+				filepath.Join(testFolder, "test-dir", "sub-dir-2"),
+				filepath.Join(testFolder, "test-dir", "sub-dir-1", "file.txt"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := injectUser(context.Background(), u)
+			req := connect.NewRequest(&filesystem.ListDirRequest{
+				Path:  testFolder,
+				Depth: tt.depth,
+			})
+			resp, err := svc.ListDir(ctx, req)
+			require.NoError(t, err)
+			assert.NotEmpty(t, resp.Msg)
+			assert.Equal(t, len(tt.expectedPaths), len(resp.Msg.Entries))
+			actualPaths := make([]string, len(resp.Msg.Entries))
+			for i, entry := range resp.Msg.Entries {
+				actualPaths[i] = entry.Path
+			}
+			assert.ElementsMatch(t, tt.expectedPaths, actualPaths)
+		})
+	}
+}
+
+func TestListDirNonExistingPath(t *testing.T) {
+	t.Parallel()
+
+	svc := Service{}
+	u, err := user.Current()
+	require.NoError(t, err)
+	ctx := authn.SetInfo(context.Background(), u)
+
+	req := connect.NewRequest(&filesystem.ListDirRequest{
+		Path:  "/non-existing-path",
+		Depth: 1,
+	})
+	_, err = svc.ListDir(ctx, req)
+	require.Error(t, err)
+	var connectErr *connect.Error
+	ok := errors.As(err, &connectErr)
+	assert.True(t, ok, "expected error to be of type *connect.Error")
+	assert.Equal(t, connect.CodeNotFound, connectErr.Code())
+}
+
+func TestListDirSort(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	u, err := user.Current()
+	require.NoError(t, err)
+
+	testFolder := filepath.Join(root, "test")
+	require.NoError(t, os.MkdirAll(filepath.Join(testFolder, "test-dir", "sub-dir-1"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(testFolder, "test-dir", "sub-dir-2"), 0o755))
+	// Create files
+	require.NoError(t, os.WriteFile(filepath.Join(testFolder, "file.txt"), []byte(""), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(testFolder, "test-dir", "file.txt"), []byte(""), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(testFolder, "test-dir", "sub-dir-1", "file.txt"), []byte(""), 0o644))
+
+	svc := Service{}
+	ctx := authn.SetInfo(context.Background(), u)
+
+	req := connect.NewRequest(&filesystem.ListDirRequest{
+		Path:  testFolder,
+		Depth: 3,
+	})
+	res, err := svc.ListDir(ctx, req)
+	require.NoError(t, err)
+
+	expected := []string{
+		filepath.Join(testFolder, "test-dir"),
+		filepath.Join(testFolder, "test-dir", "sub-dir-1"),
+		filepath.Join(testFolder, "test-dir", "sub-dir-1", "file.txt"),
+		filepath.Join(testFolder, "test-dir", "sub-dir-2"),
+		filepath.Join(testFolder, "test-dir", "file.txt"),
+		filepath.Join(testFolder, "file.txt"),
+	}
+	actual := make([]string, len(res.Msg.Entries))
+	for i, e := range res.Msg.Entries {
+		actual[i] = e.Path
+	}
+
+	assert.Equal(t, expected, actual, "symlinks should not be resolved when listing the symlink root directory")
+}
+
+func TestListDir_Symlinks(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	u, err := user.Current()
+	require.NoError(t, err)
+	ctx := authn.SetInfo(context.Background(), u)
+
+	symlinkRoot := filepath.Join(root, "test-symlinks")
+	require.NoError(t, os.MkdirAll(symlinkRoot, 0o755))
+
+	// 1. Prepare a real directory + file that a symlink will point to
+	realDir := filepath.Join(symlinkRoot, "real-dir")
+	require.NoError(t, os.MkdirAll(realDir, 0o755))
+	filePath := filepath.Join(realDir, "file.txt")
+	require.NoError(t, os.WriteFile(filePath, []byte("hello via symlink"), 0o644))
+
+	// 2. Prepare a standalone real file (points-to-file scenario)
+	realFile := filepath.Join(symlinkRoot, "real-file.txt")
+	require.NoError(t, os.WriteFile(realFile, []byte("i am a plain file"), 0o644))
+
+	// 3. Create the three symlinks
+	linkToDir := filepath.Join(symlinkRoot, "link-dir")   // → directory
+	linkToFile := filepath.Join(symlinkRoot, "link-file") // → file
+	cyclicLink := filepath.Join(symlinkRoot, "cyclic")    // → itself
+	require.NoError(t, os.Symlink(realDir, linkToDir))
+	require.NoError(t, os.Symlink(realFile, linkToFile))
+	require.NoError(t, os.Symlink(cyclicLink, cyclicLink))
+
+	svc := Service{}
+
+	t.Run("symlink to directory behaves like directory and the content looks like inside the directory", func(t *testing.T) {
+		req := connect.NewRequest(&filesystem.ListDirRequest{
+			Path:  linkToDir,
+			Depth: 1,
+		})
+		resp, err := svc.ListDir(ctx, req)
+		require.NoError(t, err)
+		expected := []string{
+			filepath.Join(linkToDir, "file.txt"),
+		}
+		actual := make([]string, len(resp.Msg.Entries))
+		for i, e := range resp.Msg.Entries {
+			actual[i] = e.Path
+		}
+		assert.ElementsMatch(t, expected, actual)
+	})
+
+	t.Run("link to file", func(t *testing.T) {
+		req := connect.NewRequest(&filesystem.ListDirRequest{
+			Path:  linkToFile,
+			Depth: 1,
+		})
+		_, err := svc.ListDir(ctx, req)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not a directory")
+	})
+
+	t.Run("cyclic symlink surfaces 'too many links' → invalid-argument", func(t *testing.T) {
+		req := connect.NewRequest(&filesystem.ListDirRequest{
+			Path: cyclicLink,
+		})
+		_, err := svc.ListDir(ctx, req)
+		require.Error(t, err)
+		var connectErr *connect.Error
+		ok := errors.As(err, &connectErr)
+		assert.True(t, ok, "expected error to be of type *connect.Error")
+		assert.Equal(t, connect.CodeInvalidArgument, connectErr.Code())
+		assert.Contains(t, connectErr.Error(), "cyclic symlink")
+	})
+
+	t.Run("symlink not resolved if not root", func(t *testing.T) {
+		req := connect.NewRequest(&filesystem.ListDirRequest{
+			Path:  symlinkRoot,
+			Depth: 3,
+		})
+		res, err := svc.ListDir(ctx, req)
+		require.NoError(t, err)
+		expected := []string{
+			filepath.Join(symlinkRoot, "cyclic"),
+			filepath.Join(symlinkRoot, "link-dir"),
+			filepath.Join(symlinkRoot, "link-file"),
+			filepath.Join(symlinkRoot, "real-dir"),
+			filepath.Join(symlinkRoot, "real-dir", "file.txt"),
+			filepath.Join(symlinkRoot, "real-file.txt"),
+		}
+		actual := make([]string, len(res.Msg.Entries))
+		for i, e := range res.Msg.Entries {
+			actual[i] = e.Path
+		}
+		assert.ElementsMatch(t, expected, actual, "symlinks should not be resolved when listing the symlink root directory")
+	})
+}
 
 // TestResolvePath_Success makes sure that resolvePath expands the user path
 // (via permissions.ExpandAndResolve) **and** resolves symlinks, while also
@@ -137,7 +381,7 @@ func TestWalkDir_Depth(t *testing.T) {
 	subsub := filepath.Join(sub, "subsub")
 	require.NoError(t, os.MkdirAll(subsub, 0o755))
 
-	entries, err := walkDir(root, 1)
+	entries, err := walkDir(root, root, 1)
 	require.NoError(t, err)
 
 	// Collect the names for easier assertions.
@@ -153,7 +397,7 @@ func TestWalkDir_Depth(t *testing.T) {
 func TestWalkDir_Error(t *testing.T) {
 	t.Parallel()
 
-	_, err := walkDir("/does/not/exist", 1)
+	_, err := walkDir("/does/not/exist", "/does/not/exist", 1)
 	require.Error(t, err)
 
 	var cerr *connect.Error

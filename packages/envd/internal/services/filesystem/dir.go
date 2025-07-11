@@ -28,7 +28,8 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 		return nil, err
 	}
 
-	resolvedPath, err := resolvePath(req.Msg.GetPath(), u)
+	requestedPath := req.Msg.GetPath()
+	resolvedPath, err := resolvePath(requestedPath, u)
 	if err != nil {
 		return nil, err
 	}
@@ -38,13 +39,41 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 		return nil, err
 	}
 
-	entries, err := walkDir(resolvedPath, int(depth))
+	entries, err := walkDir(requestedPath, resolvedPath, int(depth))
 	if err != nil {
 		return nil, err
 	}
 
-	// Sort entries by name (should create a tree-like structure)
+	// Sort depth-first: parent folders first, dirs before files, case-insensitive names.
 	slices.SortFunc(entries, func(a, b *rpc.EntryInfo) int {
+		// Parent folder for files, full path for directories.
+		fa, fb := getFolder(a), getFolder(b)
+
+		// Different directories
+		// Order directories by path, but make a file come AFTER anything that lives inside its folder.
+		if fa != fb {
+			// A is a file, B is inside A’s folder
+			if a.Type == rpc.FileType_FILE_TYPE_FILE && strings.HasPrefix(fb, fa) {
+				return 1
+			}
+			if b.Type == rpc.FileType_FILE_TYPE_FILE && strings.HasPrefix(fa, fb) {
+				return -1 // B is a file, A is inside B’s folder
+			}
+			if fa < fb {
+				return -1
+			}
+			return 1
+		}
+
+		// directories before files.
+		if a.Type != b.Type {
+			if a.Type == rpc.FileType_FILE_TYPE_DIRECTORY {
+				return -1
+			}
+			return 1
+		}
+
+		// Same directory, sort by name case-insensitively.
 		return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 	})
 
@@ -139,7 +168,7 @@ func checkIfDirectory(path string) error {
 }
 
 // walkDir walks the directory tree starting from dirPath up to the specified depth (doesn't follow symlinks).
-func walkDir(dirPath string, depth int) (entries []*rpc.EntryInfo, err error) {
+func walkDir(requestedPath string, dirPath string, depth int) (entries []*rpc.EntryInfo, err error) {
 	err = filepath.WalkDir(dirPath, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -164,8 +193,8 @@ func walkDir(dirPath string, depth int) (entries []*rpc.EntryInfo, err error) {
 		entries = append(entries, &rpc.EntryInfo{
 			Name: entry.Name(),
 			Type: getEntryType(entry),
-			// Returns the "real" path - resolved symlinks
-			Path: path,
+			// Return the requested path as the base path instead of the symlink-resolved path
+			Path: filepath.Join(requestedPath, relPath),
 		})
 
 		return nil
