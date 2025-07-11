@@ -187,8 +187,8 @@ func (o *Orchestrator) CreateSandbox(
 			CPUs:      build.Vcpu,
 		})
 
-		client, reqCtxBuilder := node.GetClient()
-		_, err = client.Sandbox.Create(reqCtxBuilder(childCtx), sbxRequest)
+		client, reqCtx := node.GetClient(childCtx)
+		_, err = client.Sandbox.Create(reqCtx, sbxRequest)
 		// The request is done, we will either add it to the cache or remove it from the node
 		if err == nil {
 			// The sandbox was created successfully

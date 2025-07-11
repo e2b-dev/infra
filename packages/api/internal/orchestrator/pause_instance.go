@@ -85,13 +85,13 @@ func snapshotInstance(ctx context.Context, orch *Orchestrator, sbx *instance.Ins
 	childCtx, childSpan := orch.tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
 
-	client, reqCtxBuilder, err := orch.GetClient(sbx.Node.ID)
+	client, reqCtx, err := orch.GetClient(childCtx, sbx.Node.ID)
 	if err != nil {
 		return fmt.Errorf("failed to get client '%s': %w", sbx.Node.ID, err)
 	}
 
 	_, err = client.Sandbox.Pause(
-		reqCtxBuilder(childCtx), &orchestrator.SandboxPauseRequest{
+		reqCtx, &orchestrator.SandboxPauseRequest{
 			SandboxId:  sbx.Instance.SandboxID,
 			TemplateId: templateID,
 			BuildId:    buildID,

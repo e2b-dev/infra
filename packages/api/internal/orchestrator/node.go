@@ -24,8 +24,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
-type RequestContextBuilder func(ctx context.Context) context.Context
-
 type sbxInProgress struct {
 	MiBMemory int64
 	CPUs      int64
@@ -124,8 +122,8 @@ func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
 		return fmt.Errorf("unknown service info status: %s", s)
 	}
 
-	client, reqCtxBuilder := n.GetClient()
-	_, err := client.Info.ServiceStatusOverride(reqCtxBuilder(ctx), &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: nodeStatus})
+	client, reqCtx := n.GetClient(ctx)
+	_, err := client.Info.ServiceStatusOverride(reqCtx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: nodeStatus})
 	if err != nil {
 		zap.L().Error("Failed to send status change", zap.Error(err))
 		return err
@@ -283,10 +281,8 @@ func (n *Node) InsertBuild(buildID string) {
 	n.buildCache.Set(buildID, struct{}{}, 2*time.Minute)
 }
 
-func (n *Node) GetClient() (*grpclient.GRPCClient, RequestContextBuilder) {
-	return n.client, func(ctx context.Context) context.Context {
-		return metadata.NewOutgoingContext(ctx, n.clientMd)
-	}
+func (n *Node) GetClient(ctx context.Context) (*grpclient.GRPCClient, context.Context) {
+	return n.client, metadata.NewOutgoingContext(ctx, n.clientMd)
 }
 
 func getNodeMetadata(n *orchestratorinfo.ServiceInfoResponse, orchestratorID string) nodeMetadata {

@@ -227,8 +227,8 @@ func (o *Orchestrator) syncNodeState(ctx context.Context, node *Node, instanceCa
 	syncRetrySuccess := false
 
 	for range syncMaxRetries {
-		client, reqCtxBuilder := node.GetClient()
-		nodeInfo, err := client.Info.ServiceInfo(reqCtxBuilder(ctx), &emptypb.Empty{})
+		client, reqCtx := node.GetClient(ctx)
+		nodeInfo, err := client.Info.ServiceInfo(reqCtx, &emptypb.Empty{})
 		if err != nil {
 			zap.L().Error("Error getting node info", zap.Error(err), logger.WithNodeID(node.Info.ID))
 			continue
@@ -348,8 +348,8 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			info.PauseDone(nil)
 		} else {
 			req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}
-			client, reqCtxBuilder := node.GetClient()
-			_, err := client.Sandbox.Delete(reqCtxBuilder(ctx), req)
+			client, reqCtx := node.GetClient(ctx)
+			_, err := client.Sandbox.Delete(reqCtx, req)
 			if err != nil {
 				return fmt.Errorf("failed to delete sandbox '%s': %w", info.Instance.SandboxID, err)
 			}

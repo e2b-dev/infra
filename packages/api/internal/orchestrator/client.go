@@ -155,14 +155,14 @@ func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, i *edge.Clust
 	o.nodes.Insert(poolNodeID, orchestratorNode)
 }
 
-func (o *Orchestrator) GetClient(nodeID string) (*grpclient.GRPCClient, RequestContextBuilder, error) {
+func (o *Orchestrator) GetClient(ctx context.Context, nodeID string) (*grpclient.GRPCClient, context.Context, error) {
 	n := o.GetNode(nodeID)
 	if n == nil {
 		return nil, nil, fmt.Errorf("node '%s' not found", nodeID)
 	}
 
-	client, builder := n.GetClient()
-	return client, builder, nil
+	client, reqCtx := n.GetClient(ctx)
+	return client, reqCtx, nil
 }
 
 func (o *Orchestrator) getNodeHealth(node *node.NodeInfo) (bool, error) {
