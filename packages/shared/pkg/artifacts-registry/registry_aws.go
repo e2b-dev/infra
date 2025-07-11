@@ -68,7 +68,8 @@ func (g *AWSArtifactsRegistry) Delete(ctx context.Context, templateId string, bu
 }
 
 func (g *AWSArtifactsRegistry) GetTag(ctx context.Context, templateId string, buildId string) (string, error) {
-	res, err := g.client.DescribeRepositories(ctx, &ecr.DescribeRepositoriesInput{RepositoryNames: []string{g.repositoryName}})
+	repositoryNameWithTemplate := fmt.Sprintf("%s/%s", g.repositoryName, templateId)
+	res, err := g.client.DescribeRepositories(ctx, &ecr.DescribeRepositoriesInput{RepositoryNames: []string{repositoryNameWithTemplate}})
 	if err != nil {
 		return "", fmt.Errorf("failed to describe aws ecr repository: %w", err)
 	}
