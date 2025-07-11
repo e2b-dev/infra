@@ -60,16 +60,17 @@ type Node struct {
 	createFails atomic.Uint64
 }
 
-func (n *Node) Close(closeClient bool) {
-	// For shared client connections, we don't want to close the client because its used somewhere else.
-	if closeClient {
-		err := n.client.Close()
-		if err != nil {
-			zap.L().Error("Error closing connection to node", zap.Error(err), logger.WithNodeID(n.Info.ID))
-		}
+func (n *Node) Close() {
+	n.buildCache.Stop()
+}
+
+func (n *Node) CloseWithClient() {
+	err := n.client.Close()
+	if err != nil {
+		zap.L().Error("Error closing connection to node", zap.Error(err), logger.WithNodeID(n.Info.ID))
 	}
 
-	n.buildCache.Stop()
+	n.Close()
 }
 
 func (n *Node) Status() api.NodeStatus {
