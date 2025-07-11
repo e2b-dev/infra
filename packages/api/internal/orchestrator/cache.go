@@ -191,6 +191,7 @@ func (o *Orchestrator) syncClusterNode(ctx context.Context, node *Node, instance
 
 	if !nodeFound {
 		// we are not closing grpc connection, because it is shared between all cluster nodes, and it's handled by the cluster
+		node.Close(false)
 		o.nodes.Remove(node.Info.ID)
 		return
 	}
@@ -214,13 +215,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 
 	if !found {
 		zap.L().Info("Node is not active anymore", logger.WithNodeID(node.Info.ID))
-
-		// Close the connection to the node
-		err := node.Client.Close()
-		if err != nil {
-			zap.L().Error("Error closing connection to node", zap.Error(err), logger.WithNodeID(node.Info.ID))
-		}
-
+		node.Close(true)
 		o.nodes.Remove(node.Info.ID)
 		return
 	}
