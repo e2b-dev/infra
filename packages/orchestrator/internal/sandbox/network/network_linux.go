@@ -10,10 +10,11 @@ import (
 	"runtime"
 
 	"github.com/coreos/go-iptables/iptables"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
 func (s *Slot) CreateNetwork() error {
