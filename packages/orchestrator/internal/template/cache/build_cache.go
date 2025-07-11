@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sync"
@@ -21,7 +22,9 @@ const (
 
 type BuildInfo struct {
 	status    template_manager.TemplateBuildState
+	reason    *string
 	metadata  *template_manager.TemplateBuildMetadata
+	logs      *SafeBuffer
 	mu        sync.RWMutex
 	ctx       context.Context
 	ctxCancel context.CancelFunc
@@ -55,11 +58,29 @@ func (b *BuildInfo) GetStatus() template_manager.TemplateBuildState {
 	return b.status
 }
 
+func (b *BuildInfo) GetReason() *string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	return b.reason
+}
+
 func (b *BuildInfo) GetContext() context.Context {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
 	return b.ctx
+}
+
+func (b *BuildInfo) GetLogs() []string {
+	by := b.logs.Bytes()
+	logs := make([]string, 0)
+	for line := range bytes.SplitSeq(by, []byte("\n")) {
+		if len(line) > 0 {
+			logs = append(logs, string(line))
+		}
+	}
+	return logs
 }
 
 func (b *BuildInfo) Cancel() {
@@ -117,7 +138,7 @@ func (c *BuildCache) Get(buildID string) (*BuildInfo, error) {
 }
 
 // Create creates a new build if it doesn't exist in the cache or the build was already finished.
-func (c *BuildCache) Create(buildID string) (*BuildInfo, error) {
+func (c *BuildCache) Create(buildID string, logs *SafeBuffer) (*BuildInfo, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -131,6 +152,7 @@ func (c *BuildCache) Create(buildID string) (*BuildInfo, error) {
 	info := &BuildInfo{
 		status:    template_manager.TemplateBuildState_Building,
 		metadata:  nil,
+		logs:      logs,
 		ctx:       ctx,
 		ctxCancel: cancel,
 	}
@@ -151,10 +173,11 @@ func (c *BuildCache) SetSucceeded(buildID string, metadata *template_manager.Tem
 
 	item.status = template_manager.TemplateBuildState_Completed
 	item.metadata = metadata
+	item.reason = nil
 	return nil
 }
 
-func (c *BuildCache) SetFailed(buildID string) error {
+func (c *BuildCache) SetFailed(buildID string, reason string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -164,6 +187,7 @@ func (c *BuildCache) SetFailed(buildID string) error {
 	}
 
 	item.status = template_manager.TemplateBuildState_Failed
+	item.reason = &reason
 	return nil
 }
 

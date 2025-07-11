@@ -135,11 +135,11 @@ type Error struct {
 
 // SandboxCreateCatalogRequest defines model for SandboxCreateCatalogRequest.
 type SandboxCreateCatalogRequest struct {
-	ExecutionId string `json:"executionId"`
+	ExecutionID string `json:"executionID"`
 
-	// OrchestratorId Orchestrator where the sandbox is placed
-	OrchestratorId string `json:"orchestratorId"`
-	SandboxId      string `json:"sandboxId"`
+	// OrchestratorID Orchestrator where the sandbox is placed
+	OrchestratorID string `json:"orchestratorID"`
+	SandboxID      string `json:"sandboxID"`
 
 	// SandboxMaxLength Maximum duration in hours
 	SandboxMaxLength int64     `json:"sandboxMaxLength"`
@@ -148,8 +148,17 @@ type SandboxCreateCatalogRequest struct {
 
 // SandboxDeleteCatalogRequest defines model for SandboxDeleteCatalogRequest.
 type SandboxDeleteCatalogRequest struct {
-	ExecutionId string `json:"executionId"`
-	SandboxId   string `json:"sandboxId"`
+	ExecutionID string `json:"executionID"`
+	SandboxID   string `json:"sandboxID"`
+}
+
+// ServiceDiscoveryNodeStatusRequest defines model for ServiceDiscoveryNodeStatusRequest.
+type ServiceDiscoveryNodeStatusRequest struct {
+	// ServiceInstanceID Service instance ID that should be handled by the request
+	ServiceInstanceID string `json:"serviceInstanceID"`
+
+	// ServiceType Cluster node type
+	ServiceType ClusterNodeType `json:"serviceType"`
 }
 
 // TemplateBuildLogsResponse defines model for TemplateBuildLogsResponse.
@@ -187,3 +196,9 @@ type V1SandboxCatalogDeleteJSONRequestBody = SandboxDeleteCatalogRequest
 
 // V1SandboxCatalogCreateJSONRequestBody defines body for V1SandboxCatalogCreate for application/json ContentType.
 type V1SandboxCatalogCreateJSONRequestBody = SandboxCreateCatalogRequest
+
+// V1ServiceDiscoveryNodeDrainJSONRequestBody defines body for V1ServiceDiscoveryNodeDrain for application/json ContentType.
+type V1ServiceDiscoveryNodeDrainJSONRequestBody = ServiceDiscoveryNodeStatusRequest
+
+// V1ServiceDiscoveryNodeKillJSONRequestBody defines body for V1ServiceDiscoveryNodeKill for application/json ContentType.
+type V1ServiceDiscoveryNodeKillJSONRequestBody = ServiceDiscoveryNodeStatusRequest

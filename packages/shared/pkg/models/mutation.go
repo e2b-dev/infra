@@ -3086,6 +3086,7 @@ type EnvBuildMutation struct {
 	firecracker_version   *string
 	envd_version          *string
 	cluster_node_id       *string
+	reason                *string
 	clearedFields         map[string]struct{}
 	env                   *string
 	clearedenv            bool
@@ -3959,6 +3960,55 @@ func (m *EnvBuildMutation) ResetClusterNodeID() {
 	delete(m.clearedFields, envbuild.FieldClusterNodeID)
 }
 
+// SetReason sets the "reason" field.
+func (m *EnvBuildMutation) SetReason(s string) {
+	m.reason = &s
+}
+
+// Reason returns the value of the "reason" field in the mutation.
+func (m *EnvBuildMutation) Reason() (r string, exists bool) {
+	v := m.reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReason returns the old "reason" field's value of the EnvBuild entity.
+// If the EnvBuild object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnvBuildMutation) OldReason(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReason: %w", err)
+	}
+	return oldValue.Reason, nil
+}
+
+// ClearReason clears the value of the "reason" field.
+func (m *EnvBuildMutation) ClearReason() {
+	m.reason = nil
+	m.clearedFields[envbuild.FieldReason] = struct{}{}
+}
+
+// ReasonCleared returns if the "reason" field was cleared in this mutation.
+func (m *EnvBuildMutation) ReasonCleared() bool {
+	_, ok := m.clearedFields[envbuild.FieldReason]
+	return ok
+}
+
+// ResetReason resets all changes to the "reason" field.
+func (m *EnvBuildMutation) ResetReason() {
+	m.reason = nil
+	delete(m.clearedFields, envbuild.FieldReason)
+}
+
 // ClearEnv clears the "env" edge to the Env entity.
 func (m *EnvBuildMutation) ClearEnv() {
 	m.clearedenv = true
@@ -4020,7 +4070,7 @@ func (m *EnvBuildMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *EnvBuildMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 17)
 	if m.created_at != nil {
 		fields = append(fields, envbuild.FieldCreatedAt)
 	}
@@ -4069,6 +4119,9 @@ func (m *EnvBuildMutation) Fields() []string {
 	if m.cluster_node_id != nil {
 		fields = append(fields, envbuild.FieldClusterNodeID)
 	}
+	if m.reason != nil {
+		fields = append(fields, envbuild.FieldReason)
+	}
 	return fields
 }
 
@@ -4109,6 +4162,8 @@ func (m *EnvBuildMutation) Field(name string) (ent.Value, bool) {
 		return m.EnvdVersion()
 	case envbuild.FieldClusterNodeID:
 		return m.ClusterNodeID()
+	case envbuild.FieldReason:
+		return m.Reason()
 	}
 	return nil, false
 }
@@ -4150,6 +4205,8 @@ func (m *EnvBuildMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldEnvdVersion(ctx)
 	case envbuild.FieldClusterNodeID:
 		return m.OldClusterNodeID(ctx)
+	case envbuild.FieldReason:
+		return m.OldReason(ctx)
 	}
 	return nil, fmt.Errorf("unknown EnvBuild field %s", name)
 }
@@ -4271,6 +4328,13 @@ func (m *EnvBuildMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetClusterNodeID(v)
 		return nil
+	case envbuild.FieldReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReason(v)
+		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild field %s", name)
 }
@@ -4376,6 +4440,9 @@ func (m *EnvBuildMutation) ClearedFields() []string {
 	if m.FieldCleared(envbuild.FieldClusterNodeID) {
 		fields = append(fields, envbuild.FieldClusterNodeID)
 	}
+	if m.FieldCleared(envbuild.FieldReason) {
+		fields = append(fields, envbuild.FieldReason)
+	}
 	return fields
 }
 
@@ -4413,6 +4480,9 @@ func (m *EnvBuildMutation) ClearField(name string) error {
 		return nil
 	case envbuild.FieldClusterNodeID:
 		m.ClearClusterNodeID()
+		return nil
+	case envbuild.FieldReason:
+		m.ClearReason()
 		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild nullable field %s", name)
@@ -4469,6 +4539,9 @@ func (m *EnvBuildMutation) ResetField(name string) error {
 		return nil
 	case envbuild.FieldClusterNodeID:
 		m.ResetClusterNodeID()
+		return nil
+	case envbuild.FieldReason:
+		m.ResetReason()
 		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild field %s", name)
@@ -4560,6 +4633,7 @@ type SnapshotMutation struct {
 	metadata           *map[string]string
 	sandbox_started_at *time.Time
 	env_secure         *bool
+	origin_node_id     *string
 	clearedFields      map[string]struct{}
 	env                *string
 	clearedenv         bool
@@ -4924,6 +4998,42 @@ func (m *SnapshotMutation) ResetEnvSecure() {
 	m.env_secure = nil
 }
 
+// SetOriginNodeID sets the "origin_node_id" field.
+func (m *SnapshotMutation) SetOriginNodeID(s string) {
+	m.origin_node_id = &s
+}
+
+// OriginNodeID returns the value of the "origin_node_id" field in the mutation.
+func (m *SnapshotMutation) OriginNodeID() (r string, exists bool) {
+	v := m.origin_node_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOriginNodeID returns the old "origin_node_id" field's value of the Snapshot entity.
+// If the Snapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SnapshotMutation) OldOriginNodeID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOriginNodeID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOriginNodeID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOriginNodeID: %w", err)
+	}
+	return oldValue.OriginNodeID, nil
+}
+
+// ResetOriginNodeID resets all changes to the "origin_node_id" field.
+func (m *SnapshotMutation) ResetOriginNodeID() {
+	m.origin_node_id = nil
+}
+
 // ClearEnv clears the "env" edge to the Env entity.
 func (m *SnapshotMutation) ClearEnv() {
 	m.clearedenv = true
@@ -4985,7 +5095,7 @@ func (m *SnapshotMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SnapshotMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.created_at != nil {
 		fields = append(fields, snapshot.FieldCreatedAt)
 	}
@@ -5006,6 +5116,9 @@ func (m *SnapshotMutation) Fields() []string {
 	}
 	if m.env_secure != nil {
 		fields = append(fields, snapshot.FieldEnvSecure)
+	}
+	if m.origin_node_id != nil {
+		fields = append(fields, snapshot.FieldOriginNodeID)
 	}
 	return fields
 }
@@ -5029,6 +5142,8 @@ func (m *SnapshotMutation) Field(name string) (ent.Value, bool) {
 		return m.SandboxStartedAt()
 	case snapshot.FieldEnvSecure:
 		return m.EnvSecure()
+	case snapshot.FieldOriginNodeID:
+		return m.OriginNodeID()
 	}
 	return nil, false
 }
@@ -5052,6 +5167,8 @@ func (m *SnapshotMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldSandboxStartedAt(ctx)
 	case snapshot.FieldEnvSecure:
 		return m.OldEnvSecure(ctx)
+	case snapshot.FieldOriginNodeID:
+		return m.OldOriginNodeID(ctx)
 	}
 	return nil, fmt.Errorf("unknown Snapshot field %s", name)
 }
@@ -5109,6 +5226,13 @@ func (m *SnapshotMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetEnvSecure(v)
+		return nil
+	case snapshot.FieldOriginNodeID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOriginNodeID(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Snapshot field %s", name)
@@ -5179,6 +5303,9 @@ func (m *SnapshotMutation) ResetField(name string) error {
 		return nil
 	case snapshot.FieldEnvSecure:
 		m.ResetEnvSecure()
+		return nil
+	case snapshot.FieldOriginNodeID:
+		m.ResetOriginNodeID()
 		return nil
 	}
 	return fmt.Errorf("unknown Snapshot field %s", name)

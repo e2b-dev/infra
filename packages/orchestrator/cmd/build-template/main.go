@@ -149,15 +149,14 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 			kernelVersion,
 			fcVersion,
 		),
-		VCpuCount:       2,
-		MemoryMB:        1024,
-		StartCmd:        "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
-		DiskSizeMB:      1024,
-		BuildLogsWriter: logsWriter,
-		HugePages:       true,
+		VCpuCount:  2,
+		MemoryMB:   1024,
+		StartCmd:   "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
+		DiskSizeMB: 1024,
+		HugePages:  true,
 	}
 
-	_, err = builder.Build(ctx, config)
+	_, err = builder.Build(ctx, config, logsWriter)
 	if err != nil {
 		return fmt.Errorf("error building template: %w", err)
 	}

@@ -107,6 +107,20 @@ func (su *SnapshotUpdate) SetNillableEnvSecure(b *bool) *SnapshotUpdate {
 	return su
 }
 
+// SetOriginNodeID sets the "origin_node_id" field.
+func (su *SnapshotUpdate) SetOriginNodeID(s string) *SnapshotUpdate {
+	su.mutation.SetOriginNodeID(s)
+	return su
+}
+
+// SetNillableOriginNodeID sets the "origin_node_id" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillableOriginNodeID(s *string) *SnapshotUpdate {
+	if s != nil {
+		su.SetOriginNodeID(*s)
+	}
+	return su
+}
+
 // SetEnv sets the "env" edge to the Env entity.
 func (su *SnapshotUpdate) SetEnv(e *Env) *SnapshotUpdate {
 	return su.SetEnvID(e.ID)
@@ -190,6 +204,9 @@ func (su *SnapshotUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if value, ok := su.mutation.EnvSecure(); ok {
 		_spec.SetField(snapshot.FieldEnvSecure, field.TypeBool, value)
+	}
+	if value, ok := su.mutation.OriginNodeID(); ok {
+		_spec.SetField(snapshot.FieldOriginNodeID, field.TypeString, value)
 	}
 	if su.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -322,6 +339,20 @@ func (suo *SnapshotUpdateOne) SetNillableEnvSecure(b *bool) *SnapshotUpdateOne {
 	return suo
 }
 
+// SetOriginNodeID sets the "origin_node_id" field.
+func (suo *SnapshotUpdateOne) SetOriginNodeID(s string) *SnapshotUpdateOne {
+	suo.mutation.SetOriginNodeID(s)
+	return suo
+}
+
+// SetNillableOriginNodeID sets the "origin_node_id" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillableOriginNodeID(s *string) *SnapshotUpdateOne {
+	if s != nil {
+		suo.SetOriginNodeID(*s)
+	}
+	return suo
+}
+
 // SetEnv sets the "env" edge to the Env entity.
 func (suo *SnapshotUpdateOne) SetEnv(e *Env) *SnapshotUpdateOne {
 	return suo.SetEnvID(e.ID)
@@ -435,6 +466,9 @@ func (suo *SnapshotUpdateOne) sqlSave(ctx context.Context) (_node *Snapshot, err
 	}
 	if value, ok := suo.mutation.EnvSecure(); ok {
 		_spec.SetField(snapshot.FieldEnvSecure, field.TypeBool, value)
+	}
+	if value, ok := suo.mutation.OriginNodeID(); ok {
+		_spec.SetField(snapshot.FieldOriginNodeID, field.TypeString, value)
 	}
 	if suo.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{

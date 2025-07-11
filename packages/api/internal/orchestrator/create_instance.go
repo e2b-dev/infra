@@ -5,7 +5,6 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
@@ -46,7 +45,7 @@ func (o *Orchestrator) CreateSandbox(
 	endTime time.Time,
 	timeout time.Duration,
 	isResume bool,
-	clientID *string,
+	nodeID *string,
 	baseTemplateID string,
 	autoPause bool,
 	envdAuthToken *string,
@@ -132,10 +131,10 @@ func (o *Orchestrator) CreateSandbox(
 
 	var node *Node
 
-	if isResume && clientID != nil {
+	if isResume && nodeID != nil {
 		telemetry.ReportEvent(childCtx, "Placing sandbox on the node where the snapshot was taken")
 
-		node, _ = o.nodes.Get(*clientID)
+		node, _ = o.nodes.Get(*nodeID)
 		if node != nil && node.Status() != api.NodeStatusReady {
 			node = nil
 		}
@@ -191,7 +190,7 @@ func (o *Orchestrator) CreateSandbox(
 
 		node.sbxsInProgress.Remove(sandboxID)
 
-		log.Printf("failed to create sandbox '%s' on node '%s', attempt #%d: %v", sandboxID, node.Info.ID, attempt, utils.UnwrapGRPCError(err))
+		zap.L().Error("Failed to create sandbox", logger.WithSandboxID(sandboxID), logger.WithNodeID(node.Info.ID), zap.Int("attempt", attempt), zap.Error(utils.UnwrapGRPCError(err)))
 
 		// The node is not available, try again with another node
 		node.createFails.Add(1)

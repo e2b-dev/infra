@@ -73,9 +73,6 @@ job "api" {
         POSTGRES_CONNECTION_STRING     = "${postgres_connection_string}"
         SUPABASE_JWT_SECRETS           = "${supabase_jwt_secrets}"
         CLICKHOUSE_CONNECTION_STRING   = "${clickhouse_connection_string}"
-        CLICKHOUSE_USERNAME            = "${clickhouse_username}"
-        CLICKHOUSE_PASSWORD            = "${clickhouse_password}"
-        CLICKHOUSE_DATABASE            = "${clickhouse_database}"
         ENVIRONMENT                    = "${environment}"
         POSTHOG_API_KEY                = "${posthog_api_key}"
         ANALYTICS_COLLECTOR_HOST       = "${analytics_collector_host}"
@@ -90,6 +87,11 @@ job "api" {
         REDIS_CLUSTER_URL              = "${redis_cluster_url}"
         DNS_PORT                       = "${dns_port_number}"
         SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
+
+
+%{ if launch_darkly_api_key != "" }
+        LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
+%{ endif }
 
         # This is here just because it is required in some part of our code which is transitively imported
         TEMPLATE_BUCKET_NAME          = "skip"

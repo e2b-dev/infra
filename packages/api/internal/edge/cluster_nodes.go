@@ -43,11 +43,11 @@ func (c *Cluster) startSync() {
 }
 
 func (c *Cluster) syncNode(ctx context.Context, node *ClusterNode) {
-	client, clientMetadata := c.GetGrpcClient(node.ServiceInstanceID)
+	grpc := c.GetGRPC(node.ServiceInstanceID)
 
 	// we are taking service info directly from the node to avoid timing delays in service discovery
-	reqCtx := metadata.NewOutgoingContext(ctx, clientMetadata)
-	info, err := client.Info.ServiceInfo(reqCtx, &emptypb.Empty{})
+	reqCtx := metadata.NewOutgoingContext(ctx, grpc.Metadata)
+	info, err := grpc.Client.Info.ServiceInfo(reqCtx, &emptypb.Empty{})
 
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {

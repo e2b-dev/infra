@@ -16,7 +16,7 @@ import (
 
 type AwsEc2ServiceDiscovery struct {
 	logger  *zap.Logger
-	entries *smap.Map[*ServiceDiscoveryItem]
+	entries *smap.Map[ServiceDiscoveryItem]
 	client  *ec2.Client
 
 	port    int
@@ -50,7 +50,7 @@ func NewAwsEc2ServiceDiscovery(ctx context.Context, region string, filterTagsKey
 		port:    port,
 		filters: filters,
 
-		entries: smap.New[*ServiceDiscoveryItem](),
+		entries: smap.New[ServiceDiscoveryItem](),
 	}
 
 	go func() { sd.keepInSync(ctx) }()
@@ -58,9 +58,9 @@ func NewAwsEc2ServiceDiscovery(ctx context.Context, region string, filterTagsKey
 	return sd, nil
 }
 
-func (sd *AwsEc2ServiceDiscovery) ListNodes(_ context.Context) ([]*ServiceDiscoveryItem, error) {
+func (sd *AwsEc2ServiceDiscovery) ListNodes(_ context.Context) ([]ServiceDiscoveryItem, error) {
 	entries := sd.entries.Items()
-	items := make([]*ServiceDiscoveryItem, 0)
+	items := make([]ServiceDiscoveryItem, 0)
 
 	for _, item := range entries {
 		items = append(items, item)
@@ -117,7 +117,7 @@ func (sd *AwsEc2ServiceDiscovery) sync(ctx context.Context) {
 				key := fmt.Sprintf("%s:%d", ip, sd.port)
 
 				sd.entries.Insert(
-					key, &ServiceDiscoveryItem{NodeIp: ip, NodePort: sd.port},
+					key, ServiceDiscoveryItem{NodeIP: ip, NodePort: sd.port},
 				)
 
 				instancesHosts[key] = key

@@ -191,6 +191,7 @@ func (db *DB) FinishEnvBuild(
 		SetTotalDiskSizeMB(totalDiskSizeMB).
 		SetStatus(envbuild.StatusUploaded).
 		SetEnvdVersion(envdVersion).
+		SetNillableReason(nil).
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to finish template build '%s': %w", buildID, err)

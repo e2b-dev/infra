@@ -28,10 +28,11 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -61,12 +62,10 @@ type APIStore struct {
 	templateBuildsCache      *templatecache.TemplatesBuildCache
 	authCache                *authcache.TeamAuthCache
 	templateSpawnCounter     *utils.TemplateSpawnCounter
-	clickhouseStore          chdb.Store
+	clickhouseStore          clickhouse.Clickhouse
 	envdAccessTokenGenerator *sandbox.EnvdAccessTokenGenerator
-	// should use something like this: https://github.com/spf13/viper
-	// but for now this is good
-	readMetricsFromClickHouse string
-	clustersPool              *edge.Pool
+	featureFlags             *featureflags.Client
+	clustersPool             *edge.Pool
 }
 
 func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
@@ -86,17 +85,13 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 
 	zap.L().Info("Created database client")
 
-	readMetricsFromClickHouse := os.Getenv("READ_METRICS_FROM_CLICKHOUSE")
-	var clickhouseStore chdb.Store = nil
+	var clickhouseStore clickhouse.Clickhouse
 
-	if readMetricsFromClickHouse == "true" {
-		clickhouseStore, err = chdb.NewStore(chdb.ClickHouseConfig{
-			ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
-			Username:         os.Getenv("CLICKHOUSE_USERNAME"),
-			Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
-			Database:         os.Getenv("CLICKHOUSE_DATABASE"),
-			Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
-		})
+	clickhouseConnectionString := strings.TrimSpace(os.Getenv("CLICKHOUSE_CONNECTION_STRING"))
+	if clickhouseConnectionString == "" {
+		clickhouseStore = clickhouse.NewNoopClient()
+	} else {
+		clickhouseStore, err = clickhouse.New(clickhouseConnectionString)
 		if err != nil {
 			zap.L().Fatal("initializing ClickHouse store", zap.Error(err))
 		}
@@ -182,24 +177,29 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 	// Start the periodic sync of template builds statuses
 	go templateManager.BuildsStatusPeriodicalSync(ctx)
 
+	featureFlags, err := featureflags.NewClient()
+	if err != nil {
+		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
+	}
+
 	a := &APIStore{
-		Healthy:                   false,
-		orchestrator:              orch,
-		templateManager:           templateManager,
-		db:                        dbClient,
-		sqlcDB:                    sqlcDB,
-		Telemetry:                 tel,
-		Tracer:                    tracer,
-		posthog:                   posthogClient,
-		lokiClient:                lokiClient,
-		templateCache:             templateCache,
-		templateBuildsCache:       templateBuildsCache,
-		authCache:                 authCache,
-		templateSpawnCounter:      templateSpawnCounter,
-		clickhouseStore:           clickhouseStore,
-		envdAccessTokenGenerator:  accessTokenGenerator,
-		readMetricsFromClickHouse: readMetricsFromClickHouse,
-		clustersPool:              clustersPool,
+		Healthy:                  false,
+		orchestrator:             orch,
+		templateManager:          templateManager,
+		db:                       dbClient,
+		sqlcDB:                   sqlcDB,
+		Telemetry:                tel,
+		Tracer:                   tracer,
+		posthog:                  posthogClient,
+		lokiClient:               lokiClient,
+		templateCache:            templateCache,
+		templateBuildsCache:      templateBuildsCache,
+		authCache:                authCache,
+		templateSpawnCounter:     templateSpawnCounter,
+		clickhouseStore:          clickhouseStore,
+		envdAccessTokenGenerator: accessTokenGenerator,
+		clustersPool:             clustersPool,
+		featureFlags:             featureFlags,
 	}
 
 	// Wait till there's at least one, otherwise we can't create sandboxes yet

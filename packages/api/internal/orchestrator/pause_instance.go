@@ -50,6 +50,7 @@ func (o *Orchestrator) PauseInstance(
 		ctx,
 		snapshotConfig,
 		teamID,
+		sbx.Node.ID,
 	)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)
@@ -84,9 +85,9 @@ func snapshotInstance(ctx context.Context, orch *Orchestrator, sbx *instance.Ins
 	_, childSpan := orch.tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
 
-	client, err := orch.GetClient(sbx.Instance.ClientID)
+	client, err := orch.GetClient(sbx.Node.ID)
 	if err != nil {
-		return fmt.Errorf("failed to get client '%s': %w", sbx.Instance.ClientID, err)
+		return fmt.Errorf("failed to get client '%s': %w", sbx.Node.ID, err)
 	}
 
 	_, err = client.Sandbox.Pause(ctx, &orchestrator.SandboxPauseRequest{

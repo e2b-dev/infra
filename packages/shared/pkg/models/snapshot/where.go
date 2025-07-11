@@ -87,6 +87,11 @@ func EnvSecure(v bool) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldEQ(FieldEnvSecure, v))
 }
 
+// OriginNodeID applies equality check predicate on the "origin_node_id" field. It's identical to OriginNodeIDEQ.
+func OriginNodeID(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldOriginNodeID, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldEQ(FieldCreatedAt, v))
@@ -370,6 +375,71 @@ func EnvSecureEQ(v bool) predicate.Snapshot {
 // EnvSecureNEQ applies the NEQ predicate on the "env_secure" field.
 func EnvSecureNEQ(v bool) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldNEQ(FieldEnvSecure, v))
+}
+
+// OriginNodeIDEQ applies the EQ predicate on the "origin_node_id" field.
+func OriginNodeIDEQ(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldOriginNodeID, v))
+}
+
+// OriginNodeIDNEQ applies the NEQ predicate on the "origin_node_id" field.
+func OriginNodeIDNEQ(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNEQ(FieldOriginNodeID, v))
+}
+
+// OriginNodeIDIn applies the In predicate on the "origin_node_id" field.
+func OriginNodeIDIn(vs ...string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldIn(FieldOriginNodeID, vs...))
+}
+
+// OriginNodeIDNotIn applies the NotIn predicate on the "origin_node_id" field.
+func OriginNodeIDNotIn(vs ...string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNotIn(FieldOriginNodeID, vs...))
+}
+
+// OriginNodeIDGT applies the GT predicate on the "origin_node_id" field.
+func OriginNodeIDGT(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldGT(FieldOriginNodeID, v))
+}
+
+// OriginNodeIDGTE applies the GTE predicate on the "origin_node_id" field.
+func OriginNodeIDGTE(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldGTE(FieldOriginNodeID, v))
+}
+
+// OriginNodeIDLT applies the LT predicate on the "origin_node_id" field.
+func OriginNodeIDLT(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldLT(FieldOriginNodeID, v))
+}
+
+// OriginNodeIDLTE applies the LTE predicate on the "origin_node_id" field.
+func OriginNodeIDLTE(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldLTE(FieldOriginNodeID, v))
+}
+
+// OriginNodeIDContains applies the Contains predicate on the "origin_node_id" field.
+func OriginNodeIDContains(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldContains(FieldOriginNodeID, v))
+}
+
+// OriginNodeIDHasPrefix applies the HasPrefix predicate on the "origin_node_id" field.
+func OriginNodeIDHasPrefix(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldHasPrefix(FieldOriginNodeID, v))
+}
+
+// OriginNodeIDHasSuffix applies the HasSuffix predicate on the "origin_node_id" field.
+func OriginNodeIDHasSuffix(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldHasSuffix(FieldOriginNodeID, v))
+}
+
+// OriginNodeIDEqualFold applies the EqualFold predicate on the "origin_node_id" field.
+func OriginNodeIDEqualFold(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEqualFold(FieldOriginNodeID, v))
+}
+
+// OriginNodeIDContainsFold applies the ContainsFold predicate on the "origin_node_id" field.
+func OriginNodeIDContainsFold(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldContainsFold(FieldOriginNodeID, v))
 }
 
 // HasEnv applies the HasEdge predicate on the "env" edge.

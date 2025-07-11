@@ -12,7 +12,7 @@ import (
 )
 
 const getLastSnapshot = `-- name: GetLastSnapshot :one
-SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, s.created_at, s.env_id, s.sandbox_id, s.id, s.metadata, s.base_env_id, s.sandbox_started_at, s.env_secure, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id
+SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, s.created_at, s.env_id, s.sandbox_id, s.id, s.metadata, s.base_env_id, s.sandbox_started_at, s.env_secure, s.origin_node_id, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason
 FROM "public"."snapshots" s
 JOIN "public"."envs" e ON s.env_id  = e.id
 JOIN "public"."env_builds" eb ON e.id = eb.env_id
@@ -50,6 +50,7 @@ func (q *Queries) GetLastSnapshot(ctx context.Context, arg GetLastSnapshotParams
 		&i.Snapshot.BaseEnvID,
 		&i.Snapshot.SandboxStartedAt,
 		&i.Snapshot.EnvSecure,
+		&i.Snapshot.OriginNodeID,
 		&i.EnvBuild.ID,
 		&i.EnvBuild.CreatedAt,
 		&i.EnvBuild.UpdatedAt,
@@ -67,6 +68,7 @@ func (q *Queries) GetLastSnapshot(ctx context.Context, arg GetLastSnapshotParams
 		&i.EnvBuild.EnvdVersion,
 		&i.EnvBuild.ReadyCmd,
 		&i.EnvBuild.ClusterNodeID,
+		&i.EnvBuild.Reason,
 	)
 	return i, err
 }

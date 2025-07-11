@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -122,7 +123,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 	}
 
 	if !found {
-		zap.L().Info("Node is not active anymore", zap.String("node_id", node.Info.ID))
+		zap.L().Info("Node is not active anymore", logger.WithNodeID(node.Info.ID))
 
 		// Close the connection to the node
 		err := node.Client.Close()
@@ -147,7 +148,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 		// update node status (if changed)
 		nodeStatus, ok := OrchestratorToApiNodeStateMapper[nodeInfo.ServiceStatus]
 		if !ok {
-			zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.ServiceStatus), zap.String("node_id", node.Info.ID))
+			zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.ServiceStatus), logger.WithNodeID(node.Info.ID))
 			nodeStatus = api.NodeStatusUnhealthy
 		}
 
@@ -167,7 +168,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 	}
 
 	if !syncRetrySuccess {
-		zap.L().Error("Failed to sync node after max retries, temporarily marking as unhealthy", zap.String("node_id", node.Info.ID))
+		zap.L().Error("Failed to sync node after max retries, temporarily marking as unhealthy", logger.WithNodeID(node.Info.ID))
 		node.setStatus(api.NodeStatusUnhealthy)
 		return
 	}
@@ -226,11 +227,10 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			duration,
 		)
 
-		node := o.GetNode(info.Instance.ClientID)
+		node := o.GetNode(info.Node.ID)
 		if node == nil {
-			zap.L().Error("failed to get node", zap.String("node_id", info.Instance.ClientID))
-
-			return fmt.Errorf("node '%s' not found", info.Instance.ClientID)
+			zap.L().Error("failed to get node", logger.WithNodeID(info.Node.ID))
+			return fmt.Errorf("node '%s' not found", info.Node.ID)
 		}
 
 		node.CPUUsage.Add(-info.VCpu)
@@ -239,9 +239,8 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		o.dns.Remove(ctx, info.Instance.SandboxID, node.Info.IPAddress)
 
 		if node.Client == nil {
-			zap.L().Error("client for node not found", zap.String("node_id", info.Instance.ClientID))
-
-			return fmt.Errorf("client for node '%s' not found", info.Instance.ClientID)
+			zap.L().Error("client for node not found", logger.WithNodeID(info.Node.ID))
+			return fmt.Errorf("client for node '%s' not found", info.Node.ID)
 		}
 
 		if ct == ClosePause {
@@ -330,9 +329,9 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 			zap.Bool("auto_pause", info.AutoPause.Load()),
 		)
 
-		node := o.GetNode(info.Instance.ClientID)
+		node := o.GetNode(info.Node.ID)
 		if node == nil {
-			zap.L().Error("failed to get node", zap.String("node_id", info.Instance.ClientID))
+			zap.L().Error("failed to get node", logger.WithNodeID(info.Node.ID))
 		} else {
 			node.CPUUsage.Add(info.VCpu)
 			node.RamUsage.Add(info.RamMB)
