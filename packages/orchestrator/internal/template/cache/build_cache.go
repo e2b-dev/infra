@@ -18,6 +18,8 @@ import (
 
 const (
 	buildInfoExpiration = time.Minute * 10 // 10 minutes
+
+	cancelledBuildReason = "build was cancelled"
 )
 
 type BuildInfo struct {
@@ -84,10 +86,24 @@ func (b *BuildInfo) GetLogs() []string {
 }
 
 func (b *BuildInfo) Cancel() {
+	b.fail(cancelledBuildReason)
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.ctxCancel()
+}
+
+func (b *BuildInfo) fail(reason string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	b.ctxCancel()
+	if b.status != template_manager.TemplateBuildState_Building {
+		return fmt.Errorf("build is not running, cannot fail it")
+	}
+
+	b.status = template_manager.TemplateBuildState_Failed
+	b.reason = &reason
+	return nil
 }
 
 type BuildCache struct {
@@ -186,9 +202,7 @@ func (c *BuildCache) SetFailed(buildID string, reason string) error {
 		return fmt.Errorf("build %s not found in cache: %w", buildID, err)
 	}
 
-	item.status = template_manager.TemplateBuildState_Failed
-	item.reason = &reason
-	return nil
+	return item.fail(reason)
 }
 
 func (c *BuildCache) Delete(buildID string) {
