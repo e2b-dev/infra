@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace/noop"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 )
@@ -46,7 +47,7 @@ func TestCreateExportLayersOrder(t *testing.T) {
 	ctx := t.Context()
 
 	tracer := noop.NewTracerProvider().Tracer("test")
-	postProcessor := writer.NewPostProcessor(ctx, io.Discard)
+	postProcessor := writer.NewPostProcessor(ctx, zap.NewNop(), false)
 
 	// Create a dummy image with some layers
 	img := empty.Image

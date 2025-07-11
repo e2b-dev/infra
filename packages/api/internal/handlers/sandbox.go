@@ -27,7 +27,7 @@ func (a *APIStore) startSandbox(
 	build queries.EnvBuild,
 	requestHeader *http.Header,
 	isResume bool,
-	clientID *string,
+	nodeID *string,
 	baseTemplateID string,
 	autoPause bool,
 	envdAccessToken *string,
@@ -50,7 +50,7 @@ func (a *APIStore) startSandbox(
 		endTime,
 		timeout,
 		isResume,
-		clientID,
+		nodeID,
 		baseTemplateID,
 		autoPause,
 		envdAccessToken,
@@ -89,12 +89,5 @@ func (a *APIStore) startSandbox(
 		TeamID:     team.Team.ID.String(),
 	}).Info("Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
 
-	return &api.Sandbox{
-		ClientID:        sandbox.ClientID,
-		SandboxID:       sandbox.SandboxID,
-		TemplateID:      *build.EnvID,
-		Alias:           &alias,
-		EnvdVersion:     *build.EnvdVersion,
-		EnvdAccessToken: envdAccessToken,
-	}, nil
+	return sandbox, nil
 }

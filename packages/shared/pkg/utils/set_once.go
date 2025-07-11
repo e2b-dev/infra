@@ -6,6 +6,12 @@ import (
 	"sync"
 )
 
+type ErrNotSet struct{}
+
+func (e ErrNotSet) Error() string {
+	return "value not set"
+}
+
 type result[T any] struct {
 	value T
 	err   error
@@ -13,16 +19,17 @@ type result[T any] struct {
 
 type SetOnce[T any] struct {
 	setDone func()
-	done    chan struct{}
-	res     *result[T]
-	mu      sync.RWMutex
+	// Don't close the channel from outside, it's used to signal that the value is set.
+	Done chan struct{}
+	res  *result[T]
+	mu   sync.RWMutex
 }
 
 func NewSetOnce[T any]() *SetOnce[T] {
 	done := make(chan struct{})
 
 	return &SetOnce[T]{
-		done: done,
+		Done: done,
 		setDone: sync.OnceFunc(func() {
 			close(done)
 		}),
@@ -43,7 +50,7 @@ func (s *SetOnce[T]) setResult(r result[T]) error {
 	defer s.setDone()
 
 	select {
-	case <-s.done:
+	case <-s.Done:
 		return fmt.Errorf("value already set")
 	default:
 		// not set yet, so try to set it
@@ -63,10 +70,23 @@ func (s *SetOnce[T]) setResult(r result[T]) error {
 // Wait returns the value or error set by SetValue or SetError.
 // It can be called multiple times, returning the same value or error.
 func (s *SetOnce[T]) Wait() (T, error) {
-	<-s.done
+	<-s.Done
 
+	return s.Result()
+}
+
+// Result returns the value or error set by SetValue or SetError.
+// It can be called multiple times, returning the same value or error.
+// If called before the value is set, it will return the zero value and ErrNotSet error.
+func (s *SetOnce[T]) Result() (T, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
+	if s.res == nil {
+		var zero T
+
+		return zero, ErrNotSet{}
+	}
 
 	return s.res.value, s.res.err
 }
@@ -74,11 +94,8 @@ func (s *SetOnce[T]) Wait() (T, error) {
 // WaitWithContext TODO: Use waitWithContext in all places instead of Wait.
 func (s *SetOnce[T]) WaitWithContext(ctx context.Context) (T, error) {
 	select {
-	case <-s.done:
-		s.mu.RLock()
-		defer s.mu.RUnlock()
-
-		return s.res.value, s.res.err
+	case <-s.Done:
+		return s.Result()
 	case <-ctx.Done():
 		var zero T
 

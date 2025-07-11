@@ -29,14 +29,14 @@ func (a *APIStore) V1SandboxCatalogCreate(c *gin.Context) {
 
 	sbxMaxLifetime := time.Duration(body.SandboxMaxLength) * time.Hour
 	sbxInfo := &sandboxes.SandboxInfo{
-		OrchestratorId: body.OrchestratorId,
-		ExecutionId:    body.ExecutionId,
+		OrchestratorID: body.OrchestratorID,
+		ExecutionID:    body.ExecutionID,
 
 		SandboxMaxLengthInHours: body.SandboxMaxLength,
 		SandboxStartedAt:        body.SandboxStartTime,
 	}
 
-	err = a.sandboxes.StoreSandbox(body.SandboxId, sbxInfo, sbxMaxLifetime)
+	err = a.sandboxes.StoreSandbox(body.SandboxID, sbxInfo, sbxMaxLifetime)
 	if err != nil {
 		zap.L().Error("Error when storing sandbox in catalog", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when storing sandbox in catalog")
@@ -44,6 +44,6 @@ func (a *APIStore) V1SandboxCatalogCreate(c *gin.Context) {
 		return
 	}
 
-	zap.L().Info("Sandbox successfully stored in catalog", l.WithSandboxID(body.SandboxId))
+	zap.L().Info("Sandbox successfully stored in catalog", l.WithSandboxID(body.SandboxID))
 	c.Status(http.StatusOK)
 }

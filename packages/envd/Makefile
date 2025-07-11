@@ -18,9 +18,11 @@ build-debug:
 	CGO_ENABLED=1 go build -race -gcflags=all="-N -l" -o bin/debug/envd ${LDFLAGS}
 
 start-docker:
-	DOCKER_BUILDKIT=1 docker build -t envd-debug . -f debug.Dockerfile
+	make build
+	DOCKER_BUILDKIT=1 docker build --platform linux/amd64 -t envd-debug . -f debug.Dockerfile
 	docker run \
 	--name envd \
+	--platform linux/amd64 \
 	-p 49983:49983 \
 	-p 2345:2345 \
 	-p 9999:9999 \
@@ -37,8 +39,8 @@ build-and-upload:
 .PHONY: generate
 generate:
 	go generate ./...
-	cd spec && go tool buf generate --template buf.gen.yaml
-	cd spec && go tool buf generate --template buf.gen.shared.yaml
+	docker build -t proto-gen -f generate.Dockerfile .
+	docker run --rm -v .:/workspace -v ./../shared/pkg/grpc:/shared/pkg/grpc proto-gen
 
 .PHONY: test
 test:

@@ -24,7 +24,7 @@ func (g *LocalArtifactsRegistry) GetTag(ctx context.Context, templateId string, 
 	return fmt.Sprintf("%s:%s", templateId, buildId), nil
 }
 
-func (g *LocalArtifactsRegistry) GetImage(ctx context.Context, templateId string, buildId string, platform containerregistry.Platform) (containerregistry.Image, error) {
+func (g *LocalArtifactsRegistry) GetImage(ctx context.Context, templateId string, buildId string, _ containerregistry.Platform) (containerregistry.Image, error) {
 	imageUrl, err := g.GetTag(ctx, templateId, buildId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get image URL: %w", err)

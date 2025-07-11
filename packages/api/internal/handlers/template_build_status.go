@@ -4,16 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -21,16 +19,6 @@ import (
 // GetTemplatesTemplateIDBuildsBuildIDStatus serves to get a template build status (e.g. to CLI)
 func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, templateID api.TemplateID, buildID api.BuildID, params api.GetTemplatesTemplateIDBuildsBuildIDStatusParams) {
 	ctx := c.Request.Context()
-
-	userID := c.Value(auth.UserIDContextKey).(uuid.UUID)
-	teams, err := a.sqlcDB.GetTeamsWithUsersTeams(ctx, userID)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get the default team")
-
-		telemetry.ReportCriticalError(ctx, "error when getting teams", err)
-
-		return
-	}
 
 	buildUUID, err := uuid.Parse(buildID)
 	if err != nil {
@@ -56,15 +44,15 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	var team *queries.Team
-	for _, t := range teams {
-		if t.Team.ID == buildInfo.TeamID {
-			team = &t.Team
-			break
-		}
+	infoTeamID := buildInfo.TeamID.String()
+	team, _, apiErr := a.GetTeamAndTier(c, &infoTeamID)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+		return
 	}
 
-	if team == nil {
+	if team.ID != buildInfo.TeamID {
 		telemetry.ReportError(ctx, "user doesn't have access to env", fmt.Errorf("user doesn't have access to env '%s'", templateID), telemetry.WithTemplateID(templateID))
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to this sandbox template (%s)", templateID))
 		return
@@ -83,20 +71,40 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	logs := make([]string, 0)
-	l, err := a.templateManager.GetLogs(ctx, buildUUID, templateID, team.ClusterID, buildInfo.ClusterNodeID, params.LogsOffset)
-	if err != nil {
-		zap.L().Error("Failed to get build logs", zap.Error(err), logger.WithBuildID(buildID), logger.WithTemplateID(templateID))
-	} else {
-		logs = l
-	}
-
+	// Needs to be before logs request so the status is not set to done too early
 	result := api.TemplateBuild{
-		Logs:       logs,
+		Logs:       nil,
 		TemplateID: templateID,
 		BuildID:    buildID,
 		Status:     getCorrespondingTemplateBuildStatus(buildInfo.BuildStatus),
+		Reason:     buildInfo.Reason,
 	}
+
+	cli, err := a.templateManager.GetBuildClient(team.ClusterID, buildInfo.ClusterNodeID, false)
+	if err != nil {
+		telemetry.ReportError(ctx, "error when getting build client", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting build client")
+		return
+	}
+
+	lgs := make([]string, 0)
+	logEntries := make([]api.BuildLogEntry, 0)
+	offset := int32(0)
+	if params.LogsOffset != nil {
+		offset = *params.LogsOffset
+	}
+
+	for _, entry := range cli.GetLogs(ctx, templateID, buildID, offset, apiToLogLevel(params.Level)) {
+		lgs = append(lgs, fmt.Sprintf("[%s] %s\n", entry.Timestamp.Format(time.RFC3339), entry.Message))
+		logEntries = append(logEntries, api.BuildLogEntry{
+			Timestamp: entry.Timestamp,
+			Message:   entry.Message,
+			Level:     api.LogLevel(logs.LevelToString(entry.Level)),
+		})
+	}
+
+	result.Logs = lgs
+	result.LogEntries = logEntries
 
 	c.JSON(http.StatusOK, result)
 }
@@ -112,4 +120,13 @@ func getCorrespondingTemplateBuildStatus(s envbuild.Status) api.TemplateBuildSta
 	default:
 		return api.TemplateBuildStatusBuilding
 	}
+}
+
+func apiToLogLevel(level *api.LogLevel) *logs.LogLevel {
+	if level == nil {
+		return nil
+	}
+
+	value := logs.StringToLevel(string(*level))
+	return &value
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -26,12 +27,24 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	sandboxId := strings.Split(id, "-")[0]
 
+	var sbxDomain *string
+	if team.ClusterID != nil {
+		cluster, ok := a.clustersPool.GetClusterById(*team.ClusterID)
+		if !ok {
+			zap.L().Error("Sandbox attached cluster not found", logger.WithClusterID(*team.ClusterID))
+			c.JSON(http.StatusInternalServerError, fmt.Sprintf("cluster with id %s not found", *team.ClusterID))
+			return
+		}
+
+		sbxDomain = cluster.SandboxDomain
+	}
+
 	// Try to get the running sandbox first
 	info, err := a.orchestrator.GetInstance(ctx, sandboxId)
 	if err == nil {
 		// Check if sandbox belongs to the team
 		if *info.TeamID != team.ID {
-			zap.L().Error("sandbox %s doesn't exist or you don't have access to it", logger.WithSandboxID(id))
+			zap.L().Warn("sandbox doesn't exist or you don't have access to it", logger.WithSandboxID(id))
 			c.JSON(http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 			return
 		}
@@ -49,6 +62,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			State:           api.Running,
 			EnvdVersion:     &info.EnvdVersion,
 			EnvdAccessToken: info.EnvdAccessToken,
+			Domain:          sbxDomain,
 		}
 
 		if info.Metadata != nil {
@@ -63,7 +77,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	// If sandbox not found try to get the latest snapshot
 	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxId, TeamID: team.ID})
 	if err != nil {
-		zap.L().Error("error getting last snapshot for sandbox", logger.WithSandboxID(id), zap.Error(err))
+		zap.L().Warn("error getting last snapshot for sandbox", logger.WithSandboxID(id), zap.Error(err))
 		c.JSON(http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 		return
 	}
@@ -84,7 +98,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	sandbox := api.SandboxDetail{
-		ClientID:        "00000000", // for backwards compatibility we need to return a client id
+		ClientID:        consts.ClientID, // for backwards compatibility we need to return a client id
 		TemplateID:      lastSnapshot.Snapshot.EnvID,
 		SandboxID:       lastSnapshot.Snapshot.SandboxID,
 		StartedAt:       lastSnapshot.Snapshot.SandboxStartedAt.Time,
@@ -94,6 +108,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		State:           api.Paused,
 		EnvdVersion:     lastSnapshot.EnvBuild.EnvdVersion,
 		EnvdAccessToken: sbxAccessToken,
+		Domain:          nil,
 	}
 
 	if lastSnapshot.Snapshot.Metadata != nil {

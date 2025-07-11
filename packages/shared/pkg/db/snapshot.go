@@ -34,6 +34,7 @@ func (db *DB) NewSnapshotBuild(
 	ctx context.Context,
 	snapshotConfig *SnapshotInfo,
 	teamID uuid.UUID,
+	originNodeID string,
 ) (*models.EnvBuild, error) {
 	tx, err := db.Client.BeginTx(ctx, nil)
 	if err != nil {
@@ -83,6 +84,7 @@ func (db *DB) NewSnapshotBuild(
 			SetMetadata(snapshotConfig.Metadata).
 			SetSandboxStartedAt(snapshotConfig.SandboxStartedAt).
 			SetEnvSecure(snapshotConfig.EnvdSecured).
+			SetOriginNodeID(originNodeID).
 			Exec(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create snapshot '%s': %w", snapshotConfig.SandboxID, err)
@@ -95,6 +97,7 @@ func (db *DB) NewSnapshotBuild(
 			UpdateOne(s).
 			SetMetadata(snapshotConfig.Metadata).
 			SetSandboxStartedAt(snapshotConfig.SandboxStartedAt).
+			SetOriginNodeID(originNodeID).
 			Exec(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update snapshot '%s': %w", snapshotConfig.SandboxID, err)

@@ -91,12 +91,10 @@ resource "nomad_job" "api" {
     redis_url                      = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "" : "redis.service.consul:${var.redis_port.port}"
     redis_cluster_url              = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
     dns_port_number                = var.api_dns_port_number
-    clickhouse_connection_string   = "clickhouse.service.consul:9000"
-    clickhouse_username            = var.clickhouse_username
-    clickhouse_password            = random_password.clickhouse_password.result
-    clickhouse_database            = var.clickhouse_database
+    clickhouse_connection_string   = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : 0
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
     db_migrator_docker_image       = docker_image.db_migrator_image.repo_digest
+    launch_darkly_api_key          = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   })
 }
 
@@ -482,6 +480,7 @@ resource "nomad_job" "template_manager" {
     template_manager_checksum    = data.external.template_manager.result.hex
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
+    build_cache_bucket_name      = var.build_cache_bucket_name
     otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
     logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
     logs_collector_public_ip     = var.logs_proxy_address

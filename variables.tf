@@ -50,6 +50,18 @@ variable "build_machine_type" {
   type = string
 }
 
+variable "build_cluster_root_disk_size_gb" {
+  type        = number
+  description = "The size of the root disk for the build machines in GB"
+  default     = 200
+}
+
+variable "build_cluster_cache_disk_size_gb" {
+  type        = number
+  description = "The size of the cache disk for the build machines in GB"
+  default     = 200
+}
+
 variable "clickhouse_cluster_size" {
   type = number
 }
@@ -213,7 +225,7 @@ variable "allow_sandbox_internet" {
 
 variable "client_cluster_cache_disk_size_gb" {
   type        = number
-  description = "The size of the root disk for the orchestrator machines in GB"
+  description = "The size of the cache disk for the orchestrator machines in GB"
   default     = 500
 }
 

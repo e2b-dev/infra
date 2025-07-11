@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -28,12 +29,12 @@ func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanag
 		return nil, errors.New("template id and build id are required fields")
 	}
 
-	c, err := s.buildCache.Get(in.BuildID)
-	if err == nil {
-		// Only handle if the build is in the cache
-		zap.L().Info("Canceling running template build", logger.WithTemplateID(in.TemplateID), logger.WithBuildID(in.TemplateID))
+	buildInfo, err := s.buildCache.Get(in.BuildID)
+	if err == nil && buildInfo.IsRunning() {
+		// Cancel the build if it is running
+		zap.L().Info("Canceling running template build", logger.WithTemplateID(in.TemplateID), logger.WithBuildID(in.BuildID))
 		telemetry.ReportEvent(ctx, "cancel in progress template build")
-		c.Cancel()
+		buildInfo.SetFail(cache.CancelledBuildReason)
 	}
 
 	err = template.Delete(childCtx, s.tracer, s.artifactsregistry, s.templateStorage, in.TemplateID, in.BuildID)

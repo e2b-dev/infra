@@ -17,12 +17,9 @@ func main() {
 
 	flag.Parse()
 
-	template := storage.NewTemplateFiles(
-		"",
-		*buildId,
-		"",
-		"",
-	)
+	template := storage.TemplateFiles{
+		BuildID: *buildId,
+	}
 
 	var storagePath string
 

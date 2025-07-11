@@ -24,11 +24,13 @@ import (
 )
 
 const (
-	sbxMemThresholdPct       = 80
-	sbxCpuThresholdPct       = 80
-	minEnvdVersionForMetrics = "0.1.5"
-	timeoutGetMetrics        = 100 * time.Millisecond
-	metricsParallelismFactor = 5 // Used to calculate number of concurrently sandbox metrics requests
+	sbxMemThresholdPct             = 80
+	sbxCpuThresholdPct             = 80
+	minEnvdVersionForMetrics       = "0.1.5"
+	minEnvdVersionForMemoryPrecise = "0.2.4"
+	minEnvdVersionForDiskMetrics   = "0.2.4"
+	timeoutGetMetrics              = 100 * time.Millisecond
+	metricsParallelismFactor       = 5 // Used to calculate number of concurrently sandbox metrics requests
 
 	shiftFromMiBToBytes = 20 // Shift to convert MiB to bytes
 )
@@ -49,6 +51,8 @@ type SandboxObserver struct {
 	cpuUsed     metric.Float64ObservableGauge
 	memoryTotal metric.Int64ObservableGauge
 	memoryUsed  metric.Int64ObservableGauge
+	diskTotal   metric.Int64ObservableGauge
+	diskUsed    metric.Int64ObservableGauge
 }
 
 func NewSandboxObserver(ctx context.Context, commitSHA, clientID string, sandboxMetricsExportPeriod time.Duration, sandboxes *smap.Map[*sandbox.Sandbox]) (*SandboxObserver, error) {
@@ -92,6 +96,16 @@ func NewSandboxObserver(ctx context.Context, commitSHA, clientID string, sandbox
 		return nil, fmt.Errorf("failed to create memory used gauge: %w", err)
 	}
 
+	diskTotal, err := telemetry.GetGaugeInt(meter, telemetry.SandboxDiskTotalGaugeName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create disk total gauge: %w", err)
+	}
+
+	diskUsed, err := telemetry.GetGaugeInt(meter, telemetry.SandboxDiskUsedGaugeName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create disk used gauge: %w", err)
+	}
+
 	so := &SandboxObserver{
 		exportInterval: sandboxMetricsExportPeriod,
 		meterExporter:  externalMeterExporter,
@@ -101,6 +115,8 @@ func NewSandboxObserver(ctx context.Context, commitSHA, clientID string, sandbox
 		cpuUsed:        cpuUsed,
 		memoryTotal:    memoryTotal,
 		memoryUsed:     memoryUsed,
+		diskTotal:      diskTotal,
+		diskUsed:       diskUsed,
 	}
 
 	registration, err := so.startObserving()
@@ -125,7 +141,12 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 			wg.SetLimit(int(limit))
 
 			for _, sbx := range so.sandboxes.Items() {
-				if !utils.IsGTEVersion(sbx.Config.EnvdVersion, minEnvdVersionForMetrics) {
+				ok, err := utils.IsGTEVersion(sbx.Config.EnvdVersion, minEnvdVersionForMetrics)
+				if err != nil {
+					zap.L().Error("Failed to check envd version", zap.Error(err), zap.String("sandbox_id", sbx.Config.SandboxId))
+					continue
+				}
+				if !ok {
 					continue
 				}
 
@@ -146,11 +167,30 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 					}
 
 					attributes := metric.WithAttributes(attribute.String("sandbox_id", sbx.Config.SandboxId), attribute.String("team_id", sbx.Config.TeamId))
+
 					o.ObserveInt64(so.cpuTotal, sbxMetrics.CPUCount, attributes)
 					o.ObserveFloat64(so.cpuUsed, sbxMetrics.CPUUsedPercent, attributes)
-					// Save as bytes for the future, so we can return more accurate values
-					o.ObserveInt64(so.memoryTotal, sbxMetrics.MemTotalMiB<<shiftFromMiBToBytes, attributes)
-					o.ObserveInt64(so.memoryUsed, sbxMetrics.MemUsedMiB<<shiftFromMiBToBytes, attributes)
+
+					ok, err := utils.IsGTEVersion(sbx.Config.EnvdVersion, minEnvdVersionForMemoryPrecise)
+					if err != nil {
+						zap.L().Error("Failed to check envd version for memory metrics", zap.Error(err), zap.String("sandbox_id", sbx.Config.SandboxId))
+					}
+					if ok {
+						o.ObserveInt64(so.memoryTotal, sbxMetrics.MemTotal, attributes)
+						o.ObserveInt64(so.memoryUsed, sbxMetrics.MemUsed, attributes)
+					} else {
+						o.ObserveInt64(so.memoryTotal, sbxMetrics.MemTotalMiB<<shiftFromMiBToBytes, attributes)
+						o.ObserveInt64(so.memoryUsed, sbxMetrics.MemUsedMiB<<shiftFromMiBToBytes, attributes)
+					}
+
+					ok, err = utils.IsGTEVersion(sbx.Config.EnvdVersion, minEnvdVersionForDiskMetrics)
+					if err != nil {
+						zap.L().Error("Failed to check envd version for disk metrics", zap.Error(err), zap.String("sandbox_id", sbx.Config.SandboxId))
+					}
+					if ok {
+						o.ObserveInt64(so.diskTotal, sbxMetrics.DiskTotal, attributes)
+						o.ObserveInt64(so.diskUsed, sbxMetrics.DiskUsed, attributes)
+					}
 
 					// Log warnings if memory or CPU usage exceeds thresholds
 					// Round percentage to 2 decimal places
@@ -179,7 +219,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 			}
 
 			return nil
-		}, so.cpuTotal, so.cpuUsed, so.memoryTotal, so.memoryUsed)
+		}, so.cpuTotal, so.cpuUsed, so.memoryTotal, so.memoryUsed, so.diskTotal, so.diskUsed)
 	if err != nil {
 		return nil, err
 	}

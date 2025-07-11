@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
+	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
 
 func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {
@@ -25,7 +26,7 @@ func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {
 
 	// create test file
 	filePath := "test.txt"
-	textFile, contentType := createTextFile(t, filePath, "Hello, World!")
+	textFile, contentType := utils.CreateTextFile(t, filePath, "Hello, World!")
 
 	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
 		ctx,
@@ -64,7 +65,7 @@ func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
 
 	// create test file
 	filePath := "test.txt"
-	textFile, contentType := createTextFile(t, filePath, "Hello, World!")
+	textFile, contentType := utils.CreateTextFile(t, filePath, "Hello, World!")
 
 	writeFileSigning := generateSignature(filePath, "user", "write", nil, *envdToken)
 	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
@@ -108,7 +109,7 @@ func TestDownloadFileWithSigningWhenAuthIsEnabled(t *testing.T) {
 	filePath := "test.txt"
 	readFileSigning := generateSignature(filePath, "user", "read", nil, *envdToken)
 	writeFileSigning := generateSignature(filePath, "user", "write", nil, *envdToken)
-	textFile, contentType := createTextFile(t, filePath, "Hello, World!")
+	textFile, contentType := utils.CreateTextFile(t, filePath, "Hello, World!")
 
 	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
 		ctx,

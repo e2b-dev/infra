@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/uuid"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/metric"
@@ -17,10 +18,12 @@ import (
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
+	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -42,6 +45,7 @@ type Orchestrator struct {
 	dns                 *dns.DNS
 	dbClient            *db.DB
 	tel                 *telemetry.Client
+	clusters            *edge.Pool
 	metricsRegistration metric.Registration
 }
 
@@ -53,6 +57,7 @@ func New(
 	posthogClient *analyticscollector.PosthogClient,
 	redisClient redis.UniversalClient,
 	dbClient *db.DB,
+	clusters *edge.Pool,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics()
 	if err != nil {
@@ -81,6 +86,7 @@ func New(
 		dns:         dnsServer,
 		dbClient:    dbClient,
 		tel:         tel,
+		clusters:    clusters,
 	}
 
 	cache := instance.NewCache(
@@ -142,11 +148,12 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 					})
 				} else {
 					nodes = append(nodes, map[string]interface{}{
-						"id":                    nodeItem.Info.ID,
-						"status":                nodeItem.Status(),
-						"socket_status":         nodeItem.Client.Connection.GetState().String(),
-						"in_progress_count":     nodeItem.sbxsInProgress.Count(),
-						"failed_to_start_count": nodeItem.createFails.Load(),
+						"id":                nodeItem.Info.ID,
+						"status":            nodeItem.Status(),
+						"socket_status":     nodeItem.client.Connection.GetState().String(),
+						"in_progress_count": nodeItem.sbxsInProgress.Count(),
+						"sbx_start_success": nodeItem.createSuccess.Load(),
+						"sbx_start_fail":    nodeItem.createFails.Load(),
 					})
 				}
 			}
@@ -160,12 +167,53 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 	}
 }
 
+func (o *Orchestrator) RegisterSandboxInsideClusterCatalog(ctx context.Context, node *Node, sbxStartTime time.Time, sandboxConfig *orchestrator.SandboxConfig) error {
+	if node.ClusterID == uuid.Nil {
+		return nil
+	}
+
+	cluster, ok := o.clusters.GetClusterById(node.ClusterID)
+	if !ok {
+		return fmt.Errorf("failed to get cluster by ID: %s", node.ClusterID.String())
+	}
+
+	i, ok := cluster.GetInstanceByNodeID(node.ClusterNodeID)
+	if !ok {
+		return fmt.Errorf("failed to get cluster instance by cluster %s and node ID: %s", node.ClusterID.String(), node.ClusterNodeID)
+	}
+
+	err := cluster.RegisterSandboxInCatalog(ctx, i.ServiceInstanceID, sbxStartTime, sandboxConfig)
+	if err != nil {
+		return fmt.Errorf("failed to register sandbox in cluster catalog: %w", err)
+	}
+
+	return nil
+}
+
+func (o *Orchestrator) RemoveSandboxFromClusterCatalog(ctx context.Context, node *Node, sandboxID string, executionID string) error {
+	if node.ClusterID == uuid.Nil {
+		return nil
+	}
+
+	cluster, ok := o.clusters.GetClusterById(node.ClusterID)
+	if !ok {
+		return fmt.Errorf("failed to get cluster by ID: %s", node.ClusterID.String())
+	}
+
+	err := cluster.RemoveSandboxFromCatalog(ctx, sandboxID, executionID)
+	if err != nil {
+		return fmt.Errorf("failed to register sandbox in cluster catalog: %w", err)
+	}
+
+	return nil
+}
+
 func (o *Orchestrator) Close(ctx context.Context) error {
 	var errs []error
 
 	nodes := o.nodes.Items()
 	for _, node := range nodes {
-		if err := node.Client.Close(); err != nil {
+		if err := node.client.Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}
