@@ -168,13 +168,6 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 	if template.FromImage == "" {
 		cwd := "/home/user"
 		cmdMeta.WorkDir = &cwd
-
-		// Get the tag for the image
-		tag, err := b.artifactRegistry.GetTag(ctx, finalMetadata.TemplateID, finalMetadata.BuildID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get image URL: %w", err)
-		}
-		template.FromImage = tag
 	}
 
 	lastHash, err := hashBase(ctx, template)
