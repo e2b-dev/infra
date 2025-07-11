@@ -57,3 +57,197 @@ func TestFilesystemClient_FieldFormatter(t *testing.T) {
 		assert.Equal(t, string(data), `{"entry":{"name":"test name"}}`)
 	})
 }
+
+func TestConversion(t *testing.T) {
+	testCases := []struct {
+		name     string
+		input    connect.AnyResponse
+		expected connect.AnyResponse
+	}{
+		{
+			name: "MoveResponse with populated fields",
+			input: connect.NewResponse(&filesystem.MoveResponse{
+				Entry: &filesystem.EntryInfo{
+					Name: "test.txt",
+					Type: filesystem.FileType_FILE_TYPE_FILE,
+					Path: "/test/test.txt",
+				},
+				Testing: true,
+			}),
+			expected: connect.NewResponse(&MoveResponse{
+				Entry: &EntryInfo{
+					Name: "test.txt",
+					Type: FileType_FILE_TYPE_FILE,
+					Path: "/test/test.txt",
+				},
+			}),
+		},
+		{
+			name:     "MoveResponse with nil fields",
+			input:    connect.NewResponse(&filesystem.MoveResponse{}),
+			expected: connect.NewResponse(&MoveResponse{}),
+		},
+		{
+			name: "ListDirResponse with populated fields",
+			input: connect.NewResponse(&filesystem.ListDirResponse{
+				Entries: []*filesystem.EntryInfo{
+					{
+						Name: "test1.txt",
+						Type: filesystem.FileType_FILE_TYPE_FILE,
+						Path: "/test/test1.txt",
+					},
+					{
+						Name: "test2.txt",
+						Type: filesystem.FileType_FILE_TYPE_FILE,
+						Path: "/test/test2.txt",
+					},
+				},
+			}),
+			expected: connect.NewResponse(&ListDirResponse{
+				Entries: []*EntryInfo{
+					{
+						Name: "test1.txt",
+						Type: FileType_FILE_TYPE_FILE,
+						Path: "/test/test1.txt",
+					},
+					{
+						Name: "test2.txt",
+						Type: FileType_FILE_TYPE_FILE,
+						Path: "/test/test2.txt",
+					},
+				},
+			}),
+		},
+		{
+			name:     "ListDirResponse with nil fields",
+			input:    connect.NewResponse(&filesystem.ListDirResponse{}),
+			expected: connect.NewResponse(&ListDirResponse{}),
+		},
+		{
+			name: "MakeDirResponse with populated fields",
+			input: connect.NewResponse(&filesystem.MakeDirResponse{
+				Entry: &filesystem.EntryInfo{
+					Name: "testdir",
+					Type: filesystem.FileType_FILE_TYPE_DIRECTORY,
+					Path: "/test/testdir",
+				},
+			}),
+			expected: connect.NewResponse(&MakeDirResponse{
+				Entry: &EntryInfo{
+					Name: "testdir",
+					Type: FileType_FILE_TYPE_DIRECTORY,
+					Path: "/test/testdir",
+				},
+			}),
+		},
+		{
+			name:     "MakeDirResponse with nil fields",
+			input:    connect.NewResponse(&filesystem.MakeDirResponse{}),
+			expected: connect.NewResponse(&MakeDirResponse{}),
+		},
+		{
+			name:     "RemoveResponse",
+			input:    connect.NewResponse(&filesystem.RemoveResponse{}),
+			expected: connect.NewResponse(&RemoveResponse{}),
+		},
+		{
+			name: "StatResponse with populated fields",
+			input: connect.NewResponse(&filesystem.StatResponse{
+				Entry: &filesystem.EntryInfo{
+					Name: "test.txt",
+					Type: filesystem.FileType_FILE_TYPE_FILE,
+					Path: "/test/test.txt",
+				},
+			}),
+			expected: connect.NewResponse(&StatResponse{
+				Entry: &EntryInfo{
+					Name: "test.txt",
+					Type: FileType_FILE_TYPE_FILE,
+					Path: "/test/test.txt",
+				},
+			}),
+		},
+		{
+			name:     "StatResponse with nil fields",
+			input:    connect.NewResponse(&filesystem.StatResponse{}),
+			expected: connect.NewResponse(&StatResponse{}),
+		},
+		{
+			name: "WatchDirResponse with Start event",
+			input: connect.NewResponse(&filesystem.WatchDirResponse{
+				Event: &filesystem.WatchDirResponse_Start{
+					Start: &filesystem.WatchDirResponse_StartEvent{},
+				},
+			}),
+			expected: connect.NewResponse(&WatchDirResponse{
+				Event: &WatchDirResponse_Start{
+					Start: &WatchDirResponse_StartEvent{},
+				},
+			}),
+		},
+		{
+			name: "WatchDirResponse with Filesystem event",
+			input: connect.NewResponse(&filesystem.WatchDirResponse{
+				Event: &filesystem.WatchDirResponse_Filesystem{
+					Filesystem: &filesystem.FilesystemEvent{
+						Name: "test.txt",
+						Type: filesystem.EventType_EVENT_TYPE_CREATE,
+					},
+				},
+			}),
+			expected: connect.NewResponse(&WatchDirResponse{
+				Event: &WatchDirResponse_Filesystem{
+					Filesystem: &FilesystemEvent{
+						Name: "test.txt",
+						Type: EventType_EVENT_TYPE_CREATE,
+					},
+				},
+			}),
+		},
+		{
+			name: "WatchDirResponse with Keepalive event",
+			input: connect.NewResponse(&filesystem.WatchDirResponse{
+				Event: &filesystem.WatchDirResponse_Keepalive{
+					Keepalive: &filesystem.WatchDirResponse_KeepAlive{},
+				},
+			}),
+			expected: connect.NewResponse(&WatchDirResponse{
+				Event: &WatchDirResponse_Keepalive{
+					Keepalive: &WatchDirResponse_KeepAlive{},
+				},
+			}),
+		},
+		{
+			name:     "WatchDirResponse with nil event",
+			input:    connect.NewResponse(&filesystem.WatchDirResponse{}),
+			expected: connect.NewResponse(&WatchDirResponse{}),
+		},
+		{
+			name: "CreateWatcherResponse with populated fields",
+			input: connect.NewResponse(&filesystem.CreateWatcherResponse{
+				WatcherId: "test-watcher-id",
+			}),
+			expected: connect.NewResponse(&CreateWatcherResponse{
+				WatcherId: "test-watcher-id",
+			}),
+		},
+		{
+			name:     "CreateWatcherResponse with empty fields",
+			input:    connect.NewResponse(&filesystem.CreateWatcherResponse{}),
+			expected: connect.NewResponse(&CreateWatcherResponse{}),
+		},
+	}
+
+	converter := Convert()
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := converter.maybeConvert(tc.input)
+
+			expectedMsg := tc.expected.Any()
+			resultMsg := actual.Any()
+
+			assert.Equal(t, expectedMsg, resultMsg)
+		})
+	}
+}
