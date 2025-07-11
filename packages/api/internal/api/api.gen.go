@@ -50,8 +50,8 @@ type ServerInterface interface {
 	// (POST /sandboxes)
 	PostSandboxes(c *gin.Context)
 
-	// (GET /sandboxes/metrics)
-	GetSandboxesMetrics(c *gin.Context, params GetSandboxesMetricsParams)
+	// (POST /sandboxes/metrics)
+	PostSandboxesMetrics(c *gin.Context)
 
 	// (DELETE /sandboxes/{sandboxID})
 	DeleteSandboxesSandboxID(c *gin.Context, sandboxID SandboxID)
@@ -373,34 +373,14 @@ func (siw *ServerInterfaceWrapper) PostSandboxes(c *gin.Context) {
 	siw.Handler.PostSandboxes(c)
 }
 
-// GetSandboxesMetrics operation middleware
-func (siw *ServerInterfaceWrapper) GetSandboxesMetrics(c *gin.Context) {
-
-	var err error
+// PostSandboxesMetrics operation middleware
+func (siw *ServerInterfaceWrapper) PostSandboxesMetrics(c *gin.Context) {
 
 	c.Set(ApiKeyAuthScopes, []string{})
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
 
 	c.Set(Supabase2TeamAuthScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params GetSandboxesMetricsParams
-
-	// ------------- Required query parameter "sandbox_ids" -------------
-
-	if paramValue := c.Query("sandbox_ids"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Query argument sandbox_ids is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	err = runtime.BindQueryParameter("form", true, true, "sandbox_ids", c.Request.URL.Query(), &params.SandboxIds)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandbox_ids: %w", err), http.StatusBadRequest)
-		return
-	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -409,7 +389,7 @@ func (siw *ServerInterfaceWrapper) GetSandboxesMetrics(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetSandboxesMetrics(c, params)
+	siw.Handler.PostSandboxesMetrics(c)
 }
 
 // DeleteSandboxesSandboxID operation middleware
@@ -969,7 +949,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/nodes/:nodeID", wrapper.PostNodesNodeID)
 	router.GET(options.BaseURL+"/sandboxes", wrapper.GetSandboxes)
 	router.POST(options.BaseURL+"/sandboxes", wrapper.PostSandboxes)
-	router.GET(options.BaseURL+"/sandboxes/metrics", wrapper.GetSandboxesMetrics)
+	router.POST(options.BaseURL+"/sandboxes/metrics", wrapper.PostSandboxesMetrics)
 	router.DELETE(options.BaseURL+"/sandboxes/:sandboxID", wrapper.DeleteSandboxesSandboxID)
 	router.GET(options.BaseURL+"/sandboxes/:sandboxID", wrapper.GetSandboxesSandboxID)
 	router.GET(options.BaseURL+"/sandboxes/:sandboxID/logs", wrapper.GetSandboxesSandboxIDLogs)

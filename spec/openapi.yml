@@ -337,6 +337,16 @@ components:
         state:
           $ref: "#/components/schemas/SandboxState"
 
+    GetMetrics:
+      required:
+        - sandboxIDs
+      properties:
+        sandboxIDs:
+          type: array
+          items:
+            type: string
+          description: List of sandbox IDs to get metrics for
+
     SandboxesWithMetrics:
       required:
         - sandboxes
@@ -893,22 +903,19 @@ paths:
           $ref: "#/components/responses/500"
 
   /sandboxes/metrics:
-    get:
+    post:
       description: List metrics for given sandboxes
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
-      parameters:
-        - name: sandbox_ids
-          in: query
-          required: true
-          description: Comma-separated list of sandbox IDs to get metrics for
-          schema:
-            type: array
-            items:
-              type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/GetMetrics"
       responses:
         "200":
           description: Successfully returned all running sandboxes with metrics

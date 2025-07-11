@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -70,9 +71,17 @@ func (a *APIStore) getSandboxesMetrics(
 	return apiMetrics, nil
 }
 
-func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMetricsParams) {
+func (a *APIStore) PostSandboxesMetrics(c *gin.Context) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "list running instances with metrics")
+
+	body, err := utils.ParseBody[api.PostSandboxesMetricsJSONRequestBody](ctx, c)
+	if err != nil {
+		zap.L().Error("Error parsing request body", zap.Error(err))
+
+		telemetry.ReportCriticalError(ctx, "error parsing request body", err)
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Error parsing request body")
+	}
 
 	team := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo).Team
 
@@ -80,7 +89,7 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances with metrics", properties)
 
-	sandboxesWithMetrics, err := a.getSandboxesMetrics(ctx, team.ID, params.SandboxIds)
+	sandboxesWithMetrics, err := a.getSandboxesMetrics(ctx, team.ID, body.SandboxIDs)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error fetching metrics for sandboxes", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning metrics for sandboxes for team '%s'", team.ID))

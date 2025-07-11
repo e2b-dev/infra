@@ -90,6 +90,12 @@ type Error struct {
 	Message string `json:"message"`
 }
 
+// GetMetrics defines model for GetMetrics.
+type GetMetrics struct {
+	// SandboxIDs List of sandbox IDs to get metrics for
+	SandboxIDs []string `json:"sandboxIDs"`
+}
+
 // IdentifierMaskingDetails defines model for IdentifierMaskingDetails.
 type IdentifierMaskingDetails struct {
 	// MaskedValuePrefix Prefix used in masked version of the token or key
@@ -516,12 +522,6 @@ type GetSandboxesParams struct {
 	Metadata *string `form:"metadata,omitempty" json:"metadata,omitempty"`
 }
 
-// GetSandboxesMetricsParams defines parameters for GetSandboxesMetrics.
-type GetSandboxesMetricsParams struct {
-	// SandboxIds Comma-separated list of sandbox IDs to get metrics for
-	SandboxIds []string `form:"sandbox_ids" json:"sandbox_ids"`
-}
-
 // GetSandboxesSandboxIDLogsParams defines parameters for GetSandboxesSandboxIDLogs.
 type GetSandboxesSandboxIDLogsParams struct {
 	// Start Starting timestamp of the logs that should be returned in milliseconds
@@ -583,6 +583,9 @@ type PostNodesNodeIDJSONRequestBody = NodeStatusChange
 
 // PostSandboxesJSONRequestBody defines body for PostSandboxes for application/json ContentType.
 type PostSandboxesJSONRequestBody = NewSandbox
+
+// PostSandboxesMetricsJSONRequestBody defines body for PostSandboxesMetrics for application/json ContentType.
+type PostSandboxesMetricsJSONRequestBody = GetMetrics
 
 // PostSandboxesSandboxIDRefreshesJSONRequestBody defines body for PostSandboxesSandboxIDRefreshes for application/json ContentType.
 type PostSandboxesSandboxIDRefreshesJSONRequestBody PostSandboxesSandboxIDRefreshesJSONBody
