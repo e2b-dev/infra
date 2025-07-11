@@ -28,12 +28,16 @@ type GCPBucketStorageProvider struct {
 	bucket *storage.BucketHandle
 }
 
+var _ StorageProvider = (*GCPBucketStorageProvider)(nil)
+
 type GCPBucketStorageObjectProvider struct {
 	storage *GCPBucketStorageProvider
 	path    string
 	handle  *storage.ObjectHandle
 	ctx     context.Context
 }
+
+var _ StorageObjectProvider = (*GCPBucketStorageObjectProvider)(nil)
 
 func NewGCPBucketStorageProvider(ctx context.Context, bucketName string) (*GCPBucketStorageProvider, error) {
 	client, err := storage.NewClient(ctx)

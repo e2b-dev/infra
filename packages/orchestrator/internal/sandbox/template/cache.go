@@ -3,6 +3,7 @@ package template
 import (
 	"context"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -60,7 +61,7 @@ func NewCache(ctx context.Context) (*Cache, error) {
 		return nil, fmt.Errorf("failed to create build store: %w", err)
 	}
 
-	persistence, err := storage.GetTemplateStorageProvider(ctx)
+	persistence, err := storage.GetTemplateStorageProvider(ctx, block.ChunkSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get storage provider: %w", err)
 	}
