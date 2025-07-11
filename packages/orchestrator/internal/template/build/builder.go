@@ -180,7 +180,18 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		return nil, fmt.Errorf("error setting up build: %w", err)
 	}
 
-	postProcessor.WriteMsg(layerInfo(lastCached, "base", "FROM "+template.FromImage, lastHash))
+	// Print the base layer information
+	fromImage := template.FromImage
+	if fromImage == "" {
+		tag, err := b.artifactRegistry.GetTag(ctx, finalMetadata.TemplateID, finalMetadata.BuildID)
+		if err != nil {
+			return nil, fmt.Errorf("error getting tag for template: %w", err)
+		}
+		fromImage = tag
+	}
+	postProcessor.WriteMsg(layerInfo(lastCached, "base", "FROM "+fromImage, lastHash))
+
+	// Build the base layer if not cached
 	if !lastCached {
 		templateBuildDir := filepath.Join(templatesDirectory, finalMetadata.BuildID)
 		err = os.MkdirAll(templateBuildDir, 0o777)
