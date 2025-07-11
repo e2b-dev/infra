@@ -55,7 +55,8 @@ type Node struct {
 
 	buildCache *ttlcache.Cache[string, interface{}]
 
-	createFails atomic.Uint64
+	createSuccess atomic.Uint64
+	createFails   atomic.Uint64
 }
 
 func (n *Node) Close() {
@@ -181,6 +182,7 @@ func (o *Orchestrator) GetNodes() []*api.Node {
 			NodeID:               key,
 			ClusterID:            clusterID,
 			Status:               n.Status(),
+			CreateSuccesses:      n.createSuccess.Load(),
 			CreateFails:          n.createFails.Load(),
 			SandboxStartingCount: n.sbxsInProgress.Count(),
 			Version:              metadata.version,
@@ -222,13 +224,14 @@ func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
 			builds := n.buildCache.Keys()
 			metadata := n.metadata()
 			node = &api.NodeDetail{
-				NodeID:       key,
-				ClusterID:    clusterID,
-				Status:       n.Status(),
-				CachedBuilds: builds,
-				CreateFails:  n.createFails.Load(),
-				Version:      metadata.version,
-				Commit:       metadata.commit,
+				NodeID:          key,
+				ClusterID:       clusterID,
+				Status:          n.Status(),
+				CachedBuilds:    builds,
+				CreateSuccesses: n.createSuccess.Load(),
+				CreateFails:     n.createFails.Load(),
+				Version:         metadata.version,
+				Commit:          metadata.commit,
 			}
 		}
 	}

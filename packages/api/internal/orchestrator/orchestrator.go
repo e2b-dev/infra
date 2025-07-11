@@ -152,7 +152,8 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 						"status":                nodeItem.Status(),
 						"socket_status":         nodeItem.client.Connection.GetState().String(),
 						"in_progress_count":     nodeItem.sbxsInProgress.Count(),
-						"failed_to_start_count": nodeItem.createFails.Load(),
+						"sbx_start_success":     nodeItem.createSuccess.Load(),
+						"sbx_start_fail":        nodeItem.createFails.Load(),
 					})
 				}
 			}

@@ -549,6 +549,7 @@ components:
         - sandboxCount
         - allocatedCPU
         - allocatedMemoryMiB
+        - createSuccesses
         - createFails
         - sandboxStartingCount
         - version
@@ -581,6 +582,10 @@ components:
           type: integer
           format: int32
           description: Amount of allocated memory in MiB
+        createSuccesses:
+          type: integer
+          format: uint64
+          description: Number of sandbox create successes
         createFails:
           type: integer
           format: uint64
@@ -596,6 +601,7 @@ components:
         - status
         - sandboxes
         - cachedBuilds
+        - createSuccesses
         - createFails
         - version
         - commit
@@ -625,6 +631,10 @@ components:
           description: List of cached builds id on the node
           items:
             type: string
+        createSuccesses:
+            type: integer
+            format: uint64
+            description: Number of sandbox create successes
         createFails:
           type: integer
           format: uint64
