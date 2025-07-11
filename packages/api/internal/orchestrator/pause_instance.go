@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
@@ -83,24 +82,24 @@ func (o *Orchestrator) PauseInstance(
 }
 
 func snapshotInstance(ctx context.Context, orch *Orchestrator, sbx *instance.InstanceInfo, templateID, buildID string) error {
-	_, childSpan := orch.tracer.Start(ctx, "snapshot-instance")
+	childCtx, childSpan := orch.tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
 
-	client, clientMd, err := orch.GetClient(sbx.Node.ID)
+	client, reqCtxBuilder, err := orch.GetClient(sbx.Node.ID)
 	if err != nil {
 		return fmt.Errorf("failed to get client '%s': %w", sbx.Node.ID, err)
 	}
 
-	reqCtx := metadata.NewOutgoingContext(ctx, clientMd)
-	_, err = client.Sandbox.Pause(reqCtx, &orchestrator.SandboxPauseRequest{
-		SandboxId:  sbx.Instance.SandboxID,
-		TemplateId: templateID,
-		BuildId:    buildID,
-	})
+	_, err = client.Sandbox.Pause(
+		reqCtxBuilder(childCtx), &orchestrator.SandboxPauseRequest{
+			SandboxId:  sbx.Instance.SandboxID,
+			TemplateId: templateID,
+			BuildId:    buildID,
+		},
+	)
 
 	if err == nil {
 		telemetry.ReportEvent(ctx, "Paused sandbox")
-
 		return nil
 	}
 

@@ -8,7 +8,6 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -29,16 +28,17 @@ func (o *Orchestrator) UpdateSandbox(
 	)
 	defer childSpan.End()
 
-	client, clientMd, err := o.GetClient(nodeID)
+	client, reqCtxBuilder, err := o.GetClient(nodeID)
 	if err != nil {
 		return fmt.Errorf("failed to get client '%s': %w", nodeID, err)
 	}
 
-	reqCtx := metadata.NewOutgoingContext(ctx, clientMd)
-	_, err = client.Sandbox.Update(reqCtx, &orchestrator.SandboxUpdateRequest{
-		SandboxId: sandboxID,
-		EndTime:   timestamppb.New(endTime),
-	})
+	_, err = client.Sandbox.Update(
+		reqCtxBuilder(childCtx), &orchestrator.SandboxUpdateRequest{
+			SandboxId: sandboxID,
+			EndTime:   timestamppb.New(endTime),
+		},
+	)
 
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {

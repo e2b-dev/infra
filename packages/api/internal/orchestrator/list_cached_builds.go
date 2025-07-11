@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/golang/protobuf/ptypes/empty"
-	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -16,13 +15,12 @@ func (o *Orchestrator) listCachedBuilds(ctx context.Context, nodeID string) ([]*
 	childCtx, childSpan := o.tracer.Start(ctx, "list-cached-builds")
 	defer childSpan.End()
 
-	client, clientMd, err := o.GetClient(nodeID)
+	client, reqCtxBuilder, err := o.GetClient(nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GRPC client: %w", err)
 	}
 
-	reqCtx := metadata.NewOutgoingContext(childCtx, clientMd)
-	res, err := client.Sandbox.ListCachedBuilds(reqCtx, &empty.Empty{})
+	res, err := client.Sandbox.ListCachedBuilds(reqCtxBuilder(childCtx), &empty.Empty{})
 
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
