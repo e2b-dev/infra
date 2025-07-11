@@ -27,8 +27,8 @@ type Cluster struct {
 	httpClient *api.ClientWithResponses
 	grpcClient *grpclient.GRPCClient
 
-	instances       *smap.Map[*ClusterOrchestratorInstance]
-	synchronization *synchronization.Synchronize[api.ClusterOrchestratorNode, *ClusterOrchestratorInstance]
+	instances       *smap.Map[*ClusterInstance]
+	synchronization *synchronization.Synchronize[api.ClusterOrchestratorNode, *ClusterInstance]
 	tracer          trace.Tracer
 }
 
@@ -81,7 +81,7 @@ func NewCluster(tracer trace.Tracer, tel *telemetry.Client, endpoint string, end
 	c := &Cluster{
 		ID: clusterID,
 
-		instances:  smap.New[*ClusterOrchestratorInstance](),
+		instances:  smap.New[*ClusterInstance](),
 		tracer:     tracer,
 		httpClient: httpClient,
 		grpcClient: grpcClient,
@@ -102,7 +102,7 @@ func (c *Cluster) Close() error {
 	return err
 }
 
-func (c *Cluster) GetTemplateBuilderByNodeID(nodeID string) (*ClusterOrchestratorInstance, error) {
+func (c *Cluster) GetTemplateBuilderByNodeID(nodeID string) (*ClusterInstance, error) {
 	instance, found := c.instances.Get(nodeID)
 	if !found {
 		return nil, ErrTemplateBuilderNotFound
@@ -115,11 +115,11 @@ func (c *Cluster) GetTemplateBuilderByNodeID(nodeID string) (*ClusterOrchestrato
 	return instance, nil
 }
 
-func (c *Cluster) GetInstanceByNodeID(nodeID string) (*ClusterOrchestratorInstance, bool) {
+func (c *Cluster) GetInstanceByNodeID(nodeID string) (*ClusterInstance, bool) {
 	return c.instances.Get(nodeID)
 }
 
-func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterOrchestratorInstance, error) {
+func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterInstance, error) {
 	_, span := c.tracer.Start(ctx, "template-builder-get-available-instance")
 	span.SetAttributes(telemetry.WithClusterID(c.ID))
 	defer span.End()
@@ -147,8 +147,8 @@ func (c *Cluster) GetHTTP(nodeID string) *ClusterHTTP {
 	return &ClusterHTTP{c.httpClient, nodeID}
 }
 
-func (c *Cluster) GetOrchestrators() []*ClusterOrchestratorInstance {
-	instances := make([]*ClusterOrchestratorInstance, 0)
+func (c *Cluster) GetOrchestrators() []*ClusterInstance {
+	instances := make([]*ClusterInstance, 0)
 	for _, i := range c.instances.Items() {
 		if i.IsOrchestrator() {
 			instances = append(instances, i)

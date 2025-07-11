@@ -148,7 +148,7 @@ func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
 			// If the node is not in the list, connect to it
 			if o.GetNode(poolNodeID) == nil {
 				wg.Add(1)
-				go func(n *edge.ClusterOrchestratorInstance) {
+				go func(n *edge.ClusterInstance) {
 					defer wg.Done()
 					o.connectToClusterNode(cluster, n)
 				}(n)

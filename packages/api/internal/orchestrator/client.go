@@ -119,7 +119,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 	return nil
 }
 
-func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, i *edge.ClusterOrchestratorInstance) {
+func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, i *edge.ClusterInstance) {
 	// this way we don't need to worry about multiple clusters with the same node ID in shared pool
 	poolNodeID := o.clusterNodeID(cluster.ID, i.NodeID)
 	poolGrpc := cluster.GetGRPC(i.ServiceInstanceID)
