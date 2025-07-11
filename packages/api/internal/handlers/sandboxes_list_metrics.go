@@ -44,7 +44,7 @@ func (a *APIStore) getSandboxesMetrics(
 		zap.L().Debug("sandbox metrics read feature flag is disabled")
 		// If we are not reading from ClickHouse, we can return an empty map
 		// This is here just to have the possibility to turn off ClickHouse metrics reading
-		return nil, nil
+		return make(map[string]api.SandboxMetric), nil
 	}
 
 	metrics, err := a.clickhouseStore.QueryLatestMetrics(ctx, sandboxIDs, teamID.String())
