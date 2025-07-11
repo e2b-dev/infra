@@ -150,7 +150,7 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 					nodes = append(nodes, map[string]interface{}{
 						"id":                    nodeItem.Info.ID,
 						"status":                nodeItem.Status(),
-						"socket_status":         nodeItem.Client.Connection.GetState().String(),
+						"socket_status":         nodeItem.client.Connection.GetState().String(),
 						"in_progress_count":     nodeItem.sbxsInProgress.Count(),
 						"failed_to_start_count": nodeItem.createFails.Load(),
 					})
@@ -212,7 +212,7 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 
 	nodes := o.nodes.Items()
 	for _, node := range nodes {
-		if err := node.Client.Close(); err != nil {
+		if err := node.client.Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}

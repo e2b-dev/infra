@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/posthog/posthog-go"
 	"go.uber.org/zap"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -228,8 +227,8 @@ func (o *Orchestrator) syncNodeState(ctx context.Context, node *Node, instanceCa
 	syncRetrySuccess := false
 
 	for range syncMaxRetries {
-		reqCtx := metadata.NewOutgoingContext(ctx, node.ClientMd)
-		nodeInfo, err := node.Client.Info.ServiceInfo(reqCtx, &emptypb.Empty{})
+		client, reqCtxBuilder := node.GetClient()
+		nodeInfo, err := client.Info.ServiceInfo(reqCtxBuilder(ctx), &emptypb.Empty{})
 		if err != nil {
 			zap.L().Error("Error getting node info", zap.Error(err), logger.WithNodeID(node.Info.ID))
 			continue
@@ -328,7 +327,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 
 		o.dns.Remove(ctx, info.Instance.SandboxID, node.Info.IPAddress)
 
-		if node.Client == nil {
+		if node.client == nil {
 			zap.L().Error("client for node not found", logger.WithNodeID(info.Node.ID))
 			return fmt.Errorf("client for node '%s' not found", info.Node.ID)
 		}
@@ -349,8 +348,8 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			info.PauseDone(nil)
 		} else {
 			req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}
-			reqCtx := metadata.NewOutgoingContext(ctx, node.ClientMd)
-			_, err := node.Client.Sandbox.Delete(reqCtx, req)
+			client, reqCtxBuilder := node.GetClient()
+			_, err := client.Sandbox.Delete(reqCtxBuilder(ctx), req)
 			if err != nil {
 				return fmt.Errorf("failed to delete sandbox '%s': %w", info.Instance.SandboxID, err)
 			}

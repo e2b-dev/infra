@@ -46,8 +46,6 @@ var (
 	}
 )
 
-type RequestContextBuilder func(ctx context.Context) context.Context
-
 func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string) (*grpclient.GRPCClient, error) {
 	conn, err := grpc.NewClient(host,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -106,8 +104,8 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 
 	o.nodes.Insert(
 		node.ID, &Node{
-			Client:   client,
-			ClientMd: make(metadata.MD),
+			client:   client,
+			clientMd: make(metadata.MD),
 
 			Info:           node,
 			meta:           getNodeMetadata(nodeInfo, node.ID),
@@ -130,8 +128,8 @@ func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, i *edge.Clust
 	go buildCache.Start()
 
 	orchestratorNode := &Node{
-		Client:   poolGrpc.Client,
-		ClientMd: poolGrpc.Metadata,
+		client:   poolGrpc.Client,
+		clientMd: poolGrpc.Metadata,
 
 		ClusterID:     cluster.ID,
 		ClusterNodeID: i.NodeID,
@@ -163,9 +161,7 @@ func (o *Orchestrator) GetClient(nodeID string) (*grpclient.GRPCClient, RequestC
 		return nil, nil, fmt.Errorf("node '%s' not found", nodeID)
 	}
 
-	return n.Client, func(ctx context.Context) context.Context {
-		return metadata.NewOutgoingContext(ctx, n.ClientMd)
-	}, nil
+	return n.GetClient(), nil
 }
 
 func (o *Orchestrator) getNodeHealth(node *node.NodeInfo) (bool, error) {

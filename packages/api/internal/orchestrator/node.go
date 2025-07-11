@@ -24,6 +24,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
+type RequestContextBuilder func(ctx context.Context) context.Context
+
 type sbxInProgress struct {
 	MiBMemory int64
 	CPUs      int64
@@ -39,8 +41,8 @@ type Node struct {
 	CPUUsage atomic.Int64
 	RamUsage atomic.Int64
 
-	Client   *grpclient.GRPCClient
-	ClientMd metadata.MD
+	client   *grpclient.GRPCClient
+	clientMd metadata.MD
 
 	ClusterID     uuid.UUID
 	ClusterNodeID string
@@ -61,7 +63,7 @@ type Node struct {
 func (n *Node) Close(closeClient bool) {
 	// For shared client connections, we don't want to close the client because its used somewhere else.
 	if closeClient {
-		err := n.Client.Close()
+		err := n.client.Close()
 		if err != nil {
 			zap.L().Error("Error closing connection to node", zap.Error(err), logger.WithNodeID(n.Info.ID))
 		}
@@ -78,7 +80,7 @@ func (n *Node) Status() api.NodeStatus {
 		return n.status
 	}
 
-	switch n.Client.Connection.GetState() {
+	switch n.client.Connection.GetState() {
 	case connectivity.Shutdown:
 		return api.NodeStatusUnhealthy
 	case connectivity.TransientFailure:
@@ -121,8 +123,8 @@ func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
 		return fmt.Errorf("unknown service info status: %s", s)
 	}
 
-	reqCtx := metadata.NewOutgoingContext(ctx, n.ClientMd)
-	_, err := n.Client.Info.ServiceStatusOverride(reqCtx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: nodeStatus})
+	client, reqCtxBuilder := n.GetClient()
+	_, err := client.Info.ServiceStatusOverride(reqCtxBuilder(ctx), &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: nodeStatus})
 	if err != nil {
 		zap.L().Error("Failed to send status change", zap.Error(err))
 		return err
@@ -260,6 +262,10 @@ func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
 	return node
 }
 
+func (o *Orchestrator) NodeCount() int {
+	return o.nodes.Count()
+}
+
 func (n *Node) SyncBuilds(builds []*orchestrator.CachedBuildInfo) {
 	for _, build := range builds {
 		n.buildCache.Set(build.BuildId, struct{}{}, time.Until(build.ExpirationTime.AsTime()))
@@ -276,8 +282,10 @@ func (n *Node) InsertBuild(buildID string) {
 	n.buildCache.Set(buildID, struct{}{}, 2*time.Minute)
 }
 
-func (o *Orchestrator) NodeCount() int {
-	return o.nodes.Count()
+func (n *Node) GetClient() (*grpclient.GRPCClient, RequestContextBuilder) {
+	return n.client, func(ctx context.Context) context.Context {
+		return metadata.NewOutgoingContext(ctx, n.clientMd)
+	}
 }
 
 func getNodeMetadata(n *orchestratorinfo.ServiceInfoResponse, orchestratorID string) nodeMetadata {
