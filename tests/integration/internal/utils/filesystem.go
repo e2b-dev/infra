@@ -8,12 +8,15 @@ import (
 	"net/http"
 	"testing"
 
+	"connectrpc.com/connect"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 )
 
-func UploadFile(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, path string, content []byte) error {
+func UploadFile(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, path string, content []byte) {
 	tb.Helper()
 
 	buffer, contentType := CreateTextFile(tb, path, string(content))
@@ -31,14 +34,12 @@ func UploadFile(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient
 		reqEditors...,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to upload file %s: %w", path, err)
+		tb.Fatal(fmt.Errorf("failed to upload file %s: %w", path, err))
 	}
 
 	if writeRes.StatusCode() != http.StatusOK {
-		return fmt.Errorf("failed to upload file %s, status code: %d", path, writeRes.StatusCode())
+		tb.Fatal(fmt.Errorf("failed to upload file %s, status code: %d", path, writeRes.StatusCode()))
 	}
-
-	return nil
 }
 
 func CreateTextFile(tb testing.TB, path string, content string) (*bytes.Buffer, string) {
@@ -60,4 +61,22 @@ func CreateTextFile(tb testing.TB, path string, content string) (*bytes.Buffer, 
 	}
 
 	return body, writer.FormDataContentType()
+}
+
+func CreateDir(tb testing.TB, sbx *api.Sandbox, path string) {
+	tb.Helper()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	client := setup.GetEnvdClient(tb, ctx)
+	req := connect.NewRequest(&filesystem.MakeDirRequest{
+		Path: path,
+	})
+	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
+	setup.SetUserHeader(req.Header(), "user")
+	_, err := client.FilesystemClient.MakeDir(ctx, req)
+	if err != nil {
+		tb.Fatal(err)
+	}
 }

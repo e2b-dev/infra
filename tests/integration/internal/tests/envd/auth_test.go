@@ -133,13 +133,12 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 	fileContent := "Hello, world!"
 
 	// create a test file
-	err := utils.UploadFile(t, ctx, sbxMeta, envdClient, filePath, []byte(fileContent))
-	require.NoError(t, err)
+	utils.UploadFile(t, ctx, sbxMeta, envdClient, filePath, []byte(fileContent))
 
 	c := setup.GetAPIClient()
 
 	// stop sandbox
-	_, err = c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxMeta.SandboxID, setup.WithAPIKey())
+	_, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxMeta.SandboxID, setup.WithAPIKey())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,13 +189,12 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 	fileContent := "Hello, world!"
 
 	// create a test file
-	err := utils.UploadFile(t, ctx, sbxMeta, envdClient, filePath, []byte(fileContent))
-	require.NoError(t, err)
+	utils.UploadFile(t, ctx, sbxMeta, envdClient, filePath, []byte(fileContent))
 
 	c := setup.GetAPIClient()
 
 	// stop sandbox
-	_, err = c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxMeta.SandboxID, setup.WithAPIKey())
+	_, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxMeta.SandboxID, setup.WithAPIKey())
 	if err != nil {
 		t.Fatal(err)
 	}
