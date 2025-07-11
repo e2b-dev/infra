@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
@@ -40,7 +41,7 @@ func TestCreateSandboxWithSecuredEnvd(t *testing.T) {
 		}
 	})
 
-	assert.Equal(t, http.StatusCreated, resp.StatusCode())
+	require.Equal(t, http.StatusCreated, resp.StatusCode())
 	assert.NotNil(t, resp.JSON201.EnvdAccessToken)
 
 	getResp, getErr := c.GetSandboxesSandboxIDWithResponse(ctx, resp.JSON201.SandboxID, setup.WithAPIKey())
@@ -48,6 +49,6 @@ func TestCreateSandboxWithSecuredEnvd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assert.Equal(t, http.StatusCreated, resp.StatusCode())
+	require.Equal(t, http.StatusCreated, resp.StatusCode())
 	assert.Equal(t, *resp.JSON201.EnvdAccessToken, *getResp.JSON200.EnvdAccessToken)
 }

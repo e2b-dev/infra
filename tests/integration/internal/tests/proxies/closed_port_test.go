@@ -14,10 +14,8 @@ import (
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/publicsuffix"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
-	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -63,7 +61,7 @@ func TestSandboxProxyWorkingPort(t *testing.T) {
 
 	var resp *http.Response
 	for i := 0; i < 10; i++ {
-		resp, err = doRequest(t, client, sbx, url, port, nil)
+		resp, err = utils.DoRequest(t, client, sbx, url, port, nil)
 		if err == nil && resp.StatusCode == http.StatusOK {
 			break
 		} else if err != nil {
@@ -100,7 +98,7 @@ func TestSandboxProxyClosedPort(t *testing.T) {
 
 	var resp *http.Response
 	for i := 0; i < 10; i++ {
-		resp, err = doRequest(t, client, sbx, url, port, nil)
+		resp, err = utils.DoRequest(t, client, sbx, url, port, nil)
 		if err == nil && resp.StatusCode == http.StatusBadGateway {
 			break
 		}
@@ -125,7 +123,7 @@ func TestSandboxProxyClosedPort(t *testing.T) {
 
 	// Pretend to be a browser
 	for i := 0; i < 10; i++ {
-		resp, err = doRequest(t, client, sbx, url, port, &http.Header{"User-Agent": []string{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}})
+		resp, err = utils.DoRequest(t, client, sbx, url, port, &http.Header{"User-Agent": []string{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}})
 		if err == nil && resp.StatusCode == http.StatusBadGateway {
 			break
 		} else if err != nil {
@@ -150,40 +148,4 @@ func TestSandboxProxyClosedPort(t *testing.T) {
 	assert.True(t, strings.Contains(string(body), sbx.SandboxID))
 	assert.True(t, strings.Contains(string(body), fmt.Sprintf("%d", port)))
 	assert.True(t, strings.HasSuffix(string(body), "</html>"))
-}
-
-func doRequest(t *testing.T, client *http.Client, sbx *api.Sandbox, url *url.URL, port int, extraHeaders *http.Header) (*http.Response, error) {
-	var host string
-
-	if url.Hostname() == "localhost" {
-		host = fmt.Sprintf("%d-%s-%s.%s", port, sbx.SandboxID, sbx.ClientID, "localhost")
-	} else {
-		// Extract top level domain from EnvdProxy
-		eTLD, _ := publicsuffix.EffectiveTLDPlusOne(url.Hostname())
-		host = fmt.Sprintf("%d-%s-%s.%s:%s", port, sbx.SandboxID, sbx.ClientID, eTLD, url.Port())
-	}
-
-	header := http.Header{
-		"Host": []string{host},
-	}
-
-	if extraHeaders != nil {
-		for key, values := range *extraHeaders {
-			header[key] = values
-		}
-	}
-
-	req := &http.Request{
-		Method: http.MethodGet,
-		URL:    url,
-		Host:   host,
-		Header: header,
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Logf("Error: %v", err)
-		return nil, err
-	}
-
-	return resp, nil
 }
