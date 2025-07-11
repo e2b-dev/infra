@@ -24,24 +24,8 @@ func TestCommandKillNextApp(t *testing.T) {
 	envdClient := setup.GetEnvdClient(t, ctx)
 
 	// Run `npx create-next-app`
-	createAppReq := connect.NewRequest(&process.StartRequest{
-		Process: &process.ProcessConfig{
-			Cmd: "/bin/bash",
-			Args: []string{
-				"-l", "-c", "npx create-next-app@latest nextapp --yes",
-			},
-		},
-	})
-	setup.SetSandboxHeader(createAppReq.Header(), sbx.SandboxID)
-	setup.SetUserHeader(createAppReq.Header(), "user")
-	createAppStream, err := envdClient.ProcessClient.Start(ctx, createAppReq)
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "npx", "create-next-app@latest", "nextapp", "--yes")
 	require.NoError(t, err)
-	defer createAppStream.Close()
-
-	for createAppStream.Receive() {
-		t.Log("create:", createAppStream.Msg())
-	}
-	require.NoError(t, createAppStream.Err())
 
 	// Run `npm run dev` in background
 	cwd := "~/nextapp"
