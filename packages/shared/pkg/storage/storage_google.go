@@ -41,6 +41,11 @@ func NewGCPBucketStorageProvider(ctx context.Context, bucketName string) (*GCPBu
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
 	}
 
+	// these commands set up the gcloud CLI correctly
+	setGCloudCLIConfig(ctx, "storage/parallel_composite_upload_enabled", "True")
+	setGCloudCLIConfig(ctx, "storage/parallel_composite_upload_compatibility_check", "False")
+	setGCloudCLIConfig(ctx, "storage/parallel_composite_upload_threshold", "50M")
+
 	return &GCPBucketStorageProvider{
 		client: client,
 		bucket: client.Bucket(bucketName),
