@@ -16,7 +16,6 @@ import (
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
-	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -148,10 +147,10 @@ func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
 			// If the node is not in the list, connect to it
 			if o.GetNode(poolNodeID) == nil {
 				wg.Add(1)
-				go func(n *edge.ClusterInstance) {
+				go func() {
 					defer wg.Done()
 					o.connectToClusterNode(cluster, n)
-				}(n)
+				}()
 			}
 		}
 	}
