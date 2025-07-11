@@ -140,7 +140,7 @@ func resolvePath(path string, u *user.User) (string, error) {
 		}
 
 		if strings.Contains(err.Error(), "too many links") {
-			return "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cyclic symlink or chain >255 links at %q", expandedPath))
+			return "", connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("cyclic symlink or chain >255 links at %q", expandedPath))
 		}
 
 		return "", connect.NewError(connect.CodeInternal, fmt.Errorf("error resolving symlink: %w", err))
