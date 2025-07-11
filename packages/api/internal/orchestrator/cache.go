@@ -82,16 +82,28 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 		return
 	}
 
-	o.syncLocalDiscoveredNodes(spanCtx, nodes)
-	o.syncClusterDiscoveredNodes(spanCtx)
-
 	var wg sync.WaitGroup
-	defer wg.Wait()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		o.syncLocalDiscoveredNodes(spanCtx, nodes)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		o.syncClusterDiscoveredNodes(spanCtx)
+	}()
+
+	// Wait for nodes discovery to finish
+	wg.Wait()
 
 	// Sync state of all nodes currently in the pool
 	syncNodesSpanCtx, syncNodesSpan := o.tracer.Start(spanCtx, "keep-in-sync-existing")
 	defer syncNodesSpan.End()
 
+	defer wg.Wait()
 	for _, n := range o.nodes.Items() {
 		wg.Add(1)
 		go func(n *Node) {
