@@ -167,13 +167,13 @@ func (tm *TemplateManager) GetClusterBuildClient(clusterID uuid.UUID, nodeID str
 		return nil, errors.New("cluster not found")
 	}
 
-	node, err := cluster.GetTemplateBuilderByID(nodeID)
+	instance, err := cluster.GetTemplateBuilderByNodeID(nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get builder by id '%s': %w", nodeID, err)
 	}
 
-	grpc := cluster.GetGRPC(node.ServiceInstanceID)
-	http := cluster.GetHTTP(node.NodeID)
+	grpc := cluster.GetGRPC(instance.ServiceInstanceID)
+	http := cluster.GetHTTP(instance.NodeID)
 
 	logProviders := []buildlogs.Provider{
 		&buildlogs.TemplateManagerProvider{GRPC: grpc},

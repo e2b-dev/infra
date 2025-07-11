@@ -15,7 +15,7 @@ func (o *Orchestrator) listCachedBuilds(ctx context.Context, nodeID string) ([]*
 	childCtx, childSpan := o.tracer.Start(ctx, "list-cached-builds")
 	defer childSpan.End()
 
-	client, err := o.GetClient(nodeID)
+	client, childCtx, err := o.GetClient(childCtx, nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GRPC client: %w", err)
 	}

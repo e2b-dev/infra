@@ -14,6 +14,7 @@ import (
 
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -64,8 +65,8 @@ func createClusterClient(tel *telemetry.Client, auth clientAuthorization, endpoi
 	}
 
 	return &grpclient.GRPCClient{
-		Sandbox:    nil,
 		Info:       infogrpc.NewInfoServiceClient(conn),
+		Sandbox:    orchestratorgrpc.NewSandboxServiceClient(conn),
 		Template:   templatemanagergrpc.NewTemplateServiceClient(conn),
 		Connection: conn,
 	}, nil
