@@ -316,6 +316,11 @@ func (o *Orchestrator) findLeastBusyNode(nodesExcluded map[string]*Node, cluster
 			continue
 		}
 
+		// Node must be in the same cluster as requested
+		if node.ClusterID != clusterID {
+			continue
+		}
+
 		// If the node is not ready, skip it
 		if node.Status() != api.NodeStatusReady {
 			continue
@@ -323,11 +328,6 @@ func (o *Orchestrator) findLeastBusyNode(nodesExcluded map[string]*Node, cluster
 
 		// Skip already tried nodes
 		if nodesExcluded[node.Info.ID] != nil {
-			continue
-		}
-
-		// Node must be in the same cluster as requested
-		if node.ClusterID != clusterID {
 			continue
 		}
 
