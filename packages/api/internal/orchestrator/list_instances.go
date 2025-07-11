@@ -19,12 +19,12 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 	childCtx, childSpan := o.tracer.Start(ctx, "get-sandboxes-from-orchestrator")
 	defer childSpan.End()
 
-	client, reqCtx, err := o.GetClient(childCtx, node.ID)
+	client, childCtx, err := o.GetClient(childCtx, node.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GRPC client: %w", err)
 	}
 
-	res, err := client.Sandbox.List(reqCtx, &empty.Empty{})
+	res, err := client.Sandbox.List(childCtx, &empty.Empty{})
 
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {

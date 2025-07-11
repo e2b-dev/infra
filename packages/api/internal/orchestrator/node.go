@@ -122,8 +122,8 @@ func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
 		return fmt.Errorf("unknown service info status: %s", s)
 	}
 
-	client, reqCtx := n.GetClient(ctx)
-	_, err := client.Info.ServiceStatusOverride(reqCtx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: nodeStatus})
+	client, ctx := n.GetClient(ctx)
+	_, err := client.Info.ServiceStatusOverride(ctx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: nodeStatus})
 	if err != nil {
 		zap.L().Error("Failed to send status change", zap.Error(err))
 		return err

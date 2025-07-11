@@ -161,8 +161,8 @@ func (o *Orchestrator) GetClient(ctx context.Context, nodeID string) (*grpclient
 		return nil, nil, fmt.Errorf("node '%s' not found", nodeID)
 	}
 
-	client, reqCtx := n.GetClient(ctx)
-	return client, reqCtx, nil
+	client, ctx := n.GetClient(ctx)
+	return client, ctx, nil
 }
 
 func (o *Orchestrator) getNodeHealth(node *node.NodeInfo) (bool, error) {

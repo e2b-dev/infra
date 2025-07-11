@@ -28,13 +28,13 @@ func (o *Orchestrator) UpdateSandbox(
 	)
 	defer childSpan.End()
 
-	client, reqCtx, err := o.GetClient(childCtx, nodeID)
+	client, childCtx, err := o.GetClient(childCtx, nodeID)
 	if err != nil {
 		return fmt.Errorf("failed to get client '%s': %w", nodeID, err)
 	}
 
 	_, err = client.Sandbox.Update(
-		reqCtx, &orchestrator.SandboxUpdateRequest{
+		childCtx, &orchestrator.SandboxUpdateRequest{
 			SandboxId: sandboxID,
 			EndTime:   timestamppb.New(endTime),
 		},
