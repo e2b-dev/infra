@@ -1,0 +1,142 @@
+version: '3.8'
+
+# Minimal setup for E2B infrastructure - just the core services
+services:
+  # PostgreSQL - Main database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: e2b
+      POSTGRES_USER: e2b
+      POSTGRES_PASSWORD: e2b_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U e2b"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis - Caching and distributed locks
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Mock services for local development
+  # These replace GCS buckets and other cloud services
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Create buckets in MinIO
+  minio-setup:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin;
+      /usr/bin/mc mb myminio/e2b-templates || true;
+      /usr/bin/mc mb myminio/e2b-fc-kernels || true;
+      /usr/bin/mc mb myminio/e2b-fc-versions || true;
+      /usr/bin/mc mb myminio/e2b-docker-contexts || true;
+      exit 0;
+      "
+
+  # Database Migrator
+  db-migrator:
+    build:
+      context: ./packages/db
+      dockerfile: Dockerfile
+    environment:
+      POSTGRES_CONNECTION_STRING: "postgres://e2b:e2b_password@postgres:5432/e2b?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["up"]
+
+  # API Service (simplified configuration)
+  api:
+    build:
+      context: ./packages/api
+      dockerfile: Dockerfile.dockercompose
+      args:
+        COMMIT_SHA: "local"
+        EXPECTED_MIGRATION_TIMESTAMP: "20241231000000"
+    environment:
+      # Core database connections
+      POSTGRES_CONNECTION_STRING: "postgres://e2b:e2b_password@postgres:5432/e2b?sslmode=disable"
+      REDIS_URL: "redis://redis:6379"
+      
+      # Disable optional services
+      CLICKHOUSE_CONNECTION_STRING: ""
+      NOMAD_ADDRESS: ""
+      NOMAD_TOKEN: ""
+      
+      # Basic auth configuration
+      SUPABASE_JWT_SECRETS: '{"jwt_secret":"local-dev-jwt-secret-min-32-chars-long","service_role_key":"local-dev-service-role-key"}'
+      ADMIN_TOKEN: "admin-secret-token"
+      SANDBOX_ACCESS_TOKEN_HASH_SEED: "sandbox-hash-seed"
+      
+      # Environment settings
+      ENVIRONMENT: "local"
+      GIN_MODE: "debug"
+      
+      # Orchestrator connection
+      ORCHESTRATOR_PORT: "5008"
+      
+      # Disable telemetry for local dev
+      OTEL_TRACING_PRINT: "false"
+      POSTHOG_API_KEY: ""
+      ANALYTICS_COLLECTOR_HOST: ""
+      ANALYTICS_COLLECTOR_API_TOKEN: ""
+      LAUNCH_DARKLY_API_KEY: ""
+      
+      # MinIO configuration (replaces GCS)
+      TEMPLATE_BUCKET_NAME: "e2b-templates"
+      S3_ENDPOINT: "http://minio:9000"
+      S3_ACCESS_KEY: "minioadmin"
+      S3_SECRET_KEY: "minioadmin"
+      S3_USE_SSL: "false"
+    ports:
+      - "3000:80"
+    depends_on:
+      - postgres
+      - redis
+      - db-migrator
+      - minio-setup
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data: 

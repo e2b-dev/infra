@@ -1,0 +1,294 @@
+version: '3.8'
+
+services:
+  # PostgreSQL - Main database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: e2b
+      POSTGRES_USER: e2b
+      POSTGRES_PASSWORD: e2b_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-postgres.sql:/docker-entrypoint-initdb.d/init-postgres.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U e2b"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ClickHouse - Analytics database
+  clickhouse:
+    image: clickhouse/clickhouse-server:23-alpine
+    environment:
+      CLICKHOUSE_DB: e2b_analytics
+      CLICKHOUSE_USER: e2b
+      CLICKHOUSE_PASSWORD: clickhouse_password
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis - Caching and distributed locks
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Loki - Log aggregation
+  loki:
+    image: grafana/loki:2.9.0
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki_data:/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # OpenTelemetry Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.91.0
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./configs/otel-collector.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"  # OTLP gRPC receiver
+      - "4318:4318"  # OTLP HTTP receiver
+      - "8888:8888"  # Prometheus metrics
+    depends_on:
+      - loki
+
+  # Database Migrator
+  db-migrator:
+    build:
+      context: .
+      dockerfile: ./packages/db/Dockerfile
+    environment:
+      POSTGRES_CONNECTION_STRING: "postgres://e2b:e2b_password@postgres:5432/e2b?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["up"]
+
+  # ClickHouse Migrator
+  clickhouse-migrator:
+    build:
+      context: .
+      dockerfile: ./packages/clickhouse/Dockerfile
+    environment:
+      CLICKHOUSE_CONNECTION_STRING: "clickhouse://e2b:clickhouse_password@clickhouse:9000/e2b_analytics"
+      CLICKHOUSE_USERNAME: e2b
+      CLICKHOUSE_PASSWORD: clickhouse_password
+      CLICKHOUSE_DATABASE: e2b_analytics
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    command: ["up"]
+
+  # API Service
+  api:
+    build:
+      context: .
+      dockerfile: ./packages/api/Dockerfile
+      args:
+        COMMIT_SHA: "local"
+        EXPECTED_MIGRATION_TIMESTAMP: "20250206105106"
+    environment:
+      POSTGRES_CONNECTION_STRING: "postgres://e2b:e2b_password@postgres:5432/e2b?sslmode=disable"
+      CLICKHOUSE_CONNECTION_STRING: "clickhouse://e2b:clickhouse_password@clickhouse:9000/e2b_analytics"
+      REDIS_URL: "redis:6379"
+      SUPABASE_JWT_SECRETS: '{"jwt_secret":"your-super-secret-jwt-key-here","service_role_key":"your-service-role-key"}'
+      ENVIRONMENT: "local"
+      ORCHESTRATOR_PORT: "5008"
+      NOMAD_ADDRESS: "http://localhost:4646"
+      NOMAD_TOKEN: "dummy-token"
+      ADMIN_TOKEN: "admin-secret-token"
+      SANDBOX_ACCESS_TOKEN_HASH_SEED: "sandbox-hash-seed"
+      POSTHOG_API_KEY: ""
+      ANALYTICS_COLLECTOR_HOST: ""
+      ANALYTICS_COLLECTOR_API_TOKEN: ""
+      LOKI_ADDRESS: "http://loki:3100"
+      OTEL_TRACING_PRINT: "true"
+      OTEL_COLLECTOR_GRPC_ENDPOINT: "otel-collector:4317"
+      LOGS_COLLECTOR_ADDRESS: "loki:3100"
+      DNS_PORT: "5353"
+      TEMPLATE_BUCKET_NAME: "e2b-templates"
+      GIN_MODE: "release"
+    ports:
+      - "3000:80"
+      - "5353:5353/udp"
+    depends_on:
+      - postgres
+      - clickhouse
+      - redis
+      - db-migrator
+      - clickhouse-migrator
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Client Proxy
+  client-proxy:
+    build:
+      context: .
+      dockerfile: ./packages/client-proxy/Dockerfile
+      args:
+        COMMIT_SHA: "local"
+    environment:
+      NODE_ID: "local-node-1"
+      NODE_IP: "client-proxy"
+      EDGE_PORT: "3001"
+      EDGE_SECRET: "edge-secret-key"
+      PROXY_PORT: "3002"
+      ORCHESTRATOR_PORT: "5008"
+      SERVICE_DISCOVERY_ORCHESTRATOR_PROVIDER: "STATIC"
+      SERVICE_DISCOVERY_ORCHESTRATOR_STATIC: "true"
+      SERVICE_DISCOVERY_ORCHESTRATOR_STATIC_ADDRESSES: "orchestrator:5008,template-manager:5009"
+      SERVICE_DISCOVERY_EDGE_PROVIDER: "STATIC"
+      SERVICE_DISCOVERY_EDGE_STATIC: "true"
+      SERVICE_DISCOVERY_EDGE_STATIC_ADDRESSES: "api:80"
+      ENVIRONMENT: "local"
+      USE_PROXY_CATALOG_RESOLUTION: "false"
+      OTEL_COLLECTOR_GRPC_ENDPOINT: "otel-collector:4317"
+      LOGS_COLLECTOR_ADDRESS: "loki:3100"
+      REDIS_URL: "redis:6379"
+      REDIS_CLUSTER_URL: "redis:6379"
+      LOKI_URL: "http://loki:3100"
+    ports:
+      - "3001:3001"  # Edge API
+      - "3002:3002"  # Proxy
+    depends_on:
+      - redis
+      - orchestrator
+      - api
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Docker Reverse Proxy
+  docker-reverse-proxy:
+    build:
+      context: .
+      dockerfile: ./packages/docker-reverse-proxy/Dockerfile
+      args:
+        COMMIT_SHA: "local"
+    environment:
+      POSTGRES_CONNECTION_STRING: "postgres://e2b:e2b_password@postgres:5432/e2b?sslmode=disable"
+      GOOGLE_APPLICATION_CREDENTIALS: "/etc/gcp/google.json"
+      GCP_REGION: "us-central1"
+      GCP_PROJECT_ID: "e2b-local"
+      GCP_DOCKER_REPOSITORY_NAME: "e2b-local-docker"
+      DOMAIN_NAME: "localhost"
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./configs/google.json:/etc/gcp/google.json:ro  # Google Cloud credentials
+    depends_on:
+      - postgres
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Orchestrator Service
+  orchestrator:
+    build:
+      context: .
+      dockerfile: ./packages/orchestrator/Dockerfile
+      args:
+        COMMIT_SHA: "local"
+    environment:
+      NODE_ID: "orchestrator-node-1"
+      TEMPLATE_BUCKET_NAME: "e2b-templates"
+      ENVD_TIMEOUT: "600s"
+      ORCHESTRATOR_SERVICES: "orchestrator"
+      GCP_DOCKER_REPOSITORY_NAME: "e2b-local-docker"
+      GOOGLE_APPLICATION_CREDENTIALS: "/etc/gcp/google.json"
+      GCP_PROJECT_ID: "e2b-local"
+      GCP_REGION: "us-central1"
+      FORCE_STOP: "false"
+      ENVIRONMENT: "local"
+      OTEL_COLLECTOR_GRPC_ENDPOINT: "otel-collector:4317"
+      LOGS_COLLECTOR_ADDRESS: "loki:3100"
+    ports:
+      - "5007:5007"  # Proxy port
+      - "5008:5008"  # gRPC port
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # For container management
+      - ./configs/google.json:/etc/gcp/google.json:ro  # Google Cloud credentials
+    privileged: true  # Required for network namespace operations
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5007/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Template Manager Service
+  template-manager:
+    build:
+      context: .
+      dockerfile: ./packages/orchestrator/Dockerfile
+      args:
+        COMMIT_SHA: "local"
+    environment:
+      NODE_ID: "template-manager-node-1"
+      TEMPLATE_BUCKET_NAME: "e2b-templates"
+      ENVD_TIMEOUT: "600s"
+      ORCHESTRATOR_SERVICES: "template-manager"
+      GCP_DOCKER_REPOSITORY_NAME: "e2b-local-docker"
+      GOOGLE_APPLICATION_CREDENTIALS: "/etc/gcp/google.json"
+      GCP_PROJECT_ID: "e2b-local"
+      GCP_REGION: "us-central1"
+      FORCE_STOP: "false"
+      ENVIRONMENT: "local"
+      OTEL_COLLECTOR_GRPC_ENDPOINT: "otel-collector:4317"
+      LOGS_COLLECTOR_ADDRESS: "loki:3100"
+    ports:
+      - "5009:5008"  # Template manager gRPC port
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./configs/google.json:/etc/gcp/google.json:ro  # Google Cloud credentials
+    privileged: true  # Required for network namespace operations
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5007/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  clickhouse_data:
+  redis_data:
+  loki_data: 

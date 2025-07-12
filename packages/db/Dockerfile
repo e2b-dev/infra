@@ -1,21 +1,26 @@
 # Builder stage
 FROM golang:1.24-alpine AS builder
 
+RUN apk add --no-cache git
+
 # Shared
 WORKDIR /build/shared
 
-COPY .shared/go.mod .shared/go.sum ./
+COPY packages/shared/go.mod packages/shared/go.sum ./
 RUN go mod download
 
-COPY .shared/pkg pkg
+COPY packages/shared/pkg pkg
 
 #
 WORKDIR /build/db
 
-COPY go.mod go.sum ./
+COPY packages/db/go.mod packages/db/go.sum ./
 RUN go mod download
 
-COPY scripts/migrator.go .
+COPY packages/db/scripts/migrator.go .
+
+# Create .last_used_env file that Makefile expects
+RUN echo "local" > ../../.last_used_env
 
 RUN go build -o ./migrator ./migrator.go
 RUN chmod +x ./migrator
@@ -26,6 +31,6 @@ FROM alpine:latest
 COPY --from=builder /build/db/migrator /usr/local/bin/migrator
 
 WORKDIR /app
-COPY /migrations ./migrations
+COPY packages/db/migrations ./migrations
 
 ENTRYPOINT ["migrator"]

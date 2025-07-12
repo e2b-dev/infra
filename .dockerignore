@@ -4,6 +4,11 @@
 # Allow files and directories
 !/packages/api
 !/packages/shared
+!/packages/db
+!/packages/clickhouse
+!/packages/client-proxy
+!/packages/docker-reverse-proxy
+!/packages/orchestrator
 !go.work
 !go.work.sum
 

@@ -1,43 +1,43 @@
 FROM golang:1.24-alpine3.20 AS builder
 
-RUN apk add --no-cache make
+RUN apk add --no-cache make git
 
 # Shared
 WORKDIR /build/shared
 
-COPY .shared/go.mod .shared/go.sum ./
+COPY packages/shared/go.mod packages/shared/go.sum ./
 RUN go mod download
 
-COPY .shared/pkg pkg
+COPY packages/shared/pkg pkg
 
 # Clickhouse
 WORKDIR /build/clickhouse
 
-COPY .clickhouse/go.mod .clickhouse/go.sum ./
+COPY packages/clickhouse/go.mod packages/clickhouse/go.sum ./
 RUN go mod download
 
-COPY .clickhouse/pkg pkg
+COPY packages/clickhouse/pkg pkg
 
 # DB
 WORKDIR /build/db
 
-COPY .db/go.mod .db/go.sum ./
+COPY packages/db/go.mod packages/db/go.sum ./
 RUN go mod download
 
-COPY .db .
+COPY packages/db .
 
 # API
 WORKDIR /build/api
 
-COPY go.mod go.sum Makefile ./
+COPY packages/api/go.mod packages/api/go.sum ./
 RUN go mod download
 
-COPY internal internal
-COPY main.go main.go
+COPY packages/api/internal internal
+COPY packages/api/main.go main.go
 
 ARG COMMIT_SHA
 ARG EXPECTED_MIGRATION_TIMESTAMP
-RUN --mount=type=cache,target=/root/.cache/go-build make build COMMIT_SHA=${COMMIT_SHA} EXPECTED_MIGRATION_TIMESTAMP=${EXPECTED_MIGRATION_TIMESTAMP}
+RUN CGO_ENABLED=0 go build -ldflags="-X main.commitSHA=${COMMIT_SHA} -X main.expectedMigrationTimestamp=${EXPECTED_MIGRATION_TIMESTAMP}" -o bin/api main.go
 
 RUN chmod +x /build/api/bin/api
 
