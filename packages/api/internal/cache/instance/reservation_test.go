@@ -3,6 +3,7 @@ package instance
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -10,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
 const (
@@ -19,8 +21,11 @@ const (
 var teamID = uuid.New()
 
 func newInstanceCache() (*InstanceCache, context.CancelFunc) {
+	createFunc := func(data *InstanceInfo, created bool) error { return nil }
+	deleteFunc := func(data *InstanceInfo) error { return nil }
+
 	ctx, cancel := context.WithCancel(context.Background())
-	cache := NewCache(ctx, noop.MeterProvider{}, nil, nil)
+	cache := NewCache(ctx, noop.MeterProvider{}, createFunc, deleteFunc)
 	return cache, cancel
 }
 
@@ -70,8 +75,12 @@ func TestReservation_ResumeAlreadyRunningSandbox(t *testing.T) {
 	defer cancel()
 
 	info := &InstanceInfo{
-		TeamID: &uuid.Nil,
+		TeamID:            &teamID,
+		StartTime:         time.Now(),
+		endTime:           time.Now().Add(time.Hour),
+		MaxInstanceLength: time.Hour,
 		Instance: &api.Sandbox{
+			ClientID:   consts.ClientID,
 			SandboxID:  sandboxID,
 			TemplateID: "test",
 		},
@@ -79,7 +88,6 @@ func TestReservation_ResumeAlreadyRunningSandbox(t *testing.T) {
 	err := cache.Add(context.Background(), info, false)
 	assert.NoError(t, err)
 
-	release, err := cache.Reserve(sandboxID, teamID, 1)
+	_, err = cache.Reserve(sandboxID, teamID, 1)
 	assert.Error(t, err)
-	release()
 }
