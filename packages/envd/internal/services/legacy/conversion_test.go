@@ -2,15 +2,17 @@ package legacy
 
 import (
 	"bytes"
-	"connectrpc.com/connect"
-	"github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
-	"github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem/filesystemconnect"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 	"io"
 	"net/http/httptest"
 	"testing"
+
+	"connectrpc.com/connect"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem/filesystemconnect"
 )
 
 func TestFilesystemClient_FieldFormatter(t *testing.T) {
