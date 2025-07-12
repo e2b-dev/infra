@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -41,7 +42,7 @@ func TestFilesystemClient_FieldFormatter(t *testing.T) {
 
 		data, err := io.ReadAll(w.Body)
 		require.NoError(t, err)
-		assert.Equal(t, `{"entry":{"name":"test name"}, "testing":true}`, string(data))
+		assert.Equal(t, `{"entry":{"name":"test name"},"testing":true}`, string(data))
 	})
 
 	t.Run("can hide fields when appropriate", func(t *testing.T) {
@@ -240,16 +241,49 @@ func TestConversion(t *testing.T) {
 		},
 	}
 
-	converter := Convert()
-
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			actual := converter.maybeConvert(t.Context(), tc.input)
+			actual := maybeConvertResponse(zerolog.DefaultContextLogger, tc.input)
 
 			expectedMsg := tc.expected.Any()
 			resultMsg := actual.Any()
 
 			assert.Equal(t, expectedMsg, resultMsg)
+		})
+	}
+}
+
+func TestConvertValue(t *testing.T) {
+	testCases := map[string]struct {
+		input, expected any
+	}{
+		"pass through for unknown values": {
+			input:    25,
+			expected: 25,
+		},
+
+		"move response without value": {
+			input: &filesystem.MoveResponse{
+				Entry: &filesystem.EntryInfo{
+					Name: "test.txt",
+					Type: filesystem.FileType_FILE_TYPE_FILE,
+					Path: "/test/test.txt",
+				},
+			},
+			expected: MoveResponse{
+				Entry: &EntryInfo{
+					Name: "test.txt",
+					Type: FileType_FILE_TYPE_FILE,
+					Path: "/test/test.txt",
+				},
+			},
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			actual := maybeConvertValue(tc.input)
+			assert.Equal(t, tc.expected, actual)
 		})
 	}
 }
