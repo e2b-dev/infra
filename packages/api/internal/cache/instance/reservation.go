@@ -93,11 +93,16 @@ func (c *InstanceCache) Reserve(instanceID string, team uuid.UUID, limit int64) 
 		return nil, &ErrSandboxLimitExceeded{teamID: team.String()}
 	}
 
-	inserted := c.reservations.insertIfAbsent(instanceID, team)
-	if !inserted {
+	if _, ok := ids[instanceID]; ok {
 		return nil, &ErrAlreadyBeingStarted{
 			sandboxID: instanceID,
 		}
+	}
+
+	inserted := c.reservations.insertIfAbsent(instanceID, team)
+	if !inserted {
+		// This shouldn't happen
+		return nil, &ErrAlreadyBeingStarted{}
 	}
 
 	return func() {

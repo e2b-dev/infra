@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
+
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
 
 const (
@@ -61,4 +63,23 @@ func TestReservation_Release(t *testing.T) {
 
 	_, err = cache.Reserve(sandboxID, teamID, 1)
 	assert.NoError(t, err)
+}
+
+func TestReservation_ResumeAlreadyRunningSandbox(t *testing.T) {
+	cache, cancel := newInstanceCache()
+	defer cancel()
+
+	info := &InstanceInfo{
+		TeamID: &uuid.Nil,
+		Instance: &api.Sandbox{
+			SandboxID:  sandboxID,
+			TemplateID: "test",
+		},
+	}
+	err := cache.Add(context.Background(), info, false)
+	assert.NoError(t, err)
+
+	release, err := cache.Reserve(sandboxID, teamID, 1)
+	assert.Error(t, err)
+	release()
 }
