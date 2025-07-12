@@ -1,11 +1,13 @@
 package legacy
 
 import (
-	"connectrpc.com/connect"
 	"context"
-	"github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
-	"google.golang.org/protobuf/reflect/protoreflect"
 	"reflect"
+
+	"connectrpc.com/connect"
+	"google.golang.org/protobuf/reflect/protoreflect"
+
+	"github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
 )
 
 func convertEntryInfo(info *filesystem.EntryInfo) *EntryInfo {
