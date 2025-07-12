@@ -2,9 +2,11 @@ package legacy
 
 import (
 	"context"
+	"errors"
 	"reflect"
 
 	"connectrpc.com/connect"
+	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
@@ -22,23 +24,25 @@ func convertEntryInfo(info *filesystem.EntryInfo) *EntryInfo {
 	}
 }
 
+var ErrUnexpectedType = errors.New("unexpected type")
+
 func Convert() ConversionInterceptor {
 	return ConversionInterceptor{
-		converters: map[reflect.Type]func(protoreflect.ProtoMessage) connect.AnyResponse{
-			reflect.TypeFor[*filesystem.MoveResponse](): func(a protoreflect.ProtoMessage) connect.AnyResponse {
+		converters: map[reflect.Type]func(protoreflect.ProtoMessage) (connect.AnyResponse, error){
+			reflect.TypeFor[*filesystem.MoveResponse](): func(a protoreflect.ProtoMessage) (connect.AnyResponse, error) {
 				mr, ok := a.(*filesystem.MoveResponse)
 				if !ok {
-					panic("wrong type")
+					return nil, ErrUnexpectedType
 				}
 
 				return connect.NewResponse(&MoveResponse{
 					Entry: convertEntryInfo(mr.Entry),
-				})
+				}), nil
 			},
-			reflect.TypeFor[*filesystem.ListDirResponse](): func(a protoreflect.ProtoMessage) connect.AnyResponse {
+			reflect.TypeFor[*filesystem.ListDirResponse](): func(a protoreflect.ProtoMessage) (connect.AnyResponse, error) {
 				mr, ok := a.(*filesystem.ListDirResponse)
 				if !ok {
-					panic("wrong type")
+					return nil, ErrUnexpectedType
 				}
 
 				var old []*EntryInfo
@@ -48,40 +52,40 @@ func Convert() ConversionInterceptor {
 
 				return connect.NewResponse(&ListDirResponse{
 					Entries: old,
-				})
+				}), nil
 			},
-			reflect.TypeFor[*filesystem.MakeDirResponse](): func(a protoreflect.ProtoMessage) connect.AnyResponse {
+			reflect.TypeFor[*filesystem.MakeDirResponse](): func(a protoreflect.ProtoMessage) (connect.AnyResponse, error) {
 				mr, ok := a.(*filesystem.MakeDirResponse)
 				if !ok {
-					panic("wrong type")
+					return nil, ErrUnexpectedType
 				}
 
 				return connect.NewResponse(&MakeDirResponse{
 					Entry: convertEntryInfo(mr.Entry),
-				})
+				}), nil
 			},
-			reflect.TypeFor[*filesystem.RemoveResponse](): func(a protoreflect.ProtoMessage) connect.AnyResponse {
+			reflect.TypeFor[*filesystem.RemoveResponse](): func(a protoreflect.ProtoMessage) (connect.AnyResponse, error) {
 				_, ok := a.(*filesystem.RemoveResponse)
 				if !ok {
-					panic("wrong type")
+					return nil, ErrUnexpectedType
 				}
 
-				return connect.NewResponse(&RemoveResponse{})
+				return connect.NewResponse(&RemoveResponse{}), nil
 			},
-			reflect.TypeFor[*filesystem.StatResponse](): func(a protoreflect.ProtoMessage) connect.AnyResponse {
+			reflect.TypeFor[*filesystem.StatResponse](): func(a protoreflect.ProtoMessage) (connect.AnyResponse, error) {
 				sr, ok := a.(*filesystem.StatResponse)
 				if !ok {
-					panic("wrong type")
+					return nil, ErrUnexpectedType
 				}
 
 				return connect.NewResponse(&StatResponse{
 					Entry: convertEntryInfo(sr.Entry),
-				})
+				}), nil
 			},
-			reflect.TypeFor[*filesystem.WatchDirResponse](): func(a protoreflect.ProtoMessage) connect.AnyResponse {
+			reflect.TypeFor[*filesystem.WatchDirResponse](): func(a protoreflect.ProtoMessage) (connect.AnyResponse, error) {
 				wr, ok := a.(*filesystem.WatchDirResponse)
 				if !ok {
-					panic("wrong type")
+					return nil, ErrUnexpectedType
 				}
 
 				response := &WatchDirResponse{}
@@ -101,24 +105,24 @@ func Convert() ConversionInterceptor {
 					}
 				}
 
-				return connect.NewResponse(response)
+				return connect.NewResponse(response), nil
 			},
-			reflect.TypeFor[*filesystem.CreateWatcherResponse](): func(a protoreflect.ProtoMessage) connect.AnyResponse {
+			reflect.TypeFor[*filesystem.CreateWatcherResponse](): func(a protoreflect.ProtoMessage) (connect.AnyResponse, error) {
 				cr, ok := a.(*filesystem.CreateWatcherResponse)
 				if !ok {
-					panic("wrong type")
+					return nil, ErrUnexpectedType
 				}
 
 				return connect.NewResponse(&CreateWatcherResponse{
 					WatcherId: cr.WatcherId,
-				})
+				}), nil
 			},
 		},
 	}
 }
 
 type ConversionInterceptor struct {
-	converters map[reflect.Type]func(protoreflect.ProtoMessage) connect.AnyResponse
+	converters map[reflect.Type]func(protoreflect.ProtoMessage) (connect.AnyResponse, error)
 }
 
 func (l ConversionInterceptor) WrapUnary(unaryFunc connect.UnaryFunc) connect.UnaryFunc {
@@ -129,7 +133,7 @@ func (l ConversionInterceptor) WrapUnary(unaryFunc connect.UnaryFunc) connect.Un
 		}
 
 		if request.Header().Get("User-Agent") == "connect-python" {
-			response = l.maybeConvert(response)
+			response = l.maybeConvert(ctx, response)
 		}
 
 		return response, nil
@@ -144,10 +148,15 @@ func (l ConversionInterceptor) WrapStreamingHandler(handlerFunc connect.Streamin
 	return handlerFunc
 }
 
-func (l ConversionInterceptor) maybeConvert(response connect.AnyResponse) connect.AnyResponse {
+var ErrExpectedProtoMessage = errors.New("expected proto message")
+
+func (l ConversionInterceptor) maybeConvert(ctx context.Context, response connect.AnyResponse) connect.AnyResponse {
 	value := response.Any()
 	pm, ok := value.(protoreflect.ProtoMessage)
 	if !ok {
+		zerolog.Ctx(ctx).Warn().
+			Type("response", response).
+			Msg("cannot convert, expected protoreflect.ProtoMessage")
 		return response
 	}
 
@@ -157,7 +166,16 @@ func (l ConversionInterceptor) maybeConvert(response connect.AnyResponse) connec
 		return response
 	}
 
-	return conversion(pm)
+	if r, err := conversion(pm); err != nil {
+		zerolog.Ctx(ctx).Warn().
+			Err(err).
+			Type("response", response).
+			Msg("conversion failed")
+	} else {
+		response = r
+	}
+
+	return response
 }
 
 // Helper functions for WatchDirResponse conversion
