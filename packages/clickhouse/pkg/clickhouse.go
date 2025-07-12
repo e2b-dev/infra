@@ -3,6 +3,7 @@ package clickhouse
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -12,6 +13,8 @@ type Clickhouse interface {
 	Close(ctx context.Context) error
 
 	// Metrics queries
+	QuerySandboxTimeRange(ctx context.Context, sandboxID string, teamID string) (start time.Time, end time.Time, err error)
+	QuerySandboxMetrics(ctx context.Context, sandboxID string, teamID string, start time.Time, end time.Time, step time.Duration) ([]Metrics, error)
 	QueryLatestMetrics(ctx context.Context, sandboxIDs []string, teamID string) ([]Metrics, error)
 }
 
