@@ -244,7 +244,7 @@ func TestConversion(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			actual := converter.maybeConvert(tc.input)
+			actual := converter.maybeConvert(t.Context(), tc.input)
 
 			expectedMsg := tc.expected.Any()
 			resultMsg := actual.Any()
