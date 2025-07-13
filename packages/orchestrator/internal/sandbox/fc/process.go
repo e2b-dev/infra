@@ -10,7 +10,9 @@ import (
 	"os/exec"
 	"syscall"
 	txtTemplate "text/template"
+	"time"
 
+	gopsutil "github.com/shirou/gopsutil/v4/process"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -422,11 +424,68 @@ func (p *Process) Pid() (int, error) {
 	return p.cmd.Process.Pid, nil
 }
 
+// findFirecrackerProcess finds the first "firecracker" process in the process tree, by breadth-first search.
+func findFirecrackerProcess(parentPid int32) (*gopsutil.Process, error) {
+	proc, err := gopsutil.NewProcess(parentPid)
+	if err != nil {
+		return nil, err
+	}
+
+	queue := []*gopsutil.Process{proc}
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		name, _ := current.Name()
+		if name == "firecracker" {
+			return current, nil
+		}
+
+		children, err := current.Children()
+		if err == nil {
+			queue = append(queue, children...)
+		}
+	}
+
+	return nil, fmt.Errorf("firecracker not found")
+}
+
 func (p *Process) Stop() error {
 	if p.cmd.Process == nil {
 		return fmt.Errorf("fc process not started")
 	}
 
+	// Try to find a firecracker process in the process tree to stop it before killing the parent.
+	if fc, err := findFirecrackerProcess(int32(p.cmd.Process.Pid)); err == nil {
+		// Send SIGKILL to the firecracker process to make sure it is killed before the unshare process and nbd, uffd cleanup.
+		// Because of our unshare (-p, --kill-child) setup, other signals don't propagate properly.
+		err = fc.Kill()
+		if err != nil {
+			zap.L().Warn("failed to send KILL to firecracker process", zap.Error(err))
+		}
+
+		// We are not calling wait as the parent unshare should already reap the child process and calling it twice might result in panic.
+		timeout := time.After(250 * time.Millisecond)
+		tick := time.Tick(25 * time.Millisecond)
+
+	waitLoop:
+		for {
+			select {
+			case <-timeout:
+				break waitLoop
+			case <-tick:
+				// The FC process should exit and be reaped by the parent unshare process.
+				if status, err := fc.IsRunning(); err == nil && !status {
+					break waitLoop
+				}
+			}
+		}
+	} else {
+		zap.L().Warn("cannot find firecracker process for sandbox, sending SIGKILL to unshare process without killing FC first", zap.String("sandbox.id", p.files.SandboxID), zap.Error(err))
+	}
+
+	// Send SIGKILL to the unshare process to make sure the parent of the FC process is killed.
 	err := p.cmd.Process.Kill()
 	if err != nil {
 		zap.L().Warn("failed to send KILL to FC process", zap.Error(err))
