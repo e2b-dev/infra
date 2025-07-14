@@ -3,6 +3,8 @@ package template
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -47,7 +49,11 @@ func NewCache(ctx context.Context) (*Cache, error) {
 		}
 	})
 
-	go cache.Start()
+	// Delete the old build cache directory content as it may contain stale data that are not managed by anyone.
+	err := cleanDir(build.DefaultCachePath)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("failed to remove old build cache directory: %w", err)
+	}
 
 	buildStore, err := build.NewDiffStore(
 		ctx,
@@ -64,6 +70,8 @@ func NewCache(ctx context.Context) (*Cache, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get storage provider: %w", err)
 	}
+
+	go cache.Start()
 
 	return &Cache{
 		persistence: persistence,
@@ -157,6 +165,22 @@ func (c *Cache) AddSnapshot(
 
 	if !found {
 		go storageTemplate.Fetch(c.ctx, c.buildStore)
+	}
+
+	return nil
+}
+
+func cleanDir(path string) error {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return fmt.Errorf("reading directory contents: %w", err)
+	}
+
+	for _, entry := range entries {
+		entryPath := filepath.Join(path, entry.Name())
+		if err := os.RemoveAll(entryPath); err != nil {
+			return fmt.Errorf("removing %q: %w", entryPath, err)
+		}
 	}
 
 	return nil
