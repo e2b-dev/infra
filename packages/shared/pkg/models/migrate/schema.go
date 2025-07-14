@@ -42,6 +42,7 @@ var (
 		{Name: "endpoint", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "endpoint_tls", Type: field.TypeBool, Default: true},
 		{Name: "token", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "sandbox_proxy_domain", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 	}
 	// ClustersTable holds the schema information for the "clusters" table.
 	ClustersTable = &schema.Table{

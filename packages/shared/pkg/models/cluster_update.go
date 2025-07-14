@@ -71,6 +71,20 @@ func (cu *ClusterUpdate) SetNillableToken(s *string) *ClusterUpdate {
 	return cu
 }
 
+// SetSandboxProxyDomain sets the "sandbox_proxy_domain" field.
+func (cu *ClusterUpdate) SetSandboxProxyDomain(s string) *ClusterUpdate {
+	cu.mutation.SetSandboxProxyDomain(s)
+	return cu
+}
+
+// SetNillableSandboxProxyDomain sets the "sandbox_proxy_domain" field if the given value is not nil.
+func (cu *ClusterUpdate) SetNillableSandboxProxyDomain(s *string) *ClusterUpdate {
+	if s != nil {
+		cu.SetSandboxProxyDomain(*s)
+	}
+	return cu
+}
+
 // Mutation returns the ClusterMutation object of the builder.
 func (cu *ClusterUpdate) Mutation() *ClusterMutation {
 	return cu.mutation
@@ -145,6 +159,9 @@ func (cu *ClusterUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if value, ok := cu.mutation.Token(); ok {
 		_spec.SetField(cluster.FieldToken, field.TypeString, value)
 	}
+	if value, ok := cu.mutation.SandboxProxyDomain(); ok {
+		_spec.SetField(cluster.FieldSandboxProxyDomain, field.TypeString, value)
+	}
 	_spec.Node.Schema = cu.schemaConfig.Cluster
 	ctx = internal.NewSchemaConfigContext(ctx, cu.schemaConfig)
 	_spec.AddModifiers(cu.modifiers...)
@@ -207,6 +224,20 @@ func (cuo *ClusterUpdateOne) SetToken(s string) *ClusterUpdateOne {
 func (cuo *ClusterUpdateOne) SetNillableToken(s *string) *ClusterUpdateOne {
 	if s != nil {
 		cuo.SetToken(*s)
+	}
+	return cuo
+}
+
+// SetSandboxProxyDomain sets the "sandbox_proxy_domain" field.
+func (cuo *ClusterUpdateOne) SetSandboxProxyDomain(s string) *ClusterUpdateOne {
+	cuo.mutation.SetSandboxProxyDomain(s)
+	return cuo
+}
+
+// SetNillableSandboxProxyDomain sets the "sandbox_proxy_domain" field if the given value is not nil.
+func (cuo *ClusterUpdateOne) SetNillableSandboxProxyDomain(s *string) *ClusterUpdateOne {
+	if s != nil {
+		cuo.SetSandboxProxyDomain(*s)
 	}
 	return cuo
 }
@@ -314,6 +345,9 @@ func (cuo *ClusterUpdateOne) sqlSave(ctx context.Context) (_node *Cluster, err e
 	}
 	if value, ok := cuo.mutation.Token(); ok {
 		_spec.SetField(cluster.FieldToken, field.TypeString, value)
+	}
+	if value, ok := cuo.mutation.SandboxProxyDomain(); ok {
+		_spec.SetField(cluster.FieldSandboxProxyDomain, field.TypeString, value)
 	}
 	_spec.Node.Schema = cuo.schemaConfig.Cluster
 	ctx = internal.NewSchemaConfigContext(ctx, cuo.schemaConfig)

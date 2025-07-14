@@ -22,8 +22,10 @@ type Cluster struct {
 	// EndpointTLS holds the value of the "endpoint_tls" field.
 	EndpointTLS bool `json:"endpoint_tls,omitempty"`
 	// Token holds the value of the "token" field.
-	Token        string `json:"-"`
-	selectValues sql.SelectValues
+	Token string `json:"-"`
+	// SandboxProxyDomain holds the value of the "sandbox_proxy_domain" field.
+	SandboxProxyDomain string `json:"sandbox_proxy_domain,omitempty"`
+	selectValues       sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -33,7 +35,7 @@ func (*Cluster) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case cluster.FieldEndpointTLS:
 			values[i] = new(sql.NullBool)
-		case cluster.FieldEndpoint, cluster.FieldToken:
+		case cluster.FieldEndpoint, cluster.FieldToken, cluster.FieldSandboxProxyDomain:
 			values[i] = new(sql.NullString)
 		case cluster.FieldID:
 			values[i] = new(uuid.UUID)
@@ -75,6 +77,12 @@ func (c *Cluster) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field token", values[i])
 			} else if value.Valid {
 				c.Token = value.String
+			}
+		case cluster.FieldSandboxProxyDomain:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field sandbox_proxy_domain", values[i])
+			} else if value.Valid {
+				c.SandboxProxyDomain = value.String
 			}
 		default:
 			c.selectValues.Set(columns[i], values[i])
@@ -119,6 +127,9 @@ func (c *Cluster) String() string {
 	builder.WriteString(fmt.Sprintf("%v", c.EndpointTLS))
 	builder.WriteString(", ")
 	builder.WriteString("token=<sensitive>")
+	builder.WriteString(", ")
+	builder.WriteString("sandbox_proxy_domain=")
+	builder.WriteString(c.SandboxProxyDomain)
 	builder.WriteByte(')')
 	return builder.String()
 }
