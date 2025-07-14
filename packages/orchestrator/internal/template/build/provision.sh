@@ -10,7 +10,7 @@ echo "Making configuration immutable"
 chattr +i /etc/resolv.conf
 
 # Install required packages if not already installed
-PACKAGES="systemd systemd-sysv openssh-server sudo chrony linuxptp"
+PACKAGES="systemd systemd-sysv openssh-server sudo chrony linuxptp socat"
 echo "Checking presence of the following packages: $PACKAGES"
 
 MISSING=()
