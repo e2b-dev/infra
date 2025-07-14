@@ -39,8 +39,8 @@ build-and-upload:
 .PHONY: generate
 generate:
 	go generate ./...
-	cd spec && go tool buf generate --template buf.gen.yaml
-	cd spec && go tool buf generate --template buf.gen.shared.yaml
+	docker build -t proto-gen -f generate.Dockerfile .
+	docker run --rm -v .:/workspace -v ./../shared/pkg/grpc:/shared/pkg/grpc proto-gen
 
 .PHONY: test
 test:
