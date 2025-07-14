@@ -108,7 +108,7 @@ func (b *Builder) applyCommand(
 			return fmt.Errorf("%s requires files hash to be set", cmdType)
 		}
 
-		obj, err := b.storage.OpenObject(ctx, GetLayerFilesCachePath(templateID, *step.FilesHash))
+		obj, err := b.buildStorage.OpenObject(ctx, GetLayerFilesCachePath(templateID, *step.FilesHash))
 		if err != nil {
 			return fmt.Errorf("failed to open files object from storage: %w", err)
 		}

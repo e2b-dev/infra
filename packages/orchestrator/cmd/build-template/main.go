@@ -23,7 +23,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -93,7 +92,12 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		}
 	}()
 
-	persistence, err := storage.GetTemplateStorageProvider(ctx)
+	persistenceTemplate, err := storage.GetTemplateStorageProvider(ctx)
+	if err != nil {
+		return fmt.Errorf("could not create storage provider: %w", err)
+	}
+
+	persistenceBuild, err := storage.GetBuildCacheStorageProvider(ctx)
 	if err != nil {
 		return fmt.Errorf("could not create storage provider: %w", err)
 	}
@@ -130,13 +134,12 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}
 
-	templateStorage := template.NewStorage(persistence)
 	builder := build.NewBuilder(
 		logger,
 		logger,
 		tracer,
-		templateStorage,
-		persistence,
+		persistenceTemplate,
+		persistenceBuild,
 		artifactRegistry,
 		devicePool,
 		networkPool,

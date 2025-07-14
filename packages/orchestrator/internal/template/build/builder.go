@@ -30,7 +30,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -44,11 +43,11 @@ type Builder struct {
 	logger *zap.Logger
 	tracer trace.Tracer
 
-	storage          storage.StorageProvider
+	templateStorage  storage.StorageProvider
+	buildStorage     storage.StorageProvider
 	devicePool       *nbd.DevicePool
 	networkPool      *network.Pool
 	buildLogger      *zap.Logger
-	templateStorage  *template.Storage
 	artifactRegistry artifactsregistry.ArtifactsRegistry
 	proxy            *proxy.SandboxProxy
 	sandboxes        *smap.Map[*sandbox.Sandbox]
@@ -75,8 +74,8 @@ func NewBuilder(
 	logger *zap.Logger,
 	buildLogger *zap.Logger,
 	tracer trace.Tracer,
-	templateStorage *template.Storage,
-	storage storage.StorageProvider,
+	templateStorage storage.StorageProvider,
+	buildStorage storage.StorageProvider,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	devicePool *nbd.DevicePool,
 	networkPool *network.Pool,
@@ -89,7 +88,7 @@ func NewBuilder(
 		tracer:           tracer,
 		buildLogger:      buildLogger,
 		templateStorage:  templateStorage,
-		storage:          storage,
+		buildStorage:     buildStorage,
 		artifactRegistry: artifactRegistry,
 		devicePool:       devicePool,
 		networkPool:      networkPool,
@@ -140,7 +139,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			return
 		}
 		// Remove build files if build fails
-		removeErr := b.templateStorage.Remove(context.Background(), finalMetadata.BuildID)
+		removeErr := b.templateStorage.DeleteObjectsWithPrefix(context.Background(), finalMetadata.BuildID)
 		if removeErr != nil {
 			e = errors.Join(e, fmt.Errorf("error removing build files: %w", removeErr))
 		}
@@ -218,10 +217,6 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			template,
 			postProcessor,
 			b.artifactRegistry,
-			b.storage,
-			b.networkPool,
-			b.templateCache,
-			b.devicePool,
 			templateBuildDir,
 			rootfsPath,
 		)
@@ -344,7 +339,8 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			b.tracer,
 			uploadErrGroup,
 			postProcessor,
-			b.storage,
+			b.templateStorage,
+			b.buildStorage,
 			b.templateCache,
 			sourceSbx,
 			finalMetadata.TemplateID,
@@ -374,7 +370,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		}
 		if !force {
 			// Fetch stable uuid from the step hash
-			stepMetadata = getTemplateFromHash(ctx, b.storage, sourceMetadata, finalMetadata.TemplateID, lastHash)
+			stepMetadata = getTemplateFromHash(ctx, b.buildStorage, sourceMetadata, finalMetadata.TemplateID, lastHash)
 		}
 
 		// Apply changes like env vars or workdir locally only, no need to run in sandbox
@@ -385,7 +381,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		}
 
 		// Check if the layer is cached
-		found, err := isCached(ctx, b.storage, stepMetadata, template)
+		found, err := isCached(ctx, b.templateStorage, stepMetadata, template)
 		if err != nil {
 			return nil, fmt.Errorf("error checking if layer is cached: %w", err)
 		}
@@ -493,7 +489,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 	// Get the base rootfs size from the template files
 	// This is the size of the rootfs after provisioning and before building the layers
 	// (as they don't change the rootfs size)
-	rootfsSize, err := getRootfsSize(ctx, b.storage, baseMetadata, template)
+	rootfsSize, err := getRootfsSize(ctx, b.templateStorage, baseMetadata, template)
 	if err != nil {
 		return nil, fmt.Errorf("error getting rootfs size: %w", err)
 	}
@@ -566,7 +562,7 @@ func (b *Builder) setupBase(
 	envdVersion string,
 	hash string,
 ) (bool, storage.TemplateFiles, error) {
-	baseMetadata := getTemplateFromHash(ctx, b.storage, finalMetadata, finalMetadata.TemplateID, hash)
+	baseMetadata := getTemplateFromHash(ctx, b.buildStorage, finalMetadata, finalMetadata.TemplateID, hash)
 	// Invalidate base cache
 	if template.Force != nil && *template.Force {
 		baseMetadata = storage.TemplateFiles{
@@ -577,7 +573,7 @@ func (b *Builder) setupBase(
 		}
 	}
 
-	baseCached, err := isCached(ctx, b.storage, baseMetadata, template)
+	baseCached, err := isCached(ctx, b.templateStorage, baseMetadata, template)
 	if err != nil {
 		return false, storage.TemplateFiles{}, fmt.Errorf("error checking if base layer is cached: %w", err)
 	}

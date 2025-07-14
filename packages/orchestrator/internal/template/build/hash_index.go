@@ -78,10 +78,6 @@ func saveTemplateToHash(ctx context.Context, s storage.StorageProvider, finalTem
 	return nil
 }
 
-func hashToHashPath(templateID, hash string) string {
-	return fmt.Sprintf("builder/cache/%s/index/%s", templateID, hash)
-}
-
 func hashKeys(previousHash string, keys ...string) string {
 	sha := sha256.New()
 	sha.Write([]byte(previousHash))

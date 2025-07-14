@@ -18,12 +18,12 @@ func (s *ServerStore) TemplateLayerFilesUpload(ctx context.Context, in *template
 	defer childSpan.End()
 
 	path := build.GetLayerFilesCachePath(in.TemplateID, in.Hash)
-	obj, err := s.storage.OpenObject(ctx, path)
+	obj, err := s.buildStorage.OpenObject(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open layer files cache: %w", err)
 	}
 
-	signedUrl, err := s.storage.UploadSignedURL(ctx, path, signedUrlExpiration)
+	signedUrl, err := s.buildStorage.UploadSignedURL(ctx, path, signedUrlExpiration)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get signed url: %w", err)
 	}

@@ -10,9 +10,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/rootfs"
@@ -29,10 +26,6 @@ func constructBaseLayerFiles(
 	templateConfig config.TemplateConfig,
 	postProcessor *writer.PostProcessor,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
-	storage storage.StorageProvider,
-	networkPool *network.Pool,
-	templateCache *template.Cache,
-	devicePool *nbd.DevicePool,
 	templateBuildDir string,
 	rootfsPath string,
 ) (r *block.Local, m *block.Local, c containerregistry.Config, e error) {

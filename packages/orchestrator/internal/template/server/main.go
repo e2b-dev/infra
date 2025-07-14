@@ -19,7 +19,6 @@ import (
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -34,9 +33,9 @@ type ServerStore struct {
 	builder           *build.Builder
 	buildCache        *cache.BuildCache
 	buildLogger       *zap.Logger
-	templateStorage   *template.Storage
 	artifactsregistry artifactsregistry.ArtifactsRegistry
-	storage           storage.StorageProvider
+	templateStorage   storage.StorageProvider
+	buildStorage      storage.StorageProvider
 	healthStatus      templatemanager.HealthState
 	wg                *sync.WaitGroup // wait group for running builds
 }
@@ -56,7 +55,7 @@ func New(
 ) (*ServerStore, error) {
 	logger.Info("Initializing template manager")
 
-	persistence, err := storage.GetTemplateStorageProvider(ctx)
+	templatePersistence, err := storage.GetTemplateStorageProvider(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting template storage provider: %v", err)
 	}
@@ -66,14 +65,18 @@ func New(
 		return nil, fmt.Errorf("error getting artifacts registry provider: %v", err)
 	}
 
-	templateStorage := template.NewStorage(persistence)
+	buildPersistance, err := storage.GetBuildCacheStorageProvider(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting build cache storage provider: %v", err)
+	}
+
 	buildCache := cache.NewBuildCache(meterProvider)
 	builder := build.NewBuilder(
 		logger,
 		buildLogger,
 		tracer,
-		templateStorage,
-		persistence,
+		templatePersistence,
+		buildPersistance,
 		artifactsregistry,
 		devicePool,
 		networkPool,
@@ -89,8 +92,8 @@ func New(
 		buildCache:        buildCache,
 		buildLogger:       buildLogger,
 		artifactsregistry: artifactsregistry,
-		storage:           persistence,
-		templateStorage:   templateStorage,
+		templateStorage:   templatePersistence,
+		buildStorage:      buildPersistance,
 		healthStatus:      templatemanager.HealthState_Healthy,
 		wg:                &sync.WaitGroup{},
 	}

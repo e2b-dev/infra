@@ -178,7 +178,8 @@ func (b *Builder) buildLayer(
 		b.tracer,
 		uploadErrGroup,
 		postProcessor,
-		b.storage,
+		b.templateStorage,
+		b.buildStorage,
 		b.templateCache,
 		sbx,
 		finalTemplateID,
@@ -197,7 +198,8 @@ func pauseAndUpload(
 	tracer trace.Tracer,
 	uploadErrGroup *errgroup.Group,
 	postProcessor *writer.PostProcessor,
-	persistance storage.StorageProvider,
+	templateStorage storage.StorageProvider,
+	buildStorage storage.StorageProvider,
 	templateCache *sbxtemplate.Cache,
 	sbx *sandbox.Sandbox,
 	finalTemplateID string,
@@ -243,14 +245,14 @@ func pauseAndUpload(
 	uploadErrGroup.Go(func() error {
 		err := snapshot.Upload(
 			ctx,
-			persistance,
+			templateStorage,
 			cacheFiles.TemplateFiles,
 		)
 		if err != nil {
 			return fmt.Errorf("error uploading snapshot: %w", err)
 		}
 
-		err = saveTemplateToHash(ctx, persistance, finalTemplateID, hash, cacheFiles.TemplateFiles)
+		err = saveTemplateToHash(ctx, buildStorage, finalTemplateID, hash, cacheFiles.TemplateFiles)
 		if err != nil {
 			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
 		}
