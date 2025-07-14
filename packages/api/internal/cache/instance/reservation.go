@@ -85,6 +85,7 @@ func (c *InstanceCache) Reserve(instanceID string, team uuid.UUID, limit int64) 
 	// Count unique IDs for team
 	ids := map[string]struct{}{}
 
+	// Get all sandbox ids (both running and those currently creating) for the team
 	for _, item := range append(c.reservations.list(team), c.list(team)...) {
 		ids[item] = struct{}{}
 	}
