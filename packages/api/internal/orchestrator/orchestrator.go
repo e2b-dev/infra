@@ -148,12 +148,12 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 					})
 				} else {
 					nodes = append(nodes, map[string]interface{}{
-						"id":                    nodeItem.Info.ID,
-						"status":                nodeItem.Status(),
-						"socket_status":         nodeItem.client.Connection.GetState().String(),
-						"in_progress_count":     nodeItem.sbxsInProgress.Count(),
-						"sbx_start_success":     nodeItem.createSuccess.Load(),
-						"sbx_start_fail":        nodeItem.createFails.Load(),
+						"id":                nodeItem.Info.ID,
+						"status":            nodeItem.Status(),
+						"socket_status":     nodeItem.client.Connection.GetState().String(),
+						"in_progress_count": nodeItem.sbxsInProgress.Count(),
+						"sbx_start_success": nodeItem.createSuccess.Load(),
+						"sbx_start_fail":    nodeItem.createFails.Load(),
 					})
 				}
 			}
