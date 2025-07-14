@@ -83,7 +83,8 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, templateID api.Templa
 }
 
 func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) (*TemplateBuildResponse, *api.APIError) {
-	telemetry.ReportEvent(ctx, "started request for environment build")
+	ctx, span := a.Tracer.Start(ctx, "build-template-request")
+	defer span.End()
 
 	if !req.IsNew {
 		// Check if the user has access to the template
@@ -96,6 +97,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 				Code:      http.StatusNotFound,
 			}
 		}
+		telemetry.ReportEvent(ctx, "checked user access to template")
 	}
 
 	// Generate a build id for the new build
@@ -191,6 +193,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 			Code:      http.StatusInternalServerError,
 		}
 	}
+	telemetry.ReportEvent(ctx, "created or update template")
 
 	// Mark the previous not started builds as failed
 	err = tx.EnvBuild.Update().Where(
@@ -205,6 +208,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 			Code:      http.StatusInternalServerError,
 		}
 	}
+	telemetry.ReportEvent(ctx, "marked previous builds as failed")
 
 	// Insert the new build
 	build, err := tx.EnvBuild.Create().
@@ -228,6 +232,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 			Code:      http.StatusInternalServerError,
 		}
 	}
+	telemetry.ReportEvent(ctx, "inserted new build")
 
 	// Check if the alias is available and claim it
 	if alias != "" {
@@ -244,6 +249,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 				Code:      http.StatusInternalServerError,
 			}
 		}
+		telemetry.ReportEvent(ctx, "checked alias availability")
 
 		if len(envs) > 0 {
 			err := fmt.Errorf("alias '%s' is already used", alias)
@@ -293,6 +299,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 					Code:      http.StatusInternalServerError,
 				}
 			}
+			telemetry.ReportEvent(ctx, "created new alias", attribute.String("env.alias", alias))
 		} else if aliasDB.EnvID != req.TemplateID {
 			err := fmt.Errorf("alias '%s' already used", alias)
 			telemetry.ReportCriticalError(ctx, "alias already used", err, attribute.String("alias", alias))
@@ -316,6 +323,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 			Code:      http.StatusInternalServerError,
 		}
 	}
+	telemetry.ReportEvent(ctx, "committed transaction")
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("env.alias", alias),

@@ -30,6 +30,8 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "started environment build")
 
 	// Prepare info for rebuilding env
+	_, span := a.Tracer.Start(ctx, "get-user-and-teams")
+	defer span.End()
 	userID, teams, err := a.GetUserAndTeams(c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting user: %s", err))
@@ -38,16 +40,22 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 
 		return
 	}
+	span.End()
 
 	// Find the team and tier
+	_, span = a.Tracer.Start(ctx, "find-team-and-tier")
+	defer span.End()
 	team, tier, err := findTeamAndTier(teams, &body.TeamID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusNotFound, err.Error())
 		telemetry.ReportCriticalError(ctx, "error finding team and tier", err)
 		return
 	}
+	span.End()
 
 	// Create the build, find the template ID by alias or generate a new one
+	_, span = a.Tracer.Start(ctx, "find-template-alias")
+	defer span.End()
 	templateID := id.Generate()
 	isNew := true
 	templateAlias, err := a.db.Client.EnvAlias.Query().Where(envalias.ID(body.Alias)).Only(ctx)
@@ -62,6 +70,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		templateID = templateAlias.EnvID
 		isNew = false
 	}
+	span.End()
 
 	buildReq := BuildTemplateRequest{
 		IsNew:      isNew,
@@ -81,6 +90,8 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		return
 	}
 
+	_, span = a.Tracer.Start(ctx, "posthog-analytics")
+	defer span.End()
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "submitted environment build request", properties.
@@ -88,6 +99,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		Set("build_id", template.BuildID).
 		Set("alias", body.Alias),
 	)
+	span.End()
 
 	c.JSON(http.StatusAccepted, &api.Template{
 		TemplateID: template.TemplateID,
