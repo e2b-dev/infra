@@ -8,9 +8,11 @@ import (
 	"time"
 )
 
-const tickerInterval = 5 * time.Second
+const defaultTickerInterval = 5 * time.Second
 
 type PostProcessor struct {
+	tickerInterval time.Duration
+
 	errChan chan error
 	ctx     context.Context
 	writer  io.Writer
@@ -63,22 +65,29 @@ func (p *PostProcessor) Stop(ctx context.Context, err error) {
 }
 
 func (p *PostProcessor) WriteMsg(message string) {
-	p.ticker.Reset(tickerInterval)
+	p.ticker.Reset(p.tickerInterval)
 	p.writer.Write([]byte(prefixWithTimestamp(message + "\n")))
 }
 
 func (p *PostProcessor) Write(b []byte) (n int, err error) {
-	p.ticker.Reset(tickerInterval)
+	p.ticker.Reset(p.tickerInterval)
 	return p.writer.Write([]byte(prefixWithTimestamp(string(b))))
 }
 
-func NewPostProcessor(ctx context.Context, writer io.Writer) *PostProcessor {
+func NewPostProcessor(ctx context.Context, writer io.Writer, enableTicker bool) *PostProcessor {
+	// If ticker is not enabled, we use a ticker that ticks way past the build time
+	tickerInterval := 24 * time.Hour
+	if enableTicker {
+		tickerInterval = defaultTickerInterval
+	}
+
 	return &PostProcessor{
-		ctx:     ctx,
-		writer:  writer,
-		errChan: make(chan error, 1),
-		stopCh:  make(chan struct{}, 1),
-		ticker:  time.NewTicker(tickerInterval),
+		ctx:            ctx,
+		writer:         writer,
+		errChan:        make(chan error, 1),
+		stopCh:         make(chan struct{}, 1),
+		tickerInterval: tickerInterval,
+		ticker:         time.NewTicker(tickerInterval),
 	}
 }
 

@@ -125,7 +125,9 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 	// Validate template, update force layers if needed
 	template = forceSteps(template)
 
-	postProcessor := writer.NewPostProcessor(ctx, logsWriter)
+	isOldBuild := template.FromImage == ""
+
+	postProcessor := writer.NewPostProcessor(ctx, logsWriter, isOldBuild)
 	go postProcessor.Start()
 	defer func() {
 		postProcessor.Stop(ctx, e)
@@ -165,7 +167,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 	}
 
 	// This is a compability for old template builds
-	if template.FromImage == "" {
+	if isOldBuild {
 		cwd := "/home/user"
 		cmdMeta.WorkDir = &cwd
 	}
