@@ -208,6 +208,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	// The build should be cached on the node now
 	node.InsertBuild(build.ID.String())
+	node.createSuccess.Add(1)
 
 	// The sandbox was created successfully, the resources will be counted in cache
 	defer node.sbxsInProgress.Remove(sandboxID)

@@ -185,6 +185,9 @@ type Node struct {
 	// CreateFails Number of sandbox create fails
 	CreateFails uint64 `json:"createFails"`
 
+	// CreateSuccesses Number of sandbox create successes
+	CreateSuccesses uint64 `json:"createSuccesses"`
+
 	// NodeID Identifier of the node
 	NodeID string `json:"nodeID"`
 
@@ -214,6 +217,9 @@ type NodeDetail struct {
 
 	// CreateFails Number of sandbox create fails
 	CreateFails uint64 `json:"createFails"`
+
+	// CreateSuccesses Number of sandbox create successes
+	CreateSuccesses uint64 `json:"createSuccesses"`
 
 	// NodeID Identifier of the node
 	NodeID string `json:"nodeID"`
@@ -561,6 +567,13 @@ type GetSandboxesSandboxIDLogsParams struct {
 
 	// Limit Maximum number of logs that should be returned
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetSandboxesSandboxIDMetricsParams defines parameters for GetSandboxesSandboxIDMetrics.
+type GetSandboxesSandboxIDMetricsParams struct {
+	// Start Starting timestamp of the metrics that should be returned in milliseconds
+	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
+	End   *int64 `form:"end,omitempty" json:"end,omitempty"`
 }
 
 // PostSandboxesSandboxIDRefreshesJSONBody defines parameters for PostSandboxesSandboxIDRefreshes.
