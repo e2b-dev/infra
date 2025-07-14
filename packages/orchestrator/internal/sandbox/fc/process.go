@@ -34,6 +34,11 @@ ln -s {{ .rootfsPath }} {{ .buildRootfsPath }} &&
 ln -s {{ .kernelPath }} {{ .buildKernelPath }} &&
 ip netns exec {{ .namespaceID }} {{ .firecrackerPath }} --api-sock {{ .firecrackerSocket }}`
 
+const (
+	waitForFirecrackerExitTimeout = 250 * time.Millisecond
+	waitForFirecrackerExitTick    = 25 * time.Millisecond
+)
+
 var startScriptTemplate = txtTemplate.Must(txtTemplate.New("fc-start").Parse(startScript))
 
 type ProcessOptions struct {
@@ -451,44 +456,63 @@ func findFirecrackerProcess(parentPid int32) (*gopsutil.Process, error) {
 	return nil, fmt.Errorf("firecracker not found")
 }
 
+// waitForFirecrackerExit waits for the firecracker process to exit.
+func waitForFirecrackerExit(fc *gopsutil.Process) error {
+	timeout := time.After(waitForFirecrackerExitTimeout)
+	// It usually took 50-75ms for the FC to stop being in "running" state after SIGKILL.
+	tick := time.Tick(waitForFirecrackerExitTick)
+
+	for {
+		select {
+		case <-timeout:
+			return fmt.Errorf("timeout waiting for firecracker process to exit")
+		case <-tick:
+			// The FC process should exit and be reaped by the parent unshare process.
+			if status, err := fc.IsRunning(); err == nil && !status {
+				return nil
+			}
+		}
+	}
+}
+
+// killFirecrackerProcess tries to find a firecracker process in the process tree to stop it before we start killing the parent.
+func killFirecrackerProcess(unsharePid int) error {
+	fc, err := findFirecrackerProcess(int32(unsharePid))
+	if err != nil {
+		return fmt.Errorf("cannot find firecracker process: %w", err)
+	}
+
+	// Send SIGKILL to the firecracker process to make sure it is killed before the unshare process, nbd, and uffd cleanup.
+	// Because of our unshare (-p, --kill-child) setup, other signals don't propagate properly.
+	err = fc.Kill()
+	if err != nil {
+		return fmt.Errorf("failed to send KILL to firecracker process: %w", err)
+	}
+
+	// We are not calling .Wait on the process as the parent unshare should already reap the child process and calling it twice might result in panic.
+	// We are just checking if the process is running and waiting for it to exit.
+	err = waitForFirecrackerExit(fc)
+	if err != nil {
+		return fmt.Errorf("failed to wait for firecracker process to exit: %w", err)
+	}
+
+	return nil
+}
+
 func (p *Process) Stop() error {
 	if p.cmd.Process == nil {
 		return fmt.Errorf("fc process not started")
 	}
 
-	// Try to find a firecracker process in the process tree to stop it before killing the parent.
-	if fc, err := findFirecrackerProcess(int32(p.cmd.Process.Pid)); err == nil {
-		// Send SIGKILL to the firecracker process to make sure it is killed before the unshare process and nbd, uffd cleanup.
-		// Because of our unshare (-p, --kill-child) setup, other signals don't propagate properly.
-		err = fc.Kill()
-		if err != nil {
-			zap.L().Warn("failed to send KILL to firecracker process", zap.Error(err))
-		}
-
-		// We are not calling wait as the parent unshare should already reap the child process and calling it twice might result in panic.
-		timeout := time.After(250 * time.Millisecond)
-		tick := time.Tick(25 * time.Millisecond)
-
-	waitLoop:
-		for {
-			select {
-			case <-timeout:
-				break waitLoop
-			case <-tick:
-				// The FC process should exit and be reaped by the parent unshare process.
-				if status, err := fc.IsRunning(); err == nil && !status {
-					break waitLoop
-				}
-			}
-		}
-	} else {
-		zap.L().Warn("cannot find firecracker process for sandbox, sending SIGKILL to unshare process without killing FC first", zap.String("sandbox.id", p.files.SandboxID), zap.Error(err))
+	err := killFirecrackerProcess(p.cmd.Process.Pid)
+	if err != nil {
+		zap.L().Warn("failed to kill firecracker process before killing unshare process", zap.Error(err), zap.String("sandbox.id", p.files.SandboxID))
 	}
 
 	// Send SIGKILL to the unshare process to make sure the parent of the FC process is killed.
-	err := p.cmd.Process.Kill()
+	err = p.cmd.Process.Kill()
 	if err != nil {
-		zap.L().Warn("failed to send KILL to FC process", zap.Error(err))
+		zap.L().Warn("failed to send KILL to unshare process (parent of the FC process)", zap.Error(err))
 	}
 
 	return nil
