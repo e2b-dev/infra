@@ -13,7 +13,7 @@ require (
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/rs/cors v1.11.1
 	github.com/rs/zerolog v1.34.0
-	github.com/shirou/gopsutil/v4 v4.24.10
+	github.com/shirou/gopsutil/v4 v4.25.6
 	github.com/stretchr/testify v1.10.0
 	google.golang.org/protobuf v1.36.6
 )
@@ -54,7 +54,7 @@ require (
 	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
-	github.com/ebitengine/purego v0.8.1 // indirect
+	github.com/ebitengine/purego v0.8.4 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/getkin/kin-openapi v0.132.0 // indirect
