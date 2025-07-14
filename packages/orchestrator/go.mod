@@ -200,7 +200,6 @@ require (
 	google.golang.org/genproto v0.0.0-20241118233622-e639e219e697 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250519155744-55703ea1f237 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250519155744-55703ea1f237 // indirect
-	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.5.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
@@ -208,8 +207,3 @@ replace github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
 
 // Fix non existent garyburd/redigo from Microsoft/hcsshim/test v0.0.0
 replace github.com/garyburd/redigo => github.com/gomodule/redigo v1.9.2
-
-tool (
-	google.golang.org/grpc/cmd/protoc-gen-go-grpc
-	google.golang.org/protobuf/cmd/protoc-gen-go
-)
