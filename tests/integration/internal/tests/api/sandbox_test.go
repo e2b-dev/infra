@@ -51,6 +51,8 @@ func TestSandboxResumeUnknownSandbox(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	require.Equal(t, http.StatusCreated, sbxCreate.StatusCode())
+	require.NotNil(t, sbxCreate.JSON201)
 
 	// try to generate non-existing sandbox id but with real client part
 	unknownSbxId := "xxx" + sbxCreate.JSON201.SandboxID[3:] + "-" + sbxCreate.JSON201.ClientID
