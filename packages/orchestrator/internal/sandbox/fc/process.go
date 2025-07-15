@@ -506,7 +506,7 @@ func (p *Process) Stop() error {
 
 	err := killFirecrackerProcess(p.cmd.Process.Pid)
 	if err != nil {
-		zap.L().Warn("failed to kill firecracker process before killing unshare process", zap.Error(err), zap.String("sandbox.id", p.files.SandboxID))
+		zap.L().Warn("failed to kill firecracker process before killing unshare process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 	}
 
 	// Send SIGKILL to the unshare process to make sure the parent of the FC process is killed.
