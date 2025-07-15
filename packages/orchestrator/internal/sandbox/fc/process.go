@@ -443,7 +443,6 @@ func (p *Process) Stop() error {
 			}
 		// If the FC process exited, we can return.
 		case <-p.Exit:
-			fmt.Fprintf(os.Stderr, "fc process exited check\n")
 			return
 		}
 	}()
