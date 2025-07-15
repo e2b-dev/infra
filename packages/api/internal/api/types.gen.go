@@ -111,6 +111,7 @@ type ListedSandbox struct {
 	Alias *string `json:"alias,omitempty"`
 
 	// ClientID Identifier of the client
+	// Deprecated:
 	ClientID string `json:"clientID"`
 
 	// CpuCount CPU cores for the sandbox
@@ -258,6 +259,7 @@ type RunningSandboxWithMetrics struct {
 	Alias *string `json:"alias,omitempty"`
 
 	// ClientID Identifier of the client
+	// Deprecated:
 	ClientID string `json:"clientID"`
 
 	// CpuCount CPU cores for the sandbox
@@ -289,6 +291,7 @@ type Sandbox struct {
 	Alias *string `json:"alias,omitempty"`
 
 	// ClientID Identifier of the client
+	// Deprecated:
 	ClientID string `json:"clientID"`
 
 	// EnvdAccessToken Access token used for envd communication
@@ -310,6 +313,7 @@ type SandboxDetail struct {
 	Alias *string `json:"alias,omitempty"`
 
 	// ClientID Identifier of the client
+	// Deprecated:
 	ClientID string `json:"clientID"`
 
 	// CpuCount CPU cores for the sandbox
