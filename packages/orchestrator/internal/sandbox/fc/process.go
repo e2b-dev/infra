@@ -512,7 +512,7 @@ func (p *Process) Stop() error {
 	// Send SIGKILL to the unshare process to make sure the parent of the FC process is killed.
 	err = p.cmd.Process.Kill()
 	if err != nil {
-		zap.L().Warn("failed to send KILL to unshare process (parent of the FC process)", zap.Error(err))
+		zap.L().Warn("failed to send KILL to unshare process (parent of the FC process)", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 	}
 
 	return nil
