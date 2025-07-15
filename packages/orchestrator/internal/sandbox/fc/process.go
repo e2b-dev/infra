@@ -12,7 +12,6 @@ import (
 	txtTemplate "text/template"
 	"time"
 
-	gopsutil "github.com/shirou/gopsutil/v4/process"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -21,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -33,11 +33,6 @@ mount -t tmpfs tmpfs {{ .buildKernelDir }} -o X-mount.mkdir &&
 ln -s {{ .rootfsPath }} {{ .buildRootfsPath }} &&
 ln -s {{ .kernelPath }} {{ .buildKernelPath }} &&
 ip netns exec {{ .namespaceID }} {{ .firecrackerPath }} --api-sock {{ .firecrackerSocket }}`
-
-const (
-	waitForFirecrackerExitTimeout = 250 * time.Millisecond
-	waitForFirecrackerExitTick    = 25 * time.Millisecond
-)
 
 var startScriptTemplate = txtTemplate.Must(txtTemplate.New("fc-start").Parse(startScript))
 
@@ -128,8 +123,7 @@ func NewProcess(
 
 	cmd := exec.Command(
 		"unshare",
-		"-pfm",
-		"--kill-child",
+		"-m",
 		"--",
 		"bash",
 		"-c",
@@ -207,7 +201,7 @@ func (p *Process) configure(
 			var exitErr *exec.ExitError
 			if errors.As(waitErr, &exitErr) {
 				// Check if the process was killed by a signal
-				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() && status.Signal() == syscall.SIGKILL {
+				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() && (status.Signal() == syscall.SIGKILL || status.Signal() == syscall.SIGTERM) {
 					p.Exit <- nil
 
 					return
@@ -429,91 +423,30 @@ func (p *Process) Pid() (int, error) {
 	return p.cmd.Process.Pid, nil
 }
 
-// findFirecrackerProcess finds the first "firecracker" process in the process tree, by breadth-first search.
-func findFirecrackerProcess(parentPid int32) (*gopsutil.Process, error) {
-	proc, err := gopsutil.NewProcess(parentPid)
-	if err != nil {
-		return nil, err
-	}
-
-	queue := []*gopsutil.Process{proc}
-
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
-
-		name, _ := current.Name()
-		if name == "firecracker" {
-			return current, nil
-		}
-
-		children, err := current.Children()
-		if err == nil {
-			queue = append(queue, children...)
-		}
-	}
-
-	return nil, fmt.Errorf("firecracker not found")
-}
-
-// waitForFirecrackerExit waits for the firecracker process to exit.
-func waitForFirecrackerExit(fc *gopsutil.Process) error {
-	timeout := time.After(waitForFirecrackerExitTimeout)
-	// It usually took 50-75ms for the FC to stop being in "running" state after SIGKILL.
-	tick := time.Tick(waitForFirecrackerExitTick)
-
-	for {
-		select {
-		case <-timeout:
-			return fmt.Errorf("timeout waiting for firecracker process to exit")
-		case <-tick:
-			// The FC process should exit and be reaped by the parent unshare process.
-			if status, err := fc.IsRunning(); err == nil && !status {
-				return nil
-			}
-		}
-	}
-}
-
-// killFirecrackerProcess tries to find a firecracker process in the process tree to stop it before we start killing the parent.
-func killFirecrackerProcess(unsharePid int) error {
-	fc, err := findFirecrackerProcess(int32(unsharePid))
-	if err != nil {
-		return fmt.Errorf("cannot find firecracker process: %w", err)
-	}
-
-	// Send SIGKILL to the firecracker process to make sure it is killed before the unshare process, nbd, and uffd cleanup.
-	// Because of our unshare (-p, --kill-child) setup, other signals don't propagate properly.
-	err = fc.Kill()
-	if err != nil {
-		return fmt.Errorf("failed to send KILL to firecracker process: %w", err)
-	}
-
-	// We are not calling .Wait on the process as the parent unshare should already reap the child process and calling it twice might result in panic.
-	// We are just checking if the process is running and waiting for it to exit.
-	err = waitForFirecrackerExit(fc)
-	if err != nil {
-		return fmt.Errorf("failed to wait for firecracker process to exit: %w", err)
-	}
-
-	return nil
-}
-
 func (p *Process) Stop() error {
 	if p.cmd.Process == nil {
 		return fmt.Errorf("fc process not started")
 	}
 
-	err := killFirecrackerProcess(p.cmd.Process.Pid)
+	err := p.cmd.Process.Signal(syscall.SIGTERM)
 	if err != nil {
-		zap.L().Warn("failed to kill firecracker process before killing unshare process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+		zap.L().Warn("failed to send TERM to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 	}
 
-	// Send SIGKILL to the unshare process to make sure the parent of the FC process is killed.
-	err = p.cmd.Process.Kill()
-	if err != nil {
-		zap.L().Warn("failed to send KILL to unshare process (parent of the FC process)", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
-	}
+	go func() {
+		select {
+		// Wait 10 sec for the FC process to exit, if it doesn't send SIGKILL.
+		case <-time.After(10 * time.Second):
+			err := p.cmd.Process.Kill()
+			if err != nil {
+				zap.L().Warn("failed to send KILL to unshare process (parent of the FC process)", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+			}
+		// If the FC process exited, we can return.
+		case <-p.Exit:
+			fmt.Fprintf(os.Stderr, "fc process exited check\n")
+			return
+		}
+	}()
 
 	return nil
 }
