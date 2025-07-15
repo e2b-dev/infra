@@ -93,6 +93,8 @@ func (c *PollBuildStatus) poll(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			c.logger.Debug("Build status polling timed out, stopping polling")
+
 			reason := fmt.Sprintf("build status polling timed out. Maximum build time is %s.", buildTimeout)
 			statusErr := c.client.SetStatus(ctx, c.templateID, c.buildID, envbuild.StatusFailed, &reason)
 			if statusErr != nil {
