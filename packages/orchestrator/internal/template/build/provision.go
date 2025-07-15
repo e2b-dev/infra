@@ -10,6 +10,7 @@ import (
 	tt "text/template"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapio"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
@@ -64,7 +65,8 @@ func (b *Builder) provisionSandbox(
 	ctx, childSpan := b.tracer.Start(ctx, "provision-sandbox")
 	defer childSpan.End()
 
-	logsWriter := &writer.PrefixFilteredWriter{Writer: postProcessor, PrefixFilter: logExternalPrefix}
+	zapWriter := &zapio.Writer{Log: postProcessor.Logger, Level: zap.InfoLevel}
+	logsWriter := &writer.PrefixFilteredWriter{Writer: zapWriter, PrefixFilter: logExternalPrefix}
 	defer logsWriter.Close()
 
 	sbx, cleanup, err := sandbox.CreateSandbox(

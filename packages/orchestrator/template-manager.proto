@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
 
 option go_package = "https://github.com/e2b-dev/infra/template-manager";
 
@@ -70,12 +71,18 @@ enum TemplateBuildState {
   Completed = 2;
 }
 
+message TemplateBuildLogEntry {
+  google.protobuf.Timestamp timestamp = 1;
+  string message = 2;
+  string level = 3;
+}
+
 // Logs from template build
 message TemplateBuildStatusResponse {
   TemplateBuildState status = 1;
   TemplateBuildMetadata metadata = 2;
   optional string reason = 3;
-  repeated string logs = 4;
+  repeated TemplateBuildLogEntry logs = 4;
 }
 
 enum HealthState {

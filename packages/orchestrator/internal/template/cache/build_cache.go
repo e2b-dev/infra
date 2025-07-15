@@ -1,7 +1,6 @@
 package cache
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"sync"
@@ -74,15 +73,8 @@ func (b *BuildInfo) GetContext() context.Context {
 	return b.ctx
 }
 
-func (b *BuildInfo) GetLogs() []string {
-	by := b.logs.Bytes()
-	logs := make([]string, 0)
-	for line := range bytes.SplitSeq(by, []byte("\n")) {
-		if len(line) > 0 {
-			logs = append(logs, string(line))
-		}
-	}
-	return logs
+func (b *BuildInfo) GetLogs() []*template_manager.TemplateBuildLogEntry {
+	return b.logs.Lines()
 }
 
 func (b *BuildInfo) Cancel() error {

@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // test writer that stores the written data
@@ -60,8 +62,8 @@ func TestPostProcessor_Start(t *testing.T) {
 			errChan := make(chan error)
 
 			p := &PostProcessor{
+				Logger:         zap.NewNop(),
 				ctx:            ctx,
-				writer:         tw,
 				errChan:        errChan,
 				stopCh:         make(chan struct{}, 1),
 				tickerInterval: defaultTickerInterval,
