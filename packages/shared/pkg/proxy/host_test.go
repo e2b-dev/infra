@@ -22,6 +22,13 @@ func TestHelloName(t *testing.T) {
 			wantErr:  nil,
 		},
 		{
+			name:     "sandbox-host-with-client-id-and-dash-domain",
+			host:     "49983-isv6ril5xadwn1k9t2jye-6532622b.e2b-test.app",
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 49983,
+			wantErr:  nil,
+		},
+		{
 			name:     "sandbox-host-with-client-id-and-subdomain",
 			host:     "49983-isv6ril5xadwn1k9t2jye-6532622b.demo.e2b.app",
 			wantID:   "isv6ril5xadwn1k9t2jye",
@@ -31,6 +38,13 @@ func TestHelloName(t *testing.T) {
 		{
 			name:     "sandbox-host-without-client-id",
 			host:     "49983-isv6ril5xadwn1k9t2jye.e2b.app",
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 49983,
+			wantErr:  nil,
+		},
+		{
+			name:     "sandbox-host-with-dash-domain-and-without-client-id",
+			host:     "49983-isv6ril5xadwn1k9t2jye.e2b-test.app",
 			wantID:   "isv6ril5xadwn1k9t2jye",
 			wantPort: 49983,
 			wantErr:  nil,
