@@ -430,7 +430,7 @@ func (p *Process) Stop() error {
 
 	err := p.cmd.Process.Signal(syscall.SIGTERM)
 	if err != nil {
-		zap.L().Warn("failed to send TERM to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+		zap.L().Warn("failed to send SIGTERM to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 	}
 
 	go func() {
@@ -439,7 +439,9 @@ func (p *Process) Stop() error {
 		case <-time.After(10 * time.Second):
 			err := p.cmd.Process.Kill()
 			if err != nil {
-				zap.L().Warn("failed to send KILL to unshare process (parent of the FC process)", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+				zap.L().Warn("failed to send SIGKILL to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+			} else {
+				zap.L().Info("sent SIGKILL to fc process because it was not responding to SIGTERM for 10 seconds", logger.WithSandboxID(p.files.SandboxID))
 			}
 		// If the FC process exited, we can return.
 		case <-p.Exit:
