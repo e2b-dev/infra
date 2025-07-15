@@ -19,6 +19,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+const maxSandboxMetricsCount = 100
+
 func (a *APIStore) getSandboxesMetrics(
 	ctx context.Context,
 	teamID uuid.UUID,
@@ -75,6 +77,14 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 	telemetry.ReportEvent(ctx, "list running instances with metrics")
 
 	team := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo).Team
+
+	if len(params.SandboxIds) > maxSandboxMetricsCount {
+		zap.L().Error("Too many sandboxes requested", zap.Int("requested_count", len(params.SandboxIds)), zap.Int("max_count", maxSandboxMetricsCount), logger.WithTeamID(team.ID.String()))
+		telemetry.ReportError(ctx, "too many sandboxes requested", fmt.Errorf("requested %d, max %d", len(params.SandboxIds), maxSandboxMetricsCount), telemetry.WithTeamID(team.ID.String()))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Too many sandboxes requested, maximum is %d", maxSandboxMetricsCount))
+
+		return
+	}
 
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
