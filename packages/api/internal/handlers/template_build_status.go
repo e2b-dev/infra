@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -97,7 +98,18 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	result.Logs = cli.GetLogs(ctx, templateID, buildID, params.LogsOffset)
+	logs := make([]string, 0)
+	for _, entry := range cli.GetLogs(ctx, templateID, buildID, params.LogsOffset) {
+		out, err := json.Marshal(entry)
+		if err != nil {
+			telemetry.ReportError(ctx, "error when marshalling log entry", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when processing log entry")
+			return
+		}
+		logs = append(logs, string(out)+"\n")
+	}
+
+	result.Logs = logs
 
 	c.JSON(http.StatusOK, result)
 }

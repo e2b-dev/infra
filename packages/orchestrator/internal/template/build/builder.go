@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
 
@@ -47,7 +47,6 @@ type Builder struct {
 	buildStorage     storage.StorageProvider
 	devicePool       *nbd.DevicePool
 	networkPool      *network.Pool
-	buildLogger      *zap.Logger
 	artifactRegistry artifactsregistry.ArtifactsRegistry
 	proxy            *proxy.SandboxProxy
 	sandboxes        *smap.Map[*sandbox.Sandbox]
@@ -72,7 +71,6 @@ var defaultUser = "root"
 
 func NewBuilder(
 	logger *zap.Logger,
-	buildLogger *zap.Logger,
 	tracer trace.Tracer,
 	templateStorage storage.StorageProvider,
 	buildStorage storage.StorageProvider,
@@ -86,7 +84,6 @@ func NewBuilder(
 	return &Builder{
 		logger:           logger,
 		tracer:           tracer,
-		buildLogger:      buildLogger,
 		templateStorage:  templateStorage,
 		buildStorage:     buildStorage,
 		artifactRegistry: artifactRegistry,
@@ -117,7 +114,7 @@ type Result struct {
 //
 // 8. Snapshot
 // 9. Upload template (and all not yet uploaded layers)
-func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles, template config.TemplateConfig, logsWriter io.Writer) (r *Result, e error) {
+func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles, template config.TemplateConfig, logsWriter *zap.Logger) (r *Result, e error) {
 	ctx, childSpan := b.tracer.Start(ctx, "build")
 	defer childSpan.End()
 
@@ -132,7 +129,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		postProcessor.Stop(ctx, e)
 	}()
 
-	postProcessor.WriteMsg(fmt.Sprintf("Building template %s/%s", finalMetadata.TemplateID, finalMetadata.BuildID))
+	postProcessor.Info(fmt.Sprintf("Building template %s/%s", finalMetadata.TemplateID, finalMetadata.BuildID))
 
 	defer func() {
 		if e == nil {
@@ -190,7 +187,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		}
 		fromImage = tag
 	}
-	postProcessor.WriteMsg(layerInfo(lastCached, "base", "FROM "+fromImage, lastHash))
+	postProcessor.Info(layerInfo(lastCached, "base", "FROM "+fromImage, lastHash))
 
 	// Build the base layer if not cached
 	if !lastCached {
@@ -235,7 +232,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		defer localTemplate.Close()
 
 		// Provision sandbox with systemd and other vital parts
-		postProcessor.WriteMsg("Provisioning sandbox template")
+		postProcessor.Info("Provisioning sandbox template")
 		// Just a symlink to the rootfs build file, so when the COW cache deletes the underlying file (here symlink),
 		// it will not delete the rootfs file. We use the rootfs again later on to start the sandbox template.
 		rootfsProvisionPath := filepath.Join(templateBuildDir, rootfsProvisionLink)
@@ -291,7 +288,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		}
 
 		// Create sandbox for building template
-		postProcessor.WriteMsg("Creating sandbox template")
+		postProcessor.Info("Creating sandbox template")
 		baseSandboxConfig = proto.Clone(baseSandboxConfig).(*orchestrator.SandboxConfig)
 		baseSandboxConfig.SandboxId = config.InstanceBuildPrefix + id.Generate()
 		baseSandboxConfig.ExecutionId = uuid.NewString()
@@ -390,7 +387,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 
 		prefix := fmt.Sprintf("builder %d/%d", layerIndex, len(template.Steps))
 		cmd := fmt.Sprintf("%s %s", strings.ToUpper(step.Type), strings.Join(step.Args, " "))
-		postProcessor.WriteMsg(layerInfo(isCached, prefix, cmd, lastHash))
+		postProcessor.Info(layerInfo(isCached, prefix, cmd, lastHash))
 
 		if fullyProcessed {
 			// sourceMetadata is not updated here because no new sandbox is run
@@ -420,7 +417,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 				true,
 				globalconfig.AllowSandboxInternet,
 				func(ctx context.Context, sbx *sandbox.Sandbox) error {
-					postProcessor.WriteMsg(fmt.Sprintf("Running action in: %s/%s", sourceMetadata.TemplateID, sourceMetadata.BuildID))
+					postProcessor.Debug(fmt.Sprintf("Running action in: %s/%s", sourceMetadata.TemplateID, sourceMetadata.BuildID))
 
 					err := b.applyCommand(ctx, postProcessor, finalMetadata.TemplateID, sbx, prefix, step, cmdMeta)
 					if err != nil {
@@ -432,8 +429,8 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 						ctx,
 						b.tracer,
 						b.proxy,
-						b.buildLogger,
 						nil,
+						zapcore.DebugLevel,
 						prefix,
 						sbx.Metadata.Config.SandboxId,
 						"sync",
@@ -604,9 +601,7 @@ func (b *Builder) postProcessingFn(
 			ctx,
 			b.tracer,
 			b.proxy,
-			b.buildLogger,
-			// TODO: Make this debug level
-			nil,
+			postProcessor,
 			finalMetadata,
 			sbx.Metadata.Config.SandboxId,
 		)
@@ -621,14 +616,14 @@ func (b *Builder) postProcessingFn(
 		var startCmd errgroup.Group
 		startCmdConfirm := make(chan struct{})
 		if template.StartCmd != "" {
-			postProcessor.WriteMsg("Running start command")
+			postProcessor.Info("Running start command")
 			startCmd.Go(func() error {
 				err := sandboxtools.RunCommandWithConfirmation(
 					commandsCtx,
 					b.tracer,
 					b.proxy,
-					b.buildLogger,
 					postProcessor,
+					zapcore.InfoLevel,
 					"start",
 					sbx.Metadata.Config.SandboxId,
 					template.StartCmd,

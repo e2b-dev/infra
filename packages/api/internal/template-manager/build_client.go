@@ -17,8 +17,8 @@ type BuildClient struct {
 	logProviders []buildlogs.Provider
 }
 
-func (bc *BuildClient) GetLogs(ctx context.Context, templateID, buildID string, offset *int32) []string {
-	logsTotal := make([]string, 0)
+func (bc *BuildClient) GetLogs(ctx context.Context, templateID, buildID string, offset *int32) []buildlogs.LogEntry {
+	logsTotal := make([]buildlogs.LogEntry, 0)
 	for _, provider := range bc.logProviders {
 		logs, err := provider.GetLogs(ctx, templateID, buildID, offset)
 		if err != nil {

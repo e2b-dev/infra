@@ -16,7 +16,7 @@ type TemplateManagerProvider struct {
 	GRPC *edge.ClusterGRPC
 }
 
-func (t *TemplateManagerProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset *int32) ([]string, error) {
+func (t *TemplateManagerProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset *int32) ([]LogEntry, error) {
 	reqCtx := metadata.NewOutgoingContext(ctx, t.GRPC.Metadata)
 	res, err := t.GRPC.Client.Template.TemplateBuildStatus(
 		reqCtx, &templatemanagergrpc.TemplateStatusRequest{
@@ -31,10 +31,14 @@ func (t *TemplateManagerProvider) GetLogs(ctx context.Context, templateID string
 		return nil, err
 	}
 
-	logs := res.GetLogs()
+	logs := make([]LogEntry, 0)
 	// Add an extra newline to each log entry to ensure proper formatting in the CLI
-	for i := range len(logs) {
-		logs[i] += "\n"
+	for _, entry := range res.GetLogs() {
+		logs = append(logs, LogEntry{
+			Timestamp: entry.GetTimestamp().AsTime(),
+			Message:   entry.GetMessage(),
+			Level:     entry.GetLevel(),
+		})
 	}
 
 	return logs, nil

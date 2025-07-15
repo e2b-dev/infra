@@ -25,7 +25,7 @@ type LokiProvider struct {
 	LokiClient *client.DefaultClient
 }
 
-func (l *LokiProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset *int32) ([]string, error) {
+func (l *LokiProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset *int32) ([]LogEntry, error) {
 	// Sanitize env ID
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 	templateIdSanitized := strings.ReplaceAll(templateID, "`", "")
@@ -33,7 +33,7 @@ func (l *LokiProvider) GetLogs(ctx context.Context, templateID string, buildID s
 
 	end := time.Now()
 	start := end.Add(-templateBuildOldestLogsLimit)
-	logs := make([]string, 0)
+	logs := make([]LogEntry, 0)
 
 	res, err := l.LokiClient.QueryRange(query, templateBuildLogsLimit, start, end, logproto.FORWARD, time.Duration(0), time.Duration(0), true)
 	if err == nil {
@@ -63,7 +63,16 @@ func (l *LokiProvider) GetLogs(ctx context.Context, templateID string, buildID s
 					zap.L().Error("error parsing log line", zap.Error(err), logger.WithBuildID(buildID), zap.String("line", entry.Line))
 				}
 
-				logs = append(logs, line["message"].(string))
+				level := "info"
+				if l, ok := line["level"]; ok {
+					level = l.(string)
+				}
+
+				logs = append(logs, LogEntry{
+					Timestamp: entry.Timestamp,
+					Message:   line["message"].(string),
+					Level:     level,
+				})
 			}
 		}
 	} else {
