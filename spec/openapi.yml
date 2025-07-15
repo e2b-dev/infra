@@ -549,6 +549,7 @@ components:
         - sandboxCount
         - allocatedCPU
         - allocatedMemoryMiB
+        - createSuccesses
         - createFails
         - sandboxStartingCount
         - version
@@ -581,6 +582,10 @@ components:
           type: integer
           format: int32
           description: Amount of allocated memory in MiB
+        createSuccesses:
+          type: integer
+          format: uint64
+          description: Number of sandbox create successes
         createFails:
           type: integer
           format: uint64
@@ -596,6 +601,7 @@ components:
         - status
         - sandboxes
         - cachedBuilds
+        - createSuccesses
         - createFails
         - version
         - commit
@@ -625,6 +631,10 @@ components:
           description: List of cached builds id on the node
           items:
             type: string
+        createSuccesses:
+            type: integer
+            format: uint64
+            description: Number of sandbox create successes
         createFails:
           type: integer
           format: uint64
@@ -1044,6 +1054,50 @@ paths:
           $ref: "#/components/responses/401"
         "500":
           $ref: "#/components/responses/500"
+
+  /sandboxes/{sandboxID}/metrics:
+    get:
+      description: Get sandbox metrics
+      tags: [sandboxes]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/sandboxID"
+        - in: query
+          name: start
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+          description: Starting timestamp of the metrics that should be returned in milliseconds
+        - in: query
+          name: end
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            description: Ending timestamp of the metrics that should be returned in milliseconds
+
+      responses:
+        "200":
+          description: Successfully returned the sandbox metrics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SandboxMetric"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
 
   # TODO: Pause and resume might be exposed as POST /sandboxes/{sandboxID}/snapshot and then POST /sandboxes with specified snapshotting setup
   /sandboxes/{sandboxID}/pause:

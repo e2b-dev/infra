@@ -72,6 +72,8 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 	sandboxID = utils.ShortID(sandboxID)
 
+	// This is also checked during in orchestrator.CreateSandbox, where the sandbox ID is reserved,
+	// but we want to do a quick check here to return an error quickly if possible.
 	sbxCache, err := a.orchestrator.GetSandbox(sandboxID)
 	if err == nil {
 		zap.L().Debug("Sandbox is already running",
