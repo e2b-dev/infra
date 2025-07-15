@@ -12,7 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	reverse_proxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
+	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -26,22 +26,22 @@ const (
 )
 
 type SandboxProxy struct {
-	proxy *reverse_proxy.Proxy
+	proxy *reverseproxy.Proxy
 }
 
 func NewSandboxProxy(meterProvider metric.MeterProvider, port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*SandboxProxy, error) {
-	proxy := reverse_proxy.New(
+	proxy := reverseproxy.New(
 		port,
 		idleTimeout,
 		func(r *http.Request) (*pool.Destination, error) {
-			sandboxId, port, err := reverse_proxy.ParseHost(r.Host)
+			sandboxId, port, err := reverseproxy.ParseHost(r.Host)
 			if err != nil {
 				return nil, err
 			}
 
 			sbx, found := sandboxes.Get(sandboxId)
 			if !found {
-				return nil, reverse_proxy.NewErrSandboxNotFound(sandboxId)
+				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
 			}
 
 			url := &url.URL{

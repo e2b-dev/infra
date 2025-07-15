@@ -39,7 +39,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 		// Sandbox exists and belongs to the team - return running sandbox info
 		sandbox := api.SandboxDetail{
-			ClientID:        consts.ClientID,
+			ClientID:        info.Instance.ClientID,
 			TemplateID:      info.Instance.TemplateID,
 			Alias:           info.Instance.Alias,
 			SandboxID:       info.Instance.SandboxID,

@@ -111,6 +111,7 @@ type ListedSandbox struct {
 	Alias *string `json:"alias,omitempty"`
 
 	// ClientID Identifier of the client
+	// Deprecated:
 	ClientID string `json:"clientID"`
 
 	// CpuCount CPU cores for the sandbox
@@ -252,43 +253,13 @@ type ResumedSandbox struct {
 	Timeout *int32 `json:"timeout,omitempty"`
 }
 
-// RunningSandboxWithMetrics defines model for RunningSandboxWithMetrics.
-type RunningSandboxWithMetrics struct {
-	// Alias Alias of the template
-	Alias *string `json:"alias,omitempty"`
-
-	// ClientID Identifier of the client
-	ClientID string `json:"clientID"`
-
-	// CpuCount CPU cores for the sandbox
-	CpuCount CPUCount `json:"cpuCount"`
-
-	// EndAt Time when the sandbox will expire
-	EndAt time.Time `json:"endAt"`
-
-	// MemoryMB Memory for the sandbox in MB
-	MemoryMB MemoryMB         `json:"memoryMB"`
-	Metadata *SandboxMetadata `json:"metadata,omitempty"`
-
-	// Metrics Metric entry with timestamp and line
-	Metrics *SandboxMetric `json:"metrics,omitempty"`
-
-	// SandboxID Identifier of the sandbox
-	SandboxID string `json:"sandboxID"`
-
-	// StartedAt Time when the sandbox was started
-	StartedAt time.Time `json:"startedAt"`
-
-	// TemplateID Identifier of the template from which is the sandbox created
-	TemplateID string `json:"templateID"`
-}
-
 // Sandbox defines model for Sandbox.
 type Sandbox struct {
 	// Alias Alias of the template
 	Alias *string `json:"alias,omitempty"`
 
 	// ClientID Identifier of the client
+	// Deprecated:
 	ClientID string `json:"clientID"`
 
 	// EnvdAccessToken Access token used for envd communication
@@ -310,6 +281,7 @@ type SandboxDetail struct {
 	Alias *string `json:"alias,omitempty"`
 
 	// ClientID Identifier of the client
+	// Deprecated:
 	ClientID string `json:"clientID"`
 
 	// CpuCount CPU cores for the sandbox
@@ -379,6 +351,11 @@ type SandboxMetric struct {
 
 // SandboxState State of the sandbox
 type SandboxState string
+
+// SandboxesWithMetrics defines model for SandboxesWithMetrics.
+type SandboxesWithMetrics struct {
+	Sandboxes map[string]SandboxMetric `json:"sandboxes"`
+}
 
 // Team defines model for Team.
 type Team struct {
@@ -556,8 +533,8 @@ type GetSandboxesParams struct {
 
 // GetSandboxesMetricsParams defines parameters for GetSandboxesMetrics.
 type GetSandboxesMetricsParams struct {
-	// Metadata Metadata query used to filter the sandboxes (e.g. "user=abc&app=prod"). Each key and values must be URL encoded.
-	Metadata *string `form:"metadata,omitempty" json:"metadata,omitempty"`
+	// SandboxIds Comma-separated list of sandbox IDs to get metrics for
+	SandboxIds []string `form:"sandbox_ids" json:"sandbox_ids"`
 }
 
 // GetSandboxesSandboxIDLogsParams defines parameters for GetSandboxesSandboxIDLogs.
