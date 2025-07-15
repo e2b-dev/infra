@@ -22,7 +22,7 @@ type Client struct {
 	conn driver.Conn
 }
 
-func New(connectionString string) (*Client, error) {
+func New(connectionString string) (Clickhouse, error) {
 	options, err := clickhouse.ParseDSN(connectionString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse ClickHouse DSN: %w", err)
