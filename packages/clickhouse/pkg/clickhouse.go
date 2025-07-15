@@ -16,6 +16,10 @@ type Clickhouse interface {
 	QuerySandboxTimeRange(ctx context.Context, sandboxID string, teamID string) (start time.Time, end time.Time, err error)
 	QuerySandboxMetrics(ctx context.Context, sandboxID string, teamID string, start time.Time, end time.Time, step time.Duration) ([]Metrics, error)
 	QueryLatestMetrics(ctx context.Context, sandboxIDs []string, teamID string) ([]Metrics, error)
+
+	// Events queries
+	QueryLatestSandboxEvent(ctx context.Context, sandboxIDs []string) ([]SandboxEvent, error)
+	InsertSandboxEvent(ctx context.Context, event SandboxEvent) error
 }
 
 type Client struct {
