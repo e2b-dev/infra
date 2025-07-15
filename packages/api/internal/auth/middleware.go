@@ -147,7 +147,7 @@ func CreateAuthenticationFunc(
 			},
 			validationFunction: teamValidationFunction,
 			contextKey:         TeamContextKey,
-			errorMessage:       "Invalid API key, please visit https://e2b.dev/docs/quickstart/api-key for more information.",
+			errorMessage:       "Invalid API key, please visit https://e2b.dev/docs/api-key for more information.",
 		},
 		&commonAuthenticator[uuid.UUID]{
 			securitySchemeName: "AccessTokenAuth",
