@@ -105,6 +105,20 @@ func (o *Orchestrator) CreateSandbox(
 
 	telemetry.ReportEvent(childCtx, "Got FC version info")
 
+	var sbxDomain *string
+	if team.Team.ClusterID != nil {
+		cluster, ok := o.clusters.GetClusterById(*team.Team.ClusterID)
+		if !ok {
+			return nil, &api.APIError{
+				Code:      http.StatusInternalServerError,
+				ClientMsg: "Error while looking for sandbox cluster information",
+				Err:       fmt.Errorf("cannot access cluster %s associated with team id %s that spawned sandbox %s", *team.Team.ClusterID, team.Team.ID, sandboxID),
+			}
+		}
+
+		sbxDomain = cluster.SandboxDomain
+	}
+
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
 			BaseTemplateId:     baseTemplateID,
@@ -224,6 +238,7 @@ func (o *Orchestrator) CreateSandbox(
 		Alias:           &alias,
 		EnvdVersion:     *build.EnvdVersion,
 		EnvdAccessToken: envdAuthToken,
+		Domain:          sbxDomain,
 	}
 
 	// This is to compensate for the time it takes to start the instance
