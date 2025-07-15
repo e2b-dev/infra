@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestHelloName(t *testing.T) {
+func TestHostParser(t *testing.T) {
 	tests := []struct {
 		name     string
 		host     string
@@ -69,6 +69,27 @@ func TestHelloName(t *testing.T) {
 			wantID:   "isv6ril5xadwn1k9t2jye",
 			wantPort: 49983,
 			wantErr:  &ErrInvalidSandboxPort{},
+		},
+		{
+			name:     "sandbox-host-without-domain",
+			host:     "49983-isv6ril5xadwn1k9t2jye",
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 49983,
+			wantErr:  &ErrInvalidHost{},
+		},
+		{
+			name:     "sandbox-host-with-missing-domain-and-port",
+			host:     "49983-isv6ril5xadwn1k9t2jye:8080",
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 49983,
+			wantErr:  &ErrInvalidHost{},
+		},
+		{
+			name:     "sandbox-host-with-missing-domain",
+			host:     "49983-isv6ril5xadwn1k9t2jye",
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 49983,
+			wantErr:  &ErrInvalidHost{},
 		},
 	}
 
