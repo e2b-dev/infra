@@ -6,6 +6,11 @@ import (
 )
 
 func ParseHost(host string) (sandboxID string, port uint64, err error) {
+	// Keep only the left-most subdomain part, i.e. everything before the
+	if dot := strings.Index(host, "."); dot != -1 {
+		host = host[:dot]
+	}
+
 	hostParts := strings.Split(host, "-")
 	if len(hostParts) < 2 {
 		return "", 0, &ErrInvalidHost{}
