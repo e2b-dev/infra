@@ -16,14 +16,11 @@ import (
 )
 
 var (
-	syncTimeout              = time.Minute * 15
+	buildTimeout             = time.Hour
 	syncWaitingStateDeadline = time.Minute * 40
 )
 
 func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUID, templateID string, clusterID *uuid.UUID, clusterNodeID *string) error {
-	childCtx, childCtxCancel := context.WithTimeout(ctx, syncTimeout)
-	defer childCtxCancel()
-
 	if tm.createInProcessingQueue(buildID, templateID) {
 		// already processing, skip
 		return nil
@@ -32,7 +29,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 	// remove from processing queue when done
 	defer tm.removeFromProcessingQueue(buildID)
 
-	envBuildDb, err := tm.db.GetEnvBuild(childCtx, buildID)
+	envBuildDb, err := tm.db.GetEnvBuild(ctx, buildID)
 	if err != nil {
 		return fmt.Errorf("failed to get env build: %w", err)
 	}
@@ -43,7 +40,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 		// if waiting for too long, fail the build
 		if time.Since(envBuildDb.CreatedAt) > syncWaitingStateDeadline {
 			msg := "build is in waiting state for too long"
-			err = tm.SetStatus(childCtx, templateID, buildID, envbuild.StatusFailed, &msg)
+			err = tm.SetStatus(ctx, templateID, buildID, envbuild.StatusFailed, &msg)
 			return fmt.Errorf("build is in waiting state for too long, failing it: %w", err)
 		}
 
@@ -61,6 +58,10 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 		clusterID:     clusterID,
 		clusterNodeID: clusterNodeID,
 	}
+
+	// context for the building phase
+	ctx, buildCancel := context.WithTimeout(ctx, buildTimeout)
+	defer buildCancel()
 
 	checker.poll(ctx)
 	return nil
