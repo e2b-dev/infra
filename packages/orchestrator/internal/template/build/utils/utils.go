@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"context"
 	"crypto/sha256"
 	"fmt"
 	"io"
@@ -16,7 +15,7 @@ func Sprintp(s *string) string {
 	return *s
 }
 
-func GetFileHash(ctx context.Context, path string) (string, error) {
+func GetFileHash(path string) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("error opening file: %w", err)

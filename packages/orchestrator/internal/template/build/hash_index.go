@@ -87,8 +87,8 @@ func hashKeys(previousHash string, keys ...string) string {
 	return fmt.Sprintf("%x", sha.Sum(nil))
 }
 
-func hashBase(ctx context.Context, template config.TemplateConfig) (string, error) {
-	envdHash, err := envd.GetEnvdHash(ctx)
+func hashBase(template config.TemplateConfig) (string, error) {
+	envdHash, err := envd.GetEnvdHash()
 	if err != nil {
 		return "", fmt.Errorf("error getting envd binary hash: %w", err)
 	}

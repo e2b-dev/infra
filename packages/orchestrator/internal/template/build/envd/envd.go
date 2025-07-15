@@ -19,6 +19,6 @@ func GetEnvdVersion(ctx context.Context) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func GetEnvdHash(ctx context.Context) (string, error) {
-	return utils.GetFileHash(ctx, storage.HostEnvdPath)
+func GetEnvdHash() (string, error) {
+	return utils.GetFileHash(storage.HostEnvdPath)
 }

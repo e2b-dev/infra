@@ -85,12 +85,17 @@ func (b *BuildInfo) GetLogs() []string {
 	return logs
 }
 
-func (b *BuildInfo) Cancel() {
-	b.fail(cancelledBuildReason)
+func (b *BuildInfo) Cancel() error {
+	err := b.fail(cancelledBuildReason)
+	if err != nil {
+		return fmt.Errorf("failed to cancel build: %w", err)
+	}
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.ctxCancel()
+
+	return nil
 }
 
 func (b *BuildInfo) fail(reason string) error {

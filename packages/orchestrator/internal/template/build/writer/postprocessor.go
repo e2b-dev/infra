@@ -37,11 +37,10 @@ func (p *PostProcessor) Start() {
 		case postprocessingErr := <-p.errChan:
 			if postprocessingErr != nil {
 				p.WriteMsg(fmt.Sprintf("Postprocessing failed: %s", postprocessingErr))
-				return
 			} else {
 				p.WriteMsg(fmt.Sprintf("Build finished, took %s", time.Since(startTime).Truncate(time.Second).String()))
-				return
 			}
+			return
 		case <-p.ctx.Done():
 			return
 		case <-p.ticker.C:

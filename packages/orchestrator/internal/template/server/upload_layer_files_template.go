@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
@@ -30,8 +28,6 @@ func (s *ServerStore) TemplateLayerFilesUpload(ctx context.Context, in *template
 
 	_, err = obj.Size()
 	if err != nil {
-		zap.L().Warn("layer files not found", zap.Error(err))
-
 		return &templatemanager.TemplateLayerFilesUploadResponse{
 			Present: false,
 			Url:     &signedUrl,

@@ -171,7 +171,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		cmdMeta.WorkDir = &cwd
 	}
 
-	lastHash, err := hashBase(ctx, template)
+	lastHash, err := hashBase(template)
 	if err != nil {
 		return nil, fmt.Errorf("error getting base hash: %w", err)
 	}
