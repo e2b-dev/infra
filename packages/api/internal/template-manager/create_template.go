@@ -3,16 +3,19 @@ package template_manager
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -33,13 +36,33 @@ func (tm *TemplateManager) CreateTemplate(
 	steps *[]api.TemplateStep,
 	clusterID *uuid.UUID,
 	clusterNodeID *string,
-) error {
+) (e error) {
 	ctx, span := t.Start(ctx, "create-template",
 		trace.WithAttributes(
 			telemetry.WithTemplateID(templateID),
 		),
 	)
 	defer span.End()
+
+	defer func() {
+		if e == nil {
+			return
+		}
+
+		// Report build failur status on any error while creating the template
+		telemetry.ReportCriticalError(ctx, "build failed", e, telemetry.WithTemplateID(templateID))
+		msg := fmt.Sprintf("error when building env: %s", e)
+		err := tm.SetStatus(
+			ctx,
+			templateID,
+			buildID,
+			envbuild.StatusFailed,
+			&msg,
+		)
+		if err != nil {
+			e = errors.Join(e, fmt.Errorf("failed to set build status to failed: %w", err))
+		}
+	}()
 
 	features, err := sandbox.NewVersionInfo(firecrackerVersion)
 	if err != nil {
@@ -86,8 +109,39 @@ func (tm *TemplateManager) CreateTemplate(
 	if err != nil {
 		return fmt.Errorf("failed to create template '%s': %w", templateID, err)
 	}
-
 	telemetry.ReportEvent(ctx, "Template build started")
+
+	// status building must be set after build is triggered because then
+	// it's possible build status job will be triggered before build cache on template manager is created and build will fail
+	err = tm.SetStatus(
+		ctx,
+		templateID,
+		buildID,
+		envbuild.StatusBuilding,
+		nil,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to set build status to building: %w", err)
+	}
+	telemetry.ReportEvent(ctx, "created new environment", telemetry.WithTemplateID(templateID))
+
+	// Do not wait for global build sync trigger it immediately
+	go func() {
+		buildContext, buildSpan := t.Start(
+			trace.ContextWithSpanContext(context.Background(), span.SpanContext()),
+			"template-background-build-env",
+		)
+		defer buildSpan.End()
+
+		err := tm.BuildStatusSync(buildContext, buildID, templateID, clusterID, clusterNodeID)
+		if err != nil {
+			zap.L().Error("error syncing build status", zap.Error(err))
+		}
+
+		// Invalidate the cache
+		tm.templateCache.Invalidate(templateID)
+	}()
+
 	return nil
 }
 

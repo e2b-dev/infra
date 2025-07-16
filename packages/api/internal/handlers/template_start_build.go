@@ -10,8 +10,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
@@ -65,7 +63,6 @@ func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateI
 // PostTemplatesTemplateIDBuildsBuildID triggers a new build after the user pushes the Docker image to the registry
 func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, templateID api.TemplateID, buildID api.BuildID) {
 	ctx := c.Request.Context()
-	span := trace.SpanFromContext(ctx)
 
 	buildUUID, err := uuid.Parse(buildID)
 	if err != nil {
@@ -169,56 +166,11 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		team.ClusterID,
 		build.ClusterNodeID,
 	)
-
 	if buildErr != nil {
 		telemetry.ReportCriticalError(ctx, "build failed", buildErr, telemetry.WithTemplateID(templateID))
-		msg := fmt.Sprintf("error when building env: %s", buildErr)
-		err = a.templateManager.SetStatus(
-			ctx,
-			templateID,
-			buildUUID,
-			envbuild.StatusFailed,
-			&msg,
-		)
-		if err != nil {
-			telemetry.ReportCriticalError(ctx, "error when setting build status", err)
-		}
-
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when starting template build: %s", buildErr))
 		return
 	}
-
-	// status building must be set after build is triggered because then
-	// it's possible build status job will be triggered before build cache on template manager is created and build will fail
-	err = a.templateManager.SetStatus(
-		ctx,
-		templateID,
-		buildUUID,
-		envbuild.StatusBuilding,
-		nil,
-	)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error when setting build status", err)
-		return
-	}
-
-	telemetry.ReportEvent(ctx, "created new environment", telemetry.WithTemplateID(templateID))
-
-	// Do not wait for global build sync trigger it immediately
-	go func() {
-		buildContext, buildSpan := a.Tracer.Start(
-			trace.ContextWithSpanContext(context.Background(), span.SpanContext()),
-			"template-background-build-env",
-		)
-		defer buildSpan.End()
-
-		err := a.templateManager.BuildStatusSync(buildContext, buildUUID, templateID, team.ClusterID, build.ClusterNodeID)
-		if err != nil {
-			zap.L().Error("error syncing build status", zap.Error(err))
-		}
-
-		// Invalidate the cache
-		a.templateCache.Invalidate(templateID)
-	}()
 
 	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "built environment", posthog.NewProperties().
 		Set("user_id", userID).
