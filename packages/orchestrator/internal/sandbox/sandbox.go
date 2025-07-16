@@ -428,6 +428,8 @@ func ResumeSandbox(
 
 func (s *Sandbox) Wait(ctx context.Context) error {
 	select {
+	case <-ctx.Done():
+		return ctx.Err()
 	case <-s.process.Exit.Done:
 		_, fcErr := s.process.Exit.Result()
 		stopErr := s.Stop(ctx)
