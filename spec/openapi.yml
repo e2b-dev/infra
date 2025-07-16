@@ -510,7 +510,6 @@ components:
     TemplateBuildRequestV2:
       required:
         - alias
-        - teamID
       properties:
         alias:
           description: Alias of the template
@@ -1324,6 +1323,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
+        - ApiKeyAuth: []
         - Supabase1TokenAuth: []
       requestBody:
         required: true
@@ -1352,6 +1352,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
+        - ApiKeyAuth: []
         - Supabase1TokenAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
@@ -1523,6 +1524,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
+        - ApiKeyAuth: []
         - Supabase1TokenAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
@@ -1547,6 +1549,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
+        - ApiKeyAuth: []
         - Supabase1TokenAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"

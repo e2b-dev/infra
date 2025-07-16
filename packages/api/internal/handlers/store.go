@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
+	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -30,10 +31,10 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -272,11 +273,11 @@ func (a *APIStore) GetHealth(c *gin.Context) {
 }
 
 func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authcache.AuthTeamInfo, *api.APIError) {
-	team, tier, err := a.authCache.GetOrSet(ctx, apiKey, func(ctx context.Context, key string) (*models.Team, *models.Tier, error) {
-		return a.db.GetTeamAuth(ctx, key)
+	team, tier, err := a.authCache.GetOrSet(ctx, apiKey, func(ctx context.Context, key string) (*queries.Team, *queries.Tier, error) {
+		return dbapi.GetTeamAuth(ctx, a.sqlcDB, key)
 	})
 	if err != nil {
-		var usageErr *db.TeamForbiddenError
+		var usageErr *dbapi.TeamForbiddenError
 		if errors.As(err, &usageErr) {
 			return authcache.AuthTeamInfo{}, &api.APIError{
 				Err:       err,
@@ -285,7 +286,7 @@ func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authca
 			}
 		}
 
-		var blockedErr *db.TeamBlockedError
+		var blockedErr *dbapi.TeamBlockedError
 		if errors.As(err, &blockedErr) {
 			return authcache.AuthTeamInfo{}, &api.APIError{
 				Err:       err,
@@ -397,11 +398,11 @@ func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, supabaseToken
 func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) (authcache.AuthTeamInfo, *api.APIError) {
 	userID := a.GetUserID(middleware.GetGinContext(ctx))
 
-	team, tier, err := a.authCache.GetOrSet(ctx, teamID, func(ctx context.Context, key string) (*models.Team, *models.Tier, error) {
-		return a.db.GetTeamByIDAndUserIDAuth(ctx, teamID, userID)
+	team, tier, err := a.authCache.GetOrSet(ctx, teamID, func(ctx context.Context, key string) (*queries.Team, *queries.Tier, error) {
+		return dbapi.GetTeamByIDAndUserIDAuth(ctx, a.sqlcDB, teamID, userID)
 	})
 	if err != nil {
-		var usageErr *db.TeamForbiddenError
+		var usageErr *dbapi.TeamForbiddenError
 		if errors.As(err, &usageErr) {
 			return authcache.AuthTeamInfo{}, &api.APIError{
 				Err:       fmt.Errorf("failed getting team: %w", err),
@@ -410,7 +411,7 @@ func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) 
 			}
 		}
 
-		var blockedErr *db.TeamBlockedError
+		var blockedErr *dbapi.TeamBlockedError
 		if errors.As(err, &blockedErr) {
 			return authcache.AuthTeamInfo{}, &api.APIError{
 				Err:       fmt.Errorf("failed getting team: %w", err),

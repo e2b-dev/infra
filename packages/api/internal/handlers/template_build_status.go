@@ -10,8 +10,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
@@ -21,16 +19,6 @@ import (
 // GetTemplatesTemplateIDBuildsBuildIDStatus serves to get a template build status (e.g. to CLI)
 func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, templateID api.TemplateID, buildID api.BuildID, params api.GetTemplatesTemplateIDBuildsBuildIDStatusParams) {
 	ctx := c.Request.Context()
-
-	userID := c.Value(auth.UserIDContextKey).(uuid.UUID)
-	teams, err := a.sqlcDB.GetTeamsWithUsersTeams(ctx, userID)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get the default team")
-
-		telemetry.ReportCriticalError(ctx, "error when getting teams", err)
-
-		return
-	}
 
 	buildUUID, err := uuid.Parse(buildID)
 	if err != nil {
@@ -56,15 +44,15 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	var team *queries.Team
-	for _, t := range teams {
-		if t.Team.ID == buildInfo.TeamID {
-			team = &t.Team
-			break
-		}
+	infoTeamID := buildInfo.TeamID.String()
+	team, _, apiErr := a.GetTeamAndTier(c, &infoTeamID)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+		return
 	}
 
-	if team == nil {
+	if team.ID != buildInfo.TeamID {
 		telemetry.ReportError(ctx, "user doesn't have access to env", fmt.Errorf("user doesn't have access to env '%s'", templateID), telemetry.WithTemplateID(templateID))
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to this sandbox template (%s)", templateID))
 		return

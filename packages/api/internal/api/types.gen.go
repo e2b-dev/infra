@@ -539,7 +539,7 @@ type TemplateBuildRequestV2 struct {
 	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
 
 	// TeamID Identifier of the team
-	TeamID string `json:"teamID"`
+	TeamID *string `json:"teamID,omitempty"`
 }
 
 // TemplateBuildStartV2 defines model for TemplateBuildStartV2.

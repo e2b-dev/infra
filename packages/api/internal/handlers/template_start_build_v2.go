@@ -9,11 +9,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/posthog/posthog-go"
-	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
@@ -46,15 +44,6 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
-	userID, teams, err := a.GetUserAndTeams(c)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when getting default team", err)
-
-		return
-	}
-
 	telemetry.ReportEvent(ctx, "started environment build")
 
 	// Check if the user has access to the template, load the template with build info
@@ -73,16 +62,15 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
-	var team *queries.Team
-	// Check if the user has access to the template
-	for _, t := range teams {
-		if t.Team.ID == envDB.TeamID {
-			team = &t.Team
-			break
-		}
+	dbTeamID := envDB.TeamID.String()
+	team, _, apiErr := a.GetTeamAndTier(c, &dbTeamID)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+		return
 	}
 
-	if team == nil {
+	if team.ID != envDB.TeamID {
 		a.sendAPIStoreError(c, http.StatusForbidden, "User does not have access to the template")
 
 		telemetry.ReportCriticalError(ctx, "user does not have access to the template", err, telemetry.WithTemplateID(templateID))
@@ -91,7 +79,6 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	}
 
 	telemetry.SetAttributes(ctx,
-		attribute.String("user.id", userID.String()),
 		telemetry.WithTeamID(team.ID.String()),
 		telemetry.WithTemplateID(templateID),
 	)
@@ -166,8 +153,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
-	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "built environment", posthog.NewProperties().
-		Set("user_id", userID).
+	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "built environment", posthog.NewProperties().
 		Set("environment", templateID).
 		Set("build_id", buildID).
 		Set("duration", time.Since(startTime).String()).
