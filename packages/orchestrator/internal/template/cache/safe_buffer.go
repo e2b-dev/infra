@@ -35,19 +35,19 @@ func (b *SafeBuffer) Write(p []byte) (n int, err error) {
 
 	for line := range bytes.SplitSeq(p, []byte("\n")) {
 		if len(line) > 0 {
-			zap.L().Warn("log entry", zap.Error(err), zap.ByteString("line", line))
 			var entry ZapEntry
 			err := json.Unmarshal(line, &entry)
 			if err != nil {
 				zap.L().Error("failed to unmarshal log entry", zap.Error(err), zap.ByteString("line", line))
-			} else {
-				timestamp := epochToTime(entry.Ts)
-				b.lines = append(b.lines, &template_manager.TemplateBuildLogEntry{
-					Timestamp: timestamppb.New(timestamp),
-					Message:   entry.Msg,
-					Level:     stringToLogLevel(entry.Level),
-				})
+				continue
 			}
+
+			timestamp := epochToTime(entry.Ts)
+			b.lines = append(b.lines, &template_manager.TemplateBuildLogEntry{
+				Timestamp: timestamppb.New(timestamp),
+				Message:   entry.Msg,
+				Level:     stringToLogLevel(entry.Level),
+			})
 		}
 	}
 	return len(p), nil

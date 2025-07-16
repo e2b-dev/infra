@@ -112,7 +112,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	}
 	telemetry.ReportEvent(childCtx, "set up filesystem")
 
-	postProcessor.Debug("Creating file system and pulling Docker image")
+	postProcessor.Info("Creating file system and pulling Docker image")
 	ext4Size, err := oci.ToExt4(ctx, tracer, postProcessor, img, rootfsPath, maxRootfsSize, r.template.RootfsBlockSize())
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error creating ext4 filesystem: %w", err)
