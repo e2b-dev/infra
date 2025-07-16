@@ -11,7 +11,6 @@ import (
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -58,7 +57,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	defer span.End()
 	templateID := id.Generate()
 	isNew := true
-	templateAlias, err := a.db.Client.EnvAlias.Query().Where(envalias.ID(body.Alias)).Only(ctx)
+	templateAlias, err := a.sqlcDB.GetTemplateAliasByAlias(ctx, body.Alias)
 	if err != nil {
 		var notFoundErr db.ErrNotFound
 		if !errors.As(err, &notFoundErr) {
