@@ -30,6 +30,7 @@ type Cluster struct {
 	instances       *smap.Map[*ClusterInstance]
 	synchronization *synchronization.Synchronize[api.ClusterOrchestratorNode, *ClusterInstance]
 	tracer          trace.Tracer
+	SandboxDomain   *string
 }
 
 type ClusterGRPC struct {
@@ -47,7 +48,15 @@ var (
 	ErrAvailableTemplateBuilderNotFound = errors.New("available template builder not found")
 )
 
-func NewCluster(tracer trace.Tracer, tel *telemetry.Client, endpoint string, endpointTLS bool, secret string, clusterID uuid.UUID) (*Cluster, error) {
+func NewCluster(
+	tracer trace.Tracer,
+	tel *telemetry.Client,
+	endpoint string,
+	endpointTLS bool,
+	secret string,
+	clusterID uuid.UUID,
+	sandboxDomain *string,
+) (*Cluster, error) {
 	clientAuthMiddleware := func(c *api.Client) error {
 		c.RequestEditors = append(
 			c.RequestEditors,
@@ -79,7 +88,8 @@ func NewCluster(tracer trace.Tracer, tel *telemetry.Client, endpoint string, end
 	}
 
 	c := &Cluster{
-		ID: clusterID,
+		ID:            clusterID,
+		SandboxDomain: sandboxDomain,
 
 		instances:  smap.New[*ClusterInstance](),
 		tracer:     tracer,

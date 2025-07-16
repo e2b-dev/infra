@@ -927,16 +927,17 @@ func (m *AccessTokenMutation) ResetEdge(name string) error {
 // ClusterMutation represents an operation that mutates the Cluster nodes in the graph.
 type ClusterMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *uuid.UUID
-	endpoint      *string
-	endpoint_tls  *bool
-	token         *string
-	clearedFields map[string]struct{}
-	done          bool
-	oldValue      func(context.Context) (*Cluster, error)
-	predicates    []predicate.Cluster
+	op                   Op
+	typ                  string
+	id                   *uuid.UUID
+	endpoint             *string
+	endpoint_tls         *bool
+	token                *string
+	sandbox_proxy_domain *string
+	clearedFields        map[string]struct{}
+	done                 bool
+	oldValue             func(context.Context) (*Cluster, error)
+	predicates           []predicate.Cluster
 }
 
 var _ ent.Mutation = (*ClusterMutation)(nil)
@@ -1151,6 +1152,42 @@ func (m *ClusterMutation) ResetToken() {
 	m.token = nil
 }
 
+// SetSandboxProxyDomain sets the "sandbox_proxy_domain" field.
+func (m *ClusterMutation) SetSandboxProxyDomain(s string) {
+	m.sandbox_proxy_domain = &s
+}
+
+// SandboxProxyDomain returns the value of the "sandbox_proxy_domain" field in the mutation.
+func (m *ClusterMutation) SandboxProxyDomain() (r string, exists bool) {
+	v := m.sandbox_proxy_domain
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSandboxProxyDomain returns the old "sandbox_proxy_domain" field's value of the Cluster entity.
+// If the Cluster object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClusterMutation) OldSandboxProxyDomain(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSandboxProxyDomain is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSandboxProxyDomain requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSandboxProxyDomain: %w", err)
+	}
+	return oldValue.SandboxProxyDomain, nil
+}
+
+// ResetSandboxProxyDomain resets all changes to the "sandbox_proxy_domain" field.
+func (m *ClusterMutation) ResetSandboxProxyDomain() {
+	m.sandbox_proxy_domain = nil
+}
+
 // Where appends a list predicates to the ClusterMutation builder.
 func (m *ClusterMutation) Where(ps ...predicate.Cluster) {
 	m.predicates = append(m.predicates, ps...)
@@ -1185,7 +1222,7 @@ func (m *ClusterMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ClusterMutation) Fields() []string {
-	fields := make([]string, 0, 3)
+	fields := make([]string, 0, 4)
 	if m.endpoint != nil {
 		fields = append(fields, cluster.FieldEndpoint)
 	}
@@ -1194,6 +1231,9 @@ func (m *ClusterMutation) Fields() []string {
 	}
 	if m.token != nil {
 		fields = append(fields, cluster.FieldToken)
+	}
+	if m.sandbox_proxy_domain != nil {
+		fields = append(fields, cluster.FieldSandboxProxyDomain)
 	}
 	return fields
 }
@@ -1209,6 +1249,8 @@ func (m *ClusterMutation) Field(name string) (ent.Value, bool) {
 		return m.EndpointTLS()
 	case cluster.FieldToken:
 		return m.Token()
+	case cluster.FieldSandboxProxyDomain:
+		return m.SandboxProxyDomain()
 	}
 	return nil, false
 }
@@ -1224,6 +1266,8 @@ func (m *ClusterMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldEndpointTLS(ctx)
 	case cluster.FieldToken:
 		return m.OldToken(ctx)
+	case cluster.FieldSandboxProxyDomain:
+		return m.OldSandboxProxyDomain(ctx)
 	}
 	return nil, fmt.Errorf("unknown Cluster field %s", name)
 }
@@ -1253,6 +1297,13 @@ func (m *ClusterMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetToken(v)
+		return nil
+	case cluster.FieldSandboxProxyDomain:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSandboxProxyDomain(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Cluster field %s", name)
@@ -1311,6 +1362,9 @@ func (m *ClusterMutation) ResetField(name string) error {
 		return nil
 	case cluster.FieldToken:
 		m.ResetToken()
+		return nil
+	case cluster.FieldSandboxProxyDomain:
+		m.ResetSandboxProxyDomain()
 		return nil
 	}
 	return fmt.Errorf("unknown Cluster field %s", name)

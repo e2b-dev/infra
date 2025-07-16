@@ -27,6 +27,18 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	sandboxId := strings.Split(id, "-")[0]
 
+	var sbxDomain *string
+	if team.ClusterID != nil {
+		cluster, ok := a.clustersPool.GetClusterById(*team.ClusterID)
+		if !ok {
+			zap.L().Error("Sandbox attached cluster not found", logger.WithClusterID(*team.ClusterID))
+			c.JSON(http.StatusInternalServerError, fmt.Sprintf("cluster with id %s not found", *team.ClusterID))
+			return
+		}
+
+		sbxDomain = cluster.SandboxDomain
+	}
+
 	// Try to get the running sandbox first
 	info, err := a.orchestrator.GetInstance(ctx, sandboxId)
 	if err == nil {
@@ -50,6 +62,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			State:           api.Running,
 			EnvdVersion:     &info.EnvdVersion,
 			EnvdAccessToken: info.EnvdAccessToken,
+			Domain:          sbxDomain,
 		}
 
 		if info.Metadata != nil {
@@ -95,6 +108,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		State:           api.Paused,
 		EnvdVersion:     lastSnapshot.EnvBuild.EnvdVersion,
 		EnvdAccessToken: sbxAccessToken,
+		Domain:          nil,
 	}
 
 	if lastSnapshot.Snapshot.Metadata != nil {
