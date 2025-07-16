@@ -30,7 +30,7 @@ type BuildTemplateRequest struct {
 	BuilderNodeID *string
 	TemplateID    api.TemplateID
 	IsNew         bool
-	UserID        uuid.UUID
+	UserID        *uuid.UUID
 	Team          *queries.Team
 	Tier          *queries.Tier
 	Dockerfile    string
@@ -116,7 +116,6 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 	}
 
 	telemetry.SetAttributes(ctx,
-		attribute.String("user.id", req.UserID.String()),
 		attribute.String("env.team.id", req.Team.ID.String()),
 		attribute.String("env.team.name", req.Team.Name),
 		telemetry.WithTemplateID(req.TemplateID),
@@ -181,7 +180,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 		Create().
 		SetID(req.TemplateID).
 		SetTeamID(req.Team.ID).
-		SetCreatedBy(req.UserID).
+		SetNillableCreatedBy(req.UserID).
 		SetPublic(false).
 		SetNillableClusterID(req.ClusterID).
 		OnConflictColumns(env.FieldID).
@@ -448,7 +447,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		BuilderNodeID: builderNodeID,
 		TemplateID:    templateID,
 		IsNew:         new,
-		UserID:        *userID,
+		UserID:        userID,
 		Team:          team,
 		Tier:          tier,
 		Dockerfile:    body.Dockerfile,

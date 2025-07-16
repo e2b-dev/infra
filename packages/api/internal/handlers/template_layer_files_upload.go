@@ -5,35 +5,36 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID api.TemplateID, hash string) {
 	ctx := c.Request.Context()
 
-	_, teams, err := a.GetUserAndTeams(c)
+	// Check if the user has access to the template
+	templateDB, err := a.db.Client.Env.Query().Where(
+		env.ID(templateID),
+	).Only(ctx)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when getting default team", err)
-
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))
+		telemetry.ReportCriticalError(ctx, "error when getting env", err, telemetry.WithTemplateID(templateID))
 		return
 	}
 
-	teamIDs := utils.Map(teams, func(t queries.GetTeamsWithUsersTeamsWithTierRow) uuid.UUID {
-		return t.Team.ID
-	})
+	dbTeamID := templateDB.TeamID.String()
+	team, _, apiErr := a.GetTeamAndTier(c, &dbTeamID)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+		return
+	}
 
 	// Check if the user has access to the template
-	_, err = a.db.Client.Env.Query().Where(env.ID(templateID), env.TeamIDIn(teamIDs...)).Only(ctx)
-	if err != nil {
+	if team.ID != templateDB.TeamID {
 		telemetry.ReportCriticalError(ctx, "error when getting template", err, telemetry.WithTemplateID(templateID))
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))
 		return

@@ -912,6 +912,8 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDBuildsBuildIDStatus(c *
 
 	c.Set(AccessTokenAuthScopes, []string{})
 
+	c.Set(ApiKeyAuthScopes, []string{})
+
 	c.Set(Supabase1TokenAuthScopes, []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
@@ -959,6 +961,8 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDFilesHash(c *gin.Contex
 	}
 
 	c.Set(AccessTokenAuthScopes, []string{})
+
+	c.Set(ApiKeyAuthScopes, []string{})
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
 
@@ -1033,6 +1037,8 @@ func (siw *ServerInterfaceWrapper) PostV2Templates(c *gin.Context) {
 
 	c.Set(AccessTokenAuthScopes, []string{})
 
+	c.Set(ApiKeyAuthScopes, []string{})
+
 	c.Set(Supabase1TokenAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1069,6 +1075,8 @@ func (siw *ServerInterfaceWrapper) PostV2TemplatesTemplateIDBuildsBuildID(c *gin
 	}
 
 	c.Set(AccessTokenAuthScopes, []string{})
+
+	c.Set(ApiKeyAuthScopes, []string{})
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
 
