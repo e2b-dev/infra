@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -25,7 +26,7 @@ type LokiProvider struct {
 	LokiClient *client.DefaultClient
 }
 
-func (l *LokiProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset *int32) ([]LogEntry, error) {
+func (l *LokiProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset *int32, level *api.LogLevel) ([]api.BuildLogEntry, error) {
 	// Sanitize env ID
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 	templateIdSanitized := strings.ReplaceAll(templateID, "`", "")
@@ -33,7 +34,7 @@ func (l *LokiProvider) GetLogs(ctx context.Context, templateID string, buildID s
 
 	end := time.Now()
 	start := end.Add(-templateBuildOldestLogsLimit)
-	logs := make([]LogEntry, 0)
+	logs := make([]api.BuildLogEntry, 0)
 
 	res, err := l.LokiClient.QueryRange(query, templateBuildLogsLimit, start, end, logproto.FORWARD, time.Duration(0), time.Duration(0), true)
 	if err == nil {
@@ -50,28 +51,38 @@ func (l *LokiProvider) GetLogs(ctx context.Context, templateID string, buildID s
 
 		for _, stream := range res.Data.Result.(loghttp.Streams) {
 			for _, entry := range stream.Entries {
-				logsCrawled++
-
-				// loki does not support offset pagination, so we need to skip logs manually
-				if logsCrawled <= logsOffset {
-					continue
-				}
-
 				line := make(map[string]any)
 				err := json.Unmarshal([]byte(entry.Line), &line)
 				if err != nil {
 					zap.L().Error("error parsing log line", zap.Error(err), logger.WithBuildID(buildID), zap.String("line", entry.Line))
 				}
 
-				level := "info"
+				apiLevel := api.LogLevelInfo
 				if l, ok := line["level"]; ok {
-					level = l.(string)
+					levelName := l.(string)
+					level, ok := levelNames[levelName]
+					if !ok {
+						apiLevel = api.LogLevelInfo
+					} else {
+						apiLevel = numberToLevel(level)
+					}
 				}
 
-				logs = append(logs, LogEntry{
+				// Skip logs that are below the specified level
+				if level != nil && levelToNumber(&apiLevel) < levelToNumber(level) {
+					continue
+				}
+
+				// loki does not support offset pagination, so we need to skip logs manually
+				logsCrawled++
+				if logsCrawled <= logsOffset {
+					continue
+				}
+
+				logs = append(logs, api.BuildLogEntry{
 					Timestamp: entry.Timestamp,
 					Message:   line["message"].(string),
-					Level:     level,
+					Level:     apiLevel,
 				})
 			}
 		}

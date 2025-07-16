@@ -2,15 +2,44 @@ package logs
 
 import (
 	"context"
-	"time"
+
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
 
-type LogEntry struct {
-	Timestamp time.Time `json:"timestamp"`
-	Message   string    `json:"message"`
-	Level     string    `json:"level"`
+type Provider interface {
+	GetLogs(ctx context.Context, templateID string, buildID string, offset *int32, level *api.LogLevel) ([]api.BuildLogEntry, error)
 }
 
-type Provider interface {
-	GetLogs(ctx context.Context, templateID string, buildID string, offset *int32) ([]LogEntry, error)
+type LogLevel int32
+
+const (
+	LevelDebug = 0
+	LevelInfo  = 1
+	LevelWarn  = 2
+	LevelError = 3
+)
+
+var levelNames = map[string]LogLevel{
+	"debug": LevelDebug,
+	"info":  LevelInfo,
+	"warn":  LevelWarn,
+	"error": LevelError,
+}
+
+func levelToNumber(level *api.LogLevel) LogLevel {
+	if level == nil {
+		return levelNames["info"]
+	}
+
+	return levelNames[string(*level)]
+}
+
+func numberToLevel(level LogLevel) api.LogLevel {
+	for name, num := range levelNames {
+		if num == level {
+			return api.LogLevel(name)
+		}
+	}
+
+	return api.LogLevel("info")
 }

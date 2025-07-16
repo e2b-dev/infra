@@ -48,10 +48,18 @@ message TemplateCreateRequest {
   TemplateConfig template = 1;
 }
 
+enum LogLevel {
+    Debug = 0;
+    Info = 1;
+    Warn = 2;
+    Error = 3;
+}
+
 message TemplateStatusRequest {
   string templateID = 1;
   string buildID = 2;
   optional int32 offset = 3;
+  optional LogLevel level = 4;
 }
 
 // Data required for deleting a template.
@@ -74,7 +82,7 @@ enum TemplateBuildState {
 message TemplateBuildLogEntry {
   google.protobuf.Timestamp timestamp = 1;
   string message = 2;
-  string level = 3;
+  LogLevel level = 3;
 }
 
 // Logs from template build
@@ -82,7 +90,8 @@ message TemplateBuildStatusResponse {
   TemplateBuildState status = 1;
   TemplateBuildMetadata metadata = 2;
   optional string reason = 3;
-  repeated TemplateBuildLogEntry logs = 4;
+  repeated string logs = 4;
+  repeated TemplateBuildLogEntry logEntries = 5;
 }
 
 enum HealthState {
