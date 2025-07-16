@@ -17,6 +17,8 @@ const (
 	FieldEndpointTLS = "endpoint_tls"
 	// FieldToken holds the string denoting the token field in the database.
 	FieldToken = "token"
+	// FieldSandboxProxyDomain holds the string denoting the sandbox_proxy_domain field in the database.
+	FieldSandboxProxyDomain = "sandbox_proxy_domain"
 	// Table holds the table name of the cluster in the database.
 	Table = "clusters"
 )
@@ -27,6 +29,7 @@ var Columns = []string{
 	FieldEndpoint,
 	FieldEndpointTLS,
 	FieldToken,
+	FieldSandboxProxyDomain,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -69,4 +72,9 @@ func ByEndpointTLS(opts ...sql.OrderTermOption) OrderOption {
 // ByToken orders the results by the token field.
 func ByToken(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldToken, opts...).ToFunc()
+}
+
+// BySandboxProxyDomain orders the results by the sandbox_proxy_domain field.
+func BySandboxProxyDomain(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSandboxProxyDomain, opts...).ToFunc()
 }

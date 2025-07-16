@@ -30,6 +30,8 @@ func (Cluster) Fields() []ent.Field {
 			NotEmpty().
 			Sensitive().
 			SchemaType(map[string]string{dialect.Postgres: "text"}),
+		field.String("sandbox_proxy_domain").
+			SchemaType(map[string]string{dialect.Postgres: "text"}),
 	}
 }
 
