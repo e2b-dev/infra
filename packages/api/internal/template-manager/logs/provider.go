@@ -28,7 +28,7 @@ var levelNames = map[string]LogLevel{
 
 func levelToNumber(level *api.LogLevel) LogLevel {
 	if level == nil {
-		return levelNames["info"]
+		return LevelInfo
 	}
 
 	return levelNames[string(*level)]
@@ -41,5 +41,5 @@ func numberToLevel(level LogLevel) api.LogLevel {
 		}
 	}
 
-	return api.LogLevel("info")
+	return api.LogLevelInfo
 }

@@ -57,19 +57,17 @@ func (l *LokiProvider) GetLogs(ctx context.Context, templateID string, buildID s
 					zap.L().Error("error parsing log line", zap.Error(err), logger.WithBuildID(buildID), zap.String("line", entry.Line))
 				}
 
-				apiLevel := api.LogLevelInfo
+				entryLvl := api.LogLevelInfo
 				if l, ok := line["level"]; ok {
 					levelName := l.(string)
 					level, ok := levelNames[levelName]
-					if !ok {
-						apiLevel = api.LogLevelInfo
-					} else {
-						apiLevel = numberToLevel(level)
+					if ok {
+						entryLvl = numberToLevel(level)
 					}
 				}
 
 				// Skip logs that are below the specified level
-				if level != nil && levelToNumber(&apiLevel) < levelToNumber(level) {
+				if level != nil && levelToNumber(&entryLvl) < levelToNumber(level) {
 					continue
 				}
 
@@ -82,7 +80,7 @@ func (l *LokiProvider) GetLogs(ctx context.Context, templateID string, buildID s
 				logs = append(logs, api.BuildLogEntry{
 					Timestamp: entry.Timestamp,
 					Message:   line["message"].(string),
-					Level:     apiLevel,
+					Level:     entryLvl,
 				})
 			}
 		}

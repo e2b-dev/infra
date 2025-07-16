@@ -19,12 +19,17 @@ type TemplateManagerProvider struct {
 
 func (t *TemplateManagerProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset *int32, level *api.LogLevel) ([]api.BuildLogEntry, error) {
 	reqCtx := metadata.NewOutgoingContext(ctx, t.GRPC.Metadata)
+
+	var lvlReq *templatemanagergrpc.LogLevel
+	if level != nil {
+		lvlReq = templatemanagergrpc.LogLevel(levelToNumber(level)).Enum()
+	}
 	res, err := t.GRPC.Client.Template.TemplateBuildStatus(
 		reqCtx, &templatemanagergrpc.TemplateStatusRequest{
 			TemplateID: templateID,
 			BuildID:    buildID,
 			Offset:     offset,
-			Level:      templatemanagergrpc.LogLevel(levelToNumber(level)).Enum(),
+			Level:      lvlReq,
 		},
 	)
 	if err != nil {

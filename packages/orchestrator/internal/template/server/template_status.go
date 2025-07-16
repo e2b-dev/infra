@@ -24,7 +24,7 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 	logsCrawled := int32(0)
 	for _, entry := range buildInfo.GetLogs() {
 		// Skip entries that are below the specified level
-		if in.Level != nil && entry.GetLevel().Number() < in.Level.Number() {
+		if entry.GetLevel().Number() < in.GetLevel().Number() {
 			continue
 		}
 

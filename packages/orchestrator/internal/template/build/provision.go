@@ -65,7 +65,7 @@ func (b *Builder) provisionSandbox(
 	ctx, childSpan := b.tracer.Start(ctx, "provision-sandbox")
 	defer childSpan.End()
 
-	zapWriter := &zapio.Writer{Log: postProcessor.Logger, Level: zap.InfoLevel}
+	zapWriter := &zapio.Writer{Log: postProcessor.Logger, Level: zap.DebugLevel}
 	logsWriter := &writer.PrefixFilteredWriter{Writer: zapWriter, PrefixFilter: logExternalPrefix}
 	defer logsWriter.Close()
 
@@ -107,6 +107,7 @@ func (b *Builder) provisionSandbox(
 	if err != nil {
 		return fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
+	postProcessor.Info("Sandbox template provisioned")
 
 	// Verify the provisioning script exit status
 	exitStatus, err := ext4.ReadFile(ctx, b.tracer, rootfsPath, provisionScriptResultPath)

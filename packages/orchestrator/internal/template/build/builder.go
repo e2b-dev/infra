@@ -288,7 +288,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		}
 
 		// Create sandbox for building template
-		postProcessor.Info("Creating sandbox template")
+		postProcessor.Debug("Creating base sandbox template layer")
 		baseSandboxConfig = proto.Clone(baseSandboxConfig).(*orchestrator.SandboxConfig)
 		baseSandboxConfig.SandboxId = config.InstanceBuildPrefix + id.Generate()
 		baseSandboxConfig.ExecutionId = uuid.NewString()
