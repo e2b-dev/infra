@@ -49,6 +49,12 @@ func (cc *ClusterCreate) SetToken(s string) *ClusterCreate {
 	return cc
 }
 
+// SetSandboxProxyDomain sets the "sandbox_proxy_domain" field.
+func (cc *ClusterCreate) SetSandboxProxyDomain(s string) *ClusterCreate {
+	cc.mutation.SetSandboxProxyDomain(s)
+	return cc
+}
+
 // SetID sets the "id" field.
 func (cc *ClusterCreate) SetID(u uuid.UUID) *ClusterCreate {
 	cc.mutation.SetID(u)
@@ -117,6 +123,9 @@ func (cc *ClusterCreate) check() error {
 			return &ValidationError{Name: "token", err: fmt.Errorf(`models: validator failed for field "Cluster.token": %w`, err)}
 		}
 	}
+	if _, ok := cc.mutation.SandboxProxyDomain(); !ok {
+		return &ValidationError{Name: "sandbox_proxy_domain", err: errors.New(`models: missing required field "Cluster.sandbox_proxy_domain"`)}
+	}
 	return nil
 }
 
@@ -165,6 +174,10 @@ func (cc *ClusterCreate) createSpec() (*Cluster, *sqlgraph.CreateSpec) {
 	if value, ok := cc.mutation.Token(); ok {
 		_spec.SetField(cluster.FieldToken, field.TypeString, value)
 		_node.Token = value
+	}
+	if value, ok := cc.mutation.SandboxProxyDomain(); ok {
+		_spec.SetField(cluster.FieldSandboxProxyDomain, field.TypeString, value)
+		_node.SandboxProxyDomain = value
 	}
 	return _node, _spec
 }
@@ -251,6 +264,18 @@ func (u *ClusterUpsert) SetToken(v string) *ClusterUpsert {
 // UpdateToken sets the "token" field to the value that was provided on create.
 func (u *ClusterUpsert) UpdateToken() *ClusterUpsert {
 	u.SetExcluded(cluster.FieldToken)
+	return u
+}
+
+// SetSandboxProxyDomain sets the "sandbox_proxy_domain" field.
+func (u *ClusterUpsert) SetSandboxProxyDomain(v string) *ClusterUpsert {
+	u.Set(cluster.FieldSandboxProxyDomain, v)
+	return u
+}
+
+// UpdateSandboxProxyDomain sets the "sandbox_proxy_domain" field to the value that was provided on create.
+func (u *ClusterUpsert) UpdateSandboxProxyDomain() *ClusterUpsert {
+	u.SetExcluded(cluster.FieldSandboxProxyDomain)
 	return u
 }
 
@@ -341,6 +366,20 @@ func (u *ClusterUpsertOne) SetToken(v string) *ClusterUpsertOne {
 func (u *ClusterUpsertOne) UpdateToken() *ClusterUpsertOne {
 	return u.Update(func(s *ClusterUpsert) {
 		s.UpdateToken()
+	})
+}
+
+// SetSandboxProxyDomain sets the "sandbox_proxy_domain" field.
+func (u *ClusterUpsertOne) SetSandboxProxyDomain(v string) *ClusterUpsertOne {
+	return u.Update(func(s *ClusterUpsert) {
+		s.SetSandboxProxyDomain(v)
+	})
+}
+
+// UpdateSandboxProxyDomain sets the "sandbox_proxy_domain" field to the value that was provided on create.
+func (u *ClusterUpsertOne) UpdateSandboxProxyDomain() *ClusterUpsertOne {
+	return u.Update(func(s *ClusterUpsert) {
+		s.UpdateSandboxProxyDomain()
 	})
 }
 
@@ -598,6 +637,20 @@ func (u *ClusterUpsertBulk) SetToken(v string) *ClusterUpsertBulk {
 func (u *ClusterUpsertBulk) UpdateToken() *ClusterUpsertBulk {
 	return u.Update(func(s *ClusterUpsert) {
 		s.UpdateToken()
+	})
+}
+
+// SetSandboxProxyDomain sets the "sandbox_proxy_domain" field.
+func (u *ClusterUpsertBulk) SetSandboxProxyDomain(v string) *ClusterUpsertBulk {
+	return u.Update(func(s *ClusterUpsert) {
+		s.SetSandboxProxyDomain(v)
+	})
+}
+
+// UpdateSandboxProxyDomain sets the "sandbox_proxy_domain" field to the value that was provided on create.
+func (u *ClusterUpsertBulk) UpdateSandboxProxyDomain() *ClusterUpsertBulk {
+	return u.Update(func(s *ClusterUpsert) {
+		s.UpdateSandboxProxyDomain()
 	})
 }
 

@@ -119,7 +119,7 @@ func (d poolSynchronizationStore) PoolInsert(ctx context.Context, source queries
 
 	zap.L().Info("Initializing newly discovered cluster", l.WithClusterID(cluster.ID))
 
-	c, err := NewCluster(d.pool.tracer, d.pool.tel, cluster.Endpoint, cluster.EndpointTls, cluster.Token, cluster.ID)
+	c, err := NewCluster(d.pool.tracer, d.pool.tel, cluster.Endpoint, cluster.EndpointTls, cluster.Token, cluster.ID, cluster.SandboxProxyDomain)
 	if err != nil {
 		zap.L().Error("Initializing cluster failed", zap.Error(err), l.WithClusterID(c.ID))
 		return
