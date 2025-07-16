@@ -26,17 +26,19 @@ import (
 )
 
 type BuildTemplateRequest struct {
-	TemplateID api.TemplateID
-	IsNew      bool
-	UserID     uuid.UUID
-	Team       *queries.Team
-	Tier       *queries.Tier
-	Dockerfile string
-	Alias      *string
-	StartCmd   *string
-	ReadyCmd   *string
-	CpuCount   *int32
-	MemoryMB   *int32
+	ClusterID     *uuid.UUID
+	BuilderNodeID *string
+	TemplateID    api.TemplateID
+	IsNew         bool
+	UserID        uuid.UUID
+	Team          *queries.Team
+	Tier          *queries.Tier
+	Dockerfile    string
+	Alias         *string
+	StartCmd      *string
+	ReadyCmd      *string
+	CpuCount      *int32
+	MemoryMB      *int32
 }
 
 type TemplateBuildResponse struct {
@@ -86,9 +88,10 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 	ctx, span := a.Tracer.Start(ctx, "build-template-request")
 	defer span.End()
 
+	public := false
 	if !req.IsNew {
 		// Check if the user has access to the template
-		_, err := a.db.Client.Env.Query().Where(env.ID(req.TemplateID), env.TeamID(req.Team.ID)).Only(ctx)
+		template, err := a.db.Client.Env.Query().Where(env.ID(req.TemplateID), env.TeamID(req.Team.ID)).Only(ctx)
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error when getting template", err, telemetry.WithTemplateID(req.TemplateID), telemetry.WithTeamID(req.Team.ID.String()))
 			return nil, &api.APIError{
@@ -97,6 +100,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 				Code:      http.StatusNotFound,
 			}
 		}
+		public = template.Public
 		telemetry.ReportEvent(ctx, "checked user access to template")
 	}
 
@@ -179,6 +183,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 		SetTeamID(req.Team.ID).
 		SetCreatedBy(req.UserID).
 		SetPublic(false).
+		SetNillableClusterID(req.ClusterID).
 		OnConflictColumns(env.FieldID).
 		UpdateUpdatedAt().
 		Update(func(e *models.EnvUpsert) {
@@ -222,6 +227,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 		SetFreeDiskSizeMB(req.Tier.DiskMb).
 		SetNillableStartCmd(req.StartCmd).
 		SetNillableReadyCmd(req.ReadyCmd).
+		SetNillableClusterNodeID(req.BuilderNodeID).
 		SetDockerfile(req.Dockerfile).
 		Save(ctx)
 	if err != nil {
@@ -342,7 +348,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 	return &TemplateBuildResponse{
 		TemplateID:         *build.EnvID,
 		BuildID:            build.ID.String(),
-		Public:             false,
+		Public:             public,
 		Aliases:            &aliases,
 		KernelVersion:      build.KernelVersion,
 		FirecrackerVersion: build.FirecrackerVersion,
@@ -417,19 +423,40 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		return nil
 	}
 
+	var builderNodeID *string
+	if team.ClusterID != nil {
+		cluster, found := a.clustersPool.GetClusterById(*team.ClusterID)
+		if !found {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Cluster with ID '%s' not found", *team.ClusterID))
+			telemetry.ReportCriticalError(ctx, "cluster not found", fmt.Errorf("cluster with ID '%s' not found", *team.ClusterID), telemetry.WithTemplateID(templateID))
+			return nil
+		}
+
+		clusterNode, err := cluster.GetAvailableTemplateBuilder(ctx)
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting available template builder: %s", err))
+			telemetry.ReportCriticalError(ctx, "error when getting available template builder", err, telemetry.WithTemplateID(templateID))
+			return nil
+		}
+
+		builderNodeID = &clusterNode.NodeID
+	}
+
 	// Create the build
 	buildReq := BuildTemplateRequest{
-		TemplateID: templateID,
-		IsNew:      new,
-		UserID:     *userID,
-		Team:       team,
-		Tier:       tier,
-		Dockerfile: body.Dockerfile,
-		Alias:      body.Alias,
-		StartCmd:   body.StartCmd,
-		ReadyCmd:   body.ReadyCmd,
-		CpuCount:   body.CpuCount,
-		MemoryMB:   body.MemoryMB,
+		ClusterID:     team.ClusterID,
+		BuilderNodeID: builderNodeID,
+		TemplateID:    templateID,
+		IsNew:         new,
+		UserID:        *userID,
+		Team:          team,
+		Tier:          tier,
+		Dockerfile:    body.Dockerfile,
+		Alias:         body.Alias,
+		StartCmd:      body.StartCmd,
+		ReadyCmd:      body.ReadyCmd,
+		CpuCount:      body.CpuCount,
+		MemoryMB:      body.MemoryMB,
 	}
 
 	template, apiError := a.BuildTemplate(ctx, buildReq)

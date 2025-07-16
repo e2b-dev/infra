@@ -685,9 +685,9 @@ components:
           items:
             type: string
         createSuccesses:
-            type: integer
-            format: uint64
-            description: Number of sandbox create successes
+          type: integer
+          format: uint64
+          description: Number of sandbox create successes
         createFails:
           type: integer
           format: uint64
@@ -1153,7 +1153,6 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-
   # TODO: Pause and resume might be exposed as POST /sandboxes/{sandboxID}/snapshot and then POST /sandboxes with specified snapshotting setup
   /sandboxes/{sandboxID}/pause:
     post:
@@ -1322,12 +1321,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TemplateBuildFileUpload"
-        "204":
-          description: The file with this hash is already in the cache
         "400":
           $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
 

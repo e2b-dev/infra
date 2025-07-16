@@ -72,15 +72,36 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	}
 	span.End()
 
+	var builderNodeID *string
+	if team.ClusterID != nil {
+		cluster, found := a.clustersPool.GetClusterById(*team.ClusterID)
+		if !found {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Cluster with ID '%s' not found", *team.ClusterID))
+			telemetry.ReportCriticalError(ctx, "cluster not found", fmt.Errorf("cluster with ID '%s' not found", *team.ClusterID), telemetry.WithTemplateID(templateID))
+			return
+		}
+
+		clusterNode, err := cluster.GetAvailableTemplateBuilder(ctx)
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting available template builder: %s", err))
+			telemetry.ReportCriticalError(ctx, "error when getting available template builder", err, telemetry.WithTemplateID(templateID))
+			return
+		}
+
+		builderNodeID = &clusterNode.NodeID
+	}
+
 	buildReq := BuildTemplateRequest{
-		IsNew:      isNew,
-		TemplateID: templateID,
-		UserID:     *userID,
-		Team:       team,
-		Tier:       tier,
-		Alias:      &body.Alias,
-		CpuCount:   body.CpuCount,
-		MemoryMB:   body.MemoryMB,
+		ClusterID:     team.ClusterID,
+		BuilderNodeID: builderNodeID,
+		IsNew:         isNew,
+		TemplateID:    templateID,
+		UserID:        *userID,
+		Team:          team,
+		Tier:          tier,
+		Alias:         &body.Alias,
+		CpuCount:      body.CpuCount,
+		MemoryMB:      body.MemoryMB,
 	}
 
 	template, apiError := a.BuildTemplate(ctx, buildReq)
