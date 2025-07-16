@@ -303,7 +303,7 @@ func TestSetOnceConcurrentReadWriteRace(t *testing.T) {
 	assert.Equal(t, 42, finalValue)
 }
 
-func TestResultBeforeDone(t *testing.T) {
+func TestNotSetResult(t *testing.T) {
 	setOnce := NewSetOnce[int]()
 
 	value, err := setOnce.Result()
