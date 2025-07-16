@@ -65,7 +65,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 
 	// Add new core that will log all messages using logger (zap.Logger) to the logs buffer too
 	encoder := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
-	bufferCore := zapcore.NewCore(encoder, zapcore.AddSync(logs), zapcore.DebugLevel)
+	bufferCore := zapcore.NewCore(encoder, logs, zapcore.DebugLevel)
 	core := zapcore.NewTee(bufferCore, s.buildLogger.Core().
 		With([]zap.Field{
 			{Type: zapcore.StringType, Key: "envID", String: metadata.TemplateID},
@@ -86,7 +86,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		defer buildSpan.End()
 
 		res, err := s.builder.Build(buildContext, metadata, template, logger)
-		logger.Sync()
+		_ = logger.Sync()
 		if err != nil {
 			s.reportBuildFailed(buildContext, metadata.BuildID, err)
 			return

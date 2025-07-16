@@ -45,12 +45,36 @@ func (b *SafeBuffer) Write(p []byte) (n int, err error) {
 				b.lines = append(b.lines, &template_manager.TemplateBuildLogEntry{
 					Timestamp: timestamppb.New(timestamp),
 					Message:   entry.Msg,
-					Level:     entry.Level,
+					Level:     stringToLogLevel(entry.Level),
 				})
 			}
 		}
 	}
 	return len(p), nil
+}
+
+func (b *SafeBuffer) Sync() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	// No-op for SafeBuffer, as it doesn't have an underlying file to sync
+	// But wait for the mutex to ensure no writes are happening
+	return nil
+}
+
+func stringToLogLevel(level string) template_manager.LogLevel {
+	switch level {
+	case "debug":
+		return template_manager.LogLevel_Debug
+	case "info":
+		return template_manager.LogLevel_Info
+	case "warn":
+		return template_manager.LogLevel_Warn
+	case "error":
+		return template_manager.LogLevel_Error
+	default:
+		return template_manager.LogLevel_Info
+	}
 }
 
 func (b *SafeBuffer) Lines() []*template_manager.TemplateBuildLogEntry {
