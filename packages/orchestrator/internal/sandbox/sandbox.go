@@ -428,14 +428,16 @@ func ResumeSandbox(
 
 func (s *Sandbox) Wait(ctx context.Context) error {
 	select {
-	case fcErr := <-s.process.Exit:
+	case <-s.process.Exited:
+		fcErr := s.process.ExitErr()
 		stopErr := s.Stop(ctx)
 		uffdErr := <-s.uffdExit
 
 		return errors.Join(fcErr, stopErr, uffdErr)
 	case uffdErr := <-s.uffdExit:
 		stopErr := s.Stop(ctx)
-		fcErr := <-s.process.Exit
+		<-s.process.Exited
+		fcErr := s.process.ExitErr()
 
 		return errors.Join(uffdErr, stopErr, fcErr)
 	}
@@ -841,10 +843,12 @@ func (s *Sandbox) WaitForExit(
 		return fmt.Errorf("waiting for exit took too long")
 	case <-ctx.Done():
 		return nil
-	case err := <-s.process.Exit:
+	case <-s.process.Exited:
+		err := s.process.ExitErr()
 		if err == nil {
 			return nil
 		}
+
 		return fmt.Errorf("fc process exited prematurely: %w", err)
 	}
 }
@@ -874,7 +878,12 @@ func (s *Sandbox) WaitForEnvd(
 			syncCancel(fmt.Errorf("syncing took too long"))
 		case <-syncCtx.Done():
 			return
-		case err := <-s.process.Exit:
+		case <-s.process.Exited:
+			err := s.process.ExitErr()
+			if err == nil {
+				return
+			}
+
 			syncCancel(fmt.Errorf("fc process exited prematurely: %w", err))
 		}
 	}()

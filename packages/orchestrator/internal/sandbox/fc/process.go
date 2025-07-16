@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"sync"
 	"syscall"
 	txtTemplate "text/template"
 	"time"
@@ -61,11 +62,29 @@ type Process struct {
 	rootfsPath string
 	files      *storage.SandboxFiles
 
-	Exit chan error
+	Exited  chan struct{}
+	exitErr error
+	exitMu  sync.RWMutex
 
 	client *apiClient
 
 	buildRootfsPath string
+}
+
+func (p *Process) ExitErr() error {
+	p.exitMu.RLock()
+	defer p.exitMu.RUnlock()
+
+	return p.exitErr
+}
+
+func (p *Process) setExitErr(err error) {
+	p.exitMu.Lock()
+	defer p.exitMu.Unlock()
+
+	p.exitErr = err
+
+	close(p.Exited)
 }
 
 func NewProcess(
@@ -135,7 +154,7 @@ func NewProcess(
 	}
 
 	return &Process{
-		Exit:                  make(chan error, 1),
+		Exited:                make(chan struct{}),
 		cmd:                   cmd,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
@@ -202,7 +221,7 @@ func (p *Process) configure(
 			if errors.As(waitErr, &exitErr) {
 				// Check if the process was killed by a signal
 				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() && (status.Signal() == syscall.SIGKILL || status.Signal() == syscall.SIGTERM) {
-					p.Exit <- nil
+					p.setExitErr(nil)
 
 					return
 				}
@@ -211,14 +230,14 @@ func (p *Process) configure(
 			zap.L().Error("error waiting for fc process", zap.Error(waitErr))
 
 			errMsg := fmt.Errorf("error waiting for fc process: %w", waitErr)
-			p.Exit <- errMsg
+			p.setExitErr(errMsg)
 
 			cancelStart(errMsg)
 
 			return
 		}
 
-		p.Exit <- nil
+		p.setExitErr(nil)
 	}()
 
 	// Wait for the FC process to start so we can use FC API
@@ -444,7 +463,7 @@ func (p *Process) Stop() error {
 				zap.L().Info("sent SIGKILL to fc process because it was not responding to SIGTERM for 10 seconds", logger.WithSandboxID(p.files.SandboxID))
 			}
 		// If the FC process exited, we can return.
-		case <-p.Exit:
+		case <-p.Exited:
 			return
 		}
 	}()
