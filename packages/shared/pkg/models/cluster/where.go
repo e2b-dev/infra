@@ -68,6 +68,11 @@ func Token(v string) predicate.Cluster {
 	return predicate.Cluster(sql.FieldEQ(FieldToken, v))
 }
 
+// SandboxProxyDomain applies equality check predicate on the "sandbox_proxy_domain" field. It's identical to SandboxProxyDomainEQ.
+func SandboxProxyDomain(v string) predicate.Cluster {
+	return predicate.Cluster(sql.FieldEQ(FieldSandboxProxyDomain, v))
+}
+
 // EndpointEQ applies the EQ predicate on the "endpoint" field.
 func EndpointEQ(v string) predicate.Cluster {
 	return predicate.Cluster(sql.FieldEQ(FieldEndpoint, v))
@@ -206,6 +211,71 @@ func TokenEqualFold(v string) predicate.Cluster {
 // TokenContainsFold applies the ContainsFold predicate on the "token" field.
 func TokenContainsFold(v string) predicate.Cluster {
 	return predicate.Cluster(sql.FieldContainsFold(FieldToken, v))
+}
+
+// SandboxProxyDomainEQ applies the EQ predicate on the "sandbox_proxy_domain" field.
+func SandboxProxyDomainEQ(v string) predicate.Cluster {
+	return predicate.Cluster(sql.FieldEQ(FieldSandboxProxyDomain, v))
+}
+
+// SandboxProxyDomainNEQ applies the NEQ predicate on the "sandbox_proxy_domain" field.
+func SandboxProxyDomainNEQ(v string) predicate.Cluster {
+	return predicate.Cluster(sql.FieldNEQ(FieldSandboxProxyDomain, v))
+}
+
+// SandboxProxyDomainIn applies the In predicate on the "sandbox_proxy_domain" field.
+func SandboxProxyDomainIn(vs ...string) predicate.Cluster {
+	return predicate.Cluster(sql.FieldIn(FieldSandboxProxyDomain, vs...))
+}
+
+// SandboxProxyDomainNotIn applies the NotIn predicate on the "sandbox_proxy_domain" field.
+func SandboxProxyDomainNotIn(vs ...string) predicate.Cluster {
+	return predicate.Cluster(sql.FieldNotIn(FieldSandboxProxyDomain, vs...))
+}
+
+// SandboxProxyDomainGT applies the GT predicate on the "sandbox_proxy_domain" field.
+func SandboxProxyDomainGT(v string) predicate.Cluster {
+	return predicate.Cluster(sql.FieldGT(FieldSandboxProxyDomain, v))
+}
+
+// SandboxProxyDomainGTE applies the GTE predicate on the "sandbox_proxy_domain" field.
+func SandboxProxyDomainGTE(v string) predicate.Cluster {
+	return predicate.Cluster(sql.FieldGTE(FieldSandboxProxyDomain, v))
+}
+
+// SandboxProxyDomainLT applies the LT predicate on the "sandbox_proxy_domain" field.
+func SandboxProxyDomainLT(v string) predicate.Cluster {
+	return predicate.Cluster(sql.FieldLT(FieldSandboxProxyDomain, v))
+}
+
+// SandboxProxyDomainLTE applies the LTE predicate on the "sandbox_proxy_domain" field.
+func SandboxProxyDomainLTE(v string) predicate.Cluster {
+	return predicate.Cluster(sql.FieldLTE(FieldSandboxProxyDomain, v))
+}
+
+// SandboxProxyDomainContains applies the Contains predicate on the "sandbox_proxy_domain" field.
+func SandboxProxyDomainContains(v string) predicate.Cluster {
+	return predicate.Cluster(sql.FieldContains(FieldSandboxProxyDomain, v))
+}
+
+// SandboxProxyDomainHasPrefix applies the HasPrefix predicate on the "sandbox_proxy_domain" field.
+func SandboxProxyDomainHasPrefix(v string) predicate.Cluster {
+	return predicate.Cluster(sql.FieldHasPrefix(FieldSandboxProxyDomain, v))
+}
+
+// SandboxProxyDomainHasSuffix applies the HasSuffix predicate on the "sandbox_proxy_domain" field.
+func SandboxProxyDomainHasSuffix(v string) predicate.Cluster {
+	return predicate.Cluster(sql.FieldHasSuffix(FieldSandboxProxyDomain, v))
+}
+
+// SandboxProxyDomainEqualFold applies the EqualFold predicate on the "sandbox_proxy_domain" field.
+func SandboxProxyDomainEqualFold(v string) predicate.Cluster {
+	return predicate.Cluster(sql.FieldEqualFold(FieldSandboxProxyDomain, v))
+}
+
+// SandboxProxyDomainContainsFold applies the ContainsFold predicate on the "sandbox_proxy_domain" field.
+func SandboxProxyDomainContainsFold(v string) predicate.Cluster {
+	return predicate.Cluster(sql.FieldContainsFold(FieldSandboxProxyDomain, v))
 }
 
 // And groups predicates with the AND operator between them.

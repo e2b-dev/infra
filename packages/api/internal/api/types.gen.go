@@ -262,6 +262,9 @@ type Sandbox struct {
 	// Deprecated:
 	ClientID string `json:"clientID"`
 
+	// Domain Base domain where the sandbox traffic is accessible
+	Domain *string `json:"domain"`
+
 	// EnvdAccessToken Access token used for envd communication
 	EnvdAccessToken *string `json:"envdAccessToken,omitempty"`
 
@@ -286,6 +289,9 @@ type SandboxDetail struct {
 
 	// CpuCount CPU cores for the sandbox
 	CpuCount CPUCount `json:"cpuCount"`
+
+	// Domain Base domain where the sandbox traffic is accessible
+	Domain *string `json:"domain"`
 
 	// EndAt Time when the sandbox will expire
 	EndAt time.Time `json:"endAt"`

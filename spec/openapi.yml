@@ -251,6 +251,10 @@ components:
         envdAccessToken:
           type: string
           description: Access token used for envd communication
+        domain:
+          type: string
+          nullable: true
+          description: Base domain where the sandbox traffic is accessible
 
     SandboxDetail:
       required:
@@ -290,6 +294,10 @@ components:
         envdAccessToken:
           type: string
           description: Access token used for envd communication
+        domain:
+          type: string
+          nullable: true
+          description: Base domain where the sandbox traffic is accessible
         cpuCount:
           $ref: "#/components/schemas/CPUCount"
         memoryMB:
