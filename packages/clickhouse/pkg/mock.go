@@ -7,7 +7,7 @@ import (
 
 type NoopClient struct{}
 
-func NewNoopClient() *NoopClient {
+func NewNoopClient() Clickhouse {
 	return &NoopClient{}
 }
 
@@ -25,4 +25,12 @@ func (m *NoopClient) QuerySandboxTimeRange(ctx context.Context, sandboxID string
 
 func (m *NoopClient) QuerySandboxMetrics(ctx context.Context, sandboxID string, teamID string, start time.Time, end time.Time, step time.Duration) ([]Metrics, error) {
 	return nil, nil
+}
+
+func (m *NoopClient) QueryLatestSandboxEvent(ctx context.Context, sandboxIDs []string, limit int, offset int) ([]SandboxEvent, error) {
+	return nil, nil
+}
+
+func (m *NoopClient) InsertSandboxEvent(ctx context.Context, event SandboxEvent) error {
+	return nil
 }
