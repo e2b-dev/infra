@@ -435,7 +435,7 @@ func (p *Process) Stop() error {
 
 	go func() {
 		select {
-		// Wait 10 sec for the FC process to exit, if it doesn't send SIGKILL.
+		// Wait 10 sec for the FC process to exit, if it doesn't, send SIGKILL.
 		case <-time.After(10 * time.Second):
 			err := p.cmd.Process.Kill()
 			if err != nil {
