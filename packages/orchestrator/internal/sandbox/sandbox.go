@@ -436,8 +436,8 @@ func (s *Sandbox) Wait(ctx context.Context) error {
 		return errors.Join(fcErr, stopErr, uffdErr)
 	case uffdErr := <-s.uffdExit:
 		stopErr := s.Stop(ctx)
-		<-s.process.Exit.Done
-		_, fcErr := s.process.Exit.Result()
+
+		_, fcErr := s.process.Exit.WaitWithContext(ctx)
 
 		return errors.Join(uffdErr, stopErr, fcErr)
 	}
