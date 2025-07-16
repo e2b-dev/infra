@@ -428,16 +428,16 @@ func ResumeSandbox(
 
 func (s *Sandbox) Wait(ctx context.Context) error {
 	select {
-	case <-s.process.Exited:
-		fcErr := s.process.ExitErr()
+	case <-s.process.Exit.Done:
+		_, fcErr := s.process.Exit.Result()
 		stopErr := s.Stop(ctx)
 		uffdErr := <-s.uffdExit
 
 		return errors.Join(fcErr, stopErr, uffdErr)
 	case uffdErr := <-s.uffdExit:
 		stopErr := s.Stop(ctx)
-		<-s.process.Exited
-		fcErr := s.process.ExitErr()
+		<-s.process.Exit.Done
+		_, fcErr := s.process.Exit.Result()
 
 		return errors.Join(uffdErr, stopErr, fcErr)
 	}
@@ -843,8 +843,8 @@ func (s *Sandbox) WaitForExit(
 		return fmt.Errorf("waiting for exit took too long")
 	case <-ctx.Done():
 		return nil
-	case <-s.process.Exited:
-		err := s.process.ExitErr()
+	case <-s.process.Exit.Done:
+		_, err := s.process.Exit.Result()
 		if err == nil {
 			return nil
 		}
@@ -878,8 +878,8 @@ func (s *Sandbox) WaitForEnvd(
 			syncCancel(fmt.Errorf("syncing took too long"))
 		case <-syncCtx.Done():
 			return
-		case <-s.process.Exited:
-			err := s.process.ExitErr()
+		case <-s.process.Exit.Done:
+			_, err := s.process.Exit.Result()
 			if err == nil {
 				return
 			}

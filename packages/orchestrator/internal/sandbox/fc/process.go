@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"sync"
 	"syscall"
 	txtTemplate "text/template"
 	"time"
@@ -62,29 +61,11 @@ type Process struct {
 	rootfsPath string
 	files      *storage.SandboxFiles
 
-	Exited  chan struct{}
-	exitErr error
-	exitMu  sync.RWMutex
+	Exit *utils.SetOnce[struct{}]
 
 	client *apiClient
 
 	buildRootfsPath string
-}
-
-func (p *Process) ExitErr() error {
-	p.exitMu.RLock()
-	defer p.exitMu.RUnlock()
-
-	return p.exitErr
-}
-
-func (p *Process) setExitErr(err error) {
-	p.exitMu.Lock()
-	defer p.exitMu.Unlock()
-
-	p.exitErr = err
-
-	close(p.Exited)
 }
 
 func NewProcess(
@@ -154,7 +135,7 @@ func NewProcess(
 	}
 
 	return &Process{
-		Exited:                make(chan struct{}),
+		Exit:                  utils.NewSetOnce[struct{}](),
 		cmd:                   cmd,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
@@ -221,7 +202,7 @@ func (p *Process) configure(
 			if errors.As(waitErr, &exitErr) {
 				// Check if the process was killed by a signal
 				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() && (status.Signal() == syscall.SIGKILL || status.Signal() == syscall.SIGTERM) {
-					p.setExitErr(nil)
+					p.Exit.SetValue(struct{}{})
 
 					return
 				}
@@ -230,14 +211,14 @@ func (p *Process) configure(
 			zap.L().Error("error waiting for fc process", zap.Error(waitErr))
 
 			errMsg := fmt.Errorf("error waiting for fc process: %w", waitErr)
-			p.setExitErr(errMsg)
+			p.Exit.SetError(errMsg)
 
 			cancelStart(errMsg)
 
 			return
 		}
 
-		p.setExitErr(nil)
+		p.Exit.SetValue(struct{}{})
 	}()
 
 	// Wait for the FC process to start so we can use FC API
@@ -463,7 +444,7 @@ func (p *Process) Stop() error {
 				zap.L().Info("sent SIGKILL to fc process because it was not responding to SIGTERM for 10 seconds", logger.WithSandboxID(p.files.SandboxID))
 			}
 		// If the FC process exited, we can return.
-		case <-p.Exited:
+		case <-p.Exit.Done:
 			return
 		}
 	}()
