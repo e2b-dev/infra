@@ -30,20 +30,19 @@ SELECT
     event_label,
     event_data
 FROM sandbox_events
-WHERE sandbox_id = ? AND sandbox_team_id = ?
+WHERE sandbox_id = ? 
 ORDER BY timestamp DESC
 LIMIT ?
 OFFSET ?
 `
 
-func (c *Client) QueryLatestSandboxEvent(ctx context.Context, sandboxIDs []string, teamID string, limit int, offset int) ([]SandboxEvent, error) {
+func (c *Client) QueryLatestSandboxEvent(ctx context.Context, sandboxIDs []string, limit int, offset int) ([]SandboxEvent, error) {
 	if len(sandboxIDs) == 0 {
 		return make([]SandboxEvent, 0), nil
 	}
 
 	rows, err := c.conn.Query(ctx, latestSandboxEventSelectQuery,
 		sandboxIDs,
-		teamID,
 		limit,
 		offset,
 	)
