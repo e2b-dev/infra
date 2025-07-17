@@ -882,9 +882,6 @@ func (s *Sandbox) WaitForEnvd(
 			return
 		case <-s.process.Exit.Done:
 			_, err := s.process.Exit.Result()
-			if err == nil {
-				return
-			}
 
 			syncCancel(fmt.Errorf("fc process exited prematurely: %w", err))
 		}
