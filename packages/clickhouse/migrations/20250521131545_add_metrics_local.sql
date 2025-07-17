@@ -39,6 +39,6 @@ CREATE TABLE metrics_gauge_local(
 
 -- +goose Down
 -- +goose StatementBegin
-DROP TABLE IF EXISTS metrics_gauge;
+DROP TABLE IF EXISTS metrics_gauge_local;
 -- +goose StatementEnd
 
