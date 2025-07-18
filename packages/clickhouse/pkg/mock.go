@@ -27,7 +27,7 @@ func (m *NoopClient) QuerySandboxMetrics(ctx context.Context, sandboxID string, 
 	return nil, nil
 }
 
-func (m *NoopClient) QueryLatestSandboxEvent(ctx context.Context, sandboxIDs []string, limit int, offset int) ([]SandboxEvent, error) {
+func (m *NoopClient) QueryLatestSandboxEvent(ctx context.Context, sandboxID string, limit, offset int) ([]SandboxEvent, error) {
 	return nil, nil
 }
 

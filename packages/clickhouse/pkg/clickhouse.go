@@ -13,12 +13,12 @@ type Clickhouse interface {
 	Close(ctx context.Context) error
 
 	// Metrics queries
-	QuerySandboxTimeRange(ctx context.Context, sandboxID string, teamID string) (start time.Time, end time.Time, err error)
-	QuerySandboxMetrics(ctx context.Context, sandboxID string, teamID string, start time.Time, end time.Time, step time.Duration) ([]Metrics, error)
+	QuerySandboxTimeRange(ctx context.Context, sandboxID, teamID string) (start time.Time, end time.Time, err error)
+	QuerySandboxMetrics(ctx context.Context, sandboxID, teamID string, start time.Time, end time.Time, step time.Duration) ([]Metrics, error)
 	QueryLatestMetrics(ctx context.Context, sandboxIDs []string, teamID string) ([]Metrics, error)
 
 	// Events queries
-	QueryLatestSandboxEvent(ctx context.Context, sandboxIDs []string, limit int, offset int) ([]SandboxEvent, error)
+	QueryLatestSandboxEvent(ctx context.Context, sandboxID string, limit, offset int) ([]SandboxEvent, error)
 	InsertSandboxEvent(ctx context.Context, event SandboxEvent) error
 }
 

@@ -36,18 +36,14 @@ LIMIT ?
 OFFSET ?
 `
 
-func (c *Client) QueryLatestSandboxEvent(ctx context.Context, sandboxIDs []string, limit int, offset int) ([]SandboxEvent, error) {
-	if len(sandboxIDs) == 0 {
-		return make([]SandboxEvent, 0), nil
-	}
-
+func (c *Client) QueryLatestSandboxEvent(ctx context.Context, sandboxID string, limit int, offset int) ([]SandboxEvent, error) {
 	rows, err := c.conn.Query(ctx, latestSandboxEventSelectQuery,
-		sandboxIDs,
+		sandboxID,
 		limit,
 		offset,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("query SandboxEvent: %w", err)
+		return nil, fmt.Errorf("error querying sandbox events: %w", err)
 	}
 	defer rows.Close()
 
