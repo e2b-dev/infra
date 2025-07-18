@@ -47,7 +47,7 @@ func NewLokiQueryProvider() (*LokiQueryProvider, error) {
 	return &LokiQueryProvider{client: lokiClient}, nil
 }
 
-func (l *LokiQueryProvider) QueryBuildLogs(ctx context.Context, templateID string, buildID string, start time.Time, end time.Time, limit int, offset int) ([]LogEntry, error) {
+func (l *LokiQueryProvider) QueryBuildLogs(ctx context.Context, templateID string, buildID string, start time.Time, end time.Time, limit int, offset int, level *LogLevel) ([]LogEntry, error) {
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 	templateIDSanitized := strings.ReplaceAll(templateID, "`", "")
 	buildIDSanitized := strings.ReplaceAll(buildID, "`", "")
@@ -62,7 +62,7 @@ func (l *LokiQueryProvider) QueryBuildLogs(ctx context.Context, templateID strin
 		return make([]LogEntry, 0), nil
 	}
 
-	logs, err := l.lokiResponseMapper(res, offset)
+	logs, err := l.lokiResponseMapper(res, offset, level)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when mapping build logs", err)
 		zap.L().Error("error when mapping logs for template build", zap.Error(err), logger.WithBuildID(buildID))
@@ -86,7 +86,7 @@ func (l *LokiQueryProvider) QuerySandboxLogs(ctx context.Context, teamID string,
 		return make([]LogEntry, 0), nil
 	}
 
-	logs, err := l.lokiResponseMapper(res, offset)
+	logs, err := l.lokiResponseMapper(res, offset, nil)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when mapping sandbox logs", err)
 		zap.L().Error("error when mapping logs for sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
@@ -96,7 +96,7 @@ func (l *LokiQueryProvider) QuerySandboxLogs(ctx context.Context, teamID string,
 	return logs, nil
 }
 
-func (l *LokiQueryProvider) lokiResponseMapper(res *loghttp.QueryResponse, offset int) ([]LogEntry, error) {
+func (l *LokiQueryProvider) lokiResponseMapper(res *loghttp.QueryResponse, offset int, level *LogLevel) ([]LogEntry, error) {
 	logsCrawled := 0
 	logs := make([]LogEntry, 0)
 
@@ -106,20 +106,37 @@ func (l *LokiQueryProvider) lokiResponseMapper(res *loghttp.QueryResponse, offse
 
 	for _, stream := range res.Data.Result.(loghttp.Streams) {
 		for _, entry := range stream.Entries {
-			logsCrawled++
-
-			// loki does not support offset pagination, so we need to skip logs manually
-			if logsCrawled <= offset {
-				continue
-			}
-
 			line := make(map[string]interface{})
 			err := json.Unmarshal([]byte(entry.Line), &line)
 			if err != nil {
 				zap.L().Error("error parsing log line", zap.Error(err), zap.String("line", entry.Line))
 			}
 
-			logs = append(logs, LogEntry{Line: line["message"].(string), Timestamp: entry.Timestamp})
+			entryLvl := LevelInfo
+			if ll, ok := line["level"]; ok {
+				levelName := ll.(string)
+				l, ok := levelNames[levelName]
+				if ok {
+					entryLvl = l
+				}
+			}
+
+			// Skip logs that are below the specified level
+			if level != nil && entryLvl < *level {
+				continue
+			}
+
+			// loki does not support offset pagination, so we need to skip logs manually
+			logsCrawled++
+			if logsCrawled <= offset {
+				continue
+			}
+
+			logs = append(logs, LogEntry{
+				Timestamp: entry.Timestamp,
+				Line:      line["message"].(string),
+				Level:     entryLvl,
+			})
 		}
 	}
 

@@ -29,11 +29,6 @@ func (c *ClusterPlacementProvider) GetLogs(ctx context.Context, templateID strin
 		return nil, errors.New("failed to get build logs in template manager")
 	}
 
-	if res.JSON200 == nil {
-		zap.L().Error("unexpected response from template manager", zap.String("body", string(res.Body)))
-		return nil, errors.New("unexpected response from template manager")
-	}
-
 	logs := make([]api.BuildLogEntry, 0)
 	for _, entry := range res.JSON200.LogEntries {
 		logs = append(logs, api.BuildLogEntry{
