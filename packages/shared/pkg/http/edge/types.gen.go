@@ -30,6 +30,26 @@ const (
 	ClusterOrchestratorRoleTemplateBuilder ClusterOrchestratorRole = "template-builder"
 )
 
+// Defines values for LogLevel.
+const (
+	LogLevelDebug LogLevel = "debug"
+	LogLevelError LogLevel = "error"
+	LogLevelInfo  LogLevel = "info"
+	LogLevelWarn  LogLevel = "warn"
+)
+
+// BuildLogEntry defines model for BuildLogEntry.
+type BuildLogEntry struct {
+	// Level State of the sandbox
+	Level LogLevel `json:"level"`
+
+	// Message Log message content
+	Message string `json:"message"`
+
+	// Timestamp Timestamp of the log entry
+	Timestamp time.Time `json:"timestamp"`
+}
+
 // ClusterNode defines model for ClusterNode.
 type ClusterNode struct {
 	// NodeID Node ID
@@ -133,6 +153,9 @@ type Error struct {
 	Message string `json:"message"`
 }
 
+// LogLevel State of the sandbox
+type LogLevel string
+
 // SandboxCreateCatalogRequest defines model for SandboxCreateCatalogRequest.
 type SandboxCreateCatalogRequest struct {
 	ExecutionID string `json:"executionID"`
@@ -163,6 +186,9 @@ type ServiceDiscoveryNodeStatusRequest struct {
 
 // TemplateBuildLogsResponse defines model for TemplateBuildLogsResponse.
 type TemplateBuildLogsResponse struct {
+	// LogEntries Build logs structured
+	LogEntries []BuildLogEntry `json:"logEntries"`
+
 	// Logs Build logs
 	Logs []string `json:"logs"`
 }
@@ -188,7 +214,8 @@ type V1TemplateBuildLogsParams struct {
 	TemplateID     string `form:"templateID" json:"templateID"`
 
 	// Offset Index of the starting build log that should be returned with the template
-	Offset *int32 `form:"offset,omitempty" json:"offset,omitempty"`
+	Offset *int32    `form:"offset,omitempty" json:"offset,omitempty"`
+	Level  *LogLevel `form:"level,omitempty" json:"level,omitempty"`
 }
 
 // V1SandboxCatalogDeleteJSONRequestBody defines body for V1SandboxCatalogDelete for application/json ContentType.

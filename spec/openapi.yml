@@ -548,12 +548,39 @@ components:
           description: Url where the file should be uploaded to
           type: string
 
+    LogLevel:
+      type: string
+      description: State of the sandbox
+      enum:
+        - debug
+        - info
+        - warn
+        - error
+
+    BuildLogEntry:
+      required:
+        - timestamp
+        - message
+        - level
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp of the log entry
+        message:
+          type: string
+          description: Log message content
+        level:
+          description: Log level of the entry
+          $ref: "#/components/schemas/LogLevel"
+
     TemplateBuild:
       required:
         - templateID
         - buildID
         - status
         - logs
+        - logEntries
       properties:
         logs:
           default: []
@@ -561,6 +588,12 @@ components:
           type: array
           items:
             type: string
+        logEntries:
+          default: []
+          description: Build logs structured
+          type: array
+          items:
+            $ref: "#/components/schemas/BuildLogEntry"
         templateID:
           type: string
           description: Identifier of the template
@@ -587,6 +620,11 @@ components:
         - draining
         - connecting
         - unhealthy
+      x-enum-varnames:
+        - NodeStatusConnecting
+        - NodeStatusDraining
+        - NodeStatusReady
+        - NodeStatusUnhealthy
 
     NodeStatusChange:
       required:
@@ -1511,6 +1549,11 @@ paths:
             format: int32
             minimum: 0
           description: Index of the starting build log that should be returned with the template
+        - in: query
+          name: level
+          schema:
+            $ref: "#/components/schemas/LogLevel"
+            default: debug
       responses:
         "200":
           description: Successfully returned the template

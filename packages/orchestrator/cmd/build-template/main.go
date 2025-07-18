@@ -22,7 +22,6 @@ import (
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -136,7 +135,6 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 
 	builder := build.NewBuilder(
 		logger,
-		logger,
 		tracer,
 		persistenceTemplate,
 		persistenceBuild,
@@ -148,11 +146,10 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		templateCache,
 	)
 
-	logsWriter := writer.New(
-		logger.
-			With(zap.Field{Type: zapcore.StringType, Key: "envID", String: templateID}).
-			With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: buildID}),
-	)
+	logsWriter := logger.
+		With(zap.Field{Type: zapcore.StringType, Key: "envID", String: templateID}).
+		With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: buildID})
+
 	template := config.TemplateConfig{
 		VCpuCount:  2,
 		MemoryMB:   1024,

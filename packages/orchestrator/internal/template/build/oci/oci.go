@@ -223,8 +223,7 @@ func unpackRootfs(ctx context.Context, tracer trace.Tracer, postProcessor *write
 	if err != nil {
 		return fmt.Errorf("while listing files in overlayfs: %w", err)
 	}
-	postProcessor.WriteMsg("Root filesystem structure:")
-	postProcessor.WriteMsg(strings.Join(files, ", "))
+	postProcessor.Info("Root filesystem structure: " + strings.Join(files, ", "))
 
 	// Copy files from the overlayfs mount point to the destination directory
 	err = copyFiles(ctx, tracer, mountPath, destDir)
@@ -301,7 +300,7 @@ func createExport(ctx context.Context, tracer trace.Tracer, postProcessor *write
 			attribute.String("layer.digest", digest.String()),
 			attribute.Int64("layer.size", size),
 		)
-		postProcessor.WriteMsg(fmt.Sprintf("Uncompressing layer %s %s", digest, humanize.Bytes(uint64(size))))
+		postProcessor.Info(fmt.Sprintf("Uncompressing layer %s %s", digest, humanize.Bytes(uint64(size))))
 
 		// Each layer has to be uniquely named, even if the digest is the same across different layers
 		layerPath := filepath.Join(path, fmt.Sprintf("layer-%d-%s", i, strings.ReplaceAll(digest.String(), ":", "-")))
@@ -333,7 +332,7 @@ func createExport(ctx context.Context, tracer trace.Tracer, postProcessor *write
 		return nil, fmt.Errorf("while extracting layers: %w", err)
 	}
 
-	postProcessor.WriteMsg("Layers extracted")
+	postProcessor.Info("Layers extracted")
 
 	return layerPaths, nil
 }

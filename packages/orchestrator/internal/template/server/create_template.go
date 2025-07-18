@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"io"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -12,7 +11,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -59,15 +57,22 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		Steps:      cfg.Steps,
 	}
 
-	logger := s.buildLogger.
-		With(zap.Field{Type: zapcore.StringType, Key: "envID", String: metadata.TemplateID}).
-		With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: metadata.BuildID})
-
-	var logs cache.SafeBuffer
-	buildInfo, err := s.buildCache.Create(metadata.BuildID, &logs)
+	logs := cache.NewSafeBuffer()
+	buildInfo, err := s.buildCache.Create(metadata.BuildID, logs)
 	if err != nil {
 		return nil, fmt.Errorf("error while creating build cache: %w", err)
 	}
+
+	// Add new core that will log all messages using logger (zap.Logger) to the logs buffer too
+	encoder := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
+	bufferCore := zapcore.NewCore(encoder, logs, zapcore.DebugLevel)
+	core := zapcore.NewTee(bufferCore, s.buildLogger.Core().
+		With([]zap.Field{
+			{Type: zapcore.StringType, Key: "envID", String: metadata.TemplateID},
+			{Type: zapcore.StringType, Key: "buildID", String: metadata.BuildID},
+		}),
+	)
+	logger := zap.New(core)
 
 	s.wg.Add(1)
 	go func() {
@@ -80,11 +85,8 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		)
 		defer buildSpan.End()
 
-		externalWriter := writer.New(logger)
-		defer externalWriter.Close()
-
-		logsWriter := io.MultiWriter(&logs, externalWriter)
-		res, err := s.builder.Build(buildContext, metadata, template, logsWriter)
+		res, err := s.builder.Build(buildContext, metadata, template, logger)
+		_ = logger.Sync()
 		if err != nil {
 			s.reportBuildFailed(buildContext, metadata.BuildID, err)
 			return

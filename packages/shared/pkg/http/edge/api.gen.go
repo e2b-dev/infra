@@ -256,6 +256,14 @@ func (siw *ServerInterfaceWrapper) V1TemplateBuildLogs(c *gin.Context) {
 		return
 	}
 
+	// ------------- Optional query parameter "level" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "level", c.Request.URL.Query(), &params.Level)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter level: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {

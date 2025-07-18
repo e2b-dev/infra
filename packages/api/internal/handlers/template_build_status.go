@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -97,7 +98,15 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	result.Logs = cli.GetLogs(ctx, templateID, buildID, params.LogsOffset)
+	logs := make([]string, 0)
+	logEntries := make([]api.BuildLogEntry, 0)
+	for _, entry := range cli.GetLogs(ctx, templateID, buildID, params.LogsOffset, params.Level) {
+		logs = append(logs, fmt.Sprintf("[%s] %s\n", entry.Timestamp.Format(time.RFC3339), entry.Message))
+		logEntries = append(logEntries, entry)
+	}
+
+	result.Logs = logs
+	result.LogEntries = logEntries
 
 	c.JSON(http.StatusOK, result)
 }
@@ -112,5 +121,20 @@ func getCorrespondingTemplateBuildStatus(s envbuild.Status) api.TemplateBuildSta
 		return api.TemplateBuildStatusReady
 	default:
 		return api.TemplateBuildStatusBuilding
+	}
+}
+
+func getLogLevel(level string) api.LogLevel {
+	switch level {
+	case "debug":
+		return api.LogLevelDebug
+	case "info":
+		return api.LogLevelInfo
+	case "warn":
+		return api.LogLevelWarn
+	case "error":
+		return api.LogLevelError
+	default:
+		return api.LogLevelInfo
 	}
 }
