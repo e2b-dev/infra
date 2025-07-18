@@ -113,7 +113,7 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 		}
 
 		if cluster != clusterID {
-			return nil, nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: fmt.Sprintf("Template '%s' is not available on cluster", aliasOrEnvID), Err: fmt.Errorf("template '%s' is not available on cluster '%s'", aliasOrEnvID, clusterID)}
+			return nil, nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: fmt.Sprintf("Template '%s' is not available in requested cluster", aliasOrEnvID), Err: fmt.Errorf("template '%s' is not available in requested cluster '%s'", aliasOrEnvID, clusterID)}
 		}
 
 		templateInfo = &TemplateInfo{
@@ -138,7 +138,7 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 		}
 
 		if templateInfo.clusterID != clusterID {
-			return nil, nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: fmt.Sprintf("Template '%s' is not available on cluster", aliasOrEnvID), Err: fmt.Errorf("template '%s' is not available on cluster '%s'", aliasOrEnvID, clusterID)}
+			return nil, nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: fmt.Sprintf("Template '%s' is not available in requested cluster", aliasOrEnvID), Err: fmt.Errorf("template '%s' is not available in requested cluster '%s'", aliasOrEnvID, clusterID)}
 		}
 	}
 
