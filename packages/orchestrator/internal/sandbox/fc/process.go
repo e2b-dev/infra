@@ -84,12 +84,12 @@ func NewProcess(
 
 	var fcStartScript bytes.Buffer
 
-	baseBuild := storage.NewTemplateFiles(
-		baseTemplateID,
-		baseBuildID,
-		files.KernelVersion,
-		files.FirecrackerVersion,
-	)
+	baseBuild := storage.TemplateFiles{
+		TemplateID:         baseTemplateID,
+		BuildID:            baseBuildID,
+		KernelVersion:      files.KernelVersion,
+		FirecrackerVersion: files.FirecrackerVersion,
+	}
 
 	buildRootfsPath := baseBuild.SandboxRootfsPath()
 	err := startScriptTemplate.Execute(&fcStartScript, map[string]interface{}{

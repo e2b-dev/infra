@@ -34,21 +34,6 @@ type TemplateFiles struct {
 	FirecrackerVersion string `json:"firecracker_version"`
 }
 
-// Deprecated: Use TemplateFiles directly instead.
-func NewTemplateFiles(
-	templateId,
-	buildId,
-	kernelVersion,
-	firecrackerVersion string,
-) TemplateFiles {
-	return TemplateFiles{
-		TemplateID:         templateId,
-		BuildID:            buildId,
-		KernelVersion:      kernelVersion,
-		FirecrackerVersion: firecrackerVersion,
-	}
-}
-
 func (t TemplateFiles) BuildKernelPath() string {
 	return filepath.Join(t.BuildKernelDir(), KernelName)
 }

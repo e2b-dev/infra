@@ -36,12 +36,12 @@ func newTemplateFromStorage(
 	persistence storage.StorageProvider,
 	localSnapfile *LocalFileLink,
 ) (*storageTemplate, error) {
-	files, err := storage.NewTemplateFiles(
-		templateId,
-		buildId,
-		kernelVersion,
-		firecrackerVersion,
-	).CacheFiles()
+	files, err := storage.TemplateFiles{
+		TemplateID:         templateId,
+		BuildID:            buildId,
+		KernelVersion:      kernelVersion,
+		FirecrackerVersion: firecrackerVersion,
+	}.CacheFiles()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create template cache files: %w", err)
 	}
