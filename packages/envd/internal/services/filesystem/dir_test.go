@@ -3,6 +3,7 @@ package filesystem
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 
 	"connectrpc.com/authn"
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -119,6 +121,42 @@ func TestListDirNonExistingPath(t *testing.T) {
 	assert.Equal(t, connect.CodeNotFound, connectErr.Code())
 }
 
+func TestListDirRelativePath(t *testing.T) {
+	// Setup temp root and user
+	u, err := user.Current()
+	require.NoError(t, err)
+
+	// Setup directory structure
+	testRelativePath := fmt.Sprintf("test-%s", uuid.New())
+	testFolderPath := filepath.Join(u.HomeDir, testRelativePath)
+	filePath := filepath.Join(testFolderPath, "file.txt")
+	require.NoError(t, os.MkdirAll(testFolderPath, 0o755))
+	require.NoError(t, os.WriteFile(filePath, []byte("Hello, World!"), 0o644))
+
+	// Service instance
+	svc := Service{}
+	ctx := authn.SetInfo(context.Background(), u)
+
+	req := connect.NewRequest(&filesystem.ListDirRequest{
+		Path:  testRelativePath,
+		Depth: 1,
+	})
+	resp, err := svc.ListDir(ctx, req)
+	require.NoError(t, err)
+	assert.NotEmpty(t, resp.Msg)
+
+	expectedPaths := []string{
+		filepath.Join(testFolderPath, "file.txt"),
+	}
+	assert.Equal(t, len(expectedPaths), len(resp.Msg.Entries))
+
+	actualPaths := make([]string, len(resp.Msg.Entries))
+	for i, entry := range resp.Msg.Entries {
+		actualPaths[i] = entry.Path
+	}
+	assert.ElementsMatch(t, expectedPaths, actualPaths)
+}
+
 func TestListDir_Symlinks(t *testing.T) {
 	t.Parallel()
 
@@ -213,10 +251,9 @@ func TestListDir_Symlinks(t *testing.T) {
 	})
 }
 
-// TestResolvePath_Success makes sure that resolvePath expands the user path
-// (via permissions.ExpandAndResolve) **and** resolves symlinks, while also
-// being robust to the /var → /private/var indirection that exists on macOS.
-func TestResolvePath_Success(t *testing.T) {
+// TestFollowSymlink_Success makes sure that followSymlink resolves symlinks,
+// while also being robust to the /var → /private/var indirection that exists on macOS.
+func TestFollowSymlink_Success(t *testing.T) {
 	t.Parallel()
 
 	// Base temporary directory. On macOS this lives under /var/folders/…
@@ -228,15 +265,11 @@ func TestResolvePath_Success(t *testing.T) {
 	require.NoError(t, os.MkdirAll(target, 0o755))
 
 	// Create a symlink pointing at the real directory so we can verify that
-	// resolvePath follows it.
+	// followSymlink follows it.
 	link := filepath.Join(base, "link")
 	require.NoError(t, os.Symlink(target, link))
 
-	// Current user (needed by resolvePath signature).
-	u, err := user.Current()
-	require.NoError(t, err)
-
-	got, err := resolvePath(link, u)
+	got, err := followSymlink(link)
 	require.NoError(t, err)
 
 	// Canonicalise the expected path too, so that /var → /private/var (macOS)
@@ -244,12 +277,12 @@ func TestResolvePath_Success(t *testing.T) {
 	want, err := filepath.EvalSymlinks(link)
 	require.NoError(t, err)
 
-	require.Equal(t, want, got, "resolvePath should resolve and canonicalise symlinks")
+	require.Equal(t, want, got, "followSymlink should resolve and canonicalise symlinks")
 }
 
-// TestResolvePath_MultiSymlinkChain verifies that resolvePath follows a chain
+// TestFollowSymlink_MultiSymlinkChain verifies that followSymlink follows a chain
 // of several symlinks (non‑cyclic) correctly.
-func TestResolvePath_MultiSymlinkChain(t *testing.T) {
+func TestFollowSymlink_MultiSymlinkChain(t *testing.T) {
 	t.Parallel()
 
 	base := t.TempDir()
@@ -268,23 +301,19 @@ func TestResolvePath_MultiSymlinkChain(t *testing.T) {
 	link1 := filepath.Join(base, "link1")
 	require.NoError(t, os.Symlink(link2, link1))
 
-	u, err := user.Current()
-	require.NoError(t, err)
-
-	got, err := resolvePath(link1, u)
+	got, err := followSymlink(link1)
 	require.NoError(t, err)
 
 	want, err := filepath.EvalSymlinks(link1)
 	require.NoError(t, err)
 
-	require.Equal(t, want, got, "resolvePath should resolve an arbitrary symlink chain")
+	require.Equal(t, want, got, "followSymlink should resolve an arbitrary symlink chain")
 }
 
-func TestResolvePath_NotFound(t *testing.T) {
+func TestFollowSymlink_NotFound(t *testing.T) {
 	t.Parallel()
 
-	u, _ := user.Current()
-	_, err := resolvePath("/definitely/does/not/exist", u)
+	_, err := followSymlink("/definitely/does/not/exist")
 	require.Error(t, err)
 
 	var cerr *connect.Error
@@ -292,7 +321,7 @@ func TestResolvePath_NotFound(t *testing.T) {
 	require.Equal(t, connect.CodeNotFound, cerr.Code())
 }
 
-func TestResolvePath_CyclicSymlink(t *testing.T) {
+func TestFollowSymlink_CyclicSymlink(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -305,8 +334,7 @@ func TestResolvePath_CyclicSymlink(t *testing.T) {
 	require.NoError(t, os.Symlink(filepath.Join(b, "loop"), filepath.Join(a, "loop")))
 	require.NoError(t, os.Symlink(filepath.Join(a, "loop"), filepath.Join(b, "loop")))
 
-	u, _ := user.Current()
-	_, err := resolvePath(filepath.Join(a, "loop"), u)
+	_, err := followSymlink(filepath.Join(a, "loop"))
 	require.Error(t, err)
 
 	var cerr *connect.Error

@@ -3,11 +3,13 @@ package envd
 import (
 	"context"
 	"fmt"
+	"path"
 	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
@@ -15,7 +17,11 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
 
-const testFolder = "/test"
+const (
+	userHome           = "/home/user"
+	testFolder         = "/test"
+	relativeTestFolder = "test"
+)
 
 func TestListDir(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -107,7 +113,7 @@ func TestFilePermissions(t *testing.T) {
 	req := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
 			Cmd:  "ls",
-			Args: []string{"-la", "/home/user"},
+			Args: []string{"-la", userHome},
 		},
 	})
 	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
@@ -135,4 +141,30 @@ func TestFilePermissions(t *testing.T) {
 			assert.Contains(t, line, "user user")
 		}
 	}
+}
+
+func TestRelativePath(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	c := setup.GetAPIClient()
+	sbx := utils.SetupSandboxWithCleanup(t, c)
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	utils.CreateDir(t, sbx, path.Join(userHome, relativeTestFolder))
+	utils.UploadFile(t, ctx, sbx, envdClient, path.Join(userHome, relativeTestFolder, "test.txt"), []byte("Hello, World!"))
+
+	req := connect.NewRequest(&filesystem.ListDirRequest{
+		Path:  relativeTestFolder,
+		Depth: 0,
+	})
+	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
+	setup.SetUserHeader(req.Header(), "user")
+	folderListResp, err := envdClient.FilesystemClient.ListDir(ctx, req)
+	assert.NoError(t, err)
+
+	require.NotEmpty(t, folderListResp.Msg)
+	assert.Len(t, folderListResp.Msg.Entries, 1)
+
+	assert.Equal(t, path.Join(userHome, relativeTestFolder, "test.txt"), folderListResp.Msg.Entries[0].Path)
 }

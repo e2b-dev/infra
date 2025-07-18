@@ -10,6 +10,7 @@ require (
 	github.com/e2b-dev/fsnotify v0.0.0-20241216145137-2fe5d32bcb51
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/go-chi/chi/v5 v5.2.2
+	github.com/google/uuid v1.6.0
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/rs/cors v1.11.1
 	github.com/rs/zerolog v1.34.0
@@ -29,7 +30,6 @@ require (
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20240909124753-873cd0166683 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
