@@ -8,7 +8,6 @@ import (
 
 type SandboxEvent struct {
 	Timestamp          time.Time `ch:"timestamp"`
-	SandboxUptimeSecs  uint64    `ch:"sandbox_uptime_secs"`
 	SandboxID          string    `ch:"sandbox_id"`
 	SandboxExecutionID string    `ch:"sandbox_execution_id"`
 	SandboxTemplateID  string    `ch:"sandbox_template_id"`
@@ -21,7 +20,6 @@ type SandboxEvent struct {
 const latestSandboxEventSelectQuery = `
 SELECT
     timestamp,
-    sandbox_uptime_secs,
     sandbox_id,
     sandbox_execution_id,
     sandbox_template_id,
@@ -61,7 +59,6 @@ func (c *Client) QueryLatestSandboxEvent(ctx context.Context, sandboxID string, 
 const insertSandboxEventQuery = `
 INSERT INTO sandbox_events (
     timestamp,
-    sandbox_uptime_secs,
     sandbox_id, 
     sandbox_execution_id,
     sandbox_template_id,
@@ -84,7 +81,6 @@ INSERT INTO sandbox_events (
 func (c *Client) InsertSandboxEvent(ctx context.Context, event SandboxEvent) error {
 	return c.conn.Exec(ctx, insertSandboxEventQuery,
 		time.Now(),
-		event.SandboxUptimeSecs,
 		event.SandboxID,
 		event.SandboxExecutionID,
 		event.SandboxTemplateID,

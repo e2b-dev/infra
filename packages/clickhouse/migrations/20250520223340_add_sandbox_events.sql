@@ -2,7 +2,6 @@
 -- +goose StatementBegin
 CREATE TABLE sandbox_events (
     timestamp DateTime64(9),
-    sandbox_uptime_secs UInt64,
     sandbox_id UUID,
     sandbox_execution_id UUID,
     sandbox_template_id UUID,
