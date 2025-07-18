@@ -13,6 +13,8 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal"
 )
 
 func (s *Slot) CreateNetwork() error {
@@ -215,6 +217,13 @@ func (s *Slot) CreateNetwork() error {
 	err = tables.Append("nat", "POSTROUTING", "-s", s.HostCIDR(), "-o", defaultGateway, "-j", "MASQUERADE")
 	if err != nil {
 		return fmt.Errorf("error creating postrouting rule: %w", err)
+	}
+
+	// Redirect traffic destined to event server
+	eventIP := internal.GetSandboxEventIP()
+	err = tables.Append("nat", "PREROUTING", "-i", s.VethName(), "-p", "tcp", "-d", eventIP, "--dport", "80", "-j", "REDIRECT", "--to-port", "5010")
+	if err != nil {
+		return fmt.Errorf("error creating HTTP redirect rule to sandbox event server: %w", err)
 	}
 
 	return nil

@@ -69,6 +69,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		s.devicePool,
 		config.AllowSandboxInternet,
 		metricsWriteFlag,
+		s.eventStore,
 	)
 	if err != nil {
 		zap.L().Error("failed to create sandbox, cleaning up", zap.Error(err))
