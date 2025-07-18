@@ -18,8 +18,9 @@ import (
 )
 
 const (
-	userHome   = "/home/user"
-	testFolder = "/test"
+	userHome           = "/home/user"
+	testFolder         = "/test"
+	relativeTestFolder = "test"
 )
 
 func TestListDir(t *testing.T) {
@@ -150,11 +151,11 @@ func TestRelativePath(t *testing.T) {
 	sbx := utils.SetupSandboxWithCleanup(t, c)
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	utils.CreateDir(t, sbx, path.Join(userHome, testFolder))
-	utils.UploadFile(t, ctx, sbx, envdClient, path.Join(userHome, testFolder, "test.txt"), []byte("Hello, World!"))
+	utils.CreateDir(t, sbx, path.Join(userHome, relativeTestFolder))
+	utils.UploadFile(t, ctx, sbx, envdClient, path.Join(userHome, relativeTestFolder, "test.txt"), []byte("Hello, World!"))
 
 	req := connect.NewRequest(&filesystem.ListDirRequest{
-		Path:  testFolder,
+		Path:  relativeTestFolder,
 		Depth: 0,
 	})
 	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
@@ -165,5 +166,5 @@ func TestRelativePath(t *testing.T) {
 	require.NotEmpty(t, folderListResp.Msg)
 	assert.Len(t, folderListResp.Msg.Entries, 1)
 
-	assert.Equal(t, path.Join(userHome, testFolder, "test.txt"), folderListResp.Msg.Entries[0].Path)
+	assert.Equal(t, path.Join(userHome, relativeTestFolder, "test.txt"), folderListResp.Msg.Entries[0].Path)
 }
