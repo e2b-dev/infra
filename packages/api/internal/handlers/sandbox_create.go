@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -76,8 +77,13 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	_, templateSpan := a.Tracer.Start(ctx, "get-template")
 	defer templateSpan.End()
 
+	clusterID := uuid.Nil
+	if teamInfo.Team.ClusterID != nil {
+		clusterID = *teamInfo.Team.ClusterID
+	}
+
 	// Check if team has access to the environment
-	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, teamInfo.Team.ID, true)
+	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, teamInfo.Team.ID, clusterID, true)
 	if checkErr != nil {
 		telemetry.ReportCriticalError(ctx, "error when getting template", checkErr.Err)
 		a.sendAPIStoreError(c, checkErr.Code, checkErr.ClientMsg)
