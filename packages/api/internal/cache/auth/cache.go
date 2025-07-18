@@ -9,7 +9,7 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 	"golang.org/x/sync/singleflight"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
+	"github.com/e2b-dev/infra/packages/db/queries"
 )
 
 const (
@@ -18,20 +18,20 @@ const (
 )
 
 type AuthTeamInfo struct {
-	Team *models.Team
-	Tier *models.Tier
+	Team *queries.Team
+	Tier *queries.Tier
 }
 
 type TeamInfo struct {
-	team *models.Team
-	tier *models.Tier
+	team *queries.Team
+	tier *queries.Tier
 
 	lastRefresh time.Time
 	once        singleflight.Group
 	lock        sync.Mutex
 }
 
-type DataCallback = func(ctx context.Context, key string) (*models.Team, *models.Tier, error)
+type DataCallback = func(ctx context.Context, key string) (*queries.Team, *queries.Tier, error)
 
 type TeamAuthCache struct {
 	cache *ttlcache.Cache[string, *TeamInfo]
@@ -47,7 +47,7 @@ func NewTeamAuthCache() *TeamAuthCache {
 }
 
 // TODO: save blocked teams to cache as well, handle the condition in the GetOrSet method
-func (c *TeamAuthCache) GetOrSet(ctx context.Context, key string, dataCallback DataCallback) (team *models.Team, tier *models.Tier, err error) {
+func (c *TeamAuthCache) GetOrSet(ctx context.Context, key string, dataCallback DataCallback) (team *queries.Team, tier *queries.Tier, err error) {
 	var item *ttlcache.Item[string, *TeamInfo]
 	var templateInfo *TeamInfo
 

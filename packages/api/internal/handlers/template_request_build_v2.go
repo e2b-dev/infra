@@ -8,7 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -29,31 +32,15 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "started environment build")
 
 	// Prepare info for rebuilding env
-	_, span := a.Tracer.Start(ctx, "get-user-and-teams")
-	defer span.End()
-	userID, teams, err := a.GetUserAndTeams(c)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting user: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when getting user", err)
-
+	team, tier, apiErr := a.GetTeamAndTier(c, body.TeamID)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
 		return
 	}
-	span.End()
-
-	// Find the team and tier
-	_, span = a.Tracer.Start(ctx, "find-team-and-tier")
-	defer span.End()
-	team, tier, err := findTeamAndTier(teams, &body.TeamID)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusNotFound, err.Error())
-		telemetry.ReportCriticalError(ctx, "error finding team and tier", err)
-		return
-	}
-	span.End()
 
 	// Create the build, find the template ID by alias or generate a new one
-	_, span = a.Tracer.Start(ctx, "find-template-alias")
+	_, span := a.Tracer.Start(ctx, "find-template-alias")
 	defer span.End()
 	templateID := id.Generate()
 	isNew := true
@@ -95,7 +82,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		BuilderNodeID: builderNodeID,
 		IsNew:         isNew,
 		TemplateID:    templateID,
-		UserID:        *userID,
+		UserID:        nil,
 		Team:          team,
 		Tier:          tier,
 		Alias:         &body.Alias,
@@ -114,7 +101,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	defer span.End()
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "submitted environment build request", properties.
+	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "submitted environment build request", properties.
 		Set("environment", template.TemplateID).
 		Set("build_id", template.BuildID).
 		Set("alias", body.Alias),
@@ -127,4 +114,44 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		Public:     template.Public,
 		Aliases:    template.Aliases,
 	})
+}
+
+func (a *APIStore) GetTeamAndTier(
+	c *gin.Context,
+	// Deprecated: use API Token authentication instead.
+	teamID *string,
+) (*queries.Team, *queries.Tier, *api.APIError) {
+	_, span := a.Tracer.Start(c.Request.Context(), "get-team-and-tier")
+	defer span.End()
+
+	if c.Value(auth.TeamContextKey) != nil {
+		teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
+
+		return teamInfo.Team, teamInfo.Tier, nil
+	} else if c.Value(auth.UserIDContextKey) != nil {
+		_, teams, err := a.GetUserAndTeams(c)
+		if err != nil {
+			return nil, nil, &api.APIError{
+				Code:      http.StatusInternalServerError,
+				ClientMsg: "Error when getting user and teams",
+				Err:       err,
+			}
+		}
+		team, tier, err := findTeamAndTier(teams, teamID)
+		if err != nil {
+			return nil, nil, &api.APIError{
+				Code:      http.StatusForbidden,
+				ClientMsg: "You are not allowed to access this team",
+				Err:       err,
+			}
+		}
+
+		return team, tier, nil
+	}
+
+	return nil, nil, &api.APIError{
+		Code:      http.StatusUnauthorized,
+		ClientMsg: "You are not authenticated",
+		Err:       errors.New("invalid authentication context for team and tier"),
+	}
 }
