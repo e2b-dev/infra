@@ -96,7 +96,7 @@ func (g *AWSArtifactsRegistry) GetImage(ctx context.Context, templateId string, 
 		return nil, fmt.Errorf("failed to get auth: %w", err)
 	}
 
-	img, err := remote.Image(ref, remote.WithAuth(auth), remote.WithPlatform(platform))
+	img, err := remote.Image(ref, remote.WithAuth(auth), remote.WithPlatform(platform), remote.WithContext(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("error pulling image: %w", err)
 	}

@@ -49,7 +49,7 @@ func TestPostProcessor_Start(t *testing.T) {
 			name: "test success",
 			fields: fields{
 				testErr:       nil,
-				shouldContain: "Postprocessing finished.",
+				shouldContain: "Build finished",
 			},
 		},
 	}
@@ -60,11 +60,12 @@ func TestPostProcessor_Start(t *testing.T) {
 			errChan := make(chan error)
 
 			p := &PostProcessor{
-				ctx:     ctx,
-				writer:  tw,
-				errChan: errChan,
-				stopCh:  make(chan struct{}, 1),
-				ticker:  time.NewTicker(tickerInterval),
+				ctx:            ctx,
+				writer:         tw,
+				errChan:        errChan,
+				stopCh:         make(chan struct{}, 1),
+				tickerInterval: defaultTickerInterval,
+				ticker:         time.NewTicker(defaultTickerInterval),
 			}
 
 			end := make(chan struct{}, 1)

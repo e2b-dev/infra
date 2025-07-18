@@ -57,6 +57,7 @@ func New(
 	tel *telemetry.Client,
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
+	templateCache *template.Cache,
 	tracer trace.Tracer,
 	info *service.ServiceInfo,
 	proxy *proxy.SandboxProxy,
@@ -64,11 +65,6 @@ func New(
 	featureFlags *featureflags.Client,
 ) (*Service, error) {
 	srv := &Service{info: info}
-
-	templateCache, err := template.NewCache(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create template cache: %w", err)
-	}
 
 	srv.proxy = proxy
 
