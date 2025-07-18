@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/user"
 	"path"
 	"path/filepath"
 	"strings"
@@ -27,7 +26,14 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 	}
 
 	requestedPath := req.Msg.GetPath()
-	resolvedPath, err := resolvePath(requestedPath, u)
+
+	// Expand the path
+	requestedPath, err = permissions.ExpandAndResolve(requestedPath, u)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	resolvedPath, err := followSymlink(requestedPath)
 	if err != nil {
 		return nil, err
 	}
@@ -90,22 +96,17 @@ func (Service) MakeDir(ctx context.Context, req *connect.Request[rpc.MakeDirRequ
 	}), nil
 }
 
-// resolvePath expands and resolves the given path for the user (follows symlinks).
-func resolvePath(path string, u *user.User) (string, error) {
-	expandedPath, err := permissions.ExpandAndResolve(path, u)
-	if err != nil {
-		return "", connect.NewError(connect.CodeInvalidArgument, err)
-	}
-
+// followSymlink resolves a symbolic link to its target path.
+func followSymlink(path string) (string, error) {
 	// Resolve symlinks
-	resolvedPath, err := filepath.EvalSymlinks(expandedPath)
+	resolvedPath, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", connect.NewError(connect.CodeNotFound, fmt.Errorf("path not found: %w", err))
 		}
 
 		if strings.Contains(err.Error(), "too many links") {
-			return "", connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("cyclic symlink or chain >255 links at %q", expandedPath))
+			return "", connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("cyclic symlink or chain >255 links at %q", path))
 		}
 
 		return "", connect.NewError(connect.CodeInternal, fmt.Errorf("error resolving symlink: %w", err))
