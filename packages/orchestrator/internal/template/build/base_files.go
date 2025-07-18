@@ -22,7 +22,8 @@ func constructBaseLayerFiles(
 	ctx context.Context,
 	tracer trace.Tracer,
 	metadata storage.TemplateFiles,
-	buildID string,
+	// The base build ID can be different from the final requested template build ID.
+	baseBuildID string,
 	templateConfig config.TemplateConfig,
 	postProcessor *writer.PostProcessor,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
@@ -49,7 +50,7 @@ func constructBaseLayerFiles(
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating rootfs for template '%s' during build '%s': %w", metadata.TemplateID, metadata.BuildID, err)
 	}
 
-	buildIDParsed, err := uuid.Parse(buildID)
+	buildIDParsed, err := uuid.Parse(baseBuildID)
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("failed to parse build id: %w", err)
 	}

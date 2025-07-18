@@ -70,6 +70,7 @@ func hashKeys(baseKey string, keys ...string) string {
 	sha := sha256.New()
 	sha.Write([]byte(baseKey))
 	for _, key := range keys {
+		sha.Write([]byte(";"))
 		sha.Write([]byte(key))
 	}
 	return fmt.Sprintf("%x", sha.Sum(nil))

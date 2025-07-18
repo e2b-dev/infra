@@ -411,7 +411,8 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 				&orchestrator.SandboxConfig{
 					BaseTemplateId: baseMetadata.TemplateID,
 
-					// TODO: Here might be invalid data for the template resume, but they might not be used
+					// TODO: Here might be invalid data for the template resume (when resuming with different CPU + memory than requested)
+					// These metadata are used only for statistics though, so it not a problem.
 					Vcpu:        template.VCpuCount,
 					RamMb:       template.MemoryMB,
 					HugePages:   template.HugePages,
@@ -564,15 +565,16 @@ func (b *Builder) setupBase(
 	template config.TemplateConfig,
 	hash string,
 ) (bool, storage.TemplateFiles, error) {
-	baseMetadata := storage.TemplateFiles{
-		TemplateID:         id.Generate(),
-		BuildID:            uuid.New().String(),
-		KernelVersion:      finalMetadata.KernelVersion,
-		FirecrackerVersion: finalMetadata.FirecrackerVersion,
-	}
+	var baseMetadata storage.TemplateFiles
 	bm, err := templateMetaFromHash(ctx, b.buildStorage, finalMetadata.TemplateID, hash)
 	if err != nil {
 		b.logger.Info("base layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
+		baseMetadata = storage.TemplateFiles{
+			TemplateID:         id.Generate(),
+			BuildID:            uuid.New().String(),
+			KernelVersion:      finalMetadata.KernelVersion,
+			FirecrackerVersion: finalMetadata.FirecrackerVersion,
+		}
 	} else {
 		baseMetadata = bm
 	}
