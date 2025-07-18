@@ -263,12 +263,12 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	s.pauseMu.Unlock()
 
-	snapshotTemplateFiles, err := storage.NewTemplateFiles(
-		in.TemplateId,
-		in.BuildId,
-		sbx.Config.KernelVersion,
-		sbx.Config.FirecrackerVersion,
-	).CacheFiles()
+	snapshotTemplateFiles, err := storage.TemplateFiles{
+		TemplateID:         in.TemplateId,
+		BuildID:            in.BuildId,
+		KernelVersion:      sbx.Config.KernelVersion,
+		FirecrackerVersion: sbx.Config.FirecrackerVersion,
+	}.CacheFiles()
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error creating template files", err)
 
