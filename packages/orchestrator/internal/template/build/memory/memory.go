@@ -1,9 +1,11 @@
-package build
+package memory
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 )
 
 const (
@@ -18,7 +20,7 @@ func NewMemory(memoryBuildDir string, sizeMb int64) (string, error) {
 	}
 	defer emptyMemoryFile.Close()
 
-	err = emptyMemoryFile.Truncate(sizeMb << ToMBShift)
+	err = emptyMemoryFile.Truncate(sizeMb << constants.ToMBShift)
 	if err != nil {
 		return "", fmt.Errorf("error truncating blank memfile: %w", err)
 	}

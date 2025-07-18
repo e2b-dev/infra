@@ -46,7 +46,7 @@ func TestCreateExportLayersOrder(t *testing.T) {
 	ctx := t.Context()
 
 	tracer := noop.NewTracerProvider().Tracer("test")
-	postProcessor := writer.NewPostProcessor(ctx, io.Discard)
+	postProcessor := writer.NewPostProcessor(ctx, io.Discard, false)
 
 	// Create a dummy image with some layers
 	img := empty.Image

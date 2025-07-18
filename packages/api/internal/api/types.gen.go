@@ -462,6 +462,15 @@ type TemplateBuild struct {
 // TemplateBuildStatus Status of the template
 type TemplateBuildStatus string
 
+// TemplateBuildFileUpload defines model for TemplateBuildFileUpload.
+type TemplateBuildFileUpload struct {
+	// Present Whether the file is already present in the cache
+	Present bool `json:"present"`
+
+	// Url Url where the file should be uploaded to
+	Url *string `json:"url,omitempty"`
+}
+
 // TemplateBuildRequest defines model for TemplateBuildRequest.
 type TemplateBuildRequest struct {
 	// Alias Alias of the template
@@ -484,6 +493,54 @@ type TemplateBuildRequest struct {
 
 	// TeamID Identifier of the team
 	TeamID *string `json:"teamID,omitempty"`
+}
+
+// TemplateBuildRequestV2 defines model for TemplateBuildRequestV2.
+type TemplateBuildRequestV2 struct {
+	// Alias Alias of the template
+	Alias string `json:"alias"`
+
+	// CpuCount CPU cores for the sandbox
+	CpuCount *CPUCount `json:"cpuCount,omitempty"`
+
+	// MemoryMB Memory for the sandbox in MB
+	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
+
+	// TeamID Identifier of the team
+	TeamID string `json:"teamID"`
+}
+
+// TemplateBuildStartV2 defines model for TemplateBuildStartV2.
+type TemplateBuildStartV2 struct {
+	// Force Whether the whole build should be forced to run regardless of the cache
+	Force *bool `json:"force,omitempty"`
+
+	// FromImage Image to use as a base for the template build
+	FromImage string `json:"fromImage"`
+
+	// ReadyCmd Ready check command to execute in the template after the build
+	ReadyCmd *string `json:"readyCmd,omitempty"`
+
+	// StartCmd Start command to execute in the template after the build
+	StartCmd *string `json:"startCmd,omitempty"`
+
+	// Steps List of steps to execute in the template build
+	Steps *[]TemplateStep `json:"steps,omitempty"`
+}
+
+// TemplateStep Step in the template build process
+type TemplateStep struct {
+	// Args Arguments for the step
+	Args *[]string `json:"args,omitempty"`
+
+	// FilesHash Hash of the files used in the step
+	FilesHash *string `json:"filesHash,omitempty"`
+
+	// Force Whether the step should be forced to run regardless of the cache
+	Force *bool `json:"force,omitempty"`
+
+	// Type Type of the step
+	Type string `json:"type"`
 }
 
 // TemplateUpdateRequest defines model for TemplateUpdateRequest.
@@ -629,3 +686,9 @@ type PatchTemplatesTemplateIDJSONRequestBody = TemplateUpdateRequest
 
 // PostTemplatesTemplateIDJSONRequestBody defines body for PostTemplatesTemplateID for application/json ContentType.
 type PostTemplatesTemplateIDJSONRequestBody = TemplateBuildRequest
+
+// PostV2TemplatesJSONRequestBody defines body for PostV2Templates for application/json ContentType.
+type PostV2TemplatesJSONRequestBody = TemplateBuildRequestV2
+
+// PostV2TemplatesTemplateIDBuildsBuildIDJSONRequestBody defines body for PostV2TemplatesTemplateIDBuildsBuildID for application/json ContentType.
+type PostV2TemplatesTemplateIDBuildsBuildIDJSONRequestBody = TemplateBuildStartV2

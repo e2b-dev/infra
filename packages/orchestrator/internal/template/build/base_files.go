@@ -4,29 +4,27 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"text/template"
 
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/memory"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-//go:embed provision.sh
-var provisionScriptFile string
-var ProvisionScriptTemplate = template.Must(template.New("provisioning-script").Parse(provisionScriptFile))
-
-//go:embed configure.sh
-var configureScriptFile string
-var ConfigureScriptTemplate = template.Must(template.New("provisioning-finish-script").Parse(configureScriptFile))
-
-func Build(
+func constructBaseLayerFiles(
 	ctx context.Context,
 	tracer trace.Tracer,
-	templateConfig *TemplateConfig,
+	metadata storage.TemplateFiles,
+	// The base build ID can be different from the final requested template build ID.
+	baseBuildID string,
+	templateConfig config.TemplateConfig,
 	postProcessor *writer.PostProcessor,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	templateBuildDir string,
@@ -36,13 +34,23 @@ func Build(
 	defer childSpan.End()
 
 	// Create a rootfs file
-	rtfs := NewRootfs(artifactRegistry, templateConfig)
-	config, err := rtfs.createExt4Filesystem(childCtx, tracer, postProcessor, rootfsPath)
+	rtfs := rootfs.New(
+		artifactRegistry,
+		metadata,
+		templateConfig,
+	)
+	provisionScript, err := getProvisionScript(ctx, ProvisionScriptParams{
+		ResultPath: provisionScriptResultPath,
+	})
 	if err != nil {
-		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating rootfs for template '%s' during build '%s': %w", templateConfig.TemplateId, templateConfig.BuildId, err)
+		return nil, nil, containerregistry.Config{}, fmt.Errorf("error getting provision script: %w", err)
+	}
+	imgConfig, err := rtfs.CreateExt4Filesystem(childCtx, tracer, postProcessor, rootfsPath, provisionScript, provisionLogPrefix)
+	if err != nil {
+		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating rootfs for template '%s' during build '%s': %w", metadata.TemplateID, metadata.BuildID, err)
 	}
 
-	buildIDParsed, err := uuid.Parse(templateConfig.BuildId)
+	buildIDParsed, err := uuid.Parse(baseBuildID)
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("failed to parse build id: %w", err)
 	}
@@ -53,7 +61,7 @@ func Build(
 	}
 
 	// Create empty memfile
-	memfilePath, err := NewMemory(templateBuildDir, templateConfig.MemoryMB)
+	memfilePath, err := memory.NewMemory(templateBuildDir, templateConfig.MemoryMB)
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating memfile: %w", err)
 	}
@@ -63,5 +71,5 @@ func Build(
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating memfile blocks: %w", err)
 	}
 
-	return rootfs, memfile, config, nil
+	return rootfs, memfile, imgConfig, nil
 }

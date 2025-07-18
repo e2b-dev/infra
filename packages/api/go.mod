@@ -40,7 +40,7 @@ require (
 	github.com/pressly/goose/v3 v3.24.2
 	github.com/redis/go-redis/v9 v9.8.0
 	github.com/stretchr/testify v1.10.0
-	google.golang.org/grpc v1.72.1
+	google.golang.org/grpc v1.73.0
 )
 
 require (

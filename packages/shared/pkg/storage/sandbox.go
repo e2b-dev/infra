@@ -13,14 +13,14 @@ const (
 )
 
 type SandboxFiles struct {
-	*TemplateCacheFiles
+	TemplateCacheFiles
 	SandboxID string
 	tmpDir    string
 	// We use random id to avoid collision between the paused and restored sandbox caches
 	randomID string
 }
 
-func (c *TemplateCacheFiles) NewSandboxFiles(sandboxID string) *SandboxFiles {
+func (c TemplateCacheFiles) NewSandboxFiles(sandboxID string) *SandboxFiles {
 	randomID := id.Generate()
 
 	return &SandboxFiles{

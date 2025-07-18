@@ -241,6 +241,7 @@ module "nomad" {
   # Template manager
   template_manager_port          = var.template_manager_port
   template_bucket_name           = module.buckets.fc_template_bucket_name
+  build_cache_bucket_name        = module.buckets.fc_build_cache_bucket_name
   template_manager_machine_count = var.build_cluster_size
 
   # Redis
