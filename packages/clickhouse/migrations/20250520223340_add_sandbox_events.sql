@@ -9,7 +9,7 @@ CREATE TABLE sandbox_events (
     sandbox_team_id UUID,
     event_category String,
     event_label String,
-    event_data JSON NULL
+    event_data Nullable(JSON)
 ) ENGINE = MergeTree ORDER BY (timestamp, sandbox_id, event_category, event_label);
 -- +goose StatementEnd
 
