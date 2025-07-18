@@ -27,7 +27,7 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 
 	requestedPath := req.Msg.GetPath()
 
-	// Expand the path
+	// Expand the path so we can return absolute paths in the response.
 	requestedPath, err = permissions.ExpandAndResolve(requestedPath, u)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
