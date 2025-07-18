@@ -19,58 +19,13 @@ import (
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
-func (b *Builder) applyLocalCommand(
-	ctx context.Context,
-	step *templatemanager.TemplateStep,
-	buildMetadata *sandboxtools.CommandMetadata,
-) (bool, error) {
-	_, span := b.tracer.Start(ctx, "apply-command-local", trace.WithAttributes(
-		attribute.String("step.type", step.Type),
-		attribute.StringSlice("step.args", step.Args),
-		attribute.String("step.files.hash", utils.Sprintp(step.FilesHash)),
-		attribute.String("metadata.user", buildMetadata.User),
-		attribute.String("metadata.workdir", utils.Sprintp(buildMetadata.WorkDir)),
-		attribute.String("metadata.env_vars", fmt.Sprintf("%v", buildMetadata.EnvVars)),
-	))
-	defer span.End()
+var (
+	metadataDirPath = filepath.Join("tmp", "metadata")
 
-	cmdType := strings.ToUpper(step.Type)
-	args := step.Args
-
-	switch cmdType {
-	case "ARG":
-		// args: [key value]
-		if len(args) < 2 {
-			return false, fmt.Errorf("ARG requires a key and value argument")
-		}
-		buildMetadata.EnvVars[args[0]] = args[1]
-		return true, nil
-	case "ENV":
-		// args: [key value]
-		if len(args) < 2 {
-			return false, fmt.Errorf("ENV requires a key and value argument")
-		}
-		buildMetadata.EnvVars[args[0]] = args[1]
-		return true, nil
-	case "WORKDIR":
-		// args: [path]
-		if len(args) < 1 {
-			return false, fmt.Errorf("WORKDIR requires a path argument")
-		}
-		cwd := args[0]
-		buildMetadata.WorkDir = &cwd
-		return false, nil
-	case "USER":
-		// args: [username]
-		if len(args) < 1 {
-			return false, fmt.Errorf("USER requires a username argument")
-		}
-		buildMetadata.User = args[0]
-		return false, nil
-	default:
-		return false, nil
-	}
-}
+	workdirPath   = filepath.Join(metadataDirPath, "workdir")
+	userPath      = filepath.Join(metadataDirPath, "user")
+	envPathPrefix = filepath.Join(metadataDirPath, "env")
+)
 
 func (b *Builder) applyCommand(
 	ctx context.Context,
@@ -79,7 +34,7 @@ func (b *Builder) applyCommand(
 	sbx *sandbox.Sandbox,
 	prefix string,
 	step *templatemanager.TemplateStep,
-	cmdMetadata sandboxtools.CommandMetadata,
+	baseCmdMetadata sandboxtools.CommandMetadata,
 ) error {
 	ctx, span := b.tracer.Start(ctx, "apply-command", trace.WithAttributes(
 		attribute.String("prefix", prefix),
@@ -87,11 +42,13 @@ func (b *Builder) applyCommand(
 		attribute.String("step.type", step.Type),
 		attribute.StringSlice("step.args", step.Args),
 		attribute.String("step.files.hash", utils.Sprintp(step.FilesHash)),
-		attribute.String("metadata.user", cmdMetadata.User),
-		attribute.String("metadata.workdir", utils.Sprintp(cmdMetadata.WorkDir)),
-		attribute.String("metadata.env_vars", fmt.Sprintf("%v", cmdMetadata.EnvVars)),
 	))
 	defer span.End()
+
+	cmdMetadata, err := b.readCommandMetadata(ctx, sbx.Metadata.Config.SandboxId, baseCmdMetadata)
+	if err != nil {
+		return fmt.Errorf("failed to read command metadata: %w", err)
+	}
 
 	cmdType := strings.ToUpper(step.Type)
 	args := step.Args
@@ -143,7 +100,7 @@ func (b *Builder) applyCommand(
 
 		sbxUnpackPath := filepath.Join("/tmp", *step.FilesHash)
 
-		err = sandboxtools.RunCommand(
+		err = sandboxtools.RunCommandWithLogger(
 			ctx,
 			b.tracer,
 			b.proxy,
@@ -195,7 +152,7 @@ else
 fi
 `, filepath.Join(sbxUnpackPath, args[0]), args[1])
 
-		err = sandboxtools.RunCommand(
+		err = sandboxtools.RunCommandWithLogger(
 			ctx,
 			b.tracer,
 			b.proxy,
@@ -218,7 +175,7 @@ fi
 		}
 
 		cmd := strings.Join(args, " ")
-		return sandboxtools.RunCommand(
+		return sandboxtools.RunCommandWithLogger(
 			ctx,
 			b.tracer,
 			b.proxy,
@@ -235,7 +192,9 @@ fi
 			return fmt.Errorf("USER requires a username argument")
 		}
 
-		return sandboxtools.RunCommand(
+		userArg := args[0]
+
+		err = sandboxtools.RunCommandWithLogger(
 			ctx,
 			b.tracer,
 			b.proxy,
@@ -243,19 +202,26 @@ fi
 			zapcore.InfoLevel,
 			prefix,
 			sbx.Metadata.Config.SandboxId,
-			"adduser "+args[0],
+			"adduser "+userArg,
 			sandboxtools.CommandMetadata{
 				User:    "root",
 				EnvVars: cmdMetadata.EnvVars,
 			},
 		)
+		if err != nil {
+			return fmt.Errorf("failed to create user in sandbox: %w", err)
+		}
+
+		return b.saveUser(ctx, sbx.Metadata.Config.SandboxId, cmdMetadata, userArg)
 	case "WORKDIR":
 		// args: [path]
 		if len(args) < 1 {
 			return fmt.Errorf("WORKDIR requires a path argument")
 		}
 
-		return sandboxtools.RunCommand(
+		workdirArg := args[0]
+
+		err = sandboxtools.RunCommandWithLogger(
 			ctx,
 			b.tracer,
 			b.proxy,
@@ -263,13 +229,164 @@ fi
 			zapcore.InfoLevel,
 			prefix,
 			sbx.Metadata.Config.SandboxId,
-			fmt.Sprintf(`mkdir -p "%s"`, utils.Sprintp(cmdMetadata.WorkDir)),
+			fmt.Sprintf(`mkdir -p "%s"`, workdirArg),
 			sandboxtools.CommandMetadata{
 				User:    cmdMetadata.User,
 				EnvVars: cmdMetadata.EnvVars,
 			},
 		)
+		if err != nil {
+			return fmt.Errorf("failed to create workdir in sandbox: %w", err)
+		}
+
+		return b.saveWorkdir(ctx, sbx.Metadata.Config.SandboxId, cmdMetadata, workdirArg)
+	case "ENV", "ARG":
+		// args: [key value]
+		if len(args) < 2 {
+			return fmt.Errorf("%s requires a key and value argument", cmdType)
+		}
+
+		return b.saveEnv(ctx, sbx.Metadata.Config.SandboxId, cmdMetadata, args[0], args[1])
 	default:
 		return fmt.Errorf("unsupported command type: %s", cmdType)
 	}
+}
+
+func (b *Builder) readCommandMetadata(
+	ctx context.Context,
+	sandboxID string,
+	baseCmdMetadata sandboxtools.CommandMetadata,
+) (sandboxtools.CommandMetadata, error) {
+	user := baseCmdMetadata.User
+	err := sandboxtools.RunCommandWithOutput(
+		ctx,
+		b.tracer,
+		b.proxy,
+		sandboxID,
+		fmt.Sprintf(`[ -f "%s" ] && cat "%s" || echo ""`, userPath, userPath),
+		sandboxtools.CommandMetadata{
+			User: "root",
+		},
+		func(stdout, stderr string) {
+			w := strings.TrimSpace(stdout)
+			if w != "" {
+				user = w
+			}
+		},
+	)
+	if err != nil {
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to get current user: %w", err)
+	}
+
+	workdir := baseCmdMetadata.WorkDir
+	err = sandboxtools.RunCommandWithOutput(
+		ctx,
+		b.tracer,
+		b.proxy,
+		sandboxID,
+		fmt.Sprintf(`[ -f "%s" ] && cat "%s" || echo ""`, workdirPath, workdirPath),
+		sandboxtools.CommandMetadata{
+			User: "root",
+		},
+		func(stdout, stderr string) {
+			w := strings.TrimSpace(stdout)
+			if w != "" {
+				workdir = &w
+			}
+		},
+	)
+	if err != nil {
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to get current user: %w", err)
+	}
+
+	envPath := fmt.Sprintf("%s/%s", envPathPrefix, user)
+	envVars := baseCmdMetadata.EnvVars
+	err = sandboxtools.RunCommandWithOutput(
+		ctx,
+		b.tracer,
+		b.proxy,
+		sandboxID,
+		fmt.Sprintf(`[ -f "%s" ] && cat "%s" || echo ""`, envPath, envPath),
+		sandboxtools.CommandMetadata{
+			User: "root",
+		},
+		func(stdout, stderr string) {
+			// Parse env vars
+			lines := strings.Split(stdout, "\n")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				envParts := strings.SplitN(line, "=", 2)
+				envVars[envParts[0]] = envParts[1]
+			}
+		},
+	)
+	if err != nil {
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to get environment variables: %w", err)
+	}
+
+	return sandboxtools.CommandMetadata{
+		User:    user,
+		WorkDir: workdir,
+		EnvVars: envVars,
+	}, nil
+}
+
+func (b *Builder) saveEnv(
+	ctx context.Context,
+	sandboxID string,
+	cmdMetadata sandboxtools.CommandMetadata,
+	envName string,
+	envValue string,
+) error {
+	envPath := fmt.Sprintf("%s/%s", envPathPrefix, cmdMetadata.User)
+
+	return sandboxtools.RunCommand(
+		ctx,
+		b.tracer,
+		b.proxy,
+		sandboxID,
+		fmt.Sprintf(`mkdir -p "$(dirname "%s")" && echo "%s=%s" >> "%s"`, envPath, envName, envValue, envPath),
+		sandboxtools.CommandMetadata{
+			User: "root",
+		},
+	)
+}
+
+func (b *Builder) saveWorkdir(
+	ctx context.Context,
+	sandboxID string,
+	cmdMetadata sandboxtools.CommandMetadata,
+	workdir string,
+) error {
+	return sandboxtools.RunCommand(
+		ctx,
+		b.tracer,
+		b.proxy,
+		sandboxID,
+		fmt.Sprintf(`mkdir -p "$(dirname "%s")" && echo "%s" > "%s"`, workdirPath, workdir, workdirPath),
+		sandboxtools.CommandMetadata{
+			User: "root",
+		},
+	)
+}
+
+func (b *Builder) saveUser(
+	ctx context.Context,
+	sandboxID string,
+	cmdMetadata sandboxtools.CommandMetadata,
+	user string,
+) error {
+	return sandboxtools.RunCommand(
+		ctx,
+		b.tracer,
+		b.proxy,
+		sandboxID,
+		fmt.Sprintf(`mkdir -p "$(dirname "%s")" && echo "%s" > "%s"`, userPath, user, userPath),
+		sandboxtools.CommandMetadata{
+			User: "root",
+		},
+	)
 }

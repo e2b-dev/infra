@@ -370,29 +370,17 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			}
 		}
 
-		// Apply changes like env vars or workdir locally only, no need to run in sandbox
-		// These changes are not cached and run every time
-		fullyProcessed, err := b.applyLocalCommand(ctx, step, &cmdMeta)
-		if err != nil {
-			return nil, fmt.Errorf("error applying command: %w", err)
-		}
-
 		// Check if the layer is cached
 		found, err := isCached(ctx, b.templateStorage, stepMetadata)
 		if err != nil {
 			return nil, fmt.Errorf("error checking if layer is cached: %w", err)
 		}
-		isCached := !force && (found || (lastCached && fullyProcessed))
+		isCached := !force && found
 		lastCached = isCached
 
 		prefix := fmt.Sprintf("builder %d/%d", layerIndex, len(template.Steps))
 		cmd := fmt.Sprintf("%s %s", strings.ToUpper(step.Type), strings.Join(step.Args, " "))
 		postProcessor.Info(layerInfo(isCached, prefix, cmd, lastHash))
-
-		if fullyProcessed {
-			// sourceMetadata is not updated here because no new sandbox is run
-			continue
-		}
 
 		// Run commands in the sandbox only if not cached
 		if !isCached {
@@ -425,7 +413,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 					}
 
 					// Sync FS changes to the FS after exectution
-					err = sandboxtools.RunCommand(
+					err = sandboxtools.RunCommandWithLogger(
 						ctx,
 						b.tracer,
 						b.proxy,
