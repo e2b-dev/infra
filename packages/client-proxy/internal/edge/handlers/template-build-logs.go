@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	loggerprovider "github.com/e2b-dev/infra/packages/proxy/internal/edge/logger-provider"
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -29,7 +30,7 @@ func (a *APIStore) V1TemplateBuildLogs(c *gin.Context, buildID string, params ap
 		offset = int(*params.Offset)
 	}
 
-	logsRaw, err := a.queryLogsProvider.QueryBuildLogs(ctx, params.TemplateID, buildID, start, end, templateBuildLogsLimit, offset)
+	logsRaw, err := a.queryLogsProvider.QueryBuildLogs(ctx, params.TemplateID, buildID, start, end, templateBuildLogsLimit, offset, loggerprovider.APILevelToNumber(params.Level))
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when fetching template build logs")
 		telemetry.ReportCriticalError(ctx, "error when fetching template build logs", err)
@@ -37,14 +38,21 @@ func (a *APIStore) V1TemplateBuildLogs(c *gin.Context, buildID string, params ap
 	}
 
 	logs := make([]string, 0, len(logsRaw))
+	logEntries := make([]api.BuildLogEntry, 0, len(logsRaw))
 	for _, log := range logsRaw {
 		logs = append(logs, log.Line)
+		logEntries = append(logEntries, api.BuildLogEntry{
+			Timestamp: log.Timestamp,
+			Message:   log.Line,
+			Level:     loggerprovider.LevelToAPILevel(log.Level),
+		})
 	}
 
 	c.JSON(
 		http.StatusOK,
 		api.TemplateBuildLogsResponse{
-			Logs: logs,
+			Logs:       logs,
+			LogEntries: logEntries,
 		},
 	)
 }

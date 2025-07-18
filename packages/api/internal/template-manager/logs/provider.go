@@ -13,10 +13,10 @@ type Provider interface {
 type LogLevel int32
 
 const (
-	LevelDebug = 0
-	LevelInfo  = 1
-	LevelWarn  = 2
-	LevelError = 3
+	LevelDebug LogLevel = 0
+	LevelInfo  LogLevel = 1
+	LevelWarn  LogLevel = 2
+	LevelError LogLevel = 3
 )
 
 var levelNames = map[string]LogLevel{
