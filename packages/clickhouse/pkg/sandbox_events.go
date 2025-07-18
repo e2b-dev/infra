@@ -28,7 +28,6 @@ SELECT
     sandbox_team_id,
     event_category,
     event_label,
-    event_data
 FROM sandbox_events
 WHERE sandbox_id = ? 
 ORDER BY timestamp DESC
