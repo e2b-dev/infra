@@ -51,7 +51,7 @@ func runConfiguration(
 		return fmt.Errorf("error executing provision script: %w", err)
 	}
 
-	err = sandboxtools.RunCommand(
+	err = sandboxtools.RunCommandWithLogger(
 		configCtx,
 		tracer,
 		proxy,
