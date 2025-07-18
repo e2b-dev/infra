@@ -8,7 +8,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -16,9 +15,7 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 	ctx := c.Request.Context()
 
 	// Check if the user has access to the template
-	templateDB, err := a.db.Client.Env.Query().Where(
-		env.ID(templateID),
-	).Only(ctx)
+	templateDB, err := a.sqlcDB.GetTemplateByID(ctx, templateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))
 		telemetry.ReportCriticalError(ctx, "error when getting env", err, telemetry.WithTemplateID(templateID))
