@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -124,6 +125,22 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		sbxlogger.E(sbx).Info("Sandbox killed")
 	}()
 
+	// If there is no snapshot flag in the request, this should mean the sandbox is being created for the first time.
+	label := "resume"
+	if !req.Sandbox.Snapshot {
+		label = "create"
+	}
+
+	go s.clickhouseClient.InsertSandboxEvent(ctx, clickhouse.SandboxEvent{
+		Timestamp:          time.Now().UTC(),
+		SandboxID:          sbx.Config.SandboxId,
+		SandboxTemplateID:  sbx.Config.TemplateId,
+		SandboxTeamID:      sbx.Config.TeamId,
+		SandboxExecutionID: sbx.Config.ExecutionId,
+		EventCategory:      "lifecycle",
+		EventLabel:         label,
+	})
+
 	return &orchestrator.SandboxCreateResponse{
 		ClientId: s.info.ClientId,
 	}, nil
@@ -214,6 +231,16 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		sbxlogger.I(sbx).Error("error stopping sandbox", logger.WithSandboxID(in.SandboxId), zap.Error(err))
 	}
 
+	go s.clickhouseClient.InsertSandboxEvent(ctx, clickhouse.SandboxEvent{
+		Timestamp:          time.Now().UTC(),
+		SandboxID:          sbx.Config.SandboxId,
+		SandboxTemplateID:  sbx.Config.TemplateId,
+		SandboxTeamID:      sbx.Config.TeamId,
+		SandboxExecutionID: sbx.Config.ExecutionId,
+		EventCategory:      "lifecycle",
+		EventLabel:         "kill",
+	})
+
 	return &emptypb.Empty{}, nil
 }
 
@@ -296,6 +323,16 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 			return
 		}
 	}()
+
+	go s.clickhouseClient.InsertSandboxEvent(ctx, clickhouse.SandboxEvent{
+		Timestamp:          time.Now().UTC(),
+		SandboxID:          sbx.Config.SandboxId,
+		SandboxTemplateID:  sbx.Config.TemplateId,
+		SandboxTeamID:      sbx.Config.TeamId,
+		SandboxExecutionID: sbx.Config.ExecutionId,
+		EventCategory:      "lifecycle",
+		EventLabel:         "pause",
+	})
 
 	return &emptypb.Empty{}, nil
 }

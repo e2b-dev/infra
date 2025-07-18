@@ -18,6 +18,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
+	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -246,12 +247,22 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
 
+	clickhouseConnectionString := os.Getenv("CLICKHOUSE_CONNECTION_STRING")
+	if clickhouseConnectionString == "" {
+		zap.L().Fatal("CLICKHOUSE_CONNECTION_STRING is not set")
+	}
+
+	clickhouseClient, err := clickhouse.New(clickhouseConnectionString)
+	if err != nil {
+		zap.L().Fatal("failed to create clickhouse client", zap.Error(err))
+	}
+
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, serviceInfo.SourceCommit, serviceInfo.ClientId, sandboxMetricExportPeriod, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
 
-	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, templateCache, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags)
+	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, templateCache, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags, clickhouseClient)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
