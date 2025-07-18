@@ -26,7 +26,7 @@ type Client struct {
 	conn driver.Conn
 }
 
-func New(connectionString string) (Clickhouse, error) {
+func NewDriver(connectionString string) (driver.Conn, error) {
 	options, err := clickhouse.ParseDSN(connectionString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse ClickHouse DSN: %w", err)
@@ -39,6 +39,15 @@ func New(connectionString string) (Clickhouse, error) {
 	conn, err := clickhouse.Open(options)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open ClickHouse connection: %w", err)
+	}
+
+	return conn, nil
+}
+
+func New(connectionString string) (Clickhouse, error) {
+	conn, err := NewDriver(connectionString)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ClickHouse driver: %w", err)
 	}
 
 	return &Client{conn: conn}, nil
