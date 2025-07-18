@@ -21,6 +21,10 @@ import (
 
 const fileCopyTimeout = 10 * time.Minute
 
+var client = http.Client{
+	Timeout: fileCopyTimeout,
+}
+
 func CopyFile(
 	ctx context.Context,
 	tracer trace.Tracer,
@@ -92,9 +96,6 @@ func CopyFile(
 	req.Host = req.Header.Get("Host")
 
 	// Send request
-	client := http.Client{
-		Timeout: fileCopyTimeout,
-	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)

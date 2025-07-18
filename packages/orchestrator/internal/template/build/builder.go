@@ -285,14 +285,9 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			zap.String("result", ext4Check),
 		)
 
-		rootfsSize, err := b.enlargeDiskAfterProvisioning(ctx, template, rootfsPath)
+		err = b.enlargeDiskAfterProvisioning(ctx, template, rootfs)
 		if err != nil {
 			return nil, fmt.Errorf("error enlarging disk after provisioning: %w", err)
-		}
-
-		err = rootfs.UpdateSize(rootfsSize)
-		if err != nil {
-			return nil, fmt.Errorf("error updating rootfs size: %w", err)
 		}
 
 		// Create sandbox for building template

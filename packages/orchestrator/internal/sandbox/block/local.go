@@ -41,6 +41,10 @@ func NewLocal(path string, blockSize int64, buildID uuid.UUID) (*Local, error) {
 	}, nil
 }
 
+func (d *Local) Path() string {
+	return d.path
+}
+
 func (d *Local) ReadAt(p []byte, off int64) (int, error) {
 	slice, err := d.Slice(off, int64(len(p)))
 	if err != nil {
@@ -92,18 +96,13 @@ func (d *Local) Header() *header.Header {
 	return d.header
 }
 
-func (d *Local) UpdateSize(size int64) error {
+func (d *Local) UpdateHeaderSize() error {
 	info, err := d.f.Stat()
 	if err != nil {
 		return fmt.Errorf("failed to get file info: %w", err)
 	}
 
-	// Safety check to ensure the size matches the file size
-	if size != info.Size() {
-		return fmt.Errorf("size mismatch: expected %d, got %d", size, info.Size())
-	}
-
-	d.header.Metadata.Size = uint64(size)
+	d.header.Metadata.Size = uint64(info.Size())
 
 	return nil
 }

@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
@@ -126,12 +127,14 @@ func (b *Builder) provisionSandbox(
 func (b *Builder) enlargeDiskAfterProvisioning(
 	ctx context.Context,
 	template config.TemplateConfig,
-	rootfsPath string,
-) (int64, error) {
+	rootfs *block.Local,
+) error {
+	rootfsPath := rootfs.Path()
+
 	// Resize rootfs to accommodate for the provisioning script size change
 	rootfsFreeSpace, err := ext4.GetFreeSpace(ctx, b.tracer, rootfsPath, template.RootfsBlockSize())
 	if err != nil {
-		return 0, fmt.Errorf("error getting free space: %w", err)
+		return fmt.Errorf("error getting free space: %w", err)
 	}
 	sizeDiff := template.DiskSizeMB<<constants.ToMBShift - rootfsFreeSpace
 	zap.L().Debug("adding provision size diff to rootfs",
@@ -141,12 +144,7 @@ func (b *Builder) enlargeDiskAfterProvisioning(
 	)
 	if sizeDiff <= 0 {
 		zap.L().Debug("no need to enlarge rootfs, skipping")
-
-		stat, err := os.Stat(rootfsPath)
-		if err != nil {
-			return 0, fmt.Errorf("error stating rootfs file: %w", err)
-		}
-		return stat.Size(), nil
+		return nil
 	}
 	rootfsFinalSize, err := ext4.Enlarge(ctx, b.tracer, rootfsPath, sizeDiff)
 	if err != nil {
@@ -155,7 +153,7 @@ func (b *Builder) enlargeDiskAfterProvisioning(
 		output, dErr := cmd.Output()
 		zap.L().Error(string(output), zap.Error(dErr))
 
-		return 0, fmt.Errorf("error enlarging rootfs: %w", err)
+		return fmt.Errorf("error enlarging rootfs: %w", err)
 	}
 
 	// Check the rootfs filesystem corruption
@@ -173,12 +171,28 @@ func (b *Builder) enlargeDiskAfterProvisioning(
 			zap.Error(err),
 		)
 		if err != nil {
-			return 0, fmt.Errorf("error checking final enlarge filesystem integrity: %w", err)
+			return fmt.Errorf("error checking final enlarge filesystem integrity: %w", err)
 		}
 	} else {
 		zap.L().Debug("final enlarge filesystem ext4 integrity",
 			zap.String("result", ext4Check),
 		)
 	}
-	return rootfsFinalSize, nil
+
+	stat, err := os.Stat(rootfsPath)
+	if err != nil {
+		return fmt.Errorf("error getting rootfs file info: %w", err)
+	}
+
+	// Safety check to ensure the size matches the file size
+	if rootfsFinalSize != stat.Size() {
+		return fmt.Errorf("size mismatch: expected %d, got %d", rootfsFinalSize, stat.Size())
+	}
+
+	err = rootfs.UpdateHeaderSize()
+	if err != nil {
+		return fmt.Errorf("error updating rootfs header size: %w", err)
+	}
+
+	return nil
 }
