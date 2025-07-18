@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"sync"
 
 	"go.opentelemetry.io/otel/metric"
@@ -72,7 +73,7 @@ func New(
 
 	srv.proxy = proxy
 
-	persistence, err := storage.GetTemplateStorageProvider(ctx)
+	persistence, err := storage.GetTemplateStorageProvider(ctx, block.ChunkSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create storage provider: %w", err)
 	}
