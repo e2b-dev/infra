@@ -31,8 +31,8 @@ type TemplateServiceClient interface {
 	TemplateBuildDelete(ctx context.Context, in *TemplateBuildDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// todo (2025-05): this is deprecated, please use InfoService that is used for both orchestrator and template manager
 	HealthStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*HealthStatusResponse, error)
-	// TemplateLayerFilesUpload requests an upload URL for a file to be cached for the template build.
-	TemplateLayerFilesUpload(ctx context.Context, in *TemplateLayerFilesUploadRequest, opts ...grpc.CallOption) (*TemplateLayerFilesUploadResponse, error)
+	// InitLayerFileUpload requests an upload URL for a tar file containing layer files to be cached for the template build.
+	InitLayerFileUpload(ctx context.Context, in *InitLayerFileUploadRequest, opts ...grpc.CallOption) (*InitLayerFileUploadResponse, error)
 }
 
 type templateServiceClient struct {
@@ -79,9 +79,9 @@ func (c *templateServiceClient) HealthStatus(ctx context.Context, in *emptypb.Em
 	return out, nil
 }
 
-func (c *templateServiceClient) TemplateLayerFilesUpload(ctx context.Context, in *TemplateLayerFilesUploadRequest, opts ...grpc.CallOption) (*TemplateLayerFilesUploadResponse, error) {
-	out := new(TemplateLayerFilesUploadResponse)
-	err := c.cc.Invoke(ctx, "/TemplateService/TemplateLayerFilesUpload", in, out, opts...)
+func (c *templateServiceClient) InitLayerFileUpload(ctx context.Context, in *InitLayerFileUploadRequest, opts ...grpc.CallOption) (*InitLayerFileUploadResponse, error) {
+	out := new(InitLayerFileUploadResponse)
+	err := c.cc.Invoke(ctx, "/TemplateService/InitLayerFileUpload", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -100,8 +100,8 @@ type TemplateServiceServer interface {
 	TemplateBuildDelete(context.Context, *TemplateBuildDeleteRequest) (*emptypb.Empty, error)
 	// todo (2025-05): this is deprecated, please use InfoService that is used for both orchestrator and template manager
 	HealthStatus(context.Context, *emptypb.Empty) (*HealthStatusResponse, error)
-	// TemplateLayerFilesUpload requests an upload URL for a file to be cached for the template build.
-	TemplateLayerFilesUpload(context.Context, *TemplateLayerFilesUploadRequest) (*TemplateLayerFilesUploadResponse, error)
+	// InitLayerFileUpload requests an upload URL for a tar file containing layer files to be cached for the template build.
+	InitLayerFileUpload(context.Context, *InitLayerFileUploadRequest) (*InitLayerFileUploadResponse, error)
 	mustEmbedUnimplementedTemplateServiceServer()
 }
 
@@ -121,8 +121,8 @@ func (UnimplementedTemplateServiceServer) TemplateBuildDelete(context.Context, *
 func (UnimplementedTemplateServiceServer) HealthStatus(context.Context, *emptypb.Empty) (*HealthStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method HealthStatus not implemented")
 }
-func (UnimplementedTemplateServiceServer) TemplateLayerFilesUpload(context.Context, *TemplateLayerFilesUploadRequest) (*TemplateLayerFilesUploadResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method TemplateLayerFilesUpload not implemented")
+func (UnimplementedTemplateServiceServer) InitLayerFileUpload(context.Context, *InitLayerFileUploadRequest) (*InitLayerFileUploadResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method InitLayerFileUpload not implemented")
 }
 func (UnimplementedTemplateServiceServer) mustEmbedUnimplementedTemplateServiceServer() {}
 
@@ -209,20 +209,20 @@ func _TemplateService_HealthStatus_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
-func _TemplateService_TemplateLayerFilesUpload_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(TemplateLayerFilesUploadRequest)
+func _TemplateService_InitLayerFileUpload_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InitLayerFileUploadRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(TemplateServiceServer).TemplateLayerFilesUpload(ctx, in)
+		return srv.(TemplateServiceServer).InitLayerFileUpload(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/TemplateService/TemplateLayerFilesUpload",
+		FullMethod: "/TemplateService/InitLayerFileUpload",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(TemplateServiceServer).TemplateLayerFilesUpload(ctx, req.(*TemplateLayerFilesUploadRequest))
+		return srv.(TemplateServiceServer).InitLayerFileUpload(ctx, req.(*InitLayerFileUploadRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -251,8 +251,8 @@ var TemplateService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _TemplateService_HealthStatus_Handler,
 		},
 		{
-			MethodName: "TemplateLayerFilesUpload",
-			Handler:    _TemplateService_TemplateLayerFilesUpload_Handler,
+			MethodName: "InitLayerFileUpload",
+			Handler:    _TemplateService_InitLayerFileUpload_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

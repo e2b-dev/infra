@@ -11,7 +11,7 @@ import (
 
 const signedUrlExpiration = time.Minute * 30
 
-func (s *ServerStore) TemplateLayerFilesUpload(ctx context.Context, in *templatemanager.TemplateLayerFilesUploadRequest) (*templatemanager.TemplateLayerFilesUploadResponse, error) {
+func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanager.InitLayerFileUploadRequest) (*templatemanager.InitLayerFileUploadResponse, error) {
 	_, childSpan := s.tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
@@ -28,12 +28,12 @@ func (s *ServerStore) TemplateLayerFilesUpload(ctx context.Context, in *template
 
 	_, err = obj.Size()
 	if err != nil {
-		return &templatemanager.TemplateLayerFilesUploadResponse{
+		return &templatemanager.InitLayerFileUploadResponse{
 			Present: false,
 			Url:     &signedUrl,
 		}, nil
 	} else {
-		return &templatemanager.TemplateLayerFilesUploadResponse{
+		return &templatemanager.InitLayerFileUploadResponse{
 			Present: true,
 			Url:     &signedUrl,
 		}, nil

@@ -5,12 +5,12 @@ import "google/protobuf/empty.proto";
 option go_package = "https://github.com/e2b-dev/infra/template-manager";
 
 
-message TemplateLayerFilesUploadRequest {
+message InitLayerFileUploadRequest {
   string templateID = 1;
   string hash = 2;
 }
 
-message TemplateLayerFilesUploadResponse{
+message InitLayerFileUploadResponse{
   bool present = 1;
   optional string url = 2;
 }
@@ -101,6 +101,6 @@ service TemplateService {
   // todo (2025-05): this is deprecated, please use InfoService that is used for both orchestrator and template manager
   rpc HealthStatus (google.protobuf.Empty) returns (HealthStatusResponse);
 
-  // TemplateLayerFilesUpload requests an upload URL for a file to be cached for the template build.
-  rpc TemplateLayerFilesUpload (TemplateLayerFilesUploadRequest) returns (TemplateLayerFilesUploadResponse);
+  // InitLayerFileUpload requests an upload URL for a tar file containing layer files to be cached for the template build.
+  rpc InitLayerFileUpload (InitLayerFileUploadRequest) returns (InitLayerFileUploadResponse);
 }

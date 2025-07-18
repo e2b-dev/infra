@@ -9,53 +9,41 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/google/uuid"
-	"go.uber.org/zap"
-
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/envd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/utils"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const hashingVersion = "v1"
 
-func templateMetaFromHash(ctx context.Context, s storage.StorageProvider, m storage.TemplateFiles, finalTemplateID string, hash string) storage.TemplateFiles {
-	newTemplate := storage.TemplateFiles{
-		TemplateID:         id.Generate(),
-		BuildID:            uuid.New().String(),
-		KernelVersion:      m.KernelVersion,
-		FirecrackerVersion: m.FirecrackerVersion,
-	}
-
+func templateMetaFromHash(ctx context.Context, s storage.StorageProvider, finalTemplateID string, hash string) (storage.TemplateFiles, error) {
 	obj, err := s.OpenObject(ctx, hashToPath(finalTemplateID, hash))
 	if err != nil {
-		return newTemplate
+		return storage.TemplateFiles{}, fmt.Errorf("error opening object for template metadata: %w", err)
 	}
 
 	var buf bytes.Buffer
 	_, err = obj.WriteTo(&buf)
 	if err != nil {
-		return newTemplate
+		return storage.TemplateFiles{}, fmt.Errorf("error reading template metadata from object: %w", err)
 	}
 
 	var templateMetadata storage.TemplateFiles
 	err = json.Unmarshal(buf.Bytes(), &templateMetadata)
 	if err != nil {
-		zap.L().Error("error unmarshalling template metadata from hash", zap.Error(err))
-		return newTemplate
+		return storage.TemplateFiles{}, fmt.Errorf("error unmarshaling template metadata: %w", err)
 	}
 
 	if templateMetadata.TemplateID == "" ||
 		templateMetadata.BuildID == "" ||
 		templateMetadata.KernelVersion == "" ||
 		templateMetadata.FirecrackerVersion == "" {
-		return newTemplate
+		return storage.TemplateFiles{}, fmt.Errorf("template metadata is missing required fields: %v", templateMetadata)
 	}
 
-	return templateMetadata
+	return templateMetadata, nil
 }
 
 func saveTemplateMeta(ctx context.Context, s storage.StorageProvider, finalTemplateID string, hash string, template storage.TemplateFiles) error {
@@ -64,12 +52,12 @@ func saveTemplateMeta(ctx context.Context, s storage.StorageProvider, finalTempl
 		return fmt.Errorf("error creating object for saving UUID: %w", err)
 	}
 
-	marshalled, err := json.Marshal(template)
+	marshaled, err := json.Marshal(template)
 	if err != nil {
 		return fmt.Errorf("error marshalling template metadata: %w", err)
 	}
 
-	buf := bytes.NewBuffer(marshalled)
+	buf := bytes.NewBuffer(marshaled)
 	_, err = obj.ReadFrom(buf)
 	if err != nil {
 		return fmt.Errorf("error writing UUID to object: %w", err)

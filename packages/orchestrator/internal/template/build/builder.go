@@ -370,7 +370,12 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		}
 		if !force {
 			// Fetch stable uuid from the step hash
-			stepMetadata = templateMetaFromHash(ctx, b.buildStorage, sourceMetadata, finalMetadata.TemplateID, lastHash)
+			m, err := templateMetaFromHash(ctx, b.buildStorage, finalMetadata.TemplateID, lastHash)
+			if err != nil {
+				b.logger.Info("layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", lastHash), zap.String("step", step.Type))
+			} else {
+				stepMetadata = m
+			}
 		}
 
 		// Apply changes like env vars or workdir locally only, no need to run in sandbox
@@ -559,7 +564,19 @@ func (b *Builder) setupBase(
 	template config.TemplateConfig,
 	hash string,
 ) (bool, storage.TemplateFiles, error) {
-	baseMetadata := templateMetaFromHash(ctx, b.buildStorage, finalMetadata, finalMetadata.TemplateID, hash)
+	baseMetadata := storage.TemplateFiles{
+		TemplateID:         id.Generate(),
+		BuildID:            uuid.New().String(),
+		KernelVersion:      finalMetadata.KernelVersion,
+		FirecrackerVersion: finalMetadata.FirecrackerVersion,
+	}
+	bm, err := templateMetaFromHash(ctx, b.buildStorage, finalMetadata.TemplateID, hash)
+	if err != nil {
+		b.logger.Info("base layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
+	} else {
+		baseMetadata = bm
+	}
+
 	// Invalidate base cache
 	if template.Force != nil && *template.Force {
 		baseMetadata = storage.TemplateFiles{

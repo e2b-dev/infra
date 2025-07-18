@@ -8,9 +8,9 @@ import (
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
-func (tm *TemplateManager) UploadLayerFiles(ctx context.Context, templateId string, hash string) (*template_manager.TemplateLayerFilesUploadResponse, error) {
-	resp, err := tm.grpc.Template.TemplateLayerFilesUpload(
-		ctx, &template_manager.TemplateLayerFilesUploadRequest{
+func (tm *TemplateManager) InitLayerFileUpload(ctx context.Context, templateId string, hash string) (*template_manager.InitLayerFileUploadResponse, error) {
+	resp, err := tm.grpc.Template.InitLayerFileUpload(
+		ctx, &template_manager.InitLayerFileUploadRequest{
 			TemplateID: templateId,
 			Hash:       hash,
 		},
