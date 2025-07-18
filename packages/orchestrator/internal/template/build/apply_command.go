@@ -95,10 +95,7 @@ func (b *Builder) applyCommand(
 	args := step.Args
 
 	switch cmdType {
-	case "ADD":
-		// args: [localPath containerPath]
-		fallthrough
-	case "COPY":
+	case "ADD", "COPY":
 		// args: [localPath containerPath]
 		if len(args) < 2 {
 			return fmt.Errorf("%s requires a local path and a container path argument", cmdType)
@@ -152,22 +149,7 @@ func (b *Builder) applyCommand(
 			nil,
 			prefix,
 			sbx.Metadata.Config.SandboxId,
-			fmt.Sprintf(`mkdir -p "%s"`, sbxUnpackPath),
-			cmdMetadata,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to create directory in sandbox: %w", err)
-		}
-
-		err = sandboxtools.RunCommand(
-			ctx,
-			b.tracer,
-			b.proxy,
-			b.buildLogger,
-			nil,
-			prefix,
-			sbx.Metadata.Config.SandboxId,
-			fmt.Sprintf(`tar -xzvf "%s" -C "%s"`, sbxTargetPath, sbxUnpackPath),
+			fmt.Sprintf(`mkdir -p "%s" && tar -xzvf "%s" -C "%s"`, sbxUnpackPath, sbxTargetPath, sbxUnpackPath),
 			cmdMetadata,
 		)
 		if err != nil {

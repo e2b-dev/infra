@@ -165,7 +165,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		EnvVars: make(map[string]string),
 	}
 
-	// This is a compability for old template builds
+	// This is a compatibility for old template builds
 	if isOldBuild {
 		cwd := "/home/user"
 		cmdMeta.WorkDir = &cwd
@@ -176,7 +176,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		return nil, fmt.Errorf("error getting base hash: %w", err)
 	}
 
-	lastCached, baseMetadata, err := b.setupBase(ctx, finalMetadata, template, envdVersion, lastHash)
+	lastCached, baseMetadata, err := b.setupBase(ctx, finalMetadata, template, lastHash)
 	if err != nil {
 		return nil, fmt.Errorf("error setting up build: %w", err)
 	}
@@ -370,7 +370,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		}
 		if !force {
 			// Fetch stable uuid from the step hash
-			stepMetadata = getTemplateFromHash(ctx, b.buildStorage, sourceMetadata, finalMetadata.TemplateID, lastHash)
+			stepMetadata = templateMetaFromHash(ctx, b.buildStorage, sourceMetadata, finalMetadata.TemplateID, lastHash)
 		}
 
 		// Apply changes like env vars or workdir locally only, no need to run in sandbox
@@ -381,7 +381,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		}
 
 		// Check if the layer is cached
-		found, err := isCached(ctx, b.templateStorage, stepMetadata, template)
+		found, err := isCached(ctx, b.templateStorage, stepMetadata)
 		if err != nil {
 			return nil, fmt.Errorf("error checking if layer is cached: %w", err)
 		}
@@ -406,7 +406,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 				&orchestrator.SandboxConfig{
 					BaseTemplateId: baseMetadata.TemplateID,
 
-					// TODO: Here might be invalid data for the template resume, but they might now be used
+					// TODO: Here might be invalid data for the template resume, but they might not be used
 					Vcpu:        template.VCpuCount,
 					RamMb:       template.MemoryMB,
 					HugePages:   template.HugePages,
@@ -474,7 +474,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		finalMetadata,
 		false,
 		globalconfig.AllowSandboxInternet,
-		b.runPostprocessing(ctx, postProcessor, finalMetadata, template, cmdMeta),
+		b.postProcessingFn(postProcessor, finalMetadata, template, cmdMeta),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error running start and ready commands in sandbox: %w", err)
@@ -489,7 +489,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 	// Get the base rootfs size from the template files
 	// This is the size of the rootfs after provisioning and before building the layers
 	// (as they don't change the rootfs size)
-	rootfsSize, err := getRootfsSize(ctx, b.templateStorage, baseMetadata, template)
+	rootfsSize, err := getRootfsSize(ctx, b.templateStorage, baseMetadata)
 	if err != nil {
 		return nil, fmt.Errorf("error getting rootfs size: %w", err)
 	}
@@ -504,7 +504,6 @@ func getRootfsSize(
 	ctx context.Context,
 	s storage.StorageProvider,
 	metadata storage.TemplateFiles,
-	config config.TemplateConfig,
 ) (uint64, error) {
 	obj, err := s.OpenObject(ctx, metadata.StorageRootfsHeaderPath())
 	if err != nil {
@@ -523,9 +522,8 @@ func isCached(
 	ctx context.Context,
 	s storage.StorageProvider,
 	metadata storage.TemplateFiles,
-	config config.TemplateConfig,
 ) (bool, error) {
-	_, err := getRootfsSize(ctx, s, metadata, config)
+	_, err := getRootfsSize(ctx, s, metadata)
 	if err != nil {
 		// If the rootfs header does not exist, the layer is not cached
 		return false, nil
@@ -559,10 +557,9 @@ func (b *Builder) setupBase(
 	ctx context.Context,
 	finalMetadata storage.TemplateFiles,
 	template config.TemplateConfig,
-	envdVersion string,
 	hash string,
 ) (bool, storage.TemplateFiles, error) {
-	baseMetadata := getTemplateFromHash(ctx, b.buildStorage, finalMetadata, finalMetadata.TemplateID, hash)
+	baseMetadata := templateMetaFromHash(ctx, b.buildStorage, finalMetadata, finalMetadata.TemplateID, hash)
 	// Invalidate base cache
 	if template.Force != nil && *template.Force {
 		baseMetadata = storage.TemplateFiles{
@@ -573,7 +570,7 @@ func (b *Builder) setupBase(
 		}
 	}
 
-	baseCached, err := isCached(ctx, b.templateStorage, baseMetadata, template)
+	baseCached, err := isCached(ctx, b.templateStorage, baseMetadata)
 	if err != nil {
 		return false, storage.TemplateFiles{}, fmt.Errorf("error checking if base layer is cached: %w", err)
 	}
@@ -581,8 +578,7 @@ func (b *Builder) setupBase(
 	return baseCached, baseMetadata, nil
 }
 
-func (b *Builder) runPostprocessing(
-	ctx context.Context,
+func (b *Builder) postProcessingFn(
 	postProcessor *writer.PostProcessor,
 	finalMetadata storage.TemplateFiles,
 	template config.TemplateConfig,

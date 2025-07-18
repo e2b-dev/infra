@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -44,16 +43,26 @@ func CopyFile(
 	pr, pw := io.Pipe()
 	writer := multipart.NewWriter(pw)
 
+	errChan := make(chan error, 1)
+
 	go func() {
-		defer pw.Close()
+		defer writer.Close()
+
 		part, err := writer.CreateFormFile("file", filepath.Base(sourcePath))
 		if err != nil {
-			log.Fatalf("Failed to create form file: %v", err)
+			pw.CloseWithError(fmt.Errorf("failed to create form file: %w", err))
+			errChan <- err
+			return
 		}
-		defer writer.Close()
+
 		if _, err := io.Copy(part, file); err != nil {
-			log.Fatalf("Failed to copy file: %v", err)
+			pw.CloseWithError(fmt.Errorf("failed to copy file: %w", err))
+			errChan <- err
+			return
 		}
+
+		pw.Close()
+		errChan <- nil
 	}()
 
 	// Prepare query parameters
@@ -100,6 +109,10 @@ func CopyFile(
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to upload file (%d): %s", resp.StatusCode, string(body))
+	}
+
+	if goroutineErr := <-errChan; goroutineErr != nil {
+		return fmt.Errorf("file upload failed: %w", goroutineErr)
 	}
 
 	return nil

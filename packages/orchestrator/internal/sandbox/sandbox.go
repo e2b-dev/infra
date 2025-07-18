@@ -172,7 +172,7 @@ func CreateSandbox(
 		ips.slot,
 		sandboxFiles,
 		rootfsPath,
-		// The BaseTemplateID is always the same as config value for new sandboxes
+		// The BaseTemplateID is always the same as config.TemplateID when creating a new sandbox.
 		config.TemplateId,
 		// The rootfs build ID is from the header, because it needs to be the same from
 		// the first FS creation.

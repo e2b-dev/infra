@@ -36,7 +36,7 @@ func (b *Builder) buildLayer(
 	exportMeta storage.TemplateFiles,
 	resumeSandbox bool,
 	allowInternet bool,
-	fun func(ctx context.Context, sbx *sandbox.Sandbox) error,
+	fn func(ctx context.Context, sbx *sandbox.Sandbox) error,
 ) error {
 	ctx, childSpan := b.tracer.Start(ctx, "run-in-sandbox")
 	defer childSpan.End()
@@ -168,7 +168,7 @@ func (b *Builder) buildLayer(
 		b.proxy.RemoveFromPool(sbx.Metadata.Config.ExecutionId)
 	}()
 
-	err = fun(ctx, sbx)
+	err = fn(ctx, sbx)
 	if err != nil {
 		return fmt.Errorf("error running action in sandbox: %w", err)
 	}
@@ -252,7 +252,7 @@ func pauseAndUpload(
 			return fmt.Errorf("error uploading snapshot: %w", err)
 		}
 
-		err = saveTemplateToHash(ctx, buildStorage, finalTemplateID, hash, cacheFiles.TemplateFiles)
+		err = saveTemplateMeta(ctx, buildStorage, finalTemplateID, hash, cacheFiles.TemplateFiles)
 		if err != nil {
 			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
 		}

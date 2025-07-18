@@ -22,7 +22,7 @@ import (
 
 const hashingVersion = "v1"
 
-func getTemplateFromHash(ctx context.Context, s storage.StorageProvider, m storage.TemplateFiles, finalTemplateID string, hash string) storage.TemplateFiles {
+func templateMetaFromHash(ctx context.Context, s storage.StorageProvider, m storage.TemplateFiles, finalTemplateID string, hash string) storage.TemplateFiles {
 	newTemplate := storage.TemplateFiles{
 		TemplateID:         id.Generate(),
 		BuildID:            uuid.New().String(),
@@ -30,7 +30,7 @@ func getTemplateFromHash(ctx context.Context, s storage.StorageProvider, m stora
 		FirecrackerVersion: m.FirecrackerVersion,
 	}
 
-	obj, err := s.OpenObject(ctx, hashToHashPath(finalTemplateID, hash))
+	obj, err := s.OpenObject(ctx, hashToPath(finalTemplateID, hash))
 	if err != nil {
 		return newTemplate
 	}
@@ -58,8 +58,8 @@ func getTemplateFromHash(ctx context.Context, s storage.StorageProvider, m stora
 	return templateMetadata
 }
 
-func saveTemplateToHash(ctx context.Context, s storage.StorageProvider, finalTemplateID string, hash string, template storage.TemplateFiles) error {
-	obj, err := s.OpenObject(ctx, hashToHashPath(finalTemplateID, hash))
+func saveTemplateMeta(ctx context.Context, s storage.StorageProvider, finalTemplateID string, hash string, template storage.TemplateFiles) error {
+	obj, err := s.OpenObject(ctx, hashToPath(finalTemplateID, hash))
 	if err != nil {
 		return fmt.Errorf("error creating object for saving UUID: %w", err)
 	}
@@ -78,9 +78,9 @@ func saveTemplateToHash(ctx context.Context, s storage.StorageProvider, finalTem
 	return nil
 }
 
-func hashKeys(previousHash string, keys ...string) string {
+func hashKeys(baseKey string, keys ...string) string {
 	sha := sha256.New()
-	sha.Write([]byte(previousHash))
+	sha.Write([]byte(baseKey))
 	for _, key := range keys {
 		sha.Write([]byte(key))
 	}

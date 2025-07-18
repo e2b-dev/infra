@@ -107,7 +107,7 @@ func (s *ServerStore) reportBuildFailed(ctx context.Context, buildID string, err
 	telemetry.ReportCriticalError(ctx, "error while building template", err)
 	cacheErr := s.buildCache.SetFailed(buildID, err.Error())
 	if cacheErr != nil {
-		s.logger.Error("Error while setting build state to failed", zap.Error(err))
+		s.logger.Error("Error while setting build state to failed", zap.Error(cacheErr))
 	}
 
 	telemetry.ReportEvent(ctx, "Environment built failed")

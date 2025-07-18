@@ -12,6 +12,6 @@ func GetLayerFilesCachePath(templateID string, hash string) string {
 	return buildStoragePath(templateID, "files", hash+".tar")
 }
 
-func hashToHashPath(templateID, hash string) string {
+func hashToPath(templateID, hash string) string {
 	return buildStoragePath(templateID, "index", hash)
 }

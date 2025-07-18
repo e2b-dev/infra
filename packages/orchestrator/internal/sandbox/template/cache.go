@@ -35,6 +35,9 @@ type Cache struct {
 	buildStore  *build.DiffStore
 }
 
+// NewCache initializes a template new cache.
+// It also deletes the old build cache directory content
+// as it may contain stale data that are not managed by anyone.
 func NewCache(ctx context.Context) (*Cache, error) {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, Template](templateExpiration),
@@ -49,7 +52,7 @@ func NewCache(ctx context.Context) (*Cache, error) {
 		}
 	})
 
-	// Delete the old build cache directory content as it may contain stale data that are not managed by anyone.
+	// Delete the old build cache directory content.
 	err := cleanDir(build.DefaultCachePath)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("failed to remove old build cache directory: %w", err)
