@@ -6,7 +6,7 @@ CREATE TABLE sandbox_events (
     sandbox_id UUID,
     sandbox_execution_id UUID,
     sandbox_template_id UUID,
-    sandbox_team_id String,
+    sandbox_team_id UUID,
     event_category String,
     event_label String,
     event_data JSON NULL
