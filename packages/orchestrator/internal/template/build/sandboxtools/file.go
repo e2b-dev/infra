@@ -48,25 +48,28 @@ func CopyFile(
 	writer := multipart.NewWriter(pw)
 
 	errChan := make(chan error, 1)
-
 	go func() {
-		defer writer.Close()
+		var err error
+		defer func() {
+			writer.Close()
+			if err != nil {
+				pw.CloseWithError(err)
+			} else {
+				pw.Close()
+			}
+			errChan <- err
+		}()
 
 		part, err := writer.CreateFormFile("file", filepath.Base(sourcePath))
 		if err != nil {
-			pw.CloseWithError(fmt.Errorf("failed to create form file: %w", err))
-			errChan <- err
+			err = fmt.Errorf("failed to create form file: %w", err)
 			return
 		}
 
-		if _, err := io.Copy(part, file); err != nil {
-			pw.CloseWithError(fmt.Errorf("failed to copy file: %w", err))
-			errChan <- err
+		if _, errCopy := io.Copy(part, file); errCopy != nil {
+			err = fmt.Errorf("failed to copy file: %w", errCopy)
 			return
 		}
-
-		pw.Close()
-		errChan <- nil
 	}()
 
 	// Prepare query parameters
@@ -102,6 +105,10 @@ func CopyFile(
 	}
 	defer resp.Body.Close()
 
+	if uploadErr := <-errChan; uploadErr != nil {
+		return fmt.Errorf("file upload failed: %w", uploadErr)
+	}
+
 	body, _ := io.ReadAll(resp.Body)
 	telemetry.ReportEvent(ctx, "file_upload",
 		attribute.Int("response.code", resp.StatusCode),
@@ -110,10 +117,6 @@ func CopyFile(
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to upload file (%d): %s", resp.StatusCode, string(body))
-	}
-
-	if goroutineErr := <-errChan; goroutineErr != nil {
-		return fmt.Errorf("file upload failed: %w", goroutineErr)
 	}
 
 	return nil
