@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -33,7 +34,10 @@ func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanag
 		// Only handle if the build is in the cache
 		zap.L().Info("Canceling running template build", logger.WithTemplateID(in.TemplateID), logger.WithBuildID(in.TemplateID))
 		telemetry.ReportEvent(ctx, "cancel in progress template build")
-		c.Cancel()
+		err = c.Cancel()
+		if err != nil {
+			return nil, fmt.Errorf("error while canceling build: %w", err)
+		}
 	}
 
 	err = template.Delete(childCtx, s.tracer, s.artifactsregistry, s.templateStorage, in.TemplateID, in.BuildID)

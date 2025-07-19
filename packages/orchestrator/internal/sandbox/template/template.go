@@ -10,8 +10,9 @@ import (
 )
 
 type Template interface {
-	Files() *storage.TemplateCacheFiles
+	Files() storage.TemplateCacheFiles
 	Memfile() (block.ReadonlyDevice, error)
+	ReplaceMemfile(block.ReadonlyDevice) error
 	Rootfs() (block.ReadonlyDevice, error)
 	Snapfile() (File, error)
 	Close() error

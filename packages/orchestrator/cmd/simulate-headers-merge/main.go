@@ -21,19 +21,13 @@ func main() {
 
 	flag.Parse()
 
-	baseTemplate := storage.NewTemplateFiles(
-		"",
-		*baseBuildId,
-		"",
-		"",
-	)
+	baseTemplate := storage.TemplateFiles{
+		BuildID: *baseBuildId,
+	}
 
-	diffTemplate := storage.NewTemplateFiles(
-		"",
-		*diffBuildId,
-		"",
-		"",
-	)
+	diffTemplate := storage.TemplateFiles{
+		BuildID: *diffBuildId,
+	}
 
 	var baseStoragePath string
 	var diffStoragePath string

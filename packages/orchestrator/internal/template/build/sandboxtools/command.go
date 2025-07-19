@@ -1,4 +1,4 @@
-package build
+package sandboxtools
 
 import (
 	"context"
@@ -8,72 +8,83 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
 )
 
-const httpTimeout = 600 * time.Second
+const commandTimeout = 600 * time.Second
 
-func (b *TemplateBuilder) runCommand(
+type CommandMetadata struct {
+	User    string
+	WorkDir *string
+	EnvVars map[string]string
+}
+
+func RunCommand(
 	ctx context.Context,
+	tracer trace.Tracer,
+	proxy *proxy.SandboxProxy,
+	logger *zap.Logger,
 	postProcessor *writer.PostProcessor,
 	id string,
 	sandboxID string,
 	command string,
-	runAsUser string,
-	cwd *string,
-	envVars map[string]string,
+	metadata CommandMetadata,
 ) error {
-	return b.runCommandWithConfirmation(
+	return RunCommandWithConfirmation(
 		ctx,
+		tracer,
+		proxy,
+		logger,
 		postProcessor,
 		id,
 		sandboxID,
 		command,
-		runAsUser,
-		cwd,
-		envVars,
+		metadata,
 		// No confirmation needed for this command
 		make(chan struct{}),
 	)
 }
 
-func (b *TemplateBuilder) runCommandWithConfirmation(
+func RunCommandWithConfirmation(
 	ctx context.Context,
+	tracer trace.Tracer,
+	proxy *proxy.SandboxProxy,
+	logger *zap.Logger,
 	postProcessor *writer.PostProcessor,
 	id string,
 	sandboxID string,
 	command string,
-	runAsUser string,
-	cwd *string,
-	envVars map[string]string,
+	metadata CommandMetadata,
 	confirmCh chan<- struct{},
 ) error {
 	runCmdReq := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
 			Cmd: "/bin/bash",
-			Cwd: cwd,
+			Cwd: metadata.WorkDir,
 			Args: []string{
 				"-l", "-c", command,
 			},
-			Envs: envVars,
+			Envs: metadata.EnvVars,
 		},
 	})
 
 	hc := http.Client{
-		Timeout: httpTimeout,
+		Timeout: commandTimeout,
 	}
-	proxyHost := fmt.Sprintf("http://localhost%s", b.proxy.GetAddr())
+	proxyHost := fmt.Sprintf("http://localhost%s", proxy.GetAddr())
 	processC := processconnect.NewProcessClient(&hc, proxyHost)
 	err := grpc.SetSandboxHeader(runCmdReq.Header(), proxyHost, sandboxID)
 	if err != nil {
 		return fmt.Errorf("failed to set sandbox header: %w", err)
 	}
-	grpc.SetUserHeader(runCmdReq.Header(), runAsUser)
+	grpc.SetUserHeader(runCmdReq.Header(), metadata.User)
 
 	processCtx, processCancel := context.WithCancel(ctx)
 	defer processCancel()
@@ -109,15 +120,17 @@ func (b *TemplateBuilder) runCommandWithConfirmation(
 			switch {
 			case e.GetData() != nil:
 				data := e.GetData()
-				b.logStream(postProcessor, id, "stdout", string(data.GetStdout()))
-				b.logStream(postProcessor, id, "stderr", string(data.GetStderr()))
+				logStream(logger, postProcessor, id, "stdout", string(data.GetStdout()))
+				logStream(logger, postProcessor, id, "stderr", string(data.GetStderr()))
 
 			case e.GetEnd() != nil:
 				end := e.GetEnd()
-				name := fmt.Sprintf("exit %d", end.GetExitCode())
-				b.logStream(postProcessor, id, name, end.GetStatus())
+				success := end.GetExitCode() == 0
 
-				if end.GetExitCode() != 0 {
+				if !success {
+					name := fmt.Sprintf("exit %d", end.GetExitCode())
+					logStream(logger, postProcessor, id, name, end.GetStatus())
+
 					return fmt.Errorf("command failed: %s", end.GetStatus())
 				}
 			}
@@ -125,7 +138,7 @@ func (b *TemplateBuilder) runCommandWithConfirmation(
 	}
 }
 
-func (b *TemplateBuilder) logStream(postProcessor *writer.PostProcessor, id string, name string, content string) {
+func logStream(logger *zap.Logger, postProcessor *writer.PostProcessor, id string, name string, content string) {
 	if content == "" {
 		return
 	}
@@ -135,7 +148,11 @@ func (b *TemplateBuilder) logStream(postProcessor *writer.PostProcessor, id stri
 			continue
 		}
 		msg := fmt.Sprintf("[%s] [%s]: %s", id, name, line)
-		postProcessor.WriteMsg(msg)
-		b.buildLogger.Info(msg)
+		if postProcessor != nil {
+			postProcessor.WriteMsg(msg)
+		}
+		if logger != nil {
+			logger.Info(msg)
+		}
 	}
 }

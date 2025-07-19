@@ -59,6 +59,7 @@ job "template-manager" {
         OTEL_TRACING_PRINT            = "${otel_tracing_print}"
         ENVIRONMENT                   = "${environment}"
         TEMPLATE_BUCKET_NAME          = "${template_bucket_name}"
+        BUILD_CACHE_BUCKET_NAME       = "${build_cache_bucket_name}"
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
         LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"
         ORCHESTRATOR_SERVICES         = "${orchestrator_services}"

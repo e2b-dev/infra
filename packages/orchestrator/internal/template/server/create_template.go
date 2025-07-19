@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -24,43 +24,47 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	_, childSpan := s.tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
-	config := templateRequest.Template
+	cfg := templateRequest.Template
 	childSpan.SetAttributes(
-		telemetry.WithTemplateID(config.TemplateID),
-		telemetry.WithBuildID(config.BuildID),
-		attribute.String("env.kernel.version", config.KernelVersion),
-		attribute.String("env.firecracker.version", config.FirecrackerVersion),
-		attribute.String("env.start_cmd", config.StartCommand),
-		attribute.Int64("env.memory_mb", int64(config.MemoryMB)),
-		attribute.Int64("env.vcpu_count", int64(config.VCpuCount)),
-		attribute.Bool("env.huge_pages", config.HugePages),
+		telemetry.WithTemplateID(cfg.TemplateID),
+		telemetry.WithBuildID(cfg.BuildID),
+		attribute.String("env.kernel.version", cfg.KernelVersion),
+		attribute.String("env.firecracker.version", cfg.FirecrackerVersion),
+		attribute.String("env.start_cmd", cfg.StartCommand),
+		attribute.Int64("env.memory_mb", int64(cfg.MemoryMB)),
+		attribute.Int64("env.vcpu_count", int64(cfg.VCpuCount)),
+		attribute.Bool("env.huge_pages", cfg.HugePages),
 	)
 
 	if s.healthStatus == templatemanager.HealthState_Draining {
-		s.logger.Error("Requesting template creation while server is draining is not possible", logger.WithTemplateID(config.TemplateID))
+		s.logger.Error("Requesting template creation while server is draining is not possible", logger.WithTemplateID(cfg.TemplateID))
 		return nil, fmt.Errorf("server is draining")
 	}
-	template := &build.TemplateConfig{
-		TemplateFiles: storage.NewTemplateFiles(
-			config.TemplateID,
-			config.BuildID,
-			config.KernelVersion,
-			config.FirecrackerVersion,
-		),
-		VCpuCount:  int64(config.VCpuCount),
-		MemoryMB:   int64(config.MemoryMB),
-		StartCmd:   config.StartCommand,
-		ReadyCmd:   config.ReadyCommand,
-		DiskSizeMB: int64(config.DiskSizeMB),
-		HugePages:  config.HugePages,
+
+	metadata := storage.TemplateFiles{
+		TemplateID:         cfg.TemplateID,
+		BuildID:            cfg.BuildID,
+		KernelVersion:      cfg.KernelVersion,
+		FirecrackerVersion: cfg.FirecrackerVersion,
+	}
+	template := config.TemplateConfig{
+		VCpuCount:  int64(cfg.VCpuCount),
+		MemoryMB:   int64(cfg.MemoryMB),
+		StartCmd:   cfg.StartCommand,
+		ReadyCmd:   cfg.ReadyCommand,
+		DiskSizeMB: int64(cfg.DiskSizeMB),
+		HugePages:  cfg.HugePages,
+		FromImage:  cfg.FromImage,
+		Force:      cfg.Force,
+		Steps:      cfg.Steps,
 	}
 
 	logger := s.buildLogger.
-		With(zap.Field{Type: zapcore.StringType, Key: "envID", String: config.TemplateID}).
-		With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: config.BuildID})
+		With(zap.Field{Type: zapcore.StringType, Key: "envID", String: metadata.TemplateID}).
+		With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: metadata.BuildID})
 
 	var logs cache.SafeBuffer
-	buildInfo, err := s.buildCache.Create(config.BuildID, &logs)
+	buildInfo, err := s.buildCache.Create(metadata.BuildID, &logs)
 	if err != nil {
 		return nil, fmt.Errorf("error while creating build cache: %w", err)
 	}
@@ -80,16 +84,16 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		defer externalWriter.Close()
 
 		logsWriter := io.MultiWriter(&logs, externalWriter)
-		res, err := s.builder.Build(buildContext, template, logsWriter)
+		res, err := s.builder.Build(buildContext, metadata, template, logsWriter)
 		if err != nil {
-			s.reportBuildFailed(buildContext, template, err)
+			s.reportBuildFailed(buildContext, metadata.BuildID, err)
 			return
 		}
 
-		buildMetadata := &templatemanager.TemplateBuildMetadata{RootfsSizeKey: int32(template.RootfsSizeMB()), EnvdVersionKey: res.EnvdVersion}
-		err = s.buildCache.SetSucceeded(template.BuildId, buildMetadata)
+		buildMetadata := &templatemanager.TemplateBuildMetadata{RootfsSizeKey: int32(res.RootfsSizeMB), EnvdVersionKey: res.EnvdVersion}
+		err = s.buildCache.SetSucceeded(metadata.BuildID, buildMetadata)
 		if err != nil {
-			s.reportBuildFailed(buildContext, template, fmt.Errorf("error while setting build state to succeeded: %w", err))
+			s.reportBuildFailed(buildContext, metadata.BuildID, fmt.Errorf("error while setting build state to succeeded: %w", err))
 			return
 		}
 
@@ -99,11 +103,11 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	return nil, nil
 }
 
-func (s *ServerStore) reportBuildFailed(ctx context.Context, config *build.TemplateConfig, err error) {
+func (s *ServerStore) reportBuildFailed(ctx context.Context, buildID string, err error) {
 	telemetry.ReportCriticalError(ctx, "error while building template", err)
-	cacheErr := s.buildCache.SetFailed(config.BuildId, err.Error())
+	cacheErr := s.buildCache.SetFailed(buildID, err.Error())
 	if cacheErr != nil {
-		s.logger.Error("Error while setting build state to failed", zap.Error(err))
+		s.logger.Error("Error while setting build state to failed", zap.Error(cacheErr))
 	}
 
 	telemetry.ReportEvent(ctx, "Environment built failed")

@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -103,6 +104,20 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	telemetry.ReportEvent(childCtx, "Got FC version info")
+
+	var sbxDomain *string
+	if team.Team.ClusterID != nil {
+		cluster, ok := o.clusters.GetClusterById(*team.Team.ClusterID)
+		if !ok {
+			return nil, &api.APIError{
+				Code:      http.StatusInternalServerError,
+				ClientMsg: "Error while looking for sandbox cluster information",
+				Err:       fmt.Errorf("cannot access cluster %s associated with team id %s that spawned sandbox %s", *team.Team.ClusterID, team.Team.ID, sandboxID),
+			}
+		}
+
+		sbxDomain = cluster.SandboxDomain
+	}
 
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
@@ -208,6 +223,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	// The build should be cached on the node now
 	node.InsertBuild(build.ID.String())
+	node.createSuccess.Add(1)
 
 	// The sandbox was created successfully, the resources will be counted in cache
 	defer node.sbxsInProgress.Remove(sandboxID)
@@ -216,12 +232,13 @@ func (o *Orchestrator) CreateSandbox(
 	telemetry.ReportEvent(childCtx, "Created sandbox")
 
 	sbx := api.Sandbox{
-		ClientID:        node.Info.ID,
+		ClientID:        consts.ClientID,
 		SandboxID:       sandboxID,
 		TemplateID:      *build.EnvID,
 		Alias:           &alias,
 		EnvdVersion:     *build.EnvdVersion,
 		EnvdAccessToken: envdAuthToken,
+		Domain:          sbxDomain,
 	}
 
 	// This is to compensate for the time it takes to start the instance

@@ -28,10 +28,11 @@ type AccessToken struct {
 }
 
 type Cluster struct {
-	ID          uuid.UUID
-	Endpoint    string
-	EndpointTls bool
-	Token       string
+	ID                 uuid.UUID
+	Endpoint           string
+	EndpointTls        bool
+	Token              string
+	SandboxProxyDomain *string
 }
 
 type Env struct {

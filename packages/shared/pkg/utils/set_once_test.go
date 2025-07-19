@@ -302,3 +302,55 @@ func TestSetOnceConcurrentReadWriteRace(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, 42, finalValue)
 }
+
+func TestNotSetResult(t *testing.T) {
+	setOnce := NewSetOnce[int]()
+
+	value, err := setOnce.Result()
+	assert.Equal(t, 0, value)
+	assert.ErrorIs(t, err, ErrNotSet{})
+}
+
+func TestResultAfterDone(t *testing.T) {
+	setOnce := NewSetOnce[int]()
+
+	wg := sync.WaitGroup{}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		setOnce.SetValue(1)
+	}()
+
+	<-setOnce.Done
+
+	wg.Wait()
+
+	value, err := setOnce.Result()
+	assert.Equal(t, 1, value)
+	assert.NoError(t, err)
+}
+
+func TestMultipleDone(t *testing.T) {
+	setOnce := NewSetOnce[int]()
+
+	wg := sync.WaitGroup{}
+
+	for range 10 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			<-setOnce.Done
+		}()
+	}
+
+	setOnce.SetValue(1)
+
+	wg.Wait()
+
+	value, err := setOnce.Result()
+	assert.Equal(t, 1, value)
+	assert.NoError(t, err)
+}

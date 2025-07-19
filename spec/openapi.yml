@@ -243,6 +243,7 @@ components:
           description: Alias of the template
         clientID:
           type: string
+          deprecated: true
           description: Identifier of the client
         envdVersion:
           type: string
@@ -250,6 +251,10 @@ components:
         envdAccessToken:
           type: string
           description: Access token used for envd communication
+        domain:
+          type: string
+          nullable: true
+          description: Base domain where the sandbox traffic is accessible
 
     SandboxDetail:
       required:
@@ -273,6 +278,7 @@ components:
           description: Identifier of the sandbox
         clientID:
           type: string
+          deprecated: true
           description: Identifier of the client
         startedAt:
           type: string
@@ -288,6 +294,10 @@ components:
         envdAccessToken:
           type: string
           description: Access token used for envd communication
+        domain:
+          type: string
+          nullable: true
+          description: Base domain where the sandbox traffic is accessible
         cpuCount:
           $ref: "#/components/schemas/CPUCount"
         memoryMB:
@@ -319,6 +329,7 @@ components:
           description: Identifier of the sandbox
         clientID:
           type: string
+          deprecated: true
           description: Identifier of the client
         startedAt:
           type: string
@@ -337,44 +348,13 @@ components:
         state:
           $ref: "#/components/schemas/SandboxState"
 
-    RunningSandboxWithMetrics:
+    SandboxesWithMetrics:
       required:
-        - templateID
-        - sandboxID
-        - clientID
-        - startedAt
-        - cpuCount
-        - memoryMB
-        - endAt
+        - sandboxes
       properties:
-        templateID:
-          type: string
-          description: Identifier of the template from which is the sandbox created
-        alias:
-          type: string
-          description: Alias of the template
-        sandboxID:
-          type: string
-          description: Identifier of the sandbox
-        clientID:
-          type: string
-          description: Identifier of the client
-        startedAt:
-          type: string
-          format: date-time
-          description: Time when the sandbox was started
-        endAt:
-          type: string
-          format: date-time
-          description: Time when the sandbox will expire
-        cpuCount:
-          $ref: "#/components/schemas/CPUCount"
-        memoryMB:
-          $ref: "#/components/schemas/MemoryMB"
-        metadata:
-          $ref: "#/components/schemas/SandboxMetadata"
-        metrics:
-          $ref: "#/components/schemas/SandboxMetric"
+        sandboxes:
+          additionalProperties:
+            $ref: "#/components/schemas/SandboxMetric"
 
     NewSandbox:
       required:
@@ -495,6 +475,79 @@ components:
         memoryMB:
           $ref: "#/components/schemas/MemoryMB"
 
+    TemplateStep:
+      description: Step in the template build process
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          description: Type of the step
+        args:
+          default: []
+          type: array
+          description: Arguments for the step
+          items:
+            type: string
+        filesHash:
+          type: string
+          description: Hash of the files used in the step
+        force:
+          default: false
+          type: boolean
+          description: Whether the step should be forced to run regardless of the cache
+
+    TemplateBuildRequestV2:
+      required:
+        - alias
+        - teamID
+      properties:
+        alias:
+          description: Alias of the template
+          type: string
+        teamID:
+          type: string
+          description: Identifier of the team
+        cpuCount:
+          $ref: "#/components/schemas/CPUCount"
+        memoryMB:
+          $ref: "#/components/schemas/MemoryMB"
+
+    TemplateBuildStartV2:
+      required:
+        - fromImage
+      properties:
+        fromImage:
+          type: string
+          description: Image to use as a base for the template build
+        force:
+          default: false
+          type: boolean
+          description: Whether the whole build should be forced to run regardless of the cache
+        steps:
+          default: []
+          description: List of steps to execute in the template build
+          type: array
+          items:
+            $ref: "#/components/schemas/TemplateStep"
+        startCmd:
+          description: Start command to execute in the template after the build
+          type: string
+        readyCmd:
+          description: Ready check command to execute in the template after the build
+          type: string
+
+    TemplateBuildFileUpload:
+      required:
+        - present
+      properties:
+        present:
+          type: boolean
+          description: Whether the file is already present in the cache
+        url:
+          description: Url where the file should be uploaded to
+          type: string
+
     TemplateBuild:
       required:
         - templateID
@@ -549,6 +602,7 @@ components:
         - sandboxCount
         - allocatedCPU
         - allocatedMemoryMiB
+        - createSuccesses
         - createFails
         - sandboxStartingCount
         - version
@@ -581,6 +635,10 @@ components:
           type: integer
           format: int32
           description: Amount of allocated memory in MiB
+        createSuccesses:
+          type: integer
+          format: uint64
+          description: Number of sandbox create successes
         createFails:
           type: integer
           format: uint64
@@ -596,6 +654,7 @@ components:
         - status
         - sandboxes
         - cachedBuilds
+        - createSuccesses
         - createFails
         - version
         - commit
@@ -625,6 +684,10 @@ components:
           description: List of cached builds id on the node
           items:
             type: string
+        createSuccesses:
+          type: integer
+          format: uint64
+          description: Number of sandbox create successes
         createFails:
           type: integer
           format: uint64
@@ -933,29 +996,31 @@ paths:
 
   /sandboxes/metrics:
     get:
-      description: List all running sandboxes with metrics
+      description: List metrics for given sandboxes
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
       parameters:
-        - name: metadata
+        - name: sandbox_ids
           in: query
-          description: Metadata query used to filter the sandboxes (e.g. "user=abc&app=prod"). Each key and values must be URL encoded.
-          required: false
+          required: true
+          description: Comma-separated list of sandbox IDs to get metrics for
+          explode: false
           schema:
-            type: string
+            type: array
+            items:
+              type: string
+            maxItems: 100
+            uniqueItems: true
       responses:
         "200":
           description: Successfully returned all running sandboxes with metrics
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  allOf:
-                    - $ref: "#/components/schemas/RunningSandboxWithMetrics"
+                $ref: "#/components/schemas/SandboxesWithMetrics"
         "401":
           $ref: "#/components/responses/401"
         "400":
@@ -1042,6 +1107,49 @@ paths:
           $ref: "#/components/responses/404"
         "401":
           $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /sandboxes/{sandboxID}/metrics:
+    get:
+      description: Get sandbox metrics
+      tags: [sandboxes]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/sandboxID"
+        - in: query
+          name: start
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+          description: Starting timestamp of the metrics that should be returned in milliseconds
+        - in: query
+          name: end
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            description: Ending timestamp of the metrics that should be returned in milliseconds
+
+      responses:
+        "200":
+          description: Successfully returned the sandbox metrics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SandboxMetric"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
 
@@ -1161,6 +1269,66 @@ paths:
           $ref: "#/components/responses/401"
         "404":
           $ref: "#/components/responses/404"
+
+  /v2/templates:
+    post:
+      description: Create a new template
+      tags: [templates]
+      security:
+        - AccessTokenAuth: []
+        - Supabase1TokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TemplateBuildRequestV2"
+
+      responses:
+        "202":
+          description: The build was requested successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Template"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/{templateID}/files/{hash}:
+    get:
+      description: Get an upload link for a tar file containing build layer files
+      tags: [templates]
+      security:
+        - AccessTokenAuth: []
+        - Supabase1TokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+        - in: path
+          name: hash
+          required: true
+          schema:
+            type: string
+            description: Hash of the files
+
+      responses:
+        "201":
+          description: The upload link where to upload the tar file
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateBuildFileUpload"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
 
   /templates:
     get:
@@ -1293,6 +1461,30 @@ paths:
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
+      responses:
+        "202":
+          description: The build has started
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v2/templates/{templateID}/builds/{buildID}:
+    post:
+      description: Start the build
+      tags: [templates]
+      security:
+        - AccessTokenAuth: []
+        - Supabase1TokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+        - $ref: "#/components/parameters/buildID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TemplateBuildStartV2"
       responses:
         "202":
           description: The build has started

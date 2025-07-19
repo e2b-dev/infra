@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	nNode "github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
 func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) ([]*instance.InstanceInfo, error) {
@@ -69,7 +70,7 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 					SandboxID:  config.SandboxId,
 					TemplateID: config.TemplateId,
 					Alias:      config.Alias,
-					ClientID:   node.ID, // to prevent mismatch use the node ID which we use for the request
+					ClientID:   consts.ClientID,
 				},
 				config.ExecutionId,
 				&teamID,

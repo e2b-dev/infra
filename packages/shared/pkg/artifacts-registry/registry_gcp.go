@@ -70,7 +70,7 @@ func (g *GCPArtifactsRegistry) GetImage(ctx context.Context, templateId string, 
 		return nil, fmt.Errorf("failed to get auth: %w", err)
 	}
 
-	img, err := remote.Image(ref, remote.WithAuth(auth), remote.WithPlatform(platform))
+	img, err := remote.Image(ref, remote.WithAuth(auth), remote.WithPlatform(platform), remote.WithContext(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("error pulling image: %w", err)
 	}
@@ -78,7 +78,7 @@ func (g *GCPArtifactsRegistry) GetImage(ctx context.Context, templateId string, 
 	return img, nil
 }
 
-func (g *GCPArtifactsRegistry) getAuthToken(ctx context.Context) (*authn.Basic, error) {
+func (g *GCPArtifactsRegistry) getAuthToken(_ context.Context) (*authn.Basic, error) {
 	authCfg := consts.DockerAuthConfig
 	if authCfg == "" {
 		return &gcpAuthConfig, nil

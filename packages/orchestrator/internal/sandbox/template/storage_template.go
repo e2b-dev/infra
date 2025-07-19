@@ -13,7 +13,7 @@ import (
 )
 
 type storageTemplate struct {
-	files *storage.TemplateCacheFiles
+	files storage.TemplateCacheFiles
 
 	memfile  *utils.SetOnce[block.ReadonlyDevice]
 	rootfs   *utils.SetOnce[block.ReadonlyDevice]
@@ -36,12 +36,12 @@ func newTemplateFromStorage(
 	persistence storage.StorageProvider,
 	localSnapfile *LocalFileLink,
 ) (*storageTemplate, error) {
-	files, err := storage.NewTemplateFiles(
-		templateId,
-		buildId,
-		kernelVersion,
-		firecrackerVersion,
-	).NewTemplateCacheFiles()
+	files, err := storage.TemplateFiles{
+		TemplateID:         templateId,
+		BuildID:            buildId,
+		KernelVersion:      kernelVersion,
+		FirecrackerVersion: firecrackerVersion,
+	}.CacheFiles()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create template cache files: %w", err)
 	}
@@ -90,7 +90,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		memfileStorage, memfileErr := NewStorage(
 			ctx,
 			buildStore,
-			t.files.BuildId,
+			t.files.BuildID,
 			build.Memfile,
 			t.memfileHeader,
 			t.persistence,
@@ -112,7 +112,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		rootfsStorage, rootfsErr := NewStorage(
 			ctx,
 			buildStore,
-			t.files.BuildId,
+			t.files.BuildID,
 			build.Rootfs,
 			t.rootfsHeader,
 			t.persistence,
@@ -133,7 +133,7 @@ func (t *storageTemplate) Close() error {
 	return closeTemplate(t)
 }
 
-func (t *storageTemplate) Files() *storage.TemplateCacheFiles {
+func (t *storageTemplate) Files() storage.TemplateCacheFiles {
 	return t.files
 }
 
@@ -147,4 +147,11 @@ func (t *storageTemplate) Rootfs() (block.ReadonlyDevice, error) {
 
 func (t *storageTemplate) Snapfile() (File, error) {
 	return t.snapfile.Wait()
+}
+
+func (t *storageTemplate) ReplaceMemfile(memfile block.ReadonlyDevice) error {
+	m := utils.NewSetOnce[block.ReadonlyDevice]()
+	m.SetValue(memfile)
+	t.memfile = m
+	return nil
 }

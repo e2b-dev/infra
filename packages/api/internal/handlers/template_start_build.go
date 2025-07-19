@@ -10,8 +10,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
@@ -23,10 +21,48 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+// CheckAndCancelConcurrentBuilds checks for concurrent builds and cancels them if found
+func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateID api.TemplateID, buildID uuid.UUID) error {
+	concurrentlyRunningBuilds, err := a.db.
+		Client.
+		EnvBuild.
+		Query().
+		Where(
+			envbuild.EnvID(templateID),
+			envbuild.StatusIn(envbuild.StatusWaiting, envbuild.StatusBuilding),
+			envbuild.IDNotIn(buildID),
+		).
+		All(ctx)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "Error when getting running builds", err)
+		return fmt.Errorf("error when getting running builds: %w", err)
+	}
+
+	// make sure there is no other build in progress for the same template
+	if len(concurrentlyRunningBuilds) > 0 {
+		buildIDs := utils.Map(concurrentlyRunningBuilds, func(b *models.EnvBuild) template_manager.DeleteBuild {
+			return template_manager.DeleteBuild{
+				TemplateID: templateID,
+				BuildID:    b.ID,
+			}
+		})
+		telemetry.ReportEvent(ctx, "canceling running builds", attribute.StringSlice("ids", utils.Map(buildIDs, func(b template_manager.DeleteBuild) string {
+			return fmt.Sprintf("%s/%s", b.TemplateID, b.BuildID)
+		})))
+		deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIDs)
+		if deleteJobErr != nil {
+			telemetry.ReportCriticalError(ctx, "error when canceling running build", deleteJobErr)
+			return fmt.Errorf("error when canceling running build: %w", deleteJobErr)
+		}
+		telemetry.ReportEvent(ctx, "canceled running builds")
+	}
+
+	return nil
+}
+
 // PostTemplatesTemplateIDBuildsBuildID triggers a new build after the user pushes the Docker image to the registry
 func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, templateID api.TemplateID, buildID api.BuildID) {
 	ctx := c.Request.Context()
-	span := trace.SpanFromContext(ctx)
 
 	buildUUID, err := uuid.Parse(buildID)
 	if err != nil {
@@ -87,53 +123,14 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		telemetry.WithTemplateID(templateID),
 	)
 
-	concurrentlyRunningBuilds, err := a.db.
-		Client.
-		EnvBuild.
-		Query().
-		Where(
-			envbuild.EnvID(envDB.ID),
-			envbuild.StatusIn(envbuild.StatusWaiting, envbuild.StatusBuilding),
-			envbuild.IDNotIn(buildUUID),
-		).
-		All(ctx)
-	if err != nil {
+	// Check and cancel concurrent builds
+	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID); err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build request")
-		telemetry.ReportCriticalError(ctx, "Error when getting running builds", err)
 		return
-	}
-
-	// make sure there is no other build in progress for the same template
-	if len(concurrentlyRunningBuilds) > 0 {
-		buildIDs := utils.Map(concurrentlyRunningBuilds, func(b *models.EnvBuild) template_manager.DeleteBuild {
-			return template_manager.DeleteBuild{
-				TemplateID: envDB.ID,
-				BuildID:    b.ID,
-			}
-		})
-		telemetry.ReportEvent(ctx, "canceling running builds", attribute.StringSlice("ids", utils.Map(buildIDs, func(b template_manager.DeleteBuild) string {
-			return fmt.Sprintf("%s/%s", b.TemplateID, b.BuildID)
-		})))
-		deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIDs)
-		if deleteJobErr != nil {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build cancel request")
-			telemetry.ReportCriticalError(ctx, "error when canceling running build", deleteJobErr)
-			return
-		}
-		telemetry.ReportEvent(ctx, "canceled running builds")
 	}
 
 	startTime := time.Now()
 	build := envDB.Edges.Builds[0]
-	var startCmd string
-	if build.StartCmd != nil {
-		startCmd = *build.StartCmd
-	}
-
-	var readyCmd string
-	if build.ReadyCmd != nil {
-		readyCmd = *build.ReadyCmd
-	}
 
 	// only waiting builds can be triggered
 	if build.Status != envbuild.StatusWaiting {
@@ -150,6 +147,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	}
 
 	// Call the Template Manager to build the environment
+	forceRebuild := true
 	buildErr := a.templateManager.CreateTemplate(
 		a.Tracer,
 		ctx,
@@ -157,64 +155,22 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		buildUUID,
 		build.KernelVersion,
 		build.FirecrackerVersion,
-		startCmd,
+		build.StartCmd,
 		build.Vcpu,
 		build.FreeDiskSizeMB,
 		build.RAMMB,
-		readyCmd,
+		build.ReadyCmd,
+		"",
+		&forceRebuild,
+		nil,
 		team.ClusterID,
 		build.ClusterNodeID,
 	)
-
 	if buildErr != nil {
 		telemetry.ReportCriticalError(ctx, "build failed", buildErr, telemetry.WithTemplateID(templateID))
-		msg := fmt.Sprintf("error when building env: %s", buildErr)
-		err = a.templateManager.SetStatus(
-			ctx,
-			templateID,
-			buildUUID,
-			envbuild.StatusFailed,
-			&msg,
-		)
-		if err != nil {
-			telemetry.ReportCriticalError(ctx, "error when setting build status", err)
-		}
-
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when starting template build: %s", buildErr))
 		return
 	}
-
-	// status building must be set after build is triggered because then
-	// it's possible build status job will be triggered before build cache on template manager is created and build will fail
-	err = a.templateManager.SetStatus(
-		ctx,
-		templateID,
-		buildUUID,
-		envbuild.StatusBuilding,
-		nil,
-	)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error when setting build status", err)
-		return
-	}
-
-	telemetry.ReportEvent(ctx, "created new environment", telemetry.WithTemplateID(templateID))
-
-	// Do not wait for global build sync trigger it immediately
-	go func() {
-		buildContext, buildSpan := a.Tracer.Start(
-			trace.ContextWithSpanContext(context.Background(), span.SpanContext()),
-			"template-background-build-env",
-		)
-		defer buildSpan.End()
-
-		err := a.templateManager.BuildStatusSync(buildContext, buildUUID, templateID, team.ClusterID, build.ClusterNodeID)
-		if err != nil {
-			zap.L().Error("error syncing build status", zap.Error(err))
-		}
-
-		// Invalidate the cache
-		a.templateCache.Invalidate(templateID)
-	}()
 
 	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "built environment", posthog.NewProperties().
 		Set("user_id", userID).
