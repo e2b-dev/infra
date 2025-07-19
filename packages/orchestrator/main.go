@@ -247,14 +247,16 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
 
+	var clickhouseClient clickhouse.Clickhouse
 	clickhouseConnectionString := os.Getenv("CLICKHOUSE_CONNECTION_STRING")
 	if clickhouseConnectionString == "" {
-		zap.L().Fatal("CLICKHOUSE_CONNECTION_STRING is not set")
-	}
-
-	clickhouseClient, err := clickhouse.New(clickhouseConnectionString)
-	if err != nil {
-		zap.L().Fatal("failed to create clickhouse client", zap.Error(err))
+		zap.L().Warn("CLICKHOUSE_CONNECTION_STRING is not set, using noop client")
+		clickhouseClient = clickhouse.NewNoopClient()
+	} else {
+		clickhouseClient, err = clickhouse.New(clickhouseConnectionString)
+		if err != nil {
+			zap.L().Fatal("failed to create clickhouse client", zap.Error(err))
+		}
 	}
 
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, serviceInfo.SourceCommit, serviceInfo.ClientId, sandboxMetricExportPeriod, sandboxes)
