@@ -164,6 +164,16 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	item.EndAt = req.EndTime.AsTime()
 
+	go s.clickhouseClient.InsertSandboxEvent(ctx, clickhouse.SandboxEvent{
+		Timestamp:          time.Now().UTC(),
+		SandboxID:          item.Config.SandboxId,
+		SandboxTemplateID:  item.Config.TemplateId,
+		SandboxTeamID:      item.Config.TeamId,
+		SandboxExecutionID: item.Config.ExecutionId,
+		EventCategory:      "lifecycle",
+		EventLabel:         "set_timeout",
+	})
+
 	return &emptypb.Empty{}, nil
 }
 
