@@ -7,6 +7,9 @@ IMAGE := e2b-orchestration/clickhouse-migrator
 build-and-upload:
 	@docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push .
 
+.PHONY: build-locally
+build-locally:
+	docker build --no-cache --tag "$(IMAGE)" .
 
 .PHONY: connect-clickhouse
 connect-clickhouse:

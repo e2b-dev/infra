@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -124,6 +125,27 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		sbxlogger.E(sbx).Info("Sandbox killed")
 	}()
 
+	// If there is no snapshot flag in the request, this should mean the sandbox is being created for the first time.
+	label := "resume"
+	if !req.Sandbox.Snapshot {
+		label = "create"
+	}
+
+	go func() {
+		err := s.clickhouseClient.InsertSandboxEvent(ctx, clickhouse.SandboxEvent{
+			Timestamp:          time.Now().UTC(),
+			SandboxID:          sbx.Config.SandboxId,
+			SandboxTemplateID:  sbx.Config.TemplateId,
+			SandboxTeamID:      sbx.Config.TeamId,
+			SandboxExecutionID: sbx.Config.ExecutionId,
+			EventCategory:      "lifecycle",
+			EventLabel:         label,
+		})
+		if err != nil {
+			sbxlogger.I(sbx).Error("error inserting sandbox event during create", zap.Error(err))
+		}
+	}()
+
 	return &orchestrator.SandboxCreateResponse{
 		ClientId: s.info.ClientId,
 	}, nil
@@ -146,6 +168,21 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	}
 
 	item.EndAt = req.EndTime.AsTime()
+
+	go func() {
+		err := s.clickhouseClient.InsertSandboxEvent(ctx, clickhouse.SandboxEvent{
+			Timestamp:          time.Now().UTC(),
+			SandboxID:          item.Config.SandboxId,
+			SandboxTemplateID:  item.Config.TemplateId,
+			SandboxTeamID:      item.Config.TeamId,
+			SandboxExecutionID: item.Config.ExecutionId,
+			EventCategory:      "lifecycle",
+			EventLabel:         "set_timeout",
+		})
+		if err != nil {
+			sbxlogger.I(item).Error("error inserting sandbox event during update", zap.Error(err))
+		}
+	}()
 
 	return &emptypb.Empty{}, nil
 }
@@ -213,6 +250,21 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	if err != nil {
 		sbxlogger.I(sbx).Error("error stopping sandbox", logger.WithSandboxID(in.SandboxId), zap.Error(err))
 	}
+
+	go func() {
+		err := s.clickhouseClient.InsertSandboxEvent(ctx, clickhouse.SandboxEvent{
+			Timestamp:          time.Now().UTC(),
+			SandboxID:          sbx.Config.SandboxId,
+			SandboxTemplateID:  sbx.Config.TemplateId,
+			SandboxTeamID:      sbx.Config.TeamId,
+			SandboxExecutionID: sbx.Config.ExecutionId,
+			EventCategory:      "lifecycle",
+			EventLabel:         "kill",
+		})
+		if err != nil {
+			sbxlogger.I(sbx).Error("error inserting sandbox event during kill", zap.Error(err))
+		}
+	}()
 
 	return &emptypb.Empty{}, nil
 }
@@ -294,6 +346,21 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 			sbxlogger.I(sbx).Error("error uploading sandbox snapshot", zap.Error(err))
 
 			return
+		}
+	}()
+
+	go func() {
+		err := s.clickhouseClient.InsertSandboxEvent(ctx, clickhouse.SandboxEvent{
+			Timestamp:          time.Now().UTC(),
+			SandboxID:          sbx.Config.SandboxId,
+			SandboxTemplateID:  sbx.Config.TemplateId,
+			SandboxTeamID:      sbx.Config.TeamId,
+			SandboxExecutionID: sbx.Config.ExecutionId,
+			EventCategory:      "lifecycle",
+			EventLabel:         "pause",
+		})
+		if err != nil {
+			sbxlogger.I(sbx).Error("error inserting sandbox event during pause", zap.Error(err))
 		}
 	}()
 
