@@ -59,7 +59,7 @@ func TestAWSArtifactsRegistry_GetTag(t *testing.T) {
 					},
 				}, nil)
 			},
-			expectedTag: "123456789012.dkr.ecr.us-west-2.amazonaws.com/my-repo:my-template-build-123",
+			expectedTag: "123456789012.dkr.ecr.us-west-2.amazonaws.com/my-repo:my-template_build-123",
 		},
 		{
 			name:       "invalid template id",
@@ -121,7 +121,7 @@ func TestAWSArtifactsRegistry_GetTag(t *testing.T) {
 					},
 				}, nil)
 			},
-			expectedTag: "123456789012.dkr.ecr.us-west-2.amazonaws.com/my-repo:my_template_123-build_456",
+			expectedTag: "123456789012.dkr.ecr.us-west-2.amazonaws.com/my-repo:my_template_123_build_456",
 		},
 	}
 
@@ -216,10 +216,10 @@ func TestAWSArtifactsRegistry_GetTag_Integration(t *testing.T) {
 		result, err := registry.GetTag(context.Background(), "template-123", "build-456")
 		
 		assert.NoError(t, err)
-		assert.Equal(t, "123456789012.dkr.ecr.us-west-2.amazonaws.com/my-repo:template-123-build-456", result)
+		assert.Equal(t, "123456789012.dkr.ecr.us-west-2.amazonaws.com/my-repo:template-123_build-456", result)
 		
 		// Verify that the tag part can be parsed back
-		tagPart := "template-123-build-456"
+		tagPart := "template-123_build-456"
 		templateId, buildId, parseErr := ParseCompositeTag(tagPart)
 		assert.NoError(t, parseErr)
 		assert.Equal(t, "template-123", templateId)

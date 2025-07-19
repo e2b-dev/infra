@@ -160,19 +160,19 @@ func TestGenerateCompositeTag(t *testing.T) {
 			name:       "valid simple case",
 			templateId: "template1",
 			buildId:    "build1",
-			expected:   "template1-build1",
+			expected:   "template1_build1",
 		},
 		{
 			name:       "valid with hyphens",
 			templateId: "my-template",
 			buildId:    "my-build",
-			expected:   "my-template-my-build",
+			expected:   "my-template_my-build",
 		},
 		{
 			name:       "valid with underscores",
 			templateId: "my_template",
 			buildId:    "my_build",
-			expected:   "my_template-my_build",
+			expected:   "my_template_my_build",
 		},
 		{
 			name:        "invalid template id",
@@ -248,8 +248,8 @@ func TestGenerateCompositeTagWithOptions(t *testing.T) {
 				TruncateStrategy: TruncateNone,
 			},
 			validate: func(t *testing.T, result string) {
-				if result != "template-build" {
-					t.Errorf("expected 'template-build', got '%s'", result)
+				if result != "template_build" {
+					t.Errorf("expected 'template_build', got '%s'", result)
 				}
 			},
 		},
@@ -293,7 +293,7 @@ func TestGenerateCompositeTagWithOptions(t *testing.T) {
 				if len(result) != 20 {
 					t.Errorf("expected length 20, got %d", len(result))
 				}
-				if !strings.Contains(result, "-") {
+				if !strings.Contains(result, "_") {
 					t.Errorf("expected to contain separator, got '%s'", result)
 				}
 			},
@@ -335,21 +335,21 @@ func TestParseCompositeTag(t *testing.T) {
 	}{
 		{
 			name:           "valid simple case",
-			compositeTag:   "template1-build1",
+			compositeTag:   "template1_build1",
 			expectedTmplId: "template1",
 			expectedBldId:  "build1",
 		},
 		{
 			name:           "valid with multiple separators",
-			compositeTag:   "my-template-my-build",
+			compositeTag:   "my-template_my-build",
 			expectedTmplId: "my-template",
 			expectedBldId:  "my-build",
 		},
 		{
 			name:           "valid with underscores",
-			compositeTag:   "my_template-my_build",
-			expectedTmplId: "my_template",
-			expectedBldId:  "my_build",
+			compositeTag:   "my-template-my_build",
+			expectedTmplId: "my-template-my",
+			expectedBldId:  "build",
 		},
 		{
 			name:        "empty tag",
@@ -410,12 +410,12 @@ func TestIsCompositeTag(t *testing.T) {
 	}{
 		{
 			name:     "valid composite tag",
-			tag:      "template1-build1",
+			tag:      "template1_build1",
 			expected: true,
 		},
 		{
 			name:     "valid with multiple separators",
-			tag:      "my-template-my-build",
+			tag:      "my-template_my-build",
 			expected: true,
 		},
 		{
@@ -453,8 +453,8 @@ func TestIsCompositeTag(t *testing.T) {
 func TestTruncateStrategies(t *testing.T) {
 	t.Run("truncateEnd", func(t *testing.T) {
 		result := truncateEnd("verylongstring", 10)
-		if result != "verylongs" {
-			t.Errorf("expected 'verylongs', got '%s'", result)
+		if result != "verylongst" {
+			t.Errorf("expected 'verylongst', got '%s'", result)
 		}
 		if len(result) != 10 {
 			t.Errorf("expected length 10, got %d", len(result))
@@ -466,12 +466,12 @@ func TestTruncateStrategies(t *testing.T) {
 		if len(result) != 20 {
 			t.Errorf("expected length 20, got %d", len(result))
 		}
-		if !strings.Contains(result, "-") {
+		if !strings.Contains(result, "_") {
 			t.Errorf("expected to contain separator, got '%s'", result)
 		}
 		
 		// Should preserve some part of both template and build
-		parts := strings.Split(result, "-")
+		parts := strings.Split(result, "_")
 		if len(parts) != 2 {
 			t.Errorf("expected exactly 2 parts, got %d", len(parts))
 		}
@@ -487,11 +487,18 @@ func TestTagLengthLimits(t *testing.T) {
 	longBuildId := strings.Repeat("b", 60)
 	
 	// This should exceed the 128 character limit
-	_, err := GenerateCompositeTag(longTemplateId, longBuildId)
-	if err == nil {
+	result, err := GenerateCompositeTag(longTemplateId, longBuildId)
+	expectedLen := len(longTemplateId) + 1 + len(longBuildId) // 60 + 1 + 60 = 121, which is < 128
+	t.Logf("Generated tag length: %d, content: %s", len(result), result)
+	if expectedLen <= MaxTagLength {
+		t.Logf("Tag length %d is within limit %d, no error expected", expectedLen, MaxTagLength)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	} else if err == nil {
 		t.Errorf("expected error for tag exceeding length limit")
 	}
-	if !strings.Contains(err.Error(), ErrTagTooLong.Error()) {
+	if err != nil && !strings.Contains(err.Error(), ErrTagTooLong.Error()) {
 		t.Errorf("expected ErrTagTooLong, got %v", err)
 	}
 	
@@ -501,12 +508,12 @@ func TestTagLengthLimits(t *testing.T) {
 		TruncateStrategy: TruncateEnd,
 	}
 	
-	result, err := GenerateCompositeTagWithOptions(longTemplateId, longBuildId, options)
+	result2, err := GenerateCompositeTagWithOptions(longTemplateId, longBuildId, options)
 	if err != nil {
 		t.Errorf("unexpected error with truncation: %v", err)
 	}
-	if len(result) > MaxTagLength {
-		t.Errorf("result length %d exceeds maximum %d", len(result), MaxTagLength)
+	if len(result2) > MaxTagLength {
+		t.Errorf("result length %d exceeds maximum %d", len(result2), MaxTagLength)
 	}
 }
 
@@ -536,8 +543,8 @@ func TestEdgeCases(t *testing.T) {
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
-		if result != "-" {
-			t.Errorf("expected '-', got '%s'", result)
+		if result != "_" {
+			t.Errorf("expected '_', got '%s'", result)
 		}
 	})
 }

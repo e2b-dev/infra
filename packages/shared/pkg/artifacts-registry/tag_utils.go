@@ -12,7 +12,7 @@ const (
 	MaxTagLength = 128
 	// AWS ECR allows alphanumeric characters, hyphens, underscores, periods, and forward slashes
 	// We'll be more restrictive to ensure safety across different systems
-	TagSeparator = "-"
+	TagSeparator = "_"
 )
 
 var (
