@@ -376,8 +376,6 @@ github.com/dustin/go-humanize v0.0.0-20171111073723-bb3d318650d4/go.mod h1:Htrtb
 github.com/dustin/go-humanize v1.0.0/go.mod h1:HtrtbFcZ19U5GC7JDqmcUSB87Iq5E25KnS6fMYU6eOk=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
-github.com/e2b-dev/infra/packages/clickhouse v0.0.0-20250718200250-f79287205605 h1:7PHYEVEfJAetRSsV+MbUPdnDgjK6yqXOHHV1Sjn4DZo=
-github.com/e2b-dev/infra/packages/clickhouse v0.0.0-20250718200250-f79287205605/go.mod h1:uQmsriLFkzuwKPigTCiZvvUqqnV+EgvmiRQhG+KJVOA=
 github.com/e2b-dev/infra/packages/clickhouse v0.0.0-20250718224930-c37ce9ff497d h1:CBT+ythRhfZemzvdSq5ln1h8WX3YST1fdtneg9F5Xuo=
 github.com/e2b-dev/infra/packages/clickhouse v0.0.0-20250718224930-c37ce9ff497d/go.mod h1:uQmsriLFkzuwKPigTCiZvvUqqnV+EgvmiRQhG+KJVOA=
 github.com/edsrzf/mmap-go v1.2.0 h1:hXLYlkbaPzt1SaQk+anYwKSRNhufIDCchSPkUD6dD84=
