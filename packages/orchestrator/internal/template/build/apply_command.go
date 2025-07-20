@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -133,13 +134,13 @@ func (b *Builder) applyCommand(
 
 		// The file is automatically cleaned up by the sandbox restart in the last step.
 		// This is happening because the /tmp is mounted as a tmpfs and deleted on restart.
-		sbxTargetPath := fmt.Sprintf("/tmp/%s.tar", *step.FilesHash)
+		sbxTargetPath := filepath.Join("/tmp", fmt.Sprintf("%s.tar", *step.FilesHash))
 		err = sandboxtools.CopyFile(ctx, b.tracer, b.proxy, sbx.Metadata.Config.SandboxId, cmdMetadata.User, tmpFile.Name(), sbxTargetPath)
 		if err != nil {
 			return fmt.Errorf("failed to copy layer tar data to sandbox: %w", err)
 		}
 
-		sbxUnpackPath := fmt.Sprintf("/tmp/%s", *step.FilesHash)
+		sbxUnpackPath := filepath.Join("/tmp", *step.FilesHash)
 
 		err = sandboxtools.RunCommand(
 			ctx,
@@ -159,9 +160,16 @@ func (b *Builder) applyCommand(
 		moveScript := fmt.Sprintf(`
 #!/bin/bash
 
-sourceFolder="%s"
-# Set targetPath relative to current working directory
-targetPath="$(pwd)/%s"
+# Get the parent folder of the source file/folder
+sourceFolder="$(dirname "%s")"
+
+# Set targetPath relative to current working directory if not absolute
+inputPath="%s"
+if [[ "$inputPath" = /* ]]; then
+  targetPath="$inputPath"
+else
+  targetPath="$(pwd)/$inputPath"
+fi
 
 cd "$sourceFolder" || exit 1
 
@@ -184,7 +192,7 @@ else
   echo "Error: entry is neither file nor directory"
   exit 1
 fi
-`, sbxUnpackPath, args[1])
+`, filepath.Join(sbxUnpackPath, args[0]), args[1])
 
 		err = sandboxtools.RunCommand(
 			ctx,
