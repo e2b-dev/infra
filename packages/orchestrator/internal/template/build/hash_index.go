@@ -11,6 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/envd"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layerstorage"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/utils"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -19,7 +20,7 @@ import (
 const hashingVersion = "v1"
 
 func templateMetaFromHash(ctx context.Context, s storage.StorageProvider, finalTemplateID string, hash string) (storage.TemplateFiles, error) {
-	obj, err := s.OpenObject(ctx, hashToPath(finalTemplateID, hash))
+	obj, err := s.OpenObject(ctx, layerstorage.HashToPath(finalTemplateID, hash))
 	if err != nil {
 		return storage.TemplateFiles{}, fmt.Errorf("error opening object for template metadata: %w", err)
 	}
@@ -47,7 +48,7 @@ func templateMetaFromHash(ctx context.Context, s storage.StorageProvider, finalT
 }
 
 func saveTemplateMeta(ctx context.Context, s storage.StorageProvider, finalTemplateID string, hash string, template storage.TemplateFiles) error {
-	obj, err := s.OpenObject(ctx, hashToPath(finalTemplateID, hash))
+	obj, err := s.OpenObject(ctx, layerstorage.HashToPath(finalTemplateID, hash))
 	if err != nil {
 		return fmt.Errorf("error creating object for saving UUID: %w", err)
 	}
