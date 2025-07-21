@@ -9,11 +9,12 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
-	txtTemplate "text/template"
 	"time"
 
 	"cloud.google.com/go/storage"
 	"github.com/googleapis/gax-go/v2"
+	"go.uber.org/zap"
+	"golang.org/x/sync/semaphore"
 	"google.golang.org/api/iterator"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -27,7 +28,21 @@ const (
 	googleMaxBackoff        = 10 * time.Second
 	googleBackoffMultiplier = 2
 	googleMaxAttempts       = 10
+
+	// GCloud imposed limits:
+
+	// 10 concurrent uploads
+	gcloudMaxConcurrentUploads = 10
+	gcloudMaxRetries           = 3
+	// 300% CPU quota (300% / 9600% CPU total -> 3.125% total CPU per gcloud), total max CPU used for uploads is 3.125% * 10 = 31.25%
+	gcloudMaxCPUQuota = 300
+	// 2048M memory limit (2048M / 3865471M -> 0.053% of total memory), total max memory used for uploads is 0.053% * 10 = 0.53%
+	gcloudMaxMemoryLimit = 2048
+	// 16 tasks max, total max tasks used for uploads is 16 * 10 = 160
+	gcloudMaxTasksMax = 16
 )
+
+var uploadSemaphore = semaphore.NewWeighted(gcloudMaxConcurrentUploads)
 
 type GCPBucketStorageProvider struct {
 	client *storage.Client
@@ -206,45 +221,51 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 	return n, nil
 }
 
-// MAX_CPU_PERCENT=${GCLOUD_CPU_LIMIT:-25}    # Limit to 25% of one CPU core (200% = 2 cores)
-// MAX_PROCESSES=${GCLOUD_MAX_PROCESSES:-3}   # Max 3 concurrent gcloud processes
-// MEMORY_LIMIT=${GCLOUD_MEMORY_LIMIT:-512M}  # Memory limit per process
-
-// TODO: Wrap the command in a CPU/memory limit so it does not stall the rest of the system
-
-// GCloud CPU Limiter using systemd cgroups
-const limitedGcloudCommand = `#!/bin/bash
-exec systemd-run \
-		--user \
-		--scope \
-		--property="CPUQuota={{ .CPUQuota }}%" \
-		--property="MemoryMax={{ .MemoryLimit }}" \
-		--property="TasksMax={{ .TasksMax }}" \
-		gcloud storage cp --verbosity error {{ .Path }} gs://{{ .Bucket }}/{{ .BucketPath }}`
-
-var limitedUploadScriptTemplate = txtTemplate.Must(txtTemplate.New("limited-upload").Parse(limitedGcloudCommand))
-
 func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error {
-	// TODO: Add a global semaphore for the gcloud upload
-	// TODO: Add retry (3x) to be more resilient
+	upload := func() error {
+		cmd := exec.CommandContext(
+			g.ctx,
+			"systemd-run",
+			"--user",
+			"--scope",
+			fmt.Sprintf("--property=CPUQuota=%d%%", gcloudMaxCPUQuota),
+			fmt.Sprintf("--property=MemoryMax=%dM", gcloudMaxMemoryLimit),
+			fmt.Sprintf("--property=TasksMax=%d", gcloudMaxTasksMax),
+			"gcloud",
+			"storage",
+			"cp",
+			"--verbosity", "error",
+			path,
+			fmt.Sprintf("gs://%s/%s", g.storage.bucket.BucketName(), g.path),
+		)
 
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("failed to upload file to GCS: %w\n%s", err, string(output))
+		}
 
+		return nil
+	}
 
+	for range gcloudMaxRetries {
+		semaphoreErr := uploadSemaphore.Acquire(g.ctx, 1)
+		if semaphoreErr != nil {
+			return fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
+		}
 
-	cmd := exec.CommandContext(
-		g.ctx,
-		,
-		"storage",
-		"cp",
-		"--verbosity",
-		"error",
-		path,
-		fmt.Sprintf("gs://%s/%s", g.storage.bucket.BucketName(), g.path),
-	)
+		err := upload()
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to upload file to GCS: %w\n%s", err, string(output))
+		uploadSemaphore.Release(1)
+
+		if err != nil {
+			// Failed to upload file, retrying.
+			zap.L().Warn("Failed to upload file to GCS", zap.Error(err), zap.String("path", g.path))
+
+			continue
+		}
+
+		// Files was successfully uploaded
+		return nil
 	}
 
 	return nil
