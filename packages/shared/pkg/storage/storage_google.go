@@ -267,7 +267,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 		return nil
 	}
 
-	return nil
+	return fmt.Errorf("failed to upload file to GCS after %d retries", gcloudMaxRetries)
 }
 
 type gcpServiceToken struct {
