@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -80,7 +81,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	)
 	if err != nil {
 		zap.L().Error("failed to create sandbox, cleaning up", zap.Error(err))
-		cleanupErr := cleanup.Run(ctx)
+		cleanupErr := cleanup.Run(trace.ContextWithSpanContext(context.Background(), childSpan.SpanContext()))
 
 		err := errors.Join(err, context.Cause(ctx), cleanupErr)
 		telemetry.ReportCriticalError(ctx, "failed to cleanup sandbox", err)
@@ -209,7 +210,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	// Check health metrics before stopping the sandbox
 	sbx.Checks.Healthcheck(true)
 
-	err := sbx.Stop(ctx)
+	err := sbx.Stop(trace.ContextWithSpanContext(context.Background(), childSpan.SpanContext()))
 	if err != nil {
 		sbxlogger.I(sbx).Error("error stopping sandbox", logger.WithSandboxID(in.SandboxId), zap.Error(err))
 	}
