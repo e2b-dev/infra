@@ -2,9 +2,9 @@
 -- +goose StatementBegin
 CREATE TABLE sandbox_events (
     timestamp DateTime64(9),
-    sandbox_id UUID,
-    sandbox_execution_id UUID,
-    sandbox_template_id UUID,
+    sandbox_id String,
+    sandbox_execution_id String,
+    sandbox_template_id String,
     sandbox_team_id UUID,
     event_category String,
     event_label String,

@@ -18,7 +18,7 @@ type Clickhouse interface {
 	QueryLatestMetrics(ctx context.Context, sandboxIDs []string, teamID string) ([]Metrics, error)
 
 	// Events queries
-	QueryLatestSandboxEvent(ctx context.Context, sandboxID string, limit, offset int) ([]SandboxEvent, error)
+	QuerySandboxEvents(ctx context.Context, sandboxID string, offset, limit int) ([]SandboxEvent, error)
 	InsertSandboxEvent(ctx context.Context, event SandboxEvent) error
 }
 
