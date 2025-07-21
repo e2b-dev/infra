@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	tt "text/template"
 
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapio"
 
@@ -92,7 +93,7 @@ func (b *Builder) provisionSandbox(
 		true,
 	)
 	defer func() {
-		cleanupErr := cleanup.Run(ctx)
+		cleanupErr := cleanup.Run(trace.ContextWithSpanContext(context.Background(), childSpan.SpanContext()))
 		if cleanupErr != nil {
 			e = fmt.Errorf("error cleaning up sandbox: %w", cleanupErr)
 		}

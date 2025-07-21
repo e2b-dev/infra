@@ -309,7 +309,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			globalconfig.AllowSandboxInternet,
 		)
 		defer func() {
-			cleanupErr := cleanup.Run(ctx)
+			cleanupErr := cleanup.Run(trace.ContextWithSpanContext(context.Background(), childSpan.SpanContext()))
 			if cleanupErr != nil {
 				b.logger.Error("Error cleaning up sandbox", zap.Error(cleanupErr))
 			}

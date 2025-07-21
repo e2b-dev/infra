@@ -91,11 +91,9 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 			select {
 			case <-buildContext.Done():
 				return
-			case <-buildInfo.Cancel.Done:
-				_, err := buildInfo.Cancel.Result()
-				if err != nil {
-					reason := err.Error()
-					buildInfo.SetFail(&reason)
+			case <-buildInfo.Result.Done:
+				res, _ := buildInfo.Result.Result()
+				if res.Status == templatemanager.TemplateBuildState_Failed {
 					cancelBuildContext()
 				}
 				return

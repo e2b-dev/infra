@@ -34,7 +34,7 @@ func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanag
 		// Cancel the build if it is running
 		zap.L().Info("Canceling running template build", logger.WithTemplateID(in.TemplateID), logger.WithBuildID(in.BuildID))
 		telemetry.ReportEvent(ctx, "cancel in progress template build")
-		buildInfo.Cancel.SetError(cache.ErrCancelledBuild)
+		buildInfo.SetFail(&cache.CancelledBuildReason)
 	}
 
 	err = template.Delete(childCtx, s.tracer, s.artifactsregistry, s.templateStorage, in.TemplateID, in.BuildID)

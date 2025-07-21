@@ -2,9 +2,7 @@ package cache
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -20,79 +18,68 @@ const (
 	buildInfoExpiration = time.Minute * 10 // 10 minutes
 )
 
-var ErrCancelledBuild = errors.New("build was cancelled")
+var CancelledBuildReason = "build was cancelled"
 
-type BuildInfo struct {
-	status   template_manager.TemplateBuildState
-	reason   *string
-	metadata *template_manager.TemplateBuildMetadata
-	logs     *SafeBuffer
-	mu       sync.RWMutex
-	Cancel   *utils.SetOnce[struct{}]
+type BuildInfoResult struct {
+	Status   template_manager.TemplateBuildState
+	Reason   *string
+	Metadata *template_manager.TemplateBuildMetadata
 }
 
-func (b *BuildInfo) isRunningWithoutLock() bool {
-	return b.status == template_manager.TemplateBuildState_Building
+type BuildInfo struct {
+	logs   *SafeBuffer
+	Result *utils.SetOnce[BuildInfoResult]
 }
 
 func (b *BuildInfo) IsRunning() bool {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	return b.isRunningWithoutLock()
+	return b.GetStatus() == template_manager.TemplateBuildState_Building
 }
 
 func (b *BuildInfo) IsFailed() bool {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	return b.status == template_manager.TemplateBuildState_Failed
+	return b.GetStatus() == template_manager.TemplateBuildState_Failed
 }
 
 func (b *BuildInfo) GetMetadata() *template_manager.TemplateBuildMetadata {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	res, err := b.Result.Result()
+	if err != nil {
+		return nil
+	}
 
-	return b.metadata
+	return res.Metadata
 }
 
 func (b *BuildInfo) GetStatus() template_manager.TemplateBuildState {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	res, err := b.Result.Result()
+	if err != nil {
+		return template_manager.TemplateBuildState_Building
+	}
 
-	return b.status
+	return res.Status
 }
 
 func (b *BuildInfo) GetReason() *string {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	res, err := b.Result.Result()
+	if err != nil {
+		return nil
+	}
 
-	return b.reason
+	return res.Reason
 }
 
 func (b *BuildInfo) SetSuccess(metadata *template_manager.TemplateBuildMetadata) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	if !b.isRunningWithoutLock() {
-		return
-	}
-
-	b.status = template_manager.TemplateBuildState_Completed
-	b.metadata = metadata
-	b.reason = nil
+	_ = b.Result.SetValue(BuildInfoResult{
+		Status:   template_manager.TemplateBuildState_Completed,
+		Metadata: metadata,
+		Reason:   nil,
+	})
 }
 
 func (b *BuildInfo) SetFail(reason *string) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	if !b.isRunningWithoutLock() {
-		return
-	}
-
-	b.status = template_manager.TemplateBuildState_Failed
-	b.reason = reason
+	_ = b.Result.SetValue(BuildInfoResult{
+		Status:   template_manager.TemplateBuildState_Failed,
+		Reason:   reason,
+		Metadata: nil,
+	})
 }
 
 func (b *BuildInfo) GetLogs() []*template_manager.TemplateBuildLogEntry {
@@ -147,10 +134,8 @@ func (c *BuildCache) Get(buildID string) (*BuildInfo, error) {
 // Create creates a new build if it doesn't exist in the cache or the build was already finished.
 func (c *BuildCache) Create(buildID string, logs *SafeBuffer) (*BuildInfo, error) {
 	info := &BuildInfo{
-		status:   template_manager.TemplateBuildState_Building,
-		metadata: nil,
-		logs:     logs,
-		Cancel:   utils.NewSetOnce[struct{}](),
+		logs:   logs,
+		Result: utils.NewSetOnce[BuildInfoResult](),
 	}
 
 	_, found := c.cache.GetOrSet(buildID, info,

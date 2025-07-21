@@ -142,7 +142,7 @@ func (b *Builder) buildLayer(
 		)
 	}
 	defer func() {
-		cleanupErr := cleanupRes.Run(ctx)
+		cleanupErr := cleanupRes.Run(trace.ContextWithSpanContext(context.Background(), childSpan.SpanContext()))
 		if cleanupErr != nil {
 			b.logger.Error("Error cleaning up sandbox", zap.Error(cleanupErr))
 		}
