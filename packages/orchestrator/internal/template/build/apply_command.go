@@ -10,6 +10,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
@@ -146,8 +147,8 @@ func (b *Builder) applyCommand(
 			ctx,
 			b.tracer,
 			b.proxy,
-			b.buildLogger,
 			nil,
+			zapcore.DebugLevel,
 			prefix,
 			sbx.Metadata.Config.SandboxId,
 			fmt.Sprintf(`mkdir -p "%s" && tar -xzvf "%s" -C "%s"`, sbxUnpackPath, sbxTargetPath, sbxUnpackPath),
@@ -198,8 +199,8 @@ fi
 			ctx,
 			b.tracer,
 			b.proxy,
-			b.buildLogger,
 			nil,
+			zapcore.DebugLevel,
 			prefix,
 			sbx.Metadata.Config.SandboxId,
 			moveScript,
@@ -221,8 +222,8 @@ fi
 			ctx,
 			b.tracer,
 			b.proxy,
-			b.buildLogger,
 			postProcessor,
+			zapcore.InfoLevel,
 			prefix,
 			sbx.Metadata.Config.SandboxId,
 			cmd,
@@ -238,8 +239,8 @@ fi
 			ctx,
 			b.tracer,
 			b.proxy,
-			b.buildLogger,
 			postProcessor,
+			zapcore.InfoLevel,
 			prefix,
 			sbx.Metadata.Config.SandboxId,
 			"adduser "+args[0],
@@ -258,8 +259,8 @@ fi
 			ctx,
 			b.tracer,
 			b.proxy,
-			b.buildLogger,
 			postProcessor,
+			zapcore.InfoLevel,
 			prefix,
 			sbx.Metadata.Config.SandboxId,
 			fmt.Sprintf(`mkdir -p "%s"`, utils.Sprintp(cmdMetadata.WorkDir)),

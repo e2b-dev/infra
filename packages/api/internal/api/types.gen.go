@@ -17,11 +17,19 @@ const (
 	Supabase2TeamAuthScopes  = "Supabase2TeamAuth.Scopes"
 )
 
+// Defines values for LogLevel.
+const (
+	LogLevelDebug LogLevel = "debug"
+	LogLevelError LogLevel = "error"
+	LogLevelInfo  LogLevel = "info"
+	LogLevelWarn  LogLevel = "warn"
+)
+
 // Defines values for NodeStatus.
 const (
-	NodeStatusConnecting NodeStatus = "connecting"
+	NodeStatusConnecting NodeStatus = "ready"
 	NodeStatusDraining   NodeStatus = "draining"
-	NodeStatusReady      NodeStatus = "ready"
+	NodeStatusReady      NodeStatus = "connecting"
 	NodeStatusUnhealthy  NodeStatus = "unhealthy"
 )
 
@@ -38,6 +46,18 @@ const (
 	TemplateBuildStatusReady    TemplateBuildStatus = "ready"
 	TemplateBuildStatusWaiting  TemplateBuildStatus = "waiting"
 )
+
+// BuildLogEntry defines model for BuildLogEntry.
+type BuildLogEntry struct {
+	// Level State of the sandbox
+	Level LogLevel `json:"level"`
+
+	// Message Log message content
+	Message string `json:"message"`
+
+	// Timestamp Timestamp of the log entry
+	Timestamp time.Time `json:"timestamp"`
+}
 
 // CPUCount CPU cores for the sandbox
 type CPUCount = int32
@@ -136,6 +156,9 @@ type ListedSandbox struct {
 	// TemplateID Identifier of the template from which is the sandbox created
 	TemplateID string `json:"templateID"`
 }
+
+// LogLevel State of the sandbox
+type LogLevel string
 
 // MemoryMB Memory for the sandbox in MB
 type MemoryMB = int32
@@ -446,6 +469,9 @@ type TemplateBuild struct {
 	// BuildID Identifier of the build
 	BuildID string `json:"buildID"`
 
+	// LogEntries Build logs structured
+	LogEntries []BuildLogEntry `json:"logEntries"`
+
 	// Logs Build logs
 	Logs []string `json:"logs"`
 
@@ -636,7 +662,8 @@ type GetTemplatesParams struct {
 // GetTemplatesTemplateIDBuildsBuildIDStatusParams defines parameters for GetTemplatesTemplateIDBuildsBuildIDStatus.
 type GetTemplatesTemplateIDBuildsBuildIDStatusParams struct {
 	// LogsOffset Index of the starting build log that should be returned with the template
-	LogsOffset *int32 `form:"logsOffset,omitempty" json:"logsOffset,omitempty"`
+	LogsOffset *int32    `form:"logsOffset,omitempty" json:"logsOffset,omitempty"`
+	Level      *LogLevel `form:"level,omitempty" json:"level,omitempty"`
 }
 
 // GetV2SandboxesParams defines parameters for GetV2Sandboxes.

@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/pkg/errors"
 
@@ -18,20 +20,28 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 	}
 
 	logs := make([]string, 0)
+	logEntries := make([]*template_manager.TemplateBuildLogEntry, 0)
 	logsCrawled := int32(0)
 	for _, entry := range buildInfo.GetLogs() {
-		logsCrawled++
+		// Skip entries that are below the specified level
+		if entry.GetLevel().Number() < in.GetLevel().Number() {
+			continue
+		}
 
+		logsCrawled++
 		if logsCrawled <= in.GetOffset() {
 			continue
 		}
-		logs = append(logs, entry)
+
+		logEntries = append(logEntries, entry)
+		logs = append(logs, fmt.Sprintf("[%s] %s", entry.Timestamp.AsTime().Format(time.RFC3339), entry.Message))
 	}
 
 	return &template_manager.TemplateBuildStatusResponse{
-		Status:   buildInfo.GetStatus(),
-		Reason:   buildInfo.GetReason(),
-		Metadata: buildInfo.GetMetadata(),
-		Logs:     logs,
+		Status:     buildInfo.GetStatus(),
+		Reason:     buildInfo.GetReason(),
+		Metadata:   buildInfo.GetMetadata(),
+		Logs:       logs,
+		LogEntries: logEntries,
 	}, nil
 }

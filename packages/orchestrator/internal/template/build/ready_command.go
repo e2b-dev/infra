@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"go.uber.org/zap/zapcore"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
@@ -30,13 +32,13 @@ func (b *Builder) runReadyCommand(
 	ctx, span := b.tracer.Start(ctx, "run-ready-command")
 	defer span.End()
 
-	postProcessor.WriteMsg("Waiting for template to be ready")
+	postProcessor.Info("Waiting for template to be ready")
 
 	readyCmd := template.ReadyCmd
 	if readyCmd == "" {
 		readyCmd = getDefaultReadyCommand(metadata, template)
 	}
-	postProcessor.WriteMsg(fmt.Sprintf("[ready cmd]: %s", readyCmd))
+	postProcessor.Info(fmt.Sprintf("[ready cmd]: %s", readyCmd))
 
 	startTime := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, readyCommandTimeout)
@@ -48,8 +50,8 @@ func (b *Builder) runReadyCommand(
 			ctx,
 			b.tracer,
 			b.proxy,
-			b.buildLogger,
 			postProcessor,
+			zapcore.InfoLevel,
 			"ready",
 			sandboxID,
 			readyCmd,
@@ -57,10 +59,10 @@ func (b *Builder) runReadyCommand(
 		)
 
 		if err == nil {
-			postProcessor.WriteMsg("Template is ready")
+			postProcessor.Info("Template is ready")
 			return nil
 		} else {
-			postProcessor.WriteMsg(fmt.Sprintf("Template is not ready: %v", err))
+			postProcessor.Info(fmt.Sprintf("Template is not ready: %v", err))
 		}
 
 		select {
@@ -69,7 +71,7 @@ func (b *Builder) runReadyCommand(
 				return fmt.Errorf("ready command timed out after %s", time.Since(startTime))
 			}
 			// Template is ready, the start command finished before the ready command
-			postProcessor.WriteMsg("Template is ready")
+			postProcessor.Info("Template is ready")
 			return nil
 		case <-time.After(readyCommandRetryInterval):
 			// Wait for readyCommandRetryInterval time before retrying the ready command

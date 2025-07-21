@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -12,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -97,7 +99,24 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	result.Logs = cli.GetLogs(ctx, templateID, buildID, params.LogsOffset)
+	lgs := make([]string, 0)
+	logEntries := make([]api.BuildLogEntry, 0)
+	offset := int32(0)
+	if params.LogsOffset != nil {
+		offset = *params.LogsOffset
+	}
+
+	for _, entry := range cli.GetLogs(ctx, templateID, buildID, offset, apiToLogLevel(params.Level)) {
+		lgs = append(lgs, fmt.Sprintf("[%s] %s\n", entry.Timestamp.Format(time.RFC3339), entry.Message))
+		logEntries = append(logEntries, api.BuildLogEntry{
+			Timestamp: entry.Timestamp,
+			Message:   entry.Message,
+			Level:     api.LogLevel(logs.LevelToString(entry.Level)),
+		})
+	}
+
+	result.Logs = lgs
+	result.LogEntries = logEntries
 
 	c.JSON(http.StatusOK, result)
 }
@@ -113,4 +132,13 @@ func getCorrespondingTemplateBuildStatus(s envbuild.Status) api.TemplateBuildSta
 	default:
 		return api.TemplateBuildStatusBuilding
 	}
+}
+
+func apiToLogLevel(level *api.LogLevel) *logs.LogLevel {
+	if level == nil {
+		return nil
+	}
+
+	value := logs.StringToLevel(string(*level))
+	return &value
 }
