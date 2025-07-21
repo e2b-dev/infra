@@ -75,7 +75,6 @@ INSERT INTO sandbox_events (
     ?,
     ?,
     ?,
-    ?
 )`
 
 func (c *Client) InsertSandboxEvent(ctx context.Context, event SandboxEvent) error {
