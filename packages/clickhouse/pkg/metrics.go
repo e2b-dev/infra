@@ -20,25 +20,19 @@ type Metrics struct {
 }
 
 const latestMetricsSelectQuery = `
-SELECT
-    Attributes['sandbox_id']                                            AS sandbox_id,
-    Attributes['team_id']                                               AS team_id,
-
-    argMaxIf(Value,  TimeUnix, MetricName = 'e2b.sandbox.cpu.total')    AS cpu_total,
-    argMaxIf(Value,  TimeUnix, MetricName = 'e2b.sandbox.cpu.used')     AS cpu_used,
-    argMaxIf(Value,  TimeUnix, MetricName = 'e2b.sandbox.ram.total')    AS ram_total,
-    argMaxIf(Value,  TimeUnix, MetricName = 'e2b.sandbox.ram.used')     AS ram_used
-FROM metrics_gauge
-WHERE 
-    Attributes['sandbox_id'] IN ?
-AND Attributes['team_id'] = ?
-AND MetricName IN (
-	  'e2b.sandbox.cpu.total',
-	  'e2b.sandbox.cpu.used',
-	  'e2b.sandbox.ram.total',
-	  'e2b.sandbox.ram.used'
-   )
-GROUP BY sandbox_id, team_id
+SELECT sandbox_id,
+       team_id,
+       Argmaxif(value, timestamp, metric_name = 'e2b.sandbox.cpu.total') AS cpu_total,
+       Argmaxif(value, timestamp, metric_name = 'e2b.sandbox.cpu.used')  AS cpu_used,
+       Argmaxif(value, timestamp, metric_name = 'e2b.sandbox.ram.total') AS ram_total,
+       Argmaxif(value, timestamp, metric_name = 'e2b.sandbox.ram.used')  AS ram_used
+FROM   sandbox_metrics_gauge
+WHERE  sandbox_id IN ?
+       AND team_id = ?
+       AND metric_name IN ( 'e2b.sandbox.cpu.total', 'e2b.sandbox.cpu.used', 'e2b.sandbox.ram.total',
+                            'e2b.sandbox.ram.used' )
+GROUP  BY sandbox_id,
+          team_id; 
 `
 
 // QueryLatestMetrics returns rows ordered by timestamp, paged by limit.
@@ -69,36 +63,28 @@ func (c *Client) QueryLatestMetrics(ctx context.Context, sandboxIDs []string, te
 }
 
 const sandboxMetricsTimeRangeSelectQuery = `
-    SELECT
-        min(TimeUnix) AS start_time,
-        max(TimeUnix) AS end_time
-    FROM metrics_gauge m
-    WHERE Attributes['sandbox_id'] = {sandbox_id:String}
-      AND Attributes['team_id'] = {team_id:String}
+SELECT Min(timestamp) AS start_time,
+       Max(timestamp) AS end_time
+FROM   sandbox_metrics_gauge m
+WHERE  sandbox_id = {sandbox_id:String}
+       AND team_id = {team_id:String};
 `
 
 const sandboxMetricsSelectQuery = `
-SELECT
-    toStartOfInterval(TimeUnix, INTERVAL {step:UInt32} SECOND) AS timestamp,
-
-    maxIf(Value, MetricName = 'e2b.sandbox.cpu.total') AS cpu_total,
-    maxIf(Value, MetricName = 'e2b.sandbox.cpu.used')  AS cpu_used,
-    maxIf(Value, MetricName = 'e2b.sandbox.ram.total') AS ram_total,
-    maxIf(Value, MetricName = 'e2b.sandbox.ram.used')  AS ram_used
-
-FROM metrics_gauge
-
-WHERE 
-    Attributes['sandbox_id'] = {sandbox_id:String}
-  AND Attributes['team_id'] = {team_id:String}
-  AND MetricName IN (
-        'e2b.sandbox.cpu.total',
-        'e2b.sandbox.cpu.used',
-        'e2b.sandbox.ram.total',
-        'e2b.sandbox.ram.used'
-    )
-  AND TimeUnix >= {start_time:DateTime64}
-  AND TimeUnix <= {end_time:DateTime64}
+SELECT   toStartOfInterval(s.timestamp, interval {step:UInt32} second) AS timestamp,
+         maxIf(value, metric_name = 'e2b.sandbox.cpu.total')          AS cpu_total,
+         maxIf(value, metric_name = 'e2b.sandbox.cpu.used')           AS cpu_used,
+         maxIf(value, metric_name = 'e2b.sandbox.ram.total')          AS ram_total,
+         maxIf(value, metric_name = 'e2b.sandbox.ram.used')           AS ram_used
+FROM     sandbox_metrics_gauge s
+WHERE    sandbox_id = {sandbox_id:String}
+AND      team_id = {team_id:String}
+AND      metric_name IN ('e2b.sandbox.cpu.total',
+                         'e2b.sandbox.cpu.used',
+                         'e2b.sandbox.ram.total',
+                         'e2b.sandbox.ram.used')
+AND      s.timestamp >= {start_time:DateTime64}
+AND      s.timestamp <= {end_time:DateTime64}
 GROUP BY timestamp
 ORDER BY timestamp;
 `
