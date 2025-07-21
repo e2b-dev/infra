@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 	txtTemplate "text/template"
 	"time"
@@ -428,10 +429,24 @@ func (p *Process) Stop() error {
 		return fmt.Errorf("fc process not started")
 	}
 
-	err := p.cmd.Process.Signal(syscall.SIGTERM)
+	state, err := getProcessState(p.cmd.Process.Pid)
+	if err != nil {
+		zap.L().Error("failed to get process state", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+	}
+
+	zap.L().Info("stopping fc process", logger.WithSandboxID(p.files.SandboxID), zap.String("process_status", state))
+
+	err = p.cmd.Process.Signal(syscall.SIGTERM)
 	if err != nil {
 		zap.L().Warn("failed to send SIGTERM to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 	}
+
+	state, err = getProcessState(p.cmd.Process.Pid)
+	if err != nil {
+		zap.L().Error("failed to get process state", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+	}
+
+	zap.L().Info("stopped fc process", logger.WithSandboxID(p.files.SandboxID), zap.String("process_status", state))
 
 	go func() {
 		select {
@@ -443,6 +458,14 @@ func (p *Process) Stop() error {
 			} else {
 				zap.L().Info("sent SIGKILL to fc process because it was not responding to SIGTERM for 10 seconds", logger.WithSandboxID(p.files.SandboxID))
 			}
+
+			state, err = getProcessState(p.cmd.Process.Pid)
+			if err != nil {
+				zap.L().Error("failed to get process state", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+			}
+
+			zap.L().Info("after SIGKILL, fc process state", logger.WithSandboxID(p.files.SandboxID), zap.String("process_status", state))
+
 		// If the FC process exited, we can return.
 		case <-p.Exit.Done:
 			return
@@ -450,6 +473,13 @@ func (p *Process) Stop() error {
 	}()
 
 	return nil
+}
+
+func getProcessState(pid int) (string, error) {
+	cmd := exec.Command("ps", "-o", "stat=", "-p", fmt.Sprint(pid))
+	out, _ := cmd.Output()
+	state := strings.TrimSpace(string(out))
+	return state, nil
 }
 
 func (p *Process) Pause(ctx context.Context, tracer trace.Tracer) error {
