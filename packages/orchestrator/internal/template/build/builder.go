@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/command"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/envd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/ext4"
@@ -346,6 +347,9 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 
 	sourceMetadata := baseMetadata
 
+	// First start is create (to change CPU, etc), subsequent starts are resume.
+	shouldResumeSandbox := false
+
 	// Build Steps
 	for i, step := range template.Steps {
 		layerIndex := i + 1
@@ -391,8 +395,6 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 				&orchestrator.SandboxConfig{
 					BaseTemplateId: baseMetadata.TemplateID,
 
-					// TODO: Here might be invalid data for the template resume (when resuming with different CPU + memory than requested)
-					// These metadata are used only for statistics though, so it not a problem.
 					Vcpu:        template.VCpuCount,
 					RamMb:       template.MemoryMB,
 					HugePages:   template.HugePages,
@@ -402,7 +404,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 				lastHash,
 				sourceMetadata,
 				stepMetadata,
-				true,
+				shouldResumeSandbox,
 				globalconfig.AllowSandboxInternet,
 				func(ctx context.Context, sbx *sandbox.Sandbox) error {
 					postProcessor.Debug(fmt.Sprintf("Running action in: %s/%s", sourceMetadata.TemplateID, sourceMetadata.BuildID))
@@ -412,14 +414,11 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 						return fmt.Errorf("error processing layer: %w", err)
 					}
 
-					// Sync FS changes to the FS after exectution
-					err = sandboxtools.RunCommandWithLogger(
+					// Sync FS changes to the FS after execution
+					err = sandboxtools.RunCommand(
 						ctx,
 						b.tracer,
 						b.proxy,
-						nil,
-						zapcore.DebugLevel,
-						prefix,
 						sbx.Metadata.Config.SandboxId,
 						"sync",
 						sandboxtools.CommandMetadata{
@@ -436,6 +435,11 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			if err != nil {
 				return nil, fmt.Errorf("error running build layer: %w", err)
 			}
+
+			if !shouldResumeSandbox {
+				baseMetadata = stepMetadata
+				shouldResumeSandbox = true
+			}
 		}
 
 		sourceMetadata = stepMetadata
@@ -449,6 +453,8 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		postProcessor,
 		uploadErrGroup,
 		&orchestrator.SandboxConfig{
+			BaseTemplateId: baseMetadata.TemplateID,
+
 			Vcpu:        template.VCpuCount,
 			RamMb:       template.MemoryMB,
 			HugePages:   template.HugePages,
@@ -581,11 +587,16 @@ func (b *Builder) postProcessingFn(
 	postProcessor *writer.PostProcessor,
 	finalMetadata storage.TemplateFiles,
 	template config.TemplateConfig,
-	cmdMeta sandboxtools.CommandMetadata,
+	baseCmdMeta sandboxtools.CommandMetadata,
 ) func(ctx context.Context, sbx *sandbox.Sandbox) error {
 	return func(ctx context.Context, sbx *sandbox.Sandbox) error {
+		cmdMeta, err := command.ReadCommandMetadata(ctx, b.tracer, b.proxy, sbx.Metadata.Config.SandboxId, baseCmdMeta)
+		if err != nil {
+			return fmt.Errorf("failed to read command metadata: %w", err)
+		}
+
 		// Run configuration script
-		err := runConfiguration(
+		err = runConfiguration(
 			ctx,
 			b.tracer,
 			b.proxy,
@@ -658,6 +669,11 @@ func (b *Builder) postProcessingFn(
 		err = startCmd.Wait()
 		if err != nil {
 			return fmt.Errorf("error running start command: %w", err)
+		}
+
+		err = command.CleanCommandMetadata(ctx, b.tracer, b.proxy, sbx.Metadata.Config.SandboxId)
+		if err != nil {
+			return fmt.Errorf("error cleaning command metadata: %w", err)
 		}
 
 		return nil

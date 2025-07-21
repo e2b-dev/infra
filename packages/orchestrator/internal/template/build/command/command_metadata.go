@@ -12,7 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 )
 
-var cmdMetadataBaseDirPath = filepath.Join("/tmp", "e2b", "metadata")
+var cmdMetadataBaseDirPath = filepath.Join("/etc", "e2b-metadata")
 
 func CleanCommandMetadata(
 	ctx context.Context,
