@@ -29,11 +29,11 @@ runs:
                       postgres:latest
         while [ "$(docker inspect -f '{{.State.Health.Status}}' postgres 2>/dev/null)" != "healthy" ]; do echo "Waiting for PostgreSQL to be healthy..."; sleep 2; done
         echo "PostgreSQL is healthy!"
-        
+
         # Install extensions
         docker exec postgres psql -U postgres -d mydatabase -c "CREATE SCHEMA extensions; CREATE EXTENSION IF NOT EXISTS pgcrypto SCHEMA extensions;"
         echo "extensions installed"
-        
+
         echo "TESTS_E2B_API_KEY=${TESTS_E2B_API_KEY}" >> .env.test
         echo "TESTS_E2B_ACCESS_TOKEN=${TESTS_E2B_ACCESS_TOKEN}" >> .env.test
         echo "TESTS_SANDBOX_TEAM_ID=${TESTS_SANDBOX_TEAM_ID}" >> .env.test
@@ -42,6 +42,24 @@ runs:
         set -x
         make migrate
         make -C tests/integration seed
+      shell: bash
+
+    - name: Run Clickhouse
+      env:
+        CLICKHOUSE_USERNAME: "e2b"
+        CLICKHOUSE_PASSWORD: "clickity-clicky-click"
+        CLICKHOUSE_PORT: "9000"
+      run: |
+        echo "TESTS_CLICKHOUSE_USERNAME=${CLICKHOUSE_USERNAME}" >> .env.test
+        echo "TESTS_CLICKHOUSE_PORT=${CLICKHOUSE_PORT}" >> .env.test
+        echo "TESTS_CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}" >> .env.test
+        echo "CLICKHOUSE_CONNECTION_STRING=clickhouse://${CLICKHOUSE_USERNAME}:${CLICKHOUSE_PASSWORD}@$localhost:${CLICKHOUSE_PORT}/default" >> .env.test
+
+        make -C packages/clickhouse run &
+        while [ "$(docker inspect -f '{{.State.Health.Status}}' clickhouse 2>/dev/null)" != "healthy" ]; do echo "Waiting for Clickhouse to be healthy..."; sleep 2; done
+        echo "Clickhouse is healthy!"
+
+        make -C packages/clickhouse migrate/up
       shell: bash
 
     - name: Start Services
@@ -54,12 +72,16 @@ runs:
         ARTIFACTS_REGISTRY_PROVIDER: "Local"
         STORAGE_PROVIDER: "Local"
         ENVIRONMENT: "local"
+        OTEL_COLLECTOR_GRPC_ENDPOINT: "localhost:4317"
       run: |
         mkdir -p ~/logs
+
+        # Start otel-collector
+        bash ./scripts/start-service.sh "OtelCollector" tests/integration run-otel-collector ~/logs/otel-collector.log http://localhost:13133/healthz
         
         # Start orchestrator
         bash ./scripts/start-service.sh "Orchestrator" packages/orchestrator run-debug ~/logs/orchestrator.log http://localhost:5008/health
-        
+
         # Start API
         bash ./scripts/start-service.sh "API" packages/api run ~/logs/api.log http://localhost:3000/health
       shell: bash

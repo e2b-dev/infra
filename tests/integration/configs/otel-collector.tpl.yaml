@@ -1,0 +1,48 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        max_recv_msg_size_mib: 100
+        read_buffer_size: 10943040
+        max_concurrent_streams: 200
+        write_buffer_size: 10943040
+
+processors:
+  batch/clickhouse:
+    timeout: 5s
+    send_batch_size: 50000
+
+  filter/external_metrics:
+    metrics:
+      include:
+        match_type: regexp
+        metric_names:
+          - "e2b.*"
+
+extensions:
+  health_check:
+    endpoint:
+      0.0.0.0:13133
+
+exporters:
+  debug:
+    verbosity: detailed
+  clickhouse:
+    endpoint: tcp://${CLICKHOUSE_HOST}:9000
+    database: default
+    username: ${CLICKHOUSE_USERNAME}
+    password: ${CLICKHOUSE_PASSWORD}
+    async_insert: true
+    create_schema: false
+    metrics_tables:
+      gauge:
+        name: "metrics_gauge"
+service:
+  extensions:
+    - health_check
+  pipelines:
+    metrics/external:
+      receivers:  [otlp]
+      processors: [filter/external_metrics, batch/clickhouse]
+      exporters:  [clickhouse]

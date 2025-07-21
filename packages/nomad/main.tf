@@ -569,13 +569,27 @@ resource "nomad_job" "clickhouse" {
     memory_mb = var.clickhouse_resources_memory_mb
 
     username                = var.clickhouse_username
-    password                = random_password.clickhouse_password.result
     clickhouse_metrics_port = var.clickhouse_metrics_port
     clickhouse_server_port  = var.clickhouse_server_port.port
     server_count            = var.clickhouse_server_count
-    resources_memory_gib    = 8
 
-    otel_agent_config = templatefile("${path.module}/configs/clickhouse-otel-agent.yaml", {
+    clickhouse_config = templatefile("${path.module}/configs/clickhouse/config.xml", {
+      clickhouse_server_port  = var.clickhouse_server_port.port
+      clickhouse_metrics_port = var.clickhouse_metrics_port
+
+      server_secret = random_password.clickhouse_server_secret.result
+      server_count  = var.clickhouse_server_count
+
+      username = var.clickhouse_username
+      password = random_password.clickhouse_password.result
+    })
+
+    clickhouse_users_config = templatefile("${path.module}/configs/clickhouse/users.xml", {
+      username = var.clickhouse_username
+      password = random_password.clickhouse_password.result
+    })
+
+    otel_agent_config = templatefile("${path.module}/configs/clickhouse/otel-agent.yaml", {
       clickhouse_metrics_port  = var.clickhouse_metrics_port
       otel_collector_grpc_port = var.otel_collector_grpc_port
     })
