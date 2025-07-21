@@ -209,10 +209,15 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	// Check health metrics before stopping the sandbox
 	sbx.Checks.Healthcheck(true)
 
-	err := sbx.Stop(ctx)
-	if err != nil {
-		sbxlogger.I(sbx).Error("error stopping sandbox", logger.WithSandboxID(in.SandboxId), zap.Error(err))
-	}
+	// Start the cleanup in a goroutine—the initial kill request should be send as the first thing in stop, and at this point you cannot route to the sandbox anymore.
+	// We don't wait for the whole cleanup to finish here.
+	go func() {
+		// TODO: Handle the context properly.
+		err := sbx.Stop(ctx)
+		if err != nil {
+			sbxlogger.I(sbx).Error("error stopping sandbox", logger.WithSandboxID(in.SandboxId), zap.Error(err))
+		}
+	}()
 
 	return &emptypb.Empty{}, nil
 }
