@@ -631,9 +631,9 @@ components:
         - connecting
         - unhealthy
       x-enum-varnames:
-        - NodeStatusConnecting
-        - NodeStatusDraining
         - NodeStatusReady
+        - NodeStatusDraining
+        - NodeStatusConnecting
         - NodeStatusUnhealthy
 
     NodeStatusChange:
