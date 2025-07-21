@@ -71,7 +71,7 @@ WHERE  sandbox_id = {sandbox_id:String}
 `
 
 const sandboxMetricsSelectQuery = `
-SELECT   toStartOfInterval(timestamp, interval {step:UInt32} second) AS timestamp,
+SELECT   toStartOfInterval(s.timestamp, interval {step:UInt32} second) AS timestamp,
          maxIf(value, metric_name = 'e2b.sandbox.cpu.total')          AS cpu_total,
          maxIf(value, metric_name = 'e2b.sandbox.cpu.used')           AS cpu_used,
          maxIf(value, metric_name = 'e2b.sandbox.ram.total')          AS ram_total,
