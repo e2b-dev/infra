@@ -236,6 +236,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 			"--scope",
 			fmt.Sprintf("--property=CPUQuota=%d%%", gcloudMaxCPUQuota),
 			fmt.Sprintf("--property=MemoryMax=%dM", gcloudMaxMemoryLimit),
+			// Not 100% sure how this can internally affect the gcloud (probably returning retryable errors from fork there).
 			fmt.Sprintf("--property=TasksMax=%d", gcloudMaxTasksMax),
 			"gcloud",
 			"storage",
