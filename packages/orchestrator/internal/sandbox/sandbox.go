@@ -26,7 +26,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -472,17 +471,9 @@ func (s *Sandbox) Close(ctx context.Context, tracer trace.Tracer) error {
 		errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
 	}
 
-	select {
-	case <-s.process.Exit.Done:
-		// The process exited, we can continue with the rest of the cleanup.
-		break
-	case <-ctx.Done():
-		// The context expired, we won't wait for the process to exit and continue with the rest of the cleanup.
-
-		zap.L().Warn("context expired while waiting for FC to exit, continuing with the rest of the cleanup", logger.WithSandboxID(s.files.SandboxID))
-
-		break
-	}
+	// The process exited, we can continue with the rest of the cleanup.
+	// We could use select with ctx.Done() to wait for cancellation, but if the process is not exited the whole cleanup will be in a bad state and will result in unexpected behavior.
+	<-s.process.Exit.Done
 
 	uffdStopErr := s.Resources.memory.Stop()
 	if uffdStopErr != nil {
