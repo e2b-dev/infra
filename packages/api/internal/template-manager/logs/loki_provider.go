@@ -2,19 +2,14 @@ package logs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/grafana/loki/pkg/logcli/client"
-	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
-	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
 const (
@@ -26,7 +21,7 @@ type LokiProvider struct {
 	LokiClient *client.DefaultClient
 }
 
-func (l *LokiProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset *int32, level *api.LogLevel) ([]api.BuildLogEntry, error) {
+func (l *LokiProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset int32, level *logs.LogLevel) ([]logs.LogEntry, error) {
 	// Sanitize env ID
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 	templateIdSanitized := strings.ReplaceAll(templateID, "`", "")
@@ -34,60 +29,16 @@ func (l *LokiProvider) GetLogs(ctx context.Context, templateID string, buildID s
 
 	end := time.Now()
 	start := end.Add(-templateBuildOldestLogsLimit)
-	logs := make([]api.BuildLogEntry, 0)
 
 	res, err := l.LokiClient.QueryRange(query, templateBuildLogsLimit, start, end, logproto.FORWARD, time.Duration(0), time.Duration(0), true)
-	if err == nil {
-		logsCrawled := 0
-		logsOffset := 0
-		if offset != nil {
-			logsOffset = int(*offset)
-		}
-
-		if res.Data.Result.Type() != loghttp.ResultTypeStream {
-			zap.L().Error("unexpected value type received from loki query fetch", zap.String("type", string(res.Data.Result.Type())))
-			return nil, fmt.Errorf("unexpected value type received from loki query fetch")
-		}
-
-		for _, stream := range res.Data.Result.(loghttp.Streams) {
-			for _, entry := range stream.Entries {
-				line := make(map[string]any)
-				err := json.Unmarshal([]byte(entry.Line), &line)
-				if err != nil {
-					zap.L().Error("error parsing log line", zap.Error(err), logger.WithBuildID(buildID), zap.String("line", entry.Line))
-				}
-
-				entryLvl := api.LogLevelInfo
-				if l, ok := line["level"]; ok {
-					levelName := l.(string)
-					level, ok := levelNames[levelName]
-					if ok {
-						entryLvl = numberToLevel(level)
-					}
-				}
-
-				// Skip logs that are below the specified level
-				if level != nil && levelToNumber(&entryLvl) < levelToNumber(level) {
-					continue
-				}
-
-				// loki does not support offset pagination, so we need to skip logs manually
-				logsCrawled++
-				if logsCrawled <= logsOffset {
-					continue
-				}
-
-				logs = append(logs, api.BuildLogEntry{
-					Timestamp: entry.Timestamp,
-					Message:   line["message"].(string),
-					Level:     entryLvl,
-				})
-			}
-		}
-	} else {
-		telemetry.ReportError(ctx, "error when returning logs for template build", err)
-		zap.L().Error("error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildID))
+	if err != nil {
+		return nil, fmt.Errorf("error when querying loki for template build logs: %w", err)
 	}
 
-	return logs, nil
+	lm, err := logs.LokiResponseMapper(res, offset, level)
+	if err != nil {
+		return nil, fmt.Errorf("error when mapping loki response: %w", err)
+	}
+
+	return lm, nil
 }

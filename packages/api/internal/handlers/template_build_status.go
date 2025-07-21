@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -98,14 +99,23 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	logs := make([]string, 0)
+	lgs := make([]string, 0)
 	logEntries := make([]api.BuildLogEntry, 0)
-	for _, entry := range cli.GetLogs(ctx, templateID, buildID, params.LogsOffset, params.Level) {
-		logs = append(logs, fmt.Sprintf("[%s] %s\n", entry.Timestamp.Format(time.RFC3339), entry.Message))
-		logEntries = append(logEntries, entry)
+	offset := int32(0)
+	if params.LogsOffset != nil {
+		offset = *params.LogsOffset
 	}
 
-	result.Logs = logs
+	for _, entry := range cli.GetLogs(ctx, templateID, buildID, offset, apiToLogLevel(params.Level)) {
+		lgs = append(lgs, fmt.Sprintf("[%s] %s\n", entry.Timestamp.Format(time.RFC3339), entry.Message))
+		logEntries = append(logEntries, api.BuildLogEntry{
+			Timestamp: entry.Timestamp,
+			Message:   entry.Message,
+			Level:     api.LogLevel(logs.LevelToString(entry.Level)),
+		})
+	}
+
+	result.Logs = lgs
 	result.LogEntries = logEntries
 
 	c.JSON(http.StatusOK, result)
@@ -124,17 +134,11 @@ func getCorrespondingTemplateBuildStatus(s envbuild.Status) api.TemplateBuildSta
 	}
 }
 
-func getLogLevel(level string) api.LogLevel {
-	switch level {
-	case "debug":
-		return api.LogLevelDebug
-	case "info":
-		return api.LogLevelInfo
-	case "warn":
-		return api.LogLevelWarn
-	case "error":
-		return api.LogLevelError
-	default:
-		return api.LogLevelInfo
+func apiToLogLevel(level *api.LogLevel) *logs.LogLevel {
+	if level == nil {
+		return nil
 	}
+
+	value := logs.StringToLevel(string(*level))
+	return &value
 }

@@ -3,43 +3,9 @@ package logs
 import (
 	"context"
 
-	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
 type Provider interface {
-	GetLogs(ctx context.Context, templateID string, buildID string, offset *int32, level *api.LogLevel) ([]api.BuildLogEntry, error)
-}
-
-type LogLevel int32
-
-const (
-	LevelDebug LogLevel = 0
-	LevelInfo  LogLevel = 1
-	LevelWarn  LogLevel = 2
-	LevelError LogLevel = 3
-)
-
-var levelNames = map[string]LogLevel{
-	"debug": LevelDebug,
-	"info":  LevelInfo,
-	"warn":  LevelWarn,
-	"error": LevelError,
-}
-
-func levelToNumber(level *api.LogLevel) LogLevel {
-	if level == nil {
-		return LevelInfo
-	}
-
-	return levelNames[string(*level)]
-}
-
-func numberToLevel(level LogLevel) api.LogLevel {
-	for name, num := range levelNames {
-		if num == level {
-			return api.LogLevel(name)
-		}
-	}
-
-	return api.LogLevelInfo
+	GetLogs(ctx context.Context, templateID string, buildID string, offset int32, level *logs.LogLevel) ([]logs.LogEntry, error)
 }

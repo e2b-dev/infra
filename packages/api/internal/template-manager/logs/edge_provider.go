@@ -10,35 +10,45 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	edgeapi "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
 type ClusterPlacementProvider struct {
 	HTTP *edge.ClusterHTTP
 }
 
-func (c *ClusterPlacementProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset *int32, level *api.LogLevel) ([]api.BuildLogEntry, error) {
+func logToEdgeLevel(level *logs.LogLevel) *edgeapi.LogLevel {
+	if level == nil {
+		return nil
+	}
+
+	value := edgeapi.LogLevel(logs.LevelToString(*level))
+	return &value
+}
+
+func (c *ClusterPlacementProvider) GetLogs(ctx context.Context, templateID string, buildID string, offset int32, level *logs.LogLevel) ([]logs.LogEntry, error) {
 	res, err := c.HTTP.Client.V1TemplateBuildLogsWithResponse(
-		ctx, buildID, &edgeapi.V1TemplateBuildLogsParams{TemplateID: templateID, OrchestratorID: c.HTTP.NodeID, Offset: offset, Level: apiLevelToEdgeLevel(level)},
+		ctx, buildID, &edgeapi.V1TemplateBuildLogsParams{TemplateID: templateID, OrchestratorID: c.HTTP.NodeID, Offset: &offset, Level: logToEdgeLevel(level)},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build logs in template manager: %w", err)
 	}
 
-	if res.StatusCode() != 200 {
+	if res.StatusCode() != 200 || res.JSON200 == nil {
 		zap.L().Error("failed to get build logs in template manager", zap.String("body", string(res.Body)))
 		return nil, errors.New("failed to get build logs in template manager")
 	}
 
-	logs := make([]api.BuildLogEntry, 0)
+	l := make([]logs.LogEntry, 0)
 	for _, entry := range res.JSON200.LogEntries {
-		logs = append(logs, api.BuildLogEntry{
+		l = append(l, logs.LogEntry{
 			Timestamp: entry.Timestamp,
 			Message:   entry.Message,
-			Level:     edgeLevelToAPILevel(entry.Level),
+			Level:     logs.StringToLevel(string(entry.Level)),
 		})
 	}
 
-	return logs, nil
+	return l, nil
 }
 
 var edgeToAPILevelMap = map[edgeapi.LogLevel]api.LogLevel{

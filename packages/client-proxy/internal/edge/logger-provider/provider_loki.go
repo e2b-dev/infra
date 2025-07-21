@@ -2,19 +2,17 @@ package logger_provider
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
 	loki "github.com/grafana/loki/pkg/logcli/client"
-	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -47,7 +45,7 @@ func NewLokiQueryProvider() (*LokiQueryProvider, error) {
 	return &LokiQueryProvider{client: lokiClient}, nil
 }
 
-func (l *LokiQueryProvider) QueryBuildLogs(ctx context.Context, templateID string, buildID string, start time.Time, end time.Time, limit int, offset int, level *LogLevel) ([]LogEntry, error) {
+func (l *LokiQueryProvider) QueryBuildLogs(ctx context.Context, templateID string, buildID string, start time.Time, end time.Time, limit int, offset int32, level *logs.LogLevel) ([]logs.LogEntry, error) {
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 	templateIDSanitized := strings.ReplaceAll(templateID, "`", "")
 	buildIDSanitized := strings.ReplaceAll(buildID, "`", "")
@@ -59,20 +57,20 @@ func (l *LokiQueryProvider) QueryBuildLogs(ctx context.Context, templateID strin
 	if err != nil {
 		telemetry.ReportError(ctx, "error when returning logs for template build", err)
 		zap.L().Error("error when returning logs for template build", zap.Error(err), logger.WithBuildID(buildID))
-		return make([]LogEntry, 0), nil
+		return make([]logs.LogEntry, 0), nil
 	}
 
-	logs, err := l.lokiResponseMapper(res, offset, level)
+	lm, err := logs.LokiResponseMapper(res, offset, level)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when mapping build logs", err)
 		zap.L().Error("error when mapping logs for template build", zap.Error(err), logger.WithBuildID(buildID))
-		return make([]LogEntry, 0), nil
+		return make([]logs.LogEntry, 0), nil
 	}
 
-	return logs, nil
+	return lm, nil
 }
 
-func (l *LokiQueryProvider) QuerySandboxLogs(ctx context.Context, teamID string, sandboxID string, start time.Time, end time.Time, limit int, offset int) ([]LogEntry, error) {
+func (l *LokiQueryProvider) QuerySandboxLogs(ctx context.Context, teamID string, sandboxID string, start time.Time, end time.Time, limit int, offset int32) ([]logs.LogEntry, error) {
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 	sandboxIdSanitized := strings.ReplaceAll(sandboxID, "`", "")
 	teamIdSanitized := strings.ReplaceAll(teamID, "`", "")
@@ -83,65 +81,15 @@ func (l *LokiQueryProvider) QuerySandboxLogs(ctx context.Context, teamID string,
 	if err != nil {
 		telemetry.ReportError(ctx, "error when returning logs for sandbox", err)
 		zap.L().Error("error when returning logs for sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
-		return make([]LogEntry, 0), nil
+		return make([]logs.LogEntry, 0), nil
 	}
 
-	logs, err := l.lokiResponseMapper(res, offset, nil)
+	lm, err := logs.LokiResponseMapper(res, offset, nil)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when mapping sandbox logs", err)
 		zap.L().Error("error when mapping logs for sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
-		return make([]LogEntry, 0), nil
+		return make([]logs.LogEntry, 0), nil
 	}
 
-	return logs, nil
-}
-
-func (l *LokiQueryProvider) lokiResponseMapper(res *loghttp.QueryResponse, offset int, level *LogLevel) ([]LogEntry, error) {
-	logsCrawled := 0
-	logs := make([]LogEntry, 0)
-
-	if res.Data.Result.Type() != loghttp.ResultTypeStream {
-		return nil, fmt.Errorf("unexpected value type received from loki query fetch: %s", res.Data.Result.Type())
-	}
-
-	for _, stream := range res.Data.Result.(loghttp.Streams) {
-		for _, entry := range stream.Entries {
-			line := make(map[string]interface{})
-			err := json.Unmarshal([]byte(entry.Line), &line)
-			if err != nil {
-				zap.L().Error("error parsing log line", zap.Error(err), zap.String("line", entry.Line))
-			}
-
-			entryLvl := LevelInfo
-			if ll, ok := line["level"]; ok {
-				levelName := ll.(string)
-				l, ok := levelNames[levelName]
-				if ok {
-					entryLvl = l
-				}
-			}
-
-			// Skip logs that are below the specified level
-			if level != nil && entryLvl < *level {
-				continue
-			}
-
-			// loki does not support offset pagination, so we need to skip logs manually
-			logsCrawled++
-			if logsCrawled <= offset {
-				continue
-			}
-
-			logs = append(logs, LogEntry{
-				Timestamp: entry.Timestamp,
-				Line:      line["message"].(string),
-				Level:     entryLvl,
-			})
-		}
-	}
-
-	// Sort logs by timestamp (they are returned by the time they arrived in Loki)
-	slices.SortFunc(logs, func(a, b LogEntry) int { return a.Timestamp.Compare(b.Timestamp) })
-
-	return logs, nil
+	return lm, nil
 }
