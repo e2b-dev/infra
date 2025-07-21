@@ -189,7 +189,15 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 	}
 
 	// check if the envd version is newer than 0.2.0
-	if !sharedUtils.IsGTEVersion(*envdVersion, minEnvdVersionForSecureFlag) {
+	ok, err := sharedUtils.IsGTEVersion(*envdVersion, minEnvdVersionForSecureFlag)
+	if err != nil {
+		return "", &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "error during envd version check",
+			Err:       err,
+		}
+	}
+	if !ok {
 		return "", &api.APIError{
 			Code:      http.StatusBadRequest,
 			ClientMsg: "current template build does not support access flag, you need to re-build template to allow it",
