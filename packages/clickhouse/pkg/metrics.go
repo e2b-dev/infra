@@ -17,20 +17,22 @@ type Metrics struct {
 	CPUUsedPercent float64   `ch:"cpu_used"`
 	MemTotal       float64   `ch:"ram_total"`
 	MemUsed        float64   `ch:"ram_used"`
+	DiskTotal      float64   `ch:"disk_total"`
+	DiskUsed       float64   `ch:"disk_used"`
 }
 
 const latestMetricsSelectQuery = `
 SELECT sandbox_id,
        team_id,
-       Argmaxif(value, timestamp, metric_name = 'e2b.sandbox.cpu.total') AS cpu_total,
-       Argmaxif(value, timestamp, metric_name = 'e2b.sandbox.cpu.used')  AS cpu_used,
-       Argmaxif(value, timestamp, metric_name = 'e2b.sandbox.ram.total') AS ram_total,
-       Argmaxif(value, timestamp, metric_name = 'e2b.sandbox.ram.used')  AS ram_used
+       argMaxIf(value, timestamp, metric_name = 'e2b.sandbox.cpu.total')  AS cpu_total,
+       argMaxIf(value, timestamp, metric_name = 'e2b.sandbox.cpu.used')   AS cpu_used,
+       argMaxIf(value, timestamp, metric_name = 'e2b.sandbox.ram.total')  AS ram_total,
+       argMaxIf(value, timestamp, metric_name = 'e2b.sandbox.ram.used')   AS ram_used,
+       argMaxIf(value, timestamp, metric_name = 'e2b.sandbox.disk.total') AS disk_total,
+       argMaxIf(value, timestamp, metric_name = 'e2b.sandbox.disk.used')  AS disk_used
 FROM   sandbox_metrics_gauge
 WHERE  sandbox_id IN ?
        AND team_id = ?
-       AND metric_name IN ( 'e2b.sandbox.cpu.total', 'e2b.sandbox.cpu.used', 'e2b.sandbox.ram.total',
-                            'e2b.sandbox.ram.used' )
 GROUP  BY sandbox_id,
           team_id; 
 `
@@ -75,14 +77,12 @@ SELECT   toStartOfInterval(s.timestamp, interval {step:UInt32} second) AS timest
          maxIf(value, metric_name = 'e2b.sandbox.cpu.total')          AS cpu_total,
          maxIf(value, metric_name = 'e2b.sandbox.cpu.used')           AS cpu_used,
          maxIf(value, metric_name = 'e2b.sandbox.ram.total')          AS ram_total,
-         maxIf(value, metric_name = 'e2b.sandbox.ram.used')           AS ram_used
+         maxIf(value, metric_name = 'e2b.sandbox.ram.used')           AS ram_used,
+         maxIf(value, metric_name = 'e2b.sandbox.disk.total')         AS disk_total,
+         maxIf(value, metric_name = 'e2b.sandbox.disk.used')          AS disk_used
 FROM     sandbox_metrics_gauge s
 WHERE    sandbox_id = {sandbox_id:String}
 AND      team_id = {team_id:String}
-AND      metric_name IN ('e2b.sandbox.cpu.total',
-                         'e2b.sandbox.cpu.used',
-                         'e2b.sandbox.ram.total',
-                         'e2b.sandbox.ram.used')
 AND      s.timestamp >= {start_time:DateTime64}
 AND      s.timestamp <= {end_time:DateTime64}
 GROUP BY timestamp
