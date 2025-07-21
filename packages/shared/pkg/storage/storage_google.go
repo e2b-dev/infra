@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	txtTemplate "text/template"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -171,15 +172,11 @@ func (g *GCPBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, 
 
 func (g *GCPBucketStorageObjectProvider) ReadFrom(src io.Reader) (int64, error) {
 	w := g.handle.NewWriter(g.ctx)
+	defer w.Close()
 
 	n, err := io.Copy(w, src)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return n, fmt.Errorf("failed to copy buffer to persistence: %w", err)
-	}
-
-	err = w.Close()
-	if err != nil {
-		return n, fmt.Errorf("failed to close GCS writer: %w", err)
 	}
 
 	return n, nil
@@ -209,10 +206,34 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 	return n, nil
 }
 
+// MAX_CPU_PERCENT=${GCLOUD_CPU_LIMIT:-25}    # Limit to 25% of one CPU core (200% = 2 cores)
+// MAX_PROCESSES=${GCLOUD_MAX_PROCESSES:-3}   # Max 3 concurrent gcloud processes
+// MEMORY_LIMIT=${GCLOUD_MEMORY_LIMIT:-512M}  # Memory limit per process
+
+// TODO: Wrap the command in a CPU/memory limit so it does not stall the rest of the system
+
+// GCloud CPU Limiter using systemd cgroups
+const limitedGcloudCommand = `#!/bin/bash
+exec systemd-run \
+		--user \
+		--scope \
+		--property="CPUQuota={{ .CPUQuota }}%" \
+		--property="MemoryMax={{ .MemoryLimit }}" \
+		--property="TasksMax={{ .TasksMax }}" \
+		gcloud storage cp --verbosity error {{ .Path }} gs://{{ .Bucket }}/{{ .BucketPath }}`
+
+var limitedUploadScriptTemplate = txtTemplate.Must(txtTemplate.New("limited-upload").Parse(limitedGcloudCommand))
+
 func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error {
+	// TODO: Add a global semaphore for the gcloud upload
+	// TODO: Add retry (3x) to be more resilient
+
+
+
+
 	cmd := exec.CommandContext(
 		g.ctx,
-		"gcloud",
+		,
 		"storage",
 		"cp",
 		"--verbosity",
