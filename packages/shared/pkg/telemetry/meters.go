@@ -48,9 +48,11 @@ const (
 const (
 	ApiOrchestratorCountMeterName GaugeIntType = "api.orchestrator.status"
 
-	SandboxRamUsedGaugeName  GaugeIntType = "e2b.sandbox.ram.used"
-	SandboxRamTotalGaugeName GaugeIntType = "e2b.sandbox.ram.total"
-	SandboxCpuTotalGaugeName GaugeIntType = "e2b.sandbox.cpu.total"
+	SandboxRamUsedGaugeName   GaugeIntType = "e2b.sandbox.ram.used"
+	SandboxRamTotalGaugeName  GaugeIntType = "e2b.sandbox.ram.total"
+	SandboxCpuTotalGaugeName  GaugeIntType = "e2b.sandbox.cpu.total"
+	SandboxDiskUsedGaugeName  GaugeIntType = "e2b.sandbox.disk.used"
+	SandboxDiskTotalGaugeName GaugeIntType = "e2b.sandbox.disk.total"
 )
 
 var counterDesc = map[CounterType]string{

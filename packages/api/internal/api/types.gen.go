@@ -368,6 +368,12 @@ type SandboxMetric struct {
 	// CpuUsedPct CPU usage percentage
 	CpuUsedPct float32 `json:"cpuUsedPct"`
 
+	// DiskTotal Total disk space in bytes
+	DiskTotal int64 `json:"diskTotal"`
+
+	// DiskUsed Disk used in bytes
+	DiskUsed int64 `json:"diskUsed"`
+
 	// MemTotal Total memory in bytes
 	MemTotal int64 `json:"memTotal"`
 

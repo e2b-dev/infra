@@ -203,6 +203,8 @@ components:
         - cpuUsedPct
         - memUsed
         - memTotal
+        - diskUsed
+        - diskTotal
       properties:
         timestamp:
           type: string
@@ -224,6 +226,14 @@ components:
           type: integer
           format: int64
           description: Total memory in bytes
+        diskUsed:
+          type: integer
+          format: int64
+          description: Disk used in bytes
+        diskTotal:
+          type: integer
+          format: int64
+          description: Total disk space in bytes
 
     Sandbox:
       required:

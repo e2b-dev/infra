@@ -16,6 +16,7 @@ require (
 	github.com/rs/zerolog v1.34.0
 	github.com/shirou/gopsutil/v4 v4.25.6
 	github.com/stretchr/testify v1.10.0
+	golang.org/x/sys v0.33.0
 	google.golang.org/protobuf v1.36.6
 )
 
@@ -51,7 +52,6 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	golang.org/x/mod v0.25.0 // indirect
 	golang.org/x/sync v0.15.0 // indirect
-	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
 	golang.org/x/tools v0.34.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
