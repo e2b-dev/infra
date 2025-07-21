@@ -223,6 +223,12 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 
 func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error {
 	upload := func() error {
+		semaphoreErr := uploadSemaphore.Acquire(g.ctx, 1)
+		if semaphoreErr != nil {
+			return fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
+		}
+		defer uploadSemaphore.Release(1)
+
 		cmd := exec.CommandContext(
 			g.ctx,
 			"systemd-run",
@@ -248,15 +254,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 	}
 
 	for range gcloudMaxRetries {
-		semaphoreErr := uploadSemaphore.Acquire(g.ctx, 1)
-		if semaphoreErr != nil {
-			return fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
-		}
-
 		err := upload()
-
-		uploadSemaphore.Release(1)
-
 		if err != nil {
 			// Failed to upload file, retrying.
 			zap.L().Warn("Failed to upload file to GCS", zap.Error(err), zap.String("path", g.path))
