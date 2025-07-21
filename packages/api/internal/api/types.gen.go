@@ -27,9 +27,9 @@ const (
 
 // Defines values for NodeStatus.
 const (
-	NodeStatusConnecting NodeStatus = "ready"
+	NodeStatusConnecting NodeStatus = "connecting"
 	NodeStatusDraining   NodeStatus = "draining"
-	NodeStatusReady      NodeStatus = "connecting"
+	NodeStatusReady      NodeStatus = "ready"
 	NodeStatusUnhealthy  NodeStatus = "unhealthy"
 )
 
