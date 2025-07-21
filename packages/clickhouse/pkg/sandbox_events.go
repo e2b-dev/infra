@@ -27,10 +27,10 @@ SELECT
     event_category,
     event_label,
 FROM sandbox_events
-WHERE sandbox_id = {sandbox_id:String}
+WHERE sandbox_id = ?
 ORDER BY timestamp DESC
-LIMIT {limit:UInt32}
-OFFSET {offset:UInt32}
+LIMIT ?
+OFFSET ?
 `
 
 func (c *Client) QuerySandboxEvents(ctx context.Context, sandboxID string, offset, limit int) ([]SandboxEvent, error) {
@@ -67,14 +67,15 @@ INSERT INTO sandbox_events (
     event_label,
     event_data
 ) VALUES (
-    {timestamp:DateTime64(9)},
-    {sandbox_id:String},
-    {sandbox_execution_id:String},
-    {sandbox_template_id:String},
-    {sandbox_team_id:UUID},
-    {event_category:String},
-    {event_label:String},
-    {event_data:Nullable(JSON)}
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?
 )`
 
 func (c *Client) InsertSandboxEvent(ctx context.Context, event SandboxEvent) error {
