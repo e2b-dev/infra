@@ -51,14 +51,10 @@ func GetMetrics() (*Metrics, error) {
 		cpuUsedPctRounded = float32(math.Round(cpuUsedPct*100) / 100)
 	}
 
-	var stat unix.Statfs_t
-	err = unix.Statfs("/", &stat)
+	diskMetrics, err := diskStats("/")
 	if err != nil {
 		return nil, err
 	}
-
-	diskTotal := stat.Blocks * uint64(stat.Bsize)
-	diskUsed := diskTotal - (stat.Bfree * uint64(stat.Bsize))
 
 	return &Metrics{
 		Timestamp:      time.Now().UTC().Unix(),
@@ -68,7 +64,28 @@ func GetMetrics() (*Metrics, error) {
 		MemTotalMiB:    memTotalMiB,
 		MemTotal:       v.Total,
 		MemUsed:        v.Used,
-		DiskUsed:       diskUsed,
-		DiskTotal:      diskTotal,
+		DiskUsed:       diskMetrics.Total - diskMetrics.Available,
+		DiskTotal:      diskMetrics.Total,
 	}, nil
+}
+
+type diskSpace struct {
+	Total     uint64
+	Available uint64
+}
+
+func diskStats(path string) (diskSpace, error) {
+	var st unix.Statfs_t
+	if err := unix.Statfs(path, &st); err != nil {
+		return diskSpace{}, err
+	}
+
+	block := uint64(st.Bsize)
+
+	// all data blocks
+	total := st.Blocks * block
+	// blocks available
+	available := st.Bavail * block
+
+	return diskSpace{Total: total, Available: available}, nil
 }
