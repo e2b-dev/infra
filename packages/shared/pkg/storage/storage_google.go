@@ -32,10 +32,10 @@ const (
 	// GCloud imposed limits:
 
 	// 10 concurrent uploads
-	gcloudMaxConcurrentUploads = 10
+	gcloudMaxConcurrentUploads = 8
 	gcloudMaxRetries           = 3
-	// 300% CPU quota (300% / 9600% CPU total -> 3.125% total CPU per gcloud), total max CPU used for uploads is 3.125% * 10 = 31.25%
-	gcloudMaxCPUQuota = 300
+	// 200% CPU quota (200% / 9600% CPU total -> 2.083% total CPU per gcloud), total max CPU used for uploads is 2.083% * 10 = 20.83%
+	gcloudMaxCPUQuota = 200
 	// 2048M memory limit (2048M / 3865471M -> 0.053% of total memory), total max memory used for uploads is 0.053% * 10 = 0.53%
 	gcloudMaxMemoryLimit = 2048
 	// 16 tasks max, total max tasks used for uploads is 16 * 10 = 160
