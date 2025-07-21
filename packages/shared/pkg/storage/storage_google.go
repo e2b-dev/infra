@@ -257,7 +257,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 		err := upload()
 		if err != nil {
 			// Failed to upload file, retrying.
-			zap.L().Warn("Failed to upload file to GCS", zap.Error(err), zap.String("path", g.path))
+			zap.L().Warn("Failed to upload file to GCS, retrying", zap.Error(err), zap.String("path", g.path))
 
 			continue
 		}
