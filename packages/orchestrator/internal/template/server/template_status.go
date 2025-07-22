@@ -37,10 +37,21 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 		logs = append(logs, fmt.Sprintf("[%s] %s", entry.Timestamp.AsTime().Format(time.RFC3339), entry.Message))
 	}
 
+	result := buildInfo.GetResult()
+	if result == nil {
+		return &template_manager.TemplateBuildStatusResponse{
+			Status:     template_manager.TemplateBuildState_Building,
+			Reason:     nil,
+			Metadata:   nil,
+			Logs:       logs,
+			LogEntries: logEntries,
+		}, nil
+	}
+
 	return &template_manager.TemplateBuildStatusResponse{
-		Status:     buildInfo.GetStatus(),
-		Reason:     buildInfo.GetReason(),
-		Metadata:   buildInfo.GetMetadata(),
+		Status:     result.Status,
+		Reason:     result.Reason,
+		Metadata:   result.Metadata,
 		Logs:       logs,
 		LogEntries: logEntries,
 	}, nil

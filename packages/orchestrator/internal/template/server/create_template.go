@@ -77,40 +77,43 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		defer buildInfo.Cancel()
+		buildContext, cancelBuildContext := context.WithCancel(context.Background())
+		defer cancelBuildContext()
 
 		buildContext, buildSpan := s.tracer.Start(
-			trace.ContextWithSpanContext(buildInfo.GetContext(), childSpan.SpanContext()),
+			trace.ContextWithSpanContext(buildContext, childSpan.SpanContext()),
 			"template-background-build",
 		)
 		defer buildSpan.End()
 
+		// Watch for build cancellation requests
+		go func() {
+			select {
+			case <-buildContext.Done():
+				return
+			case <-buildInfo.Result.Done:
+				res, _ := buildInfo.Result.Result()
+				if res.Status == templatemanager.TemplateBuildState_Failed {
+					cancelBuildContext()
+				}
+				return
+			}
+		}()
+
 		res, err := s.builder.Build(buildContext, metadata, template, logger)
 		_ = logger.Sync()
 		if err != nil {
-			s.reportBuildFailed(buildContext, metadata.BuildID, err)
-			return
-		}
+			telemetry.ReportCriticalError(ctx, "error while building template", err)
 
-		buildMetadata := &templatemanager.TemplateBuildMetadata{RootfsSizeKey: int32(res.RootfsSizeMB), EnvdVersionKey: res.EnvdVersion}
-		err = s.buildCache.SetSucceeded(metadata.BuildID, buildMetadata)
-		if err != nil {
-			s.reportBuildFailed(buildContext, metadata.BuildID, fmt.Errorf("error while setting build state to succeeded: %w", err))
-			return
+			buildInfo.SetFail(err.Error())
+		} else {
+			buildInfo.SetSuccess(&templatemanager.TemplateBuildMetadata{
+				RootfsSizeKey:  int32(res.RootfsSizeMB),
+				EnvdVersionKey: res.EnvdVersion,
+			})
+			telemetry.ReportEvent(buildContext, "Environment built")
 		}
-
-		telemetry.ReportEvent(buildContext, "Environment built")
 	}()
 
 	return nil, nil
-}
-
-func (s *ServerStore) reportBuildFailed(ctx context.Context, buildID string, err error) {
-	telemetry.ReportCriticalError(ctx, "error while building template", err)
-	cacheErr := s.buildCache.SetFailed(buildID, err.Error())
-	if cacheErr != nil {
-		s.logger.Error("Error while setting build state to failed", zap.Error(cacheErr))
-	}
-
-	telemetry.ReportEvent(ctx, "Environment built failed")
 }

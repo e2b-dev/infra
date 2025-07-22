@@ -144,7 +144,7 @@ func ExtractToExt4(ctx context.Context, tracer trace.Tracer, postProcessor *writ
 		return fmt.Errorf("error mounting ext4 filesystem: %w", err)
 	}
 	defer func() {
-		if unmountErr := ext4.Unmount(ctx, tracer, tmpMount); unmountErr != nil {
+		if unmountErr := ext4.Unmount(context.WithoutCancel(ctx), tracer, tmpMount); unmountErr != nil {
 			zap.L().Error("error unmounting ext4 filesystem", zap.Error(unmountErr))
 		}
 	}()
