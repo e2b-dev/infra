@@ -94,15 +94,6 @@ message TemplateBuildStatusResponse {
   repeated TemplateBuildLogEntry logEntries = 5;
 }
 
-enum HealthState {
-  Healthy = 0;
-  Draining = 1;
-}
-
-message HealthStatusResponse {
-  HealthState status = 1;
-}
-
 // Interface exported by the server.
 service TemplateService {
   // TemplateCreate is a gRPC service that creates a new template
@@ -113,9 +104,6 @@ service TemplateService {
 
   // TemplateBuildDelete is a gRPC service that deletes files associated with a template build
   rpc TemplateBuildDelete (TemplateBuildDeleteRequest) returns (google.protobuf.Empty);
-
-  // todo (2025-05): this is deprecated, please use InfoService that is used for both orchestrator and template manager
-  rpc HealthStatus (google.protobuf.Empty) returns (HealthStatusResponse);
 
   // InitLayerFileUpload requests an upload URL for a tar file containing layer files to be cached for the template build.
   rpc InitLayerFileUpload (InitLayerFileUploadRequest) returns (InitLayerFileUploadResponse);
