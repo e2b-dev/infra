@@ -154,7 +154,7 @@ func (g *GCPBucketStorageProvider) OpenObject(ctx context.Context, path string) 
 	flagCtx := ldcontext.NewBuilder(featureflags.GcloudMaxCPUQuota).SetString("path", path).Build()
 	maxCPU, flagErr := g.featureFlags.Ld.IntVariation(featureflags.GcloudMaxCPUQuota, flagCtx, featureflags.GcloudMaxCPUQuotaDefault)
 	if flagErr != nil {
-		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
+		zap.L().Warn("soft failing during metrics write feature flag receive", zap.Error(flagErr))
 	}
 
 	flagCtx = ldcontext.NewBuilder(featureflags.GcloudMaxMemoryLimit).SetString("path", path).Build()
