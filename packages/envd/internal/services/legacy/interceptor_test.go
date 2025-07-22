@@ -16,28 +16,36 @@ import (
 )
 
 func TestInterceptor(t *testing.T) {
-	streamSetup := func(mockFS *MockFilesystemHandler) {
-		mockFS.EXPECT().
-			WatchDir(mock.Anything, mock.Anything, mock.Anything).
-			Run(func(context1 context.Context, request *connect.Request[filesystem.WatchDirRequest], serverStream *connect.ServerStream[filesystem.WatchDirResponse]) {
-				err := serverStream.Send(&filesystem.WatchDirResponse{Event: &filesystem.WatchDirResponse_Start{Start: &filesystem.WatchDirResponse_StartEvent{}}})
-				require.NoError(t, err)
-			}).
-			Return(nil)
+	streamSetup := func(count int) func(mockFS *MockFilesystemHandler) {
+		return func(mockFS *MockFilesystemHandler) {
+			mockFS.EXPECT().
+				WatchDir(mock.Anything, mock.Anything, mock.Anything).
+				Run(func(context1 context.Context, request *connect.Request[filesystem.WatchDirRequest], serverStream *connect.ServerStream[filesystem.WatchDirResponse]) {
+					for range count {
+						err := serverStream.Send(&filesystem.WatchDirResponse{Event: &filesystem.WatchDirResponse_Start{Start: &filesystem.WatchDirResponse_StartEvent{}}})
+						require.NoError(t, err)
+					}
+				}).
+				Return(nil)
+		}
 	}
 
-	streamTest := func(t *testing.T, client spec.FilesystemClient) http.Header {
-		req := connect.NewRequest[filesystem.WatchDirRequest](&filesystem.WatchDirRequest{Path: "/a/b/c"})
-		resp, err := client.WatchDir(t.Context(), req)
-		require.NoError(t, err)
+	streamTest := func(count int) func(t *testing.T, client spec.FilesystemClient) http.Header {
+		return func(t *testing.T, client spec.FilesystemClient) http.Header {
+			req := connect.NewRequest[filesystem.WatchDirRequest](&filesystem.WatchDirRequest{Path: "/a/b/c"})
+			resp, err := client.WatchDir(t.Context(), req)
+			require.NoError(t, err)
 
-		ok := resp.Receive()
-		require.True(t, ok, resp.Err())
+			for range count {
+				ok := resp.Receive()
+				require.True(t, ok, resp.Err())
 
-		item := resp.Msg()
-		require.NotNil(t, item)
+				item := resp.Msg()
+				require.NotNil(t, item)
+			}
 
-		return resp.ResponseHeader()
+			return resp.ResponseHeader()
+		}
 	}
 
 	unarySetup := func(mockFS *MockFilesystemHandler) {
@@ -59,15 +67,27 @@ func TestInterceptor(t *testing.T) {
 		execute           func(t *testing.T, client spec.FilesystemClient) http.Header
 		expectHeaderValue string
 	}{
-		"streaming interceptor converts when necessary": {
+		"streaming interceptor converts no messages": {
 			userAgent:         "connect-python",
-			setup:             streamSetup,
-			execute:           streamTest,
+			setup:             streamSetup(0),
+			execute:           streamTest(0),
+			expectHeaderValue: "true",
+		},
+		"streaming interceptor converts single messages": {
+			userAgent:         "connect-python",
+			setup:             streamSetup(1),
+			execute:           streamTest(1),
+			expectHeaderValue: "true",
+		},
+		"streaming interceptor converts multiple messages": {
+			userAgent:         "connect-python",
+			setup:             streamSetup(2),
+			execute:           streamTest(2),
 			expectHeaderValue: "true",
 		},
 		"streaming interceptor can avoid conversion": {
-			setup:   streamSetup,
-			execute: streamTest,
+			setup:   streamSetup(1),
+			execute: streamTest(1),
 		},
 		"unary interceptor converts when necessary": {
 			userAgent:         "connect-python",
@@ -104,8 +124,13 @@ func TestInterceptor(t *testing.T) {
 			// make request
 			responseHeaders := test.execute(t, client)
 
-			// verify results
-			assert.Equal(t, test.expectHeaderValue, responseHeaders.Get("x-e2b-legacy-sdk"))
+			// verify results; this ensures we don't set this header multiple times
+			actualHeaderValues := responseHeaders.Values("x-e2b-legacy-sdk")
+			if test.expectHeaderValue != "" {
+				assert.Equal(t, []string{test.expectHeaderValue}, actualHeaderValues)
+			} else {
+				assert.Empty(t, actualHeaderValues)
+			}
 		})
 	}
 }

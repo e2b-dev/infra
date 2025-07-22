@@ -29,9 +29,7 @@ func (s streamConverter) RequestHeader() http.Header {
 }
 
 func (s streamConverter) Send(a any) error {
-	if shouldHideChanges(s.conn.RequestHeader(), s.conn.ResponseHeader()) {
-		a = maybeConvertValue(a)
-	}
+	a = maybeConvertValue(a)
 	return s.conn.Send(a)
 }
 

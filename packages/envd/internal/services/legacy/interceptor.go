@@ -45,7 +45,9 @@ func (l ConversionInterceptor) WrapStreamingClient(clientFunc connect.StreamingC
 
 func (l ConversionInterceptor) WrapStreamingHandler(handlerFunc connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
-		conn = &streamConverter{conn: conn}
+		if shouldHideChanges(conn.RequestHeader(), conn.ResponseHeader()) {
+			conn = &streamConverter{conn: conn}
+		}
 
 		return handlerFunc(ctx, conn)
 	}
