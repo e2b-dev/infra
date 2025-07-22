@@ -194,7 +194,7 @@ func run() int {
 
 	// Edge Pass Through Proxy for direct communication with orchestrator nodes
 	grpcListener := muxServer.MatchWithWriters(cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc")) // handler requests for gRPC pass through
-	grpcSrv := edgepassthrough.NewNodePassThroughServer(ctx, orchestrators, info, authorizationManager)
+	grpcSrv := edgepassthrough.NewNodePassThroughServer(ctx, orchestrators, info, authorizationManager, catalog)
 
 	// Edge REST API
 	restHttpHandler := edge.NewGinServer(logger, edgeApiStore, edgeApiSwagger, tracer, authorizationManager)

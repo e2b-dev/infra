@@ -2,8 +2,11 @@ package edgepassthrough
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"time"
 
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -13,12 +16,16 @@ import (
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
 	e2binfo "github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/edge"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 )
 
 type NodePassThroughServer struct {
-	nodes  *e2borchestrators.OrchestratorsPool
+	nodes   *e2borchestrators.OrchestratorsPool
+	catalog sandboxes.SandboxesCatalog
+
 	info   *e2binfo.ServiceInfo
 	server *grpc.Server
 
@@ -33,50 +40,57 @@ const (
 
 var clientStreamDescForProxying = &grpc.StreamDesc{ServerStreams: true, ClientStreams: true}
 
-func NewNodePassThroughServer(ctx context.Context, nodes *e2borchestrators.OrchestratorsPool, info *e2binfo.ServiceInfo, authorization authorization.AuthorizationService) *grpc.Server {
+func NewNodePassThroughServer(
+	ctx context.Context,
+	nodes *e2borchestrators.OrchestratorsPool,
+	info *e2binfo.ServiceInfo,
+	authorization authorization.AuthorizationService,
+	catalog sandboxes.SandboxesCatalog,
+) *grpc.Server {
 	nodePassThrough := &NodePassThroughServer{
 		authorization: authorization,
 		nodes:         nodes,
+		catalog:       catalog,
 		info:          info,
 		ctx:           ctx,
 	}
 
 	return grpc.NewServer(
-		grpc.UnknownServiceHandler(nodePassThrough.Handler),
+		grpc.UnknownServiceHandler(nodePassThrough.handler),
 		grpc.MaxRecvMsgSize(grpcMaxMsgSize),
 	)
 }
 
-func (s *NodePassThroughServer) director(ctx context.Context) (*grpc.ClientConn, error) {
+func (s *NodePassThroughServer) director(ctx context.Context) (*grpc.ClientConn, metadata.MD, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return nil, status.Error(codes.InvalidArgument, "error getting metadata from context")
+		return nil, nil, status.Error(codes.InvalidArgument, "error getting metadata from context")
 	}
 
 	auths := md.Get(consts.EdgeRpcAuthHeader)
 	if len(auths) == 0 || len(auths) > 1 {
-		return nil, status.Error(codes.Unauthenticated, "error getting authentication metadata from context")
+		return nil, nil, status.Error(codes.Unauthenticated, "error getting authentication metadata from context")
 	}
 
 	// Verify authorization header
 	auth := auths[0]
 	err := s.authorization.VerifyAuthorization(auth)
 	if err != nil {
-		return nil, status.Error(codes.PermissionDenied, err.Error())
+		return nil, nil, status.Error(codes.PermissionDenied, err.Error())
 	}
 
 	serviceInstanceIDs := md.Get(consts.EdgeRpcServiceInstanceIDHeader)
 	if len(serviceInstanceIDs) == 0 || len(serviceInstanceIDs) > 1 {
-		return nil, status.Error(codes.InvalidArgument, "service instance id header missing or invalid")
+		return nil, nil, status.Error(codes.InvalidArgument, "service instance id header missing or invalid")
 	}
 
 	serviceInstanceID := serviceInstanceIDs[0]
 	serviceInstance, ok := s.nodes.GetOrchestrator(serviceInstanceID)
 	if !ok {
-		return nil, status.Error(codes.NotFound, "service instance not found")
+		return nil, nil, status.Error(codes.NotFound, "service instance not found")
 	}
 
-	return serviceInstance.GetClient().Connection, nil
+	return serviceInstance.GetClient().Connection, md, nil
 }
 
 // Handler - following code implement a gRPC pass-through proxy that forwards requests to the appropriate node
@@ -84,7 +98,7 @@ func (s *NodePassThroughServer) director(ctx context.Context) (*grpc.ClientConn,
 //
 // Core implementation is just following methods that are handling forwarding, proper closing and propagating of errors from both sides of the stream.
 // The handler is called for every request that is not handled by any other gRPC service.
-func (s *NodePassThroughServer) Handler(srv interface{}, serverStream grpc.ServerStream) error {
+func (s *NodePassThroughServer) handler(srv interface{}, serverStream grpc.ServerStream) error {
 	fullMethodName, ok := grpc.MethodFromServerStream(serverStream)
 	if !ok {
 		return status.Errorf(codes.Internal, "low lever server stream not exists in context")
@@ -103,13 +117,23 @@ func (s *NodePassThroughServer) Handler(srv interface{}, serverStream grpc.Serve
 	}
 
 	// We require that the director's returned context inherits from the serverStream.Context().
-	clientConnection, err := s.director(serverStream.Context())
+	clientConnection, md, err := s.director(serverStream.Context())
 	if err != nil {
 		return err
 	}
 
 	clientCtx, clientCancel := context.WithCancel(s.ctx)
 	defer clientCancel()
+
+	callback, err := s.eventsHandler(md)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to handle events: %v", err)
+	}
+
+	var returnErr error
+	if callback != nil {
+		defer callback(returnErr)
+	}
 
 	clientStream, err := grpc.NewClientStream(clientCtx, clientStreamDescForProxying, clientConnection, fullMethodName)
 	if err != nil {
@@ -135,6 +159,7 @@ func (s *NodePassThroughServer) Handler(srv interface{}, serverStream grpc.Serve
 				// to cancel the clientStream to the backend, let all of its goroutines be freed up by the CancelFunc and
 				// exit with an error to the stack
 				clientCancel()
+				returnErr = s2cErr
 				return status.Errorf(codes.Internal, "failed proxying s2c: %v", s2cErr)
 			}
 		case c2sErr := <-c2sErrChan:
@@ -144,6 +169,7 @@ func (s *NodePassThroughServer) Handler(srv interface{}, serverStream grpc.Serve
 			serverStream.SetTrailer(clientStream.Trailer())
 			// c2sErr will contain RPC error from client code. If not io.EOF return the RPC error as server stream error.
 			if c2sErr != io.EOF {
+				returnErr = c2sErr
 				return c2sErr
 			}
 			return nil
@@ -203,4 +229,54 @@ func (s *NodePassThroughServer) forwardServerToClient(src grpc.ServerStream, dst
 	}()
 
 	return ret
+}
+
+func (s *NodePassThroughServer) eventsHandler(md metadata.MD) (func(error), error) {
+	c, err := edge.HandleSandboxCatalogCreateEvent(md)
+	if err != nil {
+		return nil, err
+	}
+
+	if c != nil {
+		err := s.catalog.StoreSandbox(
+			c.SandboxID,
+			&sandboxes.SandboxInfo{
+				OrchestratorID:          c.OrchestratorID,
+				ExecutionID:             c.ExecutionID,
+				SandboxStartedAt:        c.SandboxStartTime,
+				SandboxMaxLengthInHours: c.SandboxMaxLengthInHours,
+			},
+			time.Duration(c.SandboxMaxLengthInHours)*time.Hour,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to store sandbox in catalog: %w", err)
+		}
+
+		return func(err error) {
+			if err == nil {
+				return
+			}
+
+			deleteErr := s.catalog.DeleteSandbox(c.SandboxID, c.ExecutionID)
+			if deleteErr != nil {
+				zap.L().Error("Failed to delete sandbox in catalog after failing request", zap.Error(deleteErr))
+			}
+		}, nil
+	}
+
+	d, err := edge.HandleSandboxCatalogDeleteEvent(md)
+	if err != nil {
+		return nil, err
+	}
+
+	if d != nil {
+		err := s.catalog.DeleteSandbox(d.SandboxID, d.ExecutionID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to delete sandbox from catalog: %w", err)
+		}
+
+		return func(err error) {}, nil
+	}
+
+	return nil, nil
 }
