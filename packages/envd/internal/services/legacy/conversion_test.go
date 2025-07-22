@@ -276,7 +276,7 @@ func TestConvertValue(t *testing.T) {
 					Path: "/test/test.txt",
 				},
 			},
-			expected: MoveResponse{
+			expected: &MoveResponse{
 				Entry: &EntryInfo{
 					Name: "test.txt",
 					Type: FileType_FILE_TYPE_FILE,

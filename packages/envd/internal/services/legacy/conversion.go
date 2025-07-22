@@ -46,7 +46,8 @@ func addConverter[TIn, TOut any](fn func(TIn) TOut) {
 			return a
 		}
 
-		return fn(b)
+		c := fn(b)
+		return &c
 	}
 }
 
@@ -84,7 +85,7 @@ func init() {
 		}
 	})
 
-	addConverter(func(in *filesystem.WatchDirResponse) *WatchDirResponse {
+	addConverter(func(in *filesystem.WatchDirResponse) WatchDirResponse {
 		response := WatchDirResponse{}
 
 		switch e := in.Event.(type) {
@@ -102,7 +103,7 @@ func init() {
 			}
 		}
 
-		return &response
+		return response
 	})
 
 	addConverter(func(in *filesystem.CreateWatcherResponse) CreateWatcherResponse {

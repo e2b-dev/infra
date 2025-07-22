@@ -32,7 +32,7 @@ func TestInterceptor(t *testing.T) {
 		require.NoError(t, err)
 
 		ok := resp.Receive()
-		require.True(t, ok)
+		require.True(t, ok, resp.Err())
 
 		item := resp.Msg()
 		require.NotNil(t, item)
