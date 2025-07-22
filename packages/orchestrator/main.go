@@ -32,6 +32,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -312,6 +313,7 @@ func run(port, proxyPort uint) (success bool) {
 			templateCache,
 			persistence,
 			limiter,
+			serviceInfo,
 		)
 		if err != nil {
 			zap.L().Fatal("failed to create template manager", zap.Error(err))
@@ -378,6 +380,12 @@ func run(port, proxyPort uint) (success bool) {
 		cancelCloseCtx()
 	}
 
+	// Mark service draining if not already.
+	// If service stats was previously changed via API, we don't want to override it.
+	if serviceInfo.GetStatus() == orchestrator.ServiceInfoStatus_OrchestratorHealthy {
+		serviceInfo.SetStatus(orchestrator.ServiceInfoStatus_OrchestratorDraining)
+	}
+
 	for _, c := range closers {
 		zap.L().Info(fmt.Sprintf("Closing %T, forced: %v", c, forceStop))
 		if err := c.Close(closeCtx); err != nil {
@@ -385,6 +393,9 @@ func run(port, proxyPort uint) (success bool) {
 			success = false
 		}
 	}
+
+	// Make service unhealthy after closing all services
+	serviceInfo.SetStatus(orchestrator.ServiceInfoStatus_OrchestratorUnhealthy)
 
 	zap.L().Info("Waiting for services to finish")
 	if err := g.Wait(); err != nil {
