@@ -19,7 +19,7 @@ func (c *Client) UpdateUploadLimitSemaphore(ctx context.Context, uploadSemaphore
 		case <-ticker.C:
 			uploadLimitFlag, flagErr := c.Ld.IntVariation(GcloudConcurrentUploadLimit, flagCtx, GcloudConcurrentUploadLimitDefault)
 			if flagErr != nil {
-				zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
+				zap.L().Warn("soft failing during metrics write feature flag receive", zap.Error(flagErr))
 			}
 
 			// Update the semaphore with the new value
