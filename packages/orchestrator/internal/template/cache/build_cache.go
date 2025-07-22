@@ -35,35 +35,24 @@ func (b *BuildInfo) IsRunning() bool {
 	return b.GetStatus() == template_manager.TemplateBuildState_Building
 }
 
-func (b *BuildInfo) IsFailed() bool {
-	return b.GetStatus() == template_manager.TemplateBuildState_Failed
-}
-
-func (b *BuildInfo) GetMetadata() *template_manager.TemplateBuildMetadata {
-	res, err := b.Result.Result()
-	if err != nil {
-		return nil
-	}
-
-	return res.Metadata
-}
-
 func (b *BuildInfo) GetStatus() template_manager.TemplateBuildState {
-	res, err := b.Result.Result()
-	if err != nil {
-		return template_manager.TemplateBuildState_Building
+	res := b.GetResult()
+	if res != nil {
+		return res.Status
 	}
 
-	return res.Status
+	// When the build is still in progress, no result is set, so we return the building state.
+	return template_manager.TemplateBuildState_Building
 }
 
-func (b *BuildInfo) GetReason() *string {
+func (b *BuildInfo) GetResult() *BuildInfoResult {
 	res, err := b.Result.Result()
 	if err != nil {
+		// If the result is not set, it means the build is still in progress.
 		return nil
 	}
 
-	return res.Reason
+	return &res
 }
 
 func (b *BuildInfo) SetSuccess(metadata *template_manager.TemplateBuildMetadata) {
@@ -74,10 +63,10 @@ func (b *BuildInfo) SetSuccess(metadata *template_manager.TemplateBuildMetadata)
 	})
 }
 
-func (b *BuildInfo) SetFail(reason *string) {
+func (b *BuildInfo) SetFail(reason string) {
 	_ = b.Result.SetValue(BuildInfoResult{
 		Status:   template_manager.TemplateBuildState_Failed,
-		Reason:   reason,
+		Reason:   &reason,
 		Metadata: nil,
 	})
 }

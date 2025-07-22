@@ -105,8 +105,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error while building template", err)
 
-			reason := err.Error()
-			buildInfo.SetFail(&reason)
+			buildInfo.SetFail(err.Error())
 		} else {
 			buildInfo.SetSuccess(&templatemanager.TemplateBuildMetadata{
 				RootfsSizeKey:  int32(res.RootfsSizeMB),

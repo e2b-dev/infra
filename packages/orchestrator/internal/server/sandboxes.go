@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -81,7 +80,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	)
 	if err != nil {
 		zap.L().Error("failed to create sandbox, cleaning up", zap.Error(err))
-		cleanupErr := cleanup.Run(trace.ContextWithSpanContext(context.Background(), childSpan.SpanContext()))
+		cleanupErr := cleanup.Run(ctx)
 
 		err := errors.Join(err, context.Cause(ctx), cleanupErr)
 		telemetry.ReportCriticalError(ctx, "failed to cleanup sandbox", err)
@@ -213,7 +212,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	// Start the cleanup in a goroutine—the initial kill request should be send as the first thing in stop, and at this point you cannot route to the sandbox anymore.
 	// We don't wait for the whole cleanup to finish here.
 	go func() {
-		err := sbx.Stop(trace.ContextWithSpanContext(context.Background(), childSpan.SpanContext()))
+		err := sbx.Stop(ctx)
 		if err != nil {
 			sbxlogger.I(sbx).Error("error stopping sandbox", logger.WithSandboxID(in.SandboxId), zap.Error(err))
 		}
