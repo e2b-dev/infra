@@ -72,13 +72,11 @@ func NewGCPBucketStorageProvider(ctx context.Context, bucketName string) (*GCPBu
 	}
 
 	go func() {
-		select {
-		case <-ctx.Done():
-			// Context is done, we can exit
-			ffErr := featureFlags.Close(context.Background())
-			if ffErr != nil {
-				zap.L().Error("failed to close feature flags client", zap.Error(ffErr))
-			}
+		<-ctx.Done()
+		// Context is done, we can exit
+		ffErr := featureFlags.Close(context.Background())
+		if ffErr != nil {
+			zap.L().Error("failed to close feature flags client", zap.Error(ffErr))
 		}
 	}()
 

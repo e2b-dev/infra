@@ -30,7 +30,6 @@ const (
 	GcloudConcurrentUploadLimit = "gcloud-concurrent-upload-limit"
 )
 
-// 8 concurrent uploads
 const GcloudConcurrentUploadLimitDefault = 8
 
 // Flag for setting the maximum number of CPUs for GCloud uploads
@@ -39,7 +38,7 @@ const (
 	GcloudMaxCPUQuota = "gcloud-max-cpu-quota"
 )
 
-// Default is 2% of total CPU
+// GcloudMaxCPUQuotaDefault default is 2% of total CPU
 var GcloudMaxCPUQuotaDefault = runtime.NumCPU() * 2 / 100
 
 // Flag for setting the maximum memory limit for GCloud uploads
@@ -48,7 +47,7 @@ const (
 	GcloudMaxMemoryLimit = "gcloud-max-memory-limit"
 )
 
-// Default is 0.5% of total memory
+// GcloudMaxMemoryLimitDefault default is 0.5% of total memory
 var GcloudMaxMemoryLimitDefault = getDefaultMemoryLimit()
 
 // getDefaultMemoryLimit returns the default memory limit for GCloud uploads in MiB
