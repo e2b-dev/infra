@@ -2,10 +2,20 @@ package legacy
 
 import (
 	"context"
+	"net/http"
 
 	"connectrpc.com/connect"
 	"github.com/rs/zerolog"
 )
+
+func shouldHideChanges(request http.Header, response http.Header) bool {
+	if request.Get("user-agent") != "connect-python" {
+		return false
+	}
+
+	response.Set("x-e2b-legacy-sdk", "true")
+	return true
+}
 
 func Convert() ConversionInterceptor {
 	return ConversionInterceptor{}
@@ -20,7 +30,7 @@ func (l ConversionInterceptor) WrapUnary(unaryFunc connect.UnaryFunc) connect.Un
 			return nil, err
 		}
 
-		if request.Header().Get("User-Agent") == "connect-python" {
+		if shouldHideChanges(request.Header(), response.Header()) {
 			response = maybeConvertResponse(zerolog.Ctx(ctx), response)
 		}
 
@@ -29,11 +39,14 @@ func (l ConversionInterceptor) WrapUnary(unaryFunc connect.UnaryFunc) connect.Un
 }
 
 func (l ConversionInterceptor) WrapStreamingClient(clientFunc connect.StreamingClientFunc) connect.StreamingClientFunc {
-	return clientFunc
+	// only used for client, not server
+	panic("unused by server")
 }
 
 func (l ConversionInterceptor) WrapStreamingHandler(handlerFunc connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
-		return handlerFunc(ctx, &streamConverter{conn: conn})
+		conn = &streamConverter{conn: conn}
+
+		return handlerFunc(ctx, conn)
 	}
 }

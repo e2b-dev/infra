@@ -1,36 +1,143 @@
 package legacy
 
 import (
-	"bytes"
-	"connectrpc.com/connect"
-	spec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem/filesystemconnect"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"io"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"connectrpc.com/connect"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
+	spec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem/filesystemconnect"
 )
 
 func TestInterceptor(t *testing.T) {
-	t.Run("unary interceptor converts when necessary", func(t *testing.T) {
-		// setup
-		mockFS := NewMockFilesystemHandler(t)
-		_, handler := spec.NewFilesystemHandler(
-			mockFS, connect.WithInterceptors(Convert()),
-		)
-		reqBody := bytes.NewBufferString("{}")
-		req := httptest.NewRequest("POST", spec.FilesystemWatchDirProcedure, reqBody)
-		req.Header.Set("Content-Type", "application/grpc+json")
-		w := httptest.NewRecorder()
+	streamSetup := func(mockFS *MockFilesystemHandler) {
+		mockFS.EXPECT().
+			WatchDir(mock.Anything, mock.Anything, mock.Anything).
+			Run(func(context1 context.Context, request *connect.Request[filesystem.WatchDirRequest], serverStream *connect.ServerStream[filesystem.WatchDirResponse]) {
+				err := serverStream.Send(&filesystem.WatchDirResponse{Event: &filesystem.WatchDirResponse_Start{Start: &filesystem.WatchDirResponse_StartEvent{}}})
+				require.NoError(t, err)
+			}).
+			Return(nil)
+	}
 
-		// run the test
-		handler.ServeHTTP(w, req)
+	streamTest := func(t *testing.T, client spec.FilesystemClient) http.Header {
+		req := connect.NewRequest[filesystem.WatchDirRequest](&filesystem.WatchDirRequest{Path: "/a/b/c"})
+		resp, err := client.WatchDir(t.Context(), req)
+		require.NoError(t, err)
 
-		// verify results
-		resp := w.Result()
-		body, _ := io.ReadAll(resp.Body)
-		require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
-		assert.Equal(t, "foo", string(body))
-	})
+		ok := resp.Receive()
+		require.True(t, ok)
+
+		item := resp.Msg()
+		require.NotNil(t, item)
+
+		return resp.ResponseHeader()
+	}
+
+	unarySetup := func(mockFS *MockFilesystemHandler) {
+		mockFS.EXPECT().
+			ListDir(mock.Anything, mock.Anything).
+			Return(&connect.Response[filesystem.ListDirResponse]{Msg: &filesystem.ListDirResponse{}}, nil)
+	}
+
+	unaryTest := func(t *testing.T, client spec.FilesystemClient) http.Header {
+		req := connect.NewRequest[filesystem.ListDirRequest](&filesystem.ListDirRequest{Path: "/a/b/c"})
+		resp, err := client.ListDir(t.Context(), req)
+		require.NoError(t, err)
+		return resp.Header()
+	}
+
+	tests := map[string]struct {
+		userAgent         string
+		setup             func(mockFS *MockFilesystemHandler)
+		execute           func(t *testing.T, client spec.FilesystemClient) http.Header
+		expectHeaderValue string
+	}{
+		"streaming interceptor converts when necessary": {
+			userAgent:         "connect-python",
+			setup:             streamSetup,
+			execute:           streamTest,
+			expectHeaderValue: "true",
+		},
+		"streaming interceptor can avoid conversion": {
+			setup:   streamSetup,
+			execute: streamTest,
+		},
+		"unary interceptor converts when necessary": {
+			userAgent:         "connect-python",
+			setup:             unarySetup,
+			execute:           unaryTest,
+			expectHeaderValue: "true",
+		},
+		"unary interceptor can avoid conversion": {
+			setup:   unarySetup,
+			execute: unaryTest,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			// setup server
+			mockFS := NewMockFilesystemHandler(t)
+			if test.setup != nil {
+				test.setup(mockFS)
+			}
+			_, handler := spec.NewFilesystemHandler(
+				mockFS, connect.WithInterceptors(Convert()),
+			)
+			srv := httptest.NewServer(handler)
+			t.Cleanup(func() { srv.Close() })
+
+			// setup client
+			var clientOptions []connect.ClientOption
+			if test.userAgent != "" {
+				clientOptions = append(clientOptions, connect.WithInterceptors(addUserAgent(test.userAgent)))
+			}
+			client := spec.NewFilesystemClient(srv.Client(), srv.URL, clientOptions...)
+
+			// make request
+			responseHeaders := test.execute(t, client)
+
+			// verify results
+			assert.Equal(t, test.expectHeaderValue, responseHeaders.Get("x-e2b-legacy-sdk"))
+		})
+	}
+}
+
+// userAgentInterceptor adds a request header to the client
+type userAgentInterceptor struct {
+	userAgent string
+}
+
+func (u userAgentInterceptor) WrapUnary(unaryFunc connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
+		request.Header().Set("User-Agent", u.userAgent)
+
+		return unaryFunc(ctx, request)
+	}
+}
+
+func (u userAgentInterceptor) WrapStreamingClient(clientFunc connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return func(ctx context.Context, s connect.Spec) connect.StreamingClientConn {
+		conn := clientFunc(ctx, s)
+		conn.RequestHeader().Set("user-agent", u.userAgent)
+		return conn
+	}
+}
+
+func (u userAgentInterceptor) WrapStreamingHandler(handlerFunc connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	// TODO implement me
+	panic("implement me")
+}
+
+var _ connect.Interceptor = (*userAgentInterceptor)(nil)
+
+func addUserAgent(userAgent string) connect.Interceptor {
+	return &userAgentInterceptor{userAgent: userAgent}
 }

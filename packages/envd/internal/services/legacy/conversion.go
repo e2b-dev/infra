@@ -2,6 +2,7 @@ package legacy
 
 import (
 	"errors"
+	"net/http"
 	"reflect"
 
 	"connectrpc.com/connect"
@@ -83,7 +84,7 @@ func init() {
 		}
 	})
 
-	addConverter(func(in *filesystem.WatchDirResponse) WatchDirResponse {
+	addConverter(func(in *filesystem.WatchDirResponse) *WatchDirResponse {
 		response := WatchDirResponse{}
 
 		switch e := in.Event.(type) {
@@ -101,7 +102,7 @@ func init() {
 			}
 		}
 
-		return response
+		return &response
 	})
 
 	addConverter(func(in *filesystem.CreateWatcherResponse) CreateWatcherResponse {
@@ -145,10 +146,19 @@ func maybeConvertResponse(logger *zerolog.Logger, response connect.AnyResponse) 
 			Type("response", response).
 			Msg("conversion failed")
 	} else {
+		copyHeaders(response.Header(), r.Header())
+		copyHeaders(response.Trailer(), r.Trailer())
 		response = r
+
 	}
 
 	return response
+}
+
+func copyHeaders(src, dst http.Header) {
+	for key, values := range src {
+		dst[key] = values
+	}
 }
 
 // Helper functions for WatchDirResponse conversion
