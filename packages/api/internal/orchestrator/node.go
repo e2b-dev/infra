@@ -18,6 +18,7 @@ import (
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -45,7 +46,8 @@ type Node struct {
 	ClusterID     uuid.UUID
 	ClusterNodeID string
 
-	Info *node.NodeInfo
+	Info              *node.NodeInfo
+	serviceInstanceID string
 
 	meta   nodeMetadata
 	status api.NodeStatus
@@ -286,6 +288,36 @@ func (n *Node) InsertBuild(buildID string) {
 
 func (n *Node) GetClient(ctx context.Context) (*grpclient.GRPCClient, context.Context) {
 	return n.client, metadata.NewOutgoingContext(ctx, n.clientMd)
+}
+
+func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest) context.Context {
+	if n.ClusterID == uuid.Nil {
+		return metadata.NewOutgoingContext(ctx, n.clientMd)
+	}
+
+	md := edge.SerializeSandboxCatalogCreateEvent(
+		edge.SandboxCatalogCreateEvent{
+			SandboxID:               req.Sandbox.SandboxId,
+			SandboxMaxLengthInHours: req.Sandbox.MaxSandboxLength,
+			SandboxStartTime:        req.StartTime.AsTime(),
+
+			ExecutionID:    req.Sandbox.ExecutionId,
+			OrchestratorID: n.serviceInstanceID,
+		},
+	)
+
+	return metadata.NewOutgoingContext(ctx, metadata.Join(n.clientMd, md))
+}
+
+func (n *Node) GetSandboxDeleteCtx(ctx context.Context, sandboxID string, executionID string) context.Context {
+	md := edge.SerializeSandboxCatalogDeleteEvent(
+		edge.SandboxCatalogDeleteEvent{
+			SandboxID:   sandboxID,
+			ExecutionID: executionID,
+		},
+	)
+
+	return metadata.NewOutgoingContext(ctx, metadata.Join(n.clientMd, md))
 }
 
 func getNodeMetadata(n *orchestratorinfo.ServiceInfoResponse, orchestratorID string) nodeMetadata {

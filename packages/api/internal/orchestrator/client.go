@@ -107,7 +107,9 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 			client:   client,
 			clientMd: make(metadata.MD),
 
-			Info:           node,
+			Info:              node,
+			serviceInstanceID: nodeInfo.ServiceId,
+
 			meta:           getNodeMetadata(nodeInfo, node.ID),
 			buildCache:     buildCache,
 			status:         nodeStatus,
@@ -139,6 +141,7 @@ func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, i *edge.Clust
 		Info: &node.NodeInfo{
 			ID: poolNodeID,
 		},
+		serviceInstanceID: i.ServiceInstanceID,
 
 		status: OrchestratorToApiNodeStateMapper[i.GetStatus()],
 		meta: nodeMetadata{
