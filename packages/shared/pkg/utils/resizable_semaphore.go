@@ -2,46 +2,101 @@ package utils
 
 import (
 	"context"
+	"fmt"
 	"sync"
-
-	"golang.org/x/sync/semaphore"
 )
 
+type Semaphore interface {
+	Acquire(ctx context.Context, n int64) error
+	TryAcquire(n int64) bool
+	Release(n int64)
+}
+
 type AdjustableSemaphore struct {
-	s          *semaphore.Weighted
-	maxCap     int64
-	currentCap int64
-	mu         sync.Mutex
+	mu   sync.Mutex
+	cond *sync.Cond
+
+	used  int64
+	limit int64
 }
 
-func NewAdjustableSemaphore(currentCap, maxCap int64) *AdjustableSemaphore {
-	currentCap = min(currentCap, maxCap)
-
-	return &AdjustableSemaphore{
-		s:          semaphore.NewWeighted(currentCap),
-		maxCap:     maxCap,
-		currentCap: currentCap,
+func NewAdjustableSemaphore(limit int64) (*AdjustableSemaphore, error) {
+	if limit <= 0 {
+		return nil, fmt.Errorf("NewAdjustableSemaphore: limit must be > 0, got: %d", limit)
 	}
+
+	as := &AdjustableSemaphore{limit: limit}
+	as.cond = sync.NewCond(&as.mu)
+	return as, nil
 }
 
-// Acquire will resize the semaphore to the maximum capacity if the requested capacity is greater than the current capacity.
-// It will then acquire one slot from the semaphore.
-// If you are downsizing the semaphore capacity, it can block until enough capacity is available.
-func (s *AdjustableSemaphore) Acquire(ctx context.Context, targetCap int64) error {
-	targetCap = min(s.maxCap, targetCap)
+func (s *AdjustableSemaphore) Acquire(ctx context.Context, n int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if n <= 0 {
+		return fmt.Errorf("acquiring less than or equal to 0 elements is not supported, got: %d", n)
+	}
+
+	// Wake ->cond.Wait when ctx is canceled.
+	stop := context.AfterFunc(ctx, s.cond.Broadcast)
+	defer stop() // ensure we don’t leak the callback
+
+	for s.used+n > s.limit {
+		if err := ctx.Err(); err != nil { // ctx already cancelled?
+			return err
+		}
+
+		// Wait for change in semaphore state
+		s.cond.Wait()
+	}
+
+	s.used += n
+	return nil
+}
+
+func (s *AdjustableSemaphore) TryAcquire(n int64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if n <= 0 {
+		return false
+	}
+
+	if s.used+n > s.limit {
+		return false
+	}
+
+	s.used += n
+	return true
+}
+
+func (s *AdjustableSemaphore) SetLimit(limit int64) error {
+	if limit <= 0 {
+		return fmt.Errorf("SetLimit: limit must be > 0, got: %d", limit)
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// We release the current locked slots (remining to max capacity) so we can acquire the target capacity.
-	s.s.Release(s.maxCap - s.currentCap)
+	s.limit = limit
+	s.cond.Broadcast()
 
-	// We lock the capacity so that the available capacity is the target capacity.
-	// We acquire one more slot than the target capacity to account for the current slot.
-	return s.s.Acquire(ctx, s.maxCap-targetCap+1)
+	return nil
 }
 
-// The release is not locked so the slots can be released when we are blocked on the resize in acquire.
-func (s *AdjustableSemaphore) Release() {
-	s.s.Release(1)
+func (s *AdjustableSemaphore) Release(n int64) {
+	if n <= 0 {
+		panic("Release: n must be > 0")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.used < n {
+		panic("Release: cannot release more than acquired")
+	}
+
+	s.used -= n
+	s.cond.Broadcast()
 }
