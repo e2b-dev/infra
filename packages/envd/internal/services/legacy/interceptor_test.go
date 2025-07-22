@@ -68,19 +68,19 @@ func TestInterceptor(t *testing.T) {
 		expectHeaderValue string
 	}{
 		"streaming interceptor converts no messages": {
-			userAgent:         "connect-python",
+			userAgent:         brokenUserAgent,
 			setup:             streamSetup(0),
 			execute:           streamTest(0),
 			expectHeaderValue: "true",
 		},
 		"streaming interceptor converts single messages": {
-			userAgent:         "connect-python",
+			userAgent:         brokenUserAgent,
 			setup:             streamSetup(1),
 			execute:           streamTest(1),
 			expectHeaderValue: "true",
 		},
 		"streaming interceptor converts multiple messages": {
-			userAgent:         "connect-python",
+			userAgent:         brokenUserAgent,
 			setup:             streamSetup(2),
 			execute:           streamTest(2),
 			expectHeaderValue: "true",
@@ -90,7 +90,7 @@ func TestInterceptor(t *testing.T) {
 			execute: streamTest(1),
 		},
 		"unary interceptor converts when necessary": {
-			userAgent:         "connect-python",
+			userAgent:         brokenUserAgent,
 			setup:             unarySetup,
 			execute:           unaryTest,
 			expectHeaderValue: "true",
@@ -125,7 +125,7 @@ func TestInterceptor(t *testing.T) {
 			responseHeaders := test.execute(t, client)
 
 			// verify results; this ensures we don't set this header multiple times
-			actualHeaderValues := responseHeaders.Values("x-e2b-legacy-sdk")
+			actualHeaderValues := responseHeaders.Values(notifyHeader)
 			if test.expectHeaderValue != "" {
 				assert.Equal(t, []string{test.expectHeaderValue}, actualHeaderValues)
 			} else {

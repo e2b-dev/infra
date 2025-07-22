@@ -8,12 +8,16 @@ import (
 	"github.com/rs/zerolog"
 )
 
+const brokenUserAgent = "connect-python"
+
+var notifyHeader = http.CanonicalHeaderKey("x-e2b-legacy-sdk")
+
 func shouldHideChanges(request http.Header, response http.Header) bool {
-	if request.Get("user-agent") != "connect-python" {
+	if request.Get("user-agent") != brokenUserAgent {
 		return false
 	}
 
-	response.Set("x-e2b-legacy-sdk", "true")
+	response.Set(notifyHeader, "true")
 	return true
 }
 
