@@ -38,20 +38,20 @@ const (
 	GcloudMaxCPUQuota = "gcloud-max-cpu-quota"
 )
 
-// GcloudMaxCPUQuotaDefault default is 2% of total CPU
-var GcloudMaxCPUQuotaDefault = runtime.NumCPU() * 2 / 100
+// GcloudMaxCPUQuotaDefault default is 2% of total CPU (100% is 1 CPU core)
+var GcloudMaxCPUQuotaDefault = 2 * runtime.NumCPU()
 
 // Flag for setting the maximum memory limit for GCloud uploads
 // https://app.launchdarkly.com/projects/default/flags/gcloud-max-memory-limit
 const (
-	GcloudMaxMemoryLimit = "gcloud-max-memory-limit"
+	GcloudMaxMemoryLimitMiB = "gcloud-max-memory-limit"
 )
 
-// GcloudMaxMemoryLimitDefault default is 0.5% of total memory
-var GcloudMaxMemoryLimitDefault = getDefaultMemoryLimit()
+// GcloudMaxMemoryLimitMiBDefault default is 0.5% of total memory
+var GcloudMaxMemoryLimitMiBDefault = getDefaultMemoryLimitMiB()
 
-// getDefaultMemoryLimit returns the default memory limit for GCloud uploads in MiB
-func getDefaultMemoryLimit() int {
+// getDefaultMemoryLimitMiB returns the default memory limit for GCloud uploads in MiB
+func getDefaultMemoryLimitMiB() int {
 	vmStat, err := mem.VirtualMemory()
 	if err != nil {
 		panic(err)
@@ -59,7 +59,7 @@ func getDefaultMemoryLimit() int {
 
 	totalMemory := vmStat.Total
 	// Calculate the memory limit based on the percentage
-	return int(0.005 * float64(totalMemory/1024/1024)) // Convert to MiB
+	return int(0.005 * float64(totalMemory) / 1024 / 1024) // Convert to MiB
 }
 
 // Flag for setting the maximum concurrent tasks for GCloud uploads

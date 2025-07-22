@@ -31,7 +31,6 @@ const (
 	googleBackoffMultiplier = 2
 	googleMaxAttempts       = 10
 
-	// GCloud imposed limits:
 	gcloudMaxRetries = 3
 )
 
@@ -157,8 +156,8 @@ func (g *GCPBucketStorageProvider) OpenObject(ctx context.Context, path string) 
 		zap.L().Warn("soft failing during metrics write feature flag receive", zap.Error(flagErr))
 	}
 
-	flagCtx = ldcontext.NewBuilder(featureflags.GcloudMaxMemoryLimit).SetString("path", path).Build()
-	maxMemory, flagErr := g.featureFlags.Ld.IntVariation(featureflags.GcloudMaxMemoryLimit, flagCtx, featureflags.GcloudMaxMemoryLimitDefault)
+	flagCtx = ldcontext.NewBuilder(featureflags.GcloudMaxMemoryLimitMiB).SetString("path", path).Build()
+	maxMemory, flagErr := g.featureFlags.Ld.IntVariation(featureflags.GcloudMaxMemoryLimitMiB, flagCtx, featureflags.GcloudMaxMemoryLimitMiBDefault)
 	if flagErr != nil {
 		zap.L().Warn("soft failing during metrics write feature flag receive", zap.Error(flagErr))
 	}
