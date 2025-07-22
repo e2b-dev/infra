@@ -13,11 +13,11 @@ type streamConverter struct {
 }
 
 func (s streamConverter) Spec() connect.Spec {
-	return s.Spec()
+	return s.conn.Spec()
 }
 
 func (s streamConverter) Peer() connect.Peer {
-	return s.Peer()
+	return s.conn.Peer()
 }
 
 func (s streamConverter) Receive(a any) error {
