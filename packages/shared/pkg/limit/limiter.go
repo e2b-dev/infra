@@ -2,10 +2,6 @@ package limit
 
 import (
 	"context"
-	"fmt"
-
-	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
-	"go.uber.org/zap"
 
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
