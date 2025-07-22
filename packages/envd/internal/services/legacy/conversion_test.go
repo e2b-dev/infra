@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -20,7 +21,7 @@ func TestFilesystemClient_FieldFormatter(t *testing.T) {
 	fsh := NewMockFilesystemHandler(t)
 	fsh.EXPECT().Move(mock.Anything, mock.Anything).Return(connect.NewResponse(&filesystem.MoveResponse{
 		Entry: &filesystem.EntryInfo{
-			Name: "test name",
+			Name: "test-name",
 		},
 		Testing: true,
 	}), nil)
@@ -42,7 +43,12 @@ func TestFilesystemClient_FieldFormatter(t *testing.T) {
 
 		data, err := io.ReadAll(w.Body)
 		require.NoError(t, err)
-		assert.Equal(t, `{"entry":{"name":"test name"},"testing":true}`, string(data))
+
+		// Depending on the test execution order, different json serialization settings will be used,
+		// specifically in regard to whitespace after colons. This normalizes it so the order no
+		// longer matters.
+		text := strings.ReplaceAll(string(data), " ", "")
+		assert.Equal(t, `{"entry":{"name":"test-name"},"testing":true}`, text)
 	})
 
 	t.Run("can hide fields when appropriate", func(t *testing.T) {
@@ -57,7 +63,7 @@ func TestFilesystemClient_FieldFormatter(t *testing.T) {
 
 		data, err := io.ReadAll(w.Body)
 		require.NoError(t, err)
-		assert.Equal(t, string(data), `{"entry":{"name":"test name"}}`)
+		assert.Equal(t, string(data), `{"entry":{"name":"test-name"}}`)
 	})
 }
 
