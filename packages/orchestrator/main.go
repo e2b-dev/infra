@@ -382,8 +382,8 @@ func run(port, proxyPort uint) (success bool) {
 
 	// Mark service draining if not already.
 	// If service stats was previously changed via API, we don't want to override it.
-	if serviceInfo.GetStatus() == orchestrator.ServiceInfoStatus_OrchestratorHealthy {
-		serviceInfo.SetStatus(orchestrator.ServiceInfoStatus_OrchestratorDraining)
+	if serviceInfo.GetStatus() == orchestrator.ServiceInfoStatus_Healthy {
+		serviceInfo.SetStatus(orchestrator.ServiceInfoStatus_Draining)
 	}
 
 	for _, c := range closers {
@@ -395,7 +395,7 @@ func run(port, proxyPort uint) (success bool) {
 	}
 
 	// Make service unhealthy after closing all services
-	serviceInfo.SetStatus(orchestrator.ServiceInfoStatus_OrchestratorUnhealthy)
+	serviceInfo.SetStatus(orchestrator.ServiceInfoStatus_Unhealthy)
 
 	zap.L().Info("Waiting for services to finish")
 	if err := g.Wait(); err != nil {

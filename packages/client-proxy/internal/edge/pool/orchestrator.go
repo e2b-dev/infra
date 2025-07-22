@@ -148,11 +148,11 @@ func (o *OrchestratorInstance) Close() error {
 
 func getMappedStatus(s e2bgrpcorchestratorinfo.ServiceInfoStatus) OrchestratorStatus {
 	switch s {
-	case e2bgrpcorchestratorinfo.ServiceInfoStatus_OrchestratorHealthy:
+	case e2bgrpcorchestratorinfo.ServiceInfoStatus_Healthy:
 		return OrchestratorStatusHealthy
-	case e2bgrpcorchestratorinfo.ServiceInfoStatus_OrchestratorDraining:
+	case e2bgrpcorchestratorinfo.ServiceInfoStatus_Draining:
 		return OrchestratorStatusDraining
-	case e2bgrpcorchestratorinfo.ServiceInfoStatus_OrchestratorUnhealthy:
+	case e2bgrpcorchestratorinfo.ServiceInfoStatus_Unhealthy:
 		return OrchestratorStatusUnhealthy
 	}
 

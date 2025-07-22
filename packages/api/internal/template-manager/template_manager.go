@@ -92,7 +92,7 @@ func New(
 
 		localClient:       client,
 		localClientMutex:  sync.RWMutex{},
-		localClientStatus: infogrpc.ServiceInfoStatus_OrchestratorUnhealthy,
+		localClientStatus: infogrpc.ServiceInfoStatus_Unhealthy,
 
 		lock:       sync.Mutex{},
 		processing: make(map[uuid.UUID]processingBuilds),
@@ -148,13 +148,13 @@ func (tm *TemplateManager) GetBuildClient(clusterID *uuid.UUID, nodeID *string, 
 
 func (tm *TemplateManager) GetLocalBuildClient(placement bool) (*BuildClient, error) {
 	// build placement requires healthy template builder
-	if placement && tm.GetLocalClientStatus() != infogrpc.ServiceInfoStatus_OrchestratorHealthy {
+	if placement && tm.GetLocalClientStatus() != infogrpc.ServiceInfoStatus_Healthy {
 		zap.L().Error("Local template manager is not fully healthy, cannot use it for placement new builds")
 		return nil, ErrLocalTemplateManagerNotAvailable
 	}
 
 	// for getting build information only not valid state is getting already unhealthy builder
-	if tm.GetLocalClientStatus() == infogrpc.ServiceInfoStatus_OrchestratorUnhealthy {
+	if tm.GetLocalClientStatus() == infogrpc.ServiceInfoStatus_Unhealthy {
 		zap.L().Error("Local template manager is unhealthy")
 		return nil, ErrLocalTemplateManagerNotAvailable
 	}

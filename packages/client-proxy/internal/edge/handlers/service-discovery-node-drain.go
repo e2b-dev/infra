@@ -17,9 +17,9 @@ import (
 )
 
 var ApiNodeToOrchestratorStateMapper = map[api.ClusterNodeStatus]orchestratorinfo.ServiceInfoStatus{
-	api.Healthy:   orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy,
-	api.Draining:  orchestratorinfo.ServiceInfoStatus_OrchestratorDraining,
-	api.Unhealthy: orchestratorinfo.ServiceInfoStatus_OrchestratorUnhealthy,
+	api.Healthy:   orchestratorinfo.ServiceInfoStatus_Healthy,
+	api.Draining:  orchestratorinfo.ServiceInfoStatus_Draining,
+	api.Unhealthy: orchestratorinfo.ServiceInfoStatus_Unhealthy,
 }
 
 func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context) {

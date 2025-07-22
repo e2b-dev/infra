@@ -35,7 +35,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		attribute.Bool("env.huge_pages", cfg.HugePages),
 	)
 
-	if s.info.GetStatus() != orchestrator.ServiceInfoStatus_OrchestratorHealthy {
+	if s.info.GetStatus() != orchestrator.ServiceInfoStatus_Healthy {
 		s.logger.Error("Requesting template creation while server not healthy is not possible", logger.WithTemplateID(cfg.TemplateID))
 		return nil, fmt.Errorf("server is draining")
 	}

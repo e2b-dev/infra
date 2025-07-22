@@ -66,7 +66,7 @@ func NewInfoContainer(clientId string, sourceVersion string, sourceCommit string
 		SourceCommit:  sourceCommit,
 	}
 
-	serviceInfo.SetStatus(orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy)
+	serviceInfo.SetStatus(orchestratorinfo.ServiceInfoStatus_Healthy)
 
 	return serviceInfo
 }

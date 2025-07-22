@@ -140,7 +140,7 @@ func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, item api.Cl
 		ServiceVersionCommit: item.ServiceVersionCommit,
 
 		// initial values before first sync
-		status: infogrpc.ServiceInfoStatus_OrchestratorUnhealthy,
+		status: infogrpc.ServiceInfoStatus_Unhealthy,
 		roles:  make([]infogrpc.ServiceInfoRole, 0),
 
 		tracer: d.cluster.tracer,
