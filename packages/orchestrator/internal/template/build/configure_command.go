@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
@@ -33,7 +33,6 @@ func runConfiguration(
 	ctx context.Context,
 	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
-	logger *zap.Logger,
 	postProcessor *writer.PostProcessor,
 	metadata storage.TemplateFiles,
 	sandboxID string,
@@ -56,8 +55,8 @@ func runConfiguration(
 		configCtx,
 		tracer,
 		proxy,
-		logger,
 		postProcessor,
+		zapcore.DebugLevel,
 		"config",
 		sandboxID,
 		scriptDef.String(),

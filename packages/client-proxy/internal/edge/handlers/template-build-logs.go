@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -14,6 +15,15 @@ const (
 	templateBuildLogsLimit       = 1_000
 	templateBuildOldestLogsLimit = 24 * time.Hour // 1 day
 )
+
+func apiLevelToLogLevel(level *api.LogLevel) *logs.LogLevel {
+	if level == nil {
+		return nil
+	}
+
+	value := logs.StringToLevel(string(*level))
+	return &value
+}
 
 func (a *APIStore) V1TemplateBuildLogs(c *gin.Context, buildID string, params api.V1TemplateBuildLogsParams) {
 	ctx := c.Request.Context()
@@ -24,27 +34,34 @@ func (a *APIStore) V1TemplateBuildLogs(c *gin.Context, buildID string, params ap
 	end := time.Now()
 	start := end.Add(-templateBuildOldestLogsLimit)
 
-	offset := 0
+	offset := int32(0)
 	if params.Offset != nil {
-		offset = int(*params.Offset)
+		offset = *params.Offset
 	}
 
-	logsRaw, err := a.queryLogsProvider.QueryBuildLogs(ctx, params.TemplateID, buildID, start, end, templateBuildLogsLimit, offset)
+	logsRaw, err := a.queryLogsProvider.QueryBuildLogs(ctx, params.TemplateID, buildID, start, end, templateBuildLogsLimit, offset, apiLevelToLogLevel(params.Level))
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when fetching template build logs")
 		telemetry.ReportCriticalError(ctx, "error when fetching template build logs", err)
 		return
 	}
 
-	logs := make([]string, 0, len(logsRaw))
+	lgs := make([]string, 0, len(logsRaw))
+	logEntries := make([]api.BuildLogEntry, 0, len(logsRaw))
 	for _, log := range logsRaw {
-		logs = append(logs, log.Line)
+		lgs = append(lgs, log.Message)
+		logEntries = append(logEntries, api.BuildLogEntry{
+			Timestamp: log.Timestamp,
+			Message:   log.Message,
+			Level:     api.LogLevel(logs.LevelToString(log.Level)),
+		})
 	}
 
 	c.JSON(
 		http.StatusOK,
 		api.TemplateBuildLogsResponse{
-			Logs: logs,
+			Logs:       lgs,
+			LogEntries: logEntries,
 		},
 	)
 }

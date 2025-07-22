@@ -1,10 +1,8 @@
 package cache
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -18,103 +16,67 @@ import (
 
 const (
 	buildInfoExpiration = time.Minute * 10 // 10 minutes
-
-	cancelledBuildReason = "build was cancelled"
 )
 
+var CancelledBuildReason = "build was cancelled"
+
+type BuildInfoResult struct {
+	Status   template_manager.TemplateBuildState
+	Reason   *string
+	Metadata *template_manager.TemplateBuildMetadata
+}
+
 type BuildInfo struct {
-	status    template_manager.TemplateBuildState
-	reason    *string
-	metadata  *template_manager.TemplateBuildMetadata
-	logs      *SafeBuffer
-	mu        sync.RWMutex
-	ctx       context.Context
-	ctxCancel context.CancelFunc
+	logs   *SafeBuffer
+	Result *utils.SetOnce[BuildInfoResult]
 }
 
 func (b *BuildInfo) IsRunning() bool {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	return b.status == template_manager.TemplateBuildState_Building
-}
-
-func (b *BuildInfo) IsFailed() bool {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	return b.status == template_manager.TemplateBuildState_Failed
-}
-
-func (b *BuildInfo) GetMetadata() *template_manager.TemplateBuildMetadata {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	return b.metadata
+	return b.GetStatus() == template_manager.TemplateBuildState_Building
 }
 
 func (b *BuildInfo) GetStatus() template_manager.TemplateBuildState {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	return b.status
-}
-
-func (b *BuildInfo) GetReason() *string {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	return b.reason
-}
-
-func (b *BuildInfo) GetContext() context.Context {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	return b.ctx
-}
-
-func (b *BuildInfo) GetLogs() []string {
-	by := b.logs.Bytes()
-	logs := make([]string, 0)
-	for line := range bytes.SplitSeq(by, []byte("\n")) {
-		if len(line) > 0 {
-			logs = append(logs, string(line))
-		}
+	res := b.GetResult()
+	if res != nil {
+		return res.Status
 	}
-	return logs
+
+	// When the build is still in progress, no result is set, so we return the building state.
+	return template_manager.TemplateBuildState_Building
 }
 
-func (b *BuildInfo) Cancel() error {
-	err := b.fail(cancelledBuildReason)
+func (b *BuildInfo) GetResult() *BuildInfoResult {
+	res, err := b.Result.Result()
 	if err != nil {
-		return fmt.Errorf("failed to cancel build: %w", err)
+		// If the result is not set, it means the build is still in progress.
+		return nil
 	}
 
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.ctxCancel()
-
-	return nil
+	return &res
 }
 
-func (b *BuildInfo) fail(reason string) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+func (b *BuildInfo) SetSuccess(metadata *template_manager.TemplateBuildMetadata) {
+	_ = b.Result.SetValue(BuildInfoResult{
+		Status:   template_manager.TemplateBuildState_Completed,
+		Metadata: metadata,
+		Reason:   nil,
+	})
+}
 
-	if b.status != template_manager.TemplateBuildState_Building {
-		return fmt.Errorf("build is not running, cannot fail it")
-	}
+func (b *BuildInfo) SetFail(reason string) {
+	_ = b.Result.SetValue(BuildInfoResult{
+		Status:   template_manager.TemplateBuildState_Failed,
+		Reason:   &reason,
+		Metadata: nil,
+	})
+}
 
-	b.status = template_manager.TemplateBuildState_Failed
-	b.reason = &reason
-	return nil
+func (b *BuildInfo) GetLogs() []*template_manager.TemplateBuildLogEntry {
+	return b.logs.Lines()
 }
 
 type BuildCache struct {
 	cache *ttlcache.Cache[string, *BuildInfo]
-
-	mu sync.Mutex
 }
 
 func NewBuildCache(meterProvider metric.MeterProvider) *BuildCache {
@@ -160,59 +122,22 @@ func (c *BuildCache) Get(buildID string) (*BuildInfo, error) {
 
 // Create creates a new build if it doesn't exist in the cache or the build was already finished.
 func (c *BuildCache) Create(buildID string, logs *SafeBuffer) (*BuildInfo, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	info := &BuildInfo{
+		logs:   logs,
+		Result: utils.NewSetOnce[BuildInfoResult](),
+	}
 
-	item := c.cache.Get(buildID, ttlcache.WithDisableTouchOnHit[string, *BuildInfo]())
-	if item != nil {
+	_, found := c.cache.GetOrSet(buildID, info,
+		ttlcache.WithTTL[string, *BuildInfo](buildInfoExpiration),
+		ttlcache.WithDisableTouchOnHit[string, *BuildInfo](),
+	)
+	if found {
 		return nil, fmt.Errorf("build %s already exists in cache", buildID)
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	info := &BuildInfo{
-		status:    template_manager.TemplateBuildState_Building,
-		metadata:  nil,
-		logs:      logs,
-		ctx:       ctx,
-		ctxCancel: cancel,
-	}
-
-	c.cache.Set(buildID, info, buildInfoExpiration)
 
 	return info, nil
 }
 
-func (c *BuildCache) SetSucceeded(buildID string, metadata *template_manager.TemplateBuildMetadata) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	item, err := c.Get(buildID)
-	if err != nil {
-		return fmt.Errorf("build %s not found in cache: %w", buildID, err)
-	}
-
-	item.status = template_manager.TemplateBuildState_Completed
-	item.metadata = metadata
-	item.reason = nil
-	return nil
-}
-
-func (c *BuildCache) SetFailed(buildID string, reason string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	item, err := c.Get(buildID)
-	if err != nil {
-		return fmt.Errorf("build %s not found in cache: %w", buildID, err)
-	}
-
-	return item.fail(reason)
-}
-
 func (c *BuildCache) Delete(buildID string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.cache.Delete(buildID)
 }

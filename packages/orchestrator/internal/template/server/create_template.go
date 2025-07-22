@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"io"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -12,7 +11,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -59,56 +57,63 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		Steps:      cfg.Steps,
 	}
 
-	logger := s.buildLogger.
-		With(zap.Field{Type: zapcore.StringType, Key: "envID", String: metadata.TemplateID}).
-		With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: metadata.BuildID})
-
-	var logs cache.SafeBuffer
-	buildInfo, err := s.buildCache.Create(metadata.BuildID, &logs)
+	logs := cache.NewSafeBuffer()
+	buildInfo, err := s.buildCache.Create(metadata.BuildID, logs)
 	if err != nil {
 		return nil, fmt.Errorf("error while creating build cache: %w", err)
 	}
 
+	// Add new core that will log all messages using logger (zap.Logger) to the logs buffer too
+	encoder := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
+	bufferCore := zapcore.NewCore(encoder, logs, zapcore.DebugLevel)
+	core := zapcore.NewTee(bufferCore, s.buildLogger.Core().
+		With([]zap.Field{
+			{Type: zapcore.StringType, Key: "envID", String: metadata.TemplateID},
+			{Type: zapcore.StringType, Key: "buildID", String: metadata.BuildID},
+		}),
+	)
+	logger := zap.New(core)
+
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		defer buildInfo.Cancel()
+		buildContext, cancelBuildContext := context.WithCancel(context.Background())
+		defer cancelBuildContext()
 
 		buildContext, buildSpan := s.tracer.Start(
-			trace.ContextWithSpanContext(buildInfo.GetContext(), childSpan.SpanContext()),
+			trace.ContextWithSpanContext(buildContext, childSpan.SpanContext()),
 			"template-background-build",
 		)
 		defer buildSpan.End()
 
-		externalWriter := writer.New(logger)
-		defer externalWriter.Close()
+		// Watch for build cancellation requests
+		go func() {
+			select {
+			case <-buildContext.Done():
+				return
+			case <-buildInfo.Result.Done:
+				res, _ := buildInfo.Result.Result()
+				if res.Status == templatemanager.TemplateBuildState_Failed {
+					cancelBuildContext()
+				}
+				return
+			}
+		}()
 
-		logsWriter := io.MultiWriter(&logs, externalWriter)
-		res, err := s.builder.Build(buildContext, metadata, template, logsWriter)
+		res, err := s.builder.Build(buildContext, metadata, template, logger)
+		_ = logger.Sync()
 		if err != nil {
-			s.reportBuildFailed(buildContext, metadata.BuildID, err)
-			return
-		}
+			telemetry.ReportCriticalError(ctx, "error while building template", err)
 
-		buildMetadata := &templatemanager.TemplateBuildMetadata{RootfsSizeKey: int32(res.RootfsSizeMB), EnvdVersionKey: res.EnvdVersion}
-		err = s.buildCache.SetSucceeded(metadata.BuildID, buildMetadata)
-		if err != nil {
-			s.reportBuildFailed(buildContext, metadata.BuildID, fmt.Errorf("error while setting build state to succeeded: %w", err))
-			return
+			buildInfo.SetFail(err.Error())
+		} else {
+			buildInfo.SetSuccess(&templatemanager.TemplateBuildMetadata{
+				RootfsSizeKey:  int32(res.RootfsSizeMB),
+				EnvdVersionKey: res.EnvdVersion,
+			})
+			telemetry.ReportEvent(buildContext, "Environment built")
 		}
-
-		telemetry.ReportEvent(buildContext, "Environment built")
 	}()
 
 	return nil, nil
-}
-
-func (s *ServerStore) reportBuildFailed(ctx context.Context, buildID string, err error) {
-	telemetry.ReportCriticalError(ctx, "error while building template", err)
-	cacheErr := s.buildCache.SetFailed(buildID, err.Error())
-	if cacheErr != nil {
-		s.logger.Error("Error while setting build state to failed", zap.Error(cacheErr))
-	}
-
-	telemetry.ReportEvent(ctx, "Environment built failed")
 }

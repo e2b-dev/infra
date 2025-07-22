@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
@@ -133,20 +135,20 @@ func (b *Builder) applyCommand(
 
 		// The file is automatically cleaned up by the sandbox restart in the last step.
 		// This is happening because the /tmp is mounted as a tmpfs and deleted on restart.
-		sbxTargetPath := fmt.Sprintf("/tmp/%s.tar", *step.FilesHash)
+		sbxTargetPath := filepath.Join("/tmp", fmt.Sprintf("%s.tar", *step.FilesHash))
 		err = sandboxtools.CopyFile(ctx, b.tracer, b.proxy, sbx.Metadata.Config.SandboxId, cmdMetadata.User, tmpFile.Name(), sbxTargetPath)
 		if err != nil {
 			return fmt.Errorf("failed to copy layer tar data to sandbox: %w", err)
 		}
 
-		sbxUnpackPath := fmt.Sprintf("/tmp/%s", *step.FilesHash)
+		sbxUnpackPath := filepath.Join("/tmp", *step.FilesHash)
 
 		err = sandboxtools.RunCommand(
 			ctx,
 			b.tracer,
 			b.proxy,
-			b.buildLogger,
 			nil,
+			zapcore.DebugLevel,
 			prefix,
 			sbx.Metadata.Config.SandboxId,
 			fmt.Sprintf(`mkdir -p "%s" && tar -xzvf "%s" -C "%s"`, sbxUnpackPath, sbxTargetPath, sbxUnpackPath),
@@ -159,9 +161,16 @@ func (b *Builder) applyCommand(
 		moveScript := fmt.Sprintf(`
 #!/bin/bash
 
-sourceFolder="%s"
-# Set targetPath relative to current working directory
-targetPath="$(pwd)/%s"
+# Get the parent folder of the source file/folder
+sourceFolder="$(dirname "%s")"
+
+# Set targetPath relative to current working directory if not absolute
+inputPath="%s"
+if [[ "$inputPath" = /* ]]; then
+  targetPath="$inputPath"
+else
+  targetPath="$(pwd)/$inputPath"
+fi
 
 cd "$sourceFolder" || exit 1
 
@@ -184,14 +193,14 @@ else
   echo "Error: entry is neither file nor directory"
   exit 1
 fi
-`, sbxUnpackPath, args[1])
+`, filepath.Join(sbxUnpackPath, args[0]), args[1])
 
 		err = sandboxtools.RunCommand(
 			ctx,
 			b.tracer,
 			b.proxy,
-			b.buildLogger,
 			nil,
+			zapcore.DebugLevel,
 			prefix,
 			sbx.Metadata.Config.SandboxId,
 			moveScript,
@@ -213,8 +222,8 @@ fi
 			ctx,
 			b.tracer,
 			b.proxy,
-			b.buildLogger,
 			postProcessor,
+			zapcore.InfoLevel,
 			prefix,
 			sbx.Metadata.Config.SandboxId,
 			cmd,
@@ -230,8 +239,8 @@ fi
 			ctx,
 			b.tracer,
 			b.proxy,
-			b.buildLogger,
 			postProcessor,
+			zapcore.InfoLevel,
 			prefix,
 			sbx.Metadata.Config.SandboxId,
 			"adduser "+args[0],
@@ -250,8 +259,8 @@ fi
 			ctx,
 			b.tracer,
 			b.proxy,
-			b.buildLogger,
 			postProcessor,
+			zapcore.InfoLevel,
 			prefix,
 			sbx.Metadata.Config.SandboxId,
 			fmt.Sprintf(`mkdir -p "%s"`, utils.Sprintp(cmdMetadata.WorkDir)),

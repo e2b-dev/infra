@@ -73,7 +73,6 @@ func New(
 	buildCache := cache.NewBuildCache(meterProvider)
 	builder := build.NewBuilder(
 		logger,
-		buildLogger,
 		tracer,
 		templatePersistence,
 		buildPersistance,

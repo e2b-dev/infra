@@ -209,7 +209,7 @@ func pauseAndUpload(
 	ctx, childSpan := tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
 
-	postProcessor.WriteMsg(fmt.Sprintf("Saving layer: %s/%s", template.TemplateID, template.BuildID))
+	postProcessor.Debug(fmt.Sprintf("Saving layer: %s/%s", template.TemplateID, template.BuildID))
 
 	cacheFiles, err := template.CacheFiles()
 	if err != nil {
@@ -257,7 +257,7 @@ func pauseAndUpload(
 			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
 		}
 
-		postProcessor.WriteMsg(fmt.Sprintf("Saved: %s/%s", cacheFiles.TemplateID, cacheFiles.BuildID))
+		postProcessor.Debug(fmt.Sprintf("Saved: %s/%s", cacheFiles.TemplateID, cacheFiles.BuildID))
 		return nil
 	})
 

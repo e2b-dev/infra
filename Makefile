@@ -22,6 +22,8 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, API_CLUSTER_SIZE) \
 	$(call tfvar, BUILD_MACHINE_TYPE) \
 	$(call tfvar, BUILD_CLUSTER_SIZE) \
+	$(call tfvar, BUILD_CLUSTER_ROOT_DISK_SIZE_GB) \
+	$(call tfvar, BUILD_CLUSTER_CACHE_DISK_SIZE_GB) \
 	$(call tfvar, SERVER_MACHINE_TYPE) \
 	$(call tfvar, SERVER_CLUSTER_SIZE) \
 	$(call tfvar, CLICKHOUSE_CLUSTER_SIZE) \

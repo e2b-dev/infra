@@ -912,6 +912,8 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDBuildsBuildIDStatus(c *
 
 	c.Set(AccessTokenAuthScopes, []string{})
 
+	c.Set(ApiKeyAuthScopes, []string{})
+
 	c.Set(Supabase1TokenAuthScopes, []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
@@ -922,6 +924,14 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDBuildsBuildIDStatus(c *
 	err = runtime.BindQueryParameter("form", true, false, "logsOffset", c.Request.URL.Query(), &params.LogsOffset)
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter logsOffset: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "level" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "level", c.Request.URL.Query(), &params.Level)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter level: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -959,6 +969,8 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDFilesHash(c *gin.Contex
 	}
 
 	c.Set(AccessTokenAuthScopes, []string{})
+
+	c.Set(ApiKeyAuthScopes, []string{})
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
 
@@ -1033,6 +1045,8 @@ func (siw *ServerInterfaceWrapper) PostV2Templates(c *gin.Context) {
 
 	c.Set(AccessTokenAuthScopes, []string{})
 
+	c.Set(ApiKeyAuthScopes, []string{})
+
 	c.Set(Supabase1TokenAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1069,6 +1083,8 @@ func (siw *ServerInterfaceWrapper) PostV2TemplatesTemplateIDBuildsBuildID(c *gin
 	}
 
 	c.Set(AccessTokenAuthScopes, []string{})
+
+	c.Set(ApiKeyAuthScopes, []string{})
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
 

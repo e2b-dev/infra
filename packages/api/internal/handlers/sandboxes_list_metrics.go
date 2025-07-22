@@ -66,6 +66,8 @@ func (a *APIStore) getSandboxesMetrics(
 			CpuCount:   int32(m.CPUCount),
 			MemTotal:   int64(m.MemTotal),
 			MemUsed:    int64(m.MemUsed),
+			DiskTotal:  int64(m.DiskTotal),
+			DiskUsed:   int64(m.DiskUsed),
 		}
 	}
 

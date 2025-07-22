@@ -59,8 +59,8 @@ func TestSandboxKill(t *testing.T) {
 			TemplateID: setup.SandboxTemplateID,
 		}, setup.WithAPIKey())
 
-		assert.NoError(t, err)
-		assert.Equal(t, http.StatusCreated, createSandboxResponse.StatusCode())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusCreated, createSandboxResponse.StatusCode())
 
 		sandboxID := createSandboxResponse.JSON201.SandboxID
 

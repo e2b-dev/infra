@@ -10,6 +10,7 @@ import (
 	"connectrpc.com/connect"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
@@ -30,8 +31,8 @@ func RunCommand(
 	ctx context.Context,
 	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
-	logger *zap.Logger,
 	postProcessor *writer.PostProcessor,
+	lvl zapcore.Level,
 	id string,
 	sandboxID string,
 	command string,
@@ -41,8 +42,8 @@ func RunCommand(
 		ctx,
 		tracer,
 		proxy,
-		logger,
 		postProcessor,
+		lvl,
 		id,
 		sandboxID,
 		command,
@@ -56,8 +57,8 @@ func RunCommandWithConfirmation(
 	ctx context.Context,
 	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
-	logger *zap.Logger,
 	postProcessor *writer.PostProcessor,
+	lvl zapcore.Level,
 	id string,
 	sandboxID string,
 	command string,
@@ -120,8 +121,8 @@ func RunCommandWithConfirmation(
 			switch {
 			case e.GetData() != nil:
 				data := e.GetData()
-				logStream(logger, postProcessor, id, "stdout", string(data.GetStdout()))
-				logStream(logger, postProcessor, id, "stderr", string(data.GetStderr()))
+				logStream(postProcessor, lvl, id, "stdout", string(data.GetStdout()))
+				logStream(postProcessor, zapcore.ErrorLevel, id, "stderr", string(data.GetStderr()))
 
 			case e.GetEnd() != nil:
 				end := e.GetEnd()
@@ -129,7 +130,7 @@ func RunCommandWithConfirmation(
 
 				if !success {
 					name := fmt.Sprintf("exit %d", end.GetExitCode())
-					logStream(logger, postProcessor, id, name, end.GetStatus())
+					logStream(postProcessor, zapcore.ErrorLevel, id, name, end.GetStatus())
 
 					return fmt.Errorf("command failed: %s", end.GetStatus())
 				}
@@ -138,7 +139,7 @@ func RunCommandWithConfirmation(
 	}
 }
 
-func logStream(logger *zap.Logger, postProcessor *writer.PostProcessor, id string, name string, content string) {
+func logStream(postProcessor *writer.PostProcessor, lvl zapcore.Level, id string, name string, content string) {
 	if content == "" {
 		return
 	}
@@ -149,10 +150,7 @@ func logStream(logger *zap.Logger, postProcessor *writer.PostProcessor, id strin
 		}
 		msg := fmt.Sprintf("[%s] [%s]: %s", id, name, line)
 		if postProcessor != nil {
-			postProcessor.WriteMsg(msg)
-		}
-		if logger != nil {
-			logger.Info(msg)
+			postProcessor.Log(lvl, msg)
 		}
 	}
 }
