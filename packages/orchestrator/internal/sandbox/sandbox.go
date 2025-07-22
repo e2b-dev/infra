@@ -454,7 +454,6 @@ func (s *Sandbox) Stop(ctx context.Context) error {
 	return nil
 }
 
-// Close cleans up the sandbox and stops all resources.
 func (s *Sandbox) Close(ctx context.Context, tracer trace.Tracer) error {
 	_, span := tracer.Start(ctx, "sandbox-close")
 	defer span.End()
@@ -468,6 +467,10 @@ func (s *Sandbox) Close(ctx context.Context, tracer trace.Tracer) error {
 	if fcStopErr != nil {
 		errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
 	}
+
+	// The process exited, we can continue with the rest of the cleanup.
+	// We could use select with ctx.Done() to wait for cancellation, but if the process is not exited the whole cleanup will be in a bad state and will result in unexpected behavior.
+	<-s.process.Exit.Done
 
 	uffdStopErr := s.Resources.memory.Stop()
 	if uffdStopErr != nil {
