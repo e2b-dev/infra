@@ -9,13 +9,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/posthog/posthog-go"
-	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -46,43 +43,28 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
-	userID, teams, err := a.GetUserAndTeams(c)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when getting default team", err)
-
-		return
-	}
-
 	telemetry.ReportEvent(ctx, "started environment build")
 
 	// Check if the user has access to the template, load the template with build info
-	envDB, err := a.db.Client.Env.Query().Where(
-		env.ID(templateID),
-	).WithBuilds(
-		func(query *models.EnvBuildQuery) {
-			query.Where(envbuild.ID(buildUUID))
-		},
-	).Only(ctx)
+	templateBuildDB, err := a.sqlcDB.GetTemplateBuild(ctx, queries.GetTemplateBuildParams{
+		TemplateID: templateID,
+		BuildID:    buildUUID,
+	})
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))
-
 		telemetry.ReportCriticalError(ctx, "error when getting env", err, telemetry.WithTemplateID(templateID))
-
 		return
 	}
 
-	var team *queries.Team
-	// Check if the user has access to the template
-	for _, t := range teams {
-		if t.Team.ID == envDB.TeamID {
-			team = &t.Team
-			break
-		}
+	dbTeamID := templateBuildDB.Env.TeamID.String()
+	team, _, apiErr := a.GetTeamAndTier(c, &dbTeamID)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+		return
 	}
 
-	if team == nil {
+	if team.ID != templateBuildDB.Env.TeamID {
 		a.sendAPIStoreError(c, http.StatusForbidden, "User does not have access to the template")
 
 		telemetry.ReportCriticalError(ctx, "user does not have access to the template", err, telemetry.WithTemplateID(templateID))
@@ -91,7 +73,6 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	}
 
 	telemetry.SetAttributes(ctx,
-		attribute.String("user.id", userID.String()),
 		telemetry.WithTeamID(team.ID.String()),
 		telemetry.WithTemplateID(templateID),
 	)
@@ -103,10 +84,10 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	}
 
 	startTime := time.Now()
-	build := envDB.Edges.Builds[0]
+	build := templateBuildDB.EnvBuild
 
 	// only waiting builds can be triggered
-	if build.Status != envbuild.StatusWaiting {
+	if build.Status != envbuild.StatusWaiting.String() {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "build is not in waiting state")
 		telemetry.ReportCriticalError(ctx, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.Status), telemetry.WithTemplateID(templateID))
 		return
@@ -151,8 +132,8 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		build.FirecrackerVersion,
 		body.StartCmd,
 		build.Vcpu,
-		build.FreeDiskSizeMB,
-		build.RAMMB,
+		build.FreeDiskSizeMb,
+		build.RamMb,
 		body.ReadyCmd,
 		body.FromImage,
 		body.Force,
@@ -166,8 +147,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
-	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "built environment", posthog.NewProperties().
-		Set("user_id", userID).
+	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "built environment", posthog.NewProperties().
 		Set("environment", templateID).
 		Set("build_id", buildID).
 		Set("duration", time.Since(startTime).String()).
