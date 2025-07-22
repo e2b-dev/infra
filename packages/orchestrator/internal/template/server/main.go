@@ -22,6 +22,7 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -53,6 +54,7 @@ func New(
 	sandboxes *smap.Map[*sandbox.Sandbox],
 	templateCache *sbxtemplate.Cache,
 	templatePersistence storage.StorageProvider,
+	limiter *limit.Limiter,
 ) (*ServerStore, error) {
 	logger.Info("Initializing template manager")
 
@@ -61,7 +63,7 @@ func New(
 		return nil, fmt.Errorf("error getting artifacts registry provider: %v", err)
 	}
 
-	buildPersistance, err := storage.GetBuildCacheStorageProvider(ctx)
+	buildPersistance, err := storage.GetBuildCacheStorageProvider(ctx, limiter)
 	if err != nil {
 		return nil, fmt.Errorf("error getting build cache storage provider: %v", err)
 	}

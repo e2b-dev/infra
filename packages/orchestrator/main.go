@@ -31,6 +31,7 @@ import (
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -237,7 +238,17 @@ func run(port, proxyPort uint) (success bool) {
 
 	grpcSrv := grpcserver.New(tel.TracerProvider, tel.MeterProvider, serviceInfo)
 
-	persistence, err := storage.GetTemplateStorageProvider(ctx)
+	featureFlags, err := featureflags.NewClient()
+	if err != nil {
+		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
+	}
+
+	limiter, err := limit.New(featureFlags)
+	if err != nil {
+		zap.L().Fatal("failed to create limiter", zap.Error(err))
+	}
+
+	persistence, err := storage.GetTemplateStorageProvider(ctx, limiter)
 	if err != nil {
 		zap.L().Fatal("failed to create template storage provider", zap.Error(err))
 	}
@@ -245,11 +256,6 @@ func run(port, proxyPort uint) (success bool) {
 	templateCache, err := template.NewCache(ctx, persistence)
 	if err != nil {
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
-	}
-
-	featureFlags, err := featureflags.NewClient()
-	if err != nil {
-		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
 
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, serviceInfo.SourceCommit, serviceInfo.ClientId, sandboxMetricExportPeriod, sandboxes)
@@ -287,6 +293,7 @@ func run(port, proxyPort uint) (success bool) {
 		sandboxProxy,
 		featureFlags,
 		sandboxObserver,
+		limiter,
 	)
 
 	// Initialize the template manager only if the service is enabled
@@ -304,6 +311,7 @@ func run(port, proxyPort uint) (success bool) {
 			sandboxes,
 			templateCache,
 			persistence,
+			limiter,
 		)
 		if err != nil {
 			zap.L().Fatal("failed to create template manager", zap.Error(err))

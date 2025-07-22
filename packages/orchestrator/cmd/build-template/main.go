@@ -97,12 +97,12 @@ func buildTemplate(
 		}
 	}()
 
-	persistenceTemplate, err := storage.GetTemplateStorageProvider(ctx)
+	persistenceTemplate, err := storage.GetTemplateStorageProvider(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("could not create storage provider: %w", err)
 	}
 
-	persistenceBuild, err := storage.GetBuildCacheStorageProvider(ctx)
+	persistenceBuild, err := storage.GetBuildCacheStorageProvider(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("could not create storage provider: %w", err)
 	}
