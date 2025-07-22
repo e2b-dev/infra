@@ -111,13 +111,17 @@ variable "custom_metadata" {
 variable "root_volume_disk_size_gb" {
   description = "The size, in GB, of the root disk volume on each Consul node."
   type        = number
-  default     = 200
 }
 
 variable "root_volume_disk_type" {
   description = "The GCE disk type. Can be either pd-ssd, local-ssd, or pd-standard"
   type        = string
   default     = "pd-ssd"
+}
+
+variable "cache_volume_disk_size_gb" {
+  description = "The size, in GB, of the disk for an template cache."
+  type        = number
 }
 
 # Update Policy

@@ -276,8 +276,10 @@ module "build_cluster" {
   cluster_tag_name = var.cluster_tag_name
   gcp_zone         = var.gcp_zone
 
-  machine_type = var.build_machine_type
-  image_family = var.build_image_family
+  machine_type              = var.build_machine_type
+  image_family              = var.build_image_family
+  root_volume_disk_size_gb  = var.build_cluster_root_disk_size_gb
+  cache_volume_disk_size_gb = var.build_cluster_cache_disk_size_gb
 
   network_name = var.network_name
 
