@@ -13,11 +13,13 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/googleapis/gax-go/v2"
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.uber.org/zap"
-	"golang.org/x/sync/semaphore"
 	"google.golang.org/api/iterator"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -30,23 +32,15 @@ const (
 	googleMaxAttempts       = 10
 
 	// GCloud imposed limits:
-
-	// 10 concurrent uploads
-	gcloudMaxConcurrentUploads = 8
-	gcloudMaxRetries           = 3
-	// 200% CPU quota (200% / 9600% CPU total -> 2.083% total CPU per gcloud), total max CPU used for uploads is 2.083% * 10 = 20.83%
-	gcloudMaxCPUQuota = 200
-	// 2048M memory limit (2048M / 3865471M -> 0.053% of total memory), total max memory used for uploads is 0.053% * 10 = 0.53%
-	gcloudMaxMemoryLimit = 2048
-	// 16 tasks max, total max tasks used for uploads is 16 * 10 = 160
-	gcloudMaxTasksMax = 16
+	gcloudMaxRetries = 3
 )
-
-var uploadSemaphore = semaphore.NewWeighted(gcloudMaxConcurrentUploads)
 
 type GCPBucketStorageProvider struct {
 	client *storage.Client
 	bucket *storage.BucketHandle
+
+	uploadLimiter utils.Semaphore
+	featureFlags  *featureflags.Client
 }
 
 type GCPBucketStorageObjectProvider struct {
@@ -54,6 +48,11 @@ type GCPBucketStorageObjectProvider struct {
 	path    string
 	handle  *storage.ObjectHandle
 	ctx     context.Context
+
+	uploadLimiter  utils.Semaphore
+	maxCpuQuota    int64
+	maxMemoryQuota int64
+	maxTasksMax    int64
 }
 
 func NewGCPBucketStorageProvider(ctx context.Context, bucketName string) (*GCPBucketStorageProvider, error) {
@@ -62,9 +61,35 @@ func NewGCPBucketStorageProvider(ctx context.Context, bucketName string) (*GCPBu
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
 	}
 
+	uploadLimiter, err := utils.NewAdjustableSemaphore(featureflags.GcloudConcurrentUploadLimitDefault)
+	if err != nil {
+		zap.L().Fatal("failed to create upload semaphore", zap.Error(err))
+	}
+
+	featureFlags, err := featureflags.NewClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create feature flags: %w", err)
+	}
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			// Context is done, we can exit
+			ffErr := featureFlags.Close(context.Background())
+			if ffErr != nil {
+				zap.L().Error("failed to close feature flags client", zap.Error(ffErr))
+			}
+		}
+	}()
+
+	go featureFlags.UpdateUploadLimitSemaphore(ctx, uploadLimiter)
+
 	return &GCPBucketStorageProvider{
 		client: client,
 		bucket: client.Bucket(bucketName),
+
+		uploadLimiter: uploadLimiter,
+		featureFlags:  featureFlags,
 	}, nil
 }
 
@@ -128,11 +153,34 @@ func (g *GCPBucketStorageProvider) OpenObject(ctx context.Context, path string) 
 		),
 	)
 
+	flagCtx := ldcontext.NewBuilder(featureflags.GcloudMaxCPUQuota).SetString("path", path).Build()
+	maxCPU, flagErr := g.featureFlags.Ld.IntVariation(featureflags.GcloudMaxCPUQuota, flagCtx, featureflags.GcloudMaxCPUQuotaDefault)
+	if flagErr != nil {
+		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
+	}
+
+	flagCtx = ldcontext.NewBuilder(featureflags.GcloudMaxMemoryLimit).SetString("path", path).Build()
+	maxMemory, flagErr := g.featureFlags.Ld.IntVariation(featureflags.GcloudMaxMemoryLimit, flagCtx, featureflags.GcloudMaxMemoryLimitDefault)
+	if flagErr != nil {
+		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
+	}
+
+	flagCtx = ldcontext.NewBuilder(featureflags.GcloudMaxTasks).SetString("path", path).Build()
+	maxTasks, flagErr := g.featureFlags.Ld.IntVariation(featureflags.GcloudMaxTasks, flagCtx, featureflags.GcloudMaxTasksDefault)
+	if flagErr != nil {
+		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
+	}
+
 	return &GCPBucketStorageObjectProvider{
 		storage: g,
 		path:    path,
 		handle:  handle,
 		ctx:     ctx,
+
+		uploadLimiter:  g.uploadLimiter,
+		maxCpuQuota:    int64(maxCPU),
+		maxMemoryQuota: int64(maxMemory),
+		maxTasksMax:    int64(maxTasks),
 	}, nil
 }
 
@@ -223,21 +271,21 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 
 func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error {
 	upload := func() error {
-		semaphoreErr := uploadSemaphore.Acquire(g.ctx, 1)
+		semaphoreErr := g.uploadLimiter.Acquire(g.ctx, 1)
 		if semaphoreErr != nil {
 			return fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
 		}
-		defer uploadSemaphore.Release(1)
+		defer g.uploadLimiter.Release(1)
 
 		cmd := exec.CommandContext(
 			g.ctx,
 			"systemd-run",
 			"--user",
 			"--scope",
-			fmt.Sprintf("--property=CPUQuota=%d%%", gcloudMaxCPUQuota),
-			fmt.Sprintf("--property=MemoryMax=%dM", gcloudMaxMemoryLimit),
+			fmt.Sprintf("--property=CPUQuota=%d%%", g.maxCpuQuota),
+			fmt.Sprintf("--property=MemoryMax=%dM", g.maxMemoryQuota),
 			// Not 100% sure how this can internally affect the gcloud (probably returning retryable errors from fork there).
-			fmt.Sprintf("--property=TasksMax=%d", gcloudMaxTasksMax),
+			fmt.Sprintf("--property=TasksMax=%d", g.maxTasksMax),
 			"gcloud",
 			"storage",
 			"cp",

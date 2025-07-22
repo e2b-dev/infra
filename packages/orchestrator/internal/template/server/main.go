@@ -52,13 +52,9 @@ func New(
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 	templateCache *sbxtemplate.Cache,
+	templatePersistence storage.StorageProvider,
 ) (*ServerStore, error) {
 	logger.Info("Initializing template manager")
-
-	templatePersistence, err := storage.GetTemplateStorageProvider(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("error getting template storage provider: %v", err)
-	}
 
 	artifactsregistry, err := artifactsregistry.GetArtifactsRegistryProvider()
 	if err != nil {
