@@ -298,8 +298,9 @@ func run(port, proxyPort uint) (success bool) {
 	)
 
 	// Initialize the template manager only if the service is enabled
+	var tmplClose Closeable
 	if slices.Contains(services, service.TemplateManager) {
-		tmpl, err := tmplserver.New(
+		tmplClose, err = tmplserver.New(
 			ctx,
 			tracer,
 			tel.MeterProvider,
@@ -318,9 +319,6 @@ func run(port, proxyPort uint) (success bool) {
 		if err != nil {
 			zap.L().Fatal("failed to create template manager", zap.Error(err))
 		}
-
-		// Prepend to make sure it's awaited on graceful shutdown
-		closers = append([]Closeable{tmpl}, closers...)
 	}
 
 	service.NewInfoService(ctx, grpcSrv.GRPCServer(), serviceInfo, sandboxes)
@@ -384,6 +382,15 @@ func run(port, proxyPort uint) (success bool) {
 	// If service stats was previously changed via API, we don't want to override it.
 	if serviceInfo.GetStatus() == orchestrator.ServiceInfoStatus_Healthy {
 		serviceInfo.SetStatus(orchestrator.ServiceInfoStatus_Draining)
+	}
+
+	// Template builder is not initialized in all cases
+	if tmplClose != nil {
+		err := tmplClose.Close(closeCtx)
+		if err != nil {
+			zap.L().Error("error closing template builder", zap.Error(err))
+			success = false
+		}
 	}
 
 	for _, c := range closers {
