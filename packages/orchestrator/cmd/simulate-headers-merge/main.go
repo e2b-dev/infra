@@ -46,7 +46,7 @@ func main() {
 
 	ctx := context.Background()
 
-	storage, err := storage.GetTemplateStorageProvider(ctx, block.ChunkSize)
+	storage, err := storage.GetTemplateStorageProvider(ctx, nil, block.ChunkSize)
 	if err != nil {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -43,8 +44,8 @@ type StorageObjectProvider interface {
 	Delete() error
 }
 
-func GetTemplateStorageProvider(ctx context.Context, chunkSize int) (StorageProvider, error) {
-	provider, err := getTemplateStorageProvider(ctx)
+func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter, chunkSize int) (StorageProvider, error) {
+	provider, err := getTemplateStorageProvider(ctx, limiter)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +57,7 @@ func GetTemplateStorageProvider(ctx context.Context, chunkSize int) (StorageProv
 	return provider, nil
 }
 
-func getTemplateStorageProvider(ctx context.Context) (StorageProvider, error) {
+func getTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (StorageProvider, error) {
 	provider := Provider(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
 
 	if provider == LocalStorageProvider {
@@ -71,13 +72,13 @@ func getTemplateStorageProvider(ctx context.Context) (StorageProvider, error) {
 	case AWSStorageProvider:
 		return NewAWSBucketStorageProvider(ctx, bucketName)
 	case GCPStorageProvider:
-		return NewGCPBucketStorageProvider(ctx, bucketName)
+		return NewGCPBucketStorageProvider(ctx, bucketName, limiter)
 	}
 
 	return nil, fmt.Errorf("unknown storage provider: %s", provider)
 }
 
-func GetBuildCacheStorageProvider(ctx context.Context) (StorageProvider, error) {
+func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (StorageProvider, error) {
 	provider := Provider(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
 
 	if provider == LocalStorageProvider {
@@ -92,7 +93,7 @@ func GetBuildCacheStorageProvider(ctx context.Context) (StorageProvider, error) 
 	case AWSStorageProvider:
 		return NewAWSBucketStorageProvider(ctx, bucketName)
 	case GCPStorageProvider:
-		return NewGCPBucketStorageProvider(ctx, bucketName)
+		return NewGCPBucketStorageProvider(ctx, bucketName, limiter)
 	}
 
 	return nil, fmt.Errorf("unknown storage provider: %s", provider)

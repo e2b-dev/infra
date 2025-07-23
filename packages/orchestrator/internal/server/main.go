@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"go.opentelemetry.io/otel/metric"
@@ -64,18 +63,13 @@ func New(
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 	featureFlags *featureflags.Client,
+	persistence storage.StorageProvider,
 ) (*Service, error) {
-	srv := &Service{info: info}
-
-	srv.proxy = proxy
-
-	persistence, err := storage.GetTemplateStorageProvider(ctx, block.ChunkSize)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create storage provider: %w", err)
+	srv := &Service{
+		info:        info,
+		proxy:       proxy,
+		persistence: persistence,
 	}
-
-	srv.persistence = persistence
-
 	srv.server = &server{
 		info:          info,
 		tracer:        tracer,
@@ -89,7 +83,7 @@ func New(
 	}
 
 	meter := tel.MeterProvider.Meter("orchestrator.sandbox")
-	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(srv.server.sandboxes.Count()))
 
 		return nil

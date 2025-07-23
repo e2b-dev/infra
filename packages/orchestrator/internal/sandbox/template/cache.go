@@ -10,7 +10,6 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -39,7 +38,7 @@ type Cache struct {
 // NewCache initializes a template new cache.
 // It also deletes the old build cache directory content
 // as it may contain stale data that are not managed by anyone.
-func NewCache(ctx context.Context) (*Cache, error) {
+func NewCache(ctx context.Context, persistence storage.StorageProvider) (*Cache, error) {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, Template](templateExpiration),
 	)
@@ -68,11 +67,6 @@ func NewCache(ctx context.Context) (*Cache, error) {
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build store: %w", err)
-	}
-
-	persistence, err := storage.GetTemplateStorageProvider(ctx, block.ChunkSize)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get storage provider: %w", err)
 	}
 
 	go cache.Start()
