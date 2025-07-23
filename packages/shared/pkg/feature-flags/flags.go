@@ -8,7 +8,9 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
-// All flags has be defined here: https://app.launchdarkly.com/projects/default/flags/
+// All flags must be defined here: https://app.launchdarkly.com/projects/default/flags/
+
+const GcloudConcurrentUploadLimitDefault = 8
 
 type BoolFlag string
 
@@ -36,7 +38,7 @@ var flagsBool = map[BoolFlag]bool{
 }
 
 var flagsInt = map[IntFlag]int{
-	GcloudConcurrentUploadLimit: 8,
+	GcloudConcurrentUploadLimit: GcloudConcurrentUploadLimitDefault,
 	// gcloudMaxCPUQuotaDefault default is 2% of total CPU (100% is 1 CPU core)
 	GcloudMaxCPUQuota: 2 * runtime.NumCPU(),
 	// gcloudMaxMemoryLimitMiBDefault default is 0.5% of total memory
