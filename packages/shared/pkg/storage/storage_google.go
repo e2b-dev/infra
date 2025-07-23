@@ -239,7 +239,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 			"gcloud",
 			"storage",
 			"cp",
-			"--verbosity", "error",
+			"--verbosity=error",
 			path,
 			fmt.Sprintf("gs://%s/%s", g.storage.bucket.BucketName(), g.path),
 		)

@@ -31,12 +31,10 @@ func TestBasicAcquireTryRelease(t *testing.T) {
 	s, err := NewAdjustableSemaphore(2)
 	require.NoError(t, err)
 
-	if err := s.Acquire(context.Background(), 1); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got := s.TryAcquire(1); !got {
-		t.Fatalf("TryAcquire should have succeeded with remaining capacity")
-	}
+	err := s.Acquire(context.Background(), 1)
+	require.NoError(t, err)
+	got := s.TryAcquire(1)
+	require.True(t, got, "TryAcquire should have succeeded with remaining capacity")
 	if got := s.TryAcquire(1); got {
 		t.Fatalf("TryAcquire should have failed (limit exceeded)")
 	}
