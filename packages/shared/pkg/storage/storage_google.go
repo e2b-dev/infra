@@ -232,7 +232,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 			extraArgs = append(extraArgs, g.limiter.GCloudCmdLimits(path)...)
 		}
 
-		args := []string{"--user", "--scope"}
+		args := []string{"--scope"}
 		args = append(args, extraArgs...)
 		args = append(args, "--",
 			"gcloud",
