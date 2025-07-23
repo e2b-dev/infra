@@ -18,7 +18,7 @@ import (
 )
 
 func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	sbx := createSandbox(t, false, setup.WithAPIKey())
@@ -53,7 +53,7 @@ func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {
 }
 
 func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	sbx := createSandbox(t, true, setup.WithAPIKey())
@@ -95,7 +95,7 @@ func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
 }
 
 func TestDownloadFileWithSigningWhenAuthIsEnabled(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	sbx := createSandbox(t, true, setup.WithAPIKey())
@@ -138,7 +138,7 @@ func TestDownloadFileWithSigningWhenAuthIsEnabled(t *testing.T) {
 }
 
 func TestDownloadWithAlreadyExpiredToken(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	sbx := createSandbox(t, true, setup.WithAPIKey())
@@ -171,7 +171,7 @@ func TestDownloadWithAlreadyExpiredToken(t *testing.T) {
 }
 
 func TestDownloadWithHealthyToken(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	sbx := createSandbox(t, true, setup.WithAPIKey())
@@ -204,7 +204,7 @@ func TestDownloadWithHealthyToken(t *testing.T) {
 }
 
 func TestAccessWithNotCorrespondingSignatureAndSignatureExpiration(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	sbx := createSandbox(t, true, setup.WithAPIKey())

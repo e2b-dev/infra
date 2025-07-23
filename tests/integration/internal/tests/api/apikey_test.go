@@ -15,7 +15,7 @@ import (
 )
 
 func TestCreateAPIKey(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	c := setup.GetAPIClient()
@@ -35,7 +35,7 @@ func TestCreateAPIKey(t *testing.T) {
 }
 
 func TestDeleteAPIKey(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	c := setup.GetAPIClient()
@@ -68,7 +68,7 @@ func TestDeleteAPIKey(t *testing.T) {
 }
 
 func TestListAPIKeys(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	c := setup.GetAPIClient()
@@ -83,7 +83,7 @@ func TestListAPIKeys(t *testing.T) {
 }
 
 func TestPatchAPIKey(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	c := setup.GetAPIClient()
