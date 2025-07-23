@@ -3,7 +3,6 @@ package limit
 import (
 	"fmt"
 
-	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.uber.org/zap"
 
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -15,22 +14,19 @@ func (l *Limiter) GCloudUploadLimiter() *utils.AdjustableSemaphore {
 }
 
 func (l *Limiter) GCloudCmdLimits(path string) []string {
-	flagCtx := ldcontext.NewBuilder(featureflags.GcloudMaxCPUQuota).SetString("path", path).Build()
-	maxCPU, flagErr := l.featureFlags.Ld.IntVariation(featureflags.GcloudMaxCPUQuota, flagCtx, featureflags.GcloudMaxCPUQuotaDefault)
+	maxCPU, flagErr := l.featureFlags.IntFlag(featureflags.GcloudMaxCPUQuota, path)
 	if flagErr != nil {
-		zap.L().Warn("soft failing during gcloud cmd limits feature flag receive", zap.Error(flagErr), zap.Int("maxCPU", featureflags.GcloudMaxCPUQuotaDefault))
+		zap.L().Warn("soft failing during gcloud cmd limits feature flag receive", zap.Error(flagErr), zap.Int("maxCPU", maxCPU))
 	}
 
-	flagCtx = ldcontext.NewBuilder(featureflags.GcloudMaxMemoryLimitMiB).SetString("path", path).Build()
-	maxMemory, flagErr := l.featureFlags.Ld.IntVariation(featureflags.GcloudMaxMemoryLimitMiB, flagCtx, featureflags.GcloudMaxMemoryLimitMiBDefault)
+	maxMemory, flagErr := l.featureFlags.IntFlag(featureflags.GcloudMaxMemoryLimitMiB, path)
 	if flagErr != nil {
-		zap.L().Warn("soft failing during gcloud cmd limits feature flag receive", zap.Error(flagErr), zap.Int("maxMemory", featureflags.GcloudMaxMemoryLimitMiBDefault))
+		zap.L().Warn("soft failing during gcloud cmd limits feature flag receive", zap.Error(flagErr), zap.Int("maxMemory", maxMemory))
 	}
 
-	flagCtx = ldcontext.NewBuilder(featureflags.GcloudMaxTasks).SetString("path", path).Build()
-	maxTasks, flagErr := l.featureFlags.Ld.IntVariation(featureflags.GcloudMaxTasks, flagCtx, featureflags.GcloudMaxTasksDefault)
+	maxTasks, flagErr := l.featureFlags.IntFlag(featureflags.GcloudMaxTasks, path)
 	if flagErr != nil {
-		zap.L().Warn("soft failing during gcloud cmd limits feature flag receive", zap.Error(flagErr), zap.Int("maxTasks", featureflags.GcloudMaxTasksDefault))
+		zap.L().Warn("soft failing during gcloud cmd limits feature flag receive", zap.Error(flagErr), zap.Int("maxTasks", maxTasks))
 	}
 
 	return []string{

@@ -3,22 +3,19 @@ package limit
 import (
 	"time"
 
-	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.uber.org/zap"
 
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
 func (l *Limiter) UpdateUploadLimitSemaphore() {
-	flagCtx := ldcontext.NewBuilder(featureflags.GcloudConcurrentUploadLimit).Build()
-
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			uploadLimitFlag, flagErr := l.featureFlags.Ld.IntVariation(featureflags.GcloudConcurrentUploadLimit, flagCtx, featureflags.GcloudConcurrentUploadLimitDefault)
+			uploadLimitFlag, flagErr := l.featureFlags.IntFlag(featureflags.GcloudConcurrentUploadLimit, "<empty>")
 			if flagErr != nil {
 				zap.L().Warn("soft failing during metrics write feature flag receive", zap.Error(flagErr))
 			}

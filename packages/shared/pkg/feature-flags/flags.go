@@ -8,47 +8,53 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
-// Flag for enabling writing metrics for sandbox
-// https://app.launchdarkly.com/projects/default/flags/sandbox-metrics-write
+// https://app.launchdarkly.com/projects/default/flags/
+
+type BoolFlag string
+
 const (
-	MetricsWriteFlagName = "sandbox-metrics-write"
+	MetricsWriteFlagName BoolFlag = "sandbox-metrics-write"
+	MetricsReadFlagName  BoolFlag = "sandbox-metrics-read"
 )
 
-var MetricsWriteDefault = env.IsDevelopment()
+type IntFlag string
 
-// Flag for enabling writing metrics for sandbox
-// https://app.launchdarkly.com/projects/default/flags/sandbox-metrics-read
 const (
-	MetricsReadFlagName = "sandbox-metrics-read"
+	// GcloudConcurrentUploadLimit - the maximum number of concurrent uploads to GCloud
+	GcloudConcurrentUploadLimit IntFlag = "gcloud-concurrent-upload-limit"
+	// GcloudMaxCPUQuota - maximum number of CPUs for GCloud uploads
+	GcloudMaxCPUQuota IntFlag = "gcloud-max-cpu-quota"
+	// GcloudMaxMemoryLimitMiB - maximum memory limit for GCloud uploads
+	GcloudMaxMemoryLimitMiB IntFlag = "gcloud-max-memory-limit"
+	// GcloudMaxTasks - maximum concurrent tasks for GCloud uploads
+	GcloudMaxTasks IntFlag = "gcloud-max-tasks"
 )
 
-var MetricsReadDefault = env.IsDevelopment()
+var flagsBool = map[BoolFlag]bool{
+	MetricsWriteFlagName: metricsWriteDefault,
+	MetricsReadFlagName:  metricsReadDefault,
+}
 
-// Flag for setting the maximum number of concurrent uploads to GCloud
-// https://app.launchdarkly.com/projects/default/flags/gcloud-concurrent-upload-limit
+var flagsInt = map[IntFlag]int{
+	GcloudConcurrentUploadLimit: GcloudConcurrentUploadLimitDefault,
+	GcloudMaxCPUQuota:           gcloudMaxCPUQuotaDefault,
+	GcloudMaxMemoryLimitMiB:     gcloudMaxMemoryLimitMiBDefault,
+	GcloudMaxTasks:              gcloudMaxTasksDefault,
+}
+
 const (
-	GcloudConcurrentUploadLimit = "gcloud-concurrent-upload-limit"
+	GcloudConcurrentUploadLimitDefault = 8
+	gcloudMaxTasksDefault              = 16
 )
 
-const GcloudConcurrentUploadLimitDefault = 8
-
-// Flag for setting the maximum number of CPUs for GCloud uploads
-// https://app.launchdarkly.com/projects/default/flags/gcloud-max-cpu-quota
-const (
-	GcloudMaxCPUQuota = "gcloud-max-cpu-quota"
+var (
+	metricsWriteDefault = env.IsDevelopment()
+	metricsReadDefault  = env.IsDevelopment()
+	// gcloudMaxCPUQuotaDefault default is 2% of total CPU (100% is 1 CPU core)
+	gcloudMaxCPUQuotaDefault = 2 * runtime.NumCPU()
+	// gcloudMaxMemoryLimitMiBDefault default is 0.5% of total memory
+	gcloudMaxMemoryLimitMiBDefault = getDefaultMemoryLimitMiB()
 )
-
-// GcloudMaxCPUQuotaDefault default is 2% of total CPU (100% is 1 CPU core)
-var GcloudMaxCPUQuotaDefault = 2 * runtime.NumCPU()
-
-// Flag for setting the maximum memory limit for GCloud uploads
-// https://app.launchdarkly.com/projects/default/flags/gcloud-max-memory-limit
-const (
-	GcloudMaxMemoryLimitMiB = "gcloud-max-memory-limit"
-)
-
-// GcloudMaxMemoryLimitMiBDefault default is 0.5% of total memory
-var GcloudMaxMemoryLimitMiBDefault = getDefaultMemoryLimitMiB()
 
 // getDefaultMemoryLimitMiB returns the default memory limit for GCloud uploads in MiB
 func getDefaultMemoryLimitMiB() int {
@@ -61,11 +67,3 @@ func getDefaultMemoryLimitMiB() int {
 	// Calculate the memory limit based on the percentage
 	return int(0.005 * float64(totalMemory) / 1024 / 1024) // Convert to MiB
 }
-
-// Flag for setting the maximum concurrent tasks for GCloud uploads
-// https://app.launchdarkly.com/projects/default/flags/gcloud-max-tasks
-const (
-	GcloudMaxTasks = "gcloud-max-tasks"
-	// 16 tasks max
-	GcloudMaxTasksDefault = 16
-)

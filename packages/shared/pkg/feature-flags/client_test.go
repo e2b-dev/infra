@@ -22,7 +22,7 @@ func TestOfflineDatastore(t *testing.T) {
 	assert.NoError(t, err)
 
 	// value is not set so it should be default (false)
-	flagValue, _ := client.Ld.BoolVariation(flagName, clientCtx, false)
+	flagValue, _ := client.ld.BoolVariation(flagName, clientCtx, false)
 	assert.False(t, flagValue)
 
 	LaunchDarklyOfflineStore.Update(
@@ -30,6 +30,6 @@ func TestOfflineDatastore(t *testing.T) {
 	)
 
 	// value is set manually in datastore and should be taken from there
-	flagValue, _ = client.Ld.BoolVariation(flagName, clientCtx, false)
+	flagValue, _ = client.ld.BoolVariation(flagName, clientCtx, false)
 	assert.True(t, flagValue)
 }
