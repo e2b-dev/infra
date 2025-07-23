@@ -18,19 +18,19 @@ func (l *Limiter) GCloudCmdLimits(path string) []string {
 	flagCtx := ldcontext.NewBuilder(featureflags.GcloudMaxCPUQuota).SetString("path", path).Build()
 	maxCPU, flagErr := l.featureFlags.Ld.IntVariation(featureflags.GcloudMaxCPUQuota, flagCtx, featureflags.GcloudMaxCPUQuotaDefault)
 	if flagErr != nil {
-		zap.L().Warn("soft failing during metrics write feature flag receive", zap.Error(flagErr))
+		zap.L().Warn("soft failing during gcloud cmd limits feature flag receive", zap.Error(flagErr), zap.Int("maxCPU", featureflags.GcloudMaxCPUQuotaDefault))
 	}
 
 	flagCtx = ldcontext.NewBuilder(featureflags.GcloudMaxMemoryLimitMiB).SetString("path", path).Build()
 	maxMemory, flagErr := l.featureFlags.Ld.IntVariation(featureflags.GcloudMaxMemoryLimitMiB, flagCtx, featureflags.GcloudMaxMemoryLimitMiBDefault)
 	if flagErr != nil {
-		zap.L().Warn("soft failing during metrics write feature flag receive", zap.Error(flagErr))
+		zap.L().Warn("soft failing during gcloud cmd limits feature flag receive", zap.Error(flagErr), zap.Int("maxMemory", featureflags.GcloudMaxMemoryLimitMiBDefault))
 	}
 
 	flagCtx = ldcontext.NewBuilder(featureflags.GcloudMaxTasks).SetString("path", path).Build()
 	maxTasks, flagErr := l.featureFlags.Ld.IntVariation(featureflags.GcloudMaxTasks, flagCtx, featureflags.GcloudMaxTasksDefault)
 	if flagErr != nil {
-		zap.L().Warn("soft failing during metrics write feature flag receive", zap.Error(flagErr))
+		zap.L().Warn("soft failing during gcloud cmd limits feature flag receive", zap.Error(flagErr), zap.Int("maxTasks", featureflags.GcloudMaxTasksDefault))
 	}
 
 	return []string{
