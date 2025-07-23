@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -25,8 +24,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 
 	team := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo).Team
 
-	flagCtx := ldcontext.NewBuilder(featureflags.MetricsReadFlagName).Build()
-	metricsReadFlag, err := a.featureFlags.Ld.BoolVariation(featureflags.MetricsReadFlagName, flagCtx, featureflags.MetricsReadDefault)
+	metricsReadFlag, err := a.featureFlags.BoolFlag(featureflags.MetricsReadFlagName, sandboxID)
 	if err != nil {
 		zap.L().Error("error getting metrics read feature flag, soft failing", zap.Error(err))
 	}
