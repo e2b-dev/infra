@@ -30,11 +30,13 @@ func NewClient() (*Client, error) {
 
 	if launchDarklyApiKey == "" {
 		for flag, value := range flagsBool {
-			LaunchDarklyOfflineStore.Flag(string(flag)).VariationForAll(value)
+			builder := LaunchDarklyOfflineStore.Flag(string(flag)).VariationForAll(value)
+			LaunchDarklyOfflineStore.Update(builder)
 		}
 
 		for flag, value := range flagsInt {
-			LaunchDarklyOfflineStore.Flag(string(flag)).ValueForAll(ldvalue.Int(value))
+			builder := LaunchDarklyOfflineStore.Flag(string(flag)).ValueForAll(ldvalue.Int(value))
+			LaunchDarklyOfflineStore.Update(builder)
 		}
 
 		// waitFor has to be 0 for offline store
