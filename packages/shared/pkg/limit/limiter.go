@@ -2,6 +2,7 @@ package limit
 
 import (
 	"context"
+	"sync"
 
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -12,7 +13,8 @@ type Limiter struct {
 	gCloudUploadLimiter *utils.AdjustableSemaphore
 	featureFlags        *featureflags.Client
 
-	done chan struct{}
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 func New(featureFlags *featureflags.Client) (*Limiter, error) {
@@ -33,9 +35,9 @@ func New(featureFlags *featureflags.Client) (*Limiter, error) {
 }
 
 func (l *Limiter) Close(ctx context.Context) error {
-	if l.done != nil {
+	l.closeOnce.Do(func() {
 		close(l.done)
-	}
+	})
 
 	return nil
 }
