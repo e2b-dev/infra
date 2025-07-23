@@ -31,9 +31,11 @@ type sbxInProgress struct {
 }
 
 type nodeMetadata struct {
-	orchestratorID string
-	commit         string
-	version        string
+	orchestratorID    string
+	serviceInstanceID string
+
+	commit  string
+	version string
 }
 
 type Node struct {
@@ -46,8 +48,7 @@ type Node struct {
 	ClusterID     uuid.UUID
 	ClusterNodeID string
 
-	Info              *node.NodeInfo
-	serviceInstanceID string
+	Info *node.NodeInfo
 
 	meta   nodeMetadata
 	status api.NodeStatus
@@ -106,10 +107,10 @@ func (n *Node) setStatus(status api.NodeStatus) {
 	}
 }
 
-func (n *Node) setMetadata(i *orchestratorinfo.ServiceInfoResponse, nodeID string) {
+func (n *Node) setMetadata(i *orchestratorinfo.ServiceInfoResponse, nodeID string, serviceInstanceID string) {
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
-	n.meta = getNodeMetadata(i, nodeID)
+	n.meta = getNodeMetadata(i, nodeID, serviceInstanceID)
 }
 
 func (n *Node) metadata() nodeMetadata {
@@ -303,7 +304,7 @@ func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.Sandbo
 			SandboxStartTime:        req.StartTime.AsTime(),
 
 			ExecutionID:    req.Sandbox.ExecutionId,
-			OrchestratorID: n.serviceInstanceID,
+			OrchestratorID: n.metadata().serviceInstanceID,
 		},
 	)
 
@@ -326,18 +327,22 @@ func (n *Node) GetSandboxDeleteCtx(ctx context.Context, sandboxID string, execut
 	return metadata.NewOutgoingContext(ctx, metadata.Join(n.clientMd, md))
 }
 
-func getNodeMetadata(n *orchestratorinfo.ServiceInfoResponse, orchestratorID string) nodeMetadata {
+func getNodeMetadata(n *orchestratorinfo.ServiceInfoResponse, orchestratorID string, serviceInstanceID string) nodeMetadata {
 	if n == nil {
 		return nodeMetadata{
-			orchestratorID: orchestratorID,
-			commit:         "unknown",
-			version:        "unknown",
+			orchestratorID:    orchestratorID,
+			serviceInstanceID: serviceInstanceID,
+
+			commit:  "unknown",
+			version: "unknown",
 		}
 	}
 
 	return nodeMetadata{
-		orchestratorID: n.NodeId,
-		commit:         n.ServiceCommit,
-		version:        n.ServiceVersion,
+		orchestratorID:    n.NodeId,
+		serviceInstanceID: n.ServiceId,
+
+		commit:  n.ServiceCommit,
+		version: n.ServiceVersion,
 	}
 }

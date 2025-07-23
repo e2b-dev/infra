@@ -110,7 +110,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 			Info:              node,
 			serviceInstanceID: nodeInfo.ServiceId,
 
-			meta:           getNodeMetadata(nodeInfo, node.ID),
+			meta:           getNodeMetadata(nodeInfo, node.ID, nodeInfo.ServiceId),
 			buildCache:     buildCache,
 			status:         nodeStatus,
 			sbxsInProgress: smap.New[*sbxInProgress](),
