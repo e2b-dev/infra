@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"net/http"
 	"testing"
 
@@ -19,7 +18,7 @@ func TestSandboxDetailRunning(t *testing.T) {
 	sbx := utils.SetupSandboxWithCleanup(t, c)
 
 	// Test basic list functionality
-	response, err := c.GetSandboxesSandboxIDWithResponse(context.Background(), sbx.SandboxID, setup.WithAPIKey())
+	response, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, response.StatusCode())
 
@@ -35,7 +34,7 @@ func TestSandboxDetailPaused(t *testing.T) {
 	sandboxID := sbx.SandboxID
 	pauseSandbox(t, c, sandboxID)
 
-	response, err := c.GetSandboxesSandboxIDWithResponse(context.Background(), sandboxID, setup.WithAPIKey())
+	response, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
 
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, response.StatusCode())

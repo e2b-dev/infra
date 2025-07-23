@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"testing"
@@ -16,7 +15,7 @@ import (
 )
 
 func pauseSandbox(t *testing.T, c *api.ClientWithResponses, sandboxID string) {
-	pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(context.Background(), sandboxID, setup.WithAPIKey())
+	pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
 
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, pauseSandboxResponse.StatusCode())
@@ -29,7 +28,7 @@ func TestSandboxList(t *testing.T) {
 	sbx := utils.SetupSandboxWithCleanup(t, c)
 
 	// Test basic list functionality
-	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{}, setup.WithAPIKey())
+	listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{}, setup.WithAPIKey())
 	assert.NoError(t, err)
 	require.Equal(t, http.StatusOK, listResponse.StatusCode())
 
@@ -60,7 +59,7 @@ func TestSandboxListWithFilter(t *testing.T) {
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
 
 	// List with filter
-	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
+	listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
@@ -79,7 +78,7 @@ func TestSandboxListRunning(t *testing.T) {
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{"sandboxType": uniqueString}))
 
 	// List running sandboxes
-	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
+	listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
@@ -111,7 +110,7 @@ func TestSandboxListPaused(t *testing.T) {
 	pauseSandbox(t, c, sandboxID)
 
 	// List paused sandboxes
-	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
+	listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
 		State:    &[]api.SandboxState{api.Paused},
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
@@ -147,7 +146,7 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 	// Test pagination with limit
 	var limit int32 = 1
 
-	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
+	listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
 		Limit:    &limit,
 		State:    &[]api.SandboxState{api.Running},
 		Metadata: &metadataString,
@@ -162,7 +161,7 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 	nextToken := listResponse.HTTPResponse.Header.Get("X-Next-Token")
 	assert.NotEmpty(t, nextToken)
 
-	secondPageResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
+	secondPageResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
 		Limit:     &limit,
 		NextToken: &nextToken,
 		State:     &[]api.SandboxState{api.Running},
@@ -196,7 +195,7 @@ func TestSandboxListPaginationPaused(t *testing.T) {
 	// Test pagination with limit
 	var limit int32 = 1
 
-	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
+	listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
 		Limit:    &limit,
 		State:    &[]api.SandboxState{api.Paused},
 		Metadata: &metadataString,
@@ -211,7 +210,7 @@ func TestSandboxListPaginationPaused(t *testing.T) {
 	nextToken := listResponse.HTTPResponse.Header.Get("X-Next-Token")
 	assert.NotEmpty(t, nextToken)
 
-	secondPageResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
+	secondPageResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
 		Limit:     &limit,
 		NextToken: &nextToken,
 		State:     &[]api.SandboxState{api.Paused},
@@ -246,7 +245,7 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 	// Test pagination with limit
 	var limit int32 = 1
 
-	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
+	listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
 		Limit:    &limit,
 		State:    &[]api.SandboxState{api.Running, api.Paused},
 		Metadata: &metadataString,
@@ -261,7 +260,7 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 	nextToken := listResponse.HTTPResponse.Header.Get("X-Next-Token")
 	assert.NotEmpty(t, nextToken)
 
-	secondPageResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
+	secondPageResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
 		Limit:     &limit,
 		NextToken: &nextToken,
 		State:     &[]api.SandboxState{api.Running, api.Paused},
@@ -288,7 +287,7 @@ func TestSandboxListRunningV1(t *testing.T) {
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
 
 	// List running sandboxes
-	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
+	listResponse, err := c.GetSandboxesWithResponse(t.Context(), &api.GetSandboxesParams{
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
@@ -317,7 +316,7 @@ func TestSandboxListWithFilterV1(t *testing.T) {
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
 
 	// List with filter
-	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
+	listResponse, err := c.GetSandboxesWithResponse(t.Context(), &api.GetSandboxesParams{
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
@@ -335,7 +334,7 @@ func TestSandboxListSortedV1(t *testing.T) {
 	sbx3 := utils.SetupSandboxWithCleanup(t, c)
 
 	// List with filter
-	listResponse, err := c.GetSandboxesWithResponse(context.Background(), nil, setup.WithAPIKey())
+	listResponse, err := c.GetSandboxesWithResponse(t.Context(), nil, setup.WithAPIKey())
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
 	assert.GreaterOrEqual(t, len(*listResponse.JSON200), 3)

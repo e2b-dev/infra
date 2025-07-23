@@ -11,7 +11,7 @@ import (
 )
 
 func TestList(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	client := setup.GetOrchestratorClient(t, ctx)

@@ -1,7 +1,6 @@
 package api_templates
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -21,7 +20,7 @@ func int32Pointer(i int32) *int32 {
 func TestRequestTemplateBuild(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	resp, err := c.PostTemplatesWithResponse(context.Background(), api.TemplateBuildRequest{
+	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
 		CpuCount: int32Pointer(2),
 		MemoryMB: int32Pointer(1024),
 	}, setup.WithAccessToken())
@@ -32,7 +31,7 @@ func TestRequestTemplateBuild(t *testing.T) {
 func TestRequestTemplateTooLowCPU(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	resp, err := c.PostTemplatesWithResponse(context.Background(), api.TemplateBuildRequest{
+	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
 		CpuCount: int32Pointer(0),
 		MemoryMB: int32Pointer(1024),
 	}, setup.WithAccessToken())
@@ -44,7 +43,7 @@ func TestRequestTemplateTooLowCPU(t *testing.T) {
 func TestRequestTemplateTooLowRAM(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	resp, err := c.PostTemplatesWithResponse(context.Background(), api.TemplateBuildRequest{
+	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
 		CpuCount: int32Pointer(2),
 		MemoryMB: int32Pointer(32),
 	}, setup.WithAccessToken())
@@ -56,7 +55,7 @@ func TestRequestTemplateTooLowRAM(t *testing.T) {
 func TestRequestTemplateTooHighCPU(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	resp, err := c.PostTemplatesWithResponse(context.Background(), api.TemplateBuildRequest{
+	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
 		CpuCount: int32Pointer(1024),
 		MemoryMB: int32Pointer(1024),
 	}, setup.WithAccessToken())
@@ -68,7 +67,7 @@ func TestRequestTemplateTooHighCPU(t *testing.T) {
 func TestRequestTemplateTooHighMemory(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	resp, err := c.PostTemplatesWithResponse(context.Background(), api.TemplateBuildRequest{
+	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
 		CpuCount: int32Pointer(2),
 		MemoryMB: int32Pointer(1024 * 1024),
 	}, setup.WithAccessToken())
@@ -80,7 +79,7 @@ func TestRequestTemplateTooHighMemory(t *testing.T) {
 func TestRequestTemplateMemoryNonDivisibleBy2(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	resp, err := c.PostTemplatesWithResponse(context.Background(), api.TemplateBuildRequest{
+	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
 		CpuCount: int32Pointer(2),
 		MemoryMB: int32Pointer(1001),
 	}, setup.WithAccessToken())

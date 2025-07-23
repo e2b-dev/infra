@@ -15,7 +15,7 @@ import (
 )
 
 func TestCreateAccessToken(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	c := setup.GetAPIClient()
@@ -34,7 +34,7 @@ func TestCreateAccessToken(t *testing.T) {
 }
 
 func TestDeleteAccessToken(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	c := setup.GetAPIClient()
