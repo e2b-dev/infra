@@ -237,6 +237,10 @@ func (s *NodePassThroughServer) eventsHandler(md metadata.MD) (func(error), erro
 		return nil, nil
 	}
 
+	if len(eventTypeHeaders) > 1 {
+		return nil, status.Errorf(codes.InvalidArgument, "multiple event types are not supported: %v", eventTypeHeaders)
+	}
+
 	eventType := eventTypeHeaders[0]
 	switch eventType {
 	case edge.CatalogCreateEventType:
