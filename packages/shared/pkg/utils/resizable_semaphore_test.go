@@ -14,12 +14,9 @@ import (
 
 // helper: make sure f panics.
 func mustPanic(t *testing.T) {
-	t.Helper()
-	func() {
-		if r := recover(); r == nil {
-			t.Fatalf("expected panic but none occurred")
-		}
-	}()
+	if r := recover(); r == nil {
+		t.Fatalf("expected panic but none occurred")
+	}
 }
 
 // -----------------------------------------------------------------------------
