@@ -218,7 +218,7 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 
 func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error {
 	upload := func() error {
-		systemRunArgs := []string{
+		systemDRunArgs := []string{
 			"--user",
 			"--scope",
 		}
@@ -232,10 +232,10 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 				defer uploadLimiter.Release(1)
 			}
 
-			systemRunArgs = append(systemRunArgs, g.limiter.GCloudCmdLimits(path)...)
+			systemDRunArgs = append(systemDRunArgs, g.limiter.GCloudCmdLimits(path)...)
 		}
 
-		args := append(systemRunArgs,
+		args := append(systemDRunArgs,
 			"gcloud",
 			"storage",
 			"cp",
