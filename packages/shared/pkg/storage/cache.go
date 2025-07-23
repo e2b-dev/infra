@@ -3,11 +3,12 @@ package storage
 import (
 	"context"
 	"fmt"
-	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 	"io"
 	"os"
 	"path/filepath"
+
+	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 type CachedProvider struct {
@@ -104,7 +105,7 @@ func (c *CachedFileObjectProvider) WriteFromFileSystem(path string) error {
 
 func (c *CachedFileObjectProvider) ReadFrom(src io.Reader) (int64, error) {
 	// we have to write local, then read the local to the remote,
-	//as the io.Reader can only be read once. this lets us "start over"
+	// as the io.Reader can only be read once. this lets us "start over"
 
 	if err := c.writeToLocal(src); err != nil {
 		return 0, err
@@ -150,7 +151,7 @@ func (c *CachedFileObjectProvider) Delete() error {
 }
 
 func (c *CachedFileObjectProvider) writeToLocal(src io.Reader) error {
-	dst, err := os.OpenFile(c.path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+	dst, err := os.OpenFile(c.path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o666)
 	if err != nil {
 		return fmt.Errorf("error on open cache file: %w", err)
 	}
