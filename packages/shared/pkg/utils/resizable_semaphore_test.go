@@ -13,14 +13,13 @@ import (
 )
 
 // helper: make sure f panics.
-func mustPanic(t *testing.T, f func()) {
+func mustPanic(t *testing.T) {
 	t.Helper()
-	defer func() {
+	func() {
 		if r := recover(); r == nil {
 			t.Fatalf("expected panic but none occurred")
 		}
 	}()
-	f()
 }
 
 // -----------------------------------------------------------------------------
@@ -31,19 +30,15 @@ func TestBasicAcquireTryRelease(t *testing.T) {
 	s, err := NewAdjustableSemaphore(2)
 	require.NoError(t, err)
 
-	err := s.Acquire(context.Background(), 1)
+	err = s.Acquire(t.Context(), 1)
 	require.NoError(t, err)
 	got := s.TryAcquire(1)
 	require.True(t, got, "TryAcquire should have succeeded with remaining capacity")
-	if got := s.TryAcquire(1); got {
-		t.Fatalf("TryAcquire should have failed (limit exceeded)")
-	}
-
+	got = s.TryAcquire(1)
+	require.False(t, got, "TryAcquire should have failed (limit exceeded)")
 	s.Release(2) // returns everything
-
-	if got := s.TryAcquire(2); !got {
-		t.Fatalf("TryAcquire should succeed after Release")
-	}
+	got = s.TryAcquire(2)
+	require.True(t, got, "TryAcquire should succeed after Release")
 }
 
 // -----------------------------------------------------------------------------
@@ -53,10 +48,8 @@ func TestAcquireWithLimitIncrease(t *testing.T) {
 	s, err := NewAdjustableSemaphore(2)
 	require.NoError(t, err)
 
-	// Acquire 1, should succeed
-	if err := s.Acquire(context.Background(), 1); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	err = s.Acquire(t.Context(), 1)
+	require.NoError(t, err)
 
 	// Try to acquire 2, should block
 	done := make(chan struct{})
@@ -84,18 +77,15 @@ func TestAcquireWithLimitDecrease(t *testing.T) {
 	s, err := NewAdjustableSemaphore(3)
 	require.NoError(t, err)
 
-	// Acquire 2, should succeed
-	if err := s.Acquire(context.Background(), 2); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	err = s.Acquire(t.Context(), 2)
+	require.NoError(t, err)
 
 	// Try to acquire 2 more, should block
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		if err := s.Acquire(context.Background(), 2); err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
+		err = s.Acquire(t.Context(), 2)
+		require.NoError(t, err)
 	}()
 
 	time.Sleep(50 * time.Millisecond) // ensure goroutine is blocked
@@ -125,7 +115,7 @@ func TestAcquireErrorsOnNegativeN(t *testing.T) {
 	s, err := NewAdjustableSemaphore(2)
 	require.NoError(t, err)
 
-	err = s.Acquire(context.Background(), -1) // should fail
+	err = s.Acquire(t.Context(), -1) // should fail
 	if err == nil {
 		t.Fatalf("expected error on negative n, got nil")
 	}
@@ -135,7 +125,7 @@ func TestAcquireErrorsOnZeroN(t *testing.T) {
 	s, err := NewAdjustableSemaphore(2)
 	require.NoError(t, err)
 
-	err = s.Acquire(context.Background(), 0) // should fail
+	err = s.Acquire(t.Context(), 0) // should fail
 	if err == nil {
 		t.Fatalf("expected error on zero n, got nil")
 	}
@@ -145,8 +135,8 @@ func TestReleaseErrorsOnNegativeN(t *testing.T) {
 	s, err := NewAdjustableSemaphore(2)
 	require.NoError(t, err)
 
-	// should panic on negative release
-	mustPanic(t, func() { s.Release(-1) })
+	defer mustPanic(t)
+	s.Release(-1)
 }
 
 func TestReleaseMoreThanAcquired(t *testing.T) {
@@ -154,22 +144,22 @@ func TestReleaseMoreThanAcquired(t *testing.T) {
 	require.NoError(t, err)
 
 	// should panic on negative release
-	mustPanic(t, func() { s.Release(2) })
+	defer mustPanic(t)
+	s.Release(2)
 }
 
 func TestReleaseErrorsOnZero(t *testing.T) {
 	s, err := NewAdjustableSemaphore(2)
 	require.NoError(t, err)
 
-	// should panic on negative release
-	mustPanic(t, func() { s.Release(0) })
+	defer mustPanic(t)
+	s.Release(0)
 }
 
 func TestSetLimitErrorsOnNegativeLimit(t *testing.T) {
 	s, err := NewAdjustableSemaphore(2)
 	require.NoError(t, err)
 
-	// should panic on negative limit
 	err = s.SetLimit(-1)
 	assert.Error(t, err, "SetLimit should return an error for negative limit")
 }
@@ -178,19 +168,16 @@ func TestSetLimitErrorsOnZeroLimit(t *testing.T) {
 	s, err := NewAdjustableSemaphore(2)
 	require.NoError(t, err)
 
-	// should panic on zero limit
 	err = s.SetLimit(0)
 	assert.Error(t, err, "SetLimit should return an error for zero limit")
 }
 
 func TestNewAdjustableSemaphoreErrorsOnNegativeLimit(t *testing.T) {
-	// should panic on negative limit
 	_, err := NewAdjustableSemaphore(-1)
 	assert.Error(t, err, "NewAdjustableSemaphore should return an error for negative limit")
 }
 
 func TestNewAdjustableSemaphoreErrorsOnZeroLimit(t *testing.T) {
-	// should panic on zero limit
 	_, err := NewAdjustableSemaphore(0)
 	assert.Error(t, err, "NewAdjustableSemaphore should return an error for zero limit")
 }
