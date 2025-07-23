@@ -86,6 +86,7 @@ func (c *Client) IntFlag(flagName IntFlag, contextKey string) (int, error) {
 
 	return value, nil
 }
+
 func (c *Client) IntFlagDefault(flagName IntFlag) int {
 	return flagsInt[flagName]
 }
