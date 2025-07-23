@@ -113,6 +113,16 @@ func init() {
 			WatcherId: in.WatcherId,
 		}
 	})
+
+	addConverter(func(in *filesystem.GetWatcherEventsResponse) GetWatcherEventsResponse {
+		var events []*FilesystemEvent
+
+		for _, item := range in.Events {
+			events = append(events, convertFilesystemEvent(item))
+		}
+
+		return GetWatcherEventsResponse{Events: events}
+	})
 }
 
 var ErrUnexpectedType = errors.New("unexpected type")
@@ -140,6 +150,9 @@ func maybeConvertResponse(logger *zerolog.Logger, response connect.AnyResponse) 
 	valueType := reflect.TypeOf(pm)
 	conversion, ok := protoConverters[valueType]
 	if !ok {
+		logger.Error().
+			Type("response", response).
+			Msg("do not know how to convert")
 		return response
 	}
 
