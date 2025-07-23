@@ -291,6 +291,7 @@ func (n *Node) GetClient(ctx context.Context) (*grpclient.GRPCClient, context.Co
 }
 
 func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest) context.Context {
+	// Skip local cluster. It should be okay to send it here, but we don't want to do it until we explicitly support it.
 	if n.ClusterID == uuid.Nil {
 		return metadata.NewOutgoingContext(ctx, n.clientMd)
 	}
@@ -310,6 +311,11 @@ func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.Sandbo
 }
 
 func (n *Node) GetSandboxDeleteCtx(ctx context.Context, sandboxID string, executionID string) context.Context {
+	// Skip local cluster. It should be okay to send it here, but we don't want to do it until we explicitly support it.
+	if n.ClusterID == uuid.Nil {
+		return metadata.NewOutgoingContext(ctx, n.clientMd)
+	}
+
 	md := edge.SerializeSandboxCatalogDeleteEvent(
 		edge.SandboxCatalogDeleteEvent{
 			SandboxID:   sandboxID,
