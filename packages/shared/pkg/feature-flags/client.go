@@ -56,14 +56,14 @@ func NewClient() (*Client, error) {
 	return &Client{ld: ldClient}, nil
 }
 
-func (c *Client) BoolFlag(flagName BoolFlag, evalKey string) (bool, error) {
+func (c *Client) BoolFlag(flagName BoolFlag, contextKey string) (bool, error) {
 	defaultValue := flagsBool[flagName]
 
 	if c.ld == nil {
 		return defaultValue, fmt.Errorf("LaunchDarkly client is not initialized")
 	}
 
-	flagCtx := ldcontext.NewBuilder(string(flagName)).SetString("evalKey", evalKey).Build()
+	flagCtx := ldcontext.NewBuilder(string(flagName)).SetString("contextKey", contextKey).Build()
 	enabled, err := c.ld.BoolVariation(string(flagName), flagCtx, defaultValue)
 	if err != nil {
 		return enabled, fmt.Errorf("error evaluating %s: %w", flagName, err)
@@ -72,13 +72,13 @@ func (c *Client) BoolFlag(flagName BoolFlag, evalKey string) (bool, error) {
 	return enabled, nil
 }
 
-func (c *Client) IntFlag(flagName IntFlag, evalKey string) (int, error) {
+func (c *Client) IntFlag(flagName IntFlag, contextKey string) (int, error) {
 	defaultValue := flagsInt[flagName]
 	if c.ld == nil {
 		return defaultValue, fmt.Errorf("LaunchDarkly client is not initialized")
 	}
 
-	flagCtx := ldcontext.NewBuilder(string(flagName)).SetString("evalKey", evalKey).Build()
+	flagCtx := ldcontext.NewBuilder(string(flagName)).SetString("contextKey", contextKey).Build()
 	value, err := c.ld.IntVariation(string(flagName), flagCtx, defaultValue)
 	if err != nil {
 		return value, fmt.Errorf("error evaluating %s: %w", flagName, err)
