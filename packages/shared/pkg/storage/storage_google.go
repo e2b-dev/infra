@@ -258,8 +258,9 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 		return nil
 	}
 
+	var err error
 	for range gcloudMaxRetries {
-		err := upload()
+		err = upload()
 		if err != nil {
 			// Failed to upload file, retrying.
 			zap.L().Warn("Failed to upload file to GCS, retrying", zap.Error(err), zap.String("path", g.path))
@@ -271,7 +272,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 		return nil
 	}
 
-	return fmt.Errorf("failed to upload file to GCS after %d retries", gcloudMaxRetries)
+	return fmt.Errorf("failed to upload file to GCS after %d retries: %w", gcloudMaxRetries, err)
 }
 
 type gcpServiceToken struct {
