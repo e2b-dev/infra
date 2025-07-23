@@ -86,24 +86,26 @@ func init() {
 	})
 
 	addConverter(func(in *filesystem.WatchDirResponse) WatchDirResponse {
-		response := WatchDirResponse{}
+		var event isWatchDirResponse_Event
 
 		switch e := in.Event.(type) {
 		case *filesystem.WatchDirResponse_Start:
-			response.Event = &WatchDirResponse_Start{
+			event = &WatchDirResponse_Start{
 				Start: convertStartEvent(e.Start),
 			}
 		case *filesystem.WatchDirResponse_Filesystem:
-			response.Event = &WatchDirResponse_Filesystem{
+			event = &WatchDirResponse_Filesystem{
 				Filesystem: convertFilesystemEvent(e.Filesystem),
 			}
 		case *filesystem.WatchDirResponse_Keepalive:
-			response.Event = &WatchDirResponse_Keepalive{
+			event = &WatchDirResponse_Keepalive{
 				Keepalive: convertKeepAlive(e.Keepalive),
 			}
 		}
 
-		return response
+		return WatchDirResponse{
+			Event: event,
+		}
 	})
 
 	addConverter(func(in *filesystem.CreateWatcherResponse) CreateWatcherResponse {
