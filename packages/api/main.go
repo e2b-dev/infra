@@ -211,7 +211,7 @@ func run() int {
 
 	instanceID := uuid.New().String()
 	var tel *telemetry.Client
-	if env.IsLocal() {
+	if telemetry.OtelCollectorGRPCEndpoint == "" {
 		tel = telemetry.NewNoopClient()
 	} else {
 		var err error
