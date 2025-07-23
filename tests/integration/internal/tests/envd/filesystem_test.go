@@ -24,7 +24,7 @@ const (
 )
 
 func TestListDir(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	c := setup.GetAPIClient()
@@ -103,7 +103,7 @@ func TestListDir(t *testing.T) {
 }
 
 func TestFilePermissions(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	c := setup.GetAPIClient()
@@ -144,7 +144,7 @@ func TestFilePermissions(t *testing.T) {
 }
 
 func TestRelativePath(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	c := setup.GetAPIClient()

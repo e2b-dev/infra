@@ -64,7 +64,7 @@ func createTeam(t *testing.T, cancel context.CancelFunc, ctx context.Context, c 
 }
 
 func TestBannedTeam(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	db := setup.GetTestDBClient()
 	c := setup.GetAPIClient()
 
@@ -101,7 +101,7 @@ func TestBannedTeam(t *testing.T) {
 }
 
 func TestBlockedTeam(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	db := setup.GetTestDBClient()
 	c := setup.GetAPIClient()
 
