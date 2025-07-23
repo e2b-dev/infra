@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	ldclient "github.com/launchdarkly/go-server-sdk/v7"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"go.uber.org/zap"
@@ -26,6 +27,11 @@ func NewClient() (*Client, error) {
 	var err error
 
 	if launchDarklyApiKey == "" {
+		LaunchDarklyOfflineStore.Flag(GcloudMaxCPUQuota).ValueForAll(ldvalue.Int(GcloudMaxCPUQuotaDefault))
+		LaunchDarklyOfflineStore.Flag(GcloudMaxMemoryLimitMiB).ValueForAll(ldvalue.Int(GcloudMaxMemoryLimitMiBDefault))
+		LaunchDarklyOfflineStore.Flag(GcloudConcurrentUploadLimit).ValueForAll(ldvalue.Int(GcloudConcurrentUploadLimitDefault))
+		LaunchDarklyOfflineStore.Flag(GcloudMaxTasks).ValueForAll(ldvalue.Int(GcloudMaxTasksDefault))
+
 		// waitFor has to be 0 for offline store
 		ldClient, err = ldclient.MakeCustomClient("", ldclient.Config{DataSource: LaunchDarklyOfflineStore}, 0)
 		if err != nil {
