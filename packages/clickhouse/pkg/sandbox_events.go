@@ -26,7 +26,7 @@ SELECT
     sandbox_team_id,
     event_category,
     event_label,
-FROM sandbox_events
+FROM sandbox_events_local
 WHERE sandbox_id = ?
 ORDER BY timestamp DESC
 LIMIT ?
@@ -57,7 +57,7 @@ func (c *Client) QuerySandboxEvents(ctx context.Context, sandboxID string, offse
 }
 
 const insertSandboxEventQuery = `
-INSERT INTO sandbox_events (
+INSERT INTO sandbox_events_local (
     timestamp,
     sandbox_id, 
     sandbox_execution_id,
