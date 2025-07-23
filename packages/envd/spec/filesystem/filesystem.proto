@@ -24,7 +24,6 @@ message MoveRequest {
 
 message MoveResponse {
     EntryInfo entry = 1;
-    bool testing = 2;
 }
 
 message MakeDirRequest {

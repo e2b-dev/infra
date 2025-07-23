@@ -96,9 +96,8 @@ func CreateFileWatcher(watchPath string, recursive bool, operationID string, log
 
 					fw.Lock.Lock()
 					fw.Events = append(fw.Events, &rpc.FilesystemEvent{
-						Name:     name,
-						Type:     op,
-						NewField: "hello, world",
+						Name: name,
+						Type: op,
 					})
 					fw.Lock.Unlock()
 
