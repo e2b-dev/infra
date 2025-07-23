@@ -8,7 +8,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
-// https://app.launchdarkly.com/projects/default/flags/
+// All flags has be defined here: https://app.launchdarkly.com/projects/default/flags/
 
 type BoolFlag string
 
@@ -31,30 +31,18 @@ const (
 )
 
 var flagsBool = map[BoolFlag]bool{
-	MetricsWriteFlagName: metricsWriteDefault,
-	MetricsReadFlagName:  metricsReadDefault,
+	MetricsWriteFlagName: env.IsDevelopment(),
+	MetricsReadFlagName:  env.IsDevelopment(),
 }
 
 var flagsInt = map[IntFlag]int{
-	GcloudConcurrentUploadLimit: GcloudConcurrentUploadLimitDefault,
-	GcloudMaxCPUQuota:           gcloudMaxCPUQuotaDefault,
-	GcloudMaxMemoryLimitMiB:     gcloudMaxMemoryLimitMiBDefault,
-	GcloudMaxTasks:              gcloudMaxTasksDefault,
-}
-
-const (
-	GcloudConcurrentUploadLimitDefault = 8
-	gcloudMaxTasksDefault              = 16
-)
-
-var (
-	metricsWriteDefault = env.IsDevelopment()
-	metricsReadDefault  = env.IsDevelopment()
+	GcloudConcurrentUploadLimit: 8,
 	// gcloudMaxCPUQuotaDefault default is 2% of total CPU (100% is 1 CPU core)
-	gcloudMaxCPUQuotaDefault = 2 * runtime.NumCPU()
+	GcloudMaxCPUQuota: 2 * runtime.NumCPU(),
 	// gcloudMaxMemoryLimitMiBDefault default is 0.5% of total memory
-	gcloudMaxMemoryLimitMiBDefault = getDefaultMemoryLimitMiB()
-)
+	GcloudMaxMemoryLimitMiB: getDefaultMemoryLimitMiB(),
+	GcloudMaxTasks:          16,
+}
 
 // getDefaultMemoryLimitMiB returns the default memory limit for GCloud uploads in MiB
 func getDefaultMemoryLimitMiB() int {
