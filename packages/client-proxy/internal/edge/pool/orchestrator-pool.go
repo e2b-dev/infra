@@ -32,9 +32,9 @@ type OrchestratorsPool struct {
 }
 
 const (
-	orchestratorsPoolInterval        = 10 * time.Second
-	orchestratorsPoolRoundTimeout    = 10 * time.Second
-	orchestratorsInstanceSyncTimeout = 10 * time.Second
+	orchestratorsPoolInterval        = 5 * time.Second
+	orchestratorsPoolRoundTimeout    = 5 * time.Second
+	orchestratorsInstanceSyncTimeout = 5 * time.Second
 
 	statusLogInterval = 1 * time.Minute
 )

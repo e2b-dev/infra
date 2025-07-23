@@ -34,8 +34,8 @@ type ClusterInstance struct {
 }
 
 const (
-	instancesSyncInterval = 15 * time.Second
-	instancesSyncTimeout  = 15 * time.Second
+	instancesSyncInterval = 5 * time.Second
+	instancesSyncTimeout  = 5 * time.Second
 )
 
 func (c *Cluster) startSync() {

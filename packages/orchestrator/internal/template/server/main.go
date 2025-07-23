@@ -110,7 +110,7 @@ func (s *ServerStore) Close(ctx context.Context) error {
 	default:
 		// Wait for draining state to propagate to all consumers
 		if !env.IsLocal() {
-			time.Sleep(5 * time.Second)
+			time.Sleep(15 * time.Second)
 		}
 
 		s.logger.Info("Waiting for all build jobs to finish")
