@@ -106,8 +106,13 @@ func New(
 func (s *ServerStore) Close(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
-		return errors.New("context canceled during builder graceful shutdown")
+		return errors.New("force exit, not waiting for builds to finish")
 	default:
+		// Wait for draining state to propagate to all consumers
+		if !env.IsLocal() {
+			time.Sleep(5 * time.Second)
+		}
+
 		s.logger.Info("Waiting for all build jobs to finish")
 		s.wg.Wait()
 

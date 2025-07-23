@@ -393,9 +393,6 @@ func run(port, proxyPort uint) (success bool) {
 		}
 	}
 
-	// Make service unhealthy after closing all services
-	serviceInfo.SetStatus(orchestrator.ServiceInfoStatus_Unhealthy)
-
 	zap.L().Info("Waiting for services to finish")
 	if err := g.Wait(); err != nil {
 		zap.L().Error("service group error", zap.Error(err))
