@@ -90,7 +90,7 @@ func (c *Copy) Execute(
 ) (sandboxtools.CommandMetadata, error) {
 	cmdType := strings.ToUpper(step.Type)
 	args := step.Args
-	// args: [localPath containerPath]
+	// args: [localPath containerPath optional_owner optional_permissions]
 	if len(args) < 2 {
 		return sandboxtools.CommandMetadata{}, fmt.Errorf("%s requires a local path and a container path argument", cmdType)
 	}
@@ -151,10 +151,11 @@ func (c *Copy) Execute(
 	}
 
 	// 4) Move the extracted files to the target path in the sandbox
+	targetPath := args[1]
 	var moveScript bytes.Buffer
 	err = copyScriptTemplate.Execute(&moveScript, copyScriptData{
 		SourcePath: filepath.Join(sbxUnpackPath, args[0]),
-		TargetPath: args[1],
+		TargetPath: targetPath,
 	})
 	if err != nil {
 		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to execute copy script template: %w", err)
@@ -170,6 +171,47 @@ func (c *Copy) Execute(
 	)
 	if err != nil {
 		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to move files in sandbox: %w", err)
+	}
+
+	// If optional owner is provided, set them
+	if len(args) >= 3 {
+		// Assumes the format is "owner:group"
+		owner := args[2]
+		if owner != "" {
+			err = sandboxtools.RunCommand(
+				ctx,
+				tracer,
+
+				proxy,
+				sandboxID,
+				fmt.Sprintf(`chown -R %s "%s"`, owner, targetPath),
+				cmdMetadata,
+			)
+			if err != nil {
+				return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to set ownership and permissions in sandbox: %w", err)
+			}
+		}
+	}
+
+	// If optional permissions are provided, set them
+	if len(args) >= 4 {
+		// This assumes the format is "755"
+		permissions := args[3]
+
+		if permissions != "" {
+			err = sandboxtools.RunCommand(
+				ctx,
+				tracer,
+
+				proxy,
+				sandboxID,
+				fmt.Sprintf(`chmod -R %s "%s"`, permissions, targetPath),
+				cmdMetadata,
+			)
+			if err != nil {
+				return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to set ownership and permissions in sandbox: %w", err)
+			}
+		}
 	}
 
 	return cmdMetadata, nil
