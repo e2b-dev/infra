@@ -2,6 +2,7 @@ package edge
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -9,10 +10,10 @@ import (
 )
 
 const (
-	eventTypeHeader = "event-type"
+	EventTypeHeader = "event-type"
 
-	catalogCreateEventType = "sandbox-catalog-create"
-	catalogDeleteEventType = "sandbox-catalog-delete"
+	CatalogCreateEventType = "sandbox-catalog-create"
+	CatalogDeleteEventType = "sandbox-catalog-delete"
 
 	sbxIdHeader               = "sandbox-id"
 	sbxExecutionIdHeader      = "execution-id"
@@ -22,12 +23,18 @@ const (
 )
 
 var (
-	ErrSandboxCreateEventRequiredFieldsMissing = errors.New("required fields missing for sandbox create event")
-	ErrSandboxDeleteEventRequiredFieldsMissing = errors.New("required fields missing for sandbox delete event")
-
 	ErrSandboxCreationParse = errors.New("failed to parse sandbox creation event metadata")
 	ErrSandboxLifetimeParse = errors.New("failed to parse sandbox max lifetime event metadata")
 )
+
+type SandboxEventFieldMissing struct {
+	eventName string
+	fieldName string
+}
+
+func (e SandboxEventFieldMissing) Error() string {
+	return fmt.Sprintf("missing required field (%s) in sandbox create event %s", e.fieldName, e.eventName)
+}
 
 type SandboxCatalogCreateEvent struct {
 	SandboxID               string
@@ -45,7 +52,7 @@ type SandboxCatalogDeleteEvent struct {
 func SerializeSandboxCatalogCreateEvent(e SandboxCatalogCreateEvent) metadata.MD {
 	return metadata.New(
 		map[string]string{
-			eventTypeHeader: catalogCreateEventType,
+			EventTypeHeader: CatalogCreateEventType,
 
 			sbxIdHeader:               e.SandboxID,
 			sbxExecutionIdHeader:      e.ExecutionID,
@@ -59,7 +66,7 @@ func SerializeSandboxCatalogCreateEvent(e SandboxCatalogCreateEvent) metadata.MD
 func SerializeSandboxCatalogDeleteEvent(e SandboxCatalogDeleteEvent) metadata.MD {
 	return metadata.New(
 		map[string]string{
-			eventTypeHeader: catalogDeleteEventType,
+			EventTypeHeader: CatalogDeleteEventType,
 
 			sbxIdHeader:          e.SandboxID,
 			sbxExecutionIdHeader: e.ExecutionID,
@@ -67,30 +74,25 @@ func SerializeSandboxCatalogDeleteEvent(e SandboxCatalogDeleteEvent) metadata.MD
 	)
 }
 
-func HandleSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEvent, err error) {
-	v, f := getMetadataValue(md, eventTypeHeader)
-	if !f || v != catalogCreateEventType {
-		return nil, nil
-	}
-
+func ParseSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEvent, err error) {
 	sandboxID, found := getMetadataValue(md, sbxIdHeader)
 	if !found {
-		return nil, ErrSandboxCreateEventRequiredFieldsMissing
+		return nil, SandboxEventFieldMissing{eventName: CatalogCreateEventType, fieldName: sbxIdHeader}
 	}
 
 	executionID, found := getMetadataValue(md, sbxExecutionIdHeader)
 	if !found {
-		return nil, ErrSandboxCreateEventRequiredFieldsMissing
+		return nil, SandboxEventFieldMissing{eventName: CatalogCreateEventType, fieldName: sbxExecutionIdHeader}
 	}
 
 	orchestratorID, found := getMetadataValue(md, sbxOrchestratorIdHeader)
 	if !found {
-		return nil, ErrSandboxCreateEventRequiredFieldsMissing
+		return nil, SandboxEventFieldMissing{eventName: CatalogCreateEventType, fieldName: sbxOrchestratorIdHeader}
 	}
 
 	maxLengthInHoursStr, found := getMetadataValue(md, sbxMaxLengthInHoursHeader)
 	if !found {
-		return nil, ErrSandboxCreateEventRequiredFieldsMissing
+		return nil, SandboxEventFieldMissing{eventName: CatalogCreateEventType, fieldName: sbxMaxLengthInHoursHeader}
 	}
 
 	maxLengthInHours, err := strconv.Atoi(maxLengthInHoursStr)
@@ -100,7 +102,7 @@ func HandleSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEve
 
 	sandboxStartTimeStr, found := getMetadataValue(md, sbxStartTimeHeader)
 	if !found {
-		return nil, ErrSandboxCreateEventRequiredFieldsMissing
+		return nil, SandboxEventFieldMissing{eventName: CatalogCreateEventType, fieldName: sbxStartTimeHeader}
 	}
 
 	sandboxStartTime, err := time.Parse(time.RFC3339, sandboxStartTimeStr)
@@ -117,20 +119,15 @@ func HandleSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEve
 	}, nil
 }
 
-func HandleSandboxCatalogDeleteEvent(md metadata.MD) (e *SandboxCatalogDeleteEvent, err error) {
-	v, f := getMetadataValue(md, eventTypeHeader)
-	if !f || v != catalogDeleteEventType {
-		return nil, nil
-	}
-
+func ParseSandboxCatalogDeleteEvent(md metadata.MD) (e *SandboxCatalogDeleteEvent, err error) {
 	sandboxID, found := getMetadataValue(md, sbxIdHeader)
 	if !found {
-		return nil, ErrSandboxDeleteEventRequiredFieldsMissing
+		return nil, SandboxEventFieldMissing{eventName: CatalogDeleteEventType, fieldName: sbxIdHeader}
 	}
 
 	executionID, found := getMetadataValue(md, sbxExecutionIdHeader)
 	if !found {
-		return nil, ErrSandboxDeleteEventRequiredFieldsMissing
+		return nil, SandboxEventFieldMissing{eventName: CatalogDeleteEventType, fieldName: sbxExecutionIdHeader}
 	}
 
 	return &SandboxCatalogDeleteEvent{
