@@ -92,6 +92,8 @@ module "cluster" {
 
   client_cluster_size_max           = var.client_cluster_size_max
   client_cluster_cache_disk_size_gb = var.client_cluster_cache_disk_size_gb
+  build_cluster_root_disk_size_gb   = var.build_cluster_root_disk_size_gb
+  build_cluster_cache_disk_size_gb  = var.build_cluster_cache_disk_size_gb
 
   api_cluster_size        = var.api_cluster_size
   build_cluster_size      = var.build_cluster_size
@@ -241,6 +243,7 @@ module "nomad" {
   # Template manager
   template_manager_port          = var.template_manager_port
   template_bucket_name           = module.buckets.fc_template_bucket_name
+  build_cache_bucket_name        = module.buckets.fc_build_cache_bucket_name
   template_manager_machine_count = var.build_cluster_size
 
   # Redis

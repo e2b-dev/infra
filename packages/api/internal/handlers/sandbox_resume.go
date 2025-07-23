@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+// Deprecated: (07-2025) Used only temporarily during migration phase to take client ID part from sandbox ID instead of from snapshot database row.
 func getSandboxIDClient(sandboxID string) (string, bool) {
 	parts := strings.Split(sandboxID, "-")
 	if len(parts) != 2 {
@@ -69,15 +70,10 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		autoPause = *body.AutoPause
 	}
 
-	clientID, ok := getSandboxIDClient(sandboxID)
-	if !ok {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid sandbox ID — missing client ID part: %s", sandboxID))
-
-		return
-	}
-
 	sandboxID = utils.ShortID(sandboxID)
 
+	// This is also checked during in orchestrator.CreateSandbox, where the sandbox ID is reserved,
+	// but we want to do a quick check here to return an error quickly if possible.
 	sbxCache, err := a.orchestrator.GetSandbox(sandboxID)
 	if err == nil {
 		zap.L().Debug("Sandbox is already running",
@@ -90,19 +86,6 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox %s is already running", sandboxID))
 
 		return
-	}
-
-	// Wait for any pausing for this sandbox in progress.
-	pausedOnNode, err := a.orchestrator.WaitForPause(ctx, sandboxID)
-	if err != nil && !errors.Is(err, instance.ErrPausingInstanceNotFound) {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error while pausing sandbox %s: %s", sandboxID, err))
-
-		return
-	}
-
-	if err == nil {
-		// If the pausing was in progress, prefer to restore on the node where the pausing happened.
-		clientID = pausedOnNode.ID
 	}
 
 	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamInfo.Team.ID})
@@ -120,6 +103,31 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 	snap := lastSnapshot.Snapshot
 	build := lastSnapshot.EnvBuild
+
+	var nodeID *string
+	if snap.OriginNodeID != nil {
+		nodeID = snap.OriginNodeID
+	} else {
+		// TODO: After migration period, we can remove this part, because all actively used snapshots will be stored in the database with the node ID.
+		// https://linear.app/e2b/issue/E2B-2662/remove-taking-client-from-sandbox-during-resume
+		sbxClientID, ok := getSandboxIDClient(sandboxID)
+		if ok {
+			nodeID = &sbxClientID
+		}
+	}
+
+	// Wait for any pausing for this sandbox in progress.
+	pausedOnNode, err := a.orchestrator.WaitForPause(ctx, sandboxID)
+	if err != nil && !errors.Is(err, instance.ErrPausingInstanceNotFound) {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error while pausing sandbox %s: %s", sandboxID, err))
+
+		return
+	}
+
+	if err == nil {
+		// If the pausing was in progress, prefer to restore on the node where the pausing happened.
+		nodeID = &pausedOnNode.ID
+	}
 
 	alias := ""
 	if len(lastSnapshot.Aliases) > 0 {
@@ -155,7 +163,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		build,
 		&c.Request.Header,
 		true,
-		&clientID,
+		nodeID,
 		snap.BaseEnvID,
 		autoPause,
 		envdAccessToken,

@@ -53,7 +53,7 @@ func (c *Cleanup) AddPriority(f func(ctx context.Context) error) {
 
 func (c *Cleanup) Run(ctx context.Context) error {
 	c.once.Do(func() {
-		c.run(ctx)
+		c.run(context.WithoutCancel(ctx))
 	})
 	return c.error
 }

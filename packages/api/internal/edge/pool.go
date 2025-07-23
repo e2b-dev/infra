@@ -40,9 +40,6 @@ func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, trac
 		clusters: smap.New[*Cluster](),
 	}
 
-	// Periodically sync clusters with the database
-	go p.startSync()
-
 	// Shutdown function to gracefully close the pool
 	go func() {
 		<-ctx.Done()
@@ -52,20 +49,18 @@ func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, trac
 	store := poolSynchronizationStore{pool: p}
 	p.synchronization = synchronization.NewSynchronize(p.tracer, "clusters-pool", "Clusters pool", store)
 
+	// Periodically sync clusters with the database
+	go p.synchronization.Start(poolSyncInterval, poolSyncTimeout, true)
+
 	return p, nil
 }
 
-func (p *Pool) startSync() {
-	p.synchronization.Start(poolSyncInterval, poolSyncTimeout, true)
+func (p *Pool) GetClusterById(id uuid.UUID) (*Cluster, bool) {
+	return p.clusters.Get(id.String())
 }
 
-func (p *Pool) GetClusterById(id uuid.UUID) (*Cluster, bool) {
-	cluster, ok := p.clusters.Get(id.String())
-	if !ok {
-		return nil, false
-	}
-
-	return cluster, true
+func (p *Pool) GetClusters() map[string]*Cluster {
+	return p.clusters.Items()
 }
 
 func (p *Pool) Close() {
@@ -124,7 +119,7 @@ func (d poolSynchronizationStore) PoolInsert(ctx context.Context, source queries
 
 	zap.L().Info("Initializing newly discovered cluster", l.WithClusterID(cluster.ID))
 
-	c, err := NewCluster(d.pool.tracer, d.pool.tel, cluster.Endpoint, cluster.EndpointTls, cluster.Token, cluster.ID)
+	c, err := NewCluster(d.pool.tracer, d.pool.tel, cluster.Endpoint, cluster.EndpointTls, cluster.Token, cluster.ID, cluster.SandboxProxyDomain)
 	if err != nil {
 		zap.L().Error("Initializing cluster failed", zap.Error(err), l.WithClusterID(c.ID))
 		return

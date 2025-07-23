@@ -37,7 +37,7 @@ processors:
           - "api.*"
           - "client_proxy.*"
           - "Click*"
-          - "click*"
+          - "otelcol.*"
 
 
   filter/prometheus:
@@ -53,7 +53,7 @@ processors:
           - "nomad_client_host_memory_total"
           - "nomad_client_allocs_memory_usage"
           - "nomad_client_allocs_memory_allocated"
-          - "nomad_client_allocs_cpu_usage"
+          - "nomad_client_allocs_cpu_total_percent"
           - "nomad_client_allocs_cpu_allocated"
 
   filter/external_metrics:
@@ -151,6 +151,14 @@ service:
   telemetry:
     logs:
       level: warn
+    metrics:
+      readers:
+        - periodic:
+            exporter:
+              otlp:
+                protocol: grpc
+                insecure: true
+                endpoint: localhost:4317
   extensions:
     - basicauth/grafana_cloud
     - health_check
@@ -158,7 +166,7 @@ service:
     metrics:
       receivers:
         - otlp
-      processors: [filter/otlp, batch]
+      processors: [filter/otlp, resourcedetection, transform/set-name, batch]
       exporters:
         - otlphttp/grafana_cloud
     metrics/prometheus:
@@ -170,7 +178,7 @@ service:
     metrics/rpc_only:
       receivers:
         - otlp
-      processors: [filter/rpc_duration_only, resource/remove_instance, batch]
+      processors: [filter/rpc_duration_only, resource/remove_instance, resourcedetection, transform/set-name, batch]
       exporters:
         - otlphttp/grafana_cloud
     metrics/external:

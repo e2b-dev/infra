@@ -5,10 +5,10 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -46,7 +47,7 @@ func (o *Orchestrator) CreateSandbox(
 	endTime time.Time,
 	timeout time.Duration,
 	isResume bool,
-	clientID *string,
+	nodeID *string,
 	baseTemplateID string,
 	autoPause bool,
 	envdAuthToken *string,
@@ -104,6 +105,20 @@ func (o *Orchestrator) CreateSandbox(
 
 	telemetry.ReportEvent(childCtx, "Got FC version info")
 
+	var sbxDomain *string
+	if team.Team.ClusterID != nil {
+		cluster, ok := o.clusters.GetClusterById(*team.Team.ClusterID)
+		if !ok {
+			return nil, &api.APIError{
+				Code:      http.StatusInternalServerError,
+				ClientMsg: "Error while looking for sandbox cluster information",
+				Err:       fmt.Errorf("cannot access cluster %s associated with team id %s that spawned sandbox %s", *team.Team.ClusterID, team.Team.ID, sandboxID),
+			}
+		}
+
+		sbxDomain = cluster.SandboxDomain
+	}
+
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
 			BaseTemplateId:     baseTemplateID,
@@ -132,10 +147,10 @@ func (o *Orchestrator) CreateSandbox(
 
 	var node *Node
 
-	if isResume && clientID != nil {
+	if isResume && nodeID != nil {
 		telemetry.ReportEvent(childCtx, "Placing sandbox on the node where the snapshot was taken")
 
-		node, _ = o.nodes.Get(*clientID)
+		node, _ = o.nodes.Get(*nodeID)
 		if node != nil && node.Status() != api.NodeStatusReady {
 			node = nil
 		}
@@ -164,7 +179,12 @@ func (o *Orchestrator) CreateSandbox(
 		}
 
 		if node == nil {
-			node, err = o.getLeastBusyNode(childCtx, nodesExcluded)
+			nodeClusterID := uuid.Nil
+			if team.Team.ClusterID != nil {
+				nodeClusterID = *team.Team.ClusterID
+			}
+
+			node, err = o.getLeastBusyNode(childCtx, nodesExcluded, nodeClusterID)
 			if err != nil {
 				telemetry.ReportError(childCtx, "failed to get least busy node", err)
 
@@ -182,7 +202,8 @@ func (o *Orchestrator) CreateSandbox(
 			CPUs:      build.Vcpu,
 		})
 
-		_, err = node.Client.Sandbox.Create(childCtx, sbxRequest)
+		client, childCtx := node.GetClient(childCtx)
+		_, err = client.Sandbox.Create(childCtx, sbxRequest)
 		// The request is done, we will either add it to the cache or remove it from the node
 		if err == nil {
 			// The sandbox was created successfully
@@ -191,7 +212,7 @@ func (o *Orchestrator) CreateSandbox(
 
 		node.sbxsInProgress.Remove(sandboxID)
 
-		log.Printf("failed to create sandbox '%s' on node '%s', attempt #%d: %v", sandboxID, node.Info.ID, attempt, utils.UnwrapGRPCError(err))
+		zap.L().Error("Failed to create sandbox", logger.WithSandboxID(sandboxID), logger.WithNodeID(node.Info.ID), zap.Int("attempt", attempt), zap.Error(utils.UnwrapGRPCError(err)))
 
 		// The node is not available, try again with another node
 		node.createFails.Add(1)
@@ -202,6 +223,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	// The build should be cached on the node now
 	node.InsertBuild(build.ID.String())
+	node.createSuccess.Add(1)
 
 	// The sandbox was created successfully, the resources will be counted in cache
 	defer node.sbxsInProgress.Remove(sandboxID)
@@ -210,12 +232,13 @@ func (o *Orchestrator) CreateSandbox(
 	telemetry.ReportEvent(childCtx, "Created sandbox")
 
 	sbx := api.Sandbox{
-		ClientID:        node.Info.ID,
+		ClientID:        consts.ClientID,
 		SandboxID:       sandboxID,
 		TemplateID:      *build.EnvID,
 		Alias:           &alias,
 		EnvdVersion:     *build.EnvdVersion,
 		EnvdAccessToken: envdAuthToken,
+		Domain:          sbxDomain,
 	}
 
 	// This is to compensate for the time it takes to start the instance
@@ -260,11 +283,18 @@ func (o *Orchestrator) CreateSandbox(
 		}
 	}
 
+	// we need to inform remote cluster proxy about newly spawned sandbox so it's registered in sandbox traffic proxy
+	err = o.RegisterSandboxInsideClusterCatalog(childCtx, node, startTime, sbxRequest.Sandbox)
+	if err != nil {
+		telemetry.ReportError(ctx, "failed to register sandbox in cluster catalog", err)
+		zap.L().Error("Failed to register sandbox in cluster catalog", logger.WithSandboxID(sbx.SandboxID), zap.Error(err))
+	}
+
 	return &sbx, nil
 }
 
 // getLeastBusyNode returns the least busy node, if there are no eligible nodes, it tries until one is available or the context timeouts
-func (o *Orchestrator) getLeastBusyNode(parentCtx context.Context, nodesExcluded map[string]*Node) (leastBusyNode *Node, err error) {
+func (o *Orchestrator) getLeastBusyNode(parentCtx context.Context, nodesExcluded map[string]*Node, clusterID uuid.UUID) (leastBusyNode *Node, err error) {
 	ctx, cancel := context.WithTimeout(parentCtx, leastBusyNodeTimeout)
 	defer cancel()
 
@@ -272,7 +302,7 @@ func (o *Orchestrator) getLeastBusyNode(parentCtx context.Context, nodesExcluded
 	defer childSpan.End()
 
 	// Try to find a node without waiting
-	leastBusyNode, err = o.findLeastBusyNode(nodesExcluded)
+	leastBusyNode, err = o.findLeastBusyNode(nodesExcluded, clusterID)
 	if err == nil {
 		return leastBusyNode, nil
 	}
@@ -285,7 +315,7 @@ func (o *Orchestrator) getLeastBusyNode(parentCtx context.Context, nodesExcluded
 			return nil, childCtx.Err()
 		case <-ticker.C:
 			// If no node is available, wait for a bit and try again
-			leastBusyNode, err = o.findLeastBusyNode(nodesExcluded)
+			leastBusyNode, err = o.findLeastBusyNode(nodesExcluded, clusterID)
 			if err == nil {
 				return leastBusyNode, nil
 			}
@@ -295,10 +325,15 @@ func (o *Orchestrator) getLeastBusyNode(parentCtx context.Context, nodesExcluded
 
 // findLeastBusyNode finds the least busy node that is ready and not in the excluded list
 // if no node is available, returns an error
-func (o *Orchestrator) findLeastBusyNode(nodesExcluded map[string]*Node) (leastBusyNode *Node, err error) {
+func (o *Orchestrator) findLeastBusyNode(nodesExcluded map[string]*Node, clusterID uuid.UUID) (leastBusyNode *Node, err error) {
 	for _, node := range o.nodes.Items() {
 		// The node might be nil if it was removed from the list while iterating
 		if node == nil {
+			continue
+		}
+
+		// Node must be in the same cluster as requested
+		if node.ClusterID != clusterID {
 			continue
 		}
 

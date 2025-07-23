@@ -23,16 +23,18 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
+	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -61,12 +63,10 @@ type APIStore struct {
 	templateBuildsCache      *templatecache.TemplatesBuildCache
 	authCache                *authcache.TeamAuthCache
 	templateSpawnCounter     *utils.TemplateSpawnCounter
-	clickhouseStore          chdb.Store
+	clickhouseStore          clickhouse.Clickhouse
 	envdAccessTokenGenerator *sandbox.EnvdAccessTokenGenerator
-	// should use something like this: https://github.com/spf13/viper
-	// but for now this is good
-	readMetricsFromClickHouse string
-	clustersPool              *edge.Pool
+	featureFlags             *featureflags.Client
+	clustersPool             *edge.Pool
 }
 
 func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
@@ -86,17 +86,13 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 
 	zap.L().Info("Created database client")
 
-	readMetricsFromClickHouse := os.Getenv("READ_METRICS_FROM_CLICKHOUSE")
-	var clickhouseStore chdb.Store = nil
+	var clickhouseStore clickhouse.Clickhouse
 
-	if readMetricsFromClickHouse == "true" {
-		clickhouseStore, err = chdb.NewStore(chdb.ClickHouseConfig{
-			ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
-			Username:         os.Getenv("CLICKHOUSE_USERNAME"),
-			Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
-			Database:         os.Getenv("CLICKHOUSE_DATABASE"),
-			Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
-		})
+	clickhouseConnectionString := strings.TrimSpace(os.Getenv("CLICKHOUSE_CONNECTION_STRING"))
+	if clickhouseConnectionString == "" {
+		clickhouseStore = clickhouse.NewNoopClient()
+	} else {
+		clickhouseStore, err = clickhouse.New(clickhouseConnectionString)
 		if err != nil {
 			zap.L().Fatal("initializing ClickHouse store", zap.Error(err))
 		}
@@ -145,7 +141,12 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		zap.L().Info("Connected to Redis cluster")
 	}
 
-	orch, err := orchestrator.New(ctx, tel, tracer, nomadClient, posthogClient, redisClient, dbClient)
+	clustersPool, err := edge.NewPool(ctx, tel, sqlcDB, tracer)
+	if err != nil {
+		zap.L().Fatal("initializing edge clusters pool failed", zap.Error(err))
+	}
+
+	orch, err := orchestrator.New(ctx, tel, tracer, nomadClient, posthogClient, redisClient, dbClient, clustersPool)
 	if err != nil {
 		zap.L().Fatal("Initializing Orchestrator client", zap.Error(err))
 	}
@@ -168,13 +169,8 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		zap.L().Fatal("Initializing access token generator failed", zap.Error(err))
 	}
 
-	clustersPool, err := edge.NewPool(ctx, tel, sqlcDB, tracer)
-	if err != nil {
-		zap.L().Fatal("initializing edge clusters pool failed", zap.Error(err))
-	}
-
 	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
-	templateManager, err := template_manager.New(ctx, tracer, tel.TracerProvider, tel.MeterProvider, dbClient, sqlcDB, clustersPool, lokiClient, templateBuildsCache)
+	templateManager, err := template_manager.New(ctx, tracer, tel.TracerProvider, tel.MeterProvider, dbClient, sqlcDB, clustersPool, lokiClient, templateBuildsCache, templateCache)
 	if err != nil {
 		zap.L().Fatal("Initializing Template manager client", zap.Error(err))
 	}
@@ -182,24 +178,29 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 	// Start the periodic sync of template builds statuses
 	go templateManager.BuildsStatusPeriodicalSync(ctx)
 
+	featureFlags, err := featureflags.NewClient()
+	if err != nil {
+		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
+	}
+
 	a := &APIStore{
-		Healthy:                   false,
-		orchestrator:              orch,
-		templateManager:           templateManager,
-		db:                        dbClient,
-		sqlcDB:                    sqlcDB,
-		Telemetry:                 tel,
-		Tracer:                    tracer,
-		posthog:                   posthogClient,
-		lokiClient:                lokiClient,
-		templateCache:             templateCache,
-		templateBuildsCache:       templateBuildsCache,
-		authCache:                 authCache,
-		templateSpawnCounter:      templateSpawnCounter,
-		clickhouseStore:           clickhouseStore,
-		envdAccessTokenGenerator:  accessTokenGenerator,
-		readMetricsFromClickHouse: readMetricsFromClickHouse,
-		clustersPool:              clustersPool,
+		Healthy:                  false,
+		orchestrator:             orch,
+		templateManager:          templateManager,
+		db:                       dbClient,
+		sqlcDB:                   sqlcDB,
+		Telemetry:                tel,
+		Tracer:                   tracer,
+		posthog:                  posthogClient,
+		lokiClient:               lokiClient,
+		templateCache:            templateCache,
+		templateBuildsCache:      templateBuildsCache,
+		authCache:                authCache,
+		templateSpawnCounter:     templateSpawnCounter,
+		clickhouseStore:          clickhouseStore,
+		envdAccessTokenGenerator: accessTokenGenerator,
+		clustersPool:             clustersPool,
+		featureFlags:             featureFlags,
 	}
 
 	// Wait till there's at least one, otherwise we can't create sandboxes yet
@@ -272,11 +273,11 @@ func (a *APIStore) GetHealth(c *gin.Context) {
 }
 
 func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authcache.AuthTeamInfo, *api.APIError) {
-	team, tier, err := a.authCache.GetOrSet(ctx, apiKey, func(ctx context.Context, key string) (*models.Team, *models.Tier, error) {
-		return a.db.GetTeamAuth(ctx, key)
+	team, tier, err := a.authCache.GetOrSet(ctx, apiKey, func(ctx context.Context, key string) (*queries.Team, *queries.Tier, error) {
+		return dbapi.GetTeamAuth(ctx, a.sqlcDB, key)
 	})
 	if err != nil {
-		var usageErr *db.TeamForbiddenError
+		var usageErr *dbapi.TeamForbiddenError
 		if errors.As(err, &usageErr) {
 			return authcache.AuthTeamInfo{}, &api.APIError{
 				Err:       err,
@@ -285,7 +286,7 @@ func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authca
 			}
 		}
 
-		var blockedErr *db.TeamBlockedError
+		var blockedErr *dbapi.TeamBlockedError
 		if errors.As(err, &blockedErr) {
 			return authcache.AuthTeamInfo{}, &api.APIError{
 				Err:       err,
@@ -397,11 +398,11 @@ func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, supabaseToken
 func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) (authcache.AuthTeamInfo, *api.APIError) {
 	userID := a.GetUserID(middleware.GetGinContext(ctx))
 
-	team, tier, err := a.authCache.GetOrSet(ctx, teamID, func(ctx context.Context, key string) (*models.Team, *models.Tier, error) {
-		return a.db.GetTeamByIDAndUserIDAuth(ctx, teamID, userID)
+	team, tier, err := a.authCache.GetOrSet(ctx, teamID, func(ctx context.Context, key string) (*queries.Team, *queries.Tier, error) {
+		return dbapi.GetTeamByIDAndUserIDAuth(ctx, a.sqlcDB, teamID, userID)
 	})
 	if err != nil {
-		var usageErr *db.TeamForbiddenError
+		var usageErr *dbapi.TeamForbiddenError
 		if errors.As(err, &usageErr) {
 			return authcache.AuthTeamInfo{}, &api.APIError{
 				Err:       fmt.Errorf("failed getting team: %w", err),
@@ -410,7 +411,7 @@ func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) 
 			}
 		}
 
-		var blockedErr *db.TeamBlockedError
+		var blockedErr *dbapi.TeamBlockedError
 		if errors.As(err, &blockedErr) {
 			return authcache.AuthTeamInfo{}, &api.APIError{
 				Err:       fmt.Errorf("failed getting team: %w", err),

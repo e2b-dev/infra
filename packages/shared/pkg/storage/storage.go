@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -26,6 +27,7 @@ const (
 
 type StorageProvider interface {
 	DeleteObjectsWithPrefix(ctx context.Context, prefix string) error
+	UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error)
 	OpenObject(ctx context.Context, path string) (StorageObjectProvider, error)
 	GetDetails() string
 }
@@ -63,6 +65,27 @@ func getTemplateStorageProvider(ctx context.Context) (StorageProvider, error) {
 	}
 
 	bucketName := utils.RequiredEnv("TEMPLATE_BUCKET_NAME", "Bucket for storing template files")
+
+	// cloud bucket-based storage
+	switch provider {
+	case AWSStorageProvider:
+		return NewAWSBucketStorageProvider(ctx, bucketName)
+	case GCPStorageProvider:
+		return NewGCPBucketStorageProvider(ctx, bucketName)
+	}
+
+	return nil, fmt.Errorf("unknown storage provider: %s", provider)
+}
+
+func GetBuildCacheStorageProvider(ctx context.Context) (StorageProvider, error) {
+	provider := Provider(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
+
+	if provider == LocalStorageProvider {
+		basePath := env.GetEnv("LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache")
+		return NewFileSystemStorageProvider(basePath)
+	}
+
+	bucketName := utils.RequiredEnv("BUILD_CACHE_BUCKET_NAME", "Bucket for storing template files")
 
 	// cloud bucket-based storage
 	switch provider {

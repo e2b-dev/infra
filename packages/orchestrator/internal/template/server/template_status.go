@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/pkg/errors"
 
@@ -17,8 +19,40 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 		return nil, errors.Wrap(err, "error while getting build info, maybe already expired")
 	}
 
+	logs := make([]string, 0)
+	logEntries := make([]*template_manager.TemplateBuildLogEntry, 0)
+	logsCrawled := int32(0)
+	for _, entry := range buildInfo.GetLogs() {
+		// Skip entries that are below the specified level
+		if entry.GetLevel().Number() < in.GetLevel().Number() {
+			continue
+		}
+
+		logsCrawled++
+		if logsCrawled <= in.GetOffset() {
+			continue
+		}
+
+		logEntries = append(logEntries, entry)
+		logs = append(logs, fmt.Sprintf("[%s] %s", entry.Timestamp.AsTime().Format(time.RFC3339), entry.Message))
+	}
+
+	result := buildInfo.GetResult()
+	if result == nil {
+		return &template_manager.TemplateBuildStatusResponse{
+			Status:     template_manager.TemplateBuildState_Building,
+			Reason:     nil,
+			Metadata:   nil,
+			Logs:       logs,
+			LogEntries: logEntries,
+		}, nil
+	}
+
 	return &template_manager.TemplateBuildStatusResponse{
-		Status:   buildInfo.GetStatus(),
-		Metadata: buildInfo.GetMetadata(),
+		Status:     result.Status,
+		Reason:     result.Reason,
+		Metadata:   result.Metadata,
+		Logs:       logs,
+		LogEntries: logEntries,
 	}, nil
 }

@@ -8,8 +8,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 	txtTemplate "text/template"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -19,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -59,7 +62,7 @@ type Process struct {
 	rootfsPath string
 	files      *storage.SandboxFiles
 
-	Exit chan error
+	Exit *utils.SetOnce[struct{}]
 
 	client *apiClient
 
@@ -82,12 +85,12 @@ func NewProcess(
 
 	var fcStartScript bytes.Buffer
 
-	baseBuild := storage.NewTemplateFiles(
-		baseTemplateID,
-		baseBuildID,
-		files.KernelVersion,
-		files.FirecrackerVersion,
-	)
+	baseBuild := storage.TemplateFiles{
+		TemplateID:         baseTemplateID,
+		BuildID:            baseBuildID,
+		KernelVersion:      files.KernelVersion,
+		FirecrackerVersion: files.FirecrackerVersion,
+	}
 
 	buildRootfsPath := baseBuild.SandboxRootfsPath()
 	err := startScriptTemplate.Execute(&fcStartScript, map[string]interface{}{
@@ -121,8 +124,7 @@ func NewProcess(
 
 	cmd := exec.Command(
 		"unshare",
-		"-pfm",
-		"--kill-child",
+		"-m",
 		"--",
 		"bash",
 		"-c",
@@ -134,7 +136,7 @@ func NewProcess(
 	}
 
 	return &Process{
-		Exit:                  make(chan error, 1),
+		Exit:                  utils.NewSetOnce[struct{}](),
 		cmd:                   cmd,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
@@ -200,8 +202,8 @@ func (p *Process) configure(
 			var exitErr *exec.ExitError
 			if errors.As(waitErr, &exitErr) {
 				// Check if the process was killed by a signal
-				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() && status.Signal() == syscall.SIGKILL {
-					p.Exit <- nil
+				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() && (status.Signal() == syscall.SIGKILL || status.Signal() == syscall.SIGTERM) {
+					p.Exit.SetValue(struct{}{})
 
 					return
 				}
@@ -210,14 +212,14 @@ func (p *Process) configure(
 			zap.L().Error("error waiting for fc process", zap.Error(waitErr))
 
 			errMsg := fmt.Errorf("error waiting for fc process: %w", waitErr)
-			p.Exit <- errMsg
+			p.Exit.SetError(errMsg)
 
 			cancelStart(errMsg)
 
 			return
 		}
 
-		p.Exit <- nil
+		p.Exit.SetValue(struct{}{})
 	}()
 
 	// Wait for the FC process to start so we can use FC API
@@ -422,15 +424,59 @@ func (p *Process) Pid() (int, error) {
 	return p.cmd.Process.Pid, nil
 }
 
+// getProcessState returns the state of the process.
+// It's used to check if the process is in the D state, because gopsutil doesn't show that.
+func getProcessState(pid int) (string, error) {
+	cmd, err := exec.Command("ps", "-o", "stat=", "-p", fmt.Sprint(pid)).Output()
+	if err != nil {
+		return "", err
+	}
+
+	state := strings.TrimSpace(string(cmd))
+
+	return state, nil
+}
+
 func (p *Process) Stop() error {
 	if p.cmd.Process == nil {
 		return fmt.Errorf("fc process not started")
 	}
 
-	err := p.cmd.Process.Kill()
+	state, err := getProcessState(p.cmd.Process.Pid)
 	if err != nil {
-		zap.L().Warn("failed to send KILL to FC process", zap.Error(err))
+		zap.L().Warn("failed to get fc process state", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+	} else if state == "D" {
+		zap.L().Info("fc process is in the D state before we call SIGTERM", logger.WithSandboxID(p.files.SandboxID))
 	}
+
+	err = p.cmd.Process.Signal(syscall.SIGTERM)
+	if err != nil {
+		zap.L().Warn("failed to send SIGTERM to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+	}
+
+	go func() {
+		select {
+		// Wait 10 sec for the FC process to exit, if it doesn't, send SIGKILL.
+		case <-time.After(10 * time.Second):
+			err := p.cmd.Process.Kill()
+			if err != nil {
+				zap.L().Warn("failed to send SIGKILL to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+			} else {
+				zap.L().Info("sent SIGKILL to fc process because it was not responding to SIGTERM for 10 seconds", logger.WithSandboxID(p.files.SandboxID))
+			}
+
+			state, err := getProcessState(p.cmd.Process.Pid)
+			if err != nil {
+				zap.L().Warn("failed to get fc process state after sending SIGKILL", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+			} else if state == "D" {
+				zap.L().Info("fc process is in the D state after we call SIGKILL", logger.WithSandboxID(p.files.SandboxID))
+			}
+
+		// If the FC process exited, we can return.
+		case <-p.Exit.Done:
+			return
+		}
+	}()
 
 	return nil
 }

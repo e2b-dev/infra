@@ -58,7 +58,7 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 		Metadata:   &config.metadata,
 	}, setup.WithAPIKey())
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, createSandboxResponse.StatusCode())
 	require.NotNil(t, createSandboxResponse.JSON201)
 

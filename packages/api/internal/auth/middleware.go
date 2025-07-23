@@ -17,7 +17,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -78,7 +78,7 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openap
 	// Now, we need to get the API key from the request
 	headerKey, err := a.getHeaderKeysFromRequest(input.RequestValidationInput.Request)
 	if err != nil {
-		telemetry.ReportCriticalError(ctx, a.errorMessage, err)
+		telemetry.ReportError(ctx, a.errorMessage, err)
 
 		return fmt.Errorf("%s %w", a.errorMessage, err)
 	}
@@ -147,7 +147,7 @@ func CreateAuthenticationFunc(
 			},
 			validationFunction: teamValidationFunction,
 			contextKey:         TeamContextKey,
-			errorMessage:       "Invalid API key, please visit https://e2b.dev/docs/quickstart/api-key for more information.",
+			errorMessage:       "Invalid API key, please visit https://e2b.dev/docs/api-key for more information.",
 		},
 		&commonAuthenticator[uuid.UUID]{
 			securitySchemeName: "AccessTokenAuth",

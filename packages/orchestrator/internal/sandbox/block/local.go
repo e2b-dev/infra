@@ -41,6 +41,10 @@ func NewLocal(path string, blockSize int64, buildID uuid.UUID) (*Local, error) {
 	}, nil
 }
 
+func (d *Local) Path() string {
+	return d.path
+}
+
 func (d *Local) ReadAt(p []byte, off int64) (int, error) {
 	slice, err := d.Slice(off, int64(len(p)))
 	if err != nil {
@@ -92,7 +96,7 @@ func (d *Local) Header() *header.Header {
 	return d.header
 }
 
-func (d *Local) UpdateSize() error {
+func (d *Local) UpdateHeaderSize() error {
 	info, err := d.f.Stat()
 	if err != nil {
 		return fmt.Errorf("failed to get file info: %w", err)

@@ -1,32 +1,27 @@
 package writer
 
 import (
-	"context"
+	"bytes"
 	"errors"
 	"strings"
-	"sync"
 	"testing"
 	"time"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
-// test writer that stores the written data
-type testWriter struct {
-	mu   sync.Mutex
-	data []byte
-}
+func newTestLogger(buf *bytes.Buffer) *zap.Logger {
+	encoderCfg := zap.NewDevelopmentEncoderConfig()
+	encoder := zapcore.NewConsoleEncoder(encoderCfg)
 
-func (w *testWriter) Write(p []byte) (n int, err error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.data = append(w.data, p...)
-	return len(p), nil
-}
+	core := zapcore.NewCore(
+		encoder,
+		zapcore.AddSync(buf),
+		zapcore.DebugLevel,
+	)
 
-func (w *testWriter) Data() []byte {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	return w.data
+	return zap.New(core)
 }
 
 func TestPostProcessor_Start(t *testing.T) {
@@ -42,28 +37,34 @@ func TestPostProcessor_Start(t *testing.T) {
 			name: "test error",
 			fields: fields{
 				testErr:       errors.New("test error"),
-				shouldContain: "Postprocessing failed:",
+				shouldContain: "Build failed:",
 			},
 		},
 		{
 			name: "test success",
 			fields: fields{
 				testErr:       nil,
-				shouldContain: "Postprocessing finished.",
+				shouldContain: "Build finished",
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tw := &testWriter{}
-			ctx := context.TODO()
+			var buf bytes.Buffer
+			logger := newTestLogger(&buf)
+
+			ctx := t.Context()
 			errChan := make(chan error)
 
+			zap.NewNop()
+
 			p := &PostProcessor{
-				ctx:     ctx,
-				writer:  tw,
-				errChan: errChan,
-				ticker:  time.NewTicker(tickerInterval),
+				Logger:         logger,
+				ctx:            ctx,
+				errChan:        errChan,
+				stopCh:         make(chan struct{}, 1),
+				tickerInterval: defaultTickerInterval,
+				ticker:         time.NewTicker(defaultTickerInterval),
 			}
 
 			end := make(chan struct{}, 1)
@@ -72,12 +73,12 @@ func TestPostProcessor_Start(t *testing.T) {
 
 				end <- struct{}{}
 			}()
-			p.Stop(tt.fields.testErr)
+			p.Stop(ctx, tt.fields.testErr)
 
 			// Wait for the start goroutine to finish
 			<-end
 
-			logs := string(tw.Data())
+			logs := buf.String()
 			if !strings.Contains(logs, tt.fields.shouldContain) {
 				t.Errorf("expected data to contain %s, got %s", tt.fields.shouldContain, logs)
 			}

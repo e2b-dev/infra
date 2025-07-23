@@ -2,15 +2,20 @@ package storage
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os/exec"
 	"time"
 
 	"cloud.google.com/go/storage"
 	"github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/iterator"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
 const (
@@ -75,6 +80,27 @@ func (g *GCPBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, 
 
 func (g *GCPBucketStorageProvider) GetDetails() string {
 	return fmt.Sprintf("[GCP Storage, bucket set to %s]", g.bucket.BucketName())
+}
+
+func (g *GCPBucketStorageProvider) UploadSignedURL(_ context.Context, path string, ttl time.Duration) (string, error) {
+	token, err := parseServiceAccountBase64(consts.GoogleServiceAccountSecret)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse GCP service account: %w", err)
+	}
+
+	opts := &storage.SignedURLOptions{
+		GoogleAccessID: token.ClientEmail,
+		PrivateKey:     []byte(token.PrivateKey),
+		Method:         http.MethodPut,
+		Expires:        time.Now().Add(ttl),
+	}
+
+	url, err := storage.SignedURL(g.bucket.BucketName(), path, opts)
+	if err != nil {
+		return "", fmt.Errorf("failed to create signed URL for GCS object (%s): %w", path, err)
+	}
+
+	return url, nil
 }
 
 func (g *GCPBucketStorageProvider) OpenObject(ctx context.Context, path string) (StorageObjectProvider, error) {
@@ -205,4 +231,23 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 	}
 
 	return nil
+}
+
+type gcpServiceToken struct {
+	ClientEmail string `json:"client_email"`
+	PrivateKey  string `json:"private_key"`
+}
+
+func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) {
+	decoded, err := base64.StdEncoding.DecodeString(serviceAccount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode base64: %w", err)
+	}
+
+	var sa gcpServiceToken
+	if err := json.Unmarshal(decoded, &sa); err != nil {
+		return nil, fmt.Errorf("failed to parse service account JSON: %w", err)
+	}
+
+	return &sa, nil
 }

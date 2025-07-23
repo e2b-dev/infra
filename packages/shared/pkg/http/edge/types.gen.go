@@ -30,6 +30,26 @@ const (
 	ClusterOrchestratorRoleTemplateBuilder ClusterOrchestratorRole = "template-builder"
 )
 
+// Defines values for LogLevel.
+const (
+	LogLevelDebug LogLevel = "debug"
+	LogLevelError LogLevel = "error"
+	LogLevelInfo  LogLevel = "info"
+	LogLevelWarn  LogLevel = "warn"
+)
+
+// BuildLogEntry defines model for BuildLogEntry.
+type BuildLogEntry struct {
+	// Level State of the sandbox
+	Level LogLevel `json:"level"`
+
+	// Message Log message content
+	Message string `json:"message"`
+
+	// Timestamp Timestamp of the log entry
+	Timestamp time.Time `json:"timestamp"`
+}
+
 // ClusterNode defines model for ClusterNode.
 type ClusterNode struct {
 	// NodeID Node ID
@@ -133,13 +153,16 @@ type Error struct {
 	Message string `json:"message"`
 }
 
+// LogLevel State of the sandbox
+type LogLevel string
+
 // SandboxCreateCatalogRequest defines model for SandboxCreateCatalogRequest.
 type SandboxCreateCatalogRequest struct {
-	ExecutionId string `json:"executionId"`
+	ExecutionID string `json:"executionID"`
 
-	// OrchestratorId Orchestrator where the sandbox is placed
-	OrchestratorId string `json:"orchestratorId"`
-	SandboxId      string `json:"sandboxId"`
+	// OrchestratorID Orchestrator where the sandbox is placed
+	OrchestratorID string `json:"orchestratorID"`
+	SandboxID      string `json:"sandboxID"`
 
 	// SandboxMaxLength Maximum duration in hours
 	SandboxMaxLength int64     `json:"sandboxMaxLength"`
@@ -148,12 +171,24 @@ type SandboxCreateCatalogRequest struct {
 
 // SandboxDeleteCatalogRequest defines model for SandboxDeleteCatalogRequest.
 type SandboxDeleteCatalogRequest struct {
-	ExecutionId string `json:"executionId"`
-	SandboxId   string `json:"sandboxId"`
+	ExecutionID string `json:"executionID"`
+	SandboxID   string `json:"sandboxID"`
+}
+
+// ServiceDiscoveryNodeStatusRequest defines model for ServiceDiscoveryNodeStatusRequest.
+type ServiceDiscoveryNodeStatusRequest struct {
+	// ServiceInstanceID Service instance ID that should be handled by the request
+	ServiceInstanceID string `json:"serviceInstanceID"`
+
+	// ServiceType Cluster node type
+	ServiceType ClusterNodeType `json:"serviceType"`
 }
 
 // TemplateBuildLogsResponse defines model for TemplateBuildLogsResponse.
 type TemplateBuildLogsResponse struct {
+	// LogEntries Build logs structured
+	LogEntries []BuildLogEntry `json:"logEntries"`
+
 	// Logs Build logs
 	Logs []string `json:"logs"`
 }
@@ -179,7 +214,8 @@ type V1TemplateBuildLogsParams struct {
 	TemplateID     string `form:"templateID" json:"templateID"`
 
 	// Offset Index of the starting build log that should be returned with the template
-	Offset *int32 `form:"offset,omitempty" json:"offset,omitempty"`
+	Offset *int32    `form:"offset,omitempty" json:"offset,omitempty"`
+	Level  *LogLevel `form:"level,omitempty" json:"level,omitempty"`
 }
 
 // V1SandboxCatalogDeleteJSONRequestBody defines body for V1SandboxCatalogDelete for application/json ContentType.
@@ -187,3 +223,9 @@ type V1SandboxCatalogDeleteJSONRequestBody = SandboxDeleteCatalogRequest
 
 // V1SandboxCatalogCreateJSONRequestBody defines body for V1SandboxCatalogCreate for application/json ContentType.
 type V1SandboxCatalogCreateJSONRequestBody = SandboxCreateCatalogRequest
+
+// V1ServiceDiscoveryNodeDrainJSONRequestBody defines body for V1ServiceDiscoveryNodeDrain for application/json ContentType.
+type V1ServiceDiscoveryNodeDrainJSONRequestBody = ServiceDiscoveryNodeStatusRequest
+
+// V1ServiceDiscoveryNodeKillJSONRequestBody defines body for V1ServiceDiscoveryNodeKill for application/json ContentType.
+type V1ServiceDiscoveryNodeKillJSONRequestBody = ServiceDiscoveryNodeStatusRequest

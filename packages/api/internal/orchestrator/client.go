@@ -16,14 +16,17 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	e2bhealth "github.com/e2b-dev/infra/packages/shared/pkg/health"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -85,7 +88,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 	}
 
 	if !ok {
-		zap.L().Error("Node is not healthy", zap.String("node_id", node.ID))
+		zap.L().Error("Node is not healthy", logger.WithNodeID(node.ID))
 	}
 
 	nodeInfo, err := client.Info.ServiceInfo(ctx, &emptypb.Empty{})
@@ -94,14 +97,16 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 	} else {
 		nodeStatus, ok = OrchestratorToApiNodeStateMapper[nodeInfo.ServiceStatus]
 		if !ok {
-			zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.ServiceStatus), zap.String("node_id", node.ID))
+			zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.ServiceStatus), logger.WithNodeID(node.ID))
 			nodeStatus = api.NodeStatusUnhealthy
 		}
 	}
 
 	o.nodes.Insert(
 		node.ID, &Node{
-			Client:         client,
+			client:   client,
+			clientMd: make(metadata.MD),
+
 			Info:           node,
 			meta:           getNodeMetadata(nodeInfo, node.ID),
 			buildCache:     buildCache,
@@ -114,13 +119,50 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 	return nil
 }
 
-func (o *Orchestrator) GetClient(nodeID string) (*grpclient.GRPCClient, error) {
-	n := o.GetNode(nodeID)
-	if n == nil {
-		return nil, fmt.Errorf("node '%s' not found", nodeID)
+func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, i *edge.ClusterInstance) {
+	// this way we don't need to worry about multiple clusters with the same node ID in shared pool
+	poolNodeID := o.clusterNodeID(cluster.ID, i.NodeID)
+	poolGrpc := cluster.GetGRPC(i.ServiceInstanceID)
+
+	buildCache := ttlcache.New[string, interface{}]()
+	go buildCache.Start()
+
+	orchestratorNode := &Node{
+		client:   poolGrpc.Client,
+		clientMd: poolGrpc.Metadata,
+
+		ClusterID:     cluster.ID,
+		ClusterNodeID: i.NodeID,
+
+		// some places are using this id to get node from orchestrator pool
+		// probably we can get rid of this and just create ID directly on Node struct
+		Info: &node.NodeInfo{
+			ID: poolNodeID,
+		},
+
+		status: OrchestratorToApiNodeStateMapper[i.GetStatus()],
+		meta: nodeMetadata{
+			orchestratorID: poolNodeID,
+			version:        i.ServiceVersion,
+			commit:         i.ServiceVersionCommit,
+		},
+
+		buildCache:     buildCache,
+		sbxsInProgress: smap.New[*sbxInProgress](),
+		createFails:    atomic.Uint64{},
 	}
 
-	return n.Client, nil
+	o.nodes.Insert(poolNodeID, orchestratorNode)
+}
+
+func (o *Orchestrator) GetClient(ctx context.Context, nodeID string) (*grpclient.GRPCClient, context.Context, error) {
+	n := o.GetNode(nodeID)
+	if n == nil {
+		return nil, nil, fmt.Errorf("node '%s' not found", nodeID)
+	}
+
+	client, ctx := n.GetClient(ctx)
+	return client, ctx, nil
 }
 
 func (o *Orchestrator) getNodeHealth(node *node.NodeInfo) (bool, error) {

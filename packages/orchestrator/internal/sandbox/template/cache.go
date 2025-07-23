@@ -3,6 +3,8 @@ package template
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -34,6 +36,9 @@ type Cache struct {
 	buildStore  *build.DiffStore
 }
 
+// NewCache initializes a template new cache.
+// It also deletes the old build cache directory content
+// as it may contain stale data that are not managed by anyone.
 func NewCache(ctx context.Context) (*Cache, error) {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, Template](templateExpiration),
@@ -48,7 +53,11 @@ func NewCache(ctx context.Context) (*Cache, error) {
 		}
 	})
 
-	go cache.Start()
+	// Delete the old build cache directory content.
+	err := cleanDir(build.DefaultCachePath)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("failed to remove old build cache directory: %w", err)
+	}
 
 	buildStore, err := build.NewDiffStore(
 		ctx,
@@ -66,6 +75,8 @@ func NewCache(ctx context.Context) (*Cache, error) {
 		return nil, fmt.Errorf("failed to get storage provider: %w", err)
 	}
 
+	go cache.Start()
+
 	return &Cache{
 		persistence: persistence,
 		buildStore:  buildStore,
@@ -79,14 +90,14 @@ func (c *Cache) Items() map[string]*ttlcache.Item[string, Template] {
 }
 
 func (c *Cache) GetTemplate(
-	templateId,
-	buildId,
+	templateID,
+	buildID,
 	kernelVersion,
 	firecrackerVersion string,
 ) (Template, error) {
 	storageTemplate, err := newTemplateFromStorage(
-		templateId,
-		buildId,
+		templateID,
+		buildID,
 		kernelVersion,
 		firecrackerVersion,
 		nil,
@@ -158,6 +169,22 @@ func (c *Cache) AddSnapshot(
 
 	if !found {
 		go storageTemplate.Fetch(c.ctx, c.buildStore)
+	}
+
+	return nil
+}
+
+func cleanDir(path string) error {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return fmt.Errorf("reading directory contents: %w", err)
+	}
+
+	for _, entry := range entries {
+		entryPath := filepath.Join(path, entry.Name())
+		if err := os.RemoveAll(entryPath); err != nil {
+			return fmt.Errorf("removing %q: %w", entryPath, err)
+		}
 	}
 
 	return nil

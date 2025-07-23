@@ -28,10 +28,11 @@ type AccessToken struct {
 }
 
 type Cluster struct {
-	ID          uuid.UUID
-	Endpoint    string
-	EndpointTls bool
-	Token       string
+	ID                 uuid.UUID
+	Endpoint           string
+	EndpointTls        bool
+	Token              string
+	SandboxProxyDomain *string
 }
 
 type Env struct {
@@ -73,6 +74,7 @@ type EnvBuild struct {
 	EnvdVersion        *string
 	ReadyCmd           *string
 	ClusterNodeID      *string
+	Reason             *string
 }
 
 type Snapshot struct {
@@ -84,6 +86,7 @@ type Snapshot struct {
 	BaseEnvID        string
 	SandboxStartedAt pgtype.Timestamptz
 	EnvSecure        bool
+	OriginNodeID     *string
 }
 
 type Team struct {

@@ -47,6 +47,8 @@ const (
 	FieldEnvdVersion = "envd_version"
 	// FieldClusterNodeID holds the string denoting the cluster_node_id field in the database.
 	FieldClusterNodeID = "cluster_node_id"
+	// FieldReason holds the string denoting the reason field in the database.
+	FieldReason = "reason"
 	// EdgeEnv holds the string denoting the env edge name in mutations.
 	EdgeEnv = "env"
 	// Table holds the table name of the envbuild in the database.
@@ -79,6 +81,7 @@ var Columns = []string{
 	FieldFirecrackerVersion,
 	FieldEnvdVersion,
 	FieldClusterNodeID,
+	FieldReason,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -218,6 +221,11 @@ func ByEnvdVersion(opts ...sql.OrderTermOption) OrderOption {
 // ByClusterNodeID orders the results by the cluster_node_id field.
 func ByClusterNodeID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldClusterNodeID, opts...).ToFunc()
+}
+
+// ByReason orders the results by the reason field.
+func ByReason(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReason, opts...).ToFunc()
 }
 
 // ByEnvField orders the results by env field.

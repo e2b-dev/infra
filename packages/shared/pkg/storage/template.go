@@ -28,79 +28,65 @@ const (
 )
 
 type TemplateFiles struct {
-	TemplateId         string
-	BuildId            string
-	KernelVersion      string
-	FirecrackerVersion string
+	TemplateID         string `json:"template_id"`
+	BuildID            string `json:"build_id"`
+	KernelVersion      string `json:"kernel_version"`
+	FirecrackerVersion string `json:"firecracker_version"`
 }
 
-func NewTemplateFiles(
-	templateId,
-	buildId,
-	kernelVersion,
-	firecrackerVersion string,
-) *TemplateFiles {
-	return &TemplateFiles{
-		TemplateId:         templateId,
-		BuildId:            buildId,
-		KernelVersion:      kernelVersion,
-		FirecrackerVersion: firecrackerVersion,
-	}
-}
-
-func (t *TemplateFiles) BuildKernelPath() string {
+func (t TemplateFiles) BuildKernelPath() string {
 	return filepath.Join(t.BuildKernelDir(), KernelName)
 }
 
-func (t *TemplateFiles) BuildKernelDir() string {
+func (t TemplateFiles) BuildKernelDir() string {
 	return filepath.Join(KernelMountDir, t.KernelVersion)
 }
 
 // Key for the cache. Unique for template-build pair.
-func (t *TemplateFiles) CacheKey() string {
-	return fmt.Sprintf("%s-%s", t.TemplateId, t.BuildId)
+func (t TemplateFiles) CacheKey() string {
+	return fmt.Sprintf("%s-%s", t.TemplateID, t.BuildID)
 }
 
-func (t *TemplateFiles) CacheKernelDir() string {
+func (t TemplateFiles) CacheKernelDir() string {
 	return filepath.Join(KernelsDir, t.KernelVersion)
 }
 
-func (t *TemplateFiles) CacheKernelPath() string {
+func (t TemplateFiles) CacheKernelPath() string {
 	return filepath.Join(t.CacheKernelDir(), KernelName)
 }
 
-func (t *TemplateFiles) FirecrackerPath() string {
+func (t TemplateFiles) FirecrackerPath() string {
 	return filepath.Join(FirecrackerVersionsDir, t.FirecrackerVersion, FirecrackerBinaryName)
 }
 
-func (t *TemplateFiles) StorageDir() string {
-	return t.BuildId
+func (t TemplateFiles) StorageDir() string {
+	return t.BuildID
 }
 
-func (t *TemplateFiles) StorageMemfilePath() string {
+func (t TemplateFiles) StorageMemfilePath() string {
 	return fmt.Sprintf("%s/%s", t.StorageDir(), MemfileName)
 }
 
-func (t *TemplateFiles) StorageMemfileHeaderPath() string {
+func (t TemplateFiles) StorageMemfileHeaderPath() string {
 	return fmt.Sprintf("%s/%s%s", t.StorageDir(), MemfileName, HeaderSuffix)
 }
 
-func (t *TemplateFiles) StorageRootfsPath() string {
+func (t TemplateFiles) StorageRootfsPath() string {
 	return fmt.Sprintf("%s/%s", t.StorageDir(), RootfsName)
 }
 
-func (t *TemplateFiles) StorageRootfsHeaderPath() string {
+func (t TemplateFiles) StorageRootfsHeaderPath() string {
 	return fmt.Sprintf("%s/%s%s", t.StorageDir(), RootfsName, HeaderSuffix)
 }
 
-func (t *TemplateFiles) StorageSnapfilePath() string {
+func (t TemplateFiles) StorageSnapfilePath() string {
 	return fmt.Sprintf("%s/%s", t.StorageDir(), SnapfileName)
 }
 
-func (t *TemplateFiles) SandboxBuildDir() string {
-	return filepath.Join(EnvsDisk, t.TemplateId, buildDirName, t.BuildId)
+func (t TemplateFiles) SandboxBuildDir() string {
+	return filepath.Join(EnvsDisk, t.TemplateID, buildDirName, t.BuildID)
 }
 
-func (t *TemplateFiles) SandboxRootfsPath() string {
+func (t TemplateFiles) SandboxRootfsPath() string {
 	return filepath.Join(t.SandboxBuildDir(), RootfsName)
 }

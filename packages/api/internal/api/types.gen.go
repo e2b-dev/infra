@@ -17,6 +17,14 @@ const (
 	Supabase2TeamAuthScopes  = "Supabase2TeamAuth.Scopes"
 )
 
+// Defines values for LogLevel.
+const (
+	LogLevelDebug LogLevel = "debug"
+	LogLevelError LogLevel = "error"
+	LogLevelInfo  LogLevel = "info"
+	LogLevelWarn  LogLevel = "warn"
+)
+
 // Defines values for NodeStatus.
 const (
 	NodeStatusConnecting NodeStatus = "connecting"
@@ -38,6 +46,18 @@ const (
 	TemplateBuildStatusReady    TemplateBuildStatus = "ready"
 	TemplateBuildStatusWaiting  TemplateBuildStatus = "waiting"
 )
+
+// BuildLogEntry defines model for BuildLogEntry.
+type BuildLogEntry struct {
+	// Level State of the sandbox
+	Level LogLevel `json:"level"`
+
+	// Message Log message content
+	Message string `json:"message"`
+
+	// Timestamp Timestamp of the log entry
+	Timestamp time.Time `json:"timestamp"`
+}
 
 // CPUCount CPU cores for the sandbox
 type CPUCount = int32
@@ -111,6 +131,7 @@ type ListedSandbox struct {
 	Alias *string `json:"alias,omitempty"`
 
 	// ClientID Identifier of the client
+	// Deprecated:
 	ClientID string `json:"clientID"`
 
 	// CpuCount CPU cores for the sandbox
@@ -135,6 +156,9 @@ type ListedSandbox struct {
 	// TemplateID Identifier of the template from which is the sandbox created
 	TemplateID string `json:"templateID"`
 }
+
+// LogLevel State of the sandbox
+type LogLevel string
 
 // MemoryMB Memory for the sandbox in MB
 type MemoryMB = int32
@@ -176,11 +200,17 @@ type Node struct {
 	// AllocatedMemoryMiB Amount of allocated memory in MiB
 	AllocatedMemoryMiB int32 `json:"allocatedMemoryMiB"`
 
+	// ClusterID Identifier of the cluster
+	ClusterID *string `json:"clusterID"`
+
 	// Commit Commit of the orchestrator
 	Commit string `json:"commit"`
 
 	// CreateFails Number of sandbox create fails
 	CreateFails uint64 `json:"createFails"`
+
+	// CreateSuccesses Number of sandbox create successes
+	CreateSuccesses uint64 `json:"createSuccesses"`
 
 	// NodeID Identifier of the node
 	NodeID string `json:"nodeID"`
@@ -203,11 +233,17 @@ type NodeDetail struct {
 	// CachedBuilds List of cached builds id on the node
 	CachedBuilds []string `json:"cachedBuilds"`
 
+	// ClusterID Identifier of the cluster
+	ClusterID *string `json:"clusterID"`
+
 	// Commit Commit of the orchestrator
 	Commit string `json:"commit"`
 
 	// CreateFails Number of sandbox create fails
 	CreateFails uint64 `json:"createFails"`
+
+	// CreateSuccesses Number of sandbox create successes
+	CreateSuccesses uint64 `json:"createSuccesses"`
 
 	// NodeID Identifier of the node
 	NodeID string `json:"nodeID"`
@@ -240,42 +276,17 @@ type ResumedSandbox struct {
 	Timeout *int32 `json:"timeout,omitempty"`
 }
 
-// RunningSandboxWithMetrics defines model for RunningSandboxWithMetrics.
-type RunningSandboxWithMetrics struct {
-	// Alias Alias of the template
-	Alias *string `json:"alias,omitempty"`
-
-	// ClientID Identifier of the client
-	ClientID string `json:"clientID"`
-
-	// CpuCount CPU cores for the sandbox
-	CpuCount CPUCount `json:"cpuCount"`
-
-	// EndAt Time when the sandbox will expire
-	EndAt time.Time `json:"endAt"`
-
-	// MemoryMB Memory for the sandbox in MB
-	MemoryMB MemoryMB         `json:"memoryMB"`
-	Metadata *SandboxMetadata `json:"metadata,omitempty"`
-	Metrics  *[]SandboxMetric `json:"metrics,omitempty"`
-
-	// SandboxID Identifier of the sandbox
-	SandboxID string `json:"sandboxID"`
-
-	// StartedAt Time when the sandbox was started
-	StartedAt time.Time `json:"startedAt"`
-
-	// TemplateID Identifier of the template from which is the sandbox created
-	TemplateID string `json:"templateID"`
-}
-
 // Sandbox defines model for Sandbox.
 type Sandbox struct {
 	// Alias Alias of the template
 	Alias *string `json:"alias,omitempty"`
 
 	// ClientID Identifier of the client
+	// Deprecated:
 	ClientID string `json:"clientID"`
+
+	// Domain Base domain where the sandbox traffic is accessible
+	Domain *string `json:"domain"`
 
 	// EnvdAccessToken Access token used for envd communication
 	EnvdAccessToken *string `json:"envdAccessToken,omitempty"`
@@ -296,10 +307,14 @@ type SandboxDetail struct {
 	Alias *string `json:"alias,omitempty"`
 
 	// ClientID Identifier of the client
+	// Deprecated:
 	ClientID string `json:"clientID"`
 
 	// CpuCount CPU cores for the sandbox
 	CpuCount CPUCount `json:"cpuCount"`
+
+	// Domain Base domain where the sandbox traffic is accessible
+	Domain *string `json:"domain"`
 
 	// EndAt Time when the sandbox will expire
 	EndAt time.Time `json:"endAt"`
@@ -353,11 +368,17 @@ type SandboxMetric struct {
 	// CpuUsedPct CPU usage percentage
 	CpuUsedPct float32 `json:"cpuUsedPct"`
 
-	// MemTotalMiB Total memory in MiB
-	MemTotalMiB int64 `json:"memTotalMiB"`
+	// DiskTotal Total disk space in bytes
+	DiskTotal int64 `json:"diskTotal"`
 
-	// MemUsedMiB Memory used in MiB
-	MemUsedMiB int64 `json:"memUsedMiB"`
+	// DiskUsed Disk used in bytes
+	DiskUsed int64 `json:"diskUsed"`
+
+	// MemTotal Total memory in bytes
+	MemTotal int64 `json:"memTotal"`
+
+	// MemUsed Memory used in bytes
+	MemUsed int64 `json:"memUsed"`
 
 	// Timestamp Timestamp of the metric entry
 	Timestamp time.Time `json:"timestamp"`
@@ -365,6 +386,11 @@ type SandboxMetric struct {
 
 // SandboxState State of the sandbox
 type SandboxState string
+
+// SandboxesWithMetrics defines model for SandboxesWithMetrics.
+type SandboxesWithMetrics struct {
+	Sandboxes map[string]SandboxMetric `json:"sandboxes"`
+}
 
 // Team defines model for Team.
 type Team struct {
@@ -449,8 +475,14 @@ type TemplateBuild struct {
 	// BuildID Identifier of the build
 	BuildID string `json:"buildID"`
 
+	// LogEntries Build logs structured
+	LogEntries []BuildLogEntry `json:"logEntries"`
+
 	// Logs Build logs
 	Logs []string `json:"logs"`
+
+	// Reason Message with the status reason, currently reporting only for error status
+	Reason *string `json:"reason,omitempty"`
 
 	// Status Status of the template
 	Status TemplateBuildStatus `json:"status"`
@@ -461,6 +493,15 @@ type TemplateBuild struct {
 
 // TemplateBuildStatus Status of the template
 type TemplateBuildStatus string
+
+// TemplateBuildFileUpload defines model for TemplateBuildFileUpload.
+type TemplateBuildFileUpload struct {
+	// Present Whether the file is already present in the cache
+	Present bool `json:"present"`
+
+	// Url Url where the file should be uploaded to
+	Url *string `json:"url,omitempty"`
+}
 
 // TemplateBuildRequest defines model for TemplateBuildRequest.
 type TemplateBuildRequest struct {
@@ -484,6 +525,54 @@ type TemplateBuildRequest struct {
 
 	// TeamID Identifier of the team
 	TeamID *string `json:"teamID,omitempty"`
+}
+
+// TemplateBuildRequestV2 defines model for TemplateBuildRequestV2.
+type TemplateBuildRequestV2 struct {
+	// Alias Alias of the template
+	Alias string `json:"alias"`
+
+	// CpuCount CPU cores for the sandbox
+	CpuCount *CPUCount `json:"cpuCount,omitempty"`
+
+	// MemoryMB Memory for the sandbox in MB
+	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
+
+	// TeamID Identifier of the team
+	TeamID *string `json:"teamID,omitempty"`
+}
+
+// TemplateBuildStartV2 defines model for TemplateBuildStartV2.
+type TemplateBuildStartV2 struct {
+	// Force Whether the whole build should be forced to run regardless of the cache
+	Force *bool `json:"force,omitempty"`
+
+	// FromImage Image to use as a base for the template build
+	FromImage string `json:"fromImage"`
+
+	// ReadyCmd Ready check command to execute in the template after the build
+	ReadyCmd *string `json:"readyCmd,omitempty"`
+
+	// StartCmd Start command to execute in the template after the build
+	StartCmd *string `json:"startCmd,omitempty"`
+
+	// Steps List of steps to execute in the template build
+	Steps *[]TemplateStep `json:"steps,omitempty"`
+}
+
+// TemplateStep Step in the template build process
+type TemplateStep struct {
+	// Args Arguments for the step
+	Args *[]string `json:"args,omitempty"`
+
+	// FilesHash Hash of the files used in the step
+	FilesHash *string `json:"filesHash,omitempty"`
+
+	// Force Whether the step should be forced to run regardless of the cache
+	Force *bool `json:"force,omitempty"`
+
+	// Type Type of the step
+	Type string `json:"type"`
 }
 
 // TemplateUpdateRequest defines model for TemplateUpdateRequest.
@@ -539,8 +628,8 @@ type GetSandboxesParams struct {
 
 // GetSandboxesMetricsParams defines parameters for GetSandboxesMetrics.
 type GetSandboxesMetricsParams struct {
-	// Metadata Metadata query used to filter the sandboxes (e.g. "user=abc&app=prod"). Each key and values must be URL encoded.
-	Metadata *string `form:"metadata,omitempty" json:"metadata,omitempty"`
+	// SandboxIds Comma-separated list of sandbox IDs to get metrics for
+	SandboxIds []string `form:"sandbox_ids" json:"sandbox_ids"`
 }
 
 // GetSandboxesSandboxIDLogsParams defines parameters for GetSandboxesSandboxIDLogs.
@@ -550,6 +639,13 @@ type GetSandboxesSandboxIDLogsParams struct {
 
 	// Limit Maximum number of logs that should be returned
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetSandboxesSandboxIDMetricsParams defines parameters for GetSandboxesSandboxIDMetrics.
+type GetSandboxesSandboxIDMetricsParams struct {
+	// Start Starting timestamp of the metrics that should be returned in milliseconds
+	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
+	End   *int64 `form:"end,omitempty" json:"end,omitempty"`
 }
 
 // PostSandboxesSandboxIDRefreshesJSONBody defines parameters for PostSandboxesSandboxIDRefreshes.
@@ -572,7 +668,8 @@ type GetTemplatesParams struct {
 // GetTemplatesTemplateIDBuildsBuildIDStatusParams defines parameters for GetTemplatesTemplateIDBuildsBuildIDStatus.
 type GetTemplatesTemplateIDBuildsBuildIDStatusParams struct {
 	// LogsOffset Index of the starting build log that should be returned with the template
-	LogsOffset *int32 `form:"logsOffset,omitempty" json:"logsOffset,omitempty"`
+	LogsOffset *int32    `form:"logsOffset,omitempty" json:"logsOffset,omitempty"`
+	Level      *LogLevel `form:"level,omitempty" json:"level,omitempty"`
 }
 
 // GetV2SandboxesParams defines parameters for GetV2Sandboxes.
@@ -622,3 +719,9 @@ type PatchTemplatesTemplateIDJSONRequestBody = TemplateUpdateRequest
 
 // PostTemplatesTemplateIDJSONRequestBody defines body for PostTemplatesTemplateID for application/json ContentType.
 type PostTemplatesTemplateIDJSONRequestBody = TemplateBuildRequest
+
+// PostV2TemplatesJSONRequestBody defines body for PostV2Templates for application/json ContentType.
+type PostV2TemplatesJSONRequestBody = TemplateBuildRequestV2
+
+// PostV2TemplatesTemplateIDBuildsBuildIDJSONRequestBody defines body for PostV2TemplatesTemplateIDBuildsBuildID for application/json ContentType.
+type PostV2TemplatesTemplateIDBuildsBuildIDJSONRequestBody = TemplateBuildStartV2

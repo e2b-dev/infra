@@ -61,6 +61,14 @@ variable "build_machine_type" {
   type = string
 }
 
+variable "build_cluster_root_disk_size_gb" {
+  type = number
+}
+
+variable "build_cluster_cache_disk_size_gb" {
+  type = number
+}
+
 variable "edge_api_port" {
   type = object({
     name = string

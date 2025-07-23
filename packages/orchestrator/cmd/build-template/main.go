@@ -20,9 +20,9 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -92,7 +92,12 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		}
 	}()
 
-	persistence, err := storage.GetTemplateStorageProvider(ctx, block.ChunkSize)
+	persistenceTemplate, err := storage.GetTemplateStorageProvider(ctx, block.ChunkSize)
+	if err != nil {
+		return fmt.Errorf("could not create storage provider: %w", err)
+	}
+
+	persistenceBuild, err := storage.GetBuildCacheStorageProvider(ctx)
 	if err != nil {
 		return fmt.Errorf("could not create storage provider: %w", err)
 	}
@@ -124,41 +129,43 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		return fmt.Errorf("error getting artifacts registry provider: %v", err)
 	}
 
-	templateStorage := template.NewStorage(persistence)
+	templateCache, err := sbxtemplate.NewCache(ctx)
+	if err != nil {
+		zap.L().Fatal("failed to create template cache", zap.Error(err))
+	}
+
 	builder := build.NewBuilder(
 		logger,
-		logger,
 		tracer,
-		templateStorage,
-		persistence,
+		persistenceTemplate,
+		persistenceBuild,
 		artifactRegistry,
 		devicePool,
 		networkPool,
 		sandboxProxy,
 		sandboxes,
+		templateCache,
 	)
 
-	logsWriter := writer.New(
-		logger.
-			With(zap.Field{Type: zapcore.StringType, Key: "envID", String: templateID}).
-			With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: buildID}),
-	)
-	config := &build.TemplateConfig{
-		TemplateFiles: storage.NewTemplateFiles(
-			templateID,
-			buildID,
-			kernelVersion,
-			fcVersion,
-		),
-		VCpuCount:       2,
-		MemoryMB:        1024,
-		StartCmd:        "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
-		DiskSizeMB:      1024,
-		BuildLogsWriter: logsWriter,
-		HugePages:       true,
+	logsWriter := logger.
+		With(zap.Field{Type: zapcore.StringType, Key: "envID", String: templateID}).
+		With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: buildID})
+
+	template := config.TemplateConfig{
+		VCpuCount:  2,
+		MemoryMB:   1024,
+		StartCmd:   "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
+		DiskSizeMB: 1024,
+		HugePages:  true,
 	}
 
-	_, err = builder.Build(ctx, config)
+	metadata := storage.TemplateFiles{
+		TemplateID:         templateID,
+		BuildID:            buildID,
+		KernelVersion:      kernelVersion,
+		FirecrackerVersion: fcVersion,
+	}
+	_, err = builder.Build(ctx, metadata, template, logsWriter)
 	if err != nil {
 		return fmt.Errorf("error building template: %w", err)
 	}
