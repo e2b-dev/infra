@@ -3,7 +3,6 @@ package command
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap/zapcore"
@@ -28,12 +27,19 @@ func (r *Run) Execute(
 	cmdMetadata sandboxtools.CommandMetadata,
 ) (sandboxtools.CommandMetadata, error) {
 	args := step.Args
-	// args: command and args, e.g., ["sh", "-c", "echo hi"]
+	// args: [command optional_user]
 	if len(args) < 1 {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("RUN requires command arguments")
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("RUN requires command argument")
 	}
 
-	cmd := strings.Join(args, " ")
+	originalMetadata := cmdMetadata
+
+	// If a custom command user is specified, use it
+	if len(args) >= 2 {
+		cmdMetadata.User = args[1]
+	}
+
+	cmd := args[0]
 	err := sandboxtools.RunCommandWithLogger(
 		ctx,
 		tracer,
@@ -49,5 +55,5 @@ func (r *Run) Execute(
 		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to execute command in sandbox: %w", err)
 	}
 
-	return cmdMetadata, nil
+	return originalMetadata, nil
 }
