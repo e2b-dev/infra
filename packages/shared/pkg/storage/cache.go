@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -27,6 +28,10 @@ func (c CachedProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix stri
 	}(context.WithoutCancel(ctx))
 
 	return c.inner.DeleteObjectsWithPrefix(ctx, prefix)
+}
+
+func (c CachedProvider) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
+	return c.inner.UploadSignedURL(ctx, path, ttl)
 }
 
 func (c CachedProvider) OpenObject(ctx context.Context, path string) (StorageObjectProvider, error) {
