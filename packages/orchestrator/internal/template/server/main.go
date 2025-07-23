@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -104,20 +103,15 @@ func New(
 }
 
 func (s *ServerStore) Close(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		return errors.New("context canceled during builder graceful shutdown")
-	default:
-		s.logger.Info("Waiting for all build jobs to finish")
-		s.wg.Wait()
+	s.logger.Info("Waiting for all build jobs to finish")
+	s.wg.Wait()
 
-		if !env.IsLocal() {
-			// Give some time so all connected services can check build status
-			s.logger.Info("Waiting before shutting template builder down server")
-			time.Sleep(15 * time.Second)
-		}
-
-		s.logger.Info("Template builder shutdown complete")
-		return nil
+	if !env.IsLocal() {
+		// Give some time so all connected services can check build status
+		s.logger.Info("Waiting before shutting template builder down server")
+		time.Sleep(15 * time.Second)
 	}
+
+	s.logger.Info("Template builder shutdown complete")
+	return nil
 }
