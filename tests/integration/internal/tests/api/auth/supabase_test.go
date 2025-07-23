@@ -14,7 +14,7 @@ import (
 func createSandbox(t *testing.T, reqEditors ...api.RequestEditorFn) int {
 	t.Helper()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	c := setup.GetAPIClient()

@@ -14,7 +14,7 @@ import (
 )
 
 func TestCreateSandboxWithSecuredEnvd(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	c := setup.GetAPIClient()

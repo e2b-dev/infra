@@ -22,7 +22,7 @@ func TestMain(m *testing.M) {
 
 // TestCacheTemplate starts a sandbox before all tests to cache the necessary files for the base template.
 func TestCacheTemplate(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	c := setup.GetAPIClient()

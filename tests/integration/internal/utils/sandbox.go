@@ -38,7 +38,7 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 	t.Helper()
 
 	// t.Context() doesn't work with go vet, so we use our own context
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
 	config := SandboxConfig{
