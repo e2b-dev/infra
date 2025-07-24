@@ -12,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/envd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layerstorage"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/utils"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -19,35 +20,40 @@ import (
 
 const hashingVersion = "v1"
 
-func templateMetaFromHash(ctx context.Context, s storage.StorageProvider, finalTemplateID string, hash string) (storage.TemplateFiles, error) {
+type LayerMetadata struct {
+	Template storage.TemplateFiles        `json:"template"`
+	Metadata sandboxtools.CommandMetadata `json:"metadata"`
+}
+
+func layerMetaFromHash(ctx context.Context, s storage.StorageProvider, finalTemplateID string, hash string) (LayerMetadata, error) {
 	obj, err := s.OpenObject(ctx, layerstorage.HashToPath(finalTemplateID, hash))
 	if err != nil {
-		return storage.TemplateFiles{}, fmt.Errorf("error opening object for template metadata: %w", err)
+		return LayerMetadata{}, fmt.Errorf("error opening object for template metadata: %w", err)
 	}
 
 	var buf bytes.Buffer
 	_, err = obj.WriteTo(&buf)
 	if err != nil {
-		return storage.TemplateFiles{}, fmt.Errorf("error reading template metadata from object: %w", err)
+		return LayerMetadata{}, fmt.Errorf("error reading template metadata from object: %w", err)
 	}
 
-	var templateMetadata storage.TemplateFiles
+	var templateMetadata LayerMetadata
 	err = json.Unmarshal(buf.Bytes(), &templateMetadata)
 	if err != nil {
-		return storage.TemplateFiles{}, fmt.Errorf("error unmarshaling template metadata: %w", err)
+		return LayerMetadata{}, fmt.Errorf("error unmarshaling template metadata: %w", err)
 	}
 
-	if templateMetadata.TemplateID == "" ||
-		templateMetadata.BuildID == "" ||
-		templateMetadata.KernelVersion == "" ||
-		templateMetadata.FirecrackerVersion == "" {
-		return storage.TemplateFiles{}, fmt.Errorf("template metadata is missing required fields: %v", templateMetadata)
+	if templateMetadata.Template.TemplateID == "" ||
+		templateMetadata.Template.BuildID == "" ||
+		templateMetadata.Template.KernelVersion == "" ||
+		templateMetadata.Template.FirecrackerVersion == "" {
+		return LayerMetadata{}, fmt.Errorf("template metadata is missing required fields: %v", templateMetadata)
 	}
 
 	return templateMetadata, nil
 }
 
-func saveTemplateMeta(ctx context.Context, s storage.StorageProvider, finalTemplateID string, hash string, template storage.TemplateFiles) error {
+func saveLayerMeta(ctx context.Context, s storage.StorageProvider, finalTemplateID string, hash string, template LayerMetadata) error {
 	obj, err := s.OpenObject(ctx, layerstorage.HashToPath(finalTemplateID, hash))
 	if err != nil {
 		return fmt.Errorf("error creating object for saving UUID: %w", err)

@@ -3,7 +3,6 @@ package command
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap/zapcore"
@@ -13,8 +12,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
-
-var userPath = filepath.Join(cmdMetadataBaseDirPath, "user")
 
 type User struct{}
 
@@ -28,11 +25,11 @@ func (u *User) Execute(
 	prefix string,
 	step *templatemanager.TemplateStep,
 	cmdMetadata sandboxtools.CommandMetadata,
-) error {
+) (sandboxtools.CommandMetadata, error) {
 	args := step.Args
 	// args: [username]
 	if len(args) < 1 {
-		return fmt.Errorf("USER requires a username argument")
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("USER requires a username argument")
 	}
 
 	userArg := args[0]
@@ -52,7 +49,7 @@ func (u *User) Execute(
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create user in sandbox: %w", err)
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to create user in sandbox: %w", err)
 	}
 
 	return saveUserMeta(ctx, tracer, proxy, sandboxID, cmdMetadata, userArg)
@@ -65,15 +62,21 @@ func saveUserMeta(
 	sandboxID string,
 	cmdMetadata sandboxtools.CommandMetadata,
 	user string,
-) error {
-	return sandboxtools.RunCommand(
+) (sandboxtools.CommandMetadata, error) {
+	err := sandboxtools.RunCommandWithOutput(
 		ctx,
 		tracer,
 		proxy,
 		sandboxID,
-		fmt.Sprintf(`mkdir -p "$(dirname "%s")" && echo "%s" > "%s"`, userPath, user, userPath),
+		fmt.Sprintf(`printf "%s"`, user),
 		sandboxtools.CommandMetadata{
 			User: "root",
 		},
+		func(stdout, stderr string) {
+			user = stdout
+		},
 	)
+
+	cmdMetadata.User = user
+	return cmdMetadata, err
 }

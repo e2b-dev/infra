@@ -26,15 +26,15 @@ func (r *Run) Execute(
 	prefix string,
 	step *templatemanager.TemplateStep,
 	cmdMetadata sandboxtools.CommandMetadata,
-) error {
+) (sandboxtools.CommandMetadata, error) {
 	args := step.Args
 	// args: command and args, e.g., ["sh", "-c", "echo hi"]
 	if len(args) < 1 {
-		return fmt.Errorf("RUN requires command arguments")
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("RUN requires command arguments")
 	}
 
 	cmd := strings.Join(args, " ")
-	return sandboxtools.RunCommandWithLogger(
+	err := sandboxtools.RunCommandWithLogger(
 		ctx,
 		tracer,
 		proxy,
@@ -45,4 +45,9 @@ func (r *Run) Execute(
 		cmd,
 		cmdMetadata,
 	)
+	if err != nil {
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to execute command in sandbox: %w", err)
+	}
+
+	return cmdMetadata, nil
 }

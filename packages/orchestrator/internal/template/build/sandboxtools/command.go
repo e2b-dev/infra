@@ -22,9 +22,9 @@ import (
 const commandTimeout = 600 * time.Second
 
 type CommandMetadata struct {
-	User    string
-	WorkDir *string
-	EnvVars map[string]string
+	User    string            `json:"user,omitempty"`
+	WorkDir *string           `json:"workdir,omitempty"`
+	EnvVars map[string]string `json:"env_vars,omitempty"`
 }
 
 func RunCommandWithOutput(

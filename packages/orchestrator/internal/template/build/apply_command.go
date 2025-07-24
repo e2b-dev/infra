@@ -51,8 +51,8 @@ func (b *Builder) applyCommand(
 	sbx *sandbox.Sandbox,
 	prefix string,
 	step *templatemanager.TemplateStep,
-	baseCmdMetadata sandboxtools.CommandMetadata,
-) error {
+	cmdMetadata sandboxtools.CommandMetadata,
+) (sandboxtools.CommandMetadata, error) {
 	ctx, span := b.tracer.Start(ctx, "apply-command", trace.WithAttributes(
 		attribute.String("prefix", prefix),
 		attribute.String("sandbox.id", sbx.Metadata.Config.SandboxId),
@@ -62,17 +62,12 @@ func (b *Builder) applyCommand(
 	))
 	defer span.End()
 
-	cmdMetadata, err := command.ReadCommandMetadata(ctx, b.tracer, b.proxy, sbx.Metadata.Config.SandboxId, baseCmdMetadata)
-	if err != nil {
-		return fmt.Errorf("failed to read command metadata: %w", err)
-	}
-
 	cmd, err := b.getCommand(step)
 	if err != nil {
-		return fmt.Errorf("failed to get command for step %s: %w", step.Type, err)
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to get command for step %s: %w", step.Type, err)
 	}
 
-	err = cmd.Execute(
+	cmdMetadata, err = cmd.Execute(
 		ctx,
 		b.tracer,
 		postProcessor,
@@ -84,7 +79,7 @@ func (b *Builder) applyCommand(
 		cmdMetadata,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to execute command: %w", err)
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to execute command: %w", err)
 	}
-	return nil
+	return cmdMetadata, nil
 }

@@ -3,7 +3,6 @@ package command
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap/zapcore"
@@ -13,8 +12,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
-
-var workdirPath = filepath.Join(cmdMetadataBaseDirPath, "workdir")
 
 type Workdir struct{}
 
@@ -28,11 +25,11 @@ func (w *Workdir) Execute(
 	prefix string,
 	step *templatemanager.TemplateStep,
 	cmdMetadata sandboxtools.CommandMetadata,
-) error {
+) (sandboxtools.CommandMetadata, error) {
 	args := step.Args
 	// args: [path]
 	if len(args) < 1 {
-		return fmt.Errorf("WORKDIR requires a path argument")
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("WORKDIR requires a path argument")
 	}
 
 	workdirArg := args[0]
@@ -52,7 +49,7 @@ func (w *Workdir) Execute(
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create workdir in sandbox: %w", err)
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to create workdir in sandbox: %w", err)
 	}
 
 	return saveWorkdirMeta(ctx, tracer, proxy, sandboxID, cmdMetadata, workdirArg)
@@ -65,15 +62,24 @@ func saveWorkdirMeta(
 	sandboxID string,
 	cmdMetadata sandboxtools.CommandMetadata,
 	workdir string,
-) error {
-	return sandboxtools.RunCommand(
+) (sandboxtools.CommandMetadata, error) {
+	err := sandboxtools.RunCommandWithOutput(
 		ctx,
 		tracer,
 		proxy,
 		sandboxID,
-		fmt.Sprintf(`mkdir -p "$(dirname "%s")" && echo "%s" > "%s"`, workdirPath, workdir, workdirPath),
+		fmt.Sprintf(`printf "%s"`, workdir),
 		sandboxtools.CommandMetadata{
 			User: "root",
 		},
+		func(stdout, stderr string) {
+			workdir = stdout
+		},
 	)
+	if err != nil {
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to execute workdir %s: %w", workdir, err)
+	}
+
+	cmdMetadata.WorkDir = &workdir
+	return cmdMetadata, nil
 }
