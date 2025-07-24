@@ -107,7 +107,7 @@ func (n *Node) setStatus(status api.NodeStatus) {
 	}
 }
 
-func (n *Node) setMetadata(i *orchestratorinfo.ServiceInfoResponse, nodeID string, serviceInstanceID string) {
+func (n *Node) setMetadata(i *orchestratorinfo.ServiceInfoResponse, nodeID string) {
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
 	n.meta = getNodeMetadata(i, nodeID)
