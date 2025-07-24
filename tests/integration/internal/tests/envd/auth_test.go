@@ -133,7 +133,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 	fileContent := "Hello, world!"
 
 	// create a test file
-	utils.UploadFile(t, ctx, sbxMeta, envdClient, filePath, []byte(fileContent))
+	utils.UploadFile(t, ctx, sbxMeta, envdClient, filePath, fileContent)
 
 	c := setup.GetAPIClient()
 
@@ -189,7 +189,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 	fileContent := "Hello, world!"
 
 	// create a test file
-	utils.UploadFile(t, ctx, sbxMeta, envdClient, filePath, []byte(fileContent))
+	utils.UploadFile(t, ctx, sbxMeta, envdClient, filePath, fileContent)
 
 	c := setup.GetAPIClient()
 

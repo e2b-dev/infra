@@ -1,28 +1,87 @@
 package filesystem
 
 import (
-	"path"
+	"fmt"
+	"os"
+	"os/user"
+	"syscall"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
 )
 
-type osEntry interface {
-	IsDir() bool
-}
+// getEntryType determines the type of file entry based on its mode and path.
+// If the file is a symlink, it follows the symlink to determine the actual type.
+func getEntryType(mode os.FileMode, path string) rpc.FileType {
+	if mode&os.ModeSymlink != 0 {
+		targetPath, err := followSymlink(path)
+		if err != nil {
+			return rpc.FileType_FILE_TYPE_UNSPECIFIED
+		}
 
-// getFolder returns the path of the directory the entry belongs to.
-func getFolder(entry *rpc.EntryInfo) string {
-	if entry.Type == rpc.FileType_FILE_TYPE_DIRECTORY {
-		return entry.Path
+		info, err := os.Lstat(targetPath)
+		if err != nil {
+			return rpc.FileType_FILE_TYPE_UNSPECIFIED
+		}
+
+		mode = info.Mode()
 	}
 
-	return path.Dir(entry.Path)
+	switch {
+	case mode.IsRegular():
+		return rpc.FileType_FILE_TYPE_FILE
+	case mode.IsDir():
+		return rpc.FileType_FILE_TYPE_DIRECTORY
+	default:
+		return rpc.FileType_FILE_TYPE_UNSPECIFIED
+	}
 }
 
-func getEntryType(entry osEntry) rpc.FileType {
-	if entry.IsDir() {
-		return rpc.FileType_FILE_TYPE_DIRECTORY
+// getFileOwnership returns the owner and group names for a file.
+// If the lookup fails, it returns the numeric UID and GID as strings.
+func getFileOwnership(fileInfo os.FileInfo) (owner, group string) {
+	sys, ok := fileInfo.Sys().(*syscall.Stat_t)
+	if !ok {
+		return "", ""
+	}
+
+	// Look up username
+	if u, err := user.LookupId(fmt.Sprintf("%d", sys.Uid)); err == nil {
+		owner = u.Username
 	} else {
-		return rpc.FileType_FILE_TYPE_FILE
+		owner = fmt.Sprintf("%d", sys.Uid)
+	}
+
+	// Look up group name
+	if g, err := user.LookupGroupId(fmt.Sprintf("%d", sys.Gid)); err == nil {
+		group = g.Name
+	} else {
+		group = fmt.Sprintf("%d", sys.Gid)
+	}
+
+	return owner, group
+}
+
+func entryInfoFromFileInfo(fileInfo os.FileInfo, path string) *rpc.EntryInfo {
+	owner, group := getFileOwnership(fileInfo)
+	fileMode := fileInfo.Mode()
+
+	var symlinkTarget string
+	if fileMode&os.ModeSymlink != 0 {
+		symlinkTarget, _ = followSymlink(path)
+	}
+
+	return &rpc.EntryInfo{
+		Name:          fileInfo.Name(),
+		Type:          getEntryType(fileMode, path),
+		Path:          path,
+		Size:          fileInfo.Size(),
+		Mode:          uint32(fileMode.Perm()),
+		Permissions:   fileMode.String(),
+		Owner:         owner,
+		Group:         group,
+		ModifiedTime:  timestamppb.New(fileInfo.ModTime()),
+		SymlinkTarget: symlinkTarget,
 	}
 }
