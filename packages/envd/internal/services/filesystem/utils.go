@@ -69,6 +69,7 @@ func entryInfoFromFileInfo(fileInfo os.FileInfo, path string) *rpc.EntryInfo {
 
 	var symlinkTarget string
 	if fileMode&os.ModeSymlink != 0 {
+		// If we can't resolve the symlink target, we won't set the target
 		symlinkTarget, _ = followSymlink(path)
 	}
 
