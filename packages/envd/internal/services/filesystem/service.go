@@ -6,6 +6,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/legacy"
 	spec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem/filesystemconnect"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
@@ -21,7 +22,10 @@ func Handle(server *chi.Mux, l *zerolog.Logger) {
 		watchers: utils.NewMap[string, *FileWatcher](),
 	}
 
-	interceptors := connect.WithInterceptors(logs.NewUnaryLogInterceptor(l))
+	interceptors := connect.WithInterceptors(
+		logs.NewUnaryLogInterceptor(l),
+		legacy.Convert(),
+	)
 
 	path, handler := spec.NewFilesystemHandler(service, interceptors)
 
