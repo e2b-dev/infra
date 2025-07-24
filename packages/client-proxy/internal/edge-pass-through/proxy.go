@@ -2,11 +2,8 @@ package edgepassthrough
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"time"
 
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -18,7 +15,6 @@ import (
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	"github.com/e2b-dev/infra/packages/shared/pkg/edge"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 )
 

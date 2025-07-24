@@ -1,5 +1,18 @@
 package edgepassthrough
 
+import (
+	"fmt"
+	"time"
+
+	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
+
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
+	"github.com/e2b-dev/infra/packages/shared/pkg/edge"
+)
+
 func (s *NodePassThroughServer) eventsHandler(md metadata.MD) (func(error), error) {
 	eventTypeHeaders := md.Get(edge.EventTypeHeader)
 	if len(eventTypeHeaders) == 0 {
