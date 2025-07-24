@@ -161,12 +161,8 @@ func walkDir(requestedPath string, dirPath string, depth int) (entries []*rpc.En
 			return err
 		}
 
-		owner, group := getFileOwnership(fileInfo)
-		fileMode := fileInfo.Mode()
-
+		path = filepath.Join(requestedPath, relPath)
 		entries = append(entries, entryInfoFromFileInfo(fileInfo, path))
-		})
-
 		return nil
 	})
 	if err != nil {

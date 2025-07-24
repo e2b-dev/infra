@@ -4,21 +4,13 @@ import (
 	"fmt"
 	"os"
 	"os/user"
+	"path"
 	"syscall"
 
-	"path"
-
-	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
-	"google.golang.org/protobuf/types/known/timestamppb"
-
-	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
-	"golang.org/x/mod/semver"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
 )
-
-const entryInfoSupportedSDKVersion = "1.6.0"
 
 type osEntry interface {
 	IsDir() bool
@@ -66,38 +58,19 @@ func getFileOwnership(fileInfo os.FileInfo) (owner, group string) {
 	return owner, group
 }
 
-func IsGTEVersion(curVersion, minVersion string) bool {
-	if len(curVersion) > 0 && curVersion[0] != 'v' {
-		curVersion = "v" + curVersion
-	}
-
-	if !semver.IsValid(curVersion) {
-		return false
-	}
-
-	return semver.Compare(curVersion, minVersion) >= 0
-}
-
-func entryInfoFromFileInfo(fileInfo os.FileInfo, path string, sdkLanguage string, sdkVersion string) *rpc.EntryInfo {
+func entryInfoFromFileInfo(fileInfo os.FileInfo, path string) *rpc.EntryInfo {
 	owner, group := getFileOwnership(fileInfo)
 	fileMode := fileInfo.Mode()
 
-	entry := &rpc.EntryInfo{
-		Name: fileInfo.Name(),
-		Type: getEntryType(fileInfo),
-		Path: path,
+	return &rpc.EntryInfo{
+		Name:         fileInfo.Name(),
+		Type:         getEntryType(fileInfo),
+		Path:         path,
+		Size:         fileInfo.Size(),
+		Mode:         uint32(fileMode.Perm()),
+		Permissions:  fileMode.String(),
+		Owner:        owner,
+		Group:        group,
+		ModifiedTime: timestamppb.New(fileInfo.ModTime()),
 	}
-
-	shouldIncludeFields := sdkLanguage == "" || (sdkLanguage == "python" && IsGTEVersion(sdkVersion, entryInfoSupportedSDKVersion))
-
-	if shouldIncludeFields {
-		entry.Size = fileInfo.Size()
-		entry.Mode = uint32(fileMode.Perm())
-		entry.Permissions = fileMode.String()
-		entry.Owner = owner
-		entry.Group = group
-		entry.ModifiedTime = timestamppb.New(fileInfo.ModTime())
-	}
-
-	return entry
 }
