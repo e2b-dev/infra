@@ -14,7 +14,7 @@ import (
 )
 
 func TestSandboxCreate(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	c := setup.GetAPIClient()
@@ -42,7 +42,7 @@ func TestSandboxCreate(t *testing.T) {
 }
 
 func TestSandboxResumeUnknownSandbox(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	c := setup.GetAPIClient()
@@ -71,7 +71,7 @@ func TestSandboxResumeUnknownSandbox(t *testing.T) {
 }
 
 func TestSandboxResumeWithSecuredEnvd(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	c := setup.GetAPIClient()
@@ -109,7 +109,7 @@ func TestSandboxResumeWithSecuredEnvd(t *testing.T) {
 }
 
 func TestSandboxPauseNonFound(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	c := setup.GetAPIClient()

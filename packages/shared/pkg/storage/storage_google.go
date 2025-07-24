@@ -13,9 +13,11 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/googleapis/gax-go/v2"
+	"go.uber.org/zap"
 	"google.golang.org/api/iterator"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 )
 
 const (
@@ -26,11 +28,15 @@ const (
 	googleMaxBackoff        = 10 * time.Second
 	googleBackoffMultiplier = 2
 	googleMaxAttempts       = 10
+
+	gcloudMaxRetries = 3
 )
 
 type GCPBucketStorageProvider struct {
 	client *storage.Client
 	bucket *storage.BucketHandle
+
+	limiter *limit.Limiter
 }
 
 type GCPBucketStorageObjectProvider struct {
@@ -38,17 +44,20 @@ type GCPBucketStorageObjectProvider struct {
 	path    string
 	handle  *storage.ObjectHandle
 	ctx     context.Context
+
+	limiter *limit.Limiter
 }
 
-func NewGCPBucketStorageProvider(ctx context.Context, bucketName string) (*GCPBucketStorageProvider, error) {
+func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, limiter *limit.Limiter) (*GCPBucketStorageProvider, error) {
 	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
 	}
 
 	return &GCPBucketStorageProvider{
-		client: client,
-		bucket: client.Bucket(bucketName),
+		client:  client,
+		bucket:  client.Bucket(bucketName),
+		limiter: limiter,
 	}, nil
 }
 
@@ -117,6 +126,8 @@ func (g *GCPBucketStorageProvider) OpenObject(ctx context.Context, path string) 
 		path:    path,
 		handle:  handle,
 		ctx:     ctx,
+
+		limiter: g.limiter,
 	}, nil
 }
 
@@ -171,15 +182,11 @@ func (g *GCPBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, 
 
 func (g *GCPBucketStorageObjectProvider) ReadFrom(src io.Reader) (int64, error) {
 	w := g.handle.NewWriter(g.ctx)
+	defer w.Close()
 
 	n, err := io.Copy(w, src)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return n, fmt.Errorf("failed to copy buffer to persistence: %w", err)
-	}
-
-	err = w.Close()
-	if err != nil {
-		return n, fmt.Errorf("failed to close GCS writer: %w", err)
 	}
 
 	return n, nil
@@ -210,23 +217,61 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 }
 
 func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error {
-	cmd := exec.CommandContext(
-		g.ctx,
-		"gcloud",
-		"storage",
-		"cp",
-		"--verbosity",
-		"error",
-		path,
-		fmt.Sprintf("gs://%s/%s", g.storage.bucket.BucketName(), g.path),
-	)
+	upload := func() error {
+		extraArgs := []string{}
+		if g.limiter != nil {
+			uploadLimiter := g.limiter.GCloudUploadLimiter()
+			if uploadLimiter != nil {
+				semaphoreErr := uploadLimiter.Acquire(g.ctx, 1)
+				if semaphoreErr != nil {
+					return fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
+				}
+				defer uploadLimiter.Release(1)
+			}
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to upload file to GCS: %w\n%s", err, string(output))
+			extraArgs = append(extraArgs, g.limiter.GCloudCmdLimits(path)...)
+		}
+
+		args := []string{"--scope"}
+		args = append(args, extraArgs...)
+		args = append(args, "--",
+			"gcloud",
+			"storage",
+			"cp",
+			"--verbosity=error",
+			path,
+			fmt.Sprintf("gs://%s/%s", g.storage.bucket.BucketName(), g.path),
+		)
+
+		cmd := exec.CommandContext(
+			g.ctx,
+			"systemd-run",
+			args...,
+		)
+
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("failed to upload file to GCS: %w\n%s", err, string(output))
+		}
+
+		return nil
 	}
 
-	return nil
+	var err error
+	for range gcloudMaxRetries {
+		err = upload()
+		if err != nil {
+			// Failed to upload file, retrying.
+			zap.L().Warn("Failed to upload file to GCS, retrying", zap.Error(err), zap.String("path", g.path))
+
+			continue
+		}
+
+		// Files was successfully uploaded
+		return nil
+	}
+
+	return fmt.Errorf("failed to upload file to GCS after %d retries: %w", gcloudMaxRetries, err)
 }
 
 type gcpServiceToken struct {

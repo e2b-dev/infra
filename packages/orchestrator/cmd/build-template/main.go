@@ -48,7 +48,13 @@ func main() {
 	}
 }
 
-func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, templateID, buildID string) error {
+func buildTemplate(
+	parentCtx context.Context,
+	kernelVersion,
+	fcVersion,
+	templateID,
+	buildID string,
+) error {
 	ctx, cancel := context.WithTimeout(parentCtx, time.Minute*5)
 	defer cancel()
 
@@ -91,12 +97,12 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		}
 	}()
 
-	persistenceTemplate, err := storage.GetTemplateStorageProvider(ctx)
+	persistenceTemplate, err := storage.GetTemplateStorageProvider(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("could not create storage provider: %w", err)
 	}
 
-	persistenceBuild, err := storage.GetBuildCacheStorageProvider(ctx)
+	persistenceBuild, err := storage.GetBuildCacheStorageProvider(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("could not create storage provider: %w", err)
 	}
@@ -128,7 +134,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		return fmt.Errorf("error getting artifacts registry provider: %v", err)
 	}
 
-	templateCache, err := sbxtemplate.NewCache(ctx)
+	templateCache, err := sbxtemplate.NewCache(ctx, persistenceTemplate)
 	if err != nil {
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}

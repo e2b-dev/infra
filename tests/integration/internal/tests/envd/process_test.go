@@ -15,7 +15,7 @@ import (
 )
 
 func TestCommandKillNextApp(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	client := setup.GetAPIClient()
@@ -94,7 +94,7 @@ func TestCommandKillNextApp(t *testing.T) {
 }
 
 func TestCommandKillWithAnd(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	client := setup.GetAPIClient()

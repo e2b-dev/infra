@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -50,8 +49,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		req.Sandbox.ExecutionId = uuid.New().String()
 	}
 
-	flagCtx := ldcontext.NewBuilder(featureflags.MetricsWriteFlagName).SetString("sandbox_id", req.Sandbox.SandboxId).Build()
-	metricsWriteFlag, flagErr := s.featureFlags.Ld.BoolVariation(featureflags.MetricsWriteFlagName, flagCtx, featureflags.MetricsWriteDefault)
+	metricsWriteFlag, flagErr := s.featureFlags.BoolFlag(featureflags.MetricsWriteFlagName, req.Sandbox.SandboxId)
 	if flagErr != nil {
 		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
 	}
