@@ -175,13 +175,12 @@ func (c *Copy) Execute(
 
 	// If optional owner is provided, set them
 	if len(args) >= 3 {
-		// Assumes the format is "owner:group"
+		// Assumes the format of chown
 		owner := args[2]
 		if owner != "" {
 			err = sandboxtools.RunCommand(
 				ctx,
 				tracer,
-
 				proxy,
 				sandboxID,
 				fmt.Sprintf(`chown -R %s "%s"`, owner, targetPath),
@@ -195,14 +194,13 @@ func (c *Copy) Execute(
 
 	// If optional permissions are provided, set them
 	if len(args) >= 4 {
-		// This assumes the format is "755"
+		// This assumes the format of chmod
 		permissions := args[3]
 
 		if permissions != "" {
 			err = sandboxtools.RunCommand(
 				ctx,
 				tracer,
-
 				proxy,
 				sandboxID,
 				fmt.Sprintf(`chmod -R %s "%s"`, permissions, targetPath),
