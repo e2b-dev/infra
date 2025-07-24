@@ -1,12 +1,14 @@
 package command
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	txtTemplate "text/template"
 
 	"go.opentelemetry.io/otel/trace"
 
@@ -22,6 +24,59 @@ type Copy struct {
 	FilesStorage storage.StorageProvider
 }
 
+type copyScriptData struct {
+	SourcePath string
+	TargetPath string
+}
+
+var copyScriptTemplate = txtTemplate.Must(txtTemplate.New("copy-script-template").Parse(`
+#!/bin/bash
+
+# Get the parent folder of the source file/folder
+sourceFolder="$(dirname "{{ .SourcePath}}")"
+
+# Set targetPath relative to current working directory if not absolute
+inputPath="{{ .TargetPath }}"
+if [[ "$inputPath" = /* ]]; then
+ targetPath="$inputPath"
+else
+ targetPath="$(pwd)/$inputPath"
+fi
+
+cd "$sourceFolder" || exit 1
+
+entry=$(ls -A | head -n 1)
+
+if [ -z "$entry" ]; then
+ echo "Error: sourceFolder is empty"
+ exit 1
+fi
+
+if [ -f "$entry" ]; then
+ # It's a file – create parent folders and move+rename it to the exact path
+ mkdir -p "$(dirname "$targetPath")"
+ mv "$entry" "$targetPath"
+elif [ -d "$entry" ]; then
+ # It's a directory – move all its contents into the destination folder
+ mkdir -p "$targetPath"
+ mv "$entry"/* "$targetPath/"
+else
+ echo "Error: entry is neither file nor directory"
+ exit 1
+fi
+`))
+
+// Execute implements the Copy command.
+// It works in the following steps:
+// 1) Downloads the layer tar file from the storage to the local filesystem
+// 2) Copies the file to the sandbox's /tmp directory
+// 3) Extracts it (still in the /tmp directory)
+// 4) Moves the extracted files to the target path in the sandbox
+//   - If the source is a file, it creates the parent directories and moves the file
+//   - If the source is a directory, it moves all its contents to the target directory
+
+// Note: The temporary files in the /tmp directory are cleaned up automatically on sandbox restart
+// because the /tmp is mounted as a tmpfs and deleted on restart.
 func (c *Copy) Execute(
 	ctx context.Context,
 	tracer trace.Tracer,
@@ -44,6 +99,7 @@ func (c *Copy) Execute(
 		return fmt.Errorf("%s requires files hash to be set", cmdType)
 	}
 
+	// 1) Download the layer tar file from the storage to the local filesystem
 	obj, err := c.FilesStorage.OpenObject(ctx, layerstorage.GetLayerFilesCachePath(templateID, *step.FilesHash))
 	if err != nil {
 		return fmt.Errorf("failed to open files object from storage: %w", err)
@@ -73,6 +129,7 @@ func (c *Copy) Execute(
 	// The file is automatically cleaned up by the sandbox restart in the last step.
 	// This is happening because the /tmp is mounted as a tmpfs and deleted on restart.
 	sbxTargetPath := filepath.Join("/tmp", fmt.Sprintf("%s.tar", *step.FilesHash))
+	// 2) Copy the tar file to the sandbox
 	err = sandboxtools.CopyFile(ctx, tracer, proxy, sandboxID, cmdMetadata.User, tmpFile.Name(), sbxTargetPath)
 	if err != nil {
 		return fmt.Errorf("failed to copy layer tar data to sandbox: %w", err)
@@ -80,6 +137,7 @@ func (c *Copy) Execute(
 
 	sbxUnpackPath := filepath.Join("/tmp", *step.FilesHash)
 
+	// 3) Extract the tar file in the sandbox's /tmp directory
 	err = sandboxtools.RunCommand(
 		ctx,
 		tracer,
@@ -92,49 +150,22 @@ func (c *Copy) Execute(
 		return fmt.Errorf("failed to extract files in sandbox: %w", err)
 	}
 
-	moveScript := fmt.Sprintf(`
-#!/bin/bash
-
-# Get the parent folder of the source file/folder
-sourceFolder="$(dirname "%s")"
-
-# Set targetPath relative to current working directory if not absolute
-inputPath="%s"
-if [[ "$inputPath" = /* ]]; then
-  targetPath="$inputPath"
-else
-  targetPath="$(pwd)/$inputPath"
-fi
-
-cd "$sourceFolder" || exit 1
-
-entry=$(ls -A | head -n 1)
-
-if [ -z "$entry" ]; then
-  echo "Error: sourceFolder is empty"
-  exit 1
-fi
-
-if [ -f "$entry" ]; then
-  # It's a file – create parent folders and move+rename it to the exact path
-  mkdir -p "$(dirname "$targetPath")"
-  mv "$entry" "$targetPath"
-elif [ -d "$entry" ]; then
-  # It's a directory – move all its contents into the destination folder
-  mkdir -p "$targetPath"
-  mv "$entry"/* "$targetPath/"
-else
-  echo "Error: entry is neither file nor directory"
-  exit 1
-fi
-`, filepath.Join(sbxUnpackPath, args[0]), args[1])
+	// 4) Move the extracted files to the target path in the sandbox
+	var moveScript bytes.Buffer
+	err = copyScriptTemplate.Execute(&moveScript, copyScriptData{
+		SourcePath: filepath.Join(sbxUnpackPath, args[0]),
+		TargetPath: args[1],
+	})
+	if err != nil {
+		return fmt.Errorf("failed to execute copy script template: %w", err)
+	}
 
 	err = sandboxtools.RunCommand(
 		ctx,
 		tracer,
 		proxy,
 		sandboxID,
-		moveScript,
+		moveScript.String(),
 		cmdMetadata,
 	)
 	if err != nil {
