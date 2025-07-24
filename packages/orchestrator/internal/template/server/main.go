@@ -117,12 +117,11 @@ func (s *ServerStore) Close(ctx context.Context) error {
 		s.wg.Wait()
 
 		if !env.IsLocal() {
-			// Give some time so all connected services can check build status
-			s.logger.Info("Waiting before shutting template builder down server")
+			s.logger.Info("Waiting for consumers to check build status")
 			time.Sleep(15 * time.Second)
 		}
 
-		s.logger.Info("Template builder shutdown complete")
+		s.logger.Info("Template build queue cleaned")
 		return nil
 	}
 }
