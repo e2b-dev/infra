@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	googleStorage "cloud.google.com/go/storage"
+	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
@@ -28,6 +29,10 @@ func getReferencedData(ctx context.Context, bucket *gcs.BucketHandle, headerPath
 	for _, mapping := range h.Mapping {
 		builds[mapping.BuildId.String()] = struct{}{}
 	}
+
+	delete(builds, uuid.Nil.String())
+
+	// delete builds[uuid]
 
 	var dataReferences []string
 
