@@ -53,7 +53,7 @@ func (c Metrics) BeginSlice() Stopwatch {
 }
 
 func (c Metrics) EndSliceSuccess(ctx context.Context, t Stopwatch, pt pullType) {
-	t.success(ctx, attribute.String("type", string(pt)))
+	t.success(ctx, attribute.String("pull_type", string(pt)))
 }
 
 func (c Metrics) EndSliceFailure(ctx context.Context, t Stopwatch, pt pullType, ft failureType) {
@@ -68,8 +68,8 @@ func (c Metrics) EndChunkFetchSuccess(ctx context.Context, t Stopwatch) {
 	t.success(ctx)
 }
 
-func (c Metrics) EndChunkFetchFailure(ctx context.Context, t Stopwatch, pt pullType) {
-	t.failure(ctx, attribute.String("pull_type", string(pt)))
+func (c Metrics) EndChunkFetchFailure(ctx context.Context, t Stopwatch, ft failureType) {
+	t.failure(ctx, attribute.String("failure_type", string(ft)))
 }
 
 func (c Metrics) BeginChunkWrite() Stopwatch {
@@ -88,17 +88,17 @@ type pullType string
 
 const (
 	PullTypeLocal  pullType = "local"
-	PullTypeRemote          = "remote"
+	PullTypeRemote pullType = "remote"
 )
 
 type failureType string
 
 const (
 	LocalReadFailure  failureType = "local-read"
-	ReadAgainFailure              = "read-again"
-	RemoteReadFailure             = "remote-read"
-	LocalWriteFailure             = "local-write"
-	CacheFetchFailure             = "cache-fetch"
+	ReadAgainFailure  failureType = "read-again"
+	RemoteReadFailure failureType = "remote-read"
+	LocalWriteFailure failureType = "local-write"
+	CacheFetchFailure failureType = "cache-fetch"
 )
 
 type Stopwatch struct {
