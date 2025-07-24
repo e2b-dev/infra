@@ -9,20 +9,22 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
-	// Chunks must always be bigger or equal to the block size.
+	// ChunkSize must always be bigger or equal to the block size.
 	ChunkSize = 4 * 1024 * 1024 // 4 MB
 )
 
 type Chunker struct {
 	ctx context.Context
 
-	base  io.ReaderAt
-	cache *Cache
+	base    io.ReaderAt
+	cache   *Cache
+	metrics metrics.Metrics
 
 	size int64
 
@@ -36,6 +38,7 @@ func NewChunker(
 	blockSize int64,
 	base io.ReaderAt,
 	cachePath string,
+	metrics metrics.Metrics,
 ) (*Chunker, error) {
 	cache, err := NewCache(size, blockSize, cachePath, false)
 	if err != nil {
@@ -48,6 +51,7 @@ func NewChunker(
 		base:     base,
 		cache:    cache,
 		fetchers: utils.NewWaitMap(),
+		metrics:  metrics,
 	}
 
 	return chunker, nil
@@ -81,25 +85,34 @@ func (c *Chunker) WriteTo(w io.Writer) (int64, error) {
 }
 
 func (c *Chunker) Slice(off, length int64) ([]byte, error) {
+	timer := c.metrics.BeginSlice()
+
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
+		c.metrics.EndSliceSuccess(c.ctx, timer, metrics.PullTypeLocal)
 		return b, nil
 	}
 
 	if !errors.As(err, &ErrBytesNotAvailable{}) {
+		c.metrics.EndSliceFailure(c.ctx, timer, metrics.PullTypeLocal, metrics.LocalReadFailure)
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
 	chunkErr := c.fetchToCache(off, length)
 	if chunkErr != nil {
+		c.metrics.EndSliceFailure(c.ctx, timer, metrics.PullTypeRemote, metrics.CacheFetchFailure)
 		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, chunkErr)
 	}
 
 	b, cacheErr := c.cache.Slice(off, length)
 	if cacheErr != nil {
+		// todo: metric: memory fetched from local, failure
+		c.metrics.EndSliceFailure(c.ctx, timer, metrics.PullTypeLocal, metrics.ReadAgainFailure)
 		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
+	// todo: metric: memory fetched from remote, success
+	c.metrics.EndSliceSuccess(c.ctx, timer, metrics.PullTypeRemote)
 	return b, nil
 }
 
@@ -133,16 +146,23 @@ func (c *Chunker) fetchToCache(off, length int64) error {
 
 				b := make([]byte, ChunkSize)
 
+				// this is slow
+				fetchSW := c.metrics.BeginChunkFetch()
 				_, err := c.base.ReadAt(b, fetchOff)
 				if err != nil && !errors.Is(err, io.EOF) {
+					c.metrics.EndChunkFetchFailure(c.ctx, fetchSW, metrics.RemoteReadFailure)
 					return fmt.Errorf("failed to read chunk from base %d: %w", fetchOff, err)
 				}
+				c.metrics.EndChunkFetchSuccess(c.ctx, fetchSW)
 
+				// this is fast
+				writeSW := c.metrics.BeginChunkWrite()
 				_, cacheErr := c.cache.WriteAtWithoutLock(b, fetchOff)
 				if cacheErr != nil {
+					c.metrics.EndChunkWriteFailure(c.ctx, writeSW, metrics.LocalWriteFailure)
 					return fmt.Errorf("failed to write chunk %d to cache: %w", fetchOff, cacheErr)
 				}
-
+				c.metrics.EndChunkWriteSuccess(c.ctx, writeSW)
 				return nil
 			})
 

@@ -28,7 +28,7 @@ func TestCreateDiff_Hugepage(t *testing.T) {
 	dirty.Set(4)
 
 	diff := bytes.NewBuffer(nil)
-	m, err := WriteDiff(source, int64(blockSize), dirty, diff)
+	m, err := writeDiff(source, int64(blockSize), dirty, diff)
 	assert.NoError(t, err)
 
 	expectedDiffData := createSource(blockSize, []byte{1, 5})
@@ -48,7 +48,7 @@ func TestCreateDiff_RootfsBlock(t *testing.T) {
 	dirty.Set(4)
 
 	diff := bytes.NewBuffer(nil)
-	m, err := WriteDiff(source, int64(blockSize), dirty, diff)
+	m, err := writeDiff(source, int64(blockSize), dirty, diff)
 	assert.NoError(t, err)
 
 	expectedDiffData := createSource(blockSize, []byte{1, 5})
@@ -68,7 +68,7 @@ func TestCreateDiff_UnsupportedBlockSize(t *testing.T) {
 	dirty.Set(4)
 
 	diff := bytes.NewBuffer(nil)
-	_, err := WriteDiff(source, int64(blockSize), dirty, diff)
+	_, err := writeDiff(source, int64(blockSize), dirty, diff)
 
 	assert.Error(t, err)
 }
@@ -86,7 +86,7 @@ func TestCreateDiff_AllEmptyBlocks(t *testing.T) {
 	dirty.Set(4)
 
 	diff := bytes.NewBuffer(nil)
-	m, err := WriteDiff(source, int64(blockSize), dirty, diff)
+	m, err := writeDiff(source, int64(blockSize), dirty, diff)
 	assert.NoError(t, err)
 
 	assert.Equal(t, "0000000000000000000000000000000000000000000000000000000000011111.", m.Empty.DumpAsBits())
@@ -101,7 +101,7 @@ func TestCreateDiff_EmptyDirtyBitset(t *testing.T) {
 	// No blocks are marked as dirty
 
 	diff := bytes.NewBuffer(nil)
-	m, err := WriteDiff(source, int64(blockSize), dirty, diff)
+	m, err := writeDiff(source, int64(blockSize), dirty, diff)
 	assert.NoError(t, err)
 
 	// Verify no data was written to diff
@@ -125,7 +125,7 @@ func TestCreateDiff_ReadError(t *testing.T) {
 	dirty.Set(0) // Mark one block as dirty to trigger ReadAt
 
 	diff := bytes.NewBuffer(nil)
-	_, err := WriteDiff(source, int64(blockSize), dirty, diff)
+	_, err := writeDiff(source, int64(blockSize), dirty, diff)
 
 	// Verify that the error from ReadAt is propagated
 	assert.Error(t, err)
@@ -150,7 +150,7 @@ func TestCreateDiff_WriteError(t *testing.T) {
 	dirty.Set(0) // Mark one block as dirty to trigger Write
 
 	diff := errorWriter{}
-	_, err := WriteDiff(source, int64(blockSize), dirty, diff)
+	_, err := writeDiff(source, int64(blockSize), dirty, diff)
 
 	// Verify that the error from Write is propagated
 	assert.Error(t, err)
@@ -171,7 +171,7 @@ func TestCreateDiff_LargeIndex(t *testing.T) {
 	dirty.Set(largeIndex)
 
 	diff := bytes.NewBuffer(nil)
-	m, err := WriteDiff(largeSource, int64(blockSize), dirty, diff)
+	m, err := writeDiff(largeSource, int64(blockSize), dirty, diff)
 	assert.NoError(t, err)
 
 	// Verify the large index is still marked as dirty
