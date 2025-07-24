@@ -1,0 +1,9 @@
+#  go run github.com/vektra/mockery/v3@v3.5.0
+
+packages:
+  github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem/filesystemconnect:
+    interfaces:
+      FilesystemHandler:
+        config:
+          dir: packages/envd/internal/services/legacy
+          pkgname: legacy
