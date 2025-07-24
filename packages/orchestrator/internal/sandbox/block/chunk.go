@@ -106,12 +106,10 @@ func (c *Chunker) Slice(off, length int64) ([]byte, error) {
 
 	b, cacheErr := c.cache.Slice(off, length)
 	if cacheErr != nil {
-		// todo: metric: memory fetched from local, failure
 		c.metrics.EndSliceFailure(c.ctx, timer, metrics.PullTypeLocal, metrics.ReadAgainFailure)
 		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
-	// todo: metric: memory fetched from remote, success
 	c.metrics.EndSliceSuccess(c.ctx, timer, metrics.PullTypeRemote)
 	return b, nil
 }
@@ -146,7 +144,6 @@ func (c *Chunker) fetchToCache(off, length int64) error {
 
 				b := make([]byte, ChunkSize)
 
-				// this is slow
 				fetchSW := c.metrics.BeginChunkFetch()
 				_, err := c.base.ReadAt(b, fetchOff)
 				if err != nil && !errors.Is(err, io.EOF) {
@@ -155,7 +152,6 @@ func (c *Chunker) fetchToCache(off, length int64) error {
 				}
 				c.metrics.EndChunkFetchSuccess(c.ctx, fetchSW)
 
-				// this is fast
 				writeSW := c.metrics.BeginChunkWrite()
 				_, cacheErr := c.cache.WriteAtWithoutLock(b, fetchOff)
 				if cacheErr != nil {
