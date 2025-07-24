@@ -22,6 +22,7 @@ import (
 func (tm *TemplateManager) CreateTemplate(
 	t trace.Tracer,
 	ctx context.Context,
+	teamID uuid.UUID,
 	templateID string,
 	buildID uuid.UUID,
 	kernelVersion,
@@ -102,6 +103,7 @@ func (tm *TemplateManager) CreateTemplate(
 				Force:              force,
 				Steps:              convertTemplateSteps(steps),
 			},
+			TeamID: teamID.String(),
 		},
 	)
 

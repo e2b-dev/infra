@@ -118,6 +118,8 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 	ctx, childSpan := b.tracer.Start(ctx, "build")
 	defer childSpan.End()
 
+	cacheScope := template.TeamID
+
 	// Validate template, update force layers if needed
 	template = forceSteps(template)
 
@@ -161,7 +163,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		return nil, fmt.Errorf("error getting base hash: %w", err)
 	}
 
-	lastCached, baseMetadata, err := b.setupBase(ctx, finalMetadata, template, lastHash, isOldBuild)
+	lastCached, baseMetadata, err := b.setupBase(ctx, cacheScope, finalMetadata, template, lastHash, isOldBuild)
 	if err != nil {
 		return nil, fmt.Errorf("error setting up build: %w", err)
 	}
@@ -323,7 +325,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			b.buildStorage,
 			b.templateCache,
 			sourceSbx,
-			finalMetadata.TemplateID,
+			cacheScope,
 			lastHash,
 			baseMetadata,
 		)
@@ -356,7 +358,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		}
 		if !force {
 			// Fetch stable uuid from the step hash
-			m, err := layerMetaFromHash(ctx, b.buildStorage, finalMetadata.TemplateID, lastHash)
+			m, err := layerMetaFromHash(ctx, b.buildStorage, cacheScope, lastHash)
 			if err != nil {
 				b.logger.Info("layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", lastHash), zap.String("step", step.Type))
 			} else {
@@ -390,7 +392,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 					HugePages:   template.HugePages,
 					EnvdVersion: envdVersion,
 				},
-				finalMetadata.TemplateID,
+				cacheScope,
 				lastHash,
 				sourceMetadata,
 				stepMetadata.Template,
@@ -399,7 +401,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 				func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error) {
 					postProcessor.Debug(fmt.Sprintf("Running action in: %s/%s", sourceMetadata.Template.TemplateID, sourceMetadata.Template.BuildID))
 
-					meta, err := b.applyCommand(ctx, postProcessor, finalMetadata.TemplateID, sbx, prefix, step, sourceMetadata.Metadata)
+					meta, err := b.applyCommand(ctx, postProcessor, cacheScope, sbx, prefix, step, sourceMetadata.Metadata)
 					if err != nil {
 						return sandboxtools.CommandMetadata{}, fmt.Errorf("error processing layer: %w", err)
 					}
@@ -451,7 +453,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			HugePages:   template.HugePages,
 			EnvdVersion: envdVersion,
 		},
-		finalMetadata.TemplateID,
+		cacheScope,
 		lastHash,
 		sourceMetadata,
 		finalMetadata,
@@ -538,6 +540,7 @@ func forceSteps(template config.TemplateConfig) config.TemplateConfig {
 
 func (b *Builder) setupBase(
 	ctx context.Context,
+	cacheScope string,
 	finalMetadata storage.TemplateFiles,
 	template config.TemplateConfig,
 	hash string,
@@ -556,7 +559,7 @@ func (b *Builder) setupBase(
 	}
 
 	var baseMetadata LayerMetadata
-	bm, err := layerMetaFromHash(ctx, b.buildStorage, finalMetadata.TemplateID, hash)
+	bm, err := layerMetaFromHash(ctx, b.buildStorage, cacheScope, hash)
 	if err != nil {
 		b.logger.Info("base layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
 		baseMetadata = LayerMetadata{

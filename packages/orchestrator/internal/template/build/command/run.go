@@ -21,7 +21,6 @@ func (r *Run) Execute(
 	postProcessor *writer.PostProcessor,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
-	templateID string,
 	prefix string,
 	step *templatemanager.TemplateStep,
 	cmdMetadata sandboxtools.CommandMetadata,

@@ -15,7 +15,14 @@ func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanag
 	_, childSpan := s.tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
-	path := layerstorage.GetLayerFilesCachePath(in.TemplateID, in.Hash)
+	teamID := in.TeamID
+	if teamID == "" {
+		// For backward compatibility, if teamID is not provided, use the TemplateID as teamID
+		// The TeamID is used now only for namespacing the caches
+		teamID = in.TemplateID
+	}
+
+	path := layerstorage.GetLayerFilesCachePath(teamID, in.Hash)
 	obj, err := s.buildStorage.OpenObject(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open layer files cache: %w", err)

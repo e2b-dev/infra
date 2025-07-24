@@ -8,6 +8,9 @@ import (
 const InstanceBuildPrefix = "b"
 
 type TemplateConfig struct {
+	// TeamID is the ID of the team that owns the template.
+	TeamID string
+
 	// Command to run when building the template.
 	StartCmd string
 

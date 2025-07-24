@@ -9,6 +9,7 @@ option go_package = "https://github.com/e2b-dev/infra/template-manager";
 message InitLayerFileUploadRequest {
   string templateID = 1;
   string hash = 2;
+  string teamID = 3;
 }
 
 message InitLayerFileUploadResponse{
@@ -46,6 +47,7 @@ message TemplateConfig {
 
 message TemplateCreateRequest {
   TemplateConfig template = 1;
+  string teamID = 2;
 }
 
 enum LogLevel {
