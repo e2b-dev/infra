@@ -110,7 +110,7 @@ func (n *Node) setStatus(status api.NodeStatus) {
 func (n *Node) setMetadata(i *orchestratorinfo.ServiceInfoResponse, nodeID string, serviceInstanceID string) {
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
-	n.meta = getNodeMetadata(i, nodeID, serviceInstanceID)
+	n.meta = getNodeMetadata(i, nodeID)
 }
 
 func (n *Node) metadata() nodeMetadata {
@@ -327,11 +327,11 @@ func (n *Node) GetSandboxDeleteCtx(ctx context.Context, sandboxID string, execut
 	return metadata.NewOutgoingContext(ctx, metadata.Join(n.clientMd, md))
 }
 
-func getNodeMetadata(n *orchestratorinfo.ServiceInfoResponse, orchestratorID string, serviceInstanceID string) nodeMetadata {
+func getNodeMetadata(n *orchestratorinfo.ServiceInfoResponse, orchestratorID string) nodeMetadata {
 	if n == nil {
 		return nodeMetadata{
 			orchestratorID:    orchestratorID,
-			serviceInstanceID: serviceInstanceID,
+			serviceInstanceID: "unknown",
 
 			commit:  "unknown",
 			version: "unknown",
