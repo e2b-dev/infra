@@ -49,11 +49,13 @@ runs:
         CLICKHOUSE_USERNAME: "e2b"
         CLICKHOUSE_PASSWORD: "clickity-clicky-click"
         CLICKHOUSE_PORT: "9000"
+        CLICKHOUSE_DATABASE: "default"
       run: |
-        echo "TESTS_CLICKHOUSE_USERNAME=${CLICKHOUSE_USERNAME}" >> .env.test
-        echo "TESTS_CLICKHOUSE_PORT=${CLICKHOUSE_PORT}" >> .env.test
-        echo "TESTS_CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}" >> .env.test
-        echo "CLICKHOUSE_CONNECTION_STRING=clickhouse://${CLICKHOUSE_USERNAME}:${CLICKHOUSE_PASSWORD}@$localhost:${CLICKHOUSE_PORT}/default" >> .env.test
+        echo "CLICKHOUSE_USERNAME=${CLICKHOUSE_USERNAME}" >> .env.test
+        echo "CLICKHOUSE_PORT=${CLICKHOUSE_PORT}" >> .env.test
+        echo "CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}" >> .env.test
+        echo "CLICKHOUSE_DATABASE=${CLICKHOUSE_DATABASE}" >> .env.test
+        echo "CLICKHOUSE_CONNECTION_STRING=clickhouse://${CLICKHOUSE_USERNAME}:${CLICKHOUSE_PASSWORD}@$localhost:${CLICKHOUSE_PORT}/${CLICKHOUSE_DATABASE}" >> .env.test
 
         make -C packages/clickhouse run &
         while [ "$(docker inspect -f '{{.State.Health.Status}}' clickhouse 2>/dev/null)" != "healthy" ]; do echo "Waiting for Clickhouse to be healthy..."; sleep 2; done
@@ -77,8 +79,8 @@ runs:
         mkdir -p ~/logs
 
         # Start otel-collector
-        bash ./scripts/start-service.sh "OtelCollector" tests/integration run-otel-collector ~/logs/otel-collector.log http://localhost:13133/healthz
-        
+        bash ./scripts/start-service.sh "OtelCollector" packages/otel-collector run ~/logs/otel-collector.log http://localhost:13133/healthz
+
         # Start orchestrator
         bash ./scripts/start-service.sh "Orchestrator" packages/orchestrator run-debug ~/logs/orchestrator.log http://localhost:5008/health
 

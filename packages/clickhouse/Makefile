@@ -31,14 +31,14 @@ connect-clickhouse:
 .PHONY: run
 run:
 	# Fill in the variables in the config file
-	PASSWORD="$(TESTS_CLICKHOUSE_PASSWORD)" \
- 	USERNAME="$(TESTS_CLICKHOUSE_USERNAME)" \
- 	PORT="$(TESTS_CLICKHOUSE_PORT)" \
+	PASSWORD="$(CLICKHOUSE_PASSWORD)" \
+ 	USERNAME="$(CLICKHOUSE_USERNAME)" \
+ 	PORT="$(CLICKHOUSE_PORT)" \
 	envsubst < ./local/config.tpl.xml > "./local/config.xml"
 
 	# Fill in the variables in the users file
-	PASSWORD="$(TESTS_CLICKHOUSE_PASSWORD)" \
-	USERNAME="$(TESTS_CLICKHOUSE_USERNAME)" \
+	PASSWORD="$(CLICKHOUSE_PASSWORD)" \
+	USERNAME="$(CLICKHOUSE_USERNAME)" \
 	envsubst < ./local/users.tpl.xml > "./local/users.xml"
 
 	chmod 644 ./local/config.xml

@@ -5,5 +5,3 @@ bin
 seed.sql
 
 test-results.*
-
-generated-configs/

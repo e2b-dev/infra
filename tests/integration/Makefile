@@ -5,8 +5,6 @@ openapi_api := ../../spec/openapi.yml
 openapi_envd := ../../packages/envd/spec/envd.yaml
 codegen := go tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
-# Docker bridge network
-TESTS_CLICKHOUSE_HOST ?= clickhouse
 
 .PHONY: generate
 generate:
@@ -64,23 +62,3 @@ connect-orchestrator:
 	INSTANCE_ID=$$(echo "$$INSTANCE_INFO" | awk '{print $$1}') && \
 	INSTANCE_ZONE=$$(echo "$$INSTANCE_INFO" | awk '{print $$2}') && \
 	gcloud compute ssh "$$INSTANCE_ID" --project=$(GCP_PROJECT_ID) --zone="$$INSTANCE_ZONE" -- -NL 5008:localhost:5008 -o PermitLocalCommand=yes -o LocalCommand="echo 'SSH tunnel established'"
-
-.PHONY: run-otel-collector
-run-otel-collector:
-	mkdir -p generated-configs
-	# Fill in the variables in the config file
-	CLICKHOUSE_PASSWORD="$(TESTS_CLICKHOUSE_PASSWORD)" \
-	CLICKHOUSE_HOST="$(TESTS_CLICKHOUSE_HOST)" \
-	CLICKHOUSE_USERNAME=$(TESTS_CLICKHOUSE_USERNAME) \
-	CLICKHOUSE_PORT=$(TESTS_CLICKHOUSE_PORT) \
-	envsubst < ./configs/otel-collector.tpl.yaml > "generated-configs/otel-collector.yaml"
-	chmod 644 ./generated-configs/otel-collector.yaml
-
-	docker network create e2b || true
-	docker run --rm --name otel-collector \
-		--network e2b \
-		-p 4317:4317 \
-		-p 13133:13133 \
-		-v ./generated-configs/otel-collector.yaml:/etc/otel-collector-config.yaml \
-		otel/opentelemetry-collector-contrib:0.130.0 \
-		--config /etc/otel-collector-config.yaml

@@ -29,7 +29,7 @@ func TestSandboxListMetrics(t *testing.T) {
 
 	require.NotNil(t, response.JSON200)
 	require.NotNil(t, response.JSON200.Sandboxes)
-	require.Equal(t, 2, len(response.JSON200.Sandboxes), "Expected at least one metric in the response")
+	require.Equal(t, 2, len(response.JSON200.Sandboxes), "Expected two metrics in the response")
 	assert.Contains(t, response.JSON200.Sandboxes, sbx1.SandboxID, "Expected sandbox metrics to include the created sandbox")
 	assert.Contains(t, response.JSON200.Sandboxes, sbx2.SandboxID, "Expected sandbox metrics to include the second created sandbox")
 	for _, sbx := range response.JSON200.Sandboxes {

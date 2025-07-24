@@ -268,7 +268,7 @@ resource "nomad_job" "otel_collector" {
 
     otel_collector_grpc_port = var.otel_collector_grpc_port
 
-    otel_collector_config = templatefile("${path.module}/configs/otel-collector.yaml", {
+    otel_collector_config = templatefile("${path.module}/../otel-collector/otel-collector.yaml", {
       grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
       grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
       grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
