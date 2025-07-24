@@ -80,6 +80,12 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		buildContext, cancelBuildContext := context.WithCancel(context.Background())
 		defer cancelBuildContext()
 
+		defer func() {
+			if r := recover(); r != nil {
+				zap.L().Error("recovered from panic in template build", zap.Any("panic", r))
+			}
+		}()
+
 		buildContext, buildSpan := s.tracer.Start(
 			trace.ContextWithSpanContext(buildContext, childSpan.SpanContext()),
 			"template-background-build",

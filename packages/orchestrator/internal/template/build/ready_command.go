@@ -46,7 +46,7 @@ func (b *Builder) runReadyCommand(
 
 	// Start the ready check
 	for {
-		err := sandboxtools.RunCommand(
+		err := sandboxtools.RunCommandWithLogger(
 			ctx,
 			b.tracer,
 			b.proxy,

@@ -1,4 +1,4 @@
-package build
+package layerstorage
 
 import (
 	"path"
@@ -12,6 +12,6 @@ func GetLayerFilesCachePath(templateID string, hash string) string {
 	return buildStoragePath(templateID, "files", hash+".tar")
 }
 
-func hashToPath(templateID, hash string) string {
+func HashToPath(templateID, hash string) string {
 	return buildStoragePath(templateID, "index", hash)
 }

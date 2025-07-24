@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -32,12 +33,12 @@ func (b *Builder) buildLayer(
 	sourceSbxConfig *orchestrator.SandboxConfig,
 	finalTemplateID string,
 	hash string,
-	sourceMeta storage.TemplateFiles,
-	exportMeta storage.TemplateFiles,
+	sourceMeta LayerMetadata,
+	exportTemplate storage.TemplateFiles,
 	resumeSandbox bool,
 	allowInternet bool,
-	fn func(ctx context.Context, sbx *sandbox.Sandbox) error,
-) error {
+	fn func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error),
+) (LayerMetadata, error) {
 	ctx, childSpan := b.tracer.Start(ctx, "run-in-sandbox")
 	defer childSpan.End()
 
@@ -46,13 +47,13 @@ func (b *Builder) buildLayer(
 	var err error
 
 	localTemplate, err := b.templateCache.GetTemplate(
-		sourceMeta.TemplateID,
-		sourceMeta.BuildID,
-		sourceMeta.KernelVersion,
-		sourceMeta.FirecrackerVersion,
+		sourceMeta.Template.TemplateID,
+		sourceMeta.Template.BuildID,
+		sourceMeta.Template.KernelVersion,
+		sourceMeta.Template.FirecrackerVersion,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to get template snapshot data: %w", err)
+		return LayerMetadata{}, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
 
 	if resumeSandbox {
@@ -60,10 +61,10 @@ func (b *Builder) buildLayer(
 			SandboxId:   config.InstanceBuildPrefix + id.Generate(),
 			ExecutionId: uuid.NewString(),
 
-			TemplateId:         sourceMeta.TemplateID,
-			BuildId:            sourceMeta.BuildID,
-			KernelVersion:      sourceMeta.KernelVersion,
-			FirecrackerVersion: sourceMeta.FirecrackerVersion,
+			TemplateId:         sourceMeta.Template.TemplateID,
+			BuildId:            sourceMeta.Template.BuildID,
+			KernelVersion:      sourceMeta.Template.KernelVersion,
+			FirecrackerVersion: sourceMeta.Template.FirecrackerVersion,
 
 			BaseTemplateId: sourceSbxConfig.BaseTemplateId,
 
@@ -89,7 +90,7 @@ func (b *Builder) buildLayer(
 		var oldMemfile block.ReadonlyDevice
 		oldMemfile, err = localTemplate.Memfile()
 		if err != nil {
-			return fmt.Errorf("error getting memfile from local template: %w", err)
+			return LayerMetadata{}, fmt.Errorf("error getting memfile from local template: %w", err)
 		}
 
 		// Create new memfile with the size of the sandbox RAM, this updates the underlying memfile.
@@ -98,26 +99,26 @@ func (b *Builder) buildLayer(
 		memfile, err = block.NewEmpty(
 			sourceSbxConfig.RamMb<<constants.ToMBShift,
 			oldMemfile.BlockSize(),
-			uuid.MustParse(sourceMeta.BuildID),
+			uuid.MustParse(sourceMeta.Template.BuildID),
 		)
 		if err != nil {
-			return fmt.Errorf("error creating memfile: %w", err)
+			return LayerMetadata{}, fmt.Errorf("error creating memfile: %w", err)
 		}
 		err = localTemplate.ReplaceMemfile(memfile)
 		if err != nil {
-			return fmt.Errorf("error setting memfile for local template: %w", err)
+			return LayerMetadata{}, fmt.Errorf("error setting memfile for local template: %w", err)
 		}
 
 		sbxConfig := &orchestrator.SandboxConfig{
 			SandboxId:   config.InstanceBuildPrefix + id.Generate(),
 			ExecutionId: uuid.NewString(),
 
-			TemplateId:         exportMeta.TemplateID,
-			BuildId:            exportMeta.BuildID,
-			KernelVersion:      exportMeta.KernelVersion,
-			FirecrackerVersion: exportMeta.FirecrackerVersion,
+			TemplateId:         exportTemplate.TemplateID,
+			BuildId:            exportTemplate.BuildID,
+			KernelVersion:      exportTemplate.KernelVersion,
+			FirecrackerVersion: exportTemplate.FirecrackerVersion,
 
-			BaseTemplateId: exportMeta.TemplateID,
+			BaseTemplateId: exportTemplate.TemplateID,
 
 			HugePages:   sourceSbxConfig.HugePages,
 			EnvdVersion: sourceSbxConfig.EnvdVersion,
@@ -148,7 +149,7 @@ func (b *Builder) buildLayer(
 		}
 	}()
 	if err != nil {
-		return fmt.Errorf("error resuming sandbox: %w", err)
+		return LayerMetadata{}, fmt.Errorf("error resuming sandbox: %w", err)
 	}
 	if !resumeSandbox {
 		err = sbx.WaitForEnvd(
@@ -157,7 +158,7 @@ func (b *Builder) buildLayer(
 			waitEnvdTimeout,
 		)
 		if err != nil {
-			return fmt.Errorf("failed to wait for sandbox start: %w", err)
+			return LayerMetadata{}, fmt.Errorf("failed to wait for sandbox start: %w", err)
 		}
 	}
 
@@ -168,11 +169,15 @@ func (b *Builder) buildLayer(
 		b.proxy.RemoveFromPool(sbx.Metadata.Config.ExecutionId)
 	}()
 
-	err = fn(ctx, sbx)
+	meta, err := fn(ctx, sbx)
 	if err != nil {
-		return fmt.Errorf("error running action in sandbox: %w", err)
+		return LayerMetadata{}, fmt.Errorf("error running action in sandbox: %w", err)
 	}
 
+	exportMeta := LayerMetadata{
+		Template: exportTemplate,
+		Metadata: meta,
+	}
 	err = pauseAndUpload(
 		ctx,
 		b.tracer,
@@ -187,10 +192,10 @@ func (b *Builder) buildLayer(
 		exportMeta,
 	)
 	if err != nil {
-		return fmt.Errorf("error pausing and uploading template: %w", err)
+		return LayerMetadata{}, fmt.Errorf("error pausing and uploading template: %w", err)
 	}
 
-	return nil
+	return exportMeta, nil
 }
 
 func pauseAndUpload(
@@ -204,14 +209,14 @@ func pauseAndUpload(
 	sbx *sandbox.Sandbox,
 	finalTemplateID string,
 	hash string,
-	template storage.TemplateFiles,
+	layerMeta LayerMetadata,
 ) error {
 	ctx, childSpan := tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
 
-	postProcessor.Debug(fmt.Sprintf("Saving layer: %s/%s", template.TemplateID, template.BuildID))
+	postProcessor.Debug(fmt.Sprintf("Saving layer: %s/%s", layerMeta.Template.TemplateID, layerMeta.Template.BuildID))
 
-	cacheFiles, err := template.CacheFiles()
+	cacheFiles, err := layerMeta.Template.CacheFiles()
 	if err != nil {
 		return fmt.Errorf("error creating template files: %w", err)
 	}
@@ -252,7 +257,7 @@ func pauseAndUpload(
 			return fmt.Errorf("error uploading snapshot: %w", err)
 		}
 
-		err = saveTemplateMeta(ctx, buildStorage, finalTemplateID, hash, cacheFiles.TemplateFiles)
+		err = saveLayerMeta(ctx, buildStorage, finalTemplateID, hash, layerMeta)
 		if err != nil {
 			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
 		}
