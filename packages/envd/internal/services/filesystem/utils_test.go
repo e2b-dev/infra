@@ -25,19 +25,8 @@ func TestGetEntryType(t *testing.T) {
 	testDir := filepath.Join(tempDir, "testdir")
 	require.NoError(t, os.MkdirAll(testDir, 0o755))
 
-	symlinkToFile := filepath.Join(tempDir, "symlink_to_file")
-	require.NoError(t, os.Symlink(regularFile, symlinkToFile))
-
-	symlinkToDir := filepath.Join(tempDir, "symlink_to_dir")
-	require.NoError(t, os.Symlink(testDir, symlinkToDir))
-
-	// Create broken symlink
-	brokenSymlink := filepath.Join(tempDir, "broken_symlink")
-	require.NoError(t, os.Symlink("/nonexistent/path", brokenSymlink))
-
-	// Create cyclic symlink
-	cyclicSymlink := filepath.Join(tempDir, "cyclic_symlink")
-	require.NoError(t, os.Symlink(cyclicSymlink, cyclicSymlink))
+	symlink := filepath.Join(tempDir, "symlink")
+	require.NoError(t, os.Symlink(regularFile, symlink))
 
 	tests := []struct {
 		name     string
@@ -56,22 +45,7 @@ func TestGetEntryType(t *testing.T) {
 		},
 		{
 			name:     "symlink to file",
-			path:     symlinkToFile,
-			expected: rpc.FileType_FILE_TYPE_FILE,
-		},
-		{
-			name:     "symlink to directory",
-			path:     symlinkToDir,
-			expected: rpc.FileType_FILE_TYPE_DIRECTORY,
-		},
-		{
-			name:     "broken symlink",
-			path:     brokenSymlink,
-			expected: rpc.FileType_FILE_TYPE_UNSPECIFIED,
-		},
-		{
-			name:     "cyclic symlink",
-			path:     cyclicSymlink,
+			path:     symlink,
 			expected: rpc.FileType_FILE_TYPE_UNSPECIFIED,
 		},
 	}
@@ -81,7 +55,7 @@ func TestGetEntryType(t *testing.T) {
 			info, err := os.Lstat(tt.path)
 			require.NoError(t, err)
 
-			result := getEntryType(info.Mode(), tt.path)
+			result := getEntryType(info.Mode())
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -173,7 +147,7 @@ func TestEntryInfoFromFileInfo_Symlink(t *testing.T) {
 	// Canonicalize the expected target path to handle macOS /var → /private/var symlink
 	expectedTarget, err := filepath.EvalSymlinks(symlinkPath)
 	require.NoError(t, err)
-	assert.Equal(t, expectedTarget, result.SymlinkTarget)
+	assert.Equal(t, &expectedTarget, result.SymlinkTarget)
 }
 
 func TestEntryInfoFromFileInfo_BrokenSymlink(t *testing.T) {
@@ -296,5 +270,5 @@ func TestEntryInfoFromFileInfo_SymlinkChain(t *testing.T) {
 	// Canonicalize the expected target path to handle macOS symlink indirections
 	expectedTarget, err := filepath.EvalSymlinks(link1)
 	require.NoError(t, err)
-	assert.Equal(t, expectedTarget, result.SymlinkTarget)
+	assert.Equal(t, &expectedTarget, result.SymlinkTarget)
 }

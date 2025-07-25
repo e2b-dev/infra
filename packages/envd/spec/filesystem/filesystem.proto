@@ -61,7 +61,7 @@ message EntryInfo {
     string group = 8;
     google.protobuf.Timestamp modified_time = 9;
     // If the entry is a symlink, this field contains the target of the symlink.
-    string symlink_target = 10;
+    optional string symlink_target = 10;
 }
 
 enum FileType {

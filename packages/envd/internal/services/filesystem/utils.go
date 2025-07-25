@@ -13,21 +13,7 @@ import (
 
 // getEntryType determines the type of file entry based on its mode and path.
 // If the file is a symlink, it follows the symlink to determine the actual type.
-func getEntryType(mode os.FileMode, path string) rpc.FileType {
-	if mode&os.ModeSymlink != 0 {
-		targetPath, err := followSymlink(path)
-		if err != nil {
-			return rpc.FileType_FILE_TYPE_UNSPECIFIED
-		}
-
-		info, err := os.Lstat(targetPath)
-		if err != nil {
-			return rpc.FileType_FILE_TYPE_UNSPECIFIED
-		}
-
-		mode = info.Mode()
-	}
-
+func getEntryType(mode os.FileMode) rpc.FileType {
 	switch {
 	case mode.IsRegular():
 		return rpc.FileType_FILE_TYPE_FILE
@@ -47,17 +33,15 @@ func getFileOwnership(fileInfo os.FileInfo) (owner, group string) {
 	}
 
 	// Look up username
-	if u, err := user.LookupId(fmt.Sprintf("%d", sys.Uid)); err == nil {
+	owner = fmt.Sprintf("%d", sys.Uid)
+	if u, err := user.LookupId(owner); err == nil {
 		owner = u.Username
-	} else {
-		owner = fmt.Sprintf("%d", sys.Uid)
 	}
 
 	// Look up group name
+	group = fmt.Sprintf("%d", sys.Gid)
 	if g, err := user.LookupGroupId(fmt.Sprintf("%d", sys.Gid)); err == nil {
 		group = g.Name
-	} else {
-		group = fmt.Sprintf("%d", sys.Gid)
 	}
 
 	return owner, group
@@ -67,15 +51,31 @@ func entryInfoFromFileInfo(fileInfo os.FileInfo, path string) *rpc.EntryInfo {
 	owner, group := getFileOwnership(fileInfo)
 	fileMode := fileInfo.Mode()
 
-	var symlinkTarget string
+	var symlinkTarget *string
 	if fileMode&os.ModeSymlink != 0 {
 		// If we can't resolve the symlink target, we won't set the target
-		symlinkTarget, _ = followSymlink(path)
+		target, err := followSymlink(path)
+		if err == nil {
+			symlinkTarget = &target
+		}
+	}
+
+	var entryType rpc.FileType
+	if symlinkTarget == nil {
+		entryType = getEntryType(fileMode)
+	} else {
+		// If it's a symlink, we need to determine the type of the target
+		targetInfo, err := os.Stat(*symlinkTarget)
+		if err != nil {
+			entryType = rpc.FileType_FILE_TYPE_UNSPECIFIED
+		} else {
+			entryType = getEntryType(targetInfo.Mode())
+		}
 	}
 
 	return &rpc.EntryInfo{
 		Name:          fileInfo.Name(),
-		Type:          getEntryType(fileMode, path),
+		Type:          entryType,
 		Path:          path,
 		Size:          fileInfo.Size(),
 		Mode:          uint32(fileMode.Perm()),
