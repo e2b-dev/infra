@@ -47,8 +47,8 @@ test/%:
 	go test -v ./internal/main_test.go -count=1 && \
 	TEST_PATH="./internal/tests/$(subst test/,,$@)"; \
 	case "$${TEST_PATH}" in \
-		*.go) go tool gotestsum --rerun-fails=2 --packages="$$TEST_PATH" --format standard-verbose --junitfile=test-results.xml -- -count=1 ;; \
-		*) go tool gotestsum --rerun-fails=2 --packages="$$TEST_PATH/..." --format standard-verbose --junitfile=test-results.xml -- -count=1 ;; \
+		*.go) go tool gotestsum --rerun-fails=2 --packages="$$TEST_PATH" --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=4 ;; \
+		*) go tool gotestsum --rerun-fails=2 --packages="$$TEST_PATH/..." --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=4 ;; \
 	esac
 
 .PHONY: connect-orchestrator
