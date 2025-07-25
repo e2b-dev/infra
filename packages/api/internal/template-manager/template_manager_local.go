@@ -41,8 +41,7 @@ func (tm *TemplateManager) localClientHealthSync(ctx context.Context) {
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
 		zap.L().Error("Failed to get health status of template manager", zap.Error(err))
-		tm.setLocalClientStatus(orchestratorinfo.ServiceInfoStatus_OrchestratorUnhealthy)
-
+		tm.setLocalClientStatus(orchestratorinfo.ServiceInfoStatus_Unhealthy)
 		return
 	}
 

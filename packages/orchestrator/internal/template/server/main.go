@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
@@ -37,8 +38,9 @@ type ServerStore struct {
 	artifactsregistry artifactsregistry.ArtifactsRegistry
 	templateStorage   storage.StorageProvider
 	buildStorage      storage.StorageProvider
-	healthStatus      templatemanager.HealthState
-	wg                *sync.WaitGroup // wait group for running builds
+
+	wg   *sync.WaitGroup // wait group for running builds
+	info *service.ServiceInfo
 }
 
 func New(
@@ -55,6 +57,7 @@ func New(
 	templateCache *sbxtemplate.Cache,
 	templatePersistence storage.StorageProvider,
 	limiter *limit.Limiter,
+	info *service.ServiceInfo,
 ) (*ServerStore, error) {
 	logger.Info("Initializing template manager")
 
@@ -91,7 +94,7 @@ func New(
 		artifactsregistry: artifactsregistry,
 		templateStorage:   templatePersistence,
 		buildStorage:      buildPersistance,
-		healthStatus:      templatemanager.HealthState_Healthy,
+		info:              info,
 		wg:                &sync.WaitGroup{},
 	}
 
@@ -103,25 +106,22 @@ func New(
 func (s *ServerStore) Close(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
-		return errors.New("context canceled during server graceful shutdown")
+		return errors.New("force exit, not waiting for builds to finish")
 	default:
-		// no new jobs should be started
-		s.logger.Info("marking service as draining")
-		s.healthStatus = templatemanager.HealthState_Draining
-		// wait for registering the node as draining
+		// Wait for draining state to propagate to all consumers
 		if !env.IsLocal() {
-			time.Sleep(5 * time.Second)
+			time.Sleep(15 * time.Second)
 		}
 
-		// wait for all builds to finish
-		s.logger.Info("waiting for all jobs to finish")
+		s.logger.Info("Waiting for all build jobs to finish")
 		s.wg.Wait()
 
 		if !env.IsLocal() {
-			// give some time so all connected services can check build status
-			s.logger.Info("waiting before shutting down server")
+			s.logger.Info("Waiting for consumers to check build status")
 			time.Sleep(15 * time.Second)
 		}
+
+		s.logger.Info("Template build queue cleaned")
 		return nil
 	}
 }

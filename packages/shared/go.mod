@@ -24,6 +24,8 @@ require (
 	github.com/google/go-containerregistry v0.20.6
 	github.com/google/uuid v1.6.0
 	github.com/googleapis/gax-go/v2 v2.14.0
+	// https://github.com/grafana/loki/issues/2826. This is the equivalent of the main branch at https://github.com/grafana/loki/commit/7b805ba7c84366e11e8571c9e8c422739bb18684 (v2.9.15)
+	github.com/grafana/loki v0.0.0-20250609195516-7b805ba7c843
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0
 	github.com/launchdarkly/go-sdk-common/v3 v3.1.0
 	github.com/launchdarkly/go-server-sdk/v7 v7.10.0
@@ -52,9 +54,6 @@ require (
 	gotest.tools v2.2.0+incompatible
 )
 
-// https://github.com/grafana/loki/issues/2826. This is the equivalent of the main branch at 2023/11/27 (d62d4e37d1f3dba83cf10a1f6db82830794e1c05)
-require github.com/grafana/loki v0.0.0-20231124145642-d62d4e37d1f3
-
 require (
 	ariga.io/atlas v0.15.0 // indirect
 	cel.dev/expr v0.24.0 // indirect
@@ -77,7 +76,6 @@ require (
 	github.com/Masterminds/semver/v3 v3.2.1 // indirect
 	github.com/Masterminds/sprig/v3 v3.2.3 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/OneOfOne/xxhash v1.2.8 // indirect
 	github.com/Workiva/go-datastructures v1.1.0 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137 // indirect
@@ -157,7 +155,6 @@ require (
 	github.com/gogo/googleapis v1.4.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/gogo/status v1.1.1 // indirect
-	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/golang-jwt/jwt/v5 v5.2.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
@@ -173,7 +170,6 @@ require (
 	github.com/grafana/loki/pkg/push v0.0.0-20231124142027-e52380921608 // indirect
 	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd // indirect
 	github.com/gregjones/httpcache v0.0.0-20180305231024-9cad4c3443a7 // indirect
-	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3 // indirect
 	github.com/hashicorp/consul/api v1.30.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
@@ -275,7 +271,6 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	github.com/zclconf/go-cty v1.14.1 // indirect
 	github.com/zeebo/errs v1.4.0 // indirect
-	go.etcd.io/bbolt v1.3.10 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.4 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.4 // indirect
 	go.etcd.io/etcd/client/v3 v3.5.4 // indirect
@@ -309,7 +304,6 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
-	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
 // https://github.com/grafana/loki/issues/2826
@@ -319,10 +313,10 @@ replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.14.5
 replace k8s.io/client-go => k8s.io/client-go v0.28.1
 
 // https://github.com/grafana/loki/issues/2826
+replace k8s.io/api => k8s.io/api v0.28.1
+
+// https://github.com/grafana/loki/issues/2826
 exclude k8s.io/client-go v8.0.0+incompatible
 
 // https://github.com/grafana/loki/issues/2826
 replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.47.2-0.20231010075449-4b9c19fe5510
-
-// https://github.com/grafana/loki/issues/2826
-replace github.com/grafana/loki/pkg/push => github.com/grafana/loki/pkg/push v0.0.0-20231124145642-d62d4e37d1f3

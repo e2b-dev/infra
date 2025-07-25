@@ -18,6 +18,7 @@ import (
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -30,9 +31,15 @@ type sbxInProgress struct {
 }
 
 type nodeMetadata struct {
+	// Orchestrator ID is currently the same as node ID.
 	orchestratorID string
-	commit         string
-	version        string
+
+	// Service instance ID is unique identifier for every orchestrator process, after restart it will change.
+	// In the future, we want to migrate to using this ID instead of node ID for tracking orchestrators-
+	serviceInstanceID string
+
+	commit  string
+	version string
 }
 
 type Node struct {
@@ -288,18 +295,58 @@ func (n *Node) GetClient(ctx context.Context) (*grpclient.GRPCClient, context.Co
 	return n.client, metadata.NewOutgoingContext(ctx, n.clientMd)
 }
 
+func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest) context.Context {
+	// Skip local cluster. It should be okay to send it here, but we don't want to do it until we explicitly support it.
+	if n.ClusterID == uuid.Nil {
+		return metadata.NewOutgoingContext(ctx, n.clientMd)
+	}
+
+	md := edge.SerializeSandboxCatalogCreateEvent(
+		edge.SandboxCatalogCreateEvent{
+			SandboxID:               req.Sandbox.SandboxId,
+			SandboxMaxLengthInHours: req.Sandbox.MaxSandboxLength,
+			SandboxStartTime:        req.StartTime.AsTime(),
+
+			ExecutionID:    req.Sandbox.ExecutionId,
+			OrchestratorID: n.metadata().serviceInstanceID,
+		},
+	)
+
+	return metadata.NewOutgoingContext(ctx, metadata.Join(n.clientMd, md))
+}
+
+func (n *Node) GetSandboxDeleteCtx(ctx context.Context, sandboxID string, executionID string) context.Context {
+	// Skip local cluster. It should be okay to send it here, but we don't want to do it until we explicitly support it.
+	if n.ClusterID == uuid.Nil {
+		return metadata.NewOutgoingContext(ctx, n.clientMd)
+	}
+
+	md := edge.SerializeSandboxCatalogDeleteEvent(
+		edge.SandboxCatalogDeleteEvent{
+			SandboxID:   sandboxID,
+			ExecutionID: executionID,
+		},
+	)
+
+	return metadata.NewOutgoingContext(ctx, metadata.Join(n.clientMd, md))
+}
+
 func getNodeMetadata(n *orchestratorinfo.ServiceInfoResponse, orchestratorID string) nodeMetadata {
 	if n == nil {
 		return nodeMetadata{
-			orchestratorID: orchestratorID,
-			commit:         "unknown",
-			version:        "unknown",
+			orchestratorID:    orchestratorID,
+			serviceInstanceID: "unknown",
+
+			commit:  "unknown",
+			version: "unknown",
 		}
 	}
 
 	return nodeMetadata{
-		orchestratorID: n.NodeId,
-		commit:         n.ServiceCommit,
-		version:        n.ServiceVersion,
+		orchestratorID:    n.NodeId,
+		serviceInstanceID: n.ServiceId,
+
+		commit:  n.ServiceCommit,
+		version: n.ServiceVersion,
 	}
 }

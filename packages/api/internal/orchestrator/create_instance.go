@@ -203,7 +203,7 @@ func (o *Orchestrator) CreateSandbox(
 		})
 
 		client, childCtx := node.GetClient(childCtx)
-		_, err = client.Sandbox.Create(childCtx, sbxRequest)
+		_, err = client.Sandbox.Create(node.GetSandboxCreateCtx(childCtx, sbxRequest), sbxRequest)
 		// The request is done, we will either add it to the cache or remove it from the node
 		if err == nil {
 			// The sandbox was created successfully
@@ -281,13 +281,6 @@ func (o *Orchestrator) CreateSandbox(
 			ClientMsg: "Failed to create sandbox",
 			Err:       fmt.Errorf("error when adding instance to cache: %w", cacheErr),
 		}
-	}
-
-	// we need to inform remote cluster proxy about newly spawned sandbox so it's registered in sandbox traffic proxy
-	err = o.RegisterSandboxInsideClusterCatalog(childCtx, node, startTime, sbxRequest.Sandbox)
-	if err != nil {
-		telemetry.ReportError(ctx, "failed to register sandbox in cluster catalog", err)
-		zap.L().Error("Failed to register sandbox in cluster catalog", logger.WithSandboxID(sbx.SandboxID), zap.Error(err))
 	}
 
 	return &sbx, nil
