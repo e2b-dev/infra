@@ -13,8 +13,8 @@ require (
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-redis/redis/v8 v8.11.5 // indirect
 	github.com/gogo/status v1.1.1
-	// https://github.com/grafana/loki/issues/2826. This is the equivalent of the main branch at 2023/11/27 (d62d4e37d1f3dba83cf10a1f6db82830794e1c05)
-	github.com/grafana/loki v0.0.0-20231124145642-d62d4e37d1f3
+	// https://github.com/grafana/loki/issues/2826. This is the equivalent of the main branch at https://github.com/grafana/loki/commit/7b805ba7c84366e11e8571c9e8c422739bb18684 (v2.9.15)
+	github.com/grafana/loki v0.0.0-20250609195516-7b805ba7c843
 	github.com/hashicorp/nomad/api v0.0.0-20231208134655-099ee06a607c
 	github.com/jellydator/ttlcache/v3 v3.3.1-0.20250207140243-aefc35918359
 	github.com/miekg/dns v1.1.63
@@ -116,7 +116,6 @@ require (
 	github.com/grafana/loki/pkg/push v0.0.0-20231124142027-e52380921608 // indirect
 	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd // indirect
 	github.com/gregjones/httpcache v0.0.0-20180305231024-9cad4c3443a7 // indirect
-	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3 // indirect
 	github.com/hashicorp/consul/api v1.30.0 // indirect
@@ -295,13 +294,13 @@ replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.14.5
 replace k8s.io/client-go => k8s.io/client-go v0.28.1
 
 // https://github.com/grafana/loki/issues/2826
+replace k8s.io/api => k8s.io/api v0.28.1
+
+// https://github.com/grafana/loki/issues/2826
 exclude k8s.io/client-go v8.0.0+incompatible
 
 // https://github.com/grafana/loki/issues/2826
 replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.47.2-0.20231010075449-4b9c19fe5510
-
-// https://github.com/grafana/loki/issues/2826
-replace github.com/grafana/loki/pkg/push => github.com/grafana/loki/pkg/push v0.0.0-20231124145642-d62d4e37d1f3
 
 tool (
 	github.com/air-verse/air
