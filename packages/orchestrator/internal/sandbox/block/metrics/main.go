@@ -10,8 +10,9 @@ import (
 )
 
 type Metrics struct {
-	slices, fetchedChunks metric.Int64Histogram
-	storedChunks          metric.Int64Histogram
+	slices        metric.Int64Histogram
+	fetchedChunks metric.Int64Histogram
+	storedChunks  metric.Int64Histogram
 }
 
 func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
