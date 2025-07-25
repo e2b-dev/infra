@@ -8,8 +8,8 @@ import (
 const InstanceBuildPrefix = "b"
 
 type TemplateConfig struct {
-	// TeamID is the ID of the team that owns the template.
-	TeamID string
+	// CacheScope is the scope of layers and files caches.
+	CacheScope string
 
 	// Command to run when building the template.
 	StartCmd string

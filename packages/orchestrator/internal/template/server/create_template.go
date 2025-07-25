@@ -47,15 +47,14 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		FirecrackerVersion: cfg.FirecrackerVersion,
 	}
 
-	teamID := templateRequest.TeamID
-	if teamID == "" {
-		// For backward compatibility, if teamID is not provided, use the TemplateID as teamID
-		// The TeamID is used now only for namespacing the caches
-		teamID = cfg.TemplateID
+	// default to scope by template ID
+	cacheScope := cfg.TemplateID
+	if templateRequest.CacheScope != nil {
+		cacheScope = *templateRequest.CacheScope
 	}
 
 	template := config.TemplateConfig{
-		TeamID:     teamID,
+		CacheScope: cacheScope,
 		VCpuCount:  int64(cfg.VCpuCount),
 		MemoryMB:   int64(cfg.MemoryMB),
 		StartCmd:   cfg.StartCommand,

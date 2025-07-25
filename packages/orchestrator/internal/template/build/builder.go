@@ -118,7 +118,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 	ctx, childSpan := b.tracer.Start(ctx, "build")
 	defer childSpan.End()
 
-	cacheScope := template.TeamID
+	cacheScope := template.CacheScope
 
 	// Validate template, update force layers if needed
 	template = forceSteps(template)

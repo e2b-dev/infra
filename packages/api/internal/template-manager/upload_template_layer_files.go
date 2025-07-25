@@ -8,12 +8,13 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (tm *TemplateManager) InitLayerFileUpload(ctx context.Context, teamID uuid.UUID, templateID string, hash string) (*template_manager.InitLayerFileUploadResponse, error) {
 	resp, err := tm.grpc.Template.InitLayerFileUpload(
 		ctx, &template_manager.InitLayerFileUploadRequest{
-			TeamID:     teamID.String(),
+			CacheScope: ut.ToPtr(teamID.String()),
 			TemplateID: templateID,
 			Hash:       hash,
 		},
