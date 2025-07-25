@@ -1,5 +1,4 @@
 -- +goose Up
--- +goose StatementBegin
 
 -- 1. Drop old sharding table
 DROP TABLE IF EXISTS metrics_gauge;
@@ -34,10 +33,7 @@ CREATE TABLE metrics_gauge (
 -- 3. Drop the old source table
 DROP TABLE IF EXISTS metrics_gauge_local;
 
--- +goose StatementEnd
-
 -- +goose Down
--- +goose StatementBegin
 
 -- 1. Drop the Null-engine routing table
 DROP TABLE IF EXISTS metrics_gauge;
@@ -82,5 +78,3 @@ PARTITION BY toDate(TimeUnix)
 ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
 TTL toDateTime(TimeUnix) + INTERVAL 7 DAY
 SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
-
--- +goose StatementEnd

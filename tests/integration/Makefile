@@ -5,6 +5,7 @@ openapi_api := ../../spec/openapi.yml
 openapi_envd := ../../packages/envd/spec/envd.yaml
 codegen := go tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
+
 .PHONY: generate
 generate:
 	$(codegen) -old-config-style -generate client --package api $(openapi_api) > internal/api/client.gen.go

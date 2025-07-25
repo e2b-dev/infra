@@ -12,7 +12,7 @@ import (
 type Metrics struct {
 	SandboxID      string    `ch:"sandbox_id"`
 	TeamID         string    `ch:"team_id"`
-	Timestamp      time.Time `ch:"timestamp"`
+	Timestamp      time.Time `ch:"ts"`
 	CPUCount       float64   `ch:"cpu_total"`
 	CPUUsedPercent float64   `ch:"cpu_used"`
 	MemTotal       float64   `ch:"ram_total"`
@@ -29,7 +29,9 @@ SELECT sandbox_id,
        argMaxIf(value, timestamp, metric_name = 'e2b.sandbox.ram.total')  AS ram_total,
        argMaxIf(value, timestamp, metric_name = 'e2b.sandbox.ram.used')   AS ram_used,
        argMaxIf(value, timestamp, metric_name = 'e2b.sandbox.disk.total') AS disk_total,
-       argMaxIf(value, timestamp, metric_name = 'e2b.sandbox.disk.used')  AS disk_used
+       argMaxIf(value, timestamp, metric_name = 'e2b.sandbox.disk.used')  AS disk_used,
+       -- All metrics are recorded at the same time, so we can use max(timestamp) to get the latest one
+       max(timestamp) as ts
 FROM   sandbox_metrics_gauge
 WHERE  sandbox_id IN ?
        AND team_id = ?
@@ -73,20 +75,20 @@ WHERE  sandbox_id = {sandbox_id:String}
 `
 
 const sandboxMetricsSelectQuery = `
-SELECT   toStartOfInterval(s.timestamp, interval {step:UInt32} second) AS timestamp,
-         maxIf(value, metric_name = 'e2b.sandbox.cpu.total')          AS cpu_total,
-         maxIf(value, metric_name = 'e2b.sandbox.cpu.used')           AS cpu_used,
-         maxIf(value, metric_name = 'e2b.sandbox.ram.total')          AS ram_total,
-         maxIf(value, metric_name = 'e2b.sandbox.ram.used')           AS ram_used,
-         maxIf(value, metric_name = 'e2b.sandbox.disk.total')         AS disk_total,
-         maxIf(value, metric_name = 'e2b.sandbox.disk.used')          AS disk_used
+SELECT   toStartOfInterval(timestamp, interval {step:UInt32} second) AS ts,
+         maxIf(value, metric_name = 'e2b.sandbox.cpu.total')         AS cpu_total,
+         maxIf(value, metric_name = 'e2b.sandbox.cpu.used')          AS cpu_used,
+         maxIf(value, metric_name = 'e2b.sandbox.ram.total')         AS ram_total,
+         maxIf(value, metric_name = 'e2b.sandbox.ram.used')          AS ram_used,
+         maxIf(value, metric_name = 'e2b.sandbox.disk.total')        AS disk_total,
+         maxIf(value, metric_name = 'e2b.sandbox.disk.used')         AS disk_used
 FROM     sandbox_metrics_gauge s
 WHERE    sandbox_id = {sandbox_id:String}
 AND      team_id = {team_id:String}
-AND      s.timestamp >= {start_time:DateTime64}
-AND      s.timestamp <= {end_time:DateTime64}
-GROUP BY timestamp
-ORDER BY timestamp;
+AND      timestamp >= {start_time:DateTime64}
+AND      timestamp <= {end_time:DateTime64}
+GROUP BY ts
+ORDER BY ts;
 `
 
 func (c *Client) QuerySandboxTimeRange(ctx context.Context, sandboxID string, teamID string) (time.Time, time.Time, error) {

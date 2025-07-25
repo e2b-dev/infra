@@ -143,19 +143,19 @@ func run(port, proxyPort uint) (success bool) {
 
 	// Setup telemetry
 	var tel *telemetry.Client
-	if env.IsLocal() {
+	if telemetry.OtelCollectorGRPCEndpoint == "" {
 		tel = telemetry.NewNoopClient()
 	} else {
 		var err error
 		tel, err = telemetry.New(ctx, serviceName, commitSHA, clientID)
 		if err != nil {
-			zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
+			zap.L().Fatal("failed to init telemetry", zap.Error(err))
 		}
 	}
 	defer func() {
 		err := tel.Shutdown(ctx)
 		if err != nil {
-			log.Printf("error while shutting down metrics provider: %v", err)
+			log.Printf("error while shutting down telemetry: %v", err)
 			success = false
 		}
 	}()
