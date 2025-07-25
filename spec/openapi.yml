@@ -526,7 +526,13 @@ components:
           $ref: "#/components/schemas/MemoryMB"
 
     TemplateBuildStartV2:
-      required:
+      anyOf:
+        - required: [fromImage]
+        - required: [fromTemplate]
+      not:
+        allOf:
+          - required: [fromImage]
+          - required: [fromTemplate]
       properties:
         fromImage:
           type: string

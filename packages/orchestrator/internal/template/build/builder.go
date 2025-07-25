@@ -123,7 +123,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 	// Validate template, update force layers if needed
 	template = forceSteps(template)
 
-	isOldBuild := template.FromImage == ""
+	isOldBuild := template.FromImage == "" && template.FromTemplate == nil
 
 	postProcessor := writer.NewPostProcessor(ctx, logsWriter, isOldBuild)
 	go postProcessor.Start()
@@ -169,15 +169,21 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 	}
 
 	// Print the base layer information
-	fromImage := template.FromImage
-	if fromImage == "" {
-		tag, err := b.artifactRegistry.GetTag(ctx, finalMetadata.TemplateID, finalMetadata.BuildID)
-		if err != nil {
-			return nil, fmt.Errorf("error getting tag for template: %w", err)
+	var baseSource string
+	if template.FromTemplate != nil {
+		baseSource = "FROM TEMPLATE " + template.FromTemplate.GetAlias()
+	} else {
+		fromImage := template.FromImage
+		if fromImage == "" {
+			tag, err := b.artifactRegistry.GetTag(ctx, finalMetadata.TemplateID, finalMetadata.BuildID)
+			if err != nil {
+				return nil, fmt.Errorf("error getting tag for template: %w", err)
+			}
+			fromImage = tag
 		}
-		fromImage = tag
+		baseSource = "FROM " + fromImage
 	}
-	postProcessor.Info(layerInfo(lastCached, "base", "FROM "+fromImage, lastHash))
+	postProcessor.Info(layerInfo(lastCached, "base", baseSource, lastHash))
 
 	// Build the base layer if not cached
 	if !lastCached {
@@ -414,16 +420,11 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 						return sandboxtools.CommandMetadata{}, fmt.Errorf("error processing layer: %w", err)
 					}
 
-					// Sync FS changes to the FS after execution
-					err = sandboxtools.RunCommand(
+					err = syncChangesToDisk(
 						ctx,
 						b.tracer,
 						b.proxy,
 						sbx.Metadata.Config.SandboxId,
-						"sync",
-						sandboxtools.CommandMetadata{
-							User: "root",
-						},
 					)
 					if err != nil {
 						return sandboxtools.CommandMetadata{}, fmt.Errorf("error running sync command: %w", err)
@@ -571,6 +572,7 @@ func (b *Builder) setupBase(
 	bm, err := layerMetaFromHash(ctx, b.buildStorage, cacheScope, hash)
 	if err != nil {
 		b.logger.Info("base layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
+
 		baseMetadata = LayerMetadata{
 			Template: storage.TemplateFiles{
 				TemplateID:         id.Generate(),
@@ -592,6 +594,19 @@ func (b *Builder) setupBase(
 				BuildID:            uuid.New().String(),
 				KernelVersion:      finalMetadata.KernelVersion,
 				FirecrackerVersion: finalMetadata.FirecrackerVersion,
+			},
+			Metadata: cmdMeta,
+		}
+	}
+
+	// If the template is built from another template, use its metadata always
+	if template.FromTemplate != nil {
+		baseMetadata = LayerMetadata{
+			Template: storage.TemplateFiles{
+				TemplateID:         template.FromTemplate.GetTemplateID(),
+				BuildID:            template.FromTemplate.GetBuildID(),
+				KernelVersion:      template.FromTemplate.GetKernelVersion(),
+				FirecrackerVersion: template.FromTemplate.GetFirecrackerVersion(),
 			},
 			Metadata: cmdMeta,
 		}
@@ -688,6 +703,16 @@ func (b *Builder) postProcessingFn(
 			return sandboxtools.CommandMetadata{}, fmt.Errorf("error running start command: %w", err)
 		}
 
+		err = syncChangesToDisk(
+			ctx,
+			b.tracer,
+			b.proxy,
+			sbx.Metadata.Config.SandboxId,
+		)
+		if err != nil {
+			return sandboxtools.CommandMetadata{}, fmt.Errorf("error running sync command: %w", err)
+		}
+
 		return cmdMeta, nil
 	}
 }
@@ -703,4 +728,25 @@ func layerInfo(
 		cachedPrefix = "CACHED "
 	}
 	return fmt.Sprintf("%s[%s] %s [%s]", cachedPrefix, prefix, text, hash)
+}
+
+// syncChangesToDisk synchronizes filesystem changes to the filesystem
+// This is useful to ensure that all changes made in the sandbox are written to disk
+// to be able to re-create the sandbox without resume.
+func syncChangesToDisk(
+	ctx context.Context,
+	tracer trace.Tracer,
+	proxy *proxy.SandboxProxy,
+	sandboxID string,
+) error {
+	return sandboxtools.RunCommand(
+		ctx,
+		tracer,
+		proxy,
+		sandboxID,
+		"sync",
+		sandboxtools.CommandMetadata{
+			User: "root",
+		},
+	)
 }

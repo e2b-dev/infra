@@ -4,8 +4,11 @@
 package api
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 
+	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -564,7 +567,14 @@ type TemplateBuildStartV2 struct {
 
 	// Steps List of steps to execute in the template build
 	Steps *[]TemplateStep `json:"steps,omitempty"`
+	union json.RawMessage
 }
+
+// TemplateBuildStartV20 defines model for .
+type TemplateBuildStartV20 = interface{}
+
+// TemplateBuildStartV21 defines model for .
+type TemplateBuildStartV21 = interface{}
 
 // TemplateStep Step in the template build process
 type TemplateStep struct {
@@ -731,3 +741,169 @@ type PostV2TemplatesJSONRequestBody = TemplateBuildRequestV2
 
 // PostV2TemplatesTemplateIDBuildsBuildIDJSONRequestBody defines body for PostV2TemplatesTemplateIDBuildsBuildID for application/json ContentType.
 type PostV2TemplatesTemplateIDBuildsBuildIDJSONRequestBody = TemplateBuildStartV2
+
+// AsTemplateBuildStartV20 returns the union data inside the TemplateBuildStartV2 as a TemplateBuildStartV20
+func (t TemplateBuildStartV2) AsTemplateBuildStartV20() (TemplateBuildStartV20, error) {
+	var body TemplateBuildStartV20
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTemplateBuildStartV20 overwrites any union data inside the TemplateBuildStartV2 as the provided TemplateBuildStartV20
+func (t *TemplateBuildStartV2) FromTemplateBuildStartV20(v TemplateBuildStartV20) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTemplateBuildStartV20 performs a merge with any union data inside the TemplateBuildStartV2, using the provided TemplateBuildStartV20
+func (t *TemplateBuildStartV2) MergeTemplateBuildStartV20(v TemplateBuildStartV20) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTemplateBuildStartV21 returns the union data inside the TemplateBuildStartV2 as a TemplateBuildStartV21
+func (t TemplateBuildStartV2) AsTemplateBuildStartV21() (TemplateBuildStartV21, error) {
+	var body TemplateBuildStartV21
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTemplateBuildStartV21 overwrites any union data inside the TemplateBuildStartV2 as the provided TemplateBuildStartV21
+func (t *TemplateBuildStartV2) FromTemplateBuildStartV21(v TemplateBuildStartV21) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTemplateBuildStartV21 performs a merge with any union data inside the TemplateBuildStartV2, using the provided TemplateBuildStartV21
+func (t *TemplateBuildStartV2) MergeTemplateBuildStartV21(v TemplateBuildStartV21) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t TemplateBuildStartV2) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	object := make(map[string]json.RawMessage)
+	if t.union != nil {
+		err = json.Unmarshal(b, &object)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if t.Force != nil {
+		object["force"], err = json.Marshal(t.Force)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'force': %w", err)
+		}
+	}
+
+	if t.FromImage != nil {
+		object["fromImage"], err = json.Marshal(t.FromImage)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'fromImage': %w", err)
+		}
+	}
+
+	if t.FromTemplate != nil {
+		object["fromTemplate"], err = json.Marshal(t.FromTemplate)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'fromTemplate': %w", err)
+		}
+	}
+
+	if t.ReadyCmd != nil {
+		object["readyCmd"], err = json.Marshal(t.ReadyCmd)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'readyCmd': %w", err)
+		}
+	}
+
+	if t.StartCmd != nil {
+		object["startCmd"], err = json.Marshal(t.StartCmd)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'startCmd': %w", err)
+		}
+	}
+
+	if t.Steps != nil {
+		object["steps"], err = json.Marshal(t.Steps)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'steps': %w", err)
+		}
+	}
+	b, err = json.Marshal(object)
+	return b, err
+}
+
+func (t *TemplateBuildStartV2) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	if err != nil {
+		return err
+	}
+	object := make(map[string]json.RawMessage)
+	err = json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["force"]; found {
+		err = json.Unmarshal(raw, &t.Force)
+		if err != nil {
+			return fmt.Errorf("error reading 'force': %w", err)
+		}
+	}
+
+	if raw, found := object["fromImage"]; found {
+		err = json.Unmarshal(raw, &t.FromImage)
+		if err != nil {
+			return fmt.Errorf("error reading 'fromImage': %w", err)
+		}
+	}
+
+	if raw, found := object["fromTemplate"]; found {
+		err = json.Unmarshal(raw, &t.FromTemplate)
+		if err != nil {
+			return fmt.Errorf("error reading 'fromTemplate': %w", err)
+		}
+	}
+
+	if raw, found := object["readyCmd"]; found {
+		err = json.Unmarshal(raw, &t.ReadyCmd)
+		if err != nil {
+			return fmt.Errorf("error reading 'readyCmd': %w", err)
+		}
+	}
+
+	if raw, found := object["startCmd"]; found {
+		err = json.Unmarshal(raw, &t.StartCmd)
+		if err != nil {
+			return fmt.Errorf("error reading 'startCmd': %w", err)
+		}
+	}
+
+	if raw, found := object["steps"]; found {
+		err = json.Unmarshal(raw, &t.Steps)
+		if err != nil {
+			return fmt.Errorf("error reading 'steps': %w", err)
+		}
+	}
+
+	return err
+}

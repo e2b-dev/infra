@@ -33,7 +33,8 @@ func (tm *TemplateManager) CreateTemplate(
 	diskSizeMB,
 	memoryMB int64,
 	readyCommand *string,
-	fromImage string,
+	fromImage *string,
+	fromTemplate *string,
 	force *bool,
 	steps *[]api.TemplateStep,
 	clusterID *uuid.UUID,
@@ -80,30 +81,67 @@ func (tm *TemplateManager) CreateTemplate(
 	if startCommand != nil {
 		startCmd = *startCommand
 	}
-
 	var readyCmd string
 	if readyCommand != nil {
 		readyCmd = *readyCommand
 	}
 
+	template := &templatemanagergrpc.TemplateConfig{
+		TemplateID:         templateID,
+		BuildID:            buildID.String(),
+		VCpuCount:          int32(vCpuCount),
+		MemoryMB:           int32(memoryMB),
+		DiskSizeMB:         int32(diskSizeMB),
+		KernelVersion:      kernelVersion,
+		FirecrackerVersion: firecrackerVersion,
+		HugePages:          features.HasHugePages(),
+		StartCommand:       startCmd,
+		ReadyCommand:       readyCmd,
+		Force:              force,
+		Steps:              convertTemplateSteps(steps),
+	}
+
+	// Set the source (either fromImage or fromTemplate)
+	if fromTemplate != nil && *fromTemplate != "" {
+		// Look up the base template by alias to get its metadata
+		baseTemplate, err := tm.sqlcDB.GetEnvWithBuild(ctx, *fromTemplate)
+		if err != nil {
+			return fmt.Errorf("failed to find base template '%s': %w", *fromTemplate, err)
+		}
+
+		startCmd := ""
+		if baseTemplate.EnvBuild.StartCmd != nil {
+			startCmd = *baseTemplate.EnvBuild.StartCmd
+		}
+
+		readyCmd := ""
+		if baseTemplate.EnvBuild.ReadyCmd != nil {
+			readyCmd = *baseTemplate.EnvBuild.ReadyCmd
+		}
+
+		template.Source = &templatemanagergrpc.TemplateConfig_FromTemplate{
+			FromTemplate: &templatemanagergrpc.FromTemplateConfig{
+				Alias:              *fromTemplate,
+				TemplateID:         baseTemplate.Env.ID,
+				BuildID:            baseTemplate.EnvBuild.ID.String(),
+				KernelVersion:      baseTemplate.EnvBuild.KernelVersion,
+				FirecrackerVersion: baseTemplate.EnvBuild.FirecrackerVersion,
+				StartCommand:       startCmd,
+				ReadyCommand:       readyCmd,
+			},
+		}
+	} else if fromImage != nil {
+		template.Source = &templatemanagergrpc.TemplateConfig_FromImage{
+			FromImage: *fromImage,
+		}
+	} else {
+		return fmt.Errorf("either fromImage or fromTemplate must be provided")
+	}
+
 	reqCtx := metadata.NewOutgoingContext(ctx, cli.GRPC.Metadata)
 	_, err = cli.GRPC.Client.Template.TemplateCreate(
 		reqCtx, &templatemanagergrpc.TemplateCreateRequest{
-			Template: &templatemanagergrpc.TemplateConfig{
-				TemplateID:         templateID,
-				BuildID:            buildID.String(),
-				VCpuCount:          int32(vCpuCount),
-				MemoryMB:           int32(memoryMB),
-				DiskSizeMB:         int32(diskSizeMB),
-				KernelVersion:      kernelVersion,
-				FirecrackerVersion: firecrackerVersion,
-				HugePages:          features.HasHugePages(),
-				StartCommand:       startCmd,
-				ReadyCommand:       readyCmd,
-				FromImage:          fromImage,
-				Force:              force,
-				Steps:              convertTemplateSteps(steps),
-			},
+			Template:   template,
 			CacheScope: ut.ToPtr(teamID.String()),
 		},
 	)

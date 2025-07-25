@@ -18,8 +18,9 @@ import (
 )
 
 type dockerfileStore struct {
-	FromImage string              `json:"from_image"`
-	Steps     *[]api.TemplateStep `json:"steps"`
+	FromImage    *string             `json:"from_image"`
+	FromTemplate *string             `json:"from_template"`
+	Steps        *[]api.TemplateStep `json:"steps"`
 }
 
 // PostV2TemplatesTemplateIDBuildsBuildID triggers a new build
@@ -101,8 +102,9 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	}
 
 	stepsMarshalled, err := json.Marshal(dockerfileStore{
-		FromImage: body.FromImage,
-		Steps:     body.Steps,
+		FromImage:    body.FromImage,
+		FromTemplate: body.FromTemplate,
+		Steps:        body.Steps,
 	})
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when processing steps: %s", err))
@@ -137,6 +139,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		build.RamMb,
 		body.ReadyCmd,
 		body.FromImage,
+		body.FromTemplate,
 		body.Force,
 		body.Steps,
 		team.ClusterID,
