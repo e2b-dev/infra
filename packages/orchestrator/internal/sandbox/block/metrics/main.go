@@ -10,9 +10,9 @@ import (
 )
 
 type Metrics struct {
-	slices        metric.Int64Histogram
-	fetchedChunks metric.Int64Histogram
-	storedChunks  metric.Int64Histogram
+	SlicesMetric          metric.Int64Histogram
+	WriteChunksMetric     metric.Int64Histogram
+	ChunkRemoteReadMetric metric.Int64Histogram
 }
 
 func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
@@ -43,81 +43,26 @@ func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
 	}
 
 	return Metrics{
-		slices:        slices,
-		fetchedChunks: fetchedChunks,
-		storedChunks:  storedChunks,
+		SlicesMetric:          slices,
+		WriteChunksMetric:     storedChunks,
+		ChunkRemoteReadMetric: fetchedChunks,
 	}, nil
 }
 
-func (c Metrics) BeginSlice() Stopwatch {
-	return Stopwatch{metric: c.slices, start: time.Now()}
+func (c Metrics) Begin(metric metric.Int64Histogram) Stopwatch {
+	return Stopwatch{metric: metric, start: time.Now()}
 }
 
-func (c Metrics) EndSliceSuccess(ctx context.Context, t Stopwatch, pt pullType) {
-	t.success(ctx, attribute.String("pull_type", string(pt)))
+func KV[T ~string](key string, value T) attribute.KeyValue {
+	return attribute.String(key, string(value))
 }
-
-func (c Metrics) EndSliceFailure(ctx context.Context, t Stopwatch, pt pullType, ft failureType) {
-	t.failure(ctx, attribute.String("pull_type", string(pt)), attribute.String("failure_type", string(ft)))
-}
-
-func (c Metrics) BeginChunkFetch() Stopwatch {
-	return Stopwatch{metric: c.storedChunks, start: time.Now()}
-}
-
-func (c Metrics) EndChunkFetchSuccess(ctx context.Context, t Stopwatch) {
-	t.success(ctx)
-}
-
-func (c Metrics) EndChunkFetchFailure(ctx context.Context, t Stopwatch, ft failureType) {
-	t.failure(ctx, attribute.String("failure_type", string(ft)))
-}
-
-func (c Metrics) BeginChunkWrite() Stopwatch {
-	return Stopwatch{metric: c.storedChunks, start: time.Now()}
-}
-
-func (c Metrics) EndChunkWriteSuccess(ctx context.Context, t Stopwatch) {
-	t.success(ctx)
-}
-
-func (c Metrics) EndChunkWriteFailure(ctx context.Context, t Stopwatch, ft failureType) {
-	t.failure(ctx, attribute.String("pull_type", string(ft)))
-}
-
-type pullType string
-
-const (
-	PullTypeLocal  pullType = "local"
-	PullTypeRemote pullType = "remote"
-)
-
-type failureType string
-
-const (
-	LocalReadFailure  failureType = "local-read"
-	ReadAgainFailure  failureType = "read-again"
-	RemoteReadFailure failureType = "remote-read"
-	LocalWriteFailure failureType = "local-write"
-	CacheFetchFailure failureType = "cache-fetch"
-)
 
 type Stopwatch struct {
 	metric metric.Int64Histogram
 	start  time.Time
 }
 
-func (t Stopwatch) failure(ctx context.Context, kv ...attribute.KeyValue) {
-	kv = append(kv, attribute.String("result", "failure"))
-	t.record(ctx, kv...)
-}
-
-func (t Stopwatch) success(ctx context.Context, kv ...attribute.KeyValue) {
-	kv = append(kv, attribute.String("result", "success"))
-	t.metric.Record(ctx, 1, metric.WithAttributes(kv...))
-}
-
-func (t Stopwatch) record(ctx context.Context, kv ...attribute.KeyValue) {
+func (t Stopwatch) End(ctx context.Context, kv ...attribute.KeyValue) {
 	amount := time.Since(t.start).Milliseconds()
 	t.metric.Record(ctx, amount, metric.WithAttributes(kv...))
 }
