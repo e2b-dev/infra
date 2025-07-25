@@ -31,7 +31,11 @@ type sbxInProgress struct {
 }
 
 type nodeMetadata struct {
-	orchestratorID    string
+	// Orchestrator ID is currently the same as node ID.
+	orchestratorID string
+
+	// Service instance ID is unique identifier for every orchestrator process, after restart it will change.
+	// In the future, we want to migrate to using this ID instead of node ID for tracking orchestrators-
 	serviceInstanceID string
 
 	commit  string
