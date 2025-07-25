@@ -51,6 +51,7 @@ runs:
         CLICKHOUSE_PORT: "9000"
         CLICKHOUSE_DATABASE: "default"
       run: |
+        echo "CLICKHOUSE_MIGRATOR_IMAGE=clickhouse-migrator" >> .env.test
         echo "CLICKHOUSE_USERNAME=${CLICKHOUSE_USERNAME}" >> .env.test
         echo "CLICKHOUSE_PORT=${CLICKHOUSE_PORT}" >> .env.test
         echo "CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}" >> .env.test
@@ -61,7 +62,7 @@ runs:
         while [ "$(docker inspect -f '{{.State.Health.Status}}' clickhouse 2>/dev/null)" != "healthy" ]; do echo "Waiting for Clickhouse to be healthy..."; sleep 2; done
         echo "Clickhouse is healthy!"
 
-        make -C packages/clickhouse migrate/up
+        make -C packages/clickhouse migrate
       shell: bash
 
     - name: Start Services

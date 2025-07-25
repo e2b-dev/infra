@@ -201,7 +201,6 @@ generate/%:
 .PHONY: migrate
 migrate:
 	$(MAKE) -C packages/db migrate/up
-	# $(MAKE) -C packages/shared migrate-clickhouse/up
 
 .PHONY: switch-env
 switch-env:

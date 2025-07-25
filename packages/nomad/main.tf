@@ -7,6 +7,10 @@ terraform {
   }
 }
 
+locals {
+  clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
+}
+
 # API
 data "google_secret_manager_secret_version" "postgres_connection_string" {
   secret = var.postgres_connection_string_secret_name
@@ -91,7 +95,7 @@ resource "nomad_job" "api" {
     redis_url                      = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "" : "redis.service.consul:${var.redis_port.port}"
     redis_cluster_url              = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
     dns_port_number                = var.api_dns_port_number
-    clickhouse_connection_string   = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : 0
+    clickhouse_connection_string   = local.clickhouse_connection_string
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
     db_migrator_docker_image       = docker_image.db_migrator_image.repo_digest
     launch_darkly_api_key          = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
@@ -663,8 +667,6 @@ resource "nomad_job" "clickhouse_migrator" {
     job_constraint_prefix = var.clickhouse_job_constraint_prefix
     node_pool             = var.clickhouse_node_pool
 
-    clickhouse_username = var.clickhouse_username
-    clickhouse_password = random_password.clickhouse_password.result
-    clickhouse_port     = var.clickhouse_server_port.port
+    clickhouse_connection_string = local.clickhouse_connection_string
   })
 }

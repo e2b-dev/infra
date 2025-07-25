@@ -1,21 +1,29 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
-IMAGE := e2b-orchestration/clickhouse-migrator
-goose := GOOSE_DRIVER=clickhouse GOOSE_DBSTRING=$(CLICKHOUSE_CONNECTION_STRING) go tool goose -table "_migrations" -dir "migrations"
+CLICKHOUSE_MIGRATOR_IMAGE ?= $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/e2b-orchestration/clickhouse-migrator
+CLICKHOUSE_HOST ?= clickhouse
 
 .PHONY: migrate
-migrate:migrate/up
-migrate:migrate/down
-migrate/%:
+migrate:build
 	@echo "Applying Clickhouse migrations *$(notdir $@)*"
-	$(goose) $(notdir $@)
+	@docker network create e2b || true
+	@docker run --rm \
+		--network e2b \
+		--name clickhouse-migrator \
+		-e GOOSE_DBSTRING="clickhouse://${CLICKHOUSE_USERNAME}:${CLICKHOUSE_PASSWORD}@${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}/${CLICKHOUSE_DATABASE}" \
+		-v "$(shell pwd)/migrations:/app/migrations" \
+		$(CLICKHOUSE_MIGRATOR_IMAGE)
 	@echo "Done"
 
-.PHONY: build-and-upload
-build-and-upload:
-	@docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push .
+.PHONY: build
+build:
+	@echo "$(CLICKHOUSE_MIGRATOR_IMAGE)"
+	@docker build --platform linux/amd64 --tag "$(CLICKHOUSE_MIGRATOR_IMAGE)" .
 
+.PHONY: build-and-upload
+build-and-upload:build
+	@docker push "$(CLICKHOUSE_MIGRATOR_IMAGE)"
 
 .PHONY: connect-clickhouse
 connect-clickhouse:
