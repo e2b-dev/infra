@@ -20,8 +20,9 @@ const (
 const DefaultCachePath = "/orchestrator/build"
 
 type deleteDiff struct {
-	size   int64
-	cancel chan struct{}
+	size      int64
+	cancel    chan struct{}
+	closeOnce sync.Once
 }
 
 type DiffStore struct {
@@ -61,9 +62,8 @@ func NewDiffStore(ctx context.Context, cachePath string, ttl, delay time.Duratio
 		// buildData will be deleted by calling buildData.Close()
 		defer ds.resetDelete(item.Key())
 
-		err = buildData.Close()
-		if err != nil {
-			zap.L().Warn("failed to cleanup build data cache for item", zap.Any("item_key", item.Key()), zap.Error(err))
+		if closeErr := buildData.Close(); closeErr != nil {
+			zap.L().Warn("failed to cleanup build data cache for item", zap.Any("item_key", item.Key()), zap.Error(closeErr))
 		}
 	})
 
@@ -219,7 +219,9 @@ func (s *DiffStore) resetDelete(key DiffStoreKey) {
 		return
 	}
 
-	close(dDiff.cancel)
+	dDiff.closeOnce.Do(func() {
+		close(dDiff.cancel)
+	})
 	delete(s.pdSizes, key)
 }
 
