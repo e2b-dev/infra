@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -34,8 +35,8 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		attribute.Bool("env.huge_pages", cfg.HugePages),
 	)
 
-	if s.healthStatus == templatemanager.HealthState_Draining {
-		s.logger.Error("Requesting template creation while server is draining is not possible", logger.WithTemplateID(cfg.TemplateID))
+	if s.info.GetStatus() != orchestrator.ServiceInfoStatus_Healthy {
+		s.logger.Error("Requesting template creation while server not healthy is not possible", logger.WithTemplateID(cfg.TemplateID))
 		return nil, fmt.Errorf("server is draining")
 	}
 
