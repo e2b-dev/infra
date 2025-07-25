@@ -16,9 +16,9 @@ type Metrics struct {
 }
 
 func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
-	blocksMeter := meterProvider.Meter("orchestrator.blocks")
+	blocksMeter := meterProvider.Meter("internal.sandbox.block.metrics")
 
-	slices, err := blocksMeter.Int64Histogram("slices",
+	slices, err := blocksMeter.Int64Histogram("orchestrator.blocks.slices",
 		metric.WithDescription("Total slices served"),
 		metric.WithUnit("ms"),
 	)
@@ -26,7 +26,7 @@ func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
 		return Metrics{}, fmt.Errorf("failed to get slices metric: %w", err)
 	}
 
-	fetchedChunks, err := blocksMeter.Int64Histogram("chunks.fetch",
+	fetchedChunks, err := blocksMeter.Int64Histogram("orchestrator.blocks.chunks.fetch",
 		metric.WithDescription("Total chunks fetched"),
 		metric.WithUnit("ms"),
 	)
@@ -34,7 +34,7 @@ func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
 		return Metrics{}, fmt.Errorf("failed to get fetched chunks metric: %w", err)
 	}
 
-	storedChunks, err := blocksMeter.Int64Histogram("chunks.store",
+	storedChunks, err := blocksMeter.Int64Histogram("orchestrator.blocks.chunks.store",
 		metric.WithDescription("Total chunks stored"),
 		metric.WithUnit("ms"),
 	)
