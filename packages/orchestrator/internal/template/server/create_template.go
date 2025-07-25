@@ -40,6 +40,18 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		return nil, fmt.Errorf("server is draining")
 	}
 
+	// Get the start and ready commands from the user.
+	// If they are not provided, use the ones from the template (if fromTemplate is used).
+	startCmd := cfg.StartCommand
+	if startCmd == "" && cfg.GetFromTemplate() != nil {
+		startCmd = cfg.GetFromTemplate().StartCommand
+	}
+
+	readyCmd := cfg.ReadyCommand
+	if readyCmd == "" && cfg.GetFromTemplate() != nil {
+		readyCmd = cfg.GetFromTemplate().ReadyCommand
+	}
+
 	metadata := storage.TemplateFiles{
 		TemplateID:         cfg.TemplateID,
 		BuildID:            cfg.BuildID,
@@ -54,15 +66,15 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	}
 
 	template := config.TemplateConfig{
-		CacheScope: cacheScope,
+		CacheScope:   cacheScope,
 		VCpuCount:    int64(cfg.VCpuCount),
 		MemoryMB:     int64(cfg.MemoryMB),
-		StartCmd:     cfg.StartCommand,
-		ReadyCmd:     cfg.ReadyCommand,
+		StartCmd:     startCmd,
+		ReadyCmd:     readyCmd,
 		DiskSizeMB:   int64(cfg.DiskSizeMB),
 		HugePages:    cfg.HugePages,
 		FromImage:    cfg.GetFromImage(),
-		FromTemplate: cfg.GetFromTemplate().,
+		FromTemplate: cfg.GetFromTemplate(),
 		Force:        cfg.Force,
 		Steps:        cfg.Steps,
 	}

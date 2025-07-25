@@ -26,15 +26,16 @@ message TemplateStep {
 }
 
 message FromTemplateConfig {
-  string templateID = 1;
-  string buildID = 2;
+  string alias = 1;
 
-  string kernelVersion = 6;
-  string firecrackerVersion = 7;
-  bool hugePages = 9;
+  string templateID = 2;
+  string buildID = 3;
+  string kernelVersion = 4;
+  string firecrackerVersion = 5;
 
-  string startCommand = 8;
-  string readyCommand = 10;
+
+  string startCommand = 6;
+  string readyCommand = 7;
 }
 
 message TemplateConfig {

@@ -89,7 +89,16 @@ func hashBase(template config.TemplateConfig) (string, error) {
 		return "", fmt.Errorf("error getting envd binary hash: %w", err)
 	}
 
-	return hashKeys(hashingVersion, envdHash, provisionScriptFile, strconv.FormatInt(template.DiskSizeMB, 10), template.FromImage), nil
+	var baseSource string
+	if template.FromTemplate != nil {
+		// When building from template, use the base template's ID and build ID as the source
+		baseSource = fmt.Sprintf("template:%s:%s", template.FromTemplate.GetTemplateID(), template.FromTemplate.GetBuildID())
+	} else {
+		// When building from image, use the image name
+		baseSource = template.FromImage
+	}
+
+	return hashKeys(hashingVersion, envdHash, provisionScriptFile, strconv.FormatInt(template.DiskSizeMB, 10), baseSource), nil
 }
 
 func hashStep(previousHash string, step *templatemanager.TemplateStep) string {

@@ -33,7 +33,7 @@ type TemplateConfig struct {
 	FromImage string
 
 	// FromTemplate is the base template to use for building the template.
-	FromTemplate string
+	FromTemplate *templatemanager.FromTemplateConfig
 
 	// Force rebuild of the template even if it is already cached.
 	Force *bool
