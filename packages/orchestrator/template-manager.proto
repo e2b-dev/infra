@@ -25,6 +25,18 @@ message TemplateStep {
   optional string filesHash = 4;
 }
 
+message FromTemplateConfig {
+  string templateID = 1;
+  string buildID = 2;
+
+  string kernelVersion = 6;
+  string firecrackerVersion = 7;
+  bool hugePages = 9;
+
+  string startCommand = 8;
+  string readyCommand = 10;
+}
+
 message TemplateConfig {
   string templateID = 1;
   string buildID = 2;
@@ -40,9 +52,13 @@ message TemplateConfig {
 
   string readyCommand = 10;
 
-  string fromImage = 11;
   optional bool force = 12;
   repeated TemplateStep steps = 13;
+
+  oneof source {
+     string fromImage = 11;
+     FromTemplateConfig fromTemplate = 14;
+   }
 }
 
 message TemplateCreateRequest {

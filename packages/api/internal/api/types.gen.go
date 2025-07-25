@@ -548,7 +548,10 @@ type TemplateBuildStartV2 struct {
 	Force *bool `json:"force,omitempty"`
 
 	// FromImage Image to use as a base for the template build
-	FromImage string `json:"fromImage"`
+	FromImage *string `json:"fromImage,omitempty"`
+
+	// FromTemplate Template to use as a base for the template build
+	FromTemplate *string `json:"fromTemplate,omitempty"`
 
 	// ReadyCmd Ready check command to execute in the template after the build
 	ReadyCmd *string `json:"readyCmd,omitempty"`

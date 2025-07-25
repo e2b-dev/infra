@@ -524,11 +524,13 @@ components:
 
     TemplateBuildStartV2:
       required:
-        - fromImage
       properties:
         fromImage:
           type: string
           description: Image to use as a base for the template build
+        fromTemplate:
+          type: string
+          description: Template to use as a base for the template build
         force:
           default: false
           type: boolean
