@@ -13,12 +13,15 @@ import (
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
 	e2binfo "github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 )
 
 type NodePassThroughServer struct {
-	nodes  *e2borchestrators.OrchestratorsPool
+	nodes   *e2borchestrators.OrchestratorsPool
+	catalog sandboxes.SandboxesCatalog
+
 	info   *e2binfo.ServiceInfo
 	server *grpc.Server
 
@@ -33,50 +36,57 @@ const (
 
 var clientStreamDescForProxying = &grpc.StreamDesc{ServerStreams: true, ClientStreams: true}
 
-func NewNodePassThroughServer(ctx context.Context, nodes *e2borchestrators.OrchestratorsPool, info *e2binfo.ServiceInfo, authorization authorization.AuthorizationService) *grpc.Server {
+func NewNodePassThroughServer(
+	ctx context.Context,
+	nodes *e2borchestrators.OrchestratorsPool,
+	info *e2binfo.ServiceInfo,
+	authorization authorization.AuthorizationService,
+	catalog sandboxes.SandboxesCatalog,
+) *grpc.Server {
 	nodePassThrough := &NodePassThroughServer{
 		authorization: authorization,
 		nodes:         nodes,
+		catalog:       catalog,
 		info:          info,
 		ctx:           ctx,
 	}
 
 	return grpc.NewServer(
-		grpc.UnknownServiceHandler(nodePassThrough.Handler),
+		grpc.UnknownServiceHandler(nodePassThrough.handler),
 		grpc.MaxRecvMsgSize(grpcMaxMsgSize),
 	)
 }
 
-func (s *NodePassThroughServer) director(ctx context.Context) (*grpc.ClientConn, error) {
+func (s *NodePassThroughServer) director(ctx context.Context) (*grpc.ClientConn, metadata.MD, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return nil, status.Error(codes.InvalidArgument, "error getting metadata from context")
+		return nil, nil, status.Error(codes.InvalidArgument, "error getting metadata from context")
 	}
 
 	auths := md.Get(consts.EdgeRpcAuthHeader)
 	if len(auths) == 0 || len(auths) > 1 {
-		return nil, status.Error(codes.Unauthenticated, "error getting authentication metadata from context")
+		return nil, nil, status.Error(codes.Unauthenticated, "error getting authentication metadata from context")
 	}
 
 	// Verify authorization header
 	auth := auths[0]
 	err := s.authorization.VerifyAuthorization(auth)
 	if err != nil {
-		return nil, status.Error(codes.PermissionDenied, err.Error())
+		return nil, nil, status.Error(codes.PermissionDenied, err.Error())
 	}
 
 	serviceInstanceIDs := md.Get(consts.EdgeRpcServiceInstanceIDHeader)
 	if len(serviceInstanceIDs) == 0 || len(serviceInstanceIDs) > 1 {
-		return nil, status.Error(codes.InvalidArgument, "service instance id header missing or invalid")
+		return nil, nil, status.Error(codes.InvalidArgument, "service instance id header missing or invalid")
 	}
 
 	serviceInstanceID := serviceInstanceIDs[0]
 	serviceInstance, ok := s.nodes.GetOrchestrator(serviceInstanceID)
 	if !ok {
-		return nil, status.Error(codes.NotFound, "service instance not found")
+		return nil, nil, status.Error(codes.NotFound, "service instance not found")
 	}
 
-	return serviceInstance.GetClient().Connection, nil
+	return serviceInstance.GetClient().Connection, md, nil
 }
 
 // Handler - following code implement a gRPC pass-through proxy that forwards requests to the appropriate node
@@ -84,7 +94,7 @@ func (s *NodePassThroughServer) director(ctx context.Context) (*grpc.ClientConn,
 //
 // Core implementation is just following methods that are handling forwarding, proper closing and propagating of errors from both sides of the stream.
 // The handler is called for every request that is not handled by any other gRPC service.
-func (s *NodePassThroughServer) Handler(srv interface{}, serverStream grpc.ServerStream) error {
+func (s *NodePassThroughServer) handler(srv interface{}, serverStream grpc.ServerStream) (err error) {
 	fullMethodName, ok := grpc.MethodFromServerStream(serverStream)
 	if !ok {
 		return status.Errorf(codes.Internal, "low lever server stream not exists in context")
@@ -103,7 +113,7 @@ func (s *NodePassThroughServer) Handler(srv interface{}, serverStream grpc.Serve
 	}
 
 	// We require that the director's returned context inherits from the serverStream.Context().
-	clientConnection, err := s.director(serverStream.Context())
+	clientConnection, md, err := s.director(serverStream.Context())
 	if err != nil {
 		return err
 	}
@@ -114,6 +124,15 @@ func (s *NodePassThroughServer) Handler(srv interface{}, serverStream grpc.Serve
 	clientStream, err := grpc.NewClientStream(clientCtx, clientStreamDescForProxying, clientConnection, fullMethodName)
 	if err != nil {
 		return err
+	}
+
+	callback, err := s.eventsHandler(md)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to handle events: %v", err)
+	}
+
+	if callback != nil {
+		defer callback(err)
 	}
 
 	// Explicitly *do not close* s2cErrChan and c2sErrChan, otherwise the select below will not terminate.

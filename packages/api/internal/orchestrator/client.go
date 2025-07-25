@@ -107,7 +107,8 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 			client:   client,
 			clientMd: make(metadata.MD),
 
-			Info:           node,
+			Info: node,
+
 			meta:           getNodeMetadata(nodeInfo, node.ID),
 			buildCache:     buildCache,
 			status:         nodeStatus,

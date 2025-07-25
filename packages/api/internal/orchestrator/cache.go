@@ -349,7 +349,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		} else {
 			req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}
 			client, ctx := node.GetClient(ctx)
-			_, err := client.Sandbox.Delete(ctx, req)
+			_, err := client.Sandbox.Delete(node.GetSandboxDeleteCtx(ctx, info.Instance.SandboxID, info.ExecutionID), req)
 			if err != nil {
 				return fmt.Errorf("failed to delete sandbox '%s': %w", info.Instance.SandboxID, err)
 			}
