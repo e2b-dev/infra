@@ -16,37 +16,33 @@ type Metrics struct {
 }
 
 func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
+	var m Metrics
+
 	blocksMeter := meterProvider.Meter("internal.sandbox.block.metrics")
 
-	slices, err := blocksMeter.Int64Histogram("orchestrator.blocks.slices",
+	var err error
+	if m.SlicesMetric, err = blocksMeter.Int64Histogram("orchestrator.blocks.slices",
 		metric.WithDescription("Total slices served"),
 		metric.WithUnit("ms"),
-	)
-	if err != nil {
-		return Metrics{}, fmt.Errorf("failed to get slices metric: %w", err)
+	); err != nil {
+		return m, fmt.Errorf("failed to get slices metric: %w", err)
 	}
 
-	fetchedChunks, err := blocksMeter.Int64Histogram("orchestrator.blocks.chunks.fetch",
+	if m.ChunkRemoteReadMetric, err = blocksMeter.Int64Histogram("orchestrator.blocks.chunks.fetch",
 		metric.WithDescription("Total chunks fetched"),
 		metric.WithUnit("ms"),
-	)
-	if err != nil {
-		return Metrics{}, fmt.Errorf("failed to get fetched chunks metric: %w", err)
+	); err != nil {
+		return m, fmt.Errorf("failed to get fetched chunks metric: %w", err)
 	}
 
-	storedChunks, err := blocksMeter.Int64Histogram("orchestrator.blocks.chunks.store",
+	if m.WriteChunksMetric, err = blocksMeter.Int64Histogram("orchestrator.blocks.chunks.store",
 		metric.WithDescription("Total chunks stored"),
 		metric.WithUnit("ms"),
-	)
-	if err != nil {
-		return Metrics{}, fmt.Errorf("failed to get stored chunks metric: %w", err)
+	); err != nil {
+		return m, fmt.Errorf("failed to get stored chunks metric: %w", err)
 	}
 
-	return Metrics{
-		SlicesMetric:          slices,
-		WriteChunksMetric:     storedChunks,
-		ChunkRemoteReadMetric: fetchedChunks,
-	}, nil
+	return m, nil
 }
 
 func (c Metrics) Begin(metric metric.Int64Histogram) Stopwatch {
