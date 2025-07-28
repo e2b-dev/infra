@@ -61,8 +61,11 @@ func entryInfoFromFileInfo(fileInfo os.FileInfo, path string) *rpc.EntryInfo {
 	}
 
 	var entryType rpc.FileType
+	var mode uint32
+
 	if symlinkTarget == nil {
 		entryType = getEntryType(fileMode)
+		mode = uint32(fileMode.Perm())
 	} else {
 		// If it's a symlink, we need to determine the type of the target
 		targetInfo, err := os.Stat(*symlinkTarget)
@@ -70,6 +73,7 @@ func entryInfoFromFileInfo(fileInfo os.FileInfo, path string) *rpc.EntryInfo {
 			entryType = rpc.FileType_FILE_TYPE_UNSPECIFIED
 		} else {
 			entryType = getEntryType(targetInfo.Mode())
+			mode = uint32(targetInfo.Mode().Perm())
 		}
 	}
 
@@ -78,7 +82,7 @@ func entryInfoFromFileInfo(fileInfo os.FileInfo, path string) *rpc.EntryInfo {
 		Type:          entryType,
 		Path:          path,
 		Size:          fileInfo.Size(),
-		Mode:          uint32(fileMode.Perm()),
+		Mode:          mode,
 		Permissions:   fileMode.String(),
 		Owner:         owner,
 		Group:         group,
