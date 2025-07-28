@@ -29,7 +29,8 @@ const (
 	googleBackoffMultiplier = 2
 	googleMaxAttempts       = 10
 
-	gcloudMaxRetries = 3
+	gcloudMaxRetries               = 3
+	gcloudDefaultUploadConcurrency = 16
 )
 
 type GCPBucketStorageProvider struct {
@@ -221,6 +222,20 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 	objectName := g.path
 	filePath := path
 
+	maxConcurrency := gcloudDefaultUploadConcurrency
+	if g.limiter != nil {
+		uploadLimiter := g.limiter.GCloudUploadLimiter()
+		if uploadLimiter != nil {
+			semaphoreErr := uploadLimiter.Acquire(g.ctx, 1)
+			if semaphoreErr != nil {
+				return fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
+			}
+			defer uploadLimiter.Release(1)
+		}
+
+		maxConcurrency = g.limiter.GCloudMaxTasks()
+	}
+
 	uploader, err := NewMultipartUploaderWithRetryConfig(
 		g.ctx,
 		bucketName,
@@ -236,7 +251,6 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 		return fmt.Errorf("failed to get file size: %w", err)
 	}
 
-	maxConcurrency := g.limiter.GCloudMaxTasks()
 	start := time.Now()
 	if err := uploader.UploadFileInParallel(g.ctx, filePath, maxConcurrency); err != nil {
 		return fmt.Errorf("failed to upload file in parallel: %w", err)
