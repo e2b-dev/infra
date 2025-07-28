@@ -85,7 +85,6 @@ func TestStat(t *testing.T) {
 			} else {
 				assert.Empty(t, resp.Msg.Entry.SymlinkTarget)
 			}
-
 		})
 	}
 }
