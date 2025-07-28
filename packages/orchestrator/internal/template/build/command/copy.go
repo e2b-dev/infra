@@ -22,6 +22,7 @@ import (
 
 type Copy struct {
 	FilesStorage storage.StorageProvider
+	CacheScope   string
 }
 
 type copyScriptData struct {
@@ -83,7 +84,6 @@ func (c *Copy) Execute(
 	postProcessor *writer.PostProcessor,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
-	templateID string,
 	prefix string,
 	step *templatemanager.TemplateStep,
 	cmdMetadata sandboxtools.CommandMetadata,
@@ -100,7 +100,7 @@ func (c *Copy) Execute(
 	}
 
 	// 1) Download the layer tar file from the storage to the local filesystem
-	obj, err := c.FilesStorage.OpenObject(ctx, layerstorage.GetLayerFilesCachePath(templateID, *step.FilesHash))
+	obj, err := c.FilesStorage.OpenObject(ctx, layerstorage.GetLayerFilesCachePath(c.CacheScope, *step.FilesHash))
 	if err != nil {
 		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to open files object from storage: %w", err)
 	}

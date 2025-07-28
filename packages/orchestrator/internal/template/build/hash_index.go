@@ -25,8 +25,8 @@ type LayerMetadata struct {
 	Metadata sandboxtools.CommandMetadata `json:"metadata"`
 }
 
-func layerMetaFromHash(ctx context.Context, s storage.StorageProvider, finalTemplateID string, hash string) (LayerMetadata, error) {
-	obj, err := s.OpenObject(ctx, layerstorage.HashToPath(finalTemplateID, hash))
+func layerMetaFromHash(ctx context.Context, s storage.StorageProvider, cacheScope string, hash string) (LayerMetadata, error) {
+	obj, err := s.OpenObject(ctx, layerstorage.HashToPath(cacheScope, hash))
 	if err != nil {
 		return LayerMetadata{}, fmt.Errorf("error opening object for template metadata: %w", err)
 	}
@@ -53,8 +53,8 @@ func layerMetaFromHash(ctx context.Context, s storage.StorageProvider, finalTemp
 	return templateMetadata, nil
 }
 
-func saveLayerMeta(ctx context.Context, s storage.StorageProvider, finalTemplateID string, hash string, template LayerMetadata) error {
-	obj, err := s.OpenObject(ctx, layerstorage.HashToPath(finalTemplateID, hash))
+func saveLayerMeta(ctx context.Context, s storage.StorageProvider, cacheScope string, hash string, template LayerMetadata) error {
+	obj, err := s.OpenObject(ctx, layerstorage.HashToPath(cacheScope, hash))
 	if err != nil {
 		return fmt.Errorf("error creating object for saving UUID: %w", err)
 	}

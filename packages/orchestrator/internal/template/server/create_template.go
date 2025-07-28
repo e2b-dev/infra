@@ -46,7 +46,15 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		KernelVersion:      cfg.KernelVersion,
 		FirecrackerVersion: cfg.FirecrackerVersion,
 	}
+
+	// default to scope by template ID
+	cacheScope := cfg.TemplateID
+	if templateRequest.CacheScope != nil {
+		cacheScope = *templateRequest.CacheScope
+	}
+
 	template := config.TemplateConfig{
+		CacheScope: cacheScope,
 		VCpuCount:  int64(cfg.VCpuCount),
 		MemoryMB:   int64(cfg.MemoryMB),
 		StartCmd:   cfg.StartCommand,
