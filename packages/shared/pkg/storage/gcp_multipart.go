@@ -8,10 +8,12 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"sort"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 	"golang.org/x/oauth2/google"
@@ -20,6 +22,76 @@ import (
 const (
 	ChunkSize = 50 * 1024 * 1024 // 50MB chunks
 )
+
+// RetryConfig holds the configuration for retry logic
+type RetryConfig struct {
+	MaxAttempts       int
+	InitialBackoff    time.Duration
+	MaxBackoff        time.Duration
+	BackoffMultiplier float64
+}
+
+// DefaultRetryConfig returns the default retry configuration matching storage_google.go
+func DefaultRetryConfig() RetryConfig {
+	return RetryConfig{
+		MaxAttempts:       googleMaxAttempts,
+		InitialBackoff:    googleInitialBackoff,
+		MaxBackoff:        googleMaxBackoff,
+		BackoffMultiplier: googleBackoffMultiplier,
+	}
+}
+
+// retryRequest performs an HTTP request with exponential backoff retry logic
+func retryRequest(client *http.Client, req *http.Request, config RetryConfig) (*http.Response, error) {
+	var lastErr error
+	backoff := config.InitialBackoff
+
+	for attempt := 1; attempt <= config.MaxAttempts; attempt++ {
+		// Clone the request for retry (in case body was consumed)
+		clonedReq := req.Clone(req.Context())
+		if req.Body != nil {
+			// Reset body for retry attempts
+			if req.GetBody != nil {
+				body, err := req.GetBody()
+				if err != nil {
+					return nil, fmt.Errorf("failed to get request body for retry: %v", err)
+				}
+				clonedReq.Body = body
+			}
+		}
+
+		resp, err := client.Do(clonedReq)
+		if err == nil && resp.StatusCode < 500 {
+			// Success or client error (4xx) - don't retry
+			return resp, nil
+		}
+
+		// Store the error for potential return
+		if err != nil {
+			lastErr = err
+		} else {
+			// Server error (5xx)
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			lastErr = fmt.Errorf("server error (status %d): %s", resp.StatusCode, string(body))
+		}
+
+		// Don't sleep on the last attempt
+		if attempt < config.MaxAttempts {
+			zap.L().Debug(fmt.Sprintf("Request failed (attempt %d/%d), retrying in %v: %v",
+				attempt, config.MaxAttempts, backoff, lastErr))
+			time.Sleep(backoff)
+
+			// Calculate next backoff
+			backoff = time.Duration(float64(backoff) * config.BackoffMultiplier)
+			if backoff > config.MaxBackoff {
+				backoff = config.MaxBackoff
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("request failed after %d attempts: %v", config.MaxAttempts, lastErr)
+}
 
 type InitiateMultipartUploadResult struct {
 	Bucket   string `xml:"Bucket"`
@@ -44,16 +116,15 @@ type UploadResult struct {
 }
 
 type MultipartUploader struct {
-	bucketName string
-	objectName string
-	token      string
-	client     *http.Client
+	bucketName  string
+	objectName  string
+	token       string
+	client      *http.Client
+	retryConfig RetryConfig
+	baseURL     string // Allow overriding for testing
 }
 
-func NewMultipartUploader(bucketName, objectName string) (*MultipartUploader, error) {
-	ctx := context.Background()
-
-	// Get credentials
+func NewMultipartUploaderWithRetryConfig(ctx context.Context, bucketName, objectName string, retryConfig RetryConfig) (*MultipartUploader, error) {
 	creds, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get credentials: %v", err)
@@ -65,15 +136,17 @@ func NewMultipartUploader(bucketName, objectName string) (*MultipartUploader, er
 	}
 
 	return &MultipartUploader{
-		bucketName: bucketName,
-		objectName: objectName,
-		token:      token.AccessToken,
-		client:     &http.Client{},
+		bucketName:  bucketName,
+		objectName:  objectName,
+		token:       token.AccessToken,
+		client:      &http.Client{},
+		retryConfig: retryConfig,
+		baseURL:     fmt.Sprintf("https://%s.storage.googleapis.com", bucketName),
 	}, nil
 }
 
 func (m *MultipartUploader) InitiateUpload() (string, error) {
-	url := fmt.Sprintf("https://%s.storage.googleapis.com/%s?uploads", m.bucketName, m.objectName)
+	url := fmt.Sprintf("%s/%s?uploads", m.baseURL, m.objectName)
 
 	req, err := http.NewRequest("POST", url, nil)
 	if err != nil {
@@ -84,7 +157,7 @@ func (m *MultipartUploader) InitiateUpload() (string, error) {
 	req.Header.Set("Content-Length", "0")
 	req.Header.Set("Content-Type", "application/octet-stream")
 
-	resp, err := m.client.Do(req)
+	resp, err := retryRequest(m.client, req, m.retryConfig)
 	if err != nil {
 		return "", err
 	}
@@ -109,19 +182,24 @@ func (m *MultipartUploader) UploadPart(uploadID string, partNumber int, data []b
 	hasher.Write(data)
 	md5Sum := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
 
-	url := fmt.Sprintf("https://%s.storage.googleapis.com/%s?partNumber=%d&uploadId=%s",
-		m.bucketName, m.objectName, partNumber, uploadID)
+	url := fmt.Sprintf("%s/%s?partNumber=%d&uploadId=%s",
+		m.baseURL, m.objectName, partNumber, uploadID)
 
 	req, err := http.NewRequest("PUT", url, bytes.NewReader(data))
 	if err != nil {
 		return "", err
 	}
 
+	// Set up GetBody for retries
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(data)), nil
+	}
+
 	req.Header.Set("Authorization", "Bearer "+m.token)
 	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(data)))
 	req.Header.Set("Content-MD5", md5Sum)
 
-	resp, err := m.client.Do(req)
+	resp, err := retryRequest(m.client, req, m.retryConfig)
 	if err != nil {
 		return "", err
 	}
@@ -152,19 +230,24 @@ func (m *MultipartUploader) CompleteUpload(uploadID string, parts []Part) error 
 		return fmt.Errorf("failed to marshal complete request: %v", err)
 	}
 
-	url := fmt.Sprintf("https://%s.storage.googleapis.com/%s?uploadId=%s",
-		m.bucketName, m.objectName, uploadID)
+	url := fmt.Sprintf("%s/%s?uploadId=%s",
+		m.baseURL, m.objectName, uploadID)
 
 	req, err := http.NewRequest("POST", url, bytes.NewReader(xmlData))
 	if err != nil {
 		return err
 	}
 
+	// Set up GetBody for retries
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(xmlData)), nil
+	}
+
 	req.Header.Set("Authorization", "Bearer "+m.token)
 	req.Header.Set("Content-Type", "application/xml")
 	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(xmlData)))
 
-	resp, err := m.client.Do(req)
+	resp, err := retryRequest(m.client, req, m.retryConfig)
 	if err != nil {
 		return err
 	}
@@ -194,7 +277,10 @@ func (m *MultipartUploader) UploadFileInParallel(filePath string, maxConcurrency
 	fileSize := fileInfo.Size()
 
 	// Calculate number of parts
-	numParts := int((fileSize + ChunkSize - 1) / ChunkSize) // Ceiling division
+	numParts := int(math.Ceil(float64(fileSize) / float64(ChunkSize)))
+	if numParts == 0 {
+		numParts = 1 // Always upload at least 1 part, even for empty files
+	}
 
 	zap.L().Debug(fmt.Sprintf("File size: %d bytes, uploading in %d parts of %d bytes each\n",
 		fileSize, numParts, ChunkSize))

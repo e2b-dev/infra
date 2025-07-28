@@ -13,6 +13,15 @@ func (l *Limiter) GCloudUploadLimiter() *utils.AdjustableSemaphore {
 	return l.gCloudUploadLimiter
 }
 
+func (l *Limiter) GCloudMaxTasks() int {
+	maxTasks, flagErr := l.featureFlags.IntFlag(featureflags.GcloudMaxTasks, "gcloud")
+	if flagErr != nil {
+		zap.L().Warn("soft failing during gcloud max tasks feature flag receive", zap.Error(flagErr), zap.Int("maxTasks", maxTasks))
+	}
+
+	return maxTasks
+}
+
 func (l *Limiter) GCloudCmdLimits(path string) []string {
 	maxCPU, flagErr := l.featureFlags.IntFlag(featureflags.GcloudMaxCPUQuota, path)
 	if flagErr != nil {
@@ -24,10 +33,7 @@ func (l *Limiter) GCloudCmdLimits(path string) []string {
 		zap.L().Warn("soft failing during gcloud cmd limits feature flag receive", zap.Error(flagErr), zap.Int("maxMemory", maxMemory))
 	}
 
-	maxTasks, flagErr := l.featureFlags.IntFlag(featureflags.GcloudMaxTasks, path)
-	if flagErr != nil {
-		zap.L().Warn("soft failing during gcloud cmd limits feature flag receive", zap.Error(flagErr), zap.Int("maxTasks", maxTasks))
-	}
+	maxTasks := l.GCloudMaxTasks()
 
 	return []string{
 		fmt.Sprintf("--property=CPUQuota=%d%%", maxCPU),
