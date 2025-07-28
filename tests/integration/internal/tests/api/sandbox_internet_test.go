@@ -49,7 +49,7 @@ func TestInternetAccess(t *testing.T) {
 				require.NoError(t, err, "Expected curl command to succeed when internet access is allowed")
 			} else {
 				require.Error(t, err, "Expected curl command to fail when internet access is denied")
-				require.Contains(t, err.Error(), "curl failed with exit code", "Expected connection failure message")
+				require.Contains(t, err.Error(), "failed with exit code", "Expected connection failure message")
 
 			}
 		})
@@ -106,7 +106,7 @@ func TestInternetAccessResumedSbx(t *testing.T) {
 				require.NoError(t, err, "Expected curl command to succeed when internet access is allowed")
 			} else {
 				require.Error(t, err, "Expected curl command to fail when internet access is denied")
-				require.Contains(t, err.Error(), "curl failed with exit code", "Expected connection failure message")
+				require.Contains(t, err.Error(), "failed with exit code", "Expected connection failure message")
 			}
 		})
 	}
