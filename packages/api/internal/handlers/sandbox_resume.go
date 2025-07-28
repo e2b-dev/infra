@@ -167,6 +167,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		snap.BaseEnvID,
 		autoPause,
 		envdAccessToken,
+		snap.AllowInternetAccess,
 	)
 
 	if createErr != nil {

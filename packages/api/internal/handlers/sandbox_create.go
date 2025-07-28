@@ -154,6 +154,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		envdAccessToken = &accessToken
 	}
 
+	allowInternetAccess := body.AllowInternetAccess
+
 	sbx, createErr := a.startSandbox(
 		ctx,
 		sandboxID,
@@ -169,6 +171,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		env.TemplateID,
 		autoPause,
 		envdAccessToken,
+		allowInternetAccess,
 	)
 	if createErr != nil {
 		zap.L().Error("Failed to create sandbox", zap.Error(createErr.Err))
