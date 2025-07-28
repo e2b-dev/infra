@@ -396,6 +396,8 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 					RamMb:       template.MemoryMB,
 					HugePages:   template.HugePages,
 					EnvdVersion: envdVersion,
+
+					AllowInternetAccess: &globalconfig.AllowSandboxInternet,
 				},
 				finalMetadata.TemplateID,
 				lastHash,
@@ -456,6 +458,8 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			RamMb:       template.MemoryMB,
 			HugePages:   template.HugePages,
 			EnvdVersion: envdVersion,
+
+			AllowInternetAccess: &globalconfig.AllowSandboxInternet,
 		},
 		finalMetadata.TemplateID,
 		lastHash,

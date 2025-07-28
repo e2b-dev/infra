@@ -42,7 +42,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
-	// TODO: Temporary workaround, remove when API changes deployed
+	// TODO: Temporary workaround, remove when API changes are deployed
 	if req.Sandbox.AllowInternetAccess == nil {
 		req.Sandbox.AllowInternetAccess = &config.AllowSandboxInternet
 	}

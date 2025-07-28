@@ -124,6 +124,8 @@ func (b *Builder) buildLayer(
 			EnvdVersion: sourceSbxConfig.EnvdVersion,
 			Vcpu:        sourceSbxConfig.Vcpu,
 			RamMb:       sourceSbxConfig.RamMb,
+
+			AllowInternetAccess: sourceSbxConfig.AllowInternetAccess,
 		}
 		sbx, cleanupRes, err = sandbox.CreateSandbox(
 			ctx,
