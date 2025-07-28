@@ -49,6 +49,7 @@ func getFileOwnership(fileInfo os.FileInfo) (owner, group string) {
 }
 
 func entryInfo(path string) (*rpc.EntryInfo, error) {
+	// Get file info using Lstat to handle symlinks correctly
 	fileInfo, err := os.Lstat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
