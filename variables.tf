@@ -244,6 +244,11 @@ variable "template_manager_port" {
   default = 5008 // we want to use the same port for both because of edge api
 }
 
+variable "envd_timeout" {
+  type    = string
+  default = "40s"
+}
+
 variable "environment" {
   type    = string
   default = "prod"
