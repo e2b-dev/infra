@@ -27,6 +27,7 @@ require (
 	// https://github.com/grafana/loki/issues/2826. This is the equivalent of the main branch at https://github.com/grafana/loki/commit/7b805ba7c84366e11e8571c9e8c422739bb18684 (v2.9.15)
 	github.com/grafana/loki v0.0.0-20250609195516-7b805ba7c843
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0
+	github.com/hashicorp/go-retryablehttp v0.7.7
 	github.com/launchdarkly/go-sdk-common/v3 v3.1.0
 	github.com/launchdarkly/go-server-sdk/v7 v7.10.0
 	github.com/lib/pq v1.10.9
@@ -47,14 +48,13 @@ require (
 	go.opentelemetry.io/otel/trace v1.36.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/mod v0.25.0
+	golang.org/x/oauth2 v0.30.0
 	golang.org/x/sync v0.15.0
 	google.golang.org/api v0.214.0
 	google.golang.org/grpc v1.73.0
 	google.golang.org/protobuf v1.36.6
 	gotest.tools v2.2.0+incompatible
 )
-
-require golang.org/x/oauth2 v0.30.0
 
 require (
 	ariga.io/atlas v0.15.0 // indirect

@@ -9,12 +9,14 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand"
 	"net/http"
 	"os"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/hashicorp/go-retryablehttp"
 	"go.uber.org/zap"
 	"golang.org/x/oauth2/google"
 	"golang.org/x/sync/errgroup"
@@ -42,57 +44,61 @@ func DefaultRetryConfig() RetryConfig {
 	}
 }
 
-// retryRequest performs an HTTP request with exponential backoff retry logic
-func retryRequest(client *http.Client, req *http.Request, config RetryConfig) (*http.Response, error) {
-	var lastErr error
-	backoff := config.InitialBackoff
+func createRetryableClient(config RetryConfig) *retryablehttp.Client {
+	client := retryablehttp.NewClient()
 
-	for attempt := 1; attempt <= config.MaxAttempts; attempt++ {
-		// Clone the request for retry (in case body was consumed)
-		clonedReq := req.Clone(req.Context())
-		if req.Body != nil {
-			// Reset body for retry attempts
-			if req.GetBody != nil {
-				body, err := req.GetBody()
-				if err != nil {
-					return nil, fmt.Errorf("failed to get request body for retry: %v", err)
-				}
-				clonedReq.Body = body
+	client.RetryMax = config.MaxAttempts - 1 // go-retryablehttp counts retries, not total attempts
+	client.RetryWaitMin = config.InitialBackoff
+	client.RetryWaitMax = config.MaxBackoff
+
+	// Custom backoff function with full jitter to avoid thundering herd
+	client.Backoff = func(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+		// Calculate exponential backoff
+		backoff := min
+		for range attemptNum {
+			backoff = time.Duration(float64(backoff) * config.BackoffMultiplier)
+			if backoff > max {
+				backoff = max
+				break
 			}
 		}
 
-		resp, err := client.Do(clonedReq)
-		if err == nil && resp.StatusCode < 500 {
-			// Success or client error (4xx) - don't retry
-			return resp, nil
+		// Apply full jitter: random(0, backoff)
+		// This implements the "full jitter" strategy recommended by AWS:
+		// https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
+		// Benefits:
+		// - Spreads retry attempts across time to avoid thundering herd
+		// - Reduces peak load on servers during outages
+		// - Improves overall system stability under high retry scenarios
+		if backoff > 0 {
+			return time.Duration(rand.Int63n(int64(backoff)))
 		}
-
-		// Store the error for potential return
-		if err != nil {
-			lastErr = err
-		} else {
-			// Server error (5xx)
-			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			lastErr = fmt.Errorf("server error (status %d): %s", resp.StatusCode, string(body))
-		}
-
-		// Don't sleep on the last attempt
-		if attempt < config.MaxAttempts {
-			zap.L().Warn("Request failed",
-				zap.Int("attempt", attempt),
-				zap.Int("max_attempts", config.MaxAttempts),
-				zap.Duration("backoff", backoff),
-				zap.Error(lastErr),
-			)
-			time.Sleep(backoff)
-
-			// Calculate next backoff
-			backoff = min(time.Duration(float64(backoff)*config.BackoffMultiplier), config.MaxBackoff)
-		}
+		return backoff
 	}
 
-	return nil, fmt.Errorf("request failed after %d attempts: %v", config.MaxAttempts, lastErr)
+	// Use zap logger
+	client.Logger = &zapLogger{}
+
+	return client
+}
+
+// zapLogger adapts zap.Logger to retryablehttp.LeveledLogger interface
+type zapLogger struct{}
+
+func (z *zapLogger) Error(msg string, keysAndValues ...any) {
+	zap.L().Error(msg, zap.Any("details", keysAndValues))
+}
+
+func (z *zapLogger) Info(msg string, keysAndValues ...any) {
+	zap.L().Info(msg, zap.Any("details", keysAndValues))
+}
+
+func (z *zapLogger) Debug(msg string, keysAndValues ...any) {
+	// Ignore debug logs
+}
+
+func (z *zapLogger) Warn(msg string, keysAndValues ...any) {
+	zap.L().Warn(msg, zap.Any("details", keysAndValues))
 }
 
 type InitiateMultipartUploadResult struct {
@@ -115,7 +121,7 @@ type MultipartUploader struct {
 	bucketName  string
 	objectName  string
 	token       string
-	client      *http.Client
+	client      *retryablehttp.Client
 	retryConfig RetryConfig
 	baseURL     string // Allow overriding for testing
 }
@@ -135,7 +141,7 @@ func NewMultipartUploaderWithRetryConfig(ctx context.Context, bucketName, object
 		bucketName:  bucketName,
 		objectName:  objectName,
 		token:       token.AccessToken,
-		client:      &http.Client{},
+		client:      createRetryableClient(retryConfig),
 		retryConfig: retryConfig,
 		baseURL:     fmt.Sprintf("https://%s.storage.googleapis.com", bucketName),
 	}, nil
@@ -144,7 +150,7 @@ func NewMultipartUploaderWithRetryConfig(ctx context.Context, bucketName, object
 func (m *MultipartUploader) InitiateUpload() (string, error) {
 	url := fmt.Sprintf("%s/%s?uploads", m.baseURL, m.objectName)
 
-	req, err := http.NewRequest("POST", url, nil)
+	req, err := retryablehttp.NewRequest("POST", url, nil)
 	if err != nil {
 		return "", err
 	}
@@ -153,7 +159,7 @@ func (m *MultipartUploader) InitiateUpload() (string, error) {
 	req.Header.Set("Content-Length", "0")
 	req.Header.Set("Content-Type", "application/octet-stream")
 
-	resp, err := retryRequest(m.client, req, m.retryConfig)
+	resp, err := m.client.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -181,21 +187,16 @@ func (m *MultipartUploader) UploadPart(uploadID string, partNumber int, data []b
 	url := fmt.Sprintf("%s/%s?partNumber=%d&uploadId=%s",
 		m.baseURL, m.objectName, partNumber, uploadID)
 
-	req, err := http.NewRequest("PUT", url, bytes.NewReader(data))
+	req, err := retryablehttp.NewRequest("PUT", url, bytes.NewReader(data))
 	if err != nil {
 		return "", err
-	}
-
-	// Set up GetBody for retries
-	req.GetBody = func() (io.ReadCloser, error) {
-		return io.NopCloser(bytes.NewReader(data)), nil
 	}
 
 	req.Header.Set("Authorization", "Bearer "+m.token)
 	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(data)))
 	req.Header.Set("Content-MD5", md5Sum)
 
-	resp, err := retryRequest(m.client, req, m.retryConfig)
+	resp, err := m.client.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -229,21 +230,16 @@ func (m *MultipartUploader) CompleteUpload(uploadID string, parts []Part) error 
 	url := fmt.Sprintf("%s/%s?uploadId=%s",
 		m.baseURL, m.objectName, uploadID)
 
-	req, err := http.NewRequest("POST", url, bytes.NewReader(xmlData))
+	req, err := retryablehttp.NewRequest("POST", url, bytes.NewReader(xmlData))
 	if err != nil {
 		return err
-	}
-
-	// Set up GetBody for retries
-	req.GetBody = func() (io.ReadCloser, error) {
-		return io.NopCloser(bytes.NewReader(xmlData)), nil
 	}
 
 	req.Header.Set("Authorization", "Bearer "+m.token)
 	req.Header.Set("Content-Type", "application/xml")
 	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(xmlData)))
 
-	resp, err := retryRequest(m.client, req, m.retryConfig)
+	resp, err := m.client.Do(req)
 	if err != nil {
 		return err
 	}

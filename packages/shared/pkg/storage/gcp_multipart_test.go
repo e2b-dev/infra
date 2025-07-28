@@ -15,165 +15,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/stretchr/testify/require"
 )
-
-func TestRetryRequest_Success(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
-	}))
-	defer server.Close()
-
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", server.URL, nil)
-	require.NoError(t, err)
-
-	config := RetryConfig{
-		MaxAttempts:       3,
-		InitialBackoff:    10 * time.Millisecond,
-		MaxBackoff:        1 * time.Second,
-		BackoffMultiplier: 2,
-	}
-
-	resp, err := retryRequest(client, req, config)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "success", string(body))
-}
-
-func TestRetryRequest_ClientError_NoRetry(t *testing.T) {
-	var requestCount int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&requestCount, 1)
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("bad request"))
-	}))
-	defer server.Close()
-
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", server.URL, nil)
-	require.NoError(t, err)
-
-	config := RetryConfig{
-		MaxAttempts:       3,
-		InitialBackoff:    10 * time.Millisecond,
-		MaxBackoff:        1 * time.Second,
-		BackoffMultiplier: 2,
-	}
-
-	resp, err := retryRequest(client, req, config)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	require.Equal(t, int32(1), atomic.LoadInt32(&requestCount)) // Should not retry 4xx errors
-}
-
-func TestRetryRequest_ServerError_WithRetries(t *testing.T) {
-	var requestCount int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		count := atomic.AddInt32(&requestCount, 1)
-		if count < 3 {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("server error"))
-		} else {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("success"))
-		}
-	}))
-	defer server.Close()
-
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", server.URL, nil)
-	require.NoError(t, err)
-
-	config := RetryConfig{
-		MaxAttempts:       3,
-		InitialBackoff:    10 * time.Millisecond,
-		MaxBackoff:        1 * time.Second,
-		BackoffMultiplier: 2,
-	}
-
-	resp, err := retryRequest(client, req, config)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.Equal(t, int32(3), atomic.LoadInt32(&requestCount)) // Should retry twice and succeed on third
-}
-
-func TestRetryRequest_MaxRetriesExceeded(t *testing.T) {
-	var requestCount int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&requestCount, 1)
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("persistent error"))
-	}))
-	defer server.Close()
-
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", server.URL, nil)
-	require.NoError(t, err)
-
-	config := RetryConfig{
-		MaxAttempts:       3,
-		InitialBackoff:    10 * time.Millisecond,
-		MaxBackoff:        1 * time.Second,
-		BackoffMultiplier: 2,
-	}
-
-	resp, err := retryRequest(client, req, config)
-	require.Error(t, err)
-	require.Nil(t, resp)
-	require.Contains(t, err.Error(), "request failed after 3 attempts")
-	require.Equal(t, int32(3), atomic.LoadInt32(&requestCount))
-}
-
-func TestRetryRequest_WithRequestBody(t *testing.T) {
-	var requestCount int32
-	var receivedBodies []string
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		count := atomic.AddInt32(&requestCount, 1)
-		body, _ := io.ReadAll(r.Body)
-		receivedBodies = append(receivedBodies, string(body))
-
-		if count < 2 {
-			w.WriteHeader(http.StatusInternalServerError)
-		} else {
-			w.WriteHeader(http.StatusOK)
-		}
-	}))
-	defer server.Close()
-
-	client := &http.Client{}
-	requestBody := "test body content"
-	req, err := http.NewRequest("POST", server.URL, strings.NewReader(requestBody))
-	require.NoError(t, err)
-
-	// Set up GetBody for retries
-	req.GetBody = func() (io.ReadCloser, error) {
-		return io.NopCloser(strings.NewReader(requestBody)), nil
-	}
-
-	config := RetryConfig{
-		MaxAttempts:       3,
-		InitialBackoff:    10 * time.Millisecond,
-		MaxBackoff:        1 * time.Second,
-		BackoffMultiplier: 2,
-	}
-
-	resp, err := retryRequest(client, req, config)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.Equal(t, int32(2), atomic.LoadInt32(&requestCount))
-
-	// Verify body was sent correctly on all attempts
-	require.Len(t, receivedBodies, 2)
-	require.Equal(t, requestBody, receivedBodies[0])
-	require.Equal(t, requestBody, receivedBodies[1])
-}
 
 // createTestMultipartUploader creates a test uploader with a mock HTTP client
 func createTestMultipartUploader(t *testing.T, handler http.HandlerFunc, retryConfig ...RetryConfig) *MultipartUploader {
@@ -185,11 +29,15 @@ func createTestMultipartUploader(t *testing.T, handler http.HandlerFunc, retryCo
 		config = retryConfig[0]
 	}
 
+	// Create retryable client using the test server's client
+	retryableClient := createRetryableClient(config)
+	retryableClient.HTTPClient = server.Client()
+
 	uploader := &MultipartUploader{
 		bucketName:  "test-bucket",
 		objectName:  "test-object",
 		token:       "test-token",
-		client:      server.Client(),
+		client:      retryableClient,
 		retryConfig: config,
 		baseURL:     server.URL, // Override to use test server
 	}
@@ -857,4 +705,186 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 		require.True(t, attempts >= 3, "Part %s should have at least 3 attempts", key)
 		return true
 	})
+}
+
+// TestCreateRetryableClient_JitterBehavior tests that the jittered backoff works correctly
+func TestCreateRetryableClient_JitterBehavior(t *testing.T) {
+	config := RetryConfig{
+		MaxAttempts:       3,
+		InitialBackoff:    100 * time.Millisecond,
+		MaxBackoff:        1 * time.Second,
+		BackoffMultiplier: 2.0,
+	}
+
+	client := createRetryableClient(config)
+	require.NotNil(t, client)
+	require.NotNil(t, client.Backoff)
+
+	// Test jitter produces values within expected range
+	t.Run("JitterRange", func(t *testing.T) {
+		// Test first attempt (attemptNum = 0)
+		for i := 0; i < 10; i++ {
+			backoff := client.Backoff(config.InitialBackoff, config.MaxBackoff, 0, nil)
+			require.GreaterOrEqual(t, backoff, time.Duration(0))
+			require.Less(t, backoff, config.InitialBackoff)
+		}
+
+		// Test second attempt (attemptNum = 1) - should be jittered version of 200ms
+		expectedBase := time.Duration(float64(config.InitialBackoff) * config.BackoffMultiplier)
+		for i := 0; i < 10; i++ {
+			backoff := client.Backoff(config.InitialBackoff, config.MaxBackoff, 1, nil)
+			require.GreaterOrEqual(t, backoff, time.Duration(0))
+			require.Less(t, backoff, expectedBase)
+		}
+	})
+
+	// Test that jitter produces different values (randomness)
+	t.Run("JitterRandomness", func(t *testing.T) {
+		values := make(map[time.Duration]bool)
+
+		// Collect 20 jittered values
+		for i := 0; i < 20; i++ {
+			backoff := client.Backoff(config.InitialBackoff, config.MaxBackoff, 1, nil)
+			values[backoff] = true
+		}
+
+		// Should have at least some variation (not all the same value)
+		// With a range of 0-200ms, getting 20 identical values is highly unlikely
+		require.Greater(t, len(values), 1, "Jitter should produce varied values")
+	})
+
+	// Test exponential backoff base calculation (before jitter)
+	t.Run("ExponentialBackoffBase", func(t *testing.T) {
+		// We can't directly test the base calculation due to jitter,
+		// but we can verify the max possible value matches our expectation
+
+		// For attemptNum=0: base should be 100ms, jitter: 0-100ms
+		// For attemptNum=1: base should be 200ms, jitter: 0-200ms
+		// For attemptNum=2: base should be 400ms, jitter: 0-400ms
+
+		// Test attempt 2 multiple times and verify max range
+		var maxSeen time.Duration
+		for i := 0; i < 100; i++ {
+			backoff := client.Backoff(config.InitialBackoff, config.MaxBackoff, 2, nil)
+			if backoff > maxSeen {
+				maxSeen = backoff
+			}
+		}
+
+		expectedBase := time.Duration(float64(config.InitialBackoff) * config.BackoffMultiplier * config.BackoffMultiplier)
+		// The max we should ever see is just under the expected base (due to jitter being 0 to base-1)
+		require.Less(t, maxSeen, expectedBase)
+		// But we should see values reasonably close to the base in 100 attempts
+		require.Greater(t, maxSeen, expectedBase/2)
+	})
+
+	// Test max backoff cap
+	t.Run("MaxBackoffCap", func(t *testing.T) {
+		// With high attempt numbers, backoff should be capped at MaxBackoff
+		for i := 0; i < 10; i++ {
+			backoff := client.Backoff(config.InitialBackoff, config.MaxBackoff, 10, nil)
+			require.GreaterOrEqual(t, backoff, time.Duration(0))
+			require.Less(t, backoff, config.MaxBackoff)
+		}
+	})
+}
+
+// TestCreateRetryableClient_Configuration tests the retry client configuration
+func TestCreateRetryableClient_Configuration(t *testing.T) {
+	config := RetryConfig{
+		MaxAttempts:       5,
+		InitialBackoff:    50 * time.Millisecond,
+		MaxBackoff:        2 * time.Second,
+		BackoffMultiplier: 3.0,
+	}
+
+	client := createRetryableClient(config)
+
+	// Verify retry configuration
+	require.Equal(t, config.MaxAttempts-1, client.RetryMax) // go-retryablehttp counts retries, not total attempts
+	require.Equal(t, config.InitialBackoff, client.RetryWaitMin)
+	require.Equal(t, config.MaxBackoff, client.RetryWaitMax)
+	require.NotNil(t, client.Logger)
+	require.NotNil(t, client.Backoff)
+}
+
+// TestCreateRetryableClient_ZeroBackoff tests edge case of zero backoff
+func TestCreateRetryableClient_ZeroBackoff(t *testing.T) {
+	config := RetryConfig{
+		MaxAttempts:       2,
+		InitialBackoff:    0, // Zero initial backoff
+		MaxBackoff:        1 * time.Second,
+		BackoffMultiplier: 2.0,
+	}
+
+	client := createRetryableClient(config)
+
+	// With zero initial backoff, jitter should also return zero
+	backoff := client.Backoff(config.InitialBackoff, config.MaxBackoff, 0, nil)
+	require.Equal(t, time.Duration(0), backoff)
+}
+
+// TestRetryableClient_ActualRetryBehavior tests the retry behavior in practice
+func TestRetryableClient_ActualRetryBehavior(t *testing.T) {
+	var requestCount int32
+	var retryDelays []time.Duration
+	var retryTimes []time.Time
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt32(&requestCount, 1)
+		retryTimes = append(retryTimes, time.Now())
+
+		if count < 3 {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("server error"))
+		} else {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("success"))
+		}
+	}))
+	defer server.Close()
+
+	config := RetryConfig{
+		MaxAttempts:       3,
+		InitialBackoff:    50 * time.Millisecond,
+		MaxBackoff:        500 * time.Millisecond,
+		BackoffMultiplier: 2.0,
+	}
+
+	client := createRetryableClient(config)
+	client.HTTPClient = server.Client()
+
+	startTime := time.Now()
+	req, err := retryablehttp.NewRequest("GET", server.URL, nil)
+	require.NoError(t, err)
+
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	// Should have made 3 requests (initial + 2 retries)
+	require.Equal(t, int32(3), atomic.LoadInt32(&requestCount))
+	require.Len(t, retryTimes, 3)
+
+	// Calculate actual delays between requests
+	for i := 1; i < len(retryTimes); i++ {
+		delay := retryTimes[i].Sub(retryTimes[i-1])
+		retryDelays = append(retryDelays, delay)
+	}
+
+	// Verify we had some delays due to backoff (but jittered, so variable)
+	require.Len(t, retryDelays, 2)
+
+	// First retry delay should be jittered version of 50ms (0-50ms range)
+	// But in practice, with network overhead, it might be slightly higher
+	require.Greater(t, retryDelays[0], time.Duration(0))
+	require.Less(t, retryDelays[0], 200*time.Millisecond) // Allow some overhead
+
+	// Second retry delay should be jittered version of 100ms (0-100ms range)
+	require.Greater(t, retryDelays[1], time.Duration(0))
+	require.Less(t, retryDelays[1], 300*time.Millisecond) // Allow some overhead
+
+	totalTime := time.Since(startTime)
+	t.Logf("Total time: %v, Retry delays: %v", totalTime, retryDelays)
 }
