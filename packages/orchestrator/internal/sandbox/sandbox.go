@@ -248,7 +248,6 @@ func ResumeSandbox(
 	startedAt time.Time,
 	endAt time.Time,
 	devicePool *nbd.DevicePool,
-	allowInternet,
 	useClickhouseMetrics bool,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
@@ -256,7 +255,7 @@ func ResumeSandbox(
 
 	cleanup := NewCleanup()
 
-	ipsCh := getNetworkSlotAsync(childCtx, tracer, networkPool, cleanup, allowInternet)
+	ipsCh := getNetworkSlotAsync(childCtx, tracer, networkPool, cleanup, config.GetAllowInternetAccess())
 	defer func() {
 		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
 		<-ipsCh
