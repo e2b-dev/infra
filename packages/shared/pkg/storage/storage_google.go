@@ -40,6 +40,8 @@ type GCPBucketStorageProvider struct {
 	limiter *limit.Limiter
 }
 
+var _ StorageProvider = (*GCPBucketStorageProvider)(nil)
+
 type GCPBucketStorageObjectProvider struct {
 	storage *GCPBucketStorageProvider
 	path    string
@@ -48,6 +50,8 @@ type GCPBucketStorageObjectProvider struct {
 
 	limiter *limit.Limiter
 }
+
+var _ StorageObjectProvider = (*GCPBucketStorageObjectProvider)(nil)
 
 func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, limiter *limit.Limiter) (*GCPBucketStorageProvider, error) {
 	client, err := storage.NewClient(ctx)

@@ -324,3 +324,9 @@ module "network" {
   labels = var.labels
   prefix = var.prefix
 }
+
+module "filestore" {
+  source = "./filestore"
+
+  filestore_name = "${var.prefix}cache"
+}
