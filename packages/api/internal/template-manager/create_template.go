@@ -17,11 +17,13 @@ import (
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (tm *TemplateManager) CreateTemplate(
 	t trace.Tracer,
 	ctx context.Context,
+	teamID uuid.UUID,
 	templateID string,
 	buildID uuid.UUID,
 	kernelVersion,
@@ -102,6 +104,7 @@ func (tm *TemplateManager) CreateTemplate(
 				Force:              force,
 				Steps:              convertTemplateSteps(steps),
 			},
+			CacheScope: ut.ToPtr(teamID.String()),
 		},
 	)
 

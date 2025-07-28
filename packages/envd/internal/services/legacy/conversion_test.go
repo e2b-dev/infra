@@ -1,14 +1,71 @@
 package legacy
 
 import (
+	"bytes"
+	"io"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem/filesystemconnect"
 )
+
+func TestFilesystemClient_FieldFormatter(t *testing.T) {
+	fsh := NewMockFilesystemHandler(t)
+	fsh.EXPECT().Move(mock.Anything, mock.Anything).Return(connect.NewResponse(&filesystem.MoveResponse{
+		Entry: &filesystem.EntryInfo{
+			Name:  "test-name",
+			Owner: "new-extra-field",
+		},
+	}), nil)
+
+	_, handler := filesystemconnect.NewFilesystemHandler(fsh,
+		connect.WithInterceptors(
+			Convert(),
+		),
+	)
+
+	t.Run("can return all fields", func(t *testing.T) {
+		buf := bytes.NewBuffer([]byte(`{}`))
+		req := httptest.NewRequest("POST", filesystemconnect.FilesystemMoveProcedure, buf)
+		req.Header.Set("content-type", "application/json")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		assert.Equal(t, 200, w.Code)
+
+		data, err := io.ReadAll(w.Body)
+		require.NoError(t, err)
+
+		// Depending on the test execution order, different json serialization settings will be used,
+		// specifically in regard to whitespace after colons. This normalizes it so the order no
+		// longer matters.
+		text := strings.ReplaceAll(string(data), " ", "")
+		assert.Equal(t, `{"entry":{"name":"test-name","owner":"new-extra-field"}}`, text)
+	})
+
+	t.Run("can hide fields when appropriate", func(t *testing.T) {
+		buf := bytes.NewBuffer([]byte(`{}`))
+		req := httptest.NewRequest("POST", filesystemconnect.FilesystemMoveProcedure, buf)
+		req.Header.Set("user-agent", brokenUserAgent)
+		req.Header.Set("content-type", "application/json")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		assert.Equal(t, 200, w.Code)
+
+		data, err := io.ReadAll(w.Body)
+		require.NoError(t, err)
+		assert.Equal(t, string(data), `{"entry":{"name":"test-name"}}`)
+	})
+}
 
 func TestConversion(t *testing.T) {
 	testCases := []struct {
@@ -20,9 +77,12 @@ func TestConversion(t *testing.T) {
 			name: "MoveResponse with populated fields",
 			input: connect.NewResponse(&filesystem.MoveResponse{
 				Entry: &filesystem.EntryInfo{
-					Name: "test.txt",
-					Type: filesystem.FileType_FILE_TYPE_FILE,
-					Path: "/test/test.txt",
+					Name:  "test.txt",
+					Type:  filesystem.FileType_FILE_TYPE_FILE,
+					Path:  "/test/test.txt",
+					Owner: "root",
+					Group: "root",
+					Size:  1024,
 				},
 			}),
 			expected: connect.NewResponse(&MoveResponse{
@@ -43,14 +103,20 @@ func TestConversion(t *testing.T) {
 			input: connect.NewResponse(&filesystem.ListDirResponse{
 				Entries: []*filesystem.EntryInfo{
 					{
-						Name: "test1.txt",
-						Type: filesystem.FileType_FILE_TYPE_FILE,
-						Path: "/test/test1.txt",
+						Name:  "test1.txt",
+						Type:  filesystem.FileType_FILE_TYPE_FILE,
+						Path:  "/test/test1.txt",
+						Owner: "root",
+						Group: "root",
+						Size:  1024,
 					},
 					{
-						Name: "test2.txt",
-						Type: filesystem.FileType_FILE_TYPE_FILE,
-						Path: "/test/test2.txt",
+						Name:  "test2.txt",
+						Type:  filesystem.FileType_FILE_TYPE_FILE,
+						Path:  "/test/test2.txt",
+						Owner: "root",
+						Group: "root",
+						Size:  1024,
 					},
 				},
 			}),
@@ -78,9 +144,12 @@ func TestConversion(t *testing.T) {
 			name: "MakeDirResponse with populated fields",
 			input: connect.NewResponse(&filesystem.MakeDirResponse{
 				Entry: &filesystem.EntryInfo{
-					Name: "testdir",
-					Type: filesystem.FileType_FILE_TYPE_DIRECTORY,
-					Path: "/test/testdir",
+					Name:  "testdir",
+					Type:  filesystem.FileType_FILE_TYPE_DIRECTORY,
+					Path:  "/test/testdir",
+					Owner: "root",
+					Group: "root",
+					Size:  1024,
 				},
 			}),
 			expected: connect.NewResponse(&MakeDirResponse{
@@ -105,9 +174,12 @@ func TestConversion(t *testing.T) {
 			name: "StatResponse with populated fields",
 			input: connect.NewResponse(&filesystem.StatResponse{
 				Entry: &filesystem.EntryInfo{
-					Name: "test.txt",
-					Type: filesystem.FileType_FILE_TYPE_FILE,
-					Path: "/test/test.txt",
+					Name:  "test.txt",
+					Type:  filesystem.FileType_FILE_TYPE_FILE,
+					Path:  "/test/test.txt",
+					Owner: "root",
+					Group: "root",
+					Size:  1024,
 				},
 			}),
 			expected: connect.NewResponse(&StatResponse{
@@ -213,9 +285,12 @@ func TestConvertValue(t *testing.T) {
 		"move response without value": {
 			input: &filesystem.MoveResponse{
 				Entry: &filesystem.EntryInfo{
-					Name: "test.txt",
-					Type: filesystem.FileType_FILE_TYPE_FILE,
-					Path: "/test/test.txt",
+					Name:  "test.txt",
+					Type:  filesystem.FileType_FILE_TYPE_FILE,
+					Path:  "/test/test.txt",
+					Owner: "root",
+					Group: "root",
+					Size:  1024,
 				},
 			},
 			expected: &MoveResponse{

@@ -37,7 +37,7 @@ func TestListDir(t *testing.T) {
 	utils.CreateDir(t, sbx, fmt.Sprintf("%s/test-dir/sub-dir-2", testFolder))
 
 	filePath := fmt.Sprintf("%s/test-dir/sub-dir-1/file.txt", testFolder)
-	utils.UploadFile(t, ctx, sbx, envdClient, filePath, []byte("Hello, World!"))
+	utils.UploadFile(t, ctx, sbx, envdClient, filePath, "Hello, World!")
 
 	tests := []struct {
 		name          string
@@ -143,6 +143,200 @@ func TestFilePermissions(t *testing.T) {
 	}
 }
 
+func TestStat(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	c := setup.GetAPIClient()
+	sbx := utils.SetupSandboxWithCleanup(t, c)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+	filePath := "/home/user/test.txt"
+	utils.UploadFile(t, ctx, sbx, envdClient, filePath, "Hello, World!")
+
+	req := connect.NewRequest(&filesystem.StatRequest{
+		Path: filePath,
+	})
+	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
+	setup.SetUserHeader(req.Header(), "user")
+	statResp, err := envdClient.FilesystemClient.Stat(ctx, req)
+	require.NoError(t, err)
+
+	// Verify the stat response
+	require.NotNil(t, statResp.Msg)
+	require.NotNil(t, statResp.Msg.Entry)
+	entry := statResp.Msg.Entry
+
+	// Verify basic file info
+	assert.Equal(t, "test.txt", entry.Name)
+	assert.Equal(t, filePath, entry.Path)
+	assert.Equal(t, filesystem.FileType_FILE_TYPE_FILE, entry.Type)
+
+	// Verify permissions and ownership
+	assert.Equal(t, uint32(0o644), entry.Mode)
+	assert.Equal(t, "-rw-r--r--", entry.Permissions)
+	assert.Equal(t, "user", entry.Owner)
+	assert.Equal(t, "user", entry.Group)
+
+	// Verify file size
+	assert.Equal(t, int64(13), entry.Size)
+
+	// Verify modified time
+	require.NotNil(t, entry.ModifiedTime)
+}
+
+func TestListDirFileEntry(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	c := setup.GetAPIClient()
+	sbx := utils.SetupSandboxWithCleanup(t, c)
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// Create test directory and file
+	testDir := "/test-file-entry"
+	filePath := fmt.Sprintf("%s/test.txt", testDir)
+
+	utils.CreateDir(t, sbx, testDir)
+
+	// Create a text file
+	utils.UploadFile(t, ctx, sbx, envdClient, filePath, "Hello, World!")
+
+	// List the directory
+	req := connect.NewRequest(&filesystem.ListDirRequest{
+		Path:  testDir,
+		Depth: 1,
+	})
+	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
+	setup.SetUserHeader(req.Header(), "user")
+	folderListResp, err := envdClient.FilesystemClient.ListDir(ctx, req)
+	require.NoError(t, err)
+
+	// Verify response
+	require.NotEmpty(t, folderListResp.Msg)
+	require.Len(t, folderListResp.Msg.Entries, 1)
+
+	// Get the file entry
+	fileEntry := folderListResp.Msg.Entries[0]
+
+	// Verify file entry
+	assert.Equal(t, "test.txt", fileEntry.Name)
+	assert.Equal(t, filePath, fileEntry.Path)
+	assert.Equal(t, filesystem.FileType_FILE_TYPE_FILE, fileEntry.Type)
+	assert.Equal(t, uint32(0o644), fileEntry.Mode)
+	assert.Equal(t, "-rw-r--r--", fileEntry.Permissions)
+	assert.Equal(t, "user", fileEntry.Owner)
+	assert.Equal(t, "user", fileEntry.Group)
+	assert.Equal(t, int64(13), fileEntry.Size) // "Hello, World!" is 13 bytes
+	require.NotNil(t, fileEntry.ModifiedTime)
+}
+
+func TestListDirEntry(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	c := setup.GetAPIClient()
+	sbx := utils.SetupSandboxWithCleanup(t, c)
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// Create test directories
+	testDir := "/test-entry-info"
+	subDir := fmt.Sprintf("%s/subdir", testDir)
+
+	utils.CreateDir(t, sbx, testDir)
+	utils.CreateDir(t, sbx, subDir)
+
+	// List the directory
+	req := connect.NewRequest(&filesystem.ListDirRequest{
+		Path:  testDir,
+		Depth: 1,
+	})
+	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
+	setup.SetUserHeader(req.Header(), "user")
+	folderListResp, err := envdClient.FilesystemClient.ListDir(ctx, req)
+	require.NoError(t, err)
+
+	// Verify response
+	require.NotEmpty(t, folderListResp.Msg)
+	require.Len(t, folderListResp.Msg.Entries, 1)
+
+	// Get the subdirectory entry
+	entry := folderListResp.Msg.Entries[0]
+
+	// Verify EntryInfo
+	assert.Equal(t, "subdir", entry.Name)
+	assert.Equal(t, subDir, entry.Path)
+	assert.Equal(t, filesystem.FileType_FILE_TYPE_DIRECTORY, entry.Type)
+	assert.Equal(t, uint32(0o755), entry.Mode)
+	assert.Equal(t, "drwxr-xr-x", entry.Permissions)
+	assert.Equal(t, "user", entry.Owner)
+	assert.Equal(t, "user", entry.Group)
+	require.NotNil(t, entry.ModifiedTime)
+}
+
+func TestListDirMixedEntries(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	c := setup.GetAPIClient()
+	sbx := utils.SetupSandboxWithCleanup(t, c)
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// Create test directories and files
+	testDir := "/test-mixed-entries"
+	subDir := fmt.Sprintf("%s/subdir", testDir)
+	filePath := fmt.Sprintf("%s/test.txt", testDir)
+
+	utils.CreateDir(t, sbx, testDir)
+	utils.CreateDir(t, sbx, subDir)
+
+	// Create a text file
+	utils.UploadFile(t, ctx, sbx, envdClient, filePath, "Hello, World!")
+
+	// List the directory
+	req := connect.NewRequest(&filesystem.ListDirRequest{
+		Path:  testDir,
+		Depth: 1,
+	})
+	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
+	setup.SetUserHeader(req.Header(), "user")
+	folderListResp, err := envdClient.FilesystemClient.ListDir(ctx, req)
+	require.NoError(t, err)
+
+	// Verify response
+	require.NotEmpty(t, folderListResp.Msg)
+	require.Len(t, folderListResp.Msg.Entries, 2)
+
+	// Create a map of entries by name for easier verification
+	entries := make(map[string]*filesystem.EntryInfo)
+	for _, entry := range folderListResp.Msg.Entries {
+		entries[entry.Name] = entry
+	}
+
+	// Verify directory entry
+	dirEntry, exists := entries["subdir"]
+	require.True(t, exists)
+	assert.Equal(t, subDir, dirEntry.Path)
+	assert.Equal(t, filesystem.FileType_FILE_TYPE_DIRECTORY, dirEntry.Type)
+	assert.Equal(t, uint32(0o755), dirEntry.Mode)
+	assert.Equal(t, "drwxr-xr-x", dirEntry.Permissions)
+	assert.Equal(t, "user", dirEntry.Owner)
+	assert.Equal(t, "user", dirEntry.Group)
+	require.NotNil(t, dirEntry.ModifiedTime)
+
+	// Verify file entry
+	fileEntry, exists := entries["test.txt"]
+	require.True(t, exists)
+	assert.Equal(t, filePath, fileEntry.Path)
+	assert.Equal(t, filesystem.FileType_FILE_TYPE_FILE, fileEntry.Type)
+	assert.Equal(t, uint32(0o644), fileEntry.Mode)
+	assert.Equal(t, "-rw-r--r--", fileEntry.Permissions)
+	assert.Equal(t, "user", fileEntry.Owner)
+	assert.Equal(t, "user", fileEntry.Group)
+	assert.Equal(t, int64(13), fileEntry.Size) // "Hello, World!" is 13 bytes
+	require.NotNil(t, fileEntry.ModifiedTime)
+}
+
 func TestRelativePath(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -152,7 +346,7 @@ func TestRelativePath(t *testing.T) {
 	envdClient := setup.GetEnvdClient(t, ctx)
 
 	utils.CreateDir(t, sbx, path.Join(userHome, relativeTestFolder))
-	utils.UploadFile(t, ctx, sbx, envdClient, path.Join(userHome, relativeTestFolder, "test.txt"), []byte("Hello, World!"))
+	utils.UploadFile(t, ctx, sbx, envdClient, path.Join(userHome, relativeTestFolder, "test.txt"), "Hello, World!")
 
 	req := connect.NewRequest(&filesystem.ListDirRequest{
 		Path:  relativeTestFolder,

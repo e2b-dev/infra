@@ -21,7 +21,7 @@ func (noopLogExporter) ForceFlush(context.Context) error { return nil }
 func NewLogExporter(ctx context.Context, extraOption ...otlploggrpc.Option) (sdklog.Exporter, error) {
 	opts := []otlploggrpc.Option{
 		otlploggrpc.WithInsecure(),
-		otlploggrpc.WithEndpoint(otelCollectorGRPCEndpoint),
+		otlploggrpc.WithEndpoint(OtelCollectorGRPCEndpoint),
 		otlploggrpc.WithCompressor(gzip.Name),
 	}
 	opts = append(opts, extraOption...)

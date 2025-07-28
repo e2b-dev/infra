@@ -7,9 +7,9 @@ option go_package = "https://github.com/e2b-dev/infra/orchestrator";
 
 // needs to be different from the enumeration in the template manager
 enum ServiceInfoStatus {
-  OrchestratorHealthy = 0;
-  OrchestratorDraining = 1;
-  OrchestratorUnhealthy = 2;
+  Healthy = 0;
+  Draining = 1;
+  Unhealthy = 2;
 }
 
 enum ServiceInfoRole {

@@ -89,134 +89,15 @@ job "clickhouse" {
 
       template {
         destination = "local/config.xml"
-        data        = <<EOF
-<?xml version="1.0"?>
-<clickhouse>
-<!-- this is undocumented but needed to enable waiting for for shutdown for a custom amount of time  -->
-<!-- see https://github.com/ClickHouse/ClickHouse/pull/77515 for more details  -->
-    <shutdown_wait_unfinished>60</shutdown_wait_unfinished>
-    <shutdown_wait_unfinished_queries>1</shutdown_wait_unfinished_queries>
-
-    <!-- Use up 80% of available RAM to be on the safer side, default is 90% -->
-    <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
-
-    <logger>
-        <formatting>
-            <type>json</type>
-            <names>
-                <date_time>date_time</date_time>
-                <thread_id>thread_id</thread_id>
-                <level>level</level>
-                <query_id>query_id</query_id>
-                <logger_name>logger_name</logger_name>
-                <message>message</message>
-                <source_file>source_file</source_file>
-                <source_line>source_line</source_line>
-            </names>
-        </formatting>
-        <console>1</console>
-        <level>information</level>
-    </logger>
-
-    <default_replica_path>/var/lib/clickhouse/tables/{shard}/{database}/{table}</default_replica_path>
-
-    <remote_servers replace="true">
-      <cluster>
-        <!-- a secret for servers to use to communicate to each other  -->
-        <secret>${server_secret}</secret>
-        %{ for j in range("${server_count}") }
-        <shard>
-          <replica>
-            <host>server-${j + 1}.clickhouse.service.consul</host>
-            <port>${clickhouse_server_port}</port>
-            <user>${username}</user>
-            <password>${password}</password>
-          </replica>
-        </shard>
-      %{ endfor }
-      </cluster>
-    </remote_servers>
-
-    <listen_host>0.0.0.0</listen_host>
-
-    <asynchronous_metric_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
-    </asynchronous_metric_log>
-
-    <trace_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
-    </trace_log>
-
-    <text_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
-    </text_log>
-
-    <latency_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
-    </latency_log>
-
-    <query_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
-    </query_log>
-
-    <metric_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
-    </metric_log>
-
-    <processors_profile_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
-    </processors_profile_log>
-
-    <asynchronous_metric_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
-    </asynchronous_metric_log>
-
-    <part_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
-    </part_log>
-
-    <query_metrics_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
-    </query_metrics_log>
-
-    <error_log>
-        <ttl>event_date + INTERVAL 30 DAY</ttl>
-    </error_log>
-
-    <prometheus>
-        <port>${clickhouse_metrics_port}</port>
-        <endpoint>/metrics</endpoint>
-        <metrics>true</metrics>
-        <asynchronous_metrics>true</asynchronous_metrics>
-        <events>true</events>
-        <errors>true</errors>
-    </prometheus>
-
-    <tcp_port>${clickhouse_server_port}</tcp_port>
-</clickhouse>
+        data        =<<EOF
+${clickhouse_config}
 EOF
       }
 
       template {
         destination = "local/users.xml"
-        data        = <<EOF
-<?xml version="1.0"?>
-<clickhouse>
-    <users>
-        <${username}>
-            <password>${password}</password>
-            <networks>
-              <!-- Allow Nomad access https://web.archive.org/web/20250618172506/https://developer.hashicorp.com/nomad/docs/configuration/client#bridge_network_subnet -->
-              <ip>172.26.64.0/20</ip>
-              <ip>::1</ip> <!-- allow localhost access -->
-              <ip>10.0.0.0/8</ip> <!-- restrict to internal traffic -->
-            </networks>
-            <profile>default</profile>
-            <quota>default</quota>
-            <access_management>1</access_management>
-        </${username}>
-    </users>
-</clickhouse>
+        data        =<<EOF
+${clickhouse_users_config}
 EOF
       }
     }

@@ -8,6 +8,9 @@ import (
 const InstanceBuildPrefix = "b"
 
 type TemplateConfig struct {
+	// CacheScope is the scope of layers and files caches.
+	CacheScope string
+
 	// Command to run when building the template.
 	StartCmd string
 

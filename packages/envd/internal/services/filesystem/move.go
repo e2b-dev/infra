@@ -53,10 +53,6 @@ func (Service) Move(ctx context.Context, req *connect.Request[rpc.MoveRequest]) 
 	}
 
 	return connect.NewResponse(&rpc.MoveResponse{
-		Entry: &rpc.EntryInfo{
-			Name: filepath.Base(destination),
-			Type: getEntryType(entry),
-			Path: destination,
-		},
+		Entry: entryInfoFromFileInfo(entry, destination),
 	}), nil
 }

@@ -41,6 +41,7 @@ run-debug:
 	ORCHESTRATOR_SERVICES=$(ORCHESTRATOR_SERVICES) \
 	GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) \
 	GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) \
+	OTEL_COLLECTOR_GRPC_ENDPOINT=$(OTEL_COLLECTOR_GRPC_ENDPOINT) \
 	./bin/orchestrator
 
 .PHONY: upload/orchestrator
@@ -71,7 +72,7 @@ mock-snapshot:
 
 .PHONY: test
 test:
-	go test -v ./...
+	go test -race -v ./...
 
 .PHONY: build-template
 build-template:

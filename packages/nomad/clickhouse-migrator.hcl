@@ -23,7 +23,7 @@ job "clickhouse-migrator" {
       driver = "docker"
 
       env {
-        GOOSE_DBSTRING="clickhouse://${clickhouse_username}:${clickhouse_password}@localhost:${clickhouse_port}/default"
+        GOOSE_DBSTRING="${clickhouse_connection_string}"
       }
 
       config {
