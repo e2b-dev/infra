@@ -54,6 +54,8 @@ require (
 	gotest.tools v2.2.0+incompatible
 )
 
+require golang.org/x/oauth2 v0.30.0
+
 require (
 	ariga.io/atlas v0.15.0 // indirect
 	cel.dev/expr v0.24.0 // indirect
@@ -293,7 +295,6 @@ require (
 	golang.org/x/crypto v0.39.0 // indirect
 	golang.org/x/exp v0.0.0-20250531010427-b6e5de432a8b // indirect
 	golang.org/x/net v0.41.0 // indirect
-	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
 	golang.org/x/time v0.11.0 // indirect

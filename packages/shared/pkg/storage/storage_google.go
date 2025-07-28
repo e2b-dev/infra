@@ -227,7 +227,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 
 	maxConcurrency := g.limiter.GCloudMaxTasks()
 	start := time.Now()
-	if err := uploader.UploadFileInParallel(filePath, maxConcurrency); err != nil {
+	if err := uploader.UploadFileInParallel(g.ctx, filePath, maxConcurrency); err != nil {
 		return fmt.Errorf("failed to upload file in parallel: %w", err)
 	}
 	zap.L().Debug("Uploaded file in parallel",

@@ -17,6 +17,7 @@ import (
 
 	"go.uber.org/zap"
 	"golang.org/x/oauth2/google"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -78,8 +79,12 @@ func retryRequest(client *http.Client, req *http.Request, config RetryConfig) (*
 
 		// Don't sleep on the last attempt
 		if attempt < config.MaxAttempts {
-			zap.L().Debug(fmt.Sprintf("Request failed (attempt %d/%d), retrying in %v: %v",
-				attempt, config.MaxAttempts, backoff, lastErr))
+			zap.L().Warn("Request failed",
+				zap.Int("attempt", attempt),
+				zap.Int("max_attempts", config.MaxAttempts),
+				zap.Duration("backoff", backoff),
+				zap.Error(lastErr),
+			)
 			time.Sleep(backoff)
 
 			// Calculate next backoff
@@ -107,12 +112,6 @@ type CompleteMultipartUpload struct {
 type Part struct {
 	PartNumber int    `xml:"PartNumber"`
 	ETag       string `xml:"ETag"`
-}
-
-type UploadResult struct {
-	PartNumber int
-	ETag       string
-	Error      error
 }
 
 type MultipartUploader struct {
@@ -261,7 +260,7 @@ func (m *MultipartUploader) CompleteUpload(uploadID string, parts []Part) error 
 	return nil
 }
 
-func (m *MultipartUploader) UploadFileInParallel(filePath string, maxConcurrency int) error {
+func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath string, maxConcurrency int) error {
 	// Open file
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -282,95 +281,69 @@ func (m *MultipartUploader) UploadFileInParallel(filePath string, maxConcurrency
 		numParts = 1 // Always upload at least 1 part, even for empty files
 	}
 
-	zap.L().Debug(fmt.Sprintf("File size: %d bytes, uploading in %d parts of %d bytes each\n",
-		fileSize, numParts, ChunkSize))
-
 	// Initiate multipart upload
-	zap.L().Debug("Initiating multipart upload...")
 	uploadID, err := m.InitiateUpload()
 	if err != nil {
 		return fmt.Errorf("failed to initiate upload: %v", err)
 	}
-	zap.L().Debug(fmt.Sprintf("Upload ID: %s\n", uploadID))
 
-	// Create channels for work distribution and results
-	jobs := make(chan int, numParts)
-	results := make(chan UploadResult, numParts)
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(maxConcurrency) // Limit concurrent goroutines
 
-	// Start worker goroutines
-	var wg sync.WaitGroup
-	for i := 0; i < maxConcurrency; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for partNumber := range jobs {
-				// Read chunk from file
-				offset := int64(partNumber-1) * ChunkSize
-				chunkSize := ChunkSize
-				if offset+int64(chunkSize) > fileSize {
-					chunkSize = int(fileSize - offset)
-				}
+	// Thread-safe map to collect parts
+	var partsMu sync.Mutex
+	parts := make([]Part, numParts)
 
-				chunk := make([]byte, chunkSize)
-				_, err := file.ReadAt(chunk, offset)
-				if err != nil {
-					results <- UploadResult{PartNumber: partNumber, Error: err}
-					continue
-				}
-
-				// Upload part
-				zap.L().Debug(fmt.Sprintf("Uploading part %d/%d (size: %d bytes)\n", partNumber, numParts, len(chunk)))
-				etag, err := m.UploadPart(uploadID, partNumber, chunk)
-				results <- UploadResult{
-					PartNumber: partNumber,
-					ETag:       etag,
-					Error:      err,
-				}
+	// Upload each part concurrently
+	for partNumber := 1; partNumber <= numParts; partNumber++ {
+		partNumber := partNumber // Capture loop variable
+		g.Go(func() error {
+			// Check if context was cancelled
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
 			}
-		}()
+
+			// Read chunk from file
+			offset := int64(partNumber-1) * ChunkSize
+			chunkSize := ChunkSize
+			if offset+int64(chunkSize) > fileSize {
+				chunkSize = int(fileSize - offset)
+			}
+
+			chunk := make([]byte, chunkSize)
+			_, err := file.ReadAt(chunk, offset)
+			if err != nil {
+				return fmt.Errorf("failed to read chunk for part %d: %v", partNumber, err)
+			}
+
+			// Upload part
+			etag, err := m.UploadPart(uploadID, partNumber, chunk)
+			if err != nil {
+				return fmt.Errorf("failed to upload part %d: %v", partNumber, err)
+			}
+
+			// Store result thread-safely
+			partsMu.Lock()
+			parts[partNumber-1] = Part{
+				PartNumber: partNumber,
+				ETag:       etag,
+			}
+			partsMu.Unlock()
+
+			return nil
+		})
 	}
 
-	// Send jobs
-	go func() {
-		for i := 1; i <= numParts; i++ {
-			jobs <- i
-		}
-		close(jobs)
-	}()
-
-	// Wait for workers to finish
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	// Collect results
-	var parts []Part
-	var uploadErrors []error
-
-	for result := range results {
-		if result.Error != nil {
-			uploadErrors = append(uploadErrors, fmt.Errorf("part %d: %v", result.PartNumber, result.Error))
-		} else {
-			parts = append(parts, Part{
-				PartNumber: result.PartNumber,
-				ETag:       result.ETag,
-			})
-			zap.L().Debug(fmt.Sprintf("Part %d uploaded successfully (ETag: %s)\n", result.PartNumber, result.ETag))
-		}
+	// Wait for all parts to complete or first error
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("upload failed: %v", err)
 	}
 
-	// Check for errors
-	if len(uploadErrors) > 0 {
-		return fmt.Errorf("upload errors: %v", uploadErrors)
-	}
-
-	// Complete the upload
-	fmt.Println("Completing multipart upload...")
 	if err := m.CompleteUpload(uploadID, parts); err != nil {
 		return fmt.Errorf("failed to complete upload: %v", err)
 	}
 
-	fmt.Println("Upload completed successfully!")
 	return nil
 }
