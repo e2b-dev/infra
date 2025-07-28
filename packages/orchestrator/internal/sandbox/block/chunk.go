@@ -86,7 +86,7 @@ func (c *Chunker) WriteTo(w io.Writer) (int64, error) {
 }
 
 func (c *Chunker) Slice(off, length int64) ([]byte, error) {
-	timer := c.metrics.Begin(c.metrics.SlicesMetric)
+	timer := c.metrics.BeginWithTotal(c.metrics.SlicesMetric, c.metrics.TotalBytesFaultedMetric, length)
 
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
@@ -158,7 +158,11 @@ func (c *Chunker) fetchToCache(off, length int64) error {
 
 				b := make([]byte, ChunkSize)
 
-				fetchSW := c.metrics.Begin(c.metrics.ChunkRemoteReadMetric)
+				fetchSW := c.metrics.BeginWithTotal(
+					c.metrics.ChunkRemoteReadMetric,
+					c.metrics.TotalBytesRetrievedMetric,
+					ChunkSize,
+				)
 				_, err := c.base.ReadAt(b, fetchOff)
 				if err != nil && !errors.Is(err, io.EOF) {
 					fetchSW.End(c.ctx,
