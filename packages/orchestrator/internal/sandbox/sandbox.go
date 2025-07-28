@@ -86,14 +86,13 @@ func CreateSandbox(
 	sandboxTimeout time.Duration,
 	rootfsCachePath string,
 	processOptions fc.ProcessOptions,
-	allowInternet bool,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
 
 	cleanup := NewCleanup()
 
-	ipsCh := getNetworkSlotAsync(childCtx, tracer, networkPool, cleanup, allowInternet)
+	ipsCh := getNetworkSlotAsync(childCtx, tracer, networkPool, cleanup, config.GetAllowInternetAccess())
 	defer func() {
 		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
 		<-ipsCh

@@ -36,7 +36,6 @@ func (b *Builder) buildLayer(
 	sourceMeta LayerMetadata,
 	exportTemplate storage.TemplateFiles,
 	resumeSandbox bool,
-	allowInternet bool,
 	fn func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error),
 ) (LayerMetadata, error) {
 	ctx, childSpan := b.tracer.Start(ctx, "run-in-sandbox")
@@ -72,6 +71,8 @@ func (b *Builder) buildLayer(
 			EnvdVersion: sourceSbxConfig.EnvdVersion,
 			Vcpu:        sourceSbxConfig.Vcpu,
 			RamMb:       sourceSbxConfig.RamMb,
+
+			AllowInternetAccess: sourceSbxConfig.AllowInternetAccess,
 		}
 		sbx, cleanupRes, err = sandbox.ResumeSandbox(
 			ctx,
@@ -83,7 +84,6 @@ func (b *Builder) buildLayer(
 			time.Now(),
 			time.Now().Add(layerTimeout),
 			b.devicePool,
-			allowInternet,
 			false,
 		)
 	} else {
@@ -139,7 +139,6 @@ func (b *Builder) buildLayer(
 				KernelLogs:          env.IsDevelopment(),
 				SystemdToKernelLogs: false,
 			},
-			allowInternet,
 		)
 	}
 	defer func() {
