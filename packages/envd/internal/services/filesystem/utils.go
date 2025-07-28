@@ -6,6 +6,7 @@ import (
 	"os/user"
 	"syscall"
 
+	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
@@ -47,7 +48,16 @@ func getFileOwnership(fileInfo os.FileInfo) (owner, group string) {
 	return owner, group
 }
 
-func entryInfoFromFileInfo(fileInfo os.FileInfo, path string) *rpc.EntryInfo {
+func entryInfo(path string) (*rpc.EntryInfo, error) {
+	// Get file info using Lstat to handle symlinks correctly
+	fileInfo, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("file not found: %w", err))
+		}
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error getting file info: %w", err))
+	}
+
 	owner, group := getFileOwnership(fileInfo)
 	fileMode := fileInfo.Mode()
 
@@ -61,8 +71,11 @@ func entryInfoFromFileInfo(fileInfo os.FileInfo, path string) *rpc.EntryInfo {
 	}
 
 	var entryType rpc.FileType
+	var mode uint32
+
 	if symlinkTarget == nil {
 		entryType = getEntryType(fileMode)
+		mode = uint32(fileMode.Perm())
 	} else {
 		// If it's a symlink, we need to determine the type of the target
 		targetInfo, err := os.Stat(*symlinkTarget)
@@ -70,6 +83,7 @@ func entryInfoFromFileInfo(fileInfo os.FileInfo, path string) *rpc.EntryInfo {
 			entryType = rpc.FileType_FILE_TYPE_UNSPECIFIED
 		} else {
 			entryType = getEntryType(targetInfo.Mode())
+			mode = uint32(targetInfo.Mode().Perm())
 		}
 	}
 
@@ -78,11 +92,11 @@ func entryInfoFromFileInfo(fileInfo os.FileInfo, path string) *rpc.EntryInfo {
 		Type:          entryType,
 		Path:          path,
 		Size:          fileInfo.Size(),
-		Mode:          uint32(fileMode.Perm()),
+		Mode:          mode,
 		Permissions:   fileMode.String(),
 		Owner:         owner,
 		Group:         group,
 		ModifiedTime:  timestamppb.New(fileInfo.ModTime()),
 		SymlinkTarget: symlinkTarget,
-	}
+	}, nil
 }
