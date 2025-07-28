@@ -264,13 +264,3 @@ module "redis" {
 
   depends_on = [module.api]
 }
-
-module "grafana" {
-  source          = "./terraform/grafana"
-  grafana_managed = var.grafana_managed
-
-  gcp_project_id = var.gcp_project_id
-  gcp_region     = var.gcp_region
-  prefix         = var.prefix
-  domain_name    = var.domain_name
-}

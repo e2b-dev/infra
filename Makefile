@@ -34,7 +34,6 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, DOMAIN_NAME) \
 	$(call tfvar, ADDITIONAL_DOMAINS) \
 	$(call tfvar, PREFIX) \
-	$(call tfvar, TERRAFORM_STATE_BUCKET) \
 	$(call tfvar, OTEL_TRACING_PRINT) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
 	$(call tfvar, CLIENT_PROXY_COUNT) \
