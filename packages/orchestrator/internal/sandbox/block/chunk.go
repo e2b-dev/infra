@@ -86,18 +86,18 @@ func (c *Chunker) WriteTo(w io.Writer) (int64, error) {
 }
 
 func (c *Chunker) Slice(off, length int64) ([]byte, error) {
-	timer := c.metrics.BeginWithTotal(c.metrics.SlicesMetric, c.metrics.TotalBytesFaultedMetric, length)
+	timer := c.metrics.BeginWithTotal(c.metrics.SlicesMetric, c.metrics.TotalBytesFaultedMetric)
 
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
-		timer.End(c.ctx,
+		timer.End(c.ctx, length,
 			attribute.String("result", resultTypeSuccess),
 			attribute.String("pull_type", pullTypeLocal))
 		return b, nil
 	}
 
 	if !errors.As(err, &ErrBytesNotAvailable{}) {
-		timer.End(c.ctx,
+		timer.End(c.ctx, length,
 			attribute.String("result", "failure"),
 			attribute.String("pull_type", pullTypeLocal),
 			attribute.String("failure_type", "local-read"))
@@ -106,7 +106,7 @@ func (c *Chunker) Slice(off, length int64) ([]byte, error) {
 
 	chunkErr := c.fetchToCache(off, length)
 	if chunkErr != nil {
-		timer.End(c.ctx,
+		timer.End(c.ctx, length,
 			attribute.String("result", resultTypeFailure),
 			attribute.String("pull_type", pullTypeRemote),
 			attribute.String("failure_reason", "cache-fetch"))
@@ -115,14 +115,14 @@ func (c *Chunker) Slice(off, length int64) ([]byte, error) {
 
 	b, cacheErr := c.cache.Slice(off, length)
 	if cacheErr != nil {
-		timer.End(c.ctx,
+		timer.End(c.ctx, length,
 			attribute.String("result", resultTypeFailure),
 			attribute.String("pull_type", pullTypeLocal),
 			attribute.String("failure_reason", "read-again"))
 		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
-	timer.End(c.ctx,
+	timer.End(c.ctx, length,
 		attribute.String("result", resultTypeSuccess),
 		attribute.String("pull_type", pullTypeRemote))
 	return b, nil
@@ -161,16 +161,15 @@ func (c *Chunker) fetchToCache(off, length int64) error {
 				fetchSW := c.metrics.BeginWithTotal(
 					c.metrics.ChunkRemoteReadMetric,
 					c.metrics.TotalBytesRetrievedMetric,
-					ChunkSize,
 				)
-				_, err := c.base.ReadAt(b, fetchOff)
+				readBytes, err := c.base.ReadAt(b, fetchOff)
 				if err != nil && !errors.Is(err, io.EOF) {
-					fetchSW.End(c.ctx,
+					fetchSW.End(c.ctx, int64(readBytes),
 						attribute.String("result", resultTypeFailure),
 						attribute.String("failure_reason", "remote-read"))
 					return fmt.Errorf("failed to read chunk from base %d: %w", fetchOff, err)
 				}
-				fetchSW.End(c.ctx, attribute.String("result", resultTypeSuccess))
+				fetchSW.End(c.ctx, int64(readBytes), attribute.String("result", resultTypeSuccess))
 
 				writeSW := c.metrics.Begin(c.metrics.WriteChunksMetric)
 				_, cacheErr := c.cache.WriteAtWithoutLock(b, fetchOff)

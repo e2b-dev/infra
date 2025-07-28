@@ -65,8 +65,8 @@ func (c Metrics) Begin(metric metric.Int64Histogram) Stopwatch {
 	return Stopwatch{metric: metric, start: time.Now()}
 }
 
-func (c Metrics) BeginWithTotal(histogram metric.Int64Histogram, counter metric.Int64Counter, total int64) StopwatchWithTotal {
-	return StopwatchWithTotal{histogram: histogram, counter: counter, total: total, start: time.Now()}
+func (c Metrics) BeginWithTotal(histogram metric.Int64Histogram, counter metric.Int64Counter) StopwatchWithTotal {
+	return StopwatchWithTotal{histogram: histogram, counter: counter, start: time.Now()}
 }
 
 type Stopwatch struct {
@@ -83,11 +83,10 @@ type StopwatchWithTotal struct {
 	histogram metric.Int64Histogram
 	counter   metric.Int64Counter
 	start     time.Time
-	total     int64
 }
 
-func (t StopwatchWithTotal) End(ctx context.Context, kv ...attribute.KeyValue) {
+func (t StopwatchWithTotal) End(ctx context.Context, total int64, kv ...attribute.KeyValue) {
 	amount := time.Since(t.start).Milliseconds()
 	t.histogram.Record(ctx, amount, metric.WithAttributes(kv...))
-	t.counter.Add(ctx, t.total, metric.WithAttributes(kv...))
+	t.counter.Add(ctx, total, metric.WithAttributes(kv...))
 }
