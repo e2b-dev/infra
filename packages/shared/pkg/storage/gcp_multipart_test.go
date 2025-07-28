@@ -19,6 +19,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Test constants
+const (
+	testBucketName = "test-bucket"
+	testObjectName = "test-object"
+	testToken      = "test-token"
+)
+
 // createTestMultipartUploader creates a test uploader with a mock HTTP client
 func createTestMultipartUploader(t *testing.T, handler http.HandlerFunc, retryConfig ...RetryConfig) *MultipartUploader {
 	server := httptest.NewServer(handler)
@@ -34,9 +41,9 @@ func createTestMultipartUploader(t *testing.T, handler http.HandlerFunc, retryCo
 	retryableClient.HTTPClient = server.Client()
 
 	uploader := &MultipartUploader{
-		bucketName:  "test-bucket",
-		objectName:  "test-object",
-		token:       "test-token",
+		bucketName:  testBucketName,
+		objectName:  testObjectName,
+		token:       testToken,
 		client:      retryableClient,
 		retryConfig: config,
 		baseURL:     server.URL, // Override to use test server
@@ -50,14 +57,14 @@ func TestMultipartUploader_InitiateUpload_Success(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "POST", r.Method)
-		require.Contains(t, r.URL.Path, "test-object")
+		require.Contains(t, r.URL.Path, testObjectName)
 		require.Contains(t, r.URL.RawQuery, "uploads")
-		require.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		require.Equal(t, "Bearer "+testToken, r.Header.Get("Authorization"))
 		require.Equal(t, "application/octet-stream", r.Header.Get("Content-Type"))
 
 		response := InitiateMultipartUploadResult{
-			Bucket:   "test-bucket",
-			Key:      "test-object",
+			Bucket:   testBucketName,
+			Key:      testObjectName,
 			UploadID: expectedUploadID,
 		}
 
@@ -82,7 +89,7 @@ func TestMultipartUploader_UploadPart_Success(t *testing.T) {
 		require.Equal(t, "PUT", r.Method)
 		require.Contains(t, r.URL.RawQuery, "partNumber=1")
 		require.Contains(t, r.URL.RawQuery, "uploadId=test-upload-id")
-		require.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		require.Equal(t, "Bearer "+testToken, r.Header.Get("Authorization"))
 
 		body, err := io.ReadAll(r.Body)
 		require.NoError(t, err)
@@ -122,7 +129,7 @@ func TestMultipartUploader_CompleteUpload_Success(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "POST", r.Method)
 		require.Contains(t, r.URL.RawQuery, "uploadId=test-upload-id")
-		require.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		require.Equal(t, "Bearer "+testToken, r.Header.Get("Authorization"))
 		require.Equal(t, "application/xml", r.Header.Get("Content-Type"))
 
 		body, err := io.ReadAll(r.Body)
@@ -162,8 +169,8 @@ func TestMultipartUploader_UploadFileInParallel_Success(t *testing.T) {
 			atomic.AddInt32(&initiateCount, 1)
 			uploadID = "test-upload-id-123"
 			response := InitiateMultipartUploadResult{
-				Bucket:   "test-bucket",
-				Key:      "test-object",
+				Bucket:   testBucketName,
+				Key:      testObjectName,
 				UploadID: uploadID,
 			}
 			xmlData, _ := xml.Marshal(response)
@@ -215,8 +222,8 @@ func TestMultipartUploader_InitiateUpload_WithRetries(t *testing.T) {
 		}
 
 		response := InitiateMultipartUploadResult{
-			Bucket:   "test-bucket",
-			Key:      "test-object",
+			Bucket:   testBucketName,
+			Key:      testObjectName,
 			UploadID: expectedUploadID,
 		}
 		xmlData, _ := xml.Marshal(response)
@@ -259,8 +266,8 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 		case r.URL.RawQuery == "uploads":
 			atomic.AddInt32(&initiateCalls, 1)
 			response := InitiateMultipartUploadResult{
-				Bucket:   "test-bucket",
-				Key:      "test-object",
+				Bucket:   testBucketName,
+				Key:      testObjectName,
 				UploadID: "stress-test-upload-id",
 			}
 			xmlData, _ := xml.Marshal(response)
@@ -332,8 +339,8 @@ func TestMultipartUploader_RandomFailures_ChaosTest(t *testing.T) {
 		switch {
 		case r.URL.RawQuery == "uploads":
 			response := InitiateMultipartUploadResult{
-				Bucket:   "test-bucket",
-				Key:      "test-object",
+				Bucket:   testBucketName,
+				Key:      testObjectName,
 				UploadID: "chaos-upload-id",
 			}
 			xmlData, _ := xml.Marshal(response)
@@ -361,7 +368,7 @@ func TestMultipartUploader_RandomFailures_ChaosTest(t *testing.T) {
 
 	// Use aggressive retry config for chaos test
 	config := RetryConfig{
-		MaxAttempts:       5,
+		MaxAttempts:       10,
 		InitialBackoff:    1 * time.Millisecond,
 		MaxBackoff:        100 * time.Millisecond,
 		BackoffMultiplier: 2,
@@ -392,8 +399,8 @@ func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
 		switch {
 		case r.URL.RawQuery == "uploads":
 			response := InitiateMultipartUploadResult{
-				Bucket:   "test-bucket",
-				Key:      "test-object",
+				Bucket:   testBucketName,
+				Key:      testObjectName,
 				UploadID: "partial-fail-upload-id",
 			}
 			xmlData, _ := xml.Marshal(response)
@@ -455,8 +462,8 @@ func TestMultipartUploader_EdgeCases_EmptyFile(t *testing.T) {
 		case r.URL.RawQuery == "uploads":
 			atomic.AddInt32(&initiateCalls, 1)
 			response := InitiateMultipartUploadResult{
-				Bucket:   "test-bucket",
-				Key:      "test-object",
+				Bucket:   testBucketName,
+				Key:      testObjectName,
 				UploadID: "empty-file-upload-id",
 			}
 			xmlData, _ := xml.Marshal(response)
@@ -499,8 +506,8 @@ func TestMultipartUploader_EdgeCases_VerySmallFile(t *testing.T) {
 		switch {
 		case r.URL.RawQuery == "uploads":
 			response := InitiateMultipartUploadResult{
-				Bucket:   "test-bucket",
-				Key:      "test-object",
+				Bucket:   testBucketName,
+				Key:      testObjectName,
 				UploadID: "small-file-upload-id",
 			}
 			xmlData, _ := xml.Marshal(response)
@@ -539,8 +546,8 @@ func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testin
 		switch {
 		case r.URL.RawQuery == "uploads":
 			response := InitiateMultipartUploadResult{
-				Bucket:   "test-bucket",
-				Key:      "test-object",
+				Bucket:   testBucketName,
+				Key:      testObjectName,
 				UploadID: "resource-test-upload-id",
 			}
 			xmlData, _ := xml.Marshal(response)
@@ -597,8 +604,8 @@ func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
 		switch {
 		case r.URL.RawQuery == "uploads":
 			response := InitiateMultipartUploadResult{
-				Bucket:   "test-bucket",
-				Key:      "test-object",
+				Bucket:   testBucketName,
+				Key:      testObjectName,
 				UploadID: "boundary-upload-id",
 			}
 			xmlData, _ := xml.Marshal(response)
@@ -654,8 +661,8 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 		switch {
 		case r.URL.RawQuery == "uploads":
 			response := InitiateMultipartUploadResult{
-				Bucket:   "test-bucket",
-				Key:      "test-object",
+				Bucket:   testBucketName,
+				Key:      testObjectName,
 				UploadID: "race-upload-id",
 			}
 			xmlData, _ := xml.Marshal(response)

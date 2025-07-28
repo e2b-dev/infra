@@ -289,7 +289,6 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 
 	// Upload each part concurrently
 	for partNumber := 1; partNumber <= numParts; partNumber++ {
-		partNumber := partNumber // Capture loop variable
 		g.Go(func() error {
 			// Check if context was cancelled
 			select {
