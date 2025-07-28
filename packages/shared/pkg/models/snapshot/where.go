@@ -92,6 +92,11 @@ func OriginNodeID(v string) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldEQ(FieldOriginNodeID, v))
 }
 
+// AllowInternetAccess applies equality check predicate on the "allow_internet_access" field. It's identical to AllowInternetAccessEQ.
+func AllowInternetAccess(v bool) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldAllowInternetAccess, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldEQ(FieldCreatedAt, v))
@@ -440,6 +445,26 @@ func OriginNodeIDEqualFold(v string) predicate.Snapshot {
 // OriginNodeIDContainsFold applies the ContainsFold predicate on the "origin_node_id" field.
 func OriginNodeIDContainsFold(v string) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldContainsFold(FieldOriginNodeID, v))
+}
+
+// AllowInternetAccessEQ applies the EQ predicate on the "allow_internet_access" field.
+func AllowInternetAccessEQ(v bool) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldAllowInternetAccess, v))
+}
+
+// AllowInternetAccessNEQ applies the NEQ predicate on the "allow_internet_access" field.
+func AllowInternetAccessNEQ(v bool) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNEQ(FieldAllowInternetAccess, v))
+}
+
+// AllowInternetAccessIsNil applies the IsNil predicate on the "allow_internet_access" field.
+func AllowInternetAccessIsNil() predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldIsNull(FieldAllowInternetAccess))
+}
+
+// AllowInternetAccessNotNil applies the NotNil predicate on the "allow_internet_access" field.
+func AllowInternetAccessNotNil() predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNotNull(FieldAllowInternetAccess))
 }
 
 // HasEnv applies the HasEdge predicate on the "env" edge.

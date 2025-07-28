@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -43,9 +42,9 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
-	// TODO: Temporary workaround, remove API changes deployed
-	if req.Sandbox.GetExecutionId() == "" {
-		req.Sandbox.ExecutionId = uuid.New().String()
+	// TODO: Temporary workaround, remove when API changes are deployed
+	if req.Sandbox.AllowInternetAccess == nil {
+		req.Sandbox.AllowInternetAccess = &config.AllowSandboxInternet
 	}
 
 	metricsWriteFlag, flagErr := s.featureFlags.BoolFlag(featureflags.MetricsWriteFlagName, req.Sandbox.SandboxId)
@@ -73,7 +72,6 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		req.StartTime.AsTime(),
 		req.EndTime.AsTime(),
 		s.devicePool,
-		config.AllowSandboxInternet,
 		metricsWriteFlag,
 	)
 	if err != nil {

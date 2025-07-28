@@ -31,6 +31,7 @@ func (a *APIStore) startSandbox(
 	baseTemplateID string,
 	autoPause bool,
 	envdAccessToken *string,
+	allowInternetAccess *bool,
 ) (*api.Sandbox, *api.APIError) {
 	startTime := time.Now()
 	endTime := startTime.Add(timeout)
@@ -54,6 +55,7 @@ func (a *APIStore) startSandbox(
 		baseTemplateID,
 		autoPause,
 		envdAccessToken,
+		allowInternetAccess,
 	)
 	if instanceErr != nil {
 		telemetry.ReportCriticalError(ctx, "error when creating instance", instanceErr.Err)

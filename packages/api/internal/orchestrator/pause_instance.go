@@ -33,17 +33,18 @@ func (o *Orchestrator) PauseInstance(
 	defer span.End()
 
 	snapshotConfig := &db.SnapshotInfo{
-		BaseTemplateID:     sbx.Instance.TemplateID,
-		SandboxID:          sbx.Instance.SandboxID,
-		SandboxStartedAt:   sbx.StartTime,
-		VCPU:               sbx.VCpu,
-		RAMMB:              sbx.RamMB,
-		TotalDiskSizeMB:    sbx.TotalDiskSizeMB,
-		Metadata:           sbx.Metadata,
-		KernelVersion:      sbx.KernelVersion,
-		FirecrackerVersion: sbx.FirecrackerVersion,
-		EnvdVersion:        sbx.Instance.EnvdVersion,
-		EnvdSecured:        sbx.EnvdAccessToken != nil,
+		BaseTemplateID:      sbx.Instance.TemplateID,
+		SandboxID:           sbx.Instance.SandboxID,
+		SandboxStartedAt:    sbx.StartTime,
+		VCPU:                sbx.VCpu,
+		RAMMB:               sbx.RamMB,
+		TotalDiskSizeMB:     sbx.TotalDiskSizeMB,
+		Metadata:            sbx.Metadata,
+		KernelVersion:       sbx.KernelVersion,
+		FirecrackerVersion:  sbx.FirecrackerVersion,
+		EnvdVersion:         sbx.Instance.EnvdVersion,
+		EnvdSecured:         sbx.EnvdAccessToken != nil,
+		AllowInternetAccess: sbx.AllowInternetAccess,
 	}
 
 	envBuild, err := o.dbClient.NewSnapshotBuild(

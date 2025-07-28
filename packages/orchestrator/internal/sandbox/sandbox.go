@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -86,14 +87,13 @@ func CreateSandbox(
 	sandboxTimeout time.Duration,
 	rootfsCachePath string,
 	processOptions fc.ProcessOptions,
-	allowInternet bool,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
 
 	cleanup := NewCleanup()
 
-	ipsCh := getNetworkSlotAsync(childCtx, tracer, networkPool, cleanup, allowInternet)
+	ipsCh := getNetworkSlotAsync(childCtx, tracer, networkPool, cleanup, config.GetAllowInternetAccess())
 	defer func() {
 		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
 		<-ipsCh
@@ -248,13 +248,17 @@ func ResumeSandbox(
 	startedAt time.Time,
 	endAt time.Time,
 	devicePool *nbd.DevicePool,
-	allowInternet,
 	useClickhouseMetrics bool,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
 
 	cleanup := NewCleanup()
+
+	allowInternet := globalconfig.AllowSandboxInternet
+	if config.AllowInternetAccess != nil {
+		allowInternet = config.GetAllowInternetAccess()
+	}
 
 	ipsCh := getNetworkSlotAsync(childCtx, tracer, networkPool, cleanup, allowInternet)
 	defer func() {

@@ -46,29 +46,31 @@ func NewInstanceInfo(
 	Node *node.NodeInfo,
 	AutoPause bool,
 	EnvdAccessToken *string,
+	allowInternetAccess *bool,
 	BaseTemplateID string,
 ) *InstanceInfo {
 	instance := &InstanceInfo{
-		Instance:           Instance,
-		ExecutionID:        ExecutionID,
-		TeamID:             TeamID,
-		BuildID:            BuildID,
-		Metadata:           Metadata,
-		MaxInstanceLength:  MaxInstanceLength,
-		StartTime:          StartTime,
-		endTime:            endTime,
-		VCpu:               VCpu,
-		TotalDiskSizeMB:    TotalDiskSizeMB,
-		RamMB:              RamMB,
-		KernelVersion:      KernelVersion,
-		FirecrackerVersion: FirecrackerVersion,
-		EnvdVersion:        EnvdVersion,
-		EnvdAccessToken:    EnvdAccessToken,
-		Node:               Node,
-		AutoPause:          atomic.Bool{},
-		Pausing:            utils.NewSetOnce[*node.NodeInfo](),
-		BaseTemplateID:     BaseTemplateID,
-		mu:                 sync.RWMutex{},
+		Instance:            Instance,
+		ExecutionID:         ExecutionID,
+		TeamID:              TeamID,
+		BuildID:             BuildID,
+		Metadata:            Metadata,
+		MaxInstanceLength:   MaxInstanceLength,
+		StartTime:           StartTime,
+		endTime:             endTime,
+		VCpu:                VCpu,
+		TotalDiskSizeMB:     TotalDiskSizeMB,
+		RamMB:               RamMB,
+		KernelVersion:       KernelVersion,
+		FirecrackerVersion:  FirecrackerVersion,
+		EnvdVersion:         EnvdVersion,
+		EnvdAccessToken:     EnvdAccessToken,
+		AllowInternetAccess: allowInternetAccess,
+		Node:                Node,
+		AutoPause:           atomic.Bool{},
+		Pausing:             utils.NewSetOnce[*node.NodeInfo](),
+		BaseTemplateID:      BaseTemplateID,
+		mu:                  sync.RWMutex{},
 	}
 
 	instance.AutoPause.Store(AutoPause)
@@ -77,26 +79,27 @@ func NewInstanceInfo(
 }
 
 type InstanceInfo struct {
-	Instance           *api.Sandbox
-	ExecutionID        string
-	TeamID             *uuid.UUID
-	BuildID            *uuid.UUID
-	BaseTemplateID     string
-	Metadata           map[string]string
-	MaxInstanceLength  time.Duration
-	StartTime          time.Time
-	endTime            time.Time
-	VCpu               int64
-	TotalDiskSizeMB    int64
-	RamMB              int64
-	KernelVersion      string
-	FirecrackerVersion string
-	EnvdVersion        string
-	EnvdAccessToken    *string
-	Node               *node.NodeInfo
-	AutoPause          atomic.Bool
-	Pausing            *utils.SetOnce[*node.NodeInfo]
-	mu                 sync.RWMutex
+	Instance            *api.Sandbox
+	ExecutionID         string
+	TeamID              *uuid.UUID
+	BuildID             *uuid.UUID
+	BaseTemplateID      string
+	Metadata            map[string]string
+	MaxInstanceLength   time.Duration
+	StartTime           time.Time
+	endTime             time.Time
+	VCpu                int64
+	TotalDiskSizeMB     int64
+	RamMB               int64
+	KernelVersion       string
+	FirecrackerVersion  string
+	EnvdVersion         string
+	EnvdAccessToken     *string
+	AllowInternetAccess *bool
+	Node                *node.NodeInfo
+	AutoPause           atomic.Bool
+	Pausing             *utils.SetOnce[*node.NodeInfo]
+	mu                  sync.RWMutex
 }
 
 func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
