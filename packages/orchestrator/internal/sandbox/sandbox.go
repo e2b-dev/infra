@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -254,7 +255,12 @@ func ResumeSandbox(
 
 	cleanup := NewCleanup()
 
-	ipsCh := getNetworkSlotAsync(childCtx, tracer, networkPool, cleanup, config.GetAllowInternetAccess())
+	allowInternet := globalconfig.AllowSandboxInternet
+	if config.AllowInternetAccess != nil {
+		allowInternet = config.GetAllowInternetAccess()
+	}
+
+	ipsCh := getNetworkSlotAsync(childCtx, tracer, networkPool, cleanup, allowInternet)
 	defer func() {
 		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
 		<-ipsCh
