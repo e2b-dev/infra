@@ -133,16 +133,16 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 
 	postProcessor.Info(fmt.Sprintf("Building template %s/%s", finalMetadata.TemplateID, finalMetadata.BuildID))
 
-	defer func() {
+	defer func(ctx context.Context) {
 		if e == nil {
 			return
 		}
 		// Remove build files if build fails
-		removeErr := b.templateStorage.DeleteObjectsWithPrefix(context.Background(), finalMetadata.BuildID)
+		removeErr := b.templateStorage.DeleteObjectsWithPrefix(ctx, finalMetadata.BuildID)
 		if removeErr != nil {
 			e = errors.Join(e, fmt.Errorf("error removing build files: %w", removeErr))
 		}
-	}()
+	}(context.WithoutCancel(ctx))
 
 	envdVersion, err := envd.GetEnvdVersion(ctx)
 	if err != nil {
