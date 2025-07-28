@@ -6,6 +6,7 @@ import (
 	"os/user"
 	"syscall"
 
+	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
@@ -47,7 +48,15 @@ func getFileOwnership(fileInfo os.FileInfo) (owner, group string) {
 	return owner, group
 }
 
-func entryInfoFromFileInfo(fileInfo os.FileInfo, path string) *rpc.EntryInfo {
+func entryInfo(path string) (*rpc.EntryInfo, error) {
+	fileInfo, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("file not found: %w", err))
+		}
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error getting file info: %w", err))
+	}
+
 	owner, group := getFileOwnership(fileInfo)
 	fileMode := fileInfo.Mode()
 
@@ -88,5 +97,5 @@ func entryInfoFromFileInfo(fileInfo os.FileInfo, path string) *rpc.EntryInfo {
 		Group:         group,
 		ModifiedTime:  timestamppb.New(fileInfo.ModTime()),
 		SymlinkTarget: symlinkTarget,
-	}
+	}, nil
 }
