@@ -96,6 +96,7 @@ func TestInternetAccessResumedSbx(t *testing.T) {
 			_, err = client.PostSandboxesSandboxIDResumeWithResponse(ctx, resp.JSON201.SandboxID, api.PostSandboxesSandboxIDResumeJSONRequestBody{
 				Timeout: &sbxTimeout,
 			})
+			require.NoError(t, err, "Expected to resume sandbox without error")
 			envdClient := setup.GetEnvdClient(t, ctx)
 
 			err = utils.ExecCommand(t, ctx, resp.JSON201, envdClient, "curl", "--connect-timeout=3", "--max-time=5", "-Is", "https://www.google.com")
