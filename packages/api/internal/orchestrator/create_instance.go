@@ -212,7 +212,6 @@ func (o *Orchestrator) CreateSandbox(
 			// The sandbox was created successfully
 			attributes := []attribute.KeyValue{
 				attribute.Int("attempts", attempt),
-				attribute.String("node_id", node.Info.ID),
 				attribute.Bool("is_resume", isResume),
 				attribute.Bool("node_affinity_requested", nodeID != nil),
 				attribute.Bool("node_affinity_success", nodeID != nil && node.Info.ID == *nodeID),
