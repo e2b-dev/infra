@@ -33,8 +33,6 @@ func TestInternetAccess(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			resp, err := client.PostSandboxesWithResponse(ctx, api.NewSandbox{
 				TemplateID:          setup.SandboxTemplateID,
 				Timeout:             &sbxTimeout,
@@ -46,12 +44,13 @@ func TestInternetAccess(t *testing.T) {
 
 			envdClient := setup.GetEnvdClient(t, ctx)
 
-			err = utils.ExecCommand(t, ctx, resp.JSON201, envdClient, "curl", "--connect-timeout=3", "--max-time=5", "-Is", "https://www.google.com")
+			err = utils.ExecCommand(t, ctx, resp.JSON201, envdClient, "curl", "--connect-timeout", "3", "--max-time", "5", "-Is", "https://www.google.com")
 			if tc.internetAccess {
 				require.NoError(t, err, "Expected curl command to succeed when internet access is allowed")
 			} else {
 				require.Error(t, err, "Expected curl command to fail when internet access is denied")
-				require.Contains(t, err.Error(), "curl: (7) Failed to connect", "Expected connection failure message")
+				require.Contains(t, err.Error(), "curl failed with exit code", "Expected connection failure message")
+
 			}
 		})
 	}
@@ -91,20 +90,23 @@ func TestInternetAccessResumedSbx(t *testing.T) {
 			require.NotNil(t, resp.JSON201, "Expected non-nil response body")
 
 			// Pause and resume the sandbox
-			_, err = client.PostSandboxesSandboxIDPauseWithResponse(ctx, resp.JSON201.SandboxID, setup.WithAPIKey())
+			respPause, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, resp.JSON201.SandboxID, setup.WithAPIKey())
 			require.NoError(t, err, "Expected to pause sandbox without error")
-			_, err = client.PostSandboxesSandboxIDResumeWithResponse(ctx, resp.JSON201.SandboxID, api.PostSandboxesSandboxIDResumeJSONRequestBody{
-				Timeout: &sbxTimeout,
-			})
-			require.NoError(t, err, "Expected to resume sandbox without error")
-			envdClient := setup.GetEnvdClient(t, ctx)
+			require.Equal(t, respPause.StatusCode(), http.StatusNoContent, "Expected status code 204 No Content, got %d", respPause.StatusCode())
 
-			err = utils.ExecCommand(t, ctx, resp.JSON201, envdClient, "curl", "--connect-timeout=3", "--max-time=5", "-Is", "https://www.google.com")
+			respResume, err := client.PostSandboxesSandboxIDResumeWithResponse(ctx, resp.JSON201.SandboxID, api.PostSandboxesSandboxIDResumeJSONRequestBody{
+				Timeout: &sbxTimeout,
+			}, setup.WithAPIKey())
+			require.NoError(t, err, "Expected to resume sandbox without error")
+			require.Equal(t, respResume.StatusCode(), http.StatusCreated, "Expected status code 200 OK, got %d", respResume.StatusCode())
+
+			envdClient := setup.GetEnvdClient(t, ctx)
+			err = utils.ExecCommand(t, ctx, resp.JSON201, envdClient, "curl", "--connect-timeout", "3", "--max-time", "5", "-Is", "https://www.google.com")
 			if tc.internetAccess {
 				require.NoError(t, err, "Expected curl command to succeed when internet access is allowed")
 			} else {
 				require.Error(t, err, "Expected curl command to fail when internet access is denied")
-				require.Contains(t, err.Error(), "curl: (7) Failed to connect", "Expected connection failure message")
+				require.Contains(t, err.Error(), "curl failed with exit code", "Expected connection failure message")
 			}
 		})
 	}

@@ -266,6 +266,7 @@ func (o *Orchestrator) CreateSandbox(
 		node.Info,
 		autoPause,
 		envdAuthToken,
+		allowInternetAccess,
 		baseTemplateID,
 	)
 
