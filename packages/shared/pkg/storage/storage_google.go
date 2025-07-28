@@ -12,6 +12,7 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/googleapis/gax-go/v2"
+	"go.uber.org/zap"
 	"google.golang.org/api/iterator"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -219,15 +220,23 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 	objectName := g.path
 	filePath := path
 
-	uploader, err := NewMultipartUploader(bucketName, objectName)
+	uploader, err := NewMultipartUploaderWithRetryConfig(g.ctx, bucketName, objectName, DefaultRetryConfig())
 	if err != nil {
 		return fmt.Errorf("failed to create multipart uploader: %w", err)
 	}
 
-	maxConcurrency := 10
+	maxConcurrency := g.limiter.GCloudMaxTasks()
+	start := time.Now()
 	if err := uploader.UploadFileInParallel(filePath, maxConcurrency); err != nil {
 		return fmt.Errorf("failed to upload file in parallel: %w", err)
 	}
+	zap.L().Debug("Uploaded file in parallel",
+		zap.String("bucket", bucketName),
+		zap.String("object", objectName),
+		zap.String("path", filePath),
+		zap.Int("max_concurrency", maxConcurrency),
+		zap.Int64("duration", time.Since(start).Milliseconds()),
+	)
 
 	return nil
 }
