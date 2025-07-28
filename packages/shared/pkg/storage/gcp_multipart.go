@@ -88,10 +88,7 @@ func retryRequest(client *http.Client, req *http.Request, config RetryConfig) (*
 			time.Sleep(backoff)
 
 			// Calculate next backoff
-			backoff = time.Duration(float64(backoff) * config.BackoffMultiplier)
-			if backoff > config.MaxBackoff {
-				backoff = config.MaxBackoff
-			}
+			backoff = min(time.Duration(float64(backoff)*config.BackoffMultiplier), config.MaxBackoff)
 		}
 	}
 
