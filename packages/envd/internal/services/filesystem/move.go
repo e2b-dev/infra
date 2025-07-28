@@ -28,7 +28,7 @@ func (Service) Move(ctx context.Context, req *connect.Request[rpc.MoveRequest]) 
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	entry, err := os.Stat(source)
+	entry, err := os.Lstat(source)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("source path not found: %w", err))

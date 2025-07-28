@@ -22,7 +22,7 @@ func (Service) Stat(ctx context.Context, req *connect.Request[rpc.StatRequest]) 
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	fileInfo, err := os.Stat(path)
+	fileInfo, err := os.Lstat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("file not found: %w", err))
