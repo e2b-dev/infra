@@ -231,6 +231,9 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			return nil, fmt.Errorf("error creating provision rootfs: %w", err)
 		}
 
+		// Allow sandbox internet access during provisioning
+		allowInternetAccess := true
+
 		baseSandboxConfig := &orchestrator.SandboxConfig{
 			TemplateId:         baseMetadata.Template.TemplateID,
 			BuildId:            baseMetadata.Template.BuildID,
@@ -243,6 +246,8 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			RamMb:       template.MemoryMB,
 			HugePages:   template.HugePages,
 			EnvdVersion: envdVersion,
+
+			AllowInternetAccess: &allowInternetAccess,
 		}
 		baseSandboxConfig.SandboxId = config.InstanceBuildPrefix + id.Generate()
 		baseSandboxConfig.ExecutionId = uuid.NewString()
@@ -282,6 +287,9 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		baseSandboxConfig = proto.Clone(baseSandboxConfig).(*orchestrator.SandboxConfig)
 		baseSandboxConfig.SandboxId = config.InstanceBuildPrefix + id.Generate()
 		baseSandboxConfig.ExecutionId = uuid.NewString()
+
+		// TODO: Temporarily set this based on global config, should be removed later (it should be passed as a parameter in build)
+		baseSandboxConfig.AllowInternetAccess = &globalconfig.AllowSandboxInternet
 		sourceSbx, cleanup, err := sandbox.CreateSandbox(
 			ctx,
 			b.tracer,
@@ -296,7 +304,6 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 				KernelLogs:          env.IsDevelopment(),
 				SystemdToKernelLogs: false,
 			},
-			globalconfig.AllowSandboxInternet,
 		)
 		defer func() {
 			cleanupErr := cleanup.Run(ctx)
@@ -391,13 +398,14 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 					RamMb:       template.MemoryMB,
 					HugePages:   template.HugePages,
 					EnvdVersion: envdVersion,
+
+					AllowInternetAccess: &globalconfig.AllowSandboxInternet,
 				},
 				cacheScope,
 				lastHash,
 				sourceMetadata,
 				stepMetadata.Template,
 				shouldResumeSandbox,
-				globalconfig.AllowSandboxInternet,
 				func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error) {
 					postProcessor.Debug(fmt.Sprintf("Running action in: %s/%s", sourceMetadata.Template.TemplateID, sourceMetadata.Template.BuildID))
 
@@ -452,13 +460,14 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			RamMb:       template.MemoryMB,
 			HugePages:   template.HugePages,
 			EnvdVersion: envdVersion,
+
+			AllowInternetAccess: &globalconfig.AllowSandboxInternet,
 		},
 		cacheScope,
 		lastHash,
 		sourceMetadata,
 		finalMetadata,
 		false,
-		globalconfig.AllowSandboxInternet,
 		b.postProcessingFn(postProcessor, finalMetadata, template, sourceMetadata.Metadata),
 	)
 	if err != nil {

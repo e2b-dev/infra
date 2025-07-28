@@ -121,6 +121,26 @@ func (su *SnapshotUpdate) SetNillableOriginNodeID(s *string) *SnapshotUpdate {
 	return su
 }
 
+// SetAllowInternetAccess sets the "allow_internet_access" field.
+func (su *SnapshotUpdate) SetAllowInternetAccess(b bool) *SnapshotUpdate {
+	su.mutation.SetAllowInternetAccess(b)
+	return su
+}
+
+// SetNillableAllowInternetAccess sets the "allow_internet_access" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillableAllowInternetAccess(b *bool) *SnapshotUpdate {
+	if b != nil {
+		su.SetAllowInternetAccess(*b)
+	}
+	return su
+}
+
+// ClearAllowInternetAccess clears the value of the "allow_internet_access" field.
+func (su *SnapshotUpdate) ClearAllowInternetAccess() *SnapshotUpdate {
+	su.mutation.ClearAllowInternetAccess()
+	return su
+}
+
 // SetEnv sets the "env" edge to the Env entity.
 func (su *SnapshotUpdate) SetEnv(e *Env) *SnapshotUpdate {
 	return su.SetEnvID(e.ID)
@@ -207,6 +227,12 @@ func (su *SnapshotUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if value, ok := su.mutation.OriginNodeID(); ok {
 		_spec.SetField(snapshot.FieldOriginNodeID, field.TypeString, value)
+	}
+	if value, ok := su.mutation.AllowInternetAccess(); ok {
+		_spec.SetField(snapshot.FieldAllowInternetAccess, field.TypeBool, value)
+	}
+	if su.mutation.AllowInternetAccessCleared() {
+		_spec.ClearField(snapshot.FieldAllowInternetAccess, field.TypeBool)
 	}
 	if su.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -353,6 +379,26 @@ func (suo *SnapshotUpdateOne) SetNillableOriginNodeID(s *string) *SnapshotUpdate
 	return suo
 }
 
+// SetAllowInternetAccess sets the "allow_internet_access" field.
+func (suo *SnapshotUpdateOne) SetAllowInternetAccess(b bool) *SnapshotUpdateOne {
+	suo.mutation.SetAllowInternetAccess(b)
+	return suo
+}
+
+// SetNillableAllowInternetAccess sets the "allow_internet_access" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillableAllowInternetAccess(b *bool) *SnapshotUpdateOne {
+	if b != nil {
+		suo.SetAllowInternetAccess(*b)
+	}
+	return suo
+}
+
+// ClearAllowInternetAccess clears the value of the "allow_internet_access" field.
+func (suo *SnapshotUpdateOne) ClearAllowInternetAccess() *SnapshotUpdateOne {
+	suo.mutation.ClearAllowInternetAccess()
+	return suo
+}
+
 // SetEnv sets the "env" edge to the Env entity.
 func (suo *SnapshotUpdateOne) SetEnv(e *Env) *SnapshotUpdateOne {
 	return suo.SetEnvID(e.ID)
@@ -469,6 +515,12 @@ func (suo *SnapshotUpdateOne) sqlSave(ctx context.Context) (_node *Snapshot, err
 	}
 	if value, ok := suo.mutation.OriginNodeID(); ok {
 		_spec.SetField(snapshot.FieldOriginNodeID, field.TypeString, value)
+	}
+	if value, ok := suo.mutation.AllowInternetAccess(); ok {
+		_spec.SetField(snapshot.FieldAllowInternetAccess, field.TypeBool, value)
+	}
+	if suo.mutation.AllowInternetAccessCleared() {
+		_spec.ClearField(snapshot.FieldAllowInternetAccess, field.TypeBool)
 	}
 	if suo.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{

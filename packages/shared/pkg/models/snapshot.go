@@ -36,6 +36,8 @@ type Snapshot struct {
 	EnvSecure bool `json:"env_secure,omitempty"`
 	// OriginNodeID holds the value of the "origin_node_id" field.
 	OriginNodeID string `json:"origin_node_id,omitempty"`
+	// AllowInternetAccess holds the value of the "allow_internet_access" field.
+	AllowInternetAccess *bool `json:"allow_internet_access,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the SnapshotQuery when eager-loading is set.
 	Edges        SnapshotEdges `json:"edges"`
@@ -71,7 +73,7 @@ func (*Snapshot) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case snapshot.FieldMetadata:
 			values[i] = new([]byte)
-		case snapshot.FieldEnvSecure:
+		case snapshot.FieldEnvSecure, snapshot.FieldAllowInternetAccess:
 			values[i] = new(sql.NullBool)
 		case snapshot.FieldBaseEnvID, snapshot.FieldEnvID, snapshot.FieldSandboxID, snapshot.FieldOriginNodeID:
 			values[i] = new(sql.NullString)
@@ -150,6 +152,13 @@ func (s *Snapshot) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				s.OriginNodeID = value.String
 			}
+		case snapshot.FieldAllowInternetAccess:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field allow_internet_access", values[i])
+			} else if value.Valid {
+				s.AllowInternetAccess = new(bool)
+				*s.AllowInternetAccess = value.Bool
+			}
 		default:
 			s.selectValues.Set(columns[i], values[i])
 		}
@@ -214,6 +223,11 @@ func (s *Snapshot) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("origin_node_id=")
 	builder.WriteString(s.OriginNodeID)
+	builder.WriteString(", ")
+	if v := s.AllowInternetAccess; v != nil {
+		builder.WriteString("allow_internet_access=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }

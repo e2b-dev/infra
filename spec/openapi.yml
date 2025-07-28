@@ -386,6 +386,9 @@ components:
         secure:
           type: boolean
           description: Secure all system communication with sandbox
+        allow_internet_access:
+          type: boolean
+          description: Allow sandbox to access the internet
         metadata:
           $ref: "#/components/schemas/SandboxMetadata"
         envVars:

@@ -171,6 +171,9 @@ type NewAccessToken struct {
 
 // NewSandbox defines model for NewSandbox.
 type NewSandbox struct {
+	// AllowInternetAccess Allow sandbox to access the internet
+	AllowInternetAccess *bool `json:"allow_internet_access,omitempty"`
+
 	// AutoPause Automatically pauses the sandbox after the timeout
 	AutoPause *bool            `json:"autoPause,omitempty"`
 	EnvVars   *EnvVars         `json:"envVars,omitempty"`
