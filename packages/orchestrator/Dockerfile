@@ -7,6 +7,13 @@ RUN go mod download
 
 COPY .shared/pkg pkg
 
+WORKDIR /build/clickhouse
+
+COPY .clickhouse/go.mod .clickhouse/go.sum ./
+RUN go mod download
+
+COPY .clickhouse/pkg pkg
+
 WORKDIR /build/orchestrator
 
 COPY go.mod go.sum ./

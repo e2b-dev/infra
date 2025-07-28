@@ -10,7 +10,7 @@ require (
 	github.com/containers/storage v1.58.0
 	github.com/coreos/go-iptables v0.8.0
 	github.com/dustin/go-humanize v1.0.1
-	github.com/e2b-dev/infra/packages/clickhouse v0.0.0-20250718224930-c37ce9ff497d
+	github.com/e2b-dev/infra/packages/clickhouse v0.0.0
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/edsrzf/mmap-go v1.2.0
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.0
@@ -179,8 +179,8 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
-	github.com/shirou/gopsutil/v4 v4.25.6 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
+	github.com/shirou/gopsutil/v4 v4.25.6 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.5.0 // indirect
@@ -218,7 +218,10 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
+replace (
+	github.com/e2b-dev/infra/packages/clickhouse v0.0.0 => ../clickhouse
+	github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
+)
 
 // Fix non existent garyburd/redigo from Microsoft/hcsshim/test v0.0.0
 replace github.com/garyburd/redigo => github.com/gomodule/redigo v1.9.2

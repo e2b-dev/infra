@@ -277,7 +277,7 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
 
-	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, templateCache, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags, persistence, clickhouseClient)
+	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, templateCache, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags, clickhouseClient, persistence)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}

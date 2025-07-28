@@ -1,8 +1,6 @@
 module github.com/e2b-dev/infra/packages/clickhouse
 
-go 1.24.0
-
-toolchain go1.24.3
+go 1.24.3
 
 require github.com/ClickHouse/clickhouse-go/v2 v2.37.2
 

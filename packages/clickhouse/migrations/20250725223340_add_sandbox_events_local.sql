@@ -11,7 +11,7 @@ CREATE TABLE sandbox_events_local (
     event_data Nullable(JSON)
 ) ENGINE = MergeTree 
     PARTITION BY toDate(timestamp)
-    ORDER BY (timestamp, sandbox_id, event_category, event_label)
+    ORDER BY (sandbox_id, timestamp)
     TTL toDateTime(timestamp) + INTERVAL 7 DAY;
 -- +goose StatementEnd
 

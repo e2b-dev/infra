@@ -6,15 +6,36 @@ import (
 	"time"
 )
 
+type SandboxEventCategory string
+
+const (
+	SandboxEventCategoryLifecycle SandboxEventCategory = "lifecycle"
+	SandboxEventCategoryMetric    SandboxEventCategory = "metric"
+	SandboxEventCategoryProcess   SandboxEventCategory = "process"
+	SandboxEventCategoryNetwork   SandboxEventCategory = "network"
+	SandboxEventCategoryFile      SandboxEventCategory = "file"
+	SandboxEventCategoryError     SandboxEventCategory = "error"
+)
+
+type SandboxEventLabel string
+
+const (
+	SandboxEventLabelCreate SandboxEventLabel = "create"
+	SandboxEventLabelPause  SandboxEventLabel = "pause"
+	SandboxEventLabelResume SandboxEventLabel = "resume"
+	SandboxEventLabelUpdate SandboxEventLabel = "update"
+	SandboxEventLabelKill   SandboxEventLabel = "kill"
+)
+
 type SandboxEvent struct {
-	Timestamp          time.Time `ch:"timestamp"`
-	SandboxID          string    `ch:"sandbox_id"`
-	SandboxExecutionID string    `ch:"sandbox_execution_id"`
-	SandboxTemplateID  string    `ch:"sandbox_template_id"`
-	SandboxTeamID      string    `ch:"sandbox_team_id"`
-	EventCategory      string    `ch:"event_category"`
-	EventLabel         string    `ch:"event_label"`
-	EventData          *string   `ch:"event_data"`
+	Timestamp          time.Time            `ch:"timestamp"`
+	SandboxID          string               `ch:"sandbox_id"`
+	SandboxExecutionID string               `ch:"sandbox_execution_id"`
+	SandboxTemplateID  string               `ch:"sandbox_template_id"`
+	SandboxTeamID      string               `ch:"sandbox_team_id"`
+	EventCategory      SandboxEventCategory `ch:"event_category"`
+	EventLabel         SandboxEventLabel    `ch:"event_label"`
+	EventData          *string              `ch:"event_data"`
 }
 
 const latestSandboxEventSelectQuery = `
