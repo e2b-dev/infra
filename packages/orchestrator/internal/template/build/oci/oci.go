@@ -213,7 +213,7 @@ func unpackRootfs(ctx context.Context, tracer trace.Tracer, postProcessor *write
 		return fmt.Errorf("while mounting overlayfs with layers: %w", err)
 	}
 	defer func() {
-		if unmountErr := ext4.Unmount(ctx, tracer, mountPath); unmountErr != nil {
+		if unmountErr := ext4.Unmount(context.WithoutCancel(ctx), tracer, mountPath); unmountErr != nil {
 			zap.L().Error("error unmounting overlayfs mount point", zap.Error(unmountErr))
 		}
 	}()
