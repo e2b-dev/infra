@@ -33,6 +33,7 @@ func TestStat(t *testing.T) {
 	// Setup directory structure
 	testFolder := filepath.Join(root, "test")
 	err = os.MkdirAll(testFolder, 0o755)
+	require.NoError(t, err)
 
 	testFile := filepath.Join(testFolder, "file.txt")
 	err = os.WriteFile(testFile, []byte("Hello, World!"), 0o644)
