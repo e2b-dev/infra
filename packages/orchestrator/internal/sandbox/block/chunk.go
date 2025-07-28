@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
@@ -90,40 +91,40 @@ func (c *Chunker) Slice(off, length int64) ([]byte, error) {
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
 		timer.End(c.ctx,
-			metrics.KV("result", resultTypeSuccess),
-			metrics.KV("pull_type", pullTypeLocal))
+			attribute.String("result", resultTypeSuccess),
+			attribute.String("pull_type", pullTypeLocal))
 		return b, nil
 	}
 
 	if !errors.As(err, &ErrBytesNotAvailable{}) {
 		timer.End(c.ctx,
-			metrics.KV("result", "failure"),
-			metrics.KV("pull_type", pullTypeLocal),
-			metrics.KV("failure_type", localReadFailure))
+			attribute.String("result", "failure"),
+			attribute.String("pull_type", pullTypeLocal),
+			attribute.String("failure_type", "local-read"))
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
 	chunkErr := c.fetchToCache(off, length)
 	if chunkErr != nil {
 		timer.End(c.ctx,
-			metrics.KV("result", resultTypeFailure),
-			metrics.KV("pull_type", pullTypeRemote),
-			metrics.KV("failure_reason", cacheFetchFailure))
+			attribute.String("result", resultTypeFailure),
+			attribute.String("pull_type", pullTypeRemote),
+			attribute.String("failure_reason", "cache-fetch"))
 		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, chunkErr)
 	}
 
 	b, cacheErr := c.cache.Slice(off, length)
 	if cacheErr != nil {
 		timer.End(c.ctx,
-			metrics.KV("result", resultTypeFailure),
-			metrics.KV("pull_type", pullTypeLocal),
-			metrics.KV("failure_reason", readAgainFailure))
+			attribute.String("result", resultTypeFailure),
+			attribute.String("pull_type", pullTypeLocal),
+			attribute.String("failure_reason", "read-again"))
 		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
 	timer.End(c.ctx,
-		metrics.KV("result", resultTypeSuccess),
-		metrics.KV("pull_type", pullTypeRemote))
+		attribute.String("result", resultTypeSuccess),
+		attribute.String("pull_type", pullTypeRemote))
 	return b, nil
 }
 
@@ -161,23 +162,23 @@ func (c *Chunker) fetchToCache(off, length int64) error {
 				_, err := c.base.ReadAt(b, fetchOff)
 				if err != nil && !errors.Is(err, io.EOF) {
 					fetchSW.End(c.ctx,
-						metrics.KV("result", resultTypeFailure),
-						metrics.KV("failure_reason", remoteReadFailure))
+						attribute.String("result", resultTypeFailure),
+						attribute.String("failure_reason", "remote-read"))
 					return fmt.Errorf("failed to read chunk from base %d: %w", fetchOff, err)
 				}
-				fetchSW.End(c.ctx, metrics.KV("result", resultTypeSuccess))
+				fetchSW.End(c.ctx, attribute.String("result", resultTypeSuccess))
 
 				writeSW := c.metrics.Begin(c.metrics.WriteChunksMetric)
 				_, cacheErr := c.cache.WriteAtWithoutLock(b, fetchOff)
 				if cacheErr != nil {
 					writeSW.End(c.ctx,
-						metrics.KV("result", resultTypeFailure),
-						metrics.KV("failure_reason", localWriteFailure),
+						attribute.String("result", resultTypeFailure),
+						attribute.String("failure_reason", "local-write"),
 					)
 					return fmt.Errorf("failed to write chunk %d to cache: %w", fetchOff, cacheErr)
 				}
 
-				writeSW.End(c.ctx, metrics.KV("result", resultTypeSuccess))
+				writeSW.End(c.ctx, attribute.String("result", resultTypeSuccess))
 
 				return nil
 			})
@@ -202,26 +203,10 @@ func (c *Chunker) FileSize() (int64, error) {
 	return c.cache.FileSize()
 }
 
-type resultType string
-
 const (
-	resultTypeSuccess resultType = "success"
-	resultTypeFailure resultType = "failure"
-)
+	resultTypeSuccess = "success"
+	resultTypeFailure = "failure"
 
-type pullType string
-
-const (
-	pullTypeLocal  pullType = "local"
-	pullTypeRemote pullType = "remote"
-)
-
-type failureType string
-
-const (
-	localReadFailure  failureType = "local-read"
-	readAgainFailure  failureType = "read-again"
-	remoteReadFailure failureType = "remote-read"
-	localWriteFailure failureType = "local-write"
-	cacheFetchFailure failureType = "cache-fetch"
+	pullTypeLocal  = "local"
+	pullTypeRemote = "remote"
 )

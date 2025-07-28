@@ -49,10 +49,6 @@ func (c Metrics) Begin(metric metric.Int64Histogram) Stopwatch {
 	return Stopwatch{metric: metric, start: time.Now()}
 }
 
-func KV[T ~string](key string, value T) attribute.KeyValue {
-	return attribute.String(key, string(value))
-}
-
 type Stopwatch struct {
 	metric metric.Int64Histogram
 	start  time.Time
