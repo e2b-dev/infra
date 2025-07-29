@@ -3,13 +3,20 @@ package storage
 import (
 	"context"
 	"fmt"
+	"github.com/klauspost/pgzip"
 	"io"
 	"os"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
+
+var tracer = otel.Tracer("shared.pkg.storage")
 
 type TemplateBuild struct {
 	files       TemplateFiles
@@ -39,6 +46,9 @@ func (t *TemplateBuild) Remove(ctx context.Context) error {
 }
 
 func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Header) error {
+	ctx, span := tracer.Start(ctx, "TemplateBuild.uploadMemfileHeader")
+	defer span.End()
+
 	object, err := t.persistence.OpenObject(ctx, t.files.StorageMemfileHeaderPath())
 	if err != nil {
 		return err
@@ -57,21 +67,80 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 	return nil
 }
 
-func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) error {
-	object, err := t.persistence.OpenObject(ctx, t.files.StorageMemfilePath())
+func (t *TemplateBuild) uploadPath(ctx context.Context, source, dest string) error {
+	ctx, span := tracer.Start(ctx, "TemplateBuild.uploadPath",
+		trace.WithAttributes(attribute.Int64("file-size", getSize(source))))
+	defer span.End()
+
+	object, err := t.persistence.OpenObject(ctx, dest)
 	if err != nil {
 		return err
 	}
 
-	err = object.WriteFromFileSystem(memfilePath)
+	err = object.WriteFromFileSystem(source)
 	if err != nil {
-		return fmt.Errorf("error when uploading memfile: %w", err)
+		return fmt.Errorf("error when uploading path: %w", err)
 	}
 
 	return nil
 }
 
+func getSize(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		zap.L().Warn("failed to get size of file", zap.Error(err))
+		return -1
+	}
+
+	return info.Size()
+}
+
+func reportError(msg string, fn func() error) {
+	if err := fn(); err != nil {
+		zap.L().Warn("failed to remove temp file", zap.Error(err))
+	}
+}
+
+func (t *TemplateBuild) compressFile(ctx context.Context, path string) (string, func(), error) {
+	ctx, span := tracer.Start(ctx, "TemplateBuild.compressFile")
+	defer span.End()
+
+	source, err := os.Open(path)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer reportError("failed to close source", source.Close)
+
+	destination, err := os.CreateTemp("", "")
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer reportError("failed to close destination", destination.Close)
+
+	compressed := pgzip.NewWriter(destination)
+	span.SetAttributes(attribute.String("algorithm", "pgzip"))
+	defer reportError("failed to close compressor", compressed.Close)
+
+	if _, err = io.Copy(compressed, source); err != nil {
+		return "", nil, fmt.Errorf("failed to compress file: %w", err)
+	}
+
+	span.SetAttributes(
+		attribute.Int64("original_size", getSize(path)),
+		attribute.Int64("compressed_size", getSize(destination.Name())),
+	)
+
+	return destination.Name(), func() {
+		reportError("failed to remove temp file", func() error {
+			return os.Remove(destination.Name())
+		})
+	}, nil
+}
+
 func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Header) error {
+	ctx, span := tracer.Start(ctx, "TemplateBuild.uploadRootfsHeader")
+	defer span.End()
+
 	object, err := t.persistence.OpenObject(ctx, t.files.StorageRootfsHeaderPath())
 	if err != nil {
 		return err
@@ -90,22 +159,11 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Heade
 	return nil
 }
 
-func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) error {
-	object, err := t.persistence.OpenObject(ctx, t.files.StorageRootfsPath())
-	if err != nil {
-		return err
-	}
-
-	err = object.WriteFromFileSystem(rootfsPath)
-	if err != nil {
-		return fmt.Errorf("error when uploading rootfs: %w", err)
-	}
-
-	return nil
-}
-
 // Snap-file is small enough so we don't use composite upload.
 func (t *TemplateBuild) uploadSnapfile(ctx context.Context, snapfile io.Reader) error {
+	ctx, span := tracer.Start(ctx, "TemplateBuild.uploadSnapfile")
+	defer span.End()
+
 	object, err := t.persistence.OpenObject(ctx, t.files.StorageSnapfilePath())
 	if err != nil {
 		return err
@@ -120,12 +178,18 @@ func (t *TemplateBuild) uploadSnapfile(ctx context.Context, snapfile io.Reader) 
 }
 
 func (t *TemplateBuild) Upload(ctx context.Context, snapfilePath string, memfilePath *string, rootfsPath *string) chan error {
+	ctx, span := tracer.Start(ctx, "TemplateBuild.Upload")
+	defer span.End()
+
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
 		if t.rootfsHeader == nil {
 			return nil
 		}
+
+		ctx, span := tracer.Start(ctx, "root-fs-header")
+		defer span.End()
 
 		err := t.uploadRootfsHeader(ctx, t.rootfsHeader)
 		if err != nil {
@@ -140,12 +204,19 @@ func (t *TemplateBuild) Upload(ctx context.Context, snapfilePath string, memfile
 			return nil
 		}
 
-		err := t.uploadRootfs(ctx, *rootfsPath)
-		if err != nil {
-			return err
-		}
+		ctx, span := tracer.Start(ctx, "root-fs", trace.WithAttributes(
+			attribute.String("path", *rootfsPath),
+			attribute.Int64("size", getSize(*rootfsPath)),
+		))
+		defer span.End()
 
-		return nil
+		compressedPath, cleanup, err := t.compressFile(ctx, *rootfsPath)
+		if err != nil {
+			return fmt.Errorf("failed to compress rootfs: %w", err)
+		}
+		defer cleanup()
+
+		return t.uploadPath(ctx, compressedPath, t.files.StorageRootfsPath())
 	})
 
 	eg.Go(func() error {
@@ -153,9 +224,11 @@ func (t *TemplateBuild) Upload(ctx context.Context, snapfilePath string, memfile
 			return nil
 		}
 
-		err := t.uploadMemfileHeader(ctx, t.memfileHeader)
-		if err != nil {
-			return err
+		ctx, span := tracer.Start(ctx, "memfile-header")
+		defer span.End()
+
+		if err := t.uploadMemfileHeader(ctx, t.memfileHeader); err != nil {
+			return fmt.Errorf("failed to upload memfile header: %w", err)
 		}
 
 		return nil
@@ -166,15 +239,28 @@ func (t *TemplateBuild) Upload(ctx context.Context, snapfilePath string, memfile
 			return nil
 		}
 
-		err := t.uploadMemfile(ctx, *memfilePath)
-		if err != nil {
-			return err
-		}
+		ctx, span := tracer.Start(ctx, "memfile", trace.WithAttributes(
+			attribute.String("path", *memfilePath),
+			attribute.Int64("size", getSize(*memfilePath)),
+		))
+		defer span.End()
 
-		return nil
+		compressedPath, cleanup, err := t.compressFile(ctx, *memfilePath)
+		if err != nil {
+			return fmt.Errorf("failed to compress rootfs: %w", err)
+		}
+		defer cleanup()
+
+		return t.uploadPath(ctx, compressedPath, t.files.StorageMemfilePath())
 	})
 
 	eg.Go(func() error {
+		ctx, span := tracer.Start(ctx, "snapfile", trace.WithAttributes(
+			attribute.String("path", snapfilePath),
+			attribute.Int64("size", getSize(snapfilePath)),
+		))
+		defer span.End()
+
 		snapfile, err := os.Open(snapfilePath)
 		if err != nil {
 			return err

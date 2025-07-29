@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -53,6 +54,8 @@ func NewTracerProvider(ctx context.Context, spanExporter sdktrace.SpanExporter, 
 		sdktrace.WithResource(res),
 		sdktrace.WithSpanProcessor(bsp),
 	)
+
+	otel.SetTracerProvider(tracerProvider)
 
 	return tracerProvider, nil
 }
