@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -209,6 +210,13 @@ func (o *Orchestrator) CreateSandbox(
 		// The request is done, we will either add it to the cache or remove it from the node
 		if err == nil {
 			// The sandbox was created successfully
+			attributes := []attribute.KeyValue{
+				attribute.Int("attempts", attempt),
+				attribute.Bool("is_resume", isResume),
+				attribute.Bool("node_affinity_requested", nodeID != nil),
+				attribute.Bool("node_affinity_success", nodeID != nil && node.Info.ID == *nodeID),
+			}
+			o.createdSandboxesCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
 			break
 		}
 
