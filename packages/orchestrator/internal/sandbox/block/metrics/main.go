@@ -9,14 +9,25 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
+const (
+	orchestratorBlockSlices      = "orchestrator.blocks.slices"
+	orchestratorBlockChunksFetch = "orchestrator.blocks.chunks.fetch"
+	orchestratorBlockChunksStore = "orchestrator.blocks.chunks.store"
+)
+
 type Metrics struct {
-	SlicesMetric              metric.Int64Histogram
-	WriteChunksMetric         metric.Int64Histogram
+	// SlicesMetric is used to measure page faulting performance.
+	SlicesMetric            metric.Int64Histogram
+	TotalBytesFaultedMetric metric.Int64Counter
+	TotalPageFaults         metric.Int64Counter
+
+	// WriteChunksMetric is used to measure the time taken to download chunks from remote storage
 	ChunkRemoteReadMetric     metric.Int64Histogram
-	TotalBytesFaultedMetric   metric.Int64Counter
 	TotalBytesRetrievedMetric metric.Int64Counter
-	TotalPageFaults           metric.Int64Counter
 	TotalRemoteReadsMetric    metric.Int64Counter
+
+	// WriteChunksMetric is used to measure performance of writing chunks to disk.
+	WriteChunksMetric metric.Int64Histogram
 }
 
 func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
@@ -25,51 +36,52 @@ func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
 	blocksMeter := meterProvider.Meter("internal.sandbox.block.metrics")
 
 	var err error
-	if m.SlicesMetric, err = blocksMeter.Int64Histogram("orchestrator.blocks.slices",
+	if m.SlicesMetric, err = blocksMeter.Int64Histogram(orchestratorBlockSlices,
 		metric.WithDescription("Time taken to retrieve memory slices"),
 		metric.WithUnit("ms"),
 	); err != nil {
 		return m, fmt.Errorf("failed to get slices metric: %w", err)
 	}
 
-	if m.TotalBytesFaultedMetric, err = blocksMeter.Int64Counter("orchestrator.blocks.slices",
+	if m.TotalBytesFaultedMetric, err = blocksMeter.Int64Counter(orchestratorBlockSlices,
 		metric.WithDescription("Total bytes requested"),
-		metric.WithUnit("byte"),
+		metric.WithUnit("By"),
 	); err != nil {
 		return m, fmt.Errorf("failed to create total bytes requested metric: %w", err)
 	}
 
-	if m.TotalPageFaults, err = blocksMeter.Int64Counter("orchestrator.blocks.slices",
+	if m.TotalPageFaults, err = blocksMeter.Int64Counter(orchestratorBlockSlices,
 		metric.WithDescription("Total page faults"),
 	); err != nil {
 		return m, fmt.Errorf("failed to create total page faults metric: %w", err)
 	}
 
-	if m.ChunkRemoteReadMetric, err = blocksMeter.Int64Histogram("orchestrator.blocks.chunks.fetch",
+	if m.ChunkRemoteReadMetric, err = blocksMeter.Int64Histogram(orchestratorBlockChunksFetch,
 		metric.WithDescription("Time taken to retrieve memory chunks from GCP"),
 		metric.WithUnit("ms"),
 	); err != nil {
 		return m, fmt.Errorf("failed to get fetched chunks metric: %w", err)
 	}
 
-	if m.WriteChunksMetric, err = blocksMeter.Int64Histogram("orchestrator.blocks.chunks.store",
-		metric.WithDescription("Time taken to write memory chunks to disk"),
-		metric.WithUnit("ms"),
-	); err != nil {
-		return m, fmt.Errorf("failed to get stored chunks metric: %w", err)
-	}
-
-	if m.TotalBytesRetrievedMetric, err = blocksMeter.Int64Counter("orchestrator.blocks.chunks.fetch",
+	if m.TotalBytesRetrievedMetric, err = blocksMeter.Int64Counter(orchestratorBlockChunksFetch,
 		metric.WithDescription("Total bytes retrieved from remote store"),
-		metric.WithUnit("byte"),
+		metric.WithUnit("By"),
 	); err != nil {
 		return m, fmt.Errorf("failed to create total bytes retrieved from remote store: %w", err)
 	}
 
-	if m.TotalRemoteReadsMetric, err = blocksMeter.Int64Counter("orchestrator.blocks.chunks.fetch",
+	if m.TotalRemoteReadsMetric, err = blocksMeter.Int64Counter(orchestratorBlockChunksFetch,
 		metric.WithDescription("Total remote fetches"),
+		metric.WithUnit("1"),
 	); err != nil {
 		return m, fmt.Errorf("failed to create total remote fetches metric: %w", err)
+	}
+
+	if m.WriteChunksMetric, err = blocksMeter.Int64Histogram(orchestratorBlockChunksStore,
+		metric.WithDescription("Time taken to write memory chunks to disk"),
+		metric.WithUnit("ms"),
+	); err != nil {
+		return m, fmt.Errorf("failed to get stored chunks metric: %w", err)
 	}
 
 	return m, nil
