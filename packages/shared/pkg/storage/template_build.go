@@ -3,10 +3,10 @@ package storage
 import (
 	"context"
 	"fmt"
-	"github.com/klauspost/pgzip"
 	"io"
 	"os"
 
+	"github.com/klauspost/pgzip"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -216,7 +216,11 @@ func (t *TemplateBuild) Upload(ctx context.Context, snapfilePath string, memfile
 		}
 		defer cleanup()
 
-		return t.uploadPath(ctx, compressedPath, t.files.StorageRootfsPath())
+		if err = t.uploadPath(ctx, compressedPath, t.files.StorageRootfsPath()); err != nil {
+			return fmt.Errorf("failed to compress rootfs: %w", err)
+		}
+
+		return nil
 	})
 
 	eg.Go(func() error {
@@ -251,7 +255,11 @@ func (t *TemplateBuild) Upload(ctx context.Context, snapfilePath string, memfile
 		}
 		defer cleanup()
 
-		return t.uploadPath(ctx, compressedPath, t.files.StorageMemfilePath())
+		if err = t.uploadPath(ctx, compressedPath, t.files.StorageMemfilePath()); err != nil {
+			return fmt.Errorf("failed to upload memfile: %w", err)
+		}
+
+		return nil
 	})
 
 	eg.Go(func() error {
