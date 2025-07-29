@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -16,6 +17,7 @@ type File struct {
 	store       *DiffStore
 	fileType    DiffType
 	persistence storage.StorageProvider
+	metrics     blockmetrics.Metrics
 }
 
 func NewFile(
@@ -23,12 +25,14 @@ func NewFile(
 	store *DiffStore,
 	fileType DiffType,
 	persistence storage.StorageProvider,
+	metrics blockmetrics.Metrics,
 ) *File {
 	return &File{
 		header:      header,
 		store:       store,
 		fileType:    fileType,
 		persistence: persistence,
+		metrics:     metrics,
 	}
 }
 
@@ -124,6 +128,7 @@ func (b *File) getBuild(buildID *uuid.UUID) (Diff, error) {
 		buildID.String(),
 		b.fileType,
 		int64(b.header.Metadata.BlockSize),
+		b.metrics,
 		b.persistence,
 	)
 
