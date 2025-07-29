@@ -168,7 +168,10 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	item.EndAt = req.EndTime.AsTime()
 
-	go func() {
+	// TODO: adapt to new types of update events
+	eventData := fmt.Sprintf(`{"set_timeout": "%s"}`, req.EndTime.AsTime().Format(time.RFC3339))
+
+	go func(eventData string) {
 		err := s.clickhouseClient.InsertSandboxEvent(context.Background(), clickhouse.SandboxEvent{
 			Timestamp:          time.Now().UTC(),
 			SandboxID:          item.Config.SandboxId,
@@ -177,11 +180,12 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 			SandboxExecutionID: item.Config.ExecutionId,
 			EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
 			EventLabel:         string(clickhouse.SandboxEventLabelUpdate),
+			EventData:          &eventData,
 		})
 		if err != nil {
 			sbxlogger.I(item).Error("error inserting sandbox event during update", zap.Error(err))
 		}
-	}()
+	}(eventData)
 
 	return &emptypb.Empty{}, nil
 }

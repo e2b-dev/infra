@@ -35,7 +35,7 @@ type SandboxEvent struct {
 	SandboxTeamID      string    `ch:"sandbox_team_id"`
 	EventCategory      string    `ch:"event_category"`
 	EventLabel         string    `ch:"event_label"`
-	EventData          *string   `ch:"event_data"`
+	EventData          *string   `ch:"event_data,nullable"`
 }
 
 const latestSandboxEventSelectQuery = `
