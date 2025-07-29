@@ -55,7 +55,10 @@ require (
 	gotest.tools v2.2.0+incompatible
 )
 
-require github.com/pierrec/lz4/v4 v4.1.22
+require (
+	github.com/klauspost/pgzip v1.2.6
+	github.com/pierrec/lz4/v4 v4.1.22 // indirect
+)
 
 require (
 	ariga.io/atlas v0.15.0 // indirect
