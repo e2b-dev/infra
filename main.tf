@@ -73,7 +73,7 @@ module "buckets" {
   gcp_region                = var.gcp_region
 
   fc_template_bucket_name = (var.template_bucket_name != "" ?
-    var.template_bucket_name : "${var.gcp_project_id}-fc-templates")
+  var.template_bucket_name : "${var.gcp_project_id}-fc-templates")
   fc_template_bucket_location = var.template_bucket_location
 
   labels = var.labels
@@ -117,8 +117,8 @@ module "cluster" {
   nomad_port                   = var.nomad_port
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
-  additional_domains           = (var.additional_domains != "" ?
-    [for item in split(",", var.additional_domains) : trimspace(item)] : [])
+  additional_domains = (var.additional_domains != "" ?
+  [for item in split(",", var.additional_domains) : trimspace(item)] : [])
 
   docker_contexts_bucket_name = module.buckets.envs_docker_context_bucket_name
   cluster_setup_bucket_name   = module.buckets.cluster_setup_bucket_name
@@ -171,10 +171,10 @@ module "nomad" {
   gcp_zone            = var.gcp_zone
   client_machine_type = var.client_machine_type
 
-  consul_acl_token_secret = module.init.consul_acl_token_secret
-  nomad_acl_token_secret  = module.init.nomad_acl_token_secret
-  nomad_port              = var.nomad_port
-  otel_tracing_print      = var.otel_tracing_print
+  consul_acl_token_secret       = module.init.consul_acl_token_secret
+  nomad_acl_token_secret        = module.init.nomad_acl_token_secret
+  nomad_port                    = var.nomad_port
+  otel_tracing_print            = var.otel_tracing_print
   orchestration_repository_name = module.init.orchestration_repository_name
 
   # Clickhouse
@@ -185,14 +185,13 @@ module "nomad" {
   clickhouse_server_count          = var.clickhouse_cluster_size
   clickhouse_server_port           = var.clickhouse_server_service_port
   clickhouse_job_constraint_prefix = var.clickhouse_job_constraint_prefix
-  clickhouse_node_pool = var.clickhouse_node_pool
+  clickhouse_node_pool             = var.clickhouse_node_pool
 
   # API
   api_machine_count                         = var.api_cluster_size
   logs_proxy_address                        = "http://${module.cluster.logs_proxy_ip}"
   api_port                                  = var.api_port
   environment                               = var.environment
-  envd_timeout                              = var.envd_timeout
   google_service_account_key                = module.init.google_service_account_key
   api_secret                                = module.api.api_secret
   custom_envs_repository_name               = module.api.custom_envs_repository_name
@@ -203,7 +202,7 @@ module "nomad" {
   analytics_collector_api_token_secret_name = module.init.analytics_collector_api_token_secret_name
   api_admin_token                           = module.api.api_admin_token
   redis_url_secret_version                  = module.api.redis_url_secret_version
-  sandbox_access_token_hash_seed = module.api.sandbox_access_token_hash_seed
+  sandbox_access_token_hash_seed            = module.api.sandbox_access_token_hash_seed
 
   # Click Proxy
   client_proxy_count               = var.client_proxy_count
@@ -218,13 +217,13 @@ module "nomad" {
 
   # Telemetry
   logs_health_proxy_port = var.logs_health_proxy_port
-  logs_proxy_port = var.logs_proxy_port
+  logs_proxy_port        = var.logs_proxy_port
 
   # Logs
   loki_resources_memory_mb = var.loki_resources_memory_mb
   loki_resources_cpu_count = var.loki_resources_cpu_count
 
-  loki_bucket_name = module.buckets.loki_bucket_name
+  loki_bucket_name  = module.buckets.loki_bucket_name
   loki_service_port = var.loki_service_port
 
   # Otel Colelctor
@@ -232,19 +231,20 @@ module "nomad" {
   otel_collector_resources_cpu_count = var.otel_collector_resources_cpu_count
 
   # Docker reverse proxy
-  docker_reverse_proxy_port = var.docker_reverse_proxy_port
+  docker_reverse_proxy_port                = var.docker_reverse_proxy_port
   docker_reverse_proxy_service_account_key = module.docker_reverse_proxy.docker_reverse_proxy_service_account_key
 
   # Orchestrator
-  allow_sandbox_internet  = var.allow_sandbox_internet
-  orchestrator_port       = var.orchestrator_port
-  orchestrator_proxy_port = var.orchestrator_proxy_port
+  allow_sandbox_internet      = var.allow_sandbox_internet
+  orchestrator_port           = var.orchestrator_port
+  orchestrator_proxy_port     = var.orchestrator_proxy_port
   fc_env_pipeline_bucket_name = module.buckets.fc_env_pipeline_bucket_name
+  envd_timeout                = var.envd_timeout
 
   # Template manager
-  template_manager_port   = var.template_manager_port
-  template_bucket_name    = module.buckets.fc_template_bucket_name
-  build_cache_bucket_name = module.buckets.fc_build_cache_bucket_name
+  template_manager_port          = var.template_manager_port
+  template_bucket_name           = module.buckets.fc_template_bucket_name
+  build_cache_bucket_name        = module.buckets.fc_build_cache_bucket_name
   template_manager_machine_count = var.build_cluster_size
 
   # Redis
