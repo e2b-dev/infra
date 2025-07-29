@@ -1,4 +1,5 @@
 #  go run github.com/vektra/mockery/v3@v3.5.0
+# https://vektra.github.io/mockery/latest/configuration/
 
 packages:
   github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem/filesystemconnect:
@@ -7,3 +8,11 @@ packages:
         config:
           dir: packages/envd/internal/services/legacy
           pkgname: legacy
+
+  github.com/e2b-dev/infra/packages/shared/pkg/storage:
+    interfaces:
+      StorageObjectProvider:
+        config:
+          dir: packages/shared/pkg/storage
+          filename: storage_test.go
+          pkgname: storage

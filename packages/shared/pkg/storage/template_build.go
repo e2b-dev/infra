@@ -63,6 +63,8 @@ func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) e
 		return err
 	}
 
+	object = WithCompression(object)
+
 	err = object.WriteFromFileSystem(memfilePath)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile: %w", err)
@@ -96,6 +98,8 @@ func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) err
 		return err
 	}
 
+	object = WithCompression(object)
+
 	err = object.WriteFromFileSystem(rootfsPath)
 	if err != nil {
 		return fmt.Errorf("error when uploading rootfs: %w", err)
@@ -110,6 +114,8 @@ func (t *TemplateBuild) uploadSnapfile(ctx context.Context, snapfile io.Reader) 
 	if err != nil {
 		return err
 	}
+
+	object = WithCompression(object)
 
 	n, err := object.ReadFrom(snapfile)
 	if err != nil {
