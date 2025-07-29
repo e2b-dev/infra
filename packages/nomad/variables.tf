@@ -1,3 +1,7 @@
+variable "envd_timeout" {
+  type = string
+}
+
 variable "prefix" {
   type = string
 }
