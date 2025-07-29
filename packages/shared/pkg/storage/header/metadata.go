@@ -11,9 +11,14 @@ import (
 
 var ignoreBuildID = uuid.Nil
 
+type compressedBlockInfo struct {
+	offset, size uint64
+}
+
 type DiffMetadata struct {
-	Dirty *bitset.BitSet
-	Empty *bitset.BitSet
+	Dirty     *bitset.BitSet
+	Empty     *bitset.BitSet
+	OffsetMap map[uint64]compressedBlockInfo
 
 	BlockSize int64
 }
@@ -26,15 +31,11 @@ func (d *DiffMetadata) CreateMapping(
 		&buildID,
 		d.Dirty,
 		d.BlockSize,
+		d.OffsetMap,
 	)
 	telemetry.ReportEvent(ctx, "created dirty mapping")
 
-	emptyMappings := CreateMapping(
-		// This buildID is intentionally ignored for nil blocks
-		&ignoreBuildID,
-		d.Empty,
-		d.BlockSize,
-	)
+	emptyMappings := CreateMapping(&ignoreBuildID, d.Empty, d.BlockSize, nil)
 	telemetry.ReportEvent(ctx, "created empty mapping")
 
 	mappings := MergeMappings(dirtyMappings, emptyMappings)

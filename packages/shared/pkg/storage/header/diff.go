@@ -2,14 +2,18 @@ package header
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
+	"go.opentelemetry.io/otel/trace"
 	"io"
 
 	"github.com/bits-and-blooms/bitset"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
+
+var tracer = otel.Tracer("shared.pkg.storage.header")
 
 const (
 	PageSize        = 2 << 11
@@ -22,22 +26,26 @@ var (
 	EmptyBlock    = make([]byte, RootfsBlockSize)
 )
 
-func WriteDiffWithTrace(ctx context.Context, tracer trace.Tracer, source io.ReaderAt, blockSize int64, dirty *bitset.BitSet, diff io.Writer) (*DiffMetadata, error) {
-	_, childSpan := tracer.Start(ctx, "create-diff")
+func WriteDiff(ctx context.Context, source io.ReaderAt, blockSize int64, dirty *bitset.BitSet, diff io.Writer) (*DiffMetadata, error) {
+	_, childSpan := tracer.Start(ctx, "create-diff", trace.WithAttributes(
+		attribute.Int64("dirty.length", int64(dirty.Count())),
+		attribute.Int64("block.size", blockSize),
+	))
 	defer childSpan.End()
-	childSpan.SetAttributes(attribute.Int64("dirty.length", int64(dirty.Count())))
-	childSpan.SetAttributes(attribute.Int64("block.size", blockSize))
 
-	return writeDiff(source, blockSize, dirty, diff)
-}
-
-func writeDiff(source io.ReaderAt, blockSize int64, dirty *bitset.BitSet, diff io.Writer) (*DiffMetadata, error) {
 	b := make([]byte, blockSize)
 
 	empty := bitset.New(0)
 
-	for i, e := dirty.NextSet(0); e; i, e = dirty.NextSet(i + 1) {
-		_, err := source.ReadAt(b, int64(i)*blockSize)
+	compressedDiff := gzip.NewWriter(diff)
+	defer compressedDiff.Flush()
+
+	var compressedOffset int
+	compressedOffsetMap := make(map[uint64]compressedBlockInfo) // uncompressed -> compressed
+
+	for i, ok := dirty.NextSet(0); ok; i, ok = dirty.NextSet(i + 1) {
+		originalOffset := int64(i) * blockSize
+		_, err := source.ReadAt(b, originalOffset)
 		if err != nil {
 			return nil, fmt.Errorf("error reading from source: %w", err)
 		}
@@ -55,15 +63,21 @@ func writeDiff(source io.ReaderAt, blockSize int64, dirty *bitset.BitSet, diff i
 			continue
 		}
 
-		_, err = diff.Write(b)
+		count, err := compressedDiff.Write(b)
 		if err != nil {
 			return nil, fmt.Errorf("error writing to diff: %w", err)
 		}
+		compressedOffsetMap[uint64(originalOffset)] = compressedBlockInfo{
+			offset: uint64(compressedOffset),
+			size:   uint64(count),
+		}
+		compressedOffset += count
 	}
 
 	return &DiffMetadata{
-		Dirty: dirty,
-		Empty: empty,
+		Dirty:     dirty,
+		Empty:     empty,
+		OffsetMap: compressedOffsetMap,
 
 		BlockSize: blockSize,
 	}, nil

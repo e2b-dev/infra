@@ -552,7 +552,6 @@ func (s *Sandbox) Pause(
 		buildID,
 		originalMemfile.Header(),
 		&MemoryDiffCreator{
-			tracer:     tracer,
 			memfile:    memfile,
 			dirtyPages: s.memory.Dirty(),
 			blockSize:  originalMemfile.BlockSize(),

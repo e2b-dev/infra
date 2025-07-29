@@ -17,12 +17,14 @@ type BuildMap struct {
 	Length             uint64
 	BuildId            uuid.UUID
 	BuildStorageOffset uint64
+	BuildStorageSize   uint64
 }
 
 func CreateMapping(
 	buildId *uuid.UUID,
 	dirty *bitset.BitSet,
 	blockSize int64,
+	offsetMap map[uint64]compressedBlockInfo,
 ) []*BuildMap {
 	var mappings []*BuildMap
 
@@ -37,12 +39,25 @@ func CreateMapping(
 			continue
 		}
 
+		rawOffset := uint64(startBlock) * uint64(blockSize)
+		rawSize := uint64(blockLength) * uint64(blockSize)
+
+		actualBuildStorageOffset := buildStorageOffset
+		actualBuildStorageSize := rawSize
+
+		data, ok := offsetMap[rawOffset]
+		if ok {
+			actualBuildStorageOffset = data.offset
+			actualBuildStorageSize = data.size
+		}
+
 		if blockLength > 0 {
 			m := &BuildMap{
-				Offset:             uint64(startBlock) * uint64(blockSize),
+				Offset:             rawOffset,
 				BuildId:            *buildId,
-				Length:             uint64(blockLength) * uint64(blockSize),
-				BuildStorageOffset: buildStorageOffset,
+				Length:             rawSize,
+				BuildStorageOffset: actualBuildStorageOffset,
+				BuildStorageSize:   actualBuildStorageSize,
 			}
 
 			mappings = append(mappings, m)
