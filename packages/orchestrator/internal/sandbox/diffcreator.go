@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/bits-and-blooms/bitset"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"

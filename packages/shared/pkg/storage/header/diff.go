@@ -5,12 +5,12 @@ import (
 	"compress/gzip"
 	"context"
 	"fmt"
-	"go.opentelemetry.io/otel/trace"
 	"io"
 
 	"github.com/bits-and-blooms/bitset"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var tracer = otel.Tracer("shared.pkg.storage.header")
