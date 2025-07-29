@@ -56,7 +56,7 @@ func (o *Orchestrator) setupMetrics(meterProvider metric.MeterProvider) error {
 		return fmt.Errorf("failed to register orchestrators gauge: %w", err)
 	}
 
-	if o.createdSandboxesCounter, err = meter.Int64Counter("api.orchestrator.created_sandboxes"); err != nil {
+	if o.createdSandboxesCounter, err = telemetry.GetCounter(meter, telemetry.ApiOrchestratorCreatedSandboxes); err != nil {
 		return fmt.Errorf("failed to create sandboxes counter: %w", err)
 	}
 
