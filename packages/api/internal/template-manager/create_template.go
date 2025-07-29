@@ -129,11 +129,8 @@ func (tm *TemplateManager) CreateTemplate(
 	telemetry.ReportEvent(ctx, "created new environment", telemetry.WithTemplateID(templateID))
 
 	// Do not wait for global build sync trigger it immediately
-	go func() {
-		buildContext, buildSpan := t.Start(
-			trace.ContextWithSpanContext(context.Background(), span.SpanContext()),
-			"template-background-build-env",
-		)
+	go func(ctx context.Context) {
+		buildContext, buildSpan := t.Start(ctx, "template-background-build-env")
 		defer buildSpan.End()
 
 		err := tm.BuildStatusSync(buildContext, buildID, templateID, clusterID, clusterNodeID)
@@ -143,7 +140,7 @@ func (tm *TemplateManager) CreateTemplate(
 
 		// Invalidate the cache
 		tm.templateCache.Invalidate(templateID)
-	}()
+	}(context.WithoutCancel(ctx))
 
 	return nil
 }
