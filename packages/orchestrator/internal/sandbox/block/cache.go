@@ -265,5 +265,5 @@ func (m *Cache) FileSize() (int64, error) {
 		return 0, fmt.Errorf("failed to get disk stats for path %s: %w", m.filePath, err)
 	}
 
-	return int64(stat.Blocks) * int64(fsStat.Bsize), nil
+	return stat.Blocks * int64(fsStat.Bsize), nil
 }

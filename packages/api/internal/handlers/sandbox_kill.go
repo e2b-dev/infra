@@ -29,9 +29,9 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 		return fmt.Errorf("error deleting env from db: %w", dbErr)
 	}
 
-	go func() {
+	go func(ctx context.Context) {
 		// remove any snapshots when the sandbox is not running
-		deleteCtx, span := a.Tracer.Start(context.Background(), "delete-snapshot")
+		ctx, span := a.Tracer.Start(ctx, "delete-snapshot")
 		defer span.End()
 		span.SetAttributes(telemetry.WithSandboxID(sandboxID))
 		span.SetAttributes(telemetry.WithTemplateID(env.ID))
@@ -54,11 +54,11 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 			return
 		}
 
-		deleteJobErr := a.templateManager.DeleteBuilds(deleteCtx, envBuildIDs)
+		deleteJobErr := a.templateManager.DeleteBuilds(ctx, envBuildIDs)
 		if deleteJobErr != nil {
-			telemetry.ReportError(deleteCtx, "error deleting snapshot builds", deleteJobErr, telemetry.WithSandboxID(sandboxID))
+			telemetry.ReportError(ctx, "error deleting snapshot builds", deleteJobErr, telemetry.WithSandboxID(sandboxID))
 		}
-	}()
+	}(context.WithoutCancel(ctx))
 
 	a.templateCache.Invalidate(env.ID)
 
