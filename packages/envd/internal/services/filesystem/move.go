@@ -40,6 +40,10 @@ func (Service) Move(ctx context.Context, req *connect.Request[rpc.MoveRequest]) 
 
 	err = os.Rename(source, destination)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("source file not found: %w", err))
+		}
+
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error renaming: %w", err))
 	}
 
