@@ -28,14 +28,14 @@ const (
 )
 
 type SandboxEvent struct {
-	Timestamp          time.Time            `ch:"timestamp"`
-	SandboxID          string               `ch:"sandbox_id"`
-	SandboxExecutionID string               `ch:"sandbox_execution_id"`
-	SandboxTemplateID  string               `ch:"sandbox_template_id"`
-	SandboxTeamID      string               `ch:"sandbox_team_id"`
-	EventCategory      SandboxEventCategory `ch:"event_category"`
-	EventLabel         SandboxEventLabel    `ch:"event_label"`
-	EventData          *string              `ch:"event_data"`
+	Timestamp          time.Time `ch:"timestamp"`
+	SandboxID          string    `ch:"sandbox_id"`
+	SandboxExecutionID string    `ch:"sandbox_execution_id"`
+	SandboxTemplateID  string    `ch:"sandbox_template_id"`
+	SandboxTeamID      string    `ch:"sandbox_team_id"`
+	EventCategory      string    `ch:"event_category"`
+	EventLabel         string    `ch:"event_label"`
+	EventData          *string   `ch:"event_data"`
 }
 
 const latestSandboxEventSelectQuery = `
