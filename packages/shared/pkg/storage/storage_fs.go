@@ -68,18 +68,12 @@ func (f *FileSystemStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) 
 	return io.Copy(dst, handle)
 }
 
-func (f *FileSystemStorageObjectProvider) WriteFromFileSystem(path string) error {
+func (f *FileSystemStorageObjectProvider) WriteFrom(src io.ReadCloser, length int64) error {
 	handle, err := f.getHandle(false)
 	if err != nil {
 		return err
 	}
 	defer handle.Close()
-
-	src, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer src.Close()
 
 	_, err = io.Copy(handle, src)
 	if err != nil {

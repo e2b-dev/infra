@@ -63,9 +63,12 @@ func TestWriteFromFileSystem(t *testing.T) {
 	const payload = "copy me please"
 	require.NoError(t, os.WriteFile(srcPath, []byte(payload), 0o600))
 
+	input, err := os.Open(srcPath)
+	require.NoError(t, err)
+
 	obj, err := p.OpenObject(ctx, "copy/dst.txt")
 	require.NoError(t, err)
-	require.NoError(t, obj.WriteFromFileSystem(srcPath))
+	require.NoError(t, obj.WriteFrom(input, 0))
 
 	var buf bytes.Buffer
 	_, err = obj.WriteTo(&buf)

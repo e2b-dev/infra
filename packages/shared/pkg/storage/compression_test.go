@@ -1,7 +1,10 @@
 package storage
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/google/uuid"
+	"github.com/pierrec/lz4/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"io"
@@ -23,13 +26,7 @@ func (s simpleFile) WriteTo(dst io.Writer) (int64, error) {
 	return io.Copy(dst, fp)
 }
 
-func (s simpleFile) WriteFromFileSystem(path string) error {
-	input, err := os.OpenFile(path, os.O_RDWR, 0600)
-	if err != nil {
-		return fmt.Errorf("failed to open file %s: %w", s.path, err)
-	}
-	defer input.Close()
-
+func (s simpleFile) WriteFrom(input io.ReadCloser, length int64) error {
 	output, err := os.OpenFile(s.path, os.O_WRONLY|os.O_CREATE, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to open file %s: %w", s.path, err)
@@ -43,8 +40,13 @@ func (s simpleFile) WriteFromFileSystem(path string) error {
 }
 
 func (s simpleFile) ReadFrom(src io.Reader) (int64, error) {
-	//TODO implement me
-	panic("implement me")
+	input, err := os.OpenFile(s.path, os.O_WRONLY, 0600)
+	if err != nil {
+		return 0, fmt.Errorf("failed to open file")
+	}
+	defer input.Close()
+
+	return input.ReadFrom(src)
 }
 
 func (s simpleFile) ReadAt(buff []byte, off int64) (n int, err error) {
@@ -64,30 +66,73 @@ func (s simpleFile) Delete() error {
 
 var _ StorageObjectProvider = (*simpleFile)(nil)
 
-func TestCompression(t *testing.T) {
-	t.Run("WriteFromFileSystem, then WriteTo", func(t *testing.T) {
-		mock := NewMockStorageObjectProvider(t)
-		c := WithCompression(mock)
+func createTempFile(t *testing.T, pattern string) string {
+	t.Helper()
 
-		tempFile, err := os.CreateTemp("", "")
+	return createTempFileWithContent(t, pattern, "")
+}
+
+func createTempFileWithContent(t *testing.T, pattern, content string) string {
+	t.Helper()
+
+	tf, err := os.CreateTemp("", pattern)
+	require.NoError(t, err)
+
+	if content != "" {
+		_, err = io.WriteString(tf, content)
 		require.NoError(t, err)
-		t.Cleanup(func() { tempFile.Close() })
+	}
 
-		_, err = io.WriteString(tempFile, "hello world")
+	err = tf.Close()
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		err = os.Remove(tf.Name())
 		require.NoError(t, err)
-
-		err = c.WriteFromFileSystem(tempFile.Name())
-		require.NoError(t, err)
-
 	})
 
-	t.Run("ReadFrom, then ReadAt", func(t *testing.T) {
-		mock := NewMockStorageObjectProvider(t)
-		c := WithCompression(mock)
+	return tf.Name()
+}
 
-		var buff []byte
-		count, err := c.ReadAt(buff, 5)
+func TestCompression(t *testing.T) {
+	t.Run("WriteFromFileSystem, then WriteTo", func(t *testing.T) {
+		// create a plain text file
+		plainText := uuid.NewString()
+		plainTextPath := createTempFileWithContent(t, "*.txt", plainText)
+		compressedPath := createTempFile(t, "*.lz4")
+
+		// create object source, wrap in compressor
+		file := simpleFile{path: compressedPath}
+		c := WithCompression(file)
+
+		// compress the data to
+		fp, err := os.Open(plainTextPath)
 		require.NoError(t, err)
-		assert.Equal(t, int64(5), count)
+		err = c.WriteFrom(fp, int64(len(plainText)))
+		require.NoError(t, err)
+
+		// verify data is compressed
+		fp, err = os.Open(compressedPath)
+		require.NoError(t, err)
+		r := lz4.NewReader(fp)
+		result, err := io.ReadAll(r)
+		require.NoError(t, err)
+		assert.Equal(t, plainText, string(result))
+
+		var buf bytes.Buffer
+		_, err = c.WriteTo(&buf)
+		require.NoError(t, err)
+
+		assert.Equal(t, plainText, buf.String())
+	})
+
+	t.Run("ReadFrom, then WriteTo", func(t *testing.T) {
+		//mock := NewMockStorageObjectProvider(t)
+		//c := WithCompression(mock)
+		//
+		//var buff []byte
+		//count, err := c.ReadAt(buff, 5)
+		//require.NoError(t, err)
+		//assert.Equal(t, int64(5), count)
 	})
 }

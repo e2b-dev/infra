@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -217,10 +216,9 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 	return n, nil
 }
 
-func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error {
+func (g *GCPBucketStorageObjectProvider) WriteFrom(reader io.ReaderAt, fileSize int64) error {
 	bucketName := g.storage.bucket.BucketName()
 	objectName := g.path
-	filePath := path
 
 	maxConcurrency := gcloudDefaultUploadConcurrency
 	if g.limiter != nil {
@@ -246,22 +244,16 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 		return fmt.Errorf("failed to create multipart uploader: %w", err)
 	}
 
-	fileSize, err := os.Stat(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to get file size: %w", err)
-	}
-
 	start := time.Now()
-	if err := uploader.UploadFileInParallel(g.ctx, filePath, maxConcurrency); err != nil {
+	if err := uploader.UploadFileInParallel(g.ctx, reader, fileSize, maxConcurrency); err != nil {
 		return fmt.Errorf("failed to upload file in parallel: %w", err)
 	}
 
 	zap.L().Debug("Uploaded file in parallel",
 		zap.String("bucket", bucketName),
 		zap.String("object", objectName),
-		zap.String("path", filePath),
 		zap.Int("max_concurrency", maxConcurrency),
-		zap.Int64("file_size", fileSize.Size()),
+		zap.Int64("file_size", fileSize),
 		zap.Int64("duration", time.Since(start).Milliseconds()),
 	)
 

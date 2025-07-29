@@ -34,10 +34,13 @@ type StorageProvider interface {
 }
 
 type StorageObjectProvider interface {
+	// WriteTo takes the wrapped object and writes it to a destination
 	WriteTo(dst io.Writer) (int64, error)
-	WriteFromFileSystem(path string) error
-
+	// WriteFromFileSystem takes the input and writes it to the wrapped object
+	WriteFrom(reader io.ReadCloser, length int64) error
+	// ReadFrom takes the input and writes it to the wrapped object
 	ReadFrom(src io.Reader) (int64, error)
+	// ReadAt reads from the wrapped object, skips to the offset, and fills the buff with data
 	ReadAt(buff []byte, off int64) (n int, err error)
 
 	Size() (int64, error)

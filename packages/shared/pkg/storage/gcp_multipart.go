@@ -11,7 +11,6 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
-	"os"
 	"sort"
 	"sync"
 	"time"
@@ -253,21 +252,7 @@ func (m *MultipartUploader) CompleteUpload(uploadID string, parts []Part) error 
 	return nil
 }
 
-func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath string, maxConcurrency int) error {
-	// Open file
-	file, err := os.Open(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to open file: %v", err)
-	}
-	defer file.Close()
-
-	// Get file size
-	fileInfo, err := file.Stat()
-	if err != nil {
-		return fmt.Errorf("failed to get file info: %v", err)
-	}
-	fileSize := fileInfo.Size()
-
+func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, file io.ReaderAt, fileSize int64, maxConcurrency int) error {
 	// Calculate number of parts
 	numParts := int(math.Ceil(float64(fileSize) / float64(ChunkSize)))
 	if numParts == 0 {

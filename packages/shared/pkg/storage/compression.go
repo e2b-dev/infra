@@ -4,8 +4,14 @@ import (
 	"fmt"
 	"github.com/pierrec/lz4/v4"
 	"io"
-	"os"
 )
+
+/*
+- WriteTo = decompress
+- WriteFromFileSystem = compress
+- ReadFrom = compress
+- ReadAt = decompress (probably complicated!)
+*/
 
 func WithCompression(provider StorageObjectProvider) StorageObjectProvider {
 	return &compressor{provider}
@@ -15,30 +21,21 @@ type compressor struct {
 	wrapped StorageObjectProvider
 }
 
+var _ StorageObjectProvider = (*compressor)(nil)
+
 func (c compressor) WriteTo(dst io.Writer) (int64, error) {
-	dst = lz4.NewWriter(dst)
+	dst = newDecompressingWriter(dst)
 	return c.wrapped.WriteTo(dst)
 }
 
-func (c compressor) WriteFromFileSystem(path string) error {
-	reader, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
+func (c compressor) WriteFrom(reader io.ReadCloser, length int64) error {
+	compressingReader := lz4.NewCompressingReader(reader)
+
+	if err := c.wrapped.WriteFrom(compressingReader, length); err != nil {
+		return fmt.Errorf("failed to compress file: %w", err)
 	}
 
-	tempFile, err := os.CreateTemp("", "compression.*.tmp")
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
-	}
-
-	writer := lz4.NewWriter(tempFile)
-	if _, err = io.Copy(writer, reader); err != nil {
-		return fmt.Errorf("failed to compress file")
-	}
-	reader.Close()
-	tempFile.Close()
-
-	return c.wrapped.WriteFromFileSystem(tempFile.Name())
+	return nil
 }
 
 func (c compressor) ReadFrom(src io.Reader) (int64, error) {
@@ -56,4 +53,18 @@ func (c compressor) Size() (int64, error) {
 
 func (c compressor) Delete() error {
 	return c.wrapped.Delete()
+}
+
+type decompressingWriter struct {
+	wrapped io.Writer
+}
+
+func (d decompressingWriter) Write(src []byte) (n int, err error) {
+	var dst []byte
+	count, err := lz4.UncompressBlock(src, dst)
+	return d.wrapped.Write(dst[:count])
+}
+
+func newDecompressingWriter(writer io.Writer) io.Writer {
+	return decompressingWriter{writer}
 }

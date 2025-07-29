@@ -57,6 +57,20 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 	return nil
 }
 
+func (t *TemplateBuild) getFileReaderAndSize(path string) (io.ReadCloser, int64, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, 0, fmt.Errorf("error when opening file: %w", err)
+	}
+
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, 0, fmt.Errorf("error when getting stats: %w", err)
+	}
+
+	return file, stat.Size(), nil
+}
+
 func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) error {
 	object, err := t.persistence.OpenObject(ctx, t.files.StorageMemfilePath())
 	if err != nil {
@@ -65,7 +79,12 @@ func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) e
 
 	object = WithCompression(object)
 
-	err = object.WriteFromFileSystem(memfilePath)
+	file, size, err := t.getFileReaderAndSize(memfilePath)
+	if err != nil {
+		return fmt.Errorf("error when opening memfile: %w", err)
+	}
+
+	err = object.WriteFrom(file, size)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile: %w", err)
 	}
@@ -100,7 +119,12 @@ func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) err
 
 	object = WithCompression(object)
 
-	err = object.WriteFromFileSystem(rootfsPath)
+	file, size, err := t.getFileReaderAndSize(rootfsPath)
+	if err != nil {
+		return fmt.Errorf("failed to get file reader and size: %w", err)
+	}
+
+	err = object.WriteFrom(file, size)
 	if err != nil {
 		return fmt.Errorf("error when uploading rootfs: %w", err)
 	}

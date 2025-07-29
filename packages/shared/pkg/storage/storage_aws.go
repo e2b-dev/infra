@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -120,15 +119,9 @@ func (a *AWSBucketStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 	return io.Copy(dst, resp.Body)
 }
 
-func (a *AWSBucketStorageObjectProvider) WriteFromFileSystem(path string) error {
+func (a *AWSBucketStorageObjectProvider) WriteFrom(file io.ReadCloser, length int64) error {
 	ctx, cancel := context.WithTimeout(a.ctx, awsWriteTimeout)
 	defer cancel()
-
-	file, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
 
 	uploader := manager.NewUploader(
 		a.client,
@@ -138,7 +131,7 @@ func (a *AWSBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 		},
 	)
 
-	_, err = uploader.Upload(
+	_, err := uploader.Upload(
 		ctx,
 		&s3.PutObjectInput{
 			Bucket: &a.bucketName,
