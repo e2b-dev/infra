@@ -88,6 +88,11 @@ func New(
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
+	// Check if the cwd resolved path exists
+	if _, err := os.Stat(resolvedPath); errors.Is(err, os.ErrNotExist) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cwd '%s' does not exist", resolvedPath))
+	}
+
 	cmd.Dir = resolvedPath
 
 	var formattedVars []string
