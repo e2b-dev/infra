@@ -180,7 +180,7 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 			SandboxExecutionID: item.Config.ExecutionId,
 			EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
 			EventLabel:         string(clickhouse.SandboxEventLabelUpdate),
-			EventData:          &eventData,
+			EventData:          eventData,
 		})
 		if err != nil {
 			sbxlogger.I(item).Error("error inserting sandbox event during update", zap.Error(err))

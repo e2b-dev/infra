@@ -8,7 +8,7 @@ CREATE TABLE sandbox_events_local (
     sandbox_team_id UUID,
     event_category String,
     event_label String,
-    event_data Nullable(JSON)
+    event_data Nullable(String)
 ) ENGINE = MergeTree 
     PARTITION BY toDate(timestamp)
     ORDER BY (sandbox_id, timestamp)
