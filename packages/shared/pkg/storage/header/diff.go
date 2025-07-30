@@ -38,7 +38,7 @@ func WriteDiff(ctx context.Context, source io.ReaderAt, blockSize int64, dirty *
 	empty := bitset.New(0)
 
 	compressedDiff := gzip.NewWriter(diff)
-	defer compressedDiff.Flush()
+	defer compressedDiff.Close()
 
 	var compressedOffset int
 	compressedOffsetMap := make(map[uint64]compressedBlockInfo) // uncompressed -> compressed

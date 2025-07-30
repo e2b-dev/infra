@@ -2,11 +2,14 @@ package header
 
 import (
 	"bytes"
+	"compress/gzip"
 	"fmt"
+	"io"
 	"testing"
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func createSource(blockSize int, blocksData []byte) []byte {
@@ -32,7 +35,8 @@ func TestCreateDiff_Hugepage(t *testing.T) {
 	assert.NoError(t, err)
 
 	expectedDiffData := createSource(blockSize, []byte{1, 5})
-	assert.Equal(t, expectedDiffData, diff.Bytes())
+	actualDiffData := decompress(t, diff)
+	assert.Equal(t, expectedDiffData, actualDiffData)
 
 	assert.Equal(t, "0000000000000000000000000000000000000000000000000000000000000010.", m.Empty.DumpAsBits())
 }
@@ -52,7 +56,8 @@ func TestCreateDiff_RootfsBlock(t *testing.T) {
 	assert.NoError(t, err)
 
 	expectedDiffData := createSource(blockSize, []byte{1, 5})
-	assert.Equal(t, expectedDiffData, diff.Bytes())
+	actualDiffData := decompress(t, diff)
+	assert.Equal(t, expectedDiffData, actualDiffData)
 
 	assert.Equal(t, "0000000000000000000000000000000000000000000000000000000000000010.", m.Empty.DumpAsBits())
 }
@@ -105,10 +110,19 @@ func TestCreateDiff_EmptyDirtyBitset(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify no data was written to diff
-	assert.Equal(t, 0, diff.Len())
+	data := decompress(t, diff)
+	assert.Equal(t, 0, len(data))
 
 	assert.Equal(t, "", m.Dirty.DumpAsBits())
 	assert.Equal(t, "", m.Empty.DumpAsBits())
+}
+
+func decompress(t *testing.T, diff *bytes.Buffer) []byte {
+	decompressor, err := gzip.NewReader(bytes.NewBuffer(diff.Bytes()))
+	data, err := io.ReadAll(decompressor)
+	require.NoError(t, err)
+
+	return data
 }
 
 type errorReader struct{}
@@ -179,8 +193,9 @@ func TestCreateDiff_LargeIndex(t *testing.T) {
 	assert.False(t, m.Empty.Test(largeIndex))
 
 	// Verify the data was written to diff
-	assert.Equal(t, blockSize, diff.Len())
-	assert.Equal(t, byte(42), diff.Bytes()[0])
+	actualDiffData := decompress(t, diff)
+	assert.Len(t, actualDiffData, blockSize)
+	assert.Equal(t, byte(42), actualDiffData[0])
 }
 
 // largeOffsetReader implements io.ReaderAt and handles large offsets
