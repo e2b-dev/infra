@@ -101,41 +101,9 @@ func (tm *TemplateManager) CreateTemplate(
 		Steps:              convertTemplateSteps(steps),
 	}
 
-	// Set the source (either fromImage or fromTemplate)
-	if fromTemplate != nil && *fromTemplate != "" {
-		// Look up the base template by alias to get its metadata
-		baseTemplate, err := tm.sqlcDB.GetEnvWithBuild(ctx, *fromTemplate)
-		if err != nil {
-			return fmt.Errorf("failed to find base template '%s': %w", *fromTemplate, err)
-		}
-
-		startCmd := ""
-		if baseTemplate.EnvBuild.StartCmd != nil {
-			startCmd = *baseTemplate.EnvBuild.StartCmd
-		}
-
-		readyCmd := ""
-		if baseTemplate.EnvBuild.ReadyCmd != nil {
-			readyCmd = *baseTemplate.EnvBuild.ReadyCmd
-		}
-
-		template.Source = &templatemanagergrpc.TemplateConfig_FromTemplate{
-			FromTemplate: &templatemanagergrpc.FromTemplateConfig{
-				Alias:              *fromTemplate,
-				TemplateID:         baseTemplate.Env.ID,
-				BuildID:            baseTemplate.EnvBuild.ID.String(),
-				KernelVersion:      baseTemplate.EnvBuild.KernelVersion,
-				FirecrackerVersion: baseTemplate.EnvBuild.FirecrackerVersion,
-				StartCommand:       startCmd,
-				ReadyCommand:       readyCmd,
-			},
-		}
-	} else if fromImage != nil {
-		template.Source = &templatemanagergrpc.TemplateConfig_FromImage{
-			FromImage: *fromImage,
-		}
-	} else {
-		return fmt.Errorf("either fromImage or fromTemplate must be provided")
+	err = setTemplateSource(ctx, tm, template, fromImage, fromTemplate)
+	if err != nil {
+		return fmt.Errorf("failed to set template source: %w", err)
 	}
 
 	reqCtx := metadata.NewOutgoingContext(ctx, cli.GRPC.Metadata)
@@ -203,4 +171,52 @@ func convertTemplateSteps(steps *[]api.TemplateStep) []*templatemanagergrpc.Temp
 		}
 	}
 	return result
+}
+
+// setTemplateSource sets the source (either fromImage or fromTemplate)
+func setTemplateSource(ctx context.Context, tm *TemplateManager, template *templatemanagergrpc.TemplateConfig, fromImage *string, fromTemplate *string) error {
+	// hasImage can be empty for v1 template builds
+	hasImage := fromImage != nil
+	hasTemplate := fromTemplate != nil && *fromTemplate != ""
+
+	// Validate input: exactly one source must be provided
+	switch {
+	case hasImage && hasTemplate:
+		return fmt.Errorf("cannot specify both fromImage and fromTemplate")
+	case !hasImage && !hasTemplate:
+		return fmt.Errorf("must specify either fromImage or fromTemplate")
+	case hasTemplate:
+		// Look up the base template by alias to get its metadata
+		baseTemplate, err := tm.sqlcDB.GetEnvWithBuild(ctx, *fromTemplate)
+		if err != nil {
+			return fmt.Errorf("failed to find base template '%s': %w", *fromTemplate, err)
+		}
+
+		startCmd := ""
+		if baseTemplate.EnvBuild.StartCmd != nil {
+			startCmd = *baseTemplate.EnvBuild.StartCmd
+		}
+
+		readyCmd := ""
+		if baseTemplate.EnvBuild.ReadyCmd != nil {
+			readyCmd = *baseTemplate.EnvBuild.ReadyCmd
+		}
+
+		template.Source = &templatemanagergrpc.TemplateConfig_FromTemplate{
+			FromTemplate: &templatemanagergrpc.FromTemplateConfig{
+				Alias:              *fromTemplate,
+				TemplateID:         baseTemplate.Env.ID,
+				BuildID:            baseTemplate.EnvBuild.ID.String(),
+				KernelVersion:      baseTemplate.EnvBuild.KernelVersion,
+				FirecrackerVersion: baseTemplate.EnvBuild.FirecrackerVersion,
+				StartCommand:       startCmd,
+				ReadyCommand:       readyCmd,
+			},
+		}
+	default: // hasImage
+		template.Source = &templatemanagergrpc.TemplateConfig_FromImage{
+			FromImage: *fromImage,
+		}
+	}
+	return nil
 }

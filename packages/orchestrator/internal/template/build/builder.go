@@ -123,9 +123,9 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 	// Validate template, update force layers if needed
 	template = forceSteps(template)
 
-	isOldBuild := template.FromImage == "" && template.FromTemplate == nil
+	isV1Build := template.FromImage == "" && template.FromTemplate == nil
 
-	postProcessor := writer.NewPostProcessor(ctx, logsWriter, isOldBuild)
+	postProcessor := writer.NewPostProcessor(ctx, logsWriter, isV1Build)
 	go postProcessor.Start()
 	defer func() {
 		postProcessor.Stop(ctx, e)
@@ -163,7 +163,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		return nil, fmt.Errorf("error getting base hash: %w", err)
 	}
 
-	lastCached, baseMetadata, err := b.setupBase(ctx, cacheScope, finalMetadata, template, lastHash, isOldBuild)
+	lastCached, baseMetadata, err := b.setupBase(ctx, cacheScope, finalMetadata, template, lastHash, isV1Build)
 	if err != nil {
 		return nil, fmt.Errorf("error setting up build: %w", err)
 	}
@@ -554,7 +554,7 @@ func (b *Builder) setupBase(
 	finalMetadata storage.TemplateFiles,
 	template config.TemplateConfig,
 	hash string,
-	isOldBuild bool,
+	isV1Build bool,
 ) (bool, LayerMetadata, error) {
 	cmdMeta := sandboxtools.CommandMetadata{
 		User:    defaultUser,
@@ -562,46 +562,16 @@ func (b *Builder) setupBase(
 		EnvVars: make(map[string]string),
 	}
 
-	// This is a compatibility for old template builds
-	if isOldBuild {
+	// This is a compatibility for v1 template builds
+	if isV1Build {
 		cwd := "/home/user"
 		cmdMeta.WorkDir = &cwd
 	}
 
-	var baseMetadata LayerMetadata
-	bm, err := layerMetaFromHash(ctx, b.buildStorage, cacheScope, hash)
-	if err != nil {
-		b.logger.Info("base layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
-
-		baseMetadata = LayerMetadata{
-			Template: storage.TemplateFiles{
-				TemplateID:         id.Generate(),
-				BuildID:            uuid.New().String(),
-				KernelVersion:      finalMetadata.KernelVersion,
-				FirecrackerVersion: finalMetadata.FirecrackerVersion,
-			},
-			Metadata: cmdMeta,
-		}
-	} else {
-		baseMetadata = bm
-	}
-
-	// Invalidate base cache
-	if template.Force != nil && *template.Force {
-		baseMetadata = LayerMetadata{
-			Template: storage.TemplateFiles{
-				TemplateID:         id.Generate(),
-				BuildID:            uuid.New().String(),
-				KernelVersion:      finalMetadata.KernelVersion,
-				FirecrackerVersion: finalMetadata.FirecrackerVersion,
-			},
-			Metadata: cmdMeta,
-		}
-	}
-
-	// If the template is built from another template, use its metadata always
-	if template.FromTemplate != nil {
-		baseMetadata = LayerMetadata{
+	switch {
+	case template.FromTemplate != nil:
+		// If the template is built from another template, use its metadata always
+		baseMetadata := LayerMetadata{
 			Template: storage.TemplateFiles{
 				TemplateID:         template.FromTemplate.GetTemplateID(),
 				BuildID:            template.FromTemplate.GetBuildID(),
@@ -610,14 +580,48 @@ func (b *Builder) setupBase(
 			},
 			Metadata: cmdMeta,
 		}
-	}
 
-	baseCached, err := isCached(ctx, b.templateStorage, baseMetadata)
-	if err != nil {
-		return false, LayerMetadata{}, fmt.Errorf("error checking if base layer is cached: %w", err)
-	}
+		// base template is always cached
+		return true, baseMetadata, nil
+	default:
+		var baseMetadata LayerMetadata
+		bm, err := layerMetaFromHash(ctx, b.buildStorage, cacheScope, hash)
+		if err != nil {
+			b.logger.Info("base layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
 
-	return baseCached, baseMetadata, nil
+			baseMetadata = LayerMetadata{
+				Template: storage.TemplateFiles{
+					TemplateID:         id.Generate(),
+					BuildID:            uuid.New().String(),
+					KernelVersion:      finalMetadata.KernelVersion,
+					FirecrackerVersion: finalMetadata.FirecrackerVersion,
+				},
+				Metadata: cmdMeta,
+			}
+		} else {
+			baseMetadata = bm
+		}
+
+		// Invalidate base cache
+		if template.Force != nil && *template.Force {
+			baseMetadata = LayerMetadata{
+				Template: storage.TemplateFiles{
+					TemplateID:         id.Generate(),
+					BuildID:            uuid.New().String(),
+					KernelVersion:      finalMetadata.KernelVersion,
+					FirecrackerVersion: finalMetadata.FirecrackerVersion,
+				},
+				Metadata: cmdMeta,
+			}
+		}
+
+		baseCached, err := isCached(ctx, b.templateStorage, baseMetadata)
+		if err != nil {
+			return false, LayerMetadata{}, fmt.Errorf("error checking if base layer is cached: %w", err)
+		}
+
+		return baseCached, baseMetadata, nil
+	}
 }
 
 func (b *Builder) postProcessingFn(
