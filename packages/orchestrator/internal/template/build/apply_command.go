@@ -37,6 +37,15 @@ func (b *Builder) getCommand(
 		cmd = &command.Workdir{}
 	case "ENV", "ARG":
 		cmd = &command.Env{}
+	case "MOUNT":
+		cmd = &command.Mount{
+			TemplateStorage: b.templateStorage,
+			DevicePool:      b.devicePool,
+		}
+	case "UNMOUNT":
+		cmd = &command.Unmount{
+			DevicePool: b.devicePool,
+		}
 	}
 
 	if cmd == nil {
