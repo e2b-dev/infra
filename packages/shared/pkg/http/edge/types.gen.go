@@ -175,6 +175,21 @@ type SandboxDeleteCatalogRequest struct {
 	SandboxID   string `json:"sandboxID"`
 }
 
+// SandboxLog Log entry with timestamp and line
+type SandboxLog struct {
+	// Line Log line content
+	Line string `json:"line"`
+
+	// Timestamp Timestamp of the log entry
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// SandboxLogsResponse defines model for SandboxLogsResponse.
+type SandboxLogsResponse struct {
+	// Logs Sandbox logs
+	Logs []SandboxLog `json:"logs"`
+}
+
 // ServiceDiscoveryNodeStatusRequest defines model for ServiceDiscoveryNodeStatusRequest.
 type ServiceDiscoveryNodeStatusRequest struct {
 	// ServiceInstanceID Service instance ID that should be handled by the request
@@ -207,6 +222,17 @@ type N404 = Error
 
 // N500 defines model for 500.
 type N500 = Error
+
+// V1SandboxLogsParams defines parameters for V1SandboxLogs.
+type V1SandboxLogsParams struct {
+	TeamID string `form:"teamID" json:"teamID"`
+
+	// Start Starting timestamp of the logs that should be returned in milliseconds
+	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
+
+	// Limit Maximum number of logs that should be returned
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+}
 
 // V1TemplateBuildLogsParams defines parameters for V1TemplateBuildLogs.
 type V1TemplateBuildLogsParams struct {
