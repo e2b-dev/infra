@@ -51,7 +51,7 @@ func (t *Header) GetShiftedMapping(offset int64) (mappedOffset int64, mappedLeng
 		return 0, 0, nil, err
 	}
 
-	return int64(mapping.BuildStorageOffset) + shift, int64(mapping.Length) - shift, &mapping.BuildId, nil
+	return int64(mapping.BuildStorageOffset) + shift, int64(mapping.BuildStorageSize) - shift, &mapping.BuildId, nil
 }
 
 func (t *Header) getMapping(offset int64) (*BuildMap, int64, error) {

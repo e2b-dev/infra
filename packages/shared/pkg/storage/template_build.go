@@ -16,6 +16,8 @@ import (
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
+const useCompression = false
+
 var tracer = otel.Tracer("shared.pkg.storage")
 
 type TemplateBuild struct {
@@ -97,11 +99,15 @@ func getSize(path string) int64 {
 
 func reportError(msg string, fn func() error) {
 	if err := fn(); err != nil {
-		zap.L().Warn("failed to remove temp file", zap.Error(err))
+		zap.L().Warn(msg, zap.Error(err))
 	}
 }
 
 func (t *TemplateBuild) compressFile(ctx context.Context, path string) (string, func(), error) {
+	if !useCompression {
+		return path, func() {}, nil
+	}
+
 	ctx, span := tracer.Start(ctx, "TemplateBuild.compressFile")
 	defer span.End()
 

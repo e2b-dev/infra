@@ -1,6 +1,8 @@
 package build
 
 import (
+	"bytes"
+	"compress/gzip"
 	"fmt"
 	"io"
 
@@ -53,7 +55,7 @@ func (b *File) ReadAt(p []byte, off int64) (n int, err error) {
 
 		remainingReadLength := int64(len(p)) - int64(n)
 
-		readLength := min(mappedLength, remainingReadLength)
+		readLength := min(mappedLength, remainingReadLength) // todo: is this still correct?
 
 		if readLength <= 0 {
 			zap.L().Error(fmt.Sprintf(
@@ -88,22 +90,45 @@ func (b *File) ReadAt(p []byte, off int64) (n int, err error) {
 			return 0, fmt.Errorf("failed to get build: %w", err)
 		}
 
+		compressed := make([]byte, mappedLength)
 		buildN, err := mappedBuild.ReadAt(
-			p[n:int64(n)+readLength],
+			compressed,
 			mappedOffset,
 		)
 		if err != nil {
 			return 0, fmt.Errorf("failed to read from source: %w", err)
 		}
 
+		uncompressed, err := decompress(compressed)
+		if err != nil {
+			return 0, fmt.Errorf("failed to decompress: %w", err)
+		}
+
+		copy(p[n:int64(n)+int64(len(uncompressed))], uncompressed)
 		n += buildN
 	}
 
 	return n, nil
 }
 
+func decompress(compressed []byte) ([]byte, error) {
+	reader := bytes.NewReader(compressed)
+	decompressor, err := gzip.NewReader(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create decompressor: %w", err)
+	}
+	defer decompressor.Close()
+
+	return io.ReadAll(decompressor)
+}
+
 // The slice access must be in the predefined blocksize of the build.
 func (b *File) Slice(off, length int64) ([]byte, error) {
+	if uint64(length) != b.header.Metadata.BlockSize {
+		return nil, fmt.Errorf("invalid header size: %d != %d",
+			length, b.header.Metadata.BlockSize)
+	}
+
 	mappedOffset, _, buildID, err := b.header.GetShiftedMapping(off)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mapping: %w", err)
