@@ -20,9 +20,6 @@ jobs:
       - name: Initialize Host
         uses: ./.github/actions/host-init
 
-      - name: Build Template
-        uses: ./.github/actions/build-sandbox-template
-
       - name: Start Services
         uses: ./.github/actions/start-services
 
