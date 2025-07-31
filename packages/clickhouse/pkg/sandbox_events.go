@@ -101,27 +101,13 @@ LIMIT ?
 OFFSET ?
 `
 
-func (c *Client) SelectSandboxEventsByTeamId(ctx context.Context, teamID uuid.UUID, offset, limit int, orderAsc bool, filterByCategory []SandboxEventCategory) ([]SandboxEvent, error) {
-	filterClause := ""
-	if len(filterByCategory) > 0 {
-		filterClause = "AND event_category IN ("
-		for i, category := range filterByCategory {
-			filterClause += fmt.Sprintf("'%s'", category)
-			if i < len(filterByCategory)-1 {
-				filterClause += ", "
-			}
-		}
-		filterClause += ")"
-	}
-
+func (c *Client) SelectSandboxEventsByTeamId(ctx context.Context, teamID uuid.UUID, offset, limit int, orderAsc bool) ([]SandboxEvent, error) {
 	order := "DESC"
 	if !orderAsc {
 		order = "ASC"
 	}
 
-	query := fmt.Sprintf(selectSandboxEventsByTeamIdQuery, filterClause)
-
-	rows, err := c.conn.Query(ctx, query,
+	rows, err := c.conn.Query(ctx, selectSandboxEventsByTeamIdQuery,
 		teamID,
 		order,
 		limit,
