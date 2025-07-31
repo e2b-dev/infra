@@ -44,6 +44,21 @@ runs:
         make -C tests/integration seed
       shell: bash
 
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build codegen image with caching
+      uses: docker/build-push-action@v6
+      with:
+        context: packages/clickhouse
+        file: Dockerfile
+        tags: clickhouse-migrator:latest
+        load: true # makes the image available for `docker run`
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+
     - name: Run Clickhouse
       env:
         CLICKHOUSE_USERNAME: "e2b"
