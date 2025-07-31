@@ -101,7 +101,7 @@ func (tm *TemplateManager) CreateTemplate(
 		Steps:              convertTemplateSteps(steps),
 	}
 
-	err = setTemplateSource(ctx, tm, template, fromImage, fromTemplate)
+	err = setTemplateSource(ctx, tm, teamID, template, fromImage, fromTemplate)
 	if err != nil {
 		return fmt.Errorf("failed to set template source: %w", err)
 	}
@@ -174,7 +174,7 @@ func convertTemplateSteps(steps *[]api.TemplateStep) []*templatemanagergrpc.Temp
 }
 
 // setTemplateSource sets the source (either fromImage or fromTemplate)
-func setTemplateSource(ctx context.Context, tm *TemplateManager, template *templatemanagergrpc.TemplateConfig, fromImage *string, fromTemplate *string) error {
+func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUID, template *templatemanagergrpc.TemplateConfig, fromImage *string, fromTemplate *string) error {
 	// hasImage can be empty for v1 template builds
 	hasImage := fromImage != nil
 	hasTemplate := fromTemplate != nil && *fromTemplate != ""
@@ -190,6 +190,10 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, template *templ
 		baseTemplate, err := tm.sqlcDB.GetEnvWithBuild(ctx, *fromTemplate)
 		if err != nil {
 			return fmt.Errorf("failed to find base template '%s': %w", *fromTemplate, err)
+		}
+
+		if !baseTemplate.Env.Public && baseTemplate.Env.TeamID != teamID {
+			return fmt.Errorf("no access to use the '%s' as a base template", *fromTemplate)
 		}
 
 		startCmd := ""
