@@ -107,6 +107,8 @@ func defaultBuildLogHandler(tb testing.TB) BuildLogHandler {
 }
 
 func TestTemplateBuildRUN(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name         string
 		templateName string
@@ -131,12 +133,16 @@ func TestTemplateBuildRUN(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			assert.True(t, buildTemplate(t, tc.templateName, tc.buildConfig, defaultBuildLogHandler(t)))
 		})
 	}
 }
 
 func TestTemplateBuildENV(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name         string
 		templateName string
@@ -201,12 +207,16 @@ func TestTemplateBuildENV(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			assert.True(t, buildTemplate(t, tc.templateName, tc.buildConfig, defaultBuildLogHandler(t)))
 		})
 	}
 }
 
 func TestTemplateBuildWORKDIR(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name         string
 		templateName string
@@ -252,12 +262,16 @@ func TestTemplateBuildWORKDIR(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			assert.True(t, buildTemplate(t, tc.templateName, tc.buildConfig, defaultBuildLogHandler(t)))
 		})
 	}
 }
 
 func TestTemplateBuildCache(t *testing.T) {
+	t.Parallel()
+
 	alias := "test-ubuntu-cache"
 	template := api.TemplateBuildStartV2{
 		FromImage: utils.ToPtr("ubuntu:22.04"),
@@ -291,6 +305,8 @@ func TestTemplateBuildCache(t *testing.T) {
 }
 
 func TestTemplateBuildFromTemplate(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name            string
 		baseTemplate    string
@@ -341,6 +357,8 @@ func TestTemplateBuildFromTemplate(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			// First build the base template
 			assert.True(t, buildTemplate(t, tc.baseTemplate, tc.baseConfig, defaultBuildLogHandler(t)))
 
@@ -351,6 +369,8 @@ func TestTemplateBuildFromTemplate(t *testing.T) {
 }
 
 func TestTemplateBuildFromTemplateCommandOverride(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name            string
 		baseTemplate    string
@@ -407,6 +427,8 @@ func TestTemplateBuildFromTemplateCommandOverride(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			// First build the base template
 			assert.True(t, buildTemplate(t, tc.baseTemplate, tc.baseConfig, defaultBuildLogHandler(t)))
 
@@ -417,6 +439,8 @@ func TestTemplateBuildFromTemplateCommandOverride(t *testing.T) {
 }
 
 func TestTemplateBuildFromTemplateInheritance(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name            string
 		baseTemplate    string
@@ -522,6 +546,8 @@ func TestTemplateBuildFromTemplateInheritance(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			// First build the base template
 			assert.True(t, buildTemplate(t, tc.baseTemplate, tc.baseConfig, defaultBuildLogHandler(t)))
 
@@ -532,6 +558,8 @@ func TestTemplateBuildFromTemplateInheritance(t *testing.T) {
 }
 
 func TestTemplateBuildFromTemplateStartCommand(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name            string
 		baseTemplate    string
@@ -587,6 +615,8 @@ func TestTemplateBuildFromTemplateStartCommand(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			// First build the base template
 			assert.True(t, buildTemplate(t, tc.baseTemplate, tc.baseConfig, defaultBuildLogHandler(t)))
 
@@ -597,6 +627,8 @@ func TestTemplateBuildFromTemplateStartCommand(t *testing.T) {
 }
 
 func TestTemplateBuildFromTemplateBaseCommandsInheritance(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name            string
 		baseTemplate    string
@@ -699,6 +731,8 @@ func TestTemplateBuildFromTemplateBaseCommandsInheritance(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			// First build the base template
 			assert.True(t, buildTemplate(t, tc.baseTemplate, tc.baseConfig, defaultBuildLogHandler(t)))
 
@@ -709,6 +743,8 @@ func TestTemplateBuildFromTemplateBaseCommandsInheritance(t *testing.T) {
 }
 
 func TestTemplateBuildFromTemplateLayered(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name                 string
 		baseTemplate         string
@@ -781,6 +817,8 @@ func TestTemplateBuildFromTemplateLayered(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			// Build base template
 			assert.True(t, buildTemplate(t, tc.baseTemplate, tc.baseConfig, defaultBuildLogHandler(t)))
 

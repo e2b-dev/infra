@@ -91,7 +91,7 @@ func hashBase(template config.TemplateConfig) (string, error) {
 
 	var baseSource string
 	if template.FromTemplate != nil {
-		// When building from template, use the base template's ID and build ID as the source
+		// When building from template, use the base template metadata
 		baseSource = fmt.Sprintf("template:%s", template.FromTemplate.GetBuildID())
 	} else {
 		// When building from image, use the image name
