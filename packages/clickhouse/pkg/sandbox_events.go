@@ -52,7 +52,7 @@ SELECT
     event_data
 FROM sandbox_events
 WHERE sandbox_id = ?
-ORDER BY timestamp ?
+ORDER BY timestamp %s
 LIMIT ?
 OFFSET ?
 `
@@ -62,12 +62,10 @@ func (c *Client) SelectSandboxEventsBySandboxId(ctx context.Context, sandboxID s
 	if orderAsc {
 		order = "ASC"
 	}
-	rows, err := c.conn.Query(ctx, selectSandboxEventsBySandboxIdQuery,
-		sandboxID,
-		order,
-		limit,
-		offset,
-	)
+
+	query := fmt.Sprintf(selectSandboxEventsBySandboxIdQuery, order)
+
+	rows, err := c.conn.Query(ctx, query, sandboxID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("error querying sandbox events by sandbox id: %w", err)
 	}
@@ -97,7 +95,7 @@ SELECT
     event_data
 FROM sandbox_events
 WHERE sandbox_team_id = ?
-ORDER BY timestamp ?
+ORDER BY timestamp %s
 LIMIT ?
 OFFSET ?
 `
@@ -108,12 +106,9 @@ func (c *Client) SelectSandboxEventsByTeamId(ctx context.Context, teamID uuid.UU
 		order = "ASC"
 	}
 
-	rows, err := c.conn.Query(ctx, selectSandboxEventsByTeamIdQuery,
-		teamID,
-		order,
-		limit,
-		offset,
-	)
+	query := fmt.Sprintf(selectSandboxEventsByTeamIdQuery, order)
+
+	rows, err := c.conn.Query(ctx, query, teamID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("error querying sandbox events by team id: %w", err)
 	}
