@@ -88,6 +88,7 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 				node,
 				autoPause,
 				config.EnvdAccessToken,
+				config.AllowInternetAccess,
 				config.BaseTemplateId,
 			),
 		)

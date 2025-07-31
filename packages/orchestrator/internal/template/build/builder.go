@@ -118,6 +118,8 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 	ctx, childSpan := b.tracer.Start(ctx, "build")
 	defer childSpan.End()
 
+	cacheScope := template.CacheScope
+
 	// Validate template, update force layers if needed
 	template = forceSteps(template)
 
@@ -131,16 +133,16 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 
 	postProcessor.Info(fmt.Sprintf("Building template %s/%s", finalMetadata.TemplateID, finalMetadata.BuildID))
 
-	defer func() {
+	defer func(ctx context.Context) {
 		if e == nil {
 			return
 		}
 		// Remove build files if build fails
-		removeErr := b.templateStorage.DeleteObjectsWithPrefix(context.Background(), finalMetadata.BuildID)
+		removeErr := b.templateStorage.DeleteObjectsWithPrefix(ctx, finalMetadata.BuildID)
 		if removeErr != nil {
 			e = errors.Join(e, fmt.Errorf("error removing build files: %w", removeErr))
 		}
-	}()
+	}(context.WithoutCancel(ctx))
 
 	envdVersion, err := envd.GetEnvdVersion(ctx)
 	if err != nil {
@@ -161,7 +163,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		return nil, fmt.Errorf("error getting base hash: %w", err)
 	}
 
-	lastCached, baseMetadata, err := b.setupBase(ctx, finalMetadata, template, lastHash, isOldBuild)
+	lastCached, baseMetadata, err := b.setupBase(ctx, cacheScope, finalMetadata, template, lastHash, isOldBuild)
 	if err != nil {
 		return nil, fmt.Errorf("error setting up build: %w", err)
 	}
@@ -229,6 +231,9 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			return nil, fmt.Errorf("error creating provision rootfs: %w", err)
 		}
 
+		// Allow sandbox internet access during provisioning
+		allowInternetAccess := true
+
 		baseSandboxConfig := &orchestrator.SandboxConfig{
 			TemplateId:         baseMetadata.Template.TemplateID,
 			BuildId:            baseMetadata.Template.BuildID,
@@ -241,6 +246,8 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			RamMb:       template.MemoryMB,
 			HugePages:   template.HugePages,
 			EnvdVersion: envdVersion,
+
+			AllowInternetAccess: &allowInternetAccess,
 		}
 		baseSandboxConfig.SandboxId = config.InstanceBuildPrefix + id.Generate()
 		baseSandboxConfig.ExecutionId = uuid.NewString()
@@ -280,6 +287,9 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		baseSandboxConfig = proto.Clone(baseSandboxConfig).(*orchestrator.SandboxConfig)
 		baseSandboxConfig.SandboxId = config.InstanceBuildPrefix + id.Generate()
 		baseSandboxConfig.ExecutionId = uuid.NewString()
+
+		// TODO: Temporarily set this based on global config, should be removed later (it should be passed as a parameter in build)
+		baseSandboxConfig.AllowInternetAccess = &globalconfig.AllowSandboxInternet
 		sourceSbx, cleanup, err := sandbox.CreateSandbox(
 			ctx,
 			b.tracer,
@@ -294,7 +304,6 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 				KernelLogs:          env.IsDevelopment(),
 				SystemdToKernelLogs: false,
 			},
-			globalconfig.AllowSandboxInternet,
 		)
 		defer func() {
 			cleanupErr := cleanup.Run(ctx)
@@ -323,7 +332,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			b.buildStorage,
 			b.templateCache,
 			sourceSbx,
-			finalMetadata.TemplateID,
+			cacheScope,
 			lastHash,
 			baseMetadata,
 		)
@@ -356,7 +365,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		}
 		if !force {
 			// Fetch stable uuid from the step hash
-			m, err := layerMetaFromHash(ctx, b.buildStorage, finalMetadata.TemplateID, lastHash)
+			m, err := layerMetaFromHash(ctx, b.buildStorage, cacheScope, lastHash)
 			if err != nil {
 				b.logger.Info("layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", lastHash), zap.String("step", step.Type))
 			} else {
@@ -389,17 +398,18 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 					RamMb:       template.MemoryMB,
 					HugePages:   template.HugePages,
 					EnvdVersion: envdVersion,
+
+					AllowInternetAccess: &globalconfig.AllowSandboxInternet,
 				},
-				finalMetadata.TemplateID,
+				cacheScope,
 				lastHash,
 				sourceMetadata,
 				stepMetadata.Template,
 				shouldResumeSandbox,
-				globalconfig.AllowSandboxInternet,
 				func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error) {
 					postProcessor.Debug(fmt.Sprintf("Running action in: %s/%s", sourceMetadata.Template.TemplateID, sourceMetadata.Template.BuildID))
 
-					meta, err := b.applyCommand(ctx, postProcessor, finalMetadata.TemplateID, sbx, prefix, step, sourceMetadata.Metadata)
+					meta, err := b.applyCommand(ctx, postProcessor, cacheScope, sbx, prefix, step, sourceMetadata.Metadata)
 					if err != nil {
 						return sandboxtools.CommandMetadata{}, fmt.Errorf("error processing layer: %w", err)
 					}
@@ -450,13 +460,14 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			RamMb:       template.MemoryMB,
 			HugePages:   template.HugePages,
 			EnvdVersion: envdVersion,
+
+			AllowInternetAccess: &globalconfig.AllowSandboxInternet,
 		},
-		finalMetadata.TemplateID,
+		cacheScope,
 		lastHash,
 		sourceMetadata,
 		finalMetadata,
 		false,
-		globalconfig.AllowSandboxInternet,
 		b.postProcessingFn(postProcessor, finalMetadata, template, sourceMetadata.Metadata),
 	)
 	if err != nil {
@@ -538,6 +549,7 @@ func forceSteps(template config.TemplateConfig) config.TemplateConfig {
 
 func (b *Builder) setupBase(
 	ctx context.Context,
+	cacheScope string,
 	finalMetadata storage.TemplateFiles,
 	template config.TemplateConfig,
 	hash string,
@@ -556,7 +568,7 @@ func (b *Builder) setupBase(
 	}
 
 	var baseMetadata LayerMetadata
-	bm, err := layerMetaFromHash(ctx, b.buildStorage, finalMetadata.TemplateID, hash)
+	bm, err := layerMetaFromHash(ctx, b.buildStorage, cacheScope, hash)
 	if err != nil {
 		b.logger.Info("base layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
 		baseMetadata = LayerMetadata{

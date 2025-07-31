@@ -71,15 +71,12 @@ func TestEntryInfoFromFileInfo(t *testing.T) {
 	testContent := []byte("Hello, World!")
 	require.NoError(t, os.WriteFile(testFile, testContent, 0o644))
 
-	// Get file info
-	info, err := os.Stat(testFile)
-	require.NoError(t, err)
-
 	// Get current user for ownership comparison
 	currentUser, err := user.Current()
 	require.NoError(t, err)
 
-	result := entryInfoFromFileInfo(info, testFile)
+	result, err := entryInfo(testFile)
+	require.NoError(t, err)
 
 	// Basic assertions
 	assert.Equal(t, "test.txt", result.Name)
@@ -105,10 +102,8 @@ func TestEntryInfoFromFileInfo_Directory(t *testing.T) {
 	testDir := filepath.Join(tempDir, "testdir")
 	require.NoError(t, os.MkdirAll(testDir, 0o755))
 
-	info, err := os.Stat(testDir)
+	result, err := entryInfo(testDir)
 	require.NoError(t, err)
-
-	result := entryInfoFromFileInfo(info, testDir)
 
 	assert.Equal(t, "testdir", result.Name)
 	assert.Equal(t, testDir, result.Path)
@@ -134,10 +129,8 @@ func TestEntryInfoFromFileInfo_Symlink(t *testing.T) {
 	require.NoError(t, os.Symlink(targetFile, symlinkPath))
 
 	// Use Lstat to get symlink info (not the target)
-	info, err := os.Lstat(symlinkPath)
+	result, err := entryInfo(symlinkPath)
 	require.NoError(t, err)
-
-	result := entryInfoFromFileInfo(info, symlinkPath)
 
 	assert.Equal(t, "symlink", result.Name)
 	assert.Equal(t, symlinkPath, result.Path)
@@ -159,10 +152,8 @@ func TestEntryInfoFromFileInfo_BrokenSymlink(t *testing.T) {
 	brokenSymlink := filepath.Join(tempDir, "broken")
 	require.NoError(t, os.Symlink("/nonexistent", brokenSymlink))
 
-	info, err := os.Lstat(brokenSymlink)
+	result, err := entryInfo(brokenSymlink)
 	require.NoError(t, err)
-
-	result := entryInfoFromFileInfo(info, brokenSymlink)
 
 	assert.Equal(t, "broken", result.Name)
 	assert.Equal(t, brokenSymlink, result.Path)
@@ -180,10 +171,8 @@ func TestEntryInfoFromFileInfo_CyclicSymlink(t *testing.T) {
 	cyclicSymlink := filepath.Join(tempDir, "cyclic")
 	require.NoError(t, os.Symlink(cyclicSymlink, cyclicSymlink))
 
-	info, err := os.Lstat(cyclicSymlink)
+	result, err := entryInfo(cyclicSymlink)
 	require.NoError(t, err)
-
-	result := entryInfoFromFileInfo(info, cyclicSymlink)
 
 	assert.Equal(t, "cyclic", result.Name)
 	assert.Equal(t, cyclicSymlink, result.Path)
@@ -198,10 +187,8 @@ func TestEntryInfoFromFileInfo_EmptyFile(t *testing.T) {
 	emptyFile := filepath.Join(tempDir, "empty.txt")
 	require.NoError(t, os.WriteFile(emptyFile, []byte{}, 0o600))
 
-	info, err := os.Stat(emptyFile)
+	result, err := entryInfo(emptyFile)
 	require.NoError(t, err)
-
-	result := entryInfoFromFileInfo(info, emptyFile)
 
 	assert.Equal(t, "empty.txt", result.Name)
 	assert.Equal(t, int64(0), result.Size)
@@ -230,10 +217,8 @@ func TestEntryInfoFromFileInfo_DifferentPermissions(t *testing.T) {
 			testFile := filepath.Join(tempDir, tc.name+".txt")
 			require.NoError(t, os.WriteFile(testFile, []byte("test"), tc.permissions))
 
-			info, err := os.Stat(testFile)
+			result, err := entryInfo(testFile)
 			require.NoError(t, err)
-
-			result := entryInfoFromFileInfo(info, testFile)
 			assert.Equal(t, tc.expected, result.Mode)
 		})
 	}
@@ -257,10 +242,8 @@ func TestEntryInfoFromFileInfo_SymlinkChain(t *testing.T) {
 	link1 := filepath.Join(tempDir, "link1")
 	require.NoError(t, os.Symlink(link2, link1))
 
-	info, err := os.Lstat(link1)
+	result, err := entryInfo(link1)
 	require.NoError(t, err)
-
-	result := entryInfoFromFileInfo(info, link1)
 
 	assert.Equal(t, "link1", result.Name)
 	assert.Equal(t, link1, result.Path)

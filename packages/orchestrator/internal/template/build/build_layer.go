@@ -31,12 +31,11 @@ func (b *Builder) buildLayer(
 	postProcessor *writer.PostProcessor,
 	uploadErrGroup *errgroup.Group,
 	sourceSbxConfig *orchestrator.SandboxConfig,
-	finalTemplateID string,
+	cacheScope string,
 	hash string,
 	sourceMeta LayerMetadata,
 	exportTemplate storage.TemplateFiles,
 	resumeSandbox bool,
-	allowInternet bool,
 	fn func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error),
 ) (LayerMetadata, error) {
 	ctx, childSpan := b.tracer.Start(ctx, "run-in-sandbox")
@@ -72,6 +71,8 @@ func (b *Builder) buildLayer(
 			EnvdVersion: sourceSbxConfig.EnvdVersion,
 			Vcpu:        sourceSbxConfig.Vcpu,
 			RamMb:       sourceSbxConfig.RamMb,
+
+			AllowInternetAccess: sourceSbxConfig.AllowInternetAccess,
 		}
 		sbx, cleanupRes, err = sandbox.ResumeSandbox(
 			ctx,
@@ -83,7 +84,6 @@ func (b *Builder) buildLayer(
 			time.Now(),
 			time.Now().Add(layerTimeout),
 			b.devicePool,
-			allowInternet,
 			false,
 		)
 	} else {
@@ -124,6 +124,8 @@ func (b *Builder) buildLayer(
 			EnvdVersion: sourceSbxConfig.EnvdVersion,
 			Vcpu:        sourceSbxConfig.Vcpu,
 			RamMb:       sourceSbxConfig.RamMb,
+
+			AllowInternetAccess: sourceSbxConfig.AllowInternetAccess,
 		}
 		sbx, cleanupRes, err = sandbox.CreateSandbox(
 			ctx,
@@ -139,7 +141,6 @@ func (b *Builder) buildLayer(
 				KernelLogs:          env.IsDevelopment(),
 				SystemdToKernelLogs: false,
 			},
-			allowInternet,
 		)
 	}
 	defer func() {
@@ -187,7 +188,7 @@ func (b *Builder) buildLayer(
 		b.buildStorage,
 		b.templateCache,
 		sbx,
-		finalTemplateID,
+		cacheScope,
 		hash,
 		exportMeta,
 	)
@@ -207,7 +208,7 @@ func pauseAndUpload(
 	buildStorage storage.StorageProvider,
 	templateCache *sbxtemplate.Cache,
 	sbx *sandbox.Sandbox,
-	finalTemplateID string,
+	cacheScope string,
 	hash string,
 	layerMeta LayerMetadata,
 ) error {
@@ -257,7 +258,7 @@ func pauseAndUpload(
 			return fmt.Errorf("error uploading snapshot: %w", err)
 		}
 
-		err = saveLayerMeta(ctx, buildStorage, finalTemplateID, hash, layerMeta)
+		err = saveLayerMeta(ctx, buildStorage, cacheScope, hash, layerMeta)
 		if err != nil {
 			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
 		}

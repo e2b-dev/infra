@@ -398,6 +398,7 @@ locals {
     environment      = var.environment
     consul_acl_token = var.consul_acl_token_secret
 
+    envd_timeout                 = var.envd_timeout
     bucket_name                  = var.fc_env_pipeline_bucket_name
     orchestrator_checksum        = data.external.orchestrator_checksum.result.hex
     logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"

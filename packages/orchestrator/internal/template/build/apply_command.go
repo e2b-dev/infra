@@ -17,6 +17,7 @@ import (
 )
 
 func (b *Builder) getCommand(
+	cacheScope string,
 	step *templatemanager.TemplateStep,
 ) (command.Command, error) {
 	cmdType := strings.ToUpper(step.Type)
@@ -26,6 +27,7 @@ func (b *Builder) getCommand(
 	case "ADD", "COPY":
 		cmd = &command.Copy{
 			FilesStorage: b.buildStorage,
+			CacheScope:   cacheScope,
 		}
 	case "RUN":
 		cmd = &command.Run{}
@@ -47,7 +49,7 @@ func (b *Builder) getCommand(
 func (b *Builder) applyCommand(
 	ctx context.Context,
 	postProcessor *writer.PostProcessor,
-	templateID string,
+	cacheScope string,
 	sbx *sandbox.Sandbox,
 	prefix string,
 	step *templatemanager.TemplateStep,
@@ -62,7 +64,7 @@ func (b *Builder) applyCommand(
 	))
 	defer span.End()
 
-	cmd, err := b.getCommand(step)
+	cmd, err := b.getCommand(cacheScope, step)
 	if err != nil {
 		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to get command for step %s: %w", step.Type, err)
 	}
@@ -73,7 +75,6 @@ func (b *Builder) applyCommand(
 		postProcessor,
 		b.proxy,
 		sbx.Config.SandboxId,
-		templateID,
 		prefix,
 		step,
 		cmdMetadata,

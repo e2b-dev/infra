@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -46,7 +45,15 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		KernelVersion:      cfg.KernelVersion,
 		FirecrackerVersion: cfg.FirecrackerVersion,
 	}
+
+	// default to scope by template ID
+	cacheScope := cfg.TemplateID
+	if templateRequest.CacheScope != nil {
+		cacheScope = *templateRequest.CacheScope
+	}
+
 	template := config.TemplateConfig{
+		CacheScope: cacheScope,
 		VCpuCount:  int64(cfg.VCpuCount),
 		MemoryMB:   int64(cfg.MemoryMB),
 		StartCmd:   cfg.StartCommand,
@@ -76,10 +83,11 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	logger := zap.New(core)
 
 	s.wg.Add(1)
-	go func() {
+	go func(ctx context.Context) {
 		defer s.wg.Done()
-		buildContext, cancelBuildContext := context.WithCancel(context.Background())
-		defer cancelBuildContext()
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
 
 		defer func() {
 			if r := recover(); r != nil {
@@ -87,27 +95,24 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 			}
 		}()
 
-		buildContext, buildSpan := s.tracer.Start(
-			trace.ContextWithSpanContext(buildContext, childSpan.SpanContext()),
-			"template-background-build",
-		)
+		ctx, buildSpan := s.tracer.Start(ctx, "template-background-build")
 		defer buildSpan.End()
 
 		// Watch for build cancellation requests
 		go func() {
 			select {
-			case <-buildContext.Done():
+			case <-ctx.Done():
 				return
 			case <-buildInfo.Result.Done:
 				res, _ := buildInfo.Result.Result()
 				if res.Status == templatemanager.TemplateBuildState_Failed {
-					cancelBuildContext()
+					cancel()
 				}
 				return
 			}
 		}()
 
-		res, err := s.builder.Build(buildContext, metadata, template, logger)
+		res, err := s.builder.Build(ctx, metadata, template, logger)
 		_ = logger.Sync()
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error while building template", err)
@@ -118,9 +123,9 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 				RootfsSizeKey:  int32(res.RootfsSizeMB),
 				EnvdVersionKey: res.EnvdVersion,
 			})
-			telemetry.ReportEvent(buildContext, "Environment built")
+			telemetry.ReportEvent(ctx, "Environment built")
 		}
-	}()
+	}(context.WithoutCancel(ctx))
 
 	return nil, nil
 }

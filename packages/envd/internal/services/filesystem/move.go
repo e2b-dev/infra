@@ -28,15 +28,6 @@ func (Service) Move(ctx context.Context, req *connect.Request[rpc.MoveRequest]) 
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	entry, err := os.Stat(source)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("source path not found: %w", err))
-		}
-
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error statting source: %w", err))
-	}
-
 	uid, gid, userErr := permissions.GetUserIds(u)
 	if userErr != nil {
 		return nil, connect.NewError(connect.CodeInternal, userErr)
@@ -49,10 +40,19 @@ func (Service) Move(ctx context.Context, req *connect.Request[rpc.MoveRequest]) 
 
 	err = os.Rename(source, destination)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("source file not found: %w", err))
+		}
+
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error renaming: %w", err))
 	}
 
+	entry, err := entryInfo(destination)
+	if err != nil {
+		return nil, err
+	}
+
 	return connect.NewResponse(&rpc.MoveResponse{
-		Entry: entryInfoFromFileInfo(entry, destination),
+		Entry: entry,
 	}), nil
 }

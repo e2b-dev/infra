@@ -116,11 +116,6 @@ resource "google_storage_bucket" "fc_template_bucket" {
     enabled = true
   }
 
-  soft_delete_policy {
-    retention_duration_seconds = 604800
-  }
-
-
   labels = var.labels
 }
 

@@ -34,7 +34,6 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, DOMAIN_NAME) \
 	$(call tfvar, ADDITIONAL_DOMAINS) \
 	$(call tfvar, PREFIX) \
-	$(call tfvar, TERRAFORM_STATE_BUCKET) \
 	$(call tfvar, OTEL_TRACING_PRINT) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
 	$(call tfvar, CLIENT_PROXY_COUNT) \
@@ -49,6 +48,7 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, OTEL_COLLECTOR_RESOURCES_MEMORY_MB) \
 	$(call tfvar, TEMPLATE_BUCKET_NAME) \
 	$(call tfvar, TEMPLATE_BUCKET_LOCATION) \
+	$(call tfvar, ENVD_TIMEOUT) \
 	$(call tfvar, REDIS_MANAGED) \
 	$(call tfvar, GRAFANA_MANAGED)
 

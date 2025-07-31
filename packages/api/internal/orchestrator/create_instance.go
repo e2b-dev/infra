@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -51,6 +52,7 @@ func (o *Orchestrator) CreateSandbox(
 	baseTemplateID string,
 	autoPause bool,
 	envdAuthToken *string,
+	allowInternetAccess *bool,
 ) (*api.Sandbox, *api.APIError) {
 	childCtx, childSpan := o.tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -121,25 +123,26 @@ func (o *Orchestrator) CreateSandbox(
 
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
-			BaseTemplateId:     baseTemplateID,
-			TemplateId:         *build.EnvID,
-			Alias:              &alias,
-			TeamId:             team.Team.ID.String(),
-			BuildId:            build.ID.String(),
-			SandboxId:          sandboxID,
-			ExecutionId:        executionID,
-			KernelVersion:      build.KernelVersion,
-			FirecrackerVersion: build.FirecrackerVersion,
-			EnvdVersion:        *build.EnvdVersion,
-			Metadata:           metadata,
-			EnvVars:            envVars,
-			EnvdAccessToken:    envdAuthToken,
-			MaxSandboxLength:   team.Tier.MaxLengthHours,
-			HugePages:          features.HasHugePages(),
-			RamMb:              build.RamMb,
-			Vcpu:               build.Vcpu,
-			Snapshot:           isResume,
-			AutoPause:          &autoPause,
+			BaseTemplateId:      baseTemplateID,
+			TemplateId:          *build.EnvID,
+			Alias:               &alias,
+			TeamId:              team.Team.ID.String(),
+			BuildId:             build.ID.String(),
+			SandboxId:           sandboxID,
+			ExecutionId:         executionID,
+			KernelVersion:       build.KernelVersion,
+			FirecrackerVersion:  build.FirecrackerVersion,
+			EnvdVersion:         *build.EnvdVersion,
+			Metadata:            metadata,
+			EnvVars:             envVars,
+			EnvdAccessToken:     envdAuthToken,
+			MaxSandboxLength:    team.Tier.MaxLengthHours,
+			HugePages:           features.HasHugePages(),
+			RamMb:               build.RamMb,
+			Vcpu:                build.Vcpu,
+			Snapshot:            isResume,
+			AutoPause:           &autoPause,
+			AllowInternetAccess: allowInternetAccess,
 		},
 		StartTime: timestamppb.New(startTime),
 		EndTime:   timestamppb.New(endTime),
@@ -207,6 +210,13 @@ func (o *Orchestrator) CreateSandbox(
 		// The request is done, we will either add it to the cache or remove it from the node
 		if err == nil {
 			// The sandbox was created successfully
+			attributes := []attribute.KeyValue{
+				attribute.Int("attempts", attempt),
+				attribute.Bool("is_resume", isResume),
+				attribute.Bool("node_affinity_requested", nodeID != nil),
+				attribute.Bool("node_affinity_success", nodeID != nil && node.Info.ID == *nodeID),
+			}
+			o.createdSandboxesCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
 			break
 		}
 
@@ -264,6 +274,7 @@ func (o *Orchestrator) CreateSandbox(
 		node.Info,
 		autoPause,
 		envdAuthToken,
+		allowInternetAccess,
 		baseTemplateID,
 	)
 

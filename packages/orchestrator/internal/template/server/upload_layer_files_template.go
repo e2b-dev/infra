@@ -15,7 +15,13 @@ func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanag
 	_, childSpan := s.tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
-	path := layerstorage.GetLayerFilesCachePath(in.TemplateID, in.Hash)
+	// default to scope by template ID
+	cacheScope := in.TemplateID
+	if in.CacheScope != nil {
+		cacheScope = *in.CacheScope
+	}
+
+	path := layerstorage.GetLayerFilesCachePath(cacheScope, in.Hash)
 	obj, err := s.buildStorage.OpenObject(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open layer files cache: %w", err)
