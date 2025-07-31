@@ -449,8 +449,27 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 	// Build Steps
 
 	// Run post-processing actions in the sandbox
+	var startMetadata *StartMetadata
+	if template.StartCmd != "" || template.ReadyCmd != "" {
+		startMetadata = &StartMetadata{
+			StartCmd: template.StartCmd,
+			ReadyCmd: template.ReadyCmd,
+			Metadata: sourceMetadata.Metadata,
+		}
+	}
+
+	// If the template is built from another template, and the start metadata are not set,
+	// use the start metadata from the template it is built from.
+	if startMetadata == nil && template.FromTemplate != nil {
+		tm, err := ReadTemplateMetadata(ctx, b.templateStorage, template.FromTemplate.BuildID)
+		if err != nil {
+			return nil, fmt.Errorf("error reading from template metadata: %w", err)
+		}
+		startMetadata = tm.Start
+	}
+
 	lastHash = hashKeys(lastHash, "config-run-cmd")
-	_, err = b.buildLayer(
+	finalLayer, err := b.buildLayer(
 		ctx,
 		postProcessor,
 		uploadErrGroup,
@@ -469,7 +488,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		sourceMetadata,
 		finalMetadata,
 		false,
-		b.postProcessingFn(postProcessor, finalMetadata, template, sourceMetadata.Metadata),
+		b.postProcessingFn(postProcessor, finalMetadata, sourceMetadata.Metadata, startMetadata),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error running start and ready commands in sandbox: %w", err)
@@ -487,6 +506,24 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 	rootfsSize, err := getRootfsSize(ctx, b.templateStorage, baseMetadata.Template)
 	if err != nil {
 		return nil, fmt.Errorf("error getting rootfs size: %w", err)
+	}
+
+	var fromTemplateMetadata *FromTemplateMetadata
+	if template.FromTemplate != nil {
+		fromTemplateMetadata = &FromTemplateMetadata{
+			Alias:   template.FromTemplate.GetAlias(),
+			BuildID: template.FromTemplate.BuildID,
+		}
+	}
+	err = saveTemplateMetadata(ctx, b.templateStorage, finalMetadata.BuildID, TemplateMetadata{
+		Template:     finalLayer.Template,
+		Metadata:     finalLayer.Metadata,
+		FromImage:    &template.FromImage,
+		FromTemplate: fromTemplateMetadata,
+		Start:        startMetadata,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error saving template metadata: %w", err)
 	}
 
 	return &Result{
@@ -556,34 +593,31 @@ func (b *Builder) setupBase(
 	hash string,
 	isV1Build bool,
 ) (bool, LayerMetadata, error) {
-	cmdMeta := sandboxtools.CommandMetadata{
-		User:    defaultUser,
-		WorkDir: nil,
-		EnvVars: make(map[string]string),
-	}
-
-	// This is a compatibility for v1 template builds
-	if isV1Build {
-		cwd := "/home/user"
-		cmdMeta.WorkDir = &cwd
-	}
-
 	switch {
 	case template.FromTemplate != nil:
-		// If the template is built from another template, use its metadata always
-		baseMetadata := LayerMetadata{
-			Template: storage.TemplateFiles{
-				TemplateID:         template.FromTemplate.GetTemplateID(),
-				BuildID:            template.FromTemplate.GetBuildID(),
-				KernelVersion:      template.FromTemplate.GetKernelVersion(),
-				FirecrackerVersion: template.FromTemplate.GetFirecrackerVersion(),
-			},
-			Metadata: cmdMeta,
+		// If the template is built from another template, use its metadata
+		tm, err := ReadTemplateMetadata(ctx, b.templateStorage, template.FromTemplate.BuildID)
+		if err != nil {
+			return false, LayerMetadata{}, fmt.Errorf("error getting base layer from cache, you may need to rebuild the base template: %w", err)
 		}
 
-		// base template is always cached
-		return true, baseMetadata, nil
+		return true, LayerMetadata{
+			Template: tm.Template,
+			Metadata: tm.Metadata,
+		}, nil
 	default:
+		cmdMeta := sandboxtools.CommandMetadata{
+			User:    defaultUser,
+			WorkDir: nil,
+			EnvVars: make(map[string]string),
+		}
+
+		// This is a compatibility for v1 template builds
+		if isV1Build {
+			cwd := "/home/user"
+			cmdMeta.WorkDir = &cwd
+		}
+
 		var baseMetadata LayerMetadata
 		bm, err := layerMetaFromHash(ctx, b.buildStorage, cacheScope, hash)
 		if err != nil {
@@ -627,10 +661,28 @@ func (b *Builder) setupBase(
 func (b *Builder) postProcessingFn(
 	postProcessor *writer.PostProcessor,
 	finalMetadata storage.TemplateFiles,
-	template config.TemplateConfig,
 	cmdMeta sandboxtools.CommandMetadata,
+	start *StartMetadata,
 ) func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error) {
-	return func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error) {
+	return func(ctx context.Context, sbx *sandbox.Sandbox) (cm sandboxtools.CommandMetadata, e error) {
+		defer func() {
+			if e != nil {
+				return
+			}
+
+			// Ensure all changes are synchronized to disk so the sandbox can be restarted
+			err := syncChangesToDisk(
+				ctx,
+				b.tracer,
+				b.proxy,
+				sbx.Metadata.Config.SandboxId,
+			)
+			if err != nil {
+				e = fmt.Errorf("error running sync command: %w", err)
+				return
+			}
+		}()
+
 		// Run configuration script
 		err := runConfiguration(
 			ctx,
@@ -644,15 +696,19 @@ func (b *Builder) postProcessingFn(
 			return sandboxtools.CommandMetadata{}, fmt.Errorf("error running configuration script: %w", err)
 		}
 
+		if start == nil {
+			return cmdMeta, nil
+		}
+
 		// Start command
 		commandsCtx, commandsCancel := context.WithCancel(ctx)
 		defer commandsCancel()
 
-		var startCmd errgroup.Group
+		var startCmdRun errgroup.Group
 		startCmdConfirm := make(chan struct{})
-		if template.StartCmd != "" {
+		if start.StartCmd != "" {
 			postProcessor.Info("Running start command")
-			startCmd.Go(func() error {
+			startCmdRun.Go(func() error {
 				err := sandboxtools.RunCommandWithConfirmation(
 					commandsCtx,
 					b.tracer,
@@ -661,8 +717,8 @@ func (b *Builder) postProcessingFn(
 					zapcore.InfoLevel,
 					"start",
 					sbx.Metadata.Config.SandboxId,
-					template.StartCmd,
-					cmdMeta,
+					start.StartCmd,
+					start.Metadata,
 					startCmdConfirm,
 				)
 				// If the ctx is canceled, the ready command succeeded and no start command await is necessary.
@@ -680,14 +736,20 @@ func (b *Builder) postProcessingFn(
 		}
 
 		// Ready command
+		readyCmd := start.ReadyCmd
+		if readyCmd == "" {
+			if start.StartCmd == "" {
+				readyCmd = "sleep 0"
+			} else {
+				readyCmd = GetDefaultReadyCommand(finalMetadata)
+			}
+		}
 		err = b.runReadyCommand(
 			commandsCtx,
 			postProcessor,
-			// Use the final template here, because it contains the templateID for final build that is required for customer exceptions.
-			finalMetadata,
-			template,
 			sbx.Metadata.Config.SandboxId,
-			cmdMeta,
+			readyCmd,
+			start.Metadata,
 		)
 		if err != nil {
 			return sandboxtools.CommandMetadata{}, fmt.Errorf("error running ready command: %w", err)
@@ -702,19 +764,9 @@ func (b *Builder) postProcessingFn(
 		// Cancel the start command context (it's running in the background anyway).
 		// If it has already finished, check the error.
 		commandsCancel()
-		err = startCmd.Wait()
+		err = startCmdRun.Wait()
 		if err != nil {
 			return sandboxtools.CommandMetadata{}, fmt.Errorf("error running start command: %w", err)
-		}
-
-		err = syncChangesToDisk(
-			ctx,
-			b.tracer,
-			b.proxy,
-			sbx.Metadata.Config.SandboxId,
-		)
-		if err != nil {
-			return sandboxtools.CommandMetadata{}, fmt.Errorf("error running sync command: %w", err)
 		}
 
 		return cmdMeta, nil

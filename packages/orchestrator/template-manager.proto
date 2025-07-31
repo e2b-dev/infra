@@ -28,14 +28,7 @@ message TemplateStep {
 message FromTemplateConfig {
   string alias = 1;
 
-  string templateID = 2;
-  string buildID = 3;
-  string kernelVersion = 4;
-  string firecrackerVersion = 5;
-
-
-  string startCommand = 6;
-  string readyCommand = 7;
+  string buildID = 2;
 }
 
 message TemplateConfig {

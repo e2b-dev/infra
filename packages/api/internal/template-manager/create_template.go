@@ -193,28 +193,13 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 		}
 
 		if !baseTemplate.Env.Public && baseTemplate.Env.TeamID != teamID {
-			return fmt.Errorf("no access to use the '%s' as a base template", *fromTemplate)
-		}
-
-		startCmd := ""
-		if baseTemplate.EnvBuild.StartCmd != nil {
-			startCmd = *baseTemplate.EnvBuild.StartCmd
-		}
-
-		readyCmd := ""
-		if baseTemplate.EnvBuild.ReadyCmd != nil {
-			readyCmd = *baseTemplate.EnvBuild.ReadyCmd
+			return fmt.Errorf("you have no access to use '%s' as a base template", *fromTemplate)
 		}
 
 		template.Source = &templatemanagergrpc.TemplateConfig_FromTemplate{
 			FromTemplate: &templatemanagergrpc.FromTemplateConfig{
-				Alias:              *fromTemplate,
-				TemplateID:         baseTemplate.Env.ID,
-				BuildID:            baseTemplate.EnvBuild.ID.String(),
-				KernelVersion:      baseTemplate.EnvBuild.KernelVersion,
-				FirecrackerVersion: baseTemplate.EnvBuild.FirecrackerVersion,
-				StartCommand:       startCmd,
-				ReadyCommand:       readyCmd,
+				Alias:   *fromTemplate,
+				BuildID: baseTemplate.EnvBuild.ID.String(),
 			},
 		}
 	default: // hasImage

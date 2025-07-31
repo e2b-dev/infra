@@ -28,29 +28,29 @@ type LayerMetadata struct {
 func layerMetaFromHash(ctx context.Context, s storage.StorageProvider, cacheScope string, hash string) (LayerMetadata, error) {
 	obj, err := s.OpenObject(ctx, layerstorage.HashToPath(cacheScope, hash))
 	if err != nil {
-		return LayerMetadata{}, fmt.Errorf("error opening object for template metadata: %w", err)
+		return LayerMetadata{}, fmt.Errorf("error opening object for layer metadata: %w", err)
 	}
 
 	var buf bytes.Buffer
 	_, err = obj.WriteTo(&buf)
 	if err != nil {
-		return LayerMetadata{}, fmt.Errorf("error reading template metadata from object: %w", err)
+		return LayerMetadata{}, fmt.Errorf("error reading layer metadata from object: %w", err)
 	}
 
-	var templateMetadata LayerMetadata
-	err = json.Unmarshal(buf.Bytes(), &templateMetadata)
+	var layerMetadata LayerMetadata
+	err = json.Unmarshal(buf.Bytes(), &layerMetadata)
 	if err != nil {
-		return LayerMetadata{}, fmt.Errorf("error unmarshaling template metadata: %w", err)
+		return LayerMetadata{}, fmt.Errorf("error unmarshaling layer metadata: %w", err)
 	}
 
-	if templateMetadata.Template.TemplateID == "" ||
-		templateMetadata.Template.BuildID == "" ||
-		templateMetadata.Template.KernelVersion == "" ||
-		templateMetadata.Template.FirecrackerVersion == "" {
-		return LayerMetadata{}, fmt.Errorf("template metadata is missing required fields: %v", templateMetadata)
+	if layerMetadata.Template.TemplateID == "" ||
+		layerMetadata.Template.BuildID == "" ||
+		layerMetadata.Template.KernelVersion == "" ||
+		layerMetadata.Template.FirecrackerVersion == "" {
+		return LayerMetadata{}, fmt.Errorf("layer metadata is missing required fields: %v", layerMetadata)
 	}
 
-	return templateMetadata, nil
+	return layerMetadata, nil
 }
 
 func saveLayerMeta(ctx context.Context, s storage.StorageProvider, cacheScope string, hash string, template LayerMetadata) error {
@@ -61,13 +61,13 @@ func saveLayerMeta(ctx context.Context, s storage.StorageProvider, cacheScope st
 
 	marshaled, err := json.Marshal(template)
 	if err != nil {
-		return fmt.Errorf("error marshalling template metadata: %w", err)
+		return fmt.Errorf("error marshalling layer metadata: %w", err)
 	}
 
 	buf := bytes.NewBuffer(marshaled)
 	_, err = obj.ReadFrom(buf)
 	if err != nil {
-		return fmt.Errorf("error writing UUID to object: %w", err)
+		return fmt.Errorf("error writing layer metadata to object: %w", err)
 	}
 
 	return nil
@@ -92,7 +92,7 @@ func hashBase(template config.TemplateConfig) (string, error) {
 	var baseSource string
 	if template.FromTemplate != nil {
 		// When building from template, use the base template's ID and build ID as the source
-		baseSource = fmt.Sprintf("template:%s:%s", template.FromTemplate.GetTemplateID(), template.FromTemplate.GetBuildID())
+		baseSource = fmt.Sprintf("template:%s", template.FromTemplate.GetBuildID())
 	} else {
 		// When building from image, use the image name
 		baseSource = template.FromImage
