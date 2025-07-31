@@ -3,6 +3,8 @@ package clickhouse
 import (
 	"context"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type NoopClient struct{}
@@ -27,7 +29,11 @@ func (m *NoopClient) QuerySandboxMetrics(ctx context.Context, sandboxID string, 
 	return nil, nil
 }
 
-func (m *NoopClient) QuerySandboxEvents(ctx context.Context, sandboxID string, limit, offset int) ([]SandboxEvent, error) {
+func (m *NoopClient) SelectSandboxEventsBySandboxId(ctx context.Context, sandboxID string, limit, offset int, orderDesc bool) ([]SandboxEvent, error) {
+	return nil, nil
+}
+
+func (m *NoopClient) SelectSandboxEventsByTeamId(ctx context.Context, teamID uuid.UUID, limit, offset int, orderDesc bool) ([]SandboxEvent, error) {
 	return nil, nil
 }
 

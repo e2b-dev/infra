@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type SandboxEventCategory string
@@ -38,7 +40,7 @@ type SandboxEvent struct {
 	EventData          string    `ch:"event_data"`
 }
 
-const latestSandboxEventSelectQuery = `
+const selectSandboxEventsBySandboxIdQuery = `
 SELECT
     timestamp,
     sandbox_id,
@@ -49,20 +51,84 @@ SELECT
     event_label,
     event_data
 FROM sandbox_events
-WHERE sandbox_id = ?
-ORDER BY timestamp DESC
+ORDER BY timestamp ?
 LIMIT ?
 OFFSET ?
 `
 
-func (c *Client) QuerySandboxEvents(ctx context.Context, sandboxID string, offset, limit int) ([]SandboxEvent, error) {
-	rows, err := c.conn.Query(ctx, latestSandboxEventSelectQuery,
+func (c *Client) SelectSandboxEventsBySandboxId(ctx context.Context, sandboxID string, offset, limit int, orderAsc bool) ([]SandboxEvent, error) {
+	order := "DESC"
+	if orderAsc {
+		order = "ASC"
+	}
+	rows, err := c.conn.Query(ctx, selectSandboxEventsBySandboxIdQuery,
 		sandboxID,
+		order,
 		limit,
 		offset,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error querying sandbox events: %w", err)
+		return nil, fmt.Errorf("error querying sandbox events by sandbox id: %w", err)
+	}
+	defer rows.Close()
+
+	var out []SandboxEvent
+	for rows.Next() {
+		var m SandboxEvent
+		if err := rows.ScanStruct(&m); err != nil {
+			return nil, fmt.Errorf("error scaning SandboxEvent: %w", err)
+		}
+		out = append(out, m)
+	}
+
+	return out, rows.Err()
+}
+
+const selectSandboxEventsByTeamIdQuery = `
+SELECT
+    timestamp,
+    sandbox_id,
+    sandbox_execution_id,
+    sandbox_template_id,
+    sandbox_team_id,
+    event_category,
+    event_label,
+    event_data
+FROM sandbox_events
+WHERE sandbox_team_id = ?
+ORDER BY timestamp ?
+LIMIT ?
+OFFSET ?
+`
+
+func (c *Client) SelectSandboxEventsByTeamId(ctx context.Context, teamID uuid.UUID, offset, limit int, orderAsc bool, filterByCategory []SandboxEventCategory) ([]SandboxEvent, error) {
+	filterClause := ""
+	if len(filterByCategory) > 0 {
+		filterClause = "AND event_category IN ("
+		for i, category := range filterByCategory {
+			filterClause += fmt.Sprintf("'%s'", category)
+			if i < len(filterByCategory)-1 {
+				filterClause += ", "
+			}
+		}
+		filterClause += ")"
+	}
+
+	order := "DESC"
+	if !orderAsc {
+		order = "ASC"
+	}
+
+	query := fmt.Sprintf(selectSandboxEventsByTeamIdQuery, filterClause)
+
+	rows, err := c.conn.Query(ctx, query,
+		teamID,
+		order,
+		limit,
+		offset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error querying sandbox events by team id: %w", err)
 	}
 	defer rows.Close()
 

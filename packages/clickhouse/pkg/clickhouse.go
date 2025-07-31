@@ -7,6 +7,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/google/uuid"
 )
 
 type Clickhouse interface {
@@ -18,7 +19,8 @@ type Clickhouse interface {
 	QueryLatestMetrics(ctx context.Context, sandboxIDs []string, teamID string) ([]Metrics, error)
 
 	// Events queries
-	QuerySandboxEvents(ctx context.Context, sandboxID string, offset, limit int) ([]SandboxEvent, error)
+	SelectSandboxEventsBySandboxId(ctx context.Context, sandboxID string, offset, limit int, orderDesc bool) ([]SandboxEvent, error)
+	SelectSandboxEventsByTeamId(ctx context.Context, teamID uuid.UUID, offset, limit int, orderDesc bool) ([]SandboxEvent, error)
 	InsertSandboxEvent(ctx context.Context, event SandboxEvent) error
 }
 
