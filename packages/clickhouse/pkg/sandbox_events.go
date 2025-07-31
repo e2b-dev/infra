@@ -51,6 +51,7 @@ SELECT
     event_label,
     event_data
 FROM sandbox_events
+WHERE sandbox_id = ?
 ORDER BY timestamp ?
 LIMIT ?
 OFFSET ?
