@@ -1,12 +1,14 @@
 package main
 
 import (
-	gcpstorage "cloud.google.com/go/storage"
 	"context"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/google/uuid"
 	"os"
+
+	gcpstorage "cloud.google.com/go/storage"
+	"github.com/google/uuid"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 func currentProcess() (header, error) {
@@ -49,8 +51,7 @@ func currentProcess() (header, error) {
 	}, nil
 }
 
-type uncompressed struct {
-}
+type uncompressed struct{}
 
 func (u uncompressed) GetSlab(ctx context.Context, path string, item mapping) ([]byte, error) {
 	client, err := gcpstorage.NewClient(ctx)

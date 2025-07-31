@@ -12,12 +12,18 @@ const bigfile = "/orchestrator/build/d0109c39-100e-4e3b-8e84-3549afb0574d-rootfs
 
 const bucketName = "e2b-staging-joe-fc-templates"
 
-const runCurrentVersion = true
-const runCompressedVersion = true
+const (
+	runCurrentVersion    = false
+	runCompressedVersion = true
+	compressionAlgorithm = "lz4"
+)
 
-const downloadAttempts = 20
-const maxChunksToRead = 999 // 999 to read the whole thing
-const verbose = false
+const (
+	uploadAttempts   = 25
+	downloadAttempts = 100
+	maxChunksToRead  = 999 // 999 to read the whole thing
+	verbose          = false
+)
 
 type mapping struct {
 	index, offset, size      int64
@@ -31,54 +37,48 @@ type header struct {
 
 func main() {
 	var (
-		start   time.Time
 		itemMap header
-		err     error
 		client  slabGetter
 	)
 
 	if runCurrentVersion {
 		print("current process: upload ... ")
-		start = time.Now()
-		itemMap, err = currentProcess()
-		if err != nil {
-			panic(err)
-		}
-		println(fmt.Sprintf("%d milliseconds", time.Since(start).Milliseconds()))
+		itemMap = collectUploadStats(currentProcess)
 
 		client = getUncompressedClient()
 		collectDownloadStats(client, itemMap)
 	}
 
 	if runCompressedVersion {
-		print("compressed process: upload ... ")
-		start = time.Now()
-		itemMap, err = parallelProcess()
-		if err != nil {
-			panic(err)
-		}
-		println(fmt.Sprintf("%d milliseconds", time.Since(start).Milliseconds()))
+		fmt.Printf("compressed process [algo = %s]: upload ... ", compressionAlgorithm)
+		compressor := codecs[compressionAlgorithm]
+		itemMap = collectUploadStats(func() (header, error) {
+			return parallelProcess(compressor)
+		})
 
-		client = getCompressedClient()
+		client = getCompressedClient(compressor)
 		collectDownloadStats(client, itemMap)
 	}
 }
 
-func collectDownloadStats(client slabGetter, itemMap header) {
+func collectUploadStats(fn func() (header, error)) header {
+	var header header
+	var err error
+
 	var fastest, slowest time.Duration
 	var allAttempts []time.Duration
-	for range downloadAttempts {
-		print("downloading slab ... ")
-		start := time.Now()
-		getRandomItem(client, itemMap)
-		duration := time.Since(start)
-		println(fmt.Sprintf("%d milliseconds", duration.Milliseconds()))
 
+	for range uploadAttempts {
+		start := time.Now()
+		header, err = fn()
+		if err != nil {
+			panic(err)
+		}
+		duration := time.Since(start)
 		if fastest == 0 {
 			fastest = duration
 		} else {
 			fastest = min(fastest, duration)
-
 		}
 		slowest = max(slowest, duration)
 		allAttempts = append(allAttempts, duration)
@@ -91,9 +91,49 @@ func collectDownloadStats(client slabGetter, itemMap header) {
 	average := total / len(allAttempts)
 
 	fmt.Printf(`
-fastest: %d ms
-slowest: %d ms
-average: %d ms
+upload stats:
+- fastest: %d ms
+- slowest: %d ms
+- average: %d ms
+`, fastest.Milliseconds(), slowest.Milliseconds(), average)
+
+	return header
+}
+
+func collectDownloadStats(client slabGetter, itemMap header) {
+	if downloadAttempts == 0 {
+		return
+	}
+
+	var fastest, slowest time.Duration
+	var allAttempts []time.Duration
+	for range downloadAttempts {
+		// print("downloading slab ... ")
+		start := time.Now()
+		getRandomItem(client, itemMap)
+		duration := time.Since(start)
+		// println(fmt.Sprintf("%d milliseconds", duration.Milliseconds()))
+
+		if fastest == 0 {
+			fastest = duration
+		} else {
+			fastest = min(fastest, duration)
+		}
+		slowest = max(slowest, duration)
+		allAttempts = append(allAttempts, duration)
+	}
+
+	var total int
+	for _, a := range allAttempts {
+		total += int(a.Milliseconds())
+	}
+	average := total / len(allAttempts)
+
+	fmt.Printf(`
+retrieval stats:
+- fastest: %d ms
+- slowest: %d ms
+- average: %d ms
 `, fastest.Milliseconds(), slowest.Milliseconds(), average)
 }
 
