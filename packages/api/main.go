@@ -94,6 +94,7 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 		"Origin",
 		"Content-Length",
 		"Content-Type",
+		"User-Agent",
 		// API Key header
 		"Authorization",
 		"X-API-Key",
