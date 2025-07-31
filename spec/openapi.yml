@@ -1327,7 +1327,6 @@ paths:
       description: Create a new template
       tags: [templates]
       security:
-        - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
       requestBody:
@@ -1528,7 +1527,6 @@ paths:
       description: Start the build
       tags: [templates]
       security:
-        - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
       parameters:
