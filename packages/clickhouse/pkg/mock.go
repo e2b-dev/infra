@@ -29,6 +29,10 @@ func (m *NoopClient) QuerySandboxMetrics(ctx context.Context, sandboxID string, 
 	return nil, nil
 }
 
+func (m *NoopClient) ExistsSandboxId(ctx context.Context, sandboxID string) (bool, error) {
+	return false, nil
+}
+
 func (m *NoopClient) SelectSandboxEventsBySandboxId(ctx context.Context, sandboxID string, limit, offset int, orderDesc bool) ([]SandboxEvent, error) {
 	return nil, nil
 }

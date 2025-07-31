@@ -40,6 +40,20 @@ type SandboxEvent struct {
 	EventData          string    `ch:"event_data"`
 }
 
+const existsSandboxIdQuery = `
+SELECT 1 FROM sandbox_events WHERE sandbox_id = ? LIMIT 1
+`
+
+func (c *Client) ExistsSandboxId(ctx context.Context, sandboxID string) (bool, error) {
+	rows, err := c.conn.Query(ctx, existsSandboxIdQuery, sandboxID)
+	if err != nil {
+		return false, fmt.Errorf("error querying sandbox exists by sandbox id: %w", err)
+	}
+	defer rows.Close()
+
+	return rows.Next(), rows.Err()
+}
+
 const selectSandboxEventsBySandboxIdQuery = `
 SELECT
     timestamp,
