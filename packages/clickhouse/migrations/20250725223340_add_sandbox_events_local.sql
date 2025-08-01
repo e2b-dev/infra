@@ -5,6 +5,7 @@ CREATE TABLE sandbox_events_local (
     sandbox_id String,
     sandbox_execution_id String,
     sandbox_template_id String,
+    sandbox_build_id String,
     sandbox_team_id UUID,
     event_category String,
     event_label String,
