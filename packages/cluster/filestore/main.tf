@@ -1,14 +1,5 @@
-terraform {
-  required_providers {
-    google = {
-      source  = "hashicorp/google"
-      version = "6.13.0"
-    }
-  }
-}
-
 resource "google_filestore_instance" "slab-cache" {
-  name        = "${var.cluster_name}-slab-cache"
+  name        = var.name
   description = "High performance slab cache"
   tier        = "ZONAL"
   protocol    = "NFS_V4_1"
@@ -18,7 +9,7 @@ resource "google_filestore_instance" "slab-cache" {
 
   file_shares {
     capacity_gb = 1024
-    name        = "slab-cache"
+    name        = "slabs"
   }
 
   networks {

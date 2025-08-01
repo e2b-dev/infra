@@ -34,6 +34,10 @@ variable "nomad_port" {
   type = number
 }
 
+variable "slab_cache_path" {
+  type = string
+}
+
 variable "otel_collector_resources_memory_mb" {
   type = number
 }

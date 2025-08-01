@@ -71,10 +71,11 @@ EOT
         TEMPLATE_BUCKET_NAME         = "${template_bucket_name}"
         OTEL_COLLECTOR_GRPC_ENDPOINT = "${otel_collector_grpc_endpoint}"
         ALLOW_SANDBOX_INTERNET       = "${allow_sandbox_internet}"
+        LOCAL_TEMPLATE_CACHE_PATH    = "${nfs_cache_mount_path}"
 
-%{ if launch_darkly_api_key != "" }
+        %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
-%{ endif }
+        %{ endif }
       }
 
       config {
@@ -84,12 +85,12 @@ EOT
 
       artifact {
         %{ if environment == "dev" }
-        // Version hash is only available for dev to increase development speed in prod use rolling updates
-        source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/orchestrator?version=${orchestrator_checksum}"
-        %{ else }
-        source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/orchestrator"
-        %{ endif }
-      }
-    }
-  }
+// Version hash is only available for dev to increase development speed in prod use rolling updates
+source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/orchestrator?version=${orchestrator_checksum}"
+%{ else }
+source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/orchestrator"
+%{ endif }
+}
+}
+}
 }

@@ -408,6 +408,7 @@ locals {
     otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
     allow_sandbox_internet       = var.allow_sandbox_internet
     launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+    nfs_cache_mount_path         = var.slab_cache_path
   }
 
   orchestrator_job_check = templatefile("${path.module}/orchestrator.hcl", merge(
@@ -417,7 +418,6 @@ locals {
     }
   ))
 }
-
 
 
 resource "random_id" "orchestrator_job" {

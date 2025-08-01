@@ -1,6 +1,8 @@
 # Server cluster instances are not currently automatically updated when you create a new
 # orchestrator image with Packer.
 locals {
+  nfs_mount_path = "/orchestrator/slab-cache"
+
   file_hash = {
     "scripts/run-consul.sh"              = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
     "scripts/run-nomad.sh"               = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
@@ -109,7 +111,10 @@ module "server_cluster" {
 
   labels = var.labels
 
-  depends_on = [google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"], google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]]
+  depends_on = [
+    google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
+    google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
+  ]
 }
 
 module "client_cluster" {
@@ -131,6 +136,8 @@ module "client_cluster" {
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
+    NFS_IP_ADDRESS               = join(",", module.filestore.nfs_ip_addresses)
+    NFS_MOUNT_PATH               = local.nfs_mount_path
   })
 
   environment = var.environment
@@ -156,8 +163,11 @@ module "client_cluster" {
 
   service_account_email = var.google_service_account_email
 
-  labels     = var.labels
-  depends_on = [google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"], google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]]
+  labels = var.labels
+  depends_on = [
+    google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
+    google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
+  ]
 }
 
 module "api_cluster" {
@@ -200,8 +210,11 @@ module "api_cluster" {
 
   service_account_email = var.google_service_account_email
 
-  labels     = var.labels
-  depends_on = [google_storage_bucket_object.setup_config_objects["scripts/run-api-nomad.sh"], google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]]
+  labels = var.labels
+  depends_on = [
+    google_storage_bucket_object.setup_config_objects["scripts/run-api-nomad.sh"],
+    google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
+  ]
 }
 
 module "clickhouse_cluster" {
@@ -244,8 +257,11 @@ module "clickhouse_cluster" {
   clickhouse_health_port = var.clickhouse_health_port
   service_account_email  = var.google_service_account_email
 
-  labels     = var.labels
-  depends_on = [google_storage_bucket_object.setup_config_objects["scripts/run-clickhouse-nomad.sh"], google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]]
+  labels = var.labels
+  depends_on = [
+    google_storage_bucket_object.setup_config_objects["scripts/run-clickhouse-nomad.sh"],
+    google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
+  ]
 }
 
 module "build_cluster" {
@@ -267,6 +283,8 @@ module "build_cluster" {
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-build-cluster-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
+    NFS_IP_ADDRESS               = join(",", module.filestore.nfs_ip_addresses)
+    NFS_MOUNT_PATH               = local.nfs_mount_path
   })
 
   environment = var.environment
@@ -288,8 +306,11 @@ module "build_cluster" {
 
   service_account_email = var.google_service_account_email
 
-  labels     = var.labels
-  depends_on = [google_storage_bucket_object.setup_config_objects["scripts/run-build-cluster-nomad.sh"], google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]]
+  labels = var.labels
+  depends_on = [
+    google_storage_bucket_object.setup_config_objects["scripts/run-build-cluster-nomad.sh"],
+    google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
+  ]
 }
 
 module "network" {
@@ -328,5 +349,6 @@ module "network" {
 module "filestore" {
   source = "./filestore"
 
-  filestore_name = "${var.prefix}cache"
+  name         = "${var.prefix}slab-cache"
+  network_name = var.network_name
 }
