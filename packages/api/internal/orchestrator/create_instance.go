@@ -323,6 +323,7 @@ func (o *Orchestrator) getLeastBusyNode(parentCtx context.Context, nodesExcluded
 			if err == nil {
 				return leastBusyNode, nil
 			}
+			zap.L().Warn("find least busy node failed, trying again", zap.Error(err))
 		}
 	}
 }

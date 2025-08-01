@@ -39,14 +39,14 @@ type StorageObjectProvider interface {
 	WriteTo(dst io.Writer) (int64, error)
 	WriteFromFileSystem(path string) error
 
-	ReadFrom(src io.Reader) (int64, error)
+	ReadFrom(src []byte) (int64, error)
 	ReadAt(buff []byte, off int64) (n int, err error)
 
 	Size() (int64, error)
 	Delete() error
 }
 
-func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter, chunkSize int) (StorageProvider, error) {
+func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter, chunkSize int64) (StorageProvider, error) {
 	provider, err := getTemplateStorageProvider(ctx, limiter)
 	if err != nil {
 		return nil, err

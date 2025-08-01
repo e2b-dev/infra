@@ -3,8 +3,6 @@ package storage
 import (
 	"context"
 	"fmt"
-	"io"
-	"os"
 
 	"golang.org/x/sync/errgroup"
 
@@ -105,15 +103,14 @@ func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) err
 }
 
 // Snap-file is small enough so we don't use composite upload.
-func (t *TemplateBuild) uploadSnapfile(ctx context.Context, snapfile io.Reader) error {
+func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
 	object, err := t.persistence.OpenObject(ctx, t.files.StorageSnapfilePath())
 	if err != nil {
 		return err
 	}
 
-	n, err := object.ReadFrom(snapfile)
-	if err != nil {
-		return fmt.Errorf("error when uploading snapfile (%d bytes): %w", n, err)
+	if err := object.WriteFromFileSystem(path); err != nil {
+		return fmt.Errorf("error when uploading snapfile: %w", err)
 	}
 
 	return nil
@@ -175,14 +172,7 @@ func (t *TemplateBuild) Upload(ctx context.Context, snapfilePath string, memfile
 	})
 
 	eg.Go(func() error {
-		snapfile, err := os.Open(snapfilePath)
-		if err != nil {
-			return err
-		}
-
-		defer snapfile.Close()
-
-		err = t.uploadSnapfile(ctx, snapfile)
+		err := t.uploadSnapfile(ctx, snapfilePath)
 		if err != nil {
 			return err
 		}

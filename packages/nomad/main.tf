@@ -491,6 +491,7 @@ resource "nomad_job" "template_manager" {
     logs_collector_public_ip     = var.logs_proxy_address
     orchestrator_services        = "template-manager"
     allow_sandbox_internet       = var.allow_sandbox_internet
+    nfs_cache_mount_path         = var.slab_cache_path
   })
 }
 resource "nomad_job" "loki" {

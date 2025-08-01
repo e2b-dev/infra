@@ -65,6 +65,7 @@ job "template-manager" {
         ORCHESTRATOR_SERVICES         = "${orchestrator_services}"
         LOGS_COLLECTOR_PUBLIC_IP      = "${logs_collector_public_ip}"
         ALLOW_SANDBOX_INTERNET        = "${allow_sandbox_internet}"
+        LOCAL_TEMPLATE_CACHE_PATH    = "${nfs_cache_mount_path}"
 %{ if !update_stanza }
         FORCE_STOP                    = "true"
 %{ endif }

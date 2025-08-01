@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -185,11 +186,11 @@ func (g *GCPBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, 
 	return n, nil
 }
 
-func (g *GCPBucketStorageObjectProvider) ReadFrom(src io.Reader) (int64, error) {
+func (g *GCPBucketStorageObjectProvider) ReadFrom(src []byte) (int64, error) {
 	w := g.handle.NewWriter(g.ctx)
 	defer w.Close()
 
-	n, err := io.Copy(w, src)
+	n, err := io.Copy(w, bytes.NewBuffer(src))
 	if err != nil && !errors.Is(err, io.EOF) {
 		return n, fmt.Errorf("failed to copy buffer to persistence: %w", err)
 	}
