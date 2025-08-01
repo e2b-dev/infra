@@ -18,7 +18,7 @@ import (
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
 type userfaultfd struct {
-	uffd     uintptr
+	fd       uintptr
 	copyMode CULong
 }
 
@@ -39,7 +39,7 @@ func NewUserfaultfdFromFd(fd uintptr, wp bool) *userfaultfd {
 	}
 
 	return &userfaultfd{
-		uffd:     fd,
+		fd:       fd,
 		copyMode: copyMode,
 	}
 }
@@ -48,7 +48,7 @@ func NewUserfaultfdFromFd(fd uintptr, wp bool) *userfaultfd {
 // This is already called by the FC
 func (u *userfaultfd) ConfigureApi(features CULong) error {
 	api := NewUffdioAPI(UFFD_API, features)
-	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.uffd, UFFDIO_API, uintptr(unsafe.Pointer(&api)))
+	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.fd, UFFDIO_API, uintptr(unsafe.Pointer(&api)))
 	if errno != 0 {
 		return fmt.Errorf("UFFDIO_API ioctl failed: %v (ret=%d)", errno, ret)
 	}
@@ -62,7 +62,7 @@ func (u *userfaultfd) ConfigureApi(features CULong) error {
 func (h *userfaultfd) Register(addr uintptr, size uint64, mode CULong) error {
 	register := NewUffdioRegister(CULong(addr), CULong(size), mode)
 
-	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, h.uffd, UFFDIO_REGISTER, uintptr(unsafe.Pointer(&register)))
+	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, h.fd, UFFDIO_REGISTER, uintptr(unsafe.Pointer(&register)))
 	if errno != 0 {
 		return fmt.Errorf("UFFDIO_REGISTER ioctl failed: %v (ret=%d)", errno, ret)
 	}
@@ -73,7 +73,7 @@ func (h *userfaultfd) Register(addr uintptr, size uint64, mode CULong) error {
 func (h *userfaultfd) writeProtect(addr uintptr, size uint64, mode CULong) error {
 	register := NewUffdioWriteProtect(CULong(addr), CULong(size), mode)
 
-	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, h.uffd, UFFDIO_WRITEPROTECT, uintptr(unsafe.Pointer(&register)))
+	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, h.fd, UFFDIO_WRITEPROTECT, uintptr(unsafe.Pointer(&register)))
 	if errno != 0 {
 		return fmt.Errorf("UFFDIO_WRITEPROTECT ioctl failed: %v (ret=%d)", errno, ret)
 	}
@@ -94,7 +94,7 @@ func (h *userfaultfd) AddWriteProtection(addr uintptr, size uint64) error {
 func (h *userfaultfd) Copy(addr CULong, data []byte, pagesize int64) error {
 	cpy := NewUffdioCopy(data, addr&^CULong(pagesize-1), CULong(pagesize), h.copyMode, 0)
 
-	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, h.uffd, UFFDIO_COPY, uintptr(unsafe.Pointer(&cpy))); errno != 0 {
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, h.fd, UFFDIO_COPY, uintptr(unsafe.Pointer(&cpy))); errno != 0 {
 		return errno
 	}
 
@@ -102,7 +102,7 @@ func (h *userfaultfd) Copy(addr CULong, data []byte, pagesize int64) error {
 }
 
 func (h *userfaultfd) Close() error {
-	return syscall.Close(int(h.uffd))
+	return syscall.Close(int(h.fd))
 }
 
 func (h *userfaultfd) Serve(
@@ -112,7 +112,7 @@ func (h *userfaultfd) Serve(
 	fields ...zap.Field,
 ) error {
 	pollFds := []unix.PollFd{
-		{Fd: int32(h.uffd), Events: unix.POLLIN},
+		{Fd: int32(h.fd), Events: unix.POLLIN},
 		{Fd: fdExit.Reader(), Events: unix.POLLIN},
 	}
 
@@ -174,7 +174,7 @@ outerLoop:
 		buf := make([]byte, unsafe.Sizeof(constants.UffdMsg{}))
 
 		for {
-			n, err := syscall.Read(int(h.uffd), buf)
+			n, err := syscall.Read(int(h.fd), buf)
 			if err == syscall.EINTR {
 				zap.L().Debug("uffd: interrupted read, reading again", fields...)
 

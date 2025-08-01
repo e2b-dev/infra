@@ -2,7 +2,6 @@ package userfaultfd
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -16,6 +15,7 @@ import (
 )
 
 var (
+	// Data shared across the testing processes to check if the served and received data is the same
 	testCrossProcessPageSize                   = int64(header.HugepageSize)
 	testCrossProcessData, testCrossProcessSize = prepareTestData(testCrossProcessPageSize)
 )
@@ -45,7 +45,7 @@ func TestCrossProcessDoubleRegistration(t *testing.T) {
 
 	cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
 	cmd.Env = append(os.Environ(), "GO_TEST_HELPER_PROCESS=1")
-	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_START=%d", start))
+	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_START=%d", memoryStart))
 
 	// Passing the fd to the child process
 	uffdFile := os.NewFile(uffd.fd, "userfaultfd")
@@ -63,17 +63,16 @@ func TestCrossProcessDoubleRegistration(t *testing.T) {
 	}()
 
 	<-sigc
-	fmt.Println("✓ child signaled ready")
+	fmt.Println("child signaled ready")
 
-	data := bytes.NewReader(content)
+	data := testCrossProcessData
 
-	servedContent := make([]byte, pagesize)
-	_, err = data.ReadAt(servedContent, 0)
+	servedContent, err := data.Slice(0, testCrossProcessPageSize)
 	if err != nil {
 		t.Fatal("cannot read content", err)
 	}
 
-	if !bytes.Equal(b[0:pagesize], servedContent) {
+	if !bytes.Equal(memoryArea[0:testCrossProcessPageSize], servedContent) {
 		t.Fatal("content mismatch", string(servedContent))
 	}
 }
@@ -83,14 +82,6 @@ func TestHelperProcess(t *testing.T) {
 	if os.Getenv("GO_TEST_HELPER_PROCESS") != "1" {
 		return
 	}
-	fmt.Println("Started >><<")
-
-	size := testCrossProcessSize
-	pagesize := testCrossProcessPageSize
-
-	content := repeatToSize(crossContent, size)
-
-	data := bytes.NewReader(content)
 
 	mmapStart := os.Getenv("GO_MMAP_START")
 	startRaw, err := strconv.Atoi(mmapStart)
@@ -102,17 +93,11 @@ func TestHelperProcess(t *testing.T) {
 	start := uintptr(startRaw)
 
 	uffdFile := os.NewFile(uintptr(3), "userfaultfd")
-	uffdFd := uffdFile.Fd()
-
-	uffd := userfaultfd{
-		fd:       uffdFd,
-		pagesize: pagesize,
-		dirty:    make(map[uintptr]struct{}),
-	}
+	uffd := NewUserfaultfdFromFd(uffdFile.Fd(), true)
 
 	// done in the FC
 	// Check: The reregistration works
-	err = uffd.Register(start, uint64(size), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
+	err = uffd.Register(start, uint64(testCrossProcessSize), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
 	if err != nil {
 		fmt.Print("exit registering uffd", err)
 		os.Exit(1)
@@ -123,11 +108,19 @@ func TestHelperProcess(t *testing.T) {
 	ppid := os.Getppid()
 	syscall.Kill(ppid, syscall.SIGUSR1)
 
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
+	mappings := newTestMappings(start, testCrossProcessSize, testCrossProcessPageSize)
+
+	fdExit, err := NewFdExit()
+	if err != nil {
+		fmt.Print("exit creating fd exit", err)
+		os.Exit(1)
+	}
+	defer fdExit.Close()
+
+	data := testCrossProcessData
 
 	go func() {
-		err := uffd.Serve(ctx, start, data, UFFDIO_COPY_MODE_WP)
+		err := uffd.Serve(mappings, data, fdExit)
 		if err != nil {
 			fmt.Println("[TestUffdWriteProtect] failed to serve uffd", err)
 		}
