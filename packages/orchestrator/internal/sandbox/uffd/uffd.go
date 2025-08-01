@@ -23,11 +23,6 @@ const (
 	mappingsSize           = 1024
 )
 
-type UffdSetup struct {
-	Mappings []GuestRegionUffdMapping
-	Fd       uintptr
-}
-
 func (u *Uffd) TrackAndReturnNil() error {
 	return u.lis.Close()
 }
@@ -112,7 +107,7 @@ func (u *Uffd) Start(sandboxId string) error {
 	return nil
 }
 
-func (u *Uffd) receiveSetup() (*UffdSetup, error) {
+func (u *Uffd) getHandler() (*handler, error) {
 	err := u.lis.SetDeadline(time.Now().Add(uffdMsgListenerTimeout))
 	if err != nil {
 		return nil, fmt.Errorf("failed setting listener deadline: %w", err)
@@ -160,31 +155,29 @@ func (u *Uffd) receiveSetup() (*UffdSetup, error) {
 		return nil, fmt.Errorf("expected 1 fd: found %d", len(fds))
 	}
 
-	return &UffdSetup{
-		Mappings: mappings,
-		Fd:       uintptr(fds[0]),
+	return &handler{
+		mappings: mappings,
+		uffd:     uintptr(fds[0]),
 	}, nil
 }
 
 func (u *Uffd) handle(sandboxId string) (err error) {
-	setup, err := u.receiveSetup()
+	handler, err := u.getHandler()
 	if err != nil {
 		return fmt.Errorf("failed to receive setup message from firecracker: %w", err)
 	}
 
-	uffd := setup.Fd
 	defer func() {
-		closeErr := syscall.Close(int(uffd))
+		closeErr := handler.close()
 		if closeErr != nil {
-			zap.L().Error("failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
+			zap.L().Error("failed to close uffd handler", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
 		}
 	}()
 
 	u.readyCh <- struct{}{}
 
-	err = Serve(
-		int(uffd),
-		setup.Mappings,
+	err = handler.Serve(
+		handler.mappings,
 		u.memfile,
 		u.exitReader.Fd(),
 		u.Stop,

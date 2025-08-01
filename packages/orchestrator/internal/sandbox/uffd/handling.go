@@ -21,7 +21,8 @@ type GuestRegionUffdMapping struct {
 	BaseHostVirtAddr uintptr `json:"base_host_virt_addr"`
 	Size             uintptr `json:"size"`
 	Offset           uintptr `json:"offset"`
-	PageSize         uintptr `json:"page_size_kib"`
+	// This is actually in bytes—it is deprecated and they introduced "page_size"
+	PageSize uintptr `json:"page_size_kib"`
 }
 
 func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUffdMapping, error) {
@@ -37,8 +38,73 @@ func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUf
 	return nil, fmt.Errorf("address %d not found in any mapping", addr)
 }
 
-func Serve(
-	uffd int,
+type handler struct {
+	mappings []GuestRegionUffdMapping
+	uffd     uintptr
+}
+
+// features: UFFD_FEATURE_MISSING_HUGETLBFS|UFFD_FEATURE_WP_ASYNC
+// This is already called by the FC
+func (u *handler) ConfigureApi(features CULong) error {
+	api := NewUffdioAPI(UFFD_API, features)
+	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.uffd, UFFDIO_API, uintptr(unsafe.Pointer(&api)))
+	if errno != 0 {
+		return fmt.Errorf("UFFDIO_API ioctl failed: %v (ret=%d)", errno, ret)
+	}
+
+	return nil
+}
+
+// mode: UFFDIO_REGISTER_MODE_WP|UFFDIO_REGISTER_MODE_MISSING
+// This is already called by the FC, but only with the UFFDIO_REGISTER_MODE_MISSING
+// We need to call it with UFFDIO_REGISTER_MODE_WP when we use both missing and wp
+func (h *handler) Register(addr uintptr, size uint64, mode CULong) error {
+	register := NewUffdioRegister(CULong(addr), CULong(size), mode)
+
+	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, h.uffd, UFFDIO_REGISTER, uintptr(unsafe.Pointer(&register)))
+	if errno != 0 {
+		return fmt.Errorf("UFFDIO_REGISTER ioctl failed: %v (ret=%d)", errno, ret)
+	}
+
+	return nil
+}
+
+func (h *handler) writeProtect(addr uintptr, size uint64, mode CULong) error {
+	register := NewUffdioWriteProtect(CULong(addr), CULong(size), mode)
+
+	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, h.uffd, UFFDIO_WRITEPROTECT, uintptr(unsafe.Pointer(&register)))
+	if errno != 0 {
+		return fmt.Errorf("UFFDIO_WRITEPROTECT ioctl failed: %v (ret=%d)", errno, ret)
+	}
+
+	return nil
+}
+
+func (h *handler) RemoveWriteProtection(addr uintptr, size uint64) error {
+	return h.writeProtect(addr, size, 0)
+}
+
+func (h *handler) AddWriteProtection(addr uintptr, size uint64) error {
+	return h.writeProtect(addr, size, UFFDIO_WRITEPROTECT_MODE_WP)
+}
+
+// mode: UFFDIO_COPY_MODE_WP
+// When we use both missing and wp, we need to use UFFDIO_COPY_MODE_WP, otherwise copying would unprotect the page
+func (h *handler) Copy(addr CULong, data []byte, copyMode CULong, pagesize int64) error {
+	cpy := NewUffdioCopy(data, addr&^CULong(pagesize-1), CULong(pagesize), copyMode, 0)
+
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, h.uffd, UFFDIO_COPY, uintptr(unsafe.Pointer(&cpy))); errno != 0 {
+		return errno
+	}
+
+	return nil
+}
+
+func (h *handler) close() error {
+	return syscall.Close(int(h.uffd))
+}
+
+func (h *handler) Serve(
 	mappings []GuestRegionUffdMapping,
 	src *block.TrackedSliceDevice,
 	fd uintptr,
@@ -46,7 +112,7 @@ func Serve(
 	sandboxId string,
 ) error {
 	pollFds := []unix.PollFd{
-		{Fd: int32(uffd), Events: unix.POLLIN},
+		{Fd: int32(h.uffd), Events: unix.POLLIN},
 		{Fd: int32(fd), Events: unix.POLLIN},
 	}
 
@@ -108,7 +174,7 @@ outerLoop:
 		buf := make([]byte, unsafe.Sizeof(constants.UffdMsg{}))
 
 		for {
-			n, err := syscall.Read(uffd, buf)
+			n, err := syscall.Read(int(h.uffd), buf)
 			if err == syscall.EINTR {
 				zap.L().Debug("uffd: interrupted read, reading again", logger.WithSandboxID(sandboxId))
 
@@ -132,17 +198,17 @@ outerLoop:
 			return fmt.Errorf("failed to read: %w", err)
 		}
 
-		msg := (*(*constants.UffdMsg)(unsafe.Pointer(&buf[0])))
-		if constants.GetMsgEvent(&msg) != constants.UFFD_EVENT_PAGEFAULT {
-			zap.L().Error("UFFD serve unexpected event type", logger.WithSandboxID(sandboxId), zap.Any("event_type", constants.GetMsgEvent(&msg)))
+		msg := (*(*UffdMsg)(unsafe.Pointer(&buf[0])))
+		if GetMsgEvent(&msg) != UFFD_EVENT_PAGEFAULT {
+			zap.L().Error("UFFD serve unexpected event type", logger.WithSandboxID(sandboxId), zap.Any("event_type", GetMsgEvent(&msg)))
 
 			return ErrUnexpectedEventType
 		}
 
-		arg := constants.GetMsgArg(&msg)
-		pagefault := (*(*constants.UffdPagefault)(unsafe.Pointer(&arg[0])))
+		arg := GetMsgArg(&msg)
+		pagefault := (*(*UffdPagefault)(unsafe.Pointer(&arg[0])))
 
-		addr := constants.GetPagefaultAddress(&pagefault)
+		addr := GetPagefaultAddress(&pagefault)
 
 		mapping, err := getMapping(uintptr(addr), mappings)
 		if err != nil {
@@ -178,32 +244,20 @@ outerLoop:
 				return fmt.Errorf("failed to read from source: %w", err)
 			}
 
-			cpy := constants.NewUffdioCopy(
-				b,
-				addr&^constants.CULong(pagesize-1),
-				constants.CULong(pagesize),
-				0,
-				0,
-			)
+			err = h.Copy(addr, b, 0, pagesize)
+			if err == unix.EEXIST {
+				zap.L().Debug("UFFD serve page already mapped", logger.WithSandboxID(sandboxId), zap.Any("offset", offset), zap.Any("pagesize", pagesize))
 
-			if _, _, errno := syscall.Syscall(
-				syscall.SYS_IOCTL,
-				uintptr(uffd),
-				constants.UFFDIO_COPY,
-				uintptr(unsafe.Pointer(&cpy)),
-			); errno != 0 {
-				if errno == unix.EEXIST {
-					zap.L().Debug("UFFD serve page already mapped", logger.WithSandboxID(sandboxId), zap.Any("offset", offset), zap.Any("pagesize", pagesize))
+				// Page is already mapped
+				return nil
+			}
 
-					// Page is already mapped
-					return nil
-				}
-
+			if err != nil {
 				stop()
 
 				zap.L().Error("UFFD serve uffdio copy error", logger.WithSandboxID(sandboxId), zap.Error(err))
 
-				return fmt.Errorf("failed uffdio copy %w", errno)
+				return fmt.Errorf("failed uffdio copy %w", err)
 			}
 
 			return nil
