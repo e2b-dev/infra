@@ -17,9 +17,16 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 )
 
+// ECRClient interface for testability
+type ECRClient interface {
+	DescribeRepositories(ctx context.Context, input *ecr.DescribeRepositoriesInput, opts ...func(*ecr.Options)) (*ecr.DescribeRepositoriesOutput, error)
+	BatchDeleteImage(ctx context.Context, input *ecr.BatchDeleteImageInput, opts ...func(*ecr.Options)) (*ecr.BatchDeleteImageOutput, error)
+	GetAuthorizationToken(ctx context.Context, input *ecr.GetAuthorizationTokenInput, opts ...func(*ecr.Options)) (*ecr.GetAuthorizationTokenOutput, error)
+}
+
 type AWSArtifactsRegistry struct {
 	repositoryName string
-	client         *ecr.Client
+	client         ECRClient
 }
 
 var (
@@ -68,6 +75,12 @@ func (g *AWSArtifactsRegistry) Delete(ctx context.Context, templateId string, bu
 }
 
 func (g *AWSArtifactsRegistry) GetTag(ctx context.Context, templateId string, buildId string) (string, error) {
+	// Generate composite tag using templateId and buildId first (includes validation)
+	compositeTag, err := GenerateCompositeTag(templateId, buildId)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate composite tag: %w", err)
+	}
+
 	res, err := g.client.DescribeRepositories(ctx, &ecr.DescribeRepositoriesInput{RepositoryNames: []string{g.repositoryName}})
 	if err != nil {
 		return "", fmt.Errorf("failed to describe aws ecr repository: %w", err)
@@ -77,7 +90,7 @@ func (g *AWSArtifactsRegistry) GetTag(ctx context.Context, templateId string, bu
 		return "", fmt.Errorf("repository %s not found", g.repositoryName)
 	}
 
-	return fmt.Sprintf("%s:%s", *res.Repositories[0].RepositoryUri, buildId), nil
+	return fmt.Sprintf("%s:%s", *res.Repositories[0].RepositoryUri, compositeTag), nil
 }
 
 func (g *AWSArtifactsRegistry) GetImage(ctx context.Context, templateId string, buildId string, platform containerregistry.Platform) (containerregistry.Image, error) {
