@@ -412,6 +412,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 				sourceMetadata,
 				stepMetadata.Template,
 				shouldResumeSandbox,
+				!shouldResumeSandbox,
 				func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error) {
 					postProcessor.Debug(fmt.Sprintf("Running action in: %s/%s", sourceMetadata.Template.TemplateID, sourceMetadata.Template.BuildID))
 
@@ -488,6 +489,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		sourceMetadata,
 		finalMetadata,
 		false,
+		!shouldResumeSandbox,
 		b.postProcessingFn(postProcessor, finalMetadata, sourceMetadata.Metadata, startMetadata),
 	)
 	if err != nil {

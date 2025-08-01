@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/envd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
@@ -36,6 +37,7 @@ func (b *Builder) buildLayer(
 	sourceMeta LayerMetadata,
 	exportTemplate storage.TemplateFiles,
 	resumeSandbox bool,
+	updateEnvd bool,
 	fn func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error),
 ) (LayerMetadata, error) {
 	ctx, childSpan := b.tracer.Start(ctx, "run-in-sandbox")
@@ -170,6 +172,14 @@ func (b *Builder) buildLayer(
 		b.proxy.RemoveFromPool(sbx.Metadata.Config.ExecutionId)
 	}()
 
+	// Update envd binary to the latest version
+	if updateEnvd {
+		err = b.updateEnvdInSandbox(ctx, b.tracer, postProcessor, sbx)
+		if err != nil {
+			return LayerMetadata{}, fmt.Errorf("failed to update envd in sandbox: %w", err)
+		}
+	}
+
 	meta, err := fn(ctx, sbx)
 	if err != nil {
 		return LayerMetadata{}, fmt.Errorf("error running action in sandbox: %w", err)
@@ -197,6 +207,83 @@ func (b *Builder) buildLayer(
 	}
 
 	return exportMeta, nil
+}
+
+// updateEnvdInSandbox updates the envd binary in the sandbox to the latest version.
+func (b *Builder) updateEnvdInSandbox(
+	ctx context.Context,
+	tracer trace.Tracer,
+	postProcessor *writer.PostProcessor,
+	sbx *sandbox.Sandbox,
+) error {
+	ctx, childSpan := tracer.Start(ctx, "update-envd")
+	defer childSpan.End()
+
+	envdVersion, err := envd.GetEnvdVersion(ctx)
+	if err != nil {
+		return fmt.Errorf("error getting envd version: %w", err)
+	}
+	postProcessor.Debug(fmt.Sprintf("Updating envd to version v%s", envdVersion))
+
+	// Step 1: Copy the updated envd binary from host to /tmp in sandbox
+	tmpEnvdPath := "/tmp/envd_updated"
+	err = sandboxtools.CopyFile(
+		ctx,
+		b.tracer,
+		b.proxy,
+		sbx.Metadata.Config.SandboxId,
+		"root",
+		storage.HostEnvdPath,
+		tmpEnvdPath,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to copy envd binary to sandbox: %w", err)
+	}
+
+	// Step 2: Replace the binary
+	replaceEnvdCmd := fmt.Sprintf(`
+		# Replace the binary and set permissions
+		chmod +x %s
+		mv -f %s %s
+	`, tmpEnvdPath, tmpEnvdPath, storage.GuestEnvdPath)
+
+	err = sandboxtools.RunCommandWithLogger(
+		ctx,
+		b.tracer,
+		b.proxy,
+		postProcessor,
+		zap.DebugLevel,
+		"update-envd-replace",
+		sbx.Metadata.Config.SandboxId,
+		replaceEnvdCmd,
+		sandboxtools.CommandMetadata{User: "root"},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to replace envd binary: %w", err)
+	}
+
+	// Step 3: Restart the systemd envd service
+	// Error is ignored because it's expected the envd connection will be lost
+	_ = sandboxtools.RunCommand(
+		ctx,
+		b.tracer,
+		b.proxy,
+		sbx.Metadata.Config.SandboxId,
+		"systemctl restart envd",
+		sandboxtools.CommandMetadata{User: "root"},
+	)
+
+	// Step 4: Wait for envd to initialize
+	err = sbx.WaitForEnvd(
+		ctx,
+		b.tracer,
+		waitEnvdTimeout,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to wait for envd initialization after update: %w", err)
+	}
+
+	return nil
 }
 
 func pauseAndUpload(
