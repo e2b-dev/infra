@@ -24,7 +24,7 @@ func NewCachedProvider(rootPath string, chunksize int, inner StorageProvider) *C
 
 func (c CachedProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
 	go func(ctx context.Context) {
-		c.deleteObjectsWithPrefix(ctx, prefix)
+		c.deleteObjectsWithPrefix(prefix)
 	}(context.WithoutCancel(ctx))
 
 	return c.inner.DeleteObjectsWithPrefix(ctx, prefix)
@@ -49,8 +49,22 @@ func (c CachedProvider) GetDetails() string {
 		c.rootPath, c.inner.GetDetails())
 }
 
-func (c CachedProvider) deleteObjectsWithPrefix(ctx context.Context, prefix string) {
-	panic("implement me")
+func (c CachedProvider) deleteObjectsWithPrefix(prefix string) {
+	fullPrefix := filepath.Join(c.rootPath, prefix)
+	paths, err := filepath.Glob(fullPrefix + "*")
+	if err != nil {
+		zap.L().Error("failed to glob objects with prefix", zap.String("prefix", prefix), zap.Error(err))
+		return
+	}
+
+	for _, path := range paths {
+		if err = os.Remove(path); err != nil {
+			zap.L().Error("failed to remove object with prefix",
+				zap.String("prefix", prefix),
+				zap.String("path", path),
+				zap.Error(err))
+		}
+	}
 }
 
 var _ StorageProvider = (*CachedProvider)(nil)
