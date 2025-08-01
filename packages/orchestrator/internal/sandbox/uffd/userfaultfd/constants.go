@@ -1,4 +1,4 @@
-package uffd
+package userfaultfd
 
 // https://docs.kernel.org/admin-guide/mm/userfaultfd.html
 // https://man7.org/linux/man-pages/man2/userfaultfd.2.html
