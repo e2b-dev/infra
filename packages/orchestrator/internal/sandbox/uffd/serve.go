@@ -52,6 +52,8 @@ func Serve(
 
 	var eg errgroup.Group
 
+	missingPagesBeingHandled := map[int64]struct{}{}
+
 outerLoop:
 	for {
 		if _, err := unix.Poll(
@@ -151,6 +153,12 @@ outerLoop:
 
 		offset := int64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
 		pagesize := int64(mapping.PageSize)
+
+		if _, ok := missingPagesBeingHandled[offset]; ok {
+			continue
+		}
+
+		missingPagesBeingHandled[offset] = struct{}{}
 
 		eg.Go(func() error {
 			defer func() {
