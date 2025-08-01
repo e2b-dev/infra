@@ -437,177 +437,108 @@ func TestTemplateBuildFromTemplateCommandOverride(t *testing.T) {
 func TestTemplateBuildFromTemplateInheritance(t *testing.T) {
 	t.Parallel()
 
-	testCases := []struct {
-		name            string
-		baseTemplate    string
-		baseConfig      api.TemplateBuildStartV2
-		derivedTemplate string
-		derivedConfig   api.TemplateBuildStartV2
-	}{
-		{
-			name:         "ENV variable inheritance from base template",
-			baseTemplate: "test-ubuntu-base-env-inheritance",
-			baseConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
-					{
-						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"BASE_ENV", "inherited_value"}),
-					},
-				}),
+	baseTemplate := "test-ubuntu-inheritance-base"
+	derivedTemplate := "test-ubuntu-inheritance-derived"
+
+	// Base template with ENV and WORKDIR settings
+	baseConfig := api.TemplateBuildStartV2{
+		Force:     utils.ToPtr(ForceBaseBuild),
+		FromImage: utils.ToPtr("ubuntu:22.04"),
+		Steps: utils.ToPtr([]api.TemplateStep{
+			{
+				Type:  "ENV",
+				Force: utils.ToPtr(true),
+				Args:  utils.ToPtr([]string{"BASE_ENV", "inherited_value"}),
 			},
-			derivedTemplate: "test-ubuntu-derived-env-inheritance",
-			derivedConfig: api.TemplateBuildStartV2{
-				Force:        utils.ToPtr(true),
-				FromTemplate: utils.ToPtr("test-ubuntu-base-env-inheritance"),
-				Steps: utils.ToPtr([]api.TemplateStep{
-					{
-						Type: "RUN",
-						Args: utils.ToPtr([]string{": \"${BASE_ENV:?BASE_ENV is not set or empty}\"; echo \"Inherited: $BASE_ENV\""}),
-					},
-				}),
+			{
+				Type:  "ENV",
+				Force: utils.ToPtr(true),
+				Args:  utils.ToPtr([]string{"OVERRIDE_VAR", "base_value"}),
 			},
-		},
-		{
-			name:         "WORKDIR inheritance from base template",
-			baseTemplate: "test-ubuntu-base-workdir-inheritance",
-			baseConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
-					{
-						Type:  "WORKDIR",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"/base/workdir"}),
-					},
-				}),
+			{
+				Type:  "WORKDIR",
+				Force: utils.ToPtr(true),
+				Args:  utils.ToPtr([]string{"/base/workdir"}),
 			},
-			derivedTemplate: "test-ubuntu-derived-workdir-inheritance",
-			derivedConfig: api.TemplateBuildStartV2{
-				Force:        utils.ToPtr(true),
-				FromTemplate: utils.ToPtr("test-ubuntu-base-workdir-inheritance"),
-				Steps: utils.ToPtr([]api.TemplateStep{
-					{
-						Type: "RUN",
-						Args: utils.ToPtr([]string{"[[ \"$(pwd)\" == \"/base/workdir\" ]] || exit 1"}),
-					},
-				}),
-			},
-		},
-		{
-			name:         "ENV variable override in derived template",
-			baseTemplate: "test-ubuntu-base-env-override",
-			baseConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
-					{
-						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"OVERRIDE_VAR", "base_value"}),
-					},
-				}),
-			},
-			derivedTemplate: "test-ubuntu-derived-env-override",
-			derivedConfig: api.TemplateBuildStartV2{
-				Force:        utils.ToPtr(true),
-				FromTemplate: utils.ToPtr("test-ubuntu-base-env-override"),
-				Steps: utils.ToPtr([]api.TemplateStep{
-					{
-						Type: "ENV",
-						Args: utils.ToPtr([]string{"OVERRIDE_VAR", "derived_value"}),
-					},
-					{
-						Type: "RUN",
-						Args: utils.ToPtr([]string{"[[ \"$OVERRIDE_VAR\" == \"derived_value\" ]] || exit 1"}),
-					},
-				}),
-			},
-		},
+		}),
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			// First build the base template
-			assert.True(t, buildTemplate(t, tc.baseTemplate, tc.baseConfig, defaultBuildLogHandler(t)))
-
-			// Then build the derived template from the base template
-			assert.True(t, buildTemplate(t, tc.derivedTemplate, tc.derivedConfig, defaultBuildLogHandler(t)))
-		})
+	// Derived template that tests inheritance and override
+	derivedConfig := api.TemplateBuildStartV2{
+		Force:        utils.ToPtr(true),
+		FromTemplate: utils.ToPtr(baseTemplate),
+		Steps: utils.ToPtr([]api.TemplateStep{
+			{
+				Type: "ENV",
+				Args: utils.ToPtr([]string{"OVERRIDE_VAR", "derived_value"}),
+			},
+			{
+				Type: "RUN",
+				Args: utils.ToPtr([]string{
+					// Test ENV inheritance
+					": \"${BASE_ENV:?BASE_ENV is not set or empty}\"; " +
+						"[[ \"$BASE_ENV\" == \"inherited_value\" ]] || exit 1; " +
+						// Test ENV override
+						"[[ \"$OVERRIDE_VAR\" == \"derived_value\" ]] || exit 2; " +
+						// Test WORKDIR inheritance
+						"[[ \"$(pwd)\" == \"/base/workdir\" ]] || exit 3; " +
+						"echo 'All inheritance tests passed'",
+				}),
+			},
+		}),
 	}
+
+	// First build the base template
+	assert.True(t, buildTemplate(t, baseTemplate, baseConfig, defaultBuildLogHandler(t)))
+
+	// Then build the derived template from the base template
+	assert.True(t, buildTemplate(t, derivedTemplate, derivedConfig, defaultBuildLogHandler(t)))
 }
 
 func TestTemplateBuildFromTemplateStartCommand(t *testing.T) {
 	t.Parallel()
 
-	testCases := []struct {
-		name            string
-		baseTemplate    string
-		baseConfig      api.TemplateBuildStartV2
-		derivedTemplate string
-		derivedConfig   api.TemplateBuildStartV2
-	}{
-		{
-			name:         "Start command with ENV inheritance from base template",
-			baseTemplate: "test-ubuntu-base-start-env",
-			baseConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
-					{
-						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"START_ENV", "start_value"}),
-					},
-				}),
+	baseTemplate := "test-ubuntu-start-base"
+	derivedTemplate := "test-ubuntu-start-derived"
+
+	// Base template with ENV and WORKDIR for start command inheritance
+	baseConfig := api.TemplateBuildStartV2{
+		Force:     utils.ToPtr(ForceBaseBuild),
+		FromImage: utils.ToPtr("ubuntu:22.04"),
+		Steps: utils.ToPtr([]api.TemplateStep{
+			{
+				Type:  "ENV",
+				Force: utils.ToPtr(true),
+				Args:  utils.ToPtr([]string{"START_ENV", "start_value"}),
 			},
-			derivedTemplate: "test-ubuntu-derived-start-env",
-			derivedConfig: api.TemplateBuildStartV2{
-				Force:        utils.ToPtr(true),
-				FromTemplate: utils.ToPtr("test-ubuntu-base-start-env"),
-				StartCmd:     utils.ToPtr(": \"${START_ENV:?START_ENV is not set or empty}\"; echo \"Start command with: $START_ENV\""),
-				ReadyCmd:     utils.ToPtr("sleep 5"),
+			{
+				Type:  "WORKDIR",
+				Force: utils.ToPtr(true),
+				Args:  utils.ToPtr([]string{"/start/workdir"}),
 			},
-		},
-		{
-			name:         "Start command with WORKDIR inheritance from base template",
-			baseTemplate: "test-ubuntu-base-start-workdir",
-			baseConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
-					{
-						Type:  "WORKDIR",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"/start/workdir"}),
-					},
-				}),
-			},
-			derivedTemplate: "test-ubuntu-derived-start-workdir",
-			derivedConfig: api.TemplateBuildStartV2{
-				Force:        utils.ToPtr(true),
-				FromTemplate: utils.ToPtr("test-ubuntu-base-start-workdir"),
-				StartCmd:     utils.ToPtr("[[ \"$(pwd)\" == \"/start/workdir\" ]] || exit 1"),
-				ReadyCmd:     utils.ToPtr("sleep 5"),
-			},
-		},
+		}),
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			// First build the base template
-			assert.True(t, buildTemplate(t, tc.baseTemplate, tc.baseConfig, defaultBuildLogHandler(t)))
-
-			// Then build the derived template from the base template
-			assert.True(t, buildTemplate(t, tc.derivedTemplate, tc.derivedConfig, defaultBuildLogHandler(t)))
-		})
+	// Derived template with start command that tests ENV and WORKDIR inheritance
+	derivedConfig := api.TemplateBuildStartV2{
+		Force:        utils.ToPtr(true),
+		FromTemplate: utils.ToPtr(baseTemplate),
+		StartCmd: utils.ToPtr(
+			// Test ENV inheritance in start command
+			": \"${START_ENV:?START_ENV is not set or empty}\"; " +
+				"[[ \"$START_ENV\" == \"start_value\" ]] || exit 1; " +
+				// Test WORKDIR inheritance in start command
+				"[[ \"$(pwd)\" == \"/start/workdir\" ]] || exit 2; " +
+				"echo 'Start command inheritance tests passed'",
+		),
+		ReadyCmd: utils.ToPtr("sleep 5"),
 	}
+
+	// First build the base template
+	assert.True(t, buildTemplate(t, baseTemplate, baseConfig, defaultBuildLogHandler(t)))
+
+	// Then build the derived template from the base template
+	assert.True(t, buildTemplate(t, derivedTemplate, derivedConfig, defaultBuildLogHandler(t)))
 }
 
 func TestTemplateBuildFromTemplateBaseCommandsInheritance(t *testing.T) {
