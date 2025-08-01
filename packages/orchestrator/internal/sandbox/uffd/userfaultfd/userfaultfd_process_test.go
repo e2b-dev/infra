@@ -1,5 +1,8 @@
 package userfaultfd
 
+// This tests creating uffd in a process and handling the page faults in another process.
+// It also tests reregistering the uffd with the additional wp flag in the another process (in "orchestrator") after registering the missing handler already (in "FC").
+
 import (
 	"bytes"
 	"fmt"

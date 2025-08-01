@@ -6,7 +6,6 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/loopholelabs/userfaultfd-go/pkg/constants"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
@@ -171,7 +170,7 @@ outerLoop:
 			continue
 		}
 
-		buf := make([]byte, unsafe.Sizeof(constants.UffdMsg{}))
+		buf := make([]byte, unsafe.Sizeof(UffdMsg{}))
 
 		for {
 			n, err := syscall.Read(int(h.fd), buf)
@@ -227,7 +226,7 @@ outerLoop:
 			defer func() {
 				if r := recover(); r != nil {
 					zap.L().Error("UFFD serve panic", append(fields, zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))...)
-					fmt.Printf("[sandbox %s]: recovered from panic in uffd serve (offset: %d, pagesize: %d): %v\n", offset, pagesize, r)
+					fmt.Printf("[uffd]: recovered from panic in uffd serve (offset: %d, pagesize: %d): %v\n", offset, pagesize, r)
 				}
 			}()
 

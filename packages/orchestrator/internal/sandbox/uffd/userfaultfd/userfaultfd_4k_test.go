@@ -11,6 +11,53 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
+func TestUffdMissing(t *testing.T) {
+	pagesize := int64(header.PageSize)
+	data, size := prepareTestData(pagesize)
+
+	uffd, err := NewUserfaultfd(syscall.O_CLOEXEC|syscall.O_NONBLOCK, false)
+	if err != nil {
+		t.Fatal("failed to create userfaultfd", err)
+	}
+	defer uffd.Close()
+
+	err = uffd.ConfigureApi(0)
+	if err != nil {
+		t.Fatal("failed to configure uffd api", err)
+	}
+
+	memoryArea, memoryStart := init4KPageMmap(size)
+
+	err = uffd.Register(memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING)
+	if err != nil {
+		t.Fatal("failed to register memory", err)
+	}
+
+	mappings := newTestMappings(memoryStart, size, pagesize)
+
+	fdExit, err := NewFdExit()
+	if err != nil {
+		t.Fatal("failed to create fd exit", err)
+	}
+	defer fdExit.Close()
+
+	go func() {
+		err := uffd.Serve(mappings, data, fdExit)
+		if err != nil {
+			fmt.Println("[TestUffdMissing] failed to serve uffd", err)
+		}
+	}()
+
+	d, err := data.Slice(0, pagesize)
+	if err != nil {
+		t.Fatal("cannot read content", err)
+	}
+
+	if !bytes.Equal(memoryArea[0:pagesize], d) {
+		t.Fatalf("content mismatch: want %q, got %q", d, memoryArea[:pagesize])
+	}
+}
+
 func TestUffdWriteProtect(t *testing.T) {
 	pagesize := int64(header.PageSize)
 	data, size := prepareTestData(pagesize)
@@ -113,53 +160,6 @@ func TestUffdWriteProtectWithMissing(t *testing.T) {
 	memoryArea[0] = 'A'
 
 	// TODO: the write should be unblocked here, ideally we should also wait to check it was blocked then unblocked from the uffd
-}
-
-func TestUffdMissing(t *testing.T) {
-	pagesize := int64(header.PageSize)
-	data, size := prepareTestData(pagesize)
-
-	uffd, err := NewUserfaultfd(syscall.O_CLOEXEC|syscall.O_NONBLOCK, false)
-	if err != nil {
-		t.Fatal("failed to create userfaultfd", err)
-	}
-	defer uffd.Close()
-
-	err = uffd.ConfigureApi(0)
-	if err != nil {
-		t.Fatal("failed to configure uffd api", err)
-	}
-
-	memoryArea, memoryStart := init4KPageMmap(size)
-
-	err = uffd.Register(memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING)
-	if err != nil {
-		t.Fatal("failed to register memory", err)
-	}
-
-	mappings := newTestMappings(memoryStart, size, pagesize)
-
-	fdExit, err := NewFdExit()
-	if err != nil {
-		t.Fatal("failed to create fd exit", err)
-	}
-	defer fdExit.Close()
-
-	go func() {
-		err := uffd.Serve(mappings, data, fdExit)
-		if err != nil {
-			fmt.Println("[TestUffdMissing] failed to serve uffd", err)
-		}
-	}()
-
-	d, err := data.Slice(0, pagesize)
-	if err != nil {
-		t.Fatal("cannot read content", err)
-	}
-
-	if !bytes.Equal(memoryArea[0:pagesize], d) {
-		t.Fatalf("content mismatch: want %q, got %q", d, memoryArea[:pagesize])
-	}
 }
 
 // We are trying to simulate registering the missing handler in the FC and then registering the missing+wp handler again in the orchestrator
