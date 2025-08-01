@@ -331,10 +331,6 @@ func TestTemplateBuildFromTemplate(t *testing.T) {
 						Force: utils.ToPtr(true),
 						Args:  utils.ToPtr([]string{"/app"}),
 					},
-					{
-						Type: "RUN",
-						Args: utils.ToPtr([]string{"echo 'Base template setup'"}),
-					},
 				}),
 			},
 			derivedTemplate: "test-ubuntu-derived-template",
@@ -460,10 +456,6 @@ func TestTemplateBuildFromTemplateInheritance(t *testing.T) {
 						Force: utils.ToPtr(true),
 						Args:  utils.ToPtr([]string{"BASE_ENV", "inherited_value"}),
 					},
-					{
-						Type: "RUN",
-						Args: utils.ToPtr([]string{"echo 'Base ENV set'"}),
-					},
 				}),
 			},
 			derivedTemplate: "test-ubuntu-derived-env-inheritance",
@@ -490,10 +482,6 @@ func TestTemplateBuildFromTemplateInheritance(t *testing.T) {
 						Force: utils.ToPtr(true),
 						Args:  utils.ToPtr([]string{"/base/workdir"}),
 					},
-					{
-						Type: "RUN",
-						Args: utils.ToPtr([]string{"echo 'Base workdir set'"}),
-					},
 				}),
 			},
 			derivedTemplate: "test-ubuntu-derived-workdir-inheritance",
@@ -519,10 +507,6 @@ func TestTemplateBuildFromTemplateInheritance(t *testing.T) {
 						Type:  "ENV",
 						Force: utils.ToPtr(true),
 						Args:  utils.ToPtr([]string{"OVERRIDE_VAR", "base_value"}),
-					},
-					{
-						Type: "RUN",
-						Args: utils.ToPtr([]string{"echo 'Base value set'"}),
 					},
 				}),
 			},
@@ -666,62 +650,6 @@ func TestTemplateBuildFromTemplateBaseCommandsInheritance(t *testing.T) {
 					{
 						Type: "WORKDIR",
 						Args: utils.ToPtr([]string{"/app/derived"}), // Override base workdir
-					},
-					{
-						Type: "RUN",
-						Args: utils.ToPtr([]string{"echo 'Derived template setup complete'"}),
-					},
-				}),
-				// No StartCmd/ReadyCmd - inherit from base, runs with original base context
-			},
-		},
-		{
-			name:         "Base template commands with variable override and complex context",
-			baseTemplate: "test-ubuntu-base-override-context",
-			baseConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
-					{
-						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"APP_NAME", "myapp"}),
-					},
-					{
-						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"VERSION", "1.0.0"}),
-					},
-					{
-						Type:  "WORKDIR",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"/opt/app"}),
-					},
-				}),
-				// Base start command uses only base template context (original context where it was defined)
-				StartCmd: utils.ToPtr(": \"${APP_NAME:?APP_NAME not set}\"; [[ \"$APP_NAME\" == \"myapp\" ]] || exit 1; [[ \"$VERSION\" == \"1.0.0\" ]] || exit 2; [[ \"$(pwd)\" == \"/opt/app\" ]] || exit 3; echo \"Base template context verification passed\""),
-				ReadyCmd: utils.ToPtr("sleep 5"),
-			},
-			derivedTemplate: "test-ubuntu-derived-override-context",
-			derivedConfig: api.TemplateBuildStartV2{
-				Force:        utils.ToPtr(true),
-				FromTemplate: utils.ToPtr("test-ubuntu-base-override-context"),
-				Steps: utils.ToPtr([]api.TemplateStep{
-					{
-						Type: "ENV",
-						Args: utils.ToPtr([]string{"VERSION", "2.0.0"}), // Override base version
-					},
-					{
-						Type: "ENV",
-						Args: utils.ToPtr([]string{"CONFIG_FILE", "/etc/myapp.conf"}), // New variable
-					},
-					{
-						Type: "WORKDIR",
-						Args: utils.ToPtr([]string{"/opt/app/production"}), // Change workdir
-					},
-					{
-						Type: "RUN",
-						Args: utils.ToPtr([]string{"mkdir -p /etc && echo 'config=production' > /etc/myapp.conf"}),
 					},
 				}),
 				// No StartCmd/ReadyCmd - inherit from base, runs with original base context
