@@ -3,6 +3,7 @@ package uffd
 import (
 	"errors"
 	"fmt"
+	"os"
 	"syscall"
 	"unsafe"
 
@@ -13,6 +14,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
@@ -51,6 +53,8 @@ func Serve(
 	}
 
 	var eg errgroup.Group
+
+	missingPagesBeingHandled := map[int64]struct{}{}
 
 outerLoop:
 	for {
@@ -151,6 +155,12 @@ outerLoop:
 
 		offset := int64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
 		pagesize := int64(mapping.PageSize)
+
+		if _, ok := missingPagesBeingHandled[offset]; ok {
+			continue
+		}
+
+		missingPagesBeingHandled[offset] = struct{}{}
 
 		eg.Go(func() error {
 			defer func() {
