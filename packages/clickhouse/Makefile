@@ -26,10 +26,6 @@ build:
 build-and-upload:build
 	@docker push "$(CLICKHOUSE_MIGRATOR_IMAGE)"
 	
-.PHONY: build-locally
-build-locally:
-	docker build --no-cache --tag "$(CLICKHOUSE_MIGRATOR_LOCAL_IMAGE)" .
-
 .PHONY: connect-clickhouse
 connect-clickhouse:
 	CLICKHOUSE_IG=$$(gcloud compute instance-groups list \

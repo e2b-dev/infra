@@ -121,9 +121,9 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		sbxlogger.E(sbx).Info("Sandbox killed")
 	}(context.WithoutCancel(ctx))
 
-	label := clickhouse.SandboxEventLabelResume
-	if !req.Sandbox.Snapshot {
-		label = clickhouse.SandboxEventLabelCreate
+	label := clickhouse.SandboxEventLabelCreate
+	if req.Sandbox.Snapshot {
+		label = clickhouse.SandboxEventLabelResume
 	}
 
 	go func(label clickhouse.SandboxEventLabel) {
@@ -148,7 +148,6 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 				sbxlogger.I(sbx).Error("error inserting sandbox event during create", zap.Error(err))
 			}
 		}
-
 	}(label)
 
 	return &orchestrator.SandboxCreateResponse{
