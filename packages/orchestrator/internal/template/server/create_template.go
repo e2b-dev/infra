@@ -53,16 +53,17 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	}
 
 	template := config.TemplateConfig{
-		CacheScope: cacheScope,
-		VCpuCount:  int64(cfg.VCpuCount),
-		MemoryMB:   int64(cfg.MemoryMB),
-		StartCmd:   cfg.StartCommand,
-		ReadyCmd:   cfg.ReadyCommand,
-		DiskSizeMB: int64(cfg.DiskSizeMB),
-		HugePages:  cfg.HugePages,
-		FromImage:  cfg.FromImage,
-		Force:      cfg.Force,
-		Steps:      cfg.Steps,
+		CacheScope:   cacheScope,
+		VCpuCount:    int64(cfg.VCpuCount),
+		MemoryMB:     int64(cfg.MemoryMB),
+		StartCmd:     cfg.StartCommand,
+		ReadyCmd:     cfg.ReadyCommand,
+		DiskSizeMB:   int64(cfg.DiskSizeMB),
+		HugePages:    cfg.HugePages,
+		FromImage:    cfg.GetFromImage(),
+		FromTemplate: cfg.GetFromTemplate(),
+		Force:        cfg.Force,
+		Steps:        cfg.Steps,
 	}
 
 	logs := cache.NewSafeBuffer()

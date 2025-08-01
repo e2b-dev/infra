@@ -62,5 +62,5 @@ func (e *Empty) Header() *header.Header {
 }
 
 func (e *Empty) UpdateSize() error {
-	return nil
+	return fmt.Errorf("update size not supported for empty block")
 }
