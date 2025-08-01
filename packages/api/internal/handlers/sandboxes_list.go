@@ -214,6 +214,13 @@ func snapshotsToPaginatedSandboxes(snapshots []queries.GetSnapshotsWithCursorRow
 			alias = &record.Aliases[0]
 		}
 
+		diskSize := int32(0)
+		if build.TotalDiskSizeMb != nil {
+			diskSize = int32(*build.TotalDiskSizeMb)
+		} else {
+			zap.L().Error("disk size is not set for the sandbox", zap.String("sandbox_id", snapshot.SandboxID))
+		}
+
 		sandbox := utils.PaginatedSandbox{
 			ListedSandbox: api.ListedSandbox{
 				ClientID:   consts.ClientID, // for backwards compatibility we need to return a client id
@@ -223,6 +230,7 @@ func snapshotsToPaginatedSandboxes(snapshots []queries.GetSnapshotsWithCursorRow
 				StartedAt:  snapshot.SandboxStartedAt.Time,
 				CpuCount:   int32(build.Vcpu),
 				MemoryMB:   int32(build.RamMb),
+				DiskSizeMB: diskSize,
 				EndAt:      snapshot.CreatedAt.Time,
 				State:      api.Paused,
 			},
@@ -254,6 +262,7 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []*instance.InstanceInfo)
 				StartedAt:  info.StartTime,
 				CpuCount:   api.CPUCount(info.VCpu),
 				MemoryMB:   api.MemoryMB(info.RamMB),
+				DiskSizeMB: api.DiskSizeMB(info.TotalDiskSizeMB),
 				EndAt:      info.GetEndTime(),
 				State:      api.Running,
 			},
