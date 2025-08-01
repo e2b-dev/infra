@@ -1043,8 +1043,6 @@ func (siw *ServerInterfaceWrapper) GetV2Sandboxes(c *gin.Context) {
 // PostV2Templates operation middleware
 func (siw *ServerInterfaceWrapper) PostV2Templates(c *gin.Context) {
 
-	c.Set(AccessTokenAuthScopes, []string{})
-
 	c.Set(ApiKeyAuthScopes, []string{})
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
@@ -1081,8 +1079,6 @@ func (siw *ServerInterfaceWrapper) PostV2TemplatesTemplateIDBuildsBuildID(c *gin
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter buildID: %w", err), http.StatusBadRequest)
 		return
 	}
-
-	c.Set(AccessTokenAuthScopes, []string{})
 
 	c.Set(ApiKeyAuthScopes, []string{})
 

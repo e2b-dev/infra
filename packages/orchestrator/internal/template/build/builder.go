@@ -123,9 +123,9 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 	// Validate template, update force layers if needed
 	template = forceSteps(template)
 
-	isOldBuild := template.FromImage == ""
+	isV1Build := template.FromImage == "" && template.FromTemplate == nil
 
-	postProcessor := writer.NewPostProcessor(ctx, logsWriter, isOldBuild)
+	postProcessor := writer.NewPostProcessor(ctx, logsWriter, isV1Build)
 	go postProcessor.Start()
 	defer func() {
 		postProcessor.Stop(ctx, e)
@@ -163,21 +163,27 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		return nil, fmt.Errorf("error getting base hash: %w", err)
 	}
 
-	lastCached, baseMetadata, err := b.setupBase(ctx, cacheScope, finalMetadata, template, lastHash, isOldBuild)
+	lastCached, baseMetadata, err := b.setupBase(ctx, cacheScope, finalMetadata, template, lastHash, isV1Build)
 	if err != nil {
 		return nil, fmt.Errorf("error setting up build: %w", err)
 	}
 
 	// Print the base layer information
-	fromImage := template.FromImage
-	if fromImage == "" {
-		tag, err := b.artifactRegistry.GetTag(ctx, finalMetadata.TemplateID, finalMetadata.BuildID)
-		if err != nil {
-			return nil, fmt.Errorf("error getting tag for template: %w", err)
+	var baseSource string
+	if template.FromTemplate != nil {
+		baseSource = "FROM TEMPLATE " + template.FromTemplate.GetAlias()
+	} else {
+		fromImage := template.FromImage
+		if fromImage == "" {
+			tag, err := b.artifactRegistry.GetTag(ctx, finalMetadata.TemplateID, finalMetadata.BuildID)
+			if err != nil {
+				return nil, fmt.Errorf("error getting tag for template: %w", err)
+			}
+			fromImage = tag
 		}
-		fromImage = tag
+		baseSource = "FROM " + fromImage
 	}
-	postProcessor.Info(layerInfo(lastCached, "base", "FROM "+fromImage, lastHash))
+	postProcessor.Info(layerInfo(lastCached, "base", baseSource, lastHash))
 
 	// Build the base layer if not cached
 	if !lastCached {
@@ -414,16 +420,11 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 						return sandboxtools.CommandMetadata{}, fmt.Errorf("error processing layer: %w", err)
 					}
 
-					// Sync FS changes to the FS after execution
-					err = sandboxtools.RunCommand(
+					err = syncChangesToDisk(
 						ctx,
 						b.tracer,
 						b.proxy,
 						sbx.Metadata.Config.SandboxId,
-						"sync",
-						sandboxtools.CommandMetadata{
-							User: "root",
-						},
 					)
 					if err != nil {
 						return sandboxtools.CommandMetadata{}, fmt.Errorf("error running sync command: %w", err)
@@ -448,8 +449,27 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 	// Build Steps
 
 	// Run post-processing actions in the sandbox
+	var startMetadata *StartMetadata
+	if template.StartCmd != "" || template.ReadyCmd != "" {
+		startMetadata = &StartMetadata{
+			StartCmd: template.StartCmd,
+			ReadyCmd: template.ReadyCmd,
+			Metadata: sourceMetadata.Metadata,
+		}
+	}
+
+	// If the template is built from another template, and the start metadata are not set,
+	// use the start metadata from the template it is built from.
+	if startMetadata == nil && template.FromTemplate != nil {
+		tm, err := ReadTemplateMetadata(ctx, b.templateStorage, template.FromTemplate.BuildID)
+		if err != nil {
+			return nil, fmt.Errorf("error reading from template metadata: %w", err)
+		}
+		startMetadata = tm.Start
+	}
+
 	lastHash = hashKeys(lastHash, "config-run-cmd")
-	_, err = b.buildLayer(
+	finalLayer, err := b.buildLayer(
 		ctx,
 		postProcessor,
 		uploadErrGroup,
@@ -468,7 +488,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		sourceMetadata,
 		finalMetadata,
 		false,
-		b.postProcessingFn(postProcessor, finalMetadata, template, sourceMetadata.Metadata),
+		b.postProcessingFn(postProcessor, finalMetadata, sourceMetadata.Metadata, startMetadata),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error running start and ready commands in sandbox: %w", err)
@@ -486,6 +506,24 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 	rootfsSize, err := getRootfsSize(ctx, b.templateStorage, baseMetadata.Template)
 	if err != nil {
 		return nil, fmt.Errorf("error getting rootfs size: %w", err)
+	}
+
+	var fromTemplateMetadata *FromTemplateMetadata
+	if template.FromTemplate != nil {
+		fromTemplateMetadata = &FromTemplateMetadata{
+			Alias:   template.FromTemplate.GetAlias(),
+			BuildID: template.FromTemplate.BuildID,
+		}
+	}
+	err = saveTemplateMetadata(ctx, b.templateStorage, finalMetadata.BuildID, TemplateMetadata{
+		Template:     finalLayer.Template,
+		Metadata:     finalLayer.Metadata,
+		FromImage:    &template.FromImage,
+		FromTemplate: fromTemplateMetadata,
+		Start:        startMetadata,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error saving template metadata: %w", err)
 	}
 
 	return &Result{
@@ -553,65 +591,98 @@ func (b *Builder) setupBase(
 	finalMetadata storage.TemplateFiles,
 	template config.TemplateConfig,
 	hash string,
-	isOldBuild bool,
+	isV1Build bool,
 ) (bool, LayerMetadata, error) {
-	cmdMeta := sandboxtools.CommandMetadata{
-		User:    defaultUser,
-		WorkDir: nil,
-		EnvVars: make(map[string]string),
-	}
-
-	// This is a compatibility for old template builds
-	if isOldBuild {
-		cwd := "/home/user"
-		cmdMeta.WorkDir = &cwd
-	}
-
-	var baseMetadata LayerMetadata
-	bm, err := layerMetaFromHash(ctx, b.buildStorage, cacheScope, hash)
-	if err != nil {
-		b.logger.Info("base layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
-		baseMetadata = LayerMetadata{
-			Template: storage.TemplateFiles{
-				TemplateID:         id.Generate(),
-				BuildID:            uuid.New().String(),
-				KernelVersion:      finalMetadata.KernelVersion,
-				FirecrackerVersion: finalMetadata.FirecrackerVersion,
-			},
-			Metadata: cmdMeta,
+	switch {
+	case template.FromTemplate != nil:
+		// If the template is built from another template, use its metadata
+		tm, err := ReadTemplateMetadata(ctx, b.templateStorage, template.FromTemplate.BuildID)
+		if err != nil {
+			return false, LayerMetadata{}, fmt.Errorf("error getting base layer from cache, you may need to rebuild the base template: %w", err)
 		}
-	} else {
-		baseMetadata = bm
-	}
 
-	// Invalidate base cache
-	if template.Force != nil && *template.Force {
-		baseMetadata = LayerMetadata{
-			Template: storage.TemplateFiles{
-				TemplateID:         id.Generate(),
-				BuildID:            uuid.New().String(),
-				KernelVersion:      finalMetadata.KernelVersion,
-				FirecrackerVersion: finalMetadata.FirecrackerVersion,
-			},
-			Metadata: cmdMeta,
+		return true, LayerMetadata{
+			Template: tm.Template,
+			Metadata: tm.Metadata,
+		}, nil
+	default:
+		cmdMeta := sandboxtools.CommandMetadata{
+			User:    defaultUser,
+			WorkDir: nil,
+			EnvVars: make(map[string]string),
 		}
-	}
 
-	baseCached, err := isCached(ctx, b.templateStorage, baseMetadata)
-	if err != nil {
-		return false, LayerMetadata{}, fmt.Errorf("error checking if base layer is cached: %w", err)
-	}
+		// This is a compatibility for v1 template builds
+		if isV1Build {
+			cwd := "/home/user"
+			cmdMeta.WorkDir = &cwd
+		}
 
-	return baseCached, baseMetadata, nil
+		var baseMetadata LayerMetadata
+		bm, err := layerMetaFromHash(ctx, b.buildStorage, cacheScope, hash)
+		if err != nil {
+			b.logger.Info("base layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
+
+			baseMetadata = LayerMetadata{
+				Template: storage.TemplateFiles{
+					TemplateID:         id.Generate(),
+					BuildID:            uuid.New().String(),
+					KernelVersion:      finalMetadata.KernelVersion,
+					FirecrackerVersion: finalMetadata.FirecrackerVersion,
+				},
+				Metadata: cmdMeta,
+			}
+		} else {
+			baseMetadata = bm
+		}
+
+		// Invalidate base cache
+		if template.Force != nil && *template.Force {
+			baseMetadata = LayerMetadata{
+				Template: storage.TemplateFiles{
+					TemplateID:         id.Generate(),
+					BuildID:            uuid.New().String(),
+					KernelVersion:      finalMetadata.KernelVersion,
+					FirecrackerVersion: finalMetadata.FirecrackerVersion,
+				},
+				Metadata: cmdMeta,
+			}
+		}
+
+		baseCached, err := isCached(ctx, b.templateStorage, baseMetadata)
+		if err != nil {
+			return false, LayerMetadata{}, fmt.Errorf("error checking if base layer is cached: %w", err)
+		}
+
+		return baseCached, baseMetadata, nil
+	}
 }
 
 func (b *Builder) postProcessingFn(
 	postProcessor *writer.PostProcessor,
 	finalMetadata storage.TemplateFiles,
-	template config.TemplateConfig,
 	cmdMeta sandboxtools.CommandMetadata,
+	start *StartMetadata,
 ) func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error) {
-	return func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error) {
+	return func(ctx context.Context, sbx *sandbox.Sandbox) (cm sandboxtools.CommandMetadata, e error) {
+		defer func() {
+			if e != nil {
+				return
+			}
+
+			// Ensure all changes are synchronized to disk so the sandbox can be restarted
+			err := syncChangesToDisk(
+				ctx,
+				b.tracer,
+				b.proxy,
+				sbx.Metadata.Config.SandboxId,
+			)
+			if err != nil {
+				e = fmt.Errorf("error running sync command: %w", err)
+				return
+			}
+		}()
+
 		// Run configuration script
 		err := runConfiguration(
 			ctx,
@@ -625,15 +696,19 @@ func (b *Builder) postProcessingFn(
 			return sandboxtools.CommandMetadata{}, fmt.Errorf("error running configuration script: %w", err)
 		}
 
+		if start == nil {
+			return cmdMeta, nil
+		}
+
 		// Start command
 		commandsCtx, commandsCancel := context.WithCancel(ctx)
 		defer commandsCancel()
 
-		var startCmd errgroup.Group
+		var startCmdRun errgroup.Group
 		startCmdConfirm := make(chan struct{})
-		if template.StartCmd != "" {
+		if start.StartCmd != "" {
 			postProcessor.Info("Running start command")
-			startCmd.Go(func() error {
+			startCmdRun.Go(func() error {
 				err := sandboxtools.RunCommandWithConfirmation(
 					commandsCtx,
 					b.tracer,
@@ -642,8 +717,8 @@ func (b *Builder) postProcessingFn(
 					zapcore.InfoLevel,
 					"start",
 					sbx.Metadata.Config.SandboxId,
-					template.StartCmd,
-					cmdMeta,
+					start.StartCmd,
+					start.Metadata,
 					startCmdConfirm,
 				)
 				// If the ctx is canceled, the ready command succeeded and no start command await is necessary.
@@ -661,14 +736,20 @@ func (b *Builder) postProcessingFn(
 		}
 
 		// Ready command
+		readyCmd := start.ReadyCmd
+		if readyCmd == "" {
+			if start.StartCmd == "" {
+				readyCmd = "sleep 0"
+			} else {
+				readyCmd = GetDefaultReadyCommand(finalMetadata)
+			}
+		}
 		err = b.runReadyCommand(
 			commandsCtx,
 			postProcessor,
-			// Use the final template here, because it contains the templateID for final build that is required for customer exceptions.
-			finalMetadata,
-			template,
 			sbx.Metadata.Config.SandboxId,
-			cmdMeta,
+			readyCmd,
+			start.Metadata,
 		)
 		if err != nil {
 			return sandboxtools.CommandMetadata{}, fmt.Errorf("error running ready command: %w", err)
@@ -683,7 +764,7 @@ func (b *Builder) postProcessingFn(
 		// Cancel the start command context (it's running in the background anyway).
 		// If it has already finished, check the error.
 		commandsCancel()
-		err = startCmd.Wait()
+		err = startCmdRun.Wait()
 		if err != nil {
 			return sandboxtools.CommandMetadata{}, fmt.Errorf("error running start command: %w", err)
 		}
@@ -703,4 +784,25 @@ func layerInfo(
 		cachedPrefix = "CACHED "
 	}
 	return fmt.Sprintf("%s[%s] %s [%s]", cachedPrefix, prefix, text, hash)
+}
+
+// syncChangesToDisk synchronizes filesystem changes to the filesystem
+// This is useful to ensure that all changes made in the sandbox are written to disk
+// to be able to re-create the sandbox without resume.
+func syncChangesToDisk(
+	ctx context.Context,
+	tracer trace.Tracer,
+	proxy *proxy.SandboxProxy,
+	sandboxID string,
+) error {
+	return sandboxtools.RunCommand(
+		ctx,
+		tracer,
+		proxy,
+		sandboxID,
+		"sync",
+		sandboxtools.CommandMetadata{
+			User: "root",
+		},
+	)
 }
