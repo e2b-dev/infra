@@ -127,19 +127,28 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}
 
 	go func(label clickhouse.SandboxEventLabel) {
-		err := s.clickhouseClient.InsertSandboxEvent(context.Background(), clickhouse.SandboxEvent{
-			Timestamp:          time.Now().UTC(),
-			SandboxID:          sbx.Config.SandboxId,
-			SandboxTemplateID:  sbx.Config.TemplateId,
-			SandboxTeamID:      sbx.Config.TeamId,
-			SandboxExecutionID: sbx.Config.ExecutionId,
-			EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
-			EventLabel:         string(label),
-		})
-
-		if err != nil {
-			sbxlogger.I(sbx).Error("error inserting sandbox event during create", zap.Error(err))
+		sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(
+			featureflags.SandboxLifeCycleEventsWriteFlagName, req.Sandbox.SandboxId)
+		if flagErr != nil {
+			zap.L().Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
+			return
 		}
+
+		if sandboxLifeCycleEventsWriteFlag {
+			err := s.clickhouseClient.InsertSandboxEvent(context.Background(), clickhouse.SandboxEvent{
+				Timestamp:          time.Now().UTC(),
+				SandboxID:          sbx.Config.SandboxId,
+				SandboxTemplateID:  sbx.Config.TemplateId,
+				SandboxTeamID:      sbx.Config.TeamId,
+				SandboxExecutionID: sbx.Config.ExecutionId,
+				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
+				EventLabel:         string(label),
+			})
+			if err != nil {
+				sbxlogger.I(sbx).Error("error inserting sandbox event during create", zap.Error(err))
+			}
+		}
+
 	}(label)
 
 	return &orchestrator.SandboxCreateResponse{
@@ -169,18 +178,27 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	eventData := fmt.Sprintf(`{"set_timeout": "%s"}`, req.EndTime.AsTime().Format(time.RFC3339))
 
 	go func(eventData string) {
-		err := s.clickhouseClient.InsertSandboxEvent(context.Background(), clickhouse.SandboxEvent{
-			Timestamp:          time.Now().UTC(),
-			SandboxID:          item.Config.SandboxId,
-			SandboxTemplateID:  item.Config.TemplateId,
-			SandboxTeamID:      item.Config.TeamId,
-			SandboxExecutionID: item.Config.ExecutionId,
-			EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
-			EventLabel:         string(clickhouse.SandboxEventLabelUpdate),
-			EventData:          eventData,
-		})
-		if err != nil {
-			sbxlogger.I(item).Error("error inserting sandbox event during update", zap.Error(err))
+		sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(
+			featureflags.SandboxLifeCycleEventsWriteFlagName, item.Config.SandboxId)
+		if flagErr != nil {
+			zap.L().Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
+			return
+		}
+
+		if sandboxLifeCycleEventsWriteFlag {
+			err := s.clickhouseClient.InsertSandboxEvent(context.Background(), clickhouse.SandboxEvent{
+				Timestamp:          time.Now().UTC(),
+				SandboxID:          item.Config.SandboxId,
+				SandboxTemplateID:  item.Config.TemplateId,
+				SandboxTeamID:      item.Config.TeamId,
+				SandboxExecutionID: item.Config.ExecutionId,
+				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
+				EventLabel:         string(clickhouse.SandboxEventLabelUpdate),
+				EventData:          eventData,
+			})
+			if err != nil {
+				sbxlogger.I(item).Error("error inserting sandbox event during update", zap.Error(err))
+			}
 		}
 	}(eventData)
 
@@ -256,17 +274,26 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	}()
 
 	go func() {
-		err := s.clickhouseClient.InsertSandboxEvent(context.Background(), clickhouse.SandboxEvent{
-			Timestamp:          time.Now().UTC(),
-			SandboxID:          sbx.Config.SandboxId,
-			SandboxTemplateID:  sbx.Config.TemplateId,
-			SandboxTeamID:      sbx.Config.TeamId,
-			SandboxExecutionID: sbx.Config.ExecutionId,
-			EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
-			EventLabel:         string(clickhouse.SandboxEventLabelKill),
-		})
-		if err != nil {
-			sbxlogger.I(sbx).Error("error inserting sandbox event during kill", zap.Error(err))
+		sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(
+			featureflags.SandboxLifeCycleEventsWriteFlagName, sbx.Config.SandboxId)
+		if flagErr != nil {
+			zap.L().Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
+			return
+		}
+
+		if sandboxLifeCycleEventsWriteFlag {
+			err := s.clickhouseClient.InsertSandboxEvent(context.Background(), clickhouse.SandboxEvent{
+				Timestamp:          time.Now().UTC(),
+				SandboxID:          sbx.Config.SandboxId,
+				SandboxTemplateID:  sbx.Config.TemplateId,
+				SandboxTeamID:      sbx.Config.TeamId,
+				SandboxExecutionID: sbx.Config.ExecutionId,
+				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
+				EventLabel:         string(clickhouse.SandboxEventLabelKill),
+			})
+			if err != nil {
+				sbxlogger.I(sbx).Error("error inserting sandbox event during kill", zap.Error(err))
+			}
 		}
 	}()
 
@@ -354,17 +381,26 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}(context.WithoutCancel(ctx))
 
 	go func() {
-		err := s.clickhouseClient.InsertSandboxEvent(context.Background(), clickhouse.SandboxEvent{
-			Timestamp:          time.Now().UTC(),
-			SandboxID:          sbx.Config.SandboxId,
-			SandboxTemplateID:  sbx.Config.TemplateId,
-			SandboxTeamID:      sbx.Config.TeamId,
-			SandboxExecutionID: sbx.Config.ExecutionId,
-			EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
-			EventLabel:         string(clickhouse.SandboxEventLabelPause),
-		})
-		if err != nil {
-			sbxlogger.I(sbx).Error("error inserting sandbox event during pause", zap.Error(err))
+		sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(
+			featureflags.SandboxLifeCycleEventsWriteFlagName, sbx.Config.SandboxId)
+		if flagErr != nil {
+			zap.L().Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
+			return
+		}
+
+		if sandboxLifeCycleEventsWriteFlag {
+			err := s.clickhouseClient.InsertSandboxEvent(context.Background(), clickhouse.SandboxEvent{
+				Timestamp:          time.Now().UTC(),
+				SandboxID:          sbx.Config.SandboxId,
+				SandboxTemplateID:  sbx.Config.TemplateId,
+				SandboxTeamID:      sbx.Config.TeamId,
+				SandboxExecutionID: sbx.Config.ExecutionId,
+				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
+				EventLabel:         string(clickhouse.SandboxEventLabelPause),
+			})
+			if err != nil {
+				sbxlogger.I(sbx).Error("error inserting sandbox event during pause", zap.Error(err))
+			}
 		}
 	}()
 
