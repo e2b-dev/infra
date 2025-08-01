@@ -7,6 +7,8 @@ import (
 	"io"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -51,6 +53,7 @@ func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter, chu
 	}
 
 	if path := env.GetEnv("LOCAL_TEMPLATE_CACHE_PATH", ""); path != "" {
+		zap.L().Info("using local template cache", zap.String("path", path))
 		provider = NewCachedProvider(path, chunkSize, provider)
 	}
 

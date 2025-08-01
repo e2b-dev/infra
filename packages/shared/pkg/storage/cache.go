@@ -45,7 +45,7 @@ func (c CachedProvider) OpenObject(ctx context.Context, path string) (StorageObj
 }
 
 func (c CachedProvider) GetDetails() string {
-	return fmt.Sprintf("[Cachine file storage, base path set to %s, which wraps %s]",
+	return fmt.Sprintf("[Caching file storage, base path set to %s, which wraps %s]",
 		c.rootPath, c.inner.GetDetails())
 }
 
