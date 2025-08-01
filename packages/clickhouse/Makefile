@@ -2,7 +2,6 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
 CLICKHOUSE_MIGRATOR_IMAGE ?= $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/e2b-orchestration/clickhouse-migrator
-CLICKHOUSE_MIGRATOR_LOCAL_IMAGE ?= e2b-orchestration/clickhouse-migrator
 CLICKHOUSE_HOST ?= clickhouse
 
 .PHONY: migrate
