@@ -33,17 +33,18 @@ func (o *Orchestrator) PauseInstance(
 	defer span.End()
 
 	snapshotConfig := &db.SnapshotInfo{
-		BaseTemplateID:     sbx.Instance.TemplateID,
-		SandboxID:          sbx.Instance.SandboxID,
-		SandboxStartedAt:   sbx.StartTime,
-		VCPU:               sbx.VCpu,
-		RAMMB:              sbx.RamMB,
-		TotalDiskSizeMB:    sbx.TotalDiskSizeMB,
-		Metadata:           sbx.Metadata,
-		KernelVersion:      sbx.KernelVersion,
-		FirecrackerVersion: sbx.FirecrackerVersion,
-		EnvdVersion:        sbx.Instance.EnvdVersion,
-		EnvdSecured:        sbx.EnvdAccessToken != nil,
+		BaseTemplateID:      sbx.Instance.TemplateID,
+		SandboxID:           sbx.Instance.SandboxID,
+		SandboxStartedAt:    sbx.StartTime,
+		VCPU:                sbx.VCpu,
+		RAMMB:               sbx.RamMB,
+		TotalDiskSizeMB:     sbx.TotalDiskSizeMB,
+		Metadata:            sbx.Metadata,
+		KernelVersion:       sbx.KernelVersion,
+		FirecrackerVersion:  sbx.FirecrackerVersion,
+		EnvdVersion:         sbx.Instance.EnvdVersion,
+		EnvdSecured:         sbx.EnvdAccessToken != nil,
+		AllowInternetAccess: sbx.AllowInternetAccess,
 	}
 
 	envBuild, err := o.dbClient.NewSnapshotBuild(
@@ -85,13 +86,19 @@ func snapshotInstance(ctx context.Context, orch *Orchestrator, sbx *instance.Ins
 	childCtx, childSpan := orch.tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
 
+	node := orch.GetNode(sbx.Node.ID)
+	if node == nil {
+		return fmt.Errorf("failed to get node '%s'", sbx.Node.ID)
+	}
+
 	client, childCtx, err := orch.GetClient(childCtx, sbx.Node.ID)
 	if err != nil {
 		return fmt.Errorf("failed to get client '%s': %w", sbx.Node.ID, err)
 	}
 
 	_, err = client.Sandbox.Pause(
-		childCtx, &orchestrator.SandboxPauseRequest{
+		node.GetSandboxDeleteCtx(childCtx, sbx.Instance.SandboxID, sbx.ExecutionID),
+		&orchestrator.SandboxPauseRequest{
 			SandboxId:  sbx.Instance.SandboxID,
 			TemplateId: templateID,
 			BuildId:    buildID,

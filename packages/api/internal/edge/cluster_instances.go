@@ -34,8 +34,8 @@ type ClusterInstance struct {
 }
 
 const (
-	instancesSyncInterval = 15 * time.Second
-	instancesSyncTimeout  = 15 * time.Second
+	instancesSyncInterval = 5 * time.Second
+	instancesSyncTimeout  = 5 * time.Second
 )
 
 func (c *Cluster) startSync() {
@@ -140,7 +140,7 @@ func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, item api.Cl
 		ServiceVersionCommit: item.ServiceVersionCommit,
 
 		// initial values before first sync
-		status: infogrpc.ServiceInfoStatus_OrchestratorUnhealthy,
+		status: infogrpc.ServiceInfoStatus_Unhealthy,
 		roles:  make([]infogrpc.ServiceInfoRole, 0),
 
 		tracer: d.cluster.tracer,

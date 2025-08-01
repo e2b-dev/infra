@@ -147,6 +147,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	buildErr := a.templateManager.CreateTemplate(
 		a.Tracer,
 		ctx,
+		team.ID,
 		templateID,
 		buildUUID,
 		build.KernelVersion,

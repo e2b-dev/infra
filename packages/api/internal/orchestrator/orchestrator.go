@@ -8,7 +8,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/google/uuid"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/metric"
@@ -23,7 +22,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -36,17 +34,18 @@ const (
 )
 
 type Orchestrator struct {
-	httpClient          *http.Client
-	nomadClient         *nomadapi.Client
-	instanceCache       *instance.InstanceCache
-	nodes               *smap.Map[*Node]
-	tracer              trace.Tracer
-	analytics           *analyticscollector.Analytics
-	dns                 *dns.DNS
-	dbClient            *db.DB
-	tel                 *telemetry.Client
-	clusters            *edge.Pool
-	metricsRegistration metric.Registration
+	httpClient              *http.Client
+	nomadClient             *nomadapi.Client
+	instanceCache           *instance.InstanceCache
+	nodes                   *smap.Map[*Node]
+	tracer                  trace.Tracer
+	analytics               *analyticscollector.Analytics
+	dns                     *dns.DNS
+	dbClient                *db.DB
+	tel                     *telemetry.Client
+	clusters                *edge.Pool
+	metricsRegistration     metric.Registration
+	createdSandboxesCounter metric.Int64Counter
 }
 
 func New(
@@ -115,13 +114,10 @@ func New(
 		go o.reportLongRunningSandboxes(ctx)
 	}
 
-	registration, err := o.setupMetrics(tel.MeterProvider)
-	if err != nil {
+	if err := o.setupMetrics(tel.MeterProvider); err != nil {
 		zap.L().Error("Failed to setup metrics", zap.Error(err))
 		return nil, fmt.Errorf("failed to setup metrics: %w", err)
 	}
-
-	o.metricsRegistration = registration
 
 	go o.startStatusLogging(ctx)
 
@@ -165,47 +161,6 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 			)
 		}
 	}
-}
-
-func (o *Orchestrator) RegisterSandboxInsideClusterCatalog(ctx context.Context, node *Node, sbxStartTime time.Time, sandboxConfig *orchestrator.SandboxConfig) error {
-	if node.ClusterID == uuid.Nil {
-		return nil
-	}
-
-	cluster, ok := o.clusters.GetClusterById(node.ClusterID)
-	if !ok {
-		return fmt.Errorf("failed to get cluster by ID: %s", node.ClusterID.String())
-	}
-
-	i, ok := cluster.GetInstanceByNodeID(node.ClusterNodeID)
-	if !ok {
-		return fmt.Errorf("failed to get cluster instance by cluster %s and node ID: %s", node.ClusterID.String(), node.ClusterNodeID)
-	}
-
-	err := cluster.RegisterSandboxInCatalog(ctx, i.ServiceInstanceID, sbxStartTime, sandboxConfig)
-	if err != nil {
-		return fmt.Errorf("failed to register sandbox in cluster catalog: %w", err)
-	}
-
-	return nil
-}
-
-func (o *Orchestrator) RemoveSandboxFromClusterCatalog(ctx context.Context, node *Node, sandboxID string, executionID string) error {
-	if node.ClusterID == uuid.Nil {
-		return nil
-	}
-
-	cluster, ok := o.clusters.GetClusterById(node.ClusterID)
-	if !ok {
-		return fmt.Errorf("failed to get cluster by ID: %s", node.ClusterID.String())
-	}
-
-	err := cluster.RemoveSandboxFromCatalog(ctx, sandboxID, executionID)
-	if err != nil {
-		return fmt.Errorf("failed to register sandbox in cluster catalog: %w", err)
-	}
-
-	return nil
 }
 
 func (o *Orchestrator) Close(ctx context.Context) error {

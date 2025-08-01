@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -135,7 +136,12 @@ func buildTemplate(
 		return fmt.Errorf("error getting artifacts registry provider: %v", err)
 	}
 
-	templateCache, err := sbxtemplate.NewCache(ctx, persistenceTemplate)
+	blockMetrics, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
+	if err != nil {
+		return fmt.Errorf("error creating metrics: %v", err)
+	}
+
+	templateCache, err := sbxtemplate.NewCache(ctx, persistenceTemplate, blockMetrics)
 	if err != nil {
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}

@@ -89,6 +89,20 @@ func (sc *SnapshotCreate) SetOriginNodeID(s string) *SnapshotCreate {
 	return sc
 }
 
+// SetAllowInternetAccess sets the "allow_internet_access" field.
+func (sc *SnapshotCreate) SetAllowInternetAccess(b bool) *SnapshotCreate {
+	sc.mutation.SetAllowInternetAccess(b)
+	return sc
+}
+
+// SetNillableAllowInternetAccess sets the "allow_internet_access" field if the given value is not nil.
+func (sc *SnapshotCreate) SetNillableAllowInternetAccess(b *bool) *SnapshotCreate {
+	if b != nil {
+		sc.SetAllowInternetAccess(*b)
+	}
+	return sc
+}
+
 // SetID sets the "id" field.
 func (sc *SnapshotCreate) SetID(u uuid.UUID) *SnapshotCreate {
 	sc.mutation.SetID(u)
@@ -238,6 +252,10 @@ func (sc *SnapshotCreate) createSpec() (*Snapshot, *sqlgraph.CreateSpec) {
 	if value, ok := sc.mutation.OriginNodeID(); ok {
 		_spec.SetField(snapshot.FieldOriginNodeID, field.TypeString, value)
 		_node.OriginNodeID = value
+	}
+	if value, ok := sc.mutation.AllowInternetAccess(); ok {
+		_spec.SetField(snapshot.FieldAllowInternetAccess, field.TypeBool, value)
+		_node.AllowInternetAccess = &value
 	}
 	if nodes := sc.mutation.EnvIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -393,6 +411,24 @@ func (u *SnapshotUpsert) UpdateOriginNodeID() *SnapshotUpsert {
 	return u
 }
 
+// SetAllowInternetAccess sets the "allow_internet_access" field.
+func (u *SnapshotUpsert) SetAllowInternetAccess(v bool) *SnapshotUpsert {
+	u.Set(snapshot.FieldAllowInternetAccess, v)
+	return u
+}
+
+// UpdateAllowInternetAccess sets the "allow_internet_access" field to the value that was provided on create.
+func (u *SnapshotUpsert) UpdateAllowInternetAccess() *SnapshotUpsert {
+	u.SetExcluded(snapshot.FieldAllowInternetAccess)
+	return u
+}
+
+// ClearAllowInternetAccess clears the value of the "allow_internet_access" field.
+func (u *SnapshotUpsert) ClearAllowInternetAccess() *SnapshotUpsert {
+	u.SetNull(snapshot.FieldAllowInternetAccess)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
 // Using this option is equivalent to using:
 //
@@ -539,6 +575,27 @@ func (u *SnapshotUpsertOne) SetOriginNodeID(v string) *SnapshotUpsertOne {
 func (u *SnapshotUpsertOne) UpdateOriginNodeID() *SnapshotUpsertOne {
 	return u.Update(func(s *SnapshotUpsert) {
 		s.UpdateOriginNodeID()
+	})
+}
+
+// SetAllowInternetAccess sets the "allow_internet_access" field.
+func (u *SnapshotUpsertOne) SetAllowInternetAccess(v bool) *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetAllowInternetAccess(v)
+	})
+}
+
+// UpdateAllowInternetAccess sets the "allow_internet_access" field to the value that was provided on create.
+func (u *SnapshotUpsertOne) UpdateAllowInternetAccess() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateAllowInternetAccess()
+	})
+}
+
+// ClearAllowInternetAccess clears the value of the "allow_internet_access" field.
+func (u *SnapshotUpsertOne) ClearAllowInternetAccess() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.ClearAllowInternetAccess()
 	})
 }
 
@@ -855,6 +912,27 @@ func (u *SnapshotUpsertBulk) SetOriginNodeID(v string) *SnapshotUpsertBulk {
 func (u *SnapshotUpsertBulk) UpdateOriginNodeID() *SnapshotUpsertBulk {
 	return u.Update(func(s *SnapshotUpsert) {
 		s.UpdateOriginNodeID()
+	})
+}
+
+// SetAllowInternetAccess sets the "allow_internet_access" field.
+func (u *SnapshotUpsertBulk) SetAllowInternetAccess(v bool) *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetAllowInternetAccess(v)
+	})
+}
+
+// UpdateAllowInternetAccess sets the "allow_internet_access" field to the value that was provided on create.
+func (u *SnapshotUpsertBulk) UpdateAllowInternetAccess() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateAllowInternetAccess()
+	})
+}
+
+// ClearAllowInternetAccess clears the value of the "allow_internet_access" field.
+func (u *SnapshotUpsertBulk) ClearAllowInternetAccess() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.ClearAllowInternetAccess()
 	})
 }
 

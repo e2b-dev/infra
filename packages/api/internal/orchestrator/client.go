@@ -34,15 +34,15 @@ const nodeHealthCheckTimeout = time.Second * 2
 
 var (
 	OrchestratorToApiNodeStateMapper = map[orchestratorinfo.ServiceInfoStatus]api.NodeStatus{
-		orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy:   api.NodeStatusReady,
-		orchestratorinfo.ServiceInfoStatus_OrchestratorDraining:  api.NodeStatusDraining,
-		orchestratorinfo.ServiceInfoStatus_OrchestratorUnhealthy: api.NodeStatusUnhealthy,
+		orchestratorinfo.ServiceInfoStatus_Healthy:   api.NodeStatusReady,
+		orchestratorinfo.ServiceInfoStatus_Draining:  api.NodeStatusDraining,
+		orchestratorinfo.ServiceInfoStatus_Unhealthy: api.NodeStatusUnhealthy,
 	}
 
 	ApiNodeToOrchestratorStateMapper = map[api.NodeStatus]orchestratorinfo.ServiceInfoStatus{
-		api.NodeStatusReady:     orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy,
-		api.NodeStatusDraining:  orchestratorinfo.ServiceInfoStatus_OrchestratorDraining,
-		api.NodeStatusUnhealthy: orchestratorinfo.ServiceInfoStatus_OrchestratorUnhealthy,
+		api.NodeStatusReady:     orchestratorinfo.ServiceInfoStatus_Healthy,
+		api.NodeStatusDraining:  orchestratorinfo.ServiceInfoStatus_Draining,
+		api.NodeStatusUnhealthy: orchestratorinfo.ServiceInfoStatus_Unhealthy,
 	}
 )
 
@@ -107,7 +107,8 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 			client:   client,
 			clientMd: make(metadata.MD),
 
-			Info:           node,
+			Info: node,
+
 			meta:           getNodeMetadata(nodeInfo, node.ID),
 			buildCache:     buildCache,
 			status:         nodeStatus,

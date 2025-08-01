@@ -2,8 +2,6 @@ package filesystem
 
 import (
 	"context"
-	"fmt"
-	"os"
 
 	"connectrpc.com/connect"
 
@@ -22,22 +20,10 @@ func (Service) Stat(ctx context.Context, req *connect.Request[rpc.StatRequest]) 
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	fileInfo, err := os.Stat(path)
+	entry, err := entryInfo(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("file not found: %w", err))
-		}
-
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error statting file: %w", err))
+		return nil, err
 	}
 
-	return connect.NewResponse(
-		&rpc.StatResponse{
-			Entry: &rpc.EntryInfo{
-				Name: fileInfo.Name(),
-				Type: getEntryType(fileInfo),
-				Path: path,
-			},
-		},
-	), nil
+	return connect.NewResponse(&rpc.StatResponse{Entry: entry}), nil
 }

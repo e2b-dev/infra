@@ -156,13 +156,16 @@ func walkDir(requestedPath string, dirPath string, depth int) (entries []*rpc.En
 			return filepath.SkipDir
 		}
 
-		entries = append(entries, &rpc.EntryInfo{
-			Name: entry.Name(),
-			Type: getEntryType(entry),
-			// Return the requested path as the base path instead of the symlink-resolved path
-			Path: filepath.Join(requestedPath, relPath),
-		})
+		entryInfo, err := entryInfo(path)
+		if entry == nil {
+			return err
+		}
 
+		// Return the requested path as the base path instead of the symlink-resolved path
+		path = filepath.Join(requestedPath, relPath)
+		entryInfo.Path = path
+
+		entries = append(entries, entryInfo)
 		return nil
 	})
 	if err != nil {

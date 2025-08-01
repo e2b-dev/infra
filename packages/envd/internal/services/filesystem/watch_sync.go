@@ -94,23 +94,23 @@ func CreateFileWatcher(watchPath string, recursive bool, operationID string, log
 						return
 					}
 
-					filesystemEvent := &rpc.WatchDirResponse_Filesystem{
-						Filesystem: &rpc.FilesystemEvent{
-							Name: name,
-							Type: op,
-						},
-					}
-
-					event := &rpc.WatchDirResponse{
-						Event: filesystemEvent,
-					}
-
 					fw.Lock.Lock()
 					fw.Events = append(fw.Events, &rpc.FilesystemEvent{
 						Name: name,
 						Type: op,
 					})
 					fw.Lock.Unlock()
+
+					// these are only used for logging
+					filesystemEvent := &rpc.WatchDirResponse_Filesystem{
+						Filesystem: &rpc.FilesystemEvent{
+							Name: name,
+							Type: op,
+						},
+					}
+					event := &rpc.WatchDirResponse{
+						Event: filesystemEvent,
+					}
 
 					logger.
 						Debug().

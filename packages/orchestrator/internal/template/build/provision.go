@@ -88,8 +88,6 @@ func (b *Builder) provisionSandbox(
 			Stdout: logsWriter,
 			Stderr: logsWriter,
 		},
-		// Allow sandbox internet access during provisioning
-		true,
 	)
 	defer func() {
 		cleanupErr := cleanup.Run(ctx)

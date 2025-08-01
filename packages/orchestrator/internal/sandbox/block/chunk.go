@@ -6,23 +6,26 @@ import (
 	"fmt"
 	"io"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
-	// Chunks must always be bigger or equal to the block size.
+	// ChunkSize must always be bigger or equal to the block size.
 	ChunkSize = 4 * 1024 * 1024 // 4 MB
 )
 
 type Chunker struct {
 	ctx context.Context
 
-	base  io.ReaderAt
-	cache *Cache
+	base    io.ReaderAt
+	cache   *Cache
+	metrics metrics.Metrics
 
 	size int64
 
@@ -36,6 +39,7 @@ func NewChunker(
 	blockSize int64,
 	base io.ReaderAt,
 	cachePath string,
+	metrics metrics.Metrics,
 ) (*Chunker, error) {
 	cache, err := NewCache(size, blockSize, cachePath, false)
 	if err != nil {
@@ -48,6 +52,7 @@ func NewChunker(
 		base:     base,
 		cache:    cache,
 		fetchers: utils.NewWaitMap(),
+		metrics:  metrics,
 	}
 
 	return chunker, nil
@@ -81,25 +86,49 @@ func (c *Chunker) WriteTo(w io.Writer) (int64, error) {
 }
 
 func (c *Chunker) Slice(off, length int64) ([]byte, error) {
+	timer := c.metrics.BeginWithTotal(
+		c.metrics.SlicesMetric,
+		c.metrics.TotalBytesFaultedMetric,
+		c.metrics.TotalPageFaults,
+	)
+
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
+		timer.End(c.ctx, length,
+			attribute.String(result, resultTypeSuccess),
+			attribute.String(pullType, pullTypeLocal))
 		return b, nil
 	}
 
 	if !errors.As(err, &ErrBytesNotAvailable{}) {
+		timer.End(c.ctx, length,
+			attribute.String(result, "failure"),
+			attribute.String(pullType, pullTypeLocal),
+			attribute.String(failureReason, failureTypeLocalRead))
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
 	chunkErr := c.fetchToCache(off, length)
 	if chunkErr != nil {
+		timer.End(c.ctx, length,
+			attribute.String(result, resultTypeFailure),
+			attribute.String(pullType, pullTypeRemote),
+			attribute.String(failureReason, failureTypeCacheFetch))
 		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, chunkErr)
 	}
 
 	b, cacheErr := c.cache.Slice(off, length)
 	if cacheErr != nil {
+		timer.End(c.ctx, length,
+			attribute.String(result, resultTypeFailure),
+			attribute.String(pullType, pullTypeLocal),
+			attribute.String(failureReason, failureTypeLocalReadAgain))
 		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
+	timer.End(c.ctx, length,
+		attribute.String(result, resultTypeSuccess),
+		attribute.String(pullType, pullTypeRemote))
 	return b, nil
 }
 
@@ -133,15 +162,32 @@ func (c *Chunker) fetchToCache(off, length int64) error {
 
 				b := make([]byte, ChunkSize)
 
-				_, err := c.base.ReadAt(b, fetchOff)
+				fetchSW := c.metrics.BeginWithTotal(
+					c.metrics.ChunkRemoteReadMetric,
+					c.metrics.TotalBytesRetrievedMetric,
+					c.metrics.TotalRemoteReadsMetric,
+				)
+				readBytes, err := c.base.ReadAt(b, fetchOff)
 				if err != nil && !errors.Is(err, io.EOF) {
+					fetchSW.End(c.ctx, int64(readBytes),
+						attribute.String(result, resultTypeFailure),
+						attribute.String(failureReason, failureTypeRemoteRead),
+					)
 					return fmt.Errorf("failed to read chunk from base %d: %w", fetchOff, err)
 				}
+				fetchSW.End(c.ctx, int64(readBytes), attribute.String("result", resultTypeSuccess))
 
+				writeSW := c.metrics.Begin(c.metrics.WriteChunksMetric)
 				_, cacheErr := c.cache.WriteAtWithoutLock(b, fetchOff)
 				if cacheErr != nil {
+					writeSW.End(c.ctx,
+						attribute.String(result, resultTypeFailure),
+						attribute.String(failureReason, failureTypeLocalWrite),
+					)
 					return fmt.Errorf("failed to write chunk %d to cache: %w", fetchOff, cacheErr)
 				}
+
+				writeSW.End(c.ctx, attribute.String("result", resultTypeSuccess))
 
 				return nil
 			})
@@ -165,3 +211,21 @@ func (c *Chunker) Close() error {
 func (c *Chunker) FileSize() (int64, error) {
 	return c.cache.FileSize()
 }
+
+const (
+	result            = "result"
+	resultTypeSuccess = "success"
+	resultTypeFailure = "failure"
+
+	pullType       = "pull-type"
+	pullTypeLocal  = "local"
+	pullTypeRemote = "remote"
+
+	failureReason = "failure-reason"
+
+	failureTypeLocalRead      = "local-read"
+	failureTypeLocalReadAgain = "local-read-again"
+	failureTypeLocalWrite     = "local-write"
+	failureTypeRemoteRead     = "remote-read"
+	failureTypeCacheFetch     = "cache-fetch"
+)

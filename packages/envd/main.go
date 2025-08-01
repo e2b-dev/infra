@@ -38,7 +38,7 @@ const (
 )
 
 var (
-	Version = "0.2.4"
+	Version = "0.2.9"
 
 	commitSHA string
 
@@ -93,36 +93,14 @@ func withCORS(h http.Handler) http.Handler {
 	middleware := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},
 		AllowedMethods: []string{
-			"GET",
-			"POST",
+			http.MethodHead,
+			http.MethodGet,
+			http.MethodPost,
+			http.MethodPut,
+			http.MethodPatch,
+			http.MethodDelete,
 		},
-		AllowedHeaders: append(
-			connectcors.AllowedHeaders(),
-			"Origin",
-			"Accept",
-			"Authorization",
-			"Content-Type",
-			"Cache-Control",
-			"X-Requested-With",
-			"X-Content-Type-Options",
-			"Access-Control-Request-Method",
-			"Access-Control-Request-Headers",
-			"Access-Control-Request-Private-Network",
-			"Access-Control-Expose-Headers",
-			"Keepalive-Ping-Interval", // for gRPC
-			// Custom headers sent from SDK
-			"browser",
-			"lang",
-			"lang_version",
-			"machine",
-			"os",
-			"package_version",
-			"processor",
-			"publisher",
-			"release",
-			"sdk_runtime",
-			"system",
-		),
+		AllowedHeaders: []string{"*"},
 		ExposedHeaders: append(
 			connectcors.ExposedHeaders(),
 			"Location",

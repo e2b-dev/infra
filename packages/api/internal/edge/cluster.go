@@ -118,7 +118,7 @@ func (c *Cluster) GetTemplateBuilderByNodeID(nodeID string) (*ClusterInstance, e
 		return nil, ErrTemplateBuilderNotFound
 	}
 
-	if instance.GetStatus() == infogrpc.ServiceInfoStatus_OrchestratorUnhealthy || !instance.IsBuilder() {
+	if instance.GetStatus() == infogrpc.ServiceInfoStatus_Unhealthy || !instance.IsBuilder() {
 		return nil, ErrTemplateBuilderNotFound
 	}
 
@@ -135,7 +135,7 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterInst
 	defer span.End()
 
 	for _, instance := range c.instances.Items() {
-		if instance.GetStatus() != infogrpc.ServiceInfoStatus_OrchestratorHealthy {
+		if instance.GetStatus() != infogrpc.ServiceInfoStatus_Healthy {
 			continue
 		}
 

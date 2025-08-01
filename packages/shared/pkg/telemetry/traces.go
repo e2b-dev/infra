@@ -22,7 +22,7 @@ func (nsb *noopSpanExporter) Shutdown(context.Context) error { return nil }
 func NewSpanExporter(ctx context.Context, extraOption ...otlptracegrpc.Option) (sdktrace.SpanExporter, error) {
 	opts := []otlptracegrpc.Option{
 		otlptracegrpc.WithInsecure(),
-		otlptracegrpc.WithEndpoint(otelCollectorGRPCEndpoint),
+		otlptracegrpc.WithEndpoint(OtelCollectorGRPCEndpoint),
 		otlptracegrpc.WithCompressor(gzip.Name),
 	}
 	opts = append(opts, extraOption...)

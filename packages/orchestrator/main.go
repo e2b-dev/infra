@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -32,6 +33,7 @@ import (
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -143,19 +145,19 @@ func run(port, proxyPort uint) (success bool) {
 
 	// Setup telemetry
 	var tel *telemetry.Client
-	if env.IsLocal() {
+	if telemetry.OtelCollectorGRPCEndpoint == "" {
 		tel = telemetry.NewNoopClient()
 	} else {
 		var err error
 		tel, err = telemetry.New(ctx, serviceName, commitSHA, clientID)
 		if err != nil {
-			zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
+			zap.L().Fatal("failed to init telemetry", zap.Error(err))
 		}
 	}
 	defer func() {
 		err := tel.Shutdown(ctx)
 		if err != nil {
-			log.Printf("error while shutting down metrics provider: %v", err)
+			log.Printf("error while shutting down telemetry: %v", err)
 			success = false
 		}
 	}()
@@ -254,7 +256,12 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create template storage provider", zap.Error(err))
 	}
 
-	templateCache, err := template.NewCache(ctx, persistence)
+	blockMetrics, err := blockmetrics.NewMetrics(tel.MeterProvider)
+	if err != nil {
+		zap.L().Fatal("failed to create metrics provider", zap.Error(err))
+	}
+
+	templateCache, err := template.NewCache(ctx, persistence, blockMetrics)
 	if err != nil {
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}
@@ -313,12 +320,12 @@ func run(port, proxyPort uint) (success bool) {
 			templateCache,
 			persistence,
 			limiter,
+			serviceInfo,
 		)
 		if err != nil {
 			zap.L().Fatal("failed to create template manager", zap.Error(err))
 		}
 
-		// Prepend to make sure it's awaited on graceful shutdown
 		closers = append([]Closeable{tmpl}, closers...)
 	}
 
@@ -377,6 +384,12 @@ func run(port, proxyPort uint) (success bool) {
 	defer cancelCloseCtx()
 	if forceStop {
 		cancelCloseCtx()
+	}
+
+	// Mark service draining if not already.
+	// If service stats was previously changed via API, we don't want to override it.
+	if serviceInfo.GetStatus() == orchestrator.ServiceInfoStatus_Healthy {
+		serviceInfo.SetStatus(orchestrator.ServiceInfoStatus_Draining)
 	}
 
 	for _, c := range closers {

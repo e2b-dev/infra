@@ -50,9 +50,9 @@ func (h *Healthcheck) Start(_ context.Context, listener net.Listener) {
 
 func (h *Healthcheck) getStatus() e2bHealth.Status {
 	switch h.info.GetStatus() {
-	case e2borchestratorinfo.ServiceInfoStatus_OrchestratorHealthy:
+	case e2borchestratorinfo.ServiceInfoStatus_Healthy:
 		return e2bHealth.Healthy
-	case e2borchestratorinfo.ServiceInfoStatus_OrchestratorDraining:
+	case e2borchestratorinfo.ServiceInfoStatus_Draining:
 		return e2bHealth.Draining
 	}
 

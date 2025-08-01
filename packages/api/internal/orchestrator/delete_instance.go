@@ -17,16 +17,5 @@ func (o *Orchestrator) DeleteInstance(ctx context.Context, sandboxID string, pau
 		zap.Bool("pause", pause),
 	)
 
-	c, _ := o.instanceCache.Get(sandboxID)
-	if c != nil {
-		node := o.GetNode(c.Node.ID)
-		if node != nil {
-			err := o.RemoveSandboxFromClusterCatalog(ctx, node, sandboxID, c.ExecutionID)
-			if err != nil {
-				zap.L().Error("Failed to remove sandbox from cluster catalog", logger.WithSandboxID(sandboxID), zap.Error(err))
-			}
-		}
-	}
-
 	return o.instanceCache.Delete(sandboxID, pause)
 }

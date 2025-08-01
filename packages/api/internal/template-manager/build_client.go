@@ -27,11 +27,8 @@ func (bc *BuildClient) GetLogs(ctx context.Context, templateID, buildID string, 
 			continue
 		}
 
-		// Return the first non-empty logs, the providers are ordered by most up-to-date data
-		if len(l) > 0 {
-			logsTotal = l
-			break
-		}
+		// Return the first non-error logs, the providers are ordered by most up-to-date data
+		return l
 	}
 
 	return logsTotal

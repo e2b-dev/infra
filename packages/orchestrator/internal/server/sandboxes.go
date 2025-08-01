@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -43,9 +42,9 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
-	// TODO: Temporary workaround, remove API changes deployed
-	if req.Sandbox.GetExecutionId() == "" {
-		req.Sandbox.ExecutionId = uuid.New().String()
+	// TODO: Temporary workaround, remove when API changes are deployed
+	if req.Sandbox.AllowInternetAccess == nil {
+		req.Sandbox.AllowInternetAccess = &config.AllowSandboxInternet
 	}
 
 	metricsWriteFlag, flagErr := s.featureFlags.BoolFlag(featureflags.MetricsWriteFlagName, req.Sandbox.SandboxId)
@@ -73,7 +72,6 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		req.StartTime.AsTime(),
 		req.EndTime.AsTime(),
 		s.devicePool,
-		config.AllowSandboxInternet,
 		metricsWriteFlag,
 	)
 	if err != nil {
@@ -87,8 +85,8 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}
 
 	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
-	go func() {
-		ctx, childSpan := s.tracer.Start(context.Background(), "sandbox-create-stop")
+	go func(ctx context.Context) {
+		ctx, childSpan := s.tracer.Start(ctx, "sandbox-create-stop")
 		defer childSpan.End()
 
 		waitErr := sbx.Wait(ctx)
@@ -120,7 +118,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		s.proxy.RemoveFromPool(sbx.Config.ExecutionId)
 
 		sbxlogger.E(sbx).Info("Sandbox killed")
-	}()
+	}(context.WithoutCancel(ctx))
 
 	return &orchestrator.SandboxCreateResponse{
 		ClientId: s.info.ClientId,
@@ -250,11 +248,11 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.Errorf(codes.Internal, "error creating template files: %s", err)
 	}
 
-	defer func() {
+	defer func(ctx context.Context) {
 		// sbx.Stop sometimes blocks for several seconds,
 		// so we don't want to block the request and do the cleanup in a goroutine after we already removed sandbox from cache and proxy.
 		go func() {
-			ctx, childSpan := s.tracer.Start(context.Background(), "sandbox-pause-stop")
+			ctx, childSpan := s.tracer.Start(ctx, "sandbox-pause-stop")
 			defer childSpan.End()
 
 			err := sbx.Stop(ctx)
@@ -262,7 +260,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 				sbxlogger.I(sbx).Error("error stopping sandbox after snapshot", logger.WithSandboxID(in.SandboxId), zap.Error(err))
 			}
 		}()
-	}()
+	}(context.WithoutCancel(ctx))
 
 	snapshot, err := sbx.Pause(ctx, s.tracer, snapshotTemplateFiles)
 	if err != nil {
@@ -290,14 +288,14 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
-	go func() {
-		err := snapshot.Upload(context.Background(), s.persistence, snapshotTemplateFiles.TemplateFiles)
+	go func(ctx context.Context) {
+		err := snapshot.Upload(ctx, s.persistence, snapshotTemplateFiles.TemplateFiles)
 		if err != nil {
 			sbxlogger.I(sbx).Error("error uploading sandbox snapshot", zap.Error(err))
 
 			return
 		}
-	}()
+	}(context.WithoutCancel(ctx))
 
 	return &emptypb.Empty{}, nil
 }

@@ -244,6 +244,11 @@ variable "template_manager_port" {
   default = 5008 // we want to use the same port for both because of edge api
 }
 
+variable "envd_timeout" {
+  type    = string
+  default = "40s"
+}
+
 variable "environment" {
   type    = string
   default = "prod"
@@ -301,11 +306,6 @@ variable "labels" {
   }
 }
 
-variable "terraform_state_bucket" {
-  description = "The name of the bucket to store terraform state in"
-  type        = string
-}
-
 variable "loki_resources_memory_mb" {
   type    = number
   default = 2048
@@ -341,15 +341,4 @@ variable "template_bucket_name" {
 variable "redis_managed" {
   default = false
   type    = bool
-}
-
-variable "grafana_managed" {
-  default = false
-  type    = bool
-}
-
-variable "write_clickhouse_metrics" {
-  description = "Whether to write metrics to ClickHouse"
-  type        = bool
-  default     = false
 }

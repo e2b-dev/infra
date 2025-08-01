@@ -209,3 +209,48 @@ func killPid(
 		t.Logf("waiting for process kill: %s", connectResp.Msg())
 	}
 }
+
+func TestWorkdirDeletion(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	client := setup.GetAPIClient()
+	sbx := utils.SetupSandboxWithCleanup(t, client, utils.WithTimeout(120))
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	testDir := "/tmp/test-workdir"
+
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "/bin/bash", "-c", "mkdir -p "+testDir+" && echo 'success' > "+testDir+"/test.txt")
+	require.NoError(t, err, "Should be able to create test directory")
+
+	err = utils.ExecCommand(t, ctx, sbx, envdClient, "/bin/bash", "-c", "rm -rf "+testDir)
+	require.NoError(t, err, "Should be able to delete test directory")
+
+	err = utils.ExecCommandWithCwd(t, ctx, sbx, envdClient, &testDir, "/bin/bash", "-c", "pwd")
+	require.Error(t, err, "Should fail when trying to use deleted directory as working directory")
+}
+
+func TestWorkdirPermissionDenied(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	client := setup.GetAPIClient()
+	sbx := utils.SetupSandboxWithCleanup(t, client, utils.WithTimeout(120))
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	restrictedDir := "/tmp/restricted-workdir"
+
+	err := utils.ExecCommandAsRoot(t, ctx, sbx, envdClient, "/bin/bash", "-c", "mkdir -p "+restrictedDir+" && chmod 700 "+restrictedDir)
+	require.NoError(t, err, "Should be able to create restricted directory as root")
+
+	err = utils.ExecCommand(t, ctx, sbx, envdClient, "/bin/bash", "-c", "test -d "+restrictedDir)
+	require.NoError(t, err, "Directory should exist")
+
+	err = utils.ExecCommand(t, ctx, sbx, envdClient, "/bin/bash", "-c", "ls "+restrictedDir)
+	require.Error(t, err, "Regular user should not have access to restricted directory")
+
+	err = utils.ExecCommandWithCwd(t, ctx, sbx, envdClient, &restrictedDir, "/bin/bash", "-c", "pwd")
+	require.Error(t, err, "Should fail when trying to use restricted directory as working directory")
+}

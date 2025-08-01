@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os/exec"
+	"os"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -29,7 +29,8 @@ const (
 	googleBackoffMultiplier = 2
 	googleMaxAttempts       = 10
 
-	gcloudMaxRetries = 3
+	gcloudMaxRetries               = 3
+	gcloudDefaultUploadConcurrency = 16
 )
 
 type GCPBucketStorageProvider struct {
@@ -221,61 +222,54 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 }
 
 func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error {
-	upload := func() error {
-		extraArgs := []string{}
-		if g.limiter != nil {
-			uploadLimiter := g.limiter.GCloudUploadLimiter()
-			if uploadLimiter != nil {
-				semaphoreErr := uploadLimiter.Acquire(g.ctx, 1)
-				if semaphoreErr != nil {
-					return fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
-				}
-				defer uploadLimiter.Release(1)
+	bucketName := g.storage.bucket.BucketName()
+	objectName := g.path
+	filePath := path
+
+	maxConcurrency := gcloudDefaultUploadConcurrency
+	if g.limiter != nil {
+		uploadLimiter := g.limiter.GCloudUploadLimiter()
+		if uploadLimiter != nil {
+			semaphoreErr := uploadLimiter.Acquire(g.ctx, 1)
+			if semaphoreErr != nil {
+				return fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
 			}
-
-			extraArgs = append(extraArgs, g.limiter.GCloudCmdLimits(path)...)
+			defer uploadLimiter.Release(1)
 		}
 
-		args := []string{"--scope"}
-		args = append(args, extraArgs...)
-		args = append(args, "--",
-			"gcloud",
-			"storage",
-			"cp",
-			"--verbosity=error",
-			path,
-			fmt.Sprintf("gs://%s/%s", g.storage.bucket.BucketName(), g.path),
-		)
-
-		cmd := exec.CommandContext(
-			g.ctx,
-			"systemd-run",
-			args...,
-		)
-
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("failed to upload file to GCS: %w\n%s", err, string(output))
-		}
-
-		return nil
+		maxConcurrency = g.limiter.GCloudMaxTasks()
 	}
 
-	var err error
-	for range gcloudMaxRetries {
-		err = upload()
-		if err != nil {
-			// Failed to upload file, retrying.
-			zap.L().Warn("Failed to upload file to GCS, retrying", zap.Error(err), zap.String("path", g.path))
-
-			continue
-		}
-
-		// Files was successfully uploaded
-		return nil
+	uploader, err := NewMultipartUploaderWithRetryConfig(
+		g.ctx,
+		bucketName,
+		objectName,
+		DefaultRetryConfig(),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create multipart uploader: %w", err)
 	}
 
-	return fmt.Errorf("failed to upload file to GCS after %d retries: %w", gcloudMaxRetries, err)
+	fileSize, err := os.Stat(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to get file size: %w", err)
+	}
+
+	start := time.Now()
+	if err := uploader.UploadFileInParallel(g.ctx, filePath, maxConcurrency); err != nil {
+		return fmt.Errorf("failed to upload file in parallel: %w", err)
+	}
+
+	zap.L().Debug("Uploaded file in parallel",
+		zap.String("bucket", bucketName),
+		zap.String("object", objectName),
+		zap.String("path", filePath),
+		zap.Int("max_concurrency", maxConcurrency),
+		zap.Int64("file_size", fileSize.Size()),
+		zap.Int64("duration", time.Since(start).Milliseconds()),
+	)
+
+	return nil
 }
 
 type gcpServiceToken struct {

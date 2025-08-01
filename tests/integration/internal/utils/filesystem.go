@@ -16,10 +16,10 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 )
 
-func UploadFile(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, path string, content []byte) {
+func UploadFile(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, path string, content string) {
 	tb.Helper()
 
-	buffer, contentType := CreateTextFile(tb, path, string(content))
+	buffer, contentType := CreateTextFile(tb, path, content)
 
 	reqEditors := []envdapi.RequestEditorFn{setup.WithSandbox(sbx.SandboxID)}
 	if sbx.EnvdAccessToken != nil {

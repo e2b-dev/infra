@@ -94,6 +94,7 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 		"Origin",
 		"Content-Length",
 		"Content-Type",
+		"User-Agent",
 		// API Key header
 		"Authorization",
 		"X-API-Key",
@@ -211,7 +212,7 @@ func run() int {
 
 	instanceID := uuid.New().String()
 	var tel *telemetry.Client
-	if env.IsLocal() {
+	if telemetry.OtelCollectorGRPCEndpoint == "" {
 		tel = telemetry.NewNoopClient()
 	} else {
 		var err error
