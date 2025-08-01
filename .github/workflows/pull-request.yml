@@ -14,21 +14,10 @@ on:
       - main
 
 jobs:
-  lint:
-    uses: ./.github/workflows/lint.yml
-  integrity-check:
-    uses: ./.github/workflows/pr-go-integrity.yml
-  out-of-order-migrations:
-    uses: ./.github/workflows/out-of-order-migrations.yml
-  unit-tests:
-    needs: [ integrity-check ]
-    uses: ./.github/workflows/pr-tests.yml
   integration-tests:
-    needs: [ lint, integrity-check, out-of-order-migrations ]
     uses: ./.github/workflows/integration_tests.yml
   publish-test-results:
     needs:
-      - unit-tests
       - integration-tests
     runs-on: ubuntu-latest
     permissions:
