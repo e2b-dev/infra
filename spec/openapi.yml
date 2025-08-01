@@ -152,7 +152,13 @@ components:
       type: integer
       format: int32
       minimum: 128
-      description: Memory for the sandbox in MB
+      description: Memory for the sandbox in MiB
+
+    DiskSizeMB:
+      type: integer
+      format: int32
+      minimum: 0
+      description: Disk size for the sandbox in MiB
 
     SandboxMetadata:
       additionalProperties:
@@ -274,6 +280,7 @@ components:
         - startedAt
         - cpuCount
         - memoryMB
+        - diskSizeMB
         - endAt
         - state
       properties:
@@ -312,6 +319,8 @@ components:
           $ref: "#/components/schemas/CPUCount"
         memoryMB:
           $ref: "#/components/schemas/MemoryMB"
+        diskSizeMB:
+          $ref: "#/components/schemas/DiskSizeMB"
         metadata:
           $ref: "#/components/schemas/SandboxMetadata"
         state:
@@ -325,6 +334,7 @@ components:
         - startedAt
         - cpuCount
         - memoryMB
+        - diskSizeMB
         - endAt
         - state
       properties:
@@ -353,6 +363,8 @@ components:
           $ref: "#/components/schemas/CPUCount"
         memoryMB:
           $ref: "#/components/schemas/MemoryMB"
+        diskSizeMB:
+          $ref: "#/components/schemas/DiskSizeMB"
         metadata:
           $ref: "#/components/schemas/SandboxMetadata"
         state:
