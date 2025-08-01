@@ -31,7 +31,6 @@ const (
 func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
 	ctx, cancel := context.WithTimeoutCause(ctxConn, requestTimeout, fmt.Errorf("request timed out"))
 	defer cancel()
-	fmt.Println("~~~~~cREATE")
 
 	childCtx, childSpan := s.tracer.Start(ctx, "sandbox-create")
 	defer childSpan.End()

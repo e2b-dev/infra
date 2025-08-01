@@ -141,7 +141,8 @@ func (c *Client) SelectSandboxEventsByTeamId(ctx context.Context, teamID uuid.UU
 }
 
 const insertSandboxEventQuery = `
-INSERT INTO sandbox_events (
+INSERT INTO sandbox_events
+(
     timestamp,
     sandbox_id, 
     sandbox_execution_id,
@@ -150,7 +151,9 @@ INSERT INTO sandbox_events (
     event_category,
     event_label,
     event_data
-) VALUES (
+)
+SETTINGS async_insert=1, wait_for_async_insert=1
+VALUES (
     ?,
     ?,
     ?,
