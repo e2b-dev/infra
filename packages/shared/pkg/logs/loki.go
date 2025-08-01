@@ -9,6 +9,38 @@ import (
 	"go.uber.org/zap"
 )
 
+func LokiBasicResponseMapper(res *loghttp.QueryResponse, offset int32) ([]loghttp.Entry, error) {
+	logsCrawled := int32(0)
+
+	switch res.Data.Result.Type() {
+	case loghttp.ResultTypeStream:
+		value := res.Data.Result.(loghttp.Streams)
+
+		logs := make([]loghttp.Entry, 0)
+		for _, stream := range value {
+			for _, entry := range stream.Entries {
+				// loki does not support offset pagination, so we need to skip logs manually
+				logsCrawled++
+				if logsCrawled <= offset {
+					continue
+				}
+
+				logs = append(logs, entry)
+			}
+		}
+
+		// Sort logs by timestamp (they are returned by the time they arrived in Loki)
+		slices.SortFunc(logs, func(a, b loghttp.Entry) int {
+			return a.Timestamp.Compare(b.Timestamp)
+		})
+
+		return logs, nil
+	default:
+		return nil, fmt.Errorf("unexpected value type received from loki query fetch: %s", res.Data.Result.Type())
+	}
+}
+
+// LokiResponseMapper maps the Loki query response to a slice of LogEntry that assumes log object structure
 func LokiResponseMapper(res *loghttp.QueryResponse, offset int32, level *LogLevel) ([]LogEntry, error) {
 	logsCrawled := int32(0)
 	logs := make([]LogEntry, 0)
