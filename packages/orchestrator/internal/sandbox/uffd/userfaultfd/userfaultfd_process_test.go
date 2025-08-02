@@ -111,7 +111,7 @@ func TestHelperProcess(t *testing.T) {
 	ppid := os.Getppid()
 	syscall.Kill(ppid, syscall.SIGUSR1)
 
-	mappings := newTestMappings(start, testCrossProcessSize, testCrossProcessPageSize)
+	mappings := newMockMappings(start, testCrossProcessSize, testCrossProcessPageSize)
 
 	fdExit, err := NewFdExit()
 	if err != nil {

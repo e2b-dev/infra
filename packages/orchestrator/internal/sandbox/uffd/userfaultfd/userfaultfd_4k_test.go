@@ -33,7 +33,7 @@ func TestUffdMissing(t *testing.T) {
 		t.Fatal("failed to register memory", err)
 	}
 
-	mappings := newTestMappings(memoryStart, size, pagesize)
+	mappings := newMockMappings(memoryStart, size, pagesize)
 
 	fdExit, err := NewFdExit()
 	if err != nil {
@@ -91,7 +91,7 @@ func TestUffdWriteProtect(t *testing.T) {
 	}
 	defer fdExit.Close()
 
-	mappings := newTestMappings(memoryStart, size, pagesize)
+	mappings := newMockMappings(memoryStart, size, pagesize)
 
 	go func() {
 		err := uffd.Serve(mappings, data, fdExit)
@@ -133,7 +133,7 @@ func TestUffdWriteProtectWithMissing(t *testing.T) {
 		t.Fatal("failed to write protect memory", err)
 	}
 
-	mappings := newTestMappings(memoryStart, size, pagesize)
+	mappings := newMockMappings(memoryStart, size, pagesize)
 
 	fdExit, err := NewFdExit()
 	if err != nil {
@@ -200,7 +200,7 @@ func TestUffdWriteProtectWithMissingDoubleRegistration(t *testing.T) {
 		t.Fatal("failed to write protect memory", err)
 	}
 
-	mappings := newTestMappings(memoryStart, size, pagesize)
+	mappings := newMockMappings(memoryStart, size, pagesize)
 
 	fdExit, err := NewFdExit()
 	if err != nil {
@@ -258,7 +258,7 @@ func TestUffdWriteProtectWithAsync(t *testing.T) {
 		t.Fatal("failed to write protect memory", err)
 	}
 
-	mappings := newTestMappings(memoryStart, size, pagesize)
+	mappings := newMockMappings(memoryStart, size, pagesize)
 
 	fdExit, err := NewFdExit()
 	if err != nil {

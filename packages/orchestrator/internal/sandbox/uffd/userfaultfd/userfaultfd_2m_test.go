@@ -34,7 +34,7 @@ func TestUffdHugepagesMissing(t *testing.T) {
 		t.Fatal("failed to register memory", err)
 	}
 
-	mappings := newTestMappings(memoryStart, size, pagesize)
+	mappings := newMockMappings(memoryStart, size, pagesize)
 
 	fdExit, err := NewFdExit()
 	if err != nil {
@@ -87,7 +87,7 @@ func TestUffdHugepagesWriteProtect(t *testing.T) {
 		t.Fatal("failed to write protect memory", err)
 	}
 
-	mappings := newTestMappings(memoryStart, size, pagesize)
+	mappings := newMockMappings(memoryStart, size, pagesize)
 
 	fdExit, err := NewFdExit()
 	if err != nil {
@@ -156,7 +156,7 @@ func TestUffdHugepagesWriteProtectWithMissingDoubleRegistration(t *testing.T) {
 		t.Fatal("failed to write protect memory", err)
 	}
 
-	mappings := newTestMappings(memoryStart, size, pagesize)
+	mappings := newMockMappings(memoryStart, size, pagesize)
 
 	fdExit, err := NewFdExit()
 	if err != nil {
@@ -214,7 +214,7 @@ func TestUffdHugepagesWriteProtectWithAsync(t *testing.T) {
 		t.Fatal("failed to write protect memory", err)
 	}
 
-	mappings := newTestMappings(memoryStart, size, pagesize)
+	mappings := newMockMappings(memoryStart, size, pagesize)
 
 	fdExit, err := NewFdExit()
 	if err != nil {

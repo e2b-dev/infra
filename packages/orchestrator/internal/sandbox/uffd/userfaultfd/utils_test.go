@@ -8,44 +8,45 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"golang.org/x/sys/unix"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 const (
 	pagesInTestData = 32
 )
 
-type testMappings struct {
+type mockMappings struct {
 	start    uintptr
 	size     int64
 	pagesize int64
 }
 
-func newTestMappings(start uintptr, size, pagesize int64) *testMappings {
-	return &testMappings{
+func newMockMappings(start uintptr, size, pagesize int64) *mockMappings {
+	return &mockMappings{
 		start:    start,
 		size:     size,
 		pagesize: pagesize,
 	}
 }
 
-func (m *testMappings) GetRange(addr uintptr) (int64, int64, error) {
+func (m *mockMappings) GetRange(addr uintptr) (int64, int64, error) {
 	offset := addr - m.start
 	pagesize := m.pagesize
 
 	return int64(offset), pagesize, nil
 }
 
-type testSlicer struct {
+type mockSlicer struct {
 	content []byte
 }
 
-func newTestSlicer(content []byte) *testSlicer {
-	return &testSlicer{content: content}
+func newMockSlicer(content []byte) *mockSlicer {
+	return &mockSlicer{content: content}
 }
 
-func (s *testSlicer) Slice(offset, size int64) ([]byte, error) {
+func (s *mockSlicer) Slice(offset, size int64) ([]byte, error) {
 	return s.content[offset : offset+size], nil
 }
 
@@ -124,10 +125,10 @@ func repeatToSize(src []byte, size int64) []byte {
 	return dst
 }
 
-func prepareTestData(pagesize int64) (data *testSlicer, size int64) {
+func prepareTestData(pagesize int64) (data *mockSlicer, size int64) {
 	size = pagesize * pagesInTestData
 
-	data = newTestSlicer(
+	data = newMockSlicer(
 		repeatToSize(
 			[]byte("Hello from userfaultfd! This is our test content that should be readable after the page fault."),
 			size,
