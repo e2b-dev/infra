@@ -52,7 +52,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
 	}
 
-	template, err := s.templateCache.GetTemplate(
+	template, err := s.templateCache.GetTemplate(ctx,
 		req.Sandbox.TemplateId,
 		req.Sandbox.BuildId,
 		req.Sandbox.KernelVersion,
@@ -269,7 +269,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.Errorf(codes.Internal, "error snapshotting sandbox '%s': %s", in.SandboxId, err)
 	}
 
-	err = s.templateCache.AddSnapshot(
+	err = s.templateCache.AddSnapshot(ctx,
 		snapshotTemplateFiles.TemplateID,
 		snapshotTemplateFiles.BuildID,
 		snapshotTemplateFiles.KernelVersion,

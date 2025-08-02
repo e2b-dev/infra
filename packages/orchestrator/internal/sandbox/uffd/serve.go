@@ -1,6 +1,7 @@
 package uffd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"syscall"
@@ -38,6 +39,7 @@ func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUf
 }
 
 func Serve(
+	ctx context.Context,
 	uffd int,
 	mappings []GuestRegionUffdMapping,
 	src *block.TrackedSliceDevice,
@@ -160,7 +162,7 @@ outerLoop:
 				}
 			}()
 
-			b, err := src.Slice(offset, pagesize)
+			b, err := src.Slice(ctx, offset, pagesize)
 			if err != nil {
 
 				stop()

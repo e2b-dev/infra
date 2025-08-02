@@ -32,7 +32,6 @@ const (
 type Cache struct {
 	cache        *ttlcache.Cache[string, Template]
 	persistence  storage.StorageProvider
-	ctx          context.Context
 	buildStore   *build.DiffStore
 	blockMetrics blockmetrics.Metrics
 }
@@ -78,7 +77,6 @@ func NewCache(ctx context.Context, persistence storage.StorageProvider, metrics 
 		persistence:  persistence,
 		buildStore:   buildStore,
 		cache:        cache,
-		ctx:          ctx,
 	}, nil
 }
 
@@ -87,6 +85,7 @@ func (c *Cache) Items() map[string]*ttlcache.Item[string, Template] {
 }
 
 func (c *Cache) GetTemplate(
+	ctx context.Context,
 	templateID,
 	buildID,
 	kernelVersion,
@@ -114,13 +113,14 @@ func (c *Cache) GetTemplate(
 	)
 
 	if !found {
-		go storageTemplate.Fetch(c.ctx, c.buildStore)
+		go storageTemplate.Fetch(ctx, c.buildStore)
 	}
 
 	return t.Value(), nil
 }
 
 func (c *Cache) AddSnapshot(
+	ctx context.Context,
 	templateId,
 	buildId,
 	kernelVersion,
@@ -167,7 +167,9 @@ func (c *Cache) AddSnapshot(
 	)
 
 	if !found {
-		go storageTemplate.Fetch(c.ctx, c.buildStore)
+		go func(ctx context.Context) {
+			storageTemplate.Fetch(ctx, c.buildStore)
+		}(context.WithoutCancel(ctx))
 	}
 
 	return nil

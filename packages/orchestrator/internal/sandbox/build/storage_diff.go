@@ -69,7 +69,7 @@ func (b *StorageDiff) Init(ctx context.Context) error {
 		return errMsg
 	}
 
-	chunker, err := block.NewChunker(ctx, size, b.blockSize, obj, b.cachePath, b.metrics)
+	chunker, err := block.NewChunker(size, b.blockSize, obj, b.cachePath, b.metrics)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create chunker: %w", err)
 		b.chunker.SetError(errMsg)
@@ -88,31 +88,31 @@ func (b *StorageDiff) Close() error {
 	return c.Close()
 }
 
-func (b *StorageDiff) ReadAt(p []byte, off int64) (int, error) {
+func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
 	c, err := b.chunker.Wait()
 	if err != nil {
 		return 0, err
 	}
 
-	return c.ReadAt(p, off)
+	return c.ReadAt(ctx, p, off)
 }
 
-func (b *StorageDiff) Slice(off, length int64) ([]byte, error) {
+func (b *StorageDiff) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	c, err := b.chunker.Wait()
 	if err != nil {
 		return nil, err
 	}
 
-	return c.Slice(off, length)
+	return c.Slice(ctx, off, length)
 }
 
-func (b *StorageDiff) WriteTo(w io.Writer) (int64, error) {
+func (b *StorageDiff) WriteTo(ctx context.Context, w io.Writer) (int64, error) {
 	c, err := b.chunker.Wait()
 	if err != nil {
 		return 0, err
 	}
 
-	return c.WriteTo(w)
+	return c.WriteTo(ctx, w)
 }
 
 // The local file might not be synced.

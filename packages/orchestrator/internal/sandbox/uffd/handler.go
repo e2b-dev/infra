@@ -1,6 +1,7 @@
 package uffd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -84,7 +85,7 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 	}, nil
 }
 
-func (u *Uffd) Start(sandboxId string) error {
+func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 	lis, err := net.ListenUnix("unix", &net.UnixAddr{Name: u.socketPath, Net: "unix"})
 	if err != nil {
 		return fmt.Errorf("failed listening on socket: %w", err)
@@ -99,7 +100,7 @@ func (u *Uffd) Start(sandboxId string) error {
 
 	go func() {
 		// TODO: If the handle function fails, we should kill the sandbox
-		handleErr := u.handle(sandboxId)
+		handleErr := u.handle(ctx, sandboxId)
 		closeErr := u.lis.Close()
 		writerErr := u.exitWriter.Close()
 
@@ -166,7 +167,7 @@ func (u *Uffd) receiveSetup() (*UffdSetup, error) {
 	}, nil
 }
 
-func (u *Uffd) handle(sandboxId string) (err error) {
+func (u *Uffd) handle(ctx context.Context, sandboxId string) (err error) {
 	setup, err := u.receiveSetup()
 	if err != nil {
 		return fmt.Errorf("failed to receive setup message from firecracker: %w", err)
@@ -183,6 +184,7 @@ func (u *Uffd) handle(sandboxId string) (err error) {
 	u.readyCh <- struct{}{}
 
 	err = Serve(
+		ctx,
 		int(uffd),
 		setup.Mappings,
 		u.memfile,

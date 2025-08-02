@@ -20,10 +20,14 @@ const (
 	Rootfs  DiffType = storage.RootfsName
 )
 
+type CtxReaderAt interface {
+	ReadAt(ctx context.Context, p []byte, off int64) (n int, err error)
+}
+
 type Diff interface {
 	io.Closer
-	io.ReaderAt
-	Slice(off, length int64) ([]byte, error)
+	CtxReaderAt
+	Slice(ctx context.Context, off, length int64) ([]byte, error)
 	CacheKey() DiffStoreKey
 	CachePath() (string, error)
 	FileSize() (int64, error)
@@ -36,7 +40,7 @@ func (n *NoDiff) CachePath() (string, error) {
 	return "", ErrNoDiff{}
 }
 
-func (n *NoDiff) Slice(off, length int64) ([]byte, error) {
+func (n *NoDiff) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	return nil, ErrNoDiff{}
 }
 
@@ -44,7 +48,7 @@ func (n *NoDiff) Close() error {
 	return nil
 }
 
-func (n *NoDiff) ReadAt(p []byte, off int64) (int, error) {
+func (n *NoDiff) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
 	return 0, ErrNoDiff{}
 }
 

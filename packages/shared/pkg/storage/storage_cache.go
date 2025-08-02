@@ -310,18 +310,24 @@ func (c *CachedFileObjectProvider) createCacheBlocksFromFile(ctx context.Context
 	}
 
 	totalSize := stat.Size()
+	var errs errgroup.Group
+	workers := make(chan struct{}, 10)
 	for offset := int64(0); offset < totalSize; offset += c.chunkSize {
-		if err := c.writeChunk(ctx, inputPath, offset, totalSize, input); err != nil {
-			return err
-		}
+		go func(offset, size int64) {
+			errs.Go(func() error {
+				workers <- struct{}{}
+				defer func() { <-workers }()
+
+				return c.writeChunkFromFile(ctx, offset, totalSize, input)
+			})
+		}(offset, totalSize)
 	}
-	return nil
+	return errs.Wait()
 }
 
-func (c *CachedFileObjectProvider) writeChunk(ctx context.Context, inputPath string, offset int64, totalSize int64, input *os.File) error {
+func (c *CachedFileObjectProvider) writeChunkFromFile(ctx context.Context, offset int64, totalSize int64, input *os.File) error {
 	var err error
-	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.writeChunk", trace.WithAttributes(
-		attribute.String("input_path", inputPath),
+	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.writeChunkFromFile", trace.WithAttributes(
 		attribute.Int64("offset", offset),
 		attribute.Int64("total_size", totalSize),
 	))
@@ -338,11 +344,11 @@ func (c *CachedFileObjectProvider) writeChunk(ctx context.Context, inputPath str
 
 	expectedRead := min(c.chunkSize, totalSize-offset)
 	if actual, err := io.CopyN(output, input, expectedRead); err != nil {
-		return fmt.Errorf("failed to write %q to %q [%d bytes @ %d]: %w",
-			inputPath, chunkPath, c.chunkSize, offset, err)
+		return fmt.Errorf("failed to write to %q [%d bytes @ %d]: %w",
+			chunkPath, c.chunkSize, offset, err)
 	} else if actual != expectedRead {
-		return fmt.Errorf("failed to write %q to %q [%d bytes @ %d]: only read %d/%d bytes",
-			inputPath, chunkPath, c.chunkSize, offset, actual, expectedRead)
+		return fmt.Errorf("failed to write to %q [%d bytes @ %d]: only read %d/%d bytes",
+			chunkPath, c.chunkSize, offset, actual, expectedRead)
 	}
 	return nil
 }

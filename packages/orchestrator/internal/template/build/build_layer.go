@@ -45,7 +45,7 @@ func (b *Builder) buildLayer(
 	var cleanupRes *sandbox.Cleanup
 	var err error
 
-	localTemplate, err := b.templateCache.GetTemplate(
+	localTemplate, err := b.templateCache.GetTemplate(ctx,
 		sourceMeta.Template.TemplateID,
 		sourceMeta.Template.BuildID,
 		sourceMeta.Template.KernelVersion,
@@ -232,7 +232,7 @@ func pauseAndUpload(
 	}
 
 	// Add snapshot to template cache so it can be used immediately
-	err = templateCache.AddSnapshot(
+	err = templateCache.AddSnapshot(ctx,
 		cacheFiles.TemplateID,
 		cacheFiles.BuildID,
 		cacheFiles.KernelVersion,

@@ -102,13 +102,13 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			}
 			server.Close()
 
-			dispatch := NewDispatch(d.ctx, serverc, d.Backend)
+			dispatch := NewDispatch(serverc, d.Backend)
 			// Start reading commands on the socket and dispatching them to our provider
 			d.handlersWg.Add(1)
 			go func() {
 				defer d.handlersWg.Done()
 
-				handleErr := dispatch.Handle()
+				handleErr := dispatch.Handle(ctx)
 				// The error is expected to happen if the nbd (socket connection) is closed
 				zap.L().Info("closing handler for NBD commands",
 					zap.Error(handleErr),

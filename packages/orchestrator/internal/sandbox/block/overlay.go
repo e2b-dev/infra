@@ -1,6 +1,7 @@
 package block
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync/atomic"
@@ -23,7 +24,7 @@ func NewOverlay(device ReadonlyDevice, cache *Cache, blockSize int64) *Overlay {
 	}
 }
 
-func (o *Overlay) ReadAt(p []byte, off int64) (int, error) {
+func (o *Overlay) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
 	blocks := header.BlocksOffsets(int64(len(p)), o.blockSize)
 
 	for _, blockOff := range blocks {
@@ -36,7 +37,7 @@ func (o *Overlay) ReadAt(p []byte, off int64) (int, error) {
 			return n, fmt.Errorf("error reading from cache: %w", err)
 		}
 
-		n, err = o.device.ReadAt(p[blockOff:blockOff+o.blockSize], off+blockOff)
+		n, err = o.device.ReadAt(ctx, p[blockOff:blockOff+o.blockSize], off+blockOff)
 		if err != nil {
 			return n, fmt.Errorf("error reading from device: %w", err)
 		}
@@ -57,7 +58,7 @@ func (o *Overlay) EjectCache() (*Cache, error) {
 // but creating and copying the bytes from the cache and device to the new slice.
 //
 // When we are implementing this we might want to just enforce the length to be the same as the block size.
-func (o *Overlay) Slice(off, length int64) ([]byte, error) {
+func (o *Overlay) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 

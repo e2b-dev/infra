@@ -43,7 +43,7 @@ func TestOpenObject_ReadWrite_Size_ReadAt(t *testing.T) {
 	n, err = obj.WriteTo(t.Context(), &buf)
 	require.NoError(t, err)
 	require.Equal(t, int64(len(contents)), n)
-	require.Equal(t, contents, buf.String())
+	require.Equal(t, contents, buf.Bytes())
 
 	// read a slice via ReadAt ("world")
 	part := make([]byte, 5)
