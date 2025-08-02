@@ -182,7 +182,7 @@ func seed(db *db.DB, data SeedData) error {
 			SetFreeDiskSizeMB(512).
 			SetTotalDiskSizeMB(1982).
 			SetKernelVersion("vmlinux-6.1.102").
-			SetFirecrackerVersion("v1.10.1_1fcdaec").
+			SetFirecrackerVersion("v1.12.1_d990331").
 			SetEnvdVersion("0.2.4").
 			SetNillableCreatedAt(build.createdAt).Save(ctx)
 		if err != nil {
