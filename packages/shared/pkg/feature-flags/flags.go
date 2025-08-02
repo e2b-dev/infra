@@ -9,8 +9,9 @@ import (
 type BoolFlag string
 
 const (
-	MetricsWriteFlagName BoolFlag = "sandbox-metrics-write"
-	MetricsReadFlagName  BoolFlag = "sandbox-metrics-read"
+	MetricsWriteFlagName                BoolFlag = "sandbox-metrics-write"
+	MetricsReadFlagName                 BoolFlag = "sandbox-metrics-read"
+	SandboxLifeCycleEventsWriteFlagName BoolFlag = "sandbox-lifecycle-events-write"
 )
 
 type IntFlag string
@@ -23,8 +24,9 @@ const (
 )
 
 var flagsBool = map[BoolFlag]bool{
-	MetricsWriteFlagName: env.IsDevelopment(),
-	MetricsReadFlagName:  env.IsDevelopment(),
+	MetricsWriteFlagName:                env.IsDevelopment(),
+	MetricsReadFlagName:                 env.IsDevelopment(),
+	SandboxLifeCycleEventsWriteFlagName: env.IsDevelopment(),
 }
 
 var flagsInt = map[IntFlag]int{

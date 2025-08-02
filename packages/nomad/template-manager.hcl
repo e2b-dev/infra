@@ -65,6 +65,7 @@ job "template-manager" {
         ORCHESTRATOR_SERVICES         = "${orchestrator_services}"
         LOGS_COLLECTOR_PUBLIC_IP      = "${logs_collector_public_ip}"
         ALLOW_SANDBOX_INTERNET        = "${allow_sandbox_internet}"
+        CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
 %{ if !update_stanza }
         FORCE_STOP                    = "true"
 %{ endif }

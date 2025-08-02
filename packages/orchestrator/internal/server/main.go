@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -25,16 +26,17 @@ import (
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 
-	info          *service.ServiceInfo
-	sandboxes     *smap.Map[*sandbox.Sandbox]
-	proxy         *proxy.SandboxProxy
-	tracer        trace.Tracer
-	networkPool   *network.Pool
-	templateCache *template.Cache
-	pauseMu       sync.Mutex
-	devicePool    *nbd.DevicePool
-	persistence   storage.StorageProvider
-	featureFlags  *featureflags.Client
+	info             *service.ServiceInfo
+	sandboxes        *smap.Map[*sandbox.Sandbox]
+	proxy            *proxy.SandboxProxy
+	tracer           trace.Tracer
+	networkPool      *network.Pool
+	templateCache    *template.Cache
+	pauseMu          sync.Mutex
+	devicePool       *nbd.DevicePool
+	persistence      storage.StorageProvider
+	featureFlags     *featureflags.Client
+	clickhouseClient clickhouse.Clickhouse
 }
 
 type Service struct {
@@ -62,6 +64,7 @@ func New(
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 	featureFlags *featureflags.Client,
+	clickhouseClient clickhouse.Clickhouse,
 	persistence storage.StorageProvider,
 ) (*Service, error) {
 	srv := &Service{
@@ -70,15 +73,16 @@ func New(
 		persistence: persistence,
 	}
 	srv.server = &server{
-		info:          info,
-		tracer:        tracer,
-		proxy:         srv.proxy,
-		sandboxes:     sandboxes,
-		networkPool:   networkPool,
-		templateCache: templateCache,
-		devicePool:    devicePool,
-		persistence:   persistence,
-		featureFlags:  featureFlags,
+		info:             info,
+		tracer:           tracer,
+		proxy:            srv.proxy,
+		sandboxes:        sandboxes,
+		networkPool:      networkPool,
+		templateCache:    templateCache,
+		devicePool:       devicePool,
+		persistence:      persistence,
+		featureFlags:     featureFlags,
+		clickhouseClient: clickhouseClient,
 	}
 
 	meter := tel.MeterProvider.Meter("orchestrator.sandbox")
