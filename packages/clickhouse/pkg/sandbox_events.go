@@ -61,6 +61,7 @@ SELECT
     sandbox_id,
     sandbox_execution_id,
     sandbox_template_id,
+	sandbox_build_id,			
     sandbox_team_id,
     event_category,
     event_label,
