@@ -36,14 +36,14 @@ type StorageProvider interface {
 }
 
 type StorageObjectProvider interface {
-	WriteTo(dst io.Writer) (int64, error)
-	WriteFromFileSystem(path string) error
+	WriteTo(ctx context.Context, dst io.Writer) (int64, error)
+	WriteFromFileSystem(ctx context.Context, path string) error
 
-	ReadFrom(src []byte) (int64, error)
-	ReadAt(buff []byte, off int64) (n int, err error)
+	ReadFrom(ctx context.Context, src []byte) (int64, error)
+	ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error)
 
-	Size() (int64, error)
-	Delete() error
+	Size(ctx context.Context) (int64, error)
+	Delete(ctx context.Context) error
 }
 
 func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter, chunkSize int64) (StorageProvider, error) {

@@ -31,7 +31,7 @@ func newStorageFile(
 		return nil, err
 	}
 
-	_, err = object.WriteTo(f)
+	_, err = object.WriteTo(ctx, f)
 	if err != nil {
 		cleanupErr := os.Remove(path)
 		return nil, fmt.Errorf("NEW STORAGE failed to write to file: %w", errors.Join(err, cleanupErr))

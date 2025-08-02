@@ -2,6 +2,7 @@ package header
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -59,10 +60,14 @@ func Serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func Deserialize(in io.WriterTo) (*Header, error) {
+type CtxWriterTo interface {
+	WriteTo(ctx context.Context, to io.Writer) (int64, error)
+}
+
+func Deserialize(ctx context.Context, in CtxWriterTo) (*Header, error) {
 	var buf bytes.Buffer
 
-	_, err := in.WriteTo(&buf)
+	_, err := in.WriteTo(ctx, &buf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write to buffer: %w", err)
 	}

@@ -42,7 +42,7 @@ func (fs *FileSystemStorageProvider) UploadSignedURL(_ context.Context, _ string
 	return "", fmt.Errorf("file system storage does not support signed URLs")
 }
 
-func (fs *FileSystemStorageProvider) OpenObject(ctx context.Context, path string) (StorageObjectProvider, error) {
+func (fs *FileSystemStorageProvider) OpenObject(_ context.Context, path string) (StorageObjectProvider, error) {
 	dir := filepath.Dir(fs.getPath(path))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -50,7 +50,6 @@ func (fs *FileSystemStorageProvider) OpenObject(ctx context.Context, path string
 
 	return &FileSystemStorageObjectProvider{
 		path: fs.getPath(path),
-		ctx:  ctx,
 	}, nil
 }
 
@@ -58,7 +57,7 @@ func (fs *FileSystemStorageProvider) getPath(path string) string {
 	return filepath.Join(fs.basePath, path)
 }
 
-func (f *FileSystemStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {
+func (f *FileSystemStorageObjectProvider) WriteTo(_ context.Context, dst io.Writer) (int64, error) {
 	handle, err := f.getHandle(true)
 	if err != nil {
 		return 0, err
@@ -69,7 +68,7 @@ func (f *FileSystemStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) 
 	return io.Copy(dst, handle)
 }
 
-func (f *FileSystemStorageObjectProvider) WriteFromFileSystem(path string) error {
+func (f *FileSystemStorageObjectProvider) WriteFromFileSystem(_ context.Context, path string) error {
 	handle, err := f.getHandle(false)
 	if err != nil {
 		return err
@@ -90,7 +89,7 @@ func (f *FileSystemStorageObjectProvider) WriteFromFileSystem(path string) error
 	return nil
 }
 
-func (f *FileSystemStorageObjectProvider) ReadFrom(src []byte) (int64, error) {
+func (f *FileSystemStorageObjectProvider) ReadFrom(_ context.Context, src []byte) (int64, error) {
 	handle, err := f.getHandle(false)
 	if err != nil {
 		return 0, err
@@ -100,7 +99,7 @@ func (f *FileSystemStorageObjectProvider) ReadFrom(src []byte) (int64, error) {
 	return io.Copy(handle, bytes.NewBuffer(src))
 }
 
-func (f *FileSystemStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, err error) {
+func (f *FileSystemStorageObjectProvider) ReadAt(_ context.Context, buff []byte, off int64) (n int, err error) {
 	handle, err := f.getHandle(true)
 	if err != nil {
 		return 0, err
@@ -110,7 +109,7 @@ func (f *FileSystemStorageObjectProvider) ReadAt(buff []byte, off int64) (n int,
 	return handle.ReadAt(buff, off)
 }
 
-func (f *FileSystemStorageObjectProvider) Size() (int64, error) {
+func (f *FileSystemStorageObjectProvider) Size(_ context.Context) (int64, error) {
 	handle, err := f.getHandle(true)
 	if err != nil {
 		return 0, err
@@ -125,7 +124,7 @@ func (f *FileSystemStorageObjectProvider) Size() (int64, error) {
 	return fileInfo.Size(), nil
 }
 
-func (f *FileSystemStorageObjectProvider) Delete() error {
+func (f *FileSystemStorageObjectProvider) Delete(_ context.Context) error {
 	return os.Remove(f.path)
 }
 

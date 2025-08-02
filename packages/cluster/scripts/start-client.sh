@@ -49,8 +49,9 @@ sudo sysctl vm.swappiness=10
 sudo sysctl vm.vfs_cache_pressure=50
 
 # Mount NFS
-echo "${NFS_IP_ADDRESS}:/ ${NFS_MOUNT_PATH} nfs defaults,tcp,nconnect=2" | sudo tee -a /etc/fstab
-sudo mount ${NFS_MOUNT_PATH}
+echo "${NFS_IP_ADDRESS}:/slabs ${NFS_MOUNT_PATH} nfs defaults,tcp,nconnect=2,sec=sys,_netdev 0 0" | sudo tee -a /etc/fstab
+sudo mount "${NFS_MOUNT_PATH}"
+sudo mkdir -p "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}" && chmod +w "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}"
 
 # Add tmpfs for snapshotting
 # TODO: Parametrize this

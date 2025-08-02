@@ -240,7 +240,7 @@ module "nomad" {
   orchestrator_proxy_port     = var.orchestrator_proxy_port
   fc_env_pipeline_bucket_name = module.buckets.fc_env_pipeline_bucket_name
   envd_timeout                = var.envd_timeout
-  slab_cache_path             = module.cluster.nfs_slab_cache_mount_path
+  slab_cache_path             = module.cluster.nfs_slab_cache_path
 
   # Template manager
   template_manager_port          = var.template_manager_port

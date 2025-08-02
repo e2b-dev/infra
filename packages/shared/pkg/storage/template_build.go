@@ -47,7 +47,7 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 		return fmt.Errorf("error when serializing memfile header: %w", err)
 	}
 
-	_, err = object.ReadFrom(serialized)
+	_, err = object.ReadFrom(ctx, serialized)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile header: %w", err)
 	}
@@ -61,7 +61,7 @@ func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) e
 		return err
 	}
 
-	err = object.WriteFromFileSystem(memfilePath)
+	err = object.WriteFromFileSystem(ctx, memfilePath)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile: %w", err)
 	}
@@ -80,7 +80,7 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Heade
 		return fmt.Errorf("error when serializing memfile header: %w", err)
 	}
 
-	_, err = object.ReadFrom(serialized)
+	_, err = object.ReadFrom(ctx, serialized)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile header: %w", err)
 	}
@@ -94,7 +94,7 @@ func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) err
 		return err
 	}
 
-	err = object.WriteFromFileSystem(rootfsPath)
+	err = object.WriteFromFileSystem(ctx, rootfsPath)
 	if err != nil {
 		return fmt.Errorf("error when uploading rootfs: %w", err)
 	}
@@ -109,7 +109,7 @@ func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
 		return err
 	}
 
-	if err := object.WriteFromFileSystem(path); err != nil {
+	if err := object.WriteFromFileSystem(ctx, path); err != nil {
 		return fmt.Errorf("error when uploading snapfile: %w", err)
 	}
 

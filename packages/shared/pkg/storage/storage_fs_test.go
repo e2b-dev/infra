@@ -29,25 +29,25 @@ func TestOpenObject_ReadWrite_Size_ReadAt(t *testing.T) {
 
 	contents := []byte("hello world")
 	// write via ReadFrom
-	n, err := obj.ReadFrom(contents)
+	n, err := obj.ReadFrom(t.Context(), contents)
 	require.NoError(t, err)
 	require.Equal(t, int64(len(contents)), n)
 
 	// check Size
-	size, err := obj.Size()
+	size, err := obj.Size(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, int64(len(contents)), size)
 
 	// read the entire file back via WriteTo
 	var buf bytes.Buffer
-	n, err = obj.WriteTo(&buf)
+	n, err = obj.WriteTo(t.Context(), &buf)
 	require.NoError(t, err)
 	require.Equal(t, int64(len(contents)), n)
 	require.Equal(t, contents, buf.String())
 
 	// read a slice via ReadAt ("world")
 	part := make([]byte, 5)
-	nRead, err := obj.ReadAt(part, 6)
+	nRead, err := obj.ReadAt(t.Context(), part, 6)
 	require.NoError(t, err)
 	require.Equal(t, 5, nRead)
 	require.Equal(t, "world", string(part))
@@ -64,10 +64,10 @@ func TestWriteFromFileSystem(t *testing.T) {
 
 	obj, err := p.OpenObject(ctx, "copy/dst.txt")
 	require.NoError(t, err)
-	require.NoError(t, obj.WriteFromFileSystem(srcPath))
+	require.NoError(t, obj.WriteFromFileSystem(t.Context(), srcPath))
 
 	var buf bytes.Buffer
-	_, err = obj.WriteTo(&buf)
+	_, err = obj.WriteTo(t.Context(), &buf)
 	require.NoError(t, err)
 	require.Equal(t, payload, buf.String())
 }
@@ -79,12 +79,12 @@ func TestDelete(t *testing.T) {
 	obj, err := p.OpenObject(ctx, "to/delete.txt")
 	require.NoError(t, err)
 
-	_, err = obj.ReadFrom([]byte("bye"))
+	_, err = obj.ReadFrom(t.Context(), []byte("bye"))
 	require.NoError(t, err)
-	require.NoError(t, obj.Delete())
+	require.NoError(t, obj.Delete(t.Context()))
 
 	// subsequent Size call should fail with ErrorObjectNotExist
-	_, err = obj.Size()
+	_, err = obj.Size(t.Context())
 	require.ErrorIs(t, err, ErrorObjectNotExist)
 }
 
@@ -100,7 +100,7 @@ func TestDeleteObjectsWithPrefix(t *testing.T) {
 	for _, pth := range paths {
 		obj, err := p.OpenObject(ctx, pth)
 		require.NoError(t, err)
-		_, err = obj.ReadFrom([]byte("x"))
+		_, err = obj.ReadFrom(t.Context(), []byte("x"))
 		require.NoError(t, err)
 	}
 
@@ -122,6 +122,6 @@ func TestWriteToNonExistentObject(t *testing.T) {
 	require.NoError(t, err)
 
 	var sink bytes.Buffer
-	_, err = obj.WriteTo(&sink)
+	_, err = obj.WriteTo(t.Context(), &sink)
 	require.ErrorIs(t, err, ErrorObjectNotExist)
 }

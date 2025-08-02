@@ -62,7 +62,7 @@ func (b *StorageDiff) Init(ctx context.Context) error {
 		return err
 	}
 
-	size, err := obj.Size()
+	size, err := obj.Size(ctx)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get object size: %w", err)
 		b.chunker.SetError(errMsg)

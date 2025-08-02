@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -37,21 +38,24 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		require.NoError(t, err)
 
 		buffer := make([]byte, 3)
-		read, err := c.ReadAt(buffer, 0)
+		read, err := c.ReadAt(t.Context(), buffer, 0)
 		require.NoError(t, err)
 		assert.Equal(t, []byte{1, 2, 3}, buffer)
 		assert.Equal(t, 3, read)
 	})
 
 	t.Run("consecutive ReadAt calls should cache", func(t *testing.T) {
-		fakeData := []byte{1, 2, 3}
+		fakeData := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
 		fakeStorageObjectProvider := NewMockStorageObjectProvider(t)
 
 		fakeStorageObjectProvider.EXPECT().
-			ReadAt(mock.Anything, mock.Anything).
-			RunAndReturn(func(buff []byte, off int64) (int, error) {
-				copy(buff, fakeData)
-				return len(fakeData), nil
+			ReadAt(mock.Anything, mock.Anything, mock.Anything).
+			RunAndReturn(func(ctx context.Context, buff []byte, off int64) (int, error) {
+				start := off
+				end := off + int64(len(buff))
+				end = min(end, int64(len(fakeData)))
+				copy(buff[:], fakeData[start:end])
+				return int(end - start), nil
 			})
 
 		tempDir := t.TempDir()
@@ -63,17 +67,17 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 		// first read goes to source
 		buffer := make([]byte, 3)
-		read, err := c.ReadAt(buffer, 0)
+		read, err := c.ReadAt(t.Context(), buffer, 3)
 		require.NoError(t, err)
-		assert.Equal(t, []byte{1, 2, 3}, buffer)
+		assert.Equal(t, []byte{4, 5, 6}, buffer)
 		assert.Equal(t, 3, read)
 
 		// second read pulls from cache
 		c.inner = nil // prevent remote reads, force cache read
 		buffer = make([]byte, 3)
-		read, err = c.ReadAt(buffer, 0)
+		read, err = c.ReadAt(t.Context(), buffer, 3)
 		require.NoError(t, err)
-		assert.Equal(t, []byte{1, 2, 3}, buffer)
+		assert.Equal(t, []byte{4, 5, 6}, buffer)
 		assert.Equal(t, 3, read)
 	})
 
@@ -82,13 +86,13 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 		fakeStorageObjectProvider := NewMockStorageObjectProvider(t)
 		fakeStorageObjectProvider.EXPECT().
-			WriteTo(mock.Anything).
-			RunAndReturn(func(dst io.Writer) (int64, error) {
+			WriteTo(mock.Anything, mock.Anything).
+			RunAndReturn(func(ctx context.Context, dst io.Writer) (int64, error) {
 				num, err := dst.Write(fakeData)
 				return int64(num), err
 			})
 		fakeStorageObjectProvider.EXPECT().
-			Size().Return(int64(len(fakeData)), nil)
+			Size(mock.Anything).Return(int64(len(fakeData)), nil)
 
 		tempDir := t.TempDir()
 		c := CachedFileObjectProvider{
@@ -99,27 +103,27 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 		// write to both local and remote storage
 		var buffer bytes.Buffer
-		count, err := c.WriteTo(&buffer)
+		count, err := c.WriteTo(t.Context(), &buffer)
 		require.NoError(t, err)
 		assert.Equal(t, int64(len(fakeData)), count)
 
 		// second read should go straight to local, although it grabs the size
 		fakeStorageObjectProvider.EXPECT().
-			WriteTo(mock.Anything).
+			WriteTo(mock.Anything, mock.Anything).
 			Panic("something bad happened")
 		var buff2 bytes.Buffer
-		count, err = c.WriteTo(&buff2)
+		count, err = c.WriteTo(t.Context(), &buff2)
 		require.NoError(t, err)
 		assert.Equal(t, int64(len(fakeData)), count)
 	})
 
 	t.Run("WriteFromFileSystem should write to cache", func(t *testing.T) {
-		fakeData := []byte{1, 2, 3}
+		fakeData := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
 
 		fakeStorageObjectProvider := NewMockStorageObjectProvider(t)
 		fakeStorageObjectProvider.
 			EXPECT().
-			WriteFromFileSystem(mock.Anything).
+			WriteFromFileSystem(mock.Anything, mock.Anything).
 			Return(nil)
 
 		tempDir := t.TempDir()
@@ -135,13 +139,13 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		require.NoError(t, err)
 
 		// write file to object store
-		err = c.WriteFromFileSystem(inputFile)
+		err = c.WriteFromFileSystem(t.Context(), inputFile)
 		require.NoError(t, err)
 
 		// read the object back, ensure remote is not called
 		c.inner = nil
 		buffer := make([]byte, 3)
-		read, err := c.ReadAt(buffer, 0)
+		read, err := c.ReadAt(t.Context(), buffer, 0)
 		require.NoError(t, err)
 		assert.Equal(t, []byte{1, 2, 3}, buffer)
 		assert.Equal(t, 3, read)
@@ -152,8 +156,8 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 		fakeStorageObjectProvider := NewMockStorageObjectProvider(t)
 		fakeStorageObjectProvider.EXPECT().
-			ReadFrom(mock.Anything).
-			RunAndReturn(func(src []byte) (int64, error) {
+			ReadFrom(mock.Anything, mock.Anything).
+			RunAndReturn(func(ctx context.Context, src []byte) (int64, error) {
 				return int64(len(src)), nil
 			})
 
@@ -164,12 +168,12 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 			inner:     fakeStorageObjectProvider,
 		}
 
-		read, err := c.ReadFrom(fakeData)
+		read, err := c.ReadFrom(t.Context(), fakeData)
 		require.NoError(t, err)
 		assert.Equal(t, int64(len(fakeData)), read)
 
 		buf := make([]byte, 3)
-		read2, err := c.ReadAt(buf, 0)
+		read2, err := c.ReadAt(t.Context(), buf, 0)
 		require.NoError(t, err)
 		assert.Equal(t, fakeData, buf)
 		assert.Equal(t, 3, read2)

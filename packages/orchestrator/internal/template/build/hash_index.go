@@ -32,7 +32,7 @@ func layerMetaFromHash(ctx context.Context, s storage.StorageProvider, cacheScop
 	}
 
 	var buf bytes.Buffer
-	_, err = obj.WriteTo(&buf)
+	_, err = obj.WriteTo(ctx, &buf)
 	if err != nil {
 		return LayerMetadata{}, fmt.Errorf("error reading template metadata from object: %w", err)
 	}
@@ -64,7 +64,7 @@ func saveLayerMeta(ctx context.Context, s storage.StorageProvider, cacheScope st
 		return fmt.Errorf("error marshalling template metadata: %w", err)
 	}
 
-	_, err = obj.ReadFrom(marshaled)
+	_, err = obj.ReadFrom(ctx, marshaled)
 	if err != nil {
 		return fmt.Errorf("error writing UUID to object: %w", err)
 	}
