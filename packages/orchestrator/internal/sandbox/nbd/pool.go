@@ -23,19 +23,19 @@ const (
 	waitOnNBDError = 50 * time.Millisecond
 )
 
-// ErrNoFreeSlots is returned when there are no free slots.
+// NoFreeSlotsError is returned when there are no free slots.
 // You can retry the request after some time.
-type ErrNoFreeSlots struct{}
+type NoFreeSlotsError struct{}
 
-func (ErrNoFreeSlots) Error() string {
+func (NoFreeSlotsError) Error() string {
 	return "no free slots"
 }
 
-// ErrDeviceInUse is returned when the device that you wanted to release is still in use.
+// DeviceInUseError is returned when the device that you wanted to release is still in use.
 // You can retry the request after ensuring that the device is not in use anymore.
-type ErrDeviceInUse struct{}
+type DeviceInUseError struct{}
 
-func (ErrDeviceInUse) Error() string {
+func (DeviceInUseError) Error() string {
 	return "device in use"
 }
 
@@ -223,7 +223,7 @@ func (d *DevicePool) getFreeDeviceSlot() (*DeviceSlot, error) {
 		if !ok {
 			cleanup()
 
-			return nil, ErrNoFreeSlots{}
+			return nil, NoFreeSlotsError{}
 		}
 
 		free, err := d.isDeviceFree(slot)
@@ -269,7 +269,7 @@ func (d *DevicePool) ReleaseDevice(idx DeviceSlot) error {
 	}
 
 	if !free {
-		return ErrDeviceInUse{}
+		return DeviceInUseError{}
 	}
 
 	d.mu.Lock()
@@ -285,7 +285,7 @@ func (d *DevicePool) ReleaseDeviceWithRetry(idx DeviceSlot) error {
 	for {
 		attempt++
 		err := d.ReleaseDevice(idx)
-		if errors.Is(err, ErrDeviceInUse{}) {
+		if errors.Is(err, DeviceInUseError{}) {
 			if attempt%100 == 0 {
 				zap.L().Error("error releasing device", zap.Int("attempt", attempt), zap.Error(err))
 			}

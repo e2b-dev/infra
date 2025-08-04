@@ -41,7 +41,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint, sandboxes *s
 
 			sbx, found := sandboxes.Get(sandboxId)
 			if !found {
-				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
+				return nil, reverseproxy.NewSandboxNotFoundError(sandboxId)
 			}
 
 			url := &url.URL{

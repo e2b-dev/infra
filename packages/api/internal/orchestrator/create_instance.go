@@ -60,8 +60,8 @@ func (o *Orchestrator) CreateSandbox(
 	// Check if team has reached max instances
 	releaseTeamSandboxReservation, err := o.instanceCache.Reserve(sandboxID, team.Team.ID, team.Tier.ConcurrentInstances)
 	if err != nil {
-		var limitErr *instance.ErrSandboxLimitExceeded
-		var alreadyErr *instance.ErrAlreadyBeingStarted
+		var limitErr *instance.SandboxLimitExceededError
+		var alreadyErr *instance.AlreadyBeingStartedError
 
 		telemetry.ReportCriticalError(ctx, "failed to reserve sandbox for team", err)
 

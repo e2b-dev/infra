@@ -26,7 +26,7 @@ linters:
 #    - err113
 #    - errcheck
 #    - errchkjson
-#    - errname
+    - errname
     - errorlint
     - staticcheck
     - govet

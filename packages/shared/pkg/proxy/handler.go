@@ -12,29 +12,29 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/template"
 )
 
-type ErrInvalidHost struct{}
+type InvalidHostError struct{}
 
-func (e *ErrInvalidHost) Error() string {
+func (e *InvalidHostError) Error() string {
 	return "invalid url host"
 }
 
-type ErrInvalidSandboxPort struct{}
+type InvalidSandboxPortError struct{}
 
-func (e *ErrInvalidSandboxPort) Error() string {
+func (e *InvalidSandboxPortError) Error() string {
 	return "invalid sandbox port"
 }
 
-func NewErrSandboxNotFound(sandboxId string) *ErrSandboxNotFound {
-	return &ErrSandboxNotFound{
+func NewSandboxNotFoundError(sandboxId string) *SandboxNotFoundError {
+	return &SandboxNotFoundError{
 		SandboxId: sandboxId,
 	}
 }
 
-type ErrSandboxNotFound struct {
+type SandboxNotFoundError struct {
 	SandboxId string
 }
 
-func (e *ErrSandboxNotFound) Error() string {
+func (e *SandboxNotFoundError) Error() string {
 	return "sandbox not found"
 }
 
@@ -42,7 +42,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		d, err := getDestination(r)
 
-		var invalidHostErr *ErrInvalidHost
+		var invalidHostErr *InvalidHostError
 		if errors.As(err, &invalidHostErr) {
 			zap.L().Warn("invalid host", zap.String("host", r.Host))
 			http.Error(w, "Invalid host", http.StatusBadRequest)
@@ -50,7 +50,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
-		var invalidPortErr *ErrInvalidSandboxPort
+		var invalidPortErr *InvalidSandboxPortError
 		if errors.As(err, &invalidPortErr) {
 			zap.L().Warn("invalid sandbox port", zap.String("host", r.Host))
 			http.Error(w, "Invalid sandbox port", http.StatusBadRequest)
@@ -58,7 +58,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
-		var notFoundErr *ErrSandboxNotFound
+		var notFoundErr *SandboxNotFoundError
 		if errors.As(err, &notFoundErr) {
 			zap.L().Warn("sandbox not found", zap.String("host", r.Host))
 

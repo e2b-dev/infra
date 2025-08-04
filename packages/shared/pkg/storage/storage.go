@@ -12,7 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var ErrorObjectNotExist = errors.New("object does not exist")
+var ErrObjectNotExist = errors.New("object does not exist")
 
 type Provider string
 

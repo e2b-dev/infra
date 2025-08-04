@@ -18,16 +18,16 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-type ErrCacheClosed struct {
+type CacheClosedError struct {
 	filePath string
 }
 
-func (e *ErrCacheClosed) Error() string {
+func (e *CacheClosedError) Error() string {
 	return fmt.Sprintf("block cache already closed for path %s", e.filePath)
 }
 
-func NewErrCacheClosed(filePath string) *ErrCacheClosed {
-	return &ErrCacheClosed{
+func NewErrCacheClosed(filePath string) *CacheClosedError {
+	return &CacheClosedError{
 		filePath: filePath,
 	}
 }
@@ -193,7 +193,7 @@ func (m *Cache) Slice(off, length int64) ([]byte, error) {
 		return (*m.mmap)[off:end], nil
 	}
 
-	return nil, ErrBytesNotAvailable{}
+	return nil, BytesNotAvailableError{}
 }
 
 func (m *Cache) isCached(off, length int64) bool {

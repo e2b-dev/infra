@@ -133,7 +133,7 @@ func (f *FileSystemStorageObjectProvider) getHandle(checkExistence bool) (*os.Fi
 		info, err := os.Stat(f.path)
 		if err != nil {
 			if os.IsNotExist(err) {
-				return nil, ErrorObjectNotExist
+				return nil, ErrObjectNotExist
 			}
 
 			return nil, err

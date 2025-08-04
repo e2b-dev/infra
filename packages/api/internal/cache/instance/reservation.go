@@ -62,19 +62,19 @@ func (c *InstanceCache) list(teamID uuid.UUID) (instanceIDs []string) {
 	return instanceIDs
 }
 
-type ErrAlreadyBeingStarted struct {
+type AlreadyBeingStartedError struct {
 	sandboxID string
 }
 
-func (e *ErrAlreadyBeingStarted) Error() string {
+func (e *AlreadyBeingStartedError) Error() string {
 	return fmt.Sprintf("sandbox %s is already being started", e.sandboxID)
 }
 
-type ErrSandboxLimitExceeded struct {
+type SandboxLimitExceededError struct {
 	teamID string
 }
 
-func (e *ErrSandboxLimitExceeded) Error() string {
+func (e *SandboxLimitExceededError) Error() string {
 	return fmt.Sprintf("sandbox %s has exceeded the limit", e.teamID)
 }
 
@@ -91,11 +91,11 @@ func (c *InstanceCache) Reserve(instanceID string, team uuid.UUID, limit int64) 
 	}
 
 	if int64(len(ids)) >= limit {
-		return nil, &ErrSandboxLimitExceeded{teamID: team.String()}
+		return nil, &SandboxLimitExceededError{teamID: team.String()}
 	}
 
 	if _, ok := ids[instanceID]; ok {
-		return nil, &ErrAlreadyBeingStarted{
+		return nil, &AlreadyBeingStartedError{
 			sandboxID: instanceID,
 		}
 	}
@@ -103,7 +103,7 @@ func (c *InstanceCache) Reserve(instanceID string, team uuid.UUID, limit int64) 
 	inserted := c.reservations.insertIfAbsent(instanceID, team)
 	if !inserted {
 		// This shouldn't happen
-		return nil, &ErrAlreadyBeingStarted{
+		return nil, &AlreadyBeingStartedError{
 			sandboxID: instanceID,
 		}
 	}

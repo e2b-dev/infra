@@ -42,7 +42,7 @@ func NewStorage(
 		diffHeader, err := header.Deserialize(headerObject)
 
 		// If we can't find the diff header in storage, we switch to templates without a headers
-		if err != nil && !errors.Is(err, storage.ErrorObjectNotExist) {
+		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
 			return nil, fmt.Errorf("failed to deserialize header: %w", err)
 		}
 

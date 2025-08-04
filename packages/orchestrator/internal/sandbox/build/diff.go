@@ -9,9 +9,9 @@ import (
 
 type DiffType string
 
-type ErrNoDiff struct{}
+type NoDiffError struct{}
 
-func (ErrNoDiff) Error() string {
+func (NoDiffError) Error() string {
 	return "the diff is empty"
 }
 
@@ -33,11 +33,11 @@ type Diff interface {
 type NoDiff struct{}
 
 func (n *NoDiff) CachePath() (string, error) {
-	return "", ErrNoDiff{}
+	return "", NoDiffError{}
 }
 
 func (n *NoDiff) Slice(off, length int64) ([]byte, error) {
-	return nil, ErrNoDiff{}
+	return nil, NoDiffError{}
 }
 
 func (n *NoDiff) Close() error {
@@ -45,11 +45,11 @@ func (n *NoDiff) Close() error {
 }
 
 func (n *NoDiff) ReadAt(p []byte, off int64) (int, error) {
-	return 0, ErrNoDiff{}
+	return 0, NoDiffError{}
 }
 
 func (n *NoDiff) FileSize() (int64, error) {
-	return 0, ErrNoDiff{}
+	return 0, NoDiffError{}
 }
 
 func (n *NoDiff) CacheKey() DiffStoreKey {
@@ -57,5 +57,5 @@ func (n *NoDiff) CacheKey() DiffStoreKey {
 }
 
 func (n *NoDiff) Init(ctx context.Context) error {
-	return ErrNoDiff{}
+	return NoDiffError{}
 }

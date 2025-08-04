@@ -17,9 +17,9 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-type ErrPauseQueueExhausted struct{}
+type PauseQueueExhaustedError struct{}
 
-func (ErrPauseQueueExhausted) Error() string {
+func (PauseQueueExhaustedError) Error() string {
 	return "The pause queue is exhausted"
 }
 
@@ -60,13 +60,13 @@ func (o *Orchestrator) PauseInstance(
 	}
 
 	err = snapshotInstance(ctx, o, sbx, *envBuild.EnvID, envBuild.ID.String())
-	if errors.Is(err, ErrPauseQueueExhausted{}) {
+	if errors.Is(err, PauseQueueExhaustedError{}) {
 		telemetry.ReportCriticalError(ctx, "pause queue exhausted", err)
 
-		return ErrPauseQueueExhausted{}
+		return PauseQueueExhaustedError{}
 	}
 
-	if err != nil && !errors.Is(err, ErrPauseQueueExhausted{}) {
+	if err != nil && !errors.Is(err, PauseQueueExhaustedError{}) {
 		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)
 
 		return fmt.Errorf("error pausing sandbox: %w", err)
@@ -116,7 +116,7 @@ func snapshotInstance(ctx context.Context, orch *Orchestrator, sbx *instance.Ins
 	}
 
 	if st.Code() == codes.ResourceExhausted {
-		return ErrPauseQueueExhausted{}
+		return PauseQueueExhaustedError{}
 	}
 
 	return fmt.Errorf("failed to pause sandbox '%s': %w", sbx.Instance.SandboxID, err)
