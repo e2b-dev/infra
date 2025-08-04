@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
@@ -34,6 +36,7 @@ type Template struct {
 	SpawnCount    int64
 	BuildCount    int32
 	CreatedBy     *TemplateCreator
+	EnvdVersion   string
 }
 
 type UpdateEnvInput struct {
@@ -97,6 +100,13 @@ func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template
 			diskMB = *build.TotalDiskSizeMB
 		}
 
+		envdVersion := ""
+		if build.EnvdVersion != nil {
+			envdVersion = *build.EnvdVersion
+		} else {
+			zap.L().Error("failed to determine envd version", logger.WithTemplateID(item.ID))
+		}
+
 		result = append(result, &Template{
 			TemplateID:    item.ID,
 			TeamID:        item.TeamID,
@@ -112,6 +122,7 @@ func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template
 			SpawnCount:    item.SpawnCount,
 			BuildCount:    item.BuildCount,
 			CreatedBy:     createdBy,
+			EnvdVersion:   envdVersion,
 		})
 	}
 

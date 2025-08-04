@@ -160,6 +160,10 @@ components:
       minimum: 0
       description: Disk size for the sandbox in MiB
 
+    EnvdVersion:
+      type: string
+      description: Version of the envd running in the sandbox
+
     SandboxMetadata:
       additionalProperties:
         type: string
@@ -337,6 +341,7 @@ components:
         - diskSizeMB
         - endAt
         - state
+        - envdVersion
       properties:
         templateID:
           type: string
@@ -369,6 +374,8 @@ components:
           $ref: "#/components/schemas/SandboxMetadata"
         state:
           $ref: "#/components/schemas/SandboxState"
+        envdVersion:
+          $ref: "#/components/schemas/EnvdVersion"
 
     SandboxesWithMetrics:
       required:
@@ -433,6 +440,7 @@ components:
         - lastSpawnedAt
         - spawnCount
         - buildCount
+        - envdVersion
       properties:
         templateID:
           type: string
@@ -478,6 +486,8 @@ components:
           type: integer
           format: int32
           description: Number of times the template was built
+        envdVersion:
+          $ref: "#/components/schemas/EnvdVersion"
 
     TemplateBuildRequest:
       required:

@@ -104,6 +104,9 @@ type DiskSizeMB = int32
 // EnvVars defines model for EnvVars.
 type EnvVars map[string]string
 
+// EnvdVersion Version of the envd running in the sandbox
+type EnvdVersion = string
+
 // Error defines model for Error.
 type Error struct {
 	// Code Error code
@@ -145,6 +148,9 @@ type ListedSandbox struct {
 
 	// EndAt Time when the sandbox will expire
 	EndAt time.Time `json:"endAt"`
+
+	// EnvdVersion Version of the envd running in the sandbox
+	EnvdVersion EnvdVersion `json:"envdVersion"`
 
 	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB MemoryMB         `json:"memoryMB"`
@@ -465,6 +471,9 @@ type Template struct {
 
 	// DiskSizeMB Disk size for the sandbox in MiB
 	DiskSizeMB DiskSizeMB `json:"diskSizeMB"`
+
+	// EnvdVersion Version of the envd running in the sandbox
+	EnvdVersion EnvdVersion `json:"envdVersion"`
 
 	// LastSpawnedAt Time when the template was last used
 	LastSpawnedAt time.Time `json:"lastSpawnedAt"`
