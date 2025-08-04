@@ -329,6 +329,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		node.RamUsage.Add(-info.RamMB)
 
 		o.dns.Remove(ctx, info.Instance.SandboxID, node.Info.IPAddress)
+		o.teamMetricsObserver.Remove(info.TeamID)
 
 		if node.client == nil {
 			zap.L().Error("client for node not found", logger.WithNodeID(info.Node.NodeID))
@@ -431,6 +432,8 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 
 			o.dns.Add(ctx, info.Instance.SandboxID, node.Info.IPAddress)
 		}
+
+		o.teamMetricsObserver.Add(ctx, info.TeamID, created)
 
 		if info.AutoPause.Load() {
 			o.instanceCache.MarkAsPausing(info)

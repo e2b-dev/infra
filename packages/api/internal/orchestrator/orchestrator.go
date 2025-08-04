@@ -21,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
+	"github.com/e2b-dev/infra/packages/api/internal/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
@@ -52,6 +53,7 @@ type Orchestrator struct {
 	clusters                *edge.Pool
 	metricsRegistration     metric.Registration
 	createdSandboxesCounter metric.Int64Counter
+	teamMetricsObserver     *metrics.TeamObserver
 }
 
 func New(
@@ -102,6 +104,14 @@ func New(
 	)
 
 	o.instanceCache = cache
+
+	teamMetricsObserver, err := metrics.NewTeamObserver(ctx)
+	if err != nil {
+		zap.L().Error("Failed to create team metrics observer", zap.Error(err))
+		return nil, fmt.Errorf("failed to create team metrics observer: %w", err)
+	}
+
+	o.teamMetricsObserver = teamMetricsObserver
 
 	if env.IsLocal() {
 		zap.L().Info("Skipping syncing sandboxes, running locally")
@@ -184,6 +194,12 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 	if o.metricsRegistration != nil {
 		if err := o.metricsRegistration.Unregister(); err != nil {
 			errs = append(errs, fmt.Errorf("failed to unregister metrics: %w", err))
+		}
+	}
+
+	if o.teamMetricsObserver != nil {
+		if err := o.teamMetricsObserver.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("failed to close team metrics observer: %w", err))
 		}
 	}
 

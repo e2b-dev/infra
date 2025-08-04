@@ -12,7 +12,6 @@ import (
 	"os/signal"
 	"slices"
 	"syscall"
-	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -50,8 +49,6 @@ type Closeable interface {
 const (
 	defaultPort      = 5008
 	defaultProxyPort = 5007
-
-	sandboxMetricExportPeriod = 5 * time.Second
 
 	version = "0.1.0"
 
@@ -307,7 +304,7 @@ func run(port, proxyPort uint) (success bool) {
 		}
 	}
 
-	sandboxObserver, err := metrics.NewSandboxObserver(ctx, serviceInfo.SourceCommit, serviceInfo.ClientId, sandboxMetricExportPeriod, sandboxes)
+	sandboxObserver, err := metrics.NewSandboxObserver(ctx, serviceInfo.SourceCommit, serviceInfo.ClientId, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}

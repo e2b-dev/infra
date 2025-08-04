@@ -46,6 +46,12 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 		return
 	}
 
+	// Validate time range parameters
+	if start.After(end) {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "start time cannot be after end time")
+		return
+	}
+
 	step := calculateStep(start, end)
 
 	metrics, err := a.clickhouseStore.QuerySandboxMetrics(ctx, sandboxID, team.ID.String(), start, end, step)

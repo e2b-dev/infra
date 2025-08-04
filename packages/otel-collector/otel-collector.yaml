@@ -149,6 +149,8 @@ exporters:
     metrics_tables:
       gauge:
         name: "metrics_gauge"
+      sum:
+        name: "metrics_sum"
 service:
   telemetry:
     logs:
