@@ -12,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -21,6 +22,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 	ctx := c.Request.Context()
 	ctx, span := a.Tracer.Start(ctx, "sandbox-metrics")
 	defer span.End()
+	sandboxID = utils.ShortID(sandboxID)
 
 	team := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo).Team
 
