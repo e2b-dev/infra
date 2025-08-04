@@ -36,13 +36,14 @@ func (a *APIStore) GetTeamsMetrics(c *gin.Context, params api.GetTeamsMetricsPar
 		return
 	}
 
+	// Default time range is the last 7 days
 	start, end := time.Now().Add(-7*24*time.Hour), time.Now()
 	if params.Start != nil {
 		start = time.Unix(*params.Start, 0)
 	}
 
 	if params.End != nil {
-		end = time.Unix(*params.End, 0)
+		end = time.Unix(*params.End, 0).Add(time.Second)
 	}
 
 	// Validate time range parameters
@@ -84,7 +85,7 @@ func (a *APIStore) GetTeamsMetrics(c *gin.Context, params api.GetTeamsMetricsPar
 		apiMetrics[i] = api.TeamMetric{
 			Timestamp:              m.Timestamp,
 			MaxConcurrentSandboxes: int32(m.ConcurrentSandboxes),
-			StartedSandboxes:       int32(m.StartedSandboxes),
+			SandboxStartRate:       float32(m.SandboxStartedRate),
 		}
 	}
 

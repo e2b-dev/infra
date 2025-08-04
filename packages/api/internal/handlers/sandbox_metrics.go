@@ -40,7 +40,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 		return
 	}
 
-	start, end, err := getStartEndTime(ctx, a.clickhouseStore, team.ID.String(), sandboxID, params)
+	start, end, err := getSandboxStartEndTime(ctx, a.clickhouseStore, team.ID.String(), sandboxID, params)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("error when getting metrics time range: %s", err))
 		return
@@ -99,7 +99,7 @@ func calculateStep(start, end time.Time) time.Duration {
 	}
 }
 
-func getStartEndTime(ctx context.Context, clickhouseStore clickhouse.Clickhouse, teamID, sandboxID string, params api.GetSandboxesSandboxIDMetricsParams) (time.Time, time.Time, error) {
+func getSandboxStartEndTime(ctx context.Context, clickhouseStore clickhouse.Clickhouse, teamID, sandboxID string, params api.GetSandboxesSandboxIDMetricsParams) (time.Time, time.Time, error) {
 	// Check if the sandbox exists
 	var start, end time.Time
 	if params.Start != nil {

@@ -73,7 +73,7 @@ const (
 	SandboxDiskTotalGaugeName GaugeIntType = "e2b.sandbox.disk.total"
 
 	// Team metrics
-	TeamSandboxMaxGaugeName GaugeIntType = "e2b.team.sandbox.max"
+	TeamSandboxMaxGaugeName GaugeIntType = "e2b.team.sandbox.max_concurrent"
 
 	// Build resource metrics
 	BuildRootfsSizeHistogramName HistogramType = "template.build.rootfs.size"

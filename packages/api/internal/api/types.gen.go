@@ -459,6 +459,18 @@ type TeamAPIKey struct {
 	Name string `json:"name"`
 }
 
+// TeamMetric Team metric with timestamp
+type TeamMetric struct {
+	// MaxConcurrentSandboxes Maximum number of concurrent sandboxes for the team
+	MaxConcurrentSandboxes int32 `json:"maxConcurrentSandboxes"`
+
+	// SandboxStartRate Number of sandboxes started per second
+	SandboxStartRate float32 `json:"sandboxStartRate"`
+
+	// Timestamp Timestamp of the metric entry
+	Timestamp time.Time `json:"timestamp"`
+}
+
 // TeamUser defines model for TeamUser.
 type TeamUser struct {
 	// Email Email of the user
@@ -702,6 +714,13 @@ type PostSandboxesSandboxIDRefreshesJSONBody struct {
 type PostSandboxesSandboxIDTimeoutJSONBody struct {
 	// Timeout Timeout in seconds from the current time after which the sandbox should expire
 	Timeout int32 `json:"timeout"`
+}
+
+// GetTeamsMetricsParams defines parameters for GetTeamsMetrics.
+type GetTeamsMetricsParams struct {
+	// Start Starting timestamp of the metrics that should be returned in milliseconds
+	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
+	End   *int64 `form:"end,omitempty" json:"end,omitempty"`
 }
 
 // GetTemplatesParams defines parameters for GetTemplates.
