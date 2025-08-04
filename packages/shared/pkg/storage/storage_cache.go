@@ -310,14 +310,11 @@ func (c *CachedFileObjectProvider) createCacheBlocksFromFile(ctx context.Context
 	}
 
 	totalSize := stat.Size()
-	var errs errgroup.Group
-	workers := make(chan struct{}, 10)
+	errs, ctx := errgroup.WithContext(ctx)
+	errs.SetLimit(10)
 	for offset := int64(0); offset < totalSize; offset += c.chunkSize {
-		go func(offset, size int64) {
+		func(offset, totalSize int64) {
 			errs.Go(func() error {
-				workers <- struct{}{}
-				defer func() { <-workers }()
-
 				return c.writeChunkFromFile(ctx, offset, totalSize, input)
 			})
 		}(offset, totalSize)
@@ -343,13 +340,23 @@ func (c *CachedFileObjectProvider) writeChunkFromFile(ctx context.Context, offse
 	defer cleanup("failed to close file", output)
 
 	expectedRead := min(c.chunkSize, totalSize-offset)
-	if actual, err := io.CopyN(output, input, expectedRead); err != nil {
-		return fmt.Errorf("failed to write to %q [%d bytes @ %d]: %w",
-			chunkPath, c.chunkSize, offset, err)
-	} else if actual != expectedRead {
-		return fmt.Errorf("failed to write to %q [%d bytes @ %d]: only read %d/%d bytes",
-			chunkPath, c.chunkSize, offset, actual, expectedRead)
+	totalRead := int64(0)
+	buffer := make([]byte, min(32*1024, expectedRead))
+	for totalRead < expectedRead {
+		read, err := input.ReadAt(buffer, offset+totalRead)
+		if err != nil {
+			return fmt.Errorf("failed to write to %q [%d bytes @ %d]: %w",
+				chunkPath, c.chunkSize, offset, err)
+		} else if read == 0 {
+			return fmt.Errorf("empty read at %d+%d", offset, totalRead)
+		}
+		if _, err = output.Write(buffer[:read]); err != nil {
+			return fmt.Errorf("failed to write to %q [%d bytes @ %d]: %w",
+				chunkPath, c.chunkSize, offset, err)
+		}
+		totalRead += int64(read)
 	}
+
 	return nil
 }
 
