@@ -23,5 +23,7 @@ func (a *API) GetEnvs(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(envs)
+	if err := json.NewEncoder(w).Encode(envs); err != nil {
+		a.logger.Warn().Err(err).Msg("failed to encode env vars")
+	}
 }
