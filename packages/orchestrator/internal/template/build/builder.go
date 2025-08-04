@@ -163,7 +163,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		return nil, fmt.Errorf("error getting base hash: %w", err)
 	}
 
-	lastCached, baseMetadata, err := b.setupBase(ctx, cacheScope, finalMetadata, template, lastHash, isV1Build)
+	isLastLayerCached, baseMetadata, err := b.setupBase(ctx, cacheScope, finalMetadata, template, lastHash, isV1Build)
 	if err != nil {
 		return nil, fmt.Errorf("error setting up build: %w", err)
 	}
@@ -183,10 +183,10 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		}
 		baseSource = "FROM " + fromImage
 	}
-	postProcessor.Info(layerInfo(lastCached, "base", baseSource, lastHash))
+	postProcessor.Info(layerInfo(isLastLayerCached, "base", baseSource, lastHash))
 
 	// Build the base layer if not cached
-	if !lastCached {
+	if !isLastLayerCached {
 		templateBuildDir := filepath.Join(templatesDirectory, finalMetadata.BuildID)
 		err = os.MkdirAll(templateBuildDir, 0o777)
 		if err != nil {
@@ -349,9 +349,6 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 
 	sourceMetadata := baseMetadata
 
-	// First start is create (to change CPU, etc), subsequent starts are resume.
-	shouldResumeSandbox := false
-
 	// Build Steps
 	for i, step := range template.Steps {
 		layerIndex := i + 1
@@ -385,7 +382,6 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			return nil, fmt.Errorf("error checking if layer is cached: %w", err)
 		}
 		isCached := !force && found
-		lastCached = isCached
 
 		prefix := fmt.Sprintf("builder %d/%d", layerIndex, len(template.Steps))
 		cmd := fmt.Sprintf("%s %s", strings.ToUpper(step.Type), strings.Join(step.Args, " "))
@@ -411,8 +407,9 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 				lastHash,
 				sourceMetadata,
 				stepMetadata.Template,
-				shouldResumeSandbox,
-				!shouldResumeSandbox,
+				// First not cached layer is create (to change CPU, etc), subsequent are resumes.
+				!isLastLayerCached,
+				isLastLayerCached,
 				func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error) {
 					postProcessor.Debug(fmt.Sprintf("Running action in: %s/%s", sourceMetadata.Template.TemplateID, sourceMetadata.Template.BuildID))
 
@@ -439,13 +436,15 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			}
 			stepMetadata = meta
 
-			if !shouldResumeSandbox {
+			// If the last layer is cached, update the base metadata to the step metadata
+			// This is needed to properly resume the sandbox for the next step
+			if isLastLayerCached {
 				baseMetadata = stepMetadata
-				shouldResumeSandbox = true
 			}
 		}
 
 		sourceMetadata = stepMetadata
+		isLastLayerCached = isCached
 	}
 	// Build Steps
 
@@ -488,8 +487,9 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		lastHash,
 		sourceMetadata,
 		finalMetadata,
+		// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template.
 		false,
-		!shouldResumeSandbox,
+		isLastLayerCached,
 		b.postProcessingFn(postProcessor, finalMetadata, sourceMetadata.Metadata, startMetadata),
 	)
 	if err != nil {
