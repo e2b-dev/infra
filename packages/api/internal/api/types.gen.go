@@ -463,6 +463,9 @@ type Template struct {
 	CreatedAt time.Time `json:"createdAt"`
 	CreatedBy *TeamUser `json:"createdBy"`
 
+	// DiskSizeMB Disk size for the sandbox in MiB
+	DiskSizeMB DiskSizeMB `json:"diskSizeMB"`
+
 	// LastSpawnedAt Time when the template was last used
 	LastSpawnedAt time.Time `json:"lastSpawnedAt"`
 

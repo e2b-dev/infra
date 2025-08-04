@@ -91,13 +91,19 @@ func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template
 		}
 
 		build := item.Edges.Builds[0]
+
+		diskMB := int64(0)
+		if build.TotalDiskSizeMB != nil {
+			diskMB = *build.TotalDiskSizeMB
+		}
+
 		result = append(result, &Template{
 			TemplateID:    item.ID,
 			TeamID:        item.TeamID,
 			BuildID:       build.ID.String(),
 			VCPU:          build.Vcpu,
 			RAMMB:         build.RAMMB,
-			DiskMB:        build.FreeDiskSizeMB,
+			DiskMB:        diskMB,
 			Public:        item.Public,
 			Aliases:       &aliases,
 			CreatedAt:     item.CreatedAt,
