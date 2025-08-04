@@ -58,6 +58,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			StartedAt:       info.StartTime,
 			CpuCount:        api.CPUCount(info.VCpu),
 			MemoryMB:        api.MemoryMB(info.RamMB),
+			DiskSizeMB:      api.DiskSizeMB(info.TotalDiskSizeMB),
 			EndAt:           info.GetEndTime(),
 			State:           api.Running,
 			EnvdVersion:     &info.EnvdVersion,
@@ -85,6 +86,13 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	memoryMB := int32(lastSnapshot.EnvBuild.RamMb)
 	cpuCount := int32(lastSnapshot.EnvBuild.Vcpu)
 
+	diskSize := int32(0)
+	if lastSnapshot.EnvBuild.TotalDiskSizeMb != nil {
+		diskSize = int32(*lastSnapshot.EnvBuild.TotalDiskSizeMb)
+	} else {
+		zap.L().Error("disk size is not set for the sandbox", logger.WithSandboxID(id))
+	}
+
 	var sbxAccessToken *string = nil
 	if lastSnapshot.Snapshot.EnvSecure {
 		key, err := a.envdAccessTokenGenerator.GenerateAccessToken(lastSnapshot.Snapshot.SandboxID)
@@ -104,6 +112,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		StartedAt:       lastSnapshot.Snapshot.SandboxStartedAt.Time,
 		CpuCount:        cpuCount,
 		MemoryMB:        memoryMB,
+		DiskSizeMB:      diskSize,
 		EndAt:           lastSnapshot.Snapshot.CreatedAt.Time, // Snapshot is created when sandbox is paused
 		State:           api.Paused,
 		EnvdVersion:     lastSnapshot.EnvBuild.EnvdVersion,

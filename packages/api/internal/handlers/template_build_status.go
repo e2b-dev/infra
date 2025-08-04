@@ -61,6 +61,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	// early return if still waiting for build start
 	if buildInfo.BuildStatus == envbuild.StatusWaiting {
 		result := api.TemplateBuild{
+			LogEntries: make([]api.BuildLogEntry, 0),
 			Logs:       make([]string, 0),
 			TemplateID: templateID,
 			BuildID:    buildID,
@@ -73,6 +74,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 
 	// Needs to be before logs request so the status is not set to done too early
 	result := api.TemplateBuild{
+		LogEntries: nil,
 		Logs:       nil,
 		TemplateID: templateID,
 		BuildID:    buildID,
