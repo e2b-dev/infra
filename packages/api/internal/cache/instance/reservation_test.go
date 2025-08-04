@@ -75,7 +75,7 @@ func TestReservation_ResumeAlreadyRunningSandbox(t *testing.T) {
 	defer cancel()
 
 	info := &InstanceInfo{
-		TeamID:            &teamID,
+		TeamID:            teamID,
 		StartTime:         time.Now(),
 		endTime:           time.Now().Add(time.Hour),
 		MaxInstanceLength: time.Hour,

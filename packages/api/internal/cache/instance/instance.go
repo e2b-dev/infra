@@ -31,8 +31,8 @@ var ErrPausingInstanceNotFound = errors.New("pausing instance not found")
 func NewInstanceInfo(
 	Instance *api.Sandbox,
 	ExecutionID string,
-	TeamID *uuid.UUID,
-	BuildID *uuid.UUID,
+	TeamID uuid.UUID,
+	BuildID uuid.UUID,
 	Metadata map[string]string,
 	MaxInstanceLength time.Duration,
 	StartTime time.Time,
@@ -81,8 +81,8 @@ func NewInstanceInfo(
 type InstanceInfo struct {
 	Instance            *api.Sandbox
 	ExecutionID         string
-	TeamID              *uuid.UUID
-	BuildID             *uuid.UUID
+	TeamID              uuid.UUID
+	BuildID             uuid.UUID
 	BaseTemplateID      string
 	Metadata            map[string]string
 	MaxInstanceLength   time.Duration
