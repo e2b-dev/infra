@@ -179,7 +179,6 @@ jobs:
       [
         changes,
         cluster-disk-image,
-        fc-kernels,
         fc-versions,
         api,
         docker-reverse-proxy,
@@ -193,7 +192,6 @@ jobs:
       needs.changes.result == 'success' &&
       (needs.cluster-disk-image.result == 'success' || needs.cluster-disk-image.result == 'skipped') &&
       (needs.envd.result == 'success' || needs.envd.result == 'skipped') &&
-      (needs.fc-kernels.result == 'success' || needs.fc-kernels.result == 'skipped') &&
       (needs.fc-versions.result == 'success' || needs.fc-versions.result == 'skipped') &&
       (needs.orchestrator.result == 'success' || needs.orchestrator.result == 'skipped') &&
       (needs.template-manager.result == 'success' || needs.template-manager.result == 'skipped') &&
