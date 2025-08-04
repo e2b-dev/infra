@@ -101,8 +101,6 @@ var (
 	DefaultUpdatedAt func() time.Time
 	// DefaultKernelVersion holds the default value on creation for the "kernel_version" field.
 	DefaultKernelVersion string
-	// DefaultFirecrackerVersion holds the default value on creation for the "firecracker_version" field.
-	DefaultFirecrackerVersion string
 )
 
 // Status defines the type for the "status" enum field.

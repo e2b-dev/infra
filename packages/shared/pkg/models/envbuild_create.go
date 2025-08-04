@@ -189,14 +189,6 @@ func (ebc *EnvBuildCreate) SetFirecrackerVersion(s string) *EnvBuildCreate {
 	return ebc
 }
 
-// SetNillableFirecrackerVersion sets the "firecracker_version" field if the given value is not nil.
-func (ebc *EnvBuildCreate) SetNillableFirecrackerVersion(s *string) *EnvBuildCreate {
-	if s != nil {
-		ebc.SetFirecrackerVersion(*s)
-	}
-	return ebc
-}
-
 // SetEnvdVersion sets the "envd_version" field.
 func (ebc *EnvBuildCreate) SetEnvdVersion(s string) *EnvBuildCreate {
 	ebc.mutation.SetEnvdVersion(s)
@@ -300,10 +292,6 @@ func (ebc *EnvBuildCreate) defaults() {
 	if _, ok := ebc.mutation.KernelVersion(); !ok {
 		v := envbuild.DefaultKernelVersion
 		ebc.mutation.SetKernelVersion(v)
-	}
-	if _, ok := ebc.mutation.FirecrackerVersion(); !ok {
-		v := envbuild.DefaultFirecrackerVersion
-		ebc.mutation.SetFirecrackerVersion(v)
 	}
 }
 
