@@ -422,23 +422,11 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		return nil
 	}
 
-	var builderNodeID *string
-	if team.ClusterID != nil {
-		cluster, found := a.clustersPool.GetClusterById(*team.ClusterID)
-		if !found {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Cluster with ID '%s' not found", *team.ClusterID))
-			telemetry.ReportCriticalError(ctx, "cluster not found", fmt.Errorf("cluster with ID '%s' not found", *team.ClusterID), telemetry.WithTemplateID(templateID))
-			return nil
-		}
-
-		clusterNode, err := cluster.GetAvailableTemplateBuilder(ctx)
-		if err != nil {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting available template builder: %s", err))
-			telemetry.ReportCriticalError(ctx, "error when getting available template builder", err, telemetry.WithTemplateID(templateID))
-			return nil
-		}
-
-		builderNodeID = &clusterNode.NodeID
+	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, team.ClusterID)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Error when getting available build client")
+		return nil
 	}
 
 	// Create the build
