@@ -20,19 +20,30 @@ func TestSandboxListMetrics(t *testing.T) {
 	sbx1 := utils.SetupSandboxWithCleanup(t, c)
 	sbx2 := utils.SetupSandboxWithCleanup(t, c)
 
-	// Ensure there are some metrics
-	time.Sleep(7 * time.Second)
+	maxRetries := 15
+	var result map[string]api.SandboxMetric
 
-	response, err := c.GetSandboxesMetricsWithResponse(t.Context(), &api.GetSandboxesMetricsParams{SandboxIds: []string{sbx1.SandboxID, sbx2.SandboxID}}, setup.WithAPIKey())
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, response.StatusCode())
+	for i := 0; i < maxRetries; i++ {
+		response, err := c.GetSandboxesMetricsWithResponse(t.Context(), &api.GetSandboxesMetricsParams{SandboxIds: []string{sbx1.SandboxID, sbx2.SandboxID}}, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, response.StatusCode())
 
-	require.NotNil(t, response.JSON200)
-	require.NotNil(t, response.JSON200.Sandboxes)
-	require.Equal(t, 2, len(response.JSON200.Sandboxes), "Expected two metrics in the response")
-	assert.Contains(t, response.JSON200.Sandboxes, sbx1.SandboxID, "Expected sandbox metrics to include the created sandbox")
-	assert.Contains(t, response.JSON200.Sandboxes, sbx2.SandboxID, "Expected sandbox metrics to include the second created sandbox")
-	for _, sbx := range response.JSON200.Sandboxes {
+		require.NotNil(t, response.JSON200)
+		require.NotNil(t, response.JSON200.Sandboxes)
+		if len(response.JSON200.Sandboxes) == 0 {
+			t.Logf("No metrics found yet, retrying (%d/%d)", i+1, maxRetries)
+
+			time.Sleep(1 * time.Second) // Wait before retrying
+			continue
+		}
+
+		result = response.JSON200.Sandboxes
+	}
+
+	require.Equal(t, 2, len(result), "Expected two metrics in the response")
+	assert.Contains(t, result, sbx1.SandboxID, "Expected sandbox metrics to include the created sandbox")
+	assert.Contains(t, result, sbx2.SandboxID, "Expected sandbox metrics to include the second created sandbox")
+	for _, sbx := range result {
 		assert.NotEmpty(t, sbx.Timestamp, "Metric timestamp should not be empty")
 		assert.NotEmpty(t, sbx.CpuUsedPct, "Cpu pct should not be empty")
 		assert.NotEmpty(t, sbx.CpuCount, "Cpu count should not be empty")
