@@ -77,7 +77,8 @@ runs:
         while [ "$(docker inspect -f '{{.State.Health.Status}}' clickhouse 2>/dev/null)" != "healthy" ]; do echo "Waiting for Clickhouse to be healthy..."; sleep 2; done
         echo "Clickhouse is healthy!"
 
-        make -C packages/clickhouse migrate
+        # We build the image in separate step to cache it and avoid rebuilding it every time
+        make -C packages/clickhouse migrate-without-build
       shell: bash
 
     - name: Start Services
