@@ -43,7 +43,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	info, err := a.orchestrator.GetInstance(ctx, sandboxId)
 	if err == nil {
 		// Check if sandbox belongs to the team
-		if *info.TeamID != team.ID {
+		if info.TeamID != team.ID {
 			zap.L().Warn("sandbox doesn't exist or you don't have access to it", logger.WithSandboxID(id))
 			c.JSON(http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 			return
