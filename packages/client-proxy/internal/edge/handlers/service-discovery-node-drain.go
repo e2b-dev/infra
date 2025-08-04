@@ -102,15 +102,19 @@ func (a *APIStore) sendEdgeRequest(ctx context.Context, serviceInstanceID string
 		return errors.New("failed to get edge service instance")
 	}
 
+	var response *http.Response
 	switch status {
 	case api.Draining:
 		req := api.V1ServiceDiscoveryNodeDrainJSONRequestBody{ServiceType: api.ClusterNodeTypeEdge, ServiceInstanceID: serviceInstanceID}
-		_, err = e.GetClient().V1ServiceDiscoveryNodeDrain(ctx, req)
+		response, err = e.GetClient().V1ServiceDiscoveryNodeDrain(ctx, req)
 	case api.Unhealthy:
 		req := api.V1ServiceDiscoveryNodeKillJSONRequestBody{ServiceType: api.ClusterNodeTypeEdge, ServiceInstanceID: serviceInstanceID}
-		_, err = e.GetClient().V1ServiceDiscoveryNodeKill(ctx, req)
+		response, err = e.GetClient().V1ServiceDiscoveryNodeKill(ctx, req)
 	default:
 		return errors.New("failed to transform service instance status to api call")
+	}
+	if response != nil {
+		defer response.Body.Close()
 	}
 
 	if err != nil {

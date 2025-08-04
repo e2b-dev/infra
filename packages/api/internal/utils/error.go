@@ -97,16 +97,18 @@ func MultiErrorHandler(me openapi3.MultiError) error {
 
 	// Recreate logic from oapi-codegen/gin-middleware to handle the error
 	// Source: https://github.com/oapi-codegen/gin-middleware/blob/main/oapi_validate.go
-	switch e := err.(type) {
-	case *openapi3filter.RequestError:
+	if errors.Is(err, new(openapi3filter.RequestError)) {
 		// We've got a bad request
 		// Split up the verbose error by lines and return the first one
 		// openapi errors seem to be multi-line with a decent message on the first
-		errorLines := strings.Split(e.Error(), "\n")
+		errorLines := strings.Split(err.Error(), "\n")
 		return fmt.Errorf("error in openapi3filter.RequestError: %s", errorLines[0])
-	case *openapi3filter.SecurityRequirementsError:
+	}
+
+	var sre openapi3filter.SecurityRequirementsError
+	if errors.Is(err, &sre) {
 		// Return only one security requirement error (there may be multiple securitySchemes)
-		unwrapped := e.Errors
+		unwrapped := sre.Errors
 		err = unwrapped[0]
 
 		var teamForbidden *db.TeamForbiddenError
@@ -130,9 +132,9 @@ func MultiErrorHandler(me openapi3.MultiError) error {
 		}
 
 		return fmt.Errorf("%s%s", securityErrPrefix, err.Error())
-	default:
-		// This should never happen today, but if our upstream code changes,
-		// we don't want to crash the server, so handle the unexpected error.
-		return fmt.Errorf("error validating request: %w", err)
 	}
+
+	// This should never happen today, but if our upstream code changes,
+	// we don't want to crash the server, so handle the unexpected error.
+	return fmt.Errorf("error validating request: %w", err)
 }

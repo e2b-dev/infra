@@ -69,7 +69,7 @@ func newTestBackend(listener net.Listener, id string) (*testBackend, error) {
 	backendURL, err := url.Parse(fmt.Sprintf("http://%s", listener.Addr().String()))
 	if err != nil {
 		listener.Close()
-		return nil, fmt.Errorf("failed to parse backend URL: %v", err)
+		return nil, fmt.Errorf("failed to parse backend URL: %w", err)
 	}
 	backend.url = backendURL
 
@@ -109,7 +109,7 @@ func newTestProxy(getDestination func(r *http.Request) (*pool.Destination, error
 	// Find a free port for the proxy
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to get free port: %v", err)
+		return nil, 0, fmt.Errorf("failed to get free port: %w", err)
 	}
 	port := l.Addr().(*net.TCPAddr).Port
 

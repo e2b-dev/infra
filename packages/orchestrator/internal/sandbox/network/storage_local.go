@@ -2,6 +2,7 @@ package network
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -27,7 +28,7 @@ func NewStorageLocal(slotsSize int, tracer trace.Tracer) (*StorageLocal, error) 
 	// get namespaces that we want to always skip
 	foreignNs, err := getForeignNamespaces()
 	if err != nil {
-		return nil, fmt.Errorf("error getting already used namespaces: %v", err)
+		return nil, fmt.Errorf("error getting already used namespaces: %w", err)
 	}
 
 	foreignNsMap := make(map[string]struct{})
@@ -44,6 +45,8 @@ func NewStorageLocal(slotsSize int, tracer trace.Tracer) (*StorageLocal, error) 
 		tracer:       tracer,
 	}, nil
 }
+
+var ErrNoEmptyNetworkSlots = errors.New("failed to acquire IP slot: no empty slots found")
 
 func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 	spanCtx, span := s.tracer.Start(ctx, "network-namespace-acquire")
@@ -64,7 +67,7 @@ func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 			return nil, fmt.Errorf("failed to acquire IP slot: timeout")
 		default:
 			if len(s.acquiredNs) > s.slotsSize {
-				return nil, fmt.Errorf("failed to acquire IP slot: no empty slots found")
+				return nil, ErrNoEmptyNetworkSlots
 			}
 
 			slotIdx++
@@ -83,7 +86,7 @@ func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 			// check if the slot can be acquired
 			available, err := isNamespaceAvailable(slotName)
 			if err != nil {
-				return nil, fmt.Errorf("error checking if namespace is available: %v", err)
+				return nil, fmt.Errorf("error checking if namespace is available: %w", err)
 			}
 
 			if !available {
@@ -136,7 +139,7 @@ func getForeignNamespaces() ([]string, error) {
 			return ns, nil
 		}
 
-		return nil, fmt.Errorf("error reading netns directory: %v", err)
+		return nil, fmt.Errorf("error reading netns directory: %w", err)
 	}
 
 	for _, file := range files {

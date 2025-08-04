@@ -61,14 +61,14 @@ func New(
 ) (*ServerStore, error) {
 	logger.Info("Initializing template manager")
 
-	artifactsregistry, err := artifactsregistry.GetArtifactsRegistryProvider()
+	artifactsRegistry, err := artifactsregistry.GetArtifactsRegistryProvider()
 	if err != nil {
-		return nil, fmt.Errorf("error getting artifacts registry provider: %v", err)
+		return nil, fmt.Errorf("error getting artifacts registry provider: %w", err)
 	}
 
 	buildPersistance, err := storage.GetBuildCacheStorageProvider(ctx, limiter)
 	if err != nil {
-		return nil, fmt.Errorf("error getting build cache storage provider: %v", err)
+		return nil, fmt.Errorf("error getting build cache storage provider: %w", err)
 	}
 
 	buildCache := cache.NewBuildCache(meterProvider)
@@ -77,7 +77,7 @@ func New(
 		tracer,
 		templatePersistence,
 		buildPersistance,
-		artifactsregistry,
+		artifactsRegistry,
 		devicePool,
 		networkPool,
 		proxy,
@@ -91,7 +91,7 @@ func New(
 		builder:           builder,
 		buildCache:        buildCache,
 		buildLogger:       buildLogger,
-		artifactsregistry: artifactsregistry,
+		artifactsregistry: artifactsRegistry,
 		templateStorage:   templatePersistence,
 		buildStorage:      buildPersistance,
 		info:              info,

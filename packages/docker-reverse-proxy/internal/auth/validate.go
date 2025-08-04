@@ -52,7 +52,7 @@ func ExtractAccessToken(authHeader, authType string) (string, error) {
 
 	loginInfo, err := base64.StdEncoding.DecodeString(encodedLoginInfo)
 	if err != nil {
-		return "", fmt.Errorf("error while decoding login info for %s: %s", encodedLoginInfo, err)
+		return "", fmt.Errorf("error while decoding login info for %s: %w", encodedLoginInfo, err)
 	}
 
 	loginInfoParts := strings.Split(string(loginInfo), ":")

@@ -132,12 +132,12 @@ func buildTemplate(
 
 	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider()
 	if err != nil {
-		return fmt.Errorf("error getting artifacts registry provider: %v", err)
+		return fmt.Errorf("error getting artifacts registry provider: %w", err)
 	}
 
 	blockMetrics, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
 	if err != nil {
-		return fmt.Errorf("error creating metrics: %v", err)
+		return fmt.Errorf("error creating metrics: %w", err)
 	}
 
 	templateCache, err := sbxtemplate.NewCache(ctx, persistenceTemplate, blockMetrics)

@@ -73,12 +73,14 @@ func TestSandboxProxyWorkingPort(t *testing.T) {
 			} else {
 				t.Logf("[Status code: %d] Response body: %s", resp.StatusCode, string(x))
 			}
+			assert.NoError(t, resp.Body.Close())
 		}
 
 		time.Sleep(500 * time.Millisecond)
 	}
 	require.NoError(t, err)
 	require.NotNil(t, resp)
+	assert.NoError(t, resp.Body.Close())
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
@@ -101,6 +103,9 @@ func TestSandboxProxyClosedPort(t *testing.T) {
 		resp, err = utils.DoRequest(t, client, sbx, url, port, nil)
 		if err == nil && resp.StatusCode == http.StatusBadGateway {
 			break
+		}
+		if resp != nil {
+			assert.NoError(t, resp.Body.Close())
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
@@ -134,6 +139,7 @@ func TestSandboxProxyClosedPort(t *testing.T) {
 				t.Logf("[Status code: %d] Response body: %s", resp.StatusCode, string(x))
 			}
 		}
+		assert.NoError(t, resp.Body.Close())
 		time.Sleep(500 * time.Millisecond)
 	}
 	require.NoError(t, err)

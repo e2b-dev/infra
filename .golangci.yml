@@ -13,6 +13,21 @@ formatters:
 linters:
   default: none
   enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+#    - canonicalheader  # lots of issues here, might be important
+#    - containedctx  # gonna require some yak shaving, but worth it
+#    - contextcheck  # also gonna require some yak shaving
+    - copyloopvar
+    - dogsled
+    - durationcheck
+#    - err113
+#    - errcheck
+#    - errchkjson
+#    - errname
+    - errorlint
     - staticcheck
     - govet
   settings:

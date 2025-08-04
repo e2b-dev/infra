@@ -89,6 +89,10 @@ func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
 		&envdapi.GetFilesParams{Path: &filePath, Username: "user"},
 		setup.WithSandbox(sbx.JSON201.SandboxID),
 	)
+	t.Cleanup(func() {
+		err = readRes.Body.Close()
+		assert.NoError(t, err)
+	})
 
 	require.Nil(t, readErr)
 	assert.Equal(t, http.StatusUnauthorized, readRes.StatusCode)
