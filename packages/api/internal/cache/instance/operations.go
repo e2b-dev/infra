@@ -18,11 +18,7 @@ func (c *InstanceCache) CountForTeam(teamID uuid.UUID) (count uint) {
 	for _, item := range c.cache.Items() {
 		currentTeamID := item.TeamID
 
-		if currentTeamID == nil {
-			continue
-		}
-
-		if *currentTeamID == teamID {
+		if currentTeamID == teamID {
 			count++
 		}
 	}
@@ -49,7 +45,7 @@ func (c *InstanceCache) GetInstances(teamID *uuid.UUID) (instances []*InstanceIn
 	for _, item := range c.cache.Items() {
 		currentTeamID := item.TeamID
 
-		if teamID == nil || *currentTeamID == *teamID {
+		if teamID == nil || currentTeamID == *teamID {
 			instances = append(instances, item)
 		}
 	}
@@ -75,7 +71,7 @@ func (c *InstanceCache) Add(ctx context.Context, instance *InstanceInfo, newlyCr
 		return fmt.Errorf("instance is missing sandbox ID")
 	}
 
-	if instance.TeamID == nil {
+	if instance.TeamID == uuid.Nil {
 		return fmt.Errorf("instance %s is missing team ID", instance.Instance.SandboxID)
 	}
 
