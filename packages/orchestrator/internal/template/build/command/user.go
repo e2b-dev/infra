@@ -41,7 +41,7 @@ func (u *User) Execute(
 		zapcore.InfoLevel,
 		prefix,
 		sandboxID,
-		"adduser "+userArg,
+		fmt.Sprintf("adduser -disabled-password --gecos \"\" %s || true", userArg),
 		sandboxtools.CommandMetadata{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,
