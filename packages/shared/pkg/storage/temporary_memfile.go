@@ -9,17 +9,20 @@ import (
 
 	"github.com/google/uuid"
 	"golang.org/x/sync/semaphore"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
 	// snapshotCacheDir is a tmpfs directory mounted on the host.
 	// This is used for speed optimization as the final diff is copied to the persistent storage.
 	snapshotCacheDir = "/mnt/snapshot-cache"
-
-	maxParallelMemfileSnapshotting = 8
 )
 
-var snapshotCacheQueue = semaphore.NewWeighted(maxParallelMemfileSnapshotting)
+var maxParallelMemfileSnapshotting = utils.Must(env.GetEnvAsInt("MAX_PARALLEL_MEMFILE_SNAPSHOTTING", 8))
+
+var snapshotCacheQueue = semaphore.NewWeighted(int64(maxParallelMemfileSnapshotting))
 
 type TemporaryMemfile struct {
 	path    string

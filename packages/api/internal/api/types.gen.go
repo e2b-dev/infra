@@ -98,8 +98,14 @@ type CreatedTeamAPIKey struct {
 	Name string `json:"name"`
 }
 
+// DiskSizeMB Disk size for the sandbox in MiB
+type DiskSizeMB = int32
+
 // EnvVars defines model for EnvVars.
 type EnvVars map[string]string
+
+// EnvdVersion Version of the envd running in the sandbox
+type EnvdVersion = string
 
 // Error defines model for Error.
 type Error struct {
@@ -137,10 +143,16 @@ type ListedSandbox struct {
 	// CpuCount CPU cores for the sandbox
 	CpuCount CPUCount `json:"cpuCount"`
 
+	// DiskSizeMB Disk size for the sandbox in MiB
+	DiskSizeMB DiskSizeMB `json:"diskSizeMB"`
+
 	// EndAt Time when the sandbox will expire
 	EndAt time.Time `json:"endAt"`
 
-	// MemoryMB Memory for the sandbox in MB
+	// EnvdVersion Version of the envd running in the sandbox
+	EnvdVersion EnvdVersion `json:"envdVersion"`
+
+	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB MemoryMB         `json:"memoryMB"`
 	Metadata *SandboxMetadata `json:"metadata,omitempty"`
 
@@ -160,7 +172,7 @@ type ListedSandbox struct {
 // LogLevel State of the sandbox
 type LogLevel string
 
-// MemoryMB Memory for the sandbox in MB
+// MemoryMB Memory for the sandbox in MiB
 type MemoryMB = int32
 
 // NewAccessToken defines model for NewAccessToken.
@@ -316,6 +328,9 @@ type SandboxDetail struct {
 	// CpuCount CPU cores for the sandbox
 	CpuCount CPUCount `json:"cpuCount"`
 
+	// DiskSizeMB Disk size for the sandbox in MiB
+	DiskSizeMB DiskSizeMB `json:"diskSizeMB"`
+
 	// Domain Base domain where the sandbox traffic is accessible
 	Domain *string `json:"domain"`
 
@@ -328,7 +343,7 @@ type SandboxDetail struct {
 	// EnvdVersion Version of the envd running in the sandbox
 	EnvdVersion *string `json:"envdVersion,omitempty"`
 
-	// MemoryMB Memory for the sandbox in MB
+	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB MemoryMB         `json:"memoryMB"`
 	Metadata *SandboxMetadata `json:"metadata,omitempty"`
 
@@ -454,10 +469,16 @@ type Template struct {
 	CreatedAt time.Time `json:"createdAt"`
 	CreatedBy *TeamUser `json:"createdBy"`
 
+	// DiskSizeMB Disk size for the sandbox in MiB
+	DiskSizeMB DiskSizeMB `json:"diskSizeMB"`
+
+	// EnvdVersion Version of the envd running in the sandbox
+	EnvdVersion EnvdVersion `json:"envdVersion"`
+
 	// LastSpawnedAt Time when the template was last used
 	LastSpawnedAt time.Time `json:"lastSpawnedAt"`
 
-	// MemoryMB Memory for the sandbox in MB
+	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB MemoryMB `json:"memoryMB"`
 
 	// Public Whether the template is public or only accessible by the team
@@ -517,7 +538,7 @@ type TemplateBuildRequest struct {
 	// Dockerfile Dockerfile for the template
 	Dockerfile string `json:"dockerfile"`
 
-	// MemoryMB Memory for the sandbox in MB
+	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
 
 	// ReadyCmd Ready check command to execute in the template after the build
@@ -538,7 +559,7 @@ type TemplateBuildRequestV2 struct {
 	// CpuCount CPU cores for the sandbox
 	CpuCount *CPUCount `json:"cpuCount,omitempty"`
 
-	// MemoryMB Memory for the sandbox in MB
+	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
 
 	// TeamID Identifier of the team
@@ -551,7 +572,10 @@ type TemplateBuildStartV2 struct {
 	Force *bool `json:"force,omitempty"`
 
 	// FromImage Image to use as a base for the template build
-	FromImage string `json:"fromImage"`
+	FromImage *string `json:"fromImage,omitempty"`
+
+	// FromTemplate Template to use as a base for the template build
+	FromTemplate *string `json:"fromTemplate,omitempty"`
 
 	// ReadyCmd Ready check command to execute in the template after the build
 	ReadyCmd *string `json:"readyCmd,omitempty"`

@@ -26,7 +26,7 @@ import (
 
 const (
 	// Max size of the rootfs file in MB.
-	maxRootfsSize = 15000 << constants.ToMBShift
+	maxRootfsSize = 25000 << constants.ToMBShift
 
 	busyBoxBinaryPath = "/bin/busybox"
 	BusyBoxInitPath   = "usr/bin/init"
