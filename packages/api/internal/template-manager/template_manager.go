@@ -146,6 +146,25 @@ func (tm *TemplateManager) GetBuildClient(clusterID *uuid.UUID, nodeID *string, 
 	}
 }
 
+func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterID *uuid.UUID) (*string, error) {
+	if clusterID == nil {
+		return nil, nil
+	}
+
+	cluster, ok := tm.edgePool.GetClusterById(*clusterID)
+	if !ok {
+		return nil, fmt.Errorf("cluster with ID '%s' not found", clusterID)
+	}
+
+	builder, err := cluster.GetAvailableTemplateBuilder(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get available template builder for cluster '%s': %w", clusterID, err)
+	}
+
+	builderNodeID := builder.NodeID
+	return &builderNodeID, nil
+}
+
 func (tm *TemplateManager) GetLocalBuildClient(placement bool) (*BuildClient, error) {
 	// build placement requires healthy template builder
 	if placement && tm.GetLocalClientStatus() != infogrpc.ServiceInfoStatus_Healthy {
