@@ -156,11 +156,12 @@ func (tm *TemplateManager) GetBuildClient(clusterID *uuid.UUID, nodeID *string, 
 
 func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterID *uuid.UUID) (string, error) {
 	if clusterID == nil {
-		if tm.GetLocalClientInfo().status != infogrpc.ServiceInfoStatus_Healthy {
+		localClient := tm.GetLocalClientInfo()
+		if localClient.status != infogrpc.ServiceInfoStatus_Healthy {
 			return "", ErrLocalTemplateManagerNotAvailable
 		}
 
-		return tm.GetLocalClientInfo().nodeID, nil
+		return localClient.nodeID, nil
 	}
 
 	cluster, ok := tm.edgePool.GetClusterById(*clusterID)
@@ -177,14 +178,16 @@ func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterI
 }
 
 func (tm *TemplateManager) GetLocalBuildClient(placement bool) (*BuildClient, error) {
+	localClient := tm.GetLocalClientInfo()
+
 	// build placement requires healthy template builder
-	if placement && tm.GetLocalClientInfo().status != infogrpc.ServiceInfoStatus_Healthy {
+	if placement && localClient.status != infogrpc.ServiceInfoStatus_Healthy {
 		zap.L().Error("Local template manager is not fully healthy, cannot use it for placement new builds")
 		return nil, ErrLocalTemplateManagerNotAvailable
 	}
 
 	// for getting build information only not valid state is getting already unhealthy builder
-	if tm.GetLocalClientInfo().status == infogrpc.ServiceInfoStatus_Unhealthy {
+	if localClient.status == infogrpc.ServiceInfoStatus_Unhealthy {
 		zap.L().Error("Local template manager is unhealthy")
 		return nil, ErrLocalTemplateManagerNotAvailable
 	}
