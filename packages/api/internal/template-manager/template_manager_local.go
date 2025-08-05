@@ -11,6 +11,10 @@ import (
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
 
+const (
+	unknownNodeID = "unknown"
+)
+
 var (
 	healthCheckInterval = 5 * time.Second
 	healthCheckTimeout  = 5 * time.Second
@@ -41,7 +45,7 @@ func (tm *TemplateManager) localClientHealthSync(ctx context.Context) {
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
 		zap.L().Error("Failed to get health status of template manager", zap.Error(err))
-		tm.setLocalClientInfo(orchestratorinfo.ServiceInfoStatus_Unhealthy, "unknown")
+		tm.setLocalClientInfo(orchestratorinfo.ServiceInfoStatus_Unhealthy, unknownNodeID)
 		return
 	}
 

@@ -99,7 +99,7 @@ func New(
 		localClientMutex: sync.RWMutex{},
 		localClientInfo: LocalTemplateManagerInfo{
 			status: infogrpc.ServiceInfoStatus_Unhealthy,
-			nodeID: "unknown",
+			nodeID: unknownNodeID,
 		},
 
 		lock:       sync.Mutex{},
