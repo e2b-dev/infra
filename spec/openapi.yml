@@ -195,15 +195,42 @@ components:
           type: string
           description: Log line content
 
+    SandboxLogEntry:
+      required:
+        - timestamp
+        - level
+        - message
+        - fields
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp of the log entry
+        message:
+          type: string
+          description: Log message content
+        level:
+          $ref: "#/components/schemas/LogLevel"
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+
     SandboxLogs:
       required:
         - logs
+        - logEntries
       properties:
         logs:
           description: Logs of the sandbox
           type: array
           items:
             $ref: "#/components/schemas/SandboxLog"
+        logEntries:
+          description: Structured logs of the sandbox
+          type: array
+          items:
+            $ref: "#/components/schemas/SandboxLogEntry"
 
     SandboxMetric:
       description: Metric entry with timestamp and line
@@ -610,7 +637,6 @@ components:
           type: string
           description: Log message content
         level:
-          description: Log level of the entry
           $ref: "#/components/schemas/LogLevel"
 
     TemplateBuild:

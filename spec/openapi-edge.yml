@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   version: 0.1.0
-  title: E2B Edge
+  title: E2B Edge API
 
 components:
   securitySchemes:
@@ -222,8 +222,21 @@ components:
           type: string
           description: Log message content
         level:
-          description: Log level of the entry
           $ref: "#/components/schemas/LogLevel"
+
+    SandboxLog:
+      description: Log entry with timestamp and line
+      required:
+        - timestamp
+        - line
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp of the log entry
+        line:
+          type: string
+          description: Log line content
 
     TemplateBuildLogsResponse:
       required:
@@ -276,6 +289,17 @@ components:
           type: string
         sandboxID:
           type: string
+
+    SandboxLogsResponse:
+      required:
+        - logs
+      properties:
+        logs:
+          default: []
+          description: Sandbox logs
+          type: array
+          items:
+            $ref: "#/components/schemas/SandboxLog"
 
     ServiceDiscoveryNodeStatusRequest:
       type: object
@@ -476,6 +500,53 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /v1/sandboxes/{sandboxID}/logs:
+    get:
+      operationId: v1SandboxLogs
+      summary: List structured sandbox logs
+      security:
+        - ApiKeyAuth: []
+      tags: [sandboxes]
+      parameters:
+        - name: sandboxID
+          in: path
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: teamID
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: start
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+          description: Starting timestamp of the logs that should be returned in milliseconds
+        - in: query
+          name: limit
+          schema:
+            default: 1000
+            format: int32
+            minimum: 0
+            type: integer
+          description: Maximum number of logs that should be returned
+      responses:
+        "200":
+          description: Successfully returned the sandbox logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SandboxLogsResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
   /v1/templates/builds/{buildID}/logs:
     get:
       operationId: v1TemplateBuildLogs
@@ -511,7 +582,6 @@ paths:
           name: level
           schema:
             $ref: "#/components/schemas/LogLevel"
-            default: debug
       responses:
         "200":
           description: Successfully returned the template build logs
