@@ -262,7 +262,9 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, t trace.Tracer, buil
 
 func (tm *TemplateManager) DeleteBuilds(ctx context.Context, builds []DeleteBuild) error {
 	for _, build := range builds {
-		if build.ClusterNodeID != nil {
+		// Temporarily skip builds without cluster node ID
+		// This is a workaround for builds that were created before the node ID was introduced for local builds.
+		if build.ClusterNodeID == nil {
 			continue
 		}
 
