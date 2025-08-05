@@ -226,7 +226,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 		SetFreeDiskSizeMB(req.Tier.DiskMb).
 		SetNillableStartCmd(req.StartCmd).
 		SetNillableReadyCmd(req.ReadyCmd).
-		SetNillableClusterNodeID(&req.BuilderNodeID).
+		SetClusterNodeID(req.BuilderNodeID).
 		SetDockerfile(req.Dockerfile).
 		Save(ctx)
 	if err != nil {
