@@ -41,21 +41,25 @@ func (tm *TemplateManager) localClientHealthSync(ctx context.Context) {
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
 		zap.L().Error("Failed to get health status of template manager", zap.Error(err))
-		tm.setLocalClientStatus(orchestratorinfo.ServiceInfoStatus_Unhealthy)
+		tm.setLocalClientInfo(orchestratorinfo.ServiceInfoStatus_Unhealthy, "unknown")
 		return
 	}
 
-	tm.setLocalClientStatus(res.ServiceStatus)
+	tm.setLocalClientInfo(res.ServiceStatus, res.NodeId)
 }
 
-func (tm *TemplateManager) setLocalClientStatus(s orchestratorinfo.ServiceInfoStatus) {
+func (tm *TemplateManager) setLocalClientInfo(status orchestratorinfo.ServiceInfoStatus, nodeID string) {
 	tm.localClientMutex.RLock()
 	defer tm.localClientMutex.RUnlock()
-	tm.localClientStatus = s
+
+	tm.localClientInfo = LocalTemplateManagerInfo{
+		status: status,
+		nodeID: nodeID,
+	}
 }
 
-func (tm *TemplateManager) GetLocalClientStatus() orchestratorinfo.ServiceInfoStatus {
+func (tm *TemplateManager) GetLocalClientInfo() LocalTemplateManagerInfo {
 	tm.localClientMutex.Lock()
 	defer tm.localClientMutex.Unlock()
-	return tm.localClientStatus
+	return tm.localClientInfo
 }

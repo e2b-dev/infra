@@ -27,7 +27,7 @@ import (
 
 type BuildTemplateRequest struct {
 	ClusterID     *uuid.UUID
-	BuilderNodeID *string
+	BuilderNodeID string
 	TemplateID    api.TemplateID
 	IsNew         bool
 	UserID        *uuid.UUID
@@ -226,7 +226,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 		SetFreeDiskSizeMB(req.Tier.DiskMb).
 		SetNillableStartCmd(req.StartCmd).
 		SetNillableReadyCmd(req.ReadyCmd).
-		SetNillableClusterNodeID(req.BuilderNodeID).
+		SetNillableClusterNodeID(&req.BuilderNodeID).
 		SetDockerfile(req.Dockerfile).
 		Save(ctx)
 	if err != nil {
