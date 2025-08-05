@@ -31,15 +31,15 @@ const (
 )
 
 type SandboxEvent struct {
-	Timestamp          time.Time `ch:"timestamp"`
-	SandboxID          string    `ch:"sandbox_id"`
-	SandboxExecutionID string    `ch:"sandbox_execution_id"`
-	SandboxTemplateID  string    `ch:"sandbox_template_id"`
-	SandboxBuildID     string    `ch:"sandbox_build_id"`
-	SandboxTeamID      string    `ch:"sandbox_team_id"`
-	EventCategory      string    `ch:"event_category"`
-	EventLabel         string    `ch:"event_label"`
-	EventData          string    `ch:"event_data"`
+	Timestamp          time.Time      `ch:"timestamp"`
+	SandboxID          string         `ch:"sandbox_id"`
+	SandboxExecutionID string         `ch:"sandbox_execution_id"`
+	SandboxTemplateID  string         `ch:"sandbox_template_id"`
+	SandboxBuildID     string         `ch:"sandbox_build_id"`
+	SandboxTeamID      string         `ch:"sandbox_team_id"`
+	EventCategory      string         `ch:"event_category"`
+	EventLabel         string         `ch:"event_label"`
+	EventData          sql.NullString `ch:"event_data"`
 }
 
 const existsSandboxIdQuery = `
@@ -174,11 +174,6 @@ VALUES (
 )`
 
 func (c *Client) InsertSandboxEvent(ctx context.Context, event SandboxEvent) error {
-	eventData := sql.NullString{
-		String: event.EventData,
-		Valid:  event.EventData != "",
-	}
-
 	return c.conn.Exec(ctx, insertSandboxEventQueryAsync,
 		time.Now().UTC(),
 		event.SandboxID,
@@ -188,5 +183,5 @@ func (c *Client) InsertSandboxEvent(ctx context.Context, event SandboxEvent) err
 		event.SandboxTeamID,
 		event.EventCategory,
 		event.EventLabel,
-		eventData)
+		event.EventData)
 }

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -136,6 +137,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 				SandboxExecutionID: sbx.Config.ExecutionId,
 				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
 				EventLabel:         string(label),
+				EventData:          sql.NullString{String: "", Valid: false},
 			})
 			if err != nil {
 				sbxlogger.I(sbx).Error(
@@ -186,7 +188,7 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 				SandboxExecutionID: item.Config.ExecutionId,
 				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
 				EventLabel:         string(clickhouse.SandboxEventLabelUpdate),
-				EventData:          eventData,
+				EventData:          sql.NullString{String: eventData, Valid: true},
 			})
 			if err != nil {
 				sbxlogger.I(item).Error(
@@ -282,6 +284,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 				SandboxExecutionID: sbx.Config.ExecutionId,
 				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
 				EventLabel:         string(clickhouse.SandboxEventLabelKill),
+				EventData:          sql.NullString{String: "", Valid: false},
 			})
 			if err != nil {
 				sbxlogger.I(sbx).Error(
@@ -390,6 +393,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 				SandboxExecutionID: sbx.Config.ExecutionId,
 				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
 				EventLabel:         string(clickhouse.SandboxEventLabelPause),
+				EventData:          sql.NullString{String: "", Valid: false},
 			})
 			if err != nil {
 				sbxlogger.I(sbx).Error(
