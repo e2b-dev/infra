@@ -193,3 +193,4 @@ func (c *Client) InsertSandboxEvent(ctx context.Context, event SandboxEvent) err
 		clickhouse.Named("event_label", event.EventLabel),
 		clickhouse.Named("event_data", event.EventData),
 	)
+}
