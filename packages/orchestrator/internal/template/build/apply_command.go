@@ -57,7 +57,7 @@ func (b *Builder) applyCommand(
 ) (sandboxtools.CommandMetadata, error) {
 	ctx, span := b.tracer.Start(ctx, "apply-command", trace.WithAttributes(
 		attribute.String("prefix", prefix),
-		attribute.String("sandbox.id", sbx.Metadata.Config.SandboxId),
+		attribute.String("sandbox.id", sbx.Runtime.SandboxID),
 		attribute.String("step.type", step.Type),
 		attribute.StringSlice("step.args", step.Args),
 		attribute.String("step.files.hash", utils.Sprintp(step.FilesHash)),
@@ -74,7 +74,7 @@ func (b *Builder) applyCommand(
 		b.tracer,
 		postProcessor,
 		b.proxy,
-		sbx.Config.SandboxId,
+		sbx.Runtime.SandboxID,
 		prefix,
 		step,
 		cmdMetadata,

@@ -8,15 +8,8 @@ import (
 const (
 	EnvsDisk = "/mnt/disks/fc-envs/v1"
 
-	KernelsDir     = "/fc-kernels"
-	KernelMountDir = "/fc-vm"
-	KernelName     = "vmlinux.bin"
-
 	HostEnvdPath  = "/fc-envd/envd"
 	GuestEnvdPath = "/usr/bin/envd"
-
-	FirecrackerVersionsDir = "/fc-versions"
-	FirecrackerBinaryName  = "firecracker"
 
 	buildDirName = "builds"
 
@@ -34,29 +27,14 @@ type TemplateFiles struct {
 	FirecrackerVersion string `json:"firecracker_version"`
 }
 
-func (t TemplateFiles) BuildKernelPath() string {
-	return filepath.Join(t.BuildKernelDir(), KernelName)
-}
-
-func (t TemplateFiles) BuildKernelDir() string {
-	return filepath.Join(KernelMountDir, t.KernelVersion)
+type RootfsPaths struct {
+	TemplateID string
+	BuildID    string
 }
 
 // Key for the cache. Unique for template-build pair.
 func (t TemplateFiles) CacheKey() string {
 	return fmt.Sprintf("%s-%s", t.TemplateID, t.BuildID)
-}
-
-func (t TemplateFiles) CacheKernelDir() string {
-	return filepath.Join(KernelsDir, t.KernelVersion)
-}
-
-func (t TemplateFiles) CacheKernelPath() string {
-	return filepath.Join(t.CacheKernelDir(), KernelName)
-}
-
-func (t TemplateFiles) FirecrackerPath() string {
-	return filepath.Join(FirecrackerVersionsDir, t.FirecrackerVersion, FirecrackerBinaryName)
 }
 
 func (t TemplateFiles) StorageDir() string {
@@ -83,10 +61,10 @@ func (t TemplateFiles) StorageSnapfilePath() string {
 	return fmt.Sprintf("%s/%s", t.StorageDir(), SnapfileName)
 }
 
-func (t TemplateFiles) SandboxBuildDir() string {
+func (t RootfsPaths) SandboxBuildDir() string {
 	return filepath.Join(EnvsDisk, t.TemplateID, buildDirName, t.BuildID)
 }
 
-func (t TemplateFiles) SandboxRootfsPath() string {
+func (t RootfsPaths) SandboxRootfsPath() string {
 	return filepath.Join(t.SandboxBuildDir(), RootfsName)
 }
