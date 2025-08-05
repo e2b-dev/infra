@@ -5,7 +5,10 @@ CLICKHOUSE_MIGRATOR_IMAGE ?= $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/e2b-
 CLICKHOUSE_HOST ?= clickhouse
 
 .PHONY: migrate
-migrate:build
+migrate: build migrate-without-build
+
+.PHONY: migrate-without-build
+migrate-without-build:
 	@echo "Applying Clickhouse migrations *$(notdir $@)*"
 	@docker network create e2b || true
 	@docker run --rm \
@@ -18,7 +21,6 @@ migrate:build
 
 .PHONY: build
 build:
-	@echo "$(CLICKHOUSE_MIGRATOR_IMAGE)"
 	@docker build --platform linux/amd64 --tag "$(CLICKHOUSE_MIGRATOR_IMAGE)" .
 
 .PHONY: build-and-upload

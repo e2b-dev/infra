@@ -335,7 +335,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		if ct == ClosePause {
 			o.instanceCache.MarkAsPausing(info)
 
-			err := o.PauseInstance(ctx, o.tracer, info, *info.TeamID)
+			err := o.PauseInstance(ctx, o.tracer, info, info.TeamID)
 			if err != nil {
 				info.PauseDone(err)
 

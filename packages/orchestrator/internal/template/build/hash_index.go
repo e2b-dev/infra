@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/envd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layerstorage"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/utils"
@@ -84,11 +83,6 @@ func hashKeys(baseKey string, keys ...string) string {
 }
 
 func hashBase(template config.TemplateConfig) (string, error) {
-	envdHash, err := envd.GetEnvdHash()
-	if err != nil {
-		return "", fmt.Errorf("error getting envd binary hash: %w", err)
-	}
-
 	var baseSource string
 	if template.FromTemplate != nil {
 		// When building from template, use the base template metadata
@@ -103,7 +97,7 @@ func hashBase(template config.TemplateConfig) (string, error) {
 		baseSource = template.FromImage
 	}
 
-	return hashKeys(hashingVersion, envdHash, provisionScriptFile, strconv.FormatInt(template.DiskSizeMB, 10), baseSource), nil
+	return hashKeys(hashingVersion, provisionScriptFile, strconv.FormatInt(template.DiskSizeMB, 10), baseSource), nil
 }
 
 func hashStep(previousHash string, step *templatemanager.TemplateStep) string {

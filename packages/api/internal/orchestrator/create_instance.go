@@ -259,8 +259,8 @@ func (o *Orchestrator) CreateSandbox(
 	instanceInfo := instance.NewInstanceInfo(
 		&sbx,
 		executionID,
-		&team.Team.ID,
-		&build.ID,
+		team.Team.ID,
+		build.ID,
 		metadata,
 		time.Duration(team.Tier.MaxLengthHours)*time.Hour,
 		startTime,

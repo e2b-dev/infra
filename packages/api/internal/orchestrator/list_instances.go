@@ -58,11 +58,6 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 			autoPause = *config.AutoPause
 		}
 
-		// TODO: Temporary workaround, until all orchestrators report this
-		if config.ExecutionId == "" {
-			config.ExecutionId = uuid.New().String()
-		}
-
 		sandboxesInfo = append(
 			sandboxesInfo,
 			instance.NewInstanceInfo(
@@ -73,8 +68,8 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 					ClientID:   consts.ClientID,
 				},
 				config.ExecutionId,
-				&teamID,
-				&buildID,
+				teamID,
+				buildID,
 				config.Metadata,
 				time.Duration(config.MaxSandboxLength)*time.Hour,
 				sbx.StartTime.AsTime(),
