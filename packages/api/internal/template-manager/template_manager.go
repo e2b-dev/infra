@@ -262,13 +262,15 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, t trace.Tracer, buil
 
 func (tm *TemplateManager) DeleteBuilds(ctx context.Context, builds []DeleteBuild) error {
 	for _, build := range builds {
-		// Temporarily skip builds without cluster node ID
+		// Back compatibility for old builds without known node ID.
+		// We are assuming that they are from local template manager so we will try to get local client to process request.
 		// This is a workaround for builds that were created before the node ID was introduced for local builds.
-		if build.ClusterNodeID == nil {
-			continue
+		nodeID := tm.GetLocalClientInfo().nodeID
+		if build.ClusterNodeID != nil {
+			nodeID = *build.ClusterNodeID
 		}
 
-		err := tm.DeleteBuild(ctx, tm.tracer, build.BuildID, build.TemplateID, build.ClusterID, *build.ClusterNodeID)
+		err := tm.DeleteBuild(ctx, tm.tracer, build.BuildID, build.TemplateID, build.ClusterID, nodeID)
 		if err != nil {
 			return fmt.Errorf("failed to delete env build '%s': %w", build.BuildID, err)
 		}
