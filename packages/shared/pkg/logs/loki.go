@@ -79,9 +79,9 @@ func lokiFlatJsonLineParser(input string) (map[string]string, error) {
 		case string:
 			result[key] = t
 		case float64:
-			result[key] = strconv.FormatFloat(value.(float64), 'E', -1, 64)
+			result[key] = strconv.FormatFloat(t, 'E', -1, 64)
 		case bool:
-			result[key] = strconv.FormatBool(value.(bool))
+			result[key] = strconv.FormatBool(t)
 		default:
 			// Reject arrays, objects, nulls, etc.
 		}
