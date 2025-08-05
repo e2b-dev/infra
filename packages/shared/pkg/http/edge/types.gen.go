@@ -184,8 +184,25 @@ type SandboxLog struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+// SandboxLogEntry defines model for SandboxLogEntry.
+type SandboxLogEntry struct {
+	Fields map[string]string `json:"fields"`
+
+	// Level State of the sandbox
+	Level LogLevel `json:"level"`
+
+	// Message Log message content
+	Message string `json:"message"`
+
+	// Timestamp Timestamp of the log entry
+	Timestamp time.Time `json:"timestamp"`
+}
+
 // SandboxLogsResponse defines model for SandboxLogsResponse.
 type SandboxLogsResponse struct {
+	// LogEntries Structured logs of the sandbox
+	LogEntries []SandboxLogEntry `json:"logEntries"`
+
 	// Logs Sandbox logs
 	Logs []SandboxLog `json:"logs"`
 }
