@@ -20,7 +20,7 @@ func TestSandboxMetrics(t *testing.T) {
 
 	// Ensure there are some metrics
 	maxRetries := 15
-	var result []api.SandboxMetric
+	var metrics []api.SandboxMetric
 	for i := 0; i < maxRetries; i++ {
 		response, err := c.GetSandboxesSandboxIDMetricsWithResponse(t.Context(), sbx.SandboxID, &api.GetSandboxesSandboxIDMetricsParams{}, setup.WithAPIKey())
 		require.NoError(t, err)
@@ -33,11 +33,12 @@ func TestSandboxMetrics(t *testing.T) {
 			continue
 		}
 
-		result = *response.JSON200
+		metrics = *response.JSON200
+		break
 	}
 
-	require.Greater(t, len(result), 0, "Expected at least one metric in the response")
-	for _, metric := range result {
+	require.Greater(t, len(metrics), 0, "Expected at least one metric in the response")
+	for _, metric := range metrics {
 		require.NotEmpty(t, metric.CpuCount)
 		require.NotEmpty(t, metric.CpuUsedPct)
 		require.NotEmpty(t, metric.MemUsed)

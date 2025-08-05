@@ -26,3 +26,7 @@ func (m *NoopClient) QuerySandboxTimeRange(ctx context.Context, sandboxID string
 func (m *NoopClient) QuerySandboxMetrics(ctx context.Context, sandboxID string, teamID string, start time.Time, end time.Time, step time.Duration) ([]Metrics, error) {
 	return nil, nil
 }
+
+func (m *NoopClient) QueryTeamMetrics(ctx context.Context, teamID string, start time.Time, end time.Time, step time.Duration) ([]TeamMetrics, error) {
+	return nil, nil
+}

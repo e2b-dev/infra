@@ -110,12 +110,11 @@ func (c *Client) QuerySandboxMetrics(ctx context.Context, sandboxID string, team
 		clickhouse.Named("sandbox_id", sandboxID),
 		clickhouse.Named("team_id", teamID),
 		clickhouse.DateNamed("start_time", start, clickhouse.Seconds),
-		// Add an extra second to include the end time in the range
-		clickhouse.DateNamed("end_time", end.Add(time.Second), clickhouse.Seconds),
+		clickhouse.DateNamed("end_time", end, clickhouse.Seconds),
 		clickhouse.Named("step", strconv.Itoa(int(step.Seconds()))),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("query metrics5: %w", err)
+		return nil, fmt.Errorf("query metrics: %w", err)
 	}
 
 	defer rows.Close()

@@ -21,7 +21,7 @@ func TestSandboxListMetrics(t *testing.T) {
 	sbx2 := utils.SetupSandboxWithCleanup(t, c)
 
 	maxRetries := 15
-	var result map[string]api.SandboxMetric
+	var metrics map[string]api.SandboxMetric
 
 	for i := 0; i < maxRetries; i++ {
 		response, err := c.GetSandboxesMetricsWithResponse(t.Context(), &api.GetSandboxesMetricsParams{SandboxIds: []string{sbx1.SandboxID, sbx2.SandboxID}}, setup.WithAPIKey())
@@ -37,13 +37,14 @@ func TestSandboxListMetrics(t *testing.T) {
 			continue
 		}
 
-		result = response.JSON200.Sandboxes
+		metrics = response.JSON200.Sandboxes
+		break
 	}
 
-	require.Equal(t, 2, len(result), "Expected two metrics in the response")
-	assert.Contains(t, result, sbx1.SandboxID, "Expected sandbox metrics to include the created sandbox")
-	assert.Contains(t, result, sbx2.SandboxID, "Expected sandbox metrics to include the second created sandbox")
-	for _, sbx := range result {
+	require.Equal(t, 2, len(metrics), "Expected two metrics in the response")
+	assert.Contains(t, metrics, sbx1.SandboxID, "Expected sandbox metrics to include the created sandbox")
+	assert.Contains(t, metrics, sbx2.SandboxID, "Expected sandbox metrics to include the second created sandbox")
+	for _, sbx := range metrics {
 		assert.NotEmpty(t, sbx.Timestamp, "Metric timestamp should not be empty")
 		assert.NotEmpty(t, sbx.CpuUsedPct, "Cpu pct should not be empty")
 		assert.NotEmpty(t, sbx.CpuCount, "Cpu count should not be empty")

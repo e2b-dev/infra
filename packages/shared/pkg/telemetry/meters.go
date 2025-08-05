@@ -12,7 +12,10 @@ type (
 )
 
 const (
-	SandboxCreateMeterName CounterType = "api.env.instance.started"
+	ApiOrchestratorCreatedSandboxes CounterType = "api.orchestrator.created_sandboxes"
+	SandboxCreateMeterName          CounterType = "api.env.instance.started"
+
+	TeamSandboxCreated CounterType = "e2b.team.sandbox.created"
 )
 
 const (
@@ -53,20 +56,22 @@ const (
 	SandboxCpuTotalGaugeName  GaugeIntType = "e2b.sandbox.cpu.total"
 	SandboxDiskUsedGaugeName  GaugeIntType = "e2b.sandbox.disk.used"
 	SandboxDiskTotalGaugeName GaugeIntType = "e2b.sandbox.disk.total"
-)
 
-const (
-	ApiOrchestratorCreatedSandboxes CounterType = "api.orchestrator.created_sandboxes"
+	TeamSandboxMaxGaugeName GaugeIntType = "e2b.team.sandbox.max_concurrent"
 )
 
 var counterDesc = map[CounterType]string{
 	SandboxCreateMeterName:          "Number of currently waiting requests to create a new sandbox",
 	ApiOrchestratorCreatedSandboxes: "Number of successfully created sandboxes",
+
+	TeamSandboxCreated: "Counter of started sandboxes for the team in the interval",
 }
 
 var counterUnits = map[CounterType]string{
 	SandboxCreateMeterName:          "{sandbox}",
 	ApiOrchestratorCreatedSandboxes: "{sandbox}",
+
+	TeamSandboxCreated: "1",
 }
 
 var observableCounterDesc = map[ObservableCounterType]string{
@@ -128,6 +133,7 @@ var gaugeIntDesc = map[GaugeIntType]string{
 	SandboxRamUsedGaugeName:       "Amount of RAM used by the sandbox.",
 	SandboxRamTotalGaugeName:      "Amount of RAM available to the sandbox.",
 	SandboxCpuTotalGaugeName:      "Amount of CPU available to the sandbox.",
+	TeamSandboxMaxGaugeName:       "Maximum number of sandboxes running for the team in the interval.",
 }
 
 var gaugeIntUnits = map[GaugeIntType]string{
@@ -135,6 +141,7 @@ var gaugeIntUnits = map[GaugeIntType]string{
 	SandboxRamUsedGaugeName:       "{By}",
 	SandboxRamTotalGaugeName:      "{By}",
 	SandboxCpuTotalGaugeName:      "{count}",
+	TeamSandboxMaxGaugeName:       "1",
 }
 
 func GetCounter(meter metric.Meter, name CounterType) (metric.Int64Counter, error) {
