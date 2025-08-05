@@ -2,13 +2,15 @@ package utils
 
 import (
 	"errors"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/db"
+	"testing"
+
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
+
+	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/db"
 )
 
 func TestMultiErrorHandler(t *testing.T) {
