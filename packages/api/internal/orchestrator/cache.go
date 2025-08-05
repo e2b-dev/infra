@@ -242,7 +242,7 @@ func (o *Orchestrator) syncNodeState(ctx context.Context, node *Node, instanceCa
 		}
 
 		node.setStatus(nodeStatus)
-		node.setMetadata(nodeInfo, nodeInfo.NodeId)
+		node.setMetadata(nodeInfo.ServiceId, nodeInfo.ServiceCommit, nodeInfo.ServiceVersion)
 
 		activeInstances, instancesErr := o.getSandboxes(ctx, node.Info)
 		if instancesErr != nil {
