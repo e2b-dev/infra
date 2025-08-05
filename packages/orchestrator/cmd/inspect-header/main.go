@@ -44,7 +44,7 @@ func main() {
 		log.Fatalf("failed to open object: %s", err)
 	}
 
-	h, err := header.Deserialize(obj)
+	h, err := header.Deserialize(ctx, obj)
 	if err != nil {
 		log.Fatalf("failed to deserialize header: %s", err)
 	}

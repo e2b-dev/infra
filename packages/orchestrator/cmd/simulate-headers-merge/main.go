@@ -61,12 +61,12 @@ func main() {
 		log.Fatalf("failed to open object: %s", err)
 	}
 
-	baseHeader, err := header.Deserialize(baseObj)
+	baseHeader, err := header.Deserialize(ctx, baseObj)
 	if err != nil {
 		log.Fatalf("failed to deserialize base header: %s", err)
 	}
 
-	diffHeader, err := header.Deserialize(diffObj)
+	diffHeader, err := header.Deserialize(ctx, diffObj)
 	if err != nil {
 		log.Fatalf("failed to deserialize diff header: %s", err)
 	}

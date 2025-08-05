@@ -53,7 +53,7 @@ func main() {
 		log.Fatalf("failed to open object: %s", err)
 	}
 
-	size, err := obj.Size()
+	size, err := obj.Size(ctx)
 	if err != nil {
 		log.Fatalf("failed to get object size: %s", err)
 	}
@@ -86,7 +86,7 @@ func main() {
 	nonEmptyCount := 0
 
 	for i := *start * blockSize; i < *end*blockSize; i += blockSize {
-		_, err := obj.ReadAt(b, i)
+		_, err := obj.ReadAt(ctx, b, i)
 		if err != nil {
 			log.Fatalf("failed to read block: %s", err)
 		}

@@ -27,7 +27,11 @@ func (d *DeviceWithClose) Close() error {
 	return nil
 }
 
-func (d *DeviceWithClose) Slice(offset, length int64) ([]byte, error) {
+func (d *DeviceWithClose) ReadAt(ctx context.Context, p []byte, offset int64) (int, error) {
+	return d.Backend.ReadAt(p, offset)
+}
+
+func (d *DeviceWithClose) Slice(ctx context.Context, offset, length int64) ([]byte, error) {
 	b := make([]byte, length)
 
 	_, err := d.Backend.ReadAt(b, offset)
@@ -160,7 +164,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool
 	}
 
 	data := make([]byte, size)
-	_, err = mnt.Backend.ReadAt(data, 0)
+	_, err = mnt.Backend.ReadAt(ctx, data, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read: %w", err)
 	}
