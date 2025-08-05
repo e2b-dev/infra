@@ -47,11 +47,17 @@ func (o *Orchestrator) PauseInstance(
 		AllowInternetAccess: sbx.AllowInternetAccess,
 	}
 
+	orch, ok := o.nodes.Get(sbx.Node.ID)
+	if !ok {
+		return fmt.Errorf("orchestrator node '%s' not found", sbx.Node.ID)
+	}
+
 	envBuild, err := o.dbClient.NewSnapshotBuild(
 		ctx,
 		snapshotConfig,
 		teamID,
 		sbx.Node.ID,
+		orch.ClusterNodeID,
 	)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)
