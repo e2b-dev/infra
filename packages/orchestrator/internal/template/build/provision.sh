@@ -75,7 +75,7 @@ chmod 600 /swap/swapfile
 mkswap /swap/swapfile
 
 echo "Increasing inotify watch limit"
-echo 'fs.inotify.max_user_watches=65536' | sudo tee -a /etc/sysctl.conf
+echo 'fs.inotify.max_user_watches=65536' | tee -a /etc/sysctl.conf
 
 echo "Don't wait for ttyS0 (serial console kernel logs)"
 # This is required when the Firecracker kernel args has specified console=ttyS0

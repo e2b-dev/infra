@@ -31,6 +31,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -98,6 +99,12 @@ type Result struct {
 	RootfsSizeMB int64
 }
 
+type BuildStepResult struct {
+	Metadata LayerMetadata
+	Cached   bool
+	Hash     string
+}
+
 // Build builds the template, uploads it to storage and returns the result metadata.
 // It works the following:
 // 1. Get docker image from the remote repository
@@ -161,7 +168,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		return nil, fmt.Errorf("error getting base hash: %w", err)
 	}
 
-	isLastLayerCached, baseMetadata, err := b.setupBase(ctx, cacheScope, finalMetadata, template, lastHash, isV1Build)
+	lastLayerCached, baseMetadata, err := b.setupBase(ctx, cacheScope, finalMetadata, template, lastHash, isV1Build)
 	if err != nil {
 		return nil, fmt.Errorf("error setting up build: %w", err)
 	}
@@ -181,10 +188,10 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		}
 		baseSource = "FROM " + fromImage
 	}
-	postProcessor.Info(layerInfo(isLastLayerCached, "base", baseSource, lastHash))
+	postProcessor.Info(layerInfo(lastLayerCached, "base", baseSource, lastHash))
 
 	// Build the base layer if not cached
-	if !isLastLayerCached {
+	if !lastLayerCached {
 		baseMetadata, err = b.buildBaseLayer(
 			ctx,
 			postProcessor,
@@ -205,128 +212,60 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 
 	// Build Steps
 	for i, step := range template.Steps {
-		layerIndex := i + 1
-		lastHash = hashStep(lastHash, step)
-
-		force := step.Force != nil && *step.Force
-
-		exportMetadata := LayerMetadata{
-			Template: storage.TemplateFiles{
-				TemplateID:         id.Generate(),
-				BuildID:            uuid.NewString(),
-				KernelVersion:      sourceMetadata.Template.KernelVersion,
-				FirecrackerVersion: sourceMetadata.Template.FirecrackerVersion,
+		result, err := b.shouldBuildStep(
+			ctx,
+			postProcessor,
+			uploadErrGroup,
+			step,
+			lastHash,
+			sourceMetadata,
+			lastLayerCached,
+			fc.FirecrackerVersions{
+				KernelVersion:      finalMetadata.KernelVersion,
+				FirecrackerVersion: finalMetadata.FirecrackerVersion,
 			},
-			Metadata: sourceMetadata.Metadata,
-		}
-		if isLastLayerCached {
-			exportMetadata = LayerMetadata{
-				Template: storage.TemplateFiles{
-					TemplateID:         id.Generate(),
-					BuildID:            uuid.NewString(),
-					KernelVersion:      finalMetadata.KernelVersion,
-					FirecrackerVersion: finalMetadata.FirecrackerVersion,
-				},
-				Metadata: sourceMetadata.Metadata,
-			}
+			cacheScope,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("error checking if step %d should be built: %w", i+1, err)
 		}
 
-		cached := false
-		if !force {
-			m, err := layerMetaFromHash(ctx, b.buildStorage, cacheScope, lastHash)
-			if err != nil {
-				b.logger.Info("layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", lastHash), zap.String("step", step.Type))
-			} else {
-				// Check if the layer is cached
-				found, err := isCached(ctx, b.templateStorage, m)
-				if err != nil {
-					return nil, fmt.Errorf("error checking if layer is cached: %w", err)
-				}
-
-				exportMetadata = m
-				cached = found
-			}
-		}
-
-		prefix := fmt.Sprintf("builder %d/%d", layerIndex, len(template.Steps))
+		prefix := fmt.Sprintf("builder %d/%d", i+1, len(template.Steps))
 		cmd := fmt.Sprintf("%s %s", strings.ToUpper(step.Type), strings.Join(step.Args, " "))
-		postProcessor.Info(layerInfo(cached, prefix, cmd, lastHash))
+		postProcessor.Info(layerInfo(result.Cached, prefix, cmd, result.Hash))
 
-		// Run commands in the sandbox only if not cached
-		if !cached {
-			meta, err := b.buildLayer(
+		if !result.Cached {
+			meta, err := b.buildStep(
 				ctx,
+				step,
+				prefix,
+				result.Hash,
+				sourceMetadata,
+				baseMetadata,
+				lastLayerCached,
+				template,
+				envdVersion,
+				cacheScope,
 				postProcessor,
 				uploadErrGroup,
-				cacheScope,
-				lastHash,
-				sourceMetadata.Template,
-				exportMetadata.Template,
-				isLastLayerCached,
-				func(
-					context context.Context,
-					b *Builder,
-					t sbxtemplate.Template,
-					exportTemplate storage.TemplateFiles,
-				) (*sandbox.Sandbox, error) {
-					sbxConfig := sandbox.Config{
-						BaseTemplateID: baseMetadata.Template.TemplateID,
-
-						Vcpu:      template.VCpuCount,
-						RamMB:     template.MemoryMB,
-						HugePages: template.HugePages,
-
-						AllowInternetAccess: &globalconfig.AllowSandboxInternet,
-
-						Envd: sandbox.EnvdMetadata{
-							Version: envdVersion,
-						},
-					}
-
-					// First not cached layer is create (to change CPU, etc), subsequent are resumes.
-					if isLastLayerCached {
-						return createSandboxFromTemplate(ctx, b, t, sbxConfig, exportTemplate)
-					} else {
-						return resumeSandbox(ctx, b, t, sbxConfig)
-					}
-				},
-				func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error) {
-					postProcessor.Debug(fmt.Sprintf("Running action in: %s/%s", sourceMetadata.Template.TemplateID, sourceMetadata.Template.BuildID))
-
-					meta, err := b.applyCommand(ctx, postProcessor, cacheScope, sbx, prefix, step, sourceMetadata.Metadata)
-					if err != nil {
-						return sandboxtools.CommandMetadata{}, fmt.Errorf("error processing layer: %w", err)
-					}
-
-					err = syncChangesToDisk(
-						ctx,
-						b.tracer,
-						b.proxy,
-						sbx.Runtime.SandboxID,
-					)
-					if err != nil {
-						return sandboxtools.CommandMetadata{}, fmt.Errorf("error running sync command: %w", err)
-					}
-
-					return meta, nil
-				},
 			)
 			if err != nil {
-				return nil, fmt.Errorf("error running build layer: %w", err)
+				return nil, fmt.Errorf("error building step %d: %w", i+1, err)
 			}
-			exportMetadata = meta
 
-			// If the last layer is cached, update the base metadata to the step metadata
-			// This is needed to properly resume the sandbox for the next step
-			if isLastLayerCached {
-				baseMetadata = exportMetadata
-			}
+			result.Metadata = meta
 		}
 
-		sourceMetadata = exportMetadata
-		isLastLayerCached = cached
+		// If the last layer is cached, update the base metadata to the step metadata
+		// This is needed to properly run the sandbox for the next step
+		if lastLayerCached {
+			baseMetadata = result.Metadata
+		}
+
+		lastHash = result.Hash
+		sourceMetadata = result.Metadata
+		lastLayerCached = result.Cached
 	}
-	// Build Steps
 
 	// Run post-processing actions in the sandbox
 	var startMetadata *StartMetadata
@@ -358,7 +297,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		sourceMetadata.Template,
 		finalMetadata,
 		// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template.
-		isLastLayerCached,
+		lastLayerCached,
 		func(
 			context context.Context,
 			b *Builder,
@@ -420,6 +359,145 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		EnvdVersion:  envdVersion,
 		RootfsSizeMB: int64(rootfsSize >> constants.ToMBShift),
 	}, nil
+}
+
+func (b *Builder) shouldBuildStep(
+	ctx context.Context,
+	postProcessor *writer.PostProcessor,
+	uploadErrGroup *errgroup.Group,
+	step *templatemanager.TemplateStep,
+	lastHash string,
+	sourceMetadata LayerMetadata,
+	previousCached bool,
+	fcVersions fc.FirecrackerVersions,
+	cacheScope string,
+) (BuildStepResult, error) {
+	hash := hashStep(lastHash, step)
+
+	force := step.Force != nil && *step.Force
+	if !force {
+		m, err := layerMetaFromHash(ctx, b.buildStorage, cacheScope, hash)
+		if err != nil {
+			b.logger.Info("layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash), zap.String("step", step.Type))
+		} else {
+			// Check if the layer is cached
+			found, err := isCached(ctx, b.templateStorage, m)
+			if err != nil {
+				return BuildStepResult{}, fmt.Errorf("error checking if layer is cached: %w", err)
+			}
+
+			if found {
+				return BuildStepResult{
+					Metadata: m,
+					Cached:   true,
+					Hash:     hash,
+				}, nil
+			}
+		}
+	}
+
+	meta := LayerMetadata{
+		Template: storage.TemplateFiles{
+			TemplateID:         id.Generate(),
+			BuildID:            uuid.NewString(),
+			KernelVersion:      sourceMetadata.Template.KernelVersion,
+			FirecrackerVersion: sourceMetadata.Template.FirecrackerVersion,
+		},
+		Metadata: sourceMetadata.Metadata,
+	}
+	if previousCached {
+		// TODO: Handle this more nicely
+		meta.Template = storage.TemplateFiles{
+			TemplateID:         id.Generate(),
+			BuildID:            uuid.NewString(),
+			KernelVersion:      fcVersions.KernelVersion,
+			FirecrackerVersion: fcVersions.FirecrackerVersion,
+		}
+	}
+
+	return BuildStepResult{
+		Metadata: meta,
+		Cached:   false,
+		Hash:     hash,
+	}, nil
+}
+
+func (b *Builder) buildStep(
+	ctx context.Context,
+	step *templatemanager.TemplateStep,
+	prefix string,
+	hash string,
+	sourceMetadata LayerMetadata,
+	baseMetadata LayerMetadata,
+	previousCached bool,
+	template config.TemplateConfig,
+	envdVersion string,
+	cacheScope string,
+	postProcessor *writer.PostProcessor,
+	uploadErrGroup *errgroup.Group,
+) (LayerMetadata, error) {
+	meta, err := b.buildLayer(
+		ctx,
+		postProcessor,
+		uploadErrGroup,
+		cacheScope,
+		hash,
+		sourceMetadata.Template,
+		exportMetadata.Template,
+		previousCached,
+		func(
+			context context.Context,
+			b *Builder,
+			t sbxtemplate.Template,
+			exportTemplate storage.TemplateFiles,
+		) (*sandbox.Sandbox, error) {
+			sbxConfig := sandbox.Config{
+				BaseTemplateID: baseMetadata.Template.TemplateID,
+
+				Vcpu:      template.VCpuCount,
+				RamMB:     template.MemoryMB,
+				HugePages: template.HugePages,
+
+				AllowInternetAccess: &globalconfig.AllowSandboxInternet,
+
+				Envd: sandbox.EnvdMetadata{
+					Version: envdVersion,
+				},
+			}
+
+			// First not cached layer is create (to change CPU, etc), subsequent are resumes.
+			if previousCached {
+				return createSandboxFromTemplate(ctx, b, t, sbxConfig, exportTemplate)
+			} else {
+				return resumeSandbox(ctx, b, t, sbxConfig)
+			}
+		},
+		func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error) {
+			postProcessor.Debug(fmt.Sprintf("Running action in: %s/%s", sourceMetadata.Template.TemplateID, sourceMetadata.Template.BuildID))
+
+			meta, err := b.applyCommand(ctx, postProcessor, cacheScope, sbx, prefix, step, sourceMetadata.Metadata)
+			if err != nil {
+				return sandboxtools.CommandMetadata{}, fmt.Errorf("error processing layer: %w", err)
+			}
+
+			err = syncChangesToDisk(
+				ctx,
+				b.tracer,
+				b.proxy,
+				sbx.Runtime.SandboxID,
+			)
+			if err != nil {
+				return sandboxtools.CommandMetadata{}, fmt.Errorf("error running sync command: %w", err)
+			}
+
+			return meta, nil
+		},
+	)
+	if err != nil {
+		return LayerMetadata{}, fmt.Errorf("error running build layer: %w", err)
+	}
+
+	return meta, nil
 }
 
 func (b *Builder) buildBaseLayer(
