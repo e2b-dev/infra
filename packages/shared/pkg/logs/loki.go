@@ -75,9 +75,9 @@ func lokiFlatJsonLineParser(input string) (map[string]string, error) {
 
 	result := make(map[string]string)
 	for key, value := range raw {
-		switch value.(type) {
+		switch t := value.(type) {
 		case string:
-			result[key] = value.(string)
+			result[key] = t
 		case float64:
 			result[key] = strconv.FormatFloat(value.(float64), 'E', -1, 64)
 		case bool:
