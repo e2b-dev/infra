@@ -347,7 +347,6 @@ func (c *CachedFileObjectProvider) writeChunkFromFile(ctx context.Context, offse
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			break
 		}
 
 		read, err := input.ReadAt(buffer, offset+totalRead)
