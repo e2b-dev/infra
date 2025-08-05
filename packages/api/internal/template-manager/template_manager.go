@@ -31,6 +31,11 @@ type processingBuilds struct {
 	templateID string
 }
 
+type LocalTemplateManagerInfo struct {
+	status infogrpc.ServiceInfoStatus
+	nodeID string
+}
+
 type TemplateManager struct {
 	grpc     *grpclient.GRPCClient
 	edgePool *edge.Pool
@@ -44,9 +49,9 @@ type TemplateManager struct {
 	lokiClient    *loki.DefaultClient
 	sqlcDB        *sqlcdb.Client
 
-	localClient       *grpclient.GRPCClient
-	localClientMutex  sync.RWMutex
-	localClientStatus infogrpc.ServiceInfoStatus
+	localClient      *grpclient.GRPCClient
+	localClientMutex sync.RWMutex
+	localClientInfo  LocalTemplateManagerInfo
 }
 
 type DeleteBuild struct {
@@ -90,9 +95,12 @@ func New(
 		edgePool:      edgePool,
 		lokiClient:    lokiClient,
 
-		localClient:       client,
-		localClientMutex:  sync.RWMutex{},
-		localClientStatus: infogrpc.ServiceInfoStatus_Unhealthy,
+		localClient:      client,
+		localClientMutex: sync.RWMutex{},
+		localClientInfo: LocalTemplateManagerInfo{
+			status: infogrpc.ServiceInfoStatus_Unhealthy,
+			nodeID: "unknown",
+		},
 
 		lock:       sync.Mutex{},
 		processing: make(map[uuid.UUID]processingBuilds),
@@ -146,34 +154,37 @@ func (tm *TemplateManager) GetBuildClient(clusterID *uuid.UUID, nodeID *string, 
 	}
 }
 
-func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterID *uuid.UUID) (*string, error) {
+func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterID *uuid.UUID) (string, error) {
 	if clusterID == nil {
-		return nil, nil
+		if tm.GetLocalClientInfo().status != infogrpc.ServiceInfoStatus_Healthy {
+			return "", ErrLocalTemplateManagerNotAvailable
+		}
+
+		return tm.GetLocalClientInfo().nodeID, nil
 	}
 
 	cluster, ok := tm.edgePool.GetClusterById(*clusterID)
 	if !ok {
-		return nil, fmt.Errorf("cluster with ID '%s' not found", clusterID)
+		return "", fmt.Errorf("cluster with ID '%s' not found", clusterID)
 	}
 
 	builder, err := cluster.GetAvailableTemplateBuilder(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get available template builder for cluster '%s': %w", clusterID, err)
+		return "", fmt.Errorf("failed to get available template builder for cluster '%s': %w", clusterID, err)
 	}
 
-	builderNodeID := builder.NodeID
-	return &builderNodeID, nil
+	return builder.NodeID, nil
 }
 
 func (tm *TemplateManager) GetLocalBuildClient(placement bool) (*BuildClient, error) {
 	// build placement requires healthy template builder
-	if placement && tm.GetLocalClientStatus() != infogrpc.ServiceInfoStatus_Healthy {
+	if placement && tm.GetLocalClientInfo().status != infogrpc.ServiceInfoStatus_Healthy {
 		zap.L().Error("Local template manager is not fully healthy, cannot use it for placement new builds")
 		return nil, ErrLocalTemplateManagerNotAvailable
 	}
 
 	// for getting build information only not valid state is getting already unhealthy builder
-	if tm.GetLocalClientStatus() == infogrpc.ServiceInfoStatus_Unhealthy {
+	if tm.GetLocalClientInfo().status == infogrpc.ServiceInfoStatus_Unhealthy {
 		zap.L().Error("Local template manager is unhealthy")
 		return nil, ErrLocalTemplateManagerNotAvailable
 	}
@@ -217,7 +228,7 @@ func (tm *TemplateManager) GetClusterBuildClient(clusterID uuid.UUID, nodeID str
 	}, nil
 }
 
-func (tm *TemplateManager) DeleteBuild(ctx context.Context, t trace.Tracer, buildID uuid.UUID, templateID string, clusterID *uuid.UUID, clusterNodeID *string) error {
+func (tm *TemplateManager) DeleteBuild(ctx context.Context, t trace.Tracer, buildID uuid.UUID, templateID string, clusterID *uuid.UUID, nodeID string) error {
 	ctx, span := t.Start(ctx, "delete-template",
 		trace.WithAttributes(
 			telemetry.WithBuildID(buildID.String()),
@@ -225,7 +236,7 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, t trace.Tracer, buil
 	)
 	defer span.End()
 
-	client, err := tm.GetBuildClient(clusterID, clusterNodeID, false)
+	client, err := tm.GetBuildClient(clusterID, &nodeID, false)
 	if err != nil {
 		return fmt.Errorf("failed to get builder edgeHttpClient: %w", err)
 	}
@@ -248,7 +259,11 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, t trace.Tracer, buil
 
 func (tm *TemplateManager) DeleteBuilds(ctx context.Context, builds []DeleteBuild) error {
 	for _, build := range builds {
-		err := tm.DeleteBuild(ctx, tm.tracer, build.BuildID, build.TemplateID, build.ClusterID, build.ClusterNodeID)
+		if build.ClusterNodeID != nil {
+			continue
+		}
+
+		err := tm.DeleteBuild(ctx, tm.tracer, build.BuildID, build.TemplateID, build.ClusterID, *build.ClusterNodeID)
 		if err != nil {
 			return fmt.Errorf("failed to delete env build '%s': %w", build.BuildID, err)
 		}
@@ -257,8 +272,8 @@ func (tm *TemplateManager) DeleteBuilds(ctx context.Context, builds []DeleteBuil
 	return nil
 }
 
-func (tm *TemplateManager) GetStatus(ctx context.Context, buildID uuid.UUID, templateID string, clusterID *uuid.UUID, clusterNodeID *string) (*templatemanagergrpc.TemplateBuildStatusResponse, error) {
-	cli, err := tm.GetBuildClient(clusterID, clusterNodeID, false)
+func (tm *TemplateManager) GetStatus(ctx context.Context, buildID uuid.UUID, templateID string, clusterID *uuid.UUID, nodeID *string) (*templatemanagergrpc.TemplateBuildStatusResponse, error) {
+	cli, err := tm.GetBuildClient(clusterID, nodeID, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get builder edgeHttpClient: %w", err)
 	}
