@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/attribute"
@@ -93,13 +94,13 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 
 	nodeInfo, err := client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 	if err != nil {
-		zap.L().Error("Failed to get node info", zap.Error(err))
-	} else {
-		nodeStatus, ok = OrchestratorToApiNodeStateMapper[nodeInfo.ServiceStatus]
-		if !ok {
-			zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.ServiceStatus), logger.WithNodeID(node.ID))
-			nodeStatus = api.NodeStatusUnhealthy
-		}
+		return fmt.Errorf("failed to get node service info: %w", err)
+	}
+
+	nodeStatus, ok = OrchestratorToApiNodeStateMapper[nodeInfo.ServiceStatus]
+	if !ok {
+		zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.ServiceStatus), logger.WithNodeID(node.ID))
+		nodeStatus = api.NodeStatusUnhealthy
 	}
 
 	o.nodes.Insert(
@@ -107,9 +108,16 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 			client:   client,
 			clientMd: make(metadata.MD),
 
-			Info: node,
+			ClusterID:     uuid.Nil,
+			ClusterNodeID: nodeInfo.NodeId,
+			Info:          node,
 
-			meta:           getNodeMetadata(nodeInfo, node.ID),
+			meta: nodeMetadata{
+				serviceInstanceID: nodeInfo.ServiceId,
+				commit:            nodeInfo.ServiceCommit,
+				version:           nodeInfo.ServiceVersion,
+			},
+
 			buildCache:     buildCache,
 			status:         nodeStatus,
 			sbxsInProgress: smap.New[*sbxInProgress](),
@@ -128,24 +136,29 @@ func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, i *edge.Clust
 	buildCache := ttlcache.New[string, interface{}]()
 	go buildCache.Start()
 
+	nodeStatus, ok := OrchestratorToApiNodeStateMapper[i.GetStatus()]
+	if !ok {
+		zap.L().Error("Unknown service info status", logger.WithNodeID(i.NodeID))
+		nodeStatus = api.NodeStatusUnhealthy
+	}
+
 	orchestratorNode := &Node{
 		client:   poolGrpc.Client,
 		clientMd: poolGrpc.Metadata,
 
 		ClusterID:     cluster.ID,
 		ClusterNodeID: i.NodeID,
-
-		// some places are using this id to get node from orchestrator pool
-		// probably we can get rid of this and just create ID directly on Node struct
 		Info: &node.NodeInfo{
+			// some places are using this id to get node from orchestrator pool
+			// probably we can get rid of this and just create ID directly on Node struct
 			ID: poolNodeID,
 		},
 
-		status: OrchestratorToApiNodeStateMapper[i.GetStatus()],
+		status: nodeStatus,
 		meta: nodeMetadata{
-			orchestratorID: poolNodeID,
-			version:        i.ServiceVersion,
-			commit:         i.ServiceVersionCommit,
+			serviceInstanceID: i.ServiceInstanceID,
+			version:           i.ServiceVersion,
+			commit:            i.ServiceVersionCommit,
 		},
 
 		buildCache:     buildCache,

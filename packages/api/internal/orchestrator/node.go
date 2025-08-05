@@ -31,9 +31,6 @@ type sbxInProgress struct {
 }
 
 type nodeMetadata struct {
-	// Orchestrator ID is currently the same as node ID.
-	orchestratorID string
-
 	// Service instance ID is unique identifier for every orchestrator process, after restart it will change.
 	// In the future, we want to migrate to using this ID instead of node ID for tracking orchestrators-
 	serviceInstanceID string
@@ -49,10 +46,10 @@ type Node struct {
 	client   *grpclient.GRPCClient
 	clientMd metadata.MD
 
+	Info *node.NodeInfo
+
 	ClusterID     uuid.UUID
 	ClusterNodeID string
-
-	Info *node.NodeInfo
 
 	meta   nodeMetadata
 	status api.NodeStatus
@@ -111,10 +108,15 @@ func (n *Node) setStatus(status api.NodeStatus) {
 	}
 }
 
-func (n *Node) setMetadata(i *orchestratorinfo.ServiceInfoResponse, nodeID string) {
+func (n *Node) setMetadata(serviceInstanceID string, commit string, version string) {
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
-	n.meta = getNodeMetadata(i, nodeID)
+
+	n.meta = nodeMetadata{
+		serviceInstanceID: serviceInstanceID,
+		commit:            commit,
+		version:           version,
+	}
 }
 
 func (n *Node) metadata() nodeMetadata {
@@ -184,7 +186,7 @@ func (o *Orchestrator) GetNodes() []*api.Node {
 			clusterID = &clusterIDRaw
 		}
 
-		metadata := n.metadata()
+		meta := n.metadata()
 		nodes[key] = &api.Node{
 			NodeID:               key,
 			ClusterID:            clusterID,
@@ -192,8 +194,8 @@ func (o *Orchestrator) GetNodes() []*api.Node {
 			CreateSuccesses:      n.createSuccess.Load(),
 			CreateFails:          n.createFails.Load(),
 			SandboxStartingCount: n.sbxsInProgress.Count(),
-			Version:              metadata.version,
-			Commit:               metadata.commit,
+			Version:              meta.version,
+			Commit:               meta.commit,
 		}
 	}
 
@@ -229,7 +231,7 @@ func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
 			}
 
 			builds := n.buildCache.Keys()
-			metadata := n.metadata()
+			meta := n.metadata()
 			node = &api.NodeDetail{
 				NodeID:          key,
 				ClusterID:       clusterID,
@@ -237,8 +239,8 @@ func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
 				CachedBuilds:    builds,
 				CreateSuccesses: n.createSuccess.Load(),
 				CreateFails:     n.createFails.Load(),
-				Version:         metadata.version,
-				Commit:          metadata.commit,
+				Version:         meta.version,
+				Commit:          meta.commit,
 			}
 		}
 	}
@@ -330,24 +332,4 @@ func (n *Node) GetSandboxDeleteCtx(ctx context.Context, sandboxID string, execut
 	)
 
 	return metadata.NewOutgoingContext(ctx, metadata.Join(n.clientMd, md))
-}
-
-func getNodeMetadata(n *orchestratorinfo.ServiceInfoResponse, orchestratorID string) nodeMetadata {
-	if n == nil {
-		return nodeMetadata{
-			orchestratorID:    orchestratorID,
-			serviceInstanceID: "unknown",
-
-			commit:  "unknown",
-			version: "unknown",
-		}
-	}
-
-	return nodeMetadata{
-		orchestratorID:    n.NodeId,
-		serviceInstanceID: n.ServiceId,
-
-		commit:  n.ServiceCommit,
-		version: n.ServiceVersion,
-	}
 }
