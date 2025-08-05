@@ -5,14 +5,14 @@ RUN apk add --no-cache git
 RUN go install github.com/pressly/goose/v3/cmd/goose@v3.24.2
 
 # Final stage
-FROM alpine:latest
+FROM alpine:3.22.1
 
 RUN apk add --no-cache bash ca-certificates
 
 COPY --from=builder /go/bin/goose /usr/local/bin/goose
 
 WORKDIR /app
-COPY /migrations ./migrations
+COPY migrations/ ./migrations/
 
 ENV GOOSE_DRIVER=clickhouse
 ENTRYPOINT ["goose", "-table", "_migrations", "-dir", "migrations", "up"]
