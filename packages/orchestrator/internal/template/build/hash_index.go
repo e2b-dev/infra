@@ -21,7 +21,7 @@ const hashingVersion = "v1"
 
 type LayerMetadata struct {
 	Template storage.TemplateFiles        `json:"template"`
-	Metadata sandboxtools.CommandMetadata `json:"metadata"`
+	CmdMeta  sandboxtools.CommandMetadata `json:"metadata"`
 }
 
 func layerMetaFromHash(ctx context.Context, s storage.StorageProvider, cacheScope string, hash string) (LayerMetadata, error) {

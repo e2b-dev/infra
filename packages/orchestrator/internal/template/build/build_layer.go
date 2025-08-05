@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
@@ -131,9 +130,7 @@ func createSandboxFromTemplate(
 // buildLayer orchestrates the layer building process
 func (b *Builder) buildLayer(
 	ctx context.Context,
-	postProcessor *writer.PostProcessor,
-	uploadErrGroup *errgroup.Group,
-	cacheScope string,
+	bc BuildContext,
 	hash string,
 	sourceTemplate storage.TemplateFiles,
 	exportTemplate storage.TemplateFiles,
@@ -175,7 +172,7 @@ func (b *Builder) buildLayer(
 
 	// Update envd binary to the latest version
 	if updateEnvd {
-		err = b.updateEnvdInSandbox(ctx, b.tracer, postProcessor, sbx)
+		err = b.updateEnvdInSandbox(ctx, b.tracer, bc.Logger, sbx)
 		if err != nil {
 			return LayerMetadata{}, fmt.Errorf("failed to update envd in sandbox: %w", err)
 		}
@@ -190,18 +187,13 @@ func (b *Builder) buildLayer(
 	// Prepare export metadata and upload
 	exportMeta := LayerMetadata{
 		Template: exportTemplate,
-		Metadata: meta,
+		CmdMeta:  meta,
 	}
 	err = pauseAndUpload(
 		ctx,
-		b.tracer,
-		uploadErrGroup,
-		postProcessor,
-		b.templateStorage,
-		b.buildStorage,
-		b.templateCache,
+		b,
+		bc,
 		sbx,
-		cacheScope,
 		hash,
 		exportMeta,
 	)
@@ -291,21 +283,16 @@ func (b *Builder) updateEnvdInSandbox(
 
 func pauseAndUpload(
 	ctx context.Context,
-	tracer trace.Tracer,
-	uploadErrGroup *errgroup.Group,
-	postProcessor *writer.PostProcessor,
-	templateStorage storage.StorageProvider,
-	buildStorage storage.StorageProvider,
-	templateCache *sbxtemplate.Cache,
+	b *Builder,
+	bc BuildContext,
 	sbx *sandbox.Sandbox,
-	cacheScope string,
 	hash string,
 	layerMeta LayerMetadata,
 ) error {
-	ctx, childSpan := tracer.Start(ctx, "pause-and-upload")
+	ctx, childSpan := b.tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
 
-	postProcessor.Debug(fmt.Sprintf("Saving layer: %s/%s", layerMeta.Template.TemplateID, layerMeta.Template.BuildID))
+	bc.Logger.Debug(fmt.Sprintf("Saving layer: %s/%s", layerMeta.Template.TemplateID, layerMeta.Template.BuildID))
 
 	cacheFiles, err := layerMeta.Template.CacheFiles()
 	if err != nil {
@@ -314,7 +301,7 @@ func pauseAndUpload(
 	// snapshot is automatically cleared by the templateCache eviction
 	snapshot, err := sbx.Pause(
 		ctx,
-		tracer,
+		b.tracer,
 		cacheFiles,
 	)
 	if err != nil {
@@ -322,7 +309,7 @@ func pauseAndUpload(
 	}
 
 	// Add snapshot to template cache so it can be used immediately
-	err = templateCache.AddSnapshot(
+	err = b.templateCache.AddSnapshot(
 		cacheFiles.TemplateID,
 		cacheFiles.BuildID,
 		cacheFiles.KernelVersion,
@@ -338,22 +325,22 @@ func pauseAndUpload(
 	}
 
 	// Upload snapshot async, it's added to the template cache immediately
-	uploadErrGroup.Go(func() error {
+	bc.UploadErrGroup.Go(func() error {
 		err := snapshot.Upload(
 			ctx,
-			templateStorage,
+			b.templateStorage,
 			cacheFiles.TemplateFiles,
 		)
 		if err != nil {
 			return fmt.Errorf("error uploading snapshot: %w", err)
 		}
 
-		err = saveLayerMeta(ctx, buildStorage, cacheScope, hash, layerMeta)
+		err = saveLayerMeta(ctx, b.buildStorage, bc.CacheScope, hash, layerMeta)
 		if err != nil {
 			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
 		}
 
-		postProcessor.Debug(fmt.Sprintf("Saved: %s/%s", cacheFiles.TemplateID, cacheFiles.BuildID))
+		bc.Logger.Debug(fmt.Sprintf("Saved: %s/%s", cacheFiles.TemplateID, cacheFiles.BuildID))
 		return nil
 	})
 

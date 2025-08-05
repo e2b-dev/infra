@@ -10,22 +10,17 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/rootfs"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 func constructBaseLayerFiles(
 	ctx context.Context,
 	tracer trace.Tracer,
-	metadata storage.TemplateFiles,
+	buildContext BuildContext,
 	// The base build ID can be different from the final requested template build ID.
 	baseBuildID string,
-	templateConfig config.TemplateConfig,
-	postProcessor *writer.PostProcessor,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	templateBuildDir string,
 	rootfsPath string,
@@ -36,8 +31,8 @@ func constructBaseLayerFiles(
 	// Create a rootfs file
 	rtfs := rootfs.New(
 		artifactRegistry,
-		metadata,
-		templateConfig,
+		buildContext.Template,
+		buildContext.Config,
 	)
 	provisionScript, err := getProvisionScript(ctx, ProvisionScriptParams{
 		ResultPath: provisionScriptResultPath,
@@ -45,9 +40,9 @@ func constructBaseLayerFiles(
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error getting provision script: %w", err)
 	}
-	imgConfig, err := rtfs.CreateExt4Filesystem(childCtx, tracer, postProcessor, rootfsPath, provisionScript, provisionLogPrefix)
+	imgConfig, err := rtfs.CreateExt4Filesystem(childCtx, tracer, buildContext.Logger, rootfsPath, provisionScript, provisionLogPrefix)
 	if err != nil {
-		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating rootfs for template '%s' during build '%s': %w", metadata.TemplateID, metadata.BuildID, err)
+		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating ext4 filesystem: %w", err)
 	}
 
 	buildIDParsed, err := uuid.Parse(baseBuildID)
@@ -55,18 +50,18 @@ func constructBaseLayerFiles(
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("failed to parse build id: %w", err)
 	}
 
-	rootfs, err := block.NewLocal(rootfsPath, templateConfig.RootfsBlockSize(), buildIDParsed)
+	rootfs, err := block.NewLocal(rootfsPath, buildContext.Config.RootfsBlockSize(), buildIDParsed)
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error reading rootfs blocks: %w", err)
 	}
 
 	// Create empty memfile
-	memfilePath, err := memory.NewMemory(templateBuildDir, templateConfig.MemoryMB)
+	memfilePath, err := memory.NewMemory(templateBuildDir, buildContext.Config.MemoryMB)
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating memfile: %w", err)
 	}
 
-	memfile, err := block.NewLocal(memfilePath, templateConfig.MemfilePageSize(), buildIDParsed)
+	memfile, err := block.NewLocal(memfilePath, buildContext.Config.MemfilePageSize(), buildIDParsed)
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating memfile blocks: %w", err)
 	}
