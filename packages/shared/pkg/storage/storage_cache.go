@@ -278,7 +278,7 @@ func (c *CachedFileObjectProvider) writeCacheAndRemote(ctx context.Context, src 
 
 func (c *CachedFileObjectProvider) writeBytesToLocal(ctx context.Context, path string, bytes []byte) error {
 	var err error
-	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.writeBytesToLocal")
+	_, span := tracer.Start(ctx, "CachedFileObjectProvider.writeBytesToLocal")
 	defer endSpan(span, err)
 
 	err1 := os.WriteFile(path, bytes, cacheFilePermissions)
@@ -343,6 +343,13 @@ func (c *CachedFileObjectProvider) writeChunkFromFile(ctx context.Context, offse
 	totalRead := int64(0)
 	buffer := make([]byte, min(32*1024, expectedRead))
 	for totalRead < expectedRead {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			break
+		}
+
 		read, err := input.ReadAt(buffer, offset+totalRead)
 		if err != nil {
 			return fmt.Errorf("failed to write to %q [%d bytes @ %d]: %w",
