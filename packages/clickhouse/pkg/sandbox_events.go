@@ -2,10 +2,10 @@ package clickhouse
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
-	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
 )
 
@@ -70,8 +70,8 @@ SELECT
 FROM sandbox_events
 WHERE sandbox_id = {sandbox_id:String}
 ORDER BY timestamp %s
-LIMIT {limit:UInt32}
-OFFSET {offset:UInt32}
+LIMIT ?
+OFFSET ?
 `
 
 func (c *Client) SelectSandboxEventsBySandboxId(ctx context.Context, sandboxID string, offset, limit int, orderAsc bool) ([]SandboxEvent, error) {
@@ -81,11 +81,7 @@ func (c *Client) SelectSandboxEventsBySandboxId(ctx context.Context, sandboxID s
 	}
 
 	query := fmt.Sprintf(selectSandboxEventsBySandboxIdQuery, order)
-	rows, err := c.conn.Query(ctx, query,
-		clickhouse.Named("sandbox_id", sandboxID),
-		clickhouse.Named("limit", limit),
-		clickhouse.Named("offset", offset),
-	)
+	rows, err := c.conn.Query(ctx, query, sandboxID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("error querying sandbox events by sandbox id: %w", err)
 	}
@@ -115,10 +111,10 @@ SELECT
     event_label,
     event_data
 FROM sandbox_events
-WHERE sandbox_team_id = {team_id:UUID}
+WHERE sandbox_team_id = ?
 ORDER BY timestamp %s
-LIMIT {limit:UInt32}
-OFFSET {offset:UInt32}
+LIMIT ?
+OFFSET ?
 `
 
 func (c *Client) SelectSandboxEventsByTeamId(ctx context.Context, teamID uuid.UUID, offset, limit int, orderAsc bool) ([]SandboxEvent, error) {
@@ -129,11 +125,7 @@ func (c *Client) SelectSandboxEventsByTeamId(ctx context.Context, teamID uuid.UU
 
 	query := fmt.Sprintf(selectSandboxEventsByTeamIdQuery, order)
 
-	rows, err := c.conn.Query(ctx, query,
-		clickhouse.Named("team_id", teamID),
-		clickhouse.Named("limit", limit),
-		clickhouse.Named("offset", offset),
-	)
+	rows, err := c.conn.Query(ctx, query, teamID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("error querying sandbox events by team id: %w", err)
 	}
@@ -170,27 +162,31 @@ INSERT INTO sandbox_events
 )
 SETTINGS async_insert=1, wait_for_async_insert=1
 VALUES (
-    {timestamp:DateTime64(9)},
-    {sandbox_id:String},
-    {sandbox_execution_id:String},
-    {sandbox_template_id:String},
-    {sandbox_build_id:String},
-    {sandbox_team_id:UUID},
-    {event_category:String},
-    {event_label:String},
-    {event_data:String}
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,	
+    ?,
+    ?,
+    ?
 )`
 
 func (c *Client) InsertSandboxEvent(ctx context.Context, event SandboxEvent) error {
+	eventData := sql.NullString{
+		String: event.EventData,
+		Valid:  event.EventData != "",
+	}
+
 	return c.conn.Exec(ctx, insertSandboxEventQueryAsync,
-		clickhouse.Named("timestamp", time.Now().UTC()),
-		clickhouse.Named("sandbox_id", event.SandboxID),
-		clickhouse.Named("sandbox_execution_id", event.SandboxExecutionID),
-		clickhouse.Named("sandbox_template_id", event.SandboxTemplateID),
-		clickhouse.Named("sandbox_build_id", event.SandboxBuildID),
-		clickhouse.Named("sandbox_team_id", event.SandboxTeamID),
-		clickhouse.Named("event_category", event.EventCategory),
-		clickhouse.Named("event_label", event.EventLabel),
-		clickhouse.Named("event_data", event.EventData),
-	)
+		time.Now().UTC(),
+		event.SandboxID,
+		event.SandboxExecutionID,
+		event.SandboxTemplateID,
+		event.SandboxBuildID,
+		event.SandboxTeamID,
+		event.EventCategory,
+		event.EventLabel,
+		eventData)
 }
