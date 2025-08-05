@@ -2,6 +2,7 @@ package uffd
 
 import (
 	"context"
+
 	"github.com/bits-and-blooms/bitset"
 )
 
