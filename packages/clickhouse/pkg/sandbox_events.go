@@ -68,7 +68,7 @@ SELECT
     event_label,
     event_data
 FROM sandbox_events
-WHERE sandbox_id = {sandbox_id:String}
+WHERE sandbox_id = ?
 ORDER BY timestamp %s
 LIMIT ?
 OFFSET ?
@@ -91,7 +91,7 @@ func (c *Client) SelectSandboxEventsBySandboxId(ctx context.Context, sandboxID s
 	for rows.Next() {
 		var m SandboxEvent
 		if err := rows.ScanStruct(&m); err != nil {
-			return nil, fmt.Errorf("error scaning SandboxEvent: %w", err)
+			return nil, fmt.Errorf("error scanning SandboxEvent: %w", err)
 		}
 		out = append(out, m)
 	}
@@ -135,7 +135,7 @@ func (c *Client) SelectSandboxEventsByTeamId(ctx context.Context, teamID uuid.UU
 	for rows.Next() {
 		var m SandboxEvent
 		if err := rows.ScanStruct(&m); err != nil {
-			return nil, fmt.Errorf("error scaning SandboxEvent: %w", err)
+			return nil, fmt.Errorf("error scanning SandboxEvent: %w", err)
 		}
 		out = append(out, m)
 	}
