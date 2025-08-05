@@ -62,6 +62,9 @@ type ServerInterface interface {
 	// (GET /sandboxes/{sandboxID}/logs)
 	GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID SandboxID, params GetSandboxesSandboxIDLogsParams)
 
+	// (PUT /sandboxes/{sandboxID}/metadata)
+	PutSandboxesSandboxIDMetadata(c *gin.Context, sandboxID SandboxID)
+
 	// (GET /sandboxes/{sandboxID}/metrics)
 	GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID SandboxID, params GetSandboxesSandboxIDMetricsParams)
 
@@ -534,6 +537,36 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxIDLogs(c *gin.Context) {
 	}
 
 	siw.Handler.GetSandboxesSandboxIDLogs(c, sandboxID, params)
+}
+
+// PutSandboxesSandboxIDMetadata operation middleware
+func (siw *ServerInterfaceWrapper) PutSandboxesSandboxIDMetadata(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "sandboxID" -------------
+	var sandboxID SandboxID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sandboxID", c.Param("sandboxID"), &sandboxID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandboxID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PutSandboxesSandboxIDMetadata(c, sandboxID)
 }
 
 // GetSandboxesSandboxIDMetrics operation middleware
@@ -1191,6 +1224,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.DELETE(options.BaseURL+"/sandboxes/:sandboxID", wrapper.DeleteSandboxesSandboxID)
 	router.GET(options.BaseURL+"/sandboxes/:sandboxID", wrapper.GetSandboxesSandboxID)
 	router.GET(options.BaseURL+"/sandboxes/:sandboxID/logs", wrapper.GetSandboxesSandboxIDLogs)
+	router.PUT(options.BaseURL+"/sandboxes/:sandboxID/metadata", wrapper.PutSandboxesSandboxIDMetadata)
 	router.GET(options.BaseURL+"/sandboxes/:sandboxID/metrics", wrapper.GetSandboxesSandboxIDMetrics)
 	router.POST(options.BaseURL+"/sandboxes/:sandboxID/pause", wrapper.PostSandboxesSandboxIDPause)
 	router.POST(options.BaseURL+"/sandboxes/:sandboxID/refreshes", wrapper.PostSandboxesSandboxIDRefreshes)

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -180,6 +181,11 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}, nil
 }
 
+type eventData struct {
+	SetTimeout string            `json:"set_timeout,omitempty"`
+	Metadata   map[string]string `json:"metadata,omitempty"`
+}
+
 func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequest) (*emptypb.Empty, error) {
 	ctx, childSpan := s.tracer.Start(ctx, "sandbox-update")
 	defer childSpan.End()
@@ -196,18 +202,34 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
-	item.EndAt = req.EndTime.AsTime()
+	updated := false
 
-	// TODO: adapt to new types of update events
-	eventData := fmt.Sprintf(`{"set_timeout": "%s"}`, req.EndTime.AsTime().Format(time.RFC3339))
+	event := &eventData{}
+	// Update end time if provided
+	if req.EndTime != nil {
+		item.EndAt = req.EndTime.AsTime()
+		updated = true
+		event.SetTimeout = req.EndTime.AsTime().Format(time.RFC3339)
+
+		telemetry.ReportEvent(ctx, "Updated sandbox timeout")
+	}
+
+	// Update metadata if provided
+	if req.Metadata != nil {
+		item.APIStoredConfig.Metadata = req.Metadata
+		updated = true
+		event.Metadata = req.Metadata
+
+		telemetry.ReportEvent(ctx, "Updated sandbox metadata")
+	}
 
 	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(
 		featureflags.SandboxLifeCycleEventsWriteFlagName, item.Runtime.SandboxID)
 	if flagErr != nil {
 		zap.L().Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
 	}
-	if sandboxLifeCycleEventsWriteFlag {
-		go func(eventData string) {
+	if updated && sandboxLifeCycleEventsWriteFlag {
+		go func() {
 			buildId := ""
 			if item.APIStoredConfig != nil {
 				buildId = item.APIStoredConfig.BuildId
@@ -216,6 +238,12 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 			teamID, err := uuid.Parse(item.Runtime.TeamID)
 			if err != nil {
 				sbxlogger.I(item).Error("error parsing team ID", zap.String("team_id", item.Runtime.TeamID), zap.Error(err))
+				return
+			}
+
+			eventDataMarshalled, err := json.Marshal(event)
+			if err != nil {
+				sbxlogger.I(item).Error("error marshaling sandbox lifecycle event", zap.Error(err))
 				return
 			}
 
@@ -228,13 +256,13 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 				SandboxExecutionID: item.Runtime.ExecutionID,
 				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
 				EventLabel:         string(clickhouse.SandboxEventLabelUpdate),
-				EventData:          sql.NullString{String: eventData, Valid: true},
+				EventData:          sql.NullString{String: string(eventDataMarshalled), Valid: true},
 			})
 			if err != nil {
 				sbxlogger.I(item).Error(
 					"error inserting sandbox lifecycle event", zap.String("event_label", string(clickhouse.SandboxEventLabelUpdate)), zap.Error(err))
 			}
-		}(eventData)
+		}()
 	}
 
 	return &emptypb.Empty{}, nil
