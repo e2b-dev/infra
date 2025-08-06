@@ -171,8 +171,8 @@ type ClientInterface interface {
 	// GetTeams request
 	GetTeams(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetTeamsMetrics request
-	GetTeamsMetrics(ctx context.Context, params *GetTeamsMetricsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// GetTeamsTeamIDMetrics request
+	GetTeamsTeamIDMetrics(ctx context.Context, teamID TeamID, params *GetTeamsTeamIDMetricsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTemplates request
 	GetTemplates(ctx context.Context, params *GetTemplatesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -578,8 +578,8 @@ func (c *Client) GetTeams(ctx context.Context, reqEditors ...RequestEditorFn) (*
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetTeamsMetrics(ctx context.Context, params *GetTeamsMetricsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetTeamsMetricsRequest(c.Server, params)
+func (c *Client) GetTeamsTeamIDMetrics(ctx context.Context, teamID TeamID, params *GetTeamsTeamIDMetricsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTeamsTeamIDMetricsRequest(c.Server, teamID, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1687,16 +1687,23 @@ func NewGetTeamsRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
-// NewGetTeamsMetricsRequest generates requests for GetTeamsMetrics
-func NewGetTeamsMetricsRequest(server string, params *GetTeamsMetricsParams) (*http.Request, error) {
+// NewGetTeamsTeamIDMetricsRequest generates requests for GetTeamsTeamIDMetrics
+func NewGetTeamsTeamIDMetricsRequest(server string, teamID TeamID, params *GetTeamsTeamIDMetricsParams) (*http.Request, error) {
 	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "teamID", runtime.ParamLocationPath, teamID)
+	if err != nil {
+		return nil, err
+	}
 
 	serverURL, err := url.Parse(server)
 	if err != nil {
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/teams/metrics")
+	operationPath := fmt.Sprintf("/teams/%s/metrics", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -2446,8 +2453,8 @@ type ClientWithResponsesInterface interface {
 	// GetTeamsWithResponse request
 	GetTeamsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetTeamsResponse, error)
 
-	// GetTeamsMetricsWithResponse request
-	GetTeamsMetricsWithResponse(ctx context.Context, params *GetTeamsMetricsParams, reqEditors ...RequestEditorFn) (*GetTeamsMetricsResponse, error)
+	// GetTeamsTeamIDMetricsWithResponse request
+	GetTeamsTeamIDMetricsWithResponse(ctx context.Context, teamID TeamID, params *GetTeamsTeamIDMetricsParams, reqEditors ...RequestEditorFn) (*GetTeamsTeamIDMetricsResponse, error)
 
 	// GetTemplatesWithResponse request
 	GetTemplatesWithResponse(ctx context.Context, params *GetTemplatesParams, reqEditors ...RequestEditorFn) (*GetTemplatesResponse, error)
@@ -3029,7 +3036,7 @@ func (r GetTeamsResponse) StatusCode() int {
 	return 0
 }
 
-type GetTeamsMetricsResponse struct {
+type GetTeamsTeamIDMetricsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *[]TeamMetric
@@ -3038,7 +3045,7 @@ type GetTeamsMetricsResponse struct {
 }
 
 // Status returns HTTPResponse.Status
-func (r GetTeamsMetricsResponse) Status() string {
+func (r GetTeamsTeamIDMetricsResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -3046,7 +3053,7 @@ func (r GetTeamsMetricsResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r GetTeamsMetricsResponse) StatusCode() int {
+func (r GetTeamsTeamIDMetricsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -3582,13 +3589,13 @@ func (c *ClientWithResponses) GetTeamsWithResponse(ctx context.Context, reqEdito
 	return ParseGetTeamsResponse(rsp)
 }
 
-// GetTeamsMetricsWithResponse request returning *GetTeamsMetricsResponse
-func (c *ClientWithResponses) GetTeamsMetricsWithResponse(ctx context.Context, params *GetTeamsMetricsParams, reqEditors ...RequestEditorFn) (*GetTeamsMetricsResponse, error) {
-	rsp, err := c.GetTeamsMetrics(ctx, params, reqEditors...)
+// GetTeamsTeamIDMetricsWithResponse request returning *GetTeamsTeamIDMetricsResponse
+func (c *ClientWithResponses) GetTeamsTeamIDMetricsWithResponse(ctx context.Context, teamID TeamID, params *GetTeamsTeamIDMetricsParams, reqEditors ...RequestEditorFn) (*GetTeamsTeamIDMetricsResponse, error) {
+	rsp, err := c.GetTeamsTeamIDMetrics(ctx, teamID, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseGetTeamsMetricsResponse(rsp)
+	return ParseGetTeamsTeamIDMetricsResponse(rsp)
 }
 
 // GetTemplatesWithResponse request returning *GetTemplatesResponse
@@ -4666,15 +4673,15 @@ func ParseGetTeamsResponse(rsp *http.Response) (*GetTeamsResponse, error) {
 	return response, nil
 }
 
-// ParseGetTeamsMetricsResponse parses an HTTP response from a GetTeamsMetricsWithResponse call
-func ParseGetTeamsMetricsResponse(rsp *http.Response) (*GetTeamsMetricsResponse, error) {
+// ParseGetTeamsTeamIDMetricsResponse parses an HTTP response from a GetTeamsTeamIDMetricsWithResponse call
+func ParseGetTeamsTeamIDMetricsResponse(rsp *http.Response) (*GetTeamsTeamIDMetricsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &GetTeamsMetricsResponse{
+	response := &GetTeamsTeamIDMetricsResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

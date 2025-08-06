@@ -23,7 +23,7 @@ func TestTeamMetrics(t *testing.T) {
 	maxRetries := 15
 	var metrics []api.TeamMetric
 	for i := 0; i < maxRetries; i++ {
-		response, err := c.GetTeamsMetricsWithResponse(t.Context(), nil, setup.WithAPIKey())
+		response, err := c.GetTeamsTeamIDMetricsWithResponse(t.Context(), setup.TeamID, nil, setup.WithAPIKey())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, response.StatusCode())
 
@@ -75,7 +75,7 @@ func TestTeamMetricsWithTimeRange(t *testing.T) {
 	maxRetries := 15
 	var metrics []api.TeamMetric
 	for i := 0; i < maxRetries; i++ {
-		response, err := c.GetTeamsMetricsWithResponse(t.Context(), &api.GetTeamsMetricsParams{
+		response, err := c.GetTeamsTeamIDMetricsWithResponse(t.Context(), setup.TeamID, &api.GetTeamsTeamIDMetricsParams{
 			Start: &start,
 			End:   &end,
 		}, setup.WithAPIKey())
@@ -112,7 +112,7 @@ func TestTeamMetricsEmpty(t *testing.T) {
 	end := now.Add(-216 * time.Hour).Unix()
 
 	// Wait a bit to ensure metrics are generated
-	response, err := c.GetTeamsMetricsWithResponse(t.Context(), &api.GetTeamsMetricsParams{
+	response, err := c.GetTeamsTeamIDMetricsWithResponse(t.Context(), setup.TeamID, &api.GetTeamsTeamIDMetricsParams{
 		Start: &start,
 		End:   &end,
 	}, setup.WithAPIKey())

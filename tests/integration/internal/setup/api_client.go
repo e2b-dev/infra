@@ -55,7 +55,7 @@ func WithSupabaseToken(t *testing.T) func(ctx context.Context, req *http.Request
 }
 
 func WithSupabaseTeam(t *testing.T, teamID ...string) func(ctx context.Context, req *http.Request) error {
-	teamID_ := SupabaseTeamID
+	teamID_ := TeamID
 	if len(teamID) > 0 {
 		teamID_ = teamID[0]
 	}
