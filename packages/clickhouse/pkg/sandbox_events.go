@@ -143,11 +143,7 @@ func (c *Client) SelectSandboxEventsByTeamId(ctx context.Context, teamID uuid.UU
 	return out, rows.Err()
 }
 
-// These SETTINGS allow inserts in async mode, which is batching (intermittent buffer flushing) managed by ClickHouse.
-// More info:
-// - https://clickhouse.com/docs/operations/settings/settings#async_insert
-// - https://clickhouse.com/docs/operations/settings/settings#wait_for_async_insert
-const insertSandboxEventQueryAsync = `
+const insertSandboxEventQuery = `
 INSERT INTO sandbox_events
 (
     timestamp,
@@ -160,7 +156,6 @@ INSERT INTO sandbox_events
     event_label,
     event_data
 )
-SETTINGS async_insert=1, wait_for_async_insert=1
 VALUES (
     ?,
     ?,
@@ -174,8 +169,8 @@ VALUES (
 )`
 
 func (c *Client) InsertSandboxEvent(ctx context.Context, event SandboxEvent) error {
-	return c.conn.Exec(ctx, insertSandboxEventQueryAsync,
-		time.Now().UTC(),
+	return c.conn.Exec(ctx, insertSandboxEventQuery,
+		event.Timestamp,
 		event.SandboxID,
 		event.SandboxExecutionID,
 		event.SandboxTemplateID,

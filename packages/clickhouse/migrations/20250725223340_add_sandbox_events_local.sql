@@ -1,15 +1,15 @@
 -- +goose Up
 -- +goose StatementBegin
 CREATE TABLE sandbox_events_local (
-    timestamp DateTime64(9),
-    sandbox_id String,
-    sandbox_execution_id String,
-    sandbox_template_id String,
-    sandbox_build_id String,
-    sandbox_team_id UUID,
-    event_category String,
-    event_label String,
-    event_data Nullable(String)
+    timestamp DateTime64(9) CODEC (Delta, ZSTD(1)),
+    sandbox_id String CODEC (ZSTD(1)),
+    sandbox_execution_id String CODEC (ZSTD(1)),
+    sandbox_template_id String CODEC (ZSTD(1)),
+    sandbox_build_id String CODEC (ZSTD(1)),
+    sandbox_team_id UUID CODEC (ZSTD(1)),
+    event_category LowCardinality(String) CODEC (ZSTD(1)),
+    event_label LowCardinality(String) CODEC (ZSTD(1)),
+    event_data Nullable(String) CODEC (ZSTD(1))
 ) ENGINE = MergeTree 
     PARTITION BY toDate(timestamp)
     ORDER BY (sandbox_id, timestamp)
