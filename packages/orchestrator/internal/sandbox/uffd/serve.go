@@ -155,7 +155,6 @@ outerLoop:
 			defer func() {
 				if r := recover(); r != nil {
 					zap.L().Error("UFFD serve panic", append(fields, zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))...)
-					fmt.Printf("[sandbox uffd]: recovered from panic in uffd serve (offset: %d, pagesize: %d): %v\n", offset, pagesize, r)
 				}
 			}()
 
