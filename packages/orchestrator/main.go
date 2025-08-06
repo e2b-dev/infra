@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"log"
 	"math"
 	"net/http"
@@ -250,7 +251,7 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create limiter", zap.Error(err))
 	}
 
-	persistence, err := storage.GetTemplateStorageProvider(ctx, limiter)
+	persistence, err := storage.GetTemplateStorageProvider(ctx, block.ChunkSize, limiter)
 	if err != nil {
 		zap.L().Fatal("failed to create template storage provider", zap.Error(err))
 	}
