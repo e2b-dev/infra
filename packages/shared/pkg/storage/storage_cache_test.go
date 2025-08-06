@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bytes"
+	"crypto/rand"
 	"io"
 	"os"
 	"path/filepath"
@@ -119,7 +120,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 	})
 
 	t.Run("WriteFromFileSystem should write to cache", func(t *testing.T) {
-		fakeData := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+		fakeData := generateBytes(t, 11*1024*1024) // 11 MB
 
 		fakeStorageObjectProvider := NewMockStorageObjectProvider(t)
 		fakeStorageObjectProvider.
@@ -131,7 +132,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		c := CachedFileObjectProvider{
 			ctx:       t.Context(),
 			path:      tempDir,
-			chunkSize: 3,
+			chunkSize: 2 * 1024 * 1024, // 2 MB
 			inner:     fakeStorageObjectProvider,
 		}
 
@@ -146,11 +147,11 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 		// read the object back, ensure remote is not called
 		c.inner = nil
-		buffer := make([]byte, 3)
-		read, err := c.ReadAt(buffer, 0)
+		buffer := make([]byte, 4*1024*1024)        // 1 MB buffer
+		read, err := c.ReadAt(buffer, 2*1024*1024) // read 2-6 MB
 		require.NoError(t, err)
-		assert.Equal(t, []byte{1, 2, 3}, buffer)
-		assert.Equal(t, 3, read)
+		assert.Equal(t, fakeData[2*1024*1024:6*1024*1024], buffer)
+		assert.Equal(t, len(buffer), read)
 	})
 
 	t.Run("ReadFrom should read from cache", func(t *testing.T) {
@@ -181,4 +182,57 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		assert.Equal(t, fakeData, buf)
 		assert.Equal(t, 3, read2)
 	})
+}
+
+func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
+	testcases := map[string]struct {
+		chunkSize, bufferSize, offset int64
+		expected                      error
+	}{
+		"buffer is empty": {
+			chunkSize:  1,
+			bufferSize: 0,
+			offset:     0,
+			expected:   ErrBufferTooSmall,
+		},
+		"buffer is unaligned": {
+			chunkSize:  10,
+			bufferSize: 5,
+			offset:     0,
+			expected:   ErrBufferSizeUnaligned,
+		},
+		"offset is unaligned": {
+			chunkSize:  10,
+			bufferSize: 10,
+			offset:     3,
+			expected:   ErrOffsetUnaligned,
+		},
+		"multiple chunks": {
+			chunkSize:  10,
+			bufferSize: 20,
+			expected:   ErrMultipleChunks,
+		},
+	}
+
+	for name, tc := range testcases {
+		t.Run(name, func(t *testing.T) {
+			c := CachedFileObjectProvider{
+				chunkSize: tc.chunkSize,
+			}
+			err := c.validateReadAtParams(tc.bufferSize, tc.offset)
+			if tc.expected == nil {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, tc.expected)
+			}
+		})
+	}
+}
+
+func generateBytes(t *testing.T, n int) []byte {
+	buf := make([]byte, n)
+	count, err := rand.Read(buf)
+	require.NoError(t, err)
+	require.Equal(t, n, count)
+	return buf
 }

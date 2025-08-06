@@ -150,6 +150,13 @@ func (c *CachedFileObjectProvider) ReadFrom(src []byte) (int64, error) {
 	return num, nil
 }
 
+var (
+	ErrBufferSizeUnaligned = errors.New("buffer size must be a multiple of chunk size")
+	ErrOffsetUnaligned     = errors.New("offset must be a multiple of chunk size")
+	ErrBufferTooSmall      = errors.New("buffer is too small")
+	ErrMultipleChunks      = errors.New("cannot read multiple chunks")
+)
+
 func (c *CachedFileObjectProvider) ReadAt(buff []byte, off int64) (int, error) {
 	var err error
 	ctx, span := tracer.Start(c.ctx, "CachedFileObjectProvider.WriteTo", trace.WithAttributes(
@@ -158,11 +165,8 @@ func (c *CachedFileObjectProvider) ReadAt(buff []byte, off int64) (int, error) {
 	))
 	defer endSpan(span, err)
 
-	if int64(len(buff))%c.chunkSize != 0 {
-		panic("buffer size must be a multiple of chunk size")
-	}
-	if off%c.chunkSize != 0 {
-		panic("offset must be a multiple of chunk size")
+	if err := c.validateReadAtParams(int64(len(buff)), off); err != nil {
+		return 0, fmt.Errorf("invalid ReadAt: %w", err)
 	}
 
 	// try to read from local cache first
@@ -191,6 +195,22 @@ func (c *CachedFileObjectProvider) ReadAt(buff []byte, off int64) (int, error) {
 	}
 
 	return readCount, nil
+}
+
+func (c *CachedFileObjectProvider) validateReadAtParams(buffSize, offset int64) error {
+	if buffSize%c.chunkSize != 0 {
+		return ErrBufferSizeUnaligned
+	}
+	if offset%c.chunkSize != 0 {
+		return ErrOffsetUnaligned
+	}
+	if buffSize == 0 {
+		return ErrBufferTooSmall
+	}
+	if (offset%c.chunkSize)+buffSize > c.chunkSize {
+		return ErrMultipleChunks
+	}
+	return nil
 }
 
 func (c *CachedFileObjectProvider) Size() (int64, error) {
