@@ -5,7 +5,9 @@ import "time"
 type LogEntry struct {
 	Timestamp time.Time
 	Message   string
+	Raw       string
 	Level     LogLevel
+	Fields    map[string]string
 }
 
 type LogLevel int32
