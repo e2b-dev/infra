@@ -1,6 +1,9 @@
 # Server cluster instances are not currently automatically updated when you create a new
 # orchestrator image with Packer.
 locals {
+  nfs_mount_path   = "/orchestrator/slab-cache"
+  nfs_mount_subdir = "slabs"
+
   file_hash = {
     "scripts/run-consul.sh"              = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
     "scripts/run-nomad.sh"               = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
@@ -131,6 +134,9 @@ module "client_cluster" {
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
+    NFS_IP_ADDRESS               = join(",", module.filestore.nfs_ip_addresses)
+    NFS_MOUNT_PATH               = local.nfs_mount_path
+    NFS_MOUNT_SUBDIR             = local.nfs_mount_subdir
   })
 
   environment = var.environment
@@ -323,4 +329,11 @@ module "network" {
 
   labels = var.labels
   prefix = var.prefix
+}
+
+module "filestore" {
+  source = "./filestore"
+
+  name         = "${var.prefix}slab-cache"
+  network_name = var.network_name
 }

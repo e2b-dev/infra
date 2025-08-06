@@ -71,6 +71,7 @@ EOT
         TEMPLATE_BUCKET_NAME         = "${template_bucket_name}"
         OTEL_COLLECTOR_GRPC_ENDPOINT = "${otel_collector_grpc_endpoint}"
         ALLOW_SANDBOX_INTERNET       = "${allow_sandbox_internet}"
+        LOCAL_TEMPLATE_CACHE_PATH    = "${nfs_cache_mount_path}"
 
 %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
