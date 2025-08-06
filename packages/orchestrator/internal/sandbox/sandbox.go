@@ -402,6 +402,8 @@ func ResumeSandbox(
 		cleanup: cleanup,
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
 	checks, err := NewChecks(ctx, tracer, sbx, useClickhouseMetrics)
@@ -412,7 +414,8 @@ func ResumeSandbox(
 	sbx.Checks = checks
 
 	cleanup.AddPriority(func(ctx context.Context) error {
-		return sbx.Close(ctx, tracer)
+		cancel()
+		return nil
 	})
 
 	err = sbx.WaitForEnvd(

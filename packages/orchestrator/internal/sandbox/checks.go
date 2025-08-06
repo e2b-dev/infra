@@ -20,7 +20,6 @@ const (
 type Checks struct {
 	sandbox *Sandbox
 
-	ctx       context.Context
 	cancelCtx context.CancelCauseFunc
 
 	healthy atomic.Bool
@@ -38,7 +37,6 @@ func NewChecks(ctx context.Context, tracer trace.Tracer, sandbox *Sandbox, useCl
 	ctx, cancel := context.WithCancelCause(context.Background())
 	h := &Checks{
 		sandbox:              sandbox,
-		ctx:                  ctx,
 		cancelCtx:            cancel,
 		healthy:              atomic.Bool{}, // defaults to `false`
 		UseClickhouseMetrics: useClickhouseMetrics,
