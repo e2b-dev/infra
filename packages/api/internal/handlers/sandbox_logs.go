@@ -47,16 +47,16 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID string, p
 
 		c.JSON(http.StatusOK, sbxLogs)
 		return
-	}
+	} else {
+		// Sandboxes living in a cluster
+		sbxLogs, err := a.getClusterSandboxLogs(ctx, sandboxID, team.ID.String(), *team.ClusterID, params.Limit, params.Start)
+		if err != nil {
+			a.sendAPIStoreError(c, int(err.Code), err.Message)
+			return
+		}
 
-	// Sandboxes living in a cluster
-	sbxLogs, err := a.getClusterSandboxLogs(ctx, sandboxID, team.ID.String(), *team.ClusterID, params.Limit, params.Start)
-	if err != nil {
-		a.sendAPIStoreError(c, int(err.Code), err.Message)
-		return
+		c.JSON(http.StatusOK, sbxLogs)
 	}
-
-	c.JSON(http.StatusOK, sbxLogs)
 }
 
 func (a *APIStore) getLocalSandboxLogs(ctx context.Context, sandboxID string, teamID string, queryStart *int64, queryLimit *int32) (*api.SandboxLogs, *api.Error) {
