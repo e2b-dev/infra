@@ -188,7 +188,7 @@ func (u *Uffd) handle(sandboxId string) (err error) {
 		u.memfile,
 		u.exitReader.Fd(),
 		u.Stop,
-		sandboxId,
+		logger.WithSandboxID(sandboxId),
 	)
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)
