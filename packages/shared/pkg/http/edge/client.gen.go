@@ -111,6 +111,9 @@ type ClientInterface interface {
 
 	V1SandboxCatalogCreate(ctx context.Context, body V1SandboxCatalogCreateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// V1SandboxLogs request
+	V1SandboxLogs(ctx context.Context, sandboxID string, params *V1SandboxLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// V1ServiceDiscoveryNodes request
 	V1ServiceDiscoveryNodes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -217,6 +220,18 @@ func (c *Client) V1SandboxCatalogCreateWithBody(ctx context.Context, contentType
 
 func (c *Client) V1SandboxCatalogCreate(ctx context.Context, body V1SandboxCatalogCreateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewV1SandboxCatalogCreateRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) V1SandboxLogs(ctx context.Context, sandboxID string, params *V1SandboxLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewV1SandboxLogsRequest(c.Server, sandboxID, params)
 	if err != nil {
 		return nil, err
 	}
@@ -495,6 +510,90 @@ func NewV1SandboxCatalogCreateRequestWithBody(server string, contentType string,
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewV1SandboxLogsRequest generates requests for V1SandboxLogs
+func NewV1SandboxLogsRequest(server string, sandboxID string, params *V1SandboxLogsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "sandboxID", runtime.ParamLocationPath, sandboxID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/sandboxes/%s/logs", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "teamID", runtime.ParamLocationQuery, params.TeamID); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if params.Start != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "start", runtime.ParamLocationQuery, *params.Start); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -794,6 +893,9 @@ type ClientWithResponsesInterface interface {
 
 	V1SandboxCatalogCreateWithResponse(ctx context.Context, body V1SandboxCatalogCreateJSONRequestBody, reqEditors ...RequestEditorFn) (*V1SandboxCatalogCreateResponse, error)
 
+	// V1SandboxLogsWithResponse request
+	V1SandboxLogsWithResponse(ctx context.Context, sandboxID string, params *V1SandboxLogsParams, reqEditors ...RequestEditorFn) (*V1SandboxLogsResponse, error)
+
 	// V1ServiceDiscoveryNodesWithResponse request
 	V1ServiceDiscoveryNodesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*V1ServiceDiscoveryNodesResponse, error)
 
@@ -943,6 +1045,31 @@ func (r V1SandboxCatalogCreateResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r V1SandboxCatalogCreateResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type V1SandboxLogsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SandboxLogsResponse
+	JSON400      *N400
+	JSON401      *N401
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r V1SandboxLogsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r V1SandboxLogsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -1140,6 +1267,15 @@ func (c *ClientWithResponses) V1SandboxCatalogCreateWithResponse(ctx context.Con
 		return nil, err
 	}
 	return ParseV1SandboxCatalogCreateResponse(rsp)
+}
+
+// V1SandboxLogsWithResponse request returning *V1SandboxLogsResponse
+func (c *ClientWithResponses) V1SandboxLogsWithResponse(ctx context.Context, sandboxID string, params *V1SandboxLogsParams, reqEditors ...RequestEditorFn) (*V1SandboxLogsResponse, error) {
+	rsp, err := c.V1SandboxLogs(ctx, sandboxID, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseV1SandboxLogsResponse(rsp)
 }
 
 // V1ServiceDiscoveryNodesWithResponse request returning *V1ServiceDiscoveryNodesResponse
@@ -1345,6 +1481,53 @@ func ParseV1SandboxCatalogCreateResponse(rsp *http.Response) (*V1SandboxCatalogC
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseV1SandboxLogsResponse parses an HTTP response from a V1SandboxLogsWithResponse call
+func ParseV1SandboxLogsResponse(rsp *http.Response) (*V1SandboxLogsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &V1SandboxLogsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SandboxLogsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest N400
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
