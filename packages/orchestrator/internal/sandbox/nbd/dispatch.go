@@ -89,6 +89,8 @@ func (d *Dispatch) Drain() {
 	d.pendingResponses.Wait()
 }
 
+var ErrInvalidCommandFlush = errors.New("not supported: Flush")
+
 /**
  * Write a response...
  *
@@ -156,14 +158,14 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 				request.Length = binary.BigEndian.Uint32(header[24:28])
 
 				if request.Magic != NBDRequestMagic {
-					return fmt.Errorf("received invalid MAGIC")
+					return fmt.Errorf("received invalid MAGIC: %d", request.Magic)
 				}
 
 				switch request.Type {
 				case NBDCmdDisconnect:
 					return nil // All done
 				case NBDCmdFlush:
-					return fmt.Errorf("not supported: Flush")
+					return ErrInvalidCommandFlush
 				case NBDCmdRead:
 					rp += 28
 					err := d.cmdRead(ctx, request.Handle, request.From, request.Length)

@@ -105,7 +105,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			dispatch := NewDispatch(serverc, d.Backend)
 			// Start reading commands on the socket and dispatching them to our provider
 			d.handlersWg.Add(1)
-			go func() {
+			go func(ctx context.Context) {
 				defer d.handlersWg.Done()
 
 				handleErr := dispatch.Handle(ctx)
@@ -115,7 +115,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 					zap.Uint32("device_index", deviceIndex),
 					zap.Int("socket_index", i),
 				)
-			}()
+			}(context.WithoutCancel(ctx))
 
 			d.socksServer = append(d.socksServer, serverc)
 			d.socksClient = append(d.socksClient, client)

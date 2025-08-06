@@ -56,6 +56,8 @@ type SandboxObserver struct {
 }
 
 func NewSandboxObserver(ctx context.Context, commitSHA, clientID string, sandboxMetricsExportPeriod time.Duration, sandboxes *smap.Map[*sandbox.Sandbox]) (*SandboxObserver, error) {
+	ctx = context.WithoutCancel(ctx)
+
 	deltaTemporality := otlpmetricgrpc.WithTemporalitySelector(func(kind sdkmetric.InstrumentKind) metricdata.Temporality {
 		// Use delta temporality for gauges and cumulative for all other instrument kinds.
 		// This is used to prevent reporting sandbox metrics indefinitely.
@@ -135,7 +137,8 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 		func(ctx context.Context, o metric.Observer) error {
 			sbxCount := so.sandboxes.Count()
 
-			wg := errgroup.Group{}
+			wg, ctx := errgroup.WithContext(ctx)
+
 			// Run concurrently to prevent blocking if there are many sandboxes other callbacks
 			limit := math.Ceil(float64(sbxCount) / metricsParallelismFactor)
 			wg.SetLimit(int(limit))
