@@ -40,7 +40,7 @@ func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUf
 func Serve(
 	uffd int,
 	mappings []GuestRegionUffdMapping,
-	src *block.TrackedSliceDevice,
+	src block.Slicer,
 	fd uintptr,
 	stop func() error,
 	sandboxId string,
