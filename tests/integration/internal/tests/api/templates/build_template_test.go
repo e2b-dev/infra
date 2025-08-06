@@ -90,12 +90,19 @@ func buildTemplate(
 			tb.Log("Build completed successfully")
 			return true
 		case api.TemplateBuildStatusError:
-			tb.Fatalf("Build failed: %v", statusResp.JSON200.Reason)
+			tb.Fatalf("Build failed: %v", safe(statusResp.JSON200.Reason))
 			return false
 		}
 
 		time.Sleep(time.Second)
 	}
+}
+
+func safe[T any](item *T) T {
+	if item != nil {
+		return *item
+	}
+	return *new(T)
 }
 
 func defaultBuildLogHandler(tb testing.TB) BuildLogHandler {

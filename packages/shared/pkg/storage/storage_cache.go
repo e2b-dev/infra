@@ -353,8 +353,8 @@ func (c *CachedFileObjectProvider) writeChunkFromFile(ctx context.Context, offse
 
 		read, err := input.ReadAt(buffer, offset+totalRead)
 		if err != nil {
-			return fmt.Errorf("failed to write to %q [%d bytes @ %d]: %w",
-				chunkPath, c.chunkSize, offset, err)
+			return fmt.Errorf("failed to read from input [%d bytes @ %d]: %w",
+				c.chunkSize, offset, err)
 		} else if read == 0 {
 			return fmt.Errorf("empty read at %d+%d", offset, totalRead)
 		}
