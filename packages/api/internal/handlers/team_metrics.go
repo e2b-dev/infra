@@ -15,12 +15,19 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func (a *APIStore) GetTeamsMetrics(c *gin.Context, params api.GetTeamsMetricsParams) {
+func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params api.GetTeamsTeamIDMetricsParams) {
 	ctx := c.Request.Context()
 	ctx, span := a.Tracer.Start(ctx, "sandbox-metrics")
 	defer span.End()
 
 	team := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo).Team
+
+	if teamID != team.ID.String() {
+		zap.L().Warn("user tried to access metrics for a team they are not authorized to access", logger.WithTeamID(team.ID.String()), zap.String("requested_team_id", teamID))
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You (%s) are not authorized to access this team's (%s) metrics", team.ID, teamID))
+
+		return
+	}
 
 	metricsReadFlag, err := a.featureFlags.BoolFlag(featureflags.MetricsReadFlagName, team.ID.String())
 	if err != nil {

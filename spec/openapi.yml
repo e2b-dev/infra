@@ -51,6 +51,12 @@ components:
       required: true
       schema:
         type: string
+    teamID:
+      name: teamID
+      in: path
+      required: true
+      schema:
+        type: string
     nodeID:
       name: nodeID
       in: path
@@ -1000,6 +1006,44 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /teams/{teamID}/metrics:
+    get:
+      description: Get metrics for the team
+      tags: [auth]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+        - in: query
+          name: start
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+          description: Starting timestamp of the metrics that should be returned in milliseconds
+        - in: query
+          name: end
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            description: Ending timestamp of the metrics that should be returned in milliseconds
+      responses:
+        "200":
+          description: Successfully returned the team metrics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeamMetric"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
   /sandboxes:
     get:
       description: List all running sandboxes
@@ -1391,43 +1435,6 @@ paths:
           $ref: "#/components/responses/401"
         "404":
           $ref: "#/components/responses/404"
-
-  /teams/metrics:
-    get:
-      description: Get metrics for the team
-      tags: [auth]
-      security:
-        - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
-      parameters:
-        - in: query
-          name: start
-          schema:
-            type: integer
-            format: int64
-            minimum: 0
-          description: Starting timestamp of the metrics that should be returned in milliseconds
-        - in: query
-          name: end
-          schema:
-            type: integer
-            format: int64
-            minimum: 0
-            description: Ending timestamp of the metrics that should be returned in milliseconds
-      responses:
-        "200":
-          description: Successfully returned the team metrics
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/TeamMetric"
-        "401":
-          $ref: "#/components/responses/401"
-        "500":
-          $ref: "#/components/responses/500"
 
   /v2/templates:
     post:

@@ -80,8 +80,8 @@ type ServerInterface interface {
 	// (GET /teams)
 	GetTeams(c *gin.Context)
 
-	// (GET /teams/metrics)
-	GetTeamsMetrics(c *gin.Context, params GetTeamsMetricsParams)
+	// (GET /teams/{teamID}/metrics)
+	GetTeamsTeamIDMetrics(c *gin.Context, teamID TeamID, params GetTeamsTeamIDMetricsParams)
 
 	// (GET /templates)
 	GetTemplates(c *gin.Context, params GetTemplatesParams)
@@ -722,10 +722,19 @@ func (siw *ServerInterfaceWrapper) GetTeams(c *gin.Context) {
 	siw.Handler.GetTeams(c)
 }
 
-// GetTeamsMetrics operation middleware
-func (siw *ServerInterfaceWrapper) GetTeamsMetrics(c *gin.Context) {
+// GetTeamsTeamIDMetrics operation middleware
+func (siw *ServerInterfaceWrapper) GetTeamsTeamIDMetrics(c *gin.Context) {
 
 	var err error
+
+	// ------------- Path parameter "teamID" -------------
+	var teamID TeamID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "teamID", c.Param("teamID"), &teamID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter teamID: %w", err), http.StatusBadRequest)
+		return
+	}
 
 	c.Set(ApiKeyAuthScopes, []string{})
 
@@ -734,7 +743,7 @@ func (siw *ServerInterfaceWrapper) GetTeamsMetrics(c *gin.Context) {
 	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params GetTeamsMetricsParams
+	var params GetTeamsTeamIDMetricsParams
 
 	// ------------- Optional query parameter "start" -------------
 
@@ -759,7 +768,7 @@ func (siw *ServerInterfaceWrapper) GetTeamsMetrics(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetTeamsMetrics(c, params)
+	siw.Handler.GetTeamsTeamIDMetrics(c, teamID, params)
 }
 
 // GetTemplates operation middleware
@@ -1186,7 +1195,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/sandboxes/:sandboxID/resume", wrapper.PostSandboxesSandboxIDResume)
 	router.POST(options.BaseURL+"/sandboxes/:sandboxID/timeout", wrapper.PostSandboxesSandboxIDTimeout)
 	router.GET(options.BaseURL+"/teams", wrapper.GetTeams)
-	router.GET(options.BaseURL+"/teams/metrics", wrapper.GetTeamsMetrics)
+	router.GET(options.BaseURL+"/teams/:teamID/metrics", wrapper.GetTeamsTeamIDMetrics)
 	router.GET(options.BaseURL+"/templates", wrapper.GetTemplates)
 	router.POST(options.BaseURL+"/templates", wrapper.PostTemplates)
 	router.DELETE(options.BaseURL+"/templates/:templateID", wrapper.DeleteTemplatesTemplateID)

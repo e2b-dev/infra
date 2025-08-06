@@ -40,7 +40,7 @@ func TestSandboxCreateWithSupabaseToken(t *testing.T) {
 		t.Skip("Supabase token is not set")
 	}
 
-	if setup.SupabaseTeamID == "" {
+	if setup.TeamID == "" {
 		t.Skip("Supabase team ID is not set")
 	}
 

@@ -658,6 +658,9 @@ type NodeID = string
 // SandboxID defines model for sandboxID.
 type SandboxID = string
 
+// TeamID defines model for teamID.
+type TeamID = string
+
 // TemplateID defines model for templateID.
 type TemplateID = string
 
@@ -716,8 +719,8 @@ type PostSandboxesSandboxIDTimeoutJSONBody struct {
 	Timeout int32 `json:"timeout"`
 }
 
-// GetTeamsMetricsParams defines parameters for GetTeamsMetrics.
-type GetTeamsMetricsParams struct {
+// GetTeamsTeamIDMetricsParams defines parameters for GetTeamsTeamIDMetrics.
+type GetTeamsTeamIDMetricsParams struct {
 	// Start Starting timestamp of the metrics that should be returned in milliseconds
 	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
 	End   *int64 `form:"end,omitempty" json:"end,omitempty"`
