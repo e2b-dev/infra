@@ -324,11 +324,13 @@ func (c *CachedFileObjectProvider) createCacheBlocksFromFile(ctx context.Context
 	return errs.Wait()
 }
 
-func (c *CachedFileObjectProvider) writeChunkFromFile(ctx context.Context, offset int64, totalSize int64, input *os.File) error {
+const fileReadBufferSize = 32 * 1024 // pulled from implementation of io.Copy
+
+func (c *CachedFileObjectProvider) writeChunkFromFile(ctx context.Context, offset int64, fileSize int64, input *os.File) error {
 	var err error
 	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.writeChunkFromFile", trace.WithAttributes(
 		attribute.Int64("offset", offset),
-		attribute.Int64("total_size", totalSize),
+		attribute.Int64("file_size", fileSize),
 	))
 	defer endSpan(span, err)
 
@@ -341,28 +343,28 @@ func (c *CachedFileObjectProvider) writeChunkFromFile(ctx context.Context, offse
 	}
 	defer cleanup("failed to close file", output)
 
-	expectedRead := min(c.chunkSize, totalSize-offset)
-	totalRead := int64(0)
-	buffer := make([]byte, min(32*1024, expectedRead))
-	for totalRead < expectedRead {
+	expectedRead := min(c.chunkSize, fileSize-offset)
+	totalBytesRead := int64(0)
+	buffer := make([]byte, min(fileReadBufferSize, expectedRead))
+	for totalBytesRead < expectedRead {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
 
-		read, err := input.ReadAt(buffer, offset+totalRead)
+		currentBytesRead, err := input.ReadAt(buffer[:expectedRead-totalBytesRead], offset+totalBytesRead)
 		if err != nil {
-			return fmt.Errorf("failed to read from input [%d bytes @ %d out of %d bytes]: %w",
-				c.chunkSize, offset, totalSize, err)
-		} else if read == 0 {
-			return fmt.Errorf("empty read at %d+%d", offset, totalRead)
+			return fmt.Errorf("failed to read from input [chunk=%d bytes, offset=%d, filesize=%d bytes, read=%d/%d]: %w",
+				c.chunkSize, offset, fileSize, totalBytesRead, expectedRead, err)
+		} else if currentBytesRead == 0 {
+			return fmt.Errorf("empty read at %d+%d", offset, totalBytesRead)
 		}
-		if _, err = output.Write(buffer[:read]); err != nil {
-			return fmt.Errorf("failed to write to %q [%d bytes @ %d out of %d bytes]: %w",
-				chunkPath, c.chunkSize, offset, totalSize, err)
+		if _, err = output.Write(buffer[:currentBytesRead]); err != nil {
+			return fmt.Errorf("failed to write to %q [offset=%d, filesize=%d bytes, read=%d/%d]: %w",
+				chunkPath, offset, fileSize, totalBytesRead, expectedRead, err)
 		}
-		totalRead += int64(read)
+		totalBytesRead += int64(currentBytesRead)
 	}
 
 	return nil
