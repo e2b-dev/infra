@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -41,7 +42,7 @@ func Serve(
 	uffd int,
 	mappings []GuestRegionUffdMapping,
 	src *block.TrackedSliceDevice,
-	fdExit *FdExit,
+	fdExit *fdexit.FdExit,
 	sandboxId string,
 ) error {
 	pollFds := []unix.PollFd{
