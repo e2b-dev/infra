@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -112,15 +113,15 @@ func (u *Uffd) Start(sandboxId string) error {
 	return nil
 }
 
-func (u *Uffd) receiveSetup() (*UffdSetup, error) {
+func (u *Uffd) handle(sandboxId string) error {
 	err := u.lis.SetDeadline(time.Now().Add(uffdMsgListenerTimeout))
 	if err != nil {
-		return nil, fmt.Errorf("failed setting listener deadline: %w", err)
+		return fmt.Errorf("failed setting listener deadline: %w", err)
 	}
 
 	conn, err := u.lis.Accept()
 	if err != nil {
-		return nil, fmt.Errorf("failed accepting firecracker connection: %w", err)
+		return fmt.Errorf("failed accepting firecracker connection: %w", err)
 	}
 
 	unixConn := conn.(*net.UnixConn)
@@ -130,49 +131,38 @@ func (u *Uffd) receiveSetup() (*UffdSetup, error) {
 
 	numBytesMappings, numBytesFd, _, _, err := unixConn.ReadMsgUnix(mappingsBuf, uffdBuf)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read unix msg from connection: %w", err)
+		return fmt.Errorf("failed to read unix msg from connection: %w", err)
 	}
 
 	mappingsBuf = mappingsBuf[:numBytesMappings]
 
-	var mappings []GuestRegionUffdMapping
+	var m mapping.Mappings
 
-	err = json.Unmarshal(mappingsBuf, &mappings)
+	err = json.Unmarshal(mappingsBuf, &m)
 	if err != nil {
-		return nil, fmt.Errorf("failed parsing memory mapping data: %w", err)
+		return fmt.Errorf("failed parsing memory mapping data: %w", err)
 	}
 
 	controlMsgs, err := syscall.ParseSocketControlMessage(uffdBuf[:numBytesFd])
 	if err != nil {
-		return nil, fmt.Errorf("failed parsing control messages: %w", err)
+		return fmt.Errorf("failed parsing control messages: %w", err)
 	}
 
 	if len(controlMsgs) != 1 {
-		return nil, fmt.Errorf("expected 1 control message containing UFFD: found %d", len(controlMsgs))
+		return fmt.Errorf("expected 1 control message containing UFFD: found %d", len(controlMsgs))
 	}
 
 	fds, err := syscall.ParseUnixRights(&controlMsgs[0])
 	if err != nil {
-		return nil, fmt.Errorf("failed parsing unix write: %w", err)
+		return fmt.Errorf("failed parsing unix write: %w", err)
 	}
 
 	if len(fds) != 1 {
-		return nil, fmt.Errorf("expected 1 fd: found %d", len(fds))
+		return fmt.Errorf("expected 1 fd: found %d", len(fds))
 	}
 
-	return &UffdSetup{
-		Mappings: mappings,
-		Fd:       uintptr(fds[0]),
-	}, nil
-}
+	uffd := fds[0]
 
-func (u *Uffd) handle(sandboxId string) (err error) {
-	setup, err := u.receiveSetup()
-	if err != nil {
-		return fmt.Errorf("failed to receive setup message from firecracker: %w", err)
-	}
-
-	uffd := setup.Fd
 	defer func() {
 		closeErr := syscall.Close(int(uffd))
 		if closeErr != nil {
@@ -184,7 +174,7 @@ func (u *Uffd) handle(sandboxId string) (err error) {
 
 	err = Serve(
 		int(uffd),
-		setup.Mappings,
+		m,
 		u.memfile,
 		u.exitReader.Fd(),
 		u.Stop,

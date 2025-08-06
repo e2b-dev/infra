@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -39,7 +40,7 @@ func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUf
 
 func Serve(
 	uffd int,
-	mappings []GuestRegionUffdMapping,
+	mappings mapping.Mappings,
 	src *block.TrackedSliceDevice,
 	fd uintptr,
 	stop func() error,
@@ -142,15 +143,12 @@ outerLoop:
 
 		addr := constants.GetPagefaultAddress(&pagefault)
 
-		mapping, err := getMapping(uintptr(addr), mappings)
+		offset, pagesize, err := mappings.GetRange(uintptr(addr))
 		if err != nil {
 			zap.L().Error("UFFD serve get mapping error", logger.WithSandboxID(sandboxId), zap.Error(err))
 
 			return fmt.Errorf("failed to map: %w", err)
 		}
-
-		offset := int64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
-		pagesize := int64(mapping.PageSize)
 
 		eg.Go(func() error {
 			defer func() {
