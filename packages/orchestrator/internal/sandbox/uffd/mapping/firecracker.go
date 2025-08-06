@@ -16,13 +16,9 @@ func (m *GuestRegionUffdMapping) relativeOffset(addr uintptr) int64 {
 
 type FcMappings []GuestRegionUffdMapping
 
-func (m FcMappings) GetRange(addr uintptr) (int64, int64, error) {
-	return getMappedRange(addr, m)
-}
-
 // Returns the relative offset and the page size of the mapped range for a given address
-func getMappedRange(addr uintptr, mappings []GuestRegionUffdMapping) (int64, int64, error) {
-	for _, m := range mappings {
+func (m FcMappings) GetRange(addr uintptr) (int64, int64, error) {
+	for _, m := range m {
 		if addr < m.BaseHostVirtAddr || m.BaseHostVirtAddr+m.Size <= addr {
 			// Outside of this mapping
 			continue
