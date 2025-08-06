@@ -177,15 +177,18 @@ func (t *TemplateBuild) Upload(ctx context.Context, snapfilePath string, memfile
 	eg.Go(func() error {
 		snapfile, err := os.Open(snapfilePath)
 		if err != nil {
-			return err
+			return fmt.Errorf("error when opening snapfile (%s): %w", snapfilePath, err)
 		}
 
 		defer snapfile.Close()
 
 		data, err := io.ReadAll(snapfile)
+		if err != nil {
+			return fmt.Errorf("error when reading snapfile: %w", err)
+		}
 		err = t.uploadSnapfile(ctx, data)
 		if err != nil {
-			return err
+			return fmt.Errorf("error when uploading snapfile (%d bytes): %w", len(data), err)
 		}
 
 		return nil

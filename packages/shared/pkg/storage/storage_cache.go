@@ -243,19 +243,19 @@ func (c *CachedFileObjectProvider) copyAndCacheBlock(ctx context.Context, blockC
 	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.copyAndCacheBlock")
 	defer endSpan(span, err)
 
-	//cache, err := os.OpenFile(blockCachePath, os.O_WRONLY|os.O_CREATE, cacheFilePermissions)
-	//if err != nil {
-	//	return 0, fmt.Errorf("failed to open file %s: %w", blockCachePath, err)
-	//}
-	//defer cleanup("failed to close file", cache)
-	//
-	//dst = io.MultiWriter(cache, dst)
+	cache, err := os.OpenFile(blockCachePath, os.O_WRONLY|os.O_CREATE, cacheFilePermissions)
+	if err != nil {
+		return 0, fmt.Errorf("failed to open file %s: %w", blockCachePath, err)
+	}
+	defer cleanup("failed to close file", cache)
+
+	dst = io.MultiWriter(cache, dst)
 	return c.inner.WriteTo(dst)
 }
 
 func (c *CachedFileObjectProvider) writeCacheAndRemote(ctx context.Context, src []byte) (int64, error) {
 	var err error
-	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.writeCacheAndRemote")
+	_, span := tracer.Start(ctx, "CachedFileObjectProvider.writeCacheAndRemote")
 	defer endSpan(span, err)
 
 	size := int64(len(src))
