@@ -41,13 +41,12 @@ func Serve(
 	uffd int,
 	mappings []GuestRegionUffdMapping,
 	src *block.TrackedSliceDevice,
-	fd uintptr,
-	stop func() error,
+	fdExit *FdExit,
 	sandboxId string,
 ) error {
 	pollFds := []unix.PollFd{
 		{Fd: int32(uffd), Events: unix.POLLIN},
-		{Fd: int32(fd), Events: unix.POLLIN},
+		{Fd: int32(fdExit.Reader()), Events: unix.POLLIN},
 	}
 
 	var eg errgroup.Group
@@ -163,7 +162,7 @@ outerLoop:
 			b, err := src.Slice(offset, pagesize)
 			if err != nil {
 
-				stop()
+				fdExit.SignalExit()
 
 				zap.L().Error("UFFD serve slice error", logger.WithSandboxID(sandboxId), zap.Error(err))
 
@@ -191,7 +190,7 @@ outerLoop:
 					return nil
 				}
 
-				stop()
+				fdExit.SignalExit()
 
 				zap.L().Error("UFFD serve uffdio copy error", logger.WithSandboxID(sandboxId), zap.Error(err))
 

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"sync"
 	"syscall"
 	"time"
 
@@ -36,10 +35,7 @@ type Uffd struct {
 	exitCh  chan error
 	readyCh chan struct{}
 
-	exitReader *os.File
-	exitWriter *os.File
-
-	stopFn func() error
+	fdExit *FdExit
 
 	lis *net.UnixListener
 
@@ -56,31 +52,22 @@ func (u *Uffd) Dirty() *bitset.BitSet {
 }
 
 func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uffd, error) {
-	pRead, pWrite, err := os.Pipe()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create exit fd: %w", err)
-	}
-
 	trackedMemfile, err := block.NewTrackedSliceDevice(blockSize, memfile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create tracked slice device: %w", err)
 	}
 
+	fdExit, err := NewFdExit()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create fd exit: %w", err)
+	}
+
 	return &Uffd{
 		exitCh:     make(chan error, 1),
 		readyCh:    make(chan struct{}, 1),
-		exitReader: pRead,
-		exitWriter: pWrite,
+		fdExit:     fdExit,
 		memfile:    trackedMemfile,
 		socketPath: socketPath,
-		stopFn: sync.OnceValue(func() error {
-			_, writeErr := pWrite.Write([]byte{0})
-			if writeErr != nil {
-				return fmt.Errorf("failed write to exit writer: %w", writeErr)
-			}
-
-			return nil
-		}),
 	}, nil
 }
 
@@ -101,9 +88,9 @@ func (u *Uffd) Start(sandboxId string) error {
 		// TODO: If the handle function fails, we should kill the sandbox
 		handleErr := u.handle(sandboxId)
 		closeErr := u.lis.Close()
-		writerErr := u.exitWriter.Close()
+		fdExitErr := u.fdExit.Close()
 
-		u.exitCh <- errors.Join(handleErr, closeErr, writerErr)
+		u.exitCh <- errors.Join(handleErr, closeErr, fdExitErr)
 
 		close(u.readyCh)
 		close(u.exitCh)
@@ -186,8 +173,7 @@ func (u *Uffd) handle(sandboxId string) (err error) {
 		int(uffd),
 		setup.Mappings,
 		u.memfile,
-		u.exitReader.Fd(),
-		u.Stop,
+		u.fdExit,
 		sandboxId,
 	)
 	if err != nil {
@@ -198,7 +184,7 @@ func (u *Uffd) handle(sandboxId string) (err error) {
 }
 
 func (u *Uffd) Stop() error {
-	return u.stopFn()
+	return u.fdExit.SignalExit()
 }
 
 func (u *Uffd) Ready() chan struct{} {
