@@ -39,7 +39,7 @@ type SandboxEvent struct {
 	SandboxTeamID      string         `ch:"sandbox_team_id"`
 	EventCategory      string         `ch:"event_category"`
 	EventLabel         string         `ch:"event_label"`
-	EventData          sql.NullString `ch:"event_data"`
+	EventData          sql.NullString `ch:"event_data;chType=Nullable(JSON)"`
 }
 
 const existsSandboxIdQuery = `
