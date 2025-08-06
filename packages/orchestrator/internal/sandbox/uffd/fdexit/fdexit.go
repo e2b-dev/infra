@@ -1,4 +1,4 @@
-package uffd
+package fdexit
 
 import (
 	"errors"
@@ -14,7 +14,7 @@ type FdExit struct {
 	exit func() error
 }
 
-func NewFdExit() (*FdExit, error) {
+func New() (*FdExit, error) {
 	r, w, err := os.Pipe()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create exit fd: %w", err)

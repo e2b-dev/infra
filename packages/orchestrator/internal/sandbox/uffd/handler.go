@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -35,7 +36,7 @@ type Uffd struct {
 	exitCh  chan error
 	readyCh chan struct{}
 
-	fdExit *FdExit
+	fdExit *fdexit.FdExit
 
 	lis *net.UnixListener
 
@@ -57,7 +58,7 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 		return nil, fmt.Errorf("failed to create tracked slice device: %w", err)
 	}
 
-	fdExit, err := NewFdExit()
+	fdExit, err := fdexit.New()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create fd exit: %w", err)
 	}
