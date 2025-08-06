@@ -8,16 +8,25 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/command"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/utils"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-func (b *Builder) getCommand(
-	cacheScope string,
+type CommandExecutor struct {
+	BuildContext
+
+	tracer trace.Tracer
+
+	buildStorage storage.StorageProvider
+	proxy        *proxy.SandboxProxy
+}
+
+func (ce *CommandExecutor) getCommand(
 	step *templatemanager.TemplateStep,
 ) (command.Command, error) {
 	cmdType := strings.ToUpper(step.Type)
@@ -26,8 +35,8 @@ func (b *Builder) getCommand(
 	switch cmdType {
 	case "ADD", "COPY":
 		cmd = &command.Copy{
-			FilesStorage: b.buildStorage,
-			CacheScope:   cacheScope,
+			FilesStorage: ce.buildStorage,
+			CacheScope:   ce.CacheScope,
 		}
 	case "RUN":
 		cmd = &command.Run{}
@@ -46,16 +55,14 @@ func (b *Builder) getCommand(
 	return cmd, nil
 }
 
-func (b *Builder) applyCommand(
+func (ce *CommandExecutor) Execute(
 	ctx context.Context,
-	postProcessor *writer.PostProcessor,
-	cacheScope string,
 	sbx *sandbox.Sandbox,
 	prefix string,
 	step *templatemanager.TemplateStep,
 	cmdMetadata sandboxtools.CommandMetadata,
 ) (sandboxtools.CommandMetadata, error) {
-	ctx, span := b.tracer.Start(ctx, "apply-command", trace.WithAttributes(
+	ctx, span := ce.tracer.Start(ctx, "apply-command", trace.WithAttributes(
 		attribute.String("prefix", prefix),
 		attribute.String("sandbox.id", sbx.Runtime.SandboxID),
 		attribute.String("step.type", step.Type),
@@ -64,16 +71,16 @@ func (b *Builder) applyCommand(
 	))
 	defer span.End()
 
-	cmd, err := b.getCommand(cacheScope, step)
+	cmd, err := ce.getCommand(step)
 	if err != nil {
 		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to get command for step %s: %w", step.Type, err)
 	}
 
 	cmdMetadata, err = cmd.Execute(
 		ctx,
-		b.tracer,
-		postProcessor,
-		b.proxy,
+		ce.tracer,
+		ce.UserLogger,
+		ce.proxy,
 		sbx.Runtime.SandboxID,
 		prefix,
 		step,

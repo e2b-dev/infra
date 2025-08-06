@@ -9,7 +9,6 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -20,19 +19,18 @@ const (
 	readyCommandTimeout       = 5 * time.Minute
 )
 
-func (b *Builder) runReadyCommand(
+func (ppb *PostProcessingBuilder) runReadyCommand(
 	ctx context.Context,
-	postProcessor *writer.PostProcessor,
 	sandboxID string,
 	readyCmd string,
 	cmdMetadata sandboxtools.CommandMetadata,
 ) error {
-	ctx, span := b.tracer.Start(ctx, "run-ready-command")
+	ctx, span := ppb.tracer.Start(ctx, "run-ready-command")
 	defer span.End()
 
-	postProcessor.Info("Waiting for template to be ready")
+	ppb.UserLogger.Info("Waiting for template to be ready")
 
-	postProcessor.Info(fmt.Sprintf("[ready cmd]: %s", readyCmd))
+	ppb.UserLogger.Info(fmt.Sprintf("[ready cmd]: %s", readyCmd))
 
 	startTime := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, readyCommandTimeout)
@@ -42,9 +40,9 @@ func (b *Builder) runReadyCommand(
 	for {
 		err := sandboxtools.RunCommandWithLogger(
 			ctx,
-			b.tracer,
-			b.proxy,
-			postProcessor,
+			ppb.tracer,
+			ppb.proxy,
+			ppb.UserLogger,
 			zapcore.InfoLevel,
 			"ready",
 			sandboxID,
@@ -53,10 +51,10 @@ func (b *Builder) runReadyCommand(
 		)
 
 		if err == nil {
-			postProcessor.Info("Template is ready")
+			ppb.UserLogger.Info("Template is ready")
 			return nil
 		} else {
-			postProcessor.Info(fmt.Sprintf("Template is not ready: %v", err))
+			ppb.UserLogger.Info(fmt.Sprintf("Template is not ready: %v", err))
 		}
 
 		select {
@@ -65,7 +63,7 @@ func (b *Builder) runReadyCommand(
 				return fmt.Errorf("ready command timed out after %s", time.Since(startTime))
 			}
 			// Template is ready, the start command finished before the ready command
-			postProcessor.Info("Template is ready")
+			ppb.UserLogger.Info("Template is ready")
 			return nil
 		case <-time.After(readyCommandRetryInterval):
 			// Wait for readyCommandRetryInterval time before retrying the ready command

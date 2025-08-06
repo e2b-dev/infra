@@ -9,32 +9,75 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/envd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
+type LayerExecutor struct {
+	BuildContext
+
+	tracer trace.Tracer
+
+	networkPool     *network.Pool
+	devicePool      *nbd.DevicePool
+	templateCache   *sbxtemplate.Cache
+	proxy           *proxy.SandboxProxy
+	sandboxes       *smap.Map[*sandbox.Sandbox]
+	templateStorage storage.StorageProvider
+	buildStorage    storage.StorageProvider
+}
+
 const layerTimeout = time.Hour
 
-func resumeSandbox(
+func NewLayerExecutor(
+	buildContext BuildContext,
+	tracer trace.Tracer,
+	networkPool *network.Pool,
+	devicePool *nbd.DevicePool,
+	templateCache *sbxtemplate.Cache,
+	proxy *proxy.SandboxProxy,
+	sandboxes *smap.Map[*sandbox.Sandbox],
+	templateStorage storage.StorageProvider,
+	buildStorage storage.StorageProvider,
+) *LayerExecutor {
+	return &LayerExecutor{
+		BuildContext:    buildContext,
+
+		tracer:          tracer,
+		
+		networkPool:     networkPool,
+		devicePool:      devicePool,
+		templateCache:   templateCache,
+		proxy:           proxy,
+		sandboxes:       sandboxes,
+		templateStorage: templateStorage,
+		buildStorage:    buildStorage,
+	}
+}
+
+func ResumeSandbox(
 	ctx context.Context,
-	b *Builder,
+	lb *LayerExecutor,
 	template sbxtemplate.Template,
 	sbxConfig sandbox.Config,
 ) (*sandbox.Sandbox, error) {
 	sbx, err := sandbox.ResumeSandbox(
 		ctx,
-		b.tracer,
-		b.networkPool,
+		lb.tracer,
+		lb.networkPool,
 		template,
 		sbxConfig,
 		sandbox.RuntimeMetadata{
@@ -44,7 +87,7 @@ func resumeSandbox(
 		uuid.New().String(),
 		time.Now(),
 		time.Now().Add(layerTimeout),
-		b.devicePool,
+		lb.devicePool,
 		false,
 		nil,
 	)
@@ -54,9 +97,9 @@ func resumeSandbox(
 	return sbx, nil
 }
 
-func createSandboxFromTemplate(
+func CreateSandboxFromTemplate(
 	ctx context.Context,
-	b *Builder,
+	lb *LayerExecutor,
 	template sbxtemplate.Template,
 	sbxConfig sandbox.Config,
 	exportTemplate storage.TemplateFiles,
@@ -89,9 +132,9 @@ func createSandboxFromTemplate(
 	sbxConfig.BaseTemplateID = exportTemplate.TemplateID
 	sbx, err := sandbox.CreateSandbox(
 		ctx,
-		b.tracer,
-		b.networkPool,
-		b.devicePool,
+		lb.tracer,
+		lb.networkPool,
+		lb.devicePool,
 		sbxConfig,
 		sandbox.RuntimeMetadata{
 			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
@@ -117,7 +160,7 @@ func createSandboxFromTemplate(
 
 	err = sbx.WaitForEnvd(
 		ctx,
-		b.tracer,
+		lb.tracer,
 		waitEnvdTimeout,
 	)
 	if err != nil {
@@ -127,26 +170,25 @@ func createSandboxFromTemplate(
 	return sbx, nil
 }
 
-// buildLayer orchestrates the layer building process
-func (b *Builder) buildLayer(
+// BuildLayer orchestrates the layer building process
+func (lb *LayerExecutor) BuildLayer(
 	ctx context.Context,
-	bc BuildContext,
 	hash string,
 	sourceTemplate storage.TemplateFiles,
 	exportTemplate storage.TemplateFiles,
 	updateEnvd bool,
 	getSandbox func(
 		context context.Context,
-		b *Builder,
+		b *LayerExecutor,
 		template sbxtemplate.Template,
 		exportTemplate storage.TemplateFiles,
 	) (*sandbox.Sandbox, error),
 	fn func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error),
 ) (LayerMetadata, error) {
-	ctx, childSpan := b.tracer.Start(ctx, "run-in-sandbox")
+	ctx, childSpan := lb.tracer.Start(ctx, "run-in-sandbox")
 	defer childSpan.End()
 
-	localTemplate, err := b.templateCache.GetTemplate(
+	localTemplate, err := lb.templateCache.GetTemplate(
 		sourceTemplate.TemplateID,
 		sourceTemplate.BuildID,
 		sourceTemplate.KernelVersion,
@@ -157,22 +199,22 @@ func (b *Builder) buildLayer(
 	}
 
 	// Create or resume sandbox
-	sbx, err := getSandbox(ctx, b, localTemplate, exportTemplate)
+	sbx, err := getSandbox(ctx, lb, localTemplate, exportTemplate)
 	if err != nil {
 		return LayerMetadata{}, err
 	}
 	defer sbx.Stop(ctx)
 
 	// Add to proxy so we can call envd commands
-	b.sandboxes.Insert(sbx.Runtime.SandboxID, sbx)
+	lb.sandboxes.Insert(sbx.Runtime.SandboxID, sbx)
 	defer func() {
-		b.sandboxes.Remove(sbx.Runtime.SandboxID)
-		b.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
+		lb.sandboxes.Remove(sbx.Runtime.SandboxID)
+		lb.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
 	}()
 
 	// Update envd binary to the latest version
 	if updateEnvd {
-		err = b.updateEnvdInSandbox(ctx, b.tracer, bc.Logger, sbx)
+		err = lb.updateEnvdInSandbox(ctx, sbx)
 		if err != nil {
 			return LayerMetadata{}, fmt.Errorf("failed to update envd in sandbox: %w", err)
 		}
@@ -189,10 +231,8 @@ func (b *Builder) buildLayer(
 		Template: exportTemplate,
 		CmdMeta:  meta,
 	}
-	err = pauseAndUpload(
+	err = lb.PauseAndUpload(
 		ctx,
-		b,
-		bc,
 		sbx,
 		hash,
 		exportMeta,
@@ -205,27 +245,25 @@ func (b *Builder) buildLayer(
 }
 
 // updateEnvdInSandbox updates the envd binary in the sandbox to the latest version.
-func (b *Builder) updateEnvdInSandbox(
+func (lb *LayerExecutor) updateEnvdInSandbox(
 	ctx context.Context,
-	tracer trace.Tracer,
-	postProcessor *writer.PostProcessor,
 	sbx *sandbox.Sandbox,
 ) error {
-	ctx, childSpan := tracer.Start(ctx, "update-envd")
+	ctx, childSpan := lb.tracer.Start(ctx, "update-envd")
 	defer childSpan.End()
 
 	envdVersion, err := envd.GetEnvdVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("error getting envd version: %w", err)
 	}
-	postProcessor.Debug(fmt.Sprintf("Updating envd to version v%s", envdVersion))
+	lb.UserLogger.Debug(fmt.Sprintf("Updating envd to version v%s", envdVersion))
 
 	// Step 1: Copy the updated envd binary from host to /tmp in sandbox
 	tmpEnvdPath := "/tmp/envd_updated"
 	err = sandboxtools.CopyFile(
 		ctx,
-		b.tracer,
-		b.proxy,
+		lb.tracer,
+		lb.proxy,
 		sbx.Runtime.SandboxID,
 		"root",
 		storage.HostEnvdPath,
@@ -244,9 +282,9 @@ func (b *Builder) updateEnvdInSandbox(
 
 	err = sandboxtools.RunCommandWithLogger(
 		ctx,
-		b.tracer,
-		b.proxy,
-		postProcessor,
+		lb.tracer,
+		lb.proxy,
+		lb.UserLogger,
 		zap.DebugLevel,
 		"update-envd-replace",
 		sbx.Runtime.SandboxID,
@@ -261,8 +299,8 @@ func (b *Builder) updateEnvdInSandbox(
 	// Error is ignored because it's expected the envd connection will be lost
 	_ = sandboxtools.RunCommand(
 		ctx,
-		b.tracer,
-		b.proxy,
+		lb.tracer,
+		lb.proxy,
 		sbx.Runtime.SandboxID,
 		"systemctl restart envd",
 		sandboxtools.CommandMetadata{User: "root"},
@@ -271,7 +309,7 @@ func (b *Builder) updateEnvdInSandbox(
 	// Step 4: Wait for envd to initialize
 	err = sbx.WaitForEnvd(
 		ctx,
-		b.tracer,
+		lb.tracer,
 		waitEnvdTimeout,
 	)
 	if err != nil {
@@ -281,18 +319,16 @@ func (b *Builder) updateEnvdInSandbox(
 	return nil
 }
 
-func pauseAndUpload(
+func (lb *LayerExecutor) PauseAndUpload(
 	ctx context.Context,
-	b *Builder,
-	bc BuildContext,
 	sbx *sandbox.Sandbox,
 	hash string,
 	layerMeta LayerMetadata,
 ) error {
-	ctx, childSpan := b.tracer.Start(ctx, "pause-and-upload")
+	ctx, childSpan := lb.tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
 
-	bc.Logger.Debug(fmt.Sprintf("Saving layer: %s/%s", layerMeta.Template.TemplateID, layerMeta.Template.BuildID))
+	lb.UserLogger.Debug(fmt.Sprintf("Saving layer: %s/%s", layerMeta.Template.TemplateID, layerMeta.Template.BuildID))
 
 	cacheFiles, err := layerMeta.Template.CacheFiles()
 	if err != nil {
@@ -301,7 +337,7 @@ func pauseAndUpload(
 	// snapshot is automatically cleared by the templateCache eviction
 	snapshot, err := sbx.Pause(
 		ctx,
-		b.tracer,
+		lb.tracer,
 		cacheFiles,
 	)
 	if err != nil {
@@ -309,7 +345,7 @@ func pauseAndUpload(
 	}
 
 	// Add snapshot to template cache so it can be used immediately
-	err = b.templateCache.AddSnapshot(
+	err = lb.templateCache.AddSnapshot(
 		cacheFiles.TemplateID,
 		cacheFiles.BuildID,
 		cacheFiles.KernelVersion,
@@ -325,22 +361,22 @@ func pauseAndUpload(
 	}
 
 	// Upload snapshot async, it's added to the template cache immediately
-	bc.UploadErrGroup.Go(func() error {
+	lb.UploadErrGroup.Go(func() error {
 		err := snapshot.Upload(
 			ctx,
-			b.templateStorage,
+			lb.templateStorage,
 			cacheFiles.TemplateFiles,
 		)
 		if err != nil {
 			return fmt.Errorf("error uploading snapshot: %w", err)
 		}
 
-		err = saveLayerMeta(ctx, b.buildStorage, bc.CacheScope, hash, layerMeta)
+		err = saveLayerMeta(ctx, lb.buildStorage, lb.CacheScope, hash, layerMeta)
 		if err != nil {
 			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
 		}
 
-		bc.Logger.Debug(fmt.Sprintf("Saved: %s/%s", cacheFiles.TemplateID, cacheFiles.BuildID))
+		lb.UserLogger.Debug(fmt.Sprintf("Saved: %s/%s", cacheFiles.TemplateID, cacheFiles.BuildID))
 		return nil
 	})
 

@@ -40,7 +40,7 @@ func constructBaseLayerFiles(
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error getting provision script: %w", err)
 	}
-	imgConfig, err := rtfs.CreateExt4Filesystem(childCtx, tracer, buildContext.Logger, rootfsPath, provisionScript, provisionLogPrefix)
+	imgConfig, err := rtfs.CreateExt4Filesystem(childCtx, tracer, buildContext.UserLogger, rootfsPath, provisionScript, provisionLogPrefix)
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating ext4 filesystem: %w", err)
 	}
