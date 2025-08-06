@@ -12,7 +12,6 @@ import (
 	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/commands"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer"
@@ -114,7 +113,7 @@ func (sb *StepsBuilder) shouldBuildStep(
 	sourceLayer phases.LayerResult,
 	step *templatemanager.TemplateStep,
 ) (phases.LayerResult, error) {
-	hash := HashStep(sb.index, sourceLayer.Hash, step)
+	hash := HashStep(sourceLayer.Hash, step)
 
 	force := step.Force != nil && *step.Force
 	if !force {
@@ -148,15 +147,6 @@ func (sb *StepsBuilder) shouldBuildStep(
 		CmdMeta: sourceLayer.Metadata.CmdMeta,
 	}
 
-	if sourceLayer.Cached {
-		meta.Template = storage.TemplateFiles{
-			TemplateID:         id.Generate(),
-			BuildID:            uuid.NewString(),
-			KernelVersion:      sb.Template.KernelVersion,
-			FirecrackerVersion: sb.Template.FirecrackerVersion,
-		}
-	}
-
 	return phases.LayerResult{
 		Metadata: meta,
 		Cached:   false,
@@ -172,66 +162,70 @@ func (sb *StepsBuilder) buildStep(
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
 ) (phases.LayerResult, error) {
-	meta, err := sb.layerExecutor.BuildLayer(
-		ctx,
-		currentLayer.Hash,
-		sourceLayer.Metadata.Template,
-		currentLayer.Metadata.Template,
-		sourceLayer.Cached,
-		func(
-			context context.Context,
-			b *layer.LayerExecutor,
-			t sbxtemplate.Template,
-			exportTemplate storage.TemplateFiles,
-		) (*sandbox.Sandbox, error) {
-			sbxConfig := sandbox.Config{
-				BaseTemplateID: baseTemplateID,
+	sbxConfig := sandbox.Config{
+		BaseTemplateID: baseTemplateID,
 
-				Vcpu:      sb.Config.VCpuCount,
-				RamMB:     sb.Config.MemoryMB,
-				HugePages: sb.Config.HugePages,
+		Vcpu:      sb.Config.VCpuCount,
+		RamMB:     sb.Config.MemoryMB,
+		HugePages: sb.Config.HugePages,
 
-				AllowInternetAccess: &globalconfig.AllowSandboxInternet,
+		AllowInternetAccess: &globalconfig.AllowSandboxInternet,
 
-				Envd: sandbox.EnvdMetadata{
-					Version: sb.EnvdVersion,
-				},
-			}
-
-			// First not cached layer is create (to change CPU, etc), subsequent are resumes.
-			if sourceLayer.Cached {
-				return b.CreateSandboxFromTemplate(ctx, t, sbxConfig, exportTemplate)
-			} else {
-				return b.ResumeSandbox(ctx, t, sbxConfig)
-			}
+		Envd: sandbox.EnvdMetadata{
+			Version: sb.EnvdVersion,
 		},
-		func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error) {
-			sb.UserLogger.Debug(fmt.Sprintf("Running action in: %s/%s", sourceLayer.Metadata.Template.TemplateID, sourceLayer.Metadata.Template.BuildID))
+	}
 
-			meta, err := sb.commandExecutor.Execute(
-				ctx,
-				sbx,
-				prefix,
-				step,
-				sourceLayer.Metadata.CmdMeta,
-			)
-			if err != nil {
-				return sandboxtools.CommandMetadata{}, fmt.Errorf("error processing layer: %w", err)
-			}
+	// First not cached layer is create (to change CPU, Memory, etc), subsequent are layers are resumes.
+	var sandboxCreator layer.SandboxCreator
+	if sourceLayer.Cached {
+		sandboxCreator = layer.NewCreateSandbox(sbxConfig)
+		// Update the kernel and firecracker versions for the new layer
+		currentLayer.Metadata.Template = storage.TemplateFiles{
+			TemplateID:         currentLayer.Metadata.Template.TemplateID,
+			BuildID:            currentLayer.Metadata.Template.BuildID,
+			KernelVersion:      sb.Template.KernelVersion,
+			FirecrackerVersion: sb.Template.FirecrackerVersion,
+		}
+	} else {
+		sandboxCreator = layer.NewResumeSandbox(sbxConfig)
+	}
 
-			err = sandboxtools.SyncChangesToDisk(
-				ctx,
-				sb.tracer,
-				sb.proxy,
-				sbx.Runtime.SandboxID,
-			)
-			if err != nil {
-				return sandboxtools.CommandMetadata{}, fmt.Errorf("error running sync command: %w", err)
-			}
+	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error) {
+		sb.UserLogger.Debug(fmt.Sprintf("Running action in: %s/%s", sourceLayer.Metadata.Template.TemplateID, sourceLayer.Metadata.Template.BuildID))
 
-			return meta, nil
-		},
-	)
+		meta, err := sb.commandExecutor.Execute(
+			ctx,
+			sbx,
+			prefix,
+			step,
+			sourceLayer.Metadata.CmdMeta,
+		)
+		if err != nil {
+			return sandboxtools.CommandMetadata{}, fmt.Errorf("error processing layer: %w", err)
+		}
+
+		err = sandboxtools.SyncChangesToDisk(
+			ctx,
+			sb.tracer,
+			sb.proxy,
+			sbx.Runtime.SandboxID,
+		)
+		if err != nil {
+			return sandboxtools.CommandMetadata{}, fmt.Errorf("error running sync command: %w", err)
+		}
+
+		return meta, nil
+	})
+
+	meta, err := sb.layerExecutor.BuildLayer(ctx, layer.LayerBuildCommand{
+		Hash:           currentLayer.Hash,
+		SourceTemplate: sourceLayer.Metadata.Template,
+		ExportTemplate: currentLayer.Metadata.Template,
+		UpdateEnvd:     sourceLayer.Cached,
+		SandboxCreator: sandboxCreator,
+		ActionExecutor: actionExecutor,
+	})
 	if err != nil {
 		return phases.LayerResult{}, fmt.Errorf("error running build layer: %w", err)
 	}

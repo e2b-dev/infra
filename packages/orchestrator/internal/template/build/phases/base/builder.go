@@ -123,7 +123,7 @@ func (bb *BaseBuilder) Build(
 		}, nil
 	}
 
-	baseMetadata, err = bb.buildBaseLayer(
+	baseMetadata, err = bb.buildLayerFromOCI(
 		ctx,
 		baseMetadata,
 		hash,
@@ -139,7 +139,7 @@ func (bb *BaseBuilder) Build(
 	}, nil
 }
 
-func (bb *BaseBuilder) buildBaseLayer(
+func (bb *BaseBuilder) buildLayerFromOCI(
 	ctx context.Context,
 	baseMetadata cache.LayerMetadata,
 	hash string,
@@ -159,7 +159,7 @@ func (bb *BaseBuilder) buildBaseLayer(
 	// Created here to be able to pass it to CreateSandbox for populating COW cache
 	rootfsPath := filepath.Join(templateBuildDir, rootfsBuildFileName)
 
-	rootfs, memfile, envsImg, err := constructBaseLayerFiles(
+	rootfs, memfile, envsImg, err := constructLayerFilesFromOCI(
 		ctx,
 		bb.tracer,
 		bb.BuildContext,
@@ -314,6 +314,7 @@ func (bb *BaseBuilder) setup(
 			return false, cache.LayerMetadata{}, fmt.Errorf("error getting base layer from cache, you may need to rebuild the base template: %w", err)
 		}
 
+		// From template is always cached, never needs to be built
 		return true, cache.LayerMetadata{
 			Template: tm.Template,
 			CmdMeta:  tm.Metadata,

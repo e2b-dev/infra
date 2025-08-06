@@ -6,14 +6,12 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
 	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
@@ -26,7 +24,6 @@ import (
 type PostProcessingBuilder struct {
 	buildcontext.BuildContext
 
-	logger *zap.Logger
 	tracer trace.Tracer
 
 	templateStorage storage.StorageProvider
@@ -37,7 +34,6 @@ type PostProcessingBuilder struct {
 
 func New(
 	buildContext buildcontext.BuildContext,
-	logger *zap.Logger,
 	tracer trace.Tracer,
 	templateStorage storage.StorageProvider,
 	proxy *proxy.SandboxProxy,
@@ -46,7 +42,6 @@ func New(
 	return &PostProcessingBuilder{
 		BuildContext: buildContext,
 
-		logger: logger,
 		tracer: tracer,
 
 		templateStorage: templateStorage,
@@ -81,33 +76,33 @@ func (ppb *PostProcessingBuilder) Build(
 	}
 
 	hash := cache.HashKeys(lastStepResult.Hash, "config-run-cmd")
-	finalLayer, err := ppb.layerExecutor.BuildLayer(
-		ctx,
-		hash,
-		lastStepResult.Metadata.Template,
-		ppb.Template,
-		lastStepResult.Cached,
-		func(
-			context context.Context,
-			b *layer.LayerExecutor,
-			t sbxtemplate.Template,
-			exportTemplate storage.TemplateFiles,
-		) (*sandbox.Sandbox, error) {
-			// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template.
-			return b.CreateSandboxFromTemplate(ctx, t, sandbox.Config{
-				Vcpu:      ppb.Config.VCpuCount,
-				RamMB:     ppb.Config.MemoryMB,
-				HugePages: ppb.Config.HugePages,
 
-				AllowInternetAccess: &globalconfig.AllowSandboxInternet,
+	// Configure sandbox for final layer
+	sbxConfig := sandbox.Config{
+		Vcpu:      ppb.Config.VCpuCount,
+		RamMB:     ppb.Config.MemoryMB,
+		HugePages: ppb.Config.HugePages,
 
-				Envd: sandbox.EnvdMetadata{
-					Version: ppb.EnvdVersion,
-				},
-			}, exportTemplate)
+		AllowInternetAccess: &globalconfig.AllowSandboxInternet,
+
+		Envd: sandbox.EnvdMetadata{
+			Version: ppb.EnvdVersion,
 		},
-		ppb.postProcessingFn(lastStepResult.Metadata.CmdMeta, startMetadata),
-	)
+	}
+
+	// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template
+	sandboxCreator := layer.NewCreateSandbox(sbxConfig)
+
+	actionExecutor := layer.NewFunctionAction(ppb.postProcessingFn(lastStepResult.Metadata.CmdMeta, startMetadata))
+
+	finalLayer, err := ppb.layerExecutor.BuildLayer(ctx, layer.LayerBuildCommand{
+		Hash:           hash,
+		SourceTemplate: lastStepResult.Metadata.Template,
+		ExportTemplate: ppb.Template,
+		UpdateEnvd:     lastStepResult.Cached,
+		SandboxCreator: sandboxCreator,
+		ActionExecutor: actionExecutor,
+	})
 	if err != nil {
 		return phases.LayerResult{}, fmt.Errorf("error running start and ready commands in sandbox: %w", err)
 	}

@@ -3,27 +3,19 @@ package layer
 import (
 	"context"
 	"fmt"
-	"time"
 
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/envd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -42,12 +34,6 @@ type LayerExecutor struct {
 	buildStorage    storage.StorageProvider
 	index           cache.Index
 }
-
-const (
-	layerTimeout = time.Hour
-
-	waitEnvdTimeout = 60 * time.Second
-)
 
 func NewLayerExecutor(
 	buildContext buildcontext.BuildContext,
@@ -77,136 +63,26 @@ func NewLayerExecutor(
 	}
 }
 
-func (lb *LayerExecutor) ResumeSandbox(
-	ctx context.Context,
-	template sbxtemplate.Template,
-	sbxConfig sandbox.Config,
-) (*sandbox.Sandbox, error) {
-	sbx, err := sandbox.ResumeSandbox(
-		ctx,
-		lb.tracer,
-		lb.networkPool,
-		template,
-		sbxConfig,
-		sandbox.RuntimeMetadata{
-			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
-			ExecutionID: uuid.NewString(),
-		},
-		uuid.New().String(),
-		time.Now(),
-		time.Now().Add(layerTimeout),
-		lb.devicePool,
-		false,
-		nil,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error resuming sandbox: %w", err)
-	}
-	return sbx, nil
-}
-
-func (lb *LayerExecutor) CreateSandboxFromTemplate(
-	ctx context.Context,
-	template sbxtemplate.Template,
-	sbxConfig sandbox.Config,
-	exportTemplate storage.TemplateFiles,
-) (*sandbox.Sandbox, error) {
-	// Create new sandbox path
-	var oldMemfile block.ReadonlyDevice
-	oldMemfile, err := template.Memfile()
-	if err != nil {
-		return nil, fmt.Errorf("error getting memfile from local template: %w", err)
-	}
-
-	// Create new memfile with the size of the sandbox RAM, this updates the underlying memfile.
-	// This is ok as the sandbox is started from the beginning.
-	var memfile block.ReadonlyDevice
-	memfile, err = block.NewEmpty(
-		sbxConfig.RamMB<<constants.ToMBShift,
-		oldMemfile.BlockSize(),
-		uuid.MustParse(template.Files().BuildID),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error creating memfile: %w", err)
-	}
-
-	err = template.ReplaceMemfile(memfile)
-	if err != nil {
-		return nil, fmt.Errorf("error setting memfile for local template: %w", err)
-	}
-
-	// In case of a new sandbox, base template ID is now used as the potentially exported template base ID.
-	sbxConfig.BaseTemplateID = exportTemplate.TemplateID
-	sbx, err := sandbox.CreateSandbox(
-		ctx,
-		lb.tracer,
-		lb.networkPool,
-		lb.devicePool,
-		sbxConfig,
-		sandbox.RuntimeMetadata{
-			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
-			ExecutionID: uuid.NewString(),
-		},
-		fc.FirecrackerVersions{
-			KernelVersion:      exportTemplate.KernelVersion,
-			FirecrackerVersion: exportTemplate.FirecrackerVersion,
-		},
-		template,
-		layerTimeout,
-		"",
-		fc.ProcessOptions{
-			InitScriptPath:      constants.SystemdInitPath,
-			KernelLogs:          env.IsDevelopment(),
-			SystemdToKernelLogs: false,
-		},
-		nil,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error creating sandbox: %w", err)
-	}
-
-	err = sbx.WaitForEnvd(
-		ctx,
-		lb.tracer,
-		waitEnvdTimeout,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
-	}
-
-	return sbx, nil
-}
-
 // BuildLayer orchestrates the layer building process
 func (lb *LayerExecutor) BuildLayer(
 	ctx context.Context,
-	hash string,
-	sourceTemplate storage.TemplateFiles,
-	exportTemplate storage.TemplateFiles,
-	updateEnvd bool,
-	getSandbox func(
-		context context.Context,
-		b *LayerExecutor,
-		template sbxtemplate.Template,
-		exportTemplate storage.TemplateFiles,
-	) (*sandbox.Sandbox, error),
-	fn func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error),
+	cmd LayerBuildCommand,
 ) (cache.LayerMetadata, error) {
 	ctx, childSpan := lb.tracer.Start(ctx, "run-in-sandbox")
 	defer childSpan.End()
 
 	localTemplate, err := lb.templateCache.GetTemplate(
-		sourceTemplate.TemplateID,
-		sourceTemplate.BuildID,
-		sourceTemplate.KernelVersion,
-		sourceTemplate.FirecrackerVersion,
+		cmd.SourceTemplate.TemplateID,
+		cmd.SourceTemplate.BuildID,
+		cmd.SourceTemplate.KernelVersion,
+		cmd.SourceTemplate.FirecrackerVersion,
 	)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("failed to get template snapshot data: %w", err)
+		return cache.LayerMetadata{}, fmt.Errorf("get template snapshot: %w", err)
 	}
 
 	// Create or resume sandbox
-	sbx, err := getSandbox(ctx, lb, localTemplate, exportTemplate)
+	sbx, err := cmd.SandboxCreator.Sandbox(ctx, lb, localTemplate, cmd.ExportTemplate)
 	if err != nil {
 		return cache.LayerMetadata{}, err
 	}
@@ -220,32 +96,32 @@ func (lb *LayerExecutor) BuildLayer(
 	}()
 
 	// Update envd binary to the latest version
-	if updateEnvd {
+	if cmd.UpdateEnvd {
 		err = lb.updateEnvdInSandbox(ctx, sbx)
 		if err != nil {
-			return cache.LayerMetadata{}, fmt.Errorf("failed to update envd in sandbox: %w", err)
+			return cache.LayerMetadata{}, fmt.Errorf("update envd: %w", err)
 		}
 	}
 
-	// Execute the provided function
-	meta, err := fn(ctx, sbx)
+	// Execute the action using the executor
+	meta, err := cmd.ActionExecutor.Execute(ctx, sbx)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("error running action in sandbox: %w", err)
+		return cache.LayerMetadata{}, fmt.Errorf("execute action: %w", err)
 	}
 
 	// Prepare export metadata and upload
 	exportMeta := cache.LayerMetadata{
-		Template: exportTemplate,
+		Template: cmd.ExportTemplate,
 		CmdMeta:  meta,
 	}
 	err = lb.PauseAndUpload(
 		ctx,
 		sbx,
-		hash,
+		cmd.Hash,
 		exportMeta,
 	)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("error pausing and uploading template: %w", err)
+		return cache.LayerMetadata{}, fmt.Errorf("pause and upload: %w", err)
 	}
 
 	return exportMeta, nil

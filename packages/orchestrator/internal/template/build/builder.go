@@ -204,7 +204,6 @@ func runBuild(
 
 	postProcessingBuilder := finalize.New(
 		bc,
-		builder.logger,
 		builder.tracer,
 		builder.templateStorage,
 		builder.proxy,

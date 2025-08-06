@@ -16,7 +16,7 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 )
 
-func constructBaseLayerFiles(
+func constructLayerFilesFromOCI(
 	ctx context.Context,
 	tracer trace.Tracer,
 	buildContext buildcontext.BuildContext,
