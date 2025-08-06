@@ -20,6 +20,11 @@
 
 - [Google Cloud CLI](https://cloud.google.com/sdk/docs/install)
   - Used for managing the infrastructure on Google Cloud
+  - Be sure to authenticate:
+    ```sh
+    gcloud auth login
+    gcloud auth application-default login
+    ```
 
 - [Golang](https://go.dev/doc/install)
 

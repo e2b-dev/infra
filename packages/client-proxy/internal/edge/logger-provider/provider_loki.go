@@ -70,7 +70,7 @@ func (l *LokiQueryProvider) QueryBuildLogs(ctx context.Context, templateID strin
 	return lm, nil
 }
 
-func (l *LokiQueryProvider) QuerySandboxLogs(ctx context.Context, teamID string, sandboxID string, start time.Time, end time.Time, limit int, offset int32) ([]logs.LogEntry, error) {
+func (l *LokiQueryProvider) QuerySandboxLogs(ctx context.Context, teamID string, sandboxID string, start time.Time, end time.Time, limit int) ([]logs.LogEntry, error) {
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 	sandboxIdSanitized := strings.ReplaceAll(sandboxID, "`", "")
 	teamIdSanitized := strings.ReplaceAll(teamID, "`", "")
@@ -84,7 +84,7 @@ func (l *LokiQueryProvider) QuerySandboxLogs(ctx context.Context, teamID string,
 		return make([]logs.LogEntry, 0), nil
 	}
 
-	lm, err := logs.LokiResponseMapper(res, offset, nil)
+	lm, err := logs.LokiResponseMapper(res, 0, nil)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when mapping sandbox logs", err)
 		zap.L().Error("error when mapping logs for sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))

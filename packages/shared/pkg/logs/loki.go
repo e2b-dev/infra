@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strconv"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"go.uber.org/zap"
@@ -19,15 +20,14 @@ func LokiResponseMapper(res *loghttp.QueryResponse, offset int32, level *LogLeve
 
 	for _, stream := range res.Data.Result.(loghttp.Streams) {
 		for _, entry := range stream.Entries {
-			line := make(map[string]interface{})
-			err := json.Unmarshal([]byte(entry.Line), &line)
+			fields, err := lokiFlatJsonLineParser(entry.Line)
 			if err != nil {
 				zap.L().Error("error parsing log line", zap.Error(err), zap.String("line", entry.Line))
 			}
 
 			levelName := "info"
-			if ll, ok := line["level"]; ok {
-				levelName = ll.(string)
+			if ll, ok := fields["level"]; ok {
+				levelName = ll
 			}
 
 			// Skip logs that are below the specified level
@@ -41,10 +41,22 @@ func LokiResponseMapper(res *loghttp.QueryResponse, offset int32, level *LogLeve
 				continue
 			}
 
+			message := ""
+			if msg, ok := fields["message"]; ok {
+				message = msg
+			}
+
+			// Drop duplicate fields
+			delete(fields, "message")
+			delete(fields, "level")
+
 			logs = append(logs, LogEntry{
 				Timestamp: entry.Timestamp,
-				Message:   line["message"].(string),
-				Level:     StringToLevel(levelName),
+				Raw:       entry.Line,
+
+				Level:   StringToLevel(levelName),
+				Message: message,
+				Fields:  fields,
 			})
 		}
 	}
@@ -53,4 +65,27 @@ func LokiResponseMapper(res *loghttp.QueryResponse, offset int32, level *LogLeve
 	slices.SortFunc(logs, func(a, b LogEntry) int { return a.Timestamp.Compare(b.Timestamp) })
 
 	return logs, nil
+}
+
+func lokiFlatJsonLineParser(input string) (map[string]string, error) {
+	var raw map[string]interface{}
+	if err := json.Unmarshal([]byte(input), &raw); err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]string)
+	for key, value := range raw {
+		switch t := value.(type) {
+		case string:
+			result[key] = t
+		case float64:
+			result[key] = strconv.FormatFloat(t, 'E', -1, 64)
+		case bool:
+			result[key] = strconv.FormatBool(t)
+		default:
+			// Reject arrays, objects, nulls, etc.
+		}
+	}
+
+	return result, nil
 }
