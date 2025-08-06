@@ -22,7 +22,8 @@ import (
 )
 
 const (
-	oldestLogsLimit = 168 * time.Hour // 7 days
+	oldestLogsLimit  = 168 * time.Hour // 7 days
+	defaultLogsLimit = 1000
 )
 
 func (a *APIStore) GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID string, params api.GetSandboxesSandboxIDLogsParams) {
@@ -73,7 +74,11 @@ func (a *APIStore) getLocalSandboxLogs(ctx context.Context, sandboxID string, te
 	id := strings.ReplaceAll(sandboxID, "`", "")
 	query := fmt.Sprintf("{teamID=`%s`, sandboxID=`%s`, category!=\"metrics\"}", teamID, id)
 
-	res, err := a.lokiClient.QueryRange(query, int(*queryLimit), start, end, logproto.FORWARD, time.Duration(0), time.Duration(0), true)
+	limit := defaultLogsLimit
+	if queryLimit != nil {
+		limit = int(*queryLimit)
+	}
+	res, err := a.lokiClient.QueryRange(query, limit, start, end, logproto.FORWARD, time.Duration(0), time.Duration(0), true)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when returning logs for sandbox", err)
 		return nil, &api.Error{

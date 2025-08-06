@@ -13,6 +13,7 @@ import (
 
 const (
 	sandboxLogsOldestLimit = 168 * time.Hour // 7 days
+	defaultLogsLimit       = 1000
 )
 
 func (a *APIStore) V1SandboxLogs(c *gin.Context, sandboxID string, params api.V1SandboxLogsParams) {
@@ -30,7 +31,11 @@ func (a *APIStore) V1SandboxLogs(c *gin.Context, sandboxID string, params api.V1
 		start = end.Add(-sandboxLogsOldestLimit)
 	}
 
-	logsRaw, err := a.queryLogsProvider.QuerySandboxLogs(ctx, params.TeamID, sandboxID, start, end, int(*params.Limit))
+	limit := defaultLogsLimit
+	if params.Limit != nil {
+		limit = int(*params.Limit)
+	}
+	logsRaw, err := a.queryLogsProvider.QuerySandboxLogs(ctx, params.TeamID, sandboxID, start, end, limit)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when fetching sandbox logs")
 		telemetry.ReportCriticalError(ctx, "error when fetching sandbox logs", err)
