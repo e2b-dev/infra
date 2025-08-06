@@ -240,7 +240,7 @@ func (c *CachedFileObjectProvider) copyChunkToStream(ctx context.Context, offset
 
 func (c *CachedFileObjectProvider) copyAndCacheBlock(ctx context.Context, blockCachePath string, dst io.Writer) (int64, error) {
 	var err error
-	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.copyAndCacheBlock")
+	_, span := tracer.Start(ctx, "CachedFileObjectProvider.copyAndCacheBlock")
 	defer endSpan(span, err)
 
 	cache, err := os.OpenFile(blockCachePath, os.O_WRONLY|os.O_CREATE, cacheFilePermissions)
