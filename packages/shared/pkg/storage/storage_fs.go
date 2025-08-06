@@ -89,14 +89,15 @@ func (f *FileSystemStorageObjectProvider) WriteFromFileSystem(path string) error
 	return nil
 }
 
-func (f *FileSystemStorageObjectProvider) ReadFrom(src io.Reader) (int64, error) {
+func (f *FileSystemStorageObjectProvider) ReadFrom(data []byte) (int64, error) {
 	handle, err := f.getHandle(false)
 	if err != nil {
 		return 0, err
 	}
 	defer handle.Close()
 
-	return io.Copy(handle, src)
+	count, err := handle.Write(data)
+	return int64(count), err
 }
 
 func (f *FileSystemStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, err error) {
