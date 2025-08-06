@@ -105,7 +105,7 @@ func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) err
 }
 
 // Snap-file is small enough so we don't use composite upload.
-func (t *TemplateBuild) uploadSnapfile(ctx context.Context, snapfile io.Reader) error {
+func (t *TemplateBuild) uploadSnapfile(ctx context.Context, snapfile []byte) error {
 	object, err := t.persistence.OpenObject(ctx, t.files.StorageSnapfilePath())
 	if err != nil {
 		return err
@@ -182,7 +182,8 @@ func (t *TemplateBuild) Upload(ctx context.Context, snapfilePath string, memfile
 
 		defer snapfile.Close()
 
-		err = t.uploadSnapfile(ctx, snapfile)
+		data, err := io.ReadAll(snapfile)
+		err = t.uploadSnapfile(ctx, data)
 		if err != nil {
 			return err
 		}
