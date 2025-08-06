@@ -145,12 +145,21 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		err = c.WriteFromFileSystem(inputFile)
 		require.NoError(t, err)
 
-		// read the object back, ensure remote is not called
+		// ensure remote is not called
 		c.inner = nil
-		buffer := make([]byte, 4*1024*1024)        // 1 MB buffer
-		read, err := c.ReadAt(buffer, 2*1024*1024) // read 2-6 MB
+
+		// read bytes 4-6 MB
+		buffer := make([]byte, 2*1024*1024)        // 2 MB buffer
+		read, err := c.ReadAt(buffer, 4*1024*1024) // read 4-6 MB
 		require.NoError(t, err)
-		assert.Equal(t, fakeData[2*1024*1024:6*1024*1024], buffer)
+		assert.Equal(t, fakeData[4*1024*1024:6*1024*1024], buffer)
+		assert.Equal(t, len(buffer), read)
+
+		// read bytes 10-11 MB
+		buffer = make([]byte, 1*1024*1024)         // 2 MB buffer
+		read, err = c.ReadAt(buffer, 10*1024*1024) // read 4-6 MB
+		require.NoError(t, err)
+		assert.Equal(t, fakeData[10*1024*1024:], buffer)
 		assert.Equal(t, len(buffer), read)
 	})
 
@@ -195,11 +204,10 @@ func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
 			offset:     0,
 			expected:   ErrBufferTooSmall,
 		},
-		"buffer is unaligned": {
+		"buffer is smaller than chunk size": {
 			chunkSize:  10,
 			bufferSize: 5,
 			offset:     0,
-			expected:   ErrBufferSizeUnaligned,
 		},
 		"offset is unaligned": {
 			chunkSize:  10,
@@ -207,10 +215,15 @@ func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
 			offset:     3,
 			expected:   ErrOffsetUnaligned,
 		},
-		"multiple chunks": {
+		"buffer is too large (unaligned)": {
+			chunkSize:  10,
+			bufferSize: 11,
+			expected:   ErrBufferTooLarge,
+		},
+		"buffer is too large (aligned)": {
 			chunkSize:  10,
 			bufferSize: 20,
-			expected:   ErrMultipleChunks,
+			expected:   ErrBufferTooLarge,
 		},
 	}
 
