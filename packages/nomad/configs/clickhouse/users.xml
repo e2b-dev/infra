@@ -10,6 +10,11 @@
                 <ip>10.0.0.0/8</ip> <!-- restrict to internal traffic -->
             </networks>
             <profile>default</profile>
+
+            <!-- https://clickhouse.com/docs/optimize/asynchronous-inserts -->
+            <async_insert>1</async_insert>
+            <wait_for_async_insert>1</wait_for_async_insert>
+
             <quota>default</quota>
             <access_management>1</access_management>
         </${username}>
