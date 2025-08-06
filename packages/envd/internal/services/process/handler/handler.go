@@ -355,7 +355,7 @@ func (p *Handler) Start() (uint32, error) {
 		Str("event_type", "process_start").
 		Int("pid", p.cmd.Process.Pid).
 		Str("command", p.cmd.String()).
-		Send()
+		Msg(fmt.Sprintf("Process with pid %d started", p.cmd.Process.Pid))
 
 	return uint32(p.cmd.Process.Pid), nil
 }
@@ -392,7 +392,7 @@ func (p *Handler) Wait() {
 		Info().
 		Str("event_type", "process_end").
 		Interface("process_result", endEvent).
-		Send()
+		Msg(fmt.Sprintf("Process with pid %d ended", p.cmd.Process.Pid))
 
 	// Ensure the process cancel is called to cleanup resources.
 	// As it is called after end event and Wait, it should not affect command execution or returned events.

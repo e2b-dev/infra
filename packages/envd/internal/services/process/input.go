@@ -30,7 +30,7 @@ func handleInput(ctx context.Context, process *handler.Handler, in *rpc.ProcessI
 			Str("event_type", "stdin").
 			Interface("stdin", in.GetStdin()).
 			Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).
-			Send()
+			Msg("Streaming input to process")
 
 	default:
 		return connect.NewError(connect.CodeUnimplemented, fmt.Errorf("invalid input type %T", in.Input))
