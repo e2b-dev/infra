@@ -15,9 +15,6 @@ runs:
 
         echo "This build unique ID: ${BUILD_ID}"
 
-        docker pull e2bdev/base:latest
-        docker tag e2bdev/base:latest ${TEMPLATE_ID}:${BUILD_ID}
-
         echo "TESTS_SANDBOX_TEMPLATE_ID=${TEMPLATE_ID}" >> .env.test
         echo "TESTS_SANDBOX_BUILD_ID=${BUILD_ID}" >> .env.test
 
