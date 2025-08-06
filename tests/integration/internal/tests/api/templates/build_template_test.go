@@ -77,8 +77,8 @@ func buildTemplate(
 			setup.WithAPIKey(),
 		)
 		require.NoError(tb, err)
-		assert.Equal(tb, http.StatusOK, statusResp.StatusCode())
-		require.NotNil(tb, statusResp.JSON200)
+		assert.Equal(tb, http.StatusOK, statusResp.StatusCode(), string(statusResp.Body))
+		require.NotNil(tb, statusResp.JSON200, string(statusResp.Body))
 
 		offset += len(statusResp.JSON200.LogEntries)
 		for _, entry := range statusResp.JSON200.LogEntries {
