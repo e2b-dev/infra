@@ -1620,7 +1620,6 @@ paths:
           name: level
           schema:
             $ref: "#/components/schemas/LogLevel"
-            default: debug
       responses:
         "200":
           description: Successfully returned the template
