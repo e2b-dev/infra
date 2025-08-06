@@ -32,6 +32,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          # Docker build artifacts have to ignored
+          # https://github.com/actions/toolkit/pull/1874
+          pattern: "!*.dockerbuild"
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
