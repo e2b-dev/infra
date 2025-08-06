@@ -353,7 +353,8 @@ func (c *CachedFileObjectProvider) writeChunkFromFile(ctx context.Context, offse
 		default:
 		}
 
-		currentBytesRead, err := input.ReadAt(buffer[:expectedRead-totalBytesRead], offset+totalBytesRead)
+		readSize := min(fileReadBufferSize, expectedRead-totalBytesRead)
+		currentBytesRead, err := input.ReadAt(buffer[:readSize], offset+totalBytesRead)
 		if err != nil {
 			return fmt.Errorf("failed to read from input [chunk=%d bytes, offset=%d, filesize=%d bytes, read=%d/%d]: %w",
 				c.chunkSize, offset, fileSize, totalBytesRead, expectedRead, err)
