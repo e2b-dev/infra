@@ -98,7 +98,7 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 		return fmt.Errorf("failed setting socket permissions: %w", err)
 	}
 
-	go func() {
+	go func(ctx context.Context) {
 		// TODO: If the handle function fails, we should kill the sandbox
 		handleErr := u.handle(ctx, sandboxId)
 		closeErr := u.lis.Close()
@@ -108,7 +108,7 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 
 		close(u.readyCh)
 		close(u.exitCh)
-	}()
+	}(context.WithoutCancel(ctx))
 
 	return nil
 }
