@@ -195,7 +195,7 @@ outerLoop:
 
 				signalErr := fdExit.SignalExit()
 
-				joinedErr := errors.Join(err, signalErr)
+				joinedErr := errors.Join(errno, signalErr)
 
 				zap.L().Error("UFFD serve uffdio copy error", logger.WithSandboxID(sandboxId), zap.Error(joinedErr))
 
