@@ -5,7 +5,6 @@ package userfaultfd
 // https://github.com/torvalds/linux/blob/master/fs/userfaultfd.c
 
 /*
-#define _GNU_SOURCE
 #include <sys/syscall.h>
 #include <fcntl.h>
 #include <linux/userfaultfd.h>
@@ -16,26 +15,6 @@ struct uffd_pagefault {
 	__u64	address;
 	__u32 ptid;
 };
-
-static inline unsigned long get_UFFDIO_API(void) {
-    return UFFDIO_API;
-}
-
-static inline unsigned long get_UFFDIO_REGISTER(void) {
-    return UFFDIO_REGISTER;
-}
-
-static inline unsigned long get_UFFDIO_COPY(void) {
-    return UFFDIO_COPY;
-}
-
-static inline unsigned long get_UFFDIO_WRITEPROTECT(void) {
-    return UFFDIO_WRITEPROTECT;
-}
-
-#ifndef UFFD_FEATURE_WP_ASYNC
-  #define UFFD_FEATURE_WP_ASYNC (1ULL << 15)
-#endif
 */
 import "C"
 import "unsafe"
@@ -50,29 +29,18 @@ const (
 	UFFDIO_REGISTER_MODE_WP      = C.UFFDIO_REGISTER_MODE_WP
 
 	UFFDIO_WRITEPROTECT_MODE_WP = C.UFFDIO_WRITEPROTECT_MODE_WP
+	UFFDIO_COPY_MODE_WP         = C.UFFDIO_COPY_MODE_WP
 
-	UFFDIO_COPY_MODE_WP = C.UFFDIO_COPY_MODE_WP
+	UFFDIO_API          = C.UFFDIO_API
+	UFFDIO_REGISTER     = C.UFFDIO_REGISTER
+	UFFDIO_WRITEPROTECT = C.UFFDIO_WRITEPROTECT
+	UFFDIO_COPY         = C.UFFDIO_COPY
 
 	UFFD_PAGEFAULT_FLAG_WP    = C.UFFD_PAGEFAULT_FLAG_WP
 	UFFD_PAGEFAULT_FLAG_WRITE = C.UFFD_PAGEFAULT_FLAG_WRITE
 
 	UFFD_FEATURE_MISSING_HUGETLBFS  = C.UFFD_FEATURE_MISSING_HUGETLBFS
 	UFFD_FEATURE_WP_HUGETLBFS_SHMEM = C.UFFD_FEATURE_WP_HUGETLBFS_SHMEM
-	UFFD_FEATURE_WP_ASYNC           = C.UFFD_FEATURE_WP_ASYNC
-)
-
-var (
-	// UFFDIO_API          = 3222841919 // From <linux/userfaultfd.h> macro
-	// UFFDIO_REGISTER     = 3223366144 // From <linux/userfaultfd.h> macro
-	// UFFDIO_COPY         = 3223890435 // From <linux/userfaultfd.h> macro
-	// UFFDIO_WRITEPROTECT = 3222841862 // From <linux/userfaultfd.h> macro
-
-	// These values are calculated in kernel headers—we can hardcode them and it should be mostly fine,
-	// but we can also make them dynamic.
-	UFFDIO_API          = uint64(C.get_UFFDIO_API())
-	UFFDIO_REGISTER     = uint64(C.get_UFFDIO_REGISTER())
-	UFFDIO_COPY         = uint64(C.get_UFFDIO_COPY())
-	UFFDIO_WRITEPROTECT = uint64(C.get_UFFDIO_WRITEPROTECT())
 )
 
 type (
