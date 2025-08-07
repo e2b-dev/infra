@@ -163,11 +163,13 @@ outerLoop:
 			b, err := src.Slice(offset, pagesize)
 			if err != nil {
 
-				fdExit.SignalExit()
+				signalErr := fdExit.SignalExit()
 
-				zap.L().Error("UFFD serve slice error", logger.WithSandboxID(sandboxId), zap.Error(err))
+				joinedErr := errors.Join(err, signalErr)
 
-				return fmt.Errorf("failed to read from source: %w", err)
+				zap.L().Error("UFFD serve slice error", logger.WithSandboxID(sandboxId), zap.Error(joinedErr))
+
+				return fmt.Errorf("failed to read from source: %w", joinedErr)
 			}
 
 			cpy := constants.NewUffdioCopy(
@@ -191,11 +193,13 @@ outerLoop:
 					return nil
 				}
 
-				fdExit.SignalExit()
+				signalErr := fdExit.SignalExit()
 
-				zap.L().Error("UFFD serve uffdio copy error", logger.WithSandboxID(sandboxId), zap.Error(err))
+				joinedErr := errors.Join(err, signalErr)
 
-				return fmt.Errorf("failed uffdio copy %w", errno)
+				zap.L().Error("UFFD serve uffdio copy error", logger.WithSandboxID(sandboxId), zap.Error(joinedErr))
+
+				return fmt.Errorf("failed uffdio copy %w", joinedErr)
 			}
 
 			return nil
