@@ -30,18 +30,18 @@ var (
 func TestCrossProcessDoubleRegistration(t *testing.T) {
 	memoryArea, memoryStart := newMock2MPageMmap(testCrossProcessSize)
 
-	uffd, err := NewUserfaultfd(syscall.O_CLOEXEC|syscall.O_NONBLOCK, true)
+	uffd, err := newUserfaultfd(syscall.O_CLOEXEC|syscall.O_NONBLOCK, true)
 	if err != nil {
 		t.Fatal("failed to create userfaultfd", err)
 	}
 	defer uffd.Close()
 
-	err = uffd.ConfigureApi(0)
+	err = uffd.configureApi(0)
 	if err != nil {
 		t.Fatal("failed to configure uffd api", err)
 	}
 
-	err = uffd.Register(memoryStart, uint64(testCrossProcessSize), UFFDIO_REGISTER_MODE_MISSING)
+	err = uffd.register(memoryStart, uint64(testCrossProcessSize), UFFDIO_REGISTER_MODE_MISSING)
 	if err != nil {
 		t.Fatal("failed to register memory", err)
 	}
@@ -103,7 +103,7 @@ func TestHelperProcess(t *testing.T) {
 
 	// done in the FC
 	// Check: The reregistration works
-	err = uffd.Register(start, uint64(testCrossProcessSize), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
+	err = uffd.register(start, uint64(testCrossProcessSize), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
 	if err != nil {
 		fmt.Print("exit registering uffd", err)
 		os.Exit(1)
