@@ -686,13 +686,13 @@ func pauseProcessMemory(
 		return nil, nil, fmt.Errorf("failed to create memfile diff file: %w", err)
 	}
 
-	sbx, err := diffCreator.process(ctx, memfileDiffFile)
+	m, err := diffCreator.process(ctx, memfileDiffFile)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error creating diff: %w", err)
 	}
 	telemetry.ReportEvent(ctx, "created diff")
 
-	memfileMapping, err := sbx.CreateMapping(ctx, buildId)
+	memfileMapping, err := m.CreateMapping(ctx, buildId)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create memfile mapping: %w", err)
 	}
@@ -716,7 +716,7 @@ func pauseProcessMemory(
 
 	telemetry.SetAttributes(ctx,
 		attribute.Int64("snapshot.memfile.header.mappings.length", int64(len(memfileMappings))),
-		attribute.Int64("snapshot.memfile.diff.size", int64(sbx.Dirty.Count()*uint(originalHeader.Metadata.BlockSize))),
+		attribute.Int64("snapshot.memfile.diff.size", int64(m.Dirty.Count()*uint(originalHeader.Metadata.BlockSize))),
 		attribute.Int64("snapshot.memfile.mapped_size", int64(memfileMetadata.Size)),
 		attribute.Int64("snapshot.memfile.block_size", int64(memfileMetadata.BlockSize)),
 		attribute.Int64("snapshot.metadata.version", int64(memfileMetadata.Version)),
