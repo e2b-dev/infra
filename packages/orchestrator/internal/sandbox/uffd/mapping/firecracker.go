@@ -6,7 +6,8 @@ type GuestRegionUffdMapping struct {
 	BaseHostVirtAddr uintptr `json:"base_host_virt_addr"`
 	Size             uintptr `json:"size"`
 	Offset           uintptr `json:"offset"`
-	// This is actually in bytes—it is deprecated and they introduced "page_size"
+	// This is actually in bytes.
+	// This field is deprecated in the newer version of the Firecracer with a new field `page_size`.
 	PageSize uintptr `json:"page_size_kib"`
 }
 
