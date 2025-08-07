@@ -72,17 +72,17 @@ func (lb *LayerExecutor) BuildLayer(
 	defer childSpan.End()
 
 	localTemplate, err := lb.templateCache.GetTemplate(
-		cmd.SourceTemplate.TemplateID,
-		cmd.SourceTemplate.BuildID,
-		cmd.SourceTemplate.KernelVersion,
-		cmd.SourceTemplate.FirecrackerVersion,
+		cmd.SourceLayer.Template.TemplateID,
+		cmd.SourceLayer.Template.BuildID,
+		cmd.SourceLayer.Template.KernelVersion,
+		cmd.SourceLayer.Template.FirecrackerVersion,
 	)
 	if err != nil {
 		return cache.LayerMetadata{}, fmt.Errorf("get template snapshot: %w", err)
 	}
 
 	// Create or resume sandbox
-	sbx, err := cmd.SandboxCreator.Sandbox(ctx, lb, localTemplate, cmd.ExportTemplate)
+	sbx, err := cmd.SandboxCreator.Sandbox(ctx, lb, localTemplate)
 	if err != nil {
 		return cache.LayerMetadata{}, err
 	}
@@ -104,15 +104,21 @@ func (lb *LayerExecutor) BuildLayer(
 	}
 
 	// Execute the action using the executor
-	meta, err := cmd.ActionExecutor.Execute(ctx, sbx)
+	meta, err := cmd.ActionExecutor.Execute(ctx, sbx, cmd.SourceLayer.CmdMeta)
 	if err != nil {
 		return cache.LayerMetadata{}, fmt.Errorf("execute action: %w", err)
 	}
 
 	// Prepare export metadata and upload
+	fcVersions := sbx.FirecrackerVersions()
 	exportMeta := cache.LayerMetadata{
-		Template: cmd.ExportTemplate,
-		CmdMeta:  meta,
+		Template: storage.TemplateFiles{
+			TemplateID:         cmd.ExportTemplate.TemplateID,
+			BuildID:            cmd.ExportTemplate.BuildID,
+			KernelVersion:      fcVersions.KernelVersion,
+			FirecrackerVersion: fcVersions.FirecrackerVersion,
+		},
+		CmdMeta: meta,
 	}
 	err = lb.PauseAndUpload(
 		ctx,

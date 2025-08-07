@@ -12,6 +12,7 @@ import (
 	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
@@ -91,13 +92,16 @@ func (ppb *PostProcessingBuilder) Build(
 	}
 
 	// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template
-	sandboxCreator := layer.NewCreateSandbox(sbxConfig)
+	sandboxCreator := layer.NewCreateSandbox(sbxConfig, fc.FirecrackerVersions{
+		KernelVersion:      ppb.Template.KernelVersion,
+		FirecrackerVersion: ppb.Template.FirecrackerVersion,
+	}, ppb.Template.TemplateID)
 
-	actionExecutor := layer.NewFunctionAction(ppb.postProcessingFn(lastStepResult.Metadata.CmdMeta, startMetadata))
+	actionExecutor := layer.NewFunctionAction(ppb.postProcessingFn(startMetadata))
 
 	finalLayer, err := ppb.layerExecutor.BuildLayer(ctx, layer.LayerBuildCommand{
 		Hash:           hash,
-		SourceTemplate: lastStepResult.Metadata.Template,
+		SourceLayer:    lastStepResult.Metadata,
 		ExportTemplate: ppb.Template,
 		UpdateEnvd:     lastStepResult.Cached,
 		SandboxCreator: sandboxCreator,
@@ -116,10 +120,9 @@ func (ppb *PostProcessingBuilder) Build(
 }
 
 func (ppb *PostProcessingBuilder) postProcessingFn(
-	cmdMeta sandboxtools.CommandMetadata,
 	start *metadata.StartMetadata,
-) func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error) {
-	return func(ctx context.Context, sbx *sandbox.Sandbox) (cm sandboxtools.CommandMetadata, e error) {
+) layer.FunctionActionFn {
+	return func(ctx context.Context, sbx *sandbox.Sandbox, cmdMeta sandboxtools.CommandMetadata) (cm sandboxtools.CommandMetadata, e error) {
 		defer func() {
 			if e != nil {
 				return

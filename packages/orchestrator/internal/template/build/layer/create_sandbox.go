@@ -14,23 +14,25 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 // CreateSandbox creates sandboxes for new templates
 type CreateSandbox struct {
-	config sandbox.Config
+	config     sandbox.Config
+	fcVersions fc.FirecrackerVersions
+
+	// TODO: Remove when the base template ID is constant.
+	templateID string
 }
 
-func NewCreateSandbox(config sandbox.Config) SandboxCreator {
-	return &CreateSandbox{config: config}
+func NewCreateSandbox(config sandbox.Config, fcVersions fc.FirecrackerVersions, templateID string) SandboxCreator {
+	return &CreateSandbox{config: config, fcVersions: fcVersions, templateID: templateID}
 }
 
 func (f *CreateSandbox) Sandbox(
 	ctx context.Context,
 	layerExecutor *LayerExecutor,
 	template sbxtemplate.Template,
-	exportTemplate storage.TemplateFiles,
 ) (*sandbox.Sandbox, error) {
 	// Create new sandbox path
 	var oldMemfile block.ReadonlyDevice
@@ -58,7 +60,7 @@ func (f *CreateSandbox) Sandbox(
 
 	// In case of a new sandbox, base template ID is now used as the potentially exported template base ID.
 	sbxConfig := f.config
-	sbxConfig.BaseTemplateID = exportTemplate.TemplateID
+	sbxConfig.BaseTemplateID = f.templateID
 	sbx, err := sandbox.CreateSandbox(
 		ctx,
 		layerExecutor.tracer,
@@ -69,10 +71,7 @@ func (f *CreateSandbox) Sandbox(
 			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
 			ExecutionID: uuid.NewString(),
 		},
-		fc.FirecrackerVersions{
-			KernelVersion:      exportTemplate.KernelVersion,
-			FirecrackerVersion: exportTemplate.FirecrackerVersion,
-		},
+		f.fcVersions,
 		template,
 		layerTimeout,
 		"",

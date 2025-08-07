@@ -12,6 +12,7 @@ import (
 	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/commands"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer"
@@ -179,27 +180,21 @@ func (sb *StepsBuilder) buildStep(
 	// First not cached layer is create (to change CPU, Memory, etc), subsequent are layers are resumes.
 	var sandboxCreator layer.SandboxCreator
 	if sourceLayer.Cached {
-		sandboxCreator = layer.NewCreateSandbox(sbxConfig)
-		// Update the kernel and firecracker versions for the new layer
-		currentLayer.Metadata.Template = storage.TemplateFiles{
-			TemplateID:         currentLayer.Metadata.Template.TemplateID,
-			BuildID:            currentLayer.Metadata.Template.BuildID,
+		sandboxCreator = layer.NewCreateSandbox(sbxConfig, fc.FirecrackerVersions{
 			KernelVersion:      sb.Template.KernelVersion,
 			FirecrackerVersion: sb.Template.FirecrackerVersion,
-		}
+		}, sb.Template.TemplateID)
 	} else {
 		sandboxCreator = layer.NewResumeSandbox(sbxConfig)
 	}
 
-	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error) {
-		sb.UserLogger.Debug(fmt.Sprintf("Running action in: %s/%s", sourceLayer.Metadata.Template.TemplateID, sourceLayer.Metadata.Template.BuildID))
-
+	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, cmdMeta sandboxtools.CommandMetadata) (sandboxtools.CommandMetadata, error) {
 		meta, err := sb.commandExecutor.Execute(
 			ctx,
 			sbx,
 			prefix,
 			step,
-			sourceLayer.Metadata.CmdMeta,
+			cmdMeta,
 		)
 		if err != nil {
 			return sandboxtools.CommandMetadata{}, fmt.Errorf("error processing layer: %w", err)
@@ -220,7 +215,7 @@ func (sb *StepsBuilder) buildStep(
 
 	meta, err := sb.layerExecutor.BuildLayer(ctx, layer.LayerBuildCommand{
 		Hash:           currentLayer.Hash,
-		SourceTemplate: sourceLayer.Metadata.Template,
+		SourceLayer:    sourceLayer.Metadata,
 		ExportTemplate: currentLayer.Metadata.Template,
 		UpdateEnvd:     sourceLayer.Cached,
 		SandboxCreator: sandboxCreator,
