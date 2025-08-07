@@ -72,7 +72,6 @@ func (lb *LayerExecutor) BuildLayer(
 	defer childSpan.End()
 
 	localTemplate, err := lb.templateCache.GetTemplate(
-		cmd.SourceLayer.Template.TemplateID,
 		cmd.SourceLayer.Template.BuildID,
 		cmd.SourceLayer.Template.KernelVersion,
 		cmd.SourceLayer.Template.FirecrackerVersion,
@@ -113,7 +112,6 @@ func (lb *LayerExecutor) BuildLayer(
 	fcVersions := sbx.FirecrackerVersions()
 	exportMeta := cache.LayerMetadata{
 		Template: storage.TemplateFiles{
-			TemplateID:         cmd.ExportTemplate.TemplateID,
 			BuildID:            cmd.ExportTemplate.BuildID,
 			KernelVersion:      fcVersions.KernelVersion,
 			FirecrackerVersion: fcVersions.FirecrackerVersion,
@@ -217,7 +215,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 	ctx, childSpan := lb.tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
 
-	lb.UserLogger.Debug(fmt.Sprintf("Saving layer: %s/%s", layerMeta.Template.TemplateID, layerMeta.Template.BuildID))
+	lb.UserLogger.Debug(fmt.Sprintf("Saving layer: %s", layerMeta.Template.BuildID))
 
 	cacheFiles, err := layerMeta.Template.CacheFiles()
 	if err != nil {
@@ -235,7 +233,6 @@ func (lb *LayerExecutor) PauseAndUpload(
 
 	// Add snapshot to template cache so it can be used immediately
 	err = lb.templateCache.AddSnapshot(
-		cacheFiles.TemplateID,
 		cacheFiles.BuildID,
 		cacheFiles.KernelVersion,
 		cacheFiles.FirecrackerVersion,
@@ -265,7 +262,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
 		}
 
-		lb.UserLogger.Debug(fmt.Sprintf("Saved: %s/%s", cacheFiles.TemplateID, cacheFiles.BuildID))
+		lb.UserLogger.Debug(fmt.Sprintf("Saved: %s", cacheFiles.BuildID))
 		return nil
 	})
 

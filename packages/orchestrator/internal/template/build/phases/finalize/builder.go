@@ -110,7 +110,6 @@ func (ppb *PostProcessingBuilder) Build(
 	ctx context.Context,
 	lastStepResult phases.LayerResult,
 	currentLayer phases.LayerResult,
-	_ string,
 ) (phases.LayerResult, error) {
 	// Configure sandbox for final layer
 	sbxConfig := sandbox.Config{
@@ -178,10 +177,9 @@ func (ppb *PostProcessingBuilder) postProcessingFn(
 		// Run configuration script
 		err := runConfiguration(
 			ctx,
+			ppb.BuildContext,
 			ppb.tracer,
 			ppb.proxy,
-			ppb.UserLogger,
-			ppb.Template,
 			sbx.Runtime.SandboxID,
 		)
 		if err != nil {
@@ -233,7 +231,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(
 			if start.StartCmd == "" {
 				readyCmd = "sleep 0"
 			} else {
-				readyCmd = GetDefaultReadyCommand(ppb.Template)
+				readyCmd = GetDefaultReadyCommand(ppb.Config.TemplateID)
 			}
 		}
 		err = ppb.runReadyCommand(

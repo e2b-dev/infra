@@ -63,6 +63,7 @@ func (f *CreateSandbox) Sandbox(
 		layerExecutor.devicePool,
 		f.config,
 		sandbox.RuntimeMetadata{
+			TemplateID:  layerExecutor.Config.TemplateID,
 			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
 			ExecutionID: uuid.NewString(),
 		},
