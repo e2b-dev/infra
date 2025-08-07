@@ -61,7 +61,7 @@ func processFile(r *http.Request, path string, part *multipart.Part, user *user.
 
 	// Sometimes the size can be unknown resulting in ContentLength being -1 or 0.
 	// We are still comparing these values — this condition will just always evaluate false for them.
-	if int64(freeSpace) < r.ContentLength {
+	if r.ContentLength > 0 && freeSpace < uint64(r.ContentLength) {
 		errMsg := fmt.Errorf("not enough disk space on '%s': %d bytes required, %d bytes free", filepath.Dir(path), r.ContentLength, freeSpace)
 
 		return http.StatusInsufficientStorage, errMsg
