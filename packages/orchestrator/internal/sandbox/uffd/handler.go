@@ -119,7 +119,7 @@ func (u *Uffd) handle(sandboxId string) error {
 
 	mappingsBuf = mappingsBuf[:numBytesMappings]
 
-	var m mapping.Mappings
+	var m mapping.FcMappings
 
 	err = json.Unmarshal(mappingsBuf, &m)
 	if err != nil {
