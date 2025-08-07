@@ -51,10 +51,10 @@ func (u *userfaultfd) ConfigureApi(features CULong) error {
 // mode: UFFDIO_REGISTER_MODE_WP|UFFDIO_REGISTER_MODE_MISSING
 // This is already called by the FC, but only with the UFFDIO_REGISTER_MODE_MISSING
 // We need to call it with UFFDIO_REGISTER_MODE_WP when we use both missing and wp
-func (h *userfaultfd) Register(addr uintptr, size uint64, mode CULong) error {
+func (u *userfaultfd) Register(addr uintptr, size uint64, mode CULong) error {
 	register := NewUffdioRegister(CULong(addr), CULong(size), mode)
 
-	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, h.fd, UFFDIO_REGISTER, uintptr(unsafe.Pointer(&register)))
+	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.fd, UFFDIO_REGISTER, uintptr(unsafe.Pointer(&register)))
 	if errno != 0 {
 		return fmt.Errorf("UFFDIO_REGISTER ioctl failed: %v (ret=%d)", errno, ret)
 	}
@@ -62,10 +62,10 @@ func (h *userfaultfd) Register(addr uintptr, size uint64, mode CULong) error {
 	return nil
 }
 
-func (h *userfaultfd) writeProtect(addr uintptr, size uint64, mode CULong) error {
+func (u *userfaultfd) writeProtect(addr uintptr, size uint64, mode CULong) error {
 	register := NewUffdioWriteProtect(CULong(addr), CULong(size), mode)
 
-	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, h.fd, UFFDIO_WRITEPROTECT, uintptr(unsafe.Pointer(&register)))
+	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.fd, UFFDIO_WRITEPROTECT, uintptr(unsafe.Pointer(&register)))
 	if errno != 0 {
 		return fmt.Errorf("UFFDIO_WRITEPROTECT ioctl failed: %v (ret=%d)", errno, ret)
 	}
@@ -73,26 +73,26 @@ func (h *userfaultfd) writeProtect(addr uintptr, size uint64, mode CULong) error
 	return nil
 }
 
-func (h *userfaultfd) RemoveWriteProtection(addr uintptr, size uint64) error {
-	return h.writeProtect(addr, size, 0)
+func (u *userfaultfd) RemoveWriteProtection(addr uintptr, size uint64) error {
+	return u.writeProtect(addr, size, 0)
 }
 
-func (h *userfaultfd) AddWriteProtection(addr uintptr, size uint64) error {
-	return h.writeProtect(addr, size, UFFDIO_WRITEPROTECT_MODE_WP)
+func (u *userfaultfd) AddWriteProtection(addr uintptr, size uint64) error {
+	return u.writeProtect(addr, size, UFFDIO_WRITEPROTECT_MODE_WP)
 }
 
 // mode: UFFDIO_COPY_MODE_WP
 // When we use both missing and wp, we need to use UFFDIO_COPY_MODE_WP, otherwise copying would unprotect the page
-func (h *userfaultfd) Copy(addr CULong, data []byte, pagesize int64) error {
-	cpy := NewUffdioCopy(data, addr&^CULong(pagesize-1), CULong(pagesize), h.copyMode, 0)
+func (u *userfaultfd) Copy(addr CULong, data []byte, pagesize int64) error {
+	cpy := NewUffdioCopy(data, addr&^CULong(pagesize-1), CULong(pagesize), u.copyMode, 0)
 
-	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, h.fd, UFFDIO_COPY, uintptr(unsafe.Pointer(&cpy))); errno != 0 {
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.fd, UFFDIO_COPY, uintptr(unsafe.Pointer(&cpy))); errno != 0 {
 		return errno
 	}
 
 	return nil
 }
 
-func (h *userfaultfd) Close() error {
-	return syscall.Close(int(h.fd))
+func (u *userfaultfd) Close() error {
+	return syscall.Close(int(u.fd))
 }
