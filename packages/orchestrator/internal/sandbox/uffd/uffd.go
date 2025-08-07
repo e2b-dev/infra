@@ -40,6 +40,8 @@ type Uffd struct {
 
 	memfile    *block.TrackedSliceDevice
 	socketPath string
+
+	writeProtection bool
 }
 
 var _ MemoryBackend = (*Uffd)(nil)
@@ -142,7 +144,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		return fmt.Errorf("expected 1 fd: found %d", len(fds))
 	}
 
-	uffd := userfaultfd.NewUserfaultfdFromFd(uintptr(fds[0]), false)
+	uffd := userfaultfd.NewUserfaultfdFromFd(uintptr(fds[0]))
 
 	defer func() {
 		closeErr := uffd.Close()
@@ -150,6 +152,26 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 			zap.L().Error("failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
 		}
 	}()
+
+	if u.writeProtection {
+		for _, region := range m {
+			// Register the WP. It is possible that the memory region was already registered (with missing pages in FC), but registering it again with bigger subset should merge these.
+			err := uffd.Register(
+				region.BaseHostVirtAddr,
+				uint64(region.Size),
+				userfaultfd.UFFDIO_REGISTER_MODE_WP|userfaultfd.UFFDIO_REGISTER_MODE_MISSING,
+			)
+
+			// Add write protection to the regions provided by the UFFD
+			err = uffd.AddWriteProtection(
+				region.BaseHostVirtAddr,
+				uint64(region.Size),
+			)
+			if err != nil {
+				return fmt.Errorf("failed to add write protection to region %d-%d", region.Offset, region.Offset+region.Size)
+			}
+		}
+	}
 
 	u.readyCh <- struct{}{}
 
