@@ -20,7 +20,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -64,8 +63,6 @@ func (sb *StepsBuilder) Build(
 ) (phases.LayerResult, error) {
 	sourceLayer := lastStepResult
 
-	baseTemplateID := lastStepResult.Metadata.Template.TemplateID
-
 	for i, step := range sb.Config.Steps {
 		hash := sb.Hash(sourceLayer.Hash, step)
 
@@ -77,12 +74,6 @@ func (sb *StepsBuilder) Build(
 		)
 		if err != nil {
 			return phases.LayerResult{}, fmt.Errorf("error checking if step %d should be built: %w", i+1, err)
-		}
-
-		// If the last layer is cached, update the base metadata to the step metadata
-		// This is needed to properly run the sandbox for the next step
-		if sourceLayer.Cached {
-			baseTemplateID = currentLayer.Metadata.Template.TemplateID
 		}
 
 		prefix := fmt.Sprintf("builder %d/%d", i+1, len(sb.Config.Steps))
@@ -98,7 +89,6 @@ func (sb *StepsBuilder) Build(
 			ctx,
 			step,
 			prefix,
-			baseTemplateID,
 			sourceLayer,
 			currentLayer,
 		)
@@ -142,7 +132,6 @@ func (sb *StepsBuilder) shouldBuildStep(
 
 	meta := cache.LayerMetadata{
 		Template: storage.TemplateFiles{
-			TemplateID:         id.Generate(),
 			BuildID:            uuid.NewString(),
 			KernelVersion:      sourceLayer.Metadata.Template.KernelVersion,
 			FirecrackerVersion: sourceLayer.Metadata.Template.FirecrackerVersion,
@@ -161,7 +150,6 @@ func (sb *StepsBuilder) buildStep(
 	ctx context.Context,
 	step *templatemanager.TemplateStep,
 	prefix string,
-	baseTemplateID string,
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
 ) (phases.LayerResult, error) {

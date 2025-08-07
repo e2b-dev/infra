@@ -16,7 +16,6 @@ const (
 )
 
 type TemplateFiles struct {
-	TemplateID         string `json:"template_id"`
 	BuildID            string `json:"build_id"`
 	KernelVersion      string `json:"kernel_version"`
 	FirecrackerVersion string `json:"firecracker_version"`
@@ -24,7 +23,7 @@ type TemplateFiles struct {
 
 // Key for the cache. Unique for template-build pair.
 func (t TemplateFiles) CacheKey() string {
-	return fmt.Sprintf("%s-%s", t.TemplateID, t.BuildID)
+	return t.BuildID
 }
 
 func (t TemplateFiles) StorageDir() string {

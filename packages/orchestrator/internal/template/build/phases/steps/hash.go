@@ -4,8 +4,8 @@ import (
 	"strings"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/utils"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (sb *StepsBuilder) Hash(previousHash string, step *templatemanager.TemplateStep) string {

@@ -47,7 +47,6 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}
 
 	template, err := s.templateCache.GetTemplate(
-		req.Sandbox.TemplateId,
 		req.Sandbox.BuildId,
 		req.Sandbox.KernelVersion,
 		req.Sandbox.FirecrackerVersion,
@@ -78,6 +77,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 			},
 		},
 		sandbox.RuntimeMetadata{
+			TemplateID:  req.Sandbox.TemplateId,
 			SandboxID:   req.Sandbox.SandboxId,
 			ExecutionID: req.Sandbox.ExecutionId,
 			TeamID:      req.Sandbox.TeamId,
@@ -249,7 +249,6 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	fcVersions := sbx.FirecrackerVersions()
 	snapshotTemplateFiles, err := storage.TemplateFiles{
-		TemplateID:         in.TemplateId,
 		BuildID:            in.BuildId,
 		KernelVersion:      fcVersions.KernelVersion,
 		FirecrackerVersion: fcVersions.FirecrackerVersion,
@@ -282,7 +281,6 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}
 
 	err = s.templateCache.AddSnapshot(
-		snapshotTemplateFiles.TemplateID,
 		snapshotTemplateFiles.BuildID,
 		snapshotTemplateFiles.KernelVersion,
 		snapshotTemplateFiles.FirecrackerVersion,

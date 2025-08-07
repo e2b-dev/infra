@@ -61,6 +61,7 @@ type EnvdMetadata struct {
 }
 
 type RuntimeMetadata struct {
+	TemplateID  string
 	SandboxID   string
 	ExecutionID string
 
@@ -102,7 +103,7 @@ type Sandbox struct {
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 	return sbxlogger.SandboxMetadata{
 		SandboxID:  s.Runtime.SandboxID,
-		TemplateID: s.template.Files().TemplateID,
+		TemplateID: s.Runtime.TemplateID,
 		TeamID:     s.Runtime.TeamID,
 	}
 }
@@ -235,7 +236,7 @@ func CreateSandbox(
 		tracer,
 		sbxlogger.SandboxMetadata{
 			SandboxID:  runtime.SandboxID,
-			TemplateID: "",
+			TemplateID: runtime.TemplateID,
 			TeamID:     runtime.TeamID,
 		},
 		config.Vcpu,
@@ -431,7 +432,7 @@ func ResumeSandbox(
 		tracer,
 		&fc.MmdsMetadata{
 			SandboxId:            runtime.SandboxID,
-			TemplateId:           sandboxFiles.TemplateID,
+			TemplateId:           runtime.TemplateID,
 			LogsCollectorAddress: os.Getenv("LOGS_COLLECTOR_PUBLIC_IP"),
 			TraceId:              traceID,
 			TeamId:               runtime.TeamID,

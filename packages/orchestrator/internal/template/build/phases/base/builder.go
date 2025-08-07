@@ -105,7 +105,7 @@ func (bb *BaseBuilder) Build(
 	} else {
 		fromImage := bb.Config.FromImage
 		if fromImage == "" {
-			tag, err := bb.artifactRegistry.GetTag(ctx, bb.Template.TemplateID, bb.Template.BuildID)
+			tag, err := bb.artifactRegistry.GetTag(ctx, bb.Config.TemplateID, bb.Template.BuildID)
 			if err != nil {
 				return phases.LayerResult{}, fmt.Errorf("error getting tag for template: %w", err)
 			}
@@ -210,6 +210,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		ctx,
 		baseSbxConfig,
 		sandbox.RuntimeMetadata{
+			TemplateID:  bb.Config.TemplateID,
 			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
 			ExecutionID: uuid.NewString(),
 		},
@@ -256,6 +257,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		bb.devicePool,
 		baseSbxConfig,
 		sandbox.RuntimeMetadata{
+			TemplateID:  bb.Config.TemplateID,
 			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
 			ExecutionID: uuid.NewString(),
 		},
@@ -337,7 +339,6 @@ func (bb *BaseBuilder) setup(
 
 			baseMetadata = cache.LayerMetadata{
 				Template: storage.TemplateFiles{
-					TemplateID:         id.Generate(),
 					BuildID:            uuid.New().String(),
 					KernelVersion:      bb.Template.KernelVersion,
 					FirecrackerVersion: bb.Template.FirecrackerVersion,
@@ -352,7 +353,6 @@ func (bb *BaseBuilder) setup(
 		if bb.Config.Force != nil && *bb.Config.Force {
 			baseMetadata = cache.LayerMetadata{
 				Template: storage.TemplateFiles{
-					TemplateID:         id.Generate(),
 					BuildID:            uuid.New().String(),
 					KernelVersion:      bb.Template.KernelVersion,
 					FirecrackerVersion: bb.Template.FirecrackerVersion,

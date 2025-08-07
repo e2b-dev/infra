@@ -40,7 +40,6 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	}
 
 	metadata := storage.TemplateFiles{
-		TemplateID:         cfg.TemplateID,
 		BuildID:            cfg.BuildID,
 		KernelVersion:      cfg.KernelVersion,
 		FirecrackerVersion: cfg.FirecrackerVersion,
@@ -53,6 +52,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	}
 
 	template := config.TemplateConfig{
+		TemplateID:   cfg.TemplateID,
 		CacheScope:   cacheScope,
 		VCpuCount:    int64(cfg.VCpuCount),
 		MemoryMB:     int64(cfg.MemoryMB),
@@ -77,7 +77,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	bufferCore := zapcore.NewCore(encoder, logs, zapcore.DebugLevel)
 	core := zapcore.NewTee(bufferCore, s.buildLogger.Core().
 		With([]zap.Field{
-			{Type: zapcore.StringType, Key: "envID", String: metadata.TemplateID},
+			{Type: zapcore.StringType, Key: "envID", String: cfg.TemplateID},
 			{Type: zapcore.StringType, Key: "buildID", String: metadata.BuildID},
 		}),
 	)

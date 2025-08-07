@@ -92,16 +92,16 @@ type Result struct {
 //
 // 8. Snapshot
 // 9. Upload template (and all not yet uploaded layers)
-func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles, template config.TemplateConfig, logsWriter *zap.Logger) (r *Result, e error) {
+func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, config config.TemplateConfig, logsWriter *zap.Logger) (r *Result, e error) {
 	ctx, childSpan := b.tracer.Start(ctx, "build")
 	defer childSpan.End()
 
-	cacheScope := template.CacheScope
+	cacheScope := config.CacheScope
 
 	// Validate template, update force layers if needed
-	template = forceSteps(template)
+	config = forceSteps(config)
 
-	isV1Build := template.FromImage == "" && template.FromTemplate == nil
+	isV1Build := config.FromImage == "" && config.FromTemplate == nil
 
 	postProcessor := writer.NewPostProcessor(ctx, logsWriter, isV1Build)
 	go postProcessor.Start()
@@ -109,14 +109,14 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		postProcessor.Stop(ctx, e)
 	}()
 
-	postProcessor.Info(fmt.Sprintf("Building template %s/%s", finalMetadata.TemplateID, finalMetadata.BuildID))
+	postProcessor.Info(fmt.Sprintf("Building template %s/%s", config.TemplateID, template.BuildID))
 
 	defer func(ctx context.Context) {
 		if e == nil {
 			return
 		}
 		// Remove build files if build fails
-		removeErr := b.templateStorage.DeleteObjectsWithPrefix(ctx, finalMetadata.BuildID)
+		removeErr := b.templateStorage.DeleteObjectsWithPrefix(ctx, template.BuildID)
 		if removeErr != nil {
 			e = errors.Join(e, fmt.Errorf("error removing build files: %w", removeErr))
 		}
@@ -137,8 +137,8 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 	}()
 
 	buildContext := buildcontext.BuildContext{
-		Config:         template,
-		Template:       finalMetadata,
+		Config:         config,
+		Template:       template,
 		UserLogger:     postProcessor,
 		UploadErrGroup: uploadErrGroup,
 		EnvdVersion:    envdVersion,

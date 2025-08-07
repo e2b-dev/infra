@@ -29,7 +29,6 @@ type storageTemplate struct {
 }
 
 func newTemplateFromStorage(
-	templateId,
 	buildId,
 	kernelVersion,
 	firecrackerVersion string,
@@ -40,7 +39,6 @@ func newTemplateFromStorage(
 	localSnapfile *LocalFileLink,
 ) (*storageTemplate, error) {
 	files, err := storage.TemplateFiles{
-		TemplateID:         templateId,
 		BuildID:            buildId,
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: firecrackerVersion,

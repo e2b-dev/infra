@@ -145,7 +145,6 @@ func TestStartScriptBuilder_Build(t *testing.T) {
 // createTestSandboxFiles creates a SandboxFiles instance for testing
 func createTestSandboxFiles(sandboxID, staticID string) *storage.SandboxFiles {
 	templateFiles := storage.TemplateFiles{
-		TemplateID:         "test-template",
 		BuildID:            "test-build",
 		KernelVersion:      "6.1.0",
 		FirecrackerVersion: "1.4.0",
