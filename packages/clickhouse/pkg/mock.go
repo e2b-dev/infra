@@ -9,7 +9,7 @@ import (
 
 type NoopClient struct{}
 
-func NewNoopClient() Clickhouse {
+func NewNoopClient() *NoopClient {
 	return &NoopClient{}
 }
 

@@ -47,7 +47,7 @@ func NewDriver(connectionString string) (driver.Conn, error) {
 	return conn, nil
 }
 
-func New(connectionString string) (Clickhouse, error) {
+func New(connectionString string) (*Client, error) {
 	conn, err := NewDriver(connectionString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ClickHouse driver: %w", err)

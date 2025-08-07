@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
+	"github.com/e2b-dev/infra/packages/clickhouse/pkg/batcher"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -266,16 +267,30 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}
 
-	var clickhouseClient clickhouse.Clickhouse
+	var clickhouseBatcher batcher.ClickhouseBatcher
+
 	clickhouseConnectionString := os.Getenv("CLICKHOUSE_CONNECTION_STRING")
 	if clickhouseConnectionString == "" {
-		zap.L().Warn("CLICKHOUSE_CONNECTION_STRING is not set, using noop client")
-		clickhouseClient = clickhouse.NewNoopClient()
+		clickhouseBatcher = batcher.NewNoopBatcher()
 	} else {
-		clickhouseClient, err = clickhouse.New(clickhouseConnectionString)
+		var err error
+		clickhouseConn, err := clickhouse.NewDriver(clickhouseConnectionString)
 		if err != nil {
-			zap.L().Fatal("failed to create clickhouse client", zap.Error(err))
+			zap.L().Fatal("failed to create clickhouse driver", zap.Error(err))
 		}
+
+		clickhouseBatcher, err = batcher.NewSandboxEventInsertsBatcher(clickhouseConn, batcher.BatcherOptions{
+			MaxBatchSize: 100,
+			MaxDelay:     1 * time.Second,
+			QueueSize:    1000,
+		})
+		if err != nil {
+			zap.L().Fatal("failed to create clickhouse batcher", zap.Error(err))
+		}
+	}
+
+	if err != nil {
+		zap.L().Fatal("failed to create clickhouse batcher", zap.Error(err))
 	}
 
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, serviceInfo.SourceCommit, serviceInfo.ClientId, sandboxMetricExportPeriod, sandboxes)
@@ -283,7 +298,7 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
 
-	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, templateCache, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags, clickhouseClient, persistence)
+	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, templateCache, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags, clickhouseBatcher, persistence)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
