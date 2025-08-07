@@ -99,7 +99,7 @@ func (ppb *PostProcessingBuilder) Build(
 	sandboxCreator := layer.NewCreateSandbox(sbxConfig, fc.FirecrackerVersions{
 		KernelVersion:      ppb.Template.KernelVersion,
 		FirecrackerVersion: ppb.Template.FirecrackerVersion,
-	}, ppb.Template.TemplateID)
+	})
 
 	actionExecutor := layer.NewFunctionAction(ppb.postProcessingFn(startMetadata))
 

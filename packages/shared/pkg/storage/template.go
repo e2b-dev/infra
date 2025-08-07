@@ -2,16 +2,11 @@ package storage
 
 import (
 	"fmt"
-	"path/filepath"
 )
 
 const (
-	EnvsDisk = "/mnt/disks/fc-envs/v1"
-
 	HostEnvdPath  = "/fc-envd/envd"
 	GuestEnvdPath = "/usr/bin/envd"
-
-	buildDirName = "builds"
 
 	MemfileName  = "memfile"
 	RootfsName   = "rootfs.ext4"
@@ -25,11 +20,6 @@ type TemplateFiles struct {
 	BuildID            string `json:"build_id"`
 	KernelVersion      string `json:"kernel_version"`
 	FirecrackerVersion string `json:"firecracker_version"`
-}
-
-type RootfsPaths struct {
-	TemplateID string
-	BuildID    string
 }
 
 // Key for the cache. Unique for template-build pair.
@@ -59,12 +49,4 @@ func (t TemplateFiles) StorageRootfsHeaderPath() string {
 
 func (t TemplateFiles) StorageSnapfilePath() string {
 	return fmt.Sprintf("%s/%s", t.StorageDir(), SnapfileName)
-}
-
-func (t RootfsPaths) SandboxBuildDir() string {
-	return filepath.Join(EnvsDisk, t.TemplateID, buildDirName, t.BuildID)
-}
-
-func (t RootfsPaths) SandboxRootfsPath() string {
-	return filepath.Join(t.SandboxBuildDir(), RootfsName)
 }
