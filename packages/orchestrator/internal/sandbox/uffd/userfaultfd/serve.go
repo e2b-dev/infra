@@ -152,7 +152,7 @@ outerLoop:
 				return fmt.Errorf("failed to read from source: %w", joinedErr)
 			}
 
-			err = u.Copy(addr, b, pagesize)
+			err = u.copy(addr, b, pagesize)
 			if err == unix.EEXIST {
 				logger.Debug("UFFD serve page already mapped", zap.Any("offset", offset), zap.Any("pagesize", pagesize))
 

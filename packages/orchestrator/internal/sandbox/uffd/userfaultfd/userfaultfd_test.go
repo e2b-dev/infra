@@ -15,13 +15,13 @@ func TestUffdMissing(t *testing.T) {
 	pagesize := int64(header.PageSize)
 	data, size := prepareTestData(pagesize)
 
-	uffd, err := NewUserfaultfd(syscall.O_CLOEXEC|syscall.O_NONBLOCK, false)
+	uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	if err != nil {
 		t.Fatal("failed to create userfaultfd", err)
 	}
 	defer uffd.Close()
 
-	err = uffd.ConfigureApi(0)
+	err = uffd.configureApi(0)
 	if err != nil {
 		t.Fatal("failed to configure uffd api", err)
 	}
@@ -62,13 +62,13 @@ func TestUffdWriteProtect(t *testing.T) {
 	pagesize := int64(header.PageSize)
 	data, size := prepareTestData(pagesize)
 
-	uffd, err := NewUserfaultfd(syscall.O_CLOEXEC|syscall.O_NONBLOCK, true)
+	uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	if err != nil {
 		t.Fatal("failed to create userfaultfd", err)
 	}
 	defer uffd.Close()
 
-	err = uffd.ConfigureApi(0)
+	err = uffd.configureApi(0)
 	if err != nil {
 		t.Fatal("failed to configure uffd api", err)
 	}
@@ -110,13 +110,13 @@ func TestUffdWriteProtectWithMissing(t *testing.T) {
 
 	data, size := prepareTestData(pagesize)
 
-	uffd, err := NewUserfaultfd(syscall.O_CLOEXEC|syscall.O_NONBLOCK, true)
+	uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	if err != nil {
 		t.Fatal("failed to create userfaultfd", err)
 	}
 	defer uffd.Close()
 
-	err = uffd.ConfigureApi(0)
+	err = uffd.configureApi(0)
 	if err != nil {
 		t.Fatal("failed to configure uffd api", err)
 	}
@@ -167,13 +167,13 @@ func TestUffdWriteProtectWithMissingDoubleRegistration(t *testing.T) {
 	pagesize := int64(header.PageSize)
 	data, size := prepareTestData(pagesize)
 
-	uffd, err := NewUserfaultfd(syscall.O_CLOEXEC|syscall.O_NONBLOCK, true)
+	uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	if err != nil {
 		t.Fatal("failed to create userfaultfd", err)
 	}
 	defer uffd.Close()
 
-	err = uffd.ConfigureApi(0)
+	err = uffd.configureApi(0)
 	if err != nil {
 		t.Fatal("failed to configure uffd api", err)
 	}

@@ -15,30 +15,25 @@ type userfaultfd struct {
 }
 
 // flags: syscall.O_CLOEXEC|syscall.O_NONBLOCK
-func NewUserfaultfd(flags uintptr, wp bool) (*userfaultfd, error) {
+func newUserfaultfd(flags uintptr) (*userfaultfd, error) {
 	uffd, _, errno := syscall.Syscall(NR_userfaultfd, flags, 0, 0)
 	if errno != 0 {
 		return nil, fmt.Errorf("userfaultfd syscall failed: %v", errno)
 	}
 
-	return NewUserfaultfdFromFd(uffd, wp), nil
+	return NewUserfaultfdFromFd(uffd), nil
 }
 
-func NewUserfaultfdFromFd(fd uintptr, wp bool) *userfaultfd {
-	copyMode := CULong(0)
-	if wp {
-		copyMode = UFFDIO_COPY_MODE_WP
-	}
-
+// NewUserfaultfdFromFd creates a new userfaultfd instance with optional configuration.
+func NewUserfaultfdFromFd(fd uintptr) *userfaultfd {
 	return &userfaultfd{
-		fd:       fd,
-		copyMode: copyMode,
+		fd: fd,
 	}
 }
 
 // features: UFFD_FEATURE_MISSING_HUGETLBFS
 // This is already called by the FC
-func (u *userfaultfd) ConfigureApi(features CULong) error {
+func (u *userfaultfd) configureApi(features CULong) error {
 	api := NewUffdioAPI(UFFD_API, features)
 	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.fd, UFFDIO_API, uintptr(unsafe.Pointer(&api)))
 	if errno != 0 {
@@ -59,6 +54,11 @@ func (u *userfaultfd) Register(addr uintptr, size uint64, mode CULong) error {
 		return fmt.Errorf("UFFDIO_REGISTER ioctl failed: %v (ret=%d)", errno, ret)
 	}
 
+	// If we register with write protection automatically use the copy for missing pages without disabling the WP on that page.
+	if mode&UFFDIO_REGISTER_MODE_WP != 0 {
+		u.copyMode = UFFDIO_COPY_MODE_WP
+	}
+
 	return nil
 }
 
@@ -73,7 +73,7 @@ func (u *userfaultfd) writeProtect(addr uintptr, size uint64, mode CULong) error
 	return nil
 }
 
-func (u *userfaultfd) RemoveWriteProtection(addr uintptr, size uint64) error {
+func (u *userfaultfd) removeWriteProtection(addr uintptr, size uint64) error {
 	return u.writeProtect(addr, size, 0)
 }
 
@@ -83,7 +83,7 @@ func (u *userfaultfd) AddWriteProtection(addr uintptr, size uint64) error {
 
 // mode: UFFDIO_COPY_MODE_WP
 // When we use both missing and wp, we need to use UFFDIO_COPY_MODE_WP, otherwise copying would unprotect the page
-func (u *userfaultfd) Copy(addr CULong, data []byte, pagesize int64) error {
+func (u *userfaultfd) copy(addr CULong, data []byte, pagesize int64) error {
 	cpy := NewUffdioCopy(data, addr&^CULong(pagesize-1), CULong(pagesize), u.copyMode, 0)
 
 	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.fd, UFFDIO_COPY, uintptr(unsafe.Pointer(&cpy))); errno != 0 {
