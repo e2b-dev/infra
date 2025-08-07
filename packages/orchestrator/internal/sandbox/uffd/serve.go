@@ -42,7 +42,7 @@ func Serve(
 	src *block.TrackedSliceDevice,
 	fd uintptr,
 	stop func() error,
-	fields ...zap.Field,
+	logger *zap.Logger,
 ) error {
 	pollFds := []unix.PollFd{
 		{Fd: int32(uffd), Events: unix.POLLIN},
@@ -58,18 +58,18 @@ outerLoop:
 			-1,
 		); err != nil {
 			if err == unix.EINTR {
-				zap.L().Debug("uffd: interrupted polling, going back to polling", fields...)
+				logger.Debug("uffd: interrupted polling, going back to polling")
 
 				continue
 			}
 
 			if err == unix.EAGAIN {
-				zap.L().Debug("uffd: eagain during polling, going back to polling", fields...)
+				logger.Debug("uffd: eagain during polling, going back to polling")
 
 				continue
 			}
 
-			zap.L().Error("UFFD serve polling error", append(fields, zap.Error(err))...)
+			logger.Error("UFFD serve polling error", zap.Error(err))
 
 			return fmt.Errorf("failed polling: %w", err)
 		}
@@ -78,7 +78,7 @@ outerLoop:
 		if exitFd.Revents&unix.POLLIN != 0 {
 			errMsg := eg.Wait()
 			if errMsg != nil {
-				zap.L().Warn("UFFD fd exit error while waiting for goroutines to finish", append(fields, zap.Error(errMsg))...)
+				logger.Warn("UFFD fd exit error while waiting for goroutines to finish", zap.Error(errMsg))
 
 				return fmt.Errorf("failed to handle uffd: %w", errMsg)
 			}
@@ -97,7 +97,7 @@ outerLoop:
 			// - https://man7.org/linux/man-pages/man2/userfaultfd.2.html
 			// It might be possible to just check for data != 0 in the syscall.Read loop
 			// but I don't feel confident about doing that.
-			zap.L().Debug("uffd: no data in fd, going back to polling", fields...)
+			logger.Debug("uffd: no data in fd, going back to polling")
 
 			continue
 		}
@@ -107,7 +107,7 @@ outerLoop:
 		for {
 			n, err := syscall.Read(uffd, buf)
 			if err == syscall.EINTR {
-				zap.L().Debug("uffd: interrupted read, reading again", fields...)
+				logger.Debug("uffd: interrupted read, reading again")
 
 				continue
 			}
@@ -118,20 +118,20 @@ outerLoop:
 			}
 
 			if err == syscall.EAGAIN {
-				zap.L().Debug("uffd: eagain error, going back to polling", append(fields, zap.Error(err), zap.Int("read_bytes", n))...)
+				logger.Debug("uffd: eagain error, going back to polling", zap.Error(err), zap.Int("read_bytes", n))
 
 				// Continue polling the fd.
 				continue outerLoop
 			}
 
-			zap.L().Error("uffd: read error", append(fields, zap.Error(err))...)
+			logger.Error("uffd: read error", zap.Error(err))
 
 			return fmt.Errorf("failed to read: %w", err)
 		}
 
 		msg := *(*constants.UffdMsg)(unsafe.Pointer(&buf[0]))
 		if constants.GetMsgEvent(&msg) != constants.UFFD_EVENT_PAGEFAULT {
-			zap.L().Error("UFFD serve unexpected event type", append(fields, zap.Any("event_type", constants.GetMsgEvent(&msg)))...)
+			logger.Error("UFFD serve unexpected event type", zap.Any("event_type", constants.GetMsgEvent(&msg)))
 
 			return ErrUnexpectedEventType
 		}
@@ -143,7 +143,7 @@ outerLoop:
 
 		mapping, err := getMapping(uintptr(addr), mappings)
 		if err != nil {
-			zap.L().Error("UFFD serve get mapping error", append(fields, zap.Error(err))...)
+			logger.Error("UFFD serve get mapping error", zap.Error(err))
 
 			return fmt.Errorf("failed to map: %w", err)
 		}
@@ -154,7 +154,7 @@ outerLoop:
 		eg.Go(func() error {
 			defer func() {
 				if r := recover(); r != nil {
-					zap.L().Error("UFFD serve panic", append(fields, zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))...)
+					logger.Error("UFFD serve panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
 				}
 			}()
 
@@ -163,7 +163,7 @@ outerLoop:
 
 				stop()
 
-				zap.L().Error("UFFD serve slice error", append(fields, zap.Error(err))...)
+				logger.Error("UFFD serve slice error", zap.Error(err))
 
 				return fmt.Errorf("failed to read from source: %w", err)
 			}
@@ -183,7 +183,7 @@ outerLoop:
 				uintptr(unsafe.Pointer(&cpy)),
 			); errno != 0 {
 				if errno == unix.EEXIST {
-					zap.L().Debug("UFFD serve page already mapped", append(fields, zap.Any("offset", offset), zap.Any("pagesize", pagesize))...)
+					logger.Debug("UFFD serve page already mapped", zap.Any("offset", offset), zap.Any("pagesize", pagesize))
 
 					// Page is already mapped
 					return nil
@@ -191,7 +191,7 @@ outerLoop:
 
 				stop()
 
-				zap.L().Error("UFFD serve uffdio copy error", append(fields, zap.Error(err))...)
+				logger.Error("UFFD serve uffdio copy error", zap.Error(err))
 
 				return fmt.Errorf("failed uffdio copy %w", errno)
 			}
