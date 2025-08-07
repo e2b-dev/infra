@@ -54,7 +54,7 @@ variable "google_service_account_secret" {
 }
 
 job "docker-reverse-proxy" {
-  datacenters = [var.gcp_zone]
+  datacenters = var.gcp_zone != "" ? [var.gcp_zone] : ["dc1"]
   node_pool = "build"
 
 
