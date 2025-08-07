@@ -14,7 +14,6 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/protobuf/proto"
 
 	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -32,7 +31,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -187,163 +185,19 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 
 	// Build the base layer if not cached
 	if !isLastLayerCached {
-		templateBuildDir := filepath.Join(templatesDirectory, finalMetadata.BuildID)
-		err = os.MkdirAll(templateBuildDir, 0o777)
-		if err != nil {
-			return nil, fmt.Errorf("error creating template build directory: %w", err)
-		}
-		defer func() {
-			err := os.RemoveAll(templateBuildDir)
-			if err != nil {
-				b.logger.Error("Error while removing template build directory", zap.Error(err))
-			}
-		}()
-
-		// Created here to be able to pass it to CreateSandbox for populating COW cache
-		rootfsPath := filepath.Join(templateBuildDir, rootfsBuildFileName)
-
-		rootfs, memfile, envsImg, err := constructBaseLayerFiles(
-			ctx,
-			b.tracer,
-			finalMetadata,
-			baseMetadata.Template.BuildID,
-			template,
-			postProcessor,
-			b.artifactRegistry,
-			templateBuildDir,
-			rootfsPath,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("error building environment: %w", err)
-		}
-
-		// Env variables from the Docker image
-		baseMetadata.Metadata.EnvVars = oci.ParseEnvs(envsImg.Env)
-
-		cacheFiles, err := baseMetadata.Template.CacheFiles()
-		if err != nil {
-			return nil, fmt.Errorf("error creating template files: %w", err)
-		}
-		localTemplate := sbxtemplate.NewLocalTemplate(cacheFiles, rootfs, memfile)
-		defer localTemplate.Close()
-
-		// Provision sandbox with systemd and other vital parts
-		postProcessor.Info("Provisioning sandbox template")
-		// Just a symlink to the rootfs build file, so when the COW cache deletes the underlying file (here symlink),
-		// it will not delete the rootfs file. We use the rootfs again later on to start the sandbox template.
-		rootfsProvisionPath := filepath.Join(templateBuildDir, rootfsProvisionLink)
-		err = os.Symlink(rootfsPath, rootfsProvisionPath)
-		if err != nil {
-			return nil, fmt.Errorf("error creating provision rootfs: %w", err)
-		}
-
-		// Allow sandbox internet access during provisioning
-		allowInternetAccess := true
-
-		baseSandboxConfig := &orchestrator.SandboxConfig{
-			TemplateId:         baseMetadata.Template.TemplateID,
-			BuildId:            baseMetadata.Template.BuildID,
-			KernelVersion:      baseMetadata.Template.KernelVersion,
-			FirecrackerVersion: baseMetadata.Template.FirecrackerVersion,
-
-			BaseTemplateId: baseMetadata.Template.TemplateID,
-
-			Vcpu:        template.VCpuCount,
-			RamMb:       template.MemoryMB,
-			HugePages:   template.HugePages,
-			EnvdVersion: envdVersion,
-
-			AllowInternetAccess: &allowInternetAccess,
-		}
-		baseSandboxConfig.SandboxId = config.InstanceBuildPrefix + id.Generate()
-		baseSandboxConfig.ExecutionId = uuid.NewString()
-		err = b.provisionSandbox(
+		baseMetadata, err = b.buildBaseLayer(
 			ctx,
 			postProcessor,
-			baseSandboxConfig,
-			localTemplate,
-			rootfsProvisionPath,
-			provisionScriptResultPath,
-			provisionLogPrefix,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("error provisioning sandbox: %w", err)
-		}
-
-		// Check the rootfs filesystem corruption
-		ext4Check, err := ext4.CheckIntegrity(rootfsPath, true)
-		if err != nil {
-			zap.L().Error("provisioned filesystem ext4 integrity",
-				zap.String("result", ext4Check),
-				zap.Error(err),
-			)
-			return nil, fmt.Errorf("error checking provisioned filesystem integrity: %w", err)
-		}
-		zap.L().Debug("provisioned filesystem ext4 integrity",
-			zap.String("result", ext4Check),
-		)
-
-		err = b.enlargeDiskAfterProvisioning(ctx, template, rootfs)
-		if err != nil {
-			return nil, fmt.Errorf("error enlarging disk after provisioning: %w", err)
-		}
-
-		// Create sandbox for building template
-		postProcessor.Debug("Creating base sandbox template layer")
-		baseSandboxConfig = proto.Clone(baseSandboxConfig).(*orchestrator.SandboxConfig)
-		baseSandboxConfig.SandboxId = config.InstanceBuildPrefix + id.Generate()
-		baseSandboxConfig.ExecutionId = uuid.NewString()
-
-		// TODO: Temporarily set this based on global config, should be removed later (it should be passed as a parameter in build)
-		baseSandboxConfig.AllowInternetAccess = &globalconfig.AllowSandboxInternet
-		sourceSbx, cleanup, err := sandbox.CreateSandbox(
-			ctx,
-			b.tracer,
-			b.networkPool,
-			b.devicePool,
-			baseSandboxConfig,
-			localTemplate,
-			baseLayerTimeout,
-			rootfsPath,
-			fc.ProcessOptions{
-				InitScriptPath:      systemdInitPath,
-				KernelLogs:          env.IsDevelopment(),
-				SystemdToKernelLogs: false,
-			},
-		)
-		defer func() {
-			cleanupErr := cleanup.Run(ctx)
-			if cleanupErr != nil {
-				b.logger.Error("Error cleaning up sandbox", zap.Error(cleanupErr))
-			}
-		}()
-		if err != nil {
-			return nil, fmt.Errorf("error creating sandbox: %w", err)
-		}
-		err = sourceSbx.WaitForEnvd(
-			ctx,
-			b.tracer,
-			waitEnvdTimeout,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
-		}
-
-		err = pauseAndUpload(
-			ctx,
-			b.tracer,
 			uploadErrGroup,
-			postProcessor,
-			b.templateStorage,
-			b.buildStorage,
-			b.templateCache,
-			sourceSbx,
+			template,
+			finalMetadata,
+			envdVersion,
+			baseMetadata,
 			cacheScope,
 			lastHash,
-			baseMetadata,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("error pausing and uploading template: %w", err)
+			return nil, fmt.Errorf("error building base layer: %w", err)
 		}
 	}
 
@@ -356,8 +210,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 
 		force := step.Force != nil && *step.Force
 
-		// Generate a new template ID and build ID for the step
-		stepMetadata := LayerMetadata{
+		exportMetadata := LayerMetadata{
 			Template: storage.TemplateFiles{
 				TemplateID:         id.Generate(),
 				BuildID:            uuid.NewString(),
@@ -366,50 +219,77 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			},
 			Metadata: sourceMetadata.Metadata,
 		}
+		if isLastLayerCached {
+			exportMetadata = LayerMetadata{
+				Template: storage.TemplateFiles{
+					TemplateID:         id.Generate(),
+					BuildID:            uuid.NewString(),
+					KernelVersion:      finalMetadata.KernelVersion,
+					FirecrackerVersion: finalMetadata.FirecrackerVersion,
+				},
+				Metadata: sourceMetadata.Metadata,
+			}
+		}
+
+		cached := false
 		if !force {
-			// Fetch stable uuid from the step hash
 			m, err := layerMetaFromHash(ctx, b.buildStorage, cacheScope, lastHash)
 			if err != nil {
 				b.logger.Info("layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", lastHash), zap.String("step", step.Type))
 			} else {
-				stepMetadata = m
+				// Check if the layer is cached
+				found, err := isCached(ctx, b.templateStorage, m)
+				if err != nil {
+					return nil, fmt.Errorf("error checking if layer is cached: %w", err)
+				}
+
+				exportMetadata = m
+				cached = found
 			}
 		}
 
-		// Check if the layer is cached
-		found, err := isCached(ctx, b.templateStorage, stepMetadata)
-		if err != nil {
-			return nil, fmt.Errorf("error checking if layer is cached: %w", err)
-		}
-		isCached := !force && found
-
 		prefix := fmt.Sprintf("builder %d/%d", layerIndex, len(template.Steps))
 		cmd := fmt.Sprintf("%s %s", strings.ToUpper(step.Type), strings.Join(step.Args, " "))
-		postProcessor.Info(layerInfo(isCached, prefix, cmd, lastHash))
+		postProcessor.Info(layerInfo(cached, prefix, cmd, lastHash))
 
 		// Run commands in the sandbox only if not cached
-		if !isCached {
+		if !cached {
 			meta, err := b.buildLayer(
 				ctx,
 				postProcessor,
 				uploadErrGroup,
-				&orchestrator.SandboxConfig{
-					BaseTemplateId: baseMetadata.Template.TemplateID,
-
-					Vcpu:        template.VCpuCount,
-					RamMb:       template.MemoryMB,
-					HugePages:   template.HugePages,
-					EnvdVersion: envdVersion,
-
-					AllowInternetAccess: &globalconfig.AllowSandboxInternet,
-				},
 				cacheScope,
 				lastHash,
-				sourceMetadata,
-				stepMetadata.Template,
-				// First not cached layer is create (to change CPU, etc), subsequent are resumes.
-				!isLastLayerCached,
+				sourceMetadata.Template,
+				exportMetadata.Template,
 				isLastLayerCached,
+				func(
+					context context.Context,
+					b *Builder,
+					t sbxtemplate.Template,
+					exportTemplate storage.TemplateFiles,
+				) (*sandbox.Sandbox, error) {
+					sbxConfig := sandbox.Config{
+						BaseTemplateID: baseMetadata.Template.TemplateID,
+
+						Vcpu:      template.VCpuCount,
+						RamMB:     template.MemoryMB,
+						HugePages: template.HugePages,
+
+						AllowInternetAccess: &globalconfig.AllowSandboxInternet,
+
+						Envd: sandbox.EnvdMetadata{
+							Version: envdVersion,
+						},
+					}
+
+					// First not cached layer is create (to change CPU, etc), subsequent are resumes.
+					if isLastLayerCached {
+						return createSandboxFromTemplate(ctx, b, t, sbxConfig, exportTemplate)
+					} else {
+						return resumeSandbox(ctx, b, t, sbxConfig)
+					}
+				},
 				func(ctx context.Context, sbx *sandbox.Sandbox) (sandboxtools.CommandMetadata, error) {
 					postProcessor.Debug(fmt.Sprintf("Running action in: %s/%s", sourceMetadata.Template.TemplateID, sourceMetadata.Template.BuildID))
 
@@ -422,7 +302,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 						ctx,
 						b.tracer,
 						b.proxy,
-						sbx.Metadata.Config.SandboxId,
+						sbx.Runtime.SandboxID,
 					)
 					if err != nil {
 						return sandboxtools.CommandMetadata{}, fmt.Errorf("error running sync command: %w", err)
@@ -434,17 +314,17 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 			if err != nil {
 				return nil, fmt.Errorf("error running build layer: %w", err)
 			}
-			stepMetadata = meta
+			exportMetadata = meta
 
 			// If the last layer is cached, update the base metadata to the step metadata
 			// This is needed to properly resume the sandbox for the next step
 			if isLastLayerCached {
-				baseMetadata = stepMetadata
+				baseMetadata = exportMetadata
 			}
 		}
 
-		sourceMetadata = stepMetadata
-		isLastLayerCached = isCached
+		sourceMetadata = exportMetadata
+		isLastLayerCached = cached
 	}
 	// Build Steps
 
@@ -473,23 +353,31 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		ctx,
 		postProcessor,
 		uploadErrGroup,
-		&orchestrator.SandboxConfig{
-			BaseTemplateId: baseMetadata.Template.TemplateID,
-
-			Vcpu:        template.VCpuCount,
-			RamMb:       template.MemoryMB,
-			HugePages:   template.HugePages,
-			EnvdVersion: envdVersion,
-
-			AllowInternetAccess: &globalconfig.AllowSandboxInternet,
-		},
 		cacheScope,
 		lastHash,
-		sourceMetadata,
+		sourceMetadata.Template,
 		finalMetadata,
 		// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template.
-		false,
 		isLastLayerCached,
+		func(
+			context context.Context,
+			b *Builder,
+			t sbxtemplate.Template,
+			exportTemplate storage.TemplateFiles,
+		) (*sandbox.Sandbox, error) {
+			// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template.
+			return createSandboxFromTemplate(ctx, b, t, sandbox.Config{
+				Vcpu:      template.VCpuCount,
+				RamMB:     template.MemoryMB,
+				HugePages: template.HugePages,
+
+				AllowInternetAccess: &globalconfig.AllowSandboxInternet,
+
+				Envd: sandbox.EnvdMetadata{
+					Version: envdVersion,
+				},
+			}, exportTemplate)
+		},
 		b.postProcessingFn(postProcessor, finalMetadata, sourceMetadata.Metadata, startMetadata),
 	)
 	if err != nil {
@@ -532,6 +420,183 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		EnvdVersion:  envdVersion,
 		RootfsSizeMB: int64(rootfsSize >> constants.ToMBShift),
 	}, nil
+}
+
+func (b *Builder) buildBaseLayer(
+	ctx context.Context,
+	postProcessor *writer.PostProcessor,
+	uploadErrGroup *errgroup.Group,
+	template config.TemplateConfig,
+	finalMetadata storage.TemplateFiles,
+	envdVersion string,
+	baseMetadata LayerMetadata,
+	cacheScope string,
+	hash string,
+) (LayerMetadata, error) {
+	templateBuildDir := filepath.Join(templatesDirectory, finalMetadata.BuildID)
+	err := os.MkdirAll(templateBuildDir, 0o777)
+	if err != nil {
+		return LayerMetadata{}, fmt.Errorf("error creating template build directory: %w", err)
+	}
+	defer func() {
+		err := os.RemoveAll(templateBuildDir)
+		if err != nil {
+			b.logger.Error("Error while removing template build directory", zap.Error(err))
+		}
+	}()
+
+	// Created here to be able to pass it to CreateSandbox for populating COW cache
+	rootfsPath := filepath.Join(templateBuildDir, rootfsBuildFileName)
+
+	rootfs, memfile, envsImg, err := constructBaseLayerFiles(
+		ctx,
+		b.tracer,
+		finalMetadata,
+		baseMetadata.Template.BuildID,
+		template,
+		postProcessor,
+		b.artifactRegistry,
+		templateBuildDir,
+		rootfsPath,
+	)
+	if err != nil {
+		return LayerMetadata{}, fmt.Errorf("error building environment: %w", err)
+	}
+
+	// Env variables from the Docker image
+	baseMetadata.Metadata.EnvVars = oci.ParseEnvs(envsImg.Env)
+
+	cacheFiles, err := baseMetadata.Template.CacheFiles()
+	if err != nil {
+		return LayerMetadata{}, fmt.Errorf("error creating template files: %w", err)
+	}
+	localTemplate := sbxtemplate.NewLocalTemplate(cacheFiles, rootfs, memfile)
+	defer localTemplate.Close()
+
+	// Provision sandbox with systemd and other vital parts
+	postProcessor.Info("Provisioning sandbox template")
+	// Just a symlink to the rootfs build file, so when the COW cache deletes the underlying file (here symlink),
+	// it will not delete the rootfs file. We use the rootfs again later on to start the sandbox template.
+	rootfsProvisionPath := filepath.Join(templateBuildDir, rootfsProvisionLink)
+	err = os.Symlink(rootfsPath, rootfsProvisionPath)
+	if err != nil {
+		return LayerMetadata{}, fmt.Errorf("error creating provision rootfs: %w", err)
+	}
+
+	// Allow sandbox internet access during provisioning
+	allowInternetAccess := true
+
+	baseSbxConfig := sandbox.Config{
+		BaseTemplateID: baseMetadata.Template.TemplateID,
+
+		Vcpu:      template.VCpuCount,
+		RamMB:     template.MemoryMB,
+		HugePages: template.HugePages,
+
+		AllowInternetAccess: &allowInternetAccess,
+
+		Envd: sandbox.EnvdMetadata{
+			Version: envdVersion,
+		},
+	}
+	fcVersions := fc.FirecrackerVersions{
+		KernelVersion:      finalMetadata.KernelVersion,
+		FirecrackerVersion: finalMetadata.FirecrackerVersion,
+	}
+	err = b.provisionSandbox(
+		ctx,
+		postProcessor,
+		baseSbxConfig,
+		sandbox.RuntimeMetadata{
+			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
+			ExecutionID: uuid.NewString(),
+		},
+		fcVersions,
+		localTemplate,
+		rootfsProvisionPath,
+		provisionScriptResultPath,
+		provisionLogPrefix,
+	)
+	if err != nil {
+		return LayerMetadata{}, fmt.Errorf("error provisioning sandbox: %w", err)
+	}
+
+	// Check the rootfs filesystem corruption
+	ext4Check, err := ext4.CheckIntegrity(rootfsPath, true)
+	if err != nil {
+		zap.L().Error("provisioned filesystem ext4 integrity",
+			zap.String("result", ext4Check),
+			zap.Error(err),
+		)
+		return LayerMetadata{}, fmt.Errorf("error checking provisioned filesystem integrity: %w", err)
+	}
+	zap.L().Debug("provisioned filesystem ext4 integrity",
+		zap.String("result", ext4Check),
+	)
+
+	err = b.enlargeDiskAfterProvisioning(ctx, template, rootfs)
+	if err != nil {
+		return LayerMetadata{}, fmt.Errorf("error enlarging disk after provisioning: %w", err)
+	}
+
+	// Create sandbox for building template
+	postProcessor.Debug("Creating base sandbox template layer")
+
+	// TODO: Temporarily set this based on global config, should be removed later (it should be passed as a parameter in build)
+	baseSbxConfig.AllowInternetAccess = &globalconfig.AllowSandboxInternet
+	sourceSbx, err := sandbox.CreateSandbox(
+		ctx,
+		b.tracer,
+		b.networkPool,
+		b.devicePool,
+		baseSbxConfig,
+		sandbox.RuntimeMetadata{
+			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
+			ExecutionID: uuid.NewString(),
+		},
+		fcVersions,
+		localTemplate,
+		baseLayerTimeout,
+		rootfsPath,
+		fc.ProcessOptions{
+			InitScriptPath:      systemdInitPath,
+			KernelLogs:          env.IsDevelopment(),
+			SystemdToKernelLogs: false,
+		},
+		nil,
+	)
+	if err != nil {
+		return LayerMetadata{}, fmt.Errorf("error creating sandbox: %w", err)
+	}
+	defer sourceSbx.Stop(ctx)
+
+	err = sourceSbx.WaitForEnvd(
+		ctx,
+		b.tracer,
+		waitEnvdTimeout,
+	)
+	if err != nil {
+		return LayerMetadata{}, fmt.Errorf("failed to wait for sandbox start: %w", err)
+	}
+
+	err = pauseAndUpload(
+		ctx,
+		b.tracer,
+		uploadErrGroup,
+		postProcessor,
+		b.templateStorage,
+		b.buildStorage,
+		b.templateCache,
+		sourceSbx,
+		cacheScope,
+		hash,
+		baseMetadata,
+	)
+	if err != nil {
+		return LayerMetadata{}, fmt.Errorf("error pausing and uploading template: %w", err)
+	}
+
+	return baseMetadata, nil
 }
 
 func getRootfsSize(
@@ -677,7 +742,7 @@ func (b *Builder) postProcessingFn(
 				ctx,
 				b.tracer,
 				b.proxy,
-				sbx.Metadata.Config.SandboxId,
+				sbx.Runtime.SandboxID,
 			)
 			if err != nil {
 				e = fmt.Errorf("error running sync command: %w", err)
@@ -692,7 +757,7 @@ func (b *Builder) postProcessingFn(
 			b.proxy,
 			postProcessor,
 			finalMetadata,
-			sbx.Metadata.Config.SandboxId,
+			sbx.Runtime.SandboxID,
 		)
 		if err != nil {
 			return sandboxtools.CommandMetadata{}, fmt.Errorf("error running configuration script: %w", err)
@@ -718,7 +783,7 @@ func (b *Builder) postProcessingFn(
 					postProcessor,
 					zapcore.InfoLevel,
 					"start",
-					sbx.Metadata.Config.SandboxId,
+					sbx.Runtime.SandboxID,
 					start.StartCmd,
 					start.Metadata,
 					startCmdConfirm,
@@ -749,7 +814,7 @@ func (b *Builder) postProcessingFn(
 		err = b.runReadyCommand(
 			commandsCtx,
 			postProcessor,
-			sbx.Metadata.Config.SandboxId,
+			sbx.Runtime.SandboxID,
 			readyCmd,
 			start.Metadata,
 		)

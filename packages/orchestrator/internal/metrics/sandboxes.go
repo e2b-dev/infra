@@ -141,9 +141,9 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 			wg.SetLimit(int(limit))
 
 			for _, sbx := range so.sandboxes.Items() {
-				ok, err := utils.IsGTEVersion(sbx.Config.EnvdVersion, minEnvdVersionForMetrics)
+				ok, err := utils.IsGTEVersion(sbx.Config.Envd.Version, minEnvdVersionForMetrics)
 				if err != nil {
-					zap.L().Error("Failed to check envd version", zap.Error(err), zap.String("sandbox_id", sbx.Config.SandboxId))
+					zap.L().Error("Failed to check envd version", zap.Error(err), zap.String("sandbox_id", sbx.Runtime.SandboxID))
 					continue
 				}
 				if !ok {
@@ -166,14 +166,14 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 						return err
 					}
 
-					attributes := metric.WithAttributes(attribute.String("sandbox_id", sbx.Config.SandboxId), attribute.String("team_id", sbx.Config.TeamId))
+					attributes := metric.WithAttributes(attribute.String("sandbox_id", sbx.Runtime.SandboxID), attribute.String("team_id", sbx.Runtime.TeamID))
 
 					o.ObserveInt64(so.cpuTotal, sbxMetrics.CPUCount, attributes)
 					o.ObserveFloat64(so.cpuUsed, sbxMetrics.CPUUsedPercent, attributes)
 
-					ok, err := utils.IsGTEVersion(sbx.Config.EnvdVersion, minEnvdVersionForMemoryPrecise)
+					ok, err := utils.IsGTEVersion(sbx.Config.Envd.Version, minEnvdVersionForMemoryPrecise)
 					if err != nil {
-						zap.L().Error("Failed to check envd version for memory metrics", zap.Error(err), zap.String("sandbox_id", sbx.Config.SandboxId))
+						zap.L().Error("Failed to check envd version for memory metrics", zap.Error(err), zap.String("sandbox_id", sbx.Runtime.SandboxID))
 					}
 					if ok {
 						o.ObserveInt64(so.memoryTotal, sbxMetrics.MemTotal, attributes)
@@ -183,9 +183,9 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 						o.ObserveInt64(so.memoryUsed, sbxMetrics.MemUsedMiB<<shiftFromMiBToBytes, attributes)
 					}
 
-					ok, err = utils.IsGTEVersion(sbx.Config.EnvdVersion, minEnvdVersionForDiskMetrics)
+					ok, err = utils.IsGTEVersion(sbx.Config.Envd.Version, minEnvdVersionForDiskMetrics)
 					if err != nil {
-						zap.L().Error("Failed to check envd version for disk metrics", zap.Error(err), zap.String("sandbox_id", sbx.Config.SandboxId))
+						zap.L().Error("Failed to check envd version for disk metrics", zap.Error(err), zap.String("sandbox_id", sbx.Runtime.SandboxID))
 					}
 					if ok {
 						o.ObserveInt64(so.diskTotal, sbxMetrics.DiskTotal, attributes)

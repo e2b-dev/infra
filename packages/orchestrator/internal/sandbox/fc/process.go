@@ -54,12 +54,15 @@ type ProcessOptions struct {
 }
 
 type Process struct {
+	Versions FirecrackerVersions
+
 	cmd *exec.Cmd
 
 	firecrackerSocketPath string
 
 	slot       *network.Slot
 	rootfsPath string
+	kernelPath string
 	files      *storage.SandboxFiles
 
 	Exit *utils.SetOnce[struct{}]
@@ -74,9 +77,9 @@ func NewProcess(
 	tracer trace.Tracer,
 	slot *network.Slot,
 	files *storage.SandboxFiles,
-	rootfsPath string,
-	baseTemplateID string,
-	baseBuildID string,
+	versions FirecrackerVersions,
+	rootfsProviderPath string,
+	rootfsPaths storage.RootfsPaths,
 ) (*Process, error) {
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
 		attribute.Int("sandbox.slot.index", slot.Idx),
@@ -85,23 +88,16 @@ func NewProcess(
 
 	var fcStartScript bytes.Buffer
 
-	baseBuild := storage.TemplateFiles{
-		TemplateID:         baseTemplateID,
-		BuildID:            baseBuildID,
-		KernelVersion:      files.KernelVersion,
-		FirecrackerVersion: files.FirecrackerVersion,
-	}
-
-	buildRootfsPath := baseBuild.SandboxRootfsPath()
+	buildRootfsPath := rootfsPaths.SandboxRootfsPath()
 	err := startScriptTemplate.Execute(&fcStartScript, map[string]interface{}{
 		"rootfsPath":        files.SandboxCacheRootfsLinkPath(),
-		"kernelPath":        files.CacheKernelPath(),
-		"buildDir":          baseBuild.SandboxBuildDir(),
+		"kernelPath":        versions.CacheKernelPath(),
+		"buildDir":          rootfsPaths.SandboxBuildDir(),
 		"buildRootfsPath":   buildRootfsPath,
-		"buildKernelPath":   files.BuildKernelPath(),
-		"buildKernelDir":    files.BuildKernelDir(),
+		"buildKernelPath":   versions.BuildKernelPath(),
+		"buildKernelDir":    versions.BuildKernelDir(),
 		"namespaceID":       slot.NamespaceID(),
-		"firecrackerPath":   files.FirecrackerPath(),
+		"firecrackerPath":   versions.FirecrackerPath(),
 		"firecrackerSocket": files.SandboxFirecrackerSocketPath(),
 	})
 	if err != nil {
@@ -112,12 +108,12 @@ func NewProcess(
 		attribute.String("sandbox.cmd", fcStartScript.String()),
 	)
 
-	_, err = os.Stat(files.FirecrackerPath())
+	_, err = os.Stat(versions.FirecrackerPath())
 	if err != nil {
 		return nil, fmt.Errorf("error stating firecracker binary: %w", err)
 	}
 
-	_, err = os.Stat(files.CacheKernelPath())
+	_, err = os.Stat(versions.CacheKernelPath())
 	if err != nil {
 		return nil, fmt.Errorf("error stating kernel file: %w", err)
 	}
@@ -136,14 +132,16 @@ func NewProcess(
 	}
 
 	return &Process{
+		Versions:              versions,
 		Exit:                  utils.NewSetOnce[struct{}](),
 		cmd:                   cmd,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
-		rootfsPath:            rootfsPath,
+		rootfsPath:            rootfsProviderPath,
 		files:                 files,
 		slot:                  slot,
 
+		kernelPath:      versions.BuildKernelPath(),
 		buildRootfsPath: buildRootfsPath,
 	}, nil
 }
@@ -151,20 +149,12 @@ func NewProcess(
 func (p *Process) configure(
 	ctx context.Context,
 	tracer trace.Tracer,
-	sandboxID string,
-	templateID string,
-	teamID string,
+	sbxMetadata sbxlogger.LoggerMetadata,
 	stdoutExternal io.Writer,
 	stderrExternal io.Writer,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "configure-fc")
 	defer childSpan.End()
-
-	sbxMetadata := sbxlogger.SandboxMetadata{
-		SandboxID:  sandboxID,
-		TemplateID: templateID,
-		TeamID:     teamID,
-	}
 
 	stdoutWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger, Level: zap.InfoLevel}
 	stdoutWriters := []io.Writer{stdoutWriter}
@@ -238,9 +228,7 @@ func (p *Process) configure(
 func (p *Process) Create(
 	ctx context.Context,
 	tracer trace.Tracer,
-	sandboxID string,
-	templateID string,
-	teamID string,
+	loggerMetadata sbxlogger.LoggerMetadata,
 	vCPUCount int64,
 	memoryMB int64,
 	hugePages bool,
@@ -252,9 +240,7 @@ func (p *Process) Create(
 	err := p.configure(
 		childCtx,
 		tracer,
-		sandboxID,
-		templateID,
-		teamID,
+		loggerMetadata,
 		options.Stdout,
 		options.Stderr,
 	)
@@ -300,7 +286,7 @@ func (p *Process) Create(
 	}
 
 	kernelArgs := args.String()
-	err = p.client.setBootSource(childCtx, kernelArgs, p.files.BuildKernelPath())
+	err = p.client.setBootSource(childCtx, kernelArgs, p.kernelPath)
 	if err != nil {
 		fcStopErr := p.Stop()
 
@@ -364,9 +350,7 @@ func (p *Process) Resume(
 	err := p.configure(
 		childCtx,
 		tracer,
-		mmdsMetadata.SandboxId,
-		mmdsMetadata.TemplateId,
-		mmdsMetadata.TeamId,
+		mmdsMetadata,
 		nil,
 		nil,
 	)

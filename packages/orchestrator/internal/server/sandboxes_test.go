@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -42,10 +43,14 @@ func Test_server_List(t *testing.T) {
 			},
 			data: []*sandbox.Sandbox{
 				{
+					APIStoredConfig: &orchestrator.SandboxConfig{
+						TemplateId: "template-id",
+					},
 					Metadata: &sandbox.Metadata{
-						Config: &orchestrator.SandboxConfig{
-							TemplateId: "template-id",
+						Runtime: sandbox.RuntimeMetadata{
+							SandboxID: id.Generate(),
 						},
+
 						StartedAt: startTime,
 						EndAt:     endTime,
 					},
@@ -72,7 +77,7 @@ func Test_server_List(t *testing.T) {
 				info:      &service.ServiceInfo{},
 			}
 			for _, sbx := range tt.data {
-				s.sandboxes.Insert(sbx.Config.SandboxId, sbx)
+				s.sandboxes.Insert(sbx.Runtime.SandboxID, sbx)
 			}
 			got, err := s.List(tt.args.ctx, tt.args.in1)
 			if (err != nil) != tt.wantErr {

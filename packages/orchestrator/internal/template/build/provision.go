@@ -21,7 +21,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -56,7 +55,9 @@ func getProvisionScript(
 func (b *Builder) provisionSandbox(
 	ctx context.Context,
 	postProcessor *writer.PostProcessor,
-	sandboxConfig *orchestrator.SandboxConfig,
+	sandboxConfig sandbox.Config,
+	sandboxRuntime sandbox.RuntimeMetadata,
+	fcVersions fc.FirecrackerVersions,
 	localTemplate *sbxtemplate.LocalTemplate,
 	rootfsPath string,
 	provisionScriptResultPath string,
@@ -69,12 +70,14 @@ func (b *Builder) provisionSandbox(
 	logsWriter := &writer.PrefixFilteredWriter{Writer: zapWriter, PrefixFilter: logExternalPrefix}
 	defer logsWriter.Close()
 
-	sbx, cleanup, err := sandbox.CreateSandbox(
+	sbx, err := sandbox.CreateSandbox(
 		ctx,
 		b.tracer,
 		b.networkPool,
 		b.devicePool,
 		sandboxConfig,
+		sandboxRuntime,
+		fcVersions,
 		localTemplate,
 		provisionTimeout,
 		rootfsPath,
@@ -88,16 +91,13 @@ func (b *Builder) provisionSandbox(
 			Stdout: logsWriter,
 			Stderr: logsWriter,
 		},
+		nil,
 	)
-	defer func() {
-		cleanupErr := cleanup.Run(ctx)
-		if cleanupErr != nil {
-			e = fmt.Errorf("error cleaning up sandbox: %w", cleanupErr)
-		}
-	}()
 	if err != nil {
 		return fmt.Errorf("error creating sandbox: %w", err)
 	}
+	defer sbx.Stop(ctx)
+
 	err = sbx.WaitForExit(
 		ctx,
 		b.tracer,

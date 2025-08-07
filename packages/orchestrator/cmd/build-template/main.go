@@ -31,7 +31,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-const proxyPort = 5007
+const (
+	baseImage = "e2bdev/base:latest"
+
+	proxyPort = 5007
+)
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -163,7 +167,10 @@ func buildTemplate(
 		With(zap.Field{Type: zapcore.StringType, Key: "envID", String: templateID}).
 		With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: buildID})
 
+	force := true
 	template := config.TemplateConfig{
+		FromImage:  baseImage,
+		Force:      &force,
 		VCpuCount:  2,
 		MemoryMB:   1024,
 		StartCmd:   "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
