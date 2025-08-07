@@ -200,8 +200,6 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	allowInternetAccess := true
 
 	baseSbxConfig := sandbox.Config{
-		BaseTemplateID: baseMetadata.Template.TemplateID,
-
 		Vcpu:      bb.Config.VCpuCount,
 		RamMB:     bb.Config.MemoryMB,
 		HugePages: bb.Config.HugePages,

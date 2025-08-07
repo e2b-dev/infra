@@ -139,8 +139,6 @@ func (sb *StepBuilder) Build(
 	step := sb.step
 
 	sbxConfig := sandbox.Config{
-		BaseTemplateID: baseTemplateID,
-
 		Vcpu:      sb.Config.VCpuCount,
 		RamMB:     sb.Config.MemoryMB,
 		HugePages: sb.Config.HugePages,
@@ -158,7 +156,7 @@ func (sb *StepBuilder) Build(
 		sandboxCreator = layer.NewCreateSandbox(sbxConfig, fc.FirecrackerVersions{
 			KernelVersion:      sb.Template.KernelVersion,
 			FirecrackerVersion: sb.Template.FirecrackerVersion,
-		}, currentLayer.Metadata.Template.TemplateID)
+		})
 	} else {
 		sandboxCreator = layer.NewResumeSandbox(sbxConfig)
 	}
