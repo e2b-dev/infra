@@ -11,6 +11,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
 )
@@ -28,13 +29,12 @@ func Serve(
 	uffd int,
 	mappings mapping.Mappings,
 	src block.Slicer,
-	fd uintptr,
-	stop func() error,
+	fdExit *fdexit.FdExit,
 	logger *zap.Logger,
 ) error {
 	pollFds := []unix.PollFd{
 		{Fd: int32(uffd), Events: unix.POLLIN},
-		{Fd: int32(fd), Events: unix.POLLIN},
+		{Fd: int32(fdExit.Reader()), Events: unix.POLLIN},
 	}
 
 	var eg errgroup.Group
@@ -154,11 +154,13 @@ outerLoop:
 			b, err := src.Slice(offset, pagesize)
 			if err != nil {
 
-				stop()
+				signalErr := fdExit.SignalExit()
 
-				logger.Error("UFFD serve slice error", zap.Error(err))
+				joinedErr := errors.Join(err, signalErr)
 
-				return fmt.Errorf("failed to read from source: %w", err)
+				logger.Error("UFFD serve slice error", zap.Error(joinedErr))
+
+				return fmt.Errorf("failed to read from source: %w", joinedErr)
 			}
 
 			cpy := userfaultfd.NewUffdioCopy(
@@ -182,11 +184,13 @@ outerLoop:
 					return nil
 				}
 
-				stop()
+				signalErr := fdExit.SignalExit()
 
-				logger.Error("UFFD serve uffdio copy error", zap.Error(err))
+				joinedErr := errors.Join(errno, signalErr)
 
-				return fmt.Errorf("failed uffdio copy %w", errno)
+				logger.Error("UFFD serve uffdio copy error", zap.Error(joinedErr))
+
+				return fmt.Errorf("failed uffdio copy %w", joinedErr)
 			}
 
 			return nil
