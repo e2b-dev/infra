@@ -15,7 +15,7 @@ const (
 	DefaultKernelVersion = "vmlinux-6.1.102"
 	// The Firecracker version the last tag + the short SHA (so we can build our dev previews)
 	// TODO: The short tag here has only 7 characters — the one from our build pipeline will likely have exactly 8 so this will break.
-	DefaultFirecrackerVersion = "v1.10.1_1fcdaec"
+	DefaultFirecrackerVersion = "v1.12.1_d990331"
 )
 
 type EnvBuild struct {
@@ -41,7 +41,7 @@ func (EnvBuild) Fields() []ent.Field {
 		field.Int64("free_disk_size_mb"),
 		field.Int64("total_disk_size_mb").Optional().Nillable(),
 		field.String("kernel_version").Default(DefaultKernelVersion).SchemaType(map[string]string{dialect.Postgres: "text"}),
-		field.String("firecracker_version").Default(DefaultFirecrackerVersion).SchemaType(map[string]string{dialect.Postgres: "text"}),
+		field.String("firecracker_version").SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.String("envd_version").SchemaType(map[string]string{dialect.Postgres: "text"}).Nillable().Optional(),
 		field.String("cluster_node_id").SchemaType(map[string]string{dialect.Postgres: "text"}).Optional().Nillable(),
 		field.String("reason").SchemaType(map[string]string{dialect.Postgres: "text"}).Nillable().Optional(),

@@ -28,10 +28,10 @@ func WriteDiffWithTrace(ctx context.Context, tracer trace.Tracer, source io.Read
 	childSpan.SetAttributes(attribute.Int64("dirty.length", int64(dirty.Count())))
 	childSpan.SetAttributes(attribute.Int64("block.size", blockSize))
 
-	return WriteDiff(source, blockSize, dirty, diff)
+	return writeDiff(source, blockSize, dirty, diff)
 }
 
-func WriteDiff(source io.ReaderAt, blockSize int64, dirty *bitset.BitSet, diff io.Writer) (*DiffMetadata, error) {
+func writeDiff(source io.ReaderAt, blockSize int64, dirty *bitset.BitSet, diff io.Writer) (*DiffMetadata, error) {
 	b := make([]byte, blockSize)
 
 	empty := bitset.New(0)

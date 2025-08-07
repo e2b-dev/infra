@@ -13,16 +13,29 @@ import (
 )
 
 func ExecCommand(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, command string, args ...string) error {
+	return ExecCommandWithOptions(tb, ctx, sbx, envdClient, nil, "user", command, args...)
+}
+
+func ExecCommandWithCwd(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, cwd *string, command string, args ...string) error {
+	return ExecCommandWithOptions(tb, ctx, sbx, envdClient, cwd, "user", command, args...)
+}
+
+func ExecCommandAsRoot(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, command string, args ...string) error {
+	return ExecCommandWithOptions(tb, ctx, sbx, envdClient, nil, "root", command, args...)
+}
+
+func ExecCommandWithOptions(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, cwd *string, user string, command string, args ...string) error {
 	tb.Helper()
 
 	req := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
 			Cmd:  command,
 			Args: args,
+			Cwd:  cwd,
 		},
 	})
 	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
-	setup.SetUserHeader(req.Header(), "user")
+	setup.SetUserHeader(req.Header(), user)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -30,7 +43,14 @@ func ExecCommand(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClien
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Executing command %s in sandbox %s\n", command, sbx.SandboxID)
+	contextInfo := ""
+	if cwd != nil {
+		contextInfo += fmt.Sprintf(" (cwd: %s)", *cwd)
+	}
+	if user != "user" {
+		contextInfo += fmt.Sprintf(" (user: %s)", user)
+	}
+	fmt.Printf("Executing command %s in sandbox %s%s\n", command, sbx.SandboxID, contextInfo)
 	defer func() {
 		cancel()
 		streamErr := stream.Close()

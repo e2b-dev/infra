@@ -132,7 +132,7 @@ outerLoop:
 			return fmt.Errorf("failed to read: %w", err)
 		}
 
-		msg := (*(*constants.UffdMsg)(unsafe.Pointer(&buf[0])))
+		msg := *(*constants.UffdMsg)(unsafe.Pointer(&buf[0]))
 		if constants.GetMsgEvent(&msg) != constants.UFFD_EVENT_PAGEFAULT {
 			zap.L().Error("UFFD serve unexpected event type", logger.WithSandboxID(sandboxId), zap.Any("event_type", constants.GetMsgEvent(&msg)))
 

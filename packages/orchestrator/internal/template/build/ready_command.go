@@ -8,7 +8,6 @@ import (
 
 	"go.uber.org/zap/zapcore"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -24,9 +23,8 @@ const (
 func (b *Builder) runReadyCommand(
 	ctx context.Context,
 	postProcessor *writer.PostProcessor,
-	metadata storage.TemplateFiles,
-	template config.TemplateConfig,
 	sandboxID string,
+	readyCmd string,
 	cmdMetadata sandboxtools.CommandMetadata,
 ) error {
 	ctx, span := b.tracer.Start(ctx, "run-ready-command")
@@ -34,10 +32,6 @@ func (b *Builder) runReadyCommand(
 
 	postProcessor.Info("Waiting for template to be ready")
 
-	readyCmd := template.ReadyCmd
-	if readyCmd == "" {
-		readyCmd = getDefaultReadyCommand(metadata, template)
-	}
 	postProcessor.Info(fmt.Sprintf("[ready cmd]: %s", readyCmd))
 
 	startTime := time.Now()
@@ -79,11 +73,7 @@ func (b *Builder) runReadyCommand(
 	}
 }
 
-func getDefaultReadyCommand(metadata storage.TemplateFiles, template config.TemplateConfig) string {
-	if template.StartCmd == "" {
-		return fmt.Sprintf("sleep %d", 0)
-	}
-
+func GetDefaultReadyCommand(metadata storage.TemplateFiles) string {
 	// HACK: This is a temporary fix for a customer that needs a bigger time to start the command.
 	// TODO: Remove this after we can add customizable wait time for building templates.
 	// TODO: Make this user configurable, with health check too

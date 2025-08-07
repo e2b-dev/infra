@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -27,6 +28,10 @@ func (a *APIStore) getSandboxesMetrics(
 ) (map[string]api.SandboxMetric, error) {
 	ctx, span := a.Tracer.Start(ctx, "fetch-sandboxes-metrics")
 	defer span.End()
+
+	for i, id := range sandboxIDs {
+		sandboxIDs[i] = utils.ShortID(id)
+	}
 
 	telemetry.SetAttributes(ctx,
 		telemetry.WithTeamID(teamID.String()),

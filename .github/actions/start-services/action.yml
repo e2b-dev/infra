@@ -44,6 +44,21 @@ runs:
         make -C tests/integration seed
       shell: bash
 
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build codegen image with caching
+      uses: docker/build-push-action@v6
+      with:
+        context: packages/clickhouse
+        file: packages/clickhouse/Dockerfile
+        tags: clickhouse-migrator:latest
+        load: true # makes the image available for `docker run`
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+
     - name: Run Clickhouse
       env:
         CLICKHOUSE_USERNAME: "e2b"
@@ -62,7 +77,8 @@ runs:
         while [ "$(docker inspect -f '{{.State.Health.Status}}' clickhouse 2>/dev/null)" != "healthy" ]; do echo "Waiting for Clickhouse to be healthy..."; sleep 2; done
         echo "Clickhouse is healthy!"
 
-        make -C packages/clickhouse migrate
+        # We build the image in separate step to cache it and avoid rebuilding it every time
+        make -C packages/clickhouse migrate-without-build
       shell: bash
 
     - name: Start Services
@@ -76,6 +92,7 @@ runs:
         STORAGE_PROVIDER: "Local"
         ENVIRONMENT: "local"
         OTEL_COLLECTOR_GRPC_ENDPOINT: "localhost:4317"
+        MAX_PARALLEL_MEMFILE_SNAPSHOTTING: "2"
       run: |
         mkdir -p ~/logs
 

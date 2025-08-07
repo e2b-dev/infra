@@ -7,7 +7,7 @@ require (
 	connectrpc.com/connect v1.18.1
 	connectrpc.com/cors v0.1.0
 	github.com/creack/pty v1.1.23
-	github.com/e2b-dev/fsnotify v0.0.0-20241216145137-2fe5d32bcb51
+	github.com/e2b-dev/fsnotify v0.0.1
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/go-chi/chi/v5 v5.2.2
 	github.com/google/uuid v1.6.0

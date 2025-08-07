@@ -4,7 +4,7 @@ on: [workflow_call]
 
 jobs:
   integration_tests:
-    runs-on: ubuntu-24.04
+    runs-on: infra-integration-tests
     timeout-minutes: 30
     permissions:
       contents: read
@@ -32,13 +32,8 @@ jobs:
           TESTS_ORCHESTRATOR_HOST: "localhost:5008"
           TESTS_ENVD_PROXY: "http://localhost:5007"
         run: |
-            # Monitor logs of the services
-            ls -l ~/logs
-            tail -f ~/logs/orchestrator.log -n 0 &
-            tail -f ~/logs/api.log -n 0 &
-            
-            # Run the integration tests
-            make test-integration
+          # Run the integration tests
+          make test-integration
 
       - name: Upload Test Results
         if: always()
@@ -46,3 +41,10 @@ jobs:
         with:
           name: Integration Tests Results
           path: ./tests/integration/test-results.xml
+
+      - name: Upload Service Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Service Logs
+          path: ~/logs/*.log

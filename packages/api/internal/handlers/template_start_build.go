@@ -144,6 +144,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 
 	// Call the Template Manager to build the environment
 	forceRebuild := true
+	fromImage := ""
 	buildErr := a.templateManager.CreateTemplate(
 		a.Tracer,
 		ctx,
@@ -157,7 +158,8 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		build.FreeDiskSizeMb,
 		build.RamMb,
 		build.ReadyCmd,
-		"",
+		&fromImage,
+		nil, // fromTemplate not supported in v1 handler
 		&forceRebuild,
 		nil,
 		team.ClusterID,

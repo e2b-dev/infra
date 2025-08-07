@@ -105,6 +105,7 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 			BuildID:       item.BuildID,
 			CpuCount:      int32(item.VCPU),
 			MemoryMB:      int32(item.RAMMB),
+			DiskSizeMB:    int32(item.DiskMB),
 			Public:        item.Public,
 			Aliases:       item.Aliases,
 			CreatedAt:     item.CreatedAt,
@@ -113,6 +114,7 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 			SpawnCount:    item.SpawnCount,
 			BuildCount:    item.BuildCount,
 			CreatedBy:     createdBy,
+			EnvdVersion:   item.EnvdVersion,
 		})
 	}
 

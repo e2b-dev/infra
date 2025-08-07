@@ -8,15 +8,12 @@ runs:
       env:
         TEMPLATE_ID: "2j6ly824owf4awgai1xo"
         KERNEL_VERSION: "vmlinux-6.1.102"
-        FIRECRACKER_VERSION: "v1.10.1_1fcdaec"
+        FIRECRACKER_VERSION: "v1.12.1_d990331"
       run: |
         # Generate an unique build ID for the template for this run
         export BUILD_ID=$(uuidgen)
 
         echo "This build unique ID: ${BUILD_ID}"
-
-        docker pull e2bdev/base:latest
-        docker tag e2bdev/base:latest ${TEMPLATE_ID}:${BUILD_ID}
 
         echo "TESTS_SANDBOX_TEMPLATE_ID=${TEMPLATE_ID}" >> .env.test
         echo "TESTS_SANDBOX_BUILD_ID=${BUILD_ID}" >> .env.test

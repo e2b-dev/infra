@@ -55,12 +55,18 @@ const (
 	SandboxDiskTotalGaugeName GaugeIntType = "e2b.sandbox.disk.total"
 )
 
+const (
+	ApiOrchestratorCreatedSandboxes CounterType = "api.orchestrator.created_sandboxes"
+)
+
 var counterDesc = map[CounterType]string{
-	SandboxCreateMeterName: "Number of currently waiting requests to create a new sandbox",
+	SandboxCreateMeterName:          "Number of currently waiting requests to create a new sandbox",
+	ApiOrchestratorCreatedSandboxes: "Number of successfully created sandboxes",
 }
 
 var counterUnits = map[CounterType]string{
-	SandboxCreateMeterName: "{sandbox}",
+	SandboxCreateMeterName:          "{sandbox}",
+	ApiOrchestratorCreatedSandboxes: "{sandbox}",
 }
 
 var observableCounterDesc = map[ObservableCounterType]string{

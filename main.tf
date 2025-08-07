@@ -239,6 +239,7 @@ module "nomad" {
   orchestrator_port           = var.orchestrator_port
   orchestrator_proxy_port     = var.orchestrator_proxy_port
   fc_env_pipeline_bucket_name = module.buckets.fc_env_pipeline_bucket_name
+  envd_timeout                = var.envd_timeout
 
   # Template manager
   template_manager_port          = var.template_manager_port

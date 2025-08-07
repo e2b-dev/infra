@@ -17,6 +17,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -29,7 +30,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-const proxyPort = 5007
+const (
+	baseImage = "e2bdev/base:latest"
+
+	proxyPort = 5007
+)
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -134,7 +139,12 @@ func buildTemplate(
 		return fmt.Errorf("error getting artifacts registry provider: %v", err)
 	}
 
-	templateCache, err := sbxtemplate.NewCache(ctx, persistenceTemplate)
+	blockMetrics, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
+	if err != nil {
+		return fmt.Errorf("error creating metrics: %v", err)
+	}
+
+	templateCache, err := sbxtemplate.NewCache(ctx, persistenceTemplate, blockMetrics)
 	if err != nil {
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}
@@ -156,7 +166,10 @@ func buildTemplate(
 		With(zap.Field{Type: zapcore.StringType, Key: "envID", String: templateID}).
 		With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: buildID})
 
+	force := true
 	template := config.TemplateConfig{
+		FromImage:  baseImage,
+		Force:      &force,
 		VCpuCount:  2,
 		MemoryMB:   1024,
 		StartCmd:   "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
