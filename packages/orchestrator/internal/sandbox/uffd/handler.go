@@ -24,15 +24,6 @@ const (
 	mappingsSize           = 1024
 )
 
-type UffdSetup struct {
-	Mappings []GuestRegionUffdMapping
-	Fd       uintptr
-}
-
-func (u *Uffd) TrackAndReturnNil() error {
-	return u.lis.Close()
-}
-
 type Uffd struct {
 	exitCh  chan error
 	readyCh chan struct{}
@@ -46,14 +37,6 @@ type Uffd struct {
 
 	memfile    *block.TrackedSliceDevice
 	socketPath string
-}
-
-func (u *Uffd) Disable() error {
-	return u.memfile.Disable()
-}
-
-func (u *Uffd) Dirty() *bitset.BitSet {
-	return u.memfile.Dirty()
 }
 
 func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uffd, error) {
@@ -164,7 +147,7 @@ func (u *Uffd) handle(sandboxId string) error {
 	uffd := fds[0]
 
 	defer func() {
-		closeErr := syscall.Close(int(uffd))
+		closeErr := syscall.Close(uffd)
 		if closeErr != nil {
 			zap.L().Error("failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
 		}
@@ -173,7 +156,7 @@ func (u *Uffd) handle(sandboxId string) error {
 	u.readyCh <- struct{}{}
 
 	err = Serve(
-		int(uffd),
+		uffd,
 		m,
 		u.memfile,
 		u.exitReader.Fd(),
@@ -197,4 +180,16 @@ func (u *Uffd) Ready() chan struct{} {
 
 func (u *Uffd) Exit() chan error {
 	return u.exitCh
+}
+
+func (u *Uffd) TrackAndReturnNil() error {
+	return u.lis.Close()
+}
+
+func (u *Uffd) Disable() error {
+	return u.memfile.Disable()
+}
+
+func (u *Uffd) Dirty() *bitset.BitSet {
+	return u.memfile.Dirty()
 }
