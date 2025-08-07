@@ -18,13 +18,6 @@ import (
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
-type GuestRegionUffdMapping struct {
-	BaseHostVirtAddr uintptr `json:"base_host_virt_addr"`
-	Size             uintptr `json:"size"`
-	Offset           uintptr `json:"offset"`
-	PageSize         uintptr `json:"page_size_kib"`
-}
-
 func Serve(
 	uffd int,
 	mappings mapping.Mappings,
