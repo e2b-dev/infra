@@ -35,8 +35,8 @@ func (c *Checks) GetMetrics(timeout time.Duration) (*Metrics, error) {
 		return nil, err
 	}
 
-	if c.sandbox.Metadata.Config.EnvdAccessToken != nil {
-		request.Header.Set("X-Access-Token", *c.sandbox.Metadata.Config.EnvdAccessToken)
+	if c.sandbox.Config.Envd.AccessToken != nil {
+		request.Header.Set("X-Access-Token", *c.sandbox.Config.Envd.AccessToken)
 	}
 
 	response, err := httpClient.Do(request)
