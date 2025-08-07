@@ -45,9 +45,17 @@ type Batcher[T any] struct {
 type BatcherFunc[T any] func(batch []T)
 
 type BatcherOptions struct {
+	// MaxBatchSize is the maximum number of items that will be collected into a single batch
+	// before being flushed by the BatcherFunc
 	MaxBatchSize int
-	MaxDelay     time.Duration
-	QueueSize    int
+
+	// MaxDelay is the maximum time to wait for a batch to fill up before flushing it,
+	// even if the batch size hasn't reached MaxBatchSize
+	MaxDelay time.Duration
+
+	// QueueSize is the size of the channel buffer used to queue incoming items
+	// If the queue is full, new items will be rejected
+	QueueSize int
 }
 
 // NewBatcher creates a new Batcher with the given parameters.

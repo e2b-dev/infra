@@ -289,10 +289,6 @@ func run(port, proxyPort uint) (success bool) {
 		}
 	}
 
-	if err != nil {
-		zap.L().Fatal("failed to create clickhouse batcher", zap.Error(err))
-	}
-
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, serviceInfo.SourceCommit, serviceInfo.ClientId, sandboxMetricExportPeriod, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))

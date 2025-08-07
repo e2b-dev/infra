@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 )
 
@@ -64,7 +64,6 @@ func NewSandboxEventInsertsBatcher(conn driver.Conn, opts BatcherOptions) (*Sand
 }
 
 func (b *SandboxEventInsertBatcher) processInsertSandboxEventsBatch(events []clickhouse.SandboxEvent) {
-	log.Println("~~~~~processing batch of sandbox events", len(events))
 	ctx := context.Background()
 	batch, err := b.conn.PrepareBatch(
 		ctx, InsertSandboxEventQuery, driver.WithReleaseConnection())
