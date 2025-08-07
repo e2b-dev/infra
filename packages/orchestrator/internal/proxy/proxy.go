@@ -51,18 +51,18 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint, sandboxes *s
 
 			return &pool.Destination{
 				Url:                                url,
-				SandboxId:                          sbx.Config.SandboxId,
+				SandboxId:                          sbx.Runtime.SandboxID,
 				SandboxPort:                        port,
 				DefaultToPortError:                 true,
 				IncludeSandboxIdInProxyErrorLogger: true,
 				// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
 				// We are not using sandbox id to prevent removing connections based on sandbox id (pause/resume race condition).
-				ConnectionKey: sbx.Config.ExecutionId,
+				ConnectionKey: sbx.Runtime.ExecutionID,
 				RequestLogger: zap.L().With(
 					zap.String("host", r.Host),
-					logger.WithSandboxID(sbx.Config.SandboxId),
+					logger.WithSandboxID(sbx.Runtime.SandboxID),
 					zap.String("sandbox_ip", sbx.Slot.HostIPString()),
-					logger.WithTeamID(sbx.Config.TeamId),
+					logger.WithTeamID(sbx.Runtime.TeamID),
 					zap.String("sandbox_req_port", url.Port()),
 					zap.String("sandbox_req_path", r.URL.Path),
 				),
