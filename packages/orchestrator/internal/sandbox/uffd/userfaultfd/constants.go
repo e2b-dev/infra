@@ -3,7 +3,7 @@ package userfaultfd
 // https://docs.kernel.org/admin-guide/mm/userfaultfd.html
 // https://man7.org/linux/man-pages/man2/userfaultfd.2.html
 // https://github.com/torvalds/linux/blob/master/fs/userfaultfd.c
-// https://github.com/loopholelabs/userfaultfd-go/tree/main/pkg/constants
+// https://github.com/loopholelabs/userfaultfd-go/blob/main/pkg/constants/cgo.go
 
 /*
 #include <sys/syscall.h>
