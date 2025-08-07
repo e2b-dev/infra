@@ -25,19 +25,6 @@ type GuestRegionUffdMapping struct {
 	PageSize         uintptr `json:"page_size_kib"`
 }
 
-func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUffdMapping, error) {
-	for _, m := range mappings {
-		if addr < m.BaseHostVirtAddr || m.BaseHostVirtAddr+m.Size <= addr {
-			// Outside the mapping
-			continue
-		}
-
-		return &m, nil
-	}
-
-	return nil, fmt.Errorf("address %d not found in any mapping", addr)
-}
-
 func Serve(
 	uffd int,
 	mappings mapping.Mappings,
