@@ -58,26 +58,43 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
 
-	sbx, cleanup, err := sandbox.ResumeSandbox(
+	sbx, err := sandbox.ResumeSandbox(
 		childCtx,
 		s.tracer,
 		s.networkPool,
 		template,
-		req.Sandbox,
+		sandbox.Config{
+			BaseTemplateID: req.Sandbox.BaseTemplateId,
+
+			Vcpu:            req.Sandbox.Vcpu,
+			RamMB:           req.Sandbox.RamMb,
+			TotalDiskSizeMB: req.Sandbox.TotalDiskSizeMb,
+			HugePages:       req.Sandbox.HugePages,
+
+			AllowInternetAccess: req.Sandbox.AllowInternetAccess,
+
+			Envd: sandbox.EnvdMetadata{
+				Version:     req.Sandbox.EnvdVersion,
+				AccessToken: req.Sandbox.EnvdAccessToken,
+				Vars:        req.Sandbox.EnvVars,
+			},
+		},
+		sandbox.RuntimeMetadata{
+			SandboxID:   req.Sandbox.SandboxId,
+			ExecutionID: req.Sandbox.ExecutionId,
+			TeamID:      req.Sandbox.TeamId,
+		},
 		childSpan.SpanContext().TraceID().String(),
 		req.StartTime.AsTime(),
 		req.EndTime.AsTime(),
 		s.devicePool,
 		metricsWriteFlag,
+		req.Sandbox,
 	)
 	if err != nil {
-		zap.L().Error("failed to create sandbox, cleaning up", zap.Error(err))
-		cleanupErr := cleanup.Run(ctx)
-
-		err := errors.Join(err, context.Cause(ctx), cleanupErr)
-		telemetry.ReportCriticalError(ctx, "failed to cleanup sandbox", err)
-
-		return nil, status.Errorf(codes.Internal, "failed to cleanup sandbox: %s", err)
+		err := errors.Join(err, context.Cause(ctx))
+		telemetry.ReportCriticalError(ctx, "failed to create sandbox", err)
+		return nil, status.Errorf(codes.Internal, "failed to create sandbox: %s", err)
 	}
 
 	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
@@ -90,7 +107,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 			sbxlogger.I(sbx).Error("failed to wait for sandbox, cleaning up", zap.Error(waitErr))
 		}
 
-		cleanupErr := cleanup.Run(ctx)
+		cleanupErr := sbx.Stop(ctx)
 		if cleanupErr != nil {
 			sbxlogger.I(sbx).Error("failed to cleanup sandbox, will remove from cache", zap.Error(cleanupErr))
 		}
@@ -107,11 +124,11 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 				return false
 			}
 
-			return sbx.Config.ExecutionId == v.Config.ExecutionId
+			return sbx.Runtime.ExecutionID == v.Runtime.ExecutionID
 		})
 
 		// Remove the proxies assigned to the sandbox from the pool to prevent them from being reused.
-		s.proxy.RemoveFromPool(sbx.Config.ExecutionId)
+		s.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
 
 		sbxlogger.E(sbx).Info("Sandbox killed")
 	}(context.WithoutCancel(ctx))
@@ -213,12 +230,12 @@ func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 			continue
 		}
 
-		if sbx.Config == nil {
+		if sbx.APIStoredConfig == nil {
 			continue
 		}
 
 		sandboxes = append(sandboxes, &orchestrator.RunningSandbox{
-			Config:    sbx.Config,
+			Config:    sbx.APIStoredConfig,
 			ClientId:  s.info.ClientId,
 			StartTime: timestamppb.New(sbx.StartedAt),
 			EndTime:   timestamppb.New(sbx.EndAt),
@@ -315,11 +332,12 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	s.pauseMu.Unlock()
 
+	fcVersions := sbx.FirecrackerVersions()
 	snapshotTemplateFiles, err := storage.TemplateFiles{
 		TemplateID:         in.TemplateId,
 		BuildID:            in.BuildId,
-		KernelVersion:      sbx.Config.KernelVersion,
-		FirecrackerVersion: sbx.Config.FirecrackerVersion,
+		KernelVersion:      fcVersions.KernelVersion,
+		FirecrackerVersion: fcVersions.FirecrackerVersion,
 	}.CacheFiles()
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error creating template files", err)

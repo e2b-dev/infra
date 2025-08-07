@@ -6,12 +6,12 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/loopholelabs/userfaultfd-go/pkg/constants"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -40,7 +40,7 @@ func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUf
 func Serve(
 	uffd int,
 	mappings []GuestRegionUffdMapping,
-	src *block.TrackedSliceDevice,
+	src block.Slicer,
 	fd uintptr,
 	stop func() error,
 	sandboxId string,
@@ -51,6 +51,8 @@ func Serve(
 	}
 
 	var eg errgroup.Group
+
+	missingPagesBeingHandled := map[int64]struct{}{}
 
 outerLoop:
 	for {
@@ -103,7 +105,7 @@ outerLoop:
 			continue
 		}
 
-		buf := make([]byte, unsafe.Sizeof(constants.UffdMsg{}))
+		buf := make([]byte, unsafe.Sizeof(userfaultfd.UffdMsg{}))
 
 		for {
 			n, err := syscall.Read(uffd, buf)
@@ -130,17 +132,17 @@ outerLoop:
 			return fmt.Errorf("failed to read: %w", err)
 		}
 
-		msg := *(*constants.UffdMsg)(unsafe.Pointer(&buf[0]))
-		if constants.GetMsgEvent(&msg) != constants.UFFD_EVENT_PAGEFAULT {
-			zap.L().Error("UFFD serve unexpected event type", logger.WithSandboxID(sandboxId), zap.Any("event_type", constants.GetMsgEvent(&msg)))
+		msg := *(*userfaultfd.UffdMsg)(unsafe.Pointer(&buf[0]))
+		if userfaultfd.GetMsgEvent(&msg) != userfaultfd.UFFD_EVENT_PAGEFAULT {
+			zap.L().Error("UFFD serve unexpected event type", logger.WithSandboxID(sandboxId), zap.Any("event_type", userfaultfd.GetMsgEvent(&msg)))
 
 			return ErrUnexpectedEventType
 		}
 
-		arg := constants.GetMsgArg(&msg)
-		pagefault := (*(*constants.UffdPagefault)(unsafe.Pointer(&arg[0])))
+		arg := userfaultfd.GetMsgArg(&msg)
+		pagefault := (*(*userfaultfd.UffdPagefault)(unsafe.Pointer(&arg[0])))
 
-		addr := constants.GetPagefaultAddress(&pagefault)
+		addr := userfaultfd.GetPagefaultAddress(&pagefault)
 
 		mapping, err := getMapping(uintptr(addr), mappings)
 		if err != nil {
@@ -151,6 +153,12 @@ outerLoop:
 
 		offset := int64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
 		pagesize := int64(mapping.PageSize)
+
+		if _, ok := missingPagesBeingHandled[offset]; ok {
+			continue
+		}
+
+		missingPagesBeingHandled[offset] = struct{}{}
 
 		eg.Go(func() error {
 			defer func() {
@@ -170,10 +178,10 @@ outerLoop:
 				return fmt.Errorf("failed to read from source: %w", err)
 			}
 
-			cpy := constants.NewUffdioCopy(
+			cpy := userfaultfd.NewUffdioCopy(
 				b,
-				addr&^constants.CULong(pagesize-1),
-				constants.CULong(pagesize),
+				addr&^userfaultfd.CULong(pagesize-1),
+				userfaultfd.CULong(pagesize),
 				0,
 				0,
 			)
@@ -181,7 +189,7 @@ outerLoop:
 			if _, _, errno := syscall.Syscall(
 				syscall.SYS_IOCTL,
 				uintptr(uffd),
-				constants.UFFDIO_COPY,
+				userfaultfd.UFFDIO_COPY,
 				uintptr(unsafe.Pointer(&cpy)),
 			); errno != 0 {
 				if errno == unix.EEXIST {

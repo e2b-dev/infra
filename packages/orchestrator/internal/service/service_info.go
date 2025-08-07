@@ -39,8 +39,8 @@ func (s *Server) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestrator
 
 	for _, item := range s.sandboxes.Items() {
 		metricVCpuUsed += item.Config.Vcpu
-		metricMemoryUsedMb += item.Config.RamMb
-		metricDiskMb += item.Config.TotalDiskSizeMb
+		metricMemoryUsedMb += item.Config.RamMB
+		metricDiskMb += item.Config.TotalDiskSizeMB
 	}
 
 	return &orchestratorinfo.ServiceInfoResponse{

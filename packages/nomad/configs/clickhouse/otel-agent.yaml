@@ -91,7 +91,7 @@ processors:
           # ──────  Memory ──────
           - ClickHouseAsyncMetrics_CGroupMemoryUsed
           - ClickHouseAsyncMetrics_CGroupMemoryTotal
-
+          - ClickHouseAsyncMetrics_MemoryResident
           # ──────  Network ──────
           - ClickHouseMetrics_NetworkSend
           - ClickHouseMetrics_NetworkReceive
