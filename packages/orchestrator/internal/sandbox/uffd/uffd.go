@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -132,10 +133,10 @@ func (u *Uffd) handle(sandboxId string) error {
 		return fmt.Errorf("expected 1 fd: found %d", len(fds))
 	}
 
-	uffd := fds[0]
+	uffd := userfaultfd.NewUserfaultfdFromFd(uintptr(fds[0]), false)
 
 	defer func() {
-		closeErr := syscall.Close(uffd)
+		closeErr := uffd.Close()
 		if closeErr != nil {
 			zap.L().Error("failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
 		}
@@ -143,8 +144,7 @@ func (u *Uffd) handle(sandboxId string) error {
 
 	u.readyCh <- struct{}{}
 
-	err = Serve(
-		uffd,
+	err = uffd.Serve(
 		m,
 		u.memfile,
 		u.fdExit,
