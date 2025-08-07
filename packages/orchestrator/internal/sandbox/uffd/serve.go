@@ -11,6 +11,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
 )
 
@@ -23,22 +24,9 @@ type GuestRegionUffdMapping struct {
 	PageSize         uintptr `json:"page_size_kib"`
 }
 
-func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUffdMapping, error) {
-	for _, m := range mappings {
-		if addr < m.BaseHostVirtAddr || m.BaseHostVirtAddr+m.Size <= addr {
-			// Outside the mapping
-			continue
-		}
-
-		return &m, nil
-	}
-
-	return nil, fmt.Errorf("address %d not found in any mapping", addr)
-}
-
 func Serve(
 	uffd int,
-	mappings []GuestRegionUffdMapping,
+	mappings mapping.Mappings,
 	src block.Slicer,
 	fd uintptr,
 	stop func() error,
@@ -143,15 +131,12 @@ outerLoop:
 
 		addr := userfaultfd.GetPagefaultAddress(&pagefault)
 
-		mapping, err := getMapping(uintptr(addr), mappings)
+		offset, pagesize, err := mappings.GetRange(uintptr(addr))
 		if err != nil {
 			logger.Error("UFFD serve get mapping error", zap.Error(err))
 
 			return fmt.Errorf("failed to map: %w", err)
 		}
-
-		offset := int64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
-		pagesize := int64(mapping.PageSize)
 
 		if _, ok := missingPagesBeingHandled[offset]; ok {
 			continue
