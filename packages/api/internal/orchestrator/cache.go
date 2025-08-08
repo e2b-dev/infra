@@ -15,7 +15,6 @@ import (
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
-	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -110,7 +109,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 
 			// cluster and local nodes needs to by synced differently,
 			// because each of them is taken from different source pool
-			if n.ClusterID == uuid.Nil {
+			if n.Info.ClusterID == uuid.Nil {
 				o.syncNode(syncNodesSpanCtx, n, nodes, instanceCache)
 			} else {
 				o.syncClusterNode(syncNodesSpanCtx, n, instanceCache)
@@ -119,7 +118,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 	}
 }
 
-func (o *Orchestrator) syncLocalDiscoveredNodes(ctx context.Context, nodes []*node.NodeInfo) {
+func (o *Orchestrator) syncLocalDiscoveredNodes(ctx context.Context, discovered []nomadServiceDiscovery) {
 	// Connect local nodes that are not in the list, yet
 	connectLocalSpanCtx, connectLocalSpan := o.tracer.Start(ctx, "keep-in-sync-connect-local-nodes")
 	defer connectLocalSpan.End()
@@ -127,17 +126,17 @@ func (o *Orchestrator) syncLocalDiscoveredNodes(ctx context.Context, nodes []*no
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	for _, n := range nodes {
+	for _, n := range discovered {
 		// If the node is not in the list, connect to it
-		if o.GetNode(n.ID) == nil {
+		if o.GetNodeByNomadShortID(n.NomadNodeShortID) == nil {
 			wg.Add(1)
-			go func(n *node.NodeInfo) {
+			go func() {
 				defer wg.Done()
 				err := o.connectToNode(connectLocalSpanCtx, n)
 				if err != nil {
 					zap.L().Error("Error connecting to node", zap.Error(err))
 				}
-			}(n)
+			}()
 		}
 	}
 }
@@ -153,10 +152,8 @@ func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
 	// We need to iterate over all clusters and their nodes
 	for _, cluster := range o.clusters.GetClusters() {
 		for _, n := range cluster.GetOrchestrators() {
-			poolNodeID := o.clusterNodeID(cluster.ID, n.NodeID)
-
 			// If the node is not in the list, connect to it
-			if o.GetNode(poolNodeID) == nil {
+			if o.GetNode(cluster.ID, n.NodeID) == nil {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
@@ -169,17 +166,17 @@ func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
 
 func (o *Orchestrator) syncClusterNode(ctx context.Context, node *Node, instanceCache *instance.InstanceCache) {
 	ctx, childSpan := o.tracer.Start(ctx, "sync-cluster-node")
-	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.Info.ID), telemetry.WithClusterID(node.ClusterID), telemetry.WithClusterNodeID(node.ClusterNodeID))
+	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.Info.NodeID), telemetry.WithClusterID(node.Info.ClusterID), telemetry.WithClusterNodeID(node.Info.NodeID))
 	defer childSpan.End()
 
 	nodeFound := false
 	for range syncMaxRetries {
-		cluster, clusterFound := o.clusters.GetClusterById(node.ClusterID)
+		cluster, clusterFound := o.clusters.GetClusterById(node.Info.ClusterID)
 		if !clusterFound {
 			continue
 		}
 
-		_, found := cluster.GetInstanceByNodeID(node.ClusterNodeID)
+		_, found := cluster.GetInstanceByNodeID(node.Info.NodeID)
 		if !found {
 			continue
 		}
@@ -191,7 +188,7 @@ func (o *Orchestrator) syncClusterNode(ctx context.Context, node *Node, instance
 	if !nodeFound {
 		// we are not closing grpc connection, because it is shared between all cluster nodes, and it's handled by the cluster
 		node.Close()
-		o.nodes.Remove(node.Info.ID)
+		o.nodes.Remove(o.scopedNodeID(node.Info.ClusterID, node.Info.NodeID))
 		return
 	}
 
@@ -199,23 +196,23 @@ func (o *Orchestrator) syncClusterNode(ctx context.Context, node *Node, instance
 	o.syncNodeState(ctx, node, instanceCache)
 }
 
-func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.NodeInfo, instanceCache *instance.InstanceCache) {
+func (o *Orchestrator) syncNode(ctx context.Context, node *Node, discovered []nomadServiceDiscovery, instanceCache *instance.InstanceCache) {
 	ctx, childSpan := o.tracer.Start(ctx, "sync-node")
-	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.Info.ID))
+	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.Info.NodeID))
 	defer childSpan.End()
 
 	found := false
-	for _, activeNode := range nodes {
-		if node.Info.ID == activeNode.ID {
+	for _, activeNode := range discovered {
+		if node.Info.NomadNodeShortID == activeNode.NomadNodeShortID {
 			found = true
 			break
 		}
 	}
 
 	if !found {
-		zap.L().Info("Node is not active anymore", logger.WithNodeID(node.Info.ID))
+		zap.L().Info("Node is not active anymore", logger.WithNodeID(node.Info.NodeID))
 		node.CloseWithClient()
-		o.nodes.Remove(node.Info.ID)
+		o.nodes.Remove(o.scopedNodeID(node.Info.ClusterID, node.Info.NodeID))
 		return
 	}
 
@@ -230,41 +227,47 @@ func (o *Orchestrator) syncNodeState(ctx context.Context, node *Node, instanceCa
 		client, ctx := node.GetClient(ctx)
 		nodeInfo, err := client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 		if err != nil {
-			zap.L().Error("Error getting node info", zap.Error(err), logger.WithNodeID(node.Info.ID))
+			zap.L().Error("Error getting node info", zap.Error(err), logger.WithNodeID(node.Info.NodeID))
 			continue
 		}
 
 		// update node status (if changed)
 		nodeStatus, ok := OrchestratorToApiNodeStateMapper[nodeInfo.ServiceStatus]
 		if !ok {
-			zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.ServiceStatus), logger.WithNodeID(node.Info.ID))
+			zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.ServiceStatus), logger.WithNodeID(node.Info.NodeID))
 			nodeStatus = api.NodeStatusUnhealthy
 		}
 
 		node.setStatus(nodeStatus)
-		node.setMetadata(nodeInfo.ServiceId, nodeInfo.ServiceCommit, nodeInfo.ServiceVersion)
+		node.setMetadata(
+			nodeMetadata{
+				serviceInstanceID: nodeInfo.ServiceId,
+				commit:            nodeInfo.ServiceCommit,
+				version:           nodeInfo.ServiceVersion,
+			},
+		)
 
 		activeInstances, instancesErr := o.getSandboxes(ctx, node.Info)
 		if instancesErr != nil {
-			zap.L().Error("Error getting instances", zap.Error(instancesErr), logger.WithNodeID(node.Info.ID))
+			zap.L().Error("Error getting instances", zap.Error(instancesErr), logger.WithNodeID(node.Info.NodeID))
 			continue
 		}
 
-		instanceCache.Sync(ctx, activeInstances, node.Info.ID)
+		instanceCache.Sync(ctx, activeInstances, node.Info.NodeID)
 
 		syncRetrySuccess = true
 		break
 	}
 
 	if !syncRetrySuccess {
-		zap.L().Error("Failed to sync node after max retries, temporarily marking as unhealthy", logger.WithNodeID(node.Info.ID))
+		zap.L().Error("Failed to sync node after max retries, temporarily marking as unhealthy", logger.WithNodeID(node.Info.NodeID))
 		node.setStatus(api.NodeStatusUnhealthy)
 		return
 	}
 
-	builds, buildsErr := o.listCachedBuilds(ctx, node.Info.ID)
+	builds, buildsErr := o.listCachedBuilds(ctx, node.Info.ClusterID, node.Info.NodeID)
 	if buildsErr != nil {
-		zap.L().Error("Error listing cached builds", zap.Error(buildsErr), logger.WithNodeID(node.Info.ID))
+		zap.L().Error("Error listing cached builds", zap.Error(buildsErr), logger.WithNodeID(node.Info.NodeID))
 		return
 	}
 
@@ -316,10 +319,10 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			duration,
 		)
 
-		node := o.GetNode(info.Node.ID)
+		node := o.GetNode(info.Node.ClusterID, info.Node.NodeID)
 		if node == nil {
-			zap.L().Error("failed to get node", logger.WithNodeID(info.Node.ID))
-			return fmt.Errorf("node '%s' not found", info.Node.ID)
+			zap.L().Error("failed to get node", logger.WithNodeID(info.Node.NodeID))
+			return fmt.Errorf("node '%s' not found", info.Node.NodeID)
 		}
 
 		node.CPUUsage.Add(-info.VCpu)
@@ -328,8 +331,8 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		o.dns.Remove(ctx, info.Instance.SandboxID, node.Info.IPAddress)
 
 		if node.client == nil {
-			zap.L().Error("client for node not found", logger.WithNodeID(info.Node.ID))
-			return fmt.Errorf("client for node '%s' not found", info.Node.ID)
+			zap.L().Error("client for node not found", logger.WithNodeID(info.Node.NodeID))
+			return fmt.Errorf("client for node '%s' not found", info.Node.NodeID)
 		}
 
 		if ct == ClosePause {
@@ -419,9 +422,9 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 			zap.Bool("auto_pause", info.AutoPause.Load()),
 		)
 
-		node := o.GetNode(info.Node.ID)
+		node := o.GetNode(info.Node.ClusterID, info.Node.NodeID)
 		if node == nil {
-			zap.L().Error("failed to get node", logger.WithNodeID(info.Node.ID))
+			zap.L().Error("failed to get node", logger.WithNodeID(info.Node.NodeID))
 		} else {
 			node.CPUUsage.Add(info.VCpu)
 			node.RamUsage.Add(info.RamMB)

@@ -1,10 +1,8 @@
 package handlers
 
 import (
-	"cmp"
 	"fmt"
 	"net/http"
-	"slices"
 
 	"github.com/gin-gonic/gin"
 
@@ -14,24 +12,18 @@ import (
 )
 
 func (a *APIStore) GetNodes(c *gin.Context) {
-	nodes := a.orchestrator.GetNodes()
-
-	slices.SortFunc(nodes, func(i, j *api.Node) int {
-		return cmp.Compare(i.NodeID, j.NodeID)
-	})
-
-	c.JSON(http.StatusOK, nodes)
+	result := a.orchestrator.AdminNodes()
+	c.JSON(http.StatusOK, result)
 }
 
 func (a *APIStore) GetNodesNodeID(c *gin.Context, nodeId api.NodeID) {
-	node := a.orchestrator.GetNodeDetail(nodeId)
-
-	if node == nil {
+	result := a.orchestrator.AdminNodeDetail(nodeId)
+	if result == nil {
 		c.Status(http.StatusNotFound)
 		return
 	}
 
-	c.JSON(http.StatusOK, node)
+	c.JSON(http.StatusOK, result)
 }
 
 func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
@@ -46,7 +38,7 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 		return
 	}
 
-	node := a.orchestrator.GetNode(nodeId)
+	node := a.orchestrator.GetNodeByNomadShortID(nodeId)
 	if node == nil {
 		c.Status(http.StatusNotFound)
 		return
