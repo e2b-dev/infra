@@ -8,7 +8,7 @@ import (
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
-func HashStep(previousHash string, step *templatemanager.TemplateStep) string {
+func (sb *StepsBuilder) Hash(previousHash string, step *templatemanager.TemplateStep) string {
 	return cache.HashKeys(
 		previousHash,
 		step.Type,

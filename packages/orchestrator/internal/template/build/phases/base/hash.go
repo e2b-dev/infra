@@ -8,7 +8,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 )
 
-func HashBase(index cache.Index, template config.TemplateConfig, provisionScriptFile string) string {
+func (bb *BaseBuilder) Hash(index cache.Index, template config.TemplateConfig, provisionScriptFile string) string {
 	var baseSource string
 	if template.FromTemplate != nil {
 		// When building from template, use the base template metadata

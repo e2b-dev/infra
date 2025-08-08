@@ -67,10 +67,13 @@ func (sb *StepsBuilder) Build(
 	baseTemplateID := lastStepResult.Metadata.Template.TemplateID
 
 	for i, step := range sb.Config.Steps {
+		hash := sb.Hash(sourceLayer.Hash, step)
+
 		currentLayer, err := sb.shouldBuildStep(
 			ctx,
 			sourceLayer,
-			step,
+			hash,
+			step.Force,
 		)
 		if err != nil {
 			return phases.LayerResult{}, fmt.Errorf("error checking if step %d should be built: %w", i+1, err)
@@ -112,15 +115,14 @@ func (sb *StepsBuilder) Build(
 func (sb *StepsBuilder) shouldBuildStep(
 	ctx context.Context,
 	sourceLayer phases.LayerResult,
-	step *templatemanager.TemplateStep,
+	hash string,
+	force *bool,
 ) (phases.LayerResult, error) {
-	hash := HashStep(sourceLayer.Hash, step)
-
-	force := step.Force != nil && *step.Force
-	if !force {
+	forceBuild := force != nil && *force
+	if !forceBuild {
 		m, err := sb.index.LayerMetaFromHash(ctx, hash)
 		if err != nil {
-			sb.logger.Info("layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash), zap.String("step", step.Type))
+			sb.logger.Info("layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
 		} else {
 			// Check if the layer is cached
 			found, err := sb.index.IsCached(ctx, m)

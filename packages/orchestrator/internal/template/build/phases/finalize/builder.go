@@ -52,11 +52,17 @@ func New(
 	}
 }
 
+func (ppb *PostProcessingBuilder) Hash(lastHash string) string {
+	return cache.HashKeys(lastHash, "config-run-cmd")
+}
+
 // runPostProcessing runs post-processing actions in the sandbox
 func (ppb *PostProcessingBuilder) Build(
 	ctx context.Context,
 	lastStepResult phases.LayerResult,
 ) (phases.LayerResult, error) {
+	hash := ppb.Hash(lastStepResult.Hash)
+
 	var startMetadata *metadata.StartMetadata
 	if ppb.Config.StartCmd != "" || ppb.Config.ReadyCmd != "" {
 		startMetadata = &metadata.StartMetadata{
@@ -75,8 +81,6 @@ func (ppb *PostProcessingBuilder) Build(
 		}
 		startMetadata = tm.Start
 	}
-
-	hash := cache.HashKeys(lastStepResult.Hash, "config-run-cmd")
 
 	// Configure sandbox for final layer
 	sbxConfig := sandbox.Config{
