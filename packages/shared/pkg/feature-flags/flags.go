@@ -37,6 +37,9 @@ var flagsBool = map[BoolFlag]bool{
 }
 
 var flagsInt = map[IntFlag]int{
-	GcloudConcurrentUploadLimit: 8,
-	GcloudMaxTasks:              16,
+	GcloudConcurrentUploadLimit:   8,
+	GcloudMaxTasks:                16,
+	ClickhouseBatcherMaxBatchSize: 64 * 1024, // 65536
+	ClickhouseBatcherMaxDelay:     100,       // 100ms in milliseconds
+	ClickhouseBatcherQueueSize:    8 * 1024,  // 8192
 }

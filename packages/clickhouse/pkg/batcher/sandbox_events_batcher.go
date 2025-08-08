@@ -94,20 +94,25 @@ func (b *SandboxEventInsertBatcher) processInsertSandboxEventsBatch(events []cli
 }
 
 func (b *SandboxEventInsertBatcher) Push(event clickhouse.SandboxEvent) error {
-	if b.Batcher.ch == nil {
-		return ErrBatcherNotStarted
+	success, err := b.Batcher.Push(event)
+	if err != nil {
+		return err
 	}
-	select {
-	case b.Batcher.ch <- event:
-		return nil
-	default:
+	if !success {
 		return errors.New("batcher queue is full")
 	}
+	return nil
 }
 
 func (b *SandboxEventInsertBatcher) Close(ctx context.Context) error {
-	if err := b.Batcher.Stop(); err != nil {
-		return fmt.Errorf("error stopping batcher: %w", err)
+	stopErr := b.Batcher.Stop()
+	closeErr := b.conn.Close()
+
+	if stopErr != nil {
+		return fmt.Errorf("error stopping batcher: %w", stopErr)
 	}
-	return b.conn.Close()
+	if closeErr != nil {
+		return fmt.Errorf("error closing connection: %w", closeErr)
+	}
+	return nil
 }
