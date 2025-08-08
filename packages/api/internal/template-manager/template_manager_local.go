@@ -53,8 +53,8 @@ func (tm *TemplateManager) localClientHealthSync(ctx context.Context) {
 }
 
 func (tm *TemplateManager) setLocalClientInfo(status orchestratorinfo.ServiceInfoStatus, nodeID string) {
-	tm.localClientMutex.RLock()
-	defer tm.localClientMutex.RUnlock()
+	tm.localClientMutex.Lock()
+	defer tm.localClientMutex.Unlock()
 
 	tm.localClientInfo = LocalTemplateManagerInfo{
 		status: status,
