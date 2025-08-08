@@ -33,11 +33,11 @@ func (m *NoopClient) ExistsSandboxId(ctx context.Context, sandboxID string) (boo
 	return false, nil
 }
 
-func (m *NoopClient) SelectSandboxEventsBySandboxId(ctx context.Context, sandboxID string, limit, offset int, orderDesc bool) ([]SandboxEvent, error) {
+func (m *NoopClient) SelectSandboxEventsBySandboxId(ctx context.Context, sandboxID string, offset, limit int, orderAsc bool) ([]SandboxEvent, error) {
 	return nil, nil
 }
 
-func (m *NoopClient) SelectSandboxEventsByTeamId(ctx context.Context, teamID uuid.UUID, limit, offset int, orderDesc bool) ([]SandboxEvent, error) {
+func (m *NoopClient) SelectSandboxEventsByTeamId(ctx context.Context, teamID uuid.UUID, offset, limit int, orderAsc bool) ([]SandboxEvent, error) {
 	return nil, nil
 }
 

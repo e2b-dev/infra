@@ -20,9 +20,8 @@ type Clickhouse interface {
 
 	// Events queries
 	ExistsSandboxId(ctx context.Context, sandboxID string) (bool, error)
-	SelectSandboxEventsBySandboxId(ctx context.Context, sandboxID string, offset, limit int, orderDesc bool) ([]SandboxEvent, error)
-	SelectSandboxEventsByTeamId(ctx context.Context, teamID uuid.UUID, offset, limit int, orderDesc bool) ([]SandboxEvent, error)
-	InsertSandboxEvent(ctx context.Context, event SandboxEvent) error
+	SelectSandboxEventsBySandboxId(ctx context.Context, sandboxID string, offset, limit int, orderAsc bool) ([]SandboxEvent, error)
+	SelectSandboxEventsByTeamId(ctx context.Context, teamID uuid.UUID, offset, limit int, orderAsc bool) ([]SandboxEvent, error)
 }
 
 type Client struct {

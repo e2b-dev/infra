@@ -119,7 +119,7 @@ OFFSET ?
 
 func (c *Client) SelectSandboxEventsByTeamId(ctx context.Context, teamID uuid.UUID, offset, limit int, orderAsc bool) ([]SandboxEvent, error) {
 	order := "DESC"
-	if !orderAsc {
+	if orderAsc {
 		order = "ASC"
 	}
 
