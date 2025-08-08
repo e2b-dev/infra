@@ -13,8 +13,9 @@ formatters:
 linters:
   default: none
   enable:
-    - asciicheck
     - asasalint
+    - asciicheck
+    - bidichk
     - staticcheck
     - govet
   settings:
