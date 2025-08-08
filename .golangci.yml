@@ -13,6 +13,7 @@ formatters:
 linters:
   default: none
   enable:
+    - asasalint
     - staticcheck
     - govet
   settings:
