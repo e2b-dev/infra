@@ -12,7 +12,7 @@ import (
 )
 
 func TestUffdMissing(t *testing.T) {
-	pagesize := int64(header.PageSize)
+	pagesize := uint64(header.PageSize)
 	data, size := prepareTestData(pagesize)
 
 	uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
@@ -28,7 +28,7 @@ func TestUffdMissing(t *testing.T) {
 
 	memoryArea, memoryStart := newMock4KPageMmap(size)
 
-	err = uffd.Register(memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING)
+	err = uffd.Register(memoryStart, size, UFFDIO_REGISTER_MODE_MISSING)
 	if err != nil {
 		t.Fatal("failed to register memory", err)
 	}
@@ -48,7 +48,7 @@ func TestUffdMissing(t *testing.T) {
 		}
 	}()
 
-	d, err := data.Slice(0, pagesize)
+	d, err := data.Slice(0, int64(pagesize))
 	if err != nil {
 		t.Fatal("cannot read content", err)
 	}
@@ -59,7 +59,7 @@ func TestUffdMissing(t *testing.T) {
 }
 
 func TestUffdWriteProtect(t *testing.T) {
-	pagesize := int64(header.PageSize)
+	pagesize := uint64(header.PageSize)
 	data, size := prepareTestData(pagesize)
 
 	uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
@@ -75,12 +75,12 @@ func TestUffdWriteProtect(t *testing.T) {
 
 	memoryArea, memoryStart := newMock4KPageMmap(size)
 
-	err = uffd.Register(memoryStart, uint64(size), UFFDIO_REGISTER_MODE_WP)
+	err = uffd.Register(memoryStart, size, UFFDIO_REGISTER_MODE_WP)
 	if err != nil {
 		t.Fatal("failed to register memory", err)
 	}
 
-	err = uffd.AddWriteProtection(memoryStart, uint64(size))
+	err = uffd.AddWriteProtection(memoryStart, size)
 	if err != nil {
 		t.Fatal("failed to write protect memory", err)
 	}
@@ -106,7 +106,7 @@ func TestUffdWriteProtect(t *testing.T) {
 }
 
 func TestUffdWriteProtectWithMissing(t *testing.T) {
-	pagesize := int64(header.PageSize)
+	pagesize := uint64(header.PageSize)
 
 	data, size := prepareTestData(pagesize)
 
@@ -123,12 +123,12 @@ func TestUffdWriteProtectWithMissing(t *testing.T) {
 
 	memoryArea, memoryStart := newMock4KPageMmap(size)
 
-	err = uffd.Register(memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
+	err = uffd.Register(memoryStart, size, UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
 	if err != nil {
 		t.Fatal("failed to register memory", err)
 	}
 
-	err = uffd.AddWriteProtection(memoryStart, uint64(size))
+	err = uffd.AddWriteProtection(memoryStart, size)
 	if err != nil {
 		t.Fatal("failed to write protect memory", err)
 	}
@@ -148,7 +148,7 @@ func TestUffdWriteProtectWithMissing(t *testing.T) {
 		}
 	}()
 
-	d, err := data.Slice(0, pagesize)
+	d, err := data.Slice(0, int64(pagesize))
 	if err != nil {
 		t.Fatal("cannot read content", err)
 	}
@@ -164,7 +164,7 @@ func TestUffdWriteProtectWithMissing(t *testing.T) {
 
 // We are trying to simulate registering the missing handler in the FC and then registering the missing+wp handler again in the orchestrator
 func TestUffdWriteProtectWithMissingDoubleRegistration(t *testing.T) {
-	pagesize := int64(header.PageSize)
+	pagesize := uint64(header.PageSize)
 	data, size := prepareTestData(pagesize)
 
 	uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
@@ -181,7 +181,7 @@ func TestUffdWriteProtectWithMissingDoubleRegistration(t *testing.T) {
 	memoryArea, memoryStart := newMock4KPageMmap(size)
 
 	// done in the FC
-	err = uffd.Register(memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING)
+	err = uffd.Register(memoryStart, size, UFFDIO_REGISTER_MODE_MISSING)
 	if err != nil {
 		t.Fatal("failed to register memory", err)
 	}
@@ -190,12 +190,12 @@ func TestUffdWriteProtectWithMissingDoubleRegistration(t *testing.T) {
 
 	// done little later in the orchestrator
 	// both flags needs to be present
-	err = uffd.Register(memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
+	err = uffd.Register(memoryStart, size, UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
 	if err != nil {
 		t.Fatal("failed to register memory", err)
 	}
 
-	err = uffd.AddWriteProtection(memoryStart, uint64(size))
+	err = uffd.AddWriteProtection(memoryStart, size)
 	if err != nil {
 		t.Fatal("failed to write protect memory", err)
 	}
@@ -215,7 +215,7 @@ func TestUffdWriteProtectWithMissingDoubleRegistration(t *testing.T) {
 		}
 	}()
 
-	d, err := data.Slice(0, pagesize)
+	d, err := data.Slice(0, int64(pagesize))
 	if err != nil {
 		t.Fatal("cannot read content", err)
 	}
