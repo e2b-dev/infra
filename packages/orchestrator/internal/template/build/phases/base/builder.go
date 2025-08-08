@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
@@ -58,6 +59,7 @@ type BaseBuilder struct {
 
 	layerExecutor *layer.LayerExecutor
 	index         cache.Index
+	metrics       *metrics.BuildMetrics
 }
 
 func New(
@@ -70,6 +72,7 @@ func New(
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	layerExecutor *layer.LayerExecutor,
 	index cache.Index,
+	metrics *metrics.BuildMetrics,
 ) *BaseBuilder {
 	return &BaseBuilder{
 		BuildContext: buildContext,
@@ -84,6 +87,7 @@ func New(
 
 		layerExecutor: layerExecutor,
 		index:         index,
+		metrics:       metrics,
 	}
 }
 
@@ -114,6 +118,8 @@ func (bb *BaseBuilder) Build(
 		baseSource = "FROM " + fromImage
 	}
 	bb.UserLogger.Info(phases.LayerInfo(cached, "base", baseSource, hash))
+
+	bb.metrics.RecordCacheResult(ctx, "base", cached)
 
 	if cached {
 		return phases.LayerResult{

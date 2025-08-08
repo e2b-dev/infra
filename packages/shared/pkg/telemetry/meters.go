@@ -9,6 +9,7 @@ type (
 	GaugeIntType                string
 	UpDownCounterType           string
 	ObservableUpDownCounterType string
+	HistogramType               string
 )
 
 const (
@@ -46,6 +47,19 @@ const (
 )
 
 const (
+	// Build timing histograms
+	BuildDurationHistogramName      HistogramType = "template.build.duration"
+	BuildPhaseDurationHistogramName HistogramType = "template.build.phase.duration"
+	BuildStepDurationHistogramName  HistogramType = "template.build.step.duration"
+)
+
+const (
+	// Build result counters
+	BuildResultCounterName      CounterType = "template.build.result"
+	BuildCacheResultCounterName CounterType = "template.build.cache.result"
+)
+
+const (
 	ApiOrchestratorCountMeterName GaugeIntType = "api.orchestrator.status"
 
 	SandboxRamUsedGaugeName   GaugeIntType = "e2b.sandbox.ram.used"
@@ -53,6 +67,9 @@ const (
 	SandboxCpuTotalGaugeName  GaugeIntType = "e2b.sandbox.cpu.total"
 	SandboxDiskUsedGaugeName  GaugeIntType = "e2b.sandbox.disk.used"
 	SandboxDiskTotalGaugeName GaugeIntType = "e2b.sandbox.disk.total"
+
+	// Build resource metrics
+	BuildRootfsSizeHistogramName HistogramType = "template.build.rootfs.size"
 )
 
 const (
@@ -62,11 +79,15 @@ const (
 var counterDesc = map[CounterType]string{
 	SandboxCreateMeterName:          "Number of currently waiting requests to create a new sandbox",
 	ApiOrchestratorCreatedSandboxes: "Number of successfully created sandboxes",
+	BuildResultCounterName:          "Number of template build results by success/failure status",
+	BuildCacheResultCounterName:     "Number of build cache results by hit/miss status",
 }
 
 var counterUnits = map[CounterType]string{
 	SandboxCreateMeterName:          "{sandbox}",
 	ApiOrchestratorCreatedSandboxes: "{sandbox}",
+	BuildResultCounterName:          "{build}",
+	BuildCacheResultCounterName:     "{layer}",
 }
 
 var observableCounterDesc = map[ObservableCounterType]string{
@@ -128,6 +149,8 @@ var gaugeIntDesc = map[GaugeIntType]string{
 	SandboxRamUsedGaugeName:       "Amount of RAM used by the sandbox.",
 	SandboxRamTotalGaugeName:      "Amount of RAM available to the sandbox.",
 	SandboxCpuTotalGaugeName:      "Amount of CPU available to the sandbox.",
+	SandboxDiskUsedGaugeName:      "Amount of disk space used by the sandbox.",
+	SandboxDiskTotalGaugeName:     "Amount of disk space available to the sandbox.",
 }
 
 var gaugeIntUnits = map[GaugeIntType]string{
@@ -135,6 +158,8 @@ var gaugeIntUnits = map[GaugeIntType]string{
 	SandboxRamUsedGaugeName:       "{By}",
 	SandboxRamTotalGaugeName:      "{By}",
 	SandboxCpuTotalGaugeName:      "{count}",
+	SandboxDiskUsedGaugeName:      "{By}",
+	SandboxDiskTotalGaugeName:     "{By}",
 }
 
 func GetCounter(meter metric.Meter, name CounterType) (metric.Int64Counter, error) {
@@ -188,6 +213,29 @@ func GetGaugeInt(meter metric.Meter, name GaugeIntType) (metric.Int64ObservableG
 	desc := gaugeIntDesc[name]
 	unit := gaugeIntUnits[name]
 	return meter.Int64ObservableGauge(string(name),
+		metric.WithDescription(desc),
+		metric.WithUnit(unit),
+	)
+}
+
+var histogramDesc = map[HistogramType]string{
+	BuildDurationHistogramName:      "Time taken to build a template",
+	BuildPhaseDurationHistogramName: "Time taken to build each phase of a template",
+	BuildStepDurationHistogramName:  "Time taken to build each step of a template",
+	BuildRootfsSizeHistogramName:    "Size of the built template rootfs in bytes",
+}
+
+var histogramUnits = map[HistogramType]string{
+	BuildDurationHistogramName:      "ms",
+	BuildPhaseDurationHistogramName: "ms",
+	BuildStepDurationHistogramName:  "ms",
+	BuildRootfsSizeHistogramName:    "{By}",
+}
+
+func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram, error) {
+	desc := histogramDesc[name]
+	unit := histogramUnits[name]
+	return meter.Int64Histogram(string(name),
 		metric.WithDescription(desc),
 		metric.WithUnit(unit),
 	)
