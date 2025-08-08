@@ -102,3 +102,12 @@ variable "labels" {
   description = "The labels to attach to resources created by this module"
   type        = map(string)
 }
+
+variable "additional_api_path_rules" {
+  description = "Additional path rules to add to the API path matcher."
+  type = list(object({
+    paths      = list(string)
+    service_id = string
+  }))
+  default = []
+}
