@@ -220,3 +220,24 @@ func logStream(postProcessor *writer.PostProcessor, lvl zapcore.Level, id string
 		}
 	}
 }
+
+// syncChangesToDisk synchronizes filesystem changes to the filesystem
+// This is useful to ensure that all changes made in the sandbox are written to disk
+// to be able to re-create the sandbox without resume.
+func SyncChangesToDisk(
+	ctx context.Context,
+	tracer trace.Tracer,
+	proxy *proxy.SandboxProxy,
+	sandboxID string,
+) error {
+	return RunCommand(
+		ctx,
+		tracer,
+		proxy,
+		sandboxID,
+		"sync",
+		CommandMetadata{
+			User: "root",
+		},
+	)
+}
