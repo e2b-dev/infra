@@ -152,7 +152,25 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
-	item.EndAt = req.EndTime.AsTime()
+	updated := false
+
+	// Update end time if provided
+	if req.EndTime != nil {
+		item.EndAt = req.EndTime.AsTime()
+		updated = true
+		telemetry.ReportEvent(ctx, "Updated sandbox timeout")
+	}
+
+	// Update metadata if provided
+	if req.Metadata != nil {
+		item.Config.Metadata = req.Metadata
+		updated = true
+		telemetry.ReportEvent(ctx, "Updated sandbox metadata")
+	}
+
+	if !updated {
+		telemetry.ReportEvent(ctx, "Sandbox update request received but no changes applied")
+	}
 
 	return &emptypb.Empty{}, nil
 }

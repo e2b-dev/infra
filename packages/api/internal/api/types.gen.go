@@ -422,6 +422,11 @@ type SandboxMetric struct {
 // SandboxState State of the sandbox
 type SandboxState string
 
+// SandboxUpdateRequest defines model for SandboxUpdateRequest.
+type SandboxUpdateRequest struct {
+	Metadata *SandboxMetadata `json:"metadata,omitempty"`
+}
+
 // SandboxesWithMetrics defines model for SandboxesWithMetrics.
 type SandboxesWithMetrics struct {
 	Sandboxes map[string]SandboxMetric `json:"sandboxes"`
@@ -745,6 +750,9 @@ type PostNodesNodeIDJSONRequestBody = NodeStatusChange
 
 // PostSandboxesJSONRequestBody defines body for PostSandboxes for application/json ContentType.
 type PostSandboxesJSONRequestBody = NewSandbox
+
+// PatchSandboxesSandboxIDJSONRequestBody defines body for PatchSandboxesSandboxID for application/json ContentType.
+type PatchSandboxesSandboxIDJSONRequestBody = SandboxUpdateRequest
 
 // PostSandboxesSandboxIDRefreshesJSONRequestBody defines body for PostSandboxesSandboxIDRefreshes for application/json ContentType.
 type PostSandboxesSandboxIDRefreshesJSONRequestBody PostSandboxesSandboxIDRefreshesJSONBody

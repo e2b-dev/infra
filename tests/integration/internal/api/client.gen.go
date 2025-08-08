@@ -144,6 +144,11 @@ type ClientInterface interface {
 	// GetSandboxesSandboxID request
 	GetSandboxesSandboxID(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PatchSandboxesSandboxIDWithBody request with any body
+	PatchSandboxesSandboxIDWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PatchSandboxesSandboxID(ctx context.Context, sandboxID SandboxID, body PatchSandboxesSandboxIDJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetSandboxesSandboxIDLogs request
 	GetSandboxesSandboxIDLogs(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -445,6 +450,30 @@ func (c *Client) DeleteSandboxesSandboxID(ctx context.Context, sandboxID Sandbox
 
 func (c *Client) GetSandboxesSandboxID(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetSandboxesSandboxIDRequest(c.Server, sandboxID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PatchSandboxesSandboxIDWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchSandboxesSandboxIDRequestWithBody(c.Server, sandboxID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PatchSandboxesSandboxID(ctx context.Context, sandboxID SandboxID, body PatchSandboxesSandboxIDJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchSandboxesSandboxIDRequest(c.Server, sandboxID, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1322,6 +1351,53 @@ func NewGetSandboxesSandboxIDRequest(server string, sandboxID SandboxID) (*http.
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewPatchSandboxesSandboxIDRequest calls the generic PatchSandboxesSandboxID builder with application/json body
+func NewPatchSandboxesSandboxIDRequest(server string, sandboxID SandboxID, body PatchSandboxesSandboxIDJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPatchSandboxesSandboxIDRequestWithBody(server, sandboxID, "application/json", bodyReader)
+}
+
+// NewPatchSandboxesSandboxIDRequestWithBody generates requests for PatchSandboxesSandboxID with any type of body
+func NewPatchSandboxesSandboxIDRequestWithBody(server string, sandboxID SandboxID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "sandboxID", runtime.ParamLocationPath, sandboxID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sandboxes/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -2339,6 +2415,11 @@ type ClientWithResponsesInterface interface {
 	// GetSandboxesSandboxIDWithResponse request
 	GetSandboxesSandboxIDWithResponse(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*GetSandboxesSandboxIDResponse, error)
 
+	// PatchSandboxesSandboxIDWithBodyWithResponse request with any body
+	PatchSandboxesSandboxIDWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchSandboxesSandboxIDResponse, error)
+
+	PatchSandboxesSandboxIDWithResponse(ctx context.Context, sandboxID SandboxID, body PatchSandboxesSandboxIDJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchSandboxesSandboxIDResponse, error)
+
 	// GetSandboxesSandboxIDLogsWithResponse request
 	GetSandboxesSandboxIDLogsWithResponse(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDLogsParams, reqEditors ...RequestEditorFn) (*GetSandboxesSandboxIDLogsResponse, error)
 
@@ -2767,6 +2848,31 @@ func (r GetSandboxesSandboxIDResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetSandboxesSandboxIDResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PatchSandboxesSandboxIDResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *N400
+	JSON401      *N401
+	JSON404      *N404
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r PatchSandboxesSandboxIDResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PatchSandboxesSandboxIDResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -3386,6 +3492,23 @@ func (c *ClientWithResponses) GetSandboxesSandboxIDWithResponse(ctx context.Cont
 		return nil, err
 	}
 	return ParseGetSandboxesSandboxIDResponse(rsp)
+}
+
+// PatchSandboxesSandboxIDWithBodyWithResponse request with arbitrary body returning *PatchSandboxesSandboxIDResponse
+func (c *ClientWithResponses) PatchSandboxesSandboxIDWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchSandboxesSandboxIDResponse, error) {
+	rsp, err := c.PatchSandboxesSandboxIDWithBody(ctx, sandboxID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchSandboxesSandboxIDResponse(rsp)
+}
+
+func (c *ClientWithResponses) PatchSandboxesSandboxIDWithResponse(ctx context.Context, sandboxID SandboxID, body PatchSandboxesSandboxIDJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchSandboxesSandboxIDResponse, error) {
+	rsp, err := c.PatchSandboxesSandboxID(ctx, sandboxID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchSandboxesSandboxIDResponse(rsp)
 }
 
 // GetSandboxesSandboxIDLogsWithResponse request returning *GetSandboxesSandboxIDLogsResponse
@@ -4208,6 +4331,53 @@ func ParseGetSandboxesSandboxIDResponse(rsp *http.Response) (*GetSandboxesSandbo
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePatchSandboxesSandboxIDResponse parses an HTTP response from a PatchSandboxesSandboxIDWithResponse call
+func ParsePatchSandboxesSandboxIDResponse(rsp *http.Response) (*PatchSandboxesSandboxIDResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PatchSandboxesSandboxIDResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest N401
