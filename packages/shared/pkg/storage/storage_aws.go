@@ -64,7 +64,7 @@ func (a *AWSBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, 
 		objects = append(objects, types.ObjectIdentifier{Key: obj.Key})
 	}
 
-	// AWS S3 delete operation requires at least one object to delete,
+	// AWS S3 delete operation requires at least one object to delete.
 	if len(objects) == 0 {
 		return nil
 	}
