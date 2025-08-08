@@ -65,7 +65,7 @@ func (c *InstanceCache) Sync(ctx context.Context, instances []*InstanceInfo, nod
 
 	// Delete instances that are not in Orchestrator anymore
 	for _, item := range c.cache.Items() {
-		if item.Node.ID != nodeID {
+		if item.Node.NodeID != nodeID {
 			continue
 		}
 		if time.Since(item.StartTime) <= syncSandboxRemoveGracePeriod {

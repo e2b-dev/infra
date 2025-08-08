@@ -1,9 +1,14 @@
 package node
 
-type NodeInfo struct {
-	// Corresponds to Nomad short ID that is different from NodeID provided by the orchestrator itself.
-	ID string
+import "github.com/google/uuid"
 
-	OrchestratorAddress string
-	IPAddress           string
+const UnknownNomadNodeShortID = "unknown"
+
+type NodeInfo struct {
+	// Deprecated: Used only for back compatibility with Nomad cluster deployments.
+	NomadNodeShortID string
+
+	ClusterID uuid.UUID
+	NodeID    string
+	IPAddress string
 }
