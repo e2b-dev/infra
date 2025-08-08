@@ -117,6 +117,7 @@ func (db *DB) NewSnapshotBuild(
 		SetFirecrackerVersion(snapshotConfig.FirecrackerVersion).
 		SetEnvdVersion(snapshotConfig.EnvdVersion).
 		SetStatus(envbuild.StatusSnapshotting).
+		SetClusterNodeID(originNodeID).
 		SetTotalDiskSizeMB(snapshotConfig.TotalDiskSizeMB).
 		Save(ctx)
 	if err != nil {

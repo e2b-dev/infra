@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -19,6 +20,7 @@ func (o *Orchestrator) UpdateSandbox(
 	ctx context.Context,
 	sandboxID string,
 	endTime time.Time,
+	clusterID uuid.UUID,
 	nodeID string,
 ) error {
 	childCtx, childSpan := o.tracer.Start(ctx, "update-sandbox",
@@ -28,7 +30,7 @@ func (o *Orchestrator) UpdateSandbox(
 	)
 	defer childSpan.End()
 
-	client, childCtx, err := o.GetClient(childCtx, nodeID)
+	client, childCtx, err := o.GetClient(childCtx, clusterID, nodeID)
 	if err != nil {
 		return fmt.Errorf("failed to get client '%s': %w", nodeID, err)
 	}

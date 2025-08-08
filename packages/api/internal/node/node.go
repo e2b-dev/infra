@@ -1,7 +1,14 @@
 package node
 
+import "github.com/google/uuid"
+
+const UnknownNomadNodeShortID = "unknown"
+
 type NodeInfo struct {
-	ID                  string
-	OrchestratorAddress string
-	IPAddress           string
+	// Deprecated: Used only for back compatibility with Nomad cluster deployments.
+	NomadNodeShortID string
+
+	ClusterID uuid.UUID
+	NodeID    string
+	IPAddress string
 }
