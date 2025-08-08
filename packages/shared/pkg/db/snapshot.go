@@ -35,8 +35,7 @@ func (db *DB) NewSnapshotBuild(
 	ctx context.Context,
 	snapshotConfig *SnapshotInfo,
 	teamID uuid.UUID,
-	originNodeID string, // Node ID corresponds to Nomad short ID
-	originClusterNodeID string, // Cluster Node ID corresponds Node ID provided by the orchestrator itself
+	originNodeID string,
 ) (*models.EnvBuild, error) {
 	tx, err := db.Client.BeginTx(ctx, nil)
 	if err != nil {
@@ -118,7 +117,7 @@ func (db *DB) NewSnapshotBuild(
 		SetFirecrackerVersion(snapshotConfig.FirecrackerVersion).
 		SetEnvdVersion(snapshotConfig.EnvdVersion).
 		SetStatus(envbuild.StatusSnapshotting).
-		SetClusterNodeID(originClusterNodeID).
+		SetClusterNodeID(originNodeID).
 		SetTotalDiskSizeMB(snapshotConfig.TotalDiskSizeMB).
 		Save(ctx)
 	if err != nil {
