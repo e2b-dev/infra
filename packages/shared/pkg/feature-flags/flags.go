@@ -21,6 +21,13 @@ const (
 	GcloudConcurrentUploadLimit IntFlag = "gcloud-concurrent-upload-limit"
 	// GcloudMaxTasks - maximum concurrent tasks for GCloud uploads
 	GcloudMaxTasks IntFlag = "gcloud-max-tasks"
+	// ClickhouseMaxBatchSize - maximum number of sandbox events to batch before flushing
+	ClickhouseBatcherMaxBatchSize IntFlag = "clickhouse-batcher-max-batch-size"
+	// ClickhouseMaxDelay - maximum time to wait for a batch to fill up before flushing it,
+	// even if the batch size hasn't reached ClickhouseMaxBatchSize
+	ClickhouseBatcherMaxDelay IntFlag = "clickhouse-batcher-max-delay"
+	// ClickhouseQueueSize - size of the channel buffer used to queue incoming sandbox events
+	ClickhouseBatcherQueueSize IntFlag = "clickhouse-batcher-queue-size"
 )
 
 var flagsBool = map[BoolFlag]bool{
