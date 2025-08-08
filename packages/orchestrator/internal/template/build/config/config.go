@@ -8,6 +8,9 @@ import (
 const InstanceBuildPrefix = "b"
 
 type TemplateConfig struct {
+	// TemplateID is the ID of the template to build.
+	TemplateID string
+
 	// CacheScope is the scope of layers and files caches.
 	CacheScope string
 

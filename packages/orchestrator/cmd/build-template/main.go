@@ -168,6 +168,7 @@ func buildTemplate(
 
 	force := true
 	template := config.TemplateConfig{
+		TemplateID: templateID,
 		FromImage:  baseImage,
 		Force:      &force,
 		VCpuCount:  2,
@@ -178,7 +179,6 @@ func buildTemplate(
 	}
 
 	metadata := storage.TemplateFiles{
-		TemplateID:         templateID,
 		BuildID:            buildID,
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: fcVersion,

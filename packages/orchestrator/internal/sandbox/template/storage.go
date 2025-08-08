@@ -82,10 +82,11 @@ func NewStorage(
 		}
 
 		h = header.NewHeader(&header.Metadata{
+			// The version is always 1 for the old style template without a header.
+			Version:     1,
 			BuildId:     id,
 			BaseBuildId: id,
 			Size:        uint64(size),
-			Version:     1,
 			BlockSize:   blockSize,
 			Generation:  1,
 		}, nil)
