@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
@@ -16,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/commands"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
@@ -34,6 +36,7 @@ type StepsBuilder struct {
 	layerExecutor   *layer.LayerExecutor
 	commandExecutor *commands.CommandExecutor
 	index           cache.Index
+	metrics         *metrics.BuildMetrics
 }
 
 func New(
@@ -44,6 +47,7 @@ func New(
 	layerExecutor *layer.LayerExecutor,
 	commandExecutor *commands.CommandExecutor,
 	index cache.Index,
+	metrics *metrics.BuildMetrics,
 ) *StepsBuilder {
 	return &StepsBuilder{
 		BuildContext: buildContext,
@@ -55,6 +59,7 @@ func New(
 		layerExecutor:   layerExecutor,
 		commandExecutor: commandExecutor,
 		index:           index,
+		metrics:         metrics,
 	}
 }
 
@@ -68,6 +73,7 @@ func (sb *StepsBuilder) Build(
 
 	for i, step := range sb.Config.Steps {
 		hash := sb.Hash(sourceLayer.Hash, step)
+		stepStartTime := time.Now()
 
 		currentLayer, err := sb.shouldBuildStep(
 			ctx,
@@ -89,8 +95,12 @@ func (sb *StepsBuilder) Build(
 		cmd := fmt.Sprintf("%s %s", strings.ToUpper(step.Type), strings.Join(step.Args, " "))
 		sb.UserLogger.Info(phases.LayerInfo(currentLayer.Cached, prefix, cmd, currentLayer.Hash))
 
+		sb.metrics.RecordCacheResult(ctx, "step", currentLayer.Cached)
+
 		if currentLayer.Cached {
 			sourceLayer = currentLayer
+
+			sb.metrics.RecordStepDuration(ctx, time.Since(stepStartTime), step.Type, true)
 			continue
 		}
 
@@ -105,6 +115,7 @@ func (sb *StepsBuilder) Build(
 		if err != nil {
 			return phases.LayerResult{}, fmt.Errorf("error building step %d: %w", i+1, err)
 		}
+		sb.metrics.RecordStepDuration(ctx, time.Since(stepStartTime), step.Type, false)
 
 		sourceLayer = res
 	}
