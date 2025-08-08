@@ -107,7 +107,16 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 	var nodeID *string
 	if snap.OriginNodeID != nil {
-		nodeID = snap.OriginNodeID
+		// TODO: Before, we used Nomad short ID as node reference in snapshots.
+		//  This is a temporary helper to migrate to the new system where we use node ID reported by orchestrator.
+		if len(*snap.OriginNodeID) == consts.NodeIDLength {
+			n := a.orchestrator.GetNodeByNomadShortID(*snap.OriginNodeID)
+			if n != nil {
+				nodeID = &n.Info.NodeID
+			}
+		} else {
+			nodeID = snap.OriginNodeID
+		}
 	} else {
 		// TODO: After migration period, we can remove this part, because all actively used snapshots will be stored in the database with the node ID.
 		// https://linear.app/e2b/issue/E2B-2662/remove-taking-client-from-sandbox-during-resume
@@ -127,7 +136,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 	if err == nil {
 		// If the pausing was in progress, prefer to restore on the node where the pausing happened.
-		nodeID = &pausedOnNode.ID
+		nodeID = &pausedOnNode.NodeID
 	}
 
 	alias := ""
