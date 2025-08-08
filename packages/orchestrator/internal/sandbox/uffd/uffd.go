@@ -51,11 +51,12 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 	}
 
 	return &Uffd{
-		exitCh:     make(chan error, 1),
-		readyCh:    make(chan struct{}, 1),
-		fdExit:     fdExit,
-		memfile:    trackedMemfile,
-		socketPath: socketPath,
+		exitCh:          make(chan error, 1),
+		readyCh:         make(chan struct{}, 1),
+		fdExit:          fdExit,
+		memfile:         trackedMemfile,
+		socketPath:      socketPath,
+		writeProtection: true,
 	}, nil
 }
 
@@ -144,25 +145,28 @@ func (u *Uffd) handle(sandboxId string) error {
 		}
 	}()
 
-	if u.writeProtection {
-		for _, region := range m {
-			// Register the WP. It is possible that the memory region was already registered (with missing pages in FC), but registering it again with bigger subset should merge these.
-			err := uffd.Register(
-				region.BaseHostVirtAddr,
-				uint64(region.Size),
-				userfaultfd.UFFDIO_REGISTER_MODE_WP|userfaultfd.UFFDIO_REGISTER_MODE_MISSING,
-			)
+	// if u.writeProtection {
+	// 	for _, region := range m {
+	// 		// Register the WP. It is possible that the memory region was already registered (with missing pages in FC), but registering it again with bigger subset should merge these.
+	// 		err := uffd.Register(
+	// 			region.Offset+region.BaseHostVirtAddr,
+	// 			uint64(region.Size),
+	// 			userfaultfd.UFFDIO_REGISTER_MODE_WP|userfaultfd.UFFDIO_REGISTER_MODE_MISSING,
+	// 		)
+	// 		if err != nil {
+	// 			return fmt.Errorf("failed to reregister memory region with write protection %d-%d", region.Offset, region.Offset+region.Size)
+	// 		}
 
-			// Add write protection to the regions provided by the UFFD
-			err = uffd.AddWriteProtection(
-				region.BaseHostVirtAddr,
-				uint64(region.Size),
-			)
-			if err != nil {
-				return fmt.Errorf("failed to add write protection to region %d-%d", region.Offset, region.Offset+region.Size)
-			}
-		}
-	}
+	// 		// Add write protection to the regions provided by the UFFD
+	// 		err = uffd.AddWriteProtection(
+	// 			region.Offset+region.BaseHostVirtAddr,
+	// 			uint64(region.Size),
+	// 		)
+	// 		if err != nil {
+	// 			return fmt.Errorf("failed to add write protection to region %d-%d", region.Offset, region.Offset+region.Size)
+	// 		}
+	// 	}
+	// }
 
 	u.readyCh <- struct{}{}
 
@@ -173,6 +177,7 @@ func (u *Uffd) handle(sandboxId string) error {
 		zap.L().With(logger.WithSandboxID(sandboxId)),
 	)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "serve error %v", err)
 		return fmt.Errorf("failed handling uffd: %w", err)
 	}
 

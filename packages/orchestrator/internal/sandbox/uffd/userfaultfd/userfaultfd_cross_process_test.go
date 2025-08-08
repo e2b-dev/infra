@@ -22,7 +22,7 @@ import (
 
 var (
 	// Data shared across the testing processes to check if the served and received data is the same
-	testCrossProcessPageSize                   = int64(header.HugepageSize)
+	testCrossProcessPageSize                   = uint64(header.HugepageSize)
 	testCrossProcessData, testCrossProcessSize = prepareTestData(testCrossProcessPageSize)
 )
 
@@ -30,7 +30,7 @@ var (
 func TestCrossProcessDoubleRegistration(t *testing.T) {
 	memoryArea, memoryStart := newMock2MPageMmap(testCrossProcessSize)
 
-	uffd, err := newUserfaultfd(syscall.O_CLOEXEC|syscall.O_NONBLOCK, true)
+	uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	if err != nil {
 		t.Fatal("failed to create userfaultfd", err)
 	}
@@ -41,7 +41,7 @@ func TestCrossProcessDoubleRegistration(t *testing.T) {
 		t.Fatal("failed to configure uffd api", err)
 	}
 
-	err = uffd.register(memoryStart, uint64(testCrossProcessSize), UFFDIO_REGISTER_MODE_MISSING)
+	err = uffd.Register(memoryStart, testCrossProcessSize, UFFDIO_REGISTER_MODE_MISSING)
 	if err != nil {
 		t.Fatal("failed to register memory", err)
 	}
@@ -73,7 +73,7 @@ func TestCrossProcessDoubleRegistration(t *testing.T) {
 
 	data := testCrossProcessData
 
-	servedContent, err := data.Slice(0, testCrossProcessPageSize)
+	servedContent, err := data.Slice(0, int64(testCrossProcessPageSize))
 	if err != nil {
 		t.Fatal("cannot read content", err)
 	}
@@ -99,11 +99,11 @@ func TestHelperProcess(t *testing.T) {
 	start := uintptr(startRaw)
 
 	uffdFile := os.NewFile(uintptr(3), "userfaultfd")
-	uffd := NewUserfaultfdFromFd(uffdFile.Fd(), true)
+	uffd := NewUserfaultfdFromFd(uffdFile.Fd())
 
 	// done in the FC
 	// Check: The reregistration works
-	err = uffd.register(start, uint64(testCrossProcessSize), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
+	err = uffd.Register(start, testCrossProcessSize, UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
 	if err != nil {
 		fmt.Print("exit registering uffd", err)
 		os.Exit(1)

@@ -10,8 +10,7 @@ import (
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
 type userfaultfd struct {
-	fd       uintptr
-	copyMode CULong
+	fd uintptr
 }
 
 // flags: syscall.O_CLOEXEC|syscall.O_NONBLOCK
@@ -54,11 +53,6 @@ func (u *userfaultfd) Register(addr uintptr, size uint64, mode CULong) error {
 		return fmt.Errorf("UFFDIO_REGISTER ioctl failed: %v (ret=%d)", errno, ret)
 	}
 
-	// If we register with write protection automatically use the copy for missing pages without disabling the WP on that page.
-	if mode&UFFDIO_REGISTER_MODE_WP != 0 {
-		u.copyMode = UFFDIO_COPY_MODE_WP
-	}
-
 	return nil
 }
 
@@ -83,8 +77,8 @@ func (u *userfaultfd) AddWriteProtection(addr uintptr, size uint64) error {
 
 // mode: UFFDIO_COPY_MODE_WP
 // When we use both missing and wp, we need to use UFFDIO_COPY_MODE_WP, otherwise copying would unprotect the page
-func (u *userfaultfd) copy(addr CULong, data []byte, pagesize int64) error {
-	cpy := NewUffdioCopy(data, addr&^CULong(pagesize-1), CULong(pagesize), u.copyMode, 0)
+func (u *userfaultfd) copy(addr uintptr, data []byte, pagesize uint64, mode CULong) error {
+	cpy := NewUffdioCopy(data, CULong(addr)&^CULong(pagesize-1), CULong(pagesize), mode, 0)
 
 	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.fd, UFFDIO_COPY, uintptr(unsafe.Pointer(&cpy))); errno != 0 {
 		return errno

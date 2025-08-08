@@ -104,14 +104,6 @@ func GetMsgArg(msg *UffdMsg) [24]byte {
 	return msg.arg
 }
 
-func GetPagefaultAddress(pagefault *UffdPagefault) CULong {
-	return pagefault.address
-}
-
-func IsWritePageFault(pagefault *UffdPagefault) bool {
-	return pagefault.flags&UFFD_PAGEFAULT_FLAG_WRITE != 0
-}
-
-func IsWriteProtectPageFault(pagefault *UffdPagefault) bool {
-	return pagefault.flags&UFFD_PAGEFAULT_FLAG_WP != 0
+func GetPagefaultAddress(pagefault *UffdPagefault) uintptr {
+	return uintptr(pagefault.address)
 }
