@@ -136,18 +136,35 @@ func TestSandboxProxyClosedPort(t *testing.T) {
 	assert.Equal(t, sbx.SandboxID, errorResp.SandboxID)
 	assert.Equal(t, port, errorResp.Port)
 
+	waitForOK := func() bool {
+		resp, err = utils.DoRequest( // nolint:bodyclose // linter is confused, it is closed
+			t, client, sbx, url, port,
+			&http.Header{"User-Agent": []string{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}},
+		)
+		if err != nil {
+			t.Logf("Error: %v", err)
+			return false
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			return true
+		}
+
+		x, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Logf("[Status code: %d] Error reading response body: %v", resp.StatusCode, err)
+		} else {
+			t.Logf("[Status code: %d] Response body: %s", resp.StatusCode, string(x))
+		}
+
+		return false
+	}
+
 	// Pretend to be a browser
 	for i := 0; i < 10; i++ {
-		resp, err = utils.DoRequest(t, client, sbx, url, port, &http.Header{"User-Agent": []string{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}})
-		if err == nil && resp.StatusCode == http.StatusBadGateway {
+		if waitForOK() {
 			break
-		} else if err != nil {
-			x, err := io.ReadAll(resp.Body)
-			if err != nil {
-				t.Logf("[Status code: %d] Error reading response body: %v", resp.StatusCode, err)
-			} else {
-				t.Logf("[Status code: %d] Response body: %s", resp.StatusCode, string(x))
-			}
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
