@@ -700,6 +700,7 @@ components:
     Node:
       required:
         - nodeID
+        - clusterID
         - status
         - sandboxCount
         - allocatedCPU
@@ -721,7 +722,6 @@ components:
           description: Identifier of the node
         clusterID:
           type: string
-          nullable: true
           description: Identifier of the cluster
         status:
           $ref: "#/components/schemas/NodeStatus"
@@ -753,6 +753,7 @@ components:
     NodeDetail:
       required:
         - nodeID
+        - clusterID
         - status
         - sandboxes
         - cachedBuilds
@@ -763,7 +764,6 @@ components:
       properties:
         clusterID:
           type: string
-          nullable: true
           description: Identifier of the cluster
         version:
           type: string
