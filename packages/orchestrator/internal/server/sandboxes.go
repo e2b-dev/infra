@@ -145,7 +145,6 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}
 	if sandboxLifeCycleEventsWriteFlag {
 		go func(label clickhouse.SandboxEventLabel) {
-
 			buildId := ""
 			if sbx.APIStoredConfig != nil {
 				buildId = sbx.APIStoredConfig.BuildId
