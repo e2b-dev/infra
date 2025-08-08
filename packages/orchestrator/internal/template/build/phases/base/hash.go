@@ -4,15 +4,14 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 )
 
-func (bb *BaseBuilder) Hash(index cache.Index, template config.TemplateConfig, provisionScriptFile string) string {
+func (bb *BaseBuilder) Hash() string {
 	var baseSource string
-	if template.FromTemplate != nil {
+	if bb.Config.FromTemplate != nil {
 		// When building from template, use the base template metadata
-		baseSource = fmt.Sprintf("template:%s", template.FromTemplate.GetBuildID())
+		baseSource = fmt.Sprintf("template:%s", bb.Config.FromTemplate.GetBuildID())
 	} else {
 		// Note: When "latest" tag is used, the cached version might become ambiguous (not always latest)
 		// To update it now, you need to force the rebuild of the template, which will update this layer for all templates
@@ -20,13 +19,13 @@ func (bb *BaseBuilder) Hash(index cache.Index, template config.TemplateConfig, p
 		// when global caches are implemented.
 
 		// When building from image, use the image name
-		baseSource = template.FromImage
+		baseSource = bb.Config.FromImage
 	}
 
 	return cache.HashKeys(
-		index.Version(),
+		bb.index.Version(),
 		provisionScriptFile,
-		strconv.FormatInt(template.DiskSizeMB, 10),
+		strconv.FormatInt(bb.Config.DiskSizeMB, 10),
 		baseSource,
 	)
 }

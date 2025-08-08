@@ -91,7 +91,7 @@ func (bb *BaseBuilder) Build(
 	ctx context.Context,
 	_ phases.LayerResult,
 ) (phases.LayerResult, error) {
-	hash := bb.Hash(bb.index, bb.Config, provisionScriptFile)
+	hash := bb.Hash()
 
 	cached, baseMetadata, err := bb.setup(ctx, hash)
 	if err != nil {

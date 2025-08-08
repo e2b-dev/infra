@@ -20,16 +20,6 @@ type LayerResult struct {
 	StartMetadata *metadata.StartMetadata
 }
 
-func (l LayerResult) Next(next LayerResult) LayerResult {
-	newHash := cache.HashKeys(l.Hash, next.Hash)
-
-	return LayerResult{
-		Metadata: next.Metadata,
-		Cached:   next.Cached,
-		Hash:     newHash,
-	}
-}
-
 func LayerInfo(
 	cached bool,
 	prefix string,
