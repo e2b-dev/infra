@@ -21,17 +21,17 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
 
-func waitForStatus(t *testing.T, client *http.Client, sbx *api.Sandbox, url *url.URL, port int, headers *http.Header, expectedStatus int) bool {
+func waitForStatus(t *testing.T, client *http.Client, sbx *api.Sandbox, url *url.URL, port int, headers *http.Header, expectedStatus int) (*http.Response, bool) {
 	req := utils.NewRequest(sbx, url, port, headers)
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Logf("Error: %v", err)
-		return false
+		return nil, false
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == expectedStatus {
-		return true
+		return resp, true // todo: this prevents the `resp.Body.Close` from functioning correctly.
 	}
 
 	x, err := io.ReadAll(resp.Body)
@@ -41,7 +41,7 @@ func waitForStatus(t *testing.T, client *http.Client, sbx *api.Sandbox, url *url
 		t.Logf("[Status code: %d] Response body: %s", resp.StatusCode, string(x))
 	}
 
-	return false
+	return nil, false
 }
 
 func TestSandboxProxyWorkingPort(t *testing.T) {
