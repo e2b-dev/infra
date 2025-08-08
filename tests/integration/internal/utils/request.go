@@ -41,7 +41,8 @@ func DoRequest(t *testing.T, client *http.Client, sbx *api.Sandbox, url *url.URL
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Logf("Error: %v", err)
+		return nil, err
 	}
 
-	return resp, err
+	return resp, nil
 }
