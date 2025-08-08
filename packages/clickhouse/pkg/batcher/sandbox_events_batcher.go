@@ -12,7 +12,8 @@ import (
 
 type SandboxEventInsertBatcher struct {
 	*Batcher[clickhouse.SandboxEvent]
-	conn driver.Conn
+	errorHandler func(error)
+	conn         driver.Conn
 }
 
 const InsertSandboxEventQuery = `
@@ -45,11 +46,7 @@ func NewSandboxEventInsertsBatcher(conn driver.Conn, opts BatcherOptions) (*Sand
 		conn: conn,
 	}
 
-	batcher, err := NewBatcher(b.processInsertSandboxEventsBatch, BatcherOptions{
-		MaxBatchSize: opts.MaxBatchSize,
-		MaxDelay:     opts.MaxDelay,
-		QueueSize:    opts.QueueSize,
-	})
+	batcher, err := NewBatcher(b.processInsertSandboxEventsBatch, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -63,12 +60,12 @@ func NewSandboxEventInsertsBatcher(conn driver.Conn, opts BatcherOptions) (*Sand
 	return b, nil
 }
 
-func (b *SandboxEventInsertBatcher) processInsertSandboxEventsBatch(events []clickhouse.SandboxEvent) {
+func (b *SandboxEventInsertBatcher) processInsertSandboxEventsBatch(events []clickhouse.SandboxEvent) error {
 	ctx := context.Background()
 	batch, err := b.conn.PrepareBatch(
 		ctx, InsertSandboxEventQuery, driver.WithReleaseConnection())
 	if err != nil {
-		return
+		return fmt.Errorf("error preparing batch: %w", err)
 	}
 
 	for _, event := range events {
@@ -84,16 +81,16 @@ func (b *SandboxEventInsertBatcher) processInsertSandboxEventsBatch(events []cli
 			event.EventData,
 		)
 		if err != nil {
-			// TODO: Handle error
-			return
+			return fmt.Errorf("error appending sandbox event to batch: %w", err)
 		}
 	}
 
 	err = batch.Send()
 	if err != nil {
-		// TODO: Handle error
-		return
+		return fmt.Errorf("error sending sandbox events batch: %w", err)
 	}
+
+	return nil
 }
 
 func (b *SandboxEventInsertBatcher) Push(event clickhouse.SandboxEvent) error {

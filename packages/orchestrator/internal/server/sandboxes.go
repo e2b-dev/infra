@@ -145,11 +145,17 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}
 	if sandboxLifeCycleEventsWriteFlag {
 		go func(label clickhouse.SandboxEventLabel) {
+
+			buildId := ""
+			if sbx.APIStoredConfig != nil {
+				buildId = sbx.APIStoredConfig.BuildId
+			}
+
 			err := s.sandboxEventBatcher.Push(clickhouse.SandboxEvent{
 				Timestamp:          time.Now().UTC(),
 				SandboxID:          sbx.Runtime.SandboxID,
 				SandboxTemplateID:  sbx.Config.BaseTemplateID,
-				SandboxBuildID:     sbx.APIStoredConfig.BuildId,
+				SandboxBuildID:     buildId,
 				SandboxTeamID:      sbx.Runtime.TeamID,
 				SandboxExecutionID: sbx.Runtime.ExecutionID,
 				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
@@ -196,11 +202,16 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	}
 	if sandboxLifeCycleEventsWriteFlag {
 		go func(eventData string) {
+			buildId := ""
+			if item.APIStoredConfig != nil {
+				buildId = item.APIStoredConfig.BuildId
+			}
+
 			err := s.sandboxEventBatcher.Push(clickhouse.SandboxEvent{
 				Timestamp:          time.Now().UTC(),
 				SandboxID:          item.Runtime.SandboxID,
 				SandboxTemplateID:  item.Config.BaseTemplateID,
-				SandboxBuildID:     item.APIStoredConfig.BuildId,
+				SandboxBuildID:     buildId,
 				SandboxTeamID:      item.Runtime.TeamID,
 				SandboxExecutionID: item.Runtime.ExecutionID,
 				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
@@ -292,11 +303,16 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	}
 	if sandboxLifeCycleEventsWriteFlag {
 		go func() {
+			buildId := ""
+			if sbx.APIStoredConfig != nil {
+				buildId = sbx.APIStoredConfig.BuildId
+			}
+
 			err := s.sandboxEventBatcher.Push(clickhouse.SandboxEvent{
 				Timestamp:          time.Now().UTC(),
 				SandboxID:          sbx.Runtime.SandboxID,
 				SandboxTemplateID:  sbx.Config.BaseTemplateID,
-				SandboxBuildID:     sbx.APIStoredConfig.BuildId,
+				SandboxBuildID:     buildId,
 				SandboxTeamID:      sbx.Runtime.TeamID,
 				SandboxExecutionID: sbx.Runtime.ExecutionID,
 				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
@@ -402,11 +418,16 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	if sandboxLifeCycleEventsWriteFlag {
 		go func() {
+			buildId := ""
+			if sbx.APIStoredConfig != nil {
+				buildId = sbx.APIStoredConfig.BuildId
+			}
+
 			err := s.sandboxEventBatcher.Push(clickhouse.SandboxEvent{
 				Timestamp:          time.Now().UTC(),
 				SandboxID:          sbx.Runtime.SandboxID,
 				SandboxTemplateID:  sbx.Config.BaseTemplateID,
-				SandboxBuildID:     sbx.APIStoredConfig.BuildId,
+				SandboxBuildID:     buildId,
 				SandboxTeamID:      sbx.Runtime.TeamID,
 				SandboxExecutionID: sbx.Runtime.ExecutionID,
 				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),

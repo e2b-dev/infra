@@ -33,6 +33,11 @@ type Batcher[T any] struct {
 	// Maximum unprocessed items' queue size.
 	QueueSize int
 
+	// ErrorHandler is called when BatcherFunc returns an error
+	// If not set, errors from BatcherFunc will be silently dropped
+	// This allows customizing error handling behavior - e.g. logging, metrics, etc.
+	ErrorHandler func(error)
+
 	// Synchronization primitives.
 	ch     chan T
 	doneCh chan struct{}
@@ -42,7 +47,7 @@ type Batcher[T any] struct {
 //
 // BatcherFunc must process the given batch before returning.
 // It must not hold references to the batch after returning.
-type BatcherFunc[T any] func(batch []T)
+type BatcherFunc[T any] func(batch []T) error
 
 type BatcherOptions struct {
 	// MaxBatchSize is the maximum number of items that will be collected into a single batch
@@ -56,6 +61,11 @@ type BatcherOptions struct {
 	// QueueSize is the size of the channel buffer used to queue incoming items
 	// If the queue is full, new items will be rejected
 	QueueSize int
+
+	// ErrorHandler is called when BatcherFunc returns an error
+	// If not set, errors from BatcherFunc will be silently dropped
+	// This allows customizing error handling behavior - e.g. logging, metrics, etc.
+	ErrorHandler func(error)
 }
 
 // NewBatcher creates a new Batcher with the given parameters.
@@ -65,20 +75,25 @@ func NewBatcher[T any](fn BatcherFunc[T], cfg BatcherOptions) (*Batcher[T], erro
 		MaxBatchSize: cfg.MaxBatchSize,
 		MaxDelay:     cfg.MaxDelay,
 		QueueSize:    cfg.QueueSize,
+		ErrorHandler: cfg.ErrorHandler,
 	}
 
 	if b.Func == nil {
 		return nil, ErrFuncNotSet
 	}
 
-	if b.QueueSize <= 0 {
-		b.QueueSize = defaultQueueSize
+	if b.ErrorHandler == nil {
+		b.ErrorHandler = func(err error) { return }
 	}
+
 	if b.MaxBatchSize <= 0 {
 		b.MaxBatchSize = defaultMaxBatchSize
 	}
 	if b.MaxDelay <= 0 {
 		b.MaxDelay = defaultMaxDelay
+	}
+	if b.QueueSize <= 0 {
+		b.QueueSize = defaultQueueSize
 	}
 
 	return b, nil
@@ -94,7 +109,7 @@ func (b *Batcher[T]) Start() error {
 	b.doneCh = make(chan struct{})
 
 	go func() {
-		processBatches(b.Func, b.ch, b.MaxBatchSize, b.MaxDelay)
+		processBatches(b.Func, b.ch, b.MaxBatchSize, b.MaxDelay, b.ErrorHandler)
 		close(b.doneCh)
 	}()
 
@@ -131,12 +146,12 @@ func (b *Batcher[T]) Push(batchedItem T) (bool, error) {
 // QueueLen returns the number of pending items, which weren't passed into
 // BatcherFunc yet.
 //
-// MabatchedItemimum number of pending items is Batcher.QueueSize.
+// Maximum number of pending items is Batcher.QueueSize.
 func (b *Batcher[T]) QueueLen() int {
 	return len(b.ch)
 }
 
-func processBatches[T any](f BatcherFunc[T], ch <-chan T, maxBatchedItemBatchSize int, maxBatchedItemDelay time.Duration) {
+func processBatches[T any](f BatcherFunc[T], ch <-chan T, maxBatchedItemBatchSize int, maxBatchedItemDelay time.Duration, errorHandler func(error)) {
 	var (
 		batch        []T
 		batchedItem  T
@@ -148,7 +163,7 @@ func processBatches[T any](f BatcherFunc[T], ch <-chan T, maxBatchedItemBatchSiz
 		select {
 		case batchedItem, ok = <-ch:
 			if !ok {
-				call(f, batch)
+				call(f, batch, errorHandler)
 				return
 			}
 			batch = append(batch, batchedItem)
@@ -157,7 +172,7 @@ func processBatches[T any](f BatcherFunc[T], ch <-chan T, maxBatchedItemBatchSiz
 				batchedItem, ok = <-ch
 				// Flush what's left in the buffer if the batcher is stopped
 				if !ok {
-					call(f, batch)
+					call(f, batch, errorHandler)
 					return
 				}
 				batch = append(batch, batchedItem)
@@ -167,7 +182,7 @@ func processBatches[T any](f BatcherFunc[T], ch <-chan T, maxBatchedItemBatchSiz
 					select {
 					case batchedItem, ok = <-ch:
 						if !ok {
-							call(f, batch)
+							call(f, batch, errorHandler)
 							return
 						}
 						batch = append(batch, batchedItem)
@@ -180,14 +195,17 @@ func processBatches[T any](f BatcherFunc[T], ch <-chan T, maxBatchedItemBatchSiz
 
 		if len(batch) >= maxBatchedItemBatchSize || time.Since(lastPushTime) > maxBatchedItemDelay {
 			lastPushTime = time.Now()
-			call(f, batch)
+			call(f, batch, errorHandler)
 			batch = batch[:0]
 		}
 	}
 }
 
-func call[T any](f BatcherFunc[T], batch []T) {
+func call[T any](f BatcherFunc[T], batch []T, errorHandler func(error)) {
 	if len(batch) > 0 {
-		f(batch)
+		err := f(batch)
+		if err != nil {
+			errorHandler(err)
+		}
 	}
 }

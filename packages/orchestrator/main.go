@@ -279,10 +279,28 @@ func run(port, proxyPort uint) (success bool) {
 			zap.L().Fatal("failed to create clickhouse driver", zap.Error(err))
 		}
 
+		maxBatchSize := 100
+		if val, err := featureFlags.IntFlag(featureflags.ClickhouseBatcherMaxBatchSize, "clickhouse-batcher"); err == nil {
+			maxBatchSize = int(val)
+		}
+
+		maxDelay := 1 * time.Second
+		if val, err := featureFlags.IntFlag(featureflags.ClickhouseBatcherMaxDelay, "clickhouse-batcher"); err == nil {
+			maxDelay = time.Duration(val)
+		}
+
+		queueSize := 1000
+		if val, err := featureFlags.IntFlag(featureflags.ClickhouseBatcherQueueSize, "clickhouse-batcher"); err == nil {
+			queueSize = val
+		}
+
 		clickhouseBatcher, err = batcher.NewSandboxEventInsertsBatcher(clickhouseConn, batcher.BatcherOptions{
-			MaxBatchSize: 100,
-			MaxDelay:     1 * time.Second,
-			QueueSize:    1000,
+			MaxBatchSize: maxBatchSize,
+			MaxDelay:     maxDelay,
+			QueueSize:    queueSize,
+			ErrorHandler: func(err error) {
+				zap.L().Error("error batching sandbox events", zap.Error(err))
+			},
 		})
 		if err != nil {
 			zap.L().Fatal("failed to create clickhouse batcher", zap.Error(err))
@@ -325,6 +343,7 @@ func run(port, proxyPort uint) (success bool) {
 		featureFlags,
 		sandboxObserver,
 		limiter,
+		clickhouseBatcher,
 	)
 
 	// Initialize the template manager only if the service is enabled
