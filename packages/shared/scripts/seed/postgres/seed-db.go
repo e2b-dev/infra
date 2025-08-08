@@ -13,8 +13,10 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
+	models "github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
+	userModel "github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 )
 
 func main() {
@@ -60,19 +62,19 @@ func main() {
 	teamAPIKey := config["teamApiKey"].(string)
 	teamUUID := uuid.MustParse(teamID)
 
-    // Open .e2b/config.json
-    // Create the user if not exists (by email); otherwise use the existing one.
-    user, err := database.Client.User.Query().Where(userModel.EmailEQ(email)).Only(ctx)
-    if err != nil {
-        if models.IsNotFound(err) {
-            user, err = database.Client.User.Create().SetEmail(email).Save(ctx)
-            if err != nil {
-                panic(err)
-            }
-        } else {
-            panic(err)
-        }
-    }
+	// Open .e2b/config.json
+	// Create the user if not exists (by email); otherwise use the existing one.
+	user, err := database.Client.User.Query().Where(userModel.EmailEQ(email)).Only(ctx)
+	if err != nil {
+		if models.IsNotFound(err) {
+			user, err = database.Client.User.Create().SetEmail(email).SetID(uuid.New()).Save(ctx)
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			panic(err)
+		}
+	}
 
 	// Delete team
 	_, err = database.Client.Team.Delete().Where(team.Email(email)).Exec(ctx)
