@@ -161,7 +161,7 @@ func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, i *edge.Clust
 func (o *Orchestrator) GetClient(ctx context.Context, clusterID uuid.UUID, nodeID string) (*grpclient.GRPCClient, context.Context, error) {
 	n := o.GetNode(clusterID, nodeID)
 	if n == nil {
-		return nil, nil, fmt.Errorf("node '%s' not found in clusted '%s'", nodeID, clusterID)
+		return nil, nil, fmt.Errorf("node '%s' not found in cluster '%s'", nodeID, clusterID)
 	}
 
 	client, ctx := n.GetClient(ctx)
