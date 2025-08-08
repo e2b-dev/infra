@@ -729,6 +729,32 @@ components:
         status:
           $ref: "#/components/schemas/NodeStatus"
 
+    DiskMetrics:
+      required:
+        - mountPoint
+        - device
+        - filesystemType
+        - usedMB
+        - totalMB
+      properties:
+        mountPoint:
+          type: string
+          description: Mount point of the disk
+        device:
+          type: string
+          description: Device name
+        filesystemType:
+          type: string
+          description: Filesystem type (e.g., ext4, xfs)
+        usedMB:
+          type: integer
+          format: int64
+          description: Used space in MB
+        totalMB:
+          type: integer
+          format: int64
+          description: Total space in MB
+
     Node:
       required:
         - nodeID
@@ -737,6 +763,11 @@ components:
         - sandboxCount
         - allocatedCPU
         - allocatedMemoryMiB
+        - hostCPUPercent
+        - hostMemoryUsedMiB
+        - hostCPUCount
+        - hostMemoryTotalMiB
+        - hostDisks
         - createSuccesses
         - createFails
         - sandboxStartingCount
@@ -769,6 +800,27 @@ components:
           type: integer
           format: int32
           description: Amount of allocated memory in MiB
+        hostCPUPercent:
+          type: integer
+          format: int32
+          description: Host CPU usage percentage
+        hostMemoryUsedMiB:
+          type: integer
+          format: int32
+          description: Host memory used in MiB
+        hostCPUCount:
+          type: integer
+          format: int32
+          description: Total number of CPU cores on the host
+        hostMemoryTotalMiB:
+          type: integer
+          format: int32
+          description: Total host memory in MiB
+        hostDisks:
+          type: array
+          description: Detailed metrics for each disk/mount point
+          items:
+            $ref: "#/components/schemas/DiskMetrics"
         createSuccesses:
           type: integer
           format: uint64
