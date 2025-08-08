@@ -46,9 +46,9 @@ func NewSynchronize[SourceItem any, PoolItem any](tracer trace.Tracer, spanPrefi
 	return s
 }
 
-func (s *Synchronize[SourceItem, PoolItem]) Start(syncInterval time.Duration, syncRoundTimeout time.Duration, runInitialSync bool) {
+func (s *Synchronize[SourceItem, PoolItem]) Start(ctx context.Context, syncInterval time.Duration, syncRoundTimeout time.Duration, runInitialSync bool) {
 	if runInitialSync {
-		initialSyncTimeout, initialSyncCancel := context.WithTimeout(context.Background(), syncRoundTimeout)
+		initialSyncTimeout, initialSyncCancel := context.WithTimeout(ctx, syncRoundTimeout)
 		err := s.sync(initialSyncTimeout)
 		initialSyncCancel()
 		if err != nil {

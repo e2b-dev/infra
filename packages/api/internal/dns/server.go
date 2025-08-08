@@ -225,16 +225,16 @@ func (d *DNS) Start(ctx context.Context, address string, port string) {
 
 	// have an extra go routine here that will trigger shutdown
 	// when the start context is canceled.
-	go func() {
+	go func(ctx context.Context) {
 		<-ctx.Done()
 
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 
 		// Close should be a noop if it's already been called,
 		// and it caches the error.
-		_ = d.Close(shutdownCtx)
-	}()
+		_ = d.Close(ctx)
+	}(context.WithoutCancel(ctx))
 }
 
 func (d *DNS) Close(ctx context.Context) error {

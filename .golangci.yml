@@ -15,6 +15,7 @@ linters:
   enable:
     - asciicheck
     - asasalint
+    - contextcheck
     - staticcheck
     - govet
   settings:

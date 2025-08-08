@@ -12,8 +12,8 @@ var syncingLock sync.RWMutex
 
 const syncTimeout = 2 * time.Second
 
-func updateClock() error {
-	ctx, cancel := context.WithTimeout(context.Background(), syncTimeout)
+func updateClock(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, syncTimeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "/bin/bash", "-l", "-c", "date -s @$(/usr/sbin/phc_ctl /dev/ptp0 get | cut -d' ' -f5)")
@@ -27,11 +27,11 @@ func updateClock() error {
 	return nil
 }
 
-func SyncClock() error {
+func SyncClock(ctx context.Context) error {
 	syncingLock.Lock()
 	defer syncingLock.Unlock()
 
-	err := updateClock()
+	err := updateClock(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to sync clock: %w", err)
 	}

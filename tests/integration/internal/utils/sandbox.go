@@ -75,7 +75,7 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 // TeardownSandbox kills the sandbox with the given ID
 func TeardownSandbox(t *testing.T, c *api.ClientWithResponses, sandboxID string) {
 	t.Helper()
-	killSandboxResponse, err := c.DeleteSandboxesSandboxIDWithResponse(context.Background(), sandboxID, setup.WithAPIKey())
+	killSandboxResponse, err := c.DeleteSandboxesSandboxIDWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, killSandboxResponse.StatusCode())

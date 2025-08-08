@@ -15,6 +15,7 @@ import (
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
+	ctx := r.Context()
 	operationID := logs.AssignOperationID()
 	logger := a.logger.With().Str(string(logs.OperationIDKey), operationID).Logger()
 
@@ -52,20 +53,20 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 
 	logger.Debug().Msg("Syncing host")
 
-	go func() {
-		err := host.SyncClock()
+	go func(ctx context.Context) {
+		err := host.SyncClock(ctx)
 		if err != nil {
 			logger.Error().Msgf("Failed to sync clock: %v", err)
 		} else {
 			logger.Trace().Msg("Clock synced")
 		}
-	}()
+	}(context.WithoutCancel(ctx))
 
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	go func(ctx context.Context) {
+		ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 		defer cancel()
 		host.PollForMMDSOpts(ctx, a.mmdsChan, a.envVars)
-	}()
+	}(context.WithoutCancel(ctx))
 
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "")

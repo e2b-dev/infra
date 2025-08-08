@@ -162,7 +162,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 
 	authCache := authcache.NewTeamAuthCache()
 	templateCache := templatecache.NewTemplateCache(sqlcDB)
-	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
+	templateSpawnCounter := utils.NewTemplateSpawnCounter(ctx, time.Minute, dbClient)
 
 	accessTokenGenerator, err := sandbox.NewEnvdAccessTokenGenerator()
 	if err != nil {
