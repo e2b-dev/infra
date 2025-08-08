@@ -102,20 +102,22 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 		}
 	}
 
-	o.nodes.Insert(
-		node.ID, &Node{
-			client:   client,
-			clientMd: make(metadata.MD),
+	newNode := &Node{
+		client:   client,
+		clientMd: make(metadata.MD),
 
-			Info: node,
+		Info: node,
 
-			meta:           getNodeMetadata(nodeInfo, node.ID),
-			buildCache:     buildCache,
-			status:         nodeStatus,
-			sbxsInProgress: smap.New[*sbxInProgress](),
-			createFails:    atomic.Uint64{},
-		},
-	)
+		buildCache:     buildCache,
+		status:         nodeStatus,
+		sbxsInProgress: smap.New[*sbxInProgress](),
+		createFails:    atomic.Uint64{},
+	}
+
+	// Update host metrics from service info
+	newNode.updateFromServiceInfo(nodeInfo)
+	newNode.setMetadata(nodeInfo, node.ID)
+	o.nodes.Insert(node.ID, newNode)
 
 	return nil
 }

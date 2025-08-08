@@ -46,6 +46,16 @@ type Node struct {
 	CPUUsage atomic.Int64
 	RamUsage atomic.Int64
 
+	// Host metrics
+	hostCPUPercent     atomic.Int64
+	hostMemoryUsedMiB  atomic.Int64
+	hostCPUCount       atomic.Int64
+	hostMemoryTotalMiB atomic.Int64
+
+	// Detailed disk metrics
+	hostDisks      []orchestratorinfo.DiskMetrics
+	hostDisksMutex sync.RWMutex
+
 	client   *grpclient.GRPCClient
 	clientMd metadata.MD
 
@@ -117,10 +127,57 @@ func (n *Node) setMetadata(i *orchestratorinfo.ServiceInfoResponse, nodeID strin
 	n.meta = getNodeMetadata(i, nodeID)
 }
 
+func (n *Node) updateFromServiceInfo(info *orchestratorinfo.ServiceInfoResponse) {
+	if info == nil {
+		return
+	}
+
+	// Update host usage metrics
+	n.hostCPUPercent.Store(info.MetricHostCpuPercent)
+	n.hostMemoryUsedMiB.Store(info.MetricHostMemoryUsedMb)
+
+	// Update host total metrics
+	n.hostCPUCount.Store(info.MetricHostCpuCount)
+	n.hostMemoryTotalMiB.Store(info.MetricHostMemoryTotalMb)
+
+	// Update detailed disk metrics
+	n.hostDisksMutex.Lock()
+	n.hostDisks = make([]orchestratorinfo.DiskMetrics, len(info.MetricHostDisks))
+	for i, disk := range info.MetricHostDisks {
+		n.hostDisks[i] = orchestratorinfo.DiskMetrics{
+			MountPoint:     disk.MountPoint,
+			Device:         disk.Device,
+			FilesystemType: disk.FilesystemType,
+			UsedMb:         disk.UsedMb,
+			TotalMb:        disk.TotalMb,
+			UsedPercent:    disk.UsedPercent,
+		}
+	}
+	n.hostDisksMutex.Unlock()
+}
+
 func (n *Node) metadata() nodeMetadata {
 	n.mutex.RLock()
 	defer n.mutex.RUnlock()
 	return n.meta
+}
+
+func (n *Node) getHostDisks() []api.DiskMetrics {
+	n.hostDisksMutex.RLock()
+	defer n.hostDisksMutex.RUnlock()
+
+	result := make([]api.DiskMetrics, len(n.hostDisks))
+	for i := range n.hostDisks {
+		result[i] = api.DiskMetrics{
+			MountPoint:     n.hostDisks[i].MountPoint,
+			Device:         n.hostDisks[i].Device,
+			FilesystemType: n.hostDisks[i].FilesystemType,
+			UsedMB:         n.hostDisks[i].UsedMb,
+			TotalMB:        n.hostDisks[i].TotalMb,
+			UsedPercent:    n.hostDisks[i].UsedPercent,
+		}
+	}
+	return result
 }
 
 func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
@@ -194,6 +251,11 @@ func (o *Orchestrator) GetNodes() []*api.Node {
 			SandboxStartingCount: n.sbxsInProgress.Count(),
 			Version:              metadata.version,
 			Commit:               metadata.commit,
+			HostCPUPercent:       int32(n.hostCPUPercent.Load()),
+			HostMemoryUsedMiB:    int32(n.hostMemoryUsedMiB.Load()),
+			HostCPUCount:         int32(n.hostCPUCount.Load()),
+			HostMemoryTotalMiB:   int32(n.hostMemoryTotalMiB.Load()),
+			HostDisks:            n.getHostDisks(),
 		}
 	}
 

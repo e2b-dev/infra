@@ -98,6 +98,27 @@ type CreatedTeamAPIKey struct {
 	Name string `json:"name"`
 }
 
+// DiskMetrics defines model for DiskMetrics.
+type DiskMetrics struct {
+	// Device Device name
+	Device string `json:"device"`
+
+	// FilesystemType Filesystem type (e.g., ext4, xfs)
+	FilesystemType string `json:"filesystemType"`
+
+	// MountPoint Mount point of the disk
+	MountPoint string `json:"mountPoint"`
+
+	// TotalMB Total space in MB
+	TotalMB int64 `json:"totalMB"`
+
+	// UsedMB Used space in MB
+	UsedMB int64 `json:"usedMB"`
+
+	// UsedPercent Used percentage (0-100)
+	UsedPercent float64 `json:"usedPercent"`
+}
+
 // DiskSizeMB Disk size for the sandbox in MiB
 type DiskSizeMB = int32
 
@@ -226,6 +247,27 @@ type Node struct {
 
 	// CreateSuccesses Number of sandbox create successes
 	CreateSuccesses uint64 `json:"createSuccesses"`
+
+	// HostCPUCount Total number of CPU cores on the host
+	HostCPUCount int32 `json:"hostCPUCount"`
+
+	// HostCPUPercent Host CPU usage percentage
+	HostCPUPercent int32 `json:"hostCPUPercent"`
+
+	// HostDiskTotalMiB Total host disk in MiB
+	HostDiskTotalMiB int32 `json:"hostDiskTotalMiB"`
+
+	// HostDiskUsedMiB Host disk used in MiB
+	HostDiskUsedMiB int32 `json:"hostDiskUsedMiB"`
+
+	// HostDisks Detailed metrics for each disk/mount point
+	HostDisks []DiskMetrics `json:"hostDisks"`
+
+	// HostMemoryTotalMiB Total host memory in MiB
+	HostMemoryTotalMiB int32 `json:"hostMemoryTotalMiB"`
+
+	// HostMemoryUsedMiB Host memory used in MiB
+	HostMemoryUsedMiB int32 `json:"hostMemoryUsedMiB"`
 
 	// NodeID Identifier of the node
 	NodeID string `json:"nodeID"`
