@@ -36,7 +36,7 @@ type SandboxEvent struct {
 	SandboxExecutionID string         `ch:"sandbox_execution_id"`
 	SandboxTemplateID  string         `ch:"sandbox_template_id"`
 	SandboxBuildID     string         `ch:"sandbox_build_id"`
-	SandboxTeamID      string         `ch:"sandbox_team_id"`
+	SandboxTeamID      uuid.UUID      `ch:"sandbox_team_id"`
 	EventCategory      string         `ch:"event_category"`
 	EventLabel         string         `ch:"event_label"`
 	EventData          sql.NullString `ch:"event_data"`

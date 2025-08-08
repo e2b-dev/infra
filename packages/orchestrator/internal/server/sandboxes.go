@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -150,12 +151,18 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 				buildId = sbx.APIStoredConfig.BuildId
 			}
 
-			err := s.sandboxEventBatcher.Push(clickhouse.SandboxEvent{
+			teamID, err := uuid.Parse(sbx.Runtime.TeamID)
+			if err != nil {
+				sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
+				return
+			}
+
+			err = s.sandboxEventBatcher.Push(clickhouse.SandboxEvent{
 				Timestamp:          time.Now().UTC(),
 				SandboxID:          sbx.Runtime.SandboxID,
 				SandboxTemplateID:  sbx.Config.BaseTemplateID,
 				SandboxBuildID:     buildId,
-				SandboxTeamID:      sbx.Runtime.TeamID,
+				SandboxTeamID:      teamID,
 				SandboxExecutionID: sbx.Runtime.ExecutionID,
 				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
 				EventLabel:         string(label),
@@ -206,12 +213,18 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 				buildId = item.APIStoredConfig.BuildId
 			}
 
-			err := s.sandboxEventBatcher.Push(clickhouse.SandboxEvent{
+			teamID, err := uuid.Parse(item.Runtime.TeamID)
+			if err != nil {
+				sbxlogger.I(item).Error("error parsing team ID", zap.String("team_id", item.Runtime.TeamID), zap.Error(err))
+				return
+			}
+
+			err = s.sandboxEventBatcher.Push(clickhouse.SandboxEvent{
 				Timestamp:          time.Now().UTC(),
 				SandboxID:          item.Runtime.SandboxID,
 				SandboxTemplateID:  item.Config.BaseTemplateID,
 				SandboxBuildID:     buildId,
-				SandboxTeamID:      item.Runtime.TeamID,
+				SandboxTeamID:      teamID,
 				SandboxExecutionID: item.Runtime.ExecutionID,
 				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
 				EventLabel:         string(clickhouse.SandboxEventLabelUpdate),
@@ -307,12 +320,18 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 				buildId = sbx.APIStoredConfig.BuildId
 			}
 
-			err := s.sandboxEventBatcher.Push(clickhouse.SandboxEvent{
+			teamID, err := uuid.Parse(sbx.Runtime.TeamID)
+			if err != nil {
+				sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
+				return
+			}
+
+			err = s.sandboxEventBatcher.Push(clickhouse.SandboxEvent{
 				Timestamp:          time.Now().UTC(),
 				SandboxID:          sbx.Runtime.SandboxID,
 				SandboxTemplateID:  sbx.Config.BaseTemplateID,
 				SandboxBuildID:     buildId,
-				SandboxTeamID:      sbx.Runtime.TeamID,
+				SandboxTeamID:      teamID,
 				SandboxExecutionID: sbx.Runtime.ExecutionID,
 				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
 				EventLabel:         string(clickhouse.SandboxEventLabelKill),
@@ -422,12 +441,18 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 				buildId = sbx.APIStoredConfig.BuildId
 			}
 
-			err := s.sandboxEventBatcher.Push(clickhouse.SandboxEvent{
+			teamID, err := uuid.Parse(sbx.Runtime.TeamID)
+			if err != nil {
+				sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
+				return
+			}
+
+			err = s.sandboxEventBatcher.Push(clickhouse.SandboxEvent{
 				Timestamp:          time.Now().UTC(),
 				SandboxID:          sbx.Runtime.SandboxID,
 				SandboxTemplateID:  sbx.Config.BaseTemplateID,
 				SandboxBuildID:     buildId,
-				SandboxTeamID:      sbx.Runtime.TeamID,
+				SandboxTeamID:      teamID,
 				SandboxExecutionID: sbx.Runtime.ExecutionID,
 				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
 				EventLabel:         string(clickhouse.SandboxEventLabelPause),

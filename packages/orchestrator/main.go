@@ -286,7 +286,7 @@ func run(port, proxyPort uint) (success bool) {
 
 		maxDelay := 1 * time.Second
 		if val, err := featureFlags.IntFlag(featureflags.ClickhouseBatcherMaxDelay, "clickhouse-batcher"); err == nil {
-			maxDelay = time.Duration(val)
+			maxDelay = time.Duration(val) * time.Millisecond
 		}
 
 		queueSize := 1000
