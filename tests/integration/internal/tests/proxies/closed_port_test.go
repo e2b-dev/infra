@@ -59,20 +59,31 @@ func TestSandboxProxyWorkingPort(t *testing.T) {
 	url, err := url.Parse(setup.EnvdProxy)
 	require.NoError(t, err)
 
+	waitForOK := func() bool {
+		resp, err := utils.DoRequest(t, client, sbx, url, port, nil)
+		if err != nil {
+			t.Logf("Error: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			return true
+		}
+
+		x, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Logf("[Status code: %d] Error reading response body: %v", resp.StatusCode, err)
+		} else {
+			t.Logf("[Status code: %d] Response body: %s", resp.StatusCode, string(x))
+		}
+
+		return false
+	}
+
 	var resp *http.Response
 	for i := 0; i < 10; i++ {
-		resp, err = utils.DoRequest(t, client, sbx, url, port, nil)
-		if err == nil && resp.StatusCode == http.StatusOK {
+		if waitForOK() {
 			break
-		} else if err != nil {
-			t.Logf("Error: %v", err)
-		} else {
-			x, err := io.ReadAll(resp.Body)
-			if err != nil {
-				t.Logf("[Status code: %d] Error reading response body: %v", resp.StatusCode, err)
-			} else {
-				t.Logf("[Status code: %d] Response body: %s", resp.StatusCode, string(x))
-			}
 		}
 
 		time.Sleep(500 * time.Millisecond)
@@ -100,7 +111,11 @@ func TestSandboxProxyClosedPort(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		resp, err = utils.DoRequest(t, client, sbx, url, port, nil)
 		if err == nil && resp.StatusCode == http.StatusBadGateway {
+			resp.Body.Close()
 			break
+		}
+		if resp != nil {
+			resp.Body.Close()
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
