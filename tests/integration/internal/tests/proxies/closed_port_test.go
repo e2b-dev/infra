@@ -21,15 +21,16 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
 
-func waitForOK(t *testing.T, client *http.Client, sbx *api.Sandbox, url *url.URL, port int, headers *http.Header) bool {
-	resp, err := utils.DoRequest(t, client, sbx, url, port, headers)
+func waitForStatus(t *testing.T, client *http.Client, sbx *api.Sandbox, url *url.URL, port int, headers *http.Header, expectedStatus int) bool {
+	req := utils.NewRequest(sbx, url, port, headers)
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Logf("Error: %v", err)
 		return false
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusOK {
+	if resp.StatusCode == expectedStatus {
 		return true
 	}
 
@@ -84,7 +85,7 @@ func TestSandboxProxyWorkingPort(t *testing.T) {
 
 	var resp *http.Response
 	for i := 0; i < 10; i++ {
-		if waitForOK(t, client, sbx, url, port, nil) {
+		if waitForStatus(t, client, sbx, url, port, nil, http.StatusOK) {
 			break
 		}
 
@@ -111,14 +112,10 @@ func TestSandboxProxyClosedPort(t *testing.T) {
 
 	var resp *http.Response
 	for i := 0; i < 10; i++ {
-		resp, err = utils.DoRequest(t, client, sbx, url, port, nil)
-		if err == nil && resp.StatusCode == http.StatusBadGateway {
-			resp.Body.Close()
+		if waitForStatus(t, client, sbx, url, port, nil, http.StatusBadGateway) {
 			break
 		}
-		if resp != nil {
-			resp.Body.Close()
-		}
+
 		time.Sleep(500 * time.Millisecond)
 	}
 	require.NoError(t, err)
@@ -139,8 +136,9 @@ func TestSandboxProxyClosedPort(t *testing.T) {
 	assert.Equal(t, port, errorResp.Port)
 
 	// Pretend to be a browser
+	headers := &http.Header{"User-Agent": []string{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}}
 	for i := 0; i < 10; i++ {
-		if waitForOK(t, client, sbx, url, port, &http.Header{"User-Agent": []string{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}}) {
+		if waitForStatus(t, client, sbx, url, port, headers, http.StatusBadGateway) {
 			break
 		}
 		time.Sleep(500 * time.Millisecond)
