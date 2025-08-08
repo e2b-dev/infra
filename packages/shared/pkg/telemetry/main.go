@@ -75,6 +75,7 @@ func New(ctx context.Context, serviceName, commitSHA, clientID string) (*Client,
 	if err != nil {
 		return nil, fmt.Errorf("failed to create tracer provider: %w", err)
 	}
+	otel.SetTracerProvider(tracerProvider)
 
 	// There's probably not a reason why not to set the trace propagator globally, it's used in SDKs
 	propagator := NewTextPropagator()

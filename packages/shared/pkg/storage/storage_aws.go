@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -150,7 +151,7 @@ func (a *AWSBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 	return err
 }
 
-func (a *AWSBucketStorageObjectProvider) ReadFrom(src io.Reader) (int64, error) {
+func (a *AWSBucketStorageObjectProvider) ReadFrom(data []byte) (int64, error) {
 	ctx, cancel := context.WithTimeout(a.ctx, awsWriteTimeout)
 	defer cancel()
 
@@ -159,7 +160,7 @@ func (a *AWSBucketStorageObjectProvider) ReadFrom(src io.Reader) (int64, error) 
 		&s3.PutObjectInput{
 			Bucket: &a.bucketName,
 			Key:    &a.path,
-			Body:   src,
+			Body:   bytes.NewReader(data),
 		},
 	)
 	if err != nil {

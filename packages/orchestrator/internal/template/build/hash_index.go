@@ -63,8 +63,7 @@ func saveLayerMeta(ctx context.Context, s storage.StorageProvider, cacheScope st
 		return fmt.Errorf("error marshalling layer metadata: %w", err)
 	}
 
-	buf := bytes.NewBuffer(marshaled)
-	_, err = obj.ReadFrom(buf)
+	_, err = obj.ReadFrom(marshaled)
 	if err != nil {
 		return fmt.Errorf("error writing layer metadata to object: %w", err)
 	}

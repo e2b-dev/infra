@@ -300,3 +300,7 @@ variable "clickhouse_node_pool" {
   description = "The name of the Nomad pool."
   type        = string
 }
+
+variable "slab_cache_path" {
+  type = string
+}

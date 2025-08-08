@@ -181,16 +181,16 @@ func (g *GCPBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, 
 	return n, nil
 }
 
-func (g *GCPBucketStorageObjectProvider) ReadFrom(src io.Reader) (int64, error) {
+func (g *GCPBucketStorageObjectProvider) ReadFrom(data []byte) (int64, error) {
 	w := g.handle.NewWriter(g.ctx)
 	defer w.Close()
 
-	n, err := io.Copy(w, src)
+	n, err := w.Write(data)
 	if err != nil && !errors.Is(err, io.EOF) {
-		return n, fmt.Errorf("failed to copy buffer to persistence: %w", err)
+		return int64(n), fmt.Errorf("failed to copy buffer to persistence: %w", err)
 	}
 
-	return n, nil
+	return int64(n), nil
 }
 
 func (g *GCPBucketStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {

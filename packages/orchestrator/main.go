@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
@@ -250,7 +251,7 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create limiter", zap.Error(err))
 	}
 
-	persistence, err := storage.GetTemplateStorageProvider(ctx, limiter)
+	persistence, err := storage.GetTemplateStorageProvider(ctx, block.ChunkSize, limiter)
 	if err != nil {
 		zap.L().Fatal("failed to create template storage provider", zap.Error(err))
 	}

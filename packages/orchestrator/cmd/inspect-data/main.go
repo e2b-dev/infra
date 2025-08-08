@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -42,7 +43,7 @@ func main() {
 
 	ctx := context.Background()
 
-	storage, err := storage.GetTemplateStorageProvider(ctx, nil)
+	storage, err := storage.GetTemplateStorageProvider(ctx, block.ChunkSize, nil)
 	if err != nil {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}

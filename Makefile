@@ -245,3 +245,10 @@ connect-orchestrator:
 fmt:
 	@./scripts/golangci-lint-install.sh "2.1.6"
 	golangci-lint fmt
+
+	terraform fmt -recursive
+
+.PHONY: lint
+lint:
+	@./scripts/golangci-lint-install.sh "2.1.6"
+	go work edit -json | jq -r '.Use[].DiskPath'  | xargs -I{} golangci-lint run {}/...

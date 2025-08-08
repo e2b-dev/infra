@@ -7,6 +7,8 @@ import (
 	"io"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -37,14 +39,28 @@ type StorageObjectProvider interface {
 	WriteTo(dst io.Writer) (int64, error)
 	WriteFromFileSystem(path string) error
 
-	ReadFrom(src io.Reader) (int64, error)
+	ReadFrom(data []byte) (int64, error)
 	ReadAt(buff []byte, off int64) (n int, err error)
 
 	Size() (int64, error)
 	Delete() error
 }
 
-func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (StorageProvider, error) {
+func GetTemplateStorageProvider(ctx context.Context, chunkSize int64, limiter *limit.Limiter) (StorageProvider, error) {
+	provider, err := getTemplateStorageProvider(ctx, limiter)
+	if err != nil {
+		return nil, err
+	}
+
+	if path := env.GetEnv("LOCAL_TEMPLATE_CACHE_PATH", ""); path != "" {
+		zap.L().Info("using local template cache", zap.String("path", path))
+		provider = NewCachedProvider(ctx, path, chunkSize, provider)
+	}
+
+	return provider, nil
+}
+
+func getTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (StorageProvider, error) {
 	provider := Provider(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
 
 	if provider == LocalStorageProvider {
