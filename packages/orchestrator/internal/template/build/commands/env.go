@@ -59,7 +59,7 @@ func saveEnvMeta(
 		},
 	)
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to execute the environment variable %s: %w", envName, err)
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("executing the environment variable %s: %w", envName, err)
 	}
 
 	envVars := maps.Clone(cmdMetadata.EnvVars)

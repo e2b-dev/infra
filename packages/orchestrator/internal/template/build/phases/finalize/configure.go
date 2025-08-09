@@ -48,7 +48,7 @@ func runConfiguration(
 		BuildID:    metadata.BuildID,
 	})
 	if err != nil {
-		return fmt.Errorf("error executing provision script: %w", err)
+		return fmt.Errorf("executing provision script: %w", err)
 	}
 
 	err = sandboxtools.RunCommandWithLogger(
@@ -65,7 +65,7 @@ func runConfiguration(
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("error running configuration script: %w", err)
+		return fmt.Errorf("running configuration script: %w", err)
 	}
 
 	return nil

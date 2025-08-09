@@ -118,13 +118,13 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		// Remove build files if build fails
 		removeErr := b.templateStorage.DeleteObjectsWithPrefix(ctx, finalMetadata.BuildID)
 		if removeErr != nil {
-			e = errors.Join(e, fmt.Errorf("error removing build files: %w", removeErr))
+			e = errors.Join(e, fmt.Errorf("removing build files: %w", removeErr))
 		}
 	}(context.WithoutCancel(ctx))
 
 	envdVersion, err := envd.GetEnvdVersion(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error getting envd version: %w", err)
+		return nil, fmt.Errorf("getting envd version: %w", err)
 	}
 
 	uploadErrGroup, _ := errgroup.WithContext(ctx)
@@ -132,7 +132,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 		// Wait for all template layers to be uploaded even if the build fails
 		err := uploadErrGroup.Wait()
 		if err != nil {
-			e = errors.Join(e, fmt.Errorf("error uploading template layers: %w", err))
+			e = errors.Join(e, fmt.Errorf("uploading template layers: %w", err))
 		}
 	}()
 
@@ -148,7 +148,7 @@ func (b *Builder) Build(ctx context.Context, finalMetadata storage.TemplateFiles
 
 	res, err := runBuild(ctx, buildContext, b)
 	if err != nil {
-		return nil, fmt.Errorf("error running build: %w", err)
+		return nil, fmt.Errorf("running build: %w", err)
 	}
 
 	return res, nil
@@ -220,7 +220,7 @@ func runBuild(
 	for _, b := range builders {
 		res, err := b.Build(ctx, lastLayerResult)
 		if err != nil {
-			return nil, fmt.Errorf("error building layer: %w", err)
+			return nil, fmt.Errorf("building layer: %w", err)
 		}
 
 		lastLayerResult = res
@@ -229,7 +229,7 @@ func runBuild(
 	// Ensure the base layer is uploaded before getting the rootfs size
 	err := bc.UploadErrGroup.Wait()
 	if err != nil {
-		return nil, fmt.Errorf("error waiting for layers upload: %w", err)
+		return nil, fmt.Errorf("waiting for layers upload: %w", err)
 	}
 
 	// Get the base rootfs size from the template files
@@ -237,7 +237,7 @@ func runBuild(
 	// (as they don't change the rootfs size)
 	rootfsSize, err := getRootfsSize(ctx, builder.templateStorage, lastLayerResult.Metadata.Template)
 	if err != nil {
-		return nil, fmt.Errorf("error getting rootfs size: %w", err)
+		return nil, fmt.Errorf("getting rootfs size: %w", err)
 	}
 	zap.L().Info("rootfs size", zap.Uint64("size", rootfsSize))
 
@@ -256,7 +256,7 @@ func runBuild(
 		Start:        lastLayerResult.StartMetadata,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error saving template metadata: %w", err)
+		return nil, fmt.Errorf("saving template metadata: %w", err)
 	}
 
 	return &Result{
@@ -292,12 +292,12 @@ func getRootfsSize(
 ) (uint64, error) {
 	obj, err := s.OpenObject(ctx, metadata.StorageRootfsHeaderPath())
 	if err != nil {
-		return 0, fmt.Errorf("error opening rootfs header object: %w", err)
+		return 0, fmt.Errorf("opening rootfs header object: %w", err)
 	}
 
 	h, err := header.Deserialize(obj)
 	if err != nil {
-		return 0, fmt.Errorf("error deserializing rootfs header: %w", err)
+		return 0, fmt.Errorf("deserializing rootfs header: %w", err)
 	}
 
 	return h.Metadata.Size, nil

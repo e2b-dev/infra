@@ -48,7 +48,7 @@ func (u *User) Execute(
 		},
 	)
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to create user in sandbox: %w", err)
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("creating user in sandbox: %w", err)
 	}
 
 	return saveUserMeta(ctx, tracer, proxy, sandboxID, cmdMetadata, userArg)

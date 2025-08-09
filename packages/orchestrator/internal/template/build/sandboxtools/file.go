@@ -39,7 +39,7 @@ func CopyFile(
 
 	file, err := os.Open(sourcePath)
 	if err != nil {
-		return fmt.Errorf("failed to open source file: %w", err)
+		return fmt.Errorf("opening source file: %w", err)
 	}
 	defer file.Close()
 
@@ -62,12 +62,12 @@ func CopyFile(
 
 		part, err := writer.CreateFormFile("file", filepath.Base(sourcePath))
 		if err != nil {
-			err = fmt.Errorf("failed to create form file: %w", err)
+			err = fmt.Errorf("creating form file: %w", err)
 			return
 		}
 
 		if _, errCopy := io.Copy(part, file); errCopy != nil {
-			err = fmt.Errorf("failed to copy file: %w", errCopy)
+			err = fmt.Errorf("copying file: %w", errCopy)
 			return
 		}
 	}()
@@ -89,24 +89,24 @@ func CopyFile(
 	// Create HTTP request with streaming body
 	req, err := http.NewRequest("POST", uploadURL, pr)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return fmt.Errorf("creating request: %w", err)
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	err = grpc.SetSandboxHeader(req.Header, proxyHost, sandboxID)
 	if err != nil {
-		return fmt.Errorf("failed to set request header: %w", err)
+		return fmt.Errorf("setting request header: %w", err)
 	}
 	req.Host = req.Header.Get("Host")
 
 	// Send request
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
+		return fmt.Errorf("sending request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if uploadErr := <-errChan; uploadErr != nil {
-		return fmt.Errorf("file upload failed: %w", uploadErr)
+		return fmt.Errorf("file upload: %w", uploadErr)
 	}
 
 	body, _ := io.ReadAll(resp.Body)
@@ -116,7 +116,7 @@ func CopyFile(
 	)
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to upload file (%d): %s", resp.StatusCode, string(body))
+		return fmt.Errorf("uploading file (%d): %s", resp.StatusCode, string(body))
 	}
 
 	return nil

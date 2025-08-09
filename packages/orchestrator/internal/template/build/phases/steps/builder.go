@@ -76,7 +76,7 @@ func (sb *StepsBuilder) Build(
 			step.Force,
 		)
 		if err != nil {
-			return phases.LayerResult{}, fmt.Errorf("error checking if step %d should be built: %w", i+1, err)
+			return phases.LayerResult{}, fmt.Errorf("checking if step %d should be built: %w", i+1, err)
 		}
 
 		// If the last layer is cached, update the base metadata to the step metadata
@@ -103,7 +103,7 @@ func (sb *StepsBuilder) Build(
 			currentLayer,
 		)
 		if err != nil {
-			return phases.LayerResult{}, fmt.Errorf("error building step %d: %w", i+1, err)
+			return phases.LayerResult{}, fmt.Errorf("building step %d: %w", i+1, err)
 		}
 
 		sourceLayer = res
@@ -127,7 +127,7 @@ func (sb *StepsBuilder) shouldBuildStep(
 			// Check if the layer is cached
 			found, err := sb.index.IsCached(ctx, m)
 			if err != nil {
-				return phases.LayerResult{}, fmt.Errorf("error checking if layer is cached: %w", err)
+				return phases.LayerResult{}, fmt.Errorf("checking if layer is cached: %w", err)
 			}
 
 			if found {
@@ -199,7 +199,7 @@ func (sb *StepsBuilder) buildStep(
 			cmdMeta,
 		)
 		if err != nil {
-			return sandboxtools.CommandMetadata{}, fmt.Errorf("error processing layer: %w", err)
+			return sandboxtools.CommandMetadata{}, fmt.Errorf("processing layer: %w", err)
 		}
 
 		err = sandboxtools.SyncChangesToDisk(
@@ -209,7 +209,7 @@ func (sb *StepsBuilder) buildStep(
 			sbx.Runtime.SandboxID,
 		)
 		if err != nil {
-			return sandboxtools.CommandMetadata{}, fmt.Errorf("error running sync command: %w", err)
+			return sandboxtools.CommandMetadata{}, fmt.Errorf("running sync command: %w", err)
 		}
 
 		return meta, nil
@@ -224,7 +224,7 @@ func (sb *StepsBuilder) buildStep(
 		ActionExecutor: actionExecutor,
 	})
 	if err != nil {
-		return phases.LayerResult{}, fmt.Errorf("error running build layer: %w", err)
+		return phases.LayerResult{}, fmt.Errorf("running build layer: %w", err)
 	}
 
 	return phases.LayerResult{

@@ -39,32 +39,32 @@ func constructLayerFilesFromOCI(
 		ResultPath: provisionScriptResultPath,
 	})
 	if err != nil {
-		return nil, nil, containerregistry.Config{}, fmt.Errorf("error getting provision script: %w", err)
+		return nil, nil, containerregistry.Config{}, fmt.Errorf("getting provision script: %w", err)
 	}
 	imgConfig, err := rtfs.CreateExt4Filesystem(childCtx, tracer, buildContext.UserLogger, rootfsPath, provisionScript, provisionLogPrefix)
 	if err != nil {
-		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating ext4 filesystem: %w", err)
+		return nil, nil, containerregistry.Config{}, fmt.Errorf("creating ext4 filesystem: %w", err)
 	}
 
 	buildIDParsed, err := uuid.Parse(baseBuildID)
 	if err != nil {
-		return nil, nil, containerregistry.Config{}, fmt.Errorf("failed to parse build id: %w", err)
+		return nil, nil, containerregistry.Config{}, fmt.Errorf("parsing build id: %w", err)
 	}
 
 	rootfs, err := block.NewLocal(rootfsPath, buildContext.Config.RootfsBlockSize(), buildIDParsed)
 	if err != nil {
-		return nil, nil, containerregistry.Config{}, fmt.Errorf("error reading rootfs blocks: %w", err)
+		return nil, nil, containerregistry.Config{}, fmt.Errorf("reading rootfs blocks: %w", err)
 	}
 
 	// Create empty memfile
 	memfilePath, err := memory.NewMemory(templateBuildDir, buildContext.Config.MemoryMB)
 	if err != nil {
-		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating memfile: %w", err)
+		return nil, nil, containerregistry.Config{}, fmt.Errorf("creating memfile: %w", err)
 	}
 
 	memfile, err := block.NewLocal(memfilePath, buildContext.Config.MemfilePageSize(), buildIDParsed)
 	if err != nil {
-		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating memfile blocks: %w", err)
+		return nil, nil, containerregistry.Config{}, fmt.Errorf("creating memfile blocks: %w", err)
 	}
 
 	return rootfs, memfile, imgConfig, nil

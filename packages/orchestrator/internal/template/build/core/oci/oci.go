@@ -46,7 +46,7 @@ func GetPublicImage(ctx context.Context, tracer trace.Tracer, tag string) (conta
 
 	img, err := remote.Image(ref, remote.WithPlatform(platform))
 	if err != nil {
-		return nil, fmt.Errorf("error pulling image: %w", err)
+		return nil, fmt.Errorf("pulling image: %w", err)
 	}
 
 	telemetry.ReportEvent(childCtx, "pulled public image")
@@ -64,7 +64,7 @@ func GetImage(ctx context.Context, tracer trace.Tracer, artifactRegistry artifac
 
 	img, err := artifactRegistry.GetImage(childCtx, templateId, buildId, platform)
 	if err != nil {
-		return nil, fmt.Errorf("error pulling image: %w", err)
+		return nil, fmt.Errorf("pulling image: %w", err)
 	}
 
 	telemetry.ReportEvent(childCtx, "pulled image")
@@ -76,13 +76,13 @@ func GetImageSize(img containerregistry.Image) (int64, error) {
 
 	layers, err := img.Layers()
 	if err != nil {
-		return 0, fmt.Errorf("error getting image layers: %w", err)
+		return 0, fmt.Errorf("getting image layers: %w", err)
 	}
 
 	for index, layer := range layers {
 		layerSize, err := layer.Size()
 		if err != nil {
-			return 0, fmt.Errorf("error getting layer (%d) size: %w", index, err)
+			return 0, fmt.Errorf("getting layer (%d) size: %w", index, err)
 		}
 		imageSize += layerSize
 	}
@@ -96,30 +96,30 @@ func ToExt4(ctx context.Context, tracer trace.Tracer, postProcessor *writer.Post
 
 	err := filesystem.Make(ctx, tracer, rootfsPath, maxSize>>ToMBShift, blockSize)
 	if err != nil {
-		return 0, fmt.Errorf("error creating ext4 file: %w", err)
+		return 0, fmt.Errorf("creating ext4 file: %w", err)
 	}
 
 	err = ExtractToExt4(ctx, tracer, postProcessor, img, rootfsPath)
 	if err != nil {
-		return 0, fmt.Errorf("error extracting image to ext4 filesystem: %w", err)
+		return 0, fmt.Errorf("extracting image to ext4 filesystem: %w", err)
 	}
 
 	// Check the FS integrity first so no errors occur during shrinking
 	_, err = filesystem.CheckIntegrity(rootfsPath, true)
 	if err != nil {
-		return 0, fmt.Errorf("error checking filesystem integrity after ext4 creation: %w", err)
+		return 0, fmt.Errorf("checking filesystem integrity after ext4 creation: %w", err)
 	}
 
 	// The filesystem is first created with the maximum size, so we need to shrink it to the actual size
 	size, err := filesystem.Shrink(ctx, tracer, rootfsPath)
 	if err != nil {
-		return 0, fmt.Errorf("error shrinking ext4 filesystem: %w", err)
+		return 0, fmt.Errorf("shrinking ext4 filesystem: %w", err)
 	}
 
 	// Check the FS integrity after shrinking
 	_, err = filesystem.CheckIntegrity(rootfsPath, true)
 	if err != nil {
-		return 0, fmt.Errorf("error checking filesystem integrity after shrinking: %w", err)
+		return 0, fmt.Errorf("checking filesystem integrity after shrinking: %w", err)
 	}
 
 	return size, nil
@@ -131,7 +131,7 @@ func ExtractToExt4(ctx context.Context, tracer trace.Tracer, postProcessor *writ
 
 	tmpMount, err := os.MkdirTemp("", "ext4-mount")
 	if err != nil {
-		return fmt.Errorf("error creating temporary mount point: %w", err)
+		return fmt.Errorf("creating temporary mount point: %w", err)
 	}
 	defer func() {
 		if removeErr := os.RemoveAll(tmpMount); removeErr != nil {
@@ -141,7 +141,7 @@ func ExtractToExt4(ctx context.Context, tracer trace.Tracer, postProcessor *writ
 
 	err = filesystem.Mount(ctx, tracer, rootfsPath, tmpMount)
 	if err != nil {
-		return fmt.Errorf("error mounting ext4 filesystem: %w", err)
+		return fmt.Errorf("mounting ext4 filesystem: %w", err)
 	}
 	defer func() {
 		if unmountErr := filesystem.Unmount(context.WithoutCancel(ctx), tracer, tmpMount); unmountErr != nil {
@@ -156,7 +156,7 @@ func ExtractToExt4(ctx context.Context, tracer trace.Tracer, postProcessor *writ
 
 	err = unpackRootfs(ctx, tracer, postProcessor, img, tmpMount)
 	if err != nil {
-		return fmt.Errorf("error extracting tar to directory: %w", err)
+		return fmt.Errorf("extracting tar to directory: %w", err)
 	}
 
 	return nil
@@ -289,11 +289,11 @@ func createExport(ctx context.Context, tracer trace.Tracer, postProcessor *write
 	for i, l := range layers {
 		digest, err := l.Digest()
 		if err != nil {
-			return nil, fmt.Errorf("failed to get digest of layer %d: %w", i, err)
+			return nil, fmt.Errorf("getting digest of layer %d: %w", i, err)
 		}
 		size, err := l.Size()
 		if err != nil {
-			return nil, fmt.Errorf("failed to get size of layer %d: %w", i, err)
+			return nil, fmt.Errorf("getting size of layer %d: %w", i, err)
 		}
 		telemetry.ReportEvent(ctx, "uncompressing layer",
 			attribute.Int("layer.index", i),
@@ -309,12 +309,12 @@ func createExport(ctx context.Context, tracer trace.Tracer, postProcessor *write
 		eg.Go(func() error {
 			err := os.MkdirAll(layerPath, 0o755)
 			if err != nil {
-				return fmt.Errorf("failed to create directory for layer %d: %w", i, err)
+				return fmt.Errorf("creating directory for layer %d: %w", i, err)
 			}
 
 			rc, err := l.Uncompressed()
 			if err != nil {
-				return fmt.Errorf("failed to get uncompressed layer %d: %w", i, err)
+				return fmt.Errorf("getting uncompressed layer %d: %w", i, err)
 			}
 			defer rc.Close()
 
@@ -322,7 +322,7 @@ func createExport(ctx context.Context, tracer trace.Tracer, postProcessor *write
 				IgnoreChownErrors: true,
 			})
 			if err != nil {
-				return fmt.Errorf("failed to untar layer %d: %w", i, err)
+				return fmt.Errorf("untarring layer %d: %w", i, err)
 			}
 			return nil
 		})
