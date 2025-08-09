@@ -71,7 +71,7 @@ func buildTemplate(
 		EnableConsole: true,
 	})
 	if err != nil {
-		return fmt.Errorf("could not create logger: %w", err)
+		return fmt.Errorf("create logger: %w", err)
 	}
 	zap.ReplaceGlobals(logger)
 	sbxlogger.SetSandboxLoggerExternal(logger)
@@ -104,17 +104,17 @@ func buildTemplate(
 
 	persistenceTemplate, err := storage.GetTemplateStorageProvider(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("could not create storage provider: %w", err)
+		return fmt.Errorf("create storage provider: %w", err)
 	}
 
 	persistenceBuild, err := storage.GetBuildCacheStorageProvider(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("could not create storage provider: %w", err)
+		return fmt.Errorf("create storage provider: %w", err)
 	}
 
 	devicePool, err := nbd.NewDevicePool(ctx, noop.MeterProvider{})
 	if err != nil {
-		return fmt.Errorf("could not create device pool: %w", err)
+		return fmt.Errorf("create device pool: %w", err)
 	}
 	defer func() {
 		err := devicePool.Close(parentCtx)
@@ -125,7 +125,7 @@ func buildTemplate(
 
 	networkPool, err := network.NewPool(ctx, noop.MeterProvider{}, 8, 8, clientID, tracer)
 	if err != nil {
-		return fmt.Errorf("could not create network pool: %w", err)
+		return fmt.Errorf("create network pool: %w", err)
 	}
 	defer func() {
 		err := networkPool.Close(parentCtx)
@@ -136,12 +136,12 @@ func buildTemplate(
 
 	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider()
 	if err != nil {
-		return fmt.Errorf("error getting artifacts registry provider: %v", err)
+		return fmt.Errorf("get artifacts registry provider: %v", err)
 	}
 
 	blockMetrics, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
 	if err != nil {
-		return fmt.Errorf("error creating metrics: %v", err)
+		return fmt.Errorf("create metrics: %v", err)
 	}
 
 	templateCache, err := sbxtemplate.NewCache(ctx, persistenceTemplate, blockMetrics)
@@ -185,7 +185,7 @@ func buildTemplate(
 	}
 	_, err = builder.Build(ctx, metadata, template, logsWriter)
 	if err != nil {
-		return fmt.Errorf("error building template: %w", err)
+		return fmt.Errorf("build template: %w", err)
 	}
 
 	fmt.Println("Build finished, closing...")

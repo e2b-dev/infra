@@ -101,7 +101,7 @@ func NewProcess(
 		"firecrackerSocket": files.SandboxFirecrackerSocketPath(),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error executing fc start script template: %w", err)
+		return nil, fmt.Errorf("execute fc start script template: %w", err)
 	}
 
 	telemetry.SetAttributes(childCtx,
@@ -110,12 +110,12 @@ func NewProcess(
 
 	_, err = os.Stat(versions.FirecrackerPath())
 	if err != nil {
-		return nil, fmt.Errorf("error stating firecracker binary: %w", err)
+		return nil, fmt.Errorf("stat firecracker binary: %w", err)
 	}
 
 	_, err = os.Stat(versions.CacheKernelPath())
 	if err != nil {
-		return nil, fmt.Errorf("error stating kernel file: %w", err)
+		return nil, fmt.Errorf("stat kernel file: %w", err)
 	}
 
 	cmd := exec.Command(
@@ -172,12 +172,12 @@ func (p *Process) configure(
 
 	err := utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath())
 	if err != nil {
-		return fmt.Errorf("error symlinking rootfs: %w", err)
+		return fmt.Errorf("symlink rootfs: %w", err)
 	}
 
 	err = p.cmd.Start()
 	if err != nil {
-		return fmt.Errorf("error starting fc process: %w", err)
+		return fmt.Errorf("start fc process: %w", err)
 	}
 
 	startCtx, cancelStart := context.WithCancelCause(childCtx)
@@ -201,7 +201,7 @@ func (p *Process) configure(
 
 			zap.L().Error("error waiting for fc process", zap.Error(waitErr))
 
-			errMsg := fmt.Errorf("error waiting for fc process: %w", waitErr)
+			errMsg := fmt.Errorf("wait for fc process: %w", waitErr)
 			p.Exit.SetError(errMsg)
 
 			cancelStart(errMsg)
@@ -215,7 +215,7 @@ func (p *Process) configure(
 	// Wait for the FC process to start so we can use FC API
 	err = socket.Wait(startCtx, p.firecrackerSocketPath)
 	if err != nil {
-		errMsg := fmt.Errorf("error waiting for fc socket: %w", err)
+		errMsg := fmt.Errorf("wait for fc socket: %w", err)
 
 		fcStopErr := p.Stop()
 
@@ -247,7 +247,7 @@ func (p *Process) Create(
 	if err != nil {
 		fcStopErr := p.Stop()
 
-		return errors.Join(fmt.Errorf("error starting fc process: %w", err), fcStopErr)
+		return errors.Join(fmt.Errorf("start fc process: %w", err), fcStopErr)
 	}
 
 	// IPv4 configuration - format: [local_ip]::[gateway_ip]:[netmask]:hostname:iface:dhcp_option:[dns]
@@ -290,21 +290,21 @@ func (p *Process) Create(
 	if err != nil {
 		fcStopErr := p.Stop()
 
-		return errors.Join(fmt.Errorf("error setting fc boot source config: %w", err), fcStopErr)
+		return errors.Join(fmt.Errorf("set fc boot source config: %w", err), fcStopErr)
 	}
 	telemetry.ReportEvent(childCtx, "set fc boot source config")
 
 	// Rootfs
 	err = utils.SymlinkForce(p.rootfsPath, p.files.SandboxCacheRootfsLinkPath())
 	if err != nil {
-		return fmt.Errorf("error symlinking rootfs: %w", err)
+		return fmt.Errorf("symlink rootfs: %w", err)
 	}
 
 	err = p.client.setRootfsDrive(childCtx, p.buildRootfsPath)
 	if err != nil {
 		fcStopErr := p.Stop()
 
-		return errors.Join(fmt.Errorf("error setting fc drivers config: %w", err), fcStopErr)
+		return errors.Join(fmt.Errorf("set fc drivers config: %w", err), fcStopErr)
 	}
 	telemetry.ReportEvent(childCtx, "set fc drivers config")
 
@@ -313,7 +313,7 @@ func (p *Process) Create(
 	if err != nil {
 		fcStopErr := p.Stop()
 
-		return errors.Join(fmt.Errorf("error setting fc network config: %w", err), fcStopErr)
+		return errors.Join(fmt.Errorf("setting fc network config: %w", err), fcStopErr)
 	}
 	telemetry.ReportEvent(childCtx, "set fc network config")
 
@@ -321,7 +321,7 @@ func (p *Process) Create(
 	if err != nil {
 		fcStopErr := p.Stop()
 
-		return errors.Join(fmt.Errorf("error setting fc machine config: %w", err), fcStopErr)
+		return errors.Join(fmt.Errorf("setting fc machine config: %w", err), fcStopErr)
 	}
 	telemetry.ReportEvent(childCtx, "set fc machine config")
 
@@ -329,7 +329,7 @@ func (p *Process) Create(
 	if err != nil {
 		fcStopErr := p.Stop()
 
-		return errors.Join(fmt.Errorf("error starting fc: %w", err), fcStopErr)
+		return errors.Join(fmt.Errorf("starting fc: %w", err), fcStopErr)
 	}
 
 	telemetry.ReportEvent(childCtx, "started fc")
@@ -357,12 +357,12 @@ func (p *Process) Resume(
 	if err != nil {
 		fcStopErr := p.Stop()
 
-		return errors.Join(fmt.Errorf("error starting fc process: %w", err), fcStopErr)
+		return errors.Join(fmt.Errorf("start fc process: %w", err), fcStopErr)
 	}
 
 	err = utils.SymlinkForce(p.rootfsPath, p.files.SandboxCacheRootfsLinkPath())
 	if err != nil {
-		return fmt.Errorf("error symlinking rootfs: %w", err)
+		return fmt.Errorf("symlink rootfs: %w", err)
 	}
 
 	err = p.client.loadSnapshot(
@@ -374,21 +374,21 @@ func (p *Process) Resume(
 	if err != nil {
 		fcStopErr := p.Stop()
 
-		return errors.Join(fmt.Errorf("error loading snapshot: %w", err), fcStopErr)
+		return errors.Join(fmt.Errorf("loading snapshot: %w", err), fcStopErr)
 	}
 
 	err = p.client.resumeVM(childCtx)
 	if err != nil {
 		fcStopErr := p.Stop()
 
-		return errors.Join(fmt.Errorf("error resuming vm: %w", err), fcStopErr)
+		return errors.Join(fmt.Errorf("resuming vm: %w", err), fcStopErr)
 	}
 
 	err = p.client.setMmds(childCtx, mmdsMetadata)
 	if err != nil {
 		fcStopErr := p.Stop()
 
-		return errors.Join(fmt.Errorf("error setting mmds: %w", err), fcStopErr)
+		return errors.Join(fmt.Errorf("setting mmds: %w", err), fcStopErr)
 	}
 
 	telemetry.SetAttributes(

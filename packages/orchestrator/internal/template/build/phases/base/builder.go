@@ -95,7 +95,7 @@ func (bb *BaseBuilder) Build(
 
 	cached, baseMetadata, err := bb.setup(ctx, hash)
 	if err != nil {
-		return phases.LayerResult{}, fmt.Errorf("setting up build: %w", err)
+		return phases.LayerResult{}, fmt.Errorf("setup build: %w", err)
 	}
 
 	// Print the base layer information
@@ -107,7 +107,7 @@ func (bb *BaseBuilder) Build(
 		if fromImage == "" {
 			tag, err := bb.artifactRegistry.GetTag(ctx, bb.Template.TemplateID, bb.Template.BuildID)
 			if err != nil {
-				return phases.LayerResult{}, fmt.Errorf("getting tag for template: %w", err)
+				return phases.LayerResult{}, fmt.Errorf("get tag for template: %w", err)
 			}
 			fromImage = tag
 		}
@@ -129,7 +129,7 @@ func (bb *BaseBuilder) Build(
 		hash,
 	)
 	if err != nil {
-		return phases.LayerResult{}, fmt.Errorf("building base layer: %w", err)
+		return phases.LayerResult{}, fmt.Errorf("build base layer: %w", err)
 	}
 
 	return phases.LayerResult{
@@ -147,7 +147,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	templateBuildDir := filepath.Join(templatesDirectory, bb.Template.BuildID)
 	err := os.MkdirAll(templateBuildDir, 0o777)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("creating template build directory: %w", err)
+		return cache.LayerMetadata{}, fmt.Errorf("create template build directory: %w", err)
 	}
 	defer func() {
 		err := os.RemoveAll(templateBuildDir)
@@ -169,7 +169,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		rootfsPath,
 	)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("building environment: %w", err)
+		return cache.LayerMetadata{}, fmt.Errorf("build environment: %w", err)
 	}
 
 	// Env variables from the Docker image
@@ -177,7 +177,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 
 	cacheFiles, err := baseMetadata.Template.CacheFiles()
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("creating template files: %w", err)
+		return cache.LayerMetadata{}, fmt.Errorf("create template files: %w", err)
 	}
 	localTemplate := sbxtemplate.NewLocalTemplate(cacheFiles, rootfs, memfile)
 	defer localTemplate.Close()
@@ -189,7 +189,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	rootfsProvisionPath := filepath.Join(templateBuildDir, rootfsProvisionLink)
 	err = os.Symlink(rootfsPath, rootfsProvisionPath)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("creating provision rootfs: %w", err)
+		return cache.LayerMetadata{}, fmt.Errorf("create provision rootfs: %w", err)
 	}
 
 	// Allow sandbox internet access during provisioning
@@ -225,7 +225,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		provisionLogPrefix,
 	)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("provisioning sandbox: %w", err)
+		return cache.LayerMetadata{}, fmt.Errorf("provision sandbox: %w", err)
 	}
 
 	// Check the rootfs filesystem corruption
@@ -235,7 +235,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 			zap.String("result", ext4Check),
 			zap.Error(err),
 		)
-		return cache.LayerMetadata{}, fmt.Errorf("checking provisioned filesystem integrity: %w", err)
+		return cache.LayerMetadata{}, fmt.Errorf("check filesystem integrity: %w", err)
 	}
 	zap.L().Debug("provisioned filesystem ext4 integrity",
 		zap.String("result", ext4Check),
@@ -243,7 +243,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 
 	err = bb.enlargeDiskAfterProvisioning(ctx, bb.Config, rootfs)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("enlarging disk after provisioning: %w", err)
+		return cache.LayerMetadata{}, fmt.Errorf("enlarge disk after provisioning: %w", err)
 	}
 
 	// Create sandbox for building template
@@ -276,7 +276,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		nil,
 	)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("creating sandbox: %w", err)
+		return cache.LayerMetadata{}, fmt.Errorf("create sandbox: %w", err)
 	}
 	defer sourceSbx.Stop(ctx)
 
@@ -286,7 +286,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		waitEnvdTimeout,
 	)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("waiting for sandbox start: %w", err)
+		return cache.LayerMetadata{}, fmt.Errorf("wait for sandbox start: %w", err)
 	}
 
 	err = bb.layerExecutor.PauseAndUpload(
@@ -296,7 +296,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		baseMetadata,
 	)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("pausing and uploading template: %w", err)
+		return cache.LayerMetadata{}, fmt.Errorf("pause and upload template: %w", err)
 	}
 
 	return baseMetadata, nil
@@ -311,7 +311,7 @@ func (bb *BaseBuilder) setup(
 		// If the template is built from another template, use its metadata
 		tm, err := metadata.ReadTemplateMetadata(ctx, bb.templateStorage, bb.Config.FromTemplate.BuildID)
 		if err != nil {
-			return false, cache.LayerMetadata{}, fmt.Errorf("getting base layer from cache, you may need to rebuild the base template: %w", err)
+			return false, cache.LayerMetadata{}, fmt.Errorf("get base layer from cache, rebuild base template: %w", err)
 		}
 
 		// From template is always cached, never needs to be built
@@ -365,7 +365,7 @@ func (bb *BaseBuilder) setup(
 
 		baseCached, err := bb.index.IsCached(ctx, baseMetadata)
 		if err != nil {
-			return false, cache.LayerMetadata{}, fmt.Errorf("checking if base layer is cached: %w", err)
+			return false, cache.LayerMetadata{}, fmt.Errorf("check if base layer cached: %w", err)
 		}
 
 		return baseCached, baseMetadata, nil

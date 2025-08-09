@@ -89,7 +89,7 @@ func (ce *CommandExecutor) Execute(
 
 	cmd, err := ce.getCommand(step)
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("getting command for step %s: %w", step.Type, err)
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("get command for step %s: %w", step.Type, err)
 	}
 
 	cmdMetadata, err = cmd.Execute(
@@ -103,7 +103,7 @@ func (ce *CommandExecutor) Execute(
 		cmdMetadata,
 	)
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("executing command: %w", err)
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("execute command: %w", err)
 	}
 	return cmdMetadata, nil
 }

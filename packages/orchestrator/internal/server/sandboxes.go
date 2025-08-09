@@ -53,7 +53,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		req.Sandbox.FirecrackerVersion,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
+		return nil, fmt.Errorf("get template snapshot data: %w", err)
 	}
 
 	sbx, err := sandbox.ResumeSandbox(

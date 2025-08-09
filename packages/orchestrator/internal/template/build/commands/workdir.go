@@ -48,7 +48,7 @@ func (w *Workdir) Execute(
 		},
 	)
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("creating workdir in sandbox: %w", err)
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("create workdir: %w", err)
 	}
 
 	return saveWorkdirMeta(ctx, tracer, proxy, sandboxID, cmdMetadata, workdirArg)
@@ -76,7 +76,7 @@ func saveWorkdirMeta(
 		},
 	)
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("executing workdir %s: %w", workdir, err)
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("execute workdir %s: %w", workdir, err)
 	}
 
 	cmdMetadata.WorkDir = &workdir

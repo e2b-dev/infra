@@ -151,7 +151,7 @@ func CreateSandbox(
 	cleanup.Add(func(ctx context.Context) error {
 		filesErr := cleanupFiles(sandboxFiles)
 		if filesErr != nil {
-			return fmt.Errorf("failed to cleanup files: %w", filesErr)
+			return fmt.Errorf("cleanup files: %w", filesErr)
 		}
 
 		return nil
@@ -159,7 +159,7 @@ func CreateSandbox(
 
 	rootFS, err := template.Rootfs()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get rootfs: %w", err)
+		return nil, fmt.Errorf("get rootfs: %w", err)
 	}
 
 	var rootfsProvider rootfs.Provider
@@ -180,7 +180,7 @@ func CreateSandbox(
 		)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
+		return nil, fmt.Errorf("create rootfs overlay: %w", err)
 	}
 	cleanup.Add(func(ctx context.Context) error {
 		return rootfsProvider.Close(ctx)
@@ -194,22 +194,22 @@ func CreateSandbox(
 
 	memfile, err := template.Memfile()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get memfile: %w", err)
+		return nil, fmt.Errorf("get memfile: %w", err)
 	}
 
 	memfileSize, err := memfile.Size()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get memfile size: %w", err)
+		return nil, fmt.Errorf("get memfile size: %w", err)
 	}
 
 	// / ==== END of resources initialization ====
 	rootfsPath, err := rootfsProvider.Path()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get rootfs path: %w", err)
+		return nil, fmt.Errorf("get rootfs path: %w", err)
 	}
 	ips := <-ipsCh
 	if ips.err != nil {
-		return nil, fmt.Errorf("failed to get network slot: %w", err)
+		return nil, fmt.Errorf("get network slot: %w", err)
 	}
 	fcHandle, err := fc.NewProcess(
 		childCtx,
@@ -227,7 +227,7 @@ func CreateSandbox(
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to init FC: %w", err)
+		return nil, fmt.Errorf("init FC: %w", err)
 	}
 
 	telemetry.ReportEvent(childCtx, "created fc client")
@@ -247,7 +247,7 @@ func CreateSandbox(
 		processOptions,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create FC: %w", err)
+		return nil, fmt.Errorf("create FC: %w", err)
 	}
 	telemetry.ReportEvent(childCtx, "created fc process")
 
@@ -281,7 +281,7 @@ func CreateSandbox(
 
 	checks, err := NewChecks(ctx, tracer, sbx, false)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create health check: %w", err)
+		return nil, fmt.Errorf("create health check: %w", err)
 	}
 	sbx.Checks = checks
 
@@ -334,7 +334,7 @@ func ResumeSandbox(
 	cleanup.Add(func(ctx context.Context) error {
 		filesErr := cleanupFiles(sandboxFiles)
 		if filesErr != nil {
-			return fmt.Errorf("failed to cleanup files: %w", filesErr)
+			return fmt.Errorf("cleanup files: %w", filesErr)
 		}
 
 		return nil
@@ -342,7 +342,7 @@ func ResumeSandbox(
 
 	readonlyRootfs, err := t.Rootfs()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get rootfs: %w", err)
+		return nil, fmt.Errorf("get rootfs: %w", err)
 	}
 
 	rootfsOverlay, err := rootfs.NewNBDProvider(
@@ -352,7 +352,7 @@ func ResumeSandbox(
 		devicePool,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
+		return nil, fmt.Errorf("create rootfs overlay: %w", err)
 	}
 	cleanup.Add(func(ctx context.Context) error {
 		return rootfsOverlay.Close(ctx)
@@ -366,7 +366,7 @@ func ResumeSandbox(
 
 	memfile, err := t.Memfile()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get memfile: %w", err)
+		return nil, fmt.Errorf("get memfile: %w", err)
 	}
 
 	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
@@ -380,7 +380,7 @@ func ResumeSandbox(
 		runtime.SandboxID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to serve memory: %w", err)
+		return nil, fmt.Errorf("serve memory: %w", err)
 	}
 
 	uffdStartCtx, cancelUffdStartCtx := context.WithCancelCause(ctx)
@@ -397,11 +397,11 @@ func ResumeSandbox(
 	// / ==== END of resources initialization ====
 	rootfsPath, err := rootfsOverlay.Path()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get rootfs path: %w", err)
+		return nil, fmt.Errorf("get rootfs path: %w", err)
 	}
 	ips := <-ipsCh
 	if ips.err != nil {
-		return nil, fmt.Errorf("failed to get network slot: %w", err)
+		return nil, fmt.Errorf("get network slot: %w", err)
 	}
 	fcHandle, fcErr := fc.NewProcess(
 		uffdStartCtx,
@@ -420,13 +420,13 @@ func ResumeSandbox(
 		},
 	)
 	if fcErr != nil {
-		return nil, fmt.Errorf("failed to create FC: %w", fcErr)
+		return nil, fmt.Errorf("creating FC: %w", fcErr)
 	}
 
 	// todo: check if kernel, firecracker, and envd versions exist
 	snapfile, err := t.Snapfile()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get snapfile: %w", err)
+		return nil, fmt.Errorf("get snapfile: %w", err)
 	}
 	fcStartErr := fcHandle.Resume(
 		uffdStartCtx,
@@ -443,7 +443,7 @@ func ResumeSandbox(
 		fcUffd.Ready(),
 	)
 	if fcStartErr != nil {
-		return nil, fmt.Errorf("failed to start FC: %w", fcStartErr)
+		return nil, fmt.Errorf("start FC: %w", fcStartErr)
 	}
 
 	telemetry.ReportEvent(childCtx, "initialized FC")
@@ -480,7 +480,7 @@ func ResumeSandbox(
 	// This is to prevent race condition of reporting unhealthy sandbox
 	checks, err := NewChecks(ctx, tracer, sbx, useClickhouseMetrics)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create health check: %w", err)
+		return nil, fmt.Errorf("create health check: %w", err)
 	}
 
 	sbx.Checks = checks
@@ -495,7 +495,7 @@ func ResumeSandbox(
 		defaultEnvdTimeout,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
+		return nil, fmt.Errorf("wait for sandbox start: %w", err)
 	}
 
 	go sbx.Checks.Start()
@@ -527,7 +527,7 @@ func (s *Sandbox) Stop(ctx context.Context) error {
 	err := s.cleanup.Run(ctx)
 	if err != nil {
 		sbxlogger.I(s).Error("failed to stop sandbox", zap.Error(err))
-		return fmt.Errorf("failed to stop sandbox: %w", err)
+		return fmt.Errorf("stop sandbox: %w", err)
 	}
 
 	return nil
@@ -544,7 +544,7 @@ func (s *Sandbox) Close(ctx context.Context, tracer trace.Tracer) error {
 
 	fcStopErr := s.process.Stop()
 	if fcStopErr != nil {
-		errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
+		errs = append(errs, fmt.Errorf("stop FC: %w", fcStopErr))
 	}
 
 	// The process exited, we can continue with the rest of the cleanup.
@@ -553,7 +553,7 @@ func (s *Sandbox) Close(ctx context.Context, tracer trace.Tracer) error {
 
 	uffdStopErr := s.Resources.memory.Stop()
 	if uffdStopErr != nil {
-		errs = append(errs, fmt.Errorf("failed to stop uffd: %w", uffdStopErr))
+		errs = append(errs, fmt.Errorf("stop uffd: %w", uffdStopErr))
 	}
 
 	return errors.Join(errs...)
@@ -573,18 +573,18 @@ func (s *Sandbox) Pause(
 
 	buildID, err := uuid.Parse(snapshotTemplateFiles.BuildID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse build id: %w", err)
+		return nil, fmt.Errorf("parse build id: %w", err)
 	}
 
 	// Stop the health check before pausing the VM
 	s.Checks.Stop()
 
 	if err := s.process.Pause(childCtx, tracer); err != nil {
-		return nil, fmt.Errorf("failed to pause VM: %w", err)
+		return nil, fmt.Errorf("pause VM: %w", err)
 	}
 
 	if err := s.memory.Disable(); err != nil {
-		return nil, fmt.Errorf("failed to disable uffd: %w", err)
+		return nil, fmt.Errorf("disable uffd: %w", err)
 	}
 
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
@@ -599,7 +599,7 @@ func (s *Sandbox) Pause(
 	*/
 	memfile, err := storage.AcquireTmpMemfile(childCtx, buildID.String())
 	if err != nil {
-		return nil, fmt.Errorf("failed to acquire memfile snapshot: %w", err)
+		return nil, fmt.Errorf("acquire memfile snapshot: %w", err)
 	}
 	// Close the file even if an error occurs
 	defer memfile.Close()
@@ -611,17 +611,17 @@ func (s *Sandbox) Pause(
 		memfile.Path(),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error creating snapshot: %w", err)
+		return nil, fmt.Errorf("create snapshot: %w", err)
 	}
 
 	// Gather data for postprocessing
 	originalMemfile, err := s.template.Memfile()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get original memfile: %w", err)
+		return nil, fmt.Errorf("get original memfile: %w", err)
 	}
 	originalRootfs, err := s.template.Rootfs()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
+		return nil, fmt.Errorf("get original rootfs: %w", err)
 	}
 
 	// Start POSTPROCESSING
@@ -641,7 +641,7 @@ func (s *Sandbox) Pause(
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error while post processing: %w", err)
+		return nil, fmt.Errorf("post process: %w", err)
 	}
 
 	rootfsDiff, rootfsDiffHeader, err := pauseProcessRootfs(
@@ -655,7 +655,7 @@ func (s *Sandbox) Pause(
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error while post processing: %w", err)
+		return nil, fmt.Errorf("post process: %w", err)
 	}
 
 	return &Snapshot{
@@ -683,18 +683,18 @@ func pauseProcessMemory(
 		build.Memfile,
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create memfile diff file: %w", err)
+		return nil, nil, fmt.Errorf("creating memfile diff file: %w", err)
 	}
 
 	m, err := diffCreator.process(ctx, memfileDiffFile)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error creating diff: %w", err)
+		return nil, nil, fmt.Errorf("creating diff: %w", err)
 	}
 	telemetry.ReportEvent(ctx, "created diff")
 
 	memfileMapping, err := m.CreateMapping(ctx, buildId)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create memfile mapping: %w", err)
+		return nil, nil, fmt.Errorf("creating memfile mapping: %w", err)
 	}
 
 	memfileMappings := header.MergeMappings(
@@ -707,7 +707,7 @@ func pauseProcessMemory(
 
 	memfileDiff, err := memfileDiffFile.CloseToDiff(int64(originalHeader.Metadata.BlockSize))
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to convert memfile diff file to local diff: %w", err)
+		return nil, nil, fmt.Errorf("converting memfile diff file to local diff: %w", err)
 	}
 
 	telemetry.ReportEvent(ctx, "converted memfile diff file to local diff")
@@ -740,18 +740,18 @@ func pauseProcessRootfs(
 
 	rootfsDiffFile, err := build.NewLocalDiffFile(build.DefaultCachePath, buildId.String(), build.Rootfs)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create rootfs diff: %w", err)
+		return nil, nil, fmt.Errorf("creating rootfs diff: %w", err)
 	}
 
 	rootfsDiffMetadata, err := diffCreator.process(ctx, rootfsDiffFile)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error creating diff: %w", err)
+		return nil, nil, fmt.Errorf("creating diff: %w", err)
 	}
 
 	telemetry.ReportEvent(ctx, "exported rootfs")
 	rootfsMapping, err := rootfsDiffMetadata.CreateMapping(ctx, buildId)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create rootfs diff: %w", err)
+		return nil, nil, fmt.Errorf("creating rootfs diff: %w", err)
 	}
 
 	rootfsMappings := header.MergeMappings(
@@ -764,7 +764,7 @@ func pauseProcessRootfs(
 
 	rootfsDiff, err := rootfsDiffFile.CloseToDiff(int64(originalHeader.Metadata.BlockSize))
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to convert rootfs diff file to local diff: %w", err)
+		return nil, nil, fmt.Errorf("converting rootfs diff file to local diff: %w", err)
 	}
 	telemetry.ReportEvent(ctx, "converted rootfs diff file to local diff")
 
@@ -797,7 +797,7 @@ func getNetworkSlotAsync(
 
 		ips, err := networkPool.Get(ctx, tracer, allowInternet)
 		if err != nil {
-			r <- networkSlotRes{nil, fmt.Errorf("failed to get network slot: %w", err)}
+			r <- networkSlotRes{nil, fmt.Errorf("getting network slot: %w", err)}
 			return
 		}
 
@@ -832,12 +832,12 @@ func serveMemory(
 ) (uffd.MemoryBackend, error) {
 	fcUffd, uffdErr := uffd.New(memfile, socketPath, memfile.BlockSize())
 	if uffdErr != nil {
-		return nil, fmt.Errorf("failed to create uffd: %w", uffdErr)
+		return nil, fmt.Errorf("creating uffd: %w", uffdErr)
 	}
 
 	uffdStartErr := fcUffd.Start(sandboxID)
 	if uffdStartErr != nil {
-		return nil, fmt.Errorf("failed to start uffd: %w", uffdStartErr)
+		return nil, fmt.Errorf("starting uffd: %w", uffdStartErr)
 	}
 
 	cleanup.Add(func(ctx context.Context) error {
@@ -846,7 +846,7 @@ func serveMemory(
 
 		stopErr := fcUffd.Stop()
 		if stopErr != nil {
-			return fmt.Errorf("failed to stop uffd: %w", stopErr)
+			return fmt.Errorf("stopping uffd: %w", stopErr)
 		}
 
 		return nil
@@ -913,7 +913,7 @@ func (s *Sandbox) WaitForEnvd(
 
 	initErr := s.initEnvd(syncCtx, tracer, s.Config.Envd.Vars, s.Config.Envd.AccessToken)
 	if initErr != nil {
-		return fmt.Errorf("failed to init new envd: %w", initErr)
+		return fmt.Errorf("initializing new envd: %w", initErr)
 	} else {
 		telemetry.ReportEvent(syncCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", s.Metadata.Runtime.SandboxID))
 	}

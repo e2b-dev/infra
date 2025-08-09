@@ -151,7 +151,7 @@ func runCommandWithAllOptions(
 	processC := processconnect.NewProcessClient(&hc, proxyHost)
 	err := grpc.SetSandboxHeader(runCmdReq.Header(), proxyHost, sandboxID)
 	if err != nil {
-		return fmt.Errorf("setting sandbox header: %w", err)
+		return fmt.Errorf("set sandbox header: %w", err)
 	}
 	grpc.SetUserHeader(runCmdReq.Header(), metadata.User)
 
@@ -161,7 +161,7 @@ func runCommandWithAllOptions(
 	// Confirm the command has executed before proceeding
 	close(confirmCh)
 	if err != nil {
-		return fmt.Errorf("starting process: %w", err)
+		return fmt.Errorf("start process: %w", err)
 	}
 	defer func() {
 		processCancel()

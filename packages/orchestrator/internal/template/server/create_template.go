@@ -69,7 +69,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	logs := cache.NewSafeBuffer()
 	buildInfo, err := s.buildCache.Create(metadata.BuildID, logs)
 	if err != nil {
-		return nil, fmt.Errorf("error while creating build cache: %w", err)
+		return nil, fmt.Errorf("create build cache: %w", err)
 	}
 
 	// Add new core that will log all messages using logger (zap.Logger) to the logs buffer too

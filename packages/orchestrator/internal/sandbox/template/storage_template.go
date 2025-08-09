@@ -46,7 +46,7 @@ func newTemplateFromStorage(
 		FirecrackerVersion: firecrackerVersion,
 	}.CacheFiles()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create template cache files: %w", err)
+		return nil, fmt.Errorf("create template cache files: %w", err)
 	}
 
 	return &storageTemplate{
@@ -79,7 +79,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			t.files.CacheSnapfilePath(),
 		)
 		if snapfileErr != nil {
-			errMsg := fmt.Errorf("failed to fetch snapfile: %w", snapfileErr)
+			errMsg := fmt.Errorf("fetch snapfile: %w", snapfileErr)
 
 			return t.snapfile.SetError(errMsg)
 		}
@@ -102,7 +102,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		)
 
 		if memfileErr != nil {
-			errMsg := fmt.Errorf("failed to create memfile storage: %w", memfileErr)
+			errMsg := fmt.Errorf("create memfile storage: %w", memfileErr)
 
 			return t.memfile.SetError(errMsg)
 		}
@@ -124,7 +124,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			t.metrics,
 		)
 		if rootfsErr != nil {
-			errMsg := fmt.Errorf("failed to create rootfs storage: %w", rootfsErr)
+			errMsg := fmt.Errorf("create rootfs storage: %w", rootfsErr)
 
 			return t.rootfs.SetError(errMsg)
 		}

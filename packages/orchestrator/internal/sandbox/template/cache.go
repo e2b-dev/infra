@@ -57,7 +57,7 @@ func NewCache(ctx context.Context, persistence storage.StorageProvider, metrics 
 	// Delete the old build cache directory content.
 	err := cleanDir(build.DefaultCachePath)
 	if err != nil && !os.IsNotExist(err) {
-		return nil, fmt.Errorf("failed to remove old build cache directory: %w", err)
+		return nil, fmt.Errorf("remove old build cache directory: %w", err)
 	}
 
 	buildStore, err := build.NewDiffStore(
@@ -68,7 +68,7 @@ func NewCache(ctx context.Context, persistence storage.StorageProvider, metrics 
 		buildCacheMaxUsedPercentage,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create build store: %w", err)
+		return nil, fmt.Errorf("create build store: %w", err)
 	}
 
 	go cache.Start()
@@ -104,7 +104,7 @@ func (c *Cache) GetTemplate(
 		nil,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create template cache from storage: %w", err)
+		return nil, fmt.Errorf("create template cache from storage: %w", err)
 	}
 
 	t, found := c.cache.GetOrSet(
@@ -157,7 +157,7 @@ func (c *Cache) AddSnapshot(
 		localSnapfile,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create template cache from storage: %w", err)
+		return fmt.Errorf("creating template cache from storage: %w", err)
 	}
 
 	_, found := c.cache.GetOrSet(
