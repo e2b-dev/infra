@@ -48,7 +48,7 @@ func getProvisionScript(
 	var scriptDef bytes.Buffer
 	err := ProvisionScriptTemplate.Execute(&scriptDef, params)
 	if err != nil {
-		return "", fmt.Errorf("error executing provision script: %w", err)
+		return "", fmt.Errorf("executing provision script: %w", err)
 	}
 	telemetry.ReportEvent(ctx, "executed provision script env")
 
@@ -96,7 +96,7 @@ func (bb *BaseBuilder) provisionSandbox(
 		nil,
 	)
 	if err != nil {
-		return fmt.Errorf("error creating sandbox: %w", err)
+		return fmt.Errorf("creating sandbox: %w", err)
 	}
 	defer sbx.Stop(ctx)
 
@@ -105,14 +105,14 @@ func (bb *BaseBuilder) provisionSandbox(
 		bb.tracer,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to wait for sandbox start: %w", err)
+		return fmt.Errorf("waiting for sandbox start: %w", err)
 	}
 	bb.UserLogger.Info("Sandbox template provisioned")
 
 	// Verify the provisioning script exit status
 	exitStatus, err := filesystem.ReadFile(ctx, bb.tracer, rootfsPath, provisionScriptResultPath)
 	if err != nil {
-		return fmt.Errorf("error reading provision result: %w", err)
+		return fmt.Errorf("reading provision result: %w", err)
 	}
 	defer filesystem.RemoveFile(ctx, bb.tracer, rootfsPath, provisionScriptResultPath)
 
@@ -121,7 +121,7 @@ func (bb *BaseBuilder) provisionSandbox(
 		exitStatus = "1"
 	}
 	if exitStatus != "0" {
-		return fmt.Errorf("provision script failed with exit status: %s", exitStatus)
+		return fmt.Errorf("provision script with exit status: %s", exitStatus)
 	}
 
 	return nil
@@ -137,7 +137,7 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 	// Resize rootfs to accommodate for the provisioning script size change
 	rootfsFreeSpace, err := filesystem.GetFreeSpace(ctx, bb.tracer, rootfsPath, template.RootfsBlockSize())
 	if err != nil {
-		return fmt.Errorf("error getting free space: %w", err)
+		return fmt.Errorf("getting free space: %w", err)
 	}
 	sizeDiff := template.DiskSizeMB<<constants.ToMBShift - rootfsFreeSpace
 	zap.L().Debug("adding provision size diff to rootfs",
@@ -156,7 +156,7 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 		output, dErr := cmd.Output()
 		zap.L().Error(string(output), zap.Error(dErr))
 
-		return fmt.Errorf("error enlarging rootfs: %w", err)
+		return fmt.Errorf("enlarging rootfs: %w", err)
 	}
 
 	// Check the rootfs filesystem corruption
@@ -174,7 +174,7 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 			zap.Error(err),
 		)
 		if err != nil {
-			return fmt.Errorf("error checking final enlarge filesystem integrity: %w", err)
+			return fmt.Errorf("checking final enlarge filesystem integrity: %w", err)
 		}
 	} else {
 		zap.L().Debug("final enlarge filesystem ext4 integrity",
@@ -184,7 +184,7 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 
 	stat, err := os.Stat(rootfsPath)
 	if err != nil {
-		return fmt.Errorf("error getting rootfs file info: %w", err)
+		return fmt.Errorf("getting rootfs file info: %w", err)
 	}
 
 	// Safety check to ensure the size matches the file size
@@ -194,7 +194,7 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 
 	err = rootfs.UpdateHeaderSize()
 	if err != nil {
-		return fmt.Errorf("error updating rootfs header size: %w", err)
+		return fmt.Errorf("updating rootfs header size: %w", err)
 	}
 
 	return nil

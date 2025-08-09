@@ -43,19 +43,19 @@ func templateMetadataPath(buildID string) string {
 func ReadTemplateMetadata(ctx context.Context, s storage.StorageProvider, buildID string) (TemplateMetadata, error) {
 	obj, err := s.OpenObject(ctx, templateMetadataPath(buildID))
 	if err != nil {
-		return TemplateMetadata{}, fmt.Errorf("error opening object for template metadata: %w", err)
+		return TemplateMetadata{}, fmt.Errorf("open template metadata object: %w", err)
 	}
 
 	var buf bytes.Buffer
 	_, err = obj.WriteTo(&buf)
 	if err != nil {
-		return TemplateMetadata{}, fmt.Errorf("error reading template metadata from object: %w", err)
+		return TemplateMetadata{}, fmt.Errorf("read template metadata: %w", err)
 	}
 
 	var templateMetadata TemplateMetadata
 	err = json.Unmarshal(buf.Bytes(), &templateMetadata)
 	if err != nil {
-		return TemplateMetadata{}, fmt.Errorf("error unmarshaling template metadata: %w", err)
+		return TemplateMetadata{}, fmt.Errorf("unmarshal template metadata: %w", err)
 	}
 
 	if templateMetadata.Version != metadataVersion {
@@ -68,19 +68,19 @@ func ReadTemplateMetadata(ctx context.Context, s storage.StorageProvider, buildI
 func SaveTemplateMetadata(ctx context.Context, s storage.StorageProvider, buildID string, template TemplateMetadata) error {
 	obj, err := s.OpenObject(ctx, templateMetadataPath(buildID))
 	if err != nil {
-		return fmt.Errorf("error creating object for saving UUID: %w", err)
+		return fmt.Errorf("create object: %w", err)
 	}
 
 	template.Version = metadataVersion
 	marshaled, err := json.Marshal(template)
 	if err != nil {
-		return fmt.Errorf("error marshalling template metadata: %w", err)
+		return fmt.Errorf("marshal template metadata: %w", err)
 	}
 
 	buf := bytes.NewBuffer(marshaled)
 	_, err = obj.ReadFrom(buf)
 	if err != nil {
-		return fmt.Errorf("error writing template metadata to object: %w", err)
+		return fmt.Errorf("write template metadata: %w", err)
 	}
 
 	return nil

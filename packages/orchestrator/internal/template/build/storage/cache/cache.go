@@ -54,19 +54,19 @@ func (h *HashIndex) Version() string {
 func (h *HashIndex) LayerMetaFromHash(ctx context.Context, hash string) (LayerMetadata, error) {
 	obj, err := h.indexStorage.OpenObject(ctx, paths.HashToPath(h.cacheScope, hash))
 	if err != nil {
-		return LayerMetadata{}, fmt.Errorf("error opening object for layer metadata: %w", err)
+		return LayerMetadata{}, fmt.Errorf("opening object for layer metadata: %w", err)
 	}
 
 	var buf bytes.Buffer
 	_, err = obj.WriteTo(&buf)
 	if err != nil {
-		return LayerMetadata{}, fmt.Errorf("error reading layer metadata from object: %w", err)
+		return LayerMetadata{}, fmt.Errorf("reading layer metadata from object: %w", err)
 	}
 
 	var layerMetadata LayerMetadata
 	err = json.Unmarshal(buf.Bytes(), &layerMetadata)
 	if err != nil {
-		return LayerMetadata{}, fmt.Errorf("error unmarshaling layer metadata: %w", err)
+		return LayerMetadata{}, fmt.Errorf("unmarshaling layer metadata: %w", err)
 	}
 
 	if layerMetadata.Template.TemplateID == "" ||
@@ -82,18 +82,18 @@ func (h *HashIndex) LayerMetaFromHash(ctx context.Context, hash string) (LayerMe
 func (h *HashIndex) SaveLayerMeta(ctx context.Context, hash string, template LayerMetadata) error {
 	obj, err := h.indexStorage.OpenObject(ctx, paths.HashToPath(h.cacheScope, hash))
 	if err != nil {
-		return fmt.Errorf("error creating object for saving UUID: %w", err)
+		return fmt.Errorf("creating object for saving UUID: %w", err)
 	}
 
 	marshaled, err := json.Marshal(template)
 	if err != nil {
-		return fmt.Errorf("error marshalling layer metadata: %w", err)
+		return fmt.Errorf("marshalling layer metadata: %w", err)
 	}
 
 	buf := bytes.NewBuffer(marshaled)
 	_, err = obj.ReadFrom(buf)
 	if err != nil {
-		return fmt.Errorf("error writing layer metadata to object: %w", err)
+		return fmt.Errorf("writing layer metadata to object: %w", err)
 	}
 
 	return nil
@@ -130,12 +130,12 @@ func getRootfsSize(
 ) (uint64, error) {
 	obj, err := s.OpenObject(ctx, metadata.StorageRootfsHeaderPath())
 	if err != nil {
-		return 0, fmt.Errorf("error opening rootfs header object: %w", err)
+		return 0, fmt.Errorf("opening rootfs header object: %w", err)
 	}
 
 	h, err := header.Deserialize(obj)
 	if err != nil {
-		return 0, fmt.Errorf("error deserializing rootfs header: %w", err)
+		return 0, fmt.Errorf("deserializing rootfs header: %w", err)
 	}
 
 	return h.Metadata.Size, nil

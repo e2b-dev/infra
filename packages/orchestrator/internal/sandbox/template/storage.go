@@ -43,7 +43,7 @@ func NewStorage(
 
 		// If we can't find the diff header in storage, we switch to templates without a headers
 		if err != nil && !errors.Is(err, storage.ErrorObjectNotExist) {
-			return nil, fmt.Errorf("failed to deserialize header: %w", err)
+			return nil, fmt.Errorf("deserialize header: %w", err)
 		}
 
 		if err == nil {
@@ -61,12 +61,12 @@ func NewStorage(
 
 		size, err := object.Size()
 		if err != nil {
-			return nil, fmt.Errorf("failed to get object size: %w", err)
+			return nil, fmt.Errorf("get object size: %w", err)
 		}
 
 		id, err := uuid.Parse(buildId)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse build id: %w", err)
+			return nil, fmt.Errorf("parse build id: %w", err)
 		}
 
 		// TODO: This is a workaround for the old style template without a header.
