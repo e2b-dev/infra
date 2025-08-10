@@ -341,7 +341,7 @@ type SandboxDetail struct {
 	EnvdAccessToken *string `json:"envdAccessToken,omitempty"`
 
 	// EnvdVersion Version of the envd running in the sandbox
-	EnvdVersion *string `json:"envdVersion,omitempty"`
+	EnvdVersion string `json:"envdVersion"`
 
 	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB MemoryMB         `json:"memoryMB"`

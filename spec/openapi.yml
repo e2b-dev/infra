@@ -314,6 +314,7 @@ components:
         - diskSizeMB
         - endAt
         - state
+        - envdVersion
       properties:
         templateID:
           type: string
