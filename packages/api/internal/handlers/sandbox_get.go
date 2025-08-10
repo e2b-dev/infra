@@ -93,7 +93,9 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		zap.L().Error("disk size is not set for the sandbox", logger.WithSandboxID(id))
 	}
 
-	envdVersion := ""
+	// This shouldn't happen - if yes, the data are in corrupted state,
+	// still adding fallback to envd version v1.0.0 (should behave as if there are no features)
+	envdVersion := "v1.0.0"
 	if lastSnapshot.EnvBuild.EnvdVersion != nil {
 		envdVersion = *lastSnapshot.EnvBuild.EnvdVersion
 	} else {
