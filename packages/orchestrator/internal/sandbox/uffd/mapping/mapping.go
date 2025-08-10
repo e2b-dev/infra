@@ -1,5 +1,5 @@
 package mapping
 
 type Mappings interface {
-	GetRange(addr uintptr) (offset uint64, pagesize uint64, err error)
+	GetRange(addr uintptr) (offset uint64, pagesize uint64, size uint64, err error)
 }

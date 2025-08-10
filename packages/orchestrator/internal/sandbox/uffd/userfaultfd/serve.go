@@ -1,5 +1,16 @@
 package userfaultfd
 
+/*
+This is the flow of the UFFD events:
+
+```mermaid
+flowchart TD
+A[missing page] -- write (WRITE flag) --> B(COPY) --> C[mark as dirty]
+A -- read (0 flag) --> D(COPY + WP protect) --> E[faulted page]
+E -- write (WP|WRITE flag) --> F(remove WP) --> C
+```
+*/
+
 import (
 	"errors"
 	"fmt"
@@ -30,8 +41,7 @@ func (u *userfaultfd) Serve(
 
 	var eg errgroup.Group
 
-	missingPagesBeingHandled := map[uint64]struct{}{}
-	writePagesBeingHandled := map[uint64]struct{}{}
+	missingChunksBeingHandled := map[uint64]struct{}{}
 
 outerLoop:
 	for {
@@ -123,34 +133,14 @@ outerLoop:
 
 		addr := GetPagefaultAddress(&pagefault)
 
-		offset, pagesize, err := mappings.GetRange(addr)
+		offset, pagesize, size, err := mappings.GetRange(addr)
 		if err != nil {
 			logger.Error("UFFD serve get mapping error", zap.Error(err))
 
 			return fmt.Errorf("failed to map: %w", err)
 		}
 
-		switch {
-		case pagefault.flags&UFFD_PAGEFAULT_FLAG_WRITE != 0:
-			if _, ok := writePagesBeingHandled[offset]; ok {
-				continue
-			}
-
-			writePagesBeingHandled[offset] = struct{}{}
-
-			fallthrough
-		case pagefault.flags == 0:
-			if _, ok := missingPagesBeingHandled[offset]; ok {
-				continue
-			}
-
-			missingPagesBeingHandled[offset] = struct{}{}
-
-			fmt.Fprintf(os.Stderr, "[%d] writes without protection: %d, missing read: %d\n", offset/pagesize, len(writePagesBeingHandled), len(missingPagesBeingHandled))
-
-			// TODO: Copy the page ahead as we already fetch a chunk (increase it)
-			// TODO: Prefetch the top of the memory downward, the start of the memory up
-
+		if pagefault.flags&UFFD_PAGEFAULT_FLAG_WP != 0 {
 			eg.Go(func() error {
 				defer func() {
 					if r := recover(); r != nil {
@@ -158,40 +148,97 @@ outerLoop:
 					}
 				}()
 
-				b, sliceErr := src.Slice(int64(offset), int64(pagesize))
-				if sliceErr != nil {
-
-					signalErr := fdExit.SignalExit()
-
-					joinedErr := errors.Join(sliceErr, signalErr)
-
-					logger.Error("UFFD serve slice error", zap.Error(joinedErr))
-
-					return fmt.Errorf("failed to read from source: %w", joinedErr)
-				}
-
-				copyErr := u.copy(addr, b, pagesize, 0)
-				if copyErr == unix.EEXIST {
-					logger.Debug("UFFD serve page already mapped", zap.Any("offset", offset), zap.Any("pagesize", pagesize))
-
-					// Page is already mapped
-					return nil
-				}
-
-				if copyErr != nil {
-					signalErr := fdExit.SignalExit()
-
-					joinedErr := errors.Join(copyErr, signalErr)
-
-					logger.Error("UFFD serve uffdio copy error", zap.Error(joinedErr))
-
-					return fmt.Errorf("failed uffdio copy %w", joinedErr)
+				wpErr := u.removeWriteProtection(addr, pagesize)
+				if wpErr != nil {
+					return fmt.Errorf("error removing write protection from page %d", addr)
 				}
 
 				return nil
 			})
-		default:
-			return fmt.Errorf("invalid pagefault flags %d for address %d", pagefault.flags, addr)
+
+			fmt.Fprintf(os.Stderr, "wp trigger %d %d\n", addr, offset/pagesize)
+
+			continue
 		}
+
+		if pagefault.flags == 0 {
+			fmt.Fprintf(os.Stderr, "read trigger %d %d\n", addr, offset/pagesize)
+		}
+
+		if pagefault.flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
+			fmt.Fprintf(os.Stderr, "write trigger %d %d\n", addr, offset/pagesize)
+		}
+
+		if _, ok := missingChunksBeingHandled[offset]; ok {
+			fmt.Fprintf(os.Stderr, "page already being handled %d %d\n", offset, addr)
+
+			continue
+		}
+
+		missingChunksBeingHandled[offset] = struct{}{}
+
+		newPagesize := pagesize
+		if offset+pagesize < size {
+			missingChunksBeingHandled[offset+pagesize] = struct{}{}
+
+			newPagesize = pagesize * 2
+		}
+
+		var copyMode CULong
+
+		goAddress := addr
+		goOffset := offset
+		goPagesize := newPagesize
+
+		eg.Go(func() error {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("UFFD serve panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
+				}
+			}()
+
+			b, sliceErr := src.Slice(int64(goOffset), int64(goPagesize))
+			if sliceErr != nil {
+				signalErr := fdExit.SignalExit()
+
+				joinedErr := errors.Join(sliceErr, signalErr)
+
+				logger.Error("UFFD serve slice error", zap.Error(joinedErr))
+
+				return fmt.Errorf("failed to read from source: %w", joinedErr)
+			}
+
+			fmt.Fprintf(
+				os.Stderr,
+				"COPY: triggered by address %d, from offset %d, pagesize %d, index %d, total size %d, total offset %d\n",
+				goAddress+uintptr(goOffset),
+				goOffset,
+				goPagesize,
+				goOffset/goPagesize,
+				size,
+				goOffset,
+			)
+
+			copyErr := u.copy(goAddress, b[:goPagesize], goPagesize, copyMode)
+			if copyErr == unix.EEXIST {
+				logger.Debug("UFFD serve page already mapped", zap.Any("offset", goOffset), zap.Any("pagesize", goPagesize))
+
+				// Page is already mapped
+
+				return nil
+			}
+
+			if copyErr != nil {
+				signalErr := fdExit.SignalExit()
+
+				joinedErr := errors.Join(copyErr, signalErr)
+
+				logger.Error("UFFD serve uffdio copy error", zap.Error(joinedErr))
+
+				return fmt.Errorf("failed uffdio copy %w", joinedErr)
+			}
+
+			return nil
+		})
 	}
 }

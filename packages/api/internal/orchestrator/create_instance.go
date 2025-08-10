@@ -94,7 +94,7 @@ func (o *Orchestrator) CreateSandbox(
 	telemetry.ReportEvent(childCtx, "Reserved sandbox for team")
 	defer releaseTeamSandboxReservation()
 
-	features, err := sandbox.NewVersionInfo(build.FirecrackerVersion)
+	_, err = sandbox.NewVersionInfo(build.FirecrackerVersion)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get features for firecracker version '%s': %w", build.FirecrackerVersion, err)
 
@@ -137,7 +137,7 @@ func (o *Orchestrator) CreateSandbox(
 			EnvVars:             envVars,
 			EnvdAccessToken:     envdAuthToken,
 			MaxSandboxLength:    team.Tier.MaxLengthHours,
-			HugePages:           features.HasHugePages(),
+			HugePages:           false,
 			RamMb:               build.RamMb,
 			Vcpu:                build.Vcpu,
 			Snapshot:            isResume,
