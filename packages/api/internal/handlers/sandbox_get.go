@@ -96,6 +96,8 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	envdVersion := ""
 	if lastSnapshot.EnvBuild.EnvdVersion != nil {
 		envdVersion = *lastSnapshot.EnvBuild.EnvdVersion
+	} else {
+		zap.L().Error("envd version is not set for the sandbox", logger.WithSandboxID(id))
 	}
 
 	var sbxAccessToken *string = nil
