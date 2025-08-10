@@ -69,7 +69,7 @@ func Mount(ctx context.Context, tracer trace.Tracer, rootfsPath string, mountPoi
 	cmd.Stderr = mountStderrWriter
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("error mounting ext4 filesystem: %w", err)
+		return fmt.Errorf("mounting ext4 filesystem: %w", err)
 	}
 
 	return nil
@@ -88,7 +88,7 @@ func Unmount(ctx context.Context, tracer trace.Tracer, rootfsPath string) error 
 	cmd.Stderr = unmountStderrWriter
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("error unmounting ext4 filesystem: %w", err)
+		return fmt.Errorf("unmounting ext4 filesystem: %w", err)
 	}
 
 	return nil
@@ -115,7 +115,7 @@ func Enlarge(ctx context.Context, tracer trace.Tracer, rootfsPath string, addSiz
 
 	stat, err := os.Stat(rootfsPath)
 	if err != nil {
-		return 0, fmt.Errorf("error stating rootfs file: %w", err)
+		return 0, fmt.Errorf("stating rootfs file: %w", err)
 	}
 	finalSize := stat.Size() + addSize
 
@@ -136,12 +136,12 @@ func Resize(ctx context.Context, tracer trace.Tracer, rootfsPath string, targetS
 	err := cmd.Run()
 	if err != nil {
 		LogMetadata(rootfsPath)
-		return 0, fmt.Errorf("error resizing rootfs file: %w", err)
+		return 0, fmt.Errorf("resizing rootfs file: %w", err)
 	}
 
 	stat, err := os.Stat(rootfsPath)
 	if err != nil {
-		return 0, fmt.Errorf("error stating rootfs file after resize: %w", err)
+		return 0, fmt.Errorf("stating rootfs file after resize: %w", err)
 	}
 
 	return stat.Size(), err
@@ -161,12 +161,12 @@ func Shrink(ctx context.Context, tracer trace.Tracer, rootfsPath string) (int64,
 	err := cmd.Run()
 	if err != nil {
 		LogMetadata(rootfsPath)
-		return 0, fmt.Errorf("error shrinking rootfs file: %w", err)
+		return 0, fmt.Errorf("shrinking rootfs file: %w", err)
 	}
 
 	stat, err := os.Stat(rootfsPath)
 	if err != nil {
-		return 0, fmt.Errorf("error stating rootfs file after resize: %w", err)
+		return 0, fmt.Errorf("stating rootfs file after resize: %w", err)
 	}
 
 	return stat.Size(), err
@@ -183,18 +183,18 @@ func GetFreeSpace(ctx context.Context, tracer trace.Tracer, rootfsPath string, b
 	output := out.String()
 	if err != nil {
 		zap.L().Error("Error getting free space", zap.Error(err), zap.String("output", output))
-		return 0, fmt.Errorf("error statting ext4: %w", err)
+		return 0, fmt.Errorf("statting ext4: %w", err)
 	}
 
 	// Extract block size and free blocks
 	freeBlocks, err := parseFreeBlocks(output)
 	if err != nil {
-		return 0, fmt.Errorf("could not parse free blocks: %w", err)
+		return 0, fmt.Errorf("parsing free blocks: %w", err)
 	}
 
 	reservedBlocks, err := parseReservedBlocks(output)
 	if err != nil {
-		return 0, fmt.Errorf("could not parse reserved blocks: %w", err)
+		return 0, fmt.Errorf("parsing reserved blocks: %w", err)
 	}
 
 	freeBytes := (freeBlocks - reservedBlocks) * blockSize
@@ -218,7 +218,7 @@ func CheckIntegrity(rootfsPath string, fix bool) (string, error) {
 		exitCode := cmd.ProcessState.ExitCode()
 
 		if exitCode > accExitCode {
-			return string(out), fmt.Errorf("error running e2fsck: %w", err)
+			return string(out), fmt.Errorf("running e2fsck: %w", err)
 		}
 	}
 
@@ -232,7 +232,7 @@ func ReadFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, fileP
 	cmd := exec.Command("debugfs", "-R", fmt.Sprintf("cat \"%s\"", filePath), rootfsPath)
 	out, err := cmd.Output()
 	if err != nil {
-		return "1", fmt.Errorf("error reading file: %w", err)
+		return "1", fmt.Errorf("reading file: %w", err)
 	}
 
 	return string(out), nil
@@ -247,7 +247,7 @@ func RemoveFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, fil
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		zap.L().Error("error removing file", zap.Error(err), zap.String("output", string(out)))
-		return fmt.Errorf("error removing file: %w", err)
+		return fmt.Errorf("removing file: %w", err)
 	}
 
 	return nil
@@ -266,7 +266,7 @@ func MountOverlayFS(ctx context.Context, tracer trace.Tracer, layers []string, m
 	// Open the filesystem for configuration
 	fsfd, err := unix.Fsopen("overlay", unix.FSOPEN_CLOEXEC)
 	if err != nil {
-		return fmt.Errorf("fsopen failed: %w", err)
+		return fmt.Errorf("fsopen: %w", err)
 	}
 	defer unix.Close(fsfd)
 
@@ -274,25 +274,25 @@ func MountOverlayFS(ctx context.Context, tracer trace.Tracer, layers []string, m
 	for _, layer := range layers {
 		// https://docs.kernel.org/filesystems/overlayfs.html
 		if err := unix.FsconfigSetString(fsfd, "lowerdir+", layer); err != nil {
-			return fmt.Errorf("fsconfig lowerdir failed: %w", err)
+			return fmt.Errorf("fsconfig lowerdir: %w", err)
 		}
 	}
 
 	// Finalize configuration
 	if err := unix.FsconfigCreate(fsfd); err != nil {
-		return fmt.Errorf("fsconfig create failed: %w", err)
+		return fmt.Errorf("fsconfig create: %w", err)
 	}
 
 	// Create the mount
 	mfd, err := unix.Fsmount(fsfd, 0, 0)
 	if err != nil {
-		return fmt.Errorf("fsmount failed: %w", err)
+		return fmt.Errorf("fsmount: %w", err)
 	}
 	defer unix.Close(mfd)
 
 	// Mount to target
 	if err := unix.MoveMount(mfd, "", -1, mountPoint, unix.MOVE_MOUNT_F_EMPTY_PATH); err != nil {
-		return fmt.Errorf("move mount failed: %w", err)
+		return fmt.Errorf("move mount: %w", err)
 	}
 
 	return nil
@@ -310,11 +310,11 @@ func parseFreeBlocks(debugfsOutput string) (int64, error) {
 	re := regexp.MustCompile(`Free blocks:\s+(\d+)`)
 	matches := re.FindStringSubmatch(debugfsOutput)
 	if len(matches) < 2 {
-		return 0, fmt.Errorf("could not find free blocks in debugfs output")
+		return 0, fmt.Errorf("finding free blocks in debugfs output")
 	}
 	freeBlocks, err := strconv.ParseInt(matches[1], 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("could not parse free blocks: %w", err)
+		return 0, fmt.Errorf("parsing free blocks: %w", err)
 	}
 	return freeBlocks, nil
 }
@@ -324,11 +324,11 @@ func parseReservedBlocks(debugfsOutput string) (int64, error) {
 	re := regexp.MustCompile(`Reserved block count:\s+(\d+)`)
 	matches := re.FindStringSubmatch(debugfsOutput)
 	if len(matches) < 2 {
-		return 0, fmt.Errorf("could not find reserved blocks in debugfs output")
+		return 0, fmt.Errorf("finding reserved blocks in debugfs output")
 	}
 	reservedBlocks, err := strconv.ParseInt(matches[1], 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("could not parse reserved blocks: %w", err)
+		return 0, fmt.Errorf("parsing reserved blocks: %w", err)
 	}
 	return reservedBlocks, nil
 }

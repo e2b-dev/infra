@@ -143,7 +143,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 
 	envdVersion, err := envd.GetEnvdVersion(ctx)
 	if err != nil {
-		return fmt.Errorf("error getting envd version: %w", err)
+		return fmt.Errorf("getting envd version: %w", err)
 	}
 	lb.UserLogger.Debug(fmt.Sprintf("Updating envd to version v%s", envdVersion))
 
@@ -159,7 +159,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		tmpEnvdPath,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to copy envd binary to sandbox: %w", err)
+		return fmt.Errorf("copying envd binary to sandbox: %w", err)
 	}
 
 	// Step 2: Replace the binary
@@ -181,7 +181,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		sandboxtools.CommandMetadata{User: "root"},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to replace envd binary: %w", err)
+		return fmt.Errorf("replacing envd binary: %w", err)
 	}
 
 	// Step 3: Restart the systemd envd service
@@ -202,7 +202,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		waitEnvdTimeout,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to wait for envd initialization after update: %w", err)
+		return fmt.Errorf("waiting for envd initialization after update: %w", err)
 	}
 
 	return nil
@@ -221,7 +221,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 
 	cacheFiles, err := layerMeta.Template.CacheFiles()
 	if err != nil {
-		return fmt.Errorf("error creating template files: %w", err)
+		return fmt.Errorf("creating template files: %w", err)
 	}
 	// snapshot is automatically cleared by the templateCache eviction
 	snapshot, err := sbx.Pause(
@@ -230,7 +230,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 		cacheFiles,
 	)
 	if err != nil {
-		return fmt.Errorf("error processing vm: %w", err)
+		return fmt.Errorf("processing vm: %w", err)
 	}
 
 	// Add snapshot to template cache so it can be used immediately
@@ -246,7 +246,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 		snapshot.RootfsDiff,
 	)
 	if err != nil {
-		return fmt.Errorf("error adding snapshot to template cache: %w", err)
+		return fmt.Errorf("adding snapshot to template cache: %w", err)
 	}
 
 	// Upload snapshot async, it's added to the template cache immediately
@@ -257,12 +257,12 @@ func (lb *LayerExecutor) PauseAndUpload(
 			cacheFiles.TemplateFiles,
 		)
 		if err != nil {
-			return fmt.Errorf("error uploading snapshot: %w", err)
+			return fmt.Errorf("uploading snapshot: %w", err)
 		}
 
 		err = lb.index.SaveLayerMeta(ctx, hash, layerMeta)
 		if err != nil {
-			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
+			return fmt.Errorf("saving UUID to hash mapping: %w", err)
 		}
 
 		lb.UserLogger.Debug(fmt.Sprintf("Saved: %s/%s", cacheFiles.TemplateID, cacheFiles.BuildID))

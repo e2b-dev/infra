@@ -77,7 +77,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint, sandboxes *s
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error registering orchestrator proxy connections metric (%s): %w", telemetry.OrchestratorProxyServerConnectionsMeterCounterName, err)
+		return nil, fmt.Errorf("register proxy connections metric (%s): %w", telemetry.OrchestratorProxyServerConnectionsMeterCounterName, err)
 	}
 
 	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorProxyPoolConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
@@ -86,7 +86,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint, sandboxes *s
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error registering orchestrator proxy connections metric (%s): %w", telemetry.OrchestratorProxyPoolConnectionsMeterCounterName, err)
+		return nil, fmt.Errorf("register proxy pool connections metric (%s): %w", telemetry.OrchestratorProxyPoolConnectionsMeterCounterName, err)
 	}
 
 	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorProxyPoolSizeMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
@@ -95,7 +95,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint, sandboxes *s
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error registering orchestrator proxy pool size metric (%s): %w", telemetry.OrchestratorProxyPoolSizeMeterCounterName, err)
+		return nil, fmt.Errorf("register proxy pool size metric (%s): %w", telemetry.OrchestratorProxyPoolSizeMeterCounterName, err)
 	}
 
 	return &SandboxProxy{proxy}, nil
@@ -114,7 +114,7 @@ func (p *SandboxProxy) Close(ctx context.Context) error {
 		err = p.proxy.Shutdown(ctx)
 	}
 	if err != nil {
-		return fmt.Errorf("failed to shutdown proxy server: %w", err)
+		return fmt.Errorf("shutdown proxy server: %w", err)
 	}
 
 	return nil

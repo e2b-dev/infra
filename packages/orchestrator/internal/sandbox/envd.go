@@ -73,7 +73,7 @@ func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map
 
 	response, err := doRequestWithInfiniteRetries(childCtx, "POST", address, body, accessToken)
 	if err != nil {
-		return fmt.Errorf("failed to init envd: %w", err)
+		return fmt.Errorf("init envd: %w", err)
 	}
 
 	defer response.Body.Close()

@@ -93,7 +93,7 @@ func cleanupFiles(files *storage.SandboxFiles) error {
 	} {
 		err := os.RemoveAll(p)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("failed to delete '%s': %w", p, err))
+			errs = append(errs, fmt.Errorf("delete '%s': %w", p, err))
 		}
 	}
 

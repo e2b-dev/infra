@@ -92,30 +92,30 @@ func (r *Rootfs) CreateExt4Filesystem(
 		img, err = oci.GetImage(childCtx, tracer, r.artifactRegistry, r.metadata.TemplateID, r.metadata.BuildID)
 	}
 	if err != nil {
-		return containerregistry.Config{}, fmt.Errorf("error requesting docker image: %w", err)
+		return containerregistry.Config{}, fmt.Errorf("requesting docker image: %w", err)
 	}
 
 	imageSize, err := oci.GetImageSize(img)
 	if err != nil {
-		return containerregistry.Config{}, fmt.Errorf("error getting image size: %w", err)
+		return containerregistry.Config{}, fmt.Errorf("getting image size: %w", err)
 	}
 	postProcessor.Info(fmt.Sprintf("Base Docker image size: %s", humanize.Bytes(uint64(imageSize))))
 
 	postProcessor.Debug("Setting up system files")
 	layers, err := additionalOCILayers(childCtx, r.template, provisionScript, provisionLogPrefix)
 	if err != nil {
-		return containerregistry.Config{}, fmt.Errorf("error populating filesystem: %w", err)
+		return containerregistry.Config{}, fmt.Errorf("populating filesystem: %w", err)
 	}
 	img, err = mutate.AppendLayers(img, layers...)
 	if err != nil {
-		return containerregistry.Config{}, fmt.Errorf("error appending layers: %w", err)
+		return containerregistry.Config{}, fmt.Errorf("appending layers: %w", err)
 	}
 	telemetry.ReportEvent(childCtx, "set up filesystem")
 
 	postProcessor.Info("Creating file system and pulling Docker image")
 	ext4Size, err := oci.ToExt4(ctx, tracer, postProcessor, img, rootfsPath, maxRootfsSize, r.template.RootfsBlockSize())
 	if err != nil {
-		return containerregistry.Config{}, fmt.Errorf("error creating ext4 filesystem: %w", err)
+		return containerregistry.Config{}, fmt.Errorf("creating ext4 filesystem: %w", err)
 	}
 	telemetry.ReportEvent(childCtx, "created rootfs ext4 file")
 
@@ -123,13 +123,13 @@ func (r *Rootfs) CreateExt4Filesystem(
 	// Make rootfs writable, be default it's readonly
 	err = filesystem.MakeWritable(ctx, tracer, rootfsPath)
 	if err != nil {
-		return containerregistry.Config{}, fmt.Errorf("error making rootfs file writable: %w", err)
+		return containerregistry.Config{}, fmt.Errorf("making rootfs file writable: %w", err)
 	}
 
 	// Resize rootfs
 	rootfsFreeSpace, err := filesystem.GetFreeSpace(ctx, tracer, rootfsPath, r.template.RootfsBlockSize())
 	if err != nil {
-		return containerregistry.Config{}, fmt.Errorf("error getting free space: %w", err)
+		return containerregistry.Config{}, fmt.Errorf("getting free space: %w", err)
 	}
 	// We need to remove the remaining free space from the ext4 file size
 	// This is a residual space that could not be shrunk when creating the filesystem,
@@ -143,7 +143,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	if diskAdd > 0 {
 		_, err := filesystem.Enlarge(ctx, tracer, rootfsPath, diskAdd)
 		if err != nil {
-			return containerregistry.Config{}, fmt.Errorf("error enlarging rootfs: %w", err)
+			return containerregistry.Config{}, fmt.Errorf("enlarging rootfs: %w", err)
 		}
 	}
 
@@ -154,12 +154,12 @@ func (r *Rootfs) CreateExt4Filesystem(
 		zap.Error(err),
 	)
 	if err != nil {
-		return containerregistry.Config{}, fmt.Errorf("error checking ext4 filesystem integrity: %w", err)
+		return containerregistry.Config{}, fmt.Errorf("checking ext4 filesystem integrity: %w", err)
 	}
 
 	config, err := img.ConfigFile()
 	if err != nil {
-		return containerregistry.Config{}, fmt.Errorf("error getting image config file: %w", err)
+		return containerregistry.Config{}, fmt.Errorf("getting image config file: %w", err)
 	}
 
 	return config.Config, nil
@@ -210,12 +210,12 @@ ff02::2	ip6-allrouters
 
 	envdFileData, err := os.ReadFile(storage.HostEnvdPath)
 	if err != nil {
-		return nil, fmt.Errorf("error reading envd file: %w", err)
+		return nil, fmt.Errorf("reading envd file: %w", err)
 	}
 
 	busyBox, err := os.ReadFile(busyBoxBinaryPath)
 	if err != nil {
-		return nil, fmt.Errorf("error reading busybox binary: %w", err)
+		return nil, fmt.Errorf("reading busybox binary: %w", err)
 	}
 
 	filesLayer, err := oci.LayerFile(
@@ -267,7 +267,7 @@ echo "System Init"`), Mode: 0o777},
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error creating layer from files: %w", err)
+		return nil, fmt.Errorf("creating layer from files: %w", err)
 	}
 
 	symlinkLayer, err := oci.LayerSymlink(
@@ -279,7 +279,7 @@ echo "System Init"`), Mode: 0o777},
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error creating layer from symlinks: %w", err)
+		return nil, fmt.Errorf("creating layer from symlinks: %w", err)
 	}
 
 	return []containerregistry.Layer{

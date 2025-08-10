@@ -63,12 +63,12 @@ func New(
 
 	artifactsregistry, err := artifactsregistry.GetArtifactsRegistryProvider()
 	if err != nil {
-		return nil, fmt.Errorf("error getting artifacts registry provider: %v", err)
+		return nil, fmt.Errorf("get artifacts registry provider: %v", err)
 	}
 
 	buildPersistance, err := storage.GetBuildCacheStorageProvider(ctx, limiter)
 	if err != nil {
-		return nil, fmt.Errorf("error getting build cache storage provider: %v", err)
+		return nil, fmt.Errorf("get build cache storage provider: %v", err)
 	}
 
 	buildCache := cache.NewBuildCache(meterProvider)
