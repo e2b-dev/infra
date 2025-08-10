@@ -84,6 +84,30 @@ func (u *userfaultfd) copy(addr uintptr, data []byte, pagesize uint64, mode CULo
 		return errno
 	}
 
+	// Check if the copied size matches the requested pagesize
+	if uint64(cpy.copy) != pagesize {
+		return fmt.Errorf("UFFDIO_COPY copied %d bytes, expected %d", cpy.copy, pagesize)
+	}
+
+	return nil
+}
+
+// Wake wakes up the faulting thread(s) waiting on the given address range.
+func (u *userfaultfd) Wake(addr uintptr, size uint64) error {
+	type uffdioWake struct {
+		addr  CULong
+		len   CULong
+		flags CULong
+	}
+	wake := uffdioWake{
+		addr:  CULong(addr),
+		len:   CULong(size),
+		flags: 0,
+	}
+
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.fd, UFFDIO_WAKE, uintptr(unsafe.Pointer(&wake))); errno != 0 {
+		return errno
+	}
 	return nil
 }
 

@@ -167,7 +167,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 	// 			return fmt.Errorf("failed to reregister memory region with write protection %d-%d", region.Offset, region.Offset+region.Size)
 	// 		}
 
-	// 		// Add write protection to the regions provided by the UFFD
+	// 		Add write protection to the regions provided by the UFFD
 	// 		err = uffd.AddWriteProtection(
 	// 			region.Offset+region.BaseHostVirtAddr,
 	// 			uint64(region.Size),
