@@ -50,7 +50,7 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 	}
 
 	if params.End != nil {
-		end = time.Unix(*params.End, 0).Add(time.Second)
+		end = time.Unix(*params.End, 0)
 	}
 
 	// Validate time range parameters
