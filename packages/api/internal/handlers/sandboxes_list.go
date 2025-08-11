@@ -242,7 +242,7 @@ func snapshotsToPaginatedSandboxes(snapshots []queries.GetSnapshotsWithCursorRow
 				State:       api.Paused,
 				EnvdVersion: envdVersion,
 			},
-			PaginationTimestamp: snapshot.CreatedAt.Time,
+			PaginationTimestamp: snapshot.SandboxStartedAt.Time,
 		}
 
 		if snapshot.Metadata != nil {
