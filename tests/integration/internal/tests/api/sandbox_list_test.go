@@ -239,7 +239,7 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 	sandbox1ID := sbx1.SandboxID
 	sandbox2ID := sbx2.SandboxID
 
-	// Pause the second sandbox
+	// Pause the first sandbox
 	pauseSandbox(t, c, sandbox1ID)
 
 	// Test pagination with limit
