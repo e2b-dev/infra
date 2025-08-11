@@ -51,7 +51,7 @@ func TestTeamMetrics(t *testing.T) {
 		if metric.SandboxStartRate > 0 {
 			startRateGreaterThanZero = true
 		}
-		if metric.MaxConcurrentSandboxes > 0 {
+		if metric.ConcurrentSandboxes > 0 {
 			concurrentSandboxesGreaterThanZero = true
 		}
 	}
