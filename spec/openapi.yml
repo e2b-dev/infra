@@ -89,6 +89,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    "403":
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     "404":
       description: Not found
       content:
@@ -1022,14 +1028,14 @@ paths:
             type: integer
             format: int64
             minimum: 0
-          description: Starting timestamp of the metrics that should be returned in milliseconds
+          description: Unix timestamp for the start of the interval, in seconds, for which the metrics
         - in: query
           name: end
           schema:
             type: integer
             format: int64
             minimum: 0
-            description: Ending timestamp of the metrics that should be returned in milliseconds
+            description: Unix timestamp for the end of the interval, in seconds, for which the metrics
       responses:
         "200":
           description: Successfully returned the team metrics
@@ -1039,8 +1045,12 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/TeamMetric"
+        "400":
+          $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
         "500":
           $ref: "#/components/responses/500"
 
@@ -1292,14 +1302,14 @@ paths:
             type: integer
             format: int64
             minimum: 0
-          description: Starting timestamp of the metrics that should be returned in milliseconds
+          description: Unix timestamp for the start of the interval, in seconds, for which the metrics
         - in: query
           name: end
           schema:
             type: integer
             format: int64
             minimum: 0
-            description: Ending timestamp of the metrics that should be returned in milliseconds
+            description: Unix timestamp for the end of the interval, in seconds, for which the metrics
 
       responses:
         "200":
