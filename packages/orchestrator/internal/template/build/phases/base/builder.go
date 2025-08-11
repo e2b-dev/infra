@@ -91,18 +91,11 @@ func New(
 	}
 }
 
-func (bb *BaseBuilder) Build(
-	ctx context.Context,
-	_ phases.LayerResult,
-) (phases.LayerResult, error) {
-	hash := bb.Hash()
+func (bb *BaseBuilder) Prefix() string {
+	return "base"
+}
 
-	cached, baseMetadata, err := bb.setup(ctx, hash)
-	if err != nil {
-		return phases.LayerResult{}, fmt.Errorf("error setting up build: %w", err)
-	}
-
-	// Print the base layer information
+func (bb *BaseBuilder) String(ctx context.Context) (string, error) {
 	var baseSource string
 	if bb.Config.FromTemplate != nil {
 		baseSource = "FROM TEMPLATE " + bb.Config.FromTemplate.GetAlias()
@@ -111,28 +104,33 @@ func (bb *BaseBuilder) Build(
 		if fromImage == "" {
 			tag, err := bb.artifactRegistry.GetTag(ctx, bb.Template.TemplateID, bb.Template.BuildID)
 			if err != nil {
-				return phases.LayerResult{}, fmt.Errorf("error getting tag for template: %w", err)
+				return "", fmt.Errorf("error getting tag for template: %w", err)
 			}
 			fromImage = tag
 		}
 		baseSource = "FROM " + fromImage
 	}
-	bb.UserLogger.Info(phases.LayerInfo(cached, "base", baseSource, hash))
 
-	bb.metrics.RecordCacheResult(ctx, metrics.PhaseBase, cached)
+	return baseSource, nil
+}
 
-	if cached {
-		return phases.LayerResult{
-			Metadata: baseMetadata,
-			Cached:   true,
-			Hash:     hash,
-		}, nil
+func (bb *BaseBuilder) Metadata() phases.PhaseMeta {
+	return phases.PhaseMeta{
+		Phase:    metrics.PhaseBase,
+		StepType: "base",
 	}
+}
 
-	baseMetadata, err = bb.buildLayerFromOCI(
+func (bb *BaseBuilder) Build(
+	ctx context.Context,
+	_ phases.LayerResult,
+	currentLayer phases.LayerResult,
+	_ string,
+) (phases.LayerResult, error) {
+	baseMetadata, err := bb.buildLayerFromOCI(
 		ctx,
-		baseMetadata,
-		hash,
+		currentLayer.Metadata,
+		currentLayer.Hash,
 	)
 	if err != nil {
 		return phases.LayerResult{}, fmt.Errorf("error building base layer: %w", err)
@@ -141,7 +139,7 @@ func (bb *BaseBuilder) Build(
 	return phases.LayerResult{
 		Metadata: baseMetadata,
 		Cached:   false,
-		Hash:     hash,
+		Hash:     currentLayer.Hash,
 	}, nil
 }
 
@@ -308,22 +306,27 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	return baseMetadata, nil
 }
 
-func (bb *BaseBuilder) setup(
+func (bb *BaseBuilder) Layer(
 	ctx context.Context,
+	lastStepResult phases.LayerResult,
 	hash string,
-) (bool, cache.LayerMetadata, error) {
+) (phases.LayerResult, error) {
 	switch {
 	case bb.Config.FromTemplate != nil:
 		// If the template is built from another template, use its metadata
 		tm, err := metadata.ReadTemplateMetadata(ctx, bb.templateStorage, bb.Config.FromTemplate.BuildID)
 		if err != nil {
-			return false, cache.LayerMetadata{}, fmt.Errorf("error getting base layer from cache, you may need to rebuild the base template: %w", err)
+			return phases.LayerResult{}, fmt.Errorf("error getting base layer from cache, you may need to rebuild the base template: %w", err)
 		}
 
 		// From template is always cached, never needs to be built
-		return true, cache.LayerMetadata{
-			Template: tm.Template,
-			CmdMeta:  tm.Metadata,
+		return phases.LayerResult{
+			Metadata: cache.LayerMetadata{
+				Template: tm.Template,
+				CmdMeta:  tm.Metadata,
+			},
+			Hash:   hash,
+			Cached: true,
 		}, nil
 	default:
 		cmdMeta := sandboxtools.CommandMetadata{
@@ -371,9 +374,13 @@ func (bb *BaseBuilder) setup(
 
 		baseCached, err := bb.index.IsCached(ctx, baseMetadata)
 		if err != nil {
-			return false, cache.LayerMetadata{}, fmt.Errorf("error checking if base layer is cached: %w", err)
+			return phases.LayerResult{}, fmt.Errorf("error checking if base layer is cached: %w", err)
 		}
 
-		return baseCached, baseMetadata, nil
+		return phases.LayerResult{
+			Metadata: baseMetadata,
+			Cached:   baseCached,
+			Hash:     hash,
+		}, nil
 	}
 }

@@ -88,21 +88,13 @@ func (m *BuildMetrics) RecordBuildDuration(ctx context.Context, duration time.Du
 }
 
 // RecordPhaseDuration records the duration of a build phase
-func (m *BuildMetrics) RecordPhaseDuration(ctx context.Context, duration time.Duration, phase Phase, cached bool) {
+func (m *BuildMetrics) RecordPhaseDuration(ctx context.Context, duration time.Duration, phase Phase, stepType string, cached bool) {
 	attrs := []attribute.KeyValue{
 		attribute.String("phase", string(phase)),
-		attribute.Bool("cached", cached),
-	}
-	m.BuildPhaseDurationHistogram.Record(ctx, duration.Milliseconds(), metric.WithAttributes(attrs...))
-}
-
-// RecordStepDuration records the duration of a build step
-func (m *BuildMetrics) RecordStepDuration(ctx context.Context, duration time.Duration, stepType string, cached bool) {
-	attrs := []attribute.KeyValue{
 		attribute.String("step_type", stepType),
 		attribute.Bool("cached", cached),
 	}
-	m.BuildStepDurationHistogram.Record(ctx, duration.Milliseconds(), metric.WithAttributes(attrs...))
+	m.BuildPhaseDurationHistogram.Record(ctx, duration.Milliseconds(), metric.WithAttributes(attrs...))
 }
 
 // RecordBuildResult records the result of a build (success or failure)
@@ -114,9 +106,10 @@ func (m *BuildMetrics) RecordBuildResult(ctx context.Context, success bool) {
 }
 
 // RecordCacheResult records the result of a cache lookup (hit or miss)
-func (m *BuildMetrics) RecordCacheResult(ctx context.Context, phase Phase, hit bool) {
+func (m *BuildMetrics) RecordCacheResult(ctx context.Context, phase Phase, stepType string, hit bool) {
 	attrs := []attribute.KeyValue{
 		attribute.String("phase", string(phase)),
+		attribute.String("step_type", stepType),
 		attribute.Bool("hit", hit),
 	}
 	m.BuildCacheResultCounter.Add(ctx, 1, metric.WithAttributes(attrs...))

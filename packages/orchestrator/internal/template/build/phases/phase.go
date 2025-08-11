@@ -3,13 +3,27 @@ package phases
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 )
 
+type PhaseMeta struct {
+	Phase    metrics.Phase
+	StepType string
+}
+
 type BuilderPhase interface {
-	Build(ctx context.Context, lastStepResult LayerResult) (LayerResult, error)
+	Prefix() string
+	String(ctx context.Context) (string, error)
+	Metadata() PhaseMeta
+
+	Hash(sourceLayer LayerResult) (string, error)
+	Layer(ctx context.Context, sourceLayer LayerResult, hash string) (LayerResult, error)
+	Build(ctx context.Context, sourceLayer LayerResult, currentLayer LayerResult, baseTemplateID string) (LayerResult, error)
 }
 
 type LayerResult struct {
@@ -20,7 +34,7 @@ type LayerResult struct {
 	StartMetadata *metadata.StartMetadata
 }
 
-func LayerInfo(
+func layerInfo(
 	cached bool,
 	prefix string,
 	text string,
@@ -31,4 +45,64 @@ func LayerInfo(
 		cachedPrefix = "CACHED "
 	}
 	return fmt.Sprintf("%s[%s] %s [%s]", cachedPrefix, prefix, text, hash)
+}
+
+func Run(
+	ctx context.Context,
+	bc buildcontext.BuildContext,
+	metrics *metrics.BuildMetrics,
+	builders []BuilderPhase,
+) (LayerResult, error) {
+	sourceLayer := LayerResult{}
+	baseTemplateID := ""
+
+	for _, builder := range builders {
+		meta := builder.Metadata()
+
+		phaseStartTime := time.Now()
+		hash, err := builder.Hash(sourceLayer)
+		if err != nil {
+			return LayerResult{}, fmt.Errorf("hash get failed for %s: %w", meta.Phase, err)
+		}
+
+		currentLayer, err := builder.Layer(ctx, sourceLayer, hash)
+		if err != nil {
+			return LayerResult{}, fmt.Errorf("metadata get failed for %s: %w", meta.Phase, err)
+		}
+		metrics.RecordCacheResult(ctx, meta.Phase, meta.StepType, currentLayer.Cached)
+
+		prefix := builder.Prefix()
+		source, err := builder.String(ctx)
+		if err != nil {
+			return LayerResult{}, fmt.Errorf("string get failed for %s: %w", meta.Phase, err)
+		}
+		bc.UserLogger.Info(layerInfo(currentLayer.Cached, prefix, source, currentLayer.Hash))
+
+		// If the last layer is cached, update the base metadata to the step metadata
+		// This is needed to properly run the sandbox for the next step
+		if sourceLayer.Cached || baseTemplateID == "" {
+			baseTemplateID = currentLayer.Metadata.Template.TemplateID
+		}
+
+		if currentLayer.Cached {
+			phaseDuration := time.Since(phaseStartTime)
+			metrics.RecordPhaseDuration(ctx, phaseDuration, meta.Phase, meta.StepType, false)
+
+			sourceLayer = currentLayer
+			continue
+		}
+
+		res, err := builder.Build(ctx, sourceLayer, currentLayer, baseTemplateID)
+		// Record phase duration
+		phaseDuration := time.Since(phaseStartTime)
+		metrics.RecordPhaseDuration(ctx, phaseDuration, meta.Phase, meta.StepType, true)
+
+		if err != nil {
+			return LayerResult{}, fmt.Errorf("error building phase %s: %w", meta.Phase, err)
+		}
+
+		sourceLayer = res
+	}
+
+	return sourceLayer, nil
 }
