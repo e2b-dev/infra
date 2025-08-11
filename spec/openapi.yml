@@ -462,17 +462,17 @@ components:
       description: Team metric with timestamp
       required:
         - timestamp
-        - maxConcurrentSandboxes
+        - concurrentSandboxes
         - sandboxStartRate
       properties:
         timestamp:
           type: string
           format: date-time
           description: Timestamp of the metric entry
-        maxConcurrentSandboxes:
+        concurrentSandboxes:
           type: integer
           format: int32
-          description: Maximum number of concurrent sandboxes for the team
+          description: The number of concurrent sandboxes for the team
         sandboxStartRate:
           type: number
           format: float

@@ -90,9 +90,9 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 	apiMetrics := make([]api.TeamMetric, len(metrics))
 	for i, m := range metrics {
 		apiMetrics[i] = api.TeamMetric{
-			Timestamp:              m.Timestamp,
-			MaxConcurrentSandboxes: int32(m.ConcurrentSandboxes),
-			SandboxStartRate:       float32(m.SandboxStartedRate),
+			Timestamp:           m.Timestamp,
+			ConcurrentSandboxes: int32(m.ConcurrentSandboxes),
+			SandboxStartRate:    float32(m.SandboxStartedRate),
 		}
 	}
 

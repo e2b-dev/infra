@@ -461,8 +461,8 @@ type TeamAPIKey struct {
 
 // TeamMetric Team metric with timestamp
 type TeamMetric struct {
-	// MaxConcurrentSandboxes Maximum number of concurrent sandboxes for the team
-	MaxConcurrentSandboxes int32 `json:"maxConcurrentSandboxes"`
+	// ConcurrentSandboxes The number of concurrent sandboxes for the team
+	ConcurrentSandboxes int32 `json:"concurrentSandboxes"`
 
 	// SandboxStartRate Number of sandboxes started per second
 	SandboxStartRate float32 `json:"sandboxStartRate"`

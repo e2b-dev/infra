@@ -32,7 +32,7 @@ WITH
       toStartOfInterval(timestamp, interval {step:UInt32} second) AS ts,
       toInt64(max(value)) AS concurrent_sandboxes
     FROM team_metrics_gauge
-    WHERE metric_name = 'e2b.team.sandbox.max_concurrent'
+    WHERE metric_name = 'e2b.team.sandbox.running'
       AND team_id = {team_id:String}
       AND timestamp BETWEEN {start_time:DateTime64} AND {end_time:DateTime64}
 	GROUP BY ts

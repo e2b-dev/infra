@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,9 +13,8 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/exemplar"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
-	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -28,17 +26,14 @@ type TeamObserver struct {
 	meterExporter sdkmetric.Exporter
 	registration  metric.Registration
 
-	teamMaxSandboxes  *smap.Map[int64] // tracks max concurrent sandboxes per team in the current interval
-	teamCurrentCounts *smap.Map[int64] // tracks current running sandboxes per team
+	meter                metric.Meter
+	teamSandboxRunning   metric.Int64ObservableGauge
+	teamSandboxesCreated metric.Int64Counter
 
-	meter                 metric.Meter
-	teamSandboxMaxRunning metric.Int64ObservableGauge
-	teamSandboxesCreated  metric.Int64Counter
-
-	mu sync.Mutex
+	cache *instance.InstanceCache
 }
 
-func NewTeamObserver(ctx context.Context) (*TeamObserver, error) {
+func NewTeamObserver(ctx context.Context, cache *instance.InstanceCache) (*TeamObserver, error) {
 	deltaTemporality := otlpmetricgrpc.WithTemporalitySelector(func(kind sdkmetric.InstrumentKind) metricdata.Temporality {
 		return metricdata.DeltaTemporality
 	})
@@ -53,13 +48,10 @@ func NewTeamObserver(ctx context.Context) (*TeamObserver, error) {
 		return nil, fmt.Errorf("failed to create external metric provider: %w", err)
 	}
 
-	teamMaxSandboxes := smap.New[int64]()
-	teamCurrentSandboxes := smap.New[int64]()
-
 	// Setup team sandbox metrics
 	meter := meterProvider.Meter("api.team.metrics")
 
-	teamSandboxMaxGauge, err := telemetry.GetGaugeInt(meter, telemetry.TeamSandboxMaxGaugeName)
+	teamSandboxMaxGauge, err := telemetry.GetGaugeInt(meter, telemetry.TeamSandboxRunningGaugeName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create team sandbox max gauge: %w", err)
 	}
@@ -70,16 +62,14 @@ func NewTeamObserver(ctx context.Context) (*TeamObserver, error) {
 	}
 
 	observer := &TeamObserver{
-		meterExporter:         externalMeterExporter,
-		registration:          nil,
-		teamMaxSandboxes:      teamMaxSandboxes,
-		teamCurrentCounts:     teamCurrentSandboxes,
-		meter:                 meter,
-		teamSandboxMaxRunning: teamSandboxMaxGauge,
-		teamSandboxesCreated:  teamSandboxCreated,
+		meterExporter:        externalMeterExporter,
+		registration:         nil,
+		meter:                meter,
+		teamSandboxRunning:   teamSandboxMaxGauge,
+		teamSandboxesCreated: teamSandboxCreated,
 	}
 
-	err = observer.Start()
+	err = observer.Start(cache)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start team observer: %w", err)
 	}
@@ -87,39 +77,30 @@ func NewTeamObserver(ctx context.Context) (*TeamObserver, error) {
 	return observer, nil
 }
 
-func (so *TeamObserver) Start() (err error) {
+func (so *TeamObserver) Start(cache *instance.InstanceCache) (err error) {
 	// Register callbacks for team sandbox metrics
 	so.registration, err = so.meter.RegisterCallback(
 		func(ctx context.Context, obs metric.Observer) error {
-			so.mu.Lock()
-			maxs := so.teamMaxSandboxes.Items()
-			current := so.teamCurrentCounts.Items()
+			sbxs := cache.Items()
+			sbxsPerTeam := make(map[string]int64)
+			for _, sbx := range sbxs {
+				teamID := sbx.TeamID.String()
+				if _, ok := sbxsPerTeam[teamID]; !ok {
+					sbxsPerTeam[teamID] = 0
+				}
+
+				sbxsPerTeam[teamID] = sbxsPerTeam[teamID] + 1
+			}
 
 			// Reset the max for the new interval to the current counts
-			for teamID, maxCount := range maxs {
-				count, ok := current[teamID]
-				if !ok {
-					count = 0
-				}
-
-				if maxCount == 0 && count == 0 {
-					// Remove the team from the map if it has no sandboxes and it was previously tracked
-					so.teamMaxSandboxes.Remove(teamID)
-				} else {
-					// Update the max for the interval to the current count
-					so.teamMaxSandboxes.Insert(teamID, count)
-				}
-			}
-			so.mu.Unlock()
-
 			// Observe the max concurrent sandbox counts for each team
-			for teamID, maxCount := range maxs {
-				obs.ObserveInt64(so.teamSandboxMaxRunning, maxCount, metric.WithAttributes(attribute.String("team_id", teamID)))
+			for teamID, count := range sbxsPerTeam {
+				obs.ObserveInt64(so.teamSandboxRunning, count, metric.WithAttributes(attribute.String("team_id", teamID)))
 			}
 
 			return nil
 		},
-		so.teamSandboxMaxRunning,
+		so.teamSandboxRunning,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to register team sandbox metrics callbacks: %w", err)
@@ -129,9 +110,6 @@ func (so *TeamObserver) Start() (err error) {
 }
 
 func (so *TeamObserver) Add(ctx context.Context, teamID uuid.UUID, created bool) {
-	so.mu.Lock()
-	defer so.mu.Unlock()
-
 	teamIDStr := teamID.String()
 	// Count started only if the sandbox was created
 	if created {
@@ -141,48 +119,9 @@ func (so *TeamObserver) Add(ctx context.Context, teamID uuid.UUID, created bool)
 
 		so.teamSandboxesCreated.Add(ctx, 1, metric.WithAttributes(attributes...))
 	}
-
-	currentCount, ok := so.teamCurrentCounts.Get(teamIDStr)
-	if !ok {
-		currentCount = 0
-	}
-	currentCount++
-
-	// Update current count cache
-	so.teamCurrentCounts.Insert(teamIDStr, currentCount)
-
-	if maxCount, exists := so.teamMaxSandboxes.Get(teamIDStr); !exists || currentCount > maxCount {
-		so.teamMaxSandboxes.Insert(teamIDStr, currentCount)
-	}
-}
-
-func (so *TeamObserver) Remove(teamID uuid.UUID) {
-	so.mu.Lock()
-	defer so.mu.Unlock()
-
-	// Get the current count inside the mutex to avoid race conditions
-	teamIDStr := teamID.String()
-
-	currentCount, ok := so.teamCurrentCounts.Get(teamIDStr)
-	if !ok {
-		zap.L().Warn("Failed to remove sandbox from team metrics, team already has no sandboxes", zap.String("team_id", teamIDStr))
-		// No count exists, nothing to remove - this could indicate a double-remove or missing Add
-		return
-	}
-
-	// Decrement current count cache
-	newCount := currentCount - 1
-	if newCount > 0 {
-		so.teamCurrentCounts.Insert(teamIDStr, newCount)
-	} else {
-		so.teamCurrentCounts.Remove(teamIDStr)
-	}
 }
 
 func (so *TeamObserver) Close(ctx context.Context) error {
-	so.mu.Lock()
-	defer so.mu.Unlock()
-
 	errs := make([]error, 0)
 	if so.registration != nil {
 		if err := so.registration.Unregister(); err != nil {

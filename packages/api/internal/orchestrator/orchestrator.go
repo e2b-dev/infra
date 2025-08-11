@@ -105,7 +105,7 @@ func New(
 
 	o.instanceCache = cache
 
-	teamMetricsObserver, err := metrics.NewTeamObserver(ctx)
+	teamMetricsObserver, err := metrics.NewTeamObserver(ctx, cache)
 	if err != nil {
 		zap.L().Error("Failed to create team metrics observer", zap.Error(err))
 		return nil, fmt.Errorf("failed to create team metrics observer: %w", err)

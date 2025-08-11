@@ -329,7 +329,6 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		node.RamUsage.Add(-info.RamMB)
 
 		o.dns.Remove(ctx, info.Instance.SandboxID, node.Info.IPAddress)
-		o.teamMetricsObserver.Remove(info.TeamID)
 
 		if node.client == nil {
 			zap.L().Error("client for node not found", logger.WithNodeID(info.Node.NodeID))

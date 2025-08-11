@@ -73,7 +73,7 @@ const (
 	SandboxDiskTotalGaugeName GaugeIntType = "e2b.sandbox.disk.total"
 
 	// Team metrics
-	TeamSandboxMaxGaugeName GaugeIntType = "e2b.team.sandbox.max_concurrent"
+	TeamSandboxRunningGaugeName GaugeIntType = "e2b.team.sandbox.running"
 
 	// Build resource metrics
 	BuildRootfsSizeHistogramName HistogramType = "template.build.rootfs.size"
@@ -156,7 +156,7 @@ var gaugeIntDesc = map[GaugeIntType]string{
 	SandboxCpuTotalGaugeName:      "Amount of CPU available to the sandbox.",
 	SandboxDiskUsedGaugeName:      "Amount of disk space used by the sandbox.",
 	SandboxDiskTotalGaugeName:     "Amount of disk space available to the sandbox.",
-	TeamSandboxMaxGaugeName:       "Maximum number of sandboxes running for the team in the interval.",
+	TeamSandboxRunningGaugeName:   "The number of sandboxes running for the team in the interval.",
 }
 
 var gaugeIntUnits = map[GaugeIntType]string{
@@ -166,7 +166,7 @@ var gaugeIntUnits = map[GaugeIntType]string{
 	SandboxCpuTotalGaugeName:      "{count}",
 	SandboxDiskUsedGaugeName:      "{By}",
 	SandboxDiskTotalGaugeName:     "{By}",
-	TeamSandboxMaxGaugeName:       "{sandbox}",
+	TeamSandboxRunningGaugeName:   "{sandbox}",
 }
 
 func GetCounter(meter metric.Meter, name CounterType) (metric.Int64Counter, error) {
