@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 type TeamMetrics struct {
@@ -15,14 +17,14 @@ type TeamMetrics struct {
 	ConcurrentSandboxes int64     `ch:"concurrent_sandboxes"`
 }
 
-const teamMetricsSelectQuery = `
+var teamMetricsSelectQuery = fmt.Sprintf(`
 WITH
   created AS (
     SELECT
       toStartOfInterval(timestamp, interval {step:UInt32} second) AS ts,
       sum(value) as created_sandboxes
     FROM team_metrics_sum
-    WHERE metric_name = 'e2b.team.sandbox.created'
+    WHERE metric_name = '%s'
       AND team_id = {team_id:String}
       AND timestamp BETWEEN {start_time:DateTime64} AND {end_time:DateTime64}
 	GROUP BY ts
@@ -32,7 +34,7 @@ WITH
       toStartOfInterval(timestamp, interval {step:UInt32} second) AS ts,
       toInt64(max(value)) AS concurrent_sandboxes
     FROM team_metrics_gauge
-    WHERE metric_name = 'e2b.team.sandbox.running'
+    WHERE metric_name = '%s'
       AND team_id = {team_id:String}
       AND timestamp BETWEEN {start_time:DateTime64} AND {end_time:DateTime64}
 	GROUP BY ts
@@ -50,7 +52,7 @@ FROM all_ts
 LEFT JOIN created cr      ON cr.ts = all_ts.ts
 LEFT JOIN concurrent con ON con.ts = all_ts.ts
 ORDER BY all_ts.ts ASC;
-`
+`, telemetry.TeamSandboxCreated, telemetry.TeamSandboxRunningGaugeName)
 
 func (c *Client) QueryTeamMetrics(ctx context.Context, teamID string, start time.Time, end time.Time, step time.Duration) ([]TeamMetrics, error) {
 	rows, err := c.conn.Query(ctx, teamMetricsSelectQuery,
