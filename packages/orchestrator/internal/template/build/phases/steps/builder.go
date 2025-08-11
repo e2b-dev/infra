@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/commands"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
@@ -24,8 +25,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-type StepsBuilder struct {
+type StepBuilder struct {
 	buildcontext.BuildContext
+
+	stepNumber int
+	step       *templatemanager.TemplateStep
 
 	logger *zap.Logger
 	tracer trace.Tracer
@@ -34,6 +38,7 @@ type StepsBuilder struct {
 	layerExecutor   *layer.LayerExecutor
 	commandExecutor *commands.CommandExecutor
 	index           cache.Index
+	metrics         *metrics.BuildMetrics
 }
 
 func New(
@@ -44,9 +49,15 @@ func New(
 	layerExecutor *layer.LayerExecutor,
 	commandExecutor *commands.CommandExecutor,
 	index cache.Index,
-) *StepsBuilder {
-	return &StepsBuilder{
+	metrics *metrics.BuildMetrics,
+	step *templatemanager.TemplateStep,
+	stepNumber int,
+) *StepBuilder {
+	return &StepBuilder{
 		BuildContext: buildContext,
+
+		stepNumber: stepNumber,
+		step:       step,
 
 		logger: logger,
 		tracer: tracer,
@@ -55,70 +66,31 @@ func New(
 		layerExecutor:   layerExecutor,
 		commandExecutor: commandExecutor,
 		index:           index,
+		metrics:         metrics,
 	}
 }
 
-func (sb *StepsBuilder) Build(
-	ctx context.Context,
-	lastStepResult phases.LayerResult,
-) (phases.LayerResult, error) {
-	sourceLayer := lastStepResult
-
-	baseTemplateID := lastStepResult.Metadata.Template.TemplateID
-
-	for i, step := range sb.Config.Steps {
-		hash := sb.Hash(sourceLayer.Hash, step)
-
-		currentLayer, err := sb.shouldBuildStep(
-			ctx,
-			sourceLayer,
-			hash,
-			step.Force,
-		)
-		if err != nil {
-			return phases.LayerResult{}, fmt.Errorf("error checking if step %d should be built: %w", i+1, err)
-		}
-
-		// If the last layer is cached, update the base metadata to the step metadata
-		// This is needed to properly run the sandbox for the next step
-		if sourceLayer.Cached {
-			baseTemplateID = currentLayer.Metadata.Template.TemplateID
-		}
-
-		prefix := fmt.Sprintf("builder %d/%d", i+1, len(sb.Config.Steps))
-		cmd := fmt.Sprintf("%s %s", strings.ToUpper(step.Type), strings.Join(step.Args, " "))
-		sb.UserLogger.Info(phases.LayerInfo(currentLayer.Cached, prefix, cmd, currentLayer.Hash))
-
-		if currentLayer.Cached {
-			sourceLayer = currentLayer
-			continue
-		}
-
-		res, err := sb.buildStep(
-			ctx,
-			step,
-			prefix,
-			baseTemplateID,
-			sourceLayer,
-			currentLayer,
-		)
-		if err != nil {
-			return phases.LayerResult{}, fmt.Errorf("error building step %d: %w", i+1, err)
-		}
-
-		sourceLayer = res
-	}
-
-	return sourceLayer, nil
+func (sb *StepBuilder) Prefix() string {
+	return fmt.Sprintf("builder %d/%d", sb.stepNumber, len(sb.Config.Steps))
 }
 
-func (sb *StepsBuilder) shouldBuildStep(
+func (sb *StepBuilder) String(ctx context.Context) (string, error) {
+	return fmt.Sprintf("%s %s", strings.ToUpper(sb.step.Type), strings.Join(sb.step.Args, " ")), nil
+}
+
+func (sb *StepBuilder) Metadata() phases.PhaseMeta {
+	return phases.PhaseMeta{
+		Phase:    metrics.PhaseSteps,
+		StepType: sb.step.Type,
+	}
+}
+
+func (sb *StepBuilder) Layer(
 	ctx context.Context,
 	sourceLayer phases.LayerResult,
 	hash string,
-	force *bool,
 ) (phases.LayerResult, error) {
-	forceBuild := force != nil && *force
+	forceBuild := sb.step.Force != nil && *sb.step.Force
 	if !forceBuild {
 		m, err := sb.index.LayerMetaFromHash(ctx, hash)
 		if err != nil {
@@ -157,14 +129,15 @@ func (sb *StepsBuilder) shouldBuildStep(
 	}, nil
 }
 
-func (sb *StepsBuilder) buildStep(
+func (sb *StepBuilder) Build(
 	ctx context.Context,
-	step *templatemanager.TemplateStep,
-	prefix string,
-	baseTemplateID string,
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
+	baseTemplateID string,
 ) (phases.LayerResult, error) {
+	prefix := sb.Prefix()
+	step := sb.step
+
 	sbxConfig := sandbox.Config{
 		BaseTemplateID: baseTemplateID,
 

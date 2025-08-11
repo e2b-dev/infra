@@ -3,16 +3,16 @@ package steps
 import (
 	"strings"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/utils"
-	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
-func (sb *StepsBuilder) Hash(previousHash string, step *templatemanager.TemplateStep) string {
+func (sb *StepBuilder) Hash(sourceLayer phases.LayerResult) (string, error) {
 	return cache.HashKeys(
-		previousHash,
-		step.Type,
-		strings.Join(step.Args, " "),
-		utils.Sprintp(step.FilesHash),
-	)
+		sourceLayer.Hash,
+		sb.step.Type,
+		strings.Join(sb.step.Args, " "),
+		utils.Sprintp(sb.step.FilesHash),
+	), nil
 }

@@ -35,12 +35,12 @@ WHERE
     e.team_id = $2
     AND s.metadata @> $3
     AND (
-        s.created_at < $4
+        s.sandbox_started_at < $4
         OR
-        (s.created_at = $4 AND s.sandbox_id > $5)
+        (s.sandbox_started_at = $4 AND s.sandbox_id > $5)
     )
     AND NOT (s.sandbox_id = ANY ($6::text[]))
-ORDER BY s.created_at DESC, s.sandbox_id
+ORDER BY s.sandbox_started_at DESC, s.sandbox_id
 LIMIT $1
 `
 

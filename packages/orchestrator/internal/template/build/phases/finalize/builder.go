@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
@@ -52,23 +53,36 @@ func New(
 	}
 }
 
-func (ppb *PostProcessingBuilder) Hash(lastHash string) string {
-	return cache.HashKeys(lastHash, "config-run-cmd")
+func (ppb *PostProcessingBuilder) Prefix() string {
+	return "finalize"
 }
 
-// runPostProcessing runs post-processing actions in the sandbox
-func (ppb *PostProcessingBuilder) Build(
-	ctx context.Context,
-	lastStepResult phases.LayerResult,
-) (phases.LayerResult, error) {
-	hash := ppb.Hash(lastStepResult.Hash)
+func (ppb *PostProcessingBuilder) String(ctx context.Context) (string, error) {
+	return "Finalizing template build", nil
+}
 
+func (ppb *PostProcessingBuilder) Metadata() phases.PhaseMeta {
+	return phases.PhaseMeta{
+		Phase:    metrics.PhaseFinalize,
+		StepType: "finalize",
+	}
+}
+
+func (ppb *PostProcessingBuilder) Hash(sourceLayer phases.LayerResult) (string, error) {
+	return cache.HashKeys(sourceLayer.Hash, "config-run-cmd"), nil
+}
+
+func (ppb *PostProcessingBuilder) Layer(
+	ctx context.Context,
+	sourceLayer phases.LayerResult,
+	hash string,
+) (phases.LayerResult, error) {
 	var startMetadata *metadata.StartMetadata
 	if ppb.Config.StartCmd != "" || ppb.Config.ReadyCmd != "" {
 		startMetadata = &metadata.StartMetadata{
 			StartCmd: ppb.Config.StartCmd,
 			ReadyCmd: ppb.Config.ReadyCmd,
-			Metadata: lastStepResult.Metadata.CmdMeta,
+			Metadata: sourceLayer.Metadata.CmdMeta,
 		}
 	}
 
@@ -82,6 +96,22 @@ func (ppb *PostProcessingBuilder) Build(
 		startMetadata = tm.Start
 	}
 
+	return phases.LayerResult{
+		// Metadata are not used in the final layer
+		Metadata:      cache.LayerMetadata{},
+		Cached:        false,
+		Hash:          hash,
+		StartMetadata: startMetadata,
+	}, nil
+}
+
+// Build runs post-processing actions in the sandbox
+func (ppb *PostProcessingBuilder) Build(
+	ctx context.Context,
+	lastStepResult phases.LayerResult,
+	currentLayer phases.LayerResult,
+	_ string,
+) (phases.LayerResult, error) {
 	// Configure sandbox for final layer
 	sbxConfig := sandbox.Config{
 		Vcpu:      ppb.Config.VCpuCount,
@@ -101,10 +131,10 @@ func (ppb *PostProcessingBuilder) Build(
 		FirecrackerVersion: ppb.Template.FirecrackerVersion,
 	}, ppb.Template.TemplateID)
 
-	actionExecutor := layer.NewFunctionAction(ppb.postProcessingFn(startMetadata))
+	actionExecutor := layer.NewFunctionAction(ppb.postProcessingFn(currentLayer.StartMetadata))
 
 	finalLayer, err := ppb.layerExecutor.BuildLayer(ctx, layer.LayerBuildCommand{
-		Hash:           hash,
+		Hash:           currentLayer.Hash,
 		SourceLayer:    lastStepResult.Metadata,
 		ExportTemplate: ppb.Template,
 		UpdateEnvd:     lastStepResult.Cached,
@@ -118,8 +148,8 @@ func (ppb *PostProcessingBuilder) Build(
 	return phases.LayerResult{
 		Metadata:      finalLayer,
 		Cached:        false,
-		Hash:          hash,
-		StartMetadata: startMetadata,
+		Hash:          currentLayer.Hash,
+		StartMetadata: currentLayer.StartMetadata,
 	}, nil
 }
 

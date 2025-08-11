@@ -61,7 +61,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			DiskSizeMB:      api.DiskSizeMB(info.TotalDiskSizeMB),
 			EndAt:           info.GetEndTime(),
 			State:           api.Running,
-			EnvdVersion:     &info.EnvdVersion,
+			EnvdVersion:     info.EnvdVersion,
 			EnvdAccessToken: info.EnvdAccessToken,
 			Domain:          sbxDomain,
 		}
@@ -93,6 +93,15 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		zap.L().Error("disk size is not set for the sandbox", logger.WithSandboxID(id))
 	}
 
+	// This shouldn't happen - if yes, the data are in corrupted state,
+	// still adding fallback to envd version v1.0.0 (should behave as if there are no features)
+	envdVersion := "v1.0.0"
+	if lastSnapshot.EnvBuild.EnvdVersion != nil {
+		envdVersion = *lastSnapshot.EnvBuild.EnvdVersion
+	} else {
+		zap.L().Error("envd version is not set for the sandbox", logger.WithSandboxID(id))
+	}
+
 	var sbxAccessToken *string = nil
 	if lastSnapshot.Snapshot.EnvSecure {
 		key, err := a.envdAccessTokenGenerator.GenerateAccessToken(lastSnapshot.Snapshot.SandboxID)
@@ -115,7 +124,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		DiskSizeMB:      diskSize,
 		EndAt:           lastSnapshot.Snapshot.CreatedAt.Time, // Snapshot is created when sandbox is paused
 		State:           api.Paused,
-		EnvdVersion:     lastSnapshot.EnvBuild.EnvdVersion,
+		EnvdVersion:     envdVersion,
 		EnvdAccessToken: sbxAccessToken,
 		Domain:          nil,
 	}
