@@ -86,7 +86,7 @@ func Run(
 
 		if currentLayer.Cached {
 			phaseDuration := time.Since(phaseStartTime)
-			metrics.RecordPhaseDuration(ctx, phaseDuration, meta.Phase, meta.StepType, false)
+			metrics.RecordPhaseDuration(ctx, phaseDuration, meta.Phase, meta.StepType, true)
 
 			sourceLayer = currentLayer
 			continue
@@ -95,7 +95,7 @@ func Run(
 		res, err := builder.Build(ctx, sourceLayer, currentLayer, baseTemplateID)
 		// Record phase duration
 		phaseDuration := time.Since(phaseStartTime)
-		metrics.RecordPhaseDuration(ctx, phaseDuration, meta.Phase, meta.StepType, true)
+		metrics.RecordPhaseDuration(ctx, phaseDuration, meta.Phase, meta.StepType, false)
 
 		if err != nil {
 			return LayerResult{}, fmt.Errorf("error building phase %s: %w", meta.Phase, err)
