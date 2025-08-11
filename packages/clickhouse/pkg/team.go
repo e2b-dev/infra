@@ -44,8 +44,8 @@ WITH
   )
 SELECT
   all_ts.ts AS ts,
-  COALESCE(created_sandboxes / {step:Float64}, 0.0) AS started_sandboxes_rate,
-  COALESCE(concurrent_sandboxes, 0)                 AS concurrent_sandboxes
+  COALESCE(created_sandboxes / {step:UInt32}::Float32, 0.0) AS started_sandboxes_rate,
+  COALESCE(concurrent_sandboxes, 0)                         AS concurrent_sandboxes
 FROM all_ts
 LEFT JOIN created cr      ON cr.ts = all_ts.ts
 LEFT JOIN concurrent con ON con.ts = all_ts.ts
