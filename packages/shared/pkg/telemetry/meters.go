@@ -84,7 +84,7 @@ var counterDesc = map[CounterType]string{
 	ApiOrchestratorCreatedSandboxes: "Number of successfully created sandboxes",
 	BuildResultCounterName:          "Number of template build results",
 	BuildCacheResultCounterName:     "Number of build cache results",
-	TeamSandboxCreated: "Counter of started sandboxes for the team in the interval",
+	TeamSandboxCreated:              "Counter of started sandboxes for the team in the interval",
 }
 
 var counterUnits = map[CounterType]string{
@@ -92,7 +92,7 @@ var counterUnits = map[CounterType]string{
 	ApiOrchestratorCreatedSandboxes: "{sandbox}",
 	BuildResultCounterName:          "{build}",
 	BuildCacheResultCounterName:     "{layer}",
-	TeamSandboxCreated: "{sandbox}",
+	TeamSandboxCreated:              "{sandbox}",
 }
 
 var observableCounterDesc = map[ObservableCounterType]string{
