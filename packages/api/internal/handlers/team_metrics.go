@@ -15,6 +15,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+const defaultTimeRange = 7 * 24 * time.Hour // 7 days
+
 func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params api.GetTeamsTeamIDMetricsParams) {
 	ctx := c.Request.Context()
 	ctx, span := a.Tracer.Start(ctx, "sandbox-metrics")
@@ -44,7 +46,7 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 	}
 
 	// Default time range is the last 7 days
-	start, end := time.Now().Add(-7*24*time.Hour), time.Now()
+	start, end := time.Now().Add(-defaultTimeRange), time.Now()
 	if params.Start != nil {
 		start = time.Unix(*params.Start, 0)
 	}
@@ -59,22 +61,7 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 		return
 	}
 
-	var step time.Duration
-	duration := end.Sub(start)
-	switch {
-	case duration < time.Hour:
-		step = 5 * time.Second
-	case duration < 6*time.Hour:
-		step = 30 * time.Second
-	case duration < 12*time.Hour:
-		step = time.Minute
-	case duration < 24*time.Hour:
-		step = 2 * time.Minute
-	case duration < 7*24*time.Hour:
-		step = 5 * time.Minute
-	default:
-		step = 15 * time.Minute
-	}
+	step := calculateStep(start, end)
 
 	metrics, err := a.clickhouseStore.QueryTeamMetrics(ctx, teamID, start, end, step)
 	if err != nil {

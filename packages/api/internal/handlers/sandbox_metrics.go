@@ -52,6 +52,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 		return
 	}
 
+	// Calculate the step size
 	step := calculateStep(start, end)
 
 	metrics, err := a.clickhouseStore.QuerySandboxMetrics(ctx, sandboxID, team.ID.String(), start, end, step)
@@ -94,8 +95,12 @@ func calculateStep(start, end time.Time) time.Duration {
 		return 30 * time.Second
 	case duration < 12*time.Hour:
 		return time.Minute
-	default:
+	case duration < 24*time.Hour:
 		return 2 * time.Minute
+	case duration < 7*24*time.Hour:
+		return 5 * time.Minute
+	default:
+		return 15 * time.Minute
 	}
 }
 
