@@ -105,15 +105,12 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 	startTime := time.Now()
 	defer func() {
 		duration := time.Since(startTime)
-		success := e == nil
+		success := e == nil && r != nil
 		b.metrics.RecordBuildDuration(ctx, duration, success)
 
 		if success {
 			b.metrics.RecordBuildResult(ctx, true)
-			// Record rootfs size if build was successful
-			if r != nil {
-				b.metrics.RecordRootfsSize(ctx, r.RootfsSizeMB<<constants.ToMBShift)
-			}
+			b.metrics.RecordRootfsSize(ctx, r.RootfsSizeMB<<constants.ToMBShift)
 		} else {
 			// Skip reporting failure metrics only on explicit cancellation
 			if !errors.Is(e, context.Canceled) {
@@ -239,12 +236,12 @@ func runBuild(
 	)
 
 	builders := []struct {
-		phase   string
+		phase   metrics.Phase
 		builder phases.BuilderPhase
 	}{
-		{"base", baseBuilder},
-		{"steps", stepsBuilder},
-		{"finalize", postProcessingBuilder},
+		{metrics.PhaseBase, baseBuilder},
+		{metrics.PhaseSteps, stepsBuilder},
+		{metrics.PhaseFinalize, postProcessingBuilder},
 	}
 
 	lastLayerResult := phases.LayerResult{}

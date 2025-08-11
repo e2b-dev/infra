@@ -119,7 +119,7 @@ func (bb *BaseBuilder) Build(
 	}
 	bb.UserLogger.Info(phases.LayerInfo(cached, "base", baseSource, hash))
 
-	bb.metrics.RecordCacheResult(ctx, "base", cached)
+	bb.metrics.RecordCacheResult(ctx, metrics.PhaseBase, cached)
 
 	if cached {
 		return phases.LayerResult{

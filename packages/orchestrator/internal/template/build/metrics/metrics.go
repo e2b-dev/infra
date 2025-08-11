@@ -11,6 +11,15 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+// Phase represents a build phase
+type Phase string
+
+const (
+	PhaseBase     Phase = "base"
+	PhaseSteps    Phase = "steps"
+	PhaseFinalize Phase = "finalize"
+)
+
 // BuildMetrics contains all metrics related to template building
 type BuildMetrics struct {
 	// Duration histograms
@@ -79,9 +88,9 @@ func (m *BuildMetrics) RecordBuildDuration(ctx context.Context, duration time.Du
 }
 
 // RecordPhaseDuration records the duration of a build phase
-func (m *BuildMetrics) RecordPhaseDuration(ctx context.Context, duration time.Duration, phase string, cached bool) {
+func (m *BuildMetrics) RecordPhaseDuration(ctx context.Context, duration time.Duration, phase Phase, cached bool) {
 	attrs := []attribute.KeyValue{
-		attribute.String("phase", phase),
+		attribute.String("phase", string(phase)),
 		attribute.Bool("cached", cached),
 	}
 	m.BuildPhaseDurationHistogram.Record(ctx, duration.Milliseconds(), metric.WithAttributes(attrs...))
@@ -105,9 +114,9 @@ func (m *BuildMetrics) RecordBuildResult(ctx context.Context, success bool) {
 }
 
 // RecordCacheResult records the result of a cache lookup (hit or miss)
-func (m *BuildMetrics) RecordCacheResult(ctx context.Context, phase string, hit bool) {
+func (m *BuildMetrics) RecordCacheResult(ctx context.Context, phase Phase, hit bool) {
 	attrs := []attribute.KeyValue{
-		attribute.String("phase", phase),
+		attribute.String("phase", string(phase)),
 		attribute.Bool("hit", hit),
 	}
 	m.BuildCacheResultCounter.Add(ctx, 1, metric.WithAttributes(attrs...))

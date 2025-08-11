@@ -95,7 +95,7 @@ func (sb *StepsBuilder) Build(
 		cmd := fmt.Sprintf("%s %s", strings.ToUpper(step.Type), strings.Join(step.Args, " "))
 		sb.UserLogger.Info(phases.LayerInfo(currentLayer.Cached, prefix, cmd, currentLayer.Hash))
 
-		sb.metrics.RecordCacheResult(ctx, "step", currentLayer.Cached)
+		sb.metrics.RecordCacheResult(ctx, metrics.PhaseSteps, currentLayer.Cached)
 
 		if currentLayer.Cached {
 			sourceLayer = currentLayer

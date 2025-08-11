@@ -79,8 +79,8 @@ const (
 var counterDesc = map[CounterType]string{
 	SandboxCreateMeterName:          "Number of currently waiting requests to create a new sandbox",
 	ApiOrchestratorCreatedSandboxes: "Number of successfully created sandboxes",
-	BuildResultCounterName:          "Number of template build results by success/failure status",
-	BuildCacheResultCounterName:     "Number of build cache results by hit/miss status",
+	BuildResultCounterName:          "Number of template build results",
+	BuildCacheResultCounterName:     "Number of build cache results",
 }
 
 var counterUnits = map[CounterType]string{
