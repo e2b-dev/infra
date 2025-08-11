@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 )
 
-func (bb *BaseBuilder) Hash() string {
+func (bb *BaseBuilder) Hash(_ phases.LayerResult) (string, error) {
 	var baseSource string
 	if bb.Config.FromTemplate != nil {
 		// When building from template, use the base template metadata
@@ -27,5 +28,5 @@ func (bb *BaseBuilder) Hash() string {
 		provisionScriptFile,
 		strconv.FormatInt(bb.Config.DiskSizeMB, 10),
 		baseSource,
-	)
+	), nil
 }

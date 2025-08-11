@@ -216,7 +216,7 @@ func runBuild(
 		builder.proxy,
 	)
 
-	stepsBuilder := steps.New(
+	stepBuilders := steps.CreateStepPhases(
 		bc,
 		builder.logger,
 		builder.tracer,
@@ -235,33 +235,20 @@ func runBuild(
 		layerExecutor,
 	)
 
-	builders := []struct {
-		phase   metrics.Phase
-		builder phases.BuilderPhase
-	}{
-		{metrics.PhaseBase, baseBuilder},
-		{metrics.PhaseSteps, stepsBuilder},
-		{metrics.PhaseFinalize, postProcessingBuilder},
+	// Construct the phases/steps to run
+	builders := []phases.BuilderPhase{
+		baseBuilder,
 	}
+	builders = append(builders, stepBuilders...)
+	builders = append(builders, postProcessingBuilder)
 
-	lastLayerResult := phases.LayerResult{}
-	for _, builderInfo := range builders {
-		phaseStartTime := time.Now()
-		res, err := builderInfo.builder.Build(ctx, lastLayerResult)
-		phaseDuration := time.Since(phaseStartTime)
-
-		// Record phase duration
-		builder.metrics.RecordPhaseDuration(ctx, phaseDuration, builderInfo.phase, res.Cached)
-
-		if err != nil {
-			return nil, fmt.Errorf("error building phase %s: %w", builderInfo.phase, err)
-		}
-
-		lastLayerResult = res
+	lastLayerResult, err := phases.Run(ctx, bc, builder.metrics, builders)
+	if err != nil {
+		return nil, fmt.Errorf("error building phases: %w", err)
 	}
 
 	// Ensure the base layer is uploaded before getting the rootfs size
-	err := bc.UploadErrGroup.Wait()
+	err = bc.UploadErrGroup.Wait()
 	if err != nil {
 		return nil, fmt.Errorf("error waiting for layers upload: %w", err)
 	}
