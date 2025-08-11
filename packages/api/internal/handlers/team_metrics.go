@@ -31,7 +31,7 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 
 	metricsReadFlag, err := a.featureFlags.BoolFlag(featureflags.MetricsReadFlagName, team.ID.String())
 	if err != nil {
-		zap.L().Error("error getting metrics read feature flag, soft failing", zap.Error(err))
+		zap.L().Warn("error getting metrics read feature flag, soft failing", zap.Error(err))
 	}
 
 	if !metricsReadFlag {
@@ -76,7 +76,7 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 		step = 15 * time.Minute
 	}
 
-	metrics, err := a.clickhouseStore.QueryTeamMetrics(ctx, team.ID.String(), start, end, step)
+	metrics, err := a.clickhouseStore.QueryTeamMetrics(ctx, teamID, start, end, step)
 	if err != nil {
 		zap.L().Error("Error fetching sandbox metrics from ClickHouse",
 			logger.WithTeamID(team.ID.String()),
