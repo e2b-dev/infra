@@ -1,10 +1,11 @@
 module github.com/e2b-dev/infra/packages/clickhouse
 
-go 1.24.0
+go 1.24.3
 
-toolchain go1.24.3
-
-require github.com/ClickHouse/clickhouse-go/v2 v2.37.2
+require (
+	github.com/ClickHouse/clickhouse-go/v2 v2.37.2
+	github.com/google/uuid v1.6.0
+)
 
 require (
 	github.com/ClickHouse/ch-go v0.66.1 // indirect
@@ -12,7 +13,6 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/go-faster/city v1.0.1 // indirect
 	github.com/go-faster/errors v0.7.1 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/paulmach/orb v0.11.1 // indirect

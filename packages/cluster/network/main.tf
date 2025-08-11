@@ -269,10 +269,17 @@ resource "google_compute_url_map" "orch_map" {
     hosts        = concat(["*.${var.domain_name}"], [for d in var.additional_domains : "*.${d}"])
     path_matcher = "session-paths"
   }
-
   path_matcher {
     name            = "api-paths"
     default_service = google_compute_backend_service.default["api"].self_link
+
+    dynamic "path_rule" {
+      for_each = var.additional_api_path_rules
+      content {
+        paths   = path_rule.value.paths
+        service = path_rule.value.service_id
+      }
+    }
   }
 
   path_matcher {

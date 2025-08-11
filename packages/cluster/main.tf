@@ -323,4 +323,6 @@ module "network" {
 
   labels = var.labels
   prefix = var.prefix
+
+  additional_api_path_rules = var.additional_api_path_rules
 }

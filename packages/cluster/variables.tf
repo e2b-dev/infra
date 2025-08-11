@@ -250,3 +250,17 @@ variable "clickhouse_health_port" {
     path = string
   })
 }
+
+variable "additional_api_path_rules" {
+  description = "Additional path rules to add to the API path matcher."
+  type = list(object({
+    paths      = list(string)
+    service_id = string
+  }))
+  default = [
+    // {
+    //   paths      = ["/events*"]
+    //   service_id = "projects/e2b-dev-jonas/global/backendServices/e2b-argus-api"
+    // }
+  ]
+}
