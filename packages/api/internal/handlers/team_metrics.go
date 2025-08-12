@@ -25,7 +25,6 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 	team := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo).Team
 
 	if teamID != team.ID.String() {
-		zap.L().Warn("user tried to access metrics for a team they are not authorized to access", logger.WithTeamID(team.ID.String()), zap.String("requested_team_id", teamID))
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You (%s) are not authorized to access this team's (%s) metrics", team.ID, teamID))
 
 		return
