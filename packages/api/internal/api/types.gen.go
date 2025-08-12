@@ -459,6 +459,18 @@ type TeamAPIKey struct {
 	Name string `json:"name"`
 }
 
+// TeamMetric Team metric with timestamp
+type TeamMetric struct {
+	// ConcurrentSandboxes The number of concurrent sandboxes for the team
+	ConcurrentSandboxes int32 `json:"concurrentSandboxes"`
+
+	// SandboxStartRate Number of sandboxes started per second
+	SandboxStartRate float32 `json:"sandboxStartRate"`
+
+	// Timestamp Timestamp of the metric entry
+	Timestamp time.Time `json:"timestamp"`
+}
+
 // TeamUser defines model for TeamUser.
 type TeamUser struct {
 	// Email Email of the user
@@ -646,6 +658,9 @@ type NodeID = string
 // SandboxID defines model for sandboxID.
 type SandboxID = string
 
+// TeamID defines model for teamID.
+type TeamID = string
+
 // TemplateID defines model for templateID.
 type TemplateID = string
 
@@ -654,6 +669,9 @@ type N400 = Error
 
 // N401 defines model for 401.
 type N401 = Error
+
+// N403 defines model for 403.
+type N403 = Error
 
 // N404 defines model for 404.
 type N404 = Error
@@ -687,7 +705,7 @@ type GetSandboxesSandboxIDLogsParams struct {
 
 // GetSandboxesSandboxIDMetricsParams defines parameters for GetSandboxesSandboxIDMetrics.
 type GetSandboxesSandboxIDMetricsParams struct {
-	// Start Starting timestamp of the metrics that should be returned in milliseconds
+	// Start Unix timestamp for the start of the interval, in seconds, for which the metrics
 	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
 	End   *int64 `form:"end,omitempty" json:"end,omitempty"`
 }
@@ -702,6 +720,13 @@ type PostSandboxesSandboxIDRefreshesJSONBody struct {
 type PostSandboxesSandboxIDTimeoutJSONBody struct {
 	// Timeout Timeout in seconds from the current time after which the sandbox should expire
 	Timeout int32 `json:"timeout"`
+}
+
+// GetTeamsTeamIDMetricsParams defines parameters for GetTeamsTeamIDMetrics.
+type GetTeamsTeamIDMetricsParams struct {
+	// Start Unix timestamp for the start of the interval, in seconds, for which the metrics
+	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
+	End   *int64 `form:"end,omitempty" json:"end,omitempty"`
 }
 
 // GetTemplatesParams defines parameters for GetTemplates.

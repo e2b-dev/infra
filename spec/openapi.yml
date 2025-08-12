@@ -51,6 +51,12 @@ components:
       required: true
       schema:
         type: string
+    teamID:
+      name: teamID
+      in: path
+      required: true
+      schema:
+        type: string
     nodeID:
       name: nodeID
       in: path
@@ -79,6 +85,12 @@ components:
             $ref: "#/components/schemas/Error"
     "401":
       description: Authentication error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    "403":
+      description: Forbidden
       content:
         application/json:
           schema:
@@ -451,6 +463,26 @@ components:
           type: boolean
           default: false
           description: Automatically pauses the sandbox after the timeout
+
+    TeamMetric:
+      description: Team metric with timestamp
+      required:
+        - timestamp
+        - concurrentSandboxes
+        - sandboxStartRate
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp of the metric entry
+        concurrentSandboxes:
+          type: integer
+          format: int32
+          description: The number of concurrent sandboxes for the team
+        sandboxStartRate:
+          type: number
+          format: float
+          description: Number of sandboxes started per second
 
     Template:
       required:
@@ -980,6 +1012,48 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /teams/{teamID}/metrics:
+    get:
+      description: Get metrics for the team
+      tags: [auth]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+        - in: query
+          name: start
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+          description: Unix timestamp for the start of the interval, in seconds, for which the metrics
+        - in: query
+          name: end
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            description: Unix timestamp for the end of the interval, in seconds, for which the metrics
+      responses:
+        "200":
+          description: Successfully returned the team metrics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeamMetric"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "500":
+          $ref: "#/components/responses/500"
+
   /sandboxes:
     get:
       description: List all running sandboxes
@@ -1228,14 +1302,14 @@ paths:
             type: integer
             format: int64
             minimum: 0
-          description: Starting timestamp of the metrics that should be returned in milliseconds
+          description: Unix timestamp for the start of the interval, in seconds, for which the metrics
         - in: query
           name: end
           schema:
             type: integer
             format: int64
             minimum: 0
-            description: Ending timestamp of the metrics that should be returned in milliseconds
+            description: Unix timestamp for the end of the interval, in seconds, for which the metrics
 
       responses:
         "200":

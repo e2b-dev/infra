@@ -44,3 +44,7 @@ func (m *NoopClient) SelectSandboxEventsByTeamId(ctx context.Context, teamID uui
 func (m *NoopClient) InsertSandboxEvent(ctx context.Context, event SandboxEvent) error {
 	return nil
 }
+
+func (m *NoopClient) QueryTeamMetrics(ctx context.Context, teamID string, start time.Time, end time.Time, step time.Duration) ([]TeamMetrics, error) {
+	return nil, nil
+}

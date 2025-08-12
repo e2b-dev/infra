@@ -13,7 +13,10 @@ type (
 )
 
 const (
-	SandboxCreateMeterName CounterType = "api.env.instance.started"
+	ApiOrchestratorCreatedSandboxes CounterType = "api.orchestrator.created_sandboxes"
+	SandboxCreateMeterName          CounterType = "api.env.instance.started"
+
+	TeamSandboxCreated CounterType = "e2b.team.sandbox.created"
 )
 
 const (
@@ -62,18 +65,18 @@ const (
 const (
 	ApiOrchestratorCountMeterName GaugeIntType = "api.orchestrator.status"
 
+	// Sandbox metrics
 	SandboxRamUsedGaugeName   GaugeIntType = "e2b.sandbox.ram.used"
 	SandboxRamTotalGaugeName  GaugeIntType = "e2b.sandbox.ram.total"
 	SandboxCpuTotalGaugeName  GaugeIntType = "e2b.sandbox.cpu.total"
 	SandboxDiskUsedGaugeName  GaugeIntType = "e2b.sandbox.disk.used"
 	SandboxDiskTotalGaugeName GaugeIntType = "e2b.sandbox.disk.total"
 
+	// Team metrics
+	TeamSandboxRunningGaugeName GaugeIntType = "e2b.team.sandbox.running"
+
 	// Build resource metrics
 	BuildRootfsSizeHistogramName HistogramType = "template.build.rootfs.size"
-)
-
-const (
-	ApiOrchestratorCreatedSandboxes CounterType = "api.orchestrator.created_sandboxes"
 )
 
 var counterDesc = map[CounterType]string{
@@ -81,6 +84,7 @@ var counterDesc = map[CounterType]string{
 	ApiOrchestratorCreatedSandboxes: "Number of successfully created sandboxes",
 	BuildResultCounterName:          "Number of template build results",
 	BuildCacheResultCounterName:     "Number of build cache results",
+	TeamSandboxCreated:              "Counter of started sandboxes for the team in the interval",
 }
 
 var counterUnits = map[CounterType]string{
@@ -88,6 +92,7 @@ var counterUnits = map[CounterType]string{
 	ApiOrchestratorCreatedSandboxes: "{sandbox}",
 	BuildResultCounterName:          "{build}",
 	BuildCacheResultCounterName:     "{layer}",
+	TeamSandboxCreated:              "{sandbox}",
 }
 
 var observableCounterDesc = map[ObservableCounterType]string{
@@ -151,6 +156,7 @@ var gaugeIntDesc = map[GaugeIntType]string{
 	SandboxCpuTotalGaugeName:      "Amount of CPU available to the sandbox.",
 	SandboxDiskUsedGaugeName:      "Amount of disk space used by the sandbox.",
 	SandboxDiskTotalGaugeName:     "Amount of disk space available to the sandbox.",
+	TeamSandboxRunningGaugeName:   "The number of sandboxes running for the team in the interval.",
 }
 
 var gaugeIntUnits = map[GaugeIntType]string{
@@ -160,6 +166,7 @@ var gaugeIntUnits = map[GaugeIntType]string{
 	SandboxCpuTotalGaugeName:      "{count}",
 	SandboxDiskUsedGaugeName:      "{By}",
 	SandboxDiskTotalGaugeName:     "{By}",
+	TeamSandboxRunningGaugeName:   "{sandbox}",
 }
 
 func GetCounter(meter metric.Meter, name CounterType) (metric.Int64Counter, error) {

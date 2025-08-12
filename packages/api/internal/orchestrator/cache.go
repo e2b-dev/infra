@@ -432,6 +432,8 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 			o.dns.Add(ctx, info.Instance.SandboxID, node.Info.IPAddress)
 		}
 
+		o.teamMetricsObserver.Add(ctx, info.TeamID, created)
+
 		if info.AutoPause.Load() {
 			o.instanceCache.MarkAsPausing(info)
 		}
