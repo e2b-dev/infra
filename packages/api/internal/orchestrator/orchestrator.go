@@ -10,7 +10,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/google/uuid"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/metric"
@@ -211,7 +210,7 @@ func (o *Orchestrator) AdminNodes() []*api.Node {
 
 	for _, n := range o.nodes.Items() {
 		// Skip all nodes that are not running in local (Nomad) cluster
-		if n.Info.ClusterID != uuid.Nil {
+		if n.Info.NomadNodeShortID == node.UnknownNomadNodeShortID {
 			continue
 		}
 
