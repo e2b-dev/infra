@@ -32,10 +32,6 @@ func WithClusterID(clusterID uuid.UUID) attribute.KeyValue {
 	return zapFieldToOTELAttribute(logger.WithClusterID(clusterID))
 }
 
-func WithClusterNodeID(nodeID string) attribute.KeyValue {
-	return zapFieldToOTELAttribute(logger.WithClusterNodeID(nodeID))
-}
-
 func WithTeamID(teamID string) attribute.KeyValue {
 	return zapFieldToOTELAttribute(logger.WithTeamID(teamID))
 }

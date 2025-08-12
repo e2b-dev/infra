@@ -216,7 +216,7 @@ type Node struct {
 	AllocatedMemoryMiB int32 `json:"allocatedMemoryMiB"`
 
 	// ClusterID Identifier of the cluster
-	ClusterID *string `json:"clusterID"`
+	ClusterID string `json:"clusterID"`
 
 	// Commit Commit of the orchestrator
 	Commit string `json:"commit"`
@@ -249,7 +249,7 @@ type NodeDetail struct {
 	CachedBuilds []string `json:"cachedBuilds"`
 
 	// ClusterID Identifier of the cluster
-	ClusterID *string `json:"clusterID"`
+	ClusterID string `json:"clusterID"`
 
 	// Commit Commit of the orchestrator
 	Commit string `json:"commit"`
