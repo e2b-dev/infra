@@ -13,6 +13,7 @@ import (
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const defaultTimeRange = 7 * 24 * time.Hour // 7 days
@@ -25,6 +26,7 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 	team := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo).Team
 
 	if teamID != team.ID.String() {
+		telemetry.ReportError(ctx, "team ids mismatch", fmt.Errorf("you (%s) are not authorized to access this team's (%s) metrics", team.ID, teamID), telemetry.WithTeamID(team.ID.String()))
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You (%s) are not authorized to access this team's (%s) metrics", team.ID, teamID))
 
 		return
