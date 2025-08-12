@@ -2,18 +2,16 @@ package phases
 
 import (
 	"errors"
-	"fmt"
 )
 
 type PhaseBuildError struct {
-	Phase   string
-	Step    string
-	Message string
-	Err     error
+	Phase string
+	Step  string
+	Err   error
 }
 
 func (e *PhaseBuildError) Error() string {
-	return fmt.Sprintf("%s/%s: %s: %v", e.Phase, e.Step, e.Message, e.Unwrap())
+	return e.Err.Error()
 }
 
 func (e *PhaseBuildError) Unwrap() error {

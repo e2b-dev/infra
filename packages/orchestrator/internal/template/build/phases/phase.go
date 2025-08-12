@@ -98,7 +98,7 @@ func Run(
 		metrics.RecordPhaseDuration(ctx, phaseDuration, meta.Phase, meta.StepType, false)
 
 		if err != nil {
-			return LayerResult{}, fmt.Errorf("building phase: %w", err)
+			return LayerResult{}, err
 		}
 
 		sourceLayer = res

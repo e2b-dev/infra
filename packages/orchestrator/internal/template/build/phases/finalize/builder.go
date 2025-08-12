@@ -186,10 +186,9 @@ func (ppb *PostProcessingBuilder) postProcessingFn(
 		)
 		if err != nil {
 			return sandboxtools.CommandMetadata{}, &phases.PhaseBuildError{
-				Phase:   string(metrics.PhaseFinalize),
-				Step:    "finalize",
-				Message: "configuration script failed",
-				Err:     err,
+				Phase: string(metrics.PhaseFinalize),
+				Step:  "finalize",
+				Err:   fmt.Errorf("configuration script failed: %w", err),
 			}
 		}
 
@@ -249,10 +248,9 @@ func (ppb *PostProcessingBuilder) postProcessingFn(
 		)
 		if err != nil {
 			return sandboxtools.CommandMetadata{}, &phases.PhaseBuildError{
-				Phase:   string(metrics.PhaseFinalize),
-				Step:    "finalize",
-				Message: "error running ready command",
-				Err:     err,
+				Phase: string(metrics.PhaseFinalize),
+				Step:  "finalize",
+				Err:   fmt.Errorf("ready command failed: %w", err),
 			}
 		}
 
@@ -260,10 +258,9 @@ func (ppb *PostProcessingBuilder) postProcessingFn(
 		select {
 		case <-ctx.Done():
 			return sandboxtools.CommandMetadata{}, &phases.PhaseBuildError{
-				Phase:   string(metrics.PhaseFinalize),
-				Step:    "finalize",
-				Message: "error waiting for start command",
-				Err:     commandsCtx.Err(),
+				Phase: string(metrics.PhaseFinalize),
+				Step:  "finalize",
+				Err:   fmt.Errorf("waiting for start command failed: %w", err),
 			}
 		case <-startCmdConfirm:
 		}
@@ -273,10 +270,9 @@ func (ppb *PostProcessingBuilder) postProcessingFn(
 		err = startCmdRun.Wait()
 		if err != nil {
 			return sandboxtools.CommandMetadata{}, &phases.PhaseBuildError{
-				Phase:   string(metrics.PhaseFinalize),
-				Step:    "finalize",
-				Message: "error running start command",
-				Err:     err,
+				Phase: string(metrics.PhaseFinalize),
+				Step:  "finalize",
+				Err:   fmt.Errorf("start command failed: %w", err),
 			}
 		}
 

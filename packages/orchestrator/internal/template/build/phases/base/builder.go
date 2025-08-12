@@ -134,10 +134,9 @@ func (bb *BaseBuilder) Build(
 	)
 	if err != nil {
 		return phases.LayerResult{}, &phases.PhaseBuildError{
-			Phase:   string(metrics.PhaseBase),
-			Step:    "base",
-			Message: "error building base layer",
-			Err:     err,
+			Phase: string(metrics.PhaseBase),
+			Step:  "base",
+			Err:   err,
 		}
 	}
 

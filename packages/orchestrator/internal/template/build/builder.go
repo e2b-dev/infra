@@ -16,7 +16,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/builderrors"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/commands"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/envd"
@@ -170,12 +169,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 		IsV1Build:      isV1Build,
 	}
 
-	res, err := runBuild(ctx, buildContext, b)
-	if err != nil {
-		return nil, builderrors.NewTemplateBuildError("running build failed", err)
-	}
-
-	return res, nil
+	return runBuild(ctx, buildContext, b)
 }
 
 func runBuild(
@@ -245,7 +239,7 @@ func runBuild(
 
 	lastLayerResult, err := phases.Run(ctx, bc, builder.metrics, builders)
 	if err != nil {
-		return nil, fmt.Errorf("error building phases: %w", err)
+		return nil, err
 	}
 
 	// Ensure the base layer is uploaded before getting the rootfs size

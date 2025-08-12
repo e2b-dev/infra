@@ -173,10 +173,9 @@ func (sb *StepBuilder) Build(
 		)
 		if err != nil {
 			return sandboxtools.CommandMetadata{}, &phases.PhaseBuildError{
-				Phase:   string(metrics.PhaseSteps),
-				Step:    fmt.Sprintf("%d", sb.stepNumber),
-				Message: "error processing step",
-				Err:     err,
+				Phase: string(metrics.PhaseSteps),
+				Step:  fmt.Sprintf("%d", sb.stepNumber),
+				Err:   err,
 			}
 		}
 
@@ -202,7 +201,7 @@ func (sb *StepBuilder) Build(
 		ActionExecutor: actionExecutor,
 	})
 	if err != nil {
-		return phases.LayerResult{}, fmt.Errorf("error running build layer: %w", err)
+		return phases.LayerResult{}, fmt.Errorf("error building step %d: %w", sb.stepNumber, err)
 	}
 
 	return phases.LayerResult{
