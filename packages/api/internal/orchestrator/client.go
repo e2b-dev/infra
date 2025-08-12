@@ -111,7 +111,8 @@ func (o *Orchestrator) connectToNode(ctx context.Context, discovered nomadServic
 		sbxsInProgress: smap.New[*sbxInProgress](),
 		createFails:    atomic.Uint64{},
 	}
-
+	// Update host metrics from service info
+	orchestratorNode.updateMetricsFromServiceInfo(nodeInfo)
 	o.registerNode(orchestratorNode)
 	return nil
 }

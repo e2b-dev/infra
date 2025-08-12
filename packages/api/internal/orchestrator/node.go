@@ -50,6 +50,19 @@ type Node struct {
 	CPUUsage atomic.Int64
 	RamUsage atomic.Int64
 
+	// Host metrics
+	cpuAllocated         atomic.Uint32
+	cpuPercent           atomic.Uint32
+	cpuCount             atomic.Uint32
+	memoryAllocatedBytes atomic.Uint64
+	memoryUsedBytes      atomic.Uint64
+	memoryTotalBytes     atomic.Uint64
+	sandboxCount         atomic.Uint32
+
+	// Detailed disk metrics
+	hostDisks      []orchestratorinfo.DiskMetrics
+	hostDisksMutex sync.RWMutex
+
 	Info *node.NodeInfo
 
 	meta   nodeMetadata
@@ -119,10 +132,62 @@ func (n *Node) setMetadata(md nodeMetadata) {
 	n.meta = md
 }
 
+func (n *Node) updateMetricsFromServiceInfo(info *orchestratorinfo.ServiceInfoResponse) {
+	if info == nil {
+		return
+	}
+
+	// Update host usage metrics
+	n.cpuPercent.Store(info.MetricCpuPercent)
+	n.memoryUsedBytes.Store(info.MetricMemoryUsedBytes)
+
+	// Update host total metrics
+	n.cpuCount.Store(info.MetricCpuCount)
+	n.memoryTotalBytes.Store(info.MetricMemoryTotalBytes)
+
+	// Update total sandbox count
+	n.sandboxCount.Store(info.MetricSandboxesRunning)
+
+	// Update detailed disk metrics
+	n.updateDisks(info.MetricDisks)
+}
+
+func (n *Node) updateDisks(disks []*orchestratorinfo.DiskMetrics) {
+	n.hostDisksMutex.Lock()
+	defer n.hostDisksMutex.Unlock()
+	n.hostDisks = make([]orchestratorinfo.DiskMetrics, len(disks))
+	for i, disk := range disks {
+		n.hostDisks[i] = orchestratorinfo.DiskMetrics{
+			MountPoint:     disk.MountPoint,
+			Device:         disk.Device,
+			FilesystemType: disk.FilesystemType,
+			UsedBytes:      disk.UsedBytes,
+			TotalBytes:     disk.TotalBytes,
+		}
+	}
+}
+
 func (n *Node) metadata() nodeMetadata {
 	n.mutex.RLock()
 	defer n.mutex.RUnlock()
 	return n.meta
+}
+
+func (n *Node) getHostDisks() []api.DiskMetrics {
+	n.hostDisksMutex.RLock()
+	defer n.hostDisksMutex.RUnlock()
+
+	result := make([]api.DiskMetrics, len(n.hostDisks))
+	for i := range n.hostDisks {
+		result[i] = api.DiskMetrics{
+			MountPoint:     n.hostDisks[i].MountPoint,
+			Device:         n.hostDisks[i].Device,
+			FilesystemType: n.hostDisks[i].FilesystemType,
+			UsedBytes:      n.hostDisks[i].UsedBytes,
+			TotalBytes:     n.hostDisks[i].TotalBytes,
+		}
+	}
+	return result
 }
 
 func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
