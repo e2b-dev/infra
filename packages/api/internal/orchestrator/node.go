@@ -66,8 +66,6 @@ type Node struct {
 	createFails   atomic.Uint64
 }
 
-var emptyMetadata = metadata.New(map[string]string{})
-
 func (n *Node) Close() {
 	n.buildCache.Stop()
 }
