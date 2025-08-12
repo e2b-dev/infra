@@ -54,13 +54,14 @@ func (tm *TemplateManager) CreateTemplate(
 
 		// Report build failur status on any error while creating the template
 		telemetry.ReportCriticalError(ctx, "build failed", e, telemetry.WithTemplateID(templateID))
-		msg := fmt.Sprintf("error when building env: %s", e)
 		err := tm.SetStatus(
 			ctx,
 			templateID,
 			buildID,
 			envbuild.StatusFailed,
-			&msg,
+			&templatemanagergrpc.TemplateBuildStatusReason{
+				Message: fmt.Sprintf("error when building env: %s", e),
+			},
 		)
 		if err != nil {
 			e = errors.Join(e, fmt.Errorf("failed to set build status to failed: %w", err))

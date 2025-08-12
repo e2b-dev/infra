@@ -133,7 +133,12 @@ func (bb *BaseBuilder) Build(
 		currentLayer.Hash,
 	)
 	if err != nil {
-		return phases.LayerResult{}, fmt.Errorf("error building base layer: %w", err)
+		return phases.LayerResult{}, &phases.PhaseBuildError{
+			Phase:   string(metrics.PhaseBase),
+			Step:    "base",
+			Message: "error building base layer",
+			Err:     err,
+		}
 	}
 
 	return phases.LayerResult{

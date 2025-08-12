@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/builderrors"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
@@ -118,7 +119,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error while building template", err)
 
-			buildInfo.SetFail(err.Error())
+			buildInfo.SetFail(builderrors.UnwrapUserError(err))
 		} else {
 			buildInfo.SetSuccess(&templatemanager.TemplateBuildMetadata{
 				RootfsSizeKey:  int32(res.RootfsSizeMB),

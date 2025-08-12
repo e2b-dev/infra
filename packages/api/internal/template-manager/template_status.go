@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
@@ -39,8 +40,9 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 	if envBuildDb.Status == envbuild.StatusWaiting {
 		// if waiting for too long, fail the build
 		if time.Since(envBuildDb.CreatedAt) > syncWaitingStateDeadline {
-			msg := "build is in waiting state for too long"
-			err = tm.SetStatus(ctx, templateID, buildID, envbuild.StatusFailed, &msg)
+			err = tm.SetStatus(ctx, templateID, buildID, envbuild.StatusFailed, &templatemanagergrpc.TemplateBuildStatusReason{
+				Message: "build is in waiting state for too long",
+			})
 			return fmt.Errorf("build is in waiting state for too long, failing it: %w", err)
 		}
 
@@ -68,7 +70,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 }
 
 type templateManagerClient interface {
-	SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason *string) error
+	SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason *templatemanagergrpc.TemplateBuildStatusReason) error
 	SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string) error
 	GetStatus(ctx context.Context, buildId uuid.UUID, templateID string, clusterID *uuid.UUID, nodeID *string) (*templatemanagergrpc.TemplateBuildStatusResponse, error)
 }
@@ -95,8 +97,9 @@ func (c *PollBuildStatus) poll(ctx context.Context) {
 		case <-ctx.Done():
 			c.logger.Debug("Build status polling timed out, stopping polling")
 
-			reason := fmt.Sprintf("build status polling timed out. Maximum build time is %s.", buildTimeout)
-			statusErr := c.client.SetStatus(ctx, c.templateID, c.buildID, envbuild.StatusFailed, &reason)
+			statusErr := c.client.SetStatus(ctx, c.templateID, c.buildID, envbuild.StatusFailed, &templatemanagergrpc.TemplateBuildStatusReason{
+				Message: fmt.Sprintf("build status polling timed out. Maximum build time is %s.", buildTimeout),
+			})
 			if statusErr != nil {
 				c.logger.Error("error when setting build status", zap.Error(statusErr))
 			}
@@ -105,12 +108,13 @@ func (c *PollBuildStatus) poll(ctx context.Context) {
 		case <-ticker.C:
 			c.logger.Debug("Checking template build status")
 
-			err, buildCompleted := c.checkBuildStatus(ctx)
+			buildCompleted, err := c.checkBuildStatus(ctx)
 			if err != nil {
 				c.logger.Error("Build status polling received unrecoverable error", zap.Error(err))
 
-				reason := fmt.Sprintf("polling received unrecoverable error: %s", err)
-				statusErr := c.client.SetStatus(ctx, c.templateID, c.buildID, envbuild.StatusFailed, &reason)
+				statusErr := c.client.SetStatus(ctx, c.templateID, c.buildID, envbuild.StatusFailed, &templatemanagergrpc.TemplateBuildStatusReason{
+					Message: fmt.Sprintf("polling received unrecoverable error: %s", err),
+				})
 				if statusErr != nil {
 					c.logger.Error("error when setting build status", zap.Error(statusErr))
 				}
@@ -162,37 +166,37 @@ func (c *PollBuildStatus) setStatus(ctx context.Context) error {
 	return nil
 }
 
-func (c *PollBuildStatus) dispatchBasedOnStatus(ctx context.Context, status *templatemanagergrpc.TemplateBuildStatusResponse) (error, bool) {
+func (c *PollBuildStatus) dispatchBasedOnStatus(ctx context.Context, status *templatemanagergrpc.TemplateBuildStatusResponse) (bool, error) {
 	if status == nil {
-		return errors.New("nil status"), false
+		return false, errors.New("nil status")
 	}
 	switch status.GetStatus() {
 	case templatemanagergrpc.TemplateBuildState_Failed:
 		// build failed
 		err := c.client.SetStatus(ctx, c.templateID, c.buildID, envbuild.StatusFailed, status.Reason)
 		if err != nil {
-			return errors.Wrap(err, "error when setting build status"), false
+			return false, errors.Wrap(err, "error when setting build status")
 		}
-		return nil, true
+		return true, nil
 	case templatemanagergrpc.TemplateBuildState_Completed:
 		// build completed
 		meta := status.GetMetadata()
 		if meta == nil {
-			return errors.New("nil metadata"), false
+			return false, errors.New("nil metadata")
 		}
 
 		err := c.client.SetFinished(ctx, c.templateID, c.buildID, int64(meta.RootfsSizeKey), meta.EnvdVersionKey)
 		if err != nil {
-			return errors.Wrap(err, "error when finishing build"), false
+			return false, errors.Wrap(err, "error when finishing build")
 		}
-		return nil, true
+		return true, nil
 	default:
 		c.logger.Debug("skipping status", zap.Any("status", status))
-		return nil, false
+		return false, nil
 	}
 }
 
-func (c *PollBuildStatus) checkBuildStatus(ctx context.Context) (error, bool) {
+func (c *PollBuildStatus) checkBuildStatus(ctx context.Context) (bool, error) {
 	c.logger.Debug("Checking template build status")
 
 	retrier := retry.NewRetrier(
@@ -204,17 +208,17 @@ func (c *PollBuildStatus) checkBuildStatus(ctx context.Context) (error, bool) {
 	err := retrier.RunContext(ctx, c.setStatus)
 	if err != nil {
 		c.logger.Error("error when calling setStatus", zap.Error(err))
-		return err, false
+		return false, err
 	}
 
 	c.logger.Debug("dispatching based on status", zap.Any("status", c.status))
 
-	err, buildCompleted := c.dispatchBasedOnStatus(ctx, c.status)
+	buildCompleted, err := c.dispatchBasedOnStatus(ctx, c.status)
 	if err != nil {
-		return errors.Wrap(err, "error when dispatching build status"), false
+		return false, errors.Wrap(err, "error when dispatching build status")
 	}
 
-	return nil, buildCompleted
+	return buildCompleted, nil
 }
 
 func (tm *TemplateManager) removeFromProcessingQueue(buildID uuid.UUID) {
@@ -237,10 +241,18 @@ func (tm *TemplateManager) createInProcessingQueue(buildID uuid.UUID, templateID
 	return false
 }
 
-func (tm *TemplateManager) SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason *string) error {
+func (tm *TemplateManager) SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason *templatemanagergrpc.TemplateBuildStatusReason) error {
 	// first do database update to prevent race condition while calling status
 	err := tm.db.EnvBuildSetStatus(ctx, templateID, buildID, status)
-	tm.buildCache.SetStatus(buildID, status, reason)
+
+	var apiReason *api.BuildStatusReason
+	if reason != nil {
+		apiReason = &api.BuildStatusReason{
+			Message: reason.GetMessage(),
+			Step:    reason.GetStep(),
+		}
+	}
+	tm.buildCache.SetStatus(buildID, status, apiReason)
 	return err
 }
 
@@ -248,8 +260,9 @@ func (tm *TemplateManager) SetFinished(ctx context.Context, templateID string, b
 	// first do database update to prevent race condition while calling status
 	err := tm.db.FinishEnvBuild(ctx, templateID, buildID, rootfsSize, envdVersion)
 	if err != nil {
-		msg := fmt.Sprintf("error when finishing build: %s", err.Error())
-		tm.buildCache.SetStatus(buildID, envbuild.StatusFailed, &msg)
+		tm.buildCache.SetStatus(buildID, envbuild.StatusFailed, &api.BuildStatusReason{
+			Message: fmt.Sprintf("error when finishing build: %s", err.Error()),
+		})
 		return err
 	}
 

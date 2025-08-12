@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/builderrors"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/commands"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/envd"
@@ -171,7 +172,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 
 	res, err := runBuild(ctx, buildContext, b)
 	if err != nil {
-		return nil, fmt.Errorf("error running build: %w", err)
+		return nil, builderrors.NewTemplateBuildError("running build failed", err)
 	}
 
 	return res, nil

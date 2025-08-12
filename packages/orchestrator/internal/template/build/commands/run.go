@@ -51,7 +51,7 @@ func (r *Run) Execute(
 		cmdMetadata,
 	)
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to execute command in sandbox: %w", err)
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to run command: %w", err)
 	}
 
 	return originalMetadata, nil

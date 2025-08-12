@@ -3,6 +3,7 @@ package templatecache
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -154,7 +155,7 @@ type TemplateBuildInfo struct {
 	TeamID      uuid.UUID
 	TemplateID  string
 	BuildStatus envbuild.Status
-	Reason      *string
+	Reason      *api.BuildStatusReason
 
 	ClusterID     *uuid.UUID
 	ClusterNodeID *string
@@ -182,7 +183,7 @@ func NewTemplateBuildCache(db *db.DB) *TemplatesBuildCache {
 	}
 }
 
-func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Status, reason *string) {
+func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Status, reason *api.BuildStatusReason) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
@@ -197,7 +198,6 @@ func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Statu
 		logger.WithBuildID(buildID.String()),
 		zap.String("to_status", status.String()),
 		zap.String("from_status", item.BuildStatus.String()),
-		zap.Stringp("reason", reason),
 	)
 
 	_ = c.cache.Set(
@@ -239,13 +239,33 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 			return TemplateBuildInfo{}, fmt.Errorf("failed to get template build '%s': %w", buildID, envBuildDBErr)
 		}
 
+		dbReason := ""
+		if envBuildDB.Reason != nil {
+			dbReason = *envBuildDB.Reason
+		}
+
+		var parsedReason *api.BuildStatusReason
+		err := json.Unmarshal([]byte(dbReason), &parsedReason)
+		if err != nil {
+			zap.L().Warn("Failed to parse build status reason from DB",
+				logger.WithBuildID(buildID.String()),
+				zap.String("reason", dbReason),
+				zap.Error(err),
+			)
+			// If parsing fails, we just store the raw reason as a message
+			parsedReason = &api.BuildStatusReason{
+				Step:    "",
+				Message: dbReason,
+			}
+		}
+
 		item = c.cache.Set(
 			buildID,
 			TemplateBuildInfo{
 				TeamID:      envDB.TeamID,
 				TemplateID:  envDB.ID,
 				BuildStatus: envBuildDB.Status,
-				Reason:      envBuildDB.Reason,
+				Reason:      parsedReason,
 
 				ClusterID:     envDB.ClusterID,
 				ClusterNodeID: envBuildDB.ClusterNodeID,
