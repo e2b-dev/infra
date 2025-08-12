@@ -9,29 +9,26 @@ import (
 	"github.com/shirou/gopsutil/v4/mem"
 )
 
-type HostMetrics struct {
-	// Usage metrics
-	CPUUsedPercent float64
-	MemoryUsedMB   int64
+type CPUMetrics struct {
+	UsedPercent float64
+	Count       int
+}
 
-	// Total capacity metrics
-	CPUCount      int64
-	MemoryTotalMB int64
-
-	// Detailed disk metrics per mount point
-	Disks []DiskInfo
+type MemoryMetrics struct {
+	UsedBytes  uint64
+	TotalBytes uint64
 }
 
 type DiskInfo struct {
 	MountPoint     string
 	Device         string
 	FilesystemType string
-	UsedMB         int64
-	TotalMB        int64
+	UsedBytes      uint64
+	TotalBytes     uint64
 	UsedPercent    float64
 }
 
-func GetHostMetrics() (*HostMetrics, error) {
+func GetCPUMetrics() (*CPUMetrics, error) {
 	// Get CPU count
 	cpuCount := runtime.NumCPU()
 
@@ -45,14 +42,26 @@ func GetHostMetrics() (*HostMetrics, error) {
 		cpuUsedPercent = cpuPercents[0]
 	}
 
+	return &CPUMetrics{
+		UsedPercent: cpuUsedPercent,
+		Count:       cpuCount,
+	}, nil
+}
+
+func GetMemoryMetrics() (*MemoryMetrics, error) {
 	// Get memory usage and total
 	memInfo, err := mem.VirtualMemory()
 	if err != nil {
 		return nil, err
 	}
-	memoryUsedMB := int64(memInfo.Used / 1024 / 1024)
-	memoryTotalMB := int64(memInfo.Total / 1024 / 1024)
 
+	return &MemoryMetrics{
+		UsedBytes:  memInfo.Used,
+		TotalBytes: memInfo.Total,
+	}, nil
+}
+
+func GetDiskMetrics() ([]DiskInfo, error) {
 	// Get all disk partitions
 	partitions, err := disk.Partitions(false) // false = exclude pseudo filesystems
 	if err != nil {
@@ -76,21 +85,15 @@ func GetHostMetrics() (*HostMetrics, error) {
 			MountPoint:     partition.Mountpoint,
 			Device:         partition.Device,
 			FilesystemType: partition.Fstype,
-			UsedMB:         int64(usage.Used / 1024 / 1024),
-			TotalMB:        int64(usage.Total / 1024 / 1024),
+			UsedBytes:      usage.Used,
+			TotalBytes:     usage.Total,
 			UsedPercent:    usage.UsedPercent,
 		}
 
 		disks = append(disks, diskInfo)
 	}
 
-	return &HostMetrics{
-		CPUUsedPercent: cpuUsedPercent,
-		MemoryUsedMB:   memoryUsedMB,
-		CPUCount:       int64(cpuCount),
-		MemoryTotalMB:  memoryTotalMB,
-		Disks:          disks,
-	}, nil
+	return disks, nil
 }
 
 func isRealDisk(p disk.PartitionStat) bool {

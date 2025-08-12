@@ -51,10 +51,13 @@ type Node struct {
 	RamUsage atomic.Int64
 
 	// Host metrics
-	hostCPUPercent     atomic.Int64
-	hostMemoryUsedMiB  atomic.Int64
-	hostCPUCount       atomic.Int64
-	hostMemoryTotalMiB atomic.Int64
+	cpuAllocated         atomic.Int64
+	cpuPercent           atomic.Int64
+	cpuCount             atomic.Int64
+	memoryAllocatedBytes atomic.Int64
+	memoryUsedBytes      atomic.Int64
+	memoryTotalBytes     atomic.Int64
+	sandboxCount         atomic.Int64
 
 	// Detailed disk metrics
 	hostDisks      []orchestratorinfo.DiskMetrics
@@ -135,26 +138,33 @@ func (n *Node) updateFromServiceInfo(info *orchestratorinfo.ServiceInfoResponse)
 	}
 
 	// Update host usage metrics
-	n.hostCPUPercent.Store(info.MetricHostCpuPercent)
-	n.hostMemoryUsedMiB.Store(info.MetricHostMemoryUsedMb)
+	n.cpuPercent.Store(info.MetricCpuPercent)
+	n.memoryUsedBytes.Store(info.MetricMemoryUsedBytes)
 
 	// Update host total metrics
-	n.hostCPUCount.Store(info.MetricHostCpuCount)
-	n.hostMemoryTotalMiB.Store(info.MetricHostMemoryTotalMb)
+	n.cpuCount.Store(info.MetricCpuCount)
+	n.memoryTotalBytes.Store(info.MetricMemoryTotalBytes)
+
+	// Update total sandbox count
+	n.sandboxCount.Store(info.MetricSandboxesRunning)
 
 	// Update detailed disk metrics
+	n.updateDisks(info.MetricDisks)
+}
+
+func (n *Node) updateDisks(disks []*orchestratorinfo.DiskMetrics) {
 	n.hostDisksMutex.Lock()
-	n.hostDisks = make([]orchestratorinfo.DiskMetrics, len(info.MetricHostDisks))
-	for i, disk := range info.MetricHostDisks {
+	defer n.hostDisksMutex.Unlock()
+	n.hostDisks = make([]orchestratorinfo.DiskMetrics, len(disks))
+	for i, disk := range disks {
 		n.hostDisks[i] = orchestratorinfo.DiskMetrics{
 			MountPoint:     disk.MountPoint,
 			Device:         disk.Device,
 			FilesystemType: disk.FilesystemType,
-			UsedMb:         disk.UsedMb,
-			TotalMb:        disk.TotalMb,
+			UsedBytes:      disk.UsedBytes,
+			TotalBytes:     disk.TotalBytes,
 		}
 	}
-	n.hostDisksMutex.Unlock()
 }
 
 func (n *Node) metadata() nodeMetadata {
@@ -173,8 +183,8 @@ func (n *Node) getHostDisks() []api.DiskMetrics {
 			MountPoint:     n.hostDisks[i].MountPoint,
 			Device:         n.hostDisks[i].Device,
 			FilesystemType: n.hostDisks[i].FilesystemType,
-			UsedMB:         n.hostDisks[i].UsedMb,
-			TotalMB:        n.hostDisks[i].TotalMb,
+			UsedBytes:      n.hostDisks[i].UsedBytes,
+			TotalBytes:     n.hostDisks[i].TotalBytes,
 		}
 	}
 	return result
@@ -244,16 +254,54 @@ func (o *Orchestrator) GetNodeByNomadShortID(id string) *Node {
 			SandboxStartingCount: n.sbxsInProgress.Count(),
 			Version:              metadata.version,
 			Commit:               metadata.commit,
-			HostCPUPercent:       int32(n.hostCPUPercent.Load()),
-			HostMemoryUsedMiB:    int32(n.hostMemoryUsedMiB.Load()),
-			HostCPUCount:         int32(n.hostCPUCount.Load()),
-			HostMemoryTotalMiB:   int32(n.hostMemoryTotalMiB.Load()),
+			AllocatedCPU:         int32(n.cpuAllocated.Load()),
+			CpuPercent:           int32(n.cpuPercent.Load()),
+			CpuCount:             int32(n.cpuCount.Load()),
+			MemoryUsedBytes:      int32(n.memoryUsedBytes.Load()),
+			AllocatedMemoryBytes: int32(n.memoryAllocatedBytes.Load()),
+			MemoryTotalBytes:     int32(n.memoryTotalBytes.Load()),
+			SandboxCount:         int32(n.sandboxCount.Load()),
 			HostDisks:            n.getHostDisks(),
 		}
 	}
 
-	return nil
+	var result []*api.Node
+	for _, n := range nodes {
+		result = append(result, n)
+	}
+
+	return result
 }
+
+func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
+	var node *api.NodeDetail
+
+	for key, n := range o.nodes.Items() {
+		if key == nodeID {
+			var clusterID *string
+			if n.ClusterID != uuid.Nil {
+				clusterIDRaw := n.ClusterID.String()
+				clusterID = &clusterIDRaw
+			}
+
+			builds := n.buildCache.Keys()
+			metadata := n.metadata()
+			node = &api.NodeDetail{
+				NodeID:          key,
+				ClusterID:       clusterID,
+				Status:          n.Status(),
+				CachedBuilds:    builds,
+				CreateSuccesses: n.createSuccess.Load(),
+				CreateFails:     n.createFails.Load(),
+				Version:         metadata.version,
+				Commit:          metadata.commit,
+			}
+		}
+	}
+
+	if node == nil {
+		return nil
+	}
 
 func (o *Orchestrator) NodeCount() int {
 	return o.nodes.Count()

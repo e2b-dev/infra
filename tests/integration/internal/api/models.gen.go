@@ -109,11 +109,11 @@ type DiskMetrics struct {
 	// MountPoint Mount point of the disk
 	MountPoint string `json:"mountPoint"`
 
-	// TotalMB Total space in MB
-	TotalMB int64 `json:"totalMB"`
+	// TotalBytes Total space in bytes
+	TotalBytes int64 `json:"totalBytes"`
 
-	// UsedMB Used space in MB
-	UsedMB int64 `json:"usedMB"`
+	// UsedBytes Used space in bytes
+	UsedBytes int64 `json:"usedBytes"`
 }
 
 // DiskSizeMB Disk size for the sandbox in MiB
@@ -230,8 +230,8 @@ type Node struct {
 	// AllocatedCPU Number of allocated CPU cores
 	AllocatedCPU int32 `json:"allocatedCPU"`
 
-	// AllocatedMemoryMiB Amount of allocated memory in MiB
-	AllocatedMemoryMiB int32 `json:"allocatedMemoryMiB"`
+	// AllocatedMemoryBytes Amount of allocated memory in bytes
+	AllocatedMemoryBytes int32 `json:"allocatedMemoryBytes"`
 
 	// ClusterID Identifier of the cluster
 	ClusterID string `json:"clusterID"`
@@ -239,26 +239,26 @@ type Node struct {
 	// Commit Commit of the orchestrator
 	Commit string `json:"commit"`
 
+	// CpuCount Total number of CPU cores on the node
+	CpuCount int32 `json:"cpuCount"`
+
+	// CpuPercent Node CPU usage percentage
+	CpuPercent int32 `json:"cpuPercent"`
+
 	// CreateFails Number of sandbox create fails
 	CreateFails uint64 `json:"createFails"`
 
 	// CreateSuccesses Number of sandbox create successes
 	CreateSuccesses uint64 `json:"createSuccesses"`
 
-	// HostCPUCount Total number of CPU cores on the host
-	HostCPUCount int32 `json:"hostCPUCount"`
-
-	// HostCPUPercent Host CPU usage percentage
-	HostCPUPercent int32 `json:"hostCPUPercent"`
-
 	// HostDisks Detailed metrics for each disk/mount point
 	HostDisks []DiskMetrics `json:"hostDisks"`
 
-	// HostMemoryTotalMiB Total host memory in MiB
-	HostMemoryTotalMiB int32 `json:"hostMemoryTotalMiB"`
+	// MemoryTotalBytes Total node memory in bytes
+	MemoryTotalBytes int32 `json:"memoryTotalBytes"`
 
-	// HostMemoryUsedMiB Host memory used in MiB
-	HostMemoryUsedMiB int32 `json:"hostMemoryUsedMiB"`
+	// MemoryUsedBytes Node memory used in bytes
+	MemoryUsedBytes int32 `json:"memoryUsedBytes"`
 
 	// NodeID Identifier of the node
 	NodeID string `json:"nodeID"`
