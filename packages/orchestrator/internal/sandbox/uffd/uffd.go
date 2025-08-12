@@ -168,6 +168,8 @@ func (u *Uffd) handle(sandboxId string) error {
 	// 	}
 	// }
 
+	fmt.Fprintf(os.Stderr, "uffd: serving: %d\n", len(m))
+
 	u.readyCh <- struct{}{}
 
 	err = uffd.Serve(

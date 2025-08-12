@@ -133,7 +133,7 @@ outerLoop:
 
 		addr := GetPagefaultAddress(&pagefault)
 
-		offset, pagesize, size, err := mappings.GetRange(addr)
+		offset, pagesize, _, err := mappings.GetRange(addr)
 		if err != nil {
 			logger.Error("UFFD serve get mapping error", zap.Error(err))
 
@@ -177,18 +177,7 @@ outerLoop:
 
 		missingChunksBeingHandled[offset] = struct{}{}
 
-		newPagesize := pagesize
-		if offset+pagesize < size {
-			missingChunksBeingHandled[offset+pagesize] = struct{}{}
-
-			newPagesize = pagesize * 2
-		}
-
 		var copyMode CULong
-
-		goAddress := addr
-		goOffset := offset
-		goPagesize := newPagesize
 
 		eg.Go(func() error {
 			defer func() {
@@ -197,7 +186,7 @@ outerLoop:
 				}
 			}()
 
-			b, sliceErr := src.Slice(int64(goOffset), int64(goPagesize))
+			b, sliceErr := src.Slice(int64(offset), int64(pagesize))
 			if sliceErr != nil {
 				signalErr := fdExit.SignalExit()
 
@@ -208,20 +197,9 @@ outerLoop:
 				return fmt.Errorf("failed to read from source: %w", joinedErr)
 			}
 
-			fmt.Fprintf(
-				os.Stderr,
-				"COPY: triggered by address %d, from offset %d, pagesize %d, index %d, total size %d, total offset %d\n",
-				goAddress+uintptr(goOffset),
-				goOffset,
-				goPagesize,
-				goOffset/goPagesize,
-				size,
-				goOffset,
-			)
-
-			copyErr := u.copy(goAddress, b[:goPagesize], goPagesize, copyMode)
+			copyErr := u.copy(addr, b, pagesize, copyMode)
 			if copyErr == unix.EEXIST {
-				logger.Debug("UFFD serve page already mapped", zap.Any("offset", goOffset), zap.Any("pagesize", goPagesize))
+				logger.Debug("UFFD serve page already mapped", zap.Any("offset", offset), zap.Any("pagesize", pagesize))
 
 				// Page is already mapped
 
