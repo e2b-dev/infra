@@ -202,10 +202,13 @@ func (n *Node) InsertBuild(buildID string) {
 	n.buildCache.Set(buildID, struct{}{}, 2*time.Minute)
 }
 
+// Ensures that GRPC client request context always has the latest service instance ID
 func (n *Node) getClient(ctx context.Context) (*grpclient.GRPCClient, context.Context) {
 	return n.client, metadata.NewOutgoingContext(ctx, n.getClientMetadata())
 }
 
+// Generates metadata with the current service instance ID
+// to ensure we always use the latest ID (e.g. after orchestrator restarts)
 func (n *Node) getClientMetadata() metadata.MD {
 	return metadata.New(map[string]string{consts.EdgeRpcServiceInstanceIDHeader: n.metadata().serviceInstanceID})
 }
