@@ -20,10 +20,11 @@ func TestSandboxListMetrics(t *testing.T) {
 	sbx1 := utils.SetupSandboxWithCleanup(t, c)
 	sbx2 := utils.SetupSandboxWithCleanup(t, c)
 
-	maxRetries := 15
+	maxDuration := 15 * time.Second
+	tick := 500 * time.Millisecond
 	var metrics map[string]api.SandboxMetric
 
-	for i := 0; i < maxRetries; i++ {
+	require.Eventually(t, func() bool {
 		response, err := c.GetSandboxesMetricsWithResponse(t.Context(), &api.GetSandboxesMetricsParams{SandboxIds: []string{sbx1.SandboxID, sbx2.SandboxID}}, setup.WithAPIKey())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, response.StatusCode())
@@ -31,15 +32,12 @@ func TestSandboxListMetrics(t *testing.T) {
 		require.NotNil(t, response.JSON200)
 		require.NotNil(t, response.JSON200.Sandboxes)
 		if len(response.JSON200.Sandboxes) == 0 {
-			t.Logf("No metrics found yet, retrying (%d/%d)", i+1, maxRetries)
-
-			time.Sleep(1 * time.Second) // Wait before retrying
-			continue
+			return false
 		}
 
 		metrics = response.JSON200.Sandboxes
-		break
-	}
+		return true
+	}, maxDuration, tick, "sandbox metrics not available in time")
 
 	require.Equal(t, 2, len(metrics), "Expected two metrics in the response")
 	assert.Contains(t, metrics, sbx1.SandboxID, "Expected sandbox metrics to include the created sandbox")

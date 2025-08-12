@@ -18,26 +18,24 @@ func TestTeamMetrics(t *testing.T) {
 	// Create multiple sandboxes to generate team metrics
 	utils.SetupSandboxWithCleanup(t, c)
 	utils.SetupSandboxWithCleanup(t, c)
-
-	// Wait a bit to ensure metrics are generated
-	maxRetries := 15
 	var metrics []api.TeamMetric
-	for i := 0; i < maxRetries; i++ {
+
+	maxDuration := 15 * time.Second
+	tick := 500 * time.Millisecond
+
+	require.Eventually(t, func() bool {
 		response, err := c.GetTeamsTeamIDMetricsWithResponse(t.Context(), setup.TeamID, nil, setup.WithAPIKey())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, response.StatusCode())
 
 		require.NotNil(t, response.JSON200)
 		if len(*response.JSON200) == 0 {
-			t.Logf("No team metrics found yet, retrying (%d/%d)", i+1, maxRetries)
-
-			time.Sleep(1 * time.Second) // Wait before retrying
-			continue
+			return false
 		}
 
 		metrics = *response.JSON200
-		break
-	}
+		return true
+	}, maxDuration, tick, "team metrics not available in time")
 
 	// Test getting team metrics
 	require.Greater(t, len(metrics), 0, "Expected at least one team metric in the response")
@@ -70,28 +68,27 @@ func TestTeamMetricsWithTimeRange(t *testing.T) {
 	now := time.Now()
 	start := now.Add(-1 * time.Hour).Unix()
 	end := now.Unix()
-
-	maxRetries := 15
 	var metrics []api.TeamMetric
-	for i := 0; i < maxRetries; i++ {
-		response, err := c.GetTeamsTeamIDMetricsWithResponse(t.Context(), setup.TeamID, &api.GetTeamsTeamIDMetricsParams{
-			Start: &start,
-			End:   &end,
-		}, setup.WithAPIKey())
+
+	maxDuration := 15 * time.Second
+	tick := 500 * time.Millisecond
+
+	require.Eventually(t, func() bool {
+		resp, err := c.GetTeamsTeamIDMetricsWithResponse(
+			t.Context(), setup.TeamID,
+			&api.GetTeamsTeamIDMetricsParams{Start: &start, End: &end},
+			setup.WithAPIKey(),
+		)
 		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, response.StatusCode())
-
-		require.NotNil(t, response.JSON200)
-		if len(*response.JSON200) == 0 {
-			t.Logf("No team metrics found yet, retrying (%d/%d)", i+1, maxRetries)
-
-			time.Sleep(1 * time.Second) // Wait before retrying
-			continue
+		require.Equal(t, http.StatusOK, resp.StatusCode())
+		require.NotNil(t, resp.JSON200)
+		if len(*resp.JSON200) == 0 {
+			return false
 		}
 
-		metrics = *response.JSON200
-		break
-	}
+		metrics = *resp.JSON200
+		return true
+	}, maxDuration, tick, "team metrics not available in time")
 
 	require.Greater(t, len(metrics), 0, "Expected at least one team metric in the response")
 
@@ -110,7 +107,6 @@ func TestTeamMetricsEmpty(t *testing.T) {
 	start := now.Add(-240 * time.Hour).Unix()
 	end := now.Add(-216 * time.Hour).Unix()
 
-	// Wait a bit to ensure metrics are generated
 	response, err := c.GetTeamsTeamIDMetricsWithResponse(t.Context(), setup.TeamID, &api.GetTeamsTeamIDMetricsParams{
 		Start: &start,
 		End:   &end,
