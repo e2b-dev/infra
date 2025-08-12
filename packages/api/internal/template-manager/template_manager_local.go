@@ -63,7 +63,8 @@ func (tm *TemplateManager) setLocalClientInfo(status orchestratorinfo.ServiceInf
 }
 
 func (tm *TemplateManager) GetLocalClientInfo() LocalTemplateManagerInfo {
-	tm.localClientMutex.Lock()
-	defer tm.localClientMutex.Unlock()
+	tm.localClientMutex.RLock()
+	defer tm.localClientMutex.RUnlock()
+
 	return tm.localClientInfo
 }
