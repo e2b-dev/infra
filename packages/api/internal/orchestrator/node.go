@@ -167,18 +167,9 @@ func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]nomadServiceDiscov
 	return nodes, nil
 }
 
-// When prefixed with cluster ID, node is unique in the map containing nodes from multiple clusters
-func (o *Orchestrator) scopedNodeID(clusterID uuid.UUID, nodeID string) string {
-	if clusterID == uuid.Nil {
-		return nodeID
-	}
-
-	return fmt.Sprintf("%s-%s", clusterID.String(), nodeID)
-}
-
 func (o *Orchestrator) GetNode(clusterID uuid.UUID, nodeID string) *Node {
-	scopedID := o.scopedNodeID(clusterID, nodeID)
-	n, _ := o.nodes.Get(scopedID)
+	scopedKey := o.scopedNodeID(clusterID, nodeID)
+	n, _ := o.nodes.Get(scopedKey)
 	return n
 }
 

@@ -88,33 +88,31 @@ func (o *Orchestrator) connectToNode(ctx context.Context, discovered nomadServic
 	}
 
 	clusterID := uuid.Nil
-	scopedNodeID := o.scopedNodeID(clusterID, nodeInfo.NodeId)
-	o.nodes.Insert(
-		scopedNodeID, &Node{
-			client:   client,
-			clientMd: make(metadata.MD),
+	orchestratorNode := &Node{
+		client:   client,
+		clientMd: make(metadata.MD),
 
-			Info: &node.NodeInfo{
-				NomadNodeShortID: discovered.NomadNodeShortID,
+		Info: &node.NodeInfo{
+			NomadNodeShortID: discovered.NomadNodeShortID,
 
-				ClusterID: clusterID,
-				NodeID:    nodeInfo.NodeId,
-				IPAddress: discovered.IPAddress,
-			},
-
-			meta: nodeMetadata{
-				serviceInstanceID: nodeInfo.ServiceId,
-				commit:            nodeInfo.ServiceCommit,
-				version:           nodeInfo.ServiceVersion,
-			},
-
-			buildCache:     buildCache,
-			status:         nodeStatus,
-			sbxsInProgress: smap.New[*sbxInProgress](),
-			createFails:    atomic.Uint64{},
+			ClusterID: clusterID,
+			NodeID:    nodeInfo.NodeId,
+			IPAddress: discovered.IPAddress,
 		},
-	)
 
+		meta: nodeMetadata{
+			serviceInstanceID: nodeInfo.ServiceId,
+			commit:            nodeInfo.ServiceCommit,
+			version:           nodeInfo.ServiceVersion,
+		},
+
+		buildCache:     buildCache,
+		status:         nodeStatus,
+		sbxsInProgress: smap.New[*sbxInProgress](),
+		createFails:    atomic.Uint64{},
+	}
+
+	o.registerNode(orchestratorNode)
 	return nil
 }
 
@@ -154,8 +152,26 @@ func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, i *edge.Clust
 		createFails:    atomic.Uint64{},
 	}
 
-	scopedNodeID := o.scopedNodeID(cluster.ID, i.NodeID)
-	o.nodes.Insert(scopedNodeID, orchestratorNode)
+	o.registerNode(orchestratorNode)
+}
+
+func (o *Orchestrator) registerNode(node *Node) {
+	scopedKey := o.scopedNodeID(node.Info.ClusterID, node.Info.NodeID)
+	o.nodes.Insert(scopedKey, node)
+}
+
+func (o *Orchestrator) deregisterNode(node *Node) {
+	scopedKey := o.scopedNodeID(node.Info.ClusterID, node.Info.NodeID)
+	o.nodes.Remove(scopedKey)
+}
+
+// When prefixed with cluster ID, node is unique in the map containing nodes from multiple clusters
+func (o *Orchestrator) scopedNodeID(clusterID uuid.UUID, nodeID string) string {
+	if clusterID == uuid.Nil {
+		return nodeID
+	}
+
+	return fmt.Sprintf("%s-%s", clusterID.String(), nodeID)
 }
 
 func (o *Orchestrator) GetClient(ctx context.Context, clusterID uuid.UUID, nodeID string) (*grpclient.GRPCClient, context.Context, error) {
