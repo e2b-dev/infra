@@ -748,12 +748,53 @@ components:
           description: Filesystem type (e.g., ext4, xfs)
         usedBytes:
           type: integer
-          format: int64
+          format: uint64
           description: Used space in bytes
         totalBytes:
           type: integer
-          format: int64
+          format: uint64
           description: Total space in bytes
+
+    NodeMetrics:
+      description: Node metrics
+      required:
+        - allocatedCPU
+        - allocatedMemoryBytes
+        - cpuPercent
+        - memoryUsedBytes
+        - cpuCount
+        - memoryTotalBytes
+        - disks
+      properties:
+        allocatedCPU:
+          type: integer
+          format: uint32
+          description: Number of allocated CPU cores
+        cpuPercent:
+          type: integer
+          format: uint32
+          description: Node CPU usage percentage
+        cpuCount:
+          type: integer
+          format: uint32
+          description: Total number of CPU cores on the node
+        allocatedMemoryBytes:
+          type: integer
+          format: uint64
+          description: Amount of allocated memory in bytes
+        memoryUsedBytes:
+          type: integer
+          format: uint64
+          description: Node memory used in bytes
+        memoryTotalBytes:
+          type: integer
+          format: uint64
+          description: Total node memory in bytes
+        disks:
+          type: array
+          description: Detailed metrics for each disk/mount point
+          items:
+            $ref: "#/components/schemas/DiskMetrics"
 
     Node:
       required:
@@ -761,13 +802,7 @@ components:
         - clusterID
         - status
         - sandboxCount
-        - allocatedCPU
-        - allocatedMemoryBytes
-        - cpuPercent
-        - memoryUsedBytes
-        - cpuCount
-        - memoryTotalBytes
-        - hostDisks
+        - metrics
         - createSuccesses
         - createFails
         - sandboxStartingCount
@@ -790,37 +825,10 @@ components:
           $ref: "#/components/schemas/NodeStatus"
         sandboxCount:
           type: integer
-          format: int32
+          format: uint32
           description: Number of sandboxes running on the node
-        allocatedCPU:
-          type: integer
-          format: int32
-          description: Number of allocated CPU cores
-        cpuPercent:
-          type: integer
-          format: int32
-          description: Node CPU usage percentage
-        cpuCount:
-          type: integer
-          format: int32
-          description: Total number of CPU cores on the node
-        allocatedMemoryBytes:
-          type: integer
-          format: int32
-          description: Amount of allocated memory in bytes
-        memoryUsedBytes:
-          type: integer
-          format: int32
-          description: Node memory used in bytes
-        memoryTotalBytes:
-          type: integer
-          format: int32
-          description: Total node memory in bytes
-        hostDisks:
-          type: array
-          description: Detailed metrics for each disk/mount point
-          items:
-            $ref: "#/components/schemas/DiskMetrics"
+        metrics:
+          $ref: "#/components/schemas/NodeMetrics"
         createSuccesses:
           type: integer
           format: uint64
@@ -845,6 +853,7 @@ components:
         - createFails
         - version
         - commit
+        - metrics
       properties:
         clusterID:
           type: string
@@ -865,6 +874,8 @@ components:
           description: List of sandboxes running on the node
           items:
             $ref: "#/components/schemas/ListedSandbox"
+        metrics:
+          $ref: "#/components/schemas/NodeMetrics"
         cachedBuilds:
           type: array
           description: List of cached builds id on the node

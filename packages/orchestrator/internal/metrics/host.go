@@ -11,7 +11,7 @@ import (
 
 type CPUMetrics struct {
 	UsedPercent float64
-	Count       int
+	Count       uint32
 }
 
 type MemoryMetrics struct {
@@ -44,7 +44,7 @@ func GetCPUMetrics() (*CPUMetrics, error) {
 
 	return &CPUMetrics{
 		UsedPercent: cpuUsedPercent,
-		Count:       cpuCount,
+		Count:       uint32(cpuCount),
 	}, nil
 }
 

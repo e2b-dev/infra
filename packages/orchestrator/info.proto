@@ -21,8 +21,8 @@ message DiskMetrics {
   string mount_point = 1;
   string device = 2;
   string filesystem_type = 3;
-  int64 used_bytes = 4;
-  int64 total_bytes = 5;
+  uint64 used_bytes = 4;
+  uint64 total_bytes = 5;
 }
 
 message ServiceInfoResponse {
@@ -38,20 +38,20 @@ message ServiceInfoResponse {
   int64 metric_vcpu_used = 101 [deprecated = true];
   int64 metric_memory_used_mb = 102 [deprecated = true];
   int64 metric_disk_mb = 103 [deprecated = true];
-  int64 metric_sandboxes_running = 104;
+  uint32 metric_sandboxes_running = 104;
   
   // Host system usage metrics
-  int64 metric_cpu_percent = 105;
-  int64 metric_memory_used_bytes = 106;
+  uint32 metric_cpu_percent = 105;
+  uint64 metric_memory_used_bytes = 106;
 
   // Host system total resources
-  int64 metric_cpu_count = 108;
-  int64 metric_memory_total_bytes = 109;
+  uint32 metric_cpu_count = 108;
+  uint64 metric_memory_total_bytes = 109;
 
   // Allocated resources to sandboxes
-  int64 metric_cpu_allocated = 110;
-  int64 metric_memory_allocated_bytes = 111;
-  int64 metric_disk_allocated_bytes = 112;
+  uint32 metric_cpu_allocated = 110;
+  uint64 metric_memory_allocated_bytes = 111;
+  uint64 metric_disk_allocated_bytes = 112;
   
   // Detailed disk metrics for each mount point
   repeated DiskMetrics metric_disks = 113;

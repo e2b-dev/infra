@@ -246,9 +246,8 @@ func (o *Orchestrator) syncNodeState(ctx context.Context, node *Node, instanceCa
 				version:           nodeInfo.ServiceVersion,
 			},
 		)
-		node.setMetadata(nodeInfo, nodeInfo.NodeId)
 		// Update host metrics from service info
-		node.updateFromServiceInfo(nodeInfo)
+		node.updateMetricsFromServiceInfo(nodeInfo)
 
 		activeInstances, instancesErr := o.getSandboxes(ctx, node.Info)
 		if instancesErr != nil {

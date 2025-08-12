@@ -240,6 +240,17 @@ func (o *Orchestrator) AdminNodes() []*api.Node {
 			SandboxStartingCount: n.sbxsInProgress.Count(),
 			Version:              meta.version,
 			Commit:               meta.commit,
+			Metrics: api.NodeMetrics{
+				AllocatedMemoryBytes: n.memoryAllocatedBytes.Load(),
+				MemoryUsedBytes:      n.memoryUsedBytes.Load(),
+				MemoryTotalBytes:     n.memoryTotalBytes.Load(),
+
+				AllocatedCPU: n.cpuAllocated.Load(),
+				CpuPercent:   n.cpuPercent.Load(),
+				CpuCount:     n.cpuCount.Load(),
+
+				Disks: n.getHostDisks(),
+			},
 		}
 	}
 
@@ -250,8 +261,6 @@ func (o *Orchestrator) AdminNodes() []*api.Node {
 			continue
 		}
 
-		n.AllocatedCPU += int32(sbx.VCpu)
-		n.AllocatedMemoryMiB += int32(sbx.RamMB)
 		n.SandboxCount += 1
 	}
 
@@ -285,6 +294,17 @@ func (o *Orchestrator) AdminNodeDetail(nomadNodeShortID string) (*api.NodeDetail
 		CreateFails:     n.createFails.Load(),
 		Version:         meta.version,
 		Commit:          meta.commit,
+		Metrics: api.NodeMetrics{
+			AllocatedMemoryBytes: n.memoryAllocatedBytes.Load(),
+			MemoryUsedBytes:      n.memoryUsedBytes.Load(),
+			MemoryTotalBytes:     n.memoryTotalBytes.Load(),
+
+			AllocatedCPU: n.cpuAllocated.Load(),
+			CpuPercent:   n.cpuPercent.Load(),
+			CpuCount:     n.cpuCount.Load(),
+
+			Disks: n.getHostDisks(),
+		},
 	}
 
 	for _, sbx := range o.instanceCache.Items() {

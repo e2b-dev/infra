@@ -38,27 +38,30 @@ func (s *Server) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestrator
 	cpuMetrics, err := metrics.GetCPUMetrics()
 	if err != nil {
 		zap.L().Warn("Failed to get host metrics", zap.Error(err))
+		cpuMetrics = &metrics.CPUMetrics{}
 	}
 
 	memoryMetrics, err := metrics.GetMemoryMetrics()
 	if err != nil {
 		zap.L().Warn("Failed to get host metrics", zap.Error(err))
+		memoryMetrics = &metrics.MemoryMetrics{}
 	}
 
 	diskMetrics, err := metrics.GetDiskMetrics()
 	if err != nil {
 		zap.L().Warn("Failed to get host metrics", zap.Error(err))
+		diskMetrics = []metrics.DiskInfo{}
 	}
 
 	// Calculate sandbox resource allocation
-	sandboxVCpuAllocated := int64(0)
-	sandboxMemoryAllocated := int64(0)
-	sandboxDiskAllocated := int64(0)
+	sandboxVCpuAllocated := uint32(0)
+	sandboxMemoryAllocated := uint64(0)
+	sandboxDiskAllocated := uint64(0)
 
 	for _, item := range s.sandboxes.Items() {
-		sandboxVCpuAllocated += item.Config.Vcpu
-		sandboxMemoryAllocated += item.Config.RamMB * 1024 * 1024
-		sandboxDiskAllocated += item.Config.TotalDiskSizeMB * 1024 * 1024
+		sandboxVCpuAllocated += uint32(item.Config.Vcpu)
+		sandboxMemoryAllocated += uint64(item.Config.RamMB) * 1024 * 1024
+		sandboxDiskAllocated += uint64(item.Config.TotalDiskSizeMB) * 1024 * 1024
 	}
 
 	return &orchestratorinfo.ServiceInfoResponse{
@@ -76,23 +79,23 @@ func (s *Server) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestrator
 		MetricCpuAllocated:         sandboxVCpuAllocated,
 		MetricMemoryAllocatedBytes: sandboxMemoryAllocated,
 		MetricDiskAllocatedBytes:   sandboxDiskAllocated,
-		MetricSandboxesRunning:     int64(s.sandboxes.Count()),
+		MetricSandboxesRunning:     uint32(s.sandboxes.Count()),
 
 		// Host system usage metrics
-		MetricCpuPercent:      int64(cpuMetrics.UsedPercent),
-		MetricMemoryUsedBytes: int64(memoryMetrics.UsedBytes),
+		MetricCpuPercent:      uint32(cpuMetrics.UsedPercent),
+		MetricMemoryUsedBytes: memoryMetrics.UsedBytes,
 
 		// Host system total resources
-		MetricCpuCount:         int64(cpuMetrics.Count),
-		MetricMemoryTotalBytes: int64(memoryMetrics.TotalBytes),
+		MetricCpuCount:         cpuMetrics.Count,
+		MetricMemoryTotalBytes: memoryMetrics.TotalBytes,
 
 		// Detailed disk metrics
 		MetricDisks: convertDiskMetrics(diskMetrics),
 
 		// TODO: Remove when migrated
-		MetricVcpuUsed:     sandboxVCpuAllocated,
-		MetricMemoryUsedMb: sandboxMemoryAllocated / (1024 * 1024),
-		MetricDiskMb:       sandboxDiskAllocated / (1024 * 1024),
+		MetricVcpuUsed:     int64(sandboxVCpuAllocated),
+		MetricMemoryUsedMb: int64(sandboxMemoryAllocated / (1024 * 1024)),
+		MetricDiskMb:       int64(sandboxDiskAllocated / (1024 * 1024)),
 	}, nil
 }
 
@@ -104,8 +107,8 @@ func convertDiskMetrics(disks []metrics.DiskInfo) []*orchestratorinfo.DiskMetric
 			MountPoint:     disk.MountPoint,
 			Device:         disk.Device,
 			FilesystemType: disk.FilesystemType,
-			UsedBytes:      int64(disk.UsedBytes),
-			TotalBytes:     int64(disk.TotalBytes),
+			UsedBytes:      disk.UsedBytes,
+			TotalBytes:     disk.TotalBytes,
 		}
 	}
 	return result

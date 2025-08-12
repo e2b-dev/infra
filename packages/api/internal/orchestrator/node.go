@@ -51,26 +51,26 @@ type Node struct {
 	RamUsage atomic.Int64
 
 	// Host metrics
-	cpuAllocated         atomic.Int64
-	cpuPercent           atomic.Int64
-	cpuCount             atomic.Int64
-	memoryAllocatedBytes atomic.Int64
-	memoryUsedBytes      atomic.Int64
-	memoryTotalBytes     atomic.Int64
-	sandboxCount         atomic.Int64
+	cpuAllocated         atomic.Uint32
+	cpuPercent           atomic.Uint32
+	cpuCount             atomic.Uint32
+	memoryAllocatedBytes atomic.Uint64
+	memoryUsedBytes      atomic.Uint64
+	memoryTotalBytes     atomic.Uint64
+	sandboxCount         atomic.Uint32
 
 	// Detailed disk metrics
 	hostDisks      []orchestratorinfo.DiskMetrics
 	hostDisksMutex sync.RWMutex
-
-	client   *grpclient.GRPCClient
-	clientMd metadata.MD
 
 	Info *node.NodeInfo
 
 	meta   nodeMetadata
 	status api.NodeStatus
 	mutex  sync.RWMutex
+
+	client   *grpclient.GRPCClient
+	clientMd metadata.MD
 
 	sbxsInProgress *smap.Map[*sbxInProgress]
 
@@ -132,7 +132,7 @@ func (n *Node) setMetadata(md nodeMetadata) {
 	n.meta = md
 }
 
-func (n *Node) updateFromServiceInfo(info *orchestratorinfo.ServiceInfoResponse) {
+func (n *Node) updateMetricsFromServiceInfo(info *orchestratorinfo.ServiceInfoResponse) {
 	if info == nil {
 		return
 	}
@@ -243,65 +243,10 @@ func (o *Orchestrator) GetNodeByNomadShortID(id string) *Node {
 		if n.Info.NomadNodeShortID == id {
 			return n
 		}
-
-		metadata := n.metadata()
-		nodes[key] = &api.Node{
-			NodeID:               key,
-			ClusterID:            clusterID,
-			Status:               n.Status(),
-			CreateSuccesses:      n.createSuccess.Load(),
-			CreateFails:          n.createFails.Load(),
-			SandboxStartingCount: n.sbxsInProgress.Count(),
-			Version:              metadata.version,
-			Commit:               metadata.commit,
-			AllocatedCPU:         int32(n.cpuAllocated.Load()),
-			CpuPercent:           int32(n.cpuPercent.Load()),
-			CpuCount:             int32(n.cpuCount.Load()),
-			MemoryUsedBytes:      int32(n.memoryUsedBytes.Load()),
-			AllocatedMemoryBytes: int32(n.memoryAllocatedBytes.Load()),
-			MemoryTotalBytes:     int32(n.memoryTotalBytes.Load()),
-			SandboxCount:         int32(n.sandboxCount.Load()),
-			HostDisks:            n.getHostDisks(),
-		}
 	}
 
-	var result []*api.Node
-	for _, n := range nodes {
-		result = append(result, n)
-	}
-
-	return result
+	return nil
 }
-
-func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
-	var node *api.NodeDetail
-
-	for key, n := range o.nodes.Items() {
-		if key == nodeID {
-			var clusterID *string
-			if n.ClusterID != uuid.Nil {
-				clusterIDRaw := n.ClusterID.String()
-				clusterID = &clusterIDRaw
-			}
-
-			builds := n.buildCache.Keys()
-			metadata := n.metadata()
-			node = &api.NodeDetail{
-				NodeID:          key,
-				ClusterID:       clusterID,
-				Status:          n.Status(),
-				CachedBuilds:    builds,
-				CreateSuccesses: n.createSuccess.Load(),
-				CreateFails:     n.createFails.Load(),
-				Version:         metadata.version,
-				Commit:          metadata.commit,
-			}
-		}
-	}
-
-	if node == nil {
-		return nil
-	}
 
 func (o *Orchestrator) NodeCount() int {
 	return o.nodes.Count()

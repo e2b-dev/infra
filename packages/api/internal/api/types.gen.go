@@ -110,10 +110,10 @@ type DiskMetrics struct {
 	MountPoint string `json:"mountPoint"`
 
 	// TotalBytes Total space in bytes
-	TotalBytes int64 `json:"totalBytes"`
+	TotalBytes uint64 `json:"totalBytes"`
 
 	// UsedBytes Used space in bytes
-	UsedBytes int64 `json:"usedBytes"`
+	UsedBytes uint64 `json:"usedBytes"`
 }
 
 // DiskSizeMB Disk size for the sandbox in MiB
@@ -227,23 +227,11 @@ type NewTeamAPIKey struct {
 
 // Node defines model for Node.
 type Node struct {
-	// AllocatedCPU Number of allocated CPU cores
-	AllocatedCPU int32 `json:"allocatedCPU"`
-
-	// AllocatedMemoryBytes Amount of allocated memory in bytes
-	AllocatedMemoryBytes int32 `json:"allocatedMemoryBytes"`
-
 	// ClusterID Identifier of the cluster
 	ClusterID string `json:"clusterID"`
 
 	// Commit Commit of the orchestrator
 	Commit string `json:"commit"`
-
-	// CpuCount Total number of CPU cores on the node
-	CpuCount int32 `json:"cpuCount"`
-
-	// CpuPercent Node CPU usage percentage
-	CpuPercent int32 `json:"cpuPercent"`
 
 	// CreateFails Number of sandbox create fails
 	CreateFails uint64 `json:"createFails"`
@@ -251,20 +239,14 @@ type Node struct {
 	// CreateSuccesses Number of sandbox create successes
 	CreateSuccesses uint64 `json:"createSuccesses"`
 
-	// HostDisks Detailed metrics for each disk/mount point
-	HostDisks []DiskMetrics `json:"hostDisks"`
-
-	// MemoryTotalBytes Total node memory in bytes
-	MemoryTotalBytes int32 `json:"memoryTotalBytes"`
-
-	// MemoryUsedBytes Node memory used in bytes
-	MemoryUsedBytes int32 `json:"memoryUsedBytes"`
+	// Metrics Node metrics
+	Metrics NodeMetrics `json:"metrics"`
 
 	// NodeID Identifier of the node
 	NodeID string `json:"nodeID"`
 
 	// SandboxCount Number of sandboxes running on the node
-	SandboxCount int32 `json:"sandboxCount"`
+	SandboxCount uint32 `json:"sandboxCount"`
 
 	// SandboxStartingCount Number of starting Sandboxes
 	SandboxStartingCount int `json:"sandboxStartingCount"`
@@ -293,6 +275,9 @@ type NodeDetail struct {
 	// CreateSuccesses Number of sandbox create successes
 	CreateSuccesses uint64 `json:"createSuccesses"`
 
+	// Metrics Node metrics
+	Metrics NodeMetrics `json:"metrics"`
+
 	// NodeID Identifier of the node
 	NodeID string `json:"nodeID"`
 
@@ -304,6 +289,30 @@ type NodeDetail struct {
 
 	// Version Version of the orchestrator
 	Version string `json:"version"`
+}
+
+// NodeMetrics Node metrics
+type NodeMetrics struct {
+	// AllocatedCPU Number of allocated CPU cores
+	AllocatedCPU uint32 `json:"allocatedCPU"`
+
+	// AllocatedMemoryBytes Amount of allocated memory in bytes
+	AllocatedMemoryBytes uint64 `json:"allocatedMemoryBytes"`
+
+	// CpuCount Total number of CPU cores on the node
+	CpuCount uint32 `json:"cpuCount"`
+
+	// CpuPercent Node CPU usage percentage
+	CpuPercent uint32 `json:"cpuPercent"`
+
+	// Disks Detailed metrics for each disk/mount point
+	Disks []DiskMetrics `json:"disks"`
+
+	// MemoryTotalBytes Total node memory in bytes
+	MemoryTotalBytes uint64 `json:"memoryTotalBytes"`
+
+	// MemoryUsedBytes Node memory used in bytes
+	MemoryUsedBytes uint64 `json:"memoryUsedBytes"`
 }
 
 // NodeStatus Status of the node

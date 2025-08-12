@@ -99,18 +99,20 @@ func (o *Orchestrator) connectToNode(ctx context.Context, discovered nomadServic
 			NodeID:    nodeInfo.NodeId,
 			IPAddress: discovered.IPAddress,
 		},
+
 		meta: nodeMetadata{
 			serviceInstanceID: nodeInfo.ServiceId,
 			commit:            nodeInfo.ServiceCommit,
 			version:           nodeInfo.ServiceVersion,
 		},
+
 		buildCache:     buildCache,
 		status:         nodeStatus,
 		sbxsInProgress: smap.New[*sbxInProgress](),
 		createFails:    atomic.Uint64{},
 	}
 	// Update host metrics from service info
-	orchestratorNode.updateFromServiceInfo(nodeInfo)
+	orchestratorNode.updateMetricsFromServiceInfo(nodeInfo)
 	o.registerNode(orchestratorNode)
 	return nil
 }
