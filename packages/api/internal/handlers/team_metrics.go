@@ -58,6 +58,7 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 
 	// Validate time range parameters
 	if start.After(end) {
+		telemetry.ReportError(ctx, "start after end", fmt.Errorf("start time (%s) cannot be after end time (%s)", start, end), telemetry.WithTeamID(team.ID.String()))
 		a.sendAPIStoreError(c, http.StatusBadRequest, "start time cannot be after end time")
 		return
 	}
@@ -66,12 +67,13 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 
 	metrics, err := a.clickhouseStore.QueryTeamMetrics(ctx, teamID, start, end, step)
 	if err != nil {
-		zap.L().Error("Error fetching sandbox metrics from ClickHouse",
+		zap.L().Error("Error fetching team metrics from ClickHouse",
 			logger.WithTeamID(team.ID.String()),
 			zap.Error(err),
 		)
 
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("error querying sandbox metrics: %s", err))
+		telemetry.ReportError(ctx, "error fetching team metrics", err, telemetry.WithTeamID(team.ID.String()))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("error querying team metrics: %s", err))
 		return
 	}
 
