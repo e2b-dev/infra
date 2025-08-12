@@ -38,6 +38,8 @@ const (
 	statusLogInterval = time.Second * 20
 )
 
+var ErrNodeNotFound = errors.New("node not found")
+
 type Orchestrator struct {
 	httpClient              *http.Client
 	nomadClient             *nomadapi.Client
@@ -250,10 +252,10 @@ func (o *Orchestrator) AdminNodes() []*api.Node {
 	return result
 }
 
-func (o *Orchestrator) AdminNodeDetail(nomadNodeShortID string) *api.NodeDetail {
+func (o *Orchestrator) AdminNodeDetail(nomadNodeShortID string) (*api.NodeDetail, error) {
 	n := o.GetNodeByNomadShortID(nomadNodeShortID)
 	if n == nil {
-		return nil
+		return nil, ErrNodeNotFound
 	}
 
 	builds := n.buildCache.Keys()
@@ -293,5 +295,5 @@ func (o *Orchestrator) AdminNodeDetail(nomadNodeShortID string) *api.NodeDetail 
 		}
 	}
 
-	return node
+	return node, nil
 }
