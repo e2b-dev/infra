@@ -51,7 +51,7 @@ func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
 
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
-		zap.L().Error("Failed to get instance info", zap.Error(err), l.WithClusterID(c.ID), l.WithClusterNodeID(instance.NodeID))
+		zap.L().Error("Failed to get instance info", zap.Error(err), l.WithClusterID(c.ID), l.WithNodeID(instance.NodeID))
 		return
 	}
 
@@ -130,7 +130,7 @@ func (d clusterSynchronizationStore) PoolExists(ctx context.Context, s api.Clust
 }
 
 func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, item api.ClusterOrchestratorNode) {
-	zap.L().Info("Adding new instance into cluster pool", l.WithClusterID(d.cluster.ID), l.WithClusterNodeID(item.NodeID))
+	zap.L().Info("Adding new instance into cluster pool", l.WithClusterID(d.cluster.ID), l.WithNodeID(item.NodeID))
 
 	instance := &ClusterInstance{
 		NodeID: item.NodeID,
@@ -155,6 +155,6 @@ func (d clusterSynchronizationStore) PoolUpdate(ctx context.Context, instance *C
 }
 
 func (d clusterSynchronizationStore) PoolRemove(ctx context.Context, cluster *ClusterInstance) {
-	zap.L().Info("Removing instance from cluster pool", l.WithClusterID(d.cluster.ID), l.WithClusterNodeID(cluster.NodeID))
+	zap.L().Info("Removing instance from cluster pool", l.WithClusterID(d.cluster.ID), l.WithNodeID(cluster.NodeID))
 	d.cluster.instances.Remove(cluster.NodeID)
 }

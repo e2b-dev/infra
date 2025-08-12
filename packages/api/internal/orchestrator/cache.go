@@ -166,7 +166,7 @@ func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
 
 func (o *Orchestrator) syncClusterNode(ctx context.Context, node *Node, instanceCache *instance.InstanceCache) {
 	ctx, childSpan := o.tracer.Start(ctx, "sync-cluster-node")
-	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.Info.NodeID), telemetry.WithClusterID(node.Info.ClusterID), telemetry.WithClusterNodeID(node.Info.NodeID))
+	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.Info.NodeID), telemetry.WithClusterID(node.Info.ClusterID))
 	defer childSpan.End()
 
 	nodeFound := false
