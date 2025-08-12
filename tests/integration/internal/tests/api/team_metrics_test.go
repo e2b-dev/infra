@@ -71,7 +71,6 @@ func TestTeamMetricsWithTimeRange(t *testing.T) {
 	start := now.Add(-1 * time.Hour).Unix()
 	end := now.Unix()
 
-	// Wait a bit to ensure metrics are generated
 	maxRetries := 15
 	var metrics []api.TeamMetric
 	for i := 0; i < maxRetries; i++ {
