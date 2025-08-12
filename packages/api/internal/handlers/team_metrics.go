@@ -12,7 +12,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
