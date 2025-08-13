@@ -108,7 +108,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 
 		if template.TeamID != req.Team.ID {
 			return nil, &api.APIError{
-				Err:       err,
+				Err:       fmt.Errorf("template '%s' is not accessible for the team '%s'", aliasOrTemplateID, req.Team.ID.String()),
 				ClientMsg: fmt.Sprintf("Template '%s' is not accessible for the team '%s'", aliasOrTemplateID, req.Team.ID.String()),
 				Code:      http.StatusForbidden,
 			}
