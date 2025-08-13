@@ -14,7 +14,6 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -89,9 +88,6 @@ func (o *Orchestrator) connectToNode(ctx context.Context, discovered nomadServic
 
 	clusterID := uuid.Nil
 	orchestratorNode := &Node{
-		client:   client,
-		clientMd: make(metadata.MD),
-
 		Info: &node.NodeInfo{
 			NomadNodeShortID: discovered.NomadNodeShortID,
 
@@ -100,6 +96,9 @@ func (o *Orchestrator) connectToNode(ctx context.Context, discovered nomadServic
 			IPAddress: discovered.IPAddress,
 		},
 
+		client: client,
+		status: nodeStatus,
+
 		meta: nodeMetadata{
 			serviceInstanceID: nodeInfo.ServiceId,
 			commit:            nodeInfo.ServiceCommit,
@@ -107,7 +106,6 @@ func (o *Orchestrator) connectToNode(ctx context.Context, discovered nomadServic
 		},
 
 		buildCache:     buildCache,
-		status:         nodeStatus,
 		sbxsInProgress: smap.New[*sbxInProgress](),
 		createFails:    atomic.Uint64{},
 	}
@@ -119,7 +117,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, discovered nomadServic
 
 func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, i *edge.ClusterInstance) {
 	// this way we don't need to worry about multiple clusters with the same node ID in shared pool
-	poolGrpc := cluster.GetGRPC(i.ServiceInstanceID)
+	clusterGRPC := cluster.GetGRPC(i.ServiceInstanceID)
 
 	buildCache := ttlcache.New[string, interface{}]()
 	go buildCache.Start()
@@ -131,9 +129,6 @@ func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, i *edge.Clust
 	}
 
 	orchestratorNode := &Node{
-		client:   poolGrpc.Client,
-		clientMd: poolGrpc.Metadata,
-
 		Info: &node.NodeInfo{
 			NomadNodeShortID: node.UnknownNomadNodeShortID,
 
@@ -141,6 +136,7 @@ func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, i *edge.Clust
 			NodeID:    i.NodeID,
 		},
 
+		client: clusterGRPC.Client,
 		status: nodeStatus,
 		meta: nodeMetadata{
 			serviceInstanceID: i.ServiceInstanceID,
@@ -181,6 +177,6 @@ func (o *Orchestrator) GetClient(ctx context.Context, clusterID uuid.UUID, nodeI
 		return nil, nil, fmt.Errorf("node '%s' not found in cluster '%s'", nodeID, clusterID)
 	}
 
-	client, ctx := n.GetClient(ctx)
+	client, ctx := n.getClient(ctx)
 	return client, ctx, nil
 }

@@ -210,7 +210,7 @@ func (o *Orchestrator) CreateSandbox(
 			CPUs:      build.Vcpu,
 		})
 
-		client, childCtx := node.GetClient(childCtx)
+		client, childCtx := node.getClient(childCtx)
 		_, err = client.Sandbox.Create(node.GetSandboxCreateCtx(childCtx, sbxRequest), sbxRequest)
 		// The request is done, we will either add it to the cache or remove it from the node
 		if err == nil {

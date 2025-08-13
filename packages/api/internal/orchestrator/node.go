@@ -69,8 +69,7 @@ type Node struct {
 	status api.NodeStatus
 	mutex  sync.RWMutex
 
-	client   *grpclient.GRPCClient
-	clientMd metadata.MD
+	client *grpclient.GRPCClient
 
 	sbxsInProgress *smap.Map[*sbxInProgress]
 
@@ -197,7 +196,7 @@ func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
 		return fmt.Errorf("unknown service info status: %s", s)
 	}
 
-	client, ctx := n.GetClient(ctx)
+	client, ctx := n.getClient(ctx)
 	_, err := client.Info.ServiceStatusOverride(ctx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: nodeStatus})
 	if err != nil {
 		zap.L().Error("Failed to send status change", zap.Error(err))
@@ -268,14 +267,21 @@ func (n *Node) InsertBuild(buildID string) {
 	n.buildCache.Set(buildID, struct{}{}, 2*time.Minute)
 }
 
-func (n *Node) GetClient(ctx context.Context) (*grpclient.GRPCClient, context.Context) {
-	return n.client, metadata.NewOutgoingContext(ctx, n.clientMd)
+// Ensures that GRPC client request context always has the latest service instance ID
+func (n *Node) getClient(ctx context.Context) (*grpclient.GRPCClient, context.Context) {
+	return n.client, metadata.NewOutgoingContext(ctx, n.getClientMetadata())
+}
+
+// Generates metadata with the current service instance ID
+// to ensure we always use the latest ID (e.g. after orchestrator restarts)
+func (n *Node) getClientMetadata() metadata.MD {
+	return metadata.New(map[string]string{consts.EdgeRpcServiceInstanceIDHeader: n.metadata().serviceInstanceID})
 }
 
 func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest) context.Context {
 	// Skip local cluster. It should be okay to send it here, but we don't want to do it until we explicitly support it.
 	if n.Info.ClusterID == uuid.Nil {
-		return metadata.NewOutgoingContext(ctx, n.clientMd)
+		return ctx
 	}
 
 	md := edge.SerializeSandboxCatalogCreateEvent(
@@ -289,13 +295,13 @@ func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.Sandbo
 		},
 	)
 
-	return metadata.NewOutgoingContext(ctx, metadata.Join(n.clientMd, md))
+	return metadata.NewOutgoingContext(ctx, metadata.Join(n.getClientMetadata(), md))
 }
 
 func (n *Node) GetSandboxDeleteCtx(ctx context.Context, sandboxID string, executionID string) context.Context {
 	// Skip local cluster. It should be okay to send it here, but we don't want to do it until we explicitly support it.
 	if n.Info.ClusterID == uuid.Nil {
-		return metadata.NewOutgoingContext(ctx, n.clientMd)
+		return ctx
 	}
 
 	md := edge.SerializeSandboxCatalogDeleteEvent(
@@ -305,5 +311,5 @@ func (n *Node) GetSandboxDeleteCtx(ctx context.Context, sandboxID string, execut
 		},
 	)
 
-	return metadata.NewOutgoingContext(ctx, metadata.Join(n.clientMd, md))
+	return metadata.NewOutgoingContext(ctx, metadata.Join(n.getClientMetadata(), md))
 }
