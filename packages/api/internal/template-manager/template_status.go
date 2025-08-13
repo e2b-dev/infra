@@ -247,7 +247,9 @@ func (tm *TemplateManager) SetStatus(ctx context.Context, templateID string, bui
 	if reason != nil {
 		apiReason = &api.BuildStatusReason{
 			Message: reason.GetMessage(),
-			Step:    reason.GetStep(),
+		}
+		if step := reason.GetStep(); step != "" {
+			apiReason.Step = &step
 		}
 	}
 

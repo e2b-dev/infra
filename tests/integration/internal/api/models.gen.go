@@ -65,7 +65,7 @@ type BuildStatusReason struct {
 	Message string `json:"message"`
 
 	// Step Step that failed
-	Step string `json:"step"`
+	Step *string `json:"step,omitempty"`
 }
 
 // CPUCount CPU cores for the sandbox

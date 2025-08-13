@@ -673,7 +673,6 @@ components:
     BuildStatusReason:
       required:
         - message
-        - step
       properties:
         message:
           type: string

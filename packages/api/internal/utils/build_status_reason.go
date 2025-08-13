@@ -49,7 +49,6 @@ func DeserializeBuildStatusReason(reason *string) *api.BuildStatusReason {
 		)
 		// If parsing fails, we just store the raw reason as a message
 		parsedReason = &api.BuildStatusReason{
-			Step:    "",
 			Message: dbReason,
 		}
 	}
