@@ -10,7 +10,7 @@ func UnwrapUserError(err error) *template_manager.TemplateBuildStatusReason {
 	if phaseBuildError != nil {
 		return &template_manager.TemplateBuildStatusReason{
 			Message: phaseBuildError.Error(),
-			Step:    phaseBuildError.Step,
+			Step:    &phaseBuildError.Step,
 		}
 	}
 

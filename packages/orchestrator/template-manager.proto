@@ -99,7 +99,7 @@ message TemplateBuildLogEntry {
 
 message TemplateBuildStatusReason {
   string message = 1;
-  string step = 2;
+  optional string step = 2;
 }
 
 // Logs from template build
