@@ -260,7 +260,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(
 			return sandboxtools.CommandMetadata{}, &phases.PhaseBuildError{
 				Phase: string(metrics.PhaseFinalize),
 				Step:  "finalize",
-				Err:   fmt.Errorf("waiting for start command failed: %w", err),
+				Err:   fmt.Errorf("waiting for start command failed: %w", commandsCtx.Err()),
 			}
 		case <-startCmdConfirm:
 		}
