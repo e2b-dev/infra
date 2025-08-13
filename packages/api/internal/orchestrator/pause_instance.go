@@ -72,7 +72,7 @@ func (o *Orchestrator) PauseInstance(
 		return fmt.Errorf("error pausing sandbox: %w", err)
 	}
 
-	err = o.dbClient.EnvBuildSetStatus(ctx, *envBuild.EnvID, envBuild.ID, envbuild.StatusSuccess)
+	err = o.dbClient.EnvBuildSetStatus(ctx, *envBuild.EnvID, envBuild.ID, envbuild.StatusSuccess, nil)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)
 

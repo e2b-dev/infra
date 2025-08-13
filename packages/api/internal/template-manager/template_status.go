@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
@@ -242,9 +243,6 @@ func (tm *TemplateManager) createInProcessingQueue(buildID uuid.UUID, templateID
 }
 
 func (tm *TemplateManager) SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason *templatemanagergrpc.TemplateBuildStatusReason) error {
-	// first do database update to prevent race condition while calling status
-	err := tm.db.EnvBuildSetStatus(ctx, templateID, buildID, status)
-
 	var apiReason *api.BuildStatusReason
 	if reason != nil {
 		apiReason = &api.BuildStatusReason{
@@ -252,6 +250,10 @@ func (tm *TemplateManager) SetStatus(ctx context.Context, templateID string, bui
 			Step:    reason.GetStep(),
 		}
 	}
+
+	// first do database update to prevent race condition while calling status
+	err := tm.db.EnvBuildSetStatus(ctx, templateID, buildID, status, utils.SerializeBuildStatusReason(apiReason))
+
 	tm.buildCache.SetStatus(buildID, status, apiReason)
 	return err
 }

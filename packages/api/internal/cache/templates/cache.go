@@ -3,7 +3,6 @@ package templatecache
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -15,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
@@ -239,33 +239,13 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 			return TemplateBuildInfo{}, fmt.Errorf("failed to get template build '%s': %w", buildID, envBuildDBErr)
 		}
 
-		dbReason := ""
-		if envBuildDB.Reason != nil {
-			dbReason = *envBuildDB.Reason
-		}
-
-		var parsedReason *api.BuildStatusReason
-		err := json.Unmarshal([]byte(dbReason), &parsedReason)
-		if err != nil {
-			zap.L().Warn("Failed to parse build status reason from DB",
-				logger.WithBuildID(buildID.String()),
-				zap.String("reason", dbReason),
-				zap.Error(err),
-			)
-			// If parsing fails, we just store the raw reason as a message
-			parsedReason = &api.BuildStatusReason{
-				Step:    "",
-				Message: dbReason,
-			}
-		}
-
 		item = c.cache.Set(
 			buildID,
 			TemplateBuildInfo{
 				TeamID:      envDB.TeamID,
 				TemplateID:  envDB.ID,
 				BuildStatus: envBuildDB.Status,
-				Reason:      parsedReason,
+				Reason:      utils.DeserializeBuildStatusReason(envBuildDB.Reason),
 
 				ClusterID:     envDB.ClusterID,
 				ClusterNodeID: envBuildDB.ClusterNodeID,

@@ -222,9 +222,13 @@ func (db *DB) EnvBuildSetStatus(
 	envID string,
 	buildID uuid.UUID,
 	status envbuild.Status,
+	reason *string,
 ) error {
 	err := db.Client.EnvBuild.Update().Where(envbuild.ID(buildID), envbuild.EnvID(envID)).
-		SetStatus(status).SetFinishedAt(time.Now()).Exec(ctx)
+		SetStatus(status).
+		SetFinishedAt(time.Now()).
+		SetNillableReason(reason).
+		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to set template build status %s for '%s': %w", status, buildID, err)
 	}
