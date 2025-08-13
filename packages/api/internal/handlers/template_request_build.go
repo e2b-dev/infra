@@ -91,15 +91,29 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 	public := false
 	if !req.IsNew {
 		// Check if the user has access to the template
-		template, err := a.db.Client.Env.Query().Where(env.ID(req.TemplateID), env.TeamID(req.Team.ID)).Only(ctx)
+		aliasOrTemplateID := req.TemplateID
+		if req.Alias != nil {
+			aliasOrTemplateID = *req.Alias
+		}
+
+		template, err := a.sqlcDB.GetTemplateByID(ctx, req.TemplateID)
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error when getting template", err, telemetry.WithTemplateID(req.TemplateID), telemetry.WithTeamID(req.Team.ID.String()))
 			return nil, &api.APIError{
 				Err:       err,
-				ClientMsg: fmt.Sprintf("Error when getting template '%s' for team '%s'", req.TemplateID, req.Team.ID.String()),
+				ClientMsg: fmt.Sprintf("Template '%s' not found", aliasOrTemplateID),
 				Code:      http.StatusNotFound,
 			}
 		}
+
+		if template.TeamID != req.Team.ID {
+			return nil, &api.APIError{
+				Err:       err,
+				ClientMsg: fmt.Sprintf("Template '%s' is not accessible for the team '%s'", aliasOrTemplateID, req.Team.ID.String()),
+				Code:      http.StatusForbidden,
+			}
+		}
+
 		public = template.Public
 		telemetry.ReportEvent(ctx, "checked user access to template")
 	}
