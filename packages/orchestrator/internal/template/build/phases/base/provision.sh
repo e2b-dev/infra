@@ -7,7 +7,7 @@ echo "Starting provisioning script"
 mkdir -p /var/log/chrony
 
 echo "Making configuration immutable"
-chattr +i /etc/resolv.conf
+{{ .BusyBox }} chattr +i /etc/resolv.conf
 
 # Install required packages if not already installed
 PACKAGES="systemd systemd-sysv openssh-server sudo chrony linuxptp socat curl"
@@ -91,7 +91,7 @@ echo "Linking systemd to init"
 ln -sf /lib/systemd/systemd /usr/sbin/init
 
 echo "Unlocking immutable configuration"
-chattr -i /etc/resolv.conf
+{{ .BusyBox }} chattr -i /etc/resolv.conf
 
 echo "Finished provisioning script"
 
