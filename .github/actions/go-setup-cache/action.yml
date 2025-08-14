@@ -13,7 +13,7 @@ runs:
     - name: Go Mod Cache
       uses: actions/cache/restore@v4
       with:
-        fail-on-cache-miss: true
+        fail-on-cache-miss: false
         path: |
           ~/go/pkg/mod
         key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum', '**/go.mod', 'go.work') }}
