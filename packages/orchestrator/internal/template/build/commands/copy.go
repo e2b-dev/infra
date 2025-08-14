@@ -10,6 +10,7 @@ import (
 	"strings"
 	txtTemplate "text/template"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -152,9 +153,11 @@ func (c *Copy) Execute(
 
 	// 4) Move the extracted files to the target path in the sandbox
 	targetPath := args[1]
+	// Remove all glob patterns, they are handled on the client side already
+	sourcePath, _ := doublestar.SplitPattern(args[0])
 	var moveScript bytes.Buffer
 	err = copyScriptTemplate.Execute(&moveScript, copyScriptData{
-		SourcePath: filepath.Join(sbxUnpackPath, args[0]),
+		SourcePath: filepath.Join(sbxUnpackPath, sourcePath),
 		TargetPath: targetPath,
 	})
 	if err != nil {
