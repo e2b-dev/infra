@@ -257,10 +257,4 @@ variable "additional_api_path_rules" {
     paths      = list(string)
     service_id = string
   }))
-  default = [
-    // {
-    //   paths      = ["/events*"]
-    //   service_id = "projects/e2b-dev-jonas/global/backendServices/e2b-argus-api"
-    // }
-  ]
 }
