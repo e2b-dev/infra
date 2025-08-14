@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/systeminit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
@@ -28,8 +29,8 @@ const (
 	// Max size of the rootfs file in MB.
 	maxRootfsSize = 25000 << constants.ToMBShift
 
-	busyBoxBinaryPath = "/bin/busybox"
-	BusyBoxInitPath   = "usr/bin/init"
+	BusyBoxPath     = "usr/bin/busybox"
+	BusyBoxInitPath = "usr/bin/init"
 )
 
 type Rootfs struct {
@@ -213,11 +214,6 @@ ff02::2	ip6-allrouters
 		return nil, fmt.Errorf("error reading envd file: %w", err)
 	}
 
-	busyBox, err := os.ReadFile(busyBoxBinaryPath)
-	if err != nil {
-		return nil, fmt.Errorf("error reading busybox binary: %w", err)
-	}
-
 	filesLayer, err := oci.LayerFile(
 		map[string]oci.File{
 			// Setup system
@@ -232,10 +228,10 @@ ff02::2	ip6-allrouters
 			// Provision script
 			"usr/local/bin/provision.sh": {Bytes: []byte(provisionScript), Mode: 0o777},
 			// Setup init system
-			"usr/bin/busybox": {Bytes: busyBox, Mode: 0o755},
+			BusyBoxPath: {Bytes: systeminit.BusyboxBinary, Mode: 0o755},
 			// Set to bin/init so it's not in conflict with systemd
 			// Any rewrite of the init file when booted from it will corrupt the filesystem
-			BusyBoxInitPath: {Bytes: busyBox, Mode: 0o755},
+			BusyBoxInitPath: {Bytes: systeminit.BusyboxBinary, Mode: 0o755},
 			"etc/init.d/rcS": {Bytes: []byte(`#!/usr/bin/busybox ash
 echo "Mounting essential filesystems"
 # Ensure necessary mount points exist
