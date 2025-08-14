@@ -291,6 +291,12 @@ variable "additional_domains" {
   default     = ""
 }
 
+variable "additional_api_path_rules_json" {
+  type        = string
+  description = "Additional path rules to add to the API path matcher. Format: json string of an array of objects with 'path' and 'service' keys. Example: '[{\"paths\": [\"/api/v1\"], \"service_id\": \"projects/e2b/global/backendServices/example\"}]'"
+  default     = ""
+}
+
 variable "prefix" {
   type        = string
   description = "The prefix to use for all resources in this module"
