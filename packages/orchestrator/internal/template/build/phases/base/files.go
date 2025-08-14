@@ -36,7 +36,7 @@ func constructLayerFilesFromOCI(
 		buildContext.Config,
 	)
 	provisionScript, err := getProvisionScript(ctx, ProvisionScriptParams{
-		BusyBox:    rootfs.BusyBoxPath,
+		BusyBox:    "/" + rootfs.BusyBoxPath,
 		ResultPath: provisionScriptResultPath,
 	})
 	if err != nil {
