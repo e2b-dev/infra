@@ -154,7 +154,8 @@ func (c *Copy) Execute(
 	// 4) Move the extracted files to the target path in the sandbox
 	targetPath := args[1]
 	// Remove all glob patterns, they are handled on the client side already
-	sourcePath, _ := doublestar.SplitPattern(args[0])
+	// Add / always at the end to ensure the last file/directory is also included if it doesn't contain a glob pattern
+	sourcePath, _ := doublestar.SplitPattern(ensureTrailingSlash(args[0]))
 	var moveScript bytes.Buffer
 	err = copyScriptTemplate.Execute(&moveScript, copyScriptData{
 		SourcePath: filepath.Join(sbxUnpackPath, sourcePath),
@@ -216,4 +217,12 @@ func (c *Copy) Execute(
 	}
 
 	return cmdMetadata, nil
+}
+
+func ensureTrailingSlash(s string) string {
+	if strings.HasSuffix(s, "/") {
+		return s
+	}
+
+	return s + "/"
 }
