@@ -1,3 +1,4 @@
+# It has to match with the host OS version (Ubuntu 22.04 = bookworm)
 FROM golang:1.24-bookworm AS builder
 
 WORKDIR /build/shared
