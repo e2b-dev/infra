@@ -31,8 +31,8 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	if team.ClusterID != nil {
 		cluster, ok := a.clustersPool.GetClusterById(*team.ClusterID)
 		if !ok {
-			zap.L().Error("Sandbox attached cluster not found", logger.WithClusterID(*team.ClusterID))
-			c.JSON(http.StatusInternalServerError, fmt.Sprintf("cluster with id %s not found", *team.ClusterID))
+			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("cluster with id %s not found", *team.ClusterID))
+
 			return
 		}
 
@@ -44,8 +44,8 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	if err == nil {
 		// Check if sandbox belongs to the team
 		if info.TeamID != team.ID {
-			zap.L().Warn("sandbox doesn't exist or you don't have access to it", logger.WithSandboxID(id))
-			c.JSON(http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
+
 			return
 		}
 
@@ -78,8 +78,8 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	// If sandbox not found try to get the latest snapshot
 	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxId, TeamID: team.ID})
 	if err != nil {
-		zap.L().Warn("error getting last snapshot for sandbox", logger.WithSandboxID(id), zap.Error(err))
-		c.JSON(http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
+
 		return
 	}
 
@@ -106,8 +106,8 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	if lastSnapshot.Snapshot.EnvSecure {
 		key, err := a.envdAccessTokenGenerator.GenerateAccessToken(lastSnapshot.Snapshot.SandboxID)
 		if err != nil {
-			zap.L().Error("error generating sandbox access token", logger.WithSandboxID(id), zap.Error(err))
-			c.JSON(http.StatusInternalServerError, fmt.Sprintf("error generating sandbox access token: %s", err))
+			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("error generating sandbox access token: %s", err))
+
 			return
 		}
 
