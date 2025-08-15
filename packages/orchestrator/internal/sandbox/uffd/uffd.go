@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -34,6 +35,8 @@ type Uffd struct {
 
 	memfile    *block.TrackedSliceDevice
 	socketPath string
+
+	writeProtection bool
 }
 
 func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uffd, error) {
@@ -48,11 +51,12 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 	}
 
 	return &Uffd{
-		exitCh:     make(chan error, 1),
-		readyCh:    make(chan struct{}, 1),
-		fdExit:     fdExit,
-		memfile:    trackedMemfile,
-		socketPath: socketPath,
+		exitCh:          make(chan error, 1),
+		readyCh:         make(chan struct{}, 1),
+		fdExit:          fdExit,
+		memfile:         trackedMemfile,
+		socketPath:      socketPath,
+		writeProtection: true,
 	}, nil
 }
 
@@ -132,25 +136,48 @@ func (u *Uffd) handle(sandboxId string) error {
 		return fmt.Errorf("expected 1 fd: found %d", len(fds))
 	}
 
-	uffd := fds[0]
+	uffd := userfaultfd.NewUserfaultfdFromFd(uintptr(fds[0]))
 
 	defer func() {
-		closeErr := syscall.Close(uffd)
+		closeErr := uffd.Close()
 		if closeErr != nil {
 			zap.L().Error("failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
 		}
 	}()
 
+	// if u.writeProtection {
+	// 	for _, region := range m {
+	// 		// Register the WP. It is possible that the memory region was already registered (with missing pages in FC), but registering it again with bigger subset should merge these.
+	// 		err := uffd.Register(
+	// 			region.Offset+region.BaseHostVirtAddr,
+	// 			uint64(region.Size),
+	// 			userfaultfd.UFFDIO_REGISTER_MODE_WP|userfaultfd.UFFDIO_REGISTER_MODE_MISSING,
+	// 		)
+	// 		if err != nil {
+	// 			return fmt.Errorf("failed to reregister memory region with write protection %d-%d", region.Offset, region.Offset+region.Size)
+	// 		}
+
+	// 		Add write protection to the regions provided by the UFFD
+	// 		err = uffd.AddWriteProtection(
+	// 			region.Offset+region.BaseHostVirtAddr,
+	// 			uint64(region.Size),
+	// 		)
+	// 		if err != nil {
+	// 			return fmt.Errorf("failed to add write protection to region %d-%d", region.Offset, region.Offset+region.Size)
+	// 		}
+	// 	}
+	// }
+
 	u.readyCh <- struct{}{}
 
-	err = Serve(
-		uffd,
+	err = uffd.Serve(
 		m,
 		u.memfile,
 		u.fdExit,
 		zap.L().With(logger.WithSandboxID(sandboxId)),
 	)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "serve error %v", err)
 		return fmt.Errorf("failed handling uffd: %w", err)
 	}
 
