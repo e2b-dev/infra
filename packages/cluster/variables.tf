@@ -251,10 +251,14 @@ variable "clickhouse_health_port" {
   })
 }
 
-variable "additional_api_path_rules" {
-  description = "Additional path rules to add to the API path matcher."
+variable "additional_lb_matchers" {
+  description = "Additional path rules to add to the load balancer routing."
   type = list(object({
-    paths      = list(string)
-    service_id = string
+    matcher_host_prefix       = string
+    matcher_path_matcher_name = string
+
+    backend_service_link     = string
+    api_node_group_port_name = string
+    api_node_group_port      = number
   }))
 }

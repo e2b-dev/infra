@@ -200,6 +200,8 @@ module "api_cluster" {
 
   service_account_email = var.google_service_account_email
 
+  additional_lb_matchers = var.additional_lb_matchers
+
   labels     = var.labels
   depends_on = [google_storage_bucket_object.setup_config_objects["scripts/run-api-nomad.sh"], google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]]
 }
@@ -324,5 +326,5 @@ module "network" {
   labels = var.labels
   prefix = var.prefix
 
-  additional_api_path_rules = var.additional_api_path_rules
+  additional_lb_matchers = var.additional_lb_matchers
 }

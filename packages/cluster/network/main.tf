@@ -240,7 +240,6 @@ resource "google_certificate_manager_certificate_map_entry" "subdomains_map_entr
 }
 
 # Load balancers
-
 resource "google_compute_url_map" "orch_map" {
   name            = "${var.prefix}orch-map"
   default_service = google_compute_backend_service.default["nomad"].self_link
@@ -269,17 +268,10 @@ resource "google_compute_url_map" "orch_map" {
     hosts        = concat(["*.${var.domain_name}"], [for d in var.additional_domains : "*.${d}"])
     path_matcher = "session-paths"
   }
+
   path_matcher {
     name            = "api-paths"
     default_service = google_compute_backend_service.default["api"].self_link
-
-    dynamic "path_rule" {
-      for_each = var.additional_api_path_rules
-      content {
-        paths   = path_rule.value.paths
-        service = path_rule.value.service_id
-      }
-    }
   }
 
   path_matcher {
@@ -313,6 +305,22 @@ resource "google_compute_url_map" "orch_map" {
     name            = "consul-paths"
     default_service = google_compute_backend_service.default["consul"].self_link
   }
+
+  dynamic "host_rule" {
+    for_each = var.additional_lb_matchers
+    content {
+      hosts        = concat(["${host_rule.value.matcher_host_prefix}.${var.domain_name}"], [for d in var.additional_domains : "${host_rule.value.matcher_host_prefix}.${d}"])
+      path_matcher = host_rule.value.matcher_path_matcher_name
+    }
+  }
+
+  dynamic "path_matcher" {
+    for_each = var.additional_lb_matchers
+    content {
+      name            = path_matcher.value.matcher_path_matcher_name
+      default_service = path_matcher.value.backend_service_link
+    }
+  }
 }
 
 ### IPv4 block ###
@@ -331,7 +339,6 @@ resource "google_compute_global_forwarding_rule" "https" {
   port_range            = "443"
   labels                = var.labels
 }
-
 
 resource "google_compute_backend_service" "default" {
   provider = google-beta
@@ -365,7 +372,6 @@ resource "google_compute_backend_service" "default" {
   depends_on = [
     google_compute_health_check.default
   ]
-
 }
 
 resource "google_compute_health_check" "default" {
@@ -502,6 +508,7 @@ module "gce_lb_http_logs" {
 }
 
 # Firewalls
+// todo
 resource "google_compute_firewall" "default-hc" {
   name    = "${var.prefix}load-balancer-hc"
   network = var.network_name
@@ -520,6 +527,14 @@ resource "google_compute_firewall" "default-hc" {
     content {
       protocol = "tcp"
       ports    = [allow.value["http_health_check"].port]
+    }
+  }
+
+  dynamic "allow" {
+    for_each = var.additional_lb_matchers
+    content {
+      protocol = "tcp"
+      ports    = [allow.value.api_node_group_port]
     }
   }
 }
