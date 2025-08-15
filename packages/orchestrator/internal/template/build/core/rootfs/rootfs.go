@@ -90,7 +90,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	if r.template.FromImage != "" {
 		img, err = oci.GetPublicImage(childCtx, tracer, r.template.FromImage)
 	} else {
-		img, err = oci.GetImage(childCtx, tracer, r.artifactRegistry, r.metadata.TemplateID, r.metadata.BuildID)
+		img, err = oci.GetImage(childCtx, tracer, r.artifactRegistry, r.template.TemplateID, r.metadata.BuildID)
 	}
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error requesting docker image: %w", err)

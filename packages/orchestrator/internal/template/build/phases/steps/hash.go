@@ -5,7 +5,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (sb *StepBuilder) Hash(sourceLayer phases.LayerResult) (string, error) {
