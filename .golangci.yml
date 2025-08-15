@@ -16,6 +16,7 @@ linters:
     - asasalint
     - asciicheck
     - bidichk
+    - bodyclose
     - staticcheck
     - govet
   settings:

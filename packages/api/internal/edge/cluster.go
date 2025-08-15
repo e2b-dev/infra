@@ -182,10 +182,11 @@ func (c *Cluster) RegisterSandboxInCatalog(ctx context.Context, serviceInstanceI
 		SandboxStartTime: sandboxStartTime,
 	}
 
-	_, err := c.httpClient.V1SandboxCatalogCreate(ctx, body)
+	rsp, err := c.httpClient.V1SandboxCatalogCreate(ctx, body)
 	if err != nil {
 		return fmt.Errorf("failed to register sandbox in catalog: %w", err)
 	}
+	defer rsp.Body.Close()
 
 	return nil
 }
@@ -196,10 +197,11 @@ func (c *Cluster) RemoveSandboxFromCatalog(ctx context.Context, sandboxID string
 		ExecutionID: executionID,
 	}
 
-	_, err := c.httpClient.V1SandboxCatalogDelete(ctx, body)
+	rsp, err := c.httpClient.V1SandboxCatalogDelete(ctx, body)
 	if err != nil {
 		return fmt.Errorf("failed to remove sandbox from catalog: %w", err)
 	}
+	defer rsp.Body.Close()
 
 	return nil
 }
