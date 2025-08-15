@@ -291,10 +291,17 @@ variable "additional_domains" {
   default     = ""
 }
 
-variable "additional_api_path_rules_json" {
+variable "additional_api_services_json" {
   type        = string
   description = "Additional path rules to add to the API path matcher. Format: json string of an array of objects with 'path' and 'service' keys. Example: '[{\"paths\": [\"/api/v1\"], \"service_id\": \"projects/e2b/global/backendServices/example\"}]'"
   default     = ""
+  # type = list(object({
+  #   paths      = list(string)
+  #   service_id = string
+  #
+  #   api_node_group_port_name = string
+  #   api_node_group_port      = number
+  # }))
 }
 
 variable "prefix" {

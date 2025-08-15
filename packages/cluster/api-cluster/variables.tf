@@ -174,14 +174,10 @@ variable "api_port" {
   })
 }
 
-variable "additional_lb_matchers" {
-  description = "Additional path rules to add to the load balancer routing."
+variable "additional_api_ports" {
+  description = "Additional API ports to expose on the API cluster."
   type = list(object({
-    matcher_host_prefix       = string
-    matcher_path_matcher_name = string
-
-    backend_service_link     = string
-    api_node_group_port_name = string
-    api_node_group_port      = number
+    name = string
+    port = number
   }))
 }

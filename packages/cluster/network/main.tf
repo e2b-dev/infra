@@ -272,6 +272,14 @@ resource "google_compute_url_map" "orch_map" {
   path_matcher {
     name            = "api-paths"
     default_service = google_compute_backend_service.default["api"].self_link
+
+    dynamic "path_rule" {
+      for_each = var.additional_api_path_rules
+      content {
+        paths   = path_rule.value.paths
+        service = path_rule.value.service_id
+      }
+    }
   }
 
   path_matcher {
@@ -304,22 +312,6 @@ resource "google_compute_url_map" "orch_map" {
   path_matcher {
     name            = "consul-paths"
     default_service = google_compute_backend_service.default["consul"].self_link
-  }
-
-  dynamic "host_rule" {
-    for_each = var.additional_lb_matchers
-    content {
-      hosts        = concat(["${host_rule.value.matcher_host_prefix}.${var.domain_name}"], [for d in var.additional_domains : "${host_rule.value.matcher_host_prefix}.${d}"])
-      path_matcher = host_rule.value.matcher_path_matcher_name
-    }
-  }
-
-  dynamic "path_matcher" {
-    for_each = var.additional_lb_matchers
-    content {
-      name            = path_matcher.value.matcher_path_matcher_name
-      default_service = path_matcher.value.backend_service_link
-    }
   }
 }
 
@@ -508,7 +500,6 @@ module "gce_lb_http_logs" {
 }
 
 # Firewalls
-// todo
 resource "google_compute_firewall" "default-hc" {
   name    = "${var.prefix}load-balancer-hc"
   network = var.network_name
@@ -531,10 +522,14 @@ resource "google_compute_firewall" "default-hc" {
   }
 
   dynamic "allow" {
-    for_each = var.additional_lb_matchers
+    for_each = toset([{
+      protocol = "tcp"
+      ports    = "3003"
+    }])
+
     content {
       protocol = "tcp"
-      ports    = [allow.value.api_node_group_port]
+      ports    = [allow.value.ports]
     }
   }
 }
