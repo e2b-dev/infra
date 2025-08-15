@@ -208,11 +208,18 @@ copy-public-builds:
 
 
 .PHONY: generate
-generate: generate/api generate/orchestrator generate/client-proxy generate/envd generate/db
+generate: generate/api generate/orchestrator generate/client-proxy generate/envd generate/db generate-tests
 generate/%:
 	@echo "Generating code for *$(notdir $@)*"
 	$(MAKE) -C packages/$(notdir $@) generate
 	@printf "\n\n"
+
+.PHONY: generate-tests
+generate-tests: generate-tests/integration
+generate-tests/%:
+		@echo "Generating code for *$(notdir $@)*"
+		$(MAKE) -C tests/$(notdir $@) generate
+		@printf "\n\n"
 
 .PHONY: migrate
 migrate:

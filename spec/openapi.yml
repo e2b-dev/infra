@@ -670,6 +670,17 @@ components:
         level:
           $ref: "#/components/schemas/LogLevel"
 
+    BuildStatusReason:
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: Message with the status reason, currently reporting only for error status
+        step:
+          type: string
+          description: Step that failed
+
     TemplateBuild:
       required:
         - templateID
@@ -705,8 +716,7 @@ components:
             - ready
             - error
         reason:
-          type: string
-          description: Message with the status reason, currently reporting only for error status
+          $ref: "#/components/schemas/BuildStatusReason"
 
     NodeStatus:
       type: string

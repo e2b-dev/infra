@@ -103,7 +103,7 @@ func (ce *CommandExecutor) Execute(
 		cmdMetadata,
 	)
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to execute command: %w", err)
+		return sandboxtools.CommandMetadata{}, err
 	}
 	return cmdMetadata, nil
 }

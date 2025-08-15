@@ -2,6 +2,7 @@ package sandboxtools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -198,7 +199,7 @@ func runCommandWithAllOptions(
 				if !success {
 					processOutput("", end.GetStatus())
 
-					return fmt.Errorf("command failed: %s", end.GetStatus())
+					return errors.New(end.GetStatus())
 				}
 			}
 		}
