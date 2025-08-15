@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -79,7 +80,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		TemplateID: templateID,
 		BuildID:    buildID,
 		Status:     getCorrespondingTemplateBuildStatus(buildInfo.BuildStatus),
-		Reason:     buildInfo.Reason,
+		Reason:     getAPIReason(buildInfo.Reason),
 	}
 
 	cli, err := a.templateManager.GetBuildClient(team.ClusterID, buildInfo.ClusterNodeID, false)
@@ -121,6 +122,17 @@ func getCorrespondingTemplateBuildStatus(s envbuild.Status) api.TemplateBuildSta
 		return api.TemplateBuildStatusReady
 	default:
 		return api.TemplateBuildStatusBuilding
+	}
+}
+
+func getAPIReason(reason *schema.BuildReason) *api.BuildStatusReason {
+	if reason == nil {
+		return nil
+	}
+
+	return &api.BuildStatusReason{
+		Message: reason.Message,
+		Step:    reason.Step,
 	}
 }
 

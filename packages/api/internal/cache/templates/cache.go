@@ -14,12 +14,12 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 )
 
 const templateInfoExpiration = 5 * time.Minute
@@ -155,7 +155,7 @@ type TemplateBuildInfo struct {
 	TeamID      uuid.UUID
 	TemplateID  string
 	BuildStatus envbuild.Status
-	Reason      *api.BuildStatusReason
+	Reason      *schema.BuildReason
 
 	ClusterID     *uuid.UUID
 	ClusterNodeID *string
@@ -183,7 +183,7 @@ func NewTemplateBuildCache(db *db.DB) *TemplatesBuildCache {
 	}
 }
 
-func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Status, reason *api.BuildStatusReason) {
+func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Status, reason *schema.BuildReason) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
@@ -245,7 +245,7 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 				TeamID:      envDB.TeamID,
 				TemplateID:  envDB.ID,
 				BuildStatus: envBuildDB.Status,
-				Reason:      utils.DeserializeBuildStatusReason(envBuildDB.Reason),
+				Reason:      envBuildDB.Reason,
 
 				ClusterID:     envDB.ClusterID,
 				ClusterNodeID: envBuildDB.ClusterNodeID,

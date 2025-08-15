@@ -10,11 +10,10 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 )
 
 var (
@@ -243,20 +242,20 @@ func (tm *TemplateManager) createInProcessingQueue(buildID uuid.UUID, templateID
 }
 
 func (tm *TemplateManager) SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason *templatemanagergrpc.TemplateBuildStatusReason) error {
-	var apiReason *api.BuildStatusReason
+	var buildReason *schema.BuildReason
 	if reason != nil {
-		apiReason = &api.BuildStatusReason{
+		buildReason = &schema.BuildReason{
 			Message: reason.GetMessage(),
 		}
 		if step := reason.GetStep(); step != "" {
-			apiReason.Step = &step
+			buildReason.Step = &step
 		}
 	}
 
 	// first do database update to prevent race condition while calling status
-	err := tm.db.EnvBuildSetStatus(ctx, templateID, buildID, status, utils.SerializeBuildStatusReason(apiReason))
+	err := tm.db.EnvBuildSetStatus(ctx, templateID, buildID, status, buildReason)
 
-	tm.buildCache.SetStatus(buildID, status, apiReason)
+	tm.buildCache.SetStatus(buildID, status, buildReason)
 	return err
 }
 
@@ -264,7 +263,7 @@ func (tm *TemplateManager) SetFinished(ctx context.Context, templateID string, b
 	// first do database update to prevent race condition while calling status
 	err := tm.db.FinishEnvBuild(ctx, templateID, buildID, rootfsSize, envdVersion)
 	if err != nil {
-		tm.buildCache.SetStatus(buildID, envbuild.StatusFailed, &api.BuildStatusReason{
+		tm.buildCache.SetStatus(buildID, envbuild.StatusFailed, &schema.BuildReason{
 			Message: fmt.Sprintf("error when finishing build: %s", err.Error()),
 		})
 		return err
