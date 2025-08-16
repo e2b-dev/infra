@@ -114,7 +114,7 @@ variable "additional_api_path_rules" {
 variable "additional_ports" {
   description = "Additional path rules to add to the load balancer routing."
   type = list(object({
-    name      = string
+    name = string
     port = number
   }))
 }
