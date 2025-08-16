@@ -338,10 +338,5 @@ module "network" {
     }
   ]
 
-  additional_ports = [
-    for service in var.additional_api_services : {
-      name = service.api_node_group_port_name
-      port = service.api_node_group_port
-    }
-  ]
+  additional_ports = [for service in var.additional_api_services : service.api_node_group_port]
 }

@@ -526,7 +526,7 @@ resource "google_compute_firewall" "default-hc" {
 
     content {
       protocol = "tcp"
-      ports    = [allow.value.ports]
+      ports    = [allow.value]
     }
   }
 }
