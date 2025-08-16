@@ -240,7 +240,6 @@ resource "google_certificate_manager_certificate_map_entry" "subdomains_map_entr
 }
 
 # Load balancers
-
 resource "google_compute_url_map" "orch_map" {
   name            = "${var.prefix}orch-map"
   default_service = google_compute_backend_service.default["nomad"].self_link
@@ -269,6 +268,7 @@ resource "google_compute_url_map" "orch_map" {
     hosts        = concat(["*.${var.domain_name}"], [for d in var.additional_domains : "*.${d}"])
     path_matcher = "session-paths"
   }
+
   path_matcher {
     name            = "api-paths"
     default_service = google_compute_backend_service.default["api"].self_link
@@ -332,7 +332,6 @@ resource "google_compute_global_forwarding_rule" "https" {
   labels                = var.labels
 }
 
-
 resource "google_compute_backend_service" "default" {
   provider = google-beta
   for_each = local.backends
@@ -365,7 +364,6 @@ resource "google_compute_backend_service" "default" {
   depends_on = [
     google_compute_health_check.default
   ]
-
 }
 
 resource "google_compute_health_check" "default" {
@@ -520,6 +518,15 @@ resource "google_compute_firewall" "default-hc" {
     content {
       protocol = "tcp"
       ports    = [allow.value["http_health_check"].port]
+    }
+  }
+
+  dynamic "allow" {
+    for_each = toset(var.additional_ports)
+
+    content {
+      protocol = "tcp"
+      ports    = [allow.value]
     }
   }
 }

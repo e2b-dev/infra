@@ -104,10 +104,14 @@ variable "labels" {
 }
 
 variable "additional_api_path_rules" {
-  description = "Additional path rules to add to the API path matcher."
+  description = "Additional path rules to add to the load balancer routing."
   type = list(object({
     paths      = list(string)
     service_id = string
   }))
-  default = []
+}
+
+variable "additional_ports" {
+  description = "Additional ports to expose on the load balancer."
+  type        = list(number)
 }
