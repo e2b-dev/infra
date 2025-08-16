@@ -110,3 +110,11 @@ variable "additional_api_path_rules" {
     service_id = string
   }))
 }
+
+variable "additional_ports" {
+  description = "Additional path rules to add to the load balancer routing."
+  type = list(object({
+    name      = string
+    port = number
+  }))
+}

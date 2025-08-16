@@ -201,9 +201,9 @@ module "api_cluster" {
   service_account_email = var.google_service_account_email
 
   additional_api_ports = [
-    for matcher in var.additional_api_services : {
-      name = matcher.api_node_group_port_name
-      port = matcher.api_node_group_port
+    for service in var.additional_api_services : {
+      name = service.api_node_group_port_name
+      port = service.api_node_group_port
     }
   ]
 
@@ -332,9 +332,16 @@ module "network" {
   prefix = var.prefix
 
   additional_api_path_rules = [
-    for matcher in var.additional_api_services : {
-      paths      = matcher.paths
-      service_id = matcher.service_id
+    for service in var.additional_api_services : {
+      paths      = service.paths
+      service_id = service.service_id
+    }
+  ]
+
+  additional_ports = [
+    for service in var.additional_api_services : {
+      name = service.api_node_group_port_name
+      port = service.api_node_group_port
     }
   ]
 }

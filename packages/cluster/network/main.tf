@@ -522,10 +522,7 @@ resource "google_compute_firewall" "default-hc" {
   }
 
   dynamic "allow" {
-    for_each = toset([{
-      protocol = "tcp"
-      ports    = "3003"
-    }])
+    for_each = toset(var.additional_ports)
 
     content {
       protocol = "tcp"
