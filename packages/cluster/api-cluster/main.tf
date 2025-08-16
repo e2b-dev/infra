@@ -40,7 +40,7 @@ resource "google_compute_instance_group_manager" "api_cluster" {
   }
 
   dynamic "named_port" {
-    for_each = var.additional_api_ports
+    for_each = var.additional_ports
     content {
       name = named_port.value.name
       port = named_port.value.port

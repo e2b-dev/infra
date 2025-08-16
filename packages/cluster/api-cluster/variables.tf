@@ -174,7 +174,7 @@ variable "api_port" {
   })
 }
 
-variable "additional_api_ports" {
+variable "additional_ports" {
   description = "Additional API ports to expose on the API cluster."
   type = list(object({
     name = string

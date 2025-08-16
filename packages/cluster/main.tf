@@ -200,7 +200,7 @@ module "api_cluster" {
 
   service_account_email = var.google_service_account_email
 
-  additional_api_ports = [
+  additional_ports = [
     for service in var.additional_api_services : {
       name = service.api_node_group_port_name
       port = service.api_node_group_port
