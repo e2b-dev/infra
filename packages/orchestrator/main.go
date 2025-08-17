@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -38,6 +39,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/webhooks"
+	"github.com/e2b-dev/infra/packages/shared/pkg/pubsub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -305,12 +308,43 @@ func run(port, proxyPort uint) (success bool) {
 		}
 	}
 
+	var redisClient redis.UniversalClient
+	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
+		// For managed Redis Cluster in GCP we should use Cluster Client, because
+		// > Redis node endpoints can change and can be recycled as nodes are added and removed over time.
+		// https://cloud.google.com/memorystore/docs/cluster/cluster-node-specification#cluster_endpoints
+		// https://cloud.google.com/memorystore/docs/cluster/client-library-code-samples#go-redis
+		redisClient = redis.NewClusterClient(&redis.ClusterOptions{
+			Addrs:        []string{redisClusterUrl},
+			MinIdleConns: 1,
+		})
+	} else if rurl := os.Getenv("REDIS_URL"); rurl != "" {
+		redisClient = redis.NewClient(&redis.Options{
+			Addr:         rurl,
+			MinIdleConns: 1,
+		})
+	} else {
+		zap.L().Warn("REDIS_URL not set, using local caches")
+	}
+
+	if redisClient != nil {
+		_, err := redisClient.Ping(ctx).Result()
+		if err != nil {
+			zap.L().Fatal("Could not connect to Redis", zap.Error(err))
+		}
+
+		zap.L().Info("Connected to Redis cluster")
+	}
+
+	redisPubSub := pubsub.NewRedisPubSub[*sandbox.Sandbox, *webhooks.SandboxWebhooks](ctx, &redisClient, "sandbox-webhooks")
+
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, serviceInfo.SourceCommit, serviceInfo.ClientId, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
 
-	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, templateCache, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags, clickhouseBatcher, persistence)
+	_, err = server.New(
+		ctx, grpcSrv, tel, networkPool, devicePool, templateCache, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags, clickhouseBatcher, persistence, redisPubSub)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}

@@ -139,6 +139,14 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		label = clickhouse.SandboxEventLabelResume
 	}
 
+	shouldPublish, err := s.redisPubSub.ShouldPublish(ctx, req.Sandbox.SandboxId)
+	if err != nil {
+		zap.L().Error("error checking if sandbox should publish", zap.Error(err))
+	}
+	if shouldPublish {
+		s.redisPubSub.Publish(ctx, sbx)
+	}
+
 	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(
 		featureflags.SandboxLifeCycleEventsWriteFlagName, req.Sandbox.SandboxId)
 	if flagErr != nil {
@@ -189,49 +197,57 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		attribute.String("client.id", s.info.ClientId),
 	)
 
-	item, ok := s.sandboxes.Get(req.SandboxId)
+	sbx, ok := s.sandboxes.Get(req.SandboxId)
 	if !ok {
 		telemetry.ReportCriticalError(ctx, "sandbox not found", nil)
 
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
-	item.EndAt = req.EndTime.AsTime()
+	sbx.EndAt = req.EndTime.AsTime()
+
+	shouldPublish, err := s.redisPubSub.ShouldPublish(ctx, sbx.Runtime.SandboxID)
+	if err != nil {
+		zap.L().Error("error checking if sandbox should publish", zap.Error(err))
+	}
+	if shouldPublish {
+		s.redisPubSub.Publish(ctx, sbx)
+	}
 
 	// TODO: adapt to new types of update events
 	eventData := fmt.Sprintf(`{"set_timeout": "%s"}`, req.EndTime.AsTime().Format(time.RFC3339))
 
 	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(
-		featureflags.SandboxLifeCycleEventsWriteFlagName, item.Runtime.SandboxID)
+		featureflags.SandboxLifeCycleEventsWriteFlagName, sbx.Runtime.SandboxID)
 	if flagErr != nil {
 		zap.L().Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
 	}
 	if sandboxLifeCycleEventsWriteFlag {
 		go func(eventData string) {
 			buildId := ""
-			if item.APIStoredConfig != nil {
-				buildId = item.APIStoredConfig.BuildId
+			if sbx.APIStoredConfig != nil {
+				buildId = sbx.APIStoredConfig.BuildId
 			}
 
-			teamID, err := uuid.Parse(item.Runtime.TeamID)
+			teamID, err := uuid.Parse(sbx.Runtime.TeamID)
 			if err != nil {
-				sbxlogger.I(item).Error("error parsing team ID", zap.String("team_id", item.Runtime.TeamID), zap.Error(err))
+				sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
 				return
 			}
 
 			err = s.sandboxEventBatcher.Push(clickhouse.SandboxEvent{
 				Timestamp:          time.Now().UTC(),
-				SandboxID:          item.Runtime.SandboxID,
-				SandboxTemplateID:  item.Config.BaseTemplateID,
+				SandboxID:          sbx.Runtime.SandboxID,
+				SandboxTemplateID:  sbx.Config.BaseTemplateID,
 				SandboxBuildID:     buildId,
 				SandboxTeamID:      teamID,
-				SandboxExecutionID: item.Runtime.ExecutionID,
+				SandboxExecutionID: sbx.Runtime.ExecutionID,
 				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
 				EventLabel:         string(clickhouse.SandboxEventLabelUpdate),
 				EventData:          sql.NullString{String: eventData, Valid: true},
 			})
 			if err != nil {
-				sbxlogger.I(item).Error(
+				sbxlogger.I(sbx).Error(
 					"error inserting sandbox lifecycle event", zap.String("event_label", string(clickhouse.SandboxEventLabelUpdate)), zap.Error(err))
 			}
 		}(eventData)
@@ -307,6 +323,14 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 			sbxlogger.I(sbx).Error("error stopping sandbox", logger.WithSandboxID(in.SandboxId), zap.Error(err))
 		}
 	}()
+
+	shouldPublish, err := s.redisPubSub.ShouldPublish(ctx, sbx.Runtime.SandboxID)
+	if err != nil {
+		zap.L().Error("error checking if sandbox should publish", zap.Error(err))
+	}
+	if shouldPublish {
+		s.redisPubSub.Publish(ctx, sbx)
+	}
 
 	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(
 		featureflags.SandboxLifeCycleEventsWriteFlagName, sbx.Runtime.SandboxID)
@@ -427,6 +451,14 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 			return
 		}
 	}(context.WithoutCancel(ctx))
+
+	shouldPublish, err := s.redisPubSub.ShouldPublish(ctx, sbx.Runtime.SandboxID)
+	if err != nil {
+		zap.L().Error("error checking if sandbox should publish", zap.Error(err))
+	}
+	if shouldPublish {
+		s.redisPubSub.Publish(ctx, sbx)
+	}
 
 	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(
 		featureflags.SandboxLifeCycleEventsWriteFlagName, sbx.Runtime.SandboxID)

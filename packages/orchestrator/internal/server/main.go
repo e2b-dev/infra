@@ -18,6 +18,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/webhooks"
+	"github.com/e2b-dev/infra/packages/shared/pkg/pubsub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -37,6 +39,7 @@ type server struct {
 	persistence         storage.StorageProvider
 	featureFlags        *featureflags.Client
 	sandboxEventBatcher batcher.ClickhouseBatcher
+	redisPubSub         *pubsub.RedisPubSub[*sandbox.Sandbox, *webhooks.SandboxWebhooks]
 }
 
 type Service struct {
@@ -66,6 +69,7 @@ func New(
 	featureFlags *featureflags.Client,
 	sandboxEventBatcher batcher.ClickhouseBatcher,
 	persistence storage.StorageProvider,
+	redisPubSub *pubsub.RedisPubSub[*sandbox.Sandbox, *webhooks.SandboxWebhooks],
 ) (*Service, error) {
 	srv := &Service{
 		info:        info,
@@ -83,6 +87,7 @@ func New(
 		persistence:         persistence,
 		featureFlags:        featureFlags,
 		sandboxEventBatcher: sandboxEventBatcher,
+		redisPubSub:         redisPubSub,
 	}
 
 	meter := tel.MeterProvider.Meter("orchestrator.sandbox")
