@@ -120,8 +120,8 @@ module "cluster" {
   additional_domains = (var.additional_domains != "" ?
   [for item in split(",", var.additional_domains) : trimspace(item)] : [])
 
-  additional_api_path_rules = (var.additional_api_path_rules_json != "" ?
-    jsondecode(var.additional_api_path_rules_json) :
+  additional_api_services = (var.additional_api_services_json != "" ?
+    jsondecode(var.additional_api_services_json) :
   [])
 
   docker_contexts_bucket_name = module.buckets.envs_docker_context_bucket_name
