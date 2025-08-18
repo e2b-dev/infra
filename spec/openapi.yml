@@ -1666,6 +1666,7 @@ paths:
       description: Delete a template
       tags: [templates]
       security:
+        - ApiKeyAuth: []
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
       parameters:
