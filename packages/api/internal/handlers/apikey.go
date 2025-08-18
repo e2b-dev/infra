@@ -40,18 +40,6 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 
 	teamID := a.GetTeamInfo(c).Team.ID
 
-	apiKey, err := a.db.Client.TeamAPIKey.Query().Where(teamapikey.ID(apiKeyIDParsed), teamapikey.TeamID(teamID)).First(ctx)
-	if err != nil {
-		if models.IsNotFound(err) {
-			c.String(http.StatusNotFound, "id not found")
-			return
-		}
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when querying team API key: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when querying team API key", err)
-		return
-	}
-
 	err = a.db.Client.TeamAPIKey.UpdateOneID(apiKeyIDParsed).Where(teamapikey.TeamID(teamID)).SetName(body.Name).SetUpdatedAt(time.Now()).Exec(ctx)
 	if models.IsNotFound(err) {
 		c.String(http.StatusNotFound, "id not found")
