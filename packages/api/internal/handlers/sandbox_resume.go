@@ -76,7 +76,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 			logger.WithSandboxID(sandboxID),
 			zap.Time("end_time", sbxCache.GetEndTime()),
 			zap.Time("start_time", sbxCache.StartTime),
-			zap.String("node_id", sbxCache.Node.NodeID),
+			zap.String("node_id", sbxCache.NodeID),
 		)
 		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox %s is already running", sandboxID))
 
@@ -110,7 +110,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		if len(*snap.OriginNodeID) == consts.NodeIDLength {
 			n := a.orchestrator.GetNodeByNomadShortID(*snap.OriginNodeID)
 			if n != nil {
-				nodeID = &n.Info.NodeID
+				nodeID = &n.ID
 			}
 		} else {
 			nodeID = snap.OriginNodeID
@@ -134,7 +134,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 	if err == nil {
 		// If the pausing was in progress, prefer to restore on the node where the pausing happened.
-		nodeID = &pausedOnNode.NodeID
+		nodeID = &pausedOnNode
 	}
 
 	alias := ""
