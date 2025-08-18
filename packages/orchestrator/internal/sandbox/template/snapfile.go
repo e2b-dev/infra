@@ -58,6 +58,24 @@ func (n *NoopSnapfile) Close() error {
 	return nil
 }
 
-func (n *NoopSnapfile) Path() string {
+func (n *NoopSnapfile) FirecrackerSnapfile() File {
+	return &NoopFile{}
+}
+
+func (n *NoopSnapfile) Metadata() File {
+	return &NoopFile{}
+}
+
+func (n *NoopSnapfile) MetadataSerialized() (metadata.TemplateMetadata, error) {
+	return metadata.TemplateMetadata{}, nil
+}
+
+type NoopFile struct{}
+
+func (n *NoopFile) Close() error {
+	return nil
+}
+
+func (n *NoopFile) Path() string {
 	return "/dev/null"
 }

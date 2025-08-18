@@ -10,20 +10,18 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 const hashingVersion = "v1"
 
 type LayerMetadata struct {
-	Template storage.TemplateFiles    `json:"template"`
-	CmdMeta  metadata.CommandMetadata `json:"metadata"`
+	Template storage.TemplateFiles `json:"template"`
 }
 
 type Index interface {
 	LayerMetaFromHash(ctx context.Context, hash string) (LayerMetadata, error)
 	SaveLayerMeta(ctx context.Context, hash string, template LayerMetadata) error
-	IsCached(ctx context.Context, metadata LayerMetadata) (bool, error)
+	IsCached(ctx context.Context, buildID string) (metadata.TemplateMetadata, error)
 	Version() string
 }
 
@@ -110,32 +108,14 @@ func HashKeys(baseKey string, keys ...string) string {
 
 func (h *HashIndex) IsCached(
 	ctx context.Context,
-	metadata LayerMetadata,
-) (bool, error) {
-	_, err := getRootfsSize(ctx, h.templateStorage, metadata.Template)
+	buildID string,
+) (metadata.TemplateMetadata, error) {
+	tmpl, err := metadata.ReadTemplateMetadataBuildID(ctx, h.templateStorage, buildID)
 	if err != nil {
 		// If the rootfs header does not exist, the layer is not cached
-		return false, nil
+		return metadata.TemplateMetadata{}, fmt.Errorf("error reading template metadata: %w", err)
 	} else {
 		// If the rootfs header exists, the layer is cached
-		return true, nil
+		return tmpl, nil
 	}
-}
-
-func getRootfsSize(
-	ctx context.Context,
-	s storage.StorageProvider,
-	metadata storage.TemplateFiles,
-) (uint64, error) {
-	obj, err := s.OpenObject(ctx, metadata.StorageRootfsHeaderPath())
-	if err != nil {
-		return 0, fmt.Errorf("error opening rootfs header object: %w", err)
-	}
-
-	h, err := header.Deserialize(obj)
-	if err != nil {
-		return 0, fmt.Errorf("error deserializing rootfs header: %w", err)
-	}
-
-	return h.Metadata.Size, nil
 }

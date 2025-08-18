@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	metadataVersion = 1
+	currentVersion = 2
 )
 
 type CommandMetadata struct {
@@ -40,6 +40,11 @@ type TemplateMetadata struct {
 	Start        *StartMetadata        `json:"start,omitempty"`
 	FromImage    *string               `json:"from_image,omitempty"`
 	FromTemplate *FromTemplateMetadata `json:"from_template,omitempty"`
+}
+
+func (tm TemplateMetadata) UpdateVersion() TemplateMetadata {
+	tm.Version = currentVersion
+	return tm
 }
 
 func (tm TemplateMetadata) ToFile(path string) error {
@@ -110,7 +115,6 @@ func DeserializeTemplateMetadata(reader io.Reader) (TemplateMetadata, error) {
 }
 
 func SerializeTemplateMetadata(template TemplateMetadata) (io.Reader, error) {
-	template.Version = metadataVersion
 	marshaled, err := json.Marshal(template)
 	if err != nil {
 		return nil, fmt.Errorf("error serializing template metadata: %w", err)

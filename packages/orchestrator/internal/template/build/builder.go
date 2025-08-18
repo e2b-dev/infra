@@ -28,7 +28,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -256,24 +255,6 @@ func runBuild(
 		return nil, fmt.Errorf("error getting rootfs size: %w", err)
 	}
 	zap.L().Info("rootfs size", zap.Uint64("size", rootfsSize))
-
-	var fromTemplateMetadata *metadata.FromTemplateMetadata
-	if bc.Config.FromTemplate != nil {
-		fromTemplateMetadata = &metadata.FromTemplateMetadata{
-			Alias:   bc.Config.FromTemplate.GetAlias(),
-			BuildID: bc.Config.FromTemplate.BuildID,
-		}
-	}
-	err = metadata.SaveTemplateMetadata(ctx, builder.templateStorage, bc.Template, metadata.TemplateMetadata{
-		Template:     lastLayerResult.Metadata.Template,
-		Metadata:     lastLayerResult.Metadata.CmdMeta,
-		FromImage:    &bc.Config.FromImage,
-		FromTemplate: fromTemplateMetadata,
-		Start:        lastLayerResult.StartMetadata,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("error saving template metadata: %w", err)
-	}
 
 	return &Result{
 		EnvdVersion:  bc.EnvdVersion,

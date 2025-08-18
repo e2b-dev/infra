@@ -97,14 +97,12 @@ func (sb *StepBuilder) Layer(
 			sb.logger.Info("layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
 		} else {
 			// Check if the layer is cached
-			found, err := sb.index.IsCached(ctx, m)
+			meta, err := sb.index.IsCached(ctx, m.Template.BuildID)
 			if err != nil {
-				return phases.LayerResult{}, fmt.Errorf("error checking if layer is cached: %w", err)
-			}
-
-			if found {
+				zap.L().Info("layer not cached, building new layer", zap.Error(err), zap.String("hash", hash))
+			} else {
 				return phases.LayerResult{
-					Metadata: m,
+					Metadata: meta,
 					Cached:   true,
 					Hash:     hash,
 				}, nil
@@ -112,17 +110,15 @@ func (sb *StepBuilder) Layer(
 		}
 	}
 
-	meta := cache.LayerMetadata{
-		Template: storage.TemplateFiles{
-			BuildID:            uuid.NewString(),
-			KernelVersion:      sourceLayer.Metadata.Template.KernelVersion,
-			FirecrackerVersion: sourceLayer.Metadata.Template.FirecrackerVersion,
-		},
-		CmdMeta: sourceLayer.Metadata.CmdMeta,
+	finalMetadata := sourceLayer.Metadata
+	finalMetadata.Template = storage.TemplateFiles{
+		BuildID:            uuid.NewString(),
+		KernelVersion:      sourceLayer.Metadata.Template.KernelVersion,
+		FirecrackerVersion: sourceLayer.Metadata.Template.FirecrackerVersion,
 	}
 
 	return phases.LayerResult{
-		Metadata: meta,
+		Metadata: finalMetadata,
 		Cached:   false,
 		Hash:     hash,
 	}, nil
@@ -151,6 +147,8 @@ func (sb *StepBuilder) Build(
 	// First not cached layer is create (to change CPU, Memory, etc), subsequent are layers are resumes.
 	var sandboxCreator layer.SandboxCreator
 	if sourceLayer.Cached {
+		// Update the version to the latest as this is a new FC start
+		sourceLayer.Metadata = sourceLayer.Metadata.UpdateVersion()
 		sandboxCreator = layer.NewCreateSandbox(sbxConfig, fc.FirecrackerVersions{
 			KernelVersion:      sb.Template.KernelVersion,
 			FirecrackerVersion: sb.Template.FirecrackerVersion,
@@ -159,16 +157,16 @@ func (sb *StepBuilder) Build(
 		sandboxCreator = layer.NewResumeSandbox(sbxConfig)
 	}
 
-	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, cmdMeta metadata.CommandMetadata) (metadata.CommandMetadata, error) {
-		meta, err := sb.commandExecutor.Execute(
+	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.TemplateMetadata) (metadata.TemplateMetadata, error) {
+		cmdMeta, err := sb.commandExecutor.Execute(
 			ctx,
 			sbx,
 			prefix,
 			step,
-			cmdMeta,
+			meta.Metadata,
 		)
 		if err != nil {
-			return metadata.CommandMetadata{}, &phases.PhaseBuildError{
+			return metadata.TemplateMetadata{}, &phases.PhaseBuildError{
 				Phase: string(metrics.PhaseSteps),
 				Step:  fmt.Sprintf("%d", sb.stepNumber),
 				Err:   err,
@@ -182,9 +180,10 @@ func (sb *StepBuilder) Build(
 			sbx.Runtime.SandboxID,
 		)
 		if err != nil {
-			return metadata.CommandMetadata{}, fmt.Errorf("error running sync command: %w", err)
+			return metadata.TemplateMetadata{}, fmt.Errorf("error running sync command: %w", err)
 		}
 
+		meta.Metadata = cmdMeta
 		return meta, nil
 	})
 

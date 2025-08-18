@@ -7,7 +7,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 )
 
@@ -27,11 +26,9 @@ type BuilderPhase interface {
 }
 
 type LayerResult struct {
-	Metadata cache.LayerMetadata
+	Metadata metadata.TemplateMetadata
 	Cached   bool
 	Hash     string
-
-	StartMetadata *metadata.StartMetadata
 }
 
 func layerInfo(

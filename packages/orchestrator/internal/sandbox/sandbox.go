@@ -419,9 +419,9 @@ func ResumeSandbox(
 		},
 		rootfsPath,
 		fc.RootfsPaths{
-			Version:    snapfileMeta.Version,
-			TemplateID: config.BaseTemplateID,
-			BuildID:    readonlyRootfs.Header().Metadata.BaseBuildId.String(),
+			TemplateVersion: snapfileMeta.Version,
+			TemplateID:      config.BaseTemplateID,
+			BuildID:         readonlyRootfs.Header().Metadata.BaseBuildId.String(),
 		},
 	)
 	if fcErr != nil {
@@ -567,8 +567,26 @@ func (s *Sandbox) FirecrackerVersions() fc.FirecrackerVersions {
 func (s *Sandbox) Pause(
 	ctx context.Context,
 	tracer trace.Tracer,
-	m metadata.TemplateMetadata,
 	snapshotTemplateFiles storage.TemplateCacheFiles,
+) (*Snapshot, error) {
+	snap, err := s.template.Snapfile()
+	if err != nil {
+		return nil, fmt.Errorf("no snapfile found in template: %w", err)
+	}
+
+	meta, err := snap.MetadataSerialized()
+	if err != nil {
+		return nil, err
+	}
+
+	return s.PauseWithMetadata(ctx, tracer, snapshotTemplateFiles, meta)
+}
+
+func (s *Sandbox) PauseWithMetadata(
+	ctx context.Context,
+	tracer trace.Tracer,
+	snapshotTemplateFiles storage.TemplateCacheFiles,
+	m metadata.TemplateMetadata,
 ) (*Snapshot, error) {
 	childCtx, childSpan := tracer.Start(ctx, "sandbox-snapshot")
 	defer childSpan.End()
