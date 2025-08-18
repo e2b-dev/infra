@@ -39,7 +39,7 @@ type server struct {
 	persistence         storage.StorageProvider
 	featureFlags        *featureflags.Client
 	sandboxEventBatcher batcher.ClickhouseBatcher
-	redisPubSub         *pubsub.RedisPubSub[*sandbox.Sandbox, *webhooks.SandboxWebhooks]
+	redisPubSub         *pubsub.RedisPubSub[*webhooks.SandboxWebhooksPayload, *webhooks.SandboxWebhooksMetaData]
 }
 
 type Service struct {
@@ -69,7 +69,7 @@ func New(
 	featureFlags *featureflags.Client,
 	sandboxEventBatcher batcher.ClickhouseBatcher,
 	persistence storage.StorageProvider,
-	redisPubSub *pubsub.RedisPubSub[*sandbox.Sandbox, *webhooks.SandboxWebhooks],
+	redisPubSub *pubsub.RedisPubSub[*webhooks.SandboxWebhooksPayload, *webhooks.SandboxWebhooksMetaData],
 ) (*Service, error) {
 	srv := &Service{
 		info:        info,
