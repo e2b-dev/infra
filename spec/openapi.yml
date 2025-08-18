@@ -461,6 +461,7 @@ components:
           description: Time to live for the sandbox in seconds.
         autoPause:
           type: boolean
+          deprecated: true
           default: false
           description: Automatically pauses the sandbox after the timeout
 

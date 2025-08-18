@@ -336,6 +336,7 @@ type NodeStatusChange struct {
 // ResumedSandbox defines model for ResumedSandbox.
 type ResumedSandbox struct {
 	// AutoPause Automatically pauses the sandbox after the timeout
+	// Deprecated:
 	AutoPause *bool `json:"autoPause,omitempty"`
 
 	// Timeout Time to live for the sandbox in seconds.

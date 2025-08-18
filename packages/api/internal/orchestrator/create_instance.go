@@ -142,7 +142,7 @@ func (o *Orchestrator) CreateSandbox(
 			RamMb:               build.RamMb,
 			Vcpu:                build.Vcpu,
 			Snapshot:            isResume,
-			AutoPause:           &autoPause,
+			AutoPause:           autoPause,
 			AllowInternetAccess: allowInternetAccess,
 			TotalDiskSizeMb:     ut.FromPtr(build.TotalDiskSizeMb),
 		},

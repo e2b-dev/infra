@@ -34,6 +34,8 @@ type Snapshot struct {
 	SandboxStartedAt time.Time `json:"sandbox_started_at,omitempty"`
 	// EnvSecure holds the value of the "env_secure" field.
 	EnvSecure bool `json:"env_secure,omitempty"`
+	// AutoPause holds the value of the "auto_pause" field.
+	AutoPause bool `json:"auto_pause,omitempty"`
 	// OriginNodeID holds the value of the "origin_node_id" field.
 	OriginNodeID string `json:"origin_node_id,omitempty"`
 	// AllowInternetAccess holds the value of the "allow_internet_access" field.
@@ -73,7 +75,7 @@ func (*Snapshot) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case snapshot.FieldMetadata:
 			values[i] = new([]byte)
-		case snapshot.FieldEnvSecure, snapshot.FieldAllowInternetAccess:
+		case snapshot.FieldEnvSecure, snapshot.FieldAutoPause, snapshot.FieldAllowInternetAccess:
 			values[i] = new(sql.NullBool)
 		case snapshot.FieldBaseEnvID, snapshot.FieldEnvID, snapshot.FieldSandboxID, snapshot.FieldOriginNodeID:
 			values[i] = new(sql.NullString)
@@ -145,6 +147,12 @@ func (s *Snapshot) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field env_secure", values[i])
 			} else if value.Valid {
 				s.EnvSecure = value.Bool
+			}
+		case snapshot.FieldAutoPause:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field auto_pause", values[i])
+			} else if value.Valid {
+				s.AutoPause = value.Bool
 			}
 		case snapshot.FieldOriginNodeID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -220,6 +228,9 @@ func (s *Snapshot) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("env_secure=")
 	builder.WriteString(fmt.Sprintf("%v", s.EnvSecure))
+	builder.WriteString(", ")
+	builder.WriteString("auto_pause=")
+	builder.WriteString(fmt.Sprintf("%v", s.AutoPause))
 	builder.WriteString(", ")
 	builder.WriteString("origin_node_id=")
 	builder.WriteString(s.OriginNodeID)
