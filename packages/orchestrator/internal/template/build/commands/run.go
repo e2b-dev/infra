@@ -10,6 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
@@ -23,12 +24,12 @@ func (r *Run) Execute(
 	sandboxID string,
 	prefix string,
 	step *templatemanager.TemplateStep,
-	cmdMetadata sandboxtools.CommandMetadata,
-) (sandboxtools.CommandMetadata, error) {
+	cmdMetadata metadata.CommandMetadata,
+) (metadata.CommandMetadata, error) {
 	args := step.Args
 	// args: [command optional_user]
 	if len(args) < 1 {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("RUN requires command argument")
+		return metadata.CommandMetadata{}, fmt.Errorf("RUN requires command argument")
 	}
 
 	originalMetadata := cmdMetadata
@@ -51,7 +52,7 @@ func (r *Run) Execute(
 		cmdMetadata,
 	)
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to run command: %w", err)
+		return metadata.CommandMetadata{}, fmt.Errorf("failed to run command: %w", err)
 	}
 
 	return originalMetadata, nil

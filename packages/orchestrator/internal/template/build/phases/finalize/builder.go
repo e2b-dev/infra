@@ -89,7 +89,7 @@ func (ppb *PostProcessingBuilder) Layer(
 	// If the template is built from another template, and the start metadata are not set,
 	// use the start metadata from the template it is built from.
 	if startMetadata == nil && ppb.Config.FromTemplate != nil {
-		tm, err := metadata.ReadTemplateMetadata(ctx, ppb.templateStorage, ppb.Config.FromTemplate.BuildID)
+		tm, err := metadata.ReadTemplateMetadataBuildID(ctx, ppb.templateStorage, ppb.Config.FromTemplate.BuildID)
 		if err != nil {
 			return phases.LayerResult{}, fmt.Errorf("error reading from template metadata: %w", err)
 		}
@@ -155,7 +155,7 @@ func (ppb *PostProcessingBuilder) Build(
 func (ppb *PostProcessingBuilder) postProcessingFn(
 	start *metadata.StartMetadata,
 ) layer.FunctionActionFn {
-	return func(ctx context.Context, sbx *sandbox.Sandbox, cmdMeta sandboxtools.CommandMetadata) (cm sandboxtools.CommandMetadata, e error) {
+	return func(ctx context.Context, sbx *sandbox.Sandbox, cmdMeta metadata.CommandMetadata) (cm metadata.CommandMetadata, e error) {
 		defer func() {
 			if e != nil {
 				return
@@ -183,7 +183,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(
 			sbx.Runtime.SandboxID,
 		)
 		if err != nil {
-			return sandboxtools.CommandMetadata{}, &phases.PhaseBuildError{
+			return metadata.CommandMetadata{}, &phases.PhaseBuildError{
 				Phase: string(metrics.PhaseFinalize),
 				Step:  "finalize",
 				Err:   fmt.Errorf("configuration script failed: %w", err),
@@ -245,7 +245,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(
 			start.Metadata,
 		)
 		if err != nil {
-			return sandboxtools.CommandMetadata{}, &phases.PhaseBuildError{
+			return metadata.CommandMetadata{}, &phases.PhaseBuildError{
 				Phase: string(metrics.PhaseFinalize),
 				Step:  "finalize",
 				Err:   fmt.Errorf("ready command failed: %w", err),
@@ -255,7 +255,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(
 		// Wait for the start command to start executing.
 		select {
 		case <-ctx.Done():
-			return sandboxtools.CommandMetadata{}, &phases.PhaseBuildError{
+			return metadata.CommandMetadata{}, &phases.PhaseBuildError{
 				Phase: string(metrics.PhaseFinalize),
 				Step:  "finalize",
 				Err:   fmt.Errorf("waiting for start command failed: %w", commandsCtx.Err()),
@@ -267,7 +267,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(
 		commandsCancel()
 		err = startCmdRun.Wait()
 		if err != nil {
-			return sandboxtools.CommandMetadata{}, &phases.PhaseBuildError{
+			return metadata.CommandMetadata{}, &phases.PhaseBuildError{
 				Phase: string(metrics.PhaseFinalize),
 				Step:  "finalize",
 				Err:   fmt.Errorf("start command failed: %w", err),

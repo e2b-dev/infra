@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -87,23 +88,23 @@ func (c *Copy) Execute(
 	sandboxID string,
 	prefix string,
 	step *templatemanager.TemplateStep,
-	cmdMetadata sandboxtools.CommandMetadata,
-) (sandboxtools.CommandMetadata, error) {
+	cmdMetadata metadata.CommandMetadata,
+) (metadata.CommandMetadata, error) {
 	cmdType := strings.ToUpper(step.Type)
 	args := step.Args
 	// args: [localPath containerPath optional_owner optional_permissions]
 	if len(args) < 2 {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("%s requires a local path and a container path argument", cmdType)
+		return metadata.CommandMetadata{}, fmt.Errorf("%s requires a local path and a container path argument", cmdType)
 	}
 
 	if step.FilesHash == nil || *step.FilesHash == "" {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("%s requires files hash to be set", cmdType)
+		return metadata.CommandMetadata{}, fmt.Errorf("%s requires files hash to be set", cmdType)
 	}
 
 	// 1) Download the layer tar file from the storage to the local filesystem
 	obj, err := c.FilesStorage.OpenObject(ctx, paths.GetLayerFilesCachePath(c.CacheScope, *step.FilesHash))
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to open files object from storage: %w", err)
+		return metadata.CommandMetadata{}, fmt.Errorf("failed to open files object from storage: %w", err)
 	}
 
 	pr, pw := io.Pipe()
@@ -117,14 +118,14 @@ func (c *Copy) Execute(
 
 	tmpFile, err := os.CreateTemp("", "layer-file-*.tar")
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to create temporary file for layer tar: %w", err)
+		return metadata.CommandMetadata{}, fmt.Errorf("failed to create temporary file for layer tar: %w", err)
 	}
 	defer os.Remove(tmpFile.Name())
 	defer tmpFile.Close()
 
 	_, err = io.Copy(tmpFile, pr)
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to copy layer tar data to temporary file: %w", err)
+		return metadata.CommandMetadata{}, fmt.Errorf("failed to copy layer tar data to temporary file: %w", err)
 	}
 
 	// The file is automatically cleaned up by the sandbox restart in the last step.
@@ -133,7 +134,7 @@ func (c *Copy) Execute(
 	// 2) Copy the tar file to the sandbox
 	err = sandboxtools.CopyFile(ctx, tracer, proxy, sandboxID, cmdMetadata.User, tmpFile.Name(), sbxTargetPath)
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to copy layer tar data to sandbox: %w", err)
+		return metadata.CommandMetadata{}, fmt.Errorf("failed to copy layer tar data to sandbox: %w", err)
 	}
 
 	sbxUnpackPath := filepath.Join("/tmp", *step.FilesHash)
@@ -148,7 +149,7 @@ func (c *Copy) Execute(
 		cmdMetadata,
 	)
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to extract files: %w", err)
+		return metadata.CommandMetadata{}, fmt.Errorf("failed to extract files: %w", err)
 	}
 
 	// 4) Move the extracted files to the target path in the sandbox
@@ -162,7 +163,7 @@ func (c *Copy) Execute(
 		TargetPath: targetPath,
 	})
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to execute copy script template: %w", err)
+		return metadata.CommandMetadata{}, fmt.Errorf("failed to execute copy script template: %w", err)
 	}
 
 	err = sandboxtools.RunCommand(
@@ -174,7 +175,7 @@ func (c *Copy) Execute(
 		cmdMetadata,
 	)
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to move files in sandbox: %w", err)
+		return metadata.CommandMetadata{}, fmt.Errorf("failed to move files in sandbox: %w", err)
 	}
 
 	// If optional owner is provided, set them
@@ -191,7 +192,7 @@ func (c *Copy) Execute(
 				cmdMetadata,
 			)
 			if err != nil {
-				return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to set ownership: %w", err)
+				return metadata.CommandMetadata{}, fmt.Errorf("failed to set ownership: %w", err)
 			}
 		}
 	}
@@ -211,7 +212,7 @@ func (c *Copy) Execute(
 				cmdMetadata,
 			)
 			if err != nil {
-				return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to set permissions: %w", err)
+				return metadata.CommandMetadata{}, fmt.Errorf("failed to set permissions: %w", err)
 			}
 		}
 	}

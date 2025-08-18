@@ -14,7 +14,7 @@ type Template interface {
 	Memfile() (block.ReadonlyDevice, error)
 	ReplaceMemfile(block.ReadonlyDevice) error
 	Rootfs() (block.ReadonlyDevice, error)
-	Snapfile() (File, error)
+	Snapfile() (Snapfile, error)
 	Close() error
 }
 

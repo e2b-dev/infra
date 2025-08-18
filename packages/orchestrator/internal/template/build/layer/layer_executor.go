@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/envd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -176,7 +177,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		"update-envd-replace",
 		sbx.Runtime.SandboxID,
 		replaceEnvdCmd,
-		sandboxtools.CommandMetadata{User: "root"},
+		metadata.CommandMetadata{User: "root"},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to replace envd binary: %w", err)
@@ -190,7 +191,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		lb.proxy,
 		sbx.Runtime.SandboxID,
 		"systemctl restart envd",
-		sandboxtools.CommandMetadata{User: "root"},
+		metadata.CommandMetadata{User: "root"},
 	)
 
 	// Step 4: Wait for envd to initialize
@@ -210,7 +211,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 	ctx context.Context,
 	sbx *sandbox.Sandbox,
 	hash string,
-	layerMeta cache.LayerMetadata,
+	layerMeta metadata.TemplateMetadata,
 ) error {
 	ctx, childSpan := lb.tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
@@ -225,6 +226,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 	snapshot, err := sbx.Pause(
 		ctx,
 		lb.tracer,
+		layerMeta,
 		cacheFiles,
 	)
 	if err != nil {
@@ -255,11 +257,6 @@ func (lb *LayerExecutor) PauseAndUpload(
 		)
 		if err != nil {
 			return fmt.Errorf("error uploading snapshot: %w", err)
-		}
-
-		err = lb.index.SaveLayerMeta(ctx, hash, layerMeta)
-		if err != nil {
-			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
 		}
 
 		lb.UserLogger.Debug(fmt.Sprintf("Saved: %s", cacheFiles.BuildID))

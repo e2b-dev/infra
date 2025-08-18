@@ -5,16 +5,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path"
+	"io"
+	"os"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
+	"github.com/e2b-dev/infra/packages/shared/pkg/ioutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const (
-	metadataVersion      = "v1"
-	templateMetadataFile = "metadata.json"
+	metadataVersion = 1
 )
+
+type CommandMetadata struct {
+	User    string            `json:"user,omitempty"`
+	WorkDir *string           `json:"workdir,omitempty"`
+	EnvVars map[string]string `json:"env_vars,omitempty"`
+}
 
 type FromTemplateMetadata struct {
 	Alias   string `json:"alias"`
@@ -22,26 +28,57 @@ type FromTemplateMetadata struct {
 }
 
 type StartMetadata struct {
-	StartCmd string                       `json:"start_command"`
-	ReadyCmd string                       `json:"ready_command"`
-	Metadata sandboxtools.CommandMetadata `json:"metadata"`
+	StartCmd string          `json:"start_command"`
+	ReadyCmd string          `json:"ready_command"`
+	Metadata CommandMetadata `json:"metadata"`
 }
 
 type TemplateMetadata struct {
-	Version      string                       `json:"version"`
-	Template     storage.TemplateFiles        `json:"template"`
-	Metadata     sandboxtools.CommandMetadata `json:"metadata"`
-	Start        *StartMetadata               `json:"start,omitempty"`
-	FromImage    *string                      `json:"from_image,omitempty"`
-	FromTemplate *FromTemplateMetadata        `json:"from_template,omitempty"`
+	Version      uint64                `json:"version"`
+	Template     storage.TemplateFiles `json:"template"`
+	Metadata     CommandMetadata       `json:"metadata"`
+	Start        *StartMetadata        `json:"start,omitempty"`
+	FromImage    *string               `json:"from_image,omitempty"`
+	FromTemplate *FromTemplateMetadata `json:"from_template,omitempty"`
 }
 
-func templateMetadataPath(buildID string) string {
-	return path.Join(buildID, templateMetadataFile)
+func (tm TemplateMetadata) ToFile(path string) error {
+	mr, err := SerializeTemplateMetadata(tm)
+	if err != nil {
+		return err
+	}
+
+	err = ioutils.WriteToFileFromReader(path, mr)
+	if err != nil {
+		return fmt.Errorf("failed to write metadata to file: %w", err)
+	}
+
+	return nil
 }
 
-func ReadTemplateMetadata(ctx context.Context, s storage.StorageProvider, buildID string) (TemplateMetadata, error) {
-	obj, err := s.OpenObject(ctx, templateMetadataPath(buildID))
+func FromFile(path string) (TemplateMetadata, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return TemplateMetadata{}, fmt.Errorf("failed to open metadata file: %w", err)
+	}
+	defer f.Close()
+
+	templateMetadata, err := DeserializeTemplateMetadata(f)
+	if err != nil {
+		return TemplateMetadata{}, fmt.Errorf("failed to deserialize metadata: %w", err)
+	}
+
+	return templateMetadata, nil
+}
+
+func ReadTemplateMetadataBuildID(ctx context.Context, s storage.StorageProvider, buildID string) (TemplateMetadata, error) {
+	return ReadTemplateMetadata(ctx, s, storage.TemplateFiles{
+		BuildID: buildID,
+	})
+}
+
+func ReadTemplateMetadata(ctx context.Context, s storage.StorageProvider, files storage.TemplateFiles) (TemplateMetadata, error) {
+	obj, err := s.OpenObject(ctx, files.StorageMetadataPath())
 	if err != nil {
 		return TemplateMetadata{}, fmt.Errorf("error opening object for template metadata: %w", err)
 	}
@@ -52,36 +89,34 @@ func ReadTemplateMetadata(ctx context.Context, s storage.StorageProvider, buildI
 		return TemplateMetadata{}, fmt.Errorf("error reading template metadata from object: %w", err)
 	}
 
-	var templateMetadata TemplateMetadata
-	err = json.Unmarshal(buf.Bytes(), &templateMetadata)
+	templateMetadata, err := DeserializeTemplateMetadata(&buf)
 	if err != nil {
-		return TemplateMetadata{}, fmt.Errorf("error unmarshaling template metadata: %w", err)
-	}
-
-	if templateMetadata.Version != metadataVersion {
-		return TemplateMetadata{}, fmt.Errorf("template metadata is outdated: %v", templateMetadata)
+		return TemplateMetadata{}, err
 	}
 
 	return templateMetadata, nil
 }
 
-func SaveTemplateMetadata(ctx context.Context, s storage.StorageProvider, buildID string, template TemplateMetadata) error {
-	obj, err := s.OpenObject(ctx, templateMetadataPath(buildID))
+func DeserializeTemplateMetadata(reader io.Reader) (TemplateMetadata, error) {
+	decoder := json.NewDecoder(reader)
+
+	var templateMetadata TemplateMetadata
+	err := decoder.Decode(&templateMetadata)
 	if err != nil {
-		return fmt.Errorf("error creating object for saving UUID: %w", err)
+		return TemplateMetadata{}, fmt.Errorf("error unmarshaling template metadata: %w", err)
 	}
 
+	return templateMetadata, nil
+}
+
+func SerializeTemplateMetadata(template TemplateMetadata) (io.Reader, error) {
 	template.Version = metadataVersion
 	marshaled, err := json.Marshal(template)
 	if err != nil {
-		return fmt.Errorf("error marshalling template metadata: %w", err)
+		return nil, fmt.Errorf("error serializing template metadata: %w", err)
 	}
 
 	buf := bytes.NewBuffer(marshaled)
-	_, err = obj.ReadFrom(buf)
-	if err != nil {
-		return fmt.Errorf("error writing template metadata to object: %w", err)
-	}
 
-	return nil
+	return buf, nil
 }

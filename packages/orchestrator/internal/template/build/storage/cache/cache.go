@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/paths"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -16,8 +16,8 @@ import (
 const hashingVersion = "v1"
 
 type LayerMetadata struct {
-	Template storage.TemplateFiles        `json:"template"`
-	CmdMeta  sandboxtools.CommandMetadata `json:"metadata"`
+	Template storage.TemplateFiles    `json:"template"`
+	CmdMeta  metadata.CommandMetadata `json:"metadata"`
 }
 
 type Index interface {

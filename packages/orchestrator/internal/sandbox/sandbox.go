@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -398,6 +399,14 @@ func ResumeSandbox(
 	if ips.err != nil {
 		return nil, fmt.Errorf("failed to get network slot: %w", err)
 	}
+	snapfile, err := t.Snapfile()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get snapfile: %w", err)
+	}
+	snapfileMeta, err := snapfile.MetadataSerialized()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get metadata: %w", err)
+	}
 	fcHandle, fcErr := fc.NewProcess(
 		uffdStartCtx,
 		tracer,
@@ -410,7 +419,7 @@ func ResumeSandbox(
 		},
 		rootfsPath,
 		fc.RootfsPaths{
-			Version:    readonlyRootfs.Header().Metadata.Version,
+			Version:    snapfileMeta.Version,
 			TemplateID: config.BaseTemplateID,
 			BuildID:    readonlyRootfs.Header().Metadata.BaseBuildId.String(),
 		},
@@ -420,10 +429,6 @@ func ResumeSandbox(
 	}
 
 	// todo: check if kernel, firecracker, and envd versions exist
-	snapfile, err := t.Snapfile()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get snapfile: %w", err)
-	}
 	fcStartErr := fcHandle.Resume(
 		uffdStartCtx,
 		tracer,
@@ -435,7 +440,7 @@ func ResumeSandbox(
 			TeamId:               runtime.TeamID,
 		},
 		fcUffdPath,
-		snapfile,
+		snapfile.FirecrackerSnapfile(),
 		fcUffd.Ready(),
 	)
 	if fcStartErr != nil {
@@ -562,6 +567,7 @@ func (s *Sandbox) FirecrackerVersions() fc.FirecrackerVersions {
 func (s *Sandbox) Pause(
 	ctx context.Context,
 	tracer trace.Tracer,
+	m metadata.TemplateMetadata,
 	snapshotTemplateFiles storage.TemplateCacheFiles,
 ) (*Snapshot, error) {
 	childCtx, childSpan := tracer.Start(ctx, "sandbox-snapshot")
@@ -654,8 +660,14 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
 
+	metadataFileLink := template.NewLocalFileLink(snapshotTemplateFiles.CacheMetadataPath())
+	err = m.ToFile(metadataFileLink.Path())
+	if err != nil {
+		return nil, err
+	}
+
 	return &Snapshot{
-		Snapfile:          snapfile,
+		Snapfile:          template.NewStorageSnapfile(snapfile, metadataFileLink),
 		MemfileDiff:       memfileDiff,
 		MemfileDiffHeader: memfileDiffHeader,
 		RootfsDiff:        rootfsDiff,

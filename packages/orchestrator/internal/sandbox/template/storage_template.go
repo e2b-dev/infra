@@ -3,7 +3,9 @@ package template
 import (
 	"context"
 	"fmt"
-	"sync"
+
+	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
@@ -18,11 +20,11 @@ type storageTemplate struct {
 
 	memfile  *utils.SetOnce[block.ReadonlyDevice]
 	rootfs   *utils.SetOnce[block.ReadonlyDevice]
-	snapfile *utils.SetOnce[File]
+	snapfile *utils.SetOnce[Snapfile]
 
 	memfileHeader *header.Header
 	rootfsHeader  *header.Header
-	localSnapfile *LocalFileLink
+	localSnapfile Snapfile
 
 	metrics     blockmetrics.Metrics
 	persistence storage.StorageProvider
@@ -36,7 +38,7 @@ func newTemplateFromStorage(
 	rootfsHeader *header.Header,
 	persistence storage.StorageProvider,
 	metrics blockmetrics.Metrics,
-	localSnapfile *LocalFileLink,
+	localSnapfile Snapfile,
 ) (*storageTemplate, error) {
 	files, err := storage.TemplateFiles{
 		BuildID:            buildId,
@@ -56,16 +58,14 @@ func newTemplateFromStorage(
 		persistence:   persistence,
 		memfile:       utils.NewSetOnce[block.ReadonlyDevice](),
 		rootfs:        utils.NewSetOnce[block.ReadonlyDevice](),
-		snapfile:      utils.NewSetOnce[File](),
+		snapfile:      utils.NewSetOnce[Snapfile](),
 	}, nil
 }
 
 func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore) {
-	var wg sync.WaitGroup
+	var wg errgroup.Group
 
-	wg.Add(1)
-	go func() error {
-		defer wg.Done()
+	wg.Go(func() error {
 		if t.localSnapfile != nil {
 			return t.snapfile.SetValue(t.localSnapfile)
 		}
@@ -82,13 +82,22 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			return t.snapfile.SetError(errMsg)
 		}
 
-		return t.snapfile.SetValue(snapfile)
-	}()
+		metadata, metadataErr := newStorageFile(
+			ctx,
+			t.persistence,
+			t.files.StorageMetadataPath(),
+			t.files.CacheMetadataPath(),
+		)
+		if metadataErr != nil {
+			errMsg := fmt.Errorf("failed to fetch metadata: %w", metadataErr)
 
-	wg.Add(1)
-	go func() error {
-		defer wg.Done()
+			return t.snapfile.SetError(errMsg)
+		}
 
+		return t.snapfile.SetValue(NewStorageSnapfile(snapfile, metadata))
+	})
+
+	wg.Go(func() error {
 		memfileStorage, memfileErr := NewStorage(
 			ctx,
 			buildStore,
@@ -106,12 +115,9 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		}
 
 		return t.memfile.SetValue(memfileStorage)
-	}()
+	})
 
-	wg.Add(1)
-	go func() error {
-		defer wg.Done()
-
+	wg.Go(func() error {
 		rootfsStorage, rootfsErr := NewStorage(
 			ctx,
 			buildStore,
@@ -128,9 +134,16 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		}
 
 		return t.rootfs.SetValue(rootfsStorage)
-	}()
+	})
 
-	wg.Wait()
+	err := wg.Wait()
+	if err != nil {
+		zap.L().Error("failed to fetch template files",
+			zap.String("build_id", t.files.BuildID),
+			zap.Error(err),
+		)
+		return
+	}
 }
 
 func (t *storageTemplate) Close() error {
@@ -149,7 +162,7 @@ func (t *storageTemplate) Rootfs() (block.ReadonlyDevice, error) {
 	return t.rootfs.Wait()
 }
 
-func (t *storageTemplate) Snapfile() (File, error) {
+func (t *storageTemplate) Snapfile() (Snapfile, error) {
 	return t.snapfile.Wait()
 }
 

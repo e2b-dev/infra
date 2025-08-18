@@ -124,7 +124,7 @@ func (c *Cache) AddSnapshot(
 	firecrackerVersion string,
 	memfileHeader *header.Header,
 	rootfsHeader *header.Header,
-	localSnapfile *LocalFileLink,
+	localSnapfile Snapfile,
 	memfileDiff build.Diff,
 	rootfsDiff build.Diff,
 ) error {

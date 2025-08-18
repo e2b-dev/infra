@@ -6,8 +6,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
@@ -20,6 +20,6 @@ type Command interface {
 		sandboxID string,
 		prefix string,
 		step *templatemanager.TemplateStep,
-		cmdMetadata sandboxtools.CommandMetadata,
-	) (sandboxtools.CommandMetadata, error)
+		cmdMetadata metadata.CommandMetadata,
+	) (metadata.CommandMetadata, error)
 }

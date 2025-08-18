@@ -8,19 +8,22 @@ import (
 type LocalTemplate struct {
 	files storage.TemplateCacheFiles
 
-	memfile block.ReadonlyDevice
-	rootfs  block.ReadonlyDevice
+	snapfile Snapfile
+	memfile  block.ReadonlyDevice
+	rootfs   block.ReadonlyDevice
 }
 
 func NewLocalTemplate(
 	files storage.TemplateCacheFiles,
+	snapfile Snapfile,
 	rootfs block.ReadonlyDevice,
 	memfile block.ReadonlyDevice,
 ) *LocalTemplate {
 	return &LocalTemplate{
-		files:   files,
-		memfile: memfile,
-		rootfs:  rootfs,
+		files:    files,
+		snapfile: snapfile,
+		memfile:  memfile,
+		rootfs:   rootfs,
 	}
 }
 
@@ -40,21 +43,11 @@ func (t *LocalTemplate) Rootfs() (block.ReadonlyDevice, error) {
 	return t.rootfs, nil
 }
 
-func (t *LocalTemplate) Snapfile() (File, error) {
-	return &NoopSnapfile{}, nil
+func (t *LocalTemplate) Snapfile() (Snapfile, error) {
+	return t.snapfile, nil
 }
 
 func (t *LocalTemplate) ReplaceMemfile(memfile block.ReadonlyDevice) error {
 	t.memfile = memfile
 	return nil
-}
-
-type NoopSnapfile struct{}
-
-func (n *NoopSnapfile) Close() error {
-	return nil
-}
-
-func (n *NoopSnapfile) Path() string {
-	return "/dev/null"
 }

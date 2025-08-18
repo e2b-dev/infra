@@ -24,7 +24,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
@@ -317,7 +316,7 @@ func (bb *BaseBuilder) Layer(
 	switch {
 	case bb.Config.FromTemplate != nil:
 		// If the template is built from another template, use its metadata
-		tm, err := metadata.ReadTemplateMetadata(ctx, bb.templateStorage, bb.Config.FromTemplate.BuildID)
+		tm, err := metadata.ReadTemplateMetadataBuildID(ctx, bb.templateStorage, bb.Config.FromTemplate.BuildID)
 		if err != nil {
 			return phases.LayerResult{}, fmt.Errorf("error getting base layer from cache, you may need to rebuild the base template: %w", err)
 		}
@@ -332,7 +331,7 @@ func (bb *BaseBuilder) Layer(
 			Cached: true,
 		}, nil
 	default:
-		cmdMeta := sandboxtools.CommandMetadata{
+		cmdMeta := metadata.CommandMetadata{
 			User:    defaultUser,
 			WorkDir: nil,
 			EnvVars: make(map[string]string),

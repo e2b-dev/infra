@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -16,7 +17,7 @@ type Snapshot struct {
 	MemfileDiffHeader *header.Header
 	RootfsDiff        build.Diff
 	RootfsDiffHeader  *header.Header
-	Snapfile          *template.LocalFileLink
+	Snapfile          template.Snapfile
 }
 
 func (s *Snapshot) Upload(
@@ -57,17 +58,24 @@ func (s *Snapshot) Upload(
 		templateFiles,
 	)
 
+	metadataReader, err := os.Open(s.Snapfile.Metadata().Path())
+	if err != nil {
+		return fmt.Errorf("error opening metadata file: %w", err)
+	}
+	defer metadataReader.Close()
+
 	uploadErrCh := templateBuild.Upload(
 		ctx,
-		s.Snapfile.Path(),
+		metadataReader,
+		s.Snapfile.FirecrackerSnapfile().Path(),
 		memfilePath,
 		rootfsPath,
 	)
 
 	// Wait for the upload to finish
-	err := <-uploadErrCh
-	if err != nil {
-		return fmt.Errorf("error uploading template build: %w", err)
+	uploadErr := <-uploadErrCh
+	if uploadErr != nil {
+		return fmt.Errorf("error uploading template build: %w", uploadErr)
 	}
 	return nil
 }

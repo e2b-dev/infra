@@ -264,7 +264,7 @@ func runBuild(
 			BuildID: bc.Config.FromTemplate.BuildID,
 		}
 	}
-	err = metadata.SaveTemplateMetadata(ctx, builder.templateStorage, bc.Template.BuildID, metadata.TemplateMetadata{
+	err = metadata.SaveTemplateMetadata(ctx, builder.templateStorage, bc.Template, metadata.TemplateMetadata{
 		Template:     lastLayerResult.Metadata.Template,
 		Metadata:     lastLayerResult.Metadata.CmdMeta,
 		FromImage:    &bc.Config.FromImage,

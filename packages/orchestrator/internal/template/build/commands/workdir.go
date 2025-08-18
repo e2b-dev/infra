@@ -10,6 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
@@ -23,12 +24,12 @@ func (w *Workdir) Execute(
 	sandboxID string,
 	prefix string,
 	step *templatemanager.TemplateStep,
-	cmdMetadata sandboxtools.CommandMetadata,
-) (sandboxtools.CommandMetadata, error) {
+	cmdMetadata metadata.CommandMetadata,
+) (metadata.CommandMetadata, error) {
 	args := step.Args
 	// args: [path]
 	if len(args) < 1 {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("WORKDIR requires a path argument")
+		return metadata.CommandMetadata{}, fmt.Errorf("WORKDIR requires a path argument")
 	}
 
 	workdirArg := args[0]
@@ -42,13 +43,13 @@ func (w *Workdir) Execute(
 		prefix,
 		sandboxID,
 		fmt.Sprintf(`mkdir -p "%s"`, workdirArg),
-		sandboxtools.CommandMetadata{
+		metadata.CommandMetadata{
 			User:    cmdMetadata.User,
 			EnvVars: cmdMetadata.EnvVars,
 		},
 	)
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to create workdir: %w", err)
+		return metadata.CommandMetadata{}, fmt.Errorf("failed to create workdir: %w", err)
 	}
 
 	return saveWorkdirMeta(ctx, tracer, proxy, sandboxID, cmdMetadata, workdirArg)
@@ -59,16 +60,16 @@ func saveWorkdirMeta(
 	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
-	cmdMetadata sandboxtools.CommandMetadata,
+	cmdMetadata metadata.CommandMetadata,
 	workdir string,
-) (sandboxtools.CommandMetadata, error) {
+) (metadata.CommandMetadata, error) {
 	err := sandboxtools.RunCommandWithOutput(
 		ctx,
 		tracer,
 		proxy,
 		sandboxID,
 		fmt.Sprintf(`printf "%s"`, workdir),
-		sandboxtools.CommandMetadata{
+		metadata.CommandMetadata{
 			User: "root",
 		},
 		func(stdout, stderr string) {
@@ -76,7 +77,7 @@ func saveWorkdirMeta(
 		},
 	)
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to save workdir %s: %w", workdir, err)
+		return metadata.CommandMetadata{}, fmt.Errorf("failed to save workdir %s: %w", workdir, err)
 	}
 
 	cmdMetadata.WorkDir = &workdir

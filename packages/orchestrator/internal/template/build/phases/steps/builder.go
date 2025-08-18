@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -158,7 +159,7 @@ func (sb *StepBuilder) Build(
 		sandboxCreator = layer.NewResumeSandbox(sbxConfig)
 	}
 
-	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, cmdMeta sandboxtools.CommandMetadata) (sandboxtools.CommandMetadata, error) {
+	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, cmdMeta metadata.CommandMetadata) (metadata.CommandMetadata, error) {
 		meta, err := sb.commandExecutor.Execute(
 			ctx,
 			sbx,
@@ -167,7 +168,7 @@ func (sb *StepBuilder) Build(
 			cmdMeta,
 		)
 		if err != nil {
-			return sandboxtools.CommandMetadata{}, &phases.PhaseBuildError{
+			return metadata.CommandMetadata{}, &phases.PhaseBuildError{
 				Phase: string(metrics.PhaseSteps),
 				Step:  fmt.Sprintf("%d", sb.stepNumber),
 				Err:   err,
@@ -181,7 +182,7 @@ func (sb *StepBuilder) Build(
 			sbx.Runtime.SandboxID,
 		)
 		if err != nil {
-			return sandboxtools.CommandMetadata{}, fmt.Errorf("error running sync command: %w", err)
+			return metadata.CommandMetadata{}, fmt.Errorf("error running sync command: %w", err)
 		}
 
 		return meta, nil
