@@ -111,7 +111,7 @@ func (p *OrchestratorsPool) Close(ctx context.Context) error {
 	for _, instance := range p.instances.Items() {
 		err := instance.Close()
 		if err != nil {
-			p.logger.Error("Error closing orchestrator instance", zap.Error(err), l.WithClusterNodeID(instance.GetInfo().NodeID))
+			p.logger.Error("Error closing orchestrator instance", zap.Error(err), l.WithNodeID(instance.GetInfo().NodeID))
 		}
 	}
 
@@ -177,7 +177,7 @@ func (e *orchestratorInstancesSyncStore) PoolInsert(ctx context.Context, source 
 	// We want to do it separately here so failed init will cause not adding the instance to the pool
 	err = o.sync(ctx)
 	if err != nil {
-		zap.L().Error("Failed to finish initial orchestrator instance sync", zap.Error(err), l.WithClusterNodeID(o.GetInfo().NodeID))
+		zap.L().Error("Failed to finish initial orchestrator instance sync", zap.Error(err), l.WithNodeID(o.GetInfo().NodeID))
 		return
 	}
 
@@ -190,19 +190,19 @@ func (e *orchestratorInstancesSyncStore) PoolUpdate(ctx context.Context, item *O
 
 	err := item.sync(ctx)
 	if err != nil {
-		zap.L().Error("Failed to sync orchestrator instance", zap.Error(err), l.WithClusterNodeID(item.GetInfo().NodeID))
+		zap.L().Error("Failed to sync orchestrator instance", zap.Error(err), l.WithNodeID(item.GetInfo().NodeID))
 	}
 }
 
 func (e *orchestratorInstancesSyncStore) PoolRemove(ctx context.Context, item *OrchestratorInstance) {
 	info := item.GetInfo()
-	zap.L().Info("Orchestrator instance connection is not active anymore, closing.", l.WithClusterNodeID(info.NodeID))
+	zap.L().Info("Orchestrator instance connection is not active anymore, closing.", l.WithNodeID(info.NodeID))
 
 	err := item.Close()
 	if err != nil {
-		zap.L().Error("Error closing connection to orchestrator instance", zap.Error(err), l.WithClusterNodeID(info.NodeID))
+		zap.L().Error("Error closing connection to orchestrator instance", zap.Error(err), l.WithNodeID(info.NodeID))
 	}
 
 	e.pool.instances.Remove(info.Host)
-	zap.L().Info("Orchestrator instance connection has been deregistered.", l.WithClusterNodeID(info.NodeID))
+	zap.L().Info("Orchestrator instance connection has been deregistered.", l.WithNodeID(info.NodeID))
 }

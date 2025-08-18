@@ -24,6 +24,7 @@ import (
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -150,6 +151,10 @@ func buildTemplate(
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}
 
+	buildMetrics, err := metrics.NewBuildMetrics(noop.MeterProvider{})
+	if err != nil {
+		zap.L().Fatal("failed to create build metrics", zap.Error(err))
+	}
 	builder := build.NewBuilder(
 		logger,
 		tracer,
@@ -161,6 +166,7 @@ func buildTemplate(
 		sandboxProxy,
 		sandboxes,
 		templateCache,
+		buildMetrics,
 	)
 
 	logsWriter := logger.
@@ -169,6 +175,7 @@ func buildTemplate(
 
 	force := true
 	template := config.TemplateConfig{
+		TemplateID: templateID,
 		FromImage:  baseImage,
 		Force:      &force,
 		VCpuCount:  2,
@@ -179,7 +186,6 @@ func buildTemplate(
 	}
 
 	metadata := storage.TemplateFiles{
-		TemplateID:         templateID,
 		BuildID:            buildID,
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: fcVersion,

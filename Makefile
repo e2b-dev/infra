@@ -33,6 +33,7 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, GCP_ZONE) \
 	$(call tfvar, DOMAIN_NAME) \
 	$(call tfvar, ADDITIONAL_DOMAINS) \
+	$(call tfvar, ADDITIONAL_API_SERVICES_JSON) \
 	$(call tfvar, PREFIX) \
 	$(call tfvar, OTEL_TRACING_PRINT) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
@@ -66,6 +67,21 @@ init:
 	@ printf "Initializing Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	gcloud storage buckets create gs://$(TERRAFORM_STATE_BUCKET) --location $(GCP_REGION) --project $(GCP_PROJECT_ID) --default-storage-class STANDARD  --uniform-bucket-level-access > /dev/null 2>&1 || true
+
+	# Enable object versioning (keeps deleted/replaced objects as older versions)
+	gcloud storage buckets update gs://$(TERRAFORM_STATE_BUCKET) --versioning --soft-delete-duration=30d
+
+	# Create a temporary file for lifecycle rules
+	$(eval LIFECYCLE_FILE := $(shell mktemp))
+
+	# Set lifecycle rules to delete non-live objects after 30 days or more than 50 newer versions
+	echo '{"rule":[{"action":{"type":"Delete"},"condition":{"isLive":false,"age":30}},{"action":{"type":"Delete"},"condition":{"numNewerVersions":50}}]}' > $(LIFECYCLE_FILE)
+	gcloud storage buckets update gs://$(TERRAFORM_STATE_BUCKET) --lifecycle-file=$(LIFECYCLE_FILE)
+
+	# Remove the temporary lifecycle file
+	@ rm -f $(LIFECYCLE_FILE)
+
+
 	$(TF) init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
 	$(tf_vars) $(TF) apply -target=module.init -target=module.buckets -auto-approve -input=false -compact-warnings
 	$(MAKE) -C packages/cluster-disk-image init build
@@ -192,11 +208,18 @@ copy-public-builds:
 
 
 .PHONY: generate
-generate: generate/api generate/orchestrator generate/client-proxy generate/envd generate/db
+generate: generate/api generate/orchestrator generate/client-proxy generate/envd generate/db generate-tests
 generate/%:
 	@echo "Generating code for *$(notdir $@)*"
 	$(MAKE) -C packages/$(notdir $@) generate
 	@printf "\n\n"
+
+.PHONY: generate-tests
+generate-tests: generate-tests/integration
+generate-tests/%:
+		@echo "Generating code for *$(notdir $@)*"
+		$(MAKE) -C tests/$(notdir $@) generate
+		@printf "\n\n"
 
 .PHONY: migrate
 migrate:

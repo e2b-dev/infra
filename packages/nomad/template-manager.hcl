@@ -66,6 +66,7 @@ job "template-manager" {
         LOGS_COLLECTOR_PUBLIC_IP      = "${logs_collector_public_ip}"
         ALLOW_SANDBOX_INTERNET        = "${allow_sandbox_internet}"
         LOCAL_TEMPLATE_CACHE_PATH    = "${nfs_cache_mount_path}"
+        CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
 %{ if !update_stanza }
         FORCE_STOP                    = "true"
 %{ endif }

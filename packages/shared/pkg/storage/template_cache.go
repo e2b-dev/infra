@@ -42,5 +42,5 @@ func (c TemplateCacheFiles) CacheSnapfilePath() string {
 }
 
 func (c TemplateCacheFiles) cacheDir() string {
-	return filepath.Join(templateCacheDir, c.TemplateID, c.BuildID, "cache", c.CacheIdentifier)
+	return filepath.Join(templateCacheDir, c.BuildID, "cache", c.CacheIdentifier)
 }

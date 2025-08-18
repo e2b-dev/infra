@@ -409,6 +409,7 @@ locals {
     allow_sandbox_internet       = var.allow_sandbox_internet
     launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
     nfs_cache_mount_path         = var.slab_cache_path
+    clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
   }
 
   orchestrator_job_check = templatefile("${path.module}/orchestrator.hcl", merge(
@@ -493,6 +494,7 @@ resource "nomad_job" "template_manager" {
     orchestrator_services        = "template-manager"
     allow_sandbox_internet       = var.allow_sandbox_internet
     nfs_cache_mount_path         = var.slab_cache_path
+    clickhouse_connection_string = local.clickhouse_connection_string
   })
 }
 resource "nomad_job" "loki" {

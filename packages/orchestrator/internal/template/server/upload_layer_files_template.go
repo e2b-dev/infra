@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layerstorage"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/paths"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
@@ -21,7 +21,7 @@ func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanag
 		cacheScope = *in.CacheScope
 	}
 
-	path := layerstorage.GetLayerFilesCachePath(cacheScope, in.Hash)
+	path := paths.GetLayerFilesCachePath(cacheScope, in.Hash)
 	obj, err := s.buildStorage.OpenObject(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open layer files cache: %w", err)

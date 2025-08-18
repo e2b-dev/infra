@@ -65,6 +65,11 @@ func (a *AWSBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, 
 		objects = append(objects, types.ObjectIdentifier{Key: obj.Key})
 	}
 
+	// AWS S3 delete operation requires at least one object to delete.
+	if len(objects) == 0 {
+		return nil
+	}
+
 	_, err = a.client.DeleteObjects(
 		ctx, &s3.DeleteObjectsInput{
 			Bucket: aws.String(a.bucketName),

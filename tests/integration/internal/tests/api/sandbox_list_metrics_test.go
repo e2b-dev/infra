@@ -20,10 +20,11 @@ func TestSandboxListMetrics(t *testing.T) {
 	sbx1 := utils.SetupSandboxWithCleanup(t, c)
 	sbx2 := utils.SetupSandboxWithCleanup(t, c)
 
-	maxRetries := 15
-	var result map[string]api.SandboxMetric
+	maxDuration := 15 * time.Second
+	tick := 500 * time.Millisecond
+	var metrics map[string]api.SandboxMetric
 
-	for i := 0; i < maxRetries; i++ {
+	require.Eventually(t, func() bool {
 		response, err := c.GetSandboxesMetricsWithResponse(t.Context(), &api.GetSandboxesMetricsParams{SandboxIds: []string{sbx1.SandboxID, sbx2.SandboxID}}, setup.WithAPIKey())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, response.StatusCode())
@@ -31,19 +32,17 @@ func TestSandboxListMetrics(t *testing.T) {
 		require.NotNil(t, response.JSON200)
 		require.NotNil(t, response.JSON200.Sandboxes)
 		if len(response.JSON200.Sandboxes) == 0 {
-			t.Logf("No metrics found yet, retrying (%d/%d)", i+1, maxRetries)
-
-			time.Sleep(1 * time.Second) // Wait before retrying
-			continue
+			return false
 		}
 
-		result = response.JSON200.Sandboxes
-	}
+		metrics = response.JSON200.Sandboxes
+		return true
+	}, maxDuration, tick, "sandbox metrics not available in time")
 
-	require.Equal(t, 2, len(result), "Expected two metrics in the response")
-	assert.Contains(t, result, sbx1.SandboxID, "Expected sandbox metrics to include the created sandbox")
-	assert.Contains(t, result, sbx2.SandboxID, "Expected sandbox metrics to include the second created sandbox")
-	for _, sbx := range result {
+	require.Equal(t, 2, len(metrics), "Expected two metrics in the response")
+	assert.Contains(t, metrics, sbx1.SandboxID, "Expected sandbox metrics to include the created sandbox")
+	assert.Contains(t, metrics, sbx2.SandboxID, "Expected sandbox metrics to include the second created sandbox")
+	for _, sbx := range metrics {
 		assert.NotEmpty(t, sbx.Timestamp, "Metric timestamp should not be empty")
 		assert.NotEmpty(t, sbx.CpuUsedPct, "Cpu pct should not be empty")
 		assert.NotEmpty(t, sbx.CpuCount, "Cpu count should not be empty")

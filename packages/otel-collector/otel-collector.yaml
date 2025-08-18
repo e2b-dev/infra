@@ -35,6 +35,7 @@ processors:
         match_type: regexp
         metric_names:
           - "orchestrator.*"
+          - "template.*"
           - "api.*"
           - "client_proxy.*"
           - "Click*"
@@ -148,6 +149,8 @@ exporters:
     metrics_tables:
       gauge:
         name: "metrics_gauge"
+      sum:
+        name: "metrics_sum"
 service:
   telemetry:
     logs:

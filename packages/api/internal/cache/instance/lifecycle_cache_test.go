@@ -13,13 +13,21 @@ import (
 
 type testLifecycleCacheItem struct {
 	expired *bool
+
+	lock sync.Mutex
 }
 
 func (t *testLifecycleCacheItem) IsExpired() bool {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
 	return *t.expired
 }
 
 func (t *testLifecycleCacheItem) SetExpired() {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
 	*t.expired = true
 }
 

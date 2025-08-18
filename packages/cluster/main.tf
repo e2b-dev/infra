@@ -206,6 +206,13 @@ module "api_cluster" {
 
   service_account_email = var.google_service_account_email
 
+  additional_ports = [
+    for service in var.additional_api_services : {
+      name = service.api_node_group_port_name
+      port = service.api_node_group_port
+    }
+  ]
+
   labels     = var.labels
   depends_on = [google_storage_bucket_object.setup_config_objects["scripts/run-api-nomad.sh"], google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]]
 }
@@ -329,6 +336,15 @@ module "network" {
 
   labels = var.labels
   prefix = var.prefix
+
+  additional_api_path_rules = [
+    for service in var.additional_api_services : {
+      paths      = service.paths
+      service_id = service.service_id
+    }
+  ]
+
+  additional_ports = [for service in var.additional_api_services : service.api_node_group_port]
 }
 
 module "filestore" {
