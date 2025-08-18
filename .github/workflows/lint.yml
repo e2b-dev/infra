@@ -17,6 +17,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: 'go.work'
+          cache-dependency-path: "**/*.sum"
       - id: set-modules
         run: echo "modules=$(go list -m -json | jq -s '.' | jq -c '[.[].Dir]')" >> $GITHUB_OUTPUT
 
