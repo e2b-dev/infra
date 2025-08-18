@@ -21,26 +21,29 @@ import (
 type FileWatcher struct {
 	watcher *fsnotify.Watcher
 	Events  []*rpc.FilesystemEvent
-	ctx     context.Context
+	done    func()
 	Error   error
 
 	Lock sync.Mutex
 }
 
-func CreateFileWatcher(watchPath string, recursive bool, operationID string, logger *zerolog.Logger) (*FileWatcher, error) {
+func CreateFileWatcher(ctx context.Context, watchPath string, recursive bool, operationID string, logger *zerolog.Logger) (*FileWatcher, error) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating watcher: %w", err))
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+
 	err = w.Add(utils.FsnotifyPath(watchPath, recursive))
 	if err != nil {
 		_ = w.Close()
+		cancel()
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error adding path %s to watcher: %w", watchPath, err))
 	}
 	fw := &FileWatcher{
 		watcher: w,
-		ctx:     context.Background(),
+		done:    cancel,
 		Events:  []*rpc.FilesystemEvent{},
 		Error:   nil,
 	}
@@ -48,7 +51,7 @@ func CreateFileWatcher(watchPath string, recursive bool, operationID string, log
 	go func() {
 		for {
 			select {
-			case <-fw.ctx.Done():
+			case <-ctx.Done():
 				return
 			case chErr, ok := <-w.Errors:
 				if !ok {
@@ -128,7 +131,7 @@ func CreateFileWatcher(watchPath string, recursive bool, operationID string, log
 
 func (fw *FileWatcher) Close() {
 	_ = fw.watcher.Close()
-	fw.ctx.Done()
+	fw.done()
 }
 
 func (s Service) CreateWatcher(ctx context.Context, req *connect.Request[rpc.CreateWatcherRequest]) (*connect.Response[rpc.CreateWatcherResponse], error) {
@@ -157,7 +160,7 @@ func (s Service) CreateWatcher(ctx context.Context, req *connect.Request[rpc.Cre
 
 	watcherId := "w" + id.Generate()
 
-	w, err := CreateFileWatcher(watchPath, req.Msg.Recursive, watcherId, s.logger)
+	w, err := CreateFileWatcher(ctx, watchPath, req.Msg.Recursive, watcherId, s.logger)
 	if err != nil {
 		return nil, err
 	}
