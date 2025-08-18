@@ -31,6 +31,8 @@ type CachedProvider struct {
 	inner     StorageProvider
 }
 
+var _ StorageProvider = (*CachedProvider)(nil)
+
 func NewCachedProvider(ctx context.Context, rootPath string, chunksize int64, inner StorageProvider) *CachedProvider {
 	return &CachedProvider{ctx: ctx, rootPath: rootPath, inner: inner, chunkSize: chunksize}
 }
@@ -82,8 +84,6 @@ func (c CachedProvider) deleteObjectsWithPrefix(prefix string) {
 		}
 	}
 }
-
-var _ StorageProvider = (*CachedProvider)(nil)
 
 type CachedFileObjectProvider struct {
 	ctx       context.Context
@@ -191,11 +191,10 @@ func (c *CachedFileObjectProvider) ReadAt(buff []byte, off int64) (int, error) {
 }
 
 var (
-	ErrBufferSizeUnaligned = errors.New("buffer size must be a multiple of chunk size")
-	ErrOffsetUnaligned     = errors.New("offset must be a multiple of chunk size")
-	ErrBufferTooSmall      = errors.New("buffer is too small")
-	ErrMultipleChunks      = errors.New("cannot read multiple chunks")
-	ErrBufferTooLarge      = errors.New("buffer is too large")
+	ErrOffsetUnaligned = errors.New("offset must be a multiple of chunk size")
+	ErrBufferTooSmall  = errors.New("buffer is too small")
+	ErrMultipleChunks  = errors.New("cannot read multiple chunks")
+	ErrBufferTooLarge  = errors.New("buffer is too large")
 )
 
 func (c *CachedFileObjectProvider) validateReadAtParams(buffSize, offset int64) error {
@@ -280,7 +279,7 @@ func (c *CachedFileObjectProvider) writeCacheAndRemote(ctx context.Context, src 
 	defer endSpan(span, err)
 
 	size := int64(len(src))
-	for offset := int64(0); offset < c.chunkSize; offset += c.chunkSize {
+	for offset := int64(0); int(offset) < len(src); offset += c.chunkSize {
 		// read from the source
 		offsetEnd := min(offset+c.chunkSize, size)
 		buf := src[offset:offsetEnd]

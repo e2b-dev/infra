@@ -191,6 +191,43 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		assert.Equal(t, fakeData, buf)
 		assert.Equal(t, 3, read2)
 	})
+
+	t.Run("ReadFrom should handle multiple chunks at once", func(t *testing.T) {
+		fakeData := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+
+		fakeStorageObjectProvider := NewMockStorageObjectProvider(t)
+		fakeStorageObjectProvider.EXPECT().
+			ReadFrom(mock.Anything).
+			RunAndReturn(func(src []byte) (int64, error) {
+				return int64(len(src)), nil
+			})
+
+		tempDir := t.TempDir()
+		c := CachedFileObjectProvider{
+			ctx:       t.Context(),
+			path:      tempDir,
+			chunkSize: 3,
+			inner:     fakeStorageObjectProvider,
+		}
+
+		read64, err := c.ReadFrom(fakeData)
+		require.NoError(t, err)
+		assert.Equal(t, int64(len(fakeData)), read64)
+
+		// get first chunk
+		buf := make([]byte, 3)
+		read, err := c.ReadAt(buf, 0)
+		require.NoError(t, err)
+		assert.Equal(t, fakeData[0:3], buf)
+		assert.Equal(t, 3, read)
+
+		// get last chunk
+		buf = make([]byte, 1)
+		read, err = c.ReadAt(buf, 9)
+		require.NoError(t, err)
+		assert.Equal(t, fakeData[9:], buf)
+		assert.Equal(t, 1, read)
+	})
 }
 
 func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {

@@ -160,7 +160,7 @@ func (a *AWSBucketStorageObjectProvider) ReadFrom(data []byte) (int64, error) {
 	ctx, cancel := context.WithTimeout(a.ctx, awsWriteTimeout)
 	defer cancel()
 
-	_, err := a.client.PutObject(
+	result, err := a.client.PutObject(
 		ctx,
 		&s3.PutObjectInput{
 			Bucket: &a.bucketName,
@@ -172,6 +172,9 @@ func (a *AWSBucketStorageObjectProvider) ReadFrom(data []byte) (int64, error) {
 		return 0, err
 	}
 
+	if result.Size != nil {
+		return *result.Size, nil
+	}
 	return 0, nil
 }
 
