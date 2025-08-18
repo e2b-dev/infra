@@ -1,11 +1,13 @@
 package orchestrator
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
 	"time"
 
 	nomadapi "github.com/hashicorp/nomad/api"
@@ -15,13 +17,16 @@ import (
 	"go.uber.org/zap"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
+	"github.com/e2b-dev/infra/packages/api/internal/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -32,6 +37,8 @@ const (
 
 	statusLogInterval = time.Second * 20
 )
+
+var ErrNodeNotFound = errors.New("node not found")
 
 type Orchestrator struct {
 	httpClient              *http.Client
@@ -46,6 +53,7 @@ type Orchestrator struct {
 	clusters                *edge.Pool
 	metricsRegistration     metric.Registration
 	createdSandboxesCounter metric.Int64Counter
+	teamMetricsObserver     *metrics.TeamObserver
 }
 
 func New(
@@ -97,11 +105,19 @@ func New(
 
 	o.instanceCache = cache
 
+	teamMetricsObserver, err := metrics.NewTeamObserver(ctx, cache)
+	if err != nil {
+		zap.L().Error("Failed to create team metrics observer", zap.Error(err))
+		return nil, fmt.Errorf("failed to create team metrics observer: %w", err)
+	}
+
+	o.teamMetricsObserver = teamMetricsObserver
+
 	if env.IsLocal() {
 		zap.L().Info("Skipping syncing sandboxes, running locally")
 		// Add a local node for local development, if there isn't any, it fails silently
-		err := o.connectToNode(ctx, &node.NodeInfo{
-			ID:                  "testclient",
+		err := o.connectToNode(ctx, nomadServiceDiscovery{
+			NomadNodeShortID:    "testclient",
 			OrchestratorAddress: fmt.Sprintf("%s:%s", "127.0.0.1", consts.OrchestratorPort),
 			IPAddress:           "127.0.0.1",
 		})
@@ -144,7 +160,7 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 					})
 				} else {
 					nodes = append(nodes, map[string]interface{}{
-						"id":                nodeItem.Info.ID,
+						"id":                nodeItem.Info.NodeID,
 						"status":            nodeItem.Status(),
 						"socket_status":     nodeItem.client.Connection.GetState().String(),
 						"in_progress_count": nodeItem.sbxsInProgress.Count(),
@@ -181,6 +197,12 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 		}
 	}
 
+	if o.teamMetricsObserver != nil {
+		if err := o.teamMetricsObserver.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("failed to close team metrics observer: %w", err))
+		}
+	}
+
 	if err := o.analytics.Close(); err != nil {
 		errs = append(errs, err)
 	}
@@ -197,4 +219,116 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 // WaitForPause waits for the instance to be paused and returns the node info where the instance was paused on.
 func (o *Orchestrator) WaitForPause(ctx context.Context, sandboxID string) (*node.NodeInfo, error) {
 	return o.instanceCache.WaitForPause(ctx, sandboxID)
+}
+
+func (o *Orchestrator) AdminNodes() []*api.Node {
+	nodes := make(map[string]*api.Node)
+
+	for _, n := range o.nodes.Items() {
+		// Skip all nodes that are not running in local (Nomad) cluster
+		if n.Info.NomadNodeShortID == node.UnknownNomadNodeShortID {
+			continue
+		}
+
+		meta := n.metadata()
+		nodes[n.Info.NomadNodeShortID] = &api.Node{
+			NodeID:               n.Info.NomadNodeShortID,
+			ClusterID:            n.Info.ClusterID.String(),
+			Status:               n.Status(),
+			CreateSuccesses:      n.createSuccess.Load(),
+			CreateFails:          n.createFails.Load(),
+			SandboxStartingCount: n.sbxsInProgress.Count(),
+			Version:              meta.version,
+			Commit:               meta.commit,
+			Metrics: api.NodeMetrics{
+				AllocatedMemoryBytes: n.memoryAllocatedBytes.Load(),
+				MemoryUsedBytes:      n.memoryUsedBytes.Load(),
+				MemoryTotalBytes:     n.memoryTotalBytes.Load(),
+
+				AllocatedCPU: n.cpuAllocated.Load(),
+				CpuPercent:   n.cpuPercent.Load(),
+				CpuCount:     n.cpuCount.Load(),
+
+				Disks: n.getHostDisks(),
+			},
+		}
+	}
+
+	for _, sbx := range o.instanceCache.Items() {
+		n, ok := nodes[sbx.Node.NomadNodeShortID]
+		if !ok {
+			zap.L().Error("node for sandbox wasn't found", logger.WithNodeID(sbx.Node.NodeID), logger.WithClusterID(sbx.Node.ClusterID), logger.WithSandboxID(sbx.SandboxID))
+			continue
+		}
+
+		n.SandboxCount += 1
+	}
+
+	var result []*api.Node
+	for _, n := range nodes {
+		result = append(result, n)
+	}
+
+	slices.SortFunc(result, func(i, j *api.Node) int {
+		return cmp.Compare(i.NodeID, j.NodeID)
+	})
+
+	return result
+}
+
+func (o *Orchestrator) AdminNodeDetail(nomadNodeShortID string) (*api.NodeDetail, error) {
+	n := o.GetNodeByNomadShortID(nomadNodeShortID)
+	if n == nil {
+		return nil, ErrNodeNotFound
+	}
+
+	builds := n.buildCache.Keys()
+	meta := n.metadata()
+	node := &api.NodeDetail{
+		NodeID:    n.Info.NomadNodeShortID,
+		ClusterID: n.Info.ClusterID.String(),
+
+		Status:          n.Status(),
+		CachedBuilds:    builds,
+		CreateSuccesses: n.createSuccess.Load(),
+		CreateFails:     n.createFails.Load(),
+		Version:         meta.version,
+		Commit:          meta.commit,
+		Metrics: api.NodeMetrics{
+			AllocatedMemoryBytes: n.memoryAllocatedBytes.Load(),
+			MemoryUsedBytes:      n.memoryUsedBytes.Load(),
+			MemoryTotalBytes:     n.memoryTotalBytes.Load(),
+
+			AllocatedCPU: n.cpuAllocated.Load(),
+			CpuPercent:   n.cpuPercent.Load(),
+			CpuCount:     n.cpuCount.Load(),
+
+			Disks: n.getHostDisks(),
+		},
+	}
+
+	for _, sbx := range o.instanceCache.Items() {
+		if sbx.Node.NodeID == n.Info.NodeID && sbx.Node.ClusterID == n.Info.ClusterID {
+			var metadata *api.SandboxMetadata
+			if sbx.Metadata != nil {
+				meta := api.SandboxMetadata(sbx.Metadata)
+				metadata = &meta
+			}
+
+			node.Sandboxes = append(node.Sandboxes, api.ListedSandbox{
+				Alias:      sbx.Alias,
+				ClientID:   consts.ClientID,
+				CpuCount:   api.CPUCount(sbx.VCpu),
+				MemoryMB:   api.MemoryMB(sbx.RamMB),
+				DiskSizeMB: api.DiskSizeMB(sbx.TotalDiskSizeMB),
+				EndAt:      sbx.GetEndTime(),
+				Metadata:   metadata,
+				SandboxID:  sbx.SandboxID,
+				StartedAt:  sbx.StartTime,
+				TemplateID: sbx.TemplateID,
+			})
+		}
+	}
+
+	return node, nil
 }

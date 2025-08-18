@@ -59,6 +59,15 @@ type BuildLogEntry struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+// BuildStatusReason defines model for BuildStatusReason.
+type BuildStatusReason struct {
+	// Message Message with the status reason, currently reporting only for error status
+	Message string `json:"message"`
+
+	// Step Step that failed
+	Step *string `json:"step,omitempty"`
+}
+
 // CPUCount CPU cores for the sandbox
 type CPUCount = int32
 
@@ -98,8 +107,32 @@ type CreatedTeamAPIKey struct {
 	Name string `json:"name"`
 }
 
+// DiskMetrics defines model for DiskMetrics.
+type DiskMetrics struct {
+	// Device Device name
+	Device string `json:"device"`
+
+	// FilesystemType Filesystem type (e.g., ext4, xfs)
+	FilesystemType string `json:"filesystemType"`
+
+	// MountPoint Mount point of the disk
+	MountPoint string `json:"mountPoint"`
+
+	// TotalBytes Total space in bytes
+	TotalBytes uint64 `json:"totalBytes"`
+
+	// UsedBytes Used space in bytes
+	UsedBytes uint64 `json:"usedBytes"`
+}
+
+// DiskSizeMB Disk size for the sandbox in MiB
+type DiskSizeMB = int32
+
 // EnvVars defines model for EnvVars.
 type EnvVars map[string]string
+
+// EnvdVersion Version of the envd running in the sandbox
+type EnvdVersion = string
 
 // Error defines model for Error.
 type Error struct {
@@ -137,10 +170,16 @@ type ListedSandbox struct {
 	// CpuCount CPU cores for the sandbox
 	CpuCount CPUCount `json:"cpuCount"`
 
+	// DiskSizeMB Disk size for the sandbox in MiB
+	DiskSizeMB DiskSizeMB `json:"diskSizeMB"`
+
 	// EndAt Time when the sandbox will expire
 	EndAt time.Time `json:"endAt"`
 
-	// MemoryMB Memory for the sandbox in MB
+	// EnvdVersion Version of the envd running in the sandbox
+	EnvdVersion EnvdVersion `json:"envdVersion"`
+
+	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB MemoryMB         `json:"memoryMB"`
 	Metadata *SandboxMetadata `json:"metadata,omitempty"`
 
@@ -160,7 +199,7 @@ type ListedSandbox struct {
 // LogLevel State of the sandbox
 type LogLevel string
 
-// MemoryMB Memory for the sandbox in MB
+// MemoryMB Memory for the sandbox in MiB
 type MemoryMB = int32
 
 // NewAccessToken defines model for NewAccessToken.
@@ -197,14 +236,8 @@ type NewTeamAPIKey struct {
 
 // Node defines model for Node.
 type Node struct {
-	// AllocatedCPU Number of allocated CPU cores
-	AllocatedCPU int32 `json:"allocatedCPU"`
-
-	// AllocatedMemoryMiB Amount of allocated memory in MiB
-	AllocatedMemoryMiB int32 `json:"allocatedMemoryMiB"`
-
 	// ClusterID Identifier of the cluster
-	ClusterID *string `json:"clusterID"`
+	ClusterID string `json:"clusterID"`
 
 	// Commit Commit of the orchestrator
 	Commit string `json:"commit"`
@@ -215,11 +248,14 @@ type Node struct {
 	// CreateSuccesses Number of sandbox create successes
 	CreateSuccesses uint64 `json:"createSuccesses"`
 
+	// Metrics Node metrics
+	Metrics NodeMetrics `json:"metrics"`
+
 	// NodeID Identifier of the node
 	NodeID string `json:"nodeID"`
 
 	// SandboxCount Number of sandboxes running on the node
-	SandboxCount int32 `json:"sandboxCount"`
+	SandboxCount uint32 `json:"sandboxCount"`
 
 	// SandboxStartingCount Number of starting Sandboxes
 	SandboxStartingCount int `json:"sandboxStartingCount"`
@@ -237,7 +273,7 @@ type NodeDetail struct {
 	CachedBuilds []string `json:"cachedBuilds"`
 
 	// ClusterID Identifier of the cluster
-	ClusterID *string `json:"clusterID"`
+	ClusterID string `json:"clusterID"`
 
 	// Commit Commit of the orchestrator
 	Commit string `json:"commit"`
@@ -247,6 +283,9 @@ type NodeDetail struct {
 
 	// CreateSuccesses Number of sandbox create successes
 	CreateSuccesses uint64 `json:"createSuccesses"`
+
+	// Metrics Node metrics
+	Metrics NodeMetrics `json:"metrics"`
 
 	// NodeID Identifier of the node
 	NodeID string `json:"nodeID"`
@@ -261,6 +300,30 @@ type NodeDetail struct {
 	Version string `json:"version"`
 }
 
+// NodeMetrics Node metrics
+type NodeMetrics struct {
+	// AllocatedCPU Number of allocated CPU cores
+	AllocatedCPU uint32 `json:"allocatedCPU"`
+
+	// AllocatedMemoryBytes Amount of allocated memory in bytes
+	AllocatedMemoryBytes uint64 `json:"allocatedMemoryBytes"`
+
+	// CpuCount Total number of CPU cores on the node
+	CpuCount uint32 `json:"cpuCount"`
+
+	// CpuPercent Node CPU usage percentage
+	CpuPercent uint32 `json:"cpuPercent"`
+
+	// Disks Detailed metrics for each disk/mount point
+	Disks []DiskMetrics `json:"disks"`
+
+	// MemoryTotalBytes Total node memory in bytes
+	MemoryTotalBytes uint64 `json:"memoryTotalBytes"`
+
+	// MemoryUsedBytes Node memory used in bytes
+	MemoryUsedBytes uint64 `json:"memoryUsedBytes"`
+}
+
 // NodeStatus Status of the node
 type NodeStatus string
 
@@ -273,6 +336,7 @@ type NodeStatusChange struct {
 // ResumedSandbox defines model for ResumedSandbox.
 type ResumedSandbox struct {
 	// AutoPause Automatically pauses the sandbox after the timeout
+	// Deprecated:
 	AutoPause *bool `json:"autoPause,omitempty"`
 
 	// Timeout Time to live for the sandbox in seconds.
@@ -295,7 +359,7 @@ type Sandbox struct {
 	EnvdAccessToken *string `json:"envdAccessToken,omitempty"`
 
 	// EnvdVersion Version of the envd running in the sandbox
-	EnvdVersion string `json:"envdVersion"`
+	EnvdVersion EnvdVersion `json:"envdVersion"`
 
 	// SandboxID Identifier of the sandbox
 	SandboxID string `json:"sandboxID"`
@@ -316,6 +380,9 @@ type SandboxDetail struct {
 	// CpuCount CPU cores for the sandbox
 	CpuCount CPUCount `json:"cpuCount"`
 
+	// DiskSizeMB Disk size for the sandbox in MiB
+	DiskSizeMB DiskSizeMB `json:"diskSizeMB"`
+
 	// Domain Base domain where the sandbox traffic is accessible
 	Domain *string `json:"domain"`
 
@@ -326,9 +393,9 @@ type SandboxDetail struct {
 	EnvdAccessToken *string `json:"envdAccessToken,omitempty"`
 
 	// EnvdVersion Version of the envd running in the sandbox
-	EnvdVersion *string `json:"envdVersion,omitempty"`
+	EnvdVersion EnvdVersion `json:"envdVersion"`
 
-	// MemoryMB Memory for the sandbox in MB
+	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB MemoryMB         `json:"memoryMB"`
 	Metadata *SandboxMetadata `json:"metadata,omitempty"`
 
@@ -354,8 +421,25 @@ type SandboxLog struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+// SandboxLogEntry defines model for SandboxLogEntry.
+type SandboxLogEntry struct {
+	Fields map[string]string `json:"fields"`
+
+	// Level State of the sandbox
+	Level LogLevel `json:"level"`
+
+	// Message Log message content
+	Message string `json:"message"`
+
+	// Timestamp Timestamp of the log entry
+	Timestamp time.Time `json:"timestamp"`
+}
+
 // SandboxLogs defines model for SandboxLogs.
 type SandboxLogs struct {
+	// LogEntries Structured logs of the sandbox
+	LogEntries []SandboxLogEntry `json:"logEntries"`
+
 	// Logs Logs of the sandbox
 	Logs []SandboxLog `json:"logs"`
 }
@@ -427,6 +511,18 @@ type TeamAPIKey struct {
 	Name string `json:"name"`
 }
 
+// TeamMetric Team metric with timestamp
+type TeamMetric struct {
+	// ConcurrentSandboxes The number of concurrent sandboxes for the team
+	ConcurrentSandboxes int32 `json:"concurrentSandboxes"`
+
+	// SandboxStartRate Number of sandboxes started per second
+	SandboxStartRate float32 `json:"sandboxStartRate"`
+
+	// Timestamp Timestamp of the metric entry
+	Timestamp time.Time `json:"timestamp"`
+}
+
 // TeamUser defines model for TeamUser.
 type TeamUser struct {
 	// Email Email of the user
@@ -454,10 +550,16 @@ type Template struct {
 	CreatedAt time.Time `json:"createdAt"`
 	CreatedBy *TeamUser `json:"createdBy"`
 
+	// DiskSizeMB Disk size for the sandbox in MiB
+	DiskSizeMB DiskSizeMB `json:"diskSizeMB"`
+
+	// EnvdVersion Version of the envd running in the sandbox
+	EnvdVersion EnvdVersion `json:"envdVersion"`
+
 	// LastSpawnedAt Time when the template was last used
 	LastSpawnedAt time.Time `json:"lastSpawnedAt"`
 
-	// MemoryMB Memory for the sandbox in MB
+	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB MemoryMB `json:"memoryMB"`
 
 	// Public Whether the template is public or only accessible by the team
@@ -482,10 +584,8 @@ type TemplateBuild struct {
 	LogEntries []BuildLogEntry `json:"logEntries"`
 
 	// Logs Build logs
-	Logs []string `json:"logs"`
-
-	// Reason Message with the status reason, currently reporting only for error status
-	Reason *string `json:"reason,omitempty"`
+	Logs   []string           `json:"logs"`
+	Reason *BuildStatusReason `json:"reason,omitempty"`
 
 	// Status Status of the template
 	Status TemplateBuildStatus `json:"status"`
@@ -517,7 +617,7 @@ type TemplateBuildRequest struct {
 	// Dockerfile Dockerfile for the template
 	Dockerfile string `json:"dockerfile"`
 
-	// MemoryMB Memory for the sandbox in MB
+	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
 
 	// ReadyCmd Ready check command to execute in the template after the build
@@ -538,7 +638,7 @@ type TemplateBuildRequestV2 struct {
 	// CpuCount CPU cores for the sandbox
 	CpuCount *CPUCount `json:"cpuCount,omitempty"`
 
-	// MemoryMB Memory for the sandbox in MB
+	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
 
 	// TeamID Identifier of the team
@@ -608,6 +708,9 @@ type NodeID = string
 // SandboxID defines model for sandboxID.
 type SandboxID = string
 
+// TeamID defines model for teamID.
+type TeamID = string
+
 // TemplateID defines model for templateID.
 type TemplateID = string
 
@@ -616,6 +719,9 @@ type N400 = Error
 
 // N401 defines model for 401.
 type N401 = Error
+
+// N403 defines model for 403.
+type N403 = Error
 
 // N404 defines model for 404.
 type N404 = Error
@@ -649,7 +755,7 @@ type GetSandboxesSandboxIDLogsParams struct {
 
 // GetSandboxesSandboxIDMetricsParams defines parameters for GetSandboxesSandboxIDMetrics.
 type GetSandboxesSandboxIDMetricsParams struct {
-	// Start Starting timestamp of the metrics that should be returned in milliseconds
+	// Start Unix timestamp for the start of the interval, in seconds, for which the metrics
 	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
 	End   *int64 `form:"end,omitempty" json:"end,omitempty"`
 }
@@ -664,6 +770,13 @@ type PostSandboxesSandboxIDRefreshesJSONBody struct {
 type PostSandboxesSandboxIDTimeoutJSONBody struct {
 	// Timeout Timeout in seconds from the current time after which the sandbox should expire
 	Timeout int32 `json:"timeout"`
+}
+
+// GetTeamsTeamIDMetricsParams defines parameters for GetTeamsTeamIDMetrics.
+type GetTeamsTeamIDMetricsParams struct {
+	// Start Unix timestamp for the start of the interval, in seconds, for which the metrics
+	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
+	End   *int64 `form:"end,omitempty" json:"end,omitempty"`
 }
 
 // GetTemplatesParams defines parameters for GetTemplates.

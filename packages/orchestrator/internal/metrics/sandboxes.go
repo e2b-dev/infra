@@ -31,6 +31,7 @@ const (
 	minEnvdVersionForDiskMetrics   = "0.2.4"
 	timeoutGetMetrics              = 100 * time.Millisecond
 	metricsParallelismFactor       = 5 // Used to calculate number of concurrently sandbox metrics requests
+	sandboxMetricExportPeriod      = 5 * time.Second
 
 	shiftFromMiBToBytes = 20 // Shift to convert MiB to bytes
 )
@@ -55,7 +56,7 @@ type SandboxObserver struct {
 	diskUsed    metric.Int64ObservableGauge
 }
 
-func NewSandboxObserver(ctx context.Context, commitSHA, clientID string, sandboxMetricsExportPeriod time.Duration, sandboxes *smap.Map[*sandbox.Sandbox]) (*SandboxObserver, error) {
+func NewSandboxObserver(ctx context.Context, commitSHA, clientID string, sandboxes *smap.Map[*sandbox.Sandbox]) (*SandboxObserver, error) {
 	deltaTemporality := otlpmetricgrpc.WithTemporalitySelector(func(kind sdkmetric.InstrumentKind) metricdata.Temporality {
 		// Use delta temporality for gauges and cumulative for all other instrument kinds.
 		// This is used to prevent reporting sandbox metrics indefinitely.
@@ -70,7 +71,7 @@ func NewSandboxObserver(ctx context.Context, commitSHA, clientID string, sandbox
 		return nil, fmt.Errorf("failed to create external meter exporter: %w", err)
 	}
 
-	meterProvider, err := telemetry.NewMeterProvider(ctx, externalMeterExporter, sandboxMetricsExportPeriod, "external-metrics", commitSHA, clientID, sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter))
+	meterProvider, err := telemetry.NewMeterProvider(ctx, externalMeterExporter, sandboxMetricExportPeriod, "external-metrics", commitSHA, clientID, sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create external metric provider: %w", err)
 	}
@@ -107,7 +108,7 @@ func NewSandboxObserver(ctx context.Context, commitSHA, clientID string, sandbox
 	}
 
 	so := &SandboxObserver{
-		exportInterval: sandboxMetricsExportPeriod,
+		exportInterval: sandboxMetricExportPeriod,
 		meterExporter:  externalMeterExporter,
 		sandboxes:      sandboxes,
 		meter:          meter,

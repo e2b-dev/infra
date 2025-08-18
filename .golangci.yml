@@ -13,9 +13,12 @@ formatters:
 linters:
   default: none
   enable:
+    - asasalint
+    - asciicheck
+    - bidichk
     - containedctx
-    - staticcheck
     - govet
+    - staticcheck
   settings:
     staticcheck:
       checks:

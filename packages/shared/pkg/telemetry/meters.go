@@ -9,10 +9,14 @@ type (
 	GaugeIntType                string
 	UpDownCounterType           string
 	ObservableUpDownCounterType string
+	HistogramType               string
 )
 
 const (
-	SandboxCreateMeterName CounterType = "api.env.instance.started"
+	ApiOrchestratorCreatedSandboxes CounterType = "api.orchestrator.created_sandboxes"
+	SandboxCreateMeterName          CounterType = "api.env.instance.started"
+
+	TeamSandboxCreated CounterType = "e2b.team.sandbox.created"
 )
 
 const (
@@ -46,27 +50,49 @@ const (
 )
 
 const (
+	// Build timing histograms
+	BuildDurationHistogramName      HistogramType = "template.build.duration"
+	BuildPhaseDurationHistogramName HistogramType = "template.build.phase.duration"
+	BuildStepDurationHistogramName  HistogramType = "template.build.step.duration"
+)
+
+const (
+	// Build result counters
+	BuildResultCounterName      CounterType = "template.build.result"
+	BuildCacheResultCounterName CounterType = "template.build.cache.result"
+)
+
+const (
 	ApiOrchestratorCountMeterName GaugeIntType = "api.orchestrator.status"
 
+	// Sandbox metrics
 	SandboxRamUsedGaugeName   GaugeIntType = "e2b.sandbox.ram.used"
 	SandboxRamTotalGaugeName  GaugeIntType = "e2b.sandbox.ram.total"
 	SandboxCpuTotalGaugeName  GaugeIntType = "e2b.sandbox.cpu.total"
 	SandboxDiskUsedGaugeName  GaugeIntType = "e2b.sandbox.disk.used"
 	SandboxDiskTotalGaugeName GaugeIntType = "e2b.sandbox.disk.total"
-)
 
-const (
-	ApiOrchestratorCreatedSandboxes CounterType = "api.orchestrator.created_sandboxes"
+	// Team metrics
+	TeamSandboxRunningGaugeName GaugeIntType = "e2b.team.sandbox.running"
+
+	// Build resource metrics
+	BuildRootfsSizeHistogramName HistogramType = "template.build.rootfs.size"
 )
 
 var counterDesc = map[CounterType]string{
 	SandboxCreateMeterName:          "Number of currently waiting requests to create a new sandbox",
 	ApiOrchestratorCreatedSandboxes: "Number of successfully created sandboxes",
+	BuildResultCounterName:          "Number of template build results",
+	BuildCacheResultCounterName:     "Number of build cache results",
+	TeamSandboxCreated:              "Counter of started sandboxes for the team in the interval",
 }
 
 var counterUnits = map[CounterType]string{
 	SandboxCreateMeterName:          "{sandbox}",
 	ApiOrchestratorCreatedSandboxes: "{sandbox}",
+	BuildResultCounterName:          "{build}",
+	BuildCacheResultCounterName:     "{layer}",
+	TeamSandboxCreated:              "{sandbox}",
 }
 
 var observableCounterDesc = map[ObservableCounterType]string{
@@ -128,6 +154,9 @@ var gaugeIntDesc = map[GaugeIntType]string{
 	SandboxRamUsedGaugeName:       "Amount of RAM used by the sandbox.",
 	SandboxRamTotalGaugeName:      "Amount of RAM available to the sandbox.",
 	SandboxCpuTotalGaugeName:      "Amount of CPU available to the sandbox.",
+	SandboxDiskUsedGaugeName:      "Amount of disk space used by the sandbox.",
+	SandboxDiskTotalGaugeName:     "Amount of disk space available to the sandbox.",
+	TeamSandboxRunningGaugeName:   "The number of sandboxes running for the team in the interval.",
 }
 
 var gaugeIntUnits = map[GaugeIntType]string{
@@ -135,6 +164,9 @@ var gaugeIntUnits = map[GaugeIntType]string{
 	SandboxRamUsedGaugeName:       "{By}",
 	SandboxRamTotalGaugeName:      "{By}",
 	SandboxCpuTotalGaugeName:      "{count}",
+	SandboxDiskUsedGaugeName:      "{By}",
+	SandboxDiskTotalGaugeName:     "{By}",
+	TeamSandboxRunningGaugeName:   "{sandbox}",
 }
 
 func GetCounter(meter metric.Meter, name CounterType) (metric.Int64Counter, error) {
@@ -188,6 +220,29 @@ func GetGaugeInt(meter metric.Meter, name GaugeIntType) (metric.Int64ObservableG
 	desc := gaugeIntDesc[name]
 	unit := gaugeIntUnits[name]
 	return meter.Int64ObservableGauge(string(name),
+		metric.WithDescription(desc),
+		metric.WithUnit(unit),
+	)
+}
+
+var histogramDesc = map[HistogramType]string{
+	BuildDurationHistogramName:      "Time taken to build a template",
+	BuildPhaseDurationHistogramName: "Time taken to build each phase of a template",
+	BuildStepDurationHistogramName:  "Time taken to build each step of a template",
+	BuildRootfsSizeHistogramName:    "Size of the built template rootfs in bytes",
+}
+
+var histogramUnits = map[HistogramType]string{
+	BuildDurationHistogramName:      "ms",
+	BuildPhaseDurationHistogramName: "ms",
+	BuildStepDurationHistogramName:  "ms",
+	BuildRootfsSizeHistogramName:    "{By}",
+}
+
+func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram, error) {
+	desc := histogramDesc[name]
+	unit := histogramUnits[name]
+	return meter.Int64Histogram(string(name),
 		metric.WithDescription(desc),
 		metric.WithUnit(unit),
 	)

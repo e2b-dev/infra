@@ -20,7 +20,7 @@ type fakeTemplateManagerClient struct {
 	getStatusErr      error
 }
 
-func (f fakeTemplateManagerClient) SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason *string) error {
+func (f fakeTemplateManagerClient) SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason *templatemanagergrpc.TemplateBuildStatusReason) error {
 	return f.setStatusError
 }
 
@@ -28,14 +28,14 @@ func (f fakeTemplateManagerClient) SetFinished(ctx context.Context, templateID s
 	return f.setFinishedError
 }
 
-func (f fakeTemplateManagerClient) GetStatus(ctx context.Context, buildID uuid.UUID, templateID string, clusterID *uuid.UUID, clusterNodeID *string) (*templatemanagergrpc.TemplateBuildStatusResponse, error) {
+func (f fakeTemplateManagerClient) GetStatus(ctx context.Context, buildID uuid.UUID, templateID string, clusterID *uuid.UUID, nodeID *string) (*templatemanagergrpc.TemplateBuildStatusResponse, error) {
 	return f.getStatusResponse, f.getStatusErr
 }
 
 func TestPollBuildStatus_setStatus(t *testing.T) {
 	type fields struct {
 		buildID               uuid.UUID
-		templateManagerClient *fakeTemplateManagerClient
+		templateManagerClient templateManagerClient
 	}
 
 	tests := []struct {
@@ -120,7 +120,7 @@ func TestPollBuildStatus_setStatus(t *testing.T) {
 
 func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 	type fields struct {
-		templateManagerClient *fakeTemplateManagerClient
+		templateManagerClient templateManagerClient
 	}
 	type args struct {
 		status *templatemanagergrpc.TemplateBuildStatusResponse
@@ -272,7 +272,7 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 				logger: zap.NewNop(),
 			}
 
-			err, completed := c.dispatchBasedOnStatus(context.TODO(), tt.args.status)
+			completed, err := c.dispatchBasedOnStatus(context.TODO(), tt.args.status)
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("Expected error, got no error")

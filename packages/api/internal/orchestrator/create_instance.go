@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -141,8 +142,9 @@ func (o *Orchestrator) CreateSandbox(
 			RamMb:               build.RamMb,
 			Vcpu:                build.Vcpu,
 			Snapshot:            isResume,
-			AutoPause:           &autoPause,
+			AutoPause:           autoPause,
 			AllowInternetAccess: allowInternetAccess,
+			TotalDiskSizeMb:     ut.FromPtr(build.TotalDiskSizeMb),
 		},
 		StartTime: timestamppb.New(startTime),
 		EndTime:   timestamppb.New(endTime),
@@ -153,7 +155,12 @@ func (o *Orchestrator) CreateSandbox(
 	if isResume && nodeID != nil {
 		telemetry.ReportEvent(childCtx, "Placing sandbox on the node where the snapshot was taken")
 
-		node, _ = o.nodes.Get(*nodeID)
+		clusterID := uuid.Nil
+		if team.Team.ClusterID != nil {
+			clusterID = *team.Team.ClusterID
+		}
+
+		node = o.GetNode(clusterID, *nodeID)
 		if node != nil && node.Status() != api.NodeStatusReady {
 			node = nil
 		}
@@ -205,7 +212,7 @@ func (o *Orchestrator) CreateSandbox(
 			CPUs:      build.Vcpu,
 		})
 
-		client, childCtx := node.GetClient(childCtx)
+		client, childCtx := node.getClient(childCtx)
 		_, err = client.Sandbox.Create(node.GetSandboxCreateCtx(childCtx, sbxRequest), sbxRequest)
 		// The request is done, we will either add it to the cache or remove it from the node
 		if err == nil {
@@ -214,7 +221,7 @@ func (o *Orchestrator) CreateSandbox(
 				attribute.Int("attempts", attempt),
 				attribute.Bool("is_resume", isResume),
 				attribute.Bool("node_affinity_requested", nodeID != nil),
-				attribute.Bool("node_affinity_success", nodeID != nil && node.Info.ID == *nodeID),
+				attribute.Bool("node_affinity_success", nodeID != nil && node.Info.NodeID == *nodeID),
 			}
 			o.createdSandboxesCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
 			break
@@ -222,11 +229,11 @@ func (o *Orchestrator) CreateSandbox(
 
 		node.sbxsInProgress.Remove(sandboxID)
 
-		zap.L().Error("Failed to create sandbox", logger.WithSandboxID(sandboxID), logger.WithNodeID(node.Info.ID), zap.Int("attempt", attempt), zap.Error(utils.UnwrapGRPCError(err)))
+		zap.L().Error("Failed to create sandbox", logger.WithSandboxID(sandboxID), logger.WithNodeID(node.Info.NodeID), zap.Int("attempt", attempt), zap.Error(utils.UnwrapGRPCError(err)))
 
 		// The node is not available, try again with another node
 		node.createFails.Add(1)
-		nodesExcluded[node.Info.ID] = node
+		nodesExcluded[node.Info.NodeID] = node
 		node = nil
 		attempt += 1
 	}
@@ -238,7 +245,7 @@ func (o *Orchestrator) CreateSandbox(
 	// The sandbox was created successfully, the resources will be counted in cache
 	defer node.sbxsInProgress.Remove(sandboxID)
 
-	telemetry.SetAttributes(childCtx, attribute.String("node.id", node.Info.ID))
+	telemetry.SetAttributes(childCtx, attribute.String("node.id", node.Info.NodeID))
 	telemetry.ReportEvent(childCtx, "Created sandbox")
 
 	sbx := api.Sandbox{
@@ -257,7 +264,10 @@ func (o *Orchestrator) CreateSandbox(
 	endTime = startTime.Add(timeout)
 
 	instanceInfo := instance.NewInstanceInfo(
-		&sbx,
+		sbx.SandboxID,
+		sbx.TemplateID,
+		sbx.ClientID,
+		sbx.Alias,
 		executionID,
 		team.Team.ID,
 		build.ID,
@@ -337,7 +347,7 @@ func (o *Orchestrator) findLeastBusyNode(nodesExcluded map[string]*Node, cluster
 		}
 
 		// Node must be in the same cluster as requested
-		if node.ClusterID != clusterID {
+		if node.Info.ClusterID != clusterID {
 			continue
 		}
 
@@ -347,7 +357,7 @@ func (o *Orchestrator) findLeastBusyNode(nodesExcluded map[string]*Node, cluster
 		}
 
 		// Skip already tried nodes
-		if nodesExcluded[node.Info.ID] != nil {
+		if nodesExcluded[node.Info.NodeID] != nil {
 			continue
 		}
 
