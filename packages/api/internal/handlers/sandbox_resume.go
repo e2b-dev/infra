@@ -66,11 +66,6 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		}
 	}
 
-	autoPause := instance.InstanceAutoPauseDefault
-	if body.AutoPause != nil {
-		autoPause = *body.AutoPause
-	}
-
 	sandboxID = utils.ShortID(sandboxID)
 
 	// This is also checked during in orchestrator.CreateSandbox, where the sandbox ID is reserved,
@@ -80,7 +75,6 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		zap.L().Debug("Sandbox is already running",
 			logger.WithSandboxID(sandboxID),
 			zap.Time("end_time", sbxCache.GetEndTime()),
-			zap.Bool("auto_pause", sbxCache.AutoPause.Load()),
 			zap.Time("start_time", sbxCache.StartTime),
 			zap.String("node_id", sbxCache.Node.NodeID),
 		)
@@ -102,6 +96,10 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
+	autoPause := lastSnapshot.Snapshot.AutoPause
+	if body.AutoPause != nil {
+		autoPause = *body.AutoPause
+	}
 	snap := lastSnapshot.Snapshot
 	build := lastSnapshot.EnvBuild
 

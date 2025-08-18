@@ -88,6 +88,7 @@ type Snapshot struct {
 	EnvSecure           bool
 	OriginNodeID        *string
 	AllowInternetAccess *bool
+	AutoPause           bool
 }
 
 type Team struct {
