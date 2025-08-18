@@ -84,8 +84,9 @@ func TestSandboxProxyWorkingPort(t *testing.T) {
 	require.NoError(t, err)
 
 	var resp *http.Response
+	var ok bool
 	for i := 0; i < 10; i++ {
-		if waitForStatus(t, client, sbx, url, port, nil, http.StatusOK) {
+		if resp, ok = waitForStatus(t, client, sbx, url, port, nil, http.StatusOK); ok {
 			break
 		}
 
@@ -111,8 +112,9 @@ func TestSandboxProxyClosedPort(t *testing.T) {
 	}
 
 	var resp *http.Response
+	var ok bool
 	for i := 0; i < 10; i++ {
-		if waitForStatus(t, client, sbx, url, port, nil, http.StatusBadGateway) {
+		if resp, ok = waitForStatus(t, client, sbx, url, port, nil, http.StatusBadGateway); ok {
 			break
 		}
 
@@ -138,7 +140,7 @@ func TestSandboxProxyClosedPort(t *testing.T) {
 	// Pretend to be a browser
 	headers := &http.Header{"User-Agent": []string{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}}
 	for i := 0; i < 10; i++ {
-		if waitForStatus(t, client, sbx, url, port, headers, http.StatusBadGateway) {
+		if resp, ok = waitForStatus(t, client, sbx, url, port, headers, http.StatusBadGateway); ok {
 			break
 		}
 		time.Sleep(500 * time.Millisecond)
