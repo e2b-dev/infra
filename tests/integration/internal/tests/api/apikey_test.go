@@ -138,9 +138,7 @@ func TestDeleteAPIKey(t *testing.T) {
 			}
 		}
 		assert.False(t, found, "API key should be deleted from team1's list")
-
 	})
-
 }
 
 func TestListAPIKeys(t *testing.T) {
