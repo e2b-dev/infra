@@ -106,7 +106,7 @@ func (lb *LayerExecutor) BuildLayer(
 	// Execute the action using the executor
 	meta, err := cmd.ActionExecutor.Execute(ctx, sbx, cmd.SourceLayer.CmdMeta)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("execute action: %w", err)
+		return cache.LayerMetadata{}, err
 	}
 
 	// Prepare export metadata and upload

@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 )
 
 const templateInfoExpiration = 5 * time.Minute
@@ -154,7 +155,7 @@ type TemplateBuildInfo struct {
 	TeamID      uuid.UUID
 	TemplateID  string
 	BuildStatus envbuild.Status
-	Reason      *string
+	Reason      *schema.BuildReason
 
 	ClusterID     *uuid.UUID
 	ClusterNodeID *string
@@ -182,7 +183,7 @@ func NewTemplateBuildCache(db *db.DB) *TemplatesBuildCache {
 	}
 }
 
-func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Status, reason *string) {
+func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Status, reason *schema.BuildReason) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
@@ -197,7 +198,7 @@ func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Statu
 		logger.WithBuildID(buildID.String()),
 		zap.String("to_status", status.String()),
 		zap.String("from_status", item.BuildStatus.String()),
-		zap.Stringp("reason", reason),
+		zap.Any("reason", reason),
 	)
 
 	_ = c.cache.Set(
