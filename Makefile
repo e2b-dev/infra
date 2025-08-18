@@ -88,20 +88,12 @@ init:
 	gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
 # Setup production environment variables, this is used only for E2B.dev production
-# Uses HCP CLI to read secrets from HCP Vault Secrets
+# Uses Infisical CLI to read secrets from Infisical Vault
+# To update them, use the Infisical UI directly
+# On a first use, you need to run `infisical login` and `infisical init`
 .PHONY: download-prod-env
 download-prod-env:
-	@ hcp auth login
-	@ hcp profile init --vault-secrets
 	@  ./scripts/download-prod-env.sh ${ENV}
-
-# Updates production environment from .env file, this is used only for E2B.dev production
-# Uses HCP CLI to update secrets from HCP Vault Secrets
-.PHONY: update-prod-env
-update-prod-env:
-	@ hcp auth login
-	@ hcp profile init --vault-secrets
-	@ ./scripts/update-prod-env.sh ${ENV}
 
 .PHONY: plan
 plan:
