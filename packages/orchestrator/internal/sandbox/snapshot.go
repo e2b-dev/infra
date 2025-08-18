@@ -58,7 +58,7 @@ func (s *Snapshot) Upload(
 		templateFiles,
 	)
 
-	metadataReader, err := os.Open(s.Snapfile.Metadata().Path())
+	metadataReader, err := os.Open(s.Snapfile.MetadataFile().Path())
 	if err != nil {
 		return fmt.Errorf("error opening metadata file: %w", err)
 	}

@@ -209,14 +209,14 @@ func (lb *LayerExecutor) PauseAndUpload(
 	ctx context.Context,
 	sbx *sandbox.Sandbox,
 	hash string,
-	layerMeta metadata.TemplateMetadata,
+	meta metadata.TemplateMetadata,
 ) error {
 	ctx, childSpan := lb.tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
 
-	lb.UserLogger.Debug(fmt.Sprintf("Saving layer: %s", layerMeta.Template.BuildID))
+	lb.UserLogger.Debug(fmt.Sprintf("Saving layer: %s", meta.Template.BuildID))
 
-	cacheFiles, err := layerMeta.Template.CacheFiles()
+	cacheFiles, err := meta.Template.CacheFiles()
 	if err != nil {
 		return fmt.Errorf("error creating template files: %w", err)
 	}
@@ -225,7 +225,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 		ctx,
 		lb.tracer,
 		cacheFiles,
-		layerMeta,
+		meta,
 	)
 	if err != nil {
 		return fmt.Errorf("error processing vm: %w", err)
@@ -255,6 +255,13 @@ func (lb *LayerExecutor) PauseAndUpload(
 		)
 		if err != nil {
 			return fmt.Errorf("error uploading snapshot: %w", err)
+		}
+
+		err = lb.index.SaveLayerMeta(ctx, hash, cache.LayerMetadata{
+			Template: meta.Template,
+		})
+		if err != nil {
+			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
 		}
 
 		lb.UserLogger.Debug(fmt.Sprintf("Saved: %s", cacheFiles.BuildID))

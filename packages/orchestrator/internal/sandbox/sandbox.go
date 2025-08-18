@@ -403,7 +403,7 @@ func ResumeSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get snapfile: %w", err)
 	}
-	snapfileMeta, err := snapfile.MetadataSerialized()
+	snapfileMeta, err := snapfile.Metadata()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get metadata: %w", err)
 	}
@@ -574,7 +574,7 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("no snapfile found in template: %w", err)
 	}
 
-	meta, err := snap.MetadataSerialized()
+	meta, err := snap.Metadata()
 	if err != nil {
 		return nil, err
 	}

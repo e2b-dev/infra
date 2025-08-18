@@ -12,8 +12,8 @@ type Snapfile interface {
 	io.Closer
 
 	FirecrackerSnapfile() File
-	Metadata() File
-	MetadataSerialized() (metadata.TemplateMetadata, error)
+	MetadataFile() File
+	Metadata() (metadata.TemplateMetadata, error)
 }
 
 type StorageSnapfile struct {
@@ -44,11 +44,11 @@ func (s *StorageSnapfile) FirecrackerSnapfile() File {
 	return s.fcSnapfile
 }
 
-func (s *StorageSnapfile) Metadata() File {
+func (s *StorageSnapfile) MetadataFile() File {
 	return s.metadata
 }
 
-func (s *StorageSnapfile) MetadataSerialized() (metadata.TemplateMetadata, error) {
+func (s *StorageSnapfile) Metadata() (metadata.TemplateMetadata, error) {
 	return metadata.FromFile(s.metadata.Path())
 }
 
@@ -62,11 +62,11 @@ func (n *NoopSnapfile) FirecrackerSnapfile() File {
 	return &NoopFile{}
 }
 
-func (n *NoopSnapfile) Metadata() File {
+func (n *NoopSnapfile) MetadataFile() File {
 	return &NoopFile{}
 }
 
-func (n *NoopSnapfile) MetadataSerialized() (metadata.TemplateMetadata, error) {
+func (n *NoopSnapfile) Metadata() (metadata.TemplateMetadata, error) {
 	return metadata.TemplateMetadata{}, nil
 }
 

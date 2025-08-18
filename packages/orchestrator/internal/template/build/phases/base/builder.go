@@ -315,15 +315,20 @@ func (bb *BaseBuilder) Layer(
 ) (phases.LayerResult, error) {
 	switch {
 	case bb.Config.FromTemplate != nil:
+		fromTemplateMetadata := metadata.FromTemplateMetadata{
+			Alias:   bb.Config.FromTemplate.GetAlias(),
+			BuildID: bb.Config.FromTemplate.BuildID,
+		}
+
 		// If the template is built from another template, use its metadata
-		tm, err := metadata.ReadTemplateMetadataBuildID(ctx, bb.templateStorage, bb.Config.FromTemplate.BuildID)
+		tm, err := bb.index.IsCached(ctx, bb.Config.FromTemplate.BuildID)
 		if err != nil {
 			return phases.LayerResult{}, fmt.Errorf("error getting base layer from cache, you may need to rebuild the base template: %w", err)
 		}
 
 		// From template is always cached, never needs to be built
 		return phases.LayerResult{
-			Metadata: tm,
+			Metadata: tm.NextTemplate(fromTemplateMetadata),
 			Hash:     hash,
 			Cached:   true,
 		}, nil
@@ -340,15 +345,8 @@ func (bb *BaseBuilder) Layer(
 			cmdMeta.WorkDir = &cwd
 		}
 
-		var fromTemplateMetadata *metadata.FromTemplateMetadata
-		if bb.Config.FromTemplate != nil {
-			fromTemplateMetadata = &metadata.FromTemplateMetadata{
-				Alias:   bb.Config.FromTemplate.GetAlias(),
-				BuildID: bb.Config.FromTemplate.BuildID,
-			}
-		}
-
 		meta := metadata.TemplateMetadata{
+			Version: metadata.CurrentVersion,
 			Template: storage.TemplateFiles{
 				BuildID:            uuid.New().String(),
 				KernelVersion:      bb.Template.KernelVersion,
@@ -356,7 +354,7 @@ func (bb *BaseBuilder) Layer(
 			},
 			Metadata:     cmdMeta,
 			FromImage:    &bb.Config.FromImage,
-			FromTemplate: fromTemplateMetadata,
+			FromTemplate: nil,
 			Start:        nil,
 		}
 
@@ -377,7 +375,7 @@ func (bb *BaseBuilder) Layer(
 
 			return notCachedResult, nil
 		} else {
-			meta, err := metadata.ReadTemplateMetadataBuildID(ctx, bb.templateStorage, bm.Template.BuildID)
+			meta, err := bb.index.IsCached(ctx, bm.Template.BuildID)
 			if err != nil {
 				zap.L().Info("base layer metadata not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
 

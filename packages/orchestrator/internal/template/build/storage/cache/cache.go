@@ -110,12 +110,12 @@ func (h *HashIndex) IsCached(
 	ctx context.Context,
 	buildID string,
 ) (metadata.TemplateMetadata, error) {
-	tmpl, err := metadata.ReadTemplateMetadataBuildID(ctx, h.templateStorage, buildID)
+	tmpl, err := metadata.FromBuildID(ctx, h.templateStorage, buildID)
 	if err != nil {
 		// If the rootfs header does not exist, the layer is not cached
 		return metadata.TemplateMetadata{}, fmt.Errorf("error reading template metadata: %w", err)
-	} else {
-		// If the rootfs header exists, the layer is cached
-		return tmpl, nil
 	}
+
+	// If the rootfs header exists, the layer is cached
+	return tmpl, nil
 }

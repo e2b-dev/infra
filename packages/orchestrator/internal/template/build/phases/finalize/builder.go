@@ -79,26 +79,17 @@ func (ppb *PostProcessingBuilder) Layer(
 ) (phases.LayerResult, error) {
 	result := sourceLayer.Metadata
 
+	// If the start/ready commands are set,
+	// use them instead of start metadata from the template it is built from.
 	if ppb.Config.StartCmd != "" || ppb.Config.ReadyCmd != "" {
 		result.Start = &metadata.StartMetadata{
 			StartCmd: ppb.Config.StartCmd,
 			ReadyCmd: ppb.Config.ReadyCmd,
 			Metadata: result.Metadata,
 		}
-	} else {
-		// If the template is built from another template, and the start metadata are not set,
-		// use the start metadata from the template it is built from.
-		if ppb.Config.FromTemplate != nil {
-			tm, err := metadata.ReadTemplateMetadataBuildID(ctx, ppb.templateStorage, ppb.Config.FromTemplate.BuildID)
-			if err != nil {
-				return phases.LayerResult{}, fmt.Errorf("error reading from template metadata: %w", err)
-			}
-			result.Start = tm.Start
-		}
 	}
 
 	return phases.LayerResult{
-		// Metadata are not used in the final layer
 		Metadata: result,
 		Cached:   false,
 		Hash:     hash,
@@ -125,6 +116,7 @@ func (ppb *PostProcessingBuilder) Build(
 	}
 
 	// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template
+	lastStepResult.Metadata = lastStepResult.Metadata.UpdateVersion()
 	sandboxCreator := layer.NewCreateSandbox(sbxConfig, fc.FirecrackerVersions{
 		KernelVersion:      ppb.Template.KernelVersion,
 		FirecrackerVersion: ppb.Template.FirecrackerVersion,

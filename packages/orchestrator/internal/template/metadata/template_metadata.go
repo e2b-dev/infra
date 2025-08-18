@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	currentVersion = 2
+	CurrentVersion = 2
 )
 
 type CommandMetadata struct {
@@ -42,13 +42,26 @@ type TemplateMetadata struct {
 	FromTemplate *FromTemplateMetadata `json:"from_template,omitempty"`
 }
 
+func (tm TemplateMetadata) NextTemplate(
+	fromTemplate FromTemplateMetadata,
+) TemplateMetadata {
+	return TemplateMetadata{
+		Version:      CurrentVersion,
+		Template:     tm.Template,
+		Metadata:     tm.Metadata,
+		Start:        tm.Start,
+		FromTemplate: &fromTemplate,
+		FromImage:    nil,
+	}
+}
+
 func (tm TemplateMetadata) UpdateVersion() TemplateMetadata {
-	tm.Version = currentVersion
+	tm.Version = CurrentVersion
 	return tm
 }
 
 func (tm TemplateMetadata) ToFile(path string) error {
-	mr, err := SerializeTemplateMetadata(tm)
+	mr, err := serialize(tm)
 	if err != nil {
 		return err
 	}
@@ -68,7 +81,7 @@ func FromFile(path string) (TemplateMetadata, error) {
 	}
 	defer f.Close()
 
-	templateMetadata, err := DeserializeTemplateMetadata(f)
+	templateMetadata, err := deserialize(f)
 	if err != nil {
 		return TemplateMetadata{}, fmt.Errorf("failed to deserialize metadata: %w", err)
 	}
@@ -76,13 +89,13 @@ func FromFile(path string) (TemplateMetadata, error) {
 	return templateMetadata, nil
 }
 
-func ReadTemplateMetadataBuildID(ctx context.Context, s storage.StorageProvider, buildID string) (TemplateMetadata, error) {
-	return ReadTemplateMetadata(ctx, s, storage.TemplateFiles{
+func FromBuildID(ctx context.Context, s storage.StorageProvider, buildID string) (TemplateMetadata, error) {
+	return fromTemplate(ctx, s, storage.TemplateFiles{
 		BuildID: buildID,
 	})
 }
 
-func ReadTemplateMetadata(ctx context.Context, s storage.StorageProvider, files storage.TemplateFiles) (TemplateMetadata, error) {
+func fromTemplate(ctx context.Context, s storage.StorageProvider, files storage.TemplateFiles) (TemplateMetadata, error) {
 	obj, err := s.OpenObject(ctx, files.StorageMetadataPath())
 	if err != nil {
 		return TemplateMetadata{}, fmt.Errorf("error opening object for template metadata: %w", err)
@@ -94,7 +107,7 @@ func ReadTemplateMetadata(ctx context.Context, s storage.StorageProvider, files 
 		return TemplateMetadata{}, fmt.Errorf("error reading template metadata from object: %w", err)
 	}
 
-	templateMetadata, err := DeserializeTemplateMetadata(&buf)
+	templateMetadata, err := deserialize(&buf)
 	if err != nil {
 		return TemplateMetadata{}, err
 	}
@@ -102,7 +115,7 @@ func ReadTemplateMetadata(ctx context.Context, s storage.StorageProvider, files 
 	return templateMetadata, nil
 }
 
-func DeserializeTemplateMetadata(reader io.Reader) (TemplateMetadata, error) {
+func deserialize(reader io.Reader) (TemplateMetadata, error) {
 	decoder := json.NewDecoder(reader)
 
 	var templateMetadata TemplateMetadata
@@ -114,7 +127,7 @@ func DeserializeTemplateMetadata(reader io.Reader) (TemplateMetadata, error) {
 	return templateMetadata, nil
 }
 
-func SerializeTemplateMetadata(template TemplateMetadata) (io.Reader, error) {
+func serialize(template TemplateMetadata) (io.Reader, error) {
 	marshaled, err := json.Marshal(template)
 	if err != nil {
 		return nil, fmt.Errorf("error serializing template metadata: %w", err)
