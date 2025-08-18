@@ -1,4 +1,4 @@
--- name: GetEnvWithBuild :one
+-- name: GetTemplateWithBuild :one
 -- get the env_id when querying by alias; if not, @alias_or_env_id should be env_id
 WITH s AS NOT MATERIALIZED (
     SELECT ea.env_id as env_id

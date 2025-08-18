@@ -74,7 +74,7 @@ type EnvBuild struct {
 	EnvdVersion        *string
 	ReadyCmd           *string
 	ClusterNodeID      *string
-	Reason             *string
+	Reason             types.JSONBStringMap
 }
 
 type Snapshot struct {
