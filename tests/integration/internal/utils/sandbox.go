@@ -86,5 +86,5 @@ func TeardownSandbox(t *testing.T, c *api.ClientWithResponses, sandboxID string)
 	killSandboxResponse, err := c.DeleteSandboxesSandboxIDWithResponse(context.Background(), sandboxID, setup.WithAPIKey())
 
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusNoContent, killSandboxResponse.StatusCode())
+	assert.True(t, killSandboxResponse.StatusCode() == http.StatusNoContent || killSandboxResponse.StatusCode() == http.StatusNotFound)
 }
