@@ -74,12 +74,12 @@ func TestDeleteAPIKey(t *testing.T) {
 		c := setup.GetAPIClient()
 
 		// Create first team and API key
-		teamID1 := uuid.MustParse("cc400701-c2ca-42f5-913a-2067998dd003")
+		teamID1 := uuid.New()
 		teamName1 := "test-team-apikey-delete-1"
 		_, apiKey1 := utils.CreateTeam(t, cancel, ctx, c, db, teamID1, teamName1)
 
 		// Create second team and API key
-		teamID2 := uuid.MustParse("dd400701-c2ca-42f5-913a-2067998dd004")
+		teamID2 := uuid.New()
 		teamName2 := "test-team-apikey-delete-2"
 		_, apiKey2 := utils.CreateTeam(t, cancel, ctx, c, db, teamID2, teamName2)
 
@@ -224,12 +224,12 @@ func TestPatchAPIKey(t *testing.T) {
 		c := setup.GetAPIClient()
 
 		// Create first team and API key
-		teamID1 := uuid.MustParse("aa400701-c2ca-42f5-913a-2067998dd001")
+		teamID1 := uuid.New()
 		teamName1 := "test-team-apikey-patch-1"
 		_, apiKey1 := utils.CreateTeam(t, cancel, ctx, c, db, teamID1, teamName1)
 
 		// Create second team and API key
-		teamID2 := uuid.MustParse("bb400701-c2ca-42f5-913a-2067998dd002")
+		teamID2 := uuid.New()
 		teamName2 := "test-team-apikey-patch-2"
 		_, apiKey2 := utils.CreateTeam(t, cancel, ctx, c, db, teamID2, teamName2)
 
