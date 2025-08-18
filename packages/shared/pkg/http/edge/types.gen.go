@@ -106,18 +106,6 @@ type ClusterNodeType string
 
 // ClusterOrchestratorNode defines model for ClusterOrchestratorNode.
 type ClusterOrchestratorNode struct {
-	// MetricDiskMBUsed Amount of disk space currently used in MB
-	MetricDiskMBUsed int64 `json:"metricDiskMBUsed"`
-
-	// MetricRamMBUsed Amount of RAM currently used in MB
-	MetricRamMBUsed int64 `json:"metricRamMBUsed"`
-
-	// MetricSandboxesRunning Amount of disk space currently used in MB
-	MetricSandboxesRunning int64 `json:"metricSandboxesRunning"`
-
-	// MetricVCpuUsed Number of vCPUs currently in use
-	MetricVCpuUsed int64 `json:"metricVCpuUsed"`
-
 	// NodeID Node ID
 	NodeID string                    `json:"nodeID"`
 	Roles  []ClusterOrchestratorRole `json:"roles"`

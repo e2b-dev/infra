@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -65,11 +66,6 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		}
 	}
 
-	autoPause := instance.InstanceAutoPauseDefault
-	if body.AutoPause != nil {
-		autoPause = *body.AutoPause
-	}
-
 	sandboxID = utils.ShortID(sandboxID)
 
 	// This is also checked during in orchestrator.CreateSandbox, where the sandbox ID is reserved,
@@ -79,9 +75,8 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		zap.L().Debug("Sandbox is already running",
 			logger.WithSandboxID(sandboxID),
 			zap.Time("end_time", sbxCache.GetEndTime()),
-			zap.Bool("auto_pause", sbxCache.AutoPause.Load()),
 			zap.Time("start_time", sbxCache.StartTime),
-			zap.String("node_id", sbxCache.Node.ID),
+			zap.String("node_id", sbxCache.Node.NodeID),
 		)
 		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox %s is already running", sandboxID))
 
@@ -101,12 +96,25 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
+	autoPause := lastSnapshot.Snapshot.AutoPause
+	if body.AutoPause != nil {
+		autoPause = *body.AutoPause
+	}
 	snap := lastSnapshot.Snapshot
 	build := lastSnapshot.EnvBuild
 
 	var nodeID *string
 	if snap.OriginNodeID != nil {
-		nodeID = snap.OriginNodeID
+		// TODO: Before, we used Nomad short ID as node reference in snapshots.
+		//  This is a temporary helper to migrate to the new system where we use node ID reported by orchestrator.
+		if len(*snap.OriginNodeID) == consts.NodeIDLength {
+			n := a.orchestrator.GetNodeByNomadShortID(*snap.OriginNodeID)
+			if n != nil {
+				nodeID = &n.Info.NodeID
+			}
+		} else {
+			nodeID = snap.OriginNodeID
+		}
 	} else {
 		// TODO: After migration period, we can remove this part, because all actively used snapshots will be stored in the database with the node ID.
 		// https://linear.app/e2b/issue/E2B-2662/remove-taking-client-from-sandbox-during-resume
@@ -126,7 +134,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 	if err == nil {
 		// If the pausing was in progress, prefer to restore on the node where the pausing happened.
-		nodeID = &pausedOnNode.ID
+		nodeID = &pausedOnNode.NodeID
 	}
 
 	alias := ""

@@ -31,9 +31,6 @@ type sbxInProgress struct {
 }
 
 type nodeMetadata struct {
-	// Orchestrator ID is currently the same as node ID.
-	orchestratorID string
-
 	// Service instance ID is unique identifier for every orchestrator process, after restart it will change.
 	// In the future, we want to migrate to using this ID instead of node ID for tracking orchestrators-
 	serviceInstanceID string
@@ -42,21 +39,37 @@ type nodeMetadata struct {
 	version string
 }
 
+type nomadServiceDiscovery struct {
+	NomadNodeShortID string
+
+	OrchestratorAddress string
+	IPAddress           string
+}
+
 type Node struct {
 	CPUUsage atomic.Int64
 	RamUsage atomic.Int64
 
-	client   *grpclient.GRPCClient
-	clientMd metadata.MD
+	// Host metrics
+	cpuAllocated         atomic.Uint32
+	cpuPercent           atomic.Uint32
+	cpuCount             atomic.Uint32
+	memoryAllocatedBytes atomic.Uint64
+	memoryUsedBytes      atomic.Uint64
+	memoryTotalBytes     atomic.Uint64
+	sandboxCount         atomic.Uint32
 
-	ClusterID     uuid.UUID
-	ClusterNodeID string
+	// Detailed disk metrics
+	hostDisks      []orchestratorinfo.DiskMetrics
+	hostDisksMutex sync.RWMutex
 
 	Info *node.NodeInfo
 
 	meta   nodeMetadata
 	status api.NodeStatus
 	mutex  sync.RWMutex
+
+	client *grpclient.GRPCClient
 
 	sbxsInProgress *smap.Map[*sbxInProgress]
 
@@ -73,7 +86,7 @@ func (n *Node) Close() {
 func (n *Node) CloseWithClient() {
 	err := n.client.Close()
 	if err != nil {
-		zap.L().Error("Error closing connection to node", zap.Error(err), logger.WithNodeID(n.Info.ID))
+		zap.L().Error("Error closing connection to node", zap.Error(err), logger.WithNodeID(n.Info.NodeID))
 	}
 
 	n.Close()
@@ -106,15 +119,51 @@ func (n *Node) setStatus(status api.NodeStatus) {
 	defer n.mutex.Unlock()
 
 	if n.status != status {
-		zap.L().Info("Node status changed", zap.String("node_id", n.Info.ID), zap.String("status", string(status)))
+		zap.L().Info("Node status changed", logger.WithNodeID(n.Info.NodeID), zap.String("status", string(status)))
 		n.status = status
 	}
 }
 
-func (n *Node) setMetadata(i *orchestratorinfo.ServiceInfoResponse, nodeID string) {
+func (n *Node) setMetadata(md nodeMetadata) {
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
-	n.meta = getNodeMetadata(i, nodeID)
+
+	n.meta = md
+}
+
+func (n *Node) updateMetricsFromServiceInfo(info *orchestratorinfo.ServiceInfoResponse) {
+	if info == nil {
+		return
+	}
+
+	// Update host usage metrics
+	n.cpuPercent.Store(info.MetricCpuPercent)
+	n.memoryUsedBytes.Store(info.MetricMemoryUsedBytes)
+
+	// Update host total metrics
+	n.cpuCount.Store(info.MetricCpuCount)
+	n.memoryTotalBytes.Store(info.MetricMemoryTotalBytes)
+
+	// Update total sandbox count
+	n.sandboxCount.Store(info.MetricSandboxesRunning)
+
+	// Update detailed disk metrics
+	n.updateDisks(info.MetricDisks)
+}
+
+func (n *Node) updateDisks(disks []*orchestratorinfo.DiskMetrics) {
+	n.hostDisksMutex.Lock()
+	defer n.hostDisksMutex.Unlock()
+	n.hostDisks = make([]orchestratorinfo.DiskMetrics, len(disks))
+	for i, disk := range disks {
+		n.hostDisks[i] = orchestratorinfo.DiskMetrics{
+			MountPoint:     disk.MountPoint,
+			Device:         disk.Device,
+			FilesystemType: disk.FilesystemType,
+			UsedBytes:      disk.UsedBytes,
+			TotalBytes:     disk.TotalBytes,
+		}
+	}
 }
 
 func (n *Node) metadata() nodeMetadata {
@@ -123,14 +172,31 @@ func (n *Node) metadata() nodeMetadata {
 	return n.meta
 }
 
+func (n *Node) getHostDisks() []api.DiskMetrics {
+	n.hostDisksMutex.RLock()
+	defer n.hostDisksMutex.RUnlock()
+
+	result := make([]api.DiskMetrics, len(n.hostDisks))
+	for i := range n.hostDisks {
+		result[i] = api.DiskMetrics{
+			MountPoint:     n.hostDisks[i].MountPoint,
+			Device:         n.hostDisks[i].Device,
+			FilesystemType: n.hostDisks[i].FilesystemType,
+			UsedBytes:      n.hostDisks[i].UsedBytes,
+			TotalBytes:     n.hostDisks[i].TotalBytes,
+		}
+	}
+	return result
+}
+
 func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
 	nodeStatus, ok := ApiNodeToOrchestratorStateMapper[s]
 	if !ok {
-		zap.L().Error("Unknown service info status", zap.Any("status", s), zap.String("node_id", n.Info.ID))
+		zap.L().Error("Unknown service info status", zap.Any("status", s), logger.WithNodeID(n.Info.NodeID))
 		return fmt.Errorf("unknown service info status: %s", s)
 	}
 
-	client, ctx := n.GetClient(ctx)
+	client, ctx := n.getClient(ctx)
 	_, err := client.Info.ServiceStatusOverride(ctx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: nodeStatus})
 	if err != nil {
 		zap.L().Error("Failed to send status change", zap.Error(err))
@@ -140,7 +206,7 @@ func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
 	return nil
 }
 
-func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]*node.NodeInfo, error) {
+func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]nomadServiceDiscovery, error) {
 	_, listSpan := o.tracer.Start(ctx, "list-nomad-nodes")
 	defer listSpan.End()
 
@@ -153,10 +219,10 @@ func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]*node.NodeInfo, er
 		return nil, err
 	}
 
-	nodes := make([]*node.NodeInfo, 0, len(nomadNodes))
+	nodes := make([]nomadServiceDiscovery, 0, len(nomadNodes))
 	for _, n := range nomadNodes {
-		nodes = append(nodes, &node.NodeInfo{
-			ID:                  n.ID[:consts.NodeIDLength],
+		nodes = append(nodes, nomadServiceDiscovery{
+			NomadNodeShortID:    n.ID[:consts.NodeIDLength],
 			OrchestratorAddress: fmt.Sprintf("%s:%s", n.Address, consts.OrchestratorPort),
 			IPAddress:           n.Address,
 		})
@@ -165,111 +231,20 @@ func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]*node.NodeInfo, er
 	return nodes, nil
 }
 
-func (o *Orchestrator) GetNode(nodeID string) *Node {
-	n, _ := o.nodes.Get(nodeID)
+func (o *Orchestrator) GetNode(clusterID uuid.UUID, nodeID string) *Node {
+	scopedKey := o.scopedNodeID(clusterID, nodeID)
+	n, _ := o.nodes.Get(scopedKey)
 	return n
 }
 
-// clusterNodeID - this way we don't need to worry about multiple clusters with the same node ID in shared pool
-func (o *Orchestrator) clusterNodeID(clusterID uuid.UUID, nodeID string) string {
-	return fmt.Sprintf("%s-%s", clusterID.String(), nodeID)
-}
-
-func (o *Orchestrator) GetNodes() []*api.Node {
-	nodes := make(map[string]*api.Node)
-	for key, n := range o.nodes.Items() {
-		var clusterID *string
-		if n.ClusterID != uuid.Nil {
-			clusterIDRaw := n.ClusterID.String()
-			clusterID = &clusterIDRaw
-		}
-
-		metadata := n.metadata()
-		nodes[key] = &api.Node{
-			NodeID:               key,
-			ClusterID:            clusterID,
-			Status:               n.Status(),
-			CreateSuccesses:      n.createSuccess.Load(),
-			CreateFails:          n.createFails.Load(),
-			SandboxStartingCount: n.sbxsInProgress.Count(),
-			Version:              metadata.version,
-			Commit:               metadata.commit,
+func (o *Orchestrator) GetNodeByNomadShortID(id string) *Node {
+	for _, n := range o.nodes.Items() {
+		if n.Info.NomadNodeShortID == id {
+			return n
 		}
 	}
 
-	for _, sbx := range o.instanceCache.Items() {
-		n, ok := nodes[sbx.Node.ID]
-		if !ok {
-			zap.L().Error("node for sandbox wasn't found", logger.WithNodeID(sbx.Node.ID), logger.WithSandboxID(sbx.Instance.SandboxID))
-			continue
-		}
-
-		n.AllocatedCPU += int32(sbx.VCpu)
-		n.AllocatedMemoryMiB += int32(sbx.RamMB)
-		n.SandboxCount += 1
-	}
-
-	var result []*api.Node
-	for _, n := range nodes {
-		result = append(result, n)
-	}
-
-	return result
-}
-
-func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
-	var node *api.NodeDetail
-
-	for key, n := range o.nodes.Items() {
-		if key == nodeID {
-			var clusterID *string
-			if n.ClusterID != uuid.Nil {
-				clusterIDRaw := n.ClusterID.String()
-				clusterID = &clusterIDRaw
-			}
-
-			builds := n.buildCache.Keys()
-			metadata := n.metadata()
-			node = &api.NodeDetail{
-				NodeID:          key,
-				ClusterID:       clusterID,
-				Status:          n.Status(),
-				CachedBuilds:    builds,
-				CreateSuccesses: n.createSuccess.Load(),
-				CreateFails:     n.createFails.Load(),
-				Version:         metadata.version,
-				Commit:          metadata.commit,
-			}
-		}
-	}
-
-	if node == nil {
-		return nil
-	}
-
-	for _, sbx := range o.instanceCache.Items() {
-		if sbx.Node.ID == nodeID {
-			var metadata *api.SandboxMetadata
-			if sbx.Metadata != nil {
-				meta := api.SandboxMetadata(sbx.Metadata)
-				metadata = &meta
-			}
-			node.Sandboxes = append(node.Sandboxes, api.ListedSandbox{
-				Alias:      sbx.Instance.Alias,
-				ClientID:   nodeID,
-				CpuCount:   api.CPUCount(sbx.VCpu),
-				MemoryMB:   api.MemoryMB(sbx.RamMB),
-				DiskSizeMB: api.DiskSizeMB(sbx.TotalDiskSizeMB),
-				EndAt:      sbx.GetEndTime(),
-				Metadata:   metadata,
-				SandboxID:  sbx.Instance.SandboxID,
-				StartedAt:  sbx.StartTime,
-				TemplateID: sbx.Instance.TemplateID,
-			})
-		}
-	}
-
-	return node
+	return nil
 }
 
 func (o *Orchestrator) NodeCount() int {
@@ -292,14 +267,21 @@ func (n *Node) InsertBuild(buildID string) {
 	n.buildCache.Set(buildID, struct{}{}, 2*time.Minute)
 }
 
-func (n *Node) GetClient(ctx context.Context) (*grpclient.GRPCClient, context.Context) {
-	return n.client, metadata.NewOutgoingContext(ctx, n.clientMd)
+// Ensures that GRPC client request context always has the latest service instance ID
+func (n *Node) getClient(ctx context.Context) (*grpclient.GRPCClient, context.Context) {
+	return n.client, metadata.NewOutgoingContext(ctx, n.getClientMetadata())
+}
+
+// Generates metadata with the current service instance ID
+// to ensure we always use the latest ID (e.g. after orchestrator restarts)
+func (n *Node) getClientMetadata() metadata.MD {
+	return metadata.New(map[string]string{consts.EdgeRpcServiceInstanceIDHeader: n.metadata().serviceInstanceID})
 }
 
 func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest) context.Context {
 	// Skip local cluster. It should be okay to send it here, but we don't want to do it until we explicitly support it.
-	if n.ClusterID == uuid.Nil {
-		return metadata.NewOutgoingContext(ctx, n.clientMd)
+	if n.Info.ClusterID == uuid.Nil {
+		return ctx
 	}
 
 	md := edge.SerializeSandboxCatalogCreateEvent(
@@ -313,13 +295,13 @@ func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.Sandbo
 		},
 	)
 
-	return metadata.NewOutgoingContext(ctx, metadata.Join(n.clientMd, md))
+	return metadata.NewOutgoingContext(ctx, metadata.Join(n.getClientMetadata(), md))
 }
 
 func (n *Node) GetSandboxDeleteCtx(ctx context.Context, sandboxID string, executionID string) context.Context {
 	// Skip local cluster. It should be okay to send it here, but we don't want to do it until we explicitly support it.
-	if n.ClusterID == uuid.Nil {
-		return metadata.NewOutgoingContext(ctx, n.clientMd)
+	if n.Info.ClusterID == uuid.Nil {
+		return ctx
 	}
 
 	md := edge.SerializeSandboxCatalogDeleteEvent(
@@ -329,25 +311,5 @@ func (n *Node) GetSandboxDeleteCtx(ctx context.Context, sandboxID string, execut
 		},
 	)
 
-	return metadata.NewOutgoingContext(ctx, metadata.Join(n.clientMd, md))
-}
-
-func getNodeMetadata(n *orchestratorinfo.ServiceInfoResponse, orchestratorID string) nodeMetadata {
-	if n == nil {
-		return nodeMetadata{
-			orchestratorID:    orchestratorID,
-			serviceInstanceID: "unknown",
-
-			commit:  "unknown",
-			version: "unknown",
-		}
-	}
-
-	return nodeMetadata{
-		orchestratorID:    n.NodeId,
-		serviceInstanceID: n.ServiceId,
-
-		commit:  n.ServiceCommit,
-		version: n.ServiceVersion,
-	}
+	return metadata.NewOutgoingContext(ctx, metadata.Join(n.getClientMetadata(), md))
 }

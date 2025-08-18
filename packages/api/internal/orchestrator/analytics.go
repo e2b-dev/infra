@@ -53,7 +53,7 @@ func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyt
 	instanceIds := make([]string, len(instances))
 	executionIds := make([]string, len(instances))
 	for idx, i := range instances {
-		instanceIds[idx] = i.Instance.SandboxID
+		instanceIds[idx] = i.SandboxID
 		executionIds[idx] = i.ExecutionID
 	}
 
