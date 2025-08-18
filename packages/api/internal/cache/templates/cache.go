@@ -198,6 +198,7 @@ func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Statu
 		logger.WithBuildID(buildID.String()),
 		zap.String("to_status", status.String()),
 		zap.String("from_status", item.BuildStatus.String()),
+		zap.Any("reason", reason),
 	)
 
 	_ = c.cache.Set(
