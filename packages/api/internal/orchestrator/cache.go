@@ -310,9 +310,9 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			posthogClient,
 			o.analytics,
 			info.TeamID.String(),
-			info.Instance.SandboxID,
+			info.SandboxID,
 			info.ExecutionID,
-			info.Instance.TemplateID,
+			info.TemplateID,
 			info.VCpu,
 			info.RamMB,
 			info.TotalDiskSizeMB,
@@ -330,7 +330,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		node.CPUUsage.Add(-info.VCpu)
 		node.RamUsage.Add(-info.RamMB)
 
-		o.dns.Remove(ctx, info.Instance.SandboxID, node.Info.IPAddress)
+		o.dns.Remove(ctx, info.SandboxID, node.Info.IPAddress)
 
 		if node.client == nil {
 			zap.L().Error("client for node not found", logger.WithNodeID(info.Node.NodeID))
@@ -344,7 +344,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			if err != nil {
 				info.PauseDone(err)
 
-				return fmt.Errorf("failed to auto pause sandbox '%s': %w", info.Instance.SandboxID, err)
+				return fmt.Errorf("failed to auto pause sandbox '%s': %w", info.SandboxID, err)
 			}
 
 			// We explicitly unmark as pausing here to avoid a race condition
@@ -352,11 +352,11 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			o.instanceCache.UnmarkAsPausing(info)
 			info.PauseDone(nil)
 		} else {
-			req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}
+			req := &orchestrator.SandboxDeleteRequest{SandboxId: info.SandboxID}
 			client, ctx := node.getClient(ctx)
-			_, err := client.Sandbox.Delete(node.GetSandboxDeleteCtx(ctx, info.Instance.SandboxID, info.ExecutionID), req)
+			_, err := client.Sandbox.Delete(node.GetSandboxDeleteCtx(ctx, info.SandboxID, info.ExecutionID), req)
 			if err != nil {
-				return fmt.Errorf("failed to delete sandbox '%s': %w", info.Instance.SandboxID, err)
+				return fmt.Errorf("failed to delete sandbox '%s': %w", info.SandboxID, err)
 			}
 		}
 
@@ -431,7 +431,7 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 			node.CPUUsage.Add(info.VCpu)
 			node.RamUsage.Add(info.RamMB)
 
-			o.dns.Add(ctx, info.Instance.SandboxID, node.Info.IPAddress)
+			o.dns.Add(ctx, info.SandboxID, node.Info.IPAddress)
 		}
 
 		o.teamMetricsObserver.Add(ctx, info.TeamID, created)
@@ -447,9 +447,9 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 				parentCtx,
 				o.analytics,
 				info.TeamID.String(),
-				info.Instance.SandboxID,
+				info.SandboxID,
 				info.ExecutionID,
-				info.Instance.TemplateID,
+				info.TemplateID,
 				info.BuildID.String(),
 				info.VCpu,
 				info.RamMB,
