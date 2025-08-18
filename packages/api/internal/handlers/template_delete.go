@@ -67,15 +67,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 
 	if team.ID != template.TeamID {
 		a.sendAPIStoreError(c, http.StatusForbidden, "User does not have access to the template")
-		telemetry.ReportCriticalError(ctx, "user does not have access to the template", err, telemetry.WithTemplateID(template.ID))
-
-		return
-	}
-
-	if team == nil {
-		telemetry.ReportError(ctx, "user doesn't have access to the sandbox template", nil, telemetry.WithTemplateID(cleanedAliasOrEnvID))
-
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", cleanedAliasOrEnvID))
+		telemetry.ReportCriticalError(ctx, "user does not have access to the template", nil, telemetry.WithTemplateID(template.ID))
 
 		return
 	}
