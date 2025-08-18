@@ -13,7 +13,7 @@ import (
 )
 
 type HTTPWriter struct {
-	ctx        context.Context
+	ctx        context.Context // nolint:containedctx // todo: fix the interface so this can be removed
 	url        string
 	httpClient *http.Client
 	wg         sync.WaitGroup

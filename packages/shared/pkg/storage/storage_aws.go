@@ -31,7 +31,7 @@ type AWSBucketStorageObjectProvider struct {
 	client     *s3.Client
 	path       string
 	bucketName string
-	ctx        context.Context
+	ctx        context.Context // nolint:containedctx // todo: fix the interface so this can be removed
 }
 
 func NewAWSBucketStorageProvider(ctx context.Context, bucketName string) (*AWSBucketStorageProvider, error) {

@@ -44,7 +44,7 @@ type GCPBucketStorageObjectProvider struct {
 	storage *GCPBucketStorageProvider
 	path    string
 	handle  *storage.ObjectHandle
-	ctx     context.Context
+	ctx     context.Context // nolint:containedctx // todo: fix the interface so this can be removed
 
 	limiter *limit.Limiter
 }

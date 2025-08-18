@@ -18,7 +18,7 @@ type FileSystemStorageProvider struct {
 
 type FileSystemStorageObjectProvider struct {
 	path string
-	ctx  context.Context
+	ctx  context.Context // nolint:containedctx // todo: fix the interface so this can be removed
 }
 
 func NewFileSystemStorageProvider(basePath string) (*FileSystemStorageProvider, error) {
