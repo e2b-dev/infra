@@ -38,7 +38,21 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		return
 	}
 
-	err = a.db.Client.TeamAPIKey.UpdateOneID(apiKeyIDParsed).SetName(body.Name).SetUpdatedAt(time.Now()).Exec(ctx)
+	teamID := a.GetTeamInfo(c).Team.ID
+
+	apiKey, err := a.db.Client.TeamAPIKey.Query().Where(teamapikey.ID(apiKeyIDParsed), teamapikey.TeamID(teamID)).First(ctx)
+	if err != nil {
+		if models.IsNotFound(err) {
+			c.String(http.StatusNotFound, "id not found")
+			return
+		}
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when querying team API key: %s", err))
+
+		telemetry.ReportCriticalError(ctx, "error when querying team API key", err)
+		return
+	}
+
+	err = a.db.Client.TeamAPIKey.UpdateOne(apiKey).SetName(body.Name).SetUpdatedAt(time.Now()).Exec(ctx)
 	if models.IsNotFound(err) {
 		c.String(http.StatusNotFound, "id not found")
 		return
@@ -116,7 +130,21 @@ func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		return
 	}
 
-	err = a.db.Client.TeamAPIKey.DeleteOneID(apiKeyIDParsed).Exec(ctx)
+	teamID := a.GetTeamInfo(c).Team.ID
+
+	apiKey, err := a.db.Client.TeamAPIKey.Query().Where(teamapikey.ID(apiKeyIDParsed), teamapikey.TeamID(teamID)).First(ctx)
+	if err != nil {
+		if models.IsNotFound(err) {
+			c.String(http.StatusNotFound, "id not found")
+			return
+		}
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting API key: %s", err))
+
+		telemetry.ReportCriticalError(ctx, "error when getting API key", err)
+		return
+	}
+
+	err = a.db.Client.TeamAPIKey.DeleteOne(apiKey).Exec(ctx)
 	if models.IsNotFound(err) {
 		c.String(http.StatusNotFound, "id not found")
 		return
