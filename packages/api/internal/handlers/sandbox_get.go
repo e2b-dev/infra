@@ -31,7 +31,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	if team.ClusterID != nil {
 		cluster, ok := a.clustersPool.GetClusterById(*team.ClusterID)
 		if !ok {
-			telemetry.ReportCriticalError(ctx, "error getting cluster by ID", fmt.Errorf("cluster with ID '%s' not found", *team.ClusterID))
+			telemetry.ReportCriticalError(ctx, fmt.Sprintf("cluster with ID '%s' not found", *team.ClusterID), nil)
 			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("cluster with id %s not found", *team.ClusterID))
 
 			return
@@ -45,7 +45,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	if err == nil {
 		// Check if sandbox belongs to the team
 		if info.TeamID != team.ID {
-			telemetry.ReportCriticalError(ctx, "sandbox doesn't belong to team", fmt.Errorf("sandbox '%s' doesn't belong to team '%s'", sandboxId, team.ID.String()))
+			telemetry.ReportCriticalError(ctx, fmt.Sprintf("sandbox '%s' doesn't belong to team '%s'", sandboxId, team.ID.String()), nil)
 			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 
 			return
