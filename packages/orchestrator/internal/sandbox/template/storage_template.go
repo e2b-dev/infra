@@ -10,6 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -82,19 +83,35 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			return t.snapfile.SetError(errMsg)
 		}
 
-		metadata, metadataErr := newStorageFile(
+		meta, metadataErr := newStorageFile(
 			ctx,
 			t.persistence,
 			t.files.StorageMetadataPath(),
 			t.files.CacheMetadataPath(),
 		)
 		if metadataErr != nil {
-			errMsg := fmt.Errorf("failed to fetch metadata: %w", metadataErr)
+			// If we can't find the metadata, we still want to return the snapfile.
+			// This is useful for templates that don't have metadata, like v1 templates.
 
-			return t.snapfile.SetError(errMsg)
+			zap.L().Info("failed to fetch metadata for snapfile, falling back to v1 template metadata",
+				zap.String("build_id", t.files.BuildID),
+				zap.Error(metadataErr),
+			)
+			oldTemplateMetadata := metadata.TemplateMetadata{
+				Version:  1,
+				Template: t.files.TemplateFiles,
+			}
+			err := oldTemplateMetadata.ToFile(t.files.CacheMetadataPath())
+			if err != nil {
+				return t.snapfile.SetError(fmt.Errorf("failed to write old template metadata to file: %w", err))
+			}
+
+			return t.snapfile.SetValue(NewStorageSnapfile(snapfile, &storageFile{
+				path: t.files.CacheMetadataPath(),
+			}))
 		}
 
-		return t.snapfile.SetValue(NewStorageSnapfile(snapfile, metadata))
+		return t.snapfile.SetValue(NewStorageSnapfile(snapfile, meta))
 	})
 
 	wg.Go(func() error {
