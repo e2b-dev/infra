@@ -93,7 +93,7 @@ runs:
         ENVIRONMENT: "local"
         OTEL_COLLECTOR_GRPC_ENDPOINT: "localhost:4317"
         MAX_PARALLEL_MEMFILE_SNAPSHOTTING: "2"
-        LOCAL_TEMPLATE_CACHE_PATH: "$RUNNER_TEMP/e2b-slab-cache"
+        LOCAL_TEMPLATE_CACHE_PATH: "${{ env.RUNNER_TEMP }}/e2b-slab-cache"
       run: |
         mkdir -p $LOCAL_TEMPLATE_CACHE_PATH
         mkdir -p ~/logs
