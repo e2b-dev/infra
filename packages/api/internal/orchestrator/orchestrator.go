@@ -257,7 +257,7 @@ func (o *Orchestrator) AdminNodes() []*api.Node {
 	for _, sbx := range o.instanceCache.Items() {
 		n, ok := nodes[sbx.Node.NomadNodeShortID]
 		if !ok {
-			zap.L().Error("node for sandbox wasn't found", logger.WithNodeID(sbx.Node.NodeID), logger.WithClusterID(sbx.Node.ClusterID), logger.WithSandboxID(sbx.Instance.SandboxID))
+			zap.L().Error("node for sandbox wasn't found", logger.WithNodeID(sbx.Node.NodeID), logger.WithClusterID(sbx.Node.ClusterID), logger.WithSandboxID(sbx.SandboxID))
 			continue
 		}
 
@@ -316,16 +316,16 @@ func (o *Orchestrator) AdminNodeDetail(nomadNodeShortID string) (*api.NodeDetail
 			}
 
 			node.Sandboxes = append(node.Sandboxes, api.ListedSandbox{
-				Alias:      sbx.Instance.Alias,
+				Alias:      sbx.Alias,
 				ClientID:   consts.ClientID,
 				CpuCount:   api.CPUCount(sbx.VCpu),
 				MemoryMB:   api.MemoryMB(sbx.RamMB),
 				DiskSizeMB: api.DiskSizeMB(sbx.TotalDiskSizeMB),
 				EndAt:      sbx.GetEndTime(),
 				Metadata:   metadata,
-				SandboxID:  sbx.Instance.SandboxID,
+				SandboxID:  sbx.SandboxID,
 				StartedAt:  sbx.StartTime,
-				TemplateID: sbx.Instance.TemplateID,
+				TemplateID: sbx.TemplateID,
 			})
 		}
 	}

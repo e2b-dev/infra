@@ -60,7 +60,7 @@ func (c *InstanceCache) Sync(ctx context.Context, instances []*InstanceInfo, nod
 
 	// Use a map for faster lookup
 	for _, instance := range instances {
-		instanceMap[instance.Instance.SandboxID] = instance
+		instanceMap[instance.SandboxID] = instance
 	}
 
 	// Delete instances that are not in Orchestrator anymore
@@ -71,15 +71,15 @@ func (c *InstanceCache) Sync(ctx context.Context, instances []*InstanceInfo, nod
 		if time.Since(item.StartTime) <= syncSandboxRemoveGracePeriod {
 			continue
 		}
-		_, found := instanceMap[item.Instance.SandboxID]
+		_, found := instanceMap[item.SandboxID]
 		if !found {
-			c.cache.Remove(item.Instance.SandboxID)
+			c.cache.Remove(item.SandboxID)
 		}
 	}
 
 	// Add instances that are not in the cache with the default TTL
 	for _, instance := range instances {
-		if c.Exists(instance.Instance.SandboxID) {
+		if c.Exists(instance.SandboxID) {
 			continue
 		}
 		err := c.Add(ctx, instance, false)

@@ -53,10 +53,10 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 		// Sandbox exists and belongs to the team - return running sandbox info
 		sandbox := api.SandboxDetail{
-			ClientID:        info.Instance.ClientID,
-			TemplateID:      info.Instance.TemplateID,
-			Alias:           info.Instance.Alias,
-			SandboxID:       info.Instance.SandboxID,
+			ClientID:        info.ClientID,
+			TemplateID:      info.TemplateID,
+			Alias:           info.Alias,
+			SandboxID:       info.SandboxID,
 			StartedAt:       info.StartTime,
 			CpuCount:        api.CPUCount(info.VCpu),
 			MemoryMB:        api.MemoryMB(info.RamMB),

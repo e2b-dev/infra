@@ -33,8 +33,8 @@ func (o *Orchestrator) PauseInstance(
 	defer span.End()
 
 	snapshotConfig := &db.SnapshotInfo{
-		BaseTemplateID:      sbx.Instance.TemplateID,
-		SandboxID:           sbx.Instance.SandboxID,
+		BaseTemplateID:      sbx.TemplateID,
+		SandboxID:           sbx.SandboxID,
 		SandboxStartedAt:    sbx.StartTime,
 		VCPU:                sbx.VCpu,
 		RAMMB:               sbx.RamMB,
@@ -42,7 +42,7 @@ func (o *Orchestrator) PauseInstance(
 		Metadata:            sbx.Metadata,
 		KernelVersion:       sbx.KernelVersion,
 		FirecrackerVersion:  sbx.FirecrackerVersion,
-		EnvdVersion:         sbx.Instance.EnvdVersion,
+		EnvdVersion:         sbx.EnvdVersion,
 		EnvdSecured:         sbx.EnvdAccessToken != nil,
 		AllowInternetAccess: sbx.AllowInternetAccess,
 	}
@@ -97,9 +97,9 @@ func snapshotInstance(ctx context.Context, orch *Orchestrator, sbx *instance.Ins
 	}
 
 	_, err = client.Sandbox.Pause(
-		node.GetSandboxDeleteCtx(childCtx, sbx.Instance.SandboxID, sbx.ExecutionID),
+		node.GetSandboxDeleteCtx(childCtx, sbx.SandboxID, sbx.ExecutionID),
 		&orchestrator.SandboxPauseRequest{
-			SandboxId:  sbx.Instance.SandboxID,
+			SandboxId:  sbx.SandboxID,
 			TemplateId: templateID,
 			BuildId:    buildID,
 		},
@@ -119,5 +119,5 @@ func snapshotInstance(ctx context.Context, orch *Orchestrator, sbx *instance.Ins
 		return ErrPauseQueueExhausted{}
 	}
 
-	return fmt.Errorf("failed to pause sandbox '%s': %w", sbx.Instance.SandboxID, err)
+	return fmt.Errorf("failed to pause sandbox '%s': %w", sbx.SandboxID, err)
 }

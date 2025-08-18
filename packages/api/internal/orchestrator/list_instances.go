@@ -9,7 +9,6 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	nNode "github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -61,12 +60,10 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 		sandboxesInfo = append(
 			sandboxesInfo,
 			instance.NewInstanceInfo(
-				&api.Sandbox{
-					SandboxID:  config.SandboxId,
-					TemplateID: config.TemplateId,
-					Alias:      config.Alias,
-					ClientID:   consts.ClientID,
-				},
+				config.SandboxId,
+				config.TemplateId,
+				consts.ClientID,
+				config.Alias,
 				config.ExecutionId,
 				teamID,
 				buildID,
