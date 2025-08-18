@@ -8,10 +8,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
+	"github.com/e2b-dev/infra/tests/integration/internal/tests/utils"
 )
 
 func TestCreateAPIKey(t *testing.T) {
@@ -24,9 +26,7 @@ func TestCreateAPIKey(t *testing.T) {
 	resp, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
 		Name: "test",
 	}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusCreated, resp.StatusCode())
 	assert.Equal(t, "test", resp.JSON201.Name)
@@ -64,6 +64,80 @@ func TestDeleteAPIKey(t *testing.T) {
 			t.Fatal(err)
 		}
 		assert.Equal(t, http.StatusNotFound, respD.StatusCode())
+	})
+
+	t.Run("cant delete other teams api key", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		db := setup.GetTestDBClient()
+		c := setup.GetAPIClient()
+
+		// Create first team and API key
+		teamID1 := uuid.New()
+		teamName1 := "test-team-apikey-delete-1"
+		_, _ = utils.CreateTeam(t, cancel, ctx, c, db, teamID1, teamName1)
+		defer db.Client.Team.DeleteOneID(teamID1).Exec(ctx)
+
+		// Create second team and API key
+		teamID2 := uuid.New()
+		teamName2 := "test-team-apikey-delete-2"
+		_, _ = utils.CreateTeam(t, cancel, ctx, c, db, teamID2, teamName2)
+		defer db.Client.Team.DeleteOneID(teamID2).Exec(ctx)
+
+		// Create an additional API key for team1
+		resp, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
+			Name: fmt.Sprintf("test-delete-%s", teamID1),
+		}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, teamID1.String()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		require.Equal(t, http.StatusCreated, resp.StatusCode())
+		apiKeyID := resp.JSON201.Id
+
+		// Try to delete team1's API key using team2's API key - should fail
+		deleteResp, err := c.DeleteApiKeysApiKeyIDWithResponse(ctx, apiKeyID.String(), setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, teamID2.String()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		assert.Equal(t, http.StatusNotFound, deleteResp.StatusCode())
+
+		// Verify the API key still exists for team1
+		listResp, err := c.GetApiKeysWithResponse(ctx, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, teamID1.String()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		assert.Equal(t, http.StatusOK, listResp.StatusCode())
+
+		found := false
+		for _, key := range *listResp.JSON200 {
+			if key.Id == apiKeyID {
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "API key should still exist for team1")
+
+		// Verify that team1 can delete their own API key
+		deleteResp2, err := c.DeleteApiKeysApiKeyIDWithResponse(ctx, apiKeyID.String(), setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, teamID1.String()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		assert.Equal(t, http.StatusNoContent, deleteResp2.StatusCode())
+
+		// Verify the API key was deleted
+		listResp2, err := c.GetApiKeysWithResponse(ctx, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, teamID1.String()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		assert.Equal(t, http.StatusOK, listResp2.StatusCode())
+
+		found = false
+		for _, key := range *listResp2.JSON200 {
+			if key.Id == apiKeyID {
+				found = true
+				break
+			}
+		}
+		assert.False(t, found, "API key should be deleted from team1's list")
 	})
 }
 
@@ -142,5 +216,68 @@ func TestPatchAPIKey(t *testing.T) {
 			t.Fatal(err)
 		}
 		assert.Equal(t, http.StatusNotFound, respP.StatusCode())
+	})
+
+	t.Run("cant patch other teams api keys", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		db := setup.GetTestDBClient()
+		c := setup.GetAPIClient()
+
+		// Create first team and API key
+		teamID1 := uuid.New()
+		teamName1 := "test-team-apikey-patch-1"
+		_, _ = utils.CreateTeam(t, cancel, ctx, c, db, teamID1, teamName1)
+		defer db.Client.Team.DeleteOneID(teamID1).Exec(ctx)
+
+		// Create second team and API key
+		teamID2 := uuid.New()
+		teamName2 := "test-team-apikey-patch-2"
+		_, _ = utils.CreateTeam(t, cancel, ctx, c, db, teamID2, teamName2)
+		defer db.Client.Team.DeleteOneID(teamID2).Exec(ctx)
+
+		// Create an additional API key for team1
+		resp, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
+			Name: fmt.Sprintf("test-patch-%s", teamID1),
+		}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, teamID1.String()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		require.Equal(t, http.StatusCreated, resp.StatusCode())
+		apiKeyID := resp.JSON201.Id
+
+		// Try to patch team1's API key using team2's API key - should fail
+		patchResp, err := c.PatchApiKeysApiKeyIDWithResponse(ctx, apiKeyID.String(), api.PatchApiKeysApiKeyIDJSONRequestBody{
+			Name: "hacked-name",
+		}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, teamID2.String()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		assert.Equal(t, http.StatusNotFound, patchResp.StatusCode())
+
+		// Verify that team1 can still patch their own API key
+		patchResp2, err := c.PatchApiKeysApiKeyIDWithResponse(ctx, apiKeyID.String(), api.PatchApiKeysApiKeyIDJSONRequestBody{
+			Name: "legitimate-update",
+		}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, teamID1.String()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		assert.Equal(t, http.StatusAccepted, patchResp2.StatusCode())
+
+		// Verify the API key was updated correctly
+		listResp, err := c.GetApiKeysWithResponse(ctx, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, teamID1.String()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		assert.Equal(t, http.StatusOK, listResp.StatusCode())
+
+		found := false
+		for _, key := range *listResp.JSON200 {
+			if key.Id == apiKeyID {
+				assert.Equal(t, "legitimate-update", key.Name)
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "API key should be found in team1's list")
 	})
 }
