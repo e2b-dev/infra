@@ -21,7 +21,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -114,7 +113,6 @@ func (sb *StepBuilder) Layer(
 
 	meta := cache.LayerMetadata{
 		Template: storage.TemplateFiles{
-			TemplateID:         id.Generate(),
 			BuildID:            uuid.NewString(),
 			KernelVersion:      sourceLayer.Metadata.Template.KernelVersion,
 			FirecrackerVersion: sourceLayer.Metadata.Template.FirecrackerVersion,
@@ -133,14 +131,11 @@ func (sb *StepBuilder) Build(
 	ctx context.Context,
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
-	baseTemplateID string,
 ) (phases.LayerResult, error) {
 	prefix := sb.Prefix()
 	step := sb.step
 
 	sbxConfig := sandbox.Config{
-		BaseTemplateID: baseTemplateID,
-
 		Vcpu:      sb.Config.VCpuCount,
 		RamMB:     sb.Config.MemoryMB,
 		HugePages: sb.Config.HugePages,
@@ -158,7 +153,7 @@ func (sb *StepBuilder) Build(
 		sandboxCreator = layer.NewCreateSandbox(sbxConfig, fc.FirecrackerVersions{
 			KernelVersion:      sb.Template.KernelVersion,
 			FirecrackerVersion: sb.Template.FirecrackerVersion,
-		}, currentLayer.Metadata.Template.TemplateID)
+		})
 	} else {
 		sandboxCreator = layer.NewResumeSandbox(sbxConfig)
 	}

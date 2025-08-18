@@ -20,13 +20,10 @@ import (
 type CreateSandbox struct {
 	config     sandbox.Config
 	fcVersions fc.FirecrackerVersions
-
-	// TODO: Remove when the base template ID is constant.
-	templateID string
 }
 
-func NewCreateSandbox(config sandbox.Config, fcVersions fc.FirecrackerVersions, templateID string) SandboxCreator {
-	return &CreateSandbox{config: config, fcVersions: fcVersions, templateID: templateID}
+func NewCreateSandbox(config sandbox.Config, fcVersions fc.FirecrackerVersions) SandboxCreator {
+	return &CreateSandbox{config: config, fcVersions: fcVersions}
 }
 
 func (f *CreateSandbox) Sandbox(
@@ -59,15 +56,14 @@ func (f *CreateSandbox) Sandbox(
 	}
 
 	// In case of a new sandbox, base template ID is now used as the potentially exported template base ID.
-	sbxConfig := f.config
-	sbxConfig.BaseTemplateID = f.templateID
 	sbx, err := sandbox.CreateSandbox(
 		ctx,
 		layerExecutor.tracer,
 		layerExecutor.networkPool,
 		layerExecutor.devicePool,
-		sbxConfig,
+		f.config,
 		sandbox.RuntimeMetadata{
+			TemplateID:  layerExecutor.Config.TemplateID,
 			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
 			ExecutionID: uuid.NewString(),
 		},
