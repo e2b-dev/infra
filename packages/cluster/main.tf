@@ -280,6 +280,9 @@ module "build_cluster" {
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-build-cluster-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
+    NFS_IP_ADDRESS               = join(",", module.filestore.nfs_ip_addresses)
+    NFS_MOUNT_PATH               = local.nfs_mount_path
+    NFS_MOUNT_SUBDIR             = local.nfs_mount_subdir
   })
 
   environment = var.environment
