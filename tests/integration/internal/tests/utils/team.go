@@ -30,7 +30,7 @@ func CreateTeam(t *testing.T, cancel context.CancelFunc, ctx context.Context, c 
 	userTeam, err := db.Client.UsersTeams.Create().
 		SetUserID(userID).
 		SetTeamID(teamID).
-		SetIsDefault(true).
+		SetIsDefault(false).
 		Save(ctx)
 	if err != nil {
 		t.Fatal(err)
