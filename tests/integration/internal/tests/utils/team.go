@@ -7,13 +7,14 @@ import (
 	"os"
 	"testing"
 
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func CreateTeam(t *testing.T, cancel context.CancelFunc, ctx context.Context, c *api.ClientWithResponses, db *db.DB, teamID uuid.UUID, teamName string) (*models.Team, string) {
