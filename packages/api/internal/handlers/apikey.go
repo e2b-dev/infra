@@ -52,7 +52,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		return
 	}
 
-	err = a.db.Client.TeamAPIKey.UpdateOne(apiKey).SetName(body.Name).SetUpdatedAt(time.Now()).Exec(ctx)
+	err = a.db.Client.TeamAPIKey.UpdateOneID(apiKeyIDParsed).Where(teamapikey.TeamID(teamID)).SetName(body.Name).SetUpdatedAt(time.Now()).Exec(ctx)
 	if models.IsNotFound(err) {
 		c.String(http.StatusNotFound, "id not found")
 		return
