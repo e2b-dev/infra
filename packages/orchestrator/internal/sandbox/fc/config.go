@@ -40,6 +40,11 @@ type RootfsPaths struct {
 	BuildID    string
 }
 
+var ConstantRootfsPaths = RootfsPaths{
+	// The version is always 2 for the constant rootfs paths format change.
+	Version: 2,
+}
+
 // Deprecated: Use static rootfs path instead.
 func (t RootfsPaths) DeprecatedSandboxRootfsDir() string {
 	return filepath.Join(envsDisk, t.TemplateID, buildDirName, t.BuildID)

@@ -220,10 +220,7 @@ func CreateSandbox(
 		sandboxFiles,
 		fcVersions,
 		rootfsPath,
-		fc.RootfsPaths{
-			// The version is always 2 for the rootfs paths format change.
-			Version: 2,
-		},
+		fc.ConstantRootfsPaths,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init FC: %w", err)
