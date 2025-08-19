@@ -315,7 +315,7 @@ func (bb *BaseBuilder) Layer(
 ) (phases.LayerResult, error) {
 	switch {
 	case bb.Config.FromTemplate != nil:
-		fromTemplateMetadata := metadata.FromTemplate{
+		sourceMeta := metadata.FromTemplate{
 			Alias:   bb.Config.FromTemplate.GetAlias(),
 			BuildID: bb.Config.FromTemplate.BuildID,
 		}
@@ -328,7 +328,7 @@ func (bb *BaseBuilder) Layer(
 
 		// From template is always cached, never needs to be built
 		return phases.LayerResult{
-			Metadata: tm.NextTemplate(fromTemplateMetadata),
+			Metadata: tm.BasedOn(sourceMeta),
 			Hash:     hash,
 			Cached:   true,
 		}, nil

@@ -42,22 +42,28 @@ type Template struct {
 	FromTemplate *FromTemplate         `json:"from_template,omitempty"`
 }
 
-func (t Template) NextTemplate(
-	fromTemplate FromTemplate,
+func (t Template) BasedOn(
+	ft FromTemplate,
 ) Template {
 	return Template{
 		Version:      CurrentVersion,
 		Template:     t.Template,
 		Metadata:     t.Metadata,
 		Start:        t.Start,
-		FromTemplate: &fromTemplate,
+		FromTemplate: &ft,
 		FromImage:    nil,
 	}
 }
 
-func (t Template) UpdateVersion() Template {
-	t.Version = CurrentVersion
-	return t
+func (t Template) NewVersionTemplate(files storage.TemplateFiles) Template {
+	return Template{
+		Version:      CurrentVersion,
+		Template:     files,
+		Metadata:     t.Metadata,
+		Start:        t.Start,
+		FromTemplate: t.FromTemplate,
+		FromImage:    t.FromImage,
+	}
 }
 
 func (t Template) ToFile(path string) error {

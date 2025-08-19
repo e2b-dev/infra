@@ -103,22 +103,19 @@ func (lb *LayerExecutor) BuildLayer(
 		}
 	}
 
-	// Prepare metadata
-	fcVersions := sbx.FirecrackerVersions()
-	cmd.SourceLayer.Template = storage.TemplateFiles{
-		BuildID:            cmd.ExportTemplate.BuildID,
-		KernelVersion:      fcVersions.KernelVersion,
-		FirecrackerVersion: fcVersions.FirecrackerVersion,
-	}
-
 	// Execute the action using the executor
 	meta, err := cmd.ActionExecutor.Execute(ctx, sbx, cmd.SourceLayer)
 	if err != nil {
 		return metadata.Template{}, err
 	}
 
-	// Paused layer is always a new version in the build system (it starts with a sbx create)
-	meta = meta.UpdateVersion()
+	// Prepare metadata
+	fcVersions := sbx.FirecrackerVersions()
+	meta = meta.NewVersionTemplate(storage.TemplateFiles{
+		BuildID:            cmd.ExportTemplate.BuildID,
+		KernelVersion:      fcVersions.KernelVersion,
+		FirecrackerVersion: fcVersions.FirecrackerVersion,
+	})
 	err = lb.PauseAndUpload(
 		ctx,
 		sbx,
