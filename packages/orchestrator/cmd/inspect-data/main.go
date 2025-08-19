@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 

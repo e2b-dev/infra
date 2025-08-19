@@ -12,6 +12,7 @@ import (
 
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -30,11 +31,12 @@ const (
 )
 
 type Cache struct {
-	cache        *ttlcache.Cache[string, Template]
-	persistence  storage.StorageProvider
-	ctx          context.Context
-	buildStore   *build.DiffStore
-	blockMetrics blockmetrics.Metrics
+	cache         *ttlcache.Cache[string, Template]
+	persistence   storage.StorageProvider
+	ctx           context.Context
+	buildStore    *build.DiffStore
+	blockMetrics  blockmetrics.Metrics
+	rootCachePath string
 }
 
 // NewCache initializes a template new cache.
@@ -74,11 +76,12 @@ func NewCache(ctx context.Context, persistence storage.StorageProvider, metrics 
 	go cache.Start()
 
 	return &Cache{
-		blockMetrics: metrics,
-		persistence:  persistence,
-		buildStore:   buildStore,
-		cache:        cache,
-		ctx:          ctx,
+		blockMetrics:  metrics,
+		persistence:   persistence,
+		buildStore:    buildStore,
+		cache:         cache,
+		ctx:           ctx,
+		rootCachePath: env.GetEnv("LOCAL_TEMPLATE_CACHE_PATH", ""),
 	}, nil
 }
 
@@ -95,6 +98,7 @@ func (c *Cache) GetTemplate(
 ) (Template, error) {
 	persistence := c.persistence
 	if !isSnapshot && c.rootCachePath != "" {
+		zap.L().Info("using local template cache", zap.String("path", c.rootCachePath))
 		persistence = storage.NewCachedProvider(ctx, c.rootCachePath, persistence)
 	}
 

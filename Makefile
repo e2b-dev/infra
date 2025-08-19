@@ -249,12 +249,9 @@ setup-ssh:
 
 .PHONY: test
 test:
-	$(MAKE) -C packages/api test
-	$(MAKE) -C packages/client-proxy test
-	$(MAKE) -C packages/docker-reverse-proxy test
-	$(MAKE) -C packages/envd test
-	$(MAKE) -C packages/orchestrator test
-	$(MAKE) -C packages/shared test
+	go work edit -json \
+		| jq -r '.Use[] | select (.DiskPath | contains("packages")) | .DiskPath' \
+		| xargs -I{} $(MAKE) -C {} test
 
 .PHONY: test-integration
 test-integration:
@@ -274,4 +271,4 @@ fmt:
 .PHONY: lint
 lint:
 	@./scripts/golangci-lint-install.sh "2.1.6"
-	go work edit -json | jq -r '.Use[].DiskPath'  | xargs -I{} golangci-lint run {}/...
+	go work edit -json | jq -r '.Use[].DiskPath'  | xargs -I{} golangci-lint run {}/... --fix

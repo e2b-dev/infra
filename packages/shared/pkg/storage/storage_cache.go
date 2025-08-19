@@ -25,15 +25,16 @@ const (
 )
 
 type CachedProvider struct {
-	ctx      context.Context
-	rootPath string
-	inner    StorageProvider
+	ctx       context.Context
+	rootPath  string
+	chunkSize int64
+	inner     StorageProvider
 }
 
 var _ StorageProvider = (*CachedProvider)(nil)
 
 func NewCachedProvider(ctx context.Context, rootPath string, inner StorageProvider) *CachedProvider {
-	return &CachedProvider{ctx: ctx, rootPath: rootPath, inner: inner}
+	return &CachedProvider{ctx: ctx, rootPath: rootPath, inner: inner, chunkSize: MemoryChunkSize}
 }
 
 func (c CachedProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
@@ -58,7 +59,7 @@ func (c CachedProvider) OpenObject(ctx context.Context, path string) (StorageObj
 	if err = os.MkdirAll(localPath, cacheDirPermissions); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
-	return &CachedFileObjectProvider{ctx: ctx, path: localPath, inner: innerObject}, nil
+	return &CachedFileObjectProvider{ctx: ctx, path: localPath, chunkSize: c.chunkSize, inner: innerObject}, nil
 }
 
 func (c CachedProvider) GetDetails() string {
@@ -85,9 +86,10 @@ func (c CachedProvider) deleteObjectsWithPrefix(prefix string) {
 }
 
 type CachedFileObjectProvider struct {
-	ctx   context.Context
-	path  string
-	inner StorageObjectProvider
+	ctx       context.Context
+	path      string
+	chunkSize int64
+	inner     StorageObjectProvider
 }
 
 var _ StorageObjectProvider = (*CachedFileObjectProvider)(nil)
