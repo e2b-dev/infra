@@ -25,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -137,15 +138,20 @@ func buildTemplate(
 
 	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider()
 	if err != nil {
-		return fmt.Errorf("error getting artifacts registry provider: %v", err)
+		return fmt.Errorf("error getting artifacts registry provider: %w", err)
 	}
 
 	blockMetrics, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
 	if err != nil {
-		return fmt.Errorf("error creating metrics: %v", err)
+		return fmt.Errorf("error creating metrics: %w", err)
 	}
 
-	templateCache, err := sbxtemplate.NewCache(ctx, persistenceTemplate, blockMetrics)
+	featureFlags, err := featureflags.NewClient()
+	if err != nil {
+		return fmt.Errorf("failed to create feature flags client: %w", err)
+	}
+
+	templateCache, err := sbxtemplate.NewCache(ctx, featureFlags, persistenceTemplate, blockMetrics)
 	if err != nil {
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}

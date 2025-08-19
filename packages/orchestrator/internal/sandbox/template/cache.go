@@ -13,6 +13,7 @@ import (
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -31,6 +32,7 @@ const (
 )
 
 type Cache struct {
+	flags         *featureflags.Client
 	cache         *ttlcache.Cache[string, Template]
 	persistence   storage.StorageProvider
 	ctx           context.Context
@@ -42,7 +44,12 @@ type Cache struct {
 // NewCache initializes a template new cache.
 // It also deletes the old build cache directory content
 // as it may contain stale data that are not managed by anyone.
-func NewCache(ctx context.Context, persistence storage.StorageProvider, metrics blockmetrics.Metrics) (*Cache, error) {
+func NewCache(
+	ctx context.Context,
+	flags *featureflags.Client,
+	persistence storage.StorageProvider,
+	metrics blockmetrics.Metrics,
+) (*Cache, error) {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, Template](templateExpiration),
 	)
@@ -81,6 +88,7 @@ func NewCache(ctx context.Context, persistence storage.StorageProvider, metrics 
 		buildStore:    buildStore,
 		cache:         cache,
 		ctx:           ctx,
+		flags:         flags,
 		rootCachePath: env.GetEnv("LOCAL_TEMPLATE_CACHE_PATH", ""),
 	}, nil
 }
@@ -97,7 +105,7 @@ func (c *Cache) GetTemplate(
 	isSnapshot bool,
 ) (Template, error) {
 	persistence := c.persistence
-	if !isSnapshot && c.rootCachePath != "" {
+	if c.useNFSCache(isSnapshot) {
 		zap.L().Info("using local template cache", zap.String("path", c.rootCachePath))
 		persistence = storage.NewCachedProvider(ctx, c.rootCachePath, persistence)
 	}
@@ -178,6 +186,27 @@ func (c *Cache) AddSnapshot(
 	}
 
 	return nil
+}
+
+func (c *Cache) useNFSCache(isSnapshot bool) bool {
+	if c.rootCachePath == "" {
+		// can't enable cache if we don't have a cache path
+		return false
+	}
+
+	var flagName featureflags.BoolFlag
+	if isSnapshot {
+		flagName = featureflags.SnapshotFeatureFlagName
+	} else {
+		flagName = featureflags.TemplateFeatureFlagName
+	}
+
+	flag, err := c.flags.BoolFlag(flagName, "")
+	if err != nil {
+		zap.L().Error("failed to get nfs cache feature flag", zap.Error(err))
+	}
+
+	return flag
 }
 
 func cleanDir(path string) error {
