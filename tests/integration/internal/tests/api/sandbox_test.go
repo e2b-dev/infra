@@ -24,9 +24,7 @@ func TestSandboxCreate(t *testing.T) {
 		TemplateID: setup.SandboxTemplateID,
 		Timeout:    &sbxTimeout,
 	}, setup.WithAPIKey())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		if t.Failed() {
@@ -48,9 +46,7 @@ func TestSandboxResumeUnknownSandbox(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	sbxCreate, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{TemplateID: setup.SandboxTemplateID}, setup.WithAPIKey())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, sbxCreate.StatusCode())
 	require.NotNil(t, sbxCreate.JSON201)
 
@@ -58,9 +54,7 @@ func TestSandboxResumeUnknownSandbox(t *testing.T) {
 	unknownSbxId := "xxx" + sbxCreate.JSON201.SandboxID[3:] + "-" + sbxCreate.JSON201.ClientID
 
 	sbxResume, err := c.PostSandboxesSandboxIDResumeWithResponse(ctx, unknownSbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		utils.TeardownSandbox(t, c, sbxCreate.JSON201.SandboxID)
@@ -78,24 +72,18 @@ func TestSandboxResumeWithSecuredEnvd(t *testing.T) {
 
 	sbxSecure := true
 	sbxCreate, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{TemplateID: setup.SandboxTemplateID, Secure: &sbxSecure}, setup.WithAPIKey())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusCreated, sbxCreate.StatusCode())
 	require.NotNil(t, sbxCreate.JSON201)
 
 	_, err = c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxCreate.JSON201.SandboxID, setup.WithAPIKey())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	sbxIdWithClient := sbxCreate.JSON201.SandboxID + "-" + sbxCreate.JSON201.ClientID
 
 	sbxResume, err := c.PostSandboxesSandboxIDResumeWithResponse(ctx, sbxIdWithClient, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusCreated, sbxResume.StatusCode())
 	require.NotNil(t, sbxResume.JSON201)
@@ -115,9 +103,7 @@ func TestSandboxPauseNonFound(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	r, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, "not-found", setup.WithAPIKey())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusNotFound, r.StatusCode())
 	require.NotNil(t, r.JSON404)

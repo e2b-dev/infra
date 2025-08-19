@@ -17,27 +17,27 @@ func TestSandboxMetrics(t *testing.T) {
 
 	// Create a sandbox for testing
 	sbx := utils.SetupSandboxWithCleanup(t, c)
+	var metrics []api.SandboxMetric
 
-	// Ensure there are some metrics
-	maxRetries := 15
-	var result []api.SandboxMetric
-	for i := 0; i < maxRetries; i++ {
+	maxDuration := 15 * time.Second
+	tick := 500 * time.Millisecond
+
+	require.Eventually(t, func() bool {
 		response, err := c.GetSandboxesSandboxIDMetricsWithResponse(t.Context(), sbx.SandboxID, &api.GetSandboxesSandboxIDMetricsParams{}, setup.WithAPIKey())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, response.StatusCode())
 
 		require.NotNil(t, response.JSON200)
 		if len(*response.JSON200) == 0 {
-			t.Logf("No metrics found yet, retrying (%d/%d)", i+1, maxRetries)
-			time.Sleep(1 * time.Second) // Wait before retrying
-			continue
+			return false
 		}
 
-		result = *response.JSON200
-	}
+		metrics = *response.JSON200
+		return true
+	}, maxDuration, tick, "sandbox metrics not available in time")
 
-	require.Greater(t, len(result), 0, "Expected at least one metric in the response")
-	for _, metric := range result {
+	require.Greater(t, len(metrics), 0, "Expected at least one metric in the response")
+	for _, metric := range metrics {
 		require.NotEmpty(t, metric.CpuCount)
 		require.NotEmpty(t, metric.CpuUsedPct)
 		require.NotEmpty(t, metric.MemUsed)

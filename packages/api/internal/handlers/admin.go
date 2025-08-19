@@ -1,37 +1,37 @@
 package handlers
 
 import (
-	"cmp"
+	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (a *APIStore) GetNodes(c *gin.Context) {
-	nodes := a.orchestrator.GetNodes()
-
-	slices.SortFunc(nodes, func(i, j *api.Node) int {
-		return cmp.Compare(i.NodeID, j.NodeID)
-	})
-
-	c.JSON(http.StatusOK, nodes)
+	result := a.orchestrator.AdminNodes()
+	c.JSON(http.StatusOK, result)
 }
 
 func (a *APIStore) GetNodesNodeID(c *gin.Context, nodeId api.NodeID) {
-	node := a.orchestrator.GetNodeDetail(nodeId)
+	result, err := a.orchestrator.AdminNodeDetail(nodeId)
+	if err != nil {
+		if errors.Is(err, orchestrator.ErrNodeNotFound) {
+			c.Status(http.StatusNotFound)
+			return
+		}
 
-	if node == nil {
-		c.Status(http.StatusNotFound)
+		telemetry.ReportCriticalError(c.Request.Context(), "error when getting node details", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting node details")
 		return
 	}
 
-	c.JSON(http.StatusOK, node)
+	c.JSON(http.StatusOK, result)
 }
 
 func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
@@ -46,7 +46,7 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 		return
 	}
 
-	node := a.orchestrator.GetNode(nodeId)
+	node := a.orchestrator.GetNodeByNomadShortID(nodeId)
 	if node == nil {
 		c.Status(http.StatusNotFound)
 		return

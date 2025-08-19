@@ -221,11 +221,6 @@ func ByClusterNodeID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldClusterNodeID, opts...).ToFunc()
 }
 
-// ByReason orders the results by the reason field.
-func ByReason(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldReason, opts...).ToFunc()
-}
-
 // ByEnvField orders the results by env field.
 func ByEnvField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {

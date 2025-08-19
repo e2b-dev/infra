@@ -31,6 +31,15 @@ func (c TemplateCacheFiles) NewSandboxFiles(sandboxID string) *SandboxFiles {
 	}
 }
 
+func (c TemplateCacheFiles) NewSandboxFilesWithStaticID(sandboxID string, staticID string) *SandboxFiles {
+	return &SandboxFiles{
+		TemplateCacheFiles: c,
+		SandboxID:          sandboxID,
+		randomID:           staticID,
+		tmpDir:             os.TempDir(),
+	}
+}
+
 func (s *SandboxFiles) SandboxCacheRootfsPath() string {
 	return filepath.Join(sandboxCacheDir, fmt.Sprintf("rootfs-%s-%s.cow", s.SandboxID, s.randomID))
 }

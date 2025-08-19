@@ -291,6 +291,24 @@ variable "additional_domains" {
   default     = ""
 }
 
+variable "additional_api_services_json" {
+  type        = string
+  description = <<EOT
+Additional path rules to add to the API path matcher.
+Format: json string of an array of objects with 'path' and 'service' keys.
+Example:
+[
+  {
+    "paths": ["/api/v1"],
+    "service_id": "projects/e2b/global/backendServices/example",
+    "api_node_group_port_name": "example-port",
+    "api_node_group_port": 8080
+  }
+]
+EOT
+  default     = ""
+}
+
 variable "prefix" {
   type        = string
   description = "The prefix to use for all resources in this module"

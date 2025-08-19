@@ -12,7 +12,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -29,7 +28,10 @@ const (
 var ErrPausingInstanceNotFound = errors.New("pausing instance not found")
 
 func NewInstanceInfo(
-	Instance *api.Sandbox,
+	SandboxID string,
+	TemplateID string,
+	ClientID string,
+	Alias *string,
 	ExecutionID string,
 	TeamID uuid.UUID,
 	BuildID uuid.UUID,
@@ -50,7 +52,11 @@ func NewInstanceInfo(
 	BaseTemplateID string,
 ) *InstanceInfo {
 	instance := &InstanceInfo{
-		Instance:            Instance,
+		SandboxID:  SandboxID,
+		TemplateID: TemplateID,
+		ClientID:   ClientID,
+		Alias:      Alias,
+
 		ExecutionID:         ExecutionID,
 		TeamID:              TeamID,
 		BuildID:             BuildID,
@@ -79,7 +85,11 @@ func NewInstanceInfo(
 }
 
 type InstanceInfo struct {
-	Instance            *api.Sandbox
+	SandboxID  string
+	TemplateID string
+	ClientID   string
+	Alias      *string
+
 	ExecutionID         string
 	TeamID              uuid.UUID
 	BuildID             uuid.UUID
@@ -104,8 +114,8 @@ type InstanceInfo struct {
 
 func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
 	return sbxlogger.SandboxMetadata{
-		SandboxID:  i.Instance.SandboxID,
-		TemplateID: i.Instance.TemplateID,
+		SandboxID:  i.SandboxID,
+		TemplateID: i.TemplateID,
 		TeamID:     i.TeamID.String(),
 	}
 }
@@ -210,12 +220,12 @@ func (c *InstanceCache) Set(key string, value *InstanceInfo, created bool) {
 
 func (c *InstanceCache) MarkAsPausing(instanceInfo *InstanceInfo) {
 	if instanceInfo.AutoPause.Load() {
-		c.pausing.InsertIfAbsent(instanceInfo.Instance.SandboxID, instanceInfo)
+		c.pausing.InsertIfAbsent(instanceInfo.SandboxID, instanceInfo)
 	}
 }
 
 func (c *InstanceCache) UnmarkAsPausing(instanceInfo *InstanceInfo) {
-	c.pausing.RemoveCb(instanceInfo.Instance.SandboxID, func(key string, v *InstanceInfo, exists bool) bool {
+	c.pausing.RemoveCb(instanceInfo.SandboxID, func(key string, v *InstanceInfo, exists bool) bool {
 		if !exists {
 			return false
 		}

@@ -39,6 +39,7 @@ var httpClient = http.Client{
 
 type Config struct {
 	// TODO: Remove when the rootfs path is constant.
+	// Only used for v1 rootfs paths format.
 	BaseTemplateID string
 
 	Vcpu  int64
@@ -60,6 +61,7 @@ type EnvdMetadata struct {
 }
 
 type RuntimeMetadata struct {
+	TemplateID  string
 	SandboxID   string
 	ExecutionID string
 
@@ -101,7 +103,7 @@ type Sandbox struct {
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 	return sbxlogger.SandboxMetadata{
 		SandboxID:  s.Runtime.SandboxID,
-		TemplateID: s.template.Files().TemplateID,
+		TemplateID: s.Runtime.TemplateID,
 		TeamID:     s.Runtime.TeamID,
 	}
 }
@@ -218,13 +220,7 @@ func CreateSandbox(
 		sandboxFiles,
 		fcVersions,
 		rootfsPath,
-		storage.RootfsPaths{
-			// This is the potential ID which might become the TemplateID for future resumes.
-			TemplateID: config.BaseTemplateID,
-			// The rootfs build ID is from the header, because it needs to be the same from
-			// the first FS creation.
-			BuildID: rootFS.Header().Metadata.BaseBuildId.String(),
-		},
+		fc.ConstantRootfsPaths,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init FC: %w", err)
@@ -236,9 +232,8 @@ func CreateSandbox(
 		childCtx,
 		tracer,
 		sbxlogger.SandboxMetadata{
-			SandboxID: runtime.SandboxID,
-			// TemplateID is the BaseTemplateID as it is the first time the sandbox is created.
-			TemplateID: config.BaseTemplateID,
+			SandboxID:  runtime.SandboxID,
+			TemplateID: runtime.TemplateID,
 			TeamID:     runtime.TeamID,
 		},
 		config.Vcpu,
@@ -414,7 +409,8 @@ func ResumeSandbox(
 			FirecrackerVersion: sandboxFiles.FirecrackerVersion,
 		},
 		rootfsPath,
-		storage.RootfsPaths{
+		fc.RootfsPaths{
+			Version:    readonlyRootfs.Header().Metadata.Version,
 			TemplateID: config.BaseTemplateID,
 			BuildID:    readonlyRootfs.Header().Metadata.BaseBuildId.String(),
 		},
@@ -433,7 +429,7 @@ func ResumeSandbox(
 		tracer,
 		&fc.MmdsMetadata{
 			SandboxId:            runtime.SandboxID,
-			TemplateId:           sandboxFiles.TemplateID,
+			TemplateId:           runtime.TemplateID,
 			LogsCollectorAddress: os.Getenv("LOGS_COLLECTOR_PUBLIC_IP"),
 			TraceId:              traceID,
 			TeamId:               runtime.TeamID,
