@@ -21,7 +21,7 @@ runs:
         env-slug: ${{ inputs.environment }}
         project-slug: "infra-deployment"
         export-type: "file"
-        file-output-path: ".env"
+        file-output-path: "/.env"
 
     - name: Load Environment Variables
       id: load-env
