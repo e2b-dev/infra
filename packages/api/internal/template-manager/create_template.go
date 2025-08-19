@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
@@ -67,10 +68,10 @@ func (tm *TemplateManager) CreateTemplate(
 		}
 	}()
 
-	// features, err := sandbox.NewVersionInfo(firecrackerVersion)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to get features for firecracker version '%s': %w", firecrackerVersion, err)
-	// }
+	features, err := sandbox.NewVersionInfo(firecrackerVersion)
+	if err != nil {
+		return fmt.Errorf("failed to get features for firecracker version '%s': %w", firecrackerVersion, err)
+	}
 
 	cli, err := tm.GetBuildClient(clusterID, clusterNodeID, true)
 	if err != nil {
@@ -94,7 +95,7 @@ func (tm *TemplateManager) CreateTemplate(
 		DiskSizeMB:         int32(diskSizeMB),
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: firecrackerVersion,
-		HugePages:          false,
+		HugePages:          features.HasHugePages(),
 		StartCommand:       startCmd,
 		ReadyCommand:       readyCmd,
 		Force:              force,

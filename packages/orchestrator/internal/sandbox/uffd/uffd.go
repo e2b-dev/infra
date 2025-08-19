@@ -198,10 +198,6 @@ func (u *Uffd) Exit() chan error {
 	return u.exitCh
 }
 
-func (u *Uffd) TrackAndReturnNil() error {
-	return u.lis.Close()
-}
-
 func (u *Uffd) Disable() error {
 	return u.memfile.Disable()
 }

@@ -161,30 +161,31 @@ outerLoop:
 			continue
 		}
 
-		if pagefault.flags == 0 {
-			fmt.Fprintf(os.Stderr, "read trigger %d %d\n", addr, offset/pagesize)
-		}
-
-		if pagefault.flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
-			fmt.Fprintf(os.Stderr, "write trigger %d %d\n", addr, offset/pagesize)
-		}
-
+		// This prevents serving missing pages multiple times.
+		// For normal sized pages with swap on, the behavior seems not to be properly described in docs
+		// and it's not clear if the missing can be legitimately triggered multiple times.
 		if _, ok := missingChunksBeingHandled[offset]; ok {
-			fmt.Fprintf(os.Stderr, "page already being handled %d %d\n", offset, addr)
-
 			continue
 		}
 
 		missingChunksBeingHandled[offset] = struct{}{}
 
-		var copyMode CULong
+		if pagefault.flags == 0 {
+			// fmt.Fprintf(os.Stderr, "read trigger %d %d\n", addr, offset/pagesize)
+		}
+
+		if pagefault.flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
+			// fmt.Fprintf(os.Stderr, "write trigger %d %d\n", addr, offset/pagesize)
+		}
 
 		eg.Go(func() error {
 			defer func() {
 				if r := recover(); r != nil {
-					logger.Error("UFFD serve panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
+					logger.Error("UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
 				}
 			}()
+
+			var copyMode CULong
 
 			b, sliceErr := src.Slice(int64(offset), int64(pagesize))
 			if sliceErr != nil {
@@ -199,7 +200,7 @@ outerLoop:
 
 			copyErr := u.copy(addr, b, pagesize, copyMode)
 			if copyErr == unix.EEXIST {
-				logger.Debug("UFFD serve page already mapped", zap.Any("offset", offset), zap.Any("pagesize", pagesize))
+				logger.Debug("UFFD serve page already mapped", zap.Any("offset", addr), zap.Any("pagesize", pagesize))
 
 				// Page is already mapped
 

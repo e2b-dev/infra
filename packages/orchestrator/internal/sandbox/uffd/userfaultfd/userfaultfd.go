@@ -78,7 +78,7 @@ func (u *userfaultfd) AddWriteProtection(addr uintptr, size uint64) error {
 // mode: UFFDIO_COPY_MODE_WP
 // When we use both missing and wp, we need to use UFFDIO_COPY_MODE_WP, otherwise copying would unprotect the page
 func (u *userfaultfd) copy(addr uintptr, data []byte, pagesize uint64, mode CULong) error {
-	cpy := NewUffdioCopy(data, CULong(addr)&^CULong(pagesize-1), CULong(pagesize), mode, 0)
+	cpy := NewUffdioCopy(data, CULong(addr), CULong(pagesize), mode, 0)
 
 	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.fd, UFFDIO_COPY, uintptr(unsafe.Pointer(&cpy))); errno != 0 {
 		return errno
