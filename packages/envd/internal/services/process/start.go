@@ -60,7 +60,6 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 
-
 	handlerL := s.logger.With().Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).Logger()
 
 	u, err := permissions.GetAuthUser(ctx)
