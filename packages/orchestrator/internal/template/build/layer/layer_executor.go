@@ -72,9 +72,11 @@ func (lb *LayerExecutor) BuildLayer(
 	defer childSpan.End()
 
 	localTemplate, err := lb.templateCache.GetTemplate(
+		ctx,
 		cmd.SourceLayer.Template.BuildID,
 		cmd.SourceLayer.Template.KernelVersion,
 		cmd.SourceLayer.Template.FirecrackerVersion,
+		false,
 	)
 	if err != nil {
 		return cache.LayerMetadata{}, fmt.Errorf("get template snapshot: %w", err)

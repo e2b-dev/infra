@@ -50,9 +50,11 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}
 
 	template, err := s.templateCache.GetTemplate(
-		req.Sandbox.BuildId,
-		req.Sandbox.KernelVersion,
-		req.Sandbox.FirecrackerVersion,
+		ctxConn,
+		req.GetSandbox().GetBuildId(),
+		req.GetSandbox().GetKernelVersion(),
+		req.GetSandbox().GetFirecrackerVersion(),
+		req.GetSandbox().GetSnapshot(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)

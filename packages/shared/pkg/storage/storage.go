@@ -26,6 +26,9 @@ const (
 	DefaultStorageProvider Provider = GCPStorageProvider
 
 	storageProviderEnv = "STORAGE_PROVIDER"
+
+	// MemoryChunkSize must always be bigger or equal to the block size.
+	MemoryChunkSize = 4 * 1024 * 1024 // 4 MB
 )
 
 type StorageProvider interface {
@@ -46,7 +49,7 @@ type StorageObjectProvider interface {
 	Delete() error
 }
 
-func GetTemplateStorageProvider(ctx context.Context, chunkSize int64, limiter *limit.Limiter) (StorageProvider, error) {
+func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (StorageProvider, error) {
 	provider, err := getTemplateStorageProvider(ctx, limiter)
 	if err != nil {
 		return nil, err
@@ -54,7 +57,7 @@ func GetTemplateStorageProvider(ctx context.Context, chunkSize int64, limiter *l
 
 	if path := env.GetEnv("LOCAL_TEMPLATE_CACHE_PATH", ""); path != "" {
 		zap.L().Info("using local template cache", zap.String("path", path))
-		provider = NewCachedProvider(ctx, path, chunkSize, provider)
+		provider = NewCachedProvider(ctx, path, provider)
 	}
 
 	return provider, nil

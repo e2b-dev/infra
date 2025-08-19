@@ -87,17 +87,24 @@ func (c *Cache) Items() map[string]*ttlcache.Item[string, Template] {
 }
 
 func (c *Cache) GetTemplate(
+	ctx context.Context,
 	buildID,
 	kernelVersion,
 	firecrackerVersion string,
+	isSnapshot bool,
 ) (Template, error) {
+	persistence := c.persistence
+	if !isSnapshot && c.rootCachePath != "" {
+		persistence = storage.NewCachedProvider(ctx, c.rootCachePath, persistence)
+	}
+
 	storageTemplate, err := newTemplateFromStorage(
 		buildID,
 		kernelVersion,
 		firecrackerVersion,
 		nil,
 		nil,
-		c.persistence,
+		persistence,
 		c.blockMetrics,
 		nil,
 	)
