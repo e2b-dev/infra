@@ -14,7 +14,6 @@ E -- write (WP|WRITE flag) --> F(remove WP) --> C
 import (
 	"errors"
 	"fmt"
-	"os"
 	"syscall"
 	"unsafe"
 
@@ -33,7 +32,6 @@ func (u *userfaultfd) Serve(
 	fdExit *fdexit.FdExit,
 	logger *zap.Logger,
 ) error {
-	defer fmt.Fprintf(os.Stderr, "exiting serve >>>>>>>>>>>>")
 	pollFds := []unix.PollFd{
 		{Fd: int32(u.fd), Events: unix.POLLIN},
 		{Fd: int32(fdExit.Reader()), Events: unix.POLLIN},
@@ -41,7 +39,7 @@ func (u *userfaultfd) Serve(
 
 	var eg errgroup.Group
 
-	missingChunksBeingHandled := map[int64]struct{}{}
+	handledPages := map[int64]struct{}{}
 
 outerLoop:
 	for {
@@ -143,11 +141,11 @@ outerLoop:
 		// This prevents serving missing pages multiple times.
 		// For normal sized pages with swap on, the behavior seems not to be properly described in docs
 		// and it's not clear if the missing can be legitimately triggered multiple times.
-		if _, ok := missingChunksBeingHandled[offset]; ok {
+		if _, ok := handledPages[offset]; ok {
 			continue
 		}
 
-		missingChunksBeingHandled[offset] = struct{}{}
+		handledPages[offset] = struct{}{}
 
 		eg.Go(func() error {
 			defer func() {
