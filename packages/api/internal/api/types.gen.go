@@ -71,6 +71,15 @@ type BuildStatusReason struct {
 // CPUCount CPU cores for the sandbox
 type CPUCount = int32
 
+// CommandConfig defines model for CommandConfig.
+type CommandConfig struct {
+	// Cmd Command to execute
+	Cmd string `json:"cmd"`
+
+	// User User under which to execute the command
+	User *string `json:"user,omitempty"`
+}
+
 // CreatedAccessToken defines model for CreatedAccessToken.
 type CreatedAccessToken struct {
 	// CreatedAt Timestamp of access token creation
@@ -654,13 +663,9 @@ type TemplateBuildStartV2 struct {
 	FromImage *string `json:"fromImage,omitempty"`
 
 	// FromTemplate Template to use as a base for the template build
-	FromTemplate *string `json:"fromTemplate,omitempty"`
-
-	// ReadyCmd Ready check command to execute in the template after the build
-	ReadyCmd *string `json:"readyCmd,omitempty"`
-
-	// StartCmd Start command to execute in the template after the build
-	StartCmd *string `json:"startCmd,omitempty"`
+	FromTemplate *string        `json:"fromTemplate,omitempty"`
+	ReadyCmd     *CommandConfig `json:"readyCmd,omitempty"`
+	StartCmd     *CommandConfig `json:"startCmd,omitempty"`
 
 	// Steps List of steps to execute in the template build
 	Steps *[]TemplateStep `json:"steps,omitempty"`

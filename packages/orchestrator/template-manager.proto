@@ -31,6 +31,11 @@ message FromTemplateConfig {
   string buildID = 2;
 }
 
+message CommandConfig {
+  string cmd = 1;
+  optional string user = 2;
+}
+
 message TemplateConfig {
   string templateID = 1;
   string buildID = 2;
@@ -41,10 +46,10 @@ message TemplateConfig {
 
   string kernelVersion = 6;
   string firecrackerVersion = 7;
-  string startCommand = 8;
+  string deprecatedStartCommand = 8 [deprecated = true];
   bool hugePages = 9;
 
-  string readyCommand = 10;
+  string deprecatedReadyCommand = 10 [deprecated = true];
 
   optional bool force = 12;
   repeated TemplateStep steps = 13;
@@ -53,6 +58,9 @@ message TemplateConfig {
      string fromImage = 11;
      FromTemplateConfig fromTemplate = 14;
    }
+
+  optional CommandConfig startCommand = 15;
+  optional CommandConfig readyCommand = 16;
 }
 
 message TemplateCreateRequest {

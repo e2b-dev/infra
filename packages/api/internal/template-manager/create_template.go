@@ -28,17 +28,17 @@ func (tm *TemplateManager) CreateTemplate(
 	buildID uuid.UUID,
 	kernelVersion,
 	firecrackerVersion string,
-	startCommand *string,
 	vCpuCount,
 	diskSizeMB,
 	memoryMB int64,
-	readyCommand *string,
 	fromImage *string,
 	fromTemplate *string,
 	force *bool,
 	steps *[]api.TemplateStep,
 	clusterID *uuid.UUID,
 	clusterNodeID *string,
+	startCommand *api.CommandConfig,
+	readyCommand *api.CommandConfig,
 ) (e error) {
 	ctx, span := t.Start(ctx, "create-template",
 		trace.WithAttributes(
@@ -78,13 +78,20 @@ func (tm *TemplateManager) CreateTemplate(
 		return fmt.Errorf("failed to get builder edgeHttpClient: %w", err)
 	}
 
-	var startCmd string
+	var startCmd *templatemanagergrpc.CommandConfig
 	if startCommand != nil {
-		startCmd = *startCommand
+		startCmd = &templatemanagergrpc.CommandConfig{
+			Cmd:  startCommand.Cmd,
+			User: startCommand.User,
+		}
 	}
-	var readyCmd string
+
+	var readyCmd *templatemanagergrpc.CommandConfig
 	if readyCommand != nil {
-		readyCmd = *readyCommand
+		readyCmd = &templatemanagergrpc.CommandConfig{
+			Cmd:  readyCommand.Cmd,
+			User: readyCommand.User,
+		}
 	}
 
 	template := &templatemanagergrpc.TemplateConfig{
@@ -96,10 +103,10 @@ func (tm *TemplateManager) CreateTemplate(
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: firecrackerVersion,
 		HugePages:          features.HasHugePages(),
-		StartCommand:       startCmd,
-		ReadyCommand:       readyCmd,
 		Force:              force,
 		Steps:              convertTemplateSteps(steps),
+		StartCommand:       startCmd,
+		ReadyCommand:       readyCmd,
 	}
 
 	err = setTemplateSource(ctx, tm, teamID, template, fromImage, fromTemplate)

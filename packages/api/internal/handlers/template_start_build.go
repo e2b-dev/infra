@@ -153,17 +153,17 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		buildUUID,
 		build.KernelVersion,
 		build.FirecrackerVersion,
-		build.StartCmd,
 		build.Vcpu,
 		build.FreeDiskSizeMb,
 		build.RamMb,
-		build.ReadyCmd,
 		&fromImage,
 		nil, // fromTemplate not supported in v1 handler
 		&forceRebuild,
 		nil,
 		team.ClusterID,
 		build.ClusterNodeID,
+		cmdToConfig(build.StartCmd),
+		cmdToConfig(build.ReadyCmd),
 	)
 	if buildErr != nil {
 		telemetry.ReportCriticalError(ctx, "build failed", buildErr, telemetry.WithTemplateID(templateID))
@@ -180,4 +180,13 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	)
 
 	c.Status(http.StatusAccepted)
+}
+
+func cmdToConfig(cmd *string) *api.CommandConfig {
+	if cmd == nil || *cmd == "" {
+		return nil
+	}
+	return &api.CommandConfig{
+		Cmd: *cmd,
+	}
 }

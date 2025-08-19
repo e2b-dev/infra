@@ -166,6 +166,18 @@ components:
       minimum: 128
       description: Memory for the sandbox in MiB
 
+    CommandConfig:
+      type: object
+      required:
+        - cmd
+      properties:
+        cmd:
+          type: string
+          description: Command to execute
+        user:
+          type: string
+          description: User under which to execute the command
+
     DiskSizeMB:
       type: integer
       format: int32
@@ -629,11 +641,9 @@ components:
           items:
             $ref: "#/components/schemas/TemplateStep"
         startCmd:
-          description: Start command to execute in the template after the build
-          type: string
+          $ref: "#/components/schemas/CommandConfig"
         readyCmd:
-          description: Ready check command to execute in the template after the build
-          type: string
+          $ref: "#/components/schemas/CommandConfig"
 
     TemplateBuildFileUpload:
       required:

@@ -15,7 +15,7 @@ type TemplateConfig struct {
 	CacheScope string
 
 	// Command to run when building the template.
-	StartCmd string
+	StartCmd *templatemanager.CommandConfig
 
 	// The number of vCPUs to allocate to the VM.
 	VCpuCount int64
@@ -30,7 +30,7 @@ type TemplateConfig struct {
 	HugePages bool
 
 	// Command to run to check if the template is ready.
-	ReadyCmd string
+	ReadyCmd *templatemanager.CommandConfig
 
 	// FromImage is the base image to use for building the template.
 	FromImage string

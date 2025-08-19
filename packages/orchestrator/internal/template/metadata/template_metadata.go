@@ -22,9 +22,11 @@ type FromTemplateMetadata struct {
 }
 
 type StartMetadata struct {
-	StartCmd string                       `json:"start_command"`
-	ReadyCmd string                       `json:"ready_command"`
-	Metadata sandboxtools.CommandMetadata `json:"metadata"`
+	StartCmd         string                       `json:"start_command"`
+	ReadyCmd         string                       `json:"ready_command"`
+	Metadata         sandboxtools.CommandMetadata `json:"metadata"`
+	StartCmdMetadata sandboxtools.CommandMetadata `json:"start_cmd_metadata"`
+	ReadyCmdMetadata sandboxtools.CommandMetadata `json:"ready_cmd_metadata"`
 }
 
 type TemplateMetadata struct {

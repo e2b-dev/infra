@@ -113,8 +113,8 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	}
 
 	err = a.db.Client.EnvBuild.Update().
-		SetNillableStartCmd(body.StartCmd).
-		SetNillableReadyCmd(body.ReadyCmd).
+		SetNillableStartCmd(serializeCommandConfig(body.StartCommand)).
+		SetNillableReadyCmd(serializeCommandConfig(body.ReadyCommand)).
 		SetDockerfile(string(stepsMarshalled)).
 		Where(envbuild.ID(buildUUID)).
 		Exec(ctx)
@@ -133,17 +133,17 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		buildUUID,
 		build.KernelVersion,
 		build.FirecrackerVersion,
-		body.StartCmd,
 		build.Vcpu,
 		build.FreeDiskSizeMb,
 		build.RamMb,
-		body.ReadyCmd,
 		body.FromImage,
 		body.FromTemplate,
 		body.Force,
 		body.Steps,
 		team.ClusterID,
 		build.ClusterNodeID,
+		body.StartCommand,
+		body.ReadyCommand,
 	)
 	if buildErr != nil {
 		telemetry.ReportCriticalError(ctx, "build failed", buildErr, telemetry.WithTemplateID(templateID))
@@ -159,4 +159,18 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	)
 
 	c.Status(http.StatusAccepted)
+}
+
+func serializeCommandConfig(cmd *api.CommandConfig) *string {
+	if cmd == nil {
+		return nil
+	}
+
+	cmdStr, err := json.Marshal(cmd)
+	if err != nil {
+		return nil
+	}
+
+	cmdString := string(cmdStr)
+	return &cmdString
 }

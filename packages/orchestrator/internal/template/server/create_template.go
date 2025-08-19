@@ -29,7 +29,6 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		telemetry.WithBuildID(cfg.BuildID),
 		attribute.String("env.kernel.version", cfg.KernelVersion),
 		attribute.String("env.firecracker.version", cfg.FirecrackerVersion),
-		attribute.String("env.start_cmd", cfg.StartCommand),
 		attribute.Int64("env.memory_mb", int64(cfg.MemoryMB)),
 		attribute.Int64("env.vcpu_count", int64(cfg.VCpuCount)),
 		attribute.Bool("env.huge_pages", cfg.HugePages),
@@ -52,13 +51,29 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		cacheScope = *templateRequest.CacheScope
 	}
 
+	startCmd := cfg.StartCommand
+	if cfg.DeprecatedStartCommand != nil {
+		if cfg.StartCommand.Cmd != nil {
+			startCmd = *cfg.StartCommand.Cmd
+		}
+		startCmdUser = cfg.StartCommand.User
+	}
+
+	readyCmd := cfg.ReadyCommand
+	if cfg.DeprecatedStartCommand != nil {
+		if cfg.ReadyCommand.Cmd != nil {
+			readyCmd = *cfg.ReadyCommand.Cmd
+		}
+		readyCmdUser = cfg.ReadyCommand.User
+	}
+
 	template := config.TemplateConfig{
 		TemplateID:   cfg.TemplateID,
 		CacheScope:   cacheScope,
 		VCpuCount:    int64(cfg.VCpuCount),
 		MemoryMB:     int64(cfg.MemoryMB),
-		StartCmd:     cfg.StartCommand,
-		ReadyCmd:     cfg.ReadyCommand,
+		StartCmd:     startCmd,
+		ReadyCmd:     readyCmd,
 		DiskSizeMB:   int64(cfg.DiskSizeMB),
 		HugePages:    cfg.HugePages,
 		FromImage:    cfg.GetFromImage(),

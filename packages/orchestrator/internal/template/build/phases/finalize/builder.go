@@ -79,10 +79,27 @@ func (ppb *PostProcessingBuilder) Layer(
 ) (phases.LayerResult, error) {
 	var startMetadata *metadata.StartMetadata
 	if ppb.Config.StartCmd != "" || ppb.Config.ReadyCmd != "" {
+		// Create base metadata for backward compatibility
+		baseMeta := sourceLayer.Metadata.CmdMeta
+
+		// Create start command metadata (inherit from base, override user if specified)
+		startCmdMeta := baseMeta
+		if ppb.Config.StartCmdUser != nil {
+			startCmdMeta.User = *ppb.Config.StartCmdUser
+		}
+
+		// Create ready command metadata (inherit from base, override user if specified)
+		readyCmdMeta := baseMeta
+		if ppb.Config.ReadyCmdUser != nil {
+			readyCmdMeta.User = *ppb.Config.ReadyCmdUser
+		}
+
 		startMetadata = &metadata.StartMetadata{
-			StartCmd: ppb.Config.StartCmd,
-			ReadyCmd: ppb.Config.ReadyCmd,
-			Metadata: sourceLayer.Metadata.CmdMeta,
+			StartCmd:         ppb.Config.StartCmd,
+			ReadyCmd:         ppb.Config.ReadyCmd,
+			Metadata:         baseMeta, // Keep for backward compatibility
+			StartCmdMetadata: startCmdMeta,
+			ReadyCmdMetadata: readyCmdMeta,
 		}
 	}
 
@@ -94,6 +111,17 @@ func (ppb *PostProcessingBuilder) Layer(
 			return phases.LayerResult{}, fmt.Errorf("error reading from template metadata: %w", err)
 		}
 		startMetadata = tm.Start
+
+		// If loaded metadata doesn't have separate command metadata (backward compatibility),
+		// initialize them from the general metadata
+		if startMetadata != nil {
+			if startMetadata.StartCmdMetadata.User == "" && startMetadata.StartCmdMetadata.WorkDir == nil && len(startMetadata.StartCmdMetadata.EnvVars) == 0 {
+				startMetadata.StartCmdMetadata = startMetadata.Metadata
+			}
+			if startMetadata.ReadyCmdMetadata.User == "" && startMetadata.ReadyCmdMetadata.WorkDir == nil && len(startMetadata.ReadyCmdMetadata.EnvVars) == 0 {
+				startMetadata.ReadyCmdMetadata = startMetadata.Metadata
+			}
+		}
 	}
 
 	return phases.LayerResult{
@@ -203,6 +231,12 @@ func (ppb *PostProcessingBuilder) postProcessingFn(
 		if start.StartCmd != "" {
 			ppb.UserLogger.Info("Running start command")
 			startCmdRun.Go(func() error {
+				// Use specific start command metadata if available, fallback to general metadata
+				startMetadata := start.Metadata
+				if start.StartCmdMetadata.User != "" || start.StartCmdMetadata.WorkDir != nil || len(start.StartCmdMetadata.EnvVars) > 0 {
+					startMetadata = start.StartCmdMetadata
+				}
+
 				err := sandboxtools.RunCommandWithConfirmation(
 					commandsCtx,
 					ppb.tracer,
@@ -212,7 +246,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(
 					"start",
 					sbx.Runtime.SandboxID,
 					start.StartCmd,
-					start.Metadata,
+					startMetadata,
 					startCmdConfirm,
 				)
 				// If the ctx is canceled, the ready command succeeded and no start command await is necessary.
@@ -238,11 +272,17 @@ func (ppb *PostProcessingBuilder) postProcessingFn(
 				readyCmd = GetDefaultReadyCommand(ppb.Config.TemplateID)
 			}
 		}
+		// Use specific ready command metadata if available, fallback to general metadata
+		readyMetadata := start.Metadata
+		if start.ReadyCmdMetadata.User != "" || start.ReadyCmdMetadata.WorkDir != nil || len(start.ReadyCmdMetadata.EnvVars) > 0 {
+			readyMetadata = start.ReadyCmdMetadata
+		}
+
 		err = ppb.runReadyCommand(
 			commandsCtx,
 			sbx.Runtime.SandboxID,
 			readyCmd,
-			start.Metadata,
+			readyMetadata,
 		)
 		if err != nil {
 			return sandboxtools.CommandMetadata{}, &phases.PhaseBuildError{
