@@ -43,7 +43,7 @@ func (m *Metadata) NextGeneration(buildID uuid.UUID) *Metadata {
 	}
 }
 
-func Serialize(metadata *Metadata, mappings []*BuildMap) (io.Reader, error) {
+func Serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
 	var buf bytes.Buffer
 
 	err := binary.Write(&buf, binary.LittleEndian, metadata)
@@ -58,7 +58,7 @@ func Serialize(metadata *Metadata, mappings []*BuildMap) (io.Reader, error) {
 		}
 	}
 
-	return &buf, nil
+	return buf.Bytes(), nil
 }
 
 func Deserialize(in io.WriterTo) (*Header, error) {
