@@ -210,10 +210,6 @@ func (u *Uffd) Exit() *utils.ErrorOnce {
 	return u.exit
 }
 
-func (u *Uffd) TrackAndReturnNil() error {
-	return u.lis.Close()
-}
-
 func (u *Uffd) Disable() error {
 	return u.memfile.Disable()
 }

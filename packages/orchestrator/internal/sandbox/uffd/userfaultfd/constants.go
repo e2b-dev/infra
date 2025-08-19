@@ -82,7 +82,7 @@ func NewUffdioRegister(start, length, mode CULong) UffdioRegister {
 func NewUffdioCopy(b []byte, address CULong, pagesize CULong, mode CULong, bytesCopied CLong) UffdioCopy {
 	return UffdioCopy{
 		src:  CULong(uintptr(unsafe.Pointer(&b[0]))),
-		dst:  address &^ (pagesize - 1),
+		dst:  address,
 		len:  pagesize,
 		mode: mode,
 		copy: bytesCopied,

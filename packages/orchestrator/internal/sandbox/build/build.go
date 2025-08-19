@@ -104,7 +104,7 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 
 	// Pass empty huge page when the build id is nil.
 	if *buildID == uuid.Nil {
-		return header.EmptyHugePage[:length], nil
+		return header.EmptyHugePage, nil
 	}
 
 	build, err := b.getBuild(ctx, buildID)
