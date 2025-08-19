@@ -29,8 +29,12 @@ func (e *Env) Execute(
 	cmdType := strings.ToUpper(step.Type)
 	args := step.Args
 	// args: [key1 value1 key2 value2 ...]
-	if len(args) == 0 || len(args)%2 != 0 {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("%s requires a key and value arguments", cmdType)
+	if len(args) == 0 {
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("%s does not support passing no arguments", cmdType)
+	}
+
+	if len(args)%2 != 0 {
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("%s requires both a key and value arguments", cmdType)
 	}
 
 	envVars := maps.Clone(cmdMetadata.EnvVars)
