@@ -48,15 +48,6 @@ type StorageObjectProvider interface {
 }
 
 func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (StorageProvider, error) {
-	provider, err := getTemplateStorageProvider(ctx, limiter)
-	if err != nil {
-		return nil, err
-	}
-
-	return provider, nil
-}
-
-func getTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (StorageProvider, error) {
 	provider := Provider(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
 
 	if provider == LocalStorageProvider {

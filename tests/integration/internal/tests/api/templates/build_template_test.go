@@ -102,7 +102,8 @@ func safe[T any](item *T) T {
 	if item != nil {
 		return *item
 	}
-	return *new(T)
+	var t T
+	return t
 }
 
 func defaultBuildLogHandler(tb testing.TB) BuildLogHandler {
