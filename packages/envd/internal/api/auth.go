@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 
@@ -105,7 +104,6 @@ func (a *API) validateSigning(r *http.Request, signature *string, signatureExpir
 
 	// signature expiration
 	if signatureExpiration != nil {
-		host.WaitForSync()
 		exp := int64(*signatureExpiration)
 		if exp < time.Now().Unix() {
 			return fmt.Errorf("signature is already expired")
