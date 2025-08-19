@@ -27,7 +27,7 @@ runs:
       id: load-env
       run: |
         echo ${{ inputs.environment }} > .last_used_env
-        cat ".env" | sed "s/='\(.*\)'$$/=\1/g" > ".env.${{ inputs.environment }}"
+        cat ".env" | sed "s/='\(.*\)'$/=\1/g" > ".env.${{ inputs.environment }}"
         export $(cat ".env.${{ inputs.environment }}" | xargs)
 
         echo "GCP_REGION=${GCP_REGION}" >> $GITHUB_ENV
