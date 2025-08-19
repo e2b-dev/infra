@@ -832,6 +832,8 @@ func (siw *ServerInterfaceWrapper) DeleteTemplatesTemplateID(c *gin.Context) {
 		return
 	}
 
+	c.Set(ApiKeyAuthScopes, []string{})
+
 	c.Set(AccessTokenAuthScopes, []string{})
 
 	c.Set(Supabase1TokenAuthScopes, []string{})

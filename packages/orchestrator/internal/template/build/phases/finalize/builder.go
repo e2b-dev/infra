@@ -110,7 +110,6 @@ func (ppb *PostProcessingBuilder) Build(
 	ctx context.Context,
 	lastStepResult phases.LayerResult,
 	currentLayer phases.LayerResult,
-	_ string,
 ) (phases.LayerResult, error) {
 	// Configure sandbox for final layer
 	sbxConfig := sandbox.Config{
@@ -129,7 +128,7 @@ func (ppb *PostProcessingBuilder) Build(
 	sandboxCreator := layer.NewCreateSandbox(sbxConfig, fc.FirecrackerVersions{
 		KernelVersion:      ppb.Template.KernelVersion,
 		FirecrackerVersion: ppb.Template.FirecrackerVersion,
-	}, ppb.Template.TemplateID)
+	})
 
 	actionExecutor := layer.NewFunctionAction(ppb.postProcessingFn(currentLayer.StartMetadata))
 
@@ -178,14 +177,17 @@ func (ppb *PostProcessingBuilder) postProcessingFn(
 		// Run configuration script
 		err := runConfiguration(
 			ctx,
+			ppb.BuildContext,
 			ppb.tracer,
 			ppb.proxy,
-			ppb.UserLogger,
-			ppb.Template,
 			sbx.Runtime.SandboxID,
 		)
 		if err != nil {
-			return sandboxtools.CommandMetadata{}, fmt.Errorf("error running configuration script: %w", err)
+			return sandboxtools.CommandMetadata{}, &phases.PhaseBuildError{
+				Phase: string(metrics.PhaseFinalize),
+				Step:  "finalize",
+				Err:   fmt.Errorf("configuration script failed: %w", err),
+			}
 		}
 
 		if start == nil {
@@ -233,7 +235,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(
 			if start.StartCmd == "" {
 				readyCmd = "sleep 0"
 			} else {
-				readyCmd = GetDefaultReadyCommand(ppb.Template)
+				readyCmd = GetDefaultReadyCommand(ppb.Config.TemplateID)
 			}
 		}
 		err = ppb.runReadyCommand(
@@ -243,13 +245,21 @@ func (ppb *PostProcessingBuilder) postProcessingFn(
 			start.Metadata,
 		)
 		if err != nil {
-			return sandboxtools.CommandMetadata{}, fmt.Errorf("error running ready command: %w", err)
+			return sandboxtools.CommandMetadata{}, &phases.PhaseBuildError{
+				Phase: string(metrics.PhaseFinalize),
+				Step:  "finalize",
+				Err:   fmt.Errorf("ready command failed: %w", err),
+			}
 		}
 
 		// Wait for the start command to start executing.
 		select {
 		case <-ctx.Done():
-			return sandboxtools.CommandMetadata{}, fmt.Errorf("error waiting for start command: %w", commandsCtx.Err())
+			return sandboxtools.CommandMetadata{}, &phases.PhaseBuildError{
+				Phase: string(metrics.PhaseFinalize),
+				Step:  "finalize",
+				Err:   fmt.Errorf("waiting for start command failed: %w", commandsCtx.Err()),
+			}
 		case <-startCmdConfirm:
 		}
 		// Cancel the start command context (it's running in the background anyway).
@@ -257,7 +267,11 @@ func (ppb *PostProcessingBuilder) postProcessingFn(
 		commandsCancel()
 		err = startCmdRun.Wait()
 		if err != nil {
-			return sandboxtools.CommandMetadata{}, fmt.Errorf("error running start command: %w", err)
+			return sandboxtools.CommandMetadata{}, &phases.PhaseBuildError{
+				Phase: string(metrics.PhaseFinalize),
+				Step:  "finalize",
+				Err:   fmt.Errorf("start command failed: %w", err),
+			}
 		}
 
 		return cmdMeta, nil

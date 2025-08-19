@@ -148,7 +148,7 @@ func (c *Copy) Execute(
 		cmdMetadata,
 	)
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to extract files in sandbox: %w", err)
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to extract files: %w", err)
 	}
 
 	// 4) Move the extracted files to the target path in the sandbox
@@ -191,7 +191,7 @@ func (c *Copy) Execute(
 				cmdMetadata,
 			)
 			if err != nil {
-				return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to set ownership and permissions in sandbox: %w", err)
+				return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to set ownership: %w", err)
 			}
 		}
 	}
@@ -211,7 +211,7 @@ func (c *Copy) Execute(
 				cmdMetadata,
 			)
 			if err != nil {
-				return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to set ownership and permissions in sandbox: %w", err)
+				return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to set permissions: %w", err)
 			}
 		}
 	}

@@ -23,7 +23,7 @@ type BuilderPhase interface {
 
 	Hash(sourceLayer LayerResult) (string, error)
 	Layer(ctx context.Context, sourceLayer LayerResult, hash string) (LayerResult, error)
-	Build(ctx context.Context, sourceLayer LayerResult, currentLayer LayerResult, baseTemplateID string) (LayerResult, error)
+	Build(ctx context.Context, sourceLayer LayerResult, currentLayer LayerResult) (LayerResult, error)
 }
 
 type LayerResult struct {
@@ -54,7 +54,6 @@ func Run(
 	builders []BuilderPhase,
 ) (LayerResult, error) {
 	sourceLayer := LayerResult{}
-	baseTemplateID := ""
 
 	for _, builder := range builders {
 		meta := builder.Metadata()
@@ -62,27 +61,21 @@ func Run(
 		phaseStartTime := time.Now()
 		hash, err := builder.Hash(sourceLayer)
 		if err != nil {
-			return LayerResult{}, fmt.Errorf("hash get failed for %s: %w", meta.Phase, err)
+			return LayerResult{}, fmt.Errorf("getting hash: %w", err)
 		}
 
 		currentLayer, err := builder.Layer(ctx, sourceLayer, hash)
 		if err != nil {
-			return LayerResult{}, fmt.Errorf("metadata get failed for %s: %w", meta.Phase, err)
+			return LayerResult{}, fmt.Errorf("getting layer: %w", err)
 		}
 		metrics.RecordCacheResult(ctx, meta.Phase, meta.StepType, currentLayer.Cached)
 
 		prefix := builder.Prefix()
 		source, err := builder.String(ctx)
 		if err != nil {
-			return LayerResult{}, fmt.Errorf("string get failed for %s: %w", meta.Phase, err)
+			return LayerResult{}, fmt.Errorf("getting source: %w", err)
 		}
 		bc.UserLogger.Info(layerInfo(currentLayer.Cached, prefix, source, currentLayer.Hash))
-
-		// If the last layer is cached, update the base metadata to the step metadata
-		// This is needed to properly run the sandbox for the next step
-		if sourceLayer.Cached || baseTemplateID == "" {
-			baseTemplateID = currentLayer.Metadata.Template.TemplateID
-		}
 
 		if currentLayer.Cached {
 			phaseDuration := time.Since(phaseStartTime)
@@ -92,13 +85,13 @@ func Run(
 			continue
 		}
 
-		res, err := builder.Build(ctx, sourceLayer, currentLayer, baseTemplateID)
+		res, err := builder.Build(ctx, sourceLayer, currentLayer)
 		// Record phase duration
 		phaseDuration := time.Since(phaseStartTime)
 		metrics.RecordPhaseDuration(ctx, phaseDuration, meta.Phase, meta.StepType, false)
 
 		if err != nil {
-			return LayerResult{}, fmt.Errorf("error building phase %s: %w", meta.Phase, err)
+			return LayerResult{}, err
 		}
 
 		sourceLayer = res

@@ -20,7 +20,7 @@ build-debug:
 .PHONE: create-migration
 create-migration:
 ifeq ($(origin NAME), undefined)
-	@echo "The expected syntax is: make migration-create NAME=your-migration-name"
+	@echo "The expected syntax is: make create-migration NAME=your-migration-name"
 	@exit 1
 endif
 	@$(goose) create $(NAME) sql

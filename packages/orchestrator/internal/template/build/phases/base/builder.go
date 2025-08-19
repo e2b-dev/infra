@@ -102,7 +102,7 @@ func (bb *BaseBuilder) String(ctx context.Context) (string, error) {
 	} else {
 		fromImage := bb.Config.FromImage
 		if fromImage == "" {
-			tag, err := bb.artifactRegistry.GetTag(ctx, bb.Template.TemplateID, bb.Template.BuildID)
+			tag, err := bb.artifactRegistry.GetTag(ctx, bb.Config.TemplateID, bb.Template.BuildID)
 			if err != nil {
 				return "", fmt.Errorf("error getting tag for template: %w", err)
 			}
@@ -125,7 +125,6 @@ func (bb *BaseBuilder) Build(
 	ctx context.Context,
 	_ phases.LayerResult,
 	currentLayer phases.LayerResult,
-	_ string,
 ) (phases.LayerResult, error) {
 	baseMetadata, err := bb.buildLayerFromOCI(
 		ctx,
@@ -133,7 +132,11 @@ func (bb *BaseBuilder) Build(
 		currentLayer.Hash,
 	)
 	if err != nil {
-		return phases.LayerResult{}, fmt.Errorf("error building base layer: %w", err)
+		return phases.LayerResult{}, &phases.PhaseBuildError{
+			Phase: string(metrics.PhaseBase),
+			Step:  "base",
+			Err:   err,
+		}
 	}
 
 	return phases.LayerResult{
@@ -200,8 +203,6 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	allowInternetAccess := true
 
 	baseSbxConfig := sandbox.Config{
-		BaseTemplateID: baseMetadata.Template.TemplateID,
-
 		Vcpu:      bb.Config.VCpuCount,
 		RamMB:     bb.Config.MemoryMB,
 		HugePages: bb.Config.HugePages,
@@ -216,6 +217,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		ctx,
 		baseSbxConfig,
 		sandbox.RuntimeMetadata{
+			TemplateID:  bb.Config.TemplateID,
 			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
 			ExecutionID: uuid.NewString(),
 		},
@@ -262,6 +264,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		bb.devicePool,
 		baseSbxConfig,
 		sandbox.RuntimeMetadata{
+			TemplateID:  bb.Config.TemplateID,
 			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
 			ExecutionID: uuid.NewString(),
 		},
@@ -348,7 +351,6 @@ func (bb *BaseBuilder) Layer(
 
 			baseMetadata = cache.LayerMetadata{
 				Template: storage.TemplateFiles{
-					TemplateID:         id.Generate(),
 					BuildID:            uuid.New().String(),
 					KernelVersion:      bb.Template.KernelVersion,
 					FirecrackerVersion: bb.Template.FirecrackerVersion,
@@ -363,7 +365,6 @@ func (bb *BaseBuilder) Layer(
 		if bb.Config.Force != nil && *bb.Config.Force {
 			baseMetadata = cache.LayerMetadata{
 				Template: storage.TemplateFiles{
-					TemplateID:         id.Generate(),
 					BuildID:            uuid.New().String(),
 					KernelVersion:      bb.Template.KernelVersion,
 					FirecrackerVersion: bb.Template.FirecrackerVersion,

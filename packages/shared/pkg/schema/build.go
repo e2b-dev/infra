@@ -44,7 +44,7 @@ func (EnvBuild) Fields() []ent.Field {
 		field.String("firecracker_version").SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.String("envd_version").SchemaType(map[string]string{dialect.Postgres: "text"}).Nillable().Optional(),
 		field.String("cluster_node_id").SchemaType(map[string]string{dialect.Postgres: "text"}).Optional().Nillable(),
-		field.String("reason").SchemaType(map[string]string{dialect.Postgres: "text"}).Nillable().Optional(),
+		field.JSON("reason", &BuildReason{}).SchemaType(map[string]string{dialect.Postgres: "jsonb"}).Optional(),
 	}
 }
 
@@ -58,4 +58,12 @@ func (EnvBuild) Mixin() []ent.Mixin {
 	return []ent.Mixin{
 		Mixin{},
 	}
+}
+
+type BuildReason struct {
+	// Message Message with the status reason, currently reporting only for error status
+	Message string `json:"message"`
+
+	// Step Step that failed
+	Step *string `json:"step,omitempty"`
 }

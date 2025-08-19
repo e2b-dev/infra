@@ -21,7 +21,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -114,7 +113,6 @@ func (sb *StepBuilder) Layer(
 
 	meta := cache.LayerMetadata{
 		Template: storage.TemplateFiles{
-			TemplateID:         id.Generate(),
 			BuildID:            uuid.NewString(),
 			KernelVersion:      sourceLayer.Metadata.Template.KernelVersion,
 			FirecrackerVersion: sourceLayer.Metadata.Template.FirecrackerVersion,
@@ -133,14 +131,11 @@ func (sb *StepBuilder) Build(
 	ctx context.Context,
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
-	baseTemplateID string,
 ) (phases.LayerResult, error) {
 	prefix := sb.Prefix()
 	step := sb.step
 
 	sbxConfig := sandbox.Config{
-		BaseTemplateID: baseTemplateID,
-
 		Vcpu:      sb.Config.VCpuCount,
 		RamMB:     sb.Config.MemoryMB,
 		HugePages: sb.Config.HugePages,
@@ -158,7 +153,7 @@ func (sb *StepBuilder) Build(
 		sandboxCreator = layer.NewCreateSandbox(sbxConfig, fc.FirecrackerVersions{
 			KernelVersion:      sb.Template.KernelVersion,
 			FirecrackerVersion: sb.Template.FirecrackerVersion,
-		}, currentLayer.Metadata.Template.TemplateID)
+		})
 	} else {
 		sandboxCreator = layer.NewResumeSandbox(sbxConfig)
 	}
@@ -172,7 +167,11 @@ func (sb *StepBuilder) Build(
 			cmdMeta,
 		)
 		if err != nil {
-			return sandboxtools.CommandMetadata{}, fmt.Errorf("error processing layer: %w", err)
+			return sandboxtools.CommandMetadata{}, &phases.PhaseBuildError{
+				Phase: string(metrics.PhaseSteps),
+				Step:  fmt.Sprintf("%d", sb.stepNumber),
+				Err:   err,
+			}
 		}
 
 		err = sandboxtools.SyncChangesToDisk(
@@ -197,7 +196,7 @@ func (sb *StepBuilder) Build(
 		ActionExecutor: actionExecutor,
 	})
 	if err != nil {
-		return phases.LayerResult{}, fmt.Errorf("error running build layer: %w", err)
+		return phases.LayerResult{}, fmt.Errorf("error building step %d: %w", sb.stepNumber, err)
 	}
 
 	return phases.LayerResult{

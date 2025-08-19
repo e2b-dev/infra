@@ -132,7 +132,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 		postProcessor.Stop(ctx, e)
 	}()
 
-	postProcessor.Info(fmt.Sprintf("Building template %s/%s", template.TemplateID, template.BuildID))
+	postProcessor.Info(fmt.Sprintf("Building template %s/%s", config.TemplateID, template.BuildID))
 
 	defer func(ctx context.Context) {
 		if e == nil {
@@ -169,12 +169,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 		IsV1Build:      isV1Build,
 	}
 
-	res, err := runBuild(ctx, buildContext, b)
-	if err != nil {
-		return nil, fmt.Errorf("error running build: %w", err)
-	}
-
-	return res, nil
+	return runBuild(ctx, buildContext, b)
 }
 
 func runBuild(
@@ -244,7 +239,7 @@ func runBuild(
 
 	lastLayerResult, err := phases.Run(ctx, bc, builder.metrics, builders)
 	if err != nil {
-		return nil, fmt.Errorf("error building phases: %w", err)
+		return nil, err
 	}
 
 	// Ensure the base layer is uploaded before getting the rootfs size

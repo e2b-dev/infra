@@ -9,7 +9,6 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	nNode "github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -53,20 +52,13 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 			return nil, fmt.Errorf("failed to parse build ID '%s' for job: %w", config.BuildId, err)
 		}
 
-		autoPause := instance.InstanceAutoPauseDefault
-		if config.AutoPause != nil {
-			autoPause = *config.AutoPause
-		}
-
 		sandboxesInfo = append(
 			sandboxesInfo,
 			instance.NewInstanceInfo(
-				&api.Sandbox{
-					SandboxID:  config.SandboxId,
-					TemplateID: config.TemplateId,
-					Alias:      config.Alias,
-					ClientID:   consts.ClientID,
-				},
+				config.SandboxId,
+				config.TemplateId,
+				consts.ClientID,
+				config.Alias,
 				config.ExecutionId,
 				teamID,
 				buildID,
@@ -81,7 +73,7 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 				config.FirecrackerVersion,
 				config.EnvdVersion,
 				node,
-				autoPause,
+				config.AutoPause,
 				config.EnvdAccessToken,
 				config.AllowInternetAccess,
 				config.BaseTemplateId,

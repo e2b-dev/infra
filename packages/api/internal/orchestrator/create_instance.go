@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -141,8 +142,9 @@ func (o *Orchestrator) CreateSandbox(
 			RamMb:               build.RamMb,
 			Vcpu:                build.Vcpu,
 			Snapshot:            isResume,
-			AutoPause:           &autoPause,
+			AutoPause:           autoPause,
 			AllowInternetAccess: allowInternetAccess,
+			TotalDiskSizeMb:     ut.FromPtr(build.TotalDiskSizeMb),
 		},
 		StartTime: timestamppb.New(startTime),
 		EndTime:   timestamppb.New(endTime),
@@ -262,7 +264,10 @@ func (o *Orchestrator) CreateSandbox(
 	endTime = startTime.Add(timeout)
 
 	instanceInfo := instance.NewInstanceInfo(
-		&sbx,
+		sbx.SandboxID,
+		sbx.TemplateID,
+		sbx.ClientID,
+		sbx.Alias,
 		executionID,
 		team.Team.ID,
 		build.ID,

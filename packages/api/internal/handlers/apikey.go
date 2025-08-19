@@ -38,7 +38,9 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		return
 	}
 
-	err = a.db.Client.TeamAPIKey.UpdateOneID(apiKeyIDParsed).SetName(body.Name).SetUpdatedAt(time.Now()).Exec(ctx)
+	teamID := a.GetTeamInfo(c).Team.ID
+
+	err = a.db.Client.TeamAPIKey.UpdateOneID(apiKeyIDParsed).Where(teamapikey.TeamID(teamID)).SetName(body.Name).SetUpdatedAt(time.Now()).Exec(ctx)
 	if models.IsNotFound(err) {
 		c.String(http.StatusNotFound, "id not found")
 		return
@@ -116,7 +118,9 @@ func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		return
 	}
 
-	err = a.db.Client.TeamAPIKey.DeleteOneID(apiKeyIDParsed).Exec(ctx)
+	teamID := a.GetTeamInfo(c).Team.ID
+
+	err = a.db.Client.TeamAPIKey.DeleteOneID(apiKeyIDParsed).Where(teamapikey.TeamID(teamID)).Exec(ctx)
 	if models.IsNotFound(err) {
 		c.String(http.StatusNotFound, "id not found")
 		return

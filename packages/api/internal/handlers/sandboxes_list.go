@@ -147,7 +147,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	// Running Sandbox IDs
 	runningSandboxesIDs := make([]string, 0)
 	for _, info := range runningSandboxes {
-		runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.Instance.SandboxID))
+		runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
 	}
 
 	if slices.Contains(states, api.Running) {
@@ -263,10 +263,10 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []*instance.InstanceInfo)
 	for _, info := range runningSandboxes {
 		sandbox := utils.PaginatedSandbox{
 			ListedSandbox: api.ListedSandbox{
-				ClientID:    info.Instance.ClientID,
+				ClientID:    info.ClientID,
 				TemplateID:  info.BaseTemplateID,
-				Alias:       info.Instance.Alias,
-				SandboxID:   info.Instance.SandboxID,
+				Alias:       info.Alias,
+				SandboxID:   info.SandboxID,
 				StartedAt:   info.StartTime,
 				CpuCount:    api.CPUCount(info.VCpu),
 				MemoryMB:    api.MemoryMB(info.RamMB),

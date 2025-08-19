@@ -59,6 +59,15 @@ type BuildLogEntry struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+// BuildStatusReason defines model for BuildStatusReason.
+type BuildStatusReason struct {
+	// Message Message with the status reason, currently reporting only for error status
+	Message string `json:"message"`
+
+	// Step Step that failed
+	Step *string `json:"step,omitempty"`
+}
+
 // CPUCount CPU cores for the sandbox
 type CPUCount = int32
 
@@ -327,6 +336,7 @@ type NodeStatusChange struct {
 // ResumedSandbox defines model for ResumedSandbox.
 type ResumedSandbox struct {
 	// AutoPause Automatically pauses the sandbox after the timeout
+	// Deprecated:
 	AutoPause *bool `json:"autoPause,omitempty"`
 
 	// Timeout Time to live for the sandbox in seconds.
@@ -574,10 +584,8 @@ type TemplateBuild struct {
 	LogEntries []BuildLogEntry `json:"logEntries"`
 
 	// Logs Build logs
-	Logs []string `json:"logs"`
-
-	// Reason Message with the status reason, currently reporting only for error status
-	Reason *string `json:"reason,omitempty"`
+	Logs   []string           `json:"logs"`
+	Reason *BuildStatusReason `json:"reason,omitempty"`
 
 	// Status Status of the template
 	Status TemplateBuildStatus `json:"status"`

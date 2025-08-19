@@ -306,7 +306,7 @@ Example:
   }
 ]
 EOT
-default     = ""
+  default     = ""
 }
 
 variable "prefix" {

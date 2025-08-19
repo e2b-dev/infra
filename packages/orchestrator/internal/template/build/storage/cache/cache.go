@@ -69,8 +69,7 @@ func (h *HashIndex) LayerMetaFromHash(ctx context.Context, hash string) (LayerMe
 		return LayerMetadata{}, fmt.Errorf("error unmarshaling layer metadata: %w", err)
 	}
 
-	if layerMetadata.Template.TemplateID == "" ||
-		layerMetadata.Template.BuildID == "" ||
+	if layerMetadata.Template.BuildID == "" ||
 		layerMetadata.Template.KernelVersion == "" ||
 		layerMetadata.Template.FirecrackerVersion == "" {
 		return LayerMetadata{}, fmt.Errorf("layer metadata is missing required fields: %v", layerMetadata)

@@ -34,6 +34,7 @@ func (f *ResumeSandbox) Sandbox(
 		template,
 		f.config,
 		sandbox.RuntimeMetadata{
+			TemplateID:  layerExecutor.Config.TemplateID,
 			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
 			ExecutionID: uuid.NewString(),
 		},
