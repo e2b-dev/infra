@@ -61,7 +61,6 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 	defer cancel(nil)
 
 	s.logger.Trace().Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).Msg("Process start: Waiting for clock to sync")
-	s.logger.Trace().Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).Msg("Process start: Clock synced")
 
 	handlerL := s.logger.With().Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).Logger()
 
