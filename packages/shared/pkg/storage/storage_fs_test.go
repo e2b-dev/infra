@@ -5,7 +5,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -28,9 +27,9 @@ func TestOpenObject_ReadWrite_Size_ReadAt(t *testing.T) {
 	obj, err := p.OpenObject(ctx, filepath.Join("sub", "file.txt"))
 	require.NoError(t, err)
 
-	const contents = "hello world"
+	contents := []byte("hello world")
 	// write via ReadFrom
-	n, err := obj.ReadFrom(strings.NewReader(contents))
+	n, err := obj.ReadFrom(contents)
 	require.NoError(t, err)
 	require.Equal(t, int64(len(contents)), n)
 
@@ -44,14 +43,14 @@ func TestOpenObject_ReadWrite_Size_ReadAt(t *testing.T) {
 	n, err = obj.WriteTo(&buf)
 	require.NoError(t, err)
 	require.Equal(t, int64(len(contents)), n)
-	require.Equal(t, contents, buf.String())
+	require.Equal(t, contents, buf.Bytes())
 
 	// read a slice via ReadAt ("world")
 	part := make([]byte, 5)
 	nRead, err := obj.ReadAt(part, 6)
 	require.NoError(t, err)
 	require.Equal(t, 5, nRead)
-	require.Equal(t, "world", string(part))
+	require.Equal(t, []byte("world"), part)
 }
 
 func TestWriteFromFileSystem(t *testing.T) {
@@ -80,7 +79,7 @@ func TestDelete(t *testing.T) {
 	obj, err := p.OpenObject(ctx, "to/delete.txt")
 	require.NoError(t, err)
 
-	_, err = obj.ReadFrom(strings.NewReader("bye"))
+	_, err = obj.ReadFrom([]byte("bye"))
 	require.NoError(t, err)
 	require.NoError(t, obj.Delete())
 
@@ -101,7 +100,7 @@ func TestDeleteObjectsWithPrefix(t *testing.T) {
 	for _, pth := range paths {
 		obj, err := p.OpenObject(ctx, pth)
 		require.NoError(t, err)
-		_, err = obj.ReadFrom(strings.NewReader("x"))
+		_, err = obj.ReadFrom([]byte("x"))
 		require.NoError(t, err)
 	}
 
