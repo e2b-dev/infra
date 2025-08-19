@@ -251,7 +251,6 @@ func (p *Process) Create(
 		"i8042.nokbd":      "",
 		"i8042.noaux":      "",
 		"random.trust_cpu": "on",
-		"clocksource":      "kvm-clock",
 	}
 	if options.SystemdToKernelLogs {
 		args["systemd.journald.forward_to_console"] = ""
