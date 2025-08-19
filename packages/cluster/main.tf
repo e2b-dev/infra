@@ -134,9 +134,11 @@ module "client_cluster" {
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
-    NFS_IP_ADDRESS               = join(",", module.filestore.nfs_ip_addresses)
+    NFS_IP_ADDRESS               = var.use_filestore_cache ? join(",", module.filestore[0].nfs_ip_addresses) : ""
     NFS_MOUNT_PATH               = local.nfs_mount_path
     NFS_MOUNT_SUBDIR             = local.nfs_mount_subdir
+
+    use_filestore_cache = var.use_filestore_cache
   })
 
   environment = var.environment
@@ -280,9 +282,11 @@ module "build_cluster" {
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-build-cluster-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
-    NFS_IP_ADDRESS               = join(",", module.filestore.nfs_ip_addresses)
+    NFS_IP_ADDRESS               = var.use_filestore_cache ? join(",", module.filestore[0].nfs_ip_addresses) : ""
     NFS_MOUNT_PATH               = local.nfs_mount_path
     NFS_MOUNT_SUBDIR             = local.nfs_mount_subdir
+
+    use_filestore_cache = var.use_filestore_cache
   })
 
   environment = var.environment
@@ -350,8 +354,15 @@ module "network" {
   additional_ports = [for service in var.additional_api_services : service.api_node_group_port]
 }
 
+moved {
+  from = module.filestore
+  to   = module.filestore[0]
+}
+
 module "filestore" {
   source = "./filestore"
+
+  count = var.use_filestore_cache ? 1 : 0
 
   name         = "${var.prefix}slab-cache"
   network_name = var.network_name

@@ -51,7 +51,8 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, TEMPLATE_BUCKET_LOCATION) \
 	$(call tfvar, ENVD_TIMEOUT) \
 	$(call tfvar, REDIS_MANAGED) \
-	$(call tfvar, GRAFANA_MANAGED)
+	$(call tfvar, GRAFANA_MANAGED) \
+	$(call tfvar, USE_FILESTORE_CACHE) \
 
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)

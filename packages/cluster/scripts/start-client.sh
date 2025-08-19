@@ -29,7 +29,6 @@ sudo mkdir -p $MOUNT_POINT
 # Step 3: Mount the disk with
 sudo mount -o noatime $DISK $MOUNT_POINT
 
-sudo mkdir -p /orchestrator/slab-cache
 sudo mkdir -p /orchestrator/sandbox
 sudo mkdir -p /orchestrator/template
 sudo mkdir -p /orchestrator/build
@@ -48,10 +47,13 @@ echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
 sudo sysctl vm.swappiness=10
 sudo sysctl vm.vfs_cache_pressure=50
 
+%{ if use_filestore_cache }
 # Mount NFS
+sudo mkdir -p "${NFS_MOUNT_PATH}"
 echo "${NFS_IP_ADDRESS}:/slabs ${NFS_MOUNT_PATH} nfs defaults,tcp,nconnect=2,sec=sys,_netdev 0 0" | sudo tee -a /etc/fstab
 sudo mount "${NFS_MOUNT_PATH}"
 sudo mkdir -p "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}" && chmod +w "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}"
+%{ endif }
 
 # Add tmpfs for snapshotting
 # TODO: Parametrize this

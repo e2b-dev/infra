@@ -137,6 +137,8 @@ module "cluster" {
   consul_acl_token_secret = module.init.consul_acl_token_secret
   nomad_acl_token_secret  = module.init.nomad_acl_token_secret
 
+  use_filestore_cache = var.use_filestore_cache
+
   labels = var.labels
   prefix = var.prefix
 }

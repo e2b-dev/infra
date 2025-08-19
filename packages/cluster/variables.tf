@@ -261,3 +261,7 @@ variable "additional_api_services" {
     api_node_group_port      = number
   }))
 }
+
+variable "use_filestore_cache" {
+  type = bool
+}

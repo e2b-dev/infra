@@ -360,3 +360,9 @@ variable "redis_managed" {
   default = false
   type    = bool
 }
+
+variable "use_filestore_cache" {
+  description = "Use Filestore as a fast local cache to speed up repeat sandbox starts"
+  default     = false
+  type        = bool
+}
