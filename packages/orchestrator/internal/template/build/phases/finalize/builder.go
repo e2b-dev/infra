@@ -82,7 +82,7 @@ func (ppb *PostProcessingBuilder) Layer(
 	// If the start/ready commands are set,
 	// use them instead of start metadata from the template it is built from.
 	if ppb.Config.StartCmd != "" || ppb.Config.ReadyCmd != "" {
-		result.Start = &metadata.StartMetadata{
+		result.Start = &metadata.Start{
 			StartCmd: ppb.Config.StartCmd,
 			ReadyCmd: ppb.Config.ReadyCmd,
 			Metadata: result.Metadata,
@@ -116,7 +116,6 @@ func (ppb *PostProcessingBuilder) Build(
 	}
 
 	// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template
-	lastStepResult.Metadata = lastStepResult.Metadata.UpdateVersion()
 	sandboxCreator := layer.NewCreateSandbox(sbxConfig, fc.FirecrackerVersions{
 		KernelVersion:      ppb.Template.KernelVersion,
 		FirecrackerVersion: ppb.Template.FirecrackerVersion,
@@ -144,7 +143,7 @@ func (ppb *PostProcessingBuilder) Build(
 }
 
 func (ppb *PostProcessingBuilder) postProcessingFn() layer.FunctionActionFn {
-	return func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.TemplateMetadata) (cm metadata.TemplateMetadata, e error) {
+	return func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (cm metadata.Template, e error) {
 		defer func() {
 			if e != nil {
 				return
@@ -172,7 +171,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn() layer.FunctionActionFn {
 			sbx.Runtime.SandboxID,
 		)
 		if err != nil {
-			return metadata.TemplateMetadata{}, &phases.PhaseBuildError{
+			return metadata.Template{}, &phases.PhaseBuildError{
 				Phase: string(metrics.PhaseFinalize),
 				Step:  "finalize",
 				Err:   fmt.Errorf("configuration script failed: %w", err),
@@ -234,7 +233,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn() layer.FunctionActionFn {
 			meta.Start.Metadata,
 		)
 		if err != nil {
-			return metadata.TemplateMetadata{}, &phases.PhaseBuildError{
+			return metadata.Template{}, &phases.PhaseBuildError{
 				Phase: string(metrics.PhaseFinalize),
 				Step:  "finalize",
 				Err:   fmt.Errorf("ready command failed: %w", err),
@@ -244,7 +243,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn() layer.FunctionActionFn {
 		// Wait for the start command to start executing.
 		select {
 		case <-ctx.Done():
-			return metadata.TemplateMetadata{}, &phases.PhaseBuildError{
+			return metadata.Template{}, &phases.PhaseBuildError{
 				Phase: string(metrics.PhaseFinalize),
 				Step:  "finalize",
 				Err:   fmt.Errorf("waiting for start command failed: %w", commandsCtx.Err()),
@@ -256,7 +255,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn() layer.FunctionActionFn {
 		commandsCancel()
 		err = startCmdRun.Wait()
 		if err != nil {
-			return metadata.TemplateMetadata{}, &phases.PhaseBuildError{
+			return metadata.Template{}, &phases.PhaseBuildError{
 				Phase: string(metrics.PhaseFinalize),
 				Step:  "finalize",
 				Err:   fmt.Errorf("start command failed: %w", err),

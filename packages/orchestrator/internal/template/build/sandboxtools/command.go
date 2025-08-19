@@ -29,7 +29,7 @@ func RunCommandWithOutput(
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	command string,
-	metadata metadata.CommandMetadata,
+	metadata metadata.Command,
 	processOutput func(stdout, stderr string),
 ) error {
 	return runCommandWithAllOptions(
@@ -51,7 +51,7 @@ func RunCommand(
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	command string,
-	metadata metadata.CommandMetadata,
+	metadata metadata.Command,
 ) error {
 	return runCommandWithAllOptions(
 		ctx,
@@ -75,7 +75,7 @@ func RunCommandWithLogger(
 	id string,
 	sandboxID string,
 	command string,
-	metadata metadata.CommandMetadata,
+	metadata metadata.Command,
 ) error {
 	return RunCommandWithConfirmation(
 		ctx,
@@ -101,7 +101,7 @@ func RunCommandWithConfirmation(
 	id string,
 	sandboxID string,
 	command string,
-	metadata metadata.CommandMetadata,
+	metadata metadata.Command,
 	confirmCh chan<- struct{},
 ) error {
 	return runCommandWithAllOptions(
@@ -125,7 +125,7 @@ func runCommandWithAllOptions(
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	command string,
-	metadata metadata.CommandMetadata,
+	metadata metadata.Command,
 	confirmCh chan<- struct{},
 	processOutput func(stdout, stderr string),
 ) error {
@@ -232,7 +232,7 @@ func SyncChangesToDisk(
 		proxy,
 		sandboxID,
 		"sync",
-		metadata.CommandMetadata{
+		metadata.Command{
 			User: "root",
 		},
 	)

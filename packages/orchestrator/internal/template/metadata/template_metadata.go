@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/ioutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -16,52 +19,52 @@ const (
 	CurrentVersion = 2
 )
 
-type CommandMetadata struct {
+type Command struct {
 	User    string            `json:"user,omitempty"`
 	WorkDir *string           `json:"workdir,omitempty"`
 	EnvVars map[string]string `json:"env_vars,omitempty"`
 }
 
-type FromTemplateMetadata struct {
+type FromTemplate struct {
 	Alias   string `json:"alias"`
 	BuildID string `json:"build_id"`
 }
 
-type StartMetadata struct {
-	StartCmd string          `json:"start_command"`
-	ReadyCmd string          `json:"ready_command"`
-	Metadata CommandMetadata `json:"metadata"`
+type Start struct {
+	StartCmd string  `json:"start_command"`
+	ReadyCmd string  `json:"ready_command"`
+	Metadata Command `json:"metadata"`
 }
 
-type TemplateMetadata struct {
+type Template struct {
 	Version      uint64                `json:"version"`
 	Template     storage.TemplateFiles `json:"template"`
-	Metadata     CommandMetadata       `json:"metadata"`
-	Start        *StartMetadata        `json:"start,omitempty"`
+	Metadata     Command               `json:"metadata"`
+	Start        *Start                `json:"start,omitempty"`
 	FromImage    *string               `json:"from_image,omitempty"`
-	FromTemplate *FromTemplateMetadata `json:"from_template,omitempty"`
+	FromTemplate *FromTemplate         `json:"from_template,omitempty"`
 }
 
-func (tm TemplateMetadata) NextTemplate(
-	fromTemplate FromTemplateMetadata,
-) TemplateMetadata {
-	return TemplateMetadata{
+func (t Template) NextTemplate(
+	fromTemplate FromTemplate,
+) Template {
+	return Template{
 		Version:      CurrentVersion,
-		Template:     tm.Template,
-		Metadata:     tm.Metadata,
-		Start:        tm.Start,
+		Template:     t.Template,
+		Metadata:     t.Metadata,
+		Start:        t.Start,
 		FromTemplate: &fromTemplate,
 		FromImage:    nil,
 	}
 }
 
-func (tm TemplateMetadata) UpdateVersion() TemplateMetadata {
-	tm.Version = CurrentVersion
-	return tm
+func (t Template) UpdateVersion() Template {
+	t.Version = CurrentVersion
+	return t
 }
 
-func (tm TemplateMetadata) ToFile(path string) error {
-	mr, err := serialize(tm)
+func (t Template) ToFile(path string) error {
+	mr, err := serialize(t)
 	if err != nil {
 		return err
 	}
@@ -74,60 +77,67 @@ func (tm TemplateMetadata) ToFile(path string) error {
 	return nil
 }
 
-func FromFile(path string) (TemplateMetadata, error) {
+func FromFile(path string) (Template, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return TemplateMetadata{}, fmt.Errorf("failed to open metadata file: %w", err)
+		return Template{}, fmt.Errorf("failed to open metadata file: %w", err)
 	}
 	defer f.Close()
 
 	templateMetadata, err := deserialize(f)
 	if err != nil {
-		return TemplateMetadata{}, fmt.Errorf("failed to deserialize metadata: %w", err)
+		return Template{}, fmt.Errorf("failed to deserialize metadata: %w", err)
 	}
 
 	return templateMetadata, nil
 }
 
-func FromBuildID(ctx context.Context, s storage.StorageProvider, buildID string) (TemplateMetadata, error) {
+func FromBuildID(ctx context.Context, s storage.StorageProvider, buildID string) (Template, error) {
 	return fromTemplate(ctx, s, storage.TemplateFiles{
 		BuildID: buildID,
 	})
 }
 
-func fromTemplate(ctx context.Context, s storage.StorageProvider, files storage.TemplateFiles) (TemplateMetadata, error) {
+func fromTemplate(ctx context.Context, s storage.StorageProvider, files storage.TemplateFiles) (Template, error) {
 	obj, err := s.OpenObject(ctx, files.StorageMetadataPath())
 	if err != nil {
-		return TemplateMetadata{}, fmt.Errorf("error opening object for template metadata: %w", err)
+		return Template{}, fmt.Errorf("error opening object for template metadata: %w", err)
 	}
 
 	var buf bytes.Buffer
 	_, err = obj.WriteTo(&buf)
 	if err != nil {
-		return TemplateMetadata{}, fmt.Errorf("error reading template metadata from object: %w", err)
+		return Template{}, fmt.Errorf("error reading template metadata from object: %w", err)
 	}
 
 	templateMetadata, err := deserialize(&buf)
 	if err != nil {
-		return TemplateMetadata{}, err
+		return Template{}, err
 	}
 
 	return templateMetadata, nil
 }
 
-func deserialize(reader io.Reader) (TemplateMetadata, error) {
+func deserialize(reader io.Reader) (Template, error) {
+	start := time.Now()
 	decoder := json.NewDecoder(reader)
 
-	var templateMetadata TemplateMetadata
+	var templateMetadata Template
 	err := decoder.Decode(&templateMetadata)
 	if err != nil {
-		return TemplateMetadata{}, fmt.Errorf("error unmarshaling template metadata: %w", err)
+		return Template{}, fmt.Errorf("error unmarshaling template metadata: %w", err)
 	}
 
+	zap.L().Error("template metadata deserialized",
+		zap.String("duration", time.Since(start).String()),
+		zap.Uint64("version", templateMetadata.Version),
+		zap.String("build_id", templateMetadata.Template.BuildID),
+	)
 	return templateMetadata, nil
 }
 
-func serialize(template TemplateMetadata) (io.Reader, error) {
+func serialize(template Template) (io.Reader, error) {
+	start := time.Now()
 	marshaled, err := json.Marshal(template)
 	if err != nil {
 		return nil, fmt.Errorf("error serializing template metadata: %w", err)
@@ -135,5 +145,10 @@ func serialize(template TemplateMetadata) (io.Reader, error) {
 
 	buf := bytes.NewBuffer(marshaled)
 
+	zap.L().Debug("template metadata serialized",
+		zap.String("duration", time.Since(start).String()),
+		zap.Uint64("version", template.Version),
+		zap.String("build_id", template.Template.BuildID),
+	)
 	return buf, nil
 }

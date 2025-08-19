@@ -20,6 +20,6 @@ type Command interface {
 		sandboxID string,
 		prefix string,
 		step *templatemanager.TemplateStep,
-		cmdMetadata metadata.CommandMetadata,
-	) (metadata.CommandMetadata, error)
+		cmdMetadata metadata.Command,
+	) (metadata.Command, error)
 }

@@ -97,7 +97,7 @@ func (sb *StepBuilder) Layer(
 			sb.logger.Info("layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
 		} else {
 			// Check if the layer is cached
-			meta, err := sb.index.IsCached(ctx, m.Template.BuildID)
+			meta, err := sb.index.Cached(ctx, m.Template.BuildID)
 			if err != nil {
 				zap.L().Info("layer not cached, building new layer", zap.Error(err), zap.String("hash", hash))
 			} else {
@@ -147,8 +147,6 @@ func (sb *StepBuilder) Build(
 	// First not cached layer is create (to change CPU, Memory, etc), subsequent are layers are resumes.
 	var sandboxCreator layer.SandboxCreator
 	if sourceLayer.Cached {
-		// Update the version to the latest as this is a new FC start
-		sourceLayer.Metadata = sourceLayer.Metadata.UpdateVersion()
 		sandboxCreator = layer.NewCreateSandbox(sbxConfig, fc.FirecrackerVersions{
 			KernelVersion:      sb.Template.KernelVersion,
 			FirecrackerVersion: sb.Template.FirecrackerVersion,
@@ -157,7 +155,7 @@ func (sb *StepBuilder) Build(
 		sandboxCreator = layer.NewResumeSandbox(sbxConfig)
 	}
 
-	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.TemplateMetadata) (metadata.TemplateMetadata, error) {
+	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error) {
 		cmdMeta, err := sb.commandExecutor.Execute(
 			ctx,
 			sbx,
@@ -166,7 +164,7 @@ func (sb *StepBuilder) Build(
 			meta.Metadata,
 		)
 		if err != nil {
-			return metadata.TemplateMetadata{}, &phases.PhaseBuildError{
+			return metadata.Template{}, &phases.PhaseBuildError{
 				Phase: string(metrics.PhaseSteps),
 				Step:  fmt.Sprintf("%d", sb.stepNumber),
 				Err:   err,
@@ -180,7 +178,7 @@ func (sb *StepBuilder) Build(
 			sbx.Runtime.SandboxID,
 		)
 		if err != nil {
-			return metadata.TemplateMetadata{}, fmt.Errorf("error running sync command: %w", err)
+			return metadata.Template{}, fmt.Errorf("error running sync command: %w", err)
 		}
 
 		meta.Metadata = cmdMeta

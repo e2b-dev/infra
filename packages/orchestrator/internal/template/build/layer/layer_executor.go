@@ -68,7 +68,7 @@ func NewLayerExecutor(
 func (lb *LayerExecutor) BuildLayer(
 	ctx context.Context,
 	cmd LayerBuildCommand,
-) (metadata.TemplateMetadata, error) {
+) (metadata.Template, error) {
 	ctx, childSpan := lb.tracer.Start(ctx, "run-in-sandbox")
 	defer childSpan.End()
 
@@ -78,13 +78,13 @@ func (lb *LayerExecutor) BuildLayer(
 		cmd.SourceLayer.Template.FirecrackerVersion,
 	)
 	if err != nil {
-		return metadata.TemplateMetadata{}, fmt.Errorf("get template snapshot: %w", err)
+		return metadata.Template{}, fmt.Errorf("get template snapshot: %w", err)
 	}
 
 	// Create or resume sandbox
 	sbx, err := cmd.SandboxCreator.Sandbox(ctx, lb, localTemplate)
 	if err != nil {
-		return metadata.TemplateMetadata{}, err
+		return metadata.Template{}, err
 	}
 	defer sbx.Stop(ctx)
 
@@ -99,7 +99,7 @@ func (lb *LayerExecutor) BuildLayer(
 	if cmd.UpdateEnvd {
 		err = lb.updateEnvdInSandbox(ctx, sbx)
 		if err != nil {
-			return metadata.TemplateMetadata{}, fmt.Errorf("update envd: %w", err)
+			return metadata.Template{}, fmt.Errorf("update envd: %w", err)
 		}
 	}
 
@@ -114,9 +114,11 @@ func (lb *LayerExecutor) BuildLayer(
 	// Execute the action using the executor
 	meta, err := cmd.ActionExecutor.Execute(ctx, sbx, cmd.SourceLayer)
 	if err != nil {
-		return metadata.TemplateMetadata{}, err
+		return metadata.Template{}, err
 	}
 
+	// Paused layer is always a new version in the build system (it starts with a sbx create)
+	meta = meta.UpdateVersion()
 	err = lb.PauseAndUpload(
 		ctx,
 		sbx,
@@ -124,7 +126,7 @@ func (lb *LayerExecutor) BuildLayer(
 		meta,
 	)
 	if err != nil {
-		return metadata.TemplateMetadata{}, fmt.Errorf("pause and upload: %w", err)
+		return metadata.Template{}, fmt.Errorf("pause and upload: %w", err)
 	}
 
 	return meta, nil
@@ -175,7 +177,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		"update-envd-replace",
 		sbx.Runtime.SandboxID,
 		replaceEnvdCmd,
-		metadata.CommandMetadata{User: "root"},
+		metadata.Command{User: "root"},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to replace envd binary: %w", err)
@@ -189,7 +191,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		lb.proxy,
 		sbx.Runtime.SandboxID,
 		"systemctl restart envd",
-		metadata.CommandMetadata{User: "root"},
+		metadata.Command{User: "root"},
 	)
 
 	// Step 4: Wait for envd to initialize
@@ -209,7 +211,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 	ctx context.Context,
 	sbx *sandbox.Sandbox,
 	hash string,
-	meta metadata.TemplateMetadata,
+	meta metadata.Template,
 ) error {
 	ctx, childSpan := lb.tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
@@ -239,6 +241,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 		snapshot.MemfileDiffHeader,
 		snapshot.RootfsDiffHeader,
 		snapshot.Snapfile,
+		snapshot.Metafile,
 		snapshot.MemfileDiff,
 		snapshot.RootfsDiff,
 	)
@@ -258,7 +261,9 @@ func (lb *LayerExecutor) PauseAndUpload(
 		}
 
 		err = lb.index.SaveLayerMeta(ctx, hash, cache.LayerMetadata{
-			Template: meta.Template,
+			Template: cache.Template{
+				BuildID: cacheFiles.BuildID,
+			},
 		})
 		if err != nil {
 			return fmt.Errorf("error saving UUID to hash mapping: %w", err)

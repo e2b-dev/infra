@@ -14,14 +14,18 @@ import (
 
 const hashingVersion = "v1"
 
+type Template struct {
+	BuildID string `json:"build_id"`
+}
+
 type LayerMetadata struct {
-	Template storage.TemplateFiles `json:"template"`
+	Template Template `json:"template"`
 }
 
 type Index interface {
 	LayerMetaFromHash(ctx context.Context, hash string) (LayerMetadata, error)
 	SaveLayerMeta(ctx context.Context, hash string, template LayerMetadata) error
-	IsCached(ctx context.Context, buildID string) (metadata.TemplateMetadata, error)
+	Cached(ctx context.Context, buildID string) (metadata.Template, error)
 	Version() string
 }
 
@@ -67,9 +71,7 @@ func (h *HashIndex) LayerMetaFromHash(ctx context.Context, hash string) (LayerMe
 		return LayerMetadata{}, fmt.Errorf("error unmarshaling layer metadata: %w", err)
 	}
 
-	if layerMetadata.Template.BuildID == "" ||
-		layerMetadata.Template.KernelVersion == "" ||
-		layerMetadata.Template.FirecrackerVersion == "" {
+	if layerMetadata.Template.BuildID == "" {
 		return LayerMetadata{}, fmt.Errorf("layer metadata is missing required fields: %v", layerMetadata)
 	}
 
@@ -106,14 +108,14 @@ func HashKeys(baseKey string, keys ...string) string {
 	return fmt.Sprintf("%x", sha.Sum(nil))
 }
 
-func (h *HashIndex) IsCached(
+func (h *HashIndex) Cached(
 	ctx context.Context,
 	buildID string,
-) (metadata.TemplateMetadata, error) {
+) (metadata.Template, error) {
 	tmpl, err := metadata.FromBuildID(ctx, h.templateStorage, buildID)
 	if err != nil {
 		// If the rootfs header does not exist, the layer is not cached
-		return metadata.TemplateMetadata{}, fmt.Errorf("error reading template metadata: %w", err)
+		return metadata.Template{}, fmt.Errorf("error reading template metadata: %w", err)
 	}
 
 	// If the rootfs header exists, the layer is cached

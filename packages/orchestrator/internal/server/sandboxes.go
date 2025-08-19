@@ -406,6 +406,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		snapshot.MemfileDiffHeader,
 		snapshot.RootfsDiffHeader,
 		snapshot.Snapfile,
+		snapshot.Metafile,
 		snapshot.MemfileDiff,
 		snapshot.RootfsDiff,
 	)

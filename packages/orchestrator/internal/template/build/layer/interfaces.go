@@ -26,13 +26,13 @@ type SandboxCreator interface {
 
 // ActionExecutor executes actions within a sandbox during layer building
 type ActionExecutor interface {
-	Execute(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.TemplateMetadata) (metadata.TemplateMetadata, error)
+	Execute(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error)
 }
 
 // LayerBuildCommand encapsulates all parameters needed for building a layer
 type LayerBuildCommand struct {
 	Hash           string
-	SourceLayer    metadata.TemplateMetadata
+	SourceLayer    metadata.Template
 	ExportTemplate storage.TemplateFiles
 	UpdateEnvd     bool
 	SandboxCreator SandboxCreator

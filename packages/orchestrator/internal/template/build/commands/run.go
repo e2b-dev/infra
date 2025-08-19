@@ -24,12 +24,12 @@ func (r *Run) Execute(
 	sandboxID string,
 	prefix string,
 	step *templatemanager.TemplateStep,
-	cmdMetadata metadata.CommandMetadata,
-) (metadata.CommandMetadata, error) {
+	cmdMetadata metadata.Command,
+) (metadata.Command, error) {
 	args := step.Args
 	// args: [command optional_user]
 	if len(args) < 1 {
-		return metadata.CommandMetadata{}, fmt.Errorf("RUN requires command argument")
+		return metadata.Command{}, fmt.Errorf("RUN requires command argument")
 	}
 
 	originalMetadata := cmdMetadata
@@ -52,7 +52,7 @@ func (r *Run) Execute(
 		cmdMetadata,
 	)
 	if err != nil {
-		return metadata.CommandMetadata{}, fmt.Errorf("failed to run command: %w", err)
+		return metadata.Command{}, fmt.Errorf("failed to run command: %w", err)
 	}
 
 	return originalMetadata, nil

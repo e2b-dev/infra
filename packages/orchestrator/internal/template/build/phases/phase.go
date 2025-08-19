@@ -26,7 +26,7 @@ type BuilderPhase interface {
 }
 
 type LayerResult struct {
-	Metadata metadata.TemplateMetadata
+	Metadata metadata.Template
 	Cached   bool
 	Hash     string
 }

@@ -76,8 +76,8 @@ func (ce *CommandExecutor) Execute(
 	sbx *sandbox.Sandbox,
 	prefix string,
 	step *templatemanager.TemplateStep,
-	cmdMetadata metadata.CommandMetadata,
-) (metadata.CommandMetadata, error) {
+	cmdMetadata metadata.Command,
+) (metadata.Command, error) {
 	ctx, span := ce.tracer.Start(ctx, "apply-command", trace.WithAttributes(
 		attribute.String("prefix", prefix),
 		attribute.String("sandbox.id", sbx.Runtime.SandboxID),
@@ -89,7 +89,7 @@ func (ce *CommandExecutor) Execute(
 
 	cmd, err := ce.getCommand(step)
 	if err != nil {
-		return metadata.CommandMetadata{}, fmt.Errorf("failed to get command for step %s: %w", step.Type, err)
+		return metadata.Command{}, fmt.Errorf("failed to get command for step %s: %w", step.Type, err)
 	}
 
 	cmdMetadata, err = cmd.Execute(
@@ -103,7 +103,7 @@ func (ce *CommandExecutor) Execute(
 		cmdMetadata,
 	)
 	if err != nil {
-		return metadata.CommandMetadata{}, err
+		return metadata.Command{}, err
 	}
 	return cmdMetadata, nil
 }

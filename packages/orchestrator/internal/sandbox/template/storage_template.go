@@ -21,11 +21,13 @@ type storageTemplate struct {
 
 	memfile  *utils.SetOnce[block.ReadonlyDevice]
 	rootfs   *utils.SetOnce[block.ReadonlyDevice]
-	snapfile *utils.SetOnce[Snapfile]
+	snapfile *utils.SetOnce[File]
+	metafile *utils.SetOnce[File]
 
 	memfileHeader *header.Header
 	rootfsHeader  *header.Header
-	localSnapfile Snapfile
+	localSnapfile File
+	localMetafile File
 
 	metrics     blockmetrics.Metrics
 	persistence storage.StorageProvider
@@ -39,7 +41,8 @@ func newTemplateFromStorage(
 	rootfsHeader *header.Header,
 	persistence storage.StorageProvider,
 	metrics blockmetrics.Metrics,
-	localSnapfile Snapfile,
+	localSnapfile File,
+	localMetafile File,
 ) (*storageTemplate, error) {
 	files, err := storage.TemplateFiles{
 		BuildID:            buildId,
@@ -53,13 +56,15 @@ func newTemplateFromStorage(
 	return &storageTemplate{
 		files:         files,
 		localSnapfile: localSnapfile,
+		localMetafile: localMetafile,
 		memfileHeader: memfileHeader,
 		rootfsHeader:  rootfsHeader,
 		metrics:       metrics,
 		persistence:   persistence,
 		memfile:       utils.NewSetOnce[block.ReadonlyDevice](),
 		rootfs:        utils.NewSetOnce[block.ReadonlyDevice](),
-		snapfile:      utils.NewSetOnce[Snapfile](),
+		snapfile:      utils.NewSetOnce[File](),
+		metafile:      utils.NewSetOnce[File](),
 	}, nil
 }
 
@@ -83,6 +88,14 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			return t.snapfile.SetError(errMsg)
 		}
 
+		return t.snapfile.SetValue(snapfile)
+	})
+
+	wg.Go(func() error {
+		if t.localMetafile != nil {
+			return t.metafile.SetValue(t.localMetafile)
+		}
+
 		meta, metadataErr := newStorageFile(
 			ctx,
 			t.persistence,
@@ -97,21 +110,21 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 				zap.String("build_id", t.files.BuildID),
 				zap.Error(metadataErr),
 			)
-			oldTemplateMetadata := metadata.TemplateMetadata{
+			oldTemplateMetadata := metadata.Template{
 				Version:  1,
 				Template: t.files.TemplateFiles,
 			}
 			err := oldTemplateMetadata.ToFile(t.files.CacheMetadataPath())
 			if err != nil {
-				return t.snapfile.SetError(fmt.Errorf("failed to write old template metadata to file: %w", err))
+				return t.metafile.SetError(fmt.Errorf("failed to write old template metadata to file: %w", err))
 			}
 
-			return t.snapfile.SetValue(NewStorageSnapfile(snapfile, &storageFile{
+			return t.metafile.SetValue(&storageFile{
 				path: t.files.CacheMetadataPath(),
-			}))
+			})
 		}
 
-		return t.snapfile.SetValue(NewStorageSnapfile(snapfile, meta))
+		return t.metafile.SetValue(meta)
 	})
 
 	wg.Go(func() error {
@@ -179,8 +192,17 @@ func (t *storageTemplate) Rootfs() (block.ReadonlyDevice, error) {
 	return t.rootfs.Wait()
 }
 
-func (t *storageTemplate) Snapfile() (Snapfile, error) {
+func (t *storageTemplate) Snapfile() (File, error) {
 	return t.snapfile.Wait()
+}
+
+func (t *storageTemplate) Metadata() (metadata.Template, error) {
+	metafile, err := t.metafile.Wait()
+	if err != nil {
+		return metadata.Template{}, fmt.Errorf("failed to get metafile: %w", err)
+	}
+
+	return metadata.FromFile(metafile.Path())
 }
 
 func (t *storageTemplate) ReplaceMemfile(memfile block.ReadonlyDevice) error {

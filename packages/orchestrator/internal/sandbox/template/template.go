@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -14,7 +15,8 @@ type Template interface {
 	Memfile() (block.ReadonlyDevice, error)
 	ReplaceMemfile(block.ReadonlyDevice) error
 	Rootfs() (block.ReadonlyDevice, error)
-	Snapfile() (Snapfile, error)
+	Snapfile() (File, error)
+	Metadata() (metadata.Template, error)
 	Close() error
 }
 
@@ -53,4 +55,14 @@ func closeTemplate(t Template) (e error) {
 	}
 
 	return nil
+}
+
+type NoopFile struct{}
+
+func (n *NoopFile) Close() error {
+	return nil
+}
+
+func (n *NoopFile) Path() string {
+	return "/dev/null"
 }

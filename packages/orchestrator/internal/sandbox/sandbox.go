@@ -399,11 +399,7 @@ func ResumeSandbox(
 	if ips.err != nil {
 		return nil, fmt.Errorf("failed to get network slot: %w", err)
 	}
-	snapfile, err := t.Snapfile()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get snapfile: %w", err)
-	}
-	snapfileMeta, err := snapfile.Metadata()
+	meta, err := t.Metadata()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get metadata: %w", err)
 	}
@@ -419,7 +415,7 @@ func ResumeSandbox(
 		},
 		rootfsPath,
 		fc.RootfsPaths{
-			TemplateVersion: snapfileMeta.Version,
+			TemplateVersion: meta.Version,
 			TemplateID:      config.BaseTemplateID,
 			BuildID:         readonlyRootfs.Header().Metadata.BaseBuildId.String(),
 		},
@@ -429,6 +425,10 @@ func ResumeSandbox(
 	}
 
 	// todo: check if kernel, firecracker, and envd versions exist
+	snapfile, err := t.Snapfile()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get snapfile: %w", err)
+	}
 	fcStartErr := fcHandle.Resume(
 		uffdStartCtx,
 		tracer,
@@ -440,7 +440,7 @@ func ResumeSandbox(
 			TeamId:               runtime.TeamID,
 		},
 		fcUffdPath,
-		snapfile.FirecrackerSnapfile(),
+		snapfile,
 		fcUffd.Ready(),
 	)
 	if fcStartErr != nil {
@@ -569,14 +569,9 @@ func (s *Sandbox) Pause(
 	tracer trace.Tracer,
 	snapshotTemplateFiles storage.TemplateCacheFiles,
 ) (*Snapshot, error) {
-	snap, err := s.template.Snapfile()
+	meta, err := s.template.Metadata()
 	if err != nil {
-		return nil, fmt.Errorf("no snapfile found in template: %w", err)
-	}
-
-	meta, err := snap.Metadata()
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("no metadata found in template: %w", err)
 	}
 
 	return s.PauseWithMetadata(ctx, tracer, snapshotTemplateFiles, meta)
@@ -586,7 +581,7 @@ func (s *Sandbox) PauseWithMetadata(
 	ctx context.Context,
 	tracer trace.Tracer,
 	snapshotTemplateFiles storage.TemplateCacheFiles,
-	m metadata.TemplateMetadata,
+	m metadata.Template,
 ) (*Snapshot, error) {
 	childCtx, childSpan := tracer.Start(ctx, "sandbox-snapshot")
 	defer childSpan.End()
@@ -685,7 +680,8 @@ func (s *Sandbox) PauseWithMetadata(
 	}
 
 	return &Snapshot{
-		Snapfile:          template.NewStorageSnapfile(snapfile, metadataFileLink),
+		Snapfile:          snapfile,
+		Metafile:          metadataFileLink,
 		MemfileDiff:       memfileDiff,
 		MemfileDiffHeader: memfileDiffHeader,
 		RootfsDiff:        rootfsDiff,

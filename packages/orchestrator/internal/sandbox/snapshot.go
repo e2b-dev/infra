@@ -17,12 +17,13 @@ type Snapshot struct {
 	MemfileDiffHeader *header.Header
 	RootfsDiff        build.Diff
 	RootfsDiffHeader  *header.Header
-	Snapfile          template.Snapfile
+	Snapfile          template.File
+	Metafile          template.File
 }
 
 func (s *Snapshot) Upload(
 	ctx context.Context,
-	persistance storage.StorageProvider,
+	persistence storage.StorageProvider,
 	templateFiles storage.TemplateFiles,
 ) error {
 	var memfilePath *string
@@ -54,11 +55,11 @@ func (s *Snapshot) Upload(
 	templateBuild := storage.NewTemplateBuild(
 		s.MemfileDiffHeader,
 		s.RootfsDiffHeader,
-		persistance,
+		persistence,
 		templateFiles,
 	)
 
-	metadataReader, err := os.Open(s.Snapfile.MetadataFile().Path())
+	metadataReader, err := os.Open(s.Metafile.Path())
 	if err != nil {
 		return fmt.Errorf("error opening metadata file: %w", err)
 	}
@@ -67,7 +68,7 @@ func (s *Snapshot) Upload(
 	uploadErrCh := templateBuild.Upload(
 		ctx,
 		metadataReader,
-		s.Snapfile.FirecrackerSnapfile().Path(),
+		s.Snapfile.Path(),
 		memfilePath,
 		rootfsPath,
 	)

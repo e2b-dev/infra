@@ -2,6 +2,7 @@ package template
 
 import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -40,8 +41,12 @@ func (t *LocalTemplate) Rootfs() (block.ReadonlyDevice, error) {
 	return t.rootfs, nil
 }
 
-func (t *LocalTemplate) Snapfile() (Snapfile, error) {
-	return &NoopSnapfile{}, nil
+func (t *LocalTemplate) Snapfile() (File, error) {
+	return &NoopFile{}, nil
+}
+
+func (t *LocalTemplate) Metadata() (metadata.Template, error) {
+	return metadata.Template{}, nil
 }
 
 func (t *LocalTemplate) ReplaceMemfile(memfile block.ReadonlyDevice) error {
