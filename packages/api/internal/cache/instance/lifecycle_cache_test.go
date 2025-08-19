@@ -12,27 +12,19 @@ import (
 )
 
 type testLifecycleCacheItem struct {
-	expired *bool
-
-	lock sync.Mutex
+	expired *atomic.Bool
 }
 
 func (t *testLifecycleCacheItem) IsExpired() bool {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-
-	return *t.expired
+	return t.expired.Load()
 }
 
 func (t *testLifecycleCacheItem) SetExpired() {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-
-	*t.expired = true
+	t.expired.Store(true)
 }
 
 func newCache(t *testing.T) (*lifecycleCache[*testLifecycleCacheItem], context.CancelFunc) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	cache := newLifecycleCache[*testLifecycleCacheItem]()
 	go cache.Start(ctx)
@@ -48,13 +40,19 @@ func TestLifecycleCacheInit(t *testing.T) {
 	assert.Equal(t, uint64(0), cache.Metrics().Evictions)
 }
 
+func makeAtomicBool(value bool) *atomic.Bool {
+	var result atomic.Bool
+	result.Store(value)
+	return &result
+}
+
 func TestLifecycleCacheSetIfAbsent(t *testing.T) {
 	cache, cancel := newCache(t)
 	defer cancel()
 
-	expired := false
+	expired := makeAtomicBool(false)
 	cache.SetIfAbsent("test", &testLifecycleCacheItem{
-		expired: &expired,
+		expired: expired,
 	})
 
 	assert.Equal(t, 1, cache.Len())
@@ -65,9 +63,9 @@ func TestLifecycleCacheGet(t *testing.T) {
 	cache, cancel := newCache(t)
 	defer cancel()
 
-	expired := false
+	expired := makeAtomicBool(false)
 	cache.SetIfAbsent("test", &testLifecycleCacheItem{
-		expired: &expired,
+		expired: expired,
 	})
 
 	item, ok := cache.Get("test")
@@ -80,9 +78,9 @@ func TestLifecycleCacheGetAndRemove(t *testing.T) {
 	cache, cancel := newCache(t)
 	defer cancel()
 
-	expired := false
+	expired := makeAtomicBool(false)
 	cache.SetIfAbsent("test", &testLifecycleCacheItem{
-		expired: &expired,
+		expired: expired,
 	})
 
 	item, ok := cache.GetAndRemove("test")
@@ -95,9 +93,9 @@ func TestLifecycleCacheRemove(t *testing.T) {
 	cache, cancel := newCache(t)
 	defer cancel()
 
-	expired := false
+	expired := makeAtomicBool(false)
 	cache.SetIfAbsent("test", &testLifecycleCacheItem{
-		expired: &expired,
+		expired: expired,
 	})
 
 	ok := cache.Remove("test")
@@ -109,9 +107,9 @@ func TestLifecycleCacheItems(t *testing.T) {
 	cache, cancel := newCache(t)
 	defer cancel()
 
-	expired := false
+	expired := makeAtomicBool(false)
 	cache.SetIfAbsent("test", &testLifecycleCacheItem{
-		expired: &expired,
+		expired: expired,
 	})
 
 	items := cache.Items()
@@ -125,9 +123,9 @@ func TestLifecycleCacheLen(t *testing.T) {
 	cache, cancel := newCache(t)
 	defer cancel()
 
-	expired := false
+	expired := makeAtomicBool(false)
 	cache.SetIfAbsent("test", &testLifecycleCacheItem{
-		expired: &expired,
+		expired: expired,
 	})
 
 	assert.Equal(t, 1, cache.Len())
@@ -137,9 +135,9 @@ func TestLifecycleCacheHasNonExpired(t *testing.T) {
 	cache, cancel := newCache(t)
 	defer cancel()
 
-	expired := false
+	expired := makeAtomicBool(false)
 	cache.SetIfAbsent("test", &testLifecycleCacheItem{
-		expired: &expired,
+		expired: expired,
 	})
 
 	assert.True(t, cache.Has("test", false))
@@ -154,13 +152,13 @@ func TestLifecycleCacheHasExpired(t *testing.T) {
 	cache, cancel := newCache(t)
 	defer cancel()
 
-	expired := false
+	expired := makeAtomicBool(false)
 	cache.SetIfAbsent("test", &testLifecycleCacheItem{
-		expired: &expired,
+		expired: expired,
 	})
 
 	// Set the item as expired
-	expired = true
+	expired.Store(true)
 
 	assert.False(t, cache.Has("test", false))
 	assert.True(t, cache.Has("test", true))
@@ -177,13 +175,13 @@ func TestLifecycleCacheHasEvicting(t *testing.T) {
 		close(evictCalled)
 	})
 
-	expired := false
+	expired := makeAtomicBool(false)
 	cache.SetIfAbsent("test", &testLifecycleCacheItem{
-		expired: &expired,
+		expired: expired,
 	})
 
 	// Set the item as expired
-	expired = true
+	expired.Store(true)
 
 	// Wait for the eviction process to start but not complete
 	time.Sleep(200 * time.Millisecond)
@@ -212,12 +210,12 @@ func TestLifecycleCacheOnEvictionCalled(t *testing.T) {
 		evictCalled = true
 	})
 
-	expired := false
+	expired := makeAtomicBool(false)
 	cache.SetIfAbsent("test", &testLifecycleCacheItem{
-		expired: &expired,
+		expired: expired,
 	})
 
-	expired = true
+	expired.Store(true)
 
 	time.Sleep(1 * time.Second)
 
@@ -229,9 +227,9 @@ func TestLifecycleCacheEvictionNotCalledWhenItemIsNotExpired(t *testing.T) {
 	cache, cancel := newCache(t)
 	defer cancel()
 
-	expired := false
+	expired := makeAtomicBool(false)
 	cache.SetIfAbsent("test", &testLifecycleCacheItem{
-		expired: &expired,
+		expired: expired,
 	})
 
 	time.Sleep(1 * time.Second)
@@ -243,9 +241,9 @@ func TestLifecycleCacheEvictionCalledWhenItemIsRemoved(t *testing.T) {
 	cache, cancel := newCache(t)
 	defer cancel()
 
-	expired := false
+	expired := makeAtomicBool(false)
 	cache.SetIfAbsent("test", &testLifecycleCacheItem{
-		expired: &expired,
+		expired: expired,
 	})
 
 	cache.Remove("test")
@@ -259,10 +257,10 @@ func TestLifecycleCacheManyItems(t *testing.T) {
 	cache, cancel := newCache(t)
 	defer cancel()
 
-	expired := false
+	expired := makeAtomicBool(false)
 	for i := 0; i < 100; i++ {
 		cache.SetIfAbsent(fmt.Sprintf("test-%d", i), &testLifecycleCacheItem{
-			expired: &expired,
+			expired: expired,
 		})
 	}
 
@@ -284,9 +282,9 @@ func TestLifecycleCacheConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			expired := false
+			expired := makeAtomicBool(false)
 			cache.SetIfAbsent(fmt.Sprintf("test-%d", i), &testLifecycleCacheItem{
-				expired: &expired,
+				expired: expired,
 			})
 		}(i)
 	}
@@ -319,7 +317,7 @@ func TestLifecycleCacheConcurrentEviction(t *testing.T) {
 	cache, cancel := newCache(t)
 	defer cancel()
 
-	expired := false
+	expired := makeAtomicBool(false)
 
 	wg := sync.WaitGroup{}
 	for i := 0; i < 100; i++ {
@@ -327,13 +325,13 @@ func TestLifecycleCacheConcurrentEviction(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			cache.SetIfAbsent(fmt.Sprintf("test-%d", i), &testLifecycleCacheItem{
-				expired: &expired,
+				expired: expired,
 			})
 		}(i)
 	}
 	wg.Wait()
 
-	expired = true
+	expired.Store(true)
 
 	time.Sleep(1 * time.Second)
 
@@ -354,9 +352,9 @@ func TestLifecycleCacheConcurrentEvictionOnEviction(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			expired := true
+			expired := makeAtomicBool(true)
 			cache.SetIfAbsent(fmt.Sprintf("test-%d", i), &testLifecycleCacheItem{
-				expired: &expired,
+				expired: expired,
 			})
 		}(i)
 	}
