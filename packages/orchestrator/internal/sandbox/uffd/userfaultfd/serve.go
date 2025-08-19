@@ -43,7 +43,7 @@ func (u *userfaultfd) Serve(
 
 	var eg errgroup.Group
 
-	missingChunksBeingHandled := map[uint64]struct{}{}
+	missingChunksBeingHandled := map[int64]struct{}{}
 
 outerLoop:
 	for {
@@ -158,8 +158,6 @@ outerLoop:
 				return nil
 			})
 
-			fmt.Fprintf(os.Stderr, "wp trigger %d %d\n", addr, offset/pagesize)
-
 			continue
 		}
 
@@ -189,7 +187,7 @@ outerLoop:
 
 			var copyMode CULong
 
-			b, sliceErr := src.Slice(int64(offset), int64(pagesize))
+			b, sliceErr := src.Slice(offset, int64(pagesize))
 			if sliceErr != nil {
 				signalErr := fdExit.SignalExit()
 

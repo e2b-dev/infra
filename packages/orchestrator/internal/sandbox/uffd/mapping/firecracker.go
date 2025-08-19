@@ -11,14 +11,14 @@ type GuestRegionUffdMapping struct {
 	PageSize uintptr `json:"page_size_kib"`
 }
 
-func (m *GuestRegionUffdMapping) relativeOffset(addr uintptr) uint64 {
-	return uint64(m.Offset + addr - m.BaseHostVirtAddr)
+func (m *GuestRegionUffdMapping) relativeOffset(addr uintptr) int64 {
+	return int64(m.Offset + addr - m.BaseHostVirtAddr)
 }
 
 type FcMappings []GuestRegionUffdMapping
 
 // Returns the relative offset and the page size of the mapped range for a given address
-func (m FcMappings) GetRange(addr uintptr) (uint64, uint64, error) {
+func (m FcMappings) GetRange(addr uintptr) (int64, uint64, error) {
 	for _, m := range m {
 		if addr < m.BaseHostVirtAddr || m.BaseHostVirtAddr+m.Size <= addr {
 			// Outside of this mapping

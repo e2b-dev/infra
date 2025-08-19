@@ -26,11 +26,11 @@ func newMockMappings(start uintptr, size, pagesize uint64) *mockMappings {
 	}
 }
 
-func (m *mockMappings) GetRange(addr uintptr) (uint64, uint64, error) {
+func (m *mockMappings) GetRange(addr uintptr) (int64, uint64, error) {
 	offset := addr - m.start
 	pagesize := m.pagesize
 
-	return uint64(offset), pagesize, nil
+	return int64(offset), pagesize, nil
 }
 
 type mockSlicer struct {
