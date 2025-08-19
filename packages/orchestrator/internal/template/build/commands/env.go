@@ -28,12 +28,20 @@ func (e *Env) Execute(
 ) (sandboxtools.CommandMetadata, error) {
 	cmdType := strings.ToUpper(step.Type)
 	args := step.Args
-	// args: [key value]
-	if len(args) < 2 {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("%s requires a key and value argument", cmdType)
+	// args: [key1 value1 key2 value2 ...]
+	if len(args) < 2 || len(args)%2 != 0 {
+		return sandboxtools.CommandMetadata{}, fmt.Errorf("%s requires a key and value arguments", cmdType)
 	}
 
-	return saveEnvMeta(ctx, tracer, proxy, sandboxID, cmdMetadata, args[0], args[1])
+	for i := 0; i < len(args)-1; i += 2 {
+		m, err := saveEnvMeta(ctx, tracer, proxy, sandboxID, cmdMetadata, args[i], args[i+1])
+		if err != nil {
+			return sandboxtools.CommandMetadata{}, err
+		}
+		cmdMetadata = m
+	}
+
+	return cmdMetadata, nil
 }
 
 func saveEnvMeta(
