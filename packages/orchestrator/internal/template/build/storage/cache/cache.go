@@ -89,7 +89,7 @@ func (h *HashIndex) SaveLayerMeta(ctx context.Context, hash string, template Lay
 		return fmt.Errorf("error marshalling layer metadata: %w", err)
 	}
 
-	_, err = obj.ReadFrom(marshaled)
+	_, err = obj.Write(marshaled)
 	if err != nil {
 		return fmt.Errorf("error writing layer metadata to object: %w", err)
 	}

@@ -34,11 +34,11 @@ type StorageProvider interface {
 }
 
 type StorageObjectProvider interface {
-	WriteTo(dst io.Writer) (int64, error)
-	WriteFromFileSystem(path string) error
+	io.Writer
+	io.WriterTo
+	io.ReaderAt
 
-	ReadFrom(data []byte) (int64, error)
-	ReadAt(buff []byte, off int64) (n int, err error)
+	WriteFromFileSystem(path string) error
 
 	Size() (int64, error)
 	Delete() error

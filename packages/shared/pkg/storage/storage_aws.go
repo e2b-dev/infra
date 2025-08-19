@@ -160,7 +160,7 @@ func (a *AWSBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 	return err
 }
 
-func (a *AWSBucketStorageObjectProvider) ReadFrom(data []byte) (int64, error) {
+func (a *AWSBucketStorageObjectProvider) Write(data []byte) (int, error) {
 	ctx, cancel := context.WithTimeout(a.ctx, awsWriteTimeout)
 	defer cancel()
 
@@ -180,7 +180,7 @@ func (a *AWSBucketStorageObjectProvider) ReadFrom(data []byte) (int64, error) {
 		return 0, nil
 	}
 
-	return *result.Size, nil
+	return int(*result.Size), nil
 }
 
 func (a *AWSBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, err error) {

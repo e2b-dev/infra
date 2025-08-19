@@ -77,7 +77,7 @@ func SaveTemplateMetadata(ctx context.Context, s storage.StorageProvider, buildI
 		return fmt.Errorf("error marshalling template metadata: %w", err)
 	}
 
-	_, err = obj.ReadFrom(marshaled)
+	_, err = obj.Write(marshaled)
 	if err != nil {
 		return fmt.Errorf("error writing template metadata to object: %w", err)
 	}
