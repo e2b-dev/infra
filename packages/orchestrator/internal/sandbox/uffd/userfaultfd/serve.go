@@ -133,7 +133,7 @@ outerLoop:
 
 		addr := GetPagefaultAddress(&pagefault)
 
-		offset, pagesize, _, err := mappings.GetRange(addr)
+		offset, pagesize, err := mappings.GetRange(addr)
 		if err != nil {
 			logger.Error("UFFD serve get mapping error", zap.Error(err))
 
