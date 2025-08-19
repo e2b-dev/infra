@@ -21,16 +21,15 @@ import (
 )
 
 const (
-	googleReadTimeout       = 10 * time.Second
-	googleOperationTimeout  = 5 * time.Second
-	googleBufferSize        = 2 << 21
-	googleInitialBackoff    = 10 * time.Millisecond
-	googleMaxBackoff        = 10 * time.Second
-	googleBackoffMultiplier = 2
-	googleMaxAttempts       = 10
-
-	gcloudMaxRetries               = 3
+	googleReadTimeout              = 10 * time.Second
+	googleOperationTimeout         = 5 * time.Second
+	googleBufferSize               = 2 << 21
+	googleInitialBackoff           = 10 * time.Millisecond
+	googleMaxBackoff               = 10 * time.Second
+	googleBackoffMultiplier        = 2
+	googleMaxAttempts              = 10
 	gcloudDefaultUploadConcurrency = 16
+	gcloudParallelMinFileSize      = 10 * 1024 * 1024
 )
 
 type GCPBucketStorageProvider struct {
@@ -222,6 +221,26 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 	objectName := g.path
 	filePath := path
 
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to get file size: %w", err)
+	}
+
+	// If the file is too small, the overhead of writing in parallel isn't worth the effort.
+	// Write it in one shot instead.
+	if fileInfo.Size() < gcloudParallelMinFileSize {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("failed to read file: %w", err)
+		}
+
+		if _, err = g.ReadFrom(data); err != nil {
+			return fmt.Errorf("failed to write file (%d bytes): %w", len(data), err)
+		}
+
+		return nil
+	}
+
 	maxConcurrency := gcloudDefaultUploadConcurrency
 	if g.limiter != nil {
 		uploadLimiter := g.limiter.GCloudUploadLimiter()
@@ -246,11 +265,6 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 		return fmt.Errorf("failed to create multipart uploader: %w", err)
 	}
 
-	fileSize, err := os.Stat(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to get file size: %w", err)
-	}
-
 	start := time.Now()
 	if err := uploader.UploadFileInParallel(g.ctx, filePath, maxConcurrency); err != nil {
 		return fmt.Errorf("failed to upload file in parallel: %w", err)
@@ -261,7 +275,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 		zap.String("object", objectName),
 		zap.String("path", filePath),
 		zap.Int("max_concurrency", maxConcurrency),
-		zap.Int64("file_size", fileSize.Size()),
+		zap.Int64("file_size", fileInfo.Size()),
 		zap.Int64("duration", time.Since(start).Milliseconds()),
 	)
 

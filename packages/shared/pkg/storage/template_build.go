@@ -3,8 +3,6 @@ package storage
 import (
 	"context"
 	"fmt"
-	"io"
-	"os"
 
 	"golang.org/x/sync/errgroup"
 
@@ -105,15 +103,14 @@ func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) err
 }
 
 // Snap-file is small enough so we don't use composite upload.
-func (t *TemplateBuild) uploadSnapfile(ctx context.Context, snapfile []byte) error {
+func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
 	object, err := t.persistence.OpenObject(ctx, t.files.StorageSnapfilePath())
 	if err != nil {
 		return err
 	}
 
-	n, err := object.ReadFrom(snapfile)
-	if err != nil {
-		return fmt.Errorf("error when uploading snapfile (%d bytes): %w", n, err)
+	if err = object.WriteFromFileSystem(path); err != nil {
+		return fmt.Errorf("error when uploading snapfile: %w", err)
 	}
 
 	return nil
@@ -175,20 +172,8 @@ func (t *TemplateBuild) Upload(ctx context.Context, snapfilePath string, memfile
 	})
 
 	eg.Go(func() error {
-		snapfile, err := os.Open(snapfilePath)
-		if err != nil {
-			return fmt.Errorf("error when opening snapfile (%s): %w", snapfilePath, err)
-		}
-
-		defer snapfile.Close()
-
-		data, err := io.ReadAll(snapfile)
-		if err != nil {
-			return fmt.Errorf("error when reading snapfile: %w", err)
-		}
-		err = t.uploadSnapfile(ctx, data)
-		if err != nil {
-			return fmt.Errorf("error when uploading snapfile (%d bytes): %w", len(data), err)
+		if err := t.uploadSnapfile(ctx, snapfilePath); err != nil {
+			return fmt.Errorf("error when uploading snapfile: %w", err)
 		}
 
 		return nil
