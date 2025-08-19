@@ -31,7 +31,7 @@ func TestOpenObject_ReadWrite_Size_ReadAt(t *testing.T) {
 	// write via Write
 	n, err := obj.Write(contents)
 	require.NoError(t, err)
-	require.Equal(t, int64(len(contents)), n)
+	require.Equal(t, len(contents), n)
 
 	// check Size
 	size, err := obj.Size()
