@@ -2,6 +2,7 @@ package template
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -97,19 +98,22 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			return t.metafile.SetValue(t.localMetafile)
 		}
 
-		meta, metadataErr := newStorageFile(
+		meta, err := newStorageFile(
 			ctx,
 			t.persistence,
 			t.files.StorageMetadataPath(),
 			t.files.CacheMetadataPath(),
 		)
-		if metadataErr != nil {
+		if err != nil && !errors.Is(err, storage.ErrorObjectNotExist) {
+			return t.metafile.SetError(fmt.Errorf("failed to fetch metafile: %w", err))
+		}
+
+		if err != nil {
 			// If we can't find the metadata, we still want to return the metafile.
 			// This is used for templates that don't have metadata, like v1 templates.
-
 			zap.L().Info("failed to fetch metafile, falling back to v1 template metadata",
 				logger.WithBuildID(t.files.BuildID),
-				zap.Error(metadataErr),
+				zap.Error(err),
 			)
 			oldTemplateMetadata := metadata.Template{
 				Version:  1,
