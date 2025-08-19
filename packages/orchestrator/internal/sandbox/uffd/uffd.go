@@ -155,8 +155,6 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		}
 	}()
 
-	fmt.Fprintf(os.Stderr, "uffd: serving: %d\n", len(m))
-
 	u.readyCh <- struct{}{}
 
 	err = Serve(
@@ -168,7 +166,6 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		zap.L().With(logger.WithSandboxID(sandboxId)),
 	)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "serve error %v", err)
 		return fmt.Errorf("failed handling uffd: %w", err)
 	}
 
