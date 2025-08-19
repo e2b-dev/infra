@@ -7,9 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
-
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/ioutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -119,7 +116,6 @@ func fromTemplate(ctx context.Context, s storage.StorageProvider, files storage.
 }
 
 func deserialize(reader io.Reader) (Template, error) {
-	start := time.Now()
 	decoder := json.NewDecoder(reader)
 
 	var templateMetadata Template
@@ -127,28 +123,15 @@ func deserialize(reader io.Reader) (Template, error) {
 	if err != nil {
 		return Template{}, fmt.Errorf("error unmarshaling template metadata: %w", err)
 	}
-
-	zap.L().Error("template metadata deserialized",
-		zap.String("duration", time.Since(start).String()),
-		zap.Uint64("version", templateMetadata.Version),
-		zap.String("build_id", templateMetadata.Template.BuildID),
-	)
 	return templateMetadata, nil
 }
 
 func serialize(template Template) (io.Reader, error) {
-	start := time.Now()
 	marshaled, err := json.Marshal(template)
 	if err != nil {
 		return nil, fmt.Errorf("error serializing template metadata: %w", err)
 	}
 
 	buf := bytes.NewBuffer(marshaled)
-
-	zap.L().Debug("template metadata serialized",
-		zap.String("duration", time.Since(start).String()),
-		zap.Uint64("version", template.Version),
-		zap.String("build_id", template.Template.BuildID),
-	)
 	return buf, nil
 }
