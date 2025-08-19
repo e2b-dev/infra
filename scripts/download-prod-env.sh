@@ -14,8 +14,7 @@ SECRET_NAME="env_${STRIPPED_ENV}"
 
 # Decode to temporary file
 TMP_FILE=$(mktemp)
-# Note: the regex is required to remove the quotes around the values which Makefile doesn't parse correctly
-infisical export --env=$STRIPPED_ENV | sed "s/='\(.*\)'$$/=\1/g" > "$TMP_FILE"
+infisical export --env=$STRIPPED_ENV > "$TMP_FILE"
 
 # If file already exists, show diff and prompt
 if [[ -f "$ENV_FILE" ]]; then

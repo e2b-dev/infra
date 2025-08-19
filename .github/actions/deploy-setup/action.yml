@@ -21,13 +21,12 @@ runs:
         env-slug: ${{ inputs.environment }}
         project-slug: "infra-deployment"
         export-type: "file"
-        file-output-path: "/.env"
+        file-output-path: "/.env.${{ inputs.environment }}"
 
     - name: Load Environment Variables
       id: load-env
       run: |
         echo ${{ inputs.environment }} > .last_used_env
-        cat ".env" | sed "s/='\(.*\)'$/=\1/g" > ".env.${{ inputs.environment }}"
         export $(cat ".env.${{ inputs.environment }}" | xargs)
 
         echo "GCP_REGION=${GCP_REGION}" >> $GITHUB_ENV
