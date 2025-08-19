@@ -354,11 +354,6 @@ module "network" {
   additional_ports = [for service in var.additional_api_services : service.api_node_group_port]
 }
 
-moved {
-  from = module.filestore
-  to   = module.filestore[0]
-}
-
 module "filestore" {
   source = "./filestore"
 
