@@ -134,11 +134,11 @@ module "client_cluster" {
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
-    NFS_IP_ADDRESS               = var.use_filestore_cache ? join(",", module.filestore[0].nfs_ip_addresses) : ""
+    NFS_IP_ADDRESS               = var.filestore_cache.enabled ? join(",", module.filestore[0].nfs_ip_addresses) : ""
     NFS_MOUNT_PATH               = local.nfs_mount_path
     NFS_MOUNT_SUBDIR             = local.nfs_mount_subdir
 
-    use_filestore_cache = var.use_filestore_cache
+    use_filestore_cache = var.filestore_cache.enabled
   })
 
   environment = var.environment
@@ -282,11 +282,11 @@ module "build_cluster" {
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-build-cluster-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
-    NFS_IP_ADDRESS               = var.use_filestore_cache ? join(",", module.filestore[0].nfs_ip_addresses) : ""
+    NFS_IP_ADDRESS               = var.filestore_cache.enabled ? join(",", module.filestore[0].nfs_ip_addresses) : ""
     NFS_MOUNT_PATH               = local.nfs_mount_path
     NFS_MOUNT_SUBDIR             = local.nfs_mount_subdir
 
-    use_filestore_cache = var.use_filestore_cache
+    use_filestore_cache = var.filestore_cache.enabled
   })
 
   environment = var.environment
@@ -357,8 +357,10 @@ module "network" {
 module "filestore" {
   source = "./filestore"
 
-  count = var.use_filestore_cache ? 1 : 0
+  count = var.filestore_cache.enabled ? 1 : 0
 
   name         = "${var.prefix}slab-cache"
   network_name = var.network_name
+  tier         = var.filestore_cache.tier
+  capacity_gb  = var.filestore_cache.capacity_gb
 }

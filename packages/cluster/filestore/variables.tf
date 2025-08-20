@@ -7,3 +7,11 @@ variable "network_name" {
   description = "The name of the VPC Network where all resources should be created."
   type        = string
 }
+
+variable "tier" {
+  type = string
+}
+
+variable "capacity_gb" {
+  type = number
+}

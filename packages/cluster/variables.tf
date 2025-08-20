@@ -262,6 +262,13 @@ variable "additional_api_services" {
   }))
 }
 
-variable "use_filestore_cache" {
-  type = bool
+variable "filestore_cache" {
+  // copied from /variables.tf's definition of filestore_cache
+  type = object({
+    enabled = bool
+
+    capacity_gb = optional(number)
+    protocol    = optional(string)
+    tier        = optional(string)
+  })
 }

@@ -361,8 +361,18 @@ variable "redis_managed" {
   type    = bool
 }
 
-variable "use_filestore_cache" {
+variable "filestore_cache" {
   description = "Use Filestore as a fast local cache to speed up repeat sandbox starts"
-  default     = false
-  type        = bool
+
+  default = {
+    enabled = false
+  }
+
+  type = object({
+    enabled = bool
+
+    capacity_gb = optional(number)
+    protocol    = optional(string)
+    tier        = optional(string)
+  })
 }
