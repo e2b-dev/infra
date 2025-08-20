@@ -11,6 +11,8 @@ import (
 
 type LeastBusyAlgorithm struct{}
 
+var _ Algorithm = &LeastBusyAlgorithm{}
+
 // ChooseNode returns the least busy node, if there are no eligible nodes, it tries until one is available or the context timeouts
 func (a *LeastBusyAlgorithm) ChooseNode(ctx context.Context, nodes []*nodes.Node, nodesExcluded map[string]struct{}, _ SandboxResources) (leastBusyNode *nodes.Node, err error) {
 	ctx, cancel := context.WithTimeout(ctx, leastBusyNodeTimeout)
