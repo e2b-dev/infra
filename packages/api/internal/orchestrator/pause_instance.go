@@ -7,7 +7,6 @@ import (
 
 	"github.com/gogo/status"
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
@@ -25,7 +24,6 @@ func (ErrPauseQueueExhausted) Error() string {
 
 func (o *Orchestrator) PauseInstance(
 	ctx context.Context,
-	tracer trace.Tracer,
 	sbx *instance.InstanceInfo,
 	teamID uuid.UUID,
 ) error {
@@ -51,7 +49,7 @@ func (o *Orchestrator) PauseInstance(
 		ctx,
 		snapshotConfig,
 		teamID,
-		sbx.Node.NodeID,
+		sbx.NodeID,
 	)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)
@@ -86,14 +84,14 @@ func snapshotInstance(ctx context.Context, orch *Orchestrator, sbx *instance.Ins
 	childCtx, childSpan := orch.tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
 
-	node := orch.GetNode(sbx.Node.ClusterID, sbx.Node.NodeID)
+	node := orch.GetNode(sbx.ClusterID, sbx.NodeID)
 	if node == nil {
-		return fmt.Errorf("failed to get node '%s'", sbx.Node.NodeID)
+		return fmt.Errorf("failed to get node '%s'", sbx.NodeID)
 	}
 
-	client, childCtx, err := orch.GetClient(childCtx, sbx.Node.ClusterID, sbx.Node.NodeID)
+	client, childCtx, err := orch.GetClient(childCtx, sbx.ClusterID, sbx.NodeID)
 	if err != nil {
-		return fmt.Errorf("failed to get client '%s': %w", sbx.Node.NodeID, err)
+		return fmt.Errorf("failed to get client '%s': %w", sbx.NodeID, err)
 	}
 
 	_, err = client.Sandbox.Pause(

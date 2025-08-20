@@ -11,6 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
@@ -24,34 +25,48 @@ func (e *Env) Execute(
 	sandboxID string,
 	prefix string,
 	step *templatemanager.TemplateStep,
-	cmdMetadata sandboxtools.CommandMetadata,
-) (sandboxtools.CommandMetadata, error) {
+	cmdMetadata metadata.Context,
+) (metadata.Context, error) {
 	cmdType := strings.ToUpper(step.Type)
 	args := step.Args
-	// args: [key value]
-	if len(args) < 2 {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("%s requires a key and value argument", cmdType)
+	// args: [key1 value1 key2 value2 ...]
+	if len(args) == 0 {
+		return metadata.Context{}, fmt.Errorf("%s does not support passing no arguments", cmdType)
 	}
 
-	return saveEnvMeta(ctx, tracer, proxy, sandboxID, cmdMetadata, args[0], args[1])
+	if len(args)%2 != 0 {
+		return metadata.Context{}, fmt.Errorf("%s requires both a key and value arguments", cmdType)
+	}
+
+	envVars := maps.Clone(cmdMetadata.EnvVars)
+	for i := 0; i < len(args)-1; i += 2 {
+		k := args[i]
+		v, err := evaluateValue(ctx, tracer, proxy, sandboxID, args[i+1])
+		if err != nil {
+			return metadata.Context{}, fmt.Errorf("failed to evaluate environment variable %s: %w", k, err)
+		}
+
+		envVars[k] = v
+	}
+
+	cmdMetadata.EnvVars = envVars
+	return cmdMetadata, nil
 }
 
-func saveEnvMeta(
+func evaluateValue(
 	ctx context.Context,
 	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
-	cmdMetadata sandboxtools.CommandMetadata,
-	envName string,
 	envValue string,
-) (sandboxtools.CommandMetadata, error) {
+) (string, error) {
 	err := sandboxtools.RunCommandWithOutput(
 		ctx,
 		tracer,
 		proxy,
 		sandboxID,
 		fmt.Sprintf(`printf "%s"`, envValue),
-		sandboxtools.CommandMetadata{
+		metadata.Context{
 			User: "root",
 		},
 		func(stdout, stderr string) {
@@ -59,12 +74,8 @@ func saveEnvMeta(
 		},
 	)
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to save environment variable %s: %w", envName, err)
+		return "", err
 	}
 
-	envVars := maps.Clone(cmdMetadata.EnvVars)
-	envVars[envName] = envValue
-	cmdMetadata.EnvVars = envVars
-
-	return cmdMetadata, nil
+	return envValue, nil
 }

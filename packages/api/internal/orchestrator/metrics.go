@@ -19,8 +19,8 @@ func (o *Orchestrator) setupMetrics(meterProvider metric.MeterProvider) error {
 
 	_, err = telemetry.GetObservableCounter(meter, telemetry.ApiOrchestratorSbxCreateSuccess, func(ctx context.Context, observer metric.Int64Observer) error {
 		for _, node := range o.nodes.Items() {
-			observer.Observe(int64(node.createSuccess.Load()), metric.WithAttributes(
-				attribute.String("node.id", node.Info.NodeID),
+			observer.Observe(int64(node.PlacementMetrics.SuccessCount()), metric.WithAttributes(
+				attribute.String("node.id", node.ID),
 			))
 		}
 		return nil
@@ -31,8 +31,8 @@ func (o *Orchestrator) setupMetrics(meterProvider metric.MeterProvider) error {
 
 	_, err = telemetry.GetObservableCounter(meter, telemetry.ApiOrchestratorSbxCreateFailure, func(ctx context.Context, observer metric.Int64Observer) error {
 		for _, node := range o.nodes.Items() {
-			observer.Observe(int64(node.createFails.Load()), metric.WithAttributes(
-				attribute.String("node.id", node.Info.NodeID),
+			observer.Observe(int64(node.PlacementMetrics.FailsCount()), metric.WithAttributes(
+				attribute.String("node.id", node.ID),
 			))
 		}
 		return nil
@@ -46,7 +46,7 @@ func (o *Orchestrator) setupMetrics(meterProvider metric.MeterProvider) error {
 			for _, node := range o.nodes.Items() {
 				obs.ObserveInt64(gauge, 1, metric.WithAttributes(
 					attribute.String("status", string(node.Status())),
-					attribute.String("node.id", node.Info.NodeID),
+					attribute.String("node.id", node.ID),
 				))
 			}
 

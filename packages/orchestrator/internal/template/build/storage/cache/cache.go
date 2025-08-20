@@ -7,23 +7,27 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/paths"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 const hashingVersion = "v1"
 
+const minimalCachedTemplateVersion = 2
+
+type Template struct {
+	BuildID string `json:"build_id"`
+}
+
 type LayerMetadata struct {
-	Template storage.TemplateFiles        `json:"template"`
-	CmdMeta  sandboxtools.CommandMetadata `json:"metadata"`
+	Template Template `json:"template"`
 }
 
 type Index interface {
 	LayerMetaFromHash(ctx context.Context, hash string) (LayerMetadata, error)
 	SaveLayerMeta(ctx context.Context, hash string, template LayerMetadata) error
-	IsCached(ctx context.Context, metadata LayerMetadata) (bool, error)
+	Cached(ctx context.Context, buildID string) (metadata.Template, error)
 	Version() string
 }
 
@@ -69,9 +73,7 @@ func (h *HashIndex) LayerMetaFromHash(ctx context.Context, hash string) (LayerMe
 		return LayerMetadata{}, fmt.Errorf("error unmarshaling layer metadata: %w", err)
 	}
 
-	if layerMetadata.Template.BuildID == "" ||
-		layerMetadata.Template.KernelVersion == "" ||
-		layerMetadata.Template.FirecrackerVersion == "" {
+	if layerMetadata.Template.BuildID == "" {
 		return LayerMetadata{}, fmt.Errorf("layer metadata is missing required fields: %v", layerMetadata)
 	}
 
@@ -108,34 +110,20 @@ func HashKeys(baseKey string, keys ...string) string {
 	return fmt.Sprintf("%x", sha.Sum(nil))
 }
 
-func (h *HashIndex) IsCached(
+func (h *HashIndex) Cached(
 	ctx context.Context,
-	metadata LayerMetadata,
-) (bool, error) {
-	_, err := getRootfsSize(ctx, h.templateStorage, metadata.Template)
+	buildID string,
+) (metadata.Template, error) {
+	tmpl, err := metadata.FromBuildID(ctx, h.templateStorage, buildID)
 	if err != nil {
-		// If the rootfs header does not exist, the layer is not cached
-		return false, nil
-	} else {
-		// If the rootfs header exists, the layer is cached
-		return true, nil
-	}
-}
-
-func getRootfsSize(
-	ctx context.Context,
-	s storage.StorageProvider,
-	metadata storage.TemplateFiles,
-) (uint64, error) {
-	obj, err := s.OpenObject(ctx, metadata.StorageRootfsHeaderPath())
-	if err != nil {
-		return 0, fmt.Errorf("error opening rootfs header object: %w", err)
+		// If the metadata does not exist, the layer is not cached
+		return metadata.Template{}, fmt.Errorf("error reading template metadata: %w", err)
 	}
 
-	h, err := header.Deserialize(obj)
-	if err != nil {
-		return 0, fmt.Errorf("error deserializing rootfs header: %w", err)
+	if tmpl.Version < minimalCachedTemplateVersion {
+		return metadata.Template{}, fmt.Errorf("outdated template metadata: expected %d, got %d", metadata.CurrentVersion, tmpl.Version)
 	}
 
-	return h.Metadata.Size, nil
+	// If the metadata exists, the layer is cached
+	return tmpl, nil
 }

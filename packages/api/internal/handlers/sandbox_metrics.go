@@ -16,6 +16,7 @@ import (
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string, params api.GetSandboxesSandboxIDMetricsParams) {
@@ -46,9 +47,10 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 		return
 	}
 
-	// Validate time range parameters
-	if start.After(end) {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "start time cannot be after end time")
+	start, end, err = utils.ValidateDates(start, end)
+	if err != nil {
+		telemetry.ReportError(ctx, "error validating dates", err, telemetry.WithTeamID(team.ID.String()))
+		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
