@@ -4,8 +4,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -20,9 +18,10 @@ var (
 	APIKey            = utils.RequiredEnv("TESTS_E2B_API_KEY", "your Team API key")
 	AccessToken       = utils.RequiredEnv("TESTS_E2B_ACCESS_TOKEN", "your Access token")
 
-	SupabaseToken = os.Getenv("TESTS_SUPABASE_TOKEN")
-	TeamID        = os.Getenv("TESTS_SANDBOX_TEAM_ID")
-	UserID        = uuid.MustParse(os.Getenv("TESTS_SANDBOX_USER_ID"))
+	SupabaseJWTSecret = os.Getenv("TESTS_SUPABASE_JWT_SECRET")
+
+	TeamID = os.Getenv("TESTS_SANDBOX_TEAM_ID")
+	UserID = os.Getenv("TESTS_SANDBOX_USER_ID")
 
 	OrchestratorHost = os.Getenv("TESTS_ORCHESTRATOR_HOST")
 	EnvdProxy        = os.Getenv("TESTS_ENVD_PROXY")

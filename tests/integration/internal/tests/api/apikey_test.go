@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
-	"github.com/e2b-dev/infra/tests/integration/internal/tests/utils"
+	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
 
 func TestCreateAPIKey(t *testing.T) {
@@ -35,17 +35,13 @@ func TestCreateAPIKey(t *testing.T) {
 }
 
 func TestCreateAPIKeyForeignTeam(t *testing.T) {
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
+	ctx := t.Context()
 
-	db := setup.GetTestDBClient()
+	db := setup.GetTestDBClient(t)
 	c := setup.GetAPIClient()
 
 	// Create first team and API key
-	foreignTeamID := uuid.New()
-	teamName := "test-team-apikey-foreign"
-	_ = utils.CreateTeam(t, cancel, ctx, c, db, foreignTeamID, teamName)
-	defer db.Client.Team.DeleteOneID(foreignTeamID).Exec(ctx)
+	foreignTeamID := utils.CreateTeam(t, c, db, "test-team-apikey-foreign")
 
 	// Create the API key
 	resp, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
@@ -56,31 +52,22 @@ func TestCreateAPIKeyForeignTeam(t *testing.T) {
 }
 
 func TestCreateAPIKeyForeignTeamWithCache(t *testing.T) {
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
+	ctx := t.Context()
 
-	db := setup.GetTestDBClient()
+	db := setup.GetTestDBClient(t)
 	c := setup.GetAPIClient()
 
-	// Create first team and API key
-	foreignTeamID := uuid.New()
-	teamName := "test-team-apikey-foreign"
-	_ = utils.CreateTeamWithUser(t, cancel, ctx, c, db, foreignTeamID, teamName, setup.UserID)
-	defer db.Client.Team.DeleteOneID(foreignTeamID).Exec(ctx)
+	// Create first team
+	foreignUserID := utils.CreateUser(t, db)
+	foreignTeamID := utils.CreateTeamWithUser(t, c, db, "test-team-apikey-foreign", foreignUserID.String())
 
-	// Populate cache
-	_, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
-		Name: "local",
-	}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, foreignTeamID.String()))
-	require.NoError(t, err)
-	// Remove the user from the foreign team to simulate a foreign team access
-	utils.RemoveUserFromTeam(t, ctx, c, db, foreignTeamID, setup.UserID)
+	// Populate cache by calling some endpoint
+	utils.CreateAPIKey(t, ctx, c, foreignUserID.String(), foreignTeamID)
 
 	// Create the API key in foreign team
 	resp, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
-		Name: "foreign",
+		Name: "foreign-key",
 	}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, foreignTeamID.String()))
-	t.Log(resp.Status(), string(resp.Body))
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode(), "Expected 401 Unauthorized when creating API key for a foreign team")
 }
@@ -118,20 +105,16 @@ func TestDeleteAPIKey(t *testing.T) {
 	})
 
 	t.Run("cant delete other teams api key", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(t.Context())
-		db := setup.GetTestDBClient()
+		ctx := t.Context()
+		db := setup.GetTestDBClient(t)
 		c := setup.GetAPIClient()
 
 		// Create first team and API key
-		teamID1 := uuid.New()
-		teamName1 := "test-team-apikey-delete-1"
-		_ = utils.CreateTeamWithUser(t, cancel, ctx, c, db, teamID1, teamName1, setup.UserID)
+		teamID1 := utils.CreateTeam(t, c, db, "test-team-apikey-delete-1")
 		defer db.Client.Team.DeleteOneID(teamID1).Exec(ctx)
 
 		// Create second team and API key
-		teamID2 := uuid.New()
-		teamName2 := "test-team-apikey-delete-2"
-		_ = utils.CreateTeamWithUser(t, cancel, ctx, c, db, teamID2, teamName2, setup.UserID)
+		teamID2 := utils.CreateTeam(t, c, db, "test-team-apikey-delete-2")
 		defer db.Client.Team.DeleteOneID(teamID2).Exec(ctx)
 
 		// Create an additional API key for team1
@@ -270,20 +253,16 @@ func TestPatchAPIKey(t *testing.T) {
 	})
 
 	t.Run("cant patch other teams api keys", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(t.Context())
-		db := setup.GetTestDBClient()
+		ctx := t.Context()
+		db := setup.GetTestDBClient(t)
 		c := setup.GetAPIClient()
 
 		// Create first team and API key
-		teamID1 := uuid.New()
-		teamName1 := "test-team-apikey-patch-1"
-		_ = utils.CreateTeamWithUser(t, cancel, ctx, c, db, teamID1, teamName1, setup.UserID)
+		teamID1 := utils.CreateTeam(t, c, db, "test-team-apikey-patch-1")
 		defer db.Client.Team.DeleteOneID(teamID1).Exec(ctx)
 
 		// Create second team and API key
-		teamID2 := uuid.New()
-		teamName2 := "test-team-apikey-patch-2"
-		_ = utils.CreateTeamWithUser(t, cancel, ctx, c, db, teamID2, teamName2, setup.UserID)
+		teamID2 := utils.CreateTeam(t, c, db, "test-team-apikey-patch-2")
 		defer db.Client.Team.DeleteOneID(teamID2).Exec(ctx)
 
 		// Create an additional API key for team1
