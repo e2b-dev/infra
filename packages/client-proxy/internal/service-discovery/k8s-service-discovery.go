@@ -83,6 +83,7 @@ func (sd *K8sServiceDiscovery) sync(ctx context.Context) {
 	list, err := sd.client.CoreV1().Pods(sd.filterNamespace).List(reqCtx, metav1.ListOptions{LabelSelector: sd.filterLabels})
 	if err != nil {
 		sd.logger.Error("Failed to describe pods", zap.Error(err))
+		return
 	}
 
 	foundPods := make(map[string]string)
