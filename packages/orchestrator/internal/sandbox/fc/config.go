@@ -35,14 +35,14 @@ func (t FirecrackerVersions) FirecrackerPath() string {
 }
 
 type RootfsPaths struct {
-	Version    uint64
-	TemplateID string
-	BuildID    string
+	TemplateVersion uint64
+	TemplateID      string
+	BuildID         string
 }
 
 var ConstantRootfsPaths = RootfsPaths{
 	// The version is always 2 for the constant rootfs paths format change.
-	Version: 2,
+	TemplateVersion: 2,
 }
 
 // Deprecated: Use static rootfs path instead.
