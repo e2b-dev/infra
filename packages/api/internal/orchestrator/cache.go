@@ -106,29 +106,20 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 
 			// cluster and local nodes needs to by synced differently,
 			// because each of them is taken from different source pool
+			var err error
 			if n.ClusterID == uuid.Nil {
-				err := o.syncNode(syncNodesSpanCtx, n, nomadNodes, instanceCache)
-				if err != nil {
-					zap.L().Error("Error syncing local node", zap.Error(err))
-					err = n.CloseWithClient()
-					if err != nil {
-						zap.L().Error("Error closing grpc connection", zap.Error(err))
-					}
-
-					o.deregisterNode(n)
-				}
+				err = o.syncNode(syncNodesSpanCtx, n, nomadNodes, instanceCache)
 			} else {
-				err := o.syncClusterNode(syncNodesSpanCtx, n, instanceCache)
+				err = o.syncClusterNode(syncNodesSpanCtx, n, instanceCache)
+			}
+			if err != nil {
+				zap.L().Error("Error syncing node", zap.Error(err))
+				err = n.Close()
 				if err != nil {
-					zap.L().Error("Error syncing cluster node", zap.Error(err))
-					// we are not closing grpc connection, because it is shared between all cluster nodes, and it's handled by the cluster
-					err = n.Close()
-					if err != nil {
-						zap.L().Error("Error closing grpc connection", zap.Error(err))
-					}
-
-					o.deregisterNode(n)
+					zap.L().Error("Error closing grpc connection", zap.Error(err))
 				}
+
+				o.deregisterNode(n)
 			}
 		}()
 	}

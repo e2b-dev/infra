@@ -166,18 +166,20 @@ func NewClusterNode(
 }
 
 func (n *Node) Close() error {
+	if n.ClusterID == uuid.Nil {
+		zap.L().Info("Closing local node", logger.WithNodeID(n.ID))
+		err := n.client.Close()
+		if err != nil {
+			zap.L().Error("Error closing connection to node", zap.Error(err), logger.WithNodeID(n.ID))
+		}
+
+	} else {
+		zap.L().Info("Closing cluster node", logger.WithNodeID(n.ID), logger.WithClusterID(n.ClusterID))
+		// We are not closing grpc connection, because it is shared between all cluster nodes, and it's handled by the cluster
+	}
 	n.buildCache.Stop()
 
-	return n.client.Close()
-}
-
-func (n *Node) CloseWithClient() error {
-	err := n.client.Close()
-	if err != nil {
-		zap.L().Error("Error closing connection to node", zap.Error(err), logger.WithNodeID(n.ID))
-	}
-
-	return n.Close()
+	return nil
 }
 
 // Ensures that GRPC client request context always has the latest service instance ID
