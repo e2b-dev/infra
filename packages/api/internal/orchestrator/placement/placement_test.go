@@ -32,9 +32,9 @@ func TestPlaceSandbox_SuccessfulPlacement(t *testing.T) {
 	tracer := noop.NewTracerProvider().Tracer("")
 
 	// Create test nodes
-	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 30)
-	node2 := nodemanager.NewTestNode("node2", api.NodeStatusReady, 50)
-	node3 := nodemanager.NewTestNode("node3", api.NodeStatusReady, 70)
+	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 30, 4)
+	node2 := nodemanager.NewTestNode("node2", api.NodeStatusReady, 50, 4)
+	node3 := nodemanager.NewTestNode("node3", api.NodeStatusReady, 70, 4)
 	nodes := []*nodemanager.Node{node1, node2, node3}
 
 	// Create a mock algorithm that returns node2
@@ -63,9 +63,9 @@ func TestPlaceSandbox_WithPreferredNode(t *testing.T) {
 	tracer := noop.NewTracerProvider().Tracer("")
 
 	// Create test nodes
-	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 30)
-	node2 := nodemanager.NewTestNode("node2", api.NodeStatusReady, 50)
-	node3 := nodemanager.NewTestNode("node3", api.NodeStatusReady, 70)
+	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 30, 4)
+	node2 := nodemanager.NewTestNode("node2", api.NodeStatusReady, 50, 4)
+	node3 := nodemanager.NewTestNode("node3", api.NodeStatusReady, 70, 4)
 	nodes := []*nodemanager.Node{node1, node2, node3}
 
 	sbxRequest := &orchestrator.SandboxCreateRequest{

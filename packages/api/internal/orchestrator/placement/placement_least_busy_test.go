@@ -14,7 +14,7 @@ import (
 
 // createTestNode creates a test Node for testing
 func createTestNode(id string, status api.NodeStatus, cpuUsage int64, inProgressCount uint32) *nodemanager.TestNode {
-	node := nodemanager.NewTestNode(id, status, cpuUsage)
+	node := nodemanager.NewTestNode(id, status, cpuUsage, 4)
 
 	// Add sandboxes to the placement metrics
 	for i := uint32(0); i < inProgressCount; i++ {
