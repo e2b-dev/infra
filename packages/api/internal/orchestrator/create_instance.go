@@ -202,6 +202,7 @@ func (o *Orchestrator) CreateSandbox(
 				}
 			}
 		}
+		node.PlacementMetrics.AddSandbox(sandboxID, build.Vcpu, build.RamMb)
 
 		client, ctx := node.GetClient(ctx)
 		_, err := client.Sandbox.Create(node.GetSandboxCreateCtx(ctx, sbxRequest), sbxRequest)
