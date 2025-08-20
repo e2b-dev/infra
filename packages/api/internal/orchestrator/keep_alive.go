@@ -17,7 +17,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 		return apiErr
 	}
 
-	err := o.UpdateSandbox(ctx, sbx.SandboxID, sbx.GetEndTime(), sbx.Node.ClusterID, sbx.Node.NodeID)
+	err := o.UpdateSandbox(ctx, sbx.SandboxID, sbx.GetEndTime(), sbx.ClusterID, sbx.NodeID)
 	if err != nil {
 		zap.L().Warn("Error when setting sandbox timeout", zap.Error(err), logger.WithSandboxID(sandboxID))
 		return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}
