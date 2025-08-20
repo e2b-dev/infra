@@ -15,5 +15,5 @@ type SandboxResources struct {
 // Implementations should choose an optimal node based on available resources
 // and current load distribution.
 type Algorithm interface {
-	ChooseNode(ctx context.Context, nodes []*nodes.Node, nodesExcluded map[string]struct{}, resources SandboxResources) (*nodes.Node, error)
+	ChooseNode(ctx context.Context, nodes []*nodes.Node, nodesExcluded map[string]struct{}, requested SandboxResources) (*nodes.Node, error)
 }
