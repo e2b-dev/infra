@@ -6,8 +6,13 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
+type SandboxResources struct {
+	CPUs      int64
+	MiBMemory int64
+}
+
 type PlacementMetrics struct {
-	sandboxesInProgress *smap.Map[*sbxInProgress]
+	sandboxesInProgress *smap.Map[SandboxResources]
 
 	createSuccess atomic.Uint64
 	createFails   atomic.Uint64
@@ -31,7 +36,7 @@ func (p *PlacementMetrics) FailsCount() uint64 {
 	return p.createFails.Load()
 }
 
-func (p *PlacementMetrics) InProgress() map[string]*sbxInProgress {
+func (p *PlacementMetrics) InProgress() map[string]SandboxResources {
 	return p.sandboxesInProgress.Items()
 }
 
@@ -39,11 +44,8 @@ func (p *PlacementMetrics) InProgressCount() uint32 {
 	return uint32(p.sandboxesInProgress.Count())
 }
 
-func (p *PlacementMetrics) AddSandbox(sandboxID string, CPUs, MibMemory int64) {
-	p.sandboxesInProgress.Insert(sandboxID, &sbxInProgress{
-		MiBMemory: MibMemory,
-		CPUs:      CPUs,
-	})
+func (p *PlacementMetrics) AddSandbox(sandboxID string, resources SandboxResources) {
+	p.sandboxesInProgress.Insert(sandboxID, resources)
 }
 
 func (p *PlacementMetrics) RemoveSandbox(sandboxID string) {

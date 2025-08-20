@@ -104,7 +104,7 @@ func New(
 
 		buildCache: buildCache,
 		PlacementMetrics: PlacementMetrics{
-			sandboxesInProgress: smap.New[*sbxInProgress](),
+			sandboxesInProgress: smap.New[SandboxResources](),
 			createSuccess:       atomic.Uint64{},
 			createFails:         atomic.Uint64{},
 		},
@@ -148,7 +148,7 @@ func NewClusterNode(
 
 		buildCache: buildCache,
 		PlacementMetrics: PlacementMetrics{
-			sandboxesInProgress: smap.New[*sbxInProgress](),
+			sandboxesInProgress: smap.New[SandboxResources](),
 			createSuccess:       atomic.Uint64{},
 			createFails:         atomic.Uint64{},
 		},

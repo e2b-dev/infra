@@ -17,7 +17,6 @@ import (
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodes"
-	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -191,7 +190,7 @@ func (o *Orchestrator) CreateSandbox(
 			}
 
 			clusterNodes := o.GetClusterNodes(nodeClusterID)
-			node, err = o.placementAlgorithm.ChooseNode(ctx, clusterNodes, nodesExcluded, placement.SandboxResources{CpuCount: build.Vcpu, RamMib: build.RamMb})
+			node, err = o.placementAlgorithm.ChooseNode(ctx, clusterNodes, nodesExcluded, nodes.SandboxResources{CPUs: build.Vcpu, MiBMemory: build.RamMb})
 			if err != nil {
 				telemetry.ReportError(ctx, "failed to get least busy node", err)
 
@@ -202,7 +201,10 @@ func (o *Orchestrator) CreateSandbox(
 				}
 			}
 		}
-		node.PlacementMetrics.AddSandbox(sandboxID, build.Vcpu, build.RamMb)
+		node.PlacementMetrics.AddSandbox(sandboxID, nodes.SandboxResources{
+			CPUs:      build.Vcpu,
+			MiBMemory: build.RamMb,
+		})
 
 		client, ctx := node.GetClient(ctx)
 		_, err := client.Sandbox.Create(node.GetSandboxCreateCtx(ctx, sbxRequest), sbxRequest)
