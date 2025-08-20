@@ -28,7 +28,6 @@ func waitForStatus(t *testing.T, client *http.Client, sbx *api.Sandbox, url *url
 		t.Logf("Error: %v", err)
 		return nil, false
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode == expectedStatus {
 		return resp, true // todo: this prevents the `resp.Body.Close` from functioning correctly.
@@ -123,9 +122,6 @@ func TestSandboxProxyClosedPort(t *testing.T) {
 	}
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	t.Cleanup(func() {
-		require.NoError(t, resp.Body.Close())
-	})
 	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
 
 	assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
