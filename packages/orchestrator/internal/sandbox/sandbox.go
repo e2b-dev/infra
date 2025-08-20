@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -93,7 +94,7 @@ type Sandbox struct {
 
 	process *fc.Process
 
-	template template.Template
+	Template template.Template
 
 	Checks *Checks
 
@@ -265,7 +266,7 @@ func CreateSandbox(
 		Resources: resources,
 		Metadata:  metadata,
 
-		template: template,
+		Template: template,
 		files:    sandboxFiles,
 		process:  fcHandle,
 
@@ -398,6 +399,10 @@ func ResumeSandbox(
 	if ips.err != nil {
 		return nil, fmt.Errorf("failed to get network slot: %w", err)
 	}
+	meta, err := t.Metadata()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get metadata: %w", err)
+	}
 	fcHandle, fcErr := fc.NewProcess(
 		uffdStartCtx,
 		tracer,
@@ -410,9 +415,9 @@ func ResumeSandbox(
 		},
 		rootfsPath,
 		fc.RootfsPaths{
-			Version:    readonlyRootfs.Header().Metadata.Version,
-			TemplateID: config.BaseTemplateID,
-			BuildID:    readonlyRootfs.Header().Metadata.BaseBuildId.String(),
+			TemplateVersion: meta.Version,
+			TemplateID:      config.BaseTemplateID,
+			BuildID:         readonlyRootfs.Header().Metadata.BaseBuildId.String(),
 		},
 	)
 	if fcErr != nil {
@@ -463,7 +468,7 @@ func ResumeSandbox(
 		Resources: resources,
 		Metadata:  metadata,
 
-		template: t,
+		Template: t,
 		files:    sandboxFiles,
 		process:  fcHandle,
 
@@ -562,10 +567,15 @@ func (s *Sandbox) FirecrackerVersions() fc.FirecrackerVersions {
 func (s *Sandbox) Pause(
 	ctx context.Context,
 	tracer trace.Tracer,
-	snapshotTemplateFiles storage.TemplateCacheFiles,
+	m metadata.Template,
 ) (*Snapshot, error) {
 	childCtx, childSpan := tracer.Start(ctx, "sandbox-snapshot")
 	defer childSpan.End()
+
+	snapshotTemplateFiles, err := m.Template.CacheFiles()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get template files: %w", err)
+	}
 
 	buildID, err := uuid.Parse(snapshotTemplateFiles.BuildID)
 	if err != nil {
@@ -611,11 +621,11 @@ func (s *Sandbox) Pause(
 	}
 
 	// Gather data for postprocessing
-	originalMemfile, err := s.template.Memfile()
+	originalMemfile, err := s.Template.Memfile()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original memfile: %w", err)
 	}
-	originalRootfs, err := s.template.Rootfs()
+	originalRootfs, err := s.Template.Rootfs()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
 	}
@@ -654,8 +664,15 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
 
+	metadataFileLink := template.NewLocalFileLink(snapshotTemplateFiles.CacheMetadataPath())
+	err = m.ToFile(metadataFileLink.Path())
+	if err != nil {
+		return nil, err
+	}
+
 	return &Snapshot{
 		Snapfile:          snapfile,
+		Metafile:          metadataFileLink,
 		MemfileDiff:       memfileDiff,
 		MemfileDiffHeader: memfileDiffHeader,
 		RootfsDiff:        rootfsDiff,

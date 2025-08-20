@@ -108,7 +108,7 @@ func (sb *StartScriptBuilder) GenerateScript(args startScriptArgs, rootfsPaths R
 
 	// Choose the appropriate template based on the rootfs version
 	var template *txtTemplate.Template
-	if rootfsPaths.Version == 1 {
+	if rootfsPaths.TemplateVersion <= 1 {
 		template = sb.templateV1
 	} else {
 		template = sb.templateV2
@@ -149,7 +149,7 @@ func (sb *StartScriptBuilder) Build(
 // getRootfsPath returns the rootfs path based on the script args, with backward compatibility
 func (sb *StartScriptBuilder) getRootfsPath(args startScriptArgs, rootfsPaths RootfsPaths) string {
 	rootfsPath := filepath.Join(args.SandboxDir, args.SandboxRootfsFile)
-	if rootfsPaths.Version == 1 {
+	if rootfsPaths.TemplateVersion <= 1 {
 		rootfsPath = filepath.Join(args.DeprecatedSandboxRootfsDir, args.SandboxRootfsFile)
 	}
 	return rootfsPath

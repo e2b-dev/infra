@@ -11,6 +11,7 @@ const (
 	MemfileName  = "memfile"
 	RootfsName   = "rootfs.ext4"
 	SnapfileName = "snapfile"
+	MetadataName = "metadata.json"
 
 	HeaderSuffix = ".header"
 )
@@ -48,4 +49,8 @@ func (t TemplateFiles) StorageRootfsHeaderPath() string {
 
 func (t TemplateFiles) StorageSnapfilePath() string {
 	return fmt.Sprintf("%s/%s", t.StorageDir(), SnapfileName)
+}
+
+func (t TemplateFiles) StorageMetadataPath() string {
+	return fmt.Sprintf("%s/%s", t.StorageDir(), MetadataName)
 }
