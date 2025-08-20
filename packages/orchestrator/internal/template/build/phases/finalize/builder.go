@@ -85,7 +85,7 @@ func (ppb *PostProcessingBuilder) Layer(
 		result.Start = &metadata.Start{
 			StartCmd: ppb.Config.StartCmd,
 			ReadyCmd: ppb.Config.ReadyCmd,
-			Metadata: result.Metadata,
+			Context:  result.Context,
 		}
 	}
 
@@ -200,7 +200,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn() layer.FunctionActionFn {
 					"start",
 					sbx.Runtime.SandboxID,
 					meta.Start.StartCmd,
-					meta.Start.Metadata,
+					meta.Start.Context,
 					startCmdConfirm,
 				)
 				// If the ctx is canceled, the ready command succeeded and no start command await is necessary.
@@ -230,7 +230,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn() layer.FunctionActionFn {
 			commandsCtx,
 			sbx.Runtime.SandboxID,
 			readyCmd,
-			meta.Start.Metadata,
+			meta.Start.Context,
 		)
 		if err != nil {
 			return metadata.Template{}, &phases.PhaseBuildError{

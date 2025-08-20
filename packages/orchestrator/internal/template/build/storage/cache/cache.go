@@ -14,6 +14,8 @@ import (
 
 const hashingVersion = "v1"
 
+const minimalCachedTemplateVersion = 2
+
 type Template struct {
 	BuildID string `json:"build_id"`
 }
@@ -114,10 +116,14 @@ func (h *HashIndex) Cached(
 ) (metadata.Template, error) {
 	tmpl, err := metadata.FromBuildID(ctx, h.templateStorage, buildID)
 	if err != nil {
-		// If the rootfs header does not exist, the layer is not cached
+		// If the metadata does not exist, the layer is not cached
 		return metadata.Template{}, fmt.Errorf("error reading template metadata: %w", err)
 	}
 
-	// If the rootfs header exists, the layer is cached
+	if tmpl.Version < minimalCachedTemplateVersion {
+		return metadata.Template{}, fmt.Errorf("outdated template metadata: expected %d, got %d", metadata.CurrentVersion, tmpl.Version)
+	}
+
+	// If the metadata exists, the layer is cached
 	return tmpl, nil
 }

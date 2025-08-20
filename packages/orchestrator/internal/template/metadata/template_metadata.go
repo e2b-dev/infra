@@ -16,7 +16,7 @@ const (
 	CurrentVersion = 2
 )
 
-type Command struct {
+type Context struct {
 	User    string            `json:"user,omitempty"`
 	WorkDir *string           `json:"workdir,omitempty"`
 	EnvVars map[string]string `json:"env_vars,omitempty"`
@@ -30,13 +30,13 @@ type FromTemplate struct {
 type Start struct {
 	StartCmd string  `json:"start_command"`
 	ReadyCmd string  `json:"ready_command"`
-	Metadata Command `json:"metadata"`
+	Context  Context `json:"context"`
 }
 
 type Template struct {
 	Version      uint64                `json:"version"`
 	Template     storage.TemplateFiles `json:"template"`
-	Metadata     Command               `json:"metadata"`
+	Context      Context               `json:"context"`
 	Start        *Start                `json:"start,omitempty"`
 	FromImage    *string               `json:"from_image,omitempty"`
 	FromTemplate *FromTemplate         `json:"from_template,omitempty"`
@@ -48,7 +48,7 @@ func (t Template) BasedOn(
 	return Template{
 		Version:      CurrentVersion,
 		Template:     t.Template,
-		Metadata:     t.Metadata,
+		Context:      t.Context,
 		Start:        t.Start,
 		FromTemplate: &ft,
 		FromImage:    nil,
@@ -59,7 +59,7 @@ func (t Template) NewVersionTemplate(files storage.TemplateFiles) Template {
 	return Template{
 		Version:      CurrentVersion,
 		Template:     files,
-		Metadata:     t.Metadata,
+		Context:      t.Context,
 		Start:        t.Start,
 		FromTemplate: t.FromTemplate,
 		FromImage:    t.FromImage,
@@ -70,7 +70,7 @@ func (t Template) SameVersionTemplate(files storage.TemplateFiles) Template {
 	return Template{
 		Version:      t.Version,
 		Template:     files,
-		Metadata:     t.Metadata,
+		Context:      t.Context,
 		Start:        t.Start,
 		FromTemplate: t.FromTemplate,
 		FromImage:    t.FromImage,

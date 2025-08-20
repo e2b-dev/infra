@@ -24,12 +24,12 @@ func (w *Workdir) Execute(
 	sandboxID string,
 	prefix string,
 	step *templatemanager.TemplateStep,
-	cmdMetadata metadata.Command,
-) (metadata.Command, error) {
+	cmdMetadata metadata.Context,
+) (metadata.Context, error) {
 	args := step.Args
 	// args: [path]
 	if len(args) < 1 {
-		return metadata.Command{}, fmt.Errorf("WORKDIR requires a path argument")
+		return metadata.Context{}, fmt.Errorf("WORKDIR requires a path argument")
 	}
 
 	workdirArg := args[0]
@@ -43,13 +43,13 @@ func (w *Workdir) Execute(
 		prefix,
 		sandboxID,
 		fmt.Sprintf(`mkdir -p "%s"`, workdirArg),
-		metadata.Command{
+		metadata.Context{
 			User:    cmdMetadata.User,
 			EnvVars: cmdMetadata.EnvVars,
 		},
 	)
 	if err != nil {
-		return metadata.Command{}, fmt.Errorf("failed to create workdir: %w", err)
+		return metadata.Context{}, fmt.Errorf("failed to create workdir: %w", err)
 	}
 
 	return saveWorkdirMeta(ctx, tracer, proxy, sandboxID, cmdMetadata, workdirArg)
@@ -60,16 +60,16 @@ func saveWorkdirMeta(
 	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
-	cmdMetadata metadata.Command,
+	cmdMetadata metadata.Context,
 	workdir string,
-) (metadata.Command, error) {
+) (metadata.Context, error) {
 	err := sandboxtools.RunCommandWithOutput(
 		ctx,
 		tracer,
 		proxy,
 		sandboxID,
 		fmt.Sprintf(`printf "%s"`, workdir),
-		metadata.Command{
+		metadata.Context{
 			User: "root",
 		},
 		func(stdout, stderr string) {
@@ -77,7 +77,7 @@ func saveWorkdirMeta(
 		},
 	)
 	if err != nil {
-		return metadata.Command{}, fmt.Errorf("failed to save workdir %s: %w", workdir, err)
+		return metadata.Context{}, fmt.Errorf("failed to save workdir %s: %w", workdir, err)
 	}
 
 	cmdMetadata.WorkDir = &workdir

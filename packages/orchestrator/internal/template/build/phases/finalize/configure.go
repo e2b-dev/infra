@@ -59,7 +59,7 @@ func runConfiguration(
 		"config",
 		sandboxID,
 		scriptDef.String(),
-		metadata.Command{
+		metadata.Context{
 			User: "root",
 		},
 	)

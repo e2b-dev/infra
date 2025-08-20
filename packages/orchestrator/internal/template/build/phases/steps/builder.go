@@ -161,7 +161,7 @@ func (sb *StepBuilder) Build(
 			sbx,
 			prefix,
 			step,
-			meta.Metadata,
+			meta.Context,
 		)
 		if err != nil {
 			return metadata.Template{}, &phases.PhaseBuildError{
@@ -181,7 +181,7 @@ func (sb *StepBuilder) Build(
 			return metadata.Template{}, fmt.Errorf("error running sync command: %w", err)
 		}
 
-		meta.Metadata = cmdMeta
+		meta.Context = cmdMeta
 		return meta, nil
 	})
 

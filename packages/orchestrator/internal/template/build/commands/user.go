@@ -24,12 +24,12 @@ func (u *User) Execute(
 	sandboxID string,
 	prefix string,
 	step *templatemanager.TemplateStep,
-	cmdMetadata metadata.Command,
-) (metadata.Command, error) {
+	cmdMetadata metadata.Context,
+) (metadata.Context, error) {
 	args := step.Args
 	// args: [username]
 	if len(args) < 1 {
-		return metadata.Command{}, fmt.Errorf("USER requires a username argument")
+		return metadata.Context{}, fmt.Errorf("USER requires a username argument")
 	}
 
 	userArg := args[0]
@@ -43,13 +43,13 @@ func (u *User) Execute(
 		prefix,
 		sandboxID,
 		fmt.Sprintf("adduser -disabled-password --gecos \"\" %s || true", userArg),
-		metadata.Command{
+		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,
 		},
 	)
 	if err != nil {
-		return metadata.Command{}, fmt.Errorf("failed to create user: %w", err)
+		return metadata.Context{}, fmt.Errorf("failed to create user: %w", err)
 	}
 
 	return saveUserMeta(ctx, tracer, proxy, sandboxID, cmdMetadata, userArg)
@@ -60,16 +60,16 @@ func saveUserMeta(
 	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
-	cmdMetadata metadata.Command,
+	cmdMetadata metadata.Context,
 	user string,
-) (metadata.Command, error) {
+) (metadata.Context, error) {
 	err := sandboxtools.RunCommandWithOutput(
 		ctx,
 		tracer,
 		proxy,
 		sandboxID,
 		fmt.Sprintf(`printf "%s"`, user),
-		metadata.Command{
+		metadata.Context{
 			User: "root",
 		},
 		func(stdout, stderr string) {

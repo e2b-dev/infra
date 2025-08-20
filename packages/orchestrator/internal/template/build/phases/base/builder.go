@@ -179,7 +179,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	}
 
 	// Env variables from the Docker image
-	baseMetadata.Metadata.EnvVars = oci.ParseEnvs(envsImg.Env)
+	baseMetadata.Context.EnvVars = oci.ParseEnvs(envsImg.Env)
 
 	cacheFiles, err := baseMetadata.Template.CacheFiles()
 	if err != nil {
@@ -333,7 +333,7 @@ func (bb *BaseBuilder) Layer(
 			Cached:   true,
 		}, nil
 	default:
-		cmdMeta := metadata.Command{
+		cmdMeta := metadata.Context{
 			User:    defaultUser,
 			WorkDir: nil,
 			EnvVars: make(map[string]string),
@@ -352,7 +352,7 @@ func (bb *BaseBuilder) Layer(
 				KernelVersion:      bb.Template.KernelVersion,
 				FirecrackerVersion: bb.Template.FirecrackerVersion,
 			},
-			Metadata:     cmdMeta,
+			Context:      cmdMeta,
 			FromImage:    &bb.Config.FromImage,
 			FromTemplate: nil,
 			Start:        nil,

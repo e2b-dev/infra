@@ -174,7 +174,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		"update-envd-replace",
 		sbx.Runtime.SandboxID,
 		replaceEnvdCmd,
-		metadata.Command{User: "root"},
+		metadata.Context{User: "root"},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to replace envd binary: %w", err)
@@ -188,7 +188,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		lb.proxy,
 		sbx.Runtime.SandboxID,
 		"systemctl restart envd",
-		metadata.Command{User: "root"},
+		metadata.Context{User: "root"},
 	)
 
 	// Step 4: Wait for envd to initialize

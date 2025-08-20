@@ -23,7 +23,7 @@ func (ppb *PostProcessingBuilder) runReadyCommand(
 	ctx context.Context,
 	sandboxID string,
 	readyCmd string,
-	cmdMetadata metadata.Command,
+	cmdMetadata metadata.Context,
 ) error {
 	ctx, span := ppb.tracer.Start(ctx, "run-ready-command")
 	defer span.End()
