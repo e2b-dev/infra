@@ -336,7 +336,7 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Info("Connected to Redis cluster")
 	}
 
-	redisPubSub := pubsub.NewRedisPubSub[*webhooks.SandboxWebhooksPayload, *webhooks.SandboxWebhooksMetaData](ctx, &redisClient, "sandbox-webhooks")
+	redisPubSub := pubsub.NewRedisPubSub[*webhooks.SandboxWebhooksPayload, *webhooks.SandboxWebhooksMetaData](&redisClient, "sandbox-webhooks")
 
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, serviceInfo.SourceCommit, serviceInfo.ClientId, sandboxes)
 	if err != nil {

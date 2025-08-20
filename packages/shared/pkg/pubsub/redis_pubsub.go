@@ -47,7 +47,11 @@ func (r *RedisPubSub[PayloadT, SubMetadataT]) SetSubscriptionMetaData(ctx contex
 	if r.redisClient == nil {
 		return fmt.Errorf("redis client is not initialized")
 	}
-	return (*r.redisClient).Set(ctx, key, metaData, 0).Err()
+	data, err := encodeMessage(metaData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+	return (*r.redisClient).Set(ctx, key, data, 0).Err()
 }
 
 func (r *RedisPubSub[PayloadT, SubMetadataT]) Publish(ctx context.Context, payload PayloadT) error {
@@ -83,6 +87,7 @@ func (r *RedisPubSub[PayloadT, SubMetadataT]) Subscribe(ctx context.Context, pub
 			}
 			pubSubQueue <- t
 		case <-ctx.Done():
+			redisPubSub.Close()
 			return ctx.Err()
 		}
 	}
