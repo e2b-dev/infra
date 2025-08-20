@@ -664,7 +664,6 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
 
-	m.Template = snapshotTemplateFiles.TemplateFiles
 	metadataFileLink := template.NewLocalFileLink(snapshotTemplateFiles.CacheMetadataPath())
 	err = m.ToFile(metadataFileLink.Path())
 	if err != nil {
