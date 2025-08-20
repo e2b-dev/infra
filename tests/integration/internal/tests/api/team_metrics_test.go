@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
@@ -116,4 +117,20 @@ func TestTeamMetricsEmpty(t *testing.T) {
 	require.NotNil(t, response.JSON200)
 	metrics := *response.JSON200
 	require.Empty(t, metrics, "Expected no team metrics for historical time range")
+}
+
+func TestTeamMetricsInvalidDate(t *testing.T) {
+	c := setup.GetAPIClient()
+
+	// Test getting metrics for a time range where no sandboxes existed
+	now := time.Now().Unix()
+	end := clickhouse.MaxDate64.Unix() + 1
+	response, err := c.GetTeamsTeamIDMetricsWithResponse(t.Context(), setup.TeamID, &api.GetTeamsTeamIDMetricsParams{
+		Start: &now,
+		End:   &end,
+	}, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, response.StatusCode())
+	require.NotNil(t, response.JSON400)
+	require.Contains(t, response.JSON400.Message, "end time cannot be after")
 }
