@@ -41,15 +41,20 @@ func PlaceSandbox(ctx context.Context, tracer trace.Tracer, algorithm Algorithm,
 		var node *nodemanager.Node
 		if preferredNode != nil {
 			node = preferredNode
+			telemetry.ReportEvent(ctx, "Placing sandbox on the preferred node")
 		} else {
 			if len(nodesExcluded) >= len(clusterNodes) {
 				return nil, fmt.Errorf("no nodes available")
 			}
 
-			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.Sandbox.Vcpu, MiBMemory: sbxRequest.Sandbox.RamMb})
+			childCtx, childSpan := tracer.Start(ctx, "choose-node")
+			node, err = algorithm.chooseNode(childCtx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.Sandbox.Vcpu, MiBMemory: sbxRequest.Sandbox.RamMb})
+			childSpan.End()
 			if err != nil {
 				return nil, err
 			}
+
+			telemetry.ReportEvent(ctx, "Placing sandbox on the node", telemetry.WithNodeID(node.ID))
 		}
 
 		node.PlacementMetrics.StartPlacing(sbxRequest.Sandbox.SandboxId, nodemanager.SandboxResources{
