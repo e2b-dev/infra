@@ -116,7 +116,21 @@ func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
 	return nil
 }
 
-func (t *TemplateBuild) Upload(ctx context.Context, snapfilePath string, memfilePath *string, rootfsPath *string) chan error {
+// Metadata is small enough so we don't use composite upload.
+func (t *TemplateBuild) uploadMetadata(ctx context.Context, path string) error {
+	object, err := t.persistence.OpenObject(ctx, t.files.StorageMetadataPath())
+	if err != nil {
+		return err
+	}
+
+	if err := object.WriteFromFileSystem(path); err != nil {
+		return fmt.Errorf("error when uploading metadata: %w", err)
+	}
+
+	return nil
+}
+
+func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapfilePath string, memfilePath *string, rootfsPath *string) chan error {
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
@@ -172,8 +186,16 @@ func (t *TemplateBuild) Upload(ctx context.Context, snapfilePath string, memfile
 	})
 
 	eg.Go(func() error {
-		if err := t.uploadSnapfile(ctx, snapfilePath); err != nil {
+		if err := t.uploadSnapfile(ctx, fcSnapfilePath); err != nil {
 			return fmt.Errorf("error when uploading snapfile: %w", err)
+		}
+
+		return nil
+	})
+
+	eg.Go(func() error {
+		if err := t.uploadMetadata(ctx, metadataPath); err != nil {
+			return err
 		}
 
 		return nil

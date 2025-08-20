@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 )
 
 const configurationTimeout = 5 * time.Minute
@@ -58,7 +59,7 @@ func runConfiguration(
 		"config",
 		sandboxID,
 		scriptDef.String(),
-		sandboxtools.CommandMetadata{
+		metadata.Context{
 			User: "root",
 		},
 	)

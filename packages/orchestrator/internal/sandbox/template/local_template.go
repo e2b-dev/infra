@@ -1,7 +1,10 @@
 package template
 
 import (
+	"errors"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -41,20 +44,14 @@ func (t *LocalTemplate) Rootfs() (block.ReadonlyDevice, error) {
 }
 
 func (t *LocalTemplate) Snapfile() (File, error) {
-	return &NoopSnapfile{}, nil
+	return &NoopFile{}, errors.New("snapfile not available in local template")
+}
+
+func (t *LocalTemplate) Metadata() (metadata.Template, error) {
+	return metadata.Template{}, errors.New("metadata not available in local template")
 }
 
 func (t *LocalTemplate) ReplaceMemfile(memfile block.ReadonlyDevice) error {
 	t.memfile = memfile
 	return nil
-}
-
-type NoopSnapfile struct{}
-
-func (n *NoopSnapfile) Close() error {
-	return nil
-}
-
-func (n *NoopSnapfile) Path() string {
-	return "/dev/null"
 }
