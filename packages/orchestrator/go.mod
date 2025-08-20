@@ -5,7 +5,7 @@ go 1.24.3
 require (
 	connectrpc.com/connect v1.18.1
 	github.com/Merovius/nbd v0.0.0-20240812113926-fd65a54c9949
-	github.com/bits-and-blooms/bitset v1.22.0
+	github.com/bits-and-blooms/bitset v1.24.0
 	github.com/containernetworking/plugins v1.6.0
 	github.com/containers/storage v1.58.0
 	github.com/coreos/go-iptables v0.8.0
