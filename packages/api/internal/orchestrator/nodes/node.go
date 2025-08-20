@@ -116,6 +116,7 @@ func New(
 func NewClusterNode(
 	ctx context.Context,
 	client *grpclient.GRPCClient,
+	clusterID uuid.UUID,
 	i *edge.ClusterInstance,
 ) (*Node, error) {
 	nodeStatus, ok := OrchestratorToApiNodeStateMapper[i.GetStatus()]
@@ -133,7 +134,6 @@ func NewClusterNode(
 		Version:           i.ServiceVersion,
 	}
 
-	clusterID := uuid.Nil
 	n := &Node{
 		NomadNodeShortID: UnknownNomadNodeShortID,
 		ClusterID:        clusterID,

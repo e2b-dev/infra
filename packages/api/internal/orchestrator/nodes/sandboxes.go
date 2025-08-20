@@ -44,7 +44,7 @@ func (n *Node) GetSandboxes(ctx context.Context, tracer trace.Tracer) ([]*instan
 
 		buildID, parseErr := uuid.Parse(config.BuildId)
 		if parseErr != nil {
-			return nil, fmt.Errorf("failed to parse build ID '%s' for job: %w", config.BuildId, err)
+			return nil, fmt.Errorf("failed to parse build ID '%s' for job: %w", config.BuildId, parseErr)
 		}
 
 		sandboxesInfo = append(

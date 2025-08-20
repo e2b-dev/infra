@@ -51,7 +51,7 @@ func (o *Orchestrator) CreateSandbox(
 	envdAuthToken *string,
 	allowInternetAccess *bool,
 ) (*api.Sandbox, *api.APIError) {
-	childCtx, childSpan := o.tracer.Start(ctx, "create-sandbox")
+	ctx, childSpan := o.tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
 
 	// Check if team has reached max instances
@@ -88,7 +88,7 @@ func (o *Orchestrator) CreateSandbox(
 		}
 	}
 
-	telemetry.ReportEvent(childCtx, "Reserved sandbox for team")
+	telemetry.ReportEvent(ctx, "Reserved sandbox for team")
 	defer releaseTeamSandboxReservation()
 
 	features, err := sandbox.NewVersionInfo(build.FirecrackerVersion)
@@ -102,7 +102,7 @@ func (o *Orchestrator) CreateSandbox(
 		}
 	}
 
-	telemetry.ReportEvent(childCtx, "Got FC version info")
+	telemetry.ReportEvent(ctx, "Got FC version info")
 
 	var sbxDomain *string
 	if team.Team.ClusterID != nil {
@@ -149,7 +149,7 @@ func (o *Orchestrator) CreateSandbox(
 	var node *nodes.Node
 
 	if isResume && nodeID != nil {
-		telemetry.ReportEvent(childCtx, "Placing sandbox on the node where the snapshot was taken")
+		telemetry.ReportEvent(ctx, "Placing sandbox on the node where the snapshot was taken")
 
 		clusterID := uuid.Nil
 		if team.Team.ClusterID != nil {
@@ -166,7 +166,7 @@ func (o *Orchestrator) CreateSandbox(
 	nodesExcluded := make(map[string]struct{})
 	for {
 		select {
-		case <-childCtx.Done():
+		case <-ctx.Done():
 			return nil, &api.APIError{
 				Code:      http.StatusRequestTimeout,
 				ClientMsg: "Failed to create sandbox",
@@ -191,9 +191,9 @@ func (o *Orchestrator) CreateSandbox(
 			}
 
 			clusterNodes := o.GetClusterNodes(nodeClusterID)
-			node, err = o.placementAlgorithm.ChooseNode(childCtx, clusterNodes, nodesExcluded, placement.SandboxResources{CpuCount: build.Vcpu, RamMib: build.RamMb})
+			node, err = o.placementAlgorithm.ChooseNode(ctx, clusterNodes, nodesExcluded, placement.SandboxResources{CpuCount: build.Vcpu, RamMib: build.RamMb})
 			if err != nil {
-				telemetry.ReportError(childCtx, "failed to get least busy node", err)
+				telemetry.ReportError(ctx, "failed to get least busy node", err)
 
 				return nil, &api.APIError{
 					Code:      http.StatusInternalServerError,
@@ -233,8 +233,8 @@ func (o *Orchestrator) CreateSandbox(
 	// The sandbox was created successfully, the resources will be counted in cache
 	defer node.PlacementMetrics.Success(sandboxID)
 
-	telemetry.SetAttributes(childCtx, attribute.String("node.id", node.ID))
-	telemetry.ReportEvent(childCtx, "Created sandbox")
+	telemetry.SetAttributes(ctx, attribute.String("node.id", node.ID))
+	telemetry.ReportEvent(ctx, "Created sandbox")
 
 	sbx := api.Sandbox{
 		ClientID:        consts.ClientID,
@@ -277,11 +277,11 @@ func (o *Orchestrator) CreateSandbox(
 		baseTemplateID,
 	)
 
-	cacheErr := o.instanceCache.Add(childCtx, instanceInfo, true)
+	cacheErr := o.instanceCache.Add(ctx, instanceInfo, true)
 	if cacheErr != nil {
 		telemetry.ReportError(ctx, "error when adding instance to cache", cacheErr)
 
-		deleted := o.DeleteInstance(childCtx, sbx.SandboxID, false)
+		deleted := o.DeleteInstance(ctx, sbx.SandboxID, false)
 		if !deleted {
 			telemetry.ReportEvent(ctx, "instance wasn't found in cache when deleting")
 		}

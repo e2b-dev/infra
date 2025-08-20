@@ -35,7 +35,7 @@ func (o *Orchestrator) connectToClusterNode(ctx context.Context, cluster *edge.C
 	// this way we don't need to worry about multiple clusters with the same node ID in shared pool
 	clusterGRPC := cluster.GetGRPC(i.ServiceInstanceID)
 
-	orchestratorNode, err := nodes.NewClusterNode(ctx, clusterGRPC.Client, i)
+	orchestratorNode, err := nodes.NewClusterNode(ctx, clusterGRPC.Client, cluster.ID, i)
 	if err != nil {
 		zap.L().Error("Failed to create node", zap.Error(err))
 		return
