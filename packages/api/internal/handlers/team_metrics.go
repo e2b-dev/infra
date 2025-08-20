@@ -11,6 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -47,18 +48,10 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 
 	// Default time range is the last 7 days
 	start, end := time.Now().Add(-defaultTimeRange), time.Now()
-	if params.Start != nil {
-		start = time.Unix(*params.Start, 0)
-	}
-
-	if params.End != nil {
-		end = time.Unix(*params.End, 0)
-	}
-
-	// Validate time range parameters
-	if start.After(end) {
-		telemetry.ReportError(ctx, "start after end", fmt.Errorf("start time (%s) cannot be after end time (%s)", start, end), telemetry.WithTeamID(team.ID.String()))
-		a.sendAPIStoreError(c, http.StatusBadRequest, "start time cannot be after end time")
+	start, end, err = utils.ValidateDates(params.Start, params.End, start, end)
+	if err != nil {
+		telemetry.ReportError(ctx, "error validating dates", err, telemetry.WithTeamID(team.ID.String()))
+		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
