@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 )
 
 const (
@@ -22,7 +23,7 @@ func (ppb *PostProcessingBuilder) runReadyCommand(
 	ctx context.Context,
 	sandboxID string,
 	readyCmd string,
-	cmdMetadata sandboxtools.CommandMetadata,
+	cmdMetadata metadata.Context,
 ) error {
 	ctx, span := ppb.tracer.Start(ctx, "run-ready-command")
 	defer span.End()

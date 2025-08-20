@@ -119,7 +119,22 @@ func (t *TemplateBuild) uploadSnapfile(ctx context.Context, snapfile []byte) err
 	return nil
 }
 
-func (t *TemplateBuild) Upload(ctx context.Context, snapfilePath string, memfilePath *string, rootfsPath *string) chan error {
+// Metadata is small enough so we don't use composite upload.
+func (t *TemplateBuild) uploadMetadata(ctx context.Context, metadata io.Reader) error {
+	object, err := t.persistence.OpenObject(ctx, t.files.StorageMetadataPath())
+	if err != nil {
+		return err
+	}
+
+	n, err := object.ReadFrom(metadata)
+	if err != nil {
+		return fmt.Errorf("error when uploading metadata (%d bytes): %w", n, err)
+	}
+
+	return nil
+}
+
+func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapfilePath string, memfilePath *string, rootfsPath *string) chan error {
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
@@ -175,7 +190,7 @@ func (t *TemplateBuild) Upload(ctx context.Context, snapfilePath string, memfile
 	})
 
 	eg.Go(func() error {
-		snapfile, err := os.Open(snapfilePath)
+		snapfile, err := os.Open(fcSnapfilePath)
 		if err != nil {
 			return fmt.Errorf("error when opening snapfile (%s): %w", snapfilePath, err)
 		}
@@ -189,6 +204,21 @@ func (t *TemplateBuild) Upload(ctx context.Context, snapfilePath string, memfile
 		err = t.uploadSnapfile(ctx, data)
 		if err != nil {
 			return fmt.Errorf("error when uploading snapfile (%d bytes): %w", len(data), err)
+		}
+
+		return nil
+	})
+
+	eg.Go(func() error {
+		metadata, err := os.Open(metadataPath)
+		if err != nil {
+			return err
+		}
+		defer metadata.Close()
+
+		err = t.uploadMetadata(ctx, metadata)
+		if err != nil {
+			return err
 		}
 
 		return nil

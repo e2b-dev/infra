@@ -119,6 +119,7 @@ func (c *Cache) GetTemplate(
 		persistence,
 		c.blockMetrics,
 		nil,
+		nil,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create template cache from storage: %w", err)
@@ -143,7 +144,8 @@ func (c *Cache) AddSnapshot(
 	firecrackerVersion string,
 	memfileHeader *header.Header,
 	rootfsHeader *header.Header,
-	localSnapfile *LocalFileLink,
+	localSnapfile File,
+	localMetafile File,
 	memfileDiff build.Diff,
 	rootfsDiff build.Diff,
 ) error {
@@ -170,6 +172,7 @@ func (c *Cache) AddSnapshot(
 		c.persistence,
 		c.blockMetrics,
 		localSnapfile,
+		localMetafile,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create template cache from storage: %w", err)

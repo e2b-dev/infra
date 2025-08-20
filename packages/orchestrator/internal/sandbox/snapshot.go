@@ -16,12 +16,13 @@ type Snapshot struct {
 	MemfileDiffHeader *header.Header
 	RootfsDiff        build.Diff
 	RootfsDiffHeader  *header.Header
-	Snapfile          *template.LocalFileLink
+	Snapfile          template.File
+	Metafile          template.File
 }
 
 func (s *Snapshot) Upload(
 	ctx context.Context,
-	persistance storage.StorageProvider,
+	persistence storage.StorageProvider,
 	templateFiles storage.TemplateFiles,
 ) error {
 	var memfilePath *string
@@ -53,21 +54,22 @@ func (s *Snapshot) Upload(
 	templateBuild := storage.NewTemplateBuild(
 		s.MemfileDiffHeader,
 		s.RootfsDiffHeader,
-		persistance,
+		persistence,
 		templateFiles,
 	)
 
 	uploadErrCh := templateBuild.Upload(
 		ctx,
+		s.Metafile.Path(),
 		s.Snapfile.Path(),
 		memfilePath,
 		rootfsPath,
 	)
 
 	// Wait for the upload to finish
-	err := <-uploadErrCh
-	if err != nil {
-		return fmt.Errorf("error uploading template build: %w", err)
+	uploadErr := <-uploadErrCh
+	if uploadErr != nil {
+		return fmt.Errorf("error uploading template build: %w", uploadErr)
 	}
 	return nil
 }

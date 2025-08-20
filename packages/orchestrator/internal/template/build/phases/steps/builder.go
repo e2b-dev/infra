@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -96,14 +97,12 @@ func (sb *StepBuilder) Layer(
 			sb.logger.Info("layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
 		} else {
 			// Check if the layer is cached
-			found, err := sb.index.IsCached(ctx, m)
+			meta, err := sb.index.Cached(ctx, m.Template.BuildID)
 			if err != nil {
-				return phases.LayerResult{}, fmt.Errorf("error checking if layer is cached: %w", err)
-			}
-
-			if found {
+				zap.L().Info("layer not cached, building new layer", zap.Error(err), zap.String("hash", hash))
+			} else {
 				return phases.LayerResult{
-					Metadata: m,
+					Metadata: meta,
 					Cached:   true,
 					Hash:     hash,
 				}, nil
@@ -111,17 +110,15 @@ func (sb *StepBuilder) Layer(
 		}
 	}
 
-	meta := cache.LayerMetadata{
-		Template: storage.TemplateFiles{
-			BuildID:            uuid.NewString(),
-			KernelVersion:      sourceLayer.Metadata.Template.KernelVersion,
-			FirecrackerVersion: sourceLayer.Metadata.Template.FirecrackerVersion,
-		},
-		CmdMeta: sourceLayer.Metadata.CmdMeta,
+	finalMetadata := sourceLayer.Metadata
+	finalMetadata.Template = storage.TemplateFiles{
+		BuildID:            uuid.NewString(),
+		KernelVersion:      sourceLayer.Metadata.Template.KernelVersion,
+		FirecrackerVersion: sourceLayer.Metadata.Template.FirecrackerVersion,
 	}
 
 	return phases.LayerResult{
-		Metadata: meta,
+		Metadata: finalMetadata,
 		Cached:   false,
 		Hash:     hash,
 	}, nil
@@ -158,16 +155,16 @@ func (sb *StepBuilder) Build(
 		sandboxCreator = layer.NewResumeSandbox(sbxConfig)
 	}
 
-	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, cmdMeta sandboxtools.CommandMetadata) (sandboxtools.CommandMetadata, error) {
-		meta, err := sb.commandExecutor.Execute(
+	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error) {
+		cmdMeta, err := sb.commandExecutor.Execute(
 			ctx,
 			sbx,
 			prefix,
 			step,
-			cmdMeta,
+			meta.Context,
 		)
 		if err != nil {
-			return sandboxtools.CommandMetadata{}, &phases.PhaseBuildError{
+			return metadata.Template{}, &phases.PhaseBuildError{
 				Phase: string(metrics.PhaseSteps),
 				Step:  fmt.Sprintf("%d", sb.stepNumber),
 				Err:   err,
@@ -181,9 +178,10 @@ func (sb *StepBuilder) Build(
 			sbx.Runtime.SandboxID,
 		)
 		if err != nil {
-			return sandboxtools.CommandMetadata{}, fmt.Errorf("error running sync command: %w", err)
+			return metadata.Template{}, fmt.Errorf("error running sync command: %w", err)
 		}
 
+		meta.Context = cmdMeta
 		return meta, nil
 	})
 

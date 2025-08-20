@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/envd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -67,7 +68,7 @@ func NewLayerExecutor(
 func (lb *LayerExecutor) BuildLayer(
 	ctx context.Context,
 	cmd LayerBuildCommand,
-) (cache.LayerMetadata, error) {
+) (metadata.Template, error) {
 	ctx, childSpan := lb.tracer.Start(ctx, "run-in-sandbox")
 	defer childSpan.End()
 
@@ -79,13 +80,13 @@ func (lb *LayerExecutor) BuildLayer(
 		false,
 	)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("get template snapshot: %w", err)
+		return metadata.Template{}, fmt.Errorf("get template snapshot: %w", err)
 	}
 
 	// Create or resume sandbox
 	sbx, err := cmd.SandboxCreator.Sandbox(ctx, lb, localTemplate)
 	if err != nil {
-		return cache.LayerMetadata{}, err
+		return metadata.Template{}, err
 	}
 	defer sbx.Stop(ctx)
 
@@ -100,37 +101,34 @@ func (lb *LayerExecutor) BuildLayer(
 	if cmd.UpdateEnvd {
 		err = lb.updateEnvdInSandbox(ctx, sbx)
 		if err != nil {
-			return cache.LayerMetadata{}, fmt.Errorf("update envd: %w", err)
+			return metadata.Template{}, fmt.Errorf("update envd: %w", err)
 		}
 	}
 
 	// Execute the action using the executor
-	meta, err := cmd.ActionExecutor.Execute(ctx, sbx, cmd.SourceLayer.CmdMeta)
+	meta, err := cmd.ActionExecutor.Execute(ctx, sbx, cmd.SourceLayer)
 	if err != nil {
-		return cache.LayerMetadata{}, err
+		return metadata.Template{}, err
 	}
 
-	// Prepare export metadata and upload
+	// Prepare metadata
 	fcVersions := sbx.FirecrackerVersions()
-	exportMeta := cache.LayerMetadata{
-		Template: storage.TemplateFiles{
-			BuildID:            cmd.ExportTemplate.BuildID,
-			KernelVersion:      fcVersions.KernelVersion,
-			FirecrackerVersion: fcVersions.FirecrackerVersion,
-		},
-		CmdMeta: meta,
-	}
+	meta = meta.NewVersionTemplate(storage.TemplateFiles{
+		BuildID:            cmd.ExportTemplate.BuildID,
+		KernelVersion:      fcVersions.KernelVersion,
+		FirecrackerVersion: fcVersions.FirecrackerVersion,
+	})
 	err = lb.PauseAndUpload(
 		ctx,
 		sbx,
 		cmd.Hash,
-		exportMeta,
+		meta,
 	)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("pause and upload: %w", err)
+		return metadata.Template{}, fmt.Errorf("pause and upload: %w", err)
 	}
 
-	return exportMeta, nil
+	return meta, nil
 }
 
 // updateEnvdInSandbox updates the envd binary in the sandbox to the latest version.
@@ -178,7 +176,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		"update-envd-replace",
 		sbx.Runtime.SandboxID,
 		replaceEnvdCmd,
-		sandboxtools.CommandMetadata{User: "root"},
+		metadata.Context{User: "root"},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to replace envd binary: %w", err)
@@ -192,7 +190,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		lb.proxy,
 		sbx.Runtime.SandboxID,
 		"systemctl restart envd",
-		sandboxtools.CommandMetadata{User: "root"},
+		metadata.Context{User: "root"},
 	)
 
 	// Step 4: Wait for envd to initialize
@@ -212,22 +210,18 @@ func (lb *LayerExecutor) PauseAndUpload(
 	ctx context.Context,
 	sbx *sandbox.Sandbox,
 	hash string,
-	layerMeta cache.LayerMetadata,
+	meta metadata.Template,
 ) error {
 	ctx, childSpan := lb.tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
 
-	lb.UserLogger.Debug(fmt.Sprintf("Saving layer: %s", layerMeta.Template.BuildID))
+	lb.UserLogger.Debug(fmt.Sprintf("Saving layer: %s", meta.Template.BuildID))
 
-	cacheFiles, err := layerMeta.Template.CacheFiles()
-	if err != nil {
-		return fmt.Errorf("error creating template files: %w", err)
-	}
 	// snapshot is automatically cleared by the templateCache eviction
 	snapshot, err := sbx.Pause(
 		ctx,
 		lb.tracer,
-		cacheFiles,
+		meta,
 	)
 	if err != nil {
 		return fmt.Errorf("error processing vm: %w", err)
@@ -235,12 +229,13 @@ func (lb *LayerExecutor) PauseAndUpload(
 
 	// Add snapshot to template cache so it can be used immediately
 	err = lb.templateCache.AddSnapshot(
-		cacheFiles.BuildID,
-		cacheFiles.KernelVersion,
-		cacheFiles.FirecrackerVersion,
+		meta.Template.BuildID,
+		meta.Template.KernelVersion,
+		meta.Template.FirecrackerVersion,
 		snapshot.MemfileDiffHeader,
 		snapshot.RootfsDiffHeader,
 		snapshot.Snapfile,
+		snapshot.Metafile,
 		snapshot.MemfileDiff,
 		snapshot.RootfsDiff,
 	)
@@ -253,18 +248,22 @@ func (lb *LayerExecutor) PauseAndUpload(
 		err := snapshot.Upload(
 			ctx,
 			lb.templateStorage,
-			cacheFiles.TemplateFiles,
+			meta.Template,
 		)
 		if err != nil {
 			return fmt.Errorf("error uploading snapshot: %w", err)
 		}
 
-		err = lb.index.SaveLayerMeta(ctx, hash, layerMeta)
+		err = lb.index.SaveLayerMeta(ctx, hash, cache.LayerMetadata{
+			Template: cache.Template{
+				BuildID: meta.Template.BuildID,
+			},
+		})
 		if err != nil {
 			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
 		}
 
-		lb.UserLogger.Debug(fmt.Sprintf("Saved: %s", cacheFiles.BuildID))
+		lb.UserLogger.Debug(fmt.Sprintf("Saved: %s", meta.Template.BuildID))
 		return nil
 	})
 

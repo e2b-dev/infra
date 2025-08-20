@@ -24,7 +24,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
@@ -148,13 +147,13 @@ func (bb *BaseBuilder) Build(
 
 func (bb *BaseBuilder) buildLayerFromOCI(
 	ctx context.Context,
-	baseMetadata cache.LayerMetadata,
+	baseMetadata metadata.Template,
 	hash string,
-) (cache.LayerMetadata, error) {
+) (metadata.Template, error) {
 	templateBuildDir := filepath.Join(templatesDirectory, bb.Template.BuildID)
 	err := os.MkdirAll(templateBuildDir, 0o777)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("error creating template build directory: %w", err)
+		return metadata.Template{}, fmt.Errorf("error creating template build directory: %w", err)
 	}
 	defer func() {
 		err := os.RemoveAll(templateBuildDir)
@@ -176,15 +175,15 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		rootfsPath,
 	)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("error building environment: %w", err)
+		return metadata.Template{}, fmt.Errorf("error building environment: %w", err)
 	}
 
 	// Env variables from the Docker image
-	baseMetadata.CmdMeta.EnvVars = oci.ParseEnvs(envsImg.Env)
+	baseMetadata.Context.EnvVars = oci.ParseEnvs(envsImg.Env)
 
 	cacheFiles, err := baseMetadata.Template.CacheFiles()
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("error creating template files: %w", err)
+		return metadata.Template{}, fmt.Errorf("error creating template files: %w", err)
 	}
 	localTemplate := sbxtemplate.NewLocalTemplate(cacheFiles, rootfs, memfile)
 	defer localTemplate.Close()
@@ -196,7 +195,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	rootfsProvisionPath := filepath.Join(templateBuildDir, rootfsProvisionLink)
 	err = os.Symlink(rootfsPath, rootfsProvisionPath)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("error creating provision rootfs: %w", err)
+		return metadata.Template{}, fmt.Errorf("error creating provision rootfs: %w", err)
 	}
 
 	// Allow sandbox internet access during provisioning
@@ -231,7 +230,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		provisionLogPrefix,
 	)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("error provisioning sandbox: %w", err)
+		return metadata.Template{}, fmt.Errorf("error provisioning sandbox: %w", err)
 	}
 
 	// Check the rootfs filesystem corruption
@@ -241,7 +240,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 			zap.String("result", ext4Check),
 			zap.Error(err),
 		)
-		return cache.LayerMetadata{}, fmt.Errorf("error checking provisioned filesystem integrity: %w", err)
+		return metadata.Template{}, fmt.Errorf("error checking provisioned filesystem integrity: %w", err)
 	}
 	zap.L().Debug("provisioned filesystem ext4 integrity",
 		zap.String("result", ext4Check),
@@ -249,7 +248,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 
 	err = bb.enlargeDiskAfterProvisioning(ctx, bb.Config, rootfs)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("error enlarging disk after provisioning: %w", err)
+		return metadata.Template{}, fmt.Errorf("error enlarging disk after provisioning: %w", err)
 	}
 
 	// Create sandbox for building template
@@ -283,7 +282,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		nil,
 	)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("error creating sandbox: %w", err)
+		return metadata.Template{}, fmt.Errorf("error creating sandbox: %w", err)
 	}
 	defer sourceSbx.Stop(ctx)
 
@@ -293,7 +292,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		waitEnvdTimeout,
 	)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("failed to wait for sandbox start: %w", err)
+		return metadata.Template{}, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
 
 	err = bb.layerExecutor.PauseAndUpload(
@@ -303,7 +302,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		baseMetadata,
 	)
 	if err != nil {
-		return cache.LayerMetadata{}, fmt.Errorf("error pausing and uploading template: %w", err)
+		return metadata.Template{}, fmt.Errorf("error pausing and uploading template: %w", err)
 	}
 
 	return baseMetadata, nil
@@ -311,28 +310,30 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 
 func (bb *BaseBuilder) Layer(
 	ctx context.Context,
-	lastStepResult phases.LayerResult,
+	_ phases.LayerResult,
 	hash string,
 ) (phases.LayerResult, error) {
 	switch {
 	case bb.Config.FromTemplate != nil:
+		sourceMeta := metadata.FromTemplate{
+			Alias:   bb.Config.FromTemplate.GetAlias(),
+			BuildID: bb.Config.FromTemplate.BuildID,
+		}
+
 		// If the template is built from another template, use its metadata
-		tm, err := metadata.ReadTemplateMetadata(ctx, bb.templateStorage, bb.Config.FromTemplate.BuildID)
+		tm, err := bb.index.Cached(ctx, bb.Config.FromTemplate.BuildID)
 		if err != nil {
 			return phases.LayerResult{}, fmt.Errorf("error getting base layer from cache, you may need to rebuild the base template: %w", err)
 		}
 
 		// From template is always cached, never needs to be built
 		return phases.LayerResult{
-			Metadata: cache.LayerMetadata{
-				Template: tm.Template,
-				CmdMeta:  tm.Metadata,
-			},
-			Hash:   hash,
-			Cached: true,
+			Metadata: tm.BasedOn(sourceMeta),
+			Hash:     hash,
+			Cached:   true,
 		}, nil
 	default:
-		cmdMeta := sandboxtools.CommandMetadata{
+		cmdMeta := metadata.Context{
 			User:    defaultUser,
 			WorkDir: nil,
 			EnvVars: make(map[string]string),
@@ -344,44 +345,47 @@ func (bb *BaseBuilder) Layer(
 			cmdMeta.WorkDir = &cwd
 		}
 
-		var baseMetadata cache.LayerMetadata
-		bm, err := bb.index.LayerMetaFromHash(ctx, hash)
-		if err != nil {
-			bb.logger.Info("base layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
+		meta := metadata.Template{
+			Version: metadata.CurrentVersion,
+			Template: storage.TemplateFiles{
+				BuildID:            uuid.New().String(),
+				KernelVersion:      bb.Template.KernelVersion,
+				FirecrackerVersion: bb.Template.FirecrackerVersion,
+			},
+			Context:      cmdMeta,
+			FromImage:    &bb.Config.FromImage,
+			FromTemplate: nil,
+			Start:        nil,
+		}
 
-			baseMetadata = cache.LayerMetadata{
-				Template: storage.TemplateFiles{
-					BuildID:            uuid.New().String(),
-					KernelVersion:      bb.Template.KernelVersion,
-					FirecrackerVersion: bb.Template.FirecrackerVersion,
-				},
-				CmdMeta: cmdMeta,
-			}
-		} else {
-			baseMetadata = bm
+		notCachedResult := phases.LayerResult{
+			Metadata: meta,
+			Cached:   false,
+			Hash:     hash,
 		}
 
 		// Invalidate base cache
 		if bb.Config.Force != nil && *bb.Config.Force {
-			baseMetadata = cache.LayerMetadata{
-				Template: storage.TemplateFiles{
-					BuildID:            uuid.New().String(),
-					KernelVersion:      bb.Template.KernelVersion,
-					FirecrackerVersion: bb.Template.FirecrackerVersion,
-				},
-				CmdMeta: cmdMeta,
-			}
+			return notCachedResult, nil
 		}
 
-		baseCached, err := bb.index.IsCached(ctx, baseMetadata)
+		bm, err := bb.index.LayerMetaFromHash(ctx, hash)
 		if err != nil {
-			return phases.LayerResult{}, fmt.Errorf("error checking if base layer is cached: %w", err)
-		}
+			bb.logger.Info("base layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
 
-		return phases.LayerResult{
-			Metadata: baseMetadata,
-			Cached:   baseCached,
-			Hash:     hash,
-		}, nil
+			return notCachedResult, nil
+		} else {
+			meta, err := bb.index.Cached(ctx, bm.Template.BuildID)
+			if err != nil {
+				zap.L().Info("base layer metadata not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
+
+				return notCachedResult, nil
+			}
+			return phases.LayerResult{
+				Metadata: meta,
+				Cached:   true,
+				Hash:     hash,
+			}, nil
+		}
 	}
 }

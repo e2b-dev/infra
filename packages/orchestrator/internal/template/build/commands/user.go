@@ -10,6 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
@@ -23,12 +24,12 @@ func (u *User) Execute(
 	sandboxID string,
 	prefix string,
 	step *templatemanager.TemplateStep,
-	cmdMetadata sandboxtools.CommandMetadata,
-) (sandboxtools.CommandMetadata, error) {
+	cmdMetadata metadata.Context,
+) (metadata.Context, error) {
 	args := step.Args
 	// args: [username]
 	if len(args) < 1 {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("USER requires a username argument")
+		return metadata.Context{}, fmt.Errorf("USER requires a username argument")
 	}
 
 	userArg := args[0]
@@ -42,13 +43,13 @@ func (u *User) Execute(
 		prefix,
 		sandboxID,
 		fmt.Sprintf("adduser -disabled-password --gecos \"\" %s || true", userArg),
-		sandboxtools.CommandMetadata{
+		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,
 		},
 	)
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to create user: %w", err)
+		return metadata.Context{}, fmt.Errorf("failed to create user: %w", err)
 	}
 
 	return saveUserMeta(ctx, tracer, proxy, sandboxID, cmdMetadata, userArg)
@@ -59,16 +60,16 @@ func saveUserMeta(
 	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
-	cmdMetadata sandboxtools.CommandMetadata,
+	cmdMetadata metadata.Context,
 	user string,
-) (sandboxtools.CommandMetadata, error) {
+) (metadata.Context, error) {
 	err := sandboxtools.RunCommandWithOutput(
 		ctx,
 		tracer,
 		proxy,
 		sandboxID,
 		fmt.Sprintf(`printf "%s"`, user),
-		sandboxtools.CommandMetadata{
+		metadata.Context{
 			User: "root",
 		},
 		func(stdout, stderr string) {

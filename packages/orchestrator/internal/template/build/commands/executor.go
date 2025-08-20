@@ -11,7 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -76,8 +76,8 @@ func (ce *CommandExecutor) Execute(
 	sbx *sandbox.Sandbox,
 	prefix string,
 	step *templatemanager.TemplateStep,
-	cmdMetadata sandboxtools.CommandMetadata,
-) (sandboxtools.CommandMetadata, error) {
+	cmdMetadata metadata.Context,
+) (metadata.Context, error) {
 	ctx, span := ce.tracer.Start(ctx, "apply-command", trace.WithAttributes(
 		attribute.String("prefix", prefix),
 		attribute.String("sandbox.id", sbx.Runtime.SandboxID),
@@ -89,7 +89,7 @@ func (ce *CommandExecutor) Execute(
 
 	cmd, err := ce.getCommand(step)
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to get command for step %s: %w", step.Type, err)
+		return metadata.Context{}, fmt.Errorf("failed to get command for step %s: %w", step.Type, err)
 	}
 
 	cmdMetadata, err = cmd.Execute(
@@ -103,7 +103,7 @@ func (ce *CommandExecutor) Execute(
 		cmdMetadata,
 	)
 	if err != nil {
-		return sandboxtools.CommandMetadata{}, err
+		return metadata.Context{}, err
 	}
 	return cmdMetadata, nil
 }
