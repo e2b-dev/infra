@@ -28,10 +28,10 @@ func TestOpenObject_ReadWrite_Size_ReadAt(t *testing.T) {
 	require.NoError(t, err)
 
 	contents := []byte("hello world")
-	// write via ReadFrom
-	n, err := obj.ReadFrom(contents)
+	// write via Write
+	n, err := obj.Write(contents)
 	require.NoError(t, err)
-	require.Equal(t, int64(len(contents)), n)
+	require.Equal(t, len(contents), n)
 
 	// check Size
 	size, err := obj.Size()
@@ -40,9 +40,9 @@ func TestOpenObject_ReadWrite_Size_ReadAt(t *testing.T) {
 
 	// read the entire file back via WriteTo
 	var buf bytes.Buffer
-	n, err = obj.WriteTo(&buf)
+	n64, err := obj.WriteTo(&buf)
 	require.NoError(t, err)
-	require.Equal(t, int64(len(contents)), n)
+	require.Equal(t, int64(len(contents)), n64)
 	require.Equal(t, contents, buf.Bytes())
 
 	// read a slice via ReadAt ("world")
@@ -79,7 +79,7 @@ func TestDelete(t *testing.T) {
 	obj, err := p.OpenObject(ctx, "to/delete.txt")
 	require.NoError(t, err)
 
-	_, err = obj.ReadFrom([]byte("bye"))
+	_, err = obj.Write([]byte("bye"))
 	require.NoError(t, err)
 	require.NoError(t, obj.Delete())
 
@@ -100,7 +100,7 @@ func TestDeleteObjectsWithPrefix(t *testing.T) {
 	for _, pth := range paths {
 		obj, err := p.OpenObject(ctx, pth)
 		require.NoError(t, err)
-		_, err = obj.ReadFrom([]byte("x"))
+		_, err = obj.Write([]byte("x"))
 		require.NoError(t, err)
 	}
 

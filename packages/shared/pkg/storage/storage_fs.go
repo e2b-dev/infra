@@ -16,10 +16,14 @@ type FileSystemStorageProvider struct {
 	StorageProvider
 }
 
+var _ StorageProvider = (*FileSystemStorageProvider)(nil)
+
 type FileSystemStorageObjectProvider struct {
 	path string
 	ctx  context.Context
 }
+
+var _ StorageObjectProvider = (*FileSystemStorageObjectProvider)(nil)
 
 func NewFileSystemStorageProvider(basePath string) (*FileSystemStorageProvider, error) {
 	return &FileSystemStorageProvider{
@@ -89,7 +93,7 @@ func (f *FileSystemStorageObjectProvider) WriteFromFileSystem(path string) error
 	return nil
 }
 
-func (f *FileSystemStorageObjectProvider) ReadFrom(data []byte) (int64, error) {
+func (f *FileSystemStorageObjectProvider) Write(data []byte) (int, error) {
 	handle, err := f.getHandle(false)
 	if err != nil {
 		return 0, err
@@ -97,7 +101,7 @@ func (f *FileSystemStorageObjectProvider) ReadFrom(data []byte) (int64, error) {
 	defer handle.Close()
 
 	count, err := handle.Write(data)
-	return int64(count), err
+	return count, err
 }
 
 func (f *FileSystemStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, err error) {

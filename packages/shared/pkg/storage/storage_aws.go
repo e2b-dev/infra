@@ -28,12 +28,16 @@ type AWSBucketStorageProvider struct {
 	bucketName    string
 }
 
+var _ StorageProvider = (*AWSBucketStorageProvider)(nil)
+
 type AWSBucketStorageObjectProvider struct {
 	client     *s3.Client
 	path       string
 	bucketName string
 	ctx        context.Context
 }
+
+var _ StorageObjectProvider = (*AWSBucketStorageObjectProvider)(nil)
 
 func NewAWSBucketStorageProvider(ctx context.Context, bucketName string) (*AWSBucketStorageProvider, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
@@ -156,7 +160,7 @@ func (a *AWSBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 	return err
 }
 
-func (a *AWSBucketStorageObjectProvider) ReadFrom(data []byte) (int64, error) {
+func (a *AWSBucketStorageObjectProvider) Write(data []byte) (int, error) {
 	ctx, cancel := context.WithTimeout(a.ctx, awsWriteTimeout)
 	defer cancel()
 
@@ -172,10 +176,11 @@ func (a *AWSBucketStorageObjectProvider) ReadFrom(data []byte) (int64, error) {
 		return 0, err
 	}
 
-	if result.Size != nil {
-		return *result.Size, nil
+	if result.Size == nil {
+		return 0, nil
 	}
-	return 0, nil
+
+	return int(*result.Size), nil
 }
 
 func (a *AWSBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, err error) {
