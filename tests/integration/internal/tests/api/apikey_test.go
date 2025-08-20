@@ -34,6 +34,57 @@ func TestCreateAPIKey(t *testing.T) {
 	assert.Regexp(t, fmt.Sprintf("^%s.+$", keys.ApiKeyPrefix), resp.JSON201.Key)
 }
 
+func TestCreateAPIKeyForeignTeam(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	db := setup.GetTestDBClient()
+	c := setup.GetAPIClient()
+
+	// Create first team and API key
+	foreignTeamID := uuid.New()
+	teamName := "test-team-apikey-foreign"
+	_ = utils.CreateTeam(t, cancel, ctx, c, db, foreignTeamID, teamName)
+	defer db.Client.Team.DeleteOneID(foreignTeamID).Exec(ctx)
+
+	// Create the API key
+	resp, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
+		Name: "foreign",
+	}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, foreignTeamID.String()))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode(), "Expected 401 Unauthorized when creating API key for a foreign team")
+}
+
+func TestCreateAPIKeyForeignTeamWithCache(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	db := setup.GetTestDBClient()
+	c := setup.GetAPIClient()
+
+	// Create first team and API key
+	foreignTeamID := uuid.New()
+	teamName := "test-team-apikey-foreign"
+	_ = utils.CreateTeamWithUser(t, cancel, ctx, c, db, foreignTeamID, teamName, setup.UserID)
+	defer db.Client.Team.DeleteOneID(foreignTeamID).Exec(ctx)
+
+	// Populate cache
+	_, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
+		Name: "local",
+	}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, foreignTeamID.String()))
+	require.NoError(t, err)
+	// Remove the user from the foreign team to simulate a foreign team access
+	utils.RemoveUserFromTeam(t, ctx, c, db, foreignTeamID, setup.UserID)
+
+	// Create the API key in foreign team
+	resp, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
+		Name: "foreign",
+	}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, foreignTeamID.String()))
+	t.Log(resp.Status(), string(resp.Body))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode(), "Expected 401 Unauthorized when creating API key for a foreign team")
+}
+
 func TestDeleteAPIKey(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -74,13 +125,13 @@ func TestDeleteAPIKey(t *testing.T) {
 		// Create first team and API key
 		teamID1 := uuid.New()
 		teamName1 := "test-team-apikey-delete-1"
-		_, _ = utils.CreateTeam(t, cancel, ctx, c, db, teamID1, teamName1)
+		_ = utils.CreateTeamWithUser(t, cancel, ctx, c, db, teamID1, teamName1, setup.UserID)
 		defer db.Client.Team.DeleteOneID(teamID1).Exec(ctx)
 
 		// Create second team and API key
 		teamID2 := uuid.New()
 		teamName2 := "test-team-apikey-delete-2"
-		_, _ = utils.CreateTeam(t, cancel, ctx, c, db, teamID2, teamName2)
+		_ = utils.CreateTeamWithUser(t, cancel, ctx, c, db, teamID2, teamName2, setup.UserID)
 		defer db.Client.Team.DeleteOneID(teamID2).Exec(ctx)
 
 		// Create an additional API key for team1
@@ -226,13 +277,13 @@ func TestPatchAPIKey(t *testing.T) {
 		// Create first team and API key
 		teamID1 := uuid.New()
 		teamName1 := "test-team-apikey-patch-1"
-		_, _ = utils.CreateTeam(t, cancel, ctx, c, db, teamID1, teamName1)
+		_ = utils.CreateTeamWithUser(t, cancel, ctx, c, db, teamID1, teamName1, setup.UserID)
 		defer db.Client.Team.DeleteOneID(teamID1).Exec(ctx)
 
 		// Create second team and API key
 		teamID2 := uuid.New()
 		teamName2 := "test-team-apikey-patch-2"
-		_, _ = utils.CreateTeam(t, cancel, ctx, c, db, teamID2, teamName2)
+		_ = utils.CreateTeamWithUser(t, cancel, ctx, c, db, teamID2, teamName2, setup.UserID)
 		defer db.Client.Team.DeleteOneID(teamID2).Exec(ctx)
 
 		// Create an additional API key for team1

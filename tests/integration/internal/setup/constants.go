@@ -4,6 +4,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -20,6 +22,7 @@ var (
 
 	SupabaseToken = os.Getenv("TESTS_SUPABASE_TOKEN")
 	TeamID        = os.Getenv("TESTS_SANDBOX_TEAM_ID")
+	UserID        = uuid.MustParse(os.Getenv("TESTS_SANDBOX_USER_ID"))
 
 	OrchestratorHost = os.Getenv("TESTS_ORCHESTRATOR_HOST")
 	EnvdProxy        = os.Getenv("TESTS_ENVD_PROXY")
