@@ -81,27 +81,18 @@ init:
 	# Remove the temporary lifecycle file
 	@ rm -f $(LIFECYCLE_FILE)
 
-
-	$(TF) init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
+	$(TF) init -input=false -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
 	$(tf_vars) $(TF) apply -target=module.init -target=module.buckets -auto-approve -input=false -compact-warnings
 	$(MAKE) -C packages/cluster-disk-image init build
 	gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
 # Setup production environment variables, this is used only for E2B.dev production
-# Uses HCP CLI to read secrets from HCP Vault Secrets
+# Uses Infisical CLI to read secrets from Infisical Vault
+# To update them, use the Infisical UI directly
+# On a first use, you need to run `infisical login` and `infisical init`
 .PHONY: download-prod-env
 download-prod-env:
-	@ hcp auth login
-	@ hcp profile init --vault-secrets
 	@  ./scripts/download-prod-env.sh ${ENV}
-
-# Updates production environment from .env file, this is used only for E2B.dev production
-# Uses HCP CLI to update secrets from HCP Vault Secrets
-.PHONY: update-prod-env
-update-prod-env:
-	@ hcp auth login
-	@ hcp profile init --vault-secrets
-	@ ./scripts/update-prod-env.sh ${ENV}
 
 .PHONY: plan
 plan:
@@ -240,7 +231,7 @@ switch-env:
 	@ printf "Switching from `tput setaf 1``tput bold`$(shell cat .last_used_env)`tput sgr0` to `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ echo $(ENV) > .last_used_env
 	@ . ${ENV_FILE}
-	terraform init -input=false -upgrade -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
+	terraform init -input=false -upgrade -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
 
 # Shortcut to importing resources into Terraform state (e.g. after creating resources manually or switching between different branches for the same environment)
 .PHONY: import
