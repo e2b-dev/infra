@@ -36,7 +36,11 @@ func (r *RedisPubSub[PayloadT, SubMetadataT]) GetSubscriptionMetaData(ctx contex
 		return nil, fmt.Errorf("redis client is not initialized")
 	}
 	var m SubMetadataT
-	err := (*r.redisClient).Get(ctx, key).Scan(&m)
+	data, err := (*r.redisClient).Get(ctx, key).Result()
+	if err != nil {
+		return nil, err
+	}
+	err = decodeMessage(data, &m)
 	if err != nil {
 		return nil, err
 	}
