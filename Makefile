@@ -123,7 +123,16 @@ plan:
 plan-only-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(TF) fmt -recursive
-	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad;
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad; \
+	status=$$?; \
+	if [ $$status -eq 0 ]; then \
+		echo "No changes."; \
+	elif [ $$status -eq 2 ]; then \
+		echo "Changes detected."; \
+	else \
+		echo "Error during plan."; \
+		exit $$status; \
+	fi
 
 # Deploy a specific job name in Nomad
 # When job name is specified, all '-' are replaced with '_' in the job name
@@ -249,12 +258,9 @@ setup-ssh:
 
 .PHONY: test
 test:
-	$(MAKE) -C packages/api test
-	$(MAKE) -C packages/client-proxy test
-	$(MAKE) -C packages/docker-reverse-proxy test
-	$(MAKE) -C packages/envd test
-	$(MAKE) -C packages/orchestrator test
-	$(MAKE) -C packages/shared test
+	go work edit -json \
+		| jq -r '.Use[] | select (.DiskPath | contains("packages")) | .DiskPath' \
+		| xargs -I{} $(MAKE) -C {} test
 
 .PHONY: test-integration
 test-integration:
@@ -268,3 +274,9 @@ connect-orchestrator:
 fmt:
 	@./scripts/golangci-lint-install.sh "2.1.6"
 	golangci-lint fmt
+	terraform fmt -recursive
+
+.PHONY: lint
+lint:
+	@./scripts/golangci-lint-install.sh "2.1.6"
+	go work edit -json | jq -r '.Use[].DiskPath'  | xargs -I{} golangci-lint run {}/... --fix

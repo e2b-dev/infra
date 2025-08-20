@@ -20,13 +20,13 @@ exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&
 DISK="/dev/disk/by-id/google-persistent-disk-1"
 MOUNT_POINT="/orchestrator"
 
-# # Step 1: Format the disk with XFS and 65K block size
+# Step 1: Format the disk with XFS and 65K block size
 sudo mkfs.xfs -f -b size=4096 $DISK
 
 # Step 2: Create the mount point
 sudo mkdir -p $MOUNT_POINT
 
-# # Step 4: Mount the disk with
+# Step 3: Mount the disk with
 sudo mount -o noatime $DISK $MOUNT_POINT
 
 sudo mkdir -p /orchestrator/sandbox
