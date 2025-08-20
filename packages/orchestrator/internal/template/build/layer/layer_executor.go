@@ -72,6 +72,7 @@ func (lb *LayerExecutor) BuildLayer(
 	defer childSpan.End()
 
 	localTemplate, err := lb.templateCache.GetTemplate(
+		ctx,
 		cmd.SourceLayer.Template.BuildID,
 		cmd.SourceLayer.Template.KernelVersion,
 		cmd.SourceLayer.Template.FirecrackerVersion,
@@ -233,6 +234,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 
 	// Add snapshot to template cache so it can be used immediately
 	err = lb.templateCache.AddSnapshot(
+		ctx,
 		cacheFiles.BuildID,
 		cacheFiles.KernelVersion,
 		cacheFiles.FirecrackerVersion,
