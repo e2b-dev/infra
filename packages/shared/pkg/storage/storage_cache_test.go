@@ -168,9 +168,9 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 		fakeStorageObjectProvider := NewMockStorageObjectProvider(t)
 		fakeStorageObjectProvider.EXPECT().
-			ReadFrom(mock.Anything).
-			RunAndReturn(func(src []byte) (int64, error) {
-				return int64(len(src)), nil
+			Write(mock.Anything).
+			RunAndReturn(func(src []byte) (int, error) {
+				return len(src), nil
 			})
 
 		tempDir := t.TempDir()
@@ -181,9 +181,9 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 			inner:     fakeStorageObjectProvider,
 		}
 
-		read, err := c.ReadFrom(fakeData)
+		read, err := c.Write(fakeData)
 		require.NoError(t, err)
-		assert.Equal(t, int64(len(fakeData)), read)
+		assert.Equal(t, len(fakeData), read)
 
 		buf := make([]byte, 3)
 		read2, err := c.ReadAt(buf, 0)
@@ -197,9 +197,9 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 		fakeStorageObjectProvider := NewMockStorageObjectProvider(t)
 		fakeStorageObjectProvider.EXPECT().
-			ReadFrom(mock.Anything).
-			RunAndReturn(func(src []byte) (int64, error) {
-				return int64(len(src)), nil
+			Write(mock.Anything).
+			RunAndReturn(func(src []byte) (int, error) {
+				return len(src), nil
 			})
 
 		tempDir := t.TempDir()
@@ -210,9 +210,9 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 			inner:     fakeStorageObjectProvider,
 		}
 
-		read64, err := c.ReadFrom(fakeData)
+		read64, err := c.Write(fakeData)
 		require.NoError(t, err)
-		assert.Equal(t, int64(len(fakeData)), read64)
+		assert.Equal(t, len(fakeData), read64)
 
 		// get first chunk
 		buf := make([]byte, 3)

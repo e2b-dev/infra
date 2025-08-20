@@ -185,10 +185,10 @@ func (g *GCPBucketStorageObjectProvider) Write(data []byte) (int, error) {
 
 	n, err := w.Write(data)
 	if err != nil && !errors.Is(err, io.EOF) {
-		return int64(n), fmt.Errorf("failed to copy buffer to persistence: %w", err)
+		return n, fmt.Errorf("failed to copy buffer to persistence: %w", err)
 	}
 
-	return int64(n), nil
+	return n, nil
 }
 
 func (g *GCPBucketStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {

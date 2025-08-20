@@ -135,7 +135,7 @@ func (c *CachedFileObjectProvider) WriteFromFileSystem(path string) error {
 	return eg.Wait()
 }
 
-func (c *CachedFileObjectProvider) ReadFrom(src []byte) (int64, error) {
+func (c *CachedFileObjectProvider) Write(src []byte) (int, error) {
 	var err error
 	ctx, span := tracer.Start(c.ctx, "CachedFileObjectProvider.WriteTo", trace.WithAttributes(attribute.Int("size", len(src))))
 	defer endSpan(span, err)
@@ -143,7 +143,7 @@ func (c *CachedFileObjectProvider) ReadFrom(src []byte) (int64, error) {
 	num, err := c.writeCacheAndRemote(ctx, src)
 	if err != nil {
 		return 0, err
-	} else if num != int64(len(src)) {
+	} else if num != len(src) {
 		return 0, fmt.Errorf("failed to copy %d bytes from cache: %w", num, err)
 	}
 
@@ -273,7 +273,7 @@ func (c *CachedFileObjectProvider) copyAndCacheBlock(ctx context.Context, blockC
 	return c.inner.WriteTo(dst)
 }
 
-func (c *CachedFileObjectProvider) writeCacheAndRemote(ctx context.Context, src []byte) (int64, error) {
+func (c *CachedFileObjectProvider) writeCacheAndRemote(ctx context.Context, src []byte) (int, error) {
 	var err error
 	_, span := tracer.Start(ctx, "CachedFileObjectProvider.writeCacheAndRemote")
 	defer endSpan(span, err)
@@ -291,11 +291,11 @@ func (c *CachedFileObjectProvider) writeCacheAndRemote(ctx context.Context, src 
 		}
 	}
 
-	if _, err := c.inner.ReadFrom(src); err != nil {
+	if _, err := c.inner.Write(src); err != nil {
 		return 0, fmt.Errorf("failed to remote write from byte array: %w", err)
 	}
 
-	return size, nil
+	return int(size), nil
 }
 
 func (c *CachedFileObjectProvider) writeBytesToLocal(ctx context.Context, path string, bytes []byte) error {
