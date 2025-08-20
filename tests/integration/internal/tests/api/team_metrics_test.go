@@ -132,5 +132,5 @@ func TestTeamMetricsInvalidDate(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, response.StatusCode())
 	require.NotNil(t, response.JSON400)
-	require.Contains(t, "end time cannot be after", response.JSON400.Message)
+	require.Contains(t, response.JSON400.Message, "end time cannot be after")
 }
