@@ -61,6 +61,7 @@ func (s *NodePassThroughServer) catalogCreateEventHandler(ctx context.Context, m
 			return
 		}
 
+		ctx = context.WithoutCancel(ctx)
 		deleteErr := s.catalog.DeleteSandbox(ctx, c.SandboxID, c.ExecutionID)
 		if deleteErr != nil {
 			zap.L().Error("Failed to delete sandbox in catalog after failing request", zap.Error(deleteErr))
