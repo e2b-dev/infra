@@ -47,8 +47,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 		return
 	}
 
-	// We don't want to change the start and end times anymore
-	start, end, err = utils.ValidateDates(nil, nil, start, end)
+	start, end, err = utils.ValidateDates(start, end)
 	if err != nil {
 		telemetry.ReportError(ctx, "error validating dates", err, telemetry.WithTeamID(team.ID.String()))
 		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())

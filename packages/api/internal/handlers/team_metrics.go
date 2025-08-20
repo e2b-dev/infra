@@ -48,7 +48,15 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 
 	// Default time range is the last 7 days
 	start, end := time.Now().Add(-defaultTimeRange), time.Now()
-	start, end, err = utils.ValidateDates(params.Start, params.End, start, end)
+	if params.Start != nil {
+		start = time.Unix(*params.Start, 0)
+	}
+
+	if params.End != nil {
+		end = time.Unix(*params.End, 0)
+	}
+
+	start, end, err = utils.ValidateDates(start, end)
 	if err != nil {
 		telemetry.ReportError(ctx, "error validating dates", err, telemetry.WithTeamID(team.ID.String()))
 		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
