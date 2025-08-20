@@ -3,6 +3,7 @@ module github.com/e2b-dev/infra/tests/integration
 go 1.24.3
 
 replace github.com/e2b-dev/infra/packages/shared => ../../packages/shared
+
 replace github.com/e2b-dev/infra/packages/clickhouse => ../../packages/clickhouse
 
 require (
