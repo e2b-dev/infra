@@ -29,7 +29,6 @@ const (
 	googleBackoffMultiplier        = 2
 	googleMaxAttempts              = 10
 	gcloudDefaultUploadConcurrency = 16
-	gcloudParallelMinFileSize      = 10 * 1024 * 1024
 )
 
 type GCPBucketStorageProvider struct {
@@ -228,7 +227,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 
 	// If the file is too small, the overhead of writing in parallel isn't worth the effort.
 	// Write it in one shot instead.
-	if fileInfo.Size() < gcloudParallelMinFileSize {
+	if fileInfo.Size() < gcpMultipartUploadChunkSize {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("failed to read file: %w", err)
