@@ -13,7 +13,7 @@ type RedisPubSub[PayloadT, SubMetadataT any] struct {
 	queueName   string
 }
 
-func NewRedisPubSub[PayloadT, SubMetadataT any](ctx context.Context, redisClient *redis.UniversalClient, queueName string) *RedisPubSub[PayloadT, SubMetadataT] {
+func NewRedisPubSub[PayloadT, SubMetadataT any](redisClient *redis.UniversalClient, queueName string) *RedisPubSub[PayloadT, SubMetadataT] {
 	return &RedisPubSub[PayloadT, SubMetadataT]{
 		redisClient: redisClient,
 		queueName:   queueName,
