@@ -134,7 +134,7 @@ func (t *TemplateBuild) uploadMetadata(ctx context.Context, metadata io.Reader) 
 	return nil
 }
 
-func (t *TemplateBuild) Upload(ctx context.Context, metadata io.Reader, fcSnapfilePath string, memfilePath *string, rootfsPath *string) chan error {
+func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapfilePath string, memfilePath *string, rootfsPath *string) chan error {
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
@@ -206,7 +206,13 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadata io.Reader, fcSnapfi
 	})
 
 	eg.Go(func() error {
-		err := t.uploadMetadata(ctx, metadata)
+		metadata, err := os.Open(metadataPath)
+		if err != nil {
+			return err
+		}
+		defer metadata.Close()
+
+		err = t.uploadMetadata(ctx, metadata)
 		if err != nil {
 			return err
 		}

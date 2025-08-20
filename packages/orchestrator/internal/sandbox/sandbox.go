@@ -94,7 +94,7 @@ type Sandbox struct {
 
 	process *fc.Process
 
-	template template.Template
+	Template template.Template
 
 	Checks *Checks
 
@@ -266,7 +266,7 @@ func CreateSandbox(
 		Resources: resources,
 		Metadata:  metadata,
 
-		template: template,
+		Template: template,
 		files:    sandboxFiles,
 		process:  fcHandle,
 
@@ -468,7 +468,7 @@ func ResumeSandbox(
 		Resources: resources,
 		Metadata:  metadata,
 
-		template: t,
+		Template: t,
 		files:    sandboxFiles,
 		process:  fcHandle,
 
@@ -567,24 +567,15 @@ func (s *Sandbox) FirecrackerVersions() fc.FirecrackerVersions {
 func (s *Sandbox) Pause(
 	ctx context.Context,
 	tracer trace.Tracer,
-	snapshotTemplateFiles storage.TemplateCacheFiles,
-) (*Snapshot, error) {
-	meta, err := s.template.Metadata()
-	if err != nil {
-		return nil, fmt.Errorf("no metadata found in template: %w", err)
-	}
-
-	return s.PauseWithMetadata(ctx, tracer, snapshotTemplateFiles, meta)
-}
-
-func (s *Sandbox) PauseWithMetadata(
-	ctx context.Context,
-	tracer trace.Tracer,
-	snapshotTemplateFiles storage.TemplateCacheFiles,
 	m metadata.Template,
 ) (*Snapshot, error) {
 	childCtx, childSpan := tracer.Start(ctx, "sandbox-snapshot")
 	defer childSpan.End()
+
+	snapshotTemplateFiles, err := m.Template.CacheFiles()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get template files: %w", err)
+	}
 
 	buildID, err := uuid.Parse(snapshotTemplateFiles.BuildID)
 	if err != nil {
@@ -630,11 +621,11 @@ func (s *Sandbox) PauseWithMetadata(
 	}
 
 	// Gather data for postprocessing
-	originalMemfile, err := s.template.Memfile()
+	originalMemfile, err := s.Template.Memfile()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original memfile: %w", err)
 	}
-	originalRootfs, err := s.template.Rootfs()
+	originalRootfs, err := s.Template.Rootfs()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
 	}
@@ -673,6 +664,7 @@ func (s *Sandbox) PauseWithMetadata(
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
 
+	m.Template = snapshotTemplateFiles.TemplateFiles
 	metadataFileLink := template.NewLocalFileLink(snapshotTemplateFiles.CacheMetadataPath())
 	err = m.ToFile(metadataFileLink.Path())
 	if err != nil {

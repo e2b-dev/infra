@@ -215,15 +215,10 @@ func (lb *LayerExecutor) PauseAndUpload(
 
 	lb.UserLogger.Debug(fmt.Sprintf("Saving layer: %s", meta.Template.BuildID))
 
-	cacheFiles, err := meta.Template.CacheFiles()
-	if err != nil {
-		return fmt.Errorf("error creating template files: %w", err)
-	}
 	// snapshot is automatically cleared by the templateCache eviction
-	snapshot, err := sbx.PauseWithMetadata(
+	snapshot, err := sbx.Pause(
 		ctx,
 		lb.tracer,
-		cacheFiles,
 		meta,
 	)
 	if err != nil {
@@ -232,9 +227,9 @@ func (lb *LayerExecutor) PauseAndUpload(
 
 	// Add snapshot to template cache so it can be used immediately
 	err = lb.templateCache.AddSnapshot(
-		cacheFiles.BuildID,
-		cacheFiles.KernelVersion,
-		cacheFiles.FirecrackerVersion,
+		meta.Template.BuildID,
+		meta.Template.KernelVersion,
+		meta.Template.FirecrackerVersion,
 		snapshot.MemfileDiffHeader,
 		snapshot.RootfsDiffHeader,
 		snapshot.Snapfile,
@@ -251,7 +246,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 		err := snapshot.Upload(
 			ctx,
 			lb.templateStorage,
-			cacheFiles.TemplateFiles,
+			meta.Template,
 		)
 		if err != nil {
 			return fmt.Errorf("error uploading snapshot: %w", err)
@@ -259,14 +254,14 @@ func (lb *LayerExecutor) PauseAndUpload(
 
 		err = lb.index.SaveLayerMeta(ctx, hash, cache.LayerMetadata{
 			Template: cache.Template{
-				BuildID: cacheFiles.BuildID,
+				BuildID: meta.Template.BuildID,
 			},
 		})
 		if err != nil {
 			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
 		}
 
-		lb.UserLogger.Debug(fmt.Sprintf("Saved: %s", cacheFiles.BuildID))
+		lb.UserLogger.Debug(fmt.Sprintf("Saved: %s", meta.Template.BuildID))
 		return nil
 	})
 

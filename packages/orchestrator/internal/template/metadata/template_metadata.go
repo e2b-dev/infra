@@ -66,6 +66,17 @@ func (t Template) NewVersionTemplate(files storage.TemplateFiles) Template {
 	}
 }
 
+func (t Template) SameVersionTemplate(files storage.TemplateFiles) Template {
+	return Template{
+		Version:      t.Version,
+		Template:     files,
+		Metadata:     t.Metadata,
+		Start:        t.Start,
+		FromTemplate: t.FromTemplate,
+		FromImage:    t.FromImage,
+	}
+}
+
 func (t Template) ToFile(path string) error {
 	mr, err := serialize(t)
 	if err != nil {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -59,15 +58,9 @@ func (s *Snapshot) Upload(
 		templateFiles,
 	)
 
-	metadataReader, err := os.Open(s.Metafile.Path())
-	if err != nil {
-		return fmt.Errorf("error opening metadata file: %w", err)
-	}
-	defer metadataReader.Close()
-
 	uploadErrCh := templateBuild.Upload(
 		ctx,
-		metadataReader,
+		s.Metafile.Path(),
 		s.Snapfile.Path(),
 		memfilePath,
 		rootfsPath,
