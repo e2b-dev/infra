@@ -123,7 +123,9 @@ func TestSandboxProxyClosedPort(t *testing.T) {
 	}
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	require.NoError(t, resp.Body.Close())
+	t.Cleanup(func() {
+		require.NoError(t, resp.Body.Close())
+	})
 	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
 
 	assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
