@@ -36,6 +36,7 @@ type NomadServiceDiscovery struct {
 }
 
 type Node struct {
+	// Deprecated
 	NomadNodeShortID string
 
 	ID        string

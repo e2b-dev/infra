@@ -115,6 +115,7 @@ func (o *Orchestrator) GetClusterNodes(clusterID uuid.UUID) []*nodes.Node {
 	return clusterNodes
 }
 
+// Deprecated: use GetNode instead
 func (o *Orchestrator) GetNodeByNomadShortID(id string) *nodes.Node {
 	for _, n := range o.nodes.Items() {
 		if n.NomadNodeShortID == id {
