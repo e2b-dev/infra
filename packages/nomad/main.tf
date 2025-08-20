@@ -4,6 +4,10 @@ terraform {
       source  = "kreuzwerker/docker"
       version = "3.0.2"
     }
+    nomad = {
+      source  = "hashicorp/nomad"
+      version = "2.5.0"
+    }
   }
 }
 
@@ -629,6 +633,13 @@ resource "nomad_job" "clickhouse_backup" {
 
     job_constraint_prefix = var.clickhouse_job_constraint_prefix
     node_pool             = var.clickhouse_node_pool
+  })
+}
+
+resource "nomad_job" "filestore_cleanup" {
+  count = var.filestore_cache.enabled ? 1 : 0
+  jobspec = templatefile("${path.module}/filestore-cleanup.hcl", {
+
   })
 }
 

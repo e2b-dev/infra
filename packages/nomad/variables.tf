@@ -304,3 +304,15 @@ variable "clickhouse_node_pool" {
 variable "slab_cache_path" {
   type = string
 }
+
+variable "filestore_cache" {
+  description = "Use Filestore as a fast local cache to speed up repeat sandbox starts"
+
+  type = object({
+    enabled = bool
+
+    capacity_gb = optional(number)
+    protocol    = optional(string)
+    tier        = optional(string)
+  })
+}

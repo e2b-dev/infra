@@ -1,0 +1,196 @@
+package main
+
+import (
+	"errors"
+	"flag"
+	"fmt"
+	"io/fs"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+)
+
+func main() {
+	if err := cleanNFSCache(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+}
+
+func cleanNFSCache() error {
+	path, opts, err := parseArgs()
+	if err != nil {
+		return fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	// get mount point
+	totalSpace, actualFreeSpace, err := getDiskInfo(path)
+	if err != nil {
+		return fmt.Errorf("could not get disk info from %q: %w", path, err)
+	}
+	targetFreeSpace := int64(float64(opts.freeSpacePercent) / 100 * float64(totalSpace))
+	areWeDone := func() bool {
+		return actualFreeSpace > targetFreeSpace
+	}
+
+	// if conditions are met, early bail
+	if areWeDone() {
+		return nil
+	}
+
+	// get file metadata, including path, size, and last access timestamp
+	files, err := getFileMetadata(path)
+	if err != nil {
+		return fmt.Errorf("could not get file metadata: %w", err)
+	}
+
+	// sort files by access timestamp
+	files = sortFiles(files)
+
+	var deletedFiles, deletedBytes int64
+	for _, file := range files {
+		if opts.dryRun {
+			fmt.Printf("DRY RUN: would delete %q (%d bytes, last modified %s)\n",
+				file.path, file.size, time.Since(file.atime).Round(time.Minute).String())
+		} else {
+			// remove file
+			if err := os.Remove(file.path); err != nil {
+				// if we fail to delete the file, try the next one
+				fmt.Printf("WARNING: failed to delete %q: %v\n", file.path, err)
+				continue
+			}
+		}
+
+		deletedFiles++
+		deletedBytes += file.size
+
+		// record the file as free space
+		actualFreeSpace += file.size
+		if areWeDone() {
+			// we're done!
+			return nil
+		}
+	}
+
+	// couldn't delete enough files :(
+	return ErrFail
+}
+
+func getDiskInfo(path string) (int64, int64, error) {
+	// Execute: df <path>
+	cmd := exec.Command("df", path)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return 0, 0, fmt.Errorf("df command failed: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) < 2 {
+		return 0, 0, fmt.Errorf("unexpected df output: %q", strings.TrimSpace(string(out)))
+	}
+
+	// Skip header (line 0) and parse the first data line
+	for i := 1; i < len(lines); i++ {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+
+		totalSize, err := strconv.ParseInt(fields[1], 10, 64)
+		if err != nil {
+			return 0, 0, fmt.Errorf("failed to parse total size: %w", err)
+		}
+
+		availableSpace, err := strconv.ParseInt(fields[3], 10, 64)
+		if err != nil {
+			return 0, 0, fmt.Errorf("failed to parse available space: %w", err)
+		}
+
+		return totalSize, availableSpace, nil
+	}
+
+	return 0, 0, fmt.Errorf("could not parse mount point from df output: %q", strings.TrimSpace(string(out)))
+}
+
+func sortFiles(files []file) []file {
+	sort.Slice(files, func(i, j int) bool {
+		return files[j].atime.After(files[i].atime)
+	})
+	return files
+}
+
+func getFileMetadata(path string) ([]file, error) {
+	var items []file
+
+	if err := filepath.Walk(path, func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return fmt.Errorf("could not walk dir %q: %w", path, err)
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		atime, err := getAtime(info)
+
+		items = append(items, file{path: path, size: info.Size(), atime: atime})
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("walk failed: %w", err)
+	}
+
+	return items, nil
+}
+
+func getAtime(info fs.FileInfo) (time.Time, error) {
+	hasAtime, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return time.Time{}, fmt.Errorf("could not stat unix stat_t for %q: %T", info.Name(), info.Sys())
+	}
+
+	t := hasAtime.Atimespec
+	return time.Unix(t.Sec, t.Nsec), nil
+}
+
+type opts struct {
+	freeSpacePercent int64
+	dryRun           bool
+}
+
+type file struct {
+	path  string
+	size  int64
+	atime time.Time
+}
+
+var ErrUsage = errors.New("usage: clean-nfs-cache <path> [<options>]")
+var ErrFail = errors.New("clean-nfs-cache failed to find enough space")
+
+func parseArgs() (string, opts, error) {
+	flags := flag.NewFlagSet("clean-nfs-cache", flag.ExitOnError)
+
+	var opts opts
+	flags.Int64Var(&opts.freeSpacePercent, "free-space-percent", 10, "free space target as a % (0-100)")
+	flags.BoolVar(&opts.dryRun, "dry-run", true, "dry run")
+
+	if err := flags.Parse(os.Args[1:]); err != nil {
+		return "", opts, fmt.Errorf("could not parse flags: %w", err)
+	}
+
+	args := flags.Args()
+	if len(args) != 1 {
+		return "", opts, ErrUsage
+	}
+
+	return args[0], opts, nil
+}

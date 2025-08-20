@@ -257,7 +257,10 @@ module "nomad" {
   redis_port = var.redis_port
 
   launch_darkly_api_key_secret_name = module.init.launch_darkly_api_key_secret_version.secret
-  slab_cache_path                   = module.cluster.nfs_slab_cache_path
+
+  # Filestore
+  filestore_cache = var.filestore_cache
+  slab_cache_path = module.cluster.nfs_slab_cache_path
 }
 
 module "redis" {
