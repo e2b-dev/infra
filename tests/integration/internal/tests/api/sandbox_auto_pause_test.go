@@ -29,10 +29,11 @@ func TestSandboxAutoPausePauseResume(t *testing.T) {
 	require.NoError(t, err)
 
 	// Set timeout to 0 to force sandbox to be stopped
-	_, err = c.PostSandboxesSandboxIDTimeout(t.Context(), sbxId, api.PostSandboxesSandboxIDTimeoutJSONRequestBody{
+	resp, err := c.PostSandboxesSandboxIDTimeout(t.Context(), sbxId, api.PostSandboxesSandboxIDTimeoutJSONRequestBody{
 		Timeout: 0,
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
 
 	require.Eventually(t, func() bool {
 		res, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbxId, setup.WithAPIKey())
@@ -57,10 +58,11 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 	sbxId := sbx.SandboxID
 
 	// Set timeout to 0 to force sandbox to be stopped
-	_, err := c.PostSandboxesSandboxIDTimeout(t.Context(), sbxId, api.PostSandboxesSandboxIDTimeoutJSONRequestBody{
+	resp, err := c.PostSandboxesSandboxIDTimeout(t.Context(), sbxId, api.PostSandboxesSandboxIDTimeoutJSONRequestBody{
 		Timeout: 0,
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
 
 	require.Eventually(t, func() bool {
 		res, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbxId, setup.WithAPIKey())
@@ -73,10 +75,11 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 	require.NoError(t, err)
 
 	// Set timeout to 0 to force sandbox to be stopped
-	_, err = c.PostSandboxesSandboxIDTimeout(t.Context(), sbxId, api.PostSandboxesSandboxIDTimeoutJSONRequestBody{
+	resp, err = c.PostSandboxesSandboxIDTimeout(t.Context(), sbxId, api.PostSandboxesSandboxIDTimeoutJSONRequestBody{
 		Timeout: 0,
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
 
 	require.Eventually(t, func() bool {
 		res, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbxId, setup.WithAPIKey())
@@ -101,10 +104,11 @@ func TestSandboxNotAutoPause(t *testing.T) {
 	sbxId := sbx.SandboxID
 
 	// Set timeout to 0 to force sandbox to be stopped
-	_, err := c.PostSandboxesSandboxIDTimeout(t.Context(), sbxId, api.PostSandboxesSandboxIDTimeoutJSONRequestBody{
+	resp, err := c.PostSandboxesSandboxIDTimeout(t.Context(), sbxId, api.PostSandboxesSandboxIDTimeoutJSONRequestBody{
 		Timeout: 0,
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
 
 	require.Eventually(t, func() bool {
 		res, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbxId, setup.WithAPIKey())

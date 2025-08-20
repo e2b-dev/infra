@@ -83,8 +83,11 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 // TeardownSandbox kills the sandbox with the given ID
 func TeardownSandbox(t *testing.T, c *api.ClientWithResponses, sandboxID string) {
 	t.Helper()
-	killSandboxResponse, err := c.DeleteSandboxesSandboxIDWithResponse(context.Background(), sandboxID, setup.WithAPIKey())
 
-	assert.NoError(t, err)
+	ctx := context.WithoutCancel(t.Context())
+
+	killSandboxResponse, err := c.DeleteSandboxesSandboxIDWithResponse(ctx, sandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+
 	assert.True(t, killSandboxResponse.StatusCode() == http.StatusNoContent || killSandboxResponse.StatusCode() == http.StatusNotFound)
 }
