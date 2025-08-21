@@ -110,7 +110,7 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 
 		// Check if the team has access to the environment
 		if template.TeamID != teamID && (!public || !template.Public) {
-			return nil, nil, &api.APIError{Code: http.StatusForbidden, ClientMsg: fmt.Sprintf("Team  '%s' does not have access to the template '%s'", teamID, aliasOrEnvID), Err: fmt.Errorf("team  '%s' does not have access to the template '%s'", teamID, aliasOrEnvID)}
+			return nil, nil, &api.APIError{Code: http.StatusForbidden, ClientMsg: fmt.Sprintf("Team '%s' does not have access to the template '%s'", teamID, aliasOrEnvID), Err: fmt.Errorf("team '%s' does not have access to the template '%s'", teamID, aliasOrEnvID)}
 		}
 
 		if cluster != clusterID {

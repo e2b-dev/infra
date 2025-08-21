@@ -1,4 +1,4 @@
-package nodes
+package nodemanager
 
 import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"

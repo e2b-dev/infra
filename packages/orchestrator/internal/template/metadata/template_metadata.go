@@ -14,7 +14,13 @@ import (
 
 const (
 	CurrentVersion = 2
+
+	DeprecatedVersion = 1
 )
+
+type Version struct {
+	Version any `json:"version"`
+}
 
 type Context struct {
 	User    string            `json:"user,omitempty"`
@@ -40,6 +46,12 @@ type Template struct {
 	Start        *Start                `json:"start,omitempty"`
 	FromImage    *string               `json:"from_image,omitempty"`
 	FromTemplate *FromTemplate         `json:"from_template,omitempty"`
+}
+
+func V1TemplateVersion() Template {
+	return Template{
+		Version: 1,
+	}
 }
 
 func (t Template) BasedOn(
@@ -133,10 +145,26 @@ func fromTemplate(ctx context.Context, s storage.StorageProvider, files storage.
 }
 
 func deserialize(reader io.Reader) (Template, error) {
-	decoder := json.NewDecoder(reader)
+	// Read all data into bytes first to avoid double stream read
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return Template{}, fmt.Errorf("error reading template metadata: %w", err)
+	}
+
+	var v Version
+	err = json.Unmarshal(data, &v)
+	if err != nil {
+		return Template{}, fmt.Errorf("error unmarshaling template version: %w", err)
+	}
+
+	// Handle deprecated version formats gracefully
+	// When any type is used, Go will unmarshal any numeric value as a float64
+	if version, ok := v.Version.(float64); !ok || version <= float64(DeprecatedVersion) {
+		return Template{Version: DeprecatedVersion}, nil
+	}
 
 	var templateMetadata Template
-	err := decoder.Decode(&templateMetadata)
+	err = json.Unmarshal(data, &templateMetadata)
 	if err != nil {
 		return Template{}, fmt.Errorf("error unmarshaling template metadata: %w", err)
 	}

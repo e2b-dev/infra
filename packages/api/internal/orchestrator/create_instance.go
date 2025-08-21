@@ -16,9 +16,9 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
-	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodes"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -26,10 +26,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
-
-const maxNodeRetries = 3
-
-var errSandboxCreateFailed = fmt.Errorf("failed to create a new sandbox, if the problem persists, contact us")
 
 func (o *Orchestrator) CreateSandbox(
 	ctx context.Context,
@@ -145,7 +141,7 @@ func (o *Orchestrator) CreateSandbox(
 		EndTime:   timestamppb.New(endTime),
 	}
 
-	var node *nodes.Node
+	var node *nodemanager.Node
 
 	if isResume && nodeID != nil {
 		telemetry.ReportEvent(ctx, "Placing sandbox on the node where the snapshot was taken")
@@ -161,80 +157,35 @@ func (o *Orchestrator) CreateSandbox(
 		}
 	}
 
-	attempt := 1
-	nodesExcluded := make(map[string]struct{})
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, &api.APIError{
-				Code:      http.StatusRequestTimeout,
-				ClientMsg: "Failed to create sandbox",
-				Err:       fmt.Errorf("timeout while creating sandbox, attempt #%d", attempt),
-			}
-		default:
-			// Continue
-		}
-
-		if attempt > maxNodeRetries {
-			return nil, &api.APIError{
-				Code:      http.StatusInternalServerError,
-				ClientMsg: "Failed to create sandbox",
-				Err:       errSandboxCreateFailed,
-			}
-		}
-
-		if node == nil {
-			nodeClusterID := uuid.Nil
-			if team.Team.ClusterID != nil {
-				nodeClusterID = *team.Team.ClusterID
-			}
-
-			clusterNodes := o.GetClusterNodes(nodeClusterID)
-			node, err = o.placementAlgorithm.ChooseNode(ctx, clusterNodes, nodesExcluded, nodes.SandboxResources{CPUs: build.Vcpu, MiBMemory: build.RamMb})
-			if err != nil {
-				telemetry.ReportError(ctx, "failed to get least busy node", err)
-
-				return nil, &api.APIError{
-					Code:      http.StatusInternalServerError,
-					ClientMsg: "Failed to get node to place sandbox on.",
-					Err:       fmt.Errorf("failed to get least busy node: %w", err),
-				}
-			}
-		}
-		node.PlacementMetrics.AddSandbox(sandboxID, nodes.SandboxResources{
-			CPUs:      build.Vcpu,
-			MiBMemory: build.RamMb,
-		})
-
-		client, ctx := node.GetClient(ctx)
-		_, err := client.Sandbox.Create(node.GetSandboxCreateCtx(ctx, sbxRequest), sbxRequest)
-		// The request is done, we will either add it to the cache or remove it from the node
-		if err == nil {
-			// The sandbox was created successfully
-			attributes := []attribute.KeyValue{
-				attribute.Int("attempts", attempt),
-				attribute.Bool("is_resume", isResume),
-				attribute.Bool("node_affinity_requested", nodeID != nil),
-				attribute.Bool("node_affinity_success", nodeID != nil && node.ID == *nodeID),
-			}
-			o.createdSandboxesCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
-			break
-		}
-
-		zap.L().Error("Failed to create sandbox", logger.WithSandboxID(sandboxID), logger.WithNodeID(node.ID), zap.Int("attempt", attempt), zap.Error(utils.UnwrapGRPCError(err)))
-
-		// The node is not available, try again with another node
-		node.PlacementMetrics.Fail(sandboxID)
-		nodesExcluded[node.ID] = struct{}{}
-		node = nil
-		attempt += 1
+	nodeClusterID := uuid.Nil
+	if team.Team.ClusterID != nil {
+		nodeClusterID = *team.Team.ClusterID
 	}
+
+	clusterNodes := o.GetClusterNodes(nodeClusterID)
+	ctx, span := o.tracer.Start(ctx, "place-sandbox")
+	node, err = placement.PlaceSandbox(ctx, o.tracer, o.placementAlgorithm, clusterNodes, node, sbxRequest)
+	if err != nil {
+		telemetry.ReportError(ctx, "failed to create sandbox", err)
+
+		return nil, &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "Failed to create sandbox",
+			Err:       fmt.Errorf("failed to get create sandbox: %w", err),
+		}
+	}
+	span.End()
+
+	// The sandbox was created successfully
+	attributes := []attribute.KeyValue{
+		attribute.Bool("is_resume", isResume),
+		attribute.Bool("node_affinity_requested", nodeID != nil),
+		attribute.Bool("node_affinity_success", nodeID != nil && node.ID == *nodeID),
+	}
+	o.createdSandboxesCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
 
 	// The build should be cached on the node now
 	node.InsertBuild(build.ID.String())
-
-	// The sandbox was created successfully, the resources will be counted in cache
-	defer node.PlacementMetrics.Success(sandboxID)
 
 	telemetry.SetAttributes(ctx, attribute.String("node.id", node.ID))
 	telemetry.ReportEvent(ctx, "Created sandbox")

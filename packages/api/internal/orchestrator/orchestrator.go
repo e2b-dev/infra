@@ -19,7 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/metrics"
-	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodes"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
@@ -41,7 +41,7 @@ type Orchestrator struct {
 	httpClient              *http.Client
 	nomadClient             *nomadapi.Client
 	instanceCache           *instance.InstanceCache
-	nodes                   *smap.Map[*nodes.Node]
+	nodes                   *smap.Map[*nodemanager.Node]
 	placementAlgorithm      placement.Algorithm
 	tracer                  trace.Tracer
 	analytics               *analyticscollector.Analytics
@@ -87,7 +87,7 @@ func New(
 		analytics:          analyticsInstance,
 		nomadClient:        nomadClient,
 		tracer:             tracer,
-		nodes:              smap.New[*nodes.Node](),
+		nodes:              smap.New[*nodemanager.Node](),
 		placementAlgorithm: &placement.LeastBusyAlgorithm{},
 		dns:                dnsServer,
 		dbClient:           dbClient,
@@ -115,7 +115,7 @@ func New(
 	if env.IsLocal() {
 		zap.L().Info("Skipping syncing sandboxes, running locally")
 		// Add a local node for local development, if there isn't any, it fails silently
-		err := o.connectToNode(ctx, nodes.NomadServiceDiscovery{
+		err := o.connectToNode(ctx, nodemanager.NomadServiceDiscovery{
 			NomadNodeShortID:    "testclient",
 			OrchestratorAddress: fmt.Sprintf("%s:%s", "127.0.0.1", consts.OrchestratorPort),
 			IPAddress:           "127.0.0.1",
