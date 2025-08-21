@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -86,47 +87,59 @@ func printSummary(r results, opts opts) {
 	fmt.Println("access time:")
 	fmt.Printf("- most recently used: %s\n", minDuration(r.lastAccessed).Round(time.Second))
 	fmt.Printf("- least recently used: %s\n", maxDuration(r.lastAccessed).Round(time.Second))
+	fmt.Printf("- standard deviation: %s\n", standardDeviation(r.lastAccessed).Round(time.Second))
 	fmt.Println("creation time:")
 	fmt.Printf("- oldest file: %s\n", minDuration(r.createdDurations).Round(time.Second))
 	fmt.Printf("- newest file: %s\n", maxDuration(r.createdDurations).Round(time.Second))
+	fmt.Printf("- standard deviation: %s\n", standardDeviation(r.createdDurations).Round(time.Second))
+}
+
+func standardDeviation(accessed []time.Duration) time.Duration {
+	var sum time.Duration
+	for i := range accessed {
+		sum += accessed[i]
+	}
+	mean := sum / time.Duration(len(accessed))
+
+	var sd float64
+	for i := range accessed {
+		sd += math.Pow(float64(accessed[i]-mean), 2)
+	}
+
+	sd = math.Sqrt(sd / float64(len(accessed)))
+	return time.Duration(sd)
 }
 
 func maxDuration(durations []time.Duration) time.Duration {
-	if len(durations) == 0 {
-		return time.Duration(0)
-	}
-
-	if len(durations) == 1 {
-		return durations[0]
-	}
-
-	var index int
-	for i, d := range durations[1:] {
-		if d > durations[index] {
-			index = i
-		}
-	}
-
-	return durations[index]
+	return loop(durations, func(one, two time.Duration) bool {
+		return one > two
+	})
 }
 
 func minDuration(durations []time.Duration) time.Duration {
-	if len(durations) == 0 {
-		return time.Duration(0)
+	return loop(durations, func(one, two time.Duration) bool {
+		return one < two
+	})
+}
+
+func loop[T any](items []T, betterThan func(one, two T) bool) T {
+	if len(items) == 0 {
+		var t T
+		return t
 	}
 
-	if len(durations) == 1 {
-		return durations[0]
+	if len(items) == 1 {
+		return items[0]
 	}
 
-	var index int
-	for i, d := range durations[1:] {
-		if d < durations[index] {
-			index = i
+	var best int
+	for current := 1; current < len(items); current++ {
+		if betterThan(items[current], items[best]) {
+			best = current
 		}
 	}
 
-	return durations[index]
+	return items[best]
 }
 
 type results struct {
@@ -141,8 +154,10 @@ func deleteFiles(files []file, opts opts, diskInfo *diskInfo, areWeDone func() b
 	var results results
 	for _, file := range files {
 		if opts.dryRun {
-			fmt.Printf("DRY RUN: would delete %q (%d bytes, time since last access: %s)\n",
-				file.path, file.size, time.Since(file.atime).Round(time.Minute).String())
+			fmt.Printf("DRY RUN: would delete %q (%d bytes, created: %s, last access: %s)\n",
+				file.path, file.size,
+				time.Since(file.btime).Round(time.Second),
+				time.Since(file.atime).Round(time.Minute))
 		} else {
 			// remove file
 			fmt.Printf("deleting %q (%d bytes) ... ", file.path, file.size)
