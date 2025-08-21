@@ -3,7 +3,7 @@ job "filestore-cleanup" {
     node_pool = "default"
 
     periodic {
-        cron             = "0 * * * *" // run it once an hour, on the hour
+        cron             = "0 * * * *" // run every hour
         prohibit_overlap = true
         time_zone        = "America/Los_Angeles"
     }
@@ -12,11 +12,6 @@ job "filestore-cleanup" {
         restart {
             attempts = 0
             mode     = "fail"
-        }
-
-        constraint {
-            attribute = "$${meta.job_constraint}"
-            value     = "${job_constraint_prefix}-${i + 1}"
         }
 
         task "filestore-cleanup" {
@@ -30,6 +25,16 @@ job "filestore-cleanup" {
                     "${nfs_cache_mount_path}",
                 ]
             }
+
+            artifact {
+                %{ if environment == "dev" }
+                // Version hash is only available for dev to increase development speed in prod use rolling updates
+                source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/clean-nfs-cache?version=${clean_nfs_cache_checksum}"
+                %{ else }
+                source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/clean-nfs-cache"
+                %{ endif }
+              }
+
         }
     }
 }

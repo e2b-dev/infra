@@ -42,9 +42,8 @@ data "google_secret_manager_secret_version" "launch_darkly_api_key" {
 }
 
 provider "nomad" {
-  address      = "https://nomad.${var.domain_name}"
-  secret_id    = var.nomad_acl_token_secret
-  consul_token = var.consul_acl_token_secret
+  address   = "https://nomad.${var.domain_name}"
+  secret_id = var.nomad_acl_token_secret
 }
 
 data "google_secret_manager_secret_version" "redis_url" {
@@ -394,7 +393,6 @@ data "external" "orchestrator_checksum" {
   }
 }
 
-
 locals {
   orchestrator_envs = {
     port             = var.orchestrator_port
@@ -633,13 +631,6 @@ resource "nomad_job" "clickhouse_backup" {
 
     job_constraint_prefix = var.clickhouse_job_constraint_prefix
     node_pool             = var.clickhouse_node_pool
-  })
-}
-
-resource "nomad_job" "filestore_cleanup" {
-  count = var.filestore_cache.enabled ? 1 : 0
-  jobspec = templatefile("${path.module}/filestore-cleanup.hcl", {
-
   })
 }
 

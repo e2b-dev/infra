@@ -181,10 +181,14 @@ build/%:
 build-and-upload:build-and-upload/api
 build-and-upload:build-and-upload/client-proxy
 build-and-upload:build-and-upload/docker-reverse-proxy
+build-and-upload:build-and-upload/clean-nfs-cache
 build-and-upload:build-and-upload/orchestrator
 build-and-upload:build-and-upload/template-manager
 build-and-upload:build-and-upload/envd
 build-and-upload:build-and-upload/clickhouse-migrator
+build-and-upload/clean-nfs-cache:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/clean-nfs-cache
 build-and-upload/template-manager:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/template-manager

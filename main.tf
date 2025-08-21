@@ -22,7 +22,7 @@ terraform {
     }
     nomad = {
       source  = "hashicorp/nomad"
-      version = "2.1.0"
+      version = "2.5.0"
     }
     random = {
       source  = "hashicorp/random"
