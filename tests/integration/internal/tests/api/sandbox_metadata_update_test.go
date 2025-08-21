@@ -284,3 +284,84 @@ func TestSandboxMetadataUpdateMultipleUpdates(t *testing.T) {
 	// Should have exactly the keys from the last PUT: version, env, branch, build_id, deployed
 	assert.Len(t, metadata, 5)
 }
+
+func TestPausedSandboxMetadataUpdate(t *testing.T) {
+	c := setup.GetAPIClient()
+
+	// Create a sandbox with initial metadata
+	initialMetadata := api.SandboxMetadata{
+		"sandboxType": "test",
+		"version":     "1.0.0",
+		"environment": "paused-test",
+	}
+
+	sandbox := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(initialMetadata))
+
+	// Verify initial metadata exists
+	getSandboxResponse, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sandbox.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, getSandboxResponse.StatusCode())
+	require.NotNil(t, getSandboxResponse.JSON200)
+	assert.NotNil(t, getSandboxResponse.JSON200.Metadata)
+	assert.Equal(t, "test", (*getSandboxResponse.JSON200.Metadata)["sandboxType"])
+	assert.Equal(t, "1.0.0", (*getSandboxResponse.JSON200.Metadata)["version"])
+	assert.Equal(t, "paused-test", (*getSandboxResponse.JSON200.Metadata)["environment"])
+
+	// Pause the sandbox
+	pauseResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandbox.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNoContent, pauseResponse.StatusCode())
+
+	// Update metadata while paused
+	updateMetadata := api.SandboxMetadata{
+		"environment": "paused-updated", // Update existing key
+		"version":     "2.0.0",          // Update existing key
+		"state":       "paused",         // Add new key
+		// Note: "sandboxType" key is not included, will be removed with PUT
+	}
+
+	updateResponse, err := c.PutSandboxesSandboxIDMetadataWithResponse(t.Context(), sandbox.SandboxID, updateMetadata, setup.WithAPIKey())
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, updateResponse.StatusCode())
+
+	// Verify metadata
+	pausedSandboxResponse, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sandbox.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, pausedSandboxResponse.StatusCode())
+	require.NotNil(t, pausedSandboxResponse.JSON200)
+	require.NotNil(t, pausedSandboxResponse.JSON200.Metadata)
+
+	pausedMeta := *pausedSandboxResponse.JSON200.Metadata
+
+	// Verify updated values persists
+	assert.Equal(t, "paused-updated", pausedMeta["environment"])
+	assert.Equal(t, "2.0.0", pausedMeta["version"])
+	assert.Equal(t, "paused", pausedMeta["state"])
+
+	// Resume the sandbox to verify metadata persisted
+	resumeRequest := api.PostSandboxesSandboxIDResumeJSONRequestBody{}
+	resumeResponse, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sandbox.SandboxID, resumeRequest, setup.WithAPIKey())
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, resumeResponse.StatusCode())
+
+	// Verify metadata after resume
+	getResumedSandboxResponse, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sandbox.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, getResumedSandboxResponse.StatusCode())
+	require.NotNil(t, getResumedSandboxResponse.JSON200)
+	require.NotNil(t, getResumedSandboxResponse.JSON200.Metadata)
+
+	resumedMeta := *getResumedSandboxResponse.JSON200.Metadata
+
+	// Verify updated values persist after resume
+	assert.Equal(t, "paused-updated", resumedMeta["environment"])
+	assert.Equal(t, "2.0.0", resumedMeta["version"])
+	assert.Equal(t, "paused", resumedMeta["state"])
+
+	// Verify sandboxType was removed
+	_, hasSandboxType := resumedMeta["sandboxType"]
+	assert.False(t, hasSandboxType, "sandboxType should be removed as it was not in PUT request")
+
+	// Verify we have only the keys from PUT request
+	assert.Len(t, resumedMeta, 3)
+}

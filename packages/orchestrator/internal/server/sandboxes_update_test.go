@@ -13,8 +13,10 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func TestServer_Update_MetadataOnly(t *testing.T) {
@@ -165,9 +167,10 @@ func TestServer_Update_MetadataOnly(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create server with sandbox cache
 			s := &server{
-				sandboxes: smap.New[*sandbox.Sandbox](),
-				tracer:    noop.NewTracerProvider().Tracer("test"),
-				info:      &service.ServiceInfo{ClientId: "test-client"},
+				sandboxes:    smap.New[*sandbox.Sandbox](),
+				tracer:       noop.NewTracerProvider().Tracer("test"),
+				info:         &service.ServiceInfo{ClientId: "test-client"},
+				featureFlags: utils.Must(featureflags.NewClient()),
 			}
 
 			// Add existing sandbox to cache if provided
@@ -205,9 +208,10 @@ func TestServer_Update_MetadataOnly(t *testing.T) {
 func TestServer_Update_EndTimeAndMetadata(t *testing.T) {
 	// Test updating both end time and metadata together
 	s := &server{
-		sandboxes: smap.New[*sandbox.Sandbox](),
-		tracer:    noop.NewTracerProvider().Tracer("test"),
-		info:      &service.ServiceInfo{ClientId: "test-client"},
+		sandboxes:    smap.New[*sandbox.Sandbox](),
+		tracer:       noop.NewTracerProvider().Tracer("test"),
+		info:         &service.ServiceInfo{ClientId: "test-client"},
+		featureFlags: utils.Must(featureflags.NewClient()),
 	}
 
 	originalEndTime := time.Now().Add(time.Hour)
@@ -259,9 +263,10 @@ func TestServer_Update_EndTimeAndMetadata(t *testing.T) {
 func TestServer_Update_OnlyEndTime(t *testing.T) {
 	// Test updating only end time (existing behavior)
 	s := &server{
-		sandboxes: smap.New[*sandbox.Sandbox](),
-		tracer:    noop.NewTracerProvider().Tracer("test"),
-		info:      &service.ServiceInfo{ClientId: "test-client"},
+		sandboxes:    smap.New[*sandbox.Sandbox](),
+		tracer:       noop.NewTracerProvider().Tracer("test"),
+		info:         &service.ServiceInfo{ClientId: "test-client"},
+		featureFlags: utils.Must(featureflags.NewClient()),
 	}
 
 	originalEndTime := time.Now().Add(time.Hour)
@@ -309,9 +314,10 @@ func TestServer_Update_OnlyEndTime(t *testing.T) {
 func TestServer_Update_NoUpdates(t *testing.T) {
 	// Test request with neither end time nor metadata
 	s := &server{
-		sandboxes: smap.New[*sandbox.Sandbox](),
-		tracer:    noop.NewTracerProvider().Tracer("test"),
-		info:      &service.ServiceInfo{ClientId: "test-client"},
+		sandboxes:    smap.New[*sandbox.Sandbox](),
+		tracer:       noop.NewTracerProvider().Tracer("test"),
+		info:         &service.ServiceInfo{ClientId: "test-client"},
+		featureFlags: utils.Must(featureflags.NewClient()),
 	}
 
 	existingSandbox := &sandbox.Sandbox{

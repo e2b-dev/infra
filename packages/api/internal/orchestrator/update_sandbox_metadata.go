@@ -4,10 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -15,27 +13,13 @@ import (
 
 func (o *Orchestrator) UpdateSandboxMetadata(
 	ctx context.Context,
-	sandboxID string,
+	sbx *instance.InstanceInfo,
 	metadata map[string]string,
 ) *api.APIError {
-	childCtx, childSpan := o.tracer.Start(ctx, "update-sandbox-metadata",
-		trace.WithAttributes(
-			attribute.String("instance.id", sandboxID),
-		),
-	)
+	childCtx, childSpan := o.tracer.Start(ctx, "update-sandbox-metadata")
 	defer childSpan.End()
 
-	// Get the sandbox info to find the node it's running on
-	sbx, err := o.instanceCache.Get(sandboxID)
-	if err != nil {
-		return &api.APIError{
-			Err:       err,
-			ClientMsg: "Sandbox not found",
-			Code:      http.StatusNotFound,
-		}
-	}
-
-	client, childCtx, err := o.GetClient(childCtx, sbx.Node.ClusterID, sbx.Node.NodeID)
+	client, childCtx, err := o.GetClient(childCtx, sbx.ClusterID, sbx.NodeID)
 	if err != nil {
 		return &api.APIError{
 			Err:       err,
@@ -48,7 +32,7 @@ func (o *Orchestrator) UpdateSandboxMetadata(
 	// Send metadata to the orchestrator first - don't update local cache until success
 	_, err = client.Sandbox.Update(
 		childCtx, &orchestrator.SandboxUpdateRequest{
-			SandboxId: sandboxID,
+			SandboxId: sbx.SandboxID,
 			Metadata:  metadata,
 		},
 	)
@@ -65,7 +49,7 @@ func (o *Orchestrator) UpdateSandboxMetadata(
 	// Only update local cache after orchestrator call succeeds
 	sbx.Metadata = metadata
 
-	telemetry.ReportEvent(childCtx, "Updated sandbox metadata")
+	telemetry.ReportEvent(childCtx, "Updated running sandbox metadata")
 
 	return nil
 }
