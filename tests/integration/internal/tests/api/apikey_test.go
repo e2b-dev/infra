@@ -59,14 +59,14 @@ func TestCreateAPIKeyForeignTeamWithCache(t *testing.T) {
 
 	// Create first team
 	foreignUserID := utils.CreateUser(t, db)
-	foreignTeamID := utils.CreateTeamWithUser(t, c, db, "test-team-apikey-foreign", foreignUserID.String())
+	foreignTeamID := utils.CreateTeamWithUser(t, c, db, "test-team-apikey-foreign-cache", foreignUserID.String())
 
 	// Populate cache by calling some endpoint
 	utils.CreateAPIKey(t, ctx, c, foreignUserID.String(), foreignTeamID)
 
 	// Create the API key in foreign team
 	resp, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
-		Name: "foreign-key",
+		Name: "foreign-cached",
 	}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, foreignTeamID.String()))
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode(), "Expected 401 Unauthorized when creating API key for a foreign team")

@@ -93,7 +93,7 @@ func CreateAPIKey(t *testing.T, ctx context.Context, c *api.ClientWithResponses,
 		_, _ = c.DeleteApiKeysApiKeyIDWithResponse(
 			ctx,
 			apiKey.JSON201.Id.String(),
-			setup.WithSupabaseToken(t),
+			setup.WithSupabaseToken(t, userID),
 			setup.WithSupabaseTeam(t, teamID.String()),
 		)
 	})
