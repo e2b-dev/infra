@@ -594,7 +594,7 @@ func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
 	tempDir := t.TempDir()
 	testFile := filepath.Join(tempDir, "exact.txt")
 	// Create file that's exactly 2 chunks
-	testContent := strings.Repeat("x", ChunkSize*2)
+	testContent := strings.Repeat("x", gcpMultipartUploadChunkSize*2)
 	err := os.WriteFile(testFile, []byte(testContent), 0o644)
 	require.NoError(t, err)
 
@@ -631,8 +631,8 @@ func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
 
 	// Should have exactly 2 parts, each of ChunkSize
 	require.Len(t, partSizes, 2)
-	require.Equal(t, ChunkSize, partSizes[0])
-	require.Equal(t, ChunkSize, partSizes[1])
+	require.Equal(t, gcpMultipartUploadChunkSize, partSizes[0])
+	require.Equal(t, gcpMultipartUploadChunkSize, partSizes[1])
 }
 
 func TestMultipartUploader_FileNotFound_Error(t *testing.T) {

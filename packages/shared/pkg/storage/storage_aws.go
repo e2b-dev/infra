@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -27,12 +28,16 @@ type AWSBucketStorageProvider struct {
 	bucketName    string
 }
 
+var _ StorageProvider = (*AWSBucketStorageProvider)(nil)
+
 type AWSBucketStorageObjectProvider struct {
 	client     *s3.Client
 	path       string
 	bucketName string
 	ctx        context.Context // nolint:containedctx // todo: fix the interface so this can be removed
 }
+
+var _ StorageObjectProvider = (*AWSBucketStorageObjectProvider)(nil)
 
 func NewAWSBucketStorageProvider(ctx context.Context, bucketName string) (*AWSBucketStorageProvider, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
@@ -155,23 +160,27 @@ func (a *AWSBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 	return err
 }
 
-func (a *AWSBucketStorageObjectProvider) ReadFrom(src io.Reader) (int64, error) {
+func (a *AWSBucketStorageObjectProvider) Write(data []byte) (int, error) {
 	ctx, cancel := context.WithTimeout(a.ctx, awsWriteTimeout)
 	defer cancel()
 
-	_, err := a.client.PutObject(
+	result, err := a.client.PutObject(
 		ctx,
 		&s3.PutObjectInput{
 			Bucket: &a.bucketName,
 			Key:    &a.path,
-			Body:   src,
+			Body:   bytes.NewReader(data),
 		},
 	)
 	if err != nil {
 		return 0, err
 	}
 
-	return 0, nil
+	if result.Size == nil {
+		return 0, nil
+	}
+
+	return int(*result.Size), nil
 }
 
 func (a *AWSBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, err error) {

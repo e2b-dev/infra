@@ -1,4 +1,4 @@
-package nodes
+package nodemanager
 
 import (
 	"context"
@@ -22,11 +22,6 @@ import (
 )
 
 const UnknownNomadNodeShortID = "unknown"
-
-type sbxInProgress struct {
-	MiBMemory int64
-	CPUs      int64
-}
 
 type NomadServiceDiscovery struct {
 	NomadNodeShortID string

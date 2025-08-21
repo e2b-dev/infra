@@ -13,7 +13,7 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
-	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodes"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -125,7 +125,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 	}
 }
 
-func (o *Orchestrator) syncLocalDiscoveredNodes(ctx context.Context, discovered []nodes.NomadServiceDiscovery) {
+func (o *Orchestrator) syncLocalDiscoveredNodes(ctx context.Context, discovered []nodemanager.NomadServiceDiscovery) {
 	// Connect local nodes that are not in the list, yet
 	connectLocalSpanCtx, connectLocalSpan := o.tracer.Start(ctx, "keep-in-sync-connect-local-nodes")
 	defer connectLocalSpan.End()
@@ -171,7 +171,7 @@ func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
 	}
 }
 
-func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodes.Node, instanceCache *instance.InstanceCache) error {
+func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.Node, instanceCache *instance.InstanceCache) error {
 	ctx, childSpan := o.tracer.Start(ctx, "sync-cluster-node")
 	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.ID), telemetry.WithClusterID(node.ClusterID))
 	defer childSpan.End()
@@ -192,7 +192,7 @@ func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodes.Node, in
 	return nil
 }
 
-func (o *Orchestrator) syncNode(ctx context.Context, node *nodes.Node, discovered []nodes.NomadServiceDiscovery, instanceCache *instance.InstanceCache) error {
+func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, discovered []nodemanager.NomadServiceDiscovery, instanceCache *instance.InstanceCache) error {
 	ctx, childSpan := o.tracer.Start(ctx, "sync-node")
 	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.ID))
 	defer childSpan.End()

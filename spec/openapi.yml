@@ -1225,8 +1225,7 @@ paths:
             type: integer
             format: int32
             minimum: 1
-            default: 1000
-            maximum: 1000
+            default: 100
       responses:
         "200":
           description: Successfully returned all running sandboxes

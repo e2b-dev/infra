@@ -3,8 +3,6 @@ package storage
 import (
 	"context"
 	"fmt"
-	"io"
-	"os"
 
 	"golang.org/x/sync/errgroup"
 
@@ -49,7 +47,7 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 		return fmt.Errorf("error when serializing memfile header: %w", err)
 	}
 
-	_, err = object.ReadFrom(serialized)
+	_, err = object.Write(serialized)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile header: %w", err)
 	}
@@ -82,7 +80,7 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Heade
 		return fmt.Errorf("error when serializing memfile header: %w", err)
 	}
 
-	_, err = object.ReadFrom(serialized)
+	_, err = object.Write(serialized)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile header: %w", err)
 	}
@@ -105,30 +103,28 @@ func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) err
 }
 
 // Snap-file is small enough so we don't use composite upload.
-func (t *TemplateBuild) uploadSnapfile(ctx context.Context, snapfile io.Reader) error {
+func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
 	object, err := t.persistence.OpenObject(ctx, t.files.StorageSnapfilePath())
 	if err != nil {
 		return err
 	}
 
-	n, err := object.ReadFrom(snapfile)
-	if err != nil {
-		return fmt.Errorf("error when uploading snapfile (%d bytes): %w", n, err)
+	if err = object.WriteFromFileSystem(path); err != nil {
+		return fmt.Errorf("error when uploading snapfile: %w", err)
 	}
 
 	return nil
 }
 
 // Metadata is small enough so we don't use composite upload.
-func (t *TemplateBuild) uploadMetadata(ctx context.Context, metadata io.Reader) error {
+func (t *TemplateBuild) uploadMetadata(ctx context.Context, path string) error {
 	object, err := t.persistence.OpenObject(ctx, t.files.StorageMetadataPath())
 	if err != nil {
 		return err
 	}
 
-	n, err := object.ReadFrom(metadata)
-	if err != nil {
-		return fmt.Errorf("error when uploading metadata (%d bytes): %w", n, err)
+	if err := object.WriteFromFileSystem(path); err != nil {
+		return fmt.Errorf("error when uploading metadata: %w", err)
 	}
 
 	return nil
@@ -190,30 +186,15 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 	})
 
 	eg.Go(func() error {
-		snapfile, err := os.Open(fcSnapfilePath)
-		if err != nil {
-			return err
-		}
-
-		defer snapfile.Close()
-
-		err = t.uploadSnapfile(ctx, snapfile)
-		if err != nil {
-			return err
+		if err := t.uploadSnapfile(ctx, fcSnapfilePath); err != nil {
+			return fmt.Errorf("error when uploading snapfile: %w", err)
 		}
 
 		return nil
 	})
 
 	eg.Go(func() error {
-		metadata, err := os.Open(metadataPath)
-		if err != nil {
-			return err
-		}
-		defer metadata.Close()
-
-		err = t.uploadMetadata(ctx, metadata)
-		if err != nil {
+		if err := t.uploadMetadata(ctx, metadataPath); err != nil {
 			return err
 		}
 

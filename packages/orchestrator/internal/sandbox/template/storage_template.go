@@ -115,10 +115,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 				logger.WithBuildID(t.files.BuildID),
 				zap.Error(err),
 			)
-			oldTemplateMetadata := metadata.Template{
-				Version:  1,
-				Template: t.files.TemplateFiles,
-			}
+			oldTemplateMetadata := metadata.V1TemplateVersion()
 			err := oldTemplateMetadata.ToFile(t.files.CacheMetadataPath())
 			if err != nil {
 				return t.metafile.SetError(fmt.Errorf("failed to write v1 template metadata to a file: %w", err))
