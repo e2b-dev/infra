@@ -24,7 +24,7 @@ func TestBannedTeam(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	teamName := "test-team-banned"
-	teamID := utils.CreateTeam(t, c, db, teamName)
+	teamID := utils.CreateTeamWithUser(t, c, db, teamName, setup.UserID)
 	apiKey := utils.CreateAPIKey(t, ctx, c, setup.UserID, teamID)
 
 	err := db.Client.Team.UpdateOneID(teamID).SetIsBanned(true).Exec(ctx)
@@ -55,7 +55,7 @@ func TestBlockedTeam(t *testing.T) {
 	teamName := "test-team-blocked"
 	blockReason := "test-reason"
 
-	teamID := utils.CreateTeam(t, c, db, teamName)
+	teamID := utils.CreateTeamWithUser(t, c, db, teamName, setup.UserID)
 	apiKey := utils.CreateAPIKey(t, ctx, c, setup.UserID, teamID)
 
 	err := db.Client.Team.UpdateOneID(teamID).SetIsBlocked(true).SetBlockedReason(blockReason).Exec(ctx)
