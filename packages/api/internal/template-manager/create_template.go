@@ -35,6 +35,7 @@ func (tm *TemplateManager) CreateTemplate(
 	readyCommand *string,
 	fromImage *string,
 	fromTemplate *string,
+	fromImageRegistry *api.FromImageRegistry,
 	force *bool,
 	steps *[]api.TemplateStep,
 	clusterID *uuid.UUID,
@@ -100,6 +101,7 @@ func (tm *TemplateManager) CreateTemplate(
 		ReadyCommand:       readyCmd,
 		Force:              force,
 		Steps:              convertTemplateSteps(steps),
+		FromImageRegistry:  convertImageRegistry(fromImageRegistry),
 	}
 
 	err = setTemplateSource(ctx, tm, teamID, template, fromImage, fromTemplate)
@@ -172,6 +174,62 @@ func convertTemplateSteps(steps *[]api.TemplateStep) []*templatemanagergrpc.Temp
 		}
 	}
 	return result
+}
+
+func convertImageRegistry(registry *api.FromImageRegistry) *templatemanagergrpc.FromImageRegistry {
+	if registry == nil {
+		return nil
+	}
+
+	// The OpenAPI FromImageRegistry is a union type, so we need to check the discriminator
+	discriminator, err := registry.Discriminator()
+	if err != nil {
+		return nil
+	}
+
+	switch discriminator {
+	case "aws":
+		awsReg, err := registry.AsAWSRegistry()
+		if err != nil {
+			return nil
+		}
+		return &templatemanagergrpc.FromImageRegistry{
+			Type: &templatemanagergrpc.FromImageRegistry_Aws{
+				Aws: &templatemanagergrpc.AWSRegistry{
+					AwsAccessKeyId:     awsReg.AwsAccessKeyId,
+					AwsSecretAccessKey: awsReg.AwsSecretAccessKey,
+					AwsRegion:          awsReg.AwsRegion,
+				},
+			},
+		}
+	case "gcp":
+		gcpReg, err := registry.AsGCPRegistry()
+		if err != nil {
+			return nil
+		}
+		return &templatemanagergrpc.FromImageRegistry{
+			Type: &templatemanagergrpc.FromImageRegistry_Gcp{
+				Gcp: &templatemanagergrpc.GCPRegistry{
+					ServiceAccountJson: gcpReg.ServiceAccountJson,
+				},
+			},
+		}
+	case "registry":
+		generalReg, err := registry.AsGeneralRegistry()
+		if err != nil {
+			return nil
+		}
+		return &templatemanagergrpc.FromImageRegistry{
+			Type: &templatemanagergrpc.FromImageRegistry_General{
+				General: &templatemanagergrpc.GeneralRegistry{
+					Username: generalReg.Username,
+					Password: generalReg.Password,
+				},
+			},
+		}
+	default:
+		return nil
+	}
 }
 
 // setTemplateSource sets the source (either fromImage or fromTemplate)
