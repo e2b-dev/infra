@@ -105,6 +105,12 @@ func createK8sProvider(ctx context.Context, prefix string, port int, logger *zap
 		return nil, fmt.Errorf("missing %s environment variable", podLabelsEnv)
 	}
 
+	hostIP := false
+	hostIPEnv := fmt.Sprintf("%s_HOST_IP", prefix)
+	if os.Getenv(hostIPEnv) == "true" {
+		hostIP = true
+	}
+
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build in-cluster config: %w", err)
@@ -115,7 +121,7 @@ func createK8sProvider(ctx context.Context, prefix string, port int, logger *zap
 		return nil, fmt.Errorf("failed to build in-cluster client: %w", err)
 	}
 
-	return NewK8sServiceDiscovery(ctx, logger, client, port, podLabels, podNamespace), nil
+	return NewK8sServiceDiscovery(ctx, logger, client, port, podLabels, podNamespace, hostIP), nil
 }
 
 func createStaticProvider(prefix string, port int) (ServiceDiscoveryAdapter, error) {
