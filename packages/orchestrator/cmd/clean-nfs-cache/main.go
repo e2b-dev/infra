@@ -66,42 +66,110 @@ func cleanNFSCache() error {
 		sortFiles(files)
 	})
 
+	var results results
 	err = nil
 	timeit("deleting files ... \n", func() {
-		var deletedFiles, deletedBytes int64
-		for _, file := range files {
-			if opts.dryRun {
-				fmt.Printf("DRY RUN: would delete %q (%d bytes, time since last access: %s)\n",
-					file.path, file.size, time.Since(file.atime).Round(time.Minute).String())
-			} else {
-				// remove file
-				fmt.Printf("deleting %q (%d bytes) ... ", file.path, file.size)
-				if err := os.Remove(file.path); err != nil {
-					// if we fail to delete the file, try the next one
-					fmt.Printf("failed to delete %q: %v\n", file.path, err)
-					continue
-				}
-				fmt.Print("\n")
-			}
-
-			deletedFiles++
-			deletedBytes += file.size
-
-			// record the file as free space
-			diskInfo.used -= file.size
-			if areWeDone() {
-				// we're done!
-				return
-			}
-		}
-
-		err = fmt.Errorf("%w: target: %.2f%% < actual: %.2f%%",
-			ErrFail, opts.targetDiskUsagePercent,
-			(float64(diskInfo.used)/float64(diskInfo.total))*100)
+		results, err = deleteFiles(files, opts, &diskInfo, areWeDone)
 	})
 
-	// couldn't delete enough files :(
+	printSummary(results, opts)
+
 	return err
+}
+
+func printSummary(r results, opts opts) {
+	fmt.Println("======= summary of deleted files =======")
+	if opts.dryRun {
+		fmt.Println("(note: dry-run mode enabled, no files were actually deleted)")
+	}
+	fmt.Printf(" %d files (%d bytes) deleted\n", r.deletedFiles, r.deletedBytes)
+	fmt.Println("access time:")
+	fmt.Printf("- most recently used: %s\n", minDuration(r.lastAccessed).Round(time.Second))
+	fmt.Printf("- least recently used: %s\n", maxDuration(r.lastAccessed).Round(time.Second))
+	fmt.Println("creation time:")
+	fmt.Printf("- oldest file: %s\n", minDuration(r.createdDurations).Round(time.Second))
+	fmt.Printf("- newest file: %s\n", maxDuration(r.createdDurations).Round(time.Second))
+}
+
+func maxDuration(durations []time.Duration) time.Duration {
+	if len(durations) == 0 {
+		return time.Duration(0)
+	}
+
+	if len(durations) == 1 {
+		return durations[0]
+	}
+
+	var index int
+	for i, d := range durations[1:] {
+		if d > durations[index] {
+			index = i
+		}
+	}
+
+	return durations[index]
+}
+
+func minDuration(durations []time.Duration) time.Duration {
+	if len(durations) == 0 {
+		return time.Duration(0)
+	}
+
+	if len(durations) == 1 {
+		return durations[0]
+	}
+
+	var index int
+	for i, d := range durations[1:] {
+		if d < durations[index] {
+			index = i
+		}
+	}
+
+	return durations[index]
+}
+
+type results struct {
+	deletedFiles     int64
+	deletedBytes     int64
+	lastAccessed     []time.Duration
+	createdDurations []time.Duration
+}
+
+func deleteFiles(files []file, opts opts, diskInfo *diskInfo, areWeDone func() bool) (results, error) {
+	now := time.Now()
+	var results results
+	for _, file := range files {
+		if opts.dryRun {
+			fmt.Printf("DRY RUN: would delete %q (%d bytes, time since last access: %s)\n",
+				file.path, file.size, time.Since(file.atime).Round(time.Minute).String())
+		} else {
+			// remove file
+			fmt.Printf("deleting %q (%d bytes) ... ", file.path, file.size)
+			if err := os.Remove(file.path); err != nil {
+				// if we fail to delete the file, try the next one
+				fmt.Printf("failed to delete %q: %v\n", file.path, err)
+				continue
+			}
+			fmt.Print("\n")
+		}
+
+		results.deletedFiles++
+		results.deletedBytes += file.size
+		results.lastAccessed = append(results.lastAccessed, now.Sub(file.atime))
+		results.createdDurations = append(results.createdDurations, time.Since(file.btime))
+
+		// record the file as free space
+		diskInfo.used -= file.size
+		if areWeDone() {
+			// we're done!
+			return results, nil
+		}
+	}
+
+	return results, fmt.Errorf("%w: target: %.2f%% < actual: %.2f%%",
+		ErrFail, opts.targetDiskUsagePercent,
+		(float64(diskInfo.used)/float64(diskInfo.total))*100)
 }
 
 type diskInfo struct {
@@ -166,12 +234,12 @@ func getFileMetadata(path string) ([]file, error) {
 			return nil
 		}
 
-		atime, err := getAtime(info)
+		atime, btime, err := getAtime(info)
 		if err != nil {
 			return fmt.Errorf("could not get atime: %w", err)
 		}
 
-		items = append(items, file{path: path, size: info.Size(), atime: atime})
+		items = append(items, file{path: path, size: info.Size(), atime: atime, btime: btime})
 		return nil
 	}); err != nil {
 		return nil, fmt.Errorf("walk failed: %w", err)
@@ -186,9 +254,9 @@ type opts struct {
 }
 
 type file struct {
-	path  string
-	size  int64
-	atime time.Time
+	path         string
+	size         int64
+	atime, btime time.Time
 }
 
 var (

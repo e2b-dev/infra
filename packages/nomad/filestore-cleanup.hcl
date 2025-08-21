@@ -21,7 +21,7 @@ job "filestore-cleanup" {
                 command = "local/clean-nfs-cache"
                 args = [
                     "--dry-run=true",
-                    "--free-space-percent=90",
+                    "--disk-usage-target-percent=80",
                     "${nfs_cache_mount_path}",
                 ]
             }
