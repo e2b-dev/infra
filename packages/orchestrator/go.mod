@@ -9,7 +9,6 @@ require (
 	github.com/containernetworking/plugins v1.6.0
 	github.com/containers/storage v1.58.0
 	github.com/coreos/go-iptables v0.8.0
-	github.com/djherbis/times v1.6.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/e2b-dev/infra/packages/clickhouse v0.0.0
 	github.com/e2b-dev/infra/packages/shared v0.0.0
