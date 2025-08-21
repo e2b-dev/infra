@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/filesystem"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci/auth"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -30,21 +31,35 @@ const (
 	tarballExportUpdates = 10
 )
 
-func GetPublicImage(ctx context.Context, tracer trace.Tracer, tag string) (containerregistry.Image, error) {
+var DefaultPlatform = containerregistry.Platform{
+	OS:           "linux",
+	Architecture: "amd64",
+}
+
+func GetPublicImage(ctx context.Context, tracer trace.Tracer, tag string, authProvider auth.RegistryAuthProvider) (containerregistry.Image, error) {
 	childCtx, childSpan := tracer.Start(ctx, "pull-public-docker-image")
 	defer childSpan.End()
-
-	platform := containerregistry.Platform{
-		OS:           "linux",
-		Architecture: "amd64",
-	}
 
 	ref, err := name.ParseReference(tag)
 	if err != nil {
 		return nil, fmt.Errorf("invalid image reference: %w", err)
 	}
 
-	img, err := remote.Image(ref, remote.WithPlatform(platform))
+	// Build authentication options
+	opts := []remote.Option{remote.WithPlatform(DefaultPlatform)}
+
+	// Use the auth provider if provided
+	if authProvider != nil {
+		authOption, err := authProvider.GetAuthOption(childCtx)
+		if err != nil {
+			return nil, fmt.Errorf("error getting auth option: %w", err)
+		}
+		if authOption != nil {
+			opts = append(opts, authOption)
+		}
+	}
+
+	img, err := remote.Image(ref, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("error pulling image: %w", err)
 	}
@@ -57,12 +72,7 @@ func GetImage(ctx context.Context, tracer trace.Tracer, artifactRegistry artifac
 	childCtx, childSpan := tracer.Start(ctx, "pull-docker-image")
 	defer childSpan.End()
 
-	platform := containerregistry.Platform{
-		OS:           "linux",
-		Architecture: "amd64",
-	}
-
-	img, err := artifactRegistry.GetImage(childCtx, templateId, buildId, platform)
+	img, err := artifactRegistry.GetImage(childCtx, templateId, buildId, DefaultPlatform)
 	if err != nil {
 		return nil, fmt.Errorf("error pulling image: %w", err)
 	}

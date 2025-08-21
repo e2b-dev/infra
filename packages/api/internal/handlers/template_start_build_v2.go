@@ -140,6 +140,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		body.ReadyCmd,
 		body.FromImage,
 		body.FromTemplate,
+		body.FromImageRegistry,
 		body.Force,
 		body.Steps,
 		team.ClusterID,
