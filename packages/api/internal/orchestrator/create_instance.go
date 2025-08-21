@@ -16,7 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
-	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodes"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -141,7 +141,7 @@ func (o *Orchestrator) CreateSandbox(
 		EndTime:   timestamppb.New(endTime),
 	}
 
-	var node *nodes.Node
+	var node *nodemanager.Node
 
 	if isResume && nodeID != nil {
 		telemetry.ReportEvent(ctx, "Placing sandbox on the node where the snapshot was taken")

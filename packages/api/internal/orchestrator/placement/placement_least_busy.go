@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodes"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 )
 
 const maxRetries = 3
@@ -16,7 +16,7 @@ type LeastBusyAlgorithm struct{}
 var _ Algorithm = &LeastBusyAlgorithm{}
 
 // ChooseNode returns the least busy node, if there are no eligible nodes, it tries until one is available or the context timeouts
-func (a *LeastBusyAlgorithm) chooseNode(ctx context.Context, nodes []*nodes.Node, nodesExcluded map[string]struct{}, _ nodes.SandboxResources) (leastBusyNode *nodes.Node, err error) {
+func (a *LeastBusyAlgorithm) chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, _ nodemanager.SandboxResources) (leastBusyNode *nodemanager.Node, err error) {
 	ctx, cancel := context.WithTimeout(ctx, leastBusyNodeTimeout)
 	defer cancel()
 
@@ -46,7 +46,7 @@ func (a *LeastBusyAlgorithm) chooseNode(ctx context.Context, nodes []*nodes.Node
 
 // findLeastBusyNode finds the least busy node that is ready and not in the excluded list
 // if no node is available, returns an error
-func (a *LeastBusyAlgorithm) findLeastBusyNode(clusterNodes []*nodes.Node, nodesExcluded map[string]struct{}) (leastBusyNode *nodes.Node, err error) {
+func (a *LeastBusyAlgorithm) findLeastBusyNode(clusterNodes []*nodemanager.Node, nodesExcluded map[string]struct{}) (leastBusyNode *nodemanager.Node, err error) {
 	for _, node := range clusterNodes {
 		// The node might be nil if it was removed from the list while iterating
 		if node == nil {
