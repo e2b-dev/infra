@@ -26,7 +26,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const defaultSandboxListLimit int32 = 1000
+const defaultSandboxListLimit int32 = 100
 
 func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, limit int32, cursorTime time.Time, cursorID string) ([]utils.PaginatedSandbox, error) {
 	// Apply limit + 1 to check if there are more results
