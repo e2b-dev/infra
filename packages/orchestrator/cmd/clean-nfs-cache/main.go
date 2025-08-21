@@ -19,7 +19,6 @@ func main() {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-
 }
 
 func cleanNFSCache() error {
@@ -164,6 +163,9 @@ func getFileMetadata(path string) ([]file, error) {
 		}
 
 		atime, err := getAtime(info)
+		if err != nil {
+			return fmt.Errorf("could not get atime: %w", err)
+		}
 
 		items = append(items, file{path: path, size: info.Size(), atime: atime})
 		return nil
@@ -185,8 +187,10 @@ type file struct {
 	atime time.Time
 }
 
-var ErrUsage = errors.New("usage: clean-nfs-cache <path> [<options>]")
-var ErrFail = errors.New("clean-nfs-cache failed to find enough space")
+var (
+	ErrUsage = errors.New("usage: clean-nfs-cache <path> [<options>]")
+	ErrFail  = errors.New("clean-nfs-cache failed to find enough space")
+)
 
 func parseArgs() (string, opts, error) {
 	flags := flag.NewFlagSet("clean-nfs-cache", flag.ExitOnError)
@@ -208,7 +212,7 @@ func parseArgs() (string, opts, error) {
 }
 
 func timeit(message string, fn func()) {
-	fmt.Printf(message)
+	fmt.Print(message)
 
 	start := time.Now()
 	fn()
