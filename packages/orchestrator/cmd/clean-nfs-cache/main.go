@@ -30,25 +30,27 @@ func cleanNFSCache() error {
 	// get free space information for path
 
 	var diskInfo diskInfo
-	timeit(fmt.Sprintf("getting free space info for %q ... ", path), func() {
+	timeit(fmt.Sprintf("getting disk info for %q ... ", path), func() {
 		diskInfo, err = getDiskInfo(path)
 	})
 	if err != nil {
 		return fmt.Errorf("could not get disk info: %w", err)
 	}
-	targetFreeSpace := int64(float64(opts.freeSpacePercent) / 100 * float64(diskInfo.total))
+	targetDiskUsage := int64(float64(opts.targetDiskUsagePercent) / 100 * float64(diskInfo.total))
 	areWeDone := func() bool {
-		return diskInfo.available > targetFreeSpace
+		return diskInfo.used < targetDiskUsage
 	}
 
 	// if conditions are met, we're done
+	currentUsedPercentage := (float64(diskInfo.used) / float64(diskInfo.total)) * 100
 	if areWeDone() {
-		fmt.Println("condition already met")
+		fmt.Printf("condition already met (disk usage target: %.2f%% > actual: %.2f%%)\n",
+			opts.targetDiskUsagePercent, currentUsedPercentage)
 		return nil
 	}
 
-	fmt.Printf("disk is currently %d%% free, target is: %d%%\n",
-		int(float64(diskInfo.available)/float64(diskInfo.total)*100), opts.freeSpacePercent)
+	fmt.Printf("disk is currently %.2f%% full, target is: %.2f%%\n",
+		currentUsedPercentage, opts.targetDiskUsagePercent)
 
 	// get file metadata, including path, size, and last access timestamp
 	var files []file
@@ -86,14 +88,16 @@ func cleanNFSCache() error {
 			deletedBytes += file.size
 
 			// record the file as free space
-			diskInfo.available += file.size
+			diskInfo.used -= file.size
 			if areWeDone() {
 				// we're done!
 				return
 			}
 		}
 
-		err = ErrFail
+		err = fmt.Errorf("%w: target: %.2f%% < actual: %.2f%%",
+			ErrFail, opts.targetDiskUsagePercent,
+			(float64(diskInfo.used)/float64(diskInfo.total))*100)
 	})
 
 	// couldn't delete enough files :(
@@ -101,7 +105,7 @@ func cleanNFSCache() error {
 }
 
 type diskInfo struct {
-	total, available int64
+	total, used int64
 }
 
 func getDiskInfo(path string) (diskInfo, error) {
@@ -133,12 +137,12 @@ func getDiskInfo(path string) (diskInfo, error) {
 			return diskInfo{}, fmt.Errorf("failed to parse total size: %w", err)
 		}
 
-		availableSpace, err := strconv.ParseInt(fields[3], 10, 64)
+		usedSpace, err := strconv.ParseInt(fields[2], 10, 64)
 		if err != nil {
 			return diskInfo{}, fmt.Errorf("failed to parse available space: %w", err)
 		}
 
-		return diskInfo{total: totalSize, available: availableSpace}, nil
+		return diskInfo{total: totalSize, used: usedSpace}, nil
 	}
 
 	return diskInfo{}, fmt.Errorf("could not parse mount point from df output: %q", strings.TrimSpace(string(out)))
@@ -177,8 +181,8 @@ func getFileMetadata(path string) ([]file, error) {
 }
 
 type opts struct {
-	freeSpacePercent int64
-	dryRun           bool
+	targetDiskUsagePercent float64
+	dryRun                 bool
 }
 
 type file struct {
@@ -196,7 +200,7 @@ func parseArgs() (string, opts, error) {
 	flags := flag.NewFlagSet("clean-nfs-cache", flag.ExitOnError)
 
 	var opts opts
-	flags.Int64Var(&opts.freeSpacePercent, "free-space-percent", 10, "free space target as a % (0-100)")
+	flags.Float64Var(&opts.targetDiskUsagePercent, "disk-usage-target-percent", 10, "disk usage target as a % (0-100)")
 	flags.BoolVar(&opts.dryRun, "dry-run", true, "dry run")
 
 	if err := flags.Parse(os.Args[1:]); err != nil {
