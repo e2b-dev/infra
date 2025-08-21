@@ -33,6 +33,7 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, GCP_ZONE) \
 	$(call tfvar, DOMAIN_NAME) \
 	$(call tfvar, ADDITIONAL_DOMAINS) \
+	$(call tfvar, ADDITIONAL_API_SERVICES_JSON) \
 	$(call tfvar, PREFIX) \
 	$(call tfvar, OTEL_TRACING_PRINT) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
@@ -66,26 +67,32 @@ init:
 	@ printf "Initializing Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	gcloud storage buckets create gs://$(TERRAFORM_STATE_BUCKET) --location $(GCP_REGION) --project $(GCP_PROJECT_ID) --default-storage-class STANDARD  --uniform-bucket-level-access > /dev/null 2>&1 || true
-	$(TF) init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
+
+	# Enable object versioning (keeps deleted/replaced objects as older versions)
+	gcloud storage buckets update gs://$(TERRAFORM_STATE_BUCKET) --versioning --soft-delete-duration=30d
+
+	# Create a temporary file for lifecycle rules
+	$(eval LIFECYCLE_FILE := $(shell mktemp))
+
+	# Set lifecycle rules to delete non-live objects after 30 days or more than 50 newer versions
+	echo '{"rule":[{"action":{"type":"Delete"},"condition":{"isLive":false,"age":30}},{"action":{"type":"Delete"},"condition":{"numNewerVersions":50}}]}' > $(LIFECYCLE_FILE)
+	gcloud storage buckets update gs://$(TERRAFORM_STATE_BUCKET) --lifecycle-file=$(LIFECYCLE_FILE)
+
+	# Remove the temporary lifecycle file
+	@ rm -f $(LIFECYCLE_FILE)
+
+	$(TF) init -input=false -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
 	$(tf_vars) $(TF) apply -target=module.init -target=module.buckets -auto-approve -input=false -compact-warnings
 	$(MAKE) -C packages/cluster-disk-image init build
 	gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
 # Setup production environment variables, this is used only for E2B.dev production
-# Uses HCP CLI to read secrets from HCP Vault Secrets
+# Uses Infisical CLI to read secrets from Infisical Vault
+# To update them, use the Infisical UI directly
+# On a first use, you need to run `infisical login` and `infisical init`
 .PHONY: download-prod-env
 download-prod-env:
-	@ hcp auth login
-	@ hcp profile init --vault-secrets
 	@  ./scripts/download-prod-env.sh ${ENV}
-
-# Updates production environment from .env file, this is used only for E2B.dev production
-# Uses HCP CLI to update secrets from HCP Vault Secrets
-.PHONY: update-prod-env
-update-prod-env:
-	@ hcp auth login
-	@ hcp profile init --vault-secrets
-	@ ./scripts/update-prod-env.sh ${ENV}
 
 .PHONY: plan
 plan:
@@ -107,7 +114,16 @@ plan:
 plan-only-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(TF) fmt -recursive
-	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad;
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad; \
+	status=$$?; \
+	if [ $$status -eq 0 ]; then \
+		echo "No changes."; \
+	elif [ $$status -eq 2 ]; then \
+		echo "Changes detected."; \
+	else \
+		echo "Error during plan."; \
+		exit $$status; \
+	fi
 
 # Deploy a specific job name in Nomad
 # When job name is specified, all '-' are replaced with '_' in the job name
@@ -192,11 +208,18 @@ copy-public-builds:
 
 
 .PHONY: generate
-generate: generate/api generate/orchestrator generate/client-proxy generate/envd generate/db
+generate: generate/api generate/orchestrator generate/client-proxy generate/envd generate/db generate-tests
 generate/%:
 	@echo "Generating code for *$(notdir $@)*"
 	$(MAKE) -C packages/$(notdir $@) generate
 	@printf "\n\n"
+
+.PHONY: generate-tests
+generate-tests: generate-tests/integration
+generate-tests/%:
+		@echo "Generating code for *$(notdir $@)*"
+		$(MAKE) -C tests/$(notdir $@) generate
+		@printf "\n\n"
 
 .PHONY: migrate
 migrate:
@@ -208,7 +231,7 @@ switch-env:
 	@ printf "Switching from `tput setaf 1``tput bold`$(shell cat .last_used_env)`tput sgr0` to `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ echo $(ENV) > .last_used_env
 	@ . ${ENV_FILE}
-	terraform init -input=false -upgrade -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
+	terraform init -input=false -upgrade -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
 
 # Shortcut to importing resources into Terraform state (e.g. after creating resources manually or switching between different branches for the same environment)
 .PHONY: import
@@ -226,12 +249,9 @@ setup-ssh:
 
 .PHONY: test
 test:
-	$(MAKE) -C packages/api test
-	$(MAKE) -C packages/client-proxy test
-	$(MAKE) -C packages/docker-reverse-proxy test
-	$(MAKE) -C packages/envd test
-	$(MAKE) -C packages/orchestrator test
-	$(MAKE) -C packages/shared test
+	go work edit -json \
+		| jq -r '.Use[] | select (.DiskPath | contains("packages")) | .DiskPath' \
+		| xargs -I{} $(MAKE) -C {} test
 
 .PHONY: test-integration
 test-integration:
@@ -245,3 +265,9 @@ connect-orchestrator:
 fmt:
 	@./scripts/golangci-lint-install.sh "2.1.6"
 	golangci-lint fmt
+	terraform fmt -recursive
+
+.PHONY: lint
+lint:
+	@./scripts/golangci-lint-install.sh "2.1.6"
+	go work edit -json | jq -r '.Use[].DiskPath'  | xargs -I{} golangci-lint run {}/... --fix

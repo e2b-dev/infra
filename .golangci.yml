@@ -14,9 +14,12 @@ linters:
   default: none
   enable:
     - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
     - contextcheck
-    - staticcheck
     - govet
+    - staticcheck
   settings:
     staticcheck:
       checks:

@@ -173,3 +173,11 @@ variable "api_port" {
     health_path = string
   })
 }
+
+variable "additional_ports" {
+  description = "Additional API ports to expose on the API cluster."
+  type = list(object({
+    name = string
+    port = number
+  }))
+}

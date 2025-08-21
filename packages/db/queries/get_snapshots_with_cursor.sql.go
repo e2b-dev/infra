@@ -14,7 +14,7 @@ import (
 )
 
 const getSnapshotsWithCursor = `-- name: GetSnapshotsWithCursor :many
-SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, s.created_at, s.env_id, s.sandbox_id, s.id, s.metadata, s.base_env_id, s.sandbox_started_at, s.env_secure, s.origin_node_id, s.allow_internet_access, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason
+SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, s.created_at, s.env_id, s.sandbox_id, s.id, s.metadata, s.base_env_id, s.sandbox_started_at, s.env_secure, s.origin_node_id, s.allow_internet_access, s.auto_pause, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason
 FROM "public"."snapshots" s
 JOIN "public"."envs" e ON e.id = s.env_id
 LEFT JOIN LATERAL (
@@ -35,12 +35,12 @@ WHERE
     e.team_id = $2
     AND s.metadata @> $3
     AND (
-        s.created_at < $4
+        s.sandbox_started_at < $4
         OR
-        (s.created_at = $4 AND s.sandbox_id > $5)
+        (s.sandbox_started_at = $4 AND s.sandbox_id > $5)
     )
     AND NOT (s.sandbox_id = ANY ($6::text[]))
-ORDER BY s.created_at DESC, s.sandbox_id
+ORDER BY s.sandbox_started_at DESC, s.sandbox_id
 LIMIT $1
 `
 
@@ -87,6 +87,7 @@ func (q *Queries) GetSnapshotsWithCursor(ctx context.Context, arg GetSnapshotsWi
 			&i.Snapshot.EnvSecure,
 			&i.Snapshot.OriginNodeID,
 			&i.Snapshot.AllowInternetAccess,
+			&i.Snapshot.AutoPause,
 			&i.EnvBuild.ID,
 			&i.EnvBuild.CreatedAt,
 			&i.EnvBuild.UpdatedAt,

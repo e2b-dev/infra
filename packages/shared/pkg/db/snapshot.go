@@ -27,6 +27,7 @@ type SnapshotInfo struct {
 	EnvdVersion         string
 	EnvdSecured         bool
 	AllowInternetAccess *bool
+	AutoPause           bool
 }
 
 // Check if there exists snapshot with the ID, if yes then return a new
@@ -87,6 +88,7 @@ func (db *DB) NewSnapshotBuild(
 			SetEnvSecure(snapshotConfig.EnvdSecured).
 			SetNillableAllowInternetAccess(snapshotConfig.AllowInternetAccess).
 			SetOriginNodeID(originNodeID).
+			SetAutoPause(snapshotConfig.AutoPause).
 			Exec(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create snapshot '%s': %w", snapshotConfig.SandboxID, err)
@@ -100,6 +102,7 @@ func (db *DB) NewSnapshotBuild(
 			SetMetadata(snapshotConfig.Metadata).
 			SetSandboxStartedAt(snapshotConfig.SandboxStartedAt).
 			SetOriginNodeID(originNodeID).
+			SetAutoPause(snapshotConfig.AutoPause).
 			Exec(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update snapshot '%s': %w", snapshotConfig.SandboxID, err)
@@ -117,6 +120,7 @@ func (db *DB) NewSnapshotBuild(
 		SetFirecrackerVersion(snapshotConfig.FirecrackerVersion).
 		SetEnvdVersion(snapshotConfig.EnvdVersion).
 		SetStatus(envbuild.StatusSnapshotting).
+		SetClusterNodeID(originNodeID).
 		SetTotalDiskSizeMB(snapshotConfig.TotalDiskSizeMB).
 		Save(ctx)
 	if err != nil {

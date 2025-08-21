@@ -60,12 +60,12 @@ func (o *EdgeInstance) sync(ctx context.Context) error {
 		info := o.GetInfo()
 		res, err := o.client.V1InfoWithResponse(ctx)
 		if err != nil {
-			zap.L().Error("failed to check edge instance status", l.WithClusterNodeID(info.NodeID), zap.Error(err))
+			zap.L().Error("failed to check edge instance status", l.WithNodeID(info.NodeID), zap.Error(err))
 			continue
 		}
 
 		if res.JSON200 == nil {
-			zap.L().Error("failed to check edge instance status", l.WithClusterNodeID(info.NodeID), zap.Int("status", res.StatusCode()))
+			zap.L().Error("failed to check edge instance status", l.WithNodeID(info.NodeID), zap.Int("status", res.StatusCode()))
 			continue
 		}
 

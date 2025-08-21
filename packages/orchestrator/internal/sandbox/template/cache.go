@@ -87,13 +87,11 @@ func (c *Cache) Items() map[string]*ttlcache.Item[string, Template] {
 }
 
 func (c *Cache) GetTemplate(
-	templateID,
 	buildID,
 	kernelVersion,
 	firecrackerVersion string,
 ) (Template, error) {
 	storageTemplate, err := newTemplateFromStorage(
-		templateID,
 		buildID,
 		kernelVersion,
 		firecrackerVersion,
@@ -101,6 +99,7 @@ func (c *Cache) GetTemplate(
 		nil,
 		c.persistence,
 		c.blockMetrics,
+		nil,
 		nil,
 	)
 	if err != nil {
@@ -121,13 +120,13 @@ func (c *Cache) GetTemplate(
 }
 
 func (c *Cache) AddSnapshot(
-	templateId,
 	buildId,
 	kernelVersion,
 	firecrackerVersion string,
 	memfileHeader *header.Header,
 	rootfsHeader *header.Header,
-	localSnapfile *LocalFileLink,
+	localSnapfile File,
+	localMetafile File,
 	memfileDiff build.Diff,
 	rootfsDiff build.Diff,
 ) error {
@@ -146,7 +145,6 @@ func (c *Cache) AddSnapshot(
 	}
 
 	storageTemplate, err := newTemplateFromStorage(
-		templateId,
 		buildId,
 		kernelVersion,
 		firecrackerVersion,
@@ -155,6 +153,7 @@ func (c *Cache) AddSnapshot(
 		c.persistence,
 		c.blockMetrics,
 		localSnapfile,
+		localMetafile,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create template cache from storage: %w", err)

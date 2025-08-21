@@ -9,6 +9,8 @@ import (
 	"github.com/google/uuid"
 )
 
+const metadataVersion = 2
+
 type Metadata struct {
 	Version    uint64
 	BlockSize  uint64
@@ -21,7 +23,7 @@ type Metadata struct {
 
 func NewTemplateMetadata(buildId uuid.UUID, blockSize, size uint64) *Metadata {
 	return &Metadata{
-		Version:     1,
+		Version:     metadataVersion,
 		Generation:  0,
 		BlockSize:   blockSize,
 		Size:        size,
@@ -32,7 +34,7 @@ func NewTemplateMetadata(buildId uuid.UUID, blockSize, size uint64) *Metadata {
 
 func (m *Metadata) NextGeneration(buildID uuid.UUID) *Metadata {
 	return &Metadata{
-		Version:     1,
+		Version:     m.Version,
 		Generation:  m.Generation + 1,
 		BlockSize:   m.BlockSize,
 		Size:        m.Size,
@@ -41,7 +43,7 @@ func (m *Metadata) NextGeneration(buildID uuid.UUID) *Metadata {
 	}
 }
 
-func Serialize(metadata *Metadata, mappings []*BuildMap) (io.Reader, error) {
+func Serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
 	var buf bytes.Buffer
 
 	err := binary.Write(&buf, binary.LittleEndian, metadata)
@@ -56,7 +58,7 @@ func Serialize(metadata *Metadata, mappings []*BuildMap) (io.Reader, error) {
 		}
 	}
 
-	return &buf, nil
+	return buf.Bytes(), nil
 }
 
 func Deserialize(in io.WriterTo) (*Header, error) {

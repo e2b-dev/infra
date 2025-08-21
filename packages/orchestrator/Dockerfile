@@ -1,4 +1,5 @@
-FROM golang:1.24 AS builder
+# It has to match with the host OS version (Ubuntu 22.04 = bookworm)
+FROM golang:1.24-bookworm AS builder
 
 WORKDIR /build/shared
 
@@ -6,6 +7,13 @@ COPY .shared/go.mod .shared/go.sum ./
 RUN go mod download
 
 COPY .shared/pkg pkg
+
+WORKDIR /build/clickhouse
+
+COPY .clickhouse/go.mod .clickhouse/go.sum ./
+RUN go mod download
+
+COPY .clickhouse/pkg pkg
 
 WORKDIR /build/orchestrator
 

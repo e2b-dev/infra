@@ -12,8 +12,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/node"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -29,7 +27,10 @@ const (
 var ErrPausingInstanceNotFound = errors.New("pausing instance not found")
 
 func NewInstanceInfo(
-	Instance *api.Sandbox,
+	SandboxID string,
+	TemplateID string,
+	ClientID string,
+	Alias *string,
 	ExecutionID string,
 	TeamID uuid.UUID,
 	BuildID uuid.UUID,
@@ -43,14 +44,19 @@ func NewInstanceInfo(
 	KernelVersion string,
 	FirecrackerVersion string,
 	EnvdVersion string,
-	Node *node.NodeInfo,
+	NodeID string,
+	ClusterID uuid.UUID,
 	AutoPause bool,
 	EnvdAccessToken *string,
 	allowInternetAccess *bool,
 	BaseTemplateID string,
 ) *InstanceInfo {
 	instance := &InstanceInfo{
-		Instance:            Instance,
+		SandboxID:  SandboxID,
+		TemplateID: TemplateID,
+		ClientID:   ClientID,
+		Alias:      Alias,
+
 		ExecutionID:         ExecutionID,
 		TeamID:              TeamID,
 		BuildID:             BuildID,
@@ -66,9 +72,10 @@ func NewInstanceInfo(
 		EnvdVersion:         EnvdVersion,
 		EnvdAccessToken:     EnvdAccessToken,
 		AllowInternetAccess: allowInternetAccess,
-		Node:                Node,
+		NodeID:              NodeID,
+		ClusterID:           ClusterID,
 		AutoPause:           atomic.Bool{},
-		Pausing:             utils.NewSetOnce[*node.NodeInfo](),
+		Pausing:             utils.NewSetOnce[string](),
 		BaseTemplateID:      BaseTemplateID,
 		mu:                  sync.RWMutex{},
 	}
@@ -79,7 +86,11 @@ func NewInstanceInfo(
 }
 
 type InstanceInfo struct {
-	Instance            *api.Sandbox
+	SandboxID  string
+	TemplateID string
+	ClientID   string
+	Alias      *string
+
 	ExecutionID         string
 	TeamID              uuid.UUID
 	BuildID             uuid.UUID
@@ -96,16 +107,17 @@ type InstanceInfo struct {
 	EnvdVersion         string
 	EnvdAccessToken     *string
 	AllowInternetAccess *bool
-	Node                *node.NodeInfo
+	NodeID              string
+	ClusterID           uuid.UUID
 	AutoPause           atomic.Bool
-	Pausing             *utils.SetOnce[*node.NodeInfo]
+	Pausing             *utils.SetOnce[string]
 	mu                  sync.RWMutex
 }
 
 func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
 	return sbxlogger.SandboxMetadata{
-		SandboxID:  i.Instance.SandboxID,
-		TemplateID: i.Instance.TemplateID,
+		SandboxID:  i.SandboxID,
+		TemplateID: i.TemplateID,
 		TeamID:     i.TeamID.String(),
 	}
 }
@@ -210,12 +222,12 @@ func (c *InstanceCache) Set(key string, value *InstanceInfo, created bool) {
 
 func (c *InstanceCache) MarkAsPausing(instanceInfo *InstanceInfo) {
 	if instanceInfo.AutoPause.Load() {
-		c.pausing.InsertIfAbsent(instanceInfo.Instance.SandboxID, instanceInfo)
+		c.pausing.InsertIfAbsent(instanceInfo.SandboxID, instanceInfo)
 	}
 }
 
 func (c *InstanceCache) UnmarkAsPausing(instanceInfo *InstanceInfo) {
-	c.pausing.RemoveCb(instanceInfo.Instance.SandboxID, func(key string, v *InstanceInfo, exists bool) bool {
+	c.pausing.RemoveCb(instanceInfo.SandboxID, func(key string, v *InstanceInfo, exists bool) bool {
 		if !exists {
 			return false
 		}
@@ -225,23 +237,24 @@ func (c *InstanceCache) UnmarkAsPausing(instanceInfo *InstanceInfo) {
 	})
 }
 
-func (c *InstanceCache) WaitForPause(ctx context.Context, sandboxID string) (*node.NodeInfo, error) {
+// WaitForPause waits for the instance to be paused. Returns the node ID of the node that paused the instance.
+func (c *InstanceCache) WaitForPause(ctx context.Context, sandboxID string) (nodeID string, err error) {
 	instanceInfo, ok := c.pausing.Get(sandboxID)
 	if !ok {
-		return nil, ErrPausingInstanceNotFound
+		return "", ErrPausingInstanceNotFound
 	}
 
-	value, err := instanceInfo.Pausing.WaitWithContext(ctx)
+	nodeID, err = instanceInfo.Pausing.WaitWithContext(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("pause waiting was canceled: %w", err)
+		return "", fmt.Errorf("pause waiting was canceled: %w", err)
 	}
 
-	return value, nil
+	return
 }
 
 func (i *InstanceInfo) PauseDone(err error) {
 	if err == nil {
-		err := i.Pausing.SetValue(i.Node)
+		err := i.Pausing.SetValue(i.NodeID)
 		if err != nil {
 			zap.L().Error("error setting PauseDone value", zap.Error(err))
 

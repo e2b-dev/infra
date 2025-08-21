@@ -87,6 +87,11 @@ func EnvSecure(v bool) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldEQ(FieldEnvSecure, v))
 }
 
+// AutoPause applies equality check predicate on the "auto_pause" field. It's identical to AutoPauseEQ.
+func AutoPause(v bool) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldAutoPause, v))
+}
+
 // OriginNodeID applies equality check predicate on the "origin_node_id" field. It's identical to OriginNodeIDEQ.
 func OriginNodeID(v string) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldEQ(FieldOriginNodeID, v))
@@ -380,6 +385,16 @@ func EnvSecureEQ(v bool) predicate.Snapshot {
 // EnvSecureNEQ applies the NEQ predicate on the "env_secure" field.
 func EnvSecureNEQ(v bool) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldNEQ(FieldEnvSecure, v))
+}
+
+// AutoPauseEQ applies the EQ predicate on the "auto_pause" field.
+func AutoPauseEQ(v bool) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldAutoPause, v))
+}
+
+// AutoPauseNEQ applies the NEQ predicate on the "auto_pause" field.
+func AutoPauseNEQ(v bool) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNEQ(FieldAutoPause, v))
 }
 
 // OriginNodeIDEQ applies the EQ predicate on the "origin_node_id" field.

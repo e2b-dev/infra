@@ -3,6 +3,7 @@
 package models
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 	"github.com/google/uuid"
 )
 
@@ -52,7 +54,7 @@ type EnvBuild struct {
 	// ClusterNodeID holds the value of the "cluster_node_id" field.
 	ClusterNodeID *string `json:"cluster_node_id,omitempty"`
 	// Reason holds the value of the "reason" field.
-	Reason *string `json:"reason,omitempty"`
+	Reason *schema.BuildReason `json:"reason,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the EnvBuildQuery when eager-loading is set.
 	Edges        EnvBuildEdges `json:"edges"`
@@ -86,9 +88,11 @@ func (*EnvBuild) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case envbuild.FieldReason:
+			values[i] = new([]byte)
 		case envbuild.FieldVcpu, envbuild.FieldRAMMB, envbuild.FieldFreeDiskSizeMB, envbuild.FieldTotalDiskSizeMB:
 			values[i] = new(sql.NullInt64)
-		case envbuild.FieldEnvID, envbuild.FieldStatus, envbuild.FieldDockerfile, envbuild.FieldStartCmd, envbuild.FieldReadyCmd, envbuild.FieldKernelVersion, envbuild.FieldFirecrackerVersion, envbuild.FieldEnvdVersion, envbuild.FieldClusterNodeID, envbuild.FieldReason:
+		case envbuild.FieldEnvID, envbuild.FieldStatus, envbuild.FieldDockerfile, envbuild.FieldStartCmd, envbuild.FieldReadyCmd, envbuild.FieldKernelVersion, envbuild.FieldFirecrackerVersion, envbuild.FieldEnvdVersion, envbuild.FieldClusterNodeID:
 			values[i] = new(sql.NullString)
 		case envbuild.FieldCreatedAt, envbuild.FieldUpdatedAt, envbuild.FieldFinishedAt:
 			values[i] = new(sql.NullTime)
@@ -220,11 +224,12 @@ func (eb *EnvBuild) assignValues(columns []string, values []any) error {
 				*eb.ClusterNodeID = value.String
 			}
 		case envbuild.FieldReason:
-			if value, ok := values[i].(*sql.NullString); !ok {
+			if value, ok := values[i].(*[]byte); !ok {
 				return fmt.Errorf("unexpected type %T for field reason", values[i])
-			} else if value.Valid {
-				eb.Reason = new(string)
-				*eb.Reason = value.String
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &eb.Reason); err != nil {
+					return fmt.Errorf("unmarshal field reason: %w", err)
+				}
 			}
 		default:
 			eb.selectValues.Set(columns[i], values[i])
@@ -331,10 +336,8 @@ func (eb *EnvBuild) String() string {
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
-	if v := eb.Reason; v != nil {
-		builder.WriteString("reason=")
-		builder.WriteString(*v)
-	}
+	builder.WriteString("reason=")
+	builder.WriteString(fmt.Sprintf("%v", eb.Reason))
 	builder.WriteByte(')')
 	return builder.String()
 }

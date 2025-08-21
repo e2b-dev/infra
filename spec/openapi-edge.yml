@@ -138,10 +138,6 @@ components:
         - serviceHost
         - serviceStatus
         - roles
-        - metricVCpuUsed
-        - metricRamMBUsed
-        - metricDiskMBUsed
-        - metricSandboxesRunning
 
       properties:
         nodeID:
@@ -169,22 +165,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ClusterOrchestratorRole"
-        metricVCpuUsed:
-          type: integer
-          format: int64
-          description: Number of vCPUs currently in use
-        metricRamMBUsed:
-          type: integer
-          format: int64
-          description: Amount of RAM currently used in MB
-        metricDiskMBUsed:
-          type: integer
-          format: int64
-          description: Amount of disk space currently used in MB
-        metricSandboxesRunning:
-          type: integer
-          format: int64
-          description: Amount of disk space currently used in MB
 
     Error:
       required:

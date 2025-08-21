@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	ChunkSize = 50 * 1024 * 1024 // 50MB chunks
+	gcpMultipartUploadChunkSize = 50 * 1024 * 1024 // 50MB chunks
 )
 
 // RetryConfig holds the configuration for retry logic
@@ -269,7 +269,7 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 	fileSize := fileInfo.Size()
 
 	// Calculate number of parts
-	numParts := int(math.Ceil(float64(fileSize) / float64(ChunkSize)))
+	numParts := int(math.Ceil(float64(fileSize) / float64(gcpMultipartUploadChunkSize)))
 	if numParts == 0 {
 		numParts = 1 // Always upload at least 1 part, even for empty files
 	}
@@ -298,8 +298,8 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 			}
 
 			// Read chunk from file
-			offset := int64(partNumber-1) * ChunkSize
-			chunkSize := ChunkSize
+			offset := int64(partNumber-1) * gcpMultipartUploadChunkSize
+			chunkSize := gcpMultipartUploadChunkSize
 			if offset+int64(chunkSize) > fileSize {
 				chunkSize = int(fileSize - offset)
 			}

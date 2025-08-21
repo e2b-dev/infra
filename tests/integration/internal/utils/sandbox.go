@@ -13,8 +13,9 @@ import (
 )
 
 type SandboxConfig struct {
-	metadata api.SandboxMetadata
-	timeout  int32
+	metadata  api.SandboxMetadata
+	timeout   int32
+	autoPause bool
 }
 
 type SandboxOption func(config *SandboxConfig)
@@ -30,6 +31,12 @@ func WithMetadata(metadata api.SandboxMetadata) SandboxOption {
 func WithTimeout(timeout int32) SandboxOption {
 	return func(config *SandboxConfig) {
 		config.timeout = timeout
+	}
+}
+
+func WithAutoPause(autoPause bool) SandboxOption {
+	return func(config *SandboxConfig) {
+		config.autoPause = autoPause
 	}
 }
 
@@ -55,6 +62,7 @@ func SetupSandboxWithCleanup(ctx context.Context, t *testing.T, c *api.ClientWit
 		TemplateID: setup.SandboxTemplateID,
 		Timeout:    &config.timeout,
 		Metadata:   &config.metadata,
+		AutoPause:  &config.autoPause,
 	}, setup.WithAPIKey())
 
 	require.NoError(t, err)
@@ -74,8 +82,11 @@ func SetupSandboxWithCleanup(ctx context.Context, t *testing.T, c *api.ClientWit
 // TeardownSandbox kills the sandbox with the given ID
 func TeardownSandbox(ctx context.Context, t *testing.T, c *api.ClientWithResponses, sandboxID string) {
 	t.Helper()
-	killSandboxResponse, err := c.DeleteSandboxesSandboxIDWithResponse(ctx, sandboxID, setup.WithAPIKey())
 
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusNoContent, killSandboxResponse.StatusCode())
+	ctx := context.WithoutCancel(ctx)
+
+	killSandboxResponse, err := c.DeleteSandboxesSandboxIDWithResponse(ctx, sandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+
+	assert.True(t, killSandboxResponse.StatusCode() == http.StatusNoContent || killSandboxResponse.StatusCode() == http.StatusNotFound)
 }

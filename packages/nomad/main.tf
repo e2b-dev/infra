@@ -408,6 +408,7 @@ locals {
     otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
     allow_sandbox_internet       = var.allow_sandbox_internet
     launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+    clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
   }
 
   orchestrator_job_check = templatefile("${path.module}/orchestrator.hcl", merge(
@@ -491,6 +492,7 @@ resource "nomad_job" "template_manager" {
     logs_collector_public_ip     = var.logs_proxy_address
     orchestrator_services        = "template-manager"
     allow_sandbox_internet       = var.allow_sandbox_internet
+    clickhouse_connection_string = local.clickhouse_connection_string
   })
 }
 resource "nomad_job" "loki" {

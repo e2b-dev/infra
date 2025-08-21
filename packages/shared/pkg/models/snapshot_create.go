@@ -83,6 +83,20 @@ func (sc *SnapshotCreate) SetNillableEnvSecure(b *bool) *SnapshotCreate {
 	return sc
 }
 
+// SetAutoPause sets the "auto_pause" field.
+func (sc *SnapshotCreate) SetAutoPause(b bool) *SnapshotCreate {
+	sc.mutation.SetAutoPause(b)
+	return sc
+}
+
+// SetNillableAutoPause sets the "auto_pause" field if the given value is not nil.
+func (sc *SnapshotCreate) SetNillableAutoPause(b *bool) *SnapshotCreate {
+	if b != nil {
+		sc.SetAutoPause(*b)
+	}
+	return sc
+}
+
 // SetOriginNodeID sets the "origin_node_id" field.
 func (sc *SnapshotCreate) SetOriginNodeID(s string) *SnapshotCreate {
 	sc.mutation.SetOriginNodeID(s)
@@ -157,6 +171,10 @@ func (sc *SnapshotCreate) defaults() {
 		v := snapshot.DefaultEnvSecure
 		sc.mutation.SetEnvSecure(v)
 	}
+	if _, ok := sc.mutation.AutoPause(); !ok {
+		v := snapshot.DefaultAutoPause
+		sc.mutation.SetAutoPause(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -181,6 +199,9 @@ func (sc *SnapshotCreate) check() error {
 	}
 	if _, ok := sc.mutation.EnvSecure(); !ok {
 		return &ValidationError{Name: "env_secure", err: errors.New(`models: missing required field "Snapshot.env_secure"`)}
+	}
+	if _, ok := sc.mutation.AutoPause(); !ok {
+		return &ValidationError{Name: "auto_pause", err: errors.New(`models: missing required field "Snapshot.auto_pause"`)}
 	}
 	if _, ok := sc.mutation.OriginNodeID(); !ok {
 		return &ValidationError{Name: "origin_node_id", err: errors.New(`models: missing required field "Snapshot.origin_node_id"`)}
@@ -248,6 +269,10 @@ func (sc *SnapshotCreate) createSpec() (*Snapshot, *sqlgraph.CreateSpec) {
 	if value, ok := sc.mutation.EnvSecure(); ok {
 		_spec.SetField(snapshot.FieldEnvSecure, field.TypeBool, value)
 		_node.EnvSecure = value
+	}
+	if value, ok := sc.mutation.AutoPause(); ok {
+		_spec.SetField(snapshot.FieldAutoPause, field.TypeBool, value)
+		_node.AutoPause = value
 	}
 	if value, ok := sc.mutation.OriginNodeID(); ok {
 		_spec.SetField(snapshot.FieldOriginNodeID, field.TypeString, value)
@@ -396,6 +421,18 @@ func (u *SnapshotUpsert) SetEnvSecure(v bool) *SnapshotUpsert {
 // UpdateEnvSecure sets the "env_secure" field to the value that was provided on create.
 func (u *SnapshotUpsert) UpdateEnvSecure() *SnapshotUpsert {
 	u.SetExcluded(snapshot.FieldEnvSecure)
+	return u
+}
+
+// SetAutoPause sets the "auto_pause" field.
+func (u *SnapshotUpsert) SetAutoPause(v bool) *SnapshotUpsert {
+	u.Set(snapshot.FieldAutoPause, v)
+	return u
+}
+
+// UpdateAutoPause sets the "auto_pause" field to the value that was provided on create.
+func (u *SnapshotUpsert) UpdateAutoPause() *SnapshotUpsert {
+	u.SetExcluded(snapshot.FieldAutoPause)
 	return u
 }
 
@@ -561,6 +598,20 @@ func (u *SnapshotUpsertOne) SetEnvSecure(v bool) *SnapshotUpsertOne {
 func (u *SnapshotUpsertOne) UpdateEnvSecure() *SnapshotUpsertOne {
 	return u.Update(func(s *SnapshotUpsert) {
 		s.UpdateEnvSecure()
+	})
+}
+
+// SetAutoPause sets the "auto_pause" field.
+func (u *SnapshotUpsertOne) SetAutoPause(v bool) *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetAutoPause(v)
+	})
+}
+
+// UpdateAutoPause sets the "auto_pause" field to the value that was provided on create.
+func (u *SnapshotUpsertOne) UpdateAutoPause() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateAutoPause()
 	})
 }
 
@@ -898,6 +949,20 @@ func (u *SnapshotUpsertBulk) SetEnvSecure(v bool) *SnapshotUpsertBulk {
 func (u *SnapshotUpsertBulk) UpdateEnvSecure() *SnapshotUpsertBulk {
 	return u.Update(func(s *SnapshotUpsert) {
 		s.UpdateEnvSecure()
+	})
+}
+
+// SetAutoPause sets the "auto_pause" field.
+func (u *SnapshotUpsertBulk) SetAutoPause(v bool) *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetAutoPause(v)
+	})
+}
+
+// UpdateAutoPause sets the "auto_pause" field to the value that was provided on create.
+func (u *SnapshotUpsertBulk) UpdateAutoPause() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateAutoPause()
 	})
 }
 

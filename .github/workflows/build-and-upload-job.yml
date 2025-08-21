@@ -4,19 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       commit_sha:
-        description: 'Specific commit SHA to checkout'
+        description: "Specific commit SHA to checkout"
         required: true
         type: string
       tracking_id:
-        description: 'Unique tracking ID used for identifying the workflow run'
+        description: "Unique tracking ID used for identifying the workflow run"
         required: false
         type: string
       environment:
-        description: 'Target environment for deployment, e.g. staging'
+        description: "Target environment for deployment, e.g. staging"
         required: true
         type: string
       job_names:
-        description: 'Name of the jobs to build-and-upload, e.g. api, template-manager, separated by ;'
+        description: "Name of the jobs to build-and-upload, e.g. api, template-manager, separated by ;"
         required: true
         type: string
 
@@ -42,12 +42,13 @@ jobs:
         uses: ./.github/actions/deploy-setup
         with:
           environment: ${{ inputs.environment }}
-          env_vars: ${{ secrets[format('env_{0}', inputs.environment)] }}
+          infisical_client_id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          infisical_client_secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: 'go.work'
+          go-version-file: "go.work"
           cache: false
 
       - name: Go Mod Cache
@@ -65,16 +66,15 @@ jobs:
         run: |
           # Parse semicolon-separated job names
           IFS=';' read -ra JOBS <<< "${{ inputs.job_names }}"
-          
+
           # Build and upload each job
           for job_name in "${JOBS[@]}"; do
             # Trim whitespace
             job_name=$(echo "$job_name" | xargs)
-          
+
             if [ -n "$job_name" ]; then
               echo "::group::Building and uploading job: $job_name"
               make build-and-upload/$job_name
               echo "::endgroup::"
             fi
           done
-        

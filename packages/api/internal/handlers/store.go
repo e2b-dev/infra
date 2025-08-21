@@ -398,7 +398,8 @@ func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, supabaseToken
 func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) (authcache.AuthTeamInfo, *api.APIError) {
 	userID := a.GetUserID(middleware.GetGinContext(ctx))
 
-	team, tier, err := a.authCache.GetOrSet(ctx, teamID, func(ctx context.Context, key string) (*queries.Team, *queries.Tier, error) {
+	cacheKey := fmt.Sprintf("%s-%s", userID.String(), teamID)
+	team, tier, err := a.authCache.GetOrSet(ctx, cacheKey, func(ctx context.Context, key string) (*queries.Team, *queries.Tier, error) {
 		return dbapi.GetTeamByIDAndUserIDAuth(ctx, a.sqlcDB, teamID, userID)
 	})
 	if err != nil {

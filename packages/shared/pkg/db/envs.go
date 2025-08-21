@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
+	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 )
 
 type TemplateCreator struct {
@@ -208,7 +209,7 @@ func (db *DB) FinishEnvBuild(
 		SetTotalDiskSizeMB(totalDiskSizeMB).
 		SetStatus(envbuild.StatusUploaded).
 		SetEnvdVersion(envdVersion).
-		SetNillableReason(nil).
+		SetReason(nil).
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to finish template build '%s': %w", buildID, err)
@@ -222,9 +223,13 @@ func (db *DB) EnvBuildSetStatus(
 	envID string,
 	buildID uuid.UUID,
 	status envbuild.Status,
+	reason *schema.BuildReason,
 ) error {
 	err := db.Client.EnvBuild.Update().Where(envbuild.ID(buildID), envbuild.EnvID(envID)).
-		SetStatus(status).SetFinishedAt(time.Now()).Exec(ctx)
+		SetStatus(status).
+		SetFinishedAt(time.Now()).
+		SetReason(reason).
+		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to set template build status %s for '%s': %w", status, buildID, err)
 	}

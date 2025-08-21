@@ -74,7 +74,7 @@ type EnvBuild struct {
 	EnvdVersion        *string
 	ReadyCmd           *string
 	ClusterNodeID      *string
-	Reason             *string
+	Reason             types.JSONBStringMap
 }
 
 type Snapshot struct {
@@ -88,6 +88,7 @@ type Snapshot struct {
 	EnvSecure           bool
 	OriginNodeID        *string
 	AllowInternetAccess *bool
+	AutoPause           bool
 }
 
 type Team struct {

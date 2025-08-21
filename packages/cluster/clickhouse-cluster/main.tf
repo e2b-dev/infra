@@ -58,6 +58,10 @@ resource "google_compute_disk" "stateful_disk" {
   zone = var.gcp_zone
 
   size = 100
+
+  lifecycle {
+    ignore_changes = [size]
+  }
 }
 
 resource "google_compute_per_instance_config" "instances" {

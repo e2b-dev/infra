@@ -26,7 +26,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const defaultSandboxListLimit int32 = 1000
+const (
+	maxSandboxListLimit     int32 = 100
+	defaultSandboxListLimit int32 = 100
+)
 
 func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, limit int32, cursorTime time.Time, cursorID string) ([]utils.PaginatedSandbox, error) {
 	// Apply limit + 1 to check if there are more results
@@ -121,6 +124,11 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		limit = *params.Limit
 	}
 
+	// Clip limit to max
+	if limit > maxSandboxListLimit {
+		limit = maxSandboxListLimit
+	}
+
 	metadataFilter, err := utils.ParseMetadata(params.Metadata)
 	if err != nil {
 		zap.L().Error("Error parsing metadata", zap.Error(err))
@@ -147,7 +155,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	// Running Sandbox IDs
 	runningSandboxesIDs := make([]string, 0)
 	for _, info := range runningSandboxes {
-		runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.Instance.SandboxID))
+		runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
 	}
 
 	if slices.Contains(states, api.Running) {
@@ -242,7 +250,7 @@ func snapshotsToPaginatedSandboxes(snapshots []queries.GetSnapshotsWithCursorRow
 				State:       api.Paused,
 				EnvdVersion: envdVersion,
 			},
-			PaginationTimestamp: snapshot.CreatedAt.Time,
+			PaginationTimestamp: snapshot.SandboxStartedAt.Time,
 		}
 
 		if snapshot.Metadata != nil {
@@ -263,10 +271,10 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []*instance.InstanceInfo)
 	for _, info := range runningSandboxes {
 		sandbox := utils.PaginatedSandbox{
 			ListedSandbox: api.ListedSandbox{
-				ClientID:    info.Instance.ClientID,
+				ClientID:    info.ClientID,
 				TemplateID:  info.BaseTemplateID,
-				Alias:       info.Instance.Alias,
-				SandboxID:   info.Instance.SandboxID,
+				Alias:       info.Alias,
+				SandboxID:   info.SandboxID,
 				StartedAt:   info.StartTime,
 				CpuCount:    api.CPUCount(info.VCpu),
 				MemoryMB:    api.MemoryMB(info.RamMB),

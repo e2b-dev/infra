@@ -10,7 +10,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
@@ -28,16 +27,6 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid env ID: %s", aliasOrTemplateID))
 
 		telemetry.ReportCriticalError(ctx, "invalid env ID", err)
-
-		return
-	}
-
-	// Prepare info for deleting env
-	userID, teams, err := a.GetUserAndTeams(c)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when getting default team", err)
 
 		return
 	}
@@ -68,24 +57,22 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	var team *queries.Team
-	for _, t := range teams {
-		if t.Team.ID == template.TeamID {
-			team = &t.Team
-			break
-		}
+	dbTeamID := template.TeamID.String()
+	team, _, apiErr := a.GetTeamAndTier(c, &dbTeamID)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+		return
 	}
 
-	if team == nil {
-		telemetry.ReportError(ctx, "user doesn't have access to the sandbox template", nil, telemetry.WithTemplateID(cleanedAliasOrEnvID), attribute.String("userID", userID.String()))
-
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You (%s) don't have access to sandbox template '%s'", userID, cleanedAliasOrEnvID))
+	if team.ID != template.TeamID {
+		a.sendAPIStoreError(c, http.StatusForbidden, "User does not have access to the template")
+		telemetry.ReportCriticalError(ctx, "user does not have access to the template", nil, telemetry.WithTemplateID(template.ID))
 
 		return
 	}
 
 	telemetry.SetAttributes(ctx,
-		attribute.String("user.id", userID.String()),
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
 		telemetry.WithTemplateID(template.ID),
@@ -139,7 +126,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "deleted environment", properties.Set("environment", template.ID))
+	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "deleted environment", properties.Set("environment", template.ID))
 
 	zap.L().Info("Deleted env", logger.WithTemplateID(template.ID), logger.WithTeamID(team.ID.String()))
 

@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
-	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
@@ -75,15 +74,14 @@ func TestReservation_ResumeAlreadyRunningSandbox(t *testing.T) {
 	defer cancel()
 
 	info := &InstanceInfo{
+		ClientID:   consts.ClientID,
+		SandboxID:  sandboxID,
+		TemplateID: "test",
+
 		TeamID:            teamID,
 		StartTime:         time.Now(),
 		endTime:           time.Now().Add(time.Hour),
 		MaxInstanceLength: time.Hour,
-		Instance: &api.Sandbox{
-			ClientID:   consts.ClientID,
-			SandboxID:  sandboxID,
-			TemplateID: "test",
-		},
 	}
 	err := cache.Add(context.Background(), info, false)
 	assert.NoError(t, err)

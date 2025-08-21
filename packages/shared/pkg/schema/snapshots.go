@@ -28,6 +28,7 @@ func (Snapshot) Fields() []ent.Field {
 		field.JSON("metadata", map[string]string{}).SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.Time("sandbox_started_at"),
 		field.Bool("env_secure").Default(false),
+		field.Bool("auto_pause").Default(false),
 		field.String("origin_node_id").SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.Bool("allow_internet_access").Nillable().Optional(),
 	}
