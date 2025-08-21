@@ -55,6 +55,8 @@ require (
 	gotest.tools v2.2.0+incompatible
 )
 
+require github.com/golang-jwt/jwt/v5 v5.2.2
+
 require (
 	ariga.io/atlas v0.15.0 // indirect
 	cel.dev/expr v0.24.0 // indirect
@@ -154,7 +156,6 @@ require (
 	github.com/gogo/googleapis v1.4.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/gogo/status v1.1.1 // indirect
-	github.com/golang-jwt/jwt/v5 v5.2.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
