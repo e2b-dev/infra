@@ -29,70 +29,94 @@ func cleanNFSCache() error {
 		return fmt.Errorf("invalid arguments: %w", err)
 	}
 
-	// get mount point
-	totalSpace, actualFreeSpace, err := getDiskInfo(path)
+	// get free space information for path
+
+	var diskInfo diskInfo
+	timeit(fmt.Sprintf("getting free space info for %q ... ", path), func() {
+		diskInfo, err = getDiskInfo(path)
+	})
 	if err != nil {
-		return fmt.Errorf("could not get disk info from %q: %w", path, err)
+		return fmt.Errorf("could not get disk info: %w", err)
 	}
-	targetFreeSpace := int64(float64(opts.freeSpacePercent) / 100 * float64(totalSpace))
+	targetFreeSpace := int64(float64(opts.freeSpacePercent) / 100 * float64(diskInfo.total))
 	areWeDone := func() bool {
-		return actualFreeSpace > targetFreeSpace
+		return diskInfo.available > targetFreeSpace
 	}
 
-	// if conditions are met, early bail
+	// if conditions are met, we're done
 	if areWeDone() {
+		fmt.Println("condition already met")
 		return nil
 	}
 
+	fmt.Printf("disk is currently %d%% free, target is: %d%%\n",
+		int(float64(diskInfo.available)/float64(diskInfo.total)*100), opts.freeSpacePercent)
+
 	// get file metadata, including path, size, and last access timestamp
-	files, err := getFileMetadata(path)
+	var files []file
+	timeit("gathering metadata ... ", func() {
+		files, err = getFileMetadata(path)
+	})
 	if err != nil {
 		return fmt.Errorf("could not get file metadata: %w", err)
 	}
 
 	// sort files by access timestamp
-	files = sortFiles(files)
+	timeit(fmt.Sprintf("sorting %d files by access time ...", len(files)), func() {
+		sortFiles(files)
+	})
 
-	var deletedFiles, deletedBytes int64
-	for _, file := range files {
-		if opts.dryRun {
-			fmt.Printf("DRY RUN: would delete %q (%d bytes, last modified %s)\n",
-				file.path, file.size, time.Since(file.atime).Round(time.Minute).String())
-		} else {
-			// remove file
-			if err := os.Remove(file.path); err != nil {
-				// if we fail to delete the file, try the next one
-				fmt.Printf("WARNING: failed to delete %q: %v\n", file.path, err)
-				continue
+	err = nil
+	timeit("deleting files ... \n", func() {
+		var deletedFiles, deletedBytes int64
+		for _, file := range files {
+			if opts.dryRun {
+				fmt.Printf("DRY RUN: would delete %q (%d bytes, time since last access: %s)\n",
+					file.path, file.size, time.Since(file.atime).Round(time.Minute).String())
+			} else {
+				// remove file
+				fmt.Printf("deleting %q (%d bytes) ... ", file.path, file.size)
+				if err := os.Remove(file.path); err != nil {
+					// if we fail to delete the file, try the next one
+					fmt.Printf("failed to delete %q: %v\n", file.path, err)
+					continue
+				}
+				fmt.Print("\n")
+			}
+
+			deletedFiles++
+			deletedBytes += file.size
+
+			// record the file as free space
+			diskInfo.available += file.size
+			if areWeDone() {
+				// we're done!
+				return
 			}
 		}
 
-		deletedFiles++
-		deletedBytes += file.size
-
-		// record the file as free space
-		actualFreeSpace += file.size
-		if areWeDone() {
-			// we're done!
-			return nil
-		}
-	}
+		err = ErrFail
+	})
 
 	// couldn't delete enough files :(
-	return ErrFail
+	return err
 }
 
-func getDiskInfo(path string) (int64, int64, error) {
+type diskInfo struct {
+	total, available int64
+}
+
+func getDiskInfo(path string) (diskInfo, error) {
 	// Execute: df <path>
 	cmd := exec.Command("df", path)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return 0, 0, fmt.Errorf("df command failed: %w: %s", err, strings.TrimSpace(string(out)))
+		return diskInfo{}, fmt.Errorf("df command failed: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	if len(lines) < 2 {
-		return 0, 0, fmt.Errorf("unexpected df output: %q", strings.TrimSpace(string(out)))
+		return diskInfo{}, fmt.Errorf("unexpected df output: %q", strings.TrimSpace(string(out)))
 	}
 
 	// Skip header (line 0) and parse the first data line
@@ -108,25 +132,24 @@ func getDiskInfo(path string) (int64, int64, error) {
 
 		totalSize, err := strconv.ParseInt(fields[1], 10, 64)
 		if err != nil {
-			return 0, 0, fmt.Errorf("failed to parse total size: %w", err)
+			return diskInfo{}, fmt.Errorf("failed to parse total size: %w", err)
 		}
 
 		availableSpace, err := strconv.ParseInt(fields[3], 10, 64)
 		if err != nil {
-			return 0, 0, fmt.Errorf("failed to parse available space: %w", err)
+			return diskInfo{}, fmt.Errorf("failed to parse available space: %w", err)
 		}
 
-		return totalSize, availableSpace, nil
+		return diskInfo{total: totalSize, available: availableSpace}, nil
 	}
 
-	return 0, 0, fmt.Errorf("could not parse mount point from df output: %q", strings.TrimSpace(string(out)))
+	return diskInfo{}, fmt.Errorf("could not parse mount point from df output: %q", strings.TrimSpace(string(out)))
 }
 
-func sortFiles(files []file) []file {
+func sortFiles(files []file) {
 	sort.Slice(files, func(i, j int) bool {
 		return files[j].atime.After(files[i].atime)
 	})
-	return files
 }
 
 func getFileMetadata(path string) ([]file, error) {
@@ -193,4 +216,14 @@ func parseArgs() (string, opts, error) {
 	}
 
 	return args[0], opts, nil
+}
+
+func timeit(message string, fn func()) {
+	fmt.Printf(message)
+
+	start := time.Now()
+	fn()
+	done := time.Since(start).Round(time.Millisecond)
+
+	fmt.Printf("done in [%s]\n", done)
 }

@@ -1,6 +1,6 @@
 job "filestore-cleanup" {
     type = "batch"
-    node_pool = "${node_pool}"
+    node_pool = "default"
 
     periodic {
         cron             = "0 * * * *" // run it once an hour, on the hour
@@ -8,8 +8,7 @@ job "filestore-cleanup" {
         time_zone        = "America/Los_Angeles"
     }
 
-%{ for i in range("${server_count}") }
-    group "filestore-cleanup-${i + 1}" {
+    group "filestore-cleanup" {
         restart {
             attempts = 0
             mode     = "fail"
@@ -21,29 +20,16 @@ job "filestore-cleanup" {
         }
 
         task "filestore-cleanup" {
-            driver = "docker"
+            driver = "raw_exec"
 
             config {
-                image = "<< todo: add this >>"
-                network_mode = "host"
-
-                volumes = [
-                    "<< todo: add this >>"
+                command = "local/clean-nfs-cache"
+                args = [
+                    "--dry-run=true",
+                    "--free-space-percent=90",
+                    "${nfs_cache_mount_path}",
                 ]
-
-                entrypoint = ["<< todo: add this >>"]
-                args = ["<< todo: add this >>"]
-
-                env {
-                    << add env vars >>
-                }
-
-                resources {
-                    cpu    = 200
-                    memory = 256
-                }
             }
         }
     }
-%{ endfor }
 }
