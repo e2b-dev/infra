@@ -13,7 +13,7 @@ import (
 func getAtime(info fs.FileInfo) (time.Time, time.Time, error) {
 	actualStruct, ok := info.Sys().(*unix.Stat_t)
 	if !ok {
-		return time.Time{}, fmt.Errorf("could not stat unix stat_t for %q: %T", info.Name(), info.Sys())
+		return time.Time{}, time.Time{}, fmt.Errorf("could not stat unix stat_t for %q: %T", info.Name(), info.Sys())
 	}
 
 	return fromTimespec(actualStruct.Atim), fromTimespec(actualStruct.Btim), nil
