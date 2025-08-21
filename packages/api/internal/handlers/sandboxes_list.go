@@ -121,6 +121,11 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		limit = *params.Limit
 	}
 
+	// Clip limit to max
+	if limit > defaultSandboxListLimit {
+		limit = defaultSandboxListLimit
+	}
+
 	metadataFilter, err := utils.ParseMetadata(params.Metadata)
 	if err != nil {
 		zap.L().Error("Error parsing metadata", zap.Error(err))
