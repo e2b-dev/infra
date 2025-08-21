@@ -39,6 +39,7 @@ func cleanNFSCache() error {
 	}
 	targetDiskUsage := int64(float64(opts.targetDiskUsagePercent) / 100 * float64(diskInfo.total))
 	areWeDone := func() bool {
+		fmt.Printf("testing %d < %d", diskInfo.used, targetDiskUsage)
 		return diskInfo.used < targetDiskUsage
 	}
 
@@ -69,7 +70,7 @@ func cleanNFSCache() error {
 
 	var results results
 	err = nil
-	timeit("deleting files ... \n", func() {
+	timeit(fmt.Sprintf("looking through %d files for deletion candidates ... \n", len(files)), func() {
 		results, err = deleteFiles(files, opts, &diskInfo, areWeDone)
 	})
 
@@ -225,7 +226,8 @@ func getDiskInfo(path string) (diskInfo, error) {
 			return diskInfo{}, fmt.Errorf("failed to parse available space: %w", err)
 		}
 
-		return diskInfo{total: totalSize, used: usedSpace}, nil
+		// "df" returns kilobytes, not bytes
+		return diskInfo{total: totalSize * 1024, used: usedSpace * 1024}, nil
 	}
 
 	return diskInfo{}, fmt.Errorf("could not parse mount point from df output: %q", strings.TrimSpace(string(out)))
@@ -249,7 +251,7 @@ func getFileMetadata(path string) ([]file, error) {
 			return nil
 		}
 
-		item, err := getMetadata(info)
+		item, err := getMetadata(path)
 		if err != nil {
 			return fmt.Errorf("could not get metadata: %w", err)
 		}
