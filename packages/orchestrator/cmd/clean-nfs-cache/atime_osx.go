@@ -4,13 +4,13 @@ package main
 
 import (
 	"fmt"
-	"io/fs"
+	"os"
 	"syscall"
 	"time"
 )
 
-func getMetadata(info fs.DirEntry) (file, error) {
-	stat, err := info.Info()
+func getMetadata(path string) (file, error) {
+	stat, err := os.Stat(path)
 	if err != nil {
 		return file{}, fmt.Errorf("could not stat info: %w", err)
 	}
