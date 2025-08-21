@@ -240,7 +240,7 @@ func sortFiles(files []file) {
 func getFileMetadata(path string) ([]file, error) {
 	var items []file
 
-	if err := filepath.Walk(path, func(path string, info fs.FileInfo, err error) error {
+	if err := filepath.WalkDir(path, func(path string, info fs.DirEntry, err error) error {
 		if err != nil {
 			return fmt.Errorf("could not walk dir %q: %w", path, err)
 		}
@@ -249,12 +249,12 @@ func getFileMetadata(path string) ([]file, error) {
 			return nil
 		}
 
-		atime, btime, err := getAtime(info)
+		item, err := getMetadata(info)
 		if err != nil {
-			return fmt.Errorf("could not get atime: %w", err)
+			return fmt.Errorf("could not get metadata: %w", err)
 		}
 
-		items = append(items, file{path: path, size: info.Size(), atime: atime, btime: btime})
+		items = append(items, item)
 		return nil
 	}); err != nil {
 		return nil, fmt.Errorf("walk failed: %w", err)

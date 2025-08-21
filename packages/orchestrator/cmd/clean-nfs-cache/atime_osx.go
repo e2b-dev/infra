@@ -9,13 +9,24 @@ import (
 	"time"
 )
 
-func getAtime(info fs.FileInfo) (time.Time, time.Time, error) {
-	actualStruct, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return time.Time{}, time.Time{}, fmt.Errorf("could not stat unix stat_t for %q: %T", info.Name(), info.Sys())
+func getMetadata(info fs.DirEntry) (file, error) {
+	stat, err := info.Info()
+	if err != nil {
+		return file{}, fmt.Errorf("could not stat info: %w", err)
 	}
 
-	return fromTimespec(actualStruct.Atimespec), fromTimespec(actualStruct.Birthtimespec), nil
+	actualStruct, ok := stat.Sys().(*syscall.Stat_t)
+	if !ok {
+		return file{}, fmt.Errorf("stat did not return a syscall.Stat_t for %q: %T",
+			stat.Name(), stat.Sys())
+	}
+
+	return file{
+		path:  stat.Name(),
+		size:  stat.Size(),
+		atime: fromTimespec(actualStruct.Atimespec),
+		btime: fromTimespec(actualStruct.Birthtimespec),
+	}, nil
 }
 
 func fromTimespec(ts syscall.Timespec) time.Time {
