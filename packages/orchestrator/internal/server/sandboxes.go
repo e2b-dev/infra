@@ -140,7 +140,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		label = clickhouse.SandboxEventLabelResume
 	}
 
-	shouldPublish, err := s.redisPubSub.ShouldPublish(ctx, req.Sandbox.SandboxId)
+	shouldPublish, err := s.redisPubSub.ShouldPublish(ctx, req.Sandbox.TeamId)
 	if err != nil {
 		zap.L().Error("error checking if sandbox should publish", zap.Error(err))
 	}
@@ -231,7 +231,7 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	// TODO: adapt when new types of update events are implemented
 	eventData := fmt.Sprintf(`{"set_timeout": "%s"}`, req.EndTime.AsTime().Format(time.RFC3339))
 
-	shouldPublish, err := s.redisPubSub.ShouldPublish(ctx, sbx.Runtime.SandboxID)
+	shouldPublish, err := s.redisPubSub.ShouldPublish(ctx, sbx.Runtime.TeamID)
 	if err != nil {
 		zap.L().Error("error checking if sandbox should publish", zap.Error(err))
 	}
@@ -367,7 +367,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		}
 	}()
 
-	shouldPublish, err := s.redisPubSub.ShouldPublish(ctx, sbx.Runtime.SandboxID)
+	shouldPublish, err := s.redisPubSub.ShouldPublish(ctx, sbx.Runtime.TeamID)
 	if err != nil {
 		zap.L().Error("error checking if sandbox should publish", zap.Error(err))
 	}
@@ -514,7 +514,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		}
 	}(context.WithoutCancel(ctx))
 
-	shouldPublish, err := s.redisPubSub.ShouldPublish(ctx, sbx.Runtime.SandboxID)
+	shouldPublish, err := s.redisPubSub.ShouldPublish(ctx, sbx.Runtime.TeamID)
 	if err != nil {
 		zap.L().Error("error checking if sandbox should publish", zap.Error(err))
 	}

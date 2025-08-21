@@ -8,19 +8,19 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-type RedisPubSub[PayloadT, SubMetadataT any] struct {
+type RedisPubSub[PayloadT, SubMetaDataT any] struct {
 	redisClient *redis.UniversalClient
 	queueName   string
 }
 
-func NewRedisPubSub[PayloadT, SubMetadataT any](redisClient *redis.UniversalClient, queueName string) *RedisPubSub[PayloadT, SubMetadataT] {
-	return &RedisPubSub[PayloadT, SubMetadataT]{
+func NewRedisPubSub[PayloadT, SubMetaDataT any](redisClient *redis.UniversalClient, queueName string) *RedisPubSub[PayloadT, SubMetaDataT] {
+	return &RedisPubSub[PayloadT, SubMetaDataT]{
 		redisClient: redisClient,
 		queueName:   queueName,
 	}
 }
 
-func (r *RedisPubSub[PayloadT, SubMetadataT]) ShouldPublish(ctx context.Context, key string) (bool, error) {
+func (r *RedisPubSub[PayloadT, SubMetaDataT]) ShouldPublish(ctx context.Context, key string) (bool, error) {
 	if r.redisClient == nil {
 		return false, fmt.Errorf("redis client is not initialized")
 	}
@@ -31,34 +31,26 @@ func (r *RedisPubSub[PayloadT, SubMetadataT]) ShouldPublish(ctx context.Context,
 	return exists > 0, nil
 }
 
-func (r *RedisPubSub[PayloadT, SubMetadataT]) GetSubscriptionMetaData(ctx context.Context, key string) (*SubMetadataT, error) {
+func (r *RedisPubSub[PayloadT, SubMetaDataT]) GetSubMetaData(ctx context.Context, key string) (SubMetaDataT, error) {
+	var metadata SubMetaDataT
 	if r.redisClient == nil {
-		return nil, fmt.Errorf("redis client is not initialized")
+		return metadata, fmt.Errorf("redis client is not initialized")
 	}
-	var m SubMetadataT
-	data, err := (*r.redisClient).Get(ctx, key).Result()
+	err := (*r.redisClient).Get(ctx, key).Scan(&metadata)
 	if err != nil {
-		return nil, err
+		return metadata, err
 	}
-	err = decodeMessage(data, &m)
-	if err != nil {
-		return nil, err
-	}
-	return &m, nil
+	return metadata, nil
 }
 
-func (r *RedisPubSub[PayloadT, SubMetadataT]) SetSubscriptionMetaData(ctx context.Context, key string, metaData SubMetadataT) error {
+func (r *RedisPubSub[PayloadT, SubMetaDataT]) SetSubMetaData(ctx context.Context, key string, metaData SubMetaDataT) error {
 	if r.redisClient == nil {
 		return fmt.Errorf("redis client is not initialized")
 	}
-	data, err := encodeMessage(metaData)
-	if err != nil {
-		return fmt.Errorf("failed to marshal metadata: %w", err)
-	}
-	return (*r.redisClient).Set(ctx, key, data, 0).Err()
+	return (*r.redisClient).Set(ctx, key, metaData, 0).Err()
 }
 
-func (r *RedisPubSub[PayloadT, SubMetadataT]) Publish(ctx context.Context, payload PayloadT) error {
+func (r *RedisPubSub[PayloadT, SubMetaDataT]) Publish(ctx context.Context, payload PayloadT) error {
 	if r.redisClient == nil {
 		return fmt.Errorf("redis client is not initialized")
 	}
@@ -71,7 +63,7 @@ func (r *RedisPubSub[PayloadT, SubMetadataT]) Publish(ctx context.Context, paylo
 	return (*r.redisClient).Publish(ctx, r.queueName, data).Err()
 }
 
-func (r *RedisPubSub[PayloadT, SubMetadataT]) Subscribe(ctx context.Context, pubSubQueue chan<- PayloadT) error {
+func (r *RedisPubSub[PayloadT, SubMetaDataT]) Subscribe(ctx context.Context, pubSubQueue chan<- PayloadT) error {
 	if r.redisClient == nil {
 		return fmt.Errorf("redis client is not initialized")
 	}
@@ -91,13 +83,12 @@ func (r *RedisPubSub[PayloadT, SubMetadataT]) Subscribe(ctx context.Context, pub
 			}
 			pubSubQueue <- t
 		case <-ctx.Done():
-			redisPubSub.Close()
 			return ctx.Err()
 		}
 	}
 }
 
-func (r *RedisPubSub[PayloadT, SubMetadataT]) Close() error {
+func (r *RedisPubSub[PayloadT, SubMetaDataT]) Close() error {
 	return (*r.redisClient).Close()
 }
 

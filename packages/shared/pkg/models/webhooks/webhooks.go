@@ -7,9 +7,8 @@ import (
 )
 
 type SandboxWebhooksMetaData struct {
-	SandboxID string   `json:"sandboxID"`
-	Events    []string `json:"events"`
-	URL       string   `json:"url"`
+	Events []string `json:"events"`
+	URL    string   `json:"url"`
 }
 
 type SandboxWebhooksPayload struct {
