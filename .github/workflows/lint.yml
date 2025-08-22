@@ -27,6 +27,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
+        with:
+          job_key: lint-${{ matrix.modules }}
       - name: golangci-lint ${{ matrix.modules }}
         uses: golangci/golangci-lint-action@v8
         with:

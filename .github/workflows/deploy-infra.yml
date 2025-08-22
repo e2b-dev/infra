@@ -39,9 +39,6 @@ jobs:
         with:
           ref: ${{ inputs.commit_sha }}
 
-      - name: Setup Go
-        uses: ./.github/actions/go-setup-cache
-
       - name: Setup environment
         uses: ./.github/actions/deploy-setup
         with:

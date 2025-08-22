@@ -45,9 +45,6 @@ jobs:
           infisical_client_id: ${{ secrets.INFISICAL_CLIENT_ID }}
           infisical_client_secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
 
-      - name: Setup Go
-        uses: ./.github/actions/go-setup-cache
-
       - name: Build and upload jobs
         env:
           AUTO_CONFIRM_DEPLOY: true

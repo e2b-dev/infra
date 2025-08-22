@@ -10,13 +10,9 @@ on:
       - main
 
 jobs:
-  cache-deps:
-    uses: ./.github/workflows/init-cache.yml
   unit-tests:
-    needs: [ cache-deps ]
     uses: ./.github/workflows/pr-tests.yml
   integration-tests:
-    needs: [ cache-deps ]
     uses: ./.github/workflows/integration_tests.yml
   publish-test-results:
     needs:

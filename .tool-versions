@@ -1,3 +1,4 @@
 gcloud 534.0.0
+golang 1.24.3
 packer 1.13.1
 terraform 1.5.7

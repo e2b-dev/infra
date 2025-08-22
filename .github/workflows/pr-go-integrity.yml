@@ -11,6 +11,9 @@ jobs:
 
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
+        with:
+          job_key: integrity-check
+
 
       - name: Run integrity check
         run: STRICT_MODE=1 bash ./scripts/golang-dependencies-integrity.sh
