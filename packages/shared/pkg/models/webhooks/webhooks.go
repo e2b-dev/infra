@@ -8,8 +8,12 @@ import (
 	"github.com/google/uuid"
 )
 
+const WebhookKeyPrefix = "wh"
+
+const WebhooksChannel = "sandbox-webhooks"
+
 func DeriveKey(teamID uuid.UUID) string {
-	return fmt.Sprintf("wh:%s", teamID.String())
+	return fmt.Sprintf("%s:%s", WebhookKeyPrefix, teamID.String())
 }
 
 type SandboxLifecycleEvent string
