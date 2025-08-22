@@ -26,7 +26,7 @@ type SandboxEventsService struct {
 	logger       *zap.Logger
 }
 
-func New(
+func NewSandboxEventsService(
 	featureFlags *featureflags.Client,
 	pubsub pubsub.PubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData],
 	batcher batcher.SandboxEventsClickhouseBatcher,

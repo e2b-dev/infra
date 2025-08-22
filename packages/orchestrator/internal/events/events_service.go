@@ -5,6 +5,6 @@ import (
 )
 
 type EventsService[T any] interface {
-	HandleEvent(ctx context.Context, event T) error
+	HandleEvent(ctx context.Context, event T)
 	Close(ctx context.Context) error
 }

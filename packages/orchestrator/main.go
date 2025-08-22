@@ -345,7 +345,7 @@ func run(port, proxyPort uint) (success bool) {
 		redisPubSub = pubsub.NewMockPubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData]()
 	}
 
-	sbxEventsService := events.New(featureFlags, redisPubSub, sandboxEventsClickhouseBatcher, globalLogger)
+	sbxEventsService := events.NewSandboxEventsService(featureFlags, redisPubSub, sandboxEventsClickhouseBatcher, globalLogger)
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, serviceInfo.SourceCommit, serviceInfo.ClientId, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
