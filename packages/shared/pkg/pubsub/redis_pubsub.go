@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 type RedisPubSub[PayloadT, SubMetaDataT any] struct {
@@ -40,6 +41,7 @@ func (r *RedisPubSub[PayloadT, SubMetaDataT]) GetSubMetaData(ctx context.Context
 	if err != nil {
 		return metadata, err
 	}
+	zap.L().Info("~~~metaDataRaw", zap.String("metaDataRaw", metaDataRaw), zap.String("key", key))
 
 	err = decodeMessage(metaDataRaw, &metadata)
 	if err != nil {
