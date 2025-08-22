@@ -41,7 +41,7 @@ func (r *RedisPubSub[PayloadT, SubMetaDataT]) GetSubMetaData(ctx context.Context
 		return metadata, err
 	}
 
-	err = decodeMessage(metaDataRaw, &metadata)
+	err = decodeMetaData(metaDataRaw, &metadata)
 	if err != nil {
 		return metadata, err
 	}
@@ -53,7 +53,7 @@ func (r *RedisPubSub[PayloadT, SubMetaDataT]) SetSubMetaData(ctx context.Context
 		return fmt.Errorf("redis client is not initialized")
 	}
 
-	data, err := encodeMessage(metaData)
+	data, err := encodeMetaData(metaData)
 	if err != nil {
 		return err
 	}
@@ -66,7 +66,7 @@ func (r *RedisPubSub[PayloadT, SubMetaDataT]) Publish(ctx context.Context, paylo
 		return fmt.Errorf("redis client is not initialized")
 	}
 
-	data, err := encodeMessage(payload)
+	data, err := encodePayload(payload)
 	if err != nil {
 		return err
 	}
@@ -95,7 +95,7 @@ func (r *RedisPubSub[PayloadT, SubMetaDataT]) Subscribe(ctx context.Context, pub
 		select {
 		case msg := <-redisPubSubChan:
 			var t PayloadT
-			err := decodeMessage(msg.Payload, &t)
+			err := decodePayload(msg.Payload, &t)
 			if err != nil {
 				return err
 			}
@@ -112,10 +112,18 @@ func (r *RedisPubSub[PayloadT, SubMetaDataT]) Close() error {
 
 // Private helper functions
 
-func encodeMessage[PayloadT any](msg PayloadT) ([]byte, error) {
+func encodePayload[PayloadT any](msg PayloadT) ([]byte, error) {
 	return json.Marshal(msg)
 }
 
-func decodeMessage[PayloadT any](data string, out *PayloadT) error {
+func decodePayload[PayloadT any](data string, out *PayloadT) error {
+	return json.Unmarshal([]byte(data), out)
+}
+
+func encodeMetaData[MetaDataT any](msg MetaDataT) ([]byte, error) {
+	return json.Marshal(msg)
+}
+
+func decodeMetaData[MetaDataT any](data string, out *MetaDataT) error {
 	return json.Unmarshal([]byte(data), out)
 }
