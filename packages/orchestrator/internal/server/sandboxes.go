@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -33,7 +34,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	ctx, cancel := context.WithTimeoutCause(ctxConn, requestTimeout, fmt.Errorf("request timed out"))
 	defer cancel()
 
-	childCtx, childSpan := s.tracer.Start(ctx, "sandbox-create")
+	ctx, childSpan := s.tracer.Start(ctx, "sandbox-create")
 	defer childSpan.End()
 
 	childSpan.SetAttributes(
@@ -50,7 +51,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}
 
 	template, err := s.templateCache.GetTemplate(
-		ctxConn,
+		ctx,
 		req.GetSandbox().GetBuildId(),
 		req.GetSandbox().GetKernelVersion(),
 		req.GetSandbox().GetFirecrackerVersion(),
@@ -61,7 +62,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}
 
 	sbx, err := sandbox.ResumeSandbox(
-		childCtx,
+		ctx,
 		s.tracer,
 		s.networkPool,
 		template,
@@ -102,7 +103,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 
 	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
 	go func(ctx context.Context) {
-		ctx, childSpan := s.tracer.Start(ctx, "sandbox-create-stop")
+		ctx, childSpan := s.tracer.Start(ctx, "sandbox-create-stop", trace.WithNewRoot())
 		defer childSpan.End()
 
 		waitErr := sbx.Wait(ctx)
@@ -401,6 +402,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}
 
 	err = s.templateCache.AddSnapshot(
+		ctx,
 		meta.Template.BuildID,
 		meta.Template.KernelVersion,
 		meta.Template.FirecrackerVersion,

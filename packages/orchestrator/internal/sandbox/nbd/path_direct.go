@@ -31,7 +31,7 @@ const (
 
 type DirectPathMount struct {
 	tracer   trace.Tracer
-	ctx      context.Context
+	ctx      context.Context // nolint:containedctx // todo: refactor so this can be removed
 	cancelfn context.CancelFunc
 
 	devicePool *DevicePool

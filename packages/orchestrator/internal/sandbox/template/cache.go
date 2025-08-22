@@ -132,13 +132,14 @@ func (c *Cache) GetTemplate(
 	)
 
 	if !found {
-		go storageTemplate.Fetch(c.ctx, c.buildStore)
+		go storageTemplate.Fetch(ctx, c.buildStore)
 	}
 
 	return t.Value(), nil
 }
 
 func (c *Cache) AddSnapshot(
+	ctx context.Context,
 	buildId,
 	kernelVersion,
 	firecrackerVersion string,
@@ -185,7 +186,7 @@ func (c *Cache) AddSnapshot(
 	)
 
 	if !found {
-		go storageTemplate.Fetch(c.ctx, c.buildStore)
+		go storageTemplate.Fetch(ctx, c.buildStore)
 	}
 
 	return nil

@@ -18,7 +18,7 @@ type PostProcessor struct {
 	tickerInterval time.Duration
 
 	errChan chan error
-	ctx     context.Context
+	ctx     context.Context // nolint:containedctx // todo: refactor so this can be removed
 	ticker  *time.Ticker
 
 	stopOnce sync.Once

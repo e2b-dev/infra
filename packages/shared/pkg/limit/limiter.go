@@ -9,7 +9,6 @@ import (
 )
 
 type Limiter struct {
-	ctx                 context.Context
 	gCloudUploadLimiter *utils.AdjustableSemaphore
 	featureFlags        *featureflags.Client
 

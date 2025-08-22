@@ -697,3 +697,113 @@ func TestTemplateBuildFromTemplateLayered(t *testing.T) {
 		})
 	}
 }
+
+func TestTemplateBuildStartReadyCommandExecution(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name         string
+		templateName string
+		buildConfig  api.TemplateBuildStartV2
+		expectedLogs []string
+	}{
+		{
+			name:         "Start and Ready commands are executed",
+			templateName: "test-ubuntu-start-ready-execution",
+			buildConfig: api.TemplateBuildStartV2{
+				Force:     utils.ToPtr(ForceBaseBuild),
+				FromImage: utils.ToPtr("ubuntu:22.04"),
+				Steps: utils.ToPtr([]api.TemplateStep{
+					{
+						Type:  "RUN",
+						Force: utils.ToPtr(true),
+						Args:  utils.ToPtr([]string{"echo 'Setting up template'"}),
+					},
+				}),
+				StartCmd: utils.ToPtr("echo 'Hello, World!'"),
+				ReadyCmd: utils.ToPtr("sleep 2"),
+			},
+			expectedLogs: []string{
+				"Running start command",
+				"[start] [stdout]: Hello, World!",
+				"Waiting for template to be ready",
+				"[ready cmd]: sleep 2",
+				"Template is ready",
+			},
+		},
+		{
+			name:         "Complex Start and Ready commands with environment variables",
+			templateName: "test-ubuntu-complex-start-ready",
+			buildConfig: api.TemplateBuildStartV2{
+				Force:     utils.ToPtr(ForceBaseBuild),
+				FromImage: utils.ToPtr("ubuntu:22.04"),
+				Steps: utils.ToPtr([]api.TemplateStep{
+					{
+						Type:  "ENV",
+						Force: utils.ToPtr(true),
+						Args:  utils.ToPtr([]string{"TEST_VAR", "test_value"}),
+					},
+				}),
+				StartCmd: utils.ToPtr("echo \"Starting with TEST_VAR=$TEST_VAR\"; echo 'Initialization complete'"),
+				ReadyCmd: utils.ToPtr("echo 'Checking readiness...'; sleep 1; echo 'Ready check complete'"),
+			},
+			expectedLogs: []string{
+				"Running start command",
+				"[start] [stdout]: Starting with TEST_VAR=test_value",
+				"[start] [stdout]: Initialization complete",
+				"Waiting for template to be ready",
+				"[ready cmd]:",
+				"Template is ready",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Collect all log messages
+			var logMessages []string
+			logHandler := func(alias string, entry api.BuildLogEntry) {
+				logMessages = append(logMessages, entry.Message)
+				defaultBuildLogHandler(t)(alias, entry)
+			}
+
+			// Build the template
+			assert.True(t, buildTemplate(t, tc.templateName, tc.buildConfig, logHandler))
+
+			// Verify expected log messages appear
+			for _, expectedLog := range tc.expectedLogs {
+				found := false
+				for _, msg := range logMessages {
+					if strings.Contains(msg, expectedLog) {
+						found = true
+						break
+					}
+				}
+				assert.True(t, found, "Expected log message not found: %s", expectedLog)
+			}
+
+			// Additional verification: ensure commands were executed in the right order
+			runningStartIdx := -1
+			waitingForReadyIdx := -1
+			templateReadyIdx := -1
+
+			for i, msg := range logMessages {
+				if strings.Contains(msg, "Running start command") {
+					runningStartIdx = i
+				}
+				if strings.Contains(msg, "Waiting for template to be ready") {
+					waitingForReadyIdx = i
+				}
+				if strings.Contains(msg, "Template is ready") {
+					templateReadyIdx = i
+				}
+			}
+
+			// Verify order: start command -> waiting for ready -> template ready
+			assert.Greater(t, waitingForReadyIdx, runningStartIdx, "Ready command should run after start command")
+			assert.Greater(t, templateReadyIdx, waitingForReadyIdx, "Template ready should come after waiting for ready")
+		})
+	}
+}

@@ -74,9 +74,9 @@ func (lb *LayerExecutor) BuildLayer(
 
 	localTemplate, err := lb.templateCache.GetTemplate(
 		ctx,
-		cmd.SourceLayer.Template.BuildID,
-		cmd.SourceLayer.Template.KernelVersion,
-		cmd.SourceLayer.Template.FirecrackerVersion,
+		cmd.SourceTemplate.BuildID,
+		cmd.SourceTemplate.KernelVersion,
+		cmd.SourceTemplate.FirecrackerVersion,
 		false,
 	)
 	if err != nil {
@@ -106,7 +106,7 @@ func (lb *LayerExecutor) BuildLayer(
 	}
 
 	// Execute the action using the executor
-	meta, err := cmd.ActionExecutor.Execute(ctx, sbx, cmd.SourceLayer)
+	meta, err := cmd.ActionExecutor.Execute(ctx, sbx, cmd.CurrentLayer)
 	if err != nil {
 		return metadata.Template{}, err
 	}
@@ -114,7 +114,7 @@ func (lb *LayerExecutor) BuildLayer(
 	// Prepare metadata
 	fcVersions := sbx.FirecrackerVersions()
 	meta = meta.NewVersionTemplate(storage.TemplateFiles{
-		BuildID:            cmd.ExportTemplate.BuildID,
+		BuildID:            cmd.CurrentLayer.Template.BuildID,
 		KernelVersion:      fcVersions.KernelVersion,
 		FirecrackerVersion: fcVersions.FirecrackerVersion,
 	})
@@ -229,6 +229,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 
 	// Add snapshot to template cache so it can be used immediately
 	err = lb.templateCache.AddSnapshot(
+		ctx,
 		meta.Template.BuildID,
 		meta.Template.KernelVersion,
 		meta.Template.FirecrackerVersion,

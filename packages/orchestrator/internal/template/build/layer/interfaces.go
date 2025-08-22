@@ -31,9 +31,9 @@ type ActionExecutor interface {
 
 // LayerBuildCommand encapsulates all parameters needed for building a layer
 type LayerBuildCommand struct {
+	SourceTemplate storage.TemplateFiles
+	CurrentLayer   metadata.Template
 	Hash           string
-	SourceLayer    metadata.Template
-	ExportTemplate storage.TemplateFiles
 	UpdateEnvd     bool
 	SandboxCreator SandboxCreator
 	ActionExecutor ActionExecutor
