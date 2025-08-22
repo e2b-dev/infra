@@ -35,7 +35,6 @@ type Cache struct {
 	flags         *featureflags.Client
 	cache         *ttlcache.Cache[string, Template]
 	persistence   storage.StorageProvider
-	ctx           context.Context
 	buildStore    *build.DiffStore
 	blockMetrics  blockmetrics.Metrics
 	rootCachePath string
@@ -87,7 +86,6 @@ func NewCache(
 		persistence:   persistence,
 		buildStore:    buildStore,
 		cache:         cache,
-		ctx:           ctx,
 		flags:         flags,
 		rootCachePath: env.GetEnv("LOCAL_TEMPLATE_CACHE_PATH", ""),
 	}, nil
@@ -107,7 +105,7 @@ func (c *Cache) GetTemplate(
 	persistence := c.persistence
 	if c.useNFSCache(isSnapshot) {
 		zap.L().Info("using local template cache", zap.String("path", c.rootCachePath))
-		persistence = storage.NewCachedProvider(ctx, c.rootCachePath, persistence)
+		persistence = storage.NewCachedProvider(c.rootCachePath, persistence)
 	}
 
 	storageTemplate, err := newTemplateFromStorage(

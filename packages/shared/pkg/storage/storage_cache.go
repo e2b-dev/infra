@@ -26,7 +26,6 @@ const (
 )
 
 type CachedProvider struct {
-	ctx       context.Context
 	rootPath  string
 	chunkSize int64
 	inner     StorageProvider
@@ -34,8 +33,8 @@ type CachedProvider struct {
 
 var _ StorageProvider = (*CachedProvider)(nil)
 
-func NewCachedProvider(ctx context.Context, rootPath string, inner StorageProvider) *CachedProvider {
-	return &CachedProvider{ctx: ctx, rootPath: rootPath, inner: inner, chunkSize: MemoryChunkSize}
+func NewCachedProvider(rootPath string, inner StorageProvider) *CachedProvider {
+	return &CachedProvider{rootPath: rootPath, inner: inner, chunkSize: MemoryChunkSize}
 }
 
 func (c CachedProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
@@ -87,7 +86,7 @@ func (c CachedProvider) deleteObjectsWithPrefix(prefix string) {
 }
 
 type CachedFileObjectProvider struct {
-	ctx       context.Context
+	ctx       context.Context // nolint:containedctx // todo: refactor the struct so this can be removed
 	path      string
 	chunkSize int64
 	inner     StorageObjectProvider
