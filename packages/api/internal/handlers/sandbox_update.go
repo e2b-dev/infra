@@ -64,7 +64,7 @@ func (a *APIStore) PutSandboxesSandboxIDMetadata(
 		// Try to update the snapshot metadata in the database
 		zap.L().Debug("Sandbox not found in cache, checking if it's paused",
 			logger.WithSandboxID(sandboxID),
-			zap.String("team.id", teamID.String()))
+			logger.WithTeamID(teamID.String()))
 
 		updated, err := a.sqlcDB.UpdateSnapshotMetadata(ctx, queries.UpdateSnapshotMetadataParams{
 			SandboxID: sandboxID,
