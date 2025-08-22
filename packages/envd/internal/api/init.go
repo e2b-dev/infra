@@ -54,15 +54,6 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	logger.Debug().Msg("Syncing host")
 
 	go func(ctx context.Context) {
-		err := host.SyncClock(ctx)
-		if err != nil {
-			logger.Error().Msgf("Failed to sync clock: %v", err)
-		} else {
-			logger.Trace().Msg("Clock synced")
-		}
-	}(context.WithoutCancel(ctx))
-
-	go func(ctx context.Context) {
 		ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 		defer cancel()
 		host.PollForMMDSOpts(ctx, a.mmdsChan, a.envVars)
