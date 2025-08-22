@@ -1,0 +1,37 @@
+name: Init cache
+
+# everything waits on this job, so we need it to be
+# as fast as possible. we use the dorny/paths-filter
+# step to find out if the go.work and go.work.sum files
+# have changed, then
+
+on: workflow_call
+
+permissions:
+  contents: read
+
+jobs:
+  cache-go-deps:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            gomod:
+              - 'go.work'
+              - 'go.work.sum'
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.work'
+          cache-dependency-path: 'go.work.sum'
+        if: steps.filter.outputs.gomod == 'true'
+
+      - name: Download golang dependencies, for cache
+        run: go mod download
+        if: steps.filter.outputs.gomod == 'true'

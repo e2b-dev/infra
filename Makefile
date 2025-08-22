@@ -271,3 +271,7 @@ fmt:
 lint:
 	@./scripts/golangci-lint-install.sh "2.1.6"
 	go work edit -json | jq -r '.Use[].DiskPath'  | xargs -I{} golangci-lint run {}/... --fix
+
+.PHONY: tidy
+tidy:
+	scripts/golang-dependencies-integrity.sh

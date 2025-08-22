@@ -10,13 +10,13 @@ on:
       - main
 
 jobs:
-  integrity-check:
-    uses: ./.github/workflows/pr-go-integrity.yml
+  cache-deps:
+    uses: ./.github/workflows/init-cache.yml
   unit-tests:
-    needs: [ integrity-check ]
+    needs: [ cache-deps ]
     uses: ./.github/workflows/pr-tests.yml
   integration-tests:
-    needs: [ integrity-check ]
+    needs: [ cache-deps ]
     uses: ./.github/workflows/integration_tests.yml
   publish-test-results:
     needs:

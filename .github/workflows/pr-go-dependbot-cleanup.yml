@@ -23,9 +23,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.work'
-
-      - name: Run deps cleanup
-        run: bash ./scripts/golang-dependencies-integrity.sh
+          cache-dependency-path: 'go.work.sum'
 
       # https://github.com/marketplace/actions/git-auto-commit
       - uses: stefanzweifel/git-auto-commit-action@e348103e9026cc0eee72ae06630dbe30c8bf7a79 # v5.1.0
