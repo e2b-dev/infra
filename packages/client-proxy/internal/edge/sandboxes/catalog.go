@@ -1,6 +1,7 @@
 package sandboxes
 
 import (
+	"context"
 	"errors"
 	"time"
 )
@@ -14,9 +15,9 @@ type SandboxInfo struct {
 }
 
 type SandboxesCatalog interface {
-	GetSandbox(sandboxID string) (*SandboxInfo, error)
-	StoreSandbox(sandboxID string, sandboxInfo *SandboxInfo, expiration time.Duration) error
-	DeleteSandbox(sandboxID string, executionID string) error
+	GetSandbox(ctx context.Context, sandboxID string) (*SandboxInfo, error)
+	StoreSandbox(ctx context.Context, sandboxID string, sandboxInfo *SandboxInfo, expiration time.Duration) error
+	DeleteSandbox(ctx context.Context, sandboxID string, executionID string) error
 }
 
 type CatalogProvider string

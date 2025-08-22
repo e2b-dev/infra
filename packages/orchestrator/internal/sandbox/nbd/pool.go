@@ -50,7 +50,7 @@ type (
 //
 // Use `sudo modprobe nbd nbds_max=4096` to set the max number of devices to 4096, which is a good default for now.
 type DevicePool struct {
-	ctx  context.Context
+	ctx  context.Context // nolint:containedctx // todo: refactor so this can be removed
 	exit chan error
 
 	// We use the bitset to speedup the free device lookup.

@@ -17,6 +17,7 @@ linters:
     - asciicheck
     - bidichk
     - bodyclose
+    - containedctx
     - contextcheck
     - govet
     - staticcheck

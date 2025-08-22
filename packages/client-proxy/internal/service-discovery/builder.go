@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 const (
@@ -16,6 +18,7 @@ const (
 	DnsProviderKey    = "DNS"
 	StaticProviderKey = "STATIC"
 	Ec2ProviderKey    = "EC2-INSTANCES"
+	K8sPodsProvider   = "K8S-PODS"
 )
 
 func NewServiceDiscoveryProvider(ctx context.Context, edgePort int, orchestratorPort int, logger *zap.Logger) (edges ServiceDiscoveryAdapter, orchestrators ServiceDiscoveryAdapter, err error) {
@@ -44,6 +47,8 @@ func resolveServiceDiscoveryConfig(ctx context.Context, prefix string, port int,
 		return createDnsProvider(ctx, prefix, port, logger)
 	case Ec2ProviderKey:
 		return createEc2Provider(ctx, prefix, port, logger)
+	case K8sPodsProvider:
+		return createK8sProvider(ctx, prefix, port, logger)
 	case StaticProviderKey:
 		return createStaticProvider(prefix, port)
 	}
@@ -85,6 +90,39 @@ func createEc2Provider(ctx context.Context, prefix string, port int, logger *zap
 
 	tags := strings.Split(tagsRaw, ",")
 	return NewAwsEc2ServiceDiscovery(ctx, region, tags, port, logger)
+}
+
+func createK8sProvider(ctx context.Context, prefix string, port int, logger *zap.Logger) (ServiceDiscoveryAdapter, error) {
+	podNamespaceEnv := fmt.Sprintf("%s_POD_NAMESPACE", prefix)
+	podNamespace := os.Getenv(podNamespaceEnv)
+	if podNamespace == "" {
+		return nil, fmt.Errorf("missing %s environment variable", podNamespaceEnv)
+	}
+
+	podLabelsEnv := fmt.Sprintf("%s_POD_LABELS", prefix)
+	podLabels := os.Getenv(podLabelsEnv)
+	if podLabels == "" {
+		return nil, fmt.Errorf("missing %s environment variable", podLabelsEnv)
+	}
+
+	// Allow to optionally switch and use HostIP as service discovery entry
+	hostIP := false
+	hostIPEnv := fmt.Sprintf("%s_HOST_IP", prefix)
+	if os.Getenv(hostIPEnv) == "true" {
+		hostIP = true
+	}
+
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build in-cluster config: %w", err)
+	}
+
+	client, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build in-cluster client: %w", err)
+	}
+
+	return NewK8sServiceDiscovery(ctx, logger, client, port, podLabels, podNamespace, hostIP), nil
 }
 
 func createStaticProvider(prefix string, port int) (ServiceDiscoveryAdapter, error) {

@@ -30,11 +30,10 @@ type RedisSandboxCatalog struct {
 	redisClient  redis.UniversalClient
 
 	cache  *ttlcache.Cache[string, *SandboxInfo]
-	ctx    context.Context
 	tracer trace.Tracer
 }
 
-func NewRedisSandboxesCatalog(ctx context.Context, tracer trace.Tracer, redisClient redis.UniversalClient, redisSync *redsync.Redsync) SandboxesCatalog {
+func NewRedisSandboxesCatalog(tracer trace.Tracer, redisClient redis.UniversalClient, redisSync *redsync.Redsync) *RedisSandboxCatalog {
 	clusterLockMutex := redisSync.NewMutex(catalogClusterLockName)
 
 	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogRedisLocalCacheTtl), ttlcache.WithDisableTouchOnHit[string, *SandboxInfo]())
@@ -45,12 +44,13 @@ func NewRedisSandboxesCatalog(ctx context.Context, tracer trace.Tracer, redisCli
 		clusterMutex: clusterLockMutex,
 		tracer:       tracer,
 		cache:        cache,
-		ctx:          ctx,
 	}
 }
 
-func (c *RedisSandboxCatalog) GetSandbox(sandboxID string) (*SandboxInfo, error) {
-	spanCtx, span := c.tracer.Start(c.ctx, "sandbox-catalog-get")
+var _ SandboxesCatalog = (*RedisSandboxCatalog)(nil)
+
+func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) (*SandboxInfo, error) {
+	spanCtx, span := c.tracer.Start(ctx, "sandbox-catalog-get")
 	defer span.End()
 
 	sandboxInfo := c.cache.Get(sandboxID)
@@ -76,7 +76,7 @@ func (c *RedisSandboxCatalog) GetSandbox(sandboxID string) (*SandboxInfo, error)
 		Add(time.Duration(info.SandboxMaxLengthInHours) * time.Hour).
 		Add(sandboxTtlBuffer)
 
-	err = c.StoreSandbox(sandboxID, info, time.Until(deadline))
+	err = c.StoreSandbox(ctx, sandboxID, info, time.Until(deadline))
 	if err != nil {
 		return nil, fmt.Errorf("failed to store sandbox info taken from redis: %w", err)
 	}
@@ -84,8 +84,8 @@ func (c *RedisSandboxCatalog) GetSandbox(sandboxID string) (*SandboxInfo, error)
 	return info, nil
 }
 
-func (c *RedisSandboxCatalog) StoreSandbox(sandboxID string, sandboxInfo *SandboxInfo, expiration time.Duration) error {
-	spanCtx, span := c.tracer.Start(c.ctx, "sandbox-catalog-store")
+func (c *RedisSandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string, sandboxInfo *SandboxInfo, expiration time.Duration) error {
+	spanCtx, span := c.tracer.Start(ctx, "sandbox-catalog-store")
 	defer span.End()
 
 	err := c.clusterMutex.Lock()
@@ -114,8 +114,8 @@ func (c *RedisSandboxCatalog) StoreSandbox(sandboxID string, sandboxInfo *Sandbo
 	return nil
 }
 
-func (c *RedisSandboxCatalog) DeleteSandbox(sandboxID string, executionID string) error {
-	spanCtx, span := c.tracer.Start(c.ctx, "sandbox-catalog-delete")
+func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID string, executionID string) error {
+	spanCtx, span := c.tracer.Start(ctx, "sandbox-catalog-delete")
 	defer span.End()
 
 	err := c.clusterMutex.Lock()

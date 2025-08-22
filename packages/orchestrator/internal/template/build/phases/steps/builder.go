@@ -186,9 +186,9 @@ func (sb *StepBuilder) Build(
 	})
 
 	meta, err := sb.layerExecutor.BuildLayer(ctx, layer.LayerBuildCommand{
+		SourceTemplate: sourceLayer.Metadata.Template,
+		CurrentLayer:   currentLayer.Metadata,
 		Hash:           currentLayer.Hash,
-		SourceLayer:    sourceLayer.Metadata,
-		ExportTemplate: currentLayer.Metadata.Template,
 		UpdateEnvd:     sourceLayer.Cached,
 		SandboxCreator: sandboxCreator,
 		ActionExecutor: actionExecutor,

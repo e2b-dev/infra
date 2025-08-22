@@ -12,23 +12,21 @@ import (
 type MemorySandboxCatalog struct {
 	cache  *ttlcache.Cache[string, *SandboxInfo]
 	mtx    sync.RWMutex
-	ctx    context.Context
 	tracer trace.Tracer
 }
 
-func NewMemorySandboxesCatalog(ctx context.Context, tracer trace.Tracer) SandboxesCatalog {
+func NewMemorySandboxesCatalog(tracer trace.Tracer) SandboxesCatalog {
 	cache := ttlcache.New[string, *SandboxInfo](ttlcache.WithDisableTouchOnHit[string, *SandboxInfo]())
 	go cache.Start()
 
 	return &MemorySandboxCatalog{
 		tracer: tracer,
 		cache:  cache,
-		ctx:    ctx,
 	}
 }
 
-func (c *MemorySandboxCatalog) GetSandbox(sandboxID string) (*SandboxInfo, error) {
-	_, span := c.tracer.Start(c.ctx, "sandbox-catalog-get")
+func (c *MemorySandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) (*SandboxInfo, error) {
+	_, span := c.tracer.Start(ctx, "sandbox-catalog-get")
 	defer span.End()
 
 	c.mtx.RLock()
@@ -42,8 +40,8 @@ func (c *MemorySandboxCatalog) GetSandbox(sandboxID string) (*SandboxInfo, error
 	return nil, ErrSandboxNotFound
 }
 
-func (c *MemorySandboxCatalog) StoreSandbox(sandboxID string, sandboxInfo *SandboxInfo, expiration time.Duration) error {
-	_, span := c.tracer.Start(c.ctx, "sandbox-catalog-store")
+func (c *MemorySandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string, sandboxInfo *SandboxInfo, expiration time.Duration) error {
+	_, span := c.tracer.Start(ctx, "sandbox-catalog-store")
 	defer span.End()
 
 	c.mtx.Lock()
@@ -53,8 +51,8 @@ func (c *MemorySandboxCatalog) StoreSandbox(sandboxID string, sandboxInfo *Sandb
 	return nil
 }
 
-func (c *MemorySandboxCatalog) DeleteSandbox(sandboxID string, executionID string) error {
-	_, span := c.tracer.Start(c.ctx, "sandbox-catalog-delete")
+func (c *MemorySandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID string, executionID string) error {
+	_, span := c.tracer.Start(ctx, "sandbox-catalog-delete")
 	defer span.End()
 
 	c.mtx.Lock()
