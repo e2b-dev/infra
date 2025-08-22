@@ -14,7 +14,7 @@ import (
 )
 
 func TestCachedFileObjectProvider_MakeChunkFilename(t *testing.T) {
-	c := CachedFileObjectProvider{ctx: t.Context(), path: "/a/b/c", chunkSize: 1024}
+	c := CachedFileObjectProvider{path: "/a/b/c", chunkSize: 1024}
 	filename := c.makeChunkFilename(1024 * 4)
 	assert.Equal(t, "/a/b/c/000000000004-1024.bin", filename)
 }
@@ -27,7 +27,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		tempDir := t.TempDir()
 
 		tempPath := filepath.Join(tempDir, "a", "b", "c")
-		c := CachedFileObjectProvider{ctx: t.Context(), path: tempPath, chunkSize: 3}
+		c := CachedFileObjectProvider{path: tempPath, chunkSize: 3}
 
 		// create cache file
 		cacheFilename := c.makeChunkFilename(0)
@@ -60,7 +60,6 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 		tempDir := t.TempDir()
 		c := CachedFileObjectProvider{
-			ctx:       t.Context(),
 			path:      tempDir,
 			chunkSize: 3,
 			inner:     fakeStorageObjectProvider,
@@ -97,7 +96,6 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 		tempDir := t.TempDir()
 		c := CachedFileObjectProvider{
-			ctx:       t.Context(),
 			path:      tempDir,
 			chunkSize: 3,
 			inner:     fakeStorageObjectProvider,
@@ -130,7 +128,6 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 		tempDir := t.TempDir()
 		c := CachedFileObjectProvider{
-			ctx:       t.Context(),
 			path:      tempDir,
 			chunkSize: 2 * 1024 * 1024, // 2 MB
 			inner:     fakeStorageObjectProvider,
@@ -156,7 +153,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		assert.Equal(t, len(buffer), read)
 
 		// read bytes 10-11 MB
-		buffer = make([]byte, 1*1024*1024)         // 2 MB buffer
+		buffer = make([]byte, 1*1024*1024)         // 1 MB buffer
 		read, err = c.ReadAt(buffer, 10*1024*1024) // read 4-6 MB
 		require.NoError(t, err)
 		assert.Equal(t, fakeData[10*1024*1024:], buffer)
@@ -175,7 +172,6 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 		tempDir := t.TempDir()
 		c := CachedFileObjectProvider{
-			ctx:       t.Context(),
 			path:      tempDir,
 			chunkSize: 3,
 			inner:     fakeStorageObjectProvider,
@@ -204,7 +200,6 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 		tempDir := t.TempDir()
 		c := CachedFileObjectProvider{
-			ctx:       t.Context(),
 			path:      tempDir,
 			chunkSize: 3,
 			inner:     fakeStorageObjectProvider,
@@ -227,6 +222,35 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, fakeData[9:], buf)
 		assert.Equal(t, 1, read)
+	})
+
+	t.Run("ReadFrom should handle short reads when appropriate", func(t *testing.T) {
+		fakeData := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+
+		fakeStorageObjectProvider := NewMockStorageObjectProvider(t)
+		fakeStorageObjectProvider.EXPECT().
+			Write(mock.Anything).
+			RunAndReturn(func(src []byte) (int, error) {
+				return len(src), nil
+			})
+
+		tempDir := t.TempDir()
+		c := CachedFileObjectProvider{
+			path:      tempDir,
+			chunkSize: 3,
+			inner:     fakeStorageObjectProvider,
+		}
+
+		read64, err := c.Write(fakeData)
+		require.NoError(t, err)
+		assert.Equal(t, len(fakeData), read64)
+
+		// get last chunk
+		buf := make([]byte, 3)
+		read, err := c.ReadAt(buf, 9)
+		require.NoError(t, err)
+		assert.Equal(t, 1, read)
+		assert.Equal(t, fakeData[9:], buf[:read])
 	})
 }
 
