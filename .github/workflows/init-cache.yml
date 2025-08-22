@@ -25,11 +25,8 @@ jobs:
               - 'go.work'
               - 'go.work.sum'
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: 'go.work'
-          cache-dependency-path: 'go.work.sum'
+      - name: Setup Go
+        uses: ./.github/actions/go-setup-cache
         if: steps.filter.outputs.gomod == 'true'
 
       - name: Download golang dependencies, for cache

@@ -1,0 +1,11 @@
+name: "Go Setup"
+description: "Sets up go and gets modules from the cache"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.work'
+        cache-dependency-path: 'go.work.sum'

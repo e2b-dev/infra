@@ -39,11 +39,8 @@ jobs:
         with:
           ref: ${{ inputs.commit_sha }}
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: 'go.work'
-          cache-dependency-path: 'go.work.sum'
+      - name: Setup Go
+        uses: ./.github/actions/go-setup-cache
 
       - name: Setup environment
         uses: ./.github/actions/deploy-setup

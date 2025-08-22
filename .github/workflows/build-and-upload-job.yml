@@ -45,11 +45,8 @@ jobs:
           infisical_client_id: ${{ secrets.INFISICAL_CLIENT_ID }}
           infisical_client_secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: 'go.work'
-          cache-dependency-path: 'go.work.sum'
+      - name: Setup Go
+        uses: ./.github/actions/go-setup-cache
 
       - name: Build and upload jobs
         env:
