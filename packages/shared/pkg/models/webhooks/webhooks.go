@@ -1,14 +1,38 @@
 package webhooks
 
 import (
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
 )
 
+type SandboxLifecycleEvent string
+
+const (
+	SandboxLifecycleEventCreate SandboxLifecycleEvent = "create"
+	SandboxLifecycleEventKill   SandboxLifecycleEvent = "kill"
+	SandboxLifecycleEventPause  SandboxLifecycleEvent = "pause"
+	SandboxLifecycleEventResume SandboxLifecycleEvent = "resume"
+	SandboxLifecycleEventUpdate SandboxLifecycleEvent = "update"
+)
+
+var AllowedLifecycleEvents = []string{
+	string(SandboxLifecycleEventCreate),
+	string(SandboxLifecycleEventKill),
+	string(SandboxLifecycleEventPause),
+	string(SandboxLifecycleEventResume),
+	string(SandboxLifecycleEventUpdate),
+}
+
+func IsLifecycleEvent(event string) bool {
+	return slices.Contains(AllowedLifecycleEvents, event)
+}
+
 type SandboxWebhooksMetaData struct {
-	Events []string `json:"events"`
-	URL    string   `json:"url"`
+	WebhookID uuid.UUID               `json:"webhook_id"`
+	Events    []SandboxLifecycleEvent `json:"events"`
+	URL       string                  `json:"url"`
 }
 
 type SandboxWebhooksPayload struct {
