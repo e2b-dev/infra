@@ -18,5 +18,6 @@ resource "nomad_job" "filestore_cleanup" {
     environment              = var.environment
     clean_nfs_cache_checksum = data.external.filestore_cleanup_checksum.result.hex
     nfs_cache_mount_path     = var.slab_cache_path
+    max_disk_usage_target    = var.filestore_cache.max_disk_usage_target
   })
 }

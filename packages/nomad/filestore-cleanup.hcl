@@ -2,6 +2,8 @@ job "filestore-cleanup" {
     type = "batch"
     node_pool = "default"
 
+    datacenters = ["*"]
+
     periodic {
         cron             = "0 * * * *" // run every hour
         prohibit_overlap = true
@@ -21,7 +23,7 @@ job "filestore-cleanup" {
                 command = "local/clean-nfs-cache"
                 args = [
                     "--dry-run=true",
-                    "--disk-usage-target-percent=80",
+                    "--disk-usage-target-percent=${max_disk_usage_target}",
                     "${nfs_cache_mount_path}",
                 ]
             }

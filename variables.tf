@@ -371,8 +371,13 @@ variable "filestore_cache" {
   type = object({
     enabled = bool
 
-    capacity_gb = optional(number)
-    protocol    = optional(string)
-    tier        = optional(string)
+
+    max_disk_usage_target         = optional(number)
+    free_space_warning_percentage = optional(number)
+    free_space_error_percentage   = optional(number)
+    notification_display_name     = optional(string)
+    capacity_gb                   = optional(number)
+    protocol                      = optional(string)
+    tier                          = optional(string)
   })
 }

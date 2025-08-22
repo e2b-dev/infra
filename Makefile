@@ -243,7 +243,7 @@ switch-env:
 import:
 	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	$(tf_vars) $(TF) import $(TARGET) $(ID)
+	$(tf_vars) $(TF) import "$(TARGET)" "$(ID)" -no-color
 
 .PHONY: setup-ssh
 setup-ssh:

@@ -359,8 +359,11 @@ module "filestore" {
 
   count = var.filestore_cache.enabled ? 1 : 0
 
-  name         = "${var.prefix}slab-cache"
-  network_name = var.network_name
-  tier         = var.filestore_cache.tier
-  capacity_gb  = var.filestore_cache.capacity_gb
+  name                         = "${var.prefix}slab-cache"
+  network_name                 = var.network_name
+  tier                         = var.filestore_cache.tier
+  capacity_gb                  = var.filestore_cache.capacity_gb
+  notification_display_name    = var.filestore_cache.notification_display_name
+  free_space_warning_threshold = var.filestore_cache.free_space_warning_percentage
+  free_space_error_threshold   = var.filestore_cache.free_space_error_percentage
 }

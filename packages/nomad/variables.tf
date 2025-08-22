@@ -308,11 +308,16 @@ variable "slab_cache_path" {
 variable "filestore_cache" {
   description = "Use Filestore as a fast local cache to speed up repeat sandbox starts"
 
+  // copied from /variables.tf
   type = object({
     enabled = bool
 
-    capacity_gb = optional(number)
-    protocol    = optional(string)
-    tier        = optional(string)
+    max_disk_usage_target         = optional(number)
+    free_space_warning_percentage = optional(number)
+    free_space_error_percentage   = optional(number)
+    notification_display_name     = optional(string)
+    capacity_gb                   = optional(number)
+    protocol                      = optional(string)
+    tier                          = optional(string)
   })
 }

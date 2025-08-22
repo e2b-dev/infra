@@ -15,3 +15,15 @@ variable "tier" {
 variable "capacity_gb" {
   type = number
 }
+
+variable "notification_display_name" {
+  type = string
+}
+
+variable "free_space_warning_threshold" {
+  type = number
+}
+
+variable "free_space_error_threshold" {
+  type = number
+}
