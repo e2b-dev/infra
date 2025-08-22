@@ -432,7 +432,7 @@ func ResumeSandbox(
 	}
 
 	logsCollectorAddress := os.Getenv("LOGS_COLLECTOR_PUBLIC_IP")
-	if logsCollectorAddress != "" && !strings.HasPrefix("http://", logsCollectorAddress) {
+	if logsCollectorAddress != "" && !strings.HasPrefix(logsCollectorAddress, "http://") {
 		logsCollectorAddress = "http://" + logsCollectorAddress
 	}
 
