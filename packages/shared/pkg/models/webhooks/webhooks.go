@@ -39,9 +39,8 @@ func IsLifecycleEvent(event string) bool {
 }
 
 type SandboxWebhooksMetaData struct {
-	WebhookID uuid.UUID               `json:"webhook_id"`
-	Events    []SandboxLifecycleEvent `json:"events"`
-	URL       string                  `json:"url"`
+	Events []SandboxLifecycleEvent `json:"events"`
+	URL    string                  `json:"url"`
 }
 
 type SandboxWebhooksPayload struct {
