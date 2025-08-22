@@ -8,9 +8,8 @@ import (
 	"sync"
 
 	"connectrpc.com/connect"
-	"github.com/rs/zerolog"
-
 	"github.com/e2b-dev/fsnotify"
+	"github.com/rs/zerolog"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
