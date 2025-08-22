@@ -122,6 +122,14 @@ func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
 	}
 }
 
+func (i *InstanceInfo) Lock() {
+	i.mu.Lock()
+}
+
+func (i *InstanceInfo) Unlock() {
+	i.mu.Unlock()
+}
+
 func (i *InstanceInfo) IsExpired() bool {
 	i.mu.RLock()
 	defer i.mu.RUnlock()

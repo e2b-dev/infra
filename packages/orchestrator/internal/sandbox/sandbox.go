@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -89,6 +90,8 @@ type Sandbox struct {
 	*Resources
 	*Metadata
 
+	mu *sync.Mutex
+
 	files   *storage.SandboxFiles
 	cleanup *Cleanup
 
@@ -99,6 +102,14 @@ type Sandbox struct {
 	Checks *Checks
 
 	APIStoredConfig *orchestrator.SandboxConfig
+}
+
+func (s *Sandbox) Lock() {
+	s.mu.Lock()
+}
+
+func (s *Sandbox) Unlock() {
+	s.mu.Unlock()
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {

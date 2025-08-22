@@ -202,6 +202,9 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
+	item.Lock()
+	defer item.Unlock()
+
 	updated := false
 
 	event := &eventData{}
