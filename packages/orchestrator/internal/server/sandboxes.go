@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -22,7 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/webhooks"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/event"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -147,71 +146,22 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", req.Sandbox.TeamId), zap.Error(err))
 	}
 
-	shouldPublish, err := s.redisPubSub.ShouldPublish(ctx, webhooks.DeriveKey(teamID))
-	zap.L().Info("~~should publish", zap.Bool("shouldPublish", shouldPublish), zap.Error(err))
-	if err != nil {
-		zap.L().Error("error checking if sandbox should publish", zap.Error(err))
-	}
-	if shouldPublish {
-		buildId := ""
-		if sbx.APIStoredConfig != nil {
-			buildId = sbx.APIStoredConfig.BuildId
-		}
-
-		teamID, err := uuid.Parse(sbx.Runtime.TeamID)
-		if err != nil {
-			sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
-		} else {
-			webhookPayload := webhooks.SandboxWebhooksPayload{
-				Timestamp:          time.Now().UTC(),
-				SandboxID:          sbx.Runtime.SandboxID,
-				SandboxExecutionID: sbx.Runtime.ExecutionID,
-				SandboxTemplateID:  sbx.Config.BaseTemplateID,
-				SandboxBuildID:     buildId,
-				SandboxTeamID:      teamID,
-				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
-				EventLabel:         string(label),
-				EventData:          "",
-			}
-			s.redisPubSub.Publish(ctx, webhookPayload)
-		}
+	buildId := ""
+	if sbx.APIStoredConfig != nil {
+		buildId = sbx.APIStoredConfig.BuildId
 	}
 
-	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(
-		featureflags.SandboxLifeCycleEventsWriteFlagName, req.Sandbox.SandboxId)
-	if flagErr != nil {
-		zap.L().Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
-	}
-	if sandboxLifeCycleEventsWriteFlag {
-		go func(label clickhouse.SandboxEventLabel) {
-			buildId := ""
-			if sbx.APIStoredConfig != nil {
-				buildId = sbx.APIStoredConfig.BuildId
-			}
-
-			teamID, err := uuid.Parse(sbx.Runtime.TeamID)
-			if err != nil {
-				sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
-				return
-			}
-
-			err = s.sandboxEventBatcher.Push(clickhouse.SandboxEvent{
-				Timestamp:          time.Now().UTC(),
-				SandboxID:          sbx.Runtime.SandboxID,
-				SandboxTemplateID:  sbx.Config.BaseTemplateID,
-				SandboxBuildID:     buildId,
-				SandboxTeamID:      teamID,
-				SandboxExecutionID: sbx.Runtime.ExecutionID,
-				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
-				EventLabel:         string(label),
-				EventData:          sql.NullString{String: "", Valid: false},
-			})
-			if err != nil {
-				sbxlogger.I(sbx).Error(
-					"error inserting sandbox lifecycle event", zap.String("event_label", string(label)), zap.Error(err))
-			}
-		}(label)
-	}
+	go s.sbxEventsService.HandleEvent(ctx, event.SandboxEvent{
+		Timestamp:          time.Now().UTC(),
+		SandboxID:          sbx.Runtime.SandboxID,
+		SandboxExecutionID: sbx.Runtime.ExecutionID,
+		SandboxTemplateID:  sbx.Config.BaseTemplateID,
+		SandboxBuildID:     buildId,
+		SandboxTeamID:      teamID,
+		EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
+		EventLabel:         string(label),
+		EventData:          "",
+	})
 
 	return &orchestrator.SandboxCreateResponse{
 		ClientId: s.info.ClientId,
@@ -244,71 +194,22 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
 	}
 
-	shouldPublish, err := s.redisPubSub.ShouldPublish(ctx, webhooks.DeriveKey(teamID))
-	zap.L().Info("~~should publish", zap.Bool("shouldPublish", shouldPublish), zap.Error(err))
-	if err != nil {
-		zap.L().Error("error checking if sandbox should publish", zap.Error(err))
-	}
-	if shouldPublish {
-		buildId := ""
-		if sbx.APIStoredConfig != nil {
-			buildId = sbx.APIStoredConfig.BuildId
-		}
-
-		teamID, err := uuid.Parse(sbx.Runtime.TeamID)
-		if err != nil {
-			sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
-		} else {
-			webhookPayload := webhooks.SandboxWebhooksPayload{
-				Timestamp:          time.Now().UTC(),
-				SandboxID:          sbx.Runtime.SandboxID,
-				SandboxExecutionID: sbx.Runtime.ExecutionID,
-				SandboxTemplateID:  sbx.Config.BaseTemplateID,
-				SandboxBuildID:     buildId,
-				SandboxTeamID:      teamID,
-				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
-				EventLabel:         string(clickhouse.SandboxEventLabelUpdate),
-				EventData:          eventData,
-			}
-			s.redisPubSub.Publish(ctx, webhookPayload)
-		}
+	buildId := ""
+	if sbx.APIStoredConfig != nil {
+		buildId = sbx.APIStoredConfig.BuildId
 	}
 
-	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(
-		featureflags.SandboxLifeCycleEventsWriteFlagName, sbx.Runtime.SandboxID)
-	if flagErr != nil {
-		zap.L().Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
-	}
-	if sandboxLifeCycleEventsWriteFlag {
-		go func(eventData string) {
-			buildId := ""
-			if sbx.APIStoredConfig != nil {
-				buildId = sbx.APIStoredConfig.BuildId
-			}
-
-			teamID, err := uuid.Parse(sbx.Runtime.TeamID)
-			if err != nil {
-				sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
-				return
-			}
-
-			err = s.sandboxEventBatcher.Push(clickhouse.SandboxEvent{
-				Timestamp:          time.Now().UTC(),
-				SandboxID:          sbx.Runtime.SandboxID,
-				SandboxTemplateID:  sbx.Config.BaseTemplateID,
-				SandboxBuildID:     buildId,
-				SandboxTeamID:      teamID,
-				SandboxExecutionID: sbx.Runtime.ExecutionID,
-				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
-				EventLabel:         string(clickhouse.SandboxEventLabelUpdate),
-				EventData:          sql.NullString{String: eventData, Valid: true},
-			})
-			if err != nil {
-				sbxlogger.I(sbx).Error(
-					"error inserting sandbox lifecycle event", zap.String("event_label", string(clickhouse.SandboxEventLabelUpdate)), zap.Error(err))
-			}
-		}(eventData)
-	}
+	go s.sbxEventsService.HandleEvent(ctx, event.SandboxEvent{
+		Timestamp:          time.Now().UTC(),
+		SandboxID:          sbx.Runtime.SandboxID,
+		SandboxExecutionID: sbx.Runtime.ExecutionID,
+		SandboxTemplateID:  sbx.Config.BaseTemplateID,
+		SandboxBuildID:     buildId,
+		SandboxTeamID:      teamID,
+		EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
+		EventLabel:         string(clickhouse.SandboxEventLabelUpdate),
+		EventData:          eventData,
+	})
 
 	return &emptypb.Empty{}, nil
 }
@@ -386,71 +287,22 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
 	}
 
-	shouldPublish, err := s.redisPubSub.ShouldPublish(ctx, webhooks.DeriveKey(teamID))
-	zap.L().Info("~~should publish", zap.Bool("shouldPublish", shouldPublish), zap.Error(err))
-	if err != nil {
-		zap.L().Error("error checking if sandbox should publish", zap.Error(err))
-	}
-	if shouldPublish {
-		buildId := ""
-		if sbx.APIStoredConfig != nil {
-			buildId = sbx.APIStoredConfig.BuildId
-		}
-
-		teamID, err := uuid.Parse(sbx.Runtime.TeamID)
-		if err != nil {
-			sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
-		} else {
-			webhookPayload := webhooks.SandboxWebhooksPayload{
-				Timestamp:          time.Now().UTC(),
-				SandboxID:          sbx.Runtime.SandboxID,
-				SandboxExecutionID: sbx.Runtime.ExecutionID,
-				SandboxTemplateID:  sbx.Config.BaseTemplateID,
-				SandboxBuildID:     buildId,
-				SandboxTeamID:      teamID,
-				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
-				EventLabel:         string(clickhouse.SandboxEventLabelKill),
-				EventData:          "",
-			}
-			s.redisPubSub.Publish(ctx, webhookPayload)
-		}
+	buildId := ""
+	if sbx.APIStoredConfig != nil {
+		buildId = sbx.APIStoredConfig.BuildId
 	}
 
-	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(
-		featureflags.SandboxLifeCycleEventsWriteFlagName, sbx.Runtime.SandboxID)
-	if flagErr != nil {
-		zap.L().Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
-	}
-	if sandboxLifeCycleEventsWriteFlag {
-		go func() {
-			buildId := ""
-			if sbx.APIStoredConfig != nil {
-				buildId = sbx.APIStoredConfig.BuildId
-			}
-
-			teamID, err := uuid.Parse(sbx.Runtime.TeamID)
-			if err != nil {
-				sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
-				return
-			}
-
-			err = s.sandboxEventBatcher.Push(clickhouse.SandboxEvent{
-				Timestamp:          time.Now().UTC(),
-				SandboxID:          sbx.Runtime.SandboxID,
-				SandboxTemplateID:  sbx.Config.BaseTemplateID,
-				SandboxBuildID:     buildId,
-				SandboxTeamID:      teamID,
-				SandboxExecutionID: sbx.Runtime.ExecutionID,
-				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
-				EventLabel:         string(clickhouse.SandboxEventLabelKill),
-				EventData:          sql.NullString{String: "", Valid: false},
-			})
-			if err != nil {
-				sbxlogger.I(sbx).Error(
-					"error inserting sandbox lifecycle event", zap.String("event_label", string(clickhouse.SandboxEventLabelKill)), zap.Error(err))
-			}
-		}()
-	}
+	go s.sbxEventsService.HandleEvent(ctx, event.SandboxEvent{
+		Timestamp:          time.Now().UTC(),
+		SandboxID:          sbx.Runtime.SandboxID,
+		SandboxExecutionID: sbx.Runtime.ExecutionID,
+		SandboxTemplateID:  sbx.Config.BaseTemplateID,
+		SandboxBuildID:     buildId,
+		SandboxTeamID:      teamID,
+		EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
+		EventLabel:         string(clickhouse.SandboxEventLabelKill),
+		EventData:          "",
+	})
 
 	return &emptypb.Empty{}, nil
 }
@@ -540,72 +392,22 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
 	}
 
-	shouldPublish, err := s.redisPubSub.ShouldPublish(ctx, webhooks.DeriveKey(teamID))
-	zap.L().Info("~~should publish", zap.Bool("shouldPublish", shouldPublish), zap.Error(err))
-	if err != nil {
-		zap.L().Error("error checking if sandbox should publish", zap.Error(err))
-	}
-	if shouldPublish {
-		buildId := ""
-		if sbx.APIStoredConfig != nil {
-			buildId = sbx.APIStoredConfig.BuildId
-		}
-
-		teamID, err := uuid.Parse(sbx.Runtime.TeamID)
-		if err != nil {
-			sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
-		} else {
-			webhookPayload := webhooks.SandboxWebhooksPayload{
-				Timestamp:          time.Now().UTC(),
-				SandboxID:          sbx.Runtime.SandboxID,
-				SandboxExecutionID: sbx.Runtime.ExecutionID,
-				SandboxTemplateID:  sbx.Config.BaseTemplateID,
-				SandboxBuildID:     buildId,
-				SandboxTeamID:      teamID,
-				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
-				EventLabel:         string(clickhouse.SandboxEventLabelPause),
-				EventData:          "",
-			}
-			s.redisPubSub.Publish(ctx, webhookPayload)
-		}
+	buildId := ""
+	if sbx.APIStoredConfig != nil {
+		buildId = sbx.APIStoredConfig.BuildId
 	}
 
-	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(
-		featureflags.SandboxLifeCycleEventsWriteFlagName, sbx.Runtime.SandboxID)
-	if flagErr != nil {
-		zap.L().Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
-	}
-
-	if sandboxLifeCycleEventsWriteFlag {
-		go func() {
-			buildId := ""
-			if sbx.APIStoredConfig != nil {
-				buildId = sbx.APIStoredConfig.BuildId
-			}
-
-			teamID, err := uuid.Parse(sbx.Runtime.TeamID)
-			if err != nil {
-				sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
-				return
-			}
-
-			err = s.sandboxEventBatcher.Push(clickhouse.SandboxEvent{
-				Timestamp:          time.Now().UTC(),
-				SandboxID:          sbx.Runtime.SandboxID,
-				SandboxTemplateID:  sbx.Config.BaseTemplateID,
-				SandboxBuildID:     buildId,
-				SandboxTeamID:      teamID,
-				SandboxExecutionID: sbx.Runtime.ExecutionID,
-				EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
-				EventLabel:         string(clickhouse.SandboxEventLabelPause),
-				EventData:          sql.NullString{String: "", Valid: false},
-			})
-			if err != nil {
-				sbxlogger.I(sbx).Error(
-					"error inserting sandbox lifecycle event", zap.String("event_label", string(clickhouse.SandboxEventLabelPause)), zap.Error(err))
-			}
-		}()
-	}
+	go s.sbxEventsService.HandleEvent(ctx, event.SandboxEvent{
+		Timestamp:          time.Now().UTC(),
+		SandboxID:          sbx.Runtime.SandboxID,
+		SandboxExecutionID: sbx.Runtime.ExecutionID,
+		SandboxTemplateID:  sbx.Config.BaseTemplateID,
+		SandboxBuildID:     buildId,
+		SandboxTeamID:      teamID,
+		EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
+		EventLabel:         string(clickhouse.SandboxEventLabelPause),
+		EventData:          "",
+	})
 
 	return &emptypb.Empty{}, nil
 }
