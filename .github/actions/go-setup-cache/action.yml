@@ -11,17 +11,12 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Set the cache path for everything that comes next
-      shell: bash
-      run: |
-        echo "GOCACHE=/home/runner/.cache/go-build" >> "$GITHUB_ENV"
-
     - name: Go Build Cache
       uses: actions/cache@v4
       id: go-build-cache
       with:
         fail-on-cache-miss: false
-        path: $GOCACHE
+        path: /home/runner/.cache/go-build
         key: ${{ runner.os }}-go-build-${{ inputs.job_key }}-${{ hashFiles('go.work', 'go.work.sum') }}
         restore-keys: |
           ${{ runner.os }}-go-build-${{ inputs.job_key }}-
