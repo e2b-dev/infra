@@ -89,6 +89,9 @@ func (ppb *PostProcessingBuilder) Layer(
 		}
 	}
 
+	// The final template is the one from the configuration
+	result.Template = ppb.Template
+
 	return phases.LayerResult{
 		Metadata: result,
 		Cached:   false,
@@ -99,7 +102,7 @@ func (ppb *PostProcessingBuilder) Layer(
 // Build runs post-processing actions in the sandbox
 func (ppb *PostProcessingBuilder) Build(
 	ctx context.Context,
-	lastStepResult phases.LayerResult,
+	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
 ) (phases.LayerResult, error) {
 	// Configure sandbox for final layer
@@ -117,17 +120,17 @@ func (ppb *PostProcessingBuilder) Build(
 
 	// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template
 	sandboxCreator := layer.NewCreateSandbox(sbxConfig, fc.FirecrackerVersions{
-		KernelVersion:      ppb.Template.KernelVersion,
-		FirecrackerVersion: ppb.Template.FirecrackerVersion,
+		KernelVersion:      currentLayer.Metadata.Template.KernelVersion,
+		FirecrackerVersion: currentLayer.Metadata.Template.FirecrackerVersion,
 	})
 
 	actionExecutor := layer.NewFunctionAction(ppb.postProcessingFn())
 
 	finalLayer, err := ppb.layerExecutor.BuildLayer(ctx, layer.LayerBuildCommand{
+		SourceTemplate: sourceLayer.Metadata.Template,
+		CurrentLayer:   currentLayer.Metadata,
 		Hash:           currentLayer.Hash,
-		SourceLayer:    lastStepResult.Metadata,
-		ExportTemplate: ppb.Template,
-		UpdateEnvd:     lastStepResult.Cached,
+		UpdateEnvd:     sourceLayer.Cached,
 		SandboxCreator: sandboxCreator,
 		ActionExecutor: actionExecutor,
 	})

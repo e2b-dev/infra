@@ -8,6 +8,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 type PhaseMeta struct {
@@ -82,6 +83,11 @@ func Run(
 			continue
 		}
 
+		err = validateLayer(currentLayer)
+		if err != nil {
+			return LayerResult{}, fmt.Errorf("validating layer: %w", err)
+		}
+
 		res, err := builder.Build(ctx, sourceLayer, currentLayer)
 		// Record phase duration
 		phaseDuration := time.Since(phaseStartTime)
@@ -95,4 +101,54 @@ func Run(
 	}
 
 	return sourceLayer, nil
+}
+
+func validateLayer(
+	layer LayerResult,
+) error {
+	if layer.Hash == "" {
+		return fmt.Errorf("layer hash is empty")
+	}
+
+	return validateMetadata(layer.Metadata)
+}
+
+func validateMetadata(
+	meta metadata.Template,
+) error {
+	err := validateTemplate(meta.Template)
+	if err != nil {
+		return err
+	}
+
+	return validateContext(meta.Context)
+}
+
+func validateTemplate(
+	files storage.TemplateFiles,
+) error {
+	if files.BuildID == "" {
+		return fmt.Errorf("template build ID is empty")
+	}
+	if files.KernelVersion == "" {
+		return fmt.Errorf("template kernel version is empty")
+	}
+	if files.FirecrackerVersion == "" {
+		return fmt.Errorf("template firecracker version is empty")
+	}
+
+	return nil
+}
+
+func validateContext(
+	context metadata.Context,
+) error {
+	if context.User == "" {
+		return fmt.Errorf("context user is empty")
+	}
+	if context.WorkDir != nil && *context.WorkDir == "" {
+		return fmt.Errorf("context working dir is empty")
+	}
+
+	return nil
 }
