@@ -48,6 +48,12 @@ func (m *MockPubSub[PayloadT, SubMetaDataT]) SetSubMetaData(ctx context.Context,
 	return nil
 }
 
+func (m *MockPubSub[PayloadT, SubMetaDataT]) DeleteSubMetaData(ctx context.Context, key string) error {
+	// Mock implementation - deletes metadata
+	delete(m.metadata, key)
+	return nil
+}
+
 func (m *MockPubSub[PayloadT, SubMetaDataT]) Close() error {
 	// Mock implementation - does nothing
 	return nil

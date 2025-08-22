@@ -63,6 +63,13 @@ func (r *RedisPubSub[PayloadT, SubMetaDataT]) Publish(ctx context.Context, paylo
 	return (*r.redisClient).Publish(ctx, r.queueName, data).Err()
 }
 
+func (r *RedisPubSub[PayloadT, SubMetaDataT]) DeleteSubMetaData(ctx context.Context, key string) error {
+	if r.redisClient == nil {
+		return fmt.Errorf("redis client is not initialized")
+	}
+	return (*r.redisClient).Del(ctx, key).Err()
+}
+
 func (r *RedisPubSub[PayloadT, SubMetaDataT]) Subscribe(ctx context.Context, pubSubQueue chan<- PayloadT) error {
 	if r.redisClient == nil {
 		return fmt.Errorf("redis client is not initialized")
