@@ -300,7 +300,7 @@ func TestPausedSandboxMetadataUpdate(t *testing.T) {
 	// Verify initial metadata exists
 	getSandboxResponse, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sandbox.SandboxID, setup.WithAPIKey())
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, getSandboxResponse.StatusCode())
+	require.Equal(t, http.StatusOK, getSandboxResponse.StatusCode())
 	require.NotNil(t, getSandboxResponse.JSON200)
 	assert.NotNil(t, getSandboxResponse.JSON200.Metadata)
 	assert.Equal(t, "test", (*getSandboxResponse.JSON200.Metadata)["sandboxType"])
@@ -310,7 +310,7 @@ func TestPausedSandboxMetadataUpdate(t *testing.T) {
 	// Pause the sandbox
 	pauseResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandbox.SandboxID, setup.WithAPIKey())
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusNoContent, pauseResponse.StatusCode())
+	require.Equal(t, http.StatusNoContent, pauseResponse.StatusCode())
 
 	// Update metadata while paused
 	updateMetadata := api.SandboxMetadata{
@@ -322,12 +322,12 @@ func TestPausedSandboxMetadataUpdate(t *testing.T) {
 
 	updateResponse, err := c.PutSandboxesSandboxIDMetadataWithResponse(t.Context(), sandbox.SandboxID, updateMetadata, setup.WithAPIKey())
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, updateResponse.StatusCode())
+	require.Equal(t, http.StatusOK, updateResponse.StatusCode())
 
 	// Verify metadata
 	pausedSandboxResponse, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sandbox.SandboxID, setup.WithAPIKey())
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, pausedSandboxResponse.StatusCode())
+	require.Equal(t, http.StatusOK, pausedSandboxResponse.StatusCode())
 	require.NotNil(t, pausedSandboxResponse.JSON200)
 	require.NotNil(t, pausedSandboxResponse.JSON200.Metadata)
 
@@ -342,12 +342,12 @@ func TestPausedSandboxMetadataUpdate(t *testing.T) {
 	resumeRequest := api.PostSandboxesSandboxIDResumeJSONRequestBody{}
 	resumeResponse, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sandbox.SandboxID, resumeRequest, setup.WithAPIKey())
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusCreated, resumeResponse.StatusCode())
+	require.Equal(t, http.StatusCreated, resumeResponse.StatusCode())
 
 	// Verify metadata after resume
 	getResumedSandboxResponse, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sandbox.SandboxID, setup.WithAPIKey())
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, getResumedSandboxResponse.StatusCode())
+	require.Equal(t, http.StatusOK, getResumedSandboxResponse.StatusCode())
 	require.NotNil(t, getResumedSandboxResponse.JSON200)
 	require.NotNil(t, getResumedSandboxResponse.JSON200.Metadata)
 

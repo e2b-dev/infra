@@ -63,7 +63,7 @@ func (a *APIStore) PutSandboxesSandboxIDMetadata(
 			logger.WithSandboxID(sandboxID),
 			zap.String("team.id", teamID.String()))
 
-		count, err := a.sqlcDB.UpdateSnapshotMetadata(ctx, queries.UpdateSnapshotMetadataParams{
+		updated, err := a.sqlcDB.UpdateSnapshotMetadata(ctx, queries.UpdateSnapshotMetadataParams{
 			SandboxID: sandboxID,
 			TeamID:    teamID,
 			Metadata:  types.JSONBStringMap(metadata),
@@ -75,7 +75,7 @@ func (a *APIStore) PutSandboxesSandboxIDMetadata(
 			return
 		}
 
-		if count == 0 {
+		if len(updated) == 0 {
 			telemetry.ReportCriticalError(ctx, "sandbox not found", nil)
 			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Sandbox '%s' not found", sandboxID))
 

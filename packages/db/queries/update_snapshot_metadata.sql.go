@@ -12,13 +12,13 @@ import (
 	"github.com/google/uuid"
 )
 
-const updateSnapshotMetadata = `-- name: UpdateSnapshotMetadata :one
+const updateSnapshotMetadata = `-- name: UpdateSnapshotMetadata :many
 UPDATE "public"."snapshots" s
 SET metadata = $3
 FROM "public"."envs" e
 WHERE s.env_id = e.id
   AND s.sandbox_id = $1
-  AND e.team_id = $2 RETURNING COUNT(*)
+  AND e.team_id = $2 RETURNING s.id
 `
 
 type UpdateSnapshotMetadataParams struct {
@@ -27,9 +27,22 @@ type UpdateSnapshotMetadataParams struct {
 	Metadata  types.JSONBStringMap
 }
 
-func (q *Queries) UpdateSnapshotMetadata(ctx context.Context, arg UpdateSnapshotMetadataParams) (int64, error) {
-	row := q.db.QueryRow(ctx, updateSnapshotMetadata, arg.SandboxID, arg.TeamID, arg.Metadata)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+func (q *Queries) UpdateSnapshotMetadata(ctx context.Context, arg UpdateSnapshotMetadataParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, updateSnapshotMetadata, arg.SandboxID, arg.TeamID, arg.Metadata)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
