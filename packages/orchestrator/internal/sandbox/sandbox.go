@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -429,13 +430,19 @@ func ResumeSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get snapfile: %w", err)
 	}
+
+	logsCollectorAddress := os.Getenv("LOGS_COLLECTOR_PUBLIC_IP")
+	if logsCollectorAddress != "" && !strings.HasPrefix("http://", logsCollectorAddress) {
+		logsCollectorAddress = "http://" + logsCollectorAddress
+	}
+
 	fcStartErr := fcHandle.Resume(
 		uffdStartCtx,
 		tracer,
 		&fc.MmdsMetadata{
 			SandboxId:            runtime.SandboxID,
 			TemplateId:           runtime.TemplateID,
-			LogsCollectorAddress: os.Getenv("LOGS_COLLECTOR_PUBLIC_IP"),
+			LogsCollectorAddress: logsCollectorAddress,
 			TraceId:              traceID,
 			TeamId:               runtime.TeamID,
 		},
