@@ -6,7 +6,7 @@ terraform {
     }
     nomad = {
       source  = "hashicorp/nomad"
-      version = "2.5.0"
+      version = "~> 2.4.0"
     }
   }
 }
@@ -42,8 +42,9 @@ data "google_secret_manager_secret_version" "launch_darkly_api_key" {
 }
 
 provider "nomad" {
-  address   = "https://nomad.${var.domain_name}"
-  secret_id = var.nomad_acl_token_secret
+  address      = "https://nomad.${var.domain_name}"
+  secret_id    = var.nomad_acl_token_secret
+  consul_token = var.consul_acl_token_secret
 }
 
 data "google_secret_manager_secret_version" "redis_url" {
