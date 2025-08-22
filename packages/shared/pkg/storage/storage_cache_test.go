@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -20,9 +21,6 @@ func TestCachedFileObjectProvider_MakeChunkFilename(t *testing.T) {
 }
 
 func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
-	t.Run("prevent unaligned reads", func(t *testing.T) {
-	})
-
 	t.Run("read from cache when the file exists", func(t *testing.T) {
 		tempDir := t.TempDir()
 
@@ -71,6 +69,9 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []byte{4, 5, 6}, buffer)
 		assert.Equal(t, 3, read)
+
+		// we write asynchronously, so let's wait until we're done
+		time.Sleep(time.Millisecond * 20)
 
 		// second read pulls from cache
 		c.inner = nil // prevent remote reads, force cache read
