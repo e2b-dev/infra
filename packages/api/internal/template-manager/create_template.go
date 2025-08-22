@@ -88,6 +88,11 @@ func (tm *TemplateManager) CreateTemplate(
 		readyCmd = *readyCommand
 	}
 
+	imageRegistry, err := convertImageRegistry(fromImageRegistry)
+	if err != nil {
+		return fmt.Errorf("failed to convert image registry: %w", err)
+	}
+
 	template := &templatemanagergrpc.TemplateConfig{
 		TemplateID:         templateID,
 		BuildID:            buildID.String(),
@@ -101,7 +106,7 @@ func (tm *TemplateManager) CreateTemplate(
 		ReadyCommand:       readyCmd,
 		Force:              force,
 		Steps:              convertTemplateSteps(steps),
-		FromImageRegistry:  convertImageRegistry(fromImageRegistry),
+		FromImageRegistry:  imageRegistry,
 	}
 
 	err = setTemplateSource(ctx, tm, teamID, template, fromImage, fromTemplate)
@@ -176,22 +181,22 @@ func convertTemplateSteps(steps *[]api.TemplateStep) []*templatemanagergrpc.Temp
 	return result
 }
 
-func convertImageRegistry(registry *api.FromImageRegistry) *templatemanagergrpc.FromImageRegistry {
+func convertImageRegistry(registry *api.FromImageRegistry) (*templatemanagergrpc.FromImageRegistry, error) {
 	if registry == nil {
-		return nil
+		return nil, nil
 	}
 
 	// The OpenAPI FromImageRegistry is a union type, so we need to check the discriminator
 	discriminator, err := registry.Discriminator()
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
 	switch discriminator {
 	case "aws":
 		awsReg, err := registry.AsAWSRegistry()
 		if err != nil {
-			return nil
+			return nil, err
 		}
 		return &templatemanagergrpc.FromImageRegistry{
 			Type: &templatemanagergrpc.FromImageRegistry_Aws{
@@ -201,11 +206,11 @@ func convertImageRegistry(registry *api.FromImageRegistry) *templatemanagergrpc.
 					AwsRegion:          awsReg.AwsRegion,
 				},
 			},
-		}
+		}, nil
 	case "gcp":
 		gcpReg, err := registry.AsGCPRegistry()
 		if err != nil {
-			return nil
+			return nil, err
 		}
 		return &templatemanagergrpc.FromImageRegistry{
 			Type: &templatemanagergrpc.FromImageRegistry_Gcp{
@@ -213,11 +218,11 @@ func convertImageRegistry(registry *api.FromImageRegistry) *templatemanagergrpc.
 					ServiceAccountJson: gcpReg.ServiceAccountJson,
 				},
 			},
-		}
+		}, nil
 	case "registry":
 		generalReg, err := registry.AsGeneralRegistry()
 		if err != nil {
-			return nil
+			return nil, err
 		}
 		return &templatemanagergrpc.FromImageRegistry{
 			Type: &templatemanagergrpc.FromImageRegistry_General{
@@ -226,9 +231,9 @@ func convertImageRegistry(registry *api.FromImageRegistry) *templatemanagergrpc.
 					Password: generalReg.Password,
 				},
 			},
-		}
+		}, nil
 	default:
-		return nil
+		return nil, fmt.Errorf("unknown registry type: %s", discriminator)
 	}
 }
 
