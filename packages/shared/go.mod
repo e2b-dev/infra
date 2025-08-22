@@ -301,6 +301,7 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
+	k8s.io/client-go v1.5.2 // indirect
 )
 
 // https://github.com/grafana/loki/issues/2826

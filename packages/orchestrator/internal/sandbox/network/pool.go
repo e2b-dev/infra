@@ -18,7 +18,7 @@ const (
 )
 
 type Pool struct {
-	ctx    context.Context
+	ctx    context.Context // nolint:containedctx // todo: refactor so this can be removed
 	cancel context.CancelFunc
 
 	newSlots          chan *Slot

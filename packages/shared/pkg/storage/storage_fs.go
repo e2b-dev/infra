@@ -20,7 +20,7 @@ var _ StorageProvider = (*FileSystemStorageProvider)(nil)
 
 type FileSystemStorageObjectProvider struct {
 	path string
-	ctx  context.Context
+	ctx  context.Context // nolint:containedctx // todo: fix the interface so this can be removed
 }
 
 var _ StorageObjectProvider = (*FileSystemStorageObjectProvider)(nil)
