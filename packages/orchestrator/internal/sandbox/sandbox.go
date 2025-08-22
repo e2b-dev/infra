@@ -90,7 +90,7 @@ type Sandbox struct {
 	*Resources
 	*Metadata
 
-	Mu sync.Mutex
+	sync.RWMutex
 
 	files   *storage.SandboxFiles
 	cleanup *Cleanup
