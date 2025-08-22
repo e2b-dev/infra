@@ -2,6 +2,7 @@ package phases
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -105,50 +106,48 @@ func Run(
 
 func validateLayer(
 	layer LayerResult,
-) error {
+) (err error) {
 	if layer.Hash == "" {
-		return fmt.Errorf("layer hash is empty")
+		err = errors.Join(err, fmt.Errorf("layer hash is empty"))
 	}
 
-	return validateMetadata(layer.Metadata)
+	return errors.Join(err, validateMetadata(layer.Metadata))
 }
 
 func validateMetadata(
 	meta metadata.Template,
-) error {
-	err := validateTemplate(meta.Template)
-	if err != nil {
-		return err
-	}
-
-	return validateContext(meta.Context)
+) (err error) {
+	return errors.Join(
+		validateTemplate(meta.Template),
+		validateContext(meta.Context),
+	)
 }
 
 func validateTemplate(
 	files storage.TemplateFiles,
-) error {
+) (err error) {
 	if files.BuildID == "" {
-		return fmt.Errorf("template build ID is empty")
+		err = errors.Join(err, fmt.Errorf("template build ID is empty"))
 	}
 	if files.KernelVersion == "" {
-		return fmt.Errorf("template kernel version is empty")
+		err = errors.Join(err, fmt.Errorf("template kernel version is empty"))
 	}
 	if files.FirecrackerVersion == "" {
-		return fmt.Errorf("template firecracker version is empty")
+		err = errors.Join(err, fmt.Errorf("template firecracker version is empty"))
 	}
 
-	return nil
+	return err
 }
 
 func validateContext(
 	context metadata.Context,
-) error {
+) (err error) {
 	if context.User == "" {
-		return fmt.Errorf("context user is empty")
+		err = errors.Join(err, fmt.Errorf("context user is empty"))
 	}
 	if context.WorkDir != nil && *context.WorkDir == "" {
-		return fmt.Errorf("context working dir is empty")
+		err = errors.Join(err, fmt.Errorf("context working dir is empty"))
 	}
 
-	return nil
+	return err
 }
