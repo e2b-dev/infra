@@ -126,7 +126,7 @@ func (ppb *PostProcessingBuilder) Build(
 	finalLayer, err := ppb.layerExecutor.BuildLayer(ctx, layer.LayerBuildCommand{
 		Hash:           currentLayer.Hash,
 		SourceLayer:    lastStepResult.Metadata,
-		ExportTemplate: ppb.Template,
+		ExportTemplate: currentLayer.Metadata.Template,
 		UpdateEnvd:     lastStepResult.Cached,
 		SandboxCreator: sandboxCreator,
 		ActionExecutor: actionExecutor,
