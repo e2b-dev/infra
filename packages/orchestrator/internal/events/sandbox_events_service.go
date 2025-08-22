@@ -75,7 +75,6 @@ func (es *SandboxEventsService) handlePubSubEvent(ctx context.Context, event eve
 			es.logger.Error("error publishing sandbox event", zap.Error(err))
 		}
 	}
-
 }
 
 func (es *SandboxEventsService) Close(ctx context.Context) error {
@@ -90,8 +89,8 @@ func (es *SandboxEventsService) Close(ctx context.Context) error {
 
 	return errors.Join(errs...)
 }
-func (es *SandboxEventsService) handleClickhouseBatcherEvent(event event.SandboxEvent) {
 
+func (es *SandboxEventsService) handleClickhouseBatcherEvent(event event.SandboxEvent) {
 	sandboxLifeCycleEventsWriteFlag, flagErr := es.featureFlags.BoolFlag(
 		featureflags.SandboxLifeCycleEventsWriteFlagName, event.SandboxID)
 	if flagErr != nil {
@@ -109,7 +108,6 @@ func (es *SandboxEventsService) handleClickhouseBatcherEvent(event event.Sandbox
 			EventLabel:         event.EventLabel,
 			EventData:          sql.NullString{String: event.EventData, Valid: event.EventData != ""},
 		})
-
 		if err != nil {
 			es.logger.Error("error inserting sandbox event",
 				zap.String("event_label", event.EventLabel),
