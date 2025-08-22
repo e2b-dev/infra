@@ -292,15 +292,15 @@ func run(port, proxyPort uint) (success bool) {
 			maxDelay = time.Duration(val) * time.Millisecond
 		}
 
-		queueSize := 1000
+		bactherQueueSize := 1000
 		if val, err := featureFlags.IntFlag(featureflags.ClickhouseBatcherQueueSize, "clickhouse-batcher"); err == nil {
-			queueSize = val
+			bactherQueueSize = val
 		}
 
 		sandboxEventsClickhouseBatcher, err = batcher.NewSandboxEventInsertsBatcher(clickhouseConn, batcher.BatcherOptions{
 			MaxBatchSize: maxBatchSize,
 			MaxDelay:     maxDelay,
-			QueueSize:    queueSize,
+			QueueSize:    bactherQueueSize,
 			ErrorHandler: func(err error) {
 				zap.L().Error("error batching sandbox events", zap.Error(err))
 			},

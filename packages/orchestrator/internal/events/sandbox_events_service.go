@@ -59,20 +59,27 @@ func (es *SandboxEventsService) HandleEvent(ctx context.Context, event event.San
 }
 
 func (es *SandboxEventsService) handlePubSubEvent(ctx context.Context, event event.SandboxEvent) {
-	shouldPublish, err := es.pubsub.ShouldPublish(ctx, webhooks.DeriveKey(event.SandboxTeamID))
-	if err != nil {
-		es.logger.Error("error checking if sandbox should publish", zap.Error(err))
+	sandboxEventsPublishFlag, flagErr := es.featureFlags.BoolFlag(
+		featureflags.SandboxEventsPublishFlagName, event.SandboxID)
+	if flagErr != nil {
+		es.logger.Error("soft failing during sandbox events publish feature flag receive", zap.Error(flagErr))
 	}
-
-	if shouldPublish {
-		es.logger.Debug("PubSub should publish for sandbox event lifecycle",
-			zap.String("sandbox_id", event.SandboxID),
-			zap.String("team_id", event.SandboxTeamID.String()),
-		)
-
-		err = es.pubsub.Publish(ctx, event)
+	if sandboxEventsPublishFlag {
+		shouldPublish, err := es.pubsub.ShouldPublish(ctx, webhooks.DeriveKey(event.SandboxTeamID))
 		if err != nil {
-			es.logger.Error("error publishing sandbox event", zap.Error(err))
+			es.logger.Error("error checking if sandbox should publish", zap.Error(err))
+		}
+
+		if shouldPublish {
+			es.logger.Debug("PubSub should publish for sandbox event lifecycle",
+				zap.String("sandbox_id", event.SandboxID),
+				zap.String("team_id", event.SandboxTeamID.String()),
+			)
+
+			err = es.pubsub.Publish(ctx, event)
+			if err != nil {
+				es.logger.Error("error publishing sandbox event", zap.Error(err))
+			}
 		}
 	}
 }

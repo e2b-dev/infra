@@ -12,6 +12,7 @@ const (
 	MetricsWriteFlagName                BoolFlag = "sandbox-metrics-write"
 	MetricsReadFlagName                 BoolFlag = "sandbox-metrics-read"
 	SandboxLifeCycleEventsWriteFlagName BoolFlag = "sandbox-lifecycle-events-write"
+	SandboxEventsPublishFlagName        BoolFlag = "sandbox-events-publish"
 )
 
 type IntFlag string
@@ -28,12 +29,15 @@ const (
 	ClickhouseBatcherMaxDelay IntFlag = "clickhouse-batcher-max-delay"
 	// ClickhouseQueueSize - size of the channel buffer used to queue incoming sandbox events
 	ClickhouseBatcherQueueSize IntFlag = "clickhouse-batcher-queue-size"
+	// PubsubQueueChannelSize - size of the channel buffer used to queue incoming sandbox events
+	PubsubQueueChannelSize IntFlag = "pubsub-queue-channel-size"
 )
 
 var flagsBool = map[BoolFlag]bool{
 	MetricsWriteFlagName:                env.IsDevelopment(),
 	MetricsReadFlagName:                 env.IsDevelopment(),
 	SandboxLifeCycleEventsWriteFlagName: env.IsDevelopment(),
+	SandboxEventsPublishFlagName:        env.IsDevelopment(),
 }
 
 var flagsInt = map[IntFlag]int{
@@ -42,4 +46,5 @@ var flagsInt = map[IntFlag]int{
 	ClickhouseBatcherMaxBatchSize: 64 * 1024, // 65536
 	ClickhouseBatcherMaxDelay:     100,       // 100ms in milliseconds
 	ClickhouseBatcherQueueSize:    8 * 1024,  // 8192
+	PubsubQueueChannelSize:        8 * 1024,  // 8192
 }
