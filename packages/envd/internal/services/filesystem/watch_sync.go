@@ -8,8 +8,9 @@ import (
 	"sync"
 
 	"connectrpc.com/connect"
-	"github.com/e2b-dev/fsnotify"
 	"github.com/rs/zerolog"
+
+	"github.com/e2b-dev/fsnotify"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
@@ -21,7 +22,7 @@ import (
 type FileWatcher struct {
 	watcher *fsnotify.Watcher
 	Events  []*rpc.FilesystemEvent
-	done    func()
+	cancel  func()
 	Error   error
 
 	Lock sync.Mutex
@@ -43,7 +44,7 @@ func CreateFileWatcher(ctx context.Context, watchPath string, recursive bool, op
 	}
 	fw := &FileWatcher{
 		watcher: w,
-		done:    cancel,
+		cancel:  cancel,
 		Events:  []*rpc.FilesystemEvent{},
 		Error:   nil,
 	}
@@ -131,7 +132,7 @@ func CreateFileWatcher(ctx context.Context, watchPath string, recursive bool, op
 
 func (fw *FileWatcher) Close() {
 	_ = fw.watcher.Close()
-	fw.done()
+	fw.cancel()
 }
 
 func (s Service) CreateWatcher(ctx context.Context, req *connect.Request[rpc.CreateWatcherRequest]) (*connect.Response[rpc.CreateWatcherResponse], error) {
