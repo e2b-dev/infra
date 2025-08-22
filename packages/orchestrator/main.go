@@ -324,7 +324,7 @@ func run(port, proxyPort uint) (success bool) {
 			MinIdleConns: 1,
 		})
 	} else {
-		zap.L().Warn("REDIS_URL not set, using local caches")
+		zap.L().Warn("REDIS_URL not set, using no-op pubsub")
 	}
 
 	if redisClient != nil {
@@ -336,7 +336,12 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Info("Connected to Redis cluster")
 	}
 
-	redisPubSub := pubsub.NewRedisPubSub[*webhooks.SandboxWebhooksPayload, *webhooks.SandboxWebhooksMetaData](&redisClient, "sandbox-webhooks")
+	var redisPubSub pubsub.PubSub[webhooks.SandboxWebhooksPayload, webhooks.SandboxWebhooksMetaData]
+	if redisClient != nil {
+		redisPubSub = pubsub.NewRedisPubSub[webhooks.SandboxWebhooksPayload, webhooks.SandboxWebhooksMetaData](&redisClient, "sandbox-webhooks")
+	} else {
+		redisPubSub = pubsub.NewMockPubSub[webhooks.SandboxWebhooksPayload, webhooks.SandboxWebhooksMetaData]()
+	}
 
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, serviceInfo.SourceCommit, serviceInfo.ClientId, sandboxes)
 	if err != nil {

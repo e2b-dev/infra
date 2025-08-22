@@ -146,6 +146,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}
 
 	shouldPublish, err := s.redisPubSub.ShouldPublish(ctx, webhooks.DeriveKey(teamID))
+	zap.L().Info("~~should publish", zap.Bool("shouldPublish", shouldPublish), zap.Error(err))
 	if err != nil {
 		zap.L().Error("error checking if sandbox should publish", zap.Error(err))
 	}
@@ -159,7 +160,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		if err != nil {
 			sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
 		} else {
-			webhookPayload := &webhooks.SandboxWebhooksPayload{
+			webhookPayload := webhooks.SandboxWebhooksPayload{
 				Timestamp:          time.Now().UTC(),
 				SandboxID:          sbx.Runtime.SandboxID,
 				SandboxExecutionID: sbx.Runtime.ExecutionID,
@@ -242,6 +243,7 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	}
 
 	shouldPublish, err := s.redisPubSub.ShouldPublish(ctx, webhooks.DeriveKey(teamID))
+	zap.L().Info("~~should publish", zap.Bool("shouldPublish", shouldPublish), zap.Error(err))
 	if err != nil {
 		zap.L().Error("error checking if sandbox should publish", zap.Error(err))
 	}
@@ -255,7 +257,7 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		if err != nil {
 			sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
 		} else {
-			webhookPayload := &webhooks.SandboxWebhooksPayload{
+			webhookPayload := webhooks.SandboxWebhooksPayload{
 				Timestamp:          time.Now().UTC(),
 				SandboxID:          sbx.Runtime.SandboxID,
 				SandboxExecutionID: sbx.Runtime.ExecutionID,
@@ -383,6 +385,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	}
 
 	shouldPublish, err := s.redisPubSub.ShouldPublish(ctx, webhooks.DeriveKey(teamID))
+	zap.L().Info("~~should publish", zap.Bool("shouldPublish", shouldPublish), zap.Error(err))
 	if err != nil {
 		zap.L().Error("error checking if sandbox should publish", zap.Error(err))
 	}
@@ -396,7 +399,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		if err != nil {
 			sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
 		} else {
-			webhookPayload := &webhooks.SandboxWebhooksPayload{
+			webhookPayload := webhooks.SandboxWebhooksPayload{
 				Timestamp:          time.Now().UTC(),
 				SandboxID:          sbx.Runtime.SandboxID,
 				SandboxExecutionID: sbx.Runtime.ExecutionID,
@@ -535,6 +538,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}
 
 	shouldPublish, err := s.redisPubSub.ShouldPublish(ctx, webhooks.DeriveKey(teamID))
+	zap.L().Info("~~should publish", zap.Bool("shouldPublish", shouldPublish), zap.Error(err))
 	if err != nil {
 		zap.L().Error("error checking if sandbox should publish", zap.Error(err))
 	}
@@ -548,7 +552,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		if err != nil {
 			sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
 		} else {
-			webhookPayload := &webhooks.SandboxWebhooksPayload{
+			webhookPayload := webhooks.SandboxWebhooksPayload{
 				Timestamp:          time.Now().UTC(),
 				SandboxID:          sbx.Runtime.SandboxID,
 				SandboxExecutionID: sbx.Runtime.ExecutionID,
