@@ -44,7 +44,7 @@ func (a *APIStore) PutSandboxesSandboxIDMetadata(
 		// Verify the sandbox belongs to the team
 		if sbx.TeamID != teamID {
 			telemetry.ReportCriticalError(ctx, fmt.Sprintf("sandbox '%s' doesn't belong to team '%s'", sandboxID, teamID.String()), nil)
-			a.sendAPIStoreError(c, http.StatusUnauthorized, fmt.Sprintf("Error updating sandbox - sandbox '%s' does not belong to your team '%s'", sandboxID, teamID.String()))
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Sandbox '%s' not found", sandboxID))
 
 			return
 		}
