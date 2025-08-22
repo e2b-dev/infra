@@ -12,5 +12,5 @@ type PubSub[PayloadT, SubMetaDataT any] interface {
 	GetSubMetaData(ctx context.Context, key string) (SubMetaDataT, error)
 	SetSubMetaData(ctx context.Context, key string, metaData SubMetaDataT) error
 	DeleteSubMetaData(ctx context.Context, key string) error
-	Close() error
+	Close(ctx context.Context) error
 }

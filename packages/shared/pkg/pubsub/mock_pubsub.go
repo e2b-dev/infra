@@ -54,7 +54,7 @@ func (m *MockPubSub[PayloadT, SubMetaDataT]) DeleteSubMetaData(ctx context.Conte
 	return nil
 }
 
-func (m *MockPubSub[PayloadT, SubMetaDataT]) Close() error {
+func (m *MockPubSub[PayloadT, SubMetaDataT]) Close(ctx context.Context) error {
 	// Mock implementation - does nothing
 	return nil
 }
