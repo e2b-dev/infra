@@ -1,11 +1,16 @@
 package webhooks
 
 import (
+	"fmt"
 	"slices"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+func DeriveKey(teamID uuid.UUID) string {
+	return fmt.Sprintf("wh:%s", teamID.String())
+}
 
 type SandboxLifecycleEvent string
 
