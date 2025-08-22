@@ -77,7 +77,6 @@ func NewInstanceInfo(
 		AutoPause:           atomic.Bool{},
 		Pausing:             utils.NewSetOnce[string](),
 		BaseTemplateID:      BaseTemplateID,
-		mu:                  sync.RWMutex{},
 	}
 
 	instance.AutoPause.Store(AutoPause)
@@ -111,7 +110,7 @@ type InstanceInfo struct {
 	ClusterID           uuid.UUID
 	AutoPause           atomic.Bool
 	Pausing             *utils.SetOnce[string]
-	mu                  sync.RWMutex
+	sync.RWMutex
 }
 
 func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -122,31 +121,23 @@ func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
 	}
 }
 
-func (i *InstanceInfo) Lock() {
-	i.mu.Lock()
-}
-
-func (i *InstanceInfo) Unlock() {
-	i.mu.Unlock()
-}
-
 func (i *InstanceInfo) IsExpired() bool {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
+	i.RLock()
+	defer i.RUnlock()
 
 	return time.Now().After(i.endTime)
 }
 
 func (i *InstanceInfo) GetEndTime() time.Time {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
+	i.RLock()
+	defer i.RUnlock()
 
 	return i.endTime
 }
 
 func (i *InstanceInfo) SetEndTime(endTime time.Time) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
+	i.Lock()
+	defer i.Unlock()
 
 	i.endTime = endTime
 }
