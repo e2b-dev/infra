@@ -51,6 +51,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}
 
 	template, err := s.templateCache.GetTemplate(
+		childCtx,
 		req.Sandbox.BuildId,
 		req.Sandbox.KernelVersion,
 		req.Sandbox.FirecrackerVersion,
@@ -430,6 +431,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}
 
 	err = s.templateCache.AddSnapshot(
+		ctx,
 		meta.Template.BuildID,
 		meta.Template.KernelVersion,
 		meta.Template.FirecrackerVersion,

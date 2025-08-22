@@ -130,14 +130,14 @@ func run() int {
 	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
 		redisClient := redis.NewClusterClient(&redis.ClusterOptions{Addrs: []string{redisClusterUrl}, MinIdleConns: 1})
 		redisSync := redsync.New(goredis.NewPool(redisClient))
-		catalog = sandboxes.NewRedisSandboxesCatalog(ctx, tracer, redisClient, redisSync)
+		catalog = sandboxes.NewRedisSandboxesCatalog(tracer, redisClient, redisSync)
 	} else if redisUrl := os.Getenv("REDIS_URL"); redisUrl != "" {
 		redisClient := redis.NewClient(&redis.Options{Addr: redisUrl, MinIdleConns: 1})
 		redisSync := redsync.New(goredis.NewPool(redisClient))
-		catalog = sandboxes.NewRedisSandboxesCatalog(ctx, tracer, redisClient, redisSync)
+		catalog = sandboxes.NewRedisSandboxesCatalog(tracer, redisClient, redisSync)
 	} else {
 		logger.Warn("Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
-		catalog = sandboxes.NewMemorySandboxesCatalog(ctx, tracer)
+		catalog = sandboxes.NewMemorySandboxesCatalog(tracer)
 	}
 
 	orchestrators := e2borchestrators.NewOrchestratorsPool(logger, tracer, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
@@ -194,7 +194,7 @@ func run() int {
 
 	// Edge Pass Through Proxy for direct communication with orchestrator nodes
 	grpcListener := muxServer.MatchWithWriters(cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc")) // handler requests for gRPC pass through
-	grpcSrv := edgepassthrough.NewNodePassThroughServer(ctx, orchestrators, info, authorizationManager, catalog)
+	grpcSrv := edgepassthrough.NewNodePassThroughServer(orchestrators, info, authorizationManager, catalog)
 
 	// Edge REST API
 	restHttpHandler := edge.NewGinServer(logger, edgeApiStore, edgeApiSwagger, tracer, authorizationManager)

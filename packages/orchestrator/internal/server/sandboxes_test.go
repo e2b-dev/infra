@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"reflect"
 	"testing"
 	"time"
@@ -24,7 +23,6 @@ var (
 
 func Test_server_List(t *testing.T) {
 	type args struct {
-		ctx context.Context
 		in1 *emptypb.Empty
 	}
 	tests := []struct {
@@ -38,7 +36,6 @@ func Test_server_List(t *testing.T) {
 			name: "should return all sandboxes",
 
 			args: args{
-				ctx: context.Background(),
 				in1: &emptypb.Empty{},
 			},
 			data: []*sandbox.Sandbox{
@@ -79,7 +76,7 @@ func Test_server_List(t *testing.T) {
 			for _, sbx := range tt.data {
 				s.sandboxes.Insert(sbx.Runtime.SandboxID, sbx)
 			}
-			got, err := s.List(tt.args.ctx, tt.args.in1)
+			got, err := s.List(t.Context(), tt.args.in1)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("server.List() error = %v, wantErr %v", err, tt.wantErr)
 				return
