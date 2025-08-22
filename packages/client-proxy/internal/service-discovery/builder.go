@@ -105,6 +105,7 @@ func createK8sProvider(ctx context.Context, prefix string, port int, logger *zap
 		return nil, fmt.Errorf("missing %s environment variable", podLabelsEnv)
 	}
 
+	// Allow to optionally switch and use HostIP as service discovery entry
 	hostIP := false
 	hostIPEnv := fmt.Sprintf("%s_HOST_IP", prefix)
 	if os.Getenv(hostIPEnv) == "true" {

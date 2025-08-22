@@ -89,6 +89,8 @@ func (sd *K8sServiceDiscovery) sync(ctx context.Context) {
 	foundPods := make(map[string]string)
 	for _, pod := range list.Items {
 		ip := pod.Status.PodIP
+
+		// Allow to optionally switch and use HostIP as service discovery entry
 		if sd.hostIP {
 			ip = pod.Status.HostIP
 		}
