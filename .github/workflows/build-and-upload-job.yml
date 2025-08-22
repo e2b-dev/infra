@@ -4,19 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       commit_sha:
-        description: 'Specific commit SHA to checkout'
+        description: "Specific commit SHA to checkout"
         required: true
         type: string
       tracking_id:
-        description: 'Unique tracking ID used for identifying the workflow run'
+        description: "Unique tracking ID used for identifying the workflow run"
         required: false
         type: string
       environment:
-        description: 'Target environment for deployment, e.g. staging'
+        description: "Target environment for deployment, e.g. staging"
         required: true
         type: string
       job_names:
-        description: 'Name of the jobs to build-and-upload, e.g. api, template-manager, separated by ;'
+        description: "Name of the jobs to build-and-upload, e.g. api, template-manager, separated by ;"
         required: true
         type: string
 
