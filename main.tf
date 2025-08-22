@@ -275,9 +275,3 @@ module "redis" {
 
   depends_on = [module.api]
 }
-
-
-import {
-  id = "e2b-staging-joe/memory-cache-disk-usage-low"
-  to = module.cluster.module.filestore[0].google_monitoring_alert_policy.warning
-}
