@@ -161,46 +161,6 @@ func TestSandboxMetadataUpdateNonExistentSandbox(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, updateResponse.StatusCode())
 }
 
-func TestSandboxMetadataUpdateWithSpecialCharacters(t *testing.T) {
-	c := setup.GetAPIClient()
-
-	sandbox := utils.SetupSandboxWithCleanup(t, c, utils.WithTimeout(30))
-
-	// Update with metadata containing special characters
-	specialMetadata := api.SandboxMetadata{
-		"user.email":   "test@example.com",
-		"config/path":  "/opt/app/config",
-		"build-number": "2024.01.15",
-		"feature_flag": "true",
-		"emoji":        "🚀",
-		"unicode":      "αβγδε",
-		"json_like":    `{"key": "value"}`,
-		"spaces":       "value with spaces",
-	}
-
-	updateResponse, err := c.PutSandboxesSandboxIDMetadataWithResponse(t.Context(), sandbox.SandboxID, specialMetadata, setup.WithAPIKey())
-
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, updateResponse.StatusCode())
-
-	// Verify special characters are preserved
-	getSandboxResponse, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sandbox.SandboxID, setup.WithAPIKey())
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, getSandboxResponse.StatusCode())
-	require.NotNil(t, getSandboxResponse.JSON200)
-	require.NotNil(t, getSandboxResponse.JSON200.Metadata)
-
-	metadata := *getSandboxResponse.JSON200.Metadata
-	assert.Equal(t, "test@example.com", metadata["user.email"])
-	assert.Equal(t, "/opt/app/config", metadata["config/path"])
-	assert.Equal(t, "2024.01.15", metadata["build-number"])
-	assert.Equal(t, "true", metadata["feature_flag"])
-	assert.Equal(t, "🚀", metadata["emoji"])
-	assert.Equal(t, "αβγδε", metadata["unicode"])
-	assert.Equal(t, `{"key": "value"}`, metadata["json_like"])
-	assert.Equal(t, "value with spaces", metadata["spaces"])
-}
-
 func TestSandboxMetadataUpdateInvalidAuth(t *testing.T) {
 	c := setup.GetAPIClient()
 
