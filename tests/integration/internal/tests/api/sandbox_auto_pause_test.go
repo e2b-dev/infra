@@ -16,7 +16,7 @@ import (
 func TestSandboxAutoPausePauseResume(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
+	sbx := utils.SetupSandboxWithCleanup(t.Context(), t, c, utils.WithAutoPause(true))
 	sbxId := sbx.SandboxID
 
 	// Pause the sandbox
@@ -54,7 +54,7 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create a sandbox with auto-pause disabled
-	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
+	sbx := utils.SetupSandboxWithCleanup(t.Context(), t, c, utils.WithAutoPause(true))
 	sbxId := sbx.SandboxID
 
 	// Set timeout to 0 to force sandbox to be stopped
@@ -100,7 +100,7 @@ func TestSandboxNotAutoPause(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create a sandbox with auto-pause disabled
-	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+	sbx := utils.SetupSandboxWithCleanup(t.Context(), t, c, utils.WithAutoPause(false))
 	sbxId := sbx.SandboxID
 
 	// Set timeout to 0 to force sandbox to be stopped

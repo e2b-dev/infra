@@ -83,7 +83,7 @@ func SetupSandboxWithCleanup(ctx context.Context, t *testing.T, c *api.ClientWit
 func TeardownSandbox(ctx context.Context, t *testing.T, c *api.ClientWithResponses, sandboxID string) {
 	t.Helper()
 
-	ctx := context.WithoutCancel(ctx)
+	ctx = context.WithoutCancel(ctx)
 
 	killSandboxResponse, err := c.DeleteSandboxesSandboxIDWithResponse(ctx, sandboxID, setup.WithAPIKey())
 	require.NoError(t, err)

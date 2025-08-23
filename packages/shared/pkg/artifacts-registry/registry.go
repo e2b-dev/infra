@@ -31,10 +31,10 @@ type ArtifactsRegistry interface {
 	Delete(ctx context.Context, templateId string, buildId string) error
 }
 
-func GetArtifactsRegistryProvider() (ArtifactsRegistry, error) {
+func GetArtifactsRegistryProvider(ctx context.Context) (ArtifactsRegistry, error) {
 	provider := RegistryProvider(env.GetEnv(storageProviderEnv, string(DefaultRegistryProvider)))
 
-	setupCtx, setupCtxCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	setupCtx, setupCtxCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer setupCtxCancel()
 
 	switch provider {

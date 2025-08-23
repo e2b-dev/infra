@@ -17,8 +17,8 @@ func TestTeamMetrics(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create multiple sandboxes to generate team metrics
-	utils.SetupSandboxWithCleanup(t, c)
-	utils.SetupSandboxWithCleanup(t, c)
+	utils.SetupSandboxWithCleanup(t.Context(), t, c)
+	utils.SetupSandboxWithCleanup(t.Context(), t, c)
 	var metrics []api.TeamMetric
 
 	maxDuration := 15 * time.Second
@@ -63,7 +63,7 @@ func TestTeamMetricsWithTimeRange(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create a sandbox to generate metrics
-	utils.SetupSandboxWithCleanup(t, c)
+	utils.SetupSandboxWithCleanup(t.Context(), t, c)
 
 	// Test with custom time range (last hour)
 	now := time.Now()

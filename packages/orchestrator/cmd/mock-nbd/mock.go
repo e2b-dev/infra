@@ -149,9 +149,11 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool
 	mnt = nbd.NewDirectPathMount(tracer, device, devicePool)
 
 	go func() {
-		<-ctx.Done()
+		parentCtx := ctx
+		ctx = context.WithoutCancel(parentCtx)
+		<-parentCtx.Done()
 
-		mnt.Close(context.TODO())
+		mnt.Close(ctx)
 	}()
 
 	_, err = mnt.Open(ctx)

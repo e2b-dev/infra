@@ -65,7 +65,7 @@ func (s *Synchronize[SourceItem, PoolItem]) Start(ctx context.Context, syncInter
 			zap.L().Info(s.getLog("Background synchronization ended"))
 			return
 		case <-timer.C:
-			syncTimeout, syncCancel := context.WithTimeout(context.Background(), syncRoundTimeout)
+			syncTimeout, syncCancel := context.WithTimeout(ctx, syncRoundTimeout)
 			err := s.sync(syncTimeout)
 			syncCancel()
 			if err != nil {

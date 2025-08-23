@@ -499,7 +499,7 @@ func ResumeSandbox(
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
 
-	go sbx.Checks.Start()
+	go sbx.Checks.Start(context.WithoutCancel(ctx))
 
 	return sbx, nil
 }
