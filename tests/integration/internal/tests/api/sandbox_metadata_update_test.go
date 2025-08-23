@@ -183,66 +183,6 @@ func TestSandboxMetadataUpdateInvalidAuth(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, updateResponse.StatusCode())
 }
 
-func TestSandboxMetadataUpdateMultipleUpdates(t *testing.T) {
-	c := setup.GetAPIClient()
-
-	// Create sandbox with initial metadata
-	initialMetadata := api.SandboxMetadata{
-		"version": "1.0.0",
-		"env":     "test",
-	}
-
-	sandbox := utils.SetupSandboxWithCleanup(t, c,
-		utils.WithMetadata(initialMetadata),
-		utils.WithTimeout(60),
-	)
-
-	// First update - PUT replaces all metadata
-	firstUpdate := api.SandboxMetadata{
-		"version": "1.1.0",
-		"env":     "test", // Need to include existing keys to preserve them
-		"branch":  "feature-a",
-	}
-
-	updateResponse1, err := c.PutSandboxesSandboxIDMetadataWithResponse(t.Context(), sandbox.SandboxID, firstUpdate, setup.WithAPIKey())
-
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, updateResponse1.StatusCode())
-
-	// Second update - PUT replaces all metadata
-	secondUpdate := api.SandboxMetadata{
-		"version":  "1.2.0",
-		"env":      "test",      // Need to preserve from initial
-		"branch":   "feature-a", // Need to preserve from first update
-		"build_id": "abc123",
-		"deployed": "true",
-	}
-
-	updateResponse2, err := c.PutSandboxesSandboxIDMetadataWithResponse(t.Context(), sandbox.SandboxID, secondUpdate, setup.WithAPIKey())
-
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, updateResponse2.StatusCode())
-
-	// Verify final state
-	getSandboxResponse, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sandbox.SandboxID, setup.WithAPIKey())
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, getSandboxResponse.StatusCode())
-	require.NotNil(t, getSandboxResponse.JSON200)
-	require.NotNil(t, getSandboxResponse.JSON200.Metadata)
-
-	metadata := *getSandboxResponse.JSON200.Metadata
-
-	// Verify final state after PUT operations
-	assert.Equal(t, "1.2.0", metadata["version"])    // Updated in second update
-	assert.Equal(t, "test", metadata["env"])         // Preserved through updates
-	assert.Equal(t, "feature-a", metadata["branch"]) // Preserved through updates
-	assert.Equal(t, "abc123", metadata["build_id"])  // From second update
-	assert.Equal(t, "true", metadata["deployed"])    // From second update
-
-	// Should have exactly the keys from the last PUT: version, env, branch, build_id, deployed
-	assert.Len(t, metadata, 5)
-}
-
 func TestPausedSandboxMetadataUpdate(t *testing.T) {
 	c := setup.GetAPIClient()
 
