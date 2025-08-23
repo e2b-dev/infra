@@ -110,8 +110,6 @@ func TestSandboxMetadataUpdateEmpty(t *testing.T) {
 	}
 }
 
-// TestSandboxMetadataUpdateNil is removed as PUT requires a body
-// and the concept of nil metadata doesn't apply to PUT operations
 func TestSandboxMetadataUpdateCheckEndTime(t *testing.T) {
 	c := setup.GetAPIClient()
 
