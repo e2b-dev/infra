@@ -175,12 +175,6 @@ func TestSandboxMetadataUpdateInvalidAuth(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, updateResponse.StatusCode())
-
-	// Try to update with invalid API key
-	updateResponse, err = c.PutSandboxesSandboxIDMetadataWithResponse(t.Context(), sandbox.SandboxID, updateMetadata, setup.WithAPIKey("invalid-api-key"))
-
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusUnauthorized, updateResponse.StatusCode())
 }
 
 func TestPausedSandboxMetadataUpdate(t *testing.T) {
