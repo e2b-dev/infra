@@ -375,5 +375,5 @@ variable "filestore_cache_tier" {
 variable "filestore_cache_capacity_gb" {
   type        = number
   description = "The capacity of the Filestore cache in GB"
-  default     = 100
+  default     = 0
 }
