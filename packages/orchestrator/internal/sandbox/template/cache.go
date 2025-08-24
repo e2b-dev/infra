@@ -103,6 +103,8 @@ func (c *Cache) GetTemplate(
 	isSnapshot bool,
 ) (Template, error) {
 	persistence := c.persistence
+	// Because of the template caching, if we enable the shared cache feature flag,
+	// it will start working only for new orchestrators or new builds.
 	if c.useNFSCache(isSnapshot) {
 		zap.L().Info("using local template cache", zap.String("path", c.rootCachePath))
 		persistence = storage.NewCachedProvider(c.rootCachePath, persistence)
