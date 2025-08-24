@@ -274,5 +274,5 @@ variable "filestore_cache_tier" {
 
 variable "filestore_cache_capacity_gb" {
   type    = number
-  default = 100
+  default = 0
 }
