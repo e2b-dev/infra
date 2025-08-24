@@ -132,7 +132,7 @@ func (d clusterSynchronizationStore) PoolExists(ctx context.Context, s api.Clust
 }
 
 func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, item api.ClusterOrchestratorNode) {
-	zap.L().Info("Adding instance into cluster pool", l.WithClusterID(d.cluster.ID), l.WithNodeID(item.NodeID), l.WithServiceInstanceID(instance.ServiceInstanceID))
+	zap.L().Info("Adding instance into cluster pool", l.WithClusterID(d.cluster.ID), l.WithNodeID(item.NodeID), l.WithServiceInstanceID(item.ServiceInstanceID))
 
 	instance := &ClusterInstance{
 		NodeID: item.NodeID,
