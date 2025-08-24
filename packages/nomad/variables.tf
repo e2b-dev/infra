@@ -301,23 +301,13 @@ variable "clickhouse_node_pool" {
   type        = string
 }
 
-variable "slab_cache_path" {
-  type = string
+variable "shared_chunk_cache_path" {
+  type    = string
+  default = ""
 }
 
-variable "filestore_cache" {
-  description = "Use Filestore as a fast local cache to speed up repeat sandbox starts"
-
-  // copied from /variables.tf
-  type = object({
-    enabled = bool
-
-    max_disk_usage_target         = optional(number)
-    free_space_warning_percentage = optional(number)
-    free_space_error_percentage   = optional(number)
-    notification_display_name     = optional(string)
-    capacity_gb                   = optional(number)
-    protocol                      = optional(string)
-    tier                          = optional(string)
-  })
+variable "filestore_cache_max_disk_usage_target" {
+  type        = number
+  description = "The maximum disk usage target for the Filestore cache in percent"
+  default     = 90
 }

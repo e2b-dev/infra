@@ -9,21 +9,11 @@ variable "network_name" {
 }
 
 variable "tier" {
-  type = string
+  description = "The tier of the Filestore cache"
+  type        = string
 }
 
 variable "capacity_gb" {
-  type = number
-}
-
-variable "notification_display_name" {
-  type = string
-}
-
-variable "free_space_warning_threshold" {
-  type = number
-}
-
-variable "free_space_error_threshold" {
-  type = number
+  description = "The capacity of the Filestore cache in GB"
+  type        = number
 }

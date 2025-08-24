@@ -1,8 +1,8 @@
 # Server cluster instances are not currently automatically updated when you create a new
 # orchestrator image with Packer.
 locals {
-  nfs_mount_path   = "/orchestrator/slab-cache"
-  nfs_mount_subdir = "slabs"
+  nfs_mount_path   = "/orchestrator/shared-store"
+  nfs_mount_subdir = "chunks-cache"
 
   file_hash = {
     "scripts/run-consul.sh"              = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
@@ -134,11 +134,10 @@ module "client_cluster" {
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
-    NFS_IP_ADDRESS               = var.filestore_cache.enabled ? join(",", module.filestore[0].nfs_ip_addresses) : ""
+    NFS_IP_ADDRESS               = var.filestore_cache_enabled ? join(",", module.filestore[0].nfs_ip_addresses) : ""
     NFS_MOUNT_PATH               = local.nfs_mount_path
     NFS_MOUNT_SUBDIR             = local.nfs_mount_subdir
-
-    use_filestore_cache = var.filestore_cache.enabled
+    USE_FILESTORE_CACHE          = var.filestore_cache_enabled
   })
 
   environment = var.environment
@@ -282,11 +281,10 @@ module "build_cluster" {
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-build-cluster-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
-    NFS_IP_ADDRESS               = var.filestore_cache.enabled ? join(",", module.filestore[0].nfs_ip_addresses) : ""
+    NFS_IP_ADDRESS               = var.filestore_cache_enabled ? join(",", module.filestore[0].nfs_ip_addresses) : ""
     NFS_MOUNT_PATH               = local.nfs_mount_path
     NFS_MOUNT_SUBDIR             = local.nfs_mount_subdir
-
-    use_filestore_cache = var.filestore_cache.enabled
+    USE_FILESTORE_CACHE          = var.filestore_cache_enabled
   })
 
   environment = var.environment
@@ -357,13 +355,11 @@ module "network" {
 module "filestore" {
   source = "./filestore"
 
-  count = var.filestore_cache.enabled ? 1 : 0
+  count = var.filestore_cache_enabled ? 1 : 0
 
-  name                         = "${var.prefix}slab-cache"
-  network_name                 = var.network_name
-  tier                         = var.filestore_cache.tier
-  capacity_gb                  = var.filestore_cache.capacity_gb
-  notification_display_name    = var.filestore_cache.notification_display_name
-  free_space_warning_threshold = var.filestore_cache.free_space_warning_percentage
-  free_space_error_threshold   = var.filestore_cache.free_space_error_percentage
+  name         = "${var.prefix}shared-disk-store"
+  network_name = var.network_name
+
+  tier        = var.filestore_cache_tier
+  capacity_gb = var.filestore_cache_capacity_gb
 }

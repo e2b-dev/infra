@@ -4,10 +4,6 @@ terraform {
       source  = "kreuzwerker/docker"
       version = "3.0.2"
     }
-    nomad = {
-      source  = "hashicorp/nomad"
-      version = "~> 2.4.0"
-    }
   }
 }
 
@@ -411,8 +407,8 @@ locals {
     otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
     allow_sandbox_internet       = var.allow_sandbox_internet
     launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
-    nfs_cache_mount_path         = var.slab_cache_path
     clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
+    shared_chunk_cache_path      = var.shared_chunk_cache_path
   }
 
   orchestrator_job_check = templatefile("${path.module}/orchestrator.hcl", merge(
@@ -496,8 +492,10 @@ resource "nomad_job" "template_manager" {
     logs_collector_public_ip     = var.logs_proxy_address
     orchestrator_services        = "template-manager"
     allow_sandbox_internet       = var.allow_sandbox_internet
-    nfs_cache_mount_path         = var.slab_cache_path
     clickhouse_connection_string = local.clickhouse_connection_string
+
+    # For now we DISABLE the shared chunk cache in the template manager
+    shared_chunk_cache_path = ""
   })
 }
 resource "nomad_job" "loki" {
@@ -570,7 +568,6 @@ resource "google_storage_hmac_key" "clickhouse_hmac_key" {
   service_account_email = google_service_account.clickhouse_service_account.email
 }
 
-
 resource "nomad_job" "clickhouse" {
   count = var.clickhouse_server_count > 0 ? 1 : 0
   jobspec = templatefile("${path.module}/clickhouse.hcl", {
@@ -614,7 +611,6 @@ resource "nomad_job" "clickhouse" {
 resource "google_service_account_key" "clickhouse_service_account_key" {
   service_account_id = google_service_account.clickhouse_service_account.id
 }
-
 
 resource "nomad_job" "clickhouse_backup" {
   count = var.clickhouse_server_count > 0 ? 1 : 0

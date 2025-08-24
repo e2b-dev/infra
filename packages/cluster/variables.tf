@@ -262,17 +262,17 @@ variable "additional_api_services" {
   }))
 }
 
-variable "filestore_cache" {
-  // copied from /variables.tf's definition of filestore_cache
-  type = object({
-    enabled = bool
+variable "filestore_cache_enabled" {
+  type    = bool
+  default = false
+}
 
-    free_space_target             = optional(number)
-    free_space_warning_percentage = optional(number)
-    free_space_error_percentage   = optional(number)
-    notification_display_name     = optional(string)
-    capacity_gb                   = optional(number)
-    protocol                      = optional(string)
-    tier                          = optional(string)
-  })
+variable "filestore_cache_tier" {
+  type    = string
+  default = "BASIC_HDD"
+}
+
+variable "filestore_cache_capacity_gb" {
+  type    = number
+  default = 100
 }

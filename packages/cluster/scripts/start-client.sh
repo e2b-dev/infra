@@ -47,10 +47,11 @@ echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
 sudo sysctl vm.swappiness=10
 sudo sysctl vm.vfs_cache_pressure=50
 
-%{ if use_filestore_cache }
+# TODO: Optimize the mount more according to https://cloud.google.com/filestore/docs/mounting-fileshares
+%{ if USE_FILESTORE_CACHE }
 # Mount NFS
 sudo mkdir -p "${NFS_MOUNT_PATH}"
-echo "${NFS_IP_ADDRESS}:/slabs ${NFS_MOUNT_PATH} nfs defaults,tcp,nconnect=2,sec=sys,_netdev 0 0" | sudo tee -a /etc/fstab
+echo "${NFS_IP_ADDRESS}:/store ${NFS_MOUNT_PATH} nfs defaults,tcp,nconnect=2,sec=sys,_netdev 0 0" | sudo tee -a /etc/fstab
 sudo mount "${NFS_MOUNT_PATH}"
 sudo mkdir -p "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}" && chmod +w "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}"
 %{ endif }

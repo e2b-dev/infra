@@ -22,7 +22,7 @@ terraform {
     }
     nomad = {
       source  = "hashicorp/nomad"
-      version = "~> 2.4.0"
+      version = "2.1.0"
     }
     random = {
       source  = "hashicorp/random"
@@ -137,7 +137,9 @@ module "cluster" {
   consul_acl_token_secret = module.init.consul_acl_token_secret
   nomad_acl_token_secret  = module.init.nomad_acl_token_secret
 
-  filestore_cache = var.filestore_cache
+  filestore_cache_enabled     = var.filestore_cache_enabled
+  filestore_cache_tier        = var.filestore_cache_tier
+  filestore_cache_capacity_gb = var.filestore_cache_capacity_gb
 
   labels = var.labels
   prefix = var.prefix
@@ -259,8 +261,7 @@ module "nomad" {
   launch_darkly_api_key_secret_name = module.init.launch_darkly_api_key_secret_version.secret
 
   # Filestore
-  filestore_cache = var.filestore_cache
-  slab_cache_path = module.cluster.nfs_slab_cache_path
+  shared_chunk_cache_path = module.cluster.shared_chunk_cache_path
 }
 
 module "redis" {

@@ -87,7 +87,7 @@ func NewCache(
 		buildStore:    buildStore,
 		cache:         cache,
 		flags:         flags,
-		rootCachePath: env.GetEnv("LOCAL_TEMPLATE_CACHE_PATH", ""),
+		rootCachePath: env.GetEnv("SHARED_CHUNK_CACHE_PATH", ""),
 	}, nil
 }
 

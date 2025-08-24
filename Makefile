@@ -52,7 +52,9 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, ENVD_TIMEOUT) \
 	$(call tfvar, REDIS_MANAGED) \
 	$(call tfvar, GRAFANA_MANAGED) \
-	$(call tfvar, USE_FILESTORE_CACHE) \
+	$(call tfvar, FILESTORE_CACHE_ENABLED) \
+	$(call tfvar, FILESTORE_CACHE_TIER) \
+	$(call tfvar, FILESTORE_CACHE_CAPACITY_GB)
 
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)
