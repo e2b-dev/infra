@@ -51,7 +51,7 @@ func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
 
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
-		zap.L().Error("Failed to get instance info", zap.Error(err), l.WithClusterID(c.ID), l.WithNodeID(instance.NodeID))
+		zap.L().Error("Failed to get instance info", zap.Error(err), l.WithClusterID(c.ID), l.WithNodeID(instance.NodeID), l.WithServiceInstanceID(instance.ServiceInstanceID))
 		return
 	}
 
@@ -107,7 +107,9 @@ func (d clusterSynchronizationStore) SourceList(ctx context.Context) ([]api.Clus
 
 func (d clusterSynchronizationStore) SourceExists(ctx context.Context, s []api.ClusterOrchestratorNode, p *ClusterInstance) bool {
 	for _, item := range s {
-		if item.NodeID == p.NodeID {
+		// With comparing service instance ID we ensure when orchestrator on same node and node ID is still same
+		// we will properly clean up old instance and later register as new one
+		if item.ServiceInstanceID == p.ServiceInstanceID {
 			return true
 		}
 	}
@@ -130,7 +132,7 @@ func (d clusterSynchronizationStore) PoolExists(ctx context.Context, s api.Clust
 }
 
 func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, item api.ClusterOrchestratorNode) {
-	zap.L().Info("Adding new instance into cluster pool", l.WithClusterID(d.cluster.ID), l.WithNodeID(item.NodeID))
+	zap.L().Info("Adding instance into cluster pool", l.WithClusterID(d.cluster.ID), l.WithNodeID(item.NodeID), l.WithServiceInstanceID(instance.ServiceInstanceID))
 
 	instance := &ClusterInstance{
 		NodeID: item.NodeID,
@@ -154,7 +156,7 @@ func (d clusterSynchronizationStore) PoolUpdate(ctx context.Context, instance *C
 	d.cluster.syncInstance(ctx, instance)
 }
 
-func (d clusterSynchronizationStore) PoolRemove(ctx context.Context, cluster *ClusterInstance) {
-	zap.L().Info("Removing instance from cluster pool", l.WithClusterID(d.cluster.ID), l.WithNodeID(cluster.NodeID))
-	d.cluster.instances.Remove(cluster.NodeID)
+func (d clusterSynchronizationStore) PoolRemove(ctx context.Context, instance *ClusterInstance) {
+	zap.L().Info("Removing instance from cluster pool", l.WithClusterID(d.cluster.ID), l.WithNodeID(instance.NodeID), l.WithServiceInstanceID(instance.ServiceInstanceID))
+	d.cluster.instances.Remove(instance.NodeID)
 }
