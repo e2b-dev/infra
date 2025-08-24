@@ -47,6 +47,15 @@ echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
 sudo sysctl vm.swappiness=10
 sudo sysctl vm.vfs_cache_pressure=50
 
+# TODO: Optimize the mount more according to https://cloud.google.com/filestore/docs/mounting-fileshares
+%{ if USE_FILESTORE_CACHE }
+# Mount NFS
+sudo mkdir -p "${NFS_MOUNT_PATH}"
+echo "${NFS_IP_ADDRESS}:/store ${NFS_MOUNT_PATH} nfs defaults,tcp,nconnect=2,sec=sys,_netdev 0 0" | sudo tee -a /etc/fstab
+sudo mount "${NFS_MOUNT_PATH}"
+sudo mkdir -p "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}" && chmod +w "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}"
+%{ endif }
+
 # Add tmpfs for snapshotting
 # TODO: Parametrize this
 sudo mkdir -p /mnt/snapshot-cache

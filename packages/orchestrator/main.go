@@ -260,7 +260,7 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create metrics provider", zap.Error(err))
 	}
 
-	templateCache, err := template.NewCache(ctx, persistence, blockMetrics)
+	templateCache, err := template.NewCache(ctx, featureFlags, persistence, blockMetrics)
 	if err != nil {
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}

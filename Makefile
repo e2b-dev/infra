@@ -51,7 +51,10 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, TEMPLATE_BUCKET_LOCATION) \
 	$(call tfvar, ENVD_TIMEOUT) \
 	$(call tfvar, REDIS_MANAGED) \
-	$(call tfvar, GRAFANA_MANAGED)
+	$(call tfvar, GRAFANA_MANAGED) \
+	$(call tfvar, FILESTORE_CACHE_ENABLED) \
+	$(call tfvar, FILESTORE_CACHE_TIER) \
+	$(call tfvar, FILESTORE_CACHE_CAPACITY_GB)
 
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)
@@ -180,10 +183,14 @@ build/%:
 build-and-upload:build-and-upload/api
 build-and-upload:build-and-upload/client-proxy
 build-and-upload:build-and-upload/docker-reverse-proxy
+build-and-upload:build-and-upload/clean-nfs-cache
 build-and-upload:build-and-upload/orchestrator
 build-and-upload:build-and-upload/template-manager
 build-and-upload:build-and-upload/envd
 build-and-upload:build-and-upload/clickhouse-migrator
+build-and-upload/clean-nfs-cache:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/clean-nfs-cache
 build-and-upload/template-manager:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/template-manager
@@ -238,7 +245,7 @@ switch-env:
 import:
 	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	$(tf_vars) $(TF) import $(TARGET) $(ID)
+	$(tf_vars) $(TF) import "$(TARGET)" "$(ID)" -no-color
 
 .PHONY: setup-ssh
 setup-ssh:

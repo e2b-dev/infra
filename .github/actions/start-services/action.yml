@@ -40,7 +40,6 @@ runs:
         make -C tests/integration seed
       shell: bash
 
-
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
@@ -53,7 +52,6 @@ runs:
         load: true # makes the image available for `docker run`
         cache-from: type=gha
         cache-to: type=gha,mode=max
-
 
     - name: Run Clickhouse
       env:
@@ -88,7 +86,9 @@ runs:
         ENVIRONMENT: "local"
         OTEL_COLLECTOR_GRPC_ENDPOINT: "localhost:4317"
         MAX_PARALLEL_MEMFILE_SNAPSHOTTING: "2"
+        SHARED_CHUNK_CACHE_PATH: "./.e2b-chunk-cache"
       run: |
+        mkdir -p $SHARED_CHUNK_CACHE_PATH
         mkdir -p ~/logs
 
         # Start otel-collector

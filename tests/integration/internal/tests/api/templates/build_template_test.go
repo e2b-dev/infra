@@ -77,8 +77,8 @@ func buildTemplate(
 			setup.WithAPIKey(),
 		)
 		require.NoError(tb, err)
-		assert.Equal(tb, http.StatusOK, statusResp.StatusCode())
-		require.NotNil(tb, statusResp.JSON200)
+		assert.Equal(tb, http.StatusOK, statusResp.StatusCode(), string(statusResp.Body))
+		require.NotNil(tb, statusResp.JSON200, string(statusResp.Body))
 
 		offset += len(statusResp.JSON200.LogEntries)
 		for _, entry := range statusResp.JSON200.LogEntries {
@@ -90,12 +90,20 @@ func buildTemplate(
 			tb.Log("Build completed successfully")
 			return true
 		case api.TemplateBuildStatusError:
-			tb.Fatalf("Build failed: %v", statusResp.JSON200.Reason)
+			tb.Fatalf("Build failed: %v", safe(statusResp.JSON200.Reason))
 			return false
 		}
 
 		time.Sleep(time.Second)
 	}
+}
+
+func safe[T any](item *T) T {
+	if item != nil {
+		return *item
+	}
+	var t T
+	return t
 }
 
 func defaultBuildLogHandler(tb testing.TB) BuildLogHandler {

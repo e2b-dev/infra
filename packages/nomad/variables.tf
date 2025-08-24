@@ -300,3 +300,14 @@ variable "clickhouse_node_pool" {
   description = "The name of the Nomad pool."
   type        = string
 }
+
+variable "shared_chunk_cache_path" {
+  type    = string
+  default = ""
+}
+
+variable "filestore_cache_max_disk_usage_target" {
+  type        = number
+  description = "The maximum disk usage target for the Filestore cache in percent"
+  default     = 90
+}

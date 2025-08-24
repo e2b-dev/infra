@@ -29,11 +29,6 @@ func NewClient() (*Client, error) {
 	var err error
 
 	if launchDarklyApiKey == "" {
-		for flag, value := range flagsBool {
-			builder := LaunchDarklyOfflineStore.Flag(string(flag)).VariationForAll(value)
-			LaunchDarklyOfflineStore.Update(builder)
-		}
-
 		for flag, value := range flagsInt {
 			builder := LaunchDarklyOfflineStore.Flag(string(flag)).ValueForAll(ldvalue.Int(value))
 			LaunchDarklyOfflineStore.Update(builder)
@@ -56,17 +51,15 @@ func NewClient() (*Client, error) {
 	return &Client{ld: ldClient}, nil
 }
 
-func (c *Client) BoolFlag(flagName BoolFlag, contextKey string) (bool, error) {
-	defaultValue := flagsBool[flagName]
-
+func (c *Client) BoolFlag(flag BoolFlag, contextKey string) (bool, error) {
 	if c.ld == nil {
-		return defaultValue, fmt.Errorf("LaunchDarkly client is not initialized")
+		return flag.fallback, fmt.Errorf("LaunchDarkly client is not initialized")
 	}
 
-	flagCtx := ldcontext.NewBuilder(string(flagName)).SetString("contextKey", contextKey).Build()
-	enabled, err := c.ld.BoolVariation(string(flagName), flagCtx, defaultValue)
+	flagCtx := ldcontext.NewBuilder(flag.name).SetString("contextKey", contextKey).Build()
+	enabled, err := c.ld.BoolVariation(flag.name, flagCtx, flag.fallback)
 	if err != nil {
-		return enabled, fmt.Errorf("error evaluating %s: %w", flagName, err)
+		return enabled, fmt.Errorf("error evaluating %s: %w", flag, err)
 	}
 
 	return enabled, nil
