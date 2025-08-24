@@ -91,10 +91,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	snap := lastSnapshot.Snapshot
 	build := lastSnapshot.EnvBuild
 
-	var nodeID *string
-	if snap.OriginNodeID != nil {
-		nodeID = snap.OriginNodeID
-	}
+	nodeID := &snap.OriginNodeID
 
 	// Wait for any pausing for this sandbox in progress.
 	pausedOnNode, err := a.orchestrator.WaitForPause(ctx, sandboxID)
