@@ -54,6 +54,14 @@ resource "google_project_service" "logging_api" {
   disable_on_destroy = false
 }
 
+# Enable Filestore API
+resource "google_project_service" "filestore_api" {
+  #project = var.gcp_project_id
+  service = "file.googleapis.com"
+
+  disable_on_destroy = false
+}
+
 resource "time_sleep" "secrets_api_wait_60_seconds" {
   depends_on = [google_project_service.secrets_manager_api]
 
@@ -238,5 +246,3 @@ resource "google_secret_manager_secret_version" "notification_email_value" {
 
   secret_data = "placeholder@example.com"
 }
-
-
