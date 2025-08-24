@@ -12,7 +12,7 @@ data "external" "filestore_cleanup_checksum" {
 }
 
 resource "nomad_job" "filestore_cleanup" {
-  count = var.shared_chunk_cache_path ? 1 : 0
+  count = var.shared_chunk_cache_path != "" ? 1 : 0
 
   jobspec = templatefile("${path.module}/filestore-cleanup.hcl", {
     bucket_name              = var.fc_env_pipeline_bucket_name
