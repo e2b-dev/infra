@@ -73,7 +73,7 @@ type EnvBuild struct {
 	EnvID              *string
 	EnvdVersion        *string
 	ReadyCmd           *string
-	ClusterNodeID      *string
+	ClusterNodeID      string
 	Reason             types.JSONBStringMap
 }
 
@@ -86,7 +86,7 @@ type Snapshot struct {
 	BaseEnvID           string
 	SandboxStartedAt    pgtype.Timestamptz
 	EnvSecure           bool
-	OriginNodeID        *string
+	OriginNodeID        string
 	AllowInternetAccess *bool
 	AutoPause           bool
 }
