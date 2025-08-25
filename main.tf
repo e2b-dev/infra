@@ -197,7 +197,7 @@ module "nomad" {
 
   # API
   api_machine_count                         = var.api_cluster_size
-  logs_proxy_address                        = "http://${module.cluster.logs_proxy_ip}"
+  logs_collector_public_ip                  = module.cluster.logs_proxy_ip
   api_port                                  = var.api_port
   environment                               = var.environment
   google_service_account_key                = module.init.google_service_account_key

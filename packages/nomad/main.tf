@@ -401,7 +401,7 @@ locals {
     bucket_name                  = var.fc_env_pipeline_bucket_name
     orchestrator_checksum        = data.external.orchestrator_checksum.result.hex
     logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
-    logs_collector_public_ip     = var.logs_proxy_address
+    logs_collector_public_ip     = var.logs_collector_public_ip
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
     otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
@@ -489,7 +489,7 @@ resource "nomad_job" "template_manager" {
     build_cache_bucket_name      = var.build_cache_bucket_name
     otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
     logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
-    logs_collector_public_ip     = var.logs_proxy_address
+    logs_collector_public_ip     = var.logs_collector_public_ip
     orchestrator_services        = "template-manager"
     allow_sandbox_internet       = var.allow_sandbox_internet
     clickhouse_connection_string = local.clickhouse_connection_string
