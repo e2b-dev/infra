@@ -3,162 +3,54 @@ package orchestrator
 import (
 	"context"
 	"fmt"
-	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jellydator/ttlcache/v3"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
+	nomadapi "github.com/hashicorp/nomad/api"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
-	"github.com/e2b-dev/infra/packages/api/internal/node"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
 const nodeHealthCheckTimeout = time.Second * 2
 
-var (
-	OrchestratorToApiNodeStateMapper = map[orchestratorinfo.ServiceInfoStatus]api.NodeStatus{
-		orchestratorinfo.ServiceInfoStatus_Healthy:   api.NodeStatusReady,
-		orchestratorinfo.ServiceInfoStatus_Draining:  api.NodeStatusDraining,
-		orchestratorinfo.ServiceInfoStatus_Unhealthy: api.NodeStatusUnhealthy,
-	}
-
-	ApiNodeToOrchestratorStateMapper = map[api.NodeStatus]orchestratorinfo.ServiceInfoStatus{
-		api.NodeStatusReady:     orchestratorinfo.ServiceInfoStatus_Healthy,
-		api.NodeStatusDraining:  orchestratorinfo.ServiceInfoStatus_Draining,
-		api.NodeStatusUnhealthy: orchestratorinfo.ServiceInfoStatus_Unhealthy,
-	}
-)
-
-func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string) (*grpclient.GRPCClient, error) {
-	conn, err := grpc.NewClient(host,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithStatsHandler(
-			otelgrpc.NewClientHandler(
-				otelgrpc.WithTracerProvider(tracerProvider),
-				otelgrpc.WithMeterProvider(meterProvider),
-			),
-		),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
-	}
-
-	sandboxClient := orchestrator.NewSandboxServiceClient(conn)
-	infoClient := orchestratorinfo.NewInfoServiceClient(conn)
-
-	return &grpclient.GRPCClient{Sandbox: sandboxClient, Info: infoClient, Connection: conn}, nil
-}
-
-func (o *Orchestrator) connectToNode(ctx context.Context, discovered nomadServiceDiscovery) error {
+func (o *Orchestrator) connectToNode(ctx context.Context, discovered nodemanager.NomadServiceDiscovery) error {
 	ctx, childSpan := o.tracer.Start(ctx, "connect-to-node")
 	defer childSpan.End()
 
-	client, err := NewClient(o.tel.TracerProvider, o.tel.MeterProvider, discovered.OrchestratorAddress)
+	orchestratorNode, err := nodemanager.New(ctx, o.tel.TracerProvider, o.tel.MeterProvider, discovered)
 	if err != nil {
 		return err
 	}
 
-	buildCache := ttlcache.New[string, interface{}]()
-	go buildCache.Start()
-
-	nodeStatus := api.NodeStatusUnhealthy
-	nodeInfo, err := client.Info.ServiceInfo(ctx, &emptypb.Empty{})
-	if err != nil {
-		return fmt.Errorf("failed to get node service info: %w", err)
-	}
-
-	nodeStatus, ok := OrchestratorToApiNodeStateMapper[nodeInfo.ServiceStatus]
-	if !ok {
-		zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.ServiceStatus), logger.WithNodeID(nodeInfo.NodeId))
-		nodeStatus = api.NodeStatusUnhealthy
-	}
-
-	clusterID := uuid.Nil
-	orchestratorNode := &Node{
-		Info: &node.NodeInfo{
-			NomadNodeShortID: discovered.NomadNodeShortID,
-
-			ClusterID: clusterID,
-			NodeID:    nodeInfo.NodeId,
-			IPAddress: discovered.IPAddress,
-		},
-
-		client: client,
-		status: nodeStatus,
-
-		meta: nodeMetadata{
-			serviceInstanceID: nodeInfo.ServiceId,
-			commit:            nodeInfo.ServiceCommit,
-			version:           nodeInfo.ServiceVersion,
-		},
-
-		buildCache:     buildCache,
-		sbxsInProgress: smap.New[*sbxInProgress](),
-		createFails:    atomic.Uint64{},
-	}
 	// Update host metrics from service info
-	orchestratorNode.updateMetricsFromServiceInfo(nodeInfo)
 	o.registerNode(orchestratorNode)
 	return nil
 }
 
-func (o *Orchestrator) connectToClusterNode(cluster *edge.Cluster, i *edge.ClusterInstance) {
+func (o *Orchestrator) connectToClusterNode(ctx context.Context, cluster *edge.Cluster, i *edge.ClusterInstance) {
 	// this way we don't need to worry about multiple clusters with the same node ID in shared pool
 	clusterGRPC := cluster.GetGRPC(i.ServiceInstanceID)
 
-	buildCache := ttlcache.New[string, interface{}]()
-	go buildCache.Start()
-
-	nodeStatus, ok := OrchestratorToApiNodeStateMapper[i.GetStatus()]
-	if !ok {
-		zap.L().Error("Unknown service info status", logger.WithNodeID(i.NodeID))
-		nodeStatus = api.NodeStatusUnhealthy
-	}
-
-	orchestratorNode := &Node{
-		Info: &node.NodeInfo{
-			NomadNodeShortID: node.UnknownNomadNodeShortID,
-
-			ClusterID: cluster.ID,
-			NodeID:    i.NodeID,
-		},
-
-		client: clusterGRPC.Client,
-		status: nodeStatus,
-		meta: nodeMetadata{
-			serviceInstanceID: i.ServiceInstanceID,
-			version:           i.ServiceVersion,
-			commit:            i.ServiceVersionCommit,
-		},
-
-		buildCache:     buildCache,
-		sbxsInProgress: smap.New[*sbxInProgress](),
-		createFails:    atomic.Uint64{},
+	orchestratorNode, err := nodemanager.NewClusterNode(ctx, clusterGRPC.Client, cluster.ID, i)
+	if err != nil {
+		zap.L().Error("Failed to create node", zap.Error(err))
+		return
 	}
 
 	o.registerNode(orchestratorNode)
 }
 
-func (o *Orchestrator) registerNode(node *Node) {
-	scopedKey := o.scopedNodeID(node.Info.ClusterID, node.Info.NodeID)
+func (o *Orchestrator) registerNode(node *nodemanager.Node) {
+	scopedKey := o.scopedNodeID(node.ClusterID, node.ID)
 	o.nodes.Insert(scopedKey, node)
 }
 
-func (o *Orchestrator) deregisterNode(node *Node) {
-	scopedKey := o.scopedNodeID(node.Info.ClusterID, node.Info.NodeID)
+func (o *Orchestrator) deregisterNode(node *nodemanager.Node) {
+	scopedKey := o.scopedNodeID(node.ClusterID, node.ID)
 	o.nodes.Remove(scopedKey)
 }
 
@@ -177,6 +69,63 @@ func (o *Orchestrator) GetClient(ctx context.Context, clusterID uuid.UUID, nodeI
 		return nil, nil, fmt.Errorf("node '%s' not found in cluster '%s'", nodeID, clusterID)
 	}
 
-	client, ctx := n.getClient(ctx)
+	client, ctx := n.GetClient(ctx)
 	return client, ctx, nil
+}
+
+func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]nodemanager.NomadServiceDiscovery, error) {
+	_, listSpan := o.tracer.Start(ctx, "list-nomad-nodes")
+	defer listSpan.End()
+
+	options := &nomadapi.QueryOptions{
+		// TODO: Use variable for node pool name ("default")
+		Filter: "Status == \"ready\" and NodePool == \"default\"",
+	}
+	nomadNodes, _, err := o.nomadClient.Nodes().List(options.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]nodemanager.NomadServiceDiscovery, 0, len(nomadNodes))
+	for _, n := range nomadNodes {
+		result = append(result, nodemanager.NomadServiceDiscovery{
+			NomadNodeShortID:    n.ID[:consts.NodeIDLength],
+			OrchestratorAddress: fmt.Sprintf("%s:%s", n.Address, consts.OrchestratorPort),
+			IPAddress:           n.Address,
+		})
+	}
+
+	return result, nil
+}
+
+func (o *Orchestrator) GetNode(clusterID uuid.UUID, nodeID string) *nodemanager.Node {
+	scopedKey := o.scopedNodeID(clusterID, nodeID)
+	n, _ := o.nodes.Get(scopedKey)
+	return n
+}
+
+func (o *Orchestrator) GetClusterNodes(clusterID uuid.UUID) []*nodemanager.Node {
+	clusterNodes := make([]*nodemanager.Node, 0)
+	for _, n := range o.nodes.Items() {
+		if n.ClusterID == clusterID {
+			clusterNodes = append(clusterNodes, n)
+		}
+	}
+
+	return clusterNodes
+}
+
+// Deprecated: use GetNode instead
+func (o *Orchestrator) GetNodeByNomadShortID(id string) *nodemanager.Node {
+	for _, n := range o.nodes.Items() {
+		if n.NomadNodeShortID == id {
+			return n
+		}
+	}
+
+	return nil
+}
+
+func (o *Orchestrator) NodeCount() int {
+	return o.nodes.Count()
 }

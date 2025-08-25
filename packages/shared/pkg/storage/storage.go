@@ -24,6 +24,9 @@ const (
 	DefaultStorageProvider Provider = GCPStorageProvider
 
 	storageProviderEnv = "STORAGE_PROVIDER"
+
+	// MemoryChunkSize must always be bigger or equal to the block size.
+	MemoryChunkSize = 4 * 1024 * 1024 // 4 MB
 )
 
 type StorageProvider interface {
@@ -34,11 +37,11 @@ type StorageProvider interface {
 }
 
 type StorageObjectProvider interface {
-	WriteTo(dst io.Writer) (int64, error)
-	WriteFromFileSystem(path string) error
+	io.Writer
+	io.WriterTo
+	io.ReaderAt
 
-	ReadFrom(src io.Reader) (int64, error)
-	ReadAt(buff []byte, off int64) (n int, err error)
+	WriteFromFileSystem(path string) error
 
 	Size() (int64, error)
 	Delete() error

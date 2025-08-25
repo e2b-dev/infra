@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -33,7 +34,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	ctx, cancel := context.WithTimeoutCause(ctxConn, requestTimeout, fmt.Errorf("request timed out"))
 	defer cancel()
 
-	childCtx, childSpan := s.tracer.Start(ctx, "sandbox-create")
+	ctx, childSpan := s.tracer.Start(ctx, "sandbox-create")
 	defer childSpan.End()
 
 	childSpan.SetAttributes(
@@ -50,16 +51,18 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}
 
 	template, err := s.templateCache.GetTemplate(
-		req.Sandbox.BuildId,
-		req.Sandbox.KernelVersion,
-		req.Sandbox.FirecrackerVersion,
+		ctx,
+		req.GetSandbox().GetBuildId(),
+		req.GetSandbox().GetKernelVersion(),
+		req.GetSandbox().GetFirecrackerVersion(),
+		req.GetSandbox().GetSnapshot(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
 
 	sbx, err := sandbox.ResumeSandbox(
-		childCtx,
+		ctx,
 		s.tracer,
 		s.networkPool,
 		template,
@@ -100,7 +103,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 
 	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
 	go func(ctx context.Context) {
-		ctx, childSpan := s.tracer.Start(ctx, "sandbox-create-stop")
+		ctx, childSpan := s.tracer.Start(ctx, "sandbox-create-stop", trace.WithNewRoot())
 		defer childSpan.End()
 
 		waitErr := sbx.Wait(ctx)
@@ -366,18 +369,6 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	s.pauseMu.Unlock()
 
-	fcVersions := sbx.FirecrackerVersions()
-	snapshotTemplateFiles, err := storage.TemplateFiles{
-		BuildID:            in.BuildId,
-		KernelVersion:      fcVersions.KernelVersion,
-		FirecrackerVersion: fcVersions.FirecrackerVersion,
-	}.CacheFiles()
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error creating template files", err)
-
-		return nil, status.Errorf(codes.Internal, "error creating template files: %s", err)
-	}
-
 	defer func(ctx context.Context) {
 		// sbx.Stop sometimes blocks for several seconds,
 		// so we don't want to block the request and do the cleanup in a goroutine after we already removed sandbox from cache and proxy.
@@ -392,7 +383,18 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		}()
 	}(context.WithoutCancel(ctx))
 
-	snapshot, err := sbx.Pause(ctx, s.tracer, snapshotTemplateFiles)
+	meta, err := sbx.Template.Metadata()
+	if err != nil {
+		return nil, fmt.Errorf("no metadata found in template: %w", err)
+	}
+
+	fcVersions := sbx.FirecrackerVersions()
+	meta = meta.SameVersionTemplate(storage.TemplateFiles{
+		BuildID:            in.BuildId,
+		KernelVersion:      fcVersions.KernelVersion,
+		FirecrackerVersion: fcVersions.FirecrackerVersion,
+	})
+	snapshot, err := sbx.Pause(ctx, s.tracer, meta)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox", err, telemetry.WithSandboxID(in.SandboxId))
 
@@ -400,12 +402,14 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}
 
 	err = s.templateCache.AddSnapshot(
-		snapshotTemplateFiles.BuildID,
-		snapshotTemplateFiles.KernelVersion,
-		snapshotTemplateFiles.FirecrackerVersion,
+		ctx,
+		meta.Template.BuildID,
+		meta.Template.KernelVersion,
+		meta.Template.FirecrackerVersion,
 		snapshot.MemfileDiffHeader,
 		snapshot.RootfsDiffHeader,
 		snapshot.Snapfile,
+		snapshot.Metafile,
 		snapshot.MemfileDiff,
 		snapshot.RootfsDiff,
 	)
@@ -418,7 +422,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
 	go func(ctx context.Context) {
-		err := snapshot.Upload(ctx, s.persistence, snapshotTemplateFiles.TemplateFiles)
+		err := snapshot.Upload(ctx, s.persistence, meta.Template)
 		if err != nil {
 			sbxlogger.I(sbx).Error("error uploading sandbox snapshot", zap.Error(err))
 

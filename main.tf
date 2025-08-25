@@ -137,6 +137,10 @@ module "cluster" {
   consul_acl_token_secret = module.init.consul_acl_token_secret
   nomad_acl_token_secret  = module.init.nomad_acl_token_secret
 
+  filestore_cache_enabled     = var.filestore_cache_enabled
+  filestore_cache_tier        = var.filestore_cache_tier
+  filestore_cache_capacity_gb = var.filestore_cache_capacity_gb
+
   labels = var.labels
   prefix = var.prefix
 }
@@ -193,7 +197,7 @@ module "nomad" {
 
   # API
   api_machine_count                         = var.api_cluster_size
-  logs_proxy_address                        = "http://${module.cluster.logs_proxy_ip}"
+  logs_collector_public_ip                  = module.cluster.logs_proxy_ip
   api_port                                  = var.api_port
   environment                               = var.environment
   google_service_account_key                = module.init.google_service_account_key
@@ -255,6 +259,9 @@ module "nomad" {
   redis_port = var.redis_port
 
   launch_darkly_api_key_secret_name = module.init.launch_darkly_api_key_secret_version.secret
+
+  # Filestore
+  shared_chunk_cache_path = module.cluster.shared_chunk_cache_path
 }
 
 module "redis" {

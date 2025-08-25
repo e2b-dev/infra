@@ -20,13 +20,13 @@ exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&
 DISK="/dev/disk/by-id/google-persistent-disk-1"
 MOUNT_POINT="/orchestrator"
 
-# # Step 1: Format the disk with XFS and 65K block size
+# Step 1: Format the disk with XFS and 65K block size
 sudo mkfs.xfs -f -b size=4096 $DISK
 
 # Step 2: Create the mount point
 sudo mkdir -p $MOUNT_POINT
 
-# # Step 4: Mount the disk with
+# Step 3: Mount the disk with
 sudo mount -o noatime $DISK $MOUNT_POINT
 
 sudo mkdir -p /orchestrator/sandbox
@@ -46,6 +46,15 @@ echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
 # Set swap settings
 sudo sysctl vm.swappiness=10
 sudo sysctl vm.vfs_cache_pressure=50
+
+# TODO: Optimize the mount more according to https://cloud.google.com/filestore/docs/mounting-fileshares
+%{ if USE_FILESTORE_CACHE }
+# Mount NFS
+sudo mkdir -p "${NFS_MOUNT_PATH}"
+echo "${NFS_IP_ADDRESS}:/store ${NFS_MOUNT_PATH} nfs defaults,tcp,nconnect=2,sec=sys,_netdev 0 0" | sudo tee -a /etc/fstab
+sudo mount "${NFS_MOUNT_PATH}"
+sudo mkdir -p "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}" && chmod +w "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}"
+%{ endif }
 
 # Add tmpfs for snapshotting
 # TODO: Parametrize this

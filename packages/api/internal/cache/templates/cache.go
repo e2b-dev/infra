@@ -110,7 +110,7 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 
 		// Check if the team has access to the environment
 		if template.TeamID != teamID && (!public || !template.Public) {
-			return nil, nil, &api.APIError{Code: http.StatusForbidden, ClientMsg: fmt.Sprintf("Team  '%s' does not have access to the template '%s'", teamID, aliasOrEnvID), Err: fmt.Errorf("team  '%s' does not have access to the template '%s'", teamID, aliasOrEnvID)}
+			return nil, nil, &api.APIError{Code: http.StatusForbidden, ClientMsg: fmt.Sprintf("Team '%s' does not have access to the template '%s'", teamID, aliasOrEnvID), Err: fmt.Errorf("team '%s' does not have access to the template '%s'", teamID, aliasOrEnvID)}
 		}
 
 		if cluster != clusterID {
@@ -157,8 +157,8 @@ type TemplateBuildInfo struct {
 	BuildStatus envbuild.Status
 	Reason      *schema.BuildReason
 
-	ClusterID     *uuid.UUID
-	ClusterNodeID *string
+	ClusterID *uuid.UUID
+	NodeID    string
 }
 
 type TemplateBuildInfoNotFound struct{ error }
@@ -209,8 +209,8 @@ func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Statu
 			BuildStatus: status,
 			Reason:      reason,
 
-			ClusterID:     item.ClusterID,
-			ClusterNodeID: item.ClusterNodeID,
+			ClusterID: item.ClusterID,
+			NodeID:    item.NodeID,
 		},
 		templateInfoExpiration,
 	)
@@ -248,8 +248,8 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 				BuildStatus: envBuildDB.Status,
 				Reason:      envBuildDB.Reason,
 
-				ClusterID:     envDB.ClusterID,
-				ClusterNodeID: envBuildDB.ClusterNodeID,
+				ClusterID: envDB.ClusterID,
+				NodeID:    envBuildDB.ClusterNodeID,
 			},
 			templateInfoExpiration,
 		)

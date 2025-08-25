@@ -11,6 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
@@ -24,17 +25,17 @@ func (e *Env) Execute(
 	sandboxID string,
 	prefix string,
 	step *templatemanager.TemplateStep,
-	cmdMetadata sandboxtools.CommandMetadata,
-) (sandboxtools.CommandMetadata, error) {
+	cmdMetadata metadata.Context,
+) (metadata.Context, error) {
 	cmdType := strings.ToUpper(step.Type)
 	args := step.Args
 	// args: [key1 value1 key2 value2 ...]
 	if len(args) == 0 {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("%s does not support passing no arguments", cmdType)
+		return metadata.Context{}, fmt.Errorf("%s does not support passing no arguments", cmdType)
 	}
 
 	if len(args)%2 != 0 {
-		return sandboxtools.CommandMetadata{}, fmt.Errorf("%s requires both a key and value arguments", cmdType)
+		return metadata.Context{}, fmt.Errorf("%s requires both a key and value arguments", cmdType)
 	}
 
 	envVars := maps.Clone(cmdMetadata.EnvVars)
@@ -42,7 +43,7 @@ func (e *Env) Execute(
 		k := args[i]
 		v, err := evaluateValue(ctx, tracer, proxy, sandboxID, args[i+1])
 		if err != nil {
-			return sandboxtools.CommandMetadata{}, fmt.Errorf("failed to evaluate environment variable %s: %w", k, err)
+			return metadata.Context{}, fmt.Errorf("failed to evaluate environment variable %s: %w", k, err)
 		}
 
 		envVars[k] = v
@@ -65,7 +66,7 @@ func evaluateValue(
 		proxy,
 		sandboxID,
 		fmt.Sprintf(`printf "%s"`, envValue),
-		sandboxtools.CommandMetadata{
+		metadata.Context{
 			User: "root",
 		},
 		func(stdout, stderr string) {

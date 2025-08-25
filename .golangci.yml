@@ -16,8 +16,11 @@ linters:
     - asasalint
     - asciicheck
     - bidichk
+    - bodyclose
+    - containedctx
     - staticcheck
     - govet
+    - staticcheck
   settings:
     staticcheck:
       checks:

@@ -58,8 +58,8 @@ type DeleteBuild struct {
 	BuildID    uuid.UUID
 	TemplateID string
 
-	ClusterID     *uuid.UUID
-	ClusterNodeID *string
+	ClusterID *uuid.UUID
+	NodeID    string
 }
 
 const (
@@ -146,11 +146,11 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 	}
 }
 
-func (tm *TemplateManager) GetBuildClient(clusterID *uuid.UUID, nodeID *string, placement bool) (*BuildClient, error) {
-	if clusterID == nil || nodeID == nil {
+func (tm *TemplateManager) GetBuildClient(clusterID *uuid.UUID, nodeID string, placement bool) (*BuildClient, error) {
+	if clusterID == nil {
 		return tm.GetLocalBuildClient(placement)
 	} else {
-		return tm.GetClusterBuildClient(*clusterID, *nodeID)
+		return tm.GetClusterBuildClient(*clusterID, nodeID)
 	}
 }
 
@@ -239,7 +239,7 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, t trace.Tracer, buil
 	)
 	defer span.End()
 
-	client, err := tm.GetBuildClient(clusterID, &nodeID, false)
+	client, err := tm.GetBuildClient(clusterID, nodeID, false)
 	if err != nil {
 		return fmt.Errorf("failed to get builder edgeHttpClient: %w", err)
 	}
@@ -262,15 +262,7 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, t trace.Tracer, buil
 
 func (tm *TemplateManager) DeleteBuilds(ctx context.Context, builds []DeleteBuild) error {
 	for _, build := range builds {
-		// Back compatibility for old builds without known node ID.
-		// We are assuming that they are from local template manager so we will try to get local client to process request.
-		// This is a workaround for builds that were created before the node ID was introduced for local builds.
-		nodeID := tm.GetLocalClientInfo().nodeID
-		if build.ClusterNodeID != nil {
-			nodeID = *build.ClusterNodeID
-		}
-
-		err := tm.DeleteBuild(ctx, tm.tracer, build.BuildID, build.TemplateID, build.ClusterID, nodeID)
+		err := tm.DeleteBuild(ctx, tm.tracer, build.BuildID, build.TemplateID, build.ClusterID, build.NodeID)
 		if err != nil {
 			return fmt.Errorf("failed to delete env build '%s': %w", build.BuildID, err)
 		}
@@ -279,7 +271,7 @@ func (tm *TemplateManager) DeleteBuilds(ctx context.Context, builds []DeleteBuil
 	return nil
 }
 
-func (tm *TemplateManager) GetStatus(ctx context.Context, buildID uuid.UUID, templateID string, clusterID *uuid.UUID, nodeID *string) (*templatemanagergrpc.TemplateBuildStatusResponse, error) {
+func (tm *TemplateManager) GetStatus(ctx context.Context, buildID uuid.UUID, templateID string, clusterID *uuid.UUID, nodeID string) (*templatemanagergrpc.TemplateBuildStatusResponse, error) {
 	cli, err := tm.GetBuildClient(clusterID, nodeID, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get builder edgeHttpClient: %w", err)

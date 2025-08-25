@@ -2,13 +2,14 @@ package phases
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 type PhaseMeta struct {
@@ -27,11 +28,9 @@ type BuilderPhase interface {
 }
 
 type LayerResult struct {
-	Metadata cache.LayerMetadata
+	Metadata metadata.Template
 	Cached   bool
 	Hash     string
-
-	StartMetadata *metadata.StartMetadata
 }
 
 func layerInfo(
@@ -85,6 +84,11 @@ func Run(
 			continue
 		}
 
+		err = validateLayer(currentLayer)
+		if err != nil {
+			return LayerResult{}, fmt.Errorf("validating layer: %w", err)
+		}
+
 		res, err := builder.Build(ctx, sourceLayer, currentLayer)
 		// Record phase duration
 		phaseDuration := time.Since(phaseStartTime)
@@ -98,4 +102,52 @@ func Run(
 	}
 
 	return sourceLayer, nil
+}
+
+func validateLayer(
+	layer LayerResult,
+) (err error) {
+	if layer.Hash == "" {
+		err = errors.Join(err, fmt.Errorf("layer hash is empty"))
+	}
+
+	return errors.Join(err, validateMetadata(layer.Metadata))
+}
+
+func validateMetadata(
+	meta metadata.Template,
+) (err error) {
+	return errors.Join(
+		validateTemplate(meta.Template),
+		validateContext(meta.Context),
+	)
+}
+
+func validateTemplate(
+	files storage.TemplateFiles,
+) (err error) {
+	if files.BuildID == "" {
+		err = errors.Join(err, fmt.Errorf("template build ID is empty"))
+	}
+	if files.KernelVersion == "" {
+		err = errors.Join(err, fmt.Errorf("template kernel version is empty"))
+	}
+	if files.FirecrackerVersion == "" {
+		err = errors.Join(err, fmt.Errorf("template firecracker version is empty"))
+	}
+
+	return err
+}
+
+func validateContext(
+	context metadata.Context,
+) (err error) {
+	if context.User == "" {
+		err = errors.Join(err, fmt.Errorf("context user is empty"))
+	}
+	if context.WorkDir != nil && *context.WorkDir == "" {
+		err = errors.Join(err, fmt.Errorf("context working dir is empty"))
+	}
+
+	return err
 }

@@ -18,7 +18,7 @@ type PostProcessor struct {
 	tickerInterval time.Duration
 
 	errChan chan error
-	ctx     context.Context
+	ctx     context.Context // nolint:containedctx // todo: refactor so this can be removed
 	ticker  *time.Ticker
 
 	stopOnce sync.Once
@@ -39,7 +39,7 @@ func (p *PostProcessor) Start() {
 		select {
 		case postprocessingErr := <-p.errChan:
 			if postprocessingErr != nil {
-				p.Error(fmt.Sprintf("Build failed: %s", postprocessingErr))
+				p.Error(fmt.Sprintf("Build failed: %v", postprocessingErr))
 			} else {
 				p.Info(fmt.Sprintf("Build finished, took %s", time.Since(startTime).Truncate(time.Second).String()))
 			}

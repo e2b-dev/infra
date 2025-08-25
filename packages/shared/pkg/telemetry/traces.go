@@ -6,6 +6,7 @@ import (
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/encoding/gzip"
@@ -39,12 +40,7 @@ func NewSpanExporter(ctx context.Context, extraOption ...otlptracegrpc.Option) (
 	return traceExporter, nil
 }
 
-func NewTracerProvider(ctx context.Context, spanExporter sdktrace.SpanExporter, serviceName, serviceVersion string, instanceID string) (trace.TracerProvider, error) {
-	res, err := getResource(ctx, serviceName, serviceVersion, instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create resource: %w", err)
-	}
-
+func NewTracerProvider(ctx context.Context, spanExporter sdktrace.SpanExporter, res *resource.Resource) trace.TracerProvider {
 	// Register the trace exporter with a TracerProvider, using a batch
 	// span processor to aggregate spans before export.
 	bsp := sdktrace.NewBatchSpanProcessor(spanExporter)
@@ -54,7 +50,7 @@ func NewTracerProvider(ctx context.Context, spanExporter sdktrace.SpanExporter, 
 		sdktrace.WithSpanProcessor(bsp),
 	)
 
-	return tracerProvider, nil
+	return tracerProvider
 }
 
 func NewTextPropagator() propagation.TextMapPropagator {

@@ -25,7 +25,6 @@ type NodePassThroughServer struct {
 	info   *e2binfo.ServiceInfo
 	server *grpc.Server
 
-	ctx           context.Context
 	authorization authorization.AuthorizationService
 }
 
@@ -37,7 +36,6 @@ const (
 var clientStreamDescForProxying = &grpc.StreamDesc{ServerStreams: true, ClientStreams: true}
 
 func NewNodePassThroughServer(
-	ctx context.Context,
 	nodes *e2borchestrators.OrchestratorsPool,
 	info *e2binfo.ServiceInfo,
 	authorization authorization.AuthorizationService,
@@ -48,7 +46,6 @@ func NewNodePassThroughServer(
 		nodes:         nodes,
 		catalog:       catalog,
 		info:          info,
-		ctx:           ctx,
 	}
 
 	return grpc.NewServer(
@@ -118,7 +115,7 @@ func (s *NodePassThroughServer) handler(srv interface{}, serverStream grpc.Serve
 		return err
 	}
 
-	clientCtx, clientCancel := context.WithCancel(s.ctx)
+	clientCtx, clientCancel := context.WithCancel(serverStream.Context())
 	defer clientCancel()
 
 	clientStream, err := grpc.NewClientStream(clientCtx, clientStreamDescForProxying, clientConnection, fullMethodName)
@@ -126,7 +123,7 @@ func (s *NodePassThroughServer) handler(srv interface{}, serverStream grpc.Serve
 		return err
 	}
 
-	callback, err := s.eventsHandler(md)
+	callback, err := s.eventsHandler(clientCtx, md)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to handle events: %v", err)
 	}

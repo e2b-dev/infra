@@ -312,12 +312,6 @@ func (ebu *EnvBuildUpdate) SetNillableClusterNodeID(s *string) *EnvBuildUpdate {
 	return ebu
 }
 
-// ClearClusterNodeID clears the value of the "cluster_node_id" field.
-func (ebu *EnvBuildUpdate) ClearClusterNodeID() *EnvBuildUpdate {
-	ebu.mutation.ClearClusterNodeID()
-	return ebu
-}
-
 // SetReason sets the "reason" field.
 func (ebu *EnvBuildUpdate) SetReason(sr *schema.BuildReason) *EnvBuildUpdate {
 	ebu.mutation.SetReason(sr)
@@ -472,9 +466,6 @@ func (ebu *EnvBuildUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if value, ok := ebu.mutation.ClusterNodeID(); ok {
 		_spec.SetField(envbuild.FieldClusterNodeID, field.TypeString, value)
-	}
-	if ebu.mutation.ClusterNodeIDCleared() {
-		_spec.ClearField(envbuild.FieldClusterNodeID, field.TypeString)
 	}
 	if value, ok := ebu.mutation.Reason(); ok {
 		_spec.SetField(envbuild.FieldReason, field.TypeJSON, value)
@@ -817,12 +808,6 @@ func (ebuo *EnvBuildUpdateOne) SetNillableClusterNodeID(s *string) *EnvBuildUpda
 	return ebuo
 }
 
-// ClearClusterNodeID clears the value of the "cluster_node_id" field.
-func (ebuo *EnvBuildUpdateOne) ClearClusterNodeID() *EnvBuildUpdateOne {
-	ebuo.mutation.ClearClusterNodeID()
-	return ebuo
-}
-
 // SetReason sets the "reason" field.
 func (ebuo *EnvBuildUpdateOne) SetReason(sr *schema.BuildReason) *EnvBuildUpdateOne {
 	ebuo.mutation.SetReason(sr)
@@ -1007,9 +992,6 @@ func (ebuo *EnvBuildUpdateOne) sqlSave(ctx context.Context) (_node *EnvBuild, er
 	}
 	if value, ok := ebuo.mutation.ClusterNodeID(); ok {
 		_spec.SetField(envbuild.FieldClusterNodeID, field.TypeString, value)
-	}
-	if ebuo.mutation.ClusterNodeIDCleared() {
-		_spec.ClearField(envbuild.FieldClusterNodeID, field.TypeString)
 	}
 	if value, ok := ebuo.mutation.Reason(); ok {
 		_spec.SetField(envbuild.FieldReason, field.TypeJSON, value)
