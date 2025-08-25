@@ -49,9 +49,6 @@ func (a *APIStore) PutSandboxesSandboxIDMetadata(
 			return
 		}
 
-		sbx.Lock()
-		defer sbx.Unlock()
-
 		apiErr := a.orchestrator.UpdateSandboxMetadata(ctx, sbx, metadata)
 		if apiErr != nil {
 			telemetry.ReportError(ctx, "error when updating sandbox metadata", apiErr.Err)
