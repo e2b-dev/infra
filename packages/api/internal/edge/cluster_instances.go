@@ -38,8 +38,8 @@ const (
 	instancesSyncTimeout  = 5 * time.Second
 )
 
-func (c *Cluster) startSync() {
-	c.synchronization.Start(instancesSyncInterval, instancesSyncTimeout, true)
+func (c *Cluster) startSync(ctx context.Context) {
+	c.synchronization.Start(ctx, instancesSyncInterval, instancesSyncTimeout, true)
 }
 
 func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {

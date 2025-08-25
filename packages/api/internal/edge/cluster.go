@@ -49,6 +49,7 @@ var (
 )
 
 func NewCluster(
+	ctx context.Context,
 	tracer trace.Tracer,
 	tel *telemetry.Client,
 	endpoint string,
@@ -101,7 +102,7 @@ func NewCluster(
 	c.synchronization = synchronization.NewSynchronize(tracer, "cluster-instances", "Cluster instances", store)
 
 	// periodically sync cluster instances
-	go c.startSync()
+	go c.startSync(context.WithoutCancel(ctx))
 
 	return c, nil
 }
