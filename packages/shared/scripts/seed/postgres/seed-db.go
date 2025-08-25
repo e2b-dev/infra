@@ -113,6 +113,7 @@ func main() {
 	}
 	_, err = database.Client.AccessToken.Create().
 		SetUser(user).
+		SetAccessToken(accessToken).
 		SetAccessTokenHash(accessTokenHash).
 		SetAccessTokenPrefix(accessTokenMask.Prefix).
 		SetAccessTokenLength(accessTokenMask.ValueLength).
@@ -137,6 +138,7 @@ func main() {
 	}
 	_, err = database.Client.TeamAPIKey.Create().
 		SetTeam(t).
+		SetAPIKey(teamAPIKey).
 		SetAPIKeyHash(apiKeyHash).
 		SetAPIKeyPrefix(apiKeyMask.Prefix).
 		SetAPIKeyLength(apiKeyMask.ValueLength).

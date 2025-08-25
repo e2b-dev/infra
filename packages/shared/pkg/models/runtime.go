@@ -25,7 +25,7 @@ func init() {
 	accesstokenFields := schema.AccessToken{}.Fields()
 	_ = accesstokenFields
 	// accesstokenDescName is the schema descriptor for name field.
-	accesstokenDescName := accesstokenFields[6].Descriptor()
+	accesstokenDescName := accesstokenFields[7].Descriptor()
 	// accesstoken.DefaultName holds the default value on creation for the name field.
 	accesstoken.DefaultName = accesstokenDescName.Default.(string)
 	clusterFields := schema.Cluster{}.Fields()
@@ -107,11 +107,11 @@ func init() {
 	teamapikeyFields := schema.TeamAPIKey{}.Fields()
 	_ = teamapikeyFields
 	// teamapikeyDescCreatedAt is the schema descriptor for created_at field.
-	teamapikeyDescCreatedAt := teamapikeyFields[6].Descriptor()
+	teamapikeyDescCreatedAt := teamapikeyFields[7].Descriptor()
 	// teamapikey.DefaultCreatedAt holds the default value on creation for the created_at field.
 	teamapikey.DefaultCreatedAt = teamapikeyDescCreatedAt.Default.(func() time.Time)
 	// teamapikeyDescName is the schema descriptor for name field.
-	teamapikeyDescName := teamapikeyFields[9].Descriptor()
+	teamapikeyDescName := teamapikeyFields[10].Descriptor()
 	// teamapikey.DefaultName holds the default value on creation for the name field.
 	teamapikey.DefaultName = teamapikeyDescName.Default.(string)
 	userFields := schema.User{}.Fields()

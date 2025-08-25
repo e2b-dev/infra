@@ -57,6 +57,11 @@ func IDLTE(id uuid.UUID) predicate.TeamAPIKey {
 	return predicate.TeamAPIKey(sql.FieldLTE(FieldID, id))
 }
 
+// APIKey applies equality check predicate on the "api_key" field. It's identical to APIKeyEQ.
+func APIKey(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldAPIKey, v))
+}
+
 // APIKeyHash applies equality check predicate on the "api_key_hash" field. It's identical to APIKeyHashEQ.
 func APIKeyHash(v string) predicate.TeamAPIKey {
 	return predicate.TeamAPIKey(sql.FieldEQ(FieldAPIKeyHash, v))
@@ -110,6 +115,71 @@ func CreatedBy(v uuid.UUID) predicate.TeamAPIKey {
 // LastUsed applies equality check predicate on the "last_used" field. It's identical to LastUsedEQ.
 func LastUsed(v time.Time) predicate.TeamAPIKey {
 	return predicate.TeamAPIKey(sql.FieldEQ(FieldLastUsed, v))
+}
+
+// APIKeyEQ applies the EQ predicate on the "api_key" field.
+func APIKeyEQ(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldAPIKey, v))
+}
+
+// APIKeyNEQ applies the NEQ predicate on the "api_key" field.
+func APIKeyNEQ(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNEQ(FieldAPIKey, v))
+}
+
+// APIKeyIn applies the In predicate on the "api_key" field.
+func APIKeyIn(vs ...string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldIn(FieldAPIKey, vs...))
+}
+
+// APIKeyNotIn applies the NotIn predicate on the "api_key" field.
+func APIKeyNotIn(vs ...string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNotIn(FieldAPIKey, vs...))
+}
+
+// APIKeyGT applies the GT predicate on the "api_key" field.
+func APIKeyGT(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldGT(FieldAPIKey, v))
+}
+
+// APIKeyGTE applies the GTE predicate on the "api_key" field.
+func APIKeyGTE(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldGTE(FieldAPIKey, v))
+}
+
+// APIKeyLT applies the LT predicate on the "api_key" field.
+func APIKeyLT(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldLT(FieldAPIKey, v))
+}
+
+// APIKeyLTE applies the LTE predicate on the "api_key" field.
+func APIKeyLTE(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldLTE(FieldAPIKey, v))
+}
+
+// APIKeyContains applies the Contains predicate on the "api_key" field.
+func APIKeyContains(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldContains(FieldAPIKey, v))
+}
+
+// APIKeyHasPrefix applies the HasPrefix predicate on the "api_key" field.
+func APIKeyHasPrefix(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldHasPrefix(FieldAPIKey, v))
+}
+
+// APIKeyHasSuffix applies the HasSuffix predicate on the "api_key" field.
+func APIKeyHasSuffix(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldHasSuffix(FieldAPIKey, v))
+}
+
+// APIKeyEqualFold applies the EqualFold predicate on the "api_key" field.
+func APIKeyEqualFold(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEqualFold(FieldAPIKey, v))
+}
+
+// APIKeyContainsFold applies the ContainsFold predicate on the "api_key" field.
+func APIKeyContainsFold(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldContainsFold(FieldAPIKey, v))
 }
 
 // APIKeyHashEQ applies the EQ predicate on the "api_key_hash" field.

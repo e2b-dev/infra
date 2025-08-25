@@ -12,6 +12,8 @@ const (
 	Label = "access_token"
 	// FieldID holds the string denoting the id field in the database.
 	FieldID = "id"
+	// FieldAccessToken holds the string denoting the access_token field in the database.
+	FieldAccessToken = "access_token"
 	// FieldAccessTokenHash holds the string denoting the access_token_hash field in the database.
 	FieldAccessTokenHash = "access_token_hash"
 	// FieldAccessTokenPrefix holds the string denoting the access_token_prefix field in the database.
@@ -44,6 +46,7 @@ const (
 // Columns holds all SQL columns for accesstoken fields.
 var Columns = []string{
 	FieldID,
+	FieldAccessToken,
 	FieldAccessTokenHash,
 	FieldAccessTokenPrefix,
 	FieldAccessTokenLength,
@@ -75,6 +78,11 @@ type OrderOption func(*sql.Selector)
 // ByID orders the results by the id field.
 func ByID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldID, opts...).ToFunc()
+}
+
+// ByAccessToken orders the results by the access_token field.
+func ByAccessToken(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAccessToken, opts...).ToFunc()
 }
 
 // ByAccessTokenHash orders the results by the access_token_hash field.

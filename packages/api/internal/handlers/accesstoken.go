@@ -41,6 +41,7 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 		Create().
 		SetID(uuid.New()).
 		SetUserID(userID).
+		SetAccessToken(accessToken.PrefixedRawValue).
 		SetAccessTokenHash(accessToken.HashedValue).
 		SetAccessTokenPrefix(accessToken.Masked.Prefix).
 		SetAccessTokenLength(accessToken.Masked.ValueLength).

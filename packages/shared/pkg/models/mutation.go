@@ -55,6 +55,7 @@ type AccessTokenMutation struct {
 	op                       Op
 	typ                      string
 	id                       *uuid.UUID
+	access_token             *string
 	access_token_hash        *string
 	access_token_prefix      *string
 	access_token_length      *int
@@ -173,6 +174,42 @@ func (m *AccessTokenMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
 	default:
 		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
 	}
+}
+
+// SetAccessToken sets the "access_token" field.
+func (m *AccessTokenMutation) SetAccessToken(s string) {
+	m.access_token = &s
+}
+
+// AccessToken returns the value of the "access_token" field in the mutation.
+func (m *AccessTokenMutation) AccessToken() (r string, exists bool) {
+	v := m.access_token
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccessToken returns the old "access_token" field's value of the AccessToken entity.
+// If the AccessToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccessTokenMutation) OldAccessToken(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccessToken is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccessToken requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccessToken: %w", err)
+	}
+	return oldValue.AccessToken, nil
+}
+
+// ResetAccessToken resets all changes to the "access_token" field.
+func (m *AccessTokenMutation) ResetAccessToken() {
+	m.access_token = nil
 }
 
 // SetAccessTokenHash sets the "access_token_hash" field.
@@ -557,7 +594,10 @@ func (m *AccessTokenMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccessTokenMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 9)
+	if m.access_token != nil {
+		fields = append(fields, accesstoken.FieldAccessToken)
+	}
 	if m.access_token_hash != nil {
 		fields = append(fields, accesstoken.FieldAccessTokenHash)
 	}
@@ -590,6 +630,8 @@ func (m *AccessTokenMutation) Fields() []string {
 // schema.
 func (m *AccessTokenMutation) Field(name string) (ent.Value, bool) {
 	switch name {
+	case accesstoken.FieldAccessToken:
+		return m.AccessToken()
 	case accesstoken.FieldAccessTokenHash:
 		return m.AccessTokenHash()
 	case accesstoken.FieldAccessTokenPrefix:
@@ -615,6 +657,8 @@ func (m *AccessTokenMutation) Field(name string) (ent.Value, bool) {
 // database failed.
 func (m *AccessTokenMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
 	switch name {
+	case accesstoken.FieldAccessToken:
+		return m.OldAccessToken(ctx)
 	case accesstoken.FieldAccessTokenHash:
 		return m.OldAccessTokenHash(ctx)
 	case accesstoken.FieldAccessTokenPrefix:
@@ -640,6 +684,13 @@ func (m *AccessTokenMutation) OldField(ctx context.Context, name string) (ent.Va
 // type.
 func (m *AccessTokenMutation) SetField(name string, value ent.Value) error {
 	switch name {
+	case accesstoken.FieldAccessToken:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccessToken(v)
+		return nil
 	case accesstoken.FieldAccessTokenHash:
 		v, ok := value.(string)
 		if !ok {
@@ -769,6 +820,9 @@ func (m *AccessTokenMutation) ClearField(name string) error {
 // It returns an error if the field is not defined in the schema.
 func (m *AccessTokenMutation) ResetField(name string) error {
 	switch name {
+	case accesstoken.FieldAccessToken:
+		m.ResetAccessToken()
+		return nil
 	case accesstoken.FieldAccessTokenHash:
 		m.ResetAccessTokenHash()
 		return nil
@@ -6693,6 +6747,7 @@ type TeamAPIKeyMutation struct {
 	op                  Op
 	typ                 string
 	id                  *uuid.UUID
+	api_key             *string
 	api_key_hash        *string
 	api_key_prefix      *string
 	api_key_length      *int
@@ -6815,6 +6870,42 @@ func (m *TeamAPIKeyMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
 	default:
 		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
 	}
+}
+
+// SetAPIKey sets the "api_key" field.
+func (m *TeamAPIKeyMutation) SetAPIKey(s string) {
+	m.api_key = &s
+}
+
+// APIKey returns the value of the "api_key" field in the mutation.
+func (m *TeamAPIKeyMutation) APIKey() (r string, exists bool) {
+	v := m.api_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIKey returns the old "api_key" field's value of the TeamAPIKey entity.
+// If the TeamAPIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamAPIKeyMutation) OldAPIKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIKey: %w", err)
+	}
+	return oldValue.APIKey, nil
+}
+
+// ResetAPIKey resets all changes to the "api_key" field.
+func (m *TeamAPIKeyMutation) ResetAPIKey() {
+	m.api_key = nil
 }
 
 // SetAPIKeyHash sets the "api_key_hash" field.
@@ -7373,7 +7464,10 @@ func (m *TeamAPIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TeamAPIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 12)
+	if m.api_key != nil {
+		fields = append(fields, teamapikey.FieldAPIKey)
+	}
 	if m.api_key_hash != nil {
 		fields = append(fields, teamapikey.FieldAPIKeyHash)
 	}
@@ -7415,6 +7509,8 @@ func (m *TeamAPIKeyMutation) Fields() []string {
 // schema.
 func (m *TeamAPIKeyMutation) Field(name string) (ent.Value, bool) {
 	switch name {
+	case teamapikey.FieldAPIKey:
+		return m.APIKey()
 	case teamapikey.FieldAPIKeyHash:
 		return m.APIKeyHash()
 	case teamapikey.FieldAPIKeyPrefix:
@@ -7446,6 +7542,8 @@ func (m *TeamAPIKeyMutation) Field(name string) (ent.Value, bool) {
 // database failed.
 func (m *TeamAPIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
 	switch name {
+	case teamapikey.FieldAPIKey:
+		return m.OldAPIKey(ctx)
 	case teamapikey.FieldAPIKeyHash:
 		return m.OldAPIKeyHash(ctx)
 	case teamapikey.FieldAPIKeyPrefix:
@@ -7477,6 +7575,13 @@ func (m *TeamAPIKeyMutation) OldField(ctx context.Context, name string) (ent.Val
 // type.
 func (m *TeamAPIKeyMutation) SetField(name string, value ent.Value) error {
 	switch name {
+	case teamapikey.FieldAPIKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIKey(v)
+		return nil
 	case teamapikey.FieldAPIKeyHash:
 		v, ok := value.(string)
 		if !ok {
@@ -7639,6 +7744,9 @@ func (m *TeamAPIKeyMutation) ClearField(name string) error {
 // It returns an error if the field is not defined in the schema.
 func (m *TeamAPIKeyMutation) ResetField(name string) error {
 	switch name {
+	case teamapikey.FieldAPIKey:
+		m.ResetAPIKey()
+		return nil
 	case teamapikey.FieldAPIKeyHash:
 		m.ResetAPIKeyHash()
 		return nil

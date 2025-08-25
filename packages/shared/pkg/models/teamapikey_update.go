@@ -33,6 +33,20 @@ func (taku *TeamAPIKeyUpdate) Where(ps ...predicate.TeamAPIKey) *TeamAPIKeyUpdat
 	return taku
 }
 
+// SetAPIKey sets the "api_key" field.
+func (taku *TeamAPIKeyUpdate) SetAPIKey(s string) *TeamAPIKeyUpdate {
+	taku.mutation.SetAPIKey(s)
+	return taku
+}
+
+// SetNillableAPIKey sets the "api_key" field if the given value is not nil.
+func (taku *TeamAPIKeyUpdate) SetNillableAPIKey(s *string) *TeamAPIKeyUpdate {
+	if s != nil {
+		taku.SetAPIKey(*s)
+	}
+	return taku
+}
+
 // SetAPIKeyHash sets the "api_key_hash" field.
 func (taku *TeamAPIKeyUpdate) SetAPIKeyHash(s string) *TeamAPIKeyUpdate {
 	taku.mutation.SetAPIKeyHash(s)
@@ -229,6 +243,9 @@ func (taku *TeamAPIKeyUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			}
 		}
 	}
+	if value, ok := taku.mutation.APIKey(); ok {
+		_spec.SetField(teamapikey.FieldAPIKey, field.TypeString, value)
+	}
 	if value, ok := taku.mutation.APIKeyHash(); ok {
 		_spec.SetField(teamapikey.FieldAPIKeyHash, field.TypeString, value)
 	}
@@ -331,6 +348,20 @@ type TeamAPIKeyUpdateOne struct {
 	hooks     []Hook
 	mutation  *TeamAPIKeyMutation
 	modifiers []func(*sql.UpdateBuilder)
+}
+
+// SetAPIKey sets the "api_key" field.
+func (takuo *TeamAPIKeyUpdateOne) SetAPIKey(s string) *TeamAPIKeyUpdateOne {
+	takuo.mutation.SetAPIKey(s)
+	return takuo
+}
+
+// SetNillableAPIKey sets the "api_key" field if the given value is not nil.
+func (takuo *TeamAPIKeyUpdateOne) SetNillableAPIKey(s *string) *TeamAPIKeyUpdateOne {
+	if s != nil {
+		takuo.SetAPIKey(*s)
+	}
+	return takuo
 }
 
 // SetAPIKeyHash sets the "api_key_hash" field.
@@ -558,6 +589,9 @@ func (takuo *TeamAPIKeyUpdateOne) sqlSave(ctx context.Context) (_node *TeamAPIKe
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := takuo.mutation.APIKey(); ok {
+		_spec.SetField(teamapikey.FieldAPIKey, field.TypeString, value)
 	}
 	if value, ok := takuo.mutation.APIKeyHash(); ok {
 		_spec.SetField(teamapikey.FieldAPIKeyHash, field.TypeString, value)
