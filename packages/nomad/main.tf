@@ -38,6 +38,11 @@ data "google_secret_manager_secret_version" "analytics_collector_api_token" {
 // }
 
 
+// data "google_secret_manager_secret_version" "launch_darkly_api_key" {
+//   secret = var.launch_darkly_api_key_secret_name
+// }
+
+
 
 provider "nomad" {
   address      = "https://nomad.${var.domain_name}"
@@ -100,6 +105,7 @@ resource "nomad_job" "api" {
     clickhouse_connection_string   = local.clickhouse_connection_string
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
     db_migrator_docker_image       = docker_image.db_migrator_image.repo_digest
+    launch_darkly_api_key          = "" // trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
     launch_darkly_api_key          = "" // trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   })
 }
@@ -186,6 +192,7 @@ resource "nomad_job" "client_proxy" {
 
       otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
       logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
+      launch_darkly_api_key        = "" // trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
       launch_darkly_api_key        = "" // trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   })
 }
@@ -408,6 +415,7 @@ locals {
     template_bucket_name         = var.template_bucket_name
     otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
     allow_sandbox_internet       = var.allow_sandbox_internet
+    launch_darkly_api_key        = "" // trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
     launch_darkly_api_key        = "" // trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
     clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
     redis_url                    = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "" : "redis.service.consul:${var.redis_port.port}"
