@@ -141,7 +141,7 @@ func run() int {
 		catalog = sandboxes.NewMemorySandboxesCatalog(tracer)
 	}
 
-	orchestrators := e2borchestrators.NewOrchestratorsPool(logger, tracer, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
+	orchestrators := e2borchestrators.NewOrchestratorsPool(ctx, logger, tracer, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
 
 	info := &e2binfo.ServiceInfo{
 		NodeID:               nodeID,
@@ -167,7 +167,7 @@ func run() int {
 	}
 
 	authorizationManager := authorization.NewStaticTokenAuthorizationService(edgeSecret)
-	edges := e2borchestrators.NewEdgePool(logger, edgeSD, tracer, info.Host, authorizationManager)
+	edges := e2borchestrators.NewEdgePool(ctx, logger, edgeSD, tracer, info.Host, authorizationManager)
 
 	var closers []Closeable
 	closers = append(closers, orchestrators, edges)
