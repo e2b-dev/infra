@@ -159,7 +159,7 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 	c.JSON(http.StatusCreated, api.CreatedTeamAPIKey{
 		Id:   apiKey.ID,
 		Name: apiKey.Name,
-		Key:  apiKey.APIKey,
+		Key:  apiKey.RawAPIKey,
 		Mask: api.IdentifierMaskingDetails{
 			Prefix:            apiKey.APIKeyPrefix,
 			ValueLength:       apiKey.APIKeyLength,

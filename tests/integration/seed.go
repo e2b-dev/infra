@@ -83,7 +83,6 @@ func seed(db *db.DB, data SeedData) error {
 
 	err = db.Client.AccessToken.Create().
 		SetUser(user).
-		SetAccessToken(data.AccessToken).
 		SetAccessTokenHash(accessTokenHash).
 		SetAccessTokenPrefix(accessTokenMask.Prefix).
 		SetAccessTokenLength(accessTokenMask.ValueLength).
@@ -129,7 +128,6 @@ func seed(db *db.DB, data SeedData) error {
 	}
 	_, err = db.Client.TeamAPIKey.Create().
 		SetTeam(t).
-		SetAPIKey(data.APIKey).
 		SetAPIKeyHash(apiKeyHash).
 		SetAPIKeyPrefix(apiKeyMask.Prefix).
 		SetAPIKeyLength(apiKeyMask.ValueLength).

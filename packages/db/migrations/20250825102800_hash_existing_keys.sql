@@ -1,4 +1,7 @@
+-- +goose Up
+
 -- Function to convert hex to bytes and calculate SHA256 hash
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION hex_to_sha256(hex_str text, prefix text) RETURNS text AS $$
 DECLARE
     bytes bytea;
@@ -12,40 +15,54 @@ BEGIN
     RETURN '$sha256$' || base64_hash;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
--- Function to create mask for keys
-CREATE OR REPLACE FUNCTION create_key_mask(key_str text, prefix text) RETURNS text AS $$
-DECLARE
-    key_length int;
-    visible_chars text;
-BEGIN
-    -- Get the last 4 characters
-    visible_chars := substring(key_str from length(key_str) - 3);
-    -- Calculate how many asterisks we need (length without prefix and without last 4 chars)
-    key_length := length(key_str) - length(prefix) - 4;
-    -- Construct mask: prefix + asterisks + last 4 chars
-    RETURN prefix || repeat('*', key_length) || visible_chars;
-END;
-$$ LANGUAGE plpgsql;
-
--- Update existing API keys with hash and mask
+-- Update existing API keys with hash and related fields
 UPDATE public.team_api_keys
 SET
     api_key_hash = hex_to_sha256(api_key, 'e2b_'),
-    api_key_mask = create_key_mask(api_key, 'e2b_')
+    api_key_prefix = 'e2b_',
+    api_key_length = length(api_key) - 4,  -- Strip 'e2b_' prefix (4 chars)
+    api_key_mask_prefix = substring(api_key from 5 for 2),  -- Skip 'e2b_' prefix
+    api_key_mask_suffix = substring(api_key from length(api_key) - 3)
 WHERE
     api_key IS NOT NULL
-    AND (api_key_hash IS NULL OR api_key_mask IS NULL);
+    AND (api_key_hash IS NULL OR api_key_prefix IS NULL 
+         OR api_key_length IS NULL OR api_key_mask_prefix IS NULL OR api_key_mask_suffix IS NULL);
 
--- Update existing access tokens with hash and mask
+-- Update existing access tokens with hash and related fields
 UPDATE public.access_tokens
 SET
     access_token_hash = hex_to_sha256(access_token, 'sk_e2b_'),
-    access_token_mask = create_key_mask(access_token, 'sk_e2b_')
+    access_token_prefix = 'sk_e2b_',
+    access_token_length = length(access_token) - 7,  -- Strip 'sk_e2b_' prefix (7 chars)
+    access_token_mask_prefix = substring(access_token from 8 for 2),  -- Skip 'sk_e2b_' prefix
+    access_token_mask_suffix = substring(access_token from length(access_token) - 3)
 WHERE
     access_token IS NOT NULL
-    AND (access_token_hash IS NULL OR access_token_mask IS NULL);
+    AND (access_token_hash IS NULL OR access_token_prefix IS NULL 
+         OR access_token_length IS NULL OR access_token_mask_prefix IS NULL OR access_token_mask_suffix IS NULL);
 
 -- Drop the helper functions as they are no longer needed
 DROP FUNCTION hex_to_sha256(text, text);
-DROP FUNCTION create_key_mask(text, text);
+
+-- +goose Down
+
+-- Clear the computed fields (cannot reverse the hash computation)
+UPDATE public.team_api_keys 
+SET 
+    api_key_hash = NULL,
+    api_key_prefix = NULL,
+    api_key_length = NULL,
+    api_key_mask_prefix = NULL,
+    api_key_mask_suffix = NULL
+WHERE api_key_hash IS NOT NULL;
+
+UPDATE public.access_tokens 
+SET 
+    access_token_hash = NULL,
+    access_token_prefix = NULL,
+    access_token_length = NULL,
+    access_token_mask_prefix = NULL,
+    access_token_mask_suffix = NULL
+WHERE access_token_hash IS NOT NULL;
