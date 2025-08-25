@@ -63,20 +63,20 @@ func (c *Checks) logHealth() {
 	}()
 
 	// Get metrics and health status on sandbox startup
-	go c.Healthcheck(false)
+	go c.Healthcheck(c.ctx, false)
 
 	for {
 		select {
 		case <-healthTicker.C:
-			c.Healthcheck(false)
+			c.Healthcheck(c.ctx, false)
 		case <-c.ctx.Done():
 			return
 		}
 	}
 }
 
-func (c *Checks) Healthcheck(alwaysReport bool) {
-	ok, err := c.GetHealth(healthCheckTimeout)
+func (c *Checks) Healthcheck(ctx context.Context, alwaysReport bool) {
+	ok, err := c.GetHealth(ctx, healthCheckTimeout)
 	// Sandbox stopped
 	if errors.Is(err, ErrChecksStopped) {
 		return
