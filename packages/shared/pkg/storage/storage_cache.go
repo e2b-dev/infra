@@ -144,18 +144,26 @@ func (c *CachedFileObjectProvider) ReadAt(buff []byte, offset int64) (int, error
 	fp, err = os.Open(chunkPath)
 	if err == nil {
 		defer cleanup("failed to close chunk", fp)
+		zap.L().Debug("cache: reading from cache",
+			zap.String("chunk_path", chunkPath),
+			zap.Int64("offset", offset))
 		count, err := fp.ReadAt(buff, 0) // offset is in the filename
 		return count, ignoreEOF(err)
 	}
 	cacheDoesNotExist := os.IsNotExist(err)
 
 	// read remote file
+	zap.L().Debug("CACHE: reading from remote",
+		zap.Int64("offset", offset))
 	readCount, err := c.inner.ReadAt(buff, offset)
 	if err != nil {
 		return 0, fmt.Errorf("failed to perform uncached read: %w", err)
 	}
 
 	if cacheDoesNotExist {
+		zap.L().Debug("CACHE: writing to cache",
+			zap.String("chunk_path", chunkPath),
+			zap.Int64("offset", offset))
 		go c.writeBytesToLocal(offset, chunkPath, buff[:readCount])
 	}
 
@@ -214,6 +222,9 @@ func (c *CachedFileObjectProvider) copyChunkToStream(offset int64, dst io.Writer
 	chunkPath := c.makeChunkFilename(offset)
 	chunk, err := os.Open(chunkPath)
 	if errors.Is(err, os.ErrNotExist) {
+		zap.L().Debug("CACHE: writing cache and local at the same time",
+			zap.String("path", chunkPath),
+			zap.Int64("offset", offset))
 		if _, err = c.copyAndCacheBlock(chunkPath, offset, dst); err != nil {
 			return fmt.Errorf("failed to write data to cache: %w", err)
 		}
@@ -223,6 +234,9 @@ func (c *CachedFileObjectProvider) copyChunkToStream(offset int64, dst io.Writer
 	}
 	defer cleanup("failed to close chunk file", chunk)
 
+	zap.L().Debug("CACHE: reading from cache",
+		zap.String("path", chunkPath),
+		zap.Int64("offset", offset))
 	if _, err = io.Copy(dst, chunk); err != nil {
 		return fmt.Errorf("failed to copy cached chunk %s: %w", chunkPath, err)
 	}
