@@ -22,7 +22,9 @@ type CreateSandbox struct {
 	fcVersions fc.FirecrackerVersions
 }
 
-func NewCreateSandbox(config sandbox.Config, fcVersions fc.FirecrackerVersions) SandboxCreator {
+var _ SandboxCreator = (*CreateSandbox)(nil)
+
+func NewCreateSandbox(config sandbox.Config, fcVersions fc.FirecrackerVersions) *CreateSandbox {
 	return &CreateSandbox{config: config, fcVersions: fcVersions}
 }
 
