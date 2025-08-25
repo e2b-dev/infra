@@ -21,7 +21,7 @@ var (
 	syncWaitingStateDeadline = time.Minute * 40
 )
 
-func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUID, templateID string, clusterID *uuid.UUID, clusterNodeID *string) error {
+func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUID, templateID string, clusterID *uuid.UUID, nodeID string) error {
 	if tm.createInProcessingQueue(buildID, templateID) {
 		// already processing, skip
 		return nil
@@ -57,8 +57,8 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 		templateID: templateID,
 		buildID:    buildID,
 
-		clusterID:     clusterID,
-		clusterNodeID: clusterNodeID,
+		clusterID: clusterID,
+		nodeID:    nodeID,
 	}
 
 	// context for the building phase
@@ -72,7 +72,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 type templateManagerClient interface {
 	SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason *templatemanagergrpc.TemplateBuildStatusReason) error
 	SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string) error
-	GetStatus(ctx context.Context, buildId uuid.UUID, templateID string, clusterID *uuid.UUID, nodeID *string) (*templatemanagergrpc.TemplateBuildStatusResponse, error)
+	GetStatus(ctx context.Context, buildId uuid.UUID, templateID string, clusterID *uuid.UUID, nodeID string) (*templatemanagergrpc.TemplateBuildStatusResponse, error)
 }
 
 type PollBuildStatus struct {
@@ -82,8 +82,8 @@ type PollBuildStatus struct {
 	templateID string
 	buildID    uuid.UUID
 
-	clusterID     *uuid.UUID
-	clusterNodeID *string
+	clusterID *uuid.UUID
+	nodeID    string
 
 	status *templatemanagergrpc.TemplateBuildStatusResponse
 }
@@ -147,7 +147,7 @@ func newTerminalError(err error) error {
 }
 
 func (c *PollBuildStatus) setStatus(ctx context.Context) error {
-	status, err := c.client.GetStatus(ctx, c.buildID, c.templateID, c.clusterID, c.clusterNodeID)
+	status, err := c.client.GetStatus(ctx, c.buildID, c.templateID, c.clusterID, c.nodeID)
 	if err != nil && errors.Is(err, context.DeadlineExceeded) {
 		return errors.Wrap(err, "context deadline exceeded")
 	} else if err != nil { // retry only on context deadline exceeded

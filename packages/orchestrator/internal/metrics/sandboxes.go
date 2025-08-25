@@ -56,7 +56,7 @@ type SandboxObserver struct {
 	diskUsed    metric.Int64ObservableGauge
 }
 
-func NewSandboxObserver(ctx context.Context, commitSHA, clientID string, sandboxes *smap.Map[*sandbox.Sandbox]) (*SandboxObserver, error) {
+func NewSandboxObserver(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID string, sandboxes *smap.Map[*sandbox.Sandbox]) (*SandboxObserver, error) {
 	deltaTemporality := otlpmetricgrpc.WithTemporalitySelector(func(kind sdkmetric.InstrumentKind) metricdata.Temporality {
 		// Use delta temporality for gauges and cumulative for all other instrument kinds.
 		// This is used to prevent reporting sandbox metrics indefinitely.
@@ -71,7 +71,12 @@ func NewSandboxObserver(ctx context.Context, commitSHA, clientID string, sandbox
 		return nil, fmt.Errorf("failed to create external meter exporter: %w", err)
 	}
 
-	meterProvider, err := telemetry.NewMeterProvider(ctx, externalMeterExporter, sandboxMetricExportPeriod, "external-metrics", commitSHA, clientID, sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter))
+	res, err := telemetry.GetResource(ctx, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create resource: %w", err)
+	}
+
+	meterProvider, err := telemetry.NewMeterProvider(ctx, externalMeterExporter, sandboxMetricExportPeriod, res, sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create external metric provider: %w", err)
 	}

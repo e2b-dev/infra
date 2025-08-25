@@ -12,6 +12,8 @@ import (
 
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -30,16 +32,23 @@ const (
 )
 
 type Cache struct {
-	cache        *ttlcache.Cache[string, Template]
-	persistence  storage.StorageProvider
-	buildStore   *build.DiffStore
-	blockMetrics blockmetrics.Metrics
+	flags         *featureflags.Client
+	cache         *ttlcache.Cache[string, Template]
+	persistence   storage.StorageProvider
+	buildStore    *build.DiffStore
+	blockMetrics  blockmetrics.Metrics
+	rootCachePath string
 }
 
 // NewCache initializes a template new cache.
 // It also deletes the old build cache directory content
 // as it may contain stale data that are not managed by anyone.
-func NewCache(ctx context.Context, persistence storage.StorageProvider, metrics blockmetrics.Metrics) (*Cache, error) {
+func NewCache(
+	ctx context.Context,
+	flags *featureflags.Client,
+	persistence storage.StorageProvider,
+	metrics blockmetrics.Metrics,
+) (*Cache, error) {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, Template](templateExpiration),
 	)
@@ -73,10 +82,12 @@ func NewCache(ctx context.Context, persistence storage.StorageProvider, metrics 
 	go cache.Start()
 
 	return &Cache{
-		blockMetrics: metrics,
-		persistence:  persistence,
-		buildStore:   buildStore,
-		cache:        cache,
+		blockMetrics:  metrics,
+		persistence:   persistence,
+		buildStore:    buildStore,
+		cache:         cache,
+		flags:         flags,
+		rootCachePath: env.GetEnv("SHARED_CHUNK_CACHE_PATH", ""),
 	}, nil
 }
 
@@ -89,14 +100,23 @@ func (c *Cache) GetTemplate(
 	buildID,
 	kernelVersion,
 	firecrackerVersion string,
+	isSnapshot bool,
 ) (Template, error) {
+	persistence := c.persistence
+	// Because of the template caching, if we enable the shared cache feature flag,
+	// it will start working only for new orchestrators or new builds.
+	if c.useNFSCache(isSnapshot) {
+		zap.L().Info("using local template cache", zap.String("path", c.rootCachePath))
+		persistence = storage.NewCachedProvider(c.rootCachePath, persistence)
+	}
+
 	storageTemplate, err := newTemplateFromStorage(
 		buildID,
 		kernelVersion,
 		firecrackerVersion,
 		nil,
 		nil,
-		c.persistence,
+		persistence,
 		c.blockMetrics,
 		nil,
 		nil,
@@ -170,6 +190,27 @@ func (c *Cache) AddSnapshot(
 	}
 
 	return nil
+}
+
+func (c *Cache) useNFSCache(isSnapshot bool) bool {
+	if c.rootCachePath == "" {
+		// can't enable cache if we don't have a cache path
+		return false
+	}
+
+	var flagName featureflags.BoolFlag
+	if isSnapshot {
+		flagName = featureflags.SnapshotFeatureFlagName
+	} else {
+		flagName = featureflags.TemplateFeatureFlagName
+	}
+
+	flag, err := c.flags.BoolFlag(flagName, "")
+	if err != nil {
+		zap.L().Error("failed to get nfs cache feature flag", zap.Error(err))
+	}
+
+	return flag
 }
 
 func cleanDir(path string) error {

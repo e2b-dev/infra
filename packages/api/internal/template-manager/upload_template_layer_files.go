@@ -13,7 +13,7 @@ import (
 )
 
 func (tm *TemplateManager) InitLayerFileUpload(ctx context.Context, clusterID *uuid.UUID, nodeID string, teamID uuid.UUID, templateID string, hash string) (*template_manager.InitLayerFileUploadResponse, error) {
-	client, err := tm.GetBuildClient(clusterID, &nodeID, true)
+	client, err := tm.GetBuildClient(clusterID, nodeID, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build client for template '%s': %w", templateID, err)
 	}

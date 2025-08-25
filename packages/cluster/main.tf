@@ -1,6 +1,9 @@
 # Server cluster instances are not currently automatically updated when you create a new
 # orchestrator image with Packer.
 locals {
+  nfs_mount_path   = "/orchestrator/shared-store"
+  nfs_mount_subdir = "chunks-cache"
+
   file_hash = {
     "scripts/run-consul.sh"              = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
     "scripts/run-nomad.sh"               = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
@@ -131,6 +134,10 @@ module "client_cluster" {
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
+    NFS_IP_ADDRESS               = var.filestore_cache_enabled ? join(",", module.filestore[0].nfs_ip_addresses) : ""
+    NFS_MOUNT_PATH               = local.nfs_mount_path
+    NFS_MOUNT_SUBDIR             = local.nfs_mount_subdir
+    USE_FILESTORE_CACHE          = var.filestore_cache_enabled
   })
 
   environment = var.environment
@@ -274,6 +281,10 @@ module "build_cluster" {
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-build-cluster-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
+    NFS_IP_ADDRESS               = var.filestore_cache_enabled ? join(",", module.filestore[0].nfs_ip_addresses) : ""
+    NFS_MOUNT_PATH               = local.nfs_mount_path
+    NFS_MOUNT_SUBDIR             = local.nfs_mount_subdir
+    USE_FILESTORE_CACHE          = var.filestore_cache_enabled
   })
 
   environment = var.environment
@@ -339,4 +350,16 @@ module "network" {
   ]
 
   additional_ports = [for service in var.additional_api_services : service.api_node_group_port]
+}
+
+module "filestore" {
+  source = "./filestore"
+
+  count = var.filestore_cache_enabled ? 1 : 0
+
+  name         = "${var.prefix}shared-disk-store"
+  network_name = var.network_name
+
+  tier        = var.filestore_cache_tier
+  capacity_gb = var.filestore_cache_capacity_gb
 }

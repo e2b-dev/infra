@@ -1012,16 +1012,6 @@ func ClusterNodeIDHasSuffix(v string) predicate.EnvBuild {
 	return predicate.EnvBuild(sql.FieldHasSuffix(FieldClusterNodeID, v))
 }
 
-// ClusterNodeIDIsNil applies the IsNil predicate on the "cluster_node_id" field.
-func ClusterNodeIDIsNil() predicate.EnvBuild {
-	return predicate.EnvBuild(sql.FieldIsNull(FieldClusterNodeID))
-}
-
-// ClusterNodeIDNotNil applies the NotNil predicate on the "cluster_node_id" field.
-func ClusterNodeIDNotNil() predicate.EnvBuild {
-	return predicate.EnvBuild(sql.FieldNotNull(FieldClusterNodeID))
-}
-
 // ClusterNodeIDEqualFold applies the EqualFold predicate on the "cluster_node_id" field.
 func ClusterNodeIDEqualFold(v string) predicate.EnvBuild {
 	return predicate.EnvBuild(sql.FieldEqualFold(FieldClusterNodeID, v))

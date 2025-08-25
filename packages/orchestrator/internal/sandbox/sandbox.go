@@ -429,13 +429,15 @@ func ResumeSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get snapfile: %w", err)
 	}
+
+	logsCollectorIP := os.Getenv("LOGS_COLLECTOR_PUBLIC_IP")
 	fcStartErr := fcHandle.Resume(
 		uffdStartCtx,
 		tracer,
 		&fc.MmdsMetadata{
 			SandboxId:            runtime.SandboxID,
 			TemplateId:           runtime.TemplateID,
-			LogsCollectorAddress: os.Getenv("LOGS_COLLECTOR_PUBLIC_IP"),
+			LogsCollectorAddress: fmt.Sprintf("http://%s", logsCollectorIP),
 			TraceId:              traceID,
 			TeamId:               runtime.TeamID,
 		},
