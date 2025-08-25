@@ -357,13 +357,14 @@ func run() int {
 		// close the mux server
 		muxServer.Close()
 
-		closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
-		defer cancelCloseCtx()
+		ctx = context.WithoutCancel(ctx)
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
 
 		// close all resources that needs to be closed gracefully
 		for _, c := range closers {
 			zap.L().Info(fmt.Sprintf("Closing %T", c))
-			if err := c.Close(closeCtx); err != nil {
+			if err := c.Close(ctx); err != nil {
 				zap.L().Error("error during shutdown", zap.Error(err))
 			}
 		}

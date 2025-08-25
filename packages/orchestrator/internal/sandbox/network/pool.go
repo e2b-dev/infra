@@ -154,7 +154,7 @@ func (p *Pool) Return(ctx context.Context, tracer trace.Tracer, slot *Slot) erro
 
 	select {
 	case p.reusedSlots <- slot:
-		p.reusedSlotCounter.Add(context.Background(), 1)
+		p.reusedSlotCounter.Add(ctx, 1)
 	default:
 		err := p.cleanup(slot)
 		if err != nil {
