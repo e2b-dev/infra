@@ -42,6 +42,7 @@ import (
 )
 
 const (
+	serviceVersion     = "1.0.0"
 	serviceName        = "orchestration-api"
 	maxMultipartMemory = 1 << 27 // 128 MiB
 	maxUploadLimit     = 1 << 28 // 256 MiB
@@ -210,13 +211,15 @@ func run() int {
 	flag.StringVar(&debug, "debug", "false", "is debug")
 	flag.Parse()
 
-	instanceID := uuid.New().String()
+	serviceInstanceID := uuid.New().String()
+	nodeID := env.GetNodeID()
+
 	var tel *telemetry.Client
 	if telemetry.OtelCollectorGRPCEndpoint == "" {
 		tel = telemetry.NewNoopClient()
 	} else {
 		var err error
-		tel, err = telemetry.New(ctx, serviceName, commitSHA, instanceID)
+		tel, err = telemetry.New(ctx, nodeID, serviceName, commitSHA, serviceVersion, serviceInstanceID)
 		if err != nil {
 			zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
 		}
@@ -275,7 +278,7 @@ func run() int {
 		logger.Fatal("failed to check migration version", zap.Error(err))
 	}
 
-	logger.Info("Starting API service...", zap.String("commit_sha", commitSHA), zap.String("instance_id", instanceID))
+	logger.Info("Starting API service...", zap.String("commit_sha", commitSHA), l.WithServiceInstanceID(serviceInstanceID))
 	if debug != "true" {
 		gin.SetMode(gin.ReleaseMode)
 	}

@@ -4,7 +4,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
@@ -46,7 +45,7 @@ func (s *ServiceInfo) SetStatus(status orchestratorinfo.ServiceInfoStatus) {
 	}
 }
 
-func NewInfoContainer(clientId string, sourceVersion string, sourceCommit string) *ServiceInfo {
+func NewInfoContainer(clientId string, version string, commit string, instanceID string) *ServiceInfo {
 	services := GetServices()
 	serviceRoles := make([]orchestratorinfo.ServiceInfoRole, 0)
 
@@ -58,12 +57,12 @@ func NewInfoContainer(clientId string, sourceVersion string, sourceCommit string
 
 	serviceInfo := &ServiceInfo{
 		ClientId:  clientId,
-		ServiceId: uuid.NewString(),
+		ServiceId: instanceID,
 		Startup:   time.Now(),
 		Roles:     serviceRoles,
 
-		SourceVersion: sourceVersion,
-		SourceCommit:  sourceCommit,
+		SourceVersion: version,
+		SourceCommit:  commit,
 	}
 
 	serviceInfo.SetStatus(orchestratorinfo.ServiceInfoStatus_Healthy)
