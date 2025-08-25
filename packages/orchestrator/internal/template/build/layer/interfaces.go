@@ -35,6 +35,6 @@ type LayerBuildCommand struct {
 	CurrentLayer   metadata.Template
 	Hash           string
 	UpdateEnvd     bool
-	SandboxCreator *CreateSandbox
+	SandboxCreator SandboxCreator
 	ActionExecutor ActionExecutor
 }
