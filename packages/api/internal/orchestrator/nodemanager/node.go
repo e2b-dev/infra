@@ -109,7 +109,7 @@ func New(
 	return n, nil
 }
 
-func NewClusterNode(ctx context.Context, conn *edge.ClusterGRPC, clusterID uuid.UUID, i *edge.ClusterInstance) (*Node, error) {
+func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID uuid.UUID, i *edge.ClusterInstance) (*Node, error) {
 	nodeStatus, ok := OrchestratorToApiNodeStateMapper[i.GetStatus()]
 	if !ok {
 		zap.L().Error("Unknown service info status", zap.Any("status", i.GetStatus()), logger.WithNodeID(i.NodeID))
@@ -132,7 +132,7 @@ func NewClusterNode(ctx context.Context, conn *edge.ClusterGRPC, clusterID uuid.
 		// We can't connect directly to the node in the cluster
 		IPAddress: "",
 
-		client: conn.Client,
+		client: client,
 		status: nodeStatus,
 		meta:   nodeMetadata,
 
@@ -144,8 +144,8 @@ func NewClusterNode(ctx context.Context, conn *edge.ClusterGRPC, clusterID uuid.
 		},
 	}
 
-	reqCtx := metadata.NewOutgoingContext(ctx, conn.Metadata)
-	nodeInfo, err := conn.Client.Info.ServiceInfo(reqCtx, &emptypb.Empty{})
+	nodeClient, ctx := n.GetClient(ctx)
+	nodeInfo, err := nodeClient.Info.ServiceInfo(ctx, &emptypb.Empty{})
 	if err != nil {
 		zap.L().Error("Failed to get node service info", zap.Error(err), logger.WithNodeID(n.ID))
 		return n, nil
