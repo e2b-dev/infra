@@ -24,7 +24,7 @@ func (r *RedisPubSub[PayloadT, SubMetaDataT]) ShouldPublish(ctx context.Context,
 	if r.redisClient == nil {
 		return false, fmt.Errorf("redis client is not initialized")
 	}
-	exists, err := (r.redisClient).Exists(ctx, key).Result()
+	exists, err := r.redisClient.Exists(ctx, key).Result()
 	if err != nil {
 		return false, err
 	}
@@ -36,7 +36,7 @@ func (r *RedisPubSub[PayloadT, SubMetaDataT]) GetSubMetaData(ctx context.Context
 	if r.redisClient == nil {
 		return metadata, fmt.Errorf("redis client is not initialized")
 	}
-	metaDataRaw, err := (r.redisClient).Get(ctx, key).Result()
+	metaDataRaw, err := r.redisClient.Get(ctx, key).Result()
 	if err != nil {
 		return metadata, err
 	}
@@ -71,7 +71,7 @@ func (r *RedisPubSub[PayloadT, SubMetaDataT]) Publish(ctx context.Context, paylo
 		return err
 	}
 
-	return (r.redisClient).Publish(ctx, r.queueName, data).Err()
+	return r.redisClient.Publish(ctx, r.queueName, data).Err()
 }
 
 func (r *RedisPubSub[PayloadT, SubMetaDataT]) DeleteSubMetaData(ctx context.Context, key string) error {
@@ -86,7 +86,7 @@ func (r *RedisPubSub[PayloadT, SubMetaDataT]) Subscribe(ctx context.Context, pub
 		return fmt.Errorf("redis client is not initialized")
 	}
 
-	redisPubSub := (r.redisClient).Subscribe(ctx, r.queueName)
+	redisPubSub := r.redisClient.Subscribe(ctx, r.queueName)
 	redisPubSubChan := redisPubSub.Channel()
 
 	// Loop forever until the context is done,
@@ -107,7 +107,7 @@ func (r *RedisPubSub[PayloadT, SubMetaDataT]) Subscribe(ctx context.Context, pub
 }
 
 func (r *RedisPubSub[PayloadT, SubMetaDataT]) Close(ctx context.Context) error {
-	return (r.redisClient).Close()
+	return r.redisClient.Close()
 }
 
 // Private helper functions
