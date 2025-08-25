@@ -12,7 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	loki "github.com/grafana/loki/pkg/logcli/client"
 	nomadapi "github.com/hashicorp/nomad/api"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"github.com/redis/go-redis/v9"
@@ -59,7 +58,6 @@ type APIStore struct {
 	templateManager          *template_manager.TemplateManager
 	db                       *db.DB
 	sqlcDB                   *sqlcdb.Client
-	lokiClient               *loki.DefaultClient
 	templateCache            *templatecache.TemplateCache
 	templateBuildsCache      *templatecache.TemplatesBuildCache
 	authCache                *authcache.TeamAuthCache
@@ -157,15 +155,6 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		zap.L().Fatal("Initializing Orchestrator client", zap.Error(err))
 	}
 
-	var lokiClient *loki.DefaultClient
-	if laddr := os.Getenv("LOKI_ADDRESS"); laddr != "" {
-		lokiClient = &loki.DefaultClient{
-			Address: laddr,
-		}
-	} else {
-		zap.L().Warn("LOKI_ADDRESS not set, disabling Loki client")
-	}
-
 	authCache := authcache.NewTeamAuthCache()
 	templateCache := templatecache.NewTemplateCache(sqlcDB)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
@@ -193,7 +182,6 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		Telemetry:                tel,
 		Tracer:                   tracer,
 		posthog:                  posthogClient,
-		lokiClient:               lokiClient,
 		templateCache:            templateCache,
 		templateBuildsCache:      templateBuildsCache,
 		authCache:                authCache,
