@@ -63,6 +63,7 @@ module "init" {
 
   labels = var.labels
   prefix = var.prefix
+
 }
 
 module "buckets" {
@@ -185,6 +186,17 @@ module "nomad" {
   otel_tracing_print            = var.otel_tracing_print
   orchestration_repository_name = module.init.orchestration_repository_name
 
+  # Vault
+  vault_version                        = var.vault_version
+  vault_port                           = var.vault_port
+  vault_cluster_port                   = var.vault_cluster_port
+  vault_resources                      = var.vault_resources
+  vault_kms_keyring                    = module.init.vault_kms_keyring
+  vault_kms_crypto_key                 = module.init.vault_kms_crypto_key
+  vault_backend_bucket_name            = module.buckets.vault_backend_bucket_name
+  vault_api_approle_secret_id          = module.init.vault_api_approle_secret_id
+  vault_orchestrator_approle_secret_id = module.init.vault_orchestrator_approle_secret_id
+
   # Clickhouse
   clickhouse_resources_cpu_count   = var.clickhouse_resources_cpu_count
   clickhouse_resources_memory_mb   = var.clickhouse_resources_memory_mb
@@ -275,4 +287,8 @@ module "redis" {
   prefix = var.prefix
 
   depends_on = [module.api]
+}
+
+module "vault" {
+  source = "./packages/vault"
 }

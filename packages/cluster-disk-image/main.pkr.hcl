@@ -119,6 +119,11 @@ build {
   }
 
   provisioner "shell" {
+    script          = "${path.root}/setup/install-vault.sh"
+    execute_command = "chmod +x {{ .Path }}; {{ .Vars }} {{ .Path }} --version ${var.vault_version}"
+  }
+
+  provisioner "shell" {
     inline = [
       "sudo mkdir -p /opt/nomad/plugins",
     ]

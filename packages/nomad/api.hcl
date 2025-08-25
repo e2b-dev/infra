@@ -87,6 +87,9 @@ job "api" {
         REDIS_CLUSTER_URL              = "${redis_cluster_url}"
         DNS_PORT                       = "${dns_port_number}"
         SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
+        VAULT_ADDR                     = "${vault_addr}"
+        VAULT_APPROLE_ROLE_ID          = "${jsondecode(vault_api_approle_creds).role_id}"
+        VAULT_APPROLE_SECRET_ID        = "${jsondecode(vault_api_approle_creds).secret_id}"
 
 
 %{ if launch_darkly_api_key != "" }

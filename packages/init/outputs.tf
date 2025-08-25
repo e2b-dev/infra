@@ -41,3 +41,33 @@ output "cloudflare_api_token_secret_name" {
 output "notification_email_secret_version" {
   value = google_secret_manager_secret_version.notification_email_value
 }
+
+output "vault_kms_keyring" {
+  value       = google_kms_key_ring.vault.name
+  description = "GCP KMS keyring name for Vault auto-unseal"
+}
+
+output "vault_kms_crypto_key" {
+  value       = google_kms_crypto_key.vault_unseal.name
+  description = "GCP KMS crypto key name for Vault auto-unseal"
+}
+
+output "vault_root_key_secret_id" {
+  value       = google_secret_manager_secret.vault_root_key.secret_id
+  description = "Secret Manager secret ID for Vault root key"
+}
+
+output "vault_recovery_keys_secret_id" {
+  value       = google_secret_manager_secret.vault_recovery_keys.secret_id
+  description = "Secret Manager secret ID for Vault recovery keys"
+}
+
+output "vault_api_approle_secret_id" {
+  value       = google_secret_manager_secret.vault_api_approle.secret_id
+  description = "Secret Manager secret ID for Vault API service AppRole credentials"
+}
+
+output "vault_orchestrator_approle_secret_id" {
+  value       = google_secret_manager_secret.vault_orchestrator_approle.secret_id
+  description = "Secret Manager secret ID for Vault Orchestrator service AppRole credentials"
+}

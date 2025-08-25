@@ -19,3 +19,8 @@ variable "nomad_version" {
   type    = string
   default = "1.6.2"
 }
+
+variable "vault_version" {
+  type    = string
+  default = "1.14.8"
+}

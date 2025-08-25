@@ -213,3 +213,34 @@ resource "google_storage_bucket_iam_member" "public_builds_storage_bucket_iam" {
   role   = "roles/storage.objectViewer"
   member = "allUsers"
 }
+
+
+resource "google_storage_bucket" "vault_backend" {
+  name     = "${var.gcp_project_id}-vault-backend"
+  location = var.gcp_region
+
+  versioning {
+    enabled = true
+  }
+
+  lifecycle_rule {
+    condition {
+      num_newer_versions = 10
+    }
+    action {
+      type = "Delete"
+    }
+  }
+
+  public_access_prevention    = "enforced"
+  storage_class               = "STANDARD"
+  uniform_bucket_level_access = true
+
+  labels = var.labels
+}
+
+resource "google_storage_bucket_iam_member" "vault_backend_iam" {
+  bucket = google_storage_bucket.vault_backend.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${var.gcp_service_account_email}"
+}

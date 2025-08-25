@@ -67,6 +67,10 @@ job "template-manager" {
         ALLOW_SANDBOX_INTERNET        = "${allow_sandbox_internet}"
         SHARED_CHUNK_CACHE_PATH    = "${shared_chunk_cache_path}"
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
+        VAULT_ADDR                   = "${vault_addr}"
+        VAULT_APPROLE_ROLE_ID        = "${jsondecode(vault_orchestrator_approle_creds).role_id}"
+        VAULT_APPROLE_SECRET_ID      = "${jsondecode(vault_orchestrator_approle_creds).secret_id}"
+
 %{ if !update_stanza }
         FORCE_STOP                    = "true"
 %{ endif }

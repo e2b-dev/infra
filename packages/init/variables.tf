@@ -7,3 +7,12 @@ variable "labels" {
   type        = map(string)
 }
 
+variable "gcp_project_id" {
+  type        = string
+  description = "GCP project ID"
+}
+
+variable "gcp_region" {
+  type        = string
+  description = "GCP region for resources"
+}
