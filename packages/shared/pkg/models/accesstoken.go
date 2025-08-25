@@ -19,8 +19,6 @@ type AccessToken struct {
 	config `json:"-"`
 	// ID of the ent.
 	ID uuid.UUID `json:"id,omitempty"`
-	// AccessToken holds the value of the "access_token" field.
-	AccessToken string `json:"-"`
 	// AccessTokenHash holds the value of the "access_token_hash" field.
 	AccessTokenHash string `json:"-"`
 	// AccessTokenPrefix holds the value of the "access_token_prefix" field.
@@ -72,7 +70,7 @@ func (*AccessToken) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case accesstoken.FieldAccessTokenLength:
 			values[i] = new(sql.NullInt64)
-		case accesstoken.FieldAccessToken, accesstoken.FieldAccessTokenHash, accesstoken.FieldAccessTokenPrefix, accesstoken.FieldAccessTokenMaskPrefix, accesstoken.FieldAccessTokenMaskSuffix, accesstoken.FieldName:
+		case accesstoken.FieldAccessTokenHash, accesstoken.FieldAccessTokenPrefix, accesstoken.FieldAccessTokenMaskPrefix, accesstoken.FieldAccessTokenMaskSuffix, accesstoken.FieldName:
 			values[i] = new(sql.NullString)
 		case accesstoken.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -98,12 +96,6 @@ func (at *AccessToken) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field id", values[i])
 			} else if value != nil {
 				at.ID = *value
-			}
-		case accesstoken.FieldAccessToken:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field access_token", values[i])
-			} else if value.Valid {
-				at.AccessToken = value.String
 			}
 		case accesstoken.FieldAccessTokenHash:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -194,8 +186,6 @@ func (at *AccessToken) String() string {
 	var builder strings.Builder
 	builder.WriteString("AccessToken(")
 	builder.WriteString(fmt.Sprintf("id=%v, ", at.ID))
-	builder.WriteString("access_token=<sensitive>")
-	builder.WriteString(", ")
 	builder.WriteString("access_token_hash=<sensitive>")
 	builder.WriteString(", ")
 	builder.WriteString("access_token_prefix=")

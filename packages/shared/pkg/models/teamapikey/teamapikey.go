@@ -14,8 +14,6 @@ const (
 	Label = "team_api_key"
 	// FieldID holds the string denoting the id field in the database.
 	FieldID = "id"
-	// FieldAPIKey holds the string denoting the api_key field in the database.
-	FieldAPIKey = "api_key"
 	// FieldAPIKeyHash holds the string denoting the api_key_hash field in the database.
 	FieldAPIKeyHash = "api_key_hash"
 	// FieldAPIKeyPrefix holds the string denoting the api_key_prefix field in the database.
@@ -63,7 +61,6 @@ const (
 // Columns holds all SQL columns for teamapikey fields.
 var Columns = []string{
 	FieldID,
-	FieldAPIKey,
 	FieldAPIKeyHash,
 	FieldAPIKeyPrefix,
 	FieldAPIKeyLength,
@@ -100,11 +97,6 @@ type OrderOption func(*sql.Selector)
 // ByID orders the results by the id field.
 func ByID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldID, opts...).ToFunc()
-}
-
-// ByAPIKey orders the results by the api_key field.
-func ByAPIKey(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldAPIKey, opts...).ToFunc()
 }
 
 // ByAPIKeyHash orders the results by the api_key_hash field.

@@ -303,12 +303,12 @@ func (atq *AccessTokenQuery) WithUser(opts ...func(*UserQuery)) *AccessTokenQuer
 // Example:
 //
 //	var v []struct {
-//		AccessToken string `json:"access_token,omitempty"`
+//		AccessTokenHash string `json:"access_token_hash,omitempty"`
 //		Count int `json:"count,omitempty"`
 //	}
 //
 //	client.AccessToken.Query().
-//		GroupBy(accesstoken.FieldAccessToken).
+//		GroupBy(accesstoken.FieldAccessTokenHash).
 //		Aggregate(models.Count()).
 //		Scan(ctx, &v)
 func (atq *AccessTokenQuery) GroupBy(field string, fields ...string) *AccessTokenGroupBy {
@@ -326,11 +326,11 @@ func (atq *AccessTokenQuery) GroupBy(field string, fields ...string) *AccessToke
 // Example:
 //
 //	var v []struct {
-//		AccessToken string `json:"access_token,omitempty"`
+//		AccessTokenHash string `json:"access_token_hash,omitempty"`
 //	}
 //
 //	client.AccessToken.Query().
-//		Select(accesstoken.FieldAccessToken).
+//		Select(accesstoken.FieldAccessTokenHash).
 //		Scan(ctx, &v)
 func (atq *AccessTokenQuery) Select(fields ...string) *AccessTokenSelect {
 	atq.ctx.Fields = append(atq.ctx.Fields, fields...)

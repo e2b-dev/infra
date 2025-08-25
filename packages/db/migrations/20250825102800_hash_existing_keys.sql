@@ -30,20 +30,20 @@ $$ LANGUAGE plpgsql;
 
 -- Update existing API keys with hash and mask
 UPDATE public.team_api_keys
-SET 
+SET
     api_key_hash = hex_to_sha256(api_key, 'e2b_'),
     api_key_mask = create_key_mask(api_key, 'e2b_')
-WHERE 
-    api_key IS NOT NULL 
+WHERE
+    api_key IS NOT NULL
     AND (api_key_hash IS NULL OR api_key_mask IS NULL);
 
 -- Update existing access tokens with hash and mask
 UPDATE public.access_tokens
-SET 
+SET
     access_token_hash = hex_to_sha256(access_token, 'sk_e2b_'),
     access_token_mask = create_key_mask(access_token, 'sk_e2b_')
-WHERE 
-    access_token IS NOT NULL 
+WHERE
+    access_token IS NOT NULL
     AND (access_token_hash IS NULL OR access_token_mask IS NULL);
 
 -- Drop the helper functions as they are no longer needed

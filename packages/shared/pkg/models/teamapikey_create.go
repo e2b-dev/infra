@@ -26,12 +26,6 @@ type TeamAPIKeyCreate struct {
 	conflict []sql.ConflictOption
 }
 
-// SetAPIKey sets the "api_key" field.
-func (takc *TeamAPIKeyCreate) SetAPIKey(s string) *TeamAPIKeyCreate {
-	takc.mutation.SetAPIKey(s)
-	return takc
-}
-
 // SetAPIKeyHash sets the "api_key_hash" field.
 func (takc *TeamAPIKeyCreate) SetAPIKeyHash(s string) *TeamAPIKeyCreate {
 	takc.mutation.SetAPIKeyHash(s)
@@ -215,9 +209,6 @@ func (takc *TeamAPIKeyCreate) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (takc *TeamAPIKeyCreate) check() error {
-	if _, ok := takc.mutation.APIKey(); !ok {
-		return &ValidationError{Name: "api_key", err: errors.New(`models: missing required field "TeamAPIKey.api_key"`)}
-	}
 	if _, ok := takc.mutation.APIKeyHash(); !ok {
 		return &ValidationError{Name: "api_key_hash", err: errors.New(`models: missing required field "TeamAPIKey.api_key_hash"`)}
 	}
@@ -281,10 +272,6 @@ func (takc *TeamAPIKeyCreate) createSpec() (*TeamAPIKey, *sqlgraph.CreateSpec) {
 	if id, ok := takc.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = &id
-	}
-	if value, ok := takc.mutation.APIKey(); ok {
-		_spec.SetField(teamapikey.FieldAPIKey, field.TypeString, value)
-		_node.APIKey = value
 	}
 	if value, ok := takc.mutation.APIKeyHash(); ok {
 		_spec.SetField(teamapikey.FieldAPIKeyHash, field.TypeString, value)
@@ -365,7 +352,7 @@ func (takc *TeamAPIKeyCreate) createSpec() (*TeamAPIKey, *sqlgraph.CreateSpec) {
 // of the `INSERT` statement. For example:
 //
 //	client.TeamAPIKey.Create().
-//		SetAPIKey(v).
+//		SetAPIKeyHash(v).
 //		OnConflict(
 //			// Update the row with the new values
 //			// the was proposed for insertion.
@@ -374,7 +361,7 @@ func (takc *TeamAPIKeyCreate) createSpec() (*TeamAPIKey, *sqlgraph.CreateSpec) {
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.TeamAPIKeyUpsert) {
-//			SetAPIKey(v+v).
+//			SetAPIKeyHash(v+v).
 //		}).
 //		Exec(ctx)
 func (takc *TeamAPIKeyCreate) OnConflict(opts ...sql.ConflictOption) *TeamAPIKeyUpsertOne {
@@ -409,18 +396,6 @@ type (
 		*sql.UpdateSet
 	}
 )
-
-// SetAPIKey sets the "api_key" field.
-func (u *TeamAPIKeyUpsert) SetAPIKey(v string) *TeamAPIKeyUpsert {
-	u.Set(teamapikey.FieldAPIKey, v)
-	return u
-}
-
-// UpdateAPIKey sets the "api_key" field to the value that was provided on create.
-func (u *TeamAPIKeyUpsert) UpdateAPIKey() *TeamAPIKeyUpsert {
-	u.SetExcluded(teamapikey.FieldAPIKey)
-	return u
-}
 
 // SetAPIKeyHash sets the "api_key_hash" field.
 func (u *TeamAPIKeyUpsert) SetAPIKeyHash(v string) *TeamAPIKeyUpsert {
@@ -573,20 +548,6 @@ func (u *TeamAPIKeyUpsertOne) Update(set func(*TeamAPIKeyUpsert)) *TeamAPIKeyUps
 		set(&TeamAPIKeyUpsert{UpdateSet: update})
 	}))
 	return u
-}
-
-// SetAPIKey sets the "api_key" field.
-func (u *TeamAPIKeyUpsertOne) SetAPIKey(v string) *TeamAPIKeyUpsertOne {
-	return u.Update(func(s *TeamAPIKeyUpsert) {
-		s.SetAPIKey(v)
-	})
-}
-
-// UpdateAPIKey sets the "api_key" field to the value that was provided on create.
-func (u *TeamAPIKeyUpsertOne) UpdateAPIKey() *TeamAPIKeyUpsertOne {
-	return u.Update(func(s *TeamAPIKeyUpsert) {
-		s.UpdateAPIKey()
-	})
 }
 
 // SetAPIKeyHash sets the "api_key_hash" field.
@@ -830,7 +791,7 @@ func (takcb *TeamAPIKeyCreateBulk) ExecX(ctx context.Context) {
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.TeamAPIKeyUpsert) {
-//			SetAPIKey(v+v).
+//			SetAPIKeyHash(v+v).
 //		}).
 //		Exec(ctx)
 func (takcb *TeamAPIKeyCreateBulk) OnConflict(opts ...sql.ConflictOption) *TeamAPIKeyUpsertBulk {
@@ -922,20 +883,6 @@ func (u *TeamAPIKeyUpsertBulk) Update(set func(*TeamAPIKeyUpsert)) *TeamAPIKeyUp
 		set(&TeamAPIKeyUpsert{UpdateSet: update})
 	}))
 	return u
-}
-
-// SetAPIKey sets the "api_key" field.
-func (u *TeamAPIKeyUpsertBulk) SetAPIKey(v string) *TeamAPIKeyUpsertBulk {
-	return u.Update(func(s *TeamAPIKeyUpsert) {
-		s.SetAPIKey(v)
-	})
-}
-
-// UpdateAPIKey sets the "api_key" field to the value that was provided on create.
-func (u *TeamAPIKeyUpsertBulk) UpdateAPIKey() *TeamAPIKeyUpsertBulk {
-	return u.Update(func(s *TeamAPIKeyUpsert) {
-		s.UpdateAPIKey()
-	})
 }
 
 // SetAPIKeyHash sets the "api_key_hash" field.
