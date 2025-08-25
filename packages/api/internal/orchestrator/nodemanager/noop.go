@@ -88,7 +88,11 @@ func NewTestNode(id string, status api.NodeStatus, cpuUsage int64, cpuCount uint
 		client:    NewNoopGRPCClient(),
 		IPAddress: "127.0.0.1",
 		status:    status,
-		metrics:   Metrics{CpuUsage: cpuUsage, CpuCount: cpuCount},
+		metrics: Metrics{
+			CpuUsage:     cpuUsage,
+			CpuAllocated: uint32(cpuUsage),
+			CpuCount:     cpuCount,
+		},
 		PlacementMetrics: PlacementMetrics{
 			sandboxesInProgress: smap.New[SandboxResources](),
 			createSuccess:       atomic.Uint64{},

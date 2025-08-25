@@ -53,7 +53,7 @@ func (b *BestOfK) Score(node *nodemanager.Node) float64 {
 func (b *BestOfK) CanFit(node *nodemanager.Node, sandboxResources nodemanager.SandboxResources) bool {
 	metrics := node.Metrics()
 
-	reserved := metrics.CpuUsage
+	reserved := metrics.CpuAllocated
 
 	// If the node has no CPUs, there's probably a problem
 	cpuCount := float64(metrics.CpuCount)
@@ -63,7 +63,7 @@ func (b *BestOfK) CanFit(node *nodemanager.Node, sandboxResources nodemanager.Sa
 
 	totalCapacity := b.config.R * cpuCount
 
-	return float64(reserved+sandboxResources.CPUs) <= totalCapacity
+	return float64(reserved+uint32(sandboxResources.CPUs)) <= totalCapacity
 }
 
 // BestOfK implements the fit-score-place algorithm
