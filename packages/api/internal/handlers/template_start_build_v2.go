@@ -136,7 +136,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		body.FromImageRegistry,
 		body.Force,
 		body.Steps,
-		team.ClusterID,
+		apiutils.WithDefaultCluster(team.ClusterID),
 		build.ClusterNodeID,
 	)
 	if buildErr != nil {

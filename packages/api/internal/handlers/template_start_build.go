@@ -13,6 +13,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
+	utils2 "github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
@@ -156,7 +157,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		nil, // fromImageRegistry not supported in v1 handler
 		&forceRebuild,
 		nil,
-		team.ClusterID,
+		utils2.WithDefaultCluster(team.ClusterID),
 		build.ClusterNodeID,
 	)
 	if buildErr != nil {

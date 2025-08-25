@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
@@ -156,7 +157,7 @@ type TemplateBuildInfo struct {
 	BuildStatus envbuild.Status
 	Reason      *schema.BuildReason
 
-	ClusterID *uuid.UUID
+	ClusterID uuid.UUID
 	NodeID    string
 }
 
@@ -247,7 +248,7 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 				BuildStatus: envBuildDB.Status,
 				Reason:      envBuildDB.Reason,
 
-				ClusterID: envDB.ClusterID,
+				ClusterID: utils.WithDefaultCluster(envDB.ClusterID),
 				NodeID:    envBuildDB.ClusterNodeID,
 			},
 			templateInfoExpiration,
