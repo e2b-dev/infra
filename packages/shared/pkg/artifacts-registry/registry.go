@@ -31,17 +31,18 @@ type ArtifactsRegistry interface {
 	Delete(ctx context.Context, templateId string, buildId string) error
 }
 
-func GetArtifactsRegistryProvider() (ArtifactsRegistry, error) {
+func GetArtifactsRegistryProvider(ctx context.Context) (ArtifactsRegistry, error) {
 	provider := RegistryProvider(env.GetEnv(storageProviderEnv, string(DefaultRegistryProvider)))
 
-	setupCtx, setupCtxCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer setupCtxCancel()
+	ctx = context.WithoutCancel(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 
 	switch provider {
 	case AWSStorageProvider:
-		return NewAWSArtifactsRegistry(setupCtx)
+		return NewAWSArtifactsRegistry(ctx)
 	case GCPStorageProvider:
-		return NewGCPArtifactsRegistry(setupCtx)
+		return NewGCPArtifactsRegistry(ctx)
 	case LocalStorageProvider:
 		return NewLocalArtifactsRegistry()
 	}
