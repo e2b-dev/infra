@@ -15,7 +15,7 @@ var OtelCollectorGRPCEndpoint = os.Getenv("OTEL_COLLECTOR_GRPC_ENDPOINT")
 func GetResource(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID string) (*resource.Resource, error) {
 	attributes := []attribute.KeyValue{
 		semconv.ServiceName(serviceName),
-		semconv.ServiceVersion(fmt.Sprintf("%s-%s", serviceCommit, serviceVersion)),
+		semconv.ServiceVersion(fmt.Sprintf("%s-%s", serviceVersion, serviceCommit)),
 		semconv.ServiceInstanceID(serviceInstanceID),
 		semconv.TelemetrySDKName("otel"),
 		semconv.HostID(nodeID),
