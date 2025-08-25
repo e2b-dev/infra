@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"go.opentelemetry.io/otel/sdk/resource"
 )
 
 type noopMetricExporter struct{}
@@ -51,14 +52,8 @@ func NewMeterExporter(ctx context.Context, extraOption ...otlpmetricgrpc.Option)
 	return metricExporter, nil
 }
 
-func NewMeterProvider(ctx context.Context, metricsExporter sdkmetric.Exporter, metricExportPeriod time.Duration, serviceName, commitSHA, clientID string, extraOption ...sdkmetric.Option) (metric.MeterProvider, error) {
-	res, err := getResource(ctx, serviceName, commitSHA, clientID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create resource: %w", err)
-	}
-
+func NewMeterProvider(ctx context.Context, metricsExporter sdkmetric.Exporter, metricExportPeriod time.Duration, res *resource.Resource, extraOption ...sdkmetric.Option) (metric.MeterProvider, error) {
 	opts := []sdkmetric.Option{
-		sdkmetric.WithResource(res),
 		sdkmetric.WithReader(
 			sdkmetric.NewPeriodicReader(
 				metricsExporter,
@@ -66,6 +61,11 @@ func NewMeterProvider(ctx context.Context, metricsExporter sdkmetric.Exporter, m
 			),
 		),
 	}
+
+	if res != nil {
+		opts = append(opts, sdkmetric.WithResource(res))
+	}
+
 	opts = append(opts, extraOption...)
 
 	return sdkmetric.NewMeterProvider(opts...), nil

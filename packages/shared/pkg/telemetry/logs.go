@@ -7,6 +7,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/log"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
+	"go.opentelemetry.io/otel/sdk/resource"
 	"google.golang.org/grpc/encoding/gzip"
 )
 
@@ -37,17 +38,12 @@ func NewLogExporter(ctx context.Context, extraOption ...otlploggrpc.Option) (sdk
 	return logsExporter, nil
 }
 
-func NewLogProvider(ctx context.Context, logsExporter sdklog.Exporter, serviceName, serviceVersion, instanceID string) (log.LoggerProvider, error) {
-	res, err := getResource(ctx, serviceName, serviceVersion, instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create resource: %w", err)
-	}
-
+func NewLogProvider(ctx context.Context, logsExporter sdklog.Exporter, res *resource.Resource) log.LoggerProvider {
 	logsProcessor := sdklog.NewBatchProcessor(logsExporter)
 	logsProvider := sdklog.NewLoggerProvider(
 		sdklog.WithResource(res),
 		sdklog.WithProcessor(logsProcessor),
 	)
 
-	return logsProvider, nil
+	return logsProvider
 }

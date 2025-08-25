@@ -68,6 +68,7 @@ job "api" {
       }
 
       env {
+        NODE_ID                        = "$${node.unique.id}"
         ORCHESTRATOR_PORT              = "${orchestrator_port}"
         TEMPLATE_MANAGER_HOST          = "${template_manager_host}"
         POSTGRES_CONNECTION_STRING     = "${postgres_connection_string}"

@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -122,12 +123,11 @@ func run(port, proxyPort uint) (success bool) {
 	sig, sigCancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer sigCancel()
 
-	clientID := service.GetClientID()
-	if clientID == "" {
-		zap.L().Fatal("client ID is empty")
-	}
-
+	nodeID := env.GetNodeID()
 	serviceName := service.GetServiceName(services)
+	serviceInstanceID := uuid.NewString()
+	serviceInfo := service.NewInfoContainer(nodeID, version, commitSHA, serviceInstanceID)
+
 	serviceError := make(chan error)
 	defer close(serviceError)
 
@@ -148,7 +148,7 @@ func run(port, proxyPort uint) (success bool) {
 		tel = telemetry.NewNoopClient()
 	} else {
 		var err error
-		tel, err = telemetry.New(ctx, serviceName, commitSHA, clientID)
+		tel, err = telemetry.New(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID)
 		if err != nil {
 			zap.L().Fatal("failed to init telemetry", zap.Error(err))
 		}
@@ -213,7 +213,7 @@ func run(port, proxyPort uint) (success bool) {
 	}(sbxLoggerInternal)
 	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
 
-	log.Println("Starting orchestrator", "commit", commitSHA)
+	globalLogger.Info("Starting orchestrator", zap.String("version", version), zap.String("commit", commitSHA), logger.WithServiceInstanceID(serviceInstanceID))
 
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.
@@ -226,7 +226,7 @@ func run(port, proxyPort uint) (success bool) {
 
 	tracer := tel.TracerProvider.Tracer(serviceName)
 
-	networkPool, err := network.NewPool(ctx, tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID, tracer)
+	networkPool, err := network.NewPool(ctx, tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, nodeID, tracer)
 	if err != nil {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
@@ -235,8 +235,6 @@ func run(port, proxyPort uint) (success bool) {
 	if err != nil {
 		zap.L().Fatal("failed to create device pool", zap.Error(err))
 	}
-
-	serviceInfo := service.NewInfoContainer(clientID, version, commitSHA)
 
 	grpcSrv := grpcserver.New(tel.TracerProvider, tel.MeterProvider, serviceInfo)
 
@@ -305,7 +303,7 @@ func run(port, proxyPort uint) (success bool) {
 		}
 	}
 
-	sandboxObserver, err := metrics.NewSandboxObserver(ctx, serviceInfo.SourceCommit, serviceInfo.ClientId, sandboxes)
+	sandboxObserver, err := metrics.NewSandboxObserver(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
