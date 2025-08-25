@@ -419,24 +419,27 @@ func TestSandboxMetadataRaceCondition(t *testing.T) {
 	)
 
 	// Number of concurrent increments
-	numIncrements := 20
+	count := 20
 	var wg sync.WaitGroup
 	successCount := 0
 	var mu sync.Mutex
 
+	firstFinished := make(chan struct{})
+
 	// Each goroutine will try to increment the counter
-	for i := 0; i < numIncrements; i++ {
+	for i := 0; i < count; i++ {
 		wg.Add(1)
 		go func(goroutineID int) {
 			defer wg.Done()
 
-			// Since we're using PUT (replace), each update will completely replace metadata
-			// This simulates a race condition where updates may overwrite each other
 			updateMetadata := api.SandboxMetadata{
 				"shared_counter": fmt.Sprintf("%d", goroutineID),
 				"updater_id":     fmt.Sprintf("goroutine-%d", goroutineID),
 				"update_time":    time.Now().Format(time.RFC3339Nano),
 			}
+
+			// Jitter to mix updates with gets
+			time.Sleep(time.Duration(goroutineID) * 10 * time.Millisecond)
 
 			updateResponse, err := c.PutSandboxesSandboxIDMetadataWithResponse(t.Context(),
 				sandbox.SandboxID, updateMetadata, setup.WithAPIKey())
@@ -444,15 +447,22 @@ func TestSandboxMetadataRaceCondition(t *testing.T) {
 			if err == nil && updateResponse.StatusCode() == http.StatusOK {
 				mu.Lock()
 				successCount++
+				select {
+				case firstFinished <- struct{}{}:
+				default:
+				}
 				mu.Unlock()
 			}
 		}(i)
 	}
 
-	for i := 0; i < numIncrements; i++ {
+	<-firstFinished
+	for i := 0; i < count; i++ {
 		wg.Add(1)
 		go func(goroutineID int) {
 			defer wg.Done()
+
+			time.Sleep(time.Duration(goroutineID) * 10 * time.Millisecond)
 
 			getSandboxResponse, err := c.GetSandboxesSandboxIDWithResponse(t.Context(),
 				sandbox.SandboxID, setup.WithAPIKey())
@@ -485,7 +495,7 @@ func TestSandboxMetadataRaceCondition(t *testing.T) {
 	wg.Wait()
 
 	// All updates should succeed (no errors due to concurrent access)
-	assert.Equal(t, numIncrements, successCount, "All concurrent updates should succeed")
+	assert.Equal(t, count, successCount, "All concurrent updates should succeed")
 
 	// Verify final state - should be from one of the updates
 	getSandboxResponse, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sandbox.SandboxID, setup.WithAPIKey())
