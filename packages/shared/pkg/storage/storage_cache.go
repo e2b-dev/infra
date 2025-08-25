@@ -90,7 +90,6 @@ var _ StorageObjectProvider = (*CachedFileObjectProvider)(nil)
 func (c *CachedFileObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 	totalSize, err := c.Size()
 	if err != nil {
-
 		return 0, err
 	}
 
