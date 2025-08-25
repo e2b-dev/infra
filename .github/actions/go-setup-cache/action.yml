@@ -23,7 +23,7 @@ runs:
             'packages/*/go.mod',
             'packages/*/go.mod.sum',
             'tests/*/go.mod',
-            'tests/*/go.mod.sum',
+            'tests/*/go.mod.sum'
           ) }}
         restore-keys: |
           ${{ runner.os }}-go-build-${{ inputs.job_key }}-
