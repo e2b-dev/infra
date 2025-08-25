@@ -30,6 +30,7 @@ func (o *Orchestrator) PauseInstance(
 	ctx, span := o.tracer.Start(ctx, "pause-sandbox")
 	defer span.End()
 
+	sbx.Lock()
 	snapshotConfig := &db.SnapshotInfo{
 		BaseTemplateID:      sbx.TemplateID,
 		SandboxID:           sbx.SandboxID,
@@ -44,6 +45,7 @@ func (o *Orchestrator) PauseInstance(
 		EnvdSecured:         sbx.EnvdAccessToken != nil,
 		AllowInternetAccess: sbx.AllowInternetAccess,
 	}
+	sbx.Unlock()
 
 	envBuild, err := o.dbClient.NewSnapshotBuild(
 		ctx,
