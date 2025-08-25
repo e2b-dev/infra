@@ -90,7 +90,7 @@ var _ StorageObjectProvider = (*CachedFileObjectProvider)(nil)
 func (c *CachedFileObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 	totalSize, err := c.Size()
 	if err != nil {
-		return 0, fmt.Errorf("failed to get size of object: %w", err)
+		return 0, err
 	}
 
 	for offset := int64(0); offset < totalSize; offset += c.chunkSize {
