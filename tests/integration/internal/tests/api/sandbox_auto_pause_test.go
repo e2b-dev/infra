@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
+	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -57,6 +58,11 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
 	sbxId := sbx.SandboxID
 
+	envdClient := setup.GetEnvdClient(t, t.Context())
+	path := "/test.txt"
+	content := "Hello, World!"
+	utils.UploadFile(t, t.Context(), sbx, envdClient, path, content)
+
 	// Set timeout to 0 to force sandbox to be stopped
 	resp, err := c.PostSandboxesSandboxIDTimeout(t.Context(), sbxId, api.PostSandboxesSandboxIDTimeoutJSONRequestBody{
 		Timeout: 0,
@@ -73,6 +79,21 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 	// Resume the sandbox with auto-pause enabled
 	_, err = c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
+
+	// Check if the file is still there after resuming
+	fileResponse, err := envdClient.HTTPClient.GetFilesWithResponse(
+		t.Context(),
+		&envdapi.GetFilesParams{
+			Path:     &path,
+			Username: "user",
+		},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, fileResponse.StatusCode())
+	assert.Equal(t, content, string(fileResponse.Body))
+
+	content = "Hello, E2B!"
+	utils.UploadFile(t, t.Context(), sbx, envdClient, path, content)
 
 	// Set timeout to 0 to force sandbox to be stopped
 	resp, err = c.PostSandboxesSandboxIDTimeout(t.Context(), sbxId, api.PostSandboxesSandboxIDTimeoutJSONRequestBody{
@@ -94,6 +115,18 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, sbxResume.StatusCode())
 	require.NotNil(t, sbxResume.JSON201)
 	assert.Equal(t, sbxResume.JSON201.SandboxID, sbxId)
+
+	// Check if the file is still there after resuming
+	fileResponse, err = envdClient.HTTPClient.GetFilesWithResponse(
+		t.Context(),
+		&envdapi.GetFilesParams{
+			Path:     &path,
+			Username: "user",
+		},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, fileResponse.StatusCode())
+	assert.Equal(t, content, string(fileResponse.Body))
 }
 
 func TestSandboxNotAutoPause(t *testing.T) {
