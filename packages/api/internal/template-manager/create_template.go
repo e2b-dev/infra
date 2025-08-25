@@ -38,7 +38,7 @@ func (tm *TemplateManager) CreateTemplate(
 	force *bool,
 	steps *[]api.TemplateStep,
 	clusterID *uuid.UUID,
-	clusterNodeID *string,
+	nodeID string,
 ) (e error) {
 	ctx, span := t.Start(ctx, "create-template",
 		trace.WithAttributes(
@@ -73,7 +73,7 @@ func (tm *TemplateManager) CreateTemplate(
 		return fmt.Errorf("failed to get features for firecracker version '%s': %w", firecrackerVersion, err)
 	}
 
-	cli, err := tm.GetBuildClient(clusterID, clusterNodeID, true)
+	cli, err := tm.GetBuildClient(clusterID, nodeID, true)
 	if err != nil {
 		return fmt.Errorf("failed to get builder edgeHttpClient: %w", err)
 	}
@@ -140,7 +140,7 @@ func (tm *TemplateManager) CreateTemplate(
 		buildContext, buildSpan := t.Start(ctx, "template-background-build-env")
 		defer buildSpan.End()
 
-		err := tm.BuildStatusSync(buildContext, buildID, templateID, clusterID, clusterNodeID)
+		err := tm.BuildStatusSync(buildContext, buildID, templateID, clusterID, nodeID)
 		if err != nil {
 			zap.L().Error("error syncing build status", zap.Error(err))
 		}

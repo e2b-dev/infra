@@ -94,13 +94,6 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
-	// team is part of the cluster but template build is not assigned to a cluster node so its invalid stats
-	if team.ClusterID != nil && build.ClusterNodeID == nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "build is not assigned to a cluster node")
-		telemetry.ReportCriticalError(ctx, "build is not assigned to a cluster node", nil, telemetry.WithTemplateID(templateID))
-		return
-	}
-
 	stepsMarshalled, err := json.Marshal(dockerfileStore{
 		FromImage:    body.FromImage,
 		FromTemplate: body.FromTemplate,

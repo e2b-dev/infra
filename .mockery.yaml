@@ -7,3 +7,11 @@ packages:
         config:
           dir: packages/envd/internal/services/legacy
           pkgname: legacy
+
+  github.com/e2b-dev/infra/packages/shared/pkg/storage:
+    interfaces:
+      StorageObjectProvider:
+        config:
+          dir: packages/shared/pkg/storage
+          filename: storage_test.go
+          pkgname: storage

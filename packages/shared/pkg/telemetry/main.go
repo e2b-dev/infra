@@ -32,7 +32,7 @@ type Client struct {
 	LogsProvider    log.LoggerProvider
 }
 
-func New(ctx context.Context, serviceName, commitSHA, clientID string) (*Client, error) {
+func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID string) (*Client, error) {
 	// Setup metrics
 	metricsExporter, err := NewMeterExporter(ctx, otlpmetricgrpc.WithAggregationSelector(func(kind sdkmetric.InstrumentKind) sdkmetric.Aggregation {
 		if kind == sdkmetric.InstrumentKindHistogram {
@@ -49,7 +49,12 @@ func New(ctx context.Context, serviceName, commitSHA, clientID string) (*Client,
 		return nil, fmt.Errorf("failed to create metrics exporter: %w", err)
 	}
 
-	meterProvider, err := NewMeterProvider(ctx, metricsExporter, metricExportPeriod, serviceName, commitSHA, clientID)
+	res, err := GetResource(ctx, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create resource: %w", err)
+	}
+
+	meterProvider, err := NewMeterProvider(ctx, metricsExporter, metricExportPeriod, res)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create metrics provider: %w", err)
 	}
@@ -60,10 +65,7 @@ func New(ctx context.Context, serviceName, commitSHA, clientID string) (*Client,
 		return nil, fmt.Errorf("failed to create logs exporter: %w", err)
 	}
 
-	logsProvider, err := NewLogProvider(ctx, logsExporter, serviceName, commitSHA, clientID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create logs provider: %w", err)
-	}
+	logsProvider := NewLogProvider(ctx, logsExporter, res)
 
 	// Setup tracing
 	spanExporter, err := NewSpanExporter(ctx)
@@ -71,10 +73,8 @@ func New(ctx context.Context, serviceName, commitSHA, clientID string) (*Client,
 		return nil, fmt.Errorf("failed to create span exporter: %w", err)
 	}
 
-	tracerProvider, err := NewTracerProvider(ctx, spanExporter, serviceName, commitSHA, clientID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create tracer provider: %w", err)
-	}
+	tracerProvider := NewTracerProvider(ctx, spanExporter, res)
+	otel.SetTracerProvider(tracerProvider)
 
 	// There's probably not a reason why not to set the trace propagator globally, it's used in SDKs
 	propagator := NewTextPropagator()

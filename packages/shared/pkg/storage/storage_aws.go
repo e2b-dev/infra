@@ -220,6 +220,11 @@ func (a *AWSBucketStorageObjectProvider) Size() (int64, error) {
 
 	resp, err := a.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: &a.bucketName, Key: &a.path})
 	if err != nil {
+		var nsk *types.NoSuchKey
+		if errors.As(err, &nsk) {
+			return 0, ErrorObjectNotExist
+		}
+
 		return 0, err
 	}
 

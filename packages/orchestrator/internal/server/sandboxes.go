@@ -34,7 +34,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	ctx, cancel := context.WithTimeoutCause(ctxConn, requestTimeout, fmt.Errorf("request timed out"))
 	defer cancel()
 
-	childCtx, childSpan := s.tracer.Start(ctx, "sandbox-create")
+	ctx, childSpan := s.tracer.Start(ctx, "sandbox-create")
 	defer childSpan.End()
 
 	childSpan.SetAttributes(
@@ -51,17 +51,18 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}
 
 	template, err := s.templateCache.GetTemplate(
-		childCtx,
-		req.Sandbox.BuildId,
-		req.Sandbox.KernelVersion,
-		req.Sandbox.FirecrackerVersion,
+		ctx,
+		req.GetSandbox().GetBuildId(),
+		req.GetSandbox().GetKernelVersion(),
+		req.GetSandbox().GetFirecrackerVersion(),
+		req.GetSandbox().GetSnapshot(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
 
 	sbx, err := sandbox.ResumeSandbox(
-		childCtx,
+		ctx,
 		s.tracer,
 		s.networkPool,
 		template,

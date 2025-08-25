@@ -261,3 +261,18 @@ variable "additional_api_services" {
     api_node_group_port      = number
   }))
 }
+
+variable "filestore_cache_enabled" {
+  type    = bool
+  default = false
+}
+
+variable "filestore_cache_tier" {
+  type    = string
+  default = "BASIC_HDD"
+}
+
+variable "filestore_cache_capacity_gb" {
+  type    = number
+  default = 0
+}

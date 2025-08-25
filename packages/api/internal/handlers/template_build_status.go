@@ -83,7 +83,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		Reason:     getAPIReason(buildInfo.Reason),
 	}
 
-	cli, err := a.templateManager.GetBuildClient(team.ClusterID, buildInfo.ClusterNodeID, false)
+	cli, err := a.templateManager.GetBuildClient(team.ClusterID, buildInfo.NodeID, false)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when getting build client", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting build client")

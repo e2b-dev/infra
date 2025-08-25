@@ -6,13 +6,29 @@ import (
 
 // All flags must be defined here: https://app.launchdarkly.com/projects/default/flags/
 
-type BoolFlag string
+type BoolFlag struct {
+	name     string
+	fallback bool
+}
 
-const (
-	MetricsWriteFlagName                BoolFlag = "sandbox-metrics-write"
-	MetricsReadFlagName                 BoolFlag = "sandbox-metrics-read"
-	SandboxLifeCycleEventsWriteFlagName BoolFlag = "sandbox-lifecycle-events-write"
-	SandboxEventsPublishFlagName        BoolFlag = "sandbox-events-publish"
+func (f BoolFlag) String() string {
+	return f.name
+}
+
+func newBoolFlag(name string, fallback bool) BoolFlag {
+	flag := BoolFlag{name: name, fallback: fallback}
+	builder := LaunchDarklyOfflineStore.Flag(flag.name).VariationForAll(fallback)
+	LaunchDarklyOfflineStore.Update(builder)
+	return flag
+}
+
+var (
+	MetricsWriteFlagName                = newBoolFlag("sandbox-metrics-write", env.IsDevelopment())
+	MetricsReadFlagName                 = newBoolFlag("sandbox-metrics-read", env.IsDevelopment())
+	SandboxLifeCycleEventsWriteFlagName = newBoolFlag("sandbox-lifecycle-events-write", env.IsDevelopment())
+	SnapshotFeatureFlagName             = newBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
+	TemplateFeatureFlagName             = newBoolFlag("use-nfs-for-templates", env.IsDevelopment())
+	SandboxEventsPublishFlagName        = newBoolFlag("sandbox-events-publish", env.IsDevelopment())
 )
 
 type IntFlag string
@@ -32,13 +48,6 @@ const (
 	// PubsubQueueChannelSize - size of the channel buffer used to queue incoming sandbox events
 	PubsubQueueChannelSize IntFlag = "pubsub-queue-channel-size"
 )
-
-var flagsBool = map[BoolFlag]bool{
-	MetricsWriteFlagName:                env.IsDevelopment(),
-	MetricsReadFlagName:                 env.IsDevelopment(),
-	SandboxLifeCycleEventsWriteFlagName: env.IsDevelopment(),
-	SandboxEventsPublishFlagName:        env.IsDevelopment(),
-}
 
 var flagsInt = map[IntFlag]int{
 	GcloudConcurrentUploadLimit:   8,

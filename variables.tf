@@ -99,7 +99,6 @@ variable "clickhouse_server_service_port" {
   }
 }
 
-
 variable "clickhouse_health_port" {
   type = object({
     name = string
@@ -359,4 +358,22 @@ variable "template_bucket_name" {
 variable "redis_managed" {
   default = false
   type    = bool
+}
+
+variable "filestore_cache_enabled" {
+  type        = bool
+  description = "Set to true to enable Filestore cache. Can be set via TF_VAR_use_filestore_cache or USE_FILESTORE_CACHE env var."
+  default     = false
+}
+
+variable "filestore_cache_tier" {
+  type        = string
+  description = "The tier of the Filestore cache"
+  default     = "BASIC_HDD"
+}
+
+variable "filestore_cache_capacity_gb" {
+  type        = number
+  description = "The capacity of the Filestore cache in GB"
+  default     = 0
 }
