@@ -64,6 +64,9 @@ module "init" {
   labels = var.labels
   prefix = var.prefix
 
+  gcp_project_id = var.gcp_project_id
+  gcp_region     = var.gcp_region
+
 }
 
 module "buckets" {

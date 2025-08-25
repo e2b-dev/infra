@@ -445,14 +445,17 @@ variable "vault_kms_crypto_key" {
 variable "vault_backend_bucket_name" {
   type        = string
   description = "GCS bucket name for Vault backend storage"
+  default     = ""
 }
 
 variable "vault_api_approle_secret_id" {
   type        = string
   description = "GCP Secret Manager secret ID for Vault API AppRole credentials"
+  default     = ""
 }
 
 variable "vault_orchestrator_approle_secret_id" {
   type        = string
   description = "GCP Secret Manager secret ID for Vault Orchestrator AppRole credentials"
+  default     = ""
 }
