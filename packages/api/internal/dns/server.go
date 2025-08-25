@@ -164,8 +164,6 @@ func (d *DNS) handleDNSRequest(ctx context.Context, w resolver.ResponseWriter, r
 
 var errOnStartup = errors.New("failed to start DNS server")
 
-func CheckErrOnStartup(err error) bool { return errors.Is(err, errOnStartup) }
-
 func (d *DNS) Start(ctx context.Context, address string, port string) {
 	if d.srv != nil {
 		return
@@ -228,12 +226,13 @@ func (d *DNS) Start(ctx context.Context, address string, port string) {
 	go func() {
 		<-ctx.Done()
 
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx = context.WithoutCancel(ctx)
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 
 		// Close should be a noop if it's already been called,
 		// and it caches the error.
-		_ = d.Close(shutdownCtx)
+		_ = d.Close(ctx)
 	}()
 }
 
