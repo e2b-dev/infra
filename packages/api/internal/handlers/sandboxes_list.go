@@ -269,7 +269,6 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []*instance.InstanceInfo)
 
 	// Add running sandboxes to results
 	for _, info := range runningSandboxes {
-		info.Lock()
 		sandbox := utils.PaginatedSandbox{
 			ListedSandbox: api.ListedSandbox{
 				ClientID:    info.ClientID,
@@ -287,12 +286,11 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []*instance.InstanceInfo)
 			PaginationTimestamp: info.StartTime,
 		}
 
-		if info.Metadata != nil {
-			meta := api.SandboxMetadata(info.Metadata)
+		metadata := info.Metadata()
+		if metadata != nil {
+			meta := api.SandboxMetadata(metadata)
 			sandbox.Metadata = &meta
 		}
-
-		info.Unlock()
 
 		sandboxes = append(sandboxes, sandbox)
 	}

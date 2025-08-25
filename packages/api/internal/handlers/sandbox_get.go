@@ -71,8 +71,9 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			Domain:          sbxDomain,
 		}
 
-		if sbx.Metadata != nil {
-			meta := api.SandboxMetadata(sbx.Metadata)
+		metadata := sbx.Metadata()
+		if metadata != nil {
+			meta := api.SandboxMetadata(metadata)
 			sandbox.Metadata = &meta
 		}
 

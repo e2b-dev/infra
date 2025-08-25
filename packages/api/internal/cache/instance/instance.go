@@ -94,7 +94,7 @@ type InstanceInfo struct {
 	TeamID              uuid.UUID
 	BuildID             uuid.UUID
 	BaseTemplateID      string
-	Metadata            map[string]string
+	metadata            map[string]string
 	MaxInstanceLength   time.Duration
 	StartTime           time.Time
 	endTime             time.Time
@@ -126,6 +126,20 @@ func (i *InstanceInfo) IsExpired() bool {
 	defer i.RUnlock()
 
 	return time.Now().After(i.endTime)
+}
+
+func (i *InstanceInfo) Metadata() map[string]string {
+	i.RLock()
+	defer i.RUnlock()
+
+	return i.metadata
+}
+
+func (i *InstanceInfo) UpdateMetadata(metadata map[string]string) {
+	i.Lock()
+	defer i.Unlock()
+
+	i.metadata = metadata
 }
 
 func (i *InstanceInfo) GetEndTime() time.Time {

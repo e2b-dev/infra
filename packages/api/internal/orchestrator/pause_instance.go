@@ -30,7 +30,6 @@ func (o *Orchestrator) PauseInstance(
 	ctx, span := o.tracer.Start(ctx, "pause-sandbox")
 	defer span.End()
 
-	sbx.Lock()
 	snapshotConfig := &db.SnapshotInfo{
 		BaseTemplateID:      sbx.TemplateID,
 		SandboxID:           sbx.SandboxID,
@@ -38,14 +37,13 @@ func (o *Orchestrator) PauseInstance(
 		VCPU:                sbx.VCpu,
 		RAMMB:               sbx.RamMB,
 		TotalDiskSizeMB:     sbx.TotalDiskSizeMB,
-		Metadata:            sbx.Metadata,
+		Metadata:            sbx.Metadata(),
 		KernelVersion:       sbx.KernelVersion,
 		FirecrackerVersion:  sbx.FirecrackerVersion,
 		EnvdVersion:         sbx.EnvdVersion,
 		EnvdSecured:         sbx.EnvdAccessToken != nil,
 		AllowInternetAccess: sbx.AllowInternetAccess,
 	}
-	sbx.Unlock()
 
 	envBuild, err := o.dbClient.NewSnapshotBuild(
 		ctx,

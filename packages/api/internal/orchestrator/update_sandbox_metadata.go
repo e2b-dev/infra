@@ -47,7 +47,7 @@ func (o *Orchestrator) UpdateSandboxMetadata(
 	}
 
 	// Only update local cache after orchestrator call succeeds
-	sbx.Metadata = metadata
+	sbx.UpdateMetadata(metadata)
 
 	telemetry.ReportEvent(childCtx, "Updated running sandbox metadata")
 
