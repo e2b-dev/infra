@@ -22,14 +22,14 @@ type TemplateSpawnCounter struct {
 	done     chan bool
 }
 
-func NewTemplateSpawnCounter(tickerDuration time.Duration, dbClient *db.DB) *TemplateSpawnCounter {
+func NewTemplateSpawnCounter(ctx context.Context, tickerDuration time.Duration, dbClient *db.DB) *TemplateSpawnCounter {
 	counter := &TemplateSpawnCounter{
 		counters: make(map[string]*TemplateCounter),
 		ticker:   time.NewTicker(tickerDuration),
 		done:     make(chan bool),
 	}
 
-	go counter.processUpdates(dbClient)
+	go counter.processUpdates(context.WithoutCancel(ctx), dbClient)
 	return counter
 }
 
@@ -43,11 +43,11 @@ func (t *TemplateSpawnCounter) IncreaseTemplateSpawnCount(templateID string, tim
 	t.mu.Unlock()
 }
 
-func (t *TemplateSpawnCounter) processUpdates(dbClient *db.DB) {
+func (t *TemplateSpawnCounter) processUpdates(ctx context.Context, dbClient *db.DB) {
 	for {
 		select {
 		case <-t.ticker.C:
-			t.flushCounters(dbClient)
+			t.flushCounters(ctx, dbClient)
 		case <-t.done:
 			t.ticker.Stop()
 			return
@@ -55,7 +55,7 @@ func (t *TemplateSpawnCounter) processUpdates(dbClient *db.DB) {
 	}
 }
 
-func (t *TemplateSpawnCounter) flushCounters(dbClient *db.DB) {
+func (t *TemplateSpawnCounter) flushCounters(ctx context.Context, dbClient *db.DB) {
 	t.mu.Lock()
 	updates := make(map[string]*TemplateCounter)
 	for templateID, counter := range t.counters {
@@ -68,7 +68,7 @@ func (t *TemplateSpawnCounter) flushCounters(dbClient *db.DB) {
 	t.mu.Unlock()
 
 	for templateID, counter := range updates {
-		err := dbClient.UpdateEnvLastUsed(context.Background(), int64(counter.count), counter.lastUpdate, templateID)
+		err := dbClient.UpdateEnvLastUsed(ctx, int64(counter.count), counter.lastUpdate, templateID)
 		if err != nil {
 			zap.L().Error("error updating template spawn count", zap.Error(err))
 		}
