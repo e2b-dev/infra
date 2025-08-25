@@ -102,10 +102,11 @@ func (c *InstanceCache) Add(ctx context.Context, instance *InstanceInfo, newlyCr
 func (c *InstanceCache) Delete(instanceID string, pause bool) bool {
 	value, found := c.cache.GetAndRemove(instanceID)
 	if found {
-		value.AutoPause.Store(pause)
-
 		if pause {
+			value.setOnEviction(EvictionPause)
 			c.MarkAsPausing(value)
+		} else {
+			value.setOnEviction(EvictionDelete)
 		}
 	}
 

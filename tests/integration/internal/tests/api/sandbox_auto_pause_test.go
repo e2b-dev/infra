@@ -23,7 +23,7 @@ func TestSandboxAutoPausePauseResume(t *testing.T) {
 	// Pause the sandbox
 	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
+	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
 
 	// Resume the sandbox with auto-pause enabled
 	_, err = c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
@@ -87,6 +87,7 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 			Path:     &path,
 			Username: "user",
 		},
+		setup.WithSandbox(sbxId),
 	)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, fileResponse.StatusCode())
@@ -123,6 +124,7 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 			Path:     &path,
 			Username: "user",
 		},
+		setup.WithSandbox(sbxId),
 	)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, fileResponse.StatusCode())

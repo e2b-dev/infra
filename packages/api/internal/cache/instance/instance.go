@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,6 +24,13 @@ const (
 )
 
 var ErrPausingInstanceNotFound = errors.New("pausing instance not found")
+
+type OnEvictionType string
+
+const (
+	EvictionPause  OnEvictionType = "pause"
+	EvictionDelete OnEvictionType = "delete"
+)
 
 func NewInstanceInfo(
 	SandboxID string,
@@ -74,13 +80,17 @@ func NewInstanceInfo(
 		AllowInternetAccess: allowInternetAccess,
 		NodeID:              NodeID,
 		ClusterID:           ClusterID,
-		AutoPause:           atomic.Bool{},
+		AutoPause:           AutoPause,
 		Pausing:             utils.NewSetOnce[string](),
 		BaseTemplateID:      BaseTemplateID,
 		mu:                  sync.RWMutex{},
 	}
 
-	instance.AutoPause.Store(AutoPause)
+	if AutoPause {
+		instance.onEviction = EvictionPause
+	} else {
+		instance.onEviction = EvictionDelete
+	}
 
 	return instance
 }
@@ -109,7 +119,8 @@ type InstanceInfo struct {
 	AllowInternetAccess *bool
 	NodeID              string
 	ClusterID           uuid.UUID
-	AutoPause           atomic.Bool
+	AutoPause           bool
+	onEviction          OnEvictionType
 	Pausing             *utils.SetOnce[string]
 	mu                  sync.RWMutex
 }
@@ -145,6 +156,19 @@ func (i *InstanceInfo) SetEndTime(endTime time.Time) {
 
 func (i *InstanceInfo) SetExpired() {
 	i.SetEndTime(time.Now())
+}
+
+func (i *InstanceInfo) setOnEviction(onEviction OnEvictionType) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.onEviction = onEviction
+}
+
+func (i *InstanceInfo) OnEviction() OnEvictionType {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+
+	return i.onEviction
 }
 
 type InstanceCache struct {
@@ -221,7 +245,7 @@ func (c *InstanceCache) Set(key string, value *InstanceInfo, created bool) {
 }
 
 func (c *InstanceCache) MarkAsPausing(instanceInfo *InstanceInfo) {
-	if instanceInfo.AutoPause.Load() {
+	if instanceInfo.onEviction == EvictionPause {
 		c.pausing.InsertIfAbsent(instanceInfo.SandboxID, instanceInfo)
 	}
 }
