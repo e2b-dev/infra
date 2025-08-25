@@ -305,7 +305,16 @@ Example:
   }
 ]
 EOT
-  default     = ""
+  default     = <<EOT
+[
+  {
+    "paths": ["/events*"],
+    "service_id": "projects/e2b-dev-jonas/global/backendServices/e2b-backend-argus",
+    "api_node_group_port_name": "e2b-argus-api",
+    "api_node_group_port": 3003
+  }
+]
+EOT
 }
 
 variable "prefix" {

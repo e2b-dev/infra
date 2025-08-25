@@ -17,6 +17,14 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/pubsub"
 )
 
+type MissingEventFieldError struct {
+	fieldName string
+}
+
+func (e *MissingEventFieldError) Error() string {
+	return fmt.Sprintf("missing required event field: %s", e.fieldName)
+}
+
 // SandboxEventsService manages sandbox events publishing, subscription using PubSub
 // as well as persisting using a ClickHouse Batcher
 type SandboxEventsService struct {
@@ -70,16 +78,18 @@ func (es *SandboxEventsService) handlePubSubEvent(ctx context.Context, event eve
 			es.logger.Error("error checking if sandbox should publish", zap.Error(err))
 		}
 
-		if shouldPublish {
-			es.logger.Debug("PubSub should publish for sandbox event lifecycle",
-				zap.String("sandbox_id", event.SandboxID),
-				zap.String("team_id", event.SandboxTeamID.String()),
-			)
+		if !shouldPublish {
+			return
+		}
 
-			err = es.pubsub.Publish(ctx, event)
-			if err != nil {
-				es.logger.Error("error publishing sandbox event", zap.Error(err))
-			}
+		es.logger.Debug("PubSub should publish for sandbox event lifecycle",
+			zap.String("sandbox_id", event.SandboxID),
+			zap.String("team_id", event.SandboxTeamID.String()),
+		)
+
+		err = es.pubsub.Publish(ctx, event)
+		if err != nil {
+			es.logger.Error("error publishing sandbox event", zap.Error(err))
 		}
 	}
 }
@@ -126,23 +136,23 @@ func (es *SandboxEventsService) handleClickhouseBatcherEvent(event event.Sandbox
 
 func validateEvent(event event.SandboxEvent) error {
 	if event.SandboxID == "" {
-		return errors.New("sandbox ID is required")
+		return &MissingEventFieldError{"sandbox_id"}
 	}
 
 	if event.SandboxTeamID == uuid.Nil {
-		return errors.New("sandbox team ID is required")
+		return &MissingEventFieldError{"sandbox_team_id"}
 	}
 
 	if event.EventCategory == "" {
-		return errors.New("event category is required")
+		return &MissingEventFieldError{"event_category"}
 	}
 
 	if event.EventLabel == "" {
-		return errors.New("event label is required")
+		return &MissingEventFieldError{"event_label"}
 	}
 
 	if event.Timestamp.IsZero() {
-		return errors.New("timestamp is required")
+		return &MissingEventFieldError{"timestamp"}
 	}
 
 	return nil

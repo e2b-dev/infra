@@ -293,7 +293,9 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		buildId = sbx.APIStoredConfig.BuildId
 	}
 
-	go s.sbxEventsService.HandleEvent(ctx, event.SandboxEvent{
+	eventCtx := context.WithoutCancel(ctx)
+
+	go s.sbxEventsService.HandleEvent(eventCtx, event.SandboxEvent{
 		Timestamp:          time.Now().UTC(),
 		SandboxID:          sbx.Runtime.SandboxID,
 		SandboxExecutionID: sbx.Runtime.ExecutionID,
@@ -398,7 +400,8 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		buildId = sbx.APIStoredConfig.BuildId
 	}
 
-	go s.sbxEventsService.HandleEvent(ctx, event.SandboxEvent{
+	eventCtx := context.WithoutCancel(ctx)
+	go s.sbxEventsService.HandleEvent(eventCtx, event.SandboxEvent{
 		Timestamp:          time.Now().UTC(),
 		SandboxID:          sbx.Runtime.SandboxID,
 		SandboxExecutionID: sbx.Runtime.ExecutionID,
