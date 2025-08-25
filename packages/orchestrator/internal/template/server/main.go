@@ -62,7 +62,7 @@ func New(
 ) (*ServerStore, error) {
 	logger.Info("Initializing template manager")
 
-	artifactsregistry, err := artifactsregistry.GetArtifactsRegistryProvider()
+	artifactsregistry, err := artifactsregistry.GetArtifactsRegistryProvider(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting artifacts registry provider: %v", err)
 	}
