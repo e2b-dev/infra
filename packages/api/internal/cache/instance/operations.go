@@ -100,8 +100,9 @@ func (c *InstanceCache) Add(ctx context.Context, instance *InstanceInfo, newlyCr
 
 // Delete the instance and remove it from the cache.
 func (c *InstanceCache) Delete(instanceID string, pause bool) bool {
-	value, found := c.cache.GetAndRemove(instanceID)
+	value, found := c.cache.Get(instanceID)
 	if found {
+		defer c.cache.Remove(instanceID)
 		if pause {
 			value.setOnEviction(EvictionPause)
 			c.MarkAsPausing(value)
