@@ -60,7 +60,7 @@ func NewInstanceInfo(
 		ExecutionID:         ExecutionID,
 		TeamID:              TeamID,
 		BuildID:             BuildID,
-		Metadata:            Metadata,
+		metadata:            Metadata,
 		MaxInstanceLength:   MaxInstanceLength,
 		StartTime:           StartTime,
 		endTime:             endTime,
