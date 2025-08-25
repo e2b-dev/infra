@@ -11,4 +11,5 @@ terraform.tfstate.backup
 **/.tfplan.*
 tests/periodic-test/build-template/e2b.toml
 .air
+go.work.sum
 .infisical.json
