@@ -153,6 +153,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		build.ReadyCmd,
 		&fromImage,
 		nil, // fromTemplate not supported in v1 handler
+		nil, // fromImageRegistry not supported in v1 handler
 		&forceRebuild,
 		nil,
 		team.ClusterID,

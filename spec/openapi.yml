@@ -609,6 +609,72 @@ components:
         memoryMB:
           $ref: "#/components/schemas/MemoryMB"
 
+    FromImageRegistry:
+      oneOf:
+        - $ref: '#/components/schemas/AWSRegistry'
+        - $ref: '#/components/schemas/GCPRegistry'
+        - $ref: '#/components/schemas/GeneralRegistry'
+      discriminator:
+        propertyName: type
+        mapping:
+          aws: '#/components/schemas/AWSRegistry'
+          gcp: '#/components/schemas/GCPRegistry'
+          registry: '#/components/schemas/GeneralRegistry'
+
+    AWSRegistry:
+      type: object
+      required:
+        - type
+        - awsAccessKeyId
+        - awsSecretAccessKey
+        - awsRegion
+      properties:
+        type:
+          type: string
+          enum: [aws]
+          description: Type of registry authentication
+        awsAccessKeyId:
+          type: string
+          description: AWS Access Key ID for ECR authentication
+        awsSecretAccessKey:
+          type: string
+          description: AWS Secret Access Key for ECR authentication
+        awsRegion:
+          type: string
+          description: AWS Region where the ECR registry is located
+
+    GCPRegistry:
+      type: object
+      required:
+        - type
+        - serviceAccountJson
+      properties:
+        type:
+          type: string
+          enum: [gcp]
+          description: Type of registry authentication
+        serviceAccountJson:
+          type: string
+          description: Service Account JSON for GCP authentication
+
+    GeneralRegistry:
+      type: object
+      required:
+        - type
+        - username
+        - password
+      properties:
+        type:
+          type: string
+          enum: [registry]
+          description: Type of registry authentication
+        username:
+          type: string
+          description: Username to use for the registry
+        password:
+          type: string
+          description: Password to use for the registry
+
     TemplateBuildStartV2:
       type: object
       properties:
@@ -618,6 +684,8 @@ components:
         fromTemplate:
           type: string
           description: Template to use as a base for the template build
+        fromImageRegistry:
+          $ref: "#/components/schemas/FromImageRegistry"
         force:
           default: false
           type: boolean
