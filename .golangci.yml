@@ -19,7 +19,7 @@ linters:
     - bodyclose
     - containedctx
     - dogsled
-    - staticcheck
+    - copyloopvar
     - govet
     - staticcheck
   settings:
