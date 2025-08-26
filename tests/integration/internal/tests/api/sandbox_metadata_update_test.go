@@ -9,7 +9,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
@@ -424,8 +426,6 @@ func TestSandboxMetadataRaceCondition(t *testing.T) {
 	successCount := 0
 	var mu sync.Mutex
 
-	firstFinished := make(chan struct{})
-
 	// Each goroutine will try to increment the counter
 	for i := 0; i < count; i++ {
 		wg.Add(1)
@@ -447,16 +447,10 @@ func TestSandboxMetadataRaceCondition(t *testing.T) {
 			if err == nil && updateResponse.StatusCode() == http.StatusOK {
 				mu.Lock()
 				successCount++
-				select {
-				case firstFinished <- struct{}{}:
-				default:
-				}
-				mu.Unlock()
 			}
 		}(i)
 	}
 
-	<-firstFinished
 	for i := 0; i < count; i++ {
 		wg.Add(1)
 		go func(goroutineID int) {
@@ -510,6 +504,24 @@ func TestSandboxMetadataRaceCondition(t *testing.T) {
 	counter := metadata["shared_counter"]
 	updaterID := metadata["updater_id"]
 	updateTime := metadata["update_time"]
+
+	orch := setup.GetOrchestratorClient(t)
+	sandboxes, err := orch.List(t.Context(), &emptypb.Empty{})
+	require.NoError(t, err)
+
+	var sbx *orchestrator.RunningSandbox
+	for _, listedSbx := range sandboxes.Sandboxes {
+		if listedSbx.Config.SandboxId == sandbox.SandboxID {
+			sbx = listedSbx
+			break
+		}
+	}
+
+	require.NotNil(t, sbx)
+	require.Equal(t, counter, sbx.Config.Metadata["shared_counter"])
+	require.Equal(t, updaterID, sbx.Config.Metadata["updater_id"])
+	require.Equal(t, updateTime, sbx.Config.Metadata["update_time"])
+	require.Len(t, len(sbx.Config.Metadata), 3)
 
 	// Verify consistency - updater_id should match the counter value
 	expectedUpdaterID := fmt.Sprintf("goroutine-%s", counter)

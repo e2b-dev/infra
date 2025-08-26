@@ -1,7 +1,6 @@
 package setup
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
@@ -11,7 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-func GetOrchestratorClient(tb testing.TB, ctx context.Context) orchestrator.SandboxServiceClient {
+func GetOrchestratorClient(tb testing.TB) orchestrator.SandboxServiceClient {
 	tb.Helper()
 
 	conn, err := grpc.NewClient(OrchestratorHost, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -21,10 +20,12 @@ func GetOrchestratorClient(tb testing.TB, ctx context.Context) orchestrator.Sand
 		return nil
 	}
 
-	go func() {
-		<-ctx.Done()
-		conn.Close()
-	}()
+	tb.Cleanup(func() {
+		err := conn.Close()
+		if err != nil {
+			tb.Logf("Error closing connection: %v", err)
+		}
+	})
 
 	return orchestrator.NewSandboxServiceClient(conn)
 }
