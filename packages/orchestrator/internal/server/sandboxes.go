@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -30,10 +31,12 @@ const (
 	requestTimeout = 60 * time.Second
 )
 
-func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
-	ctx, cancel := context.WithTimeoutCause(ctxConn, requestTimeout, fmt.Errorf("request timed out"))
+func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
+	// set max request timeout for this request
+	ctx, cancel := context.WithTimeoutCause(ctx, requestTimeout, fmt.Errorf("request timed out"))
 	defer cancel()
 
+	// set up tracing
 	ctx, childSpan := s.tracer.Start(ctx, "sandbox-create")
 	defer childSpan.End()
 
@@ -45,7 +48,21 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
-	metricsWriteFlag, flagErr := s.featureFlags.BoolFlag(featureflags.MetricsWriteFlagName, req.Sandbox.SandboxId)
+	// setup launch darkly
+	ctx = featureflags.CreateContext(
+		ctx,
+		ldcontext.NewBuilder(req.Sandbox.SandboxId).
+			Kind(featureflags.SandboxKind).
+			SetString(featureflags.SandboxTemplateAttribute, req.Sandbox.TemplateId).
+			SetString(featureflags.SandboxKernelVersionAttribute, req.Sandbox.KernelVersion).
+			SetString(featureflags.SandboxFirecrackerVersionAttribute, req.Sandbox.FirecrackerVersion).
+			Build(),
+		ldcontext.NewBuilder(req.Sandbox.TeamId).
+			Kind(featureflags.TeamKind).
+			Build(),
+	)
+
+	metricsWriteFlag, flagErr := s.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlagName, req.Sandbox.SandboxId)
 	if flagErr != nil {
 		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
 	}
@@ -143,7 +160,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		label = clickhouse.SandboxEventLabelResume
 	}
 
-	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(
+	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(ctx,
 		featureflags.SandboxLifeCycleEventsWriteFlagName, req.Sandbox.SandboxId)
 	if flagErr != nil {
 		zap.L().Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
@@ -205,7 +222,7 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	// TODO: adapt to new types of update events
 	eventData := fmt.Sprintf(`{"set_timeout": "%s"}`, req.EndTime.AsTime().Format(time.RFC3339))
 
-	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(
+	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(ctx,
 		featureflags.SandboxLifeCycleEventsWriteFlagName, item.Runtime.SandboxID)
 	if flagErr != nil {
 		zap.L().Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
@@ -312,7 +329,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		}
 	}()
 
-	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(
+	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(ctx,
 		featureflags.SandboxLifeCycleEventsWriteFlagName, sbx.Runtime.SandboxID)
 	if flagErr != nil {
 		zap.L().Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
@@ -431,7 +448,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		}
 	}(context.WithoutCancel(ctx))
 
-	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(
+	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(ctx,
 		featureflags.SandboxLifeCycleEventsWriteFlagName, sbx.Runtime.SandboxID)
 	if flagErr != nil {
 		zap.L().Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))

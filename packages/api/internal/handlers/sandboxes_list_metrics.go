@@ -38,7 +38,7 @@ func (a *APIStore) getSandboxesMetrics(
 		attribute.Int("sandboxes.count", len(sandboxIDs)),
 	)
 
-	metricsReadFlag, err := a.featureFlags.BoolFlag(featureflags.MetricsReadFlagName, teamID.String())
+	metricsReadFlag, err := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName, teamID.String())
 	if err != nil {
 		zap.L().Error("error getting metrics read feature flag, soft failing", zap.Error(err))
 	}

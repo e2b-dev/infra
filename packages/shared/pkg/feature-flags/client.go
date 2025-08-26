@@ -8,7 +8,9 @@ import (
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
+	"github.com/launchdarkly/go-server-sdk/ldotel"
 	ldclient "github.com/launchdarkly/go-server-sdk/v7"
+	"github.com/launchdarkly/go-server-sdk/v7/ldhooks"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"go.uber.org/zap"
 )
@@ -35,7 +37,15 @@ func NewClient() (*Client, error) {
 		}
 
 		// waitFor has to be 0 for offline store
-		ldClient, err = ldclient.MakeCustomClient("", ldclient.Config{DataSource: LaunchDarklyOfflineStore}, 0)
+		ldClient, err = ldclient.MakeCustomClient(
+			"",
+			ldclient.Config{
+				DataSource: LaunchDarklyOfflineStore,
+				Hooks: []ldhooks.Hook{
+					ldotel.NewTracingHook(),
+				},
+			},
+			0)
 		if err != nil {
 			return nil, err
 		}
@@ -51,13 +61,17 @@ func NewClient() (*Client, error) {
 	return &Client{ld: ldClient}, nil
 }
 
-func (c *Client) BoolFlag(flag BoolFlag, contextKey string) (bool, error) {
+func (c *Client) BoolFlag(ctx context.Context, flag BoolFlag, contextKey string) (bool, error) {
 	if c.ld == nil {
 		return flag.fallback, fmt.Errorf("LaunchDarkly client is not initialized")
 	}
 
 	flagCtx := ldcontext.NewBuilder(flag.name).SetString("contextKey", contextKey).Build()
-	enabled, err := c.ld.BoolVariation(flag.name, flagCtx, flag.fallback)
+	if embeddedCtx, ok := getContext(ctx); ok {
+		flagCtx = ldcontext.NewMulti(embeddedCtx, flagCtx)
+	}
+
+	enabled, err := c.ld.BoolVariationCtx(ctx, flag.name, flagCtx, flag.fallback)
 	if err != nil {
 		return enabled, fmt.Errorf("error evaluating %s: %w", flag, err)
 	}
@@ -65,14 +79,18 @@ func (c *Client) BoolFlag(flag BoolFlag, contextKey string) (bool, error) {
 	return enabled, nil
 }
 
-func (c *Client) IntFlag(flagName IntFlag, contextKey string) (int, error) {
+func (c *Client) IntFlag(ctx context.Context, flagName IntFlag, contextKey string) (int, error) {
 	defaultValue := flagsInt[flagName]
 	if c.ld == nil {
 		return defaultValue, fmt.Errorf("LaunchDarkly client is not initialized")
 	}
 
 	flagCtx := ldcontext.NewBuilder(string(flagName)).SetString("contextKey", contextKey).Build()
-	value, err := c.ld.IntVariation(string(flagName), flagCtx, defaultValue)
+	if embeddedCtx, ok := getContext(ctx); ok {
+		flagCtx = ldcontext.NewMulti(embeddedCtx, flagCtx)
+	}
+
+	value, err := c.ld.IntVariationCtx(ctx, string(flagName), flagCtx, defaultValue)
 	if err != nil {
 		return value, fmt.Errorf("error evaluating %s: %w", flagName, err)
 	}
