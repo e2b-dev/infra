@@ -18,7 +18,9 @@ type ResumeSandbox struct {
 	config sandbox.Config
 }
 
-func NewResumeSandbox(config sandbox.Config) SandboxCreator {
+var _ SandboxCreator = (*ResumeSandbox)(nil)
+
+func NewResumeSandbox(config sandbox.Config) *ResumeSandbox {
 	return &ResumeSandbox{config: config}
 }
 
