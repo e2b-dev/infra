@@ -18,7 +18,7 @@ linters:
     - bidichk
     - bodyclose
     - containedctx
-    - staticcheck
+    - copyloopvar
     - govet
     - staticcheck
   settings:
