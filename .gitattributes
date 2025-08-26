@@ -1,0 +1,4 @@
+*        text=auto
+*.go     text      eol=lf
+*.mod    text      eol=lf
+*.sum    text      eol=lf linguist-generated=true
