@@ -266,6 +266,8 @@ func TestMove_Symlinks(t *testing.T) {
 	svc := Service{}
 
 	t.Run("move symlink to directory", func(t *testing.T) {
+		t.Parallel()
+
 		destPath := filepath.Join(destRoot, "moved-link-dir")
 
 		req := connect.NewRequest(&filesystem.MoveRequest{
@@ -300,6 +302,8 @@ func TestMove_Symlinks(t *testing.T) {
 	})
 
 	t.Run("move symlink to file", func(t *testing.T) {
+		t.Parallel()
+
 		destPath := filepath.Join(destRoot, "moved-link-file")
 
 		req := connect.NewRequest(&filesystem.MoveRequest{
@@ -334,6 +338,8 @@ func TestMove_Symlinks(t *testing.T) {
 	})
 
 	t.Run("move real file that is target of symlink", func(t *testing.T) {
+		t.Parallel()
+
 		// Create a new symlink to the real file
 		newLinkToFile := filepath.Join(sourceRoot, "new-link-file")
 		require.NoError(t, os.Symlink(realFile, newLinkToFile))
