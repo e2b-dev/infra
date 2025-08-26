@@ -113,7 +113,7 @@ func (c *CachedFileObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 		}
 	}
 
-	return totalSize, nil
+	return total, nil
 }
 
 func (c *CachedFileObjectProvider) WriteFromFileSystem(path string) error {
@@ -247,7 +247,8 @@ func (c *CachedFileObjectProvider) copyAndCacheBlock(blockCachePath string, offs
 	defer cleanup("failed to close file", cache)
 
 	dst = io.MultiWriter(cache, dst)
-	if _, err := c.inner.WriteTo(dst); err != nil {
+	count, err := c.inner.WriteTo(dst)
+	if err != nil {
 		return 0, fmt.Errorf("failed to write to cache %s: %w", tempFile, err)
 	}
 
@@ -260,7 +261,7 @@ func (c *CachedFileObjectProvider) copyAndCacheBlock(blockCachePath string, offs
 		)
 	}
 
-	return offset, nil
+	return count, nil
 }
 
 func (c *CachedFileObjectProvider) writeBytesToCache(src []byte) {
