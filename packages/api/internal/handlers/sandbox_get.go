@@ -1,9 +1,9 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -11,6 +11,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -25,7 +27,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	telemetry.ReportEvent(ctx, "get sandbox")
 
-	sandboxId := strings.Split(id, "-")[0]
+	sandboxID := utils.ShortID(id)
 
 	var sbxDomain *string
 	if team.ClusterID != nil {
@@ -41,11 +43,11 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	// Try to get the running sandbox first
-	info, err := a.orchestrator.GetInstance(ctx, sandboxId)
+	info, err := a.orchestrator.GetInstance(ctx, sandboxID)
 	if err == nil {
 		// Check if sandbox belongs to the team
 		if info.TeamID != team.ID {
-			telemetry.ReportCriticalError(ctx, fmt.Sprintf("sandbox '%s' doesn't belong to team '%s'", sandboxId, team.ID.String()), nil)
+			telemetry.ReportCriticalError(ctx, fmt.Sprintf("sandbox '%s' doesn't belong to team '%s'", sandboxID, team.ID.String()), nil)
 			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 
 			return
@@ -77,8 +79,15 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		return
 	}
 
+	_, err = a.orchestrator.WaitForPause(ctx, sandboxID)
+	if err != nil && !errors.Is(err, instance.ErrPausingInstanceNotFound) {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error while pausing sandbox %s: %s", sandboxID, err))
+
+		return
+	}
+
 	// If sandbox not found try to get the latest snapshot
-	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxId, TeamID: team.ID})
+	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: team.ID})
 	if err != nil {
 		telemetry.ReportError(ctx, "error getting last snapshot", err)
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))

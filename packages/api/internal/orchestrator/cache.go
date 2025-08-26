@@ -27,13 +27,6 @@ const cacheSyncTime = 20 * time.Second
 // This timeout is also set in the CloudRun for Analytics Collector, there it is 3 minutes.
 const reportTimeout = 4 * time.Minute
 
-type closeType string
-
-const (
-	ClosePause  closeType = "pause"
-	CloseDelete closeType = "delete"
-)
-
 func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, error) {
 	item, err := o.instanceCache.Get(sandboxID)
 	if err != nil {
@@ -224,23 +217,18 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		ctx, cancel := context.WithTimeout(parentCtx, timeout)
 		defer cancel()
 
+		evictionType := info.OnEviction()
+
 		sbxlogger.I(info).Debug("Deleting sandbox from cache hook",
 			zap.Time("start_time", info.StartTime),
 			zap.Time("end_time", info.GetEndTime()),
-			zap.Bool("auto_pause", info.AutoPause.Load()),
+			zap.String("eviction_type", string(evictionType)),
 		)
 
 		defer o.instanceCache.UnmarkAsPausing(info)
 
 		duration := time.Since(info.StartTime).Seconds()
 		stopTime := time.Now()
-
-		var ct closeType
-		if info.AutoPause.Load() {
-			ct = ClosePause
-		} else {
-			ct = CloseDelete
-		}
 
 		// Run in separate goroutine to not block sandbox deletion
 		// Also use parentCtx to not cancel the request with this hook timeout
@@ -256,7 +244,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			info.RamMB,
 			info.TotalDiskSizeMB,
 			stopTime,
-			ct,
+			evictionType,
 			duration,
 		)
 
@@ -269,7 +257,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		node.RemoveSandbox(info)
 		o.dns.Remove(ctx, info.SandboxID, node.IPAddress)
 
-		if ct == ClosePause {
+		if evictionType == instance.EvictionPause {
 			o.instanceCache.MarkAsPausing(info)
 
 			err := o.PauseInstance(ctx, info, info.TeamID)
@@ -295,7 +283,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		sbxlogger.I(info).Debug("Deleted sandbox from cache hook",
 			zap.Time("start_time", info.StartTime),
 			zap.Time("end_time", info.GetEndTime()),
-			zap.Bool("auto_pause", info.AutoPause.Load()),
+			zap.Bool("auto_pause", info.AutoPause),
 		)
 
 		return nil
@@ -314,7 +302,7 @@ func reportInstanceStopAnalytics(
 	ramMB int64,
 	diskSizeMB int64,
 	stopTime time.Time,
-	ct closeType,
+	evictionType instance.OnEvictionType,
 	duration float64,
 ) {
 	childCtx, cancel := context.WithTimeout(ctx, reportTimeout)
@@ -325,7 +313,7 @@ func reportInstanceStopAnalytics(
 		"closed_instance", posthog.NewProperties().
 			Set("instance_id", sandboxID).
 			Set("environment", templateID).
-			Set("type", ct).
+			Set("type", evictionType).
 			Set("duration", duration),
 	)
 
@@ -353,7 +341,7 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 		sbxlogger.I(info).Debug("Inserting sandbox to cache hook",
 			zap.Time("start_time", info.StartTime),
 			zap.Time("end_time", info.GetEndTime()),
-			zap.Bool("auto_pause", info.AutoPause.Load()),
+			zap.Bool("auto_pause", info.AutoPause),
 		)
 
 		node := o.GetNode(info.ClusterID, info.NodeID)
@@ -367,7 +355,7 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 
 		o.teamMetricsObserver.Add(ctx, info.TeamID, created)
 
-		if info.AutoPause.Load() {
+		if info.AutoPause {
 			o.instanceCache.MarkAsPausing(info)
 		}
 
@@ -391,7 +379,7 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 		sbxlogger.I(info).Debug("Inserted sandbox to cache hook",
 			zap.Time("start_time", info.StartTime),
 			zap.Time("end_time", info.GetEndTime()),
-			zap.Bool("auto_pause", info.AutoPause.Load()),
+			zap.Bool("auto_pause", info.AutoPause),
 		)
 
 		return nil

@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
@@ -113,6 +114,13 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		telemetry.ReportEvent(ctx, "deleted sandbox from orchestrator")
 
 		c.Status(http.StatusNoContent)
+
+		return
+	}
+
+	_, err = a.orchestrator.WaitForPause(ctx, sandboxID)
+	if err != nil && !errors.Is(err, instance.ErrPausingInstanceNotFound) {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error while pausing sandbox %s: %s", sandboxID, err))
 
 		return
 	}
