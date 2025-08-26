@@ -78,6 +78,7 @@ func (lb *LayerExecutor) BuildLayer(
 		cmd.SourceTemplate.KernelVersion,
 		cmd.SourceTemplate.FirecrackerVersion,
 		false,
+		true,
 	)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("get template snapshot: %w", err)
