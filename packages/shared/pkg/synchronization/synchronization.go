@@ -46,10 +46,10 @@ func NewSynchronize[SourceItem any, PoolItem any](tracer trace.Tracer, spanPrefi
 	return s
 }
 
-func (s *Synchronize[SourceItem, PoolItem]) Start(syncInterval time.Duration, syncRoundTimeout time.Duration, runInitialSync bool) {
+func (s *Synchronize[SourceItem, PoolItem]) Start(ctx context.Context, syncInterval time.Duration, syncRoundTimeout time.Duration, runInitialSync bool) {
 	if runInitialSync {
-		initialSyncTimeout, initialSyncCancel := context.WithTimeout(context.Background(), syncRoundTimeout)
-		err := s.sync(initialSyncTimeout)
+		initialSyncCtx, initialSyncCancel := context.WithTimeout(ctx, syncRoundTimeout)
+		err := s.sync(initialSyncCtx)
 		initialSyncCancel()
 		if err != nil {
 			zap.L().Error(s.getLog("Initial sync failed"), zap.Error(err))
@@ -65,7 +65,7 @@ func (s *Synchronize[SourceItem, PoolItem]) Start(syncInterval time.Duration, sy
 			zap.L().Info(s.getLog("Background synchronization ended"))
 			return
 		case <-timer.C:
-			syncTimeout, syncCancel := context.WithTimeout(context.Background(), syncRoundTimeout)
+			syncTimeout, syncCancel := context.WithTimeout(ctx, syncRoundTimeout)
 			err := s.sync(syncTimeout)
 			syncCancel()
 			if err != nil {

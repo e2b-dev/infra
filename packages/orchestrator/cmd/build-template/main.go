@@ -136,7 +136,7 @@ func buildTemplate(
 		}
 	}()
 
-	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider()
+	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider(ctx)
 	if err != nil {
 		return fmt.Errorf("error getting artifacts registry provider: %w", err)
 	}

@@ -72,9 +72,8 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	// Create a new context with a timeout if provided.
 	// We do not want the command to be killed if the request context is cancelled
-	procCtx, cancelProc := context.Background(), func() {}
+	procCtx, cancelProc := context.WithoutCancel(ctx), func() {}
 	if timeout > 0 { // zero timeout means no timeout
 		procCtx, cancelProc = context.WithTimeout(procCtx, timeout)
 	}

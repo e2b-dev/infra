@@ -67,7 +67,7 @@ func (c *TeamAuthCache) GetOrSet(ctx context.Context, key string, dataCallback D
 	templateInfo = item.Value()
 	if time.Since(templateInfo.lastRefresh) > refreshInterval {
 		go templateInfo.once.Do(key, func() (interface{}, error) {
-			c.Refresh(key, dataCallback)
+			c.Refresh(context.WithoutCancel(ctx), key, dataCallback)
 			return nil, err
 		})
 	}
@@ -76,8 +76,8 @@ func (c *TeamAuthCache) GetOrSet(ctx context.Context, key string, dataCallback D
 }
 
 // Refresh refreshes the cache for the given team ID.
-func (c *TeamAuthCache) Refresh(key string, dataCallback DataCallback) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func (c *TeamAuthCache) Refresh(ctx context.Context, key string, dataCallback DataCallback) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	team, tier, err := dataCallback(ctx, key)

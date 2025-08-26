@@ -50,7 +50,7 @@ func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, trac
 	p.synchronization = synchronization.NewSynchronize(p.tracer, "clusters-pool", "Clusters pool", store)
 
 	// Periodically sync clusters with the database
-	go p.synchronization.Start(poolSyncInterval, poolSyncTimeout, true)
+	go p.synchronization.Start(context.WithoutCancel(ctx), poolSyncInterval, poolSyncTimeout, true)
 
 	return p, nil
 }
@@ -119,7 +119,7 @@ func (d poolSynchronizationStore) PoolInsert(ctx context.Context, source queries
 
 	zap.L().Info("Initializing newly discovered cluster", l.WithClusterID(cluster.ID))
 
-	c, err := NewCluster(d.pool.tracer, d.pool.tel, cluster.Endpoint, cluster.EndpointTls, cluster.Token, cluster.ID, cluster.SandboxProxyDomain)
+	c, err := NewCluster(ctx, d.pool.tracer, d.pool.tel, cluster.Endpoint, cluster.EndpointTls, cluster.Token, cluster.ID, cluster.SandboxProxyDomain)
 	if err != nil {
 		zap.L().Error("Initializing cluster failed", zap.Error(err), l.WithClusterID(c.ID))
 		return

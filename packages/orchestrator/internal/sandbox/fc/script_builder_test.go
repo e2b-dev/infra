@@ -4,6 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -98,25 +101,15 @@ func TestStartScriptBuilder_Build(t *testing.T) {
 
 			// Call Build function directly with the four parameters
 			result, err := builder.Build(tt.versions, tt.files, tt.rootfsPaths, tt.namespaceID)
-			if err != nil {
-				t.Fatalf("Build should not return an error: %v", err)
-			}
-			if result == nil {
-				t.Fatal("Result should not be nil")
-			}
+			require.NoError(t, err)
+			require.NotNil(t, result)
 
 			// Test computed paths
-			if result.RootfsPath != tt.expectedRootfsPath {
-				t.Errorf("RootfsPath = %v, want %v", result.RootfsPath, tt.expectedRootfsPath)
-			}
-			if result.KernelPath != tt.expectedKernelPath {
-				t.Errorf("KernelPath = %v, want %v", result.KernelPath, tt.expectedKernelPath)
-			}
+			assert.Equal(t, tt.expectedRootfsPath, result.RootfsPath)
+			assert.Equal(t, tt.expectedKernelPath, result.KernelPath)
 
 			// Test that script is not empty
-			if result.Value == "" {
-				t.Error("Generated script should not be empty")
-			}
+			assert.NotEmpty(t, result.Value)
 
 			// Test that script contains expected content
 			for _, expected := range tt.expectedScriptContent {
