@@ -14,7 +14,7 @@ SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t
 FROM "public"."teams" t
 JOIN "public"."tiers" tier ON t.tier = tier.id
 JOIN "public"."team_api_keys" tak ON t.id = tak.team_id
-WHERE tak.api_key = $1
+WHERE tak.api_key_hash = $1
 `
 
 type GetTeamWithTierByAPIKeyRow struct {
@@ -22,8 +22,8 @@ type GetTeamWithTierByAPIKeyRow struct {
 	Tier Tier
 }
 
-func (q *Queries) GetTeamWithTierByAPIKey(ctx context.Context, apiKey string) (GetTeamWithTierByAPIKeyRow, error) {
-	row := q.db.QueryRow(ctx, getTeamWithTierByAPIKey, apiKey)
+func (q *Queries) GetTeamWithTierByAPIKey(ctx context.Context, apiKeyHash *string) (GetTeamWithTierByAPIKeyRow, error) {
+	row := q.db.QueryRow(ctx, getTeamWithTierByAPIKey, apiKeyHash)
 	var i GetTeamWithTierByAPIKeyRow
 	err := row.Scan(
 		&i.Team.ID,

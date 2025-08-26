@@ -19,7 +19,6 @@ type AccessToken struct {
 	ID          *uuid.UUID
 	// sensitive
 	AccessTokenHash       *string
-	AccessTokenMask       *string
 	Name                  string
 	AccessTokenPrefix     *string
 	AccessTokenLength     *int32
@@ -114,7 +113,6 @@ type TeamApiKey struct {
 	ID        uuid.UUID
 	// sensitive
 	ApiKeyHash       *string
-	ApiKeyMask       *string
 	ApiKeyPrefix     *string
 	ApiKeyLength     *int32
 	ApiKeyMaskPrefix *string

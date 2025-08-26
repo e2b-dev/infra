@@ -37,7 +37,7 @@ func (a *APIStore) GetTeams(c *gin.Context) {
 		teams[i] = api.Team{
 			TeamID:    row.Team.ID.String(),
 			Name:      row.Team.Name,
-			ApiKey:    apiKey.APIKey,
+			ApiKey:    apiKey.RawAPIKey,
 			IsDefault: row.UsersTeam.IsDefault,
 		}
 	}

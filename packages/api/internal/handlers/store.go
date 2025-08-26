@@ -35,6 +35,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -273,7 +274,16 @@ func (a *APIStore) GetHealth(c *gin.Context) {
 }
 
 func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authcache.AuthTeamInfo, *api.APIError) {
-	team, tier, err := a.authCache.GetOrSet(ctx, apiKey, func(ctx context.Context, key string) (*queries.Team, *queries.Tier, error) {
+	hashedApiKey, err := keys.VerifyKey(keys.ApiKeyPrefix, apiKey)
+	if err != nil {
+		return authcache.AuthTeamInfo{}, &api.APIError{
+			Err:       fmt.Errorf("failed to verify api key: %w", err),
+			ClientMsg: "Invalid API key format",
+			Code:      http.StatusUnauthorized,
+		}
+	}
+
+	team, tier, err := a.authCache.GetOrSet(ctx, hashedApiKey, func(ctx context.Context, key string) (*queries.Team, *queries.Tier, error) {
 		return dbapi.GetTeamAuth(ctx, a.sqlcDB, key)
 	})
 	if err != nil {
@@ -309,7 +319,16 @@ func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authca
 }
 
 func (a *APIStore) GetUserFromAccessToken(ctx context.Context, accessToken string) (uuid.UUID, *api.APIError) {
-	userID, err := a.db.GetUserID(ctx, accessToken)
+	hashedToken, err := keys.VerifyKey(keys.AccessTokenPrefix, accessToken)
+	if err != nil {
+		return uuid.UUID{}, &api.APIError{
+			Err:       fmt.Errorf("failed to verify access token: %w", err),
+			ClientMsg: "Invalid access token format",
+			Code:      http.StatusUnauthorized,
+		}
+	}
+
+	userID, err := a.db.GetUserID(ctx, hashedToken)
 	if err != nil {
 		return uuid.UUID{}, &api.APIError{
 			Err:       fmt.Errorf("failed to get the user from db for an access token: %w", err),

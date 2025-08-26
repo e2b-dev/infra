@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"strings"
 )
 
 const (
@@ -81,4 +82,18 @@ func GenerateKey(prefix string) (Key, error) {
 		HashedValue:      hasher.Hash(keyBytes),
 		Masked:           mask,
 	}, nil
+}
+
+func VerifyKey(prefix string, key string) (string, error) {
+	if !strings.HasPrefix(key, prefix) {
+		return "", fmt.Errorf("invalid key prefix")
+	}
+
+	keyValue := key[len(prefix):]
+	keyBytes, err := hex.DecodeString(keyValue)
+	if err != nil {
+		return "", fmt.Errorf("invalid key")
+	}
+
+	return hasher.Hash(keyBytes), nil
 }

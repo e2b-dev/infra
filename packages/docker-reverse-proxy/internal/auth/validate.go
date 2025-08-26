@@ -7,6 +7,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
@@ -15,7 +16,12 @@ import (
 )
 
 func Validate(ctx context.Context, db *models.Client, token, envID string) (bool, error) {
-	u, err := db.User.Query().Where(user.HasAccessTokensWith(accesstoken.AccessToken(token))).WithTeams().Only(ctx)
+	hashedToken, err := keys.VerifyKey(keys.AccessTokenPrefix, token)
+	if err != nil {
+		return false, err
+	}
+
+	u, err := db.User.Query().Where(user.HasAccessTokensWith(accesstoken.AccessTokenHash(hashedToken))).WithTeams().Only(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -38,7 +44,12 @@ func Validate(ctx context.Context, db *models.Client, token, envID string) (bool
 }
 
 func ValidateAccessToken(ctx context.Context, db *models.Client, accessToken string) bool {
-	exists, err := db.AccessToken.Query().Where(accesstoken.AccessToken(accessToken)).Exist(ctx)
+	hashedToken, err := keys.VerifyKey(keys.AccessTokenPrefix, accessToken)
+	if err != nil {
+		return false
+	}
+
+	exists, err := db.AccessToken.Query().Where(accesstoken.AccessTokenHash(hashedToken)).Exist(ctx)
 	if err != nil {
 		log.Printf("Error while checking access token: %s\n", err.Error())
 		return false
