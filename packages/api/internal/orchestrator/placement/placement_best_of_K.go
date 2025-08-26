@@ -7,6 +7,9 @@ import (
 	"math/rand"
 	"sync"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 )
@@ -19,6 +22,10 @@ type BestOfKConfig struct {
 	Alpha float64
 	// K is the number of candidate nodes sampled per placement ("power of K choices")
 	K int
+	// SkipTooManyStarting determines whether to skip nodes that are starting more than maxStartingInstancesPerNode instances
+	SkipTooManyStarting bool
+	// SkipCanFit determines whether to skip the node CanFit check
+	SkipCanFit bool
 }
 
 // DefaultBestOfKConfig returns the default placement configuration
@@ -31,7 +38,7 @@ func DefaultBestOfKConfig() BestOfKConfig {
 }
 
 // Score calculates the placement score for this node
-func (b *BestOfK) Score(node *nodemanager.Node, resources nodemanager.SandboxResources) float64 {
+func (b *BestOfK) Score(node *nodemanager.Node, resources nodemanager.SandboxResources, config BestOfKConfig) float64 {
 	metrics := node.Metrics()
 	reserved := metrics.CpuAllocated
 
@@ -44,15 +51,15 @@ func (b *BestOfK) Score(node *nodemanager.Node, resources nodemanager.SandboxRes
 		return math.MaxFloat64
 	}
 
-	totalCapacity := b.config.R * cpuCount
+	totalCapacity := config.R * cpuCount
 
 	cpuRequested := float64(resources.CPUs)
 
-	return (cpuRequested + float64(reserved) + b.config.Alpha*usageAvg) / totalCapacity
+	return (cpuRequested + float64(reserved) + config.Alpha*usageAvg) / totalCapacity
 }
 
 // CanFit checks if the node can fit a new VM with the given quota
-func (b *BestOfK) CanFit(node *nodemanager.Node, sandboxResources nodemanager.SandboxResources) bool {
+func (b *BestOfK) CanFit(node *nodemanager.Node, sandboxResources nodemanager.SandboxResources, config BestOfKConfig) bool {
 	metrics := node.Metrics()
 
 	reserved := metrics.CpuAllocated
@@ -63,7 +70,7 @@ func (b *BestOfK) CanFit(node *nodemanager.Node, sandboxResources nodemanager.Sa
 		return false
 	}
 
-	totalCapacity := b.config.R * cpuCount
+	totalCapacity := config.R * cpuCount
 
 	return float64(reserved+uint32(sandboxResources.CPUs)) <= totalCapacity
 }
@@ -89,20 +96,36 @@ func (b *BestOfK) getConfig() BestOfKConfig {
 	return b.config
 }
 
+// UpdateConfig updates the BestOfK algorithm configuration
+func (b *BestOfK) UpdateConfig(config BestOfKConfig) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.config = config
+}
+
+func (b *BestOfK) excludeNode(err error) bool {
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.ResourceExhausted {
+		return false
+	} else {
+		return true
+	}
+}
+
 // chooseNode selects the best node for placing a VM with the given quota
 func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources) (bestNode *nodemanager.Node, err error) {
 	// Fix the config, we want to dynamically update it
 	config := b.getConfig()
 
 	// Filter eligible nodes
-	candidates := b.sample(nodes, config.K, excludedNodes, resources)
+	candidates := b.sample(nodes, config, excludedNodes, resources)
 
 	// Find the best node among candidates
 	bestScore := math.MaxFloat64
 
 	for _, node := range candidates {
 		// Calculate score
-		score := b.Score(node, resources)
+		score := b.Score(node, resources, config)
 
 		if score < bestScore {
 			bestNode = node
@@ -118,8 +141,8 @@ func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, exclu
 }
 
 // sample returns up to k items chosen uniformly from those passing ok.
-func (b *BestOfK) sample(items []*nodemanager.Node, k int, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources) []*nodemanager.Node {
-	if k <= 0 || len(items) == 0 {
+func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources) []*nodemanager.Node {
+	if config.K <= 0 || len(items) == 0 {
 		return nil
 	}
 	indices := make([]int, len(items))
@@ -127,10 +150,10 @@ func (b *BestOfK) sample(items []*nodemanager.Node, k int, excludedNodes map[str
 		indices[i] = i
 	}
 
-	candidates := make([]*nodemanager.Node, 0, k)
+	candidates := make([]*nodemanager.Node, 0, config.K)
 	remaining := len(indices) // active pool is indices[:remaining]
 
-	for len(candidates) < k && remaining > 0 {
+	for len(candidates) < config.K && remaining > 0 {
 		// pick from the active pool
 		j := rand.Intn(remaining)
 		pick := indices[j]
@@ -151,14 +174,17 @@ func (b *BestOfK) sample(items []*nodemanager.Node, k int, excludedNodes map[str
 			continue
 		}
 
-		// Fit filter
-		if !b.CanFit(n, resources) {
-			continue
+		if config.SkipCanFit {
+			if !b.CanFit(n, resources, config) {
+				continue
+			}
 		}
 
-		// To prevent overloading the node
-		if n.PlacementMetrics.InProgressCount() > maxStartingInstancesPerNode {
-			continue
+		if config.SkipTooManyStarting {
+			// To prevent overloading the node
+			if n.PlacementMetrics.InProgressCount() > maxStartingInstancesPerNode {
+				continue
+			}
 		}
 
 		candidates = append(candidates, n)

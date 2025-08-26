@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -42,7 +43,9 @@ type Orchestrator struct {
 	nomadClient             *nomadapi.Client
 	instanceCache           *instance.InstanceCache
 	nodes                   *smap.Map[*nodemanager.Node]
-	placementAlgorithm      placement.Algorithm
+	leastBusyAlgorithm      placement.Algorithm
+	bestOfKAlgorithm        *placement.BestOfK
+	featureFlagsClient      *featureflags.Client
 	tracer                  trace.Tracer
 	analytics               *analyticscollector.Analytics
 	dns                     *dns.DNS
@@ -63,6 +66,7 @@ func New(
 	redisClient redis.UniversalClient,
 	dbClient *db.DB,
 	clusters *edge.Pool,
+	featureFlags *featureflags.Client,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics()
 	if err != nil {
@@ -82,13 +86,19 @@ func New(
 		Timeout: nodeHealthCheckTimeout,
 	}
 
+	// Initialize both placement algorithms
+	leastBusyAlgorithm := &placement.LeastBusyAlgorithm{}
+	bestOfKAlgorithm := placement.NewBestOfK(placement.DefaultBestOfKConfig()).(*placement.BestOfK)
+
 	o := Orchestrator{
 		httpClient:         httpClient,
 		analytics:          analyticsInstance,
 		nomadClient:        nomadClient,
 		tracer:             tracer,
 		nodes:              smap.New[*nodemanager.Node](),
-		placementAlgorithm: &placement.LeastBusyAlgorithm{},
+		leastBusyAlgorithm: leastBusyAlgorithm,
+		bestOfKAlgorithm:   bestOfKAlgorithm,
+		featureFlagsClient: featureFlags,
 		dns:                dnsServer,
 		dbClient:           dbClient,
 		tel:                tel,
@@ -135,6 +145,7 @@ func New(
 	}
 
 	go o.startStatusLogging(ctx)
+	go o.updateBestOfKConfig(ctx)
 
 	return &o, nil
 }
@@ -215,4 +226,74 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 // WaitForPause waits for the instance to be paused and returns the node info where the instance was paused on.
 func (o *Orchestrator) WaitForPause(ctx context.Context, sandboxID string) (nodeID string, err error) {
 	return o.instanceCache.WaitForPause(ctx, sandboxID)
+}
+
+// getPlacementAlgorithm returns the appropriate placement algorithm based on the passed context
+func (o *Orchestrator) getPlacementAlgorithm(ctx context.Context) placement.Algorithm {
+	// Use sandbox ID as context key for feature flag evaluation
+	useBestOfK, err := o.featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKPlacementAlgorithm)
+	if err != nil {
+		zap.L().Error("Failed to evaluate placement algorithm feature flag, using least-busy",
+			zap.Error(err))
+		return o.leastBusyAlgorithm
+	}
+
+	if useBestOfK {
+		return o.bestOfKAlgorithm
+	}
+	return o.leastBusyAlgorithm
+}
+
+// updateBestOfKConfig periodically updates the BestOfK algorithm configuration from feature flags
+func (o *Orchestrator) updateBestOfKConfig(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second) // Check for config updates every 30 seconds
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			// Get the latest config values from feature flags
+			// Using empty context key to get default values
+			k, err := o.featureFlagsClient.IntFlag(ctx, featureflags.BestOfKSampleSize)
+			if err != nil {
+				zap.L().Error("Failed to get BestOfKSampleSize flag", zap.Error(err))
+				k = 3 // fallback to default
+			}
+
+			maxOvercommitPercent, err := o.featureFlagsClient.IntFlag(ctx, featureflags.BestOfKMaxOvercommit)
+			if err != nil {
+				zap.L().Error("Failed to get BestOfKMaxOvercommit flag", zap.Error(err))
+			}
+
+			alphaPercent, err := o.featureFlagsClient.IntFlag(ctx, featureflags.BestOfKAlpha)
+			if err != nil {
+				zap.L().Error("Failed to get BestOfKAlpha flag", zap.Error(err))
+			}
+
+			skipCanFit, err := o.featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKSkipCanFit)
+			if err != nil {
+				zap.L().Error("Failed to get BestOfKSkipCanFit flag", zap.Error(err))
+			}
+
+			skipTooManyStarting, err := o.featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKSkipTooManyStarting)
+			if err != nil {
+				zap.L().Error("Failed to get BestOfKSkipTooManyStarting flag", zap.Error(err))
+			}
+
+			// Convert percentage to decimal
+			alpha := float64(alphaPercent) / 100.0
+			maxOvercommit := float64(maxOvercommitPercent) / 100.0
+
+			// Update the config
+			o.bestOfKAlgorithm.UpdateConfig(placement.BestOfKConfig{
+				R:                   maxOvercommit,
+				K:                   k,
+				Alpha:               alpha,
+				SkipCanFit:          skipCanFit,
+				SkipTooManyStarting: skipTooManyStarting,
+			})
+		}
+	}
 }
