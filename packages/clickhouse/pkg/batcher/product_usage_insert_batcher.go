@@ -96,11 +96,15 @@ func (b *ProductUsageInsertBatcher) Close(ctx context.Context) error {
 	stopErr := b.Batcher.Stop()
 	closeErr := b.conn.Close()
 
+	var errs []error
 	if stopErr != nil {
-		return fmt.Errorf("error stopping batcher: %w", stopErr)
+		errs = append(errs, fmt.Errorf("error stopping product usage insert batcher: %w", stopErr))
 	}
 	if closeErr != nil {
-		return fmt.Errorf("error closing connection: %w", closeErr)
+		errs = append(errs, fmt.Errorf("error closing product usage insert batcher connection: %w", closeErr))
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 	return nil
 }
