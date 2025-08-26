@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/batcher"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -36,7 +37,7 @@ type server struct {
 	devicePool          *nbd.DevicePool
 	persistence         storage.StorageProvider
 	featureFlags        *featureflags.Client
-	sandboxEventBatcher batcher.ClickhouseBatcher
+	sandboxEventBatcher batcher.ClickhouseInsertBatcher[clickhouse.SandboxEvent]
 }
 
 type Service struct {
@@ -64,7 +65,7 @@ func New(
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 	featureFlags *featureflags.Client,
-	sandboxEventBatcher batcher.ClickhouseBatcher,
+	sandboxEventBatcher batcher.ClickhouseInsertBatcher[clickhouse.SandboxEvent],
 	persistence storage.StorageProvider,
 ) (*Service, error) {
 	srv := &Service{
