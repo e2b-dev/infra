@@ -101,11 +101,12 @@ func (c *Cache) GetTemplate(
 	kernelVersion,
 	firecrackerVersion string,
 	isSnapshot bool,
+	isBuilding bool,
 ) (Template, error) {
 	persistence := c.persistence
 	// Because of the template caching, if we enable the shared cache feature flag,
 	// it will start working only for new orchestrators or new builds.
-	if c.useNFSCache(isSnapshot) {
+	if c.useNFSCache(isBuilding, isSnapshot) {
 		zap.L().Info("using local template cache", zap.String("path", c.rootCachePath))
 		persistence = storage.NewCachedProvider(c.rootCachePath, persistence)
 	}
@@ -192,7 +193,13 @@ func (c *Cache) AddSnapshot(
 	return nil
 }
 
-func (c *Cache) useNFSCache(isSnapshot bool) bool {
+func (c *Cache) useNFSCache(isBuilding bool, isSnapshot bool) bool {
+	if isBuilding {
+		// caching this layer doesn't speed up the next sandbox launch,
+		// as the previous template isn't used to load the one that's being built.
+		return false
+	}
+
 	if c.rootCachePath == "" {
 		// can't enable cache if we don't have a cache path
 		return false
