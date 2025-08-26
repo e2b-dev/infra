@@ -37,7 +37,7 @@ func (o *Orchestrator) PauseInstance(
 		VCPU:                sbx.VCpu,
 		RAMMB:               sbx.RamMB,
 		TotalDiskSizeMB:     sbx.TotalDiskSizeMB,
-		Metadata:            sbx.Metadata(),
+		Metadata:            sbx.Metadata,
 		KernelVersion:       sbx.KernelVersion,
 		FirecrackerVersion:  sbx.FirecrackerVersion,
 		EnvdVersion:         sbx.EnvdVersion,

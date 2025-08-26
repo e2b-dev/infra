@@ -64,14 +64,14 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			CpuCount:        api.CPUCount(sbx.VCpu),
 			MemoryMB:        api.MemoryMB(sbx.RamMB),
 			DiskSizeMB:      api.DiskSizeMB(sbx.TotalDiskSizeMB),
-			EndAt:           sbx.GetEndTime(),
+			EndAt:           sbx.EndTime,
 			State:           api.Running,
 			EnvdVersion:     sbx.EnvdVersion,
 			EnvdAccessToken: sbx.EnvdAccessToken,
 			Domain:          sbxDomain,
 		}
 
-		metadata := sbx.Metadata()
+		metadata := sbx.Metadata
 		if metadata != nil {
 			meta := api.SandboxMetadata(metadata)
 			sandbox.Metadata = &meta

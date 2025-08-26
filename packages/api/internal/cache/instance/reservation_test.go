@@ -80,7 +80,7 @@ func TestReservation_ResumeAlreadyRunningSandbox(t *testing.T) {
 
 		TeamID:            teamID,
 		StartTime:         time.Now(),
-		endTime:           time.Now().Add(time.Hour),
+		EndTime:           time.Now().Add(time.Hour),
 		MaxInstanceLength: time.Hour,
 	}
 	err := cache.Add(context.Background(), info, false)

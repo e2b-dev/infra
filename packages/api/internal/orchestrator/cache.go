@@ -224,9 +224,12 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		ctx, cancel := context.WithTimeout(parentCtx, timeout)
 		defer cancel()
 
+		info.Lock()
+		defer info.Unlock()
+
 		sbxlogger.I(info).Debug("Deleting sandbox from cache hook",
 			zap.Time("start_time", info.StartTime),
-			zap.Time("end_time", info.GetEndTime()),
+			zap.Time("end_time", info.EndTime),
 			zap.Bool("auto_pause", info.AutoPause.Load()),
 		)
 
@@ -294,7 +297,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 
 		sbxlogger.I(info).Debug("Deleted sandbox from cache hook",
 			zap.Time("start_time", info.StartTime),
-			zap.Time("end_time", info.GetEndTime()),
+			zap.Time("end_time", info.EndTime),
 			zap.Bool("auto_pause", info.AutoPause.Load()),
 		)
 
@@ -350,9 +353,12 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 		ctx, cancel := context.WithTimeout(parentCtx, timeout)
 		defer cancel()
 
+		info.RLock()
+		defer info.RUnlock()
+
 		sbxlogger.I(info).Debug("Inserting sandbox to cache hook",
 			zap.Time("start_time", info.StartTime),
-			zap.Time("end_time", info.GetEndTime()),
+			zap.Time("end_time", info.EndTime),
 			zap.Bool("auto_pause", info.AutoPause.Load()),
 		)
 
@@ -390,7 +396,7 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 
 		sbxlogger.I(info).Debug("Inserted sandbox to cache hook",
 			zap.Time("start_time", info.StartTime),
-			zap.Time("end_time", info.GetEndTime()),
+			zap.Time("end_time", info.EndTime),
 			zap.Bool("auto_pause", info.AutoPause.Load()),
 		)
 

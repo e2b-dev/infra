@@ -60,10 +60,10 @@ func NewInstanceInfo(
 		ExecutionID:         ExecutionID,
 		TeamID:              TeamID,
 		BuildID:             BuildID,
-		metadata:            Metadata,
+		Metadata:            Metadata,
 		MaxInstanceLength:   MaxInstanceLength,
 		StartTime:           StartTime,
-		endTime:             endTime,
+		EndTime:             endTime,
 		VCpu:                VCpu,
 		TotalDiskSizeMB:     TotalDiskSizeMB,
 		RamMB:               RamMB,
@@ -94,10 +94,10 @@ type InstanceInfo struct {
 	TeamID              uuid.UUID
 	BuildID             uuid.UUID
 	BaseTemplateID      string
-	metadata            map[string]string
+	Metadata            map[string]string
 	MaxInstanceLength   time.Duration
 	StartTime           time.Time
-	endTime             time.Time
+	EndTime             time.Time
 	VCpu                int64
 	TotalDiskSizeMB     int64
 	RamMB               int64
@@ -110,7 +110,7 @@ type InstanceInfo struct {
 	ClusterID           uuid.UUID
 	AutoPause           atomic.Bool
 	Pausing             *utils.SetOnce[string]
-	sync.RWMutex
+	mu                  sync.RWMutex
 }
 
 func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -121,43 +121,28 @@ func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
 	}
 }
 
+func (i *InstanceInfo) Lock() {
+	i.mu.Lock()
+}
+
+func (i *InstanceInfo) Unlock() {
+	i.mu.Unlock()
+}
+
+func (i *InstanceInfo) RLock() {
+	i.mu.RLock()
+}
+
+func (i *InstanceInfo) RUnlock() {
+	i.mu.RUnlock()
+}
+
 func (i *InstanceInfo) IsExpired() bool {
-	i.RLock()
-	defer i.RUnlock()
-
-	return time.Now().After(i.endTime)
-}
-
-func (i *InstanceInfo) Metadata() map[string]string {
-	i.RLock()
-	defer i.RUnlock()
-
-	return i.metadata
-}
-
-func (i *InstanceInfo) UpdateMetadata(metadata map[string]string) {
-	i.Lock()
-	defer i.Unlock()
-
-	i.metadata = metadata
-}
-
-func (i *InstanceInfo) GetEndTime() time.Time {
-	i.RLock()
-	defer i.RUnlock()
-
-	return i.endTime
-}
-
-func (i *InstanceInfo) SetEndTime(endTime time.Time) {
-	i.Lock()
-	defer i.Unlock()
-
-	i.endTime = endTime
+	return time.Now().After(i.EndTime)
 }
 
 func (i *InstanceInfo) SetExpired() {
-	i.SetEndTime(time.Now())
+	i.EndTime = time.Now()
 }
 
 type InstanceCache struct {

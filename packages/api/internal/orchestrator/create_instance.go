@@ -230,15 +230,14 @@ func (o *Orchestrator) CreateSandbox(
 		allowInternetAccess,
 		baseTemplateID,
 	)
+	instanceInfo.Lock()
+	defer instanceInfo.Unlock()
 
 	cacheErr := o.instanceCache.Add(ctx, instanceInfo, true)
 	if cacheErr != nil {
 		telemetry.ReportError(ctx, "error when adding instance to cache", cacheErr)
 
-		deleted := o.DeleteInstance(ctx, sbx.SandboxID, false)
-		if !deleted {
-			telemetry.ReportEvent(ctx, "instance wasn't found in cache when deleting")
-		}
+		o.DeleteInstance(ctx, instanceInfo, false)
 
 		return nil, &api.APIError{
 			Code:      http.StatusInternalServerError,

@@ -5,17 +5,18 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func (o *Orchestrator) DeleteInstance(ctx context.Context, sandboxID string, pause bool) bool {
+func (o *Orchestrator) DeleteInstance(ctx context.Context, sandbox *instance.InstanceInfo, pause bool) {
 	_, childSpan := o.tracer.Start(ctx, "delete-instance")
 	defer childSpan.End()
 
 	zap.L().Debug("Delete instance from cache",
-		logger.WithSandboxID(sandboxID),
+		logger.WithSandboxID(sandbox.SandboxID),
 		zap.Bool("pause", pause),
 	)
 
-	return o.instanceCache.Delete(sandboxID, pause)
+	o.instanceCache.Delete(sandbox, pause)
 }

@@ -41,6 +41,9 @@ func (a *APIStore) PutSandboxesSandboxIDMetadata(
 
 	sbx, err := a.orchestrator.GetSandbox(sandboxID)
 	if err == nil {
+		sbx.Lock()
+		defer sbx.Unlock()
+
 		// Verify the sandbox belongs to the team
 		if sbx.TeamID != teamID {
 			telemetry.ReportCriticalError(ctx, fmt.Sprintf("sandbox '%s' doesn't belong to team '%s'", sandboxID, teamID.String()), nil)

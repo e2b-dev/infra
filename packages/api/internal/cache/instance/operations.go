@@ -60,7 +60,7 @@ func (c *InstanceCache) Add(ctx context.Context, instance *InstanceInfo, newlyCr
 	sbxlogger.I(instance).Debug("Adding sandbox to cache",
 		zap.Bool("newly_created", newlyCreated),
 		zap.Time("start_time", instance.StartTime),
-		zap.Time("end_time", instance.GetEndTime()),
+		zap.Time("end_time", instance.EndTime),
 	)
 
 	if instance.SandboxID == "" {
@@ -79,14 +79,14 @@ func (c *InstanceCache) Add(ctx context.Context, instance *InstanceInfo, newlyCr
 		return fmt.Errorf("instance %s is missing env ID", instance.TemplateID)
 	}
 
-	endTime := instance.GetEndTime()
+	endTime := instance.EndTime
 
 	if instance.StartTime.IsZero() || endTime.IsZero() || instance.StartTime.After(endTime) {
 		return fmt.Errorf("instance %s has invalid start(%s)/end(%s) times", instance.SandboxID, instance.StartTime, endTime)
 	}
 
 	if endTime.Sub(instance.StartTime) > instance.MaxInstanceLength {
-		instance.SetEndTime(instance.StartTime.Add(instance.MaxInstanceLength))
+		instance.EndTime = instance.StartTime.Add(instance.MaxInstanceLength)
 	}
 
 	c.Set(instance.SandboxID, instance, newlyCreated)
@@ -99,17 +99,13 @@ func (c *InstanceCache) Add(ctx context.Context, instance *InstanceInfo, newlyCr
 }
 
 // Delete the instance and remove it from the cache.
-func (c *InstanceCache) Delete(instanceID string, pause bool) bool {
-	value, found := c.cache.GetAndRemove(instanceID)
-	if found {
-		value.AutoPause.Store(pause)
+func (c *InstanceCache) Delete(instance *InstanceInfo, pause bool) {
+	defer c.cache.Remove(instance.SandboxID)
+	instance.AutoPause.Store(pause)
 
-		if pause {
-			c.MarkAsPausing(value)
-		}
+	if pause {
+		c.MarkAsPausing(instance)
 	}
-
-	return found
 }
 
 func (c *InstanceCache) Items() []*InstanceInfo {

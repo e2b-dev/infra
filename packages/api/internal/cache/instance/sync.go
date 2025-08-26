@@ -27,32 +27,27 @@ func getMaxAllowedTTL(now time.Time, startTime time.Time, duration, maxInstanceL
 }
 
 // KeepAliveFor the instance's expiration timer.
-func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, allowShorter bool) (*InstanceInfo, *api.APIError) {
-	instance, err := c.Get(instanceID)
-	if err != nil {
-		return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("Sandbox '%s' not found", instanceID), Err: err}
-	}
-
+func (c *InstanceCache) KeepAliveFor(sandbox *InstanceInfo, duration time.Duration, allowShorter bool) (*InstanceInfo, *api.APIError) {
 	now := time.Now()
 
-	endTime := instance.GetEndTime()
+	endTime := sandbox.EndTime
 	if !allowShorter && endTime.After(now.Add(duration)) {
-		return instance, nil
+		return sandbox, nil
 	}
 
-	if (time.Since(instance.StartTime)) > instance.MaxInstanceLength {
-		c.cache.Remove(instanceID)
+	if (time.Since(sandbox.StartTime)) > sandbox.MaxInstanceLength {
+		c.cache.Remove(sandbox.SandboxID)
 
-		msg := fmt.Sprintf("Sandbox '%s' reached maximal allowed uptime", instanceID)
+		msg := fmt.Sprintf("Sandbox '%s' reached maximal allowed uptime", sandbox.SandboxID)
 		return nil, &api.APIError{Code: http.StatusForbidden, ClientMsg: msg, Err: errors.New(msg)}
 	} else {
-		maxAllowedTTL := getMaxAllowedTTL(now, instance.StartTime, duration, instance.MaxInstanceLength)
+		maxAllowedTTL := getMaxAllowedTTL(now, sandbox.StartTime, duration, sandbox.MaxInstanceLength)
 
 		newEndTime := now.Add(maxAllowedTTL)
-		instance.SetEndTime(newEndTime)
+		sandbox.EndTime = newEndTime
 	}
 
-	return instance, nil
+	return sandbox, nil
 }
 
 func (c *InstanceCache) Sync(ctx context.Context, instances []*InstanceInfo, nodeID string) {
@@ -65,26 +60,41 @@ func (c *InstanceCache) Sync(ctx context.Context, instances []*InstanceInfo, nod
 
 	// Delete instances that are not in Orchestrator anymore
 	for _, item := range c.cache.Items() {
-		if item.NodeID != nodeID {
-			continue
-		}
-		if time.Since(item.StartTime) <= syncSandboxRemoveGracePeriod {
-			continue
-		}
-		_, found := instanceMap[item.SandboxID]
-		if !found {
-			c.cache.Remove(item.SandboxID)
-		}
+		c.checkInstance(instanceMap, nodeID, item)
 	}
 
 	// Add instances that are not in the cache with the default TTL
 	for _, instance := range instances {
-		if c.Exists(instance.SandboxID) {
-			continue
-		}
-		err := c.Add(ctx, instance, false)
-		if err != nil {
-			zap.L().Error("error adding instance to cache", zap.Error(err))
-		}
+		c.loadInstance(ctx, instance)
+	}
+}
+
+func (c *InstanceCache) loadInstance(ctx context.Context, instance *InstanceInfo) {
+	instance.Lock()
+	defer instance.Unlock()
+
+	if c.Exists(instance.SandboxID) {
+		return
+	}
+
+	err := c.Add(ctx, instance, false)
+	if err != nil {
+		zap.L().Error("error adding instance to cache", zap.Error(err))
+	}
+}
+
+func (c *InstanceCache) checkInstance(instanceMap map[string]*InstanceInfo, nodeID string, instance *InstanceInfo) {
+	instance.Lock()
+	defer instance.Unlock()
+
+	if instance.NodeID != nodeID {
+		return
+	}
+	if time.Since(instance.StartTime) <= syncSandboxRemoveGracePeriod {
+		return
+	}
+	_, found := instanceMap[instance.SandboxID]
+	if !found {
+		c.cache.Remove(instance.SandboxID)
 	}
 }

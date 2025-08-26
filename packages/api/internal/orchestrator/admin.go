@@ -80,10 +80,12 @@ func (o *Orchestrator) AdminNodeDetail(nomadNodeShortID string) (*api.NodeDetail
 	}
 
 	for _, sbx := range o.instanceCache.Items() {
+		sbx.RLock()
+
 		if sbx.NodeID == n.ID && sbx.ClusterID == n.ClusterID {
 			var metadata *api.SandboxMetadata
 
-			sbxMetadata := sbx.Metadata()
+			sbxMetadata := sbx.Metadata
 			if sbxMetadata != nil {
 				meta := api.SandboxMetadata(sbxMetadata)
 				metadata = &meta
@@ -95,13 +97,15 @@ func (o *Orchestrator) AdminNodeDetail(nomadNodeShortID string) (*api.NodeDetail
 				CpuCount:   api.CPUCount(sbx.VCpu),
 				MemoryMB:   api.MemoryMB(sbx.RamMB),
 				DiskSizeMB: api.DiskSizeMB(sbx.TotalDiskSizeMB),
-				EndAt:      sbx.GetEndTime(),
+				EndAt:      sbx.EndTime,
 				Metadata:   metadata,
 				SandboxID:  sbx.SandboxID,
 				StartedAt:  sbx.StartTime,
 				TemplateID: sbx.TemplateID,
 			})
 		}
+
+		sbx.RUnlock()
 	}
 
 	return node, nil
