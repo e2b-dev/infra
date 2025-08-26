@@ -26,7 +26,7 @@ import (
 )
 
 type BuildTemplateRequest struct {
-	ClusterID     *uuid.UUID
+	ClusterID     uuid.UUID
 	BuilderNodeID string
 	TemplateID    api.TemplateID
 	IsNew         bool
@@ -188,6 +188,11 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 	}
 	defer tx.Rollback()
 
+	var clusterID *uuid.UUID
+	if req.ClusterID != uuid.Nil {
+		clusterID = &req.ClusterID
+	}
+
 	// Create the template / or update the build count
 	err = tx.
 		Env.
@@ -196,7 +201,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 		SetTeamID(req.Team.ID).
 		SetNillableCreatedBy(req.UserID).
 		SetPublic(false).
-		SetNillableClusterID(req.ClusterID).
+		SetNillableClusterID(clusterID).
 		OnConflictColumns(env.FieldID).
 		UpdateUpdatedAt().
 		Update(func(e *models.EnvUpsert) {
@@ -436,7 +441,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		return nil
 	}
 
-	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, team.ClusterID)
+	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, utils.WithDefaultCluster(team.ClusterID))
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Error when getting available build client")
@@ -445,7 +450,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 
 	// Create the build
 	buildReq := BuildTemplateRequest{
-		ClusterID:     team.ClusterID,
+		ClusterID:     utils.WithDefaultCluster(team.ClusterID),
 		BuilderNodeID: builderNodeID,
 		TemplateID:    templateID,
 		IsNew:         new,
