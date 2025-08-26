@@ -18,9 +18,9 @@ linters:
     - bidichk
     - bodyclose
     - containedctx
-    - staticcheck
     - govet
     - staticcheck
+    - thelper
   settings:
     staticcheck:
       checks:
