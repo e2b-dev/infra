@@ -370,6 +370,15 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	ctx, childSpan := s.tracer.Start(ctx, "sandbox-pause")
 	defer childSpan.End()
 
+	// setup launch darkly
+	ctx = featureflags.CreateContext(
+		ctx,
+		ldcontext.NewBuilder(in.SandboxId).
+			Kind(featureflags.SandboxKind).
+			SetString(featureflags.SandboxTemplateAttribute, in.TemplateId).
+			Build(),
+	)
+
 	s.pauseMu.Lock()
 
 	sbx, ok := s.sandboxes.Get(in.SandboxId)
