@@ -81,13 +81,13 @@ func (b *SandboxEventInsertBatcher) processInsertSandboxEventsBatch(events []cli
 			event.EventData,
 		)
 		if err != nil {
-			return fmt.Errorf("error appending sandbox event to batch: %w", err)
+			return fmt.Errorf("error appending %d product usage event to batch: %w", len(events), err)
 		}
 	}
 
 	err = batch.Send()
 	if err != nil {
-		return fmt.Errorf("error sending sandbox events batch: %w", err)
+		return fmt.Errorf("error sending %d sandbox events batch: %w", len(events), err)
 	}
 
 	return nil
@@ -99,7 +99,7 @@ func (b *SandboxEventInsertBatcher) Push(event clickhouse.SandboxEvent) error {
 		return err
 	}
 	if !success {
-		return errors.New("batcher queue is full")
+		return ErrBatcherQueueFull
 	}
 	return nil
 }

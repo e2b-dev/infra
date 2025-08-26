@@ -69,13 +69,13 @@ func (b *ProductUsageInsertBatcher) processInsertProductUsageBatch(events []clic
 			event.Label,
 		)
 		if err != nil {
-			return fmt.Errorf("error appending product usage event to batch: %w", err)
+			return fmt.Errorf("error appending %d product usage event to batch: %w", len(events), err)
 		}
 	}
 
 	err = batch.Send()
 	if err != nil {
-		return fmt.Errorf("error sending product usage events batch: %w", err)
+		return fmt.Errorf("error sending %d product usage events batch: %w", len(events), err)
 	}
 
 	return nil
@@ -87,7 +87,7 @@ func (b *ProductUsageInsertBatcher) Push(event clickhouse.ProductUsage) error {
 		return err
 	}
 	if !success {
-		return errors.New("batcher queue is full")
+		return ErrBatcherQueueFull
 	}
 	return nil
 }
