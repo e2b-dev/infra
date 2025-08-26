@@ -39,7 +39,7 @@ func TestTeamMetrics(t *testing.T) {
 	}, maxDuration, tick, "team metrics not available in time")
 
 	// Test getting team metrics
-	require.Greater(t, len(metrics), 0, "Expected at least one team metric in the response")
+	require.NotEmpty(t, metrics, "Expected at least one team metric in the response")
 
 	// Verify the structure of team metrics
 	startRateGreaterThanZero := false
@@ -91,7 +91,7 @@ func TestTeamMetricsWithTimeRange(t *testing.T) {
 		return true
 	}, maxDuration, tick, "team metrics not available in time")
 
-	require.Greater(t, len(metrics), 0, "Expected at least one team metric in the response")
+	require.NotEmpty(t, metrics, "Expected at least one team metric in the response")
 
 	// Verify all timestamps are within the requested range
 	for _, metric := range metrics {

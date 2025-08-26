@@ -87,7 +87,7 @@ func TestCommandKillNextApp(t *testing.T) {
 	finalListResp, err := envdClient.ProcessClient.List(ctx, listReq)
 	require.NoError(t, err)
 
-	assert.Len(t, finalListResp.Msg.Processes, 0, "Expected no processes running")
+	assert.Empty(t, finalListResp.Msg.Processes, "Expected no processes running")
 	for _, proc := range finalListResp.Msg.Processes {
 		t.Errorf("remaining process: PID=%d CMD=%s", proc.Pid, proc.Config.Cmd)
 	}
@@ -163,7 +163,7 @@ func TestCommandKillWithAnd(t *testing.T) {
 	finalListResp, err := envdClient.ProcessClient.List(ctx, listReq)
 	require.NoError(t, err)
 
-	assert.Len(t, finalListResp.Msg.Processes, 0, "Expected no processes running")
+	assert.Empty(t, finalListResp.Msg.Processes, "Expected no processes running")
 	for _, proc := range finalListResp.Msg.Processes {
 		t.Errorf("remaining process: PID=%d CMD=%s", proc.Pid, proc.Config.Cmd)
 	}

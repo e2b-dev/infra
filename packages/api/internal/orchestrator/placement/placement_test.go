@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -52,7 +53,7 @@ func TestPlaceSandbox_SuccessfulPlacement(t *testing.T) {
 
 	resultNode, err := PlaceSandbox(ctx, tracer, algorithm, nodes, nil, sbxRequest)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, resultNode)
 	assert.Equal(t, node2, resultNode)
 	algorithm.AssertExpectations(t)
@@ -82,14 +83,14 @@ func TestPlaceSandbox_WithPreferredNode(t *testing.T) {
 		Return(node1, nil).Once()
 
 	resultNode, err := PlaceSandbox(ctx, tracer, algorithm, nodes, nil, sbxRequest)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, resultNode)
 	assert.Equal(t, node1, resultNode)
 	algorithm.AssertExpectations(t)
 
 	// Test with preferred node - should use the preferred node directly without calling algorithm
 	resultNode, err = PlaceSandbox(ctx, tracer, algorithm, nodes, node2, sbxRequest)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, resultNode)
 	assert.Equal(t, node2, resultNode)
 	// Algorithm should not be called when preferred node is provided
@@ -120,7 +121,7 @@ func TestPlaceSandbox_ContextTimeout(t *testing.T) {
 
 	resultNode, err := PlaceSandbox(ctx, tracer, algorithm, []*nodemanager.Node{}, nil, sbxRequest)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, resultNode)
 	// The error could be either "timeout" from the algorithm or "request timed out" from ctx.Done()
 	assert.True(t, err.Error() == "timeout" || errors.Is(err, context.DeadlineExceeded))
@@ -144,7 +145,7 @@ func TestPlaceSandbox_AlgorithmError(t *testing.T) {
 
 	resultNode, err := PlaceSandbox(ctx, tracer, algorithm, []*nodemanager.Node{}, nil, sbxRequest)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, resultNode)
 	assert.Contains(t, err.Error(), "no nodes available")
 	algorithm.AssertExpectations(t)

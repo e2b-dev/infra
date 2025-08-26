@@ -39,7 +39,7 @@ func TestSandboxListMetrics(t *testing.T) {
 		return true
 	}, maxDuration, tick, "sandbox metrics not available in time")
 
-	require.Equal(t, 2, len(metrics), "Expected two metrics in the response")
+	require.Len(t, metrics, 2, "Expected two metrics in the response")
 	assert.Contains(t, metrics, sbx1.SandboxID, "Expected sandbox metrics to include the created sandbox")
 	assert.Contains(t, metrics, sbx2.SandboxID, "Expected sandbox metrics to include the second created sandbox")
 	for _, sbx := range metrics {

@@ -91,7 +91,7 @@ func TestListDir(t *testing.T) {
 			assert.NoError(t, err)
 
 			assert.NotEmpty(t, folderListResp.Msg)
-			assert.Equal(t, len(tt.expectedPaths), len(folderListResp.Msg.Entries))
+			assert.Len(t, folderListResp.Msg.Entries, len(tt.expectedPaths))
 
 			actualPaths := make([]string, len(folderListResp.Msg.Entries))
 			for i, entry := range folderListResp.Msg.Entries {

@@ -68,7 +68,7 @@ func TestAccessToAuthorizedPathWithoutToken(t *testing.T) {
 	_, err := envdClient.FilesystemClient.ListDir(ctx, req)
 	require.Error(t, err)
 
-	assert.Equal(t, err.Error(), "unauthenticated: 401 Unauthorized")
+	assert.Equal(t, "unauthenticated: 401 Unauthorized", err.Error())
 }
 
 func TestRunUnauthorizedInitWithAlreadySecuredEnvd(t *testing.T) {
