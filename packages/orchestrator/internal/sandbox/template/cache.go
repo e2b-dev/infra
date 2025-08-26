@@ -196,7 +196,7 @@ func (c *Cache) AddSnapshot(
 func (c *Cache) useNFSCache(isBuilding bool, isSnapshot bool) bool {
 	if isBuilding {
 		// caching this layer doesn't speed up the next sandbox launch,
-		// as the previous template isn't used to load the oen that's being built.
+		// as the previous template isn't used to load the one that's being built.
 		return false
 	}
 
