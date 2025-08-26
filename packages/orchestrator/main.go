@@ -263,11 +263,11 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}
 
-	var clickhouseBatcher batcher.ClickhouseBatcher
+	var sandboxEventBatcher batcher.ClickhouseInsertBatcher[clickhouse.SandboxEvent]
 
 	clickhouseConnectionString := os.Getenv("CLICKHOUSE_CONNECTION_STRING")
 	if clickhouseConnectionString == "" {
-		clickhouseBatcher = batcher.NewNoopBatcher()
+		sandboxEventBatcher = batcher.NewNoopBatcher()
 	} else {
 		var err error
 		clickhouseConn, err := clickhouse.NewDriver(clickhouseConnectionString)
@@ -290,7 +290,7 @@ func run(port, proxyPort uint) (success bool) {
 			queueSize = val
 		}
 
-		clickhouseBatcher, err = batcher.NewSandboxEventInsertsBatcher(clickhouseConn, batcher.BatcherOptions{
+		sandboxEventBatcher, err = batcher.NewSandboxEventInsertsBatcher(clickhouseConn, batcher.BatcherOptions{
 			MaxBatchSize: maxBatchSize,
 			MaxDelay:     maxDelay,
 			QueueSize:    queueSize,
@@ -308,7 +308,7 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
 
-	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, templateCache, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags, clickhouseBatcher, persistence)
+	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, templateCache, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags, sandboxEventBatcher, persistence)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
@@ -339,7 +339,7 @@ func run(port, proxyPort uint) (success bool) {
 		featureFlags,
 		sandboxObserver,
 		limiter,
-		clickhouseBatcher,
+		sandboxEventBatcher,
 	)
 
 	// Initialize the template manager only if the service is enabled
