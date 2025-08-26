@@ -19,8 +19,8 @@ const execution = await sameSbx.runCode("x+=1; x");
 log("RunCode Output:", execution.text);
 
 if (execution.text !== "2") {
-  log("Test failed:", "Failed to resume sandbox");
-  throw new Error("Failed to resume sandbox");
+  log("Test failed:", "The expected runCode output doesn't match");
+  throw new Error("Failed to runCode in resumed sandbox");
 }
 log("Sandbox resumed successfully");
 
