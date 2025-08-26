@@ -68,9 +68,6 @@ jobs:
         with:
           cache: true
 
-      - name: GitHub Action for npx
-        uses: mikeal/npx@1.0.0
-
       - name: Set env variables from secrets
         if: always()
         run: |
