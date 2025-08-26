@@ -8,9 +8,7 @@ import (
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
-	"github.com/launchdarkly/go-server-sdk/ldotel"
 	ldclient "github.com/launchdarkly/go-server-sdk/v7"
-	"github.com/launchdarkly/go-server-sdk/v7/ldhooks"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"go.uber.org/zap"
 )
@@ -41,9 +39,6 @@ func NewClient() (*Client, error) {
 			"",
 			ldclient.Config{
 				DataSource: LaunchDarklyOfflineStore,
-				Hooks: []ldhooks.Hook{
-					ldotel.NewTracingHook(),
-				},
 			},
 			0)
 		if err != nil {
