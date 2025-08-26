@@ -96,7 +96,7 @@ try {
   console.log("ℹ️ comparing dates", dateUnix, localDate);
 
   // compare the dates, should be within 1 second
-  if (Math.abs(dateUnix - localDate) > 1000) {
+  if (Math.abs(dateUnix - localDate) > 1) {
     throw new Error("❌ Date is not synchronized");
   }
 
