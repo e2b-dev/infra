@@ -28,6 +28,7 @@ var (
 	SandboxLifeCycleEventsWriteFlagName = newBoolFlag("sandbox-lifecycle-events-write", env.IsDevelopment())
 	SnapshotFeatureFlagName             = newBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
 	TemplateFeatureFlagName             = newBoolFlag("use-nfs-for-templates", env.IsDevelopment())
+	SandboxEventsPublishFlagName        = newBoolFlag("sandbox-events-publish", env.IsDevelopment())
 )
 
 type IntFlag string
@@ -44,6 +45,8 @@ const (
 	ClickhouseBatcherMaxDelay IntFlag = "clickhouse-batcher-max-delay"
 	// ClickhouseQueueSize - size of the channel buffer used to queue incoming sandbox events
 	ClickhouseBatcherQueueSize IntFlag = "clickhouse-batcher-queue-size"
+	// PubsubQueueChannelSize - size of the channel buffer used to queue incoming sandbox events
+	PubsubQueueChannelSize IntFlag = "pubsub-queue-channel-size"
 )
 
 var flagsInt = map[IntFlag]int{
@@ -52,4 +55,5 @@ var flagsInt = map[IntFlag]int{
 	ClickhouseBatcherMaxBatchSize: 64 * 1024, // 65536
 	ClickhouseBatcherMaxDelay:     100,       // 100ms in milliseconds
 	ClickhouseBatcherQueueSize:    8 * 1024,  // 8192
+	PubsubQueueChannelSize:        8 * 1024,  // 8192
 }

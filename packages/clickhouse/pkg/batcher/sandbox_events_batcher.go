@@ -10,14 +10,18 @@ import (
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 )
 
+type SandboxEventsClickhouseBatcher interface {
+	Push(event clickhouse.SandboxEvent) error
+	Close(ctx context.Context) error
+}
+
 type SandboxEventInsertBatcher struct {
 	*Batcher[clickhouse.SandboxEvent]
 	errorHandler func(error)
 	conn         driver.Conn
 }
 
-const InsertSandboxEventQuery = `
-INSERT INTO sandbox_events
+const InsertSandboxEventQuery = `INSERT INTO sandbox_events
 (
     timestamp,
     sandbox_id, 

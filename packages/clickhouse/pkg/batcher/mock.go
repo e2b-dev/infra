@@ -6,16 +6,16 @@ import (
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 )
 
-type NoopBatcher struct{}
+type NoopSandboxEventBatcher struct{}
 
-func NewNoopBatcher() *NoopBatcher {
-	return &NoopBatcher{}
+func NewNoopEventBatcher() *NoopSandboxEventBatcher {
+	return &NoopSandboxEventBatcher{}
 }
 
-func (m *NoopBatcher) Push(event clickhouse.SandboxEvent) error {
+func (m *NoopSandboxEventBatcher) Push(event clickhouse.SandboxEvent) error {
 	return nil
 }
 
-func (m *NoopBatcher) Close(ctx context.Context) error {
+func (m *NoopSandboxEventBatcher) Close(ctx context.Context) error {
 	return nil
 }
