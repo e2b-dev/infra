@@ -19,6 +19,7 @@ linters:
     - bodyclose
     - containedctx
     - durationcheck
+    - dogsled
     - copyloopvar
     - govet
     - staticcheck
