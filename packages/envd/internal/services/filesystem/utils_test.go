@@ -52,6 +52,8 @@ func TestGetEntryType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			info, err := os.Lstat(tt.path)
 			require.NoError(t, err)
 
@@ -214,6 +216,8 @@ func TestEntryInfoFromFileInfo_DifferentPermissions(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			testFile := filepath.Join(tempDir, tc.name+".txt")
 			require.NoError(t, os.WriteFile(testFile, []byte("test"), tc.permissions))
 

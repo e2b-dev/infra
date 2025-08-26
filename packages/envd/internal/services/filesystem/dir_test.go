@@ -83,6 +83,8 @@ func TestListDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctx := injectUser(context.Background(), u)
 			req := connect.NewRequest(&filesystem.ListDirRequest{
 				Path:  testFolder,
@@ -189,6 +191,8 @@ func TestListDir_Symlinks(t *testing.T) {
 	svc := Service{}
 
 	t.Run("symlink to directory behaves like directory and the content looks like inside the directory", func(t *testing.T) {
+		t.Parallel()
+
 		req := connect.NewRequest(&filesystem.ListDirRequest{
 			Path:  linkToDir,
 			Depth: 1,
@@ -206,6 +210,8 @@ func TestListDir_Symlinks(t *testing.T) {
 	})
 
 	t.Run("link to file", func(t *testing.T) {
+		t.Parallel()
+
 		req := connect.NewRequest(&filesystem.ListDirRequest{
 			Path:  linkToFile,
 			Depth: 1,
@@ -216,6 +222,8 @@ func TestListDir_Symlinks(t *testing.T) {
 	})
 
 	t.Run("cyclic symlink surfaces 'too many links' → invalid-argument", func(t *testing.T) {
+		t.Parallel()
+
 		req := connect.NewRequest(&filesystem.ListDirRequest{
 			Path: cyclicLink,
 		})
@@ -229,6 +237,8 @@ func TestListDir_Symlinks(t *testing.T) {
 	})
 
 	t.Run("symlink not resolved if not root", func(t *testing.T) {
+		t.Parallel()
+
 		req := connect.NewRequest(&filesystem.ListDirRequest{
 			Path:  symlinkRoot,
 			Depth: 3,
