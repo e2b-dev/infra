@@ -63,7 +63,7 @@ func NewInstanceInfo(
 		Metadata:            Metadata,
 		MaxInstanceLength:   MaxInstanceLength,
 		StartTime:           StartTime,
-		endTime:             endTime,
+		EndTime:             endTime,
 		VCpu:                VCpu,
 		TotalDiskSizeMB:     TotalDiskSizeMB,
 		RamMB:               RamMB,
@@ -77,7 +77,6 @@ func NewInstanceInfo(
 		AutoPause:           atomic.Bool{},
 		Pausing:             utils.NewSetOnce[string](),
 		BaseTemplateID:      BaseTemplateID,
-		mu:                  sync.RWMutex{},
 	}
 
 	instance.AutoPause.Store(AutoPause)
@@ -98,7 +97,7 @@ type InstanceInfo struct {
 	Metadata            map[string]string
 	MaxInstanceLength   time.Duration
 	StartTime           time.Time
-	endTime             time.Time
+	EndTime             time.Time
 	VCpu                int64
 	TotalDiskSizeMB     int64
 	RamMB               int64
@@ -122,29 +121,28 @@ func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
 	}
 }
 
-func (i *InstanceInfo) IsExpired() bool {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-
-	return time.Now().After(i.endTime)
-}
-
-func (i *InstanceInfo) GetEndTime() time.Time {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-
-	return i.endTime
-}
-
-func (i *InstanceInfo) SetEndTime(endTime time.Time) {
+func (i *InstanceInfo) Lock() {
 	i.mu.Lock()
-	defer i.mu.Unlock()
+}
 
-	i.endTime = endTime
+func (i *InstanceInfo) Unlock() {
+	i.mu.Unlock()
+}
+
+func (i *InstanceInfo) RLock() {
+	i.mu.RLock()
+}
+
+func (i *InstanceInfo) RUnlock() {
+	i.mu.RUnlock()
+}
+
+func (i *InstanceInfo) IsExpired() bool {
+	return time.Now().After(i.EndTime)
 }
 
 func (i *InstanceInfo) SetExpired() {
-	i.SetEndTime(time.Now())
+	i.EndTime = time.Now()
 }
 
 type InstanceCache struct {

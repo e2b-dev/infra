@@ -14,7 +14,7 @@ func TestList(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	client := setup.GetOrchestratorClient(t, ctx)
+	client := setup.GetOrchestratorClient(t)
 
 	list, err := client.List(ctx, &emptypb.Empty{})
 	if err != nil {

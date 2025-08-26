@@ -41,7 +41,18 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 		duration = instance.InstanceExpiration
 	}
 
-	apiErr := a.orchestrator.KeepAliveFor(ctx, sandboxID, duration, false)
+	sandbox, err := a.orchestrator.GetSandbox(sandboxID)
+	if err != nil {
+		telemetry.ReportError(ctx, "error when getting sandbox", err)
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Sandbox '%s' not found", sandboxID))
+
+		return
+	}
+
+	sandbox.Lock()
+	defer sandbox.Unlock()
+
+	apiErr := a.orchestrator.KeepAliveFor(ctx, sandbox, duration, false)
 	if apiErr != nil {
 		telemetry.ReportError(ctx, "error when refreshing sandbox", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)

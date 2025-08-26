@@ -84,6 +84,9 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 
 	sbx, err := a.orchestrator.GetSandbox(sandboxID)
 	if err == nil {
+		sbx.Lock()
+		defer sbx.Unlock()
+
 		if sbx.TeamID != teamID {
 			telemetry.ReportCriticalError(ctx, "sandbox does not belong to team", fmt.Errorf("sandbox '%s' does not belong to team '%s'", sandboxID, teamID.String()))
 
@@ -93,13 +96,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		}
 
 		// remove running sandbox from the orchestrator
-		sandboxExists := a.orchestrator.DeleteInstance(ctx, sandboxID, false)
-		if !sandboxExists {
-			telemetry.ReportError(ctx, "sandbox not found", fmt.Errorf("sandbox '%s' not found", sandboxID), telemetry.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error deleting sandbox - sandbox '%s' was not found", sandboxID))
-
-			return
-		}
+		a.orchestrator.DeleteInstance(ctx, sbx, false)
 
 		// remove any snapshots of the sandbox
 		err := a.deleteSnapshot(ctx, sandboxID, teamID, team.ClusterID)

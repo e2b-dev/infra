@@ -49,6 +49,9 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		return
 	}
 
+	sbx.Lock()
+	defer sbx.Unlock()
+
 	if sbx.TeamID != teamID {
 		telemetry.ReportCriticalError(ctx, "sandbox does not belong to team", fmt.Errorf("sandbox '%s' does not belong to team '%s'", sandboxID, teamID.String()))
 
@@ -57,11 +60,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		return
 	}
 
-	found := a.orchestrator.DeleteInstance(ctx, sandboxID, true)
-	if !found {
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error pausing sandbox - sandbox '%s' was not found", sandboxID))
-		return
-	}
+	a.orchestrator.DeleteInstance(ctx, sbx, true)
 
 	_, err = sbx.Pausing.WaitWithContext(ctx)
 	if err != nil {
