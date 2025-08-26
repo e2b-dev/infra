@@ -147,7 +147,12 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		zap.L().Fatal("initializing edge clusters pool failed", zap.Error(err))
 	}
 
-	orch, err := orchestrator.New(ctx, tel, tracer, nomadClient, posthogClient, redisClient, dbClient, clustersPool)
+	featureFlags, err := featureflags.NewClient()
+	if err != nil {
+		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
+	}
+
+	orch, err := orchestrator.New(ctx, tel, tracer, nomadClient, posthogClient, redisClient, dbClient, clustersPool, featureFlags)
 	if err != nil {
 		zap.L().Fatal("Initializing Orchestrator client", zap.Error(err))
 	}
@@ -178,11 +183,6 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 
 	// Start the periodic sync of template builds statuses
 	go templateManager.BuildsStatusPeriodicalSync(ctx)
-
-	featureFlags, err := featureflags.NewClient()
-	if err != nil {
-		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
-	}
 
 	a := &APIStore{
 		Healthy:                  false,

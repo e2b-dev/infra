@@ -15,6 +15,10 @@ type LeastBusyAlgorithm struct{}
 
 var _ Algorithm = &LeastBusyAlgorithm{}
 
+func (a *LeastBusyAlgorithm) excludeNode(err error) bool {
+	return err != nil
+}
+
 // ChooseNode returns the least busy node, if there are no eligible nodes, it tries until one is available or the context timeouts
 func (a *LeastBusyAlgorithm) chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, _ nodemanager.SandboxResources) (leastBusyNode *nodemanager.Node, err error) {
 	ctx, cancel := context.WithTimeout(ctx, leastBusyNodeTimeout)
