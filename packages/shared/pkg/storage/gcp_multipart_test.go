@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-retryablehttp"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -56,11 +57,11 @@ func TestMultipartUploader_InitiateUpload_Success(t *testing.T) {
 	expectedUploadID := "test-upload-id-123"
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "POST", r.Method)
-		require.Contains(t, r.URL.Path, testObjectName)
-		require.Contains(t, r.URL.RawQuery, "uploads")
-		require.Equal(t, "Bearer "+testToken, r.Header.Get("Authorization"))
-		require.Equal(t, "application/octet-stream", r.Header.Get("Content-Type"))
+		assert.Equal(t, "POST", r.Method)
+		assert.Contains(t, r.URL.Path, testObjectName)
+		assert.Contains(t, r.URL.RawQuery, "uploads")
+		assert.Equal(t, "Bearer "+testToken, r.Header.Get("Authorization"))
+		assert.Equal(t, "application/octet-stream", r.Header.Get("Content-Type"))
 
 		response := InitiateMultipartUploadResult{
 			Bucket:   testBucketName,
@@ -86,14 +87,14 @@ func TestMultipartUploader_UploadPart_Success(t *testing.T) {
 	testData := []byte("test part data")
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "PUT", r.Method)
-		require.Contains(t, r.URL.RawQuery, "partNumber=1")
-		require.Contains(t, r.URL.RawQuery, "uploadId=test-upload-id")
-		require.Equal(t, "Bearer "+testToken, r.Header.Get("Authorization"))
+		assert.Equal(t, "PUT", r.Method)
+		assert.Contains(t, r.URL.RawQuery, "partNumber=1")
+		assert.Contains(t, r.URL.RawQuery, "uploadId=test-upload-id")
+		assert.Equal(t, "Bearer "+testToken, r.Header.Get("Authorization"))
 
 		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
-		require.Equal(t, testData, body)
+		assert.NoError(t, err)
+		assert.Equal(t, testData, body)
 
 		w.Header().Set("ETag", expectedETag)
 		w.WriteHeader(http.StatusOK)
@@ -127,20 +128,20 @@ func TestMultipartUploader_CompleteUpload_Success(t *testing.T) {
 	}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "POST", r.Method)
-		require.Contains(t, r.URL.RawQuery, "uploadId=test-upload-id")
-		require.Equal(t, "Bearer "+testToken, r.Header.Get("Authorization"))
-		require.Equal(t, "application/xml", r.Header.Get("Content-Type"))
+		assert.Equal(t, "POST", r.Method)
+		assert.Contains(t, r.URL.RawQuery, "uploadId=test-upload-id")
+		assert.Equal(t, "Bearer "+testToken, r.Header.Get("Authorization"))
+		assert.Equal(t, "application/xml", r.Header.Get("Content-Type"))
 
 		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		var completeReq CompleteMultipartUpload
 		err = xml.Unmarshal(body, &completeReq)
-		require.NoError(t, err)
-		require.Len(t, completeReq.Parts, 2)
-		require.Equal(t, 1, completeReq.Parts[0].PartNumber)
-		require.Equal(t, `"etag1"`, completeReq.Parts[0].ETag)
+		assert.NoError(t, err)
+		assert.Len(t, completeReq.Parts, 2)
+		assert.Equal(t, 1, completeReq.Parts[0].PartNumber)
+		assert.Equal(t, `"etag1"`, completeReq.Parts[0].ETag)
 
 		w.WriteHeader(http.StatusOK)
 	})
@@ -473,7 +474,7 @@ func TestMultipartUploader_EdgeCases_EmptyFile(t *testing.T) {
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			atomic.AddInt32(&partCalls, 1)
 			body, _ := io.ReadAll(r.Body)
-			require.Empty(t, body, "Empty file should result in empty part")
+			assert.Empty(t, body, "Empty file should result in empty part")
 
 			w.Header().Set("ETag", `"empty-etag"`)
 			w.WriteHeader(http.StatusOK)

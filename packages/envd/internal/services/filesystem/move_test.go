@@ -115,7 +115,7 @@ func TestMoveDirectory(t *testing.T) {
 
 	// Verify the directory exists at the destination
 	_, err = os.Stat(destDir)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify the files exist at the destination
 	destFile1 := filepath.Join(destDir, "file1.txt")
@@ -283,7 +283,7 @@ func TestMove_Symlinks(t *testing.T) {
 		// Verify it's still a symlink
 		info, err := os.Lstat(destPath)
 		require.NoError(t, err)
-		assert.NotEqual(t, info.Mode()&os.ModeSymlink, 0, "expected a symlink")
+		assert.NotEqual(t, 0, info.Mode()&os.ModeSymlink, "expected a symlink")
 
 		// Verify the symlink target is still correct
 		target, err := os.Readlink(destPath)
@@ -317,7 +317,7 @@ func TestMove_Symlinks(t *testing.T) {
 		// Verify it's still a symlink
 		info, err := os.Lstat(destPath)
 		require.NoError(t, err)
-		assert.NotEqual(t, info.Mode()&os.ModeSymlink, 0, "expected a symlink")
+		assert.NotEqual(t, 0, info.Mode()&os.ModeSymlink, "expected a symlink")
 
 		// Verify the symlink target is still correct
 		target, err := os.Readlink(destPath)

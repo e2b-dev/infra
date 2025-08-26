@@ -63,7 +63,7 @@ func TestFilesystemClient_FieldFormatter(t *testing.T) {
 
 		data, err := io.ReadAll(w.Body)
 		require.NoError(t, err)
-		assert.JSONEq(t, string(data), `{"entry":{"name":"test-name"}}`)
+		assert.JSONEq(t, `{"entry":{"name":"test-name"}}`, string(data))
 	})
 }
 

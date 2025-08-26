@@ -7,6 +7,7 @@ import (
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func createSource(blockSize int, blocksData []byte) []byte {
@@ -29,7 +30,7 @@ func TestCreateDiff_Hugepage(t *testing.T) {
 
 	diff := bytes.NewBuffer(nil)
 	m, err := writeDiff(source, int64(blockSize), dirty, diff)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	expectedDiffData := createSource(blockSize, []byte{1, 5})
 	assert.Equal(t, expectedDiffData, diff.Bytes())
@@ -49,7 +50,7 @@ func TestCreateDiff_RootfsBlock(t *testing.T) {
 
 	diff := bytes.NewBuffer(nil)
 	m, err := writeDiff(source, int64(blockSize), dirty, diff)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	expectedDiffData := createSource(blockSize, []byte{1, 5})
 	assert.Equal(t, expectedDiffData, diff.Bytes())
@@ -87,7 +88,7 @@ func TestCreateDiff_AllEmptyBlocks(t *testing.T) {
 
 	diff := bytes.NewBuffer(nil)
 	m, err := writeDiff(source, int64(blockSize), dirty, diff)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Equal(t, "0000000000000000000000000000000000000000000000000000000000011111.", m.Empty.DumpAsBits())
 }
@@ -102,7 +103,7 @@ func TestCreateDiff_EmptyDirtyBitset(t *testing.T) {
 
 	diff := bytes.NewBuffer(nil)
 	m, err := writeDiff(source, int64(blockSize), dirty, diff)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify no data was written to diff
 	assert.Equal(t, 0, diff.Len())
@@ -128,7 +129,7 @@ func TestCreateDiff_ReadError(t *testing.T) {
 	_, err := writeDiff(source, int64(blockSize), dirty, diff)
 
 	// Verify that the error from ReadAt is propagated
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "error reading from source")
 	assert.Contains(t, err.Error(), "simulated read error")
 }
@@ -153,7 +154,7 @@ func TestCreateDiff_WriteError(t *testing.T) {
 	_, err := writeDiff(source, int64(blockSize), dirty, diff)
 
 	// Verify that the error from Write is propagated
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "error writing to diff")
 	assert.Contains(t, err.Error(), "simulated write error")
 }
@@ -172,7 +173,7 @@ func TestCreateDiff_LargeIndex(t *testing.T) {
 
 	diff := bytes.NewBuffer(nil)
 	m, err := writeDiff(largeSource, int64(blockSize), dirty, diff)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify the large index is still marked as dirty
 	assert.True(t, m.Dirty.Test(largeIndex))
