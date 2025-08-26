@@ -821,6 +821,9 @@ type PostNodesNodeIDJSONRequestBody = NodeStatusChange
 // PostSandboxesJSONRequestBody defines body for PostSandboxes for application/json ContentType.
 type PostSandboxesJSONRequestBody = NewSandbox
 
+// PutSandboxesSandboxIDMetadataJSONRequestBody defines body for PutSandboxesSandboxIDMetadata for application/json ContentType.
+type PutSandboxesSandboxIDMetadataJSONRequestBody = SandboxMetadata
+
 // PostSandboxesSandboxIDRefreshesJSONRequestBody defines body for PostSandboxesSandboxIDRefreshes for application/json ContentType.
 type PostSandboxesSandboxIDRefreshesJSONRequestBody PostSandboxesSandboxIDRefreshesJSONBody
 

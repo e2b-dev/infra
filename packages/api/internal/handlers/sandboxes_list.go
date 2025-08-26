@@ -286,8 +286,9 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []*instance.InstanceInfo)
 			PaginationTimestamp: info.StartTime,
 		}
 
-		if info.Metadata != nil {
-			meta := api.SandboxMetadata(info.Metadata)
+		metadata := info.Metadata()
+		if metadata != nil {
+			meta := api.SandboxMetadata(metadata)
 			sandbox.Metadata = &meta
 		}
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -88,6 +89,8 @@ type Metadata struct {
 type Sandbox struct {
 	*Resources
 	*Metadata
+
+	sync.RWMutex
 
 	files   *storage.SandboxFiles
 	cleanup *Cleanup
