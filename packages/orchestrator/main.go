@@ -267,7 +267,7 @@ func run(port, proxyPort uint) (success bool) {
 
 	clickhouseConnectionString := os.Getenv("CLICKHOUSE_CONNECTION_STRING")
 	if clickhouseConnectionString == "" {
-		sandboxEventBatcher = batcher.NewNoopBatcher()
+		sandboxEventBatcher = batcher.NewNoopBatcher[clickhouse.SandboxEvent]()
 	} else {
 		var err error
 		clickhouseConn, err := clickhouse.NewDriver(clickhouseConnectionString)
