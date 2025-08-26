@@ -2,20 +2,18 @@ package batcher
 
 import (
 	"context"
-
-	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 )
 
-type NoopSandboxEventBatcher struct{}
+type NoopBatcher[T any] struct{}
 
-func NewNoopEventBatcher() *NoopSandboxEventBatcher {
-	return &NoopSandboxEventBatcher{}
+func NewNoopBatcher[T any]() *NoopBatcher[T] {
+	return &NoopBatcher[T]{}
 }
 
-func (m *NoopSandboxEventBatcher) Push(event clickhouse.SandboxEvent) error {
+func (m *NoopBatcher[T]) Push(event T) error {
 	return nil
 }
 
-func (m *NoopSandboxEventBatcher) Close(ctx context.Context) error {
+func (m *NoopBatcher[T]) Close(ctx context.Context) error {
 	return nil
 }

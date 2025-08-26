@@ -268,11 +268,11 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}
 
-	var sandboxEventsClickhouseBatcher batcher.SandboxEventsClickhouseBatcher
+	var sandboxEventBatcher batcher.ClickhouseInsertBatcher[clickhouse.SandboxEvent]
 
 	clickhouseConnectionString := os.Getenv("CLICKHOUSE_CONNECTION_STRING")
 	if clickhouseConnectionString == "" {
-		sandboxEventsClickhouseBatcher = batcher.NewNoopEventBatcher()
+		sandboxEventBatcher = batcher.NewNoopBatcher[clickhouse.SandboxEvent]()
 	} else {
 		var err error
 		clickhouseConn, err := clickhouse.NewDriver(clickhouseConnectionString)
@@ -295,7 +295,7 @@ func run(port, proxyPort uint) (success bool) {
 			bactherQueueSize = val
 		}
 
-		sandboxEventsClickhouseBatcher, err = batcher.NewSandboxEventInsertsBatcher(clickhouseConn, batcher.BatcherOptions{
+		sandboxEventBatcher, err = batcher.NewSandboxEventInsertsBatcher(clickhouseConn, batcher.BatcherOptions{
 			MaxBatchSize: maxBatchSize,
 			MaxDelay:     maxDelay,
 			QueueSize:    bactherQueueSize,
@@ -343,7 +343,7 @@ func run(port, proxyPort uint) (success bool) {
 		redisPubSub = pubsub.NewMockPubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData]()
 	}
 
-	sbxEventsService := events.NewSandboxEventsService(featureFlags, redisPubSub, sandboxEventsClickhouseBatcher, globalLogger)
+	sbxEventsService := events.NewSandboxEventsService(featureFlags, redisPubSub, sandboxEventBatcher, globalLogger)
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
@@ -396,7 +396,7 @@ func run(port, proxyPort uint) (success bool) {
 		featureFlags,
 		sandboxObserver,
 		limiter,
-		sbxEventsService,
+		sandboxEventBatcher,
 	)
 
 	// Initialize the template manager only if the service is enabled

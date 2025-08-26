@@ -2,21 +2,21 @@ name: Periodic Tests
 
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: "*/10 * * * *"
   workflow_dispatch:
     inputs:
       dev:
-        description: 'Only testing the workflow'
+        description: "Only testing the workflow"
         required: false
         default: false
         type: boolean
   push:
     branches:
-        - main
-    # only run on changes to periodic-test dir 
+      - main
+    # only run on changes to periodic-test dir
     paths:
-      - 'tests/periodic-test/**'
-      - '.github/workflows/periodic-test.yml'
+      - "tests/periodic-test/**"
+      - ".github/workflows/periodic-test.yml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -65,9 +65,8 @@ jobs:
 
       - name: Install deno
         uses: denoland/setup-deno@v2
-
-      - name: GitHub Action for npx
-        uses: mikeal/npx@1.0.0
+        with:
+          cache: true
 
       - name: Set env variables from secrets
         if: always()
@@ -86,11 +85,11 @@ jobs:
       - name: Send Grafana OnCall webhook
         if: always()
         env:
-          JOB_STATUS:  ${{ job.status }}
-          DOMAIN:      ${{ matrix.e2b-domain }}
-          RUN_LINK:    ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          JOB_STATUS: ${{ job.status }}
+          DOMAIN: ${{ matrix.e2b-domain }}
+          RUN_LINK: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           WEBHOOK_URL: ${{ secrets.GRAFANA_ALERT_WEBHOOK }}
-          TEST_NAME:   ${{ matrix.test-command.name }}
+          TEST_NAME: ${{ matrix.test-command.name }}
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq jq  # jq for JSON assembly
 

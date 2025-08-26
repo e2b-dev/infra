@@ -8,6 +8,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
+	"github.com/e2b-dev/infra/packages/clickhouse/pkg/batcher"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -27,17 +29,17 @@ import (
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 
-	info             *service.ServiceInfo
-	sandboxes        *smap.Map[*sandbox.Sandbox]
-	proxy            *proxy.SandboxProxy
-	tracer           trace.Tracer
-	networkPool      *network.Pool
-	templateCache    *template.Cache
-	pauseMu          sync.Mutex
-	devicePool       *nbd.DevicePool
-	persistence      storage.StorageProvider
-	featureFlags     *featureflags.Client
-	sbxEventsService events.EventsService[event.SandboxEvent]
+	info                *service.ServiceInfo
+	sandboxes           *smap.Map[*sandbox.Sandbox]
+	proxy               *proxy.SandboxProxy
+	tracer              trace.Tracer
+	networkPool         *network.Pool
+	templateCache       *template.Cache
+	pauseMu             sync.Mutex
+	devicePool          *nbd.DevicePool
+	persistence         storage.StorageProvider
+	featureFlags        *featureflags.Client
+	sandboxEventBatcher batcher.ClickhouseInsertBatcher[clickhouse.SandboxEvent]
 }
 
 type Service struct {
