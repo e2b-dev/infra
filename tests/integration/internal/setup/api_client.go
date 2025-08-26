@@ -44,6 +44,8 @@ func WithAccessToken() func(ctx context.Context, req *http.Request) error {
 }
 
 func WithSupabaseToken(t *testing.T, userID ...string) func(ctx context.Context, req *http.Request) error {
+	t.Helper()
+
 	if SupabaseJWTSecret == "" {
 		t.Skip("Supabase JWT secret is not set")
 	}
@@ -63,6 +65,8 @@ func WithSupabaseToken(t *testing.T, userID ...string) func(ctx context.Context,
 }
 
 func WithSupabaseTeam(t *testing.T, teamID ...string) func(ctx context.Context, req *http.Request) error {
+	t.Helper()
+
 	teamID_ := TeamID
 	if len(teamID) > 0 {
 		teamID_ = teamID[0]

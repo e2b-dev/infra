@@ -13,6 +13,8 @@ type supabaseClaims struct {
 }
 
 func SignTestToken(t *testing.T, secret string, subject string) string {
+	t.Helper()
+
 	claims := supabaseClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   subject,

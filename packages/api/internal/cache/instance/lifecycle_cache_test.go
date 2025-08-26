@@ -24,6 +24,8 @@ func (t *testLifecycleCacheItem) SetExpired() {
 }
 
 func newCache(t *testing.T) (*lifecycleCache[*testLifecycleCacheItem], context.CancelFunc) {
+	t.Helper()
+
 	ctx, cancel := context.WithCancel(t.Context())
 
 	cache := newLifecycleCache[*testLifecycleCacheItem]()

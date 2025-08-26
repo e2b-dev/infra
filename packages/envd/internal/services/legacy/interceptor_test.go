@@ -31,7 +31,11 @@ func TestInterceptor(t *testing.T) {
 	}
 
 	streamTest := func(count int) func(t *testing.T, client spec.FilesystemClient) http.Header {
+		t.Helper()
+
 		return func(t *testing.T, client spec.FilesystemClient) http.Header {
+			t.Helper()
+
 			req := connect.NewRequest[filesystem.WatchDirRequest](&filesystem.WatchDirRequest{Path: "/a/b/c"})
 			resp, err := client.WatchDir(t.Context(), req)
 			require.NoError(t, err)
@@ -55,6 +59,8 @@ func TestInterceptor(t *testing.T) {
 	}
 
 	unaryTest := func(t *testing.T, client spec.FilesystemClient) http.Header {
+		t.Helper()
+
 		req := connect.NewRequest[filesystem.ListDirRequest](&filesystem.ListDirRequest{Path: "/a/b/c"})
 		resp, err := client.ListDir(t.Context(), req)
 		require.NoError(t, err)
