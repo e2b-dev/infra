@@ -34,7 +34,7 @@ func TestRequestTemplateTooLowCPU(t *testing.T) {
 	}, setup.WithAccessToken())
 	assert.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
-	assert.True(t, strings.HasPrefix(resp.JSON400.Message, "validation error"), fmt.Sprintf("error should have prefix 'validation error', the error is '%s'", resp.JSON400.Message))
+	assert.True(t, strings.HasPrefix(resp.JSON400.Message, "validation error"), "error should have prefix 'validation error', the error is '%s'", resp.JSON400.Message)
 }
 
 func TestRequestTemplateTooLowRAM(t *testing.T) {
@@ -46,7 +46,7 @@ func TestRequestTemplateTooLowRAM(t *testing.T) {
 	}, setup.WithAccessToken())
 	assert.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
-	assert.True(t, strings.HasPrefix(resp.JSON400.Message, "validation error"), fmt.Sprintf("error should have prefix 'validation error', the error is '%s'", resp.JSON400.Message))
+	assert.True(t, strings.HasPrefix(resp.JSON400.Message, "validation error"), "error should have prefix 'validation error', the error is '%s'", resp.JSON400.Message)
 }
 
 func TestRequestTemplateTooHighCPU(t *testing.T) {
@@ -58,7 +58,7 @@ func TestRequestTemplateTooHighCPU(t *testing.T) {
 	}, setup.WithAccessToken())
 	assert.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
-	assert.True(t, strings.HasPrefix(resp.JSON400.Message, "CPU count can't be higher than"), fmt.Sprintf("error should have prefix 'CPU count can't be higher than', the error is '%s'", resp.JSON400.Message))
+	assert.True(t, strings.HasPrefix(resp.JSON400.Message, "CPU count can't be higher than"), "error should have prefix 'CPU count can't be higher than', the error is '%s'", resp.JSON400.Message)
 }
 
 func TestRequestTemplateTooHighMemory(t *testing.T) {
@@ -70,7 +70,7 @@ func TestRequestTemplateTooHighMemory(t *testing.T) {
 	}, setup.WithAccessToken())
 	assert.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
-	assert.True(t, strings.HasPrefix(resp.JSON400.Message, "Memory can't be higher than"), fmt.Sprintf("error should have prefix 'Memory can't be higher than', the error is '%s'", resp.JSON400.Message))
+	assert.True(t, strings.HasPrefix(resp.JSON400.Message, "Memory can't be higher than"), "error should have prefix 'Memory can't be higher than', the error is '%s'", resp.JSON400.Message)
 }
 
 func TestRequestTemplateMemoryNonDivisibleBy2(t *testing.T) {

@@ -107,8 +107,8 @@ func TestCreateDiff_EmptyDirtyBitset(t *testing.T) {
 	// Verify no data was written to diff
 	assert.Equal(t, 0, diff.Len())
 
-	assert.Equal(t, "", m.Dirty.DumpAsBits())
-	assert.Equal(t, "", m.Empty.DumpAsBits())
+	assert.Empty(t, m.Dirty.DumpAsBits())
+	assert.Empty(t, m.Empty.DumpAsBits())
 }
 
 type errorReader struct{}

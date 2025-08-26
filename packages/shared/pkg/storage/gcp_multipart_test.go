@@ -200,7 +200,7 @@ func TestMultipartUploader_UploadFileInParallel_Success(t *testing.T) {
 
 	require.Equal(t, int32(1), atomic.LoadInt32(&initiateCount))
 	require.Equal(t, int32(1), atomic.LoadInt32(&completeCount))
-	require.True(t, atomic.LoadInt32(&uploadPartCount) > 0)
+	require.Positive(t, atomic.LoadInt32(&uploadPartCount))
 
 	// Verify all parts were uploaded and content matches
 	var reconstructed strings.Builder
@@ -312,8 +312,8 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 	// Verify all calls were made
 	require.Equal(t, int32(1), atomic.LoadInt32(&initiateCalls))
 	require.Equal(t, int32(1), atomic.LoadInt32(&completeCalls))
-	require.True(t, atomic.LoadInt32(&partCalls) > 0)
-	require.True(t, atomic.LoadInt32(&maxConcurrentParts) > 1, "Should have concurrent uploads")
+	require.Positive(t, atomic.LoadInt32(&partCalls))
+	require.Greater(t, atomic.LoadInt32(&maxConcurrentParts), 1, "Should have concurrent uploads")
 
 	// Verify content integrity
 	var reconstructed strings.Builder
@@ -382,7 +382,7 @@ func TestMultipartUploader_RandomFailures_ChaosTest(t *testing.T) {
 		atomic.LoadInt32(&attemptCount), atomic.LoadInt32(&successCount))
 
 	// Should have more attempts than successes due to retries
-	require.True(t, atomic.LoadInt32(&attemptCount) >= atomic.LoadInt32(&successCount))
+	require.GreaterOrEqual(t, atomic.LoadInt32(&attemptCount), atomic.LoadInt32(&successCount))
 }
 
 func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
@@ -587,7 +587,7 @@ func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testin
 	// Should have observed significant concurrency but not necessarily 1000
 	// (due to file size and chunk limitations)
 	t.Logf("Max observed concurrency: %d", atomic.LoadInt32(&maxObservedConcurrency))
-	require.True(t, atomic.LoadInt32(&maxObservedConcurrency) > 1)
+	require.Greater(t, atomic.LoadInt32(&maxObservedConcurrency), 1)
 }
 
 func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
@@ -709,7 +709,7 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 	// Verify that retries happened correctly under concurrent conditions
 	retryAttempts.Range(func(key, value interface{}) bool {
 		attempts := atomic.LoadInt32(value.(*int32))
-		require.True(t, attempts >= 3, "Part %s should have at least 3 attempts", key)
+		require.GreaterOrEqual(t, attempts, 3, "Part %s should have at least 3 attempts", key)
 		return true
 	})
 }

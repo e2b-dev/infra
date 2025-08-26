@@ -283,7 +283,7 @@ func TestMove_Symlinks(t *testing.T) {
 		// Verify it's still a symlink
 		info, err := os.Lstat(destPath)
 		require.NoError(t, err)
-		assert.True(t, info.Mode()&os.ModeSymlink != 0, "expected a symlink")
+		assert.NotEqual(t, info.Mode()&os.ModeSymlink, 0, "expected a symlink")
 
 		// Verify the symlink target is still correct
 		target, err := os.Readlink(destPath)
@@ -317,7 +317,7 @@ func TestMove_Symlinks(t *testing.T) {
 		// Verify it's still a symlink
 		info, err := os.Lstat(destPath)
 		require.NoError(t, err)
-		assert.True(t, info.Mode()&os.ModeSymlink != 0, "expected a symlink")
+		assert.NotEqual(t, info.Mode()&os.ModeSymlink, 0, "expected a symlink")
 
 		// Verify the symlink target is still correct
 		target, err := os.Readlink(destPath)

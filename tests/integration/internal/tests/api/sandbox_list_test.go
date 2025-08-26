@@ -64,7 +64,7 @@ func TestSandboxListWithFilter(t *testing.T) {
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
 	require.Equal(t, http.StatusOK, listResponse.StatusCode())
-	assert.Equal(t, 1, len(*listResponse.JSON200))
+	assert.Len(t, *listResponse.JSON200, 1)
 	assert.Equal(t, sbx.SandboxID, (*listResponse.JSON200)[0].SandboxID)
 }
 
@@ -154,7 +154,7 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 
 	assert.NoError(t, err)
 	require.Equal(t, http.StatusOK, listResponse.StatusCode())
-	require.Equal(t, 1, len(*listResponse.JSON200))
+	require.Len(t, *listResponse.JSON200, 1)
 	assert.Equal(t, sandbox2ID, (*listResponse.JSON200)[0].SandboxID)
 
 	// Get second page using the next token from first response
@@ -169,7 +169,7 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
 	require.Equal(t, http.StatusOK, secondPageResponse.StatusCode())
-	require.Equal(t, 1, len(*secondPageResponse.JSON200))
+	require.Len(t, *secondPageResponse.JSON200, 1)
 	assert.Equal(t, sandbox1ID, (*secondPageResponse.JSON200)[0].SandboxID)
 
 	// No more pages
@@ -203,7 +203,7 @@ func TestSandboxListPaginationPaused(t *testing.T) {
 
 	assert.NoError(t, err)
 	require.Equal(t, http.StatusOK, listResponse.StatusCode())
-	require.Equal(t, 1, len(*listResponse.JSON200))
+	require.Len(t, *listResponse.JSON200, 1)
 	assert.Equal(t, sandbox2ID, (*listResponse.JSON200)[0].SandboxID)
 
 	// Get second page using the next token from first response
@@ -218,7 +218,7 @@ func TestSandboxListPaginationPaused(t *testing.T) {
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
 	require.Equal(t, http.StatusOK, secondPageResponse.StatusCode())
-	require.Equal(t, 1, len(*secondPageResponse.JSON200))
+	require.Len(t, *secondPageResponse.JSON200, 1)
 	assert.Equal(t, sandbox1ID, (*secondPageResponse.JSON200)[0].SandboxID)
 
 	// No more pages
@@ -253,7 +253,7 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 
 	assert.NoError(t, err)
 	require.Equal(t, http.StatusOK, listResponse.StatusCode())
-	require.Equal(t, 1, len(*listResponse.JSON200))
+	require.Len(t, *listResponse.JSON200, 1)
 	assert.Equal(t, sandbox2ID, (*listResponse.JSON200)[0].SandboxID)
 
 	// Get second page using the next token from first response
@@ -268,7 +268,7 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
 	require.Equal(t, http.StatusOK, secondPageResponse.StatusCode())
-	require.Equal(t, 1, len(*secondPageResponse.JSON200))
+	require.Len(t, *secondPageResponse.JSON200, 1)
 	assert.Equal(t, sandbox1ID, (*secondPageResponse.JSON200)[0].SandboxID)
 
 	// No more pages
@@ -321,7 +321,7 @@ func TestSandboxListWithFilterV1(t *testing.T) {
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
 	require.Equal(t, http.StatusOK, listResponse.StatusCode())
-	require.Equal(t, 1, len(*listResponse.JSON200))
+	require.Len(t, *listResponse.JSON200, 1)
 	assert.Equal(t, sbx.SandboxID, (*listResponse.JSON200)[0].SandboxID)
 }
 

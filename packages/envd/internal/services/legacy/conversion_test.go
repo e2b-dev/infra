@@ -48,7 +48,7 @@ func TestFilesystemClient_FieldFormatter(t *testing.T) {
 		// specifically in regard to whitespace after colons. This normalizes it so the order no
 		// longer matters.
 		text := strings.ReplaceAll(string(data), " ", "")
-		assert.Equal(t, `{"entry":{"name":"test-name","owner":"new-extra-field"}}`, text)
+		assert.JSONEq(t, `{"entry":{"name":"test-name","owner":"new-extra-field"}}`, text)
 	})
 
 	t.Run("can hide fields when appropriate", func(t *testing.T) {
@@ -63,7 +63,7 @@ func TestFilesystemClient_FieldFormatter(t *testing.T) {
 
 		data, err := io.ReadAll(w.Body)
 		require.NoError(t, err)
-		assert.Equal(t, string(data), `{"entry":{"name":"test-name"}}`)
+		assert.JSONEq(t, string(data), `{"entry":{"name":"test-name"}}`)
 	})
 }
 

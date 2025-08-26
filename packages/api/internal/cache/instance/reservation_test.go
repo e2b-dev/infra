@@ -50,7 +50,7 @@ func TestReservation_SameSandbox(t *testing.T) {
 	defer cancel()
 
 	_, err := cache.Reserve(sandboxID, teamID, 10)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	_, err = cache.Reserve(sandboxID, teamID, 10)
 	require.Error(t, err)

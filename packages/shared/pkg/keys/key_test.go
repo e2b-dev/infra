@@ -20,7 +20,7 @@ func TestMaskKey(t *testing.T) {
 	t.Run("succeeds: empty prefix, value longer than suffix length", func(t *testing.T) {
 		masked, err := MaskKey("", "1234567890")
 		assert.NoError(t, err)
-		assert.Equal(t, "", masked.Prefix)
+		assert.Empty(t, masked.Prefix)
 		assert.Equal(t, "12", masked.MaskedValuePrefix)
 		assert.Equal(t, "7890", masked.MaskedValueSuffix)
 	})
@@ -56,7 +56,7 @@ func TestGenerateKey(t *testing.T) {
 		key, err := GenerateKey("")
 		assert.NoError(t, err)
 		assert.Regexp(t, "^[0-9a-f]{"+strconv.Itoa(keyLength)+"}$", key.PrefixedRawValue)
-		assert.Equal(t, "", key.Masked.Prefix)
+		assert.Empty(t, key.Masked.Prefix)
 		assert.Equal(t, keyLength, key.Masked.ValueLength)
 		assert.Regexp(t, "^[0-9a-f]{"+strconv.Itoa(identifierValuePrefixLength)+"}$", key.Masked.MaskedValuePrefix)
 		assert.Regexp(t, "^[0-9a-f]{"+strconv.Itoa(identifierValueSuffixLength)+"}$", key.Masked.MaskedValueSuffix)
