@@ -82,13 +82,15 @@ func New(
 		Timeout: nodeHealthCheckTimeout,
 	}
 
+	placementAlgorithm := placement.NewBestOfK(placement.DefaultBestOfKConfig())
+
 	o := Orchestrator{
 		httpClient:         httpClient,
 		analytics:          analyticsInstance,
 		nomadClient:        nomadClient,
 		tracer:             tracer,
 		nodes:              smap.New[*nodemanager.Node](),
-		placementAlgorithm: &placement.LeastBusyAlgorithm{},
+		placementAlgorithm: placementAlgorithm,
 		dns:                dnsServer,
 		dbClient:           dbClient,
 		tel:                tel,

@@ -2,7 +2,9 @@ package nodemanager
 
 import (
 	"context"
+	"math/rand"
 	"sync/atomic"
+	"time"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
@@ -39,6 +41,21 @@ type noopTemplateClient struct {
 	templatemanager.TemplateServiceClient
 }
 
+// noopSandboxClientWithSleep implements orchestrator.SandboxServiceClient with a sleep on Create
+type noopSandboxClientWithSleep struct {
+	orchestrator.SandboxServiceClient
+	baseSandboxCreateTime time.Duration
+}
+
+// Create is a noop implementation that always returns success, with a sleep
+func (n *noopSandboxClientWithSleep) Create(_ context.Context, _ *orchestrator.SandboxCreateRequest, _ ...grpc.CallOption) (*orchestrator.SandboxCreateResponse, error) {
+	if n.baseSandboxCreateTime != 0 {
+		time.Sleep(time.Duration(rand.Int63n(2*n.baseSandboxCreateTime.Milliseconds())) * time.Millisecond)
+	}
+
+	return &orchestrator.SandboxCreateResponse{}, nil
+}
+
 // NewNoopGRPCClient creates a new noop gRPC client for testing
 func NewNoopGRPCClient() *grpclient.GRPCClient {
 	// Create a dummy connection that will never be used
@@ -52,21 +69,39 @@ func NewNoopGRPCClient() *grpclient.GRPCClient {
 	}
 }
 
+type TestOptions func(node *TestNode)
+
+func WithSandboxSleepingClient(baseSandboxCreateTime time.Duration) TestOptions {
+	return func(node *TestNode) {
+		node.client.Sandbox = &noopSandboxClientWithSleep{
+			baseSandboxCreateTime: baseSandboxCreateTime,
+		}
+	}
+}
+
 // NewTestNode creates a properly initialized Node for testing purposes
 // It uses a noop gRPC client and has simplified Status() method behavior
-func NewTestNode(id string, status api.NodeStatus, cpuUsage int64) *TestNode {
+func NewTestNode(id string, status api.NodeStatus, cpuUsage int64, cpuCount uint32, options ...TestOptions) *TestNode {
 	node := &Node{
 		ID:        id,
 		ClusterID: uuid.New(),
 		client:    NewNoopGRPCClient(),
 		IPAddress: "127.0.0.1",
 		status:    status,
-		metrics:   Metrics{CpuUsage: cpuUsage},
+		metrics: Metrics{
+			CpuUsage:     cpuUsage,
+			CpuAllocated: uint32(cpuUsage),
+			CpuCount:     cpuCount,
+		},
 		PlacementMetrics: PlacementMetrics{
 			sandboxesInProgress: smap.New[SandboxResources](),
 			createSuccess:       atomic.Uint64{},
 			createFails:         atomic.Uint64{},
 		},
+	}
+
+	for _, option := range options {
+		option(node)
 	}
 
 	return node
