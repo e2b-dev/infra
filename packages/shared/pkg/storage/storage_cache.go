@@ -93,9 +93,23 @@ func (c *CachedFileObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 		return 0, err
 	}
 
+	var total int64
 	for offset := int64(0); offset < totalSize; offset += c.chunkSize {
-		if err := c.copyChunkToStream(offset, dst); err != nil {
-			return 0, fmt.Errorf("failed to copy chunk to stream: %w", err)
+		chunkPath := c.makeChunkFilename(offset)
+
+		if current, err := c.copyCacheToStream(chunkPath, dst); ignoreEOF(err) == nil {
+			total += current
+			continue
+		} else if err != nil {
+			zap.L().Warn("failed to copy cached chunk to stream",
+				zap.Error(err),
+				zap.Int64("offset", offset))
+		}
+
+		if current, err := c.copyAndCacheBlock(chunkPath, offset, dst); err != nil {
+			return 0, fmt.Errorf("failed to copy and cache chunk: %w", err)
+		} else {
+			total += current
 		}
 	}
 
@@ -109,7 +123,12 @@ func (c *CachedFileObjectProvider) WriteFromFileSystem(path string) error {
 	var eg errgroup.Group
 
 	eg.Go(func() error {
-		return c.createCacheBlocksFromFile(path)
+		if err := c.createCacheBlocksFromFile(path); err != nil {
+			zap.L().Warn("failed to create cache blocks from file",
+				zap.String("path", path),
+				zap.Error(err))
+		}
+		return nil
 	})
 
 	eg.Go(func() error {
@@ -120,14 +139,9 @@ func (c *CachedFileObjectProvider) WriteFromFileSystem(path string) error {
 }
 
 func (c *CachedFileObjectProvider) Write(src []byte) (int, error) {
-	num, err := c.writeCacheAndRemote(src)
-	if err != nil {
-		return 0, err
-	} else if num != len(src) {
-		return 0, fmt.Errorf("failed to copy %d bytes from cache: %w", num, err)
-	}
+	go c.writeBytesToCache(src)
 
-	return num, nil
+	return c.inner.Write(src)
 }
 
 func (c *CachedFileObjectProvider) ReadAt(buff []byte, offset int64) (int, error) {
@@ -137,17 +151,17 @@ func (c *CachedFileObjectProvider) ReadAt(buff []byte, offset int64) (int, error
 		return 0, fmt.Errorf("invalid ReadAt: %w", err)
 	}
 
-	// try to read from local cache first
+	// try to read from cache first
 	chunkPath := c.makeChunkFilename(offset)
-
-	var fp *os.File
-	fp, err = os.Open(chunkPath)
-	if err == nil {
-		defer cleanup("failed to close chunk", fp)
-		count, err := fp.ReadAt(buff, 0) // offset is in the filename
-		return count, ignoreEOF(err)
+	count, err := c.readAtFromCache(chunkPath, buff)
+	if ignoreEOF(err) == nil {
+		return count, err // return `err` in case it's io.EOF
 	}
-	cacheDoesNotExist := os.IsNotExist(err)
+
+	zap.L().Warn("failed to read cached chunk, falling back to remote read",
+		zap.String("chunk_path", chunkPath),
+		zap.Int64("offset", offset),
+		zap.Error(err))
 
 	// read remote file
 	readCount, err := c.inner.ReadAt(buff, offset)
@@ -155,9 +169,7 @@ func (c *CachedFileObjectProvider) ReadAt(buff []byte, offset int64) (int, error
 		return 0, fmt.Errorf("failed to perform uncached read: %w", err)
 	}
 
-	if cacheDoesNotExist {
-		go c.writeBytesToLocal(offset, chunkPath, buff[:readCount])
-	}
+	go c.writeChunkToCache(offset, chunkPath, buff[:readCount])
 
 	return readCount, nil
 }
@@ -210,24 +222,19 @@ func (c *CachedFileObjectProvider) makeChunkFilename(offset int64) string {
 	return fmt.Sprintf("%s/%012d-%d.bin", c.path, offset/c.chunkSize, c.chunkSize)
 }
 
-func (c *CachedFileObjectProvider) copyChunkToStream(offset int64, dst io.Writer) error {
-	chunkPath := c.makeChunkFilename(offset)
+func (c *CachedFileObjectProvider) copyCacheToStream(chunkPath string, dst io.Writer) (int64, error) {
 	chunk, err := os.Open(chunkPath)
-	if errors.Is(err, os.ErrNotExist) {
-		if _, err = c.copyAndCacheBlock(chunkPath, offset, dst); err != nil {
-			return fmt.Errorf("failed to write data to cache: %w", err)
-		}
-		return nil
-	} else if err != nil {
-		return fmt.Errorf("failed to open cache file %s: %w", chunkPath, err)
+	if err != nil {
+		return 0, fmt.Errorf("failed to open cache file %s: %w", chunkPath, err)
 	}
 	defer cleanup("failed to close chunk file", chunk)
 
-	if _, err = io.Copy(dst, chunk); err != nil {
-		return fmt.Errorf("failed to copy cached chunk %s: %w", chunkPath, err)
+	count, err := io.Copy(dst, chunk)
+	if ignoreEOF(err) != nil {
+		return 0, fmt.Errorf("failed to copy cached chunk %s: %w", chunkPath, err)
 	}
 
-	return nil
+	return count, err // return `err` in case it's io.EOF
 }
 
 func (c *CachedFileObjectProvider) copyAndCacheBlock(blockCachePath string, offset int64, dst io.Writer) (int64, error) {
@@ -256,9 +263,7 @@ func (c *CachedFileObjectProvider) copyAndCacheBlock(blockCachePath string, offs
 	return offset, nil
 }
 
-func (c *CachedFileObjectProvider) writeCacheAndRemote(src []byte) (int, error) {
-	var err error
-
+func (c *CachedFileObjectProvider) writeBytesToCache(src []byte) {
 	size := int64(len(src))
 	for offset := int64(0); int(offset) < len(src); offset += c.chunkSize {
 		// read from the source
@@ -266,30 +271,15 @@ func (c *CachedFileObjectProvider) writeCacheAndRemote(src []byte) (int, error) 
 		buf := src[offset:offsetEnd]
 
 		// write to the cache file
-		tempPath := c.makeTempChunkFilename(offset)
-		if err = os.WriteFile(tempPath, buf[:], cacheFilePermissions); err != nil {
-			return 0, fmt.Errorf("failed to write to local file %q: %w", tempPath, err)
-		}
-
-		realPath := c.makeChunkFilename(offset)
-		if err = os.Rename(tempPath, realPath); err != nil {
-			return 0, fmt.Errorf("failed to rename file (%q to %q): %w", tempPath, realPath, err)
-		}
+		chunkPath := c.makeChunkFilename(offset)
+		c.writeChunkToCache(offset, chunkPath, buf)
 	}
-
-	if _, err = c.inner.Write(src); err != nil {
-		return 0, fmt.Errorf("failed to remote write from byte array: %w", err)
-	}
-
-	return int(size), nil
 }
 
-func (c *CachedFileObjectProvider) writeBytesToLocal(offset int64, chunkPath string, bytes []byte) {
-	var err error
-
+func (c *CachedFileObjectProvider) writeChunkToCache(offset int64, chunkPath string, bytes []byte) {
 	tempPath := c.makeTempChunkFilename(offset)
 
-	if err = os.WriteFile(tempPath, bytes, cacheFilePermissions); err != nil {
+	if err := os.WriteFile(tempPath, bytes, cacheFilePermissions); err != nil {
 		zap.L().Error("failed to write temp cache file",
 			zap.String("path", tempPath),
 			zap.Int64("offset", offset),
@@ -299,7 +289,7 @@ func (c *CachedFileObjectProvider) writeBytesToLocal(offset int64, chunkPath str
 		return
 	}
 
-	if err = os.Rename(tempPath, chunkPath); err != nil {
+	if err := os.Rename(tempPath, chunkPath); err != nil {
 		zap.L().Error("failed to rename temp file",
 			zap.String("path", tempPath),
 			zap.Int64("offset", offset),
@@ -333,7 +323,7 @@ func (c *CachedFileObjectProvider) createCacheBlocksFromFile(inputPath string) e
 	for offset := int64(0); offset < totalSize; offset += c.chunkSize {
 		func(offset, totalSize int64) {
 			errs.Go(func() error {
-				return c.writeChunkFromFile(offset, totalSize, input)
+				return c.writeCacheFromFile(offset, totalSize, input)
 			})
 		}(offset, totalSize)
 	}
@@ -342,7 +332,7 @@ func (c *CachedFileObjectProvider) createCacheBlocksFromFile(inputPath string) e
 
 const fileReadBufferSize = 32 * 1024 // pulled from implementation of io.Copy
 
-func (c *CachedFileObjectProvider) writeChunkFromFile(offset int64, fileSize int64, input *os.File) error {
+func (c *CachedFileObjectProvider) writeCacheFromFile(offset int64, fileSize int64, input *os.File) error {
 	var err error
 
 	tempPath := c.makeTempChunkFilename(offset)
@@ -380,11 +370,23 @@ func (c *CachedFileObjectProvider) writeChunkFromFile(offset int64, fileSize int
 	return nil
 }
 
-type closeable interface {
-	Close() error
+func (c *CachedFileObjectProvider) readAtFromCache(chunkPath string, buff []byte) (int, error) {
+	var fp *os.File
+	fp, err := os.Open(chunkPath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to open file: %w", err)
+	}
+
+	defer cleanup("failed to close chunk", fp)
+	count, err := fp.ReadAt(buff, 0) // offset is in the filename
+	if ignoreEOF(err) != nil {
+		return 0, fmt.Errorf("failed to read from chunk: %w", err)
+	}
+
+	return count, err // return `err` in case it's io.EOF
 }
 
-func cleanup(msg string, input closeable) {
+func cleanup(msg string, input interface{ Close() error }) {
 	if err := input.Close(); err != nil {
 		zap.L().Warn(msg, zap.Error(err))
 	}

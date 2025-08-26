@@ -178,10 +178,15 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 			inner:     fakeStorageObjectProvider,
 		}
 
+		// write the data
 		read, err := c.Write(fakeData)
 		require.NoError(t, err)
 		assert.Equal(t, len(fakeData), read)
 
+		// the cache write is async, give it some time
+		time.Sleep(time.Millisecond * 20)
+
+		// read back the only block
 		buf := make([]byte, 3)
 		read2, err := c.ReadAt(buf, 0)
 		require.NoError(t, err)
@@ -209,6 +214,9 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		read64, err := c.Write(fakeData)
 		require.NoError(t, err)
 		assert.Equal(t, len(fakeData), read64)
+
+		// the cache write is async
+		time.Sleep(time.Millisecond * 20)
 
 		// get first chunk
 		buf := make([]byte, 3)
@@ -246,10 +254,13 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, len(fakeData), read64)
 
+		// the write is async
+		time.Sleep(time.Millisecond * 20)
+
 		// get last chunk
 		buf := make([]byte, 3)
 		read, err := c.ReadAt(buf, 9)
-		require.NoError(t, err)
+		require.ErrorIs(t, err, io.EOF)
 		assert.Equal(t, 1, read)
 		assert.Equal(t, fakeData[9:], buf[:read])
 	})
