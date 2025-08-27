@@ -159,7 +159,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}
 
 	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(ctx,
-		featureflags.SandboxLifeCycleEventsWriteFlagName, req.Sandbox.SandboxId)
+		featureflags.SandboxLifeCycleEventsWriteFlagName)
 	if flagErr != nil {
 		zap.L().Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
 	}
@@ -221,7 +221,7 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	eventData := fmt.Sprintf(`{"set_timeout": "%s"}`, req.EndTime.AsTime().Format(time.RFC3339))
 
 	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(ctx,
-		featureflags.SandboxLifeCycleEventsWriteFlagName, item.Runtime.SandboxID)
+		featureflags.SandboxLifeCycleEventsWriteFlagName)
 	if flagErr != nil {
 		zap.L().Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
 	}
@@ -328,7 +328,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	}()
 
 	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(ctx,
-		featureflags.SandboxLifeCycleEventsWriteFlagName, sbx.Runtime.SandboxID)
+		featureflags.SandboxLifeCycleEventsWriteFlagName)
 	if flagErr != nil {
 		zap.L().Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
 	}
@@ -456,7 +456,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}(context.WithoutCancel(ctx))
 
 	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(ctx,
-		featureflags.SandboxLifeCycleEventsWriteFlagName, sbx.Runtime.SandboxID)
+		featureflags.SandboxLifeCycleEventsWriteFlagName)
 	if flagErr != nil {
 		zap.L().Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
 	}

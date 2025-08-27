@@ -6,7 +6,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	ldclient "github.com/launchdarkly/go-server-sdk/v7"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
@@ -56,17 +55,14 @@ func NewClient() (*Client, error) {
 	return &Client{ld: ldClient}, nil
 }
 
-func (c *Client) BoolFlag(ctx context.Context, flag BoolFlag, contextKey string) (bool, error) {
+func (c *Client) BoolFlag(ctx context.Context, flag BoolFlag) (bool, error) {
 	if c.ld == nil {
 		return flag.fallback, fmt.Errorf("LaunchDarkly client is not initialized")
 	}
 
-	flagCtx := ldcontext.NewBuilder(flag.name).SetString("contextKey", contextKey).Build()
-	if embeddedCtx, ok := getContext(ctx); ok {
-		flagCtx = ldcontext.NewMulti(embeddedCtx, flagCtx)
-	}
+	embeddedCtx := getContext(ctx)
 
-	enabled, err := c.ld.BoolVariationCtx(ctx, flag.name, flagCtx, flag.fallback)
+	enabled, err := c.ld.BoolVariationCtx(ctx, flag.name, embeddedCtx, flag.fallback)
 	if err != nil {
 		return enabled, fmt.Errorf("error evaluating %s: %w", flag, err)
 	}
@@ -74,18 +70,15 @@ func (c *Client) BoolFlag(ctx context.Context, flag BoolFlag, contextKey string)
 	return enabled, nil
 }
 
-func (c *Client) IntFlag(ctx context.Context, flagName IntFlag, contextKey string) (int, error) {
+func (c *Client) IntFlag(ctx context.Context, flagName IntFlag) (int, error) {
 	defaultValue := flagsInt[flagName]
 	if c.ld == nil {
 		return defaultValue, fmt.Errorf("LaunchDarkly client is not initialized")
 	}
 
-	flagCtx := ldcontext.NewBuilder(string(flagName)).SetString("contextKey", contextKey).Build()
-	if embeddedCtx, ok := getContext(ctx); ok {
-		flagCtx = ldcontext.NewMulti(embeddedCtx, flagCtx)
-	}
+	embeddedCtx := getContext(ctx)
 
-	value, err := c.ld.IntVariationCtx(ctx, string(flagName), flagCtx, defaultValue)
+	value, err := c.ld.IntVariationCtx(ctx, string(flagName), embeddedCtx, defaultValue)
 	if err != nil {
 		return value, fmt.Errorf("error evaluating %s: %w", flagName, err)
 	}

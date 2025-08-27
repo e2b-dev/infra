@@ -14,7 +14,7 @@ func (l *Limiter) GCloudUploadLimiter() *utils.AdjustableSemaphore {
 }
 
 func (l *Limiter) GCloudMaxTasks(ctx context.Context) int {
-	maxTasks, flagErr := l.featureFlags.IntFlag(ctx, featureflags.GcloudMaxTasks, "gcloud")
+	maxTasks, flagErr := l.featureFlags.IntFlag(ctx, featureflags.GcloudMaxTasks)
 	if flagErr != nil {
 		zap.L().Warn("soft failing during gcloud max tasks feature flag receive", zap.Error(flagErr), zap.Int("maxTasks", maxTasks))
 	}

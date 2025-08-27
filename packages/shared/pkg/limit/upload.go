@@ -16,7 +16,7 @@ func (l *Limiter) UpdateUploadLimitSemaphore(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			uploadLimitFlag, flagErr := l.featureFlags.IntFlag(ctx, featureflags.GcloudConcurrentUploadLimit, "<empty>")
+			uploadLimitFlag, flagErr := l.featureFlags.IntFlag(ctx, featureflags.GcloudConcurrentUploadLimit)
 			if flagErr != nil {
 				zap.L().Warn("soft failing during metrics write feature flag receive", zap.Error(flagErr))
 			}

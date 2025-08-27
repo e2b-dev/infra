@@ -276,17 +276,17 @@ func run(port, proxyPort uint) (success bool) {
 		}
 
 		maxBatchSize := 100
-		if val, err := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherMaxBatchSize, "clickhouse-batcher"); err == nil {
+		if val, err := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherMaxBatchSize); err == nil {
 			maxBatchSize = int(val)
 		}
 
 		maxDelay := 1 * time.Second
-		if val, err := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherMaxDelay, "clickhouse-batcher"); err == nil {
+		if val, err := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherMaxDelay); err == nil {
 			maxDelay = time.Duration(val) * time.Millisecond
 		}
 
 		queueSize := 1000
-		if val, err := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherQueueSize, "clickhouse-batcher"); err == nil {
+		if val, err := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherQueueSize); err == nil {
 			queueSize = val
 		}
 

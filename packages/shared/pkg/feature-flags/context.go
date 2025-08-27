@@ -24,9 +24,9 @@ func CreateContext(ctx context.Context, contexts ...ldcontext.Context) context.C
 	return ctx
 }
 
-func getContext(ctx context.Context) (ldcontext.Context, bool) {
+func getContext(ctx context.Context) ldcontext.Context {
 	if val, ok := ctx.Value(ctxKey{}).(ldcontext.Context); ok {
-		return val, ok
+		return val
 	}
-	return ldcontext.Context{}, false
+	return ldcontext.Context{}
 }
