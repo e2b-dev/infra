@@ -66,20 +66,17 @@ Check if you can use config for terraform state management
    - [Stackdriver Logging API](https://console.cloud.google.com/apis/library/logging.googleapis.com)
 6. Run `make build-and-upload`
 7. Run `make copy-public-builds`. This will copy kernel and rootfs builds for Firecracker to your bucket. You can [build your own](#building-firecracker-and-uffd-from-source) kernel and Firecracker roots.
-8. Run `make migrate`
-9. Secrets are created and stored in GCP Secrets Manager. Once created, that is the source of truth--you will need to update values there to make changes. Create a secret value for the following secrets:
+8. Secrets are created and stored in GCP Secrets Manager. Once created, that is the source of truth--you will need to update values there to make changes. Create a secret value for the following secrets:
   - e2b-cloudflare-api-token
       > Get Cloudflare API Token: go to the [Cloudflare dashboard](https://dash.cloudflare.com/) -> Manage Account -> Account API Tokens -> Create Token -> Edit Zone DNS -> in "Zone Resources" select your domain and generate the token
-  - e2b-grafana-api-key (optional) - read more in [grafana README](./terraform/grafana/README.md)
   - Posthog API keys for monitoring (optional)
-10. Run `make plan-without-jobs` and then `make apply`
-11. Fill out the following secret in the GCP Secrets Manager:
+9. Run `make plan-without-jobs` and then `make apply`
+10. Fill out the following secret in the GCP Secrets Manager:
   - e2b-supabase-jwt-secrets (optional / required to self-host the [E2B dashboard](https://github.com/e2b-dev/dashboard))
       > Get Supabase JWT Secret: go to the [Supabase dashboard](https://supabase.com/dashboard) -> Select your Project -> Project Settings -> Data API -> JWT Settings
   - e2b-postgres-connection-string
-    > This is the same value as for the `POSTGRES_CONNECTION_STRING` env variable.
-12. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It can take some time; you can check the status in the Google Cloud Console
-13. Setup data in the cluster by following one of the two 
+11. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It can take some time; you can check the status in the Google Cloud Console
+12. Setup data in the cluster by following one of the two 
     - `make prep-cluster` in `packages/shared` to create an initial user, etc. (You need to be logged in via [`e2b` CLI](https://www.npmjs.com/package/@e2b/cli)). It will create a user with same information (access token, api key, etc.) as you have in E2B. 
     - You can also create a user in database, it will automatically also create a team, an API key and an access token. You will need to build template(s) for your cluster. Use [`e2b` CLI](https://www.npmjs.com/package/@e2b/cli?activetab=versions)) and run `E2B_DOMAIN=<your-domain> e2b template build`.
 
