@@ -7,6 +7,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sync/semaphore"
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/batcher"
@@ -38,6 +39,7 @@ type server struct {
 	persistence         storage.StorageProvider
 	featureFlags        *featureflags.Client
 	sandboxEventBatcher batcher.ClickhouseInsertBatcher[clickhouse.SandboxEvent]
+	startingSandboxes   *semaphore.Weighted
 }
 
 type Service struct {
@@ -84,6 +86,7 @@ func New(
 		persistence:         persistence,
 		featureFlags:        featureFlags,
 		sandboxEventBatcher: sandboxEventBatcher,
+		startingSandboxes:   semaphore.NewWeighted(maxStartingInstancesPerNode),
 	}
 
 	meter := tel.MeterProvider.Meter("orchestrator.sandbox")

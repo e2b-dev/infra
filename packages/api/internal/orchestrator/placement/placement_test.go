@@ -118,7 +118,9 @@ func TestPlaceSandbox_ContextTimeout(t *testing.T) {
 		},
 	}
 
-	resultNode, err := PlaceSandbox(ctx, tracer, algorithm, []*nodemanager.Node{}, nil, sbxRequest)
+	resultNode, err := PlaceSandbox(ctx, tracer, algorithm, []*nodemanager.Node{
+		nodemanager.NewTestNode("node1", api.NodeStatusReady, 30),
+	}, nil, sbxRequest)
 
 	assert.Error(t, err)
 	assert.Nil(t, resultNode)
@@ -126,7 +128,27 @@ func TestPlaceSandbox_ContextTimeout(t *testing.T) {
 	assert.True(t, err.Error() == "timeout" || errors.Is(err, context.DeadlineExceeded))
 }
 
-func TestPlaceSandbox_AlgorithmError(t *testing.T) {
+func TestPlaceSandbox_NoNodes(t *testing.T) {
+	ctx := context.Background()
+	tracer := noop.NewTracerProvider().Tracer("")
+
+	algorithm := &mockAlgorithm{}
+	sbxRequest := &orchestrator.SandboxCreateRequest{
+		Sandbox: &orchestrator.SandboxConfig{
+			SandboxId: "test-sandbox",
+			Vcpu:      2,
+			RamMb:     1024,
+		},
+	}
+
+	resultNode, err := PlaceSandbox(ctx, tracer, algorithm, []*nodemanager.Node{}, nil, sbxRequest)
+
+	assert.Error(t, err)
+	assert.Nil(t, resultNode)
+	assert.Contains(t, err.Error(), "no nodes available")
+}
+
+func TestPlaceSandbox_AllNodesExcluded(t *testing.T) {
 	ctx := context.Background()
 	tracer := noop.NewTracerProvider().Tracer("")
 
@@ -142,7 +164,7 @@ func TestPlaceSandbox_AlgorithmError(t *testing.T) {
 		},
 	}
 
-	resultNode, err := PlaceSandbox(ctx, tracer, algorithm, []*nodemanager.Node{}, nil, sbxRequest)
+	resultNode, err := PlaceSandbox(ctx, tracer, algorithm, []*nodemanager.Node{nodemanager.NewTestNode("node1", api.NodeStatusReady, 30)}, nil, sbxRequest)
 
 	assert.Error(t, err)
 	assert.Nil(t, resultNode)
