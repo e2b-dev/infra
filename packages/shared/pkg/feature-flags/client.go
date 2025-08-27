@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	ldclient "github.com/launchdarkly/go-server-sdk/v7"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
@@ -55,14 +56,12 @@ func NewClient() (*Client, error) {
 	return &Client{ld: ldClient}, nil
 }
 
-func (c *Client) BoolFlag(ctx context.Context, flag BoolFlag) (bool, error) {
+func (c *Client) BoolFlag(ctx context.Context, flag BoolFlag, contexts ...ldcontext.Context) (bool, error) {
 	if c.ld == nil {
 		return flag.fallback, fmt.Errorf("LaunchDarkly client is not initialized")
 	}
 
-	embeddedCtx := getContext(ctx)
-
-	enabled, err := c.ld.BoolVariationCtx(ctx, flag.name, embeddedCtx, flag.fallback)
+	enabled, err := c.ld.BoolVariationCtx(ctx, flag.name, mergeContexts(ctx, contexts), flag.fallback)
 	if err != nil {
 		return enabled, fmt.Errorf("error evaluating %s: %w", flag, err)
 	}
@@ -70,15 +69,13 @@ func (c *Client) BoolFlag(ctx context.Context, flag BoolFlag) (bool, error) {
 	return enabled, nil
 }
 
-func (c *Client) IntFlag(ctx context.Context, flagName IntFlag) (int, error) {
+func (c *Client) IntFlag(ctx context.Context, flagName IntFlag, contexts ...ldcontext.Context) (int, error) {
 	defaultValue := flagsInt[flagName]
 	if c.ld == nil {
 		return defaultValue, fmt.Errorf("LaunchDarkly client is not initialized")
 	}
 
-	embeddedCtx := getContext(ctx)
-
-	value, err := c.ld.IntVariationCtx(ctx, string(flagName), embeddedCtx, defaultValue)
+	value, err := c.ld.IntVariationCtx(ctx, string(flagName), mergeContexts(ctx, contexts), defaultValue)
 	if err != nil {
 		return value, fmt.Errorf("error evaluating %s: %w", flagName, err)
 	}

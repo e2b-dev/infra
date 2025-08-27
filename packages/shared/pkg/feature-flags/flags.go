@@ -14,6 +14,12 @@ const (
 	SandboxTemplateAttribute           string         = "template-id"
 	SandboxKernelVersionAttribute      string         = "kernel-version"
 	SandboxFirecrackerVersionAttribute string         = "firecracker-version"
+
+	UserKind ldcontext.Kind = "user"
+
+	ClusterKind ldcontext.Kind = "cluster"
+
+	TierKind ldcontext.Kind = "tier"
 )
 
 // All flags must be defined here: https://app.launchdarkly.com/projects/default/flags/

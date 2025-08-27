@@ -32,7 +32,8 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 		return
 	}
 
-	metricsReadFlag, err := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName)
+	metricsReadFlag, err := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName,
+		featureflags.TeamStubContext(teamID))
 	if err != nil {
 		zap.L().Warn("error getting metrics read feature flag, soft failing", zap.Error(err))
 	}
