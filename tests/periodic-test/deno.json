@@ -1,3 +1,6 @@
 {
-
+  "imports": {
+    "@e2b/cli": "npm:@e2b/cli@^2.0.1",
+    "@e2b/code-interpreter": "npm:@e2b/code-interpreter@^2.0.0"
+  }
 }

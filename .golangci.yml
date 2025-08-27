@@ -18,8 +18,12 @@ linters:
     - bidichk
     - bodyclose
     - containedctx
+    - copyloopvar
+    - dogsled
+    - durationcheck
     - govet
     - staticcheck
+    - testifylint
     - tparallel
   settings:
     staticcheck:

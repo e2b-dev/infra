@@ -58,7 +58,7 @@ func TestMove(t *testing.T) {
 
 	// Verify the file exists at the destination
 	_, err = os.Stat(destFile)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify the file no longer exists at the source
 	_, err = os.Stat(sourceFile)
@@ -115,15 +115,15 @@ func TestMoveDirectory(t *testing.T) {
 
 	// Verify the directory exists at the destination
 	_, err = os.Stat(destDir)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify the files exist at the destination
 	destFile1 := filepath.Join(destDir, "file1.txt")
 	destFile2 := filepath.Join(destDir, "subdir", "file2.txt")
 	_, err = os.Stat(destFile1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	_, err = os.Stat(destFile2)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify the directory no longer exists at the source
 	_, err = os.Stat(sourceDir)
@@ -217,7 +217,7 @@ func TestMoveRelativePath(t *testing.T) {
 
 	// Verify the file exists at the destination
 	_, err = os.Stat(destFile)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify the file no longer exists at the source
 	_, err = os.Stat(sourceFile)
@@ -280,12 +280,12 @@ func TestMove_Symlinks(t *testing.T) {
 
 		// Verify the symlink was moved
 		_, err = os.Stat(destPath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Verify it's still a symlink
 		info, err := os.Lstat(destPath)
 		require.NoError(t, err)
-		assert.True(t, info.Mode()&os.ModeSymlink != 0, "expected a symlink")
+		assert.NotEqual(t, 0, info.Mode()&os.ModeSymlink, "expected a symlink")
 
 		// Verify the symlink target is still correct
 		target, err := os.Readlink(destPath)
@@ -316,12 +316,12 @@ func TestMove_Symlinks(t *testing.T) {
 
 		// Verify the symlink was moved
 		_, err = os.Stat(destPath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Verify it's still a symlink
 		info, err := os.Lstat(destPath)
 		require.NoError(t, err)
-		assert.True(t, info.Mode()&os.ModeSymlink != 0, "expected a symlink")
+		assert.NotEqual(t, 0, info.Mode()&os.ModeSymlink, "expected a symlink")
 
 		// Verify the symlink target is still correct
 		target, err := os.Readlink(destPath)
@@ -356,7 +356,7 @@ func TestMove_Symlinks(t *testing.T) {
 
 		// Verify the real file was moved
 		_, err = os.Stat(destPath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Verify the original file is gone
 		_, err = os.Stat(realFile)
@@ -364,6 +364,6 @@ func TestMove_Symlinks(t *testing.T) {
 
 		// Verify the symlink still exists but now points to a non-existent file
 		_, err = os.Stat(newLinkToFile)
-		assert.Error(t, err, "symlink should point to non-existent file")
+		require.Error(t, err, "symlink should point to non-existent file")
 	})
 }

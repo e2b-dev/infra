@@ -3,6 +3,14 @@
 locals {
   nfs_mount_path   = "/orchestrator/shared-store"
   nfs_mount_subdir = "chunks-cache"
+  nfs_mount_opts = join(",", [ // for more docs, see https://linux.die.net/man/5/nfs
+    "tcp",                     // docs say to avoid it on highspeed connections
+    format("nfsvers=%s", var.filestore_cache_enabled ? module.filestore[0].nfs_version == "NFS_V3" ? "3" : "4" : ""),
+    "lookupcache=none", // do not cache file handles
+    "noac",             // do not use attribute caching
+    "noacl",            // do not use an acl
+    "nolock",           // do not use locking
+  ])
 
   file_hash = {
     "scripts/run-consul.sh"              = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
@@ -137,6 +145,7 @@ module "client_cluster" {
     NFS_IP_ADDRESS               = var.filestore_cache_enabled ? join(",", module.filestore[0].nfs_ip_addresses) : ""
     NFS_MOUNT_PATH               = local.nfs_mount_path
     NFS_MOUNT_SUBDIR             = local.nfs_mount_subdir
+    NFS_MOUNT_OPTS               = local.nfs_mount_opts
     USE_FILESTORE_CACHE          = var.filestore_cache_enabled
   })
 
@@ -284,6 +293,7 @@ module "build_cluster" {
     NFS_IP_ADDRESS               = var.filestore_cache_enabled ? join(",", module.filestore[0].nfs_ip_addresses) : ""
     NFS_MOUNT_PATH               = local.nfs_mount_path
     NFS_MOUNT_SUBDIR             = local.nfs_mount_subdir
+    NFS_MOUNT_OPTS               = local.nfs_mount_opts
     USE_FILESTORE_CACHE          = var.filestore_cache_enabled
   })
 
