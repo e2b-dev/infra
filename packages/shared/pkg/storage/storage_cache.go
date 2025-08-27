@@ -95,7 +95,7 @@ func (c *CachedFileObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 			zap.Error(err))
 	}
 
-	writer := bytes.NewBuffer(nil)
+	writer := bytes.NewBuffer(make([]byte, 0, totalSize))
 
 	bytesWritten, err := c.inner.WriteTo(writer)
 	if ignoreEOF(err) != nil {
@@ -108,7 +108,7 @@ func (c *CachedFileObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 			zap.Int64("actual", bytesWritten))
 	}
 
-	c.writeFullFileToCache(fullCachePath, writer.Bytes())
+	go c.writeFullFileToCache(fullCachePath, writer.Bytes())
 
 	written, err := dst.Write(writer.Bytes())
 	return int64(written), err
