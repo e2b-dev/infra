@@ -27,7 +27,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const requestTimeout = 60 * time.Second
+const (
+	requestTimeout              = 60 * time.Second
+	maxStartingInstancesPerNode = 3
+)
 
 func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
 	// set max request timeout for this request
@@ -46,6 +49,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
+
 	// setup launch darkly
 	ctx = featureflags.CreateContext(
 		ctx,
@@ -59,6 +63,14 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			Kind(featureflags.TeamKind).
 			Build(),
 	)
+
+	// Check if we've reached the max number of starting instances on this node
+	acquired := s.startingSandboxes.TryAcquire(1)
+	if !acquired {
+		telemetry.ReportEvent(ctx, "too many starting sandboxes on node")
+		return nil, status.Errorf(codes.ResourceExhausted, "too many sandboxes starting on this node, please retry")
+	}
+	defer s.startingSandboxes.Release(1)
 
 	metricsWriteFlag, flagErr := s.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlagName)
 	if flagErr != nil {
