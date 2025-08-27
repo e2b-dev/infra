@@ -353,8 +353,8 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 				// This increases chances of race conditions
 				buildID := fmt.Sprintf("build-%d", goroutineID%10) // Limit to 10 different build IDs
 				diff, err := newDiffWithAsserts(t, cachePath, buildID, Rootfs, blockSize)
-				if assert.Error(t, err) {
-					continue // an error was already asserted, move on
+				if !assert.NoError(t, err) {
+					continue
 				}
 
 				// Add to store
@@ -435,7 +435,7 @@ func TestDiffStoreResetDeleteRace(t *testing.T) {
 
 			// Create a unique diff for this iteration to increase concurrency
 			iterDiff, err := newDiffWithAsserts(t, cachePath, fmt.Sprintf("%s-%d", buildID, iteration), Rootfs, blockSize)
-			if assert.NoError(t, err) {
+			if !assert.NoError(t, err) {
 				return
 			}
 
