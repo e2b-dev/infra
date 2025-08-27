@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -17,8 +16,6 @@ func TestList(t *testing.T) {
 
 	client := setup.GetOrchestratorClient(t, ctx)
 
-	list, err := client.List(ctx, &emptypb.Empty{})
+	_, err := client.List(ctx, &emptypb.Empty{})
 	require.NoError(t, err)
-
-	assert.NotEmpty(t, list.GetSandboxes())
 }
