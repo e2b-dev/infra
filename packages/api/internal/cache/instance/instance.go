@@ -2,19 +2,14 @@ package instance
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -24,7 +19,15 @@ const (
 	InstanceAutoPauseDefault = false
 )
 
-var ErrPausingInstanceNotFound = errors.New("pausing instance not found")
+type State string
+
+const (
+	StateRunning      State = "running"
+	StatePausing      State = "pausing"
+	StateShuttingDown State = "shutting down"
+	StatePaused       State = "paused"
+	StateKilled       State = "killed"
+)
 
 func NewInstanceInfo(
 	SandboxID string,
@@ -74,13 +77,12 @@ func NewInstanceInfo(
 		AllowInternetAccess: allowInternetAccess,
 		NodeID:              NodeID,
 		ClusterID:           ClusterID,
-		AutoPause:           atomic.Bool{},
-		Pausing:             utils.NewSetOnce[string](),
+		AutoPause:           AutoPause,
+		state:               StateRunning,
+		stopping:            utils.NewSetOnce[struct{}](),
 		BaseTemplateID:      BaseTemplateID,
 		mu:                  sync.RWMutex{},
 	}
-
-	instance.AutoPause.Store(AutoPause)
 
 	return instance
 }
@@ -109,8 +111,9 @@ type InstanceInfo struct {
 	AllowInternetAccess *bool
 	NodeID              string
 	ClusterID           uuid.UUID
-	AutoPause           atomic.Bool
-	Pausing             *utils.SetOnce[string]
+	AutoPause           bool
+	state               State
+	stopping            *utils.SetOnce[struct{}]
 	mu                  sync.RWMutex
 }
 
@@ -147,125 +150,48 @@ func (i *InstanceInfo) SetExpired() {
 	i.SetEndTime(time.Now())
 }
 
-type InstanceCache struct {
-	reservations *ReservationCache
-	pausing      *smap.Map[*InstanceInfo]
+func (i *InstanceInfo) GetState() State {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
 
-	cache          *lifecycleCache[*InstanceInfo]
-	insertInstance func(data *InstanceInfo, created bool) error
-
-	sandboxCounter metric.Int64UpDownCounter
-	createdCounter metric.Int64Counter
-
-	mu sync.Mutex
+	return i.state
 }
 
-func NewCache(
-	ctx context.Context,
-	meterProvider metric.MeterProvider,
-	insertInstance func(data *InstanceInfo, created bool) error,
-	deleteInstance func(data *InstanceInfo) error,
-) *InstanceCache {
-	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
-	// right now we load them from Orchestrator
-	cache := newLifecycleCache[*InstanceInfo]()
+func (i *InstanceInfo) SetState(state State) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
 
-	meter := meterProvider.Meter("api.cache.sandbox")
-	sandboxCounter, err := telemetry.GetUpDownCounter(meter, telemetry.SandboxCountMeterName)
+	i.state = state
+}
+
+func (i *InstanceInfo) WaitForStop(ctx context.Context) error {
+	if i.GetState() == StateRunning {
+		return fmt.Errorf("sandbox isn't stopping")
+	}
+
+	_, err := i.stopping.WaitWithContext(ctx)
+	return err
+}
+
+func (i *InstanceInfo) StopDone(err error, pause bool) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	if pause {
+		i.state = StatePaused
+	} else {
+		i.state = StateKilled
+	}
+
 	if err != nil {
-		zap.L().Error("error getting counter", zap.Error(err))
-	}
-
-	createdCounter, err := telemetry.GetCounter(meter, telemetry.SandboxCreateMeterName)
-	if err != nil {
-		zap.L().Error("error getting counter", zap.Error(err))
-	}
-
-	instanceCache := &InstanceCache{
-		cache:          cache,
-		insertInstance: insertInstance,
-		sandboxCounter: sandboxCounter,
-		createdCounter: createdCounter,
-		reservations:   NewReservationCache(),
-		pausing:        smap.New[*InstanceInfo](),
-	}
-
-	cache.OnEviction(func(ctx context.Context, instanceInfo *InstanceInfo) {
-		err := deleteInstance(instanceInfo)
+		err := i.stopping.SetError(err)
 		if err != nil {
-			zap.L().Error("Error deleting instance", zap.Error(err))
-		}
-
-		instanceCache.UpdateCounters(ctx, instanceInfo, -1, false)
-	})
-
-	go cache.Start(ctx)
-
-	return instanceCache
-}
-
-func (c *InstanceCache) Len() int {
-	return c.cache.Len()
-}
-
-func (c *InstanceCache) Set(key string, value *InstanceInfo, created bool) {
-	inserted := c.cache.SetIfAbsent(key, value)
-	if inserted {
-		go func() {
-			err := c.insertInstance(value, created)
-			if err != nil {
-				zap.L().Error("error inserting instance", zap.Error(err))
-			}
-		}()
-	}
-}
-
-func (c *InstanceCache) MarkAsPausing(instanceInfo *InstanceInfo) {
-	if instanceInfo.AutoPause.Load() {
-		c.pausing.InsertIfAbsent(instanceInfo.SandboxID, instanceInfo)
-	}
-}
-
-func (c *InstanceCache) UnmarkAsPausing(instanceInfo *InstanceInfo) {
-	c.pausing.RemoveCb(instanceInfo.SandboxID, func(key string, v *InstanceInfo, exists bool) bool {
-		if !exists {
-			return false
-		}
-
-		// Make sure it's the same instance and not a sandbox which has been already resumed
-		return v.ExecutionID == instanceInfo.ExecutionID
-	})
-}
-
-// WaitForPause waits for the instance to be paused. Returns the node ID of the node that paused the instance.
-func (c *InstanceCache) WaitForPause(ctx context.Context, sandboxID string) (nodeID string, err error) {
-	instanceInfo, ok := c.pausing.Get(sandboxID)
-	if !ok {
-		return "", ErrPausingInstanceNotFound
-	}
-
-	nodeID, err = instanceInfo.Pausing.WaitWithContext(ctx)
-	if err != nil {
-		return "", fmt.Errorf("pause waiting was canceled: %w", err)
-	}
-
-	return
-}
-
-func (i *InstanceInfo) PauseDone(err error) {
-	if err == nil {
-		err := i.Pausing.SetValue(i.NodeID)
-		if err != nil {
-			zap.L().Error("error setting PauseDone value", zap.Error(err))
-
-			return
+			zap.L().Error("error setting StopDone value", zap.Error(err))
 		}
 	} else {
-		err := i.Pausing.SetError(err)
+		err := i.stopping.SetValue(struct{}{})
 		if err != nil {
-			zap.L().Error("error setting PauseDone error", zap.Error(err))
-
-			return
+			zap.L().Error("error setting StopDone value", zap.Error(err))
 		}
 	}
 }

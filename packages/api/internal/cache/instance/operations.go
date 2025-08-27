@@ -32,13 +32,29 @@ func (c *InstanceCache) Exists(instanceID string) bool {
 }
 
 // Get the item from the cache.
-func (c *InstanceCache) Get(instanceID string) (*InstanceInfo, error) {
-	item, ok := c.cache.Get(instanceID)
+func (c *InstanceCache) Get(instanceID string, includeEvicting bool) (*InstanceInfo, error) {
+	item, ok := c.cache.Get(instanceID, includeEvicting)
 	if !ok {
 		return nil, fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
 	}
 
 	return item, nil
+}
+
+func (c *InstanceCache) Len() int {
+	return c.cache.Len()
+}
+
+func (c *InstanceCache) Set(key string, value *InstanceInfo, created bool) {
+	inserted := c.cache.SetIfAbsent(key, value)
+	if inserted {
+		go func() {
+			err := c.insertInstance(value, created)
+			if err != nil {
+				zap.L().Error("error inserting instance", zap.Error(err))
+			}
+		}()
+	}
 }
 
 func (c *InstanceCache) GetInstances(teamID *uuid.UUID) (instances []*InstanceInfo) {
@@ -98,18 +114,20 @@ func (c *InstanceCache) Add(ctx context.Context, instance *InstanceInfo, newlyCr
 	return nil
 }
 
-// Delete the instance and remove it from the cache.
-func (c *InstanceCache) Delete(instanceID string, pause bool) bool {
-	value, found := c.cache.GetAndRemove(instanceID)
-	if found {
-		value.AutoPause.Store(pause)
+// Remove the instance from the cache (no eviction callback).
+func (c *InstanceCache) Remove(instanceID string) {
+	defer c.cache.evicting.Remove(instanceID)
+	c.cache.Remove(instanceID)
+}
 
-		if pause {
-			c.MarkAsPausing(value)
-		}
+// StartRemoving marks the instance as being evicted to prevent
+func (c *InstanceCache) StartRemoving(instance *InstanceInfo) error {
+	absent := c.cache.evicting.SetIfAbsent(instance.SandboxID, instance)
+	if !absent {
+		return fmt.Errorf("instance %s is already being evicted", instance.SandboxID)
 	}
 
-	return found
+	return nil
 }
 
 func (c *InstanceCache) Items() []*InstanceInfo {

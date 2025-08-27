@@ -17,10 +17,10 @@ type lifecycleCacheMetrics struct {
 }
 
 type lifecycleCache[T LifecycleCacheItem] struct {
-	running cmap.ConcurrentMap[string, T]
+	items cmap.ConcurrentMap[string, T]
 	// evicting is used to track items in the process of evicting.
 	// This is to allow checking if an item is still in the process as that might take some time.
-	evicting cmap.ConcurrentMap[string, struct{}]
+	evicting cmap.ConcurrentMap[string, T]
 	onEvict  func(ctx context.Context, instance T)
 
 	metrics lifecycleCacheMetrics
@@ -28,8 +28,8 @@ type lifecycleCache[T LifecycleCacheItem] struct {
 
 func newLifecycleCache[T LifecycleCacheItem]() *lifecycleCache[T] {
 	return &lifecycleCache[T]{
-		running:  cmap.New[T](),
-		evicting: cmap.New[struct{}](),
+		items:    cmap.New[T](),
+		evicting: cmap.New[T](),
 		onEvict:  func(ctx context.Context, instance T) {},
 		metrics: lifecycleCacheMetrics{
 			Evictions: 0,
@@ -53,25 +53,24 @@ func (c *lifecycleCache[T]) Start(ctx context.Context) {
 		case <-time.After(50 * time.Millisecond):
 			// Get all items from the cache before iterating over them
 			// to avoid holding the lock while removing items from the cache.
-			items := c.running.Items()
+			items := c.items.Items()
 
 			for key, value := range items {
 				if value.IsExpired() {
-					c.running.RemoveCb(key, func(key string, value T, exist bool) bool {
-						if !exist {
-							return false
-						}
+					// Check if the item isn't already in the process of being evicted.
+					absent := c.evicting.SetIfAbsent(key, value)
+					if absent {
+						// Remove the item from the cache.
+						c.items.RemoveCb(key, func(key string, value T, exist bool) bool {
+							go func() {
+								c.onEvict(ctx, value)
+								c.evicting.Remove(key)
+							}()
+							return true
+						})
 
-						c.evicting.Set(key, struct{}{})
-						go func() {
-							c.onEvict(ctx, value)
-							c.evicting.Remove(key)
-						}()
-
-						return true
-					})
-
-					c.metrics.Evictions += 1
+						c.metrics.Evictions += 1
+					}
 				}
 			}
 		}
@@ -79,59 +78,40 @@ func (c *lifecycleCache[T]) Start(ctx context.Context) {
 }
 
 func (c *lifecycleCache[T]) SetIfAbsent(key string, value T) bool {
-	return c.running.SetIfAbsent(key, value)
+	return c.items.SetIfAbsent(key, value)
 }
 
-func (c *lifecycleCache[T]) Has(key string, includeExpired bool) bool {
-	if includeExpired {
-		ok := c.evicting.Has(key)
-
-		if ok {
-			return true
-		}
-
-		return c.running.Has(key)
-	}
-
-	_, ok := c.Get(key)
+func (c *lifecycleCache[T]) Has(key string, includeEvicting bool) bool {
+	_, ok := c.Get(key, includeEvicting)
 	return ok
 }
 
-func (c *lifecycleCache[T]) Get(key string) (T, bool) {
+func (c *lifecycleCache[T]) Get(key string, includeEvicting bool) (T, bool) {
 	var zero T
-	value, ok := c.running.Get(key)
+	if includeEvicting {
+		if value, ok := c.evicting.Get(key); ok {
+			return value, true
+		}
+	}
+
+	value, ok := c.items.Get(key)
 	if !ok {
 		return zero, false
 	}
 
-	if value.IsExpired() {
+	if !includeEvicting && value.IsExpired() {
 		return zero, false
 	}
 
 	return value, true
 }
 
-func (c *lifecycleCache[T]) GetAndRemove(key string) (T, bool) {
-	var zero T
-	v, ok := c.Get(key)
-	if !ok {
-		return zero, false
-	}
-
-	// Set end time to now and trigger the eviction.
-	// Not removing from the cache, let the eviction handle it.
-	v.SetExpired()
-
-	return v, true
-}
-
-func (c *lifecycleCache[T]) Remove(key string) bool {
-	_, ok := c.GetAndRemove(key)
-	return ok
+func (c *lifecycleCache[T]) Remove(key string) {
+	c.items.Remove(key)
 }
 
 func (c *lifecycleCache[T]) Items() (items []T) {
-	for _, item := range c.running.Items() {
+	for _, item := range c.items.Items() {
 		if item.IsExpired() {
 			continue
 		}
