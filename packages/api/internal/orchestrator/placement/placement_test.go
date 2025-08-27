@@ -119,7 +119,7 @@ func TestPlaceSandbox_ContextTimeout(t *testing.T) {
 	}
 
 	resultNode, err := PlaceSandbox(ctx, tracer, algorithm, []*nodemanager.Node{
-		nodemanager.NewTestNode("node1", api.NodeStatusReady, 30),
+		nodemanager.NewTestNode("node1", api.NodeStatusReady, 30, 4),
 	}, nil, sbxRequest)
 
 	assert.Error(t, err)
@@ -164,7 +164,7 @@ func TestPlaceSandbox_AllNodesExcluded(t *testing.T) {
 		},
 	}
 
-	resultNode, err := PlaceSandbox(ctx, tracer, algorithm, []*nodemanager.Node{nodemanager.NewTestNode("node1", api.NodeStatusReady, 30)}, nil, sbxRequest)
+	resultNode, err := PlaceSandbox(ctx, tracer, algorithm, []*nodemanager.Node{nodemanager.NewTestNode("node1", api.NodeStatusReady, 30, 4)}, nil, sbxRequest)
 
 	assert.Error(t, err)
 	assert.Nil(t, resultNode)
