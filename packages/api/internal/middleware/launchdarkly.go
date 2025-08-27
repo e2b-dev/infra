@@ -1,13 +1,14 @@
 package middleware
 
 import (
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
 func InitLaunchDarklyContext(c *gin.Context) {
@@ -59,5 +60,5 @@ func createLaunchDarklyTeamContext(c *gin.Context) (ldcontext.Context, bool) {
 		return ldcontext.Context{}, false
 	}
 
-	return mergeContexts(contexts), true
+	return ldcontext.NewMulti(contexts...), true
 }
