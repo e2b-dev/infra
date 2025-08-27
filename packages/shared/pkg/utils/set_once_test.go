@@ -35,8 +35,9 @@ func TestSetOnce(t *testing.T) {
 
 func TestSetOnceSetError(t *testing.T) {
 	setOnce := NewSetOnce[int]()
+	expectedErr := fmt.Errorf("error")
 
-	err := setOnce.SetError(fmt.Errorf("error"))
+	err := setOnce.SetError(expectedErr)
 	require.NoError(t, err)
 
 	value, err := setOnce.Wait()
@@ -44,7 +45,7 @@ func TestSetOnceSetError(t *testing.T) {
 	assert.Equal(t, 0, value)
 
 	err = setOnce.SetValue(1)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrAlreadySet)
 
 	value, err = setOnce.Wait()
 	require.Error(t, err)

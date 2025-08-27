@@ -44,6 +44,8 @@ func (s *SetOnce[T]) SetError(err error) error {
 	return s.setResult(result[T]{err: err})
 }
 
+var ErrAlreadySet = fmt.Errorf("value already set")
+
 // SetResult internal method for setting the result only once.
 func (s *SetOnce[T]) setResult(r result[T]) error {
 	// Should do the action only once
@@ -51,7 +53,7 @@ func (s *SetOnce[T]) setResult(r result[T]) error {
 
 	select {
 	case <-s.Done:
-		return fmt.Errorf("value already set")
+		return ErrAlreadySet
 	default:
 		// not set yet, so try to set it
 		s.mu.Lock()
