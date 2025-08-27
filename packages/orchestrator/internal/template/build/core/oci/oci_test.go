@@ -79,7 +79,7 @@ func TestCreateExportLayersOrder(t *testing.T) {
 	require.NotNil(t, layers)
 
 	// Layers should be in reverse order
-	assert.Equal(t, 3, len(layers))
+	assert.Len(t, layers, 3)
 	assert.Regexp(t, "/layer-2.*", strings.TrimPrefix(layers[0], dir))
 	assert.FileExists(t, filepath.Join(layers[0], "layer2.txt"))
 	assert.Regexp(t, "/layer-1.*", strings.TrimPrefix(layers[1], dir))

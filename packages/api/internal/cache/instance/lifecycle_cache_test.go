@@ -71,8 +71,8 @@ func TestLifecycleCacheGet(t *testing.T) {
 	})
 
 	item, ok := cache.Get("test")
-	assert.Equal(t, true, ok)
-	assert.Equal(t, false, item.IsExpired())
+	assert.True(t, ok)
+	assert.False(t, item.IsExpired())
 	assert.Equal(t, 1, cache.Len())
 }
 
@@ -86,8 +86,8 @@ func TestLifecycleCacheGetAndRemove(t *testing.T) {
 	})
 
 	item, ok := cache.GetAndRemove("test")
-	assert.Equal(t, true, ok)
-	assert.Equal(t, true, item.IsExpired())
+	assert.True(t, ok)
+	assert.True(t, item.IsExpired())
 	assert.Equal(t, 0, cache.Len())
 }
 
@@ -101,7 +101,7 @@ func TestLifecycleCacheRemove(t *testing.T) {
 	})
 
 	ok := cache.Remove("test")
-	assert.Equal(t, true, ok)
+	assert.True(t, ok)
 	assert.Equal(t, 0, cache.Len())
 }
 
@@ -115,9 +115,9 @@ func TestLifecycleCacheItems(t *testing.T) {
 	})
 
 	items := cache.Items()
-	assert.Equal(t, 1, len(items))
+	assert.Len(t, items, 1)
 	for _, item := range items {
-		assert.Equal(t, false, item.IsExpired())
+		assert.False(t, item.IsExpired())
 	}
 }
 
