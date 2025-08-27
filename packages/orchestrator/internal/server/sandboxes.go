@@ -27,7 +27,8 @@ import (
 )
 
 const (
-	requestTimeout = 60 * time.Second
+	requestTimeout              = 60 * time.Second
+	maxStartingInstancesPerNode = 3
 )
 
 func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
@@ -44,6 +45,14 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		attribute.String("client.id", s.info.ClientId),
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
+
+	// Check if we've reached the max number of starting instances on this node
+	acquired := s.startingSandboxes.TryAcquire(1)
+	if !acquired {
+		telemetry.ReportEvent(ctx, "too many starting sandboxes on node")
+		return nil, status.Errorf(codes.ResourceExhausted, "too many sandboxes starting on this node, please retry")
+	}
+	defer s.startingSandboxes.Release(1)
 
 	metricsWriteFlag, flagErr := s.featureFlags.BoolFlag(featureflags.MetricsWriteFlagName, req.Sandbox.SandboxId)
 	if flagErr != nil {

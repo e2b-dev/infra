@@ -6,6 +6,8 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -26,7 +28,9 @@ type Algorithm interface {
 func PlaceSandbox(ctx context.Context, tracer trace.Tracer, algorithm Algorithm, clusterNodes []*nodemanager.Node, preferredNode *nodemanager.Node, sbxRequest *orchestrator.SandboxCreateRequest) (*nodemanager.Node, error) {
 	nodesExcluded := make(map[string]struct{})
 	var err error
-	for attempt := range maxRetries {
+
+	attempt := 0
+	for attempt < maxRetries {
 		select {
 		case <-ctx.Done():
 			return nil, fmt.Errorf("request timed out during %d. attempt", attempt+1)
@@ -38,6 +42,10 @@ func PlaceSandbox(ctx context.Context, tracer trace.Tracer, algorithm Algorithm,
 		if preferredNode != nil {
 			node = preferredNode
 		} else {
+			if len(nodesExcluded) >= len(clusterNodes) {
+				return nil, fmt.Errorf("no nodes available")
+			}
+
 			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.Sandbox.Vcpu, MiBMemory: sbxRequest.Sandbox.RamMb})
 			if err != nil {
 				return nil, err
@@ -58,10 +66,18 @@ func PlaceSandbox(ctx context.Context, tracer trace.Tracer, algorithm Algorithm,
 		span.End()
 		if err != nil {
 			nodesExcluded[node.ID] = struct{}{}
-			node.PlacementMetrics.Fail(sbxRequest.Sandbox.SandboxId)
-			zap.L().Error("Failed to create sandbox", logger.WithSandboxID(sbxRequest.Sandbox.SandboxId), logger.WithNodeID(node.ID), zap.Int("attempt", attempt+1), zap.Error(utils.UnwrapGRPCError(err)))
+
+			st, ok := status.FromError(err)
+			if !ok || st.Code() != codes.ResourceExhausted {
+				node.PlacementMetrics.Fail(sbxRequest.Sandbox.SandboxId)
+				zap.L().Error("Failed to create sandbox", logger.WithSandboxID(sbxRequest.Sandbox.SandboxId), logger.WithNodeID(node.ID), zap.Int("attempt", attempt+1), zap.Error(utils.UnwrapGRPCError(err)))
+				attempt++
+			} else {
+				zap.L().Warn("Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.Sandbox.SandboxId), logger.WithNodeID(node.ID))
+			}
 
 			node = nil
+
 			continue
 		}
 
