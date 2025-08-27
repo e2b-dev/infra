@@ -49,9 +49,8 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
-
 	// setup launch darkly
-	ctx = featureflags.CreateContext(
+	ctx = featureflags.SetContext(
 		ctx,
 		ldcontext.NewBuilder(req.Sandbox.SandboxId).
 			Kind(featureflags.SandboxKind).
@@ -383,7 +382,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	defer childSpan.End()
 
 	// setup launch darkly
-	ctx = featureflags.CreateContext(
+	ctx = featureflags.SetContext(
 		ctx,
 		ldcontext.NewBuilder(in.SandboxId).
 			Kind(featureflags.SandboxKind).
