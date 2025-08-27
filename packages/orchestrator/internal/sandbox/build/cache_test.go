@@ -48,6 +48,8 @@ func newDiff(t *testing.T, cachePath, buildId string, diffType DiffType, blockSi
 }
 
 func newDiffWithAsserts(t *testing.T, cachePath, buildId string, diffType DiffType, blockSize int64) (Diff, error) {
+	t.Helper()
+
 	localDiff, err := NewLocalDiffFile(cachePath, buildId, diffType)
 	if err != nil {
 		return nil, err
