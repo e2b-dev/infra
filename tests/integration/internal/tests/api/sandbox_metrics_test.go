@@ -36,7 +36,7 @@ func TestSandboxMetrics(t *testing.T) {
 		return true
 	}, maxDuration, tick, "sandbox metrics not available in time")
 
-	require.Greater(t, len(metrics), 0, "Expected at least one metric in the response")
+	require.NotEmpty(t, metrics, "Expected at least one metric in the response")
 	for _, metric := range metrics {
 		require.NotEmpty(t, metric.CpuCount)
 		require.NotEmpty(t, metric.CpuUsedPct)

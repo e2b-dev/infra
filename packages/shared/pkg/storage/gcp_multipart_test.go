@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-retryablehttp"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -56,11 +57,11 @@ func TestMultipartUploader_InitiateUpload_Success(t *testing.T) {
 	expectedUploadID := "test-upload-id-123"
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "POST", r.Method)
-		require.Contains(t, r.URL.Path, testObjectName)
-		require.Contains(t, r.URL.RawQuery, "uploads")
-		require.Equal(t, "Bearer "+testToken, r.Header.Get("Authorization"))
-		require.Equal(t, "application/octet-stream", r.Header.Get("Content-Type"))
+		assert.Equal(t, "POST", r.Method)
+		assert.Contains(t, r.URL.Path, testObjectName)
+		assert.Contains(t, r.URL.RawQuery, "uploads")
+		assert.Equal(t, "Bearer "+testToken, r.Header.Get("Authorization"))
+		assert.Equal(t, "application/octet-stream", r.Header.Get("Content-Type"))
 
 		response := InitiateMultipartUploadResult{
 			Bucket:   testBucketName,
@@ -86,14 +87,14 @@ func TestMultipartUploader_UploadPart_Success(t *testing.T) {
 	testData := []byte("test part data")
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "PUT", r.Method)
-		require.Contains(t, r.URL.RawQuery, "partNumber=1")
-		require.Contains(t, r.URL.RawQuery, "uploadId=test-upload-id")
-		require.Equal(t, "Bearer "+testToken, r.Header.Get("Authorization"))
+		assert.Equal(t, "PUT", r.Method)
+		assert.Contains(t, r.URL.RawQuery, "partNumber=1")
+		assert.Contains(t, r.URL.RawQuery, "uploadId=test-upload-id")
+		assert.Equal(t, "Bearer "+testToken, r.Header.Get("Authorization"))
 
 		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
-		require.Equal(t, testData, body)
+		assert.NoError(t, err)
+		assert.Equal(t, testData, body)
 
 		w.Header().Set("ETag", expectedETag)
 		w.WriteHeader(http.StatusOK)
@@ -127,20 +128,20 @@ func TestMultipartUploader_CompleteUpload_Success(t *testing.T) {
 	}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "POST", r.Method)
-		require.Contains(t, r.URL.RawQuery, "uploadId=test-upload-id")
-		require.Equal(t, "Bearer "+testToken, r.Header.Get("Authorization"))
-		require.Equal(t, "application/xml", r.Header.Get("Content-Type"))
+		assert.Equal(t, "POST", r.Method)
+		assert.Contains(t, r.URL.RawQuery, "uploadId=test-upload-id")
+		assert.Equal(t, "Bearer "+testToken, r.Header.Get("Authorization"))
+		assert.Equal(t, "application/xml", r.Header.Get("Content-Type"))
 
 		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		var completeReq CompleteMultipartUpload
 		err = xml.Unmarshal(body, &completeReq)
-		require.NoError(t, err)
-		require.Len(t, completeReq.Parts, 2)
-		require.Equal(t, 1, completeReq.Parts[0].PartNumber)
-		require.Equal(t, `"etag1"`, completeReq.Parts[0].ETag)
+		assert.NoError(t, err)
+		assert.Len(t, completeReq.Parts, 2)
+		assert.Equal(t, 1, completeReq.Parts[0].PartNumber)
+		assert.Equal(t, `"etag1"`, completeReq.Parts[0].ETag)
 
 		w.WriteHeader(http.StatusOK)
 	})
@@ -200,7 +201,7 @@ func TestMultipartUploader_UploadFileInParallel_Success(t *testing.T) {
 
 	require.Equal(t, int32(1), atomic.LoadInt32(&initiateCount))
 	require.Equal(t, int32(1), atomic.LoadInt32(&completeCount))
-	require.True(t, atomic.LoadInt32(&uploadPartCount) > 0)
+	require.Positive(t, atomic.LoadInt32(&uploadPartCount))
 
 	// Verify all parts were uploaded and content matches
 	var reconstructed strings.Builder
@@ -312,8 +313,8 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 	// Verify all calls were made
 	require.Equal(t, int32(1), atomic.LoadInt32(&initiateCalls))
 	require.Equal(t, int32(1), atomic.LoadInt32(&completeCalls))
-	require.True(t, atomic.LoadInt32(&partCalls) > 0)
-	require.True(t, atomic.LoadInt32(&maxConcurrentParts) > 1, "Should have concurrent uploads")
+	require.Positive(t, atomic.LoadInt32(&partCalls))
+	require.Greater(t, atomic.LoadInt32(&maxConcurrentParts), int32(1), "Should have concurrent uploads")
 
 	// Verify content integrity
 	var reconstructed strings.Builder
@@ -382,7 +383,7 @@ func TestMultipartUploader_RandomFailures_ChaosTest(t *testing.T) {
 		atomic.LoadInt32(&attemptCount), atomic.LoadInt32(&successCount))
 
 	// Should have more attempts than successes due to retries
-	require.True(t, atomic.LoadInt32(&attemptCount) >= atomic.LoadInt32(&successCount))
+	require.GreaterOrEqual(t, atomic.LoadInt32(&attemptCount), atomic.LoadInt32(&successCount))
 }
 
 func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
@@ -473,7 +474,7 @@ func TestMultipartUploader_EdgeCases_EmptyFile(t *testing.T) {
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			atomic.AddInt32(&partCalls, 1)
 			body, _ := io.ReadAll(r.Body)
-			require.Empty(t, body, "Empty file should result in empty part")
+			assert.Empty(t, body, "Empty file should result in empty part")
 
 			w.Header().Set("ETag", `"empty-etag"`)
 			w.WriteHeader(http.StatusOK)
@@ -587,7 +588,7 @@ func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testin
 	// Should have observed significant concurrency but not necessarily 1000
 	// (due to file size and chunk limitations)
 	t.Logf("Max observed concurrency: %d", atomic.LoadInt32(&maxObservedConcurrency))
-	require.True(t, atomic.LoadInt32(&maxObservedConcurrency) > 1)
+	require.Greater(t, atomic.LoadInt32(&maxObservedConcurrency), int32(1))
 }
 
 func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
@@ -709,7 +710,7 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 	// Verify that retries happened correctly under concurrent conditions
 	retryAttempts.Range(func(key, value interface{}) bool {
 		attempts := atomic.LoadInt32(value.(*int32))
-		require.True(t, attempts >= 3, "Part %s should have at least 3 attempts", key)
+		require.GreaterOrEqual(t, attempts, int32(3), "Part %s should have at least 3 attempts", key)
 		return true
 	})
 }
