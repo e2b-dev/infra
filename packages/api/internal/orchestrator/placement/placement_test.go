@@ -144,7 +144,7 @@ func TestPlaceSandbox_NoNodes(t *testing.T) {
 
 	resultNode, err := PlaceSandbox(ctx, tracer, algorithm, []*nodemanager.Node{}, nil, sbxRequest)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, resultNode)
 	assert.Contains(t, err.Error(), "no nodes available")
 }
