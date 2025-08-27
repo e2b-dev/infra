@@ -25,8 +25,8 @@ const cacheSyncTime = 20 * time.Second
 // This timeout is also set in the CloudRun for Analytics Collector, there it is 3 minutes.
 const reportTimeout = 4 * time.Minute
 
-func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, error) {
-	item, err := o.instanceCache.Get(sandboxID)
+func (o *Orchestrator) GetSandbox(sandboxID string, includeEvicting bool) (*instance.InstanceInfo, error) {
+	item, err := o.instanceCache.Get(sandboxID, includeEvicting)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sandbox '%s': %w", sandboxID, err)
 	}

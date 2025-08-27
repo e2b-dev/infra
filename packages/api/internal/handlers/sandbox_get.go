@@ -10,6 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -41,7 +42,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	// Try to get the running sandbox first
-	info, err := a.orchestrator.GetInstance(ctx, sandboxId)
+	info, err := a.orchestrator.GetSandbox(sandboxId, true)
 	if err == nil {
 		// Check if sandbox belongs to the team
 		if info.TeamID != team.ID {
@@ -52,8 +53,16 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		}
 
 		state := api.Running
-		if info.PauseStarted() {
+		switch info.GetState() {
+		// Sandbox is being paused or already is paused, user can work with that as if it's paused
+		case instance.StatePausing, instance.StatePaused:
 			state = api.Paused
+		// Sandbox is being stopped or already is stopped, user can't work with it anymore
+		case instance.StateShuttingDown, instance.StateKilled:
+			telemetry.ReportCriticalError(ctx, fmt.Sprintf("sandbox '%s' is shutting down", sandboxId), nil)
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
+
+			return
 		}
 
 		// Sandbox exists and belongs to the team - return running sandbox info
