@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -57,17 +58,21 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		return
 	}
 
-	found := a.orchestrator.DeleteInstance(ctx, sandboxID, true)
-	if !found {
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error pausing sandbox - sandbox '%s' was not found", sandboxID))
-		return
-	}
+	// If the sandbox is already being paused, we just wait for it
+	if sbx.PauseStarted() {
+		err = sbx.WaitForPausing(ctx)
+		if err != nil {
+			telemetry.ReportError(ctx, "error when waiting for sandbox to pause", err)
+		}
+	} else {
+		err = a.orchestrator.RemoveInstance(ctx, sbx, orchestrator.RemoveTypePause)
+		if err != nil {
+			telemetry.ReportError(ctx, "error pausing sandbox", err)
 
-	_, err = sbx.Pausing.WaitWithContext(ctx)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox: %s", err))
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
 
-		return
+			return
+		}
 	}
 
 	c.Status(http.StatusNoContent)

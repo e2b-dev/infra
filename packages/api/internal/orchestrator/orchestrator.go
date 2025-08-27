@@ -45,6 +45,7 @@ type Orchestrator struct {
 	placementAlgorithm      placement.Algorithm
 	tracer                  trace.Tracer
 	analytics               *analyticscollector.Analytics
+	posthogClient           *analyticscollector.PosthogClient
 	dns                     *dns.DNS
 	dbClient                *db.DB
 	tel                     *telemetry.Client
@@ -85,6 +86,7 @@ func New(
 	o := Orchestrator{
 		httpClient:         httpClient,
 		analytics:          analyticsInstance,
+		posthogClient:      posthogClient,
 		nomadClient:        nomadClient,
 		tracer:             tracer,
 		nodes:              smap.New[*nodemanager.Node](),
@@ -99,7 +101,7 @@ func New(
 		ctx,
 		tel.MeterProvider,
 		o.getInsertInstanceFunction(ctx, cacheHookTimeout),
-		o.getDeleteInstanceFunction(ctx, posthogClient, cacheHookTimeout),
+		o.getDeleteInstanceFunction(ctx, cacheHookTimeout),
 	)
 
 	o.instanceCache = cache
@@ -210,9 +212,4 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 	}
 
 	return errors.Join(errs...)
-}
-
-// WaitForPause waits for the instance to be paused and returns the node info where the instance was paused on.
-func (o *Orchestrator) WaitForPause(ctx context.Context, sandboxID string) (nodeID string, err error) {
-	return o.instanceCache.WaitForPause(ctx, sandboxID)
 }
