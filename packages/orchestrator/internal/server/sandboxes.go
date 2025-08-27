@@ -60,7 +60,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			Build(),
 	)
 
-	metricsWriteFlag, flagErr := s.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlagName, req.Sandbox.SandboxId)
+	metricsWriteFlag, flagErr := s.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlagName)
 	if flagErr != nil {
 		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
 	}
