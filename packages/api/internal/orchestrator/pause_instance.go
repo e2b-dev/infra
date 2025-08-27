@@ -6,10 +6,10 @@ import (
 	"fmt"
 
 	"github.com/gogo/status"
-	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
@@ -22,14 +22,22 @@ func (PauseQueueExhaustedError) Error() string {
 	return "The pause queue is exhausted"
 }
 
-func (o *Orchestrator) PauseInstance(
-	ctx context.Context,
-	sbx *instance.InstanceInfo,
-	teamID uuid.UUID,
-) error {
+func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node, sbx *instance.InstanceInfo) (err error) {
 	ctx, span := o.tracer.Start(ctx, "pause-sandbox")
 	defer span.End()
 
+	sbx.StartPausing()
+	defer sbx.PauseDone(err)
+
+	err = pauseSandbox(ctx, o, node, sbx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func pauseSandbox(ctx context.Context, o *Orchestrator, node *nodemanager.Node, sbx *instance.InstanceInfo) error {
 	snapshotConfig := &db.SnapshotInfo{
 		BaseTemplateID:      sbx.BaseTemplateID,
 		SandboxID:           sbx.SandboxID,
@@ -49,7 +57,7 @@ func (o *Orchestrator) PauseInstance(
 	envBuild, err := o.dbClient.NewSnapshotBuild(
 		ctx,
 		snapshotConfig,
-		teamID,
+		sbx.TeamID,
 		sbx.NodeID,
 	)
 	if err != nil {
@@ -58,7 +66,7 @@ func (o *Orchestrator) PauseInstance(
 		return err
 	}
 
-	err = snapshotInstance(ctx, o, sbx, *envBuild.EnvID, envBuild.ID.String())
+	err = snapshotInstance(ctx, o, node, sbx, *envBuild.EnvID, envBuild.ID.String())
 	if errors.Is(err, PauseQueueExhaustedError{}) {
 		telemetry.ReportCriticalError(ctx, "pause queue exhausted", err)
 
@@ -81,14 +89,9 @@ func (o *Orchestrator) PauseInstance(
 	return nil
 }
 
-func snapshotInstance(ctx context.Context, orch *Orchestrator, sbx *instance.InstanceInfo, templateID, buildID string) error {
+func snapshotInstance(ctx context.Context, orch *Orchestrator, node *nodemanager.Node, sbx *instance.InstanceInfo, templateID, buildID string) error {
 	childCtx, childSpan := orch.tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
-
-	node := orch.GetNode(sbx.ClusterID, sbx.NodeID)
-	if node == nil {
-		return fmt.Errorf("failed to get node '%s'", sbx.NodeID)
-	}
 
 	client, childCtx, err := orch.GetClient(childCtx, sbx.ClusterID, sbx.NodeID)
 	if err != nil {

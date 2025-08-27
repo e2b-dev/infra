@@ -41,7 +41,7 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, 
 	}
 
 	if (time.Since(instance.StartTime)) > instance.MaxInstanceLength {
-		c.cache.Remove(instanceID)
+		instance.SetExpired()
 
 		msg := fmt.Sprintf("Sandbox '%s' reached maximal allowed uptime", instanceID)
 		return nil, &api.APIError{Code: http.StatusForbidden, ClientMsg: msg, Err: errors.New(msg)}
@@ -63,7 +63,7 @@ func (c *InstanceCache) Sync(ctx context.Context, instances []*InstanceInfo, nod
 		instanceMap[instance.SandboxID] = instance
 	}
 
-	// Delete instances that are not in Orchestrator anymore
+	// Remove instances that are not in Orchestrator anymore
 	for _, item := range c.cache.Items() {
 		if item.NodeID != nodeID {
 			continue
@@ -73,7 +73,7 @@ func (c *InstanceCache) Sync(ctx context.Context, instances []*InstanceInfo, nod
 		}
 		_, found := instanceMap[item.SandboxID]
 		if !found {
-			c.cache.Remove(item.SandboxID)
+			item.SetExpired()
 		}
 	}
 

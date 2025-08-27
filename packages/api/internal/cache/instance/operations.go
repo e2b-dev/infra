@@ -41,6 +41,22 @@ func (c *InstanceCache) Get(instanceID string) (*InstanceInfo, error) {
 	return item, nil
 }
 
+func (c *InstanceCache) Len() int {
+	return c.cache.Len()
+}
+
+func (c *InstanceCache) Set(key string, value *InstanceInfo, created bool) {
+	inserted := c.cache.SetIfAbsent(key, value)
+	if inserted {
+		go func() {
+			err := c.insertInstance(value, created)
+			if err != nil {
+				zap.L().Error("error inserting instance", zap.Error(err))
+			}
+		}()
+	}
+}
+
 func (c *InstanceCache) GetInstances(teamID *uuid.UUID) (instances []*InstanceInfo) {
 	for _, item := range c.cache.Items() {
 		currentTeamID := item.TeamID
@@ -98,20 +114,20 @@ func (c *InstanceCache) Add(ctx context.Context, instance *InstanceInfo, newlyCr
 	return nil
 }
 
-// Delete the instance and remove it from the cache.
-func (c *InstanceCache) Delete(instanceID string, pause bool) bool {
-	value, found := c.cache.Get(instanceID)
-	if found {
-		defer c.cache.Remove(instanceID)
-		if pause {
-			value.setOnEviction(EvictionPause)
-			c.MarkAsPausing(value)
-		} else {
-			value.setOnEviction(EvictionDelete)
-		}
+// Remove the instance from the cache (no eviction callback).
+func (c *InstanceCache) Remove(instanceID string) {
+	defer c.cache.evicting.Remove(instanceID)
+	c.cache.Remove(instanceID)
+}
+
+// StartRemoving marks the instance as being evicted to prevent
+func (c *InstanceCache) StartRemoving(instanceID string) error {
+	absent := c.cache.evicting.SetIfAbsent(instanceID, struct{}{})
+	if !absent {
+		return fmt.Errorf("instance %s is already being evicted", instanceID)
 	}
 
-	return found
+	return nil
 }
 
 func (c *InstanceCache) Items() []*InstanceInfo {
