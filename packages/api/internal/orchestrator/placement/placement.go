@@ -42,6 +42,10 @@ func PlaceSandbox(ctx context.Context, tracer trace.Tracer, algorithm Algorithm,
 		if preferredNode != nil {
 			node = preferredNode
 		} else {
+			if len(nodesExcluded) >= len(clusterNodes) {
+				return nil, fmt.Errorf("no nodes available")
+			}
+
 			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.Sandbox.Vcpu, MiBMemory: sbxRequest.Sandbox.RamMb})
 			if err != nil {
 				return nil, err
