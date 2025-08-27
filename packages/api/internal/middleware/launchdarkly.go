@@ -4,7 +4,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
@@ -42,7 +41,6 @@ func createLaunchDarklyUserContext(c *gin.Context) (ldcontext.Context, bool) {
 func createLaunchDarklyTeamContext(c *gin.Context) (ldcontext.Context, bool) {
 	authTeamInfo, ok := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
 	if !ok {
-		zap.L().Warn("Team Context not found in context")
 		return ldcontext.Context{}, false
 	}
 
