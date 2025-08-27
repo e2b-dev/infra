@@ -188,7 +188,7 @@ func killPid(
 	setup.SetSandboxHeader(connectReq.Header(), sandboxID)
 	setup.SetUserHeader(connectReq.Header(), "user")
 	connectResp, err := envdClient.ProcessClient.Connect(ctx, connectReq)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Send SIGKILL to the process (doesn't await the termination)
 	killReq := connect.NewRequest(&process.SendSignalRequest{
@@ -202,7 +202,7 @@ func killPid(
 	setup.SetSandboxHeader(killReq.Header(), sandboxID)
 	setup.SetUserHeader(killReq.Header(), "user")
 	_, err = envdClient.ProcessClient.SendSignal(ctx, killReq)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Wait for the process to terminate
 	for connectResp.Receive() {

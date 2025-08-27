@@ -241,7 +241,7 @@ func sandboxEnvdInitCall(t *testing.T, ctx context.Context, req envdInitCall) {
 	if req.expectedResErr != nil {
 		assert.Equal(t, *req.expectedResErr, err)
 	} else {
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	assert.Equal(t, req.expectedResHttpStatus, res.StatusCode())

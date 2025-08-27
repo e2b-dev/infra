@@ -29,7 +29,7 @@ func TestSandboxList(t *testing.T) {
 
 	// Test basic list functionality
 	listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{}, setup.WithAPIKey())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, listResponse.StatusCode())
 
 	assert.GreaterOrEqual(t, len(*listResponse.JSON200), 1)
@@ -62,7 +62,7 @@ func TestSandboxListWithFilter(t *testing.T) {
 	listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, listResponse.StatusCode())
 	assert.Len(t, *listResponse.JSON200, 1)
 	assert.Equal(t, sbx.SandboxID, (*listResponse.JSON200)[0].SandboxID)
@@ -81,7 +81,7 @@ func TestSandboxListRunning(t *testing.T) {
 	listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, listResponse.StatusCode())
 	assert.GreaterOrEqual(t, len(*listResponse.JSON200), 1)
 
@@ -114,7 +114,7 @@ func TestSandboxListPaused(t *testing.T) {
 		State:    &[]api.SandboxState{api.Paused},
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, listResponse.StatusCode())
 	assert.GreaterOrEqual(t, len(*listResponse.JSON200), 1)
 
@@ -152,7 +152,7 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, listResponse.StatusCode())
 	require.Len(t, *listResponse.JSON200, 1)
 	assert.Equal(t, sandbox2ID, (*listResponse.JSON200)[0].SandboxID)
@@ -167,7 +167,7 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 		State:     &[]api.SandboxState{api.Running},
 		Metadata:  &metadataString,
 	}, setup.WithAPIKey())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, secondPageResponse.StatusCode())
 	require.Len(t, *secondPageResponse.JSON200, 1)
 	assert.Equal(t, sandbox1ID, (*secondPageResponse.JSON200)[0].SandboxID)
@@ -201,7 +201,7 @@ func TestSandboxListPaginationPaused(t *testing.T) {
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, listResponse.StatusCode())
 	require.Len(t, *listResponse.JSON200, 1)
 	assert.Equal(t, sandbox2ID, (*listResponse.JSON200)[0].SandboxID)
@@ -216,7 +216,7 @@ func TestSandboxListPaginationPaused(t *testing.T) {
 		State:     &[]api.SandboxState{api.Paused},
 		Metadata:  &metadataString,
 	}, setup.WithAPIKey())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, secondPageResponse.StatusCode())
 	require.Len(t, *secondPageResponse.JSON200, 1)
 	assert.Equal(t, sandbox1ID, (*secondPageResponse.JSON200)[0].SandboxID)
@@ -251,7 +251,7 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, listResponse.StatusCode())
 	require.Len(t, *listResponse.JSON200, 1)
 	assert.Equal(t, sandbox2ID, (*listResponse.JSON200)[0].SandboxID)
@@ -266,7 +266,7 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 		State:     &[]api.SandboxState{api.Running, api.Paused},
 		Metadata:  &metadataString,
 	}, setup.WithAPIKey())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, secondPageResponse.StatusCode())
 	require.Len(t, *secondPageResponse.JSON200, 1)
 	assert.Equal(t, sandbox1ID, (*secondPageResponse.JSON200)[0].SandboxID)
@@ -290,7 +290,7 @@ func TestSandboxListRunningV1(t *testing.T) {
 	listResponse, err := c.GetSandboxesWithResponse(t.Context(), &api.GetSandboxesParams{
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, listResponse.StatusCode())
 	assert.GreaterOrEqual(t, len(*listResponse.JSON200), 1)
 
@@ -319,7 +319,7 @@ func TestSandboxListWithFilterV1(t *testing.T) {
 	listResponse, err := c.GetSandboxesWithResponse(t.Context(), &api.GetSandboxesParams{
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, listResponse.StatusCode())
 	require.Len(t, *listResponse.JSON200, 1)
 	assert.Equal(t, sbx.SandboxID, (*listResponse.JSON200)[0].SandboxID)
@@ -335,7 +335,7 @@ func TestSandboxListSortedV1(t *testing.T) {
 
 	// List with filter
 	listResponse, err := c.GetSandboxesWithResponse(t.Context(), nil, setup.WithAPIKey())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
 	assert.GreaterOrEqual(t, len(*listResponse.JSON200), 3)
 

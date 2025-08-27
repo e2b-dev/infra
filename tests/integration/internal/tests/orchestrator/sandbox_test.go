@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
@@ -17,9 +18,7 @@ func TestList(t *testing.T) {
 	client := setup.GetOrchestratorClient(t, ctx)
 
 	list, err := client.List(ctx, &emptypb.Empty{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	assert.GreaterOrEqual(t, len(list.GetSandboxes()), 0)
+	assert.NotEmpty(t, list.GetSandboxes())
 }

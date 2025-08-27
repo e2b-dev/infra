@@ -39,7 +39,7 @@ func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {
 		setup.WithSandbox(sbx.JSON201.SandboxID),
 	)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, writeRes.StatusCode())
 
 	getRes, err := envdClient.HTTPClient.GetFilesWithResponse(
@@ -81,7 +81,7 @@ func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
 		setup.WithEnvdAccessToken(*envdToken),
 	)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, writeRes.StatusCode())
 
 	readRes, readErr := envdClient.HTTPClient.GetFiles(
@@ -90,7 +90,7 @@ func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
 		setup.WithSandbox(sbx.JSON201.SandboxID),
 	)
 	require.NoError(t, readErr)
-	assert.NoError(t, readRes.Body.Close())
+	require.NoError(t, readRes.Body.Close())
 	assert.Equal(t, http.StatusUnauthorized, readRes.StatusCode)
 }
 
@@ -123,7 +123,7 @@ func TestDownloadFileWithSigningWhenAuthIsEnabled(t *testing.T) {
 		setup.WithSandbox(sbx.JSON201.SandboxID),
 	)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, writeRes.StatusCode())
 
 	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
