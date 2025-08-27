@@ -91,7 +91,7 @@ func TestListDir(t *testing.T) {
 			resp, err := svc.ListDir(ctx, req)
 			require.NoError(t, err)
 			assert.NotEmpty(t, resp.Msg)
-			assert.Equal(t, len(tt.expectedPaths), len(resp.Msg.Entries))
+			assert.Len(t, resp.Msg.Entries, len(tt.expectedPaths))
 			actualPaths := make([]string, len(resp.Msg.Entries))
 			for i, entry := range resp.Msg.Entries {
 				actualPaths[i] = entry.Path
@@ -148,7 +148,7 @@ func TestListDirRelativePath(t *testing.T) {
 	expectedPaths := []string{
 		filepath.Join(testFolderPath, "file.txt"),
 	}
-	assert.Equal(t, len(expectedPaths), len(resp.Msg.Entries))
+	assert.Len(t, resp.Msg.Entries, len(expectedPaths))
 
 	actualPaths := make([]string, len(resp.Msg.Entries))
 	for i, entry := range resp.Msg.Entries {

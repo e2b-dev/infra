@@ -18,11 +18,12 @@ linters:
     - bidichk
     - bodyclose
     - containedctx
-    - durationcheck
-    - dogsled
     - copyloopvar
+    - dogsled
+    - durationcheck
     - govet
     - staticcheck
+    - testifylint
   settings:
     staticcheck:
       checks:

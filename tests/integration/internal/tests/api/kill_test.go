@@ -17,7 +17,7 @@ func TestSandboxKill(t *testing.T) {
 	t.Run("kill a non-existing sandbox", func(t *testing.T) {
 		killSandboxResponse, err := c.DeleteSandboxesSandboxIDWithResponse(t.Context(), "non-existing", setup.WithAPIKey())
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusNotFound, killSandboxResponse.StatusCode())
 	})
 
@@ -35,20 +35,17 @@ func TestSandboxKill(t *testing.T) {
 		// kill the sandbox
 		killSandboxResponse, err := c.DeleteSandboxesSandboxIDWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusNoContent, killSandboxResponse.StatusCode())
 
 		// list all sandboxes and check that the sandbox is not in the list
 		listSandboxesResponse, err := c.GetSandboxesWithResponse(t.Context(), &api.GetSandboxesParams{}, setup.WithAPIKey())
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, listSandboxesResponse.StatusCode())
 
 		runningSandboxes := listSandboxesResponse.JSON200
-		if runningSandboxes == nil {
-			t.Fatalf("no sandboxes found")
-		}
-
+		require.NotNil(t, runningSandboxes)
 		assert.NotContains(t, *runningSandboxes, sandboxID)
 	})
 
@@ -66,26 +63,23 @@ func TestSandboxKill(t *testing.T) {
 		// pause the sandbox
 		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusNoContent, pauseSandboxResponse.StatusCode())
 
 		// kill the sandbox
 		killSandboxResponse, err := c.DeleteSandboxesSandboxIDWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusNoContent, killSandboxResponse.StatusCode())
 
 		// list all sandboxes and check that the sandbox is not in the list
 		listSandboxesResponse, err := c.GetSandboxesWithResponse(t.Context(), &api.GetSandboxesParams{}, setup.WithAPIKey())
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, listSandboxesResponse.StatusCode())
 
 		runningSandboxes := listSandboxesResponse.JSON200
-		if runningSandboxes == nil {
-			t.Fatalf("no sandboxes found")
-		}
-
+		require.NotNil(t, runningSandboxes)
 		assert.NotContains(t, *runningSandboxes, sandboxID)
 	})
 
@@ -129,10 +123,7 @@ func TestSandboxKill(t *testing.T) {
 		require.Equal(t, http.StatusOK, listSandboxesResponse.StatusCode())
 
 		runningSandboxes := listSandboxesResponse.JSON200
-		if runningSandboxes == nil {
-			t.Fatalf("no sandboxes found")
-		}
-
+		require.NotNil(t, runningSandboxes)
 		assert.NotContains(t, *runningSandboxes, sandboxID)
 	})
 }
