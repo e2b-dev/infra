@@ -3,7 +3,6 @@ package handlers
 import (
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -11,6 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -25,7 +25,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	telemetry.ReportEvent(ctx, "get sandbox")
 
-	sandboxId := strings.Split(id, "-")[0]
+	sandboxId := utils.ShortID(id)
 
 	var sbxDomain *string
 	if team.ClusterID != nil {
@@ -51,6 +51,11 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			return
 		}
 
+		state := api.Running
+		if info.PauseStarted() {
+			state = api.Paused
+		}
+
 		// Sandbox exists and belongs to the team - return running sandbox info
 		sandbox := api.SandboxDetail{
 			ClientID:        info.ClientID,
@@ -62,7 +67,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			MemoryMB:        api.MemoryMB(info.RamMB),
 			DiskSizeMB:      api.DiskSizeMB(info.TotalDiskSizeMB),
 			EndAt:           info.GetEndTime(),
-			State:           api.Running,
+			State:           state,
 			EnvdVersion:     info.EnvdVersion,
 			EnvdAccessToken: info.EnvdAccessToken,
 			Domain:          sbxDomain,

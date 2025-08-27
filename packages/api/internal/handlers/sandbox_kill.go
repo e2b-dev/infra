@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
@@ -83,6 +84,14 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 
 	sbx, err := a.orchestrator.GetSandbox(sandboxID)
 	if err == nil {
+		if sbx.PauseStarted() {
+			err = sbx.WaitForPausing(ctx)
+			if err != nil {
+				telemetry.ReportError(ctx, "error when waiting for sandbox to pause", err)
+				a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error deleting sandbox: %s", err))
+			}
+		}
+
 		if sbx.TeamID != teamID {
 			telemetry.ReportCriticalError(ctx, "sandbox does not belong to team", fmt.Errorf("sandbox '%s' does not belong to team '%s'", sandboxID, teamID.String()))
 
@@ -92,16 +101,15 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		}
 
 		// remove running sandbox from the orchestrator
-		sandboxExists := a.orchestrator.DeleteInstance(ctx, sandboxID, false)
-		if !sandboxExists {
-			telemetry.ReportError(ctx, "sandbox not found", fmt.Errorf("sandbox '%s' not found", sandboxID), telemetry.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error deleting sandbox - sandbox '%s' was not found", sandboxID))
-
+		err := a.orchestrator.RemoveInstance(ctx, sbx, orchestrator.RemoveTypeKill)
+		if err != nil {
+			telemetry.ReportError(ctx, "error deleting sandbox", err)
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error killing sandbox")
 			return
 		}
 
 		// remove any snapshots of the sandbox
-		err := a.deleteSnapshot(ctx, sandboxID, teamID, team.ClusterID)
+		err = a.deleteSnapshot(ctx, sandboxID, teamID, team.ClusterID)
 		if err != nil && !errors.Is(err, db.EnvNotFoundError{}) {
 			telemetry.ReportError(ctx, "error deleting sandbox", err)
 			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error deleting sandbox: %s", err))

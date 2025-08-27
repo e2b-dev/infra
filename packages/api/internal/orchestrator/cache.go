@@ -13,7 +13,6 @@ import (
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -219,7 +218,6 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, dis
 
 func (o *Orchestrator) getDeleteInstanceFunction(
 	parentCtx context.Context,
-	posthogClient *analyticscollector.PosthogClient,
 	timeout time.Duration,
 ) func(info *instance.InstanceInfo) error {
 	return func(info *instance.InstanceInfo) error {
@@ -231,68 +229,21 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		sbxlogger.I(info).Debug("Deleting sandbox from cache hook",
 			zap.Time("start_time", info.StartTime),
 			zap.Time("end_time", info.GetEndTime()),
-			zap.String("eviction_type", string(evictionType)),
 		)
 
-		defer o.instanceCache.UnmarkAsPausing(info)
-
-		duration := time.Since(info.StartTime).Seconds()
-		stopTime := time.Now()
-
-		// Run in separate goroutine to not block sandbox deletion
-		// Also use parentCtx to not cancel the request with this hook timeout
-		go reportInstanceStopAnalytics(
-			parentCtx,
-			posthogClient,
-			o.analytics,
-			info.TeamID.String(),
-			info.SandboxID,
-			info.ExecutionID,
-			info.TemplateID,
-			info.VCpu,
-			info.RamMB,
-			info.TotalDiskSizeMB,
-			stopTime,
-			evictionType,
-			duration,
-		)
-
-		node := o.GetNode(info.ClusterID, info.NodeID)
-		if node == nil {
-			zap.L().Error("failed to get node", logger.WithNodeID(info.NodeID))
-			return fmt.Errorf("node '%s' not found", info.NodeID)
+		removeType := RemoveTypeKill
+		if info.AutoPause {
+			removeType = RemoveTypePause
 		}
 
-		node.RemoveSandbox(info)
-		o.dns.Remove(ctx, info.SandboxID, node.IPAddress)
-
-		if evictionType == instance.EvictionPause {
-			o.instanceCache.MarkAsPausing(info)
-
-			err := o.PauseInstance(ctx, info, info.TeamID)
-			if err != nil {
-				info.PauseDone(err)
-
-				return fmt.Errorf("failed to auto pause sandbox '%s': %w", info.SandboxID, err)
-			}
-
-			// We explicitly unmark as pausing here to avoid a race condition
-			// where we are creating a new instance, and the pausing one is still in the pausing cache.
-			o.instanceCache.UnmarkAsPausing(info)
-			info.PauseDone(nil)
-		} else {
-			req := &orchestrator.SandboxDeleteRequest{SandboxId: info.SandboxID}
-			client, ctx := node.GetClient(ctx)
-			_, err := client.Sandbox.Delete(node.GetSandboxDeleteCtx(ctx, info.SandboxID, info.ExecutionID), req)
-			if err != nil {
-				return fmt.Errorf("failed to delete sandbox '%s': %w", info.SandboxID, err)
-			}
+		err := o.removeInstance(ctx, info, removeType)
+		if err != nil {
+			return fmt.Errorf("failed to remove the sandbox '%s': %w", info.SandboxID, err)
 		}
 
 		sbxlogger.I(info).Debug("Deleted sandbox from cache hook",
 			zap.Time("start_time", info.StartTime),
 			zap.Time("end_time", info.GetEndTime()),
-			zap.Bool("auto_pause", info.AutoPause),
 		)
 
 		return nil
@@ -311,7 +262,7 @@ func reportInstanceStopAnalytics(
 	ramMB int64,
 	diskSizeMB int64,
 	stopTime time.Time,
-	evictionType instance.OnEvictionType,
+	removeType RemoveType,
 	duration float64,
 ) {
 	childCtx, cancel := context.WithTimeout(ctx, reportTimeout)
@@ -322,7 +273,7 @@ func reportInstanceStopAnalytics(
 		"closed_instance", posthog.NewProperties().
 			Set("instance_id", sandboxID).
 			Set("environment", templateID).
-			Set("type", evictionType).
+			Set("remove_type", removeType).
 			Set("duration", duration),
 	)
 
@@ -363,10 +314,6 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 		}
 
 		o.teamMetricsObserver.Add(ctx, info.TeamID, created)
-
-		if info.AutoPause {
-			o.instanceCache.MarkAsPausing(info)
-		}
 
 		if created {
 			// Run in separate goroutine to not block sandbox creation

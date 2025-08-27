@@ -76,21 +76,6 @@ func TestLifecycleCacheGet(t *testing.T) {
 	assert.Equal(t, 1, cache.Len())
 }
 
-func TestLifecycleCacheGetAndRemove(t *testing.T) {
-	cache, cancel := newCache(t)
-	defer cancel()
-
-	expired := makeAtomicBool(false)
-	cache.SetIfAbsent("test", &testLifecycleCacheItem{
-		expired: expired,
-	})
-
-	item, ok := cache.GetAndRemove("test")
-	assert.True(t, ok)
-	assert.True(t, item.IsExpired())
-	assert.Equal(t, 0, cache.Len())
-}
-
 func TestLifecycleCacheRemove(t *testing.T) {
 	cache, cancel := newCache(t)
 	defer cancel()
@@ -100,9 +85,69 @@ func TestLifecycleCacheRemove(t *testing.T) {
 		expired: expired,
 	})
 
-	ok := cache.Remove("test")
-	assert.True(t, ok)
+	cache.Remove("test")
 	assert.Equal(t, 0, cache.Len())
+}
+
+func TestLifecycleCacheRemove_NoEvictionCallback(t *testing.T) {
+	cache, cancel := newCache(t)
+	defer cancel()
+
+	expired := makeAtomicBool(false)
+	cache.SetIfAbsent("test", &testLifecycleCacheItem{
+		expired: expired,
+	})
+
+	assert.Equal(t, 1, cache.Len())
+	cache.Remove("test")
+	assert.Equal(t, 0, cache.Len())
+	assert.Equal(t, uint64(0), cache.Metrics().Evictions)
+}
+
+func TestLifecycleCacheRemove_AlreadyEvicting(t *testing.T) {
+	cache, cancel := newCache(t)
+	defer cancel()
+
+	evictCalled := make(chan struct{})
+	cache.OnEviction(func(ctx context.Context, item *testLifecycleCacheItem) {
+		// Simulate a slow eviction process
+		close(evictCalled)
+	})
+
+	expired := makeAtomicBool(true)
+
+	// Set the item as evicting before setting it to prevent race condition
+	cache.evicting.Set("test", struct{}{})
+	cache.SetIfAbsent("test", &testLifecycleCacheItem{
+		expired: expired,
+	})
+
+	assert.Equal(t, uint64(0), cache.Metrics().Evictions)
+	// Actual number of items in the cache is 1 because the item is already evicting
+	assert.Equal(t, 1, len(cache.items.Items()))
+	// The item is expired
+	assert.Equal(t, 0, cache.Len())
+
+	cache.SetIfAbsent("test2", &testLifecycleCacheItem{
+		expired: expired,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	select {
+	case <-evictCalled:
+	case <-ctx.Done():
+		t.Fatal("eviction process timed out")
+	}
+
+	// Actual number of items in the cache is 1 because the item is already evicting
+	assert.Equal(t, 1, len(cache.items.Items()))
+	// The item is expired
+	assert.Equal(t, 0, cache.Len())
+	assert.Equal(t, uint64(1), cache.Metrics().Evictions)
+	// The item is in the evicting map
+	assert.True(t, cache.Has("test", true))
 }
 
 func TestLifecycleCacheItems(t *testing.T) {

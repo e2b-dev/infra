@@ -227,9 +227,9 @@ func (o *Orchestrator) CreateSandbox(
 	if cacheErr != nil {
 		telemetry.ReportError(ctx, "error when adding instance to cache", cacheErr)
 
-		deleted := o.DeleteInstance(ctx, sbx.SandboxID, false)
-		if !deleted {
-			telemetry.ReportEvent(ctx, "instance wasn't found in cache when deleting")
+		err := o.RemoveInstance(ctx, instanceInfo, RemoveTypeKill)
+		if err != nil {
+			telemetry.ReportEvent(ctx, fmt.Sprintf("Remove sandbox error after cache error: %s", err))
 		}
 
 		return nil, &api.APIError{
