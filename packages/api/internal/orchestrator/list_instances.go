@@ -26,7 +26,3 @@ func (o *Orchestrator) GetSandboxes(ctx context.Context, teamID *uuid.UUID) []*i
 
 	return o.instanceCache.GetInstances(teamID)
 }
-
-func (o *Orchestrator) GetInstance(_ context.Context, id string) (*instance.InstanceInfo, error) {
-	return o.instanceCache.Get(id)
-}

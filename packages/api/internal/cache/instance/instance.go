@@ -19,12 +19,14 @@ const (
 	InstanceAutoPauseDefault = false
 )
 
-type pausingState string
+type State string
 
 const (
-	pausingNotStarted pausingState = "not_started"
-	pausingInProgress pausingState = "in_progress"
-	pausingCompleted  pausingState = "completed"
+	StateRunning      State = "running"
+	StatePausing      State = "pausing"
+	StateShuttingDown State = "shutting down"
+	StatePaused       State = "paused"
+	StateKilled       State = "killed"
 )
 
 type OnEvictionType string
@@ -83,8 +85,8 @@ func NewInstanceInfo(
 		NodeID:              NodeID,
 		ClusterID:           ClusterID,
 		AutoPause:           AutoPause,
-		pausingState:        pausingNotStarted,
-		pausing:             utils.NewSetOnce[struct{}](),
+		state:               StateRunning,
+		stopping:            utils.NewSetOnce[struct{}](),
 		BaseTemplateID:      BaseTemplateID,
 		mu:                  sync.RWMutex{},
 	}
@@ -117,8 +119,8 @@ type InstanceInfo struct {
 	NodeID              string
 	ClusterID           uuid.UUID
 	AutoPause           bool
-	pausingState        pausingState
-	pausing             *utils.SetOnce[struct{}]
+	state               State
+	stopping            *utils.SetOnce[struct{}]
 	mu                  sync.RWMutex
 }
 
@@ -155,44 +157,48 @@ func (i *InstanceInfo) SetExpired() {
 	i.SetEndTime(time.Now())
 }
 
-func (i *InstanceInfo) PauseStarted() bool {
+func (i *InstanceInfo) GetState() State {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
-	return i.pausingState != pausingNotStarted
+	return i.state
 }
 
-func (i *InstanceInfo) StartPausing() {
+func (i *InstanceInfo) SetState(state State) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	i.pausingState = pausingInProgress
+	i.state = state
 }
 
-func (i *InstanceInfo) WaitForPausing(ctx context.Context) error {
-	if !i.PauseStarted() {
-		return fmt.Errorf("sandbox isn't pausing")
+func (i *InstanceInfo) WaitForStop(ctx context.Context) error {
+	if i.GetState() == StateRunning {
+		return fmt.Errorf("sandbox isn't stopping")
 	}
 
-	_, err := i.pausing.WaitWithContext(ctx)
+	_, err := i.stopping.WaitWithContext(ctx)
 	return err
 }
 
-func (i *InstanceInfo) PauseDone(err error) {
+func (i *InstanceInfo) StopDone(err error, pause bool) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	i.pausingState = pausingCompleted
+	if pause {
+		i.state = StatePaused
+	} else {
+		i.state = StateKilled
+	}
 
 	if err != nil {
-		err := i.pausing.SetError(err)
+		err := i.stopping.SetError(err)
 		if err != nil {
-			zap.L().Error("error setting PauseDone value", zap.Error(err))
+			zap.L().Error("error setting StopDone value", zap.Error(err))
 		}
 	} else {
-		err := i.pausing.SetValue(struct{}{})
+		err := i.stopping.SetValue(struct{}{})
 		if err != nil {
-			zap.L().Error("error setting PauseDone value", zap.Error(err))
+			zap.L().Error("error setting StopDone value", zap.Error(err))
 		}
 	}
 }

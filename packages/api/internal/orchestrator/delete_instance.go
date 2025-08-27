@@ -25,7 +25,7 @@ func (o *Orchestrator) RemoveInstance(ctx context.Context, sandbox *instance.Ins
 	defer childSpan.End()
 
 	// Mark the sandbox as being removed to prevent it from being evicted by the cache or another call
-	err := o.instanceCache.StartRemoving(sandbox.SandboxID)
+	err := o.instanceCache.StartRemoving(sandbox)
 	if err != nil {
 		return fmt.Errorf("failed to start removing sandbox '%s': %w", sandbox.SandboxID, err)
 	}
@@ -75,17 +75,22 @@ func (o *Orchestrator) removeInstance(ctx context.Context, sandbox *instance.Ins
 
 	switch removeType {
 	case RemoveTypePause:
-		err := o.pauseSandbox(ctx, node, sandbox)
+		var err error
+		sandbox.SetState(instance.StatePausing)
+		defer sandbox.StopDone(err, true)
+
+		err = o.pauseSandbox(ctx, node, sandbox)
 		if err != nil {
 			return fmt.Errorf("failed to auto pause sandbox '%s': %w", sandbox.SandboxID, err)
 		}
 	case RemoveTypeKill:
-		// Set the sandbox as expired to prevent it from being evicted
-		sandbox.SetExpired()
+		var err error
+		sandbox.SetState(instance.StateShuttingDown)
+		defer sandbox.StopDone(err, false)
 
 		req := &orchestrator.SandboxDeleteRequest{SandboxId: sandbox.SandboxID}
 		client, ctx := node.GetClient(ctx)
-		_, err := client.Sandbox.Delete(node.GetSandboxDeleteCtx(ctx, sandbox.SandboxID, sandbox.ExecutionID), req)
+		_, err = client.Sandbox.Delete(node.GetSandboxDeleteCtx(ctx, sandbox.SandboxID, sandbox.ExecutionID), req)
 		if err != nil {
 			return fmt.Errorf("failed to delete sandbox '%s': %w", sandbox.SandboxID, err)
 		}

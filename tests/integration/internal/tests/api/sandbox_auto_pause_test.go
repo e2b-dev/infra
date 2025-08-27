@@ -70,10 +70,13 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 
-	getResp, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbxId, setup.WithAPIKey())
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, getResp.StatusCode())
-	require.Equal(t, api.Paused, getResp.JSON200.State)
+	require.Eventually(t, func() bool {
+		res, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, res.StatusCode())
+		require.NotNil(t, res.JSON200)
+		return res.JSON200.State == "paused"
+	}, 10*time.Second, 10*time.Millisecond, "Sandbox is not paused")
 
 	// Resume the sandbox with auto-pause enabled
 	_, err = c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
@@ -102,10 +105,13 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 
-	getResp, err = c.GetSandboxesSandboxIDWithResponse(t.Context(), sbxId, setup.WithAPIKey())
-	assert.NoError(t, err)
-	require.Equal(t, http.StatusOK, getResp.StatusCode())
-	require.Equal(t, api.Paused, getResp.JSON200.State)
+	require.Eventually(t, func() bool {
+		res, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, res.StatusCode())
+		require.NotNil(t, res.JSON200)
+		return res.JSON200.State == "paused"
+	}, 10*time.Second, 10*time.Millisecond, "Sandbox is not paused")
 
 	// Resume the sandbox again to check if it resumes correctly
 	sbxResume, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())

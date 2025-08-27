@@ -116,11 +116,11 @@ func TestLifecycleCacheRemove_AlreadyEvicting(t *testing.T) {
 
 	expired := makeAtomicBool(true)
 
+	item := &testLifecycleCacheItem{expired: expired}
+
 	// Set the item as evicting before setting it to prevent race condition
-	cache.evicting.Set("test", struct{}{})
-	cache.SetIfAbsent("test", &testLifecycleCacheItem{
-		expired: expired,
-	})
+	cache.evicting.Set("test", item)
+	cache.SetIfAbsent("test", item)
 
 	assert.Equal(t, uint64(0), cache.Metrics().Evictions)
 	// Actual number of items in the cache is 1 because the item is already evicting
@@ -342,7 +342,7 @@ func TestLifecycleCacheConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			cache.Get(fmt.Sprintf("test-%d", i))
+			cache.Get(fmt.Sprintf("test-%d", i), false)
 		}(i)
 	}
 	wg.Wait()

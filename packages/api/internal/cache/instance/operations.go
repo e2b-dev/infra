@@ -32,8 +32,8 @@ func (c *InstanceCache) Exists(instanceID string) bool {
 }
 
 // Get the item from the cache.
-func (c *InstanceCache) Get(instanceID string) (*InstanceInfo, error) {
-	item, ok := c.cache.Get(instanceID)
+func (c *InstanceCache) Get(instanceID string, includeEvicting bool) (*InstanceInfo, error) {
+	item, ok := c.cache.Get(instanceID, includeEvicting)
 	if !ok {
 		return nil, fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
 	}
@@ -121,10 +121,10 @@ func (c *InstanceCache) Remove(instanceID string) {
 }
 
 // StartRemoving marks the instance as being evicted to prevent
-func (c *InstanceCache) StartRemoving(instanceID string) error {
-	absent := c.cache.evicting.SetIfAbsent(instanceID, struct{}{})
+func (c *InstanceCache) StartRemoving(instance *InstanceInfo) error {
+	absent := c.cache.evicting.SetIfAbsent(instance.SandboxID, instance)
 	if !absent {
-		return fmt.Errorf("instance %s is already being evicted", instanceID)
+		return fmt.Errorf("instance %s is already being evicted", instance.SandboxID)
 	}
 
 	return nil

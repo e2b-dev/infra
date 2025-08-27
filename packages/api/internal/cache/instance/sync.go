@@ -28,9 +28,9 @@ func getMaxAllowedTTL(now time.Time, startTime time.Time, duration, maxInstanceL
 
 // KeepAliveFor the instance's expiration timer.
 func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, allowShorter bool) (*InstanceInfo, *api.APIError) {
-	instance, err := c.Get(instanceID)
+	instance, err := c.Get(instanceID, false)
 	if err != nil {
-		return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("Sandbox '%s' not found", instanceID), Err: err}
+		return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("Sandbox '%s' is not running anymore", instanceID), Err: err}
 	}
 
 	now := time.Now()

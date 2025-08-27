@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -30,7 +31,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
 
-	sbx, err := a.orchestrator.GetSandbox(sandboxID)
+	sbx, err := a.orchestrator.GetSandbox(sandboxID, true)
 	if err != nil {
 		_, fErr := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamID})
 		if fErr == nil {
@@ -58,13 +59,20 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		return
 	}
 
+	state := sbx.GetState()
+	switch state {
 	// If the sandbox is already being paused, we just wait for it
-	if sbx.PauseStarted() {
-		err = sbx.WaitForPausing(ctx)
+	case instance.StatePausing, instance.StatePaused:
+		err = sbx.WaitForStop(ctx)
 		if err != nil {
 			telemetry.ReportError(ctx, "error when waiting for sandbox to pause", err)
+
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
+
+			return
 		}
-	} else {
+	// If the sandbox is running, we pause it
+	case instance.StateRunning:
 		err = a.orchestrator.RemoveInstance(ctx, sbx, orchestrator.RemoveTypePause)
 		if err != nil {
 			telemetry.ReportError(ctx, "error pausing sandbox", err)
@@ -73,6 +81,11 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 
 			return
 		}
+	// Sandbox is already killed, it can't be paused
+	case instance.StateShuttingDown, instance.StateKilled:
+		telemetry.ReportError(ctx, "sandbox is already killed", nil)
+		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already killed", sandboxID))
+		return
 	}
 
 	c.Status(http.StatusNoContent)
