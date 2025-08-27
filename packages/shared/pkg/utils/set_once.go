@@ -6,9 +6,9 @@ import (
 	"sync"
 )
 
-type ErrNotSet struct{}
+type NotSetError struct{}
 
-func (e ErrNotSet) Error() string {
+func (e NotSetError) Error() string {
 	return "value not set"
 }
 
@@ -79,7 +79,7 @@ func (s *SetOnce[T]) Wait() (T, error) {
 
 // Result returns the value or error set by SetValue or SetError.
 // It can be called multiple times, returning the same value or error.
-// If called before the value is set, it will return the zero value and ErrNotSet error.
+// If called before the value is set, it will return the zero value and NotSetError error.
 func (s *SetOnce[T]) Result() (T, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -87,7 +87,7 @@ func (s *SetOnce[T]) Result() (T, error) {
 	if s.res == nil {
 		var zero T
 
-		return zero, ErrNotSet{}
+		return zero, NotSetError{}
 	}
 
 	return s.res.value, s.res.err

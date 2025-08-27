@@ -97,42 +97,34 @@ func MultiErrorHandler(me openapi3.MultiError) error {
 
 	// Recreate logic from oapi-codegen/gin-middleware to handle the error
 	// Source: https://github.com/oapi-codegen/gin-middleware/blob/main/oapi_validate.go
-	switch e := err.(type) {
-	case *openapi3filter.RequestError:
-		// We've got a bad request
-		// Split up the verbose error by lines and return the first one
-		// openapi errors seem to be multi-line with a decent message on the first
-		errorLines := strings.Split(e.Error(), "\n")
-		return fmt.Errorf("error in openapi3filter.RequestError: %s", errorLines[0])
-	case *openapi3filter.SecurityRequirementsError:
-		// Return only one security requirement error (there may be multiple securitySchemes)
-		unwrapped := e.Errors
-		err = unwrapped[0]
-
-		var teamForbidden *db.TeamForbiddenError
-		var teamBlocked *db.TeamBlockedError
-		// Return only the first non-missing authorization header error (if possible)
-		for _, errW := range unwrapped {
-			if errors.Is(errW, auth.ErrNoAuthHeader) {
-				continue
+	{
+		var e *openapi3filter.RequestError
+		var e1 *openapi3filter.SecurityRequirementsError
+		switch {
+		case errors.As(err, &e):
+			errorLines := strings.Split(e.Error(), "\n")
+			return fmt.Errorf("error in openapi3filter.RequestError: %s", errorLines[0])
+		case errors.As(err, &e1):
+			unwrapped := e1.Errors
+			err = unwrapped[0]
+			var teamForbidden *db.TeamForbiddenError
+			var teamBlocked *db.TeamBlockedError
+			for _, errW := range unwrapped {
+				if errors.Is(errW, auth.ErrNoAuthHeader) {
+					continue
+				}
+				if errors.As(errW, &teamForbidden) {
+					return fmt.Errorf("%s%s", forbiddenErrPrefix, err.Error())
+				}
+				if errors.As(errW, &teamBlocked) {
+					return fmt.Errorf("%s%s", blockedErrPrefix, err.Error())
+				}
+				err = errW
+				break
 			}
-
-			if errors.As(errW, &teamForbidden) {
-				return fmt.Errorf("%s%s", forbiddenErrPrefix, err.Error())
-			}
-
-			if errors.As(errW, &teamBlocked) {
-				return fmt.Errorf("%s%s", blockedErrPrefix, err.Error())
-			}
-
-			err = errW
-			break
+			return fmt.Errorf("%s%s", securityErrPrefix, err.Error())
+		default:
+			return fmt.Errorf("error validating request: %w", err)
 		}
-
-		return fmt.Errorf("%s%s", securityErrPrefix, err.Error())
-	default:
-		// This should never happen today, but if our upstream code changes,
-		// we don't want to crash the server, so handle the unexpected error.
-		return fmt.Errorf("error validating request: %w", err)
 	}
 }

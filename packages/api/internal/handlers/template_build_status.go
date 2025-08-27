@@ -30,12 +30,12 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 
 	buildInfo, err := a.templateBuildsCache.Get(ctx, buildUUID, templateID)
 	if err != nil {
-		if errors.Is(err, db.TemplateBuildNotFound{}) {
+		if errors.Is(err, db.TemplateBuildNotFoundError{}) {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Build '%s' not found", buildUUID))
 			return
 		}
 
-		if errors.Is(err, db.TemplateNotFound{}) {
+		if errors.Is(err, db.TemplateNotFoundError{}) {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Template '%s' not found", templateID))
 			return
 		}

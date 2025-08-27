@@ -96,7 +96,7 @@ func (c *Chunker) Slice(off, length int64) ([]byte, error) {
 		return b, nil
 	}
 
-	if !errors.As(err, &ErrBytesNotAvailable{}) {
+	if !errors.As(err, &BytesNotAvailableError{}) {
 		timer.End(c.ctx, length,
 			attribute.String(result, "failure"),
 			attribute.String(pullType, pullTypeLocal),

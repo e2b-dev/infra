@@ -1,33 +1,33 @@
 package db
 
-type ErrNotFound error
+type NotFoundError error
 
-type TemplateNotFound struct{ ErrNotFound }
+type TemplateNotFoundError struct{ NotFoundError }
 
-func (TemplateNotFound) Error() string {
+func (TemplateNotFoundError) Error() string {
 	return "Template not found"
 }
 
-type TemplateBuildNotFound struct{ ErrNotFound }
+type TemplateBuildNotFoundError struct{ NotFoundError }
 
-func (TemplateBuildNotFound) Error() string {
+func (TemplateBuildNotFoundError) Error() string {
 	return "Template build not found"
 }
 
-type SnapshotNotFound struct{ ErrNotFound }
+type SnapshotNotFoundError struct{ NotFoundError }
 
-func (SnapshotNotFound) Error() string {
+func (SnapshotNotFoundError) Error() string {
 	return "Snapshot not found"
 }
 
-type BuildNotFound struct{ ErrNotFound }
+type BuildNotFoundError struct{ NotFoundError }
 
-func (BuildNotFound) Error() string {
+func (BuildNotFoundError) Error() string {
 	return "Build not found"
 }
 
-type EnvNotFound struct{ ErrNotFound }
+type EnvNotFoundError struct{ NotFoundError }
 
-func (EnvNotFound) Error() string {
+func (EnvNotFoundError) Error() string {
 	return "Env not found"
 }

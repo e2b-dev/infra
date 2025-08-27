@@ -21,6 +21,8 @@ linters:
     - copyloopvar
     - dogsled
     - durationcheck
+    - errname
+    - errorlint
     - govet
     - staticcheck
     - testifylint
