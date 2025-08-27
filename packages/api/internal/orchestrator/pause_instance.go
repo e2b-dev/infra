@@ -26,18 +26,6 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	ctx, span := o.tracer.Start(ctx, "pause-sandbox")
 	defer span.End()
 
-	sbx.StartPausing()
-	defer sbx.PauseDone(err)
-
-	err = pauseSandbox(ctx, o, node, sbx)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func pauseSandbox(ctx context.Context, o *Orchestrator, node *nodemanager.Node, sbx *instance.InstanceInfo) error {
 	snapshotConfig := &db.SnapshotInfo{
 		BaseTemplateID:      sbx.BaseTemplateID,
 		SandboxID:           sbx.SandboxID,
