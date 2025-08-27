@@ -30,6 +30,8 @@ const (
 )
 
 func newDiff(t *testing.T, cachePath, buildId string, diffType DiffType, blockSize int64) Diff {
+	t.Helper()
+
 	localDiff, err := NewLocalDiffFile(cachePath, buildId, diffType)
 	assert.NoError(t, err)
 
@@ -45,6 +47,8 @@ func newDiff(t *testing.T, cachePath, buildId string, diffType DiffType, blockSi
 }
 
 func createTempDir(t *testing.T) string {
+	t.Helper()
+
 	tempDir, err := os.MkdirTemp("", tmpBuildCachePrefix)
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)

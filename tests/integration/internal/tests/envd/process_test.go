@@ -177,6 +177,8 @@ func killPid(
 	sandboxID string,
 	pid uint32,
 ) {
+	t.Helper()
+
 	// Connect to the process
 	connectReq := connect.NewRequest(&process.ConnectRequest{
 		Process: &process.ProcessSelector{

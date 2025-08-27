@@ -305,6 +305,8 @@ func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
 }
 
 func generateBytes(t *testing.T, n int) []byte {
+	t.Helper()
+
 	buf := make([]byte, n)
 	count, err := rand.Read(buf)
 	require.NoError(t, err)

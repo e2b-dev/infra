@@ -232,6 +232,8 @@ type envdInitCall struct {
 }
 
 func sandboxEnvdInitCall(t *testing.T, ctx context.Context, req envdInitCall) {
+	t.Helper()
+
 	envdReqSetup := []envdapi.RequestEditorFn{setup.WithSandbox(req.sbx.JSON201.SandboxID)}
 	if req.authToken != nil {
 		envdReqSetup = append(envdReqSetup, setup.WithEnvdAccessToken(*req.authToken))
@@ -257,6 +259,8 @@ func sandboxEnvdInitCall(t *testing.T, ctx context.Context, req envdInitCall) {
 }
 
 func getSandboxLogs(t *testing.T, ctx context.Context, client *setup.EnvdClient, sbx *api.PostSandboxesResponse) (string, error) {
+	t.Helper()
+
 	req := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
 			Cmd:  "journalctl",
