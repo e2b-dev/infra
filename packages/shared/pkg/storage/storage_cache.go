@@ -77,38 +77,41 @@ func (c *CachedFileObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 
 	b := make([]byte, totalSize)
 
-	_, err = c.copyFullFileFromCache(fullCachePath, b)
+	bytesRead, err := c.copyFullFileFromCache(fullCachePath, b)
 	if err == nil {
-		written, err := dst.Write(b)
-		if err != nil {
-			return int64(written), err
+		if int64(bytesRead) != totalSize {
+			zap.L().Warn("cache file size mismatch",
+				zap.Int64("expected", totalSize),
+				zap.Int("actual", bytesRead))
 		}
-
-		return int64(written), nil
-	}
-
-	zap.L().Debug("failed to read cached full file, falling back to remote read",
-		zap.String("full_cache_path", fullCachePath),
-		zap.String("path", c.path),
-		zap.Error(err))
-
-	writter := bytes.NewBuffer(b)
-
-	_, err = c.inner.WriteTo(writter)
-	if err != nil {
-		return 0, err
-	}
-
-	writter.__
-
-	go c.writeFullFileToCache(fullCachePath, writter.Bytes())
-
-	written, err := dst.Write(writter.Bytes())
-	if err != nil {
+		written, err := dst.Write(b)
 		return int64(written), err
 	}
 
-	return int64(written), nil
+	if !errors.Is(err, os.ErrNotExist) { // only log on unexpected errors; IsNotExist is expected when the file has not been cached
+		zap.L().Warn("failed to read cached full file, falling back to remote read",
+			zap.String("full_cache_path", fullCachePath),
+			zap.String("path", c.path),
+			zap.Error(err))
+	}
+
+	writer := bytes.NewBuffer(nil)
+
+	bytesWritten, err := c.inner.WriteTo(writer)
+	if ignoreEOF(err) != nil {
+		return 0, err
+	}
+
+	if totalSize != bytesWritten {
+		zap.L().Warn("remote read too short",
+			zap.Int64("expected", totalSize),
+			zap.Int64("actual", bytesWritten))
+	}
+
+	c.writeFullFileToCache(fullCachePath, writer.Bytes())
+
+	written, err := dst.Write(writer.Bytes())
+	return int64(written), err
 }
 
 func (c *CachedFileObjectProvider) WriteFromFileSystem(path string) error {
