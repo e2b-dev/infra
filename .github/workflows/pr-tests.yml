@@ -21,6 +21,7 @@ jobs:
             test_path: ./...
           - package: packages/shared
             test_path: ./pkg/...
+      fail-fast: false
     steps:
       - uses: actions/checkout@v4
       - name: Setup Go

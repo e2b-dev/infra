@@ -23,6 +23,7 @@ jobs:
     strategy:
       matrix:
         modules: ${{ fromJSON(needs.detect-modules.outputs.modules) }}
+      fail-fast: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
