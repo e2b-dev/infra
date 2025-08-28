@@ -32,14 +32,20 @@ func getContext(ctx context.Context) (ldcontext.Context, bool) {
 }
 
 func flattenContexts(contexts []ldcontext.Context) []ldcontext.Context {
-	var result []ldcontext.Context
+	contextMap := make(map[ldcontext.Kind]ldcontext.Context)
+
 	work := contexts
 	for len(work) != 0 {
 		item := work[0]
 		work = work[1:]
 
 		if !item.Multiple() {
-			result = append(result, item)
+			// There can be only one context of each kind
+			if oldCtx, ok := contextMap[item.Kind()]; ok {
+				contextMap[item.Kind()] = mergeSameKind(oldCtx, item)
+			} else {
+				contextMap[item.Kind()] = item
+			}
 			continue
 		}
 
@@ -47,7 +53,33 @@ func flattenContexts(contexts []ldcontext.Context) []ldcontext.Context {
 		work = append(flattened, work...)
 	}
 
+	var result []ldcontext.Context
+	for _, item := range contextMap {
+		result = append(result, item)
+	}
+
 	return result
+}
+
+// mergeSameKind merges two contexts of the same kind. The second context has precedence.
+func mergeSameKind(first ldcontext.Context, second ldcontext.Context) ldcontext.Context {
+	builder := ldcontext.NewBuilderFromContext(first)
+
+	if second.Name().IsDefined() {
+		builder.Name(second.Name().String())
+	}
+
+	for _, attr := range second.GetOptionalAttributeNames(nil) {
+		builder.SetValue(attr, second.GetValue(attr))
+	}
+
+	for i := range second.PrivateAttributeCount() {
+		if ref, ok := second.PrivateAttributeByIndex(i); ok {
+			builder.PrivateRef(ref)
+		}
+	}
+
+	return builder.Build()
 }
 
 func removeUndefined(contexts []ldcontext.Context) []ldcontext.Context {
@@ -91,10 +123,6 @@ func ClusterContext(clusterID string) ldcontext.Context {
 
 func SandboxContext(sandboxID string) ldcontext.Context {
 	return ldcontext.NewWithKind(SandboxKind, sandboxID)
-}
-
-func TeamStubContext(teamID string) ldcontext.Context {
-	return ldcontext.NewWithKind(TeamKind, teamID)
 }
 
 func TeamContext(teamID, teamName string) ldcontext.Context {

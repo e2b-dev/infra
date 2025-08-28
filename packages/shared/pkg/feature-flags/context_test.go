@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -23,6 +24,28 @@ func TestFlattenContexts(t *testing.T) {
 	// we don't care what order the contexts are in, they just all need to be there
 	keySet := sliceToSet(result, func(c ldcontext.Context) ldcontext.Kind { return c.Kind() })
 	assert.Equal(t, newSet[ldcontext.Kind]("one", "two", "three", "four", "five", "six", "seven"), keySet)
+}
+
+func TestContextsWithSameKind(t *testing.T) {
+	kind := ldcontext.Kind("test")
+	first := ldcontext.NewBuilder("same").
+		Kind(kind).
+		Name("test").
+		Build()
+
+	second := ldcontext.NewBuilder("same").
+		Kind(kind).
+		SetValue("test", ldvalue.String("works")).
+		Build()
+	items := []ldcontext.Context{first, second}
+
+	result := flattenContexts(items)
+
+	// we don't care what order the contexts are in, they just all need to be there
+	assert.Len(t, result, 1)
+	assert.Equal(t, kind, result[0].Kind())
+	assert.Equal(t, "test", result[0].Name().String())
+	assert.Equal(t, ldvalue.String("works"), result[0].GetValue("test"))
 }
 
 type set[T comparable] map[T]struct{}
