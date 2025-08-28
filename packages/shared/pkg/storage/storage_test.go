@@ -5,6 +5,7 @@
 package storage
 
 import (
+	"context"
 	"io"
 
 	mock "github.com/stretchr/testify/mock"
@@ -82,8 +83,8 @@ func (_c *MockStorageObjectProvider_Delete_Call) RunAndReturn(run func() error) 
 }
 
 // ReadAt provides a mock function for the type MockStorageObjectProvider
-func (_mock *MockStorageObjectProvider) ReadAt(p []byte, off int64) (int, error) {
-	ret := _mock.Called(p, off)
+func (_mock *MockStorageObjectProvider) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
+	ret := _mock.Called(ctx, p, off)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ReadAt")
@@ -91,16 +92,16 @@ func (_mock *MockStorageObjectProvider) ReadAt(p []byte, off int64) (int, error)
 
 	var r0 int
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func([]byte, int64) (int, error)); ok {
-		return returnFunc(p, off)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte, int64) (int, error)); ok {
+		return returnFunc(ctx, p, off)
 	}
-	if returnFunc, ok := ret.Get(0).(func([]byte, int64) int); ok {
-		r0 = returnFunc(p, off)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte, int64) int); ok {
+		r0 = returnFunc(ctx, p, off)
 	} else {
 		r0 = ret.Get(0).(int)
 	}
-	if returnFunc, ok := ret.Get(1).(func([]byte, int64) error); ok {
-		r1 = returnFunc(p, off)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []byte, int64) error); ok {
+		r1 = returnFunc(ctx, p, off)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -113,25 +114,31 @@ type MockStorageObjectProvider_ReadAt_Call struct {
 }
 
 // ReadAt is a helper method to define mock.On call
+//   - ctx context.Context
 //   - p []byte
 //   - off int64
-func (_e *MockStorageObjectProvider_Expecter) ReadAt(p interface{}, off interface{}) *MockStorageObjectProvider_ReadAt_Call {
-	return &MockStorageObjectProvider_ReadAt_Call{Call: _e.mock.On("ReadAt", p, off)}
+func (_e *MockStorageObjectProvider_Expecter) ReadAt(ctx interface{}, p interface{}, off interface{}) *MockStorageObjectProvider_ReadAt_Call {
+	return &MockStorageObjectProvider_ReadAt_Call{Call: _e.mock.On("ReadAt", ctx, p, off)}
 }
 
-func (_c *MockStorageObjectProvider_ReadAt_Call) Run(run func(p []byte, off int64)) *MockStorageObjectProvider_ReadAt_Call {
+func (_c *MockStorageObjectProvider_ReadAt_Call) Run(run func(ctx context.Context, p []byte, off int64)) *MockStorageObjectProvider_ReadAt_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 []byte
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].([]byte)
+			arg0 = args[0].(context.Context)
 		}
-		var arg1 int64
+		var arg1 []byte
 		if args[1] != nil {
-			arg1 = args[1].(int64)
+			arg1 = args[1].([]byte)
+		}
+		var arg2 int64
+		if args[2] != nil {
+			arg2 = args[2].(int64)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -142,7 +149,7 @@ func (_c *MockStorageObjectProvider_ReadAt_Call) Return(n int, err error) *MockS
 	return _c
 }
 
-func (_c *MockStorageObjectProvider_ReadAt_Call) RunAndReturn(run func(p []byte, off int64) (int, error)) *MockStorageObjectProvider_ReadAt_Call {
+func (_c *MockStorageObjectProvider_ReadAt_Call) RunAndReturn(run func(ctx context.Context, p []byte, off int64) (int, error)) *MockStorageObjectProvider_ReadAt_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -201,8 +208,8 @@ func (_c *MockStorageObjectProvider_Size_Call) RunAndReturn(run func() (int64, e
 }
 
 // Write provides a mock function for the type MockStorageObjectProvider
-func (_mock *MockStorageObjectProvider) Write(p []byte) (int, error) {
-	ret := _mock.Called(p)
+func (_mock *MockStorageObjectProvider) Write(ctx context.Context, p []byte) (int, error) {
+	ret := _mock.Called(ctx, p)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Write")
@@ -210,16 +217,16 @@ func (_mock *MockStorageObjectProvider) Write(p []byte) (int, error) {
 
 	var r0 int
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func([]byte) (int, error)); ok {
-		return returnFunc(p)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte) (int, error)); ok {
+		return returnFunc(ctx, p)
 	}
-	if returnFunc, ok := ret.Get(0).(func([]byte) int); ok {
-		r0 = returnFunc(p)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte) int); ok {
+		r0 = returnFunc(ctx, p)
 	} else {
 		r0 = ret.Get(0).(int)
 	}
-	if returnFunc, ok := ret.Get(1).(func([]byte) error); ok {
-		r1 = returnFunc(p)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []byte) error); ok {
+		r1 = returnFunc(ctx, p)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -232,19 +239,25 @@ type MockStorageObjectProvider_Write_Call struct {
 }
 
 // Write is a helper method to define mock.On call
+//   - ctx context.Context
 //   - p []byte
-func (_e *MockStorageObjectProvider_Expecter) Write(p interface{}) *MockStorageObjectProvider_Write_Call {
-	return &MockStorageObjectProvider_Write_Call{Call: _e.mock.On("Write", p)}
+func (_e *MockStorageObjectProvider_Expecter) Write(ctx interface{}, p interface{}) *MockStorageObjectProvider_Write_Call {
+	return &MockStorageObjectProvider_Write_Call{Call: _e.mock.On("Write", ctx, p)}
 }
 
-func (_c *MockStorageObjectProvider_Write_Call) Run(run func(p []byte)) *MockStorageObjectProvider_Write_Call {
+func (_c *MockStorageObjectProvider_Write_Call) Run(run func(ctx context.Context, p []byte)) *MockStorageObjectProvider_Write_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 []byte
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].([]byte)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []byte
+		if args[1] != nil {
+			arg1 = args[1].([]byte)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -255,22 +268,22 @@ func (_c *MockStorageObjectProvider_Write_Call) Return(n int, err error) *MockSt
 	return _c
 }
 
-func (_c *MockStorageObjectProvider_Write_Call) RunAndReturn(run func(p []byte) (int, error)) *MockStorageObjectProvider_Write_Call {
+func (_c *MockStorageObjectProvider_Write_Call) RunAndReturn(run func(ctx context.Context, p []byte) (int, error)) *MockStorageObjectProvider_Write_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // WriteFromFileSystem provides a mock function for the type MockStorageObjectProvider
-func (_mock *MockStorageObjectProvider) WriteFromFileSystem(path string) error {
-	ret := _mock.Called(path)
+func (_mock *MockStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
+	ret := _mock.Called(ctx, path)
 
 	if len(ret) == 0 {
 		panic("no return value specified for WriteFromFileSystem")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(string) error); ok {
-		r0 = returnFunc(path)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = returnFunc(ctx, path)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -283,19 +296,25 @@ type MockStorageObjectProvider_WriteFromFileSystem_Call struct {
 }
 
 // WriteFromFileSystem is a helper method to define mock.On call
+//   - ctx context.Context
 //   - path string
-func (_e *MockStorageObjectProvider_Expecter) WriteFromFileSystem(path interface{}) *MockStorageObjectProvider_WriteFromFileSystem_Call {
-	return &MockStorageObjectProvider_WriteFromFileSystem_Call{Call: _e.mock.On("WriteFromFileSystem", path)}
+func (_e *MockStorageObjectProvider_Expecter) WriteFromFileSystem(ctx interface{}, path interface{}) *MockStorageObjectProvider_WriteFromFileSystem_Call {
+	return &MockStorageObjectProvider_WriteFromFileSystem_Call{Call: _e.mock.On("WriteFromFileSystem", ctx, path)}
 }
 
-func (_c *MockStorageObjectProvider_WriteFromFileSystem_Call) Run(run func(path string)) *MockStorageObjectProvider_WriteFromFileSystem_Call {
+func (_c *MockStorageObjectProvider_WriteFromFileSystem_Call) Run(run func(ctx context.Context, path string)) *MockStorageObjectProvider_WriteFromFileSystem_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -306,14 +325,14 @@ func (_c *MockStorageObjectProvider_WriteFromFileSystem_Call) Return(err error) 
 	return _c
 }
 
-func (_c *MockStorageObjectProvider_WriteFromFileSystem_Call) RunAndReturn(run func(path string) error) *MockStorageObjectProvider_WriteFromFileSystem_Call {
+func (_c *MockStorageObjectProvider_WriteFromFileSystem_Call) RunAndReturn(run func(ctx context.Context, path string) error) *MockStorageObjectProvider_WriteFromFileSystem_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // WriteTo provides a mock function for the type MockStorageObjectProvider
-func (_mock *MockStorageObjectProvider) WriteTo(w io.Writer) (int64, error) {
-	ret := _mock.Called(w)
+func (_mock *MockStorageObjectProvider) WriteTo(ctx context.Context, w io.Writer) (int64, error) {
+	ret := _mock.Called(ctx, w)
 
 	if len(ret) == 0 {
 		panic("no return value specified for WriteTo")
@@ -321,16 +340,16 @@ func (_mock *MockStorageObjectProvider) WriteTo(w io.Writer) (int64, error) {
 
 	var r0 int64
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(io.Writer) (int64, error)); ok {
-		return returnFunc(w)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, io.Writer) (int64, error)); ok {
+		return returnFunc(ctx, w)
 	}
-	if returnFunc, ok := ret.Get(0).(func(io.Writer) int64); ok {
-		r0 = returnFunc(w)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, io.Writer) int64); ok {
+		r0 = returnFunc(ctx, w)
 	} else {
 		r0 = ret.Get(0).(int64)
 	}
-	if returnFunc, ok := ret.Get(1).(func(io.Writer) error); ok {
-		r1 = returnFunc(w)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, io.Writer) error); ok {
+		r1 = returnFunc(ctx, w)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -343,19 +362,25 @@ type MockStorageObjectProvider_WriteTo_Call struct {
 }
 
 // WriteTo is a helper method to define mock.On call
+//   - ctx context.Context
 //   - w io.Writer
-func (_e *MockStorageObjectProvider_Expecter) WriteTo(w interface{}) *MockStorageObjectProvider_WriteTo_Call {
-	return &MockStorageObjectProvider_WriteTo_Call{Call: _e.mock.On("WriteTo", w)}
+func (_e *MockStorageObjectProvider_Expecter) WriteTo(ctx interface{}, w interface{}) *MockStorageObjectProvider_WriteTo_Call {
+	return &MockStorageObjectProvider_WriteTo_Call{Call: _e.mock.On("WriteTo", ctx, w)}
 }
 
-func (_c *MockStorageObjectProvider_WriteTo_Call) Run(run func(w io.Writer)) *MockStorageObjectProvider_WriteTo_Call {
+func (_c *MockStorageObjectProvider_WriteTo_Call) Run(run func(ctx context.Context, w io.Writer)) *MockStorageObjectProvider_WriteTo_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 io.Writer
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(io.Writer)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 io.Writer
+		if args[1] != nil {
+			arg1 = args[1].(io.Writer)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -366,7 +391,7 @@ func (_c *MockStorageObjectProvider_WriteTo_Call) Return(n int64, err error) *Mo
 	return _c
 }
 
-func (_c *MockStorageObjectProvider_WriteTo_Call) RunAndReturn(run func(w io.Writer) (int64, error)) *MockStorageObjectProvider_WriteTo_Call {
+func (_c *MockStorageObjectProvider_WriteTo_Call) RunAndReturn(run func(ctx context.Context, w io.Writer) (int64, error)) *MockStorageObjectProvider_WriteTo_Call {
 	_c.Call.Return(run)
 	return _c
 }

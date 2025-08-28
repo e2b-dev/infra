@@ -7,10 +7,14 @@ import (
 	"io"
 	"time"
 
+	"go.opentelemetry.io/otel"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+var tracer = otel.Tracer("shared.pkg.storage")
 
 var ErrorObjectNotExist = errors.New("object does not exist")
 
@@ -36,12 +40,24 @@ type StorageProvider interface {
 	GetDetails() string
 }
 
-type StorageObjectProvider interface {
-	io.Writer
-	io.WriterTo
-	io.ReaderAt
+type WriterCtx interface {
+	Write(ctx context.Context, p []byte) (n int, err error)
+}
 
-	WriteFromFileSystem(path string) error
+type WriterToCtx interface {
+	WriteTo(ctx context.Context, w io.Writer) (n int64, err error)
+}
+
+type ReaderAtCtx interface {
+	ReadAt(ctx context.Context, p []byte, off int64) (n int, err error)
+}
+
+type StorageObjectProvider interface {
+	WriterCtx
+	WriterToCtx
+	ReaderAtCtx
+
+	WriteFromFileSystem(ctx context.Context, path string) error
 
 	Size() (int64, error)
 	Delete() error

@@ -61,7 +61,7 @@ func (fs *FileSystemStorageProvider) getPath(path string) string {
 	return filepath.Join(fs.basePath, path)
 }
 
-func (f *FileSystemStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {
+func (f *FileSystemStorageObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	handle, err := f.getHandle(true)
 	if err != nil {
 		return 0, err
@@ -72,7 +72,7 @@ func (f *FileSystemStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) 
 	return io.Copy(dst, handle)
 }
 
-func (f *FileSystemStorageObjectProvider) WriteFromFileSystem(path string) error {
+func (f *FileSystemStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
 	handle, err := f.getHandle(false)
 	if err != nil {
 		return err
@@ -93,7 +93,7 @@ func (f *FileSystemStorageObjectProvider) WriteFromFileSystem(path string) error
 	return nil
 }
 
-func (f *FileSystemStorageObjectProvider) Write(data []byte) (int, error) {
+func (f *FileSystemStorageObjectProvider) Write(ctx context.Context, data []byte) (int, error) {
 	handle, err := f.getHandle(false)
 	if err != nil {
 		return 0, err
@@ -104,7 +104,7 @@ func (f *FileSystemStorageObjectProvider) Write(data []byte) (int, error) {
 	return count, err
 }
 
-func (f *FileSystemStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, err error) {
+func (f *FileSystemStorageObjectProvider) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
 	handle, err := f.getHandle(true)
 	if err != nil {
 		return 0, err

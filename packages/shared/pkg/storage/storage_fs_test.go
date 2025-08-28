@@ -29,7 +29,7 @@ func TestOpenObject_ReadWrite_Size_ReadAt(t *testing.T) {
 
 	contents := []byte("hello world")
 	// write via Write
-	n, err := obj.Write(contents)
+	n, err := obj.Write(t.Context(), contents)
 	require.NoError(t, err)
 	require.Equal(t, len(contents), n)
 
@@ -40,14 +40,14 @@ func TestOpenObject_ReadWrite_Size_ReadAt(t *testing.T) {
 
 	// read the entire file back via WriteTo
 	var buf bytes.Buffer
-	n64, err := obj.WriteTo(&buf)
+	n64, err := obj.WriteTo(t.Context(), &buf)
 	require.NoError(t, err)
 	require.Equal(t, int64(len(contents)), n64)
 	require.Equal(t, contents, buf.Bytes())
 
 	// read a slice via ReadAt ("world")
 	part := make([]byte, 5)
-	nRead, err := obj.ReadAt(part, 6)
+	nRead, err := obj.ReadAt(t.Context(), part, 6)
 	require.NoError(t, err)
 	require.Equal(t, 5, nRead)
 	require.Equal(t, []byte("world"), part)
@@ -64,10 +64,10 @@ func TestWriteFromFileSystem(t *testing.T) {
 
 	obj, err := p.OpenObject(ctx, "copy/dst.txt")
 	require.NoError(t, err)
-	require.NoError(t, obj.WriteFromFileSystem(srcPath))
+	require.NoError(t, obj.WriteFromFileSystem(t.Context(), srcPath))
 
 	var buf bytes.Buffer
-	_, err = obj.WriteTo(&buf)
+	_, err = obj.WriteTo(t.Context(), &buf)
 	require.NoError(t, err)
 	require.Equal(t, payload, buf.String())
 }
@@ -79,7 +79,7 @@ func TestDelete(t *testing.T) {
 	obj, err := p.OpenObject(ctx, "to/delete.txt")
 	require.NoError(t, err)
 
-	_, err = obj.Write([]byte("bye"))
+	_, err = obj.Write(t.Context(), []byte("bye"))
 	require.NoError(t, err)
 	require.NoError(t, obj.Delete())
 
@@ -100,7 +100,7 @@ func TestDeleteObjectsWithPrefix(t *testing.T) {
 	for _, pth := range paths {
 		obj, err := p.OpenObject(ctx, pth)
 		require.NoError(t, err)
-		_, err = obj.Write([]byte("x"))
+		_, err = obj.Write(t.Context(), []byte("x"))
 		require.NoError(t, err)
 	}
 
@@ -122,6 +122,6 @@ func TestWriteToNonExistentObject(t *testing.T) {
 	require.NoError(t, err)
 
 	var sink bytes.Buffer
-	_, err = obj.WriteTo(&sink)
+	_, err = obj.WriteTo(t.Context(), &sink)
 	require.ErrorIs(t, err, ErrorObjectNotExist)
 }

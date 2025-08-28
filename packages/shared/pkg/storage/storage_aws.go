@@ -111,8 +111,8 @@ func (a *AWSBucketStorageProvider) OpenObject(ctx context.Context, path string) 
 	}, nil
 }
 
-func (a *AWSBucketStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, awsReadTimeout)
+func (a *AWSBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, awsReadTimeout)
 	defer cancel()
 
 	resp, err := a.client.GetObject(ctx, &s3.GetObjectInput{Bucket: &a.bucketName, Key: &a.path})
@@ -130,8 +130,8 @@ func (a *AWSBucketStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 	return io.Copy(dst, resp.Body)
 }
 
-func (a *AWSBucketStorageObjectProvider) WriteFromFileSystem(path string) error {
-	ctx, cancel := context.WithTimeout(a.ctx, awsWriteTimeout)
+func (a *AWSBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
+	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
 	defer cancel()
 
 	file, err := os.Open(path)
@@ -160,8 +160,8 @@ func (a *AWSBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 	return err
 }
 
-func (a *AWSBucketStorageObjectProvider) Write(data []byte) (int, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, awsWriteTimeout)
+func (a *AWSBucketStorageObjectProvider) Write(ctx context.Context, data []byte) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
 	defer cancel()
 
 	result, err := a.client.PutObject(
@@ -183,8 +183,8 @@ func (a *AWSBucketStorageObjectProvider) Write(data []byte) (int, error) {
 	return int(*result.Size), nil
 }
 
-func (a *AWSBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, err error) {
-	ctx, cancel := context.WithTimeout(a.ctx, awsReadTimeout)
+func (a *AWSBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
+	ctx, cancel := context.WithTimeout(ctx, awsReadTimeout)
 	defer cancel()
 
 	readRange := aws.String(fmt.Sprintf("bytes=%d-%d", off, off+int64(len(buff))-1))

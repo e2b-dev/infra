@@ -131,7 +131,7 @@ func fromTemplate(ctx context.Context, s storage.StorageProvider, files storage.
 	}
 
 	var buf bytes.Buffer
-	_, err = obj.WriteTo(&buf)
+	_, err = obj.WriteTo(ctx, &buf)
 	if err != nil {
 		return Template{}, fmt.Errorf("error reading template metadata from object: %w", err)
 	}
