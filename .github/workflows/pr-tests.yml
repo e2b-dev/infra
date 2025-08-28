@@ -23,20 +23,15 @@ jobs:
             test_path: ./pkg/...
       fail-fast: false
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
-
-      - name: Go Build Cache Path
-        id: go-cache-paths
-        run: |
-          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
-
-      - name: Go Build Cache
-        uses: actions/cache@v4
         with:
-          path: ${{ steps.go-cache-paths.outputs.go-build }}
-          key: ${{ runner.os }}-go-build-${{ matrix.package }}-${{ hashFiles('**/go.sum', '**/go.mod') }}
+          job_key: unit-tests-${{ matrix.package }}
 
       - name: Run tests
         working-directory: ${{ matrix.package }}
