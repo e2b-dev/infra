@@ -2,11 +2,11 @@ package writer
 
 import (
 	"bytes"
-	"errors"
-	"strings"
+	"context"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -25,63 +25,37 @@ func newTestLogger(buf *bytes.Buffer) *zap.Logger {
 }
 
 func TestPostProcessor_Start(t *testing.T) {
-	type fields struct {
-		testErr       error
-		shouldContain string
+	var buf bytes.Buffer
+	logger := newTestLogger(&buf)
+
+	ctx := t.Context()
+	ctx, cancel := context.WithCancel(ctx)
+
+	p := PostProcessor{
+		Logger:         logger,
+		ticker:         time.NewTicker(time.Second),
+		tickerInterval: time.Second,
 	}
-	tests := []struct {
-		name   string
-		fields fields
-	}{
-		{
-			name: "test error",
-			fields: fields{
-				testErr:       errors.New("test error"),
-				shouldContain: "Build failed:",
-			},
-		},
-		{
-			name: "test success",
-			fields: fields{
-				testErr:       nil,
-				shouldContain: "Build finished",
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var buf bytes.Buffer
-			logger := newTestLogger(&buf)
 
-			ctx := t.Context()
-			errChan := make(chan error)
+	// we control the invocation of `start` so we can
+	//verify that context cancellation works
+	end := make(chan struct{}, 1)
+	go func() {
+		p.start(ctx)
+		end <- struct{}{}
+	}()
 
-			zap.NewNop()
+	// log some info
+	p.Info("info message")
+	p.Error("error message")
 
-			p := &PostProcessor{
-				Logger:         logger,
-				ctx:            ctx,
-				errChan:        errChan,
-				stopCh:         make(chan struct{}, 1),
-				tickerInterval: defaultTickerInterval,
-				ticker:         time.NewTicker(defaultTickerInterval),
-			}
+	// stop the post processor
+	cancel()
 
-			end := make(chan struct{}, 1)
-			go func() {
-				p.Start()
+	// Wait for the start goroutine to finish
+	<-end
 
-				end <- struct{}{}
-			}()
-			p.Stop(ctx, tt.fields.testErr)
-
-			// Wait for the start goroutine to finish
-			<-end
-
-			logs := buf.String()
-			if !strings.Contains(logs, tt.fields.shouldContain) {
-				t.Errorf("expected data to contain %s, got %s", tt.fields.shouldContain, logs)
-			}
-		})
-	}
+	logs := buf.String()
+	assert.Contains(t, logs, "info message")
+	assert.Contains(t, logs, "error message")
 }

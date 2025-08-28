@@ -2,8 +2,6 @@ package writer
 
 import (
 	"context"
-	"fmt"
-	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -17,53 +15,21 @@ type PostProcessor struct {
 
 	tickerInterval time.Duration
 
-	errChan chan error
-	ctx     context.Context // nolint:containedctx // todo: refactor so this can be removed
-	ticker  *time.Ticker
-
-	stopOnce sync.Once
-	stopCh   chan struct{}
+	ticker *time.Ticker
 }
 
-// Start starts the post-processing.
-func (p *PostProcessor) Start() {
-	defer func() {
-		// Signal the stop channel to indicate that postprocessing is done
-		p.stopCh <- struct{}{}
-	}()
-	startTime := time.Now()
-
+// Start the post-processing.
+func (p *PostProcessor) start(ctx context.Context) {
 	for {
 		msg := "..."
 
 		select {
-		case postprocessingErr := <-p.errChan:
-			if postprocessingErr != nil {
-				p.Error(fmt.Sprintf("Build failed: %v", postprocessingErr))
-			} else {
-				p.Info(fmt.Sprintf("Build finished, took %s", time.Since(startTime).Truncate(time.Second).String()))
-			}
-			return
-		case <-p.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-p.ticker.C:
 			p.Info(msg)
 		}
 	}
-}
-
-func (p *PostProcessor) Stop(ctx context.Context, err error) {
-	p.stopOnce.Do(func() {
-		p.errChan <- err
-
-		// Wait for the postprocessing to finish
-		select {
-		case <-p.stopCh:
-			return
-		case <-ctx.Done():
-			return
-		}
-	})
 }
 
 func (p *PostProcessor) Log(lvl zapcore.Level, msg string, fields ...zap.Field) {
@@ -90,12 +56,13 @@ func NewPostProcessor(ctx context.Context, writer *zap.Logger, enableTicker bool
 		tickerInterval = defaultTickerInterval
 	}
 
-	return &PostProcessor{
+	pp := &PostProcessor{
 		Logger:         writer,
-		ctx:            ctx,
-		errChan:        make(chan error, 1),
-		stopCh:         make(chan struct{}, 1),
 		tickerInterval: tickerInterval,
 		ticker:         time.NewTicker(tickerInterval),
 	}
+
+	go pp.start(ctx)
+
+	return pp
 }

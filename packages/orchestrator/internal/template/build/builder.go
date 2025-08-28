@@ -125,10 +125,17 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 
 	isV1Build := config.FromImage == "" && config.FromTemplate == nil
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	postProcessor := writer.NewPostProcessor(ctx, logsWriter, isV1Build)
-	go postProcessor.Start()
 	defer func() {
-		postProcessor.Stop(ctx, e)
+		if e != nil {
+			postProcessor.Error(fmt.Sprintf("Build failed: %v", e))
+		} else {
+			postProcessor.Info(fmt.Sprintf("Build finished, took %s",
+				time.Since(startTime).Truncate(time.Second).String()))
+		}
 	}()
 
 	postProcessor.Info(fmt.Sprintf("Building template %s/%s", config.TemplateID, template.BuildID))
@@ -137,6 +144,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 		if e == nil {
 			return
 		}
+
 		// Remove build files if build fails
 		removeErr := b.templateStorage.DeleteObjectsWithPrefix(ctx, template.BuildID)
 		if removeErr != nil {
