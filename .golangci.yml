@@ -25,6 +25,8 @@ linters:
     - govet
     - staticcheck
     - testifylint
+    - thelper
+    - tparallel
   settings:
     staticcheck:
       checks:

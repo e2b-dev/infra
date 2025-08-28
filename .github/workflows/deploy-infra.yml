@@ -39,11 +39,6 @@ jobs:
         with:
           ref: ${{ inputs.commit_sha }}
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: "go.work"
-          cache: false
-
       - name: Setup environment
         uses: ./.github/actions/deploy-setup
         with:

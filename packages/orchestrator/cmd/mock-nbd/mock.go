@@ -48,11 +48,16 @@ func (d *DeviceWithClose) Header() *header.Header {
 		panic(err)
 	}
 
-	return header.NewHeader(header.NewTemplateMetadata(
+	h, err := header.NewHeader(header.NewTemplateMetadata(
 		uuid.New(),
 		uint64(blockSize),
 		uint64(size),
 	), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return h
 }
 
 func main() {

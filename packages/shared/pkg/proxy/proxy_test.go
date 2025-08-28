@@ -96,6 +96,8 @@ func (b *testBackend) Close() error {
 }
 
 func assertBackendOutput(t *testing.T, backend *testBackend, resp *http.Response) {
+	t.Helper()
+
 	assert.Equal(t, resp.StatusCode, http.StatusOK, "status code should be 200")
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

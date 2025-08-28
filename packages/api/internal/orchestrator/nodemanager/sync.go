@@ -35,7 +35,7 @@ func (n *Node) Sync(ctx context.Context, tracer trace.Tracer, instanceCache *ins
 		n.setStatus(nodeStatus)
 		n.setMetadata(
 			NodeMetadata{
-				serviceInstanceID: nodeInfo.ServiceId,
+				ServiceInstanceID: nodeInfo.ServiceId,
 				Commit:            nodeInfo.ServiceCommit,
 				Version:           nodeInfo.ServiceVersion,
 			},
