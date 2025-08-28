@@ -12,6 +12,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -229,13 +231,18 @@ func (o *Orchestrator) CreateSandbox(
 
 		node.sbxsInProgress.Remove(sandboxID)
 
-		zap.L().Error("Failed to create sandbox", logger.WithSandboxID(sandboxID), logger.WithNodeID(node.Info.NodeID), zap.Int("attempt", attempt), zap.Error(utils.UnwrapGRPCError(err)))
-
 		// The node is not available, try again with another node
-		node.createFails.Add(1)
 		nodesExcluded[node.Info.NodeID] = node
 		node = nil
-		attempt += 1
+
+		st, ok := status.FromError(err)
+		if !ok || st.Code() != codes.ResourceExhausted {
+			node.createFails.Add(1)
+			zap.L().Error("Failed to create sandbox", logger.WithSandboxID(sandboxID), logger.WithNodeID(node.Info.NodeID), zap.Int("attempt", attempt), zap.Error(utils.UnwrapGRPCError(err)))
+			attempt++
+		} else {
+			zap.L().Warn("Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.Sandbox.SandboxId), logger.WithNodeID(node.Info.NodeID))
+		}
 	}
 
 	// The build should be cached on the node now
