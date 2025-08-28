@@ -233,7 +233,6 @@ func (o *Orchestrator) CreateSandbox(
 
 		// The node is not available, try again with another node
 		nodesExcluded[node.Info.NodeID] = node
-		node = nil
 
 		st, ok := status.FromError(err)
 		if !ok || st.Code() != codes.ResourceExhausted {
@@ -243,6 +242,8 @@ func (o *Orchestrator) CreateSandbox(
 		} else {
 			zap.L().Warn("Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.Sandbox.SandboxId), logger.WithNodeID(node.Info.NodeID))
 		}
+
+		node = nil
 	}
 
 	// The build should be cached on the node now
