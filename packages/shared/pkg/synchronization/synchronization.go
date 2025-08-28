@@ -104,15 +104,16 @@ func (s *Synchronize[SourceItem, PoolItem]) syncDiscovered(ctx context.Context, 
 	defer wg.Wait()
 
 	for _, item := range sourceItems {
-		// item already exists in the pool, skip it
-		if ok := s.store.PoolExists(ctx, item); ok {
-			continue
-		}
-
 		// initialize newly discovered item
 		wg.Add(1)
 		go func(item SourceItem) {
 			defer wg.Done()
+
+			// item already exists in the pool, skip it
+			if ok := s.store.PoolExists(ctx, item); ok {
+				return
+			}
+
 			s.store.PoolInsert(spanCtx, item)
 		}(item)
 	}
@@ -126,16 +127,17 @@ func (s *Synchronize[SourceItem, PoolItem]) syncOutdated(ctx context.Context, so
 	defer wg.Wait()
 
 	for _, poolItem := range s.store.PoolList(ctx) {
-		found := s.store.SourceExists(ctx, sourceItems, poolItem)
-		if found {
-			s.store.PoolUpdate(ctx, poolItem)
-			continue
-		}
-
 		// remove the item that is no longer present in the source
 		wg.Add(1)
 		go func(poolItem PoolItem) {
 			defer wg.Done()
+
+			found := s.store.SourceExists(ctx, sourceItems, poolItem)
+			if found {
+				s.store.PoolUpdate(ctx, poolItem)
+				return
+			}
+
 			s.store.PoolRemove(spanCtx, poolItem)
 		}(poolItem)
 	}
