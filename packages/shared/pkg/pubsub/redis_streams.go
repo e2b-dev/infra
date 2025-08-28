@@ -173,7 +173,6 @@ func (r *RedisStreams[PayloadT, SubMetaDataT]) processPendingMessages(ctx contex
 		End:    "+",
 		Count:  pending.Count,
 	}).Result()
-
 	if err != nil {
 		return err
 	}
@@ -195,7 +194,6 @@ func (r *RedisStreams[PayloadT, SubMetaDataT]) processPendingMessages(ctx contex
 		MinIdle:  time.Minute,
 		Messages: messageIDs,
 	}).Result()
-
 	if err != nil {
 		return err
 	}
@@ -225,7 +223,6 @@ func (r *RedisStreams[PayloadT, SubMetaDataT]) readNewMessages(ctx context.Conte
 		Count:    1,
 		Block:    time.Second, // Block for 1 second
 	}).Result()
-
 	if err != nil {
 		if err == redis.Nil {
 			// No messages, continue
