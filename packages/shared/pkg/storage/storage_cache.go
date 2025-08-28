@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -219,7 +220,7 @@ func (c *CachedFileObjectProvider) writeChunkToCache(offset int64, chunkPath str
 		return
 	}
 
-	if err := os.Rename(tempPath, chunkPath); err != nil {
+	if err := renameWithoutReplace(tempPath, chunkPath); err != nil {
 		zap.L().Error("failed to rename temp file",
 			zap.String("tempPath", tempPath),
 			zap.String("chunkPath", chunkPath),
@@ -245,7 +246,7 @@ func (c *CachedFileObjectProvider) writeFullFileToCache(filePath string, b []byt
 		return
 	}
 
-	if err := os.Rename(tempPath, filePath); err != nil {
+	if err := renameWithoutReplace(tempPath, filePath); err != nil {
 		zap.L().Error("failed to rename temp file",
 			zap.String("tempPath", tempPath),
 			zap.String("filePath", filePath),
@@ -301,5 +302,26 @@ func ignoreEOF(err error) error {
 	if errors.Is(err, io.EOF) {
 		return nil
 	}
+	return err
+}
+
+// renameWithoutReplace tries to rename a file but will not replace the target if it already exists.
+// If the file already exists, the file will be deleted.
+func renameWithoutReplace(oldPath, newPath string) error {
+	defer func() {
+		err := os.Remove(oldPath)
+		if err != nil {
+			zap.L().Warn("failed to remove old file",
+				zap.String("oldPath", oldPath),
+				zap.Error(err))
+		}
+	}()
+
+	err := unix.Renameat2(unix.AT_FDCWD, oldPath, unix.AT_FDCWD, newPath, unix.RENAME_NOREPLACE)
+	if err != nil && errors.Is(err, unix.EEXIST) {
+		// EEXIST is expected when the file already exists
+		return nil
+	}
+
 	return err
 }
