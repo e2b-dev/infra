@@ -31,6 +31,33 @@ message FromTemplateConfig {
   string buildID = 2;
 }
 
+// AWS ECR registry authentication
+message AWSRegistry {
+  string awsAccessKeyId = 1;
+  string awsSecretAccessKey = 2;
+  string awsRegion = 3;
+}
+
+// GCP registry authentication
+message GCPRegistry {
+  string serviceAccountJson = 1;
+}
+
+// General registry authentication with username/password
+message GeneralRegistry {
+  string username = 1;
+  string password = 2;
+}
+
+// Docker registry authentication configuration
+message FromImageRegistry {
+  oneof type {
+    AWSRegistry aws = 1;
+    GCPRegistry gcp = 2;
+    GeneralRegistry general = 3;
+  }
+}
+
 message TemplateConfig {
   string templateID = 1;
   string buildID = 2;
@@ -53,6 +80,8 @@ message TemplateConfig {
      string fromImage = 11;
      FromTemplateConfig fromTemplate = 14;
    }
+
+  optional FromImageRegistry fromImageRegistry = 15;
 }
 
 message TemplateCreateRequest {

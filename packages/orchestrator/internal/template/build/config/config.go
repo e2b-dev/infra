@@ -1,6 +1,7 @@
 package config
 
 import (
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci/auth"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -37,6 +38,9 @@ type TemplateConfig struct {
 
 	// FromTemplate is the base template to use for building the template.
 	FromTemplate *templatemanager.FromTemplateConfig
+
+	// RegistryAuthProvider provides authentication for pulling the FromImage.
+	RegistryAuthProvider auth.RegistryAuthProvider
 
 	// Force rebuild of the template even if it is already cached.
 	Force *bool
