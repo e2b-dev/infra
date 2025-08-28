@@ -37,7 +37,7 @@ func validateTeamUsage(team queries.Team) error {
 }
 
 func GetTeamAuth(ctx context.Context, db *sqlcdb.Client, apiKey string) (*queries.Team, *queries.Tier, error) {
-	result, err := db.GetTeamWithTierByAPIKey(ctx, &apiKey)
+	result, err := db.GetTeamWithTierByAPIKey(ctx, apiKey)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get team from API key: %w", err)
 

@@ -22,7 +22,7 @@ type GetTeamWithTierByAPIKeyRow struct {
 	Tier Tier
 }
 
-func (q *Queries) GetTeamWithTierByAPIKey(ctx context.Context, apiKeyHash *string) (GetTeamWithTierByAPIKeyRow, error) {
+func (q *Queries) GetTeamWithTierByAPIKey(ctx context.Context, apiKeyHash string) (GetTeamWithTierByAPIKeyRow, error) {
 	row := q.db.QueryRow(ctx, getTeamWithTierByAPIKey, apiKeyHash)
 	var i GetTeamWithTierByAPIKeyRow
 	err := row.Scan(
