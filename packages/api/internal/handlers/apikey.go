@@ -3,7 +3,6 @@ package handlers
 import (
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -13,7 +12,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -81,23 +79,14 @@ func (a *APIStore) GetApiKeys(c *gin.Context) {
 			}
 		}
 
-		keyValue := strings.Split(apiKey.APIKey, keys.ApiKeyPrefix)[1]
-
-		// TODO: remove this once we migrate to hashed API keys
-		maskedKeyProperties, err := keys.MaskKey(keys.ApiKeyPrefix, keyValue)
-		if err != nil {
-			fmt.Printf("masking API key failed %d: %v", apiKey.ID, err)
-			continue
-		}
-
 		teamAPIKeys[i] = api.TeamAPIKey{
 			Id:   apiKey.ID,
 			Name: apiKey.Name,
 			Mask: api.IdentifierMaskingDetails{
-				Prefix:            maskedKeyProperties.Prefix,
-				ValueLength:       maskedKeyProperties.ValueLength,
-				MaskedValuePrefix: maskedKeyProperties.MaskedValuePrefix,
-				MaskedValueSuffix: maskedKeyProperties.MaskedValueSuffix,
+				Prefix:            apiKey.APIKeyPrefix,
+				ValueLength:       apiKey.APIKeyLength,
+				MaskedValuePrefix: apiKey.APIKeyMaskPrefix,
+				MaskedValueSuffix: apiKey.APIKeyMaskSuffix,
 			},
 			CreatedAt: apiKey.CreatedAt,
 			CreatedBy: createdBy,
@@ -170,7 +159,7 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 	c.JSON(http.StatusCreated, api.CreatedTeamAPIKey{
 		Id:   apiKey.ID,
 		Name: apiKey.Name,
-		Key:  apiKey.APIKey,
+		Key:  apiKey.RawAPIKey,
 		Mask: api.IdentifierMaskingDetails{
 			Prefix:            apiKey.APIKeyPrefix,
 			ValueLength:       apiKey.APIKeyLength,
