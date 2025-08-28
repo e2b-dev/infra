@@ -310,9 +310,9 @@ func ignoreEOF(err error) error {
 func renameWithoutReplace(oldPath, newPath string) error {
 	defer func() {
 		err := os.Remove(oldPath)
-		if err != nil {
-			zap.L().Warn("failed to remove old file",
-				zap.String("oldPath", oldPath),
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			zap.L().Warn("failed to remove file in storage cache",
+				zap.String("path", oldPath),
 				zap.Error(err))
 		}
 	}()
