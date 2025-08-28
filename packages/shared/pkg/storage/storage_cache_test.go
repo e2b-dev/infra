@@ -170,14 +170,14 @@ func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
 	}
 }
 
-func TestRenameWithoutReplace_SuccessWhenDestMissing(t *testing.T) {
+func TestMoveWithoutReplace_SuccessWhenDestMissing(t *testing.T) {
 	td := t.TempDir()
 	content := []byte("alpha")
 	src := filepath.Join(td, "src")
 	dst := filepath.Join(td, "dst")
 
 	require.NoError(t, os.WriteFile(src, content, 0o644))
-	err := hardLinkFile(src, dst)
+	err := moveWithoutReplace(src, dst)
 	require.NoError(t, err)
 
 	// Dest has original content.
@@ -189,7 +189,7 @@ func TestRenameWithoutReplace_SuccessWhenDestMissing(t *testing.T) {
 	assert.ErrorIs(t, err, os.ErrNotExist)
 }
 
-func TestRenameWithoutReplace_FailWhenExists(t *testing.T) {
+func TestMoveWithoutReplace_FailWhenExists(t *testing.T) {
 	td := t.TempDir()
 	content := []byte("alpha")
 	secondContent := []byte("beta")
@@ -198,7 +198,7 @@ func TestRenameWithoutReplace_FailWhenExists(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(src, content, 0o644))
 	require.NoError(t, os.WriteFile(dst, secondContent, 0o644))
-	err := hardLinkFile(src, dst)
+	err := moveWithoutReplace(src, dst)
 	require.NoError(t, err)
 
 	// Dest has original content.
@@ -210,7 +210,7 @@ func TestRenameWithoutReplace_FailWhenExists(t *testing.T) {
 	assert.ErrorIs(t, err, os.ErrNotExist)
 }
 
-func TestRenameWithoutReplace_Fail(t *testing.T) {
+func TestMoveWithoutReplace_Fail(t *testing.T) {
 	td := t.TempDir()
 	content := []byte("alpha")
 	src := filepath.Join(td, "src")
@@ -221,7 +221,7 @@ func TestRenameWithoutReplace_Fail(t *testing.T) {
 	defer os.Chmod(roDir, 0o755)               // ensure cleanup possible
 
 	dst := filepath.Join(roDir, "dst")
-	err := hardLinkFile(src, dst)
+	err := moveWithoutReplace(src, dst)
 	require.Error(t, err)
 
 	_, err = os.Stat(src)
