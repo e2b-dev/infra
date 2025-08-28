@@ -167,7 +167,7 @@ func TestBestOfK_ChooseNode_NoAvailableNodes(t *testing.T) {
 	}
 
 	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, selected)
 	assert.Contains(t, err.Error(), "no node available")
 }
