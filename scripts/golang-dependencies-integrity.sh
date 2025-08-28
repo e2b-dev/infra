@@ -19,7 +19,7 @@ if [[ "$STRICT_MODE" -eq 1 ]]; then
   if ! git diff --exit-code; then
     echo
     echo "❌ Unexpected changes in go.mod or go.sum files!"
-    echo "Run 'go mod tidy' and 'go work sync' manually and commit the changes."
+    echo "Run 'make tidy' manually and commit the changes."
     exit 1
   fi
 fi

@@ -9,20 +9,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - name: Setup Go
+        uses: ./.github/actions/go-setup-cache
         with:
-          go-version-file: 'go.work'
-          cache: false
+          job_key: integrity-check
 
-      - name: Go Mod Cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum', '**/go.mod', 'go.work') }}
-          restore-keys: |
-            ${{ runner.os }}-go-mod-
 
       - name: Run integrity check
         run: STRICT_MODE=1 bash ./scripts/golang-dependencies-integrity.sh
