@@ -13,8 +13,8 @@ import (
 )
 
 // createTestNode creates a test Node for testing
-func createTestNode(id string, status api.NodeStatus, cpuUsage int64, inProgressCount uint32) *nodemanager.TestNode {
-	node := nodemanager.NewTestNode(id, status, cpuUsage, 4)
+func createTestNode(id string, status api.NodeStatus, cpuAllocated int64, inProgressCount uint32) *nodemanager.TestNode {
+	node := nodemanager.NewTestNode(id, status, cpuAllocated, 4)
 
 	// Add sandboxes to the placement metrics
 	for i := uint32(0); i < inProgressCount; i++ {
@@ -32,9 +32,9 @@ func TestLeastBusyAlgorithm_FindLeastBusyNode_Basic(t *testing.T) {
 
 	// Create test nodes with known states
 	nodes := []*nodemanager.TestNode{
-		createTestNode("node1", api.NodeStatusReady, 80, 0),
-		createTestNode("node2", api.NodeStatusReady, 20, 0),
-		createTestNode("node3", api.NodeStatusReady, 50, 0),
+		createTestNode("node1", api.NodeStatusReady, 8, 0),
+		createTestNode("node2", api.NodeStatusReady, 2, 0),
+		createTestNode("node3", api.NodeStatusReady, 5, 0),
 	}
 
 	excludedNodes := make(map[string]struct{})
@@ -52,9 +52,9 @@ func TestLeastBusyAlgorithm_FindLeastBusyNode_ExcludesNodes(t *testing.T) {
 	algorithm := &LeastBusyAlgorithm{}
 
 	nodes := []*nodemanager.Node{
-		createTestNode("node1", api.NodeStatusReady, 80, 0),
-		createTestNode("node2", api.NodeStatusReady, 20, 0),
-		createTestNode("node3", api.NodeStatusReady, 50, 0),
+		createTestNode("node1", api.NodeStatusReady, 8, 0),
+		createTestNode("node2", api.NodeStatusReady, 2, 0),
+		createTestNode("node3", api.NodeStatusReady, 5, 0),
 	}
 
 	excludedNodes := map[string]struct{}{
@@ -74,9 +74,9 @@ func TestLeastBusyAlgorithm_FindLeastBusyNode_NoAvailableNodes(t *testing.T) {
 
 	// Create all unhealthy nodes
 	nodes := []*nodemanager.Node{
-		createTestNode("node1", api.NodeStatusUnhealthy, 80, 0),
-		createTestNode("node2", api.NodeStatusUnhealthy, 20, 0),
-		createTestNode("node3", api.NodeStatusUnhealthy, 50, 0),
+		createTestNode("node1", api.NodeStatusUnhealthy, 8, 0),
+		createTestNode("node2", api.NodeStatusUnhealthy, 2, 0),
+		createTestNode("node3", api.NodeStatusUnhealthy, 5, 0),
 	}
 
 	excludedNodes := make(map[string]struct{})
@@ -92,9 +92,9 @@ func TestLeastBusyAlgorithm_FindLeastBusyNode_HandlesNilNodes(t *testing.T) {
 	algorithm := &LeastBusyAlgorithm{}
 
 	nodes := []*nodemanager.Node{
-		createTestNode("node1", api.NodeStatusReady, 80, 0),
+		createTestNode("node1", api.NodeStatusReady, 9, 0),
 		nil, // Nil node in the list
-		createTestNode("node3", api.NodeStatusReady, 50, 0),
+		createTestNode("node3", api.NodeStatusReady, 5, 0),
 	}
 
 	excludedNodes := make(map[string]struct{})
@@ -111,9 +111,9 @@ func TestLeastBusyAlgorithm_FindLeastBusyNode_SkipsOverloadedNodes(t *testing.T)
 	algorithm := &LeastBusyAlgorithm{}
 
 	// Create nodes with different in-progress counts
-	node1 := createTestNode("node1", api.NodeStatusReady, 80, 0)
-	node2 := createTestNode("node2", api.NodeStatusReady, 20, maxStartingInstancesPerNode+1)
-	node3 := createTestNode("node3", api.NodeStatusReady, 50, 0)
+	node1 := createTestNode("node1", api.NodeStatusReady, 8, 0)
+	node2 := createTestNode("node2", api.NodeStatusReady, 2, maxStartingInstancesPerNode+1)
+	node3 := createTestNode("node3", api.NodeStatusReady, 5, 0)
 
 	nodes := []*nodemanager.Node{node1, node2, node3}
 	excludedNodes := make(map[string]struct{})
@@ -135,8 +135,8 @@ func TestLeastBusyAlgorithm_ChooseNode_ContextTimeout(t *testing.T) {
 
 	// Create all unhealthy nodes to force waiting
 	nodes := []*nodemanager.Node{
-		createTestNode("node1", api.NodeStatusUnhealthy, 80, 0),
-		createTestNode("node2", api.NodeStatusUnhealthy, 20, 0),
+		createTestNode("node1", api.NodeStatusUnhealthy, 8, 0),
+		createTestNode("node2", api.NodeStatusUnhealthy, 2, 0),
 	}
 
 	excludedNodes := make(map[string]struct{})
@@ -165,9 +165,9 @@ func TestLeastBusyAlgorithm_FindLeastBusyNode_AllNodesExcluded(t *testing.T) {
 	algorithm := &LeastBusyAlgorithm{}
 
 	nodes := []*nodemanager.Node{
-		createTestNode("node1", api.NodeStatusReady, 80, 0),
-		createTestNode("node2", api.NodeStatusReady, 20, 0),
-		createTestNode("node3", api.NodeStatusReady, 50, 0),
+		createTestNode("node1", api.NodeStatusReady, 8, 0),
+		createTestNode("node2", api.NodeStatusReady, 2, 0),
+		createTestNode("node3", api.NodeStatusReady, 5, 0),
 	}
 
 	excludedNodes := map[string]struct{}{

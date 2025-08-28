@@ -32,9 +32,9 @@ func TestPlaceSandbox_SuccessfulPlacement(t *testing.T) {
 	tracer := noop.NewTracerProvider().Tracer("")
 
 	// Create test nodes
-	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 30, 4)
-	node2 := nodemanager.NewTestNode("node2", api.NodeStatusReady, 50, 4)
-	node3 := nodemanager.NewTestNode("node3", api.NodeStatusReady, 70, 4)
+	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 3, 4)
+	node2 := nodemanager.NewTestNode("node2", api.NodeStatusReady, 5, 4)
+	node3 := nodemanager.NewTestNode("node3", api.NodeStatusReady, 7, 4)
 	nodes := []*nodemanager.Node{node1, node2, node3}
 
 	// Create a mock algorithm that returns node2
@@ -63,9 +63,9 @@ func TestPlaceSandbox_WithPreferredNode(t *testing.T) {
 	tracer := noop.NewTracerProvider().Tracer("")
 
 	// Create test nodes
-	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 30, 4)
-	node2 := nodemanager.NewTestNode("node2", api.NodeStatusReady, 50, 4)
-	node3 := nodemanager.NewTestNode("node3", api.NodeStatusReady, 70, 4)
+	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 3, 4)
+	node2 := nodemanager.NewTestNode("node2", api.NodeStatusReady, 5, 4)
+	node3 := nodemanager.NewTestNode("node3", api.NodeStatusReady, 7, 4)
 	nodes := []*nodemanager.Node{node1, node2, node3}
 
 	sbxRequest := &orchestrator.SandboxCreateRequest{
@@ -119,7 +119,7 @@ func TestPlaceSandbox_ContextTimeout(t *testing.T) {
 	}
 
 	resultNode, err := PlaceSandbox(ctx, tracer, algorithm, []*nodemanager.Node{
-		nodemanager.NewTestNode("node1", api.NodeStatusReady, 30, 4),
+		nodemanager.NewTestNode("node1", api.NodeStatusReady, 3, 4),
 	}, nil, sbxRequest)
 
 	assert.Error(t, err)
@@ -164,7 +164,9 @@ func TestPlaceSandbox_AllNodesExcluded(t *testing.T) {
 		},
 	}
 
-	resultNode, err := PlaceSandbox(ctx, tracer, algorithm, []*nodemanager.Node{nodemanager.NewTestNode("node1", api.NodeStatusReady, 30, 4)}, nil, sbxRequest)
+	resultNode, err := PlaceSandbox(ctx, tracer, algorithm, []*nodemanager.Node{
+		nodemanager.NewTestNode("node1", api.NodeStatusReady, 3, 4),
+	}, nil, sbxRequest)
 
 	assert.Error(t, err)
 	assert.Nil(t, resultNode)

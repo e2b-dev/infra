@@ -26,6 +26,9 @@ type Algorithm interface {
 }
 
 func PlaceSandbox(ctx context.Context, tracer trace.Tracer, algorithm Algorithm, clusterNodes []*nodemanager.Node, preferredNode *nodemanager.Node, sbxRequest *orchestrator.SandboxCreateRequest) (*nodemanager.Node, error) {
+	ctx, span := tracer.Start(ctx, "place-sandbox")
+	defer span.End()
+
 	nodesExcluded := make(map[string]struct{})
 	var err error
 
@@ -41,7 +44,7 @@ func PlaceSandbox(ctx context.Context, tracer trace.Tracer, algorithm Algorithm,
 		var node *nodemanager.Node
 		if preferredNode != nil {
 			node = preferredNode
-			telemetry.ReportEvent(ctx, "Placing sandbox on the preferred node")
+			telemetry.ReportEvent(ctx, "Placing sandbox on the preferred node", telemetry.WithNodeID(node.ID))
 		} else {
 			if len(nodesExcluded) >= len(clusterNodes) {
 				return nil, fmt.Errorf("no nodes available")

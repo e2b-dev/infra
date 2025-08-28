@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
@@ -16,7 +17,7 @@ func TestBestOfK_Score(t *testing.T) {
 
 	// Create a test node with known metrics
 	// The node's CpuUsage is set to 50 via the constructor
-	node := nodemanager.NewTestNode("test-node", api.NodeStatusReady, 50, 4)
+	node := nodemanager.NewTestNode("test-node", api.NodeStatusReady, 2, 4)
 
 	resources := nodemanager.SandboxResources{
 		CPUs:      1,
@@ -29,7 +30,7 @@ func TestBestOfK_Score(t *testing.T) {
 	assert.GreaterOrEqual(t, score, 0.0)
 
 	// Test with different CPU usage
-	node2 := nodemanager.NewTestNode("test-node2", api.NodeStatusReady, 100, 4)
+	node2 := nodemanager.NewTestNode("test-node2", api.NodeStatusReady, 10, 4)
 	score2 := algo.Score(node2, resources)
 
 	// Higher CPU usage should result in higher score (worse)
@@ -42,7 +43,7 @@ func TestBestOfK_Score_PreferBiggerNode(t *testing.T) {
 
 	// Create a test node with known metrics
 	// The node's CpuUsage is set to 50 via the constructor
-	node := nodemanager.NewTestNode("test-node", api.NodeStatusReady, 50, 4)
+	node := nodemanager.NewTestNode("test-node", api.NodeStatusReady, 5, 4)
 
 	resources := nodemanager.SandboxResources{
 		CPUs:      1,
@@ -55,7 +56,7 @@ func TestBestOfK_Score_PreferBiggerNode(t *testing.T) {
 	assert.GreaterOrEqual(t, score, 0.0)
 
 	// Test with different CPU usage
-	node2 := nodemanager.NewTestNode("test-node2", api.NodeStatusReady, 100, 8)
+	node2 := nodemanager.NewTestNode("test-node2", api.NodeStatusReady, 1, 8)
 	score2 := algo.Score(node2, resources)
 
 	// Lower CPU count should result in higher score (worse) as the expected load is higher
@@ -67,7 +68,7 @@ func TestBestOfK_CanFit(t *testing.T) {
 	algo := NewBestOfK(config).(*BestOfK)
 
 	// Create a test node with moderate CPU usage
-	node := nodemanager.NewTestNode("test-node", api.NodeStatusReady, 50, 4)
+	node := nodemanager.NewTestNode("test-node", api.NodeStatusReady, 5, 4)
 
 	// Test can fit small resource request
 	resources := nodemanager.SandboxResources{
@@ -98,9 +99,9 @@ func TestBestOfK_ChooseNode(t *testing.T) {
 	algo := NewBestOfK(config).(*BestOfK)
 
 	// Create test nodes with different loads
-	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 80, 4)
-	node2 := nodemanager.NewTestNode("node2", api.NodeStatusReady, 20, 4)
-	node3 := nodemanager.NewTestNode("node3", api.NodeStatusReady, 50, 4)
+	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 8, 4)
+	node2 := nodemanager.NewTestNode("node2", api.NodeStatusReady, 2, 4)
+	node3 := nodemanager.NewTestNode("node3", api.NodeStatusReady, 5, 4)
 
 	nodes := []*nodemanager.Node{node1, node2, node3}
 	excludedNodes := make(map[string]struct{})
@@ -111,15 +112,9 @@ func TestBestOfK_ChooseNode(t *testing.T) {
 
 	// Test selection - should work with proper config
 	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources)
-
-	// If it fails, it's likely because nodes have 0 CPUs by default
-	// which is OK for this test - we're testing the algorithm logic
-	if err != nil {
-		assert.Contains(t, err.Error(), "no node available")
-	} else {
-		assert.NotNil(t, selected)
-		assert.Contains(t, []string{"node1", "node2", "node3"}, selected.ID)
-	}
+	require.NoError(t, err)
+	assert.NotNil(t, selected)
+	assert.Contains(t, []string{"node1", "node2", "node3"}, selected.ID)
 }
 
 func TestBestOfK_ChooseNode_WithExclusions(t *testing.T) {
@@ -132,9 +127,9 @@ func TestBestOfK_ChooseNode_WithExclusions(t *testing.T) {
 	algo := NewBestOfK(config).(*BestOfK)
 
 	// Create test nodes
-	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 80, 4)
-	node2 := nodemanager.NewTestNode("node2", api.NodeStatusReady, 20, 4)
-	node3 := nodemanager.NewTestNode("node3", api.NodeStatusReady, 50, 4)
+	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 8, 4)
+	node2 := nodemanager.NewTestNode("node2", api.NodeStatusReady, 2, 4)
+	node3 := nodemanager.NewTestNode("node3", api.NodeStatusReady, 5, 4)
 
 	nodes := []*nodemanager.Node{node1, node2, node3}
 
@@ -149,16 +144,10 @@ func TestBestOfK_ChooseNode_WithExclusions(t *testing.T) {
 	}
 
 	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources)
-
-	// Test may fail if nodes don't have CPU count set
-	if err != nil {
-		assert.Contains(t, err.Error(), "no node available")
-	} else {
-		assert.NotNil(t, selected)
-		// Should not select excluded node
-		assert.NotEqual(t, "node2", selected.ID)
-		assert.Contains(t, []string{"node1", "node3"}, selected.ID)
-	}
+	require.NoError(t, err)
+	// Should not select excluded node
+	assert.NotEqual(t, "node2", selected.ID)
+	assert.Contains(t, []string{"node1", "node3"}, selected.ID)
 }
 
 func TestBestOfK_ChooseNode_NoAvailableNodes(t *testing.T) {
@@ -167,8 +156,8 @@ func TestBestOfK_ChooseNode_NoAvailableNodes(t *testing.T) {
 	algo := NewBestOfK(config).(*BestOfK)
 
 	// Create unhealthy nodes
-	node1 := nodemanager.NewTestNode("node1", api.NodeStatusUnhealthy, 80, 4)
-	node2 := nodemanager.NewTestNode("node2", api.NodeStatusUnhealthy, 20, 4)
+	node1 := nodemanager.NewTestNode("node1", api.NodeStatusUnhealthy, 8, 4)
+	node2 := nodemanager.NewTestNode("node2", api.NodeStatusUnhealthy, 2, 4)
 
 	nodes := []*nodemanager.Node{node1, node2}
 	excludedNodes := make(map[string]struct{})
@@ -190,7 +179,7 @@ func TestBestOfK_Sample(t *testing.T) {
 	// Create many test nodes
 	var nodes []*nodemanager.Node
 	for i := 0; i < 10; i++ {
-		node := nodemanager.NewTestNode(string(rune('a'+i)), api.NodeStatusReady, int64(i*10), 4)
+		node := nodemanager.NewTestNode(string(rune('a'+i)), api.NodeStatusReady, int64(i), 4)
 		nodes = append(nodes, node)
 	}
 
@@ -234,7 +223,7 @@ func TestBestOfK_PowerOfKChoices(t *testing.T) {
 	// Create many nodes with varying loads
 	var nodes []*nodemanager.Node
 	for i := 0; i < 20; i++ {
-		node := nodemanager.NewTestNode(string(rune('A'+i)), api.NodeStatusReady, int64(i*5), 4)
+		node := nodemanager.NewTestNode(string(rune('A'+i)), api.NodeStatusReady, int64(float64(i)*0.5), 4)
 		nodes = append(nodes, node)
 	}
 
