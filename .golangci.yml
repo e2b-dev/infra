@@ -22,7 +22,6 @@ linters:
     - dogsled
     - durationcheck
     - govet
-    - govet
     - staticcheck
     - testifylint
     - thelper
