@@ -33,19 +33,12 @@ func (f *CreateSandbox) Sandbox(
 	layerExecutor *LayerExecutor,
 	template sbxtemplate.Template,
 ) (*sandbox.Sandbox, error) {
-	// Create new sandbox path
-	var oldMemfile block.ReadonlyDevice
-	oldMemfile, err := template.Memfile()
-	if err != nil {
-		return nil, fmt.Errorf("get memfile: %w", err)
-	}
-
 	// Create new memfile with the size of the sandbox RAM, this updates the underlying memfile.
 	// This is ok as the sandbox is started from the beginning.
 	var memfile block.ReadonlyDevice
-	memfile, err = block.NewEmpty(
+	memfile, err := block.NewEmpty(
 		f.config.RamMB<<constants.ToMBShift,
-		oldMemfile.BlockSize(),
+		config.MemfilePageSize(f.config.HugePages),
 		uuid.MustParse(template.Files().BuildID),
 	)
 	if err != nil {

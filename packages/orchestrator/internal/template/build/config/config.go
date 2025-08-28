@@ -45,8 +45,8 @@ type TemplateConfig struct {
 	Steps []*templatemanager.TemplateStep
 }
 
-func (e TemplateConfig) MemfilePageSize() int64 {
-	if e.HugePages {
+func MemfilePageSize(hugePages bool) int64 {
+	if hugePages {
 		return header.HugepageSize
 	}
 
