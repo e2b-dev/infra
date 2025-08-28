@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -31,10 +32,12 @@ const (
 	maxStartingInstancesPerNode = 3
 )
 
-func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
-	ctx, cancel := context.WithTimeoutCause(ctxConn, requestTimeout, fmt.Errorf("request timed out"))
+func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
+	// set max request timeout for this request
+	ctx, cancel := context.WithTimeoutCause(ctx, requestTimeout, fmt.Errorf("request timed out"))
 	defer cancel()
 
+	// set up tracing
 	ctx, childSpan := s.tracer.Start(ctx, "sandbox-create")
 	defer childSpan.End()
 
@@ -46,6 +49,20 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
+	// setup launch darkly
+	ctx = featureflags.SetContext(
+		ctx,
+		ldcontext.NewBuilder(req.Sandbox.SandboxId).
+			Kind(featureflags.SandboxKind).
+			SetString(featureflags.SandboxTemplateAttribute, req.Sandbox.TemplateId).
+			SetString(featureflags.SandboxKernelVersionAttribute, req.Sandbox.KernelVersion).
+			SetString(featureflags.SandboxFirecrackerVersionAttribute, req.Sandbox.FirecrackerVersion).
+			Build(),
+		ldcontext.NewBuilder(req.Sandbox.TeamId).
+			Kind(featureflags.TeamKind).
+			Build(),
+	)
+
 	// Check if we've reached the max number of starting instances on this node
 	acquired := s.startingSandboxes.TryAcquire(1)
 	if !acquired {
@@ -54,7 +71,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}
 	defer s.startingSandboxes.Release(1)
 
-	metricsWriteFlag, flagErr := s.featureFlags.BoolFlag(featureflags.MetricsWriteFlagName, req.Sandbox.SandboxId)
+	metricsWriteFlag, flagErr := s.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlagName)
 	if flagErr != nil {
 		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
 	}
@@ -323,6 +340,15 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {
 	ctx, childSpan := s.tracer.Start(ctx, "sandbox-pause")
 	defer childSpan.End()
+
+	// setup launch darkly
+	ctx = featureflags.SetContext(
+		ctx,
+		ldcontext.NewBuilder(in.SandboxId).
+			Kind(featureflags.SandboxKind).
+			SetString(featureflags.SandboxTemplateAttribute, in.TemplateId).
+			Build(),
+	)
 
 	s.pauseMu.Lock()
 

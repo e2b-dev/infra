@@ -2,7 +2,6 @@ package storage
 
 import (
 	"bytes"
-	"crypto/rand"
 	"io"
 	"os"
 	"path/filepath"
@@ -171,10 +170,60 @@ func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
 	}
 }
 
-func generateBytes(t *testing.T, n int) []byte {
-	buf := make([]byte, n)
-	count, err := rand.Read(buf)
+func TestMoveWithoutReplace_SuccessWhenDestMissing(t *testing.T) {
+	td := t.TempDir()
+	content := []byte("alpha")
+	src := filepath.Join(td, "src")
+	dst := filepath.Join(td, "dst")
+
+	require.NoError(t, os.WriteFile(src, content, 0o644))
+	err := moveWithoutReplace(src, dst)
 	require.NoError(t, err)
-	require.Equal(t, n, count)
-	return buf
+
+	// Dest has original content.
+	got, err := os.ReadFile(dst)
+	require.NoError(t, err)
+	assert.Equal(t, content, got)
+
+	_, err = os.Stat(src)
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestMoveWithoutReplace_FailWhenExists(t *testing.T) {
+	td := t.TempDir()
+	content := []byte("alpha")
+	secondContent := []byte("beta")
+	src := filepath.Join(td, "src")
+	dst := filepath.Join(td, "dst")
+
+	require.NoError(t, os.WriteFile(src, content, 0o644))
+	require.NoError(t, os.WriteFile(dst, secondContent, 0o644))
+	err := moveWithoutReplace(src, dst)
+	require.NoError(t, err)
+
+	// Dest has original content.
+	got, err := os.ReadFile(dst)
+	require.NoError(t, err)
+	assert.Equal(t, secondContent, got)
+
+	_, err = os.Stat(src)
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestMoveWithoutReplace_Fail(t *testing.T) {
+	td := t.TempDir()
+	content := []byte("alpha")
+	src := filepath.Join(td, "src")
+	require.NoError(t, os.WriteFile(src, content, 0o644))
+
+	roDir := filepath.Join(td, "ro")
+	require.NoError(t, os.Mkdir(roDir, 0o555)) // r-x only, no write
+	defer os.Chmod(roDir, 0o755)               // ensure cleanup possible
+
+	dst := filepath.Join(roDir, "dst")
+	err := moveWithoutReplace(src, dst)
+	require.Error(t, err)
+
+	_, err = os.Stat(src)
+	assert.ErrorIs(t, err, os.ErrNotExist)
 }

@@ -106,7 +106,7 @@ func (c *Cache) GetTemplate(
 	persistence := c.persistence
 	// Because of the template caching, if we enable the shared cache feature flag,
 	// it will start working only for new orchestrators or new builds.
-	if c.useNFSCache(isBuilding, isSnapshot) {
+	if c.useNFSCache(ctx, isBuilding, isSnapshot) {
 		zap.L().Info("using local template cache", zap.String("path", c.rootCachePath))
 		persistence = storage.NewCachedProvider(c.rootCachePath, persistence)
 	}
@@ -133,7 +133,9 @@ func (c *Cache) GetTemplate(
 	)
 
 	if !found {
-		go storageTemplate.Fetch(ctx, c.buildStore)
+		// We don't want to cancel the request if the request was canceled, because it can be used by other templates
+		// It's little bit problematic, because shutdown won't cancel the fetch
+		go storageTemplate.Fetch(context.WithoutCancel(ctx), c.buildStore)
 	}
 
 	return t.Value(), nil
@@ -187,13 +189,15 @@ func (c *Cache) AddSnapshot(
 	)
 
 	if !found {
-		go storageTemplate.Fetch(ctx, c.buildStore)
+		// We don't want to cancel the request if the request was canceled/finished
+		// It's a little bit problematic, because shutdown won't cancel the fetch
+		go storageTemplate.Fetch(context.WithoutCancel(ctx), c.buildStore)
 	}
 
 	return nil
 }
 
-func (c *Cache) useNFSCache(isBuilding bool, isSnapshot bool) bool {
+func (c *Cache) useNFSCache(ctx context.Context, isBuilding bool, isSnapshot bool) bool {
 	if isBuilding {
 		// caching this layer doesn't speed up the next sandbox launch,
 		// as the previous template isn't used to load the one that's being built.
@@ -212,7 +216,7 @@ func (c *Cache) useNFSCache(isBuilding bool, isSnapshot bool) bool {
 		flagName = featureflags.TemplateFeatureFlagName
 	}
 
-	flag, err := c.flags.BoolFlag(flagName, "")
+	flag, err := c.flags.BoolFlag(ctx, flagName)
 	if err != nil {
 		zap.L().Error("failed to get nfs cache feature flag", zap.Error(err))
 	}

@@ -740,7 +740,12 @@ func pauseProcessMemory(
 		attribute.String("snapshot.metadata.base_build_id", memfileMetadata.BaseBuildId.String()),
 	)
 
-	return memfileDiff, header.NewHeader(memfileMetadata, memfileMappings), nil
+	memfileHeader, err := header.NewHeader(memfileMetadata, memfileMappings)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create memfile header: %w", err)
+	}
+
+	return memfileDiff, memfileHeader, nil
 }
 
 func pauseProcessRootfs(
@@ -792,7 +797,12 @@ func pauseProcessRootfs(
 		attribute.Int64("snapshot.rootfs.block_size", int64(rootfsMetadata.BlockSize)),
 	)
 
-	return rootfsDiff, header.NewHeader(rootfsMetadata, rootfsMappings), nil
+	rootfsHeader, err := header.NewHeader(rootfsMetadata, rootfsMappings)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create rootfs header: %w", err)
+	}
+
+	return rootfsDiff, rootfsHeader, nil
 }
 
 func getNetworkSlotAsync(

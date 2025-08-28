@@ -68,7 +68,7 @@ func (es *SandboxEventsService) HandleEvent(ctx context.Context, event event.San
 
 func (es *SandboxEventsService) handlePubSubEvent(ctx context.Context, event event.SandboxEvent) {
 	sandboxEventsPublishFlag, flagErr := es.featureFlags.BoolFlag(
-		featureflags.SandboxEventsPublishFlagName, event.SandboxID)
+		ctx, featureflags.SandboxEventsPublishFlagName, featureflags.SandboxContext(event.SandboxID))
 	if flagErr != nil {
 		es.logger.Error("soft failing during sandbox events publish feature flag receive", zap.Error(flagErr))
 	}
@@ -109,7 +109,7 @@ func (es *SandboxEventsService) Close(ctx context.Context) error {
 
 func (es *SandboxEventsService) handleClickhouseBatcherEvent(event event.SandboxEvent) {
 	sandboxLifeCycleEventsWriteFlag, flagErr := es.featureFlags.BoolFlag(
-		featureflags.SandboxLifeCycleEventsWriteFlagName, event.SandboxID)
+		context.Background(), featureflags.SandboxLifeCycleEventsWriteFlagName, featureflags.SandboxContext(event.SandboxID))
 	if flagErr != nil {
 		es.logger.Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
 	}

@@ -248,7 +248,7 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
 
-	limiter, err := limit.New(featureFlags)
+	limiter, err := limit.New(ctx, featureFlags)
 	if err != nil {
 		zap.L().Fatal("failed to create limiter", zap.Error(err))
 	}
@@ -281,17 +281,17 @@ func run(port, proxyPort uint) (success bool) {
 		}
 
 		maxBatchSize := 100
-		if val, err := featureFlags.IntFlag(featureflags.ClickhouseBatcherMaxBatchSize, "clickhouse-batcher"); err == nil {
+		if val, err := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherMaxBatchSize); err == nil {
 			maxBatchSize = int(val)
 		}
 
 		maxDelay := 1 * time.Second
-		if val, err := featureFlags.IntFlag(featureflags.ClickhouseBatcherMaxDelay, "clickhouse-batcher"); err == nil {
+		if val, err := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherMaxDelay); err == nil {
 			maxDelay = time.Duration(val) * time.Millisecond
 		}
 
 		bactherQueueSize := 1000
-		if val, err := featureFlags.IntFlag(featureflags.ClickhouseBatcherQueueSize, "clickhouse-batcher"); err == nil {
+		if val, err := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherQueueSize, featureflags.SandboxContext("clickhouse-batcher")); err == nil {
 			bactherQueueSize = val
 		}
 

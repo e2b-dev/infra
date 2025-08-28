@@ -81,7 +81,7 @@ func NewStorage(
 			return nil, fmt.Errorf("unsupported file type: %s", fileType)
 		}
 
-		h = header.NewHeader(&header.Metadata{
+		h, err = header.NewHeader(&header.Metadata{
 			// The version is always 1 for the old style template without a header.
 			Version:     1,
 			BuildId:     id,
@@ -90,6 +90,9 @@ func NewStorage(
 			BlockSize:   blockSize,
 			Generation:  1,
 		}, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create header for old style template: %w", err)
+		}
 	}
 
 	b := build.NewFile(h, store, fileType, persistence, metrics)

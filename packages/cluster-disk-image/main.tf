@@ -25,6 +25,12 @@ resource "google_compute_subnetwork" "packer_subnetwork" {
   ip_cidr_range = "10.0.0.0/8"
   name          = "${var.network_name}-subnetwork"
   network       = google_compute_network.packer_network.id
+
+  log_config {
+    aggregation_interval = "INTERVAL_15_MIN"
+    flow_sampling        = 0
+    metadata             = "EXCLUDE_ALL_METADATA"
+  }
 }
 
 
