@@ -12,7 +12,6 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -186,19 +185,19 @@ func (c *CachedFileObjectProvider) Delete() error {
 }
 
 func (c *CachedFileObjectProvider) makeTempFullFilename() string {
-	uniqueID := uuid.NewString()
+	tempFilename := uuid.NewString()
 
-	return fmt.Sprintf("%s.link.%s", c.path, uniqueID)
+	return fmt.Sprintf("%s/.temp.content.bin.%s", c.path, tempFilename)
 }
 
 func (c *CachedFileObjectProvider) makeFullFilename() string {
 	return fmt.Sprintf("%s/content.bin", c.path)
 }
 
-func (c *CachedFileObjectProvider) makeTempChunkFilename(chunkPath string) string {
-	uniqueID := uuid.NewString()
+func (c *CachedFileObjectProvider) makeTempChunkFilename(offset int64) string {
+	tempFilename := uuid.NewString()
 
-	return fmt.Sprintf("%s.link.%s", chunkPath, uniqueID)
+	return fmt.Sprintf("%s/.temp.%012d-%d.bin.%s", c.path, offset/c.chunkSize, c.chunkSize, tempFilename)
 }
 
 func (c *CachedFileObjectProvider) makeChunkFilename(offset int64) string {
@@ -206,11 +205,11 @@ func (c *CachedFileObjectProvider) makeChunkFilename(offset int64) string {
 }
 
 func (c *CachedFileObjectProvider) writeChunkToCache(offset int64, chunkPath string, bytes []byte) {
-	chunkPathWithSuffix := c.makeTempChunkFilename(chunkPath)
+	tempPath := c.makeTempChunkFilename(offset)
 
-	if err := os.WriteFile(chunkPathWithSuffix, bytes, cacheFilePermissions); err != nil {
+	if err := os.WriteFile(tempPath, bytes, cacheFilePermissions); err != nil {
 		zap.L().Error("failed to write temp cache file",
-			zap.String("chunkPathWithSuffix", chunkPathWithSuffix),
+			zap.String("tempPath", tempPath),
 			zap.String("chunkPath", chunkPath),
 			zap.Int64("offset", offset),
 			zap.Int("length", len(bytes)),
@@ -220,9 +219,9 @@ func (c *CachedFileObjectProvider) writeChunkToCache(offset int64, chunkPath str
 		return
 	}
 
-	if err := hardLinkFile(chunkPathWithSuffix, chunkPath); err != nil {
+	if err := renameWithoutReplace(tempPath, chunkPath); err != nil {
 		zap.L().Error("failed to rename temp file",
-			zap.String("chunkPathWithSuffix", chunkPathWithSuffix),
+			zap.String("tempPath", tempPath),
 			zap.String("chunkPath", chunkPath),
 			zap.Int64("offset", offset),
 			zap.Int("length", len(bytes)),
@@ -234,11 +233,11 @@ func (c *CachedFileObjectProvider) writeChunkToCache(offset int64, chunkPath str
 }
 
 func (c *CachedFileObjectProvider) writeFullFileToCache(filePath string, b []byte) {
-	filePathWithUniqueSuffix := c.makeTempFullFilename()
+	tempPath := c.makeTempFullFilename()
 
-	if err := os.WriteFile(filePathWithUniqueSuffix, b, cacheFilePermissions); err != nil {
+	if err := os.WriteFile(tempPath, b, cacheFilePermissions); err != nil {
 		zap.L().Error("failed to write temp cache file",
-			zap.String("path", filePathWithUniqueSuffix),
+			zap.String("path", tempPath),
 			zap.Int("length", len(b)),
 			zap.Error(err),
 		)
@@ -246,9 +245,9 @@ func (c *CachedFileObjectProvider) writeFullFileToCache(filePath string, b []byt
 		return
 	}
 
-	if err := hardLinkFile(filePathWithUniqueSuffix, filePath); err != nil {
+	if err := renameWithoutReplace(tempPath, filePath); err != nil {
 		zap.L().Error("failed to rename temp file",
-			zap.String("filePathWithUniqueSuffix", filePathWithUniqueSuffix),
+			zap.String("tempPath", tempPath),
 			zap.String("filePath", filePath),
 			zap.Int("length", len(b)),
 			zap.Error(err),
@@ -305,17 +304,17 @@ func ignoreEOF(err error) error {
 	return err
 }
 
-// hardLinkFile tries to rename a file but will not replace the target if it already exists.
+// renameWithoutReplace tries to rename a file but will not replace the target if it already exists.
 // If the file already exists, the file will be deleted.
-func hardLinkFile(oldPath, newPath string) error {
+func renameWithoutReplace(oldPath, newPath string) error {
 	defer func() {
 		if err := os.Remove(oldPath); err != nil {
 			zap.L().Warn("failed to remove existing file", zap.Error(err))
 		}
 	}()
 
-	if err := unix.Linkat(unix.AT_FDCWD, oldPath, unix.AT_FDCWD, newPath, 0); err != nil {
-		if errors.Is(err, unix.EEXIST) {
+	if err := os.Link(oldPath, newPath); err != nil {
+		if errors.Is(err, os.ErrExist) {
 			// Someone else created newPath first. Treat as success.
 			return nil
 		}
