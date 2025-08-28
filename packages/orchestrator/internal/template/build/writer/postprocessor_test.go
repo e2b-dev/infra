@@ -38,7 +38,7 @@ func TestPostProcessor_Start(t *testing.T) {
 	}
 
 	// we control the invocation of `start` so we can
-	//verify that context cancellation works
+	// verify that context cancellation works
 	end := make(chan struct{}, 1)
 	go func() {
 		p.start(ctx)
