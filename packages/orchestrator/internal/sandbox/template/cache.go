@@ -133,7 +133,9 @@ func (c *Cache) GetTemplate(
 	)
 
 	if !found {
-		go storageTemplate.Fetch(ctx, c.buildStore)
+		// We don't want to cancel the request if the request was canceled, because it can be used by other templates
+		// It's little bit problematic, because shutdown won't cancel the fetch
+		go storageTemplate.Fetch(context.WithoutCancel(ctx), c.buildStore)
 	}
 
 	return t.Value(), nil
@@ -187,7 +189,9 @@ func (c *Cache) AddSnapshot(
 	)
 
 	if !found {
-		go storageTemplate.Fetch(ctx, c.buildStore)
+		// We don't want to cancel the request if the request was canceled/finished
+		// It's a little bit problematic, because shutdown won't cancel the fetch
+		go storageTemplate.Fetch(context.WithoutCancel(ctx), c.buildStore)
 	}
 
 	return nil
