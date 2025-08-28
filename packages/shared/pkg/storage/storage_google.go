@@ -184,7 +184,7 @@ func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte
 }
 
 func (g *GCPBucketStorageObjectProvider) Write(ctx context.Context, data []byte) (int, error) {
-	w := g.handle.NewWriter(g.ctx)
+	w := g.handle.NewWriter(ctx)
 	defer w.Close()
 
 	n, err := w.Write(data)
@@ -248,7 +248,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 	if g.limiter != nil {
 		uploadLimiter := g.limiter.GCloudUploadLimiter()
 		if uploadLimiter != nil {
-			semaphoreErr := uploadLimiter.Acquire(g.ctx, 1)
+			semaphoreErr := uploadLimiter.Acquire(ctx, 1)
 			if semaphoreErr != nil {
 				return fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
 			}
@@ -259,7 +259,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 	}
 
 	uploader, err := NewMultipartUploaderWithRetryConfig(
-		g.ctx,
+		ctx,
 		bucketName,
 		objectName,
 		DefaultRetryConfig(),
@@ -269,7 +269,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 	}
 
 	start := time.Now()
-	if err := uploader.UploadFileInParallel(g.ctx, filePath, maxConcurrency); err != nil {
+	if err := uploader.UploadFileInParallel(ctx, filePath, maxConcurrency); err != nil {
 		return fmt.Errorf("failed to upload file in parallel: %w", err)
 	}
 
