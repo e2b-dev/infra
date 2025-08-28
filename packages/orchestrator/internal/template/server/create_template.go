@@ -82,7 +82,6 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 			{Type: zapcore.StringType, Key: "buildID", String: metadata.BuildID},
 		}),
 	)
-	logger := zap.New(core)
 
 	s.wg.Add(1)
 	go func(ctx context.Context) {
@@ -114,8 +113,8 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 			}
 		}()
 
-		res, err := s.builder.Build(ctx, metadata, template, logger)
-		_ = logger.Sync()
+		res, err := s.builder.Build(ctx, metadata, template, core)
+		_ = core.Sync()
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error while building template", err)
 

@@ -11,8 +11,9 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-func newTestLogger(buf *bytes.Buffer) *zap.Logger {
+func newTestCore(buf *bytes.Buffer) zapcore.Core {
 	encoderCfg := zap.NewDevelopmentEncoderConfig()
+	encoderCfg.TimeKey = ""
 	encoder := zapcore.NewConsoleEncoder(encoderCfg)
 
 	core := zapcore.NewCore(
@@ -21,41 +22,42 @@ func newTestLogger(buf *bytes.Buffer) *zap.Logger {
 		zapcore.DebugLevel,
 	)
 
-	return zap.New(core)
+	return core
 }
 
 func TestPostProcessor_Start(t *testing.T) {
 	var buf bytes.Buffer
-	logger := newTestLogger(&buf)
+	core := newTestCore(&buf)
 
 	ctx := t.Context()
 	ctx, cancel := context.WithCancel(ctx)
 
-	p := PostProcessor{
-		Logger:         logger,
-		ticker:         time.NewTicker(time.Second),
-		tickerInterval: time.Second,
-	}
+	interval := time.Millisecond * 100
+	halfInterval := time.Duration(float64(interval) * 0.5)
 
-	// we control the invocation of `start` so we can
-	// verify that context cancellation works
-	end := make(chan struct{}, 1)
-	go func() {
-		p.start(ctx)
-		end <- struct{}{}
-	}()
+	core = NewPostProcessor(ctx, interval, core)
+	logger := zap.New(core)
 
 	// log some info
-	p.Info("info message")
-	p.Error("error message")
+	logger.Info("info message")
+	time.Sleep(halfInterval)
+	logger.Error("error message")
+	time.Sleep(interval + halfInterval)
+	logger.Warn("warn message")
+	time.Sleep(interval + interval + halfInterval)
 
 	// stop the post processor
 	cancel()
 
-	// Wait for the start goroutine to finish
-	<-end
+	logger.Info("test is complete")
 
 	logs := buf.String()
-	assert.Contains(t, logs, "info message")
-	assert.Contains(t, logs, "error message")
+	assert.Equal(t, logs, `INFO	info message
+ERROR	error message
+INFO	...
+WARN	warn message
+INFO	...
+INFO	...
+INFO	test is complete
+`)
 }

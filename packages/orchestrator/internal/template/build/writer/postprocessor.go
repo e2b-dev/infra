@@ -8,61 +8,49 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-const defaultTickerInterval = 5 * time.Second
-
+// PostProcessor prints out "..." 5 seconds after every log
+// message, if no other logs have been printed
 type PostProcessor struct {
-	*zap.Logger
+	logger *zap.Logger
 
-	tickerInterval time.Duration
+	resetCh chan struct{}
+}
 
-	ticker *time.Ticker
+func (p *PostProcessor) Hook(e zapcore.Entry) error {
+	if p.resetCh == nil {
+		return nil
+	}
+
+	p.resetCh <- struct{}{}
+	return nil
 }
 
 // Start the post-processing.
-func (p *PostProcessor) start(ctx context.Context) {
-	for {
-		msg := "..."
+func (p *PostProcessor) run(ctx context.Context, interval time.Duration) {
+	t := time.NewTicker(interval)
 
+	for {
 		select {
 		case <-ctx.Done():
+			ch := p.resetCh
+			p.resetCh = nil
+			close(ch)
 			return
-		case <-p.ticker.C:
-			p.Info(msg)
+		case <-t.C:
+			p.logger.Info("...")
+		case <-p.resetCh:
+			t.Reset(interval)
 		}
 	}
 }
 
-func (p *PostProcessor) Log(lvl zapcore.Level, msg string, fields ...zap.Field) {
-	p.ticker.Reset(p.tickerInterval)
-	p.Logger.Log(lvl, msg, fields...)
-}
-
-func (p *PostProcessor) Debug(msg string, fields ...zap.Field) {
-	p.Log(zapcore.DebugLevel, msg, fields...)
-}
-
-func (p *PostProcessor) Info(msg string, fields ...zap.Field) {
-	p.Log(zapcore.InfoLevel, msg, fields...)
-}
-
-func (p *PostProcessor) Error(msg string, fields ...zap.Field) {
-	p.Log(zapcore.ErrorLevel, msg, fields...)
-}
-
-func NewPostProcessor(ctx context.Context, writer *zap.Logger, enableTicker bool) *PostProcessor {
-	// If ticker is not enabled, we use a ticker that ticks way past the build time
-	tickerInterval := 24 * time.Hour
-	if enableTicker {
-		tickerInterval = defaultTickerInterval
-	}
-
+func NewPostProcessor(ctx context.Context, interval time.Duration, core zapcore.Core) zapcore.Core {
 	pp := &PostProcessor{
-		Logger:         writer,
-		tickerInterval: tickerInterval,
-		ticker:         time.NewTicker(tickerInterval),
+		logger:  zap.New(core),
+		resetCh: make(chan struct{}, 5),
 	}
 
-	go pp.start(ctx)
+	go pp.run(ctx, interval)
 
-	return pp
+	return zapcore.RegisterHooks(core, pp.Hook)
 }

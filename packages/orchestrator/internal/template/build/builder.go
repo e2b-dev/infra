@@ -8,6 +8,7 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -96,7 +97,7 @@ type Result struct {
 //
 // 8. Snapshot
 // 9. Upload template (and all not yet uploaded layers)
-func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, config config.TemplateConfig, logsWriter *zap.Logger) (r *Result, e error) {
+func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, config config.TemplateConfig, logsCore zapcore.Core) (r *Result, e error) {
 	ctx, childSpan := b.tracer.Start(ctx, "build")
 	defer childSpan.End()
 
@@ -126,19 +127,24 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 	isV1Build := config.FromImage == "" && config.FromTemplate == nil
 
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	if isV1Build {
+		logsCore = writer.NewPostProcessor(ctx, 5*time.Second, logsCore)
+	}
 
-	postProcessor := writer.NewPostProcessor(ctx, logsWriter, isV1Build)
+	logger := zap.New(logsCore)
+
 	defer func() {
+		cancel()
+
 		if e != nil {
-			postProcessor.Error(fmt.Sprintf("Build failed: %v", e))
+			logger.Error(fmt.Sprintf("Build failed: %v", e))
 		} else {
-			postProcessor.Info(fmt.Sprintf("Build finished, took %s",
+			logger.Info(fmt.Sprintf("Build finished, took %s",
 				time.Since(startTime).Truncate(time.Second).String()))
 		}
 	}()
 
-	postProcessor.Info(fmt.Sprintf("Building template %s/%s", config.TemplateID, template.BuildID))
+	logger.Info(fmt.Sprintf("Building template %s/%s", config.TemplateID, template.BuildID))
 
 	defer func(ctx context.Context) {
 		if e == nil {
@@ -169,7 +175,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 	buildContext := buildcontext.BuildContext{
 		Config:         config,
 		Template:       template,
-		UserLogger:     postProcessor,
+		UserLogger:     logger,
 		UploadErrGroup: uploadErrGroup,
 		EnvdVersion:    envdVersion,
 		CacheScope:     cacheScope,
