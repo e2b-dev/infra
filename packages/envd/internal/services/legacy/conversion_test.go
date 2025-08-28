@@ -15,10 +15,11 @@ import (
 
 	"github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem/filesystemconnect"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem/filesystemconnect/mocks"
 )
 
 func TestFilesystemClient_FieldFormatter(t *testing.T) {
-	fsh := NewMockFilesystemHandler(t)
+	fsh := filesystemconnectmocks.NewMockFilesystemHandler(t)
 	fsh.EXPECT().Move(mock.Anything, mock.Anything).Return(connect.NewResponse(&filesystem.MoveResponse{
 		Entry: &filesystem.EntryInfo{
 			Name:  "test-name",

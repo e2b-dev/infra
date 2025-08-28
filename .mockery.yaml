@@ -1,17 +1,16 @@
-#  go run github.com/vektra/mockery/v3@v3.5.0
-
 packages:
   github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem/filesystemconnect:
     interfaces:
       FilesystemHandler:
         config:
-          dir: packages/envd/internal/services/legacy
-          pkgname: legacy
+          dir: packages/envd/internal/services/spec/filesystem/filesystemconnect/mocks
+          filename: mocks.go
+          pkgname: filesystemconnectmocks
 
   github.com/e2b-dev/infra/packages/shared/pkg/storage:
     interfaces:
       StorageObjectProvider:
         config:
-          dir: packages/shared/pkg/storage
-          filename: storage_test.go
-          pkgname: storage
+          dir: packages/shared/pkg/storage/mocks
+          filename: mocks.go
+          pkgname: storagemocks
