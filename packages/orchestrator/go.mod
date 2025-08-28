@@ -148,13 +148,13 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
 	github.com/launchdarkly/ccache v1.1.0 // indirect
-	github.com/launchdarkly/eventsource v1.8.0 // indirect
+	github.com/launchdarkly/eventsource v1.10.0 // indirect
 	github.com/launchdarkly/go-jsonstream/v3 v3.1.0 // indirect
-	github.com/launchdarkly/go-sdk-common/v3 v3.1.0 // indirect
+	github.com/launchdarkly/go-sdk-common/v3 v3.3.0
 	github.com/launchdarkly/go-sdk-events/v3 v3.5.0 // indirect
 	github.com/launchdarkly/go-semver v1.0.3 // indirect
 	github.com/launchdarkly/go-server-sdk-evaluation/v3 v3.0.1 // indirect
-	github.com/launchdarkly/go-server-sdk/v7 v7.10.0 // indirect
+	github.com/launchdarkly/go-server-sdk/v7 v7.13.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20240909124753-873cd0166683 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
