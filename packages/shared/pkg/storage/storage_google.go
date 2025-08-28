@@ -42,7 +42,6 @@ type GCPBucketStorageObjectProvider struct {
 	storage *GCPBucketStorageProvider
 	path    string
 	handle  *storage.ObjectHandle
-	ctx     context.Context // nolint:containedctx // todo: fix the interface so this can be removed
 
 	limiter *limit.Limiter
 }
@@ -124,21 +123,20 @@ func (g *GCPBucketStorageProvider) OpenObject(ctx context.Context, path string) 
 		storage: g,
 		path:    path,
 		handle:  handle,
-		ctx:     ctx,
 
 		limiter: g.limiter,
 	}, nil
 }
 
-func (g *GCPBucketStorageObjectProvider) Delete() error {
-	ctx, cancel := context.WithTimeout(g.ctx, googleOperationTimeout)
+func (g *GCPBucketStorageObjectProvider) Delete(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
 	defer cancel()
 
 	return g.handle.Delete(ctx)
 }
 
-func (g *GCPBucketStorageObjectProvider) Size() (int64, error) {
-	ctx, cancel := context.WithTimeout(g.ctx, googleOperationTimeout)
+func (g *GCPBucketStorageObjectProvider) Size(ctx context.Context) (int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
 	defer cancel()
 
 	attrs, err := g.handle.Attrs(ctx)

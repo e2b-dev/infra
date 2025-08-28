@@ -34,7 +34,7 @@ func TestOpenObject_ReadWrite_Size_ReadAt(t *testing.T) {
 	require.Equal(t, len(contents), n)
 
 	// check Size
-	size, err := obj.Size()
+	size, err := obj.Size(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, int64(len(contents)), size)
 
@@ -81,10 +81,10 @@ func TestDelete(t *testing.T) {
 
 	_, err = obj.Write(t.Context(), []byte("bye"))
 	require.NoError(t, err)
-	require.NoError(t, obj.Delete())
+	require.NoError(t, obj.Delete(t.Context()))
 
 	// subsequent Size call should fail with ErrorObjectNotExist
-	_, err = obj.Size()
+	_, err = obj.Size(t.Context())
 	require.ErrorIs(t, err, ErrorObjectNotExist)
 }
 

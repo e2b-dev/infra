@@ -59,7 +59,7 @@ func NewStorage(
 			return nil, err
 		}
 
-		size, err := object.Size()
+		size, err := object.Size(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get object size: %w", err)
 		}

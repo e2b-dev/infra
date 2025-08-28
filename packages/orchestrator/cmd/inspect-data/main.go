@@ -52,7 +52,7 @@ func main() {
 		log.Fatalf("failed to open object: %s", err)
 	}
 
-	size, err := obj.Size()
+	size, err := obj.Size(ctx)
 	if err != nil {
 		log.Fatalf("failed to get object size: %s", err)
 	}

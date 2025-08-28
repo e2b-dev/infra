@@ -34,7 +34,6 @@ type AWSBucketStorageObjectProvider struct {
 	client     *s3.Client
 	path       string
 	bucketName string
-	ctx        context.Context // nolint:containedctx // todo: fix the interface so this can be removed
 }
 
 var _ StorageObjectProvider = (*AWSBucketStorageObjectProvider)(nil)
@@ -107,7 +106,6 @@ func (a *AWSBucketStorageProvider) OpenObject(ctx context.Context, path string) 
 		client:     a.client,
 		bucketName: a.bucketName,
 		path:       path,
-		ctx:        ctx,
 	}, nil
 }
 
@@ -214,8 +212,8 @@ func (a *AWSBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte
 	return n, err
 }
 
-func (a *AWSBucketStorageObjectProvider) Size() (int64, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, awsOperationTimeout)
+func (a *AWSBucketStorageObjectProvider) Size(ctx context.Context) (int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
 	defer cancel()
 
 	resp, err := a.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: &a.bucketName, Key: &a.path})
@@ -231,8 +229,8 @@ func (a *AWSBucketStorageObjectProvider) Size() (int64, error) {
 	return *resp.ContentLength, nil
 }
 
-func (a *AWSBucketStorageObjectProvider) Delete() error {
-	ctx, cancel := context.WithTimeout(a.ctx, awsOperationTimeout)
+func (a *AWSBucketStorageObjectProvider) Delete(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
 	defer cancel()
 
 	_, err := a.client.DeleteObject(

@@ -39,16 +39,16 @@ func (_m *MockStorageObjectProvider) EXPECT() *MockStorageObjectProvider_Expecte
 }
 
 // Delete provides a mock function for the type MockStorageObjectProvider
-func (_mock *MockStorageObjectProvider) Delete() error {
-	ret := _mock.Called()
+func (_mock *MockStorageObjectProvider) Delete(ctx context.Context) error {
+	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Delete")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func() error); ok {
-		r0 = returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) error); ok {
+		r0 = returnFunc(ctx)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -61,13 +61,20 @@ type MockStorageObjectProvider_Delete_Call struct {
 }
 
 // Delete is a helper method to define mock.On call
-func (_e *MockStorageObjectProvider_Expecter) Delete() *MockStorageObjectProvider_Delete_Call {
-	return &MockStorageObjectProvider_Delete_Call{Call: _e.mock.On("Delete")}
+//   - ctx context.Context
+func (_e *MockStorageObjectProvider_Expecter) Delete(ctx interface{}) *MockStorageObjectProvider_Delete_Call {
+	return &MockStorageObjectProvider_Delete_Call{Call: _e.mock.On("Delete", ctx)}
 }
 
-func (_c *MockStorageObjectProvider_Delete_Call) Run(run func()) *MockStorageObjectProvider_Delete_Call {
+func (_c *MockStorageObjectProvider_Delete_Call) Run(run func(ctx context.Context)) *MockStorageObjectProvider_Delete_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
 	})
 	return _c
 }
@@ -77,7 +84,7 @@ func (_c *MockStorageObjectProvider_Delete_Call) Return(err error) *MockStorageO
 	return _c
 }
 
-func (_c *MockStorageObjectProvider_Delete_Call) RunAndReturn(run func() error) *MockStorageObjectProvider_Delete_Call {
+func (_c *MockStorageObjectProvider_Delete_Call) RunAndReturn(run func(ctx context.Context) error) *MockStorageObjectProvider_Delete_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -155,8 +162,8 @@ func (_c *MockStorageObjectProvider_ReadAt_Call) RunAndReturn(run func(ctx conte
 }
 
 // Size provides a mock function for the type MockStorageObjectProvider
-func (_mock *MockStorageObjectProvider) Size() (int64, error) {
-	ret := _mock.Called()
+func (_mock *MockStorageObjectProvider) Size(ctx context.Context) (int64, error) {
+	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Size")
@@ -164,16 +171,16 @@ func (_mock *MockStorageObjectProvider) Size() (int64, error) {
 
 	var r0 int64
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func() (int64, error)); ok {
-		return returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (int64, error)); ok {
+		return returnFunc(ctx)
 	}
-	if returnFunc, ok := ret.Get(0).(func() int64); ok {
-		r0 = returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) int64); ok {
+		r0 = returnFunc(ctx)
 	} else {
 		r0 = ret.Get(0).(int64)
 	}
-	if returnFunc, ok := ret.Get(1).(func() error); ok {
-		r1 = returnFunc()
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -186,13 +193,20 @@ type MockStorageObjectProvider_Size_Call struct {
 }
 
 // Size is a helper method to define mock.On call
-func (_e *MockStorageObjectProvider_Expecter) Size() *MockStorageObjectProvider_Size_Call {
-	return &MockStorageObjectProvider_Size_Call{Call: _e.mock.On("Size")}
+//   - ctx context.Context
+func (_e *MockStorageObjectProvider_Expecter) Size(ctx interface{}) *MockStorageObjectProvider_Size_Call {
+	return &MockStorageObjectProvider_Size_Call{Call: _e.mock.On("Size", ctx)}
 }
 
-func (_c *MockStorageObjectProvider_Size_Call) Run(run func()) *MockStorageObjectProvider_Size_Call {
+func (_c *MockStorageObjectProvider_Size_Call) Run(run func(ctx context.Context)) *MockStorageObjectProvider_Size_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
 	})
 	return _c
 }
@@ -202,7 +216,7 @@ func (_c *MockStorageObjectProvider_Size_Call) Return(n int64, err error) *MockS
 	return _c
 }
 
-func (_c *MockStorageObjectProvider_Size_Call) RunAndReturn(run func() (int64, error)) *MockStorageObjectProvider_Size_Call {
+func (_c *MockStorageObjectProvider_Size_Call) RunAndReturn(run func(ctx context.Context) (int64, error)) *MockStorageObjectProvider_Size_Call {
 	_c.Call.Return(run)
 	return _c
 }

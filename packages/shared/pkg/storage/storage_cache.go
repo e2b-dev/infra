@@ -74,7 +74,7 @@ func (c *CachedFileObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (
 	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.WriteAt")
 	defer span.End()
 
-	totalSize, err := c.Size()
+	totalSize, err := c.Size(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -187,14 +187,14 @@ func (c *CachedFileObjectProvider) validateReadAtParams(buffSize, offset int64) 
 	return nil
 }
 
-func (c *CachedFileObjectProvider) Size() (int64, error) {
+func (c *CachedFileObjectProvider) Size(ctx context.Context) (int64, error) {
 	// we don't have a mechanism to store file size confidently, and this should be really cheap,
 	// let's just let the remote handle it.
-	return c.inner.Size()
+	return c.inner.Size(ctx)
 }
 
-func (c *CachedFileObjectProvider) Delete() error {
-	return c.inner.Delete()
+func (c *CachedFileObjectProvider) Delete(ctx context.Context) error {
+	return c.inner.Delete(ctx)
 }
 
 func (c *CachedFileObjectProvider) makeTempFullFilename() string {

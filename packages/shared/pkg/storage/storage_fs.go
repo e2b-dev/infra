@@ -114,7 +114,7 @@ func (f *FileSystemStorageObjectProvider) ReadAt(ctx context.Context, buff []byt
 	return handle.ReadAt(buff, off)
 }
 
-func (f *FileSystemStorageObjectProvider) Size() (int64, error) {
+func (f *FileSystemStorageObjectProvider) Size(ctx context.Context) (int64, error) {
 	handle, err := f.getHandle(true)
 	if err != nil {
 		return 0, err
@@ -129,7 +129,7 @@ func (f *FileSystemStorageObjectProvider) Size() (int64, error) {
 	return fileInfo.Size(), nil
 }
 
-func (f *FileSystemStorageObjectProvider) Delete() error {
+func (f *FileSystemStorageObjectProvider) Delete(ctx context.Context) error {
 	return os.Remove(f.path)
 }
 

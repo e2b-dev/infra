@@ -93,7 +93,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 				return int64(num), err
 			})
 		fakeStorageObjectProvider.EXPECT().
-			Size().Return(int64(len(fakeData)), nil)
+			Size(mock.Anything).Return(int64(len(fakeData)), nil)
 
 		tempDir := t.TempDir()
 		c := CachedFileObjectProvider{

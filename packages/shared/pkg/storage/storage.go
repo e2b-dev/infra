@@ -59,8 +59,8 @@ type StorageObjectProvider interface {
 
 	WriteFromFileSystem(ctx context.Context, path string) error
 
-	Size() (int64, error)
-	Delete() error
+	Size(ctx context.Context) (int64, error)
+	Delete(ctx context.Context) error
 }
 
 func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (StorageProvider, error) {
