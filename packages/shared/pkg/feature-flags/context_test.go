@@ -28,8 +28,8 @@ func TestFlattenContexts(t *testing.T) {
 	assert.Equal(t, newSet[ldcontext.Kind]("one", "two", "three", "four", "five", "six", "seven"), keySet)
 }
 
-func removeQuotes(text string) string {
-	return strings.Replace(text, "\"", "", -1)
+func ldValueToText(value ldvalue.Value) string {
+	return strings.ReplaceAll(value.String(), "\"", "")
 }
 
 func TestMergeContextsSameKind(t *testing.T) {
@@ -126,7 +126,7 @@ func TestMergeContextsSameKind(t *testing.T) {
 			assert.Equal(t, tc.expectedKey, result.Key(), "expected key to match")
 			assert.Equal(t, tc.expectedName, result.Name().String(), "expected name to match")
 			for _, kv := range tc.expectedKeyValues {
-				assert.Equal(t, kv.value, removeQuotes(result.GetValue(kv.key).String()), fmt.Sprintf("expected value for key %s to match", kv.key))
+				assert.Equal(t, kv.value, ldValueToText(result.GetValue(kv.key)), fmt.Sprintf("expected value for key %s to match", kv.key))
 			}
 		})
 	}
