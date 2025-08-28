@@ -1,6 +1,8 @@
 package feature_flags
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
@@ -26,26 +28,108 @@ func TestFlattenContexts(t *testing.T) {
 	assert.Equal(t, newSet[ldcontext.Kind]("one", "two", "three", "four", "five", "six", "seven"), keySet)
 }
 
-func TestContextsWithSameKind(t *testing.T) {
+func removeQuotes(text string) string {
+	return strings.Replace(text, "\"", "", -1)
+}
+
+func TestMergeContextsSameKind(t *testing.T) {
 	kind := ldcontext.Kind("test")
-	first := ldcontext.NewBuilder("same").
-		Kind(kind).
-		Name("test").
-		Build()
+	testKey := "test"
+	emptyName := "[none]"
+	emptyValue := "null"
 
-	second := ldcontext.NewBuilder("same").
-		Kind(kind).
-		SetValue("test", ldvalue.String("works")).
-		Build()
-	items := []ldcontext.Context{first, second}
+	type keyValue struct {
+		key   string
+		value string
+	}
 
-	result := flattenContexts(items)
+	tests := []struct {
+		name              string
+		firstContext      ldcontext.Context
+		secondContext     ldcontext.Context
+		expectedName      string
+		expectedKey       string
+		expectedKeyValues []keyValue
+	}{
+		{
+			name: "no_name_no_value",
+			firstContext: ldcontext.NewBuilder("same").
+				Kind(kind).
+				Build(),
+			secondContext: ldcontext.NewBuilder("same").
+				Kind(kind).
+				Build(),
+			expectedKey:       "same",
+			expectedName:      emptyName,
+			expectedKeyValues: []keyValue{{key: testKey, value: emptyValue}},
+		},
+		{
+			name: "name_no_value",
+			firstContext: ldcontext.NewBuilder("same").
+				Kind(kind).
+				Name("first").
+				Build(),
+			secondContext: ldcontext.NewBuilder("same").
+				Kind(kind).
+				Name("second").
+				Build(),
+			expectedKey:       "same",
+			expectedName:      "second",
+			expectedKeyValues: []keyValue{{key: testKey, value: emptyValue}},
+		},
+		{
+			name: "no_name_only_value",
+			firstContext: ldcontext.NewBuilder("same").
+				Kind(kind).
+				SetValue(testKey, ldvalue.String("first")).
+				Build(),
+			secondContext: ldcontext.NewBuilder("same").
+				Kind(kind).
+				Build(),
+			expectedKey:       "same",
+			expectedName:      emptyName,
+			expectedKeyValues: []keyValue{{key: testKey, value: "first"}},
+		},
+		{
+			name: "key",
+			firstContext: ldcontext.NewBuilder("first").
+				Kind(kind).
+				Build(),
+			secondContext: ldcontext.NewBuilder("second").
+				Kind(kind).
+				Build(),
+			expectedKey:       "second",
+			expectedName:      emptyName,
+			expectedKeyValues: nil,
+		},
+		{
+			name: "combine_values",
+			firstContext: ldcontext.NewBuilder("same").
+				Kind(kind).
+				SetValue(testKey, ldvalue.String("first")).
+				Name("first").
+				SetValue("other", ldvalue.String("other")).
+				Build(),
+			secondContext: ldcontext.NewBuilder("same").
+				Kind(kind).
+				SetValue(testKey, ldvalue.String("second")).
+				Build(),
+			expectedKey:       "same",
+			expectedName:      "first",
+			expectedKeyValues: []keyValue{{key: testKey, value: "second"}, {key: "other", value: "other"}},
+		},
+	}
 
-	// we don't care what order the contexts are in, they just all need to be there
-	assert.Len(t, result, 1)
-	assert.Equal(t, kind, result[0].Kind())
-	assert.Equal(t, "test", result[0].Name().String())
-	assert.Equal(t, ldvalue.String("works"), result[0].GetValue("test"))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := mergeSameKind(tc.firstContext, tc.secondContext)
+			assert.Equal(t, tc.expectedKey, result.Key(), "expected key to match")
+			assert.Equal(t, tc.expectedName, result.Name().String(), "expected name to match")
+			for _, kv := range tc.expectedKeyValues {
+				assert.Equal(t, kv.value, removeQuotes(result.GetValue(kv.key).String()), fmt.Sprintf("expected value for key %s to match", kv.key))
+			}
+		})
+	}
 }
 
 type set[T comparable] map[T]struct{}

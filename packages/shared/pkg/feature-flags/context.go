@@ -65,6 +65,9 @@ func flattenContexts(contexts []ldcontext.Context) []ldcontext.Context {
 func mergeSameKind(first ldcontext.Context, second ldcontext.Context) ldcontext.Context {
 	builder := ldcontext.NewBuilderFromContext(first)
 
+	// Use the key from the second context
+	builder.Key(second.Key())
+
 	if second.Name().IsDefined() {
 		builder.Name(second.Name().String())
 	}
