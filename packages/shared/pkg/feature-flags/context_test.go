@@ -1,7 +1,6 @@
 package feature_flags
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -126,7 +125,7 @@ func TestMergeContextsSameKind(t *testing.T) {
 			assert.Equal(t, tc.expectedKey, result.Key(), "expected key to match")
 			assert.Equal(t, tc.expectedName, result.Name().String(), "expected name to match")
 			for _, kv := range tc.expectedKeyValues {
-				assert.Equal(t, kv.value, ldValueToText(result.GetValue(kv.key)), fmt.Sprintf("expected value for key %s to match", kv.key))
+				assert.Equal(t, kv.value, ldValueToText(result.GetValue(kv.key)), "expected value for key %s to match", kv.key)
 			}
 		})
 	}
