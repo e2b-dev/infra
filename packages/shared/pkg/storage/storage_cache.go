@@ -186,19 +186,19 @@ func (c *CachedFileObjectProvider) Delete() error {
 }
 
 func (c *CachedFileObjectProvider) makeTempFullFilename() string {
-	tempFilename := uuid.NewString()
+	uniqueID := uuid.NewString()
 
-	return fmt.Sprintf("%s/.temp.content.bin.%s", c.path, tempFilename)
+	return fmt.Sprintf("%s.link.%s", c.path, uniqueID)
 }
 
 func (c *CachedFileObjectProvider) makeFullFilename() string {
 	return fmt.Sprintf("%s/content.bin", c.path)
 }
 
-func (c *CachedFileObjectProvider) makeTempChunkFilename(offset int64) string {
-	tempFilename := uuid.NewString()
+func (c *CachedFileObjectProvider) makeTempChunkFilename(chunkPath string) string {
+	uniqueID := uuid.NewString()
 
-	return fmt.Sprintf("%s/.temp.%012d-%d.bin.%s", c.path, offset/c.chunkSize, c.chunkSize, tempFilename)
+	return fmt.Sprintf("%s.link.%s", chunkPath, uniqueID)
 }
 
 func (c *CachedFileObjectProvider) makeChunkFilename(offset int64) string {
@@ -206,11 +206,11 @@ func (c *CachedFileObjectProvider) makeChunkFilename(offset int64) string {
 }
 
 func (c *CachedFileObjectProvider) writeChunkToCache(offset int64, chunkPath string, bytes []byte) {
-	tempPath := c.makeTempChunkFilename(offset)
+	chunkPathWithSuffix := c.makeTempChunkFilename(chunkPath)
 
-	if err := os.WriteFile(tempPath, bytes, cacheFilePermissions); err != nil {
+	if err := os.WriteFile(chunkPathWithSuffix, bytes, cacheFilePermissions); err != nil {
 		zap.L().Error("failed to write temp cache file",
-			zap.String("tempPath", tempPath),
+			zap.String("chunkPathWithSuffix", chunkPathWithSuffix),
 			zap.String("chunkPath", chunkPath),
 			zap.Int64("offset", offset),
 			zap.Int("length", len(bytes)),
@@ -220,9 +220,9 @@ func (c *CachedFileObjectProvider) writeChunkToCache(offset int64, chunkPath str
 		return
 	}
 
-	if err := renameWithoutReplace(tempPath, chunkPath); err != nil {
+	if err := hardLinkFile(chunkPathWithSuffix, chunkPath); err != nil {
 		zap.L().Error("failed to rename temp file",
-			zap.String("tempPath", tempPath),
+			zap.String("chunkPathWithSuffix", chunkPathWithSuffix),
 			zap.String("chunkPath", chunkPath),
 			zap.Int64("offset", offset),
 			zap.Int("length", len(bytes)),
@@ -234,11 +234,11 @@ func (c *CachedFileObjectProvider) writeChunkToCache(offset int64, chunkPath str
 }
 
 func (c *CachedFileObjectProvider) writeFullFileToCache(filePath string, b []byte) {
-	tempPath := c.makeTempFullFilename()
+	filePathWithUniqueSuffix := c.makeTempFullFilename()
 
-	if err := os.WriteFile(tempPath, b, cacheFilePermissions); err != nil {
+	if err := os.WriteFile(filePathWithUniqueSuffix, b, cacheFilePermissions); err != nil {
 		zap.L().Error("failed to write temp cache file",
-			zap.String("path", tempPath),
+			zap.String("path", filePathWithUniqueSuffix),
 			zap.Int("length", len(b)),
 			zap.Error(err),
 		)
@@ -246,9 +246,9 @@ func (c *CachedFileObjectProvider) writeFullFileToCache(filePath string, b []byt
 		return
 	}
 
-	if err := renameWithoutReplace(tempPath, filePath); err != nil {
+	if err := hardLinkFile(filePathWithUniqueSuffix, filePath); err != nil {
 		zap.L().Error("failed to rename temp file",
-			zap.String("tempPath", tempPath),
+			zap.String("filePathWithUniqueSuffix", filePathWithUniqueSuffix),
 			zap.String("filePath", filePath),
 			zap.Int("length", len(b)),
 			zap.Error(err),
@@ -305,23 +305,23 @@ func ignoreEOF(err error) error {
 	return err
 }
 
-// renameWithoutReplace tries to rename a file but will not replace the target if it already exists.
+// hardLinkFile tries to rename a file but will not replace the target if it already exists.
 // If the file already exists, the file will be deleted.
-func renameWithoutReplace(oldPath, newPath string) error {
+func hardLinkFile(oldPath, newPath string) error {
 	defer func() {
-		err := os.Remove(oldPath)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			zap.L().Warn("failed to remove file in storage cache",
-				zap.String("path", oldPath),
-				zap.Error(err))
+		if err := os.Remove(oldPath); err != nil {
+			zap.L().Warn("failed to remove existing file", zap.Error(err))
 		}
 	}()
 
-	err := unix.Renameat2(unix.AT_FDCWD, oldPath, unix.AT_FDCWD, newPath, unix.RENAME_NOREPLACE)
-	if err != nil && errors.Is(err, unix.EEXIST) {
-		// EEXIST is expected when the file already exists
-		return nil
+	if err := unix.Linkat(unix.AT_FDCWD, oldPath, unix.AT_FDCWD, newPath, 0); err != nil {
+		if errors.Is(err, unix.EEXIST) {
+			// Someone else created newPath first. Treat as success.
+			return nil
+		}
+
+		return err
 	}
 
-	return err
+	return nil
 }
