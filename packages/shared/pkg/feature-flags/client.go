@@ -35,7 +35,12 @@ func NewClient() (*Client, error) {
 		}
 
 		// waitFor has to be 0 for offline store
-		ldClient, err = ldclient.MakeCustomClient("", ldclient.Config{DataSource: LaunchDarklyOfflineStore}, 0)
+		ldClient, err = ldclient.MakeCustomClient(
+			"",
+			ldclient.Config{
+				DataSource: LaunchDarklyOfflineStore,
+			},
+			0)
 		if err != nil {
 			return nil, err
 		}
@@ -51,13 +56,12 @@ func NewClient() (*Client, error) {
 	return &Client{ld: ldClient}, nil
 }
 
-func (c *Client) BoolFlag(flag BoolFlag, contextKey string) (bool, error) {
+func (c *Client) BoolFlag(ctx context.Context, flag BoolFlag, contexts ...ldcontext.Context) (bool, error) {
 	if c.ld == nil {
 		return flag.fallback, fmt.Errorf("LaunchDarkly client is not initialized")
 	}
 
-	flagCtx := ldcontext.NewBuilder(flag.name).SetString("contextKey", contextKey).Build()
-	enabled, err := c.ld.BoolVariation(flag.name, flagCtx, flag.fallback)
+	enabled, err := c.ld.BoolVariationCtx(ctx, flag.name, mergeContexts(ctx, contexts), flag.fallback)
 	if err != nil {
 		return enabled, fmt.Errorf("error evaluating %s: %w", flag, err)
 	}
@@ -65,14 +69,13 @@ func (c *Client) BoolFlag(flag BoolFlag, contextKey string) (bool, error) {
 	return enabled, nil
 }
 
-func (c *Client) IntFlag(flagName IntFlag, contextKey string) (int, error) {
+func (c *Client) IntFlag(ctx context.Context, flagName IntFlag, contexts ...ldcontext.Context) (int, error) {
 	defaultValue := flagsInt[flagName]
 	if c.ld == nil {
 		return defaultValue, fmt.Errorf("LaunchDarkly client is not initialized")
 	}
 
-	flagCtx := ldcontext.NewBuilder(string(flagName)).SetString("contextKey", contextKey).Build()
-	value, err := c.ld.IntVariation(string(flagName), flagCtx, defaultValue)
+	value, err := c.ld.IntVariationCtx(ctx, string(flagName), mergeContexts(ctx, contexts), defaultValue)
 	if err != nil {
 		return value, fmt.Errorf("error evaluating %s: %w", flagName, err)
 	}

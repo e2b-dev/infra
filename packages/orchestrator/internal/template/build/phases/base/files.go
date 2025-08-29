@@ -11,6 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
@@ -63,7 +64,7 @@ func constructLayerFilesFromOCI(
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating memfile: %w", err)
 	}
 
-	memfile, err := block.NewLocal(memfilePath, buildContext.Config.MemfilePageSize(), buildIDParsed)
+	memfile, err := block.NewLocal(memfilePath, config.MemfilePageSize(buildContext.Config.HugePages), buildIDParsed)
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating memfile blocks: %w", err)
 	}

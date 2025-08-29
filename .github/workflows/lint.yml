@@ -23,11 +23,13 @@ jobs:
     strategy:
       matrix:
         modules: ${{ fromJSON(needs.detect-modules.outputs.modules) }}
+      fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - name: Setup Go
+        uses: ./.github/actions/go-setup-cache
         with:
-          go-version-file: 'go.work'
+          job_key: lint-${{ matrix.modules }}
       - name: golangci-lint ${{ matrix.modules }}
         uses: golangci/golangci-lint-action@v8
         with:

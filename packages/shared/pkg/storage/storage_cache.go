@@ -219,7 +219,7 @@ func (c *CachedFileObjectProvider) writeChunkToCache(offset int64, chunkPath str
 		return
 	}
 
-	if err := os.Rename(tempPath, chunkPath); err != nil {
+	if err := moveWithoutReplace(tempPath, chunkPath); err != nil {
 		zap.L().Error("failed to rename temp file",
 			zap.String("tempPath", tempPath),
 			zap.String("chunkPath", chunkPath),
@@ -245,7 +245,7 @@ func (c *CachedFileObjectProvider) writeFullFileToCache(filePath string, b []byt
 		return
 	}
 
-	if err := os.Rename(tempPath, filePath); err != nil {
+	if err := moveWithoutReplace(tempPath, filePath); err != nil {
 		zap.L().Error("failed to rename temp file",
 			zap.String("tempPath", tempPath),
 			zap.String("filePath", filePath),
@@ -302,4 +302,25 @@ func ignoreEOF(err error) error {
 		return nil
 	}
 	return err
+}
+
+// moveWithoutReplace tries to rename a file but will not replace the target if it already exists.
+// If the file already exists, the file will be deleted.
+func moveWithoutReplace(oldPath, newPath string) error {
+	defer func() {
+		if err := os.Remove(oldPath); err != nil {
+			zap.L().Warn("failed to remove existing file", zap.Error(err))
+		}
+	}()
+
+	if err := os.Link(oldPath, newPath); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			// Someone else created newPath first. Treat as success.
+			return nil
+		}
+
+		return err
+	}
+
+	return nil
 }

@@ -13,14 +13,20 @@ import (
 )
 
 func ExecCommand(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, command string, args ...string) error {
+	tb.Helper()
+
 	return ExecCommandWithOptions(tb, ctx, sbx, envdClient, nil, "user", command, args...)
 }
 
 func ExecCommandWithCwd(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, cwd *string, command string, args ...string) error {
+	tb.Helper()
+
 	return ExecCommandWithOptions(tb, ctx, sbx, envdClient, cwd, "user", command, args...)
 }
 
 func ExecCommandAsRoot(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, command string, args ...string) error {
+	tb.Helper()
+
 	return ExecCommandWithOptions(tb, ctx, sbx, envdClient, nil, "root", command, args...)
 }
 

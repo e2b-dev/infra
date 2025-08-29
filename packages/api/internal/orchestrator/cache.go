@@ -181,9 +181,12 @@ func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.No
 		return fmt.Errorf("cluster not found")
 	}
 
-	_, found := cluster.GetInstanceByNodeID(node.ID)
+	// We want to find not just node, but explicitly node with expected service instance ID
+	// because node can stay same and instance id will change after node restart, witch should trigger node de-registration from pool.
+	instanceID := node.Metadata().ServiceInstanceID
+	_, found := cluster.GetByServiceInstanceID(instanceID)
 	if !found {
-		return fmt.Errorf("node instance not found")
+		return fmt.Errorf("node instance not found with instance ID '%s'", instanceID)
 	}
 
 	// Unified call for syncing node state across different node types
