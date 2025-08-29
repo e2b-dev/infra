@@ -237,7 +237,7 @@ func (c *CachedFileObjectProvider) makeChunkFilename(offset int64) string {
 }
 
 func (c *CachedFileObjectProvider) writeChunkToCache(offset int64, chunkPath string, bytes []byte) {
-	writeTimer := cacheReadTimerFactory.Begin()
+	writeTimer := cacheWriteTimerFactory.Begin()
 
 	tempPath := c.makeTempChunkFilename(offset)
 

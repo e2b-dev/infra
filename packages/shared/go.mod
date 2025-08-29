@@ -56,6 +56,8 @@ require (
 	gotest.tools v2.2.0+incompatible
 )
 
+require github.com/redis/go-redis/v9 v9.12.1
+
 require (
 	ariga.io/atlas v0.15.0 // indirect
 	cel.dev/expr v0.24.0 // indirect
