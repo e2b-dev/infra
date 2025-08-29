@@ -4,17 +4,19 @@ import (
 	"context"
 	"sync"
 
+	cmap "github.com/orcaman/concurrent-map/v2"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-type InstanceCache struct {
+type MemoryStore struct {
 	reservations *ReservationCache
+	items        cmap.ConcurrentMap[string, *InstanceInfo]
 
-	cache          *lifecycleCache[*InstanceInfo]
-	insertInstance func(data *InstanceInfo, created bool) error
+	insertAnalytics func(ctx context.Context, data *InstanceInfo, created bool)
+	deleteInstance  func(ctx context.Context, sbx *InstanceInfo, removeType RemoveType) error
 
 	sandboxCounter metric.Int64UpDownCounter
 	createdCounter metric.Int64Counter
@@ -22,16 +24,13 @@ type InstanceCache struct {
 	mu sync.Mutex
 }
 
-func NewCache(
-	ctx context.Context,
+func NewStore(
 	meterProvider metric.MeterProvider,
-	insertInstance func(data *InstanceInfo, created bool) error,
-	deleteInstance func(data *InstanceInfo) error,
-) *InstanceCache {
+	insertAnalytics func(ctx context.Context, data *InstanceInfo, created bool),
+	deleteInstance func(ctx context.Context, sbx *InstanceInfo, removeType RemoveType) error,
+) *MemoryStore {
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
 	// right now we load them from Orchestrator
-	cache := newLifecycleCache[*InstanceInfo]()
-
 	meter := meterProvider.Meter("api.cache.sandbox")
 	sandboxCounter, err := telemetry.GetUpDownCounter(meter, telemetry.SandboxCountMeterName)
 	if err != nil {
@@ -43,24 +42,15 @@ func NewCache(
 		zap.L().Error("error getting counter", zap.Error(err))
 	}
 
-	instanceCache := &InstanceCache{
-		cache:          cache,
-		insertInstance: insertInstance,
-		sandboxCounter: sandboxCounter,
-		createdCounter: createdCounter,
-		reservations:   NewReservationCache(),
+	instanceCache := &MemoryStore{
+		items: cmap.New[*InstanceInfo](),
+
+		insertAnalytics: insertAnalytics,
+		deleteInstance:  deleteInstance,
+		sandboxCounter:  sandboxCounter,
+		createdCounter:  createdCounter,
+		reservations:    NewReservationCache(),
 	}
-
-	cache.OnEviction(func(ctx context.Context, instanceInfo *InstanceInfo) {
-		err := deleteInstance(instanceInfo)
-		if err != nil {
-			zap.L().Error("Error deleting instance", zap.Error(err))
-		}
-
-		instanceCache.UpdateCounters(ctx, instanceInfo, -1, false)
-	})
-
-	go cache.Start(ctx)
 
 	return instanceCache
 }

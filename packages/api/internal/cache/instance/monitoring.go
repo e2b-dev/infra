@@ -9,7 +9,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (c *InstanceCache) UpdateCounters(ctx context.Context, instance *InstanceInfo, value int64, newlyCreated bool) {
+func (c *MemoryStore) updateCounters(ctx context.Context, instance *InstanceInfo, value int64, newlyCreated bool) {
 	attributes := []attribute.KeyValue{
 		telemetry.WithTeamID(instance.TeamID.String()),
 	}
