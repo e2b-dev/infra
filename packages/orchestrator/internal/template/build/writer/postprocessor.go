@@ -24,7 +24,6 @@ func (p *PostProcessor) Hook(e zapcore.Entry) error {
 
 // Start the post-processing.
 func (p *PostProcessor) run(ctx context.Context) {
-
 	for {
 		select {
 		case <-ctx.Done():

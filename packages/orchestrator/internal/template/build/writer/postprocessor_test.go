@@ -52,12 +52,12 @@ func TestPostProcessor_Start(t *testing.T) {
 	logger.Info("test is complete")
 
 	logs := buf.String()
-	assert.Equal(t, logs, `INFO	info message
+	assert.Equal(t, `INFO	info message
 ERROR	error message
 INFO	...
 WARN	warn message
 INFO	...
 INFO	...
 INFO	test is complete
-`)
+`, logs)
 }
