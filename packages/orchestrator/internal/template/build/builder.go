@@ -126,15 +126,15 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 
 	isV1Build := config.FromImage == "" && config.FromTemplate == nil
 
-	ctx, cancel := context.WithCancel(ctx)
+	done := func() {}
 	if isV1Build {
-		logsCore = writer.NewPostProcessor(ctx, 5*time.Second, logsCore)
+		logsCore, done = writer.NewPostProcessor(5*time.Second, logsCore)
 	}
 
 	logger := zap.New(logsCore)
 
 	defer func() {
-		cancel()
+		done()
 
 		if e != nil {
 			logger.Error(fmt.Sprintf("Build failed: %v", e))

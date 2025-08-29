@@ -1,32 +1,31 @@
 package writer
 
 import (
-	"context"
 	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-// PostProcessor prints out "..." 5 seconds after every log
+// postProcessor prints out "..." 5 seconds after every log
 // message, if no other logs have been printed
-type PostProcessor struct {
-	logger *zap.Logger
-
+type postProcessor struct {
+	logger   *zap.Logger
+	done     chan struct{}
 	ticker   *time.Ticker
 	interval time.Duration
 }
 
-func (p *PostProcessor) Hook(e zapcore.Entry) error {
+func (p *postProcessor) Hook(_ zapcore.Entry) error {
 	p.ticker.Reset(p.interval)
 	return nil
 }
 
 // Start the post-processing.
-func (p *PostProcessor) run(ctx context.Context) {
+func (p *postProcessor) run() {
 	for {
 		select {
-		case <-ctx.Done():
+		case <-p.done:
 			p.ticker.Stop()
 			return
 		case <-p.ticker.C:
@@ -35,14 +34,15 @@ func (p *PostProcessor) run(ctx context.Context) {
 	}
 }
 
-func NewPostProcessor(ctx context.Context, interval time.Duration, core zapcore.Core) zapcore.Core {
-	pp := &PostProcessor{
+func NewPostProcessor(interval time.Duration, core zapcore.Core) (zapcore.Core, func()) {
+	pp := &postProcessor{
 		logger:   zap.New(core),
+		done:     make(chan struct{}),
 		interval: interval,
 		ticker:   time.NewTicker(interval),
 	}
 
-	go pp.run(ctx)
+	go pp.run()
 
-	return zapcore.RegisterHooks(core, pp.Hook)
+	return zapcore.RegisterHooks(core, pp.Hook), func() { pp.done <- struct{}{} }
 }

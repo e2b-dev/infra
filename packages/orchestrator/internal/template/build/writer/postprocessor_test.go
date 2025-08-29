@@ -2,7 +2,6 @@ package writer
 
 import (
 	"bytes"
-	"context"
 	"testing"
 	"time"
 
@@ -29,13 +28,10 @@ func TestPostProcessor_Start(t *testing.T) {
 	var buf bytes.Buffer
 	core := newTestCore(&buf)
 
-	ctx := t.Context()
-	ctx, cancel := context.WithCancel(ctx)
-
 	interval := time.Millisecond * 100
 	halfInterval := time.Duration(float64(interval) * 0.5)
 
-	core = NewPostProcessor(ctx, interval, core)
+	core, done := NewPostProcessor(interval, core)
 	logger := zap.New(core)
 
 	// log some info
@@ -47,7 +43,7 @@ func TestPostProcessor_Start(t *testing.T) {
 	time.Sleep(interval + interval + halfInterval)
 
 	// stop the post processor
-	cancel()
+	done()
 
 	logger.Info("test is complete")
 
