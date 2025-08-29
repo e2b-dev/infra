@@ -1,12 +1,11 @@
 package metrics
 
 import (
-	"context"
 	"fmt"
-	"time"
 
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -15,30 +14,15 @@ const (
 	orchestratorBlockChunksStore = "orchestrator.blocks.chunks.store"
 )
 
-type TimerFactory struct {
-	duration metric.Int64Histogram
-	bytes    metric.Int64Counter
-	count    metric.Int64Counter
-}
-
-func (f *TimerFactory) Begin() *Stopwatch {
-	return &Stopwatch{
-		histogram: f.duration,
-		sum:       f.bytes,
-		count:     f.count,
-		start:     time.Now(),
-	}
-}
-
 type Metrics struct {
 	// SlicesMetric is used to measure page faulting performance.
-	SlicesTimerFactory TimerFactory
+	SlicesTimerFactory telemetry.TimerFactory
 
 	// WriteChunksMetric is used to measure the time taken to download chunks from remote storage
-	RemoteReadsTimerFactory TimerFactory
+	RemoteReadsTimerFactory telemetry.TimerFactory
 
 	// WriteChunksMetric is used to measure performance of writing chunks to disk.
-	WriteChunksTimerFactory TimerFactory
+	WriteChunksTimerFactory telemetry.TimerFactory
 }
 
 func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
@@ -47,7 +31,7 @@ func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
 	blocksMeter := meterProvider.Meter("internal.sandbox.block.metrics")
 
 	var err error
-	if m.SlicesTimerFactory, err = createTimerFactory(
+	if m.SlicesTimerFactory, err = telemetry.NewTimerFactory(
 		blocksMeter, orchestratorBlockSlices,
 		"Time taken to retrieve memory slices",
 		"Total bytes requested",
@@ -56,7 +40,7 @@ func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
 		return m, fmt.Errorf("error creating slices timer factory: %v", err)
 	}
 
-	if m.RemoteReadsTimerFactory, err = createTimerFactory(
+	if m.RemoteReadsTimerFactory, err = telemetry.NewTimerFactory(
 		blocksMeter, orchestratorBlockChunksFetch,
 		"Time taken to fetch memory chunks from remote store",
 		"Total bytes fetched from remote store",
@@ -65,7 +49,7 @@ func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
 		return m, fmt.Errorf("error creating reads timer factory: %v", err)
 	}
 
-	if m.WriteChunksTimerFactory, err = createTimerFactory(
+	if m.WriteChunksTimerFactory, err = telemetry.NewTimerFactory(
 		blocksMeter, orchestratorBlockChunksStore,
 		"Time taken to write memory chunks to disk",
 		"Total bytes written to disk",
@@ -75,47 +59,4 @@ func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
 	}
 
 	return m, nil
-}
-
-func createTimerFactory(
-	blocksMeter metric.Meter,
-	metricName, durationDescription, bytesDescription, counterDescription string,
-) (TimerFactory, error) {
-	duration, err := blocksMeter.Int64Histogram(metricName,
-		metric.WithDescription(durationDescription),
-		metric.WithUnit("ms"),
-	)
-	if err != nil {
-		return TimerFactory{}, fmt.Errorf("failed to get slices metric: %w", err)
-	}
-
-	bytes, err := blocksMeter.Int64Counter(metricName,
-		metric.WithDescription(bytesDescription),
-		metric.WithUnit("By"),
-	)
-	if err != nil {
-		return TimerFactory{}, fmt.Errorf("failed to create total bytes requested metric: %w", err)
-	}
-
-	count, err := blocksMeter.Int64Counter(metricName,
-		metric.WithDescription(counterDescription),
-	)
-	if err != nil {
-		return TimerFactory{}, fmt.Errorf("failed to create total page faults metric: %w", err)
-	}
-
-	return TimerFactory{duration, bytes, count}, nil
-}
-
-type Stopwatch struct {
-	histogram  metric.Int64Histogram
-	sum, count metric.Int64Counter
-	start      time.Time
-}
-
-func (t Stopwatch) End(ctx context.Context, total int64, kv ...attribute.KeyValue) {
-	amount := time.Since(t.start).Milliseconds()
-	t.histogram.Record(ctx, amount, metric.WithAttributes(kv...))
-	t.sum.Add(ctx, total, metric.WithAttributes(kv...))
-	t.count.Add(ctx, 1, metric.WithAttributes(kv...))
 }

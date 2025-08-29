@@ -58,6 +58,7 @@ func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion
 	if err != nil {
 		return nil, fmt.Errorf("failed to create metrics provider: %w", err)
 	}
+	otel.SetMeterProvider(meterProvider)
 
 	// Setup logging
 	logsExporter, err := NewLogExporter(ctx)

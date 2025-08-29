@@ -11,12 +11,39 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
 	cacheFilePermissions = 0o600
 	cacheDirPermissions  = 0o700
+)
+
+func must[T any](t T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+
+	return t
+}
+
+var (
+	meter            = otel.GetMeterProvider().Meter("shared.pkg.storage")
+	readTimerFactory = must(telemetry.NewTimerFactory(meter,
+		"orchestrator.storage.cache.read",
+		"Duration of cached reads",
+		"Total cached bytes read",
+		"Total cached reads",
+	))
+	writeTimerFactory = must(telemetry.NewTimerFactory(meter,
+		"orchestrator.storage.cache.write",
+		"Duration of cache writes",
+		"Total bytes written to the cache",
+		"Total writes to the cache",
+	))
 )
 
 type CachedProvider struct {
@@ -50,7 +77,7 @@ func (c CachedProvider) OpenObject(ctx context.Context, path string) (StorageObj
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	return &CachedFileObjectProvider{path: localPath, chunkSize: c.chunkSize, inner: innerObject}, nil
+	return &CachedFileObjectProvider{ctx: ctx, path: localPath, chunkSize: c.chunkSize, inner: innerObject}, nil
 }
 
 func (c CachedProvider) GetDetails() string {
@@ -59,6 +86,7 @@ func (c CachedProvider) GetDetails() string {
 }
 
 type CachedFileObjectProvider struct {
+	ctx       context.Context
 	path      string
 	chunkSize int64
 	inner     StorageObjectProvider
@@ -66,7 +94,7 @@ type CachedFileObjectProvider struct {
 
 var _ StorageObjectProvider = (*CachedFileObjectProvider)(nil)
 
-// WriteTo is used for very small files and we can check agains their size to ensure the content is valid.
+// WriteTo is used for very small files, and we can check against their size to ensure the content is valid.
 func (c *CachedFileObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 	totalSize, err := c.Size()
 	if err != nil {
@@ -77,13 +105,15 @@ func (c *CachedFileObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 
 	b := make([]byte, totalSize)
 
+	cachedRead := readTimerFactory.Begin()
 	bytesRead, err := c.copyFullFileFromCache(fullCachePath, b)
 	if err == nil {
-		if int64(bytesRead) != totalSize {
+		if bytesRead != totalSize {
 			zap.L().Warn("cache file size mismatch",
 				zap.Int64("expected", totalSize),
-				zap.Int("actual", bytesRead))
+				zap.Int64("actual", bytesRead))
 		}
+		cachedRead.End(c.ctx, bytesRead)
 		written, err := dst.Write(b)
 		return int64(written), err
 	}
@@ -130,8 +160,10 @@ func (c *CachedFileObjectProvider) ReadAt(buff []byte, offset int64) (int, error
 	// try to read from cache first
 	chunkPath := c.makeChunkFilename(offset)
 
+	readTimer := readTimerFactory.Begin()
 	count, err := c.readAtFromCache(chunkPath, buff)
 	if ignoreEOF(err) == nil {
+		readTimer.End(c.ctx, int64(count))
 		return count, err // return `err` in case it's io.EOF
 	}
 
@@ -205,6 +237,8 @@ func (c *CachedFileObjectProvider) makeChunkFilename(offset int64) string {
 }
 
 func (c *CachedFileObjectProvider) writeChunkToCache(offset int64, chunkPath string, bytes []byte) {
+	writeTimer := readTimerFactory.Begin()
+
 	tempPath := c.makeTempChunkFilename(offset)
 
 	if err := os.WriteFile(tempPath, bytes, cacheFilePermissions); err != nil {
@@ -230,9 +264,13 @@ func (c *CachedFileObjectProvider) writeChunkToCache(offset int64, chunkPath str
 
 		return
 	}
+
+	writeTimer.End(c.ctx, int64(len(bytes)))
 }
 
 func (c *CachedFileObjectProvider) writeFullFileToCache(filePath string, b []byte) {
+	begin := writeTimerFactory.Begin()
+
 	tempPath := c.makeTempFullFilename()
 
 	if err := os.WriteFile(tempPath, b, cacheFilePermissions); err != nil {
@@ -255,6 +293,8 @@ func (c *CachedFileObjectProvider) writeFullFileToCache(filePath string, b []byt
 
 		return
 	}
+
+	begin.End(c.ctx, int64(len(b)))
 }
 
 func (c *CachedFileObjectProvider) readAtFromCache(chunkPath string, buff []byte) (int, error) {
@@ -274,7 +314,7 @@ func (c *CachedFileObjectProvider) readAtFromCache(chunkPath string, buff []byte
 	return count, err // return `err` in case it's io.EOF
 }
 
-func (c *CachedFileObjectProvider) copyFullFileFromCache(filePath string, buff []byte) (int, error) {
+func (c *CachedFileObjectProvider) copyFullFileFromCache(filePath string, buff []byte) (int64, error) {
 	var fp *os.File
 	fp, err := os.Open(filePath)
 	if err != nil {
@@ -288,7 +328,7 @@ func (c *CachedFileObjectProvider) copyFullFileFromCache(filePath string, buff [
 		return 0, fmt.Errorf("failed to read from chunk: %w", err)
 	}
 
-	return count, err
+	return int64(count), err
 }
 
 func cleanup(msg string, input interface{ Close() error }) {
