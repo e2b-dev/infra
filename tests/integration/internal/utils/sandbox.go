@@ -30,7 +30,7 @@ func WithMetadata(metadata api.SandboxMetadata) SandboxOption {
 
 func WithoutAnyMetadata() SandboxOption {
 	return func(config *SandboxConfig) {
-		config.metadata = nil
+		config.metadata = make(map[string]string)
 	}
 }
 
