@@ -18,7 +18,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/systeminit"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -69,7 +68,7 @@ func New(
 func (r *Rootfs) CreateExt4Filesystem(
 	ctx context.Context,
 	tracer trace.Tracer,
-	postProcessor *writer.PostProcessor,
+	logger *zap.Logger,
 	rootfsPath string,
 	provisionScript string,
 	provisionLogPrefix string,
@@ -83,7 +82,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 		}
 	}()
 
-	postProcessor.Debug("Requesting Docker Image")
+	logger.Debug("Requesting Docker Image")
 
 	var img containerregistry.Image
 	var err error
@@ -100,9 +99,9 @@ func (r *Rootfs) CreateExt4Filesystem(
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error getting image size: %w", err)
 	}
-	postProcessor.Info(fmt.Sprintf("Base Docker image size: %s", humanize.Bytes(uint64(imageSize))))
+	logger.Info(fmt.Sprintf("Base Docker image size: %s", humanize.Bytes(uint64(imageSize))))
 
-	postProcessor.Debug("Setting up system files")
+	logger.Debug("Setting up system files")
 	layers, err := additionalOCILayers(childCtx, r.template, provisionScript, provisionLogPrefix)
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error populating filesystem: %w", err)
@@ -113,14 +112,14 @@ func (r *Rootfs) CreateExt4Filesystem(
 	}
 	telemetry.ReportEvent(childCtx, "set up filesystem")
 
-	postProcessor.Info("Creating file system and pulling Docker image")
-	ext4Size, err := oci.ToExt4(ctx, tracer, postProcessor, img, rootfsPath, maxRootfsSize, r.template.RootfsBlockSize())
+	logger.Info("Creating file system and pulling Docker image")
+	ext4Size, err := oci.ToExt4(ctx, tracer, logger, img, rootfsPath, maxRootfsSize, r.template.RootfsBlockSize())
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error creating ext4 filesystem: %w", err)
 	}
 	telemetry.ReportEvent(childCtx, "created rootfs ext4 file")
 
-	postProcessor.Debug("Filesystem cleanup")
+	logger.Debug("Filesystem cleanup")
 	// Make rootfs writable, be default it's readonly
 	err = filesystem.MakeWritable(ctx, tracer, rootfsPath)
 	if err != nil {
