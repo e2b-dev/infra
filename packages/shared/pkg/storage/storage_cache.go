@@ -31,14 +31,14 @@ func must[T any](t T, err error) T {
 }
 
 var (
-	meter            = otel.GetMeterProvider().Meter("shared.pkg.storage")
-	readTimerFactory = must(telemetry.NewTimerFactory(meter,
+	meter                 = otel.GetMeterProvider().Meter("shared.pkg.storage")
+	cacheReadTimerFactory = must(telemetry.NewTimerFactory(meter,
 		"orchestrator.storage.cache.read",
 		"Duration of cached reads",
 		"Total cached bytes read",
 		"Total cached reads",
 	))
-	writeTimerFactory = must(telemetry.NewTimerFactory(meter,
+	cacheWriteTimerFactory = must(telemetry.NewTimerFactory(meter,
 		"orchestrator.storage.cache.write",
 		"Duration of cache writes",
 		"Total bytes written to the cache",
@@ -105,7 +105,7 @@ func (c *CachedFileObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 
 	b := make([]byte, totalSize)
 
-	cachedRead := readTimerFactory.Begin()
+	cachedRead := cacheReadTimerFactory.Begin()
 	bytesRead, err := c.copyFullFileFromCache(fullCachePath, b)
 	if err == nil {
 		if bytesRead != totalSize {
@@ -160,7 +160,7 @@ func (c *CachedFileObjectProvider) ReadAt(buff []byte, offset int64) (int, error
 	// try to read from cache first
 	chunkPath := c.makeChunkFilename(offset)
 
-	readTimer := readTimerFactory.Begin()
+	readTimer := cacheReadTimerFactory.Begin()
 	count, err := c.readAtFromCache(chunkPath, buff)
 	if ignoreEOF(err) == nil {
 		readTimer.End(c.ctx, int64(count))
@@ -237,7 +237,7 @@ func (c *CachedFileObjectProvider) makeChunkFilename(offset int64) string {
 }
 
 func (c *CachedFileObjectProvider) writeChunkToCache(offset int64, chunkPath string, bytes []byte) {
-	writeTimer := readTimerFactory.Begin()
+	writeTimer := cacheReadTimerFactory.Begin()
 
 	tempPath := c.makeTempChunkFilename(offset)
 
@@ -269,7 +269,7 @@ func (c *CachedFileObjectProvider) writeChunkToCache(offset int64, chunkPath str
 }
 
 func (c *CachedFileObjectProvider) writeFullFileToCache(filePath string, b []byte) {
-	begin := writeTimerFactory.Begin()
+	begin := cacheWriteTimerFactory.Begin()
 
 	tempPath := c.makeTempFullFilename()
 
