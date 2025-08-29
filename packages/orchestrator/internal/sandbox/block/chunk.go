@@ -82,11 +82,7 @@ func (c *Chunker) WriteTo(w io.Writer) (int64, error) {
 }
 
 func (c *Chunker) Slice(off, length int64) ([]byte, error) {
-	timer := c.metrics.BeginWithTotal(
-		c.metrics.SlicesMetric,
-		c.metrics.TotalBytesFaultedMetric,
-		c.metrics.TotalPageFaults,
-	)
+	timer := c.metrics.SlicesTimerFactory.Begin()
 
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
@@ -158,11 +154,7 @@ func (c *Chunker) fetchToCache(off, length int64) error {
 
 				b := make([]byte, storage.MemoryChunkSize)
 
-				fetchSW := c.metrics.BeginWithTotal(
-					c.metrics.ChunkRemoteReadMetric,
-					c.metrics.TotalBytesRetrievedMetric,
-					c.metrics.TotalRemoteReadsMetric,
-				)
+				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
 				readBytes, err := c.base.ReadAt(b, fetchOff)
 				if err != nil && !errors.Is(err, io.EOF) {
 					fetchSW.End(c.ctx, int64(readBytes),
@@ -173,17 +165,18 @@ func (c *Chunker) fetchToCache(off, length int64) error {
 				}
 				fetchSW.End(c.ctx, int64(readBytes), attribute.String("result", resultTypeSuccess))
 
-				writeSW := c.metrics.Begin(c.metrics.WriteChunksMetric)
+				writeSW := c.metrics.WriteChunksTimerFactory.Begin()
 				_, cacheErr := c.cache.WriteAtWithoutLock(b, fetchOff)
 				if cacheErr != nil {
 					writeSW.End(c.ctx,
+						int64(readBytes),
 						attribute.String(result, resultTypeFailure),
 						attribute.String(failureReason, failureTypeLocalWrite),
 					)
 					return fmt.Errorf("failed to write chunk %d to cache: %w", fetchOff, cacheErr)
 				}
 
-				writeSW.End(c.ctx, attribute.String("result", resultTypeSuccess))
+				writeSW.End(c.ctx, int64(readBytes), attribute.String("result", resultTypeSuccess))
 
 				return nil
 			})
