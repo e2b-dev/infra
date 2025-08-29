@@ -3,8 +3,10 @@ package server
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,6 +21,8 @@ import (
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -226,10 +230,34 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
-	item.EndAt = req.EndTime.AsTime()
+	eventDataMap := make(map[string]string)
 
-	// TODO: adapt to new types of update events
-	eventData := fmt.Sprintf(`{"set_timeout": "%s"}`, req.EndTime.AsTime().Format(time.RFC3339))
+	if req.EndTime != nil {
+		item.EndAt = req.EndTime.AsTime()
+		eventDataMap["set_timeout"] = item.EndAt.Format(time.RFC3339)
+	}
+
+	if req.OnlineCpus != nil {
+		eventDataMap["set_online_cpus"] = fmt.Sprint(*req.OnlineCpus)
+
+		onlineCpus := int64(*req.OnlineCpus)
+
+		err := s.setOnlineCpus(ctx, req.SandboxId, item.Config.Envd.AccessToken, onlineCpus, item.Config.Vcpu)
+		if err != nil {
+			telemetry.ReportCriticalError(ctx, "failed to set online cpus", err)
+
+			return nil, status.Error(codes.Internal, "failed to set online cpus")
+		}
+	}
+
+	eventDataBuf, err := json.Marshal(eventDataMap)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "failed to encode event data to json", err)
+
+		return nil, status.Error(codes.Internal, "failed to encode event data to json")
+	}
+
+	eventData := string(eventDataBuf)
 
 	sandboxLifeCycleEventsWriteFlag, flagErr := s.featureFlags.BoolFlag(ctx,
 		featureflags.SandboxLifeCycleEventsWriteFlagName)
@@ -268,6 +296,26 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	}
 
 	return &emptypb.Empty{}, nil
+}
+
+func (s *server) setOnlineCpus(ctx context.Context, sandboxId string, accessToken *string, onlineCpus, totalCpus int64) error {
+	if onlineCpus < 1 || onlineCpus > totalCpus {
+		return fmt.Errorf("Invalid number of online cpus: %d", onlineCpus)
+	}
+
+	cmdContext := metadata.Context{User: "root"}
+	var command strings.Builder
+	for i := int64(1); i < totalCpus; i++ {
+		setOnlineValue := 0
+		if i < onlineCpus {
+			setOnlineValue = 1
+		}
+		if command.Len() > 0 {
+			command.WriteString(" && ")
+		}
+		command.WriteString(fmt.Sprintf("echo %d > /sys/devices/system/cpu/cpu%d/online", setOnlineValue, i))
+	}
+	return sandboxtools.RunCommandWithAccessToken(ctx, s.tracer, s.proxy, sandboxId, command.String(), cmdContext, accessToken)
 }
 
 func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.SandboxListResponse, error) {

@@ -42,6 +42,7 @@ func RunCommandWithOutput(
 		// No confirmation needed for this command
 		make(chan struct{}),
 		processOutput,
+		nil,
 	)
 }
 
@@ -63,6 +64,30 @@ func RunCommand(
 		// No confirmation needed for this command
 		make(chan struct{}),
 		func(stdout, stderr string) {},
+		nil,
+	)
+}
+
+func RunCommandWithAccessToken(
+	ctx context.Context,
+	tracer trace.Tracer,
+	proxy *proxy.SandboxProxy,
+	sandboxID string,
+	command string,
+	metadata metadata.Context,
+	accessToken *string,
+) error {
+	return runCommandWithAllOptions(
+		ctx,
+		tracer,
+		proxy,
+		sandboxID,
+		command,
+		metadata,
+		// No confirmation needed for this command
+		make(chan struct{}),
+		func(stdout, stderr string) {},
+		accessToken,
 	)
 }
 
@@ -116,6 +141,7 @@ func RunCommandWithConfirmation(
 			logStream(postProcessor, lvl, id, "stdout", stdout)
 			logStream(postProcessor, zapcore.ErrorLevel, id, "stderr", stderr)
 		},
+		nil,
 	)
 }
 
@@ -128,6 +154,7 @@ func runCommandWithAllOptions(
 	metadata metadata.Context,
 	confirmCh chan<- struct{},
 	processOutput func(stdout, stderr string),
+	accessToken *string,
 ) error {
 	runCmdReq := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
@@ -150,6 +177,9 @@ func runCommandWithAllOptions(
 		return fmt.Errorf("failed to set sandbox header: %w", err)
 	}
 	grpc.SetUserHeader(runCmdReq.Header(), metadata.User)
+	if accessToken != nil {
+		grpc.SetAccessTokenHeader(runCmdReq.Header(), *accessToken)
+	}
 
 	processCtx, processCancel := context.WithCancel(ctx)
 	defer processCancel()

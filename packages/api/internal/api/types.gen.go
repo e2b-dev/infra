@@ -833,6 +833,12 @@ type GetSandboxesMetricsParams struct {
 	SandboxIds []string `form:"sandbox_ids" json:"sandbox_ids"`
 }
 
+// PostSandboxesSandboxIDCpusJSONBody defines parameters for PostSandboxesSandboxIDCpus.
+type PostSandboxesSandboxIDCpusJSONBody struct {
+	// OnlineCpus Number of vcpus to make online
+	OnlineCpus uint32 `json:"onlineCpus"`
+}
+
 // GetSandboxesSandboxIDLogsParams defines parameters for GetSandboxesSandboxIDLogs.
 type GetSandboxesSandboxIDLogsParams struct {
 	// Start Starting timestamp of the logs that should be returned in milliseconds
@@ -909,6 +915,9 @@ type PostNodesNodeIDJSONRequestBody = NodeStatusChange
 
 // PostSandboxesJSONRequestBody defines body for PostSandboxes for application/json ContentType.
 type PostSandboxesJSONRequestBody = NewSandbox
+
+// PostSandboxesSandboxIDCpusJSONRequestBody defines body for PostSandboxesSandboxIDCpus for application/json ContentType.
+type PostSandboxesSandboxIDCpusJSONRequestBody PostSandboxesSandboxIDCpusJSONBody
 
 // PostSandboxesSandboxIDRefreshesJSONRequestBody defines body for PostSandboxesSandboxIDRefreshes for application/json ContentType.
 type PostSandboxesSandboxIDRefreshesJSONRequestBody PostSandboxesSandboxIDRefreshesJSONBody
