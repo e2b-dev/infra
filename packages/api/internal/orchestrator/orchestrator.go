@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
+	"github.com/e2b-dev/infra/packages/api/internal/evictor"
 	"github.com/e2b-dev/infra/packages/api/internal/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
@@ -40,7 +41,7 @@ var ErrNodeNotFound = errors.New("node not found")
 type Orchestrator struct {
 	httpClient              *http.Client
 	nomadClient             *nomadapi.Client
-	instanceCache           *instance.InstanceCache
+	sandboxStore            *instance.MemoryStore
 	nodes                   *smap.Map[*nodemanager.Node]
 	leastBusyAlgorithm      placement.Algorithm
 	bestOfKAlgorithm        *placement.BestOfK
@@ -106,16 +107,19 @@ func New(
 		clusters:           clusters,
 	}
 
-	cache := instance.NewCache(
-		ctx,
+	sandboxStore := instance.NewStore(
 		tel.MeterProvider,
-		o.getInsertInstanceFunction(ctx, cacheHookTimeout),
-		o.getDeleteInstanceFunction(ctx, cacheHookTimeout),
+		o.analyticsInsert,
+		o.removeInstance,
 	)
 
-	o.instanceCache = cache
+	o.sandboxStore = sandboxStore
 
-	teamMetricsObserver, err := metrics.NewTeamObserver(ctx, cache)
+	// Evict old sandboxes
+	sandboxEvictor := evictor.New(sandboxStore)
+	go sandboxEvictor.Start(ctx)
+
+	teamMetricsObserver, err := metrics.NewTeamObserver(ctx, sandboxStore)
 	if err != nil {
 		zap.L().Error("Failed to create team metrics observer", zap.Error(err))
 		return nil, fmt.Errorf("failed to create team metrics observer: %w", err)
@@ -126,7 +130,7 @@ func New(
 	// For local development and testing, we skip the Nomad sync
 	// Local cluster is used for single-node setups instead
 	skipNomadSync := env.IsLocal()
-	go o.keepInSync(ctx, cache, skipNomadSync)
+	go o.keepInSync(ctx, sandboxStore, skipNomadSync)
 
 	if err := o.setupMetrics(tel.MeterProvider); err != nil {
 		zap.L().Error("Failed to setup metrics", zap.Error(err))
@@ -168,7 +172,7 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 			}
 
 			zap.L().Info("API internal status",
-				zap.Int("sandboxes_count", o.instanceCache.Len()),
+				zap.Int("sandboxes_count", o.sandboxStore.Len(nil)),
 				zap.Int("nodes_count", o.nodes.Count()),
 				zap.Any("nodes", connectedNodes),
 			)

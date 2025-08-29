@@ -10,69 +10,15 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
-func (c *InstanceCache) Count() int {
-	return c.cache.Len()
-}
+type RemoveType string
 
-func (c *InstanceCache) CountForTeam(teamID uuid.UUID) (count uint) {
-	for _, item := range c.cache.Items() {
-		currentTeamID := item.TeamID
+const (
+	RemoveTypePause RemoveType = "pause"
+	RemoveTypeKill  RemoveType = "kill"
+)
 
-		if currentTeamID == teamID {
-			count++
-		}
-	}
-
-	return count
-}
-
-// Exists Check if the instance exists in the cache or is being evicted.
-func (c *InstanceCache) Exists(instanceID string) bool {
-	return c.cache.Has(instanceID, true)
-}
-
-// Get the item from the cache.
-func (c *InstanceCache) Get(instanceID string, includeEvicting bool) (*InstanceInfo, error) {
-	item, ok := c.cache.Get(instanceID, includeEvicting)
-	if !ok {
-		return nil, fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
-	}
-
-	return item, nil
-}
-
-func (c *InstanceCache) Len() int {
-	return c.cache.Len()
-}
-
-func (c *InstanceCache) Set(key string, value *InstanceInfo, created bool) {
-	inserted := c.cache.SetIfAbsent(key, value)
-	if inserted {
-		go func() {
-			err := c.insertInstance(value, created)
-			if err != nil {
-				zap.L().Error("error inserting instance", zap.Error(err))
-			}
-		}()
-	}
-}
-
-func (c *InstanceCache) GetInstances(teamID *uuid.UUID) (instances []*InstanceInfo) {
-	for _, item := range c.cache.Items() {
-		currentTeamID := item.TeamID
-
-		if teamID == nil || currentTeamID == *teamID {
-			instances = append(instances, item)
-		}
-	}
-
-	return instances
-}
-
-// Add the instance to the cache and start expiration timer.
-// If the instance already exists we do nothing - it was loaded from Orchestrator.
-// TODO: Any error here should delete the sandbox
-func (c *InstanceCache) Add(ctx context.Context, instance *InstanceInfo, newlyCreated bool) error {
+// Add the instance to the cache
+func (c *MemoryStore) Add(ctx context.Context, instance *InstanceInfo, newlyCreated bool) error {
 	sbxlogger.I(instance).Debug("Adding sandbox to cache",
 		zap.Bool("newly_created", newlyCreated),
 		zap.Time("start_time", instance.StartTime),
@@ -105,8 +51,8 @@ func (c *InstanceCache) Add(ctx context.Context, instance *InstanceInfo, newlyCr
 		instance.SetEndTime(instance.StartTime.Add(instance.MaxInstanceLength))
 	}
 
-	c.Set(instance.SandboxID, instance, newlyCreated)
-	c.UpdateCounters(ctx, instance, 1, newlyCreated)
+	c.set(ctx, instance.SandboxID, instance, newlyCreated)
+	c.updateCounters(ctx, instance, 1, newlyCreated)
 
 	// Release the reservation if it exists
 	c.reservations.release(instance.SandboxID)
@@ -114,22 +60,80 @@ func (c *InstanceCache) Add(ctx context.Context, instance *InstanceInfo, newlyCr
 	return nil
 }
 
-// Remove the instance from the cache (no eviction callback).
-func (c *InstanceCache) Remove(instanceID string) {
-	defer c.cache.evicting.Remove(instanceID)
-	c.cache.Remove(instanceID)
+// Exists Check if the instance exists in the cache or is being evicted.
+func (c *MemoryStore) Exists(instanceID string) bool {
+	return c.items.Has(instanceID)
 }
 
-// StartRemoving marks the instance as being evicted to prevent
-func (c *InstanceCache) StartRemoving(instance *InstanceInfo) error {
-	absent := c.cache.evicting.SetIfAbsent(instance.SandboxID, instance)
-	if !absent {
-		return fmt.Errorf("instance %s is already being evicted", instance.SandboxID)
+// Get the item from the cache.
+func (c *MemoryStore) Get(instanceID string, includeEvicting bool) (*InstanceInfo, error) {
+	item, ok := c.items.Get(instanceID)
+	if !ok {
+		return nil, fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
 	}
+
+	if item.IsExpired() && !includeEvicting {
+		return nil, fmt.Errorf("instance \"%s\" is being evicted", instanceID)
+	}
+
+	return item, nil
+}
+
+// Remove the instance from the cache (no eviction callback).
+func (c *MemoryStore) Remove(ctx context.Context, instanceID string, removeType RemoveType) error {
+	sbx, ok := c.items.Get(instanceID)
+	if !ok {
+		return fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
+	}
+
+	acquired := sbx.stopLock.TryLock()
+	if !acquired {
+		// TODO: return a typed error
+		return fmt.Errorf("instance \"%s\" is already being removed", instanceID)
+	}
+	defer sbx.stopLock.Unlock()
+
+	sbx.mu.Lock()
+	sbx.state = StateShuttingDown
+	sbx.mu.Unlock()
+
+	err := c.deleteInstance(ctx, sbx, removeType)
+	sbx.stopDone(err, removeType)
+	if err != nil {
+		return fmt.Errorf("error removing instance \"%s\": %w", instanceID, err)
+	}
+
+	c.items.Remove(instanceID)
 
 	return nil
 }
 
-func (c *InstanceCache) Items() []*InstanceInfo {
-	return c.cache.Items()
+func (c *MemoryStore) Items(teamID *uuid.UUID) []*InstanceInfo {
+	items := make([]*InstanceInfo, 0)
+	for _, item := range c.items.Items() {
+		if item.IsExpired() {
+			continue
+		}
+		if teamID == nil || item.TeamID == *teamID {
+			items = append(items, item)
+		}
+
+		items = append(items, item)
+	}
+
+	return items
+}
+
+func (c *MemoryStore) Len(teamID *uuid.UUID) int {
+	return len(c.Items(teamID))
+}
+
+func (c *MemoryStore) set(ctx context.Context, key string, value *InstanceInfo, created bool) {
+	inserted := c.items.SetIfAbsent(key, value)
+	if inserted {
+		// Run asynchronously to avoid blocking the main flow
+		go func() {
+			c.insertAnalytics(ctx, value, created)
+		}()
+	}
 }

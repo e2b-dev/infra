@@ -24,5 +24,5 @@ func (o *Orchestrator) GetSandboxes(ctx context.Context, teamID *uuid.UUID) []*i
 	_, childSpan := o.tracer.Start(ctx, "get-sandboxes")
 	defer childSpan.End()
 
-	return o.instanceCache.GetInstances(teamID)
+	return o.sandboxStore.Items(teamID)
 }

@@ -119,9 +119,12 @@ type InstanceInfo struct {
 	NodeID              string
 	ClusterID           uuid.UUID
 	AutoPause           bool
-	state               State
-	stopping            *utils.SetOnce[struct{}]
-	mu                  sync.RWMutex
+
+	state State
+	mu    sync.RWMutex
+
+	stopping *utils.SetOnce[struct{}]
+	stopLock sync.Mutex
 }
 
 func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -164,13 +167,6 @@ func (i *InstanceInfo) GetState() State {
 	return i.state
 }
 
-func (i *InstanceInfo) SetState(state State) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	i.state = state
-}
-
 func (i *InstanceInfo) WaitForStop(ctx context.Context) error {
 	if i.GetState() == StateRunning {
 		return fmt.Errorf("sandbox isn't stopping")
@@ -180,11 +176,11 @@ func (i *InstanceInfo) WaitForStop(ctx context.Context) error {
 	return err
 }
 
-func (i *InstanceInfo) StopDone(err error, pause bool) {
+func (i *InstanceInfo) stopDone(err error, removeType RemoveType) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	if pause {
+	if removeType == RemoveTypePause {
 		i.state = StatePaused
 	} else {
 		i.state = StateKilled
@@ -193,12 +189,12 @@ func (i *InstanceInfo) StopDone(err error, pause bool) {
 	if err != nil {
 		err := i.stopping.SetError(err)
 		if err != nil {
-			zap.L().Error("error setting StopDone value", zap.Error(err))
+			zap.L().Error("error setting stopDone value", zap.Error(err))
 		}
 	} else {
 		err := i.stopping.SetValue(struct{}{})
 		if err != nil {
-			zap.L().Error("error setting StopDone value", zap.Error(err))
+			zap.L().Error("error setting stopDone value", zap.Error(err))
 		}
 	}
 }

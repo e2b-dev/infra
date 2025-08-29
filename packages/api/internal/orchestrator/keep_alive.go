@@ -12,7 +12,7 @@ import (
 )
 
 func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, duration time.Duration, allowShorter bool) *api.APIError {
-	sbx, apiErr := o.instanceCache.KeepAliveFor(sandboxID, duration, allowShorter)
+	sbx, apiErr := o.sandboxStore.KeepAliveFor(sandboxID, duration, allowShorter)
 	if apiErr != nil {
 		return apiErr
 	}
