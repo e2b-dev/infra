@@ -125,8 +125,14 @@ func (c *Cluster) GetTemplateBuilderByNodeID(nodeID string) (*ClusterInstance, e
 	return instance, nil
 }
 
-func (c *Cluster) GetInstanceByNodeID(nodeID string) (*ClusterInstance, bool) {
-	return c.instances.Get(nodeID)
+func (c *Cluster) GetByServiceInstanceID(serviceInstanceID string) (*ClusterInstance, bool) {
+	for _, instance := range c.instances.Items() {
+		if instance.ServiceInstanceID == serviceInstanceID {
+			return instance, true
+		}
+	}
+
+	return nil, false
 }
 
 func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterInstance, error) {

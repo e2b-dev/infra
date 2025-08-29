@@ -3,20 +3,30 @@ package oci
 import (
 	"archive/tar"
 	"bytes"
+	"context"
 	"io"
+	"net/http"
+	"net/http/httptest"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/google/go-containerregistry/pkg/authn"
+	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci/auth"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
 func createFileTar(t *testing.T, fileName string) *bytes.Buffer {
@@ -86,4 +96,182 @@ func TestCreateExportLayersOrder(t *testing.T) {
 	assert.FileExists(t, filepath.Join(layers[1], "layer1.txt"))
 	assert.Regexp(t, "/layer-0.*", strings.TrimPrefix(layers[2], dir))
 	assert.FileExists(t, filepath.Join(layers[2], "layer0.txt"))
+}
+
+// authHandler wraps a registry handler with basic authentication
+func authHandler(handler http.Handler, username, password string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Allow certain endpoints without auth (like /v2/)
+		if r.URL.Path == "/v2/" || r.URL.Path == "/v2" {
+			handler.ServeHTTP(w, r)
+			return
+		}
+
+		// Check for Authorization header
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			// Send WWW-Authenticate challenge
+			w.Header().Set("WWW-Authenticate", `Basic realm="Registry"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		// Parse and validate credentials
+		user, pass, ok := r.BasicAuth()
+		if !ok || user != username || pass != password {
+			w.Header().Set("WWW-Authenticate", `Basic realm="Registry"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		// Credentials are valid, proceed to the handler
+		handler.ServeHTTP(w, r)
+	})
+}
+
+func TestGetPublicImageWithGeneralAuth(t *testing.T) {
+	ctx := context.Background()
+	tracer := noop.NewTracerProvider().Tracer("test")
+
+	// Create a test image
+	testImage := empty.Image
+	layer, err := tarball.LayerFromOpener(func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(createFileTar(t, "test-layer").Bytes())), nil
+	})
+	require.NoError(t, err)
+
+	testImage, err = mutate.AppendLayers(testImage, layer)
+	require.NoError(t, err)
+
+	// Test credentials
+	testUsername := "testuser"
+	testPassword := "testpass"
+
+	testRepository := "test/image"
+	testImageRef := testRepository + ":latest"
+
+	t.Run("successful auth and pull", func(t *testing.T) {
+		reg := registry.New()
+
+		// Wrap the registry with authentication handler
+		authReg := authHandler(reg, testUsername, testPassword)
+
+		// Start the test server with auth handler
+		server := httptest.NewServer(authReg)
+		defer server.Close()
+
+		// Parse server URL to get registry host
+		host := strings.TrimPrefix(server.URL, "http://")
+
+		// Push test image to the mock registry first
+		imageRef := path.Join(host, testImageRef)
+		ref, err := name.ParseReference(imageRef, name.Insecure)
+		require.NoError(t, err)
+
+		// Push image to registry
+		err = remote.Write(ref, testImage, remote.WithAuth(
+			&authn.Basic{
+				Username: testUsername,
+				Password: testPassword,
+			},
+		))
+		require.NoError(t, err)
+
+		// Create general auth provider with test credentials
+		generalRegistry := &templatemanager.GeneralRegistry{
+			Username: testUsername,
+			Password: testPassword,
+		}
+		authProvider := auth.NewGeneralAuthProvider(generalRegistry)
+
+		// Test that auth provider creates correct auth option
+		authOption, err := authProvider.GetAuthOption(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, authOption)
+
+		// Now test GetPublicImage
+		img, err := GetPublicImage(ctx, tracer, imageRef, authProvider)
+		require.NoError(t, err)
+		require.NotNil(t, img)
+
+		// Verify we got the right image
+		layers, err := img.Layers()
+		require.NoError(t, err)
+		assert.Len(t, layers, 1)
+	})
+
+	t.Run("incorrect auth", func(t *testing.T) {
+		reg := registry.New()
+
+		// Wrap the registry with authentication handler
+		authReg := authHandler(reg, testUsername, testPassword)
+
+		// Start the test server with auth handler
+		server := httptest.NewServer(authReg)
+		defer server.Close()
+
+		// Parse server URL to get registry host
+		host := strings.TrimPrefix(server.URL, "http://")
+
+		// Push test image to the mock registry first
+		imageRef := path.Join(host, testImageRef)
+		ref, err := name.ParseReference(imageRef, name.Insecure)
+		require.NoError(t, err)
+
+		// Push image to registry
+		err = remote.Write(ref, testImage, remote.WithAuth(
+			&authn.Basic{
+				Username: testUsername,
+				Password: testPassword,
+			},
+		))
+		require.NoError(t, err)
+
+		// Create general auth provider with test credentials
+		generalRegistry := &templatemanager.GeneralRegistry{
+			Username: "incorrect",
+			Password: "incorrect",
+		}
+		authProvider := auth.NewGeneralAuthProvider(generalRegistry)
+
+		// Test that auth provider creates correct auth option
+		authOption, err := authProvider.GetAuthOption(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, authOption)
+
+		// Now test GetPublicImage
+		img, err := GetPublicImage(ctx, tracer, imageRef, authProvider)
+		require.Error(t, err)
+		require.Nil(t, img)
+	})
+
+	t.Run("works without auth for public registry", func(t *testing.T) {
+		// Create a mock registry without authentication (public)
+		reg := registry.New()
+
+		// Start the test server
+		server := httptest.NewServer(reg)
+		defer server.Close()
+
+		// Parse server URL to get registry host
+		host := strings.TrimPrefix(server.URL, "http://")
+
+		// Push test image to the mock registry (no auth needed)
+		imageRef := path.Join(host, testImageRef)
+		ref, err := name.ParseReference(imageRef, name.Insecure)
+		require.NoError(t, err)
+
+		err = remote.Write(ref, testImage)
+		require.NoError(t, err)
+
+		// Get image without auth provider (nil)
+		img, err := GetPublicImage(ctx, tracer, imageRef, nil)
+		require.NoError(t, err)
+		require.NotNil(t, img)
+
+		// Verify we got the right image
+		layers, err := img.Layers()
+		require.NoError(t, err)
+		assert.Len(t, layers, 1)
+	})
 }

@@ -97,5 +97,5 @@ func Deserialize(ctx context.Context, in storage.WriterToCtx) (*Header, error) {
 		mappings = append(mappings, &m)
 	}
 
-	return NewHeader(&metadata, mappings), nil
+	return NewHeader(&metadata, mappings)
 }

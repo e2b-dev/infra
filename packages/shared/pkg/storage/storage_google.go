@@ -253,7 +253,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 			defer uploadLimiter.Release(1)
 		}
 
-		maxConcurrency = g.limiter.GCloudMaxTasks()
+		maxConcurrency = g.limiter.GCloudMaxTasks(ctx)
 	}
 
 	uploader, err := NewMultipartUploaderWithRetryConfig(

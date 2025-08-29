@@ -28,6 +28,12 @@ func WithMetadata(metadata api.SandboxMetadata) SandboxOption {
 	}
 }
 
+func WithoutAnyMetadata() SandboxOption {
+	return func(config *SandboxConfig) {
+		config.metadata = make(map[string]string)
+	}
+}
+
 func WithTimeout(timeout int32) SandboxOption {
 	return func(config *SandboxConfig) {
 		config.timeout = timeout

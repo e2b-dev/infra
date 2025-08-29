@@ -227,6 +227,8 @@ func TestBatcherQueueSize(t *testing.T) {
 }
 
 func testBatcherPushMaxDelay(t *testing.T, itemsCount int, maxDelay time.Duration) {
+	t.Helper()
+
 	lastTime := time.Now()
 	n := 0
 	nn := 0
@@ -275,6 +277,8 @@ func testBatcherPushMaxDelay(t *testing.T, itemsCount int, maxDelay time.Duratio
 }
 
 func testBatcherPushMaxBatchSize(t *testing.T, itemsCount, batchSize int) {
+	t.Helper()
+
 	n := 0
 	nn := 0
 	b, err := NewBatcher[int](func(batch []int) error {

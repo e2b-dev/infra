@@ -33,7 +33,11 @@ JOIN LATERAL (
 ) eb ON TRUE
 WHERE
     e.team_id = $2
-    AND s.metadata @> $3
+    AND (
+        -- When metadata arg is empty json, accept all as row metadata column can be empty json or NULL
+        -- And NULL does not match with empty json
+        s.metadata @> $3 OR $3 = '{}'::jsonb
+    )
     AND (
         s.sandbox_started_at < $4
         OR

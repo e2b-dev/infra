@@ -29,6 +29,8 @@ const (
 
 // createTestMultipartUploader creates a test uploader with a mock HTTP client
 func createTestMultipartUploader(t *testing.T, handler http.HandlerFunc, retryConfig ...RetryConfig) *MultipartUploader {
+	t.Helper()
+
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 

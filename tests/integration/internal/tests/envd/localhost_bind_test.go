@@ -17,6 +17,8 @@ import (
 )
 
 func TestBindLocalhost(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 
 	client := setup.GetAPIClient()

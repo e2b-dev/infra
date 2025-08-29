@@ -142,6 +142,8 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 			}),
 	)
 
+	r.Use(customMiddleware.InitLaunchDarklyContext)
+
 	r.Use(
 		// Request logging must be executed after authorization (if required) is done,
 		// so that we can log team ID.
