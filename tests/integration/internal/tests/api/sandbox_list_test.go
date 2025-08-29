@@ -103,7 +103,7 @@ func TestSandboxListRunning(t *testing.T) {
 func TestSandboxListRunning_NoMetadata(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	sbx := utils.SetupSandboxWithCleanup(t, c)
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithoutAnyMetadata())
 	sandboxID := sbx.SandboxID
 
 	listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
@@ -154,7 +154,7 @@ func TestSandboxListPaused(t *testing.T) {
 func TestSandboxListPaused_NoMetadata(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	sbx := utils.SetupSandboxWithCleanup(t, c)
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithoutAnyMetadata())
 	sandboxID := sbx.SandboxID
 
 	pauseSandbox(t, c, sandboxID)
