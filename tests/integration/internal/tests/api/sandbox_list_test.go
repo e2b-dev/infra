@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
@@ -99,6 +100,24 @@ func TestSandboxListRunning(t *testing.T) {
 	assert.True(t, found)
 }
 
+func TestSandboxListRunning_NoMetadata(t *testing.T) {
+	c := setup.GetAPIClient()
+
+	sbx := utils.SetupSandboxWithCleanup(t, c)
+	sandboxID := sbx.SandboxID
+
+	listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
+		State: &[]api.SandboxState{api.Running},
+	}, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, listResponse.StatusCode())
+
+	sandboxIds := sharedUtils.Map(*listResponse.JSON200, func(s api.ListedSandbox) string {
+		return s.SandboxID
+	})
+	assert.Contains(t, sandboxIds, sandboxID)
+}
+
 func TestSandboxListPaused(t *testing.T) {
 	c := setup.GetAPIClient()
 
@@ -130,6 +149,27 @@ func TestSandboxListPaused(t *testing.T) {
 		}
 	}
 	assert.True(t, found)
+}
+
+func TestSandboxListPaused_NoMetadata(t *testing.T) {
+	c := setup.GetAPIClient()
+
+	sbx := utils.SetupSandboxWithCleanup(t, c)
+	sandboxID := sbx.SandboxID
+
+	pauseSandbox(t, c, sandboxID)
+
+	// List paused sandboxes
+	listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
+		State: &[]api.SandboxState{api.Paused},
+	}, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, listResponse.StatusCode())
+
+	sandboxIds := sharedUtils.Map(*listResponse.JSON200, func(s api.ListedSandbox) string {
+		return s.SandboxID
+	})
+	assert.Contains(t, sandboxIds, sandboxID)
 }
 
 func TestSandboxListPaginationRunning(t *testing.T) {
