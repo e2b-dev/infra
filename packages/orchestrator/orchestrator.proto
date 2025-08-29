@@ -60,7 +60,8 @@ message SandboxCreateResponse {
 message SandboxUpdateRequest {
   string sandbox_id = 1;
 
-  google.protobuf.Timestamp end_time = 2;
+  optional google.protobuf.Timestamp end_time = 2;
+  optional uint32 online_cpus = 3;
 }
 
 message SandboxDeleteRequest {

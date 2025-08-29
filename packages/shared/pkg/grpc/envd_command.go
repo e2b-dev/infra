@@ -59,6 +59,10 @@ func SetUserHeader(header http.Header, user string) {
 	header.Set("Authorization", basic)
 }
 
+func SetAccessTokenHeader(header http.Header, accessToken string) {
+	header.Set("X-Access-Token", accessToken)
+}
+
 func extractDomain(input string) (string, error) {
 	parsedURL, err := url.Parse(input)
 	if err != nil || parsedURL.Host == "" {

@@ -19,7 +19,8 @@ import (
 func (o *Orchestrator) UpdateSandbox(
 	ctx context.Context,
 	sandboxID string,
-	endTime time.Time,
+	endTime *time.Time,
+	onlineCpus *uint32,
 	clusterID uuid.UUID,
 	nodeID string,
 ) error {
@@ -35,10 +36,16 @@ func (o *Orchestrator) UpdateSandbox(
 		return fmt.Errorf("failed to get client '%s': %w", nodeID, err)
 	}
 
+	var endTimestamp *timestamppb.Timestamp
+	if endTime != nil {
+		endTimestamp = timestamppb.New(*endTime)
+	}
+
 	_, err = client.Sandbox.Update(
 		childCtx, &orchestrator.SandboxUpdateRequest{
-			SandboxId: sandboxID,
-			EndTime:   timestamppb.New(endTime),
+			SandboxId:  sandboxID,
+			EndTime:    endTimestamp,
+			OnlineCpus: onlineCpus,
 		},
 	)
 
