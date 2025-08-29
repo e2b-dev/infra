@@ -13,44 +13,37 @@ import (
 type PostProcessor struct {
 	logger *zap.Logger
 
-	resetCh chan struct{}
+	ticker   *time.Ticker
+	interval time.Duration
 }
 
 func (p *PostProcessor) Hook(e zapcore.Entry) error {
-	if p.resetCh == nil {
-		return nil
-	}
-
-	p.resetCh <- struct{}{}
+	p.ticker.Reset(p.interval)
 	return nil
 }
 
 // Start the post-processing.
-func (p *PostProcessor) run(ctx context.Context, interval time.Duration) {
-	t := time.NewTicker(interval)
+func (p *PostProcessor) run(ctx context.Context) {
 
 	for {
 		select {
 		case <-ctx.Done():
-			ch := p.resetCh
-			p.resetCh = nil
-			close(ch)
+			p.ticker.Stop()
 			return
-		case <-t.C:
+		case <-p.ticker.C:
 			p.logger.Info("...")
-		case <-p.resetCh:
-			t.Reset(interval)
 		}
 	}
 }
 
 func NewPostProcessor(ctx context.Context, interval time.Duration, core zapcore.Core) zapcore.Core {
 	pp := &PostProcessor{
-		logger:  zap.New(core),
-		resetCh: make(chan struct{}, 5),
+		logger:   zap.New(core),
+		interval: interval,
+		ticker:   time.NewTicker(interval),
 	}
 
-	go pp.run(ctx, interval)
+	go pp.run(ctx)
 
 	return zapcore.RegisterHooks(core, pp.Hook)
 }
