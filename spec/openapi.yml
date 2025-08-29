@@ -878,6 +878,8 @@ components:
     Node:
       required:
         - nodeID
+        - id
+        - serviceInstanceID
         - clusterID
         - status
         - sandboxCount
@@ -896,7 +898,14 @@ components:
           description: Commit of the orchestrator
         nodeID:
           type: string
+          deprecated: true
+          description: Identifier of the nomad node
+        id:
+          type: string
           description: Identifier of the node
+        serviceInstanceID:
+            type: string
+            description: Service instance identifier of the node
         clusterID:
           type: string
           description: Identifier of the cluster
@@ -924,6 +933,8 @@ components:
     NodeDetail:
       required:
         - nodeID
+        - id
+        - serviceInstanceID
         - clusterID
         - status
         - sandboxes
@@ -943,9 +954,16 @@ components:
         commit:
           type: string
           description: Commit of the orchestrator
-        nodeID:
+        id:
           type: string
           description: Identifier of the node
+        serviceInstanceID:
+            type: string
+            description: Service instance identifier of the node
+        nodeID:
+          type: string
+          deprecated: true
+          description: Identifier of the nomad node
         status:
           $ref: "#/components/schemas/NodeStatus"
         sandboxes:
@@ -1878,6 +1896,12 @@ paths:
         - AdminTokenAuth: []
       parameters:
         - $ref: "#/components/parameters/nodeID"
+        - in: query
+          name: clusterID
+          description: Identifier of the cluster
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: Successfully returned the node

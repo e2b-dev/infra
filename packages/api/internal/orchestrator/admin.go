@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"slices"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -25,6 +26,8 @@ func (o *Orchestrator) AdminNodes() []*api.Node {
 		metrics := n.GetAPIMetric()
 		apiNodes[n.ID] = &api.Node{
 			NodeID:               n.NomadNodeShortID,
+			Id:                   n.ID,
+			ServiceInstanceID:    meta.ServiceInstanceID,
 			ClusterID:            n.ClusterID.String(),
 			Status:               n.Status(),
 			CreateSuccesses:      n.PlacementMetrics.SuccessCount(),
@@ -58,18 +61,23 @@ func (o *Orchestrator) AdminNodes() []*api.Node {
 	return result
 }
 
-func (o *Orchestrator) AdminNodeDetail(nomadNodeShortID string) (*api.NodeDetail, error) {
-	n := o.GetNodeByNomadShortID(nomadNodeShortID)
+func (o *Orchestrator) AdminNodeDetail(clusterID uuid.UUID, nodeID string) (*api.NodeDetail, error) {
+	n := o.GetNodeByNomadShortID(nodeID)
 	if n == nil {
-		return nil, ErrNodeNotFound
+		n = o.GetNode(clusterID, nodeID)
+		if n == nil {
+			return nil, ErrNodeNotFound
+		}
 	}
 
 	meta := n.Metadata()
 	metrics := n.GetAPIMetric()
 
 	node := &api.NodeDetail{
-		NodeID:    n.NomadNodeShortID,
-		ClusterID: n.ClusterID.String(),
+		Id:                n.ID,
+		NodeID:            n.NomadNodeShortID,
+		ClusterID:         n.ClusterID.String(),
+		ServiceInstanceID: meta.ServiceInstanceID,
 
 		Status:          n.Status(),
 		CreateSuccesses: n.PlacementMetrics.SuccessCount(),
