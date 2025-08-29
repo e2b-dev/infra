@@ -16,7 +16,7 @@ type postProcessor struct {
 	interval time.Duration
 }
 
-func (p *postProcessor) Hook(_ zapcore.Entry) error {
+func (p *postProcessor) hook(_ zapcore.Entry) error {
 	p.ticker.Reset(p.interval)
 	return nil
 }
@@ -44,5 +44,5 @@ func NewPostProcessor(interval time.Duration, core zapcore.Core) (zapcore.Core, 
 
 	go pp.run()
 
-	return zapcore.RegisterHooks(core, pp.Hook), func() { pp.done <- struct{}{} }
+	return zapcore.RegisterHooks(core, pp.hook), func() { pp.done <- struct{}{} }
 }
