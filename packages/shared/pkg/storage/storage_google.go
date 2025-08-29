@@ -13,11 +13,13 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/googleapis/gax-go/v2"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"google.golang.org/api/iterator"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -31,12 +33,29 @@ const (
 	gcloudDefaultUploadConcurrency = 16
 )
 
+var (
+	googleReadTimerFactory = must(telemetry.NewTimerFactory(meter,
+		"orchestrator.storage.gcs.read",
+		"Duration of GCS reads",
+		"Total GCS bytes read",
+		"Total GCS reads",
+	))
+	googleWriteTimerFactory = must(telemetry.NewTimerFactory(meter,
+		"orchestrator.storage.gcs.write",
+		"Duration of GCS writes",
+		"Total bytes written to GCS",
+		"Total writes to GCS",
+	))
+)
+
 type GCPBucketStorageProvider struct {
 	client *storage.Client
 	bucket *storage.BucketHandle
 
 	limiter *limit.Limiter
 }
+
+var _ StorageProvider = (*GCPBucketStorageProvider)(nil)
 
 type GCPBucketStorageObjectProvider struct {
 	storage *GCPBucketStorageProvider
@@ -45,6 +64,8 @@ type GCPBucketStorageObjectProvider struct {
 
 	limiter *limit.Limiter
 }
+
+var _ StorageObjectProvider = (*GCPBucketStorageObjectProvider)(nil)
 
 func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, limiter *limit.Limiter) (*GCPBucketStorageProvider, error) {
 	client, err := storage.NewClient(ctx)
@@ -152,6 +173,8 @@ func (g *GCPBucketStorageObjectProvider) Size(ctx context.Context) (int64, error
 }
 
 func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
+	timer := googleReadTimerFactory.Begin()
+
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
 	defer cancel()
 
@@ -178,10 +201,13 @@ func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte
 		return n, fmt.Errorf("failed to read from GCS object: %w", readErr)
 	}
 
+	timer.End(ctx, int64(n))
 	return n, nil
 }
 
 func (g *GCPBucketStorageObjectProvider) Write(ctx context.Context, data []byte) (int, error) {
+	timer := googleWriteTimerFactory.Begin()
+
 	w := g.handle.NewWriter(ctx)
 	defer w.Close()
 
@@ -190,10 +216,13 @@ func (g *GCPBucketStorageObjectProvider) Write(ctx context.Context, data []byte)
 		return n, fmt.Errorf("failed to copy buffer to persistence: %w", err)
 	}
 
+	timer.End(ctx, int64(n))
 	return n, nil
 }
 
 func (g *GCPBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
+	timer := googleReadTimerFactory.Begin()
+
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
 	defer cancel()
 
@@ -214,10 +243,13 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Wri
 		return n, fmt.Errorf("failed to copy GCS object to writer: %w", err)
 	}
 
+	timer.End(ctx, n)
 	return n, nil
 }
 
 func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
+	timer := googleWriteTimerFactory.Begin()
+
 	bucketName := g.storage.bucket.BucketName()
 	objectName := g.path
 	filePath := path
@@ -239,6 +271,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 			return fmt.Errorf("failed to write file (%d bytes): %w", len(data), err)
 		}
 
+		timer.End(ctx, int64(len(data)), attribute.String("method", "one-shot"))
 		return nil
 	}
 
@@ -280,6 +313,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 		zap.Int64("duration", time.Since(start).Milliseconds()),
 	)
 
+	timer.End(ctx, fileInfo.Size(), attribute.String("method", "multipart"))
 	return nil
 }
 
