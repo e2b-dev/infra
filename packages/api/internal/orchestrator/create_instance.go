@@ -164,7 +164,8 @@ func (o *Orchestrator) CreateSandbox(
 
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
-	node, err = placement.PlaceSandbox(ctx, o.tracer, o.placementAlgorithm, clusterNodes, node, sbxRequest)
+	algorithm := o.getPlacementAlgorithm(ctx)
+	node, err = placement.PlaceSandbox(ctx, o.tracer, algorithm, clusterNodes, node, sbxRequest)
 	if err != nil {
 		telemetry.ReportError(ctx, "failed to create sandbox", err)
 
