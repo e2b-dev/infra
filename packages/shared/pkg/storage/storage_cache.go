@@ -86,7 +86,7 @@ func (c CachedProvider) GetDetails() string {
 }
 
 type CachedFileObjectProvider struct {
-	ctx       context.Context
+	ctx       context.Context // nolint:containedctx // todo: refactor so this can be removed
 	path      string
 	chunkSize int64
 	inner     StorageObjectProvider
