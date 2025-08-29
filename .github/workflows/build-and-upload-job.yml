@@ -45,33 +45,18 @@ jobs:
           infisical_client_id: ${{ secrets.INFISICAL_CLIENT_ID }}
           infisical_client_secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: "go.work"
-          cache: false
-
-      - name: Go Mod Cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum', '**/go.mod', 'go.work') }}
-          restore-keys: |
-            ${{ runner.os }}-go-mod-
-
       - name: Build and upload jobs
         env:
           AUTO_CONFIRM_DEPLOY: true
         run: |
           # Parse semicolon-separated job names
           IFS=';' read -ra JOBS <<< "${{ inputs.job_names }}"
-
+          
           # Build and upload each job
           for job_name in "${JOBS[@]}"; do
             # Trim whitespace
             job_name=$(echo "$job_name" | xargs)
-
+          
             if [ -n "$job_name" ]; then
               echo "::group::Building and uploading job: $job_name"
               make build-and-upload/$job_name

@@ -95,5 +95,5 @@ func Deserialize(in io.WriterTo) (*Header, error) {
 		mappings = append(mappings, &m)
 	}
 
-	return NewHeader(&metadata, mappings), nil
+	return NewHeader(&metadata, mappings)
 }

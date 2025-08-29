@@ -88,7 +88,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	var img containerregistry.Image
 	var err error
 	if r.template.FromImage != "" {
-		img, err = oci.GetPublicImage(childCtx, tracer, r.template.FromImage)
+		img, err = oci.GetPublicImage(childCtx, tracer, r.template.FromImage, r.template.RegistryAuthProvider)
 	} else {
 		img, err = oci.GetImage(childCtx, tracer, r.artifactRegistry, r.template.TemplateID, r.metadata.BuildID)
 	}

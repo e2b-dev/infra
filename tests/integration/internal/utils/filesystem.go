@@ -63,13 +63,13 @@ func CreateTextFile(tb testing.TB, path string, content string) (*bytes.Buffer, 
 	return body, writer.FormDataContentType()
 }
 
-func CreateDir(t testing.TB, sbx *api.Sandbox, path string) {
-	t.Helper()
+func CreateDir(tb testing.TB, sbx *api.Sandbox, path string) {
+	tb.Helper()
 
-	ctx, cancel := context.WithCancel(t.Context())
+	ctx, cancel := context.WithCancel(tb.Context())
 	defer cancel()
 
-	client := setup.GetEnvdClient(t, ctx)
+	client := setup.GetEnvdClient(tb, ctx)
 	req := connect.NewRequest(&filesystem.MakeDirRequest{
 		Path: path,
 	})
@@ -77,6 +77,6 @@ func CreateDir(t testing.TB, sbx *api.Sandbox, path string) {
 	setup.SetUserHeader(req.Header(), "user")
 	_, err := client.FilesystemClient.MakeDir(ctx, req)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 }

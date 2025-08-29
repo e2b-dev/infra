@@ -13,11 +13,14 @@ type Empty struct {
 }
 
 func NewEmpty(size int64, blockSize int64, buildID uuid.UUID) (*Empty, error) {
-	h := header.NewHeader(header.NewTemplateMetadata(
+	h, err := header.NewHeader(header.NewTemplateMetadata(
 		buildID,
 		uint64(blockSize),
 		uint64(size),
 	), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create header: %w", err)
+	}
 
 	return &Empty{
 		header: h,

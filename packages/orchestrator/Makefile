@@ -86,6 +86,18 @@ mock-snapshot:
 test:
 	go test -race -v ./...
 
+.PHONY: test-docker
+test-docker:
+	@echo "Running orchestrator tests in Docker (AMD64 Linux)..."
+	@rm -rf .shared/
+	@cp -r ../shared .shared/
+	@rm -rf .clickhouse/
+	@cp -r ../clickhouse .clickhouse/
+	@docker build --platform linux/amd64 -f test.Dockerfile --no-cache-filter runner --progress=plain -t orchestrator-test .
+	@rm -rf .shared/
+	@rm -rf .clickhouse/
+	@echo "Done"
+
 .PHONY: build-template
 build-template:
 	sudo -E TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \

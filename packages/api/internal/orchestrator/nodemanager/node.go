@@ -81,7 +81,7 @@ func New(
 	go buildCache.Start()
 
 	nodeMetadata := NodeMetadata{
-		serviceInstanceID: nodeInfo.ServiceId,
+		ServiceInstanceID: nodeInfo.ServiceId,
 		Commit:            nodeInfo.ServiceCommit,
 		Version:           nodeInfo.ServiceVersion,
 	}
@@ -120,7 +120,7 @@ func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID
 	go buildCache.Start()
 
 	nodeMetadata := NodeMetadata{
-		serviceInstanceID: i.ServiceInstanceID,
+		ServiceInstanceID: i.ServiceInstanceID,
 		Commit:            i.ServiceVersionCommit,
 		Version:           i.ServiceVersion,
 	}

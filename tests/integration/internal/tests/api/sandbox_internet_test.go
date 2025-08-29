@@ -57,6 +57,8 @@ func TestInternetAccess(t *testing.T) {
 }
 
 func TestInternetAccessResumedSbx(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 	sbxTimeout := int32(30)
 

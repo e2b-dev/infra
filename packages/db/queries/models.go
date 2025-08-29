@@ -18,13 +18,12 @@ type AccessToken struct {
 	CreatedAt   time.Time
 	ID          *uuid.UUID
 	// sensitive
-	AccessTokenHash       *string
-	AccessTokenMask       *string
+	AccessTokenHash       string
 	Name                  string
-	AccessTokenPrefix     *string
-	AccessTokenLength     *int32
-	AccessTokenMaskPrefix *string
-	AccessTokenMaskSuffix *string
+	AccessTokenPrefix     string
+	AccessTokenLength     int32
+	AccessTokenMaskPrefix string
+	AccessTokenMaskSuffix string
 }
 
 type Cluster struct {
@@ -113,12 +112,11 @@ type TeamApiKey struct {
 	CreatedBy *uuid.UUID
 	ID        uuid.UUID
 	// sensitive
-	ApiKeyHash       *string
-	ApiKeyMask       *string
-	ApiKeyPrefix     *string
-	ApiKeyLength     *int32
-	ApiKeyMaskPrefix *string
-	ApiKeyMaskSuffix *string
+	ApiKeyHash       string
+	ApiKeyPrefix     string
+	ApiKeyLength     int32
+	ApiKeyMaskPrefix string
+	ApiKeyMaskSuffix string
 }
 
 type Tier struct {

@@ -234,7 +234,7 @@ func TestMoveRelativePath(t *testing.T) {
 }
 
 func TestMove_Symlinks(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()  // nolint:tparallel // this test cannot be executed in parallel
 
 	root := t.TempDir()
 	u, err := user.Current()
