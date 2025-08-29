@@ -39,7 +39,7 @@ type ServerInterface interface {
 	GetNodes(c *gin.Context)
 
 	// (GET /nodes/{nodeID})
-	GetNodesNodeID(c *gin.Context, nodeID NodeID)
+	GetNodesNodeID(c *gin.Context, nodeID NodeID, params GetNodesNodeIDParams)
 
 	// (POST /nodes/{nodeID})
 	PostNodesNodeID(c *gin.Context, nodeID NodeID)
@@ -301,6 +301,17 @@ func (siw *ServerInterfaceWrapper) GetNodesNodeID(c *gin.Context) {
 
 	c.Set(AdminTokenAuthScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetNodesNodeIDParams
+
+	// ------------- Optional query parameter "clusterID" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "clusterID", c.Request.URL.Query(), &params.ClusterID)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter clusterID: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -308,7 +319,7 @@ func (siw *ServerInterfaceWrapper) GetNodesNodeID(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetNodesNodeID(c, nodeID)
+	siw.Handler.GetNodesNodeID(c, nodeID, params)
 }
 
 // PostNodesNodeID operation middleware

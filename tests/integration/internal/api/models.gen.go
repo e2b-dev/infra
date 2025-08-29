@@ -316,10 +316,14 @@ type Node struct {
 	// CreateSuccesses Number of sandbox create successes
 	CreateSuccesses uint64 `json:"createSuccesses"`
 
+	// Id Identifier of the node
+	Id string `json:"id"`
+
 	// Metrics Node metrics
 	Metrics NodeMetrics `json:"metrics"`
 
-	// NodeID Identifier of the node
+	// NodeID Identifier of the nomad node
+	// Deprecated:
 	NodeID string `json:"nodeID"`
 
 	// SandboxCount Number of sandboxes running on the node
@@ -327,6 +331,9 @@ type Node struct {
 
 	// SandboxStartingCount Number of starting Sandboxes
 	SandboxStartingCount int `json:"sandboxStartingCount"`
+
+	// ServiceInstanceID Service instance identifier of the node
+	ServiceInstanceID string `json:"serviceInstanceID"`
 
 	// Status Status of the node
 	Status NodeStatus `json:"status"`
@@ -352,14 +359,21 @@ type NodeDetail struct {
 	// CreateSuccesses Number of sandbox create successes
 	CreateSuccesses uint64 `json:"createSuccesses"`
 
+	// Id Identifier of the node
+	Id string `json:"id"`
+
 	// Metrics Node metrics
 	Metrics NodeMetrics `json:"metrics"`
 
-	// NodeID Identifier of the node
+	// NodeID Identifier of the nomad node
+	// Deprecated:
 	NodeID string `json:"nodeID"`
 
 	// Sandboxes List of sandboxes running on the node
 	Sandboxes []ListedSandbox `json:"sandboxes"`
+
+	// ServiceInstanceID Service instance identifier of the node
+	ServiceInstanceID string `json:"serviceInstanceID"`
 
 	// Status Status of the node
 	Status NodeStatus `json:"status"`
@@ -800,6 +814,12 @@ type N409 = Error
 
 // N500 defines model for 500.
 type N500 = Error
+
+// GetNodesNodeIDParams defines parameters for GetNodesNodeID.
+type GetNodesNodeIDParams struct {
+	// ClusterID Identifier of the cluster
+	ClusterID *string `form:"clusterID,omitempty" json:"clusterID,omitempty"`
+}
 
 // GetSandboxesParams defines parameters for GetSandboxes.
 type GetSandboxesParams struct {
