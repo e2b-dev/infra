@@ -76,6 +76,7 @@ func (es *SandboxEventsService) handlePubSubEvent(ctx context.Context, event eve
 		shouldPublish, err := es.pubsub.ShouldPublish(ctx, webhooks.DeriveKey(event.SandboxTeamID))
 		if err != nil {
 			es.logger.Error("error checking if sandbox should publish", zap.Error(err))
+			return
 		}
 
 		if !shouldPublish {
