@@ -9,7 +9,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
@@ -50,7 +49,7 @@ func main() {
 
 	err := buildTemplate(ctx, *kernelVersion, *fcVersion, *templateID, *buildID)
 	if err != nil {
-		log.Fatal().Err(err).Msg("error building template")
+		zap.L().Fatal("error building template", zap.Error(err))
 		os.Exit(1)
 	}
 }
