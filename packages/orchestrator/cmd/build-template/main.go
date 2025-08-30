@@ -174,7 +174,7 @@ func buildTemplate(
 		buildMetrics,
 	)
 
-	logsWriter := logger.
+	logger = logger.
 		With(zap.Field{Type: zapcore.StringType, Key: "envID", String: templateID}).
 		With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: buildID})
 
@@ -195,7 +195,7 @@ func buildTemplate(
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: fcVersion,
 	}
-	_, err = builder.Build(ctx, metadata, template, logsWriter)
+	_, err = builder.Build(ctx, metadata, template, logger.Core())
 	if err != nil {
 		return fmt.Errorf("error building template: %w", err)
 	}
