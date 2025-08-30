@@ -35,6 +35,8 @@ type storageTemplate struct {
 	persistence storage.StorageProvider
 }
 
+var _ Template = (*storageTemplate)(nil)
+
 func newTemplateFromStorage(
 	buildId,
 	kernelVersion,
@@ -228,28 +230,28 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 	}
 }
 
-func (t *storageTemplate) Close() error {
-	return closeTemplate(t)
+func (t *storageTemplate) Close(ctx context.Context) error {
+	return closeTemplate(ctx, t)
 }
 
 func (t *storageTemplate) Files() storage.TemplateCacheFiles {
 	return t.files
 }
 
-func (t *storageTemplate) Memfile() (block.ReadonlyDevice, error) {
-	return t.memfile.Wait()
+func (t *storageTemplate) Memfile(ctx context.Context) (block.ReadonlyDevice, error) {
+	return t.memfile.WaitWithContext(ctx)
 }
 
-func (t *storageTemplate) Rootfs() (block.ReadonlyDevice, error) {
-	return t.rootfs.Wait()
+func (t *storageTemplate) Rootfs(ctx context.Context) (block.ReadonlyDevice, error) {
+	return t.rootfs.WaitWithContext(ctx)
 }
 
-func (t *storageTemplate) Snapfile() (File, error) {
-	return t.snapfile.Wait()
+func (t *storageTemplate) Snapfile(ctx context.Context) (File, error) {
+	return t.snapfile.WaitWithContext(ctx)
 }
 
-func (t *storageTemplate) Metadata() (metadata.Template, error) {
-	metafile, err := t.metafile.Wait()
+func (t *storageTemplate) Metadata(ctx context.Context) (metadata.Template, error) {
+	metafile, err := t.metafile.WaitWithContext(ctx)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("failed to get metafile: %w", err)
 	}

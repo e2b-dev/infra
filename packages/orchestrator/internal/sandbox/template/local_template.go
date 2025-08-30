@@ -1,6 +1,7 @@
 package template
 
 import (
+	"context"
 	"errors"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
@@ -27,26 +28,26 @@ func NewLocalTemplate(
 	}
 }
 
-func (t *LocalTemplate) Close() error {
-	return closeTemplate(t)
+func (t *LocalTemplate) Close(ctx context.Context) error {
+	return closeTemplate(ctx, t)
 }
 
 func (t *LocalTemplate) Files() storage.TemplateCacheFiles {
 	return t.files
 }
 
-func (t *LocalTemplate) Memfile() (block.ReadonlyDevice, error) {
+func (t *LocalTemplate) Memfile(_ context.Context) (block.ReadonlyDevice, error) {
 	return t.memfile, nil
 }
 
-func (t *LocalTemplate) Rootfs() (block.ReadonlyDevice, error) {
+func (t *LocalTemplate) Rootfs(_ context.Context) (block.ReadonlyDevice, error) {
 	return t.rootfs, nil
 }
 
-func (t *LocalTemplate) Snapfile() (File, error) {
+func (t *LocalTemplate) Snapfile(_ context.Context) (File, error) {
 	return &NoopFile{}, errors.New("snapfile not available in local template")
 }
 
-func (t *LocalTemplate) Metadata() (metadata.Template, error) {
+func (t *LocalTemplate) Metadata(_ context.Context) (metadata.Template, error) {
 	return metadata.Template{}, errors.New("metadata not available in local template")
 }

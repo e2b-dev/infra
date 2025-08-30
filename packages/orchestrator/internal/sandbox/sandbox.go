@@ -160,7 +160,7 @@ func CreateSandbox(
 		return nil
 	})
 
-	rootFS, err := template.Rootfs()
+	rootFS, err := template.Rootfs(childCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rootfs: %w", err)
 	}
@@ -195,7 +195,7 @@ func CreateSandbox(
 		}
 	}()
 
-	memfile, err := template.Memfile()
+	memfile, err := template.Memfile(childCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memfile: %w", err)
 	}
@@ -336,7 +336,7 @@ func ResumeSandbox(
 		return nil
 	})
 
-	readonlyRootfs, err := t.Rootfs()
+	readonlyRootfs, err := t.Rootfs(childCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rootfs: %w", err)
 	}
@@ -360,7 +360,7 @@ func ResumeSandbox(
 		}
 	}()
 
-	memfile, err := t.Memfile()
+	memfile, err := t.Memfile(childCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memfile: %w", err)
 	}
@@ -399,7 +399,7 @@ func ResumeSandbox(
 	if ips.err != nil {
 		return nil, fmt.Errorf("failed to get network slot: %w", err)
 	}
-	meta, err := t.Metadata()
+	meta, err := t.Metadata(childCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get metadata: %w", err)
 	}
@@ -425,7 +425,7 @@ func ResumeSandbox(
 	}
 
 	// todo: check if kernel, firecracker, and envd versions exist
-	snapfile, err := t.Snapfile()
+	snapfile, err := t.Snapfile(childCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get snapfile: %w", err)
 	}
@@ -623,11 +623,11 @@ func (s *Sandbox) Pause(
 	}
 
 	// Gather data for postprocessing
-	originalMemfile, err := s.Template.Memfile()
+	originalMemfile, err := s.Template.Memfile(childCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original memfile: %w", err)
 	}
-	originalRootfs, err := s.Template.Rootfs()
+	originalRootfs, err := s.Template.Rootfs(childCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
 	}

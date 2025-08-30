@@ -275,7 +275,9 @@ func (p *Process) Create(
 	// Rootfs
 	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath())
 	if err != nil {
-		return fmt.Errorf("error symlinking rootfs: %w", err)
+		fcStopErr := p.Stop()
+
+		return errors.Join(fmt.Errorf("error symlinking rootfs: %w", err), fcStopErr)
 	}
 
 	err = p.client.setRootfsDrive(childCtx, p.rootfsPath)

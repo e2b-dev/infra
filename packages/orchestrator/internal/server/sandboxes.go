@@ -379,7 +379,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		}()
 	}(context.WithoutCancel(ctx))
 
-	meta, err := sbx.Template.Metadata()
+	meta, err := sbx.Template.Metadata(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no metadata found in template: %w", err)
 	}
