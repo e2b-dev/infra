@@ -87,7 +87,29 @@ type poolSynchronizationStore struct {
 }
 
 func (d poolSynchronizationStore) SourceList(ctx context.Context) ([]queries.GetActiveClustersRow, error) {
-	return d.pool.db.GetActiveClusters(ctx)
+	entries := make([]queries.GetActiveClustersRow, 0)
+
+	db, err := d.pool.db.GetActiveClusters(ctx)
+	if err != nil {
+		return entries, err
+	}
+
+	entries = append(entries, db...)
+
+	// register local cluster
+	entries = append(entries,
+		queries.GetActiveClustersRow{
+			Cluster: queries.Cluster{
+				ID:                 uuid.Nil,
+				Endpoint:           "edge-api.service.consul:3001", // todo
+				EndpointTls:        false,
+				Token:              "xxx", // todo
+				SandboxProxyDomain: nil,
+			},
+		},
+	)
+
+	return entries, nil
 }
 
 func (d poolSynchronizationStore) SourceExists(ctx context.Context, s []queries.GetActiveClustersRow, p *Cluster) bool {

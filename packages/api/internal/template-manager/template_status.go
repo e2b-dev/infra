@@ -21,7 +21,7 @@ var (
 	syncWaitingStateDeadline = time.Minute * 40
 )
 
-func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUID, templateID string, clusterID *uuid.UUID, nodeID string) error {
+func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUID, templateID string, clusterID uuid.UUID, nodeID string) error {
 	if tm.createInProcessingQueue(buildID, templateID) {
 		// already processing, skip
 		return nil
@@ -72,7 +72,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 type templateManagerClient interface {
 	SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason *templatemanagergrpc.TemplateBuildStatusReason) error
 	SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string) error
-	GetStatus(ctx context.Context, buildId uuid.UUID, templateID string, clusterID *uuid.UUID, nodeID string) (*templatemanagergrpc.TemplateBuildStatusResponse, error)
+	GetStatus(ctx context.Context, buildId uuid.UUID, templateID string, clusterID uuid.UUID, nodeID string) (*templatemanagergrpc.TemplateBuildStatusResponse, error)
 }
 
 type PollBuildStatus struct {
@@ -82,7 +82,7 @@ type PollBuildStatus struct {
 	templateID string
 	buildID    uuid.UUID
 
-	clusterID *uuid.UUID
+	clusterID uuid.UUID
 	nodeID    string
 
 	status *templatemanagergrpc.TemplateBuildStatusResponse

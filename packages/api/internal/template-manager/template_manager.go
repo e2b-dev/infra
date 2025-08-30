@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	loki "github.com/grafana/loki/pkg/logcli/client"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -46,27 +45,20 @@ type TemplateManager struct {
 	processing    map[uuid.UUID]processingBuilds
 	buildCache    *templatecache.TemplatesBuildCache
 	templateCache *templatecache.TemplateCache
-	lokiClient    *loki.DefaultClient
 	sqlcDB        *sqlcdb.Client
-
-	localClient      *grpclient.GRPCClient
-	localClientMutex sync.RWMutex
-	localClientInfo  LocalTemplateManagerInfo
 }
 
 type DeleteBuild struct {
 	BuildID    uuid.UUID
 	TemplateID string
 
-	ClusterID *uuid.UUID
+	ClusterID uuid.UUID
 	NodeID    string
 }
 
 const (
 	syncInterval = time.Minute * 1
 )
-
-var ErrLocalTemplateManagerNotAvailable = errors.New("local template manager is not available")
 
 func New(
 	ctx context.Context,
@@ -76,7 +68,6 @@ func New(
 	db *db.DB,
 	sqlcDB *sqlcdb.Client,
 	edgePool *edge.Pool,
-	lokiClient *loki.DefaultClient,
 	buildCache *templatecache.TemplatesBuildCache,
 	templateCache *templatecache.TemplateCache,
 ) (*TemplateManager, error) {
@@ -93,21 +84,10 @@ func New(
 		buildCache:    buildCache,
 		templateCache: templateCache,
 		edgePool:      edgePool,
-		lokiClient:    lokiClient,
-
-		localClient:      client,
-		localClientMutex: sync.RWMutex{},
-		localClientInfo: LocalTemplateManagerInfo{
-			status: infogrpc.ServiceInfoStatus_Unhealthy,
-			nodeID: unknownNodeID,
-		},
 
 		lock:       sync.Mutex{},
 		processing: make(map[uuid.UUID]processingBuilds),
 	}
-
-	// Periodically check for local template manager health status
-	go tm.localClientPeriodicHealthSync(ctx)
 
 	return tm, nil
 }
@@ -134,7 +114,7 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 			zap.L().Info("Running periodical sync of builds statuses", zap.Int("count", len(buildsRunning)))
 			for _, b := range buildsRunning {
 				go func(b queries.GetInProgressTemplateBuildsRow) {
-					err := tm.BuildStatusSync(ctx, b.EnvBuild.ID, b.Env.ID, b.Team.ClusterID, b.EnvBuild.ClusterNodeID)
+					err := tm.BuildStatusSync(ctx, b.EnvBuild.ID, b.Env.ID, utils.WithDefaultCluster(b.Team.ClusterID), b.EnvBuild.ClusterNodeID)
 					if err != nil {
 						zap.L().Error("Error syncing build status", zap.Error(err), zap.String("buildID", b.EnvBuild.ID.String()))
 					}
@@ -146,25 +126,12 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 	}
 }
 
-func (tm *TemplateManager) GetBuildClient(clusterID *uuid.UUID, nodeID string, placement bool) (*BuildClient, error) {
-	if clusterID == nil {
-		return tm.GetLocalBuildClient(placement)
-	} else {
-		return tm.GetClusterBuildClient(*clusterID, nodeID)
-	}
+func (tm *TemplateManager) GetBuildClient(clusterID uuid.UUID, nodeID string) (*BuildClient, error) {
+	return tm.GetClusterBuildClient(clusterID, nodeID)
 }
 
-func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterID *uuid.UUID) (string, error) {
-	if clusterID == nil {
-		localClient := tm.GetLocalClientInfo()
-		if localClient.status != infogrpc.ServiceInfoStatus_Healthy {
-			return "", ErrLocalTemplateManagerNotAvailable
-		}
-
-		return localClient.nodeID, nil
-	}
-
-	cluster, ok := tm.edgePool.GetClusterById(*clusterID)
+func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterID uuid.UUID) (string, error) {
+	cluster, ok := tm.edgePool.GetClusterById(clusterID)
 	if !ok {
 		return "", fmt.Errorf("cluster with ID '%s' not found", clusterID)
 	}
@@ -175,35 +142,6 @@ func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterI
 	}
 
 	return builder.NodeID, nil
-}
-
-func (tm *TemplateManager) GetLocalBuildClient(placement bool) (*BuildClient, error) {
-	localClient := tm.GetLocalClientInfo()
-
-	// build placement requires healthy template builder
-	if placement && localClient.status != infogrpc.ServiceInfoStatus_Healthy {
-		zap.L().Error("Local template manager is not fully healthy, cannot use it for placement new builds")
-		return nil, ErrLocalTemplateManagerNotAvailable
-	}
-
-	// for getting build information only not valid state is getting already unhealthy builder
-	if localClient.status == infogrpc.ServiceInfoStatus_Unhealthy {
-		zap.L().Error("Local template manager is unhealthy")
-		return nil, ErrLocalTemplateManagerNotAvailable
-	}
-
-	meta := metadata.New(map[string]string{})
-	grpc := &edge.ClusterGRPC{Client: tm.grpc, Metadata: meta}
-
-	logProviders := []buildlogs.Provider{
-		&buildlogs.TemplateManagerProvider{GRPC: grpc},
-		&buildlogs.LokiProvider{LokiClient: tm.lokiClient},
-	}
-
-	return &BuildClient{
-		GRPC:         grpc,
-		logProviders: logProviders,
-	}, nil
 }
 
 func (tm *TemplateManager) GetClusterBuildClient(clusterID uuid.UUID, nodeID string) (*BuildClient, error) {
@@ -231,7 +169,7 @@ func (tm *TemplateManager) GetClusterBuildClient(clusterID uuid.UUID, nodeID str
 	}, nil
 }
 
-func (tm *TemplateManager) DeleteBuild(ctx context.Context, t trace.Tracer, buildID uuid.UUID, templateID string, clusterID *uuid.UUID, nodeID string) error {
+func (tm *TemplateManager) DeleteBuild(ctx context.Context, t trace.Tracer, buildID uuid.UUID, templateID string, clusterID uuid.UUID, nodeID string) error {
 	ctx, span := t.Start(ctx, "delete-template",
 		trace.WithAttributes(
 			telemetry.WithBuildID(buildID.String()),
@@ -239,7 +177,7 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, t trace.Tracer, buil
 	)
 	defer span.End()
 
-	client, err := tm.GetBuildClient(clusterID, nodeID, false)
+	client, err := tm.GetBuildClient(clusterID, nodeID)
 	if err != nil {
 		return fmt.Errorf("failed to get builder edgeHttpClient: %w", err)
 	}
@@ -271,8 +209,8 @@ func (tm *TemplateManager) DeleteBuilds(ctx context.Context, builds []DeleteBuil
 	return nil
 }
 
-func (tm *TemplateManager) GetStatus(ctx context.Context, buildID uuid.UUID, templateID string, clusterID *uuid.UUID, nodeID string) (*templatemanagergrpc.TemplateBuildStatusResponse, error) {
-	cli, err := tm.GetBuildClient(clusterID, nodeID, false)
+func (tm *TemplateManager) GetStatus(ctx context.Context, buildID uuid.UUID, templateID string, clusterID uuid.UUID, nodeID string) (*templatemanagergrpc.TemplateBuildStatusResponse, error) {
+	cli, err := tm.GetBuildClient(clusterID, nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get builder edgeHttpClient: %w", err)
 	}
