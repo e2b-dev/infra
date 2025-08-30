@@ -37,7 +37,11 @@ func NewCloneTemplate(
 }
 
 func (c *CloneTemplate) Close() error {
-	return closeTemplate(c)
+	if c.memfile != nil {
+		return (*c.memfile).Close()
+	}
+
+	return nil
 }
 
 func (c *CloneTemplate) Files() storage.TemplateCacheFiles {
