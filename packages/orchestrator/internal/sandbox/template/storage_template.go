@@ -92,7 +92,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			errMsg := fmt.Errorf("failed to fetch snapfile: %w", snapfileErr)
 
 			if err := t.snapfile.SetError(errMsg); err != nil {
-				return fmt.Errorf("failed to set snapfile error: %w", errMsg)
+				return fmt.Errorf("failed to set snapfile error: %w", errors.Join(errMsg, err))
 			}
 
 			return nil
@@ -123,7 +123,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		if err != nil && !errors.Is(err, storage.ErrorObjectNotExist) {
 			sourceErr := fmt.Errorf("failed to fetch metafile: %w", err)
 			if err := t.metafile.SetError(sourceErr); err != nil {
-				return fmt.Errorf("failed to set metafile error: %w", sourceErr)
+				return fmt.Errorf("failed to set metafile error: %w", errors.Join(sourceErr, err))
 			}
 
 			return nil
@@ -141,7 +141,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			if err != nil {
 				sourceErr := fmt.Errorf("failed to write v1 template metadata to a file: %w", err)
 				if err := t.metafile.SetError(sourceErr); err != nil {
-					return fmt.Errorf("failed to set metafile error: %w", sourceErr)
+					return fmt.Errorf("failed to set metafile error: %w", errors.Join(sourceErr, err))
 				}
 
 				return nil
@@ -178,7 +178,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			errMsg := fmt.Errorf("failed to create memfile storage: %w", memfileErr)
 
 			if err := t.memfile.SetError(errMsg); err != nil {
-				return fmt.Errorf("failed to set memfile error: %w", errMsg)
+				return fmt.Errorf("failed to set memfile error: %w", errors.Join(errMsg, err))
 			}
 
 			return nil
@@ -205,7 +205,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			errMsg := fmt.Errorf("failed to create rootfs storage: %w", rootfsErr)
 
 			if err := t.rootfs.SetError(errMsg); err != nil {
-				return fmt.Errorf("failed to set rootfs error: %w", errMsg)
+				return fmt.Errorf("failed to set rootfs error: %w", errors.Join(errMsg, err))
 			}
 
 			return nil
