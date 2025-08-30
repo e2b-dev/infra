@@ -36,7 +36,7 @@ const (
 
 var ErrEdgeServiceInstanceNotFound = errors.New("edge service instance not found")
 
-func NewEdgePool(logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, tracer trace.Tracer, instanceSelfHost string, auth authorization.AuthorizationService) *EdgePool {
+func NewEdgePool(ctx context.Context, logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, tracer trace.Tracer, instanceSelfHost string, auth authorization.AuthorizationService) *EdgePool {
 	pool := &EdgePool{
 		discovery: discovery,
 		auth:      auth,
@@ -52,7 +52,9 @@ func NewEdgePool(logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, trace
 	pool.synchronization = synchronization.NewSynchronize(tracer, "edge-instances", "Edge instances", store)
 
 	// Background synchronization of edge instances available in cluster
-	go func() { pool.synchronization.Start(edgeInstancesPoolInterval, edgeInstancesPoolRoundTimeout, true) }()
+	go func(ctx context.Context) {
+		pool.synchronization.Start(ctx, edgeInstancesPoolInterval, edgeInstancesPoolRoundTimeout, true)
+	}(context.WithoutCancel(ctx))
 
 	return pool
 }

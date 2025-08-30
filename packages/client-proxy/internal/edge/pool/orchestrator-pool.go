@@ -40,6 +40,7 @@ const (
 )
 
 func NewOrchestratorsPool(
+	ctx context.Context,
 	logger *zap.Logger,
 	tracer trace.Tracer,
 	tracerProvider trace.TracerProvider,
@@ -63,7 +64,9 @@ func NewOrchestratorsPool(
 	pool.synchronization = synchronization.NewSynchronize(tracer, "orchestrator-instances", "Orchestrator instances", store)
 
 	// Background synchronization of orchestrators pool
-	go func() { pool.synchronization.Start(orchestratorsPoolInterval, orchestratorsPoolRoundTimeout, true) }()
+	go func(ctx context.Context) {
+		pool.synchronization.Start(ctx, orchestratorsPoolInterval, orchestratorsPoolRoundTimeout, true)
+	}(context.WithoutCancel(ctx))
 	go func() { pool.statusLogSync() }()
 
 	return pool
