@@ -31,24 +31,20 @@ func NewCreateSandbox(config sandbox.Config, fcVersions fc.FirecrackerVersions) 
 func (f *CreateSandbox) Sandbox(
 	ctx context.Context,
 	layerExecutor *LayerExecutor,
-	template sbxtemplate.Template,
+	sourceTemplate sbxtemplate.Template,
 ) (*sandbox.Sandbox, error) {
 	// Create new memfile with the size of the sandbox RAM, this updates the underlying memfile.
 	// This is ok as the sandbox is started from the beginning.
-	var memfile block.ReadonlyDevice
 	memfile, err := block.NewEmpty(
 		f.config.RamMB<<constants.ToMBShift,
 		config.MemfilePageSize(f.config.HugePages),
-		uuid.MustParse(template.Files().BuildID),
+		uuid.MustParse(sourceTemplate.Files().BuildID),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create memfile: %w", err)
 	}
 
-	err = template.ReplaceMemfile(memfile)
-	if err != nil {
-		return nil, fmt.Errorf("replace memfile: %w", err)
-	}
+	template := sbxtemplate.NewCloneTemplate(sourceTemplate, sbxtemplate.WithMemfile(memfile))
 
 	// In case of a new sandbox, base template ID is now used as the potentially exported template base ID.
 	sbx, err := sandbox.CreateSandbox(

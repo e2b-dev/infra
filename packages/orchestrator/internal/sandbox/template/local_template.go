@@ -50,8 +50,3 @@ func (t *LocalTemplate) Snapfile() (File, error) {
 func (t *LocalTemplate) Metadata() (metadata.Template, error) {
 	return metadata.Template{}, errors.New("metadata not available in local template")
 }
-
-func (t *LocalTemplate) ReplaceMemfile(memfile block.ReadonlyDevice) error {
-	t.memfile = memfile
-	return nil
-}
