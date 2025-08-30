@@ -50,7 +50,7 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error getting team snapshots: %s", err)
+		return nil, fmt.Errorf("error getting team snapshots: %w", err)
 	}
 
 	sandboxes := snapshotsToPaginatedSandboxes(snapshots)

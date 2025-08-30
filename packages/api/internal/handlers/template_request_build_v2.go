@@ -46,7 +46,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	isNew := true
 	templateAlias, err := a.sqlcDB.GetTemplateAliasByAlias(ctx, body.Alias)
 	if err != nil {
-		var notFoundErr db.ErrNotFound
+		var notFoundErr db.NotFoundError
 		if !errors.As(err, &notFoundErr) {
 			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting template alias: %s", err))
 			telemetry.ReportCriticalError(ctx, "error when getting template alias", err)

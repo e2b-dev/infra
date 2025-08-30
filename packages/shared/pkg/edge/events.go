@@ -27,12 +27,12 @@ var (
 	ErrSandboxLifetimeParse = errors.New("failed to parse sandbox max lifetime event metadata")
 )
 
-type SandboxEventFieldMissing struct {
+type SandboxEventFieldMissingError struct {
 	eventName string
 	fieldName string
 }
 
-func (e SandboxEventFieldMissing) Error() string {
+func (e SandboxEventFieldMissingError) Error() string {
 	return fmt.Sprintf("missing required field (%s) in sandbox create event %s", e.fieldName, e.eventName)
 }
 
@@ -77,22 +77,22 @@ func SerializeSandboxCatalogDeleteEvent(e SandboxCatalogDeleteEvent) metadata.MD
 func ParseSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEvent, err error) {
 	sandboxID, found := getMetadataValue(md, sbxIdHeader)
 	if !found {
-		return nil, SandboxEventFieldMissing{eventName: CatalogCreateEventType, fieldName: sbxIdHeader}
+		return nil, SandboxEventFieldMissingError{eventName: CatalogCreateEventType, fieldName: sbxIdHeader}
 	}
 
 	executionID, found := getMetadataValue(md, sbxExecutionIdHeader)
 	if !found {
-		return nil, SandboxEventFieldMissing{eventName: CatalogCreateEventType, fieldName: sbxExecutionIdHeader}
+		return nil, SandboxEventFieldMissingError{eventName: CatalogCreateEventType, fieldName: sbxExecutionIdHeader}
 	}
 
 	orchestratorID, found := getMetadataValue(md, sbxOrchestratorIdHeader)
 	if !found {
-		return nil, SandboxEventFieldMissing{eventName: CatalogCreateEventType, fieldName: sbxOrchestratorIdHeader}
+		return nil, SandboxEventFieldMissingError{eventName: CatalogCreateEventType, fieldName: sbxOrchestratorIdHeader}
 	}
 
 	maxLengthInHoursStr, found := getMetadataValue(md, sbxMaxLengthInHoursHeader)
 	if !found {
-		return nil, SandboxEventFieldMissing{eventName: CatalogCreateEventType, fieldName: sbxMaxLengthInHoursHeader}
+		return nil, SandboxEventFieldMissingError{eventName: CatalogCreateEventType, fieldName: sbxMaxLengthInHoursHeader}
 	}
 
 	maxLengthInHours, err := strconv.Atoi(maxLengthInHoursStr)
@@ -102,7 +102,7 @@ func ParseSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEven
 
 	sandboxStartTimeStr, found := getMetadataValue(md, sbxStartTimeHeader)
 	if !found {
-		return nil, SandboxEventFieldMissing{eventName: CatalogCreateEventType, fieldName: sbxStartTimeHeader}
+		return nil, SandboxEventFieldMissingError{eventName: CatalogCreateEventType, fieldName: sbxStartTimeHeader}
 	}
 
 	sandboxStartTime, err := time.Parse(time.RFC3339, sandboxStartTimeStr)
@@ -122,12 +122,12 @@ func ParseSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEven
 func ParseSandboxCatalogDeleteEvent(md metadata.MD) (e *SandboxCatalogDeleteEvent, err error) {
 	sandboxID, found := getMetadataValue(md, sbxIdHeader)
 	if !found {
-		return nil, SandboxEventFieldMissing{eventName: CatalogDeleteEventType, fieldName: sbxIdHeader}
+		return nil, SandboxEventFieldMissingError{eventName: CatalogDeleteEventType, fieldName: sbxIdHeader}
 	}
 
 	executionID, found := getMetadataValue(md, sbxExecutionIdHeader)
 	if !found {
-		return nil, SandboxEventFieldMissing{eventName: CatalogDeleteEventType, fieldName: sbxExecutionIdHeader}
+		return nil, SandboxEventFieldMissingError{eventName: CatalogDeleteEventType, fieldName: sbxExecutionIdHeader}
 	}
 
 	return &SandboxCatalogDeleteEvent{

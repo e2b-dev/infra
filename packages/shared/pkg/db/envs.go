@@ -147,7 +147,7 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *models.E
 
 	notFound := models.IsNotFound(err)
 	if notFound {
-		return nil, TemplateNotFound{}
+		return nil, TemplateNotFoundError{}
 	} else if err != nil {
 		return nil, fmt.Errorf("failed to get template '%s': %w", aliasOrEnvID, err)
 	}
@@ -180,7 +180,7 @@ func (db *DB) GetEnvBuild(ctx context.Context, buildID uuid.UUID) (build *models
 
 	notFound := models.IsNotFound(err)
 	if notFound {
-		return nil, TemplateBuildNotFound{}
+		return nil, TemplateBuildNotFoundError{}
 	} else if err != nil {
 		return nil, fmt.Errorf("failed to get env build '%s': %w", buildID, err)
 	}

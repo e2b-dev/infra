@@ -161,9 +161,9 @@ type TemplateBuildInfo struct {
 	NodeID    string
 }
 
-type TemplateBuildInfoNotFound struct{ error }
+type TemplateBuildInfoNotFoundError struct{}
 
-func (TemplateBuildInfoNotFound) Error() string {
+func (TemplateBuildInfoNotFoundError) Error() string {
 	return "Template build info not found"
 }
 
@@ -223,8 +223,8 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 
 		envDB, envDBErr := c.db.GetEnv(ctx, templateID)
 		if envDBErr != nil {
-			if errors.Is(envDBErr, db.TemplateNotFound{}) {
-				return TemplateBuildInfo{}, TemplateBuildInfoNotFound{}
+			if errors.Is(envDBErr, db.TemplateNotFoundError{}) {
+				return TemplateBuildInfo{}, TemplateBuildInfoNotFoundError{}
 			}
 
 			return TemplateBuildInfo{}, fmt.Errorf("failed to get template '%s': %w", buildID, envDBErr)
@@ -233,8 +233,8 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 		// making sure associated template build really exists
 		envBuildDB, envBuildDBErr := c.db.GetEnvBuild(ctx, buildID)
 		if envBuildDBErr != nil {
-			if errors.Is(envBuildDBErr, db.TemplateBuildNotFound{}) {
-				return TemplateBuildInfo{}, TemplateBuildInfoNotFound{}
+			if errors.Is(envBuildDBErr, db.TemplateBuildNotFoundError{}) {
+				return TemplateBuildInfo{}, TemplateBuildInfoNotFoundError{}
 			}
 
 			return TemplateBuildInfo{}, fmt.Errorf("failed to get template build '%s': %w", buildID, envBuildDBErr)

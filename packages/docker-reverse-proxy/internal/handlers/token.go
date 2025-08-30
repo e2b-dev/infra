@@ -33,7 +33,7 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 	accessToken, err := auth.ExtractAccessToken(authHeader, "Basic ")
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		return fmt.Errorf("error while extracting access token: %s", err)
+		return fmt.Errorf("error while extracting access token: %w", err)
 	}
 
 	if !auth.ValidateAccessToken(ctx, a.db.Client, accessToken) {
@@ -81,7 +81,7 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 
-		return fmt.Errorf("error while validating access: %s", err)
+		return fmt.Errorf("error while validating access: %w", err)
 	}
 
 	if !hasAccess {
@@ -95,7 +95,7 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 
-		return fmt.Errorf("error while getting docker token: %s", err)
+		return fmt.Errorf("error while getting docker token: %w", err)
 	}
 
 	jsonResponse := a.AuthCache.Create(templateID, dockerToken.Token, dockerToken.ExpiresIn)

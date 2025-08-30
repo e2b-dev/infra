@@ -104,7 +104,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			t.files.StorageMetadataPath(),
 			t.files.CacheMetadataPath(),
 		)
-		if err != nil && !errors.Is(err, storage.ErrorObjectNotExist) {
+		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
 			return t.metafile.SetError(fmt.Errorf("failed to fetch metafile: %w", err))
 		}
 
