@@ -44,7 +44,7 @@ func (f *CreateSandbox) Sandbox(
 		return nil, fmt.Errorf("create memfile: %w", err)
 	}
 
-	template := sbxtemplate.NewCloneTemplate(sourceTemplate, sbxtemplate.WithMemfile(memfile))
+	template := sbxtemplate.NewMaskTemplate(sourceTemplate, sbxtemplate.WithMemfile(memfile))
 
 	// In case of a new sandbox, base template ID is now used as the potentially exported template base ID.
 	sbx, err := sandbox.CreateSandbox(
