@@ -21,7 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
 )
 
-const commandTimeout = 600 * time.Second
+const commandHardTimeout = 1 * time.Hour
 
 func RunCommandWithOutput(
 	ctx context.Context,
@@ -141,7 +141,7 @@ func runCommandWithAllOptions(
 	})
 
 	hc := http.Client{
-		Timeout: commandTimeout,
+		Timeout: commandHardTimeout,
 	}
 	proxyHost := fmt.Sprintf("http://localhost%s", proxy.GetAddr())
 	processC := processconnect.NewProcessClient(&hc, proxyHost)
