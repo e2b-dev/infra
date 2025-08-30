@@ -32,7 +32,7 @@ func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanag
 		return nil, fmt.Errorf("failed to get signed url: %w", err)
 	}
 
-	_, err = obj.Size()
+	_, err = obj.Size(ctx)
 	if err != nil {
 		return &templatemanager.InitLayerFileUploadResponse{
 			Present: false,

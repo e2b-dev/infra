@@ -111,7 +111,7 @@ func (c *Copy) Execute(
 	// Start writing tar data to the pipe writer in a goroutine
 	go func() {
 		defer pw.Close()
-		if _, err := obj.WriteTo(pw); err != nil {
+		if _, err := obj.WriteTo(ctx, pw); err != nil {
 			pw.CloseWithError(err)
 		}
 	}()

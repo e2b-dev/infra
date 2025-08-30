@@ -62,7 +62,7 @@ func (h *HashIndex) LayerMetaFromHash(ctx context.Context, hash string) (LayerMe
 	}
 
 	var buf bytes.Buffer
-	_, err = obj.WriteTo(&buf)
+	_, err = obj.WriteTo(ctx, &buf)
 	if err != nil {
 		return LayerMetadata{}, fmt.Errorf("error reading layer metadata from object: %w", err)
 	}
@@ -91,7 +91,7 @@ func (h *HashIndex) SaveLayerMeta(ctx context.Context, hash string, template Lay
 		return fmt.Errorf("error marshalling layer metadata: %w", err)
 	}
 
-	_, err = obj.Write(marshaled)
+	_, err = obj.Write(ctx, marshaled)
 	if err != nil {
 		return fmt.Errorf("error writing layer metadata to object: %w", err)
 	}

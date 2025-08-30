@@ -1,4 +1,4 @@
-package storage
+package sandbox
 
 import (
 	"context"
@@ -6,18 +6,19 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type TemplateBuild struct {
-	files       TemplateFiles
-	persistence StorageProvider
+	files       storage.TemplateFiles
+	persistence storage.StorageProvider
 
 	memfileHeader *headers.Header
 	rootfsHeader  *headers.Header
 }
 
-func NewTemplateBuild(memfileHeader *headers.Header, rootfsHeader *headers.Header, persistence StorageProvider, files TemplateFiles) *TemplateBuild {
+func NewTemplateBuild(memfileHeader *headers.Header, rootfsHeader *headers.Header, persistence storage.StorageProvider, files storage.TemplateFiles) *TemplateBuild {
 	return &TemplateBuild{
 		persistence: persistence,
 		files:       files,
@@ -47,7 +48,7 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 		return fmt.Errorf("error when serializing memfile header: %w", err)
 	}
 
-	_, err = object.Write(serialized)
+	_, err = object.Write(ctx, serialized)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile header: %w", err)
 	}
@@ -61,7 +62,7 @@ func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) e
 		return err
 	}
 
-	err = object.WriteFromFileSystem(memfilePath)
+	err = object.WriteFromFileSystem(ctx, memfilePath)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile: %w", err)
 	}
@@ -80,7 +81,7 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Heade
 		return fmt.Errorf("error when serializing memfile header: %w", err)
 	}
 
-	_, err = object.Write(serialized)
+	_, err = object.Write(ctx, serialized)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile header: %w", err)
 	}
@@ -94,7 +95,7 @@ func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) err
 		return err
 	}
 
-	err = object.WriteFromFileSystem(rootfsPath)
+	err = object.WriteFromFileSystem(ctx, rootfsPath)
 	if err != nil {
 		return fmt.Errorf("error when uploading rootfs: %w", err)
 	}
@@ -109,7 +110,7 @@ func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
 		return err
 	}
 
-	if err = object.WriteFromFileSystem(path); err != nil {
+	if err = object.WriteFromFileSystem(ctx, path); err != nil {
 		return fmt.Errorf("error when uploading snapfile: %w", err)
 	}
 
@@ -123,7 +124,7 @@ func (t *TemplateBuild) uploadMetadata(ctx context.Context, path string) error {
 		return err
 	}
 
-	if err := object.WriteFromFileSystem(path); err != nil {
+	if err := object.WriteFromFileSystem(ctx, path); err != nil {
 		return fmt.Errorf("error when uploading metadata: %w", err)
 	}
 

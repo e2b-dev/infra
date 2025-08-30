@@ -12,6 +12,8 @@ import (
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -94,9 +96,13 @@ type CachedFileObjectProvider struct {
 
 var _ StorageObjectProvider = (*CachedFileObjectProvider)(nil)
 
-// WriteTo is used for very small files, and we can check against their size to ensure the content is valid.
-func (c *CachedFileObjectProvider) WriteTo(dst io.Writer) (int64, error) {
-	totalSize, err := c.Size()
+// WriteTo is used for very small files and we can check agains their size to ensure the content is valid.
+func (c *CachedFileObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
+	var err error
+	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.WriteAt")
+	defer span.End()
+
+	totalSize, err := c.Size(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -127,7 +133,7 @@ func (c *CachedFileObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 
 	writer := bytes.NewBuffer(make([]byte, 0, totalSize))
 
-	bytesWritten, err := c.inner.WriteTo(writer)
+	bytesWritten, err := c.inner.WriteTo(ctx, writer)
 	if ignoreEOF(err) != nil {
 		return 0, err
 	}
@@ -144,16 +150,23 @@ func (c *CachedFileObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 	return int64(written), err
 }
 
-func (c *CachedFileObjectProvider) WriteFromFileSystem(path string) error {
-	return c.inner.WriteFromFileSystem(path)
+func (c *CachedFileObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
+	return c.inner.WriteFromFileSystem(ctx, path)
 }
 
-func (c *CachedFileObjectProvider) Write(src []byte) (int, error) {
-	return c.inner.Write(src)
+func (c *CachedFileObjectProvider) Write(ctx context.Context, src []byte) (int, error) {
+	return c.inner.Write(ctx, src)
 }
 
-func (c *CachedFileObjectProvider) ReadAt(buff []byte, offset int64) (int, error) {
-	if err := c.validateReadAtParams(int64(len(buff)), offset); err != nil {
+func (c *CachedFileObjectProvider) ReadAt(ctx context.Context, buff []byte, offset int64) (int, error) {
+	var err error
+	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.ReadAt", trace.WithAttributes(
+		attribute.Int64("offset", offset),
+		attribute.Int("buff_len", len(buff)),
+	))
+	defer span.End()
+
+	if err = c.validateReadAtParams(int64(len(buff)), offset); err != nil {
 		return 0, err
 	}
 
@@ -173,7 +186,7 @@ func (c *CachedFileObjectProvider) ReadAt(buff []byte, offset int64) (int, error
 		zap.Error(err))
 
 	// read remote file
-	readCount, err := c.inner.ReadAt(buff, offset)
+	readCount, err := c.inner.ReadAt(ctx, buff, offset)
 	if err != nil {
 		return 0, fmt.Errorf("failed to perform uncached read: %w", err)
 	}
@@ -206,14 +219,14 @@ func (c *CachedFileObjectProvider) validateReadAtParams(buffSize, offset int64) 
 	return nil
 }
 
-func (c *CachedFileObjectProvider) Size() (int64, error) {
+func (c *CachedFileObjectProvider) Size(ctx context.Context) (int64, error) {
 	// we don't have a mechanism to store file size confidently, and this should be really cheap,
 	// let's just let the remote handle it.
-	return c.inner.Size()
+	return c.inner.Size(ctx)
 }
 
-func (c *CachedFileObjectProvider) Delete() error {
-	return c.inner.Delete()
+func (c *CachedFileObjectProvider) Delete(ctx context.Context) error {
+	return c.inner.Delete(ctx)
 }
 
 func (c *CachedFileObjectProvider) makeTempFullFilename() string {

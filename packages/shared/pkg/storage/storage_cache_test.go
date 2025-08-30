@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,6 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	storagemocks "github.com/e2b-dev/infra/packages/shared/pkg/storage/mocks"
 )
 
 func TestCachedFileObjectProvider_MakeChunkFilename(t *testing.T) {
@@ -35,7 +38,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		require.NoError(t, err)
 
 		buffer := make([]byte, 3)
-		read, err := c.ReadAt(buffer, 0)
+		read, err := c.ReadAt(t.Context(), buffer, 0)
 		require.NoError(t, err)
 		assert.Equal(t, []byte{1, 2, 3}, buffer)
 		assert.Equal(t, 3, read)
@@ -43,11 +46,11 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 	t.Run("consecutive ReadAt calls should cache", func(t *testing.T) {
 		fakeData := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-		fakeStorageObjectProvider := NewMockStorageObjectProvider(t)
+		fakeStorageObjectProvider := storagemocks.NewMockStorageObjectProvider(t)
 
 		fakeStorageObjectProvider.EXPECT().
-			ReadAt(mock.Anything, mock.Anything).
-			RunAndReturn(func(buff []byte, off int64) (int, error) {
+			ReadAt(mock.Anything, mock.Anything, mock.Anything).
+			RunAndReturn(func(ctx context.Context, buff []byte, off int64) (int, error) {
 				start := off
 				end := off + int64(len(buff))
 				end = min(end, int64(len(fakeData)))
@@ -64,7 +67,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 		// first read goes to source
 		buffer := make([]byte, 3)
-		read, err := c.ReadAt(buffer, 3)
+		read, err := c.ReadAt(t.Context(), buffer, 3)
 		require.NoError(t, err)
 		assert.Equal(t, []byte{4, 5, 6}, buffer)
 		assert.Equal(t, 3, read)
@@ -75,7 +78,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		// second read pulls from cache
 		c.inner = nil // prevent remote reads, force cache read
 		buffer = make([]byte, 3)
-		read, err = c.ReadAt(buffer, 3)
+		read, err = c.ReadAt(t.Context(), buffer, 3)
 		require.NoError(t, err)
 		assert.Equal(t, []byte{4, 5, 6}, buffer)
 		assert.Equal(t, 3, read)
@@ -84,15 +87,15 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 	t.Run("WriteTo calls should read from cache", func(t *testing.T) {
 		fakeData := []byte{1, 2, 3}
 
-		fakeStorageObjectProvider := NewMockStorageObjectProvider(t)
+		fakeStorageObjectProvider := storagemocks.NewMockStorageObjectProvider(t)
 		fakeStorageObjectProvider.EXPECT().
-			WriteTo(mock.Anything).
-			RunAndReturn(func(dst io.Writer) (int64, error) {
+			WriteTo(mock.Anything, mock.Anything).
+			RunAndReturn(func(ctx context.Context, dst io.Writer) (int64, error) {
 				num, err := dst.Write(fakeData)
 				return int64(num), err
 			})
 		fakeStorageObjectProvider.EXPECT().
-			Size().Return(int64(len(fakeData)), nil)
+			Size(mock.Anything).Return(int64(len(fakeData)), nil)
 
 		tempDir := t.TempDir()
 		c := CachedFileObjectProvider{
@@ -103,7 +106,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 		// write to both local and remote storage
 		var buffer bytes.Buffer
-		count, err := c.WriteTo(&buffer)
+		count, err := c.WriteTo(t.Context(), &buffer)
 		require.NoError(t, err)
 		assert.Equal(t, int64(len(fakeData)), count)
 
@@ -112,10 +115,10 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 		// second read should go straight to local, although it grabs the size
 		fakeStorageObjectProvider.EXPECT().
-			WriteTo(mock.Anything).
+			WriteTo(mock.Anything, mock.Anything).
 			Panic("something bad happened")
 		var buff2 bytes.Buffer
-		count, err = c.WriteTo(&buff2)
+		count, err = c.WriteTo(t.Context(), &buff2)
 		require.NoError(t, err)
 		assert.Equal(t, int64(len(fakeData)), count)
 	})
@@ -218,7 +221,11 @@ func TestMoveWithoutReplace_Fail(t *testing.T) {
 
 	roDir := filepath.Join(td, "ro")
 	require.NoError(t, os.Mkdir(roDir, 0o555)) // r-x only, no write
-	defer os.Chmod(roDir, 0o755)               // ensure cleanup possible
+	t.Cleanup(func() {
+		// ensure cleanup possible
+		err := os.Chmod(roDir, 0o755)
+		assert.NoError(t, err)
+	})
 
 	dst := filepath.Join(roDir, "dst")
 	err := moveWithoutReplace(src, dst)

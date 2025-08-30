@@ -292,7 +292,7 @@ func getRootfsSize(
 		return 0, fmt.Errorf("error opening rootfs header object: %w", err)
 	}
 
-	h, err := header.Deserialize(obj)
+	h, err := header.Deserialize(ctx, obj)
 	if err != nil {
 		return 0, fmt.Errorf("error deserializing rootfs header: %w", err)
 	}
