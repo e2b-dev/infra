@@ -6,6 +6,7 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -20,6 +21,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
+
+const maxStartingStandboxes = 3
+
+var startingSandboxes = semaphore.NewWeighted(maxStartingStandboxes)
 
 type LayerExecutor struct {
 	buildcontext.BuildContext
@@ -85,7 +90,12 @@ func (lb *LayerExecutor) BuildLayer(
 	}
 
 	// Create or resume sandbox
+	err = startingSandboxes.Acquire(ctx, 1)
+	if err != nil {
+		return metadata.Template{}, fmt.Errorf("acquire for sandbox start failed: %w", err)
+	}
 	sbx, err := cmd.SandboxCreator.Sandbox(ctx, lb, localTemplate)
+	startingSandboxes.Release(1)
 	if err != nil {
 		return metadata.Template{}, err
 	}
