@@ -44,6 +44,13 @@ func (s *SetOnce[T]) SetError(err error) error {
 	return s.setResult(result[T]{err: err})
 }
 
+func (s *SetOnce[T]) SetResult(value T, err error) error {
+	if err != nil {
+		return s.SetError(err)
+	}
+	return s.SetValue(value)
+}
+
 var ErrAlreadySet = fmt.Errorf("value already set")
 
 // SetResult internal method for setting the result only once.

@@ -4,6 +4,7 @@ import (
 	"github.com/bits-and-blooms/bitset"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type NoopMemory struct {
@@ -48,6 +49,6 @@ func (m *NoopMemory) Ready() chan struct{} {
 	return ch
 }
 
-func (m *NoopMemory) Exit() chan error {
-	return make(chan error)
+func (m *NoopMemory) Exit() *utils.SetOnce[struct{}] {
+	return utils.NewSetOnce[struct{}]()
 }
