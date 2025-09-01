@@ -877,7 +877,7 @@ func serveMemory(
 	socketPath string,
 	sandboxID string,
 ) (uffd.MemoryBackend, error) {
-	childCtx, childSpan := tracer.Start(ctx, "serve-memory")
+	_, childSpan := tracer.Start(ctx, "serve-memory")
 	defer childSpan.End()
 
 	fcUffd, uffdErr := uffd.New(memfile, socketPath, memfile.BlockSize())
@@ -891,7 +891,7 @@ func serveMemory(
 	}
 
 	cleanup.Add(func(ctx context.Context) error {
-		_, span := tracer.Start(childCtx, "uffd-stop")
+		_, span := tracer.Start(ctx, "uffd-stop")
 		defer span.End()
 
 		stopErr := fcUffd.Stop()
