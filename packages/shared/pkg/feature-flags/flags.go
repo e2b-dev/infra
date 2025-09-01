@@ -2,6 +2,7 @@ package feature_flags
 
 import (
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
@@ -47,31 +48,39 @@ var (
 	SnapshotFeatureFlagName             = newBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
 	TemplateFeatureFlagName             = newBoolFlag("use-nfs-for-templates", env.IsDevelopment())
 	SandboxEventsPublishFlagName        = newBoolFlag("sandbox-events-publish", env.IsDevelopment())
+	BestOfKPlacementAlgorithm           = newBoolFlag("best-of-k-placement-algorithm", env.IsDevelopment())
+	BestOfKCanFit                       = newBoolFlag("best-of-k-can-fit", true)
+	BestOfKTooManyStarting              = newBoolFlag("best-of-k-too-many-starting", false)
 )
 
-type IntFlag string
-
-const (
-	// GcloudConcurrentUploadLimit - the maximum number of concurrent uploads to GCloud
-	GcloudConcurrentUploadLimit IntFlag = "gcloud-concurrent-upload-limit"
-	// GcloudMaxTasks - maximum concurrent tasks for GCloud uploads
-	GcloudMaxTasks IntFlag = "gcloud-max-tasks"
-	// ClickhouseBatcherMaxBatchSize - maximum number of sandbox events to batch before flushing
-	ClickhouseBatcherMaxBatchSize IntFlag = "clickhouse-batcher-max-batch-size"
-	// ClickhouseBatcherMaxDelay - maximum time to wait for a batch to fill up before flushing it,
-	// even if the batch size hasn't reached ClickhouseMaxBatchSize
-	ClickhouseBatcherMaxDelay IntFlag = "clickhouse-batcher-max-delay"
-	// ClickhouseBatcherQueueSize - size of the channel buffer used to queue incoming sandbox events
-	ClickhouseBatcherQueueSize IntFlag = "clickhouse-batcher-queue-size"
-	// PubsubQueueChannelSize - size of the channel buffer used to queue incoming sandbox events
-	PubsubQueueChannelSize IntFlag = "pubsub-queue-channel-size"
-)
-
-var flagsInt = map[IntFlag]int{
-	GcloudConcurrentUploadLimit:   8,
-	GcloudMaxTasks:                16,
-	ClickhouseBatcherMaxBatchSize: 64 * 1024, // 65536
-	ClickhouseBatcherMaxDelay:     100,       // 100ms in milliseconds
-	ClickhouseBatcherQueueSize:    8 * 1024,  // 8192
-	PubsubQueueChannelSize:        8 * 1024,  // 8192
+type IntFlag struct {
+	name     string
+	fallback int
 }
+
+func (f IntFlag) String() string {
+	return f.name
+}
+
+func (f IntFlag) Fallback() int {
+	return f.fallback
+}
+
+func newIntFlag(name string, fallback int) IntFlag {
+	flag := IntFlag{name: name, fallback: fallback}
+	builder := LaunchDarklyOfflineStore.Flag(flag.name).ValueForAll(ldvalue.Int(fallback))
+	LaunchDarklyOfflineStore.Update(builder)
+	return flag
+}
+
+var (
+	GcloudConcurrentUploadLimit   = newIntFlag("gcloud-concurrent-upload-limit", 8)
+	GcloudMaxTasks                = newIntFlag("gcloud-max-tasks", 16)
+	ClickhouseBatcherMaxBatchSize = newIntFlag("clickhouse-batcher-max-batch-size", 64*1024) // 65536
+	ClickhouseBatcherMaxDelay     = newIntFlag("clickhouse-batcher-max-delay", 100)          // 100ms in milliseconds
+	ClickhouseBatcherQueueSize    = newIntFlag("clickhouse-batcher-queue-size", 8*1024)      // 8192
+	BestOfKSampleSize             = newIntFlag("best-of-k-sample-size", 3)                   // Default K=3
+	BestOfKMaxOvercommit          = newIntFlag("best-of-k-max-overcommit", 400)              // Default R=4 (stored as percentage, max over-commit ratio)
+	BestOfKAlpha                  = newIntFlag("best-of-k-alpha", 50)                        // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
+	PubsubQueueChannelSize        = newIntFlag("pubsub-queue-channel-size", 8*1024)          // size of the channel buffer used to queue incoming sandbox events
+)
