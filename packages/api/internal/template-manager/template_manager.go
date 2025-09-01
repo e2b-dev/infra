@@ -175,7 +175,7 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, t trace.Tracer, buil
 
 	client, err := tm.GetClusterBuildClient(clusterID, nodeID)
 	if err != nil {
-		return fmt.Errorf("failed to get builder edgeHttpClient: %w", err)
+		return fmt.Errorf("failed to get builder client: %w", err)
 	}
 
 	reqCtx := metadata.NewOutgoingContext(ctx, client.GRPC.Metadata)
