@@ -12,6 +12,8 @@ type NoopMemory struct {
 	blockSize int64
 
 	dirty *bitset.BitSet
+
+	exit *utils.SetOnce[struct{}]
 }
 
 func NewNoopMemory(size, blockSize int64) *NoopMemory {
@@ -24,6 +26,7 @@ func NewNoopMemory(size, blockSize int64) *NoopMemory {
 		size:      size,
 		blockSize: blockSize,
 		dirty:     dirty,
+		exit:      utils.NewSetOnce[struct{}](),
 	}
 }
 
@@ -40,7 +43,7 @@ func (m *NoopMemory) Start(sandboxId string) error {
 }
 
 func (m *NoopMemory) Stop() error {
-	return nil
+	return m.exit.SetValue(struct{}{})
 }
 
 func (m *NoopMemory) Ready() chan struct{} {
@@ -50,5 +53,5 @@ func (m *NoopMemory) Ready() chan struct{} {
 }
 
 func (m *NoopMemory) Exit() *utils.SetOnce[struct{}] {
-	return utils.NewSetOnce[struct{}]()
+	return m.exit
 }
