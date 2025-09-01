@@ -7879,23 +7879,25 @@ func (m *TeamAPIKeyMutation) ResetEdge(name string) error {
 // TierMutation represents an operation that mutates the Tier nodes in the graph.
 type TierMutation struct {
 	config
-	op                      Op
-	typ                     string
-	id                      *string
-	name                    *string
-	disk_mb                 *int64
-	adddisk_mb              *int64
-	concurrent_instances    *int64
-	addconcurrent_instances *int64
-	max_length_hours        *int64
-	addmax_length_hours     *int64
-	clearedFields           map[string]struct{}
-	teams                   map[uuid.UUID]struct{}
-	removedteams            map[uuid.UUID]struct{}
-	clearedteams            bool
-	done                    bool
-	oldValue                func(context.Context) (*Tier, error)
-	predicates              []predicate.Tier
+	op                            Op
+	typ                           string
+	id                            *string
+	name                          *string
+	disk_mb                       *int64
+	adddisk_mb                    *int64
+	concurrent_instances          *int64
+	addconcurrent_instances       *int64
+	concurrent_template_builds    *int64
+	addconcurrent_template_builds *int64
+	max_length_hours              *int64
+	addmax_length_hours           *int64
+	clearedFields                 map[string]struct{}
+	teams                         map[uuid.UUID]struct{}
+	removedteams                  map[uuid.UUID]struct{}
+	clearedteams                  bool
+	done                          bool
+	oldValue                      func(context.Context) (*Tier, error)
+	predicates                    []predicate.Tier
 }
 
 var _ ent.Mutation = (*TierMutation)(nil)
@@ -8150,6 +8152,62 @@ func (m *TierMutation) ResetConcurrentInstances() {
 	m.addconcurrent_instances = nil
 }
 
+// SetConcurrentTemplateBuilds sets the "concurrent_template_builds" field.
+func (m *TierMutation) SetConcurrentTemplateBuilds(i int64) {
+	m.concurrent_template_builds = &i
+	m.addconcurrent_template_builds = nil
+}
+
+// ConcurrentTemplateBuilds returns the value of the "concurrent_template_builds" field in the mutation.
+func (m *TierMutation) ConcurrentTemplateBuilds() (r int64, exists bool) {
+	v := m.concurrent_template_builds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConcurrentTemplateBuilds returns the old "concurrent_template_builds" field's value of the Tier entity.
+// If the Tier object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TierMutation) OldConcurrentTemplateBuilds(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConcurrentTemplateBuilds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConcurrentTemplateBuilds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConcurrentTemplateBuilds: %w", err)
+	}
+	return oldValue.ConcurrentTemplateBuilds, nil
+}
+
+// AddConcurrentTemplateBuilds adds i to the "concurrent_template_builds" field.
+func (m *TierMutation) AddConcurrentTemplateBuilds(i int64) {
+	if m.addconcurrent_template_builds != nil {
+		*m.addconcurrent_template_builds += i
+	} else {
+		m.addconcurrent_template_builds = &i
+	}
+}
+
+// AddedConcurrentTemplateBuilds returns the value that was added to the "concurrent_template_builds" field in this mutation.
+func (m *TierMutation) AddedConcurrentTemplateBuilds() (r int64, exists bool) {
+	v := m.addconcurrent_template_builds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetConcurrentTemplateBuilds resets all changes to the "concurrent_template_builds" field.
+func (m *TierMutation) ResetConcurrentTemplateBuilds() {
+	m.concurrent_template_builds = nil
+	m.addconcurrent_template_builds = nil
+}
+
 // SetMaxLengthHours sets the "max_length_hours" field.
 func (m *TierMutation) SetMaxLengthHours(i int64) {
 	m.max_length_hours = &i
@@ -8294,7 +8352,7 @@ func (m *TierMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TierMutation) Fields() []string {
-	fields := make([]string, 0, 4)
+	fields := make([]string, 0, 5)
 	if m.name != nil {
 		fields = append(fields, tier.FieldName)
 	}
@@ -8303,6 +8361,9 @@ func (m *TierMutation) Fields() []string {
 	}
 	if m.concurrent_instances != nil {
 		fields = append(fields, tier.FieldConcurrentInstances)
+	}
+	if m.concurrent_template_builds != nil {
+		fields = append(fields, tier.FieldConcurrentTemplateBuilds)
 	}
 	if m.max_length_hours != nil {
 		fields = append(fields, tier.FieldMaxLengthHours)
@@ -8321,6 +8382,8 @@ func (m *TierMutation) Field(name string) (ent.Value, bool) {
 		return m.DiskMB()
 	case tier.FieldConcurrentInstances:
 		return m.ConcurrentInstances()
+	case tier.FieldConcurrentTemplateBuilds:
+		return m.ConcurrentTemplateBuilds()
 	case tier.FieldMaxLengthHours:
 		return m.MaxLengthHours()
 	}
@@ -8338,6 +8401,8 @@ func (m *TierMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldDiskMB(ctx)
 	case tier.FieldConcurrentInstances:
 		return m.OldConcurrentInstances(ctx)
+	case tier.FieldConcurrentTemplateBuilds:
+		return m.OldConcurrentTemplateBuilds(ctx)
 	case tier.FieldMaxLengthHours:
 		return m.OldMaxLengthHours(ctx)
 	}
@@ -8370,6 +8435,13 @@ func (m *TierMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetConcurrentInstances(v)
 		return nil
+	case tier.FieldConcurrentTemplateBuilds:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConcurrentTemplateBuilds(v)
+		return nil
 	case tier.FieldMaxLengthHours:
 		v, ok := value.(int64)
 		if !ok {
@@ -8391,6 +8463,9 @@ func (m *TierMutation) AddedFields() []string {
 	if m.addconcurrent_instances != nil {
 		fields = append(fields, tier.FieldConcurrentInstances)
 	}
+	if m.addconcurrent_template_builds != nil {
+		fields = append(fields, tier.FieldConcurrentTemplateBuilds)
+	}
 	if m.addmax_length_hours != nil {
 		fields = append(fields, tier.FieldMaxLengthHours)
 	}
@@ -8406,6 +8481,8 @@ func (m *TierMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedDiskMB()
 	case tier.FieldConcurrentInstances:
 		return m.AddedConcurrentInstances()
+	case tier.FieldConcurrentTemplateBuilds:
+		return m.AddedConcurrentTemplateBuilds()
 	case tier.FieldMaxLengthHours:
 		return m.AddedMaxLengthHours()
 	}
@@ -8430,6 +8507,13 @@ func (m *TierMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddConcurrentInstances(v)
+		return nil
+	case tier.FieldConcurrentTemplateBuilds:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddConcurrentTemplateBuilds(v)
 		return nil
 	case tier.FieldMaxLengthHours:
 		v, ok := value.(int64)
@@ -8473,6 +8557,9 @@ func (m *TierMutation) ResetField(name string) error {
 		return nil
 	case tier.FieldConcurrentInstances:
 		m.ResetConcurrentInstances()
+		return nil
+	case tier.FieldConcurrentTemplateBuilds:
+		m.ResetConcurrentTemplateBuilds()
 		return nil
 	case tier.FieldMaxLengthHours:
 		m.ResetMaxLengthHours()
