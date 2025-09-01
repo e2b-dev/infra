@@ -75,6 +75,6 @@ func TestWatcher(t *testing.T) {
 
 	// Verify watcher is removed (should fail)
 	getResp2, err := envdClient.FilesystemClient.GetWatcherEvents(t.Context(), getReq)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, getResp2)
 }
