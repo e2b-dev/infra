@@ -37,10 +37,10 @@ func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, err
 }
 
 // keepInSync the cache with the actual instances in Orchestrator to handle instances that died.
-func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.InstanceCache) {
+func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.InstanceCache, skipSyncingWithNomad bool) {
 	// Run the first sync immediately
 	zap.L().Info("Running the initial node sync")
-	o.syncNodes(ctx, instanceCache)
+	o.syncNodes(ctx, instanceCache, skipSyncingWithNomad)
 
 	// Sync the nodes every cacheSyncTime
 	ticker := time.NewTicker(cacheSyncTime)
@@ -52,12 +52,12 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 			zap.L().Info("Stopping keepInSync")
 			return
 		case <-ticker.C:
-			o.syncNodes(ctx, instanceCache)
+			o.syncNodes(ctx, instanceCache, skipSyncingWithNomad)
 		}
 	}
 }
 
-func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.InstanceCache) {
+func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.InstanceCache, skipSyncingWithNomad bool) {
 	ctxTimeout, cancel := context.WithTimeout(ctx, cacheSyncTime)
 	defer cancel()
 
@@ -72,11 +72,13 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		o.syncLocalDiscoveredNodes(spanCtx, nomadNodes)
-	}()
+	if !skipSyncingWithNomad {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			o.syncLocalDiscoveredNodes(spanCtx, nomadNodes)
+		}()
+	}
 
 	wg.Add(1)
 	go func() {
