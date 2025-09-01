@@ -351,14 +351,14 @@ func ResumeSandbox(
 		return nil
 	})
 
-	telemetry.ReportEvent(childCtx, "created sandbox files")
+	telemetry.ReportEvent(ctx, "created sandbox files")
 
 	readonlyRootfs, err := t.Rootfs()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rootfs: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "got template rootfs")
+	telemetry.ReportEvent(ctx, "got template rootfs")
 
 	rootfsOverlay, err := rootfs.NewNBDProvider(
 		ctx,
@@ -374,7 +374,7 @@ func ResumeSandbox(
 		return rootfsOverlay.Close(ctx)
 	})
 
-	telemetry.ReportEvent(childCtx, "created rootfs overlay")
+	telemetry.ReportEvent(ctx, "created rootfs overlay")
 
 	go func() {
 		runErr := rootfsOverlay.Start(ctx)
@@ -388,7 +388,7 @@ func ResumeSandbox(
 		return nil, fmt.Errorf("failed to get memfile: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "got template memfile")
+	telemetry.ReportEvent(ctx, "got template memfile")
 
 	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
 
@@ -418,21 +418,21 @@ func ResumeSandbox(
 		return nil, fmt.Errorf("failed to get rootfs path: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "got rootfs path")
+	telemetry.ReportEvent(ctx, "got rootfs path")
 
 	ips := <-ipsCh
 	if ips.err != nil {
 		return nil, fmt.Errorf("failed to get network slot: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "got network slot")
+	telemetry.ReportEvent(ctx, "got network slot")
 
 	meta, err := t.Metadata()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get metadata: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "got metadata")
+	telemetry.ReportEvent(ctx, "got metadata")
 
 	fcHandle, fcErr := fc.NewProcess(
 		uffdStartCtx,
@@ -881,7 +881,7 @@ func serveMemory(
 	socketPath string,
 	sandboxID string,
 ) (uffd.MemoryBackend, error) {
-	childCtx, childSpan := tracer.Start(ctx, "serve-memory")
+	_, childSpan := tracer.Start(ctx, "serve-memory")
 	defer childSpan.End()
 
 	fcUffd, uffdErr := uffd.New(memfile, socketPath, memfile.BlockSize())
@@ -895,7 +895,7 @@ func serveMemory(
 	}
 
 	cleanup.Add(func(ctx context.Context) error {
-		_, span := tracer.Start(childCtx, "uffd-stop")
+		_, span := tracer.Start(ctx, "uffd-stop")
 		defer span.End()
 
 		stopErr := fcUffd.Stop()
