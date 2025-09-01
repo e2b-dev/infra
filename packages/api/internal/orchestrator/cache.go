@@ -64,15 +64,16 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 	spanCtx, span := o.tracer.Start(ctxTimeout, "keep-in-sync")
 	defer span.End()
 
-	nomadNodes, err := o.listNomadNodes(spanCtx)
-	if err != nil {
-		zap.L().Error("Error listing orchestrator nodes", zap.Error(err))
-		return
-	}
-
 	var wg sync.WaitGroup
 
+	// Optionally, skip syncing from Nomad service discovery
 	if !skipSyncingWithNomad {
+		nomadNodes, err := o.listNomadNodes(spanCtx)
+		if err != nil {
+			zap.L().Error("Error listing orchestrator nodes", zap.Error(err))
+			return
+		}
+
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
