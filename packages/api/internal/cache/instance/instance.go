@@ -245,9 +245,7 @@ func (c *InstanceCache) Set(key string, value *InstanceInfo, created bool) {
 }
 
 func (c *InstanceCache) MarkAsPausing(instanceInfo *InstanceInfo) {
-	if instanceInfo.onEviction == EvictionPause {
-		c.pausing.InsertIfAbsent(instanceInfo.SandboxID, instanceInfo)
-	}
+	c.pausing.InsertIfAbsent(instanceInfo.SandboxID, instanceInfo)
 }
 
 func (c *InstanceCache) UnmarkAsPausing(instanceInfo *InstanceInfo) {
