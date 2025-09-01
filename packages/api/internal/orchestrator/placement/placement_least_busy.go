@@ -16,12 +16,20 @@ type LeastBusyAlgorithm struct{}
 var _ Algorithm = &LeastBusyAlgorithm{}
 
 // ChooseNode returns the least busy node, if there are no eligible nodes, it tries until one is available or the context timeouts
-func (a *LeastBusyAlgorithm) chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, _ nodemanager.SandboxResources) (leastBusyNode *nodemanager.Node, err error) {
+func (a *LeastBusyAlgorithm) chooseNode(
+	ctx context.Context,
+	nodes []*nodemanager.Node,
+	nodesExcluded map[string]struct{},
+	sandboxID string,
+	requested nodemanager.SandboxResources,
+	reserve func(node *nodemanager.Node, sandboxID string, resources nodemanager.SandboxResources),
+	release func(node *nodemanager.Node, sandboxID string),
+) (leastBusyNode *nodemanager.Node, err error) {
 	ctx, cancel := context.WithTimeout(ctx, leastBusyNodeTimeout)
 	defer cancel()
 
 	// Try to find a node without waiting
-	leastBusyNode, err = a.findLeastBusyNode(nodes, nodesExcluded)
+	leastBusyNode, err = a.findLeastBusyNode(nodes, nodesExcluded, sandboxID, requested, reserve, release)
 	if err == nil {
 		return leastBusyNode, nil
 	}
@@ -36,7 +44,7 @@ func (a *LeastBusyAlgorithm) chooseNode(ctx context.Context, nodes []*nodemanage
 			return nil, ctx.Err()
 		case <-ticker.C:
 			// If no node is available, wait for a bit and try again
-			leastBusyNode, err = a.findLeastBusyNode(nodes, nodesExcluded)
+			leastBusyNode, err = a.findLeastBusyNode(nodes, nodesExcluded, sandboxID, requested, reserve, release)
 			if err == nil {
 				return leastBusyNode, nil
 			}
@@ -46,7 +54,14 @@ func (a *LeastBusyAlgorithm) chooseNode(ctx context.Context, nodes []*nodemanage
 
 // findLeastBusyNode finds the least busy node that is ready and not in the excluded list
 // if no node is available, returns an error
-func (a *LeastBusyAlgorithm) findLeastBusyNode(clusterNodes []*nodemanager.Node, nodesExcluded map[string]struct{}) (leastBusyNode *nodemanager.Node, err error) {
+func (a *LeastBusyAlgorithm) findLeastBusyNode(
+	clusterNodes []*nodemanager.Node,
+	nodesExcluded map[string]struct{},
+	sandboxID string,
+	requested nodemanager.SandboxResources,
+	reserve func(node *nodemanager.Node, sandboxID string, resources nodemanager.SandboxResources),
+	release func(node *nodemanager.Node, sandboxID string),
+) (leastBusyNode *nodemanager.Node, err error) {
 	for _, node := range clusterNodes {
 		// The node might be nil if it was removed from the list while iterating
 		if node == nil {
@@ -76,6 +91,10 @@ func (a *LeastBusyAlgorithm) findLeastBusyNode(clusterNodes []*nodemanager.Node,
 		metrics := node.Metrics()
 
 		if leastBusyNode == nil || (metrics.CpuUsage)+cpuUsage < leastBusyNode.Metrics().CpuUsage {
+			if leastBusyNode != nil {
+				release(leastBusyNode, sandboxID)
+			}
+			reserve(node, sandboxID, requested)
 			leastBusyNode = node
 		}
 	}

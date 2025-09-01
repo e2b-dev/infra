@@ -90,7 +90,15 @@ func (b *BestOfK) getConfig() BestOfKConfig {
 }
 
 // chooseNode selects the best node for placing a VM with the given quota
-func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources) (bestNode *nodemanager.Node, err error) {
+func (b *BestOfK) chooseNode(
+	_ context.Context,
+	nodes []*nodemanager.Node,
+	excludedNodes map[string]struct{},
+	sandboxID string,
+	resources nodemanager.SandboxResources,
+	reserve func(*nodemanager.Node, string, nodemanager.SandboxResources),
+	release func(*nodemanager.Node, string),
+) (bestNode *nodemanager.Node, err error) {
 	// Fix the config, we want to dynamically update it
 	config := b.getConfig()
 
@@ -105,6 +113,10 @@ func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, exclu
 		score := b.Score(node, resources)
 
 		if score < bestScore {
+			reserve(node, sandboxID, resources)
+			if bestNode != nil {
+				release(bestNode, sandboxID)
+			}
 			bestNode = node
 			bestScore = score
 		}

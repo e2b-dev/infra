@@ -22,7 +22,15 @@ var errSandboxCreateFailed = fmt.Errorf("failed to create a new sandbox, if the 
 // Implementations should choose an optimal node based on available resources
 // and current load distribution.
 type Algorithm interface {
-	chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, requested nodemanager.SandboxResources) (*nodemanager.Node, error)
+	chooseNode(
+		ctx context.Context,
+		nodes []*nodemanager.Node,
+		nodesExcluded map[string]struct{},
+		sandboxID string,
+		requested nodemanager.SandboxResources,
+		reserve func(node *nodemanager.Node, sandboxID string, resources nodemanager.SandboxResources),
+		release func(node *nodemanager.Node, sandboxID string),
+	) (*nodemanager.Node, error)
 }
 
 func PlaceSandbox(ctx context.Context, tracer trace.Tracer, algorithm Algorithm, clusterNodes []*nodemanager.Node, preferredNode *nodemanager.Node, sbxRequest *orchestrator.SandboxCreateRequest) (*nodemanager.Node, error) {
@@ -41,27 +49,32 @@ func PlaceSandbox(ctx context.Context, tracer trace.Tracer, algorithm Algorithm,
 			// Continue
 		}
 
+		reserve := func(node *nodemanager.Node, sandboxID string, resources nodemanager.SandboxResources) {
+			node.PlacementMetrics.Reserve(sandboxID, resources)
+		}
+		release := func(node *nodemanager.Node, sandboxID string) {
+			node.PlacementMetrics.Release(sandboxID)
+		}
+		resources := nodemanager.SandboxResources{CPUs: sbxRequest.Sandbox.Vcpu, MiBMemory: sbxRequest.Sandbox.RamMb}
+
 		var node *nodemanager.Node
 		if preferredNode != nil {
 			node = preferredNode
+			reserve(node, sbxRequest.Sandbox.SandboxId, resources)
+
 			telemetry.ReportEvent(ctx, "Placing sandbox on the preferred node", telemetry.WithNodeID(node.ID))
 		} else {
 			if len(nodesExcluded) >= len(clusterNodes) {
 				return nil, fmt.Errorf("no nodes available")
 			}
 
-			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.Sandbox.Vcpu, MiBMemory: sbxRequest.Sandbox.RamMb})
+			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, sbxRequest.Sandbox.SandboxId, nodemanager.SandboxResources{CPUs: sbxRequest.Sandbox.Vcpu, MiBMemory: sbxRequest.Sandbox.RamMb}, reserve, release)
 			if err != nil {
 				return nil, err
 			}
 
 			telemetry.ReportEvent(ctx, "Placing sandbox on the node", telemetry.WithNodeID(node.ID))
 		}
-
-		node.PlacementMetrics.StartPlacing(sbxRequest.Sandbox.SandboxId, nodemanager.SandboxResources{
-			CPUs:      sbxRequest.Sandbox.Vcpu,
-			MiBMemory: sbxRequest.Sandbox.RamMb,
-		})
 
 		ctx, span := tracer.Start(ctx, "create-sandbox")
 		span.SetAttributes(

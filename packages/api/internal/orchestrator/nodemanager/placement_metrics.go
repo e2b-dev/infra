@@ -48,8 +48,14 @@ func (p *PlacementMetrics) InProgressCount() uint32 {
 	return uint32(p.sandboxesInProgress.Count())
 }
 
-func (p *PlacementMetrics) StartPlacing(sandboxID string, resources SandboxResources) {
+func (p *PlacementMetrics) Reserve(sandboxID string, resources SandboxResources) {
 	p.sandboxesInProgress.Insert(sandboxID, resources)
+}
+
+// Release removes a sandbox from the in-progress list,
+// this should be called if you want to choose another node for the sandbox
+func (p *PlacementMetrics) Release(sandboxID string) {
+	p.sandboxesInProgress.Remove(sandboxID)
 }
 
 func (p *PlacementMetrics) removeSandbox(sandboxID string) {
