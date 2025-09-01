@@ -73,6 +73,7 @@ func PlaceSandbox(ctx context.Context, tracer trace.Tracer, algorithm Algorithm,
 		span.End()
 		if err != nil {
 			if algorithm.excludeNode(err) {
+				zap.L().Warn("Excluding node", logger.WithSandboxID(sbxRequest.Sandbox.SandboxId), logger.WithNodeID(node.ID))
 				nodesExcluded[node.ID] = struct{}{}
 			}
 
