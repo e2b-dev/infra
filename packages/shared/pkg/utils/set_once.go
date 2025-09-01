@@ -67,7 +67,7 @@ func (s *SetOnce[T]) setResult(r result[T]) error {
 		defer s.mu.Unlock()
 
 		if s.res != nil {
-			return fmt.Errorf("value already set")
+			return ErrAlreadySet
 		}
 
 		s.res = &r

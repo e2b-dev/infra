@@ -13,5 +13,5 @@ type MemoryBackend interface {
 	Start(sandboxId string) error
 	Stop() error
 	Ready() chan struct{}
-	Exit() *utils.SetOnce[struct{}]
+	Exit() *utils.ErrorOnce
 }

@@ -55,7 +55,7 @@ type Process struct {
 	kernelPath         string
 	files              *storage.SandboxFiles
 
-	Exit *utils.SetOnce[struct{}]
+	Exit *utils.ErrorOnce
 
 	client *apiClient
 }
@@ -110,7 +110,7 @@ func NewProcess(
 
 	return &Process{
 		Versions:              versions,
-		Exit:                  utils.NewSetOnce[struct{}](),
+		Exit:                  utils.NewErrorOnce(),
 		cmd:                   cmd,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
@@ -170,7 +170,7 @@ func (p *Process) configure(
 			if errors.As(waitErr, &exitErr) {
 				// Check if the process was killed by a signal
 				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() && (status.Signal() == syscall.SIGKILL || status.Signal() == syscall.SIGTERM) {
-					p.Exit.SetValue(struct{}{})
+					p.Exit.SetError(nil)
 
 					return
 				}
@@ -186,7 +186,7 @@ func (p *Process) configure(
 			return
 		}
 
-		p.Exit.SetValue(struct{}{})
+		p.Exit.SetError(nil)
 	}()
 
 	// Wait for the FC process to start so we can use FC API
@@ -435,7 +435,7 @@ func (p *Process) Stop() error {
 			}
 
 		// If the FC process exited, we can return.
-		case <-p.Exit.Done:
+		case <-p.Exit.Done():
 			return
 		}
 	}()

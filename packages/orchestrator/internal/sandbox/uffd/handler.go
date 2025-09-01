@@ -26,7 +26,7 @@ const (
 )
 
 type Uffd struct {
-	exit    *utils.SetOnce[struct{}]
+	exit    *utils.ErrorOnce
 	readyCh chan struct{}
 
 	fdExit *fdexit.FdExit
@@ -49,7 +49,7 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 	}
 
 	return &Uffd{
-		exit:       utils.NewSetOnce[struct{}](),
+		exit:       utils.NewErrorOnce(),
 		readyCh:    make(chan struct{}, 1),
 		fdExit:     fdExit,
 		memfile:    trackedMemfile,
@@ -76,7 +76,7 @@ func (u *Uffd) Start(sandboxId string) error {
 		closeErr := u.lis.Close()
 		fdExitErr := u.fdExit.Close()
 
-		u.exit.SetResult(struct{}{}, errors.Join(handleErr, closeErr, fdExitErr))
+		u.exit.SetError(errors.Join(handleErr, closeErr, fdExitErr))
 
 		close(u.readyCh)
 	}()
@@ -165,7 +165,7 @@ func (u *Uffd) Ready() chan struct{} {
 	return u.readyCh
 }
 
-func (u *Uffd) Exit() *utils.SetOnce[struct{}] {
+func (u *Uffd) Exit() *utils.ErrorOnce {
 	return u.exit
 }
 

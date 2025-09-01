@@ -99,7 +99,7 @@ type Sandbox struct {
 
 	APIStoredConfig *orchestrator.SandboxConfig
 
-	exit *utils.SetOnce[struct{}]
+	exit *utils.ErrorOnce
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -132,7 +132,7 @@ func CreateSandbox(
 	childCtx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
 
-	exit := utils.NewSetOnce[struct{}]()
+	exit := utils.NewErrorOnce()
 
 	cleanup := NewCleanup()
 	defer func() {
@@ -292,10 +292,10 @@ func CreateSandbox(
 
 	go func() {
 		// If the process exists, stop the sandbox properly
-		_, fcErr := fcHandle.Exit.Wait()
+		fcErr := fcHandle.Exit.Wait()
 		err := sbx.Stop(context.WithoutCancel(ctx), tracer)
 
-		exit.SetResult(struct{}{}, errors.Join(err, fcErr))
+		exit.SetError(errors.Join(err, fcErr))
 	}()
 
 	return sbx, nil
@@ -320,7 +320,7 @@ func ResumeSandbox(
 	childCtx, childSpan := tracer.Start(ctx, "resume-sandbox")
 	defer childSpan.End()
 
-	exit := utils.NewSetOnce[struct{}]()
+	exit := utils.NewErrorOnce()
 
 	cleanup := NewCleanup()
 	defer func() {
@@ -399,7 +399,7 @@ func ResumeSandbox(
 	defer cancelUffdStartCtx(fmt.Errorf("uffd finished starting"))
 
 	go func() {
-		_, uffdWaitErr := fcUffd.Exit().Wait()
+		uffdWaitErr := fcUffd.Exit().Wait()
 
 		cancelUffdStartCtx(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(uffdStartCtx))))
 	}()
@@ -521,23 +521,22 @@ func ResumeSandbox(
 	go func() {
 		// Wait for either uffd or fc process to exit
 		select {
-		case <-fcUffd.Exit().Done:
-		case <-fcHandle.Exit.Done:
+		case <-fcUffd.Exit().Done():
+		case <-fcHandle.Exit.Done():
 		}
 
 		err := sbx.Stop(context.WithoutCancel(ctx), tracer)
 
-		_, uffdWaitErr := fcUffd.Exit().Wait()
-		_, fcErr := fcHandle.Exit.Wait()
-		exit.SetResult(struct{}{}, errors.Join(err, fcErr, uffdWaitErr))
+		uffdWaitErr := fcUffd.Exit().Wait()
+		fcErr := fcHandle.Exit.Wait()
+		exit.SetError(errors.Join(err, fcErr, uffdWaitErr))
 	}()
 
 	return sbx, nil
 }
 
 func (s *Sandbox) Wait(ctx context.Context) error {
-	_, err := s.exit.WaitWithContext(ctx)
-	return err
+	return s.exit.WaitWithContext(ctx)
 }
 
 func (s *Sandbox) Close(ctx context.Context) error {
@@ -565,7 +564,7 @@ func (s *Sandbox) Stop(ctx context.Context, tracer trace.Tracer) error {
 
 	// The process exited, we can continue with the rest of the cleanup.
 	// We could use select with ctx.Done() to wait for cancellation, but if the process is not exited the whole cleanup will be in a bad state and will result in unexpected behavior.
-	<-s.process.Exit.Done
+	<-s.process.Exit.Done()
 
 	uffdStopErr := s.Resources.memory.Stop()
 	if uffdStopErr != nil {
@@ -907,8 +906,8 @@ func (s *Sandbox) WaitForExit(
 		return fmt.Errorf("waiting for exit took too long")
 	case <-ctx.Done():
 		return nil
-	case <-s.exit.Done:
-		_, err := s.exit.Result()
+	case <-s.exit.Done():
+		err := s.exit.Error()
 		if err == nil {
 			return nil
 		}
@@ -942,8 +941,8 @@ func (s *Sandbox) WaitForEnvd(
 			syncCancel(fmt.Errorf("syncing took too long"))
 		case <-syncCtx.Done():
 			return
-		case <-s.process.Exit.Done:
-			_, err := s.process.Exit.Result()
+		case <-s.process.Exit.Done():
+			err := s.process.Exit.Error()
 
 			syncCancel(fmt.Errorf("fc process exited prematurely: %w", err))
 		}
