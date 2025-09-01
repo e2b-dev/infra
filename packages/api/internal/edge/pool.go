@@ -13,6 +13,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/synchronization"
@@ -37,7 +38,7 @@ type Pool struct {
 	tracer trace.Tracer
 }
 
-func takeLocalClusterConfig() (*queries.Cluster, error) {
+func localClusterConfig() (*queries.Cluster, error) {
 	clusterEndpoint := os.Getenv(clusterEndpointEnv)
 	if clusterEndpoint == "" {
 		return nil, nil
@@ -49,7 +50,7 @@ func takeLocalClusterConfig() (*queries.Cluster, error) {
 	}
 
 	return &queries.Cluster{
-		ID:                 uuid.Nil,
+		ID:                 consts.DefaultClusterID,
 		EndpointTls:        false,
 		Endpoint:           clusterEndpoint,
 		Token:              clusterToken,
@@ -71,7 +72,7 @@ func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, trac
 		p.Close()
 	}()
 
-	localCluster, err := takeLocalClusterConfig()
+	localCluster, err := localClusterConfig()
 	if err != nil {
 		return nil, err
 	}

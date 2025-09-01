@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
@@ -86,10 +87,9 @@ func New(
 		Version:           nodeInfo.ServiceVersion,
 	}
 
-	clusterID := uuid.Nil
 	n := &Node{
 		NomadNodeShortID: discoveredNode.NomadNodeShortID,
-		ClusterID:        clusterID,
+		ClusterID:        consts.DefaultClusterID,
 		ID:               nodeInfo.NodeId,
 		IPAddress:        discoveredNode.IPAddress,
 

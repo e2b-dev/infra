@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/constants"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
@@ -189,7 +190,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 	defer tx.Rollback()
 
 	var clusterID *uuid.UUID
-	if req.ClusterID != uuid.Nil {
+	if req.ClusterID != consts.DefaultClusterID {
 		clusterID = &req.ClusterID
 	}
 
