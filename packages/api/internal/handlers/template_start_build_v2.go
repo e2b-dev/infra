@@ -79,7 +79,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	)
 
 	// Check and cancel concurrent builds
-	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID); err != nil {
+	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID, apiutils.WithClusterFallback(team.ClusterID)); err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build request")
 		return
 	}

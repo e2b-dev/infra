@@ -22,7 +22,7 @@ import (
 )
 
 // CheckAndCancelConcurrentBuilds checks for concurrent builds and cancels them if found
-func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateID api.TemplateID, buildID uuid.UUID) error {
+func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateID api.TemplateID, buildID uuid.UUID, teamClusterID uuid.UUID) error {
 	concurrentlyRunningBuilds, err := a.db.
 		Client.
 		EnvBuild.
@@ -44,6 +44,8 @@ func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateI
 			return templatemanager.DeleteBuild{
 				TemplateID: templateID,
 				BuildID:    b.ID,
+				ClusterID:  teamClusterID,
+				NodeID:     b.ClusterNodeID,
 			}
 		})
 		telemetry.ReportEvent(ctx, "canceling running builds", attribute.StringSlice("ids", utils.Map(buildIDs, func(b templatemanager.DeleteBuild) string {
@@ -121,7 +123,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	)
 
 	// Check and cancel concurrent builds
-	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID); err != nil {
+	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID, apiutils.WithClusterFallback(team.ClusterID)); err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build request")
 		return
 	}
