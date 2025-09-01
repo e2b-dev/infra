@@ -6,12 +6,14 @@ import (
 
 	"github.com/firecracker-microvm/firecracker-go-sdk"
 	"github.com/go-openapi/strfmt"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 type apiClient struct {
@@ -35,10 +37,15 @@ func (c *apiClient) loadSnapshot(
 	uffdReady chan struct{},
 	snapfile template.File,
 ) error {
+	ctx, span := tracer.Start(ctx, "load-snapshot")
+	defer span.End()
+
 	err := socket.Wait(ctx, uffdSocketPath)
 	if err != nil {
 		return fmt.Errorf("error waiting for uffd socket: %w", err)
 	}
+
+	telemetry.ReportEvent(ctx, "uffd socket ready")
 
 	backendType := models.MemoryBackendBackendTypeUffd
 	backend := &models.MemoryBackend{
@@ -47,6 +54,9 @@ func (c *apiClient) loadSnapshot(
 	}
 
 	snapfilePath := snapfile.Path()
+
+	telemetry.ReportEvent(ctx, "got snapfile path")
+
 	snapshotConfig := operations.LoadSnapshotParams{
 		Context: ctx,
 		Body: &models.SnapshotLoadParams{
@@ -62,6 +72,8 @@ func (c *apiClient) loadSnapshot(
 		return fmt.Errorf("error loading snapshot: %w", err)
 	}
 
+	telemetry.ReportEvent(ctx, "loaded snapshot")
+
 	select {
 	case <-ctx.Done():
 		return fmt.Errorf("context canceled while waiting for uffd ready: %w", ctx.Err())
@@ -69,10 +81,15 @@ func (c *apiClient) loadSnapshot(
 		// Wait for the uffd to be ready to serve requests
 	}
 
+	telemetry.ReportEvent(ctx, "uffd ready")
+
 	return nil
 }
 
-func (c *apiClient) resumeVM(ctx context.Context) error {
+func (c *apiClient) resumeVM(ctx context.Context, tracer trace.Tracer) error {
+	ctx, span := tracer.Start(ctx, "resume-vm")
+	defer span.End()
+
 	state := models.VMStateResumed
 	pauseConfig := operations.PatchVMParams{
 		Context: ctx,
@@ -128,7 +145,10 @@ func (c *apiClient) createSnapshot(
 	return nil
 }
 
-func (c *apiClient) setMmds(ctx context.Context, metadata *MmdsMetadata) error {
+func (c *apiClient) setMmds(ctx context.Context, tracer trace.Tracer, metadata *MmdsMetadata) error {
+	ctx, span := tracer.Start(ctx, "set-mmds")
+	defer span.End()
+
 	mmdsConfig := operations.PutMmdsParams{
 		Context: ctx,
 		Body:    metadata,
