@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/posthog/posthog-go"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -66,20 +65,24 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 
 	var wg sync.WaitGroup
 
+	nomadNodes := make([]nodemanager.NomadServiceDiscovery, 0)
+
 	// Optionally, skip syncing from Nomad service discovery
 	if !skipSyncingWithNomad {
-		nomadNodes, err := o.listNomadNodes(spanCtx)
+		nomadSD, err := o.listNomadNodes(spanCtx)
 		if err != nil {
 			zap.L().Error("Error listing orchestrator nodes", zap.Error(err))
 			return
 		}
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			o.syncLocalDiscoveredNodes(spanCtx, nomadNodes)
-		}()
+		nomadNodes = nomadSD
 	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		o.syncLocalDiscoveredNodes(spanCtx, nomadNodes)
+	}()
 
 	wg.Add(1)
 	go func() {
@@ -103,7 +106,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 			// cluster and local nodes needs to by synced differently,
 			// because each of them is taken from different source pool
 			var err error
-			if n.ClusterID == uuid.Nil {
+			if n.IsNomadManaged() {
 				err = o.syncNode(syncNodesSpanCtx, n, nomadNodes, instanceCache)
 			} else {
 				err = o.syncClusterNode(syncNodesSpanCtx, n, instanceCache)

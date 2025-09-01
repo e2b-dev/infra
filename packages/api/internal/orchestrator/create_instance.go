@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -19,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -146,22 +146,14 @@ func (o *Orchestrator) CreateSandbox(
 	if isResume && nodeID != nil {
 		telemetry.ReportEvent(ctx, "Placing sandbox on the node where the snapshot was taken")
 
-		clusterID := uuid.Nil
-		if team.Team.ClusterID != nil {
-			clusterID = *team.Team.ClusterID
-		}
-
+		clusterID := utils.WithDefaultCluster(team.Team.ClusterID)
 		node = o.GetNode(clusterID, *nodeID)
 		if node != nil && node.Status() != api.NodeStatusReady {
 			node = nil
 		}
 	}
 
-	nodeClusterID := uuid.Nil
-	if team.Team.ClusterID != nil {
-		nodeClusterID = *team.Team.ClusterID
-	}
-
+	nodeClusterID := utils.WithDefaultCluster(team.Team.ClusterID)
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
 	algorithm := o.getPlacementAlgorithm(ctx)

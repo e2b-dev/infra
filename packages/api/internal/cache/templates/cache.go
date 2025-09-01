@@ -98,11 +98,6 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 		build = &result.EnvBuild
 		template := result.Env
 
-		cluster := uuid.Nil
-		if template.ClusterID != nil {
-			cluster = *template.ClusterID
-		}
-
 		c.aliasCache.cache.Set(template.ID, template.ID, templateInfoExpiration)
 		for _, alias := range result.Aliases {
 			c.aliasCache.cache.Set(alias, template.ID, templateInfoExpiration)
@@ -113,6 +108,7 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 			return nil, nil, &api.APIError{Code: http.StatusForbidden, ClientMsg: fmt.Sprintf("Team '%s' does not have access to the template '%s'", teamID, aliasOrEnvID), Err: fmt.Errorf("team '%s' does not have access to the template '%s'", teamID, aliasOrEnvID)}
 		}
 
+		cluster := utils.WithDefaultCluster(template.ClusterID)
 		if cluster != clusterID {
 			return nil, nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: fmt.Sprintf("Template '%s' is not available in requested cluster", aliasOrEnvID), Err: fmt.Errorf("template '%s' is not available in requested cluster '%s'", aliasOrEnvID, clusterID)}
 		}

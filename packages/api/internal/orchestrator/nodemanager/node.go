@@ -157,13 +157,12 @@ func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID
 }
 
 func (n *Node) Close() error {
-	if n.ClusterID == uuid.Nil {
+	if n.IsNomadManaged() {
 		zap.L().Info("Closing local node", logger.WithNodeID(n.ID))
 		err := n.client.Close()
 		if err != nil {
 			zap.L().Error("Error closing connection to node", zap.Error(err), logger.WithNodeID(n.ID))
 		}
-
 	} else {
 		zap.L().Info("Closing cluster node", logger.WithNodeID(n.ID), logger.WithClusterID(n.ClusterID))
 		// We are not closing grpc connection, because it is shared between all cluster nodes, and it's handled by the cluster
@@ -176,4 +175,8 @@ func (n *Node) Close() error {
 // Ensures that GRPC client request context always has the latest service instance ID
 func (n *Node) GetClient(ctx context.Context) (*grpclient.GRPCClient, context.Context) {
 	return n.client, metadata.NewOutgoingContext(ctx, n.getClientMetadata())
+}
+
+func (n *Node) IsNomadManaged() bool {
+	return n.NomadNodeShortID != UnknownNomadNodeShortID
 }
