@@ -29,7 +29,7 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID string, p
 	)
 
 	/// Sandboxes living in a cluster
-	sbxLogs, err := a.getClusterSandboxLogs(ctx, sandboxID, team.ID.String(), utils.WithDefaultCluster(team.ClusterID), params.Limit, params.Start)
+	sbxLogs, err := a.getClusterSandboxLogs(ctx, sandboxID, team.ID.String(), utils.WithClusterFallback(team.ClusterID), params.Limit, params.Start)
 	if err != nil {
 		a.sendAPIStoreError(c, int(err.Code), err.Message)
 		return

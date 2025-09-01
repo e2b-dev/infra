@@ -89,7 +89,7 @@ func New(
 
 	n := &Node{
 		NomadNodeShortID: discoveredNode.NomadNodeShortID,
-		ClusterID:        consts.DefaultClusterID,
+		ClusterID:        consts.LocalClusterID,
 		ID:               nodeInfo.NodeId,
 		IPAddress:        discoveredNode.IPAddress,
 

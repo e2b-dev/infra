@@ -114,7 +114,7 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 			zap.L().Info("Running periodical sync of builds statuses", zap.Int("count", len(buildsRunning)))
 			for _, b := range buildsRunning {
 				go func(b queries.GetInProgressTemplateBuildsRow) {
-					err := tm.BuildStatusSync(ctx, b.EnvBuild.ID, b.Env.ID, utils.WithDefaultCluster(b.Team.ClusterID), b.EnvBuild.ClusterNodeID)
+					err := tm.BuildStatusSync(ctx, b.EnvBuild.ID, b.Env.ID, utils.WithClusterFallback(b.Team.ClusterID), b.EnvBuild.ClusterNodeID)
 					if err != nil {
 						zap.L().Error("Error syncing build status", zap.Error(err), zap.String("buildID", b.EnvBuild.ID.String()))
 					}

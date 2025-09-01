@@ -77,7 +77,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	defer templateSpan.End()
 
 	// Check if team has access to the environment
-	clusterID := utils.WithDefaultCluster(teamInfo.Team.ClusterID)
+	clusterID := utils.WithClusterFallback(teamInfo.Team.ClusterID)
 	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, teamInfo.Team.ID, clusterID, true)
 	if checkErr != nil {
 		telemetry.ReportCriticalError(ctx, "error when getting template", checkErr.Err)

@@ -157,7 +157,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		nil, // fromImageRegistry not supported in v1 handler
 		&forceRebuild,
 		nil,
-		apiutils.WithDefaultCluster(team.ClusterID),
+		apiutils.WithClusterFallback(team.ClusterID),
 		build.ClusterNodeID,
 	)
 	if buildErr != nil {

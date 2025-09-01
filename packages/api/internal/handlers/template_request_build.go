@@ -190,7 +190,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 	defer tx.Rollback()
 
 	var clusterID *uuid.UUID
-	if req.ClusterID != consts.DefaultClusterID {
+	if req.ClusterID != consts.LocalClusterID {
 		clusterID = &req.ClusterID
 	}
 
@@ -442,7 +442,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		return nil
 	}
 
-	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, utils.WithDefaultCluster(team.ClusterID))
+	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, utils.WithClusterFallback(team.ClusterID))
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Error when getting available build client")
@@ -451,7 +451,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 
 	// Create the build
 	buildReq := BuildTemplateRequest{
-		ClusterID:     utils.WithDefaultCluster(team.ClusterID),
+		ClusterID:     utils.WithClusterFallback(team.ClusterID),
 		BuilderNodeID: builderNodeID,
 		TemplateID:    templateID,
 		IsNew:         new,

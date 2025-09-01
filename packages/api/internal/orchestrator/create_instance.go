@@ -146,14 +146,14 @@ func (o *Orchestrator) CreateSandbox(
 	if isResume && nodeID != nil {
 		telemetry.ReportEvent(ctx, "Placing sandbox on the node where the snapshot was taken")
 
-		clusterID := utils.WithDefaultCluster(team.Team.ClusterID)
+		clusterID := utils.WithClusterFallback(team.Team.ClusterID)
 		node = o.GetNode(clusterID, *nodeID)
 		if node != nil && node.Status() != api.NodeStatusReady {
 			node = nil
 		}
 	}
 
-	nodeClusterID := utils.WithDefaultCluster(team.Team.ClusterID)
+	nodeClusterID := utils.WithClusterFallback(team.Team.ClusterID)
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
 	algorithm := o.getPlacementAlgorithm(ctx)

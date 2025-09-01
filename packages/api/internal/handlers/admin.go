@@ -21,7 +21,7 @@ func (a *APIStore) GetNodes(c *gin.Context) {
 }
 
 func (a *APIStore) GetNodesNodeID(c *gin.Context, nodeID api.NodeID, params api.GetNodesNodeIDParams) {
-	clusterID := consts.DefaultClusterID
+	clusterID := consts.LocalClusterID
 	if params.ClusterID != nil {
 		clusterUUID, err := uuid.Parse(*params.ClusterID)
 		if err != nil {

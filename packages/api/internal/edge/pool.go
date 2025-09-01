@@ -50,7 +50,7 @@ func localClusterConfig() (*queries.Cluster, error) {
 	}
 
 	return &queries.Cluster{
-		ID:                 consts.DefaultClusterID,
+		ID:                 consts.LocalClusterID,
 		EndpointTls:        false,
 		Endpoint:           clusterEndpoint,
 		Token:              clusterToken,

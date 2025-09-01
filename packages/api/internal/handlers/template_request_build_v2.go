@@ -58,7 +58,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	}
 	span.End()
 
-	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, apiutils.WithDefaultCluster(team.ClusterID))
+	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, apiutils.WithClusterFallback(team.ClusterID))
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting available build client")
 		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
@@ -66,7 +66,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	}
 
 	buildReq := BuildTemplateRequest{
-		ClusterID:     apiutils.WithDefaultCluster(team.ClusterID),
+		ClusterID:     apiutils.WithClusterFallback(team.ClusterID),
 		BuilderNodeID: builderNodeID,
 		IsNew:         isNew,
 		TemplateID:    templateID,

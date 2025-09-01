@@ -44,7 +44,7 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 					BuildID:    build.ID,
 					TemplateID: *build.EnvID,
 
-					ClusterID: utils.WithDefaultCluster(teamClusterID),
+					ClusterID: utils.WithClusterFallback(teamClusterID),
 					NodeID:    build.ClusterNodeID,
 				},
 			)

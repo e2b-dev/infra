@@ -6,9 +6,9 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
-func WithDefaultCluster(clusterID *uuid.UUID) uuid.UUID {
+func WithClusterFallback(clusterID *uuid.UUID) uuid.UUID {
 	if clusterID == nil {
-		return consts.DefaultClusterID
+		return consts.LocalClusterID
 	}
 
 	return *clusterID
