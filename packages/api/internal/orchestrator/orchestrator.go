@@ -272,14 +272,14 @@ func (o *Orchestrator) updateBestOfKConfig(ctx context.Context) {
 				zap.L().Error("Failed to get BestOfKAlpha flag", zap.Error(err))
 			}
 
-			skipCanFit, err := o.featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKSkipCanFit)
+			canFit, err := o.featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKCanFit)
 			if err != nil {
-				zap.L().Error("Failed to get BestOfKSkipCanFit flag", zap.Error(err))
+				zap.L().Error("Failed to get BestOfKCanFit flag", zap.Error(err))
 			}
 
-			skipTooManyStarting, err := o.featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKSkipTooManyStarting)
+			tooManyStarting, err := o.featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKTooManyStarting)
 			if err != nil {
-				zap.L().Error("Failed to get BestOfKSkipTooManyStarting flag", zap.Error(err))
+				zap.L().Error("Failed to get BestOfKTooManyStarting flag", zap.Error(err))
 			}
 
 			// Convert percentage to decimal
@@ -288,11 +288,11 @@ func (o *Orchestrator) updateBestOfKConfig(ctx context.Context) {
 
 			// Update the config
 			o.bestOfKAlgorithm.UpdateConfig(placement.BestOfKConfig{
-				R:                   maxOvercommit,
-				K:                   k,
-				Alpha:               alpha,
-				SkipCanFit:          skipCanFit,
-				SkipTooManyStarting: skipTooManyStarting,
+				R:               maxOvercommit,
+				K:               k,
+				Alpha:           alpha,
+				CanFit:          canFit,
+				TooManyStarting: tooManyStarting,
 			})
 		}
 	}

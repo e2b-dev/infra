@@ -49,8 +49,8 @@ var (
 	TemplateFeatureFlagName             = newBoolFlag("use-nfs-for-templates", env.IsDevelopment())
 	SandboxEventsPublishFlagName        = newBoolFlag("sandbox-events-publish", env.IsDevelopment())
 	BestOfKPlacementAlgorithm           = newBoolFlag("best-of-k-placement-algorithm", env.IsDevelopment())
-	BestOfKSkipCanFit                   = newBoolFlag("best-of-k-skip-can-fit-fit", false)
-	BestOfKSkipTooManyStarting          = newBoolFlag("best-of-k-skip-too-many-starting", true)
+	BestOfKCanFit                       = newBoolFlag("best-of-k-can-fit", true)
+	BestOfKTooManyStarting              = newBoolFlag("best-of-k-too-many-starting", false)
 )
 
 type IntFlag struct {

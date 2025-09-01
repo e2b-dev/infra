@@ -22,10 +22,10 @@ type BestOfKConfig struct {
 	Alpha float64
 	// K is the number of candidate nodes sampled per placement ("power of K choices")
 	K int
-	// SkipTooManyStarting determines whether to skip nodes that are starting more than maxStartingInstancesPerNode instances
-	SkipTooManyStarting bool
-	// SkipCanFit determines whether to skip the node CanFit check
-	SkipCanFit bool
+	// TooManyStarting determines whether to skip nodes that are starting more than maxStartingInstancesPerNode instances
+	TooManyStarting bool
+	// CanFit determines whether to skip the node CanFit check
+	CanFit bool
 }
 
 // DefaultBestOfKConfig returns the default placement configuration
@@ -175,13 +175,13 @@ func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, exclud
 			continue
 		}
 
-		if config.SkipCanFit {
+		if config.CanFit {
 			if !b.CanFit(n, resources, config) {
 				continue
 			}
 		}
 
-		if config.SkipTooManyStarting {
+		if config.TooManyStarting {
 			// To prevent overloading the node
 			if n.PlacementMetrics.InProgressCount() > maxStartingInstancesPerNode {
 				continue
