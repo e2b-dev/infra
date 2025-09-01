@@ -86,7 +86,8 @@ func LoggingMiddleware(logger *zap.Logger, conf Config) gin.HandlerFunc {
 				fields = append(fields, conf.Context(c)...)
 			}
 
-			if status >= http.StatusBadRequest {
+			// Log errors if present
+			if len(c.Errors) > 0 {
 				for _, e := range c.Errors.Errors() {
 					if status >= http.StatusInternalServerError {
 						logger.Error(e, fields...)
@@ -95,7 +96,15 @@ func LoggingMiddleware(logger *zap.Logger, conf Config) gin.HandlerFunc {
 					}
 				}
 			} else {
-				logger.Log(conf.DefaultLevel, path, fields...)
+				// No errors, let's log the request
+				level := conf.DefaultLevel
+				if status >= http.StatusInternalServerError {
+					level = zapcore.ErrorLevel
+				} else if status >= http.StatusBadRequest {
+					level = zapcore.WarnLevel
+				}
+
+				logger.Log(level, path, fields...)
 			}
 		}
 	}
