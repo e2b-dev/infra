@@ -105,7 +105,8 @@ func (b *BestOfK) UpdateConfig(config BestOfKConfig) {
 
 func (b *BestOfK) excludeNode(err error) bool {
 	st, ok := status.FromError(err)
-	if !ok || st.Code() != codes.ResourceExhausted {
+	// If the node is just exhausted, keep it
+	if ok && st.Code() == codes.ResourceExhausted {
 		return false
 	} else {
 		return true
