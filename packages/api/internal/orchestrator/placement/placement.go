@@ -71,10 +71,9 @@ func PlaceSandbox(ctx context.Context, tracer trace.Tracer, algorithm Algorithm,
 		err = node.SandboxCreate(ctx, sbxRequest)
 		span.End()
 		if err != nil {
-			nodesExcluded[node.ID] = struct{}{}
-
 			st, ok := status.FromError(err)
 			if !ok || st.Code() != codes.ResourceExhausted {
+				nodesExcluded[node.ID] = struct{}{}
 				node.PlacementMetrics.Fail(sbxRequest.Sandbox.SandboxId)
 				zap.L().Error("Failed to create sandbox", logger.WithSandboxID(sbxRequest.Sandbox.SandboxId), logger.WithNodeID(node.ID), zap.Int("attempt", attempt+1), zap.Error(utils.UnwrapGRPCError(err)))
 				attempt++
