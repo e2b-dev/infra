@@ -129,8 +129,8 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}
 
 	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
-	go func(ctx context.Context) {
-		ctx, childSpan := s.tracer.Start(ctx, "sandbox-create-stop", trace.WithNewRoot())
+	go func() {
+		ctx, childSpan := s.tracer.Start(context.WithoutCancel(ctx), "sandbox-create-stop", trace.WithNewRoot())
 		defer childSpan.End()
 
 		waitErr := sbx.Wait(ctx)
@@ -162,7 +162,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		s.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
 
 		sbxlogger.E(sbx).Info("Sandbox killed")
-	}(context.WithoutCancel(ctx))
+	}()
 
 	label := clickhouse.SandboxEventLabelCreate
 	if req.Sandbox.Snapshot {
