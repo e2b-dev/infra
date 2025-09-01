@@ -126,10 +126,6 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 	}
 }
 
-func (tm *TemplateManager) GetBuildClient(clusterID uuid.UUID, nodeID string) (*BuildClient, error) {
-	return tm.GetClusterBuildClient(clusterID, nodeID)
-}
-
 func (tm *TemplateManager) GetAvailableBuildClient(ctx context.Context, clusterID uuid.UUID) (string, error) {
 	cluster, ok := tm.edgePool.GetClusterById(clusterID)
 	if !ok {
@@ -177,7 +173,7 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, t trace.Tracer, buil
 	)
 	defer span.End()
 
-	client, err := tm.GetBuildClient(clusterID, nodeID)
+	client, err := tm.GetClusterBuildClient(clusterID, nodeID)
 	if err != nil {
 		return fmt.Errorf("failed to get builder edgeHttpClient: %w", err)
 	}
@@ -210,7 +206,7 @@ func (tm *TemplateManager) DeleteBuilds(ctx context.Context, builds []DeleteBuil
 }
 
 func (tm *TemplateManager) GetStatus(ctx context.Context, buildID uuid.UUID, templateID string, clusterID uuid.UUID, nodeID string) (*templatemanagergrpc.TemplateBuildStatusResponse, error) {
-	cli, err := tm.GetBuildClient(clusterID, nodeID)
+	cli, err := tm.GetClusterBuildClient(clusterID, nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get builder edgeHttpClient: %w", err)
 	}
