@@ -33,6 +33,11 @@ func PlaceSandbox(ctx context.Context, tracer trace.Tracer, algorithm Algorithm,
 	nodesExcluded := make(map[string]struct{})
 	var err error
 
+	var node *nodemanager.Node
+	if preferredNode != nil {
+		node = preferredNode
+	}
+
 	attempt := 0
 	for attempt < maxRetries {
 		select {
@@ -42,9 +47,7 @@ func PlaceSandbox(ctx context.Context, tracer trace.Tracer, algorithm Algorithm,
 			// Continue
 		}
 
-		var node *nodemanager.Node
-		if preferredNode != nil {
-			node = preferredNode
+		if node != nil {
 			telemetry.ReportEvent(ctx, "Placing sandbox on the preferred node", telemetry.WithNodeID(node.ID))
 		} else {
 			if len(nodesExcluded) >= len(clusterNodes) {
