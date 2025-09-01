@@ -115,6 +115,8 @@ type networkSlotRes struct {
 	err  error
 }
 
+// CreateSandbox creates the sandbox.
+// IMPORTANT: You must Close() the sandbox after you are done with it.
 func CreateSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
@@ -302,7 +304,7 @@ func CreateSandbox(
 }
 
 // ResumeSandbox resumes the sandbox from already saved template or snapshot.
-// IMPORTANT: You have to run Stop() after you are done with the started sandbox.
+// IMPORTANT: You must Close() the sandbox after you are done with it.
 func ResumeSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
