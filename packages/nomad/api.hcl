@@ -88,6 +88,8 @@ job "api" {
         DNS_PORT                       = "${dns_port_number}"
         SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
 
+        LOCAL_CLUSTER_ENDPOINT = "${local_cluster_endpoint}"
+        LOCAL_CLUSTER_TOKEN    = "${local_cluster_token}"
 
 %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"

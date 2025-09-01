@@ -98,6 +98,9 @@ resource "nomad_job" "api" {
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
     db_migrator_docker_image       = docker_image.db_migrator_image.repo_digest
     launch_darkly_api_key          = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+
+    local_cluster_endpoint = "edge-api.service.consul:${var.edge_api_port.port}"
+    local_cluster_token    = var.edge_api_secret
   })
 }
 
