@@ -88,7 +88,7 @@ func New(
 
 	// Initialize both placement algorithms
 	leastBusyAlgorithm := &placement.LeastBusyAlgorithm{}
-	bestOfKAlgorithm := placement.NewBestOfK(placement.DefaultBestOfKConfig()).(*placement.BestOfK)
+	bestOfKAlgorithm := placement.NewBestOfK(getBestOfKConfig(ctx, featureFlags)).(*placement.BestOfK)
 
 	o := Orchestrator{
 		httpClient:         httpClient,
@@ -254,46 +254,50 @@ func (o *Orchestrator) updateBestOfKConfig(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// Get the latest config values from feature flags
-			// Using empty context key to get default values
-			k, err := o.featureFlagsClient.IntFlag(ctx, featureflags.BestOfKSampleSize)
-			if err != nil {
-				zap.L().Error("Failed to get BestOfKSampleSize flag", zap.Error(err))
-				k = 3 // fallback to default
-			}
-
-			maxOvercommitPercent, err := o.featureFlagsClient.IntFlag(ctx, featureflags.BestOfKMaxOvercommit)
-			if err != nil {
-				zap.L().Error("Failed to get BestOfKMaxOvercommit flag", zap.Error(err))
-			}
-
-			alphaPercent, err := o.featureFlagsClient.IntFlag(ctx, featureflags.BestOfKAlpha)
-			if err != nil {
-				zap.L().Error("Failed to get BestOfKAlpha flag", zap.Error(err))
-			}
-
-			canFit, err := o.featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKCanFit)
-			if err != nil {
-				zap.L().Error("Failed to get BestOfKCanFit flag", zap.Error(err))
-			}
-
-			tooManyStarting, err := o.featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKTooManyStarting)
-			if err != nil {
-				zap.L().Error("Failed to get BestOfKTooManyStarting flag", zap.Error(err))
-			}
-
-			// Convert percentage to decimal
-			alpha := float64(alphaPercent) / 100.0
-			maxOvercommit := float64(maxOvercommitPercent) / 100.0
+			config := getBestOfKConfig(ctx, o.featureFlagsClient)
 
 			// Update the config
-			o.bestOfKAlgorithm.UpdateConfig(placement.BestOfKConfig{
-				R:               maxOvercommit,
-				K:               k,
-				Alpha:           alpha,
-				CanFit:          canFit,
-				TooManyStarting: tooManyStarting,
-			})
+			o.bestOfKAlgorithm.UpdateConfig(config)
 		}
+	}
+}
+
+func getBestOfKConfig(ctx context.Context, featureFlagsClient *featureflags.Client) placement.BestOfKConfig {
+	k, err := featureFlagsClient.IntFlag(ctx, featureflags.BestOfKSampleSize)
+	if err != nil {
+		zap.L().Error("Failed to get BestOfKSampleSize flag", zap.Error(err))
+		k = 3 // fallback to default
+	}
+
+	maxOvercommitPercent, err := featureFlagsClient.IntFlag(ctx, featureflags.BestOfKMaxOvercommit)
+	if err != nil {
+		zap.L().Error("Failed to get BestOfKMaxOvercommit flag", zap.Error(err))
+	}
+
+	alphaPercent, err := featureFlagsClient.IntFlag(ctx, featureflags.BestOfKAlpha)
+	if err != nil {
+		zap.L().Error("Failed to get BestOfKAlpha flag", zap.Error(err))
+	}
+
+	canFit, err := featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKCanFit)
+	if err != nil {
+		zap.L().Error("Failed to get BestOfKCanFit flag", zap.Error(err))
+	}
+
+	tooManyStarting, err := featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKTooManyStarting)
+	if err != nil {
+		zap.L().Error("Failed to get BestOfKTooManyStarting flag", zap.Error(err))
+	}
+
+	// Convert percentage to decimal
+	alpha := float64(alphaPercent) / 100.0
+	maxOvercommit := float64(maxOvercommitPercent) / 100.0
+
+	return placement.BestOfKConfig{
+		R:               maxOvercommit,
+		K:               k,
+		Alpha:           alpha,
+		CanFit:          canFit,
+		TooManyStarting: tooManyStarting,
 	}
 }
