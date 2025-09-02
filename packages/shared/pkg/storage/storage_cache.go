@@ -119,6 +119,7 @@ func (c *CachedFileObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (
 		}
 		cachedRead.End(ctx, bytesRead)
 		written, err := dst.Write(b)
+		span.SetAttributes(attribute.String("read-from", "local"))
 		return int64(written), err
 	}
 
@@ -146,6 +147,7 @@ func (c *CachedFileObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (
 		c.writeFullFileToCache(context.WithoutCancel(ctx), fullCachePath, writer.Bytes())
 	}()
 
+	span.SetAttributes(attribute.String("read-from", "remote"))
 	written, err := dst.Write(writer.Bytes())
 	return int64(written), err
 }
@@ -175,6 +177,7 @@ func (c *CachedFileObjectProvider) ReadAt(ctx context.Context, buff []byte, offs
 	readTimer := cacheReadTimerFactory.Begin()
 	count, err := c.readAtFromCache(chunkPath, buff)
 	if ignoreEOF(err) == nil {
+		span.SetAttributes(attribute.String("read-from", "local"))
 		readTimer.End(ctx, int64(count))
 		return count, err // return `err` in case it's io.EOF
 	}
@@ -194,6 +197,7 @@ func (c *CachedFileObjectProvider) ReadAt(ctx context.Context, buff []byte, offs
 		c.writeChunkToCache(context.WithoutCancel(ctx), offset, chunkPath, buff[:readCount])
 	}()
 
+	span.SetAttributes(attribute.String("read-from", "remote"))
 	return readCount, nil
 }
 

@@ -14,6 +14,7 @@ import (
 	"cloud.google.com/go/storage"
 	"github.com/googleapis/gax-go/v2"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/api/iterator"
 
@@ -157,6 +158,9 @@ func (g *GCPBucketStorageObjectProvider) Delete(ctx context.Context) error {
 }
 
 func (g *GCPBucketStorageObjectProvider) Size(ctx context.Context) (int64, error) {
+	ctx, span := tracer.Start(ctx, "GCPBucketStorageObjectProvider.Size")
+	defer span.End()
+
 	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
 	defer cancel()
 
@@ -173,6 +177,12 @@ func (g *GCPBucketStorageObjectProvider) Size(ctx context.Context) (int64, error
 }
 
 func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
+	ctx, span := tracer.Start(ctx, "GCPBucketStorageObjectProvider.ReadAt", trace.WithAttributes(
+		attribute.Int64("offset", off),
+		attribute.Int("buff_len", len(buff)),
+	))
+	defer span.End()
+
 	timer := googleReadTimerFactory.Begin()
 
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
@@ -206,6 +216,11 @@ func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte
 }
 
 func (g *GCPBucketStorageObjectProvider) Write(ctx context.Context, data []byte) (int, error) {
+	ctx, span := tracer.Start(ctx, "GCPBucketStorageObjectProvider.Write", trace.WithAttributes(
+		attribute.Int("data_len", len(data)),
+	))
+	defer span.End()
+
 	timer := googleWriteTimerFactory.Begin()
 
 	w := g.handle.NewWriter(ctx)
@@ -221,6 +236,9 @@ func (g *GCPBucketStorageObjectProvider) Write(ctx context.Context, data []byte)
 }
 
 func (g *GCPBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
+	ctx, span := tracer.Start(ctx, "GCPBucketStorageObjectProvider.WriteTo")
+	defer span.End()
+
 	timer := googleReadTimerFactory.Begin()
 
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
@@ -248,6 +266,9 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Wri
 }
 
 func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
+	ctx, span := tracer.Start(ctx, "GCPBucketStorageObjectProvider.WriteFromFileSystem")
+	defer span.End()
+
 	timer := googleWriteTimerFactory.Begin()
 
 	bucketName := g.storage.bucket.BucketName()
