@@ -499,6 +499,7 @@ components:
         - spawnCount
         - buildCount
         - envdVersion
+        - aliases
       properties:
         templateID:
           type: string

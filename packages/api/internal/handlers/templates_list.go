@@ -119,7 +119,7 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 			MemoryMB:      int32(item.BuildRamMb),
 			DiskSizeMB:    int32(diskMB),
 			Public:        item.Env.Public,
-			Aliases:       &item.Aliases,
+			Aliases:       item.Aliases,
 			CreatedAt:     item.Env.CreatedAt,
 			UpdatedAt:     item.Env.UpdatedAt,
 			LastSpawnedAt: item.Env.LastSpawnedAt,

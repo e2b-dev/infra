@@ -617,7 +617,7 @@ type TeamUser struct {
 // Template defines model for Template.
 type Template struct {
 	// Aliases Aliases of the template
-	Aliases *[]string `json:"aliases,omitempty"`
+	Aliases []string `json:"aliases"`
 
 	// BuildCount Number of times the template was built
 	BuildCount int32 `json:"buildCount"`
