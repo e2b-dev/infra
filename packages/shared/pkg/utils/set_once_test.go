@@ -313,7 +313,7 @@ func TestNotSetResult(t *testing.T) {
 
 	value, err := setOnce.Result()
 	assert.Equal(t, 0, value)
-	assert.ErrorIs(t, err, ErrNotSet{})
+	assert.ErrorIs(t, err, NotSetError{})
 }
 
 func TestResultAfterDone(t *testing.T) {

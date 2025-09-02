@@ -23,6 +23,7 @@ var errSandboxCreateFailed = fmt.Errorf("failed to create a new sandbox, if the 
 // and current load distribution.
 type Algorithm interface {
 	chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, requested nodemanager.SandboxResources) (*nodemanager.Node, error)
+	excludeNode(err error) bool
 }
 
 func PlaceSandbox(ctx context.Context, tracer trace.Tracer, algorithm Algorithm, clusterNodes []*nodemanager.Node, preferredNode *nodemanager.Node, sbxRequest *orchestrator.SandboxCreateRequest) (*nodemanager.Node, error) {
@@ -31,6 +32,11 @@ func PlaceSandbox(ctx context.Context, tracer trace.Tracer, algorithm Algorithm,
 
 	nodesExcluded := make(map[string]struct{})
 	var err error
+
+	var node *nodemanager.Node
+	if preferredNode != nil {
+		node = preferredNode
+	}
 
 	attempt := 0
 	for attempt < maxRetries {
@@ -41,9 +47,7 @@ func PlaceSandbox(ctx context.Context, tracer trace.Tracer, algorithm Algorithm,
 			// Continue
 		}
 
-		var node *nodemanager.Node
-		if preferredNode != nil {
-			node = preferredNode
+		if node != nil {
 			telemetry.ReportEvent(ctx, "Placing sandbox on the preferred node", telemetry.WithNodeID(node.ID))
 		} else {
 			if len(nodesExcluded) >= len(clusterNodes) {
@@ -71,7 +75,10 @@ func PlaceSandbox(ctx context.Context, tracer trace.Tracer, algorithm Algorithm,
 		err = node.SandboxCreate(ctx, sbxRequest)
 		span.End()
 		if err != nil {
-			nodesExcluded[node.ID] = struct{}{}
+			if algorithm.excludeNode(err) {
+				zap.L().Warn("Excluding node", logger.WithSandboxID(sbxRequest.Sandbox.SandboxId), logger.WithNodeID(node.ID))
+				nodesExcluded[node.ID] = struct{}{}
+			}
 
 			st, ok := status.FromError(err)
 			if !ok || st.Code() != codes.ResourceExhausted {

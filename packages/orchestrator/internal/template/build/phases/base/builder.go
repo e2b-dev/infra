@@ -284,7 +284,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("error creating sandbox: %w", err)
 	}
-	defer sourceSbx.Stop(ctx)
+	defer sourceSbx.Close(ctx)
 
 	err = sourceSbx.WaitForEnvd(
 		ctx,

@@ -2,6 +2,7 @@ package edgepassthrough
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	"google.golang.org/grpc"
@@ -142,7 +143,7 @@ func (s *NodePassThroughServer) handler(srv interface{}, serverStream grpc.Serve
 	for i := 0; i < 2; i++ {
 		select {
 		case s2cErr := <-s2cErrChan:
-			if s2cErr == io.EOF {
+			if errors.Is(s2cErr, io.EOF) {
 				// this is the happy case where the sender has encountered io.EOF, and won't be sending anymore./
 				// the clientStream>serverStream may continue pumping though.
 				clientStream.CloseSend()
@@ -159,7 +160,7 @@ func (s *NodePassThroughServer) handler(srv interface{}, serverStream grpc.Serve
 			// will be nil.
 			serverStream.SetTrailer(clientStream.Trailer())
 			// c2sErr will contain RPC error from client code. If not io.EOF return the RPC error as server stream error.
-			if c2sErr != io.EOF {
+			if !errors.Is(c2sErr, io.EOF) {
 				return c2sErr
 			}
 			return nil

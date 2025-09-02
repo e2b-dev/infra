@@ -8,7 +8,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -18,7 +17,7 @@ func (o *Orchestrator) AdminNodes() []*api.Node {
 
 	for _, n := range o.nodes.Items() {
 		// Skip all nodes that are not running in local (Nomad) cluster
-		if n.NomadNodeShortID == nodemanager.UnknownNomadNodeShortID {
+		if !n.IsNomadManaged() {
 			continue
 		}
 

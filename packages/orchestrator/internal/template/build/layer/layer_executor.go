@@ -92,13 +92,7 @@ func (lb *LayerExecutor) BuildLayer(
 	if err != nil {
 		return metadata.Template{}, err
 	}
-	defer sbx.Stop(ctx)
-	go func() {
-		err := sbx.Wait(context.WithoutCancel(ctx))
-		if err != nil {
-			lb.logger.Error("error waiting for sandbox", zap.Error(err))
-		}
-	}()
+	defer sbx.Close(ctx)
 
 	// Add to proxy so we can call envd commands
 	lb.sandboxes.Insert(sbx.Runtime.SandboxID, sbx)

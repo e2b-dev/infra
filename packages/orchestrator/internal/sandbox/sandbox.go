@@ -71,10 +71,9 @@ type RuntimeMetadata struct {
 }
 
 type Resources struct {
-	Slot     *network.Slot
-	rootfs   rootfs.Provider
-	memory   uffd.MemoryBackend
-	uffdExit chan error
+	Slot   *network.Slot
+	rootfs rootfs.Provider
+	memory uffd.MemoryBackend
 }
 
 type Metadata struct {
@@ -99,6 +98,8 @@ type Sandbox struct {
 	Checks *Checks
 
 	APIStoredConfig *orchestrator.SandboxConfig
+
+	exit *utils.ErrorOnce
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -114,6 +115,8 @@ type networkSlotRes struct {
 	err  error
 }
 
+// CreateSandbox creates the sandbox.
+// IMPORTANT: You must Close() the sandbox after you are done with it.
 func CreateSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
@@ -130,6 +133,8 @@ func CreateSandbox(
 ) (s *Sandbox, e error) {
 	childCtx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
+
+	exit := utils.NewErrorOnce()
 
 	cleanup := NewCleanup()
 	defer func() {
@@ -246,10 +251,9 @@ func CreateSandbox(
 	telemetry.ReportEvent(childCtx, "created fc process")
 
 	resources := &Resources{
-		Slot:     ips.slot,
-		rootfs:   rootfsProvider,
-		memory:   uffd.NewNoopMemory(memfileSize, memfile.BlockSize()),
-		uffdExit: make(chan error, 1),
+		Slot:   ips.slot,
+		rootfs: rootfsProvider,
+		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize()),
 	}
 
 	metadata := &Metadata{
@@ -271,6 +275,8 @@ func CreateSandbox(
 		cleanup: cleanup,
 
 		APIStoredConfig: apiConfigToStore,
+
+		exit: exit,
 	}
 
 	checks, err := NewChecks(ctx, tracer, sbx, false)
@@ -280,14 +286,23 @@ func CreateSandbox(
 	sbx.Checks = checks
 
 	cleanup.AddPriority(func(ctx context.Context) error {
-		return sbx.Close(ctx, tracer)
+		// Stop the sandbox first if it is still running, otherwise do nothing
+		return sbx.Stop(ctx, tracer)
 	})
+
+	go func() {
+		// If the process exists, stop the sandbox properly
+		fcErr := fcHandle.Exit.Wait()
+		err := sbx.Stop(context.WithoutCancel(ctx), tracer)
+
+		exit.SetError(errors.Join(err, fcErr))
+	}()
 
 	return sbx, nil
 }
 
 // ResumeSandbox resumes the sandbox from already saved template or snapshot.
-// IMPORTANT: You have to run Stop() after you are done with the started sandbox.
+// IMPORTANT: You must Close() the sandbox after you are done with it.
 func ResumeSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
@@ -304,6 +319,8 @@ func ResumeSandbox(
 ) (s *Sandbox, e error) {
 	childCtx, childSpan := tracer.Start(ctx, "resume-sandbox")
 	defer childSpan.End()
+
+	exit := utils.NewErrorOnce()
 
 	cleanup := NewCleanup()
 	defer func() {
@@ -387,18 +404,16 @@ func ResumeSandbox(
 		return nil, fmt.Errorf("failed to serve memory: %w", err)
 	}
 
+	// ==== END of resources initialization ====
 	uffdStartCtx, cancelUffdStartCtx := context.WithCancelCause(ctx)
 	defer cancelUffdStartCtx(fmt.Errorf("uffd finished starting"))
 
-	uffdExit := make(chan error, 1)
 	go func() {
-		uffdWaitErr := <-fcUffd.Exit()
-		uffdExit <- uffdWaitErr
+		uffdWaitErr := fcUffd.Exit().Wait()
 
 		cancelUffdStartCtx(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(uffdStartCtx))))
 	}()
 
-	// / ==== END of resources initialization ====
 	rootfsPath, err := rootfsOverlay.Path()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rootfs path: %w", err)
@@ -470,10 +485,9 @@ func ResumeSandbox(
 	}
 
 	resources := &Resources{
-		Slot:     ips.slot,
-		rootfs:   rootfsOverlay,
-		memory:   fcUffd,
-		uffdExit: uffdExit,
+		Slot:   ips.slot,
+		rootfs: rootfsOverlay,
+		memory: fcUffd,
 	}
 
 	metadata := &Metadata{
@@ -495,6 +509,8 @@ func ResumeSandbox(
 		cleanup: cleanup,
 
 		APIStoredConfig: apiConfigToStore,
+
+		exit: exit,
 	}
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
@@ -507,7 +523,8 @@ func ResumeSandbox(
 	sbx.Checks = checks
 
 	cleanup.AddPriority(func(ctx context.Context) error {
-		return sbx.Close(ctx, tracer)
+		// Stop the sandbox first if it is still running, otherwise do nothing
+		return sbx.Stop(ctx, tracer)
 	})
 
 	err = sbx.WaitForEnvd(
@@ -521,40 +538,37 @@ func ResumeSandbox(
 
 	go sbx.Checks.Start()
 
+	go func() {
+		// Wait for either uffd or fc process to exit
+		select {
+		case <-fcUffd.Exit().Done():
+		case <-fcHandle.Exit.Done():
+		}
+
+		err := sbx.Stop(context.WithoutCancel(ctx), tracer)
+
+		uffdWaitErr := fcUffd.Exit().Wait()
+		fcErr := fcHandle.Exit.Wait()
+		exit.SetError(errors.Join(err, fcErr, uffdWaitErr))
+	}()
+
 	return sbx, nil
 }
 
 func (s *Sandbox) Wait(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-s.process.Exit.Done:
-		_, fcErr := s.process.Exit.Result()
-		stopErr := s.Stop(ctx)
-		uffdErr := <-s.uffdExit
-
-		return errors.Join(fcErr, stopErr, uffdErr)
-	case uffdErr := <-s.uffdExit:
-		stopErr := s.Stop(ctx)
-
-		_, fcErr := s.process.Exit.WaitWithContext(ctx)
-
-		return errors.Join(uffdErr, stopErr, fcErr)
-	}
+	return s.exit.WaitWithContext(ctx)
 }
 
-// Stop starts the cleanup process for the sandbox.
-func (s *Sandbox) Stop(ctx context.Context) error {
+func (s *Sandbox) Close(ctx context.Context) error {
 	err := s.cleanup.Run(ctx)
 	if err != nil {
-		sbxlogger.I(s).Error("failed to stop sandbox", zap.Error(err))
-		return fmt.Errorf("failed to stop sandbox: %w", err)
+		return fmt.Errorf("failed to cleanup sandbox: %w", err)
 	}
-
 	return nil
 }
 
-func (s *Sandbox) Close(ctx context.Context, tracer trace.Tracer) error {
+// Stop kills the sandbox.
+func (s *Sandbox) Stop(ctx context.Context, tracer trace.Tracer) error {
 	_, span := tracer.Start(ctx, "sandbox-close")
 	defer span.End()
 
@@ -570,7 +584,7 @@ func (s *Sandbox) Close(ctx context.Context, tracer trace.Tracer) error {
 
 	// The process exited, we can continue with the rest of the cleanup.
 	// We could use select with ctx.Done() to wait for cancellation, but if the process is not exited the whole cleanup will be in a bad state and will result in unexpected behavior.
-	<-s.process.Exit.Done
+	<-s.process.Exit.Done()
 
 	uffdStopErr := s.Resources.memory.Stop()
 	if uffdStopErr != nil {
@@ -675,8 +689,8 @@ func (s *Sandbox) Pause(
 		buildID,
 		originalRootfs.Header(),
 		&RootfsDiffCreator{
-			rootfs:   s.rootfs,
-			stopHook: s.Stop,
+			rootfs:    s.rootfs,
+			closeHook: s.Close,
 		},
 	)
 	if err != nil {
@@ -914,8 +928,8 @@ func (s *Sandbox) WaitForExit(
 		return fmt.Errorf("waiting for exit took too long")
 	case <-ctx.Done():
 		return nil
-	case <-s.process.Exit.Done:
-		_, err := s.process.Exit.Result()
+	case <-s.exit.Done():
+		err := s.exit.Error()
 		if err == nil {
 			return nil
 		}
@@ -949,8 +963,8 @@ func (s *Sandbox) WaitForEnvd(
 			syncCancel(fmt.Errorf("syncing took too long"))
 		case <-syncCtx.Done():
 			return
-		case <-s.process.Exit.Done:
-			_, err := s.process.Exit.Result()
+		case <-s.process.Exit.Done():
+			err := s.process.Exit.Error()
 
 			syncCancel(fmt.Errorf("fc process exited prematurely: %w", err))
 		}

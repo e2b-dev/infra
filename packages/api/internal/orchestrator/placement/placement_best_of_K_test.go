@@ -24,14 +24,14 @@ func TestBestOfK_Score(t *testing.T) {
 		MiBMemory: 512,
 	}
 
-	score := algo.Score(node, resources)
+	score := algo.Score(node, resources, config)
 
 	// Score should be non-negative
 	assert.GreaterOrEqual(t, score, 0.0)
 
 	// Test with different CPU usage
 	node2 := nodemanager.NewTestNode("test-node2", api.NodeStatusReady, 10, 4)
-	score2 := algo.Score(node2, resources)
+	score2 := algo.Score(node2, resources, config)
 
 	// Higher CPU usage should result in higher score (worse)
 	assert.Greater(t, score2, score)
@@ -50,14 +50,14 @@ func TestBestOfK_Score_PreferBiggerNode(t *testing.T) {
 		MiBMemory: 512,
 	}
 
-	score := algo.Score(node, resources)
+	score := algo.Score(node, resources, config)
 
 	// Score should be non-negative
 	assert.GreaterOrEqual(t, score, 0.0)
 
 	// Test with different CPU usage
 	node2 := nodemanager.NewTestNode("test-node2", api.NodeStatusReady, 1, 8)
-	score2 := algo.Score(node2, resources)
+	score2 := algo.Score(node2, resources, config)
 
 	// Lower CPU count should result in higher score (worse) as the expected load is higher
 	assert.Greater(t, score, score2)
@@ -77,7 +77,7 @@ func TestBestOfK_CanFit(t *testing.T) {
 	}
 	// Note: CanFit depends on the node's actual metrics which we can't directly control
 	// But we can test the logic works
-	canFit := algo.CanFit(node, resources)
+	canFit := algo.CanFit(node, resources, config)
 	assert.IsType(t, true, canFit) // Should return a boolean
 
 	// Test with very large resource request - likely won't fit
@@ -85,7 +85,7 @@ func TestBestOfK_CanFit(t *testing.T) {
 		CPUs:      1000,
 		MiBMemory: 8192,
 	}
-	canFitLarge := algo.CanFit(node, largeResources)
+	canFitLarge := algo.CanFit(node, largeResources, config)
 	assert.False(t, canFitLarge) // Very large request should not fit
 }
 
@@ -190,7 +190,7 @@ func TestBestOfK_Sample(t *testing.T) {
 	}
 
 	// Test sampling fewer nodes than available
-	sampled := algo.sample(nodes, 3, excludedNodes, resources)
+	sampled := algo.sample(nodes, config, excludedNodes, resources)
 	assert.LessOrEqual(t, len(sampled), 3)
 
 	// Check all sampled nodes are unique
@@ -203,7 +203,7 @@ func TestBestOfK_Sample(t *testing.T) {
 	// Test sampling with exclusions
 	excludedNodes["a"] = struct{}{}
 	excludedNodes["b"] = struct{}{}
-	sampled = algo.sample(nodes, 5, excludedNodes, resources)
+	sampled = algo.sample(nodes, config, excludedNodes, resources)
 
 	for _, n := range sampled {
 		assert.NotEqual(t, "a", n.ID)
