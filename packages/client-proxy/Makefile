@@ -9,6 +9,11 @@ build:
 	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/client-proxy -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
 
+.PHONY: build-debug
+build-debug:
+	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
+	CGO_ENABLED=1 go build -race -gcflags=all="-N -l" -o bin/client-proxy -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
+
 .PHONY: build-and-upload
 build-and-upload:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
@@ -20,6 +25,23 @@ build-and-upload:
 
 openapi := ../../spec/openapi-edge.yml
 codegen := go tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
+
+.PHONY: run
+run:
+	make build-debug
+	EDGE_PORT=3001 \
+	EDGE_SECRET=$(EDGE_TOKEN) \
+	NODE_ID=integration-tests \
+	NODE_IP=127.0.0.1 \
+	SERVICE_DISCOVERY_EDGE_PROVIDER=STATIC \
+	SERVICE_DISCOVERY_EDGE_STATIC=127.0.0.1 \
+	SERVICE_DISCOVERY_ORCHESTRATOR_PROVIDER=STATIC \
+	SERVICE_DISCOVERY_ORCHESTRATOR_STATIC=127.0.0.1 \
+	SKIP_ORCHESTRATOR_READINESS_CHECK=true \
+	USE_CATALOG_RESOLUTION=true \
+	USE_DNS_RESOLUTION=false \
+	LOKI_URL=unset \
+	./bin/client-proxy
 
 .PHONY: generate
 generate:

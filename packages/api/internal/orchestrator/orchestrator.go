@@ -21,7 +21,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -122,28 +121,17 @@ func New(
 
 	o.teamMetricsObserver = teamMetricsObserver
 
-	if env.IsLocal() {
-		zap.L().Info("Skipping syncing sandboxes, running locally")
-		// Add a local node for local development, if there isn't any, it fails silently
-		err := o.connectToNode(ctx, nodemanager.NomadServiceDiscovery{
-			NomadNodeShortID:    "testclient",
-			OrchestratorAddress: fmt.Sprintf("%s:%s", "127.0.0.1", consts.OrchestratorPort),
-			IPAddress:           "127.0.0.1",
-		})
-		if err != nil {
-			zap.L().Error("Error connecting to local node. If you're starting the API server locally, make sure you run 'make connect-orchestrator' to connect to the node remotely before starting the local API server.", zap.Error(err))
-			return nil, err
-		}
-	} else {
-		go o.keepInSync(ctx, cache)
-		go o.reportLongRunningSandboxes(ctx)
-	}
+	// For local development and testing, we skip the Nomad sync
+	// Local cluster is used for single-node setups instead
+	skipNomadSync := env.IsLocal()
+	go o.keepInSync(ctx, cache, skipNomadSync)
 
 	if err := o.setupMetrics(tel.MeterProvider); err != nil {
 		zap.L().Error("Failed to setup metrics", zap.Error(err))
 		return nil, fmt.Errorf("failed to setup metrics: %w", err)
 	}
 
+	go o.reportLongRunningSandboxes(ctx)
 	go o.startStatusLogging(ctx)
 	go o.updateBestOfKConfig(ctx)
 

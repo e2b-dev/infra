@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/posthog/posthog-go"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -37,10 +36,10 @@ func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, err
 }
 
 // keepInSync the cache with the actual instances in Orchestrator to handle instances that died.
-func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.InstanceCache) {
+func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.InstanceCache, skipSyncingWithNomad bool) {
 	// Run the first sync immediately
 	zap.L().Info("Running the initial node sync")
-	o.syncNodes(ctx, instanceCache)
+	o.syncNodes(ctx, instanceCache, skipSyncingWithNomad)
 
 	// Sync the nodes every cacheSyncTime
 	ticker := time.NewTicker(cacheSyncTime)
@@ -52,25 +51,32 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 			zap.L().Info("Stopping keepInSync")
 			return
 		case <-ticker.C:
-			o.syncNodes(ctx, instanceCache)
+			o.syncNodes(ctx, instanceCache, skipSyncingWithNomad)
 		}
 	}
 }
 
-func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.InstanceCache) {
+func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.InstanceCache, skipSyncingWithNomad bool) {
 	ctxTimeout, cancel := context.WithTimeout(ctx, cacheSyncTime)
 	defer cancel()
 
 	spanCtx, span := o.tracer.Start(ctxTimeout, "keep-in-sync")
 	defer span.End()
 
-	nomadNodes, err := o.listNomadNodes(spanCtx)
-	if err != nil {
-		zap.L().Error("Error listing orchestrator nodes", zap.Error(err))
-		return
-	}
-
 	var wg sync.WaitGroup
+
+	nomadNodes := make([]nodemanager.NomadServiceDiscovery, 0)
+
+	// Optionally, skip syncing from Nomad service discovery
+	if !skipSyncingWithNomad {
+		nomadSD, err := o.listNomadNodes(spanCtx)
+		if err != nil {
+			zap.L().Error("Error listing orchestrator nodes", zap.Error(err))
+			return
+		}
+
+		nomadNodes = nomadSD
+	}
 
 	wg.Add(1)
 	go func() {
@@ -100,7 +106,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 			// cluster and local nodes needs to by synced differently,
 			// because each of them is taken from different source pool
 			var err error
-			if n.ClusterID == uuid.Nil {
+			if n.IsNomadManaged() {
 				err = o.syncNode(syncNodesSpanCtx, n, nomadNodes, instanceCache)
 			} else {
 				err = o.syncClusterNode(syncNodesSpanCtx, n, instanceCache)

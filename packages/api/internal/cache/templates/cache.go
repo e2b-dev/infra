@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
@@ -97,11 +98,6 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 		build = &result.EnvBuild
 		template := result.Env
 
-		cluster := uuid.Nil
-		if template.ClusterID != nil {
-			cluster = *template.ClusterID
-		}
-
 		c.aliasCache.cache.Set(template.ID, template.ID, templateInfoExpiration)
 		for _, alias := range result.Aliases {
 			c.aliasCache.cache.Set(alias, template.ID, templateInfoExpiration)
@@ -112,6 +108,7 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 			return nil, nil, &api.APIError{Code: http.StatusForbidden, ClientMsg: fmt.Sprintf("Team '%s' does not have access to the template '%s'", teamID, aliasOrEnvID), Err: fmt.Errorf("team '%s' does not have access to the template '%s'", teamID, aliasOrEnvID)}
 		}
 
+		cluster := utils.WithClusterFallback(template.ClusterID)
 		if cluster != clusterID {
 			return nil, nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: fmt.Sprintf("Template '%s' is not available in requested cluster", aliasOrEnvID), Err: fmt.Errorf("template '%s' is not available in requested cluster '%s'", aliasOrEnvID, clusterID)}
 		}
@@ -156,7 +153,7 @@ type TemplateBuildInfo struct {
 	BuildStatus envbuild.Status
 	Reason      *schema.BuildReason
 
-	ClusterID *uuid.UUID
+	ClusterID uuid.UUID
 	NodeID    string
 }
 
@@ -247,7 +244,7 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 				BuildStatus: envBuildDB.Status,
 				Reason:      envBuildDB.Reason,
 
-				ClusterID: envDB.ClusterID,
+				ClusterID: utils.WithClusterFallback(envDB.ClusterID),
 				NodeID:    envBuildDB.ClusterNodeID,
 			},
 			templateInfoExpiration,
