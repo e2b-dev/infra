@@ -33,7 +33,8 @@ func CreateFileWatcher(ctx context.Context, watchPath string, recursive bool, op
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating watcher: %w", err))
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
+	// We don't want to cancel the context when the request is finished
+	ctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 
 	err = w.Add(utils.FsnotifyPath(watchPath, recursive))
 	if err != nil {

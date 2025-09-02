@@ -31,7 +31,7 @@ func (o *Orchestrator) PauseInstance(
 	defer span.End()
 
 	snapshotConfig := &db.SnapshotInfo{
-		BaseTemplateID:      sbx.TemplateID,
+		BaseTemplateID:      sbx.BaseTemplateID,
 		SandboxID:           sbx.SandboxID,
 		SandboxStartedAt:    sbx.StartTime,
 		VCPU:                sbx.VCpu,
@@ -43,6 +43,7 @@ func (o *Orchestrator) PauseInstance(
 		EnvdVersion:         sbx.EnvdVersion,
 		EnvdSecured:         sbx.EnvdAccessToken != nil,
 		AllowInternetAccess: sbx.AllowInternetAccess,
+		AutoPause:           sbx.AutoPause,
 	}
 
 	envBuild, err := o.dbClient.NewSnapshotBuild(
