@@ -5,6 +5,8 @@ import (
 )
 
 const (
+	// Private IP don't leave the sandbox through the network bridge, so we use a reserved IP address for it:
+	// See TEST-NET-3 on https://en.wikipedia.org/wiki/Reserved_IP_addresses
 	defaultSandboxEventIP = "203.0.113.0"
 )
 
