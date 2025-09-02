@@ -45,7 +45,7 @@ func main() {
 		log.Fatalf("failed to create session locker: %v", err)
 	}
 
-	goose.SetTableName(fmt.Sprintf("%s", trackingTable))
+	goose.SetTableName(trackingTable)
 
 	version, err := goose.EnsureDBVersion(db)
 	if err != nil {
