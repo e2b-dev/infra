@@ -37,7 +37,7 @@ func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
 		"Total bytes requested",
 		"Total page faults",
 	); err != nil {
-		return m, fmt.Errorf("error creating slices timer factory: %v", err)
+		return m, fmt.Errorf("error creating slices timer factory: %w", err)
 	}
 
 	if m.RemoteReadsTimerFactory, err = telemetry.NewTimerFactory(
@@ -46,7 +46,7 @@ func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
 		"Total bytes fetched from remote store",
 		"Total remote fetches",
 	); err != nil {
-		return m, fmt.Errorf("error creating reads timer factory: %v", err)
+		return m, fmt.Errorf("error creating reads timer factory: %w", err)
 	}
 
 	if m.WriteChunksTimerFactory, err = telemetry.NewTimerFactory(

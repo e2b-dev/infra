@@ -1,6 +1,7 @@
 package batcher
 
 import (
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -28,7 +29,7 @@ func TestBatcherPushNotStarted(t *testing.T) {
 		t.Fatal(err)
 	}
 	ok, err := b.Push(123)
-	if err != ErrBatcherNotStarted {
+	if !errors.Is(err, ErrBatcherNotStarted) {
 		t.Fatalf("expected ErrBatcherNotStarted, got %v", err)
 	}
 	if ok {
@@ -41,7 +42,7 @@ func TestBatcherStopNotStarted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Stop(); err != ErrBatcherNotStarted {
+	if err := b.Stop(); !errors.Is(err, ErrBatcherNotStarted) {
 		t.Fatalf("expected ErrBatcherNotStarted, got %v", err)
 	}
 }
@@ -57,7 +58,7 @@ func TestBatcherDoubleStop(t *testing.T) {
 	if err := b.Stop(); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Stop(); err != ErrBatcherNotStarted {
+	if err := b.Stop(); !errors.Is(err, ErrBatcherNotStarted) {
 		t.Fatalf("expected ErrBatcherNotStarted, got %v", err)
 	}
 }
@@ -70,7 +71,7 @@ func TestBatcherDoubleStart(t *testing.T) {
 	if err := b.Start(); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Start(); err != ErrBatcherAlreadyStarted {
+	if err := b.Start(); !errors.Is(err, ErrBatcherAlreadyStarted) {
 		t.Fatalf("expected ErrBatcherAlreadyStarted, got %v", err)
 	}
 }

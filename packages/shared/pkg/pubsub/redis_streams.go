@@ -3,6 +3,7 @@ package pubsub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -224,7 +225,7 @@ func (r *RedisStreams[PayloadT, SubMetaDataT]) readNewMessages(ctx context.Conte
 		Block:    time.Second, // Block for 1 second
 	}).Result()
 	if err != nil {
-		if err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			// No messages, continue
 			return nil
 		}
