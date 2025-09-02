@@ -97,7 +97,6 @@ var _ StorageObjectProvider = (*CachedFileObjectProvider)(nil)
 
 // WriteTo is used for very small files and we can check agains their size to ensure the content is valid.
 func (c *CachedFileObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
-	var err error
 	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.WriteAt")
 	defer span.End()
 
@@ -143,9 +142,9 @@ func (c *CachedFileObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (
 			zap.Int64("actual", bytesWritten))
 	}
 
-	go func(ctx context.Context) {
-		c.writeFullFileToCache(ctx, fullCachePath, writer.Bytes())
-	}(context.WithoutCancel(ctx))
+	go func() {
+		c.writeFullFileToCache(context.WithoutCancel(ctx), fullCachePath, writer.Bytes())
+	}()
 
 	written, err := dst.Write(writer.Bytes())
 	return int64(written), err
@@ -160,14 +159,13 @@ func (c *CachedFileObjectProvider) Write(ctx context.Context, src []byte) (int, 
 }
 
 func (c *CachedFileObjectProvider) ReadAt(ctx context.Context, buff []byte, offset int64) (int, error) {
-	var err error
 	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.ReadAt", trace.WithAttributes(
 		attribute.Int64("offset", offset),
 		attribute.Int("buff_len", len(buff)),
 	))
 	defer span.End()
 
-	if err = c.validateReadAtParams(int64(len(buff)), offset); err != nil {
+	if err := c.validateReadAtParams(int64(len(buff)), offset); err != nil {
 		return 0, err
 	}
 
@@ -192,9 +190,9 @@ func (c *CachedFileObjectProvider) ReadAt(ctx context.Context, buff []byte, offs
 		return 0, fmt.Errorf("failed to perform uncached read: %w", err)
 	}
 
-	go func(ctx context.Context) {
-		c.writeChunkToCache(ctx, offset, chunkPath, buff[:readCount])
-	}(context.WithoutCancel(ctx))
+	go func() {
+		c.writeChunkToCache(context.WithoutCancel(ctx), offset, chunkPath, buff[:readCount])
+	}()
 
 	return readCount, nil
 }
