@@ -7,7 +7,7 @@ IMAGE := e2b-orchestration/db-migrator
 .PHONY: migrate
 migrate:
 	@echo "Applying Postgres migration *$(notdir $@)*"
-	POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/migrator.go
+	@$(goose) up
 	@echo "Done"
 migrate/up: migrate
 migrate/down:
