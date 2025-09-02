@@ -94,9 +94,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "Checked team access")
 
 	c.Set("envID", env.TemplateID)
-	if aliases := env.Aliases; aliases != nil {
-		setTemplateNameMetric(c, *aliases)
-	}
+	setTemplateNameMetric(c, env.Aliases)
 
 	sandboxID := InstanceIDPrefix + id.Generate()
 
@@ -232,12 +230,9 @@ func setTemplateNameMetric(c *gin.Context, aliases []string) {
 	c.Set(metricTemplateAlias, "other")
 }
 
-func firstAlias(aliases *[]string) string {
-	if aliases == nil {
+func firstAlias(aliases []string) string {
+	if len(aliases) == 0 {
 		return ""
 	}
-	if len(*aliases) == 0 {
-		return ""
-	}
-	return (*aliases)[0]
+	return aliases[0]
 }

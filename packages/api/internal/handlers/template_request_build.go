@@ -45,7 +45,7 @@ type TemplateBuildResponse struct {
 	TemplateID         string
 	BuildID            string
 	Public             bool
-	Aliases            *[]string
+	Aliases            []string
 	KernelVersion      string
 	FirecrackerVersion string
 	StartCmd           *string
@@ -362,7 +362,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 		TemplateID:         *build.EnvID,
 		BuildID:            build.ID.String(),
 		Public:             public,
-		Aliases:            &aliases,
+		Aliases:            aliases,
 		KernelVersion:      build.KernelVersion,
 		FirecrackerVersion: build.FirecrackerVersion,
 		StartCmd:           build.StartCmd,

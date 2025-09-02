@@ -499,6 +499,7 @@ components:
         - spawnCount
         - buildCount
         - envdVersion
+        - aliases
       properties:
         templateID:
           type: string
@@ -534,6 +535,7 @@ components:
           nullable: true
         lastSpawnedAt:
           type: string
+          nullable: true
           format: date-time
           description: Time when the template was last used
         spawnCount:

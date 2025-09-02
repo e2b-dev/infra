@@ -617,7 +617,7 @@ type TeamUser struct {
 // Template defines model for Template.
 type Template struct {
 	// Aliases Aliases of the template
-	Aliases *[]string `json:"aliases,omitempty"`
+	Aliases []string `json:"aliases"`
 
 	// BuildCount Number of times the template was built
 	BuildCount int32 `json:"buildCount"`
@@ -639,7 +639,7 @@ type Template struct {
 	EnvdVersion EnvdVersion `json:"envdVersion"`
 
 	// LastSpawnedAt Time when the template was last used
-	LastSpawnedAt time.Time `json:"lastSpawnedAt"`
+	LastSpawnedAt *time.Time `json:"lastSpawnedAt"`
 
 	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB MemoryMB `json:"memoryMB"`

@@ -96,7 +96,6 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 
 		build = &result.EnvBuild
 		template := result.Env
-		aliases := result.Aliases
 
 		cluster := uuid.Nil
 		if template.ClusterID != nil {
@@ -104,7 +103,7 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 		}
 
 		c.aliasCache.cache.Set(template.ID, template.ID, templateInfoExpiration)
-		for _, alias := range aliases {
+		for _, alias := range result.Aliases {
 			c.aliasCache.cache.Set(alias, template.ID, templateInfoExpiration)
 		}
 
@@ -122,7 +121,7 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 				TemplateID: template.ID,
 				BuildID:    build.ID.String(),
 				Public:     template.Public,
-				Aliases:    &aliases,
+				Aliases:    result.Aliases,
 			},
 			teamID:    teamID,
 			clusterID: clusterID,

@@ -5,11 +5,14 @@ goose := GOOSE_DBSTRING=$(POSTGRES_CONNECTION_STRING) go tool goose -table "_mig
 IMAGE := e2b-orchestration/db-migrator
 
 .PHONY: migrate
-migrate:migrate/up
-migrate:migrate/down
-migrate/%:
+migrate:
 	@echo "Applying Postgres migration *$(notdir $@)*"
-	@$(goose) $(notdir $@)
+	@$(goose) up
+	@echo "Done"
+migrate/up: migrate
+migrate/down:
+	@echo "Reverting Postgres migration *$(notdir $@)*"
+	@$(goose) down
 	@echo "Done"
 
 .PHONY: build-debug
