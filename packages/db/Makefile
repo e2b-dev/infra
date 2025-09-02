@@ -9,6 +9,7 @@ migrate:
 	@echo "Applying Postgres migration *$(notdir $@)*"
 	POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/migrator.go
 	@echo "Done"
+migrate/up: migrate
 migrate/down:
 	@echo "Reverting Postgres migration *$(notdir $@)*"
 	@$(goose) down
