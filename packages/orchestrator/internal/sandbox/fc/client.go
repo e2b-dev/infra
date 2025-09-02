@@ -4,15 +4,16 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/firecracker-microvm/firecracker-go-sdk"
+	"github.com/go-openapi/strfmt"
+	"go.opentelemetry.io/otel"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/firecracker-microvm/firecracker-go-sdk"
-	"github.com/go-openapi/strfmt"
-	"go.opentelemetry.io/otel"
 )
 
 var tracer = otel.Tracer("orchestrator.internal.sandbox.fc")
