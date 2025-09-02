@@ -121,12 +121,20 @@ func setupAuthSchema(db *sql.DB, version int64) error {
 			return err
 		}
 
+		// Create authenticated user
+		_, err = db.Exec("CREATE ROLE authenticated;")
+		if err != nil {
+			return err
+		}
+
+		// Create users table
 		_, err = db.Exec(
 			`CREATE TABLE IF NOT EXISTS auth.users (id uuid NOT NULL DEFAULT gen_random_uuid(),email text NOT NULL, PRIMARY KEY (id));`)
 		if err != nil {
 			return err
 		}
 
+		// Create function to generate a random uuid
 		_, err = db.Exec(
 			`CREATE FUNCTION auth.uid() RETURNS uuid AS $func$
 		BEGIN
@@ -137,6 +145,7 @@ func setupAuthSchema(db *sql.DB, version int64) error {
 			return err
 		}
 
+		// Grant execute permission to authenticated role
 		_, err = db.Exec(`GRANT EXECUTE ON FUNCTION auth.uid() TO postgres`)
 		if err != nil {
 			return err
