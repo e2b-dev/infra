@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -77,12 +76,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	_, templateSpan := a.Tracer.Start(ctx, "get-template")
 	defer templateSpan.End()
 
-	clusterID := uuid.Nil
-	if teamInfo.Team.ClusterID != nil {
-		clusterID = *teamInfo.Team.ClusterID
-	}
-
 	// Check if team has access to the environment
+	clusterID := utils.WithClusterFallback(teamInfo.Team.ClusterID)
 	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, teamInfo.Team.ID, clusterID, true)
 	if checkErr != nil {
 		telemetry.ReportCriticalError(ctx, "error when getting template", checkErr.Err)
@@ -94,9 +89,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "Checked team access")
 
 	c.Set("envID", env.TemplateID)
-	if aliases := env.Aliases; aliases != nil {
-		setTemplateNameMetric(c, *aliases)
-	}
+	setTemplateNameMetric(c, env.Aliases)
 
 	sandboxID := InstanceIDPrefix + id.Generate()
 
@@ -232,12 +225,9 @@ func setTemplateNameMetric(c *gin.Context, aliases []string) {
 	c.Set(metricTemplateAlias, "other")
 }
 
-func firstAlias(aliases *[]string) string {
-	if aliases == nil {
+func firstAlias(aliases []string) string {
+	if len(aliases) == 0 {
 		return ""
 	}
-	if len(*aliases) == 0 {
-		return ""
-	}
-	return (*aliases)[0]
+	return aliases[0]
 }

@@ -25,6 +25,7 @@ type LayerExecutor struct {
 	buildcontext.BuildContext
 
 	tracer trace.Tracer
+	logger *zap.Logger
 
 	networkPool     *network.Pool
 	devicePool      *nbd.DevicePool
@@ -38,6 +39,7 @@ type LayerExecutor struct {
 
 func NewLayerExecutor(
 	buildContext buildcontext.BuildContext,
+	logger *zap.Logger,
 	tracer trace.Tracer,
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
@@ -51,6 +53,7 @@ func NewLayerExecutor(
 	return &LayerExecutor{
 		BuildContext: buildContext,
 
+		logger: logger,
 		tracer: tracer,
 
 		networkPool:     networkPool,
@@ -90,6 +93,12 @@ func (lb *LayerExecutor) BuildLayer(
 		return metadata.Template{}, err
 	}
 	defer sbx.Stop(ctx)
+	go func() {
+		err := sbx.Wait(context.WithoutCancel(ctx))
+		if err != nil {
+			lb.logger.Error("error waiting for sandbox", zap.Error(err))
+		}
+	}()
 
 	// Add to proxy so we can call envd commands
 	lb.sandboxes.Insert(sbx.Runtime.SandboxID, sbx)

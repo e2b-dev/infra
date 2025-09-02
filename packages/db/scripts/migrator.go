@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	trackingTable = "_migrations"
-	migrationsDir = "./migrations"
+	trackingTable        = "_migrations"
+	migrationsDir        = "./migrations"
+	authMigrationVersion = 20000101000000
 )
 
 func main() {
@@ -42,6 +43,23 @@ func main() {
 	sessionLocker, err := lock.NewPostgresSessionLocker()
 	if err != nil {
 		log.Fatalf("failed to create session locker: %v", err)
+	}
+
+	goose.SetTableName(trackingTable)
+
+	version, err := goose.EnsureDBVersion(db)
+	if err != nil {
+		log.Fatalf("EnsureDBVersion: %v", err)
+	}
+
+	fmt.Printf("Current DB version: %d\n", version)
+	if version < authMigrationVersion {
+		fmt.Println("Creating auth.users table...")
+		err = setupAuthSchema(db, version)
+		if err != nil {
+			log.Fatalf("failed to ensure auth.users table: %v", err)
+		}
+		version = authMigrationVersion
 	}
 
 	// We have to use custom store to use a custom tracking table
@@ -72,4 +90,75 @@ func main() {
 	}
 
 	fmt.Println("Migrations applied successfully.")
+}
+
+func setupAuthSchema(db *sql.DB, version int64) error {
+	rows, err := db.Query(`SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'users')`)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		err = rows.Close()
+		if err != nil {
+			log.Printf("failed to close rows: %v\n", err)
+		}
+	}()
+
+	exists := false
+	for rows.Next() {
+		err = rows.Scan(&exists)
+		if err != nil {
+			return err
+		}
+	}
+
+	if !exists {
+		// Setup auth schema
+		_, err = db.Exec(
+			`CREATE SCHEMA IF NOT EXISTS auth;`)
+		if err != nil {
+			return err
+		}
+
+		// Create authenticated user
+		_, err = db.Exec("CREATE ROLE authenticated;")
+		if err != nil {
+			return err
+		}
+
+		// Create users table
+		_, err = db.Exec(
+			`CREATE TABLE IF NOT EXISTS auth.users (id uuid NOT NULL DEFAULT gen_random_uuid(),email text NOT NULL, PRIMARY KEY (id));`)
+		if err != nil {
+			return err
+		}
+
+		// Create function to generate a random uuid
+		_, err = db.Exec(
+			`CREATE FUNCTION auth.uid() RETURNS uuid AS $func$
+		BEGIN
+			RETURN gen_random_uuid();
+		END;
+		$func$ LANGUAGE plpgsql;`)
+		if err != nil {
+			return err
+		}
+
+		// Grant execute permission to authenticated role
+		_, err = db.Exec(`GRANT EXECUTE ON FUNCTION auth.uid() TO postgres`)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Insert migration record
+	if version < authMigrationVersion {
+		_, err = db.Exec(fmt.Sprintf("INSERT INTO %s (version_id, is_applied) VALUES (%d, true)", trackingTable, authMigrationVersion))
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
