@@ -97,7 +97,7 @@ var _ StorageObjectProvider = (*CachedFileObjectProvider)(nil)
 
 // WriteTo is used for very small files and we can check agains their size to ensure the content is valid.
 func (c *CachedFileObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
-	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.WriteAt")
+	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.WriteTo")
 	defer span.End()
 
 	totalSize, err := c.Size(ctx)
