@@ -62,7 +62,6 @@ type Process struct {
 
 func NewProcess(
 	ctx context.Context,
-	tracer trace.Tracer,
 	slot *network.Slot,
 	files *storage.SandboxFiles,
 	versions FirecrackerVersions,
@@ -125,7 +124,6 @@ func NewProcess(
 
 func (p *Process) configure(
 	ctx context.Context,
-	tracer trace.Tracer,
 	sbxMetadata sbxlogger.LoggerMetadata,
 	stdoutExternal io.Writer,
 	stderrExternal io.Writer,
@@ -204,7 +202,6 @@ func (p *Process) configure(
 
 func (p *Process) Create(
 	ctx context.Context,
-	tracer trace.Tracer,
 	loggerMetadata sbxlogger.LoggerMetadata,
 	vCPUCount int64,
 	memoryMB int64,
@@ -216,7 +213,6 @@ func (p *Process) Create(
 
 	err := p.configure(
 		childCtx,
-		tracer,
 		loggerMetadata,
 		options.Stdout,
 		options.Stderr,
@@ -316,7 +312,6 @@ func (p *Process) Create(
 
 func (p *Process) Resume(
 	ctx context.Context,
-	tracer trace.Tracer,
 	mmdsMetadata *MmdsMetadata,
 	uffdSocketPath string,
 	snapfile template.File,
@@ -327,7 +322,6 @@ func (p *Process) Resume(
 
 	err := p.configure(
 		childCtx,
-		tracer,
 		mmdsMetadata,
 		nil,
 		nil,
@@ -347,7 +341,6 @@ func (p *Process) Resume(
 
 	err = p.client.loadSnapshot(
 		childCtx,
-		tracer,
 		uffdSocketPath,
 		uffdReady,
 		snapfile,
@@ -358,14 +351,14 @@ func (p *Process) Resume(
 		return errors.Join(fmt.Errorf("error loading snapshot: %w", err), fcStopErr)
 	}
 
-	err = p.client.resumeVM(childCtx, tracer)
+	err = p.client.resumeVM(childCtx)
 	if err != nil {
 		fcStopErr := p.Stop()
 
 		return errors.Join(fmt.Errorf("error resuming vm: %w", err), fcStopErr)
 	}
 
-	err = p.client.setMmds(childCtx, tracer, mmdsMetadata)
+	err = p.client.setMmds(childCtx, mmdsMetadata)
 	if err != nil {
 		fcStopErr := p.Stop()
 
@@ -446,7 +439,7 @@ func (p *Process) Stop() error {
 	return nil
 }
 
-func (p *Process) Pause(ctx context.Context, tracer trace.Tracer) error {
+func (p *Process) Pause(ctx context.Context) error {
 	ctx, childSpan := tracer.Start(ctx, "pause-fc")
 	defer childSpan.End()
 
@@ -454,7 +447,7 @@ func (p *Process) Pause(ctx context.Context, tracer trace.Tracer) error {
 }
 
 // CreateSnapshot VM needs to be paused before creating a snapshot.
-func (p *Process) CreateSnapshot(ctx context.Context, tracer trace.Tracer, snapfilePath string, memfilePath string) error {
+func (p *Process) CreateSnapshot(ctx context.Context, snapfilePath string, memfilePath string) error {
 	ctx, childSpan := tracer.Start(ctx, "create-snapshot-fc")
 	defer childSpan.End()
 

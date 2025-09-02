@@ -4,17 +4,18 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/firecracker-microvm/firecracker-go-sdk"
-	"github.com/go-openapi/strfmt"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/firecracker-microvm/firecracker-go-sdk"
+	"github.com/go-openapi/strfmt"
+	"go.opentelemetry.io/otel"
 )
+
+var tracer = otel.Tracer("orchestrator.internal.sandbox.fc")
 
 type apiClient struct {
 	client *client.Firecracker
@@ -33,20 +34,19 @@ func newApiClient(socketPath string) *apiClient {
 
 func (c *apiClient) loadSnapshot(
 	ctx context.Context,
-	tracer trace.Tracer,
 	uffdSocketPath string,
 	uffdReady chan struct{},
 	snapfile template.File,
 ) error {
-	childCtx, childSpan := tracer.Start(ctx, "load-snapshot")
+	ctx, childSpan := tracer.Start(ctx, "load-snapshot")
 	defer childSpan.End()
 
-	err := socket.Wait(childCtx, uffdSocketPath)
+	err := socket.Wait(ctx, uffdSocketPath)
 	if err != nil {
 		return fmt.Errorf("error waiting for uffd socket: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "uffd socket ready")
+	telemetry.ReportEvent(ctx, "uffd socket ready")
 
 	backendType := models.MemoryBackendBackendTypeUffd
 	backend := &models.MemoryBackend{
@@ -56,10 +56,10 @@ func (c *apiClient) loadSnapshot(
 
 	snapfilePath := snapfile.Path()
 
-	telemetry.ReportEvent(childCtx, "got snapfile path")
+	telemetry.ReportEvent(ctx, "got snapfile path")
 
 	snapshotConfig := operations.LoadSnapshotParams{
-		Context: childCtx,
+		Context: ctx,
 		Body: &models.SnapshotLoadParams{
 			ResumeVM:            false,
 			EnableDiffSnapshots: false,
@@ -73,21 +73,21 @@ func (c *apiClient) loadSnapshot(
 		return fmt.Errorf("error loading snapshot: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "loaded snapshot")
+	telemetry.ReportEvent(ctx, "loaded snapshot")
 
 	select {
-	case <-childCtx.Done():
+	case <-ctx.Done():
 		return fmt.Errorf("context canceled while waiting for uffd ready: %w", ctx.Err())
 	case <-uffdReady:
 		// Wait for the uffd to be ready to serve requests
 	}
 
-	telemetry.ReportEvent(childCtx, "uffd ready")
+	telemetry.ReportEvent(ctx, "uffd ready")
 
 	return nil
 }
 
-func (c *apiClient) resumeVM(ctx context.Context, tracer trace.Tracer) error {
+func (c *apiClient) resumeVM(ctx context.Context) error {
 	childCtx, childSpan := tracer.Start(ctx, "resume-vm")
 	defer childSpan.End()
 
@@ -146,7 +146,7 @@ func (c *apiClient) createSnapshot(
 	return nil
 }
 
-func (c *apiClient) setMmds(ctx context.Context, tracer trace.Tracer, metadata *MmdsMetadata) error {
+func (c *apiClient) setMmds(ctx context.Context, metadata *MmdsMetadata) error {
 	childCtx, childSpan := tracer.Start(ctx, "set-mmds")
 	defer childSpan.End()
 

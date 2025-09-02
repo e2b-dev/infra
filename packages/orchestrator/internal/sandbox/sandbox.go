@@ -216,7 +216,6 @@ func CreateSandbox(
 	}
 	fcHandle, err := fc.NewProcess(
 		childCtx,
-		tracer,
 		ips.slot,
 		sandboxFiles,
 		fcVersions,
@@ -231,7 +230,6 @@ func CreateSandbox(
 
 	err = fcHandle.Create(
 		childCtx,
-		tracer,
 		sbxlogger.SandboxMetadata{
 			SandboxID:  runtime.SandboxID,
 			TemplateID: runtime.TemplateID,
@@ -424,7 +422,6 @@ func ResumeSandbox(
 
 	fcHandle, fcErr := fc.NewProcess(
 		uffdStartCtx,
-		tracer,
 		ips.slot,
 		sandboxFiles,
 		// The versions need to base exactly the same as the paused sandbox template because of the FC compatibility.
@@ -457,7 +454,6 @@ func ResumeSandbox(
 
 	fcStartErr := fcHandle.Resume(
 		uffdStartCtx,
-		tracer,
 		&fc.MmdsMetadata{
 			SandboxId:            runtime.SandboxID,
 			TemplateId:           runtime.TemplateID,
@@ -609,7 +605,7 @@ func (s *Sandbox) Pause(
 	// Stop the health check before pausing the VM
 	s.Checks.Stop()
 
-	if err := s.process.Pause(childCtx, tracer); err != nil {
+	if err := s.process.Pause(childCtx); err != nil {
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
@@ -636,7 +632,6 @@ func (s *Sandbox) Pause(
 
 	err = s.process.CreateSnapshot(
 		childCtx,
-		tracer,
 		snapfile.Path(),
 		memfile.Path(),
 	)
