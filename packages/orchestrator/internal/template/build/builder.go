@@ -138,11 +138,10 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 		}
 	}()
 
-	done := func() {}
 	if isV1Build {
-		logsCore, done = writer.NewPostProcessor(progressDelay, logsCore)
+		hookedCore, done := writer.NewPostProcessor(progressDelay, logsCore)
 		defer done()
-		logger = zap.New(logsCore)
+		logger = zap.New(hookedCore)
 	}
 
 	logger.Info(fmt.Sprintf("Building template %s/%s", config.TemplateID, template.BuildID))
