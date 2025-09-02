@@ -1,6 +1,7 @@
 package writer
 
 import (
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -12,6 +13,7 @@ import (
 type postProcessor struct {
 	logger   *zap.Logger
 	done     chan struct{}
+	doneOnce sync.Once
 	ticker   *time.Ticker
 	interval time.Duration
 }
@@ -44,5 +46,9 @@ func NewPostProcessor(interval time.Duration, core zapcore.Core) (zapcore.Core, 
 
 	go pp.run()
 
-	return zapcore.RegisterHooks(core, pp.hook), func() { pp.done <- struct{}{} }
+	return zapcore.RegisterHooks(core, pp.hook), func() {
+		pp.doneOnce.Do(func() {
+			pp.done <- struct{}{}
+		})
+	}
 }

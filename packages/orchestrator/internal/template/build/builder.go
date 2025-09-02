@@ -35,6 +35,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
+const progressDelay = 5 * time.Second
+
 type Builder struct {
 	logger *zap.Logger
 	tracer trace.Tracer
@@ -126,16 +128,8 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 
 	isV1Build := config.FromImage == "" && config.FromTemplate == nil
 
-	done := func() {}
-	if isV1Build {
-		logsCore, done = writer.NewPostProcessor(5*time.Second, logsCore)
-	}
-
 	logger := zap.New(logsCore)
-
 	defer func() {
-		done()
-
 		if e != nil {
 			logger.Error(fmt.Sprintf("Build failed: %v", e))
 		} else {
@@ -143,6 +137,13 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 				time.Since(startTime).Truncate(time.Second).String()))
 		}
 	}()
+
+	done := func() {}
+	if isV1Build {
+		logsCore, done = writer.NewPostProcessor(progressDelay, logsCore)
+		defer done()
+		logger = zap.New(logsCore)
+	}
 
 	logger.Info(fmt.Sprintf("Building template %s/%s", config.TemplateID, template.BuildID))
 
