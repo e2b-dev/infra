@@ -93,7 +93,7 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 	templates := make([]*api.Template, 0, len(envs))
 	for _, item := range envs {
 		var createdBy *api.TeamUser
-		if item.CreatorEmail == nil || item.CreatorID == nil {
+		if item.CreatorEmail != nil && item.CreatorID != nil {
 			createdBy = &api.TeamUser{
 				Id:    *item.CreatorID,
 				Email: *item.CreatorEmail,
