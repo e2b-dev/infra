@@ -1,6 +1,7 @@
 package build
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -44,7 +45,7 @@ func min(a, b int64) int64 {
 	return b
 }
 
-func (b *File) ReadAt(p []byte, off int64) (n int, err error) {
+func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
 	for n < len(p) {
 		mappedOffset, mappedLength, buildID, err := b.header.GetShiftedMapping(off + int64(n))
 		if err != nil {
@@ -83,12 +84,13 @@ func (b *File) ReadAt(p []byte, off int64) (n int, err error) {
 			continue
 		}
 
-		mappedBuild, err := b.getBuild(buildID)
+		mappedBuild, err := b.getBuild(ctx, buildID)
 		if err != nil {
 			return 0, fmt.Errorf("failed to get build: %w", err)
 		}
 
 		buildN, err := mappedBuild.ReadAt(
+			ctx,
 			p[n:int64(n)+readLength],
 			mappedOffset,
 		)
@@ -103,7 +105,7 @@ func (b *File) ReadAt(p []byte, off int64) (n int, err error) {
 }
 
 // The slice access must be in the predefined blocksize of the build.
-func (b *File) Slice(off, length int64) ([]byte, error) {
+func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	mappedOffset, _, buildID, err := b.header.GetShiftedMapping(off)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mapping: %w", err)
@@ -114,15 +116,15 @@ func (b *File) Slice(off, length int64) ([]byte, error) {
 		return header.EmptyHugePage, nil
 	}
 
-	build, err := b.getBuild(buildID)
+	build, err := b.getBuild(ctx, buildID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build: %w", err)
 	}
 
-	return build.Slice(mappedOffset, int64(b.header.Metadata.BlockSize))
+	return build.Slice(ctx, mappedOffset, int64(b.header.Metadata.BlockSize))
 }
 
-func (b *File) getBuild(buildID *uuid.UUID) (Diff, error) {
+func (b *File) getBuild(ctx context.Context, buildID *uuid.UUID) (Diff, error) {
 	storageDiff := newStorageDiff(
 		b.store.cachePath,
 		buildID.String(),

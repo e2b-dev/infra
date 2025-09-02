@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -22,6 +23,8 @@ type Storage struct {
 	header *header.Header
 	source *build.File
 }
+
+var _ block.ReadonlyDevice = (*Storage)(nil)
 
 func NewStorage(
 	ctx context.Context,
@@ -103,8 +106,8 @@ func NewStorage(
 	}, nil
 }
 
-func (d *Storage) ReadAt(p []byte, off int64) (int, error) {
-	return d.source.ReadAt(p, off)
+func (d *Storage) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
+	return d.source.ReadAt(ctx, p, off)
 }
 
 func (d *Storage) Size() (int64, error) {
@@ -115,8 +118,8 @@ func (d *Storage) BlockSize() int64 {
 	return int64(d.header.Metadata.BlockSize)
 }
 
-func (d *Storage) Slice(off, length int64) ([]byte, error) {
-	return d.source.Slice(off, length)
+func (d *Storage) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+	return d.source.Slice(ctx, off, length)
 }
 
 func (d *Storage) Header() *header.Header {
