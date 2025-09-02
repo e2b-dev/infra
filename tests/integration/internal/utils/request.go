@@ -4,14 +4,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"testing"
 
 	"golang.org/x/net/publicsuffix"
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 )
 
-func DoRequest(t *testing.T, client *http.Client, sbx *api.Sandbox, url *url.URL, port int, extraHeaders *http.Header) (*http.Response, error) {
+func NewRequest(sbx *api.Sandbox, url *url.URL, port int, extraHeaders *http.Header) *http.Request {
 	var host string
 
 	if url.Hostname() == "localhost" {
@@ -32,17 +31,10 @@ func DoRequest(t *testing.T, client *http.Client, sbx *api.Sandbox, url *url.URL
 		}
 	}
 
-	req := &http.Request{
+	return &http.Request{
 		Method: http.MethodGet,
 		URL:    url,
 		Host:   host,
 		Header: header,
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Logf("Error: %v", err)
-		return nil, err
-	}
-
-	return resp, nil
 }

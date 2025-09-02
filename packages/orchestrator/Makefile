@@ -17,14 +17,18 @@ build:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	@rm -rf .shared/
 	@cp -r ../shared .shared/
+	@rm -rf .clickhouse/
+	@cp -r ../clickhouse .clickhouse/
 	@docker build --platform linux/amd64 --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" .
 	@rm -rf .shared/
+	@rm -rf .clickhouse/
 
 .PHONY: build-local
 build-local:
 	# Allow for passing commit sha directly for docker builds
 	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
 	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o bin/orchestrator -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
+	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o bin/clean-nfs-cache -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" ./cmd/clean-nfs-cache
 
 .PHONY: build-debug
 build-debug:
@@ -45,6 +49,10 @@ run-debug:
 	MAX_PARALLEL_MEMFILE_SNAPSHOTTING=$(MAX_PARALLEL_MEMFILE_SNAPSHOTTING) \
 	./bin/orchestrator
 
+.PHONY: upload/clean-nfs-cache
+upload/clean-nfs-cache:
+	./upload-clean-nfs-cache.sh $(GCP_PROJECT_ID)
+
 .PHONY: upload/orchestrator
 upload/orchestrator:
 	./upload-orchestrator.sh $(GCP_PROJECT_ID)
@@ -52,6 +60,9 @@ upload/orchestrator:
 .PHONY: upload/template-manager
 upload/template-manager:
 	./upload-template-manager.sh $(GCP_PROJECT_ID)
+
+.PHONY: build-and-upload/clean-nfs-cache
+build-and-upload/clean-nfs-cache: build upload/clean-nfs-cache
 
 .PHONY: build-and-upload/orchestrator
 build-and-upload/orchestrator: build upload/orchestrator
@@ -74,6 +85,18 @@ mock-snapshot:
 .PHONY: test
 test:
 	go test -race -v ./...
+
+.PHONY: test-docker
+test-docker:
+	@echo "Running orchestrator tests in Docker (AMD64 Linux)..."
+	@rm -rf .shared/
+	@cp -r ../shared .shared/
+	@rm -rf .clickhouse/
+	@cp -r ../clickhouse .clickhouse/
+	@docker build --platform linux/amd64 -f test.Dockerfile --no-cache-filter runner --progress=plain -t orchestrator-test .
+	@rm -rf .shared/
+	@rm -rf .clickhouse/
+	@echo "Done"
 
 .PHONY: build-template
 build-template:

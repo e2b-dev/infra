@@ -24,7 +24,6 @@ resource "google_compute_instance_group_manager" "api_cluster" {
     instance_template = google_compute_instance_template.api.id
   }
 
-
   named_port {
     name = var.edge_api_port.name
     port = var.edge_api_port.port
@@ -38,6 +37,14 @@ resource "google_compute_instance_group_manager" "api_cluster" {
   named_port {
     name = var.api_port.name
     port = var.api_port.port
+  }
+
+  dynamic "named_port" {
+    for_each = var.additional_ports
+    content {
+      name = named_port.value.name
+      port = named_port.value.port
+    }
   }
 
   auto_healing_policies {

@@ -79,7 +79,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	)
 
 	// Check and cancel concurrent builds
-	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID); err != nil {
+	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID, apiutils.WithClusterFallback(team.ClusterID)); err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build request")
 		return
 	}
@@ -91,13 +91,6 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	if build.Status != envbuild.StatusWaiting.String() {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "build is not in waiting state")
 		telemetry.ReportCriticalError(ctx, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.Status), telemetry.WithTemplateID(templateID))
-		return
-	}
-
-	// team is part of the cluster but template build is not assigned to a cluster node so its invalid stats
-	if team.ClusterID != nil && build.ClusterNodeID == nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "build is not assigned to a cluster node")
-		telemetry.ReportCriticalError(ctx, "build is not assigned to a cluster node", nil, telemetry.WithTemplateID(templateID))
 		return
 	}
 
@@ -140,9 +133,10 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		body.ReadyCmd,
 		body.FromImage,
 		body.FromTemplate,
+		body.FromImageRegistry,
 		body.Force,
 		body.Steps,
-		team.ClusterID,
+		apiutils.WithClusterFallback(team.ClusterID),
 		build.ClusterNodeID,
 	)
 	if buildErr != nil {

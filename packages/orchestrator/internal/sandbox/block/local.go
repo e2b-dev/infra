@@ -28,11 +28,14 @@ func NewLocal(path string, blockSize int64, buildID uuid.UUID) (*Local, error) {
 		return nil, fmt.Errorf("failed to get file info: %w", err)
 	}
 
-	h := header.NewHeader(header.NewTemplateMetadata(
+	h, err := header.NewHeader(header.NewTemplateMetadata(
 		buildID,
 		uint64(blockSize),
 		uint64(info.Size()),
 	), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create header: %w", err)
+	}
 
 	return &Local{
 		f:      f,

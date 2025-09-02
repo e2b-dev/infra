@@ -77,7 +77,6 @@ resource "nomad_job" "api" {
     orchestrator_port              = var.orchestrator_port
     template_manager_host          = "template-manager.service.consul:${var.template_manager_port}"
     otel_collector_grpc_endpoint   = "localhost:${var.otel_collector_grpc_port}"
-    loki_address                   = "http://loki.service.consul:${var.loki_service_port.port}"
     logs_collector_address         = "http://localhost:${var.logs_proxy_port.port}"
     gcp_zone                       = var.gcp_zone
     port_name                      = var.api_port.name
@@ -99,6 +98,9 @@ resource "nomad_job" "api" {
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
     db_migrator_docker_image       = docker_image.db_migrator_image.repo_digest
     launch_darkly_api_key          = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+
+    local_cluster_endpoint = "edge-api.service.consul:${var.edge_api_port.port}"
+    local_cluster_token    = var.edge_api_secret
   })
 }
 
@@ -390,7 +392,6 @@ data "external" "orchestrator_checksum" {
   }
 }
 
-
 locals {
   orchestrator_envs = {
     port             = var.orchestrator_port
@@ -402,12 +403,16 @@ locals {
     bucket_name                  = var.fc_env_pipeline_bucket_name
     orchestrator_checksum        = data.external.orchestrator_checksum.result.hex
     logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
-    logs_collector_public_ip     = var.logs_proxy_address
+    logs_collector_public_ip     = var.logs_collector_public_ip
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
     otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
     allow_sandbox_internet       = var.allow_sandbox_internet
     launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+    clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
+    redis_url                    = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "" : "redis.service.consul:${var.redis_port.port}"
+    redis_cluster_url            = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
+    shared_chunk_cache_path      = var.shared_chunk_cache_path
   }
 
   orchestrator_job_check = templatefile("${path.module}/orchestrator.hcl", merge(
@@ -488,9 +493,13 @@ resource "nomad_job" "template_manager" {
     build_cache_bucket_name      = var.build_cache_bucket_name
     otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
     logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
-    logs_collector_public_ip     = var.logs_proxy_address
+    logs_collector_public_ip     = var.logs_collector_public_ip
     orchestrator_services        = "template-manager"
     allow_sandbox_internet       = var.allow_sandbox_internet
+    clickhouse_connection_string = local.clickhouse_connection_string
+
+    # For now we DISABLE the shared chunk cache in the template manager
+    shared_chunk_cache_path = ""
   })
 }
 resource "nomad_job" "loki" {
@@ -563,7 +572,6 @@ resource "google_storage_hmac_key" "clickhouse_hmac_key" {
   service_account_email = google_service_account.clickhouse_service_account.email
 }
 
-
 resource "nomad_job" "clickhouse" {
   count = var.clickhouse_server_count > 0 ? 1 : 0
   jobspec = templatefile("${path.module}/clickhouse.hcl", {
@@ -607,7 +615,6 @@ resource "nomad_job" "clickhouse" {
 resource "google_service_account_key" "clickhouse_service_account_key" {
   service_account_id = google_service_account.clickhouse_service_account.id
 }
-
 
 resource "nomad_job" "clickhouse_backup" {
   count = var.clickhouse_server_count > 0 ? 1 : 0

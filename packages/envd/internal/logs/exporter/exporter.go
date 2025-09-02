@@ -16,7 +16,6 @@ import (
 const ExporterTimeout = 10 * time.Second
 
 type HTTPExporter struct {
-	ctx      context.Context
 	client   http.Client
 	logs     [][]byte
 	isNotFC  bool
@@ -31,7 +30,6 @@ type HTTPExporter struct {
 
 func NewHTTPLogsExporter(ctx context.Context, isNotFC bool, mmdsChan <-chan *host.MMDSOpts) *HTTPExporter {
 	exporter := &HTTPExporter{
-		ctx: ctx,
 		client: http.Client{
 			Timeout: ExporterTimeout,
 		},
@@ -46,17 +44,17 @@ func NewHTTPLogsExporter(ctx context.Context, isNotFC bool, mmdsChan <-chan *hos
 		},
 	}
 
-	go exporter.listenForMMDSOptsAndStart(mmdsChan)
+	go exporter.listenForMMDSOptsAndStart(ctx, mmdsChan)
 
 	return exporter
 }
 
-func (w *HTTPExporter) sendInstanceLogs(logs []byte, address string) error {
+func (w *HTTPExporter) sendInstanceLogs(ctx context.Context, logs []byte, address string) error {
 	if address == "" {
 		return nil
 	}
 
-	request, err := http.NewRequestWithContext(w.ctx, http.MethodPost, address, bytes.NewBuffer(logs))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, address, bytes.NewBuffer(logs))
 	if err != nil {
 		return err
 	}
@@ -76,10 +74,10 @@ func printLog(logs []byte) {
 	fmt.Fprintf(os.Stdout, "%v", string(logs))
 }
 
-func (w *HTTPExporter) listenForMMDSOptsAndStart(mmdsChan <-chan *host.MMDSOpts) {
+func (w *HTTPExporter) listenForMMDSOptsAndStart(ctx context.Context, mmdsChan <-chan *host.MMDSOpts) {
 	for {
 		select {
-		case <-w.ctx.Done():
+		case <-ctx.Done():
 			return
 		case mmdsOpts, ok := <-mmdsChan:
 			if !ok {
@@ -92,13 +90,13 @@ func (w *HTTPExporter) listenForMMDSOptsAndStart(mmdsChan <-chan *host.MMDSOpts)
 			w.mmdsLock.Unlock()
 
 			w.startOnce.Do(func() {
-				w.start()
+				w.start(ctx)
 			})
 		}
 	}
 }
 
-func (w *HTTPExporter) start() {
+func (w *HTTPExporter) start(ctx context.Context) {
 	for range w.triggers {
 		logs := w.getAllLogs()
 
@@ -126,7 +124,7 @@ func (w *HTTPExporter) start() {
 				continue
 			}
 
-			err = w.sendInstanceLogs(logLineWithOpts, w.mmdsOpts.Address)
+			err = w.sendInstanceLogs(ctx, logLineWithOpts, w.mmdsOpts.Address)
 			if err != nil {
 				log.Printf("error sending instance logs: %+v", err)
 

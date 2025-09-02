@@ -20,54 +20,41 @@ import (
 type CreateSandbox struct {
 	config     sandbox.Config
 	fcVersions fc.FirecrackerVersions
-
-	// TODO: Remove when the base template ID is constant.
-	templateID string
 }
 
-func NewCreateSandbox(config sandbox.Config, fcVersions fc.FirecrackerVersions, templateID string) SandboxCreator {
-	return &CreateSandbox{config: config, fcVersions: fcVersions, templateID: templateID}
+var _ SandboxCreator = (*CreateSandbox)(nil)
+
+func NewCreateSandbox(config sandbox.Config, fcVersions fc.FirecrackerVersions) *CreateSandbox {
+	return &CreateSandbox{config: config, fcVersions: fcVersions}
 }
 
 func (f *CreateSandbox) Sandbox(
 	ctx context.Context,
 	layerExecutor *LayerExecutor,
-	template sbxtemplate.Template,
+	sourceTemplate sbxtemplate.Template,
 ) (*sandbox.Sandbox, error) {
-	// Create new sandbox path
-	var oldMemfile block.ReadonlyDevice
-	oldMemfile, err := template.Memfile()
-	if err != nil {
-		return nil, fmt.Errorf("get memfile: %w", err)
-	}
-
 	// Create new memfile with the size of the sandbox RAM, this updates the underlying memfile.
 	// This is ok as the sandbox is started from the beginning.
-	var memfile block.ReadonlyDevice
-	memfile, err = block.NewEmpty(
+	memfile, err := block.NewEmpty(
 		f.config.RamMB<<constants.ToMBShift,
-		oldMemfile.BlockSize(),
-		uuid.MustParse(template.Files().BuildID),
+		config.MemfilePageSize(f.config.HugePages),
+		uuid.MustParse(sourceTemplate.Files().BuildID),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create memfile: %w", err)
 	}
 
-	err = template.ReplaceMemfile(memfile)
-	if err != nil {
-		return nil, fmt.Errorf("replace memfile: %w", err)
-	}
+	template := sbxtemplate.NewMaskTemplate(sourceTemplate, sbxtemplate.WithMemfile(memfile))
 
 	// In case of a new sandbox, base template ID is now used as the potentially exported template base ID.
-	sbxConfig := f.config
-	sbxConfig.BaseTemplateID = f.templateID
 	sbx, err := sandbox.CreateSandbox(
 		ctx,
 		layerExecutor.tracer,
 		layerExecutor.networkPool,
 		layerExecutor.devicePool,
-		sbxConfig,
+		f.config,
 		sandbox.RuntimeMetadata{
+			TemplateID:  layerExecutor.Config.TemplateID,
 			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
 			ExecutionID: uuid.NewString(),
 		},

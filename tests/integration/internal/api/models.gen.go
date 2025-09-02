@@ -4,8 +4,11 @@
 package api
 
 import (
+	"encoding/json"
+	"errors"
 	"time"
 
+	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -15,6 +18,21 @@ const (
 	ApiKeyAuthScopes         = "ApiKeyAuth.Scopes"
 	Supabase1TokenAuthScopes = "Supabase1TokenAuth.Scopes"
 	Supabase2TeamAuthScopes  = "Supabase2TeamAuth.Scopes"
+)
+
+// Defines values for AWSRegistryType.
+const (
+	Aws AWSRegistryType = "aws"
+)
+
+// Defines values for GCPRegistryType.
+const (
+	Gcp GCPRegistryType = "gcp"
+)
+
+// Defines values for GeneralRegistryType.
+const (
+	Registry GeneralRegistryType = "registry"
 )
 
 // Defines values for LogLevel.
@@ -47,6 +65,24 @@ const (
 	TemplateBuildStatusWaiting  TemplateBuildStatus = "waiting"
 )
 
+// AWSRegistry defines model for AWSRegistry.
+type AWSRegistry struct {
+	// AwsAccessKeyId AWS Access Key ID for ECR authentication
+	AwsAccessKeyId string `json:"awsAccessKeyId"`
+
+	// AwsRegion AWS Region where the ECR registry is located
+	AwsRegion string `json:"awsRegion"`
+
+	// AwsSecretAccessKey AWS Secret Access Key for ECR authentication
+	AwsSecretAccessKey string `json:"awsSecretAccessKey"`
+
+	// Type Type of registry authentication
+	Type AWSRegistryType `json:"type"`
+}
+
+// AWSRegistryType Type of registry authentication
+type AWSRegistryType string
+
 // BuildLogEntry defines model for BuildLogEntry.
 type BuildLogEntry struct {
 	// Level State of the sandbox
@@ -57,6 +93,15 @@ type BuildLogEntry struct {
 
 	// Timestamp Timestamp of the log entry
 	Timestamp time.Time `json:"timestamp"`
+}
+
+// BuildStatusReason defines model for BuildStatusReason.
+type BuildStatusReason struct {
+	// Message Message with the status reason, currently reporting only for error status
+	Message string `json:"message"`
+
+	// Step Step that failed
+	Step *string `json:"step,omitempty"`
 }
 
 // CPUCount CPU cores for the sandbox
@@ -98,6 +143,24 @@ type CreatedTeamAPIKey struct {
 	Name string `json:"name"`
 }
 
+// DiskMetrics defines model for DiskMetrics.
+type DiskMetrics struct {
+	// Device Device name
+	Device string `json:"device"`
+
+	// FilesystemType Filesystem type (e.g., ext4, xfs)
+	FilesystemType string `json:"filesystemType"`
+
+	// MountPoint Mount point of the disk
+	MountPoint string `json:"mountPoint"`
+
+	// TotalBytes Total space in bytes
+	TotalBytes uint64 `json:"totalBytes"`
+
+	// UsedBytes Used space in bytes
+	UsedBytes uint64 `json:"usedBytes"`
+}
+
 // DiskSizeMB Disk size for the sandbox in MiB
 type DiskSizeMB = int32
 
@@ -115,6 +178,38 @@ type Error struct {
 	// Message Error
 	Message string `json:"message"`
 }
+
+// FromImageRegistry defines model for FromImageRegistry.
+type FromImageRegistry struct {
+	union json.RawMessage
+}
+
+// GCPRegistry defines model for GCPRegistry.
+type GCPRegistry struct {
+	// ServiceAccountJson Service Account JSON for GCP authentication
+	ServiceAccountJson string `json:"serviceAccountJson"`
+
+	// Type Type of registry authentication
+	Type GCPRegistryType `json:"type"`
+}
+
+// GCPRegistryType Type of registry authentication
+type GCPRegistryType string
+
+// GeneralRegistry defines model for GeneralRegistry.
+type GeneralRegistry struct {
+	// Password Password to use for the registry
+	Password string `json:"password"`
+
+	// Type Type of registry authentication
+	Type GeneralRegistryType `json:"type"`
+
+	// Username Username to use for the registry
+	Username string `json:"username"`
+}
+
+// GeneralRegistryType Type of registry authentication
+type GeneralRegistryType string
 
 // IdentifierMaskingDetails defines model for IdentifierMaskingDetails.
 type IdentifierMaskingDetails struct {
@@ -209,14 +304,8 @@ type NewTeamAPIKey struct {
 
 // Node defines model for Node.
 type Node struct {
-	// AllocatedCPU Number of allocated CPU cores
-	AllocatedCPU int32 `json:"allocatedCPU"`
-
-	// AllocatedMemoryMiB Amount of allocated memory in MiB
-	AllocatedMemoryMiB int32 `json:"allocatedMemoryMiB"`
-
 	// ClusterID Identifier of the cluster
-	ClusterID *string `json:"clusterID"`
+	ClusterID string `json:"clusterID"`
 
 	// Commit Commit of the orchestrator
 	Commit string `json:"commit"`
@@ -227,14 +316,24 @@ type Node struct {
 	// CreateSuccesses Number of sandbox create successes
 	CreateSuccesses uint64 `json:"createSuccesses"`
 
-	// NodeID Identifier of the node
+	// Id Identifier of the node
+	Id string `json:"id"`
+
+	// Metrics Node metrics
+	Metrics NodeMetrics `json:"metrics"`
+
+	// NodeID Identifier of the nomad node
+	// Deprecated:
 	NodeID string `json:"nodeID"`
 
 	// SandboxCount Number of sandboxes running on the node
-	SandboxCount int32 `json:"sandboxCount"`
+	SandboxCount uint32 `json:"sandboxCount"`
 
 	// SandboxStartingCount Number of starting Sandboxes
 	SandboxStartingCount int `json:"sandboxStartingCount"`
+
+	// ServiceInstanceID Service instance identifier of the node
+	ServiceInstanceID string `json:"serviceInstanceID"`
 
 	// Status Status of the node
 	Status NodeStatus `json:"status"`
@@ -249,7 +348,7 @@ type NodeDetail struct {
 	CachedBuilds []string `json:"cachedBuilds"`
 
 	// ClusterID Identifier of the cluster
-	ClusterID *string `json:"clusterID"`
+	ClusterID string `json:"clusterID"`
 
 	// Commit Commit of the orchestrator
 	Commit string `json:"commit"`
@@ -260,17 +359,51 @@ type NodeDetail struct {
 	// CreateSuccesses Number of sandbox create successes
 	CreateSuccesses uint64 `json:"createSuccesses"`
 
-	// NodeID Identifier of the node
+	// Id Identifier of the node
+	Id string `json:"id"`
+
+	// Metrics Node metrics
+	Metrics NodeMetrics `json:"metrics"`
+
+	// NodeID Identifier of the nomad node
+	// Deprecated:
 	NodeID string `json:"nodeID"`
 
 	// Sandboxes List of sandboxes running on the node
 	Sandboxes []ListedSandbox `json:"sandboxes"`
+
+	// ServiceInstanceID Service instance identifier of the node
+	ServiceInstanceID string `json:"serviceInstanceID"`
 
 	// Status Status of the node
 	Status NodeStatus `json:"status"`
 
 	// Version Version of the orchestrator
 	Version string `json:"version"`
+}
+
+// NodeMetrics Node metrics
+type NodeMetrics struct {
+	// AllocatedCPU Number of allocated CPU cores
+	AllocatedCPU uint32 `json:"allocatedCPU"`
+
+	// AllocatedMemoryBytes Amount of allocated memory in bytes
+	AllocatedMemoryBytes uint64 `json:"allocatedMemoryBytes"`
+
+	// CpuCount Total number of CPU cores on the node
+	CpuCount uint32 `json:"cpuCount"`
+
+	// CpuPercent Node CPU usage percentage
+	CpuPercent uint32 `json:"cpuPercent"`
+
+	// Disks Detailed metrics for each disk/mount point
+	Disks []DiskMetrics `json:"disks"`
+
+	// MemoryTotalBytes Total node memory in bytes
+	MemoryTotalBytes uint64 `json:"memoryTotalBytes"`
+
+	// MemoryUsedBytes Node memory used in bytes
+	MemoryUsedBytes uint64 `json:"memoryUsedBytes"`
 }
 
 // NodeStatus Status of the node
@@ -285,6 +418,7 @@ type NodeStatusChange struct {
 // ResumedSandbox defines model for ResumedSandbox.
 type ResumedSandbox struct {
 	// AutoPause Automatically pauses the sandbox after the timeout
+	// Deprecated:
 	AutoPause *bool `json:"autoPause,omitempty"`
 
 	// Timeout Time to live for the sandbox in seconds.
@@ -459,6 +593,18 @@ type TeamAPIKey struct {
 	Name string `json:"name"`
 }
 
+// TeamMetric Team metric with timestamp
+type TeamMetric struct {
+	// ConcurrentSandboxes The number of concurrent sandboxes for the team
+	ConcurrentSandboxes int32 `json:"concurrentSandboxes"`
+
+	// SandboxStartRate Number of sandboxes started per second
+	SandboxStartRate float32 `json:"sandboxStartRate"`
+
+	// Timestamp Timestamp of the metric entry
+	Timestamp time.Time `json:"timestamp"`
+}
+
 // TeamUser defines model for TeamUser.
 type TeamUser struct {
 	// Email Email of the user
@@ -471,7 +617,7 @@ type TeamUser struct {
 // Template defines model for Template.
 type Template struct {
 	// Aliases Aliases of the template
-	Aliases *[]string `json:"aliases,omitempty"`
+	Aliases []string `json:"aliases"`
 
 	// BuildCount Number of times the template was built
 	BuildCount int32 `json:"buildCount"`
@@ -493,7 +639,7 @@ type Template struct {
 	EnvdVersion EnvdVersion `json:"envdVersion"`
 
 	// LastSpawnedAt Time when the template was last used
-	LastSpawnedAt time.Time `json:"lastSpawnedAt"`
+	LastSpawnedAt *time.Time `json:"lastSpawnedAt"`
 
 	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB MemoryMB `json:"memoryMB"`
@@ -520,10 +666,8 @@ type TemplateBuild struct {
 	LogEntries []BuildLogEntry `json:"logEntries"`
 
 	// Logs Build logs
-	Logs []string `json:"logs"`
-
-	// Reason Message with the status reason, currently reporting only for error status
-	Reason *string `json:"reason,omitempty"`
+	Logs   []string           `json:"logs"`
+	Reason *BuildStatusReason `json:"reason,omitempty"`
 
 	// Status Status of the template
 	Status TemplateBuildStatus `json:"status"`
@@ -589,7 +733,8 @@ type TemplateBuildStartV2 struct {
 	Force *bool `json:"force,omitempty"`
 
 	// FromImage Image to use as a base for the template build
-	FromImage *string `json:"fromImage,omitempty"`
+	FromImage         *string            `json:"fromImage,omitempty"`
+	FromImageRegistry *FromImageRegistry `json:"fromImageRegistry,omitempty"`
 
 	// FromTemplate Template to use as a base for the template build
 	FromTemplate *string `json:"fromTemplate,omitempty"`
@@ -646,6 +791,9 @@ type NodeID = string
 // SandboxID defines model for sandboxID.
 type SandboxID = string
 
+// TeamID defines model for teamID.
+type TeamID = string
+
 // TemplateID defines model for templateID.
 type TemplateID = string
 
@@ -655,6 +803,9 @@ type N400 = Error
 // N401 defines model for 401.
 type N401 = Error
 
+// N403 defines model for 403.
+type N403 = Error
+
 // N404 defines model for 404.
 type N404 = Error
 
@@ -663,6 +814,12 @@ type N409 = Error
 
 // N500 defines model for 500.
 type N500 = Error
+
+// GetNodesNodeIDParams defines parameters for GetNodesNodeID.
+type GetNodesNodeIDParams struct {
+	// ClusterID Identifier of the cluster
+	ClusterID *string `form:"clusterID,omitempty" json:"clusterID,omitempty"`
+}
 
 // GetSandboxesParams defines parameters for GetSandboxes.
 type GetSandboxesParams struct {
@@ -687,7 +844,7 @@ type GetSandboxesSandboxIDLogsParams struct {
 
 // GetSandboxesSandboxIDMetricsParams defines parameters for GetSandboxesSandboxIDMetrics.
 type GetSandboxesSandboxIDMetricsParams struct {
-	// Start Starting timestamp of the metrics that should be returned in milliseconds
+	// Start Unix timestamp for the start of the interval, in seconds, for which the metrics
 	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
 	End   *int64 `form:"end,omitempty" json:"end,omitempty"`
 }
@@ -702,6 +859,13 @@ type PostSandboxesSandboxIDRefreshesJSONBody struct {
 type PostSandboxesSandboxIDTimeoutJSONBody struct {
 	// Timeout Timeout in seconds from the current time after which the sandbox should expire
 	Timeout int32 `json:"timeout"`
+}
+
+// GetTeamsTeamIDMetricsParams defines parameters for GetTeamsTeamIDMetrics.
+type GetTeamsTeamIDMetricsParams struct {
+	// Start Unix timestamp for the start of the interval, in seconds, for which the metrics
+	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
+	End   *int64 `form:"end,omitempty" json:"end,omitempty"`
 }
 
 // GetTemplatesParams defines parameters for GetTemplates.
@@ -769,3 +933,122 @@ type PostV2TemplatesJSONRequestBody = TemplateBuildRequestV2
 
 // PostV2TemplatesTemplateIDBuildsBuildIDJSONRequestBody defines body for PostV2TemplatesTemplateIDBuildsBuildID for application/json ContentType.
 type PostV2TemplatesTemplateIDBuildsBuildIDJSONRequestBody = TemplateBuildStartV2
+
+// AsAWSRegistry returns the union data inside the FromImageRegistry as a AWSRegistry
+func (t FromImageRegistry) AsAWSRegistry() (AWSRegistry, error) {
+	var body AWSRegistry
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAWSRegistry overwrites any union data inside the FromImageRegistry as the provided AWSRegistry
+func (t *FromImageRegistry) FromAWSRegistry(v AWSRegistry) error {
+	v.Type = "aws"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAWSRegistry performs a merge with any union data inside the FromImageRegistry, using the provided AWSRegistry
+func (t *FromImageRegistry) MergeAWSRegistry(v AWSRegistry) error {
+	v.Type = "aws"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsGCPRegistry returns the union data inside the FromImageRegistry as a GCPRegistry
+func (t FromImageRegistry) AsGCPRegistry() (GCPRegistry, error) {
+	var body GCPRegistry
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromGCPRegistry overwrites any union data inside the FromImageRegistry as the provided GCPRegistry
+func (t *FromImageRegistry) FromGCPRegistry(v GCPRegistry) error {
+	v.Type = "gcp"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeGCPRegistry performs a merge with any union data inside the FromImageRegistry, using the provided GCPRegistry
+func (t *FromImageRegistry) MergeGCPRegistry(v GCPRegistry) error {
+	v.Type = "gcp"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsGeneralRegistry returns the union data inside the FromImageRegistry as a GeneralRegistry
+func (t FromImageRegistry) AsGeneralRegistry() (GeneralRegistry, error) {
+	var body GeneralRegistry
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromGeneralRegistry overwrites any union data inside the FromImageRegistry as the provided GeneralRegistry
+func (t *FromImageRegistry) FromGeneralRegistry(v GeneralRegistry) error {
+	v.Type = "registry"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeGeneralRegistry performs a merge with any union data inside the FromImageRegistry, using the provided GeneralRegistry
+func (t *FromImageRegistry) MergeGeneralRegistry(v GeneralRegistry) error {
+	v.Type = "registry"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t FromImageRegistry) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"type"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t FromImageRegistry) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "aws":
+		return t.AsAWSRegistry()
+	case "gcp":
+		return t.AsGCPRegistry()
+	case "registry":
+		return t.AsGeneralRegistry()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t FromImageRegistry) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *FromImageRegistry) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}

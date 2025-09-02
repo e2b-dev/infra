@@ -135,7 +135,7 @@ func (e *edgeInstancesSyncStore) PoolInsert(ctx context.Context, source sd.Servi
 	// We want to do it separately here so failed init will cause not adding the instance to the pool
 	err = o.sync(ctx)
 	if err != nil {
-		zap.L().Error("Failed to finish initial edge instance sync", zap.Error(err), l.WithClusterNodeID(o.GetInfo().NodeID))
+		zap.L().Error("Failed to finish initial edge instance sync", zap.Error(err), l.WithNodeID(o.GetInfo().NodeID))
 		return
 	}
 
@@ -148,14 +148,14 @@ func (e *edgeInstancesSyncStore) PoolUpdate(ctx context.Context, item *EdgeInsta
 
 	err := item.sync(ctx)
 	if err != nil {
-		zap.L().Error("Failed to sync edge instance", zap.Error(err), l.WithClusterNodeID(item.GetInfo().NodeID))
+		zap.L().Error("Failed to sync edge instance", zap.Error(err), l.WithNodeID(item.GetInfo().NodeID))
 	}
 }
 
 func (e *edgeInstancesSyncStore) PoolRemove(ctx context.Context, item *EdgeInstance) {
 	info := item.GetInfo()
-	zap.L().Info("Edge instance connection is not active anymore, closing.", l.WithClusterNodeID(info.NodeID))
+	zap.L().Info("Edge instance connection is not active anymore, closing.", l.WithNodeID(info.NodeID))
 
 	e.pool.instances.Remove(item.info.Host)
-	zap.L().Info("Edge instance connection has been deregistered.", l.WithClusterNodeID(info.NodeID))
+	zap.L().Info("Edge instance connection has been deregistered.", l.WithNodeID(info.NodeID))
 }

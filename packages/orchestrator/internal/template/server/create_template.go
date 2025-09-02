@@ -9,7 +9,9 @@ import (
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/builderrors"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci/auth"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -40,7 +42,6 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	}
 
 	metadata := storage.TemplateFiles{
-		TemplateID:         cfg.TemplateID,
 		BuildID:            cfg.BuildID,
 		KernelVersion:      cfg.KernelVersion,
 		FirecrackerVersion: cfg.FirecrackerVersion,
@@ -52,18 +53,23 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		cacheScope = *templateRequest.CacheScope
 	}
 
+	// Create the auth provider using the factory
+	authProvider := auth.NewAuthProvider(cfg.FromImageRegistry)
+
 	template := config.TemplateConfig{
-		CacheScope:   cacheScope,
-		VCpuCount:    int64(cfg.VCpuCount),
-		MemoryMB:     int64(cfg.MemoryMB),
-		StartCmd:     cfg.StartCommand,
-		ReadyCmd:     cfg.ReadyCommand,
-		DiskSizeMB:   int64(cfg.DiskSizeMB),
-		HugePages:    cfg.HugePages,
-		FromImage:    cfg.GetFromImage(),
-		FromTemplate: cfg.GetFromTemplate(),
-		Force:        cfg.Force,
-		Steps:        cfg.Steps,
+		TemplateID:           cfg.TemplateID,
+		CacheScope:           cacheScope,
+		VCpuCount:            int64(cfg.VCpuCount),
+		MemoryMB:             int64(cfg.MemoryMB),
+		StartCmd:             cfg.StartCommand,
+		ReadyCmd:             cfg.ReadyCommand,
+		DiskSizeMB:           int64(cfg.DiskSizeMB),
+		HugePages:            cfg.HugePages,
+		FromImage:            cfg.GetFromImage(),
+		FromTemplate:         cfg.GetFromTemplate(),
+		RegistryAuthProvider: authProvider,
+		Force:                cfg.Force,
+		Steps:                cfg.Steps,
 	}
 
 	logs := cache.NewSafeBuffer()
@@ -77,7 +83,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	bufferCore := zapcore.NewCore(encoder, logs, zapcore.DebugLevel)
 	core := zapcore.NewTee(bufferCore, s.buildLogger.Core().
 		With([]zap.Field{
-			{Type: zapcore.StringType, Key: "envID", String: metadata.TemplateID},
+			{Type: zapcore.StringType, Key: "envID", String: cfg.TemplateID},
 			{Type: zapcore.StringType, Key: "buildID", String: metadata.BuildID},
 		}),
 	)
@@ -118,7 +124,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error while building template", err)
 
-			buildInfo.SetFail(err.Error())
+			buildInfo.SetFail(builderrors.UnwrapUserError(err))
 		} else {
 			buildInfo.SetSuccess(&templatemanager.TemplateBuildMetadata{
 				RootfsSizeKey:  int32(res.RootfsSizeMB),

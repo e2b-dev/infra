@@ -16,6 +16,7 @@ import (
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string, params api.GetSandboxesSandboxIDMetricsParams) {
@@ -26,7 +27,8 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 
 	team := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo).Team
 
-	metricsReadFlag, err := a.featureFlags.BoolFlag(featureflags.MetricsReadFlagName, sandboxID)
+	metricsReadFlag, err := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName,
+		featureflags.SandboxContext(sandboxID))
 	if err != nil {
 		zap.L().Error("error getting metrics read feature flag, soft failing", zap.Error(err))
 	}
@@ -40,12 +42,20 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 		return
 	}
 
-	start, end, err := getStartEndTime(ctx, a.clickhouseStore, team.ID.String(), sandboxID, params)
+	start, end, err := getSandboxStartEndTime(ctx, a.clickhouseStore, team.ID.String(), sandboxID, params)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("error when getting metrics time range: %s", err))
 		return
 	}
 
+	start, end, err = utils.ValidateDates(start, end)
+	if err != nil {
+		telemetry.ReportError(ctx, "error validating dates", err, telemetry.WithTeamID(team.ID.String()))
+		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Calculate the step size
 	step := calculateStep(start, end)
 
 	metrics, err := a.clickhouseStore.QuerySandboxMetrics(ctx, sandboxID, team.ID.String(), start, end, step)
@@ -88,12 +98,16 @@ func calculateStep(start, end time.Time) time.Duration {
 		return 30 * time.Second
 	case duration < 12*time.Hour:
 		return time.Minute
-	default:
+	case duration < 24*time.Hour:
 		return 2 * time.Minute
+	case duration < 7*24*time.Hour:
+		return 5 * time.Minute
+	default:
+		return 15 * time.Minute
 	}
 }
 
-func getStartEndTime(ctx context.Context, clickhouseStore clickhouse.Clickhouse, teamID, sandboxID string, params api.GetSandboxesSandboxIDMetricsParams) (time.Time, time.Time, error) {
+func getSandboxStartEndTime(ctx context.Context, clickhouseStore clickhouse.Clickhouse, teamID, sandboxID string, params api.GetSandboxesSandboxIDMetricsParams) (time.Time, time.Time, error) {
 	// Check if the sandbox exists
 	var start, end time.Time
 	if params.Start != nil {

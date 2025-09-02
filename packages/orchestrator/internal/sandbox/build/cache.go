@@ -28,7 +28,7 @@ type deleteDiff struct {
 type DiffStore struct {
 	cachePath string
 	cache     *ttlcache.Cache[DiffStoreKey, Diff]
-	ctx       context.Context
+	ctx       context.Context // nolint:containedctx // todo: refactor so this can be removed
 	close     chan struct{}
 
 	// pdSizes is used to keep track of the diff sizes

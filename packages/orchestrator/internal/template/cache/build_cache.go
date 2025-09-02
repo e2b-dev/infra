@@ -22,7 +22,7 @@ var CancelledBuildReason = "build was cancelled"
 
 type BuildInfoResult struct {
 	Status   template_manager.TemplateBuildState
-	Reason   *string
+	Reason   *template_manager.TemplateBuildStatusReason
 	Metadata *template_manager.TemplateBuildMetadata
 }
 
@@ -63,10 +63,10 @@ func (b *BuildInfo) SetSuccess(metadata *template_manager.TemplateBuildMetadata)
 	})
 }
 
-func (b *BuildInfo) SetFail(reason string) {
+func (b *BuildInfo) SetFail(reason *template_manager.TemplateBuildStatusReason) {
 	_ = b.Result.SetValue(BuildInfoResult{
 		Status:   template_manager.TemplateBuildState_Failed,
-		Reason:   &reason,
+		Reason:   reason,
 		Metadata: nil,
 	})
 }

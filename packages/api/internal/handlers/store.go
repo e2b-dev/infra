@@ -12,7 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	loki "github.com/grafana/loki/pkg/logcli/client"
 	nomadapi "github.com/hashicorp/nomad/api"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"github.com/redis/go-redis/v9"
@@ -35,6 +34,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -58,7 +58,6 @@ type APIStore struct {
 	templateManager          *template_manager.TemplateManager
 	db                       *db.DB
 	sqlcDB                   *sqlcdb.Client
-	lokiClient               *loki.DefaultClient
 	templateCache            *templatecache.TemplateCache
 	templateBuildsCache      *templatecache.TemplatesBuildCache
 	authCache                *authcache.TeamAuthCache
@@ -146,18 +145,14 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		zap.L().Fatal("initializing edge clusters pool failed", zap.Error(err))
 	}
 
-	orch, err := orchestrator.New(ctx, tel, tracer, nomadClient, posthogClient, redisClient, dbClient, clustersPool)
+	featureFlags, err := featureflags.NewClient()
 	if err != nil {
-		zap.L().Fatal("Initializing Orchestrator client", zap.Error(err))
+		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
 
-	var lokiClient *loki.DefaultClient
-	if laddr := os.Getenv("LOKI_ADDRESS"); laddr != "" {
-		lokiClient = &loki.DefaultClient{
-			Address: laddr,
-		}
-	} else {
-		zap.L().Warn("LOKI_ADDRESS not set, disabling Loki client")
+	orch, err := orchestrator.New(ctx, tel, tracer, nomadClient, posthogClient, redisClient, dbClient, clustersPool, featureFlags)
+	if err != nil {
+		zap.L().Fatal("Initializing Orchestrator client", zap.Error(err))
 	}
 
 	authCache := authcache.NewTeamAuthCache()
@@ -170,18 +165,13 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 	}
 
 	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
-	templateManager, err := template_manager.New(ctx, tracer, tel.TracerProvider, tel.MeterProvider, dbClient, sqlcDB, clustersPool, lokiClient, templateBuildsCache, templateCache)
+	templateManager, err := template_manager.New(ctx, tracer, tel.TracerProvider, tel.MeterProvider, dbClient, sqlcDB, clustersPool, templateBuildsCache, templateCache)
 	if err != nil {
 		zap.L().Fatal("Initializing Template manager client", zap.Error(err))
 	}
 
 	// Start the periodic sync of template builds statuses
 	go templateManager.BuildsStatusPeriodicalSync(ctx)
-
-	featureFlags, err := featureflags.NewClient()
-	if err != nil {
-		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
-	}
 
 	a := &APIStore{
 		Healthy:                  false,
@@ -192,7 +182,6 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		Telemetry:                tel,
 		Tracer:                   tracer,
 		posthog:                  posthogClient,
-		lokiClient:               lokiClient,
 		templateCache:            templateCache,
 		templateBuildsCache:      templateBuildsCache,
 		authCache:                authCache,
@@ -273,7 +262,16 @@ func (a *APIStore) GetHealth(c *gin.Context) {
 }
 
 func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authcache.AuthTeamInfo, *api.APIError) {
-	team, tier, err := a.authCache.GetOrSet(ctx, apiKey, func(ctx context.Context, key string) (*queries.Team, *queries.Tier, error) {
+	hashedApiKey, err := keys.VerifyKey(keys.ApiKeyPrefix, apiKey)
+	if err != nil {
+		return authcache.AuthTeamInfo{}, &api.APIError{
+			Err:       fmt.Errorf("failed to verify api key: %w", err),
+			ClientMsg: "Invalid API key format",
+			Code:      http.StatusUnauthorized,
+		}
+	}
+
+	team, tier, err := a.authCache.GetOrSet(ctx, hashedApiKey, func(ctx context.Context, key string) (*queries.Team, *queries.Tier, error) {
 		return dbapi.GetTeamAuth(ctx, a.sqlcDB, key)
 	})
 	if err != nil {
@@ -309,7 +307,16 @@ func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authca
 }
 
 func (a *APIStore) GetUserFromAccessToken(ctx context.Context, accessToken string) (uuid.UUID, *api.APIError) {
-	userID, err := a.db.GetUserID(ctx, accessToken)
+	hashedToken, err := keys.VerifyKey(keys.AccessTokenPrefix, accessToken)
+	if err != nil {
+		return uuid.UUID{}, &api.APIError{
+			Err:       fmt.Errorf("failed to verify access token: %w", err),
+			ClientMsg: "Invalid access token format",
+			Code:      http.StatusUnauthorized,
+		}
+	}
+
+	userID, err := a.db.GetUserID(ctx, hashedToken)
 	if err != nil {
 		return uuid.UUID{}, &api.APIError{
 			Err:       fmt.Errorf("failed to get the user from db for an access token: %w", err),
@@ -398,7 +405,8 @@ func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, supabaseToken
 func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) (authcache.AuthTeamInfo, *api.APIError) {
 	userID := a.GetUserID(middleware.GetGinContext(ctx))
 
-	team, tier, err := a.authCache.GetOrSet(ctx, teamID, func(ctx context.Context, key string) (*queries.Team, *queries.Tier, error) {
+	cacheKey := fmt.Sprintf("%s-%s", userID.String(), teamID)
+	team, tier, err := a.authCache.GetOrSet(ctx, cacheKey, func(ctx context.Context, key string) (*queries.Team, *queries.Tier, error) {
 		return dbapi.GetTeamByIDAndUserIDAuth(ctx, a.sqlcDB, teamID, userID)
 	})
 	if err != nil {

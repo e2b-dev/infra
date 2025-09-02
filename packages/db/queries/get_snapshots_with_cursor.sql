@@ -18,12 +18,16 @@ JOIN LATERAL (
 ) eb ON TRUE
 WHERE
     e.team_id = @team_id
-    AND s.metadata @> @metadata
     AND (
-        s.created_at < @cursor_time
+        -- When metadata arg is empty json, accept all as row metadata column can be empty json or NULL
+        -- And NULL does not match with empty json
+        s.metadata @> @metadata OR @metadata = '{}'::jsonb
+    )
+    AND (
+        s.sandbox_started_at < @cursor_time
         OR
-        (s.created_at = @cursor_time AND s.sandbox_id > @cursor_id)
+        (s.sandbox_started_at = @cursor_time AND s.sandbox_id > @cursor_id)
     )
     AND NOT (s.sandbox_id = ANY (@snapshot_exclude_sbx_ids::text[]))
-ORDER BY s.created_at DESC, s.sandbox_id
+ORDER BY s.sandbox_started_at DESC, s.sandbox_id
 LIMIT $1;

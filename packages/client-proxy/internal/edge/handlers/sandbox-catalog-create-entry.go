@@ -36,7 +36,7 @@ func (a *APIStore) V1SandboxCatalogCreate(c *gin.Context) {
 		SandboxStartedAt:        body.SandboxStartTime,
 	}
 
-	err = a.sandboxes.StoreSandbox(body.SandboxID, sbxInfo, sbxMaxLifetime)
+	err = a.sandboxes.StoreSandbox(ctx, body.SandboxID, sbxInfo, sbxMaxLifetime)
 	if err != nil {
 		zap.L().Error("Error when storing sandbox in catalog", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when storing sandbox in catalog")

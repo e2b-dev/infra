@@ -33,11 +33,6 @@ func (a *APIStore) V1ServiceDiscoveryGetOrchestrators(c *gin.Context) {
 				ServiceStatus:        getOrchestratorStatusResolved(info.ServiceStatus),
 
 				Roles: getOrchestratorRolesResolved(info.Roles),
-
-				MetricRamMBUsed:        node.MetricMemoryUsedInMB.Load(),
-				MetricVCpuUsed:         node.MetricVCpuUsed.Load(),
-				MetricDiskMBUsed:       node.MetricDiskUsedInMB.Load(),
-				MetricSandboxesRunning: node.MetricSandboxesRunning.Load(),
 			},
 		)
 	}

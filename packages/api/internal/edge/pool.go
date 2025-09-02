@@ -2,6 +2,8 @@ package edge
 
 import (
 	"context"
+	"errors"
+	"os"
 	"sync"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/synchronization"
@@ -18,6 +21,9 @@ import (
 )
 
 const (
+	clusterEndpointEnv = "LOCAL_CLUSTER_ENDPOINT"
+	clusterTokenEnv    = "LOCAL_CLUSTER_TOKEN"
+
 	poolSyncInterval = 60 * time.Second
 	poolSyncTimeout  = 15 * time.Second
 )
@@ -27,9 +33,29 @@ type Pool struct {
 	tel *telemetry.Client
 
 	clusters        *smap.Map[*Cluster]
-	synchronization *synchronization.Synchronize[queries.GetActiveClustersRow, *Cluster]
+	synchronization *synchronization.Synchronize[queries.Cluster, *Cluster]
 
 	tracer trace.Tracer
+}
+
+func localClusterConfig() (*queries.Cluster, error) {
+	clusterEndpoint := os.Getenv(clusterEndpointEnv)
+	if clusterEndpoint == "" {
+		return nil, nil
+	}
+
+	clusterToken := os.Getenv(clusterTokenEnv)
+	if clusterToken == "" {
+		return nil, errors.New("no local cluster token provided")
+	}
+
+	return &queries.Cluster{
+		ID:                 consts.LocalClusterID,
+		EndpointTls:        false,
+		Endpoint:           clusterEndpoint,
+		Token:              clusterToken,
+		SandboxProxyDomain: nil,
+	}, nil
 }
 
 func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, tracer trace.Tracer) (*Pool, error) {
@@ -46,7 +72,12 @@ func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, trac
 		p.Close()
 	}()
 
-	store := poolSynchronizationStore{pool: p}
+	localCluster, err := localClusterConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	store := poolSynchronizationStore{pool: p, localCluster: localCluster}
 	p.synchronization = synchronization.NewSynchronize(p.tracer, "clusters-pool", "Clusters pool", store)
 
 	// Periodically sync clusters with the database
@@ -83,16 +114,32 @@ func (p *Pool) Close() {
 
 // SynchronizationStore is an interface that defines methods for synchronizing the clusters pool with the database
 type poolSynchronizationStore struct {
-	pool *Pool
+	pool         *Pool
+	localCluster *queries.Cluster
 }
 
-func (d poolSynchronizationStore) SourceList(ctx context.Context) ([]queries.GetActiveClustersRow, error) {
-	return d.pool.db.GetActiveClusters(ctx)
+func (d poolSynchronizationStore) SourceList(ctx context.Context) ([]queries.Cluster, error) {
+	db, err := d.pool.db.GetActiveClusters(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	entries := make([]queries.Cluster, 0)
+	for _, row := range db {
+		entries = append(entries, row.Cluster)
+	}
+
+	// Append local cluster if registered
+	if d.localCluster != nil {
+		entries = append(entries, *d.localCluster)
+	}
+
+	return entries, nil
 }
 
-func (d poolSynchronizationStore) SourceExists(ctx context.Context, s []queries.GetActiveClustersRow, p *Cluster) bool {
+func (d poolSynchronizationStore) SourceExists(ctx context.Context, s []queries.Cluster, p *Cluster) bool {
 	for _, item := range s {
-		if item.Cluster.ID == p.ID {
+		if item.ID == p.ID {
 			return true
 		}
 	}
@@ -108,13 +155,12 @@ func (d poolSynchronizationStore) PoolList(ctx context.Context) []*Cluster {
 	return items
 }
 
-func (d poolSynchronizationStore) PoolExists(ctx context.Context, source queries.GetActiveClustersRow) bool {
-	_, found := d.pool.clusters.Get(source.Cluster.ID.String())
+func (d poolSynchronizationStore) PoolExists(ctx context.Context, cluster queries.Cluster) bool {
+	_, found := d.pool.clusters.Get(cluster.ID.String())
 	return found
 }
 
-func (d poolSynchronizationStore) PoolInsert(ctx context.Context, source queries.GetActiveClustersRow) {
-	cluster := source.Cluster
+func (d poolSynchronizationStore) PoolInsert(ctx context.Context, cluster queries.Cluster) {
 	clusterID := cluster.ID.String()
 
 	zap.L().Info("Initializing newly discovered cluster", l.WithClusterID(cluster.ID))

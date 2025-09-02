@@ -7,14 +7,6 @@ import (
 	"os"
 )
 
-func Sprintp(s *string) string {
-	if s == nil {
-		return "<nil>"
-	}
-
-	return *s
-}
-
 func GetFileHash(path string) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {

@@ -15,7 +15,11 @@ type Header struct {
 	Mapping []*BuildMap
 }
 
-func NewHeader(metadata *Metadata, mapping []*BuildMap) *Header {
+func NewHeader(metadata *Metadata, mapping []*BuildMap) (*Header, error) {
+	if metadata.BlockSize == 0 {
+		return nil, fmt.Errorf("block size cannot be zero")
+	}
+
 	if len(mapping) == 0 {
 		mapping = []*BuildMap{{
 			Offset:             0,
@@ -42,7 +46,7 @@ func NewHeader(metadata *Metadata, mapping []*BuildMap) *Header {
 		Metadata:    metadata,
 		Mapping:     mapping,
 		startMap:    startMap,
-	}
+	}, nil
 }
 
 func (t *Header) GetShiftedMapping(offset int64) (mappedOffset int64, mappedLength int64, buildID *uuid.UUID, err error) {

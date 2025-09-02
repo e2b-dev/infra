@@ -107,6 +107,20 @@ func (su *SnapshotUpdate) SetNillableEnvSecure(b *bool) *SnapshotUpdate {
 	return su
 }
 
+// SetAutoPause sets the "auto_pause" field.
+func (su *SnapshotUpdate) SetAutoPause(b bool) *SnapshotUpdate {
+	su.mutation.SetAutoPause(b)
+	return su
+}
+
+// SetNillableAutoPause sets the "auto_pause" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillableAutoPause(b *bool) *SnapshotUpdate {
+	if b != nil {
+		su.SetAutoPause(*b)
+	}
+	return su
+}
+
 // SetOriginNodeID sets the "origin_node_id" field.
 func (su *SnapshotUpdate) SetOriginNodeID(s string) *SnapshotUpdate {
 	su.mutation.SetOriginNodeID(s)
@@ -224,6 +238,9 @@ func (su *SnapshotUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if value, ok := su.mutation.EnvSecure(); ok {
 		_spec.SetField(snapshot.FieldEnvSecure, field.TypeBool, value)
+	}
+	if value, ok := su.mutation.AutoPause(); ok {
+		_spec.SetField(snapshot.FieldAutoPause, field.TypeBool, value)
 	}
 	if value, ok := su.mutation.OriginNodeID(); ok {
 		_spec.SetField(snapshot.FieldOriginNodeID, field.TypeString, value)
@@ -361,6 +378,20 @@ func (suo *SnapshotUpdateOne) SetEnvSecure(b bool) *SnapshotUpdateOne {
 func (suo *SnapshotUpdateOne) SetNillableEnvSecure(b *bool) *SnapshotUpdateOne {
 	if b != nil {
 		suo.SetEnvSecure(*b)
+	}
+	return suo
+}
+
+// SetAutoPause sets the "auto_pause" field.
+func (suo *SnapshotUpdateOne) SetAutoPause(b bool) *SnapshotUpdateOne {
+	suo.mutation.SetAutoPause(b)
+	return suo
+}
+
+// SetNillableAutoPause sets the "auto_pause" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillableAutoPause(b *bool) *SnapshotUpdateOne {
+	if b != nil {
+		suo.SetAutoPause(*b)
 	}
 	return suo
 }
@@ -512,6 +543,9 @@ func (suo *SnapshotUpdateOne) sqlSave(ctx context.Context) (_node *Snapshot, err
 	}
 	if value, ok := suo.mutation.EnvSecure(); ok {
 		_spec.SetField(snapshot.FieldEnvSecure, field.TypeBool, value)
+	}
+	if value, ok := suo.mutation.AutoPause(); ok {
+		_spec.SetField(snapshot.FieldAutoPause, field.TypeBool, value)
 	}
 	if value, ok := suo.mutation.OriginNodeID(); ok {
 		_spec.SetField(snapshot.FieldOriginNodeID, field.TypeString, value)

@@ -67,7 +67,7 @@ variable "sandbox_access_token_hash_seed" {
   type = string
 }
 
-variable "logs_proxy_address" {
+variable "logs_collector_public_ip" {
   type = string
 }
 
@@ -299,4 +299,15 @@ variable "clickhouse_job_constraint_prefix" {
 variable "clickhouse_node_pool" {
   description = "The name of the Nomad pool."
   type        = string
+}
+
+variable "shared_chunk_cache_path" {
+  type    = string
+  default = ""
+}
+
+variable "filestore_cache_max_disk_usage_target" {
+  type        = number
+  description = "The maximum disk usage target for the Filestore cache in percent"
+  default     = 90
 }

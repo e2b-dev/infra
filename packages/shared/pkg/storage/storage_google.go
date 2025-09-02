@@ -13,24 +13,39 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/googleapis/gax-go/v2"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"google.golang.org/api/iterator"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
-	googleReadTimeout       = 10 * time.Second
-	googleOperationTimeout  = 5 * time.Second
-	googleBufferSize        = 2 << 21
-	googleInitialBackoff    = 10 * time.Millisecond
-	googleMaxBackoff        = 10 * time.Second
-	googleBackoffMultiplier = 2
-	googleMaxAttempts       = 10
-
-	gcloudMaxRetries               = 3
+	googleReadTimeout              = 10 * time.Second
+	googleOperationTimeout         = 5 * time.Second
+	googleBufferSize               = 2 << 21
+	googleInitialBackoff           = 10 * time.Millisecond
+	googleMaxBackoff               = 10 * time.Second
+	googleBackoffMultiplier        = 2
+	googleMaxAttempts              = 10
 	gcloudDefaultUploadConcurrency = 16
+)
+
+var (
+	googleReadTimerFactory = must(telemetry.NewTimerFactory(meter,
+		"orchestrator.storage.gcs.read",
+		"Duration of GCS reads",
+		"Total GCS bytes read",
+		"Total GCS reads",
+	))
+	googleWriteTimerFactory = must(telemetry.NewTimerFactory(meter,
+		"orchestrator.storage.gcs.write",
+		"Duration of GCS writes",
+		"Total bytes written to GCS",
+		"Total writes to GCS",
+	))
 )
 
 type GCPBucketStorageProvider struct {
@@ -44,7 +59,7 @@ type GCPBucketStorageObjectProvider struct {
 	storage *GCPBucketStorageProvider
 	path    string
 	handle  *storage.ObjectHandle
-	ctx     context.Context
+	ctx     context.Context // nolint:containedctx // todo: fix the interface so this can be removed
 
 	limiter *limit.Limiter
 }
@@ -145,6 +160,10 @@ func (g *GCPBucketStorageObjectProvider) Size() (int64, error) {
 
 	attrs, err := g.handle.Attrs(ctx)
 	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			return 0, ErrObjectNotExist
+		}
+
 		return 0, fmt.Errorf("failed to get GCS object (%s) attributes: %w", g.path, err)
 	}
 
@@ -152,6 +171,8 @@ func (g *GCPBucketStorageObjectProvider) Size() (int64, error) {
 }
 
 func (g *GCPBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, err error) {
+	timer := googleReadTimerFactory.Begin()
+
 	ctx, cancel := context.WithTimeout(g.ctx, googleReadTimeout)
 	defer cancel()
 
@@ -178,29 +199,35 @@ func (g *GCPBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, 
 		return n, fmt.Errorf("failed to read from GCS object: %w", readErr)
 	}
 
+	timer.End(ctx, int64(n))
 	return n, nil
 }
 
-func (g *GCPBucketStorageObjectProvider) ReadFrom(src io.Reader) (int64, error) {
+func (g *GCPBucketStorageObjectProvider) Write(data []byte) (int, error) {
+	timer := googleWriteTimerFactory.Begin()
+
 	w := g.handle.NewWriter(g.ctx)
 	defer w.Close()
 
-	n, err := io.Copy(w, src)
+	n, err := w.Write(data)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return n, fmt.Errorf("failed to copy buffer to persistence: %w", err)
 	}
 
+	timer.End(g.ctx, int64(n))
 	return n, nil
 }
 
 func (g *GCPBucketStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {
+	timer := googleReadTimerFactory.Begin()
+
 	ctx, cancel := context.WithTimeout(g.ctx, googleReadTimeout)
 	defer cancel()
 
 	reader, err := g.handle.NewReader(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
-			return 0, ErrorObjectNotExist
+			return 0, ErrObjectNotExist
 		}
 
 		return 0, err
@@ -214,13 +241,37 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 		return n, fmt.Errorf("failed to copy GCS object to writer: %w", err)
 	}
 
+	timer.End(g.ctx, n)
 	return n, nil
 }
 
 func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error {
+	timer := googleWriteTimerFactory.Begin()
+
 	bucketName := g.storage.bucket.BucketName()
 	objectName := g.path
 	filePath := path
+
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to get file size: %w", err)
+	}
+
+	// If the file is too small, the overhead of writing in parallel isn't worth the effort.
+	// Write it in one shot instead.
+	if fileInfo.Size() < gcpMultipartUploadChunkSize {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("failed to read file: %w", err)
+		}
+
+		if _, err = g.Write(data); err != nil {
+			return fmt.Errorf("failed to write file (%d bytes): %w", len(data), err)
+		}
+
+		timer.End(g.ctx, int64(len(data)), attribute.String("method", "one-shot"))
+		return nil
+	}
 
 	maxConcurrency := gcloudDefaultUploadConcurrency
 	if g.limiter != nil {
@@ -233,7 +284,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 			defer uploadLimiter.Release(1)
 		}
 
-		maxConcurrency = g.limiter.GCloudMaxTasks()
+		maxConcurrency = g.limiter.GCloudMaxTasks(g.ctx)
 	}
 
 	uploader, err := NewMultipartUploaderWithRetryConfig(
@@ -246,11 +297,6 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 		return fmt.Errorf("failed to create multipart uploader: %w", err)
 	}
 
-	fileSize, err := os.Stat(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to get file size: %w", err)
-	}
-
 	start := time.Now()
 	if err := uploader.UploadFileInParallel(g.ctx, filePath, maxConcurrency); err != nil {
 		return fmt.Errorf("failed to upload file in parallel: %w", err)
@@ -261,10 +307,11 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 		zap.String("object", objectName),
 		zap.String("path", filePath),
 		zap.Int("max_concurrency", maxConcurrency),
-		zap.Int64("file_size", fileSize.Size()),
+		zap.Int64("file_size", fileInfo.Size()),
 		zap.Int64("duration", time.Since(start).Milliseconds()),
 	)
 
+	timer.End(g.ctx, fileInfo.Size(), attribute.String("method", "multipart"))
 	return nil
 }
 

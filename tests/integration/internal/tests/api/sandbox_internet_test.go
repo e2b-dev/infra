@@ -39,7 +39,7 @@ func TestInternetAccess(t *testing.T) {
 				AllowInternetAccess: &tc.internetAccess,
 			}, setup.WithAPIKey())
 			require.NoError(t, err)
-			require.Equal(t, resp.StatusCode(), http.StatusCreated, "Expected status code 201 Created, got %d", resp.StatusCode())
+			require.Equal(t, http.StatusCreated, resp.StatusCode(), "Expected status code 201 Created, got %d", resp.StatusCode())
 			require.NotNil(t, resp.JSON201, "Expected non-nil response body")
 
 			envdClient := setup.GetEnvdClient(t, ctx)
@@ -78,27 +78,25 @@ func TestInternetAccessResumedSbx(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			resp, err := client.PostSandboxesWithResponse(ctx, api.NewSandbox{
 				TemplateID:          setup.SandboxTemplateID,
 				Timeout:             &sbxTimeout,
 				AllowInternetAccess: &tc.internetAccess,
 			}, setup.WithAPIKey())
 			require.NoError(t, err)
-			require.Equal(t, resp.StatusCode(), http.StatusCreated, "Expected status code 201 Created, got %d", resp.StatusCode())
+			require.Equal(t, http.StatusCreated, resp.StatusCode(), "Expected status code 201 Created, got %d", resp.StatusCode())
 			require.NotNil(t, resp.JSON201, "Expected non-nil response body")
 
 			// Pause and resume the sandbox
 			respPause, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, resp.JSON201.SandboxID, setup.WithAPIKey())
 			require.NoError(t, err, "Expected to pause sandbox without error")
-			require.Equal(t, respPause.StatusCode(), http.StatusNoContent, "Expected status code 204 No Content, got %d", respPause.StatusCode())
+			require.Equal(t, http.StatusNoContent, respPause.StatusCode(), "Expected status code 204 No Content, got %d", respPause.StatusCode())
 
 			respResume, err := client.PostSandboxesSandboxIDResumeWithResponse(ctx, resp.JSON201.SandboxID, api.PostSandboxesSandboxIDResumeJSONRequestBody{
 				Timeout: &sbxTimeout,
 			}, setup.WithAPIKey())
 			require.NoError(t, err, "Expected to resume sandbox without error")
-			require.Equal(t, respResume.StatusCode(), http.StatusCreated, "Expected status code 200 OK, got %d", respResume.StatusCode())
+			require.Equal(t, http.StatusCreated, respResume.StatusCode(), "Expected status code 200 OK, got %d", respResume.StatusCode())
 
 			envdClient := setup.GetEnvdClient(t, ctx)
 			err = utils.ExecCommand(t, ctx, resp.JSON201, envdClient, "curl", "--connect-timeout", "3", "--max-time", "5", "-Is", "https://www.google.com")

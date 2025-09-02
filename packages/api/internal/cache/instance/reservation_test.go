@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
-	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
@@ -42,8 +41,8 @@ func TestReservation_Exceeded(t *testing.T) {
 	defer cancel()
 
 	_, err := cache.Reserve(sandboxID, teamID, 0)
-	assert.Error(t, err)
-	assert.IsType(t, &ErrSandboxLimitExceeded{}, err)
+	require.Error(t, err)
+	assert.IsType(t, &SandboxLimitExceededError{}, err)
 }
 
 func TestReservation_SameSandbox(t *testing.T) {
@@ -51,11 +50,11 @@ func TestReservation_SameSandbox(t *testing.T) {
 	defer cancel()
 
 	_, err := cache.Reserve(sandboxID, teamID, 10)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	_, err = cache.Reserve(sandboxID, teamID, 10)
 	require.Error(t, err)
-	assert.IsType(t, &ErrAlreadyBeingStarted{}, err)
+	assert.IsType(t, &AlreadyBeingStartedError{}, err)
 }
 
 func TestReservation_Release(t *testing.T) {
@@ -63,7 +62,7 @@ func TestReservation_Release(t *testing.T) {
 	defer cancel()
 
 	release, err := cache.Reserve(sandboxID, teamID, 1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	release()
 
 	_, err = cache.Reserve(sandboxID, teamID, 1)
@@ -75,19 +74,18 @@ func TestReservation_ResumeAlreadyRunningSandbox(t *testing.T) {
 	defer cancel()
 
 	info := &InstanceInfo{
+		ClientID:   consts.ClientID,
+		SandboxID:  sandboxID,
+		TemplateID: "test",
+
 		TeamID:            teamID,
 		StartTime:         time.Now(),
 		endTime:           time.Now().Add(time.Hour),
 		MaxInstanceLength: time.Hour,
-		Instance: &api.Sandbox{
-			ClientID:   consts.ClientID,
-			SandboxID:  sandboxID,
-			TemplateID: "test",
-		},
 	}
 	err := cache.Add(context.Background(), info, false)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	_, err = cache.Reserve(sandboxID, teamID, 1)
-	assert.Error(t, err)
+	require.Error(t, err)
 }

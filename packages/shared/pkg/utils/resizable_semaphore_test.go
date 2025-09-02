@@ -14,6 +14,8 @@ import (
 
 // helper: make sure f panics.
 func mustPanic(t *testing.T) {
+	t.Helper()
+
 	if r := recover(); r == nil {
 		t.Fatalf("expected panic but none occurred")
 	}
@@ -78,17 +80,17 @@ func TestAcquireWithLimitDecrease(t *testing.T) {
 	require.NoError(t, err)
 
 	// Try to acquire 2 more, should block
-	done := make(chan struct{})
+	done := make(chan error)
 	go func() {
 		defer close(done)
-		err = s.Acquire(t.Context(), 2)
-		require.NoError(t, err)
+		done <- s.Acquire(t.Context(), 2)
 	}()
 
 	time.Sleep(50 * time.Millisecond) // ensure goroutine is blocked
 
 	// Decrease limit to below current usage
-	s.SetLimit(2)
+	err = s.SetLimit(2)
+	require.NoError(t, err)
 
 	select {
 	case <-done:
@@ -99,7 +101,8 @@ func TestAcquireWithLimitDecrease(t *testing.T) {
 	s.Release(2)
 	// Now it should succeed since we released enough
 	select {
-	case <-done:
+	case err := <-done:
+		require.NoError(t, err)
 	case <-time.After(50 * time.Millisecond):
 		t.Fatal("Acquire did not unblock after Release")
 	}

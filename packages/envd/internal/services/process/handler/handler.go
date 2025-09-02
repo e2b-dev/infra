@@ -46,7 +46,7 @@ type Handler struct {
 
 	cancel context.CancelFunc
 
-	outCtx    context.Context
+	outCtx    context.Context // nolint:containedctx // todo: refactor so this can be removed
 	outCancel context.CancelFunc
 
 	stdin io.WriteCloser

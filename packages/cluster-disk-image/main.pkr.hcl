@@ -82,6 +82,13 @@ build {
 
   provisioner "shell" {
     inline = [
+      "sudo apt-get -y update",
+      "sudo apt-get install -y nfs-common",
+    ]
+  }
+
+  provisioner "shell" {
+    inline = [
       "sudo snap install go --classic"
     ]
   }

@@ -55,8 +55,6 @@ func TestBindLocalhost(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			sbx := utils.SetupSandboxWithCleanup(t, client, utils.WithTimeout(300))
 			envdClient := setup.GetEnvdClient(t, ctx)
 
@@ -68,7 +66,7 @@ func TestBindLocalhost(t *testing.T) {
 			go func() {
 				err := utils.ExecCommand(t, serverCtx, sbx, envdClient, "python", "-m", "http.server", strconv.Itoa(port), "--bind", tc.bindAddress)
 				if !errors.Is(err, context.Canceled) {
-					require.NoError(t, err)
+					assert.NoError(t, err)
 				}
 			}()
 
@@ -82,7 +80,8 @@ func TestBindLocalhost(t *testing.T) {
 				Timeout: 10 * time.Second,
 			}
 
-			resp, err := utils.DoRequest(t, httpClient, sbx, baseURL, port, nil)
+			req := utils.NewRequest(sbx, baseURL, port, nil)
+			resp, err := httpClient.Do(req)
 			require.NoErrorf(t, err, "Failed to connect to server bound to %s", tc.bindAddress)
 			defer resp.Body.Close()
 

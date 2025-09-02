@@ -50,17 +50,6 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logger.Debug().Msg("Syncing host")
-
-	go func() {
-		err := host.SyncClock()
-		if err != nil {
-			logger.Error().Msgf("Failed to sync clock: %v", err)
-		} else {
-			logger.Trace().Msg("Clock synced")
-		}
-	}()
-
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()

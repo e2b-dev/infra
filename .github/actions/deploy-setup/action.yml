@@ -2,22 +2,32 @@ name: "Deploy Staging Setup"
 description: "Sets the environment for deploying to staging"
 inputs:
   environment:
-    description: 'Target environment for deployment, e.g. staging'
+    description: "Target environment for deployment, e.g. staging"
     required: true
-  env_vars:
-    description: 'Environment variables to load'
+  infisical_client_id:
+    description: "Infisical client ID for accessing secrets"
+    required: true
+  infisical_client_secret:
+    description: "Infisical client secret for accessing secrets"
     required: true
 
 runs:
   using: "composite"
   steps:
+    - uses: Infisical/secrets-action@v1.0.9
+      with:
+        client-id: ${{ inputs.infisical_client_id }}
+        client-secret: ${{ inputs.infisical_client_secret }}
+        env-slug: ${{ inputs.environment }}
+        project-slug: "infra-deployment"
+        export-type: "file"
+        file-output-path: "/.env.infisical"
+
     - name: Load Environment Variables
       id: load-env
-      env:
-        ENV_CONFIG: ${{ inputs.env_vars }}
       run: |
         echo ${{ inputs.environment }} > .last_used_env
-        echo "$ENV_CONFIG" | base64 -d > ".env.${{ inputs.environment }}"
+        cat .env.infisical | sed "s/='\(.*\)'$/=\1/g" > .env.${{ inputs.environment }}
         export $(cat ".env.${{ inputs.environment }}" | xargs)
 
         echo "GCP_REGION=${GCP_REGION}" >> $GITHUB_ENV

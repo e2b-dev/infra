@@ -1,6 +1,13 @@
 package telemetry
 
-import "go.opentelemetry.io/otel/metric"
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+)
 
 type (
 	CounterType                 string
@@ -9,10 +16,14 @@ type (
 	GaugeIntType                string
 	UpDownCounterType           string
 	ObservableUpDownCounterType string
+	HistogramType               string
 )
 
 const (
-	SandboxCreateMeterName CounterType = "api.env.instance.started"
+	ApiOrchestratorCreatedSandboxes CounterType = "api.orchestrator.created_sandboxes"
+	SandboxCreateMeterName          CounterType = "api.env.instance.started"
+
+	TeamSandboxCreated CounterType = "e2b.team.sandbox.created"
 )
 
 const (
@@ -46,27 +57,49 @@ const (
 )
 
 const (
+	// Build timing histograms
+	BuildDurationHistogramName      HistogramType = "template.build.duration"
+	BuildPhaseDurationHistogramName HistogramType = "template.build.phase.duration"
+	BuildStepDurationHistogramName  HistogramType = "template.build.step.duration"
+)
+
+const (
+	// Build result counters
+	BuildResultCounterName      CounterType = "template.build.result"
+	BuildCacheResultCounterName CounterType = "template.build.cache.result"
+)
+
+const (
 	ApiOrchestratorCountMeterName GaugeIntType = "api.orchestrator.status"
 
+	// Sandbox metrics
 	SandboxRamUsedGaugeName   GaugeIntType = "e2b.sandbox.ram.used"
 	SandboxRamTotalGaugeName  GaugeIntType = "e2b.sandbox.ram.total"
 	SandboxCpuTotalGaugeName  GaugeIntType = "e2b.sandbox.cpu.total"
 	SandboxDiskUsedGaugeName  GaugeIntType = "e2b.sandbox.disk.used"
 	SandboxDiskTotalGaugeName GaugeIntType = "e2b.sandbox.disk.total"
-)
 
-const (
-	ApiOrchestratorCreatedSandboxes CounterType = "api.orchestrator.created_sandboxes"
+	// Team metrics
+	TeamSandboxRunningGaugeName GaugeIntType = "e2b.team.sandbox.running"
+
+	// Build resource metrics
+	BuildRootfsSizeHistogramName HistogramType = "template.build.rootfs.size"
 )
 
 var counterDesc = map[CounterType]string{
 	SandboxCreateMeterName:          "Number of currently waiting requests to create a new sandbox",
 	ApiOrchestratorCreatedSandboxes: "Number of successfully created sandboxes",
+	BuildResultCounterName:          "Number of template build results",
+	BuildCacheResultCounterName:     "Number of build cache results",
+	TeamSandboxCreated:              "Counter of started sandboxes for the team in the interval",
 }
 
 var counterUnits = map[CounterType]string{
 	SandboxCreateMeterName:          "{sandbox}",
 	ApiOrchestratorCreatedSandboxes: "{sandbox}",
+	BuildResultCounterName:          "{build}",
+	BuildCacheResultCounterName:     "{layer}",
+	TeamSandboxCreated:              "{sandbox}",
 }
 
 var observableCounterDesc = map[ObservableCounterType]string{
@@ -128,6 +161,9 @@ var gaugeIntDesc = map[GaugeIntType]string{
 	SandboxRamUsedGaugeName:       "Amount of RAM used by the sandbox.",
 	SandboxRamTotalGaugeName:      "Amount of RAM available to the sandbox.",
 	SandboxCpuTotalGaugeName:      "Amount of CPU available to the sandbox.",
+	SandboxDiskUsedGaugeName:      "Amount of disk space used by the sandbox.",
+	SandboxDiskTotalGaugeName:     "Amount of disk space available to the sandbox.",
+	TeamSandboxRunningGaugeName:   "The number of sandboxes running for the team in the interval.",
 }
 
 var gaugeIntUnits = map[GaugeIntType]string{
@@ -135,6 +171,9 @@ var gaugeIntUnits = map[GaugeIntType]string{
 	SandboxRamUsedGaugeName:       "{By}",
 	SandboxRamTotalGaugeName:      "{By}",
 	SandboxCpuTotalGaugeName:      "{count}",
+	SandboxDiskUsedGaugeName:      "{By}",
+	SandboxDiskTotalGaugeName:     "{By}",
+	TeamSandboxRunningGaugeName:   "{sandbox}",
 }
 
 func GetCounter(meter metric.Meter, name CounterType) (metric.Int64Counter, error) {
@@ -191,4 +230,85 @@ func GetGaugeInt(meter metric.Meter, name GaugeIntType) (metric.Int64ObservableG
 		metric.WithDescription(desc),
 		metric.WithUnit(unit),
 	)
+}
+
+var histogramDesc = map[HistogramType]string{
+	BuildDurationHistogramName:      "Time taken to build a template",
+	BuildPhaseDurationHistogramName: "Time taken to build each phase of a template",
+	BuildStepDurationHistogramName:  "Time taken to build each step of a template",
+	BuildRootfsSizeHistogramName:    "Size of the built template rootfs in bytes",
+}
+
+var histogramUnits = map[HistogramType]string{
+	BuildDurationHistogramName:      "ms",
+	BuildPhaseDurationHistogramName: "ms",
+	BuildStepDurationHistogramName:  "ms",
+	BuildRootfsSizeHistogramName:    "{By}",
+}
+
+func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram, error) {
+	desc := histogramDesc[name]
+	unit := histogramUnits[name]
+	return meter.Int64Histogram(string(name),
+		metric.WithDescription(desc),
+		metric.WithUnit(unit),
+	)
+}
+
+type TimerFactory struct {
+	duration metric.Int64Histogram
+	bytes    metric.Int64Counter
+	count    metric.Int64Counter
+}
+
+func (f *TimerFactory) Begin() *Stopwatch {
+	return &Stopwatch{
+		histogram: f.duration,
+		sum:       f.bytes,
+		count:     f.count,
+		start:     time.Now(),
+	}
+}
+
+func NewTimerFactory(
+	blocksMeter metric.Meter,
+	metricName, durationDescription, bytesDescription, counterDescription string,
+) (TimerFactory, error) {
+	duration, err := blocksMeter.Int64Histogram(metricName,
+		metric.WithDescription(durationDescription),
+		metric.WithUnit("ms"),
+	)
+	if err != nil {
+		return TimerFactory{}, fmt.Errorf("failed to get slices metric: %w", err)
+	}
+
+	bytes, err := blocksMeter.Int64Counter(metricName,
+		metric.WithDescription(bytesDescription),
+		metric.WithUnit("By"),
+	)
+	if err != nil {
+		return TimerFactory{}, fmt.Errorf("failed to create total bytes requested metric: %w", err)
+	}
+
+	count, err := blocksMeter.Int64Counter(metricName,
+		metric.WithDescription(counterDescription),
+	)
+	if err != nil {
+		return TimerFactory{}, fmt.Errorf("failed to create total page faults metric: %w", err)
+	}
+
+	return TimerFactory{duration, bytes, count}, nil
+}
+
+type Stopwatch struct {
+	histogram  metric.Int64Histogram
+	sum, count metric.Int64Counter
+	start      time.Time
+}
+
+func (t Stopwatch) End(ctx context.Context, total int64, kv ...attribute.KeyValue) {
+	amount := time.Since(t.start).Milliseconds()
+	t.histogram.Record(ctx, amount, metric.WithAttributes(kv...))
+	t.sum.Add(ctx, total, metric.WithAttributes(kv...))
+	t.count.Add(ctx, 1, metric.WithAttributes(kv...))
 }

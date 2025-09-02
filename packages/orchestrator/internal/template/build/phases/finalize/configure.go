@@ -12,9 +12,9 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 )
 
 const configurationTimeout = 5 * time.Minute
@@ -31,10 +31,9 @@ type ConfigurationParams struct {
 
 func runConfiguration(
 	ctx context.Context,
+	bc buildcontext.BuildContext,
 	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
-	postProcessor *writer.PostProcessor,
-	metadata storage.TemplateFiles,
 	sandboxID string,
 ) error {
 	configCtx, configCancel := context.WithTimeout(ctx, configurationTimeout)
@@ -43,9 +42,9 @@ func runConfiguration(
 	// Run configuration script
 	var scriptDef bytes.Buffer
 	err := ConfigureScriptTemplate.Execute(&scriptDef, ConfigurationParams{
-		EnvID:      metadata.TemplateID,
-		TemplateID: metadata.TemplateID,
-		BuildID:    metadata.BuildID,
+		EnvID:      bc.Config.TemplateID,
+		TemplateID: bc.Config.TemplateID,
+		BuildID:    bc.Template.BuildID,
 	})
 	if err != nil {
 		return fmt.Errorf("error executing provision script: %w", err)
@@ -55,12 +54,12 @@ func runConfiguration(
 		configCtx,
 		tracer,
 		proxy,
-		postProcessor,
+		bc.UserLogger,
 		zapcore.DebugLevel,
 		"config",
 		sandboxID,
 		scriptDef.String(),
-		sandboxtools.CommandMetadata{
+		metadata.Context{
 			User: "root",
 		},
 	)

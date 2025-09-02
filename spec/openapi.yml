@@ -51,6 +51,12 @@ components:
       required: true
       schema:
         type: string
+    teamID:
+      name: teamID
+      in: path
+      required: true
+      schema:
+        type: string
     nodeID:
       name: nodeID
       in: path
@@ -79,6 +85,12 @@ components:
             $ref: "#/components/schemas/Error"
     "401":
       description: Authentication error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    "403":
+      description: Forbidden
       content:
         application/json:
           schema:
@@ -449,8 +461,28 @@ components:
           description: Time to live for the sandbox in seconds.
         autoPause:
           type: boolean
-          default: false
+          deprecated: true
           description: Automatically pauses the sandbox after the timeout
+
+    TeamMetric:
+      description: Team metric with timestamp
+      required:
+        - timestamp
+        - concurrentSandboxes
+        - sandboxStartRate
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp of the metric entry
+        concurrentSandboxes:
+          type: integer
+          format: int32
+          description: The number of concurrent sandboxes for the team
+        sandboxStartRate:
+          type: number
+          format: float
+          description: Number of sandboxes started per second
 
     Template:
       required:
@@ -467,6 +499,7 @@ components:
         - spawnCount
         - buildCount
         - envdVersion
+        - aliases
       properties:
         templateID:
           type: string
@@ -502,6 +535,7 @@ components:
           nullable: true
         lastSpawnedAt:
           type: string
+          nullable: true
           format: date-time
           description: Time when the template was last used
         spawnCount:
@@ -576,6 +610,72 @@ components:
         memoryMB:
           $ref: "#/components/schemas/MemoryMB"
 
+    FromImageRegistry:
+      oneOf:
+        - $ref: '#/components/schemas/AWSRegistry'
+        - $ref: '#/components/schemas/GCPRegistry'
+        - $ref: '#/components/schemas/GeneralRegistry'
+      discriminator:
+        propertyName: type
+        mapping:
+          aws: '#/components/schemas/AWSRegistry'
+          gcp: '#/components/schemas/GCPRegistry'
+          registry: '#/components/schemas/GeneralRegistry'
+
+    AWSRegistry:
+      type: object
+      required:
+        - type
+        - awsAccessKeyId
+        - awsSecretAccessKey
+        - awsRegion
+      properties:
+        type:
+          type: string
+          enum: [aws]
+          description: Type of registry authentication
+        awsAccessKeyId:
+          type: string
+          description: AWS Access Key ID for ECR authentication
+        awsSecretAccessKey:
+          type: string
+          description: AWS Secret Access Key for ECR authentication
+        awsRegion:
+          type: string
+          description: AWS Region where the ECR registry is located
+
+    GCPRegistry:
+      type: object
+      required:
+        - type
+        - serviceAccountJson
+      properties:
+        type:
+          type: string
+          enum: [gcp]
+          description: Type of registry authentication
+        serviceAccountJson:
+          type: string
+          description: Service Account JSON for GCP authentication
+
+    GeneralRegistry:
+      type: object
+      required:
+        - type
+        - username
+        - password
+      properties:
+        type:
+          type: string
+          enum: [registry]
+          description: Type of registry authentication
+        username:
+          type: string
+          description: Username to use for the registry
+        password:
+          type: string
+          description: Password to use for the registry
+
     TemplateBuildStartV2:
       type: object
       properties:
@@ -585,6 +685,8 @@ components:
         fromTemplate:
           type: string
           description: Template to use as a base for the template build
+        fromImageRegistry:
+          $ref: "#/components/schemas/FromImageRegistry"
         force:
           default: false
           type: boolean
@@ -638,6 +740,17 @@ components:
         level:
           $ref: "#/components/schemas/LogLevel"
 
+    BuildStatusReason:
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: Message with the status reason, currently reporting only for error status
+        step:
+          type: string
+          description: Step that failed
+
     TemplateBuild:
       required:
         - templateID
@@ -673,8 +786,7 @@ components:
             - ready
             - error
         reason:
-          type: string
-          description: Message with the status reason, currently reporting only for error status
+          $ref: "#/components/schemas/BuildStatusReason"
 
     NodeStatus:
       type: string
@@ -697,13 +809,82 @@ components:
         status:
           $ref: "#/components/schemas/NodeStatus"
 
+    DiskMetrics:
+      required:
+        - mountPoint
+        - device
+        - filesystemType
+        - usedBytes
+        - totalBytes
+      properties:
+        mountPoint:
+          type: string
+          description: Mount point of the disk
+        device:
+          type: string
+          description: Device name
+        filesystemType:
+          type: string
+          description: Filesystem type (e.g., ext4, xfs)
+        usedBytes:
+          type: integer
+          format: uint64
+          description: Used space in bytes
+        totalBytes:
+          type: integer
+          format: uint64
+          description: Total space in bytes
+
+    NodeMetrics:
+      description: Node metrics
+      required:
+        - allocatedCPU
+        - allocatedMemoryBytes
+        - cpuPercent
+        - memoryUsedBytes
+        - cpuCount
+        - memoryTotalBytes
+        - disks
+      properties:
+        allocatedCPU:
+          type: integer
+          format: uint32
+          description: Number of allocated CPU cores
+        cpuPercent:
+          type: integer
+          format: uint32
+          description: Node CPU usage percentage
+        cpuCount:
+          type: integer
+          format: uint32
+          description: Total number of CPU cores on the node
+        allocatedMemoryBytes:
+          type: integer
+          format: uint64
+          description: Amount of allocated memory in bytes
+        memoryUsedBytes:
+          type: integer
+          format: uint64
+          description: Node memory used in bytes
+        memoryTotalBytes:
+          type: integer
+          format: uint64
+          description: Total node memory in bytes
+        disks:
+          type: array
+          description: Detailed metrics for each disk/mount point
+          items:
+            $ref: "#/components/schemas/DiskMetrics"
+
     Node:
       required:
         - nodeID
+        - id
+        - serviceInstanceID
+        - clusterID
         - status
         - sandboxCount
-        - allocatedCPU
-        - allocatedMemoryMiB
+        - metrics
         - createSuccesses
         - createFails
         - sandboxStartingCount
@@ -718,25 +899,25 @@ components:
           description: Commit of the orchestrator
         nodeID:
           type: string
+          deprecated: true
+          description: Identifier of the nomad node
+        id:
+          type: string
           description: Identifier of the node
+        serviceInstanceID:
+            type: string
+            description: Service instance identifier of the node
         clusterID:
           type: string
-          nullable: true
           description: Identifier of the cluster
         status:
           $ref: "#/components/schemas/NodeStatus"
         sandboxCount:
           type: integer
-          format: int32
+          format: uint32
           description: Number of sandboxes running on the node
-        allocatedCPU:
-          type: integer
-          format: int32
-          description: Number of allocated CPU cores
-        allocatedMemoryMiB:
-          type: integer
-          format: int32
-          description: Amount of allocated memory in MiB
+        metrics:
+          $ref: "#/components/schemas/NodeMetrics"
         createSuccesses:
           type: integer
           format: uint64
@@ -753,6 +934,9 @@ components:
     NodeDetail:
       required:
         - nodeID
+        - id
+        - serviceInstanceID
+        - clusterID
         - status
         - sandboxes
         - cachedBuilds
@@ -760,10 +944,10 @@ components:
         - createFails
         - version
         - commit
+        - metrics
       properties:
         clusterID:
           type: string
-          nullable: true
           description: Identifier of the cluster
         version:
           type: string
@@ -771,9 +955,16 @@ components:
         commit:
           type: string
           description: Commit of the orchestrator
-        nodeID:
+        id:
           type: string
           description: Identifier of the node
+        serviceInstanceID:
+            type: string
+            description: Service instance identifier of the node
+        nodeID:
+          type: string
+          deprecated: true
+          description: Identifier of the nomad node
         status:
           $ref: "#/components/schemas/NodeStatus"
         sandboxes:
@@ -781,6 +972,8 @@ components:
           description: List of sandboxes running on the node
           items:
             $ref: "#/components/schemas/ListedSandbox"
+        metrics:
+          $ref: "#/components/schemas/NodeMetrics"
         cachedBuilds:
           type: array
           description: List of cached builds id on the node
@@ -980,6 +1173,48 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /teams/{teamID}/metrics:
+    get:
+      description: Get metrics for the team
+      tags: [auth]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+        - in: query
+          name: start
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+          description: Unix timestamp for the start of the interval, in seconds, for which the metrics
+        - in: query
+          name: end
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            description: Unix timestamp for the end of the interval, in seconds, for which the metrics
+      responses:
+        "200":
+          description: Successfully returned the team metrics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeamMetric"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "500":
+          $ref: "#/components/responses/500"
+
   /sandboxes:
     get:
       description: List all running sandboxes
@@ -1077,8 +1312,7 @@ paths:
             type: integer
             format: int32
             minimum: 1
-            default: 1000
-            maximum: 1000
+            default: 100
       responses:
         "200":
           description: Successfully returned all running sandboxes
@@ -1228,14 +1462,14 @@ paths:
             type: integer
             format: int64
             minimum: 0
-          description: Starting timestamp of the metrics that should be returned in milliseconds
+          description: Unix timestamp for the start of the interval, in seconds, for which the metrics
         - in: query
           name: end
           schema:
             type: integer
             format: int64
             minimum: 0
-            description: Ending timestamp of the metrics that should be returned in milliseconds
+            description: Unix timestamp for the end of the interval, in seconds, for which the metrics
 
       responses:
         "200":
@@ -1519,6 +1753,7 @@ paths:
       description: Delete a template
       tags: [templates]
       security:
+        - ApiKeyAuth: []
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
       parameters:
@@ -1662,6 +1897,12 @@ paths:
         - AdminTokenAuth: []
       parameters:
         - $ref: "#/components/parameters/nodeID"
+        - in: query
+          name: clusterID
+          description: Identifier of the cluster
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: Successfully returned the node

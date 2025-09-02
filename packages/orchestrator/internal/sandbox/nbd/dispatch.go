@@ -52,7 +52,7 @@ type Response struct {
 }
 
 type Dispatch struct {
-	ctx              context.Context
+	ctx              context.Context // nolint:containedctx // todo: refactor so this can be removed
 	fp               io.ReadWriteCloser
 	responseHeader   []byte
 	writeLock        sync.Mutex

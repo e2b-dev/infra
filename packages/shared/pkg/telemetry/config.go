@@ -12,12 +12,13 @@ import (
 
 var OtelCollectorGRPCEndpoint = os.Getenv("OTEL_COLLECTOR_GRPC_ENDPOINT")
 
-func getResource(ctx context.Context, serviceName, serviceVersion, instanceID string) (*resource.Resource, error) {
+func GetResource(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID string) (*resource.Resource, error) {
 	attributes := []attribute.KeyValue{
 		semconv.ServiceName(serviceName),
-		semconv.ServiceVersion(serviceVersion),
-		semconv.ServiceInstanceID(instanceID),
+		semconv.ServiceVersion(fmt.Sprintf("%s-%s", serviceVersion, serviceCommit)),
+		semconv.ServiceInstanceID(serviceInstanceID),
 		semconv.TelemetrySDKName("otel"),
+		semconv.HostID(nodeID),
 		semconv.TelemetrySDKLanguageGo,
 	}
 

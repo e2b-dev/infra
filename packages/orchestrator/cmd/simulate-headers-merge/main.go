@@ -45,17 +45,17 @@ func main() {
 
 	ctx := context.Background()
 
-	storage, err := storage.GetTemplateStorageProvider(ctx, nil)
+	storageProvider, err := storage.GetTemplateStorageProvider(ctx, nil)
 	if err != nil {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}
 
-	baseObj, err := storage.OpenObject(ctx, baseStoragePath)
+	baseObj, err := storageProvider.OpenObject(ctx, baseStoragePath)
 	if err != nil {
 		log.Fatalf("failed to open object: %s", err)
 	}
 
-	diffObj, err := storage.OpenObject(ctx, diffStoragePath)
+	diffObj, err := storageProvider.OpenObject(ctx, diffStoragePath)
 	if err != nil {
 		log.Fatalf("failed to open object: %s", err)
 	}
@@ -71,7 +71,7 @@ func main() {
 	}
 
 	fmt.Printf("\nBASE METADATA\n")
-	fmt.Printf("Storage path       %s/%s\n", storage.GetDetails(), baseStoragePath)
+	fmt.Printf("Storage path       %s/%s\n", storageProvider.GetDetails(), baseStoragePath)
 	fmt.Printf("========\n")
 
 	for _, mapping := range baseHeader.Mapping {
@@ -102,7 +102,7 @@ func main() {
 	}
 
 	fmt.Printf("\nDIFF METADATA\n")
-	fmt.Printf("Storage path       %s/%s\n", storage.GetDetails(), diffStoragePath)
+	fmt.Printf("Storage path       %s/%s\n", storageProvider.GetDetails(), diffStoragePath)
 	fmt.Printf("========\n")
 
 	onlyDiffMappings := make([]*header.BuildMap, 0)

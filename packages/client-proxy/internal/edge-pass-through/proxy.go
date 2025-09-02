@@ -2,6 +2,7 @@ package edgepassthrough
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	"google.golang.org/grpc"
@@ -25,7 +26,6 @@ type NodePassThroughServer struct {
 	info   *e2binfo.ServiceInfo
 	server *grpc.Server
 
-	ctx           context.Context
 	authorization authorization.AuthorizationService
 }
 
@@ -37,7 +37,6 @@ const (
 var clientStreamDescForProxying = &grpc.StreamDesc{ServerStreams: true, ClientStreams: true}
 
 func NewNodePassThroughServer(
-	ctx context.Context,
 	nodes *e2borchestrators.OrchestratorsPool,
 	info *e2binfo.ServiceInfo,
 	authorization authorization.AuthorizationService,
@@ -48,7 +47,6 @@ func NewNodePassThroughServer(
 		nodes:         nodes,
 		catalog:       catalog,
 		info:          info,
-		ctx:           ctx,
 	}
 
 	return grpc.NewServer(
@@ -118,7 +116,7 @@ func (s *NodePassThroughServer) handler(srv interface{}, serverStream grpc.Serve
 		return err
 	}
 
-	clientCtx, clientCancel := context.WithCancel(s.ctx)
+	clientCtx, clientCancel := context.WithCancel(serverStream.Context())
 	defer clientCancel()
 
 	clientStream, err := grpc.NewClientStream(clientCtx, clientStreamDescForProxying, clientConnection, fullMethodName)
@@ -126,7 +124,7 @@ func (s *NodePassThroughServer) handler(srv interface{}, serverStream grpc.Serve
 		return err
 	}
 
-	callback, err := s.eventsHandler(md)
+	callback, err := s.eventsHandler(clientCtx, md)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to handle events: %v", err)
 	}
@@ -145,7 +143,7 @@ func (s *NodePassThroughServer) handler(srv interface{}, serverStream grpc.Serve
 	for i := 0; i < 2; i++ {
 		select {
 		case s2cErr := <-s2cErrChan:
-			if s2cErr == io.EOF {
+			if errors.Is(s2cErr, io.EOF) {
 				// this is the happy case where the sender has encountered io.EOF, and won't be sending anymore./
 				// the clientStream>serverStream may continue pumping though.
 				clientStream.CloseSend()
@@ -162,7 +160,7 @@ func (s *NodePassThroughServer) handler(srv interface{}, serverStream grpc.Serve
 			// will be nil.
 			serverStream.SetTrailer(clientStream.Trailer())
 			// c2sErr will contain RPC error from client code. If not io.EOF return the RPC error as server stream error.
-			if c2sErr != io.EOF {
+			if !errors.Is(c2sErr, io.EOF) {
 				return c2sErr
 			}
 			return nil

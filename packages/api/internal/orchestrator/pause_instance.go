@@ -7,7 +7,6 @@ import (
 
 	"github.com/gogo/status"
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
@@ -17,15 +16,14 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-type ErrPauseQueueExhausted struct{}
+type PauseQueueExhaustedError struct{}
 
-func (ErrPauseQueueExhausted) Error() string {
+func (PauseQueueExhaustedError) Error() string {
 	return "The pause queue is exhausted"
 }
 
 func (o *Orchestrator) PauseInstance(
 	ctx context.Context,
-	tracer trace.Tracer,
 	sbx *instance.InstanceInfo,
 	teamID uuid.UUID,
 ) error {
@@ -33,8 +31,8 @@ func (o *Orchestrator) PauseInstance(
 	defer span.End()
 
 	snapshotConfig := &db.SnapshotInfo{
-		BaseTemplateID:      sbx.Instance.TemplateID,
-		SandboxID:           sbx.Instance.SandboxID,
+		BaseTemplateID:      sbx.BaseTemplateID,
+		SandboxID:           sbx.SandboxID,
 		SandboxStartedAt:    sbx.StartTime,
 		VCPU:                sbx.VCpu,
 		RAMMB:               sbx.RamMB,
@@ -42,16 +40,17 @@ func (o *Orchestrator) PauseInstance(
 		Metadata:            sbx.Metadata,
 		KernelVersion:       sbx.KernelVersion,
 		FirecrackerVersion:  sbx.FirecrackerVersion,
-		EnvdVersion:         sbx.Instance.EnvdVersion,
+		EnvdVersion:         sbx.EnvdVersion,
 		EnvdSecured:         sbx.EnvdAccessToken != nil,
 		AllowInternetAccess: sbx.AllowInternetAccess,
+		AutoPause:           sbx.AutoPause,
 	}
 
 	envBuild, err := o.dbClient.NewSnapshotBuild(
 		ctx,
 		snapshotConfig,
 		teamID,
-		sbx.Node.ID,
+		sbx.NodeID,
 	)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)
@@ -60,19 +59,19 @@ func (o *Orchestrator) PauseInstance(
 	}
 
 	err = snapshotInstance(ctx, o, sbx, *envBuild.EnvID, envBuild.ID.String())
-	if errors.Is(err, ErrPauseQueueExhausted{}) {
+	if errors.Is(err, PauseQueueExhaustedError{}) {
 		telemetry.ReportCriticalError(ctx, "pause queue exhausted", err)
 
-		return ErrPauseQueueExhausted{}
+		return PauseQueueExhaustedError{}
 	}
 
-	if err != nil && !errors.Is(err, ErrPauseQueueExhausted{}) {
+	if err != nil && !errors.Is(err, PauseQueueExhaustedError{}) {
 		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)
 
 		return fmt.Errorf("error pausing sandbox: %w", err)
 	}
 
-	err = o.dbClient.EnvBuildSetStatus(ctx, *envBuild.EnvID, envBuild.ID, envbuild.StatusSuccess)
+	err = o.dbClient.EnvBuildSetStatus(ctx, *envBuild.EnvID, envBuild.ID, envbuild.StatusSuccess, nil)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)
 
@@ -86,20 +85,20 @@ func snapshotInstance(ctx context.Context, orch *Orchestrator, sbx *instance.Ins
 	childCtx, childSpan := orch.tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
 
-	node := orch.GetNode(sbx.Node.ID)
+	node := orch.GetNode(sbx.ClusterID, sbx.NodeID)
 	if node == nil {
-		return fmt.Errorf("failed to get node '%s'", sbx.Node.ID)
+		return fmt.Errorf("failed to get node '%s'", sbx.NodeID)
 	}
 
-	client, childCtx, err := orch.GetClient(childCtx, sbx.Node.ID)
+	client, childCtx, err := orch.GetClient(childCtx, sbx.ClusterID, sbx.NodeID)
 	if err != nil {
-		return fmt.Errorf("failed to get client '%s': %w", sbx.Node.ID, err)
+		return fmt.Errorf("failed to get client '%s': %w", sbx.NodeID, err)
 	}
 
 	_, err = client.Sandbox.Pause(
-		node.GetSandboxDeleteCtx(childCtx, sbx.Instance.SandboxID, sbx.ExecutionID),
+		node.GetSandboxDeleteCtx(childCtx, sbx.SandboxID, sbx.ExecutionID),
 		&orchestrator.SandboxPauseRequest{
-			SandboxId:  sbx.Instance.SandboxID,
+			SandboxId:  sbx.SandboxID,
 			TemplateId: templateID,
 			BuildId:    buildID,
 		},
@@ -116,8 +115,8 @@ func snapshotInstance(ctx context.Context, orch *Orchestrator, sbx *instance.Ins
 	}
 
 	if st.Code() == codes.ResourceExhausted {
-		return ErrPauseQueueExhausted{}
+		return PauseQueueExhaustedError{}
 	}
 
-	return fmt.Errorf("failed to pause sandbox '%s': %w", sbx.Instance.SandboxID, err)
+	return fmt.Errorf("failed to pause sandbox '%s': %w", sbx.SandboxID, err)
 }

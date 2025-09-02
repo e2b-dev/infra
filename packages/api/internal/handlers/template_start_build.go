@@ -12,7 +12,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
+	templatemanager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
+	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
@@ -21,7 +22,7 @@ import (
 )
 
 // CheckAndCancelConcurrentBuilds checks for concurrent builds and cancels them if found
-func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateID api.TemplateID, buildID uuid.UUID) error {
+func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateID api.TemplateID, buildID uuid.UUID, teamClusterID uuid.UUID) error {
 	concurrentlyRunningBuilds, err := a.db.
 		Client.
 		EnvBuild.
@@ -39,13 +40,15 @@ func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateI
 
 	// make sure there is no other build in progress for the same template
 	if len(concurrentlyRunningBuilds) > 0 {
-		buildIDs := utils.Map(concurrentlyRunningBuilds, func(b *models.EnvBuild) template_manager.DeleteBuild {
-			return template_manager.DeleteBuild{
+		buildIDs := utils.Map(concurrentlyRunningBuilds, func(b *models.EnvBuild) templatemanager.DeleteBuild {
+			return templatemanager.DeleteBuild{
 				TemplateID: templateID,
 				BuildID:    b.ID,
+				ClusterID:  teamClusterID,
+				NodeID:     b.ClusterNodeID,
 			}
 		})
-		telemetry.ReportEvent(ctx, "canceling running builds", attribute.StringSlice("ids", utils.Map(buildIDs, func(b template_manager.DeleteBuild) string {
+		telemetry.ReportEvent(ctx, "canceling running builds", attribute.StringSlice("ids", utils.Map(buildIDs, func(b templatemanager.DeleteBuild) string {
 			return fmt.Sprintf("%s/%s", b.TemplateID, b.BuildID)
 		})))
 		deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIDs)
@@ -120,7 +123,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	)
 
 	// Check and cancel concurrent builds
-	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID); err != nil {
+	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID, apiutils.WithClusterFallback(team.ClusterID)); err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build request")
 		return
 	}
@@ -132,13 +135,6 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	if build.Status != envbuild.StatusWaiting.String() {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "build is not in waiting state")
 		telemetry.ReportCriticalError(ctx, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.Status), telemetry.WithTemplateID(templateID))
-		return
-	}
-
-	// team is part of the cluster but template build is not assigned to a cluster node so its invalid stats
-	if team.ClusterID != nil && build.ClusterNodeID == nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "build is not assigned to a cluster node")
-		telemetry.ReportCriticalError(ctx, "build is not assigned to a cluster node", nil, telemetry.WithTemplateID(templateID))
 		return
 	}
 
@@ -160,9 +156,10 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		build.ReadyCmd,
 		&fromImage,
 		nil, // fromTemplate not supported in v1 handler
+		nil, // fromImageRegistry not supported in v1 handler
 		&forceRebuild,
 		nil,
-		team.ClusterID,
+		apiutils.WithClusterFallback(team.ClusterID),
 		build.ClusterNodeID,
 	)
 	if buildErr != nil {

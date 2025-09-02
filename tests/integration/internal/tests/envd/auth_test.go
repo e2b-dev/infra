@@ -68,7 +68,7 @@ func TestAccessToAuthorizedPathWithoutToken(t *testing.T) {
 	_, err := envdClient.FilesystemClient.ListDir(ctx, req)
 	require.Error(t, err)
 
-	assert.Equal(t, err.Error(), "unauthenticated: 401 Unauthorized")
+	assert.Equal(t, "unauthenticated: 401 Unauthorized", err.Error())
 }
 
 func TestRunUnauthorizedInitWithAlreadySecuredEnvd(t *testing.T) {
@@ -232,6 +232,8 @@ type envdInitCall struct {
 }
 
 func sandboxEnvdInitCall(t *testing.T, ctx context.Context, req envdInitCall) {
+	t.Helper()
+
 	envdReqSetup := []envdapi.RequestEditorFn{setup.WithSandbox(req.sbx.JSON201.SandboxID)}
 	if req.authToken != nil {
 		envdReqSetup = append(envdReqSetup, setup.WithEnvdAccessToken(*req.authToken))
@@ -241,7 +243,7 @@ func sandboxEnvdInitCall(t *testing.T, ctx context.Context, req envdInitCall) {
 	if req.expectedResErr != nil {
 		assert.Equal(t, *req.expectedResErr, err)
 	} else {
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	assert.Equal(t, req.expectedResHttpStatus, res.StatusCode())
@@ -257,6 +259,8 @@ func sandboxEnvdInitCall(t *testing.T, ctx context.Context, req envdInitCall) {
 }
 
 func getSandboxLogs(t *testing.T, ctx context.Context, client *setup.EnvdClient, sbx *api.PostSandboxesResponse) (string, error) {
+	t.Helper()
+
 	req := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
 			Cmd:  "journalctl",

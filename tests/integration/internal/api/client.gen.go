@@ -120,7 +120,7 @@ type ClientInterface interface {
 	GetNodes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetNodesNodeID request
-	GetNodesNodeID(ctx context.Context, nodeID NodeID, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetNodesNodeID(ctx context.Context, nodeID NodeID, params *GetNodesNodeIDParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostNodesNodeIDWithBody request with any body
 	PostNodesNodeIDWithBody(ctx context.Context, nodeID NodeID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -170,6 +170,9 @@ type ClientInterface interface {
 
 	// GetTeams request
 	GetTeams(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTeamsTeamIDMetrics request
+	GetTeamsTeamIDMetrics(ctx context.Context, teamID TeamID, params *GetTeamsTeamIDMetricsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTemplates request
 	GetTemplates(ctx context.Context, params *GetTemplatesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -347,8 +350,8 @@ func (c *Client) GetNodes(ctx context.Context, reqEditors ...RequestEditorFn) (*
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetNodesNodeID(ctx context.Context, nodeID NodeID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetNodesNodeIDRequest(c.Server, nodeID)
+func (c *Client) GetNodesNodeID(ctx context.Context, nodeID NodeID, params *GetNodesNodeIDParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetNodesNodeIDRequest(c.Server, nodeID, params)
 	if err != nil {
 		return nil, err
 	}
@@ -565,6 +568,18 @@ func (c *Client) PostSandboxesSandboxIDTimeout(ctx context.Context, sandboxID Sa
 
 func (c *Client) GetTeams(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetTeamsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetTeamsTeamIDMetrics(ctx context.Context, teamID TeamID, params *GetTeamsTeamIDMetricsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTeamsTeamIDMetricsRequest(c.Server, teamID, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1044,7 +1059,7 @@ func NewGetNodesRequest(server string) (*http.Request, error) {
 }
 
 // NewGetNodesNodeIDRequest generates requests for GetNodesNodeID
-func NewGetNodesNodeIDRequest(server string, nodeID NodeID) (*http.Request, error) {
+func NewGetNodesNodeIDRequest(server string, nodeID NodeID, params *GetNodesNodeIDParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -1067,6 +1082,28 @@ func NewGetNodesNodeIDRequest(server string, nodeID NodeID) (*http.Request, erro
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.ClusterID != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "clusterID", runtime.ParamLocationQuery, *params.ClusterID); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
@@ -1662,6 +1699,78 @@ func NewGetTeamsRequest(server string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetTeamsTeamIDMetricsRequest generates requests for GetTeamsTeamIDMetrics
+func NewGetTeamsTeamIDMetricsRequest(server string, teamID TeamID, params *GetTeamsTeamIDMetricsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "teamID", runtime.ParamLocationPath, teamID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/teams/%s/metrics", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Start != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "start", runtime.ParamLocationQuery, *params.Start); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.End != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "end", runtime.ParamLocationQuery, *params.End); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
@@ -2315,7 +2424,7 @@ type ClientWithResponsesInterface interface {
 	GetNodesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetNodesResponse, error)
 
 	// GetNodesNodeIDWithResponse request
-	GetNodesNodeIDWithResponse(ctx context.Context, nodeID NodeID, reqEditors ...RequestEditorFn) (*GetNodesNodeIDResponse, error)
+	GetNodesNodeIDWithResponse(ctx context.Context, nodeID NodeID, params *GetNodesNodeIDParams, reqEditors ...RequestEditorFn) (*GetNodesNodeIDResponse, error)
 
 	// PostNodesNodeIDWithBodyWithResponse request with any body
 	PostNodesNodeIDWithBodyWithResponse(ctx context.Context, nodeID NodeID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostNodesNodeIDResponse, error)
@@ -2365,6 +2474,9 @@ type ClientWithResponsesInterface interface {
 
 	// GetTeamsWithResponse request
 	GetTeamsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetTeamsResponse, error)
+
+	// GetTeamsTeamIDMetricsWithResponse request
+	GetTeamsTeamIDMetricsWithResponse(ctx context.Context, teamID TeamID, params *GetTeamsTeamIDMetricsParams, reqEditors ...RequestEditorFn) (*GetTeamsTeamIDMetricsResponse, error)
 
 	// GetTemplatesWithResponse request
 	GetTemplatesWithResponse(ctx context.Context, params *GetTemplatesParams, reqEditors ...RequestEditorFn) (*GetTemplatesResponse, error)
@@ -2946,6 +3058,32 @@ func (r GetTeamsResponse) StatusCode() int {
 	return 0
 }
 
+type GetTeamsTeamIDMetricsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]TeamMetric
+	JSON400      *N400
+	JSON401      *N401
+	JSON403      *N403
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTeamsTeamIDMetricsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTeamsTeamIDMetricsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetTemplatesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3310,8 +3448,8 @@ func (c *ClientWithResponses) GetNodesWithResponse(ctx context.Context, reqEdito
 }
 
 // GetNodesNodeIDWithResponse request returning *GetNodesNodeIDResponse
-func (c *ClientWithResponses) GetNodesNodeIDWithResponse(ctx context.Context, nodeID NodeID, reqEditors ...RequestEditorFn) (*GetNodesNodeIDResponse, error) {
-	rsp, err := c.GetNodesNodeID(ctx, nodeID, reqEditors...)
+func (c *ClientWithResponses) GetNodesNodeIDWithResponse(ctx context.Context, nodeID NodeID, params *GetNodesNodeIDParams, reqEditors ...RequestEditorFn) (*GetNodesNodeIDResponse, error) {
+	rsp, err := c.GetNodesNodeID(ctx, nodeID, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -3473,6 +3611,15 @@ func (c *ClientWithResponses) GetTeamsWithResponse(ctx context.Context, reqEdito
 		return nil, err
 	}
 	return ParseGetTeamsResponse(rsp)
+}
+
+// GetTeamsTeamIDMetricsWithResponse request returning *GetTeamsTeamIDMetricsResponse
+func (c *ClientWithResponses) GetTeamsTeamIDMetricsWithResponse(ctx context.Context, teamID TeamID, params *GetTeamsTeamIDMetricsParams, reqEditors ...RequestEditorFn) (*GetTeamsTeamIDMetricsResponse, error) {
+	rsp, err := c.GetTeamsTeamIDMetrics(ctx, teamID, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTeamsTeamIDMetricsResponse(rsp)
 }
 
 // GetTemplatesWithResponse request returning *GetTemplatesResponse
@@ -4537,6 +4684,60 @@ func ParseGetTeamsResponse(rsp *http.Response) (*GetTeamsResponse, error) {
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetTeamsTeamIDMetricsResponse parses an HTTP response from a GetTeamsTeamIDMetricsWithResponse call
+func ParseGetTeamsTeamIDMetricsResponse(rsp *http.Response) (*GetTeamsTeamIDMetricsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTeamsTeamIDMetricsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []TeamMetric
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500

@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/constants"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
@@ -26,8 +27,8 @@ import (
 )
 
 type BuildTemplateRequest struct {
-	ClusterID     *uuid.UUID
-	BuilderNodeID *string
+	ClusterID     uuid.UUID
+	BuilderNodeID string
 	TemplateID    api.TemplateID
 	IsNew         bool
 	UserID        *uuid.UUID
@@ -45,7 +46,7 @@ type TemplateBuildResponse struct {
 	TemplateID         string
 	BuildID            string
 	Public             bool
-	Aliases            *[]string
+	Aliases            []string
 	KernelVersion      string
 	FirecrackerVersion string
 	StartCmd           *string
@@ -91,15 +92,29 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 	public := false
 	if !req.IsNew {
 		// Check if the user has access to the template
-		template, err := a.db.Client.Env.Query().Where(env.ID(req.TemplateID), env.TeamID(req.Team.ID)).Only(ctx)
+		aliasOrTemplateID := req.TemplateID
+		if req.Alias != nil {
+			aliasOrTemplateID = *req.Alias
+		}
+
+		template, err := a.sqlcDB.GetTemplateByID(ctx, req.TemplateID)
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error when getting template", err, telemetry.WithTemplateID(req.TemplateID), telemetry.WithTeamID(req.Team.ID.String()))
 			return nil, &api.APIError{
 				Err:       err,
-				ClientMsg: fmt.Sprintf("Error when getting template '%s' for team '%s'", req.TemplateID, req.Team.ID.String()),
+				ClientMsg: fmt.Sprintf("Template '%s' not found", aliasOrTemplateID),
 				Code:      http.StatusNotFound,
 			}
 		}
+
+		if template.TeamID != req.Team.ID {
+			return nil, &api.APIError{
+				Err:       fmt.Errorf("template '%s' is not accessible for the team '%s'", aliasOrTemplateID, req.Team.ID.String()),
+				ClientMsg: fmt.Sprintf("Template '%s' is not accessible for the team '%s'", aliasOrTemplateID, req.Team.ID.String()),
+				Code:      http.StatusForbidden,
+			}
+		}
+
 		public = template.Public
 		telemetry.ReportEvent(ctx, "checked user access to template")
 	}
@@ -174,6 +189,11 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 	}
 	defer tx.Rollback()
 
+	var clusterID *uuid.UUID
+	if req.ClusterID != consts.LocalClusterID {
+		clusterID = &req.ClusterID
+	}
+
 	// Create the template / or update the build count
 	err = tx.
 		Env.
@@ -182,7 +202,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 		SetTeamID(req.Team.ID).
 		SetNillableCreatedBy(req.UserID).
 		SetPublic(false).
-		SetNillableClusterID(req.ClusterID).
+		SetNillableClusterID(clusterID).
 		OnConflictColumns(env.FieldID).
 		UpdateUpdatedAt().
 		Update(func(e *models.EnvUpsert) {
@@ -226,7 +246,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 		SetFreeDiskSizeMB(req.Tier.DiskMb).
 		SetNillableStartCmd(req.StartCmd).
 		SetNillableReadyCmd(req.ReadyCmd).
-		SetNillableClusterNodeID(req.BuilderNodeID).
+		SetClusterNodeID(req.BuilderNodeID).
 		SetDockerfile(req.Dockerfile).
 		Save(ctx)
 	if err != nil {
@@ -348,7 +368,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 		TemplateID:         *build.EnvID,
 		BuildID:            build.ID.String(),
 		Public:             public,
-		Aliases:            &aliases,
+		Aliases:            aliases,
 		KernelVersion:      build.KernelVersion,
 		FirecrackerVersion: build.FirecrackerVersion,
 		StartCmd:           build.StartCmd,
@@ -422,28 +442,16 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		return nil
 	}
 
-	var builderNodeID *string
-	if team.ClusterID != nil {
-		cluster, found := a.clustersPool.GetClusterById(*team.ClusterID)
-		if !found {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Cluster with ID '%s' not found", *team.ClusterID))
-			telemetry.ReportCriticalError(ctx, "cluster not found", fmt.Errorf("cluster with ID '%s' not found", *team.ClusterID), telemetry.WithTemplateID(templateID))
-			return nil
-		}
-
-		clusterNode, err := cluster.GetAvailableTemplateBuilder(ctx)
-		if err != nil {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting available template builder: %s", err))
-			telemetry.ReportCriticalError(ctx, "error when getting available template builder", err, telemetry.WithTemplateID(templateID))
-			return nil
-		}
-
-		builderNodeID = &clusterNode.NodeID
+	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, utils.WithClusterFallback(team.ClusterID))
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Error when getting available build client")
+		return nil
 	}
 
 	// Create the build
 	buildReq := BuildTemplateRequest{
-		ClusterID:     team.ClusterID,
+		ClusterID:     utils.WithClusterFallback(team.ClusterID),
 		BuilderNodeID: builderNodeID,
 		TemplateID:    templateID,
 		IsNew:         new,

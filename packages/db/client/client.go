@@ -14,7 +14,6 @@ import (
 
 type Client struct {
 	*database.Queries
-	ctx  context.Context
 	conn *pgxpool.Pool
 }
 
@@ -56,7 +55,7 @@ func NewClient(ctx context.Context, options ...Option) (*Client, error) {
 
 	queries := database.New(pool)
 
-	return &Client{Queries: queries, ctx: ctx, conn: pool}, nil
+	return &Client{Queries: queries, conn: pool}, nil
 }
 
 func (db *Client) Close() error {
@@ -71,6 +70,6 @@ func (db *Client) WithTx(ctx context.Context) (*Client, pgx.Tx, error) {
 		return nil, nil, err
 	}
 
-	client := &Client{Queries: db.Queries.WithTx(tx), conn: db.conn, ctx: db.ctx}
+	client := &Client{Queries: db.Queries.WithTx(tx), conn: db.conn}
 	return client, tx, nil
 }

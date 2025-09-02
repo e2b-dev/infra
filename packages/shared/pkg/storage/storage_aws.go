@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -27,12 +28,16 @@ type AWSBucketStorageProvider struct {
 	bucketName    string
 }
 
+var _ StorageProvider = (*AWSBucketStorageProvider)(nil)
+
 type AWSBucketStorageObjectProvider struct {
 	client     *s3.Client
 	path       string
 	bucketName string
-	ctx        context.Context
+	ctx        context.Context // nolint:containedctx // todo: fix the interface so this can be removed
 }
+
+var _ StorageObjectProvider = (*AWSBucketStorageObjectProvider)(nil)
 
 func NewAWSBucketStorageProvider(ctx context.Context, bucketName string) (*AWSBucketStorageProvider, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
@@ -62,6 +67,11 @@ func (a *AWSBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, 
 	objects := make([]types.ObjectIdentifier, 0, len(list.Contents))
 	for _, obj := range list.Contents {
 		objects = append(objects, types.ObjectIdentifier{Key: obj.Key})
+	}
+
+	// AWS S3 delete operation requires at least one object to delete.
+	if len(objects) == 0 {
+		return nil
 	}
 
 	_, err = a.client.DeleteObjects(
@@ -109,7 +119,7 @@ func (a *AWSBucketStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
-			return 0, ErrorObjectNotExist
+			return 0, ErrObjectNotExist
 		}
 
 		return 0, err
@@ -150,23 +160,27 @@ func (a *AWSBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 	return err
 }
 
-func (a *AWSBucketStorageObjectProvider) ReadFrom(src io.Reader) (int64, error) {
+func (a *AWSBucketStorageObjectProvider) Write(data []byte) (int, error) {
 	ctx, cancel := context.WithTimeout(a.ctx, awsWriteTimeout)
 	defer cancel()
 
-	_, err := a.client.PutObject(
+	result, err := a.client.PutObject(
 		ctx,
 		&s3.PutObjectInput{
 			Bucket: &a.bucketName,
 			Key:    &a.path,
-			Body:   src,
+			Body:   bytes.NewReader(data),
 		},
 	)
 	if err != nil {
 		return 0, err
 	}
 
-	return 0, nil
+	if result.Size == nil {
+		return 0, nil
+	}
+
+	return int(*result.Size), nil
 }
 
 func (a *AWSBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, err error) {
@@ -182,7 +196,7 @@ func (a *AWSBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, 
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
-			return 0, ErrorObjectNotExist
+			return 0, ErrObjectNotExist
 		}
 
 		return 0, err
@@ -206,6 +220,11 @@ func (a *AWSBucketStorageObjectProvider) Size() (int64, error) {
 
 	resp, err := a.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: &a.bucketName, Key: &a.path})
 	if err != nil {
+		var nsk *types.NoSuchKey
+		if errors.As(err, &nsk) {
+			return 0, ErrObjectNotExist
+		}
+
 		return 0, err
 	}
 

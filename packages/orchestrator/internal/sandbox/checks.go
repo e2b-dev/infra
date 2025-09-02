@@ -20,7 +20,7 @@ const (
 type Checks struct {
 	sandbox *Sandbox
 
-	ctx       context.Context
+	ctx       context.Context // nolint:containedctx // todo: refactor so this can be removed
 	cancelCtx context.CancelCauseFunc
 
 	healthy atomic.Bool

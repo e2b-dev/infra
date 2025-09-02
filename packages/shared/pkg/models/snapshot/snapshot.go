@@ -28,6 +28,8 @@ const (
 	FieldSandboxStartedAt = "sandbox_started_at"
 	// FieldEnvSecure holds the string denoting the env_secure field in the database.
 	FieldEnvSecure = "env_secure"
+	// FieldAutoPause holds the string denoting the auto_pause field in the database.
+	FieldAutoPause = "auto_pause"
 	// FieldOriginNodeID holds the string denoting the origin_node_id field in the database.
 	FieldOriginNodeID = "origin_node_id"
 	// FieldAllowInternetAccess holds the string denoting the allow_internet_access field in the database.
@@ -55,6 +57,7 @@ var Columns = []string{
 	FieldMetadata,
 	FieldSandboxStartedAt,
 	FieldEnvSecure,
+	FieldAutoPause,
 	FieldOriginNodeID,
 	FieldAllowInternetAccess,
 }
@@ -74,6 +77,8 @@ var (
 	DefaultCreatedAt func() time.Time
 	// DefaultEnvSecure holds the default value on creation for the "env_secure" field.
 	DefaultEnvSecure bool
+	// DefaultAutoPause holds the default value on creation for the "auto_pause" field.
+	DefaultAutoPause bool
 )
 
 // OrderOption defines the ordering options for the Snapshot queries.
@@ -112,6 +117,11 @@ func BySandboxStartedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByEnvSecure orders the results by the env_secure field.
 func ByEnvSecure(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEnvSecure, opts...).ToFunc()
+}
+
+// ByAutoPause orders the results by the auto_pause field.
+func ByAutoPause(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAutoPause, opts...).ToFunc()
 }
 
 // ByOriginNodeID orders the results by the origin_node_id field.

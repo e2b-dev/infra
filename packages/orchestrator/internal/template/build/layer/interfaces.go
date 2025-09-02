@@ -6,8 +6,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -27,14 +26,14 @@ type SandboxCreator interface {
 
 // ActionExecutor executes actions within a sandbox during layer building
 type ActionExecutor interface {
-	Execute(ctx context.Context, sbx *sandbox.Sandbox, cmdMeta sandboxtools.CommandMetadata) (sandboxtools.CommandMetadata, error)
+	Execute(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error)
 }
 
 // LayerBuildCommand encapsulates all parameters needed for building a layer
 type LayerBuildCommand struct {
+	SourceTemplate storage.TemplateFiles
+	CurrentLayer   metadata.Template
 	Hash           string
-	SourceLayer    cache.LayerMetadata
-	ExportTemplate storage.TemplateFiles
 	UpdateEnvd     bool
 	SandboxCreator SandboxCreator
 	ActionExecutor ActionExecutor

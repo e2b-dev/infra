@@ -6,9 +6,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
+	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
 
 func createSandbox(t *testing.T, reqEditors ...api.RequestEditorFn) int {
@@ -24,7 +26,7 @@ func createSandbox(t *testing.T, reqEditors ...api.RequestEditorFn) int {
 		TemplateID: setup.SandboxTemplateID,
 		Timeout:    &sbxTimeout,
 	}, reqEditors...)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		if t.Failed() {
@@ -36,11 +38,11 @@ func createSandbox(t *testing.T, reqEditors ...api.RequestEditorFn) int {
 }
 
 func TestSandboxCreateWithSupabaseToken(t *testing.T) {
-	if setup.SupabaseToken == "" {
-		t.Skip("Supabase token is not set")
+	if setup.SupabaseJWTSecret == "" {
+		t.Skip("Supabase JWT secret is not set")
 	}
 
-	if setup.SupabaseTeamID == "" {
+	if setup.TeamID == "" {
 		t.Skip("Supabase team ID is not set")
 	}
 
@@ -67,5 +69,31 @@ func TestSandboxCreateWithSupabaseToken(t *testing.T) {
 			return nil
 		}, setup.WithSupabaseTeam(t))
 		assert.Equal(t, http.StatusUnauthorized, statusCode)
+	})
+}
+
+func TestSandboxCreateWithForeignTeamAccess(t *testing.T) {
+	db := setup.GetTestDBClient(t)
+	c := setup.GetAPIClient()
+
+	userID2 := utils.CreateUser(t, db)
+	teamID2 := utils.CreateTeamWithUser(t, c, db, "test-team-2", userID2.String())
+
+	t.Run("Fail when using first user token with second team ID", func(t *testing.T) {
+		// This should fail because the first user doesn't belong to the second team
+		statusCode := createSandbox(t, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, teamID2.String()))
+		assert.Equal(t, http.StatusUnauthorized, statusCode)
+	})
+
+	t.Run("Fail when using second user token with first team ID", func(t *testing.T) {
+		// This should fail because the second user doesn't belong to the first team
+		statusCode := createSandbox(t, setup.WithSupabaseToken(t, userID2.String()), setup.WithSupabaseTeam(t))
+		assert.Equal(t, http.StatusUnauthorized, statusCode)
+	})
+
+	t.Run("Success with second user token and second team ID", func(t *testing.T) {
+		// This should succeed if the second user belongs to the second team
+		statusCode := createSandbox(t, setup.WithSupabaseToken(t, userID2.String()), setup.WithSupabaseTeam(t, teamID2.String()))
+		assert.Equal(t, http.StatusCreated, statusCode)
 	})
 }

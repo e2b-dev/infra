@@ -19,6 +19,7 @@ import (
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -63,15 +64,19 @@ func New(
 
 	artifactsregistry, err := artifactsregistry.GetArtifactsRegistryProvider()
 	if err != nil {
-		return nil, fmt.Errorf("error getting artifacts registry provider: %v", err)
+		return nil, fmt.Errorf("error getting artifacts registry provider: %w", err)
 	}
 
 	buildPersistance, err := storage.GetBuildCacheStorageProvider(ctx, limiter)
 	if err != nil {
-		return nil, fmt.Errorf("error getting build cache storage provider: %v", err)
+		return nil, fmt.Errorf("error getting build cache storage provider: %w", err)
 	}
 
 	buildCache := cache.NewBuildCache(meterProvider)
+	buildMetrics, err := metrics.NewBuildMetrics(meterProvider)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create build metrics: %w", err)
+	}
 	builder := build.NewBuilder(
 		logger,
 		tracer,
@@ -83,6 +88,7 @@ func New(
 		proxy,
 		sandboxes,
 		templateCache,
+		buildMetrics,
 	)
 
 	store := &ServerStore{

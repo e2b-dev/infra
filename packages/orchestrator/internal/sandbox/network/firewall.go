@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
-	"strings"
 
 	"github.com/google/nftables"
 	"github.com/google/nftables/expr"
@@ -238,8 +237,7 @@ func (fw *Firewall) ResetAllowedCustom() error {
 
 	// Allow Logs Collector IP for logs
 	if ip := os.Getenv("LOGS_COLLECTOR_PUBLIC_IP"); ip != "" {
-		ip = strings.TrimPrefix(ip, "http://") + "/32"
-		initIps = append(initIps, ip)
+		initIps = append(initIps, ip+"/32")
 	}
 
 	initData, err := set.AddressStringsToSetData(initIps)

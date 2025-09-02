@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/tier"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
+	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 	"github.com/google/uuid"
 )
 
@@ -3140,7 +3141,7 @@ type EnvBuildMutation struct {
 	firecracker_version   *string
 	envd_version          *string
 	cluster_node_id       *string
-	reason                *string
+	reason                **schema.BuildReason
 	clearedFields         map[string]struct{}
 	env                   *string
 	clearedenv            bool
@@ -3982,7 +3983,7 @@ func (m *EnvBuildMutation) ClusterNodeID() (r string, exists bool) {
 // OldClusterNodeID returns the old "cluster_node_id" field's value of the EnvBuild entity.
 // If the EnvBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *EnvBuildMutation) OldClusterNodeID(ctx context.Context) (v *string, err error) {
+func (m *EnvBuildMutation) OldClusterNodeID(ctx context.Context) (v string, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldClusterNodeID is only allowed on UpdateOne operations")
 	}
@@ -3996,31 +3997,18 @@ func (m *EnvBuildMutation) OldClusterNodeID(ctx context.Context) (v *string, err
 	return oldValue.ClusterNodeID, nil
 }
 
-// ClearClusterNodeID clears the value of the "cluster_node_id" field.
-func (m *EnvBuildMutation) ClearClusterNodeID() {
-	m.cluster_node_id = nil
-	m.clearedFields[envbuild.FieldClusterNodeID] = struct{}{}
-}
-
-// ClusterNodeIDCleared returns if the "cluster_node_id" field was cleared in this mutation.
-func (m *EnvBuildMutation) ClusterNodeIDCleared() bool {
-	_, ok := m.clearedFields[envbuild.FieldClusterNodeID]
-	return ok
-}
-
 // ResetClusterNodeID resets all changes to the "cluster_node_id" field.
 func (m *EnvBuildMutation) ResetClusterNodeID() {
 	m.cluster_node_id = nil
-	delete(m.clearedFields, envbuild.FieldClusterNodeID)
 }
 
 // SetReason sets the "reason" field.
-func (m *EnvBuildMutation) SetReason(s string) {
-	m.reason = &s
+func (m *EnvBuildMutation) SetReason(sr *schema.BuildReason) {
+	m.reason = &sr
 }
 
 // Reason returns the value of the "reason" field in the mutation.
-func (m *EnvBuildMutation) Reason() (r string, exists bool) {
+func (m *EnvBuildMutation) Reason() (r *schema.BuildReason, exists bool) {
 	v := m.reason
 	if v == nil {
 		return
@@ -4031,7 +4019,7 @@ func (m *EnvBuildMutation) Reason() (r string, exists bool) {
 // OldReason returns the old "reason" field's value of the EnvBuild entity.
 // If the EnvBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *EnvBuildMutation) OldReason(ctx context.Context) (v *string, err error) {
+func (m *EnvBuildMutation) OldReason(ctx context.Context) (v *schema.BuildReason, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldReason is only allowed on UpdateOne operations")
 	}
@@ -4383,7 +4371,7 @@ func (m *EnvBuildMutation) SetField(name string, value ent.Value) error {
 		m.SetClusterNodeID(v)
 		return nil
 	case envbuild.FieldReason:
-		v, ok := value.(string)
+		v, ok := value.(*schema.BuildReason)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
@@ -4491,9 +4479,6 @@ func (m *EnvBuildMutation) ClearedFields() []string {
 	if m.FieldCleared(envbuild.FieldEnvdVersion) {
 		fields = append(fields, envbuild.FieldEnvdVersion)
 	}
-	if m.FieldCleared(envbuild.FieldClusterNodeID) {
-		fields = append(fields, envbuild.FieldClusterNodeID)
-	}
 	if m.FieldCleared(envbuild.FieldReason) {
 		fields = append(fields, envbuild.FieldReason)
 	}
@@ -4531,9 +4516,6 @@ func (m *EnvBuildMutation) ClearField(name string) error {
 		return nil
 	case envbuild.FieldEnvdVersion:
 		m.ClearEnvdVersion()
-		return nil
-	case envbuild.FieldClusterNodeID:
-		m.ClearClusterNodeID()
 		return nil
 	case envbuild.FieldReason:
 		m.ClearReason()
@@ -4687,6 +4669,7 @@ type SnapshotMutation struct {
 	metadata              *map[string]string
 	sandbox_started_at    *time.Time
 	env_secure            *bool
+	auto_pause            *bool
 	origin_node_id        *string
 	allow_internet_access *bool
 	clearedFields         map[string]struct{}
@@ -5053,6 +5036,42 @@ func (m *SnapshotMutation) ResetEnvSecure() {
 	m.env_secure = nil
 }
 
+// SetAutoPause sets the "auto_pause" field.
+func (m *SnapshotMutation) SetAutoPause(b bool) {
+	m.auto_pause = &b
+}
+
+// AutoPause returns the value of the "auto_pause" field in the mutation.
+func (m *SnapshotMutation) AutoPause() (r bool, exists bool) {
+	v := m.auto_pause
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAutoPause returns the old "auto_pause" field's value of the Snapshot entity.
+// If the Snapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SnapshotMutation) OldAutoPause(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAutoPause is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAutoPause requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAutoPause: %w", err)
+	}
+	return oldValue.AutoPause, nil
+}
+
+// ResetAutoPause resets all changes to the "auto_pause" field.
+func (m *SnapshotMutation) ResetAutoPause() {
+	m.auto_pause = nil
+}
+
 // SetOriginNodeID sets the "origin_node_id" field.
 func (m *SnapshotMutation) SetOriginNodeID(s string) {
 	m.origin_node_id = &s
@@ -5199,7 +5218,7 @@ func (m *SnapshotMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SnapshotMutation) Fields() []string {
-	fields := make([]string, 0, 9)
+	fields := make([]string, 0, 10)
 	if m.created_at != nil {
 		fields = append(fields, snapshot.FieldCreatedAt)
 	}
@@ -5220,6 +5239,9 @@ func (m *SnapshotMutation) Fields() []string {
 	}
 	if m.env_secure != nil {
 		fields = append(fields, snapshot.FieldEnvSecure)
+	}
+	if m.auto_pause != nil {
+		fields = append(fields, snapshot.FieldAutoPause)
 	}
 	if m.origin_node_id != nil {
 		fields = append(fields, snapshot.FieldOriginNodeID)
@@ -5249,6 +5271,8 @@ func (m *SnapshotMutation) Field(name string) (ent.Value, bool) {
 		return m.SandboxStartedAt()
 	case snapshot.FieldEnvSecure:
 		return m.EnvSecure()
+	case snapshot.FieldAutoPause:
+		return m.AutoPause()
 	case snapshot.FieldOriginNodeID:
 		return m.OriginNodeID()
 	case snapshot.FieldAllowInternetAccess:
@@ -5276,6 +5300,8 @@ func (m *SnapshotMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldSandboxStartedAt(ctx)
 	case snapshot.FieldEnvSecure:
 		return m.OldEnvSecure(ctx)
+	case snapshot.FieldAutoPause:
+		return m.OldAutoPause(ctx)
 	case snapshot.FieldOriginNodeID:
 		return m.OldOriginNodeID(ctx)
 	case snapshot.FieldAllowInternetAccess:
@@ -5337,6 +5363,13 @@ func (m *SnapshotMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetEnvSecure(v)
+		return nil
+	case snapshot.FieldAutoPause:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAutoPause(v)
 		return nil
 	case snapshot.FieldOriginNodeID:
 		v, ok := value.(string)
@@ -5430,6 +5463,9 @@ func (m *SnapshotMutation) ResetField(name string) error {
 		return nil
 	case snapshot.FieldEnvSecure:
 		m.ResetEnvSecure()
+		return nil
+	case snapshot.FieldAutoPause:
+		m.ResetAutoPause()
 		return nil
 	case snapshot.FieldOriginNodeID:
 		m.ResetOriginNodeID()
