@@ -16,7 +16,7 @@ import (
 
 var tracer = otel.Tracer("shared.pkg.storage")
 
-var ErrorObjectNotExist = errors.New("object does not exist")
+var ErrObjectNotExist = errors.New("object does not exist")
 
 type Provider string
 

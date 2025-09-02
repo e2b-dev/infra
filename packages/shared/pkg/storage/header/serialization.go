@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 
@@ -86,7 +87,7 @@ func Deserialize(ctx context.Context, in storage.WriterToCtx) (*Header, error) {
 	for {
 		var m BuildMap
 		err := binary.Read(reader, binary.LittleEndian, &m)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 

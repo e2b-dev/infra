@@ -85,7 +85,7 @@ func TestDelete(t *testing.T) {
 
 	// subsequent Size call should fail with ErrorObjectNotExist
 	_, err = obj.Size(t.Context())
-	require.ErrorIs(t, err, ErrorObjectNotExist)
+	require.ErrorIs(t, err, ErrObjectNotExist)
 }
 
 func TestDeleteObjectsWithPrefix(t *testing.T) {
@@ -123,5 +123,5 @@ func TestWriteToNonExistentObject(t *testing.T) {
 
 	var sink bytes.Buffer
 	_, err = obj.WriteTo(t.Context(), &sink)
-	require.ErrorIs(t, err, ErrorObjectNotExist)
+	require.ErrorIs(t, err, ErrObjectNotExist)
 }

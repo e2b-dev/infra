@@ -117,7 +117,7 @@ func (a *AWSBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Wri
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
-			return 0, ErrorObjectNotExist
+			return 0, ErrObjectNotExist
 		}
 
 		return 0, err
@@ -194,7 +194,7 @@ func (a *AWSBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
-			return 0, ErrorObjectNotExist
+			return 0, ErrObjectNotExist
 		}
 
 		return 0, err
@@ -220,7 +220,7 @@ func (a *AWSBucketStorageObjectProvider) Size(ctx context.Context) (int64, error
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
-			return 0, ErrorObjectNotExist
+			return 0, ErrObjectNotExist
 		}
 
 		return 0, err
