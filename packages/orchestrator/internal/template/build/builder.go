@@ -179,6 +179,7 @@ func runBuild(
 	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, builder.templateStorage)
 
 	layerExecutor := layer.NewLayerExecutor(bc,
+		builder.logger,
 		builder.tracer,
 		builder.networkPool,
 		builder.devicePool,

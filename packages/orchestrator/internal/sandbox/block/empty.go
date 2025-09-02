@@ -30,7 +30,7 @@ func NewEmpty(size int64, blockSize int64, buildID uuid.UUID) (*Empty, error) {
 func (e *Empty) ReadAt(p []byte, off int64) (int, error) {
 	slice, err := e.Slice(off, int64(len(p)))
 	if err != nil {
-		return 0, fmt.Errorf("failed to slice mmap: %w", err)
+		return 0, fmt.Errorf("failed to slice empty: %w", err)
 	}
 
 	return copy(p, slice), nil

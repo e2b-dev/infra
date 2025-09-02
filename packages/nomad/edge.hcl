@@ -94,7 +94,7 @@ job "client-proxy" {
 
         SERVICE_DISCOVERY_ORCHESTRATOR_PROVIDER             = "DNS"
         SERVICE_DISCOVERY_ORCHESTRATOR_DNS_RESOLVER_ADDRESS = "127.0.0.1:8600" // consul dns resolver
-        SERVICE_DISCOVERY_ORCHESTRATOR_DNS_QUERY            = "orchestrator.service.consul,template-manager.service.consul"
+        SERVICE_DISCOVERY_ORCHESTRATOR_DNS_QUERY            = "template-manager.service.consul"
 
         SERVICE_DISCOVERY_EDGE_PROVIDER             = "DNS"
         SERVICE_DISCOVERY_EDGE_DNS_RESOLVER_ADDRESS = "127.0.0.1:8600" // consul dns resolver
