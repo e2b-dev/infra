@@ -639,7 +639,7 @@ type Template struct {
 	EnvdVersion EnvdVersion `json:"envdVersion"`
 
 	// LastSpawnedAt Time when the template was last used
-	LastSpawnedAt time.Time `json:"lastSpawnedAt"`
+	LastSpawnedAt *time.Time `json:"lastSpawnedAt"`
 
 	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB MemoryMB `json:"memoryMB"`

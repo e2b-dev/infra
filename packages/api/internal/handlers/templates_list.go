@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -113,11 +112,6 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 			diskMB = *item.BuildTotalDiskSizeMb
 		}
 
-		lastSpawnedAt := time.Time{}
-		if item.Env.LastSpawnedAt != nil {
-			lastSpawnedAt = *item.Env.LastSpawnedAt
-		}
-
 		templates = append(templates, &api.Template{
 			TemplateID:    item.Env.ID,
 			BuildID:       item.BuildID.String(),
@@ -128,7 +122,7 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 			Aliases:       &item.Aliases,
 			CreatedAt:     item.Env.CreatedAt,
 			UpdatedAt:     item.Env.UpdatedAt,
-			LastSpawnedAt: lastSpawnedAt,
+			LastSpawnedAt: item.Env.LastSpawnedAt,
 			SpawnCount:    item.Env.SpawnCount,
 			BuildCount:    item.Env.BuildCount,
 			CreatedBy:     createdBy,
