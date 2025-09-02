@@ -26,6 +26,11 @@ type AccessToken struct {
 	AccessTokenMaskSuffix string
 }
 
+type AuthUser struct {
+	ID    uuid.UUID
+	Email string
+}
+
 type Cluster struct {
 	ID                 uuid.UUID
 	Endpoint           string

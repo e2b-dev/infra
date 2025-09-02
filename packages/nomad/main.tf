@@ -77,7 +77,6 @@ resource "nomad_job" "api" {
     orchestrator_port              = var.orchestrator_port
     template_manager_host          = "template-manager.service.consul:${var.template_manager_port}"
     otel_collector_grpc_endpoint   = "localhost:${var.otel_collector_grpc_port}"
-    loki_address                   = "http://loki.service.consul:${var.loki_service_port.port}"
     logs_collector_address         = "http://localhost:${var.logs_proxy_port.port}"
     gcp_zone                       = var.gcp_zone
     port_name                      = var.api_port.name
@@ -99,6 +98,9 @@ resource "nomad_job" "api" {
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
     db_migrator_docker_image       = docker_image.db_migrator_image.repo_digest
     launch_darkly_api_key          = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+
+    local_cluster_endpoint = "edge-api.service.consul:${var.edge_api_port.port}"
+    local_cluster_token    = var.edge_api_secret
   })
 }
 

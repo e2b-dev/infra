@@ -146,7 +146,7 @@ func (p *Pool) Return(ctx context.Context, tracer trace.Tracer, slot *Slot) erro
 	if err != nil {
 		// Cleanup the slot if resetting internet fails
 		if cerr := p.cleanup(slot); cerr != nil {
-			return fmt.Errorf("reset internet: %v; cleanup: %w", err, cerr)
+			return fmt.Errorf("reset internet: %w; cleanup: %w", err, cerr)
 		}
 
 		return fmt.Errorf("error resetting slot internet access: %w", err)

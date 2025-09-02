@@ -21,7 +21,7 @@ WHERE
     AND (
         -- When metadata arg is empty json, accept all as row metadata column can be empty json or NULL
         -- And NULL does not match with empty json
-        @metadata = '{}'::jsonb OR s.metadata @> @metadata
+        s.metadata @> @metadata OR @metadata = '{}'::jsonb
     )
     AND (
         s.sandbox_started_at < @cursor_time

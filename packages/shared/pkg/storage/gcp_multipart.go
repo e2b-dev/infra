@@ -129,12 +129,12 @@ type MultipartUploader struct {
 func NewMultipartUploaderWithRetryConfig(ctx context.Context, bucketName, objectName string, retryConfig RetryConfig) (*MultipartUploader, error) {
 	creds, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get credentials: %v", err)
+		return nil, fmt.Errorf("failed to get credentials: %w", err)
 	}
 
 	token, err := creds.TokenSource.Token()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get token: %v", err)
+		return nil, fmt.Errorf("failed to get token: %w", err)
 	}
 
 	return &MultipartUploader{
@@ -172,7 +172,7 @@ func (m *MultipartUploader) InitiateUpload() (string, error) {
 
 	var result InitiateMultipartUploadResult
 	if err := xml.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("failed to parse initiate response: %v", err)
+		return "", fmt.Errorf("failed to parse initiate response: %w", err)
 	}
 
 	return result.UploadID, nil
@@ -224,7 +224,7 @@ func (m *MultipartUploader) CompleteUpload(uploadID string, parts []Part) error 
 	completeReq := CompleteMultipartUpload{Parts: parts}
 	xmlData, err := xml.Marshal(completeReq)
 	if err != nil {
-		return fmt.Errorf("failed to marshal complete request: %v", err)
+		return fmt.Errorf("failed to marshal complete request: %w", err)
 	}
 
 	url := fmt.Sprintf("%s/%s?uploadId=%s",
@@ -257,14 +257,14 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 	// Open file
 	file, err := os.Open(filePath)
 	if err != nil {
-		return fmt.Errorf("failed to open file: %v", err)
+		return fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
 	// Get file size
 	fileInfo, err := file.Stat()
 	if err != nil {
-		return fmt.Errorf("failed to get file info: %v", err)
+		return fmt.Errorf("failed to get file info: %w", err)
 	}
 	fileSize := fileInfo.Size()
 
@@ -277,7 +277,7 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 	// Initiate multipart upload
 	uploadID, err := m.InitiateUpload()
 	if err != nil {
-		return fmt.Errorf("failed to initiate upload: %v", err)
+		return fmt.Errorf("failed to initiate upload: %w", err)
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -307,13 +307,13 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 			chunk := make([]byte, chunkSize)
 			_, err := file.ReadAt(chunk, offset)
 			if err != nil {
-				return fmt.Errorf("failed to read chunk for part %d: %v", partNumber, err)
+				return fmt.Errorf("failed to read chunk for part %d: %w", partNumber, err)
 			}
 
 			// Upload part
 			etag, err := m.UploadPart(uploadID, partNumber, chunk)
 			if err != nil {
-				return fmt.Errorf("failed to upload part %d: %v", partNumber, err)
+				return fmt.Errorf("failed to upload part %d: %w", partNumber, err)
 			}
 
 			// Store result thread-safely
@@ -330,11 +330,11 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 
 	// Wait for all parts to complete or first error
 	if err := g.Wait(); err != nil {
-		return fmt.Errorf("upload failed: %v", err)
+		return fmt.Errorf("upload failed: %w", err)
 	}
 
 	if err := m.CompleteUpload(uploadID, parts); err != nil {
-		return fmt.Errorf("failed to complete upload: %v", err)
+		return fmt.Errorf("failed to complete upload: %w", err)
 	}
 
 	return nil

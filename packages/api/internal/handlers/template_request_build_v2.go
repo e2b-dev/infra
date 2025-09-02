@@ -46,7 +46,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	isNew := true
 	templateAlias, err := a.sqlcDB.GetTemplateAliasByAlias(ctx, body.Alias)
 	if err != nil {
-		var notFoundErr db.ErrNotFound
+		var notFoundErr db.NotFoundError
 		if !errors.As(err, &notFoundErr) {
 			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting template alias: %s", err))
 			telemetry.ReportCriticalError(ctx, "error when getting template alias", err)
@@ -58,7 +58,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	}
 	span.End()
 
-	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, team.ClusterID)
+	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, apiutils.WithClusterFallback(team.ClusterID))
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting available build client")
 		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
@@ -66,7 +66,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	}
 
 	buildReq := BuildTemplateRequest{
-		ClusterID:     team.ClusterID,
+		ClusterID:     apiutils.WithClusterFallback(team.ClusterID),
 		BuilderNodeID: builderNodeID,
 		IsNew:         isNew,
 		TemplateID:    templateID,

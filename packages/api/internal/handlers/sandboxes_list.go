@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -50,7 +51,7 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error getting team snapshots: %s", err)
+		return nil, fmt.Errorf("error getting team snapshots: %w", err)
 	}
 
 	sandboxes := snapshotsToPaginatedSandboxes(snapshots)
@@ -226,14 +227,14 @@ func snapshotsToPaginatedSandboxes(snapshots []queries.GetSnapshotsWithCursorRow
 		if build.TotalDiskSizeMb != nil {
 			diskSize = int32(*build.TotalDiskSizeMb)
 		} else {
-			zap.L().Error("disk size is not set for the sandbox", zap.String("sandbox_id", snapshot.SandboxID))
+			zap.L().Error("disk size is not set for the sandbox", logger.WithSandboxID(snapshot.SandboxID))
 		}
 
 		envdVersion := ""
 		if build.EnvdVersion != nil {
 			envdVersion = *build.EnvdVersion
 		} else {
-			zap.L().Error("envd version is not set for the sandbox", zap.String("sandbox_id", snapshot.SandboxID))
+			zap.L().Error("envd version is not set for the sandbox", logger.WithSandboxID(snapshot.SandboxID))
 		}
 
 		sandbox := utils.PaginatedSandbox{

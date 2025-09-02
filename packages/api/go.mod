@@ -12,7 +12,6 @@ require (
 	github.com/getkin/kin-openapi v0.132.0
 	github.com/gin-contrib/cors v1.7.5
 	github.com/gin-contrib/size v1.0.2
-	github.com/gin-contrib/zap v1.1.5
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-redis/cache/v9 v9.0.0
 	github.com/go-redis/redis/v8 v8.11.5 // indirect

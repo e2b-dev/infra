@@ -230,7 +230,7 @@ generate-tests/%:
 
 .PHONY: migrate
 migrate:
-	$(MAKE) -C packages/db migrate/up
+	$(MAKE) -C packages/db migrate
 
 .PHONY: switch-env
 switch-env:

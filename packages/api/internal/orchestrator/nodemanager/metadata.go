@@ -3,7 +3,6 @@ package nodemanager
 import (
 	"context"
 
-	"github.com/google/uuid"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -41,7 +40,7 @@ func (n *Node) getClientMetadata() metadata.MD {
 
 func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest) context.Context {
 	// Skip local cluster. It should be okay to send it here, but we don't want to do it until we explicitly support it.
-	if n.ClusterID == uuid.Nil {
+	if n.IsNomadManaged() {
 		return ctx
 	}
 
@@ -61,7 +60,7 @@ func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.Sandbo
 
 func (n *Node) GetSandboxDeleteCtx(ctx context.Context, sandboxID string, executionID string) context.Context {
 	// Skip local cluster. It should be okay to send it here, but we don't want to do it until we explicitly support it.
-	if n.ClusterID == uuid.Nil {
+	if n.IsNomadManaged() {
 		return ctx
 	}
 

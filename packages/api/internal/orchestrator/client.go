@@ -56,7 +56,7 @@ func (o *Orchestrator) deregisterNode(node *nodemanager.Node) {
 
 // When prefixed with cluster ID, node is unique in the map containing nodes from multiple clusters
 func (o *Orchestrator) scopedNodeID(clusterID uuid.UUID, nodeID string) string {
-	if clusterID == uuid.Nil {
+	if clusterID == consts.LocalClusterID {
 		return nodeID
 	}
 

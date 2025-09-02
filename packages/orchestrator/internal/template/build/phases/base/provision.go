@@ -99,7 +99,7 @@ func (bb *BaseBuilder) provisionSandbox(
 	if err != nil {
 		return fmt.Errorf("error creating sandbox: %w", err)
 	}
-	defer sbx.Stop(ctx)
+	defer sbx.Close(ctx)
 
 	err = sbx.WaitForExit(
 		ctx,

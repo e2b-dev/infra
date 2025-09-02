@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
-	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	ldclient "github.com/launchdarkly/go-server-sdk/v7"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"go.uber.org/zap"
@@ -29,11 +28,6 @@ func NewClient() (*Client, error) {
 	var err error
 
 	if launchDarklyApiKey == "" {
-		for flag, value := range flagsInt {
-			builder := LaunchDarklyOfflineStore.Flag(string(flag)).ValueForAll(ldvalue.Int(value))
-			LaunchDarklyOfflineStore.Update(builder)
-		}
-
 		// waitFor has to be 0 for offline store
 		ldClient, err = ldclient.MakeCustomClient(
 			"",
@@ -69,22 +63,17 @@ func (c *Client) BoolFlag(ctx context.Context, flag BoolFlag, contexts ...ldcont
 	return enabled, nil
 }
 
-func (c *Client) IntFlag(ctx context.Context, flagName IntFlag, contexts ...ldcontext.Context) (int, error) {
-	defaultValue := flagsInt[flagName]
+func (c *Client) IntFlag(ctx context.Context, flag IntFlag, contexts ...ldcontext.Context) (int, error) {
 	if c.ld == nil {
-		return defaultValue, fmt.Errorf("LaunchDarkly client is not initialized")
+		return flag.fallback, fmt.Errorf("LaunchDarkly client is not initialized")
 	}
 
-	value, err := c.ld.IntVariationCtx(ctx, string(flagName), mergeContexts(ctx, contexts), defaultValue)
+	value, err := c.ld.IntVariationCtx(ctx, flag.name, mergeContexts(ctx, contexts), flag.fallback)
 	if err != nil {
-		return value, fmt.Errorf("error evaluating %s: %w", flagName, err)
+		return value, fmt.Errorf("error evaluating %s: %w", flag, err)
 	}
 
 	return value, nil
-}
-
-func (c *Client) IntFlagDefault(flagName IntFlag) int {
-	return flagsInt[flagName]
 }
 
 func (c *Client) Close(ctx context.Context) error {

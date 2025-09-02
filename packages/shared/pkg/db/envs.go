@@ -6,9 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
@@ -62,74 +60,6 @@ func (db *DB) UpdateEnv(ctx context.Context, envID string, input UpdateEnvInput)
 	return db.Client.Env.UpdateOneID(envID).SetPublic(input.Public).Exec(ctx)
 }
 
-func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template, err error) {
-	envs, err := db.
-		Client.
-		Env.
-		Query().
-		Where(
-			env.TeamID(teamID),
-			env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusUploaded)),
-			env.Not(env.HasSnapshots()),
-		).
-		Order(models.Asc(env.FieldCreatedAt)).
-		WithEnvAliases().
-		WithCreator().
-		WithBuilds(func(query *models.EnvBuildQuery) {
-			query.Where(envbuild.StatusEQ(envbuild.StatusUploaded)).Order(models.Desc(envbuild.FieldFinishedAt))
-		}).
-		All(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list envs: %w", err)
-	}
-
-	for _, item := range envs {
-		aliases := make([]string, len(item.Edges.EnvAliases))
-		for i, alias := range item.Edges.EnvAliases {
-			aliases[i] = alias.ID
-		}
-
-		var createdBy *TemplateCreator
-		if item.Edges.Creator != nil {
-			createdBy = &TemplateCreator{Id: item.Edges.Creator.ID, Email: item.Edges.Creator.Email}
-		}
-
-		build := item.Edges.Builds[0]
-
-		diskMB := int64(0)
-		if build.TotalDiskSizeMB != nil {
-			diskMB = *build.TotalDiskSizeMB
-		}
-
-		envdVersion := ""
-		if build.EnvdVersion != nil {
-			envdVersion = *build.EnvdVersion
-		} else {
-			zap.L().Error("failed to determine envd version", logger.WithTemplateID(item.ID))
-		}
-
-		result = append(result, &Template{
-			TemplateID:    item.ID,
-			TeamID:        item.TeamID,
-			BuildID:       build.ID.String(),
-			VCPU:          build.Vcpu,
-			RAMMB:         build.RAMMB,
-			DiskMB:        diskMB,
-			Public:        item.Public,
-			Aliases:       &aliases,
-			CreatedAt:     item.CreatedAt,
-			UpdatedAt:     item.UpdatedAt,
-			LastSpawnedAt: item.LastSpawnedAt,
-			SpawnCount:    item.SpawnCount,
-			BuildCount:    item.BuildCount,
-			CreatedBy:     createdBy,
-			EnvdVersion:   envdVersion,
-		})
-	}
-
-	return result, nil
-}
-
 func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *models.Env, err error) {
 	template, err := db.
 		Client.
@@ -147,7 +77,7 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *models.E
 
 	notFound := models.IsNotFound(err)
 	if notFound {
-		return nil, TemplateNotFound{}
+		return nil, TemplateNotFoundError{}
 	} else if err != nil {
 		return nil, fmt.Errorf("failed to get template '%s': %w", aliasOrEnvID, err)
 	}
@@ -180,7 +110,7 @@ func (db *DB) GetEnvBuild(ctx context.Context, buildID uuid.UUID) (build *models
 
 	notFound := models.IsNotFound(err)
 	if notFound {
-		return nil, TemplateBuildNotFound{}
+		return nil, TemplateBuildNotFoundError{}
 	} else if err != nil {
 		return nil, fmt.Errorf("failed to get env build '%s': %w", buildID, err)
 	}

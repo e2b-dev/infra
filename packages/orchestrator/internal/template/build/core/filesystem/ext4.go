@@ -229,10 +229,15 @@ func ReadFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, fileP
 	_, statSpan := tracer.Start(ctx, "ext4-read-file")
 	defer statSpan.End()
 
+	_, err := os.Lstat(rootfsPath)
+	if err != nil {
+		return "2", fmt.Errorf("rootfs file does not exist: %w", err)
+	}
+
 	cmd := exec.Command("debugfs", "-R", fmt.Sprintf("cat \"%s\"", filePath), rootfsPath)
 	out, err := cmd.Output()
 	if err != nil {
-		return "1", fmt.Errorf("error reading file: %w", err)
+		return "2", fmt.Errorf("error reading file %s: %w", filePath, err)
 	}
 
 	return string(out), nil

@@ -17,6 +17,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -149,7 +150,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 			for _, sbx := range so.sandboxes.Items() {
 				ok, err := utils.IsGTEVersion(sbx.Config.Envd.Version, minEnvdVersionForMetrics)
 				if err != nil {
-					zap.L().Error("Failed to check envd version", zap.Error(err), zap.String("sandbox_id", sbx.Runtime.SandboxID))
+					zap.L().Error("Failed to check envd version", zap.Error(err), logger.WithSandboxID(sbx.Runtime.SandboxID))
 					continue
 				}
 				if !ok {
@@ -179,7 +180,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 
 					ok, err := utils.IsGTEVersion(sbx.Config.Envd.Version, minEnvdVersionForMemoryPrecise)
 					if err != nil {
-						zap.L().Error("Failed to check envd version for memory metrics", zap.Error(err), zap.String("sandbox_id", sbx.Runtime.SandboxID))
+						zap.L().Error("Failed to check envd version for memory metrics", zap.Error(err), logger.WithSandboxID(sbx.Runtime.SandboxID))
 					}
 					if ok {
 						o.ObserveInt64(so.memoryTotal, sbxMetrics.MemTotal, attributes)
@@ -191,7 +192,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 
 					ok, err = utils.IsGTEVersion(sbx.Config.Envd.Version, minEnvdVersionForDiskMetrics)
 					if err != nil {
-						zap.L().Error("Failed to check envd version for disk metrics", zap.Error(err), zap.String("sandbox_id", sbx.Runtime.SandboxID))
+						zap.L().Error("Failed to check envd version for disk metrics", zap.Error(err), logger.WithSandboxID(sbx.Runtime.SandboxID))
 					}
 					if ok {
 						o.ObserveInt64(so.diskTotal, sbxMetrics.DiskTotal, attributes)

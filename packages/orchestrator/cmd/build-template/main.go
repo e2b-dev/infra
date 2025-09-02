@@ -5,11 +5,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"net/http"
-	"os"
 	"time"
 
-	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
@@ -50,8 +49,7 @@ func main() {
 
 	err := buildTemplate(ctx, *kernelVersion, *fcVersion, *templateID, *buildID)
 	if err != nil {
-		log.Fatal().Err(err).Msg("error building template")
-		os.Exit(1)
+		log.Fatalf("error building template: %v", err)
 	}
 }
 

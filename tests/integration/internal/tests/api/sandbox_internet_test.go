@@ -57,8 +57,6 @@ func TestInternetAccess(t *testing.T) {
 }
 
 func TestInternetAccessResumedSbx(t *testing.T) {
-	t.Parallel()
-
 	ctx := t.Context()
 	sbxTimeout := int32(30)
 
@@ -80,8 +78,6 @@ func TestInternetAccessResumedSbx(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			resp, err := client.PostSandboxesWithResponse(ctx, api.NewSandbox{
 				TemplateID:          setup.SandboxTemplateID,
 				Timeout:             &sbxTimeout,

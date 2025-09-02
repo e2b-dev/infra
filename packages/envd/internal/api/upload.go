@@ -139,7 +139,7 @@ func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, param
 			errMsg := fmt.Errorf("you cannot upload multiple files to the same path '%s' in one upload request, only the first specified file was uploaded", filePath)
 
 			if len(alreadyUploaded) > 1 {
-				errMsg = fmt.Errorf("%s, also the following files were uploaded: %v", errMsg, strings.Join(alreadyUploaded, ", "))
+				errMsg = fmt.Errorf("%w, also the following files were uploaded: %v", errMsg, strings.Join(alreadyUploaded, ", "))
 			}
 
 			return "", errMsg

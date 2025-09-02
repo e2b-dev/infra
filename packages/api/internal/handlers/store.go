@@ -12,7 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	loki "github.com/grafana/loki/pkg/logcli/client"
 	nomadapi "github.com/hashicorp/nomad/api"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"github.com/redis/go-redis/v9"
@@ -59,7 +58,6 @@ type APIStore struct {
 	templateManager          *template_manager.TemplateManager
 	db                       *db.DB
 	sqlcDB                   *sqlcdb.Client
-	lokiClient               *loki.DefaultClient
 	templateCache            *templatecache.TemplateCache
 	templateBuildsCache      *templatecache.TemplatesBuildCache
 	authCache                *authcache.TeamAuthCache
@@ -147,18 +145,14 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		zap.L().Fatal("initializing edge clusters pool failed", zap.Error(err))
 	}
 
-	orch, err := orchestrator.New(ctx, tel, tracer, nomadClient, posthogClient, redisClient, dbClient, clustersPool)
+	featureFlags, err := featureflags.NewClient()
 	if err != nil {
-		zap.L().Fatal("Initializing Orchestrator client", zap.Error(err))
+		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
 
-	var lokiClient *loki.DefaultClient
-	if laddr := os.Getenv("LOKI_ADDRESS"); laddr != "" {
-		lokiClient = &loki.DefaultClient{
-			Address: laddr,
-		}
-	} else {
-		zap.L().Warn("LOKI_ADDRESS not set, disabling Loki client")
+	orch, err := orchestrator.New(ctx, tel, tracer, nomadClient, posthogClient, redisClient, dbClient, clustersPool, featureFlags)
+	if err != nil {
+		zap.L().Fatal("Initializing Orchestrator client", zap.Error(err))
 	}
 
 	authCache := authcache.NewTeamAuthCache()
@@ -171,18 +165,13 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 	}
 
 	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
-	templateManager, err := template_manager.New(ctx, tracer, tel.TracerProvider, tel.MeterProvider, dbClient, sqlcDB, clustersPool, lokiClient, templateBuildsCache, templateCache)
+	templateManager, err := template_manager.New(ctx, tracer, tel.TracerProvider, tel.MeterProvider, dbClient, sqlcDB, clustersPool, templateBuildsCache, templateCache)
 	if err != nil {
 		zap.L().Fatal("Initializing Template manager client", zap.Error(err))
 	}
 
 	// Start the periodic sync of template builds statuses
 	go templateManager.BuildsStatusPeriodicalSync(ctx)
-
-	featureFlags, err := featureflags.NewClient()
-	if err != nil {
-		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
-	}
 
 	a := &APIStore{
 		Healthy:                  false,
@@ -193,7 +182,6 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		Telemetry:                tel,
 		Tracer:                   tracer,
 		posthog:                  posthogClient,
-		lokiClient:               lokiClient,
 		templateCache:            templateCache,
 		templateBuildsCache:      templateBuildsCache,
 		authCache:                authCache,
