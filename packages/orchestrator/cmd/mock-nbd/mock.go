@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric/noop"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -23,19 +24,25 @@ type DeviceWithClose struct {
 	backend.Backend
 }
 
+var _ block.Device = &DeviceWithClose{}
+
 func (d *DeviceWithClose) Close() error {
 	return nil
 }
 
-func (d *DeviceWithClose) Slice(offset, length int64) ([]byte, error) {
+func (d *DeviceWithClose) Slice(ctx context.Context, offset, length int64) ([]byte, error) {
 	b := make([]byte, length)
 
-	_, err := d.Backend.ReadAt(b, offset)
+	_, err := d.ReadAt(ctx, b, offset)
 	if err != nil {
 		return nil, err
 	}
 
 	return b, nil
+}
+
+func (d *DeviceWithClose) ReadAt(ctx context.Context, p []byte, offset int64) (int, error) {
+	return d.Backend.ReadAt(p, offset)
 }
 
 func (d *DeviceWithClose) BlockSize() int64 {
@@ -165,7 +172,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool
 	}
 
 	data := make([]byte, size)
-	_, err = mnt.Backend.ReadAt(data, 0)
+	_, err = mnt.Backend.ReadAt(ctx, data, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read: %w", err)
 	}

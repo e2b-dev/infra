@@ -9,12 +9,14 @@ import (
 	"sync"
 
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 var ErrShuttingDown = errors.New("shutting down. Cannot serve any new requests")
 
 type Provider interface {
-	io.ReaderAt
+	storage.ReaderAtCtx
 	io.WriterAt
 	Size() (int64, error)
 }
@@ -216,7 +218,7 @@ func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) e
 		data := make([]byte, length)
 
 		go func() {
-			_, err := d.prov.ReadAt(data, int64(from))
+			_, err := d.prov.ReadAt(context.WithoutCancel(d.ctx), data, int64(from))
 			errchan <- err
 		}()
 
