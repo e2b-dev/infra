@@ -6,9 +6,9 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-type ErrBytesNotAvailable struct{}
+type BytesNotAvailableError struct{}
 
-func (ErrBytesNotAvailable) Error() string {
+func (BytesNotAvailableError) Error() string {
 	return "The requested bytes are not available on the device"
 }
 

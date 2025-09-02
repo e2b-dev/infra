@@ -30,7 +30,7 @@ var gcpAuthConfig = authn.Basic{
 func NewGCPArtifactsRegistry(ctx context.Context) (*GCPArtifactsRegistry, error) {
 	registry, err := artifactregistry.NewClient(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error creating artifact registry client: %v", err)
+		return nil, fmt.Errorf("error creating artifact registry client: %w", err)
 	}
 
 	return &GCPArtifactsRegistry{registry: registry}, nil
@@ -44,7 +44,7 @@ func (g *GCPArtifactsRegistry) Delete(ctx context.Context, templateId string, bu
 			return ErrImageNotExists
 		}
 
-		return fmt.Errorf("error deleting tag %s: %v", tagPath, err)
+		return fmt.Errorf("error deleting tag %s: %w", tagPath, err)
 	}
 
 	return nil
