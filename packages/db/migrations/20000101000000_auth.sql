@@ -39,25 +39,24 @@ $$;
 -- Grant execute on auth.uid() to postgres role
 GRANT EXECUTE ON FUNCTION auth.uid() TO postgres;
 
--- Check if the table exists before trying to create it
+-- Skip table creation if you are in Supabase environment where auth.users table already exists
 DO $$
     BEGIN
-        IF NOT EXISTS (
+        IF EXISTS (
             SELECT 1
             FROM information_schema.tables
             WHERE table_schema = 'auth'
               AND table_name = 'users'
-        ) THEN
-            EXECUTE '
-        CREATE TABLE auth.users (
-            id uuid NOT NULL DEFAULT gen_random_uuid(),
-            email text NOT NULL,
-            PRIMARY KEY (id)
-        );';
+        ) THEN RETURN;
         END IF;
     END;
 $$;
 
+CREATE TABLE auth.users (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    email text NOT NULL,
+    PRIMARY KEY (id)
+);
 -- +goose StatementEnd
 
 -- +goose Down
