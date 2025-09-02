@@ -73,7 +73,7 @@ func (o *NBDProvider) Start(ctx context.Context) error {
 func (o *NBDProvider) ExportDiff(
 	parentCtx context.Context,
 	out io.Writer,
-	stopSandbox func(ctx context.Context) error,
+	closeSandbox func(ctx context.Context) error,
 ) (*header.DiffMetadata, error) {
 	childCtx, childSpan := o.tracer.Start(parentCtx, "cow-export")
 	defer childSpan.End()
@@ -85,7 +85,7 @@ func (o *NBDProvider) ExportDiff(
 
 	// the error is already logged in go routine in SandboxCreate handler
 	go func() {
-		err := stopSandbox(childCtx)
+		err := closeSandbox(childCtx)
 		if err != nil {
 			zap.L().Error("error stopping sandbox on cow export", zap.Error(err))
 		}

@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -25,7 +26,7 @@ const (
 )
 
 type Uffd struct {
-	exitCh  chan error
+	exit    *utils.ErrorOnce
 	readyCh chan struct{}
 
 	fdExit *fdexit.FdExit
@@ -48,7 +49,7 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 	}
 
 	return &Uffd{
-		exitCh:     make(chan error, 1),
+		exit:       utils.NewErrorOnce(),
 		readyCh:    make(chan struct{}, 1),
 		fdExit:     fdExit,
 		memfile:    trackedMemfile,
@@ -75,10 +76,9 @@ func (u *Uffd) Start(sandboxId string) error {
 		closeErr := u.lis.Close()
 		fdExitErr := u.fdExit.Close()
 
-		u.exitCh <- errors.Join(handleErr, closeErr, fdExitErr)
+		u.exit.SetError(errors.Join(handleErr, closeErr, fdExitErr))
 
 		close(u.readyCh)
-		close(u.exitCh)
 	}()
 
 	return nil
@@ -165,8 +165,8 @@ func (u *Uffd) Ready() chan struct{} {
 	return u.readyCh
 }
 
-func (u *Uffd) Exit() chan error {
-	return u.exitCh
+func (u *Uffd) Exit() *utils.ErrorOnce {
+	return u.exit
 }
 
 func (u *Uffd) TrackAndReturnNil() error {
