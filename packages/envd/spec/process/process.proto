@@ -49,6 +49,8 @@ message StartRequest {
     ProcessConfig process = 1;
     optional PTY pty = 2;
     optional string tag = 3;
+    // This is optional for backwards compatibility.
+    // We will default to false. Also new SDK versions will set this to false by default.
     optional bool stdin = 4;
 }
 
