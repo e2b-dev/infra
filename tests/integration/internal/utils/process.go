@@ -33,13 +33,16 @@ func ExecCommandAsRoot(tb testing.TB, ctx context.Context, sbx *api.Sandbox, env
 func ExecCommandWithOptions(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, cwd *string, user string, command string, args ...string) error {
 	tb.Helper()
 
+	f := false
 	req := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
 			Cmd:  command,
 			Args: args,
 			Cwd:  cwd,
 		},
+		Stdin: &f,
 	})
+
 	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
 	setup.SetUserHeader(req.Header(), user)
 	ctx, cancel := context.WithCancel(ctx)

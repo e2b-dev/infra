@@ -256,3 +256,17 @@ func TestWorkdirPermissionDenied(t *testing.T) {
 	err = utils.ExecCommandWithCwd(t, ctx, sbx, envdClient, &restrictedDir, "/bin/bash", "-c", "pwd")
 	require.Error(t, err, "Should fail when trying to use restricted directory as working directory")
 }
+
+func TestStdin(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	client := setup.GetAPIClient()
+	sbx := utils.SetupSandboxWithCleanup(t, client, utils.WithTimeout(120))
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	err := utils.ExecCommandAsRoot(t, ctx, sbx, envdClient, "/bin/bash", "-c", "read -p 'Enter your name: '")
+	require.ErrorIs(t, err, context.Canceled, "Should fail due to no stdin")
+	require.NoError(t, err, "Should be able to create restricted directory as root")
+}
