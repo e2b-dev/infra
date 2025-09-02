@@ -234,5 +234,5 @@ func firstAlias(aliases []string) string {
 	if len(aliases) == 0 {
 		return ""
 	}
-	return (aliases)[0]
+	return aliases[0]
 }
