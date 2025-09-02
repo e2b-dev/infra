@@ -79,7 +79,7 @@ func (c CachedProvider) OpenObject(ctx context.Context, path string) (StorageObj
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	return &CachedFileObjectProvider{ctx: ctx, path: localPath, chunkSize: c.chunkSize, inner: innerObject}, nil
+	return &CachedFileObjectProvider{path: localPath, chunkSize: c.chunkSize, inner: innerObject}, nil
 }
 
 func (c CachedProvider) GetDetails() string {
@@ -88,7 +88,6 @@ func (c CachedProvider) GetDetails() string {
 }
 
 type CachedFileObjectProvider struct {
-	ctx       context.Context // nolint:containedctx // todo: refactor so this can be removed
 	path      string
 	chunkSize int64
 	inner     StorageObjectProvider
@@ -119,7 +118,7 @@ func (c *CachedFileObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (
 				zap.Int64("expected", totalSize),
 				zap.Int64("actual", bytesRead))
 		}
-		cachedRead.End(c.ctx, bytesRead)
+		cachedRead.End(ctx, bytesRead)
 		written, err := dst.Write(b)
 		return int64(written), err
 	}
@@ -144,7 +143,9 @@ func (c *CachedFileObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (
 			zap.Int64("actual", bytesWritten))
 	}
 
-	go c.writeFullFileToCache(fullCachePath, writer.Bytes())
+	go func(ctx context.Context) {
+		c.writeFullFileToCache(ctx, fullCachePath, writer.Bytes())
+	}(context.WithoutCancel(ctx))
 
 	written, err := dst.Write(writer.Bytes())
 	return int64(written), err
@@ -176,7 +177,7 @@ func (c *CachedFileObjectProvider) ReadAt(ctx context.Context, buff []byte, offs
 	readTimer := cacheReadTimerFactory.Begin()
 	count, err := c.readAtFromCache(chunkPath, buff)
 	if ignoreEOF(err) == nil {
-		readTimer.End(c.ctx, int64(count))
+		readTimer.End(ctx, int64(count))
 		return count, err // return `err` in case it's io.EOF
 	}
 
@@ -191,7 +192,9 @@ func (c *CachedFileObjectProvider) ReadAt(ctx context.Context, buff []byte, offs
 		return 0, fmt.Errorf("failed to perform uncached read: %w", err)
 	}
 
-	go c.writeChunkToCache(offset, chunkPath, buff[:readCount])
+	go func(ctx context.Context) {
+		c.writeChunkToCache(ctx, offset, chunkPath, buff[:readCount])
+	}(context.WithoutCancel(ctx))
 
 	return readCount, nil
 }
@@ -249,7 +252,7 @@ func (c *CachedFileObjectProvider) makeChunkFilename(offset int64) string {
 	return fmt.Sprintf("%s/%012d-%d.bin", c.path, offset/c.chunkSize, c.chunkSize)
 }
 
-func (c *CachedFileObjectProvider) writeChunkToCache(offset int64, chunkPath string, bytes []byte) {
+func (c *CachedFileObjectProvider) writeChunkToCache(ctx context.Context, offset int64, chunkPath string, bytes []byte) {
 	writeTimer := cacheWriteTimerFactory.Begin()
 
 	tempPath := c.makeTempChunkFilename(offset)
@@ -278,10 +281,10 @@ func (c *CachedFileObjectProvider) writeChunkToCache(offset int64, chunkPath str
 		return
 	}
 
-	writeTimer.End(c.ctx, int64(len(bytes)))
+	writeTimer.End(ctx, int64(len(bytes)))
 }
 
-func (c *CachedFileObjectProvider) writeFullFileToCache(filePath string, b []byte) {
+func (c *CachedFileObjectProvider) writeFullFileToCache(ctx context.Context, filePath string, b []byte) {
 	begin := cacheWriteTimerFactory.Begin()
 
 	tempPath := c.makeTempFullFilename()
@@ -307,7 +310,7 @@ func (c *CachedFileObjectProvider) writeFullFileToCache(filePath string, b []byt
 		return
 	}
 
-	begin.End(c.ctx, int64(len(b)))
+	begin.End(ctx, int64(len(b)))
 }
 
 func (c *CachedFileObjectProvider) readAtFromCache(chunkPath string, buff []byte) (int, error) {
