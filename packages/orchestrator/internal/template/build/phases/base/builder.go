@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -44,6 +46,8 @@ const (
 
 	defaultUser = "root"
 )
+
+var tracer = otel.Tracer("orchestrator.template.build.phases.base")
 
 type BaseBuilder struct {
 	buildcontext.BuildContext
@@ -128,6 +132,11 @@ func (bb *BaseBuilder) Build(
 	_ phases.LayerResult,
 	currentLayer phases.LayerResult,
 ) (phases.LayerResult, error) {
+	ctx, span := tracer.Start(ctx, "build base", trace.WithAttributes(
+		attribute.String("hash", currentLayer.Hash),
+	))
+	defer span.End()
+
 	baseMetadata, err := bb.buildLayerFromOCI(
 		ctx,
 		currentLayer.Metadata,
@@ -305,6 +314,11 @@ func (bb *BaseBuilder) Layer(
 	_ phases.LayerResult,
 	hash string,
 ) (phases.LayerResult, error) {
+	ctx, span := tracer.Start(ctx, "compute base", trace.WithAttributes(
+		attribute.String("hash", hash),
+	))
+	defer span.End()
+
 	switch {
 	case bb.Config.FromTemplate != nil:
 		sourceMeta := metadata.FromTemplate{

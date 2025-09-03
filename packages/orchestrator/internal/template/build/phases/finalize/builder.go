@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -25,6 +27,8 @@ import (
 )
 
 var finalizeTimeout = configurationTimeout + readyCommandTimeout + 5*time.Minute
+
+var tracer = otel.Tracer("orchestrator.template.build.phases.finalize")
 
 type PostProcessingBuilder struct {
 	buildcontext.BuildContext
@@ -76,7 +80,7 @@ func (ppb *PostProcessingBuilder) Hash(sourceLayer phases.LayerResult) (string, 
 }
 
 func (ppb *PostProcessingBuilder) Layer(
-	ctx context.Context,
+	_ context.Context,
 	sourceLayer phases.LayerResult,
 	hash string,
 ) (phases.LayerResult, error) {
@@ -108,6 +112,11 @@ func (ppb *PostProcessingBuilder) Build(
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
 ) (phases.LayerResult, error) {
+	ctx, span := tracer.Start(ctx, "build final", trace.WithAttributes(
+		attribute.String("hash", currentLayer.Hash),
+	))
+	defer span.End()
+
 	// Configure sandbox for final layer
 	sbxConfig := sandbox.Config{
 		Vcpu:      ppb.Config.VCpuCount,
