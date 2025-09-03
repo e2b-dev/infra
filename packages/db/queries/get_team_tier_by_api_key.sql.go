@@ -9,7 +9,7 @@ import (
 	"context"
 )
 
-const getTeamWithTierByAPIKey = `-- name: GetTeamWithTierByAPIKey :one
+const getTeamWithTierByAPIKeyWithUpdateLastUsed = `-- name: GetTeamWithTierByAPIKeyWithUpdateLastUsed :one
 UPDATE "public"."team_api_keys" tak
 SET last_used = now()
 FROM "public"."teams" t
@@ -19,14 +19,14 @@ WHERE tak.team_id = t.id
 RETURNING t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, tier.id, tier.name, tier.disk_mb, tier.concurrent_instances, tier.max_length_hours, tier.max_vcpu, tier.max_ram_mb
 `
 
-type GetTeamWithTierByAPIKeyRow struct {
+type GetTeamWithTierByAPIKeyWithUpdateLastUsedRow struct {
 	Team Team
 	Tier Tier
 }
 
-func (q *Queries) GetTeamWithTierByAPIKey(ctx context.Context, apiKeyHash string) (GetTeamWithTierByAPIKeyRow, error) {
-	row := q.db.QueryRow(ctx, getTeamWithTierByAPIKey, apiKeyHash)
-	var i GetTeamWithTierByAPIKeyRow
+func (q *Queries) GetTeamWithTierByAPIKeyWithUpdateLastUsed(ctx context.Context, apiKeyHash string) (GetTeamWithTierByAPIKeyWithUpdateLastUsedRow, error) {
+	row := q.db.QueryRow(ctx, getTeamWithTierByAPIKeyWithUpdateLastUsed, apiKeyHash)
+	var i GetTeamWithTierByAPIKeyWithUpdateLastUsedRow
 	err := row.Scan(
 		&i.Team.ID,
 		&i.Team.CreatedAt,

@@ -1,4 +1,4 @@
--- name: GetTeamWithTierByAPIKey :one
+-- name: GetTeamWithTierByAPIKeyWithUpdateLastUsed :one
 UPDATE "public"."team_api_keys" tak
 SET last_used = now()
 FROM "public"."teams" t
