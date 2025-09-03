@@ -25,7 +25,7 @@ func NewResumeSandbox(config sandbox.Config, timeout time.Duration) *ResumeSandb
 	return &ResumeSandbox{config: config, timeout: timeout}
 }
 
-func (f *ResumeSandbox) Sandbox(
+func (rs *ResumeSandbox) Sandbox(
 	ctx context.Context,
 	layerExecutor *LayerExecutor,
 	template sbxtemplate.Template,
@@ -35,7 +35,7 @@ func (f *ResumeSandbox) Sandbox(
 		layerExecutor.tracer,
 		layerExecutor.networkPool,
 		template,
-		f.config,
+		rs.config,
 		sandbox.RuntimeMetadata{
 			TemplateID:  layerExecutor.Config.TemplateID,
 			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
@@ -43,7 +43,7 @@ func (f *ResumeSandbox) Sandbox(
 		},
 		uuid.New().String(),
 		time.Now(),
-		time.Now().Add(f.timeout),
+		time.Now().Add(rs.timeout),
 		layerExecutor.devicePool,
 		false,
 		nil,

@@ -36,7 +36,7 @@ func NewCreateSandboxFromCache(config sandbox.Config, timeout time.Duration, fcV
 	return &CreateSandbox{config: config, timeout: timeout, fcVersions: fcVersions, rootfsCachePath: rootfsCachePath}
 }
 
-func (f *CreateSandbox) Sandbox(
+func (cs *CreateSandbox) Sandbox(
 	ctx context.Context,
 	layerExecutor *LayerExecutor,
 	sourceTemplate sbxtemplate.Template,
@@ -44,8 +44,8 @@ func (f *CreateSandbox) Sandbox(
 	// Create new memfile with the size of the sandbox RAM, this updates the underlying memfile.
 	// This is ok as the sandbox is started from the beginning.
 	memfile, err := block.NewEmpty(
-		f.config.RamMB<<constants.ToMBShift,
-		config.MemfilePageSize(f.config.HugePages),
+		cs.config.RamMB<<constants.ToMBShift,
+		config.MemfilePageSize(cs.config.HugePages),
 		uuid.MustParse(sourceTemplate.Files().BuildID),
 	)
 	if err != nil {
@@ -60,16 +60,16 @@ func (f *CreateSandbox) Sandbox(
 		layerExecutor.tracer,
 		layerExecutor.networkPool,
 		layerExecutor.devicePool,
-		f.config,
+		cs.config,
 		sandbox.RuntimeMetadata{
 			TemplateID:  layerExecutor.Config.TemplateID,
 			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
 			ExecutionID: uuid.NewString(),
 		},
-		f.fcVersions,
+		cs.fcVersions,
 		template,
-		f.timeout,
-		f.rootfsCachePath,
+		cs.timeout,
+		cs.rootfsCachePath,
 		fc.ProcessOptions{
 			InitScriptPath:      constants.SystemdInitPath,
 			KernelLogs:          env.IsDevelopment(),
