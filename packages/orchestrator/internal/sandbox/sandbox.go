@@ -353,10 +353,14 @@ func ResumeSandbox(
 		return nil
 	})
 
+	telemetry.ReportEvent(childCtx, "created sandbox files")
+
 	readonlyRootfs, err := t.Rootfs()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rootfs: %w", err)
 	}
+
+	telemetry.ReportEvent(childCtx, "got template rootfs")
 
 	rootfsOverlay, err := rootfs.NewNBDProvider(
 		tracer,
@@ -367,9 +371,13 @@ func ResumeSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
+
 	cleanup.Add(func(ctx context.Context) error {
 		return rootfsOverlay.Close(ctx)
 	})
+
+	telemetry.ReportEvent(childCtx, "created rootfs overlay")
+
 	go func() {
 		runErr := rootfsOverlay.Start(childCtx)
 		if runErr != nil {
@@ -381,6 +389,8 @@ func ResumeSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memfile: %w", err)
 	}
+
+	telemetry.ReportEvent(childCtx, "got template memfile")
 
 	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
 
@@ -410,14 +420,23 @@ func ResumeSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rootfs path: %w", err)
 	}
+
+	telemetry.ReportEvent(childCtx, "got rootfs path")
+
 	ips := <-ipsCh
 	if ips.err != nil {
 		return nil, fmt.Errorf("failed to get network slot: %w", err)
 	}
+
+	telemetry.ReportEvent(childCtx, "got network slot")
+
 	meta, err := t.Metadata()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get metadata: %w", err)
 	}
+
+	telemetry.ReportEvent(childCtx, "got metadata")
+
 	fcHandle, fcErr := fc.NewProcess(
 		uffdStartCtx,
 		tracer,
@@ -439,13 +458,18 @@ func ResumeSandbox(
 		return nil, fmt.Errorf("failed to create FC: %w", fcErr)
 	}
 
+	telemetry.ReportEvent(childCtx, "created FC process")
+
 	// todo: check if kernel, firecracker, and envd versions exist
 	snapfile, err := t.Snapfile()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get snapfile: %w", err)
 	}
 
+	telemetry.ReportEvent(childCtx, "got snapfile")
+
 	logsCollectorIP := os.Getenv("LOGS_COLLECTOR_PUBLIC_IP")
+
 	fcStartErr := fcHandle.Resume(
 		uffdStartCtx,
 		tracer,
@@ -463,8 +487,6 @@ func ResumeSandbox(
 	if fcStartErr != nil {
 		return nil, fmt.Errorf("failed to start FC: %w", fcStartErr)
 	}
-
-	telemetry.ReportEvent(childCtx, "initialized FC")
 
 	resources := &Resources{
 		Slot:   ips.slot,
@@ -869,6 +891,9 @@ func serveMemory(
 	socketPath string,
 	sandboxID string,
 ) (uffd.MemoryBackend, error) {
+	_, childSpan := tracer.Start(ctx, "serve-memory")
+	defer childSpan.End()
+
 	fcUffd, uffdErr := uffd.New(memfile, socketPath, memfile.BlockSize())
 	if uffdErr != nil {
 		return nil, fmt.Errorf("failed to create uffd: %w", uffdErr)

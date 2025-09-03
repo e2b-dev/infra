@@ -343,8 +343,11 @@ func (p *Process) Resume(
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
 
+	telemetry.ReportEvent(childCtx, "symlinked rootfs")
+
 	err = p.client.loadSnapshot(
 		childCtx,
+		tracer,
 		uffdSocketPath,
 		uffdReady,
 		snapfile,
@@ -355,14 +358,14 @@ func (p *Process) Resume(
 		return errors.Join(fmt.Errorf("error loading snapshot: %w", err), fcStopErr)
 	}
 
-	err = p.client.resumeVM(childCtx)
+	err = p.client.resumeVM(childCtx, tracer)
 	if err != nil {
 		fcStopErr := p.Stop()
 
 		return errors.Join(fmt.Errorf("error resuming vm: %w", err), fcStopErr)
 	}
 
-	err = p.client.setMmds(childCtx, mmdsMetadata)
+	err = p.client.setMmds(childCtx, tracer, mmdsMetadata)
 	if err != nil {
 		fcStopErr := p.Stop()
 
