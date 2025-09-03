@@ -39,7 +39,6 @@ func NewHTTPLogsExporter(ctx context.Context, isNotFC bool, mmdsChan <-chan *hos
 		mmdsOpts: &host.MMDSOpts{
 			InstanceID: "unknown",
 			EnvID:      "unknown",
-			TeamID:     "unknown",
 			Address:    "",
 		},
 	}
@@ -86,7 +85,7 @@ func (w *HTTPExporter) listenForMMDSOptsAndStart(ctx context.Context, mmdsChan <
 
 			w.mmdsLock.Lock()
 			w.mmdsOpts.Update(
-				mmdsOpts.TraceID, mmdsOpts.InstanceID, mmdsOpts.EnvID, mmdsOpts.Address, mmdsOpts.TeamID)
+				mmdsOpts.TraceID, mmdsOpts.InstanceID, mmdsOpts.EnvID, mmdsOpts.Address)
 			w.mmdsLock.Unlock()
 
 			w.startOnce.Do(func() {
