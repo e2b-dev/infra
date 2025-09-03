@@ -306,7 +306,7 @@ func TestAPIKeyLastUsedUpdated(t *testing.T) {
 	// The last used is updated only once a minute
 	expectedLastUsed := time.Now().Add(-2 * time.Minute)
 	// Use the api key
-	_, err := c.GetSandboxes(t.Context(), nil, setup.WithAPIKey())
+	_, err := c.GetSandboxesWithResponse(t.Context(), nil, setup.WithAPIKey())
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {
