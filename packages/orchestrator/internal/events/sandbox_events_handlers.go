@@ -1,7 +1,6 @@
 package events
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -27,7 +26,7 @@ func (h *DefaultSandboxEventHandler) Path() string {
 func (h *DefaultSandboxEventHandler) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	addr := r.RemoteAddr
 	ip := strings.Split(addr, ":")[0]
-	sandboxID, err := h.store.GetSandboxIP(ip)
+	sandboxID, err := h.store.GetSandboxIP(r.Context(), ip)
 	if err != nil {
 		zap.L().Error("Failed to get sandbox ID from IP", zap.Error(err))
 		http.Error(w, "Error handling event", http.StatusInternalServerError)
@@ -37,7 +36,7 @@ func (h *DefaultSandboxEventHandler) HandlerFunc(w http.ResponseWriter, r *http.
 	zap.L().Debug("Received request from sandbox", zap.String("sandbox_id", sandboxID), zap.String("ip", ip))
 
 	if r.Method == http.MethodGet {
-		events, err := h.store.GetLastNEvents(sandboxID, 10)
+		events, err := h.store.GetLastNEvents(r.Context(), sandboxID, 10)
 		if err != nil {
 			zap.L().Error("Failed to get event data for sandbox "+sandboxID, zap.Error(err))
 			http.Error(w, "Failed to get event data for sandbox "+sandboxID, http.StatusInternalServerError)
@@ -84,7 +83,7 @@ func (h *DefaultSandboxEventHandler) HandlerFunc(w http.ResponseWriter, r *http.
 	}
 
 	// Store in Redis with sandboxID as key
-	err = h.store.AddEvent(sandboxID, &eventData, 0)
+	err = h.store.AddEvent(r.Context(), sandboxID, &eventData, 0)
 	if err != nil {
 		zap.L().Error("Failed to store event data", zap.Error(err))
 		http.Error(w, "Failed to store event data", http.StatusInternalServerError)
@@ -95,7 +94,7 @@ func (h *DefaultSandboxEventHandler) HandlerFunc(w http.ResponseWriter, r *http.
 	w.Write([]byte(`{"event_ack":true}`))
 }
 
-func NewSandboxEventHandlers(ctx context.Context, store SandboxEventStore) []SandboxEventHandler {
+func NewSandboxEventHandlers(store SandboxEventStore) []SandboxEventHandler {
 	return []SandboxEventHandler{
 		&DefaultSandboxEventHandler{store},
 	}

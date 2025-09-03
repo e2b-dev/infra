@@ -524,9 +524,19 @@ func ResumeSandbox(
 
 	if eventStore != nil {
 		sandboxIP := ips.slot.HostIPString()
-		eventStore.SetSandboxIP(runtime.SandboxID, sandboxIP)
+
+		ctx = context.WithoutCancel(ctx)
+		err = eventStore.SetSandboxIP(context.WithoutCancel(ctx), runtime.SandboxID, sandboxIP)
+		if err != nil {
+			// soft fail to not block this critical path
+			zap.L().Error("failed to set sandbox IP", zap.String("sandbox_id", runtime.SandboxID), zap.String("ip", ips.slot.HostIPString()), zap.Error(err))
+		}
 		cleanup.AddPriority(func(ctx context.Context) error {
-			return eventStore.DelSandboxIP(sandboxIP)
+			err = eventStore.DelSandboxIP(ctx, sandboxIP)
+			if err != nil {
+				return fmt.Errorf("failed to delete sandbox IP: %w", err)
+			}
+			return nil
 		})
 	}
 

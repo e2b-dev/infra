@@ -347,8 +347,8 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 
 	sbxEventsService := events.NewSandboxEventsService(featureFlags, redisPubSub, sandboxEventBatcher, globalLogger)
 
-	sbxEventStore := events.NewSandboxEventStore(ctx, tracer, redisClient)
-	sbxEventHandlers := events.NewSandboxEventHandlers(ctx, sbxEventStore)
+	sbxEventStore := events.NewSandboxEventStore(tracer, redisClient)
+	sbxEventHandlers := events.NewSandboxEventHandlers(sbxEventStore)
 	sbxEventProxy := events.NewSandboxEventProxy(eventProxyPort, sbxEventHandlers)
 
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID, sandboxes)
