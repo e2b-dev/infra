@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
@@ -24,6 +25,8 @@ import (
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
+
+const layerTimeout = time.Hour
 
 type StepBuilder struct {
 	buildcontext.BuildContext
@@ -147,12 +150,16 @@ func (sb *StepBuilder) Build(
 	// First not cached layer is create (to change CPU, Memory, etc), subsequent are layers are resumes.
 	var sandboxCreator layer.SandboxCreator
 	if sourceLayer.Cached {
-		sandboxCreator = layer.NewCreateSandbox(sbxConfig, fc.FirecrackerVersions{
-			KernelVersion:      sb.Template.KernelVersion,
-			FirecrackerVersion: sb.Template.FirecrackerVersion,
-		})
+		sandboxCreator = layer.NewCreateSandbox(
+			sbxConfig,
+			layerTimeout,
+			fc.FirecrackerVersions{
+				KernelVersion:      sb.Template.KernelVersion,
+				FirecrackerVersion: sb.Template.FirecrackerVersion,
+			},
+		)
 	} else {
-		sandboxCreator = layer.NewResumeSandbox(sbxConfig)
+		sandboxCreator = layer.NewResumeSandbox(sbxConfig, layerTimeout)
 	}
 
 	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error) {

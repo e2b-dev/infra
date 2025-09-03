@@ -10,7 +10,6 @@ import (
 )
 
 const (
-	layerTimeout    = time.Hour
 	waitEnvdTimeout = 60 * time.Second
 )
 

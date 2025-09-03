@@ -3,6 +3,7 @@ package layer
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -19,6 +20,7 @@ import (
 // CreateSandbox creates sandboxes for new templates
 type CreateSandbox struct {
 	config     sandbox.Config
+	timeout    time.Duration
 	fcVersions fc.FirecrackerVersions
 
 	rootfsCachePath string
@@ -26,12 +28,12 @@ type CreateSandbox struct {
 
 var _ SandboxCreator = (*CreateSandbox)(nil)
 
-func NewCreateSandbox(config sandbox.Config, fcVersions fc.FirecrackerVersions) *CreateSandbox {
-	return &CreateSandbox{config: config, fcVersions: fcVersions, rootfsCachePath: ""}
+func NewCreateSandbox(config sandbox.Config, timeout time.Duration, fcVersions fc.FirecrackerVersions) *CreateSandbox {
+	return &CreateSandbox{config: config, timeout: timeout, fcVersions: fcVersions, rootfsCachePath: ""}
 }
 
-func NewCreateSandboxFromCache(config sandbox.Config, fcVersions fc.FirecrackerVersions, rootfsCachePath string) *CreateSandbox {
-	return &CreateSandbox{config: config, fcVersions: fcVersions, rootfsCachePath: rootfsCachePath}
+func NewCreateSandboxFromCache(config sandbox.Config, timeout time.Duration, fcVersions fc.FirecrackerVersions, rootfsCachePath string) *CreateSandbox {
+	return &CreateSandbox{config: config, timeout: timeout, fcVersions: fcVersions, rootfsCachePath: rootfsCachePath}
 }
 
 func (f *CreateSandbox) Sandbox(
@@ -66,7 +68,7 @@ func (f *CreateSandbox) Sandbox(
 		},
 		f.fcVersions,
 		template,
-		layerTimeout,
+		f.timeout,
 		f.rootfsCachePath,
 		fc.ProcessOptions{
 			InitScriptPath:      constants.SystemdInitPath,

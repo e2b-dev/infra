@@ -260,11 +260,15 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	// TODO: Temporarily set this based on global config, should be removed later (it should be passed as a parameter in build)
 	baseSbxConfig.AllowInternetAccess = &globalconfig.AllowSandboxInternet
 
-	// TODO: baseLayerTimeout
-	sandboxCreator := layer.NewCreateSandboxFromCache(baseSbxConfig, fc.FirecrackerVersions{
-		KernelVersion:      bb.Template.KernelVersion,
-		FirecrackerVersion: bb.Template.FirecrackerVersion,
-	}, rootfsPath)
+	sandboxCreator := layer.NewCreateSandboxFromCache(
+		baseSbxConfig,
+		baseLayerTimeout,
+		fc.FirecrackerVersions{
+			KernelVersion:      bb.Template.KernelVersion,
+			FirecrackerVersion: bb.Template.FirecrackerVersion,
+		},
+		rootfsPath,
+	)
 
 	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error) {
 		err = sandboxtools.SyncChangesToDisk(
