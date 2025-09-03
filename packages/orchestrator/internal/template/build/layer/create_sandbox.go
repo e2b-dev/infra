@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -32,6 +33,7 @@ func (f *CreateSandbox) Sandbox(
 	ctx context.Context,
 	layerExecutor *LayerExecutor,
 	sourceTemplate sbxtemplate.Template,
+	eventStore events.SandboxEventStore,
 ) (*sandbox.Sandbox, error) {
 	// Create new memfile with the size of the sandbox RAM, this updates the underlying memfile.
 	// This is ok as the sandbox is started from the beginning.

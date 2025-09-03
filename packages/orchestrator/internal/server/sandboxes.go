@@ -121,6 +121,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		s.devicePool,
 		metricsWriteFlag,
 		req.Sandbox,
+		s.sbxEventsStore,
 	)
 	if err != nil {
 		err := errors.Join(err, context.Cause(ctx))

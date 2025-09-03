@@ -40,6 +40,7 @@ type server struct {
 	featureFlags      *featureflags.Client
 	sbxEventsService  events.EventsService[event.SandboxEvent]
 	startingSandboxes *semaphore.Weighted
+	sbxEventsStore    events.SandboxEventStore
 }
 
 type Service struct {
@@ -68,6 +69,7 @@ type ServiceConfig struct {
 	Persistence      storage.StorageProvider
 	FeatureFlags     *featureflags.Client
 	SbxEventsService events.EventsService[event.SandboxEvent]
+	SbxEventsStore   events.SandboxEventStore
 }
 
 func New(
@@ -91,6 +93,7 @@ func New(
 		featureFlags:      cfg.FeatureFlags,
 		sbxEventsService:  cfg.SbxEventsService,
 		startingSandboxes: semaphore.NewWeighted(maxStartingInstancesPerNode),
+		sbxEventsStore:    cfg.SbxEventsStore,
 	}
 
 	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")

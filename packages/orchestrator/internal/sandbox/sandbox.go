@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -318,6 +319,7 @@ func ResumeSandbox(
 	devicePool *nbd.DevicePool,
 	useClickhouseMetrics bool,
 	apiConfigToStore *orchestrator.SandboxConfig,
+	eventStore events.SandboxEventStore,
 ) (s *Sandbox, e error) {
 	childCtx, childSpan := tracer.Start(ctx, "resume-sandbox")
 	defer childSpan.End()
@@ -517,6 +519,12 @@ func ResumeSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
+
+	sandboxIP := ips.slot.HostIPString()
+	eventStore.SetSandboxIP(runtime.SandboxID, sandboxIP)
+	cleanup.AddPriority(func(ctx context.Context) error {
+		return eventStore.DelSandboxIP(sandboxIP)
+	})
 
 	go sbx.Checks.Start()
 

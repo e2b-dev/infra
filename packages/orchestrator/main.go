@@ -54,8 +54,9 @@ type Closeable interface {
 }
 
 const (
-	defaultPort      = 5008
-	defaultProxyPort = 5007
+	defaultPort           = 5008
+	defaultProxyPort      = 5007
+	defaultEventProxyPort = 5010
 
 	version = "0.1.0"
 
@@ -70,6 +71,7 @@ var (
 func main() {
 	port := flag.Uint("port", defaultPort, "orchestrator server port")
 	proxyPort := flag.Uint("proxy-port", defaultProxyPort, "orchestrator proxy port")
+	eventProxyPort := flag.Uint("event-proxy-port", defaultEventProxyPort, "orchestrator sandbox event proxy port")
 	flag.Parse()
 
 	if *port > math.MaxUint16 {
@@ -80,7 +82,7 @@ func main() {
 		log.Fatalf("%d is larger than maximum possible proxy port %d", proxyPort, math.MaxInt16)
 	}
 
-	success := run(*port, *proxyPort)
+	success := run(*port, *proxyPort, *eventProxyPort)
 
 	log.Println("Stopping orchestrator, success:", success)
 
@@ -89,7 +91,7 @@ func main() {
 	}
 }
 
-func run(port, proxyPort uint) (success bool) {
+func run(port, proxyPort, eventProxyPort uint) (success bool) {
 	success = true
 
 	services := service.GetServices()
@@ -344,6 +346,11 @@ func run(port, proxyPort uint) (success bool) {
 	}
 
 	sbxEventsService := events.NewSandboxEventsService(featureFlags, redisPubSub, sandboxEventBatcher, globalLogger)
+
+	sbxEventStore := events.NewSandboxEventStore(ctx, tracer, redisClient)
+	sbxEventHandlers := events.NewSandboxEventHandlers(ctx, sbxEventStore)
+	sbxEventProxy := events.NewSandboxEventProxy(eventProxyPort, sbxEventHandlers)
+
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
@@ -364,6 +371,7 @@ func run(port, proxyPort uint) (success bool) {
 			Persistence:      persistence,
 			FeatureFlags:     featureFlags,
 			SbxEventsService: sbxEventsService,
+			SbxEventsStore:   sbxEventStore,
 		},
 	)
 	if err != nil {
@@ -397,6 +405,8 @@ func run(port, proxyPort uint) (success bool) {
 		sandboxObserver,
 		limiter,
 		sandboxEventBatcher,
+		sbxEventStore,
+		sbxEventProxy,
 	)
 
 	// Initialize the template manager only if the service is enabled

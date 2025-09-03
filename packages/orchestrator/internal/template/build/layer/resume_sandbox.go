@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
@@ -28,6 +29,7 @@ func (f *ResumeSandbox) Sandbox(
 	ctx context.Context,
 	layerExecutor *LayerExecutor,
 	template sbxtemplate.Template,
+	eventStore events.SandboxEventStore,
 ) (*sandbox.Sandbox, error) {
 	sbx, err := sandbox.ResumeSandbox(
 		ctx,
@@ -46,6 +48,7 @@ func (f *ResumeSandbox) Sandbox(
 		layerExecutor.devicePool,
 		false,
 		nil,
+		eventStore,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("resume sandbox: %w", err)

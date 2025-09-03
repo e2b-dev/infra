@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
@@ -21,6 +22,7 @@ type SandboxCreator interface {
 		ctx context.Context,
 		layerExecutor *LayerExecutor,
 		template sbxtemplate.Template,
+		eventStore events.SandboxEventStore,
 	) (*sandbox.Sandbox, error)
 }
 

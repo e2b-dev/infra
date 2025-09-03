@@ -88,7 +88,7 @@ func (lb *LayerExecutor) BuildLayer(
 	}
 
 	// Create or resume sandbox
-	sbx, err := cmd.SandboxCreator.Sandbox(ctx, lb, localTemplate)
+	sbx, err := cmd.SandboxCreator.Sandbox(ctx, lb, localTemplate, lb.sbxEventsStore)
 	if err != nil {
 		return metadata.Template{}, err
 	}
