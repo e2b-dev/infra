@@ -383,7 +383,7 @@ variable "filestore_cache_capacity_gb" {
 variable "vault_server_count" {
   type        = number
   description = "Number of Vault server instances"
-  default     = 1
+  default     = 3
 }
 
 variable "vault_version" {

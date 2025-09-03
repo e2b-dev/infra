@@ -1,11 +1,14 @@
 job "vault" {
-  datacenters = ["${gcp_zone}"]
-  node_pool   = "default"
   type        = "service"
   priority    = 90
 
   group "vault" {
     count = ${vault_server_count}
+
+    constraint {
+      operator = "distinct_hosts"
+      value    = "true"
+    }
 
     network {
       port "vault" {

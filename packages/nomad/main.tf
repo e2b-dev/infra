@@ -706,7 +706,7 @@ locals {
 }
 
 resource "nomad_job" "vault" {
-  count = 1
+  count = var.vault_server_count
 
   jobspec = templatefile("${path.module}/../vault/vault.hcl", {
     gcp_zone           = var.gcp_zone
