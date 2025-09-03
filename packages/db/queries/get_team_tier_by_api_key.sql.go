@@ -10,11 +10,13 @@ import (
 )
 
 const getTeamWithTierByAPIKey = `-- name: GetTeamWithTierByAPIKey :one
-SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, tier.id, tier.name, tier.disk_mb, tier.concurrent_instances, tier.max_length_hours, tier.max_vcpu, tier.max_ram_mb
+UPDATE "public"."team_api_keys" tak
+SET last_used = now()
 FROM "public"."teams" t
 JOIN "public"."tiers" tier ON t.tier = tier.id
-JOIN "public"."team_api_keys" tak ON t.id = tak.team_id
-WHERE tak.api_key_hash = $1
+WHERE tak.team_id = t.id
+  AND tak.api_key_hash = $1
+RETURNING t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, tier.id, tier.name, tier.disk_mb, tier.concurrent_instances, tier.max_length_hours, tier.max_vcpu, tier.max_ram_mb
 `
 
 type GetTeamWithTierByAPIKeyRow struct {
