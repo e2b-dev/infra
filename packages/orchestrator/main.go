@@ -99,7 +99,7 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 	// Check if the orchestrator crashed and restarted
 	// Skip this check in development mode
 	// We don't want to lock if the service is running with force stop; the subsequent start would fail.
-	if !env.IsDevelopment() && !forceStop {
+	if !env.IsDevelopment() && !forceStop && slices.Contains(services, service.Orchestrator) {
 		info, err := os.Stat(fileLockName)
 		if err == nil {
 			log.Fatalf("Orchestrator was already started at %s, exiting", info.ModTime())

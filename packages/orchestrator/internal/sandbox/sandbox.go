@@ -132,8 +132,8 @@ func CreateSandbox(
 	processOptions fc.ProcessOptions,
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
-	childCtx, childSpan := tracer.Start(ctx, "create-sandbox")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "create-sandbox")
+	defer span.End()
 
 	exit := utils.NewErrorOnce()
 
@@ -150,7 +150,7 @@ func CreateSandbox(
 		allowInternet = *config.AllowInternetAccess
 	}
 
-	ipsCh := getNetworkSlotAsync(childCtx, tracer, networkPool, cleanup, allowInternet)
+	ipsCh := getNetworkSlotAsync(ctx, tracer, networkPool, cleanup, allowInternet)
 	defer func() {
 		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
 		<-ipsCh
@@ -174,6 +174,7 @@ func CreateSandbox(
 	var rootfsProvider rootfs.Provider
 	if rootfsCachePath == "" {
 		rootfsProvider, err = rootfs.NewNBDProvider(
+			ctx,
 			tracer,
 			rootFS,
 			sandboxFiles.SandboxCacheRootfsPath(),
@@ -195,7 +196,7 @@ func CreateSandbox(
 		return rootfsProvider.Close(ctx)
 	})
 	go func() {
-		runErr := rootfsProvider.Start(childCtx)
+		runErr := rootfsProvider.Start(ctx)
 		if runErr != nil {
 			zap.L().Error("rootfs overlay error", zap.Error(runErr))
 		}
@@ -221,7 +222,7 @@ func CreateSandbox(
 		return nil, fmt.Errorf("failed to get network slot: %w", err)
 	}
 	fcHandle, err := fc.NewProcess(
-		childCtx,
+		ctx,
 		tracer,
 		ips.slot,
 		sandboxFiles,
@@ -233,10 +234,10 @@ func CreateSandbox(
 		return nil, fmt.Errorf("failed to init FC: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "created fc client")
+	telemetry.ReportEvent(ctx, "created fc client")
 
 	err = fcHandle.Create(
-		childCtx,
+		ctx,
 		tracer,
 		sbxlogger.SandboxMetadata{
 			SandboxID:  runtime.SandboxID,
@@ -251,7 +252,7 @@ func CreateSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create FC: %w", err)
 	}
-	telemetry.ReportEvent(childCtx, "created fc process")
+	telemetry.ReportEvent(ctx, "created fc process")
 
 	resources := &Resources{
 		Slot:   ips.slot,
@@ -321,7 +322,7 @@ func ResumeSandbox(
 	apiConfigToStore *orchestrator.SandboxConfig,
 	eventStore events.SandboxEventStore,
 ) (s *Sandbox, e error) {
-	childCtx, childSpan := tracer.Start(ctx, "resume-sandbox")
+	ctx, childSpan := tracer.Start(ctx, "resume-sandbox")
 	defer childSpan.End()
 
 	exit := utils.NewErrorOnce()
@@ -339,7 +340,7 @@ func ResumeSandbox(
 		allowInternet = *config.AllowInternetAccess
 	}
 
-	ipsCh := getNetworkSlotAsync(childCtx, tracer, networkPool, cleanup, allowInternet)
+	ipsCh := getNetworkSlotAsync(ctx, tracer, networkPool, cleanup, allowInternet)
 	defer func() {
 		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
 		<-ipsCh
@@ -361,6 +362,7 @@ func ResumeSandbox(
 	}
 
 	rootfsOverlay, err := rootfs.NewNBDProvider(
+		ctx,
 		tracer,
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(),
@@ -373,7 +375,7 @@ func ResumeSandbox(
 		return rootfsOverlay.Close(ctx)
 	})
 	go func() {
-		runErr := rootfsOverlay.Start(childCtx)
+		runErr := rootfsOverlay.Start(ctx)
 		if runErr != nil {
 			zap.L().Error("rootfs overlay error", zap.Error(runErr))
 		}
@@ -387,7 +389,7 @@ func ResumeSandbox(
 	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
 
 	fcUffd, err := serveMemory(
-		childCtx,
+		ctx,
 		tracer,
 		cleanup,
 		memfile,
@@ -466,7 +468,7 @@ func ResumeSandbox(
 		return nil, fmt.Errorf("failed to start FC: %w", fcStartErr)
 	}
 
-	telemetry.ReportEvent(childCtx, "initialized FC")
+	telemetry.ReportEvent(ctx, "initialized FC")
 
 	resources := &Resources{
 		Slot:   ips.slot,
@@ -593,7 +595,7 @@ func (s *Sandbox) Pause(
 	tracer trace.Tracer,
 	m metadata.Template,
 ) (*Snapshot, error) {
-	childCtx, childSpan := tracer.Start(ctx, "sandbox-snapshot")
+	ctx, childSpan := tracer.Start(ctx, "sandbox-snapshot")
 	defer childSpan.End()
 
 	snapshotTemplateFiles, err := m.Template.CacheFiles()
@@ -609,7 +611,7 @@ func (s *Sandbox) Pause(
 	// Stop the health check before pausing the VM
 	s.Checks.Stop()
 
-	if err := s.process.Pause(childCtx, tracer); err != nil {
+	if err := s.process.Pause(ctx, tracer); err != nil {
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
@@ -627,7 +629,7 @@ func (s *Sandbox) Pause(
 	4. Delete tmpfs file
 	5. Unlock so another snapshot can use tmpfs space
 	*/
-	memfile, err := storage.AcquireTmpMemfile(childCtx, buildID.String())
+	memfile, err := storage.AcquireTmpMemfile(ctx, buildID.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire memfile snapshot: %w", err)
 	}
@@ -635,7 +637,7 @@ func (s *Sandbox) Pause(
 	defer memfile.Close()
 
 	err = s.process.CreateSnapshot(
-		childCtx,
+		ctx,
 		tracer,
 		snapfile.Path(),
 		memfile.Path(),
@@ -656,7 +658,7 @@ func (s *Sandbox) Pause(
 
 	// Start POSTPROCESSING
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
-		childCtx,
+		ctx,
 		tracer,
 		buildID,
 		originalMemfile.Header(),
@@ -675,7 +677,7 @@ func (s *Sandbox) Pause(
 	}
 
 	rootfsDiff, rootfsDiffHeader, err := pauseProcessRootfs(
-		childCtx,
+		ctx,
 		tracer,
 		buildID,
 		originalRootfs.Header(),
