@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
@@ -30,6 +31,8 @@ const (
 	// that can be used before the cache starts evicting items.
 	buildCacheMaxUsedPercentage = 75.0
 )
+
+var tracer = otel.Tracer("orchestrator.sandbox.template.cache")
 
 type Cache struct {
 	flags         *featureflags.Client
@@ -103,6 +106,9 @@ func (c *Cache) GetTemplate(
 	isSnapshot bool,
 	isBuilding bool,
 ) (Template, error) {
+	ctx, span := tracer.Start(ctx, "get template")
+	defer span.End()
+
 	persistence := c.persistence
 	// Because of the template caching, if we enable the shared cache feature flag,
 	// it will start working only for new orchestrators or new builds.

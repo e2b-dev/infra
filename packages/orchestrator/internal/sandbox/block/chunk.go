@@ -19,7 +19,7 @@ import (
 type Chunker struct {
 	ctx context.Context // nolint:containedctx // todo: refactor so this can be removed
 
-	base    io.ReaderAt
+	base    storage.ReaderAtCtx
 	cache   *Cache
 	metrics metrics.Metrics
 
@@ -33,7 +33,7 @@ func NewChunker(
 	ctx context.Context,
 	size,
 	blockSize int64,
-	base io.ReaderAt,
+	base storage.ReaderAtCtx,
 	cachePath string,
 	metrics metrics.Metrics,
 ) (*Chunker, error) {
@@ -92,7 +92,7 @@ func (c *Chunker) Slice(off, length int64) ([]byte, error) {
 		return b, nil
 	}
 
-	if !errors.As(err, &ErrBytesNotAvailable{}) {
+	if !errors.As(err, &BytesNotAvailableError{}) {
 		timer.End(c.ctx, length,
 			attribute.String(result, "failure"),
 			attribute.String(pullType, pullTypeLocal),
@@ -155,7 +155,7 @@ func (c *Chunker) fetchToCache(off, length int64) error {
 				b := make([]byte, storage.MemoryChunkSize)
 
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
-				readBytes, err := c.base.ReadAt(b, fetchOff)
+				readBytes, err := c.base.ReadAt(c.ctx, b, fetchOff)
 				if err != nil && !errors.Is(err, io.EOF) {
 					fetchSW.End(c.ctx, int64(readBytes),
 						attribute.String(result, resultTypeFailure),

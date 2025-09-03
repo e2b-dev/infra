@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"time"
 
@@ -141,7 +142,17 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterInst
 	span.SetAttributes(telemetry.WithClusterID(c.ID))
 	defer span.End()
 
+	var instances []*ClusterInstance
 	for _, instance := range c.instances.Items() {
+		instances = append(instances, instance)
+	}
+
+	// Make sure we will always iterate in different order and when there is bigger amount of builders, we will not always pick the same one
+	rand.Shuffle(len(instances), func(i, j int) {
+		instances[i], instances[j] = instances[j], instances[i]
+	})
+
+	for _, instance := range instances {
 		if instance.GetStatus() != infogrpc.ServiceInfoStatus_Healthy {
 			continue
 		}

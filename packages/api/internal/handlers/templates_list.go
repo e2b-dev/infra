@@ -6,10 +6,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -75,12 +77,10 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 		telemetry.WithTeamID(team.ID.String()),
 	)
 
-	envs, err := a.db.GetEnvs(ctx, team.ID)
+	envs, err := a.sqlcDB.GetTeamTemplates(ctx, team.ID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting sandbox templates")
-
-		telemetry.ReportCriticalError(ctx, "error when getting envs", err)
-
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting templates")
+		telemetry.ReportCriticalError(ctx, "error when getting templates", err)
 		return
 	}
 
@@ -93,28 +93,40 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 	templates := make([]*api.Template, 0, len(envs))
 	for _, item := range envs {
 		var createdBy *api.TeamUser
-		if item.CreatedBy != nil {
+		if item.CreatorEmail != nil && item.CreatorID != nil {
 			createdBy = &api.TeamUser{
-				Id:    item.CreatedBy.Id,
-				Email: item.CreatedBy.Email,
+				Id:    *item.CreatorID,
+				Email: *item.CreatorEmail,
 			}
 		}
 
+		envdVersion := ""
+		if item.BuildEnvdVersion != nil {
+			envdVersion = *item.BuildEnvdVersion
+		} else {
+			zap.L().Error("failed to determine envd version", logger.WithTemplateID(item.Env.ID))
+		}
+
+		diskMB := int64(0)
+		if item.BuildTotalDiskSizeMb != nil {
+			diskMB = *item.BuildTotalDiskSizeMb
+		}
+
 		templates = append(templates, &api.Template{
-			TemplateID:    item.TemplateID,
-			BuildID:       item.BuildID,
-			CpuCount:      int32(item.VCPU),
-			MemoryMB:      int32(item.RAMMB),
-			DiskSizeMB:    int32(item.DiskMB),
-			Public:        item.Public,
+			TemplateID:    item.Env.ID,
+			BuildID:       item.BuildID.String(),
+			CpuCount:      int32(item.BuildVcpu),
+			MemoryMB:      int32(item.BuildRamMb),
+			DiskSizeMB:    int32(diskMB),
+			Public:        item.Env.Public,
 			Aliases:       item.Aliases,
-			CreatedAt:     item.CreatedAt,
-			UpdatedAt:     item.UpdatedAt,
-			LastSpawnedAt: item.LastSpawnedAt,
-			SpawnCount:    item.SpawnCount,
-			BuildCount:    item.BuildCount,
+			CreatedAt:     item.Env.CreatedAt,
+			UpdatedAt:     item.Env.UpdatedAt,
+			LastSpawnedAt: item.Env.LastSpawnedAt,
+			SpawnCount:    item.Env.SpawnCount,
+			BuildCount:    item.Env.BuildCount,
 			CreatedBy:     createdBy,
-			EnvdVersion:   item.EnvdVersion,
+			EnvdVersion:   envdVersion,
 		})
 	}
 

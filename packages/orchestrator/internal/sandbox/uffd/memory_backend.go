@@ -1,6 +1,10 @@
 package uffd
 
-import "github.com/bits-and-blooms/bitset"
+import (
+	"github.com/bits-and-blooms/bitset"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+)
 
 type MemoryBackend interface {
 	Disable() error
@@ -9,5 +13,5 @@ type MemoryBackend interface {
 	Start(sandboxId string) error
 	Stop() error
 	Ready() chan struct{}
-	Exit() chan error
+	Exit() *utils.ErrorOnce
 }

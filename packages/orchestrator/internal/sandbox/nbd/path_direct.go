@@ -47,8 +47,8 @@ type DirectPathMount struct {
 	handlersWg sync.WaitGroup
 }
 
-func NewDirectPathMount(tracer trace.Tracer, b block.Device, devicePool *DevicePool) *DirectPathMount {
-	ctx, cancelfn := context.WithCancel(context.Background())
+func NewDirectPathMount(ctx context.Context, tracer trace.Tracer, b block.Device, devicePool *DevicePool) *DirectPathMount {
+	ctx, cancelfn := context.WithCancel(context.WithoutCancel(ctx))
 
 	return &DirectPathMount{
 		tracer:      tracer,

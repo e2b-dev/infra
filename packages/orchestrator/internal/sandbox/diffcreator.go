@@ -20,12 +20,12 @@ type DiffCreator interface {
 }
 
 type RootfsDiffCreator struct {
-	rootfs   rootfs.Provider
-	stopHook func(context.Context) error
+	rootfs    rootfs.Provider
+	closeHook func(context.Context) error
 }
 
 func (r *RootfsDiffCreator) process(ctx context.Context, out io.Writer) (*header.DiffMetadata, error) {
-	return r.rootfs.ExportDiff(ctx, out, r.stopHook)
+	return r.rootfs.ExportDiff(ctx, out, r.closeHook)
 }
 
 type MemoryDiffCreator struct {

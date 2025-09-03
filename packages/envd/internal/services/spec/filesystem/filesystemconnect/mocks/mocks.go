@@ -2,7 +2,7 @@
 // github.com/vektra/mockery
 // template: testify
 
-package legacy
+package filesystemconnectmocks
 
 import (
 	"context"

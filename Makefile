@@ -230,7 +230,7 @@ generate-tests/%:
 
 .PHONY: migrate
 migrate:
-	$(MAKE) -C packages/db migrate/up
+	$(MAKE) -C packages/db migrate
 
 .PHONY: switch-env
 switch-env:
@@ -278,6 +278,10 @@ fmt:
 lint:
 	@./scripts/golangci-lint-install.sh "2.1.6"
 	go work edit -json | jq -r '.Use[].DiskPath'  | xargs -I{} golangci-lint run {}/... --fix
+
+.PHONY: generate-mocks
+generate-mocks:
+	go run github.com/vektra/mockery/v3@v3.5.0
 
 .PHONY: tidy
 tidy:

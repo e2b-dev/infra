@@ -20,7 +20,6 @@ import (
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-contrib/cors"
 	limits "github.com/gin-contrib/size"
-	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	middleware "github.com/oapi-codegen/gin-middleware"
@@ -162,7 +161,11 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 					reqLogger = logger.With(l.WithTeamID(teamID))
 				}
 
-				ginzap.Ginzap(reqLogger, time.RFC3339Nano, true)(c)
+				customMiddleware.LoggingMiddleware(reqLogger, customMiddleware.Config{
+					TimeFormat:   time.RFC3339Nano,
+					UTC:          true,
+					DefaultLevel: zap.InfoLevel,
+				})(c)
 			},
 			"/health",
 			"/sandboxes/:sandboxID/refreshes",
