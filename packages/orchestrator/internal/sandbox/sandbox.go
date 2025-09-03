@@ -352,14 +352,14 @@ func ResumeSandbox(
 		return nil
 	})
 
-	telemetry.ReportEvent(childCtx, "created sandbox files")
+	telemetry.ReportEvent(ctx, "created sandbox files")
 
 	readonlyRootfs, err := t.Rootfs()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rootfs: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "got template rootfs")
+	telemetry.ReportEvent(ctx, "got template rootfs")
 
 	rootfsOverlay, err := rootfs.NewNBDProvider(
 		ctx,
@@ -376,7 +376,7 @@ func ResumeSandbox(
 		return rootfsOverlay.Close(ctx)
 	})
 
-	telemetry.ReportEvent(childCtx, "created rootfs overlay")
+	telemetry.ReportEvent(ctx, "created rootfs overlay")
 
 	go func() {
 		runErr := rootfsOverlay.Start(ctx)
@@ -390,7 +390,7 @@ func ResumeSandbox(
 		return nil, fmt.Errorf("failed to get memfile: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "got template memfile")
+	telemetry.ReportEvent(ctx, "got template memfile")
 
 	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
 
@@ -421,21 +421,21 @@ func ResumeSandbox(
 		return nil, fmt.Errorf("failed to get rootfs path: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "got rootfs path")
+	telemetry.ReportEvent(ctx, "got rootfs path")
 
 	ips := <-ipsCh
 	if ips.err != nil {
 		return nil, fmt.Errorf("failed to get network slot: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "got network slot")
+	telemetry.ReportEvent(ctx, "got network slot")
 
 	meta, err := t.Metadata()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get metadata: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "got metadata")
+	telemetry.ReportEvent(ctx, "got metadata")
 
 	fcHandle, fcErr := fc.NewProcess(
 		uffdStartCtx,
@@ -457,7 +457,7 @@ func ResumeSandbox(
 		return nil, fmt.Errorf("failed to create FC: %w", fcErr)
 	}
 
-	telemetry.ReportEvent(childCtx, "created FC process")
+	telemetry.ReportEvent(ctx, "created FC process")
 
 	// todo: check if kernel, firecracker, and envd versions exist
 	snapfile, err := t.Snapfile()
@@ -465,7 +465,7 @@ func ResumeSandbox(
 		return nil, fmt.Errorf("failed to get snapfile: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "got snapfile")
+	telemetry.ReportEvent(ctx, "got snapfile")
 
 	logsCollectorIP := os.Getenv("LOGS_COLLECTOR_PUBLIC_IP")
 
