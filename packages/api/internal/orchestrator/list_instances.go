@@ -20,9 +20,9 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, clusterID uuid.UUID, no
 }
 
 // GetSandboxes returns all instances for a given node.
-func (o *Orchestrator) GetSandboxes(ctx context.Context, teamID *uuid.UUID) []*instance.InstanceInfo {
+func (o *Orchestrator) GetSandboxes(ctx context.Context, teamID *uuid.UUID, states []instance.State) map[instance.State][]*instance.InstanceInfo {
 	_, childSpan := o.tracer.Start(ctx, "get-sandboxes")
 	defer childSpan.End()
 
-	return o.sandboxStore.Items(teamID)
+	return o.sandboxStore.ItemsByState(teamID, states)
 }

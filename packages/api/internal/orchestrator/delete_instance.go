@@ -16,7 +16,7 @@ func (o *Orchestrator) RemoveInstance(ctx context.Context, sandbox *instance.Ins
 	_, childSpan := o.tracer.Start(ctx, "remove-instance")
 	defer childSpan.End()
 
-	// SandboxStore will remove the sandbox both from the cache and from the orchestrator
+	// SandboxStore will remove the sandbox both from the store and from the orchestrator
 	return o.sandboxStore.Remove(ctx, sandbox.SandboxID, removeType)
 }
 
