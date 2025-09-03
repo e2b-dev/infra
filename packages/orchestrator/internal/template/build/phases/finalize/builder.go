@@ -126,8 +126,10 @@ func (ppb *PostProcessingBuilder) Build(
 
 	actionExecutor := layer.NewFunctionAction(ppb.postProcessingFn())
 
+	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template)
+
 	finalLayer, err := ppb.layerExecutor.BuildLayer(ctx, layer.LayerBuildCommand{
-		SourceTemplate: sourceLayer.Metadata.Template,
+		SourceTemplate: templateProvider,
 		CurrentLayer:   currentLayer.Metadata,
 		Hash:           currentLayer.Hash,
 		UpdateEnvd:     sourceLayer.Cached,

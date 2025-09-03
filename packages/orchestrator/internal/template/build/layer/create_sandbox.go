@@ -20,12 +20,18 @@ import (
 type CreateSandbox struct {
 	config     sandbox.Config
 	fcVersions fc.FirecrackerVersions
+
+	rootfsCachePath string
 }
 
 var _ SandboxCreator = (*CreateSandbox)(nil)
 
 func NewCreateSandbox(config sandbox.Config, fcVersions fc.FirecrackerVersions) *CreateSandbox {
-	return &CreateSandbox{config: config, fcVersions: fcVersions}
+	return &CreateSandbox{config: config, fcVersions: fcVersions, rootfsCachePath: ""}
+}
+
+func NewCreateSandboxFromCache(config sandbox.Config, fcVersions fc.FirecrackerVersions, rootfsCachePath string) *CreateSandbox {
+	return &CreateSandbox{config: config, fcVersions: fcVersions, rootfsCachePath: rootfsCachePath}
 }
 
 func (f *CreateSandbox) Sandbox(
@@ -61,7 +67,7 @@ func (f *CreateSandbox) Sandbox(
 		f.fcVersions,
 		template,
 		layerTimeout,
-		"",
+		f.rootfsCachePath,
 		fc.ProcessOptions{
 			InitScriptPath:      constants.SystemdInitPath,
 			KernelLogs:          env.IsDevelopment(),

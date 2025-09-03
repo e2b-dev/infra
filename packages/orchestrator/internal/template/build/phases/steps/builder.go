@@ -185,8 +185,10 @@ func (sb *StepBuilder) Build(
 		return meta, nil
 	})
 
+	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template)
+
 	meta, err := sb.layerExecutor.BuildLayer(ctx, layer.LayerBuildCommand{
-		SourceTemplate: sourceLayer.Metadata.Template,
+		SourceTemplate: templateProvider,
 		CurrentLayer:   currentLayer.Metadata,
 		Hash:           currentLayer.Hash,
 		UpdateEnvd:     sourceLayer.Cached,

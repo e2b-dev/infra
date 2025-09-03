@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -24,11 +25,10 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -50,6 +50,7 @@ type BaseBuilder struct {
 
 	logger *zap.Logger
 	tracer trace.Tracer
+	proxy  *proxy.SandboxProxy
 
 	templateStorage  storage.StorageProvider
 	devicePool       *nbd.DevicePool
@@ -65,6 +66,7 @@ func New(
 	buildContext buildcontext.BuildContext,
 	logger *zap.Logger,
 	tracer trace.Tracer,
+	proxy *proxy.SandboxProxy,
 	templateStorage storage.StorageProvider,
 	devicePool *nbd.DevicePool,
 	networkPool *network.Pool,
@@ -78,6 +80,7 @@ func New(
 
 		logger: logger,
 		tracer: tracer,
+		proxy:  proxy,
 
 		templateStorage:  templateStorage,
 		devicePool:       devicePool,
@@ -256,56 +259,41 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 
 	// TODO: Temporarily set this based on global config, should be removed later (it should be passed as a parameter in build)
 	baseSbxConfig.AllowInternetAccess = &globalconfig.AllowSandboxInternet
-	sourceSbx, err := sandbox.CreateSandbox(
-		ctx,
-		bb.tracer,
-		bb.networkPool,
-		bb.devicePool,
-		baseSbxConfig,
-		sandbox.RuntimeMetadata{
-			TemplateID:  bb.Config.TemplateID,
-			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
-			ExecutionID: uuid.NewString(),
-		},
-		fc.FirecrackerVersions{
-			KernelVersion:      bb.Template.KernelVersion,
-			FirecrackerVersion: bb.Template.FirecrackerVersion,
-		},
-		localTemplate,
-		baseLayerTimeout,
-		rootfsPath,
-		fc.ProcessOptions{
-			InitScriptPath:      constants.SystemdInitPath,
-			KernelLogs:          env.IsDevelopment(),
-			SystemdToKernelLogs: false,
-		},
-		nil,
-	)
-	if err != nil {
-		return metadata.Template{}, fmt.Errorf("error creating sandbox: %w", err)
-	}
-	defer sourceSbx.Close(ctx)
 
-	err = sourceSbx.WaitForEnvd(
-		ctx,
-		bb.tracer,
-		waitEnvdTimeout,
-	)
+	// TODO: baseLayerTimeout
+	sandboxCreator := layer.NewCreateSandboxFromCache(baseSbxConfig, fc.FirecrackerVersions{
+		KernelVersion:      bb.Template.KernelVersion,
+		FirecrackerVersion: bb.Template.FirecrackerVersion,
+	}, rootfsPath)
+
+	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error) {
+		err = sandboxtools.SyncChangesToDisk(
+			ctx,
+			bb.tracer,
+			bb.proxy,
+			sbx.Runtime.SandboxID,
+		)
+		if err != nil {
+			return metadata.Template{}, fmt.Errorf("error running sync command: %w", err)
+		}
+		return meta, nil
+	})
+
+	templateProvider := layer.NewDirectSourceTemplateProvider(localTemplate)
+
+	baseLayer, err := bb.layerExecutor.BuildLayer(ctx, layer.LayerBuildCommand{
+		SourceTemplate: templateProvider,
+		CurrentLayer:   baseMetadata,
+		Hash:           hash,
+		UpdateEnvd:     false,
+		SandboxCreator: sandboxCreator,
+		ActionExecutor: actionExecutor,
+	})
 	if err != nil {
-		return metadata.Template{}, fmt.Errorf("failed to wait for sandbox start: %w", err)
+		return metadata.Template{}, fmt.Errorf("error building base layer: %w", err)
 	}
 
-	err = bb.layerExecutor.PauseAndUpload(
-		ctx,
-		sourceSbx,
-		hash,
-		baseMetadata,
-	)
-	if err != nil {
-		return metadata.Template{}, fmt.Errorf("error pausing and uploading template: %w", err)
-	}
-
-	return baseMetadata, nil
+	return baseLayer, nil
 }
 
 func (bb *BaseBuilder) Layer(
