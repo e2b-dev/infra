@@ -163,7 +163,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 		return nil, fmt.Errorf("error getting envd version: %w", err)
 	}
 
-	uploadErrGroup, _ := errgroup.WithContext(ctx)
+	var uploadErrGroup errgroup.Group
 	defer func() {
 		// Wait for all template layers to be uploaded even if the build fails
 		err := uploadErrGroup.Wait()
@@ -176,7 +176,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 		Config:         config,
 		Template:       template,
 		UserLogger:     logger,
-		UploadErrGroup: uploadErrGroup,
+		UploadErrGroup: &uploadErrGroup,
 		EnvdVersion:    envdVersion,
 		CacheScope:     cacheScope,
 		IsV1Build:      isV1Build,
@@ -209,6 +209,7 @@ func runBuild(
 		bc,
 		builder.logger,
 		builder.tracer,
+		builder.proxy,
 		builder.templateStorage,
 		builder.devicePool,
 		builder.networkPool,
@@ -307,7 +308,7 @@ func getRootfsSize(
 		return 0, fmt.Errorf("error opening rootfs header object: %w", err)
 	}
 
-	h, err := header.Deserialize(obj)
+	h, err := header.Deserialize(ctx, obj)
 	if err != nil {
 		return 0, fmt.Errorf("error deserializing rootfs header: %w", err)
 	}

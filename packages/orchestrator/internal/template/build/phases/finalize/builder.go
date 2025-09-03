@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -22,6 +25,10 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
+
+var finalizeTimeout = configurationTimeout + readyCommandTimeout + 5*time.Minute
+
+var tracer = otel.Tracer("orchestrator.template.build.phases.finalize")
 
 type PostProcessingBuilder struct {
 	buildcontext.BuildContext
@@ -73,7 +80,7 @@ func (ppb *PostProcessingBuilder) Hash(sourceLayer phases.LayerResult) (string, 
 }
 
 func (ppb *PostProcessingBuilder) Layer(
-	ctx context.Context,
+	_ context.Context,
 	sourceLayer phases.LayerResult,
 	hash string,
 ) (phases.LayerResult, error) {
@@ -105,6 +112,11 @@ func (ppb *PostProcessingBuilder) Build(
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
 ) (phases.LayerResult, error) {
+	ctx, span := tracer.Start(ctx, "build final", trace.WithAttributes(
+		attribute.String("hash", currentLayer.Hash),
+	))
+	defer span.End()
+
 	// Configure sandbox for final layer
 	sbxConfig := sandbox.Config{
 		Vcpu:      ppb.Config.VCpuCount,
@@ -119,15 +131,21 @@ func (ppb *PostProcessingBuilder) Build(
 	}
 
 	// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template
-	sandboxCreator := layer.NewCreateSandbox(sbxConfig, fc.FirecrackerVersions{
-		KernelVersion:      currentLayer.Metadata.Template.KernelVersion,
-		FirecrackerVersion: currentLayer.Metadata.Template.FirecrackerVersion,
-	})
+	sandboxCreator := layer.NewCreateSandbox(
+		sbxConfig,
+		finalizeTimeout,
+		fc.FirecrackerVersions{
+			KernelVersion:      currentLayer.Metadata.Template.KernelVersion,
+			FirecrackerVersion: currentLayer.Metadata.Template.FirecrackerVersion,
+		},
+	)
 
 	actionExecutor := layer.NewFunctionAction(ppb.postProcessingFn())
 
+	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template)
+
 	finalLayer, err := ppb.layerExecutor.BuildLayer(ctx, layer.LayerBuildCommand{
-		SourceTemplate: sourceLayer.Metadata.Template,
+		SourceTemplate: templateProvider,
 		CurrentLayer:   currentLayer.Metadata,
 		Hash:           currentLayer.Hash,
 		UpdateEnvd:     sourceLayer.Cached,
