@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -27,6 +29,8 @@ import (
 )
 
 const layerTimeout = time.Hour
+
+var tracer = otel.Tracer("orchestrator.template.build.phases.steps")
 
 type StepBuilder struct {
 	buildcontext.BuildContext
@@ -93,6 +97,13 @@ func (sb *StepBuilder) Layer(
 	sourceLayer phases.LayerResult,
 	hash string,
 ) (phases.LayerResult, error) {
+	ctx, span := tracer.Start(ctx, "compute step", trace.WithAttributes(
+		attribute.Int("step", sb.stepNumber),
+		attribute.String("type", sb.step.Type),
+		attribute.String("hash", hash),
+	))
+	defer span.End()
+
 	forceBuild := sb.step.Force != nil && *sb.step.Force
 	if !forceBuild {
 		m, err := sb.index.LayerMetaFromHash(ctx, hash)
@@ -132,6 +143,13 @@ func (sb *StepBuilder) Build(
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
 ) (phases.LayerResult, error) {
+	ctx, span := tracer.Start(ctx, "build step", trace.WithAttributes(
+		attribute.Int("step", sb.stepNumber),
+		attribute.String("type", sb.step.Type),
+		attribute.String("hash", currentLayer.Hash),
+	))
+	defer span.End()
+
 	prefix := sb.Prefix()
 	step := sb.step
 
