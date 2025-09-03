@@ -311,3 +311,8 @@ variable "filestore_cache_max_disk_usage_target" {
   description = "The maximum disk usage target for the Filestore cache in percent"
   default     = 90
 }
+
+variable "enable_pprof" {
+  description = "True to enable pprof, false otherwise"
+  type        = bool
+}

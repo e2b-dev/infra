@@ -68,7 +68,7 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 
 	r := gin.New()
 
-	if env.IsDebug() {
+	if os.Getenv("ENABLE_PPROF") == "true" {
 		pprof.Register(r, "debug/pprof")
 	}
 

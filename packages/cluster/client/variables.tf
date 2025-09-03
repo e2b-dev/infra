@@ -134,6 +134,10 @@ variable "cache_volume_disk_size_gb" {
   description = "The size, in GB, of the disk for an orchestrator cache."
   type        = number
 }
+
+variable "cache_volume_disk_type" {
+  type = string
+}
 # Update Policy
 
 
@@ -180,4 +184,8 @@ variable "logs_health_proxy_port" {
     port        = number
     health_path = string
   })
+}
+
+variable "min_cpu_platform" {
+  type = string
 }

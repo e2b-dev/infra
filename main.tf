@@ -92,6 +92,7 @@ module "cluster" {
 
   client_cluster_size_max           = var.client_cluster_size_max
   client_cluster_cache_disk_size_gb = var.client_cluster_cache_disk_size_gb
+  client_cluster_cache_disk_type    = var.client_cluster_cache_disk_type
   build_cluster_root_disk_size_gb   = var.build_cluster_root_disk_size_gb
   build_cluster_cache_disk_size_gb  = var.build_cluster_cache_disk_size_gb
 
@@ -143,6 +144,9 @@ module "cluster" {
 
   labels = var.labels
   prefix = var.prefix
+
+  build_min_cpu_platform  = var.build_min_cpu_platform
+  client_min_cpu_platform = var.client_min_cpu_platform
 }
 
 module "api" {
@@ -211,6 +215,7 @@ module "nomad" {
   api_admin_token                           = module.api.api_admin_token
   redis_url_secret_version                  = module.api.redis_url_secret_version
   sandbox_access_token_hash_seed            = module.api.sandbox_access_token_hash_seed
+  enable_pprof                              = var.enable_pprof
 
   # Click Proxy
   client_proxy_count               = var.client_proxy_count

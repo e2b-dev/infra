@@ -162,3 +162,7 @@ variable "docker_reverse_proxy_port" {
     health_path = string
   })
 }
+
+variable "min_cpu_platform" {
+  type = string
+}

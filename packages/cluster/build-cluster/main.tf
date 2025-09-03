@@ -65,7 +65,7 @@ resource "google_compute_instance_template" "build" {
 
   instance_description = var.cluster_description
   machine_type         = var.machine_type
-  min_cpu_platform     = "Intel Skylake"
+  min_cpu_platform     = var.min_cpu_platform
 
   labels = merge(
     var.labels,

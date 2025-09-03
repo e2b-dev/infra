@@ -156,12 +156,14 @@ module "client_cluster" {
   cluster_size              = var.client_cluster_size
   cluster_tag_name          = var.cluster_tag_name
   cache_volume_disk_size_gb = var.client_cluster_cache_disk_size_gb
+  cache_volume_disk_type    = var.client_cluster_cache_disk_type
 
   gcp_region = var.gcp_region
   gcp_zone   = var.gcp_zone
 
-  machine_type = var.client_machine_type
-  image_family = var.client_image_family
+  min_cpu_platform = var.client_min_cpu_platform
+  machine_type     = var.client_machine_type
+  image_family     = var.client_image_family
 
   network_name = var.network_name
 
@@ -304,6 +306,7 @@ module "build_cluster" {
   cluster_tag_name = var.cluster_tag_name
   gcp_zone         = var.gcp_zone
 
+  min_cpu_platform          = var.build_min_cpu_platform
   machine_type              = var.build_machine_type
   image_family              = var.build_image_family
   root_volume_disk_size_gb  = var.build_cluster_root_disk_size_gb

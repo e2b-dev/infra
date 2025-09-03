@@ -126,6 +126,10 @@ variable "client_cluster_cache_disk_size_gb" {
   type = number
 }
 
+variable "client_cluster_cache_disk_type" {
+  type = string
+}
+
 variable "gcp_project_id" {
   type = string
 }
@@ -275,4 +279,12 @@ variable "filestore_cache_tier" {
 variable "filestore_cache_capacity_gb" {
   type    = number
   default = 0
+}
+
+variable "build_min_cpu_platform" {
+  type = string
+}
+
+variable "client_min_cpu_platform" {
+  type = string
 }

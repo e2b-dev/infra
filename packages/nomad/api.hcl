@@ -87,7 +87,9 @@ job "api" {
         REDIS_CLUSTER_URL              = "${redis_cluster_url}"
         DNS_PORT                       = "${dns_port_number}"
         SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
-
+%{ if enable_pprof }
+        ENABLE_PPROF                   = "true"
+%{ endif }
         LOCAL_CLUSTER_ENDPOINT = "${local_cluster_endpoint}"
         LOCAL_CLUSTER_TOKEN    = "${local_cluster_token}"
 

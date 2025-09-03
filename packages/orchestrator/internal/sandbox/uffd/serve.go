@@ -7,6 +7,9 @@ import (
 	"syscall"
 	"unsafe"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
@@ -18,6 +21,8 @@ import (
 )
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
+
+var tracer = otel.Tracer("orchestrator.internal.sandbox.uffd")
 
 type GuestRegionUffdMapping struct {
 	BaseHostVirtAddr uintptr `json:"base_host_virt_addr"`
@@ -34,9 +39,14 @@ func Serve(
 	fdExit *fdexit.FdExit,
 	logger *zap.Logger,
 ) error {
+	ctx, span := tracer.Start(ctx, "uffd-serve", trace.WithAttributes(
+		attribute.Int("uffd_handle", uffd),
+	))
+	defer span.End()
+
 	pollFds := []unix.PollFd{
 		{Fd: int32(uffd), Events: unix.POLLIN},
-		{Fd: int32(fdExit.Reader()), Events: unix.POLLIN},
+		{Fd: fdExit.Reader(), Events: unix.POLLIN},
 	}
 
 	var eg errgroup.Group
@@ -129,11 +139,11 @@ outerLoop:
 		}
 
 		arg := userfaultfd.GetMsgArg(&msg)
-		pagefault := (*(*userfaultfd.UffdPagefault)(unsafe.Pointer(&arg[0])))
+		pagefault := *(*userfaultfd.UffdPagefault)(unsafe.Pointer(&arg[0]))
 
 		addr := userfaultfd.GetPagefaultAddress(&pagefault)
 
-		offset, pagesize, err := mappings.GetRange(uintptr(addr))
+		offset, pageSize, err := mappings.GetRange(uintptr(addr))
 		if err != nil {
 			logger.Error("UFFD serve get mapping error", zap.Error(err))
 
@@ -147,15 +157,23 @@ outerLoop:
 		missingPagesBeingHandled[offset] = struct{}{}
 
 		eg.Go(func() error {
+			ctx, span := tracer.Start(ctx, "uffd-serve-slab", trace.WithAttributes(
+				attribute.Int64("offset", offset),
+				attribute.Int64("page-size", pageSize),
+			))
+			defer span.End()
+
 			defer func() {
 				if r := recover(); r != nil {
-					logger.Error("UFFD serve panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
+					logger.Error("UFFD serve panic",
+						zap.Any("offset", offset),
+						zap.Any("pagesize", pageSize),
+						zap.Any("panic", r))
 				}
 			}()
 
-			b, err := src.Slice(ctx, offset, pagesize)
+			data, err := read(ctx, offset, pageSize, src)
 			if err != nil {
-
 				signalErr := fdExit.SignalExit()
 
 				joinedErr := errors.Join(err, signalErr)
@@ -165,37 +183,69 @@ outerLoop:
 				return fmt.Errorf("failed to read from source: %w", joinedErr)
 			}
 
-			cpy := userfaultfd.NewUffdioCopy(
-				b,
-				addr&^userfaultfd.CULong(pagesize-1),
-				userfaultfd.CULong(pagesize),
-				0,
-				0,
-			)
-
-			if _, _, errno := syscall.Syscall(
-				syscall.SYS_IOCTL,
-				uintptr(uffd),
-				userfaultfd.UFFDIO_COPY,
-				uintptr(unsafe.Pointer(&cpy)),
-			); errno != 0 {
-				if errno == unix.EEXIST {
-					logger.Debug("UFFD serve page already mapped", zap.Any("offset", offset), zap.Any("pagesize", pagesize))
-
-					// Page is already mapped
-					return nil
-				}
-
+			if err = copy(ctx, data, offset, pageSize, uffd, addr, logger); err != nil {
 				signalErr := fdExit.SignalExit()
 
-				joinedErr := errors.Join(errno, signalErr)
+				joinedErr := errors.Join(err, signalErr)
 
 				logger.Error("UFFD serve uffdio copy error", zap.Error(joinedErr))
 
 				return fmt.Errorf("failed uffdio copy %w", joinedErr)
+
 			}
 
 			return nil
 		})
 	}
+}
+
+func read(ctx context.Context, offset, pageSize int64, src block.Slicer) ([]byte, error) {
+	ctx, span := tracer.Start(ctx, "uffd-serve-read", trace.WithAttributes(
+		attribute.Int64("offset", offset),
+		attribute.Int64("page-size", pageSize),
+	))
+	defer span.End()
+
+	b, err := src.Slice(ctx, offset, pageSize)
+	if err != nil {
+		return nil, err
+	}
+
+	return b, nil
+}
+
+func copy(ctx context.Context, b []byte, offset, pageSize int64, uffd int, addr userfaultfd.CULong, logger *zap.Logger) error {
+	ctx, span := tracer.Start(ctx, "uffd-serve-copy", trace.WithAttributes(
+		attribute.Int64("offset", offset),
+		attribute.Int64("page-size", pageSize),
+	))
+	defer span.End()
+
+	cpy := userfaultfd.NewUffdioCopy(
+		b,
+		addr&^userfaultfd.CULong(pageSize-1),
+		userfaultfd.CULong(pageSize),
+		0,
+		0,
+	)
+
+	if _, _, err := syscall.Syscall(
+		syscall.SYS_IOCTL,
+		uintptr(uffd),
+		userfaultfd.UFFDIO_COPY,
+		uintptr(unsafe.Pointer(&cpy)),
+	); err != 0 {
+		if err == unix.EEXIST {
+			logger.Debug("UFFD serve page already mapped",
+				zap.Any("offset", offset),
+				zap.Any("pagesize", pageSize))
+
+			// Page is already mapped
+			return nil
+		}
+
+		return err
+	}
+
+	return nil
 }

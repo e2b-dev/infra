@@ -7,9 +7,14 @@ import (
 	"sync/atomic"
 
 	"github.com/bits-and-blooms/bitset"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
+
+var tracer = otel.Tracer("orchestrator.internal.sandbox.block")
 
 type TrackedSliceDevice struct {
 	data      ReadonlyDevice
@@ -44,16 +49,22 @@ func (t *TrackedSliceDevice) Disable() error {
 	return nil
 }
 
-func (t *TrackedSliceDevice) Slice(ctx context.Context, off int64, length int64) ([]byte, error) {
+func (t *TrackedSliceDevice) Slice(ctx context.Context, offset int64, length int64) ([]byte, error) {
+	ctx, span := tracer.Start(ctx, "TrackedSliceDevice.Slice", trace.WithAttributes(
+		attribute.Int64("offset", offset),
+		attribute.Int64("length", length),
+	))
+	defer span.End()
+
 	if t.nilTracking.Load() {
 		t.dirtyMu.Lock()
-		t.dirty.Clear(uint(header.BlockIdx(off, t.blockSize)))
+		t.dirty.Clear(uint(header.BlockIdx(offset, t.blockSize)))
 		t.dirtyMu.Unlock()
 
 		return t.empty, nil
 	}
 
-	return t.data.Slice(ctx, off, length)
+	return t.data.Slice(ctx, offset, length)
 }
 
 // Return which bytes were not read since Disable.

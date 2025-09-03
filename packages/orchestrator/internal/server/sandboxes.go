@@ -38,10 +38,10 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	defer cancel()
 
 	// set up tracing
-	ctx, childSpan := s.tracer.Start(ctx, "sandbox-create")
-	defer childSpan.End()
+	ctx, span := s.tracer.Start(ctx, "sandbox-create")
+	defer span.End()
 
-	childSpan.SetAttributes(
+	span.SetAttributes(
 		telemetry.WithTemplateID(req.Sandbox.TemplateId),
 		attribute.String("kernel.version", req.Sandbox.KernelVersion),
 		telemetry.WithSandboxID(req.Sandbox.SandboxId),
@@ -115,7 +115,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			ExecutionID: req.Sandbox.ExecutionId,
 			TeamID:      req.Sandbox.TeamId,
 		},
-		childSpan.SpanContext().TraceID().String(),
+		span.SpanContext().TraceID().String(),
 		req.StartTime.AsTime(),
 		req.EndTime.AsTime(),
 		s.devicePool,

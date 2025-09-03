@@ -228,6 +228,12 @@ variable "client_cluster_cache_disk_size_gb" {
   default     = 500
 }
 
+variable "client_cluster_cache_disk_type" {
+  description = "The GCE cache disk type."
+  type        = string
+  default     = "pd-ssd"
+}
+
 variable "orchestrator_port" {
   type    = number
   default = 5008
@@ -376,4 +382,20 @@ variable "filestore_cache_capacity_gb" {
   type        = number
   description = "The capacity of the Filestore cache in GB"
   default     = 0
+}
+
+variable "enable_pprof" {
+  type        = bool
+  description = "True to enable pprof, false otherwise"
+  default     = false
+}
+
+variable "build_min_cpu_platform" {
+  type    = string
+  default = "Intel Skylake"
+}
+
+variable "client_min_cpu_platform" {
+  type    = string
+  default = "Intel Skylake"
 }
