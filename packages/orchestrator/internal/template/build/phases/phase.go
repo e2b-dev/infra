@@ -6,11 +6,18 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+var tracer = otel.Tracer("orchestrator.template.build.phases")
 
 type PhaseMeta struct {
 	Phase    metrics.Phase
@@ -52,6 +59,13 @@ func Run(
 	metrics *metrics.BuildMetrics,
 	builders []BuilderPhase,
 ) (LayerResult, error) {
+	ctx, span := tracer.Start(ctx, "run phases", trace.WithAttributes(
+		attribute.Int("builders", len(builders)),
+		telemetry.WithBuildID(bc.Template.BuildID),
+		telemetry.WithTemplateID(bc.Config.TemplateID),
+	))
+	defer span.End()
+
 	sourceLayer := LayerResult{}
 
 	for _, builder := range builders {

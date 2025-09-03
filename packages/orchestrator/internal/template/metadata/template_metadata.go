@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 
+	"go.opentelemetry.io/otel"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/ioutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -17,6 +19,8 @@ const (
 
 	DeprecatedVersion = 1
 )
+
+var tracer = otel.Tracer("orchestrator.template.metadata")
 
 type Version struct {
 	Version any `json:"version"`
@@ -125,13 +129,16 @@ func FromBuildID(ctx context.Context, s storage.StorageProvider, buildID string)
 }
 
 func fromTemplate(ctx context.Context, s storage.StorageProvider, files storage.TemplateFiles) (Template, error) {
+	ctx, span := tracer.Start(ctx, "from template")
+	defer span.End()
+
 	obj, err := s.OpenObject(ctx, files.StorageMetadataPath())
 	if err != nil {
 		return Template{}, fmt.Errorf("error opening object for template metadata: %w", err)
 	}
 
 	var buf bytes.Buffer
-	_, err = obj.WriteTo(&buf)
+	_, err = obj.WriteTo(ctx, &buf)
 	if err != nil {
 		return Template{}, fmt.Errorf("error reading template metadata from object: %w", err)
 	}
