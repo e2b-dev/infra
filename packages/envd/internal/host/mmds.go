@@ -26,15 +26,13 @@ type MMDSOpts struct {
 	InstanceID string `json:"instanceID"`
 	EnvID      string `json:"envID"`
 	Address    string `json:"address"`
-	TeamID     string `json:"teamID"`
 }
 
-func (opts *MMDSOpts) Update(traceID, instanceID, envID, address, teamID string) {
+func (opts *MMDSOpts) Update(traceID, instanceID, envID, address string) {
 	opts.TraceID = traceID
 	opts.InstanceID = instanceID
 	opts.EnvID = envID
 	opts.Address = address
-	opts.TeamID = teamID
 }
 
 func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
@@ -48,7 +46,6 @@ func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
 	parsed["instanceID"] = opts.InstanceID
 	parsed["envID"] = opts.EnvID
 	parsed["traceID"] = opts.TraceID
-	parsed["teamID"] = opts.TeamID
 
 	data, err := json.Marshal(parsed)
 
@@ -141,15 +138,11 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 
 			envVars.Store("E2B_SANDBOX_ID", mmdsOpts.InstanceID)
 			envVars.Store("E2B_TEMPLATE_ID", mmdsOpts.EnvID)
-			envVars.Store("E2B_TEAM_ID", mmdsOpts.TeamID)
 			if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_SANDBOX_ID"), []byte(mmdsOpts.InstanceID), 0o666); err != nil {
 				fmt.Fprintf(os.Stderr, "error writing sandbox ID file: %v\n", err)
 			}
 			if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_TEMPLATE_ID"), []byte(mmdsOpts.EnvID), 0o666); err != nil {
 				fmt.Fprintf(os.Stderr, "error writing template ID file: %v\n", err)
-			}
-			if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_TEAM_ID"), []byte(mmdsOpts.TeamID), 0o666); err != nil {
-				fmt.Fprintf(os.Stderr, "error writing team ID file: %v\n", err)
 			}
 
 			if mmdsOpts.Address != "" {
