@@ -522,11 +522,13 @@ func ResumeSandbox(
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
 
-	sandboxIP := ips.slot.HostIPString()
-	eventStore.SetSandboxIP(runtime.SandboxID, sandboxIP)
-	cleanup.AddPriority(func(ctx context.Context) error {
-		return eventStore.DelSandboxIP(sandboxIP)
-	})
+	if eventStore != nil {
+		sandboxIP := ips.slot.HostIPString()
+		eventStore.SetSandboxIP(runtime.SandboxID, sandboxIP)
+		cleanup.AddPriority(func(ctx context.Context) error {
+			return eventStore.DelSandboxIP(sandboxIP)
+		})
+	}
 
 	go sbx.Checks.Start()
 

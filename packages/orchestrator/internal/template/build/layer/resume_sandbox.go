@@ -16,21 +16,21 @@ import (
 
 // ResumeSandbox creates sandboxes for resuming existing templates
 type ResumeSandbox struct {
-	config  sandbox.Config
-	timeout time.Duration
+	config     sandbox.Config
+	timeout    time.Duration
+	eventStore events.SandboxEventStore
 }
 
 var _ SandboxCreator = (*ResumeSandbox)(nil)
 
-func NewResumeSandbox(config sandbox.Config, timeout time.Duration) *ResumeSandbox {
-	return &ResumeSandbox{config: config, timeout: timeout}
+func NewResumeSandbox(config sandbox.Config, timeout time.Duration, eventStore events.SandboxEventStore) *ResumeSandbox {
+	return &ResumeSandbox{config: config, timeout: timeout, eventStore: eventStore}
 }
 
 func (rs *ResumeSandbox) Sandbox(
 	ctx context.Context,
 	layerExecutor *LayerExecutor,
 	template sbxtemplate.Template,
-	eventStore events.SandboxEventStore,
 ) (*sandbox.Sandbox, error) {
 	sbx, err := sandbox.ResumeSandbox(
 		ctx,
@@ -49,7 +49,7 @@ func (rs *ResumeSandbox) Sandbox(
 		layerExecutor.devicePool,
 		false,
 		nil,
-		eventStore,
+		rs.eventStore,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("resume sandbox: %w", err)
