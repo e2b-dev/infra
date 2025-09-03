@@ -51,7 +51,7 @@ func (s *Snapshot) Upload(
 		rootfsPath = &rootfsLocalPath
 	}
 
-	templateBuild := storage.NewTemplateBuild(
+	templateBuild := NewTemplateBuild(
 		s.MemfileDiffHeader,
 		s.RootfsDiffHeader,
 		persistence,
