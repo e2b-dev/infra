@@ -151,6 +151,7 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 				b := make([]byte, storage.MemoryChunkSize)
 
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
+
 				readBytes, err := c.base.ReadAt(ctx, b, fetchOff)
 				if err != nil && !errors.Is(err, io.EOF) {
 					fetchSW.End(ctx, int64(readBytes),

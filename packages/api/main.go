@@ -19,6 +19,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-contrib/cors"
+	"github.com/gin-contrib/pprof"
 	limits "github.com/gin-contrib/size"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -66,6 +67,10 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 	swagger.Servers = nil
 
 	r := gin.New()
+
+	if env.IsDebug() {
+		pprof.Register(r, "debug/pprof")
+	}
 
 	r.Use(
 		// We use custom otel gin middleware because we want to log 4xx errors in the otel

@@ -128,7 +128,7 @@ func (p *Process) configure(
 	stdoutExternal io.Writer,
 	stderrExternal io.Writer,
 ) error {
-	childCtx, childSpan := tracer.Start(ctx, "configure-fc")
+	ctx, childSpan := tracer.Start(ctx, "configure-fc")
 	defer childSpan.End()
 
 	stdoutWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger, Level: zap.InfoLevel}
@@ -155,7 +155,7 @@ func (p *Process) configure(
 		return fmt.Errorf("error starting fc process: %w", err)
 	}
 
-	startCtx, cancelStart := context.WithCancelCause(childCtx)
+	startCtx, cancelStart := context.WithCancelCause(ctx)
 	defer cancelStart(fmt.Errorf("fc finished starting"))
 
 	go func() {
@@ -208,11 +208,11 @@ func (p *Process) Create(
 	hugePages bool,
 	options ProcessOptions,
 ) error {
-	childCtx, childSpan := tracer.Start(ctx, "create-fc")
+	ctx, childSpan := tracer.Start(ctx, "create-fc")
 	defer childSpan.End()
 
 	err := p.configure(
-		childCtx,
+		ctx,
 		loggerMetadata,
 		options.Stdout,
 		options.Stderr,
@@ -260,13 +260,13 @@ func (p *Process) Create(
 	}
 
 	kernelArgs := args.String()
-	err = p.client.setBootSource(childCtx, kernelArgs, p.kernelPath)
+	err = p.client.setBootSource(ctx, kernelArgs, p.kernelPath)
 	if err != nil {
 		fcStopErr := p.Stop()
 
 		return errors.Join(fmt.Errorf("error setting fc boot source config: %w", err), fcStopErr)
 	}
-	telemetry.ReportEvent(childCtx, "set fc boot source config")
+	telemetry.ReportEvent(ctx, "set fc boot source config")
 
 	// Rootfs
 	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath())
@@ -274,39 +274,39 @@ func (p *Process) Create(
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
 
-	err = p.client.setRootfsDrive(childCtx, p.rootfsPath)
+	err = p.client.setRootfsDrive(ctx, p.rootfsPath)
 	if err != nil {
 		fcStopErr := p.Stop()
 
 		return errors.Join(fmt.Errorf("error setting fc drivers config: %w", err), fcStopErr)
 	}
-	telemetry.ReportEvent(childCtx, "set fc drivers config")
+	telemetry.ReportEvent(ctx, "set fc drivers config")
 
 	// Network
-	err = p.client.setNetworkInterface(childCtx, p.slot.VpeerName(), p.slot.TapName(), p.slot.TapMAC())
+	err = p.client.setNetworkInterface(ctx, p.slot.VpeerName(), p.slot.TapName(), p.slot.TapMAC())
 	if err != nil {
 		fcStopErr := p.Stop()
 
 		return errors.Join(fmt.Errorf("error setting fc network config: %w", err), fcStopErr)
 	}
-	telemetry.ReportEvent(childCtx, "set fc network config")
+	telemetry.ReportEvent(ctx, "set fc network config")
 
-	err = p.client.setMachineConfig(childCtx, vCPUCount, memoryMB, hugePages)
+	err = p.client.setMachineConfig(ctx, vCPUCount, memoryMB, hugePages)
 	if err != nil {
 		fcStopErr := p.Stop()
 
 		return errors.Join(fmt.Errorf("error setting fc machine config: %w", err), fcStopErr)
 	}
-	telemetry.ReportEvent(childCtx, "set fc machine config")
+	telemetry.ReportEvent(ctx, "set fc machine config")
 
-	err = p.client.startVM(childCtx)
+	err = p.client.startVM(ctx)
 	if err != nil {
 		fcStopErr := p.Stop()
 
 		return errors.Join(fmt.Errorf("error starting fc: %w", err), fcStopErr)
 	}
 
-	telemetry.ReportEvent(childCtx, "started fc")
+	telemetry.ReportEvent(ctx, "started fc")
 	return nil
 }
 

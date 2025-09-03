@@ -75,14 +75,7 @@ func (lb *LayerExecutor) BuildLayer(
 	ctx, childSpan := lb.tracer.Start(ctx, "run-in-sandbox")
 	defer childSpan.End()
 
-	localTemplate, err := lb.templateCache.GetTemplate(
-		ctx,
-		cmd.SourceTemplate.BuildID,
-		cmd.SourceTemplate.KernelVersion,
-		cmd.SourceTemplate.FirecrackerVersion,
-		false,
-		true,
-	)
+	localTemplate, err := cmd.SourceTemplate.Get(ctx, lb.templateCache)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("get template snapshot: %w", err)
 	}

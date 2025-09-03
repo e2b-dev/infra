@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"go.opentelemetry.io/otel"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -15,6 +17,8 @@ import (
 const hashingVersion = "v1"
 
 const minimalCachedTemplateVersion = 2
+
+var tracer = otel.Tracer("orchestrator.template.build.storage.cache")
 
 type Template struct {
 	BuildID string `json:"build_id"`
@@ -56,6 +60,9 @@ func (h *HashIndex) Version() string {
 }
 
 func (h *HashIndex) LayerMetaFromHash(ctx context.Context, hash string) (LayerMetadata, error) {
+	ctx, span := tracer.Start(ctx, "get layer_metadata")
+	defer span.End()
+
 	obj, err := h.indexStorage.OpenObject(ctx, paths.HashToPath(h.cacheScope, hash))
 	if err != nil {
 		return LayerMetadata{}, fmt.Errorf("error opening object for layer metadata: %w", err)
@@ -81,6 +88,9 @@ func (h *HashIndex) LayerMetaFromHash(ctx context.Context, hash string) (LayerMe
 }
 
 func (h *HashIndex) SaveLayerMeta(ctx context.Context, hash string, template LayerMetadata) error {
+	ctx, span := tracer.Start(ctx, "save layer_metadata")
+	defer span.End()
+
 	obj, err := h.indexStorage.OpenObject(ctx, paths.HashToPath(h.cacheScope, hash))
 	if err != nil {
 		return fmt.Errorf("error creating object for saving UUID: %w", err)
@@ -113,6 +123,9 @@ func (h *HashIndex) Cached(
 	ctx context.Context,
 	buildID string,
 ) (metadata.Template, error) {
+	ctx, span := tracer.Start(ctx, "is cached")
+	defer span.End()
+
 	tmpl, err := metadata.FromBuildID(ctx, h.templateStorage, buildID)
 	if err != nil {
 		// If the metadata does not exist, the layer is not cached
