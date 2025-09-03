@@ -24,7 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-const finalizeTimeout = 15 * time.Minute
+var finalizeTimeout = configurationTimeout + readyCommandTimeout + 5*time.Minute
 
 type PostProcessingBuilder struct {
 	buildcontext.BuildContext
