@@ -3,6 +3,7 @@ package instance
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -93,6 +94,11 @@ func (c *MemoryStore) Remove(ctx context.Context, instanceID string, removeType 
 	}
 	defer sbx.stopLock.Unlock()
 
+	// Mark the stop time
+	if !sbx.IsExpired() {
+		sbx.SetExpired()
+	}
+
 	sbx.mu.Lock()
 	sbx.state = StateShuttingDown
 	sbx.mu.Unlock()
@@ -119,6 +125,25 @@ func (c *MemoryStore) Items(teamID *uuid.UUID) []*InstanceInfo {
 		}
 
 		items = append(items, item)
+	}
+
+	return items
+}
+
+func (c *MemoryStore) ItemsByState(teamID *uuid.UUID, states []State) map[State][]*InstanceInfo {
+	items := make(map[State][]*InstanceInfo)
+	for _, item := range c.items.Items() {
+		if teamID != nil && item.TeamID != *teamID {
+			continue
+		}
+
+		if slices.Contains(states, item.state) {
+			if _, ok := items[item.state]; !ok {
+				items[item.state] = []*InstanceInfo{}
+			}
+
+			items[item.state] = append(items[item.state], item)
+		}
 	}
 
 	return items
