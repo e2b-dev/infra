@@ -25,7 +25,6 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/pojntfx/go-nbd v0.3.2
 	github.com/redis/go-redis/v9 v9.12.1
-	github.com/rs/zerolog v1.34.0
 	github.com/shirou/gopsutil/v4 v4.25.6
 	github.com/soheilhy/cmux v0.1.5
 	github.com/stretchr/testify v1.10.0
@@ -183,6 +182,7 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
+	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect

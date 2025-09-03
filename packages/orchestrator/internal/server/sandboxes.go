@@ -129,8 +129,8 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}
 
 	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
-	go func(ctx context.Context) {
-		ctx, childSpan := s.tracer.Start(ctx, "sandbox-create-stop", trace.WithNewRoot())
+	go func() {
+		ctx, childSpan := s.tracer.Start(context.WithoutCancel(ctx), "sandbox-create-stop", trace.WithNewRoot())
 		defer childSpan.End()
 
 		waitErr := sbx.Wait(ctx)
@@ -138,7 +138,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			sbxlogger.I(sbx).Error("failed to wait for sandbox, cleaning up", zap.Error(waitErr))
 		}
 
-		cleanupErr := sbx.Stop(ctx)
+		cleanupErr := sbx.Close(ctx)
 		if cleanupErr != nil {
 			sbxlogger.I(sbx).Error("failed to cleanup sandbox, will remove from cache", zap.Error(cleanupErr))
 		}
@@ -162,7 +162,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		s.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
 
 		sbxlogger.E(sbx).Info("Sandbox killed")
-	}(context.WithoutCancel(ctx))
+	}()
 
 	label := clickhouse.SandboxEventLabelCreate
 	if req.Sandbox.Snapshot {
@@ -304,7 +304,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	// Start the cleanup in a goroutine—the initial kill request should be send as the first thing in stop, and at this point you cannot route to the sandbox anymore.
 	// We don't wait for the whole cleanup to finish here.
 	go func() {
-		err := sbx.Stop(ctx)
+		err := sbx.Stop(ctx, s.tracer)
 		if err != nil {
 			sbxlogger.I(sbx).Error("error stopping sandbox", logger.WithSandboxID(in.SandboxId), zap.Error(err))
 		}
@@ -372,7 +372,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 			ctx, childSpan := s.tracer.Start(ctx, "sandbox-pause-stop")
 			defer childSpan.End()
 
-			err := sbx.Stop(ctx)
+			err := sbx.Stop(ctx, s.tracer)
 			if err != nil {
 				sbxlogger.I(sbx).Error("error stopping sandbox after snapshot", logger.WithSandboxID(in.SandboxId), zap.Error(err))
 			}
