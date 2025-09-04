@@ -19,44 +19,50 @@ const (
 )
 
 // Add the instance to the cache
-func (c *MemoryStore) Add(ctx context.Context, instance *InstanceInfo, newlyCreated bool) error {
-	sbxlogger.I(instance).Debug("Adding sandbox to cache",
+func (c *MemoryStore) Add(ctx context.Context, sandbox *InstanceInfo, newlyCreated bool) error {
+	sbxlogger.I(sandbox).Debug("Adding sandbox to cache",
 		zap.Bool("newly_created", newlyCreated),
-		zap.Time("start_time", instance.StartTime),
-		zap.Time("end_time", instance.GetEndTime()),
+		zap.Time("start_time", sandbox.StartTime),
+		zap.Time("end_time", sandbox.GetEndTime()),
 	)
 
-	if instance.SandboxID == "" {
-		return fmt.Errorf("instance is missing sandbox ID")
+	if sandbox.SandboxID == "" {
+		return fmt.Errorf("sandbox is missing sandbox ID")
 	}
 
-	if instance.TeamID == uuid.Nil {
-		return fmt.Errorf("instance %s is missing team ID", instance.SandboxID)
+	if sandbox.TeamID == uuid.Nil {
+		return fmt.Errorf("sandbox %s is missing team ID", sandbox.SandboxID)
 	}
 
-	if instance.ClientID == "" {
-		return fmt.Errorf("instance %s is missing client ID", instance.ClientID)
+	if sandbox.ClientID == "" {
+		return fmt.Errorf("sandbox %s is missing client ID", sandbox.ClientID)
 	}
 
-	if instance.TemplateID == "" {
-		return fmt.Errorf("instance %s is missing env ID", instance.TemplateID)
+	if sandbox.TemplateID == "" {
+		return fmt.Errorf("sandbox %s is missing env ID", sandbox.TemplateID)
 	}
 
-	endTime := instance.GetEndTime()
+	endTime := sandbox.GetEndTime()
 
-	if instance.StartTime.IsZero() || endTime.IsZero() || instance.StartTime.After(endTime) {
-		return fmt.Errorf("instance %s has invalid start(%s)/end(%s) times", instance.SandboxID, instance.StartTime, endTime)
+	if sandbox.StartTime.IsZero() || endTime.IsZero() || sandbox.StartTime.After(endTime) {
+		return fmt.Errorf("sandbox %s has invalid start(%s)/end(%s) times", sandbox.SandboxID, sandbox.StartTime, endTime)
 	}
 
-	if endTime.Sub(instance.StartTime) > instance.MaxInstanceLength {
-		instance.SetEndTime(instance.StartTime.Add(instance.MaxInstanceLength))
+	if endTime.Sub(sandbox.StartTime) > sandbox.MaxInstanceLength {
+		sandbox.SetEndTime(sandbox.StartTime.Add(sandbox.MaxInstanceLength))
 	}
 
-	c.set(ctx, instance.SandboxID, instance, newlyCreated)
-	c.updateCounters(ctx, instance, 1, newlyCreated)
+	c.items.SetIfAbsent(sandbox.SandboxID, sandbox)
 
+	for _, callback := range c.insertCallbacks {
+		callback(ctx, sandbox, newlyCreated)
+	}
+
+	for _, callback := range c.insertAsyncCallbacks {
+		go callback(context.WithoutCancel(ctx), sandbox, newlyCreated)
+	}
 	// Release the reservation if it exists
-	c.reservations.release(instance.SandboxID)
+	c.reservations.release(sandbox.SandboxID)
 
 	return nil
 }
@@ -81,35 +87,30 @@ func (c *MemoryStore) Get(instanceID string, includeEvicting bool) (*InstanceInf
 }
 
 // Remove the instance from the cache (no eviction callback).
-func (c *MemoryStore) Remove(ctx context.Context, instanceID string, removeType RemoveType) error {
+func (c *MemoryStore) Remove(ctx context.Context, instanceID string, removeType RemoveType) (err error) {
 	sbx, ok := c.items.Get(instanceID)
 	if !ok {
 		return fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
 	}
 
-	acquired := sbx.stopLock.TryLock()
-	if !acquired {
-		// TODO: return a typed error
-		return fmt.Errorf("instance \"%s\" is already being removed", instanceID)
-	}
-	defer sbx.stopLock.Unlock()
-
-	// Mark the stop time
-	if !sbx.IsExpired() {
-		sbx.SetExpired()
+	// Makes sure there's only one removal
+	err = sbx.markRemoving(removeType)
+	if err != nil {
+		return err
 	}
 
-	sbx.mu.Lock()
-	sbx.state = StateShuttingDown
-	sbx.mu.Unlock()
+	// Remove from the cache
+	defer c.items.Remove(instanceID)
 
-	err := c.deleteInstance(ctx, sbx, removeType)
-	sbx.stopDone(err, removeType)
+	// Remove the sandbox from the node
+	err = c.removeSandbox(ctx, sbx, removeType)
+	for _, callback := range c.removeAsyncCallbacks {
+		go callback(context.WithoutCancel(ctx), sbx, removeType)
+	}
+	sbx.stopDone(err)
 	if err != nil {
 		return fmt.Errorf("error removing instance \"%s\": %w", instanceID, err)
 	}
-
-	c.items.Remove(instanceID)
 
 	return nil
 }
@@ -124,6 +125,18 @@ func (c *MemoryStore) Items(teamID *uuid.UUID) []*InstanceInfo {
 			items = append(items, item)
 		}
 
+		items = append(items, item)
+	}
+
+	return items
+}
+
+func (c *MemoryStore) ExpiredItems() []*InstanceInfo {
+	items := make([]*InstanceInfo, 0)
+	for _, item := range c.items.Items() {
+		if !item.IsExpired() {
+			continue
+		}
 		items = append(items, item)
 	}
 
@@ -151,14 +164,4 @@ func (c *MemoryStore) ItemsByState(teamID *uuid.UUID, states []State) map[State]
 
 func (c *MemoryStore) Len(teamID *uuid.UUID) int {
 	return len(c.Items(teamID))
-}
-
-func (c *MemoryStore) set(ctx context.Context, key string, value *InstanceInfo, created bool) {
-	inserted := c.items.SetIfAbsent(key, value)
-	if inserted {
-		// Run asynchronously to avoid blocking the main flow
-		go func() {
-			c.insertAnalytics(ctx, value, created)
-		}()
-	}
 }

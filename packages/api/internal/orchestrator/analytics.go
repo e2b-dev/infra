@@ -5,13 +5,14 @@ import (
 	"time"
 
 	"github.com/posthog/posthog-go"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -76,85 +77,77 @@ func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyt
 	}
 }
 
-func (o *Orchestrator) analyticsStop(ctx context.Context, sandbox *instance.InstanceInfo, removeType instance.RemoveType) {
+func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox *instance.InstanceInfo, removeType instance.RemoveType) {
+	ctx, cancel := context.WithTimeout(ctx, reportTimeout)
+	defer cancel()
+
 	duration := time.Since(sandbox.StartTime).Seconds()
 	stopTime := time.Now()
 
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), reportTimeout)
-	defer cancel()
+	o.posthogClient.CreateAnalyticsTeamEvent(
+		sandbox.TeamID.String(),
+		"closed_instance", posthog.NewProperties().
+			Set("instance_id", sandbox.SandboxID).
+			Set("environment", sandbox.TemplateID).
+			Set("remove_type", removeType).
+			Set("duration", duration),
+	)
 
-	// Run in separate goroutine to not block sandbox deletion
-	go func() {
-		o.posthogClient.CreateAnalyticsTeamEvent(
-			sandbox.TeamID.String(),
-			"closed_instance", posthog.NewProperties().
-				Set("instance_id", sandbox.SandboxID).
-				Set("environment", sandbox.TemplateID).
-				Set("remove_type", removeType).
-				Set("duration", duration),
-		)
-
-		_, err := o.analytics.InstanceStopped(ctx, &analyticscollector.InstanceStoppedEvent{
-			TeamId:        sandbox.TeamID.String(),
-			EnvironmentId: sandbox.TemplateID,
-			InstanceId:    sandbox.SandboxID,
-			ExecutionId:   sandbox.ExecutionID,
-			Timestamp:     timestamppb.New(stopTime),
-			Duration:      float32(duration),
-			CpuCount:      sandbox.VCpu,
-			RamMb:         sandbox.RamMB,
-			DiskSizeMb:    sandbox.TotalDiskSizeMB,
-		})
-		if err != nil {
-			zap.L().Error("error sending Analytics event", zap.Error(err))
-		}
-	}()
+	_, err := o.analytics.InstanceStopped(ctx, &analyticscollector.InstanceStoppedEvent{
+		TeamId:        sandbox.TeamID.String(),
+		EnvironmentId: sandbox.TemplateID,
+		InstanceId:    sandbox.SandboxID,
+		ExecutionId:   sandbox.ExecutionID,
+		Timestamp:     timestamppb.New(stopTime),
+		Duration:      float32(duration),
+		CpuCount:      sandbox.VCpu,
+		RamMb:         sandbox.RamMB,
+		DiskSizeMb:    sandbox.TotalDiskSizeMB,
+	})
+	if err != nil {
+		zap.L().Error("error sending Analytics event", zap.Error(err))
+	}
 }
 
 func (o *Orchestrator) analyticsInsert(ctx context.Context, sandbox *instance.InstanceInfo, created bool) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), reportTimeout)
 	defer cancel()
 
-	sbxlogger.I(sandbox).Debug("Inserting sandbox to cache hook",
-		zap.Time("start_time", sandbox.StartTime),
-		zap.Time("end_time", sandbox.GetEndTime()),
-		zap.Bool("auto_pause", sandbox.AutoPause),
-	)
-
-	node := o.GetNode(sandbox.ClusterID, sandbox.NodeID)
-	if node == nil {
-		zap.L().Error("failed to get node", logger.WithNodeID(sandbox.NodeID))
-	} else {
-		node.AddSandbox(sandbox)
-
-		o.dns.Add(ctx, sandbox.SandboxID, node.IPAddress)
-	}
-
-	o.teamMetricsObserver.Add(ctx, sandbox.TeamID, created)
-
 	if created {
 		// Run in separate goroutine to not block sandbox creation
-		go func() {
-			_, err := o.analytics.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{
-				InstanceId:    sandbox.SandboxID,
-				ExecutionId:   sandbox.ExecutionID,
-				EnvironmentId: sandbox.TemplateID,
-				BuildId:       sandbox.BuildID.String(),
-				TeamId:        sandbox.TeamID.String(),
-				CpuCount:      sandbox.VCpu,
-				RamMb:         sandbox.RamMB,
-				DiskSizeMb:    sandbox.TotalDiskSizeMB,
-				Timestamp:     timestamppb.Now(),
-			})
-			if err != nil {
-				zap.L().Error("Error sending Analytics event", zap.Error(err))
-			}
-		}()
+		_, err := o.analytics.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{
+			InstanceId:    sandbox.SandboxID,
+			ExecutionId:   sandbox.ExecutionID,
+			EnvironmentId: sandbox.TemplateID,
+			BuildId:       sandbox.BuildID.String(),
+			TeamId:        sandbox.TeamID.String(),
+			CpuCount:      sandbox.VCpu,
+			RamMb:         sandbox.RamMB,
+			DiskSizeMb:    sandbox.TotalDiskSizeMB,
+			Timestamp:     timestamppb.Now(),
+		})
+		if err != nil {
+			zap.L().Error("Error sending Analytics event", zap.Error(err))
+		}
+	}
+}
+
+func (o *Orchestrator) countersInsert(ctx context.Context, sandbox *instance.InstanceInfo, newlyCreated bool) {
+	attributes := []attribute.KeyValue{
+		telemetry.WithTeamID(sandbox.TeamID.String()),
 	}
 
-	sbxlogger.I(sandbox).Debug("Inserted sandbox to cache hook",
-		zap.Time("start_time", sandbox.StartTime),
-		zap.Time("end_time", sandbox.GetEndTime()),
-		zap.Bool("auto_pause", sandbox.AutoPause),
-	)
+	if newlyCreated {
+		o.createdCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
+	}
+
+	o.sandboxCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
+}
+
+func (o *Orchestrator) countersRemove(ctx context.Context, sandbox *instance.InstanceInfo, _ instance.RemoveType) {
+	attributes := []attribute.KeyValue{
+		telemetry.WithTeamID(sandbox.TeamID.String()),
+	}
+
+	o.sandboxCounter.Add(ctx, -1, metric.WithAttributes(attributes...))
 }

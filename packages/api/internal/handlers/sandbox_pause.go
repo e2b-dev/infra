@@ -58,10 +58,22 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		return
 	}
 
-	state := sbx.GetState()
-	switch state {
-	// If the sandbox is already being paused, we just wait for it
-	case instance.StatePausing, instance.StatePaused:
+	err = a.orchestrator.RemoveInstance(ctx, sbx, instance.RemoveTypePause)
+	if err == nil {
+		c.Status(http.StatusNoContent)
+		return
+	}
+
+	if errors.Is(err, instance.ErrAlreadyBeingDeleted) {
+		telemetry.ReportEvent(ctx, "sandbox is already being deleted", telemetry.WithSandboxID(sandboxID))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already being deleted", sandboxID))
+
+		return
+	}
+
+	if errors.Is(err, instance.ErrAlreadyBeingPaused) {
+		telemetry.ReportEvent(ctx, "sandbox is already being paused", telemetry.WithSandboxID(sandboxID))
+
 		err = sbx.WaitForStop(ctx)
 		if err != nil {
 			telemetry.ReportError(ctx, "error when waiting for sandbox to pause", err)
@@ -70,22 +82,13 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 
 			return
 		}
-	// If the sandbox is running, we pause it
-	case instance.StateRunning:
-		err = a.orchestrator.RemoveInstance(ctx, sbx, instance.RemoveTypePause)
-		if err != nil {
-			telemetry.ReportError(ctx, "error pausing sandbox", err)
 
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
-
-			return
-		}
-	// Sandbox is already killed, it can't be paused
-	case instance.StateShuttingDown, instance.StateKilled:
-		telemetry.ReportError(ctx, "sandbox is already killed", nil)
-		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already killed", sandboxID))
+		// Successfully paused
+		c.Status(http.StatusNoContent)
 		return
 	}
 
-	c.Status(http.StatusNoContent)
+	telemetry.ReportError(ctx, "error pausing sandbox", err)
+
+	a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
 }

@@ -18,8 +18,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
-	"github.com/e2b-dev/infra/packages/api/internal/evictor"
 	"github.com/e2b-dev/infra/packages/api/internal/metrics"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/evictor"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
@@ -29,12 +29,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const (
-	// cacheHookTimeout is the timeout for all requests inside cache insert/delete hooks.
-	cacheHookTimeout = 5 * time.Minute
-
-	statusLogInterval = time.Second * 20
-)
+const statusLogInterval = time.Second * 20
 
 var ErrNodeNotFound = errors.New("node not found")
 
@@ -56,6 +51,8 @@ type Orchestrator struct {
 	metricsRegistration     metric.Registration
 	createdSandboxesCounter metric.Int64Counter
 	teamMetricsObserver     *metrics.TeamObserver
+	sandboxCounter          metric.Int64UpDownCounter
+	createdCounter          metric.Int64Counter
 }
 
 func New(
@@ -72,6 +69,7 @@ func New(
 	analyticsInstance, err := analyticscollector.NewAnalytics()
 	if err != nil {
 		zap.L().Error("Error initializing Analytics client", zap.Error(err))
+		return nil, err
 	}
 
 	dnsServer := dns.New(ctx, redisClient)
@@ -81,6 +79,21 @@ func New(
 	} else {
 		zap.L().Info("Starting DNS server")
 		dnsServer.Start(ctx, "0.0.0.0", os.Getenv("DNS_PORT"))
+	}
+
+	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
+	// right now we load them from Orchestrator
+	meter := tel.MeterProvider.Meter("api.cache.sandbox")
+	sandboxCounter, err := telemetry.GetUpDownCounter(meter, telemetry.SandboxCountMeterName)
+	if err != nil {
+		zap.L().Error("error getting counter", zap.Error(err))
+		return nil, err
+	}
+
+	createdCounter, err := telemetry.GetCounter(meter, telemetry.SandboxCreateMeterName)
+	if err != nil {
+		zap.L().Error("error getting counter", zap.Error(err))
+		return nil, err
 	}
 
 	httpClient := &http.Client{
@@ -105,12 +118,25 @@ func New(
 		dbClient:           dbClient,
 		tel:                tel,
 		clusters:           clusters,
+
+		sandboxCounter: sandboxCounter,
+		createdCounter: createdCounter,
 	}
 
 	sandboxStore := instance.NewStore(
-		tel.MeterProvider,
-		o.analyticsInsert,
-		o.removeInstance,
+		o.removeSandbox,
+		[]instance.InsertCallback{
+			o.addToNode,
+		},
+		[]instance.InsertCallback{
+			o.observeTeamSandbox,
+			o.countersInsert,
+			o.analyticsInsert,
+		},
+		[]instance.RemoveCallback{
+			o.countersRemove,
+			o.analyticsRemove,
+		},
 	)
 
 	o.sandboxStore = sandboxStore

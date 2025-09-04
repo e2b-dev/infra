@@ -2,6 +2,7 @@ package instance
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -22,11 +23,11 @@ const (
 type State string
 
 const (
-	StateRunning      State = "running"
-	StatePausing      State = "pausing"
-	StateShuttingDown State = "shutting down"
-	StatePaused       State = "paused"
-	StateKilled       State = "killed"
+	StateRunning State = "running"
+	StatePausing State = "pausing"
+	StateKilling State = "killing"
+	StatePaused  State = "paused"
+	StateKilled  State = "killed"
 )
 
 type OnEvictionType string
@@ -124,7 +125,6 @@ type InstanceInfo struct {
 	mu    sync.RWMutex
 
 	stopping *utils.SetOnce[struct{}]
-	stopLock sync.Mutex
 }
 
 func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -139,6 +139,10 @@ func (i *InstanceInfo) IsExpired() bool {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
+	return i.isExpired()
+}
+
+func (i *InstanceInfo) isExpired() bool {
 	return time.Now().After(i.endTime)
 }
 
@@ -153,11 +157,23 @@ func (i *InstanceInfo) SetEndTime(endTime time.Time) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
+	i.setEndTime(endTime)
+}
+
+func (i *InstanceInfo) setEndTime(endTime time.Time) {
 	i.endTime = endTime
 }
 
 func (i *InstanceInfo) SetExpired() {
-	i.SetEndTime(time.Now())
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.setExpired()
+}
+
+func (i *InstanceInfo) setExpired() {
+	if !i.isExpired() {
+		i.setEndTime(time.Now())
+	}
 }
 
 func (i *InstanceInfo) GetState() State {
@@ -165,6 +181,35 @@ func (i *InstanceInfo) GetState() State {
 	defer i.mu.RUnlock()
 
 	return i.state
+}
+
+var (
+	ErrAlreadyBeingPaused  = errors.New("instance is already being removed")
+	ErrAlreadyBeingDeleted = errors.New("instance is already being paused")
+)
+
+func (i *InstanceInfo) markRemoving(removeType RemoveType) error {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	if i.state != StateRunning {
+		if i.state == StatePausing || i.state == StatePaused {
+			return ErrAlreadyBeingPaused
+		} else {
+			return ErrAlreadyBeingDeleted
+		}
+	}
+	// Set remove type
+	if removeType == RemoveTypePause {
+		i.state = StatePausing
+	} else {
+		i.state = StateKilling
+	}
+
+	// Mark the stop time
+	i.setExpired()
+
+	return nil
 }
 
 func (i *InstanceInfo) WaitForStop(ctx context.Context) error {
@@ -176,11 +221,11 @@ func (i *InstanceInfo) WaitForStop(ctx context.Context) error {
 	return err
 }
 
-func (i *InstanceInfo) stopDone(err error, removeType RemoveType) {
+func (i *InstanceInfo) stopDone(err error) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	if removeType == RemoveTypePause {
+	if i.state == StatePausing {
 		i.state = StatePaused
 	} else {
 		i.state = StateKilled

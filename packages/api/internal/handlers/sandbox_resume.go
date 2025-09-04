@@ -55,9 +55,6 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	}
 
 	sandboxID = utils.ShortID(sandboxID)
-
-	// This is also checked during in orchestrator.CreateSandbox, where the sandbox ID is reserved,
-	// but we want to do a quick check here to return an error quickly if possible.
 	sbxCache, err := a.orchestrator.GetSandbox(sandboxID, true)
 	if err == nil {
 		state := sbxCache.GetState()
@@ -68,7 +65,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when resuming sandbox")
 				return
 			}
-		case instance.StateShuttingDown, instance.StateKilled:
+		case instance.StateKilling, instance.StateKilled:
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Sandbox %s is already killed", sandboxID))
 			return
 		case instance.StateRunning:
@@ -89,7 +86,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			zap.L().Debug("Snapshot not found", logger.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox snapshot not found")
+			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found")
 			return
 		}
 
