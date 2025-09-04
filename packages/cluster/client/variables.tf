@@ -138,8 +138,8 @@ variable "cache_volume_disk_size_gb" {
 variable "cache_volume_disk_type" {
   type = string
 }
-# Update Policy
 
+# Update Policy
 
 variable "instance_group_update_policy_minimal_action" {
   description = "Minimal action to be taken on an instance. You can specify either 'RESTART' to restart existing instances or 'REPLACE' to delete and create new instances from the target template. If you specify a 'RESTART', the Updater will attempt to perform that action only. However, if the Updater determines that the minimal action you specify is not enough to perform the update, it might perform a more disruptive action."

@@ -99,7 +99,7 @@ resource "google_compute_instance_template" "build" {
     boot         = false
     type         = "PERSISTENT"
     disk_size_gb = var.cache_volume_disk_size_gb
-    disk_type    = "pd-ssd"
+    disk_type    = var.cache_volume_disk_type
   }
 
   network_interface {

@@ -69,6 +69,10 @@ variable "build_cluster_cache_disk_size_gb" {
   type = number
 }
 
+variable "build_cluster_cache_disk_type" {
+  type = string
+}
+
 variable "edge_api_port" {
   type = object({
     name = string
@@ -281,10 +285,6 @@ variable "filestore_cache_capacity_gb" {
   default = 0
 }
 
-variable "build_min_cpu_platform" {
-  type = string
-}
-
-variable "client_min_cpu_platform" {
+variable "min_cpu_platform" {
   type = string
 }

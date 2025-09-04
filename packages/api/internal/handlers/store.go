@@ -325,7 +325,7 @@ func (a *APIStore) GetUserFromAccessToken(ctx context.Context, accessToken strin
 		}
 	}
 
-	userID, err := a.db.GetUserID(ctx, hashedToken)
+	userID, err := a.sqlcDB.GetUserIDFromAccessToken(ctx, hashedToken)
 	if err != nil {
 		return uuid.UUID{}, &api.APIError{
 			Err:       fmt.Errorf("failed to get the user from db for an access token: %w", err),
@@ -334,7 +334,7 @@ func (a *APIStore) GetUserFromAccessToken(ctx context.Context, accessToken strin
 		}
 	}
 
-	return *userID, nil
+	return userID, nil
 }
 
 // supabaseClaims defines the claims we expect from the Supabase JWT.

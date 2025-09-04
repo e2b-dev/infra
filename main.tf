@@ -95,6 +95,7 @@ module "cluster" {
   client_cluster_cache_disk_type    = var.client_cluster_cache_disk_type
   build_cluster_root_disk_size_gb   = var.build_cluster_root_disk_size_gb
   build_cluster_cache_disk_size_gb  = var.build_cluster_cache_disk_size_gb
+  build_cluster_cache_disk_type     = var.build_cluster_cache_disk_type
 
   api_cluster_size        = var.api_cluster_size
   build_cluster_size      = var.build_cluster_size
@@ -145,8 +146,7 @@ module "cluster" {
   labels = var.labels
   prefix = var.prefix
 
-  build_min_cpu_platform  = var.build_min_cpu_platform
-  client_min_cpu_platform = var.client_min_cpu_platform
+  min_cpu_platform = var.min_cpu_platform
 }
 
 module "api" {

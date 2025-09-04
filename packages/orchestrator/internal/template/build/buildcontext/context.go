@@ -1,17 +1,17 @@
 package buildcontext
 
 import (
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 type BuildContext struct {
 	Config         config.TemplateConfig
 	Template       storage.TemplateFiles
-	UserLogger     *writer.PostProcessor
+	UserLogger     *zap.Logger
 	UploadErrGroup *errgroup.Group
 	EnvdVersion    string
 	CacheScope     string

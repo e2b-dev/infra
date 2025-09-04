@@ -13,7 +13,6 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
@@ -30,7 +29,16 @@ func RunCommandWithOutput(
 	metadata metadata.Context,
 	processOutput func(stdout, stderr string),
 ) error {
-	return runCommandWithAllOptions(ctx, proxy, sandboxID, command, metadata, make(chan struct{}), processOutput)
+	return runCommandWithAllOptions(
+		ctx,
+		proxy,
+		sandboxID,
+		command,
+		metadata,
+		// No confirmation needed for this command
+		make(chan struct{}),
+		processOutput,
+	)
 }
 
 func RunCommand(
@@ -40,13 +48,22 @@ func RunCommand(
 	command string,
 	metadata metadata.Context,
 ) error {
-	return runCommandWithAllOptions(ctx, proxy, sandboxID, command, metadata, make(chan struct{}), func(stdout, stderr string) {})
+	return runCommandWithAllOptions(
+		ctx,
+		proxy,
+		sandboxID,
+		command,
+		metadata,
+		// No confirmation needed for this command
+		make(chan struct{}),
+		func(stdout, stderr string) {},
+	)
 }
 
 func RunCommandWithLogger(
 	ctx context.Context,
 	proxy *proxy.SandboxProxy,
-	postProcessor *writer.PostProcessor,
+	logger *zap.Logger,
 	lvl zapcore.Level,
 	id string,
 	sandboxID string,
@@ -56,7 +73,7 @@ func RunCommandWithLogger(
 	return RunCommandWithConfirmation(
 		ctx,
 		proxy,
-		postProcessor,
+		logger,
 		lvl,
 		id,
 		sandboxID,
@@ -70,7 +87,7 @@ func RunCommandWithLogger(
 func RunCommandWithConfirmation(
 	ctx context.Context,
 	proxy *proxy.SandboxProxy,
-	postProcessor *writer.PostProcessor,
+	logger *zap.Logger,
 	lvl zapcore.Level,
 	id string,
 	sandboxID string,
@@ -78,13 +95,29 @@ func RunCommandWithConfirmation(
 	metadata metadata.Context,
 	confirmCh chan<- struct{},
 ) error {
-	return runCommandWithAllOptions(ctx, proxy, sandboxID, command, metadata, confirmCh, func(stdout, stderr string) {
-		logStream(postProcessor, lvl, id, "stdout", stdout)
-		logStream(postProcessor, zapcore.ErrorLevel, id, "stderr", stderr)
-	})
+	return runCommandWithAllOptions(
+		ctx,
+		proxy,
+		sandboxID,
+		command,
+		metadata,
+		confirmCh,
+		func(stdout, stderr string) {
+			logStream(logger, lvl, id, "stdout", stdout)
+			logStream(logger, zapcore.ErrorLevel, id, "stderr", stderr)
+		},
+	)
 }
 
-func runCommandWithAllOptions(ctx context.Context, proxy *proxy.SandboxProxy, sandboxID string, command string, metadata metadata.Context, confirmCh chan<- struct{}, processOutput func(stdout string, stderr string)) error {
+func runCommandWithAllOptions(
+	ctx context.Context,
+	proxy *proxy.SandboxProxy,
+	sandboxID string,
+	command string,
+	metadata metadata.Context,
+	confirmCh chan<- struct{},
+	processOutput func(stdout, stderr string),
+) error {
 	runCmdReq := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
 			Cmd: "/bin/bash",
@@ -157,7 +190,11 @@ func runCommandWithAllOptions(ctx context.Context, proxy *proxy.SandboxProxy, sa
 	}
 }
 
-func logStream(postProcessor *writer.PostProcessor, lvl zapcore.Level, id string, name string, content string) {
+func logStream(logger *zap.Logger, lvl zapcore.Level, id string, name string, content string) {
+	if logger == nil {
+		return
+	}
+
 	if content == "" {
 		return
 	}
@@ -167,9 +204,7 @@ func logStream(postProcessor *writer.PostProcessor, lvl zapcore.Level, id string
 			continue
 		}
 		msg := fmt.Sprintf("[%s] [%s]: %s", id, name, line)
-		if postProcessor != nil {
-			postProcessor.Log(lvl, msg)
-		}
+		logger.Log(lvl, msg)
 	}
 }
 

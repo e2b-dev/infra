@@ -62,6 +62,12 @@ variable "build_cluster_cache_disk_size_gb" {
   default     = 200
 }
 
+variable "build_cluster_cache_disk_type" {
+  description = "The GCE cache disk type for the build machines."
+  type        = string
+  default     = "pd-ssd"
+}
+
 variable "clickhouse_cluster_size" {
   type = number
 }
@@ -229,7 +235,7 @@ variable "client_cluster_cache_disk_size_gb" {
 }
 
 variable "client_cluster_cache_disk_type" {
-  description = "The GCE cache disk type."
+  description = "The GCE cache disk type for the client machines."
   type        = string
   default     = "pd-ssd"
 }
@@ -390,12 +396,7 @@ variable "enable_pprof" {
   default     = false
 }
 
-variable "build_min_cpu_platform" {
-  type    = string
-  default = "Intel Skylake"
-}
-
-variable "client_min_cpu_platform" {
+variable "min_cpu_platform" {
   type    = string
   default = "Intel Skylake"
 }

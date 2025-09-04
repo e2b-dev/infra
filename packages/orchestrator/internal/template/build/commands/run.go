@@ -4,18 +4,28 @@ import (
 	"context"
 	"fmt"
 
+	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
 type Run struct{}
 
-func (r *Run) Execute(ctx context.Context, postProcessor *writer.PostProcessor, proxy *proxy.SandboxProxy, sandboxID string, prefix string, step *templatemanager.TemplateStep, cmdMetadata metadata.Context) (metadata.Context, error) {
+var _ Command = (*Run)(nil)
+
+func (r *Run) Execute(
+	ctx context.Context,
+	logger *zap.Logger,
+	proxy *proxy.SandboxProxy,
+	sandboxID string,
+	prefix string,
+	step *templatemanager.TemplateStep,
+	cmdMetadata metadata.Context,
+) (metadata.Context, error) {
 	args := step.Args
 	// args: [command optional_user]
 	if len(args) < 1 {
@@ -33,7 +43,7 @@ func (r *Run) Execute(ctx context.Context, postProcessor *writer.PostProcessor, 
 	err := sandboxtools.RunCommandWithLogger(
 		ctx,
 		proxy,
-		postProcessor,
+		logger,
 		zapcore.InfoLevel,
 		prefix,
 		sandboxID,

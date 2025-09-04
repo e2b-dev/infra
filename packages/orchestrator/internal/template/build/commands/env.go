@@ -6,9 +6,10 @@ import (
 	"maps"
 	"strings"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
@@ -17,7 +18,15 @@ type Env struct{}
 
 var _ Command = (*Env)(nil)
 
-func (e *Env) Execute(ctx context.Context, postProcessor *writer.PostProcessor, proxy *proxy.SandboxProxy, sandboxID, prefix string, step *templatemanager.TemplateStep, cmdMetadata metadata.Context) (metadata.Context, error) {
+func (e *Env) Execute(
+	ctx context.Context,
+	logger *zap.Logger,
+	proxy *proxy.SandboxProxy,
+	sandboxID string,
+	prefix string,
+	step *templatemanager.TemplateStep,
+	cmdMetadata metadata.Context,
+) (metadata.Context, error) {
 	cmdType := strings.ToUpper(step.Type)
 	args := step.Args
 	// args: [key1 value1 key2 value2 ...]

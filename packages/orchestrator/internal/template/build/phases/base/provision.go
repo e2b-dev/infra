@@ -69,7 +69,7 @@ func (bb *BaseBuilder) provisionSandbox(
 	ctx, childSpan := tracer.Start(ctx, "provision-sandbox")
 	defer childSpan.End()
 
-	zapWriter := &zapio.Writer{Log: bb.UserLogger.Logger, Level: zap.DebugLevel}
+	zapWriter := &zapio.Writer{Log: bb.UserLogger, Level: zap.DebugLevel}
 	logsWriter := &writer.PrefixFilteredWriter{Writer: zapWriter, PrefixFilter: logExternalPrefix}
 	defer logsWriter.Close()
 

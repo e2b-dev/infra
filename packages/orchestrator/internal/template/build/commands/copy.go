@@ -11,10 +11,11 @@ import (
 	txtTemplate "text/template"
 
 	"github.com/bmatcuk/doublestar/v4"
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/paths"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -80,7 +81,15 @@ fi
 
 // Note: The temporary files in the /tmp directory are cleaned up automatically on sandbox restart
 // because the /tmp is mounted as a tmpfs and deleted on restart.
-func (c *Copy) Execute(ctx context.Context, postProcessor *writer.PostProcessor, proxy *proxy.SandboxProxy, sandboxID, prefix string, step *templatemanager.TemplateStep, cmdMetadata metadata.Context) (metadata.Context, error) {
+func (c *Copy) Execute(
+	ctx context.Context,
+	logger *zap.Logger,
+	proxy *proxy.SandboxProxy,
+	sandboxID string,
+	prefix string,
+	step *templatemanager.TemplateStep,
+	cmdMetadata metadata.Context,
+) (metadata.Context, error) {
 	cmdType := strings.ToUpper(step.Type)
 	args := step.Args
 	// args: [localPath containerPath optional_owner optional_permissions]
