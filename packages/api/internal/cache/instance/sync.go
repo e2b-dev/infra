@@ -68,6 +68,7 @@ func (c *MemoryStore) Sync(ctx context.Context, instances []*InstanceInfo, nodeI
 		if item.NodeID != nodeID {
 			continue
 		}
+
 		if time.Since(item.StartTime) <= syncSandboxRemoveGracePeriod {
 			continue
 		}

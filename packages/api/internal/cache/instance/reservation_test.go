@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
@@ -20,10 +19,9 @@ const (
 var teamID = uuid.New()
 
 func newInstanceCache() *MemoryStore {
-	createFunc := func(ctx context.Context, data *InstanceInfo, created bool) error { return nil }
 	deleteFunc := func(ctx context.Context, data *InstanceInfo, removeType RemoveType) error { return nil }
 
-	cache := NewStore(noop.MeterProvider{}, createFunc, deleteFunc)
+	cache := NewStore(deleteFunc, nil, nil, nil)
 	return cache
 }
 

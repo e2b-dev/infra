@@ -4,12 +4,14 @@ import (
 	"context"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type Evictor struct {
-	store      *instance.MemoryStore
-	removeItem func(ctx context.Context, item *instance.InstanceInfo, kill bool) error
+	store *instance.MemoryStore
 }
 
 func New(store *instance.MemoryStore) *Evictor {
@@ -24,17 +26,20 @@ func (e *Evictor) Start(ctx context.Context) {
 		case <-time.After(50 * time.Millisecond):
 			// Get all items from the cache before iterating over them
 			// to avoid holding the lock while removing items from the cache.
-			items := e.store.Items(nil)
+			items := e.store.ExpiredItems()
 
 			for _, item := range items {
 				if item.IsExpired() {
 					go func() {
-						if err := e.removeItem(ctx, item, false); err != nil {
-							// TODO:
-							// Log the error but continue processing other items
-							// as this is a best-effort eviction.
-							// The item will be retried on the next iteration.
-							// Use a logger here if available in your context.
+						removeType := instance.RemoveTypeKill
+						if item.AutoPause {
+							removeType = instance.RemoveTypePause
+						}
+
+						zap.L().Debug("Evicting sandbox", logger.WithSandboxID(item.SandboxID), zap.String("remove_type", string(removeType)))
+
+						if err := e.store.Remove(ctx, item.SandboxID, removeType); err != nil {
+							zap.L().Error("Error evicting sandbox", zap.Error(err), logger.WithSandboxID(item.SandboxID))
 						}
 					}()
 				}

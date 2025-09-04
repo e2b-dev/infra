@@ -20,10 +20,8 @@ func (o *Orchestrator) RemoveInstance(ctx context.Context, sandbox *instance.Ins
 	return o.sandboxStore.Remove(ctx, sandbox.SandboxID, removeType)
 }
 
-// removeInstance should be called from places where you already marked the sandbox as being removed
-func (o *Orchestrator) removeInstance(ctx context.Context, sandbox *instance.InstanceInfo, removeType instance.RemoveType) error {
-	defer o.analyticsStop(ctx, sandbox, removeType)
-
+// removeSandbox should be called from places where you already marked the sandbox as being removed
+func (o *Orchestrator) removeSandbox(ctx context.Context, sandbox *instance.InstanceInfo, removeType instance.RemoveType) error {
 	node := o.GetNode(sandbox.ClusterID, sandbox.NodeID)
 	if node == nil {
 		zap.L().Error("failed to get node", logger.WithNodeID(sandbox.NodeID))

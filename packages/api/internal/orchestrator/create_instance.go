@@ -229,7 +229,7 @@ func (o *Orchestrator) CreateSandbox(
 
 		err := o.RemoveInstance(ctx, instanceInfo, instance.RemoveTypeKill)
 		if err != nil {
-			telemetry.ReportEvent(ctx, fmt.Sprintf("Remove sandbox error after cache error: %s", err))
+			telemetry.ReportError(ctx, "Error while removing sandbox error after cache error", err)
 		}
 
 		return nil, &api.APIError{
