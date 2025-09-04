@@ -5,21 +5,23 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
 type Run struct{}
 
+var _ Command = (*Run)(nil)
+
 func (r *Run) Execute(
 	ctx context.Context,
 	tracer trace.Tracer,
-	postProcessor *writer.PostProcessor,
+	logger *zap.Logger,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	prefix string,
@@ -44,7 +46,7 @@ func (r *Run) Execute(
 		ctx,
 		tracer,
 		proxy,
-		postProcessor,
+		logger,
 		zapcore.InfoLevel,
 		prefix,
 		sandboxID,
