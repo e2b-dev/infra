@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal"
+	consts "github.com/e2b-dev/infra/packages/orchestrator/internal"
 )
 
 func (s *Slot) CreateNetwork() error {
@@ -216,11 +217,14 @@ func (s *Slot) CreateNetwork() error {
 		return fmt.Errorf("error creating postrouting rule: %w", err)
 	}
 
-	// Redirect traffic destined for event server
+	// Redirect traffic destined for event proxy server
 	eventIP := internal.GetSandboxEventIP()
-	err = tables.Append("nat", "PREROUTING", "-i", s.VethName(), "-p", "tcp", "-d", eventIP, "--dport", "80", "-j", "REDIRECT", "--to-port", "5010")
+	err = tables.Append(
+		"nat", "PREROUTING", "-i", s.VethName(), "-p", "tcp", "-d", eventIP, "--dport", "80",
+		"-j", "REDIRECT", "--to-port", consts.GetEventProxyPort(),
+	)
 	if err != nil {
-		return fmt.Errorf("error creating HTTP redirect rule to sandbox event server: %w", err)
+		return fmt.Errorf("error creating HTTP redirect rule to sandbox event proxy server: %w", err)
 	}
 
 	return nil
