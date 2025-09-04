@@ -345,11 +345,9 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 		redisPubSub = pubsub.NewMockPubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData]()
 	}
 
-	sbxEventsService := events.NewSandboxEventsService(featureFlags, redisPubSub, sandboxEventBatcher, globalLogger)
-
-	sbxEventStore := events.NewSandboxEventStore(tracer, redisClient)
-	sbxEventHandlers := events.NewSandboxEventHandlers(sbxEventStore)
-	sbxEventProxy := events.NewSandboxEventProxy(eventProxyPort, sbxEventHandlers)
+	sbxEventService := events.NewSandboxEventsService(featureFlags, redisPubSub, sandboxEventBatcher, globalLogger)
+	sbxEventtore := events.NewSandboxEventStore(tracer, redisClient)
+	sbxEventProxy := events.NewSandboxEventProxy(eventProxyPort, sbxEventtore)
 
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID, sandboxes)
 	if err != nil {
@@ -359,19 +357,19 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 	_, err = server.New(
 		ctx,
 		server.ServiceConfig{
-			GRPC:             grpcSrv,
-			Tel:              tel,
-			NetworkPool:      networkPool,
-			DevicePool:       devicePool,
-			TemplateCache:    templateCache,
-			Tracer:           tracer,
-			Info:             serviceInfo,
-			Proxy:            sandboxProxy,
-			Sandboxes:        sandboxes,
-			Persistence:      persistence,
-			FeatureFlags:     featureFlags,
-			SbxEventsService: sbxEventsService,
-			SbxEventsStore:   sbxEventStore,
+			GRPC:            grpcSrv,
+			Tel:             tel,
+			NetworkPool:     networkPool,
+			DevicePool:      devicePool,
+			TemplateCache:   templateCache,
+			Tracer:          tracer,
+			Info:            serviceInfo,
+			Proxy:           sandboxProxy,
+			Sandboxes:       sandboxes,
+			Persistence:     persistence,
+			FeatureFlags:    featureFlags,
+			SbxEventService: sbxEventService,
+			SbxEventStore:   sbxEventtore,
 		},
 	)
 	if err != nil {
@@ -405,7 +403,7 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 		sandboxObserver,
 		limiter,
 		sandboxEventBatcher,
-		sbxEventStore,
+		sbxEventtore,
 		sbxEventProxy,
 	)
 

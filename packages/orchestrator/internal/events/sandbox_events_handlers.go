@@ -19,6 +19,10 @@ type DefaultSandboxEventHandler struct {
 	store SandboxEventStore
 }
 
+func NewDefaultSandboxEventHandler(store SandboxEventStore) *DefaultSandboxEventHandler {
+	return &DefaultSandboxEventHandler{store}
+}
+
 func (h *DefaultSandboxEventHandler) Path() string {
 	return "/"
 }
@@ -92,10 +96,4 @@ func (h *DefaultSandboxEventHandler) HandlerFunc(w http.ResponseWriter, r *http.
 
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(`{"event_ack":true}`))
-}
-
-func NewSandboxEventHandlers(store SandboxEventStore) []SandboxEventHandler {
-	return []SandboxEventHandler{
-		&DefaultSandboxEventHandler{store},
-	}
 }

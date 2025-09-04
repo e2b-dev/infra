@@ -11,9 +11,10 @@ type SandboxEventProxy struct {
 	server *http.Server
 }
 
-func NewSandboxEventProxy(port uint, handlers []SandboxEventHandler) *SandboxEventProxy {
+func NewSandboxEventProxy(port uint, store SandboxEventStore, handlers ...SandboxEventHandler) *SandboxEventProxy {
 	mux := http.NewServeMux()
 
+	handlers = append(handlers, NewDefaultSandboxEventHandler(store))
 	for _, handler := range handlers {
 		mux.HandleFunc(handler.Path(), handler.HandlerFunc)
 	}
