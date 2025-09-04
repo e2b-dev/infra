@@ -54,7 +54,10 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, GRAFANA_MANAGED) \
 	$(call tfvar, FILESTORE_CACHE_ENABLED) \
 	$(call tfvar, FILESTORE_CACHE_TIER) \
-	$(call tfvar, FILESTORE_CACHE_CAPACITY_GB)
+	$(call tfvar, FILESTORE_CACHE_CAPACITY_GB) \
+	$(call tfvar, BUILD_CLUSTER_CACHE_DISK_TYPE) \
+	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_TYPE) \
+	$(call tfvar, MIN_CPU_PLATFORM)
 
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)
