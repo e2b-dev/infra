@@ -97,7 +97,7 @@ outerLoop:
 		buf := make([]byte, unsafe.Sizeof(userfaultfd.UffdMsg{}))
 
 		for {
-			n, err := syscall.Read(uffd, buf)
+			_, err := syscall.Read(uffd, buf)
 			if err == syscall.EINTR {
 				logger.Debug("uffd: interrupted read, reading again")
 
