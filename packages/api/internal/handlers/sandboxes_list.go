@@ -152,7 +152,6 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 
 	// Get all sandbox instances
 	runningSandboxes := a.orchestrator.GetSandboxes(ctx, &team.ID)
-	c.Header("X-Total-Running", strconv.Itoa(len(runningSandboxes)))
 
 	// Running Sandbox IDs
 	runningSandboxesIDs := make([]string, 0)
@@ -165,6 +164,9 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 
 		// Filter based on metadata
 		runningSandboxList = utils.FilterSandboxesOnMetadata(runningSandboxList, metadataFilter)
+
+		// Set the total (before we apply the limit, but already with all filters)
+		c.Header("X-Total-Running", strconv.Itoa(len(runningSandboxList)))
 
 		// Filter based on cursor and limit
 		runningSandboxList = utils.FilterBasedOnCursor(runningSandboxList, cursorTime, cursorID, limit)
