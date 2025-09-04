@@ -108,8 +108,6 @@ outerLoop:
 			}
 
 			if err == syscall.EAGAIN {
-				logger.Debug("uffd: eagain error, going back to polling", zap.Error(err), zap.Int("read_bytes", n))
-
 				// Continue polling the fd.
 				continue outerLoop
 			}
