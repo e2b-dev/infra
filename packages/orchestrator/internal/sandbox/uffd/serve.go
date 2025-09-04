@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"go.uber.org/zap"
@@ -54,6 +55,7 @@ outerLoop:
 			}
 
 			if err == unix.EAGAIN {
+				time.Sleep(time.Millisecond)
 				logger.Debug("uffd: eagain during polling, going back to polling")
 
 				continue
@@ -109,6 +111,7 @@ outerLoop:
 
 			if err == syscall.EAGAIN {
 				// Continue polling the fd.
+				time.Sleep(time.Millisecond)
 				continue outerLoop
 			}
 
