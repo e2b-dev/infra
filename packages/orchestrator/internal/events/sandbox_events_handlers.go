@@ -29,15 +29,15 @@ func (h *DefaultSandboxEventHandler) Path() string {
 
 func (h *DefaultSandboxEventHandler) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	addr := r.RemoteAddr
-	ip := strings.Split(addr, ":")[0]
-	sandboxID, err := h.store.GetSandboxIP(r.Context(), ip)
+	sandboxIP := strings.Split(addr, ":")[0]
+	sandboxID, err := h.store.GetSandboxID(r.Context(), sandboxIP)
 	if err != nil {
 		zap.L().Error("Failed to get sandbox ID from IP", zap.Error(err))
 		http.Error(w, "Error handling event", http.StatusInternalServerError)
 		return
 	}
 
-	zap.L().Debug("Received request from sandbox", zap.String("sandbox_id", sandboxID), zap.String("ip", ip))
+	zap.L().Debug("Received request from sandbox", zap.String("sandbox_id", sandboxID), zap.String("sandbox_ip", sandboxIP))
 
 	if r.Method == http.MethodGet {
 		events, err := h.store.GetLastNEvents(r.Context(), sandboxID, 10)

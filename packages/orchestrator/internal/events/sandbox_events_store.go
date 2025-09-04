@@ -31,14 +31,14 @@ type sandboxEventStore struct {
 }
 
 type SandboxEventStore interface {
-	SetSandboxIP(ctx context.Context, sandboxId string, ip string) error
-	GetSandboxIP(ctx context.Context, sandboxId string) (string, error)
-	DelSandboxIP(ctx context.Context, sandboxId string) error
+	SetSandboxIP(ctx context.Context, sandboxID string, sandboxIP string) error
+	GetSandboxID(ctx context.Context, sandboxIP string) (string, error)
+	DelSandboxIP(ctx context.Context, sandboxIP string) error
 
-	GetLastEvent(ctx context.Context, sandboxId string) (*SandboxEvent, error)
-	GetLastNEvents(ctx context.Context, sandboxId string, n int) ([]*SandboxEvent, error)
-	AddEvent(ctx context.Context, sandboxId string, SandboxEvent *SandboxEvent, expiration time.Duration) error
-	DelEvent(ctx context.Context, sandboxId string) error
+	GetLastEvent(ctx context.Context, sandboxID string) (*SandboxEvent, error)
+	GetLastNEvents(ctx context.Context, sandboxID string, n int) ([]*SandboxEvent, error)
+	AddEvent(ctx context.Context, sandboxID string, SandboxEvent *SandboxEvent, expiration time.Duration) error
+	DelEvent(ctx context.Context, sandboxID string) error
 
 	Close(ctx context.Context) error
 }
@@ -50,23 +50,23 @@ func NewSandboxEventStore(tracer trace.Tracer, redisClient redis.UniversalClient
 	}
 }
 
-func (c *sandboxEventStore) SetSandboxIP(ctx context.Context, sandboxId string, ip string) error {
-	return c.redisClient.Set(ctx, IPPrefix+ip, sandboxId, cacheTL).Err()
+func (c *sandboxEventStore) SetSandboxIP(ctx context.Context, sandboxID string, sandboxIP string) error {
+	return c.redisClient.Set(ctx, IPPrefix+sandboxIP, sandboxID, cacheTL).Err()
 }
 
-func (c *sandboxEventStore) GetSandboxIP(ctx context.Context, ip string) (string, error) {
-	return c.redisClient.Get(ctx, IPPrefix+ip).Result()
+func (c *sandboxEventStore) GetSandboxID(ctx context.Context, sandboxIP string) (string, error) {
+	return c.redisClient.Get(ctx, IPPrefix+sandboxIP).Result()
 }
 
-func (c *sandboxEventStore) DelSandboxIP(ctx context.Context, ip string) error {
-	return c.redisClient.Del(ctx, IPPrefix+ip).Err()
+func (c *sandboxEventStore) DelSandboxIP(ctx context.Context, sandboxIP string) error {
+	return c.redisClient.Del(ctx, IPPrefix+sandboxIP).Err()
 }
 
-func (c *sandboxEventStore) GetLastEvent(ctx context.Context, sandboxId string) (*SandboxEvent, error) {
+func (c *sandboxEventStore) GetLastEvent(ctx context.Context, sandboxID string) (*SandboxEvent, error) {
 	_, span := c.tracer.Start(ctx, "sandbox-event-get-last")
 	defer span.End()
 
-	result, err := c.redisClient.ZRevRangeWithScores(ctx, EventPrefix+sandboxId, 0, 0).Result()
+	result, err := c.redisClient.ZRevRangeWithScores(ctx, EventPrefix+sandboxID, 0, 0).Result()
 	if err != nil {
 		return nil, err
 	}
@@ -83,11 +83,11 @@ func (c *sandboxEventStore) GetLastEvent(ctx context.Context, sandboxId string) 
 	return &event, nil
 }
 
-func (c *sandboxEventStore) GetLastNEvents(ctx context.Context, sandboxId string, n int) ([]*SandboxEvent, error) {
+func (c *sandboxEventStore) GetLastNEvents(ctx context.Context, sandboxID string, n int) ([]*SandboxEvent, error) {
 	_, span := c.tracer.Start(ctx, "sandbox-event-get-last-n")
 	defer span.End()
 
-	result, err := c.redisClient.ZRevRangeWithScores(ctx, EventPrefix+sandboxId, 0, int64(n-1)).Result()
+	result, err := c.redisClient.ZRevRangeWithScores(ctx, EventPrefix+sandboxID, 0, int64(n-1)).Result()
 	if err != nil {
 		return nil, err
 	}
@@ -109,21 +109,21 @@ func (c *sandboxEventStore) GetLastNEvents(ctx context.Context, sandboxId string
 	return events, nil
 }
 
-func (c *sandboxEventStore) AddEvent(ctx context.Context, sandboxId string, event *SandboxEvent, expiration time.Duration) error {
+func (c *sandboxEventStore) AddEvent(ctx context.Context, sandboxID string, event *SandboxEvent, expiration time.Duration) error {
 	_, span := c.tracer.Start(ctx, "sandbox-event-store")
 	defer span.End()
 
-	return c.redisClient.ZAdd(ctx, EventPrefix+sandboxId, redis.Z{
+	return c.redisClient.ZAdd(ctx, EventPrefix+sandboxID, redis.Z{
 		Score:  float64(time.Now().UnixNano()),
 		Member: event,
 	}).Err()
 }
 
-func (c *sandboxEventStore) DelEvent(ctx context.Context, sandboxId string) error {
+func (c *sandboxEventStore) DelEvent(ctx context.Context, sandboxID string) error {
 	_, span := c.tracer.Start(ctx, "sandbox-event-delete")
 	defer span.End()
 
-	return c.redisClient.Del(ctx, EventPrefix+sandboxId).Err()
+	return c.redisClient.Del(ctx, EventPrefix+sandboxID).Err()
 }
 
 func (c *sandboxEventStore) Close(ctx context.Context) error {
