@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/Merovius/nbd/nbdnl"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
@@ -29,8 +29,9 @@ const (
 	disconnectTimeout = 30 * time.Second
 )
 
+var tracer = otel.Tracer("orchestrator.internal.sandbox.nbd")
+
 type DirectPathMount struct {
-	tracer   trace.Tracer
 	ctx      context.Context // nolint:containedctx // todo: refactor so this can be removed
 	cancelfn context.CancelFunc
 
@@ -47,11 +48,10 @@ type DirectPathMount struct {
 	handlersWg sync.WaitGroup
 }
 
-func NewDirectPathMount(ctx context.Context, tracer trace.Tracer, b block.Device, devicePool *DevicePool) *DirectPathMount {
+func NewDirectPathMount(ctx context.Context, b block.Device, devicePool *DevicePool) *DirectPathMount {
 	ctx, cancelfn := context.WithCancel(context.WithoutCancel(ctx))
 
 	return &DirectPathMount{
-		tracer:      tracer,
 		Backend:     b,
 		ctx:         ctx,
 		cancelfn:    cancelfn,
@@ -64,6 +64,9 @@ func NewDirectPathMount(ctx context.Context, tracer trace.Tracer, b block.Device
 }
 
 func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err error) {
+	ctx, span := tracer.Start(ctx, "direct-path-mount-open")
+	defer span.End()
+
 	defer func() {
 		// Set the device index to the one returned, correctly capture error values
 		d.deviceIndex = retDeviceIndex
@@ -108,7 +111,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			go func() {
 				defer d.handlersWg.Done()
 
-				handleErr := dispatch.Handle()
+				handleErr := dispatch.Handle(ctx)
 				// The error is expected to happen if the nbd (socket connection) is closed
 				zap.L().Info("closing handler for NBD commands",
 					zap.Error(handleErr),
@@ -185,7 +188,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 }
 
 func (d *DirectPathMount) Close(ctx context.Context) error {
-	childCtx, childSpan := d.tracer.Start(ctx, "direct-path-mount-close")
+	childCtx, childSpan := tracer.Start(ctx, "direct-path-mount-close")
 	defer childSpan.End()
 
 	var errs []error

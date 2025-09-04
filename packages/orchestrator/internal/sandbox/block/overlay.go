@@ -7,6 +7,8 @@ import (
 	"sync/atomic"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Overlay struct {
@@ -26,11 +28,17 @@ func NewOverlay(device ReadonlyDevice, cache *Cache, blockSize int64) *Overlay {
 	}
 }
 
-func (o *Overlay) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
+func (o *Overlay) ReadAt(ctx context.Context, p []byte, offset int64) (int, error) {
+	ctx, span := tracer.Start(ctx, "Overlay.ReadAt", trace.WithAttributes(
+		attribute.Int64("offset", offset),
+		attribute.Int("size", len(p)),
+	))
+	defer span.End()
+
 	blocks := header.BlocksOffsets(int64(len(p)), o.blockSize)
 
 	for _, blockOff := range blocks {
-		n, err := o.cache.ReadAt(p[blockOff:blockOff+o.blockSize], off+blockOff)
+		n, err := o.cache.ReadAt(ctx, p[blockOff:blockOff+o.blockSize], offset+blockOff)
 		if err == nil {
 			continue
 		}
@@ -39,7 +47,7 @@ func (o *Overlay) ReadAt(ctx context.Context, p []byte, off int64) (int, error) 
 			return n, fmt.Errorf("error reading from cache: %w", err)
 		}
 
-		n, err = o.device.ReadAt(ctx, p[blockOff:blockOff+o.blockSize], off+blockOff)
+		n, err = o.device.ReadAt(ctx, p[blockOff:blockOff+o.blockSize], offset+blockOff)
 		if err != nil {
 			return n, fmt.Errorf("error reading from device: %w", err)
 		}
@@ -64,8 +72,8 @@ func (o *Overlay) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 	return nil, fmt.Errorf("not implemented")
 }
 
-func (o *Overlay) WriteAt(p []byte, off int64) (int, error) {
-	return o.cache.WriteAt(p, off)
+func (o *Overlay) WriteAt(ctx context.Context, p []byte, off int64) (int, error) {
+	return o.cache.WriteAt(ctx, p, off)
 }
 
 func (o *Overlay) Size() (int64, error) {

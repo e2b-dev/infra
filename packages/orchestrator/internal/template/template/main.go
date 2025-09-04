@@ -5,14 +5,15 @@ import (
 	"errors"
 	"fmt"
 
-	"go.opentelemetry.io/otel/trace"
-
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"go.opentelemetry.io/otel"
 )
 
-func Delete(ctx context.Context, tracer trace.Tracer, artifactRegistry artifactsregistry.ArtifactsRegistry, templateStorage storage.StorageProvider, templateId string, buildId string) error {
+var tracer = otel.Tracer("orchestrator.internal.template.template")
+
+func Delete(ctx context.Context, artifactRegistry artifactsregistry.ArtifactsRegistry, templateStorage storage.StorageProvider, templateId string, buildId string) error {
 	childCtx, childSpan := tracer.Start(ctx, "delete-template")
 	defer childSpan.End()
 

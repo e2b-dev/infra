@@ -53,7 +53,6 @@ type BaseBuilder struct {
 	buildcontext.BuildContext
 
 	logger *zap.Logger
-	tracer trace.Tracer
 	proxy  *proxy.SandboxProxy
 
 	templateStorage  storage.StorageProvider
@@ -66,24 +65,11 @@ type BaseBuilder struct {
 	metrics       *metrics.BuildMetrics
 }
 
-func New(
-	buildContext buildcontext.BuildContext,
-	logger *zap.Logger,
-	tracer trace.Tracer,
-	proxy *proxy.SandboxProxy,
-	templateStorage storage.StorageProvider,
-	devicePool *nbd.DevicePool,
-	networkPool *network.Pool,
-	artifactRegistry artifactsregistry.ArtifactsRegistry,
-	layerExecutor *layer.LayerExecutor,
-	index cache.Index,
-	metrics *metrics.BuildMetrics,
-) *BaseBuilder {
+func New(buildContext buildcontext.BuildContext, logger *zap.Logger, proxy *proxy.SandboxProxy, templateStorage storage.StorageProvider, devicePool *nbd.DevicePool, networkPool *network.Pool, artifactRegistry artifactsregistry.ArtifactsRegistry, layerExecutor *layer.LayerExecutor, index cache.Index, metrics *metrics.BuildMetrics) *BaseBuilder {
 	return &BaseBuilder{
 		BuildContext: buildContext,
 
 		logger: logger,
-		tracer: tracer,
 		proxy:  proxy,
 
 		templateStorage:  templateStorage,
@@ -179,7 +165,6 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 
 	rootfs, memfile, envsImg, err := constructLayerFilesFromOCI(
 		ctx,
-		bb.tracer,
 		bb.BuildContext,
 		baseMetadata.Template.BuildID,
 		bb.artifactRegistry,
@@ -282,7 +267,6 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error) {
 		err = sandboxtools.SyncChangesToDisk(
 			ctx,
-			bb.tracer,
 			bb.proxy,
 			sbx.Runtime.SandboxID,
 		)

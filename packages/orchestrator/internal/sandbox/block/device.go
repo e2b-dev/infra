@@ -29,5 +29,6 @@ type ReadonlyDevice interface {
 
 type Device interface {
 	ReadonlyDevice
-	io.WriterAt
+
+	WriteAt(ctx context.Context, value []byte, off int64) (int, error)
 }

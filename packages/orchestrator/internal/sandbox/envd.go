@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"time"
 
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const (
@@ -22,21 +22,12 @@ const (
 // doRequestWithInfiniteRetries does a request with infinite retries until the context is done.
 // The parent context should have a deadline or a timeout.
 func doRequestWithInfiniteRetries(ctx context.Context, method, address string, requestBody []byte, accessToken *string) (*http.Response, error) {
+	ctx, span := tracer.Start(ctx, "doRequestWithInfiniteRetries")
+	defer span.End()
+
 	for {
 		reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
-		request, err := http.NewRequestWithContext(reqCtx, method, address, bytes.NewReader(requestBody))
-		if err != nil {
-			cancel()
-			return nil, err
-		}
-
-		// make sure request to already authorized envd will not fail
-		// this can happen in sandbox resume and in some edge cases when previous request was success, but we continued
-		if accessToken != nil {
-			request.Header.Set("X-Access-Token", *accessToken)
-		}
-
-		response, err := httpClient.Do(request)
+		response, err := doRequest(reqCtx, method, address, requestBody, accessToken)
 		cancel()
 
 		if err == nil {
@@ -51,12 +42,37 @@ func doRequestWithInfiniteRetries(ctx context.Context, method, address string, r
 	}
 }
 
+func doRequest(ctx context.Context, method, address string, requestBody []byte, accessToken *string) (*http.Response, error) {
+	ctx, span := tracer.Start(ctx, "doRequest")
+	defer span.End()
+
+	request, err := http.NewRequestWithContext(ctx, method, address, bytes.NewReader(requestBody))
+	if err != nil {
+		return nil, err
+	}
+
+	// make sure request to already authorized envd will not fail
+	// this can happen in sandbox resume and in some edge cases when previous request was success, but we continued
+	if accessToken != nil {
+		request.Header.Set("X-Access-Token", *accessToken)
+	}
+
+	response, err := httpClient.Do(request)
+	if err != nil {
+		telemetry.ReportError(ctx, "request failed", err)
+		return nil, err
+	}
+
+	telemetry.SetAttributes(ctx, attribute.Int("response.status_code", response.StatusCode))
+	return response, nil
+}
+
 type PostInitJSONBody struct {
 	EnvVars     *map[string]string `json:"envVars"`
 	AccessToken *string            `json:"accessToken,omitempty"`
 }
 
-func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map[string]string, accessToken *string) error {
+func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string, accessToken *string) error {
 	childCtx, childSpan := tracer.Start(ctx, "envd-init")
 	defer childSpan.End()
 

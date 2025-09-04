@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
@@ -33,6 +33,8 @@ import (
 )
 
 var defaultEnvdTimeout = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT", "10s")))
+
+var tracer = otel.Tracer("orchestrator.internal.sandbox")
 
 var httpClient = http.Client{
 	Timeout: 10 * time.Second,
@@ -119,7 +121,6 @@ type networkSlotRes struct {
 // IMPORTANT: You must Close() the sandbox after you are done with it.
 func CreateSandbox(
 	ctx context.Context,
-	tracer trace.Tracer,
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
 	config Config,
@@ -149,7 +150,7 @@ func CreateSandbox(
 		allowInternet = *config.AllowInternetAccess
 	}
 
-	ipsCh := getNetworkSlotAsync(ctx, tracer, networkPool, cleanup, allowInternet)
+	ipsCh := getNetworkSlotAsync(ctx, networkPool, cleanup, allowInternet)
 	defer func() {
 		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
 		<-ipsCh
@@ -174,14 +175,12 @@ func CreateSandbox(
 	if rootfsCachePath == "" {
 		rootfsProvider, err = rootfs.NewNBDProvider(
 			ctx,
-			tracer,
 			rootFS,
 			sandboxFiles.SandboxCacheRootfsPath(),
 			devicePool,
 		)
 	} else {
 		rootfsProvider, err = rootfs.NewDirectProvider(
-			tracer,
 			rootFS,
 			// Populate direct cache directly from the source file
 			// This is needed for marking all blocks as dirty and being able to read them directly
@@ -288,13 +287,13 @@ func CreateSandbox(
 
 	cleanup.AddPriority(func(ctx context.Context) error {
 		// Stop the sandbox first if it is still running, otherwise do nothing
-		return sbx.Stop(ctx, tracer)
+		return sbx.Stop(ctx)
 	})
 
 	go func() {
 		// If the process exists, stop the sandbox properly
 		fcErr := fcHandle.Exit.Wait()
-		err := sbx.Stop(context.WithoutCancel(ctx), tracer)
+		err := sbx.Stop(context.WithoutCancel(ctx))
 
 		exit.SetError(errors.Join(err, fcErr))
 	}()
@@ -306,7 +305,6 @@ func CreateSandbox(
 // IMPORTANT: You must Close() the sandbox after you are done with it.
 func ResumeSandbox(
 	ctx context.Context,
-	tracer trace.Tracer,
 	networkPool *network.Pool,
 	t template.Template,
 	config Config,
@@ -336,7 +334,7 @@ func ResumeSandbox(
 		allowInternet = *config.AllowInternetAccess
 	}
 
-	ipsCh := getNetworkSlotAsync(ctx, tracer, networkPool, cleanup, allowInternet)
+	ipsCh := getNetworkSlotAsync(ctx, networkPool, cleanup, allowInternet)
 	defer func() {
 		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
 		<-ipsCh
@@ -363,7 +361,6 @@ func ResumeSandbox(
 
 	rootfsOverlay, err := rootfs.NewNBDProvider(
 		ctx,
-		tracer,
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(),
 		devicePool,
@@ -396,7 +393,6 @@ func ResumeSandbox(
 
 	fcUffd, err := serveMemory(
 		ctx,
-		tracer,
 		cleanup,
 		memfile,
 		fcUffdPath,
@@ -528,12 +524,11 @@ func ResumeSandbox(
 
 	cleanup.AddPriority(func(ctx context.Context) error {
 		// Stop the sandbox first if it is still running, otherwise do nothing
-		return sbx.Stop(ctx, tracer)
+		return sbx.Stop(ctx)
 	})
 
 	err = sbx.WaitForEnvd(
 		ctx,
-		tracer,
 		defaultEnvdTimeout,
 	)
 	if err != nil {
@@ -549,7 +544,7 @@ func ResumeSandbox(
 		case <-fcHandle.Exit.Done():
 		}
 
-		err := sbx.Stop(context.WithoutCancel(ctx), tracer)
+		err := sbx.Stop(context.WithoutCancel(ctx))
 
 		uffdWaitErr := fcUffd.Exit().Wait()
 		fcErr := fcHandle.Exit.Wait()
@@ -572,7 +567,7 @@ func (s *Sandbox) Close(ctx context.Context) error {
 }
 
 // Stop kills the sandbox.
-func (s *Sandbox) Stop(ctx context.Context, tracer trace.Tracer) error {
+func (s *Sandbox) Stop(ctx context.Context) error {
 	_, span := tracer.Start(ctx, "sandbox-close")
 	defer span.End()
 
@@ -604,7 +599,6 @@ func (s *Sandbox) FirecrackerVersions() fc.FirecrackerVersions {
 
 func (s *Sandbox) Pause(
 	ctx context.Context,
-	tracer trace.Tracer,
 	m metadata.Template,
 ) (*Snapshot, error) {
 	ctx, childSpan := tracer.Start(ctx, "sandbox-snapshot")
@@ -670,7 +664,6 @@ func (s *Sandbox) Pause(
 	// Start POSTPROCESSING
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
 		ctx,
-		tracer,
 		buildID,
 		originalMemfile.Header(),
 		&MemoryDiffCreator{
@@ -689,7 +682,6 @@ func (s *Sandbox) Pause(
 
 	rootfsDiff, rootfsDiffHeader, err := pauseProcessRootfs(
 		ctx,
-		tracer,
 		buildID,
 		originalRootfs.Header(),
 		&RootfsDiffCreator{
@@ -719,7 +711,6 @@ func (s *Sandbox) Pause(
 
 func pauseProcessMemory(
 	ctx context.Context,
-	tracer trace.Tracer,
 	buildId uuid.UUID,
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
@@ -785,7 +776,6 @@ func pauseProcessMemory(
 
 func pauseProcessRootfs(
 	ctx context.Context,
-	tracer trace.Tracer,
 	buildId uuid.UUID,
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
@@ -842,7 +832,6 @@ func pauseProcessRootfs(
 
 func getNetworkSlotAsync(
 	ctx context.Context,
-	tracer trace.Tracer,
 	networkPool *network.Pool,
 	cleanup *Cleanup,
 	allowInternet bool,
@@ -884,7 +873,6 @@ func getNetworkSlotAsync(
 
 func serveMemory(
 	ctx context.Context,
-	tracer trace.Tracer,
 	cleanup *Cleanup,
 	memfile block.ReadonlyDevice,
 	socketPath string,
@@ -920,7 +908,6 @@ func serveMemory(
 
 func (s *Sandbox) WaitForExit(
 	ctx context.Context,
-	tracer trace.Tracer,
 ) error {
 	ctx, childSpan := tracer.Start(ctx, "sandbox-wait-for-exit")
 	defer childSpan.End()
@@ -944,7 +931,6 @@ func (s *Sandbox) WaitForExit(
 
 func (s *Sandbox) WaitForEnvd(
 	ctx context.Context,
-	tracer trace.Tracer,
 	timeout time.Duration,
 ) (e error) {
 	ctx, childSpan := tracer.Start(ctx, "sandbox-wait-for-start")
@@ -957,28 +943,29 @@ func (s *Sandbox) WaitForEnvd(
 		// Update the sandbox as started now
 		s.Metadata.StartedAt = time.Now()
 	}()
-	syncCtx, syncCancel := context.WithCancelCause(ctx)
-	defer syncCancel(nil)
+
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 
 	go func() {
 		select {
 		// Ensure the syncing takes at most timeout seconds.
 		case <-time.After(timeout):
-			syncCancel(fmt.Errorf("syncing took too long"))
-		case <-syncCtx.Done():
+			cancel(fmt.Errorf("syncing took too long"))
+		case <-ctx.Done():
 			return
 		case <-s.process.Exit.Done():
 			err := s.process.Exit.Error()
 
-			syncCancel(fmt.Errorf("fc process exited prematurely: %w", err))
+			cancel(fmt.Errorf("fc process exited prematurely: %w", err))
 		}
 	}()
 
-	initErr := s.initEnvd(syncCtx, tracer, s.Config.Envd.Vars, s.Config.Envd.AccessToken)
+	initErr := s.initEnvd(ctx, s.Config.Envd.Vars, s.Config.Envd.AccessToken)
 	if initErr != nil {
 		return fmt.Errorf("failed to init new envd: %w", initErr)
 	} else {
-		telemetry.ReportEvent(syncCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", s.Metadata.Runtime.SandboxID))
+		telemetry.ReportEvent(ctx, fmt.Sprintf("[sandbox %s]: initialized new envd", s.Metadata.Runtime.SandboxID))
 	}
 
 	return nil

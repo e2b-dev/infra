@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	middleware "github.com/oapi-codegen/gin-middleware"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -204,6 +205,7 @@ func CreateAuthenticationFunc(
 
 		for _, validator := range authenticators {
 			if input.SecuritySchemeName == validator.SecuritySchemeName() {
+				span.SetAttributes(attribute.String("security-schema-name", input.SecuritySchemeName))
 				return validator.Authenticate(ctx, input)
 			}
 		}

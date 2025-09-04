@@ -11,7 +11,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+	"go.opentelemetry.io/otel"
 )
+
+var tracer = otel.Tracer("orchestrator.internal.sandbox.build")
 
 func storagePath(buildId string, diffType DiffType) string {
 	return fmt.Sprintf("%s/%s", buildId, diffType)
@@ -59,6 +62,9 @@ func (b *StorageDiff) CacheKey() DiffStoreKey {
 }
 
 func (b *StorageDiff) Init(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "StorageDiff.Init")
+	defer span.End()
+
 	obj, err := b.persistence.OpenObject(ctx, b.storagePath)
 	if err != nil {
 		return err
@@ -91,6 +97,9 @@ func (b *StorageDiff) Close() error {
 }
 
 func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
+	ctx, span := tracer.Start(ctx, "StorageDiff.ReadAt")
+	defer span.End()
+
 	c, err := b.chunker.Wait()
 	if err != nil {
 		return 0, err
@@ -100,6 +109,9 @@ func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64) (int, err
 }
 
 func (b *StorageDiff) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+	ctx, span := tracer.Start(ctx, "StorageDiff.Slice")
+	defer span.End()
+
 	c, err := b.chunker.Wait()
 	if err != nil {
 		return nil, err
@@ -109,6 +121,9 @@ func (b *StorageDiff) Slice(ctx context.Context, off, length int64) ([]byte, err
 }
 
 func (b *StorageDiff) WriteTo(ctx context.Context, w io.Writer) (int64, error) {
+	ctx, span := tracer.Start(ctx, "StorageDiff.WriteTo")
+	defer span.End()
+
 	c, err := b.chunker.Wait()
 	if err != nil {
 		return 0, err

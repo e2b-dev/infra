@@ -65,6 +65,16 @@ processors:
         metric_names:
           - "e2b.*"
 
+  filter/spammy_spans:
+    traces:
+      span:
+        - 'name == "Cache.ReadAt"'
+        - 'name == "Cache.Slice"'
+        - 'name == "Chunker.ReadAt"'
+        - 'name == "File.getBuild"'
+        - 'name == "get template"'
+        - 'name == "StorageDiff.ReadAt"'
+
   metricstransform:
     # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/metricstransformprocessor
     transforms:
@@ -192,7 +202,7 @@ service:
     traces:
       receivers:
         - otlp
-      processors: [batch]
+      processors: [filter/spammy_spans, batch]
       exporters:
         - otlphttp/grafana_cloud
     logs:

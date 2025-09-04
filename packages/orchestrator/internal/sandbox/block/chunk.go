@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
@@ -51,6 +52,12 @@ func NewChunker(
 }
 
 func (c *Chunker) ReadAt(ctx context.Context, b []byte, off int64) (int, error) {
+	ctx, span := tracer.Start(ctx, "Chunker.ReadAt", trace.WithAttributes(
+		attribute.Int64("offset", off),
+		attribute.Int("page-size", len(b)),
+	))
+	defer span.End()
+
 	slice, err := c.Slice(ctx, off, int64(len(b)))
 	if err != nil {
 		return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", off, off+int64(len(b)), err)
@@ -80,7 +87,7 @@ func (c *Chunker) WriteTo(ctx context.Context, w io.Writer) (int64, error) {
 func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	timer := c.metrics.SlicesTimerFactory.Begin()
 
-	b, err := c.cache.Slice(off, length)
+	b, err := c.cache.Slice(ctx, off, length)
 	if err == nil {
 		timer.End(ctx, length,
 			attribute.String(result, resultTypeSuccess),
@@ -105,7 +112,7 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, chunkErr)
 	}
 
-	b, cacheErr := c.cache.Slice(off, length)
+	b, cacheErr := c.cache.Slice(ctx, off, length)
 	if cacheErr != nil {
 		timer.End(ctx, length,
 			attribute.String(result, resultTypeFailure),
@@ -163,7 +170,7 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 				fetchSW.End(ctx, int64(readBytes), attribute.String("result", resultTypeSuccess))
 
 				writeSW := c.metrics.WriteChunksTimerFactory.Begin()
-				_, cacheErr := c.cache.WriteAtWithoutLock(b, fetchOff)
+				_, cacheErr := c.cache.WriteAtWithoutLock(ctx, b, fetchOff)
 				if cacheErr != nil {
 					writeSW.End(ctx,
 						int64(readBytes),

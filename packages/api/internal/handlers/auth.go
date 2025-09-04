@@ -16,8 +16,12 @@ func (a *APIStore) GetUserID(c *gin.Context) uuid.UUID {
 }
 
 func (a *APIStore) GetUserAndTeams(c *gin.Context) (*uuid.UUID, []queries.GetTeamsWithUsersTeamsWithTierRow, error) {
-	userID := a.GetUserID(c)
 	ctx := c.Request.Context()
+
+	ctx, span := tracer.Start(ctx, "APIStore.GetTeamFromSupabaseToken")
+	defer span.End()
+
+	userID := a.GetUserID(c)
 
 	teams, err := a.sqlcDB.GetTeamsWithUsersTeamsWithTier(ctx, userID)
 	if err != nil {

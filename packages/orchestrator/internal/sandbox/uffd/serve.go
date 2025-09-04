@@ -156,46 +156,58 @@ outerLoop:
 
 		missingPagesBeingHandled[offset] = struct{}{}
 
-		eg.Go(func() error {
-			ctx, span := tracer.Start(ctx, "uffd-serve-slab", trace.WithAttributes(
-				attribute.Int64("offset", offset),
-				attribute.Int64("page-size", pageSize),
-			))
-			defer span.End()
+		eg.Go(fetchSlab(ctx, offset, pageSize, logger, src, fdExit, uffd, addr))
+	}
+}
 
-			defer func() {
-				if r := recover(); r != nil {
-					logger.Error("UFFD serve panic",
-						zap.Any("offset", offset),
-						zap.Any("pagesize", pageSize),
-						zap.Any("panic", r))
-				}
-			}()
+func fetchSlab(
+	ctx context.Context,
+	offset, pageSize int64,
+	logger *zap.Logger,
+	src block.Slicer,
+	fdExit *fdexit.FdExit,
+	uffd int,
+	addr userfaultfd.CULong,
+) func() error {
+	return func() error {
+		ctx, span := tracer.Start(ctx, "uffd-serve-slab", trace.WithAttributes(
+			attribute.Int64("offset", offset),
+			attribute.Int64("page-size", pageSize),
+		))
+		defer span.End()
 
-			data, err := read(ctx, offset, pageSize, src)
-			if err != nil {
-				signalErr := fdExit.SignalExit()
-
-				joinedErr := errors.Join(err, signalErr)
-
-				logger.Error("UFFD serve slice error", zap.Error(joinedErr))
-
-				return fmt.Errorf("failed to read from source: %w", joinedErr)
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("UFFD serve panic",
+					zap.Any("offset", offset),
+					zap.Any("pagesize", pageSize),
+					zap.Any("panic", r))
 			}
+		}()
 
-			if err = copy(ctx, data, offset, pageSize, uffd, addr, logger); err != nil {
-				signalErr := fdExit.SignalExit()
+		data, err := read(ctx, offset, pageSize, src)
+		if err != nil {
+			signalErr := fdExit.SignalExit()
 
-				joinedErr := errors.Join(err, signalErr)
+			joinedErr := errors.Join(err, signalErr)
 
-				logger.Error("UFFD serve uffdio copy error", zap.Error(joinedErr))
+			logger.Error("UFFD serve slice error", zap.Error(joinedErr))
 
-				return fmt.Errorf("failed uffdio copy %w", joinedErr)
+			return fmt.Errorf("failed to read from source: %w", joinedErr)
+		}
 
-			}
+		if err = copy(ctx, data, offset, pageSize, uffd, addr, logger); err != nil {
+			signalErr := fdExit.SignalExit()
 
-			return nil
-		})
+			joinedErr := errors.Join(err, signalErr)
+
+			logger.Error("UFFD serve uffdio copy error", zap.Error(joinedErr))
+
+			return fmt.Errorf("failed uffdio copy %w", joinedErr)
+
+		}
+
+		return nil
 	}
 }
 

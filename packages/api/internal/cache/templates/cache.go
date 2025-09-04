@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -24,6 +25,8 @@ import (
 )
 
 const templateInfoExpiration = 5 * time.Minute
+
+var tracer = otel.Tracer("api.internal.cache.templates")
 
 type TemplateInfo struct {
 	template  *api.Template
@@ -75,6 +78,9 @@ func NewTemplateCache(db *sqlcdb.Client) *TemplateCache {
 }
 
 func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uuid.UUID, clusterID uuid.UUID, public bool) (*api.Template, *queries.EnvBuild, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "TemplateCache.Get")
+	defer span.End()
+
 	var item *ttlcache.Item[string, *TemplateInfo]
 	var templateInfo *TemplateInfo
 

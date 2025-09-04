@@ -15,6 +15,7 @@ import (
 	nomadapi "github.com/hashicorp/nomad/api"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -39,6 +40,8 @@ import (
 )
 
 var supabaseJWTSecretsString = strings.TrimSpace(os.Getenv("SUPABASE_JWT_SECRETS"))
+
+var tracer = otel.Tracer("api.internal.handlers")
 
 // minSupabaseJWTSecretLength is the minimum length of a secret used to verify the Supabase JWT.
 // This is a security measure to prevent the use of weak secrets (like empty).
@@ -262,6 +265,9 @@ func (a *APIStore) GetHealth(c *gin.Context) {
 }
 
 func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authcache.AuthTeamInfo, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "APIStore.GetTeamFromAPIKey")
+	defer span.End()
+
 	hashedApiKey, err := keys.VerifyKey(keys.ApiKeyPrefix, apiKey)
 	if err != nil {
 		return authcache.AuthTeamInfo{}, &api.APIError{
@@ -307,6 +313,9 @@ func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authca
 }
 
 func (a *APIStore) GetUserFromAccessToken(ctx context.Context, accessToken string) (uuid.UUID, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "APIStore.GetUserFromAccessToken")
+	defer span.End()
+
 	hashedToken, err := keys.VerifyKey(keys.AccessTokenPrefix, accessToken)
 	if err != nil {
 		return uuid.UUID{}, &api.APIError{
@@ -372,6 +381,9 @@ func getJWTClaims(secrets []string, token string) (*supabaseClaims, error) {
 }
 
 func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "APIStore.GetUserIDFromSupabaseToken")
+	defer span.End()
+
 	claims, err := getJWTClaims(supabaseJWTSecrets, supabaseToken)
 	if err != nil {
 		return uuid.UUID{}, &api.APIError{
@@ -403,6 +415,9 @@ func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, supabaseToken
 }
 
 func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) (authcache.AuthTeamInfo, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "APIStore.GetTeamFromSupabaseToken")
+	defer span.End()
+
 	userID := a.GetUserID(middleware.GetGinContext(ctx))
 
 	cacheKey := fmt.Sprintf("%s-%s", userID.String(), teamID)

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
@@ -34,9 +34,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
+var tracer = otel.Tracer("orchestrator.internal.template.build")
+
 type Builder struct {
 	logger *zap.Logger
-	tracer trace.Tracer
 
 	templateStorage  storage.StorageProvider
 	buildStorage     storage.StorageProvider
@@ -51,7 +52,6 @@ type Builder struct {
 
 func NewBuilder(
 	logger *zap.Logger,
-	tracer trace.Tracer,
 	templateStorage storage.StorageProvider,
 	buildStorage storage.StorageProvider,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
@@ -64,7 +64,6 @@ func NewBuilder(
 ) *Builder {
 	return &Builder{
 		logger:           logger,
-		tracer:           tracer,
 		templateStorage:  templateStorage,
 		buildStorage:     buildStorage,
 		artifactRegistry: artifactRegistry,
@@ -97,7 +96,7 @@ type Result struct {
 // 8. Snapshot
 // 9. Upload template (and all not yet uploaded layers)
 func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, config config.TemplateConfig, logsWriter *zap.Logger) (r *Result, e error) {
-	ctx, childSpan := b.tracer.Start(ctx, "build")
+	ctx, childSpan := tracer.Start(ctx, "build")
 	defer childSpan.End()
 
 	// Record build duration and result at the end
@@ -178,54 +177,20 @@ func runBuild(
 ) (*Result, error) {
 	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, builder.templateStorage)
 
-	layerExecutor := layer.NewLayerExecutor(bc,
-		builder.logger,
-		builder.tracer,
-		builder.networkPool,
-		builder.devicePool,
-		builder.templateCache,
-		builder.proxy,
-		builder.sandboxes,
-		builder.templateStorage,
-		builder.buildStorage,
-		index,
-	)
+	layerExecutor := layer.NewLayerExecutor(bc, builder.logger, builder.networkPool, builder.devicePool, builder.templateCache, builder.proxy, builder.sandboxes, builder.templateStorage, builder.buildStorage, index)
 
-	baseBuilder := base.New(
-		bc,
-		builder.logger,
-		builder.tracer,
-		builder.proxy,
-		builder.templateStorage,
-		builder.devicePool,
-		builder.networkPool,
-		builder.artifactRegistry,
-		layerExecutor,
-		index,
-		builder.metrics,
-	)
+	baseBuilder := base.New(bc, builder.logger, builder.proxy, builder.templateStorage, builder.devicePool, builder.networkPool, builder.artifactRegistry, layerExecutor, index, builder.metrics)
 
 	commandExecutor := commands.NewCommandExecutor(
 		bc,
-		builder.tracer,
 		builder.buildStorage,
 		builder.proxy,
 	)
 
-	stepBuilders := steps.CreateStepPhases(
-		bc,
-		builder.logger,
-		builder.tracer,
-		builder.proxy,
-		layerExecutor,
-		commandExecutor,
-		index,
-		builder.metrics,
-	)
+	stepBuilders := steps.CreateStepPhases(bc, builder.logger, builder.proxy, layerExecutor, commandExecutor, index, builder.metrics)
 
 	postProcessingBuilder := finalize.New(
 		bc,
-		builder.tracer,
 		builder.templateStorage,
 		builder.proxy,
 		layerExecutor,

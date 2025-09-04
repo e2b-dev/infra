@@ -6,8 +6,6 @@ import (
 	"maps"
 	"strings"
 
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
@@ -17,16 +15,9 @@ import (
 
 type Env struct{}
 
-func (e *Env) Execute(
-	ctx context.Context,
-	tracer trace.Tracer,
-	postProcessor *writer.PostProcessor,
-	proxy *proxy.SandboxProxy,
-	sandboxID string,
-	prefix string,
-	step *templatemanager.TemplateStep,
-	cmdMetadata metadata.Context,
-) (metadata.Context, error) {
+var _ Command = (*Env)(nil)
+
+func (e *Env) Execute(ctx context.Context, postProcessor *writer.PostProcessor, proxy *proxy.SandboxProxy, sandboxID, prefix string, step *templatemanager.TemplateStep, cmdMetadata metadata.Context) (metadata.Context, error) {
 	cmdType := strings.ToUpper(step.Type)
 	args := step.Args
 	// args: [key1 value1 key2 value2 ...]
@@ -41,7 +32,7 @@ func (e *Env) Execute(
 	envVars := maps.Clone(cmdMetadata.EnvVars)
 	for i := 0; i < len(args)-1; i += 2 {
 		k := args[i]
-		v, err := evaluateValue(ctx, tracer, proxy, sandboxID, args[i+1])
+		v, err := evaluateValue(ctx, proxy, sandboxID, args[i+1])
 		if err != nil {
 			return metadata.Context{}, fmt.Errorf("failed to evaluate environment variable %s: %w", k, err)
 		}
@@ -53,16 +44,9 @@ func (e *Env) Execute(
 	return cmdMetadata, nil
 }
 
-func evaluateValue(
-	ctx context.Context,
-	tracer trace.Tracer,
-	proxy *proxy.SandboxProxy,
-	sandboxID string,
-	envValue string,
-) (string, error) {
+func evaluateValue(ctx context.Context, proxy *proxy.SandboxProxy, sandboxID string, envValue string) (string, error) {
 	err := sandboxtools.RunCommandWithOutput(
 		ctx,
-		tracer,
 		proxy,
 		sandboxID,
 		fmt.Sprintf(`printf "%s"`, envValue),

@@ -6,7 +6,6 @@ import (
 	"io"
 	"sync/atomic"
 
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
@@ -15,8 +14,6 @@ import (
 )
 
 type DirectProvider struct {
-	tracer trace.Tracer
-
 	cache *block.Cache
 	path  string
 
@@ -26,7 +23,7 @@ type DirectProvider struct {
 	exporting atomic.Bool
 }
 
-func NewDirectProvider(tracer trace.Tracer, rootfs block.ReadonlyDevice, path string) (Provider, error) {
+func NewDirectProvider(rootfs block.ReadonlyDevice, path string) (Provider, error) {
 	size, err := rootfs.Size()
 	if err != nil {
 		return nil, fmt.Errorf("error getting device size: %w", err)
@@ -40,9 +37,8 @@ func NewDirectProvider(tracer trace.Tracer, rootfs block.ReadonlyDevice, path st
 	}
 
 	return &DirectProvider{
-		tracer: tracer,
-		cache:  cache,
-		path:   path,
+		cache: cache,
+		path:  path,
 
 		finishedOperations: make(chan struct{}, 1),
 	}, nil
@@ -57,7 +53,7 @@ func (o *DirectProvider) ExportDiff(
 	out io.Writer,
 	stopSandbox func(context.Context) error,
 ) (*header.DiffMetadata, error) {
-	ctx, childSpan := o.tracer.Start(ctx, "direct-provider-export")
+	ctx, childSpan := tracer.Start(ctx, "direct-provider-export")
 	defer childSpan.End()
 
 	o.exporting.CompareAndSwap(false, true)

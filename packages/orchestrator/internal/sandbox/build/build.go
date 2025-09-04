@@ -46,6 +46,9 @@ func min(a, b int64) int64 {
 }
 
 func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
+	ctx, span := tracer.Start(ctx, "File.ReadAt")
+	defer span.End()
+
 	for n < len(p) {
 		mappedOffset, mappedLength, buildID, err := b.header.GetShiftedMapping(off + int64(n))
 		if err != nil {
@@ -106,6 +109,9 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 
 // The slice access must be in the predefined blocksize of the build.
 func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+	ctx, span := tracer.Start(ctx, "File.Slice")
+	defer span.End()
+
 	mappedOffset, _, buildID, err := b.header.GetShiftedMapping(off)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mapping: %w", err)
@@ -125,6 +131,9 @@ func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 }
 
 func (b *File) getBuild(ctx context.Context, buildID *uuid.UUID) (Diff, error) {
+	ctx, span := tracer.Start(ctx, "File.getBuild")
+	defer span.End()
+
 	storageDiff := newStorageDiff(
 		b.store.cachePath,
 		buildID.String(),

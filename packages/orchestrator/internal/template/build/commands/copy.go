@@ -11,8 +11,6 @@ import (
 	txtTemplate "text/template"
 
 	"github.com/bmatcuk/doublestar/v4"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/paths"
@@ -26,6 +24,8 @@ type Copy struct {
 	FilesStorage storage.StorageProvider
 	CacheScope   string
 }
+
+var _ Command = (*Copy)(nil)
 
 type copyScriptData struct {
 	SourcePath string
@@ -80,16 +80,7 @@ fi
 
 // Note: The temporary files in the /tmp directory are cleaned up automatically on sandbox restart
 // because the /tmp is mounted as a tmpfs and deleted on restart.
-func (c *Copy) Execute(
-	ctx context.Context,
-	tracer trace.Tracer,
-	postProcessor *writer.PostProcessor,
-	proxy *proxy.SandboxProxy,
-	sandboxID string,
-	prefix string,
-	step *templatemanager.TemplateStep,
-	cmdMetadata metadata.Context,
-) (metadata.Context, error) {
+func (c *Copy) Execute(ctx context.Context, postProcessor *writer.PostProcessor, proxy *proxy.SandboxProxy, sandboxID, prefix string, step *templatemanager.TemplateStep, cmdMetadata metadata.Context) (metadata.Context, error) {
 	cmdType := strings.ToUpper(step.Type)
 	args := step.Args
 	// args: [localPath containerPath optional_owner optional_permissions]
@@ -132,7 +123,7 @@ func (c *Copy) Execute(
 	// This is happening because the /tmp is mounted as a tmpfs and deleted on restart.
 	sbxTargetPath := filepath.Join("/tmp", fmt.Sprintf("%s.tar", *step.FilesHash))
 	// 2) Copy the tar file to the sandbox
-	err = sandboxtools.CopyFile(ctx, tracer, proxy, sandboxID, cmdMetadata.User, tmpFile.Name(), sbxTargetPath)
+	err = sandboxtools.CopyFile(ctx, proxy, sandboxID, cmdMetadata.User, tmpFile.Name(), sbxTargetPath)
 	if err != nil {
 		return metadata.Context{}, fmt.Errorf("failed to copy layer tar data to sandbox: %w", err)
 	}
@@ -142,7 +133,6 @@ func (c *Copy) Execute(
 	// 3) Extract the tar file in the sandbox's /tmp directory
 	err = sandboxtools.RunCommand(
 		ctx,
-		tracer,
 		proxy,
 		sandboxID,
 		fmt.Sprintf(`mkdir -p "%s" && tar -xzvf "%s" -C "%s"`, sbxUnpackPath, sbxTargetPath, sbxUnpackPath),
@@ -168,7 +158,6 @@ func (c *Copy) Execute(
 
 	err = sandboxtools.RunCommand(
 		ctx,
-		tracer,
 		proxy,
 		sandboxID,
 		moveScript.String(),
@@ -185,7 +174,6 @@ func (c *Copy) Execute(
 		if owner != "" {
 			err = sandboxtools.RunCommand(
 				ctx,
-				tracer,
 				proxy,
 				sandboxID,
 				fmt.Sprintf(`chown -R %s "%s"`, owner, targetPath),
@@ -205,7 +193,6 @@ func (c *Copy) Execute(
 		if permissions != "" {
 			err = sandboxtools.RunCommand(
 				ctx,
-				tracer,
 				proxy,
 				sandboxID,
 				fmt.Sprintf(`chmod -R %s "%s"`, permissions, targetPath),

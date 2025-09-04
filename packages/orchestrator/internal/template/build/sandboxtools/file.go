@@ -11,15 +11,16 @@ import (
 	"path/filepath"
 	"time"
 
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const fileCopyTimeout = 10 * time.Minute
+
+var tracer = otel.Tracer("orchestrator.internal.template.build.sandboxtools")
 
 var client = http.Client{
 	Timeout: fileCopyTimeout,
@@ -27,7 +28,6 @@ var client = http.Client{
 
 func CopyFile(
 	ctx context.Context,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	user string,

@@ -102,11 +102,14 @@ func (b *localDiff) Close() error {
 }
 
 func (b *localDiff) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
-	return b.cache.ReadAt(p, off)
+	return b.cache.ReadAt(ctx, p, off)
 }
 
 func (b *localDiff) Slice(ctx context.Context, off, length int64) ([]byte, error) {
-	return b.cache.Slice(off, length)
+	ctx, span := tracer.Start(ctx, "localDiff.Slice")
+	defer span.End()
+
+	return b.cache.Slice(ctx, off, length)
 }
 
 func (b *localDiff) FileSize() (int64, error) {
@@ -117,6 +120,6 @@ func (b *localDiff) CacheKey() DiffStoreKey {
 	return b.cacheKey
 }
 
-func (b *localDiff) Init(ctx context.Context) error {
+func (b *localDiff) Init(_ context.Context) error {
 	return nil
 }

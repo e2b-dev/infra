@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -18,7 +17,6 @@ type Workdir struct{}
 
 func (w *Workdir) Execute(
 	ctx context.Context,
-	tracer trace.Tracer,
 	postProcessor *writer.PostProcessor,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
@@ -36,7 +34,6 @@ func (w *Workdir) Execute(
 
 	err := sandboxtools.RunCommandWithLogger(
 		ctx,
-		tracer,
 		proxy,
 		postProcessor,
 		zapcore.InfoLevel,
@@ -52,12 +49,11 @@ func (w *Workdir) Execute(
 		return metadata.Context{}, fmt.Errorf("failed to create workdir: %w", err)
 	}
 
-	return saveWorkdirMeta(ctx, tracer, proxy, sandboxID, cmdMetadata, workdirArg)
+	return saveWorkdirMeta(ctx, proxy, sandboxID, cmdMetadata, workdirArg)
 }
 
 func saveWorkdirMeta(
 	ctx context.Context,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	cmdMetadata metadata.Context,
@@ -65,7 +61,6 @@ func saveWorkdirMeta(
 ) (metadata.Context, error) {
 	err := sandboxtools.RunCommandWithOutput(
 		ctx,
-		tracer,
 		proxy,
 		sandboxID,
 		fmt.Sprintf(`printf "%s"`, workdir),

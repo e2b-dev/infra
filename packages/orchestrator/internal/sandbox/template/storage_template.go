@@ -21,7 +21,7 @@ import (
 type storageTemplate struct {
 	files storage.TemplateCacheFiles
 
-	memfile  *utils.SetOnce[block.ReadonlyDevice]
+	memfile  *utils.SetOnce[*Storage]
 	rootfs   *utils.SetOnce[block.ReadonlyDevice]
 	snapfile *utils.SetOnce[File]
 	metafile *utils.SetOnce[File]
@@ -63,7 +63,7 @@ func newTemplateFromStorage(
 		rootfsHeader:  rootfsHeader,
 		metrics:       metrics,
 		persistence:   persistence,
-		memfile:       utils.NewSetOnce[block.ReadonlyDevice](),
+		memfile:       utils.NewSetOnce[*Storage](),
 		rootfs:        utils.NewSetOnce[block.ReadonlyDevice](),
 		snapfile:      utils.NewSetOnce[File](),
 		metafile:      utils.NewSetOnce[File](),

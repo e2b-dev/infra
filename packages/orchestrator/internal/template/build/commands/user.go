@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -16,16 +15,7 @@ import (
 
 type User struct{}
 
-func (u *User) Execute(
-	ctx context.Context,
-	tracer trace.Tracer,
-	postProcessor *writer.PostProcessor,
-	proxy *proxy.SandboxProxy,
-	sandboxID string,
-	prefix string,
-	step *templatemanager.TemplateStep,
-	cmdMetadata metadata.Context,
-) (metadata.Context, error) {
+func (u *User) Execute(ctx context.Context, postProcessor *writer.PostProcessor, proxy *proxy.SandboxProxy, sandboxID string, prefix string, step *templatemanager.TemplateStep, cmdMetadata metadata.Context) (metadata.Context, error) {
 	args := step.Args
 	// args: [username]
 	if len(args) < 1 {
@@ -36,7 +26,6 @@ func (u *User) Execute(
 
 	err := sandboxtools.RunCommandWithLogger(
 		ctx,
-		tracer,
 		proxy,
 		postProcessor,
 		zapcore.InfoLevel,
@@ -52,20 +41,12 @@ func (u *User) Execute(
 		return metadata.Context{}, fmt.Errorf("failed to create user: %w", err)
 	}
 
-	return saveUserMeta(ctx, tracer, proxy, sandboxID, cmdMetadata, userArg)
+	return saveUserMeta(ctx, proxy, sandboxID, cmdMetadata, userArg)
 }
 
-func saveUserMeta(
-	ctx context.Context,
-	tracer trace.Tracer,
-	proxy *proxy.SandboxProxy,
-	sandboxID string,
-	cmdMetadata metadata.Context,
-	user string,
-) (metadata.Context, error) {
+func saveUserMeta(ctx context.Context, proxy *proxy.SandboxProxy, sandboxID string, cmdMetadata metadata.Context, user string) (metadata.Context, error) {
 	err := sandboxtools.RunCommandWithOutput(
 		ctx,
-		tracer,
 		proxy,
 		sandboxID,
 		fmt.Sprintf(`printf "%s"`, user),

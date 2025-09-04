@@ -158,7 +158,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool
 	}()
 
 	tracer := otel.Tracer("test")
-	mnt = nbd.NewDirectPathMount(ctx, tracer, device, devicePool)
+	mnt = nbd.NewDirectPathMount(ctx, device, devicePool)
 
 	go func() {
 		<-ctx.Done()

@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 
+	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq"
@@ -42,6 +43,8 @@ func NewClient(ctx context.Context, options ...Option) (*Client, error) {
 		return nil, err
 	}
 
+	config.ConnConfig.Tracer = otelpgx.NewTracer()
+
 	// Set the default number of connections
 	for _, option := range options {
 		option(config)
@@ -51,6 +54,10 @@ func NewClient(ctx context.Context, options ...Option) (*Client, error) {
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		zap.L().Error("Unable to create connection pool", zap.Error(err))
+	}
+
+	if err = otelpgx.RecordStats(pool); err != nil {
+		zap.L().Error("Unable to record database stats", zap.Error(err))
 	}
 
 	queries := database.New(pool)

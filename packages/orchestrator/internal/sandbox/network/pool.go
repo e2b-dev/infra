@@ -29,7 +29,7 @@ type Pool struct {
 	slotStorage Storage
 }
 
-func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string, tracer trace.Tracer) (*Pool, error) {
+func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string) (*Pool, error) {
 	newSlots := make(chan *Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan *Slot, reusedSlotsPoolSize)
 
@@ -45,7 +45,7 @@ func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPo
 		return nil, fmt.Errorf("failed to create reused slot counter: %w", err)
 	}
 
-	slotStorage, err := NewStorage(vrtSlotsSize, nodeID, tracer)
+	slotStorage, err := NewStorage(vrtSlotsSize, nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create slot storage: %w", err)
 	}

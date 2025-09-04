@@ -20,7 +20,7 @@ require (
 	// https://github.com/grafana/loki/issues/2826. This is the equivalent of the main branch at https://github.com/grafana/loki/commit/7b805ba7c84366e11e8571c9e8c422739bb18684 (v2.9.15)
 	github.com/grafana/loki v0.0.0-20250609195516-7b805ba7c843
 	github.com/hashicorp/nomad/api v0.0.0-20231208134655-099ee06a607c
-	github.com/jackc/pgx/v5 v5.7.4
+	github.com/jackc/pgx/v5 v5.7.5
 	github.com/jellydator/ttlcache/v3 v3.3.1-0.20250207140243-aefc35918359
 	github.com/miekg/dns v1.1.63
 	github.com/oapi-codegen/gin-middleware v1.0.2
@@ -264,6 +264,11 @@ require (
 	google.golang.org/protobuf v1.36.6
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+)
+
+require (
+	github.com/exaring/otelpgx v0.9.3 // indirect
+	github.com/pgx-contrib/pgxtrace v0.0.0-20250519104619-05300658e965 // indirect
 )
 
 // Internal packages

@@ -1,6 +1,7 @@
 package block
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -122,7 +123,10 @@ func (m *Cache) ExportToDiff(out io.Writer) (*header.DiffMetadata, error) {
 	}, nil
 }
 
-func (m *Cache) ReadAt(b []byte, off int64) (int, error) {
+func (m *Cache) ReadAt(ctx context.Context, b []byte, off int64) (int, error) {
+	ctx, span := tracer.Start(ctx, "Cache.ReadAt")
+	defer span.End()
+
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -130,7 +134,7 @@ func (m *Cache) ReadAt(b []byte, off int64) (int, error) {
 		return 0, NewErrCacheClosed(m.filePath)
 	}
 
-	slice, err := m.Slice(off, int64(len(b)))
+	slice, err := m.Slice(ctx, off, int64(len(b)))
 	if err != nil {
 		return 0, fmt.Errorf("error slicing mmap: %w", err)
 	}
@@ -138,7 +142,10 @@ func (m *Cache) ReadAt(b []byte, off int64) (int, error) {
 	return copy(b, slice), nil
 }
 
-func (m *Cache) WriteAt(b []byte, off int64) (int, error) {
+func (m *Cache) WriteAt(ctx context.Context, b []byte, off int64) (int, error) {
+	ctx, span := tracer.Start(ctx, "Cache.WriteAt")
+	defer span.End()
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -146,7 +153,7 @@ func (m *Cache) WriteAt(b []byte, off int64) (int, error) {
 		return 0, NewErrCacheClosed(m.filePath)
 	}
 
-	return m.WriteAtWithoutLock(b, off)
+	return m.WriteAtWithoutLock(ctx, b, off)
 }
 
 func (m *Cache) Close() (e error) {
@@ -179,7 +186,10 @@ func (m *Cache) Size() (int64, error) {
 
 // Slice returns a slice of the mmap.
 // When using Slice you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
-func (m *Cache) Slice(off, length int64) ([]byte, error) {
+func (m *Cache) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+	//ctx, span := tracer.Start(ctx, "Cache.Slice")
+	//defer span.End()
+
 	if m.isClosed() {
 		return nil, NewErrCacheClosed(m.filePath)
 	}
@@ -214,7 +224,10 @@ func (m *Cache) setIsCached(off, length int64) {
 }
 
 // When using WriteAtWithoutLock you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
-func (m *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
+func (m *Cache) WriteAtWithoutLock(ctx context.Context, b []byte, off int64) (int, error) {
+	ctx, span := tracer.Start(ctx, "Cache.WriteAtWithoutLock")
+	defer span.End()
+
 	if m.isClosed() {
 		return 0, NewErrCacheClosed(m.filePath)
 	}

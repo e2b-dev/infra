@@ -32,7 +32,6 @@ func (rs *ResumeSandbox) Sandbox(
 ) (*sandbox.Sandbox, error) {
 	sbx, err := sandbox.ResumeSandbox(
 		ctx,
-		layerExecutor.tracer,
 		layerExecutor.networkPool,
 		template,
 		rs.config,

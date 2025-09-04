@@ -73,9 +73,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "Cleaned template ID")
 
-	_, templateSpan := a.Tracer.Start(ctx, "get-template")
-	defer templateSpan.End()
-
 	// Check if team has access to the environment
 	clusterID := utils.WithClusterFallback(teamInfo.Team.ClusterID)
 	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, teamInfo.Team.ID, clusterID, true)
@@ -84,7 +81,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		a.sendAPIStoreError(c, checkErr.Code, checkErr.ClientMsg)
 		return
 	}
-	templateSpan.End()
 
 	telemetry.ReportEvent(ctx, "Checked team access")
 

@@ -17,7 +17,7 @@ var ErrShuttingDown = errors.New("shutting down. Cannot serve any new requests")
 
 type Provider interface {
 	storage.ReaderAtCtx
-	io.WriterAt
+	WriteAt(ctx context.Context, value []byte, off int64) (int, error)
 	Size() (int64, error)
 }
 
@@ -116,7 +116,10 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
  * This dispatches incoming NBD requests sequentially to the provider.
  *
  */
-func (d *Dispatch) Handle() error {
+func (d *Dispatch) Handle(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "Dispatch.Handle")
+	defer span.End()
+
 	buffer := make([]byte, dispatchBufferSize)
 	wp := 0
 
@@ -265,7 +268,7 @@ func (d *Dispatch) cmdWrite(cmdHandle uint64, cmdFrom uint64, cmdData []byte) er
 		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
 		go func() {
-			_, err := d.prov.WriteAt(data, int64(from))
+			_, err := d.prov.WriteAt(d.ctx, data, int64(from))
 			errchan <- err
 		}()
 

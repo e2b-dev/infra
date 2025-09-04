@@ -89,12 +89,12 @@ func (c *apiClient) loadSnapshot(
 }
 
 func (c *apiClient) resumeVM(ctx context.Context) error {
-	childCtx, childSpan := tracer.Start(ctx, "resume-vm")
+	ctx, childSpan := tracer.Start(ctx, "resume-vm")
 	defer childSpan.End()
 
 	state := models.VMStateResumed
 	pauseConfig := operations.PatchVMParams{
-		Context: childCtx,
+		Context: ctx,
 		Body: &models.VM{
 			State: &state,
 		},

@@ -16,7 +16,7 @@ import (
 )
 
 func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanager.TemplateBuildDeleteRequest) (*emptypb.Empty, error) {
-	childCtx, childSpan := s.tracer.Start(ctx, "template-delete-request", trace.WithAttributes(
+	childCtx, childSpan := tracer.Start(ctx, "template-delete-request", trace.WithAttributes(
 		telemetry.WithTemplateID(in.TemplateID),
 		telemetry.WithBuildID(in.BuildID),
 	))
@@ -39,7 +39,7 @@ func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanag
 		})
 	}
 
-	err = template.Delete(childCtx, s.tracer, s.artifactsregistry, s.templateStorage, in.TemplateID, in.BuildID)
+	err = template.Delete(childCtx, s.artifactsregistry, s.templateStorage, in.TemplateID, in.BuildID)
 	if err != nil {
 		return nil, err
 	}

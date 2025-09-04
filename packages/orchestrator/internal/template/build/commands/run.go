@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -16,16 +15,7 @@ import (
 
 type Run struct{}
 
-func (r *Run) Execute(
-	ctx context.Context,
-	tracer trace.Tracer,
-	postProcessor *writer.PostProcessor,
-	proxy *proxy.SandboxProxy,
-	sandboxID string,
-	prefix string,
-	step *templatemanager.TemplateStep,
-	cmdMetadata metadata.Context,
-) (metadata.Context, error) {
+func (r *Run) Execute(ctx context.Context, postProcessor *writer.PostProcessor, proxy *proxy.SandboxProxy, sandboxID string, prefix string, step *templatemanager.TemplateStep, cmdMetadata metadata.Context) (metadata.Context, error) {
 	args := step.Args
 	// args: [command optional_user]
 	if len(args) < 1 {
@@ -42,7 +32,6 @@ func (r *Run) Execute(
 	cmd := args[0]
 	err := sandboxtools.RunCommandWithLogger(
 		ctx,
-		tracer,
 		proxy,
 		postProcessor,
 		zapcore.InfoLevel,

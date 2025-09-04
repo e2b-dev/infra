@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -25,50 +24,27 @@ const commandHardTimeout = 1 * time.Hour
 
 func RunCommandWithOutput(
 	ctx context.Context,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	command string,
 	metadata metadata.Context,
 	processOutput func(stdout, stderr string),
 ) error {
-	return runCommandWithAllOptions(
-		ctx,
-		tracer,
-		proxy,
-		sandboxID,
-		command,
-		metadata,
-		// No confirmation needed for this command
-		make(chan struct{}),
-		processOutput,
-	)
+	return runCommandWithAllOptions(ctx, proxy, sandboxID, command, metadata, make(chan struct{}), processOutput)
 }
 
 func RunCommand(
 	ctx context.Context,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	command string,
 	metadata metadata.Context,
 ) error {
-	return runCommandWithAllOptions(
-		ctx,
-		tracer,
-		proxy,
-		sandboxID,
-		command,
-		metadata,
-		// No confirmation needed for this command
-		make(chan struct{}),
-		func(stdout, stderr string) {},
-	)
+	return runCommandWithAllOptions(ctx, proxy, sandboxID, command, metadata, make(chan struct{}), func(stdout, stderr string) {})
 }
 
 func RunCommandWithLogger(
 	ctx context.Context,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	postProcessor *writer.PostProcessor,
 	lvl zapcore.Level,
@@ -79,7 +55,6 @@ func RunCommandWithLogger(
 ) error {
 	return RunCommandWithConfirmation(
 		ctx,
-		tracer,
 		proxy,
 		postProcessor,
 		lvl,
@@ -94,7 +69,6 @@ func RunCommandWithLogger(
 
 func RunCommandWithConfirmation(
 	ctx context.Context,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	postProcessor *writer.PostProcessor,
 	lvl zapcore.Level,
@@ -104,31 +78,13 @@ func RunCommandWithConfirmation(
 	metadata metadata.Context,
 	confirmCh chan<- struct{},
 ) error {
-	return runCommandWithAllOptions(
-		ctx,
-		tracer,
-		proxy,
-		sandboxID,
-		command,
-		metadata,
-		confirmCh,
-		func(stdout, stderr string) {
-			logStream(postProcessor, lvl, id, "stdout", stdout)
-			logStream(postProcessor, zapcore.ErrorLevel, id, "stderr", stderr)
-		},
-	)
+	return runCommandWithAllOptions(ctx, proxy, sandboxID, command, metadata, confirmCh, func(stdout, stderr string) {
+		logStream(postProcessor, lvl, id, "stdout", stdout)
+		logStream(postProcessor, zapcore.ErrorLevel, id, "stderr", stderr)
+	})
 }
 
-func runCommandWithAllOptions(
-	ctx context.Context,
-	tracer trace.Tracer,
-	proxy *proxy.SandboxProxy,
-	sandboxID string,
-	command string,
-	metadata metadata.Context,
-	confirmCh chan<- struct{},
-	processOutput func(stdout, stderr string),
-) error {
+func runCommandWithAllOptions(ctx context.Context, proxy *proxy.SandboxProxy, sandboxID string, command string, metadata metadata.Context, confirmCh chan<- struct{}, processOutput func(stdout string, stderr string)) error {
 	runCmdReq := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
 			Cmd: "/bin/bash",
@@ -222,13 +178,11 @@ func logStream(postProcessor *writer.PostProcessor, lvl zapcore.Level, id string
 // to be able to re-create the sandbox without resume.
 func SyncChangesToDisk(
 	ctx context.Context,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 ) error {
 	return RunCommand(
 		ctx,
-		tracer,
 		proxy,
 		sandboxID,
 		"sync",
