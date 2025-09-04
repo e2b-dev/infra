@@ -47,6 +47,7 @@ func TestTeamMetrics(t *testing.T) {
 
 	for _, metric := range metrics {
 		require.NotEmpty(t, metric.Timestamp, "Timestamp should not be empty")
+		require.NotEmpty(t, metric.TimestampUnix, "Timestamp should not be empty")
 		if metric.SandboxStartRate > 0 {
 			startRateGreaterThanZero = true
 		}
@@ -95,8 +96,8 @@ func TestTeamMetricsWithTimeRange(t *testing.T) {
 
 	// Verify all timestamps are within the requested range
 	for _, metric := range metrics {
-		require.GreaterOrEqual(t, metric.Timestamp.Unix(), start, "Metric timestamp should be >= start time")
-		require.LessOrEqual(t, metric.Timestamp.Unix(), end, "Metric timestamp should be <= end time")
+		require.GreaterOrEqual(t, metric.TimestampUnix, start, "Metric timestamp should be >= start time")
+		require.LessOrEqual(t, metric.TimestampUnix, end, "Metric timestamp should be <= end time")
 	}
 }
 

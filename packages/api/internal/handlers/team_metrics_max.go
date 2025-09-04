@@ -12,13 +12,12 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const defaultTimeRange = 7 * 24 * time.Hour // 7 days
-
-func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params api.GetTeamsTeamIDMetricsParams) {
+func (a *APIStore) GetTeamsTeamIDMetricsMax(c *gin.Context, teamID string, params api.GetTeamsTeamIDMetricsMaxParams) {
 	ctx := c.Request.Context()
 	ctx, span := a.Tracer.Start(ctx, "sandbox-metrics")
 	defer span.End()
@@ -42,7 +41,7 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 		// If we are not reading from ClickHouse, we can return an empty map
 		// This is here just to have the possibility to turn off ClickHouse metrics reading
 
-		c.JSON(http.StatusOK, []api.TeamMetric{})
+		c.JSON(http.StatusOK, api.MaxTeamMetric{})
 		return
 	}
 
@@ -60,26 +59,34 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 	if err != nil {
 		telemetry.ReportError(ctx, "error validating dates", err, telemetry.WithTeamID(team.ID.String()))
 		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
+
 		return
 	}
 
-	step := calculateStep(start, end)
+	var maxMetric clickhouse.MaxTeamMetric
+	switch params.Metric {
+	case api.ConcurrentSandboxes:
+		maxMetric, err = a.clickhouseStore.QueryMaxConcurrentTeamMetrics(ctx, teamID, start, end)
 
-	metrics, err := a.clickhouseStore.QueryTeamMetrics(ctx, teamID, start, end, step)
+	case api.SandboxStartRate:
+		maxMetric, err = a.clickhouseStore.QueryMaxStartRateTeamMetrics(ctx, teamID, start, end)
+	default:
+		telemetry.ReportError(ctx, "invalid metric", fmt.Errorf("invalid metric: %s", params.Metric), telemetry.WithTeamID(team.ID.String()))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("invalid metric: %s", params.Metric))
+
+		return
+	}
 	if err != nil {
-		telemetry.ReportError(ctx, "error fetching team metrics", err, telemetry.WithTeamID(team.ID.String()))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("error querying team metrics: %s", err))
+		telemetry.ReportError(ctx, "error querying max team metrics", err, telemetry.WithTeamID(team.ID.String()))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error querying max team metrics")
+
 		return
 	}
 
-	apiMetrics := make([]api.TeamMetric, len(metrics))
-	for i, m := range metrics {
-		apiMetrics[i] = api.TeamMetric{
-			Timestamp:           m.Timestamp,
-			TimestampUnix:       m.Timestamp.Unix(),
-			ConcurrentSandboxes: int32(m.ConcurrentSandboxes),
-			SandboxStartRate:    float32(m.SandboxStartedRate),
-		}
+	apiMetrics := api.MaxTeamMetric{
+		Timestamp:     maxMetric.Timestamp,
+		TimestampUnix: maxMetric.Timestamp.Unix(),
+		Value:         float32(maxMetric.Value),
 	}
 
 	c.JSON(http.StatusOK, apiMetrics)
