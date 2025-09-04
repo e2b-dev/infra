@@ -26,6 +26,13 @@ jobs:
   integration-tests:
     needs: [ lint, integrity-check, out-of-order-migrations ]
     uses: ./.github/workflows/integration_tests.yml
+  deploy-plan:
+    uses: ./.github/workflows/deploy-infra.yml
+    with:
+      commit_sha: 'invalid-commit-sha'
+      environment: 'foxtrot'
+      plan_only: 'true'
+      tracking_id: '${{ github.ref }}'
   publish-test-results:
     needs:
       - unit-tests
