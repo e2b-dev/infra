@@ -62,6 +62,12 @@ variable "build_cluster_cache_disk_size_gb" {
   default     = 200
 }
 
+variable "build_cluster_cache_disk_type" {
+  description = "The GCE cache disk type for the build machines."
+  type        = string
+  default     = "pd-ssd"
+}
+
 variable "clickhouse_cluster_size" {
   type = number
 }
@@ -228,6 +234,12 @@ variable "client_cluster_cache_disk_size_gb" {
   default     = 500
 }
 
+variable "client_cluster_cache_disk_type" {
+  description = "The GCE cache disk type for the client machines."
+  type        = string
+  default     = "pd-ssd"
+}
+
 variable "orchestrator_port" {
   type    = number
   default = 5008
@@ -376,4 +388,9 @@ variable "filestore_cache_capacity_gb" {
   type        = number
   description = "The capacity of the Filestore cache in GB"
   default     = 0
+}
+
+variable "min_cpu_platform" {
+  type    = string
+  default = "Intel Skylake"
 }
