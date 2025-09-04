@@ -25,7 +25,7 @@ job "vault" {
 
       check {
         type     = "http"
-        path     = "/v1/sys/health?standbyok=true&uninitcode=200"
+        path     = "/v1/sys/health"
         interval = "1s"
         timeout  = "2s"
       }
