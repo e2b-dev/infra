@@ -11,7 +11,6 @@ import (
 	"github.com/vishvananda/netns"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal"
 	consts "github.com/e2b-dev/infra/packages/orchestrator/internal"
 )
 
@@ -218,7 +217,7 @@ func (s *Slot) CreateNetwork() error {
 	}
 
 	// Redirect traffic destined for event proxy server
-	eventIP := internal.GetSandboxEventIP()
+	eventIP := consts.GetSandboxEventIP()
 	err = tables.Append(
 		"nat", "PREROUTING", "-i", s.VethName(), "-p", "tcp", "-d", eventIP, "--dport", "80",
 		"-j", "REDIRECT", "--to-port", consts.GetEventProxyPort(),
