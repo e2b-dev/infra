@@ -152,6 +152,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 
 	// Get all sandbox instances
 	runningSandboxes := a.orchestrator.GetSandboxes(ctx, &team.ID)
+	c.Header("X-Total-Running", strconv.Itoa(len(runningSandboxes)))
 
 	// Running Sandbox IDs
 	runningSandboxesIDs := make([]string, 0)
@@ -206,7 +207,6 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		c.Header("X-Next-Token", *nextToken)
 	}
 
-	c.Header("X-Total-Items", strconv.Itoa(len(sandboxes)))
 	c.JSON(http.StatusOK, sandboxes)
 }
 
