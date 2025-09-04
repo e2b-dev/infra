@@ -29,7 +29,7 @@ jobs:
   deploy-plan:
     uses: ./.github/workflows/deploy-infra.yml
     with:
-      commit_sha: 'invalid-commit-sha'
+      commit_sha: '${{ github.sha }}'
       environment: 'foxtrot'
       plan_only: 'true'
       tracking_id: '${{ github.ref }}'
