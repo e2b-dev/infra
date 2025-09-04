@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,13 +11,41 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
 	cacheFilePermissions = 0o600
 	cacheDirPermissions  = 0o700
+)
+
+func must[T any](t T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+
+	return t
+}
+
+var (
+	meter                 = otel.GetMeterProvider().Meter("shared.pkg.storage")
+	cacheReadTimerFactory = must(telemetry.NewTimerFactory(meter,
+		"orchestrator.storage.cache.read",
+		"Duration of cached reads",
+		"Total cached bytes read",
+		"Total cached reads",
+	))
+	cacheWriteTimerFactory = must(telemetry.NewTimerFactory(meter,
+		"orchestrator.storage.cache.write",
+		"Duration of cache writes",
+		"Total bytes written to the cache",
+		"Total writes to the cache",
+	))
 )
 
 type CachedProvider struct {
@@ -32,10 +61,6 @@ func NewCachedProvider(rootPath string, inner StorageProvider) *CachedProvider {
 }
 
 func (c CachedProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
-	go func(ctx context.Context) {
-		c.deleteObjectsWithPrefix(prefix)
-	}(context.WithoutCancel(ctx))
-
 	return c.inner.DeleteObjectsWithPrefix(ctx, prefix)
 }
 
@@ -53,30 +78,13 @@ func (c CachedProvider) OpenObject(ctx context.Context, path string) (StorageObj
 	if err = os.MkdirAll(localPath, cacheDirPermissions); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
+
 	return &CachedFileObjectProvider{path: localPath, chunkSize: c.chunkSize, inner: innerObject}, nil
 }
 
 func (c CachedProvider) GetDetails() string {
 	return fmt.Sprintf("[Caching file storage, base path set to %s, which wraps %s]",
 		c.rootPath, c.inner.GetDetails())
-}
-
-func (c CachedProvider) deleteObjectsWithPrefix(prefix string) {
-	fullPrefix := filepath.Join(c.rootPath, prefix)
-	paths, err := filepath.Glob(fullPrefix + "*")
-	if err != nil {
-		zap.L().Error("failed to glob objects with prefix", zap.String("prefix", prefix), zap.Error(err))
-		return
-	}
-
-	for _, path := range paths {
-		if err = os.Remove(path); err != nil {
-			zap.L().Error("failed to remove object with prefix",
-				zap.String("prefix", prefix),
-				zap.String("path", path),
-				zap.Error(err))
-		}
-	}
 }
 
 type CachedFileObjectProvider struct {
@@ -87,77 +95,104 @@ type CachedFileObjectProvider struct {
 
 var _ StorageObjectProvider = (*CachedFileObjectProvider)(nil)
 
-func (c *CachedFileObjectProvider) WriteTo(dst io.Writer) (int64, error) {
-	totalSize, err := c.Size()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get size of object: %w", err)
-	}
+// WriteTo is used for very small files and we can check agains their size to ensure the content is valid.
+func (c *CachedFileObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
+	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.WriteTo")
+	defer span.End()
 
-	for offset := int64(0); offset < totalSize; offset += c.chunkSize {
-		if err := c.copyChunkToStream(offset, dst); err != nil {
-			return 0, fmt.Errorf("failed to copy chunk to stream: %w", err)
-		}
-	}
-
-	return totalSize, nil
-}
-
-func (c *CachedFileObjectProvider) WriteFromFileSystem(path string) error {
-	// write the file to the disk and the remote system at the same time.
-	// this opens the file twice, but the API makes it difficult to use a MultiWriter
-
-	var eg errgroup.Group
-
-	eg.Go(func() error {
-		return c.createCacheBlocksFromFile(path)
-	})
-
-	eg.Go(func() error {
-		return c.inner.WriteFromFileSystem(path)
-	})
-
-	return eg.Wait()
-}
-
-func (c *CachedFileObjectProvider) Write(src []byte) (int, error) {
-	num, err := c.writeCacheAndRemote(src)
+	totalSize, err := c.Size(ctx)
 	if err != nil {
 		return 0, err
-	} else if num != len(src) {
-		return 0, fmt.Errorf("failed to copy %d bytes from cache: %w", num, err)
 	}
 
-	return num, nil
+	fullCachePath := c.makeFullFilename()
+
+	b := make([]byte, totalSize)
+
+	cachedRead := cacheReadTimerFactory.Begin()
+	bytesRead, err := c.copyFullFileFromCache(fullCachePath, b)
+	if err == nil {
+		if bytesRead != totalSize {
+			zap.L().Warn("cache file size mismatch",
+				zap.Int64("expected", totalSize),
+				zap.Int64("actual", bytesRead))
+		}
+		cachedRead.End(ctx, bytesRead)
+		written, err := dst.Write(b)
+		return int64(written), err
+	}
+
+	if !errors.Is(err, os.ErrNotExist) { // only log on unexpected errors; IsNotExist is expected when the file has not been cached
+		zap.L().Warn("failed to read cached full file, falling back to remote read",
+			zap.String("full_cache_path", fullCachePath),
+			zap.String("path", c.path),
+			zap.Error(err))
+	}
+
+	writer := bytes.NewBuffer(make([]byte, 0, totalSize))
+
+	bytesWritten, err := c.inner.WriteTo(ctx, writer)
+	if ignoreEOF(err) != nil {
+		return 0, err
+	}
+
+	if totalSize != bytesWritten {
+		zap.L().Warn("remote read too short",
+			zap.Int64("expected", totalSize),
+			zap.Int64("actual", bytesWritten))
+	}
+
+	go func() {
+		c.writeFullFileToCache(context.WithoutCancel(ctx), fullCachePath, writer.Bytes())
+	}()
+
+	written, err := dst.Write(writer.Bytes())
+	return int64(written), err
 }
 
-func (c *CachedFileObjectProvider) ReadAt(buff []byte, offset int64) (int, error) {
-	var err error
+func (c *CachedFileObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
+	return c.inner.WriteFromFileSystem(ctx, path)
+}
 
-	if err = c.validateReadAtParams(int64(len(buff)), offset); err != nil {
-		return 0, fmt.Errorf("invalid ReadAt: %w", err)
+func (c *CachedFileObjectProvider) Write(ctx context.Context, src []byte) (int, error) {
+	return c.inner.Write(ctx, src)
+}
+
+func (c *CachedFileObjectProvider) ReadAt(ctx context.Context, buff []byte, offset int64) (int, error) {
+	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.ReadAt", trace.WithAttributes(
+		attribute.Int64("offset", offset),
+		attribute.Int("buff_len", len(buff)),
+	))
+	defer span.End()
+
+	if err := c.validateReadAtParams(int64(len(buff)), offset); err != nil {
+		return 0, err
 	}
 
-	// try to read from local cache first
+	// try to read from cache first
 	chunkPath := c.makeChunkFilename(offset)
 
-	var fp *os.File
-	fp, err = os.Open(chunkPath)
-	if err == nil {
-		defer cleanup("failed to close chunk", fp)
-		count, err := fp.ReadAt(buff, 0) // offset is in the filename
-		return count, ignoreEOF(err)
+	readTimer := cacheReadTimerFactory.Begin()
+	count, err := c.readAtFromCache(chunkPath, buff)
+	if ignoreEOF(err) == nil {
+		readTimer.End(ctx, int64(count))
+		return count, err // return `err` in case it's io.EOF
 	}
-	cacheDoesNotExist := os.IsNotExist(err)
+
+	zap.L().Debug("failed to read cached chunk, falling back to remote read",
+		zap.String("chunk_path", chunkPath),
+		zap.Int64("offset", offset),
+		zap.Error(err))
 
 	// read remote file
-	readCount, err := c.inner.ReadAt(buff, offset)
+	readCount, err := c.inner.ReadAt(ctx, buff, offset)
 	if err != nil {
 		return 0, fmt.Errorf("failed to perform uncached read: %w", err)
 	}
 
-	if cacheDoesNotExist {
-		go c.writeBytesToLocal(offset, chunkPath, buff[:readCount])
-	}
+	go func() {
+		c.writeChunkToCache(context.WithoutCancel(ctx), offset, chunkPath, buff[:readCount])
+	}()
 
 	return readCount, nil
 }
@@ -185,24 +220,29 @@ func (c *CachedFileObjectProvider) validateReadAtParams(buffSize, offset int64) 
 	return nil
 }
 
-func (c *CachedFileObjectProvider) Size() (int64, error) {
+func (c *CachedFileObjectProvider) Size(ctx context.Context) (int64, error) {
 	// we don't have a mechanism to store file size confidently, and this should be really cheap,
 	// let's just let the remote handle it.
-	return c.inner.Size()
+	return c.inner.Size(ctx)
 }
 
-func (c *CachedFileObjectProvider) Delete() error {
-	go func() {
-		if err := os.RemoveAll(c.path); ignoreFileMissingError(err) != nil {
-			zap.L().Error("error on cache delete", zap.String("path", c.path), zap.Error(err))
-		}
-	}()
+func (c *CachedFileObjectProvider) Delete(ctx context.Context) error {
+	return c.inner.Delete(ctx)
+}
 
-	return c.inner.Delete()
+func (c *CachedFileObjectProvider) makeTempFullFilename() string {
+	tempFilename := uuid.NewString()
+
+	return fmt.Sprintf("%s/.temp.content.bin.%s", c.path, tempFilename)
+}
+
+func (c *CachedFileObjectProvider) makeFullFilename() string {
+	return fmt.Sprintf("%s/content.bin", c.path)
 }
 
 func (c *CachedFileObjectProvider) makeTempChunkFilename(offset int64) string {
 	tempFilename := uuid.NewString()
+
 	return fmt.Sprintf("%s/.temp.%012d-%d.bin.%s", c.path, offset/c.chunkSize, c.chunkSize, tempFilename)
 }
 
@@ -210,192 +250,105 @@ func (c *CachedFileObjectProvider) makeChunkFilename(offset int64) string {
 	return fmt.Sprintf("%s/%012d-%d.bin", c.path, offset/c.chunkSize, c.chunkSize)
 }
 
-func (c *CachedFileObjectProvider) copyChunkToStream(offset int64, dst io.Writer) error {
-	chunkPath := c.makeChunkFilename(offset)
-	chunk, err := os.Open(chunkPath)
-	if errors.Is(err, os.ErrNotExist) {
-		if _, err = c.copyAndCacheBlock(chunkPath, offset, dst); err != nil {
-			return fmt.Errorf("failed to write data to cache: %w", err)
-		}
-		return nil
-	} else if err != nil {
-		return fmt.Errorf("failed to open cache file %s: %w", chunkPath, err)
-	}
-	defer cleanup("failed to close chunk file", chunk)
-
-	if _, err = io.Copy(dst, chunk); err != nil {
-		return fmt.Errorf("failed to copy cached chunk %s: %w", chunkPath, err)
-	}
-
-	return nil
-}
-
-func (c *CachedFileObjectProvider) copyAndCacheBlock(blockCachePath string, offset int64, dst io.Writer) (int64, error) {
-	tempFile := c.makeTempChunkFilename(offset)
-
-	cache, err := os.OpenFile(tempFile, os.O_WRONLY|os.O_CREATE, cacheFilePermissions)
-	if err != nil {
-		return 0, fmt.Errorf("failed to open file %s: %w", tempFile, err)
-	}
-	defer cleanup("failed to close file", cache)
-
-	dst = io.MultiWriter(cache, dst)
-	if _, err := c.inner.WriteTo(dst); err != nil {
-		return 0, fmt.Errorf("failed to write to cache %s: %w", tempFile, err)
-	}
-
-	if err = os.Rename(tempFile, blockCachePath); err != nil {
-		zap.L().Error("failed to rename cache file",
-			zap.String("from_path", tempFile),
-			zap.String("to_path", blockCachePath),
-			zap.Int64("offset", offset),
-			zap.Error(err),
-		)
-	}
-
-	return offset, nil
-}
-
-func (c *CachedFileObjectProvider) writeCacheAndRemote(src []byte) (int, error) {
-	var err error
-
-	size := int64(len(src))
-	for offset := int64(0); int(offset) < len(src); offset += c.chunkSize {
-		// read from the source
-		offsetEnd := min(offset+c.chunkSize, size)
-		buf := src[offset:offsetEnd]
-
-		// write to the cache file
-		tempPath := c.makeTempChunkFilename(offset)
-		if err = os.WriteFile(tempPath, buf[:], cacheFilePermissions); err != nil {
-			return 0, fmt.Errorf("failed to write to local file %q: %w", tempPath, err)
-		}
-
-		realPath := c.makeChunkFilename(offset)
-		if err = os.Rename(tempPath, realPath); err != nil {
-			return 0, fmt.Errorf("failed to rename file (%q to %q): %w", tempPath, realPath, err)
-		}
-	}
-
-	if _, err = c.inner.Write(src); err != nil {
-		return 0, fmt.Errorf("failed to remote write from byte array: %w", err)
-	}
-
-	return int(size), nil
-}
-
-func (c *CachedFileObjectProvider) writeBytesToLocal(offset int64, chunkPath string, bytes []byte) {
-	var err error
+func (c *CachedFileObjectProvider) writeChunkToCache(ctx context.Context, offset int64, chunkPath string, bytes []byte) {
+	writeTimer := cacheWriteTimerFactory.Begin()
 
 	tempPath := c.makeTempChunkFilename(offset)
 
-	if err = os.WriteFile(tempPath, bytes, cacheFilePermissions); err != nil {
+	if err := os.WriteFile(tempPath, bytes, cacheFilePermissions); err != nil {
+		zap.L().Error("failed to write temp cache file",
+			zap.String("tempPath", tempPath),
+			zap.String("chunkPath", chunkPath),
+			zap.Int64("offset", offset),
+			zap.Int("length", len(bytes)),
+			zap.Error(err),
+		)
+
+		return
+	}
+
+	if err := moveWithoutReplace(tempPath, chunkPath); err != nil {
+		zap.L().Error("failed to rename temp file",
+			zap.String("tempPath", tempPath),
+			zap.String("chunkPath", chunkPath),
+			zap.Int64("offset", offset),
+			zap.Int("length", len(bytes)),
+			zap.Error(err),
+		)
+
+		return
+	}
+
+	writeTimer.End(ctx, int64(len(bytes)))
+}
+
+func (c *CachedFileObjectProvider) writeFullFileToCache(ctx context.Context, filePath string, b []byte) {
+	begin := cacheWriteTimerFactory.Begin()
+
+	tempPath := c.makeTempFullFilename()
+
+	if err := os.WriteFile(tempPath, b, cacheFilePermissions); err != nil {
 		zap.L().Error("failed to write temp cache file",
 			zap.String("path", tempPath),
-			zap.Int64("offset", offset),
-			zap.Int("length", len(bytes)),
+			zap.Int("length", len(b)),
 			zap.Error(err),
 		)
+
 		return
 	}
 
-	if err = os.Rename(tempPath, chunkPath); err != nil {
+	if err := moveWithoutReplace(tempPath, filePath); err != nil {
 		zap.L().Error("failed to rename temp file",
-			zap.String("path", tempPath),
-			zap.Int64("offset", offset),
-			zap.Int("length", len(bytes)),
+			zap.String("tempPath", tempPath),
+			zap.String("filePath", filePath),
+			zap.Int("length", len(b)),
 			zap.Error(err),
 		)
+
 		return
 	}
+
+	begin.End(ctx, int64(len(b)))
 }
 
-func (c *CachedFileObjectProvider) createCacheBlocksFromFile(inputPath string) error {
-	var err error
-
-	// open the input file
-	input, err := os.Open(inputPath)
+func (c *CachedFileObjectProvider) readAtFromCache(chunkPath string, buff []byte) (int, error) {
+	var fp *os.File
+	fp, err := os.Open(chunkPath)
 	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
+		return 0, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer cleanup("failed to close file", input)
 
-	// get input file info
-	stat, err := input.Stat()
+	defer cleanup("failed to close chunk", fp)
+
+	count, err := fp.ReadAt(buff, 0) // offset is in the filename
+	if ignoreEOF(err) != nil {
+		return 0, fmt.Errorf("failed to read from chunk: %w", err)
+	}
+
+	return count, err // return `err` in case it's io.EOF
+}
+
+func (c *CachedFileObjectProvider) copyFullFileFromCache(filePath string, buff []byte) (int64, error) {
+	var fp *os.File
+	fp, err := os.Open(filePath)
 	if err != nil {
-		return fmt.Errorf("failed to get file size: %w", err)
+		return 0, fmt.Errorf("failed to open file: %w", err)
 	}
 
-	// write the chunks to disk in parallel
-	totalSize := stat.Size()
-	var errs errgroup.Group
-	errs.SetLimit(10) // set a goroutine limit
-	for offset := int64(0); offset < totalSize; offset += c.chunkSize {
-		func(offset, totalSize int64) {
-			errs.Go(func() error {
-				return c.writeChunkFromFile(offset, totalSize, input)
-			})
-		}(offset, totalSize)
-	}
-	return errs.Wait()
-}
+	defer cleanup("failed to close chunk", fp)
 
-const fileReadBufferSize = 32 * 1024 // pulled from implementation of io.Copy
-
-func (c *CachedFileObjectProvider) writeChunkFromFile(offset int64, fileSize int64, input *os.File) error {
-	var err error
-
-	tempPath := c.makeTempChunkFilename(offset)
-
-	output, err := os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE, cacheFilePermissions)
+	count, err := io.ReadFull(fp, buff)
 	if err != nil {
-		return fmt.Errorf("failed to open file %s: %w", tempPath, err)
-	}
-	defer cleanup("failed to close file", output)
-
-	expectedRead := min(c.chunkSize, fileSize-offset)
-	totalBytesRead := int64(0)
-	buffer := make([]byte, min(fileReadBufferSize, expectedRead))
-	for totalBytesRead < expectedRead {
-		readSize := min(fileReadBufferSize, expectedRead-totalBytesRead)
-		currentBytesRead, err := input.ReadAt(buffer[:readSize], offset+totalBytesRead)
-		if err != nil {
-			return fmt.Errorf("failed to read from input [chunk=%d bytes, offset=%d, filesize=%d bytes, read=%d/%d]: %w",
-				c.chunkSize, offset, fileSize, totalBytesRead, expectedRead, err)
-		} else if currentBytesRead == 0 {
-			return fmt.Errorf("empty read at %d+%d", offset, totalBytesRead)
-		}
-		if _, err = output.Write(buffer[:currentBytesRead]); err != nil {
-			return fmt.Errorf("failed to write to %q [offset=%d, filesize=%d bytes, read=%d/%d]: %w",
-				tempPath, offset, fileSize, totalBytesRead, expectedRead, err)
-		}
-		totalBytesRead += int64(currentBytesRead)
+		return 0, fmt.Errorf("failed to read from chunk: %w", err)
 	}
 
-	chunkPath := c.makeChunkFilename(offset)
-	if err = os.Rename(tempPath, chunkPath); err != nil {
-		return fmt.Errorf("failed to rename file (%s -> %s): %w", tempPath, chunkPath, err)
-	}
-
-	return nil
+	return int64(count), err
 }
 
-type closeable interface {
-	Close() error
-}
-
-func cleanup(msg string, input closeable) {
+func cleanup(msg string, input interface{ Close() error }) {
 	if err := input.Close(); err != nil {
 		zap.L().Warn(msg, zap.Error(err))
 	}
-}
-
-func ignoreFileMissingError(err error) error {
-	if os.IsNotExist(err) {
-		return nil
-	}
-
-	return err
 }
 
 func ignoreEOF(err error) error {
@@ -403,4 +356,25 @@ func ignoreEOF(err error) error {
 		return nil
 	}
 	return err
+}
+
+// moveWithoutReplace tries to rename a file but will not replace the target if it already exists.
+// If the file already exists, the file will be deleted.
+func moveWithoutReplace(oldPath, newPath string) error {
+	defer func() {
+		if err := os.Remove(oldPath); err != nil {
+			zap.L().Warn("failed to remove existing file", zap.Error(err))
+		}
+	}()
+
+	if err := os.Link(oldPath, newPath); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			// Someone else created newPath first. Treat as success.
+			return nil
+		}
+
+		return err
+	}
+
+	return nil
 }

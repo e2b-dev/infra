@@ -86,7 +86,7 @@ init:
 
 	$(TF) init -input=false -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
 	$(tf_vars) $(TF) apply -target=module.init -target=module.buckets -auto-approve -input=false -compact-warnings
-	$(MAKE) -C packages/cluster-disk-image init build
+	TERRAFORM_STATE_BUCKET="$(TERRAFORM_STATE_BUCKET)" $(MAKE) -C packages/cluster-disk-image init build
 	gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
 # Setup production environment variables, this is used only for E2B.dev production
@@ -230,7 +230,7 @@ generate-tests/%:
 
 .PHONY: migrate
 migrate:
-	$(MAKE) -C packages/db migrate/up
+	$(MAKE) -C packages/db migrate
 
 .PHONY: switch-env
 switch-env:
@@ -278,3 +278,11 @@ fmt:
 lint:
 	@./scripts/golangci-lint-install.sh "2.1.6"
 	go work edit -json | jq -r '.Use[].DiskPath'  | xargs -I{} golangci-lint run {}/... --fix
+
+.PHONY: generate-mocks
+generate-mocks:
+	go run github.com/vektra/mockery/v3@v3.5.0
+
+.PHONY: tidy
+tidy:
+	scripts/golang-dependencies-integrity.sh

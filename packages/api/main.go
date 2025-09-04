@@ -20,7 +20,6 @@ import (
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-contrib/cors"
 	limits "github.com/gin-contrib/size"
-	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	middleware "github.com/oapi-codegen/gin-middleware"
@@ -42,6 +41,7 @@ import (
 )
 
 const (
+	serviceVersion     = "1.0.0"
 	serviceName        = "orchestration-api"
 	maxMultipartMemory = 1 << 27 // 128 MiB
 	maxUploadLimit     = 1 << 28 // 256 MiB
@@ -141,6 +141,8 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 			}),
 	)
 
+	r.Use(customMiddleware.InitLaunchDarklyContext)
+
 	r.Use(
 		// Request logging must be executed after authorization (if required) is done,
 		// so that we can log team ID.
@@ -159,7 +161,11 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 					reqLogger = logger.With(l.WithTeamID(teamID))
 				}
 
-				ginzap.Ginzap(reqLogger, time.RFC3339Nano, true)(c)
+				customMiddleware.LoggingMiddleware(reqLogger, customMiddleware.Config{
+					TimeFormat:   time.RFC3339Nano,
+					UTC:          true,
+					DefaultLevel: zap.InfoLevel,
+				})(c)
 			},
 			"/health",
 			"/sandboxes/:sandboxID/refreshes",
@@ -210,13 +216,15 @@ func run() int {
 	flag.StringVar(&debug, "debug", "false", "is debug")
 	flag.Parse()
 
-	instanceID := uuid.New().String()
+	serviceInstanceID := uuid.New().String()
+	nodeID := env.GetNodeID()
+
 	var tel *telemetry.Client
 	if telemetry.OtelCollectorGRPCEndpoint == "" {
 		tel = telemetry.NewNoopClient()
 	} else {
 		var err error
-		tel, err = telemetry.New(ctx, serviceName, commitSHA, instanceID)
+		tel, err = telemetry.New(ctx, nodeID, serviceName, commitSHA, serviceVersion, serviceInstanceID)
 		if err != nil {
 			zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
 		}
@@ -275,7 +283,7 @@ func run() int {
 		logger.Fatal("failed to check migration version", zap.Error(err))
 	}
 
-	logger.Info("Starting API service...", zap.String("commit_sha", commitSHA), zap.String("instance_id", instanceID))
+	logger.Info("Starting API service...", zap.String("commit_sha", commitSHA), l.WithServiceInstanceID(serviceInstanceID))
 	if debug != "true" {
 		gin.SetMode(gin.ReleaseMode)
 	}

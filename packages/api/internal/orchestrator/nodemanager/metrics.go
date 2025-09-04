@@ -40,10 +40,14 @@ func (n *Node) UpdateMetricsFromServiceInfoResponse(info *orchestratorinfo.Servi
 
 	// Update host total metrics
 	n.metrics.CpuCount = info.MetricCpuCount
-	n.metrics.MemoryTotalBytes = (info.MetricMemoryTotalBytes)
+	n.metrics.MemoryTotalBytes = info.MetricMemoryTotalBytes
+
+	// Update allocated resources
+	n.metrics.CpuAllocated = info.MetricCpuAllocated
+	n.metrics.MemoryAllocatedBytes = info.MetricMemoryAllocatedBytes
 
 	// Update total sandbox count
-	n.metrics.SandboxCount = (info.MetricSandboxesRunning)
+	n.metrics.SandboxCount = info.MetricSandboxesRunning
 
 	// Update detailed disk metrics
 	disks := info.MetricDisks

@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/posthog/posthog-go"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -27,13 +26,6 @@ const cacheSyncTime = 20 * time.Second
 // This timeout is also set in the CloudRun for Analytics Collector, there it is 3 minutes.
 const reportTimeout = 4 * time.Minute
 
-type closeType string
-
-const (
-	ClosePause  closeType = "pause"
-	CloseDelete closeType = "delete"
-)
-
 func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, error) {
 	item, err := o.instanceCache.Get(sandboxID)
 	if err != nil {
@@ -44,10 +36,10 @@ func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, err
 }
 
 // keepInSync the cache with the actual instances in Orchestrator to handle instances that died.
-func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.InstanceCache) {
+func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.InstanceCache, skipSyncingWithNomad bool) {
 	// Run the first sync immediately
 	zap.L().Info("Running the initial node sync")
-	o.syncNodes(ctx, instanceCache)
+	o.syncNodes(ctx, instanceCache, skipSyncingWithNomad)
 
 	// Sync the nodes every cacheSyncTime
 	ticker := time.NewTicker(cacheSyncTime)
@@ -59,25 +51,32 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 			zap.L().Info("Stopping keepInSync")
 			return
 		case <-ticker.C:
-			o.syncNodes(ctx, instanceCache)
+			o.syncNodes(ctx, instanceCache, skipSyncingWithNomad)
 		}
 	}
 }
 
-func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.InstanceCache) {
+func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.InstanceCache, skipSyncingWithNomad bool) {
 	ctxTimeout, cancel := context.WithTimeout(ctx, cacheSyncTime)
 	defer cancel()
 
 	spanCtx, span := o.tracer.Start(ctxTimeout, "keep-in-sync")
 	defer span.End()
 
-	nomadNodes, err := o.listNomadNodes(spanCtx)
-	if err != nil {
-		zap.L().Error("Error listing orchestrator nodes", zap.Error(err))
-		return
-	}
-
 	var wg sync.WaitGroup
+
+	nomadNodes := make([]nodemanager.NomadServiceDiscovery, 0)
+
+	// Optionally, skip syncing from Nomad service discovery
+	if !skipSyncingWithNomad {
+		nomadSD, err := o.listNomadNodes(spanCtx)
+		if err != nil {
+			zap.L().Error("Error listing orchestrator nodes", zap.Error(err))
+			return
+		}
+
+		nomadNodes = nomadSD
+	}
 
 	wg.Add(1)
 	go func() {
@@ -107,7 +106,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 			// cluster and local nodes needs to by synced differently,
 			// because each of them is taken from different source pool
 			var err error
-			if n.ClusterID == uuid.Nil {
+			if n.IsNomadManaged() {
 				err = o.syncNode(syncNodesSpanCtx, n, nomadNodes, instanceCache)
 			} else {
 				err = o.syncClusterNode(syncNodesSpanCtx, n, instanceCache)
@@ -181,9 +180,12 @@ func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.No
 		return fmt.Errorf("cluster not found")
 	}
 
-	_, found := cluster.GetInstanceByNodeID(node.ID)
+	// We want to find not just node, but explicitly node with expected service instance ID
+	// because node can stay same and instance id will change after node restart, witch should trigger node de-registration from pool.
+	instanceID := node.Metadata().ServiceInstanceID
+	_, found := cluster.GetByServiceInstanceID(instanceID)
 	if !found {
-		return fmt.Errorf("node instance not found")
+		return fmt.Errorf("node instance not found with instance ID '%s'", instanceID)
 	}
 
 	// Unified call for syncing node state across different node types
@@ -224,23 +226,18 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		ctx, cancel := context.WithTimeout(parentCtx, timeout)
 		defer cancel()
 
+		evictionType := info.OnEviction()
+
 		sbxlogger.I(info).Debug("Deleting sandbox from cache hook",
 			zap.Time("start_time", info.StartTime),
 			zap.Time("end_time", info.GetEndTime()),
-			zap.Bool("auto_pause", info.AutoPause.Load()),
+			zap.String("eviction_type", string(evictionType)),
 		)
 
 		defer o.instanceCache.UnmarkAsPausing(info)
 
 		duration := time.Since(info.StartTime).Seconds()
 		stopTime := time.Now()
-
-		var ct closeType
-		if info.AutoPause.Load() {
-			ct = ClosePause
-		} else {
-			ct = CloseDelete
-		}
 
 		// Run in separate goroutine to not block sandbox deletion
 		// Also use parentCtx to not cancel the request with this hook timeout
@@ -256,7 +253,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			info.RamMB,
 			info.TotalDiskSizeMB,
 			stopTime,
-			ct,
+			evictionType,
 			duration,
 		)
 
@@ -269,7 +266,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		node.RemoveSandbox(info)
 		o.dns.Remove(ctx, info.SandboxID, node.IPAddress)
 
-		if ct == ClosePause {
+		if evictionType == instance.EvictionPause {
 			o.instanceCache.MarkAsPausing(info)
 
 			err := o.PauseInstance(ctx, info, info.TeamID)
@@ -295,7 +292,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		sbxlogger.I(info).Debug("Deleted sandbox from cache hook",
 			zap.Time("start_time", info.StartTime),
 			zap.Time("end_time", info.GetEndTime()),
-			zap.Bool("auto_pause", info.AutoPause.Load()),
+			zap.Bool("auto_pause", info.AutoPause),
 		)
 
 		return nil
@@ -314,7 +311,7 @@ func reportInstanceStopAnalytics(
 	ramMB int64,
 	diskSizeMB int64,
 	stopTime time.Time,
-	ct closeType,
+	evictionType instance.OnEvictionType,
 	duration float64,
 ) {
 	childCtx, cancel := context.WithTimeout(ctx, reportTimeout)
@@ -325,7 +322,7 @@ func reportInstanceStopAnalytics(
 		"closed_instance", posthog.NewProperties().
 			Set("instance_id", sandboxID).
 			Set("environment", templateID).
-			Set("type", ct).
+			Set("type", evictionType).
 			Set("duration", duration),
 	)
 
@@ -353,7 +350,7 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 		sbxlogger.I(info).Debug("Inserting sandbox to cache hook",
 			zap.Time("start_time", info.StartTime),
 			zap.Time("end_time", info.GetEndTime()),
-			zap.Bool("auto_pause", info.AutoPause.Load()),
+			zap.Bool("auto_pause", info.AutoPause),
 		)
 
 		node := o.GetNode(info.ClusterID, info.NodeID)
@@ -367,7 +364,7 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 
 		o.teamMetricsObserver.Add(ctx, info.TeamID, created)
 
-		if info.AutoPause.Load() {
+		if info.AutoPause {
 			o.instanceCache.MarkAsPausing(info)
 		}
 
@@ -391,7 +388,7 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 		sbxlogger.I(info).Debug("Inserted sandbox to cache hook",
 			zap.Time("start_time", info.StartTime),
 			zap.Time("end_time", info.GetEndTime()),
-			zap.Bool("auto_pause", info.AutoPause.Load()),
+			zap.Bool("auto_pause", info.AutoPause),
 		)
 
 		return nil

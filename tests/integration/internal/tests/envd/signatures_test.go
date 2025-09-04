@@ -39,7 +39,7 @@ func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {
 		setup.WithSandbox(sbx.JSON201.SandboxID),
 	)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, writeRes.StatusCode())
 
 	getRes, err := envdClient.HTTPClient.GetFilesWithResponse(
@@ -48,7 +48,7 @@ func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {
 		setup.WithSandbox(sbx.JSON201.SandboxID),
 	)
 
-	require.Nil(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, getRes.StatusCode())
 }
 
@@ -81,7 +81,7 @@ func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
 		setup.WithEnvdAccessToken(*envdToken),
 	)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, writeRes.StatusCode())
 
 	readRes, readErr := envdClient.HTTPClient.GetFiles(
@@ -89,8 +89,8 @@ func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
 		&envdapi.GetFilesParams{Path: &filePath, Username: "user"},
 		setup.WithSandbox(sbx.JSON201.SandboxID),
 	)
-	require.Nil(t, readErr)
-	assert.NoError(t, readRes.Body.Close())
+	require.NoError(t, readErr)
+	require.NoError(t, readRes.Body.Close())
 	assert.Equal(t, http.StatusUnauthorized, readRes.StatusCode)
 }
 
@@ -123,7 +123,7 @@ func TestDownloadFileWithSigningWhenAuthIsEnabled(t *testing.T) {
 		setup.WithSandbox(sbx.JSON201.SandboxID),
 	)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, writeRes.StatusCode())
 
 	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
@@ -132,7 +132,7 @@ func TestDownloadFileWithSigningWhenAuthIsEnabled(t *testing.T) {
 		setup.WithSandbox(sbx.JSON201.SandboxID),
 	)
 
-	require.Nil(t, readErr)
+	require.NoError(t, readErr)
 	assert.Equal(t, http.StatusOK, readRes.StatusCode())
 	assert.Equal(t, "Hello, World!", string(readRes.Body))
 }
@@ -165,9 +165,9 @@ func TestDownloadWithAlreadyExpiredToken(t *testing.T) {
 		setup.WithSandbox(sbx.JSON201.SandboxID),
 	)
 
-	require.Nil(t, readErr)
+	require.NoError(t, readErr)
 	assert.Equal(t, http.StatusUnauthorized, readRes.StatusCode())
-	assert.Equal(t, "{\"code\":401,\"message\":\"signature is already expired\"}\n", string(readRes.Body))
+	assert.JSONEq(t, "{\"code\":401,\"message\":\"signature is already expired\"}\n", string(readRes.Body))
 }
 
 func TestDownloadWithHealthyToken(t *testing.T) {
@@ -198,9 +198,9 @@ func TestDownloadWithHealthyToken(t *testing.T) {
 		setup.WithSandbox(sbx.JSON201.SandboxID),
 	)
 
-	require.Nil(t, readErr)
+	require.NoError(t, readErr)
 	assert.Equal(t, http.StatusNotFound, readRes.StatusCode())
-	assert.Equal(t, "{\"code\":404,\"message\":\"path '/home/user/demo/test.txt' does not exist\"}\n", string(readRes.Body))
+	assert.JSONEq(t, "{\"code\":404,\"message\":\"path '/home/user/demo/test.txt' does not exist\"}\n", string(readRes.Body))
 }
 
 func TestAccessWithNotCorrespondingSignatureAndSignatureExpiration(t *testing.T) {
@@ -231,9 +231,9 @@ func TestAccessWithNotCorrespondingSignatureAndSignatureExpiration(t *testing.T)
 		setup.WithSandbox(sbx.JSON201.SandboxID),
 	)
 
-	require.Nil(t, readErr)
+	require.NoError(t, readErr)
 	assert.Equal(t, http.StatusUnauthorized, readRes.StatusCode())
-	assert.Equal(t, "{\"code\":401,\"message\":\"invalid signature\"}\n", string(readRes.Body))
+	assert.JSONEq(t, "{\"code\":401,\"message\":\"invalid signature\"}\n", string(readRes.Body))
 }
 
 func generateSignature(path string, username string, operation string, signatureExpiration *int64, accessToken string) string {

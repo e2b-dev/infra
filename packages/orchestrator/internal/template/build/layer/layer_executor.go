@@ -25,6 +25,7 @@ type LayerExecutor struct {
 	buildcontext.BuildContext
 
 	tracer trace.Tracer
+	logger *zap.Logger
 
 	networkPool     *network.Pool
 	devicePool      *nbd.DevicePool
@@ -38,6 +39,7 @@ type LayerExecutor struct {
 
 func NewLayerExecutor(
 	buildContext buildcontext.BuildContext,
+	logger *zap.Logger,
 	tracer trace.Tracer,
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
@@ -51,6 +53,7 @@ func NewLayerExecutor(
 	return &LayerExecutor{
 		BuildContext: buildContext,
 
+		logger: logger,
 		tracer: tracer,
 
 		networkPool:     networkPool,
@@ -72,13 +75,7 @@ func (lb *LayerExecutor) BuildLayer(
 	ctx, childSpan := lb.tracer.Start(ctx, "run-in-sandbox")
 	defer childSpan.End()
 
-	localTemplate, err := lb.templateCache.GetTemplate(
-		ctx,
-		cmd.SourceTemplate.BuildID,
-		cmd.SourceTemplate.KernelVersion,
-		cmd.SourceTemplate.FirecrackerVersion,
-		false,
-	)
+	localTemplate, err := cmd.SourceTemplate.Get(ctx, lb.templateCache)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("get template snapshot: %w", err)
 	}
@@ -88,7 +85,7 @@ func (lb *LayerExecutor) BuildLayer(
 	if err != nil {
 		return metadata.Template{}, err
 	}
-	defer sbx.Stop(ctx)
+	defer sbx.Close(ctx)
 
 	// Add to proxy so we can call envd commands
 	lb.sandboxes.Insert(sbx.Runtime.SandboxID, sbx)

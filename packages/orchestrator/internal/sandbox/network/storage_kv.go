@@ -14,14 +14,14 @@ import (
 type StorageKV struct {
 	slotsSize    int
 	consulClient *consulApi.Client
-	clientID     string
+	nodeID       string
 }
 
 func (s *StorageKV) getKVKey(slotIdx int) string {
-	return fmt.Sprintf("%s/%d", s.clientID, slotIdx)
+	return fmt.Sprintf("%s/%d", s.nodeID, slotIdx)
 }
 
-func NewStorageKV(slotsSize int, clientID string) (*StorageKV, error) {
+func NewStorageKV(slotsSize int, nodeID string) (*StorageKV, error) {
 	consulToken := utils.RequiredEnv("CONSUL_TOKEN", "Consul token for authenticating requests to the Consul API")
 
 	consulClient, err := newConsulClient(consulToken)
@@ -32,7 +32,7 @@ func NewStorageKV(slotsSize int, clientID string) (*StorageKV, error) {
 	return &StorageKV{
 		slotsSize:    slotsSize,
 		consulClient: consulClient,
-		clientID:     clientID,
+		nodeID:       nodeID,
 	}, nil
 }
 
@@ -89,7 +89,7 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 		// This is a fallback for the case when all slots are taken.
 		// There is no Consul lock so it's possible that multiple sandboxes will try to acquire the same slot.
 		// In this case, only one of them will succeed and other will try with different slots.
-		reservedKeys, _, keysErr := kv.Keys(s.clientID+"/", "", nil)
+		reservedKeys, _, keysErr := kv.Keys(s.nodeID+"/", "", nil)
 		if keysErr != nil {
 			return nil, fmt.Errorf("failed to read Consul KV: %w", keysErr)
 		}

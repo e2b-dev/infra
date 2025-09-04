@@ -48,11 +48,16 @@ func (d *DeviceWithClose) Header() *header.Header {
 		panic(err)
 	}
 
-	return header.NewHeader(header.NewTemplateMetadata(
+	h, err := header.NewHeader(header.NewTemplateMetadata(
 		uuid.New(),
 		uint64(blockSize),
 		uint64(size),
 	), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return h
 }
 
 func main() {
@@ -146,7 +151,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool
 	}()
 
 	tracer := otel.Tracer("test")
-	mnt = nbd.NewDirectPathMount(tracer, device, devicePool)
+	mnt = nbd.NewDirectPathMount(ctx, tracer, device, devicePool)
 
 	go func() {
 		<-ctx.Done()

@@ -6,7 +6,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -54,12 +53,4 @@ func GetOrchestratorServicePort() int {
 	}
 
 	return p
-}
-
-func GetNodeIP() string {
-	return utils.RequiredEnv("NODE_IP", "Node IP of the instance node is required")
-}
-
-func GetNodeID() string {
-	return utils.RequiredEnv("NODE_ID", "Node ID of the instance node is required")
 }

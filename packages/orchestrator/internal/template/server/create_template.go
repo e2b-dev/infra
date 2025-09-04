@@ -11,6 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/builderrors"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci/auth"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -52,19 +53,23 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		cacheScope = *templateRequest.CacheScope
 	}
 
+	// Create the auth provider using the factory
+	authProvider := auth.NewAuthProvider(cfg.FromImageRegistry)
+
 	template := config.TemplateConfig{
-		TemplateID:   cfg.TemplateID,
-		CacheScope:   cacheScope,
-		VCpuCount:    int64(cfg.VCpuCount),
-		MemoryMB:     int64(cfg.MemoryMB),
-		StartCmd:     cfg.StartCommand,
-		ReadyCmd:     cfg.ReadyCommand,
-		DiskSizeMB:   int64(cfg.DiskSizeMB),
-		HugePages:    cfg.HugePages,
-		FromImage:    cfg.GetFromImage(),
-		FromTemplate: cfg.GetFromTemplate(),
-		Force:        cfg.Force,
-		Steps:        cfg.Steps,
+		TemplateID:           cfg.TemplateID,
+		CacheScope:           cacheScope,
+		VCpuCount:            int64(cfg.VCpuCount),
+		MemoryMB:             int64(cfg.MemoryMB),
+		StartCmd:             cfg.StartCommand,
+		ReadyCmd:             cfg.ReadyCommand,
+		DiskSizeMB:           int64(cfg.DiskSizeMB),
+		HugePages:            cfg.HugePages,
+		FromImage:            cfg.GetFromImage(),
+		FromTemplate:         cfg.GetFromTemplate(),
+		RegistryAuthProvider: authProvider,
+		Force:                cfg.Force,
+		Steps:                cfg.Steps,
 	}
 
 	logs := cache.NewSafeBuffer()
@@ -82,7 +87,6 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 			{Type: zapcore.StringType, Key: "buildID", String: metadata.BuildID},
 		}),
 	)
-	logger := zap.New(core)
 
 	s.wg.Add(1)
 	go func(ctx context.Context) {
@@ -114,8 +118,8 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 			}
 		}()
 
-		res, err := s.builder.Build(ctx, metadata, template, logger)
-		_ = logger.Sync()
+		res, err := s.builder.Build(ctx, metadata, template, core)
+		_ = core.Sync()
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error while building template", err)
 

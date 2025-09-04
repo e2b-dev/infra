@@ -61,7 +61,7 @@ func TestSandboxResumeUnknownSandbox(t *testing.T) {
 	})
 
 	assert.Equal(t, http.StatusNotFound, sbxResume.StatusCode())
-	assert.Equal(t, "{\"code\":404,\"message\":\"Sandbox snapshot not found\"}", string(sbxResume.Body))
+	assert.JSONEq(t, "{\"code\":404,\"message\":\"Sandbox snapshot not found\"}", string(sbxResume.Body))
 }
 
 func TestSandboxResumeWithSecuredEnvd(t *testing.T) {

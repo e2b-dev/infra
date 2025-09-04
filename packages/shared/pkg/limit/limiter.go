@@ -16,8 +16,8 @@ type Limiter struct {
 	closeOnce sync.Once
 }
 
-func New(featureFlags *featureflags.Client) (*Limiter, error) {
-	uploadLimiter, err := utils.NewAdjustableSemaphore(int64(featureFlags.IntFlagDefault(featureflags.GcloudConcurrentUploadLimit)))
+func New(ctx context.Context, featureFlags *featureflags.Client) (*Limiter, error) {
+	uploadLimiter, err := utils.NewAdjustableSemaphore(int64(featureflags.GcloudConcurrentUploadLimit.Fallback()))
 	if err != nil {
 		return nil, err
 	}
@@ -28,7 +28,7 @@ func New(featureFlags *featureflags.Client) (*Limiter, error) {
 		done:                make(chan struct{}),
 	}
 
-	go l.UpdateUploadLimitSemaphore()
+	go l.UpdateUploadLimitSemaphore(ctx)
 
 	return l, nil
 }

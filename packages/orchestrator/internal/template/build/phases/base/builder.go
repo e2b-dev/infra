@@ -8,10 +8,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -24,11 +27,10 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -45,11 +47,14 @@ const (
 	defaultUser = "root"
 )
 
+var tracer = otel.Tracer("orchestrator.template.build.phases.base")
+
 type BaseBuilder struct {
 	buildcontext.BuildContext
 
 	logger *zap.Logger
 	tracer trace.Tracer
+	proxy  *proxy.SandboxProxy
 
 	templateStorage  storage.StorageProvider
 	devicePool       *nbd.DevicePool
@@ -65,6 +70,7 @@ func New(
 	buildContext buildcontext.BuildContext,
 	logger *zap.Logger,
 	tracer trace.Tracer,
+	proxy *proxy.SandboxProxy,
 	templateStorage storage.StorageProvider,
 	devicePool *nbd.DevicePool,
 	networkPool *network.Pool,
@@ -78,6 +84,7 @@ func New(
 
 		logger: logger,
 		tracer: tracer,
+		proxy:  proxy,
 
 		templateStorage:  templateStorage,
 		devicePool:       devicePool,
@@ -125,6 +132,11 @@ func (bb *BaseBuilder) Build(
 	_ phases.LayerResult,
 	currentLayer phases.LayerResult,
 ) (phases.LayerResult, error) {
+	ctx, span := tracer.Start(ctx, "build base", trace.WithAttributes(
+		attribute.String("hash", currentLayer.Hash),
+	))
+	defer span.End()
+
 	baseMetadata, err := bb.buildLayerFromOCI(
 		ctx,
 		currentLayer.Metadata,
@@ -256,56 +268,45 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 
 	// TODO: Temporarily set this based on global config, should be removed later (it should be passed as a parameter in build)
 	baseSbxConfig.AllowInternetAccess = &globalconfig.AllowSandboxInternet
-	sourceSbx, err := sandbox.CreateSandbox(
-		ctx,
-		bb.tracer,
-		bb.networkPool,
-		bb.devicePool,
+
+	sandboxCreator := layer.NewCreateSandboxFromCache(
 		baseSbxConfig,
-		sandbox.RuntimeMetadata{
-			TemplateID:  bb.Config.TemplateID,
-			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
-			ExecutionID: uuid.NewString(),
-		},
+		baseLayerTimeout,
 		fc.FirecrackerVersions{
 			KernelVersion:      bb.Template.KernelVersion,
 			FirecrackerVersion: bb.Template.FirecrackerVersion,
 		},
-		localTemplate,
-		baseLayerTimeout,
 		rootfsPath,
-		fc.ProcessOptions{
-			InitScriptPath:      constants.SystemdInitPath,
-			KernelLogs:          env.IsDevelopment(),
-			SystemdToKernelLogs: false,
-		},
-		nil,
 	)
-	if err != nil {
-		return metadata.Template{}, fmt.Errorf("error creating sandbox: %w", err)
-	}
-	defer sourceSbx.Stop(ctx)
 
-	err = sourceSbx.WaitForEnvd(
-		ctx,
-		bb.tracer,
-		waitEnvdTimeout,
-	)
-	if err != nil {
-		return metadata.Template{}, fmt.Errorf("failed to wait for sandbox start: %w", err)
-	}
+	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error) {
+		err = sandboxtools.SyncChangesToDisk(
+			ctx,
+			bb.tracer,
+			bb.proxy,
+			sbx.Runtime.SandboxID,
+		)
+		if err != nil {
+			return metadata.Template{}, fmt.Errorf("error running sync command: %w", err)
+		}
+		return meta, nil
+	})
 
-	err = bb.layerExecutor.PauseAndUpload(
-		ctx,
-		sourceSbx,
-		hash,
-		baseMetadata,
-	)
+	templateProvider := layer.NewDirectSourceTemplateProvider(localTemplate)
+
+	baseLayer, err := bb.layerExecutor.BuildLayer(ctx, layer.LayerBuildCommand{
+		SourceTemplate: templateProvider,
+		CurrentLayer:   baseMetadata,
+		Hash:           hash,
+		UpdateEnvd:     false,
+		SandboxCreator: sandboxCreator,
+		ActionExecutor: actionExecutor,
+	})
 	if err != nil {
-		return metadata.Template{}, fmt.Errorf("error pausing and uploading template: %w", err)
+		return metadata.Template{}, fmt.Errorf("error building base layer: %w", err)
 	}
 
-	return baseMetadata, nil
+	return baseLayer, nil
 }
 
 func (bb *BaseBuilder) Layer(
@@ -313,6 +314,11 @@ func (bb *BaseBuilder) Layer(
 	_ phases.LayerResult,
 	hash string,
 ) (phases.LayerResult, error) {
+	ctx, span := tracer.Start(ctx, "compute base", trace.WithAttributes(
+		attribute.String("hash", hash),
+	))
+	defer span.End()
+
 	switch {
 	case bb.Config.FromTemplate != nil:
 		sourceMeta := metadata.FromTemplate{

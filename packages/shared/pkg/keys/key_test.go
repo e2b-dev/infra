@@ -6,12 +6,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMaskKey(t *testing.T) {
 	t.Run("succeeds: value longer than suffix length", func(t *testing.T) {
 		masked, err := MaskKey("test_", "1234567890")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, "test_", masked.Prefix)
 		assert.Equal(t, "12", masked.MaskedValuePrefix)
 		assert.Equal(t, "7890", masked.MaskedValueSuffix)
@@ -19,21 +20,21 @@ func TestMaskKey(t *testing.T) {
 
 	t.Run("succeeds: empty prefix, value longer than suffix length", func(t *testing.T) {
 		masked, err := MaskKey("", "1234567890")
-		assert.NoError(t, err)
-		assert.Equal(t, "", masked.Prefix)
+		require.NoError(t, err)
+		assert.Empty(t, masked.Prefix)
 		assert.Equal(t, "12", masked.MaskedValuePrefix)
 		assert.Equal(t, "7890", masked.MaskedValueSuffix)
 	})
 
 	t.Run("error: value length less than suffix length", func(t *testing.T) {
 		_, err := MaskKey("test", "123")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.EqualError(t, err, fmt.Sprintf("mask value length is less than identifier suffix length (%d)", identifierValueSuffixLength))
 	})
 
 	t.Run("error: value length equals suffix length", func(t *testing.T) {
 		_, err := MaskKey("test", "1234")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.EqualError(t, err, fmt.Sprintf("mask value length is equal to identifier suffix length (%d), which would expose the entire identifier in the mask", identifierValueSuffixLength))
 	})
 }
@@ -43,7 +44,7 @@ func TestGenerateKey(t *testing.T) {
 
 	t.Run("succeeds", func(t *testing.T) {
 		key, err := GenerateKey("test_")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Regexp(t, "^test_.*", key.PrefixedRawValue)
 		assert.Equal(t, "test_", key.Masked.Prefix)
 		assert.Equal(t, keyLength, key.Masked.ValueLength)
@@ -54,9 +55,9 @@ func TestGenerateKey(t *testing.T) {
 
 	t.Run("no prefix", func(t *testing.T) {
 		key, err := GenerateKey("")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Regexp(t, "^[0-9a-f]{"+strconv.Itoa(keyLength)+"}$", key.PrefixedRawValue)
-		assert.Equal(t, "", key.Masked.Prefix)
+		assert.Empty(t, key.Masked.Prefix)
 		assert.Equal(t, keyLength, key.Masked.ValueLength)
 		assert.Regexp(t, "^[0-9a-f]{"+strconv.Itoa(identifierValuePrefixLength)+"}$", key.Masked.MaskedValuePrefix)
 		assert.Regexp(t, "^[0-9a-f]{"+strconv.Itoa(identifierValueSuffixLength)+"}$", key.Masked.MaskedValueSuffix)
@@ -138,11 +139,10 @@ func TestGetMaskedIdentifierProperties(t *testing.T) {
 			result, err := MaskKey(tc.prefix, tc.value)
 
 			if tc.expectedErrString != "" {
-				assert.Error(t, err)
-				assert.EqualError(t, err, tc.expectedErrString)
+				require.EqualError(t, err, tc.expectedErrString)
 				assert.Equal(t, tc.expectedResult, result)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tc.expectedResult, result)
 			}
 		})

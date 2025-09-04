@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
@@ -21,7 +22,7 @@ func TestKeyGenerationAlgorithmIsStable(t *testing.T) {
 	timestamp := time.Now().Unix()
 
 	signature, err := api.generateSignature(path, username, operation, &timestamp)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotEmpty(t, signature)
 
 	// locally generated signature
@@ -41,7 +42,7 @@ func TestKeyGenerationAlgorithmWithoutExpirationIsStable(t *testing.T) {
 	operation := "read"
 
 	signature, err := api.generateSignature(path, username, operation, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotEmpty(t, signature)
 
 	// locally generated signature

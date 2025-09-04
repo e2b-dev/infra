@@ -63,6 +63,7 @@ func run() int {
 	defer ctxCancel()
 
 	instanceID := uuid.New().String()
+	nodeID := env.GetNodeID()
 
 	// Setup telemetry
 	var tel *telemetry.Client
@@ -70,7 +71,7 @@ func run() int {
 		tel = telemetry.NewNoopClient()
 	} else {
 		var err error
-		tel, err = telemetry.New(ctx, serviceName, commitSHA, instanceID)
+		tel, err = telemetry.New(ctx, nodeID, serviceName, commitSHA, version, instanceID)
 		if err != nil {
 			zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
 		}
@@ -143,12 +144,12 @@ func run() int {
 	orchestrators := e2borchestrators.NewOrchestratorsPool(logger, tracer, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
 
 	info := &e2binfo.ServiceInfo{
-		NodeID:               internal.GetNodeID(),
+		NodeID:               nodeID,
 		ServiceInstanceID:    uuid.NewString(),
 		ServiceVersion:       version,
 		ServiceVersionCommit: commitSHA,
 		ServiceStartup:       time.Now(),
-		Host:                 fmt.Sprintf("%s:%d", internal.GetNodeIP(), edgePort),
+		Host:                 fmt.Sprintf("%s:%d", env.GetNodeIP(), edgePort),
 	}
 
 	// service starts in unhealthy state, and we are waiting for initial health check to pass

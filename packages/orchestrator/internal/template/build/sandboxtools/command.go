@@ -14,14 +14,13 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
 )
 
-const commandTimeout = 600 * time.Second
+const commandHardTimeout = 1 * time.Hour
 
 func RunCommandWithOutput(
 	ctx context.Context,
@@ -70,7 +69,7 @@ func RunCommandWithLogger(
 	ctx context.Context,
 	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
-	postProcessor *writer.PostProcessor,
+	logger *zap.Logger,
 	lvl zapcore.Level,
 	id string,
 	sandboxID string,
@@ -81,7 +80,7 @@ func RunCommandWithLogger(
 		ctx,
 		tracer,
 		proxy,
-		postProcessor,
+		logger,
 		lvl,
 		id,
 		sandboxID,
@@ -96,7 +95,7 @@ func RunCommandWithConfirmation(
 	ctx context.Context,
 	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
-	postProcessor *writer.PostProcessor,
+	logger *zap.Logger,
 	lvl zapcore.Level,
 	id string,
 	sandboxID string,
@@ -113,8 +112,8 @@ func RunCommandWithConfirmation(
 		metadata,
 		confirmCh,
 		func(stdout, stderr string) {
-			logStream(postProcessor, lvl, id, "stdout", stdout)
-			logStream(postProcessor, zapcore.ErrorLevel, id, "stderr", stderr)
+			logStream(logger, lvl, id, "stdout", stdout)
+			logStream(logger, zapcore.ErrorLevel, id, "stderr", stderr)
 		},
 	)
 }
@@ -141,7 +140,7 @@ func runCommandWithAllOptions(
 	})
 
 	hc := http.Client{
-		Timeout: commandTimeout,
+		Timeout: commandHardTimeout,
 	}
 	proxyHost := fmt.Sprintf("http://localhost%s", proxy.GetAddr())
 	processC := processconnect.NewProcessClient(&hc, proxyHost)
@@ -201,7 +200,11 @@ func runCommandWithAllOptions(
 	}
 }
 
-func logStream(postProcessor *writer.PostProcessor, lvl zapcore.Level, id string, name string, content string) {
+func logStream(logger *zap.Logger, lvl zapcore.Level, id string, name string, content string) {
+	if logger == nil {
+		return
+	}
+
 	if content == "" {
 		return
 	}
@@ -211,9 +214,7 @@ func logStream(postProcessor *writer.PostProcessor, lvl zapcore.Level, id string
 			continue
 		}
 		msg := fmt.Sprintf("[%s] [%s]: %s", id, name, line)
-		if postProcessor != nil {
-			postProcessor.Log(lvl, msg)
-		}
+		logger.Log(lvl, msg)
 	}
 }
 

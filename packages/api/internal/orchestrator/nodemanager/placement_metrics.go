@@ -23,6 +23,10 @@ func (p *PlacementMetrics) Success(sandboxID string) {
 	p.removeSandbox(sandboxID)
 }
 
+func (p *PlacementMetrics) Skip(sandboxID string) {
+	p.removeSandbox(sandboxID)
+}
+
 func (p *PlacementMetrics) Fail(sandboxID string) {
 	p.createFails.Add(1)
 	p.removeSandbox(sandboxID)

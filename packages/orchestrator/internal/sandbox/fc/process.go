@@ -55,7 +55,7 @@ type Process struct {
 	kernelPath         string
 	files              *storage.SandboxFiles
 
-	Exit *utils.SetOnce[struct{}]
+	Exit *utils.ErrorOnce
 
 	client *apiClient
 }
@@ -110,7 +110,7 @@ func NewProcess(
 
 	return &Process{
 		Versions:              versions,
-		Exit:                  utils.NewSetOnce[struct{}](),
+		Exit:                  utils.NewErrorOnce(),
 		cmd:                   cmd,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
@@ -130,7 +130,7 @@ func (p *Process) configure(
 	stdoutExternal io.Writer,
 	stderrExternal io.Writer,
 ) error {
-	childCtx, childSpan := tracer.Start(ctx, "configure-fc")
+	ctx, childSpan := tracer.Start(ctx, "configure-fc")
 	defer childSpan.End()
 
 	stdoutWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger, Level: zap.InfoLevel}
@@ -157,7 +157,7 @@ func (p *Process) configure(
 		return fmt.Errorf("error starting fc process: %w", err)
 	}
 
-	startCtx, cancelStart := context.WithCancelCause(childCtx)
+	startCtx, cancelStart := context.WithCancelCause(ctx)
 	defer cancelStart(fmt.Errorf("fc finished starting"))
 
 	go func() {
@@ -170,7 +170,7 @@ func (p *Process) configure(
 			if errors.As(waitErr, &exitErr) {
 				// Check if the process was killed by a signal
 				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() && (status.Signal() == syscall.SIGKILL || status.Signal() == syscall.SIGTERM) {
-					p.Exit.SetValue(struct{}{})
+					p.Exit.SetError(nil)
 
 					return
 				}
@@ -186,7 +186,7 @@ func (p *Process) configure(
 			return
 		}
 
-		p.Exit.SetValue(struct{}{})
+		p.Exit.SetError(nil)
 	}()
 
 	// Wait for the FC process to start so we can use FC API
@@ -211,11 +211,11 @@ func (p *Process) Create(
 	hugePages bool,
 	options ProcessOptions,
 ) error {
-	childCtx, childSpan := tracer.Start(ctx, "create-fc")
+	ctx, childSpan := tracer.Start(ctx, "create-fc")
 	defer childSpan.End()
 
 	err := p.configure(
-		childCtx,
+		ctx,
 		tracer,
 		loggerMetadata,
 		options.Stdout,
@@ -264,13 +264,13 @@ func (p *Process) Create(
 	}
 
 	kernelArgs := args.String()
-	err = p.client.setBootSource(childCtx, kernelArgs, p.kernelPath)
+	err = p.client.setBootSource(ctx, kernelArgs, p.kernelPath)
 	if err != nil {
 		fcStopErr := p.Stop()
 
 		return errors.Join(fmt.Errorf("error setting fc boot source config: %w", err), fcStopErr)
 	}
-	telemetry.ReportEvent(childCtx, "set fc boot source config")
+	telemetry.ReportEvent(ctx, "set fc boot source config")
 
 	// Rootfs
 	err = utils.SymlinkForce(p.providerRootfsPath, p.files.SandboxCacheRootfsLinkPath())
@@ -278,39 +278,39 @@ func (p *Process) Create(
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
 
-	err = p.client.setRootfsDrive(childCtx, p.rootfsPath)
+	err = p.client.setRootfsDrive(ctx, p.rootfsPath)
 	if err != nil {
 		fcStopErr := p.Stop()
 
 		return errors.Join(fmt.Errorf("error setting fc drivers config: %w", err), fcStopErr)
 	}
-	telemetry.ReportEvent(childCtx, "set fc drivers config")
+	telemetry.ReportEvent(ctx, "set fc drivers config")
 
 	// Network
-	err = p.client.setNetworkInterface(childCtx, p.slot.VpeerName(), p.slot.TapName(), p.slot.TapMAC())
+	err = p.client.setNetworkInterface(ctx, p.slot.VpeerName(), p.slot.TapName(), p.slot.TapMAC())
 	if err != nil {
 		fcStopErr := p.Stop()
 
 		return errors.Join(fmt.Errorf("error setting fc network config: %w", err), fcStopErr)
 	}
-	telemetry.ReportEvent(childCtx, "set fc network config")
+	telemetry.ReportEvent(ctx, "set fc network config")
 
-	err = p.client.setMachineConfig(childCtx, vCPUCount, memoryMB, hugePages)
+	err = p.client.setMachineConfig(ctx, vCPUCount, memoryMB, hugePages)
 	if err != nil {
 		fcStopErr := p.Stop()
 
 		return errors.Join(fmt.Errorf("error setting fc machine config: %w", err), fcStopErr)
 	}
-	telemetry.ReportEvent(childCtx, "set fc machine config")
+	telemetry.ReportEvent(ctx, "set fc machine config")
 
-	err = p.client.startVM(childCtx)
+	err = p.client.startVM(ctx)
 	if err != nil {
 		fcStopErr := p.Stop()
 
 		return errors.Join(fmt.Errorf("error starting fc: %w", err), fcStopErr)
 	}
 
-	telemetry.ReportEvent(childCtx, "started fc")
+	telemetry.ReportEvent(ctx, "started fc")
 	return nil
 }
 
@@ -435,7 +435,7 @@ func (p *Process) Stop() error {
 			}
 
 		// If the FC process exited, we can return.
-		case <-p.Exit.Done:
+		case <-p.Exit.Done():
 			return
 		}
 	}()

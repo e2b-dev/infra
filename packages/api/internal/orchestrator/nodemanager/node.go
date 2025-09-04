@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
@@ -81,15 +82,14 @@ func New(
 	go buildCache.Start()
 
 	nodeMetadata := NodeMetadata{
-		serviceInstanceID: nodeInfo.ServiceId,
+		ServiceInstanceID: nodeInfo.ServiceId,
 		Commit:            nodeInfo.ServiceCommit,
 		Version:           nodeInfo.ServiceVersion,
 	}
 
-	clusterID := uuid.Nil
 	n := &Node{
 		NomadNodeShortID: discoveredNode.NomadNodeShortID,
-		ClusterID:        clusterID,
+		ClusterID:        consts.LocalClusterID,
 		ID:               nodeInfo.NodeId,
 		IPAddress:        discoveredNode.IPAddress,
 
@@ -109,12 +109,7 @@ func New(
 	return n, nil
 }
 
-func NewClusterNode(
-	ctx context.Context,
-	client *grpclient.GRPCClient,
-	clusterID uuid.UUID,
-	i *edge.ClusterInstance,
-) (*Node, error) {
+func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID uuid.UUID, i *edge.ClusterInstance) (*Node, error) {
 	nodeStatus, ok := OrchestratorToApiNodeStateMapper[i.GetStatus()]
 	if !ok {
 		zap.L().Error("Unknown service info status", zap.Any("status", i.GetStatus()), logger.WithNodeID(i.NodeID))
@@ -125,7 +120,7 @@ func NewClusterNode(
 	go buildCache.Start()
 
 	nodeMetadata := NodeMetadata{
-		serviceInstanceID: i.ServiceInstanceID,
+		ServiceInstanceID: i.ServiceInstanceID,
 		Commit:            i.ServiceVersionCommit,
 		Version:           i.ServiceVersion,
 	}
@@ -149,7 +144,8 @@ func NewClusterNode(
 		},
 	}
 
-	nodeInfo, err := client.Info.ServiceInfo(ctx, &emptypb.Empty{})
+	nodeClient, ctx := n.GetClient(ctx)
+	nodeInfo, err := nodeClient.Info.ServiceInfo(ctx, &emptypb.Empty{})
 	if err != nil {
 		zap.L().Error("Failed to get node service info", zap.Error(err), logger.WithNodeID(n.ID))
 		return n, nil
@@ -161,13 +157,12 @@ func NewClusterNode(
 }
 
 func (n *Node) Close() error {
-	if n.ClusterID == uuid.Nil {
+	if n.IsNomadManaged() {
 		zap.L().Info("Closing local node", logger.WithNodeID(n.ID))
 		err := n.client.Close()
 		if err != nil {
 			zap.L().Error("Error closing connection to node", zap.Error(err), logger.WithNodeID(n.ID))
 		}
-
 	} else {
 		zap.L().Info("Closing cluster node", logger.WithNodeID(n.ID), logger.WithClusterID(n.ClusterID))
 		// We are not closing grpc connection, because it is shared between all cluster nodes, and it's handled by the cluster
@@ -180,4 +175,8 @@ func (n *Node) Close() error {
 // Ensures that GRPC client request context always has the latest service instance ID
 func (n *Node) GetClient(ctx context.Context) (*grpclient.GRPCClient, context.Context) {
 	return n.client, metadata.NewOutgoingContext(ctx, n.getClientMetadata())
+}
+
+func (n *Node) IsNomadManaged() bool {
+	return n.NomadNodeShortID != UnknownNomadNodeShortID
 }

@@ -3,6 +3,8 @@ package env
 import (
 	"os"
 	"strconv"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 var environment = GetEnv("ENVIRONMENT", "prod")
@@ -38,4 +40,12 @@ func GetEnvAsInt(key string, defaultValue int) (int, error) {
 	}
 
 	return defaultValue, nil
+}
+
+func GetNodeID() string {
+	return utils.RequiredEnv("NODE_ID", "Node ID of the instance node is required")
+}
+
+func GetNodeIP() string {
+	return utils.RequiredEnv("NODE_IP", "Node IP of the instance node is required")
 }

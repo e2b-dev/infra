@@ -17,10 +17,10 @@ type Storage interface {
 }
 
 // NewStorage creates a new slot storage based on the environment, we are ok with using a memory storage for local
-func NewStorage(slotsSize int, clientID string, tracer trace.Tracer) (Storage, error) {
+func NewStorage(slotsSize int, nodeID string, tracer trace.Tracer) (Storage, error) {
 	if env.IsDevelopment() || localNamespaceStorageSwitch == "true" {
 		return NewStorageLocal(slotsSize, tracer)
 	}
 
-	return NewStorageKV(slotsSize, clientID)
+	return NewStorageKV(slotsSize, nodeID)
 }

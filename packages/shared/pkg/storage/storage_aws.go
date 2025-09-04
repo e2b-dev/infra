@@ -34,7 +34,6 @@ type AWSBucketStorageObjectProvider struct {
 	client     *s3.Client
 	path       string
 	bucketName string
-	ctx        context.Context // nolint:containedctx // todo: fix the interface so this can be removed
 }
 
 var _ StorageObjectProvider = (*AWSBucketStorageObjectProvider)(nil)
@@ -107,19 +106,18 @@ func (a *AWSBucketStorageProvider) OpenObject(ctx context.Context, path string) 
 		client:     a.client,
 		bucketName: a.bucketName,
 		path:       path,
-		ctx:        ctx,
 	}, nil
 }
 
-func (a *AWSBucketStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, awsReadTimeout)
+func (a *AWSBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, awsReadTimeout)
 	defer cancel()
 
 	resp, err := a.client.GetObject(ctx, &s3.GetObjectInput{Bucket: &a.bucketName, Key: &a.path})
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
-			return 0, ErrorObjectNotExist
+			return 0, ErrObjectNotExist
 		}
 
 		return 0, err
@@ -130,8 +128,8 @@ func (a *AWSBucketStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 	return io.Copy(dst, resp.Body)
 }
 
-func (a *AWSBucketStorageObjectProvider) WriteFromFileSystem(path string) error {
-	ctx, cancel := context.WithTimeout(a.ctx, awsWriteTimeout)
+func (a *AWSBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
+	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
 	defer cancel()
 
 	file, err := os.Open(path)
@@ -160,8 +158,8 @@ func (a *AWSBucketStorageObjectProvider) WriteFromFileSystem(path string) error 
 	return err
 }
 
-func (a *AWSBucketStorageObjectProvider) Write(data []byte) (int, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, awsWriteTimeout)
+func (a *AWSBucketStorageObjectProvider) Write(ctx context.Context, data []byte) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
 	defer cancel()
 
 	result, err := a.client.PutObject(
@@ -183,8 +181,8 @@ func (a *AWSBucketStorageObjectProvider) Write(data []byte) (int, error) {
 	return int(*result.Size), nil
 }
 
-func (a *AWSBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, err error) {
-	ctx, cancel := context.WithTimeout(a.ctx, awsReadTimeout)
+func (a *AWSBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
+	ctx, cancel := context.WithTimeout(ctx, awsReadTimeout)
 	defer cancel()
 
 	readRange := aws.String(fmt.Sprintf("bytes=%d-%d", off, off+int64(len(buff))-1))
@@ -196,7 +194,7 @@ func (a *AWSBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, 
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
-			return 0, ErrorObjectNotExist
+			return 0, ErrObjectNotExist
 		}
 
 		return 0, err
@@ -214,20 +212,25 @@ func (a *AWSBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, 
 	return n, err
 }
 
-func (a *AWSBucketStorageObjectProvider) Size() (int64, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, awsOperationTimeout)
+func (a *AWSBucketStorageObjectProvider) Size(ctx context.Context) (int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
 	defer cancel()
 
 	resp, err := a.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: &a.bucketName, Key: &a.path})
 	if err != nil {
+		var nsk *types.NoSuchKey
+		if errors.As(err, &nsk) {
+			return 0, ErrObjectNotExist
+		}
+
 		return 0, err
 	}
 
 	return *resp.ContentLength, nil
 }
 
-func (a *AWSBucketStorageObjectProvider) Delete() error {
-	ctx, cancel := context.WithTimeout(a.ctx, awsOperationTimeout)
+func (a *AWSBucketStorageObjectProvider) Delete(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
 	defer cancel()
 
 	_, err := a.client.DeleteObject(

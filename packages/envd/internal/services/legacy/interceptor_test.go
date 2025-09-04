@@ -13,11 +13,12 @@ import (
 
 	"github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
 	spec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem/filesystemconnect"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem/filesystemconnect/mocks"
 )
 
 func TestInterceptor(t *testing.T) {
-	streamSetup := func(count int) func(mockFS *MockFilesystemHandler) {
-		return func(mockFS *MockFilesystemHandler) {
+	streamSetup := func(count int) func(mockFS *filesystemconnectmocks.MockFilesystemHandler) {
+		return func(mockFS *filesystemconnectmocks.MockFilesystemHandler) {
 			mockFS.EXPECT().
 				WatchDir(mock.Anything, mock.Anything, mock.Anything).
 				Run(func(context1 context.Context, request *connect.Request[filesystem.WatchDirRequest], serverStream *connect.ServerStream[filesystem.WatchDirResponse]) {
@@ -31,7 +32,11 @@ func TestInterceptor(t *testing.T) {
 	}
 
 	streamTest := func(count int) func(t *testing.T, client spec.FilesystemClient) http.Header {
+		t.Helper()
+
 		return func(t *testing.T, client spec.FilesystemClient) http.Header {
+			t.Helper()
+
 			req := connect.NewRequest[filesystem.WatchDirRequest](&filesystem.WatchDirRequest{Path: "/a/b/c"})
 			resp, err := client.WatchDir(t.Context(), req)
 			require.NoError(t, err)
@@ -48,13 +53,15 @@ func TestInterceptor(t *testing.T) {
 		}
 	}
 
-	unarySetup := func(mockFS *MockFilesystemHandler) {
+	unarySetup := func(mockFS *filesystemconnectmocks.MockFilesystemHandler) {
 		mockFS.EXPECT().
 			ListDir(mock.Anything, mock.Anything).
 			Return(&connect.Response[filesystem.ListDirResponse]{Msg: &filesystem.ListDirResponse{}}, nil)
 	}
 
 	unaryTest := func(t *testing.T, client spec.FilesystemClient) http.Header {
+		t.Helper()
+
 		req := connect.NewRequest[filesystem.ListDirRequest](&filesystem.ListDirRequest{Path: "/a/b/c"})
 		resp, err := client.ListDir(t.Context(), req)
 		require.NoError(t, err)
@@ -63,7 +70,7 @@ func TestInterceptor(t *testing.T) {
 
 	tests := map[string]struct {
 		userAgent         string
-		setup             func(mockFS *MockFilesystemHandler)
+		setup             func(mockFS *filesystemconnectmocks.MockFilesystemHandler)
 		execute           func(t *testing.T, client spec.FilesystemClient) http.Header
 		expectHeaderValue string
 	}{
@@ -104,7 +111,7 @@ func TestInterceptor(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			// setup server
-			mockFS := NewMockFilesystemHandler(t)
+			mockFS := filesystemconnectmocks.NewMockFilesystemHandler(t)
 			if test.setup != nil {
 				test.setup(mockFS)
 			}

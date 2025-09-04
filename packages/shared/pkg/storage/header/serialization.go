@@ -2,11 +2,15 @@ package header
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 
 	"github.com/google/uuid"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const metadataVersion = 2
@@ -61,10 +65,10 @@ func Serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func Deserialize(in io.WriterTo) (*Header, error) {
+func Deserialize(ctx context.Context, in storage.WriterToCtx) (*Header, error) {
 	var buf bytes.Buffer
 
-	_, err := in.WriteTo(&buf)
+	_, err := in.WriteTo(ctx, &buf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write to buffer: %w", err)
 	}
@@ -83,7 +87,7 @@ func Deserialize(in io.WriterTo) (*Header, error) {
 	for {
 		var m BuildMap
 		err := binary.Read(reader, binary.LittleEndian, &m)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 
@@ -94,5 +98,5 @@ func Deserialize(in io.WriterTo) (*Header, error) {
 		mappings = append(mappings, &m)
 	}
 
-	return NewHeader(&metadata, mappings), nil
+	return NewHeader(&metadata, mappings)
 }

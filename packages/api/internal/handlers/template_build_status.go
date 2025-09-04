@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
@@ -30,12 +31,12 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 
 	buildInfo, err := a.templateBuildsCache.Get(ctx, buildUUID, templateID)
 	if err != nil {
-		if errors.Is(err, db.TemplateBuildNotFound{}) {
+		if errors.Is(err, db.TemplateBuildNotFoundError{}) {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Build '%s' not found", buildUUID))
 			return
 		}
 
-		if errors.Is(err, db.TemplateNotFound{}) {
+		if errors.Is(err, db.TemplateNotFoundError{}) {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Template '%s' not found", templateID))
 			return
 		}
@@ -83,7 +84,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		Reason:     getAPIReason(buildInfo.Reason),
 	}
 
-	cli, err := a.templateManager.GetBuildClient(team.ClusterID, buildInfo.ClusterNodeID, false)
+	cli, err := a.templateManager.GetClusterBuildClient(utils.WithClusterFallback(team.ClusterID), buildInfo.NodeID)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when getting build client", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting build client")

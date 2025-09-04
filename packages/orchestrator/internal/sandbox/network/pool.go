@@ -29,7 +29,7 @@ type Pool struct {
 	slotStorage Storage
 }
 
-func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPoolSize, reusedSlotsPoolSize int, clientID string, tracer trace.Tracer) (*Pool, error) {
+func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string, tracer trace.Tracer) (*Pool, error) {
 	newSlots := make(chan *Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan *Slot, reusedSlotsPoolSize)
 
@@ -45,7 +45,7 @@ func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPo
 		return nil, fmt.Errorf("failed to create reused slot counter: %w", err)
 	}
 
-	slotStorage, err := NewStorage(vrtSlotsSize, clientID, tracer)
+	slotStorage, err := NewStorage(vrtSlotsSize, nodeID, tracer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create slot storage: %w", err)
 	}
@@ -146,7 +146,7 @@ func (p *Pool) Return(ctx context.Context, tracer trace.Tracer, slot *Slot) erro
 	if err != nil {
 		// Cleanup the slot if resetting internet fails
 		if cerr := p.cleanup(slot); cerr != nil {
-			return fmt.Errorf("reset internet: %v; cleanup: %w", err, cerr)
+			return fmt.Errorf("reset internet: %w; cleanup: %w", err, cerr)
 		}
 
 		return fmt.Errorf("error resetting slot internet access: %w", err)

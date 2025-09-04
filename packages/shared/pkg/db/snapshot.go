@@ -154,7 +154,7 @@ func (db *DB) GetSnapshotBuilds(ctx context.Context, sandboxID string, teamID uu
 	notFound := models.IsNotFound(err)
 
 	if notFound {
-		return nil, nil, EnvNotFound{}
+		return nil, nil, EnvNotFoundError{}
 	}
 
 	if err != nil {

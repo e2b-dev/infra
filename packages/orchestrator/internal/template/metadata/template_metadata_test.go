@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -126,12 +127,12 @@ func TestDeserialize(t *testing.T) {
 			result, err := deserialize(reader)
 
 			if tt.expectedError != "" {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedError)
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expectedResult.Version, result.Version)
 			assert.Equal(t, tt.expectedResult.Template.BuildID, result.Template.BuildID)
 			assert.Equal(t, tt.expectedResult.Template.KernelVersion, result.Template.KernelVersion)
@@ -152,7 +153,7 @@ func TestDeserialize_ReadError(t *testing.T) {
 
 	_, err := deserialize(errorReader)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "error reading template metadata")
 }
 
@@ -195,7 +196,7 @@ func TestDeserialize_VersionEdgeCases(t *testing.T) {
 			reader := strings.NewReader(tt.input)
 			result, err := deserialize(reader)
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expectedVersion, result.Version)
 		})
 	}

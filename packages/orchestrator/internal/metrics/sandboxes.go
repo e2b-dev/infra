@@ -17,6 +17,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -56,7 +57,7 @@ type SandboxObserver struct {
 	diskUsed    metric.Int64ObservableGauge
 }
 
-func NewSandboxObserver(ctx context.Context, commitSHA, clientID string, sandboxes *smap.Map[*sandbox.Sandbox]) (*SandboxObserver, error) {
+func NewSandboxObserver(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID string, sandboxes *smap.Map[*sandbox.Sandbox]) (*SandboxObserver, error) {
 	deltaTemporality := otlpmetricgrpc.WithTemporalitySelector(func(kind sdkmetric.InstrumentKind) metricdata.Temporality {
 		// Use delta temporality for gauges and cumulative for all other instrument kinds.
 		// This is used to prevent reporting sandbox metrics indefinitely.
@@ -71,7 +72,12 @@ func NewSandboxObserver(ctx context.Context, commitSHA, clientID string, sandbox
 		return nil, fmt.Errorf("failed to create external meter exporter: %w", err)
 	}
 
-	meterProvider, err := telemetry.NewMeterProvider(ctx, externalMeterExporter, sandboxMetricExportPeriod, "external-metrics", commitSHA, clientID, sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter))
+	res, err := telemetry.GetResource(ctx, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create resource: %w", err)
+	}
+
+	meterProvider, err := telemetry.NewMeterProvider(ctx, externalMeterExporter, sandboxMetricExportPeriod, res, sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create external metric provider: %w", err)
 	}
@@ -144,7 +150,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 			for _, sbx := range so.sandboxes.Items() {
 				ok, err := utils.IsGTEVersion(sbx.Config.Envd.Version, minEnvdVersionForMetrics)
 				if err != nil {
-					zap.L().Error("Failed to check envd version", zap.Error(err), zap.String("sandbox_id", sbx.Runtime.SandboxID))
+					zap.L().Error("Failed to check envd version", zap.Error(err), logger.WithSandboxID(sbx.Runtime.SandboxID))
 					continue
 				}
 				if !ok {
@@ -174,7 +180,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 
 					ok, err := utils.IsGTEVersion(sbx.Config.Envd.Version, minEnvdVersionForMemoryPrecise)
 					if err != nil {
-						zap.L().Error("Failed to check envd version for memory metrics", zap.Error(err), zap.String("sandbox_id", sbx.Runtime.SandboxID))
+						zap.L().Error("Failed to check envd version for memory metrics", zap.Error(err), logger.WithSandboxID(sbx.Runtime.SandboxID))
 					}
 					if ok {
 						o.ObserveInt64(so.memoryTotal, sbxMetrics.MemTotal, attributes)
@@ -186,7 +192,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 
 					ok, err = utils.IsGTEVersion(sbx.Config.Envd.Version, minEnvdVersionForDiskMetrics)
 					if err != nil {
-						zap.L().Error("Failed to check envd version for disk metrics", zap.Error(err), zap.String("sandbox_id", sbx.Runtime.SandboxID))
+						zap.L().Error("Failed to check envd version for disk metrics", zap.Error(err), logger.WithSandboxID(sbx.Runtime.SandboxID))
 					}
 					if ok {
 						o.ObserveInt64(so.diskTotal, sbxMetrics.DiskTotal, attributes)

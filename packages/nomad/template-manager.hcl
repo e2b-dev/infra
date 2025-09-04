@@ -1,17 +1,20 @@
-job "template-manager" {
+job "template-manager-system" {
   datacenters = ["${gcp_zone}"]
+  type = "system"
   node_pool  = "build"
   priority = 70
 
 %{ if update_stanza }
   update {
-      auto_promote      = true # Whether to promote the canary if the rest of the group is not healthy
-      canary            = 1 # Allows to spawn new version of the service before killing the old one
+      max_parallel      = 1 # Update only 1 node at a time
+      min_healthy_time  = "10s" # Time to wait for the new version to be healthy
+      healthy_deadline  = "5m" # Time to wait for the new version to be healthy, if not it will be marked as failed
       progress_deadline = "20m" # Deadline for the update to be completed
   }
 %{ endif }
 
   group "template-manager" {
+
     network {
       port "template-manager" {
         static = "${port}"
@@ -65,7 +68,7 @@ job "template-manager" {
         ORCHESTRATOR_SERVICES         = "${orchestrator_services}"
         LOGS_COLLECTOR_PUBLIC_IP      = "${logs_collector_public_ip}"
         ALLOW_SANDBOX_INTERNET        = "${allow_sandbox_internet}"
-        SHARED_CHUNK_CACHE_PATH    = "${shared_chunk_cache_path}"
+        SHARED_CHUNK_CACHE_PATH       = "${shared_chunk_cache_path}"
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
         VAULT_ADDR                   = "${vault_addr}"
         VAULT_APPROLE_ROLE_ID        = "${jsondecode(vault_orchestrator_approle_creds).role_id}"

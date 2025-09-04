@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -24,6 +27,10 @@ import (
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
+
+const layerTimeout = time.Hour
+
+var tracer = otel.Tracer("orchestrator.template.build.phases.steps")
 
 type StepBuilder struct {
 	buildcontext.BuildContext
@@ -90,6 +97,13 @@ func (sb *StepBuilder) Layer(
 	sourceLayer phases.LayerResult,
 	hash string,
 ) (phases.LayerResult, error) {
+	ctx, span := tracer.Start(ctx, "compute step", trace.WithAttributes(
+		attribute.Int("step", sb.stepNumber),
+		attribute.String("type", sb.step.Type),
+		attribute.String("hash", hash),
+	))
+	defer span.End()
+
 	forceBuild := sb.step.Force != nil && *sb.step.Force
 	if !forceBuild {
 		m, err := sb.index.LayerMetaFromHash(ctx, hash)
@@ -129,6 +143,13 @@ func (sb *StepBuilder) Build(
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
 ) (phases.LayerResult, error) {
+	ctx, span := tracer.Start(ctx, "build step", trace.WithAttributes(
+		attribute.Int("step", sb.stepNumber),
+		attribute.String("type", sb.step.Type),
+		attribute.String("hash", currentLayer.Hash),
+	))
+	defer span.End()
+
 	prefix := sb.Prefix()
 	step := sb.step
 
@@ -147,12 +168,16 @@ func (sb *StepBuilder) Build(
 	// First not cached layer is create (to change CPU, Memory, etc), subsequent are layers are resumes.
 	var sandboxCreator layer.SandboxCreator
 	if sourceLayer.Cached {
-		sandboxCreator = layer.NewCreateSandbox(sbxConfig, fc.FirecrackerVersions{
-			KernelVersion:      sb.Template.KernelVersion,
-			FirecrackerVersion: sb.Template.FirecrackerVersion,
-		})
+		sandboxCreator = layer.NewCreateSandbox(
+			sbxConfig,
+			layerTimeout,
+			fc.FirecrackerVersions{
+				KernelVersion:      sb.Template.KernelVersion,
+				FirecrackerVersion: sb.Template.FirecrackerVersion,
+			},
+		)
 	} else {
-		sandboxCreator = layer.NewResumeSandbox(sbxConfig)
+		sandboxCreator = layer.NewResumeSandbox(sbxConfig, layerTimeout)
 	}
 
 	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error) {
@@ -185,8 +210,10 @@ func (sb *StepBuilder) Build(
 		return meta, nil
 	})
 
+	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template)
+
 	meta, err := sb.layerExecutor.BuildLayer(ctx, layer.LayerBuildCommand{
-		SourceTemplate: sourceLayer.Metadata.Template,
+		SourceTemplate: templateProvider,
 		CurrentLayer:   currentLayer.Metadata,
 		Hash:           currentLayer.Hash,
 		UpdateEnvd:     sourceLayer.Cached,

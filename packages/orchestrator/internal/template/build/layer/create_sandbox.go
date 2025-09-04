@@ -3,6 +3,7 @@ package layer
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -19,41 +20,39 @@ import (
 // CreateSandbox creates sandboxes for new templates
 type CreateSandbox struct {
 	config     sandbox.Config
+	timeout    time.Duration
 	fcVersions fc.FirecrackerVersions
+
+	rootfsCachePath string
 }
 
-func NewCreateSandbox(config sandbox.Config, fcVersions fc.FirecrackerVersions) SandboxCreator {
-	return &CreateSandbox{config: config, fcVersions: fcVersions}
+var _ SandboxCreator = (*CreateSandbox)(nil)
+
+func NewCreateSandbox(config sandbox.Config, timeout time.Duration, fcVersions fc.FirecrackerVersions) *CreateSandbox {
+	return &CreateSandbox{config: config, timeout: timeout, fcVersions: fcVersions, rootfsCachePath: ""}
 }
 
-func (f *CreateSandbox) Sandbox(
+func NewCreateSandboxFromCache(config sandbox.Config, timeout time.Duration, fcVersions fc.FirecrackerVersions, rootfsCachePath string) *CreateSandbox {
+	return &CreateSandbox{config: config, timeout: timeout, fcVersions: fcVersions, rootfsCachePath: rootfsCachePath}
+}
+
+func (cs *CreateSandbox) Sandbox(
 	ctx context.Context,
 	layerExecutor *LayerExecutor,
-	template sbxtemplate.Template,
+	sourceTemplate sbxtemplate.Template,
 ) (*sandbox.Sandbox, error) {
-	// Create new sandbox path
-	var oldMemfile block.ReadonlyDevice
-	oldMemfile, err := template.Memfile()
-	if err != nil {
-		return nil, fmt.Errorf("get memfile: %w", err)
-	}
-
 	// Create new memfile with the size of the sandbox RAM, this updates the underlying memfile.
 	// This is ok as the sandbox is started from the beginning.
-	var memfile block.ReadonlyDevice
-	memfile, err = block.NewEmpty(
-		f.config.RamMB<<constants.ToMBShift,
-		oldMemfile.BlockSize(),
-		uuid.MustParse(template.Files().BuildID),
+	memfile, err := block.NewEmpty(
+		cs.config.RamMB<<constants.ToMBShift,
+		config.MemfilePageSize(cs.config.HugePages),
+		uuid.MustParse(sourceTemplate.Files().BuildID),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create memfile: %w", err)
 	}
 
-	err = template.ReplaceMemfile(memfile)
-	if err != nil {
-		return nil, fmt.Errorf("replace memfile: %w", err)
-	}
+	template := sbxtemplate.NewMaskTemplate(sourceTemplate, sbxtemplate.WithMemfile(memfile))
 
 	// In case of a new sandbox, base template ID is now used as the potentially exported template base ID.
 	sbx, err := sandbox.CreateSandbox(
@@ -61,16 +60,16 @@ func (f *CreateSandbox) Sandbox(
 		layerExecutor.tracer,
 		layerExecutor.networkPool,
 		layerExecutor.devicePool,
-		f.config,
+		cs.config,
 		sandbox.RuntimeMetadata{
 			TemplateID:  layerExecutor.Config.TemplateID,
 			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
 			ExecutionID: uuid.NewString(),
 		},
-		f.fcVersions,
+		cs.fcVersions,
 		template,
-		layerTimeout,
-		"",
+		cs.timeout,
+		cs.rootfsCachePath,
 		fc.ProcessOptions{
 			InitScriptPath:      constants.SystemdInitPath,
 			KernelLogs:          env.IsDevelopment(),

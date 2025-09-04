@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -37,14 +38,14 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 		return
 	}
 
-	nodeID, err := a.templateManager.GetAvailableBuildClient(ctx, templateDB.ClusterID)
+	nodeID, err := a.templateManager.GetAvailableBuildClient(ctx, utils.WithClusterFallback(templateDB.ClusterID))
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting available build client")
 		return
 	}
 
-	resp, err := a.templateManager.InitLayerFileUpload(ctx, templateDB.ClusterID, nodeID, team.ID, templateID, hash)
+	resp, err := a.templateManager.InitLayerFileUpload(ctx, utils.WithClusterFallback(templateDB.ClusterID), nodeID, team.ID, templateID, hash)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when requesting layer files upload", err, telemetry.WithTemplateID(templateID), attribute.String("hash", hash))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when requesting layer files upload")

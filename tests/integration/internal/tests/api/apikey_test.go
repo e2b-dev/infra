@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -296,4 +298,38 @@ func TestPatchAPIKey(t *testing.T) {
 		}
 		assert.True(t, found, "API key should be found in team1's list")
 	})
+}
+
+func TestAPIKeyLastUsedUpdated(t *testing.T) {
+	c := setup.GetAPIClient()
+
+	// The last used is updated only once a minute
+	expectedLastUsed := time.Now().Add(-2 * time.Minute)
+	// Use the api key
+	_, err := c.GetSandboxesWithResponse(t.Context(), nil, setup.WithAPIKey())
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		resp, err := c.GetApiKeysWithResponse(t.Context(), setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode())
+		require.NotNil(t, resp.JSON200)
+
+		for _, key := range *resp.JSON200 {
+			if strings.HasPrefix(setup.APIKey, fmt.Sprintf("%s%s", key.Mask.Prefix, key.Mask.MaskedValuePrefix)) && strings.HasSuffix(setup.APIKey, key.Mask.MaskedValueSuffix) {
+				if key.LastUsed == nil {
+					return false
+				}
+
+				// Last used should be recent
+				if key.LastUsed.Before(expectedLastUsed) {
+					return false
+				}
+
+				return true
+			}
+		}
+
+		return false
+	}, 10*time.Second, 50*time.Millisecond, "Expected API key last used to be updated")
 }

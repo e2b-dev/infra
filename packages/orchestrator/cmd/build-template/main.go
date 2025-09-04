@@ -5,11 +5,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"net/http"
-	"os"
 	"time"
 
-	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
@@ -50,8 +49,7 @@ func main() {
 
 	err := buildTemplate(ctx, *kernelVersion, *fcVersion, *templateID, *buildID)
 	if err != nil {
-		log.Fatal().Err(err).Msg("error building template")
-		os.Exit(1)
+		log.Fatalf("error building template: %v", err)
 	}
 }
 
@@ -174,7 +172,7 @@ func buildTemplate(
 		buildMetrics,
 	)
 
-	logsWriter := logger.
+	logger = logger.
 		With(zap.Field{Type: zapcore.StringType, Key: "envID", String: templateID}).
 		With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: buildID})
 
@@ -195,7 +193,7 @@ func buildTemplate(
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: fcVersion,
 	}
-	_, err = builder.Build(ctx, metadata, template, logsWriter)
+	_, err = builder.Build(ctx, metadata, template, logger.Core())
 	if err != nil {
 		return fmt.Errorf("error building template: %w", err)
 	}

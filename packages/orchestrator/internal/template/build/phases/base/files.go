@@ -11,8 +11,9 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/memory"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 )
 
@@ -25,7 +26,7 @@ func constructLayerFilesFromOCI(
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	templateBuildDir string,
 	rootfsPath string,
-) (r *block.Local, m *block.Local, c containerregistry.Config, e error) {
+) (r *block.Local, m block.ReadonlyDevice, c containerregistry.Config, e error) {
 	childCtx, childSpan := tracer.Start(ctx, "template-build")
 	defer childSpan.End()
 
@@ -58,14 +59,13 @@ func constructLayerFilesFromOCI(
 	}
 
 	// Create empty memfile
-	memfilePath, err := memory.NewMemory(templateBuildDir, buildContext.Config.MemoryMB)
+	memfile, err := block.NewEmpty(
+		buildContext.Config.MemoryMB<<constants.ToMBShift,
+		config.MemfilePageSize(buildContext.Config.HugePages),
+		buildIDParsed,
+	)
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating memfile: %w", err)
-	}
-
-	memfile, err := block.NewLocal(memfilePath, buildContext.Config.MemfilePageSize(), buildIDParsed)
-	if err != nil {
-		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating memfile blocks: %w", err)
 	}
 
 	return rootfs, memfile, imgConfig, nil

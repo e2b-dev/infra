@@ -10,14 +10,18 @@ import (
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 )
 
+type SandboxEventsClickhouseBatcher interface {
+	Push(event clickhouse.SandboxEvent) error
+	Close(ctx context.Context) error
+}
+
 type SandboxEventInsertBatcher struct {
 	*Batcher[clickhouse.SandboxEvent]
 	errorHandler func(error)
 	conn         driver.Conn
 }
 
-const InsertSandboxEventQuery = `
-INSERT INTO sandbox_events
+const InsertSandboxEventQuery = `INSERT INTO sandbox_events
 (
     timestamp,
     sandbox_id, 
@@ -81,13 +85,13 @@ func (b *SandboxEventInsertBatcher) processInsertSandboxEventsBatch(events []cli
 			event.EventData,
 		)
 		if err != nil {
-			return fmt.Errorf("error appending sandbox event to batch: %w", err)
+			return fmt.Errorf("error appending %d product usage event to batch: %w", len(events), err)
 		}
 	}
 
 	err = batch.Send()
 	if err != nil {
-		return fmt.Errorf("error sending sandbox events batch: %w", err)
+		return fmt.Errorf("error sending %d sandbox events batch: %w", len(events), err)
 	}
 
 	return nil
@@ -99,7 +103,7 @@ func (b *SandboxEventInsertBatcher) Push(event clickhouse.SandboxEvent) error {
 		return err
 	}
 	if !success {
-		return errors.New("batcher queue is full")
+		return ErrBatcherQueueFull
 	}
 	return nil
 }
@@ -108,11 +112,15 @@ func (b *SandboxEventInsertBatcher) Close(ctx context.Context) error {
 	stopErr := b.Batcher.Stop()
 	closeErr := b.conn.Close()
 
+	var errs []error
 	if stopErr != nil {
-		return fmt.Errorf("error stopping batcher: %w", stopErr)
+		errs = append(errs, fmt.Errorf("error stopping sandbox event insert batcher: %w", stopErr))
 	}
 	if closeErr != nil {
-		return fmt.Errorf("error closing connection: %w", closeErr)
+		errs = append(errs, fmt.Errorf("error closing sandbox event insert batcher connection: %w", closeErr))
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 	return nil
 }

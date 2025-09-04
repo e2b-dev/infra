@@ -185,6 +185,7 @@ func seed(db *db.DB, data SeedData) error {
 			SetFirecrackerVersion("v1.12.1_d990331").
 			SetEnvdVersion("0.2.4").
 			SetNillableCreatedAt(build.createdAt).
+			SetClusterNodeID("integration-test-node").
 			Save(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to create env build: %w", err)

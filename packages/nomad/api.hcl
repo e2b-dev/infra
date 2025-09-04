@@ -48,7 +48,7 @@ job "api" {
       # Time to wait for the canary to be healthy
       min_healthy_time = "10s"
       # Time to wait for the canary to be healthy, if not it will be marked as failed
-      healthy_deadline = "30s"
+      healthy_deadline = "300s"
       # Whether to promote the canary if the rest of the group is not healthy
       auto_promote     = true
     }
@@ -68,6 +68,7 @@ job "api" {
       }
 
       env {
+        NODE_ID                        = "$${node.unique.id}"
         ORCHESTRATOR_PORT              = "${orchestrator_port}"
         TEMPLATE_MANAGER_HOST          = "${template_manager_host}"
         POSTGRES_CONNECTION_STRING     = "${postgres_connection_string}"
@@ -77,7 +78,6 @@ job "api" {
         POSTHOG_API_KEY                = "${posthog_api_key}"
         ANALYTICS_COLLECTOR_HOST       = "${analytics_collector_host}"
         ANALYTICS_COLLECTOR_API_TOKEN  = "${analytics_collector_api_token}"
-        LOKI_ADDRESS                   = "${loki_address}"
         OTEL_TRACING_PRINT             = "${otel_tracing_print}"
         LOGS_COLLECTOR_ADDRESS         = "${logs_collector_address}"
         NOMAD_TOKEN                    = "${nomad_acl_token}"
@@ -91,6 +91,8 @@ job "api" {
         VAULT_APPROLE_ROLE_ID          = "${jsondecode(vault_api_approle_creds).role_id}"
         VAULT_APPROLE_SECRET_ID        = "${jsondecode(vault_api_approle_creds).secret_id}"
 
+        LOCAL_CLUSTER_ENDPOINT = "${local_cluster_endpoint}"
+        LOCAL_CLUSTER_TOKEN    = "${local_cluster_token}"
 
 %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"

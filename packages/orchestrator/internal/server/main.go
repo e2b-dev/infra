@@ -7,8 +7,9 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sync/semaphore"
 
-	"github.com/e2b-dev/infra/packages/clickhouse/pkg/batcher"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -18,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/event"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -26,17 +28,18 @@ import (
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 
-	info                *service.ServiceInfo
-	sandboxes           *smap.Map[*sandbox.Sandbox]
-	proxy               *proxy.SandboxProxy
-	tracer              trace.Tracer
-	networkPool         *network.Pool
-	templateCache       *template.Cache
-	pauseMu             sync.Mutex
-	devicePool          *nbd.DevicePool
-	persistence         storage.StorageProvider
-	featureFlags        *featureflags.Client
-	sandboxEventBatcher batcher.ClickhouseBatcher
+	info              *service.ServiceInfo
+	sandboxes         *smap.Map[*sandbox.Sandbox]
+	proxy             *proxy.SandboxProxy
+	tracer            trace.Tracer
+	networkPool       *network.Pool
+	templateCache     *template.Cache
+	pauseMu           sync.Mutex
+	devicePool        *nbd.DevicePool
+	persistence       storage.StorageProvider
+	featureFlags      *featureflags.Client
+	sbxEventsService  events.EventsService[event.SandboxEvent]
+	startingSandboxes *semaphore.Weighted
 }
 
 type Service struct {
@@ -52,40 +55,45 @@ type Service struct {
 	persistence storage.StorageProvider
 }
 
+type ServiceConfig struct {
+	GRPC             *grpcserver.GRPCServer
+	Tel              *telemetry.Client
+	NetworkPool      *network.Pool
+	DevicePool       *nbd.DevicePool
+	TemplateCache    *template.Cache
+	Tracer           trace.Tracer
+	Info             *service.ServiceInfo
+	Proxy            *proxy.SandboxProxy
+	Sandboxes        *smap.Map[*sandbox.Sandbox]
+	Persistence      storage.StorageProvider
+	FeatureFlags     *featureflags.Client
+	SbxEventsService events.EventsService[event.SandboxEvent]
+}
+
 func New(
 	ctx context.Context,
-	grpc *grpcserver.GRPCServer,
-	tel *telemetry.Client,
-	networkPool *network.Pool,
-	devicePool *nbd.DevicePool,
-	templateCache *template.Cache,
-	tracer trace.Tracer,
-	info *service.ServiceInfo,
-	proxy *proxy.SandboxProxy,
-	sandboxes *smap.Map[*sandbox.Sandbox],
-	featureFlags *featureflags.Client,
-	sandboxEventBatcher batcher.ClickhouseBatcher,
-	persistence storage.StorageProvider,
+	cfg ServiceConfig,
 ) (*Service, error) {
 	srv := &Service{
-		info:        info,
-		proxy:       proxy,
-		persistence: persistence,
+		info:        cfg.Info,
+		proxy:       cfg.Proxy,
+		persistence: cfg.Persistence,
 	}
 	srv.server = &server{
-		info:                info,
-		tracer:              tracer,
-		proxy:               srv.proxy,
-		sandboxes:           sandboxes,
-		networkPool:         networkPool,
-		templateCache:       templateCache,
-		devicePool:          devicePool,
-		persistence:         persistence,
-		featureFlags:        featureFlags,
-		sandboxEventBatcher: sandboxEventBatcher,
+		info:              cfg.Info,
+		tracer:            cfg.Tracer,
+		proxy:             srv.proxy,
+		sandboxes:         cfg.Sandboxes,
+		networkPool:       cfg.NetworkPool,
+		templateCache:     cfg.TemplateCache,
+		devicePool:        cfg.DevicePool,
+		persistence:       cfg.Persistence,
+		featureFlags:      cfg.FeatureFlags,
+		sbxEventsService:  cfg.SbxEventsService,
+		startingSandboxes: semaphore.NewWeighted(maxStartingInstancesPerNode),
 	}
 
-	meter := tel.MeterProvider.Meter("orchestrator.sandbox")
+	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")
 	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(srv.server.sandboxes.Count()))
 
@@ -95,7 +103,7 @@ func New(
 		zap.L().Error("Error registering sandbox count metric", zap.Any("metric_name", telemetry.OrchestratorSandboxCountMeterName), zap.Error(err))
 	}
 
-	orchestrator.RegisterSandboxServiceServer(grpc.GRPCServer(), srv.server)
+	orchestrator.RegisterSandboxServiceServer(cfg.GRPC.GRPCServer(), srv.server)
 
 	return srv, nil
 }

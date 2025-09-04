@@ -18,7 +18,11 @@ JOIN LATERAL (
 ) eb ON TRUE
 WHERE
     e.team_id = @team_id
-    AND s.metadata @> @metadata
+    AND (
+        -- When metadata arg is empty json, accept all as row metadata column can be empty json or NULL
+        -- And NULL does not match with empty json
+        s.metadata @> @metadata OR @metadata = '{}'::jsonb
+    )
     AND (
         s.sandbox_started_at < @cursor_time
         OR

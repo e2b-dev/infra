@@ -8,6 +8,7 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -33,6 +34,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
+
+const progressDelay = 5 * time.Second
 
 type Builder struct {
 	logger *zap.Logger
@@ -96,7 +99,7 @@ type Result struct {
 //
 // 8. Snapshot
 // 9. Upload template (and all not yet uploaded layers)
-func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, config config.TemplateConfig, logsWriter *zap.Logger) (r *Result, e error) {
+func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, config config.TemplateConfig, logsCore zapcore.Core) (r *Result, e error) {
 	ctx, childSpan := b.tracer.Start(ctx, "build")
 	defer childSpan.End()
 
@@ -125,18 +128,29 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 
 	isV1Build := config.FromImage == "" && config.FromTemplate == nil
 
-	postProcessor := writer.NewPostProcessor(ctx, logsWriter, isV1Build)
-	go postProcessor.Start()
+	logger := zap.New(logsCore)
 	defer func() {
-		postProcessor.Stop(ctx, e)
+		if e != nil {
+			logger.Error(fmt.Sprintf("Build failed: %v", e))
+		} else {
+			logger.Info(fmt.Sprintf("Build finished, took %s",
+				time.Since(startTime).Truncate(time.Second).String()))
+		}
 	}()
 
-	postProcessor.Info(fmt.Sprintf("Building template %s/%s", config.TemplateID, template.BuildID))
+	if isV1Build {
+		hookedCore, done := writer.NewPostProcessor(progressDelay, logsCore)
+		defer done()
+		logger = zap.New(hookedCore)
+	}
+
+	logger.Info(fmt.Sprintf("Building template %s/%s", config.TemplateID, template.BuildID))
 
 	defer func(ctx context.Context) {
 		if e == nil {
 			return
 		}
+
 		// Remove build files if build fails
 		removeErr := b.templateStorage.DeleteObjectsWithPrefix(ctx, template.BuildID)
 		if removeErr != nil {
@@ -149,7 +163,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 		return nil, fmt.Errorf("error getting envd version: %w", err)
 	}
 
-	uploadErrGroup, _ := errgroup.WithContext(ctx)
+	var uploadErrGroup errgroup.Group
 	defer func() {
 		// Wait for all template layers to be uploaded even if the build fails
 		err := uploadErrGroup.Wait()
@@ -161,8 +175,8 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 	buildContext := buildcontext.BuildContext{
 		Config:         config,
 		Template:       template,
-		UserLogger:     postProcessor,
-		UploadErrGroup: uploadErrGroup,
+		UserLogger:     logger,
+		UploadErrGroup: &uploadErrGroup,
 		EnvdVersion:    envdVersion,
 		CacheScope:     cacheScope,
 		IsV1Build:      isV1Build,
@@ -179,6 +193,7 @@ func runBuild(
 	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, builder.templateStorage)
 
 	layerExecutor := layer.NewLayerExecutor(bc,
+		builder.logger,
 		builder.tracer,
 		builder.networkPool,
 		builder.devicePool,
@@ -194,6 +209,7 @@ func runBuild(
 		bc,
 		builder.logger,
 		builder.tracer,
+		builder.proxy,
 		builder.templateStorage,
 		builder.devicePool,
 		builder.networkPool,
@@ -292,7 +308,7 @@ func getRootfsSize(
 		return 0, fmt.Errorf("error opening rootfs header object: %w", err)
 	}
 
-	h, err := header.Deserialize(obj)
+	h, err := header.Deserialize(ctx, obj)
 	if err != nil {
 		return 0, fmt.Errorf("error deserializing rootfs header: %w", err)
 	}

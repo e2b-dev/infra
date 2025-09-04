@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
@@ -96,15 +97,9 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 
 		build = &result.EnvBuild
 		template := result.Env
-		aliases := result.Aliases
-
-		cluster := uuid.Nil
-		if template.ClusterID != nil {
-			cluster = *template.ClusterID
-		}
 
 		c.aliasCache.cache.Set(template.ID, template.ID, templateInfoExpiration)
-		for _, alias := range aliases {
+		for _, alias := range result.Aliases {
 			c.aliasCache.cache.Set(alias, template.ID, templateInfoExpiration)
 		}
 
@@ -113,6 +108,7 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 			return nil, nil, &api.APIError{Code: http.StatusForbidden, ClientMsg: fmt.Sprintf("Team '%s' does not have access to the template '%s'", teamID, aliasOrEnvID), Err: fmt.Errorf("team '%s' does not have access to the template '%s'", teamID, aliasOrEnvID)}
 		}
 
+		cluster := utils.WithClusterFallback(template.ClusterID)
 		if cluster != clusterID {
 			return nil, nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: fmt.Sprintf("Template '%s' is not available in requested cluster", aliasOrEnvID), Err: fmt.Errorf("template '%s' is not available in requested cluster '%s'", aliasOrEnvID, clusterID)}
 		}
@@ -122,7 +118,7 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 				TemplateID: template.ID,
 				BuildID:    build.ID.String(),
 				Public:     template.Public,
-				Aliases:    &aliases,
+				Aliases:    result.Aliases,
 			},
 			teamID:    teamID,
 			clusterID: clusterID,
@@ -157,13 +153,13 @@ type TemplateBuildInfo struct {
 	BuildStatus envbuild.Status
 	Reason      *schema.BuildReason
 
-	ClusterID     *uuid.UUID
-	ClusterNodeID *string
+	ClusterID uuid.UUID
+	NodeID    string
 }
 
-type TemplateBuildInfoNotFound struct{ error }
+type TemplateBuildInfoNotFoundError struct{}
 
-func (TemplateBuildInfoNotFound) Error() string {
+func (TemplateBuildInfoNotFoundError) Error() string {
 	return "Template build info not found"
 }
 
@@ -209,8 +205,8 @@ func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Statu
 			BuildStatus: status,
 			Reason:      reason,
 
-			ClusterID:     item.ClusterID,
-			ClusterNodeID: item.ClusterNodeID,
+			ClusterID: item.ClusterID,
+			NodeID:    item.NodeID,
 		},
 		templateInfoExpiration,
 	)
@@ -223,8 +219,8 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 
 		envDB, envDBErr := c.db.GetEnv(ctx, templateID)
 		if envDBErr != nil {
-			if errors.Is(envDBErr, db.TemplateNotFound{}) {
-				return TemplateBuildInfo{}, TemplateBuildInfoNotFound{}
+			if errors.Is(envDBErr, db.TemplateNotFoundError{}) {
+				return TemplateBuildInfo{}, TemplateBuildInfoNotFoundError{}
 			}
 
 			return TemplateBuildInfo{}, fmt.Errorf("failed to get template '%s': %w", buildID, envDBErr)
@@ -233,8 +229,8 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 		// making sure associated template build really exists
 		envBuildDB, envBuildDBErr := c.db.GetEnvBuild(ctx, buildID)
 		if envBuildDBErr != nil {
-			if errors.Is(envBuildDBErr, db.TemplateBuildNotFound{}) {
-				return TemplateBuildInfo{}, TemplateBuildInfoNotFound{}
+			if errors.Is(envBuildDBErr, db.TemplateBuildNotFoundError{}) {
+				return TemplateBuildInfo{}, TemplateBuildInfoNotFoundError{}
 			}
 
 			return TemplateBuildInfo{}, fmt.Errorf("failed to get template build '%s': %w", buildID, envBuildDBErr)
@@ -248,8 +244,8 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 				BuildStatus: envBuildDB.Status,
 				Reason:      envBuildDB.Reason,
 
-				ClusterID:     envDB.ClusterID,
-				ClusterNodeID: envBuildDB.ClusterNodeID,
+				ClusterID: utils.WithClusterFallback(envDB.ClusterID),
+				NodeID:    envBuildDB.ClusterNodeID,
 			},
 			templateInfoExpiration,
 		)

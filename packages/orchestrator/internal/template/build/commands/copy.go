@@ -12,11 +12,11 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/paths"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -26,6 +26,8 @@ type Copy struct {
 	FilesStorage storage.StorageProvider
 	CacheScope   string
 }
+
+var _ Command = (*Copy)(nil)
 
 type copyScriptData struct {
 	SourcePath string
@@ -83,7 +85,7 @@ fi
 func (c *Copy) Execute(
 	ctx context.Context,
 	tracer trace.Tracer,
-	postProcessor *writer.PostProcessor,
+	logger *zap.Logger,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	prefix string,
@@ -111,7 +113,7 @@ func (c *Copy) Execute(
 	// Start writing tar data to the pipe writer in a goroutine
 	go func() {
 		defer pw.Close()
-		if _, err := obj.WriteTo(pw); err != nil {
+		if _, err := obj.WriteTo(ctx, pw); err != nil {
 			pw.CloseWithError(err)
 		}
 	}()

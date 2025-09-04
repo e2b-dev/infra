@@ -2,7 +2,7 @@ package storage
 
 import (
 	"bytes"
-	"crypto/rand"
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	storagemocks "github.com/e2b-dev/infra/packages/shared/pkg/storage/mocks"
 )
 
 func TestCachedFileObjectProvider_MakeChunkFilename(t *testing.T) {
@@ -36,7 +38,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		require.NoError(t, err)
 
 		buffer := make([]byte, 3)
-		read, err := c.ReadAt(buffer, 0)
+		read, err := c.ReadAt(t.Context(), buffer, 0)
 		require.NoError(t, err)
 		assert.Equal(t, []byte{1, 2, 3}, buffer)
 		assert.Equal(t, 3, read)
@@ -44,11 +46,11 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 	t.Run("consecutive ReadAt calls should cache", func(t *testing.T) {
 		fakeData := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-		fakeStorageObjectProvider := NewMockStorageObjectProvider(t)
+		fakeStorageObjectProvider := storagemocks.NewMockStorageObjectProvider(t)
 
 		fakeStorageObjectProvider.EXPECT().
-			ReadAt(mock.Anything, mock.Anything).
-			RunAndReturn(func(buff []byte, off int64) (int, error) {
+			ReadAt(mock.Anything, mock.Anything, mock.Anything).
+			RunAndReturn(func(ctx context.Context, buff []byte, off int64) (int, error) {
 				start := off
 				end := off + int64(len(buff))
 				end = min(end, int64(len(fakeData)))
@@ -65,7 +67,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 		// first read goes to source
 		buffer := make([]byte, 3)
-		read, err := c.ReadAt(buffer, 3)
+		read, err := c.ReadAt(t.Context(), buffer, 3)
 		require.NoError(t, err)
 		assert.Equal(t, []byte{4, 5, 6}, buffer)
 		assert.Equal(t, 3, read)
@@ -76,7 +78,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		// second read pulls from cache
 		c.inner = nil // prevent remote reads, force cache read
 		buffer = make([]byte, 3)
-		read, err = c.ReadAt(buffer, 3)
+		read, err = c.ReadAt(t.Context(), buffer, 3)
 		require.NoError(t, err)
 		assert.Equal(t, []byte{4, 5, 6}, buffer)
 		assert.Equal(t, 3, read)
@@ -85,15 +87,15 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 	t.Run("WriteTo calls should read from cache", func(t *testing.T) {
 		fakeData := []byte{1, 2, 3}
 
-		fakeStorageObjectProvider := NewMockStorageObjectProvider(t)
+		fakeStorageObjectProvider := storagemocks.NewMockStorageObjectProvider(t)
 		fakeStorageObjectProvider.EXPECT().
-			WriteTo(mock.Anything).
-			RunAndReturn(func(dst io.Writer) (int64, error) {
+			WriteTo(mock.Anything, mock.Anything).
+			RunAndReturn(func(ctx context.Context, dst io.Writer) (int64, error) {
 				num, err := dst.Write(fakeData)
 				return int64(num), err
 			})
 		fakeStorageObjectProvider.EXPECT().
-			Size().Return(int64(len(fakeData)), nil)
+			Size(mock.Anything).Return(int64(len(fakeData)), nil)
 
 		tempDir := t.TempDir()
 		c := CachedFileObjectProvider{
@@ -104,154 +106,21 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 		// write to both local and remote storage
 		var buffer bytes.Buffer
-		count, err := c.WriteTo(&buffer)
+		count, err := c.WriteTo(t.Context(), &buffer)
 		require.NoError(t, err)
 		assert.Equal(t, int64(len(fakeData)), count)
+
+		// WriteTo is async, wait for the write to finish
+		time.Sleep(time.Millisecond * 20)
 
 		// second read should go straight to local, although it grabs the size
 		fakeStorageObjectProvider.EXPECT().
-			WriteTo(mock.Anything).
+			WriteTo(mock.Anything, mock.Anything).
 			Panic("something bad happened")
 		var buff2 bytes.Buffer
-		count, err = c.WriteTo(&buff2)
+		count, err = c.WriteTo(t.Context(), &buff2)
 		require.NoError(t, err)
 		assert.Equal(t, int64(len(fakeData)), count)
-	})
-
-	t.Run("WriteFromFileSystem should write to cache", func(t *testing.T) {
-		fakeData := generateBytes(t, 11*1024*1024) // 11 MB
-
-		fakeStorageObjectProvider := NewMockStorageObjectProvider(t)
-		fakeStorageObjectProvider.
-			EXPECT().
-			WriteFromFileSystem(mock.Anything).
-			Return(nil)
-
-		tempDir := t.TempDir()
-		c := CachedFileObjectProvider{
-			path:      tempDir,
-			chunkSize: 2 * 1024 * 1024, // 2 MB
-			inner:     fakeStorageObjectProvider,
-		}
-
-		// create temp file
-		inputFile := filepath.Join(tempDir, "tempfile.bin")
-		err := os.WriteFile(inputFile, fakeData, 0o644)
-		require.NoError(t, err)
-
-		// write file to object store
-		err = c.WriteFromFileSystem(inputFile)
-		require.NoError(t, err)
-
-		// ensure remote is not called
-		c.inner = nil
-
-		// read bytes 4-6 MB
-		buffer := make([]byte, 2*1024*1024)        // 2 MB buffer
-		read, err := c.ReadAt(buffer, 4*1024*1024) // read 4-6 MB
-		require.NoError(t, err)
-		assert.Equal(t, fakeData[4*1024*1024:6*1024*1024], buffer)
-		assert.Equal(t, len(buffer), read)
-
-		// read bytes 10-11 MB
-		buffer = make([]byte, 1*1024*1024)         // 1 MB buffer
-		read, err = c.ReadAt(buffer, 10*1024*1024) // read 4-6 MB
-		require.NoError(t, err)
-		assert.Equal(t, fakeData[10*1024*1024:], buffer)
-		assert.Equal(t, len(buffer), read)
-	})
-
-	t.Run("ReadFrom should read from cache", func(t *testing.T) {
-		fakeData := []byte{1, 2, 3}
-
-		fakeStorageObjectProvider := NewMockStorageObjectProvider(t)
-		fakeStorageObjectProvider.EXPECT().
-			Write(mock.Anything).
-			RunAndReturn(func(src []byte) (int, error) {
-				return len(src), nil
-			})
-
-		tempDir := t.TempDir()
-		c := CachedFileObjectProvider{
-			path:      tempDir,
-			chunkSize: 3,
-			inner:     fakeStorageObjectProvider,
-		}
-
-		read, err := c.Write(fakeData)
-		require.NoError(t, err)
-		assert.Equal(t, len(fakeData), read)
-
-		buf := make([]byte, 3)
-		read2, err := c.ReadAt(buf, 0)
-		require.NoError(t, err)
-		assert.Equal(t, fakeData, buf)
-		assert.Equal(t, 3, read2)
-	})
-
-	t.Run("ReadFrom should handle multiple chunks at once", func(t *testing.T) {
-		fakeData := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-
-		fakeStorageObjectProvider := NewMockStorageObjectProvider(t)
-		fakeStorageObjectProvider.EXPECT().
-			Write(mock.Anything).
-			RunAndReturn(func(src []byte) (int, error) {
-				return len(src), nil
-			})
-
-		tempDir := t.TempDir()
-		c := CachedFileObjectProvider{
-			path:      tempDir,
-			chunkSize: 3,
-			inner:     fakeStorageObjectProvider,
-		}
-
-		read64, err := c.Write(fakeData)
-		require.NoError(t, err)
-		assert.Equal(t, len(fakeData), read64)
-
-		// get first chunk
-		buf := make([]byte, 3)
-		read, err := c.ReadAt(buf, 0)
-		require.NoError(t, err)
-		assert.Equal(t, fakeData[0:3], buf)
-		assert.Equal(t, 3, read)
-
-		// get last chunk
-		buf = make([]byte, 1)
-		read, err = c.ReadAt(buf, 9)
-		require.NoError(t, err)
-		assert.Equal(t, fakeData[9:], buf)
-		assert.Equal(t, 1, read)
-	})
-
-	t.Run("ReadFrom should handle short reads when appropriate", func(t *testing.T) {
-		fakeData := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-
-		fakeStorageObjectProvider := NewMockStorageObjectProvider(t)
-		fakeStorageObjectProvider.EXPECT().
-			Write(mock.Anything).
-			RunAndReturn(func(src []byte) (int, error) {
-				return len(src), nil
-			})
-
-		tempDir := t.TempDir()
-		c := CachedFileObjectProvider{
-			path:      tempDir,
-			chunkSize: 3,
-			inner:     fakeStorageObjectProvider,
-		}
-
-		read64, err := c.Write(fakeData)
-		require.NoError(t, err)
-		assert.Equal(t, len(fakeData), read64)
-
-		// get last chunk
-		buf := make([]byte, 3)
-		read, err := c.ReadAt(buf, 9)
-		require.NoError(t, err)
-		assert.Equal(t, 1, read)
-		assert.Equal(t, fakeData[9:], buf[:read])
 	})
 }
 
@@ -304,10 +173,64 @@ func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
 	}
 }
 
-func generateBytes(t *testing.T, n int) []byte {
-	buf := make([]byte, n)
-	count, err := rand.Read(buf)
+func TestMoveWithoutReplace_SuccessWhenDestMissing(t *testing.T) {
+	td := t.TempDir()
+	content := []byte("alpha")
+	src := filepath.Join(td, "src")
+	dst := filepath.Join(td, "dst")
+
+	require.NoError(t, os.WriteFile(src, content, 0o644))
+	err := moveWithoutReplace(src, dst)
 	require.NoError(t, err)
-	require.Equal(t, n, count)
-	return buf
+
+	// Dest has original content.
+	got, err := os.ReadFile(dst)
+	require.NoError(t, err)
+	assert.Equal(t, content, got)
+
+	_, err = os.Stat(src)
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestMoveWithoutReplace_FailWhenExists(t *testing.T) {
+	td := t.TempDir()
+	content := []byte("alpha")
+	secondContent := []byte("beta")
+	src := filepath.Join(td, "src")
+	dst := filepath.Join(td, "dst")
+
+	require.NoError(t, os.WriteFile(src, content, 0o644))
+	require.NoError(t, os.WriteFile(dst, secondContent, 0o644))
+	err := moveWithoutReplace(src, dst)
+	require.NoError(t, err)
+
+	// Dest has original content.
+	got, err := os.ReadFile(dst)
+	require.NoError(t, err)
+	assert.Equal(t, secondContent, got)
+
+	_, err = os.Stat(src)
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestMoveWithoutReplace_Fail(t *testing.T) {
+	td := t.TempDir()
+	content := []byte("alpha")
+	src := filepath.Join(td, "src")
+	require.NoError(t, os.WriteFile(src, content, 0o644))
+
+	roDir := filepath.Join(td, "ro")
+	require.NoError(t, os.Mkdir(roDir, 0o555)) // r-x only, no write
+	t.Cleanup(func() {
+		// ensure cleanup possible
+		err := os.Chmod(roDir, 0o755)
+		assert.NoError(t, err)
+	})
+
+	dst := filepath.Join(roDir, "dst")
+	err := moveWithoutReplace(src, dst)
+	require.Error(t, err)
+
+	_, err = os.Stat(src)
+	assert.ErrorIs(t, err, os.ErrNotExist)
 }
