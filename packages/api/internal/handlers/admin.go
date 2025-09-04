@@ -60,7 +60,7 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 		return
 	}
 
-	node := a.orchestrator.GetNodeByNomadShortID(nodeId)
+	node := a.orchestrator.GetNodeByIDOrNomadShortID(nodeId)
 	if node == nil {
 		c.Status(http.StatusNotFound)
 		return

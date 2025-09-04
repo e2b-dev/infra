@@ -61,12 +61,9 @@ func (o *Orchestrator) AdminNodes() []*api.Node {
 }
 
 func (o *Orchestrator) AdminNodeDetail(clusterID uuid.UUID, nodeIDOrNomadNodeShortID string) (*api.NodeDetail, error) {
-	n := o.GetNodeByNomadShortID(nodeIDOrNomadNodeShortID)
+	n := o.GetNodeByIDOrNomadShortID(nodeIDOrNomadNodeShortID)
 	if n == nil {
-		n = o.GetNode(clusterID, nodeIDOrNomadNodeShortID)
-		if n == nil {
-			return nil, ErrNodeNotFound
-		}
+		return nil, ErrNodeNotFound
 	}
 
 	meta := n.Metadata()
