@@ -25,7 +25,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci/auth"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
@@ -57,7 +56,7 @@ func TestCreateExportLayersOrder(t *testing.T) {
 	ctx := t.Context()
 
 	tracer := noop.NewTracerProvider().Tracer("test")
-	postProcessor := writer.NewPostProcessor(ctx, zap.NewNop(), false)
+	logger := zap.NewNop()
 
 	// Create a dummy image with some layers
 	img := empty.Image
@@ -84,7 +83,7 @@ func TestCreateExportLayersOrder(t *testing.T) {
 
 	// Export the layers
 	dir := t.TempDir()
-	layers, err := createExport(ctx, tracer, postProcessor, img, dir)
+	layers, err := createExport(ctx, tracer, logger, img, dir)
 	require.NoError(t, err)
 	require.NotNil(t, layers)
 
