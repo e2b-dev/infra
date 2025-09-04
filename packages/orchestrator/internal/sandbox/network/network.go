@@ -217,9 +217,9 @@ func (s *Slot) CreateNetwork() error {
 	}
 
 	// Redirect traffic destined for event proxy server
-	eventIP := consts.GetSandboxEventIP()
 	err = tables.Append(
-		"nat", "PREROUTING", "-i", s.VethName(), "-p", "tcp", "-d", eventIP, "--dport", "80",
+		"nat", "PREROUTING", "-i", s.VethName(),
+		"-p", "tcp", "-d", consts.GetSandboxEventIP(), "--dport", "80",
 		"-j", "REDIRECT", "--to-port", consts.GetEventProxyPort(),
 	)
 	if err != nil {

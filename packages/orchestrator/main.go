@@ -475,6 +475,24 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 		return nil
 	})
 
+	g.Go(func() error {
+		sbxEventProxyErr := sbxEventProxy.Start()
+		if sbxEventProxyErr != nil && !errors.Is(sbxEventProxyErr, http.ErrServerClosed) {
+			zap.L().Error("sandbox event proxy error", zap.Error(sbxEventProxyErr))
+
+			select {
+			case serviceError <- sbxEventProxyErr:
+			default:
+				// Don't block if the serviceError channel is already closed
+				// or if the error is already sent
+			}
+
+			return sbxEventProxyErr
+		}
+
+		return nil
+	})
+
 	// Wait for the shutdown signal or if some service fails
 	select {
 	case <-sig.Done():
