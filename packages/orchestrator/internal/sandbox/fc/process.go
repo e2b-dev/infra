@@ -32,12 +32,17 @@ type ProcessOptions struct {
 
 	// KernelLogs is a flag to enable kernel logs output to the process stdout.
 	KernelLogs bool
+
 	// SystemdToKernelLogs is a flag to enable systemd logs output to the console.
 	// It enabled the kernel logs by default too.
 	SystemdToKernelLogs bool
 
+	// KvmClock is a flag to enable kvm-clock as the clocksource for the kernel.
+	KvmClock bool
+
 	// Stdout is the writer to which the process stdout will be written.
 	Stdout io.Writer
+
 	// Stderr is the writer to which the process stderr will be written.
 	Stderr io.Writer
 }
@@ -251,11 +256,16 @@ func (p *Process) Create(
 		"i8042.nokbd":      "",
 		"i8042.noaux":      "",
 		"random.trust_cpu": "on",
-		"clocksource":      "kvm-clock",
 	}
+
+	if options.KvmClock {
+		args["clocksource"] = "kvm-clock"
+	}
+
 	if options.SystemdToKernelLogs {
 		args["systemd.journald.forward_to_console"] = ""
 	}
+
 	if options.KernelLogs || options.SystemdToKernelLogs {
 		// Forward kernel logs to the ttyS0, which will be picked up by the stdout of FC process
 		delete(args, "quiet")
