@@ -2,7 +2,7 @@ name: Deploy Infra
 
 on:
   workflow_dispatch:
-    inputs:
+    inputs: &workflow_inputs
       commit_sha:
         description: "Specific commit SHA to checkout"
         required: true
@@ -20,6 +20,8 @@ on:
         required: false
         type: string
         default: "false"
+  workflow_call:
+    inputs: *workflow_inputs
 
 concurrency:
   group: deploy-${{ inputs.environment }}
