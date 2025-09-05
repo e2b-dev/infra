@@ -173,3 +173,123 @@ moved {
   from = module.cluster.module.api_cluster.google_compute_health_check.nomad_check
   to   = module.cluster.google_compute_health_check.api_nomad_check
 }
+
+moved {
+  from = module.api.google_artifact_registry_repository.custom_environments_repository
+  to   = google_artifact_registry_repository.custom_environments_repository
+}
+
+moved {
+  from = module.api.google_artifact_registry_repository_iam_member.custom_environments_repository_member
+  to   = google_artifact_registry_repository_iam_member.custom_environments_repository_member
+}
+
+moved {
+  from = module.api.google_secret_manager_secret.api_admin_token
+  to   = google_secret_manager_secret.api_admin_token
+}
+
+moved {
+  from = module.api.google_secret_manager_secret.api_secret
+  to   = google_secret_manager_secret.api_secret
+}
+
+moved {
+  from = module.api.google_secret_manager_secret.postgres_connection_string
+  to   = google_secret_manager_secret.postgres_connection_string
+}
+
+moved {
+  from = module.api.google_secret_manager_secret.posthog_api_key
+  to   = google_secret_manager_secret.posthog_api_key
+}
+
+moved {
+  from = module.api.google_secret_manager_secret.redis_url
+  to   = google_secret_manager_secret.redis_url
+}
+
+moved {
+  from = module.api.google_secret_manager_secret.sandbox_access_token_hash_seed
+  to   = google_secret_manager_secret.sandbox_access_token_hash_seed
+}
+
+moved {
+  from = module.api.google_secret_manager_secret.supabase_jwt_secrets
+  to   = google_secret_manager_secret.supabase_jwt_secrets
+}
+
+moved {
+  from = module.api.google_secret_manager_secret_version.api_admin_token_value
+  to   = google_secret_manager_secret_version.api_admin_token_value
+}
+
+moved {
+  from = module.api.google_secret_manager_secret_version.api_secret_value
+  to   = google_secret_manager_secret_version.api_secret_value
+}
+
+moved {
+  from = module.api.google_secret_manager_secret_version.posthog_api_key
+  to   = google_secret_manager_secret_version.posthog_api_key
+}
+
+moved {
+  from = module.api.google_secret_manager_secret_version.redis_url
+  to   = google_secret_manager_secret_version.redis_url
+}
+
+moved {
+  from = module.api.google_secret_manager_secret_version.sandbox_access_token_hash_seed
+  to   = google_secret_manager_secret_version.sandbox_access_token_hash_seed
+}
+
+moved {
+  from = module.api.google_secret_manager_secret_version.supabase_jwt_secrets
+  to   = google_secret_manager_secret_version.supabase_jwt_secrets
+}
+
+moved {
+  from = module.api.random_password.api_admin_secret
+  to   = random_password.api_admin_secret
+}
+
+moved {
+  from = module.api.random_password.api_secret
+  to   = random_password.api_secret
+}
+
+moved {
+  from = module.api.random_password.sandbox_access_token_hash_seed
+  to   = random_password.sandbox_access_token_hash_seed
+}
+
+moved {
+  from = module.client_proxy.google_secret_manager_secret.edge_api_secret
+  to   = google_secret_manager_secret.edge_api_secret
+}
+
+moved {
+  from = module.client_proxy.google_secret_manager_secret_version.edge_api_secret
+  to   = google_secret_manager_secret_version.edge_api_secret
+}
+
+moved {
+  from = module.client_proxy.random_password.edge_api_secret
+  to   = random_password.edge_api_secret
+}
+
+moved {
+  from = module.docker_reverse_proxy.google_artifact_registry_repository_iam_member.orchestration_repository_member
+  to   = google_artifact_registry_repository_iam_member.orchestration_repository_member
+}
+
+moved {
+  from = module.docker_reverse_proxy.google_service_account.docker_registry_service_account
+  to   = google_service_account.docker_registry_service_account
+}
+
+moved {
+  from = module.docker_reverse_proxy.google_service_account_key.google_service_key
+  to   = google_service_account_key.google_service_key
+}

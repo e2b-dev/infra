@@ -70,27 +70,8 @@ login-gcloud:
 
 .PHONY: init
 init:
-	@ printf "Initializing Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	gcloud storage buckets create gs://$(TERRAFORM_STATE_BUCKET) --location $(GCP_REGION) --project $(GCP_PROJECT_ID) --default-storage-class STANDARD  --uniform-bucket-level-access > /dev/null 2>&1 || true
-
-	# Enable object versioning (keeps deleted/replaced objects as older versions)
-	gcloud storage buckets update gs://$(TERRAFORM_STATE_BUCKET) --versioning --soft-delete-duration=30d
-
-	# Create a temporary file for lifecycle rules
-	$(eval LIFECYCLE_FILE := $(shell mktemp))
-
-	# Set lifecycle rules to delete non-live objects after 30 days or more than 50 newer versions
-	echo '{"rule":[{"action":{"type":"Delete"},"condition":{"isLive":false,"age":30}},{"action":{"type":"Delete"},"condition":{"numNewerVersions":50}}]}' > $(LIFECYCLE_FILE)
-	gcloud storage buckets update gs://$(TERRAFORM_STATE_BUCKET) --lifecycle-file=$(LIFECYCLE_FILE)
-
-	# Remove the temporary lifecycle file
-	@ rm -f $(LIFECYCLE_FILE)
-
-	$(TF) init -input=false -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
-	$(tf_vars) $(TF) apply -target=module.init -target=module.buckets -auto-approve -input=false -compact-warnings
-	TERRAFORM_STATE_BUCKET="$(TERRAFORM_STATE_BUCKET)" $(MAKE) -C packages/cluster-disk-image init build
-	gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+	$(MAKE) -C iac/provider-gcp init
 
 # Setup production environment variables, this is used only for E2B.dev production
 # Uses Infisical CLI to read secrets from Infisical Vault
@@ -102,77 +83,38 @@ download-prod-env:
 
 .PHONY: plan
 plan:
-	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	@ $(TF) fmt -recursive
-	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode; \
-	status=$$?; \
-	if [ $$status -eq 0 ]; then \
-		echo "No changes."; \
-	elif [ $$status -eq 2 ]; then \
-		echo "Changes detected."; \
-	else \
-		echo "Error during plan."; \
-		exit $$status; \
-	fi
+	$(MAKE) -C iac/provider-gcp plan
 
 # Deploy all jobs in Nomad
 .PHONY: plan-only-jobs
 plan-only-jobs:
-	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	$(TF) fmt -recursive
-	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad; \
-	status=$$?; \
-	if [ $$status -eq 0 ]; then \
-		echo "No changes."; \
-	elif [ $$status -eq 2 ]; then \
-		echo "Changes detected."; \
-	else \
-		echo "Error during plan."; \
-		exit $$status; \
-	fi
+	$(MAKE) -C iac/provider-gcp plan-only-jobs
 
 # Deploy a specific job name in Nomad
 # When job name is specified, all '-' are replaced with '_' in the job name
 .PHONY: plan-only-jobs/%
 plan-only-jobs/%:
-	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	$(TF) fmt -recursive
-	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad.nomad_job.$$(echo "$(notdir $@)" | tr '-' '_');
-
-.PHONY: apply
-apply:
-	@ printf "Applying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	$(tf_vars) \
-	$(TF) apply \
-	-auto-approve \
-	-input=false \
-	-compact-warnings \
-	-parallelism=20 \
-	.tfplan.$(ENV)
-	@ rm .tfplan.$(ENV)
+	$(MAKE) -C iac/provider-gcp plan-only-jobs/$(subst -,_,$(notdir $@))
 
 .PHONY: plan-without-jobs
 plan-without-jobs:
-	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	$(eval TARGET := $(shell cat main.tf | grep "^module" | awk '{print $$2}' | tr ' ' '\n' | grep -v -e "nomad" | awk '{print "-target=module." $$0 ""}' | xargs))
-	$(tf_vars) \
-	$(TF) plan \
-	-out=.tfplan.$(ENV) \
-	-input=false \
-	-compact-warnings \
-	-parallelism=20 \
-	$(TARGET)
+	$(MAKE) -C iac/provider-gcp plan-without-jobs
+
+.PHONY: apply
+apply:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	$(MAKE) -C iac/provider-gcp apply
 
 .PHONY: destroy
 destroy:
-	@ printf "Destroying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	$(tf_vars) \
-	$(TF) destroy \
-	-compact-warnings \
-	-parallelism=20 \
-	$$(terraform state list | grep module | cut -d'.' -f1,2 | grep -v -e "buckets" | uniq | awk '{print "-target=" $$0 ""}' | xargs)
+	$(MAKE) -C iac/provider-gcp destroy
+
+# Shortcut to importing resources into Terraform state (e.g. after creating resources manually or switching between different branches for the same environment)
+.PHONY: import
+import:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	$(MAKE) -C iac/provider-gcp import
 
 .PHONY: version
 version:
@@ -216,7 +158,6 @@ copy-public-builds:
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
 
-
 .PHONY: generate
 generate: generate/api generate/orchestrator generate/client-proxy generate/envd generate/db generate-tests
 generate/%:
@@ -242,13 +183,6 @@ switch-env:
 	@ echo $(ENV) > .last_used_env
 	@ . ${ENV_FILE}
 	terraform init -input=false -upgrade -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
-
-# Shortcut to importing resources into Terraform state (e.g. after creating resources manually or switching between different branches for the same environment)
-.PHONY: import
-import:
-	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	$(tf_vars) $(TF) import "$(TARGET)" "$(ID)" -no-color
 
 .PHONY: setup-ssh
 setup-ssh:
