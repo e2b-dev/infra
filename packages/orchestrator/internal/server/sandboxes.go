@@ -25,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/event"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -417,19 +418,18 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 // Extracts common data needed for sandbox events
 func (s *server) prepareSandboxEventData(sbx *sandbox.Sandbox) (uuid.UUID, string, map[string]any) {
-	// Create a copy of the sandbox to avoid race conditions
-	sbxCopy := *sbx
-	teamID, err := uuid.Parse(sbxCopy.Runtime.TeamID)
+	teamID, err := uuid.Parse(sbx.Runtime.TeamID)
 	if err != nil {
-		sbxlogger.I(&sbxCopy).Error("error parsing team ID", zap.String("team_id", sbxCopy.Runtime.TeamID), zap.Error(err))
+		sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
 	}
 
 	buildId := ""
 	var eventData map[string]any = make(map[string]any)
-	if sbxCopy.SandboxConfig != nil {
-		buildId = sbxCopy.SandboxConfig.BuildId
-		if sbxCopy.SandboxConfig.Metadata != nil {
-			eventData["sandbox_metadata"] = sbxCopy.SandboxConfig.Metadata
+	if sbx.SandboxConfig != nil {
+		buildId = sbx.SandboxConfig.BuildId
+		if sbx.SandboxConfig.Metadata != nil {
+			// Copy the map to avoid race conditions
+			eventData["sandbox_metadata"] = utils.CopyMap(sbx.SandboxConfig.Metadata)
 		}
 	}
 
