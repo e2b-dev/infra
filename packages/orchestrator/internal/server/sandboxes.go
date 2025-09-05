@@ -424,7 +424,7 @@ func (s *server) prepareSandboxEventData(sbx *sandbox.Sandbox) (uuid.UUID, strin
 	}
 
 	buildId := ""
-	var eventData = make(map[string]any)
+	eventData := make(map[string]any)
 	if sbx.SandboxConfig != nil {
 		buildId = sbx.SandboxConfig.BuildId
 		if sbx.SandboxConfig.Metadata != nil {
