@@ -415,10 +415,7 @@ func (ebq *EnvBuildQuery) loadEnv(ctx context.Context, query *EnvQuery, nodes []
 	ids := make([]string, 0, len(nodes))
 	nodeids := make(map[string][]*EnvBuild)
 	for i := range nodes {
-		if nodes[i].EnvID == nil {
-			continue
-		}
-		fk := *nodes[i].EnvID
+		fk := nodes[i].EnvID
 		if _, ok := nodeids[fk]; !ok {
 			ids = append(ids, fk)
 		}
