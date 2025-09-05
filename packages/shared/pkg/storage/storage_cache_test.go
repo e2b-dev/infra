@@ -212,9 +212,12 @@ func TestCachedFileObjectProvider_ReadAt(t *testing.T) {
 			inner:     fakeStorageObjectProvider,
 		}
 
+		// write the data to the cache
 		read64, err := c.Write(t.Context(), fakeData)
 		require.NoError(t, err)
 		assert.Equal(t, len(fakeData), read64)
+
+		time.Sleep(time.Millisecond * 20)
 
 		// get first chunk
 		buf := make([]byte, 3)

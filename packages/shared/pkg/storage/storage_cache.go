@@ -224,7 +224,7 @@ func (c *CachedFileObjectProvider) writeCacheAndRemote(ctx context.Context, src 
 
 	size := len(src)
 	chunkSize := int(c.chunkSize)
-	for offset := 0; offset < chunkSize; offset += chunkSize {
+	for offset := 0; offset < size; offset += chunkSize {
 		// read from the source
 		offsetEnd := min(offset+chunkSize, size)
 		buf := src[offset:offsetEnd]
