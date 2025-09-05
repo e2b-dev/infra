@@ -217,6 +217,9 @@ func (c *CachedFileObjectProvider) Write(ctx context.Context, src []byte) (int, 
 	return num, nil
 }
 
+// writeCacheAndRemote simultaneously writes a full file to both local cache and the remote persistence store. It does
+// not need to worry about race conditions, as the files will only exist on the local machine, and can't be generated
+// in parallel on any other machines.
 func (c *CachedFileObjectProvider) writeCacheAndRemote(ctx context.Context, src []byte) (int, error) {
 	var err error
 	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.writeCacheAndRemote")
@@ -352,6 +355,8 @@ func (c *CachedFileObjectProvider) createCacheBlocksFromFile(ctx context.Context
 	return errs.Wait()
 }
 
+// writeChunkFromFile writes a piece of a local file. It does not need to worry about race conditions, as it will only
+// be called when building templates, and templates cannot be built on multiple machines at the same time.x
 func (c *CachedFileObjectProvider) writeChunkFromFile(ctx context.Context, offset int64, totalSize int64, input *os.File) error {
 	var err error
 	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.writeChunkFromFile", trace.WithAttributes(
