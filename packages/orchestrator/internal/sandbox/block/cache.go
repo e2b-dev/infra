@@ -219,9 +219,6 @@ func (m *Cache) setIsCached(off, length int64) {
 
 // When using WriteAtWithoutLock you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
 func (m *Cache) WriteAtWithoutLock(ctx context.Context, b []byte, off int64) (int, error) {
-	ctx, span := tracer.Start(ctx, "Cache.WriteAtWithoutLock")
-	defer span.End()
-
 	if m.isClosed() {
 		return 0, NewErrCacheClosed(m.filePath)
 	}

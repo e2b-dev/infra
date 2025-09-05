@@ -118,9 +118,6 @@ func (d *Storage) BlockSize() int64 {
 }
 
 func (d *Storage) Slice(ctx context.Context, off, length int64) ([]byte, error) {
-	ctx, span := tracer.Start(ctx, "Storage.Slice")
-	defer span.End()
-
 	return d.source.Slice(ctx, off, length)
 }
 

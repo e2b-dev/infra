@@ -7,11 +7,8 @@ import (
 	"sync/atomic"
 
 	"github.com/bits-and-blooms/bitset"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"go.opentelemetry.io/otel"
 )
 
 var tracer = otel.Tracer("orchestrator.internal.sandbox.block")
@@ -50,12 +47,6 @@ func (t *TrackedSliceDevice) Disable() error {
 }
 
 func (t *TrackedSliceDevice) Slice(ctx context.Context, offset int64, length int64) ([]byte, error) {
-	ctx, span := tracer.Start(ctx, "TrackedSliceDevice.Slice", trace.WithAttributes(
-		attribute.Int64("offset", offset),
-		attribute.Int64("length", length),
-	))
-	defer span.End()
-
 	if t.nilTracking.Load() {
 		t.dirtyMu.Lock()
 		t.dirty.Clear(uint(header.BlockIdx(offset, t.blockSize)))

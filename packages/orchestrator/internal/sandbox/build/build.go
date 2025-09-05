@@ -46,9 +46,6 @@ func min(a, b int64) int64 {
 }
 
 func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
-	ctx, span := tracer.Start(ctx, "File.ReadAt")
-	defer span.End()
-
 	for n < len(p) {
 		mappedOffset, mappedLength, buildID, err := b.header.GetShiftedMapping(off + int64(n))
 		if err != nil {
