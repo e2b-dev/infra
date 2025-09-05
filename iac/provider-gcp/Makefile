@@ -77,9 +77,7 @@ init:
 	# Remove the temporary lifecycle file
 	@ rm -f $(LIFECYCLE_FILE)
 
-	$(TF) init -input=false -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
-	#$(tf_vars) $(TF) apply -target=module.init -target=module.buckets -target=module.cluster -auto-approve -input=false -compact-warnings
-	$(tf_vars) $(TF) apply -target=module.init -target=module.buckets -target=module.cluster -input=false -compact-warnings
+	$(tf_vars) $(TF) apply -target=module.init -target=module.cluster -auto-approve -input=false -compact-warnings
 
 	TERRAFORM_STATE_BUCKET="$(TERRAFORM_STATE_BUCKET)" $(MAKE) -C packages/cluster-disk-image init build
 	gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
