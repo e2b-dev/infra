@@ -1,5 +1,5 @@
 locals {
-  build_pool_name      = "${var.prefix}orch-build"
+  build_pool_name = "${var.prefix}orch-build"
   build_startup_script = templatefile("${path.module}/scripts/start-client.sh", {
     CLUSTER_TAG_NAME             = var.cluster_tag_name
     SCRIPTS_BUCKET               = var.cluster_setup_bucket_name

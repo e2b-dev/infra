@@ -62,7 +62,6 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 .PHONY: init
 init:
 	@ printf "Initializing Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	../../scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	gcloud storage buckets create gs://$(TERRAFORM_STATE_BUCKET) --location $(GCP_REGION) --project $(GCP_PROJECT_ID) --default-storage-class STANDARD  --uniform-bucket-level-access > /dev/null 2>&1 || true
 
 	# Enable object versioning (keeps deleted/replaced objects as older versions)
@@ -78,11 +77,87 @@ init:
 	# Remove the temporary lifecycle file
 	@ rm -f $(LIFECYCLE_FILE)
 
-	#$(TF) init -input=false -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
-	#$(tf_vars) $(TF) apply -target=module.init -target=module.buckets -auto-approve -input=false -compact-warnings
-	# todo: remove target when you are already migrating (needed for moved resources)
+	$(TF) init -input=false -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
+	#$(tf_vars) $(TF) apply -target=module.init -target=module.buckets -target=module.cluster -auto-approve -input=false -compact-warnings
 	$(tf_vars) $(TF) apply -target=module.init -target=module.buckets -target=module.cluster -input=false -compact-warnings
 
-	#$(tf_vars) $(TF) plan -out=plan.out -input=false -compact-warnings
-	#TERRAFORM_STATE_BUCKET="$(TERRAFORM_STATE_BUCKET)" $(MAKE) -C packages/cluster-disk-image init build
-	#gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+	TERRAFORM_STATE_BUCKET="$(TERRAFORM_STATE_BUCKET)" $(MAKE) -C packages/cluster-disk-image init build
+	gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+.PHONY: plan
+plan:
+	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ $(TF) fmt -recursive
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode; \
+	status=$$?; \
+	if [ $$status -eq 0 ]; then \
+		echo "No changes."; \
+	elif [ $$status -eq 2 ]; then \
+		echo "Changes detected."; \
+	else \
+		echo "Error during plan."; \
+		exit $$status; \
+	fi
+
+# Deploy all jobs in Nomad
+.PHONY: plan-only-jobs
+plan-only-jobs:
+	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(TF) fmt -recursive
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad; \
+	status=$$?; \
+	if [ $$status -eq 0 ]; then \
+		echo "No changes."; \
+	elif [ $$status -eq 2 ]; then \
+		echo "Changes detected."; \
+	else \
+		echo "Error during plan."; \
+		exit $$status; \
+	fi
+
+# Deploy a specific job name in Nomad
+# When job name is specified, all '-' are replaced with '_' in the job name
+.PHONY: plan-only-jobs/%
+plan-only-jobs/%:
+	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(TF) fmt -recursive
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad.nomad_job.$$(echo "$(notdir $@)" | tr '-' '_');
+
+.PHONY: plan-without-jobs
+plan-without-jobs:
+	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(eval TARGET := $(shell cat main.tf | grep "^module" | awk '{print $$2}' | tr ' ' '\n' | grep -v -e "nomad" | awk '{print "-target=module." $$0 ""}' | xargs))
+	$(tf_vars) \
+	$(TF) plan \
+	-out=.tfplan.$(ENV) \
+	-input=false \
+	-compact-warnings \
+	-parallelism=20 \
+	$(TARGET)
+
+.PHONY: apply
+apply:
+	@ printf "Applying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(tf_vars) \
+	$(TF) apply \
+	-auto-approve \
+	-input=false \
+	-compact-warnings \
+	-parallelism=20 \
+	.tfplan.$(ENV)
+	@ rm .tfplan.$(ENV)
+
+.PHONY: destroy
+destroy:
+	@ printf "Destroying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(tf_vars) \
+	$(TF) destroy \
+	-compact-warnings \
+	-parallelism=20 \
+	$$(terraform state list | grep module | cut -d'.' -f1,2 | grep -v -e "buckets" | uniq | awk '{print "-target=" $$0 ""}' | xargs)
+
+# Shortcut to importing resources into Terraform state (e.g. after creating resources manually or switching between different branches for the same environment)
+.PHONY: import
+import:
+	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(tf_vars) $(TF) import "$(TARGET)" "$(ID)" -no-color

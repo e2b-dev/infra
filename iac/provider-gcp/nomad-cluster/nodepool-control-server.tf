@@ -1,5 +1,5 @@
 locals {
-  server_pool_name      = "${var.prefix}${var.server_cluster_name}"
+  server_pool_name = "${var.prefix}${var.server_cluster_name}"
   server_startup_script = templatefile("${path.module}/scripts/start-server.sh", {
     NUM_SERVERS                  = var.server_cluster_size
     CLUSTER_TAG_NAME             = var.cluster_tag_name

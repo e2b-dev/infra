@@ -1,5 +1,5 @@
 locals {
-  clickhouse_pool_name    = "${var.prefix}${var.clickhouse_cluster_name}"
+  clickhouse_pool_name = "${var.prefix}${var.clickhouse_cluster_name}"
   clickhouse_start_script = templatefile("${path.module}/scripts/start-clickhouse.sh", {
     CLUSTER_TAG_NAME             = var.cluster_tag_name
     SCRIPTS_BUCKET               = var.cluster_setup_bucket_name
