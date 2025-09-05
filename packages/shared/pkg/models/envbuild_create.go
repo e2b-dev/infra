@@ -203,8 +203,16 @@ func (ebc *EnvBuildCreate) SetClusterNodeID(s string) *EnvBuildCreate {
 }
 
 // SetReason sets the "reason" field.
-func (ebc *EnvBuildCreate) SetReason(sr *schema.BuildReason) *EnvBuildCreate {
+func (ebc *EnvBuildCreate) SetReason(sr schema.BuildReason) *EnvBuildCreate {
 	ebc.mutation.SetReason(sr)
+	return ebc
+}
+
+// SetNillableReason sets the "reason" field if the given value is not nil.
+func (ebc *EnvBuildCreate) SetNillableReason(sr *schema.BuildReason) *EnvBuildCreate {
+	if sr != nil {
+		ebc.SetReason(*sr)
+	}
 	return ebc
 }
 
@@ -269,6 +277,10 @@ func (ebc *EnvBuildCreate) defaults() {
 	if _, ok := ebc.mutation.KernelVersion(); !ok {
 		v := envbuild.DefaultKernelVersion
 		ebc.mutation.SetKernelVersion(v)
+	}
+	if _, ok := ebc.mutation.Reason(); !ok {
+		v := envbuild.DefaultReason
+		ebc.mutation.SetReason(v)
 	}
 }
 
@@ -727,7 +739,7 @@ func (u *EnvBuildUpsert) UpdateClusterNodeID() *EnvBuildUpsert {
 }
 
 // SetReason sets the "reason" field.
-func (u *EnvBuildUpsert) SetReason(v *schema.BuildReason) *EnvBuildUpsert {
+func (u *EnvBuildUpsert) SetReason(v schema.BuildReason) *EnvBuildUpsert {
 	u.Set(envbuild.FieldReason, v)
 	return u
 }
@@ -1070,7 +1082,7 @@ func (u *EnvBuildUpsertOne) UpdateClusterNodeID() *EnvBuildUpsertOne {
 }
 
 // SetReason sets the "reason" field.
-func (u *EnvBuildUpsertOne) SetReason(v *schema.BuildReason) *EnvBuildUpsertOne {
+func (u *EnvBuildUpsertOne) SetReason(v schema.BuildReason) *EnvBuildUpsertOne {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.SetReason(v)
 	})
@@ -1582,7 +1594,7 @@ func (u *EnvBuildUpsertBulk) UpdateClusterNodeID() *EnvBuildUpsertBulk {
 }
 
 // SetReason sets the "reason" field.
-func (u *EnvBuildUpsertBulk) SetReason(v *schema.BuildReason) *EnvBuildUpsertBulk {
+func (u *EnvBuildUpsertBulk) SetReason(v schema.BuildReason) *EnvBuildUpsertBulk {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.SetReason(v)
 	})

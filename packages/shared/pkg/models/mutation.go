@@ -3141,7 +3141,7 @@ type EnvBuildMutation struct {
 	firecracker_version   *string
 	envd_version          *string
 	cluster_node_id       *string
-	reason                **schema.BuildReason
+	reason                *schema.BuildReason
 	clearedFields         map[string]struct{}
 	env                   *string
 	clearedenv            bool
@@ -3990,12 +3990,12 @@ func (m *EnvBuildMutation) ResetClusterNodeID() {
 }
 
 // SetReason sets the "reason" field.
-func (m *EnvBuildMutation) SetReason(sr *schema.BuildReason) {
+func (m *EnvBuildMutation) SetReason(sr schema.BuildReason) {
 	m.reason = &sr
 }
 
 // Reason returns the value of the "reason" field in the mutation.
-func (m *EnvBuildMutation) Reason() (r *schema.BuildReason, exists bool) {
+func (m *EnvBuildMutation) Reason() (r schema.BuildReason, exists bool) {
 	v := m.reason
 	if v == nil {
 		return
@@ -4006,7 +4006,7 @@ func (m *EnvBuildMutation) Reason() (r *schema.BuildReason, exists bool) {
 // OldReason returns the old "reason" field's value of the EnvBuild entity.
 // If the EnvBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *EnvBuildMutation) OldReason(ctx context.Context) (v *schema.BuildReason, err error) {
+func (m *EnvBuildMutation) OldReason(ctx context.Context) (v schema.BuildReason, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldReason is only allowed on UpdateOne operations")
 	}
@@ -4345,7 +4345,7 @@ func (m *EnvBuildMutation) SetField(name string, value ent.Value) error {
 		m.SetClusterNodeID(v)
 		return nil
 	case envbuild.FieldReason:
-		v, ok := value.(*schema.BuildReason)
+		v, ok := value.(schema.BuildReason)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
