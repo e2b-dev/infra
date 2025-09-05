@@ -77,10 +77,16 @@ init:
 	# Remove the temporary lifecycle file
 	@ rm -f $(LIFECYCLE_FILE)
 
+	$(TF) init -input=false -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
 	$(tf_vars) $(TF) apply -target=module.init -target=module.cluster -auto-approve -input=false -compact-warnings
 
-	TERRAFORM_STATE_BUCKET="$(TERRAFORM_STATE_BUCKET)" $(MAKE) -C packages/cluster-disk-image init build
+	TERRAFORM_STATE_BUCKET="$(TERRAFORM_STATE_BUCKET)" $(MAKE) -C nomad-cluster-disk-image init build
 	gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+.PHONY: switch
+switch:
+	@ printf "Switching Terraform backend for different env ${ENV}\n"
+	$(TF) init -input=false -upgrade -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
 
 .PHONY: plan
 plan:

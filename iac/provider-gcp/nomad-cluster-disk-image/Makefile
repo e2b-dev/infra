@@ -1,5 +1,5 @@
-ENV := $(shell cat ../../.last_used_env || echo "not-set")
--include ../../.env.${ENV}
+ENV := $(shell cat ../../../.last_used_env || echo "not-set")
+-include ../../../.env.${ENV}
 
 NETWORK_NAME := "e2b-build-cluster-disk-image"
 
