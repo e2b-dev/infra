@@ -215,12 +215,6 @@ func fetchSlab(
 }
 
 func read(ctx context.Context, offset, pageSize int64, src block.Slicer) ([]byte, error) {
-	ctx, span := tracer.Start(ctx, "uffd-serve-read", trace.WithAttributes(
-		attribute.Int64("offset", offset),
-		attribute.Int64("page-size", pageSize),
-	))
-	defer span.End()
-
 	b, err := src.Slice(ctx, offset, pageSize)
 	if err != nil {
 		return nil, err
@@ -230,12 +224,6 @@ func read(ctx context.Context, offset, pageSize int64, src block.Slicer) ([]byte
 }
 
 func copy(ctx context.Context, b []byte, offset, pageSize int64, uffd int, addr userfaultfd.CULong, logger *zap.Logger) error {
-	ctx, span := tracer.Start(ctx, "uffd-serve-copy", trace.WithAttributes(
-		attribute.Int64("offset", offset),
-		attribute.Int64("page-size", pageSize),
-	))
-	defer span.End()
-
 	cpy := userfaultfd.NewUffdioCopy(
 		b,
 		addr&^userfaultfd.CULong(pageSize-1),
