@@ -124,9 +124,6 @@ func (m *Cache) ExportToDiff(out io.Writer) (*header.DiffMetadata, error) {
 }
 
 func (m *Cache) ReadAt(ctx context.Context, b []byte, off int64) (int, error) {
-	ctx, span := tracer.Start(ctx, "Cache.ReadAt")
-	defer span.End()
-
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -187,9 +184,6 @@ func (m *Cache) Size() (int64, error) {
 // Slice returns a slice of the mmap.
 // When using Slice you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
 func (m *Cache) Slice(ctx context.Context, off, length int64) ([]byte, error) {
-	//ctx, span := tracer.Start(ctx, "Cache.Slice")
-	//defer span.End()
-
 	if m.isClosed() {
 		return nil, NewErrCacheClosed(m.filePath)
 	}

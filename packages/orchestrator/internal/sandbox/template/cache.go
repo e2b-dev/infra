@@ -106,9 +106,6 @@ func (c *Cache) GetTemplate(
 	isSnapshot bool,
 	isBuilding bool,
 ) (Template, error) {
-	ctx, span := tracer.Start(ctx, "get template")
-	defer span.End()
-
 	persistence := c.persistence
 	// Because of the template caching, if we enable the shared cache feature flag,
 	// it will start working only for new orchestrators or new builds.

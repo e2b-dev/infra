@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"go.opentelemetry.io/otel"
@@ -67,6 +68,7 @@ outerLoop:
 
 			if err == unix.EAGAIN {
 				logger.Debug("uffd: eagain during polling, going back to polling")
+				time.Sleep(1 * time.Millisecond)
 
 				continue
 			}
@@ -121,6 +123,7 @@ outerLoop:
 
 			if err == syscall.EAGAIN {
 				logger.Debug("uffd: eagain error, going back to polling", zap.Error(err), zap.Int("read_bytes", n))
+				time.Sleep(1 * time.Millisecond)
 
 				// Continue polling the fd.
 				continue outerLoop

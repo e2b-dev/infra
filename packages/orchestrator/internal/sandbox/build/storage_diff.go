@@ -97,9 +97,6 @@ func (b *StorageDiff) Close() error {
 }
 
 func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
-	ctx, span := tracer.Start(ctx, "StorageDiff.ReadAt")
-	defer span.End()
-
 	c, err := b.chunker.Wait()
 	if err != nil {
 		return 0, err
@@ -109,9 +106,6 @@ func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64) (int, err
 }
 
 func (b *StorageDiff) Slice(ctx context.Context, off, length int64) ([]byte, error) {
-	ctx, span := tracer.Start(ctx, "StorageDiff.Slice")
-	defer span.End()
-
 	c, err := b.chunker.Wait()
 	if err != nil {
 		return nil, err

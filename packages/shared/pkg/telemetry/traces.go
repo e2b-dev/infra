@@ -3,7 +3,6 @@ package telemetry
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
@@ -41,17 +40,10 @@ func NewSpanExporter(ctx context.Context, extraOption ...otlptracegrpc.Option) (
 	return traceExporter, nil
 }
 
-var useBatchProcessor = os.Getenv("OTEL_USE_BATCH_PROCESSOR") != "false"
-
 func NewTracerProvider(ctx context.Context, spanExporter sdktrace.SpanExporter, res *resource.Resource) trace.TracerProvider {
 	// Register the trace exporter with a TracerProvider, using a batch
 	// span processor to aggregate spans before export.
-	var bsp sdktrace.SpanProcessor
-	if useBatchProcessor {
-		bsp = sdktrace.NewBatchSpanProcessor(spanExporter)
-	} else {
-		bsp = sdktrace.NewSimpleSpanProcessor(spanExporter)
-	}
+	bsp := sdktrace.NewBatchSpanProcessor(spanExporter)
 	tracerProvider := sdktrace.NewTracerProvider(
 		sdktrace.WithSampler(sdktrace.AlwaysSample()),
 		sdktrace.WithResource(res),

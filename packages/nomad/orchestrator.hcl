@@ -75,7 +75,6 @@ EOT
         CLICKHOUSE_CONNECTION_STRING = "${clickhouse_connection_string}"
         REDIS_URL                    = "${redis_url}"
         REDIS_CLUSTER_URL            = "${redis_cluster_url}"
-        OTEL_USE_BATCH_PROCESSOR     = "false"
 
 %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"

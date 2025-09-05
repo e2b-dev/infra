@@ -7,7 +7,6 @@ import (
 	"io"
 
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
@@ -52,12 +51,6 @@ func NewChunker(
 }
 
 func (c *Chunker) ReadAt(ctx context.Context, b []byte, off int64) (int, error) {
-	ctx, span := tracer.Start(ctx, "Chunker.ReadAt", trace.WithAttributes(
-		attribute.Int64("offset", off),
-		attribute.Int("page-size", len(b)),
-	))
-	defer span.End()
-
 	slice, err := c.Slice(ctx, off, int64(len(b)))
 	if err != nil {
 		return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", off, off+int64(len(b)), err)
