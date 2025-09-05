@@ -104,15 +104,10 @@ func TestTeamMetricsWithTimeRange(t *testing.T) {
 func TestTeamMetricsEmpty(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	// Test getting metrics for a time range where no sandboxes existed
-	now := time.Now()
-	start := now.Add(-240 * time.Hour).Unix()
-	end := now.Add(-216 * time.Hour).Unix()
+	db := setup.GetTestDBClient(t)
+	teamID := utils.CreateTeamWithUser(t, c, db, "no-team-metrics", setup.UserID)
 
-	response, err := c.GetTeamsTeamIDMetricsWithResponse(t.Context(), setup.TeamID, &api.GetTeamsTeamIDMetricsParams{
-		Start: &start,
-		End:   &end,
-	}, setup.WithAPIKey())
+	response, err := c.GetTeamsTeamIDMetricsWithResponse(t.Context(), setup.TeamID, nil, setup.WithSupabaseTeam(t), setup.WithSupabaseTeam(t, teamID.String()))
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, response.StatusCode())
 	require.NotNil(t, response.JSON200)

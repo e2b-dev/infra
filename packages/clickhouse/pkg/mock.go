@@ -49,7 +49,7 @@ func (m *NoopClient) QueryTeamMetrics(ctx context.Context, teamID string, start 
 	return nil, nil
 }
 
-func (m *NoopClient) QueryMaxStartRateTeamMetrics(ctx context.Context, teamID string, start time.Time, end time.Time) (MaxTeamMetric, error) {
+func (m *NoopClient) QueryMaxStartRateTeamMetrics(ctx context.Context, teamID string, start time.Time, end time.Time, step time.Duration) (MaxTeamMetric, error) {
 	return MaxTeamMetric{}, nil
 }
 

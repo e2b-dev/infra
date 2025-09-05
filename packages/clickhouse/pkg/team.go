@@ -88,18 +88,27 @@ type MaxTeamMetric struct {
 }
 
 var maxStartRateTeamMetricsSelectQuery = fmt.Sprintf(`
+WITH 
+	aggregated AS (
+		SELECT 
+			toStartOfInterval(timestamp, interval {step:UInt32} second) AS agg_ts,
+  			sum(value) AS agg_value
+	FROM team_metrics_sum
+	WHERE metric_name = '%s'
+	  AND team_id = {team_id:String}
+	  AND timestamp BETWEEN {start_time:DateTime64} AND {end_time:DateTime64}
+	GROUP BY agg_ts
+	)
 SELECT
-  argMax(timestamp, value) AS ts,
-  max(value)/5 AS max_value
-FROM team_metrics_sum
-WHERE metric_name = '%s'
-  AND team_id = {team_id:String}
-  AND timestamp BETWEEN {start_time:DateTime64} AND {end_time:DateTime64};
+	argMax(agg_ts, agg_value) AS ts,
+	max(agg_value) / {step:UInt32}::Float32 AS max_value
+FROM aggregated
 `, telemetry.TeamSandboxCreated)
 
-func (c *Client) QueryMaxStartRateTeamMetrics(ctx context.Context, teamID string, start time.Time, end time.Time) (MaxTeamMetric, error) {
+func (c *Client) QueryMaxStartRateTeamMetrics(ctx context.Context, teamID string, start time.Time, end time.Time, step time.Duration) (MaxTeamMetric, error) {
 	rows, err := c.conn.Query(ctx, maxStartRateTeamMetricsSelectQuery,
 		clickhouse.Named("team_id", teamID),
+		clickhouse.Named("step", strconv.Itoa(int(step.Seconds()))),
 		clickhouse.DateNamed("start_time", start, clickhouse.Seconds),
 		clickhouse.DateNamed("end_time", end, clickhouse.Seconds),
 	)
