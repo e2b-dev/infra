@@ -11,7 +11,7 @@
 # const sandbox = await Sandbox.create('base')
 
 team_id = "b2632569-10dd-41b1-9b2f-0b533bbc8f35"
-memory_mb = 512
+memory_mb = 2_048
 dockerfile = "e2b.Dockerfile"
 template_name = "base"
 template_id = "rki5dems9wqfm4r03t7g"

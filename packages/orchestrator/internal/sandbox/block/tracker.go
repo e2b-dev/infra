@@ -7,8 +7,9 @@ import (
 	"sync/atomic"
 
 	"github.com/bits-and-blooms/bitset"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"go.opentelemetry.io/otel"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 var tracer = otel.Tracer("orchestrator.internal.sandbox.block")

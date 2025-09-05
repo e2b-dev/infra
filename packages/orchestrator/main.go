@@ -409,6 +409,7 @@ func run(port, proxyPort uint) (success bool) {
 			persistence,
 			limiter,
 			serviceInfo,
+			featureFlags,
 		)
 		if err != nil {
 			zap.L().Fatal("failed to create template manager", zap.Error(err))

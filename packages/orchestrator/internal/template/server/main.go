@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -59,10 +60,11 @@ func New(
 	templatePersistence storage.StorageProvider,
 	limiter *limit.Limiter,
 	info *service.ServiceInfo,
+	flags *featureflags.Client,
 ) (*ServerStore, error) {
 	logger.Info("Initializing template manager")
 
-	artifactsregistry, err := artifactsregistry.GetArtifactsRegistryProvider()
+	artifactsRegistry, err := artifactsregistry.GetArtifactsRegistryProvider()
 	if err != nil {
 		return nil, fmt.Errorf("error getting artifacts registry provider: %w", err)
 	}
@@ -81,13 +83,14 @@ func New(
 		logger,
 		templatePersistence,
 		buildPersistance,
-		artifactsregistry,
+		artifactsRegistry,
 		devicePool,
 		networkPool,
 		proxy,
 		sandboxes,
 		templateCache,
 		buildMetrics,
+		flags,
 	)
 
 	store := &ServerStore{
@@ -95,7 +98,7 @@ func New(
 		builder:           builder,
 		buildCache:        buildCache,
 		buildLogger:       buildLogger,
-		artifactsregistry: artifactsregistry,
+		artifactsregistry: artifactsRegistry,
 		templateStorage:   templatePersistence,
 		buildStorage:      buildPersistance,
 		info:              info,

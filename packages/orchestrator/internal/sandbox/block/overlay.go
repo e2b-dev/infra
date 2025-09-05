@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type Overlay struct {

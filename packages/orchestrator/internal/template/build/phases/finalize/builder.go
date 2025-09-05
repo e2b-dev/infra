@@ -23,7 +23,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 var finalizeTimeout = configurationTimeout + readyCommandTimeout + 5*time.Minute
@@ -33,23 +32,20 @@ var tracer = otel.Tracer("orchestrator.template.build.phases.finalize")
 type PostProcessingBuilder struct {
 	buildcontext.BuildContext
 
-	templateStorage storage.StorageProvider
-	proxy           *proxy.SandboxProxy
+	proxy *proxy.SandboxProxy
 
 	layerExecutor *layer.LayerExecutor
 }
 
 func New(
 	buildContext buildcontext.BuildContext,
-	templateStorage storage.StorageProvider,
 	proxy *proxy.SandboxProxy,
 	layerExecutor *layer.LayerExecutor,
 ) *PostProcessingBuilder {
 	return &PostProcessingBuilder{
 		BuildContext: buildContext,
 
-		templateStorage: templateStorage,
-		proxy:           proxy,
+		proxy: proxy,
 
 		layerExecutor: layerExecutor,
 	}

@@ -15,7 +15,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -23,6 +25,12 @@ const (
 	cacheFilePermissions = 0o600
 	cacheDirPermissions  = 0o700
 )
+
+var cacheRootPath = env.GetEnv("SHARED_CHUNK_CACHE_PATH", "")
+
+func IsCacheEnabled() bool {
+	return cacheRootPath != ""
+}
 
 func must[T any](t T, err error) T {
 	if err != nil {
@@ -49,19 +57,40 @@ var (
 )
 
 type CachedProvider struct {
-	rootPath  string
 	chunkSize int64
 	inner     StorageProvider
 }
 
 var _ StorageProvider = (*CachedProvider)(nil)
 
-func NewCachedProvider(rootPath string, inner StorageProvider) *CachedProvider {
-	return &CachedProvider{rootPath: rootPath, inner: inner, chunkSize: MemoryChunkSize}
+func NewCachedProvider(inner StorageProvider) *CachedProvider {
+	return &CachedProvider{inner: inner, chunkSize: MemoryChunkSize}
 }
 
 func (c CachedProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
+	go func(ctx context.Context) {
+		c.deleteObjectsWithPrefix(prefix)
+	}(context.WithoutCancel(ctx))
+
 	return c.inner.DeleteObjectsWithPrefix(ctx, prefix)
+}
+
+func (c CachedProvider) deleteObjectsWithPrefix(prefix string) {
+	fullPrefix := filepath.Join(cacheRootPath, prefix)
+	paths, err := filepath.Glob(fullPrefix + "*")
+	if err != nil {
+		zap.L().Error("failed to glob objects with prefix", zap.String("prefix", prefix), zap.Error(err))
+		return
+	}
+
+	for _, path := range paths {
+		if err = os.Remove(path); err != nil {
+			zap.L().Error("failed to remove object with prefix",
+				zap.String("prefix", prefix),
+				zap.String("path", path),
+				zap.Error(err))
+		}
+	}
 }
 
 func (c CachedProvider) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
@@ -74,7 +103,7 @@ func (c CachedProvider) OpenObject(ctx context.Context, path string) (StorageObj
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}
 
-	localPath := filepath.Join(c.rootPath, path)
+	localPath := filepath.Join(cacheRootPath, path)
 	if err = os.MkdirAll(localPath, cacheDirPermissions); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
@@ -84,7 +113,7 @@ func (c CachedProvider) OpenObject(ctx context.Context, path string) (StorageObj
 
 func (c CachedProvider) GetDetails() string {
 	return fmt.Sprintf("[Caching file storage, base path set to %s, which wraps %s]",
-		c.rootPath, c.inner.GetDetails())
+		cacheRootPath, c.inner.GetDetails())
 }
 
 type CachedFileObjectProvider struct {
@@ -153,11 +182,65 @@ func (c *CachedFileObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (
 }
 
 func (c *CachedFileObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
-	return c.inner.WriteFromFileSystem(ctx, path)
+	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.WriteFromFileSystem",
+		trace.WithAttributes(attribute.String("path", path)))
+	defer span.End()
+
+	// write the file to the disk and the remote system at the same time.
+	// this opens the file twice, but the API makes it difficult to use a MultiWriter
+
+	var eg errgroup.Group
+
+	eg.Go(func() error {
+		return c.createCacheBlocksFromFile(ctx, path)
+	})
+
+	eg.Go(func() error {
+		return c.inner.WriteFromFileSystem(ctx, path)
+	})
+
+	return eg.Wait()
 }
 
 func (c *CachedFileObjectProvider) Write(ctx context.Context, src []byte) (int, error) {
-	return c.inner.Write(ctx, src)
+	var err error
+	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.WriteTo", trace.WithAttributes(attribute.Int("size", len(src))))
+	defer span.End()
+
+	num, err := c.writeCacheAndRemote(ctx, src)
+	if err != nil {
+		return 0, err
+	} else if num != len(src) {
+		return 0, fmt.Errorf("failed to copy %d bytes from cache: %w", num, err)
+	}
+
+	return num, nil
+}
+
+func (c *CachedFileObjectProvider) writeCacheAndRemote(ctx context.Context, src []byte) (int, error) {
+	var err error
+	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.writeCacheAndRemote")
+	defer span.End()
+
+	size := len(src)
+	chunkSize := int(c.chunkSize)
+	for offset := 0; offset < chunkSize; offset += chunkSize {
+		// read from the source
+		offsetEnd := min(offset+chunkSize, size)
+		buf := src[offset:offsetEnd]
+
+		// write to the cache file
+		filename := c.makeChunkFilename(int64(offset))
+		if err = os.WriteFile(filename, buf[:], cacheFilePermissions); err != nil {
+			return 0, fmt.Errorf("failed to write to local file %q: %w", filename, err)
+		}
+	}
+
+	if _, err := c.inner.Write(ctx, src); err != nil {
+		return 0, fmt.Errorf("failed to remote write from byte array: %w", err)
+	}
+
+	return size, nil
 }
 
 func (c *CachedFileObjectProvider) ReadAt(ctx context.Context, buff []byte, offset int64) (int, error) {
@@ -231,7 +314,92 @@ func (c *CachedFileObjectProvider) Size(ctx context.Context) (int64, error) {
 }
 
 func (c *CachedFileObjectProvider) Delete(ctx context.Context) error {
+	go func() {
+		if err := os.RemoveAll(c.path); ignoreFileMissingError(err) != nil {
+			zap.L().Error("error on cache delete", zap.String("path", c.path), zap.Error(err))
+		}
+	}()
+
 	return c.inner.Delete(ctx)
+}
+
+func (c *CachedFileObjectProvider) createCacheBlocksFromFile(ctx context.Context, inputPath string) error {
+	var err error
+	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.createCacheBlocksFromFile")
+	defer span.End()
+
+	input, err := os.Open(inputPath)
+	if err != nil {
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+	defer cleanup("failed to close file", input)
+
+	stat, err := input.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to get file size: %w", err)
+	}
+
+	totalSize := stat.Size()
+	errs, ctx := errgroup.WithContext(ctx)
+	errs.SetLimit(10)
+	for offset := int64(0); offset < totalSize; offset += c.chunkSize {
+		func(offset, totalSize int64) {
+			errs.Go(func() error {
+				return c.writeChunkFromFile(ctx, offset, totalSize, input)
+			})
+		}(offset, totalSize)
+	}
+	return errs.Wait()
+}
+
+func (c *CachedFileObjectProvider) writeChunkFromFile(ctx context.Context, offset int64, totalSize int64, input *os.File) error {
+	var err error
+	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.writeChunkFromFile", trace.WithAttributes(
+		attribute.Int64("offset", offset),
+		attribute.Int64("total_size", totalSize),
+	))
+	defer span.End()
+
+	chunkPath := c.makeChunkFilename(offset)
+	span.SetAttributes(attribute.String("chunk_path", chunkPath))
+
+	output, err := os.OpenFile(chunkPath, os.O_WRONLY|os.O_CREATE, cacheFilePermissions)
+	if err != nil {
+		return fmt.Errorf("failed to open file %s: %w", chunkPath, err)
+	}
+	defer cleanup("failed to close file", output)
+
+	expectedRead := min(c.chunkSize, totalSize-offset)
+	totalRead := int64(0)
+	buffer := make([]byte, min(32*1024, expectedRead))
+	for totalRead < expectedRead {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			break
+		}
+
+		read, err := input.ReadAt(buffer, offset+totalRead)
+		if ignoreEOF(err) != nil {
+			return fmt.Errorf("failed to write to %q [%d bytes @ %d]: %w",
+				chunkPath, c.chunkSize, offset, err)
+		} else if read == 0 {
+			return fmt.Errorf("empty read at %d+%d", offset, totalRead)
+		}
+
+		if _, err = output.Write(buffer[:read]); err != nil {
+			return fmt.Errorf("failed to write to %q [%d bytes @ %d]: %w",
+				chunkPath, c.chunkSize, offset, err)
+		}
+		totalRead += int64(read)
+
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+	}
+
+	return nil
 }
 
 func (c *CachedFileObjectProvider) makeTempFullFilename() string {
@@ -381,4 +549,12 @@ func moveWithoutReplace(oldPath, newPath string) error {
 	}
 
 	return nil
+}
+
+func ignoreFileMissingError(err error) error {
+	if os.IsNotExist(err) {
+		return nil
+	}
+
+	return err
 }

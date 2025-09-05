@@ -6,12 +6,13 @@ import (
 	"io"
 	"path/filepath"
 
+	"go.opentelemetry.io/otel"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
-	"go.opentelemetry.io/otel"
 )
 
 var tracer = otel.Tracer("orchestrator.internal.sandbox.build")

@@ -38,7 +38,18 @@ type LayerExecutor struct {
 	index           cache.Index
 }
 
-func NewLayerExecutor(buildContext buildcontext.BuildContext, logger *zap.Logger, networkPool *network.Pool, devicePool *nbd.DevicePool, templateCache *sbxtemplate.Cache, proxy *proxy.SandboxProxy, sandboxes *smap.Map[*sandbox.Sandbox], templateStorage storage.StorageProvider, buildStorage storage.StorageProvider, index cache.Index) *LayerExecutor {
+func NewLayerExecutor(
+	buildContext buildcontext.BuildContext,
+	logger *zap.Logger,
+	networkPool *network.Pool,
+	devicePool *nbd.DevicePool,
+	templateCache *sbxtemplate.Cache,
+	proxy *proxy.SandboxProxy,
+	sandboxes *smap.Map[*sandbox.Sandbox],
+	templateStorage storage.StorageProvider,
+	buildStorage storage.StorageProvider,
+	index cache.Index,
+) *LayerExecutor {
 	return &LayerExecutor{
 		BuildContext: buildContext,
 

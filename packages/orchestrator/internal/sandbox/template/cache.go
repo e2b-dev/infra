@@ -13,7 +13,6 @@ import (
 
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -35,12 +34,11 @@ const (
 var tracer = otel.Tracer("orchestrator.sandbox.template.cache")
 
 type Cache struct {
-	flags         *featureflags.Client
-	cache         *ttlcache.Cache[string, Template]
-	persistence   storage.StorageProvider
-	buildStore    *build.DiffStore
-	blockMetrics  blockmetrics.Metrics
-	rootCachePath string
+	flags        *featureflags.Client
+	cache        *ttlcache.Cache[string, Template]
+	persistence  storage.StorageProvider
+	buildStore   *build.DiffStore
+	blockMetrics blockmetrics.Metrics
 }
 
 // NewCache initializes a template new cache.
@@ -85,12 +83,11 @@ func NewCache(
 	go cache.Start()
 
 	return &Cache{
-		blockMetrics:  metrics,
-		persistence:   persistence,
-		buildStore:    buildStore,
-		cache:         cache,
-		flags:         flags,
-		rootCachePath: env.GetEnv("SHARED_CHUNK_CACHE_PATH", ""),
+		blockMetrics: metrics,
+		persistence:  persistence,
+		buildStore:   buildStore,
+		cache:        cache,
+		flags:        flags,
 	}, nil
 }
 
@@ -110,8 +107,8 @@ func (c *Cache) GetTemplate(
 	// Because of the template caching, if we enable the shared cache feature flag,
 	// it will start working only for new orchestrators or new builds.
 	if c.useNFSCache(ctx, isBuilding, isSnapshot) {
-		zap.L().Info("using local template cache", zap.String("path", c.rootCachePath))
-		persistence = storage.NewCachedProvider(c.rootCachePath, persistence)
+		zap.L().Info("using local template cache")
+		persistence = storage.NewCachedProvider(persistence)
 	}
 
 	storageTemplate, err := newTemplateFromStorage(
@@ -207,7 +204,7 @@ func (c *Cache) useNFSCache(ctx context.Context, isBuilding bool, isSnapshot boo
 		return false
 	}
 
-	if c.rootCachePath == "" {
+	if !storage.IsCacheEnabled() {
 		// can't enable cache if we don't have a cache path
 		return false
 	}

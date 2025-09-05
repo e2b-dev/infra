@@ -5,10 +5,11 @@ import (
 	"errors"
 	"fmt"
 
+	"go.opentelemetry.io/otel"
+
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"go.opentelemetry.io/otel"
 )
 
 var tracer = otel.Tracer("orchestrator.internal.template.template")

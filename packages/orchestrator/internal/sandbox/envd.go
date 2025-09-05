@@ -9,11 +9,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (

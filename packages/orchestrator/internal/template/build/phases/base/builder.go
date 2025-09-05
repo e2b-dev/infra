@@ -55,7 +55,6 @@ type BaseBuilder struct {
 	logger *zap.Logger
 	proxy  *proxy.SandboxProxy
 
-	templateStorage  storage.StorageProvider
 	devicePool       *nbd.DevicePool
 	networkPool      *network.Pool
 	artifactRegistry artifactsregistry.ArtifactsRegistry
@@ -65,14 +64,23 @@ type BaseBuilder struct {
 	metrics       *metrics.BuildMetrics
 }
 
-func New(buildContext buildcontext.BuildContext, logger *zap.Logger, proxy *proxy.SandboxProxy, templateStorage storage.StorageProvider, devicePool *nbd.DevicePool, networkPool *network.Pool, artifactRegistry artifactsregistry.ArtifactsRegistry, layerExecutor *layer.LayerExecutor, index cache.Index, metrics *metrics.BuildMetrics) *BaseBuilder {
+func New(
+	buildContext buildcontext.BuildContext,
+	logger *zap.Logger,
+	proxy *proxy.SandboxProxy,
+	devicePool *nbd.DevicePool,
+	networkPool *network.Pool,
+	artifactRegistry artifactsregistry.ArtifactsRegistry,
+	layerExecutor *layer.LayerExecutor,
+	index cache.Index,
+	metrics *metrics.BuildMetrics,
+) *BaseBuilder {
 	return &BaseBuilder{
 		BuildContext: buildContext,
 
 		logger: logger,
 		proxy:  proxy,
 
-		templateStorage:  templateStorage,
 		devicePool:       devicePool,
 		networkPool:      networkPool,
 		artifactRegistry: artifactRegistry,

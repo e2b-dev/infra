@@ -5,14 +5,15 @@ import (
 	_ "embed"
 	"fmt"
 
+	containerregistry "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/uuid"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
-	containerregistry "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/google/uuid"
 )
 
 func constructLayerFilesFromOCI(
