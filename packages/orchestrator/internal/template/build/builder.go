@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -37,9 +37,10 @@ import (
 
 const progressDelay = 5 * time.Second
 
+var tracer = otel.Tracer("orchestrator.internal.template.build")
+
 type Builder struct {
 	logger *zap.Logger
-	tracer trace.Tracer
 
 	templateStorage  storage.StorageProvider
 	buildStorage     storage.StorageProvider
@@ -54,7 +55,6 @@ type Builder struct {
 
 func NewBuilder(
 	logger *zap.Logger,
-	tracer trace.Tracer,
 	templateStorage storage.StorageProvider,
 	buildStorage storage.StorageProvider,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
@@ -67,7 +67,6 @@ func NewBuilder(
 ) *Builder {
 	return &Builder{
 		logger:           logger,
-		tracer:           tracer,
 		templateStorage:  templateStorage,
 		buildStorage:     buildStorage,
 		artifactRegistry: artifactRegistry,
@@ -100,7 +99,7 @@ type Result struct {
 // 8. Snapshot
 // 9. Upload template (and all not yet uploaded layers)
 func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, config config.TemplateConfig, logsCore zapcore.Core) (r *Result, e error) {
-	ctx, childSpan := b.tracer.Start(ctx, "build")
+	ctx, childSpan := tracer.Start(ctx, "build")
 	defer childSpan.End()
 
 	// Record build duration and result at the end
@@ -194,7 +193,6 @@ func runBuild(
 
 	layerExecutor := layer.NewLayerExecutor(bc,
 		builder.logger,
-		builder.tracer,
 		builder.networkPool,
 		builder.devicePool,
 		builder.templateCache,
@@ -208,7 +206,6 @@ func runBuild(
 	baseBuilder := base.New(
 		bc,
 		builder.logger,
-		builder.tracer,
 		builder.proxy,
 		builder.templateStorage,
 		builder.devicePool,
@@ -221,7 +218,6 @@ func runBuild(
 
 	commandExecutor := commands.NewCommandExecutor(
 		bc,
-		builder.tracer,
 		builder.buildStorage,
 		builder.proxy,
 	)
@@ -229,7 +225,6 @@ func runBuild(
 	stepBuilders := steps.CreateStepPhases(
 		bc,
 		builder.logger,
-		builder.tracer,
 		builder.proxy,
 		layerExecutor,
 		commandExecutor,
@@ -239,7 +234,6 @@ func runBuild(
 
 	postProcessingBuilder := finalize.New(
 		bc,
-		builder.tracer,
 		builder.templateStorage,
 		builder.proxy,
 		layerExecutor,

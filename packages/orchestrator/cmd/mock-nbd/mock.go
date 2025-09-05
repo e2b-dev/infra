@@ -10,7 +10,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pojntfx/go-nbd/pkg/backend"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -150,8 +149,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool
 		}
 	}()
 
-	tracer := otel.Tracer("test")
-	mnt = nbd.NewDirectPathMount(ctx, tracer, device, devicePool)
+	mnt = nbd.NewDirectPathMount(ctx, device, devicePool)
 
 	go func() {
 		<-ctx.Done()

@@ -20,7 +20,6 @@ var _ Command = (*User)(nil)
 
 func (u *User) Execute(
 	ctx context.Context,
-	tracer trace.Tracer,
 	logger *zap.Logger,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
@@ -38,7 +37,6 @@ func (u *User) Execute(
 
 	err := sandboxtools.RunCommandWithLogger(
 		ctx,
-		tracer,
 		proxy,
 		logger,
 		zapcore.InfoLevel,
@@ -67,7 +65,6 @@ func saveUserMeta(
 ) (metadata.Context, error) {
 	err := sandboxtools.RunCommandWithOutput(
 		ctx,
-		tracer,
 		proxy,
 		sandboxID,
 		fmt.Sprintf(`printf "%s"`, user),

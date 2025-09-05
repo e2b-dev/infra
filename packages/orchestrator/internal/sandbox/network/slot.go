@@ -9,12 +9,15 @@ import (
 	"sync/atomic"
 
 	"github.com/containernetworking/plugins/pkg/ns"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	netutils "k8s.io/utils/net"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
+
+var tracer = otel.Tracer("orchestrator.internal.sandbox.network")
 
 const (
 	defaultHostNetworkCIDR = "10.11.0.0/16"
@@ -234,7 +237,7 @@ func (s *Slot) CloseFirewall() error {
 	return nil
 }
 
-func (s *Slot) ConfigureInternet(ctx context.Context, tracer trace.Tracer, allowInternet bool) (e error) {
+func (s *Slot) ConfigureInternet(ctx context.Context, allowInternet bool) (e error) {
 	_, span := tracer.Start(ctx, "slot-internet-configure", trace.WithAttributes(
 		attribute.String("namespace_id", s.NamespaceID()),
 		attribute.Bool("allow_internet", allowInternet),
@@ -269,7 +272,7 @@ func (s *Slot) ConfigureInternet(ctx context.Context, tracer trace.Tracer, allow
 	return nil
 }
 
-func (s *Slot) ResetInternet(ctx context.Context, tracer trace.Tracer) error {
+func (s *Slot) ResetInternet(ctx context.Context) error {
 	_, span := tracer.Start(ctx, "slot-internet-reset", trace.WithAttributes(
 		attribute.String("namespace_id", s.NamespaceID()),
 	))
