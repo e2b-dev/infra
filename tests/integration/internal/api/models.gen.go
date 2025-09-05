@@ -821,7 +821,7 @@ type N500 = Error
 // GetNodesNodeIDParams defines parameters for GetNodesNodeID.
 type GetNodesNodeIDParams struct {
 	// ClusterID Identifier of the cluster
-	ClusterID *string `form:"clusterID,omitempty" json:"clusterID,omitempty"`
+	ClusterID *openapi_types.UUID `form:"clusterID,omitempty" json:"clusterID,omitempty"`
 }
 
 // GetSandboxesParams defines parameters for GetSandboxes.
