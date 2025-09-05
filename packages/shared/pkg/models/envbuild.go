@@ -28,7 +28,7 @@ type EnvBuild struct {
 	// FinishedAt holds the value of the "finished_at" field.
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
 	// EnvID holds the value of the "env_id" field.
-	EnvID *string `json:"env_id,omitempty"`
+	EnvID string `json:"env_id,omitempty"`
 	// Status holds the value of the "status" field.
 	Status envbuild.Status `json:"status,omitempty"`
 	// Dockerfile holds the value of the "dockerfile" field.
@@ -142,8 +142,7 @@ func (eb *EnvBuild) assignValues(columns []string, values []any) error {
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field env_id", values[i])
 			} else if value.Valid {
-				eb.EnvID = new(string)
-				*eb.EnvID = value.String
+				eb.EnvID = value.String
 			}
 		case envbuild.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -282,10 +281,8 @@ func (eb *EnvBuild) String() string {
 		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteString(", ")
-	if v := eb.EnvID; v != nil {
-		builder.WriteString("env_id=")
-		builder.WriteString(*v)
-	}
+	builder.WriteString("env_id=")
+	builder.WriteString(eb.EnvID)
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(fmt.Sprintf("%v", eb.Status))
