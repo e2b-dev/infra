@@ -411,6 +411,9 @@ type NodeStatus string
 
 // NodeStatusChange defines model for NodeStatusChange.
 type NodeStatusChange struct {
+	// ClusterID Identifier of the cluster
+	ClusterID *openapi_types.UUID `json:"clusterID,omitempty"`
+
 	// Status Status of the node
 	Status NodeStatus `json:"status"`
 }

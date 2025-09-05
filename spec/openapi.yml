@@ -806,6 +806,10 @@ components:
       required:
         - status
       properties:
+        clusterID:
+          type: string
+          format: uuid
+          description: Identifier of the cluster
         status:
           $ref: "#/components/schemas/NodeStatus"
 
