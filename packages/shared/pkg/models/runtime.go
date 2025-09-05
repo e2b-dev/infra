@@ -80,6 +80,10 @@ func init() {
 	envbuildDescKernelVersion := envbuildFields[13].Descriptor()
 	// envbuild.DefaultKernelVersion holds the default value on creation for the kernel_version field.
 	envbuild.DefaultKernelVersion = envbuildDescKernelVersion.Default.(string)
+	// envbuildDescReason is the schema descriptor for reason field.
+	envbuildDescReason := envbuildFields[17].Descriptor()
+	// envbuild.DefaultReason holds the default value on creation for the reason field.
+	envbuild.DefaultReason = envbuildDescReason.Default.(schema.BuildReason)
 	snapshotFields := schema.Snapshot{}.Fields()
 	_ = snapshotFields
 	// snapshotDescCreatedAt is the schema descriptor for created_at field.

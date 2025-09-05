@@ -8,6 +8,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 )
 
 const (
@@ -101,6 +102,8 @@ var (
 	DefaultUpdatedAt func() time.Time
 	// DefaultKernelVersion holds the default value on creation for the "kernel_version" field.
 	DefaultKernelVersion string
+	// DefaultReason holds the default value on creation for the "reason" field.
+	DefaultReason schema.BuildReason
 )
 
 // Status defines the type for the "status" enum field.

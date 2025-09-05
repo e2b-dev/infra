@@ -307,8 +307,16 @@ func (ebu *EnvBuildUpdate) SetNillableClusterNodeID(s *string) *EnvBuildUpdate {
 }
 
 // SetReason sets the "reason" field.
-func (ebu *EnvBuildUpdate) SetReason(sr *schema.BuildReason) *EnvBuildUpdate {
+func (ebu *EnvBuildUpdate) SetReason(sr schema.BuildReason) *EnvBuildUpdate {
 	ebu.mutation.SetReason(sr)
+	return ebu
+}
+
+// SetNillableReason sets the "reason" field if the given value is not nil.
+func (ebu *EnvBuildUpdate) SetNillableReason(sr *schema.BuildReason) *EnvBuildUpdate {
+	if sr != nil {
+		ebu.SetReason(*sr)
+	}
 	return ebu
 }
 
@@ -791,8 +799,16 @@ func (ebuo *EnvBuildUpdateOne) SetNillableClusterNodeID(s *string) *EnvBuildUpda
 }
 
 // SetReason sets the "reason" field.
-func (ebuo *EnvBuildUpdateOne) SetReason(sr *schema.BuildReason) *EnvBuildUpdateOne {
+func (ebuo *EnvBuildUpdateOne) SetReason(sr schema.BuildReason) *EnvBuildUpdateOne {
 	ebuo.mutation.SetReason(sr)
+	return ebuo
+}
+
+// SetNillableReason sets the "reason" field if the given value is not nil.
+func (ebuo *EnvBuildUpdateOne) SetNillableReason(sr *schema.BuildReason) *EnvBuildUpdateOne {
+	if sr != nil {
+		ebuo.SetReason(*sr)
+	}
 	return ebuo
 }
 

@@ -54,7 +54,7 @@ type EnvBuild struct {
 	// ClusterNodeID holds the value of the "cluster_node_id" field.
 	ClusterNodeID string `json:"cluster_node_id,omitempty"`
 	// Reason holds the value of the "reason" field.
-	Reason *schema.BuildReason `json:"reason,omitempty"`
+	Reason schema.BuildReason `json:"reason,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the EnvBuildQuery when eager-loading is set.
 	Edges        EnvBuildEdges `json:"edges"`
