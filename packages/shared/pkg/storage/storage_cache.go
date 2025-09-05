@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -18,6 +17,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -216,6 +216,7 @@ func (c *CachedFileObjectProvider) Write(ctx context.Context, src []byte) (int, 
 
 	return num, nil
 }
+
 func (c *CachedFileObjectProvider) writeCacheAndRemote(ctx context.Context, src []byte) (int, error) {
 	var err error
 	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.writeCacheAndRemote")
@@ -376,7 +377,7 @@ func (c *CachedFileObjectProvider) writeChunkFromFile(ctx context.Context, offse
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			break
+
 		}
 
 		read, err := input.ReadAt(buffer, offset+totalRead)
