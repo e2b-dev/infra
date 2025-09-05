@@ -105,9 +105,15 @@ func TestTeamMetricsEmpty(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	db := setup.GetTestDBClient(t)
-	teamID := utils.CreateTeamWithUser(t, c, db, "no-team-metrics", setup.UserID)
+	teamID := utils.CreateTeamWithUser(t, c, db, "test-team-no-metrics", setup.UserID)
 
-	response, err := c.GetTeamsTeamIDMetricsWithResponse(t.Context(), setup.TeamID, nil, setup.WithSupabaseTeam(t), setup.WithSupabaseTeam(t, teamID.String()))
+	response, err := c.GetTeamsTeamIDMetricsWithResponse(
+		t.Context(),
+		teamID.String(),
+		nil,
+		setup.WithSupabaseTeam(t),
+		setup.WithSupabaseTeam(t, teamID.String()),
+	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, response.StatusCode())
 	require.NotNil(t, response.JSON200)
