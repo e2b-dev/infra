@@ -11,9 +11,9 @@ import (
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/batcher"
+	"github.com/e2b-dev/infra/packages/shared/pkg/events/event"
+	"github.com/e2b-dev/infra/packages/shared/pkg/events/webhooks"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/event"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/webhooks"
 	"github.com/e2b-dev/infra/packages/shared/pkg/pubsub"
 )
 
