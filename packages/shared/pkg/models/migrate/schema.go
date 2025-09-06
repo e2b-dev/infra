@@ -234,6 +234,7 @@ var (
 		{Name: "name", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "disk_mb", Type: field.TypeInt64, Default: "512"},
 		{Name: "concurrent_instances", Type: field.TypeInt64, Comment: "The number of instances the team can run concurrently"},
+		{Name: "concurrent_template_builds", Type: field.TypeInt64, Comment: "The number of concurrent template builds the team can run"},
 		{Name: "max_length_hours", Type: field.TypeInt64},
 	}
 	// TiersTable holds the schema information for the "tiers" table.
@@ -325,8 +326,9 @@ func init() {
 	TeamAPIKeysTable.Annotation = &entsql.Annotation{}
 	TiersTable.Annotation = &entsql.Annotation{}
 	TiersTable.Annotation.Checks = map[string]string{
-		"tiers_concurrent_sessions_check": "concurrent_instances > 0",
-		"tiers_disk_mb_check":             "disk_mb > 0",
+		"tiers_concurrent_sessions_check":        "concurrent_instances > 0",
+		"tiers_concurrent_template_builds_check": "concurrent_template_builds > 0",
+		"tiers_disk_mb_check":                    "disk_mb > 0",
 	}
 	UsersTable.Annotation = &entsql.Annotation{}
 	UsersTeamsTable.ForeignKeys[0].RefTable = UsersTable
