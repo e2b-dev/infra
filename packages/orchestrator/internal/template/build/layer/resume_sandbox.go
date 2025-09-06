@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
@@ -15,14 +16,15 @@ import (
 
 // ResumeSandbox creates sandboxes for resuming existing templates
 type ResumeSandbox struct {
-	config  sandbox.Config
-	timeout time.Duration
+	config     sandbox.Config
+	timeout    time.Duration
+	eventStore events.SandboxEventStore
 }
 
 var _ SandboxCreator = (*ResumeSandbox)(nil)
 
-func NewResumeSandbox(config sandbox.Config, timeout time.Duration) *ResumeSandbox {
-	return &ResumeSandbox{config: config, timeout: timeout}
+func NewResumeSandbox(config sandbox.Config, timeout time.Duration, eventStore events.SandboxEventStore) *ResumeSandbox {
+	return &ResumeSandbox{config: config, timeout: timeout, eventStore: eventStore}
 }
 
 func (rs *ResumeSandbox) Sandbox(
@@ -47,6 +49,7 @@ func (rs *ResumeSandbox) Sandbox(
 		layerExecutor.devicePool,
 		false,
 		nil,
+		rs.eventStore,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("resume sandbox: %w", err)

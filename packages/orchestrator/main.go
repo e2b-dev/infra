@@ -54,8 +54,9 @@ type Closeable interface {
 }
 
 const (
-	defaultPort      = 5008
-	defaultProxyPort = 5007
+	defaultPort           = 5008
+	defaultProxyPort      = 5007
+	defaultEventProxyPort = 5010
 
 	version = "0.1.0"
 
@@ -70,6 +71,7 @@ var (
 func main() {
 	port := flag.Uint("port", defaultPort, "orchestrator server port")
 	proxyPort := flag.Uint("proxy-port", defaultProxyPort, "orchestrator proxy port")
+	eventProxyPort := flag.Uint("event-proxy-port", defaultEventProxyPort, "orchestrator sandbox event proxy port")
 	flag.Parse()
 
 	if *port > math.MaxUint16 {
@@ -80,7 +82,7 @@ func main() {
 		log.Fatalf("%d is larger than maximum possible proxy port %d", proxyPort, math.MaxInt16)
 	}
 
-	success := run(*port, *proxyPort)
+	success := run(*port, *proxyPort, *eventProxyPort)
 
 	log.Println("Stopping orchestrator, success:", success)
 
@@ -89,7 +91,7 @@ func main() {
 	}
 }
 
-func run(port, proxyPort uint) (success bool) {
+func run(port, proxyPort, eventProxyPort uint) (success bool) {
 	success = true
 
 	services := service.GetServices()
@@ -343,7 +345,10 @@ func run(port, proxyPort uint) (success bool) {
 		redisPubSub = pubsub.NewMockPubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData]()
 	}
 
-	sbxEventsService := events.NewSandboxEventsService(featureFlags, redisPubSub, sandboxEventBatcher, globalLogger)
+	sbxEventService := events.NewSandboxEventsService(featureFlags, redisPubSub, sandboxEventBatcher, globalLogger)
+	sbxEventtore := events.NewSandboxEventStore(tracer, redisClient)
+	sbxEventProxy := events.NewSandboxEventProxy(eventProxyPort, sbxEventtore)
+
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
@@ -352,18 +357,19 @@ func run(port, proxyPort uint) (success bool) {
 	_, err = server.New(
 		ctx,
 		server.ServiceConfig{
-			GRPC:             grpcSrv,
-			Tel:              tel,
-			NetworkPool:      networkPool,
-			DevicePool:       devicePool,
-			TemplateCache:    templateCache,
-			Tracer:           tracer,
-			Info:             serviceInfo,
-			Proxy:            sandboxProxy,
-			Sandboxes:        sandboxes,
-			Persistence:      persistence,
-			FeatureFlags:     featureFlags,
-			SbxEventsService: sbxEventsService,
+			GRPC:            grpcSrv,
+			Tel:             tel,
+			NetworkPool:     networkPool,
+			DevicePool:      devicePool,
+			TemplateCache:   templateCache,
+			Tracer:          tracer,
+			Info:            serviceInfo,
+			Proxy:           sandboxProxy,
+			Sandboxes:       sandboxes,
+			Persistence:     persistence,
+			FeatureFlags:    featureFlags,
+			SbxEventService: sbxEventService,
+			SbxEventStore:   sbxEventtore,
 		},
 	)
 	if err != nil {
@@ -397,6 +403,8 @@ func run(port, proxyPort uint) (success bool) {
 		sandboxObserver,
 		limiter,
 		sandboxEventBatcher,
+		sbxEventtore,
+		sbxEventProxy,
 	)
 
 	// Initialize the template manager only if the service is enabled
@@ -462,6 +470,24 @@ func run(port, proxyPort uint) (success bool) {
 			}
 
 			return grpcErr
+		}
+
+		return nil
+	})
+
+	g.Go(func() error {
+		sbxEventProxyErr := sbxEventProxy.Start()
+		if sbxEventProxyErr != nil && !errors.Is(sbxEventProxyErr, http.ErrServerClosed) {
+			zap.L().Error("sandbox event proxy error", zap.Error(sbxEventProxyErr))
+
+			select {
+			case serviceError <- sbxEventProxyErr:
+			default:
+				// Don't block if the serviceError channel is already closed
+				// or if the error is already sent
+			}
+
+			return sbxEventProxyErr
 		}
 
 		return nil

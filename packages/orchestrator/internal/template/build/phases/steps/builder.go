@@ -177,7 +177,7 @@ func (sb *StepBuilder) Build(
 			},
 		)
 	} else {
-		sandboxCreator = layer.NewResumeSandbox(sbxConfig, layerTimeout)
+		sandboxCreator = layer.NewResumeSandbox(sbxConfig, layerTimeout, nil)
 	}
 
 	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error) {
