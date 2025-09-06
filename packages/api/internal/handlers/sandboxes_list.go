@@ -165,6 +165,9 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		// Filter based on metadata
 		runningSandboxList = utils.FilterSandboxesOnMetadata(runningSandboxList, metadataFilter)
 
+		// Set the total (before we apply the limit, but already with all filters)
+		c.Header("X-Total-Running", strconv.Itoa(len(runningSandboxList)))
+
 		// Filter based on cursor and limit
 		runningSandboxList = utils.FilterBasedOnCursor(runningSandboxList, cursorTime, cursorID, limit)
 
@@ -206,7 +209,6 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		c.Header("X-Next-Token", *nextToken)
 	}
 
-	c.Header("X-Total-Items", strconv.Itoa(len(sandboxes)))
 	c.JSON(http.StatusOK, sandboxes)
 }
 

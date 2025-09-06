@@ -12,7 +12,7 @@ import (
 )
 
 const getTeamWithTierByTeamAndUser = `-- name: GetTeamWithTierByTeamAndUser :one
-SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, tier.id, tier.name, tier.disk_mb, tier.concurrent_instances, tier.max_length_hours, tier.max_vcpu, tier.max_ram_mb
+SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, tier.id, tier.name, tier.disk_mb, tier.concurrent_instances, tier.max_length_hours, tier.max_vcpu, tier.max_ram_mb, tier.concurrent_template_builds
 FROM "public"."teams" t
 JOIN "public"."tiers" tier ON t.tier = tier.id
 JOIN "public"."users_teams" ut ON ut.team_id = t.id
@@ -49,6 +49,7 @@ func (q *Queries) GetTeamWithTierByTeamAndUser(ctx context.Context, arg GetTeamW
 		&i.Tier.MaxLengthHours,
 		&i.Tier.MaxVcpu,
 		&i.Tier.MaxRamMb,
+		&i.Tier.ConcurrentTemplateBuilds,
 	)
 	return i, err
 }

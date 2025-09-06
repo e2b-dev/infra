@@ -18,6 +18,8 @@ const (
 	FieldDiskMB = "disk_mb"
 	// FieldConcurrentInstances holds the string denoting the concurrent_instances field in the database.
 	FieldConcurrentInstances = "concurrent_instances"
+	// FieldConcurrentTemplateBuilds holds the string denoting the concurrent_template_builds field in the database.
+	FieldConcurrentTemplateBuilds = "concurrent_template_builds"
 	// FieldMaxLengthHours holds the string denoting the max_length_hours field in the database.
 	FieldMaxLengthHours = "max_length_hours"
 	// EdgeTeams holds the string denoting the teams edge name in mutations.
@@ -39,6 +41,7 @@ var Columns = []string{
 	FieldName,
 	FieldDiskMB,
 	FieldConcurrentInstances,
+	FieldConcurrentTemplateBuilds,
 	FieldMaxLengthHours,
 }
 
@@ -73,6 +76,11 @@ func ByDiskMB(opts ...sql.OrderTermOption) OrderOption {
 // ByConcurrentInstances orders the results by the concurrent_instances field.
 func ByConcurrentInstances(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldConcurrentInstances, opts...).ToFunc()
+}
+
+// ByConcurrentTemplateBuilds orders the results by the concurrent_template_builds field.
+func ByConcurrentTemplateBuilds(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldConcurrentTemplateBuilds, opts...).ToFunc()
 }
 
 // ByMaxLengthHours orders the results by the max_length_hours field.

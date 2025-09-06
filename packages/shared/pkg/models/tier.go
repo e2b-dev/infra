@@ -22,6 +22,8 @@ type Tier struct {
 	DiskMB int64 `json:"disk_mb,omitempty"`
 	// The number of instances the team can run concurrently
 	ConcurrentInstances int64 `json:"concurrent_instances,omitempty"`
+	// The number of concurrent template builds the team can run
+	ConcurrentTemplateBuilds int64 `json:"concurrent_template_builds,omitempty"`
 	// MaxLengthHours holds the value of the "max_length_hours" field.
 	MaxLengthHours int64 `json:"max_length_hours,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -53,7 +55,7 @@ func (*Tier) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case tier.FieldDiskMB, tier.FieldConcurrentInstances, tier.FieldMaxLengthHours:
+		case tier.FieldDiskMB, tier.FieldConcurrentInstances, tier.FieldConcurrentTemplateBuilds, tier.FieldMaxLengthHours:
 			values[i] = new(sql.NullInt64)
 		case tier.FieldID, tier.FieldName:
 			values[i] = new(sql.NullString)
@@ -95,6 +97,12 @@ func (t *Tier) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field concurrent_instances", values[i])
 			} else if value.Valid {
 				t.ConcurrentInstances = value.Int64
+			}
+		case tier.FieldConcurrentTemplateBuilds:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field concurrent_template_builds", values[i])
+			} else if value.Valid {
+				t.ConcurrentTemplateBuilds = value.Int64
 			}
 		case tier.FieldMaxLengthHours:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -151,6 +159,9 @@ func (t *Tier) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("concurrent_instances=")
 	builder.WriteString(fmt.Sprintf("%v", t.ConcurrentInstances))
+	builder.WriteString(", ")
+	builder.WriteString("concurrent_template_builds=")
+	builder.WriteString(fmt.Sprintf("%v", t.ConcurrentTemplateBuilds))
 	builder.WriteString(", ")
 	builder.WriteString("max_length_hours=")
 	builder.WriteString(fmt.Sprintf("%v", t.MaxLengthHours))

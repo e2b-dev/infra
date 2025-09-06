@@ -16,7 +16,7 @@ FROM "public"."teams" t
 JOIN "public"."tiers" tier ON t.tier = tier.id
 WHERE tak.team_id = t.id
   AND tak.api_key_hash = $1
-RETURNING t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, tier.id, tier.name, tier.disk_mb, tier.concurrent_instances, tier.max_length_hours, tier.max_vcpu, tier.max_ram_mb
+RETURNING t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, tier.id, tier.name, tier.disk_mb, tier.concurrent_instances, tier.max_length_hours, tier.max_vcpu, tier.max_ram_mb, tier.concurrent_template_builds
 `
 
 type GetTeamWithTierByAPIKeyWithUpdateLastUsedRow struct {
@@ -44,6 +44,7 @@ func (q *Queries) GetTeamWithTierByAPIKeyWithUpdateLastUsed(ctx context.Context,
 		&i.Tier.MaxLengthHours,
 		&i.Tier.MaxVcpu,
 		&i.Tier.MaxRamMb,
+		&i.Tier.ConcurrentTemplateBuilds,
 	)
 	return i, err
 }

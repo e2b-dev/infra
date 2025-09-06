@@ -79,6 +79,11 @@ func ConcurrentInstances(v int64) predicate.Tier {
 	return predicate.Tier(sql.FieldEQ(FieldConcurrentInstances, v))
 }
 
+// ConcurrentTemplateBuilds applies equality check predicate on the "concurrent_template_builds" field. It's identical to ConcurrentTemplateBuildsEQ.
+func ConcurrentTemplateBuilds(v int64) predicate.Tier {
+	return predicate.Tier(sql.FieldEQ(FieldConcurrentTemplateBuilds, v))
+}
+
 // MaxLengthHours applies equality check predicate on the "max_length_hours" field. It's identical to MaxLengthHoursEQ.
 func MaxLengthHours(v int64) predicate.Tier {
 	return predicate.Tier(sql.FieldEQ(FieldMaxLengthHours, v))
@@ -227,6 +232,46 @@ func ConcurrentInstancesLT(v int64) predicate.Tier {
 // ConcurrentInstancesLTE applies the LTE predicate on the "concurrent_instances" field.
 func ConcurrentInstancesLTE(v int64) predicate.Tier {
 	return predicate.Tier(sql.FieldLTE(FieldConcurrentInstances, v))
+}
+
+// ConcurrentTemplateBuildsEQ applies the EQ predicate on the "concurrent_template_builds" field.
+func ConcurrentTemplateBuildsEQ(v int64) predicate.Tier {
+	return predicate.Tier(sql.FieldEQ(FieldConcurrentTemplateBuilds, v))
+}
+
+// ConcurrentTemplateBuildsNEQ applies the NEQ predicate on the "concurrent_template_builds" field.
+func ConcurrentTemplateBuildsNEQ(v int64) predicate.Tier {
+	return predicate.Tier(sql.FieldNEQ(FieldConcurrentTemplateBuilds, v))
+}
+
+// ConcurrentTemplateBuildsIn applies the In predicate on the "concurrent_template_builds" field.
+func ConcurrentTemplateBuildsIn(vs ...int64) predicate.Tier {
+	return predicate.Tier(sql.FieldIn(FieldConcurrentTemplateBuilds, vs...))
+}
+
+// ConcurrentTemplateBuildsNotIn applies the NotIn predicate on the "concurrent_template_builds" field.
+func ConcurrentTemplateBuildsNotIn(vs ...int64) predicate.Tier {
+	return predicate.Tier(sql.FieldNotIn(FieldConcurrentTemplateBuilds, vs...))
+}
+
+// ConcurrentTemplateBuildsGT applies the GT predicate on the "concurrent_template_builds" field.
+func ConcurrentTemplateBuildsGT(v int64) predicate.Tier {
+	return predicate.Tier(sql.FieldGT(FieldConcurrentTemplateBuilds, v))
+}
+
+// ConcurrentTemplateBuildsGTE applies the GTE predicate on the "concurrent_template_builds" field.
+func ConcurrentTemplateBuildsGTE(v int64) predicate.Tier {
+	return predicate.Tier(sql.FieldGTE(FieldConcurrentTemplateBuilds, v))
+}
+
+// ConcurrentTemplateBuildsLT applies the LT predicate on the "concurrent_template_builds" field.
+func ConcurrentTemplateBuildsLT(v int64) predicate.Tier {
+	return predicate.Tier(sql.FieldLT(FieldConcurrentTemplateBuilds, v))
+}
+
+// ConcurrentTemplateBuildsLTE applies the LTE predicate on the "concurrent_template_builds" field.
+func ConcurrentTemplateBuildsLTE(v int64) predicate.Tier {
+	return predicate.Tier(sql.FieldLTE(FieldConcurrentTemplateBuilds, v))
 }
 
 // MaxLengthHoursEQ applies the EQ predicate on the "max_length_hours" field.

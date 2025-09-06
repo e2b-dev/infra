@@ -116,15 +116,15 @@ func (o *Orchestrator) GetClusterNodes(clusterID uuid.UUID) []*nodemanager.Node 
 }
 
 // Deprecated: use GetNode instead
-func (o *Orchestrator) GetNodeByIDOrNomadShortID(id string) *nodemanager.Node {
+func (o *Orchestrator) GetNodeByIDOrNomadShortID(clusterID uuid.UUID, nodeIDOrNomadNodeShortID string) *nodemanager.Node {
 	// First try to get by nomad short ID
-	n := o.GetNodeByNomadShortID(id)
+	n := o.GetNodeByNomadShortID(nodeIDOrNomadNodeShortID)
 	if n != nil {
 		return n
 	}
 
 	// Fallback to use id
-	return o.GetNode(uuid.Nil, id)
+	return o.GetNode(clusterID, nodeIDOrNomadNodeShortID)
 }
 
 // Deprecated: use GetNode instead

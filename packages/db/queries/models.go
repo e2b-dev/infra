@@ -133,6 +133,8 @@ type Tier struct {
 	MaxLengthHours      int64
 	MaxVcpu             int64
 	MaxRamMb            int64
+	// The number of concurrent template builds the team can run
+	ConcurrentTemplateBuilds int64
 }
 
 type UsersTeam struct {
