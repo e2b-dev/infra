@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/providers"
 	"log"
 	"net/http"
 	"time"
@@ -102,12 +103,12 @@ func buildTemplate(
 		}
 	}()
 
-	persistenceTemplate, err := storage.GetTemplateStorageProvider(ctx, nil)
+	persistenceTemplate, err := providers.GetTemplateStorageProvider(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("could not create storage provider: %w", err)
 	}
 
-	persistenceBuild, err := storage.GetBuildCacheStorageProvider(ctx, nil)
+	persistenceBuild, err := providers.GetBuildCacheStorageProvider(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("could not create storage provider: %w", err)
 	}
@@ -170,6 +171,7 @@ func buildTemplate(
 		sandboxes,
 		templateCache,
 		buildMetrics,
+		featureFlags,
 	)
 
 	logger = logger.
