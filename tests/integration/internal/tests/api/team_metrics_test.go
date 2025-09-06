@@ -111,7 +111,7 @@ func TestTeamMetricsEmpty(t *testing.T) {
 		t.Context(),
 		teamID.String(),
 		nil,
-		setup.WithSupabaseTeam(t),
+		setup.WithSupabaseToken(t),
 		setup.WithSupabaseTeam(t, teamID.String()),
 	)
 	require.NoError(t, err)
