@@ -74,14 +74,6 @@ func (ebc *EnvBuildCreate) SetEnvID(s string) *EnvBuildCreate {
 	return ebc
 }
 
-// SetNillableEnvID sets the "env_id" field if the given value is not nil.
-func (ebc *EnvBuildCreate) SetNillableEnvID(s *string) *EnvBuildCreate {
-	if s != nil {
-		ebc.SetEnvID(*s)
-	}
-	return ebc
-}
-
 // SetStatus sets the "status" field.
 func (ebc *EnvBuildCreate) SetStatus(e envbuild.Status) *EnvBuildCreate {
 	ebc.mutation.SetStatus(e)
@@ -211,8 +203,16 @@ func (ebc *EnvBuildCreate) SetClusterNodeID(s string) *EnvBuildCreate {
 }
 
 // SetReason sets the "reason" field.
-func (ebc *EnvBuildCreate) SetReason(sr *schema.BuildReason) *EnvBuildCreate {
+func (ebc *EnvBuildCreate) SetReason(sr schema.BuildReason) *EnvBuildCreate {
 	ebc.mutation.SetReason(sr)
+	return ebc
+}
+
+// SetNillableReason sets the "reason" field if the given value is not nil.
+func (ebc *EnvBuildCreate) SetNillableReason(sr *schema.BuildReason) *EnvBuildCreate {
+	if sr != nil {
+		ebc.SetReason(*sr)
+	}
 	return ebc
 }
 
@@ -278,6 +278,10 @@ func (ebc *EnvBuildCreate) defaults() {
 		v := envbuild.DefaultKernelVersion
 		ebc.mutation.SetKernelVersion(v)
 	}
+	if _, ok := ebc.mutation.Reason(); !ok {
+		v := envbuild.DefaultReason
+		ebc.mutation.SetReason(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -287,6 +291,9 @@ func (ebc *EnvBuildCreate) check() error {
 	}
 	if _, ok := ebc.mutation.UpdatedAt(); !ok {
 		return &ValidationError{Name: "updated_at", err: errors.New(`models: missing required field "EnvBuild.updated_at"`)}
+	}
+	if _, ok := ebc.mutation.EnvID(); !ok {
+		return &ValidationError{Name: "env_id", err: errors.New(`models: missing required field "EnvBuild.env_id"`)}
 	}
 	if _, ok := ebc.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`models: missing required field "EnvBuild.status"`)}
@@ -313,6 +320,12 @@ func (ebc *EnvBuildCreate) check() error {
 	}
 	if _, ok := ebc.mutation.ClusterNodeID(); !ok {
 		return &ValidationError{Name: "cluster_node_id", err: errors.New(`models: missing required field "EnvBuild.cluster_node_id"`)}
+	}
+	if _, ok := ebc.mutation.Reason(); !ok {
+		return &ValidationError{Name: "reason", err: errors.New(`models: missing required field "EnvBuild.reason"`)}
+	}
+	if _, ok := ebc.mutation.EnvID(); !ok {
+		return &ValidationError{Name: "env", err: errors.New(`models: missing required edge "EnvBuild.env"`)}
 	}
 	return nil
 }
@@ -430,7 +443,7 @@ func (ebc *EnvBuildCreate) createSpec() (*EnvBuild, *sqlgraph.CreateSpec) {
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
-		_node.EnvID = &nodes[0]
+		_node.EnvID = nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
@@ -524,12 +537,6 @@ func (u *EnvBuildUpsert) SetEnvID(v string) *EnvBuildUpsert {
 // UpdateEnvID sets the "env_id" field to the value that was provided on create.
 func (u *EnvBuildUpsert) UpdateEnvID() *EnvBuildUpsert {
 	u.SetExcluded(envbuild.FieldEnvID)
-	return u
-}
-
-// ClearEnvID clears the value of the "env_id" field.
-func (u *EnvBuildUpsert) ClearEnvID() *EnvBuildUpsert {
-	u.SetNull(envbuild.FieldEnvID)
 	return u
 }
 
@@ -732,7 +739,7 @@ func (u *EnvBuildUpsert) UpdateClusterNodeID() *EnvBuildUpsert {
 }
 
 // SetReason sets the "reason" field.
-func (u *EnvBuildUpsert) SetReason(v *schema.BuildReason) *EnvBuildUpsert {
+func (u *EnvBuildUpsert) SetReason(v schema.BuildReason) *EnvBuildUpsert {
 	u.Set(envbuild.FieldReason, v)
 	return u
 }
@@ -740,12 +747,6 @@ func (u *EnvBuildUpsert) SetReason(v *schema.BuildReason) *EnvBuildUpsert {
 // UpdateReason sets the "reason" field to the value that was provided on create.
 func (u *EnvBuildUpsert) UpdateReason() *EnvBuildUpsert {
 	u.SetExcluded(envbuild.FieldReason)
-	return u
-}
-
-// ClearReason clears the value of the "reason" field.
-func (u *EnvBuildUpsert) ClearReason() *EnvBuildUpsert {
-	u.SetNull(envbuild.FieldReason)
 	return u
 }
 
@@ -846,13 +847,6 @@ func (u *EnvBuildUpsertOne) SetEnvID(v string) *EnvBuildUpsertOne {
 func (u *EnvBuildUpsertOne) UpdateEnvID() *EnvBuildUpsertOne {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.UpdateEnvID()
-	})
-}
-
-// ClearEnvID clears the value of the "env_id" field.
-func (u *EnvBuildUpsertOne) ClearEnvID() *EnvBuildUpsertOne {
-	return u.Update(func(s *EnvBuildUpsert) {
-		s.ClearEnvID()
 	})
 }
 
@@ -1088,7 +1082,7 @@ func (u *EnvBuildUpsertOne) UpdateClusterNodeID() *EnvBuildUpsertOne {
 }
 
 // SetReason sets the "reason" field.
-func (u *EnvBuildUpsertOne) SetReason(v *schema.BuildReason) *EnvBuildUpsertOne {
+func (u *EnvBuildUpsertOne) SetReason(v schema.BuildReason) *EnvBuildUpsertOne {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.SetReason(v)
 	})
@@ -1098,13 +1092,6 @@ func (u *EnvBuildUpsertOne) SetReason(v *schema.BuildReason) *EnvBuildUpsertOne 
 func (u *EnvBuildUpsertOne) UpdateReason() *EnvBuildUpsertOne {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.UpdateReason()
-	})
-}
-
-// ClearReason clears the value of the "reason" field.
-func (u *EnvBuildUpsertOne) ClearReason() *EnvBuildUpsertOne {
-	return u.Update(func(s *EnvBuildUpsert) {
-		s.ClearReason()
 	})
 }
 
@@ -1375,13 +1362,6 @@ func (u *EnvBuildUpsertBulk) UpdateEnvID() *EnvBuildUpsertBulk {
 	})
 }
 
-// ClearEnvID clears the value of the "env_id" field.
-func (u *EnvBuildUpsertBulk) ClearEnvID() *EnvBuildUpsertBulk {
-	return u.Update(func(s *EnvBuildUpsert) {
-		s.ClearEnvID()
-	})
-}
-
 // SetStatus sets the "status" field.
 func (u *EnvBuildUpsertBulk) SetStatus(v envbuild.Status) *EnvBuildUpsertBulk {
 	return u.Update(func(s *EnvBuildUpsert) {
@@ -1614,7 +1594,7 @@ func (u *EnvBuildUpsertBulk) UpdateClusterNodeID() *EnvBuildUpsertBulk {
 }
 
 // SetReason sets the "reason" field.
-func (u *EnvBuildUpsertBulk) SetReason(v *schema.BuildReason) *EnvBuildUpsertBulk {
+func (u *EnvBuildUpsertBulk) SetReason(v schema.BuildReason) *EnvBuildUpsertBulk {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.SetReason(v)
 	})
@@ -1624,13 +1604,6 @@ func (u *EnvBuildUpsertBulk) SetReason(v *schema.BuildReason) *EnvBuildUpsertBul
 func (u *EnvBuildUpsertBulk) UpdateReason() *EnvBuildUpsertBulk {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.UpdateReason()
-	})
-}
-
-// ClearReason clears the value of the "reason" field.
-func (u *EnvBuildUpsertBulk) ClearReason() *EnvBuildUpsertBulk {
-	return u.Update(func(s *EnvBuildUpsert) {
-		s.ClearReason()
 	})
 }
 

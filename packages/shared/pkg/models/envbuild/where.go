@@ -317,16 +317,6 @@ func EnvIDHasSuffix(v string) predicate.EnvBuild {
 	return predicate.EnvBuild(sql.FieldHasSuffix(FieldEnvID, v))
 }
 
-// EnvIDIsNil applies the IsNil predicate on the "env_id" field.
-func EnvIDIsNil() predicate.EnvBuild {
-	return predicate.EnvBuild(sql.FieldIsNull(FieldEnvID))
-}
-
-// EnvIDNotNil applies the NotNil predicate on the "env_id" field.
-func EnvIDNotNil() predicate.EnvBuild {
-	return predicate.EnvBuild(sql.FieldNotNull(FieldEnvID))
-}
-
 // EnvIDEqualFold applies the EqualFold predicate on the "env_id" field.
 func EnvIDEqualFold(v string) predicate.EnvBuild {
 	return predicate.EnvBuild(sql.FieldEqualFold(FieldEnvID, v))
@@ -1020,16 +1010,6 @@ func ClusterNodeIDEqualFold(v string) predicate.EnvBuild {
 // ClusterNodeIDContainsFold applies the ContainsFold predicate on the "cluster_node_id" field.
 func ClusterNodeIDContainsFold(v string) predicate.EnvBuild {
 	return predicate.EnvBuild(sql.FieldContainsFold(FieldClusterNodeID, v))
-}
-
-// ReasonIsNil applies the IsNil predicate on the "reason" field.
-func ReasonIsNil() predicate.EnvBuild {
-	return predicate.EnvBuild(sql.FieldIsNull(FieldReason))
-}
-
-// ReasonNotNil applies the NotNil predicate on the "reason" field.
-func ReasonNotNil() predicate.EnvBuild {
-	return predicate.EnvBuild(sql.FieldNotNull(FieldReason))
 }
 
 // HasEnv applies the HasEdge predicate on the "env" edge.

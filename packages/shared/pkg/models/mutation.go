@@ -3141,7 +3141,7 @@ type EnvBuildMutation struct {
 	firecracker_version   *string
 	envd_version          *string
 	cluster_node_id       *string
-	reason                **schema.BuildReason
+	reason                *schema.BuildReason
 	clearedFields         map[string]struct{}
 	env                   *string
 	clearedenv            bool
@@ -3392,7 +3392,7 @@ func (m *EnvBuildMutation) EnvID() (r string, exists bool) {
 // OldEnvID returns the old "env_id" field's value of the EnvBuild entity.
 // If the EnvBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *EnvBuildMutation) OldEnvID(ctx context.Context) (v *string, err error) {
+func (m *EnvBuildMutation) OldEnvID(ctx context.Context) (v string, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldEnvID is only allowed on UpdateOne operations")
 	}
@@ -3406,22 +3406,9 @@ func (m *EnvBuildMutation) OldEnvID(ctx context.Context) (v *string, err error) 
 	return oldValue.EnvID, nil
 }
 
-// ClearEnvID clears the value of the "env_id" field.
-func (m *EnvBuildMutation) ClearEnvID() {
-	m.env = nil
-	m.clearedFields[envbuild.FieldEnvID] = struct{}{}
-}
-
-// EnvIDCleared returns if the "env_id" field was cleared in this mutation.
-func (m *EnvBuildMutation) EnvIDCleared() bool {
-	_, ok := m.clearedFields[envbuild.FieldEnvID]
-	return ok
-}
-
 // ResetEnvID resets all changes to the "env_id" field.
 func (m *EnvBuildMutation) ResetEnvID() {
 	m.env = nil
-	delete(m.clearedFields, envbuild.FieldEnvID)
 }
 
 // SetStatus sets the "status" field.
@@ -4003,12 +3990,12 @@ func (m *EnvBuildMutation) ResetClusterNodeID() {
 }
 
 // SetReason sets the "reason" field.
-func (m *EnvBuildMutation) SetReason(sr *schema.BuildReason) {
+func (m *EnvBuildMutation) SetReason(sr schema.BuildReason) {
 	m.reason = &sr
 }
 
 // Reason returns the value of the "reason" field in the mutation.
-func (m *EnvBuildMutation) Reason() (r *schema.BuildReason, exists bool) {
+func (m *EnvBuildMutation) Reason() (r schema.BuildReason, exists bool) {
 	v := m.reason
 	if v == nil {
 		return
@@ -4019,7 +4006,7 @@ func (m *EnvBuildMutation) Reason() (r *schema.BuildReason, exists bool) {
 // OldReason returns the old "reason" field's value of the EnvBuild entity.
 // If the EnvBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *EnvBuildMutation) OldReason(ctx context.Context) (v *schema.BuildReason, err error) {
+func (m *EnvBuildMutation) OldReason(ctx context.Context) (v schema.BuildReason, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldReason is only allowed on UpdateOne operations")
 	}
@@ -4033,22 +4020,9 @@ func (m *EnvBuildMutation) OldReason(ctx context.Context) (v *schema.BuildReason
 	return oldValue.Reason, nil
 }
 
-// ClearReason clears the value of the "reason" field.
-func (m *EnvBuildMutation) ClearReason() {
-	m.reason = nil
-	m.clearedFields[envbuild.FieldReason] = struct{}{}
-}
-
-// ReasonCleared returns if the "reason" field was cleared in this mutation.
-func (m *EnvBuildMutation) ReasonCleared() bool {
-	_, ok := m.clearedFields[envbuild.FieldReason]
-	return ok
-}
-
 // ResetReason resets all changes to the "reason" field.
 func (m *EnvBuildMutation) ResetReason() {
 	m.reason = nil
-	delete(m.clearedFields, envbuild.FieldReason)
 }
 
 // ClearEnv clears the "env" edge to the Env entity.
@@ -4059,7 +4033,7 @@ func (m *EnvBuildMutation) ClearEnv() {
 
 // EnvCleared reports if the "env" edge to the Env entity was cleared.
 func (m *EnvBuildMutation) EnvCleared() bool {
-	return m.EnvIDCleared() || m.clearedenv
+	return m.clearedenv
 }
 
 // EnvIDs returns the "env" edge IDs in the mutation.
@@ -4371,7 +4345,7 @@ func (m *EnvBuildMutation) SetField(name string, value ent.Value) error {
 		m.SetClusterNodeID(v)
 		return nil
 	case envbuild.FieldReason:
-		v, ok := value.(*schema.BuildReason)
+		v, ok := value.(schema.BuildReason)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
@@ -4461,9 +4435,6 @@ func (m *EnvBuildMutation) ClearedFields() []string {
 	if m.FieldCleared(envbuild.FieldFinishedAt) {
 		fields = append(fields, envbuild.FieldFinishedAt)
 	}
-	if m.FieldCleared(envbuild.FieldEnvID) {
-		fields = append(fields, envbuild.FieldEnvID)
-	}
 	if m.FieldCleared(envbuild.FieldDockerfile) {
 		fields = append(fields, envbuild.FieldDockerfile)
 	}
@@ -4478,9 +4449,6 @@ func (m *EnvBuildMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(envbuild.FieldEnvdVersion) {
 		fields = append(fields, envbuild.FieldEnvdVersion)
-	}
-	if m.FieldCleared(envbuild.FieldReason) {
-		fields = append(fields, envbuild.FieldReason)
 	}
 	return fields
 }
@@ -4499,9 +4467,6 @@ func (m *EnvBuildMutation) ClearField(name string) error {
 	case envbuild.FieldFinishedAt:
 		m.ClearFinishedAt()
 		return nil
-	case envbuild.FieldEnvID:
-		m.ClearEnvID()
-		return nil
 	case envbuild.FieldDockerfile:
 		m.ClearDockerfile()
 		return nil
@@ -4516,9 +4481,6 @@ func (m *EnvBuildMutation) ClearField(name string) error {
 		return nil
 	case envbuild.FieldEnvdVersion:
 		m.ClearEnvdVersion()
-		return nil
-	case envbuild.FieldReason:
-		m.ClearReason()
 		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild nullable field %s", name)
