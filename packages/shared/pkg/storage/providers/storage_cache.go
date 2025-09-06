@@ -231,6 +231,7 @@ func (c *CachedFileObjectProvider) writeCacheAndRemote(ctx context.Context, src 
 		// write to the cache file
 		filename := c.makeChunkFilename(int64(offset))
 		if err = os.WriteFile(filename, buf[:], cacheFilePermissions); err != nil {
+			safelyRemoveFile(filename)
 			return 0, fmt.Errorf("failed to write to local file %q: %w", filename, err)
 		}
 	}
@@ -344,7 +345,11 @@ func (c *CachedFileObjectProvider) createCacheBlocksFromFile(ctx context.Context
 	for offset := int64(0); offset < totalSize; offset += c.chunkSize {
 		func(offset, totalSize int64) {
 			errs.Go(func() error {
-				return c.writeChunkFromFile(ctx, offset, totalSize, input)
+				if fname, err := c.writeChunkFromFile(ctx, offset, totalSize, input); err != nil {
+					safelyRemoveFile(fname)
+					return err
+				}
+				return nil
 			})
 		}(offset, totalSize)
 	}
@@ -353,7 +358,7 @@ func (c *CachedFileObjectProvider) createCacheBlocksFromFile(ctx context.Context
 
 // writeChunkFromFile writes a piece of a local file. It does not need to worry about race conditions, as it will only
 // be called when building templates, and templates cannot be built on multiple machines at the same time.x
-func (c *CachedFileObjectProvider) writeChunkFromFile(ctx context.Context, offset int64, totalSize int64, input *os.File) error {
+func (c *CachedFileObjectProvider) writeChunkFromFile(ctx context.Context, offset int64, totalSize int64, input *os.File) (string, error) {
 	var err error
 	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.writeChunkFromFile", trace.WithAttributes(
 		attribute.Int64("offset", offset),
@@ -366,7 +371,7 @@ func (c *CachedFileObjectProvider) writeChunkFromFile(ctx context.Context, offse
 
 	output, err := os.OpenFile(chunkPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, cacheFilePermissions)
 	if err != nil {
-		return fmt.Errorf("failed to open file %s: %w", chunkPath, err)
+		return chunkPath, fmt.Errorf("failed to open file %s: %w", chunkPath, err)
 	}
 	defer cleanup("failed to close file", output)
 
@@ -376,31 +381,31 @@ func (c *CachedFileObjectProvider) writeChunkFromFile(ctx context.Context, offse
 	for totalRead < expectedRead {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return chunkPath, ctx.Err()
 		default:
 
 		}
 
 		read, err := input.ReadAt(buffer, offset+totalRead)
 		if ignoreEOF(err) != nil {
-			return fmt.Errorf("failed to write to %q [%d bytes @ %d]: %w",
+			return chunkPath, fmt.Errorf("failed to write to %q [%d bytes @ %d]: %w",
 				chunkPath, c.chunkSize, offset, err)
 		} else if read == 0 {
-			return fmt.Errorf("empty read at %d+%d", offset, totalRead)
+			return chunkPath, fmt.Errorf("empty read at %d+%d", offset, totalRead)
 		}
 
 		if _, err = output.Write(buffer[:read]); err != nil {
-			return fmt.Errorf("failed to write to %q [%d bytes @ %d]: %w",
+			return chunkPath, fmt.Errorf("failed to write to %q [%d bytes @ %d]: %w",
 				chunkPath, c.chunkSize, offset, err)
 		}
 		totalRead += int64(read)
 
 		if errors.Is(err, io.EOF) {
-			return nil
+			return chunkPath, nil
 		}
 	}
 
-	return nil
+	return chunkPath, nil
 }
 
 func ignoreFileMissingError(err error) error {
@@ -558,4 +563,12 @@ func moveWithoutReplace(oldPath, newPath string) error {
 	}
 
 	return nil
+}
+
+func safelyRemoveFile(path string) {
+	if err := os.Remove(path); ignoreFileMissingError(err) != nil {
+		zap.L().Warn("failed to remove file",
+			zap.String("path", path),
+			zap.Error(err))
+	}
 }
