@@ -34,6 +34,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/providers"
 )
 
 const progressDelay = 5 * time.Second
@@ -190,7 +191,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 }
 
 func (b *Builder) useNFSCache(ctx context.Context) bool {
-	if !storage.IsCacheEnabled() {
+	if !providers.IsCacheEnabled() {
 		// can't enable cache if we don't have a cache path
 		return false
 	}
@@ -209,7 +210,7 @@ func (b *Builder) runBuild(
 ) (*Result, error) {
 	templateStorage := b.templateStorage
 	if b.useNFSCache(ctx) {
-		templateStorage = storage.NewCachedProvider(templateStorage)
+		templateStorage = providers.NewCachedProvider(templateStorage)
 	}
 
 	index := cache.NewHashIndex(bc.CacheScope, b.buildStorage, templateStorage)

@@ -3,7 +3,6 @@ package template
 import (
 	"context"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/providers"
 	"os"
 	"path/filepath"
 	"time"
@@ -17,6 +16,7 @@ import (
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/providers"
 )
 
 // How long to keep the template in the cache since the last access.
