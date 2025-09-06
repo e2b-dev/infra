@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -198,6 +199,11 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 	require.Equal(t, http.StatusOK, listResponse.StatusCode())
 	require.Len(t, *listResponse.JSON200, 1)
 	assert.Equal(t, sandbox2ID, (*listResponse.JSON200)[0].SandboxID)
+
+	totalHeader := listResponse.HTTPResponse.Header.Get("X-Total-Running")
+	total, err := strconv.Atoi(totalHeader)
+	require.NoError(t, err)
+	assert.Equal(t, 2, total)
 
 	// Get second page using the next token from first response
 	nextToken := listResponse.HTTPResponse.Header.Get("X-Next-Token")
