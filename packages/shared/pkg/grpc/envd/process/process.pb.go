@@ -344,7 +344,7 @@ type StartRequest struct {
 	Pty     *PTY           `protobuf:"bytes,2,opt,name=pty,proto3,oneof" json:"pty,omitempty"`
 	Tag     *string        `protobuf:"bytes,3,opt,name=tag,proto3,oneof" json:"tag,omitempty"`
 	// This is optional for backwards compatibility.
-	// We will default to false. Also new SDK versions will set this to false by default.
+	// We default to true. New SDK versions will set this to false by default.
 	Stdin *bool `protobuf:"varint,4,opt,name=stdin,proto3,oneof" json:"stdin,omitempty"`
 }
 
