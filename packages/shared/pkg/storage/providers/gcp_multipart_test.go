@@ -1,4 +1,4 @@
-package storage
+package providers
 
 import (
 	"encoding/xml"

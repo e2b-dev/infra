@@ -1,4 +1,4 @@
-package storage
+package providers
 
 import (
 	"bytes"
@@ -10,10 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	storagemocks "github.com/e2b-dev/infra/packages/shared/pkg/storage/mocks"
 )
 
@@ -21,6 +23,43 @@ func TestCachedFileObjectProvider_MakeChunkFilename(t *testing.T) {
 	c := CachedFileObjectProvider{path: "/a/b/c", chunkSize: 1024}
 	filename := c.makeChunkFilename(1024 * 4)
 	assert.Equal(t, "/a/b/c/000000000004-1024.bin", filename)
+}
+
+func TestCachedProvider_DeleteObjectsWithPrefix(t *testing.T) {
+	inner := storagemocks.NewMockStorageProvider(t)
+	inner.EXPECT().DeleteObjectsWithPrefix(mock.Anything, mock.Anything).Return(nil)
+
+	rootDir := t.TempDir()
+	buildID := uuid.NewString()
+	buildDir := filepath.Join(rootDir, buildID)
+
+	filesToWrite := map[string]struct{}{
+		"file-1.bin":            {},
+		"file-2.bin/chunk1.bin": {},
+		"file-2.bin/chunk2.bin": {},
+	}
+
+	var err error
+	for fname := range filesToWrite {
+		full := filepath.Join(buildDir, fname)
+		dirname := filepath.Dir(full)
+		err = os.MkdirAll(dirname, 0o700)
+		require.NoError(t, err)
+		err := os.WriteFile(full, []byte{}, 0o600)
+		require.NoError(t, err)
+	}
+
+	p := CachedProvider{inner: inner, chunkSize: storage.MemoryChunkSize, rootPath: rootDir}
+	err = p.DeleteObjectsWithPrefix(t.Context(), buildID)
+	require.NoError(t, err)
+
+	time.Sleep(time.Millisecond * 20)
+
+	for fname := range filesToWrite {
+		full := filepath.Join(buildDir, fname)
+		_, err := os.Stat(full)
+		require.ErrorIs(t, err, os.ErrNotExist)
+	}
 }
 
 func TestCachedFileObjectProvider_ReadAt(t *testing.T) {

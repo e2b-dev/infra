@@ -1,4 +1,4 @@
-package storage
+package providers
 
 import (
 	"bytes"
@@ -14,6 +14,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const (
@@ -28,7 +30,7 @@ type AWSBucketStorageProvider struct {
 	bucketName    string
 }
 
-var _ StorageProvider = (*AWSBucketStorageProvider)(nil)
+var _ storage.StorageProvider = (*AWSBucketStorageProvider)(nil)
 
 type AWSBucketStorageObjectProvider struct {
 	client     *s3.Client
@@ -36,7 +38,7 @@ type AWSBucketStorageObjectProvider struct {
 	bucketName string
 }
 
-var _ StorageObjectProvider = (*AWSBucketStorageObjectProvider)(nil)
+var _ storage.StorageObjectProvider = (*AWSBucketStorageObjectProvider)(nil)
 
 func NewAWSBucketStorageProvider(ctx context.Context, bucketName string) (*AWSBucketStorageProvider, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
@@ -101,7 +103,7 @@ func (a *AWSBucketStorageProvider) UploadSignedURL(ctx context.Context, path str
 	return resp.URL, nil
 }
 
-func (a *AWSBucketStorageProvider) OpenObject(ctx context.Context, path string) (StorageObjectProvider, error) {
+func (a *AWSBucketStorageProvider) OpenObject(ctx context.Context, path string) (storage.StorageObjectProvider, error) {
 	return &AWSBucketStorageObjectProvider{
 		client:     a.client,
 		bucketName: a.bucketName,
@@ -117,7 +119,7 @@ func (a *AWSBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Wri
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
-			return 0, ErrObjectNotExist
+			return 0, storage.ErrObjectNotExist
 		}
 
 		return 0, err
@@ -194,7 +196,7 @@ func (a *AWSBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
-			return 0, ErrObjectNotExist
+			return 0, storage.ErrObjectNotExist
 		}
 
 		return 0, err
@@ -220,7 +222,7 @@ func (a *AWSBucketStorageObjectProvider) Size(ctx context.Context) (int64, error
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
-			return 0, ErrObjectNotExist
+			return 0, storage.ErrObjectNotExist
 		}
 
 		return 0, err

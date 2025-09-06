@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/providers"
 	"log"
 	"unsafe"
 
@@ -33,7 +34,7 @@ func main() {
 	}
 
 	ctx := context.Background()
-	storage, err := storage.GetTemplateStorageProvider(ctx, nil)
+	storage, err := providers.GetTemplateStorageProvider(ctx, nil)
 	if err != nil {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}

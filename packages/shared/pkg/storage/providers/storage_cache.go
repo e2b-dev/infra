@@ -1,4 +1,4 @@
-package storage
+package providers
 
 import (
 	"bytes"
@@ -18,8 +18,11 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage/providers")
 
 const (
 	cacheFilePermissions = 0o600
@@ -58,13 +61,14 @@ var (
 
 type CachedProvider struct {
 	chunkSize int64
-	inner     StorageProvider
+	inner     storage.StorageProvider
+	rootPath  string
 }
 
-var _ StorageProvider = (*CachedProvider)(nil)
+var _ storage.StorageProvider = (*CachedProvider)(nil)
 
-func NewCachedProvider(inner StorageProvider) *CachedProvider {
-	return &CachedProvider{inner: inner, chunkSize: MemoryChunkSize}
+func NewCachedProvider(inner storage.StorageProvider) *CachedProvider {
+	return &CachedProvider{rootPath: cacheRootPath, inner: inner, chunkSize: storage.MemoryChunkSize}
 }
 
 func (c CachedProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
@@ -76,20 +80,12 @@ func (c CachedProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix stri
 }
 
 func (c CachedProvider) deleteObjectsWithPrefix(prefix string) {
-	fullPrefix := filepath.Join(cacheRootPath, prefix)
-	paths, err := filepath.Glob(fullPrefix + "*")
-	if err != nil {
-		zap.L().Error("failed to glob objects with prefix", zap.String("prefix", prefix), zap.Error(err))
-		return
-	}
-
-	for _, path := range paths {
-		if err = os.Remove(path); err != nil {
-			zap.L().Error("failed to remove object with prefix",
-				zap.String("prefix", prefix),
-				zap.String("path", path),
-				zap.Error(err))
-		}
+	fullPrefix := filepath.Join(c.rootPath, prefix)
+	if err := os.RemoveAll(fullPrefix); err != nil {
+		zap.L().Error("failed to remove object with prefix",
+			zap.String("prefix", prefix),
+			zap.String("path", fullPrefix),
+			zap.Error(err))
 	}
 }
 
@@ -97,13 +93,13 @@ func (c CachedProvider) UploadSignedURL(ctx context.Context, path string, ttl ti
 	return c.inner.UploadSignedURL(ctx, path, ttl)
 }
 
-func (c CachedProvider) OpenObject(ctx context.Context, path string) (StorageObjectProvider, error) {
+func (c CachedProvider) OpenObject(ctx context.Context, path string) (storage.StorageObjectProvider, error) {
 	innerObject, err := c.inner.OpenObject(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}
 
-	localPath := filepath.Join(cacheRootPath, path)
+	localPath := filepath.Join(c.rootPath, path)
 	if err = os.MkdirAll(localPath, cacheDirPermissions); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
@@ -113,18 +109,18 @@ func (c CachedProvider) OpenObject(ctx context.Context, path string) (StorageObj
 
 func (c CachedProvider) GetDetails() string {
 	return fmt.Sprintf("[Caching file storage, base path set to %s, which wraps %s]",
-		cacheRootPath, c.inner.GetDetails())
+		c.rootPath, c.inner.GetDetails())
 }
 
 type CachedFileObjectProvider struct {
 	path      string
 	chunkSize int64
-	inner     StorageObjectProvider
+	inner     storage.StorageObjectProvider
 }
 
-var _ StorageObjectProvider = (*CachedFileObjectProvider)(nil)
+var _ storage.StorageObjectProvider = (*CachedFileObjectProvider)(nil)
 
-// WriteTo is used for very small files and we can check agains their size to ensure the content is valid.
+// WriteTo is used for very small files, and we can check against their size to ensure the content is valid.
 func (c *CachedFileObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.WriteTo")
 	defer span.End()
