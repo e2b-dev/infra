@@ -64,13 +64,14 @@ func (a *APIStore) getSandboxesMetrics(
 	apiMetrics := make(map[string]api.SandboxMetric)
 	for _, m := range metrics {
 		apiMetrics[m.SandboxID] = api.SandboxMetric{
-			Timestamp:  m.Timestamp,
-			CpuUsedPct: float32(m.CPUUsedPercent),
-			CpuCount:   int32(m.CPUCount),
-			MemTotal:   int64(m.MemTotal),
-			MemUsed:    int64(m.MemUsed),
-			DiskTotal:  int64(m.DiskTotal),
-			DiskUsed:   int64(m.DiskUsed),
+			Timestamp:     m.Timestamp,
+			TimestampUnix: m.Timestamp.Unix(),
+			CpuUsedPct:    float32(m.CPUUsedPercent),
+			CpuCount:      int32(m.CPUCount),
+			MemTotal:      int64(m.MemTotal),
+			MemUsed:       int64(m.MemUsed),
+			DiskTotal:     int64(m.DiskTotal),
+			DiskUsed:      int64(m.DiskUsed),
 		}
 	}
 

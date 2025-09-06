@@ -18,9 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const (
-	metricsExportPeriod = 5 * time.Second
-)
+const ExportPeriod = 5 * time.Second
 
 type TeamObserver struct {
 	meterExporter sdkmetric.Exporter
@@ -43,7 +41,7 @@ func NewTeamObserver(ctx context.Context, cache *instance.InstanceCache) (*TeamO
 		return nil, fmt.Errorf("failed to create external meter exporter: %w", err)
 	}
 
-	meterProvider, err := telemetry.NewMeterProvider(ctx, externalMeterExporter, metricsExportPeriod, nil, sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter))
+	meterProvider, err := telemetry.NewMeterProvider(ctx, externalMeterExporter, ExportPeriod, nil, sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create external metric provider: %w", err)
 	}

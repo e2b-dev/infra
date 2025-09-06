@@ -65,6 +65,12 @@ const (
 	TemplateBuildStatusWaiting  TemplateBuildStatus = "waiting"
 )
 
+// Defines values for GetTeamsTeamIDMetricsMaxParamsMetric.
+const (
+	ConcurrentSandboxes GetTeamsTeamIDMetricsMaxParamsMetric = "concurrent_sandboxes"
+	SandboxStartRate    GetTeamsTeamIDMetricsMaxParamsMetric = "sandbox_start_rate"
+)
+
 // AWSRegistry defines model for AWSRegistry.
 type AWSRegistry struct {
 	// AwsAccessKeyId AWS Access Key ID for ECR authentication
@@ -266,6 +272,19 @@ type ListedSandbox struct {
 
 // LogLevel State of the sandbox
 type LogLevel string
+
+// MaxTeamMetric Team metric with timestamp
+type MaxTeamMetric struct {
+	// Timestamp Timestamp of the metric entry
+	// Deprecated:
+	Timestamp time.Time `json:"timestamp"`
+
+	// TimestampUnix Timestamp of the metric entry in Unix time (seconds since epoch)
+	TimestampUnix int64 `json:"timestampUnix"`
+
+	// Value The maximum value of the requested metric in the given interval
+	Value float32 `json:"value"`
+}
 
 // MemoryMB Memory for the sandbox in MiB
 type MemoryMB = int32
@@ -553,7 +572,11 @@ type SandboxMetric struct {
 	MemUsed int64 `json:"memUsed"`
 
 	// Timestamp Timestamp of the metric entry
+	// Deprecated:
 	Timestamp time.Time `json:"timestamp"`
+
+	// TimestampUnix Timestamp of the metric entry in Unix time (seconds since epoch)
+	TimestampUnix int64 `json:"timestampUnix"`
 }
 
 // SandboxState State of the sandbox
@@ -605,7 +628,11 @@ type TeamMetric struct {
 	SandboxStartRate float32 `json:"sandboxStartRate"`
 
 	// Timestamp Timestamp of the metric entry
+	// Deprecated:
 	Timestamp time.Time `json:"timestamp"`
+
+	// TimestampUnix Timestamp of the metric entry in Unix time (seconds since epoch)
+	TimestampUnix int64 `json:"timestampUnix"`
 }
 
 // TeamUser defines model for TeamUser.
@@ -870,6 +897,19 @@ type GetTeamsTeamIDMetricsParams struct {
 	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
 	End   *int64 `form:"end,omitempty" json:"end,omitempty"`
 }
+
+// GetTeamsTeamIDMetricsMaxParams defines parameters for GetTeamsTeamIDMetricsMax.
+type GetTeamsTeamIDMetricsMaxParams struct {
+	// Start Unix timestamp for the start of the interval, in seconds, for which the metrics
+	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
+	End   *int64 `form:"end,omitempty" json:"end,omitempty"`
+
+	// Metric Metric to retrieve the maximum value for
+	Metric GetTeamsTeamIDMetricsMaxParamsMetric `form:"metric" json:"metric"`
+}
+
+// GetTeamsTeamIDMetricsMaxParamsMetric defines parameters for GetTeamsTeamIDMetricsMax.
+type GetTeamsTeamIDMetricsMaxParamsMetric string
 
 // GetTemplatesParams defines parameters for GetTemplates.
 type GetTemplatesParams struct {

@@ -45,5 +45,6 @@ func TestSandboxMetrics(t *testing.T) {
 		require.NotEmpty(t, metric.DiskUsed)
 		require.NotEmpty(t, metric.DiskTotal)
 		require.NotEmpty(t, metric.Timestamp)
+		require.NotEmpty(t, metric.TimestampUnix)
 	}
 }
