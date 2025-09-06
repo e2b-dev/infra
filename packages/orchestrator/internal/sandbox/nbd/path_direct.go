@@ -102,7 +102,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			}
 			server.Close()
 
-			dispatch := NewDispatch(d.ctx, serverc, d.Backend)
+			dispatch := NewDispatch(d.ctx, serverc, d.Backend) // nolint:contextcheck // too scary to change now
 			// Start reading commands on the socket and dispatching them to our provider
 			d.handlersWg.Add(1)
 			go func() {

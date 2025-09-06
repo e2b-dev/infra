@@ -63,7 +63,7 @@ func (es *SandboxEventsService) HandleEvent(ctx context.Context, event event.San
 	childCtx := context.WithoutCancel(ctx)
 
 	go es.handlePubSubEvent(childCtx, event)
-	go es.handleClickhouseBatcherEvent(event)
+	go es.handleClickhouseBatcherEvent(childCtx, event)
 }
 
 func (es *SandboxEventsService) handlePubSubEvent(ctx context.Context, event event.SandboxEvent) {
@@ -108,9 +108,9 @@ func (es *SandboxEventsService) Close(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-func (es *SandboxEventsService) handleClickhouseBatcherEvent(event event.SandboxEvent) {
+func (es *SandboxEventsService) handleClickhouseBatcherEvent(ctx context.Context, event event.SandboxEvent) {
 	sandboxLifeCycleEventsWriteFlag, flagErr := es.featureFlags.BoolFlag(
-		context.Background(), featureflags.SandboxLifeCycleEventsWriteFlagName, featureflags.SandboxContext(event.SandboxID))
+		ctx, featureflags.SandboxLifeCycleEventsWriteFlagName, featureflags.SandboxContext(event.SandboxID))
 	if flagErr != nil {
 		es.logger.Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
 	}

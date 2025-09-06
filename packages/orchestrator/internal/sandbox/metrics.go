@@ -24,8 +24,8 @@ type Metrics struct {
 	DiskTotal  int64 `json:"disk_total"`   // Total disk space in bytes
 }
 
-func (c *Checks) GetMetrics(timeout time.Duration) (*Metrics, error) {
-	ctx, cancel := context.WithTimeout(c.ctx, timeout)
+func (c *Checks) GetMetrics(ctx context.Context, timeout time.Duration) (*Metrics, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	address := fmt.Sprintf("http://%s:%d/metrics", c.sandbox.Slot.HostIPString(), consts.DefaultEnvdServerPort)
