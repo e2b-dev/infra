@@ -184,8 +184,8 @@ func (i *InstanceInfo) GetState() State {
 }
 
 var (
-	ErrAlreadyBeingPaused  = errors.New("instance is already being removed")
-	ErrAlreadyBeingDeleted = errors.New("instance is already being paused")
+	ErrAlreadyBeingPaused  = errors.New("instance is already being paused")
+	ErrAlreadyBeingDeleted = errors.New("instance is already being removed")
 )
 
 func (i *InstanceInfo) markRemoving(removeType RemoveType) error {
