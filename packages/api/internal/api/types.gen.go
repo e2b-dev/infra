@@ -411,6 +411,9 @@ type NodeStatus string
 
 // NodeStatusChange defines model for NodeStatusChange.
 type NodeStatusChange struct {
+	// ClusterID Identifier of the cluster
+	ClusterID *openapi_types.UUID `json:"clusterID,omitempty"`
+
 	// Status Status of the node
 	Status NodeStatus `json:"status"`
 }
@@ -818,7 +821,7 @@ type N500 = Error
 // GetNodesNodeIDParams defines parameters for GetNodesNodeID.
 type GetNodesNodeIDParams struct {
 	// ClusterID Identifier of the cluster
-	ClusterID *string `form:"clusterID,omitempty" json:"clusterID,omitempty"`
+	ClusterID *openapi_types.UUID `form:"clusterID,omitempty" json:"clusterID,omitempty"`
 }
 
 // GetSandboxesParams defines parameters for GetSandboxes.
