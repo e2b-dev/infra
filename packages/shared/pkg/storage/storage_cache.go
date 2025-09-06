@@ -204,7 +204,7 @@ func (c *CachedFileObjectProvider) WriteFromFileSystem(ctx context.Context, path
 
 func (c *CachedFileObjectProvider) Write(ctx context.Context, src []byte) (int, error) {
 	var err error
-	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.WriteTo", trace.WithAttributes(attribute.Int("size", len(src))))
+	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.Write", trace.WithAttributes(attribute.Int("size", len(src))))
 	defer span.End()
 
 	num, err := c.writeCacheAndRemote(ctx, src)
@@ -368,7 +368,7 @@ func (c *CachedFileObjectProvider) writeChunkFromFile(ctx context.Context, offse
 	chunkPath := c.makeChunkFilename(offset)
 	span.SetAttributes(attribute.String("chunk_path", chunkPath))
 
-	output, err := os.OpenFile(chunkPath, os.O_WRONLY|os.O_CREATE, cacheFilePermissions)
+	output, err := os.OpenFile(chunkPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, cacheFilePermissions)
 	if err != nil {
 		return fmt.Errorf("failed to open file %s: %w", chunkPath, err)
 	}
