@@ -3,6 +3,7 @@ package template
 import (
 	"context"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/providers"
 	"os"
 	"path/filepath"
 	"time"
@@ -111,7 +112,7 @@ func (c *Cache) GetTemplate(
 	// it will start working only for new orchestrators or new builds.
 	if c.useNFSCache(ctx, isBuilding, isSnapshot) {
 		zap.L().Info("using local template cache")
-		persistence = storage.NewCachedProvider(persistence)
+		persistence = providers.NewCachedProvider(persistence)
 	}
 
 	storageTemplate, err := newTemplateFromStorage(
@@ -207,7 +208,7 @@ func (c *Cache) useNFSCache(ctx context.Context, isBuilding bool, isSnapshot boo
 		return false
 	}
 
-	if !storage.IsCacheEnabled() {
+	if !providers.IsCacheEnabled() {
 		// can't enable cache if we don't have a cache path
 		return false
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/providers"
 	"sync"
 	"time"
 
@@ -69,7 +70,7 @@ func New(
 		return nil, fmt.Errorf("error getting artifacts registry provider: %w", err)
 	}
 
-	buildPersistance, err := storage.GetBuildCacheStorageProvider(ctx, limiter)
+	buildPersistance, err := providers.GetBuildCacheStorageProvider(ctx, limiter)
 	if err != nil {
 		return nil, fmt.Errorf("error getting build cache storage provider: %w", err)
 	}
