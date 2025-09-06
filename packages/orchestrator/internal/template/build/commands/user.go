@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -52,12 +51,11 @@ func (u *User) Execute(
 		return metadata.Context{}, fmt.Errorf("failed to create user: %w", err)
 	}
 
-	return saveUserMeta(ctx, tracer, proxy, sandboxID, cmdMetadata, userArg)
+	return saveUserMeta(ctx, proxy, sandboxID, cmdMetadata, userArg)
 }
 
 func saveUserMeta(
 	ctx context.Context,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	cmdMetadata metadata.Context,
