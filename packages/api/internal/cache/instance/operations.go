@@ -121,8 +121,9 @@ func (c *MemoryStore) Items(teamID *uuid.UUID) []*InstanceInfo {
 		if item.IsExpired() {
 			continue
 		}
-		if teamID == nil || item.TeamID == *teamID {
-			items = append(items, item)
+
+		if teamID != nil && item.TeamID != *teamID {
+			continue
 		}
 
 		items = append(items, item)
