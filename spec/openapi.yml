@@ -806,6 +806,10 @@ components:
       required:
         - status
       properties:
+        clusterID:
+          type: string
+          format: uuid
+          description: Identifier of the cluster
         status:
           $ref: "#/components/schemas/NodeStatus"
 
@@ -1903,6 +1907,7 @@ paths:
           required: false
           schema:
             type: string
+            format: uuid
       responses:
         "200":
           description: Successfully returned the node
