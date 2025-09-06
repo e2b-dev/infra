@@ -211,7 +211,7 @@ func (c *CachedFileObjectProvider) Write(ctx context.Context, src []byte) (int, 
 	if err != nil {
 		return 0, err
 	} else if num != len(src) {
-		return 0, fmt.Errorf("failed to copy %d bytes from cache: %w", num, err)
+		return 0, fmt.Errorf("expected %d bytes, only got %d bytes", len(src), num)
 	}
 
 	return num, nil
