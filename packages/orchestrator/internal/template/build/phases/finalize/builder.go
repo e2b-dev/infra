@@ -33,8 +33,6 @@ var tracer = otel.Tracer("orchestrator.template.build.phases.finalize")
 type PostProcessingBuilder struct {
 	buildcontext.BuildContext
 
-	tracer trace.Tracer
-
 	templateStorage storage.StorageProvider
 	proxy           *proxy.SandboxProxy
 
@@ -43,15 +41,12 @@ type PostProcessingBuilder struct {
 
 func New(
 	buildContext buildcontext.BuildContext,
-	tracer trace.Tracer,
 	templateStorage storage.StorageProvider,
 	proxy *proxy.SandboxProxy,
 	layerExecutor *layer.LayerExecutor,
 ) *PostProcessingBuilder {
 	return &PostProcessingBuilder{
 		BuildContext: buildContext,
-
-		tracer: tracer,
 
 		templateStorage: templateStorage,
 		proxy:           proxy,
@@ -173,7 +168,6 @@ func (ppb *PostProcessingBuilder) postProcessingFn() layer.FunctionActionFn {
 			// Ensure all changes are synchronized to disk so the sandbox can be restarted
 			err := sandboxtools.SyncChangesToDisk(
 				ctx,
-				ppb.tracer,
 				ppb.proxy,
 				sbx.Runtime.SandboxID,
 			)
@@ -187,7 +181,6 @@ func (ppb *PostProcessingBuilder) postProcessingFn() layer.FunctionActionFn {
 		err := runConfiguration(
 			ctx,
 			ppb.BuildContext,
-			ppb.tracer,
 			ppb.proxy,
 			sbx.Runtime.SandboxID,
 		)
@@ -214,7 +207,6 @@ func (ppb *PostProcessingBuilder) postProcessingFn() layer.FunctionActionFn {
 			startCmdRun.Go(func() error {
 				err := sandboxtools.RunCommandWithConfirmation(
 					commandsCtx,
-					ppb.tracer,
 					ppb.proxy,
 					ppb.UserLogger,
 					zapcore.InfoLevel,

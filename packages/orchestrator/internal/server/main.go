@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
 
@@ -31,7 +30,6 @@ type server struct {
 	info              *service.ServiceInfo
 	sandboxes         *smap.Map[*sandbox.Sandbox]
 	proxy             *proxy.SandboxProxy
-	tracer            trace.Tracer
 	networkPool       *network.Pool
 	templateCache     *template.Cache
 	pauseMu           sync.Mutex
@@ -61,7 +59,6 @@ type ServiceConfig struct {
 	NetworkPool      *network.Pool
 	DevicePool       *nbd.DevicePool
 	TemplateCache    *template.Cache
-	Tracer           trace.Tracer
 	Info             *service.ServiceInfo
 	Proxy            *proxy.SandboxProxy
 	Sandboxes        *smap.Map[*sandbox.Sandbox]
@@ -81,7 +78,6 @@ func New(
 	}
 	srv.server = &server{
 		info:              cfg.Info,
-		tracer:            cfg.Tracer,
 		proxy:             srv.proxy,
 		sandboxes:         cfg.Sandboxes,
 		networkPool:       cfg.NetworkPool,

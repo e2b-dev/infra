@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
@@ -31,7 +30,6 @@ import (
 
 type ServerStore struct {
 	templatemanager.UnimplementedTemplateServiceServer
-	tracer            trace.Tracer
 	logger            *zap.Logger
 	builder           *build.Builder
 	buildCache        *cache.BuildCache
@@ -46,7 +44,6 @@ type ServerStore struct {
 
 func New(
 	ctx context.Context,
-	tracer trace.Tracer,
 	meterProvider metric.MeterProvider,
 	logger *zap.Logger,
 	buildLogger *zap.Logger,
@@ -79,7 +76,6 @@ func New(
 	}
 	builder := build.NewBuilder(
 		logger,
-		tracer,
 		templatePersistence,
 		buildPersistance,
 		artifactsregistry,
@@ -92,7 +88,6 @@ func New(
 	)
 
 	store := &ServerStore{
-		tracer:            tracer,
 		logger:            logger,
 		builder:           builder,
 		buildCache:        buildCache,

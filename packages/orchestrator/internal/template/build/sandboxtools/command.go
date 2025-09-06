@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -24,7 +23,6 @@ const commandHardTimeout = 1 * time.Hour
 
 func RunCommandWithOutput(
 	ctx context.Context,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	command string,
@@ -33,7 +31,6 @@ func RunCommandWithOutput(
 ) error {
 	return runCommandWithAllOptions(
 		ctx,
-		tracer,
 		proxy,
 		sandboxID,
 		command,
@@ -46,7 +43,6 @@ func RunCommandWithOutput(
 
 func RunCommand(
 	ctx context.Context,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	command string,
@@ -54,7 +50,6 @@ func RunCommand(
 ) error {
 	return runCommandWithAllOptions(
 		ctx,
-		tracer,
 		proxy,
 		sandboxID,
 		command,
@@ -67,7 +62,6 @@ func RunCommand(
 
 func RunCommandWithLogger(
 	ctx context.Context,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	logger *zap.Logger,
 	lvl zapcore.Level,
@@ -78,7 +72,6 @@ func RunCommandWithLogger(
 ) error {
 	return RunCommandWithConfirmation(
 		ctx,
-		tracer,
 		proxy,
 		logger,
 		lvl,
@@ -93,7 +86,6 @@ func RunCommandWithLogger(
 
 func RunCommandWithConfirmation(
 	ctx context.Context,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	logger *zap.Logger,
 	lvl zapcore.Level,
@@ -105,7 +97,6 @@ func RunCommandWithConfirmation(
 ) error {
 	return runCommandWithAllOptions(
 		ctx,
-		tracer,
 		proxy,
 		sandboxID,
 		command,
@@ -120,7 +111,6 @@ func RunCommandWithConfirmation(
 
 func runCommandWithAllOptions(
 	ctx context.Context,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	command string,
@@ -223,13 +213,11 @@ func logStream(logger *zap.Logger, lvl zapcore.Level, id string, name string, co
 // to be able to re-create the sandbox without resume.
 func SyncChangesToDisk(
 	ctx context.Context,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 ) error {
 	return RunCommand(
 		ctx,
-		tracer,
 		proxy,
 		sandboxID,
 		"sync",

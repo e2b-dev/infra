@@ -12,7 +12,7 @@ import (
 const signedUrlExpiration = time.Minute * 30
 
 func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanager.InitLayerFileUploadRequest) (*templatemanager.InitLayerFileUploadResponse, error) {
-	_, childSpan := s.tracer.Start(ctx, "template-create")
+	_, childSpan := tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
 	// default to scope by template ID
