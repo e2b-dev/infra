@@ -261,7 +261,7 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 // GetRunningBuildsForTeam returns all running builds for the given teamID
 // This is a simple implementation of concurrency limit
 // It does not guarantee that the limit is not exceeded, but it should be good enough for now (considering overall low number of total builds)
-func (c *TemplatesBuildCache) GetRunningBuildsForTeam(teamID uuid.UUID) ([]TemplateBuildInfo, error) {
+func (c *TemplatesBuildCache) GetRunningBuildsForTeam(teamID uuid.UUID) []TemplateBuildInfo {
 	var builds []TemplateBuildInfo
 	for _, item := range c.cache.Items() {
 		value := item.Value()
@@ -271,5 +271,5 @@ func (c *TemplatesBuildCache) GetRunningBuildsForTeam(teamID uuid.UUID) ([]Templ
 		}
 	}
 
-	return builds, nil
+	return builds
 }

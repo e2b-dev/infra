@@ -92,15 +92,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 	defer span.End()
 
 	// Limit concurrent template builds
-	teamBuilds, err := a.templateBuildsCache.GetRunningBuildsForTeam(req.Team.ID)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error when getting builds for team", err, telemetry.WithTeamID(req.Team.ID.String()))
-		return nil, &api.APIError{
-			Err:       err,
-			ClientMsg: "Failed to get builds for team",
-			Code:      http.StatusInternalServerError,
-		}
-	}
+	teamBuilds := a.templateBuildsCache.GetRunningBuildsForTeam(req.Team.ID)
 
 	// Exclude the current build if it's a rebuild (it will be cancelled)
 	teamBuildsExcludingCurrent := gutils.Filter(teamBuilds, func(item templatecache.TemplateBuildInfo) bool {
