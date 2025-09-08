@@ -1,5 +1,5 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
-ENV_FILE := $(PWD)/.env.${ENV}
+ENV_FILE := ../../.env.${ENV}
 
 -include ${ENV_FILE}
 
