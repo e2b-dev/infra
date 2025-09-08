@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -29,7 +30,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
 
-	sbx, err := a.orchestrator.GetSandbox(sandboxID)
+	sbx, err := a.orchestrator.GetSandbox(sandboxID, true)
 	if err != nil {
 		_, fErr := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamID})
 		if fErr == nil {
@@ -57,18 +58,37 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		return
 	}
 
-	found := a.orchestrator.DeleteInstance(ctx, sandboxID, true)
-	if !found {
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error pausing sandbox - sandbox '%s' was not found", sandboxID))
+	err = a.orchestrator.RemoveInstance(ctx, sbx, instance.RemoveTypePause)
+	if err == nil {
+		c.Status(http.StatusNoContent)
 		return
 	}
 
-	_, err = sbx.Pausing.WaitWithContext(ctx)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox: %s", err))
+	if errors.Is(err, instance.ErrAlreadyBeingDeleted) {
+		telemetry.ReportEvent(ctx, "sandbox is already being deleted", telemetry.WithSandboxID(sandboxID))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already being deleted", sandboxID))
 
 		return
 	}
 
-	c.Status(http.StatusNoContent)
+	if errors.Is(err, instance.ErrAlreadyBeingPaused) {
+		telemetry.ReportEvent(ctx, "sandbox is already being paused", telemetry.WithSandboxID(sandboxID))
+
+		err = sbx.WaitForStop(ctx)
+		if err != nil {
+			telemetry.ReportError(ctx, "error when waiting for sandbox to pause", err)
+
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
+
+			return
+		}
+
+		// Successfully paused
+		c.Status(http.StatusNoContent)
+		return
+	}
+
+	telemetry.ReportError(ctx, "error pausing sandbox", err)
+
+	a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
 }
