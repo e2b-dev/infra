@@ -12,8 +12,9 @@ import (
 	"github.com/google/uuid"
 )
 
-const updateTeamApiKey = `-- name: UpdateTeamApiKey :exec
+const updateTeamApiKey = `-- name: UpdateTeamApiKey :one
 UPDATE "public"."team_api_keys" SET name = $1 , updated_at = $2 WHERE id = $3 AND team_id = $4
+RETURNING id
 `
 
 type UpdateTeamApiKeyParams struct {
@@ -23,12 +24,14 @@ type UpdateTeamApiKeyParams struct {
 	TeamID    uuid.UUID
 }
 
-func (q *Queries) UpdateTeamApiKey(ctx context.Context, arg UpdateTeamApiKeyParams) error {
-	_, err := q.db.Exec(ctx, updateTeamApiKey,
+func (q *Queries) UpdateTeamApiKey(ctx context.Context, arg UpdateTeamApiKeyParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, updateTeamApiKey,
 		arg.Name,
 		arg.UpdatedAt,
 		arg.ID,
 		arg.TeamID,
 	)
-	return err
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }

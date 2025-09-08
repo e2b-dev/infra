@@ -42,7 +42,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 	teamID := a.GetTeamInfo(c).Team.ID
 
 	now := time.Now()
-	err = a.sqlcDB.UpdateTeamApiKey(ctx, queries.UpdateTeamApiKeyParams{
+	_, err = a.sqlcDB.UpdateTeamApiKey(ctx, queries.UpdateTeamApiKeyParams{
 		Name:      body.Name,
 		UpdatedAt: &now,
 		ID:        apiKeyIDParsed,
