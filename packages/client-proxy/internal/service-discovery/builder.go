@@ -17,7 +17,6 @@ const (
 
 	DnsProviderKey    = "DNS"
 	StaticProviderKey = "STATIC"
-	Ec2ProviderKey    = "EC2-INSTANCES"
 	K8sPodsProvider   = "K8S-PODS"
 )
 
@@ -45,8 +44,6 @@ func resolveServiceDiscoveryConfig(ctx context.Context, prefix string, port int,
 	switch provider {
 	case DnsProviderKey:
 		return createDnsProvider(ctx, prefix, port, logger)
-	case Ec2ProviderKey:
-		return createEc2Provider(ctx, prefix, port, logger)
 	case K8sPodsProvider:
 		return createK8sProvider(ctx, prefix, port, logger)
 	case StaticProviderKey:
@@ -73,23 +70,6 @@ func createDnsProvider(ctx context.Context, prefix string, port int, logger *zap
 	dnsResolverAddress = dnsResolverRaw
 	dnsHosts := strings.Split(dnsHostsRaw, ",")
 	return NewDnsServiceDiscovery(ctx, logger, dnsHosts, dnsResolverAddress, port), nil
-}
-
-func createEc2Provider(ctx context.Context, prefix string, port int, logger *zap.Logger) (ServiceDiscoveryAdapter, error) {
-	regionEnv := fmt.Sprintf("%s_EC2_REGION", prefix)
-	region := os.Getenv(regionEnv)
-	if region == "" {
-		return nil, fmt.Errorf("missing %s environment variable", regionEnv)
-	}
-
-	tagsEnv := fmt.Sprintf("%s_EC2_TAGS", prefix)
-	tagsRaw := os.Getenv(tagsEnv)
-	if tagsRaw == "" {
-		return nil, fmt.Errorf("missing %s environment variable", tagsEnv)
-	}
-
-	tags := strings.Split(tagsRaw, ",")
-	return NewAwsEc2ServiceDiscovery(ctx, region, tags, port, logger)
 }
 
 func createK8sProvider(ctx context.Context, prefix string, port int, logger *zap.Logger) (ServiceDiscoveryAdapter, error) {
