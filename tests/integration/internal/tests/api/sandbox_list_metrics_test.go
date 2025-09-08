@@ -44,6 +44,7 @@ func TestSandboxListMetrics(t *testing.T) {
 	assert.Contains(t, metrics, sbx2.SandboxID, "Expected sandbox metrics to include the second created sandbox")
 	for _, sbx := range metrics {
 		assert.NotEmpty(t, sbx.Timestamp, "Metric timestamp should not be empty")
+		assert.NotEmpty(t, sbx.TimestampUnix, "Metric timestamp unix should not be empty")
 		assert.NotEmpty(t, sbx.CpuUsedPct, "Cpu pct should not be empty")
 		assert.NotEmpty(t, sbx.CpuCount, "Cpu count should not be empty")
 		assert.NotEmpty(t, sbx.MemUsed, "Memory used should not be empty")

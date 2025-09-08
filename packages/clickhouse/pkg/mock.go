@@ -48,3 +48,11 @@ func (m *NoopClient) InsertSandboxEvent(ctx context.Context, event SandboxEvent)
 func (m *NoopClient) QueryTeamMetrics(ctx context.Context, teamID string, start time.Time, end time.Time, step time.Duration) ([]TeamMetrics, error) {
 	return nil, nil
 }
+
+func (m *NoopClient) QueryMaxStartRateTeamMetrics(ctx context.Context, teamID string, start time.Time, end time.Time, step time.Duration) (MaxTeamMetric, error) {
+	return MaxTeamMetric{}, nil
+}
+
+func (m *NoopClient) QueryMaxConcurrentTeamMetrics(ctx context.Context, teamID string, start time.Time, end time.Time) (MaxTeamMetric, error) {
+	return MaxTeamMetric{}, nil
+}

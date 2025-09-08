@@ -47,6 +47,7 @@ func TestTeamMetrics(t *testing.T) {
 
 	for _, metric := range metrics {
 		require.NotEmpty(t, metric.Timestamp, "Timestamp should not be empty")
+		require.NotEmpty(t, metric.TimestampUnix, "Timestamp should not be empty")
 		if metric.SandboxStartRate > 0 {
 			startRateGreaterThanZero = true
 		}
@@ -95,23 +96,24 @@ func TestTeamMetricsWithTimeRange(t *testing.T) {
 
 	// Verify all timestamps are within the requested range
 	for _, metric := range metrics {
-		require.GreaterOrEqual(t, metric.Timestamp.Unix(), start, "Metric timestamp should be >= start time")
-		require.LessOrEqual(t, metric.Timestamp.Unix(), end, "Metric timestamp should be <= end time")
+		require.GreaterOrEqual(t, metric.TimestampUnix, start, "Metric timestamp should be >= start time")
+		require.LessOrEqual(t, metric.TimestampUnix, end, "Metric timestamp should be <= end time")
 	}
 }
 
 func TestTeamMetricsEmpty(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	// Test getting metrics for a time range where no sandboxes existed
-	now := time.Now()
-	start := now.Add(-240 * time.Hour).Unix()
-	end := now.Add(-216 * time.Hour).Unix()
+	db := setup.GetTestDBClient(t)
+	teamID := utils.CreateTeamWithUser(t, c, db, "test-team-no-metrics", setup.UserID)
 
-	response, err := c.GetTeamsTeamIDMetricsWithResponse(t.Context(), setup.TeamID, &api.GetTeamsTeamIDMetricsParams{
-		Start: &start,
-		End:   &end,
-	}, setup.WithAPIKey())
+	response, err := c.GetTeamsTeamIDMetricsWithResponse(
+		t.Context(),
+		teamID.String(),
+		nil,
+		setup.WithSupabaseToken(t),
+		setup.WithSupabaseTeam(t, teamID.String()),
+	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, response.StatusCode())
 	require.NotNil(t, response.JSON200)
