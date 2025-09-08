@@ -50,7 +50,7 @@ func (o *Orchestrator) CreateSandbox(
 	defer childSpan.End()
 
 	// Check if team has reached max instances
-	releaseTeamSandboxReservation, err := o.instanceCache.Reserve(sandboxID, team.Team.ID, team.Tier.ConcurrentInstances)
+	releaseTeamSandboxReservation, err := o.sandboxStore.Reserve(sandboxID, team.Team.ID, team.Tier.ConcurrentInstances)
 	if err != nil {
 		var limitErr *instance.SandboxLimitExceededError
 		var alreadyErr *instance.AlreadyBeingStartedError
@@ -223,13 +223,13 @@ func (o *Orchestrator) CreateSandbox(
 		baseTemplateID,
 	)
 
-	cacheErr := o.instanceCache.Add(ctx, instanceInfo, true)
+	cacheErr := o.sandboxStore.Add(ctx, instanceInfo, true)
 	if cacheErr != nil {
 		telemetry.ReportError(ctx, "error when adding instance to cache", cacheErr)
 
-		deleted := o.DeleteInstance(ctx, sbx.SandboxID, false)
-		if !deleted {
-			telemetry.ReportEvent(ctx, "instance wasn't found in cache when deleting")
+		err := o.RemoveInstance(ctx, instanceInfo, instance.RemoveTypeKill)
+		if err != nil {
+			telemetry.ReportError(ctx, "Error while removing sandbox error after cache error", err)
 		}
 
 		return nil, &api.APIError{
