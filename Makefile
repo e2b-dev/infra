@@ -105,11 +105,6 @@ apply:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	$(MAKE) -C iac/provider-gcp apply
 
-.PHONY: destroy
-destroy:
-	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	$(MAKE) -C iac/provider-gcp destroy
-
 # Shortcut to importing resources into Terraform state (e.g. after creating resources manually or switching between different branches for the same environment)
 .PHONY: import
 import:
