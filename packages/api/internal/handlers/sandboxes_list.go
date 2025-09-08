@@ -18,7 +18,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
-	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/db/types"
@@ -58,10 +57,7 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 	return sandboxes, nil
 }
 
-func getRunningSandboxes(ctx context.Context, orchestrator *orchestrator.Orchestrator, teamID uuid.UUID, metadataFilter *map[string]string) []utils.PaginatedSandbox {
-	// Get all sandbox instances
-	runningSandboxes := orchestrator.GetSandboxes(ctx, &teamID)
-
+func getRunningSandboxes(runningSandboxes []*instance.InstanceInfo, metadataFilter *map[string]string) []utils.PaginatedSandbox {
 	// Running Sandbox IDs
 	runningSandboxList := instanceInfoToPaginatedSandboxes(runningSandboxes)
 
@@ -90,15 +86,16 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		return
 	}
 
-	sandboxes := getRunningSandboxes(ctx, a.orchestrator, team.ID, metadataFilter)
+	sandboxes := a.orchestrator.GetSandboxes(ctx, &team.ID, []instance.State{instance.StateRunning})
+	runningSandboxes := getRunningSandboxes(sandboxes[instance.StateRunning], metadataFilter)
 
 	// Sort sandboxes by start time descending
-	slices.SortFunc(sandboxes, func(a, b utils.PaginatedSandbox) int {
+	slices.SortFunc(runningSandboxes, func(a, b utils.PaginatedSandbox) int {
 		// SortFunc sorts the list ascending by default, because we want the opposite behavior we switch `a` and `b`
 		return b.StartedAt.Compare(a.StartedAt)
 	})
 
-	c.JSON(http.StatusOK, sandboxes)
+	c.JSON(http.StatusOK, runningSandboxes)
 }
 
 func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParams) {
@@ -150,20 +147,22 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		return
 	}
 
-	// Get all sandbox instances
-	runningSandboxes := a.orchestrator.GetSandboxes(ctx, &team.ID)
+	sandboxesInCache := a.orchestrator.GetSandboxes(ctx, &team.ID, []instance.State{instance.StateRunning, instance.StatePaused, instance.StatePausing})
 
 	// Running Sandbox IDs
 	runningSandboxesIDs := make([]string, 0)
-	for _, info := range runningSandboxes {
+	for _, info := range sandboxesInCache[instance.StateRunning] {
 		runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
 	}
 
 	if slices.Contains(states, api.Running) {
-		runningSandboxList := instanceInfoToPaginatedSandboxes(runningSandboxes)
+		runningSandboxList := instanceInfoToPaginatedSandboxes(sandboxesInCache[instance.StateRunning])
 
 		// Filter based on metadata
 		runningSandboxList = utils.FilterSandboxesOnMetadata(runningSandboxList, metadataFilter)
+
+		// Set the total (before we apply the limit, but already with all filters)
+		c.Header("X-Total-Running", strconv.Itoa(len(runningSandboxList)))
 
 		// Filter based on cursor and limit
 		runningSandboxList = utils.FilterBasedOnCursor(runningSandboxList, cursorTime, cursorID, limit)
@@ -179,7 +178,10 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 
 			return
 		}
+
+		pausingSandboxList := instanceInfoToPaginatedSandboxes(sandboxesInCache[instance.StatePausing])
 		sandboxes = append(sandboxes, pausedSandboxList...)
+		sandboxes = append(sandboxes, pausingSandboxList...)
 	}
 
 	// Sort by StartedAt (descending), then by SandboxID (ascending) for stability
@@ -206,7 +208,6 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		c.Header("X-Next-Token", *nextToken)
 	}
 
-	c.Header("X-Total-Items", strconv.Itoa(len(sandboxes)))
 	c.JSON(http.StatusOK, sandboxes)
 }
 

@@ -69,7 +69,7 @@ func (bb *BaseBuilder) provisionSandbox(
 	ctx, childSpan := bb.tracer.Start(ctx, "provision-sandbox")
 	defer childSpan.End()
 
-	zapWriter := &zapio.Writer{Log: bb.UserLogger.Logger, Level: zap.DebugLevel}
+	zapWriter := &zapio.Writer{Log: bb.UserLogger, Level: zap.DebugLevel}
 	logsWriter := &writer.PrefixFilteredWriter{Writer: zapWriter, PrefixFilter: logExternalPrefix}
 	defer logsWriter.Close()
 
@@ -89,6 +89,8 @@ func (bb *BaseBuilder) provisionSandbox(
 			// Always show kernel logs during the provisioning phase,
 			// the sandbox is then started with systemd and without kernel logs.
 			KernelLogs: true,
+
+			KvmClock: true,
 
 			// Show provision script logs to the user
 			Stdout: logsWriter,
