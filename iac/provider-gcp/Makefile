@@ -151,15 +151,6 @@ apply:
 	.tfplan.$(ENV)
 	@ rm .tfplan.$(ENV)
 
-.PHONY: destroy
-destroy:
-	@ printf "Destroying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	$(tf_vars) \
-	$(TF) destroy \
-	-compact-warnings \
-	-parallelism=20 \
-	$$(terraform state list | grep module | cut -d'.' -f1,2 | grep -v -e "buckets" | uniq | awk '{print "-target=" $$0 ""}' | xargs)
-
 # Shortcut to importing resources into Terraform state (e.g. after creating resources manually or switching between different branches for the same environment)
 .PHONY: import
 import:
