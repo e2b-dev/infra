@@ -26,7 +26,7 @@ type UpdateEnvBuildStatusParams struct {
 	FinishedAt *time.Time
 	Reason     types.BuildReason
 	BuildID    uuid.UUID
-	EnvID      string
+	TemplateID string
 }
 
 func (q *Queries) UpdateEnvBuildStatus(ctx context.Context, arg UpdateEnvBuildStatusParams) error {
@@ -35,7 +35,7 @@ func (q *Queries) UpdateEnvBuildStatus(ctx context.Context, arg UpdateEnvBuildSt
 		arg.FinishedAt,
 		arg.Reason,
 		arg.BuildID,
-		arg.EnvID,
+		arg.TemplateID,
 	)
 	return err
 }

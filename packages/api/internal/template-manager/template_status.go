@@ -260,7 +260,7 @@ func (tm *TemplateManager) SetStatus(ctx context.Context, templateID string, bui
 		FinishedAt: &now,
 		Reason:     buildReason,
 		BuildID:    buildID,
-		EnvID:      templateID,
+		TemplateID: templateID,
 	})
 
 	tm.buildCache.SetStatus(buildID, status, buildReason)

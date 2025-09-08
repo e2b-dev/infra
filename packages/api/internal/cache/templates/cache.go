@@ -216,7 +216,7 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 	if item == nil {
 		zap.L().Debug("Template build info not found in cache, fetching from DB", logger.WithBuildID(buildID.String()))
 
-		template, err := c.db.GetTemplateBuildWithEnv(ctx, queries.GetTemplateBuildWithEnvParams{
+		template, err := c.db.GetTemplateBuildWithTemplate(ctx, queries.GetTemplateBuildWithTemplateParams{
 			TemplateID: templateID,
 			BuildID:    buildID,
 		})
