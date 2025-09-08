@@ -5,10 +5,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/providers"
 	"log"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/providers"
 )
 
 func main() {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/providers"
 	"log"
 	"os"
 
@@ -12,6 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/providers"
 )
 
 func main() {
