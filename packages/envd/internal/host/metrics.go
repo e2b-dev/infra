@@ -15,12 +15,8 @@ type Metrics struct {
 	CPUCount       uint32  `json:"cpu_count"`    // Total CPU cores
 	CPUUsedPercent float32 `json:"cpu_used_pct"` // Percent rounded to 2 decimal places
 
-	// Deprecated
-	MemTotalMiB uint64 `json:"mem_total_mib"` // Total virtual memory in MiB
-	// Deprecated
-	MemUsedMiB uint64 `json:"mem_used_mib"` // Used virtual memory in MiB
-	MemTotal   uint64 `json:"mem_total"`    // Total virtual memory in bytes
-	MemUsed    uint64 `json:"mem_used"`     // Used virtual memory in bytes
+	MemTotal uint64 `json:"mem_total"` // Total virtual memory in bytes
+	MemUsed  uint64 `json:"mem_used"`  // Used virtual memory in bytes
 
 	DiskUsed  uint64 `json:"disk_used"`  // Used disk space in bytes
 	DiskTotal uint64 `json:"disk_total"` // Total disk space in bytes
@@ -31,9 +27,6 @@ func GetMetrics() (*Metrics, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	memUsedMiB := v.Used / 1024 / 1024
-	memTotalMiB := v.Total / 1024 / 1024
 
 	cpuTotal, err := cpu.Counts(true)
 	if err != nil {
@@ -60,8 +53,6 @@ func GetMetrics() (*Metrics, error) {
 		Timestamp:      time.Now().UTC().Unix(),
 		CPUCount:       uint32(cpuTotal),
 		CPUUsedPercent: cpuUsedPctRounded,
-		MemUsedMiB:     memUsedMiB,
-		MemTotalMiB:    memTotalMiB,
 		MemTotal:       v.Total,
 		MemUsed:        v.Used,
 		DiskUsed:       diskMetrics.Total - diskMetrics.Available,

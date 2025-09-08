@@ -249,10 +249,25 @@ components:
       type: object
       description: Resource usage metrics
       properties:
+        ts:
+          type: number
+          description: Unix timestamp in UTC for current sandbox time
+        cpu_count:
+          type: integer
+          description: Number of CPU cores
         cpu_used_pct:
           type: number
           format: float
           description: CPU usage percentage
-        mem_bytes:
+        mem_total:
           type: integer
-          description: Total virtual memory usage in bytes
+          description: Total virtual memory in bytes
+        mem_used:
+          type: integer
+          description: Used virtual memory in bytes
+        disk_used:
+          type: integer
+          description: Used disk space in bytes
+        disk_total:
+          type: integer
+          description: Total disk space in bytes
