@@ -23,11 +23,9 @@ type Metrics struct {
 	DiskTotal int64 `json:"disk_total"` // Total disk space in bytes
 
 	// Deprecated
-	// Removed in v0.3.1 envd version
 	MemTotalMiB int64 `json:"mem_total_mib"` // Total virtual memory in MiB
 
 	// Deprecated
-	// Removed in v0.3.1 envd version
 	MemUsedMiB int64 `json:"mem_used_mib"` // Used virtual memory in MiB
 }
 
