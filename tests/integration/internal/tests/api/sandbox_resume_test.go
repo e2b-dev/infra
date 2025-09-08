@@ -42,7 +42,6 @@ func TestSandboxResume(t *testing.T) {
 	})
 
 	t.Run("concurrent resumes", func(t *testing.T) {
-
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
 		sbxId := sbx.SandboxID
 
@@ -55,9 +54,9 @@ func TestSandboxResume(t *testing.T) {
 			wg.Go(func() error {
 				resumeResp, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
 				require.NoError(t, err)
-				require.Contains(t, []int{http.StatusNoContent, http.StatusConflict}, resumeResp.StatusCode())
+				require.Contains(t, []int{http.StatusCreated, http.StatusConflict}, resumeResp.StatusCode())
 
-				if resumeResp.StatusCode() == http.StatusNoContent {
+				if resumeResp.StatusCode() == http.StatusCreated {
 					resumed.Store(true)
 				}
 
@@ -78,7 +77,6 @@ func TestSandboxResume(t *testing.T) {
 	})
 
 	t.Run("resume killed sandbox", func(t *testing.T) {
-
 		// Create a sandbox with auto-pause disabled
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
 		sbxId := sbx.SandboxID

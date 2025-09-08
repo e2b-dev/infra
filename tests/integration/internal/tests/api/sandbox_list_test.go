@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -163,7 +164,20 @@ func TestSandboxListPausing(t *testing.T) {
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
 	sandboxID := sbx.SandboxID
 
-	go pauseSandbox(t, c, sandboxID)
+	wg := errgroup.Group{}
+	wg.Go(func() error {
+
+		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
+		if err != nil {
+			return err
+		}
+
+		if pauseSandboxResponse.StatusCode() != http.StatusNoContent {
+			return fmt.Errorf("expected status code %d, got %d", http.StatusNoContent, pauseSandboxResponse.StatusCode())
+		}
+
+		return nil
+	})
 
 	require.Eventually(t, func() bool {
 		// List paused sandboxes
@@ -190,6 +204,9 @@ func TestSandboxListPausing(t *testing.T) {
 		require.True(t, found)
 		return false
 	}, 10*time.Second, 100*time.Millisecond, "Sandbox did not reach paused state in time")
+
+	err := wg.Wait()
+	require.NoError(t, err)
 }
 
 func TestSandboxListPaused_NoMetadata(t *testing.T) {
