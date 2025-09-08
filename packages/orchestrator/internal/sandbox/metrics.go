@@ -11,13 +11,16 @@ import (
 )
 
 type Metrics struct {
-	Timestamp      int64   `json:"ts"`           // Unix Timestamp in UTC
+	Timestamp int64 `json:"ts"` // Unix Timestamp in UTC
+
 	CPUCount       int64   `json:"cpu_count"`    // Total CPU cores
 	CPUUsedPercent float64 `json:"cpu_used_pct"` // Percent rounded to 2 decimal places
-	MemTotal       int64   `json:"mem_total"`    // Total virtual memory in bytes
-	MemUsed        int64   `json:"mem_used"`     // Used virtual memory in bytes
-	DiskUsed       int64   `json:"disk_used"`    // Used disk space in bytes
-	DiskTotal      int64   `json:"disk_total"`   // Total disk space in bytes
+
+	MemTotal int64 `json:"mem_total"` // Total virtual memory in bytes
+	MemUsed  int64 `json:"mem_used"`  // Used virtual memory in bytes
+
+	DiskUsed  int64 `json:"disk_used"`  // Used disk space in bytes
+	DiskTotal int64 `json:"disk_total"` // Total disk space in bytes
 
 	// Deprecated
 	// Removed in v0.3.1 envd version

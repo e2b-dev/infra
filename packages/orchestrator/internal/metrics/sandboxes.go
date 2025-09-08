@@ -25,14 +25,19 @@ import (
 )
 
 const (
-	sbxMemThresholdPct             = 80
-	sbxCpuThresholdPct             = 80
-	minEnvdVersionForMetrics       = "0.1.5"
-	minEnvdVersionForMemoryPrecise = "0.2.4"
-	minEnvdVersionForDiskMetrics   = "0.2.4"
-	timeoutGetMetrics              = 100 * time.Millisecond
-	metricsParallelismFactor       = 5 // Used to calculate number of concurrently sandbox metrics requests
-	sandboxMetricExportPeriod      = 5 * time.Second
+	maxAcceptableSandboxClockDriftSec = 2
+
+	sbxMemThresholdPct = 80
+	sbxCpuThresholdPct = 80
+
+	minEnvdVersionForMetrics         = "0.1.5"
+	minEnvVersionForMetricsTimestamp = "0.1.3"
+	minEnvdVersionForMemoryPrecise   = "0.2.4"
+	minEnvdVersionForDiskMetrics     = "0.2.4"
+
+	timeoutGetMetrics         = 100 * time.Millisecond
+	metricsParallelismFactor  = 5 // Used to calculate number of concurrently sandbox metrics requests
+	sandboxMetricExportPeriod = 5 * time.Second
 
 	shiftFromMiBToBytes = 20 // Shift to convert MiB to bytes
 )
@@ -174,6 +179,29 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 					}
 
 					attributes := metric.WithAttributes(attribute.String("sandbox_id", sbx.Runtime.SandboxID), attribute.String("team_id", sbx.Runtime.TeamID))
+
+					ok, err = utils.IsGTEVersion(sbx.Config.Envd.Version, minEnvVersionForMetricsTimestamp)
+					if err != nil {
+						zap.L().Error("Failed to check envd version for timestamp in metrics", zap.Error(err), logger.WithSandboxID(sbx.Runtime.SandboxID))
+					}
+
+					// Check if sandbox clock are in acceptable drift from orchestrator host clock
+					// We want to do it asap so gap between getting metrics and logging is minimal
+					if ok {
+						hostTm := time.Now().UTC().Unix()
+						sbxTm := sbxMetrics.Timestamp
+						sbxDrift := math.Abs(float64(hostTm - sbxTm))
+
+						if sbxDrift > maxAcceptableSandboxClockDriftSec {
+							zap.L().Warn("Significant clock drift detected between sandbox and host",
+								logger.WithSandboxID(sbx.Runtime.SandboxID),
+								zap.Time("sandbox_start", sbx.StartedAt),
+								zap.Int64("clock_host", hostTm),
+								zap.Int64("clock_sbx", sbxTm),
+								zap.Float64("clock_drift_seconds", sbxDrift),
+							)
+						}
+					}
 
 					o.ObserveInt64(so.cpuTotal, sbxMetrics.CPUCount, attributes)
 					o.ObserveFloat64(so.cpuUsed, sbxMetrics.CPUUsedPercent, attributes)
