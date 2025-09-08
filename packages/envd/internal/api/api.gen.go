@@ -70,7 +70,7 @@ type Metrics struct {
 	MemUsed *int `json:"mem_used,omitempty"`
 
 	// Ts Unix timestamp in UTC for current sandbox time
-	Ts *float32 `json:"ts,omitempty"`
+	Ts *int64 `json:"ts,omitempty"`
 }
 
 // FilePath defines model for FilePath.

@@ -250,7 +250,8 @@ components:
       description: Resource usage metrics
       properties:
         ts:
-          type: number
+          type: integer
+          format: int64
           description: Unix timestamp in UTC for current sandbox time
         cpu_count:
           type: integer
