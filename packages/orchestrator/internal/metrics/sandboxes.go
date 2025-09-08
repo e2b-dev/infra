@@ -178,17 +178,24 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 					o.ObserveInt64(so.cpuTotal, sbxMetrics.CPUCount, attributes)
 					o.ObserveFloat64(so.cpuUsed, sbxMetrics.CPUUsedPercent, attributes)
 
+					var memoryTotal int64
+					var memoryUsed int64
+
 					ok, err := utils.IsGTEVersion(sbx.Config.Envd.Version, minEnvdVersionForMemoryPrecise)
 					if err != nil {
 						zap.L().Error("Failed to check envd version for memory metrics", zap.Error(err), logger.WithSandboxID(sbx.Runtime.SandboxID))
 					}
+
 					if ok {
-						o.ObserveInt64(so.memoryTotal, sbxMetrics.MemTotal, attributes)
-						o.ObserveInt64(so.memoryUsed, sbxMetrics.MemUsed, attributes)
+						memoryTotal = sbxMetrics.MemTotal
+						memoryUsed = sbxMetrics.MemUsed
 					} else {
-						o.ObserveInt64(so.memoryTotal, sbxMetrics.MemTotalMiB<<shiftFromMiBToBytes, attributes)
-						o.ObserveInt64(so.memoryUsed, sbxMetrics.MemUsedMiB<<shiftFromMiBToBytes, attributes)
+						memoryTotal = sbxMetrics.MemTotalMiB << shiftFromMiBToBytes
+						memoryUsed = sbxMetrics.MemUsedMiB << shiftFromMiBToBytes
 					}
+
+					o.ObserveInt64(so.memoryTotal, memoryTotal, attributes)
+					o.ObserveInt64(so.memoryUsed, memoryUsed, attributes)
 
 					ok, err = utils.IsGTEVersion(sbx.Config.Envd.Version, minEnvdVersionForDiskMetrics)
 					if err != nil {
@@ -201,7 +208,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 
 					// Log warnings if memory or CPU usage exceeds thresholds
 					// Round percentage to 2 decimal places
-					memUsedPct := float32(math.Floor(float64(sbxMetrics.MemUsedMiB)/float64(sbxMetrics.MemTotalMiB)*10000) / 100)
+					memUsedPct := float32(math.Floor(float64(memoryUsed)/float64(memoryTotal)) / 100)
 					if memUsedPct >= sbxMemThresholdPct {
 						sbxlogger.E(sbx).Warn("Memory usage threshold exceeded",
 							zap.Float32("mem_used_percent", memUsedPct),
