@@ -93,7 +93,6 @@ func TestSandboxKill(t *testing.T) {
 		require.Equal(t, http.StatusCreated, createSandboxResponse.StatusCode())
 
 		sandboxID := createSandboxResponse.JSON201.SandboxID
-		clientID := createSandboxResponse.JSON201.ClientID
 
 		// pause the sandbox
 		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
@@ -103,7 +102,7 @@ func TestSandboxKill(t *testing.T) {
 
 		// resume the sandbox
 		timeout := int32(1000)
-		resumeSandboxResponse, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sandboxID+"-"+clientID, api.PostSandboxesSandboxIDResumeJSONRequestBody{
+		resumeSandboxResponse, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sandboxID, api.PostSandboxesSandboxIDResumeJSONRequestBody{
 			Timeout: &timeout,
 		}, setup.WithAPIKey())
 

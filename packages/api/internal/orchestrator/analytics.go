@@ -110,7 +110,7 @@ func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox *instance.In
 }
 
 func (o *Orchestrator) analyticsInsert(ctx context.Context, sandbox *instance.InstanceInfo, created bool) {
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), reportTimeout)
+	ctx, cancel := context.WithTimeout(ctx, reportTimeout)
 	defer cancel()
 
 	if created {

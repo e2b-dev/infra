@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -150,6 +151,45 @@ func TestSandboxListPaused(t *testing.T) {
 		}
 	}
 	assert.True(t, found)
+}
+
+func TestSandboxListPausing(t *testing.T) {
+	c := setup.GetAPIClient()
+
+	metadataKey := "uniqueIdentifier"
+	metadataValue := id.Generate()
+	metadataString := fmt.Sprintf("%s=%s", metadataKey, metadataValue)
+
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
+	sandboxID := sbx.SandboxID
+
+	go pauseSandbox(t, c, sandboxID)
+
+	require.Eventually(t, func() bool {
+		// List paused sandboxes
+		listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
+			State:    &[]api.SandboxState{api.Paused},
+			Metadata: &metadataString,
+		}, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, listResponse.StatusCode())
+		assert.GreaterOrEqual(t, len(*listResponse.JSON200), 1)
+
+		// Verify our paused sandbox is in the list
+		found := false
+		for _, s := range *listResponse.JSON200 {
+			if s.SandboxID == sandboxID {
+				found = true
+				if s.State == api.Paused {
+					return true
+				}
+			}
+		}
+
+		// The sandbox has to be always present
+		require.True(t, found)
+		return false
+	}, 10*time.Second, 100*time.Millisecond, "Sandbox did not reach paused state in time")
 }
 
 func TestSandboxListPaused_NoMetadata(t *testing.T) {
