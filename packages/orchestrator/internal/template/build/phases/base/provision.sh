@@ -3,14 +3,11 @@ set -eu
 
 echo "Starting provisioning script"
 
-# fix: dpkg-statoverride: warning: --update given but /var/log/chrony does not exist
-mkdir -p /var/log/chrony
-
 echo "Making configuration immutable"
 {{ .BusyBox }} chattr +i /etc/resolv.conf
 
 # Install required packages if not already installed
-PACKAGES="systemd systemd-sysv openssh-server sudo chrony linuxptp socat curl"
+PACKAGES="systemd systemd-sysv openssh-server sudo linuxptp socat curl"
 echo "Checking presence of the following packages: $PACKAGES"
 
 MISSING=""
@@ -41,24 +38,6 @@ echo "if [ -f ~/.bashrc ]; then source ~/.bashrc; fi; if [ -f ~/.profile ]; then
 
 echo "Remove root password"
 passwd -d root
-
-echo "Setting up chrony"
-mkdir -p /etc/chrony
-cat <<EOF >/etc/chrony/chrony.conf
-refclock PHC /dev/ptp0 poll -1 dpoll -1 offset 0 trust prefer
-makestep 1 -1
-EOF
-# Add a proxy config, as some environments expects it there (e.g. timemaster in Node Dockerimage)
-echo "include /etc/chrony/chrony.conf" >/etc/chrony.conf
-# Set chrony to run as root
-mkdir -p /etc/systemd/system/chrony.service.d
-cat <<EOF >/etc/systemd/system/chrony.service.d/override.conf
-[Service]
-ExecStart=
-ExecStart=/usr/sbin/chronyd
-User=root
-Group=root
-EOF
 
 echo "Setting up SSH"
 mkdir -p /etc/ssh

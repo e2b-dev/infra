@@ -6,12 +6,12 @@ IMAGE := e2b-orchestration/db-migrator
 
 .PHONY: migrate
 migrate:
-	@echo "Applying Postgres migration *$(notdir $@)*"
+	@echo "Applying Postgres migration *$(notdir $@)* for ${ENV}"
 	@$(goose) up
 	@echo "Done"
 migrate/up: migrate
 migrate/down:
-	@echo "Reverting Postgres migration *$(notdir $@)*"
+	@echo "Reverting Postgres migration *$(notdir $@)* for ${ENV}"
 	@$(goose) down
 	@echo "Done"
 

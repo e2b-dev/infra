@@ -63,6 +63,7 @@ runs:
         terraform_version: 1.5.7
 
     - name: Terraform init
+      working-directory: iac/provider-gcp
       run: |
         terraform init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
       shell: bash

@@ -3,7 +3,6 @@ package handlers
 import (
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -11,6 +10,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -25,7 +26,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	telemetry.ReportEvent(ctx, "get sandbox")
 
-	sandboxId := strings.Split(id, "-")[0]
+	sandboxId := utils.ShortID(id)
 
 	var sbxDomain *string
 	if team.ClusterID != nil {
@@ -41,11 +42,24 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	// Try to get the running sandbox first
-	info, err := a.orchestrator.GetInstance(ctx, sandboxId)
+	info, err := a.orchestrator.GetSandbox(sandboxId, true)
 	if err == nil {
 		// Check if sandbox belongs to the team
 		if info.TeamID != team.ID {
 			telemetry.ReportCriticalError(ctx, fmt.Sprintf("sandbox '%s' doesn't belong to team '%s'", sandboxId, team.ID.String()), nil)
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
+
+			return
+		}
+
+		state := api.Running
+		switch info.GetState() {
+		// Sandbox is being paused or already is paused, user can work with that as if it's paused
+		case instance.StatePausing, instance.StatePaused:
+			state = api.Paused
+		// Sandbox is being stopped or already is stopped, user can't work with it anymore
+		case instance.StateKilling, instance.StateKilled:
+			telemetry.ReportCriticalError(ctx, fmt.Sprintf("sandbox '%s' is shutting down", sandboxId), nil)
 			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 
 			return
@@ -62,7 +76,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			MemoryMB:        api.MemoryMB(info.RamMB),
 			DiskSizeMB:      api.DiskSizeMB(info.TotalDiskSizeMB),
 			EndAt:           info.GetEndTime(),
-			State:           api.Running,
+			State:           state,
 			EnvdVersion:     info.EnvdVersion,
 			EnvdAccessToken: info.EnvdAccessToken,
 			Domain:          sbxDomain,
