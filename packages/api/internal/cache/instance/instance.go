@@ -30,13 +30,6 @@ const (
 	StateKilled  State = "killed"
 )
 
-type OnEvictionType string
-
-const (
-	EvictionPause  OnEvictionType = "pause"
-	EvictionDelete OnEvictionType = "delete"
-)
-
 func NewInstanceInfo(
 	SandboxID string,
 	TemplateID string,
