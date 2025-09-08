@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -46,7 +48,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		ID:        apiKeyIDParsed,
 		TeamID:    teamID,
 	})
-	if models.IsNotFound(err) {
+	if errors.Is(err, sql.ErrNoRows) {
 		c.String(http.StatusNotFound, "id not found")
 		return
 	} else if err != nil {
