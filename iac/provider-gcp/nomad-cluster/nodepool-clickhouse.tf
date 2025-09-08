@@ -67,7 +67,7 @@ resource "google_compute_instance_group_manager" "clickhouse_pool" {
   target_pools       = []
 
   depends_on = [
-    google_compute_instance_template.server,
+    google_compute_instance_template.clickhouse,
   ]
 }
 

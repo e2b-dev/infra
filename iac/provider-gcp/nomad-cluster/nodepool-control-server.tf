@@ -48,7 +48,7 @@ resource "google_compute_instance_group_manager" "server_pool" {
   update_policy {
     type                    = "PROACTIVE"
     minimal_action          = "REPLACE"
-    max_surge_fixed         = try(null, var.server_cluster_size - 1 ? 1 : 0)
+    max_surge_fixed         = null
     max_surge_percent       = null
     max_unavailable_fixed   = 1
     max_unavailable_percent = null
