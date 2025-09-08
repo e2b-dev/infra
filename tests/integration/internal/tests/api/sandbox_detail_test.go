@@ -1,12 +1,16 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -40,4 +44,37 @@ func TestSandboxDetailPaused(t *testing.T) {
 	require.Equal(t, http.StatusOK, response.StatusCode())
 	returnedSbx := response.JSON200
 	assert.Equal(t, sbx.SandboxID, returnedSbx.SandboxID)
+}
+
+func TestSandboxDetailPausingSandbox(t *testing.T) {
+	c := setup.GetAPIClient()
+
+	sbx := utils.SetupSandboxWithCleanup(t, c)
+	sandboxID := sbx.SandboxID
+
+	wg := errgroup.Group{}
+	wg.Go(func() error {
+		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
+		if err != nil {
+			return err
+		}
+
+		if pauseSandboxResponse.StatusCode() != http.StatusNoContent {
+			return fmt.Errorf("expected status code %d, got %d", http.StatusNoContent, pauseSandboxResponse.StatusCode())
+		}
+
+		return nil
+	})
+
+	require.Eventually(t, func() bool {
+		detailResponse, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, detailResponse.StatusCode())
+		require.NotNil(t, detailResponse.JSON200)
+
+		return detailResponse.JSON200.State == api.Paused
+	}, 10*time.Second, 100*time.Millisecond, "Sandbox did not reach paused state in time")
+
+	err := wg.Wait()
+	require.NoError(t, err)
 }

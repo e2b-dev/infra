@@ -3,10 +3,13 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -151,6 +154,60 @@ func TestSandboxListPaused(t *testing.T) {
 	assert.True(t, found)
 }
 
+func TestSandboxListPausing(t *testing.T) {
+	c := setup.GetAPIClient()
+
+	metadataKey := "uniqueIdentifier"
+	metadataValue := id.Generate()
+	metadataString := fmt.Sprintf("%s=%s", metadataKey, metadataValue)
+
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
+	sandboxID := sbx.SandboxID
+
+	wg := errgroup.Group{}
+	wg.Go(func() error {
+		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
+		if err != nil {
+			return err
+		}
+
+		if pauseSandboxResponse.StatusCode() != http.StatusNoContent {
+			return fmt.Errorf("expected status code %d, got %d", http.StatusNoContent, pauseSandboxResponse.StatusCode())
+		}
+
+		return nil
+	})
+
+	require.Eventually(t, func() bool {
+		// List paused sandboxes
+		listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
+			State:    &[]api.SandboxState{api.Paused},
+			Metadata: &metadataString,
+		}, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, listResponse.StatusCode())
+		assert.GreaterOrEqual(t, len(*listResponse.JSON200), 1)
+
+		// Verify our paused sandbox is in the list
+		found := false
+		for _, s := range *listResponse.JSON200 {
+			if s.SandboxID == sandboxID {
+				found = true
+				if s.State == api.Paused {
+					return true
+				}
+			}
+		}
+
+		// The sandbox has to be always present
+		require.True(t, found)
+		return false
+	}, 10*time.Second, 100*time.Millisecond, "Sandbox did not reach paused state in time")
+
+	err := wg.Wait()
+	require.NoError(t, err)
+}
+
 func TestSandboxListPaused_NoMetadata(t *testing.T) {
 	c := setup.GetAPIClient()
 
@@ -198,6 +255,11 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 	require.Equal(t, http.StatusOK, listResponse.StatusCode())
 	require.Len(t, *listResponse.JSON200, 1)
 	assert.Equal(t, sandbox2ID, (*listResponse.JSON200)[0].SandboxID)
+
+	totalHeader := listResponse.HTTPResponse.Header.Get("X-Total-Running")
+	total, err := strconv.Atoi(totalHeader)
+	require.NoError(t, err)
+	assert.Equal(t, 2, total)
 
 	// Get second page using the next token from first response
 	nextToken := listResponse.HTTPResponse.Header.Get("X-Next-Token")

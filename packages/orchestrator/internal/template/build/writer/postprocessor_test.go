@@ -2,17 +2,17 @@ package writer
 
 import (
 	"bytes"
-	"errors"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-func newTestLogger(buf *bytes.Buffer) *zap.Logger {
+func newTestCore(buf *bytes.Buffer) zapcore.Core {
 	encoderCfg := zap.NewDevelopmentEncoderConfig()
+	encoderCfg.TimeKey = ""
 	encoder := zapcore.NewConsoleEncoder(encoderCfg)
 
 	core := zapcore.NewCore(
@@ -21,67 +21,39 @@ func newTestLogger(buf *bytes.Buffer) *zap.Logger {
 		zapcore.DebugLevel,
 	)
 
-	return zap.New(core)
+	return core
 }
 
 func TestPostProcessor_Start(t *testing.T) {
-	type fields struct {
-		testErr       error
-		shouldContain string
-	}
-	tests := []struct {
-		name   string
-		fields fields
-	}{
-		{
-			name: "test error",
-			fields: fields{
-				testErr:       errors.New("test error"),
-				shouldContain: "Build failed:",
-			},
-		},
-		{
-			name: "test success",
-			fields: fields{
-				testErr:       nil,
-				shouldContain: "Build finished",
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var buf bytes.Buffer
-			logger := newTestLogger(&buf)
+	var buf bytes.Buffer
+	core := newTestCore(&buf)
 
-			ctx := t.Context()
-			errChan := make(chan error)
+	interval := time.Millisecond * 100
+	halfInterval := time.Duration(float64(interval) * 0.5)
 
-			zap.NewNop()
+	core, done := NewPostProcessor(interval, core)
+	logger := zap.New(core)
 
-			p := &PostProcessor{
-				Logger:         logger,
-				ctx:            ctx,
-				errChan:        errChan,
-				stopCh:         make(chan struct{}, 1),
-				tickerInterval: defaultTickerInterval,
-				ticker:         time.NewTicker(defaultTickerInterval),
-			}
+	// log some info
+	logger.Info("info message")
+	time.Sleep(halfInterval)
+	logger.Error("error message")
+	time.Sleep(interval + halfInterval)
+	logger.Warn("warn message")
+	time.Sleep(interval + interval + halfInterval)
 
-			end := make(chan struct{}, 1)
-			go func() {
-				p.Start()
+	// stop the post processor
+	done()
 
-				end <- struct{}{}
-			}()
-			p.Stop(ctx, tt.fields.testErr)
+	logger.Info("test is complete")
 
-			// Wait for the start goroutine to finish
-			<-end
-
-			logs := buf.String()
-			if !strings.Contains(logs, tt.fields.shouldContain) {
-				t.Errorf("expected data to contain %s, got %s", tt.fields.shouldContain, logs)
-			}
-		})
-	}
+	logs := buf.String()
+	assert.Equal(t, `INFO	info message
+ERROR	error message
+INFO	...
+WARN	warn message
+INFO	...
+INFO	...
+INFO	test is complete
+`, logs)
 }
