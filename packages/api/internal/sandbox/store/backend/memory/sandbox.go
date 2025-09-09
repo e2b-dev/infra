@@ -69,7 +69,7 @@ func (s *sandbox) IsExpired() bool {
 }
 
 func (s *sandbox) isExpired() bool {
-	return time.Now().After(s.base.EndTime)
+	return s.base.IsExpired()
 }
 
 func (s *sandbox) GetEndTime() time.Time {

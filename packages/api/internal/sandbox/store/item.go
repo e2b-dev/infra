@@ -115,6 +115,10 @@ func (i *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 	}
 }
 
+func (i *Sandbox) IsExpired() bool {
+	return time.Now().After(i.EndTime)
+}
+
 var (
 	ErrAlreadyBeingPaused  = errors.New("sandbox is already being paused")
 	ErrAlreadyBeingDeleted = errors.New("sandbox is already being removed")

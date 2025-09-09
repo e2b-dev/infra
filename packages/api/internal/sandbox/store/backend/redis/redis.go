@@ -213,7 +213,7 @@ func (s *Store) ExpiredItems(ctx context.Context) []*store.Sandbox {
 		if err != nil {
 			continue
 		}
-		if time.Now().After(sandbox.EndTime) {
+		if sandbox.IsExpired() {
 			items = append(items, sandbox)
 		}
 	}
