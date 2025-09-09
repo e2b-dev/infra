@@ -9,27 +9,18 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store/backend/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 // cacheSyncTime is the time to sync the cache with the actual instances in Orchestrator.
 const cacheSyncTime = 20 * time.Second
 
-func (o *Orchestrator) GetSandbox(sandboxID string, includeEvicting bool) (*store.Sandbox, error) {
-	item, err := o.sandboxStore.Get(sandboxID, includeEvicting)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get sandbox '%s': %w", sandboxID, err)
-	}
-
-	return item, nil
-}
-
 // keepInSync the cache with the actual instances in Orchestrator to handle instances that died.
-func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache store.Store, skipSyncingWithNomad bool) {
+func (o *Orchestrator) keepInSync(ctx context.Context, memoryBackend *memory.Backend, skipSyncingWithNomad bool) {
 	// Run the first sync immediately
 	zap.L().Info("Running the initial node sync")
-	o.syncNodes(ctx, instanceCache, skipSyncingWithNomad)
+	o.syncNodes(ctx, memoryBackend, skipSyncingWithNomad)
 
 	// Sync the nodes every cacheSyncTime
 	ticker := time.NewTicker(cacheSyncTime)
@@ -41,12 +32,12 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache store.Store
 			zap.L().Info("Stopping keepInSync")
 			return
 		case <-ticker.C:
-			o.syncNodes(ctx, instanceCache, skipSyncingWithNomad)
+			o.syncNodes(ctx, memoryBackend, skipSyncingWithNomad)
 		}
 	}
 }
 
-func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache store.Store, skipSyncingWithNomad bool) {
+func (o *Orchestrator) syncNodes(ctx context.Context, memoryBackend *memory.Backend, skipSyncingWithNomad bool) {
 	ctxTimeout, cancel := context.WithTimeout(ctx, cacheSyncTime)
 	defer cancel()
 
@@ -97,9 +88,9 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache store.Store,
 			// because each of them is taken from different source pool
 			var err error
 			if n.IsNomadManaged() {
-				err = o.syncNode(syncNodesSpanCtx, n, nomadNodes, instanceCache)
+				err = o.syncNode(syncNodesSpanCtx, n, nomadNodes, memoryBackend)
 			} else {
-				err = o.syncClusterNode(syncNodesSpanCtx, n, instanceCache)
+				err = o.syncClusterNode(syncNodesSpanCtx, n, memoryBackend)
 			}
 			if err != nil {
 				zap.L().Error("Error syncing node", zap.Error(err))
@@ -160,7 +151,7 @@ func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
 	}
 }
 
-func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.Node, instanceCache store.Store) error {
+func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.Node, memoryBackend *memory.Backend) error {
 	ctx, childSpan := o.tracer.Start(ctx, "sync-cluster-node")
 	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.ID), telemetry.WithClusterID(node.ClusterID))
 	defer childSpan.End()
@@ -179,12 +170,12 @@ func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.No
 	}
 
 	// Unified call for syncing node state across different node types
-	node.Sync(ctx, o.tracer, instanceCache)
+	node.Sync(ctx, o.tracer, memoryBackend)
 
 	return nil
 }
 
-func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, discovered []nodemanager.NomadServiceDiscovery, instanceCache store.Store) error {
+func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, discovered []nodemanager.NomadServiceDiscovery, memoryBackend *memory.Backend) error {
 	ctx, childSpan := o.tracer.Start(ctx, "sync-node")
 	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.ID))
 	defer childSpan.End()
@@ -202,7 +193,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, dis
 	}
 
 	// Unified call for syncing node state across different node types
-	node.Sync(ctx, o.tracer, instanceCache)
+	node.Sync(ctx, o.tracer, memoryBackend)
 
 	return nil
 }

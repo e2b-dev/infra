@@ -1,6 +1,7 @@
-package store
+package memory
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -46,12 +47,12 @@ func (r *ReservationStore) list(teamID uuid.UUID) (sandboxIDs []string) {
 	return sandboxIDs
 }
 
-func (c *MemoryStore) list(teamID uuid.UUID) (sandboxIDs []string) {
+func (c *Backend) list(teamID uuid.UUID) (sandboxIDs []string) {
 	for _, value := range c.items.Items() {
-		currentTeamID := value.TeamID
+		currentTeamID := value.base.TeamID
 
 		if currentTeamID == teamID {
-			sandboxIDs = append(sandboxIDs, value.SandboxID)
+			sandboxIDs = append(sandboxIDs, value.base.SandboxID)
 		}
 	}
 
@@ -74,7 +75,7 @@ func (e *SandboxLimitExceededError) Error() string {
 	return fmt.Sprintf("sandbox %s has exceeded the limit", e.teamID)
 }
 
-func (c *MemoryStore) Reserve(sandboxID string, team uuid.UUID, limit int64) (release func(), err error) {
+func (c *Backend) Reserve(context context.Context, sandboxID string, team uuid.UUID, limit int64) (release func(), err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

@@ -11,10 +11,10 @@ import (
 )
 
 type Evictor struct {
-	store store.Store
+	store *store.Store
 }
 
-func New(store store.Store) *Evictor {
+func New(store *store.Store) *Evictor {
 	return &Evictor{store: store}
 }
 
@@ -26,10 +26,10 @@ func (e *Evictor) Start(ctx context.Context) {
 		case <-time.After(50 * time.Millisecond):
 			// Get all items from the cache before iterating over them
 			// to avoid holding the lock while removing items from the cache.
-			items := e.store.ExpiredItems()
+			items := e.store.ExpiredItems(ctx)
 
 			for _, item := range items {
-				if item.IsExpired() {
+				if time.Since(item.EndTime) > 0 {
 					go func() {
 						removeType := store.RemoveTypeKill
 						if item.AutoPause {

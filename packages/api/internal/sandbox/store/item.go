@@ -1,17 +1,12 @@
 package store
 
 import (
-	"context"
 	"errors"
-	"fmt"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -41,7 +36,7 @@ func NewSandbox(
 	Metadata map[string]string,
 	MaxInstanceLength time.Duration,
 	StartTime time.Time,
-	endTime time.Time,
+	EndTime time.Time,
 	VCpu int64,
 	TotalDiskSizeMB int64,
 	RamMB int64,
@@ -67,7 +62,7 @@ func NewSandbox(
 		Metadata:            Metadata,
 		MaxInstanceLength:   MaxInstanceLength,
 		StartTime:           StartTime,
-		endTime:             endTime,
+		EndTime:             EndTime,
 		VCpu:                VCpu,
 		TotalDiskSizeMB:     TotalDiskSizeMB,
 		RamMB:               RamMB,
@@ -79,43 +74,37 @@ func NewSandbox(
 		NodeID:              NodeID,
 		ClusterID:           ClusterID,
 		AutoPause:           AutoPause,
-		state:               StateRunning,
-		stopping:            utils.NewSetOnce[struct{}](),
 		BaseTemplateID:      BaseTemplateID,
-		mu:                  sync.RWMutex{},
+		State:               StateRunning,
 	}
 }
 
 type Sandbox struct {
-	SandboxID  string
-	TemplateID string
-	ClientID   string
-	Alias      *string
+	SandboxID  string  `json:"sandbox_id"`
+	TemplateID string  `json:"template_id"`
+	ClientID   string  `json:"client_id"`
+	Alias      *string `json:"alias"`
 
-	ExecutionID         string
-	TeamID              uuid.UUID
-	BuildID             uuid.UUID
-	BaseTemplateID      string
-	Metadata            map[string]string
-	MaxInstanceLength   time.Duration
-	StartTime           time.Time
-	endTime             time.Time
-	VCpu                int64
-	TotalDiskSizeMB     int64
-	RamMB               int64
-	KernelVersion       string
-	FirecrackerVersion  string
-	EnvdVersion         string
-	EnvdAccessToken     *string
-	AllowInternetAccess *bool
-	NodeID              string
-	ClusterID           uuid.UUID
-	AutoPause           bool
-
-	state State
-	mu    sync.RWMutex
-
-	stopping *utils.SetOnce[struct{}]
+	ExecutionID         string            `json:"execution_id"`
+	TeamID              uuid.UUID         `json:"team_id"`
+	BuildID             uuid.UUID         `json:"build_id"`
+	BaseTemplateID      string            `json:"base_template_id"`
+	Metadata            map[string]string `json:"metadata"`
+	MaxInstanceLength   time.Duration     `json:"max_instance_length"`
+	StartTime           time.Time         `json:"start_time"`
+	EndTime             time.Time         `json:"end_time"`
+	VCpu                int64             `json:"v_cpu"`
+	TotalDiskSizeMB     int64             `json:"total_disk_size_mb"`
+	RamMB               int64             `json:"ram_mb"`
+	KernelVersion       string            `json:"kernel_version"`
+	FirecrackerVersion  string            `json:"firecracker_version"`
+	EnvdVersion         string            `json:"envd_version"`
+	EnvdAccessToken     *string           `json:"envd_access_token"`
+	AllowInternetAccess *bool             `json:"allow_internet_access"`
+	NodeID              string            `json:"node_id"`
+	ClusterID           uuid.UUID         `json:"cluster_id"`
+	AutoPause           bool              `json:"auto_pause"`
+	State               State             `json:"state"`
 }
 
 func (i *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -126,111 +115,7 @@ func (i *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 	}
 }
 
-func (i *Sandbox) IsExpired() bool {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-
-	return i.isExpired()
-}
-
-func (i *Sandbox) isExpired() bool {
-	return time.Now().After(i.endTime)
-}
-
-func (i *Sandbox) GetEndTime() time.Time {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-
-	return i.endTime
-}
-
-func (i *Sandbox) SetEndTime(endTime time.Time) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	i.setEndTime(endTime)
-}
-
-func (i *Sandbox) setEndTime(endTime time.Time) {
-	i.endTime = endTime
-}
-
-func (i *Sandbox) SetExpired() {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	i.setExpired()
-}
-
-func (i *Sandbox) setExpired() {
-	if !i.isExpired() {
-		i.setEndTime(time.Now())
-	}
-}
-
-func (i *Sandbox) GetState() State {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-
-	return i.state
-}
-
 var (
 	ErrAlreadyBeingPaused  = errors.New("sandbox is already being paused")
 	ErrAlreadyBeingDeleted = errors.New("sandbox is already being removed")
 )
-
-func (i *Sandbox) markRemoving(removeType RemoveType) error {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	if i.state != StateRunning {
-		if i.state == StatePausing || i.state == StatePaused {
-			return ErrAlreadyBeingPaused
-		} else {
-			return ErrAlreadyBeingDeleted
-		}
-	}
-	// Set remove type
-	if removeType == RemoveTypePause {
-		i.state = StatePausing
-	} else {
-		i.state = StateKilling
-	}
-
-	// Mark the stop time
-	i.setExpired()
-
-	return nil
-}
-
-func (i *Sandbox) WaitForStop(ctx context.Context) error {
-	if i.GetState() == StateRunning {
-		return fmt.Errorf("sandbox isn't stopping")
-	}
-
-	_, err := i.stopping.WaitWithContext(ctx)
-	return err
-}
-
-func (i *Sandbox) stopDone(err error) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	if i.state == StatePausing {
-		i.state = StatePaused
-	} else {
-		i.state = StateKilled
-	}
-
-	if err != nil {
-		err := i.stopping.SetError(err)
-		if err != nil {
-			zap.L().Error("error setting stopDone value", zap.Error(err))
-		}
-	} else {
-		err := i.stopping.SetValue(struct{}{})
-		if err != nil {
-			zap.L().Error("error setting stopDone value", zap.Error(err))
-		}
-	}
-}

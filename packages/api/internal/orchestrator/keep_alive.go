@@ -14,7 +14,7 @@ import (
 )
 
 func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, duration time.Duration, allowShorter bool) *api.APIError {
-	sbx, err := o.sandboxStore.KeepAliveFor(sandboxID, duration, allowShorter)
+	sbx, err := o.sandboxStore.KeepAliveFor(ctx, sandboxID, duration, allowShorter)
 	if err != nil {
 		if errors.Is(err, store.ErrSandboxNotFound) {
 			return &api.APIError{Code: http.StatusNotFound, ClientMsg: "Sandbox not found", Err: err}
@@ -25,7 +25,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 		}
 	}
 
-	err = o.UpdateSandbox(ctx, sbx.SandboxID, sbx.GetEndTime(), sbx.ClusterID, sbx.NodeID)
+	err = o.UpdateSandbox(ctx, sbx.SandboxID, sbx.EndTime, sbx.ClusterID, sbx.NodeID)
 	if err != nil {
 		zap.L().Warn("Error when setting sandbox timeout", zap.Error(err), logger.WithSandboxID(sandboxID))
 		return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}

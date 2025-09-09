@@ -55,12 +55,12 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	}
 
 	sandboxID = utils.ShortID(sandboxID)
-	sbxCache, err := a.orchestrator.GetSandbox(sandboxID, true)
+	sbxCache, err := a.orchestrator.GetSandbox(ctx, sandboxID, true)
 	if err == nil {
-		state := sbxCache.GetState()
+		state := sbxCache.State
 		switch state {
 		case store.StatePaused, store.StatePausing:
-			err = sbxCache.WaitForStop(ctx)
+			err = a.orchestrator.WaitForStop(ctx, sandboxID)
 			if err != nil {
 				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when resuming sandbox")
 				return
@@ -73,7 +73,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 			zap.L().Debug("Sandbox is already running",
 				logger.WithSandboxID(sandboxID),
-				zap.Time("end_time", sbxCache.GetEndTime()),
+				zap.Time("end_time", sbxCache.EndTime),
 				zap.Time("start_time", sbxCache.StartTime),
 				zap.String("node_id", sbxCache.NodeID),
 			)

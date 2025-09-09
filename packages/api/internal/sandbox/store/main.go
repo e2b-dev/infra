@@ -2,9 +2,13 @@ package store
 
 import (
 	"context"
-	"sync"
+)
 
-	cmap "github.com/orcaman/concurrent-map/v2"
+type RemoveType string
+
+const (
+	RemoveTypePause RemoveType = "pause"
+	RemoveTypeKill  RemoveType = "kill"
 )
 
 type (
@@ -12,9 +16,8 @@ type (
 	RemoveCallback func(ctx context.Context, sbx *Sandbox, removeType RemoveType)
 )
 
-type MemoryStore struct {
-	reservations *ReservationStore
-	items        cmap.ConcurrentMap[string, *Sandbox]
+type Store struct {
+	backend Backend
 
 	// If the callback isn't very simple, consider running it in a goroutine to prevent blocking the main flow
 	insertCallbacks      []InsertCallback
@@ -22,25 +25,22 @@ type MemoryStore struct {
 
 	removeSandbox        func(ctx context.Context, sbx *Sandbox, removeType RemoveType) error
 	removeAsyncCallbacks []RemoveCallback
-
-	mu sync.Mutex
 }
 
-func NewStore(
+func New(
+	backend Backend,
 	removeSandbox func(ctx context.Context, sbx *Sandbox, removeType RemoveType) error,
 	insertCallbacks []InsertCallback,
 	insertAsyncCallbacks []InsertCallback,
 	removeAsyncCallbacks []RemoveCallback,
-) *MemoryStore {
-	return &MemoryStore{
-		items: cmap.New[*Sandbox](),
+) *Store {
+	return &Store{
+		backend: backend,
 
-		removeSandbox: removeSandbox,
+		removeSandbox:        removeSandbox,
+		removeAsyncCallbacks: removeAsyncCallbacks,
 
 		insertCallbacks:      insertCallbacks,
 		insertAsyncCallbacks: insertAsyncCallbacks,
-
-		removeAsyncCallbacks: removeAsyncCallbacks,
-		reservations:         NewReservationCache(),
 	}
 }

@@ -81,12 +81,12 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 
 	telemetry.ReportEvent(ctx, "killing sandbox")
 
-	sbx, err := a.orchestrator.GetSandbox(sandboxID, true)
+	sbx, err := a.orchestrator.GetSandbox(ctx, sandboxID, true)
 	if err == nil {
-		state := sbx.GetState()
+		state := sbx.State
 		// wait for the sandbox to pause before deleting it
 		if state == store.StatePausing || state == store.StatePaused {
-			err = sbx.WaitForStop(ctx)
+			err = a.orchestrator.WaitForStop(ctx, sandboxID)
 			if err != nil {
 				telemetry.ReportError(ctx, "error when waiting for sandbox to pause", err)
 				a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error deleting sandbox: %s", err))

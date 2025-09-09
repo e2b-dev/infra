@@ -14,13 +14,16 @@ import (
 )
 
 func (a *APIStore) GetNodes(c *gin.Context) {
-	result := a.orchestrator.AdminNodes()
+	ctx := c.Request.Context()
+	result := a.orchestrator.AdminNodes(ctx)
 	c.JSON(http.StatusOK, result)
 }
 
 func (a *APIStore) GetNodesNodeID(c *gin.Context, nodeID api.NodeID, params api.GetNodesNodeIDParams) {
+	ctx := c.Request.Context()
+
 	clusterID := utils.WithClusterFallback(params.ClusterID)
-	result, err := a.orchestrator.AdminNodeDetail(clusterID, nodeID)
+	result, err := a.orchestrator.AdminNodeDetail(ctx, clusterID, nodeID)
 	if err != nil {
 		if errors.Is(err, orchestrator.ErrNodeNotFound) {
 			c.Status(http.StatusNotFound)

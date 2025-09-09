@@ -281,7 +281,7 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []*store.Sandbox) []utils
 				CpuCount:    api.CPUCount(info.VCpu),
 				MemoryMB:    api.MemoryMB(info.RamMB),
 				DiskSizeMB:  api.DiskSizeMB(info.TotalDiskSizeMB),
-				EndAt:       info.GetEndTime(),
+				EndAt:       info.EndTime,
 				State:       api.Running,
 				EnvdVersion: info.EnvdVersion,
 			},

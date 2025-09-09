@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store/backend/memory"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -50,10 +51,10 @@ func (o *Orchestrator) CreateSandbox(
 	defer childSpan.End()
 
 	// Check if team has reached max instances
-	releaseTeamSandboxReservation, err := o.sandboxStore.Reserve(sandboxID, team.Team.ID, team.Tier.ConcurrentInstances)
+	releaseTeamSandboxReservation, err := o.sandboxStore.Reserve(ctx, sandboxID, team.Team.ID, team.Tier.ConcurrentInstances)
 	if err != nil {
-		var limitErr *store.SandboxLimitExceededError
-		var alreadyErr *store.AlreadyBeingStartedError
+		var limitErr *memory.SandboxLimitExceededError
+		var alreadyErr *memory.AlreadyBeingStartedError
 
 		telemetry.ReportCriticalError(ctx, "failed to reserve sandbox for team", err)
 
@@ -70,7 +71,7 @@ func (o *Orchestrator) CreateSandbox(
 			zap.L().Warn("sandbox already being started", logger.WithSandboxID(sandboxID), zap.Error(err))
 			return nil, &api.APIError{
 				Code:      http.StatusConflict,
-				ClientMsg: fmt.Sprintf("Sandbox %s is already being started", sandboxID),
+				ClientMsg: fmt.Sprintf("sandbox %s is already being started", sandboxID),
 				Err:       err,
 			}
 		default:

@@ -42,7 +42,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	// Try to get the running sandbox first
-	info, err := a.orchestrator.GetSandbox(sandboxId, true)
+	info, err := a.orchestrator.GetSandbox(ctx, sandboxId, true)
 	if err == nil {
 		// Check if sandbox belongs to the team
 		if info.TeamID != team.ID {
@@ -53,7 +53,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		}
 
 		state := api.Running
-		switch info.GetState() {
+		switch info.State {
 		// Sandbox is being paused or already is paused, user can work with that as if it's paused
 		case store.StatePausing, store.StatePaused:
 			state = api.Paused
@@ -75,7 +75,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			CpuCount:        api.CPUCount(info.VCpu),
 			MemoryMB:        api.MemoryMB(info.RamMB),
 			DiskSizeMB:      api.DiskSizeMB(info.TotalDiskSizeMB),
-			EndAt:           info.GetEndTime(),
+			EndAt:           info.EndTime,
 			State:           state,
 			EnvdVersion:     info.EnvdVersion,
 			EnvdAccessToken: info.EnvdAccessToken,

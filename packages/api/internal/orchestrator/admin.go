@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"cmp"
+	"context"
 	"slices"
 
 	"github.com/google/uuid"
@@ -12,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func (o *Orchestrator) AdminNodes() []*api.Node {
+func (o *Orchestrator) AdminNodes(ctx context.Context) []*api.Node {
 	apiNodes := make(map[string]*api.Node)
 
 	for _, n := range o.nodes.Items() {
@@ -38,7 +39,7 @@ func (o *Orchestrator) AdminNodes() []*api.Node {
 		}
 	}
 
-	for _, sbx := range o.sandboxStore.Items(nil) {
+	for _, sbx := range o.sandboxStore.Items(ctx, nil) {
 		n, ok := apiNodes[sbx.NodeID]
 		if !ok {
 			zap.L().Error("node for sandbox wasn't found", logger.WithNodeID(sbx.NodeID), logger.WithSandboxID(sbx.SandboxID))
@@ -60,7 +61,7 @@ func (o *Orchestrator) AdminNodes() []*api.Node {
 	return result
 }
 
-func (o *Orchestrator) AdminNodeDetail(clusterID uuid.UUID, nodeIDOrNomadNodeShortID string) (*api.NodeDetail, error) {
+func (o *Orchestrator) AdminNodeDetail(ctx context.Context, clusterID uuid.UUID, nodeIDOrNomadNodeShortID string) (*api.NodeDetail, error) {
 	n := o.GetNodeByIDOrNomadShortID(clusterID, nodeIDOrNomadNodeShortID)
 	if n == nil {
 		return nil, ErrNodeNotFound
@@ -83,7 +84,7 @@ func (o *Orchestrator) AdminNodeDetail(clusterID uuid.UUID, nodeIDOrNomadNodeSho
 		Metrics:         metrics,
 	}
 
-	for _, sbx := range o.sandboxStore.Items(nil) {
+	for _, sbx := range o.sandboxStore.Items(ctx, nil) {
 		if sbx.NodeID == n.ID && sbx.ClusterID == n.ClusterID {
 			var metadata *api.SandboxMetadata
 			if sbx.Metadata != nil {
@@ -97,7 +98,7 @@ func (o *Orchestrator) AdminNodeDetail(clusterID uuid.UUID, nodeIDOrNomadNodeSho
 				CpuCount:   api.CPUCount(sbx.VCpu),
 				MemoryMB:   api.MemoryMB(sbx.RamMB),
 				DiskSizeMB: api.DiskSizeMB(sbx.TotalDiskSizeMB),
-				EndAt:      sbx.GetEndTime(),
+				EndAt:      sbx.EndTime,
 				Metadata:   metadata,
 				SandboxID:  sbx.SandboxID,
 				StartedAt:  sbx.StartTime,

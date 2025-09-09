@@ -30,11 +30,11 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
 
-	sbx, err := a.orchestrator.GetSandbox(sandboxID, true)
+	sbx, err := a.orchestrator.GetSandbox(ctx, sandboxID, true)
 	if err != nil {
 		_, fErr := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamID})
 		if fErr == nil {
-			zap.L().Warn("Sandbox is already paused", logger.WithSandboxID(sandboxID))
+			zap.L().Warn("sandbox is already paused", logger.WithSandboxID(sandboxID))
 			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already paused", sandboxID))
 			return
 		}
@@ -74,7 +74,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	if errors.Is(err, store.ErrAlreadyBeingPaused) {
 		telemetry.ReportEvent(ctx, "sandbox is already being paused", telemetry.WithSandboxID(sandboxID))
 
-		err = sbx.WaitForStop(ctx)
+		err = a.orchestrator.WaitForStop(ctx, sandboxID)
 		if err != nil {
 			telemetry.ReportError(ctx, "error when waiting for sandbox to pause", err)
 

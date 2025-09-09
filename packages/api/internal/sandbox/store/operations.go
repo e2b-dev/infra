@@ -3,26 +3,21 @@ package store
 import (
 	"context"
 	"fmt"
-	"slices"
+	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
-type RemoveType string
-
-const (
-	RemoveTypePause RemoveType = "pause"
-	RemoveTypeKill  RemoveType = "kill"
-)
-
-func (c *MemoryStore) Add(ctx context.Context, sandbox *Sandbox, newlyCreated bool) error {
+func (s *Store) Add(ctx context.Context, sandbox *Sandbox, newlyCreated bool) error {
 	sbxlogger.I(sandbox).Debug("Adding sandbox to cache",
 		zap.Bool("newly_created", newlyCreated),
 		zap.Time("start_time", sandbox.StartTime),
-		zap.Time("end_time", sandbox.GetEndTime()),
+		zap.Time("end_time", sandbox.EndTime),
+		logger.WithSandboxID(sandbox.SandboxID),
 	)
 
 	if sandbox.SandboxID == "" {
@@ -41,71 +36,60 @@ func (c *MemoryStore) Add(ctx context.Context, sandbox *Sandbox, newlyCreated bo
 		return fmt.Errorf("sandbox %s is missing env ID", sandbox.TemplateID)
 	}
 
-	endTime := sandbox.GetEndTime()
+	endTime := sandbox.EndTime
 
 	if sandbox.StartTime.IsZero() || endTime.IsZero() || sandbox.StartTime.After(endTime) {
 		return fmt.Errorf("sandbox %s has invalid start(%s)/end(%s) times", sandbox.SandboxID, sandbox.StartTime, endTime)
 	}
 
 	if endTime.Sub(sandbox.StartTime) > sandbox.MaxInstanceLength {
-		sandbox.SetEndTime(sandbox.StartTime.Add(sandbox.MaxInstanceLength))
+		sandbox.EndTime = sandbox.StartTime.Add(sandbox.MaxInstanceLength)
 	}
 
-	c.items.SetIfAbsent(sandbox.SandboxID, sandbox)
+	err := s.backend.Add(ctx, sandbox, newlyCreated)
+	if err != nil {
+		return fmt.Errorf("failed to add sandbox to cache: %w", err)
+	}
 
-	for _, callback := range c.insertCallbacks {
+	for _, callback := range s.insertCallbacks {
 		callback(ctx, sandbox, newlyCreated)
 	}
 
-	for _, callback := range c.insertAsyncCallbacks {
+	for _, callback := range s.insertAsyncCallbacks {
 		go callback(context.WithoutCancel(ctx), sandbox, newlyCreated)
 	}
-	// Release the reservation if it exists
-	c.reservations.release(sandbox.SandboxID)
 
 	return nil
 }
 
 // Exists Check if the sandbox exists in the cache or is being evicted.
-func (c *MemoryStore) Exists(sandboxID string) bool {
-	return c.items.Has(sandboxID)
+func (s *Store) Exists(ctx context.Context, sandboxID string) bool {
+	return s.backend.Exists(ctx, sandboxID)
 }
 
 // Get the item from the cache.
-func (c *MemoryStore) Get(sandboxID string, includeEvicting bool) (*Sandbox, error) {
-	item, ok := c.items.Get(sandboxID)
-	if !ok {
-		return nil, fmt.Errorf("sandbox \"%s\" doesn't exist", sandboxID)
-	}
-
-	if item.IsExpired() && !includeEvicting {
-		return nil, fmt.Errorf("sandbox \"%s\" is being evicted", sandboxID)
-	}
-
-	return item, nil
+func (s *Store) Get(ctx context.Context, sandboxID string, includeEvicting bool) (*Sandbox, error) {
+	return s.backend.Get(ctx, sandboxID, includeEvicting)
 }
 
-func (c *MemoryStore) Remove(ctx context.Context, sandboxID string, removeType RemoveType) (err error) {
-	sbx, ok := c.items.Get(sandboxID)
-	if !ok {
-		return fmt.Errorf("sandbox \"%s\" doesn't exist", sandboxID)
-	}
-
-	// Makes sure there's only one removal
-	err = sbx.markRemoving(removeType)
+func (s *Store) Remove(ctx context.Context, sandboxID string, removeType RemoveType) (err error) {
+	sbx, err := s.backend.MarkRemoving(ctx, sandboxID, removeType)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to mark sandbox %s as removing: %w", sandboxID, err)
 	}
 
-	// Remove from the cache
-	defer c.items.Remove(sandboxID)
+	zap.L().Debug("Removing sandbox from cache",
+		zap.Time("start_time", sbx.StartTime),
+		zap.Time("end_time", sbx.EndTime),
+		logger.WithSandboxID(sbx.SandboxID),
+	)
 
-	// Remove the sandbox from the node
-	err = c.removeSandbox(ctx, sbx, removeType)
-	for _, callback := range c.removeAsyncCallbacks {
+	for _, callback := range s.removeAsyncCallbacks {
 		go callback(context.WithoutCancel(ctx), sbx, removeType)
 	}
-	sbx.stopDone(err)
+
+	// Remove from the store
+	err = s.backend.Remove(ctx, sandboxID, removeType)
 	if err != nil {
 		return fmt.Errorf("error removing sandbox \"%s\": %w", sandboxID, err)
 	}
@@ -113,54 +97,60 @@ func (c *MemoryStore) Remove(ctx context.Context, sandboxID string, removeType R
 	return nil
 }
 
-func (c *MemoryStore) Items(teamID *uuid.UUID) []*Sandbox {
-	items := make([]*Sandbox, 0)
-	for _, item := range c.items.Items() {
-		if item.IsExpired() {
-			continue
-		}
-
-		if teamID != nil && item.TeamID != *teamID {
-			continue
-		}
-
-		items = append(items, item)
-	}
-
-	return items
+func (s *Store) Items(ctx context.Context, teamID *uuid.UUID) []*Sandbox {
+	return s.backend.Items(ctx, teamID)
 }
 
-func (c *MemoryStore) ExpiredItems() []*Sandbox {
-	items := make([]*Sandbox, 0)
-	for _, item := range c.items.Items() {
-		if !item.IsExpired() {
-			continue
-		}
-		items = append(items, item)
-	}
-
-	return items
+func (s *Store) ExpiredItems(ctx context.Context) []*Sandbox {
+	return s.backend.ExpiredItems(ctx)
 }
 
-func (c *MemoryStore) ItemsByState(teamID *uuid.UUID, states []State) map[State][]*Sandbox {
-	items := make(map[State][]*Sandbox)
-	for _, item := range c.items.Items() {
-		if teamID != nil && item.TeamID != *teamID {
-			continue
-		}
+func (s *Store) ItemsByState(ctx context.Context, teamID *uuid.UUID, states []State) map[State][]*Sandbox {
+	return s.backend.ItemsByState(ctx, teamID, states)
+}
 
-		if slices.Contains(states, item.state) {
-			if _, ok := items[item.state]; !ok {
-				items[item.state] = []*Sandbox{}
-			}
+func (s *Store) Len(ctx context.Context, teamID *uuid.UUID) int {
+	return len(s.Items(ctx, teamID))
+}
 
-			items[item.state] = append(items[item.state], item)
+// KeepAliveFor the sandbox's expiration timer.
+func (s *Store) KeepAliveFor(ctx context.Context, sandboxID string, duration time.Duration, allowShorter bool) (*Sandbox, error) {
+	sbx, err := s.Get(ctx, sandboxID, false)
+	if err != nil {
+		return nil, ErrSandboxNotFound
+	}
+
+	now := time.Now()
+
+	endTime := sbx.EndTime
+	if !allowShorter && endTime.After(now.Add(duration)) {
+		return sbx, nil
+	}
+
+	if (time.Since(sbx.StartTime)) > sbx.MaxInstanceLength {
+		return nil, ErrMaxSandboxUptimeReached
+	} else {
+		maxAllowedTTL := GetMaxAllowedTTL(now, sbx.StartTime, duration, sbx.MaxInstanceLength)
+
+		newEndTime := now.Add(maxAllowedTTL)
+		sbx.EndTime = newEndTime
+
+		err = s.backend.Update(ctx, sbx)
+		if err != nil {
+			zap.L().Error("Failed to update sandbox in store",
+				zap.String("sandbox_id", sandboxID),
+				zap.Error(err))
+			return nil, fmt.Errorf("failed to update sandbox in store: %w", err)
 		}
 	}
 
-	return items
+	return sbx, nil
 }
 
-func (c *MemoryStore) Len(teamID *uuid.UUID) int {
-	return len(c.Items(teamID))
+func (s *Store) WaitForStop(ctx context.Context, sandboxID string) error {
+	return s.backend.WaitForStop(ctx, sandboxID)
+}
+
+func (s *Store) Reserve(ctx context.Context, sandboxID string, team uuid.UUID, limit int64) (release func(), err error) {
+	return s.backend.Reserve(ctx, sandboxID, team, limit)
 }
