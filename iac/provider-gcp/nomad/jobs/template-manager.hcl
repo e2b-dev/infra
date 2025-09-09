@@ -4,12 +4,11 @@ job "template-manager-system" {
   node_pool  = "build"
   priority = 70
 
+# https://developer.hashicorp.com/nomad/docs/job-specification/update
 %{ if update_stanza }
   update {
-      max_parallel      = 1 # Update only 1 node at a time
-      min_healthy_time  = "10s" # Time to wait for the new version to be healthy
-      healthy_deadline  = "5m" # Time to wait for the new version to be healthy, if not it will be marked as failed
-      progress_deadline = "20m" # Deadline for the update to be completed
+    max_parallel      = 1    # Update only 1 node at a time
+    stagger           = "1m" # Wait 1 minute between updates
   }
 %{ endif }
 
