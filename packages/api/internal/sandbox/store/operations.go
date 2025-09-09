@@ -1,4 +1,4 @@
-package instance
+package store
 
 import (
 	"context"
@@ -18,8 +18,7 @@ const (
 	RemoveTypeKill  RemoveType = "kill"
 )
 
-// Add the instance to the cache
-func (c *MemoryStore) Add(ctx context.Context, sandbox *InstanceInfo, newlyCreated bool) error {
+func (c *MemoryStore) Add(ctx context.Context, sandbox *Sandbox, newlyCreated bool) error {
 	sbxlogger.I(sandbox).Debug("Adding sandbox to cache",
 		zap.Bool("newly_created", newlyCreated),
 		zap.Time("start_time", sandbox.StartTime),
@@ -67,30 +66,29 @@ func (c *MemoryStore) Add(ctx context.Context, sandbox *InstanceInfo, newlyCreat
 	return nil
 }
 
-// Exists Check if the instance exists in the cache or is being evicted.
-func (c *MemoryStore) Exists(instanceID string) bool {
-	return c.items.Has(instanceID)
+// Exists Check if the sandbox exists in the cache or is being evicted.
+func (c *MemoryStore) Exists(sandboxID string) bool {
+	return c.items.Has(sandboxID)
 }
 
 // Get the item from the cache.
-func (c *MemoryStore) Get(instanceID string, includeEvicting bool) (*InstanceInfo, error) {
-	item, ok := c.items.Get(instanceID)
+func (c *MemoryStore) Get(sandboxID string, includeEvicting bool) (*Sandbox, error) {
+	item, ok := c.items.Get(sandboxID)
 	if !ok {
-		return nil, fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
+		return nil, fmt.Errorf("sandbox \"%s\" doesn't exist", sandboxID)
 	}
 
 	if item.IsExpired() && !includeEvicting {
-		return nil, fmt.Errorf("instance \"%s\" is being evicted", instanceID)
+		return nil, fmt.Errorf("sandbox \"%s\" is being evicted", sandboxID)
 	}
 
 	return item, nil
 }
 
-// Remove the instance from the cache (no eviction callback).
-func (c *MemoryStore) Remove(ctx context.Context, instanceID string, removeType RemoveType) (err error) {
-	sbx, ok := c.items.Get(instanceID)
+func (c *MemoryStore) Remove(ctx context.Context, sandboxID string, removeType RemoveType) (err error) {
+	sbx, ok := c.items.Get(sandboxID)
 	if !ok {
-		return fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
+		return fmt.Errorf("sandbox \"%s\" doesn't exist", sandboxID)
 	}
 
 	// Makes sure there's only one removal
@@ -100,7 +98,7 @@ func (c *MemoryStore) Remove(ctx context.Context, instanceID string, removeType 
 	}
 
 	// Remove from the cache
-	defer c.items.Remove(instanceID)
+	defer c.items.Remove(sandboxID)
 
 	// Remove the sandbox from the node
 	err = c.removeSandbox(ctx, sbx, removeType)
@@ -109,14 +107,14 @@ func (c *MemoryStore) Remove(ctx context.Context, instanceID string, removeType 
 	}
 	sbx.stopDone(err)
 	if err != nil {
-		return fmt.Errorf("error removing instance \"%s\": %w", instanceID, err)
+		return fmt.Errorf("error removing sandbox \"%s\": %w", sandboxID, err)
 	}
 
 	return nil
 }
 
-func (c *MemoryStore) Items(teamID *uuid.UUID) []*InstanceInfo {
-	items := make([]*InstanceInfo, 0)
+func (c *MemoryStore) Items(teamID *uuid.UUID) []*Sandbox {
+	items := make([]*Sandbox, 0)
 	for _, item := range c.items.Items() {
 		if item.IsExpired() {
 			continue
@@ -132,8 +130,8 @@ func (c *MemoryStore) Items(teamID *uuid.UUID) []*InstanceInfo {
 	return items
 }
 
-func (c *MemoryStore) ExpiredItems() []*InstanceInfo {
-	items := make([]*InstanceInfo, 0)
+func (c *MemoryStore) ExpiredItems() []*Sandbox {
+	items := make([]*Sandbox, 0)
 	for _, item := range c.items.Items() {
 		if !item.IsExpired() {
 			continue
@@ -144,8 +142,8 @@ func (c *MemoryStore) ExpiredItems() []*InstanceInfo {
 	return items
 }
 
-func (c *MemoryStore) ItemsByState(teamID *uuid.UUID, states []State) map[State][]*InstanceInfo {
-	items := make(map[State][]*InstanceInfo)
+func (c *MemoryStore) ItemsByState(teamID *uuid.UUID, states []State) map[State][]*Sandbox {
+	items := make(map[State][]*Sandbox)
 	for _, item := range c.items.Items() {
 		if teamID != nil && item.TeamID != *teamID {
 			continue
@@ -153,7 +151,7 @@ func (c *MemoryStore) ItemsByState(teamID *uuid.UUID, states []State) map[State]
 
 		if slices.Contains(states, item.state) {
 			if _, ok := items[item.state]; !ok {
-				items[item.state] = []*InstanceInfo{}
+				items[item.state] = []*Sandbox{}
 			}
 
 			items[item.state] = append(items[item.state], item)

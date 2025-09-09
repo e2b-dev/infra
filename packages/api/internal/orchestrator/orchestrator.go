@@ -15,13 +15,13 @@ import (
 	"go.uber.org/zap"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/evictor"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -36,7 +36,7 @@ var ErrNodeNotFound = errors.New("node not found")
 type Orchestrator struct {
 	httpClient              *http.Client
 	nomadClient             *nomadapi.Client
-	sandboxStore            *instance.MemoryStore
+	sandboxStore            *store.MemoryStore
 	nodes                   *smap.Map[*nodemanager.Node]
 	leastBusyAlgorithm      placement.Algorithm
 	bestOfKAlgorithm        *placement.BestOfK
@@ -123,17 +123,17 @@ func New(
 		createdCounter: createdCounter,
 	}
 
-	sandboxStore := instance.NewStore(
+	sandboxStore := store.NewStore(
 		o.removeSandbox,
-		[]instance.InsertCallback{
+		[]store.InsertCallback{
 			o.addToNode,
 		},
-		[]instance.InsertCallback{
+		[]store.InsertCallback{
 			o.observeTeamSandbox,
 			o.countersInsert,
 			o.analyticsInsert,
 		},
-		[]instance.RemoveCallback{
+		[]store.RemoveCallback{
 			o.countersRemove,
 			o.analyticsRemove,
 		},

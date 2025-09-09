@@ -1,4 +1,4 @@
-package instance
+package store
 
 import (
 	"context"
@@ -8,32 +8,32 @@ import (
 )
 
 type (
-	InsertCallback func(ctx context.Context, sbx *InstanceInfo, created bool)
-	RemoveCallback func(ctx context.Context, sbx *InstanceInfo, removeType RemoveType)
+	InsertCallback func(ctx context.Context, sbx *Sandbox, created bool)
+	RemoveCallback func(ctx context.Context, sbx *Sandbox, removeType RemoveType)
 )
 
 type MemoryStore struct {
-	reservations *ReservationCache
-	items        cmap.ConcurrentMap[string, *InstanceInfo]
+	reservations *ReservationStore
+	items        cmap.ConcurrentMap[string, *Sandbox]
 
 	// If the callback isn't very simple, consider running it in a goroutine to prevent blocking the main flow
 	insertCallbacks      []InsertCallback
 	insertAsyncCallbacks []InsertCallback
 
-	removeSandbox        func(ctx context.Context, sbx *InstanceInfo, removeType RemoveType) error
+	removeSandbox        func(ctx context.Context, sbx *Sandbox, removeType RemoveType) error
 	removeAsyncCallbacks []RemoveCallback
 
 	mu sync.Mutex
 }
 
 func NewStore(
-	removeSandbox func(ctx context.Context, sbx *InstanceInfo, removeType RemoveType) error,
+	removeSandbox func(ctx context.Context, sbx *Sandbox, removeType RemoveType) error,
 	insertCallbacks []InsertCallback,
 	insertAsyncCallbacks []InsertCallback,
 	removeAsyncCallbacks []RemoveCallback,
 ) *MemoryStore {
-	instanceCache := &MemoryStore{
-		items: cmap.New[*InstanceInfo](),
+	return &MemoryStore{
+		items: cmap.New[*Sandbox](),
 
 		removeSandbox: removeSandbox,
 
@@ -43,6 +43,4 @@ func NewStore(
 		removeAsyncCallbacks: removeAsyncCallbacks,
 		reservations:         NewReservationCache(),
 	}
-
-	return instanceCache
 }

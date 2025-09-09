@@ -1,4 +1,4 @@
-package instance
+package store
 
 import (
 	"testing"

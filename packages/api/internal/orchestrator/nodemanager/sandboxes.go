@@ -9,12 +9,12 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
-func (n *Node) GetSandboxes(ctx context.Context, tracer trace.Tracer) ([]*instance.InstanceInfo, error) {
+func (n *Node) GetSandboxes(ctx context.Context, tracer trace.Tracer) ([]*store.Sandbox, error) {
 	childCtx, childSpan := tracer.Start(ctx, "get-sandboxes-from-orchestrator")
 	defer childSpan.End()
 
@@ -28,7 +28,7 @@ func (n *Node) GetSandboxes(ctx context.Context, tracer trace.Tracer) ([]*instan
 
 	sandboxes := res.GetSandboxes()
 
-	sandboxesInfo := make([]*instance.InstanceInfo, 0, len(sandboxes))
+	sandboxesInfo := make([]*store.Sandbox, 0, len(sandboxes))
 
 	for _, sbx := range sandboxes {
 		config := sbx.GetConfig()
@@ -49,7 +49,7 @@ func (n *Node) GetSandboxes(ctx context.Context, tracer trace.Tracer) ([]*instan
 
 		sandboxesInfo = append(
 			sandboxesInfo,
-			instance.NewInstanceInfo(
+			store.NewSandbox(
 				config.SandboxId,
 				config.TemplateId,
 				consts.ClientID,

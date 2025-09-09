@@ -7,10 +7,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store"
 )
 
-func (o *Orchestrator) getSandboxes(ctx context.Context, clusterID uuid.UUID, nodeID string) ([]*instance.InstanceInfo, error) {
+func (o *Orchestrator) getSandboxes(ctx context.Context, clusterID uuid.UUID, nodeID string) ([]*store.Sandbox, error) {
 	n := o.GetNode(clusterID, nodeID)
 	if n == nil {
 		return nil, fmt.Errorf("node '%s' not found in cluster '%s'", nodeID, clusterID)
@@ -19,8 +19,8 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, clusterID uuid.UUID, no
 	return n.GetSandboxes(ctx, o.tracer)
 }
 
-// GetSandboxes returns all instances for a given node.
-func (o *Orchestrator) GetSandboxes(ctx context.Context, teamID *uuid.UUID, states []instance.State) map[instance.State][]*instance.InstanceInfo {
+// GetSandboxes returns all sandboxes for a given node.
+func (o *Orchestrator) GetSandboxes(ctx context.Context, teamID *uuid.UUID, states []store.State) map[store.State][]*store.Sandbox {
 	_, childSpan := o.tracer.Start(ctx, "get-sandboxes")
 	defer childSpan.End()
 

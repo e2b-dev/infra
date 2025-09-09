@@ -8,13 +8,13 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const syncMaxRetries = 4
 
-func (n *Node) Sync(ctx context.Context, tracer trace.Tracer, instanceCache *instance.MemoryStore) {
+func (n *Node) Sync(ctx context.Context, tracer trace.Tracer, instanceCache *store.MemoryStore) {
 	syncRetrySuccess := false
 
 	for range syncMaxRetries {

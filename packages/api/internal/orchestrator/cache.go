@@ -8,15 +8,15 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
+	sandbox_store2 "github.com/e2b-dev/infra/packages/api/internal/sandbox/store"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 // cacheSyncTime is the time to sync the cache with the actual instances in Orchestrator.
 const cacheSyncTime = 20 * time.Second
 
-func (o *Orchestrator) GetSandbox(sandboxID string, includeEvicting bool) (*instance.InstanceInfo, error) {
+func (o *Orchestrator) GetSandbox(sandboxID string, includeEvicting bool) (*sandbox_store2.Sandbox, error) {
 	item, err := o.sandboxStore.Get(sandboxID, includeEvicting)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sandbox '%s': %w", sandboxID, err)
@@ -26,7 +26,7 @@ func (o *Orchestrator) GetSandbox(sandboxID string, includeEvicting bool) (*inst
 }
 
 // keepInSync the cache with the actual instances in Orchestrator to handle instances that died.
-func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.MemoryStore, skipSyncingWithNomad bool) {
+func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *sandbox_store2.MemoryStore, skipSyncingWithNomad bool) {
 	// Run the first sync immediately
 	zap.L().Info("Running the initial node sync")
 	o.syncNodes(ctx, instanceCache, skipSyncingWithNomad)
@@ -46,7 +46,7 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.M
 	}
 }
 
-func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.MemoryStore, skipSyncingWithNomad bool) {
+func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *sandbox_store2.MemoryStore, skipSyncingWithNomad bool) {
 	ctxTimeout, cancel := context.WithTimeout(ctx, cacheSyncTime)
 	defer cancel()
 
@@ -160,7 +160,7 @@ func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
 	}
 }
 
-func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.Node, instanceCache *instance.MemoryStore) error {
+func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.Node, instanceCache *sandbox_store2.MemoryStore) error {
 	ctx, childSpan := o.tracer.Start(ctx, "sync-cluster-node")
 	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.ID), telemetry.WithClusterID(node.ClusterID))
 	defer childSpan.End()
@@ -184,7 +184,7 @@ func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.No
 	return nil
 }
 
-func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, discovered []nodemanager.NomadServiceDiscovery, instanceCache *instance.MemoryStore) error {
+func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, discovered []nodemanager.NomadServiceDiscovery, instanceCache *sandbox_store2.MemoryStore) error {
 	ctx, childSpan := o.tracer.Start(ctx, "sync-node")
 	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.ID))
 	defer childSpan.End()

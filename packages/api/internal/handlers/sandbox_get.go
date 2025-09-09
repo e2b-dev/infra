@@ -10,7 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -55,10 +55,10 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		state := api.Running
 		switch info.GetState() {
 		// Sandbox is being paused or already is paused, user can work with that as if it's paused
-		case instance.StatePausing, instance.StatePaused:
+		case store.StatePausing, store.StatePaused:
 			state = api.Paused
 		// Sandbox is being stopped or already is stopped, user can't work with it anymore
-		case instance.StateKilling, instance.StateKilled:
+		case store.StateKilling, store.StateKilled:
 			telemetry.ReportCriticalError(ctx, fmt.Sprintf("sandbox '%s' is shutting down", sandboxId), nil)
 			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 

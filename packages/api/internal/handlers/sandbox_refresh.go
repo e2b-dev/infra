@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -32,13 +32,13 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 	}
 
 	if body.Duration == nil {
-		duration = instance.InstanceExpiration
+		duration = store.SandboxExpiration
 	} else {
 		duration = time.Duration(*body.Duration) * time.Second
 	}
 
-	if duration < instance.InstanceExpiration {
-		duration = instance.InstanceExpiration
+	if duration < store.SandboxExpiration {
+		duration = store.SandboxExpiration
 	}
 
 	apiErr := a.orchestrator.KeepAliveFor(ctx, sandboxID, duration, false)

@@ -1,4 +1,4 @@
-package instance
+package store
 
 import (
 	"context"
@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	InstanceExpiration = time.Second * 15
-	// Should we auto pause the instance by default instead of killing it,
-	InstanceAutoPauseDefault = false
+	SandboxExpiration = time.Second * 15
+	// Should we auto pause the sandbox by default instead of killing it,
+	SandboxAutoPauseDefault = false
 )
 
 type State string
@@ -30,7 +30,7 @@ const (
 	StateKilled  State = "killed"
 )
 
-func NewInstanceInfo(
+func NewSandbox(
 	SandboxID string,
 	TemplateID string,
 	ClientID string,
@@ -54,8 +54,8 @@ func NewInstanceInfo(
 	EnvdAccessToken *string,
 	allowInternetAccess *bool,
 	BaseTemplateID string,
-) *InstanceInfo {
-	instance := &InstanceInfo{
+) *Sandbox {
+	return &Sandbox{
 		SandboxID:  SandboxID,
 		TemplateID: TemplateID,
 		ClientID:   ClientID,
@@ -84,11 +84,9 @@ func NewInstanceInfo(
 		BaseTemplateID:      BaseTemplateID,
 		mu:                  sync.RWMutex{},
 	}
-
-	return instance
 }
 
-type InstanceInfo struct {
+type Sandbox struct {
 	SandboxID  string
 	TemplateID string
 	ClientID   string
@@ -120,7 +118,7 @@ type InstanceInfo struct {
 	stopping *utils.SetOnce[struct{}]
 }
 
-func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
+func (i *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 	return sbxlogger.SandboxMetadata{
 		SandboxID:  i.SandboxID,
 		TemplateID: i.TemplateID,
@@ -128,48 +126,48 @@ func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
 	}
 }
 
-func (i *InstanceInfo) IsExpired() bool {
+func (i *Sandbox) IsExpired() bool {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
 	return i.isExpired()
 }
 
-func (i *InstanceInfo) isExpired() bool {
+func (i *Sandbox) isExpired() bool {
 	return time.Now().After(i.endTime)
 }
 
-func (i *InstanceInfo) GetEndTime() time.Time {
+func (i *Sandbox) GetEndTime() time.Time {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
 	return i.endTime
 }
 
-func (i *InstanceInfo) SetEndTime(endTime time.Time) {
+func (i *Sandbox) SetEndTime(endTime time.Time) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
 	i.setEndTime(endTime)
 }
 
-func (i *InstanceInfo) setEndTime(endTime time.Time) {
+func (i *Sandbox) setEndTime(endTime time.Time) {
 	i.endTime = endTime
 }
 
-func (i *InstanceInfo) SetExpired() {
+func (i *Sandbox) SetExpired() {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	i.setExpired()
 }
 
-func (i *InstanceInfo) setExpired() {
+func (i *Sandbox) setExpired() {
 	if !i.isExpired() {
 		i.setEndTime(time.Now())
 	}
 }
 
-func (i *InstanceInfo) GetState() State {
+func (i *Sandbox) GetState() State {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
@@ -177,11 +175,11 @@ func (i *InstanceInfo) GetState() State {
 }
 
 var (
-	ErrAlreadyBeingPaused  = errors.New("instance is already being paused")
-	ErrAlreadyBeingDeleted = errors.New("instance is already being removed")
+	ErrAlreadyBeingPaused  = errors.New("sandbox is already being paused")
+	ErrAlreadyBeingDeleted = errors.New("sandbox is already being removed")
 )
 
-func (i *InstanceInfo) markRemoving(removeType RemoveType) error {
+func (i *Sandbox) markRemoving(removeType RemoveType) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
@@ -205,7 +203,7 @@ func (i *InstanceInfo) markRemoving(removeType RemoveType) error {
 	return nil
 }
 
-func (i *InstanceInfo) WaitForStop(ctx context.Context) error {
+func (i *Sandbox) WaitForStop(ctx context.Context) error {
 	if i.GetState() == StateRunning {
 		return fmt.Errorf("sandbox isn't stopping")
 	}
@@ -214,7 +212,7 @@ func (i *InstanceInfo) WaitForStop(ctx context.Context) error {
 	return err
 }
 
-func (i *InstanceInfo) stopDone(err error) {
+func (i *Sandbox) stopDone(err error) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 

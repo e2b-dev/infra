@@ -8,8 +8,8 @@ import (
 	"github.com/gogo/status"
 	"google.golang.org/grpc/codes"
 
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
@@ -22,7 +22,7 @@ func (PauseQueueExhaustedError) Error() string {
 	return "The pause queue is exhausted"
 }
 
-func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node, sbx *instance.InstanceInfo) (err error) {
+func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node, sbx *store.Sandbox) (err error) {
 	ctx, span := o.tracer.Start(ctx, "pause-sandbox")
 	defer span.End()
 
@@ -77,7 +77,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	return nil
 }
 
-func snapshotInstance(ctx context.Context, orch *Orchestrator, node *nodemanager.Node, sbx *instance.InstanceInfo, templateID, buildID string) error {
+func snapshotInstance(ctx context.Context, orch *Orchestrator, node *nodemanager.Node, sbx *store.Sandbox, templateID, buildID string) error {
 	childCtx, childSpan := orch.tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
 

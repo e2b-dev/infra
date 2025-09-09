@@ -17,7 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/db/types"
@@ -57,7 +57,7 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 	return sandboxes, nil
 }
 
-func getRunningSandboxes(runningSandboxes []*instance.InstanceInfo, metadataFilter *map[string]string) []utils.PaginatedSandbox {
+func getRunningSandboxes(runningSandboxes []*store.Sandbox, metadataFilter *map[string]string) []utils.PaginatedSandbox {
 	// Running Sandbox IDs
 	runningSandboxList := instanceInfoToPaginatedSandboxes(runningSandboxes)
 
@@ -86,8 +86,8 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		return
 	}
 
-	sandboxes := a.orchestrator.GetSandboxes(ctx, &team.ID, []instance.State{instance.StateRunning})
-	runningSandboxes := getRunningSandboxes(sandboxes[instance.StateRunning], metadataFilter)
+	sandboxes := a.orchestrator.GetSandboxes(ctx, &team.ID, []store.State{store.StateRunning})
+	runningSandboxes := getRunningSandboxes(sandboxes[store.StateRunning], metadataFilter)
 
 	// Sort sandboxes by start time descending
 	slices.SortFunc(runningSandboxes, func(a, b utils.PaginatedSandbox) int {
@@ -147,16 +147,16 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		return
 	}
 
-	sandboxesInCache := a.orchestrator.GetSandboxes(ctx, &team.ID, []instance.State{instance.StateRunning, instance.StatePaused, instance.StatePausing})
+	sandboxesInCache := a.orchestrator.GetSandboxes(ctx, &team.ID, []store.State{store.StateRunning, store.StatePaused, store.StatePausing})
 
 	// Running Sandbox IDs
 	runningSandboxesIDs := make([]string, 0)
-	for _, info := range sandboxesInCache[instance.StateRunning] {
+	for _, info := range sandboxesInCache[store.StateRunning] {
 		runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
 	}
 
 	if slices.Contains(states, api.Running) {
-		runningSandboxList := instanceInfoToPaginatedSandboxes(sandboxesInCache[instance.StateRunning])
+		runningSandboxList := instanceInfoToPaginatedSandboxes(sandboxesInCache[store.StateRunning])
 
 		// Filter based on metadata
 		runningSandboxList = utils.FilterSandboxesOnMetadata(runningSandboxList, metadataFilter)
@@ -179,7 +179,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 			return
 		}
 
-		pausingSandboxList := instanceInfoToPaginatedSandboxes(sandboxesInCache[instance.StatePausing])
+		pausingSandboxList := instanceInfoToPaginatedSandboxes(sandboxesInCache[store.StatePausing])
 		sandboxes = append(sandboxes, pausedSandboxList...)
 		sandboxes = append(sandboxes, pausingSandboxList...)
 	}
@@ -266,7 +266,7 @@ func snapshotsToPaginatedSandboxes(snapshots []queries.GetSnapshotsWithCursorRow
 	return sandboxes
 }
 
-func instanceInfoToPaginatedSandboxes(runningSandboxes []*instance.InstanceInfo) []utils.PaginatedSandbox {
+func instanceInfoToPaginatedSandboxes(runningSandboxes []*store.Sandbox) []utils.PaginatedSandbox {
 	sandboxes := make([]utils.PaginatedSandbox, 0)
 
 	// Add running sandboxes to results

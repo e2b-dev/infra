@@ -25,7 +25,7 @@ func (o *Orchestrator) UpdateSandbox(
 ) error {
 	childCtx, childSpan := o.tracer.Start(ctx, "update-sandbox",
 		trace.WithAttributes(
-			attribute.String("instance.id", sandboxID),
+			telemetry.WithSandboxID(sandboxID),
 		),
 	)
 	defer childSpan.End()

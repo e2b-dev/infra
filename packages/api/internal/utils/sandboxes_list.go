@@ -101,7 +101,7 @@ func FilterSandboxesOnMetadata(sandboxes []PaginatedSandbox, metadata *map[strin
 		return sandboxes
 	}
 
-	// Filter instances to match all metadata
+	// Filter sandboxes to match all metadata
 	n := 0
 	for _, sbx := range sandboxes {
 		if sbx.Metadata == nil {
