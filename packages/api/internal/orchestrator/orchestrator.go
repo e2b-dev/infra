@@ -128,8 +128,9 @@ func New(
 	// Local cluster is used for single-node setups instead
 	skipNomadSync := env.IsLocal()
 
-	var storeBackend store.Backend
-	storeBackend = memory.New()
+	// Hardcode to memory for now
+	storeBackend := memory.New()
+	memoryBackend := storeBackend
 
 	zap.L().Info("Using in-memory store for sandbox cache")
 
@@ -151,9 +152,8 @@ func New(
 	)
 
 	// Check type
-	if memoryBackend, ok := storeBackend.(*memory.Backend); !ok {
-		go o.keepInSync(ctx, memoryBackend, skipNomadSync)
-	}
+	// Add conditional when we have more backends
+	go o.keepInSync(ctx, memoryBackend, skipNomadSync)
 
 	o.sandboxStore = sandboxStore
 
