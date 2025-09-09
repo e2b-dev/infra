@@ -135,7 +135,7 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 				s.logger.
 					Debug().
 					Str("event_type", "filesystem_event").
-					Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).
+					Str("operation_id", logs.SafeGetRequestID(ctx)).
 					Interface("filesystem_event", event).
 					Msg("Streaming filesystem event")
 

@@ -9,7 +9,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
@@ -112,11 +111,9 @@ func (a *APIStore) GetTeamAndTier(
 	_, span := a.Tracer.Start(c.Request.Context(), "get-team-and-tier")
 	defer span.End()
 
-	if c.Value(auth.TeamContextKey) != nil {
-		teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
-
+	if teamInfo, err := auth.GetTeamInfo(c); err != nil {
 		return teamInfo.Team, teamInfo.Tier, nil
-	} else if c.Value(auth.UserIDContextKey) != nil {
+	} else if _, err := auth.GetUserID(c); err != nil {
 		_, teams, err := a.GetUserAndTeams(c)
 		if err != nil {
 			return nil, nil, &api.APIError{

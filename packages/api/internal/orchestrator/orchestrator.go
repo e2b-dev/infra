@@ -102,7 +102,7 @@ func New(
 
 	// Initialize both placement algorithms
 	leastBusyAlgorithm := &placement.LeastBusyAlgorithm{}
-	bestOfKAlgorithm := placement.NewBestOfK(getBestOfKConfig(ctx, featureFlags)).(*placement.BestOfK)
+	bestOfKAlgorithm := placement.NewBestOfK(getBestOfKConfig(ctx, featureFlags))
 
 	o := Orchestrator{
 		httpClient:         httpClient,

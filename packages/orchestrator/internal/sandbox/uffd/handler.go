@@ -95,7 +95,10 @@ func (u *Uffd) handle(sandboxId string) error {
 		return fmt.Errorf("failed accepting firecracker connection: %w", err)
 	}
 
-	unixConn := conn.(*net.UnixConn)
+	unixConn, ok := conn.(*net.UnixConn)
+	if !ok {
+		return fmt.Errorf("expected *net.UnixConn, received %T", conn)
+	}
 
 	mappingsBuf := make([]byte, mappingsSize)
 	uffdBuf := make([]byte, syscall.CmsgSpace(fdSize))

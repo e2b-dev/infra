@@ -16,7 +16,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -71,7 +70,13 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "list sandboxes")
 
-	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
+	teamInfo, err := auth.GetTeamInfo(c)
+	if err != nil {
+		telemetry.ReportError(ctx, "failed to get team info", err)
+		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	team := teamInfo.Team
 
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
@@ -102,8 +107,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "list sandboxes")
 
-	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
-	team := teamInfo.Team
+	team := auth.SafeGetTeamInfo(c).Team
 
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)

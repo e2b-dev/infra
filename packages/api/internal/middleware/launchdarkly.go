@@ -2,11 +2,9 @@ package middleware
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
@@ -30,8 +28,8 @@ func InitLaunchDarklyContext(c *gin.Context) {
 }
 
 func createLaunchDarklyUserContext(c *gin.Context) (ldcontext.Context, bool) {
-	userID, ok := c.Value(auth.UserIDContextKey).(uuid.UUID)
-	if !ok {
+	userID, err := auth.GetUserID(c)
+	if err != nil {
 		return ldcontext.Context{}, false
 	}
 
@@ -39,8 +37,8 @@ func createLaunchDarklyUserContext(c *gin.Context) (ldcontext.Context, bool) {
 }
 
 func createLaunchDarklyTeamContext(c *gin.Context) (ldcontext.Context, bool) {
-	authTeamInfo, ok := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
-	if !ok {
+	authTeamInfo, err := auth.GetTeamInfo(c)
+	if err != nil {
 		return ldcontext.Context{}, false
 	}
 

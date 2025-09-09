@@ -84,7 +84,7 @@ type BestOfK struct {
 var _ Algorithm = &BestOfK{}
 
 // NewBestOfK creates a new placement algorithm with the given config
-func NewBestOfK(config BestOfKConfig) Algorithm {
+func NewBestOfK(config BestOfKConfig) *BestOfK {
 	return &BestOfK{
 		config: config,
 	}

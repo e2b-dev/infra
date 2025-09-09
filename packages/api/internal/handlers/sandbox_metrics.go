@@ -11,7 +11,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -25,7 +24,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 	defer span.End()
 	sandboxID = utils.ShortID(sandboxID)
 
-	team := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo).Team
+	team := auth.SafeGetTeamInfo(c).Team
 
 	metricsReadFlag, err := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName,
 		featureflags.SandboxContext(sandboxID))

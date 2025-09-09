@@ -1,22 +1,24 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/db/queries"
 )
 
-func (a *APIStore) GetUserID(c *gin.Context) uuid.UUID {
-	return c.Value(auth.UserIDContextKey).(uuid.UUID)
-}
+var ErrNoUserIDInContext = errors.New("no user id in context")
 
 func (a *APIStore) GetUserAndTeams(c *gin.Context) (*uuid.UUID, []queries.GetTeamsWithUsersTeamsWithTierRow, error) {
-	userID := a.GetUserID(c)
+	userID, err := auth.GetUserID(c)
+	if err != nil {
+		return nil, nil, ErrNoUserIDInContext
+	}
+
 	ctx := c.Request.Context()
 
 	teams, err := a.sqlcDB.GetTeamsWithUsersTeamsWithTier(ctx, userID)
@@ -25,8 +27,4 @@ func (a *APIStore) GetUserAndTeams(c *gin.Context) (*uuid.UUID, []queries.GetTea
 	}
 
 	return &userID, teams, err
-}
-
-func (a *APIStore) GetTeamInfo(c *gin.Context) authcache.AuthTeamInfo {
-	return c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
 }

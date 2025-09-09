@@ -165,7 +165,7 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 	// signing authorization if needed
 	err := a.validateSigning(r, params.Signature, params.SignatureExpiration, params.Username, path, SigningWriteOperation)
 	if err != nil {
-		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error during auth validation")
+		a.logger.Error().Err(err).Str("operation_id", operationID).Msg("error during auth validation")
 		jsonError(w, http.StatusUnauthorized, err)
 		return
 	}
@@ -174,7 +174,7 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 		l := a.logger.
 			Err(errMsg).
 			Str("method", r.Method+" "+r.URL.Path).
-			Str(string(logs.OperationIDKey), operationID).
+			Str("operation_id", operationID).
 			Str("path", path).
 			Str("username", params.Username)
 
@@ -230,7 +230,7 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 				return
 			}
 
-			status, processErr := processFile(r, filePath, part, u, a.logger.With().Str(string(logs.OperationIDKey), operationID).Str("event_type", "file_processing").Logger())
+			status, processErr := processFile(r, filePath, part, u, a.logger.With().Str("operation_id", operationID).Str("event_type", "file_processing").Logger())
 			if processErr != nil {
 				errorCode = status
 				errMsg = processErr

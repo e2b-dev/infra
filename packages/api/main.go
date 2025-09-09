@@ -28,7 +28,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
 	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
@@ -151,9 +150,9 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 				teamID := ""
 
 				// Get team from context, use TeamContextKey
-				teamInfo := c.Value(auth.TeamContextKey)
-				if teamInfo != nil {
-					teamID = teamInfo.(authcache.AuthTeamInfo).Team.ID.String()
+				teamInfo, err := auth.GetTeamInfo(c)
+				if err == nil {
+					teamID = teamInfo.Team.ID.String()
 				}
 
 				reqLogger := logger

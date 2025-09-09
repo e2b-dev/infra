@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -193,7 +194,9 @@ func (n *SimulatedNode) getUtilization() (cpuUtil, memUtil float64) {
 }
 
 // runBenchmark runs a comprehensive placement benchmark with lifecycle tracking
-func runBenchmark(_ *testing.B, algorithm Algorithm, config BenchmarkConfig) *BenchmarkMetrics {
+func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig) *BenchmarkMetrics {
+	b.Helper()
+
 	ctx, cancel := context.WithTimeout(context.Background(), config.BenchmarkDuration)
 	defer cancel()
 
@@ -237,7 +240,8 @@ func runBenchmark(_ *testing.B, algorithm Algorithm, config BenchmarkConfig) *Be
 				now := time.Now()
 				// Check and remove expired sandboxes
 				activeSandboxes.Range(func(key, value interface{}) bool {
-					sandbox := value.(*LiveSandbox)
+					sandbox, ok := value.(*LiveSandbox)
+					assert.True(b, ok)
 					if now.Sub(sandbox.StartTime) > sandbox.PlannedDuration {
 						// Remove from node
 						if node, exists := nodeMap[sandbox.NodeID]; exists {

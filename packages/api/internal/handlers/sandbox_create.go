@@ -13,7 +13,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -42,8 +41,8 @@ var mostUsedTemplates = map[string]struct{}{
 func (a *APIStore) PostSandboxes(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	// Get team from context, use TeamContextKey
-	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
+	// Get team from context
+	teamInfo := auth.SafeGetTeamInfo(c)
 
 	c.Set("teamID", teamInfo.Team.ID.String())
 
