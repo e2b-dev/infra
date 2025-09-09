@@ -14,8 +14,8 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store"
 	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
@@ -123,7 +123,7 @@ func (n *SimulatedNode) placeSandbox(sandbox *LiveSandbox) bool {
 		return false
 	}
 
-	n.AddSandbox(&instance.InstanceInfo{
+	n.AddSandbox(&store.Sandbox{
 		VCpu:  sandbox.RequestedCPU,
 		RamMB: sandbox.RequestedMemory,
 	})
@@ -155,7 +155,7 @@ func (n *SimulatedNode) removeSandbox(sandboxID string) {
 
 	if sandbox, exists := n.sandboxes[sandboxID]; exists {
 
-		n.RemoveSandbox(&instance.InstanceInfo{
+		n.RemoveSandbox(&store.Sandbox{
 			VCpu:  sandbox.RequestedCPU,
 			RamMB: sandbox.RequestedMemory,
 		})

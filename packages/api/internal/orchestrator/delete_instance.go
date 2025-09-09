@@ -6,14 +6,14 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
-func (o *Orchestrator) RemoveInstance(ctx context.Context, sandbox *instance.InstanceInfo, removeType instance.RemoveType) error {
-	_, childSpan := o.tracer.Start(ctx, "remove-instance")
+func (o *Orchestrator) RemoveSandbox(ctx context.Context, sandbox *store.Sandbox, removeType store.RemoveType) error {
+	_, childSpan := o.tracer.Start(ctx, "remove-sandbox")
 	defer childSpan.End()
 
 	// SandboxStore will remove the sandbox both from the store and from the orchestrator
@@ -21,7 +21,7 @@ func (o *Orchestrator) RemoveInstance(ctx context.Context, sandbox *instance.Ins
 }
 
 // removeSandbox should be called from places where you already marked the sandbox as being removed
-func (o *Orchestrator) removeSandbox(ctx context.Context, sandbox *instance.InstanceInfo, removeType instance.RemoveType) error {
+func (o *Orchestrator) removeSandbox(ctx context.Context, sandbox *store.Sandbox, removeType store.RemoveType) error {
 	node := o.GetNode(sandbox.ClusterID, sandbox.NodeID)
 	if node == nil {
 		zap.L().Error("failed to get node", logger.WithNodeID(sandbox.NodeID))
@@ -39,13 +39,13 @@ func (o *Orchestrator) removeSandbox(ctx context.Context, sandbox *instance.Inst
 	)
 
 	switch removeType {
-	case instance.RemoveTypePause:
+	case store.RemoveTypePause:
 		var err error
 		err = o.pauseSandbox(ctx, node, sandbox)
 		if err != nil {
 			return fmt.Errorf("failed to auto pause sandbox '%s': %w", sandbox.SandboxID, err)
 		}
-	case instance.RemoveTypeKill:
+	case store.RemoveTypeKill:
 		var err error
 		req := &orchestrator.SandboxDeleteRequest{SandboxId: sandbox.SandboxID}
 		client, ctx := node.GetClient(ctx)

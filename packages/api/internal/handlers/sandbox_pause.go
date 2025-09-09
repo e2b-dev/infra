@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -30,11 +30,11 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
 
-	sbx, err := a.orchestrator.GetSandbox(sandboxID, true)
+	sbx, err := a.orchestrator.GetSandbox(ctx, sandboxID, true)
 	if err != nil {
 		_, fErr := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamID})
 		if fErr == nil {
-			zap.L().Warn("Sandbox is already paused", logger.WithSandboxID(sandboxID))
+			zap.L().Warn("sandbox is already paused", logger.WithSandboxID(sandboxID))
 			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already paused", sandboxID))
 			return
 		}
@@ -58,23 +58,23 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		return
 	}
 
-	err = a.orchestrator.RemoveInstance(ctx, sbx, instance.RemoveTypePause)
+	err = a.orchestrator.RemoveSandbox(ctx, sbx, store.RemoveTypePause)
 	if err == nil {
 		c.Status(http.StatusNoContent)
 		return
 	}
 
-	if errors.Is(err, instance.ErrAlreadyBeingDeleted) {
+	if errors.Is(err, store.ErrAlreadyBeingDeleted) {
 		telemetry.ReportEvent(ctx, "sandbox is already being deleted", telemetry.WithSandboxID(sandboxID))
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already being deleted", sandboxID))
 
 		return
 	}
 
-	if errors.Is(err, instance.ErrAlreadyBeingPaused) {
+	if errors.Is(err, store.ErrAlreadyBeingPaused) {
 		telemetry.ReportEvent(ctx, "sandbox is already being paused", telemetry.WithSandboxID(sandboxID))
 
-		err = sbx.WaitForStop(ctx)
+		err = a.orchestrator.WaitForStop(ctx, sandboxID)
 		if err != nil {
 			telemetry.ReportError(ctx, "error when waiting for sandbox to pause", err)
 

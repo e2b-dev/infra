@@ -8,11 +8,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
@@ -76,18 +75,18 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	teamID := team.ID
 
 	telemetry.SetAttributes(ctx,
-		attribute.String("instance.id", sandboxID),
+		telemetry.WithSandboxID(sandboxID),
 		telemetry.WithTeamID(teamID.String()),
 	)
 
 	telemetry.ReportEvent(ctx, "killing sandbox")
 
-	sbx, err := a.orchestrator.GetSandbox(sandboxID, true)
+	sbx, err := a.orchestrator.GetSandbox(ctx, sandboxID, true)
 	if err == nil {
-		state := sbx.GetState()
+		state := sbx.State
 		// wait for the sandbox to pause before deleting it
-		if state == instance.StatePausing || state == instance.StatePaused {
-			err = sbx.WaitForStop(ctx)
+		if state == store.StatePausing || state == store.StatePaused {
+			err = a.orchestrator.WaitForStop(ctx, sandboxID)
 			if err != nil {
 				telemetry.ReportError(ctx, "error when waiting for sandbox to pause", err)
 				a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error deleting sandbox: %s", err))
@@ -105,7 +104,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		}
 
 		// remove running sandbox from the orchestrator
-		err := a.orchestrator.RemoveInstance(ctx, sbx, instance.RemoveTypeKill)
+		err := a.orchestrator.RemoveSandbox(ctx, sbx, store.RemoveTypeKill)
 		if err != nil {
 			telemetry.ReportError(ctx, "error deleting sandbox", err)
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error killing sandbox")

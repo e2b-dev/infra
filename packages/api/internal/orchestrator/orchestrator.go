@@ -15,13 +15,14 @@ import (
 	"go.uber.org/zap"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/evictor"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store/backend/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -36,7 +37,7 @@ var ErrNodeNotFound = errors.New("node not found")
 type Orchestrator struct {
 	httpClient              *http.Client
 	nomadClient             *nomadapi.Client
-	sandboxStore            *instance.MemoryStore
+	sandboxStore            *store.Store
 	nodes                   *smap.Map[*nodemanager.Node]
 	leastBusyAlgorithm      placement.Algorithm
 	bestOfKAlgorithm        *placement.BestOfK
@@ -123,21 +124,36 @@ func New(
 		createdCounter: createdCounter,
 	}
 
-	sandboxStore := instance.NewStore(
+	// For local development and testing, we skip the Nomad sync
+	// Local cluster is used for single-node setups instead
+	skipNomadSync := env.IsLocal()
+
+	// Hardcode to memory for now
+	storeBackend := memory.New()
+	memoryBackend := storeBackend
+
+	zap.L().Info("Using in-memory store for sandbox cache")
+
+	sandboxStore := store.New(
+		storeBackend,
 		o.removeSandbox,
-		[]instance.InsertCallback{
+		[]store.InsertCallback{
 			o.addToNode,
 		},
-		[]instance.InsertCallback{
+		[]store.InsertCallback{
 			o.observeTeamSandbox,
 			o.countersInsert,
 			o.analyticsInsert,
 		},
-		[]instance.RemoveCallback{
+		[]store.RemoveCallback{
 			o.countersRemove,
 			o.analyticsRemove,
 		},
 	)
+
+	// Check type
+	// Add conditional when we have more backends
+	go o.keepInSync(ctx, memoryBackend, skipNomadSync)
 
 	o.sandboxStore = sandboxStore
 
@@ -152,11 +168,6 @@ func New(
 	}
 
 	o.teamMetricsObserver = teamMetricsObserver
-
-	// For local development and testing, we skip the Nomad sync
-	// Local cluster is used for single-node setups instead
-	skipNomadSync := env.IsLocal()
-	go o.keepInSync(ctx, sandboxStore, skipNomadSync)
 
 	if err := o.setupMetrics(tel.MeterProvider); err != nil {
 		zap.L().Error("Failed to setup metrics", zap.Error(err))
@@ -183,22 +194,26 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 		case <-ticker.C:
 			connectedNodes := make([]map[string]interface{}, 0, o.nodes.Count())
 
+			sandboxCount := uint32(0)
 			for _, nodeItem := range o.nodes.Items() {
 				if nodeItem == nil {
 					connectedNodes = append(connectedNodes, map[string]interface{}{
 						"id": "nil",
 					})
 				} else {
+					nodeMetrics := nodeItem.Metrics()
 					connectedNodes = append(connectedNodes, map[string]interface{}{
 						"id":        nodeItem.ID,
 						"status":    nodeItem.Status(),
-						"sandboxes": nodeItem.Metrics().SandboxCount,
+						"sandboxes": nodeMetrics.SandboxCount,
 					})
+
+					sandboxCount += nodeMetrics.SandboxCount
 				}
 			}
 
 			zap.L().Info("API internal status",
-				zap.Int("sandboxes_count", o.sandboxStore.Len(nil)),
+				zap.Int("sandboxes_count", int(sandboxCount)),
 				zap.Int("nodes_count", o.nodes.Count()),
 				zap.Any("nodes", connectedNodes),
 			)

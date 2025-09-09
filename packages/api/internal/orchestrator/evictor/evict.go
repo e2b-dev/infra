@@ -6,15 +6,15 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type Evictor struct {
-	store *instance.MemoryStore
+	store *store.Store
 }
 
-func New(store *instance.MemoryStore) *Evictor {
+func New(store *store.Store) *Evictor {
 	return &Evictor{store: store}
 }
 
@@ -26,14 +26,14 @@ func (e *Evictor) Start(ctx context.Context) {
 		case <-time.After(50 * time.Millisecond):
 			// Get all items from the cache before iterating over them
 			// to avoid holding the lock while removing items from the cache.
-			items := e.store.ExpiredItems()
+			items := e.store.ExpiredItems(ctx)
 
 			for _, item := range items {
 				if item.IsExpired() {
 					go func() {
-						removeType := instance.RemoveTypeKill
+						removeType := store.RemoveTypeKill
 						if item.AutoPause {
-							removeType = instance.RemoveTypePause
+							removeType = store.RemoveTypePause
 						}
 
 						zap.L().Debug("Evicting sandbox", logger.WithSandboxID(item.SandboxID), zap.String("remove_type", string(removeType)))

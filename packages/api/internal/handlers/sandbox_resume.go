@@ -14,7 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -43,7 +43,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
-	timeout := instance.InstanceExpiration
+	timeout := store.SandboxExpiration
 	if body.Timeout != nil {
 		timeout = time.Duration(*body.Timeout) * time.Second
 
@@ -55,25 +55,25 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	}
 
 	sandboxID = utils.ShortID(sandboxID)
-	sbxCache, err := a.orchestrator.GetSandbox(sandboxID, true)
+	sbxCache, err := a.orchestrator.GetSandbox(ctx, sandboxID, true)
 	if err == nil {
-		state := sbxCache.GetState()
+		state := sbxCache.State
 		switch state {
-		case instance.StatePaused, instance.StatePausing:
-			err = sbxCache.WaitForStop(ctx)
+		case store.StatePaused, store.StatePausing:
+			err = a.orchestrator.WaitForStop(ctx, sandboxID)
 			if err != nil {
 				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when resuming sandbox")
 				return
 			}
-		case instance.StateKilling, instance.StateKilled:
+		case store.StateKilling, store.StateKilled:
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Sandbox %s is already killed", sandboxID))
 			return
-		case instance.StateRunning:
+		case store.StateRunning:
 			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox %s is already running", sandboxID))
 
 			zap.L().Debug("Sandbox is already running",
 				logger.WithSandboxID(sandboxID),
-				zap.Time("end_time", sbxCache.GetEndTime()),
+				zap.Time("end_time", sbxCache.EndTime),
 				zap.Time("start_time", sbxCache.StartTime),
 				zap.String("node_id", sbxCache.NodeID),
 			)

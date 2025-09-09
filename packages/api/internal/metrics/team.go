@@ -14,7 +14,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/exemplar"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -28,10 +28,10 @@ type TeamObserver struct {
 	teamSandboxRunning   metric.Int64ObservableGauge
 	teamSandboxesCreated metric.Int64Counter
 
-	cache *instance.MemoryStore
+	cache *store.Store
 }
 
-func NewTeamObserver(ctx context.Context, cache *instance.MemoryStore) (*TeamObserver, error) {
+func NewTeamObserver(ctx context.Context, cache *store.Store) (*TeamObserver, error) {
 	deltaTemporality := otlpmetricgrpc.WithTemporalitySelector(func(kind sdkmetric.InstrumentKind) metricdata.Temporality {
 		return metricdata.DeltaTemporality
 	})
@@ -75,11 +75,11 @@ func NewTeamObserver(ctx context.Context, cache *instance.MemoryStore) (*TeamObs
 	return observer, nil
 }
 
-func (so *TeamObserver) Start(cache *instance.MemoryStore) (err error) {
+func (so *TeamObserver) Start(cache *store.Store) (err error) {
 	// Register callbacks for team sandbox metrics
 	so.registration, err = so.meter.RegisterCallback(
 		func(ctx context.Context, obs metric.Observer) error {
-			sbxs := cache.Items(nil)
+			sbxs := cache.Items(ctx, nil)
 			sbxsPerTeam := make(map[string]int64)
 			for _, sbx := range sbxs {
 				teamID := sbx.TeamID.String()
