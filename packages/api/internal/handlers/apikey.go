@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -38,8 +41,14 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 
 	teamID := a.GetTeamInfo(c).Team.ID
 
-	err = a.db.Client.TeamAPIKey.UpdateOneID(apiKeyIDParsed).Where(teamapikey.TeamID(teamID)).SetName(body.Name).SetUpdatedAt(time.Now()).Exec(ctx)
-	if models.IsNotFound(err) {
+	now := time.Now()
+	_, err = a.sqlcDB.UpdateTeamApiKey(ctx, queries.UpdateTeamApiKeyParams{
+		Name:      body.Name,
+		UpdatedAt: &now,
+		ID:        apiKeyIDParsed,
+		TeamID:    teamID,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
 		c.String(http.StatusNotFound, "id not found")
 		return
 	} else if err != nil {

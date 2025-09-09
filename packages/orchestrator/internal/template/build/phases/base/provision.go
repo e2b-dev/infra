@@ -89,6 +89,8 @@ func (bb *BaseBuilder) provisionSandbox(
 			// the sandbox is then started with systemd and without kernel logs.
 			KernelLogs: true,
 
+			KvmClock: true,
+
 			// Show provision script logs to the user
 			Stdout: logsWriter,
 			Stderr: logsWriter,

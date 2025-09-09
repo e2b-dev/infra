@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // CreateSandbox creates sandboxes for new templates
@@ -25,6 +26,10 @@ type CreateSandbox struct {
 
 	rootfsCachePath string
 }
+
+const (
+	minEnvdVersionForKVMClock = "0.2.11" // Minimum version of envd that supports KVM clock
+)
 
 var _ SandboxCreator = (*CreateSandbox)(nil)
 
@@ -54,6 +59,11 @@ func (cs *CreateSandbox) Sandbox(
 
 	template := sbxtemplate.NewMaskTemplate(sourceTemplate, sbxtemplate.WithMemfile(memfile))
 
+	kvmClock, err := utils.IsGTEVersion(cs.config.Envd.Version, minEnvdVersionForKVMClock)
+	if err != nil {
+		return nil, fmt.Errorf("error comparing envd version: %w", err)
+	}
+
 	// In case of a new sandbox, base template ID is now used as the potentially exported template base ID.
 	sbx, err := sandbox.CreateSandbox(
 		ctx,
@@ -73,6 +83,7 @@ func (cs *CreateSandbox) Sandbox(
 			InitScriptPath:      constants.SystemdInitPath,
 			KernelLogs:          env.IsDevelopment(),
 			SystemdToKernelLogs: false,
+			KvmClock:            kvmClock,
 		},
 		nil,
 	)

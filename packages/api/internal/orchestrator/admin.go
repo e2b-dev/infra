@@ -38,7 +38,7 @@ func (o *Orchestrator) AdminNodes() []*api.Node {
 		}
 	}
 
-	for _, sbx := range o.instanceCache.Items() {
+	for _, sbx := range o.sandboxStore.Items(nil) {
 		n, ok := apiNodes[sbx.NodeID]
 		if !ok {
 			zap.L().Error("node for sandbox wasn't found", logger.WithNodeID(sbx.NodeID), logger.WithSandboxID(sbx.SandboxID))
@@ -83,7 +83,7 @@ func (o *Orchestrator) AdminNodeDetail(clusterID uuid.UUID, nodeIDOrNomadNodeSho
 		Metrics:         metrics,
 	}
 
-	for _, sbx := range o.instanceCache.Items() {
+	for _, sbx := range o.sandboxStore.Items(nil) {
 		if sbx.NodeID == n.ID && sbx.ClusterID == n.ClusterID {
 			var metadata *api.SandboxMetadata
 			if sbx.Metadata != nil {

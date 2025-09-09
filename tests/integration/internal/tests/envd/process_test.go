@@ -256,3 +256,14 @@ func TestWorkdirPermissionDenied(t *testing.T) {
 	err = utils.ExecCommandWithCwd(t, ctx, sbx, envdClient, &restrictedDir, "/bin/bash", "-c", "pwd")
 	require.Error(t, err, "Should fail when trying to use restricted directory as working directory")
 }
+
+func TestStdinCantRead(t *testing.T) {
+	client := setup.GetAPIClient()
+	sbx := utils.SetupSandboxWithCleanup(t, client, utils.WithTimeout(120))
+
+	envdClient := setup.GetEnvdClient(t, t.Context())
+
+	err := utils.ExecCommandAsRoot(t, t.Context(), sbx, envdClient, "/bin/bash", "-c", "read -p 'Enter your name: '")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exit code 1")
+}
