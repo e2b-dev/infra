@@ -65,6 +65,7 @@ func GetTeamInfo(c *gin.Context) (authcache.AuthTeamInfo, error) {
 func SafeGetTeamInfo(c *gin.Context) authcache.AuthTeamInfo {
 	return teamInfoHelper.safeGet(c)
 }
+
 func setUserID(c *gin.Context, userID uuid.UUID) {
 	userIDHelper.set(c, userID)
 }
