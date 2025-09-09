@@ -26,6 +26,6 @@ require (
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/zclconf/go-cty v1.14.1 // indirect
 	golang.org/x/mod v0.25.0 // indirect
-	golang.org/x/sync v0.15.0 // indirect
+	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
 )
