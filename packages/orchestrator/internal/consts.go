@@ -5,9 +5,9 @@ import (
 )
 
 const (
-	// Same range used by metadata services in Firecracker/EC2
-	// https://en.m.wikipedia.org/wiki/Link-local_address
-	defaultSandboxEventIP = "169.254.0.7"
+	// Private IP don't leave the sandbox through the network bridge, so we use a reserved IP address for it:
+	// See TEST-NET-3 on https://en.wikipedia.org/wiki/Reserved_IP_addresses
+	defaultSandboxEventIP = "203.0.113.0"
 	defaultEventProxyPort = "5010"
 )
 
