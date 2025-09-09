@@ -30,7 +30,7 @@ func AddEventsHostEntry(address string) error {
 	filteredLines = append(filteredLines, hostsEntry)
 
 	// Write back to file
-	f, err := os.OpenFile("/etc/hosts", os.O_WRONLY|os.O_TRUNC, 0644)
+	f, err := os.OpenFile("/etc/hosts", os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to open /etc/hosts: %w", err)
 	}
