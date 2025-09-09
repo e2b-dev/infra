@@ -216,7 +216,7 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 	if item == nil {
 		zap.L().Debug("Template build info not found in cache, fetching from DB", logger.WithBuildID(buildID.String()))
 
-		template, err := c.db.GetTemplateBuildWithTemplate(ctx, queries.GetTemplateBuildWithTemplateParams{
+		result, err := c.db.GetTemplateBuildWithTemplate(ctx, queries.GetTemplateBuildWithTemplateParams{
 			TemplateID: templateID,
 			BuildID:    buildID,
 		})
@@ -231,13 +231,13 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 		item = c.cache.Set(
 			buildID,
 			TemplateBuildInfo{
-				TeamID:      template.Env.TeamID,
-				TemplateID:  template.Env.ID,
-				BuildStatus: envbuild.Status(template.EnvBuild.Status),
-				Reason:      template.EnvBuild.Reason,
+				TeamID:      result.Env.TeamID,
+				TemplateID:  result.Env.ID,
+				BuildStatus: envbuild.Status(result.EnvBuild.Status),
+				Reason:      result.EnvBuild.Reason,
 
-				ClusterID: utils.WithClusterFallback(template.Env.ClusterID),
-				NodeID:    template.EnvBuild.ClusterNodeID,
+				ClusterID: utils.WithClusterFallback(result.Env.ClusterID),
+				NodeID:    result.EnvBuild.ClusterNodeID,
 			},
 			templateInfoExpiration,
 		)
