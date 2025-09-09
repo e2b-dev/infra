@@ -23,6 +23,7 @@ linters:
     - durationcheck
     - errname
     - errorlint
+    - exptostd
     - forcetypeassert
     - govet
     - staticcheck
