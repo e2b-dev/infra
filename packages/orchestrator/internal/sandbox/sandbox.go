@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal"
 	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
@@ -485,6 +486,7 @@ func ResumeSandbox(
 			LogsCollectorAddress: fmt.Sprintf("http://%s", logsCollectorIP),
 			TraceId:              traceID,
 			TeamId:               runtime.TeamID,
+			EventsAddress:        internal.GetSandboxEventIP(),
 		},
 		fcUffdPath,
 		snapfile,

@@ -14,7 +14,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci"
@@ -200,8 +199,6 @@ ExecStart=-/sbin/agetty --noissue --autologin root %I 115200,38400,9600 vt102
 `
 
 	hostname := "e2b.local"
-	eventProxyHostname := "events.e2b.dev"
-	eventIP := internal.GetSandboxEventIP()
 
 	hosts := fmt.Sprintf(`127.0.0.1	localhost
 ::1	localhost ip6-localhost ip6-loopback
@@ -210,8 +207,7 @@ ff00::	ip6-mcastprefix
 ff02::1	ip6-allnodes
 ff02::2	ip6-allrouters
 127.0.1.1	%s
-%s	%s
-`, hostname, eventIP, eventProxyHostname)
+`, hostname)
 
 	envdFileData, err := os.ReadFile(storage.HostEnvdPath)
 	if err != nil {
