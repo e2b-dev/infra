@@ -69,7 +69,7 @@ func dnsResolution(sandboxId string, logger *zap.Logger) (string, error) {
 			logger.Warn(fmt.Sprintf("received invalid answer type: %T", answer))
 			continue
 		}
-		node := answer.A.String()
+		node = answer.A.String()
 
 		// the sandbox was not found, we want to return this information to the user
 		if node == "127.0.0.1" {

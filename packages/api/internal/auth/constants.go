@@ -11,11 +11,6 @@ import (
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 )
 
-const (
-	teamContextKey   string = "team"
-	userIDContextKey string = "user_id"
-)
-
 var (
 	ErrNotFoundInContext = errors.New("not found in context")
 	ErrInvalidType       = errors.New("unexpected type")
@@ -32,7 +27,7 @@ func (g *ginContextValueHelper[T]) set(c *gin.Context, val T) {
 func (g *ginContextValueHelper[T]) get(c *gin.Context) (T, error) {
 	var t T
 
-	v := c.Value(teamContextKey)
+	v := c.Value(g.contextKey)
 	if v == nil {
 		return t, ErrNotFoundInContext
 	}
@@ -70,7 +65,6 @@ func GetTeamInfo(c *gin.Context) (authcache.AuthTeamInfo, error) {
 func SafeGetTeamInfo(c *gin.Context) authcache.AuthTeamInfo {
 	return teamInfoHelper.safeGet(c)
 }
-
 func setUserID(c *gin.Context, userID uuid.UUID) {
 	userIDHelper.set(c, userID)
 }

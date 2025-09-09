@@ -111,9 +111,9 @@ func (a *APIStore) GetTeamAndTier(
 	_, span := a.Tracer.Start(c.Request.Context(), "get-team-and-tier")
 	defer span.End()
 
-	if teamInfo, err := auth.GetTeamInfo(c); err != nil {
+	if teamInfo, err := auth.GetTeamInfo(c); err == nil {
 		return teamInfo.Team, teamInfo.Tier, nil
-	} else if _, err := auth.GetUserID(c); err != nil {
+	} else if _, err := auth.GetUserID(c); err == nil {
 		_, teams, err := a.GetUserAndTeams(c)
 		if err != nil {
 			return nil, nil, &api.APIError{
