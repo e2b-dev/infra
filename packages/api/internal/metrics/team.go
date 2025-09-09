@@ -28,10 +28,10 @@ type TeamObserver struct {
 	teamSandboxRunning   metric.Int64ObservableGauge
 	teamSandboxesCreated metric.Int64Counter
 
-	cache *store.MemoryStore
+	cache store.Store
 }
 
-func NewTeamObserver(ctx context.Context, cache *store.MemoryStore) (*TeamObserver, error) {
+func NewTeamObserver(ctx context.Context, cache store.Store) (*TeamObserver, error) {
 	deltaTemporality := otlpmetricgrpc.WithTemporalitySelector(func(kind sdkmetric.InstrumentKind) metricdata.Temporality {
 		return metricdata.DeltaTemporality
 	})
@@ -75,7 +75,7 @@ func NewTeamObserver(ctx context.Context, cache *store.MemoryStore) (*TeamObserv
 	return observer, nil
 }
 
-func (so *TeamObserver) Start(cache *store.MemoryStore) (err error) {
+func (so *TeamObserver) Start(cache store.Store) (err error) {
 	// Register callbacks for team sandbox metrics
 	so.registration, err = so.meter.RegisterCallback(
 		func(ctx context.Context, obs metric.Observer) error {

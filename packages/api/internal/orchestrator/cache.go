@@ -26,7 +26,7 @@ func (o *Orchestrator) GetSandbox(sandboxID string, includeEvicting bool) (*stor
 }
 
 // keepInSync the cache with the actual instances in Orchestrator to handle instances that died.
-func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *store.MemoryStore, skipSyncingWithNomad bool) {
+func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache store.Store, skipSyncingWithNomad bool) {
 	// Run the first sync immediately
 	zap.L().Info("Running the initial node sync")
 	o.syncNodes(ctx, instanceCache, skipSyncingWithNomad)
@@ -46,7 +46,7 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *store.Memo
 	}
 }
 
-func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *store.MemoryStore, skipSyncingWithNomad bool) {
+func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache store.Store, skipSyncingWithNomad bool) {
 	ctxTimeout, cancel := context.WithTimeout(ctx, cacheSyncTime)
 	defer cancel()
 
@@ -160,7 +160,7 @@ func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
 	}
 }
 
-func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.Node, instanceCache *store.MemoryStore) error {
+func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.Node, instanceCache store.Store) error {
 	ctx, childSpan := o.tracer.Start(ctx, "sync-cluster-node")
 	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.ID), telemetry.WithClusterID(node.ClusterID))
 	defer childSpan.End()
@@ -184,7 +184,7 @@ func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.No
 	return nil
 }
 
-func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, discovered []nodemanager.NomadServiceDiscovery, instanceCache *store.MemoryStore) error {
+func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, discovered []nodemanager.NomadServiceDiscovery, instanceCache store.Store) error {
 	ctx, childSpan := o.tracer.Start(ctx, "sync-node")
 	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.ID))
 	defer childSpan.End()

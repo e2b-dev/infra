@@ -14,7 +14,7 @@ import (
 
 const syncMaxRetries = 4
 
-func (n *Node) Sync(ctx context.Context, tracer trace.Tracer, instanceCache *store.MemoryStore) {
+func (n *Node) Sync(ctx context.Context, tracer trace.Tracer, instanceCache store.Store) {
 	syncRetrySuccess := false
 
 	for range syncMaxRetries {

@@ -15,4 +15,5 @@ type Store interface {
 	ExpiredItems() []*Sandbox
 	ItemsByState(teamID *uuid.UUID, states []State) map[State][]*Sandbox
 	Len(teamID *uuid.UUID) int
+	Sync(ctx context.Context, sandboxes []*Sandbox, nodeID string)
 }

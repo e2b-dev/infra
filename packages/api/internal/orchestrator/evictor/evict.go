@@ -11,10 +11,10 @@ import (
 )
 
 type Evictor struct {
-	store *store.MemoryStore
+	store store.Store
 }
 
-func New(store *store.MemoryStore) *Evictor {
+func New(store store.Store) *Evictor {
 	return &Evictor{store: store}
 }
 
