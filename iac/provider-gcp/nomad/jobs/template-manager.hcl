@@ -69,6 +69,9 @@ job "template-manager-system" {
         ALLOW_SANDBOX_INTERNET        = "${allow_sandbox_internet}"
         SHARED_CHUNK_CACHE_PATH       = "${shared_chunk_cache_path}"
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
+%{ if launch_darkly_api_key != "" }
+        LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
+%{ endif }
 %{ if !update_stanza }
         FORCE_STOP                    = "true"
 %{ endif }

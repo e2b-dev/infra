@@ -30,9 +30,11 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/providers"
 )
 
 const progressDelay = 5 * time.Second
@@ -50,6 +52,7 @@ type Builder struct {
 	sandboxes        *smap.Map[*sandbox.Sandbox]
 	templateCache    *sbxtemplate.Cache
 	metrics          *metrics.BuildMetrics
+	flags            *featureflags.Client
 }
 
 func NewBuilder(
@@ -64,6 +67,7 @@ func NewBuilder(
 	sandboxes *smap.Map[*sandbox.Sandbox],
 	templateCache *sbxtemplate.Cache,
 	buildMetrics *metrics.BuildMetrics,
+	flags *featureflags.Client,
 ) *Builder {
 	return &Builder{
 		logger:           logger,
@@ -77,6 +81,7 @@ func NewBuilder(
 		sandboxes:        sandboxes,
 		templateCache:    templateCache,
 		metrics:          buildMetrics,
+		flags:            flags,
 	}
 }
 
@@ -182,66 +187,84 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 		IsV1Build:      isV1Build,
 	}
 
-	return runBuild(ctx, buildContext, b)
+	return b.runBuild(ctx, buildContext)
 }
 
-func runBuild(
+func (b *Builder) useNFSCache(ctx context.Context) bool {
+	if !providers.IsCacheEnabled() {
+		// can't enable cache if we don't have a cache path
+		return false
+	}
+
+	flag, err := b.flags.BoolFlag(ctx, featureflags.BuildingFeatureFlagName)
+	if err != nil {
+		zap.L().Error("failed to get nfs cache feature flag", zap.Error(err))
+	}
+
+	return flag
+}
+
+func (b *Builder) runBuild(
 	ctx context.Context,
 	bc buildcontext.BuildContext,
-	builder *Builder,
 ) (*Result, error) {
-	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, builder.templateStorage)
+	templateStorage := b.templateStorage
+	if b.useNFSCache(ctx) {
+		templateStorage = providers.NewCachedProvider(templateStorage)
+	}
+
+	index := cache.NewHashIndex(bc.CacheScope, b.buildStorage, templateStorage)
 
 	layerExecutor := layer.NewLayerExecutor(bc,
-		builder.logger,
-		builder.tracer,
-		builder.networkPool,
-		builder.devicePool,
-		builder.templateCache,
-		builder.proxy,
-		builder.sandboxes,
-		builder.templateStorage,
-		builder.buildStorage,
+		b.logger,
+		b.tracer,
+		b.networkPool,
+		b.devicePool,
+		b.templateCache,
+		b.proxy,
+		b.sandboxes,
+		templateStorage,
+		b.buildStorage,
 		index,
 	)
 
 	baseBuilder := base.New(
 		bc,
-		builder.logger,
-		builder.tracer,
-		builder.proxy,
-		builder.templateStorage,
-		builder.devicePool,
-		builder.networkPool,
-		builder.artifactRegistry,
+		b.logger,
+		b.tracer,
+		b.proxy,
+		templateStorage,
+		b.devicePool,
+		b.networkPool,
+		b.artifactRegistry,
 		layerExecutor,
 		index,
-		builder.metrics,
+		b.metrics,
 	)
 
 	commandExecutor := commands.NewCommandExecutor(
 		bc,
-		builder.tracer,
-		builder.buildStorage,
-		builder.proxy,
+		b.tracer,
+		b.buildStorage,
+		b.proxy,
 	)
 
 	stepBuilders := steps.CreateStepPhases(
 		bc,
-		builder.logger,
-		builder.tracer,
-		builder.proxy,
+		b.logger,
+		b.tracer,
+		b.proxy,
 		layerExecutor,
 		commandExecutor,
 		index,
-		builder.metrics,
+		b.metrics,
 	)
 
 	postProcessingBuilder := finalize.New(
 		bc,
-		builder.tracer,
-		builder.templateStorage,
-		builder.proxy,
+		b.tracer,
+		templateStorage,
+		b.proxy,
 		layerExecutor,
 	)
 
@@ -252,7 +275,7 @@ func runBuild(
 	builders = append(builders, stepBuilders...)
 	builders = append(builders, postProcessingBuilder)
 
-	lastLayerResult, err := phases.Run(ctx, bc, builder.metrics, builders)
+	lastLayerResult, err := phases.Run(ctx, bc, b.metrics, builders)
 	if err != nil {
 		return nil, err
 	}
@@ -266,7 +289,7 @@ func runBuild(
 	// Get the base rootfs size from the template files
 	// This is the size of the rootfs after provisioning and before building the layers
 	// (as they don't change the rootfs size)
-	rootfsSize, err := getRootfsSize(ctx, builder.templateStorage, lastLayerResult.Metadata.Template)
+	rootfsSize, err := getRootfsSize(ctx, templateStorage, lastLayerResult.Metadata.Template)
 	if err != nil {
 		return nil, fmt.Errorf("error getting rootfs size: %w", err)
 	}
