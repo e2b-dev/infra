@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -16,4 +17,6 @@ type Store interface {
 	ItemsByState(teamID *uuid.UUID, states []State) map[State][]*Sandbox
 	Len(teamID *uuid.UUID) int
 	Sync(ctx context.Context, sandboxes []*Sandbox, nodeID string)
+	KeepAliveFor(sandboxID string, duration time.Duration, allowShorter bool) (*Sandbox, error)
+	Reserve(sandboxID string, team uuid.UUID, limit int64) (release func(), err error)
 }

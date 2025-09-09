@@ -2,14 +2,9 @@ package store
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"net/http"
 	"time"
 
 	"go.uber.org/zap"
-
-	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
 
 // TODO: this should be removed once we have a better way to handle node sync
@@ -27,10 +22,10 @@ func getMaxAllowedTTL(now time.Time, startTime time.Time, duration, maxInstanceL
 }
 
 // KeepAliveFor the sandbox's expiration timer.
-func (c *MemoryStore) KeepAliveFor(sandboxID string, duration time.Duration, allowShorter bool) (*Sandbox, *api.APIError) {
+func (c *MemoryStore) KeepAliveFor(sandboxID string, duration time.Duration, allowShorter bool) (*Sandbox, error) {
 	sandbox, err := c.Get(sandboxID, false)
 	if err != nil {
-		return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("Sandbox '%s' is not running anymore", sandboxID), Err: err}
+		return nil, ErrSandboxNotFound
 	}
 
 	now := time.Now()
@@ -42,9 +37,7 @@ func (c *MemoryStore) KeepAliveFor(sandboxID string, duration time.Duration, all
 
 	if (time.Since(sandbox.StartTime)) > sandbox.MaxInstanceLength {
 		sandbox.SetExpired()
-
-		msg := fmt.Sprintf("Sandbox '%s' reached maximal allowed uptime", sandboxID)
-		return nil, &api.APIError{Code: http.StatusForbidden, ClientMsg: msg, Err: errors.New(msg)}
+		return nil, ErrMaxSandboxUptimeReached
 	} else {
 		maxAllowedTTL := getMaxAllowedTTL(now, sandbox.StartTime, duration, sandbox.MaxInstanceLength)
 
