@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 	"sync/atomic"
 
-	"github.com/containernetworking/plugins/pkg/ns"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	netutils "k8s.io/utils/net"
 
+	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
