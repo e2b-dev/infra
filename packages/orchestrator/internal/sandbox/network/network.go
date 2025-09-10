@@ -257,6 +257,16 @@ func (s *Slot) RemoveNetwork() error {
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error deleting host postrouting rule: %w", err))
 		}
+
+		// Delete event proxy redirect rule
+		err = tables.Delete(
+			"nat", "PREROUTING", "-i", s.VethName(),
+			"-p", "tcp", "-d", consts.GetSandboxEventIP(), "--dport", "80",
+			"-j", "REDIRECT", "--to-port", consts.GetEventProxyPort(),
+		)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("error deleting sandbox event proxy redirect rule: %w", err))
+		}
 	}
 
 	// Delete routing from host to FC namespace
