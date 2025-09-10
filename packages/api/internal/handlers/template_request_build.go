@@ -88,7 +88,7 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, templateID api.Templa
 }
 
 func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) (*TemplateBuildResponse, *api.APIError) {
-	ctx, span := a.Tracer.Start(ctx, "build-template-request")
+	ctx, span := tracer.Start(ctx, "build-template-request")
 	defer span.End()
 
 	// Limit concurrent template builds

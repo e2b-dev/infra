@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
@@ -15,6 +16,8 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/handlers")
 
 func (a *APIStore) startSandbox(
 	ctx context.Context,
@@ -64,7 +67,7 @@ func (a *APIStore) startSandbox(
 
 	telemetry.ReportEvent(ctx, "Created sandbox")
 
-	_, analyticsSpan := a.Tracer.Start(ctx, "analytics")
+	_, analyticsSpan := tracer.Start(ctx, "analytics")
 	a.posthog.IdentifyAnalyticsTeam(team.Team.ID.String(), team.Team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(requestHeader)
 	a.posthog.CreateAnalyticsTeamEvent(team.Team.ID.String(), "created_instance",

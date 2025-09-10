@@ -142,7 +142,6 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	forceRebuild := true
 	fromImage := ""
 	buildErr := a.templateManager.CreateTemplate(
-		a.Tracer,
 		ctx,
 		team.ID,
 		templateID,
