@@ -1,6 +1,7 @@
 package host
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"sync"
@@ -30,7 +31,9 @@ func TestMonitorProcesses(t *testing.T) {
 	// Start monitoring with a short interval
 	interval := 100 * time.Millisecond
 	logger := zerolog.New(os.Stdout).Level(zerolog.InfoLevel).With().Timestamp().Logger()
-	go MonitorProcesses(&logger, interval, handler)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go MonitorProcesses(ctx, &logger, interval, handler)
 
 	// Run a short-lived process: sleep 1
 	cmdName := "sleep"
@@ -73,6 +76,7 @@ func TestMonitorProcesses(t *testing.T) {
 	select {
 	case <-done:
 		// Test completed successfully
+		return
 	case <-time.After(5 * time.Second):
 		t.Fatal("Test took longer than 5 seconds to complete")
 	}

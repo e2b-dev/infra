@@ -1,6 +1,7 @@
 package host
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -54,7 +55,7 @@ func getProcessInfo(pid int32) (*ProcessInfo, error) {
 	}, nil
 }
 
-func MonitorProcesses(logger *zerolog.Logger, interval time.Duration, processEventHandlers ...ProcessEventHandler) {
+func MonitorProcesses(ctx context.Context, logger *zerolog.Logger, interval time.Duration, processEventHandlers ...ProcessEventHandler) {
 	knownProcesses := make(map[string]*ProcessInfo)
 
 	// Get initial process list
@@ -75,47 +76,52 @@ func MonitorProcesses(logger *zerolog.Logger, interval time.Duration, processEve
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		currentPids, err := process.Pids()
-		if err != nil {
-			logger.Error().Err(err).Msg("Error getting current processes")
-			continue
-		}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			currentPids, err := process.Pids()
+			if err != nil {
+				logger.Error().Err(err).Msg("Error getting current processes")
+				continue
+			}
 
-		currentProcesses := make(map[string]*ProcessInfo)
+			currentProcesses := make(map[string]*ProcessInfo)
 
-		for _, pid := range currentPids {
-			if info, err := getProcessInfo(pid); err == nil {
-				key := deriveKey(pid, info.CreateTime)
-				currentProcesses[key] = info
+			for _, pid := range currentPids {
+				if info, err := getProcessInfo(pid); err == nil {
+					key := deriveKey(pid, info.CreateTime)
+					currentProcesses[key] = info
 
-				// Check if this is a new process
-				if _, exists := knownProcesses[key]; !exists {
-					info.State = ProcessStateRunning
-					for _, handler := range processEventHandlers {
-						err := handler(info)
-						if err != nil {
-							logger.Error().Err(err).Msg("Error handling process start event")
+					// Check if this is a new process
+					if _, exists := knownProcesses[key]; !exists {
+						info.State = ProcessStateRunning
+						for _, handler := range processEventHandlers {
+							err := handler(info)
+							if err != nil {
+								logger.Error().Err(err).Msg("Error handling process start event")
+							}
 						}
 					}
 				}
 			}
-		}
 
-		// Check for exited processes
-		for key, info := range knownProcesses {
-			if _, exists := currentProcesses[key]; !exists {
-				info.State = ProcessStateExited
-				for _, handler := range processEventHandlers {
-					err := handler(info)
-					if err != nil {
-						logger.Error().Err(err).Msg("Error handling process exit event")
+			// Check for exited processes
+			for key, info := range knownProcesses {
+				if _, exists := currentProcesses[key]; !exists {
+					info.State = ProcessStateExited
+					for _, handler := range processEventHandlers {
+						err := handler(info)
+						if err != nil {
+							logger.Error().Err(err).Msg("Error handling process exit event")
+						}
 					}
 				}
 			}
-		}
 
-		knownProcesses = currentProcesses
+			knownProcesses = currentProcesses
+		}
 	}
 }
 
