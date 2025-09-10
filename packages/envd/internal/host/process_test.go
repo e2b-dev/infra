@@ -24,7 +24,7 @@ func TestGetProcessInfo(t *testing.T) {
 	assert.NotNil(t, info)
 	assert.Equal(t, pid, info.PID)
 	assert.NotEmpty(t, info.Name)
-	assert.Greater(t, int64(0), info.CreateTime)
+	assert.Negative(t, info.CreateTime)
 }
 
 func TestGetProcessInfoInvalidPID(t *testing.T) {
@@ -75,7 +75,7 @@ func TestMonitorProcesses(t *testing.T) {
 	mu.Unlock()
 
 	// We should have detected some processes as running initially
-	assert.Greater(t, 0, initialCount, "Should have detected some initial processes")
+	assert.Negative(t, initialCount, "Should have detected some initial processes")
 
 	// Verify that events have the correct structure
 	for i := 0; i < 2; i++ {
