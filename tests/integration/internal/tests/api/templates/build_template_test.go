@@ -807,3 +807,61 @@ func TestTemplateBuildStartReadyCommandExecution(t *testing.T) {
 		})
 	}
 }
+
+func TestTemplateBuildWithDifferentSourceImages(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name         string
+		templateName string
+		buildConfig  api.TemplateBuildStartV2
+		expectedLogs []string
+	}{
+		{
+			name:         "Test with Ubuntu 24.04 base image",
+			templateName: "test-ubuntu-24-04-source",
+			buildConfig: api.TemplateBuildStartV2{
+				Force:     utils.ToPtr(ForceBaseBuild),
+				FromImage: utils.ToPtr("ubuntu:24.04"),
+				Steps:     utils.ToPtr([]api.TemplateStep{}),
+				StartCmd:  utils.ToPtr("echo 'Initialization complete'"),
+				ReadyCmd:  utils.ToPtr("echo 'Checking readiness...'; sleep 1; echo 'Ready check complete'"),
+			},
+			expectedLogs: []string{
+				"Running start command",
+				"[start] [stdout]: Initialization complete",
+				"Waiting for template to be ready",
+				"[ready cmd]: sleep 2",
+				"Template is ready",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Collect all log messages
+			var logMessages []string
+			logHandler := func(alias string, entry api.BuildLogEntry) {
+				logMessages = append(logMessages, entry.Message)
+				defaultBuildLogHandler(t)(alias, entry)
+			}
+
+			// Build the template
+			assert.True(t, buildTemplate(t, tc.templateName, tc.buildConfig, logHandler))
+
+			// Verify expected log messages appear
+			for _, expectedLog := range tc.expectedLogs {
+				found := false
+				for _, msg := range logMessages {
+					if strings.Contains(msg, expectedLog) {
+						found = true
+						break
+					}
+				}
+				assert.True(t, found, "Expected log message not found: %s", expectedLog)
+			}
+		})
+	}
+}
