@@ -13,7 +13,7 @@ import (
 )
 
 type AccessToken struct {
-	AccessToken string
+	AccessToken *string
 	UserID      uuid.UUID
 	CreatedAt   time.Time
 	ID          *uuid.UUID
@@ -108,7 +108,7 @@ type Team struct {
 }
 
 type TeamApiKey struct {
-	ApiKey    string
+	ApiKey    *string
 	CreatedAt time.Time
 	TeamID    uuid.UUID
 	UpdatedAt *time.Time
