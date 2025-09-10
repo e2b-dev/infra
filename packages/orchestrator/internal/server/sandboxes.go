@@ -371,7 +371,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		// sbx.Stop sometimes blocks for several seconds,
 		// so we don't want to block the request and do the cleanup in a goroutine after we already removed sandbox from cache and proxy.
 		go func() {
-			ctx, childSpan := tracer.Start(ctx, "sandbox-pause-stop")
+			ctx, childSpan := tracer.Start(ctx, "sandbox-pause-stop", trace.WithNewRoot())
 			defer childSpan.End()
 
 			err := sbx.Stop(ctx)

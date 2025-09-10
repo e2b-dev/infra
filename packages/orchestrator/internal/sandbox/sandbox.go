@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
@@ -288,9 +289,12 @@ func CreateSandbox(
 	})
 
 	go func() {
+		ctx, span := tracer.Start(context.WithoutCancel(ctx), "sandbox-exit-wait", trace.WithNewRoot())
+		defer span.End()
+
 		// If the process exists, stop the sandbox properly
 		fcErr := fcHandle.Exit.Wait()
-		err := sbx.Stop(context.WithoutCancel(ctx))
+		err := sbx.Stop(ctx)
 
 		exit.SetError(errors.Join(err, fcErr))
 	}()
@@ -511,13 +515,16 @@ func ResumeSandbox(
 	go sbx.Checks.Start()
 
 	go func() {
+		ctx, span := tracer.Start(context.WithoutCancel(ctx), "sandbox-exit-wait", trace.WithNewRoot())
+		defer span.End()
+
 		// Wait for either uffd or fc process to exit
 		select {
 		case <-fcUffd.Exit().Done():
 		case <-fcHandle.Exit.Done():
 		}
 
-		err := sbx.Stop(context.WithoutCancel(ctx))
+		err := sbx.Stop(ctx)
 
 		uffdWaitErr := fcUffd.Exit().Wait()
 		fcErr := fcHandle.Exit.Wait()
