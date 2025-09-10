@@ -64,6 +64,17 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		return
 	}
 
+	if errors.Is(err, instance.ErrNotFound) {
+		state := sbx.GetState()
+		if state == instance.StatePaused || state == instance.StatePausing {
+			c.Status(http.StatusNoContent)
+
+			return
+		}
+
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error pausing sandbox - sandbox '%s' not found", sandboxID))
+	}
+
 	if errors.Is(err, instance.ErrAlreadyBeingDeleted) {
 		telemetry.ReportEvent(ctx, "sandbox is already being deleted", telemetry.WithSandboxID(sandboxID))
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already being deleted", sandboxID))

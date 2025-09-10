@@ -136,6 +136,10 @@ func (a *APIStore) removeRunningSandbox(
 	// remove running sandbox from the orchestrator
 	err := a.orchestrator.RemoveInstance(ctx, sbx, instance.RemoveTypeKill)
 	if err != nil {
+		if errors.Is(err, instance.ErrNotFound) {
+			return nil
+		}
+
 		return fmt.Errorf("error deleting sandbox: %w", err)
 	}
 

@@ -87,11 +87,13 @@ func (c *MemoryStore) Get(instanceID string, includeEvicting bool) (*InstanceInf
 	return item, nil
 }
 
+var ErrNotFound = errors.New("not found")
+
 // Remove the instance from the cache (no eviction callback).
 func (c *MemoryStore) Remove(ctx context.Context, instanceID string, removeType RemoveType) (err error) {
 	sbx, ok := c.items.Get(instanceID)
 	if !ok {
-		return fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
+		return ErrNotFound
 	}
 
 	// Makes sure there's only one removal
