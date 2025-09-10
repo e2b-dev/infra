@@ -11,10 +11,10 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
-	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -33,11 +33,6 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	if err != nil {
 		if errors.Is(err, db.TemplateBuildNotFoundError{}) {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Build '%s' not found", buildUUID))
-			return
-		}
-
-		if errors.Is(err, db.TemplateNotFoundError{}) {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Template '%s' not found", templateID))
 			return
 		}
 
@@ -126,8 +121,8 @@ func getCorrespondingTemplateBuildStatus(s envbuild.Status) api.TemplateBuildSta
 	}
 }
 
-func getAPIReason(reason *schema.BuildReason) *api.BuildStatusReason {
-	if reason == nil {
+func getAPIReason(reason types.BuildReason) *api.BuildStatusReason {
+	if reason.Message == "" {
 		return nil
 	}
 

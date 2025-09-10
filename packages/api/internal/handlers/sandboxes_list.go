@@ -180,6 +180,9 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		}
 
 		pausingSandboxList := instanceInfoToPaginatedSandboxes(sandboxesInCache[instance.StatePausing])
+		pausingSandboxList = utils.FilterSandboxesOnMetadata(pausingSandboxList, metadataFilter)
+		pausingSandboxList = utils.FilterBasedOnCursor(pausingSandboxList, cursorTime, cursorID, limit)
+
 		sandboxes = append(sandboxes, pausedSandboxList...)
 		sandboxes = append(sandboxes, pausingSandboxList...)
 	}

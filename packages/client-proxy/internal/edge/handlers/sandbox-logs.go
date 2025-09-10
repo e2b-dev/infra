@@ -19,7 +19,7 @@ const (
 func (a *APIStore) V1SandboxLogs(c *gin.Context, sandboxID string, params api.V1SandboxLogsParams) {
 	ctx := c.Request.Context()
 
-	_, templateSpan := a.tracer.Start(c, "sandbox-logs-handler")
+	_, templateSpan := tracer.Start(c, "sandbox-logs-handler")
 	defer templateSpan.End()
 
 	end := time.Now()

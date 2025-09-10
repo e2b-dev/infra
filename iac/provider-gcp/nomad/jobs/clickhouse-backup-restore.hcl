@@ -37,7 +37,7 @@ job "clickhouse-backup-restore" {
 
         entrypoint = ["/bin/sh", "-c"]
         args = [
-          "clickhouse-backup restore_remote --tables='default.metrics_*' $NOMAD_META_backup_name"
+          "clickhouse-backup restore_remote --tables='default.*' $NOMAD_META_backup_name"
         ]
       }
 

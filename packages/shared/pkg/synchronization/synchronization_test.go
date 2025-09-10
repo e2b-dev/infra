@@ -5,7 +5,6 @@ import (
 	"sync"
 	"testing"
 
-	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
 )
 
@@ -88,7 +87,6 @@ func newSynchronizer(store Store[string, string]) *Synchronize[string, string] {
 	zap.ReplaceGlobals(zap.NewNop())
 	return &Synchronize[string, string]{
 		store:            store,
-		tracer:           noop.NewTracerProvider().Tracer("test"),
 		tracerSpanPrefix: "test synchronization",
 		logsPrefix:       "test synchronization",
 	}

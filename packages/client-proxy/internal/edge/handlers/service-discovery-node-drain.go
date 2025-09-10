@@ -25,7 +25,7 @@ var ApiNodeToOrchestratorStateMapper = map[api.ClusterNodeStatus]orchestratorinf
 func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	spanCtx, templateSpan := a.tracer.Start(ctx, "service-discovery-node-drain-handler")
+	spanCtx, templateSpan := tracer.Start(ctx, "service-discovery-node-drain-handler")
 	defer templateSpan.End()
 
 	body, err := parseBody[api.V1ServiceDiscoveryNodeDrainJSONRequestBody](ctx, c)

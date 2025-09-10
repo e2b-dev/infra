@@ -21,7 +21,7 @@ import (
 
 func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string, params api.GetSandboxesSandboxIDMetricsParams) {
 	ctx := c.Request.Context()
-	ctx, span := a.Tracer.Start(ctx, "sandbox-metrics")
+	ctx, span := tracer.Start(ctx, "sandbox-metrics")
 	defer span.End()
 	sandboxID = utils.ShortID(sandboxID)
 

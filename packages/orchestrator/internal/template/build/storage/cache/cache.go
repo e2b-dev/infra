@@ -18,7 +18,7 @@ const hashingVersion = "v1"
 
 const minimalCachedTemplateVersion = 2
 
-var tracer = otel.Tracer("orchestrator.template.build.storage.cache")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache")
 
 type Template struct {
 	BuildID string `json:"build_id"`

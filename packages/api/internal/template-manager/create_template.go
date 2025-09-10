@@ -21,7 +21,6 @@ import (
 )
 
 func (tm *TemplateManager) CreateTemplate(
-	t trace.Tracer,
 	ctx context.Context,
 	teamID uuid.UUID,
 	templateID string,
@@ -41,7 +40,7 @@ func (tm *TemplateManager) CreateTemplate(
 	clusterID uuid.UUID,
 	nodeID string,
 ) (e error) {
-	ctx, span := t.Start(ctx, "create-template",
+	ctx, span := tracer.Start(ctx, "create-template",
 		trace.WithAttributes(
 			telemetry.WithTemplateID(templateID),
 		),
@@ -144,7 +143,7 @@ func (tm *TemplateManager) CreateTemplate(
 
 	// Do not wait for global build sync trigger it immediately
 	go func(ctx context.Context) {
-		buildContext, buildSpan := t.Start(ctx, "template-background-build-env")
+		buildContext, buildSpan := tracer.Start(ctx, "template-background-build-env")
 		defer buildSpan.End()
 
 		err := tm.BuildStatusSync(buildContext, buildID, templateID, clusterID, nodeID)

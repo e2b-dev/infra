@@ -11,7 +11,7 @@ import (
 )
 
 func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_manager.TemplateStatusRequest) (*template_manager.TemplateBuildStatusResponse, error) {
-	_, ctxSpan := s.tracer.Start(ctx, "template-build-status-request")
+	_, ctxSpan := tracer.Start(ctx, "template-build-status-request")
 	defer ctxSpan.End()
 
 	buildInfo, err := s.buildCache.Get(in.BuildID)

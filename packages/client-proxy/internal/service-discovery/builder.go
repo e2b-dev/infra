@@ -12,12 +12,12 @@ import (
 )
 
 const (
-	orchestratorConfigPrefix = "SERVICE_DISCOVERY_ORCHESTRATOR"
-	edgeConfigPrefix         = "SERVICE_DISCOVERY_EDGE"
+	orchestratorConfigPrefix = "SD_ORCHESTRATOR"
+	edgeConfigPrefix         = "SD_EDGE"
 
 	DnsProviderKey    = "DNS"
 	StaticProviderKey = "STATIC"
-	Ec2ProviderKey    = "EC2-INSTANCES"
+	NomadProvider     = "NOMAD"
 	K8sPodsProvider   = "K8S-PODS"
 )
 
@@ -45,10 +45,10 @@ func resolveServiceDiscoveryConfig(ctx context.Context, prefix string, port int,
 	switch provider {
 	case DnsProviderKey:
 		return createDnsProvider(ctx, prefix, port, logger)
-	case Ec2ProviderKey:
-		return createEc2Provider(ctx, prefix, port, logger)
 	case K8sPodsProvider:
 		return createK8sProvider(ctx, prefix, port, logger)
+	case NomadProvider:
+		return createNomadProvider(ctx, prefix, port, logger)
 	case StaticProviderKey:
 		return createStaticProvider(prefix, port)
 	}
@@ -73,23 +73,6 @@ func createDnsProvider(ctx context.Context, prefix string, port int, logger *zap
 	dnsResolverAddress = dnsResolverRaw
 	dnsHosts := strings.Split(dnsHostsRaw, ",")
 	return NewDnsServiceDiscovery(ctx, logger, dnsHosts, dnsResolverAddress, port), nil
-}
-
-func createEc2Provider(ctx context.Context, prefix string, port int, logger *zap.Logger) (ServiceDiscoveryAdapter, error) {
-	regionEnv := fmt.Sprintf("%s_EC2_REGION", prefix)
-	region := os.Getenv(regionEnv)
-	if region == "" {
-		return nil, fmt.Errorf("missing %s environment variable", regionEnv)
-	}
-
-	tagsEnv := fmt.Sprintf("%s_EC2_TAGS", prefix)
-	tagsRaw := os.Getenv(tagsEnv)
-	if tagsRaw == "" {
-		return nil, fmt.Errorf("missing %s environment variable", tagsEnv)
-	}
-
-	tags := strings.Split(tagsRaw, ",")
-	return NewAwsEc2ServiceDiscovery(ctx, region, tags, port, logger)
 }
 
 func createK8sProvider(ctx context.Context, prefix string, port int, logger *zap.Logger) (ServiceDiscoveryAdapter, error) {
@@ -123,6 +106,28 @@ func createK8sProvider(ctx context.Context, prefix string, port int, logger *zap
 	}
 
 	return NewK8sServiceDiscovery(ctx, logger, client, port, podLabels, podNamespace, hostIP), nil
+}
+
+func createNomadProvider(ctx context.Context, prefix string, port int, logger *zap.Logger) (ServiceDiscoveryAdapter, error) {
+	nomadEndpointEnv := fmt.Sprintf("%s_NOMAD_ENDPOINT", prefix)
+	nomadEndpoint := os.Getenv(nomadEndpointEnv)
+	if nomadEndpoint == "" {
+		return nil, fmt.Errorf("missing %s environment variable", nomadEndpointEnv)
+	}
+
+	nomadTokenEnv := fmt.Sprintf("%s_NOMAD_TOKEN", prefix)
+	nomadToken := os.Getenv(nomadTokenEnv)
+	if nomadToken == "" {
+		return nil, fmt.Errorf("missing %s environment variable", nomadTokenEnv)
+	}
+
+	jobPrefixEnv := fmt.Sprintf("%s_JOB_PREFIX", prefix)
+	jobPrefix := os.Getenv(jobPrefixEnv)
+	if jobPrefix == "" {
+		return nil, fmt.Errorf("missing %s environment variable", jobPrefixEnv)
+	}
+
+	return NewNomadServiceDiscovery(ctx, logger, port, nomadEndpoint, nomadToken, jobPrefix)
 }
 
 func createStaticProvider(prefix string, port int) (ServiceDiscoveryAdapter, error) {

@@ -67,7 +67,6 @@ func (cs *CreateSandbox) Sandbox(
 	// In case of a new sandbox, base template ID is now used as the potentially exported template base ID.
 	sbx, err := sandbox.CreateSandbox(
 		ctx,
-		layerExecutor.tracer,
 		layerExecutor.networkPool,
 		layerExecutor.devicePool,
 		cs.config,
@@ -94,7 +93,6 @@ func (cs *CreateSandbox) Sandbox(
 
 	err = sbx.WaitForEnvd(
 		ctx,
-		layerExecutor.tracer,
 		waitEnvdTimeout,
 	)
 	if err != nil {

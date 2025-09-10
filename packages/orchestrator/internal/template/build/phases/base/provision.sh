@@ -63,6 +63,11 @@ systemctl mask serial-getty@ttyS0.service
 echo "Disable network online wait"
 systemctl mask systemd-networkd-wait-online.service
 
+echo "Disable system first boot wizard"
+# This was problem with Ubuntu 24.04, that differently calculate wizard should be called
+# and Linux boot was stuck in wizard until envd wait timeout
+systemctl mask systemd-firstboot.service
+
 # Clean machine-id from Docker
 rm -rf /etc/machine-id
 

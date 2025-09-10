@@ -21,7 +21,7 @@ import (
 )
 
 func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templatemanager.TemplateCreateRequest) (*emptypb.Empty, error) {
-	_, childSpan := s.tracer.Start(ctx, "template-create")
+	_, childSpan := tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
 	cfg := templateRequest.Template
@@ -101,7 +101,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 			}
 		}()
 
-		ctx, buildSpan := s.tracer.Start(ctx, "template-background-build")
+		ctx, buildSpan := tracer.Start(ctx, "template-background-build")
 		defer buildSpan.End()
 
 		// Watch for build cancellation requests

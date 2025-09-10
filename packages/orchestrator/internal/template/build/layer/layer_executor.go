@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -21,10 +21,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer")
+
 type LayerExecutor struct {
 	buildcontext.BuildContext
 
-	tracer trace.Tracer
 	logger *zap.Logger
 
 	networkPool     *network.Pool
@@ -40,7 +41,6 @@ type LayerExecutor struct {
 func NewLayerExecutor(
 	buildContext buildcontext.BuildContext,
 	logger *zap.Logger,
-	tracer trace.Tracer,
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
 	templateCache *sbxtemplate.Cache,
@@ -54,7 +54,6 @@ func NewLayerExecutor(
 		BuildContext: buildContext,
 
 		logger: logger,
-		tracer: tracer,
 
 		networkPool:     networkPool,
 		devicePool:      devicePool,
@@ -72,7 +71,7 @@ func (lb *LayerExecutor) BuildLayer(
 	ctx context.Context,
 	cmd LayerBuildCommand,
 ) (metadata.Template, error) {
-	ctx, childSpan := lb.tracer.Start(ctx, "run-in-sandbox")
+	ctx, childSpan := tracer.Start(ctx, "run-in-sandbox")
 	defer childSpan.End()
 
 	localTemplate, err := cmd.SourceTemplate.Get(ctx, lb.templateCache)
@@ -133,7 +132,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	ctx context.Context,
 	sbx *sandbox.Sandbox,
 ) error {
-	ctx, childSpan := lb.tracer.Start(ctx, "update-envd")
+	ctx, childSpan := tracer.Start(ctx, "update-envd")
 	defer childSpan.End()
 
 	envdVersion, err := envd.GetEnvdVersion(ctx)
@@ -146,7 +145,6 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	tmpEnvdPath := "/tmp/envd_updated"
 	err = sandboxtools.CopyFile(
 		ctx,
-		lb.tracer,
 		lb.proxy,
 		sbx.Runtime.SandboxID,
 		"root",
@@ -166,7 +164,6 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 
 	err = sandboxtools.RunCommandWithLogger(
 		ctx,
-		lb.tracer,
 		lb.proxy,
 		lb.UserLogger,
 		zap.DebugLevel,
@@ -183,7 +180,6 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	// Error is ignored because it's expected the envd connection will be lost
 	_ = sandboxtools.RunCommand(
 		ctx,
-		lb.tracer,
 		lb.proxy,
 		sbx.Runtime.SandboxID,
 		"systemctl restart envd",
@@ -193,7 +189,6 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	// Step 4: Wait for envd to initialize
 	err = sbx.WaitForEnvd(
 		ctx,
-		lb.tracer,
 		waitEnvdTimeout,
 	)
 	if err != nil {
@@ -209,7 +204,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 	hash string,
 	meta metadata.Template,
 ) error {
-	ctx, childSpan := lb.tracer.Start(ctx, "pause-and-upload")
+	ctx, childSpan := tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
 
 	lb.UserLogger.Debug(fmt.Sprintf("Saving layer: %s", meta.Template.BuildID))
@@ -217,7 +212,6 @@ func (lb *LayerExecutor) PauseAndUpload(
 	// snapshot is automatically cleared by the templateCache eviction
 	snapshot, err := sbx.Pause(
 		ctx,
-		lb.tracer,
 		meta,
 	)
 	if err != nil {

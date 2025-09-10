@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	middleware "github.com/oapi-codegen/gin-middleware"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -20,6 +20,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/auth")
 
 var adminToken = os.Getenv("ADMIN_TOKEN")
 
@@ -131,7 +133,6 @@ func adminValidationFunction(_ context.Context, token string) (struct{}, *api.AP
 }
 
 func CreateAuthenticationFunc(
-	tracer trace.Tracer,
 	teamValidationFunction func(context.Context, string) (authcache.AuthTeamInfo, *api.APIError),
 	userValidationFunction func(context.Context, string) (uuid.UUID, *api.APIError),
 	supabaseTokenValidationFunction func(context.Context, string) (uuid.UUID, *api.APIError),

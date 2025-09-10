@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"time"
 
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
@@ -56,7 +54,7 @@ type PostInitJSONBody struct {
 	AccessToken *string            `json:"accessToken,omitempty"`
 }
 
-func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map[string]string, accessToken *string) error {
+func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string, accessToken *string) error {
 	childCtx, childSpan := tracer.Start(ctx, "envd-init")
 	defer childSpan.End()
 

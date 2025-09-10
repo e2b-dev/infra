@@ -195,6 +195,8 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 						if sbxDrift > maxAcceptableSandboxClockDriftSec {
 							zap.L().Warn("Significant clock drift detected between sandbox and host",
 								logger.WithSandboxID(sbx.Runtime.SandboxID),
+								logger.WithTeamID(sbx.Runtime.TeamID),
+								logger.WithTemplateID(sbx.Runtime.TemplateID),
 								zap.Time("sandbox_start", sbx.StartedAt),
 								zap.Int64("clock_host", hostTm),
 								zap.Int64("clock_sbx", sbxTm),

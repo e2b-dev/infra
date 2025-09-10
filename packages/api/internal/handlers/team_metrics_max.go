@@ -20,7 +20,7 @@ import (
 
 func (a *APIStore) GetTeamsTeamIDMetricsMax(c *gin.Context, teamID string, params api.GetTeamsTeamIDMetricsMaxParams) {
 	ctx := c.Request.Context()
-	ctx, span := a.Tracer.Start(ctx, "team-metrics-max")
+	ctx, span := tracer.Start(ctx, "team-metrics-max")
 	defer span.End()
 
 	team := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo).Team

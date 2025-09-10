@@ -87,7 +87,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	telemetry.ReportEvent(ctx, "started environment build")
 
 	// Check if the user has access to the template, load the template with build info
-	templateBuildDB, err := a.sqlcDB.GetTemplateBuild(ctx, queries.GetTemplateBuildParams{
+	templateBuildDB, err := a.sqlcDB.GetTemplateBuildWithTemplate(ctx, queries.GetTemplateBuildWithTemplateParams{
 		TemplateID: templateID,
 		BuildID:    buildUUID,
 	})
@@ -142,7 +142,6 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	forceRebuild := true
 	fromImage := ""
 	buildErr := a.templateManager.CreateTemplate(
-		a.Tracer,
 		ctx,
 		team.ID,
 		templateID,

@@ -25,7 +25,7 @@ func (ppb *PostProcessingBuilder) runReadyCommand(
 	readyCmd string,
 	cmdMetadata metadata.Context,
 ) error {
-	ctx, span := ppb.tracer.Start(ctx, "run-ready-command")
+	ctx, span := tracer.Start(ctx, "run-ready-command")
 	defer span.End()
 
 	ppb.UserLogger.Info("Waiting for template to be ready")
@@ -40,7 +40,6 @@ func (ppb *PostProcessingBuilder) runReadyCommand(
 	for {
 		err := sandboxtools.RunCommandWithLogger(
 			ctx,
-			ppb.tracer,
 			ppb.proxy,
 			ppb.UserLogger,
 			zapcore.InfoLevel,

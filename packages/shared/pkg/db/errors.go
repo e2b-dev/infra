@@ -2,12 +2,6 @@ package db
 
 type NotFoundError error
 
-type TemplateNotFoundError struct{ NotFoundError }
-
-func (TemplateNotFoundError) Error() string {
-	return "Template not found"
-}
-
 type TemplateBuildNotFoundError struct{ NotFoundError }
 
 func (TemplateBuildNotFoundError) Error() string {

@@ -118,7 +118,6 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 
 	// Create a team API Key auth validator
 	AuthenticationFunc := auth.CreateAuthenticationFunc(
-		apiStore.Tracer,
 		apiStore.GetTeamFromAPIKey,
 		apiStore.GetUserFromAccessToken,
 		apiStore.GetUserIDFromSupabaseToken,

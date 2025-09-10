@@ -20,7 +20,7 @@ const (
 	DeprecatedVersion = 1
 )
 
-var tracer = otel.Tracer("orchestrator.template.metadata")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata")
 
 type Version struct {
 	Version any `json:"version"`

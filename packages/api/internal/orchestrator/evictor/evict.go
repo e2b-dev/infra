@@ -29,7 +29,7 @@ func (e *Evictor) Start(ctx context.Context) {
 			items := e.store.ExpiredItems()
 
 			for _, item := range items {
-				if item.IsExpired() {
+				if item.IsExpired() && item.GetState() == instance.StateRunning {
 					go func() {
 						removeType := instance.RemoveTypeKill
 						if item.AutoPause {

@@ -10,7 +10,7 @@ import (
 )
 
 func (s *server) ListCachedBuilds(ctx context.Context, _ *emptypb.Empty) (*orchestrator.SandboxListCachedBuildsResponse, error) {
-	_, childSpan := s.tracer.Start(ctx, "list-cached-templates")
+	_, childSpan := tracer.Start(ctx, "list-cached-templates")
 	defer childSpan.End()
 
 	var builds []*orchestrator.CachedBuildInfo

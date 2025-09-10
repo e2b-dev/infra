@@ -28,7 +28,7 @@ func apiLevelToLogLevel(level *api.LogLevel) *logs.LogLevel {
 func (a *APIStore) V1TemplateBuildLogs(c *gin.Context, buildID string, params api.V1TemplateBuildLogsParams) {
 	ctx := c.Request.Context()
 
-	_, templateSpan := a.tracer.Start(c, "template-build-logs-handler")
+	_, templateSpan := tracer.Start(c, "template-build-logs-handler")
 	defer templateSpan.End()
 
 	end := time.Now()
