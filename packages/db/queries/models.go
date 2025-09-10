@@ -16,7 +16,7 @@ type AccessToken struct {
 	AccessToken *string
 	UserID      uuid.UUID
 	CreatedAt   time.Time
-	ID          *uuid.UUID
+	ID          uuid.UUID
 	// sensitive
 	AccessTokenHash       string
 	Name                  string
