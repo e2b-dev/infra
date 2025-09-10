@@ -431,7 +431,7 @@ func (s *server) prepareSandboxEventData(sbx *sandbox.Sandbox) (uuid.UUID, strin
 		buildId = sbx.SandboxConfig.BuildId
 		if sbx.SandboxConfig.Metadata != nil {
 			// Copy the map to avoid race conditions
-			eventData["sandbox_metadata"] = utils.CopyMap(sbx.SandboxConfig.Metadata)
+			eventData["sandbox_metadata"] = utils.ShallowCopyMap(sbx.SandboxConfig.Metadata)
 		}
 	}
 
