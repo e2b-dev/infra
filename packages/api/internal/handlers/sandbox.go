@@ -69,7 +69,7 @@ func (a *APIStore) startSandbox(
 	properties := a.posthog.GetPackageToPosthogProperties(requestHeader)
 	a.posthog.CreateAnalyticsTeamEvent(team.Team.ID.String(), "created_instance",
 		properties.
-			Set("environment", *build.EnvID).
+			Set("environment", build.EnvID).
 			Set("instance_id", sandbox.SandboxID).
 			Set("alias", alias),
 	)
@@ -87,7 +87,7 @@ func (a *APIStore) startSandbox(
 
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandbox.SandboxID,
-		TemplateID: *build.EnvID,
+		TemplateID: build.EnvID,
 		TeamID:     team.Team.ID.String(),
 	}).Info("Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
 

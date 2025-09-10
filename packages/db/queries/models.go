@@ -74,11 +74,11 @@ type EnvBuild struct {
 	TotalDiskSizeMb    *int64
 	KernelVersion      string
 	FirecrackerVersion string
-	EnvID              *string
+	EnvID              string
 	EnvdVersion        *string
 	ReadyCmd           *string
 	ClusterNodeID      string
-	Reason             types.JSONBStringMap
+	Reason             types.BuildReason
 }
 
 type Snapshot struct {
