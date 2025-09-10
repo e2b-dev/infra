@@ -160,7 +160,6 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		zap.L().Fatal("Initializing access token generator failed", zap.Error(err))
 	}
 
-
 	templateBuildsCache := templatecache.NewTemplateBuildCache(sqlcDB)
 	templateManager, err := template_manager.New(ctx, tel.TracerProvider, tel.MeterProvider, dbClient, sqlcDB, clustersPool, templateBuildsCache, templateCache)
 	if err != nil {
