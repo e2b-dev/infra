@@ -24,7 +24,7 @@ func TestGetProcessInfo(t *testing.T) {
 	assert.NotNil(t, info)
 	assert.Equal(t, pid, info.PID)
 	assert.NotEmpty(t, info.Name)
-	assert.Greater(t, info.CreateTime, int64(0))
+	assert.Greater(t, int64(0), info.CreateTime)
 }
 
 func TestGetProcessInfoInvalidPID(t *testing.T) {
@@ -32,9 +32,10 @@ func TestGetProcessInfoInvalidPID(t *testing.T) {
 	invalidPID := int32(999999999)
 
 	info, err := getProcessInfo(invalidPID)
-	assert.Error(t, err)
+	require.NoError(t, err)
 	assert.Nil(t, info)
 }
+
 func TestMonitorProcesses(t *testing.T) {
 	// Create a channel to collect events
 	events := make(chan *ProcessInfo, 100)
@@ -74,7 +75,7 @@ func TestMonitorProcesses(t *testing.T) {
 	mu.Unlock()
 
 	// We should have detected some processes as running initially
-	assert.Greater(t, initialCount, 0, "Should have detected some initial processes")
+	assert.Greater(t, 0, initialCount, "Should have detected some initial processes")
 
 	// Verify that events have the correct structure
 	for i := 0; i < 2; i++ {
@@ -90,8 +91,8 @@ func TestMonitorProcesses(t *testing.T) {
 				i--
 				continue
 			}
-			assert.Equal(t, event.PID, sleepPID)
-			assert.Equal(t, event.State, expectedState)
+			assert.Equal(t, sleepPID, event.PID)
+			assert.Equal(t, expectedState, event.State)
 		case <-time.After(1 * time.Second):
 			t.Fatalf("No event received in iteration %d", i+1)
 		}
