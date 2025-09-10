@@ -92,13 +92,15 @@ job "client-proxy" {
         PROXY_PORT        = "${proxy_port}"
         ORCHESTRATOR_PORT = "${orchestrator_port}"
 
-        SERVICE_DISCOVERY_ORCHESTRATOR_PROVIDER             = "DNS"
-        SERVICE_DISCOVERY_ORCHESTRATOR_DNS_RESOLVER_ADDRESS = "127.0.0.1:8600" // consul dns resolver
-        SERVICE_DISCOVERY_ORCHESTRATOR_DNS_QUERY            = "template-manager.service.consul"
+        SD_ORCHESTRATOR_PROVIDER       = "NOMAD"
+        SD_ORCHESTRATOR_NOMAD_ENDPOINT = "${nomad_endpoint}"
+        SD_ORCHESTRATOR_NOMAD_TOKEN    = "${nomad_token}"
+        SD_ORCHESTRATOR_JOB_PREFIX     = "template-manager"
 
-        SERVICE_DISCOVERY_EDGE_PROVIDER             = "DNS"
-        SERVICE_DISCOVERY_EDGE_DNS_RESOLVER_ADDRESS = "127.0.0.1:8600" // consul dns resolver
-        SERVICE_DISCOVERY_EDGE_DNS_QUERY            = "edge-api.service.consul"
+        SD_EDGE_PROVIDER       = "NOMAD"
+        SD_EDGE_NOMAD_ENDPOINT = "${nomad_endpoint}"
+        SD_EDGE_NOMAD_TOKEN    = "${nomad_token}"
+        SD_EDGE_JOB_PREFIX     = "client-proxy"
 
         ENVIRONMENT = "${environment}"
 
