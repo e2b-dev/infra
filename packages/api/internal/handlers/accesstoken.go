@@ -42,7 +42,6 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 	accessTokenDB, err := a.sqlcDB.CreateAccessToken(ctx, queries.CreateAccessTokenParams{
 		ID:                    uuid.New(),
 		UserID:                userID,
-		AccessToken:           accessToken.PrefixedRawValue,
 		AccessTokenHash:       accessToken.HashedValue,
 		AccessTokenPrefix:     accessToken.Masked.Prefix,
 		AccessTokenLength:     int32(accessToken.Masked.ValueLength),
