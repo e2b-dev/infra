@@ -45,7 +45,6 @@ func TestCachedFileObjectProvider_Size(t *testing.T) {
 		size, err = c.Size(t.Context())
 		require.NoError(t, err)
 		assert.Equal(t, expectedSize, size)
-
 	})
 }
 

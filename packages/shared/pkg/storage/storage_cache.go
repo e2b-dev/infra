@@ -265,7 +265,7 @@ func (c *CachedFileObjectProvider) readLocalSize() (int64, bool) {
 func (c *CachedFileObjectProvider) writeLocalSize(size int64) {
 	tempFilename := filepath.Join(c.path, fmt.Sprintf(".size.bin.%s", uuid.NewString()))
 
-	fp, err := os.OpenFile(tempFilename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	fp, err := os.OpenFile(tempFilename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, cacheFilePermissions)
 	if err != nil {
 		zap.L().Warn("failed to open temp file",
 			zap.String("path", tempFilename),
@@ -274,7 +274,7 @@ func (c *CachedFileObjectProvider) writeLocalSize(size int64) {
 	}
 	defer fp.Close()
 
-	if _, err := fp.WriteString(fmt.Sprintf("%d", size)); err != nil {
+	if _, err := fmt.Fprintf(fp, "%d", size); err != nil {
 		zap.L().Warn("failed to write to temp file",
 			zap.String("path", tempFilename),
 			zap.Error(err))
