@@ -71,23 +71,6 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		return
 	}
 
-	if errors.Is(err, instance.ErrAlreadyBeingPaused) {
-		telemetry.ReportEvent(ctx, "sandbox is already being paused", telemetry.WithSandboxID(sandboxID))
-
-		err = sbx.WaitForStop(ctx)
-		if err != nil {
-			telemetry.ReportError(ctx, "error when waiting for sandbox to pause", err)
-
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
-
-			return
-		}
-
-		// Successfully paused
-		c.Status(http.StatusNoContent)
-		return
-	}
-
 	telemetry.ReportError(ctx, "error pausing sandbox", err)
 
 	a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")

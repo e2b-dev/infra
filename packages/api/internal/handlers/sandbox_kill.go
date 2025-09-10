@@ -84,18 +84,6 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 
 	sbx, err := a.orchestrator.GetSandbox(sandboxID, true)
 	if err == nil {
-		state := sbx.GetState()
-		// wait for the sandbox to pause before deleting it
-		if state == instance.StatePausing || state == instance.StatePaused {
-			err = sbx.WaitForStop(ctx)
-			if err != nil {
-				telemetry.ReportError(ctx, "error when waiting for sandbox to pause", err)
-				a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error deleting sandbox: %s", err))
-
-				return
-			}
-		}
-
 		if sbx.TeamID != teamID {
 			telemetry.ReportCriticalError(ctx, "sandbox does not belong to team", fmt.Errorf("sandbox '%s' does not belong to team '%s'", sandboxID, teamID.String()))
 
@@ -104,28 +92,11 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 			return
 		}
 
-		// remove running sandbox from the orchestrator
-		err := a.orchestrator.RemoveInstance(ctx, sbx, instance.RemoveTypeKill)
+		err = a.removeRunningSandbox(ctx, sbx)
 		if err != nil {
 			telemetry.ReportError(ctx, "error deleting sandbox", err)
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error killing sandbox")
-			return
-		}
-
-		// remove any snapshots of the sandbox
-		err = a.deleteSnapshot(ctx, sandboxID, teamID, team.ClusterID)
-		if err != nil && !errors.Is(err, db.EnvNotFoundError{}) {
-			telemetry.ReportError(ctx, "error deleting sandbox", err)
 			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error deleting sandbox: %s", err))
-
-			return
 		}
-
-		telemetry.ReportEvent(ctx, "deleted sandbox from orchestrator")
-
-		c.Status(http.StatusNoContent)
-
-		return
 	}
 
 	// remove any snapshots when the sandbox is not running
@@ -145,4 +116,28 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+func (a *APIStore) removeRunningSandbox(
+	ctx context.Context,
+	sbx *instance.InstanceInfo,
+) error {
+	state := sbx.GetState()
+	// wait for the sandbox to pause before deleting it
+	if state == instance.StatePausing || state == instance.StatePaused {
+		err := sbx.WaitForStop(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to wait for sandbox to stop: %w", err)
+		}
+
+		return nil
+	}
+
+	// remove running sandbox from the orchestrator
+	err := a.orchestrator.RemoveInstance(ctx, sbx, instance.RemoveTypeKill)
+	if err != nil {
+		return fmt.Errorf("error deleting sandbox: %w", err)
+	}
+
+	return nil
 }
