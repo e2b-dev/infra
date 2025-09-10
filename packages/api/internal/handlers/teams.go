@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -13,7 +14,7 @@ import (
 func (a *APIStore) GetTeams(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	userID := a.GetUserID(c)
+	userID := auth.SafeGetUserID(c)
 
 	results, err := a.sqlcDB.GetTeamsWithUsersTeams(ctx, userID)
 	if err != nil {

@@ -28,7 +28,7 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 	// signing authorization if needed
 	err := a.validateSigning(r, params.Signature, params.SignatureExpiration, params.Username, path, SigningReadOperation)
 	if err != nil {
-		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error during auth validation")
+		a.logger.Error().Err(err).Str("operation_id", operationID).Msg("error during auth validation")
 		jsonError(w, http.StatusUnauthorized, err)
 		return
 	}
@@ -37,7 +37,7 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 		l := a.logger.
 			Err(errMsg).
 			Str("method", r.Method+" "+r.URL.Path).
-			Str(string(logs.OperationIDKey), operationID).
+			Str("operation_id", operationID).
 			Str("path", path).
 			Str("username", params.Username)
 

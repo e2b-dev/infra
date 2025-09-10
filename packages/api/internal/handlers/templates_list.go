@@ -19,7 +19,7 @@ import (
 func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 	ctx := c.Request.Context()
 
-	userID := c.Value(auth.UserIDContextKey).(uuid.UUID)
+	userID := auth.SafeGetUserID(c)
 
 	var team *queries.Team
 	teams, err := a.sqlcDB.GetTeamsWithUsersTeams(ctx, userID)

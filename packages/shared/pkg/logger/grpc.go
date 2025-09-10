@@ -24,23 +24,26 @@ func GRPCLogger(l *zap.Logger) logging.Logger {
 		}
 
 		for i := 0; i < len(fields)-1; i += 2 {
-			key := fields[i]
+			key, ok := fields[i].(string)
+			if !ok {
+				panic(fmt.Sprintf("key must be a string, not %T", fields[i]))
+			}
 			value := fields[i+1]
 
 			switch v := value.(type) {
 			case string:
-				f = append(f, zap.String(key.(string), v))
+				f = append(f, zap.String(key, v))
 
-				_, ok := methodFullNameMap[key.(string)]
+				_, ok := methodFullNameMap[key]
 				if ok {
-					methodFullNameMap[key.(string)] = v
+					methodFullNameMap[key] = v
 				}
 			case int:
-				f = append(f, zap.Int(key.(string), v))
+				f = append(f, zap.Int(key, v))
 			case bool:
-				f = append(f, zap.Bool(key.(string), v))
+				f = append(f, zap.Bool(key, v))
 			default:
-				f = append(f, zap.Any(key.(string), v))
+				f = append(f, zap.Any(key, v))
 			}
 		}
 

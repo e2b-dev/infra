@@ -3,6 +3,7 @@ package placement
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -30,7 +31,11 @@ func (m *mockAlgorithm) chooseNode(ctx context.Context, nodes []*nodemanager.Nod
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*nodemanager.Node), args.Error(1)
+	node, ok := args.Get(0).(*nodemanager.Node)
+	if !ok {
+		return nil, fmt.Errorf("expected %T, got %T", node, args.Get(0))
+	}
+	return node, args.Error(1)
 }
 
 func TestPlaceSandbox_SuccessfulPlacement(t *testing.T) {

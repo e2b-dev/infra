@@ -56,10 +56,10 @@ func main() {
 		panic(err)
 	}
 
-	email := config["email"].(string)
-	teamID := config["teamId"].(string)
-	accessToken := config["accessToken"].(string)
-	teamAPIKey := config["teamApiKey"].(string)
+	email := safeString(config["email"])
+	teamID := safeString(config["teamId"])
+	accessToken := safeString(config["accessToken"])
+	teamAPIKey := safeString(config["teamApiKey"])
 	teamUUID := uuid.MustParse(teamID)
 
 	// Open .e2b/config.json
@@ -158,4 +158,9 @@ func main() {
 	// Run from make file and build base env
 
 	fmt.Printf("Database seeded.\n")
+}
+
+func safeString(a any) string {
+	s, _ := a.(string)
+	return s
 }

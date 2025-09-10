@@ -24,6 +24,7 @@ linters:
     - errname
     - errorlint
     - exptostd
+    - forcetypeassert
     - govet
     - staticcheck
     - testifylint

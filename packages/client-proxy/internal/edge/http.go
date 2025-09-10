@@ -87,11 +87,13 @@ func NewGinServer(logger *zap.Logger, store *handlers.APIStore, swagger *openapi
 
 func ginBuildAuthenticationHandler(tracer trace.Tracer, auth authorization.AuthorizationService) func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
 	return func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
-		ginContext := ctx.Value(middleware.GinContextKey).(*gin.Context)
-		requestContext := ginContext.Request.Context()
+		ginContext, ok := ctx.Value(middleware.GinContextKey).(*gin.Context)
+		if ok && ginContext != nil {
+			requestContext := ginContext.Request.Context()
 
-		_, span := tracer.Start(requestContext, "authenticate")
-		defer span.End()
+			_, span := tracer.Start(requestContext, "authenticate")
+			defer span.End()
+		}
 
 		if input.SecuritySchemeName != securitySchemaName {
 			return fmt.Errorf("invalid security scheme name '%s'", input.SecuritySchemeName)

@@ -20,6 +20,7 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
@@ -403,7 +404,7 @@ func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, supabaseToken
 }
 
 func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) (authcache.AuthTeamInfo, *api.APIError) {
-	userID := a.GetUserID(middleware.GetGinContext(ctx))
+	userID := auth.SafeGetUserID(middleware.GetGinContext(ctx))
 
 	cacheKey := fmt.Sprintf("%s-%s", userID.String(), teamID)
 	team, tier, err := a.authCache.GetOrSet(ctx, cacheKey, func(ctx context.Context, key string) (*queries.Team, *queries.Tier, error) {

@@ -2,6 +2,7 @@ package logs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -11,11 +12,8 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type OperationID string
-
 const (
-	OperationIDKey    OperationID = "operation_id"
-	DefaultHTTPMethod string      = "POST"
+	DefaultHTTPMethod string = "POST"
 )
 
 var operationID = atomic.Int32{}
@@ -26,8 +24,36 @@ func AssignOperationID() string {
 	return strconv.Itoa(int(id))
 }
 
-func AddRequestIDToContext(ctx context.Context) context.Context {
-	return context.WithValue(ctx, OperationIDKey, AssignOperationID())
+type operationIDKey struct{}
+
+func AddRequestIDToContext(ctx context.Context) (context.Context, string) {
+	operationID := AssignOperationID()
+	return context.WithValue(ctx, operationIDKey{}, operationID), operationID
+}
+
+var (
+	ErrOperationIDNotInContext = errors.New("operation id not in context")
+	ErrUnexpectedType          = errors.New("unexpected type")
+)
+
+func GetRequestID(ctx context.Context) (string, error) {
+	value := ctx.Value(operationIDKey{})
+	if value == nil {
+		return "", ErrOperationIDNotInContext
+	}
+
+	requestID, ok := value.(string)
+	if !ok {
+		return "", fmt.Errorf("%w: expected %T, received %T",
+			ErrUnexpectedType, requestID, value)
+	}
+
+	return requestID, nil
+}
+
+func SafeGetRequestID(ctx context.Context) string {
+	requestID, _ := GetRequestID(ctx)
+	return requestID
 }
 
 func formatMethod(method string) string {
@@ -52,18 +78,19 @@ func formatMethod(method string) string {
 
 func NewUnaryLogInterceptor(logger *zerolog.Logger) connect.UnaryInterceptorFunc {
 	interceptor := func(next connect.UnaryFunc) connect.UnaryFunc {
-		return connect.UnaryFunc(func(
+		return func(
 			ctx context.Context,
 			req connect.AnyRequest,
 		) (connect.AnyResponse, error) {
-			ctx = AddRequestIDToContext(ctx)
+			ctx, operationID := AddRequestIDToContext(ctx)
 
 			res, err := next(ctx, req)
 
 			l := logger.
 				Err(err).
-				Str("method", DefaultHTTPMethod+" "+req.Spec().Procedure).
-				Str(string(OperationIDKey), ctx.Value(OperationIDKey).(string))
+				Str("method", DefaultHTTPMethod+" "+req.Spec().Procedure)
+
+			l = l.Str("operation_id", string(operationID))
 
 			if err != nil {
 				l = l.Int("error_code", int(connect.CodeOf(err)))
@@ -84,10 +111,10 @@ func NewUnaryLogInterceptor(logger *zerolog.Logger) connect.UnaryInterceptorFunc
 			l.Msg(formatMethod(req.Spec().Procedure))
 
 			return res, err
-		})
+		}
 	}
 
-	return connect.UnaryInterceptorFunc(interceptor)
+	return interceptor
 }
 
 func LogServerStreamWithoutEvents[T any, R any](
@@ -97,23 +124,19 @@ func LogServerStreamWithoutEvents[T any, R any](
 	stream *connect.ServerStream[T],
 	handler func(ctx context.Context, req *connect.Request[R], stream *connect.ServerStream[T]) error,
 ) error {
-	ctx = AddRequestIDToContext(ctx)
+	ctx, operationID := AddRequestIDToContext(ctx)
 
 	l := logger.Debug().
 		Str("method", DefaultHTTPMethod+" "+req.Spec().Procedure).
-		Str(string(OperationIDKey), ctx.Value(OperationIDKey).(string))
-
-	if req != nil {
-		l = l.Interface("request", req.Any())
-	}
+		Str("operation_id", operationID).
+		Interface("request", req.Any())
 
 	l.Msg(fmt.Sprintf("%s (server stream start)", formatMethod(req.Spec().Procedure)))
 
 	err := handler(ctx, req, stream)
 
 	logEvent := getErrDebugLogEvent(logger, err).
-		Str("method", DefaultHTTPMethod+" "+req.Spec().Procedure).
-		Str(string(OperationIDKey), ctx.Value(OperationIDKey).(string))
+		Str("operation_id", operationID)
 
 	if err != nil {
 		logEvent = logEvent.Int("error_code", int(connect.CodeOf(err)))
@@ -132,18 +155,17 @@ func LogClientStreamWithoutEvents[T any, R any](
 	stream *connect.ClientStream[T],
 	handler func(ctx context.Context, stream *connect.ClientStream[T]) (*connect.Response[R], error),
 ) (*connect.Response[R], error) {
-	ctx = AddRequestIDToContext(ctx)
-
+	ctx, operationID := AddRequestIDToContext(ctx)
 	logger.Debug().
 		Str("method", DefaultHTTPMethod+" "+stream.Spec().Procedure).
-		Str(string(OperationIDKey), ctx.Value(OperationIDKey).(string)).
+		Str("operation_id", operationID).
 		Msg(fmt.Sprintf("%s (client stream start)", formatMethod(stream.Spec().Procedure)))
 
 	res, err := handler(ctx, stream)
 
 	logEvent := getErrDebugLogEvent(logger, err).
 		Str("method", DefaultHTTPMethod+" "+stream.Spec().Procedure).
-		Str(string(OperationIDKey), ctx.Value(OperationIDKey).(string))
+		Str("operation_id", operationID)
 
 	if err != nil {
 		logEvent = logEvent.Int("error_code", int(connect.CodeOf(err)))

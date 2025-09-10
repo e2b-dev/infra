@@ -16,7 +16,7 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	operationID := logs.AssignOperationID()
-	logger := a.logger.With().Str(string(logs.OperationIDKey), operationID).Logger()
+	logger := a.logger.With().Str("operation_id", operationID).Logger()
 
 	if r.Body != nil {
 		var initRequest PostInitJSONBody

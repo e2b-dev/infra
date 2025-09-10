@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -39,7 +40,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		return
 	}
 
-	teamID := a.GetTeamInfo(c).Team.ID
+	teamID := auth.SafeGetTeamInfo(c).Team.ID
 
 	now := time.Now()
 	_, err = a.sqlcDB.UpdateTeamApiKey(ctx, queries.UpdateTeamApiKeyParams{
@@ -64,7 +65,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 func (a *APIStore) GetApiKeys(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	teamID := a.GetTeamInfo(c).Team.ID
+	teamID := auth.SafeGetTeamInfo(c).Team.ID
 
 	apiKeysDB, err := a.db.Client.TeamAPIKey.
 		Query().
@@ -116,7 +117,7 @@ func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		return
 	}
 
-	teamID := a.GetTeamInfo(c).Team.ID
+	teamID := auth.SafeGetTeamInfo(c).Team.ID
 
 	err = a.db.Client.TeamAPIKey.DeleteOneID(apiKeyIDParsed).Where(teamapikey.TeamID(teamID)).Exec(ctx)
 	if models.IsNotFound(err) {
@@ -135,8 +136,8 @@ func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 func (a *APIStore) PostApiKeys(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	userID := a.GetUserID(c)
-	teamID := a.GetTeamInfo(c).Team.ID
+	userID := auth.SafeGetUserID(c)
+	teamID := auth.SafeGetTeamInfo(c).Team.ID
 
 	body, err := utils.ParseBody[api.NewTeamAPIKey](ctx, c)
 	if err != nil {

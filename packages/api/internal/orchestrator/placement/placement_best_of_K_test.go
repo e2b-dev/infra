@@ -13,7 +13,7 @@ import (
 
 func TestBestOfK_Score(t *testing.T) {
 	config := DefaultBestOfKConfig()
-	algo := NewBestOfK(config).(*BestOfK)
+	algo := NewBestOfK(config)
 
 	// Create a test node with known metrics
 	// The node's CpuUsage is set to 50 via the constructor
@@ -39,7 +39,7 @@ func TestBestOfK_Score(t *testing.T) {
 
 func TestBestOfK_Score_PreferBiggerNode(t *testing.T) {
 	config := DefaultBestOfKConfig()
-	algo := NewBestOfK(config).(*BestOfK)
+	algo := NewBestOfK(config)
 
 	// Create a test node with known metrics
 	// The node's CpuUsage is set to 50 via the constructor
@@ -65,7 +65,7 @@ func TestBestOfK_Score_PreferBiggerNode(t *testing.T) {
 
 func TestBestOfK_CanFit(t *testing.T) {
 	config := DefaultBestOfKConfig()
-	algo := NewBestOfK(config).(*BestOfK)
+	algo := NewBestOfK(config)
 
 	// Create a test node with moderate CPU usage
 	node := nodemanager.NewTestNode("test-node", api.NodeStatusReady, 5, 4)
@@ -96,7 +96,7 @@ func TestBestOfK_ChooseNode(t *testing.T) {
 		Alpha: 0.5,
 		K:     3, // Sample all nodes
 	}
-	algo := NewBestOfK(config).(*BestOfK)
+	algo := NewBestOfK(config)
 
 	// Create test nodes with different loads
 	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 8, 4)
@@ -124,7 +124,7 @@ func TestBestOfK_ChooseNode_WithExclusions(t *testing.T) {
 		Alpha: 0.5,
 		K:     3,
 	}
-	algo := NewBestOfK(config).(*BestOfK)
+	algo := NewBestOfK(config)
 
 	// Create test nodes
 	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 8, 4)
@@ -153,7 +153,7 @@ func TestBestOfK_ChooseNode_WithExclusions(t *testing.T) {
 func TestBestOfK_ChooseNode_NoAvailableNodes(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultBestOfKConfig()
-	algo := NewBestOfK(config).(*BestOfK)
+	algo := NewBestOfK(config)
 
 	// Create unhealthy nodes
 	node1 := nodemanager.NewTestNode("node1", api.NodeStatusUnhealthy, 8, 4)
@@ -174,7 +174,7 @@ func TestBestOfK_ChooseNode_NoAvailableNodes(t *testing.T) {
 
 func TestBestOfK_Sample(t *testing.T) {
 	config := DefaultBestOfKConfig()
-	algo := NewBestOfK(config).(*BestOfK)
+	algo := NewBestOfK(config)
 
 	// Create many test nodes
 	var nodes []*nodemanager.Node
@@ -218,7 +218,7 @@ func TestBestOfK_PowerOfKChoices(t *testing.T) {
 		Alpha: 0.5,
 		K:     3,
 	}
-	algo := NewBestOfK(config).(*BestOfK)
+	algo := NewBestOfK(config)
 
 	// Create many nodes with varying loads
 	var nodes []*nodemanager.Node

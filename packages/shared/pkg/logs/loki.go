@@ -18,7 +18,12 @@ func LokiResponseMapper(res *loghttp.QueryResponse, offset int32, level *LogLeve
 		return nil, fmt.Errorf("unexpected value type received from loki query fetch: %s", res.Data.Result.Type())
 	}
 
-	for _, stream := range res.Data.Result.(loghttp.Streams) {
+	streams, ok := res.Data.Result.(loghttp.Streams)
+	if !ok {
+		return nil, fmt.Errorf("expected loghttp.Streams, received %T", res.Data.Result)
+	}
+
+	for _, stream := range streams {
 		for _, entry := range stream.Entries {
 			fields, err := lokiFlatJsonLineParser(entry.Line)
 			if err != nil {

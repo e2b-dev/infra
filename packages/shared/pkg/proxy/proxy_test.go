@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"gotest.tools/assert"
 
@@ -107,13 +108,17 @@ func assertBackendOutput(t *testing.T, backend *testBackend, resp *http.Response
 }
 
 // newTestProxy creates a new proxy server for testing
-func newTestProxy(getDestination func(r *http.Request) (*pool.Destination, error)) (*Proxy, uint, error) {
+func newTestProxy(t *testing.T, getDestination func(r *http.Request) (*pool.Destination, error)) (*Proxy, uint, error) {
+	t.Helper()
+
 	// Find a free port for the proxy
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get free port: %w", err)
 	}
-	port := l.Addr().(*net.TCPAddr).Port
+	addr, ok := l.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+	port := addr.Port
 
 	// Set up the proxy server
 	proxy := New(
@@ -152,7 +157,7 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 		}, nil
 	}
 
-	proxy, port, err := newTestProxy(getDestination)
+	proxy, port, err := newTestProxy(t, getDestination)
 	if err != nil {
 		t.Fatalf("failed to create proxy: %v", err)
 	}
@@ -197,7 +202,7 @@ func TestProxyReusesConnections(t *testing.T) {
 		}, nil
 	}
 
-	proxy, port, err := newTestProxy(getDestination)
+	proxy, port, err := newTestProxy(t, getDestination)
 	if err != nil {
 		t.Fatalf("failed to create proxy: %v", err)
 	}
@@ -270,7 +275,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 	}
 
 	// Create proxy with the initial routing function
-	proxy, port, err := newTestProxy(getDestination)
+	proxy, port, err := newTestProxy(t, getDestination)
 	if err != nil {
 		t.Fatalf("failed to create proxy: %v", err)
 	}
@@ -355,7 +360,7 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 	}
 
 	// Create proxy with the initial routing function
-	proxy, port, err := newTestProxy(getDestination)
+	proxy, port, err := newTestProxy(t, getDestination)
 	if err != nil {
 		t.Fatalf("failed to create proxy: %v", err)
 	}

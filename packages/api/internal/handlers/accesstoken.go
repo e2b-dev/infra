@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
@@ -17,7 +18,7 @@ import (
 func (a *APIStore) PostAccessTokens(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	userID := a.GetUserID(c)
+	userID := auth.SafeGetUserID(c)
 
 	body, err := utils.ParseBody[api.NewAccessToken](ctx, c)
 	if err != nil {
@@ -74,7 +75,7 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 func (a *APIStore) DeleteAccessTokensAccessTokenID(c *gin.Context, accessTokenID string) {
 	ctx := c.Request.Context()
 
-	userID := a.GetUserID(c)
+	userID := auth.SafeGetUserID(c)
 
 	accessTokenIDParsed, err := uuid.Parse(accessTokenID)
 	if err != nil {

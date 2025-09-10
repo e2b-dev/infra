@@ -321,8 +321,11 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 	// Verify content integrity
 	var reconstructed strings.Builder
 	for i := 1; i <= int(atomic.LoadInt32(&partCalls)); i++ {
-		if part, ok := receivedParts.Load(i); ok {
-			reconstructed.WriteString(part.(string))
+		if val, ok := receivedParts.Load(i); ok {
+			part, ok := val.(string)
+			if ok {
+				reconstructed.WriteString(part)
+			}
 		}
 	}
 	require.Equal(t, testContent, reconstructed.String())
@@ -415,7 +418,8 @@ func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
 
 			// Track attempts per part
 			val, _ := partAttempts.LoadOrStore(partNumStr, new(int32))
-			attempts := val.(*int32)
+			attempts, ok := val.(*int32)
+			assert.True(t, ok)
 			currentAttempts := atomic.AddInt32(attempts, 1)
 
 			// Fail first few attempts for each part, then succeed
@@ -446,7 +450,9 @@ func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
 
 	// Verify that all parts eventually succeeded after retries
 	partAttempts.Range(func(key, value interface{}) bool {
-		attempts := atomic.LoadInt32(value.(*int32))
+		n, ok := value.(*int32)
+		require.True(t, ok)
+		attempts := atomic.LoadInt32(n)
 		require.Equal(t, int32(maxAttempts-1), attempts, "Part %s should have exactly %d attempts", key, maxAttempts-1)
 		return true
 	})
@@ -677,7 +683,8 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 
 			// Track retry attempts per part with race-safe operations
 			val, _ := retryAttempts.LoadOrStore(partNumStr, new(int32))
-			attempts := val.(*int32)
+			attempts, ok := val.(*int32)
+			assert.True(t, ok)
 			currentAttempt := atomic.AddInt32(attempts, 1)
 
 			// Fail first 2 attempts to force retries under high concurrency
@@ -711,7 +718,9 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 
 	// Verify that retries happened correctly under concurrent conditions
 	retryAttempts.Range(func(key, value interface{}) bool {
-		attempts := atomic.LoadInt32(value.(*int32))
+		n, ok := value.(*int32)
+		require.True(t, ok)
+		attempts := atomic.LoadInt32(n)
 		require.GreaterOrEqual(t, attempts, int32(3), "Part %s should have at least 3 attempts", key)
 		return true
 	})

@@ -29,7 +29,7 @@ func handleInput(ctx context.Context, process *handler.Handler, in *rpc.ProcessI
 		logger.Debug().
 			Str("event_type", "stdin").
 			Interface("stdin", in.GetStdin()).
-			Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).
+			Str("operation_id", logs.SafeGetRequestID(ctx)).
 			Msg("Streaming input to process")
 
 	default:
