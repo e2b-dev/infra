@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc/metadata"
 
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
@@ -22,6 +22,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/edge")
+
 type Cluster struct {
 	ID uuid.UUID
 
@@ -30,7 +32,6 @@ type Cluster struct {
 
 	instances       *smap.Map[*ClusterInstance]
 	synchronization *synchronization.Synchronize[api.ClusterOrchestratorNode, *ClusterInstance]
-	tracer          trace.Tracer
 	SandboxDomain   *string
 }
 
@@ -49,15 +50,7 @@ var (
 	ErrAvailableTemplateBuilderNotFound = errors.New("available template builder not found")
 )
 
-func NewCluster(
-	tracer trace.Tracer,
-	tel *telemetry.Client,
-	endpoint string,
-	endpointTLS bool,
-	secret string,
-	clusterID uuid.UUID,
-	sandboxDomain *string,
-) (*Cluster, error) {
+func NewCluster(tel *telemetry.Client, endpoint string, endpointTLS bool, secret string, clusterID uuid.UUID, sandboxDomain *string) (*Cluster, error) {
 	clientAuthMiddleware := func(c *api.Client) error {
 		c.RequestEditors = append(
 			c.RequestEditors,
@@ -93,13 +86,12 @@ func NewCluster(
 		SandboxDomain: sandboxDomain,
 
 		instances:  smap.New[*ClusterInstance](),
-		tracer:     tracer,
 		httpClient: httpClient,
 		grpcClient: grpcClient,
 	}
 
 	store := clusterSynchronizationStore{cluster: c}
-	c.synchronization = synchronization.NewSynchronize(tracer, "cluster-instances", "Cluster instances", store)
+	c.synchronization = synchronization.NewSynchronize("cluster-instances", "Cluster instances", store)
 
 	// periodically sync cluster instances
 	go c.startSync()
@@ -137,7 +129,7 @@ func (c *Cluster) GetByServiceInstanceID(serviceInstanceID string) (*ClusterInst
 }
 
 func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context) (*ClusterInstance, error) {
-	_, span := c.tracer.Start(ctx, "template-builder-get-available-instance")
+	_, span := tracer.Start(ctx, "template-builder-get-available-instance")
 	span.SetAttributes(telemetry.WithClusterID(c.ID))
 	defer span.End()
 

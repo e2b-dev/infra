@@ -11,7 +11,6 @@ import (
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
@@ -41,7 +40,6 @@ type Orchestrator struct {
 	leastBusyAlgorithm      placement.Algorithm
 	bestOfKAlgorithm        *placement.BestOfK
 	featureFlagsClient      *featureflags.Client
-	tracer                  trace.Tracer
 	analytics               *analyticscollector.Analytics
 	posthogClient           *analyticscollector.PosthogClient
 	dns                     *dns.DNS
@@ -58,7 +56,6 @@ type Orchestrator struct {
 func New(
 	ctx context.Context,
 	tel *telemetry.Client,
-	tracer trace.Tracer,
 	nomadClient *nomadapi.Client,
 	posthogClient *analyticscollector.PosthogClient,
 	redisClient redis.UniversalClient,
@@ -109,7 +106,6 @@ func New(
 		analytics:          analyticsInstance,
 		posthogClient:      posthogClient,
 		nomadClient:        nomadClient,
-		tracer:             tracer,
 		nodes:              smap.New[*nodemanager.Node](),
 		leastBusyAlgorithm: leastBusyAlgorithm,
 		bestOfKAlgorithm:   bestOfKAlgorithm,

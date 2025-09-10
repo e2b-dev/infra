@@ -5,16 +5,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/google/uuid"
 )
 
-func (n *Node) GetSandboxes(ctx context.Context, tracer trace.Tracer) ([]*instance.InstanceInfo, error) {
+func (n *Node) GetSandboxes(ctx context.Context) ([]*instance.InstanceInfo, error) {
 	childCtx, childSpan := tracer.Start(ctx, "get-sandboxes-from-orchestrator")
 	defer childSpan.End()
 

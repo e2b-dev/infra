@@ -46,7 +46,7 @@ func (o *Orchestrator) CreateSandbox(
 	envdAuthToken *string,
 	allowInternetAccess *bool,
 ) (*api.Sandbox, *api.APIError) {
-	ctx, childSpan := o.tracer.Start(ctx, "create-sandbox")
+	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
 
 	// Check if team has reached max instances
@@ -157,7 +157,7 @@ func (o *Orchestrator) CreateSandbox(
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
 	algorithm := o.getPlacementAlgorithm(ctx)
-	node, err = placement.PlaceSandbox(ctx, o.tracer, algorithm, clusterNodes, node, sbxRequest)
+	node, err = placement.PlaceSandbox(ctx, algorithm, clusterNodes, node, sbxRequest)
 	if err != nil {
 		telemetry.ReportError(ctx, "failed to create sandbox", err)
 

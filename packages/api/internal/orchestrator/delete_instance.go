@@ -13,7 +13,7 @@ import (
 )
 
 func (o *Orchestrator) RemoveInstance(ctx context.Context, sandbox *instance.InstanceInfo, removeType instance.RemoveType) error {
-	_, childSpan := o.tracer.Start(ctx, "remove-instance")
+	_, childSpan := tracer.Start(ctx, "remove-instance")
 	defer childSpan.End()
 
 	// SandboxStore will remove the sandbox both from the store and from the orchestrator

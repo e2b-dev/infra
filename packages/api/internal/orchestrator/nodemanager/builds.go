@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/protobuf/ptypes/empty"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/golang/protobuf/ptypes/empty"
+	"go.opentelemetry.io/otel"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager")
 
 func (n *Node) SyncBuilds(builds []*orchestrator.CachedBuildInfo) {
 	for _, build := range builds {
@@ -28,7 +29,7 @@ func (n *Node) InsertBuild(buildID string) {
 	n.buildCache.Set(buildID, struct{}{}, 2*time.Minute)
 }
 
-func (n *Node) listCachedBuilds(ctx context.Context, tracer trace.Tracer) ([]*orchestrator.CachedBuildInfo, error) {
+func (n *Node) listCachedBuilds(ctx context.Context) ([]*orchestrator.CachedBuildInfo, error) {
 	childCtx, childSpan := tracer.Start(ctx, "list-cached-builds")
 	defer childSpan.End()
 
