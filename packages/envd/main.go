@@ -193,6 +193,11 @@ func main() {
 		}
 	}
 
+	go host.MonitorProcesses(1*time.Second, func(processInfo *host.ProcessInfo) error {
+		fmt.Printf("[HANDLE PROCESS] %+v\n", processInfo)
+		return nil
+	})
+
 	// Bind all open ports on 127.0.0.1 and localhost to the eth0 interface
 	portScanner := publicport.NewScanner(portScannerInterval)
 	defer portScanner.Destroy()

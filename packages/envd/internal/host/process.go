@@ -53,7 +53,7 @@ func getProcessInfo(pid int32) (*ProcessInfo, error) {
 	}, nil
 }
 
-func MonitorProcesses(processEventHandlers ...ProcessEventHandler) {
+func MonitorProcesses(interval time.Duration, processEventHandlers ...ProcessEventHandler) {
 	knownProcesses := make(map[int32]*ProcessInfo)
 
 	// Get initial process list
@@ -68,7 +68,7 @@ func MonitorProcesses(processEventHandlers ...ProcessEventHandler) {
 		}
 	}
 
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for range ticker.C {
