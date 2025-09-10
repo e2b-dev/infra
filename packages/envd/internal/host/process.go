@@ -65,7 +65,7 @@ func MonitorProcesses(logger *zerolog.Logger, interval time.Duration, processEve
 
 	for _, pid := range initialPids {
 		if info, err := getProcessInfo(pid); err == nil {
-			key := deriveKey(pid, info.Name)
+			key := deriveKey(pid, info.CreateTime)
 			knownProcesses[key] = info
 		} else {
 			logger.Error().Err(err).Msg("Failed to get process info")
@@ -86,7 +86,7 @@ func MonitorProcesses(logger *zerolog.Logger, interval time.Duration, processEve
 
 		for _, pid := range currentPids {
 			if info, err := getProcessInfo(pid); err == nil {
-				key := deriveKey(pid, info.Name)
+				key := deriveKey(pid, info.CreateTime)
 				currentProcesses[key] = info
 
 				// Check if this is a new process
@@ -119,6 +119,6 @@ func MonitorProcesses(logger *zerolog.Logger, interval time.Duration, processEve
 	}
 }
 
-func deriveKey(pid int32, name string) string {
-	return fmt.Sprintf("%d:%s", pid, name)
+func deriveKey(pid int32, createTime int64) string {
+	return fmt.Sprintf("%d:%d", pid, createTime)
 }
