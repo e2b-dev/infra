@@ -66,7 +66,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 				return
 			}
 		case instance.StateKilling, instance.StateKilled:
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Sandbox %s is already killed", sandboxID))
+			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found")
 			return
 		case instance.StateRunning:
 			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox %s is already running", sandboxID))
