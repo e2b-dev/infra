@@ -12,7 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-var tracer = otel.Tracer("orchestrator.internal.template.template")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/template")
 
 func Delete(ctx context.Context, artifactRegistry artifactsregistry.ArtifactsRegistry, templateStorage storage.StorageProvider, templateId string, buildId string) error {
 	childCtx, childSpan := tracer.Start(ctx, "delete-template")

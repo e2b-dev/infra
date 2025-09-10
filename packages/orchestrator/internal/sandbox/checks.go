@@ -12,7 +12,7 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
-var tracer = otel.Tracer("orchestrator.internal.sandbox")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox")
 
 const (
 	healthCheckInterval = 20 * time.Second

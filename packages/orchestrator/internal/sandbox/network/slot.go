@@ -17,7 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
-var tracer = otel.Tracer("orchestrator.internal.sandbox.network")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network")
 
 const (
 	defaultHostNetworkCIDR = "10.11.0.0/16"

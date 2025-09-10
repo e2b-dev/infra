@@ -37,7 +37,7 @@ import (
 
 const progressDelay = 5 * time.Second
 
-var tracer = otel.Tracer("orchestrator.internal.template.build")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build")
 
 type Builder struct {
 	logger *zap.Logger

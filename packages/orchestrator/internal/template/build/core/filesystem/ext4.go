@@ -19,7 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-var tracer = otel.Tracer("orchestrator.internal.template.build.core.filesystem")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/filesystem")
 
 const (
 	// creates an inode for every bytes-per-inode byte of space on the disk

@@ -28,7 +28,7 @@ import (
 
 var finalizeTimeout = configurationTimeout + readyCommandTimeout + 5*time.Minute
 
-var tracer = otel.Tracer("orchestrator.template.build.phases.finalize")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/finalize")
 
 type PostProcessingBuilder struct {
 	buildcontext.BuildContext

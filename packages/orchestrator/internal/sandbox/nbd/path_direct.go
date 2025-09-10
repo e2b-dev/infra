@@ -29,7 +29,7 @@ const (
 	disconnectTimeout = 30 * time.Second
 )
 
-var tracer = otel.Tracer("orchestrator.internal.sandbox.nbd")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd")
 
 type DirectPathMount struct {
 	ctx      context.Context // nolint:containedctx // todo: refactor so this can be removed

@@ -14,7 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-var tracer = otel.Tracer("orchestrator.internal.sandbox.rootfs")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs")
 
 type DirectProvider struct {
 	cache *block.Cache

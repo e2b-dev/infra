@@ -27,7 +27,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var tracer = otel.Tracer("orchestrator.internal.sandbox.fc")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc")
 
 type ProcessOptions struct {
 	// InitScriptPath is the path to the init script that will be executed inside the VM on kernel start.

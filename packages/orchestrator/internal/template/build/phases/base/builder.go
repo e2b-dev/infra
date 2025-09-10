@@ -47,7 +47,7 @@ const (
 	defaultUser = "root"
 )
 
-var tracer = otel.Tracer("orchestrator.template.build.phases.base")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/base")
 
 type BaseBuilder struct {
 	buildcontext.BuildContext

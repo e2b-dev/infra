@@ -18,7 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var tracer = otel.Tracer("orchestrator.internal.template.build.commands")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/commands")
 
 type CommandExecutor struct {
 	buildcontext.BuildContext

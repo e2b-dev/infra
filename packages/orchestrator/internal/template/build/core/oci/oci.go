@@ -25,7 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var tracer = otel.Tracer("orchestrator.internal.template.build.core.oci")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci")
 
 const (
 	ToMBShift            = 20

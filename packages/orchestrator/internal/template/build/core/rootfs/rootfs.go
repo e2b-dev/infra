@@ -24,7 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-var tracer = otel.Tracer("orchestrator.internal.template.build.core.rootfs")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs")
 
 const (
 	// Max size of the rootfs file in MB.

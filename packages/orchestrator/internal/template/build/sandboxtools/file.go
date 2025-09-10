@@ -25,7 +25,7 @@ var client = http.Client{
 	Timeout: fileCopyTimeout,
 }
 
-var tracer = otel.Tracer("orchestrator.internal.template.build.sandboxtools")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools")
 
 func CopyFile(
 	ctx context.Context,

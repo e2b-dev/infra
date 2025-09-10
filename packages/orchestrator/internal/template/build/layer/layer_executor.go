@@ -21,7 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-var tracer = otel.Tracer("orchestrator.internal.template.build.layer")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer")
 
 type LayerExecutor struct {
 	buildcontext.BuildContext

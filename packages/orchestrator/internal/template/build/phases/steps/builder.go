@@ -30,7 +30,7 @@ import (
 
 const layerTimeout = time.Hour
 
-var tracer = otel.Tracer("orchestrator.template.build.phases.steps")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/steps")
 
 type StepBuilder struct {
 	buildcontext.BuildContext

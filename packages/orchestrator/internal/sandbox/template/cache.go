@@ -32,7 +32,7 @@ const (
 	buildCacheMaxUsedPercentage = 75.0
 )
 
-var tracer = otel.Tracer("orchestrator.sandbox.template.cache")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template")
 
 type Cache struct {
 	flags         *featureflags.Client

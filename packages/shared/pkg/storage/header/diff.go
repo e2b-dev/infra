@@ -17,7 +17,7 @@ const (
 	RootfsBlockSize = 2 << 11
 )
 
-var tracer = otel.Tracer("shared.pkg.storage.header")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage/header")
 
 var (
 	EmptyHugePage = make([]byte, HugepageSize)
