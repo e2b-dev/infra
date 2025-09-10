@@ -97,7 +97,8 @@ func (c *MemoryStore) Remove(ctx context.Context, instanceID string, removeType 
 	// Makes sure there's only one removal
 	err = sbx.markRemoving(removeType)
 	if err != nil {
-		if errors.Is(err, ErrAlreadyBeingDeleted) {
+		if (errors.Is(err, ErrAlreadyBeingDeleted) && removeType == RemoveTypeKill) ||
+			(errors.Is(err, ErrAlreadyBeingPaused) && removeType == RemoveTypePause) {
 			sbxlogger.I(sbx).Debug("Instance is already being removed, waiting for it to finish")
 			return sbx.WaitForStop(ctx)
 		}
