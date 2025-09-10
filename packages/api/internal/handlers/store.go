@@ -146,7 +146,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
 
-	orch, err := orchestrator.New(ctx, tel, nomadClient, posthogClient, redisClient, dbClient, clustersPool, featureFlags)
+	orch, err := orchestrator.New(ctx, tel, nomadClient, posthogClient, redisClient, dbClient, sqlcDB, clustersPool, featureFlags)
 	if err != nil {
 		zap.L().Fatal("Initializing Orchestrator client", zap.Error(err))
 	}
@@ -160,7 +160,8 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		zap.L().Fatal("Initializing access token generator failed", zap.Error(err))
 	}
 
-	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
+
+	templateBuildsCache := templatecache.NewTemplateBuildCache(sqlcDB)
 	templateManager, err := template_manager.New(ctx, tel.TracerProvider, tel.MeterProvider, dbClient, sqlcDB, clustersPool, templateBuildsCache, templateCache)
 	if err != nil {
 		zap.L().Fatal("Initializing Template manager client", zap.Error(err))

@@ -21,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/evictor"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
+	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -44,6 +45,7 @@ type Orchestrator struct {
 	posthogClient           *analyticscollector.PosthogClient
 	dns                     *dns.DNS
 	dbClient                *db.DB
+	sqlcDB                  *sqlcdb.Client
 	tel                     *telemetry.Client
 	clusters                *edge.Pool
 	metricsRegistration     metric.Registration
@@ -60,6 +62,7 @@ func New(
 	posthogClient *analyticscollector.PosthogClient,
 	redisClient redis.UniversalClient,
 	dbClient *db.DB,
+	sqlcDB *sqlcdb.Client,
 	clusters *edge.Pool,
 	featureFlags *featureflags.Client,
 ) (*Orchestrator, error) {
@@ -112,6 +115,7 @@ func New(
 		featureFlagsClient: featureFlags,
 		dns:                dnsServer,
 		dbClient:           dbClient,
+		sqlcDB:             sqlcDB,
 		tel:                tel,
 		clusters:           clusters,
 

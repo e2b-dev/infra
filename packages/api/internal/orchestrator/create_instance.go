@@ -116,7 +116,7 @@ func (o *Orchestrator) CreateSandbox(
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
 			BaseTemplateId:      baseTemplateID,
-			TemplateId:          *build.EnvID,
+			TemplateId:          build.EnvID,
 			Alias:               &alias,
 			TeamId:              team.Team.ID.String(),
 			BuildId:             build.ID.String(),
@@ -185,7 +185,7 @@ func (o *Orchestrator) CreateSandbox(
 	sbx := api.Sandbox{
 		ClientID:        consts.ClientID,
 		SandboxID:       sandboxID,
-		TemplateID:      *build.EnvID,
+		TemplateID:      build.EnvID,
 		Alias:           &alias,
 		EnvdVersion:     *build.EnvdVersion,
 		EnvdAccessToken: envdAuthToken,
