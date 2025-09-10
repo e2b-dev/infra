@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -25,6 +26,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc")
 
 type ProcessOptions struct {
 	// InitScriptPath is the path to the init script that will be executed inside the VM on kernel start.
@@ -67,7 +70,6 @@ type Process struct {
 
 func NewProcess(
 	ctx context.Context,
-	tracer trace.Tracer,
 	slot *network.Slot,
 	files *storage.SandboxFiles,
 	versions FirecrackerVersions,
@@ -130,7 +132,6 @@ func NewProcess(
 
 func (p *Process) configure(
 	ctx context.Context,
-	tracer trace.Tracer,
 	sbxMetadata sbxlogger.LoggerMetadata,
 	stdoutExternal io.Writer,
 	stderrExternal io.Writer,
@@ -209,7 +210,6 @@ func (p *Process) configure(
 
 func (p *Process) Create(
 	ctx context.Context,
-	tracer trace.Tracer,
 	loggerMetadata sbxlogger.LoggerMetadata,
 	vCPUCount int64,
 	memoryMB int64,
@@ -221,7 +221,6 @@ func (p *Process) Create(
 
 	err := p.configure(
 		ctx,
-		tracer,
 		loggerMetadata,
 		options.Stdout,
 		options.Stderr,
@@ -326,7 +325,6 @@ func (p *Process) Create(
 
 func (p *Process) Resume(
 	ctx context.Context,
-	tracer trace.Tracer,
 	mmdsMetadata *MmdsMetadata,
 	uffdSocketPath string,
 	snapfile template.File,
@@ -337,7 +335,6 @@ func (p *Process) Resume(
 
 	err := p.configure(
 		childCtx,
-		tracer,
 		mmdsMetadata,
 		nil,
 		nil,
@@ -453,7 +450,7 @@ func (p *Process) Stop() error {
 	return nil
 }
 
-func (p *Process) Pause(ctx context.Context, tracer trace.Tracer) error {
+func (p *Process) Pause(ctx context.Context) error {
 	ctx, childSpan := tracer.Start(ctx, "pause-fc")
 	defer childSpan.End()
 
@@ -461,7 +458,7 @@ func (p *Process) Pause(ctx context.Context, tracer trace.Tracer) error {
 }
 
 // CreateSnapshot VM needs to be paused before creating a snapshot.
-func (p *Process) CreateSnapshot(ctx context.Context, tracer trace.Tracer, snapfilePath string, memfilePath string) error {
+func (p *Process) CreateSnapshot(ctx context.Context, snapfilePath string, memfilePath string) error {
 	ctx, childSpan := tracer.Start(ctx, "create-snapshot-fc")
 	defer childSpan.End()
 

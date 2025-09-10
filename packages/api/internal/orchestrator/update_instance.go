@@ -23,7 +23,7 @@ func (o *Orchestrator) UpdateSandbox(
 	clusterID uuid.UUID,
 	nodeID string,
 ) error {
-	childCtx, childSpan := o.tracer.Start(ctx, "update-sandbox",
+	childCtx, childSpan := tracer.Start(ctx, "update-sandbox",
 		trace.WithAttributes(
 			attribute.String("instance.id", sandboxID),
 		),

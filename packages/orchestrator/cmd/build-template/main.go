@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"time"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -77,8 +76,6 @@ func buildTemplate(
 	sbxlogger.SetSandboxLoggerExternal(logger)
 	sbxlogger.SetSandboxLoggerInternal(logger)
 
-	tracer := otel.Tracer("test")
-
 	logger.Info("building template", l.WithTemplateID(templateID), l.WithBuildID(buildID))
 
 	// The sandbox map is shared between the server and the proxy
@@ -123,7 +120,7 @@ func buildTemplate(
 		}
 	}()
 
-	networkPool, err := network.NewPool(ctx, noop.MeterProvider{}, 8, 8, clientID, tracer)
+	networkPool, err := network.NewPool(ctx, noop.MeterProvider{}, 8, 8, clientID)
 	if err != nil {
 		return fmt.Errorf("could not create network pool: %w", err)
 	}
@@ -160,7 +157,6 @@ func buildTemplate(
 	}
 	builder := build.NewBuilder(
 		logger,
-		tracer,
 		persistenceTemplate,
 		persistenceBuild,
 		artifactRegistry,

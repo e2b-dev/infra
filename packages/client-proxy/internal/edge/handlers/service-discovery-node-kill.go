@@ -15,7 +15,7 @@ import (
 func (a *APIStore) V1ServiceDiscoveryNodeKill(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	spanCtx, templateSpan := a.tracer.Start(ctx, "service-discovery-node-kill-handler")
+	spanCtx, templateSpan := tracer.Start(ctx, "service-discovery-node-kill-handler")
 	defer templateSpan.End()
 
 	body, err := parseBody[api.V1ServiceDiscoveryNodeKillJSONRequestBody](ctx, c)

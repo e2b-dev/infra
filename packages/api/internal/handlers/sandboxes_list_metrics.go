@@ -26,7 +26,7 @@ func (a *APIStore) getSandboxesMetrics(
 	teamID uuid.UUID,
 	sandboxIDs []string,
 ) (map[string]api.SandboxMetric, error) {
-	ctx, span := a.Tracer.Start(ctx, "fetch-sandboxes-metrics")
+	ctx, span := tracer.Start(ctx, "fetch-sandboxes-metrics")
 	defer span.End()
 
 	for i, id := range sandboxIDs {
