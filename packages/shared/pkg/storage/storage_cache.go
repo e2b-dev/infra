@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -220,10 +221,68 @@ func (c *CachedFileObjectProvider) validateReadAtParams(buffSize, offset int64) 
 	return nil
 }
 
+func (c *CachedFileObjectProvider) makeSizeFilename() string {
+	return filepath.Join(c.path, "size.txt")
+}
+
 func (c *CachedFileObjectProvider) Size(ctx context.Context) (int64, error) {
-	// we don't have a mechanism to store file size confidently, and this should be really cheap,
-	// let's just let the remote handle it.
-	return c.inner.Size(ctx)
+	if size, ok := c.readLocalSize(); ok {
+		return size, nil
+	}
+
+	size, err := c.inner.Size(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	go c.writeLocalSize(size)
+
+	return size, nil
+}
+
+func (c *CachedFileObjectProvider) readLocalSize() (int64, bool) {
+	fname := c.makeSizeFilename()
+	content, err := os.ReadFile(fname)
+	if err != nil {
+		zap.L().Warn("failed to read cached size, falling back to remote read",
+			zap.String("path", fname),
+			zap.Error(err))
+		return 0, false
+	}
+
+	size, err := strconv.ParseInt(string(content), 10, 64)
+	if err != nil {
+		zap.L().Warn("failed to parse cached size, falling back to remote read",
+			zap.String("path", fname),
+			zap.String("content", string(content)),
+			zap.Error(err))
+		return 0, false
+	}
+
+	return size, true
+}
+
+func (c *CachedFileObjectProvider) writeLocalSize(size int64) {
+	tempFilename := filepath.Join(c.path, fmt.Sprintf(".size.bin.%s", uuid.NewString()))
+
+	fp, err := os.OpenFile(tempFilename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		zap.L().Warn("failed to open temp file",
+			zap.String("path", tempFilename),
+			zap.Error(err))
+		return
+	}
+	defer fp.Close()
+
+	if _, err := fp.WriteString(fmt.Sprintf("%d", size)); err != nil {
+		zap.L().Warn("failed to write to temp file",
+			zap.String("path", tempFilename),
+			zap.Error(err))
+	}
+
+	if err := moveWithoutReplace(tempFilename, c.makeSizeFilename()); err != nil {
+		zap.L().Warn("failed to move temp file")
+	}
 }
 
 func (c *CachedFileObjectProvider) Delete(ctx context.Context) error {
