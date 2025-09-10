@@ -1,6 +1,7 @@
 package host
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -54,20 +55,20 @@ func getProcessInfo(pid int32) (*ProcessInfo, error) {
 }
 
 func MonitorProcesses(logger *zerolog.Logger, interval time.Duration, processEventHandlers ...ProcessEventHandler) {
-	knownProcesses := make(map[int32]*ProcessInfo)
+	knownProcesses := make(map[string]*ProcessInfo)
 
 	// Get initial process list
 	initialPids, err := process.Pids()
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to get initial process list")
-		return
 	}
 
 	for _, pid := range initialPids {
 		if info, err := getProcessInfo(pid); err == nil {
-			knownProcesses[pid] = info
+			key := deriveKey(pid, info.Name)
+			knownProcesses[key] = info
 		} else {
-			logger.Error().Err(err).Msg("Failed to get process info for initial process")
+			logger.Error().Err(err).Msg("Failed to get process info")
 		}
 	}
 
@@ -81,14 +82,15 @@ func MonitorProcesses(logger *zerolog.Logger, interval time.Duration, processEve
 			continue
 		}
 
-		currentProcesses := make(map[int32]*ProcessInfo)
+		currentProcesses := make(map[string]*ProcessInfo)
 
 		for _, pid := range currentPids {
 			if info, err := getProcessInfo(pid); err == nil {
-				currentProcesses[pid] = info
+				key := deriveKey(pid, info.Name)
+				currentProcesses[key] = info
 
 				// Check if this is a new process
-				if _, exists := knownProcesses[pid]; !exists {
+				if _, exists := knownProcesses[key]; !exists {
 					info.State = ProcessStateRunning
 					for _, handler := range processEventHandlers {
 						err := handler(info)
@@ -101,8 +103,8 @@ func MonitorProcesses(logger *zerolog.Logger, interval time.Duration, processEve
 		}
 
 		// Check for exited processes
-		for pid, info := range knownProcesses {
-			if _, exists := currentProcesses[pid]; !exists {
+		for key, info := range knownProcesses {
+			if _, exists := currentProcesses[key]; !exists {
 				info.State = ProcessStateExited
 				for _, handler := range processEventHandlers {
 					err := handler(info)
@@ -115,4 +117,8 @@ func MonitorProcesses(logger *zerolog.Logger, interval time.Duration, processEve
 
 		knownProcesses = currentProcesses
 	}
+}
+
+func deriveKey(pid int32, name string) string {
+	return fmt.Sprintf("%d:%s", pid, name)
 }
