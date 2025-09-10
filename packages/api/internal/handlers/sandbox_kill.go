@@ -139,7 +139,15 @@ func (a *APIStore) removeRunningSandbox(
 	err := a.orchestrator.RemoveInstance(ctx, sbx, instance.RemoveTypeKill)
 	if err != nil {
 		if errors.Is(err, instance.ErrNotFound) {
+			// If the sandbox was killed it's fine,
+			// if paused we will remove the snapshot
 			return nil
+		}
+
+		if errors.Is(err, instance.ErrAlreadyBeingPaused) {
+			// If the sandbox is already being paused,
+			// wait for it to finish and then we will remove the snapshot
+			return sbx.WaitForStop(ctx)
 		}
 
 		return fmt.Errorf("error deleting sandbox: %w", err)
