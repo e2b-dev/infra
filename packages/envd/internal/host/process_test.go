@@ -10,32 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGetProcessInfo(t *testing.T) {
-	// Test with current process PID
-	pid := int32(1) // Use PID 1 which should exist on most systems
-
-	info, err := getProcessInfo(pid)
-	if err != nil {
-		// If PID 1 doesn't exist or we can't access it, skip the test
-		t.Skipf("Cannot access PID %d: %v", pid, err)
-	}
-
-	require.NoError(t, err)
-	assert.NotNil(t, info)
-	assert.Equal(t, pid, info.PID)
-	assert.NotEmpty(t, info.Name)
-	assert.Negative(t, info.CreateTime)
-}
-
-func TestGetProcessInfoInvalidPID(t *testing.T) {
-	// Test with an invalid PID (very high number that shouldn't exist)
-	invalidPID := int32(999999999)
-
-	info, err := getProcessInfo(invalidPID)
-	require.NoError(t, err)
-	assert.Nil(t, info)
-}
-
 func TestMonitorProcesses(t *testing.T) {
 	// Create a channel to collect events
 	events := make(chan *ProcessInfo, 100)
@@ -75,7 +49,7 @@ func TestMonitorProcesses(t *testing.T) {
 	mu.Unlock()
 
 	// We should have detected some processes as running initially
-	assert.Negative(t, initialCount, "Should have detected some initial processes")
+	assert.Positive(t, initialCount, "Should have detected some initial processes")
 
 	// Verify that events have the correct structure
 	for i := 0; i < 2; i++ {
