@@ -2,6 +2,7 @@ package instance
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -96,6 +97,11 @@ func (c *MemoryStore) Remove(ctx context.Context, instanceID string, removeType 
 	// Makes sure there's only one removal
 	err = sbx.markRemoving(removeType)
 	if err != nil {
+		if errors.Is(err, ErrAlreadyBeingDeleted) {
+			sbxlogger.I(sbx).Debug("Instance is already being removed, waiting for it to finish")
+			return sbx.WaitForStop(ctx)
+		}
+
 		return err
 	}
 
