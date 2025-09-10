@@ -59,16 +59,18 @@ func TestMonitorProcesses(t *testing.T) {
 
 	// Verify that events have the correct structure
 	done := make(chan struct{})
+	count := 0
 	go func() {
-		for i := 0; i < 2; i++ {
-			event := <-events
-			if event.Name != cmdName {
-				// skip the event until we get the correct one
-				i--
-				continue
+		for event := range events {
+			if count >= 2 {
+				close(done)
+				return
 			}
-			assert.Equal(t, sleepPID, event.PID)
-			assert.Contains(t, []ProcessState{ProcessStateRunning, ProcessStateExited}, event.State)
+			if event.Name == cmdName {
+				count++
+				assert.Equal(t, sleepPID, event.PID)
+				assert.Contains(t, []ProcessState{ProcessStateRunning, ProcessStateExited}, event.State)
+			}
 		}
 		close(done)
 	}()
