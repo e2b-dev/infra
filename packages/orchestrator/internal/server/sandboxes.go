@@ -209,8 +209,8 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	sbx.EndAt = req.EndTime.AsTime()
 
-	teamID, buildId, sbxMetadata := s.prepareSandboxEventData(sbx)
-	sbxMetadata["set_timeout"] = req.EndTime.AsTime().Format(time.RFC3339)
+	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
+	eventData["set_timeout"] = req.EndTime.AsTime().Format(time.RFC3339)
 
 	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), event.SandboxEvent{
 		Timestamp:          time.Now().UTC(),
@@ -221,7 +221,7 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		SandboxTeamID:      teamID,
 		EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
 		EventLabel:         string(clickhouse.SandboxEventLabelUpdate),
-		EventData:          sbxMetadata,
+		EventData:          eventData,
 	})
 
 	return &emptypb.Empty{}, nil
