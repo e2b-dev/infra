@@ -1,9 +1,9 @@
 package host
 
 import (
-	"log"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/shirou/gopsutil/v4/process"
 )
 
@@ -53,18 +53,21 @@ func getProcessInfo(pid int32) (*ProcessInfo, error) {
 	}, nil
 }
 
-func MonitorProcesses(interval time.Duration, processEventHandlers ...ProcessEventHandler) {
+func MonitorProcesses(logger *zerolog.Logger, interval time.Duration, processEventHandlers ...ProcessEventHandler) {
 	knownProcesses := make(map[int32]*ProcessInfo)
 
 	// Get initial process list
 	initialPids, err := process.Pids()
 	if err != nil {
-		log.Fatalf("Failed to get initial process list: %v", err)
+		logger.Error().Err(err).Msg("Failed to get initial process list")
+		return
 	}
 
 	for _, pid := range initialPids {
 		if info, err := getProcessInfo(pid); err == nil {
 			knownProcesses[pid] = info
+		} else {
+			logger.Error().Err(err).Msg("Failed to get process info for initial process")
 		}
 	}
 
@@ -74,7 +77,7 @@ func MonitorProcesses(interval time.Duration, processEventHandlers ...ProcessEve
 	for range ticker.C {
 		currentPids, err := process.Pids()
 		if err != nil {
-			log.Printf("Error getting current processes: %v", err)
+			logger.Error().Err(err).Msg("Error getting current processes")
 			continue
 		}
 
@@ -88,7 +91,10 @@ func MonitorProcesses(interval time.Duration, processEventHandlers ...ProcessEve
 				if _, exists := knownProcesses[pid]; !exists {
 					info.State = ProcessStateRunning
 					for _, handler := range processEventHandlers {
-						handler(info)
+						err := handler(info)
+						if err != nil {
+							logger.Error().Err(err).Msg("Error handling process start event")
+						}
 					}
 				}
 			}
@@ -99,7 +105,10 @@ func MonitorProcesses(interval time.Duration, processEventHandlers ...ProcessEve
 			if _, exists := currentProcesses[pid]; !exists {
 				info.State = ProcessStateExited
 				for _, handler := range processEventHandlers {
-					handler(info)
+					err := handler(info)
+					if err != nil {
+						logger.Error().Err(err).Msg("Error handling process exit event")
+					}
 				}
 			}
 		}

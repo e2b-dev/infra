@@ -1,11 +1,13 @@
 package host
 
 import (
+	"os"
 	"os/exec"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +29,8 @@ func TestMonitorProcesses(t *testing.T) {
 
 	// Start monitoring with a short interval
 	interval := 100 * time.Millisecond
-	go MonitorProcesses(interval, handler)
+	logger := zerolog.New(os.Stdout).Level(zerolog.InfoLevel).With().Timestamp().Logger()
+	go MonitorProcesses(&logger, interval, handler)
 
 	// Run a short-lived process: sleep 1
 	cmdName := "sleep"
