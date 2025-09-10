@@ -96,6 +96,8 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		if err != nil {
 			telemetry.ReportError(ctx, "error deleting sandbox", err)
 			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error deleting sandbox: %s", err))
+
+			return
 		}
 	}
 
