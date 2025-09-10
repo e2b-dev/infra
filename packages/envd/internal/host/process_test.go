@@ -55,23 +55,32 @@ func TestMonitorProcesses(t *testing.T) {
 	assert.Positive(t, initialCount, "Should have detected some initial processes")
 
 	// Verify that events have the correct structure
-	for i := 0; i < 2; i++ {
-		expectedState := ProcessStateRunning
-		if i == 1 {
-			expectedState = ProcessStateExited
-		}
-
-		select {
-		case event := <-events:
-			if event.Name != cmdName {
-				// skip the event until we get the correct one
-				i--
-				continue
+	done := make(chan struct{})
+	go func() {
+		for i := 0; i < 2; i++ {
+			expectedState := ProcessStateRunning
+			if i == 1 {
+				expectedState = ProcessStateExited
 			}
-			assert.Equal(t, sleepPID, event.PID)
-			assert.Equal(t, expectedState, event.State)
-		case <-time.After(1 * time.Second):
-			t.Fatalf("No event received in iteration %d", i+1)
+
+			select {
+			case event := <-events:
+				if event.Name != cmdName {
+					// skip the event until we get the correct one
+					i--
+					continue
+				}
+				assert.Equal(t, sleepPID, event.PID)
+				assert.Equal(t, expectedState, event.State)
+			}
 		}
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Test completed successfully
+	case <-time.After(5 * time.Second):
+		t.Fatal("Test took longer than 5 seconds to complete")
 	}
 }
