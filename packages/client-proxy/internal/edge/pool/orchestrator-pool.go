@@ -21,7 +21,6 @@ type OrchestratorsPool struct {
 	instances       *smap.Map[*OrchestratorInstance]
 	synchronization *synchronization.Synchronize[sd.ServiceDiscoveryItem, *OrchestratorInstance]
 
-	tracer trace.Tracer
 	logger *zap.Logger
 
 	metricProvider metric.MeterProvider
@@ -41,7 +40,6 @@ const (
 
 func NewOrchestratorsPool(
 	logger *zap.Logger,
-	tracer trace.Tracer,
 	tracerProvider trace.TracerProvider,
 	metricProvider metric.MeterProvider,
 	discovery sd.ServiceDiscoveryAdapter,
@@ -50,7 +48,6 @@ func NewOrchestratorsPool(
 		discovery: discovery,
 		instances: smap.New[*OrchestratorInstance](),
 
-		tracer: tracerProvider.Tracer("orchestrators-pool"),
 		logger: logger,
 
 		metricProvider: metricProvider,
@@ -60,7 +57,7 @@ func NewOrchestratorsPool(
 	}
 
 	store := &orchestratorInstancesSyncStore{pool: pool}
-	pool.synchronization = synchronization.NewSynchronize(tracer, "orchestrator-instances", "Orchestrator instances", store)
+	pool.synchronization = synchronization.NewSynchronize("orchestrator-instances", "Orchestrator instances", store)
 
 	// Background synchronization of orchestrators pool
 	go func() { pool.synchronization.Start(orchestratorsPoolInterval, orchestratorsPoolRoundTimeout, true) }()

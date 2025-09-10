@@ -1,7 +1,6 @@
 package steps
 
 import (
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -16,7 +15,6 @@ import (
 func CreateStepPhases(
 	bc buildcontext.BuildContext,
 	logger *zap.Logger,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	layerExecutor *layer.LayerExecutor,
 	commandExecutor *commands.CommandExecutor,
@@ -30,7 +28,6 @@ func CreateStepPhases(
 			New(
 				bc,
 				logger,
-				tracer,
 				proxy,
 				layerExecutor,
 				commandExecutor,

@@ -9,11 +9,13 @@ import (
 	"github.com/go-redsync/redsync/v4"
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/redis/go-redis/v9"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/client-proxy/internal/edge/sandboxes")
 
 const (
 	catalogClusterLockName = "sandboxes-catalog-cluster-lock"
@@ -29,11 +31,10 @@ type RedisSandboxCatalog struct {
 	clusterMutex *redsync.Mutex
 	redisClient  redis.UniversalClient
 
-	cache  *ttlcache.Cache[string, *SandboxInfo]
-	tracer trace.Tracer
+	cache *ttlcache.Cache[string, *SandboxInfo]
 }
 
-func NewRedisSandboxesCatalog(tracer trace.Tracer, redisClient redis.UniversalClient, redisSync *redsync.Redsync) *RedisSandboxCatalog {
+func NewRedisSandboxesCatalog(redisClient redis.UniversalClient, redisSync *redsync.Redsync) *RedisSandboxCatalog {
 	clusterLockMutex := redisSync.NewMutex(catalogClusterLockName)
 
 	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogRedisLocalCacheTtl), ttlcache.WithDisableTouchOnHit[string, *SandboxInfo]())
@@ -42,7 +43,6 @@ func NewRedisSandboxesCatalog(tracer trace.Tracer, redisClient redis.UniversalCl
 	return &RedisSandboxCatalog{
 		redisClient:  redisClient,
 		clusterMutex: clusterLockMutex,
-		tracer:       tracer,
 		cache:        cache,
 	}
 }
@@ -50,7 +50,7 @@ func NewRedisSandboxesCatalog(tracer trace.Tracer, redisClient redis.UniversalCl
 var _ SandboxesCatalog = (*RedisSandboxCatalog)(nil)
 
 func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) (*SandboxInfo, error) {
-	spanCtx, span := c.tracer.Start(ctx, "sandbox-catalog-get")
+	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-get")
 	defer span.End()
 
 	sandboxInfo := c.cache.Get(sandboxID)
@@ -85,7 +85,7 @@ func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) 
 }
 
 func (c *RedisSandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string, sandboxInfo *SandboxInfo, expiration time.Duration) error {
-	spanCtx, span := c.tracer.Start(ctx, "sandbox-catalog-store")
+	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-store")
 	defer span.End()
 
 	err := c.clusterMutex.Lock()
@@ -115,7 +115,7 @@ func (c *RedisSandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string
 }
 
 func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID string, executionID string) error {
-	spanCtx, span := c.tracer.Start(ctx, "sandbox-catalog-delete")
+	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-delete")
 	defer span.End()
 
 	err := c.clusterMutex.Lock()

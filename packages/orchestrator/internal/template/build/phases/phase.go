@@ -17,7 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-var tracer = otel.Tracer("orchestrator.template.build.phases")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases")
 
 type PhaseMeta struct {
 	Phase    metrics.Phase

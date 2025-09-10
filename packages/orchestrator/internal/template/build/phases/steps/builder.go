@@ -30,7 +30,7 @@ import (
 
 const layerTimeout = time.Hour
 
-var tracer = otel.Tracer("orchestrator.template.build.phases.steps")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/steps")
 
 type StepBuilder struct {
 	buildcontext.BuildContext
@@ -39,7 +39,6 @@ type StepBuilder struct {
 	step       *templatemanager.TemplateStep
 
 	logger *zap.Logger
-	tracer trace.Tracer
 	proxy  *proxy.SandboxProxy
 
 	layerExecutor   *layer.LayerExecutor
@@ -51,7 +50,6 @@ type StepBuilder struct {
 func New(
 	buildContext buildcontext.BuildContext,
 	logger *zap.Logger,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	layerExecutor *layer.LayerExecutor,
 	commandExecutor *commands.CommandExecutor,
@@ -67,7 +65,6 @@ func New(
 		step:       step,
 
 		logger: logger,
-		tracer: tracer,
 		proxy:  proxy,
 
 		layerExecutor:   layerExecutor,
@@ -198,7 +195,6 @@ func (sb *StepBuilder) Build(
 
 		err = sandboxtools.SyncChangesToDisk(
 			ctx,
-			sb.tracer,
 			sb.proxy,
 			sbx.Runtime.SandboxID,
 		)

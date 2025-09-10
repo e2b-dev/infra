@@ -26,7 +26,7 @@ func (PauseQueueExhaustedError) Error() string {
 }
 
 func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node, sbx *instance.InstanceInfo) (err error) {
-	ctx, span := o.tracer.Start(ctx, "pause-sandbox")
+	ctx, span := tracer.Start(ctx, "pause-sandbox")
 	defer span.End()
 
 	snapshotConfig := &db.SnapshotInfo{
@@ -88,7 +88,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 }
 
 func snapshotInstance(ctx context.Context, orch *Orchestrator, node *nodemanager.Node, sbx *instance.InstanceInfo, templateID, buildID string) error {
-	childCtx, childSpan := orch.tracer.Start(ctx, "snapshot-instance")
+	childCtx, childSpan := tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
 
 	client, childCtx, err := orch.GetClient(childCtx, sbx.ClusterID, sbx.NodeID)

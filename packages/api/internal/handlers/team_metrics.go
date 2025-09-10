@@ -20,7 +20,7 @@ const defaultTimeRange = 7 * 24 * time.Hour // 7 days
 
 func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params api.GetTeamsTeamIDMetricsParams) {
 	ctx := c.Request.Context()
-	ctx, span := a.Tracer.Start(ctx, "team-metrics")
+	ctx, span := tracer.Start(ctx, "team-metrics")
 	defer span.End()
 
 	team := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo).Team
