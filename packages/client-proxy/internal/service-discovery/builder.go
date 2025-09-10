@@ -17,6 +17,7 @@ const (
 
 	DnsProviderKey    = "DNS"
 	StaticProviderKey = "STATIC"
+	NomadProvider     = "NOMAD"
 	K8sPodsProvider   = "K8S-PODS"
 )
 
@@ -46,6 +47,8 @@ func resolveServiceDiscoveryConfig(ctx context.Context, prefix string, port int,
 		return createDnsProvider(ctx, prefix, port, logger)
 	case K8sPodsProvider:
 		return createK8sProvider(ctx, prefix, port, logger)
+	case NomadProvider:
+		return createNomadProvider(ctx, prefix, port, logger)
 	case StaticProviderKey:
 		return createStaticProvider(prefix, port)
 	}
@@ -103,6 +106,28 @@ func createK8sProvider(ctx context.Context, prefix string, port int, logger *zap
 	}
 
 	return NewK8sServiceDiscovery(ctx, logger, client, port, podLabels, podNamespace, hostIP), nil
+}
+
+func createNomadProvider(ctx context.Context, prefix string, port int, logger *zap.Logger) (ServiceDiscoveryAdapter, error) {
+	nomadEndpointEnv := fmt.Sprintf("%s_NOMAD_ENDPOINT", prefix)
+	nomadEndpoint := os.Getenv(nomadEndpointEnv)
+	if nomadEndpoint == "" {
+		return nil, fmt.Errorf("missing %s environment variable", nomadEndpointEnv)
+	}
+
+	nomadTokenEnv := fmt.Sprintf("%s_NOMAD_TOKEN", prefix)
+	nomadToken := os.Getenv(nomadTokenEnv)
+	if nomadToken == "" {
+		return nil, fmt.Errorf("missing %s environment variable", nomadTokenEnv)
+	}
+
+	jobPrefixEnv := fmt.Sprintf("%s_JOB_PREFIX", prefix)
+	jobPrefix := os.Getenv(jobPrefixEnv)
+	if jobPrefix == "" {
+		return nil, fmt.Errorf("missing %s environment variable", jobPrefixEnv)
+	}
+
+	return NewNomadServiceDiscovery(ctx, logger, port, nomadEndpoint, nomadToken, jobPrefix)
 }
 
 func createStaticProvider(prefix string, port int) (ServiceDiscoveryAdapter, error) {
