@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	orchestratorConfigPrefix = "SERVICE_DISCOVERY_ORCHESTRATOR"
-	edgeConfigPrefix         = "SERVICE_DISCOVERY_EDGE"
+	orchestratorConfigPrefix = "SD_ORCHESTRATOR"
+	edgeConfigPrefix         = "SD_EDGE"
 
 	DnsProviderKey    = "DNS"
 	StaticProviderKey = "STATIC"
