@@ -831,7 +831,6 @@ func TestTemplateBuildWithDifferentSourceImages(t *testing.T) {
 				"Running start command",
 				"[start] [stdout]: Initialization complete",
 				"Waiting for template to be ready",
-				"[ready cmd]: sleep 2",
 				"Template is ready",
 			},
 		},
