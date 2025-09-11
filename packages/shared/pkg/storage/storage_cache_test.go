@@ -120,8 +120,6 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 				num, err := dst.Write(fakeData)
 				return int64(num), err
 			})
-		fakeStorageObjectProvider.EXPECT().
-			Size(mock.Anything).Return(int64(len(fakeData)), nil)
 
 		tempDir := t.TempDir()
 		c := CachedFileObjectProvider{
@@ -139,10 +137,8 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		// WriteTo is async, wait for the write to finish
 		time.Sleep(time.Millisecond * 20)
 
-		// second read should go straight to local, although it grabs the size
-		fakeStorageObjectProvider.EXPECT().
-			WriteTo(mock.Anything, mock.Anything).
-			Panic("something bad happened")
+		// second read should go straight to local
+		c.inner = nil
 		var buff2 bytes.Buffer
 		count, err = c.WriteTo(t.Context(), &buff2)
 		require.NoError(t, err)
