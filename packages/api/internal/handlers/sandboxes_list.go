@@ -56,7 +56,7 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 	return sandboxes, nil
 }
 
-func getRunningSandboxes(runningSandboxes []*instance.InstanceInfo, metadataFilter *map[string]string) []utils.PaginatedSandbox {
+func getRunningSandboxes(runningSandboxes []instance.Data, metadataFilter *map[string]string) []utils.PaginatedSandbox {
 	// Running Sandbox IDs
 	runningSandboxList := instanceInfoToPaginatedSandboxes(runningSandboxes)
 
@@ -143,7 +143,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		return
 	}
 
-	sandboxesInCache := a.orchestrator.GetSandboxes(ctx, &team.ID, []instance.State{instance.StateRunning, instance.StatePaused, instance.StatePausing})
+	sandboxesInCache := a.orchestrator.GetSandboxes(ctx, &team.ID, []instance.State{instance.StateRunning, instance.StatePaused})
 
 	// Running Sandbox IDs
 	runningSandboxesIDs := make([]string, 0)
@@ -167,6 +167,11 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	}
 
 	if slices.Contains(states, api.Paused) {
+		pausing := sandboxesInCache[instance.StatePaused]
+		for _, info := range pausing {
+			runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
+		}
+
 		pausedSandboxList, err := a.getPausedSandboxes(ctx, team.ID, runningSandboxesIDs, metadataFilter, limit, cursorTime, cursorID)
 		if err != nil {
 			zap.L().Error("Error getting paused sandboxes", zap.Error(err))
@@ -175,7 +180,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 			return
 		}
 
-		pausingSandboxList := instanceInfoToPaginatedSandboxes(sandboxesInCache[instance.StatePausing])
+		pausingSandboxList := instanceInfoToPaginatedSandboxes(pausing)
 		pausingSandboxList = utils.FilterSandboxesOnMetadata(pausingSandboxList, metadataFilter)
 		pausingSandboxList = utils.FilterBasedOnCursor(pausingSandboxList, cursorTime, cursorID)
 
@@ -260,11 +265,16 @@ func snapshotsToPaginatedSandboxes(snapshots []queries.GetSnapshotsWithCursorRow
 	return sandboxes
 }
 
-func instanceInfoToPaginatedSandboxes(runningSandboxes []*instance.InstanceInfo) []utils.PaginatedSandbox {
+func instanceInfoToPaginatedSandboxes(runningSandboxes []instance.Data) []utils.PaginatedSandbox {
 	sandboxes := make([]utils.PaginatedSandbox, 0)
 
 	// Add running sandboxes to results
 	for _, info := range runningSandboxes {
+		state := api.Running
+		if info.State == instance.StatePaused {
+			state = api.Paused
+		}
+
 		sandbox := utils.PaginatedSandbox{
 			ListedSandbox: api.ListedSandbox{
 				ClientID:    info.ClientID,
@@ -275,8 +285,8 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []*instance.InstanceInfo)
 				CpuCount:    api.CPUCount(info.VCpu),
 				MemoryMB:    api.MemoryMB(info.RamMB),
 				DiskSizeMB:  api.DiskSizeMB(info.TotalDiskSizeMB),
-				EndAt:       info.GetEndTime(),
-				State:       api.Running,
+				EndAt:       info.EndTime,
+				State:       state,
 				EnvdVersion: info.EnvdVersion,
 			},
 			PaginationTimestamp: info.StartTime,

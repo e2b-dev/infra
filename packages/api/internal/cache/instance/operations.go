@@ -19,52 +19,33 @@ const (
 )
 
 // Add the instance to the cache
-func (c *MemoryStore) Add(ctx context.Context, sandbox *InstanceInfo, newlyCreated bool) error {
-	sbxlogger.I(sandbox).Debug("Adding sandbox to cache",
+func (c *MemoryStore) Add(ctx context.Context, sandbox *InstanceInfo, newlyCreated bool) {
+	sandbox.dataMu.Lock()
+	defer sandbox.dataMu.Unlock()
+
+	sbxlogger.I(sandbox.data).Debug("Adding sandbox to cache",
 		zap.Bool("newly_created", newlyCreated),
-		zap.Time("start_time", sandbox.StartTime),
-		zap.Time("end_time", sandbox.GetEndTime()),
+		zap.Time("start_time", sandbox.data.StartTime),
+		zap.Time("end_time", sandbox.data.EndTime),
 	)
 
-	if sandbox.SandboxID == "" {
-		return fmt.Errorf("sandbox is missing sandbox ID")
+	endTime := sandbox.data.EndTime
+
+	if endTime.Sub(sandbox.data.StartTime) > sandbox.data.MaxInstanceLength {
+		sandbox.data.EndTime = sandbox.data.StartTime.Add(sandbox.data.MaxInstanceLength)
 	}
 
-	if sandbox.TeamID == uuid.Nil {
-		return fmt.Errorf("sandbox %s is missing team ID", sandbox.SandboxID)
-	}
-
-	if sandbox.ClientID == "" {
-		return fmt.Errorf("sandbox %s is missing client ID", sandbox.ClientID)
-	}
-
-	if sandbox.TemplateID == "" {
-		return fmt.Errorf("sandbox %s is missing env ID", sandbox.TemplateID)
-	}
-
-	endTime := sandbox.GetEndTime()
-
-	if sandbox.StartTime.IsZero() || endTime.IsZero() || sandbox.StartTime.After(endTime) {
-		return fmt.Errorf("sandbox %s has invalid start(%s)/end(%s) times", sandbox.SandboxID, sandbox.StartTime, endTime)
-	}
-
-	if endTime.Sub(sandbox.StartTime) > sandbox.MaxInstanceLength {
-		sandbox.SetEndTime(sandbox.StartTime.Add(sandbox.MaxInstanceLength))
-	}
-
-	c.items.SetIfAbsent(sandbox.SandboxID, sandbox)
+	c.items.SetIfAbsent(sandbox.data.SandboxID, sandbox)
 
 	for _, callback := range c.insertCallbacks {
-		callback(ctx, sandbox, newlyCreated)
+		callback(ctx, sandbox.data, newlyCreated)
 	}
 
 	for _, callback := range c.insertAsyncCallbacks {
-		go callback(context.WithoutCancel(ctx), sandbox, newlyCreated)
+		go callback(context.WithoutCancel(ctx), sandbox.data, newlyCreated)
 	}
 	// Release the reservation if it exists
-	c.reservations.release(sandbox.SandboxID)
-
-	return nil
+	c.reservations.release(sandbox.data.SandboxID)
 }
 
 // Exists Check if the instance exists in the cache or is being evicted.
@@ -79,50 +60,43 @@ func (c *MemoryStore) Get(instanceID string, includeEvicting bool) (*InstanceInf
 		return nil, fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
 	}
 
-	if item.IsExpired() && !includeEvicting {
+	if item.data.IsExpired() && !includeEvicting {
 		return nil, fmt.Errorf("instance \"%s\" is being evicted", instanceID)
 	}
 
 	return item, nil
 }
 
-// Remove the instance from the cache (no eviction callback).
-func (c *MemoryStore) Remove(ctx context.Context, instanceID string, removeType RemoveType) (err error) {
-	sbx, ok := c.items.Get(instanceID)
-	if !ok {
-		return fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
-	}
-
-	// Makes sure there's only one removal
-	err = sbx.markRemoving(removeType)
-	if err != nil {
-		return err
-	}
-
-	// Remove from the cache
-	defer c.items.Remove(instanceID)
-
-	// Remove the sandbox from the node
-	err = c.removeSandbox(ctx, sbx, removeType)
-	for _, callback := range c.removeAsyncCallbacks {
-		go callback(context.WithoutCancel(ctx), sbx, removeType)
-	}
-	sbx.stopDone(err)
-	if err != nil {
-		return fmt.Errorf("error removing instance \"%s\": %w", instanceID, err)
-	}
-
-	return nil
+func (c *MemoryStore) Remove(instanceID string) {
+	c.items.Remove(instanceID)
 }
 
-func (c *MemoryStore) Items(teamID *uuid.UUID) []*InstanceInfo {
-	items := make([]*InstanceInfo, 0)
+func (c *MemoryStore) Items(teamID *uuid.UUID) []Data {
+	items := make([]Data, 0)
 	for _, item := range c.items.Items() {
-		if item.IsExpired() {
+		data := item.data
+		if data.IsExpired() {
 			continue
 		}
 
-		if teamID != nil && item.TeamID != *teamID {
+		if teamID != nil && data.TeamID != *teamID {
+			continue
+		}
+
+		items = append(items, data)
+	}
+
+	return items
+}
+
+func (c *MemoryStore) ItemsToEvict() []*InstanceInfo {
+	items := make([]*InstanceInfo, 0)
+	for _, item := range c.items.Items() {
+		if !item.data.IsExpired() {
+			continue
+		}
+
+		if item.data.State != StateRunning {
 			continue
 		}
 
@@ -132,31 +106,20 @@ func (c *MemoryStore) Items(teamID *uuid.UUID) []*InstanceInfo {
 	return items
 }
 
-func (c *MemoryStore) ExpiredItems() []*InstanceInfo {
-	items := make([]*InstanceInfo, 0)
+func (c *MemoryStore) ItemsByState(teamID *uuid.UUID, states []State) map[State][]Data {
+	items := make(map[State][]Data)
 	for _, item := range c.items.Items() {
-		if !item.IsExpired() {
-			continue
-		}
-		items = append(items, item)
-	}
-
-	return items
-}
-
-func (c *MemoryStore) ItemsByState(teamID *uuid.UUID, states []State) map[State][]*InstanceInfo {
-	items := make(map[State][]*InstanceInfo)
-	for _, item := range c.items.Items() {
-		if teamID != nil && item.TeamID != *teamID {
+		if teamID != nil && item.data.TeamID != *teamID {
 			continue
 		}
 
-		if slices.Contains(states, item.state) {
-			if _, ok := items[item.state]; !ok {
-				items[item.state] = []*InstanceInfo{}
+		data := item.data
+		if slices.Contains(states, data.State) {
+			if _, ok := items[data.State]; !ok {
+				items[data.State] = []Data{}
 			}
 
-			items[item.state] = append(items[item.state], item)
+			items[data.State] = append(items[data.State], data)
 		}
 	}
 

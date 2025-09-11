@@ -57,15 +57,22 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	sandboxID = utils.ShortID(sandboxID)
 	sbxCache, err := a.orchestrator.GetSandbox(sandboxID, true)
 	if err == nil {
-		state := sbxCache.GetState()
-		switch state {
-		case instance.StatePaused, instance.StatePausing:
-			err = sbxCache.WaitForStop(ctx)
+		zap.L().Debug("Sandbox found in store", logger.WithSandboxID(sandboxID))
+
+		data := sbxCache.Data()
+		switch data.State {
+		case instance.StateFailed:
+			zap.L().Error("Sandbox is in failed state", logger.WithSandboxID(sandboxID), zap.Error(data.Reason))
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Sandbox can't be resumed, instance is in failed state")
+			return
+		case instance.StatePaused:
+			zap.L().Debug("Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
+			err = sbxCache.WaitForStateChange(ctx)
 			if err != nil {
-				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when resuming sandbox")
+				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error waiting for sandbox to pause")
 				return
 			}
-		case instance.StateKilling, instance.StateKilled:
+		case instance.StateKilled:
 			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found")
 			return
 		case instance.StateRunning:
@@ -73,15 +80,16 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 			zap.L().Debug("Sandbox is already running",
 				logger.WithSandboxID(sandboxID),
-				zap.Time("end_time", sbxCache.GetEndTime()),
-				zap.Time("start_time", sbxCache.StartTime),
-				zap.String("node_id", sbxCache.NodeID),
+				zap.Time("end_time", data.EndTime),
+				zap.Time("start_time", data.StartTime),
+				zap.String("node_id", data.NodeID),
 			)
 
 			return
 		}
 	}
 
+	zap.L().Debug("Sandbox wasn't found in store", logger.WithSandboxID(sandboxID))
 	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamInfo.Team.ID})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

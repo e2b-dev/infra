@@ -2,7 +2,6 @@ package instance
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -10,8 +9,8 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -24,11 +23,15 @@ type State string
 
 const (
 	StateRunning State = "running"
-	StatePausing State = "pausing"
-	StateKilling State = "killing"
 	StatePaused  State = "paused"
 	StateKilled  State = "killed"
+	StateFailed  State = "failed"
 )
+
+var allowed = map[State]map[State]bool{
+	StateRunning: {StatePaused: true, StateKilled: true, StateFailed: true},
+	StatePaused:  {StateKilled: true},
+}
 
 func NewInstanceInfo(
 	sandboxID string,
@@ -56,39 +59,40 @@ func NewInstanceInfo(
 	baseTemplateID string,
 ) *InstanceInfo {
 	instance := &InstanceInfo{
-		SandboxID:  sandboxID,
-		TemplateID: templateID,
-		ClientID:   clientID,
-		Alias:      alias,
+		data: Data{
+			SandboxID:  sandboxID,
+			TemplateID: templateID,
+			ClientID:   clientID,
+			Alias:      alias,
 
-		ExecutionID:         executionID,
-		TeamID:              teamID,
-		BuildID:             buildID,
-		Metadata:            metadata,
-		MaxInstanceLength:   maxInstanceLength,
-		StartTime:           startTime,
-		endTime:             endTime,
-		VCpu:                vcpu,
-		TotalDiskSizeMB:     totalDiskSizeMB,
-		RamMB:               ramMB,
-		KernelVersion:       kernelVersion,
-		FirecrackerVersion:  firecrackerVersion,
-		EnvdVersion:         envdVersion,
-		EnvdAccessToken:     envdAccessToken,
-		AllowInternetAccess: allowInternetAccess,
-		NodeID:              nodeID,
-		ClusterID:           clusterID,
-		AutoPause:           autoPause,
-		state:               StateRunning,
-		stopping:            utils.NewSetOnce[struct{}](),
-		BaseTemplateID:      baseTemplateID,
-		mu:                  sync.RWMutex{},
+			ExecutionID:         executionID,
+			TeamID:              teamID,
+			BuildID:             buildID,
+			Metadata:            metadata,
+			MaxInstanceLength:   maxInstanceLength,
+			StartTime:           startTime,
+			EndTime:             endTime,
+			VCpu:                vcpu,
+			TotalDiskSizeMB:     totalDiskSizeMB,
+			RamMB:               ramMB,
+			KernelVersion:       kernelVersion,
+			FirecrackerVersion:  firecrackerVersion,
+			EnvdVersion:         envdVersion,
+			EnvdAccessToken:     envdAccessToken,
+			AllowInternetAccess: allowInternetAccess,
+			NodeID:              nodeID,
+			ClusterID:           clusterID,
+			AutoPause:           autoPause,
+			State:               StateRunning,
+			BaseTemplateID:      baseTemplateID,
+		},
+		dataMu: sync.RWMutex{},
 	}
 
 	return instance
 }
 
-type InstanceInfo struct {
+type Data struct {
 	SandboxID  string
 	TemplateID string
 	ClientID   string
@@ -101,7 +105,7 @@ type InstanceInfo struct {
 	Metadata            map[string]string
 	MaxInstanceLength   time.Duration
 	StartTime           time.Time
-	endTime             time.Time
+	EndTime             time.Time
 	VCpu                int64
 	TotalDiskSizeMB     int64
 	RamMB               int64
@@ -114,13 +118,18 @@ type InstanceInfo struct {
 	ClusterID           uuid.UUID
 	AutoPause           bool
 
-	state State
-	mu    sync.RWMutex
-
-	stopping *utils.SetOnce[struct{}]
+	State  State
+	Reason error
 }
 
-func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
+type InstanceInfo struct {
+	data Data
+
+	transition chan error
+	dataMu     sync.RWMutex
+}
+
+func (i Data) LoggerMetadata() sbxlogger.SandboxMetadata {
 	return sbxlogger.SandboxMetadata{
 		SandboxID:  i.SandboxID,
 		TemplateID: i.TemplateID,
@@ -128,111 +137,128 @@ func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
 	}
 }
 
-func (i *InstanceInfo) IsExpired() bool {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-
-	return i.isExpired()
-}
-
-func (i *InstanceInfo) isExpired() bool {
-	return time.Now().After(i.endTime)
-}
-
-func (i *InstanceInfo) GetEndTime() time.Time {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-
-	return i.endTime
-}
-
-func (i *InstanceInfo) SetEndTime(endTime time.Time) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	i.setEndTime(endTime)
-}
-
-func (i *InstanceInfo) setEndTime(endTime time.Time) {
-	i.endTime = endTime
+func (i Data) IsExpired() bool {
+	return time.Now().After(i.EndTime)
 }
 
 func (i *InstanceInfo) SetExpired() {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	i.setExpired()
-}
+	i.dataMu.Lock()
+	defer i.dataMu.Unlock()
 
-func (i *InstanceInfo) setExpired() {
-	if !i.isExpired() {
-		i.setEndTime(time.Now())
+	if !i.data.IsExpired() {
+		i.data.EndTime = time.Now()
 	}
 }
 
-func (i *InstanceInfo) GetState() State {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
+func (i *InstanceInfo) Data() Data {
+	i.dataMu.RLock()
+	defer i.dataMu.RUnlock()
 
-	return i.state
+	return i.data
 }
 
-var (
-	ErrAlreadyBeingPaused  = errors.New("instance is already being paused")
-	ErrAlreadyBeingDeleted = errors.New("instance is already being removed")
-)
+func (i *InstanceInfo) State() State {
+	i.dataMu.RLock()
+	defer i.dataMu.RUnlock()
 
-func (i *InstanceInfo) markRemoving(removeType RemoveType) error {
-	i.mu.Lock()
-	defer i.mu.Unlock()
+	return i.data.State
+}
 
-	if i.state != StateRunning {
-		if i.state == StatePausing || i.state == StatePaused {
-			return ErrAlreadyBeingPaused
-		} else {
-			return ErrAlreadyBeingDeleted
-		}
-	}
-	// Set remove type
+// SandboxID returns the sandbox ID, safe to use without lock, it's immutable
+func (i *InstanceInfo) SandboxID() string {
+	return i.data.SandboxID
+}
+
+// TeamID returns the team ID, safe to use without lock, it's immutable
+func (i *InstanceInfo) TeamID() uuid.UUID {
+	return i.data.TeamID
+}
+
+func (i *InstanceInfo) StartRemoving(ctx context.Context, removeType RemoveType) (done bool, callback func(error), err error) {
+	newState := StateKilled
 	if removeType == RemoveTypePause {
-		i.state = StatePausing
-	} else {
-		i.state = StateKilling
+		newState = StatePaused
 	}
 
-	// Mark the stop time
-	i.setExpired()
+	i.dataMu.Lock()
+	transition := i.transition
+	if transition != nil {
+		currentState := i.data.State
+		i.dataMu.Unlock()
 
-	return nil
+		// If the transition is to the same state just wait
+		switch {
+		case currentState == newState:
+			zap.L().Debug("State transition already in progress to the same state, waiting", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)))
+			select {
+			case <-ctx.Done():
+				return false, nil, ctx.Err()
+			case err := <-transition:
+				if err != nil {
+					zap.L().Error("State transition failed", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)), zap.Error(err))
+					return false, nil, fmt.Errorf("sandbox is in failed state")
+				}
+			}
+			return true, func(err error) {}, nil
+		case allowed[currentState][newState]:
+			zap.L().Debug("State transition already in progress, waiting", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)))
+			select {
+			case <-ctx.Done():
+				return false, nil, ctx.Err()
+			case err := <-transition:
+				if err != nil {
+					return false, nil, err
+				}
+			}
+			return i.StartRemoving(ctx, removeType)
+		default:
+			return false, nil, fmt.Errorf("invalid state transition, already in transition from %s", currentState)
+		}
+	}
+
+	defer i.dataMu.Unlock()
+	if i.data.State == newState {
+		zap.L().Debug("Already in the same state", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)))
+		return false, nil, nil
+	}
+
+	if _, ok := allowed[i.data.State][newState]; !ok {
+		return false, nil, fmt.Errorf("invalid state transition from %s to %s", i.data.State, newState)
+	}
+
+	i.data.State = newState
+	i.transition = make(chan error, 1)
+
+	callback = func(err error) {
+		zap.L().Debug("Transition complete", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)), zap.Error(err))
+		i.dataMu.Lock()
+		defer i.dataMu.Unlock()
+
+		if err != nil {
+			i.data.Reason = err
+			i.data.State = StateFailed
+		}
+
+		i.transition <- err
+		close(i.transition)
+		i.transition = nil
+	}
+
+	return false, callback, nil
 }
 
-func (i *InstanceInfo) WaitForStop(ctx context.Context) error {
-	if i.GetState() == StateRunning {
-		return fmt.Errorf("sandbox isn't stopping")
+func (i *InstanceInfo) WaitForStateChange(ctx context.Context) error {
+	i.dataMu.RLock()
+	transition := i.transition
+	i.dataMu.RUnlock()
+	if transition == nil {
+		return nil
 	}
 
-	_, err := i.stopping.WaitWithContext(ctx)
-	return err
-}
-
-func (i *InstanceInfo) stopDone(err error) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	if i.state == StatePausing {
-		i.state = StatePaused
-	} else {
-		i.state = StateKilled
-	}
-
-	if err != nil {
-		err := i.stopping.SetError(err)
-		if err != nil {
-			zap.L().Error("error setting stopDone value", zap.Error(err))
-		}
-	} else {
-		err := i.stopping.SetValue(struct{}{})
-		if err != nil {
-			zap.L().Error("error setting stopDone value", zap.Error(err))
-		}
+	select {
+	case err := <-transition:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
