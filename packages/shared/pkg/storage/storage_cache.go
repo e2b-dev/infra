@@ -228,7 +228,7 @@ func (c *CachedFileObjectProvider) writeLocalSize(size int64) {
 			zap.Error(err))
 		return
 	}
-	defer fp.Close()
+	defer cleanup("failed to close temp file", fp)
 
 	if _, err := fmt.Fprintf(fp, "%d", size); err != nil {
 		zap.L().Warn("failed to write to temp file",
@@ -236,8 +236,12 @@ func (c *CachedFileObjectProvider) writeLocalSize(size int64) {
 			zap.Error(err))
 	}
 
-	if err := moveWithoutReplace(tempFilename, c.makeSizeFilename()); err != nil {
-		zap.L().Warn("failed to move temp file")
+	finalFilename := c.makeSizeFilename()
+	if err := moveWithoutReplace(tempFilename, finalFilename); err != nil {
+		zap.L().Warn("failed to move temp file",
+			zap.String("temp_path", tempFilename),
+			zap.String("final_path", finalFilename),
+			zap.Error(err))
 	}
 }
 
