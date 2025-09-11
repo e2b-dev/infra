@@ -24,12 +24,16 @@ linters:
     - errname
     - errorlint
     - exptostd
+    - gocritic
     - govet
     - staticcheck
     - testifylint
     - thelper
     - tparallel
   settings:
+    gocritic:
+      disabled-checks:
+        - appendAssign
     staticcheck:
       checks:
         - all
