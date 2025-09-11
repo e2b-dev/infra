@@ -336,16 +336,23 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 		zap.L().Info("Connected to Redis cluster")
 	}
 
-	var redisPubSub pubsub.PubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData]
+	var (
+		redisPubSub     pubsub.PubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData]
+		sbxEventStore   events.SandboxEventStore
+		sbxEventService events.EventService[event.SandboxEvent]
+		sbxEventProxy   events.SandboxEventProxier
+	)
 	if redisClient != nil {
 		redisPubSub = pubsub.NewRedisPubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData](redisClient, "sandbox-webhooks")
+		sbxEventService = events.NewSandboxEventsService(featureFlags, redisPubSub, sandboxEventBatcher, globalLogger)
+		sbxEventStore = events.NewSandboxEventStore(redisClient)
+		sbxEventProxy = events.NewSandboxEventProxy(eventProxyPort, sbxEventStore)
 	} else {
 		redisPubSub = pubsub.NewMockPubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData]()
+		sbxEventService = events.NewNoopSandboxEventsService()
+		sbxEventStore = events.NewNoopSandboxEventStore()
+		sbxEventProxy = events.NewNoopSandboxEventProxy()
 	}
-
-	sbxEventService := events.NewSandboxEventsService(featureFlags, redisPubSub, sandboxEventBatcher, globalLogger)
-	sbxEventtore := events.NewSandboxEventStore(redisClient)
-	sbxEventProxy := events.NewSandboxEventProxy(eventProxyPort, sbxEventtore)
 
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID, sandboxes)
 	if err != nil {
@@ -366,7 +373,7 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 			Persistence:     persistence,
 			FeatureFlags:    featureFlags,
 			SbxEventService: sbxEventService,
-			SbxEventStore:   sbxEventtore,
+			SbxEventStore:   sbxEventStore,
 		},
 	)
 	if err != nil {
@@ -400,7 +407,7 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 		sandboxObserver,
 		limiter,
 		sandboxEventBatcher,
-		sbxEventtore,
+		sbxEventStore,
 		sbxEventProxy,
 	)
 

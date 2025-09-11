@@ -6,12 +6,17 @@ import (
 	"net/http"
 )
 
+type SandboxEventProxier interface {
+	Start() error
+	Close(ctx context.Context) error
+}
+
 // SandboxEventServer handles outbound HTTP requests from sandboxes calling the event.e2b.com endpoint
 type SandboxEventProxy struct {
 	server *http.Server
 }
 
-func NewSandboxEventProxy(port uint, store SandboxEventStore, handlers ...SandboxEventHandler) *SandboxEventProxy {
+func NewSandboxEventProxy(port uint, store SandboxEventStore, handlers ...SandboxEventHandler) SandboxEventProxier {
 	mux := http.NewServeMux()
 
 	handlers = append(handlers, NewDefaultSandboxEventHandler(store))
