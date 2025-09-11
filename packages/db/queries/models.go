@@ -13,10 +13,9 @@ import (
 )
 
 type AccessToken struct {
-	AccessToken *string
-	UserID      uuid.UUID
-	CreatedAt   time.Time
-	ID          uuid.UUID
+	UserID    uuid.UUID
+	CreatedAt time.Time
+	ID        uuid.UUID
 	// sensitive
 	AccessTokenHash       string
 	Name                  string
@@ -108,7 +107,6 @@ type Team struct {
 }
 
 type TeamApiKey struct {
-	ApiKey    *string
 	CreatedAt time.Time
 	TeamID    uuid.UUID
 	UpdatedAt *time.Time
