@@ -234,7 +234,7 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Wri
 	reader, err := g.handle.NewReader(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
-			err = ErrObjectNotExist // use our error, not theirs
+			return 0, fmt.Errorf("failed to create reader for %q: %w", g.path, ErrObjectNotExist)
 		}
 
 		return 0, fmt.Errorf("failed to create reader for %q: %w", g.path, err)
