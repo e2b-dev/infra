@@ -33,7 +33,7 @@ func (m *mockAlgorithm) chooseNode(ctx context.Context, nodes []*nodemanager.Nod
 }
 
 func TestPlaceSandbox_SuccessfulPlacement(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Create test nodes
 	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 3, 4)
@@ -63,7 +63,7 @@ func TestPlaceSandbox_SuccessfulPlacement(t *testing.T) {
 }
 
 func TestPlaceSandbox_WithPreferredNode(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Create test nodes
 	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 3, 4)
@@ -100,7 +100,7 @@ func TestPlaceSandbox_WithPreferredNode(t *testing.T) {
 }
 
 func TestPlaceSandbox_ContextTimeout(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Millisecond)
 	defer cancel()
 
 	algorithm := &mockAlgorithm{}
@@ -130,7 +130,7 @@ func TestPlaceSandbox_ContextTimeout(t *testing.T) {
 }
 
 func TestPlaceSandbox_NoNodes(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	algorithm := &mockAlgorithm{}
 	sbxRequest := &orchestrator.SandboxCreateRequest{
@@ -149,7 +149,7 @@ func TestPlaceSandbox_NoNodes(t *testing.T) {
 }
 
 func TestPlaceSandbox_AllNodesExcluded(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	algorithm := &mockAlgorithm{}
 	algorithm.On("chooseNode", mock.Anything, mock.Anything, mock.Anything, mock.Anything).

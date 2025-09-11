@@ -89,7 +89,6 @@ func removeUndefined(contexts []ldcontext.Context) []ldcontext.Context {
 	var result []ldcontext.Context
 
 	for _, item := range contexts {
-
 		if !item.IsDefined() {
 			continue
 		}

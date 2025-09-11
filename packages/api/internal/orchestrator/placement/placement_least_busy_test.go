@@ -129,7 +129,7 @@ func TestLeastBusyAlgorithm_FindLeastBusyNode_SkipsOverloadedNodes(t *testing.T)
 }
 
 func TestLeastBusyAlgorithm_ChooseNode_ContextTimeout(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
 	defer cancel()
 
 	algorithm := &LeastBusyAlgorithm{}

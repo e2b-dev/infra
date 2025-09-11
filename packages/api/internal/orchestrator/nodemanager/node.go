@@ -65,7 +65,6 @@ func New(
 		return nil, err
 	}
 
-	nodeStatus := api.NodeStatusUnhealthy
 	nodeInfo, err := client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 	if err != nil {
 		_ = client.Close()
