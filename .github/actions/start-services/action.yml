@@ -75,12 +75,20 @@ runs:
         make -C packages/clickhouse migrate-without-build
       shell: bash
 
+    - name: Run Redis
+      run: |
+        echo "REDIS_URL=localhost:6379" >> .env.test
+
+        docker run -d --name redis -p 6379:6379 redis:7.4.2-alpine
+      shell: bash
+
     - name: Start Services
       env:
         ENVD_TIMEOUT: "60s"
         ORCHESTRATOR_SERVICES: "orchestrator,template-manager"
         SANDBOX_ACCESS_TOKEN_HASH_SEED: "abcdefghijklmnopqrstuvwxyz"
         TEMPLATE_MANAGER_HOST: "localhost:5008"
+        REDIS_URL: "localhost:6379"
         ARTIFACTS_REGISTRY_PROVIDER: "Local"
         STORAGE_PROVIDER: "Local"
         ENVIRONMENT: "local"
