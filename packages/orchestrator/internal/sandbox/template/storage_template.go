@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
@@ -71,6 +72,13 @@ func newTemplateFromStorage(
 }
 
 func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore) {
+	link := trace.LinkFromContext(ctx)
+	ctx, span := tracer.Start(ctx, "storageTemplate.Fetch",
+		trace.WithNewRoot(),
+		trace.WithLinks(link),
+	)
+	defer span.End()
+
 	var wg errgroup.Group
 
 	wg.Go(func() error {
