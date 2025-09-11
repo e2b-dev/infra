@@ -6,12 +6,15 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/orchestrator")
 
 // cacheSyncTime is the time to sync the cache with the actual instances in Orchestrator.
 const cacheSyncTime = 20 * time.Second
@@ -50,7 +53,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.Me
 	ctxTimeout, cancel := context.WithTimeout(ctx, cacheSyncTime)
 	defer cancel()
 
-	spanCtx, span := o.tracer.Start(ctxTimeout, "keep-in-sync")
+	spanCtx, span := tracer.Start(ctxTimeout, "keep-in-sync")
 	defer span.End()
 
 	var wg sync.WaitGroup
@@ -84,7 +87,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.Me
 	wg.Wait()
 
 	// Sync state of all nodes currently in the pool
-	syncNodesSpanCtx, syncNodesSpan := o.tracer.Start(spanCtx, "keep-in-sync-existing")
+	syncNodesSpanCtx, syncNodesSpan := tracer.Start(spanCtx, "keep-in-sync-existing")
 	defer syncNodesSpan.End()
 
 	defer wg.Wait()
@@ -116,7 +119,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.Me
 
 func (o *Orchestrator) syncLocalDiscoveredNodes(ctx context.Context, discovered []nodemanager.NomadServiceDiscovery) {
 	// Connect local nodes that are not in the list, yet
-	connectLocalSpanCtx, connectLocalSpan := o.tracer.Start(ctx, "keep-in-sync-connect-local-nodes")
+	connectLocalSpanCtx, connectLocalSpan := tracer.Start(ctx, "keep-in-sync-connect-local-nodes")
 	defer connectLocalSpan.End()
 
 	var wg sync.WaitGroup
@@ -141,7 +144,7 @@ func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	_, connectClusteredSpan := o.tracer.Start(ctx, "keep-in-sync-connect-clustered-nodes")
+	_, connectClusteredSpan := tracer.Start(ctx, "keep-in-sync-connect-clustered-nodes")
 	defer connectClusteredSpan.End()
 
 	// Connect clustered nodes that are not in the list, yet
@@ -161,7 +164,7 @@ func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
 }
 
 func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.Node, instanceCache *instance.MemoryStore) error {
-	ctx, childSpan := o.tracer.Start(ctx, "sync-cluster-node")
+	ctx, childSpan := tracer.Start(ctx, "sync-cluster-node")
 	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.ID), telemetry.WithClusterID(node.ClusterID))
 	defer childSpan.End()
 
@@ -179,13 +182,13 @@ func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.No
 	}
 
 	// Unified call for syncing node state across different node types
-	node.Sync(ctx, o.tracer, instanceCache)
+	node.Sync(ctx, instanceCache)
 
 	return nil
 }
 
 func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, discovered []nodemanager.NomadServiceDiscovery, instanceCache *instance.MemoryStore) error {
-	ctx, childSpan := o.tracer.Start(ctx, "sync-node")
+	ctx, childSpan := tracer.Start(ctx, "sync-node")
 	telemetry.SetAttributes(ctx, telemetry.WithNodeID(node.ID))
 	defer childSpan.End()
 
@@ -202,7 +205,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, dis
 	}
 
 	// Unified call for syncing node state across different node types
-	node.Sync(ctx, o.tracer, instanceCache)
+	node.Sync(ctx, instanceCache)
 
 	return nil
 }

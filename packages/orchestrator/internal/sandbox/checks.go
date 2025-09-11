@@ -6,11 +6,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox")
 
 const (
 	healthCheckInterval = 20 * time.Second
@@ -30,7 +32,7 @@ type Checks struct {
 
 var ErrChecksStopped = errors.New("checks stopped")
 
-func NewChecks(ctx context.Context, tracer trace.Tracer, sandbox *Sandbox, useClickhouseMetrics bool) (*Checks, error) {
+func NewChecks(ctx context.Context, sandbox *Sandbox, useClickhouseMetrics bool) (*Checks, error) {
 	_, childSpan := tracer.Start(ctx, "checks-create")
 	defer childSpan.End()
 

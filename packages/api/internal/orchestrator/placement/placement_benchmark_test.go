@@ -11,8 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"go.opentelemetry.io/otel/trace/noop"
-
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
@@ -311,7 +309,7 @@ func runBenchmark(_ *testing.B, algorithm Algorithm, config BenchmarkConfig) *Be
 					defer wg.Done()
 
 					placementStart := time.Now()
-					node, err := PlaceSandbox(ctx, noop.Tracer{}, algorithm, nodes, nil, &orchestratorgrpc.SandboxCreateRequest{Sandbox: &orchestratorgrpc.SandboxConfig{
+					node, err := PlaceSandbox(ctx, algorithm, nodes, nil, &orchestratorgrpc.SandboxCreateRequest{Sandbox: &orchestratorgrpc.SandboxConfig{
 						Vcpu:  sbx.RequestedCPU,
 						RamMb: sbx.RequestedMemory,
 					}})

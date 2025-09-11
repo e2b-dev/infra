@@ -6,8 +6,10 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/events")
 
 const (
 	cacheTL = time.Hour * 24 * 30
@@ -26,7 +28,6 @@ func (i SandboxEvent) MarshalBinary() ([]byte, error) {
 }
 
 type sandboxEventStore struct {
-	tracer      trace.Tracer
 	redisClient redis.UniversalClient
 }
 
@@ -43,9 +44,8 @@ type SandboxEventStore interface {
 	Close(ctx context.Context) error
 }
 
-func NewSandboxEventStore(tracer trace.Tracer, redisClient redis.UniversalClient) SandboxEventStore {
+func NewSandboxEventStore(redisClient redis.UniversalClient) SandboxEventStore {
 	return &sandboxEventStore{
-		tracer:      tracer,
 		redisClient: redisClient,
 	}
 }
@@ -63,7 +63,7 @@ func (c *sandboxEventStore) DelSandboxIP(ctx context.Context, sandboxIP string) 
 }
 
 func (c *sandboxEventStore) GetLastEvent(ctx context.Context, sandboxID string) (*SandboxEvent, error) {
-	_, span := c.tracer.Start(ctx, "sandbox-event-get-last")
+	_, span := tracer.Start(ctx, "sandbox-event-get-last")
 	defer span.End()
 
 	result, err := c.redisClient.ZRevRangeWithScores(ctx, EventPrefix+sandboxID, 0, 0).Result()
@@ -84,7 +84,7 @@ func (c *sandboxEventStore) GetLastEvent(ctx context.Context, sandboxID string) 
 }
 
 func (c *sandboxEventStore) GetLastNEvents(ctx context.Context, sandboxID string, n int) ([]*SandboxEvent, error) {
-	_, span := c.tracer.Start(ctx, "sandbox-event-get-last-n")
+	_, span := tracer.Start(ctx, "sandbox-event-get-last-n")
 	defer span.End()
 
 	result, err := c.redisClient.ZRevRangeWithScores(ctx, EventPrefix+sandboxID, 0, int64(n-1)).Result()
@@ -110,7 +110,7 @@ func (c *sandboxEventStore) GetLastNEvents(ctx context.Context, sandboxID string
 }
 
 func (c *sandboxEventStore) AddEvent(ctx context.Context, sandboxID string, event *SandboxEvent, expiration time.Duration) error {
-	_, span := c.tracer.Start(ctx, "sandbox-event-store")
+	_, span := tracer.Start(ctx, "sandbox-event-store")
 	defer span.End()
 
 	return c.redisClient.ZAdd(ctx, EventPrefix+sandboxID, redis.Z{
@@ -120,7 +120,7 @@ func (c *sandboxEventStore) AddEvent(ctx context.Context, sandboxID string, even
 }
 
 func (c *sandboxEventStore) DelEvent(ctx context.Context, sandboxID string) error {
-	_, span := c.tracer.Start(ctx, "sandbox-event-delete")
+	_, span := tracer.Start(ctx, "sandbox-event-delete")
 	defer span.End()
 
 	return c.redisClient.Del(ctx, EventPrefix+sandboxID).Err()

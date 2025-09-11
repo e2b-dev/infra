@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -26,6 +27,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/template-manager")
+
 type processingBuilds struct {
 	templateID string
 }
@@ -41,7 +44,6 @@ type TemplateManager struct {
 	db       *db.DB
 
 	lock          sync.Mutex
-	tracer        trace.Tracer
 	processing    map[uuid.UUID]processingBuilds
 	buildCache    *templatecache.TemplatesBuildCache
 	templateCache *templatecache.TemplateCache
@@ -62,7 +64,6 @@ const (
 
 func New(
 	ctx context.Context,
-	tracer trace.Tracer,
 	tracerProvider trace.TracerProvider,
 	meterProvider metric.MeterProvider,
 	db *db.DB,
@@ -80,7 +81,6 @@ func New(
 		grpc:          client,
 		db:            db,
 		sqlcDB:        sqlcDB,
-		tracer:        tracer,
 		buildCache:    buildCache,
 		templateCache: templateCache,
 		edgePool:      edgePool,
@@ -165,8 +165,8 @@ func (tm *TemplateManager) GetClusterBuildClient(clusterID uuid.UUID, nodeID str
 	}, nil
 }
 
-func (tm *TemplateManager) DeleteBuild(ctx context.Context, t trace.Tracer, buildID uuid.UUID, templateID string, clusterID uuid.UUID, nodeID string) error {
-	ctx, span := t.Start(ctx, "delete-template",
+func (tm *TemplateManager) DeleteBuild(ctx context.Context, buildID uuid.UUID, templateID string, clusterID uuid.UUID, nodeID string) error {
+	ctx, span := tracer.Start(ctx, "delete-template",
 		trace.WithAttributes(
 			telemetry.WithBuildID(buildID.String()),
 		),
@@ -196,7 +196,7 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, t trace.Tracer, buil
 
 func (tm *TemplateManager) DeleteBuilds(ctx context.Context, builds []DeleteBuild) error {
 	for _, build := range builds {
-		err := tm.DeleteBuild(ctx, tm.tracer, build.BuildID, build.TemplateID, build.ClusterID, build.NodeID)
+		err := tm.DeleteBuild(ctx, build.BuildID, build.TemplateID, build.ClusterID, build.NodeID)
 		if err != nil {
 			return fmt.Errorf("failed to delete env build '%s': %w", build.BuildID, err)
 		}

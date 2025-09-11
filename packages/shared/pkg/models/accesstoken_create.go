@@ -25,12 +25,6 @@ type AccessTokenCreate struct {
 	conflict []sql.ConflictOption
 }
 
-// SetAccessToken sets the "access_token" field.
-func (atc *AccessTokenCreate) SetAccessToken(s string) *AccessTokenCreate {
-	atc.mutation.SetAccessToken(s)
-	return atc
-}
-
 // SetAccessTokenHash sets the "access_token_hash" field.
 func (atc *AccessTokenCreate) SetAccessTokenHash(s string) *AccessTokenCreate {
 	atc.mutation.SetAccessTokenHash(s)
@@ -149,9 +143,6 @@ func (atc *AccessTokenCreate) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (atc *AccessTokenCreate) check() error {
-	if _, ok := atc.mutation.AccessToken(); !ok {
-		return &ValidationError{Name: "access_token", err: errors.New(`models: missing required field "AccessToken.access_token"`)}
-	}
 	if _, ok := atc.mutation.AccessTokenHash(); !ok {
 		return &ValidationError{Name: "access_token_hash", err: errors.New(`models: missing required field "AccessToken.access_token_hash"`)}
 	}
@@ -213,10 +204,6 @@ func (atc *AccessTokenCreate) createSpec() (*AccessToken, *sqlgraph.CreateSpec) 
 		_node.ID = id
 		_spec.ID.Value = &id
 	}
-	if value, ok := atc.mutation.AccessToken(); ok {
-		_spec.SetField(accesstoken.FieldAccessToken, field.TypeString, value)
-		_node.AccessToken = value
-	}
 	if value, ok := atc.mutation.AccessTokenHash(); ok {
 		_spec.SetField(accesstoken.FieldAccessTokenHash, field.TypeString, value)
 		_node.AccessTokenHash = value
@@ -270,7 +257,7 @@ func (atc *AccessTokenCreate) createSpec() (*AccessToken, *sqlgraph.CreateSpec) 
 // of the `INSERT` statement. For example:
 //
 //	client.AccessToken.Create().
-//		SetAccessToken(v).
+//		SetAccessTokenHash(v).
 //		OnConflict(
 //			// Update the row with the new values
 //			// the was proposed for insertion.
@@ -279,7 +266,7 @@ func (atc *AccessTokenCreate) createSpec() (*AccessToken, *sqlgraph.CreateSpec) 
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.AccessTokenUpsert) {
-//			SetAccessToken(v+v).
+//			SetAccessTokenHash(v+v).
 //		}).
 //		Exec(ctx)
 func (atc *AccessTokenCreate) OnConflict(opts ...sql.ConflictOption) *AccessTokenUpsertOne {
@@ -355,9 +342,6 @@ func (u *AccessTokenUpsertOne) UpdateNewValues() *AccessTokenUpsertOne {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
 		if _, exists := u.create.mutation.ID(); exists {
 			s.SetIgnore(accesstoken.FieldID)
-		}
-		if _, exists := u.create.mutation.AccessToken(); exists {
-			s.SetIgnore(accesstoken.FieldAccessToken)
 		}
 		if _, exists := u.create.mutation.AccessTokenHash(); exists {
 			s.SetIgnore(accesstoken.FieldAccessTokenHash)
@@ -572,7 +556,7 @@ func (atcb *AccessTokenCreateBulk) ExecX(ctx context.Context) {
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.AccessTokenUpsert) {
-//			SetAccessToken(v+v).
+//			SetAccessTokenHash(v+v).
 //		}).
 //		Exec(ctx)
 func (atcb *AccessTokenCreateBulk) OnConflict(opts ...sql.ConflictOption) *AccessTokenUpsertBulk {
@@ -618,9 +602,6 @@ func (u *AccessTokenUpsertBulk) UpdateNewValues() *AccessTokenUpsertBulk {
 		for _, b := range u.create.builders {
 			if _, exists := b.mutation.ID(); exists {
 				s.SetIgnore(accesstoken.FieldID)
-			}
-			if _, exists := b.mutation.AccessToken(); exists {
-				s.SetIgnore(accesstoken.FieldAccessToken)
 			}
 			if _, exists := b.mutation.AccessTokenHash(); exists {
 				s.SetIgnore(accesstoken.FieldAccessTokenHash)

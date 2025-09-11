@@ -109,7 +109,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	for i, build := range template.Edges.Builds {
 		buildIds[i] = template_manager.DeleteBuild{
 			BuildID:    build.ID,
-			TemplateID: *build.EnvID,
+			TemplateID: build.EnvID,
 			ClusterID:  utils.WithClusterFallback(team.ClusterID),
 			NodeID:     build.ClusterNodeID,
 		}

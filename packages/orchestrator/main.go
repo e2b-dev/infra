@@ -231,9 +231,7 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 
-	tracer := tel.TracerProvider.Tracer(serviceName)
-
-	networkPool, err := network.NewPool(ctx, tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, nodeID, tracer)
+	networkPool, err := network.NewPool(ctx, tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, nodeID)
 	if err != nil {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
@@ -346,7 +344,7 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 	}
 
 	sbxEventService := events.NewSandboxEventsService(featureFlags, redisPubSub, sandboxEventBatcher, globalLogger)
-	sbxEventtore := events.NewSandboxEventStore(tracer, redisClient)
+	sbxEventtore := events.NewSandboxEventStore(redisClient)
 	sbxEventProxy := events.NewSandboxEventProxy(eventProxyPort, sbxEventtore)
 
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID, sandboxes)
@@ -362,7 +360,6 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 			NetworkPool:     networkPool,
 			DevicePool:      devicePool,
 			TemplateCache:   templateCache,
-			Tracer:          tracer,
 			Info:            serviceInfo,
 			Proxy:           sandboxProxy,
 			Sandboxes:       sandboxes,
@@ -411,7 +408,6 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 	if slices.Contains(services, service.TemplateManager) {
 		tmpl, err := tmplserver.New(
 			ctx,
-			tracer,
 			tel.MeterProvider,
 			globalLogger,
 			tmplSbxLoggerExternal,

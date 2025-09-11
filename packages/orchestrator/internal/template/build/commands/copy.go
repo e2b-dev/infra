@@ -11,7 +11,6 @@ import (
 	txtTemplate "text/template"
 
 	"github.com/bmatcuk/doublestar/v4"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -84,7 +83,6 @@ fi
 // because the /tmp is mounted as a tmpfs and deleted on restart.
 func (c *Copy) Execute(
 	ctx context.Context,
-	tracer trace.Tracer,
 	logger *zap.Logger,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
@@ -134,7 +132,7 @@ func (c *Copy) Execute(
 	// This is happening because the /tmp is mounted as a tmpfs and deleted on restart.
 	sbxTargetPath := filepath.Join("/tmp", fmt.Sprintf("%s.tar", *step.FilesHash))
 	// 2) Copy the tar file to the sandbox
-	err = sandboxtools.CopyFile(ctx, tracer, proxy, sandboxID, cmdMetadata.User, tmpFile.Name(), sbxTargetPath)
+	err = sandboxtools.CopyFile(ctx, proxy, sandboxID, cmdMetadata.User, tmpFile.Name(), sbxTargetPath)
 	if err != nil {
 		return metadata.Context{}, fmt.Errorf("failed to copy layer tar data to sandbox: %w", err)
 	}
@@ -144,7 +142,6 @@ func (c *Copy) Execute(
 	// 3) Extract the tar file in the sandbox's /tmp directory
 	err = sandboxtools.RunCommand(
 		ctx,
-		tracer,
 		proxy,
 		sandboxID,
 		fmt.Sprintf(`mkdir -p "%s" && tar -xzvf "%s" -C "%s"`, sbxUnpackPath, sbxTargetPath, sbxUnpackPath),
@@ -170,7 +167,6 @@ func (c *Copy) Execute(
 
 	err = sandboxtools.RunCommand(
 		ctx,
-		tracer,
 		proxy,
 		sandboxID,
 		moveScript.String(),
@@ -187,7 +183,6 @@ func (c *Copy) Execute(
 		if owner != "" {
 			err = sandboxtools.RunCommand(
 				ctx,
-				tracer,
 				proxy,
 				sandboxID,
 				fmt.Sprintf(`chown -R %s "%s"`, owner, targetPath),
@@ -207,7 +202,6 @@ func (c *Copy) Execute(
 		if permissions != "" {
 			err = sandboxtools.RunCommand(
 				ctx,
-				tracer,
 				proxy,
 				sandboxID,
 				fmt.Sprintf(`chmod -R %s "%s"`, permissions, targetPath),

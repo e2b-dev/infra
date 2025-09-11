@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
@@ -24,7 +23,6 @@ type EdgePool struct {
 	instances        *smap.Map[*EdgeInstance]
 	synchronization  *synchronization.Synchronize[sd.ServiceDiscoveryItem, *EdgeInstance]
 
-	tracer trace.Tracer
 	logger *zap.Logger
 }
 
@@ -36,7 +34,7 @@ const (
 
 var ErrEdgeServiceInstanceNotFound = errors.New("edge service instance not found")
 
-func NewEdgePool(logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, tracer trace.Tracer, instanceSelfHost string, auth authorization.AuthorizationService) *EdgePool {
+func NewEdgePool(logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, instanceSelfHost string, auth authorization.AuthorizationService) *EdgePool {
 	pool := &EdgePool{
 		discovery: discovery,
 		auth:      auth,
@@ -45,11 +43,10 @@ func NewEdgePool(logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, trace
 		instances:        smap.New[*EdgeInstance](),
 
 		logger: logger,
-		tracer: tracer,
 	}
 
 	store := &edgeInstancesSyncStore{pool: pool}
-	pool.synchronization = synchronization.NewSynchronize(tracer, "edge-instances", "Edge instances", store)
+	pool.synchronization = synchronization.NewSynchronize("edge-instances", "Edge instances", store)
 
 	// Background synchronization of edge instances available in cluster
 	go func() { pool.synchronization.Start(edgeInstancesPoolInterval, edgeInstancesPoolRoundTimeout, true) }()

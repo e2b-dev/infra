@@ -184,6 +184,9 @@ resource "nomad_job" "client_proxy" {
       environment = var.environment
       image_name  = docker_image.client_proxy_image.repo_digest
 
+      nomad_endpoint = "http://localhost:4646"
+      nomad_token    = var.nomad_acl_token_secret
+
       otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
       logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
       launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
