@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -17,6 +18,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/filesystem")
 
 const (
 	// creates an inode for every bytes-per-inode byte of space on the disk
@@ -27,7 +30,7 @@ const (
 	ToMBShift = 20
 )
 
-func Make(ctx context.Context, tracer trace.Tracer, rootfsPath string, sizeMb int64, blockSize int64) error {
+func Make(ctx context.Context, rootfsPath string, sizeMb int64, blockSize int64) error {
 	ctx, tuneSpan := tracer.Start(ctx, "make-ext4")
 	defer tuneSpan.End()
 
@@ -56,7 +59,7 @@ func Make(ctx context.Context, tracer trace.Tracer, rootfsPath string, sizeMb in
 	return cmd.Run()
 }
 
-func Mount(ctx context.Context, tracer trace.Tracer, rootfsPath string, mountPoint string) error {
+func Mount(ctx context.Context, rootfsPath string, mountPoint string) error {
 	ctx, mountSpan := tracer.Start(ctx, "mount-ext4")
 	defer mountSpan.End()
 
@@ -75,7 +78,7 @@ func Mount(ctx context.Context, tracer trace.Tracer, rootfsPath string, mountPoi
 	return nil
 }
 
-func Unmount(ctx context.Context, tracer trace.Tracer, rootfsPath string) error {
+func Unmount(ctx context.Context, rootfsPath string) error {
 	ctx, unmountSpan := tracer.Start(ctx, "unmount-ext4")
 	defer unmountSpan.End()
 
@@ -94,7 +97,7 @@ func Unmount(ctx context.Context, tracer trace.Tracer, rootfsPath string) error 
 	return nil
 }
 
-func MakeWritable(ctx context.Context, tracer trace.Tracer, rootfsPath string) error {
+func MakeWritable(ctx context.Context, rootfsPath string) error {
 	ctx, tuneSpan := tracer.Start(ctx, "tune-ext4-writable")
 	defer tuneSpan.End()
 
@@ -109,7 +112,7 @@ func MakeWritable(ctx context.Context, tracer trace.Tracer, rootfsPath string) e
 	return cmd.Run()
 }
 
-func Enlarge(ctx context.Context, tracer trace.Tracer, rootfsPath string, addSize int64) (int64, error) {
+func Enlarge(ctx context.Context, rootfsPath string, addSize int64) (int64, error) {
 	ctx, resizeSpan := tracer.Start(ctx, "enlarge-ext4")
 	defer resizeSpan.End()
 
@@ -119,10 +122,10 @@ func Enlarge(ctx context.Context, tracer trace.Tracer, rootfsPath string, addSiz
 	}
 	finalSize := stat.Size() + addSize
 
-	return Resize(ctx, tracer, rootfsPath, finalSize)
+	return Resize(ctx, rootfsPath, finalSize)
 }
 
-func Resize(ctx context.Context, tracer trace.Tracer, rootfsPath string, targetSize int64) (int64, error) {
+func Resize(ctx context.Context, rootfsPath string, targetSize int64) (int64, error) {
 	ctx, resizeSpan := tracer.Start(ctx, "resize-ext4")
 	defer resizeSpan.End()
 
@@ -147,7 +150,7 @@ func Resize(ctx context.Context, tracer trace.Tracer, rootfsPath string, targetS
 	return stat.Size(), err
 }
 
-func Shrink(ctx context.Context, tracer trace.Tracer, rootfsPath string) (int64, error) {
+func Shrink(ctx context.Context, rootfsPath string) (int64, error) {
 	ctx, resizeSpan := tracer.Start(ctx, "shrink-ext4")
 	defer resizeSpan.End()
 
@@ -172,7 +175,7 @@ func Shrink(ctx context.Context, tracer trace.Tracer, rootfsPath string) (int64,
 	return stat.Size(), err
 }
 
-func GetFreeSpace(ctx context.Context, tracer trace.Tracer, rootfsPath string, blockSize int64) (int64, error) {
+func GetFreeSpace(ctx context.Context, rootfsPath string, blockSize int64) (int64, error) {
 	_, statSpan := tracer.Start(ctx, "stat-ext4-file")
 	defer statSpan.End()
 
@@ -225,7 +228,7 @@ func CheckIntegrity(rootfsPath string, fix bool) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func ReadFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, filePath string) (string, error) {
+func ReadFile(ctx context.Context, rootfsPath string, filePath string) (string, error) {
 	_, statSpan := tracer.Start(ctx, "ext4-read-file")
 	defer statSpan.End()
 
@@ -243,7 +246,7 @@ func ReadFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, fileP
 	return string(out), nil
 }
 
-func RemoveFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, filePath string) error {
+func RemoveFile(ctx context.Context, rootfsPath string, filePath string) error {
 	_, statSpan := tracer.Start(ctx, "ext4-remove-file")
 	defer statSpan.End()
 
@@ -261,7 +264,7 @@ func RemoveFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, fil
 // MountOverlayFS mounts an overlay filesystem with the specified layers at the given mount point.
 // It requires kernel version 6.8 or later to use the fsconfig interface for overlayfs.
 // Older mount syscall is not used because it has lowerdirs character limit (4096 characters).
-func MountOverlayFS(ctx context.Context, tracer trace.Tracer, layers []string, mountPoint string) error {
+func MountOverlayFS(ctx context.Context, layers []string, mountPoint string) error {
 	_, mountSpan := tracer.Start(ctx, "mount-overlay-fs", trace.WithAttributes(
 		attribute.String("mount", mountPoint),
 		attribute.StringSlice("layers", layers),
