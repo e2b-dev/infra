@@ -390,7 +390,7 @@ func (c *CachedFileObjectProvider) readAndCacheFullRemoteFile(ctx context.Contex
 		return 0, fmt.Errorf("failed to write to temp file: %w", err)
 	}
 
-	// at this stage we can assume that the file has been written to the destination successfully,
+	// at this point we can assume that the file has been written to the destination successfully,
 	// any errors beyond now must be logged and not returned.
 
 	if err := tempWriter.Close(); err != nil {
@@ -401,7 +401,7 @@ func (c *CachedFileObjectProvider) readAndCacheFullRemoteFile(ctx context.Contex
 	}
 
 	finalFilename := c.makeFullFilename()
-	if moveWithoutReplace(tempFname, finalFilename) != nil {
+	if err := moveWithoutReplace(tempFname, finalFilename); err != nil {
 		zap.L().Error("failed to rename temp file",
 			zap.String("tempPath", tempFname),
 			zap.String("finalPath", finalFilename),
