@@ -167,7 +167,8 @@ func (g *GCPBucketStorageObjectProvider) Size(ctx context.Context) (int64, error
 	attrs, err := g.handle.Attrs(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
-			err = ErrObjectNotExist // use ours instead of theirs
+			// use ours instead of theirs
+			return 0, fmt.Errorf("failed to get GCS object (%q) attributes: %w", g.path, ErrObjectNotExist)
 		}
 
 		return 0, fmt.Errorf("failed to get GCS object (%q) attributes: %w", g.path, err)
