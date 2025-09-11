@@ -80,6 +80,6 @@ func TestMonitorProcesses(t *testing.T) {
 		// Test completed successfully
 		return
 	case <-time.After(15 * time.Second):
-		t.Fatal("Test took longer than 5 seconds to complete")
+		t.Fatal("Test took longer than 15 seconds to complete")
 	}
 }
