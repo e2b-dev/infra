@@ -228,12 +228,13 @@ func (c *CachedFileObjectProvider) writeLocalSize(size int64) {
 			zap.Error(err))
 		return
 	}
-	defer cleanup("failed to close temp file", fp)
+	defer cleanup("failed to close temp file", fp.Close)
 
 	if _, err := fmt.Fprintf(fp, "%d", size); err != nil {
 		zap.L().Warn("failed to write to temp file",
 			zap.String("path", tempFilename),
 			zap.Error(err))
+		return
 	}
 
 	finalFilename := c.makeSizeFilename()
@@ -242,6 +243,7 @@ func (c *CachedFileObjectProvider) writeLocalSize(size int64) {
 			zap.String("temp_path", tempFilename),
 			zap.String("final_path", finalFilename),
 			zap.Error(err))
+		return
 	}
 }
 
@@ -337,7 +339,7 @@ func (c *CachedFileObjectProvider) readAtFromCache(chunkPath string, buff []byte
 		return 0, fmt.Errorf("failed to open file: %w", err)
 	}
 
-	defer cleanup("failed to close chunk", fp)
+	defer cleanup("failed to close chunk", fp.Close)
 
 	count, err := fp.ReadAt(buff, 0) // offset is in the filename
 	if ignoreEOF(err) != nil {
@@ -359,7 +361,7 @@ func (c *CachedFileObjectProvider) copyFullFileFromCache(dst io.Writer) (int64, 
 		return 0, false
 	}
 
-	defer cleanup("failed to close full cached file", fp)
+	defer cleanup("failed to close full cached file", fp.Close)
 
 	count, err := io.Copy(dst, fp)
 	if ignoreEOF(err) != nil {
@@ -386,7 +388,8 @@ func (c *CachedFileObjectProvider) readAndCacheFullRemoteFile(ctx context.Contex
 	writer := io.MultiWriter(dst, tempWriter)
 	written, err := c.inner.WriteTo(ctx, writer)
 	if ignoreEOF(err) != nil {
-		cleanup("failed to close temp file", tempWriter)
+		cleanup("failed to close temp file", tempWriter.Close)
+		cleanup("failed to delete temp file", func() error { return os.Remove(tempFname) })
 		return 0, fmt.Errorf("failed to write to temp file: %w", err)
 	}
 
@@ -413,8 +416,8 @@ func (c *CachedFileObjectProvider) readAndCacheFullRemoteFile(ctx context.Contex
 	return written, nil
 }
 
-func cleanup(msg string, input interface{ Close() error }) {
-	if err := input.Close(); err != nil {
+func cleanup(msg string, close func() error) {
+	if err := close(); err != nil {
 		zap.L().Warn(msg, zap.Error(err))
 	}
 }
