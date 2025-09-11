@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -51,6 +52,9 @@ func NewSandboxEventStore(redisClient redis.UniversalClient) SandboxEventStore {
 }
 
 func (c *sandboxEventStore) SetSandboxIP(ctx context.Context, sandboxID string, sandboxIP string) error {
+	if c.redisClient == nil {
+		return fmt.Errorf("redisClient is nil")
+	}
 	return c.redisClient.Set(ctx, IPPrefix+sandboxIP, sandboxID, cacheTL).Err()
 }
 

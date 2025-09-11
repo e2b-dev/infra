@@ -517,7 +517,6 @@ func ResumeSandbox(
 	if eventStore != nil {
 		sandboxIP := ips.slot.HostIPString()
 
-		ctx = context.WithoutCancel(ctx)
 		err = eventStore.SetSandboxIP(context.WithoutCancel(ctx), runtime.SandboxID, sandboxIP)
 		if err != nil {
 			// soft fail to not block this critical path
