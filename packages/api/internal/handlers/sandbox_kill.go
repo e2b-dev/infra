@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
@@ -16,6 +17,7 @@ import (
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -82,21 +84,11 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 
 	telemetry.ReportEvent(ctx, "killing sandbox")
 
+	removed := false
+
 	sbx, err := a.orchestrator.GetSandbox(sandboxID, true)
 	if err == nil {
-		state := sbx.GetState()
-		// wait for the sandbox to pause before deleting it
-		if state == instance.StatePausing || state == instance.StatePaused {
-			err = sbx.WaitForStop(ctx)
-			if err != nil {
-				telemetry.ReportError(ctx, "error when waiting for sandbox to pause", err)
-				a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error deleting sandbox: %s", err))
-
-				return
-			}
-		}
-
-		if sbx.TeamID != teamID {
+		if sbx.Data().TeamID != teamID {
 			telemetry.ReportCriticalError(ctx, "sandbox does not belong to team", fmt.Errorf("sandbox '%s' does not belong to team '%s'", sandboxID, teamID.String()))
 
 			a.sendAPIStoreError(c, http.StatusUnauthorized, fmt.Sprintf("Error deleting sandbox - sandbox '%s' does not belong to your team '%s'", sandboxID, teamID.String()))
@@ -104,45 +96,58 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 			return
 		}
 
-		// remove running sandbox from the orchestrator
-		err := a.orchestrator.RemoveInstance(ctx, sbx, instance.RemoveTypeKill)
+		err = a.killRunningSandbox(ctx, sbx)
 		if err != nil {
-			telemetry.ReportError(ctx, "error deleting sandbox", err)
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error killing sandbox")
+			data := sbx.Data()
+			switch data.State {
+			case instance.StateFailed:
+				zap.L().Info("Sandbox is in failed state", logger.WithSandboxID(sandboxID), zap.Error(data.Reason))
+				a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox - sandbox '%s' is in failed state", sandboxID))
+			default:
+				telemetry.ReportError(ctx, "error deleting sandbox", err)
+				a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error deleting sandbox: %s", err))
+			}
 			return
 		}
 
-		// remove any snapshots of the sandbox
-		err = a.deleteSnapshot(ctx, sandboxID, teamID, team.ClusterID)
-		if err != nil && !errors.Is(err, db.EnvNotFoundError{}) {
-			telemetry.ReportError(ctx, "error deleting sandbox", err)
-			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error deleting sandbox: %s", err))
-
-			return
-		}
-
-		telemetry.ReportEvent(ctx, "deleted sandbox from orchestrator")
-
-		c.Status(http.StatusNoContent)
-
-		return
+		removed = true
 	}
 
 	// remove any snapshots when the sandbox is not running
 	deleteSnapshotErr := a.deleteSnapshot(ctx, sandboxID, teamID, team.ClusterID)
-	if errors.Is(deleteSnapshotErr, db.EnvNotFoundError{}) {
-		telemetry.ReportError(ctx, "snapshot for sandbox not found", fmt.Errorf("snapshot for sandbox '%s' not found", sandboxID), telemetry.WithSandboxID(sandboxID))
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error deleting sandbox - sandbox '%s' not found", sandboxID))
-
-		return
-	}
-
-	if deleteSnapshotErr != nil {
+	switch {
+	case errors.Is(deleteSnapshotErr, db.EnvNotFoundError{}):
+		zap.L().Debug("Snapshot for sandbox not found", logger.WithSandboxID(sandboxID))
+	case deleteSnapshotErr != nil:
 		telemetry.ReportError(ctx, "error deleting sandbox", deleteSnapshotErr)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error deleting sandbox: %s", deleteSnapshotErr))
-
 		return
+	default:
+		removed = true
 	}
 
-	c.Status(http.StatusNoContent)
+	if removed {
+		c.Status(http.StatusNoContent)
+	} else {
+		a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox not found")
+	}
+}
+
+func (a *APIStore) killRunningSandbox(ctx context.Context, sbx *instance.InstanceInfo) error {
+	finish, err := sbx.StartChangingState(ctx, instance.StateKilled)
+	if err != nil {
+		return fmt.Errorf("error while trying to kill sandbox: %w", err)
+	}
+	if finish == nil {
+		zap.L().Info("Sandbox was killed in another request", logger.WithSandboxID(sbx.SandboxID()))
+		return nil
+	}
+	defer finish(err)
+
+	err = a.orchestrator.RemoveInstance(ctx, sbx.SandboxID(), instance.RemoveTypeKill)
+	if err != nil {
+		return fmt.Errorf("error removing sandbox: %w", err)
+	}
+
+	return nil
 }

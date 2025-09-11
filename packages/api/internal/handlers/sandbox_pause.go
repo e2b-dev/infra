@@ -50,7 +50,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		return
 	}
 
-	if sbx.TeamID != teamID {
+	if sbx.Data().TeamID != teamID {
 		telemetry.ReportCriticalError(ctx, "sandbox does not belong to team", fmt.Errorf("sandbox '%s' does not belong to team '%s'", sandboxID, teamID.String()))
 
 		a.sendAPIStoreError(c, http.StatusUnauthorized, fmt.Sprintf("Error pausing sandbox - sandbox '%s' does not belong to your team '%s'", sandboxID, teamID.String()))
@@ -58,37 +58,42 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		return
 	}
 
-	err = a.orchestrator.RemoveInstance(ctx, sbx, instance.RemoveTypePause)
-	if err == nil {
-		c.Status(http.StatusNoContent)
-		return
-	}
-
-	if errors.Is(err, instance.ErrAlreadyBeingDeleted) {
-		telemetry.ReportEvent(ctx, "sandbox is already being deleted", telemetry.WithSandboxID(sandboxID))
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already being deleted", sandboxID))
-
-		return
-	}
-
-	if errors.Is(err, instance.ErrAlreadyBeingPaused) {
-		telemetry.ReportEvent(ctx, "sandbox is already being paused", telemetry.WithSandboxID(sandboxID))
-
-		err = sbx.WaitForStop(ctx)
-		if err != nil {
-			telemetry.ReportError(ctx, "error when waiting for sandbox to pause", err)
-
+	finish, err := sbx.StartChangingState(ctx, instance.StatePaused)
+	if err != nil {
+		data := sbx.Data()
+		switch data.State {
+		case instance.StateFailed:
+			zap.L().Info("Sandbox is in failed state", logger.WithSandboxID(sandboxID), zap.Error(data.Reason))
+			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is in failed state", sandboxID))
+		case instance.StatePaused:
+			zap.L().Info("Sandbox was paused in another request", logger.WithSandboxID(sandboxID))
+			c.Status(http.StatusNoContent)
+		case instance.StateKilled:
+			zap.L().Info("Sandbox is already killed", logger.WithSandboxID(sandboxID))
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already killed", sandboxID))
+		default:
+			zap.L().Error("Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
-
-			return
 		}
 
-		// Successfully paused
-		c.Status(http.StatusNoContent)
 		return
 	}
 
-	telemetry.ReportError(ctx, "error pausing sandbox", err)
+	if finish == nil {
+		zap.L().Info("Sandbox was already paused in another request", logger.WithSandboxID(sandboxID))
+		c.Status(http.StatusNoContent)
 
-	a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
+		return
+	}
+	defer finish(err)
+
+	err = a.orchestrator.RemoveInstance(ctx, sandboxID, instance.RemoveTypePause)
+	if err != nil {
+		telemetry.ReportError(ctx, "error pausing sandbox", err)
+
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }
