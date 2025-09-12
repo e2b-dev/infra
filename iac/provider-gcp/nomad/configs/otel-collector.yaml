@@ -43,7 +43,6 @@ receivers:
             enabled: false
 
       # Scraping traffic going in/out of network interfaces
-      # TODO: filter only interfaces that are used (e.g. exclude docker0, veth-xy, lo, etc.)
       network:
         metrics:
           system.network.connections:
@@ -73,7 +72,6 @@ receivers:
           system.memory.utilization:
             enabled: false
 
-      # TODO: filter only filesystems that are needed
       #  filter not needed stuff (mode, type)
       #  filter /dev/loop*, maybe check fo other that are polluting
       filesystem:
