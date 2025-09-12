@@ -31,7 +31,7 @@ func Middleware(meterProvider metric.MeterProvider, service string, options ...O
 		ctx := ginCtx.Request.Context()
 
 		route := ginCtx.FullPath()
-		if len(route) <= 0 {
+		if len(route) == 0 {
 			route = "nonconfigured"
 		}
 

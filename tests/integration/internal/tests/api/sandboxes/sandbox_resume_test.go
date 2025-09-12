@@ -1,7 +1,8 @@
-package api
+package sandboxes
 
 import (
 	"net/http"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,10 +14,10 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
 
-func TestSandboxPause(t *testing.T) {
+func TestSandboxResume(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	t.Run("regular pause", func(t *testing.T) {
+	t.Run("regular resume", func(t *testing.T) {
 		// Create a sandbox with auto-pause disabled
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
 		sbxId := sbx.SandboxID
@@ -40,17 +41,24 @@ func TestSandboxPause(t *testing.T) {
 		assert.Equal(t, sbxResume.JSON201.SandboxID, sbxId)
 	})
 
-	t.Run("test concurrent pauses", func(t *testing.T) {
+	t.Run("concurrent resumes", func(t *testing.T) {
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
 		sbxId := sbx.SandboxID
 
+		pauseSandbox(t, c, sbxId)
+
 		// Pause the sandbox
 		wg := errgroup.Group{}
+		resumed := atomic.Bool{}
 		for i := 0; i < 5; i++ {
 			wg.Go(func() error {
-				pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+				resumeResp, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
 				require.NoError(t, err)
-				require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
+				require.Contains(t, []int{http.StatusCreated, http.StatusConflict}, resumeResp.StatusCode())
+
+				if resumeResp.StatusCode() == http.StatusCreated {
+					resumed.Store(true)
+				}
 
 				return nil
 			})
@@ -63,10 +71,12 @@ func TestSandboxPause(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, res.StatusCode())
 		require.NotNil(t, res.JSON200)
-		assert.Equal(t, api.Paused, res.JSON200.State)
+		assert.Equal(t, api.Running, res.JSON200.State)
+
+		assert.True(t, resumed.Load(), "at least one resume should succeed")
 	})
 
-	t.Run("pause killed sandbox", func(t *testing.T) {
+	t.Run("resume killed sandbox", func(t *testing.T) {
 		// Create a sandbox with auto-pause disabled
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
 		sbxId := sbx.SandboxID
@@ -76,8 +86,32 @@ func TestSandboxPause(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNoContent, killResp.StatusCode())
 
-		pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+		// Try to resume the sandbox
+		sbxResume, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
 		require.NoError(t, err)
-		require.Equal(t, http.StatusNotFound, pauseResp.StatusCode())
+		require.Equal(t, http.StatusNotFound, sbxResume.StatusCode())
+	})
+
+	t.Run("resume killed sandbox", func(t *testing.T) {
+		c := setup.GetAPIClient()
+
+		// Create a sandbox with auto-pause disabled
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
+		sbxId := sbx.SandboxID
+
+		// Set timeout to 0 to force sandbox to be stopped
+		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+		// Kill the sandbox
+		killResp, err := c.DeleteSandboxesSandboxIDWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNoContent, killResp.StatusCode())
+
+		// Try to kill the sandbox
+		sbxResume, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNotFound, sbxResume.StatusCode())
 	})
 }

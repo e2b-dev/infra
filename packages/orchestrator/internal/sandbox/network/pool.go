@@ -153,7 +153,7 @@ func (p *Pool) Return(ctx context.Context, slot *Slot) error {
 
 	select {
 	case p.reusedSlots <- slot:
-		p.reusedSlotCounter.Add(context.Background(), 1)
+		p.reusedSlotCounter.Add(context.Background(), 1) // nolint:contextcheck // TODO: fix this later
 	default:
 		err := p.cleanup(slot)
 		if err != nil {

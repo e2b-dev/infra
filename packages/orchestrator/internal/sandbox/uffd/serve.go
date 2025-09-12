@@ -153,7 +153,6 @@ outerLoop:
 
 			b, err := src.Slice(offset, pagesize)
 			if err != nil {
-
 				signalErr := fdExit.SignalExit()
 
 				joinedErr := errors.Join(err, signalErr)
