@@ -348,7 +348,6 @@ func run(port, proxyPort, eventProxyPort uint) (success bool) {
 		sbxEventStore = events.NewSandboxEventStore(redisClient)
 		sbxEventProxy = events.NewSandboxEventProxy(eventProxyPort, sbxEventStore)
 	} else {
-		redisPubSub = pubsub.NewMockPubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData]()
 		sbxEventService = events.NewNoopSandboxEventsService()
 		sbxEventStore = events.NewNoopSandboxEventStore()
 		sbxEventProxy = events.NewNoopSandboxEventProxy()
