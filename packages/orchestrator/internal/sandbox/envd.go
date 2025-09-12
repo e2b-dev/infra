@@ -21,24 +21,13 @@ const (
 // The parent context should have a deadline or a timeout.
 func doRequestWithInfiniteRetries(ctx context.Context, method, address string, requestBody []byte, accessToken *string) (*http.Response, error) {
 	for {
-		reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
-		request, err := http.NewRequestWithContext(reqCtx, method, address, bytes.NewReader(requestBody))
-		if err != nil {
-			cancel()
-			return nil, err
-		}
-
-		// make sure request to already authorized envd will not fail
-		// this can happen in sandbox resume and in some edge cases when previous request was success, but we continued
-		if accessToken != nil {
-			request.Header.Set("X-Access-Token", *accessToken)
-		}
-
-		response, err := httpClient.Do(request)
-		cancel()
-
-		if err == nil {
+		response, err := doRequest(ctx, method, address, requestBody, accessToken)
+		if response != nil {
 			return response, nil
+		}
+
+		if err != nil {
+			return nil, err
 		}
 
 		select {
@@ -47,6 +36,33 @@ func doRequestWithInfiniteRetries(ctx context.Context, method, address string, r
 		case <-time.After(loopDelay):
 		}
 	}
+}
+
+func doRequest(ctx context.Context, method, address string, requestBody []byte, accessToken *string) (*http.Response, error) {
+	ctx, span := tracer.Start(ctx, "env-init-request")
+	defer span.End()
+
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	request, err := http.NewRequestWithContext(ctx, method, address, bytes.NewReader(requestBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// make sure request to already authorized envd will not fail
+	// this can happen in sandbox resume and in some edge cases when previous request was success, but we continued
+	if accessToken != nil {
+		request.Header.Set("X-Access-Token", *accessToken)
+	}
+
+	response, err := httpClient.Do(request)
+	if err != nil {
+		span.AddEvent("request failed")
+		return nil, nil
+	}
+
+	return response, nil
 }
 
 type PostInitJSONBody struct {
