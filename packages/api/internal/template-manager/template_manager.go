@@ -175,7 +175,16 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, buildID uuid.UUID, t
 
 	client, err := tm.GetClusterBuildClient(clusterID, nodeID)
 	if err != nil {
-		return fmt.Errorf("failed to get builder client: %w", err)
+		nodeID, err = tm.GetAvailableBuildClient(ctx, clusterID)
+		if err != nil {
+			return fmt.Errorf("failed to get any available node in the cluster: %w", err)
+		}
+
+		zap.L().Info("Fallback to available node", zap.String("nodeID", nodeID), zap.String("clusterID", clusterID.String()))
+		client, err = tm.GetClusterBuildClient(clusterID, nodeID)
+		if err != nil {
+			return fmt.Errorf("failed to get builder client: %w", err)
+		}
 	}
 
 	reqCtx := metadata.NewOutgoingContext(ctx, client.GRPC.Metadata)
