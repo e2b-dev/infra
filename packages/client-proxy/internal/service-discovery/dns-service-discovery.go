@@ -100,8 +100,7 @@ func (sd *DnsServiceDiscovery) sync(ctx context.Context) {
 				}
 
 				for _, ans := range response.Answer {
-					switch rr := ans.(type) {
-					case *dns.A:
+					if rr, ok := ans.(*dns.A); ok {
 						ips[rr.A.String()] = struct{}{}
 					}
 				}

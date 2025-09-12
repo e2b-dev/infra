@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"go.uber.org/zap"
 )
 
 const (
@@ -70,17 +71,33 @@ func (a *AWSBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, 
 
 	// AWS S3 delete operation requires at least one object to delete.
 	if len(objects) == 0 {
+		zap.L().Warn("No objects found to delete with the given prefix", zap.String("prefix", prefix), zap.String("bucket", a.bucketName))
 		return nil
 	}
 
-	_, err = a.client.DeleteObjects(
+	output, err := a.client.DeleteObjects(
 		ctx, &s3.DeleteObjectsInput{
 			Bucket: aws.String(a.bucketName),
 			Delete: &types.Delete{Objects: objects},
 		},
 	)
+	if err != nil {
+		return err
+	}
 
-	return err
+	if len(output.Errors) > 0 {
+		var errStr string
+		for _, delErr := range output.Errors {
+			errStr += fmt.Sprintf("Key: %s, Code: %s, Message: %s; ", aws.ToString(delErr.Key), aws.ToString(delErr.Code), aws.ToString(delErr.Message))
+		}
+		return errors.New("errors occurred during deletion: " + errStr)
+	}
+
+	if len(output.Deleted) != len(objects) {
+		return errors.New("not all objects listed were deleted")
+	}
+
+	return nil
 }
 
 func (a *AWSBucketStorageProvider) GetDetails() string {

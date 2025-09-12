@@ -147,7 +147,6 @@ func (f *FileSystemStorageObjectProvider) getHandle(checkExistence bool) (*os.Fi
 		if info.IsDir() {
 			return nil, fmt.Errorf("path %s is a directory", f.path)
 		}
-
 	}
 
 	handle, err := os.OpenFile(f.path, os.O_RDWR|os.O_CREATE, 0o644)

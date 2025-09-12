@@ -1,7 +1,6 @@
 package filesystem
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -44,7 +43,7 @@ func TestMove(t *testing.T) {
 	svc := Service{}
 
 	// Call the Move function
-	ctx := authn.SetInfo(context.Background(), u)
+	ctx := authn.SetInfo(t.Context(), u)
 	req := connect.NewRequest(&filesystem.MoveRequest{
 		Source:      sourceFile,
 		Destination: destFile,
@@ -101,7 +100,7 @@ func TestMoveDirectory(t *testing.T) {
 	svc := Service{}
 
 	// Call the Move function
-	ctx := authn.SetInfo(context.Background(), u)
+	ctx := authn.SetInfo(t.Context(), u)
 	req := connect.NewRequest(&filesystem.MoveRequest{
 		Source:      sourceDir,
 		Destination: destDir,
@@ -161,7 +160,7 @@ func TestMoveNonExistingFile(t *testing.T) {
 	svc := Service{}
 
 	// Call the Move function
-	ctx := authn.SetInfo(context.Background(), u)
+	ctx := authn.SetInfo(t.Context(), u)
 	req := connect.NewRequest(&filesystem.MoveRequest{
 		Source:      sourceFile,
 		Destination: destFile,
@@ -203,7 +202,7 @@ func TestMoveRelativePath(t *testing.T) {
 	svc := Service{}
 
 	// Call the Move function with relative paths
-	ctx := authn.SetInfo(context.Background(), u)
+	ctx := authn.SetInfo(t.Context(), u)
 	req := connect.NewRequest(&filesystem.MoveRequest{
 		Source:      filepath.Join(testRelativePath, "source-file.txt"), // Relative path
 		Destination: filepath.Join(destRelativePath, "moved-file.txt"),  // Relative path
@@ -239,7 +238,7 @@ func TestMove_Symlinks(t *testing.T) {
 	root := t.TempDir()
 	u, err := user.Current()
 	require.NoError(t, err)
-	ctx := authn.SetInfo(context.Background(), u)
+	ctx := authn.SetInfo(t.Context(), u)
 
 	// Setup source and destination directories
 	sourceRoot := filepath.Join(root, "source")

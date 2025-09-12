@@ -1,4 +1,4 @@
-package api
+package sandboxes
 
 import (
 	"net/http"

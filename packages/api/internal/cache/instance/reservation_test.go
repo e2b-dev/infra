@@ -75,7 +75,7 @@ func TestReservation_ResumeAlreadyRunningSandbox(t *testing.T) {
 		endTime:           time.Now().Add(time.Hour),
 		MaxInstanceLength: time.Hour,
 	}
-	err := cache.Add(context.Background(), info, false)
+	err := cache.Add(t.Context(), info, false)
 	require.NoError(t, err)
 
 	_, err = cache.Reserve(sandboxID, teamID, 1)

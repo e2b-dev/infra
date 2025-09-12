@@ -69,7 +69,7 @@ func TestStat(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			ctx := injectUser(context.Background(), u)
+			ctx := injectUser(t.Context(), u)
 			req := connect.NewRequest(&filesystem.StatRequest{
 				Path: tt.path,
 			})

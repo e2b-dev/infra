@@ -152,7 +152,6 @@ func (n *SimulatedNode) removeSandbox(sandboxID string) {
 	metrics := n.Metrics()
 
 	if sandbox, exists := n.sandboxes[sandboxID]; exists {
-
 		n.RemoveSandbox(&instance.InstanceInfo{
 			VCpu:  sandbox.RequestedCPU,
 			RamMB: sandbox.RequestedMemory,
@@ -191,8 +190,10 @@ func (n *SimulatedNode) getUtilization() (cpuUtil, memUtil float64) {
 }
 
 // runBenchmark runs a comprehensive placement benchmark with lifecycle tracking
-func runBenchmark(_ *testing.B, algorithm Algorithm, config BenchmarkConfig) *BenchmarkMetrics {
-	ctx, cancel := context.WithTimeout(context.Background(), config.BenchmarkDuration)
+func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig) *BenchmarkMetrics {
+	b.Helper()
+
+	ctx, cancel := context.WithTimeout(b.Context(), config.BenchmarkDuration)
 	defer cancel()
 
 	// Create simulated nodes

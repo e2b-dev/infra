@@ -56,6 +56,9 @@ func (c *MemorySandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID stri
 	defer c.mtx.Unlock()
 
 	item := c.cache.Get(sandboxID)
+	if item == nil {
+		return nil
+	}
 
 	// No need for removal here
 	if item.IsExpired() || item.Value() == nil {

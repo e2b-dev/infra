@@ -1,7 +1,6 @@
 package placement
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -90,7 +89,7 @@ func TestBestOfK_CanFit(t *testing.T) {
 }
 
 func TestBestOfK_ChooseNode(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	config := BestOfKConfig{
 		R:     10, // Higher overcommit ratio to ensure nodes can fit
 		Alpha: 0.5,
@@ -118,7 +117,7 @@ func TestBestOfK_ChooseNode(t *testing.T) {
 }
 
 func TestBestOfK_ChooseNode_WithExclusions(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	config := BestOfKConfig{
 		R:     10,
 		Alpha: 0.5,
@@ -151,7 +150,7 @@ func TestBestOfK_ChooseNode_WithExclusions(t *testing.T) {
 }
 
 func TestBestOfK_ChooseNode_NoAvailableNodes(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	config := DefaultBestOfKConfig()
 	algo := NewBestOfK(config).(*BestOfK)
 
@@ -212,7 +211,7 @@ func TestBestOfK_Sample(t *testing.T) {
 }
 
 func TestBestOfK_PowerOfKChoices(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	config := BestOfKConfig{
 		R:     10,
 		Alpha: 0.5,

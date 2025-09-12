@@ -26,14 +26,15 @@ func ErrorHandler(c *gin.Context, message string, statusCode int) {
 
 	ctx := c.Request.Context()
 
-	if strings.HasPrefix(c.Request.URL.Path, "/instances") ||
-		strings.HasPrefix(c.Request.URL.Path, "/envs") {
+	switch {
+	case strings.HasPrefix(c.Request.URL.Path, "/instances"),
+		strings.HasPrefix(c.Request.URL.Path, "/envs"):
 		errMsg = fmt.Errorf("OpenAPI validation error, old endpoints: %s", message)
 		message = "Endpoints are deprecated, please update your SDK to use the new endpoints."
-	} else if strings.HasPrefix(c.Request.URL.Path, "/templates") && strings.HasPrefix(c.Request.Header.Get("Content-Type"), "multipart/form-data") {
+	case strings.HasPrefix(c.Request.URL.Path, "/templates") && strings.HasPrefix(c.Request.Header.Get("Content-Type"), "multipart/form-data"):
 		errMsg = fmt.Errorf("OpenAPI validation error, old CLI: %s", message)
 		message = "Endpoint deprecated please update your CLI to the latest version"
-	} else {
+	default:
 		data, err := c.GetRawData()
 		if err == nil {
 			errMsg = fmt.Errorf("OpenAPI validation error: %s, data: %s", message, data)

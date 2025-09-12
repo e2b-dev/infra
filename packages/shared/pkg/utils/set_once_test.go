@@ -74,7 +74,7 @@ func TestSetOnceWait(t *testing.T) {
 func TestSetOnceWaitWithContext(t *testing.T) {
 	setOnce := NewSetOnce[int]()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	wg := sync.WaitGroup{}
@@ -96,7 +96,7 @@ func TestSetOnceWaitWithContext(t *testing.T) {
 func TestSetOnceWaitWithContextCanceled(t *testing.T) {
 	setOnce := NewSetOnce[int]()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	wg := sync.WaitGroup{}
@@ -154,7 +154,7 @@ func TestSetOnceSetResultConcurrent(t *testing.T) {
 func TestSetOnceSetResultConcurrentWithContext(t *testing.T) {
 	setOnce := NewSetOnce[int]()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	wg1 := sync.WaitGroup{}
@@ -218,7 +218,7 @@ func TestSetOnceConcurrentReadsWithContext(t *testing.T) {
 	setOnce := NewSetOnce[int]()
 	const numReaders = 100
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	// Set value first

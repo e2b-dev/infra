@@ -1,7 +1,6 @@
 package placement
 
 import (
-	"context"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -11,7 +10,7 @@ import (
 )
 
 func BenchmarkChooseNode(b *testing.B) {
-	ctx := context.Background()
+	ctx := b.Context()
 
 	tests := []struct {
 		name   string

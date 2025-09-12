@@ -233,7 +233,7 @@ func (d *DNS) Start(ctx context.Context, address string, port string) {
 
 		// Close should be a noop if it's already been called,
 		// and it caches the error.
-		_ = d.Close(shutdownCtx)
+		_ = d.Close(shutdownCtx) // nolint:contextcheck // TODO: fix this later
 	}()
 }
 

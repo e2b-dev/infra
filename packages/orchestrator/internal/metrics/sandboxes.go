@@ -166,7 +166,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 					continue
 				}
 
-				wg.Go(func() error {
+				wg.Go(func() error { // nolint:contextcheck // TODO: fix this later
 					// Make sure the sandbox doesn't change while we are getting metrics (the slot could be assigned to another sandbox)
 					sbxMetrics, err := sbx.Checks.GetMetrics(timeoutGetMetrics)
 					if err != nil {

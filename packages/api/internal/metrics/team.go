@@ -87,7 +87,7 @@ func (so *TeamObserver) Start(cache *instance.MemoryStore) (err error) {
 					sbxsPerTeam[teamID] = 0
 				}
 
-				sbxsPerTeam[teamID] = sbxsPerTeam[teamID] + 1
+				sbxsPerTeam[teamID]++
 			}
 
 			// Reset the max for the new interval to the current counts

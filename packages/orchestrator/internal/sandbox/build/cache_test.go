@@ -15,7 +15,6 @@ package build
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -70,25 +69,9 @@ func newDiffWithAsserts(t *testing.T, cachePath, buildId string, diffType DiffTy
 	return diff, nil
 }
 
-func createTempDir(t *testing.T) string {
-	t.Helper()
-
-	tempDir, err := os.MkdirTemp("", tmpBuildCachePrefix)
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	t.Cleanup(func() {
-		err = os.RemoveAll(tempDir)
-		assert.NoError(t, err)
-	})
-
-	t.Logf("Temp dir: %s\n", tempDir)
-	return tempDir
-}
-
 func TestNewDiffStore(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
 	store, err := NewDiffStore(
@@ -105,8 +88,8 @@ func TestNewDiffStore(t *testing.T) {
 }
 
 func TestDiffStoreTTLEviction(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
 	ttl := 1 * time.Second
@@ -135,8 +118,8 @@ func TestDiffStoreTTLEviction(t *testing.T) {
 }
 
 func TestDiffStoreRefreshTTLEviction(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
 	ttl := 1 * time.Second
@@ -171,8 +154,8 @@ func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 }
 
 func TestDiffStoreDelayEviction(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
 	ttl := 60 * time.Second
@@ -212,8 +195,8 @@ func TestDiffStoreDelayEviction(t *testing.T) {
 }
 
 func TestDiffStoreDelayEvictionAbort(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
 	ttl := 60 * time.Second
@@ -260,8 +243,8 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 }
 
 func TestDiffStoreOldestFromCache(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
 	ttl := 60 * time.Second
@@ -325,8 +308,8 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 // cancel channel in resetDelete method. This test should be run with the race
 // detector enabled: go test -race
 func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
 	// Use very short TTL and delay to trigger rapid evictions
@@ -406,8 +389,8 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 // TestDiffStoreResetDeleteRace specifically targets the resetDelete method
 // race condition by simulating the exact scenario from the race report
 func TestDiffStoreResetDeleteRace(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
 	// Very short TTL to trigger evictions quickly

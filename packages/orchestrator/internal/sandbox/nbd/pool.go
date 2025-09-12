@@ -256,7 +256,7 @@ func (d *DevicePool) GetDevice(ctx context.Context) (DeviceSlot, error) {
 	}
 
 	slot := <-d.slots
-	d.slotCounter.Add(d.ctx, -1)
+	d.slotCounter.Add(d.ctx, -1) // nolint:contextcheck // TODO: fix this later
 
 	return slot, nil
 }

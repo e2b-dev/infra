@@ -42,7 +42,7 @@ func main() {
 	// Create a session locking
 	sessionLocker, err := lock.NewPostgresSessionLocker()
 	if err != nil {
-		log.Fatalf("failed to create session locker: %v", err)
+		log.Fatalf("failed to create session locker: %v", err) // nolint:gocritic // no harm in exiting after defer here
 	}
 
 	goose.SetTableName(trackingTable)
@@ -59,7 +59,6 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to ensure auth.users table: %v", err)
 		}
-		version = authMigrationVersion
 	}
 
 	// We have to use custom store to use a custom tracking table

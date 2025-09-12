@@ -85,7 +85,7 @@ func TestListDir(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			ctx := injectUser(context.Background(), u)
+			ctx := injectUser(t.Context(), u)
 			req := connect.NewRequest(&filesystem.ListDirRequest{
 				Path:  testFolder,
 				Depth: tt.depth,
@@ -109,7 +109,7 @@ func TestListDirNonExistingPath(t *testing.T) {
 	svc := Service{}
 	u, err := user.Current()
 	require.NoError(t, err)
-	ctx := authn.SetInfo(context.Background(), u)
+	ctx := authn.SetInfo(t.Context(), u)
 
 	req := connect.NewRequest(&filesystem.ListDirRequest{
 		Path:  "/non-existing-path",
@@ -137,7 +137,7 @@ func TestListDirRelativePath(t *testing.T) {
 
 	// Service instance
 	svc := Service{}
-	ctx := authn.SetInfo(context.Background(), u)
+	ctx := authn.SetInfo(t.Context(), u)
 
 	req := connect.NewRequest(&filesystem.ListDirRequest{
 		Path:  testRelativePath,
@@ -165,7 +165,7 @@ func TestListDir_Symlinks(t *testing.T) {
 	root := t.TempDir()
 	u, err := user.Current()
 	require.NoError(t, err)
-	ctx := authn.SetInfo(context.Background(), u)
+	ctx := authn.SetInfo(t.Context(), u)
 
 	symlinkRoot := filepath.Join(root, "test-symlinks")
 	require.NoError(t, os.MkdirAll(symlinkRoot, 0o755))

@@ -165,7 +165,6 @@ func maybeConvertResponse(logger *zerolog.Logger, response connect.AnyResponse) 
 		copyHeaders(response.Header(), r.Header())
 		copyHeaders(response.Trailer(), r.Trailer())
 		response = r
-
 	}
 
 	return response

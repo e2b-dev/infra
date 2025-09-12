@@ -2,7 +2,6 @@ package storage
 
 import (
 	"bytes"
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,7 +21,7 @@ func newTempProvider(t *testing.T) *FileSystemStorageProvider {
 
 func TestOpenObject_ReadWrite_Size_ReadAt(t *testing.T) {
 	p := newTempProvider(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	obj, err := p.OpenObject(ctx, filepath.Join("sub", "file.txt"))
 	require.NoError(t, err)
@@ -55,7 +54,7 @@ func TestOpenObject_ReadWrite_Size_ReadAt(t *testing.T) {
 
 func TestWriteFromFileSystem(t *testing.T) {
 	p := newTempProvider(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// create a separate source file on disk
 	srcPath := filepath.Join(t.TempDir(), "src.txt")
@@ -74,7 +73,7 @@ func TestWriteFromFileSystem(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	p := newTempProvider(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	obj, err := p.OpenObject(ctx, "to/delete.txt")
 	require.NoError(t, err)
@@ -90,7 +89,7 @@ func TestDelete(t *testing.T) {
 
 func TestDeleteObjectsWithPrefix(t *testing.T) {
 	p := newTempProvider(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	paths := []string{
 		"data/a.txt",
@@ -117,7 +116,7 @@ func TestDeleteObjectsWithPrefix(t *testing.T) {
 func TestWriteToNonExistentObject(t *testing.T) {
 	p := newTempProvider(t)
 
-	ctx := context.Background()
+	ctx := t.Context()
 	obj, err := p.OpenObject(ctx, "missing/file.txt")
 	require.NoError(t, err)
 

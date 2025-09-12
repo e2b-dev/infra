@@ -45,8 +45,10 @@ func NewChecks(ctx context.Context, sandbox *Sandbox, useClickhouseMetrics bool)
 		healthy:              atomic.Bool{}, // defaults to `false`
 		UseClickhouseMetrics: useClickhouseMetrics,
 	}
+
 	// By default, the sandbox should be healthy, if the status change we report it.
 	h.healthy.Store(true)
+
 	return h, nil
 }
 

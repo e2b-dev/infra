@@ -31,7 +31,6 @@ func CreateAPIKey(ctx context.Context, db *db.DB, teamID uuid.UUID, userID uuid.
 		Create().
 		SetTeamID(teamID).
 		SetCreatedBy(userID).
-		SetLastUsed(time.Now()).
 		SetUpdatedAt(time.Now()).
 		SetAPIKeyHash(teamApiKey.HashedValue).
 		SetAPIKeyPrefix(teamApiKey.Masked.Prefix).

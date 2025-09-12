@@ -530,7 +530,6 @@ func getCPUAndRAM(tier *queries.Tier, cpuCount, memoryMB *int32) (int64, int64, 
 				Code:      http.StatusBadRequest,
 			}
 		}
-
 	}
 
 	if memoryMB != nil {

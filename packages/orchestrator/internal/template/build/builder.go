@@ -112,11 +112,9 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 		if success {
 			b.metrics.RecordBuildResult(ctx, true)
 			b.metrics.RecordRootfsSize(ctx, r.RootfsSizeMB<<constants.ToMBShift)
-		} else {
+		} else if !errors.Is(e, context.Canceled) {
 			// Skip reporting failure metrics only on explicit cancellation
-			if !errors.Is(e, context.Canceled) {
-				b.metrics.RecordBuildResult(ctx, false)
-			}
+			b.metrics.RecordBuildResult(ctx, false)
 		}
 	}()
 

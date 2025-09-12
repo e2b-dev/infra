@@ -100,7 +100,7 @@ func TestPollBuildStatus_setStatus(t *testing.T) {
 				client: tt.fields.templateManagerClient,
 				logger: zap.NewNop(),
 			}
-			err := c.setStatus(context.TODO())
+			err := c.setStatus(t.Context())
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("PollBuildStatus.getSetStatusFn() = %v", err)
@@ -272,7 +272,7 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 				logger: zap.NewNop(),
 			}
 
-			completed, err := c.dispatchBasedOnStatus(context.TODO(), tt.args.status)
+			completed, err := c.dispatchBasedOnStatus(t.Context(), tt.args.status)
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("Expected error, got no error")

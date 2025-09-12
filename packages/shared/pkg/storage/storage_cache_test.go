@@ -54,7 +54,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 				start := off
 				end := off + int64(len(buff))
 				end = min(end, int64(len(fakeData)))
-				copy(buff[:], fakeData[start:end])
+				copy(buff, fakeData[start:end])
 				return int(end - start), nil
 			})
 
