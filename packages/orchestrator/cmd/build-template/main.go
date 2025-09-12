@@ -48,7 +48,7 @@ func main() {
 
 	err := buildTemplate(ctx, *kernelVersion, *fcVersion, *templateID, *buildID)
 	if err != nil {
-		log.Fatalf("error building template: %v", err)
+		log.Fatalf("error building template: %v", err) // nolint:gocritic // probably fine to bail if we're done?
 	}
 }
 

@@ -24,6 +24,7 @@ linters:
     - errname
     - errorlint
     - exptostd
+    - gocritic
     - govet
     - iface
     - importas
@@ -35,6 +36,9 @@ linters:
     - wastedassign
     - whitespace
   settings:
+    gocritic:
+      disabled-checks:
+        - appendAssign
     staticcheck:
       checks:
         - all
