@@ -93,7 +93,7 @@ func newSynchronizer(store Store[string, string]) *Synchronize[string, string] {
 }
 
 func TestSynchronize_InsertAndRemove(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Start with empty pool; source has a & b.
 	s := newTestStore([]string{"a", "b"}, nil)

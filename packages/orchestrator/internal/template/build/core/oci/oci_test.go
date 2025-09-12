@@ -3,7 +3,6 @@ package oci
 import (
 	"archive/tar"
 	"bytes"
-	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -127,7 +126,7 @@ func authHandler(handler http.Handler, username, password string) http.Handler {
 }
 
 func TestGetPublicImageWithGeneralAuth(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Create a test image
 	testImage := empty.Image

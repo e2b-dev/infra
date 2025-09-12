@@ -330,11 +330,11 @@ func (p *Process) Resume(
 	snapfile template.File,
 	uffdReady chan struct{},
 ) error {
-	childCtx, childSpan := tracer.Start(ctx, "resume-fc")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "resume-fc")
+	defer span.End()
 
 	err := p.configure(
-		childCtx,
+		ctx,
 		mmdsMetadata,
 		nil,
 		nil,
@@ -350,8 +350,10 @@ func (p *Process) Resume(
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
 
+	telemetry.ReportEvent(ctx, "symlinked rootfs")
+
 	err = p.client.loadSnapshot(
-		childCtx,
+		ctx,
 		uffdSocketPath,
 		uffdReady,
 		snapfile,
@@ -362,14 +364,14 @@ func (p *Process) Resume(
 		return errors.Join(fmt.Errorf("error loading snapshot: %w", err), fcStopErr)
 	}
 
-	err = p.client.resumeVM(childCtx)
+	err = p.client.resumeVM(ctx)
 	if err != nil {
 		fcStopErr := p.Stop()
 
 		return errors.Join(fmt.Errorf("error resuming vm: %w", err), fcStopErr)
 	}
 
-	err = p.client.setMmds(childCtx, mmdsMetadata)
+	err = p.client.setMmds(ctx, mmdsMetadata)
 	if err != nil {
 		fcStopErr := p.Stop()
 
@@ -377,7 +379,7 @@ func (p *Process) Resume(
 	}
 
 	telemetry.SetAttributes(
-		childCtx,
+		ctx,
 		attribute.String("sandbox.cmd.dir", p.cmd.Dir),
 		attribute.String("sandbox.cmd.path", p.cmd.Path),
 	)

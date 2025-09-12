@@ -351,10 +351,14 @@ func ResumeSandbox(
 		return nil
 	})
 
+	telemetry.ReportEvent(ctx, "created sandbox files")
+
 	readonlyRootfs, err := t.Rootfs()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rootfs: %w", err)
 	}
+
+	telemetry.ReportEvent(ctx, "got template rootfs")
 
 	rootfsOverlay, err := rootfs.NewNBDProvider(
 		ctx,
@@ -365,9 +369,13 @@ func ResumeSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
+
 	cleanup.Add(func(ctx context.Context) error {
 		return rootfsOverlay.Close(ctx)
 	})
+
+	telemetry.ReportEvent(ctx, "created rootfs overlay")
+
 	go func() {
 		runErr := rootfsOverlay.Start(ctx)
 		if runErr != nil {
@@ -379,6 +387,8 @@ func ResumeSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memfile: %w", err)
 	}
+
+	telemetry.ReportEvent(ctx, "got template memfile")
 
 	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
 
@@ -407,14 +417,23 @@ func ResumeSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rootfs path: %w", err)
 	}
+
+	telemetry.ReportEvent(ctx, "got rootfs path")
+
 	ips := <-ipsCh
 	if ips.err != nil {
 		return nil, fmt.Errorf("failed to get network slot: %w", err)
 	}
+
+	telemetry.ReportEvent(ctx, "got network slot")
+
 	meta, err := t.Metadata()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get metadata: %w", err)
 	}
+
+	telemetry.ReportEvent(ctx, "got metadata")
+
 	fcHandle, fcErr := fc.NewProcess(
 		uffdStartCtx,
 		ips.slot,
@@ -435,13 +454,18 @@ func ResumeSandbox(
 		return nil, fmt.Errorf("failed to create FC: %w", fcErr)
 	}
 
+	telemetry.ReportEvent(ctx, "created FC process")
+
 	// todo: check if kernel, firecracker, and envd versions exist
 	snapfile, err := t.Snapfile()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get snapfile: %w", err)
 	}
 
+	telemetry.ReportEvent(ctx, "got snapfile")
+
 	logsCollectorIP := os.Getenv("LOGS_COLLECTOR_PUBLIC_IP")
+
 	fcStartErr := fcHandle.Resume(
 		uffdStartCtx,
 		&fc.MmdsMetadata{
@@ -512,7 +536,7 @@ func ResumeSandbox(
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
 
-	go sbx.Checks.Start()
+	go sbx.Checks.Start() // nolint:contextcheck // TODO: fix this later
 
 	go func() {
 		ctx, span := tracer.Start(context.WithoutCancel(ctx), "sandbox-exit-wait", trace.WithNewRoot())
@@ -581,8 +605,8 @@ func (s *Sandbox) Pause(
 	ctx context.Context,
 	m metadata.Template,
 ) (*Snapshot, error) {
-	ctx, childSpan := tracer.Start(ctx, "sandbox-snapshot")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "sandbox-snapshot")
+	defer span.End()
 
 	snapshotTemplateFiles, err := m.Template.CacheFiles()
 	if err != nil {
@@ -694,8 +718,8 @@ func pauseProcessMemory(
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
 ) (build.Diff, *header.Header, error) {
-	ctx, childSpan := tracer.Start(ctx, "process-memory")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "process-memory")
+	defer span.End()
 
 	memfileDiffFile, err := build.NewLocalDiffFile(
 		build.DefaultCachePath,
@@ -759,8 +783,8 @@ func pauseProcessRootfs(
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
 ) (build.Diff, *header.Header, error) {
-	ctx, childSpan := tracer.Start(ctx, "process-rootfs")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "process-rootfs")
+	defer span.End()
 
 	rootfsDiffFile, err := build.NewLocalDiffFile(build.DefaultCachePath, buildId.String(), build.Rootfs)
 	if err != nil {
@@ -857,6 +881,9 @@ func serveMemory(
 	socketPath string,
 	sandboxID string,
 ) (uffd.MemoryBackend, error) {
+	_, span := tracer.Start(ctx, "serve-memory")
+	defer span.End()
+
 	fcUffd, uffdErr := uffd.New(memfile, socketPath, memfile.BlockSize())
 	if uffdErr != nil {
 		return nil, fmt.Errorf("failed to create uffd: %w", uffdErr)
@@ -883,8 +910,8 @@ func serveMemory(
 }
 
 func (s *Sandbox) WaitForExit(ctx context.Context) error {
-	ctx, childSpan := tracer.Start(ctx, "sandbox-wait-for-exit")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "sandbox-wait-for-exit")
+	defer span.End()
 
 	timeout := time.Until(s.EndAt)
 
@@ -907,8 +934,8 @@ func (s *Sandbox) WaitForEnvd(
 	ctx context.Context,
 	timeout time.Duration,
 ) (e error) {
-	ctx, childSpan := tracer.Start(ctx, "sandbox-wait-for-start")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "sandbox-wait-for-start")
+	defer span.End()
 
 	defer func() {
 		if e != nil {

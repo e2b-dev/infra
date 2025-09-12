@@ -35,11 +35,12 @@ func TestCacheTemplate(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, sbx.StatusCode())
 
 	t.Cleanup(func() {
-		if sbx == nil {
+		switch {
+		case sbx == nil:
 			t.Logf("Error: %v", err)
-		} else if sbx.JSON201 == nil {
+		case sbx.JSON201 == nil:
 			t.Logf("Response error: %d %v", sbx.StatusCode(), string(sbx.Body))
-		} else {
+		default:
 			utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
 		}
 	})
