@@ -59,7 +59,6 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to ensure auth.users table: %v", err)
 		}
-		version = authMigrationVersion
 	}
 
 	// We have to use custom store to use a custom tracking table

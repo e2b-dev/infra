@@ -25,10 +25,15 @@ linters:
     - errorlint
     - exptostd
     - govet
+    - iface
+    - importas
     - staticcheck
     - testifylint
     - thelper
     - tparallel
+    - usetesting
+    - wastedassign
+    - whitespace
   settings:
     staticcheck:
       checks:
