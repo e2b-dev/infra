@@ -7,21 +7,21 @@ import (
 )
 
 func AddEventsHostEntry(address string) error {
-	hostsEntry := fmt.Sprintf("%s hyperloop.e2b.dev", address)
+	hostsEntry := fmt.Sprintf("%s events.e2b.dev", address)
 	// Read existing hosts file
 	content, err := os.ReadFile("/etc/hosts")
 	if err != nil {
 		return fmt.Errorf("failed to read /etc/hosts: %w", err)
 	}
 
-	// Filter out any existing hyperloop.e2b.dev entries
+	// Filter out any existing events.e2b.dev entries
 	lines := strings.Split(string(content), "\n")
 	filteredLines := make([]string, 0, len(lines))
 	for _, line := range lines {
 		if line == "" {
 			continue
 		}
-		if !strings.Contains(line, "hyperloop.e2b.dev") {
+		if !strings.Contains(line, "events.e2b.dev") {
 			filteredLines = append(filteredLines, line)
 		}
 	}

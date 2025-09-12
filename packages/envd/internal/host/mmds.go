@@ -22,19 +22,19 @@ const (
 )
 
 type MMDSOpts struct {
-	TraceID              string `json:"traceID"`
-	InstanceID           string `json:"instanceID"`
-	EnvID                string `json:"envID"`
-	LogsCollectorAddress string `json:"address"`
-	EventsAddress        string `json:"eventsAddress"`
+	TraceID      string `json:"traceID"`
+	InstanceID   string `json:"instanceID"`
+	EnvID        string `json:"envID"`
+	Address      string `json:"address"`
+	EventProxyIP string `json:"eventProxyIP"`
 }
 
-func (opts *MMDSOpts) Update(traceID, instanceID, envID, logsCollectorAddress, eventsAddress string) {
+func (opts *MMDSOpts) Update(traceID, instanceID, envID, logsCollectorAddress, eventProxyIP string) {
 	opts.TraceID = traceID
 	opts.InstanceID = instanceID
 	opts.EnvID = envID
-	opts.LogsCollectorAddress = logsCollectorAddress
-	opts.EventsAddress = eventsAddress
+	opts.Address = logsCollectorAddress
+	opts.EventProxyIP = eventsAddress
 }
 
 func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
@@ -140,7 +140,7 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 
 			envVars.Store("E2B_SANDBOX_ID", mmdsOpts.InstanceID)
 			envVars.Store("E2B_TEMPLATE_ID", mmdsOpts.EnvID)
-			envVars.Store("E2B_EVENTS_ADDRESS", mmdsOpts.EventsAddress)
+			envVars.Store("E2B_EVENTS_ADDRESS", mmdsOpts.EventProxyIP)
 			if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_SANDBOX_ID"), []byte(mmdsOpts.InstanceID), 0o666); err != nil {
 				fmt.Fprintf(os.Stderr, "error writing sandbox ID file: %v\n", err)
 			}
@@ -148,12 +148,12 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 				fmt.Fprintf(os.Stderr, "error writing template ID file: %v\n", err)
 			}
 
-			if mmdsOpts.LogsCollectorAddress != "" {
+			if mmdsOpts.Address != "" {
 				mmdsChan <- mmdsOpts
 			}
 
-			if mmdsOpts.EventsAddress != "" {
-				if err := AddEventsHostEntry(mmdsOpts.EventsAddress); err != nil {
+			if mmdsOpts.EventProxyIP != "" {
+				if err := AddEventsHostEntry(mmdsOpts.EventProxyIP); err != nil {
 					fmt.Fprintf(os.Stderr, "error adding events host entry: %v\n", err)
 				}
 			}
