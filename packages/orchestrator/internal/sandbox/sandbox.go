@@ -605,8 +605,8 @@ func (s *Sandbox) Pause(
 	ctx context.Context,
 	m metadata.Template,
 ) (*Snapshot, error) {
-	ctx, childSpan := tracer.Start(ctx, "sandbox-snapshot")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "sandbox-snapshot")
+	defer span.End()
 
 	snapshotTemplateFiles, err := m.Template.CacheFiles()
 	if err != nil {
@@ -718,8 +718,8 @@ func pauseProcessMemory(
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
 ) (build.Diff, *header.Header, error) {
-	ctx, childSpan := tracer.Start(ctx, "process-memory")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "process-memory")
+	defer span.End()
 
 	memfileDiffFile, err := build.NewLocalDiffFile(
 		build.DefaultCachePath,
@@ -783,8 +783,8 @@ func pauseProcessRootfs(
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
 ) (build.Diff, *header.Header, error) {
-	ctx, childSpan := tracer.Start(ctx, "process-rootfs")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "process-rootfs")
+	defer span.End()
 
 	rootfsDiffFile, err := build.NewLocalDiffFile(build.DefaultCachePath, buildId.String(), build.Rootfs)
 	if err != nil {
@@ -881,8 +881,8 @@ func serveMemory(
 	socketPath string,
 	sandboxID string,
 ) (uffd.MemoryBackend, error) {
-	_, childSpan := tracer.Start(ctx, "serve-memory")
-	defer childSpan.End()
+	_, span := tracer.Start(ctx, "serve-memory")
+	defer span.End()
 
 	fcUffd, uffdErr := uffd.New(memfile, socketPath, memfile.BlockSize())
 	if uffdErr != nil {
@@ -910,8 +910,8 @@ func serveMemory(
 }
 
 func (s *Sandbox) WaitForExit(ctx context.Context) error {
-	ctx, childSpan := tracer.Start(ctx, "sandbox-wait-for-exit")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "sandbox-wait-for-exit")
+	defer span.End()
 
 	timeout := time.Until(s.EndAt)
 
@@ -934,8 +934,8 @@ func (s *Sandbox) WaitForEnvd(
 	ctx context.Context,
 	timeout time.Duration,
 ) (e error) {
-	ctx, childSpan := tracer.Start(ctx, "sandbox-wait-for-start")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "sandbox-wait-for-start")
+	defer span.End()
 
 	defer func() {
 		if e != nil {
