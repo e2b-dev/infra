@@ -34,7 +34,7 @@ func (opts *MMDSOpts) Update(traceID, instanceID, envID, logsCollectorAddress, e
 	opts.InstanceID = instanceID
 	opts.EnvID = envID
 	opts.Address = logsCollectorAddress
-	opts.EventProxyIP = eventsAddress
+	opts.EventProxyIP = eventProxyIP
 }
 
 func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
