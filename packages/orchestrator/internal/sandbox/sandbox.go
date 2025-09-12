@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -316,6 +317,7 @@ func ResumeSandbox(
 	devicePool *nbd.DevicePool,
 	useClickhouseMetrics bool,
 	apiConfigToStore *orchestrator.SandboxConfig,
+	eventStore events.SandboxEventStore,
 ) (s *Sandbox, e error) {
 	ctx, childSpan := tracer.Start(ctx, "resume-sandbox")
 	defer childSpan.End()
@@ -534,6 +536,23 @@ func ResumeSandbox(
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
+	}
+
+	if eventStore != nil {
+		sandboxIP := ips.slot.HostIPString()
+
+		err = eventStore.SetSandboxIP(context.WithoutCancel(ctx), runtime.SandboxID, sandboxIP)
+		if err != nil {
+			// soft fail to not block this critical path
+			zap.L().Error("failed to set sandbox IP", zap.String("sandbox_id", runtime.SandboxID), zap.String("ip", ips.slot.HostIPString()), zap.Error(err))
+		}
+		cleanup.AddPriority(func(ctx context.Context) error {
+			err = eventStore.DelSandboxIP(ctx, sandboxIP)
+			if err != nil {
+				return fmt.Errorf("failed to delete sandbox IP: %w", err)
+			}
+			return nil
+		})
 	}
 
 	go sbx.Checks.Start() // nolint:contextcheck // TODO: fix this later

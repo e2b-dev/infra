@@ -123,6 +123,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		s.devicePool,
 		metricsWriteFlag,
 		req.Sandbox,
+		s.sbxEventStore,
 	)
 	if err != nil {
 		err := errors.Join(err, context.Cause(ctx))
@@ -181,7 +182,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		buildId = sbx.APIStoredConfig.BuildId
 	}
 
-	go s.sbxEventsService.HandleEvent(ctx, event.SandboxEvent{
+	go s.sbxEventService.HandleEvent(ctx, event.SandboxEvent{
 		Timestamp:          time.Now().UTC(),
 		SandboxID:          sbx.Runtime.SandboxID,
 		SandboxExecutionID: sbx.Runtime.ExecutionID,
@@ -229,7 +230,7 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		buildId = sbx.APIStoredConfig.BuildId
 	}
 
-	go s.sbxEventsService.HandleEvent(ctx, event.SandboxEvent{
+	go s.sbxEventService.HandleEvent(ctx, event.SandboxEvent{
 		Timestamp:          time.Now().UTC(),
 		SandboxID:          sbx.Runtime.SandboxID,
 		SandboxExecutionID: sbx.Runtime.ExecutionID,
@@ -324,7 +325,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	eventCtx := context.WithoutCancel(ctx)
 
-	go s.sbxEventsService.HandleEvent(eventCtx, event.SandboxEvent{
+	go s.sbxEventService.HandleEvent(eventCtx, event.SandboxEvent{
 		Timestamp:          time.Now().UTC(),
 		SandboxID:          sbx.Runtime.SandboxID,
 		SandboxExecutionID: sbx.Runtime.ExecutionID,
@@ -439,7 +440,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}
 
 	eventCtx := context.WithoutCancel(ctx)
-	go s.sbxEventsService.HandleEvent(eventCtx, event.SandboxEvent{
+	go s.sbxEventService.HandleEvent(eventCtx, event.SandboxEvent{
 		Timestamp:          time.Now().UTC(),
 		SandboxID:          sbx.Runtime.SandboxID,
 		SandboxExecutionID: sbx.Runtime.ExecutionID,
