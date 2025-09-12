@@ -12,7 +12,7 @@ run:
 	clickhouse_username=$(CLICKHOUSE_USERNAME) \
 	clickhouse_port=$(CLICKHOUSE_PORT) \
 	clickhouse_database=$(CLICKHOUSE_DATABASE) \
-	envsubst < ../../iac/provider-gcp/nomad/configs/otel-collector.yaml > "./otel-collector.local.yaml"
+	envsubst < ./tests/otel-collector.yaml > "./otel-collector.local.yaml"
 
 	docker network create e2b || true
 	docker run --rm --name otel-collector \
