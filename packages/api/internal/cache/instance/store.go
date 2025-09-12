@@ -8,8 +8,8 @@ import (
 )
 
 type (
-	InsertCallback func(ctx context.Context, sbx *InstanceInfo, created bool)
-	RemoveCallback func(ctx context.Context, sbx *InstanceInfo, removeType RemoveType)
+	InsertCallback func(ctx context.Context, sbx Data, created bool)
+	RemoveCallback func(ctx context.Context, sbx Data, removeType RemoveType)
 )
 
 type MemoryStore struct {
@@ -20,14 +20,14 @@ type MemoryStore struct {
 	insertCallbacks      []InsertCallback
 	insertAsyncCallbacks []InsertCallback
 
-	removeSandbox        func(ctx context.Context, sbx *InstanceInfo, removeType RemoveType) error
+	removeSandbox        func(ctx context.Context, sbx Data, removeType RemoveType) error
 	removeAsyncCallbacks []RemoveCallback
 
 	mu sync.Mutex
 }
 
 func NewStore(
-	removeSandbox func(ctx context.Context, sbx *InstanceInfo, removeType RemoveType) error,
+	removeSandbox func(ctx context.Context, sbx Data, removeType RemoveType) error,
 	insertCallbacks []InsertCallback,
 	insertAsyncCallbacks []InsertCallback,
 	removeAsyncCallbacks []RemoveCallback,

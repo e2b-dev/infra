@@ -12,16 +12,18 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
-func (o *Orchestrator) RemoveInstance(ctx context.Context, sandbox *instance.InstanceInfo, removeType instance.RemoveType) error {
+// RemoveInstance removes the sandbox from the orchestrator and the cache, you must mark the sandbox as being removed before calling this function
+// you have to call StartChangeState function
+func (o *Orchestrator) RemoveInstance(ctx context.Context, sandboxID string, removeType instance.RemoveType) error {
 	_, childSpan := tracer.Start(ctx, "remove-instance")
 	defer childSpan.End()
 
 	// SandboxStore will remove the sandbox both from the store and from the orchestrator
-	return o.sandboxStore.Remove(ctx, sandbox.SandboxID, removeType)
+	return o.sandboxStore.Remove(ctx, sandboxID, removeType)
 }
 
 // removeSandbox should be called from places where you already marked the sandbox as being removed
-func (o *Orchestrator) removeSandbox(ctx context.Context, sandbox *instance.InstanceInfo, removeType instance.RemoveType) error {
+func (o *Orchestrator) removeSandbox(ctx context.Context, sandbox instance.Data, removeType instance.RemoveType) error {
 	node := o.GetNode(sandbox.ClusterID, sandbox.NodeID)
 	if node == nil {
 		zap.L().Error("failed to get node", logger.WithNodeID(sandbox.NodeID))

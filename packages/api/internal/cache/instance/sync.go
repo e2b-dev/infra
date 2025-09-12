@@ -2,7 +2,6 @@ package instance
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -27,32 +26,27 @@ func getMaxAllowedTTL(now time.Time, startTime time.Time, duration, maxInstanceL
 }
 
 // KeepAliveFor the instance's expiration timer.
-func (c *MemoryStore) KeepAliveFor(instanceID string, duration time.Duration, allowShorter bool) (*InstanceInfo, *api.APIError) {
+func (c *MemoryStore) KeepAliveFor(instanceID string, duration time.Duration, allowShorter bool) (Data, *api.APIError) {
 	instance, err := c.Get(instanceID, false)
 	if err != nil {
-		return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("Sandbox '%s' is not running anymore", instanceID), Err: err}
+		return Data{}, &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("Sandbox '%s' is not running anymore", instanceID), Err: err}
 	}
 
 	now := time.Now()
 
-	endTime := instance.GetEndTime()
+	instance.dataMu.Lock()
+	defer instance.dataMu.Unlock()
+
+	endTime := instance.data.EndTime
 	if !allowShorter && endTime.After(now.Add(duration)) {
-		return instance, nil
+		return instance.data, nil
 	}
 
-	if (time.Since(instance.StartTime)) > instance.MaxInstanceLength {
-		instance.SetExpired()
+	maxAllowedTTL := getMaxAllowedTTL(now, instance.data.StartTime, duration, instance.data.MaxInstanceLength)
+	instance.data.EndTime = now.Add(maxAllowedTTL)
+	zap.L().Debug("sandbox ttl updated", zap.String("sandboxID", instance.data.SandboxID), zap.Duration("ttl", maxAllowedTTL))
 
-		msg := fmt.Sprintf("Sandbox '%s' reached maximal allowed uptime", instanceID)
-		return nil, &api.APIError{Code: http.StatusForbidden, ClientMsg: msg, Err: errors.New(msg)}
-	} else {
-		maxAllowedTTL := getMaxAllowedTTL(now, instance.StartTime, duration, instance.MaxInstanceLength)
-
-		newEndTime := now.Add(maxAllowedTTL)
-		instance.SetEndTime(newEndTime)
-	}
-
-	return instance, nil
+	return instance.data, nil
 }
 
 func (c *MemoryStore) Sync(ctx context.Context, instances []*InstanceInfo, nodeID string) {
@@ -60,19 +54,24 @@ func (c *MemoryStore) Sync(ctx context.Context, instances []*InstanceInfo, nodeI
 
 	// Use a map for faster lookup
 	for _, instance := range instances {
-		instanceMap[instance.SandboxID] = instance
+		instanceMap[instance.data.SandboxID] = instance
 	}
 
 	// Remove instances that are not in Orchestrator anymore
-	for _, item := range c.Items(nil) {
-		if item.NodeID != nodeID {
+	for _, item := range c.items.Items() {
+		if item.data.IsExpired() {
 			continue
 		}
 
-		if time.Since(item.StartTime) <= syncSandboxRemoveGracePeriod {
+		if item.data.NodeID != nodeID {
 			continue
 		}
-		_, found := instanceMap[item.SandboxID]
+
+		if time.Since(item.data.StartTime) <= syncSandboxRemoveGracePeriod {
+			continue
+		}
+
+		_, found := instanceMap[item.data.SandboxID]
 		if !found {
 			item.SetExpired()
 		}
@@ -80,12 +79,9 @@ func (c *MemoryStore) Sync(ctx context.Context, instances []*InstanceInfo, nodeI
 
 	// Add instances that are not in the cache with the default TTL
 	for _, instance := range instances {
-		if c.Exists(instance.SandboxID) {
+		if c.Exists(instance.data.SandboxID) {
 			continue
 		}
-		err := c.Add(ctx, instance, false)
-		if err != nil {
-			zap.L().Error("error adding instance to cache", zap.Error(err))
-		}
+		c.Add(ctx, instance, false)
 	}
 }

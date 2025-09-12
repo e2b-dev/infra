@@ -64,13 +64,13 @@ func TestSandboxKill(t *testing.T) {
 		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
 
 		require.NoError(t, err)
-		assert.Equal(t, http.StatusNoContent, pauseSandboxResponse.StatusCode())
+		require.Equal(t, http.StatusNoContent, pauseSandboxResponse.StatusCode())
 
 		// kill the sandbox
 		killSandboxResponse, err := c.DeleteSandboxesSandboxIDWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
 
 		require.NoError(t, err)
-		assert.Equal(t, http.StatusNoContent, killSandboxResponse.StatusCode())
+		require.Equal(t, http.StatusNoContent, killSandboxResponse.StatusCode())
 
 		// list all sandboxes and check that the sandbox is not in the list
 		listSandboxesResponse, err := c.GetSandboxesWithResponse(t.Context(), &api.GetSandboxesParams{}, setup.WithAPIKey())
