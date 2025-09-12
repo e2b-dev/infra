@@ -23,7 +23,7 @@ type FirecrackerVersions struct {
 }
 
 func (t FirecrackerVersions) SandboxKernelDir() string {
-	return filepath.Join(t.KernelVersion)
+	return t.KernelVersion
 }
 
 func (t FirecrackerVersions) HostKernelPath() string {

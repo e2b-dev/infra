@@ -50,7 +50,6 @@ func TestInternetAccess(t *testing.T) {
 			} else {
 				require.Error(t, err, "Expected curl command to fail when internet access is denied")
 				require.Contains(t, err.Error(), "failed with exit code", "Expected connection failure message")
-
 			}
 		})
 	}
