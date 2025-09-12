@@ -6,7 +6,6 @@ import (
 
 	"github.com/firecracker-microvm/firecracker-go-sdk"
 	"github.com/go-openapi/strfmt"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -86,7 +85,7 @@ func (c *apiClient) loadSnapshot(
 	return nil
 }
 
-func (c *apiClient) resumeVM(ctx context.Context, tracer trace.Tracer) error {
+func (c *apiClient) resumeVM(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "resume-vm")
 	defer span.End()
 
@@ -145,7 +144,7 @@ func (c *apiClient) createSnapshot(
 	return nil
 }
 
-func (c *apiClient) setMmds(ctx context.Context, tracer trace.Tracer, metadata *MmdsMetadata) error {
+func (c *apiClient) setMmds(ctx context.Context, metadata *MmdsMetadata) error {
 	ctx, span := tracer.Start(ctx, "set-mmds")
 	defer span.End()
 

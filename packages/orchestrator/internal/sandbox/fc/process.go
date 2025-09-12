@@ -364,14 +364,14 @@ func (p *Process) Resume(
 		return errors.Join(fmt.Errorf("error loading snapshot: %w", err), fcStopErr)
 	}
 
-	err = p.client.resumeVM(ctx, tracer)
+	err = p.client.resumeVM(ctx)
 	if err != nil {
 		fcStopErr := p.Stop()
 
 		return errors.Join(fmt.Errorf("error resuming vm: %w", err), fcStopErr)
 	}
 
-	err = p.client.setMmds(ctx, tracer, mmdsMetadata)
+	err = p.client.setMmds(ctx, mmdsMetadata)
 	if err != nil {
 		fcStopErr := p.Stop()
 
