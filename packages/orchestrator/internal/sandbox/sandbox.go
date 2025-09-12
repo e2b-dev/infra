@@ -97,7 +97,7 @@ type Sandbox struct {
 
 	Checks *Checks
 
-	APIStoredConfig *orchestrator.SandboxConfig
+	SandboxConfig *orchestrator.SandboxConfig
 
 	exit *utils.ErrorOnce
 }
@@ -272,7 +272,7 @@ func CreateSandbox(
 
 		cleanup: cleanup,
 
-		APIStoredConfig: apiConfigToStore,
+		SandboxConfig: apiConfigToStore,
 
 		exit: exit,
 	}
@@ -509,7 +509,7 @@ func ResumeSandbox(
 
 		cleanup: cleanup,
 
-		APIStoredConfig: apiConfigToStore,
+		SandboxConfig: apiConfigToStore,
 
 		exit: exit,
 	}
