@@ -175,7 +175,7 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, buildID uuid.UUID, t
 
 	client, err := tm.GetClusterBuildClient(clusterID, nodeID)
 	if err != nil {
-		// nodeID can be an orchestrator ID, if the build is a snapshot.
+		// nodeID can be an orchestrator ID, if the build corresponds to a snapshot.
 		// We may want to improve this later by adding the Delete method to Orchestrator as well.
 		// This way we can remove the build (snapshot) from cache as well
 		nodeID, err = tm.GetAvailableBuildClient(ctx, clusterID)
