@@ -20,7 +20,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -82,12 +81,10 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 	}
 
 	go func() {
-		parentCtx := ctx
-		ctx, span := tracer.Start(ctx, "Uffd:Start",
-			trace.WithNewRoot(),
-			trace.WithAttributes(attribute.String("sandbox-id", sandboxId)))
+		ctx, span := tracer.Start(ctx, "Uffd:Start", trace.WithAttributes(
+			attribute.String("sandbox-id", sandboxId),
+		))
 		defer span.End()
-		telemetry.CreateTwoWayLinks(ctx, parentCtx)
 
 		// TODO: If the handle function fails, we should kill the sandbox
 		handleErr := u.handle(ctx, sandboxId)

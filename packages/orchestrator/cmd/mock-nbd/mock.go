@@ -21,10 +21,21 @@ const blockSize = 4096
 
 type DeviceWithClose struct {
 	backend backend.Backend
-	block.Device
 }
 
-var _ block.Device = &DeviceWithClose{}
+func (d *DeviceWithClose) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
+	return d.backend.ReadAt(p, off)
+}
+
+func (d *DeviceWithClose) Size() (int64, error) {
+	return d.backend.Size()
+}
+
+func (d *DeviceWithClose) WriteAt(p []byte, off int64) (n int, err error) {
+	return d.backend.WriteAt(p, off)
+}
+
+var _ block.Device = (*DeviceWithClose)(nil)
 
 func (d *DeviceWithClose) Close() error {
 	return nil
