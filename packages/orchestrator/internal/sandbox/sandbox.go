@@ -317,8 +317,14 @@ func ResumeSandbox(
 	useClickhouseMetrics bool,
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
-	ctx, childSpan := tracer.Start(ctx, "resume-sandbox")
+	parentSpan := trace.SpanFromContext(ctx)
+
+	ctx, childSpan := tracer.Start(ctx, "resume-sandbox",
+		trace.WithNewRoot())
 	defer childSpan.End()
+
+	childLink := trace.LinkFromContext(ctx)
+	parentSpan.AddLink(childLink)
 
 	exit := utils.NewErrorOnce()
 
@@ -539,7 +545,8 @@ func ResumeSandbox(
 	go sbx.Checks.Start() // nolint:contextcheck // TODO: fix this later
 
 	go func() {
-		ctx, span := tracer.Start(context.WithoutCancel(ctx), "sandbox-exit-wait", trace.WithNewRoot())
+		ctx := context.WithoutCancel(ctx)
+		ctx, span := tracer.Start(ctx, "sandbox-exit-wait")
 		defer span.End()
 
 		// Wait for either uffd or fc process to exit
@@ -889,7 +896,7 @@ func serveMemory(
 		return nil, fmt.Errorf("failed to create uffd: %w", uffdErr)
 	}
 
-	uffdStartErr := fcUffd.Start(sandboxID)
+	uffdStartErr := fcUffd.Start(ctx, sandboxID)
 	if uffdStartErr != nil {
 		return nil, fmt.Errorf("failed to start uffd: %w", uffdStartErr)
 	}

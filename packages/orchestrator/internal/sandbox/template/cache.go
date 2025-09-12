@@ -36,7 +36,7 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 
 type Cache struct {
 	flags         *featureflags.Client
-	cache         *ttlcache.Cache[string, Template]
+	cache         *ttlcache.Cache[string, *storageTemplate]
 	persistence   storage.StorageProvider
 	buildStore    *build.DiffStore
 	blockMetrics  blockmetrics.Metrics
@@ -53,10 +53,10 @@ func NewCache(
 	metrics blockmetrics.Metrics,
 ) (*Cache, error) {
 	cache := ttlcache.New(
-		ttlcache.WithTTL[string, Template](templateExpiration),
+		ttlcache.WithTTL[string, *storageTemplate](templateExpiration),
 	)
 
-	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, Template]) {
+	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, *storageTemplate]) {
 		template := item.Value()
 
 		err := template.Close()
@@ -94,7 +94,7 @@ func NewCache(
 	}, nil
 }
 
-func (c *Cache) Items() map[string]*ttlcache.Item[string, Template] {
+func (c *Cache) Items() map[string]*ttlcache.Item[string, *storageTemplate] {
 	return c.cache.Items()
 }
 
@@ -106,9 +106,6 @@ func (c *Cache) GetTemplate(
 	isSnapshot bool,
 	isBuilding bool,
 ) (Template, error) {
-	ctx, span := tracer.Start(ctx, "get template")
-	defer span.End()
-
 	persistence := c.persistence
 	// Because of the template caching, if we enable the shared cache feature flag,
 	// it will start working only for new orchestrators or new builds.
@@ -117,7 +114,7 @@ func (c *Cache) GetTemplate(
 		persistence = storage.NewCachedProvider(c.rootCachePath, persistence)
 	}
 
-	storageTemplate, err := newTemplateFromStorage(
+	template, err := newTemplateFromStorage(
 		buildID,
 		kernelVersion,
 		firecrackerVersion,
@@ -133,15 +130,17 @@ func (c *Cache) GetTemplate(
 	}
 
 	t, found := c.cache.GetOrSet(
-		storageTemplate.Files().CacheKey(),
-		storageTemplate,
-		ttlcache.WithTTL[string, Template](templateExpiration),
+		template.Files().CacheKey(),
+		template,
+		ttlcache.WithTTL[string, *storageTemplate](templateExpiration),
 	)
 
 	if !found {
 		// We don't want to cancel the request if the request was canceled, because it can be used by other templates
-		// It's little bit problematic, because shutdown won't cancel the fetch
-		go storageTemplate.Fetch(context.WithoutCancel(ctx), c.buildStore)
+		// It's a little bit problematic, because shutdown won't cancel the fetch
+		go template.Fetch(context.WithoutCancel(ctx), c.buildStore)
+	} else {
+		template.AddFetchSpanLink(ctx)
 	}
 
 	return t.Value(), nil
@@ -173,7 +172,7 @@ func (c *Cache) AddSnapshot(
 		c.buildStore.Add(rootfsDiff)
 	}
 
-	storageTemplate, err := newTemplateFromStorage(
+	template, err := newTemplateFromStorage(
 		buildId,
 		kernelVersion,
 		firecrackerVersion,
@@ -189,15 +188,15 @@ func (c *Cache) AddSnapshot(
 	}
 
 	_, found := c.cache.GetOrSet(
-		storageTemplate.Files().CacheKey(),
-		storageTemplate,
-		ttlcache.WithTTL[string, Template](templateExpiration),
+		template.Files().CacheKey(),
+		template,
+		ttlcache.WithTTL[string, *storageTemplate](templateExpiration),
 	)
 
 	if !found {
 		// We don't want to cancel the request if the request was canceled/finished
 		// It's a little bit problematic, because shutdown won't cancel the fetch
-		go storageTemplate.Fetch(context.WithoutCancel(ctx), c.buildStore)
+		go template.Fetch(context.WithoutCancel(ctx), c.buildStore)
 	}
 
 	return nil

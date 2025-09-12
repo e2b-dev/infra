@@ -12,6 +12,7 @@ import (
 	"github.com/pojntfx/go-nbd/pkg/backend"
 	"go.opentelemetry.io/otel/metric/noop"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -19,17 +20,20 @@ import (
 const blockSize = 4096
 
 type DeviceWithClose struct {
-	backend.Backend
+	backend backend.Backend
+	block.Device
 }
+
+var _ block.Device = &DeviceWithClose{}
 
 func (d *DeviceWithClose) Close() error {
 	return nil
 }
 
-func (d *DeviceWithClose) Slice(offset, length int64) ([]byte, error) {
+func (d *DeviceWithClose) Slice(ctx context.Context, offset, length int64) ([]byte, error) {
 	b := make([]byte, length)
 
-	_, err := d.Backend.ReadAt(b, offset)
+	_, err := d.backend.ReadAt(b, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +46,7 @@ func (d *DeviceWithClose) BlockSize() int64 {
 }
 
 func (d *DeviceWithClose) Header() *header.Header {
-	size, err := d.Backend.Size()
+	size, err := d.backend.Size()
 	if err != nil {
 		panic(err)
 	}
@@ -64,7 +68,7 @@ func main() {
 	rand.Read(data)
 
 	device := &DeviceWithClose{
-		Backend: backend.NewMemoryBackend(data),
+		backend: backend.NewMemoryBackend(data),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -163,7 +167,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool
 	}
 
 	data := make([]byte, size)
-	_, err = mnt.Backend.ReadAt(data, 0)
+	_, err = mnt.Backend.ReadAt(ctx, data, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read: %w", err)
 	}
