@@ -10,6 +10,8 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"go.uber.org/zap"
+
+	consts "github.com/e2b-dev/infra/packages/orchestrator/internal"
 )
 
 func (s *Slot) CreateNetwork() error {
@@ -214,6 +216,16 @@ func (s *Slot) CreateNetwork() error {
 		return fmt.Errorf("error creating postrouting rule: %w", err)
 	}
 
+	// Redirect traffic destined for event proxy server
+	err = tables.Append(
+		"nat", "PREROUTING", "-i", s.VethName(),
+		"-p", "tcp", "-d", consts.GetSandboxEventIP(), "--dport", "80",
+		"-j", "REDIRECT", "--to-port", consts.GetEventProxyPort(),
+	)
+	if err != nil {
+		return fmt.Errorf("error creating HTTP redirect rule to sandbox event proxy server: %w", err)
+	}
+
 	return nil
 }
 
@@ -244,6 +256,16 @@ func (s *Slot) RemoveNetwork() error {
 		err = tables.Delete("nat", "POSTROUTING", "-s", s.HostCIDR(), "-o", defaultGateway, "-j", "MASQUERADE")
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error deleting host postrouting rule: %w", err))
+		}
+
+		// Delete event proxy redirect rule
+		err = tables.Delete(
+			"nat", "PREROUTING", "-i", s.VethName(),
+			"-p", "tcp", "-d", consts.GetSandboxEventIP(), "--dport", "80",
+			"-j", "REDIRECT", "--to-port", consts.GetEventProxyPort(),
+		)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("error deleting sandbox event proxy redirect rule: %w", err))
 		}
 	}
 
