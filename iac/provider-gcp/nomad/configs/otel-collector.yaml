@@ -18,6 +18,68 @@ receivers:
             - targets: ['localhost:4646']
           params:
             format: ['prometheus']
+  hostmetrics:
+    root_path: /hostfs
+    collection_interval: 30s
+    scrapers:
+      cpu:
+        metrics:
+          system.cpu.time:
+            enabled: false
+          system.cpu.utilization:
+            enabled: false
+          system.cpu.logical.count:
+            enabled: true
+          system.cpu.physical.count:
+            enabled: true
+
+      load:
+        metrics:
+          system.cpu.load_average.1m:
+            enabled: true
+          system.cpu.load_average.5m:
+            enabled: true
+          system.cpu.load_average.15m:
+            enabled: false
+
+      # Scraping traffic going in/out of network interfaces
+      network:
+        metrics:
+          system.network.connections:
+            enabled: false
+          system.network.dropped:
+            enabled: false
+          system.network.errors:
+            enabled: false
+          system.network.io:
+              enabled: true
+          system.network.packets:
+            enabled: false
+
+      # Scraping only total memory (memory limit) and available memory to reduce cardinality
+      memory:
+        metrics:
+          system.linux.memory.dirty:
+            enabled: false
+          system.linux.memory.available: # free memory
+            enabled: true
+          system.memory.limit: # total memory
+            enabled: true
+          system.memory.page_size:
+            enabled: false
+          system.memory.usage:
+            enabled: false
+          system.memory.utilization:
+            enabled: false
+
+      #  filter not needed stuff (mode, type)
+      #  filter /dev/loop*, maybe check fo other that are polluting
+      filesystem:
+        metrics:
+          system.filesystem.inodes.usage:
+            enabled: false
+          system.filesystem.usage:
+            enabled: true
 
 processors:
   batch:
@@ -26,6 +88,33 @@ processors:
   batch/clickhouse:
     timeout: 5s
     send_batch_size: 50000
+
+  filter/drop_by_device:
+    error_mode: ignore
+    metrics:
+      datapoint:
+        # Drop system.network.io for veth-* or docker* interfaces
+        - 'metric.name == "system.network.io" and IsMatch(attributes["device"], "^(veth-.*|docker.*|lo)$")'
+        # Drop system.filesystem.usage for loop devices
+        - 'metric.name == "system.filesystem.usage" and IsMatch(attributes["device"], "^/dev/loop.*$")'
+
+  attributes/strip_fs_labels:
+    include:
+      match_type: strict
+      metric_names: [system.filesystem.usage]
+    actions:
+      - action: delete
+        key: mode
+      - action: delete
+        key: type
+      - action: delete
+        key: mountpoint
+
+  attributes/host_metrics_node:
+    actions:
+      - key: node.id
+        value: $${NODE_ID}
+        action: insert
 
   # keep only metrics that are used
   filter/otlp:
@@ -40,7 +129,6 @@ processors:
           - "client_proxy.*"
           - "Click*"
           - "otelcol.*"
-
 
   filter/prometheus:
     metrics:
@@ -183,6 +271,12 @@ service:
       receivers:
         - otlp
       processors: [filter/rpc_duration_only, resource/remove_instance, resourcedetection, transform/set-name, batch]
+      exporters:
+        - otlphttp/grafana_cloud
+    metrics/host:
+      receivers:
+        - hostmetrics
+      processors: [filter/drop_by_device, attributes/strip_fs_labels, attributes/host_metrics_node, batch]
       exporters:
         - otlphttp/grafana_cloud
     metrics/external:

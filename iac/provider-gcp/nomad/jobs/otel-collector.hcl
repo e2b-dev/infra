@@ -48,6 +48,7 @@ job "otel-collector" {
 
         volumes = [
           "local/config:/config",
+          "/:/hostfs:ro",
         ]
         args = [
           "--config=local/config/otel-collector-config.yaml",
@@ -66,6 +67,10 @@ job "otel-collector" {
         memory_max = ${memory_mb * 1.5}
         memory     = ${memory_mb}
         cpu        = ${cpu_count * 1000}
+      }
+
+      env {
+        NODE_ID = "$${node.unique.name}"
       }
 
       template {
