@@ -42,7 +42,6 @@ func TestCacheTemplate(t *testing.T) {
 			t.Logf("Response error: %d %v", sbx.StatusCode(), string(sbx.Body))
 		default:
 			utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
-
 		}
 	})
 }
