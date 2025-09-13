@@ -52,7 +52,9 @@ func (c *Checks) Start(ctx context.Context) {
 }
 
 func (c *Checks) Stop() {
-	c.cancelCtx(ErrChecksStopped)
+	if c.cancelCtx != nil {
+		c.cancelCtx(ErrChecksStopped)
+	}
 }
 
 func (c *Checks) logHealth(ctx context.Context) {
