@@ -2,6 +2,21 @@ module github.com/e2b-dev/infra/packages/shared
 
 go 1.24.3
 
+// https://github.com/grafana/loki/issues/2826
+replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.14.5
+
+// https://github.com/grafana/loki/issues/2826
+replace k8s.io/client-go => k8s.io/client-go v0.28.1
+
+// https://github.com/grafana/loki/issues/2826
+replace k8s.io/api => k8s.io/api v0.28.1
+
+// https://github.com/grafana/loki/issues/2826
+exclude k8s.io/client-go v8.0.0+incompatible
+
+// https://github.com/grafana/loki/issues/2826
+replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.47.2-0.20231010075449-4b9c19fe5510
+
 require (
 	cloud.google.com/go/artifactregistry v1.16.0
 	cloud.google.com/go/storage v1.50.0
@@ -25,7 +40,6 @@ require (
 	github.com/google/go-containerregistry v0.20.6
 	github.com/google/uuid v1.6.0
 	github.com/googleapis/gax-go/v2 v2.14.0
-	// https://github.com/grafana/loki/issues/2826. This is the equivalent of the main branch at https://github.com/grafana/loki/commit/7b805ba7c84366e11e8571c9e8c422739bb18684 (v2.9.15)
 	github.com/grafana/loki v0.0.0-20250609195516-7b805ba7c843
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0
 	github.com/hashicorp/go-retryablehttp v0.7.7
@@ -34,6 +48,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/orcaman/concurrent-map/v2 v2.0.1
+	github.com/redis/go-redis/v9 v9.12.1
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/contrib/bridges/otelzap v0.13.0
 	go.opentelemetry.io/otel v1.38.0
@@ -55,8 +70,6 @@ require (
 	google.golang.org/protobuf v1.36.9
 	gotest.tools v2.2.0+incompatible
 )
-
-require github.com/redis/go-redis/v9 v9.12.1
 
 require (
 	ariga.io/atlas v0.15.0 // indirect
@@ -301,18 +314,3 @@ require (
 	gotest.tools/v3 v3.5.2 // indirect
 	k8s.io/client-go v1.5.2 // indirect
 )
-
-// https://github.com/grafana/loki/issues/2826
-replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.14.5
-
-// https://github.com/grafana/loki/issues/2826
-replace k8s.io/client-go => k8s.io/client-go v0.28.1
-
-// https://github.com/grafana/loki/issues/2826
-replace k8s.io/api => k8s.io/api v0.28.1
-
-// https://github.com/grafana/loki/issues/2826
-exclude k8s.io/client-go v8.0.0+incompatible
-
-// https://github.com/grafana/loki/issues/2826
-replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.47.2-0.20231010075449-4b9c19fe5510

@@ -2,6 +2,13 @@ module github.com/e2b-dev/infra/packages/db
 
 go 1.24.3
 
+replace github.com/e2b-dev/infra/packages/shared => ../shared
+
+tool (
+	github.com/pressly/goose/v3/cmd/goose
+	github.com/sqlc-dev/sqlc/cmd/sqlc
+)
+
 require (
 	github.com/e2b-dev/infra/packages/shared v0.0.0-20250324174051-3fb806938dc1
 	github.com/google/uuid v1.6.0
@@ -96,11 +103,4 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.9.1 // indirect
 	modernc.org/sqlite v1.37.0 // indirect
-)
-
-replace github.com/e2b-dev/infra/packages/shared => ../shared
-
-tool (
-	github.com/pressly/goose/v3/cmd/goose
-	github.com/sqlc-dev/sqlc/cmd/sqlc
 )

@@ -2,6 +2,25 @@ module github.com/e2b-dev/infra/packages/proxy
 
 go 1.24.3
 
+replace github.com/ugorji/go v1.1.4 => github.com/ugorji/go/codec v1.2.12
+
+// https://github.com/grafana/loki/issues/2826
+replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.14.5
+
+// https://github.com/grafana/loki/issues/2826
+replace k8s.io/client-go => k8s.io/client-go v0.28.1
+
+// https://github.com/grafana/loki/issues/2826
+replace k8s.io/api => k8s.io/api v0.28.1
+
+// https://github.com/grafana/loki/issues/2826
+exclude k8s.io/client-go v8.0.0+incompatible
+
+// https://github.com/grafana/loki/issues/2826
+replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.47.2-0.20231010075449-4b9c19fe5510
+
+replace github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
+
 require (
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/getkin/kin-openapi v0.132.0
@@ -10,7 +29,6 @@ require (
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-redsync/redsync/v4 v4.13.0
 	github.com/google/uuid v1.6.0
-	// https://github.com/grafana/loki/issues/2826. This is the equivalent of the main branch at https://github.com/grafana/loki/commit/7b805ba7c84366e11e8571c9e8c422739bb18684 (v2.9.15)
 	github.com/grafana/loki v0.0.0-20250609195516-7b805ba7c843
 	github.com/hashicorp/nomad/api v0.0.0-20231208134655-099ee06a607c
 	github.com/jellydator/ttlcache/v3 v3.3.1-0.20250207140243-aefc35918359
@@ -223,22 +241,3 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
-
-replace github.com/ugorji/go v1.1.4 => github.com/ugorji/go/codec v1.2.12
-
-// https://github.com/grafana/loki/issues/2826
-replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.14.5
-
-// https://github.com/grafana/loki/issues/2826
-replace k8s.io/client-go => k8s.io/client-go v0.28.1
-
-// https://github.com/grafana/loki/issues/2826
-replace k8s.io/api => k8s.io/api v0.28.1
-
-// https://github.com/grafana/loki/issues/2826
-exclude k8s.io/client-go v8.0.0+incompatible
-
-// https://github.com/grafana/loki/issues/2826
-replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.47.2-0.20231010075449-4b9c19fe5510
-
-replace github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
