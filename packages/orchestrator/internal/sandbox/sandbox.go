@@ -133,6 +133,8 @@ func CreateSandbox(
 	ctx, span := tracer.Start(ctx, "create-sandbox")
 	defer span.End()
 
+	runCtx := context.WithoutCancel(ctx)
+
 	exit := utils.NewErrorOnce()
 
 	cleanup := NewCleanup()
@@ -191,7 +193,7 @@ func CreateSandbox(
 		return rootfsProvider.Close(ctx)
 	})
 	go func() {
-		runErr := rootfsProvider.Start(ctx)
+		runErr := rootfsProvider.Start(runCtx)
 		if runErr != nil {
 			zap.L().Error("rootfs overlay error", zap.Error(runErr))
 		}
@@ -276,7 +278,7 @@ func CreateSandbox(
 		exit: exit,
 	}
 
-	checks, err := NewChecks(ctx, sbx, false)
+	checks, err := NewChecks(sbx, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create health check: %w", err)
 	}
@@ -287,7 +289,7 @@ func CreateSandbox(
 		return sbx.Stop(ctx)
 	})
 
-	go func() {
+	go func(ctx context.Context) {
 		ctx, span := tracer.Start(context.WithoutCancel(ctx), "sandbox-exit-wait", trace.WithNewRoot())
 		defer span.End()
 
@@ -296,7 +298,7 @@ func CreateSandbox(
 		err := sbx.Stop(ctx)
 
 		exit.SetError(errors.Join(err, fcErr))
-	}()
+	}(runCtx)
 
 	return sbx, nil
 }
@@ -318,6 +320,8 @@ func ResumeSandbox(
 ) (s *Sandbox, e error) {
 	ctx, childSpan := tracer.Start(ctx, "resume-sandbox")
 	defer childSpan.End()
+
+	runCtx := context.WithoutCancel(ctx)
 
 	exit := utils.NewErrorOnce()
 
@@ -375,7 +379,7 @@ func ResumeSandbox(
 	telemetry.ReportEvent(ctx, "created rootfs overlay")
 
 	go func() {
-		runErr := rootfsOverlay.Start(ctx)
+		runErr := rootfsOverlay.Start(runCtx)
 		if runErr != nil {
 			zap.L().Error("rootfs overlay error", zap.Error(runErr))
 		}
@@ -391,7 +395,7 @@ func ResumeSandbox(
 	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
 
 	fcUffd, err := serveMemory(
-		ctx,
+		runCtx,
 		cleanup,
 		memfile,
 		fcUffdPath,
@@ -514,7 +518,7 @@ func ResumeSandbox(
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
-	checks, err := NewChecks(ctx, sbx, useClickhouseMetrics)
+	checks, err := NewChecks(sbx, useClickhouseMetrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create health check: %w", err)
 	}
@@ -534,9 +538,9 @@ func ResumeSandbox(
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
 
-	go sbx.Checks.Start() // nolint:contextcheck // TODO: fix this later
+	go sbx.Checks.Start(runCtx) // nolint:contextcheck // TODO: fix this later
 
-	go func() {
+	go func(ctx context.Context) {
 		ctx, span := tracer.Start(context.WithoutCancel(ctx), "sandbox-exit-wait", trace.WithNewRoot())
 		defer span.End()
 
@@ -551,7 +555,7 @@ func ResumeSandbox(
 		uffdWaitErr := fcUffd.Exit().Wait()
 		fcErr := fcHandle.Exit.Wait()
 		exit.SetError(errors.Join(err, fcErr, uffdWaitErr))
-	}()
+	}(runCtx)
 
 	return sbx, nil
 }
