@@ -2,6 +2,33 @@ module github.com/e2b-dev/infra/packages/api
 
 go 1.24.3
 
+// Internal packages
+replace (
+	github.com/e2b-dev/infra/packages/clickhouse v0.0.0 => ../clickhouse
+	github.com/e2b-dev/infra/packages/db v0.0.0 => ../db
+	github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
+)
+
+// https://github.com/grafana/loki/issues/2826
+replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.14.5
+
+// https://github.com/grafana/loki/issues/2826
+replace k8s.io/client-go => k8s.io/client-go v0.28.1
+
+// https://github.com/grafana/loki/issues/2826
+replace k8s.io/api => k8s.io/api v0.28.1
+
+// https://github.com/grafana/loki/issues/2826
+exclude k8s.io/client-go v8.0.0+incompatible
+
+// https://github.com/grafana/loki/issues/2826
+replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.47.2-0.20231010075449-4b9c19fe5510
+
+tool (
+	github.com/air-verse/air
+	github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
+)
+
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/e2b-dev/infra/packages/clickhouse v0.0.0
@@ -17,7 +44,6 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
-	// https://github.com/grafana/loki/issues/2826. This is the equivalent of the main branch at https://github.com/grafana/loki/commit/7b805ba7c84366e11e8571c9e8c422739bb18684 (v2.9.15)
 	github.com/grafana/loki v0.0.0-20250609195516-7b805ba7c843
 	github.com/hashicorp/nomad/api v0.0.0-20231208134655-099ee06a607c
 	github.com/jackc/pgx/v5 v5.7.4
@@ -264,31 +290,4 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250908214217-97024824d090 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-)
-
-// Internal packages
-replace (
-	github.com/e2b-dev/infra/packages/clickhouse v0.0.0 => ../clickhouse
-	github.com/e2b-dev/infra/packages/db v0.0.0 => ../db
-	github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
-)
-
-// https://github.com/grafana/loki/issues/2826
-replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.14.5
-
-// https://github.com/grafana/loki/issues/2826
-replace k8s.io/client-go => k8s.io/client-go v0.28.1
-
-// https://github.com/grafana/loki/issues/2826
-replace k8s.io/api => k8s.io/api v0.28.1
-
-// https://github.com/grafana/loki/issues/2826
-exclude k8s.io/client-go v8.0.0+incompatible
-
-// https://github.com/grafana/loki/issues/2826
-replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.47.2-0.20231010075449-4b9c19fe5510
-
-tool (
-	github.com/air-verse/air
-	github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 )

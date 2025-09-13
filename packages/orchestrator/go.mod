@@ -2,10 +2,22 @@ module github.com/e2b-dev/infra/packages/orchestrator
 
 go 1.24.3
 
+replace (
+	github.com/e2b-dev/infra/packages/clickhouse v0.0.0 => ../clickhouse
+	github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
+)
+
+// Fix non existent garyburd/redigo from Microsoft/hcsshim/test v0.0.0
+replace github.com/garyburd/redigo => github.com/gomodule/redigo v1.9.2
+
 require (
 	connectrpc.com/connect v1.18.1
 	github.com/Merovius/nbd v0.0.0-20240812113926-fd65a54c9949
+	github.com/aws/aws-sdk-go-v2/config v1.29.14
+	github.com/aws/aws-sdk-go-v2/credentials v1.17.67
+	github.com/aws/aws-sdk-go-v2/service/ecr v1.44.0
 	github.com/bits-and-blooms/bitset v1.22.0
+	github.com/bmatcuk/doublestar/v4 v4.9.1
 	github.com/containernetworking/plugins v1.6.0
 	github.com/containers/storage v1.58.0
 	github.com/coreos/go-iptables v0.8.0
@@ -21,6 +33,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0
 	github.com/hashicorp/consul/api v1.30.0
 	github.com/jellydator/ttlcache/v3 v3.3.1-0.20250207140243-aefc35918359
+	github.com/launchdarkly/go-sdk-common/v3 v3.3.0
 	github.com/ngrok/firewall_toolkit v0.0.18
 	github.com/pkg/errors v0.9.1
 	github.com/pojntfx/go-nbd v0.3.2
@@ -68,15 +81,12 @@ require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.36.3 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.10 // indirect
-	github.com/aws/aws-sdk-go-v2/config v1.29.14
-	github.com/aws/aws-sdk-go-v2/credentials v1.17.67
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.30 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.74 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.34 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.34 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.3 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.3.34 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ecr v1.44.0
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.12.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.7.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.12.15 // indirect
@@ -86,7 +96,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.30.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.19 // indirect
 	github.com/aws/smithy-go v1.22.3 // indirect
-	github.com/bmatcuk/doublestar/v4 v4.9.1
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20250501225837-2ac532fd4443 // indirect
@@ -150,7 +159,6 @@ require (
 	github.com/launchdarkly/ccache v1.1.0 // indirect
 	github.com/launchdarkly/eventsource v1.10.0 // indirect
 	github.com/launchdarkly/go-jsonstream/v3 v3.1.0 // indirect
-	github.com/launchdarkly/go-sdk-common/v3 v3.3.0
 	github.com/launchdarkly/go-sdk-events/v3 v3.5.0 // indirect
 	github.com/launchdarkly/go-semver v1.0.3 // indirect
 	github.com/launchdarkly/go-server-sdk-evaluation/v3 v3.0.1 // indirect
@@ -219,11 +227,3 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250908214217-97024824d090 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace (
-	github.com/e2b-dev/infra/packages/clickhouse v0.0.0 => ../clickhouse
-	github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
-)
-
-// Fix non existent garyburd/redigo from Microsoft/hcsshim/test v0.0.0
-replace github.com/garyburd/redigo => github.com/gomodule/redigo v1.9.2
