@@ -172,7 +172,6 @@ func CreateSandbox(
 	var rootfsProvider rootfs.Provider
 	if rootfsCachePath == "" {
 		rootfsProvider, err = rootfs.NewNBDProvider(
-			ctx,
 			rootFS,
 			sandboxFiles.SandboxCacheRootfsPath(),
 			devicePool,
@@ -361,7 +360,6 @@ func ResumeSandbox(
 	telemetry.ReportEvent(ctx, "got template rootfs")
 
 	rootfsOverlay, err := rootfs.NewNBDProvider(
-		ctx,
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(),
 		devicePool,
