@@ -149,7 +149,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool
 		}
 	}()
 
-	mnt = nbd.NewDirectPathMount(ctx, device, devicePool)
+	mnt = nbd.NewDirectPathMount(device, devicePool)
 
 	go func() {
 		<-ctx.Done()
