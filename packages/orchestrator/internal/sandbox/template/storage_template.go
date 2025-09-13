@@ -76,6 +76,13 @@ func newTemplateFromStorage(
 	}, nil
 }
 
+func (t *storageTemplate) removeFetchLink() {
+	t.fetchLinkLock.Lock()
+	defer t.fetchLinkLock.Unlock()
+
+	t.fetchLink = nil
+}
+
 func (t *storageTemplate) setFetchLink(ctx, parentCtx context.Context) {
 	t.fetchLinkLock.Lock()
 	defer t.fetchLinkLock.Unlock()
@@ -117,6 +124,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 	defer span.End()
 
 	t.setFetchLink(ctx, parentCtx)
+	defer t.removeFetchLink()
 
 	var wg errgroup.Group
 

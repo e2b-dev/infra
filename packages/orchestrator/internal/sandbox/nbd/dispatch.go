@@ -224,15 +224,12 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 	d.shuttingDownLock.Unlock()
 
 	performRead := func(ctx context.Context, handle uint64, from uint64, length uint32) error {
-		_, span := tracer.Start(ctx, "dispatch-cmd-read-perform")
-		defer span.End()
-
 		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
 		data := make([]byte, length)
 
 		go func() {
-			_, err := d.prov.ReadAt(d.ctx, data, int64(from))
+			_, err := d.prov.ReadAt(ctx, data, int64(from))
 			errchan <- err
 		}()
 
@@ -251,7 +248,7 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 	}
 
 	go func() {
-		ctx, span := tracer.Start(ctx, "dispatch-cmd-read-goroutine")
+		ctx, span := tracer.Start(ctx, "handle-cmd-read")
 		defer span.End()
 
 		err := performRead(ctx, cmdHandle, cmdFrom, cmdLength)
@@ -282,9 +279,6 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 	d.shuttingDownLock.Unlock()
 
 	performWrite := func(ctx context.Context, handle uint64, from uint64, data []byte) error {
-		_, span := tracer.Start(ctx, "dispatch-cmd-write-perform")
-		defer span.End()
-
 		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
 		go func() {
@@ -307,7 +301,7 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 	}
 
 	go func() {
-		ctx, span := tracer.Start(ctx, "dispatch-cmd-write-goroutine")
+		ctx, span := tracer.Start(ctx, "handle-cmd-write")
 		defer span.End()
 
 		err := performWrite(ctx, cmdHandle, cmdFrom, cmdData)
