@@ -121,7 +121,10 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
  * This dispatches incoming NBD requests sequentially to the provider.
  *
  */
-func (d *Dispatch) Handle() error {
+func (d *Dispatch) Handle(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "dispatch-handle")
+	defer span.End()
+
 	buffer := make([]byte, dispatchBufferSize)
 	wp := 0
 
@@ -169,7 +172,7 @@ func (d *Dispatch) Handle() error {
 					return fmt.Errorf("not supported: Flush")
 				case NBDCmdRead:
 					rp += 28
-					err := d.cmdRead(request.Handle, request.From, request.Length)
+					err := d.cmdRead(ctx, request.Handle, request.From, request.Length)
 					if err != nil {
 						return err
 					}
@@ -182,13 +185,13 @@ func (d *Dispatch) Handle() error {
 					data := make([]byte, request.Length)
 					copy(data, buffer[rp:rp+int(request.Length)])
 					rp += int(request.Length)
-					err := d.cmdWrite(request.Handle, request.From, data)
+					err := d.cmdWrite(ctx, request.Handle, request.From, data)
 					if err != nil {
 						return err
 					}
 				case NBDCmdTrim:
 					rp += 28
-					err := d.cmdTrim(request.Handle, request.From, request.Length)
+					err := d.cmdTrim(ctx, request.Handle, request.From, request.Length)
 					if err != nil {
 						return err
 					}
@@ -207,7 +210,10 @@ func (d *Dispatch) Handle() error {
 	}
 }
 
-func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
+func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
+	ctx, span := tracer.Start(ctx, "dispatch-cmd-read")
+	defer span.End()
+
 	d.shuttingDownLock.Lock()
 	if !d.shuttingDown {
 		d.pendingResponses.Add(1)
@@ -217,7 +223,10 @@ func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) e
 	}
 	d.shuttingDownLock.Unlock()
 
-	performRead := func(handle uint64, from uint64, length uint32) error {
+	performRead := func(ctx context.Context, handle uint64, from uint64, length uint32) error {
+		_, span := tracer.Start(ctx, "dispatch-cmd-read-perform")
+		defer span.End()
+
 		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
 		data := make([]byte, length)
@@ -242,7 +251,10 @@ func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) e
 	}
 
 	go func() {
-		err := performRead(cmdHandle, cmdFrom, cmdLength)
+		ctx, span := tracer.Start(ctx, "dispatch-cmd-read-goroutine")
+		defer span.End()
+
+		err := performRead(ctx, cmdHandle, cmdFrom, cmdLength)
 		if err != nil {
 			select {
 			case d.fatal <- err:
@@ -256,7 +268,10 @@ func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) e
 	return nil
 }
 
-func (d *Dispatch) cmdWrite(cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
+func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
+	ctx, span := tracer.Start(ctx, "dispatch-cmd-write")
+	defer span.End()
+
 	d.shuttingDownLock.Lock()
 	if !d.shuttingDown {
 		d.pendingResponses.Add(1)
@@ -266,7 +281,10 @@ func (d *Dispatch) cmdWrite(cmdHandle uint64, cmdFrom uint64, cmdData []byte) er
 	}
 	d.shuttingDownLock.Unlock()
 
-	performWrite := func(handle uint64, from uint64, data []byte) error {
+	performWrite := func(ctx context.Context, handle uint64, from uint64, data []byte) error {
+		_, span := tracer.Start(ctx, "dispatch-cmd-write-perform")
+		defer span.End()
+
 		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
 		go func() {
@@ -289,7 +307,10 @@ func (d *Dispatch) cmdWrite(cmdHandle uint64, cmdFrom uint64, cmdData []byte) er
 	}
 
 	go func() {
-		err := performWrite(cmdHandle, cmdFrom, cmdData)
+		ctx, span := tracer.Start(ctx, "dispatch-cmd-write-goroutine")
+		defer span.End()
+
+		err := performWrite(ctx, cmdHandle, cmdFrom, cmdData)
 		if err != nil {
 			select {
 			case d.fatal <- err:
@@ -306,7 +327,10 @@ func (d *Dispatch) cmdWrite(cmdHandle uint64, cmdFrom uint64, cmdData []byte) er
  * cmdTrim
  *
  */
-func (d *Dispatch) cmdTrim(handle uint64, _ uint64, _ uint32) error {
+func (d *Dispatch) cmdTrim(ctx context.Context, handle uint64, _ uint64, _ uint32) error {
+	_, span := tracer.Start(ctx, "dispatch-cmd-trim")
+	defer span.End()
+
 	// TODO: Ask the provider
 	/*
 		e := d.prov.Trim(from, length)

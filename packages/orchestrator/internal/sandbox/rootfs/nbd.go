@@ -60,6 +60,9 @@ func NewNBDProvider(ctx context.Context, rootfs block.ReadonlyDevice, cachePath 
 }
 
 func (o *NBDProvider) Start(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "cow-start")
+	defer span.End()
+
 	deviceIndex, err := o.mnt.Open(ctx)
 	if err != nil {
 		return o.ready.SetError(fmt.Errorf("error opening overlay file: %w", err))

@@ -365,7 +365,7 @@ func ResumeSandbox(
 	telemetry.ReportEvent(ctx, "got template rootfs")
 
 	rootfsOverlay, err := rootfs.NewNBDProvider(
-		ctx,
+		runCtx,
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(),
 		devicePool,

@@ -64,6 +64,9 @@ func NewDirectPathMount(ctx context.Context, b block.Device, devicePool *DeviceP
 }
 
 func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err error) {
+	ctx, span := tracer.Start(ctx, "direct-path-mount-open")
+	defer span.End()
+
 	defer func() {
 		// Set the device index to the one returned, correctly capture error values
 		d.deviceIndex = retDeviceIndex
@@ -108,7 +111,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			go func() {
 				defer d.handlersWg.Done()
 
-				handleErr := dispatch.Handle()
+				handleErr := dispatch.Handle(ctx)
 				// The error is expected to happen if the nbd (socket connection) is closed
 				zap.L().Info("closing handler for NBD commands",
 					zap.Error(handleErr),
