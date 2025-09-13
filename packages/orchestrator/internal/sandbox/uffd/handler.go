@@ -100,6 +100,9 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 }
 
 func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
+	ctx, span := tracer.Start(ctx, "Uffd:handle")
+	defer span.End()
+
 	err := u.lis.SetDeadline(time.Now().Add(uffdMsgListenerTimeout))
 	if err != nil {
 		return fmt.Errorf("failed setting listener deadline: %w", err)
@@ -150,6 +153,9 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 	uffd := fds[0]
 
 	defer func() {
+		_, span := tracer.Start(ctx, "Uffd:handle (close)")
+		defer span.End()
+
 		closeErr := syscall.Close(uffd)
 		if closeErr != nil {
 			zap.L().Error("failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))

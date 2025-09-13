@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/httptrace"
 	"os"
 	"time"
 
@@ -310,7 +309,7 @@ func CreateSandbox(
 // ResumeSandbox resumes the sandbox from already saved template or snapshot.
 // IMPORTANT: You must Close() the sandbox after you are done with it.
 func ResumeSandbox(
-	ctx context.Context,
+	ctx, runCtx context.Context,
 	networkPool *network.Pool,
 	t template.Template,
 	config Config,
@@ -382,7 +381,7 @@ func ResumeSandbox(
 	telemetry.ReportEvent(ctx, "created rootfs overlay")
 
 	go func() {
-		runErr := rootfsOverlay.Start(ctx)
+		runErr := rootfsOverlay.Start(runCtx)
 		if runErr != nil {
 			zap.L().Error("rootfs overlay error", zap.Error(runErr))
 		}
@@ -398,7 +397,7 @@ func ResumeSandbox(
 	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
 
 	fcUffd, err := serveMemory(
-		ctx,
+		ctx, runCtx,
 		cleanup,
 		memfile,
 		fcUffdPath,
@@ -541,10 +540,10 @@ func ResumeSandbox(
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
 
-	go sbx.Checks.Start() // nolint:contextcheck // TODO: fix this later
+	go sbx.Checks.Start(runCtx) // nolint:contextcheck // TODO: fix this later
 
 	go func() {
-		ctx := context.WithoutCancel(ctx)
+		ctx := context.WithoutCancel(runCtx)
 		ctx, span := tracer.Start(ctx, "sandbox-exit-wait")
 		defer span.End()
 
@@ -881,7 +880,7 @@ func getNetworkSlotAsync(
 }
 
 func serveMemory(
-	ctx context.Context,
+	ctx, runCtx context.Context,
 	cleanup *Cleanup,
 	memfile block.ReadonlyDevice,
 	socketPath string,
@@ -895,7 +894,7 @@ func serveMemory(
 		return nil, fmt.Errorf("failed to create uffd: %w", uffdErr)
 	}
 
-	uffdStartErr := fcUffd.Start(ctx, sandboxID)
+	uffdStartErr := fcUffd.Start(runCtx, sandboxID)
 	if uffdStartErr != nil {
 		return nil, fmt.Errorf("failed to start uffd: %w", uffdStartErr)
 	}

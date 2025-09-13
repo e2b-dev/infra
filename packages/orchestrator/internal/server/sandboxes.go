@@ -91,8 +91,23 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
 
+	// span/context used for the running of the sandbox
+	runCtx := context.WithoutCancel(ctx)
+	runCtx, runSpan := tracer.Start(runCtx, "run-sandbox", trace.WithNewRoot(), trace.WithAttributes(
+		attribute.String("template_id", req.GetSandbox().GetTemplateId()),
+		attribute.String("sandbox_id", req.GetSandbox().GetSandboxId()),
+		attribute.String("client_id", s.info.ClientId),
+	))
+	span.AddLink(trace.LinkFromContext(runCtx))
+	runSpanHasForked := false
+	defer func() {
+		if !runSpanHasForked {
+			runSpan.End()
+		}
+	}()
+
 	sbx, err := sandbox.ResumeSandbox(
-		ctx,
+		ctx, runCtx,
 		s.networkPool,
 		template,
 		sandbox.Config{
@@ -131,8 +146,12 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}
 
 	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
+	runSpanHasForked = true
+
 	go func() {
-		ctx, childSpan := tracer.Start(context.WithoutCancel(ctx), "sandbox-create-stop", trace.WithNewRoot())
+		defer runSpan.End()
+
+		ctx, childSpan := tracer.Start(runCtx, "wait-for-stop")
 		defer childSpan.End()
 
 		waitErr := sbx.Wait(ctx)
@@ -301,7 +320,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	s.sandboxes.Remove(in.SandboxId)
 
 	// Check health metrics before stopping the sandbox
-	sbx.Checks.Healthcheck(true) // nolint:contextcheck // TODO: fix this later
+	sbx.Checks.Healthcheck(ctx, true) // nolint:contextcheck // TODO: fix this later
 
 	// Start the cleanup in a goroutine—the initial kill request should be send as the first thing in stop, and at this point you cannot route to the sandbox anymore.
 	// We don't wait for the whole cleanup to finish here.

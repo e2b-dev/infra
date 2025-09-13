@@ -13,7 +13,6 @@ package build
 // causing a race when closing the cancel channel.
 
 import (
-	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -71,16 +70,8 @@ func newDiffWithAsserts(t *testing.T, cachePath, buildId string, diffType DiffTy
 
 func TestNewDiffStore(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
-	store, err := NewDiffStore(
-		ctx,
-		cachePath,
-		25*time.Hour,
-		60*time.Second,
-		90.0,
-	)
+	store, err := NewDiffStore(t.Context(), cachePath, 25*time.Hour, 60*time.Second, 90.0)
 	t.Cleanup(store.Close)
 
 	require.NoError(t, err)
@@ -89,18 +80,10 @@ func TestNewDiffStore(t *testing.T) {
 
 func TestDiffStoreTTLEviction(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	ttl := 1 * time.Second
 	delay := 60 * time.Second
-	store, err := NewDiffStore(
-		ctx,
-		cachePath,
-		ttl,
-		delay,
-		100.0,
-	)
+	store, err := NewDiffStore(t.Context(), cachePath, ttl, delay, 100.0)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
@@ -119,18 +102,10 @@ func TestDiffStoreTTLEviction(t *testing.T) {
 
 func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	ttl := 1 * time.Second
 	delay := 60 * time.Second
-	store, err := NewDiffStore(
-		ctx,
-		cachePath,
-		ttl,
-		delay,
-		100.0,
-	)
+	store, err := NewDiffStore(t.Context(), cachePath, ttl, delay, 100.0)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
@@ -142,7 +117,7 @@ func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 
 	// Refresh diff expiration
 	time.Sleep(ttl / 2)
-	_, err = store.Get(diff)
+	_, err = store.Get(t.Context(), diff)
 	require.NoError(t, err)
 
 	// Try to expire diff
@@ -155,18 +130,10 @@ func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 
 func TestDiffStoreDelayEviction(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	ttl := 60 * time.Second
 	delay := 4 * time.Second
-	store, err := NewDiffStore(
-		ctx,
-		cachePath,
-		ttl,
-		delay,
-		0.0,
-	)
+	store, err := NewDiffStore(t.Context(), cachePath, ttl, delay, 0.0)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
@@ -196,18 +163,10 @@ func TestDiffStoreDelayEviction(t *testing.T) {
 
 func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	ttl := 60 * time.Second
 	delay := 4 * time.Second
-	store, err := NewDiffStore(
-		ctx,
-		cachePath,
-		ttl,
-		delay,
-		0.0,
-	)
+	store, err := NewDiffStore(t.Context(), cachePath, ttl, delay, 0.0)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
@@ -227,7 +186,7 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 	assert.True(t, dFound)
 
 	// Abort removal of diff
-	_, err = store.Get(diff)
+	_, err = store.Get(t.Context(), diff)
 	require.NoError(t, err)
 
 	found = store.Has(diff)
@@ -244,18 +203,10 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 
 func TestDiffStoreOldestFromCache(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	ttl := 60 * time.Second
 	delay := 4 * time.Second
-	store, err := NewDiffStore(
-		ctx,
-		cachePath,
-		ttl,
-		delay,
-		100.0,
-	)
+	store, err := NewDiffStore(t.Context(), cachePath, ttl, delay, 100.0)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
@@ -269,7 +220,7 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	assert.True(t, found)
 
 	// Delete oldest item
-	_, err = store.deleteOldestFromCache()
+	_, err = store.deleteOldestFromCache(t.Context())
 	require.NoError(t, err)
 
 	assert.True(t, store.isBeingDeleted(diff.CacheKey()))
@@ -288,7 +239,7 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	store.Add(diff3)
 
 	// Delete oldest item
-	_, err = store.deleteOldestFromCache()
+	_, err = store.deleteOldestFromCache(t.Context())
 	require.NoError(t, err)
 
 	assert.True(t, store.isBeingDeleted(diff2.CacheKey()))
@@ -309,19 +260,11 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 // detector enabled: go test -race
 func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	// Use very short TTL and delay to trigger rapid evictions
 	ttl := 10 * time.Millisecond
 	delay := 50 * time.Millisecond
-	store, err := NewDiffStore(
-		ctx,
-		cachePath,
-		ttl,
-		delay,
-		0.0, // Set to 0% to trigger disk space evictions
-	)
+	store, err := NewDiffStore(t.Context(), cachePath, ttl, delay, 0.0)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
@@ -354,12 +297,12 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 
 				// Try to trigger manual deletion which can race with TTL eviction
 				if j%10 == 0 {
-					store.deleteOldestFromCache()
+					store.deleteOldestFromCache(t.Context())
 				}
 
 				// Occasionally try to access the item, which calls resetDelete
 				if j%5 == 0 {
-					store.Get(diff)
+					store.Get(t.Context(), diff)
 				}
 			}
 		}(i)
@@ -371,7 +314,7 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < numIterations*2; i++ {
-			store.deleteOldestFromCache()
+			store.deleteOldestFromCache(t.Context())
 			time.Sleep(time.Microsecond * 50)
 		}
 	}()
@@ -390,19 +333,11 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 // race condition by simulating the exact scenario from the race report
 func TestDiffStoreResetDeleteRace(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	// Very short TTL to trigger evictions quickly
 	ttl := 5 * time.Millisecond
 	delay := 100 * time.Millisecond
-	store, err := NewDiffStore(
-		ctx,
-		cachePath,
-		ttl,
-		delay,
-		100.0,
-	)
+	store, err := NewDiffStore(t.Context(), cachePath, ttl, delay, 100.0)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
@@ -432,14 +367,14 @@ func TestDiffStoreResetDeleteRace(t *testing.T) {
 			store.Add(iterDiff)
 
 			// Immediately schedule for deletion to populate pdSizes
-			store.scheduleDelete(iterDiff.CacheKey(), 1024)
+			store.scheduleDelete(t.Context(), iterDiff.CacheKey(), 1024)
 
 			// Small random delay to desynchronize goroutines slightly
 			time.Sleep(time.Duration(iteration%10) * time.Microsecond)
 
 			// This call to Get() will trigger resetDelete, which is where the race occurs
 			// Multiple goroutines calling resetDelete on the same key can race
-			store.Get(iterDiff)
+			store.Get(t.Context(), iterDiff)
 
 			// Also try direct resetDelete calls to increase race probability
 			store.resetDelete(iterDiff.CacheKey())

@@ -6,12 +6,15 @@ import (
 	"io"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build")
 
 type File struct {
 	header      *header.Header
@@ -106,6 +109,9 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 
 // The slice access must be in the predefined blocksize of the build.
 func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+	ctx, span := tracer.Start(ctx, "File.Slice")
+	defer span.End()
+
 	mappedOffset, _, buildID, err := b.header.GetShiftedMapping(off)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mapping: %w", err)
@@ -125,6 +131,9 @@ func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 }
 
 func (b *File) getBuild(ctx context.Context, buildID *uuid.UUID) (Diff, error) {
+	ctx, span := tracer.Start(ctx, "File.getBuild")
+	defer span.End()
+
 	storageDiff := newStorageDiff(
 		b.store.cachePath,
 		buildID.String(),
@@ -134,7 +143,7 @@ func (b *File) getBuild(ctx context.Context, buildID *uuid.UUID) (Diff, error) {
 		b.persistence,
 	)
 
-	source, err := b.store.Get(storageDiff)
+	source, err := b.store.Get(ctx, storageDiff)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build from store: %w", err)
 	}

@@ -52,35 +52,35 @@ func NewChecks(ctx context.Context, sandbox *Sandbox, useClickhouseMetrics bool)
 	return h, nil
 }
 
-func (c *Checks) Start() {
-	c.logHealth()
+func (c *Checks) Start(ctx context.Context) {
+	c.logHealth(ctx)
 }
 
 func (c *Checks) Stop() {
 	c.cancelCtx(ErrChecksStopped)
 }
 
-func (c *Checks) logHealth() {
+func (c *Checks) logHealth(ctx context.Context) {
 	healthTicker := time.NewTicker(healthCheckInterval)
 	defer func() {
 		healthTicker.Stop()
 	}()
 
 	// Get metrics and health status on sandbox startup
-	go c.Healthcheck(false)
+	go c.Healthcheck(ctx, false)
 
 	for {
 		select {
 		case <-healthTicker.C:
-			c.Healthcheck(false)
+			c.Healthcheck(ctx, false)
 		case <-c.ctx.Done():
 			return
 		}
 	}
 }
 
-func (c *Checks) Healthcheck(alwaysReport bool) {
-	ok, err := c.GetHealth(healthCheckTimeout)
+func (c *Checks) Healthcheck(ctx context.Context, alwaysReport bool) {
+	ok, err := c.GetHealth(ctx, healthCheckTimeout)
 	// Sandbox stopped
 	if errors.Is(err, ErrChecksStopped) {
 		return

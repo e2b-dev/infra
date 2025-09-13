@@ -34,6 +34,9 @@ func Serve(
 	fdExit *fdexit.FdExit,
 	logger *zap.Logger,
 ) error {
+	ctx, span := tracer.Start(ctx, "uffd-serve")
+	defer span.End()
+
 	pollFds := []unix.PollFd{
 		{Fd: int32(uffd), Events: unix.POLLIN},
 		{Fd: fdExit.Reader(), Events: unix.POLLIN},
@@ -147,6 +150,9 @@ outerLoop:
 		missingPagesBeingHandled[offset] = struct{}{}
 
 		eg.Go(func() error {
+			ctx, span := tracer.Start(ctx, "UFFD serve one slab")
+			defer span.End()
+
 			defer func() {
 				if r := recover(); r != nil {
 					logger.Error("UFFD serve panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))

@@ -71,13 +71,7 @@ func NewCache(
 		return nil, fmt.Errorf("failed to remove old build cache directory: %w", err)
 	}
 
-	buildStore, err := build.NewDiffStore(
-		ctx,
-		build.DefaultCachePath,
-		buildCacheTTL,
-		buildCacheDelayEviction,
-		buildCacheMaxUsedPercentage,
-	)
+	buildStore, err := build.NewDiffStore(ctx, build.DefaultCachePath, buildCacheTTL, buildCacheDelayEviction, buildCacheMaxUsedPercentage)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build store: %w", err)
 	}

@@ -7,9 +7,12 @@ import (
 	"sync/atomic"
 
 	"github.com/bits-and-blooms/bitset"
+	"go.opentelemetry.io/otel"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block")
 
 type TrackedSliceDevice struct {
 	data      ReadonlyDevice
@@ -45,6 +48,9 @@ func (t *TrackedSliceDevice) Disable() error {
 }
 
 func (t *TrackedSliceDevice) Slice(ctx context.Context, off int64, length int64) ([]byte, error) {
+	ctx, span := tracer.Start(ctx, "TrackedSliceDevice.slice")
+	defer span.End()
+
 	if t.nilTracking.Load() {
 		t.dirtyMu.Lock()
 		t.dirty.Clear(uint(header.BlockIdx(off, t.blockSize)))
