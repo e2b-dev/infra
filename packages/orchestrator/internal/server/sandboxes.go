@@ -66,6 +66,18 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			Build(),
 	)
 
+	maxRunningSandboxesPerNode, err := s.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)
+	if err != nil {
+		zap.L().Error("Failed to get MaxSandboxesPerNode flag", zap.Error(err))
+	}
+
+	runningSandboxes := s.sandboxes.Count()
+	if runningSandboxes >= maxRunningSandboxesPerNode {
+		telemetry.ReportEvent(ctx, "max number of running sandboxes reached")
+
+		return nil, status.Errorf(codes.ResourceExhausted, "max number of running sandboxes on node reached (%d), please retry", maxRunningSandboxesPerNode)
+	}
+
 	// Check if we've reached the max number of starting instances on this node
 	acquired := s.startingSandboxes.TryAcquire(1)
 	if !acquired {
