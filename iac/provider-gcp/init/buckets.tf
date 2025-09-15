@@ -43,6 +43,10 @@ resource "google_storage_bucket" "setup_bucket" {
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
 
+  versioning {
+    enabled = false
+  }
+
   lifecycle_rule {
     condition {
       days_since_noncurrent_time = 30
