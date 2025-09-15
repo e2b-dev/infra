@@ -540,8 +540,8 @@ func ResumeSandbox(
 
 	go sbx.Checks.Start(runCtx)
 
-	go func(ctx context.Context) {
-		ctx, span := tracer.Start(context.WithoutCancel(ctx), "sandbox-exit-wait", trace.WithNewRoot())
+	go func() {
+		ctx, span := tracer.Start(runCtx, "sandbox-exit-wait", trace.WithNewRoot())
 		defer span.End()
 
 		// Wait for either uffd or fc process to exit
@@ -555,7 +555,7 @@ func ResumeSandbox(
 		uffdWaitErr := fcUffd.Exit().Wait()
 		fcErr := fcHandle.Exit.Wait()
 		exit.SetError(errors.Join(err, fcErr, uffdWaitErr))
-	}(runCtx)
+	}()
 
 	return sbx, nil
 }
