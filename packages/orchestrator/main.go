@@ -84,7 +84,7 @@ func main() {
 		log.Fatalf("%d is larger than maximum possible proxy port %d", proxyPort, math.MaxInt16)
 	}
 
-	hyperloopPort, err := strconv.ParseInt(internal.GetHyperloopProxyPort(), 10, 64)
+	hyperloopPort, err := strconv.ParseInt(internal.GetHyperloopProxyPort(), 10, 32)
 	if err != nil {
 		log.Fatalf("failed to get hyperloop proxy port: %v", err)
 	}
