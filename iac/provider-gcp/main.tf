@@ -173,6 +173,8 @@ module "nomad" {
   clickhouse_node_pool             = var.clickhouse_node_pool
 
   # API
+  api_resources_cpu_count                   = var.api_resources_cpu_count
+  api_resources_memory_mb                   = var.api_resources_memory_mb
   api_machine_count                         = var.api_cluster_size
   api_node_pool                             = var.api_node_pool
   logs_collector_public_ip                  = module.cluster.logs_proxy_ip
