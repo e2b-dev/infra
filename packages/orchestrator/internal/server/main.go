@@ -36,8 +36,9 @@ type server struct {
 	devicePool        *nbd.DevicePool
 	persistence       storage.StorageProvider
 	featureFlags      *featureflags.Client
-	sbxEventsService  events.EventsService[event.SandboxEvent]
+	sbxEventService   events.EventService[event.SandboxEvent]
 	startingSandboxes *semaphore.Weighted
+	sbxEventStore     events.SandboxEventStore
 }
 
 type Service struct {
@@ -54,17 +55,18 @@ type Service struct {
 }
 
 type ServiceConfig struct {
-	GRPC             *grpcserver.GRPCServer
-	Tel              *telemetry.Client
-	NetworkPool      *network.Pool
-	DevicePool       *nbd.DevicePool
-	TemplateCache    *template.Cache
-	Info             *service.ServiceInfo
-	Proxy            *proxy.SandboxProxy
-	Sandboxes        *smap.Map[*sandbox.Sandbox]
-	Persistence      storage.StorageProvider
-	FeatureFlags     *featureflags.Client
-	SbxEventsService events.EventsService[event.SandboxEvent]
+	GRPC            *grpcserver.GRPCServer
+	Tel             *telemetry.Client
+	NetworkPool     *network.Pool
+	DevicePool      *nbd.DevicePool
+	TemplateCache   *template.Cache
+	Info            *service.ServiceInfo
+	Proxy           *proxy.SandboxProxy
+	Sandboxes       *smap.Map[*sandbox.Sandbox]
+	Persistence     storage.StorageProvider
+	FeatureFlags    *featureflags.Client
+	SbxEventService events.EventService[event.SandboxEvent]
+	SbxEventStore   events.SandboxEventStore
 }
 
 func New(
@@ -85,7 +87,8 @@ func New(
 		devicePool:        cfg.DevicePool,
 		persistence:       cfg.Persistence,
 		featureFlags:      cfg.FeatureFlags,
-		sbxEventsService:  cfg.SbxEventsService,
+		sbxEventService:   cfg.SbxEventService,
+		sbxEventStore:     cfg.SbxEventStore,
 		startingSandboxes: semaphore.NewWeighted(maxStartingInstancesPerNode),
 	}
 
