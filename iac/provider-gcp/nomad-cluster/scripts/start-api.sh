@@ -33,7 +33,7 @@ sudo sysctl -p
 
 # These variables are passed in via Terraform template interpolation
 gsutil cp "gs://${SCRIPTS_BUCKET}/run-consul-${RUN_CONSUL_FILE_HASH}.sh" /opt/consul/bin/run-consul.sh
-gsutil cp "gs://${SCRIPTS_BUCKET}/run-api-nomad-${RUN_NOMAD_FILE_HASH}.sh" /opt/nomad/bin/run-nomad.sh
+gsutil cp "gs://${SCRIPTS_BUCKET}/run-nomad-${RUN_NOMAD_FILE_HASH}.sh" /opt/nomad/bin/run-nomad.sh
 chmod +x /opt/consul/bin/run-consul.sh /opt/nomad/bin/run-nomad.sh
 
 mkdir -p /root/docker
@@ -69,4 +69,4 @@ systemctl restart systemd-resolved
     --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" \
     --dns-request-token "${CONSUL_DNS_REQUEST_TOKEN}" &
 
-/opt/nomad/bin/run-nomad.sh --consul-token "${CONSUL_TOKEN}" &
+/opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" &

@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -114,6 +115,15 @@ func (es *SandboxEventsService) handleClickhouseBatcherEvent(event event.Sandbox
 	if flagErr != nil {
 		es.logger.Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
 	}
+
+	eventData := ""
+	eventDataJson, err := json.Marshal(event.EventData)
+	if err != nil {
+		es.logger.Error("error marshalling sandbox event data", zap.Error(err))
+	} else {
+		eventData = string(eventDataJson)
+	}
+
 	if sandboxLifeCycleEventsWriteFlag {
 		err := es.batcher.Push(clickhouse.SandboxEvent{
 			Timestamp:          event.Timestamp,
@@ -124,7 +134,7 @@ func (es *SandboxEventsService) handleClickhouseBatcherEvent(event event.Sandbox
 			SandboxExecutionID: event.SandboxExecutionID,
 			EventCategory:      event.EventCategory,
 			EventLabel:         event.EventLabel,
-			EventData:          sql.NullString{String: event.EventData, Valid: event.EventData != ""},
+			EventData:          sql.NullString{String: eventData, Valid: eventData != ""},
 		})
 		if err != nil {
 			es.logger.Error("error inserting sandbox event",

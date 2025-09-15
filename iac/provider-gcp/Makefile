@@ -28,6 +28,8 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, SERVER_CLUSTER_SIZE) \
 	$(call tfvar, CLICKHOUSE_CLUSTER_SIZE) \
 	$(call tfvar, CLICKHOUSE_MACHINE_TYPE) \
+	$(call tfvar, LOKI_MACHINE_TYPE) \
+	$(call tfvar, LOKI_CLUSTER_SIZE) \
 	$(call tfvar, GCP_PROJECT_ID) \
 	$(call tfvar, GCP_REGION) \
 	$(call tfvar, GCP_ZONE) \
@@ -37,6 +39,8 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, PREFIX) \
 	$(call tfvar, OTEL_TRACING_PRINT) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
+	$(call tfvar, API_RESOURCES_CPU_COUNT) \
+	$(call tfvar, API_RESOURCES_MEMORY_MB) \
 	$(call tfvar, CLIENT_PROXY_COUNT) \
 	$(call tfvar, CLIENT_PROXY_CPU_COUNT) \
 	$(call tfvar, CLIENT_PROXY_RESOURCES_MEMORY_MB) \

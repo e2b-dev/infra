@@ -1,6 +1,7 @@
 locals {
-  build_pool_name = "${var.prefix}orch-build"
-  build_startup_script = templatefile("${path.module}/scripts/start-client.sh", {
+  loki_pool_name = "${var.prefix}orch-loki"
+
+  loki_startup_script = templatefile("${path.module}/scripts/start-api.sh", {
     CLUSTER_TAG_NAME             = var.cluster_tag_name
     SCRIPTS_BUCKET               = var.cluster_setup_bucket_name
     FC_KERNELS_BUCKET_NAME       = var.fc_kernels_bucket_name
@@ -15,17 +16,12 @@ locals {
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
-    NFS_IP_ADDRESS               = var.filestore_cache_enabled ? join(",", module.filestore[0].nfs_ip_addresses) : ""
-    NFS_MOUNT_PATH               = local.nfs_mount_path
-    NFS_MOUNT_SUBDIR             = local.nfs_mount_subdir
-    NFS_MOUNT_OPTS               = local.nfs_mount_opts
-    USE_FILESTORE_CACHE          = var.filestore_cache_enabled
-    NODE_POOL                    = var.build_node_pool
+    NODE_POOL                    = var.loki_node_pool
   })
 }
 
-resource "google_compute_health_check" "build_nomad_check" {
-  name                = "${local.build_pool_name}-nomad-build-cluster-check"
+resource "google_compute_health_check" "loki_nomad_check" {
+  name                = "${local.loki_pool_name}-nomad-loki-check"
   check_interval_sec  = 15
   timeout_sec         = 10
   healthy_threshold   = 2
@@ -41,21 +37,17 @@ resource "google_compute_health_check" "build_nomad_check" {
   }
 }
 
-resource "google_compute_instance_group_manager" "build_pool" {
-  name = "${local.build_pool_name}-ig"
+resource "google_compute_instance_group_manager" "loki_pool" {
+  name = "${local.loki_pool_name}-ig"
 
   version {
-    name              = google_compute_instance_template.build.id
-    instance_template = google_compute_instance_template.build.id
+    name              = google_compute_instance_template.loki.id
+    instance_template = google_compute_instance_template.loki.id
   }
 
-  named_port {
-    name = var.docker_reverse_proxy_port.name
-    port = var.docker_reverse_proxy_port.port
-  }
 
   auto_healing_policies {
-    health_check      = google_compute_health_check.build_nomad_check.id
+    health_check      = google_compute_health_check.loki_nomad_check.id
     initial_delay_sec = 600
   }
 
@@ -71,25 +63,24 @@ resource "google_compute_instance_group_manager" "build_pool" {
     replacement_method      = "SUBSTITUTE"
   }
 
-  base_instance_name = local.build_pool_name
-  target_size        = var.build_cluster_size
+  base_instance_name = local.loki_pool_name
+  target_size        = var.loki_cluster_size
   target_pools       = []
 
   depends_on = [
-    google_compute_instance_template.build,
+    google_compute_instance_template.loki,
   ]
 }
 
-data "google_compute_image" "build_source_image" {
-  family = var.build_image_family
+data "google_compute_image" "loki_source_image" {
+  family = var.api_image_family
 }
 
-resource "google_compute_instance_template" "build" {
-  name_prefix = "${local.build_pool_name}-"
+resource "google_compute_instance_template" "loki" {
+  name_prefix = "${local.loki_pool_name}-"
 
   instance_description = null
-  machine_type         = var.build_machine_type
-  min_cpu_platform     = var.min_cpu_platform
+  machine_type         = var.loki_machine_type
 
   labels = merge(
     var.labels,
@@ -98,8 +89,9 @@ resource "google_compute_instance_template" "build" {
     } : {})
   )
   tags                    = [var.cluster_tag_name]
-  metadata_startup_script = local.build_startup_script
+  metadata_startup_script = local.loki_startup_script
   metadata = merge(
+    { loki_cluster = "TRUE" },
     {
       enable-osconfig         = "TRUE",
       enable-guest-attributes = "TRUE",
@@ -112,17 +104,9 @@ resource "google_compute_instance_template" "build" {
 
   disk {
     boot         = true
-    source_image = data.google_compute_image.build_source_image.id
-    disk_size_gb = var.build_cluster_root_disk_size_gb
+    source_image = data.google_compute_image.loki_source_image.id
+    disk_size_gb = 200
     disk_type    = "pd-ssd"
-  }
-
-  disk {
-    auto_delete  = true
-    boot         = false
-    type         = "PERSISTENT"
-    disk_size_gb = var.build_cluster_cache_disk_size_gb
-    disk_type    = var.build_cluster_cache_disk_type
   }
 
   network_interface {
