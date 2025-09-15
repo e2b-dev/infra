@@ -6,7 +6,7 @@ job "docker-reverse-proxy" {
 
   group "reverse-proxy" {
     network {
-      port "docker-reverse-proxy" {
+      port "${port_name}" {
         static = "${port_number}"
       }
     }
