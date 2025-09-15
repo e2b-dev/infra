@@ -166,6 +166,28 @@ EOF
     )
   fi
 
+  local client_config=""
+  if [[ "$client" == "true" ]]; then
+    client_config=$(
+      cat <<EOF
+client {
+  enabled = true
+  node_pool = "$node_pool"
+  meta {
+    "node_pool" = "$node_pool"
+    ${job_constraint:+"\"job_constraint\"" = "\"$job_constraint\""}
+  }
+  max_kill_timeout = "24h"
+}
+
+plugin "raw_exec" {
+config {
+  enabled = true
+  no_cgroups = true
+}
+
+  EOF
+
   log_info "Creating default Nomad config file in $config_path"
   cat >"$config_path" <<EOF
 datacenter = "$zone"
@@ -182,15 +204,7 @@ advertise {
 leave_on_interrupt = true
 leave_on_terminate = true
 
-client {
-  enabled = true
-  node_pool = "$node_pool"
-  meta {
-    "node_pool" = "$node_pool"
-    ${job_constraint:+"\"job_constraint\"" = "\"$job_constraint\""}
-  }
-  max_kill_timeout = "24h"
-}
+$client_config
 
 $server_config
 
@@ -204,13 +218,6 @@ plugin "docker" {
     auth {
       config = "/root/docker/config.json"
     }
-  }
-}
-
-plugin "raw_exec" {
-  config {
-    enabled = true
-    no_cgroups = true
   }
 }
 
