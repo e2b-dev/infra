@@ -102,8 +102,9 @@ module "cluster" {
   clickhouse_machine_type = var.clickhouse_machine_type
   loki_machine_type       = var.loki_machine_type
 
-  api_node_pool  = var.api_node_pool
-  loki_node_pool = var.loki_node_pool
+  api_node_pool   = var.api_node_pool
+  build_node_pool = var.build_node_pool
+  loki_node_pool  = var.loki_node_pool
 
   logs_health_proxy_port = var.logs_health_proxy_port
   logs_proxy_port        = var.logs_proxy_port

@@ -176,6 +176,13 @@ plugin "docker" {
   }
 }
 
+plugin "raw_exec" {
+  config {
+    enabled = true
+    no_cgroups = true
+  }
+}
+
 log_level = "DEBUG"
 log_json = true
 
@@ -272,11 +279,6 @@ function run {
     --consul-token)
       assert_not_empty "$key" "$2"
       consul_token="$2"
-      shift
-      ;;
-    --node_pool)
-      assert_not_empty "$key" "$2"
-      node_pool="$2"
       shift
       ;;
     *)

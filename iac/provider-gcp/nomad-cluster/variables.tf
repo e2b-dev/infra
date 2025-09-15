@@ -250,11 +250,6 @@ variable "clickhouse_job_constraint_prefix" {
   type        = string
 }
 
-variable "clickhouse_node_pool" {
-  description = "The name of the Nomad pool."
-  type        = string
-}
-
 variable "clickhouse_health_port" {
   type = object({
     name = string
@@ -298,9 +293,21 @@ variable "min_cpu_platform" {
 }
 
 variable "api_node_pool" {
-  type = string
+  description = "The name of the Nomad pool."
+  type        = string
+}
+
+variable "build_node_pool" {
+  description = "The name of the Nomad pool."
+  type        = string
+}
+
+variable "clickhouse_node_pool" {
+  description = "The name of the Nomad pool."
+  type        = string
 }
 
 variable "loki_node_pool" {
-  type = string
+  description = "The name of the Nomad pool."
+  type        = string
 }

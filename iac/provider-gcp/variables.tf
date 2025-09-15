@@ -55,6 +55,11 @@ variable "build_machine_type" {
   type = string
 }
 
+variable "build_node_pool" {
+  type    = string
+  default = "build"
+}
+
 variable "build_cluster_root_disk_size_gb" {
   type        = number
   description = "The size of the root disk for the build machines in GB"
