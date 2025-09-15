@@ -110,6 +110,14 @@ DNSStubListenerExtra=172.17.0.1
 EOF
 systemctl restart systemd-resolved
 
+# Install CNI plugin for networking in Nomad (bridge mode)
+ARCH_CNI=$([ "$(uname -m)" = aarch64 ] && echo arm64 || echo amd64)
+export ARCH_CNI
+export CNI_PLUGIN_VERSION=v1.6.2
+curl -L -o cni-plugins.tgz "https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGIN_VERSION}/cni-plugins-linux-${ARCH_CNI}-${CNI_PLUGIN_VERSION}".tgz &&
+  sudo mkdir -p /opt/cni/bin &&
+  sudo tar -C /opt/cni/bin -xzf cni-plugins.tgz
+
 # These variables are passed in via Terraform template interpolation
 /opt/consul/bin/run-consul.sh --client \
     --consul-token "${CONSUL_TOKEN}" \

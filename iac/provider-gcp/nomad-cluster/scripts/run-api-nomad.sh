@@ -283,6 +283,13 @@ function run {
       consul_token="$2"
       shift
       ;;
+    --node_pool)
+      assert_not_empty "$key" "$2"
+      node_pool="$2"
+      shift
+    --client)
+      # Ignored, we are always running in client mode
+      ;;
     *)
       log_error "Unrecognized argument: $key"
       print_usage
@@ -292,14 +299,6 @@ function run {
 
     shift
   done
-
-  # Install CNI plugin for networking in Nomad (bridge mode)
-  ARCH_CNI=$([ "$(uname -m)" = aarch64 ] && echo arm64 || echo amd64)
-  export ARCH_CNI
-  export CNI_PLUGIN_VERSION=v1.6.2
-  curl -L -o cni-plugins.tgz "https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGIN_VERSION}/cni-plugins-linux-${ARCH_CNI}-${CNI_PLUGIN_VERSION}".tgz &&
-    sudo mkdir -p /opt/cni/bin &&
-    sudo tar -C /opt/cni/bin -xzf cni-plugins.tgz
 
   use_sudo="true"
 
