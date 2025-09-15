@@ -181,12 +181,15 @@ client {
 }
 
 plugin "raw_exec" {
-config {
-  enabled = true
-  no_cgroups = true
+  config {
+    enabled = true
+    no_cgroups = true
+  }
 }
 
-  EOF
+EOF
+    )
+  fi
 
   log_info "Creating default Nomad config file in $config_path"
   cat >"$config_path" <<EOF
