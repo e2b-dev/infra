@@ -15,6 +15,33 @@ readonly GOOGLE_CLOUD_METADATA_REQUEST_HEADER="Metadata-Flavor: Google"
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_NAME="$(basename "$0")"
 
+function print_usage {
+  echo
+  echo "Usage: run-nomad [OPTIONS]"
+  echo
+  echo "This script is used to configure and run Nomad on a Google Compute Instance."
+  echo
+  echo "Options:"
+  echo
+  echo -e "  --server\t\tIf set, run in server mode. Optional. At least one of --server or --client must be set."
+  echo -e "  --client\t\tIf set, run in client mode. Optional. At least one of --server or --client must be set."
+  echo -e "  --num-servers\t\tThe minimum number of servers to expect in the Nomad cluster. Required if --server is true."
+  echo -e "  --consul-token\t\tThe ACL token that Consul uses."
+  echo -e "  --nomad-token\t\tThe Nomad ACL token to use."
+  echo -e "  --config-dir\t\tThe path to the Nomad config folder. Optional. Default is the absolute path of '../config', relative to this script."
+  echo -e "  --data-dir\t\tThe path to the Nomad data folder. Optional. Default is the absolute path of '../data', relative to this script."
+  echo -e "  --bin-dir\t\tThe path to the folder with Nomad binary. Optional. Default is the absolute path of the parent folder of this script."
+  echo -e "  --log-dir\t\tThe path to the Nomad log folder. Optional. Default is the absolute path of '../log', relative to this script."
+  echo -e "  --user\t\tThe user to run Nomad as. Optional. Default is to use the owner of --config-dir."
+  echo -e "  --use-sudo\t\tIf set, run the Nomad agent with sudo. By default, sudo is only used if --client is set."
+  echo -e "  --skip-nomad-config\tIf this flag is set, don't generate a Nomad configuration file. Optional. Default is false."
+  echo -e "  --api\t\tIf set, run the Nomad agent dedicated to API. Optional. Default is false."
+  echo
+  echo "Example:"
+  echo
+  echo "  run-nomad.sh --server --config-dir /custom/path/to/nomad/config"
+}
+
 function log {
   local -r level="$1"
   local -r message="$2"
