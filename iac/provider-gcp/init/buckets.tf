@@ -50,6 +50,7 @@ resource "google_storage_bucket" "setup_bucket" {
     action {
       type = "Delete"
     }
+  }
 
   labels = var.labels
 }
