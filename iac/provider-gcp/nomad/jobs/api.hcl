@@ -62,9 +62,9 @@ job "api" {
       kill_signal  = "SIGTERM"
 
       resources {
-        memory_max = 4096
-        memory     = 2048
-        cpu        = 2000
+        memory_max = ${memory_mb * 2}
+        memory     = ${memory_mb}
+        cpu        = ${cpu_count * 1000}
       }
 
       env {

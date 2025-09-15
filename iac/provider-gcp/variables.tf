@@ -47,6 +47,16 @@ variable "api_node_pool" {
   default = "api"
 }
 
+variable "api_resources_cpu_count" {
+  type    = number
+  default = 2
+}
+
+variable "api_resources_memory_mb" {
+  type    = number
+  default = 2048
+}
+
 variable "build_cluster_size" {
   type = number
 }

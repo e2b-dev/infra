@@ -64,6 +64,14 @@ variable "api_port" {
   })
 }
 
+variable "api_resources_cpu_count" {
+  type = number
+}
+
+variable "api_resources_memory_mb" {
+  type = number
+}
+
 variable "api_secret" {
   type = string
 }

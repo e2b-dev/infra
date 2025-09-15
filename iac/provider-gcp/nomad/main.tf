@@ -74,7 +74,12 @@ resource "nomad_job" "api" {
     node_pool     = var.api_node_pool
     // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
     // It might be possible there could be problems if we are rolling updates for both API and Loki at the same time., so maybe increasing this to > 3 makes sense.
-    prevent_colocation             = var.api_machine_count > 2
+    prevent_colocation = var.api_machine_count > 2
+
+
+    memory_mb = var.api_resources_memory_mb
+    cpu_count = var.api_resources_cpu_count
+
     orchestrator_port              = var.orchestrator_port
     template_manager_host          = "template-manager.service.consul:${var.template_manager_port}"
     otel_collector_grpc_endpoint   = "localhost:${var.otel_collector_grpc_port}"
