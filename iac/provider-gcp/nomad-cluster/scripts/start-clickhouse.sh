@@ -125,7 +125,7 @@ curl -L -o cni-plugins.tgz "https://github.com/containernetworking/plugins/relea
     --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" \
     --dns-request-token "${CONSUL_DNS_REQUEST_TOKEN}" &
 
-/opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node_pool "${NODE_POOL}" &
+/opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" &
 
 # Install clickhouse client to make it easier to interact with the ClickHouse server
 cd /usr/local/bin && curl https://clickhouse.com/ | sh && sudo ./clickhouse install &
