@@ -112,9 +112,8 @@ systemctl restart systemd-resolved
 
 # Install CNI plugin for networking in Nomad (bridge mode)
 ARCH_CNI=$([ "$(uname -m)" = aarch64 ] && echo arm64 || echo amd64)
-export ARCH_CNI
-export CNI_PLUGIN_VERSION=v1.6.2
-curl -L -o cni-plugins.tgz "https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGIN_VERSION}/cni-plugins-linux-${ARCH_CNI}-${CNI_PLUGIN_VERSION}".tgz &&
+CNI_PLUGIN_VERSION=v1.6.2
+curl -L -o cni-plugins.tgz "https://github.com/containernetworking/plugins/releases/download/$${CNI_PLUGIN_VERSION}/cni-plugins-linux-$${ARCH_CNI}-$${CNI_PLUGIN_VERSION}".tgz &&
   sudo mkdir -p /opt/cni/bin &&
   sudo tar -C /opt/cni/bin -xzf cni-plugins.tgz
 
@@ -126,7 +125,7 @@ curl -L -o cni-plugins.tgz "https://github.com/containernetworking/plugins/relea
     --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" \
     --dns-request-token "${CONSUL_DNS_REQUEST_TOKEN}" &
 
-/opt/nomad/bin/run-nomad.sh --consul-token "${CONSUL_TOKEN}" &
+/opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" &
 
 # Install clickhouse client to make it easier to interact with the ClickHouse server
 cd /usr/local/bin && curl https://clickhouse.com/ | sh && sudo ./clickhouse install &

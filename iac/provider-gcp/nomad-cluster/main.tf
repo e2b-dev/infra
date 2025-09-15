@@ -13,9 +13,8 @@ locals {
   ])
 
   file_hash = {
-    "scripts/run-consul.sh"    = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
-    "scripts/run-nomad.sh"     = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
-    "scripts/run-api-nomad.sh" = substr(filesha256("${path.module}/scripts/run-api-nomad.sh"), 0, 5)
+    "scripts/run-consul.sh" = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
+    "scripts/run-nomad.sh"  = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
   }
 }
 
@@ -72,9 +71,8 @@ resource "google_project_iam_member" "logging_writer" {
 variable "setup_files" {
   type = map(string)
   default = {
-    "scripts/run-nomad.sh"     = "run-nomad",
-    "scripts/run-api-nomad.sh" = "run-api-nomad",
-    "scripts/run-consul.sh"    = "run-consul"
+    "scripts/run-nomad.sh"  = "run-nomad",
+    "scripts/run-consul.sh" = "run-consul"
   }
 }
 

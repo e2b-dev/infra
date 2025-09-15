@@ -10,6 +10,10 @@ variable "gcp_zone" {
   type = string
 }
 
+variable "orchestrator_node_pool" {
+  type = string
+}
+
 variable "orchestration_repository_name" {
   type = string
 }

@@ -60,7 +60,7 @@ variable "node_pool" {
 
 job "docker-reverse-proxy" {
   datacenters = [var.gcp_zone]
-  node_pool = "var.node_pool"
+  node_pool = var.node_pool
 
 
   priority = 85

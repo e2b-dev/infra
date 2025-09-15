@@ -265,6 +265,11 @@ variable "client_cluster_cache_disk_type" {
   default     = "pd-ssd"
 }
 
+variable "orchestrator_node_pool" {
+  type    = string
+  default = "default"
+}
+
 variable "orchestrator_port" {
   type    = number
   default = 5008

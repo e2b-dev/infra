@@ -1,6 +1,6 @@
 job "filestore-cleanup" {
     type = "batch"
-    node_pool = "default"
+    node_pool = "${node_pool}"
 
     datacenters = ["*"]
 

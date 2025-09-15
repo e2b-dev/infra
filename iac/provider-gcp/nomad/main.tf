@@ -402,6 +402,7 @@ data "external" "orchestrator_checksum" {
 
 locals {
   orchestrator_envs = {
+    node_pool        = var.orchestrator_node_pool
     port             = var.orchestrator_port
     proxy_port       = var.orchestrator_proxy_port
     environment      = var.environment

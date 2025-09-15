@@ -102,9 +102,11 @@ module "cluster" {
   clickhouse_machine_type = var.clickhouse_machine_type
   loki_machine_type       = var.loki_machine_type
 
-  api_node_pool   = var.api_node_pool
-  build_node_pool = var.build_node_pool
-  loki_node_pool  = var.loki_node_pool
+  api_node_pool          = var.api_node_pool
+  build_node_pool        = var.build_node_pool
+  clickhouse_node_pool   = var.clickhouse_node_pool
+  loki_node_pool         = var.loki_node_pool
+  orchestrator_node_pool = var.orchestrator_node_pool
 
   logs_health_proxy_port = var.logs_health_proxy_port
   logs_proxy_port        = var.logs_proxy_port
@@ -130,7 +132,6 @@ module "cluster" {
   fc_versions_bucket_name     = module.init.fc_versions_bucket_name
 
   clickhouse_job_constraint_prefix = var.clickhouse_job_constraint_prefix
-  clickhouse_node_pool             = var.clickhouse_node_pool
   clickhouse_health_port           = var.clickhouse_health_port
 
   consul_acl_token_secret = module.init.consul_acl_token_secret
@@ -222,6 +223,7 @@ module "nomad" {
   docker_reverse_proxy_service_account_key = google_service_account_key.google_service_key.private_key
 
   # Orchestrator
+  orchestrator_node_pool      = var.orchestrator_node_pool
   allow_sandbox_internet      = var.allow_sandbox_internet
   orchestrator_port           = var.orchestrator_port
   orchestrator_proxy_port     = var.orchestrator_proxy_port
