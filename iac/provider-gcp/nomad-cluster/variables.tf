@@ -44,6 +44,19 @@ variable "api_machine_type" {
   type = string
 }
 
+variable "loki_image_family" {
+  type    = string
+  default = "e2b-orch"
+}
+
+variable "loki_cluster_size" {
+  type = number
+}
+
+variable "loki_machine_type" {
+  type = string
+}
+
 variable "build_image_family" {
   type    = string
   default = "e2b-orch"
@@ -286,5 +299,13 @@ variable "filestore_cache_capacity_gb" {
 }
 
 variable "min_cpu_platform" {
+  type = string
+}
+
+variable "api_node_pool" {
+  type = string
+}
+
+variable "loki_node_pool" {
   type = string
 }

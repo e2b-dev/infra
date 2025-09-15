@@ -1,13 +1,7 @@
 locals {
-  api_pool_name = "${var.prefix}orch-api"
-  api_additional_ports = [
-    for service in var.additional_api_services : {
-      name = service.api_node_group_port_name
-      port = service.api_node_group_port
-    }
-  ]
+  loki_pool_name = "${var.prefix}orch-loki"
 
-  api_startup_script = templatefile("${path.module}/scripts/start-api.sh", {
+  loki_startup_script = templatefile("${path.module}/scripts/start-api.sh", {
     CLUSTER_TAG_NAME             = var.cluster_tag_name
     SCRIPTS_BUCKET               = var.cluster_setup_bucket_name
     FC_KERNELS_BUCKET_NAME       = var.fc_kernels_bucket_name
@@ -22,12 +16,12 @@ locals {
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-api-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
-    NODE_POOL                    = "api"
+    NODE_POOL                    = "loki"
   })
 }
 
-resource "google_compute_health_check" "api_nomad_check" {
-  name                = "${local.api_pool_name}-nomad-api-check"
+resource "google_compute_health_check" "loki_nomad_check" {
+  name                = "${local.loki_pool_name}-nomad-loki-check"
   check_interval_sec  = 15
   timeout_sec         = 10
   healthy_threshold   = 2
@@ -43,39 +37,17 @@ resource "google_compute_health_check" "api_nomad_check" {
   }
 }
 
-resource "google_compute_instance_group_manager" "api_pool" {
-  name = "${local.api_pool_name}-ig"
+resource "google_compute_instance_group_manager" "loki_pool" {
+  name = "${local.loki_pool_name}-ig"
 
   version {
-    name              = google_compute_instance_template.api.id
-    instance_template = google_compute_instance_template.api.id
+    name              = google_compute_instance_template.loki.id
+    instance_template = google_compute_instance_template.loki.id
   }
 
-  named_port {
-    name = var.edge_api_port.name
-    port = var.edge_api_port.port
-  }
-
-  named_port {
-    name = var.edge_proxy_port.name
-    port = var.edge_proxy_port.port
-  }
-
-  named_port {
-    name = var.api_port.name
-    port = var.api_port.port
-  }
-
-  dynamic "named_port" {
-    for_each = local.api_additional_ports
-    content {
-      name = named_port.value.name
-      port = named_port.value.port
-    }
-  }
 
   auto_healing_policies {
-    health_check      = google_compute_health_check.api_nomad_check.id
+    health_check      = google_compute_health_check.loki_nomad_check.id
     initial_delay_sec = 600
   }
 
@@ -91,24 +63,24 @@ resource "google_compute_instance_group_manager" "api_pool" {
     replacement_method      = "SUBSTITUTE"
   }
 
-  base_instance_name = local.api_pool_name
-  target_size        = var.api_cluster_size
+  base_instance_name = local.loki_pool_name
+  target_size        = var.loki_cluster_size
   target_pools       = []
 
   depends_on = [
-    google_compute_instance_template.api,
+    google_compute_instance_template.loki,
   ]
 }
 
-data "google_compute_image" "api_source_image" {
-  family = var.api_image_family
+data "google_compute_image" "loki_source_image" {
+  family = var.loki_image_family
 }
 
-resource "google_compute_instance_template" "api" {
-  name_prefix = "${local.api_pool_name}-"
+resource "google_compute_instance_template" "loki" {
+  name_prefix = "${local.loki_pool_name}-"
 
   instance_description = null
-  machine_type         = var.api_machine_type
+  machine_type         = var.loki_machine_type
 
   labels = merge(
     var.labels,
@@ -117,9 +89,9 @@ resource "google_compute_instance_template" "api" {
     } : {})
   )
   tags                    = [var.cluster_tag_name]
-  metadata_startup_script = local.api_startup_script
+  metadata_startup_script = local.loki_startup_script
   metadata = merge(
-    { api_cluster = "TRUE" },
+    { loki_cluster = "TRUE" },
     {
       enable-osconfig         = "TRUE",
       enable-guest-attributes = "TRUE",
@@ -132,7 +104,7 @@ resource "google_compute_instance_template" "api" {
 
   disk {
     boot         = true
-    source_image = data.google_compute_image.api_source_image.id
+    source_image = data.google_compute_image.loki_source_image.id
     disk_size_gb = 200
     disk_type    = "pd-ssd"
   }

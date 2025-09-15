@@ -1,6 +1,6 @@
 job "api" {
   datacenters = ["${gcp_zone}"]
-  node_pool = "api"
+  node_pool = "${node_pool}"
   priority = 90
 
   group "api-service" {

@@ -93,12 +93,17 @@ module "cluster" {
   clickhouse_cluster_size = var.clickhouse_cluster_size
   client_cluster_size     = var.client_cluster_size
   server_cluster_size     = var.server_cluster_size
+  loki_cluster_size       = var.loki_cluster_size
 
   server_machine_type     = var.server_machine_type
   client_machine_type     = var.client_machine_type
   api_machine_type        = var.api_machine_type
   build_machine_type      = var.build_machine_type
   clickhouse_machine_type = var.clickhouse_machine_type
+  loki_machine_type       = var.loki_machine_type
+
+  api_node_pool  = var.api_node_pool
+  loki_node_pool = var.loki_node_pool
 
   logs_health_proxy_port = var.logs_health_proxy_port
   logs_proxy_port        = var.logs_proxy_port
@@ -155,6 +160,9 @@ module "nomad" {
   otel_tracing_print            = var.otel_tracing_print
   orchestration_repository_name = module.init.orchestration_repository_name
 
+  api_node_pool  = var.api_node_pool
+  loki_node_pool = var.loki_node_pool
+
   # Clickhouse
   clickhouse_resources_cpu_count   = var.clickhouse_resources_cpu_count
   clickhouse_resources_memory_mb   = var.clickhouse_resources_memory_mb
@@ -198,6 +206,7 @@ module "nomad" {
   logs_proxy_port        = var.logs_proxy_port
 
   # Logs
+  loki_machine_count       = var.loki_cluster_size
   loki_resources_memory_mb = var.loki_resources_memory_mb
   loki_resources_cpu_count = var.loki_resources_cpu_count
 

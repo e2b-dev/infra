@@ -28,6 +28,8 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, SERVER_CLUSTER_SIZE) \
 	$(call tfvar, CLICKHOUSE_CLUSTER_SIZE) \
 	$(call tfvar, CLICKHOUSE_MACHINE_TYPE) \
+	$(call tfvar, LOKI_MACHINE_TYPE) \
+	$(call tfvar, LOKI_CLUSTER_SIZE) \
 	$(call tfvar, GCP_PROJECT_ID) \
 	$(call tfvar, GCP_REGION) \
 	$(call tfvar, GCP_ZONE) \

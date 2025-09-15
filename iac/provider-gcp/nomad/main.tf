@@ -71,6 +71,7 @@ resource "docker_image" "db_migrator_image" {
 resource "nomad_job" "api" {
   jobspec = templatefile("${path.module}/jobs/api.hcl", {
     update_stanza = var.api_machine_count > 1
+    node_pool     = var.api_node_pool
     // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
     // It might be possible there could be problems if we are rolling updates for both API and Loki at the same time., so maybe increasing this to > 3 makes sense.
     prevent_colocation             = var.api_machine_count > 2
@@ -110,6 +111,7 @@ resource "nomad_job" "redis" {
 
   jobspec = templatefile("${path.module}/jobs/redis.hcl",
     {
+      node_pool   = var.api_node_pool
       gcp_zone    = var.gcp_zone
       port_number = var.redis_port.port
       port_name   = var.redis_port.name
@@ -165,6 +167,8 @@ resource "nomad_job" "client_proxy" {
       count         = var.client_proxy_count
       cpu_count     = var.client_proxy_resources_cpu_count
       memory_mb     = var.client_proxy_resources_memory_mb
+
+      node_pool = var.api_node_pool
 
       gcp_zone    = var.gcp_zone
       environment = var.environment
@@ -509,6 +513,7 @@ resource "nomad_job" "loki" {
   jobspec = templatefile("${path.module}/jobs/loki.hcl", {
     gcp_zone = var.gcp_zone
 
+    node_pool = var.loki_machine_count > 0 ? var.loki_node_pool : var.api_node_pool
     // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
     // It might be possible there could be problems if we are rolling updates for both API and Loki at the same time., so maybe increasing this to > 3 makes sense.
     prevent_colocation = var.api_machine_count > 2

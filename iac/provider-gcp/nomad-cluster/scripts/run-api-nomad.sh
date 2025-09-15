@@ -124,6 +124,7 @@ function generate_nomad_config {
   local -r config_dir="$4"
   local -r user="$5"
   local -r consul_token="$6"
+  local -r node_pool="$7"
   local -r config_path="$config_dir/$NOMAD_CONFIG_FILE"
 
   local instance_name=""
@@ -155,9 +156,9 @@ leave_on_terminate = true
 
 client {
   enabled = true
-  node_pool = "api"
+  node_pool = "$node_pool"
   meta {
-    "node_pool" = "api"
+    "node_pool" = "$node_pool"
   }
   max_kill_timeout = "24h"
 }
@@ -273,6 +274,11 @@ function run {
       consul_token="$2"
       shift
       ;;
+    --node_pool)
+      assert_not_empty "$key" "$2"
+      node_pool="$2"
+      shift
+      ;;
     *)
       log_error "Unrecognized argument: $key"
       print_usage
@@ -300,7 +306,7 @@ function run {
 
   user=$(get_owner_of_path "$config_dir")
 
-  generate_nomad_config "$server" "$client" "$num_servers" "$config_dir" "$user" "$consul_token"
+  generate_nomad_config "$server" "$client" "$num_servers" "$config_dir" "$user" "$consul_token" "$node_pool"
   generate_supervisor_config "$SUPERVISOR_CONFIG_PATH" "$config_dir" "$data_dir" "$bin_dir" "$log_dir" "$user" "$use_sudo"
   start_nomad
 }

@@ -79,6 +79,19 @@ variable "api_machine_count" {
   type = number
 }
 
+variable "api_node_pool" {
+  type = string
+}
+
+variable "loki_machine_count" {
+  type = number
+}
+
+variable "loki_node_pool" {
+  type = string
+}
+
+
 variable "api_dns_port_number" {
   type    = number
   default = 5353

@@ -42,6 +42,11 @@ variable "api_machine_type" {
   type = string
 }
 
+variable "api_node_pool" {
+  type    = string
+  default = "api"
+}
+
 variable "build_cluster_size" {
   type = number
 }
@@ -179,6 +184,21 @@ variable "logs_health_proxy_port" {
     port        = 44313
     health_path = "/health"
   }
+}
+
+variable "loki_cluster_size" {
+  type    = number
+  default = 0
+}
+
+variable "loki_machine_type" {
+  type    = string
+  default = "e2-standard-4"
+}
+
+variable "loki_node_pool" {
+  type    = string
+  default = "loki"
 }
 
 variable "api_port" {
