@@ -353,7 +353,7 @@ function run {
       consul_token="$2"
       shift
       ;;
-    --node_pool)
+    --node-pool)
       node_pool="$2"
       shift
       ;;
