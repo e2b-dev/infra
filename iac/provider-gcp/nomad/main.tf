@@ -482,6 +482,7 @@ data "external" "template_manager" {
 resource "nomad_job" "template_manager" {
   jobspec = templatefile("${path.module}/jobs/template-manager.hcl", {
     update_stanza = var.template_manager_machine_count > 1
+    node_pool     = var.builder_node_pool
 
     gcp_project      = var.gcp_project_id
     gcp_region       = var.gcp_region

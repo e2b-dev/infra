@@ -26,6 +26,11 @@ variable "build_cache_bucket_name" {
   type = string
 }
 
+variable "builder_node_pool" {
+  type = string
+}
+
+
 variable "nomad_acl_token_secret" {
   type = string
 }

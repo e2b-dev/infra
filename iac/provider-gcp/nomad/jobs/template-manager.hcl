@@ -1,7 +1,7 @@
 job "template-manager-system" {
   datacenters = ["${gcp_zone}"]
   type = "system"
-  node_pool  = "build"
+  node_pool  = "${node_pool}"
   priority = 70
 
 # https://developer.hashicorp.com/nomad/docs/job-specification/update

@@ -161,9 +161,6 @@ module "nomad" {
   otel_tracing_print            = var.otel_tracing_print
   orchestration_repository_name = module.init.orchestration_repository_name
 
-  api_node_pool  = var.api_node_pool
-  loki_node_pool = var.loki_node_pool
-
   # Clickhouse
   clickhouse_resources_cpu_count   = var.clickhouse_resources_cpu_count
   clickhouse_resources_memory_mb   = var.clickhouse_resources_memory_mb
@@ -176,6 +173,7 @@ module "nomad" {
 
   # API
   api_machine_count                         = var.api_cluster_size
+  api_node_pool                             = var.api_node_pool
   logs_collector_public_ip                  = module.cluster.logs_proxy_ip
   api_port                                  = var.api_port
   environment                               = var.environment
@@ -207,6 +205,7 @@ module "nomad" {
   logs_proxy_port        = var.logs_proxy_port
 
   # Logs
+  loki_node_pool           = var.loki_node_pool
   loki_machine_count       = var.loki_cluster_size
   loki_resources_memory_mb = var.loki_resources_memory_mb
   loki_resources_cpu_count = var.loki_resources_cpu_count
@@ -230,6 +229,7 @@ module "nomad" {
   envd_timeout                = var.envd_timeout
 
   # Template manager
+  builder_node_pool              = var.build_node_pool
   template_manager_port          = var.template_manager_port
   template_bucket_name           = module.init.fc_template_bucket_name
   build_cache_bucket_name        = module.init.fc_build_cache_bucket_name
