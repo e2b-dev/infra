@@ -97,6 +97,8 @@ type Sandbox struct {
 
 	Checks *Checks
 
+	// Deprecated: to be removed in the future
+	// It was used to store the config to allow API restarts
 	APIStoredConfig *orchestrator.SandboxConfig
 
 	exit *utils.ErrorOnce
