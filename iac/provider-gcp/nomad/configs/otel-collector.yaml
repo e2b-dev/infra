@@ -72,6 +72,19 @@ receivers:
           system.memory.utilization:
             enabled: false
 
+          # Huge pages metrics added as part of temporal patch
+          # https://github.com/e2b-dev/opentelemetry-collector-contrib/pull/1
+          system.linux.memory.huge_pages.free:
+            enabled: true
+          system.linux.memory.huge_pages.page_size:
+            enabled: true
+          system.linux.memory.huge_pages.reserved:
+            enabled: true
+          system.linux.memory.huge_pages.surplus:
+            enabled: true
+          system.linux.memory.huge_pages.total:
+            enabled: true
+
       #  filter not needed stuff (mode, type)
       #  filter /dev/loop*, maybe check fo other that are polluting
       filesystem:

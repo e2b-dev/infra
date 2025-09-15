@@ -44,7 +44,7 @@ job "otel-collector" {
 
       config {
         network_mode = "host"
-        image        = "otel/opentelemetry-collector-contrib:0.130.0"
+        image        = "public.ecr.aws/e2b/tools/opentelemetry-collector-contrib:0.135.0-with-hugepages-metrics-amd64"
 
         volumes = [
           "local/config:/config",
