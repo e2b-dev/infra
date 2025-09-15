@@ -275,6 +275,10 @@ variable "redis_port" {
   })
 }
 
+variable "redis_managed" {
+  type = bool
+}
+
 # Clickhouse
 variable "clickhouse_resources_memory_mb" {
   type = number

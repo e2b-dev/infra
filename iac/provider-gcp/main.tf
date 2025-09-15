@@ -238,7 +238,8 @@ module "nomad" {
   template_manager_machine_count = var.build_cluster_size
 
   # Redis
-  redis_port = var.redis_port
+  redis_managed = var.redis_managed
+  redis_port    = var.redis_port
 
   launch_darkly_api_key_secret_name = module.init.launch_darkly_api_key_secret_version.secret
 
