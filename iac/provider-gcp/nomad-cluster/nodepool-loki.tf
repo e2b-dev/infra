@@ -16,7 +16,7 @@ locals {
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-api-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
-    NODE_POOL                    = "loki"
+    NODE_POOL                    = var.loki_node_pool
   })
 }
 
@@ -73,7 +73,7 @@ resource "google_compute_instance_group_manager" "loki_pool" {
 }
 
 data "google_compute_image" "loki_source_image" {
-  family = var.loki_image_family
+  family = var.api_image_family
 }
 
 resource "google_compute_instance_template" "loki" {
@@ -136,14 +136,9 @@ resource "google_compute_instance_template" "loki" {
   # which this Terraform resource depends will also need this lifecycle statement.
   lifecycle {
     create_before_destroy = true
-
-    # TODO: Temporary workaround to avoid unnecessary updates to the instance template.
-    #  This should be removed once cluster size is removed from the metadata
-    ignore_changes = [metadata]
   }
 
   depends_on = [
-    google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
-    google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
+    google_storage_bucket_object.setup_config_objects,
   ]
 }

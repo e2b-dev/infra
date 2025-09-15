@@ -44,11 +44,6 @@ variable "api_machine_type" {
   type = string
 }
 
-variable "loki_image_family" {
-  type    = string
-  default = "e2b-orch"
-}
-
 variable "loki_cluster_size" {
   type = number
 }
