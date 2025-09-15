@@ -136,6 +136,7 @@ resource "nomad_job" "docker_reverse_proxy" {
   hcl2 {
     vars = {
       gcp_zone                      = var.gcp_zone
+      node_pool                     = var.builder_node_pool
       image_name                    = docker_image.docker_reverse_proxy_image.repo_digest
       postgres_connection_string    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
       google_service_account_secret = var.docker_reverse_proxy_service_account_key
