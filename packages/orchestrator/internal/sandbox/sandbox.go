@@ -289,8 +289,8 @@ func CreateSandbox(
 		return sbx.Stop(ctx)
 	})
 
-	go func(ctx context.Context) {
-		ctx, span := tracer.Start(context.WithoutCancel(ctx), "sandbox-exit-wait", trace.WithNewRoot())
+	go func() {
+		ctx, span := tracer.Start(runCtx, "sandbox-exit-wait", trace.WithNewRoot())
 		defer span.End()
 
 		// If the process exists, stop the sandbox properly
@@ -298,7 +298,7 @@ func CreateSandbox(
 		err := sbx.Stop(ctx)
 
 		exit.SetError(errors.Join(err, fcErr))
-	}(runCtx)
+	}()
 
 	return sbx, nil
 }
