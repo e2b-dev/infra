@@ -136,10 +136,8 @@ resource "docker_image" "docker_reverse_proxy_image" {
 
 
 resource "nomad_job" "docker_reverse_proxy" {
-  jobspec = file("${path.module}/jobs/docker-reverse-proxy.hcl")
-
-  hcl2 {
-    vars = {
+  jobspec = templatefile("${path.module}/jobs/docker-reverse-proxy.hcl",
+    {
       gcp_zone                      = var.gcp_zone
       node_pool                     = var.builder_node_pool
       image_name                    = docker_image.docker_reverse_proxy_image.repo_digest
@@ -153,7 +151,7 @@ resource "nomad_job" "docker_reverse_proxy" {
       gcp_region                    = var.gcp_region
       docker_registry               = var.custom_envs_repository_name
     }
-  }
+  )
 }
 
 data "docker_registry_image" "proxy_image" {
