@@ -77,7 +77,7 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 			"/templates/:templateID/builds/:buildID/status",
 		),
 		customMiddleware.IncludeRoutes(
-			metricsMiddleware.Middleware(tel.MeterProvider, serviceName), // nolint:contextcheck // TODO: fix this later
+			metricsMiddleware.Middleware(tel.MeterProvider, serviceName), //nolint:contextcheck // TODO: fix this later
 			"/sandboxes",
 			"/sandboxes/:sandboxID",
 			"/sandboxes/:sandboxID/pause",

@@ -154,7 +154,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool
 	go func() {
 		<-ctx.Done()
 
-		mnt.Close(context.Background()) // nolint:contextcheck // TODO: fix this later
+		mnt.Close(context.Background()) //nolint:contextcheck // TODO: fix this later
 	}()
 
 	_, err = mnt.Open(ctx)

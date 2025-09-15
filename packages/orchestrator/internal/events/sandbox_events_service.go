@@ -63,7 +63,7 @@ func (es *SandboxEventsService) HandleEvent(ctx context.Context, event event.San
 	childCtx := context.WithoutCancel(ctx)
 
 	go es.handlePubSubEvent(childCtx, event)
-	go es.handleClickhouseBatcherEvent(event) // nolint:contextcheck // TODO: fix this later
+	go es.handleClickhouseBatcherEvent(event) //nolint:contextcheck // TODO: fix this later
 }
 
 func (es *SandboxEventsService) handlePubSubEvent(ctx context.Context, event event.SandboxEvent) {

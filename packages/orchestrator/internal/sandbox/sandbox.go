@@ -538,7 +538,7 @@ func ResumeSandbox(
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
 
-	go sbx.Checks.Start(runCtx) // nolint:contextcheck // TODO: fix this later
+	go sbx.Checks.Start(runCtx)
 
 	go func(ctx context.Context) {
 		ctx, span := tracer.Start(context.WithoutCancel(ctx), "sandbox-exit-wait", trace.WithNewRoot())
