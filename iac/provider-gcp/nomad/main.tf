@@ -111,8 +111,7 @@ resource "nomad_job" "api" {
 }
 
 resource "nomad_job" "redis" {
-  # Uncomment after the migration period
-  # count = data.google_secret_manager_secret_version.redis_url.secret_data == "redis.service.consul" ? 1 : 0
+  count = var.redis_managed ? 0 : 1
 
   jobspec = templatefile("${path.module}/jobs/redis.hcl",
     {
