@@ -2,6 +2,10 @@ module github.com/e2b-dev/infra/packages/envd
 
 go 1.24.3
 
+replace github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
+
+tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
+
 require (
 	connectrpc.com/authn v0.1.0
 	connectrpc.com/connect v1.18.1
@@ -58,7 +62,3 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
-
-tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
