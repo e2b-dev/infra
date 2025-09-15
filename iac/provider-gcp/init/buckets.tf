@@ -43,6 +43,14 @@ resource "google_storage_bucket" "setup_bucket" {
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
 
+  lifecycle_rule {
+    condition {
+      days_since_noncurrent_time = 30
+    }
+    action {
+      type = "Delete"
+    }
+
   labels = var.labels
 }
 
