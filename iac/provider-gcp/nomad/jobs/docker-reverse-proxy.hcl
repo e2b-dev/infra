@@ -53,9 +53,14 @@ variable "google_service_account_secret" {
   default = ""
 }
 
+variable "node_pool" {
+  type    = string
+  default = ""
+}
+
 job "docker-reverse-proxy" {
   datacenters = [var.gcp_zone]
-  node_pool = "build"
+  node_pool = var.node_pool
 
 
   priority = 85

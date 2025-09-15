@@ -93,12 +93,20 @@ module "cluster" {
   clickhouse_cluster_size = var.clickhouse_cluster_size
   client_cluster_size     = var.client_cluster_size
   server_cluster_size     = var.server_cluster_size
+  loki_cluster_size       = var.loki_cluster_size
 
   server_machine_type     = var.server_machine_type
   client_machine_type     = var.client_machine_type
   api_machine_type        = var.api_machine_type
   build_machine_type      = var.build_machine_type
   clickhouse_machine_type = var.clickhouse_machine_type
+  loki_machine_type       = var.loki_machine_type
+
+  api_node_pool          = var.api_node_pool
+  build_node_pool        = var.build_node_pool
+  clickhouse_node_pool   = var.clickhouse_node_pool
+  loki_node_pool         = var.loki_node_pool
+  orchestrator_node_pool = var.orchestrator_node_pool
 
   logs_health_proxy_port = var.logs_health_proxy_port
   logs_proxy_port        = var.logs_proxy_port
@@ -124,7 +132,6 @@ module "cluster" {
   fc_versions_bucket_name     = module.init.fc_versions_bucket_name
 
   clickhouse_job_constraint_prefix = var.clickhouse_job_constraint_prefix
-  clickhouse_node_pool             = var.clickhouse_node_pool
   clickhouse_health_port           = var.clickhouse_health_port
 
   consul_acl_token_secret = module.init.consul_acl_token_secret
@@ -167,6 +174,7 @@ module "nomad" {
 
   # API
   api_machine_count                         = var.api_cluster_size
+  api_node_pool                             = var.api_node_pool
   logs_collector_public_ip                  = module.cluster.logs_proxy_ip
   api_port                                  = var.api_port
   environment                               = var.environment
@@ -198,6 +206,8 @@ module "nomad" {
   logs_proxy_port        = var.logs_proxy_port
 
   # Logs
+  loki_node_pool           = var.loki_node_pool
+  loki_machine_count       = var.loki_cluster_size
   loki_resources_memory_mb = var.loki_resources_memory_mb
   loki_resources_cpu_count = var.loki_resources_cpu_count
 
@@ -213,6 +223,7 @@ module "nomad" {
   docker_reverse_proxy_service_account_key = google_service_account_key.google_service_key.private_key
 
   # Orchestrator
+  orchestrator_node_pool      = var.orchestrator_node_pool
   allow_sandbox_internet      = var.allow_sandbox_internet
   orchestrator_port           = var.orchestrator_port
   orchestrator_proxy_port     = var.orchestrator_proxy_port
@@ -220,6 +231,7 @@ module "nomad" {
   envd_timeout                = var.envd_timeout
 
   # Template manager
+  builder_node_pool              = var.build_node_pool
   template_manager_port          = var.template_manager_port
   template_bucket_name           = module.init.fc_template_bucket_name
   build_cache_bucket_name        = module.init.fc_build_cache_bucket_name

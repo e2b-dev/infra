@@ -42,12 +42,22 @@ variable "api_machine_type" {
   type = string
 }
 
+variable "api_node_pool" {
+  type    = string
+  default = "api"
+}
+
 variable "build_cluster_size" {
   type = number
 }
 
 variable "build_machine_type" {
   type = string
+}
+
+variable "build_node_pool" {
+  type    = string
+  default = "build"
 }
 
 variable "build_cluster_root_disk_size_gb" {
@@ -181,6 +191,21 @@ variable "logs_health_proxy_port" {
   }
 }
 
+variable "loki_cluster_size" {
+  type    = number
+  default = 0
+}
+
+variable "loki_machine_type" {
+  type    = string
+  default = "e2-standard-4"
+}
+
+variable "loki_node_pool" {
+  type    = string
+  default = "loki"
+}
+
 variable "api_port" {
   type = object({
     name        = string
@@ -238,6 +263,11 @@ variable "client_cluster_cache_disk_type" {
   description = "The GCE cache disk type for the client machines."
   type        = string
   default     = "pd-ssd"
+}
+
+variable "orchestrator_node_pool" {
+  type    = string
+  default = "default"
 }
 
 variable "orchestrator_port" {

@@ -10,6 +10,10 @@ variable "gcp_zone" {
   type = string
 }
 
+variable "orchestrator_node_pool" {
+  type = string
+}
+
 variable "orchestration_repository_name" {
   type = string
 }
@@ -25,6 +29,11 @@ variable "template_bucket_name" {
 variable "build_cache_bucket_name" {
   type = string
 }
+
+variable "builder_node_pool" {
+  type = string
+}
+
 
 variable "nomad_acl_token_secret" {
   type = string
@@ -78,6 +87,19 @@ variable "environment" {
 variable "api_machine_count" {
   type = number
 }
+
+variable "api_node_pool" {
+  type = string
+}
+
+variable "loki_machine_count" {
+  type = number
+}
+
+variable "loki_node_pool" {
+  type = string
+}
+
 
 variable "api_dns_port_number" {
   type    = number

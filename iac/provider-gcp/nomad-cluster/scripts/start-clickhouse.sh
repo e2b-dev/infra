@@ -51,7 +51,7 @@ sudo sysctl -p
 
 # These variables are passed in via Terraform template interpolation
 gsutil cp "gs://${SCRIPTS_BUCKET}/run-consul-${RUN_CONSUL_FILE_HASH}.sh" /opt/consul/bin/run-consul.sh
-gsutil cp "gs://${SCRIPTS_BUCKET}/${RUN_NOMAD_FILE_NAME}-${RUN_NOMAD_FILE_HASH}.sh" /opt/nomad/bin/run-nomad.sh
+gsutil cp "gs://${SCRIPTS_BUCKET}/run-nomad-${RUN_NOMAD_FILE_HASH}.sh" /opt/nomad/bin/run-nomad.sh
 chmod +x /opt/consul/bin/run-consul.sh /opt/nomad/bin/run-nomad.sh
 
 mkdir -p /root/docker
@@ -110,6 +110,13 @@ DNSStubListenerExtra=172.17.0.1
 EOF
 systemctl restart systemd-resolved
 
+# Install CNI plugin for networking in Nomad (bridge mode)
+ARCH_CNI=$([ "$(uname -m)" = aarch64 ] && echo arm64 || echo amd64)
+CNI_PLUGIN_VERSION=v1.6.2
+curl -L -o cni-plugins.tgz "https://github.com/containernetworking/plugins/releases/download/$${CNI_PLUGIN_VERSION}/cni-plugins-linux-$${ARCH_CNI}-$${CNI_PLUGIN_VERSION}".tgz &&
+  sudo mkdir -p /opt/cni/bin &&
+  sudo tar -C /opt/cni/bin -xzf cni-plugins.tgz
+
 # These variables are passed in via Terraform template interpolation
 /opt/consul/bin/run-consul.sh --client \
     --consul-token "${CONSUL_TOKEN}" \
@@ -118,7 +125,7 @@ systemctl restart systemd-resolved
     --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" \
     --dns-request-token "${CONSUL_DNS_REQUEST_TOKEN}" &
 
-/opt/nomad/bin/run-nomad.sh --consul-token "${CONSUL_TOKEN}" &
+/opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" &
 
 # Install clickhouse client to make it easier to interact with the ClickHouse server
 cd /usr/local/bin && curl https://clickhouse.com/ | sh && sudo ./clickhouse install &
