@@ -8,39 +8,27 @@ import (
 
 const eventsHost = "events.e2b.dev"
 
-func AddEventsHostEntry(address string) error {
-	hostsEntry := fmt.Sprintf("%s %s", address, eventsHost)
-	// Read existing hosts file
+func AddEventsHostEntry(hyperloopIP string) error {
+	entry := fmt.Sprintf("%s %s", hyperloopIP, eventsHost)
 	content, err := os.ReadFile("/etc/hosts")
 	if err != nil {
 		return fmt.Errorf("failed to read /etc/hosts: %w", err)
 	}
 
-	// Filter out any existing events.e2b.dev entries
-	lines := strings.Split(string(content), "\n")
-	filteredLines := make([]string, 0, len(lines))
-	for _, line := range lines {
-		if line == "" {
-			continue
-		}
-
-		if !strings.Contains(line, eventsHost) {
-			filteredLines = append(filteredLines, line)
-		}
+	// If the entry already exists, skip
+	if strings.Contains(string(content), entry) {
+		return nil
 	}
 
-	// Add the new entry
-	filteredLines = append(filteredLines, hostsEntry)
-
-	// Write back to file
-	f, err := os.OpenFile("/etc/hosts", os.O_WRONLY|os.O_TRUNC, 0o644)
+	// Otherwise, just append to the end
+	f, err := os.OpenFile("/etc/hosts", os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to open /etc/hosts: %w", err)
 	}
 	defer f.Close()
 
-	if _, err := f.WriteString(strings.Join(filteredLines, "\n") + "\n"); err != nil {
-		return fmt.Errorf("failed to write to /etc/hosts: %w", err)
+	if _, err := f.WriteString("\n" + entry + "\n"); err != nil {
+		return fmt.Errorf("failed to append to /etc/hosts: %w", err)
 	}
 
 	return nil
