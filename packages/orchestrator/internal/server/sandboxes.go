@@ -240,12 +240,12 @@ func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 			continue
 		}
 
-		if sbx.SandboxConfig == nil {
+		if sbx.APIStoredConfig == nil {
 			continue
 		}
 
 		sandboxes = append(sandboxes, &orchestrator.RunningSandbox{
-			Config:    sbx.SandboxConfig,
+			Config:    sbx.APIStoredConfig,
 			ClientId:  s.info.ClientId,
 			StartTime: timestamppb.New(sbx.StartedAt),
 			EndTime:   timestamppb.New(sbx.EndAt),
@@ -427,11 +427,11 @@ func (s *server) prepareSandboxEventData(sbx *sandbox.Sandbox) (uuid.UUID, strin
 
 	buildId := ""
 	eventData := make(map[string]any)
-	if sbx.SandboxConfig != nil {
-		buildId = sbx.SandboxConfig.BuildId
-		if sbx.SandboxConfig.Metadata != nil {
+	if sbx.APIStoredConfig != nil {
+		buildId = sbx.APIStoredConfig.BuildId
+		if sbx.APIStoredConfig.Metadata != nil {
 			// Copy the map to avoid race conditions
-			eventData["sandbox_metadata"] = utils.ShallowCopyMap(sbx.SandboxConfig.Metadata)
+			eventData["sandbox_metadata"] = utils.ShallowCopyMap(sbx.APIStoredConfig.Metadata)
 		}
 	}
 

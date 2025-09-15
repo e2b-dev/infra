@@ -39,7 +39,7 @@ func Test_server_List(t *testing.T) {
 			},
 			data: []*sandbox.Sandbox{
 				{
-					SandboxConfig: &orchestrator.SandboxConfig{
+					APIStoredConfig: &orchestrator.SandboxConfig{
 						TemplateId: "template-id",
 					},
 					Metadata: &sandbox.Metadata{
