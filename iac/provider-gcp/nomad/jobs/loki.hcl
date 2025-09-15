@@ -1,7 +1,7 @@
 job "loki" {
   datacenters = ["${gcp_zone}"]
   type        = "service"
-  node_pool = "api"
+  node_pool = "${node_pool}"
 
   priority = 75
 

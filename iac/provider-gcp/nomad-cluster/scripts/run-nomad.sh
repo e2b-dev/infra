@@ -3,7 +3,6 @@
 
 set -e
 
-
 # Enable command tracing
 set -x
 
@@ -88,7 +87,18 @@ function get_instance_metadata_value {
   local -r path="$1"
 
   log_info "Looking up Metadata value at $COMPUTE_INSTANCE_METADATA_URL/$path"
-  curl --silent --show-error --location --header "$GOOGLE_CLOUD_METADATA_REQUEST_HEADER" "$COMPUTE_INSTANCE_METADATA_URL/$path"
+  response=$(curl --silent --show-error --location \
+    --header "$GOOGLE_CLOUD_METADATA_REQUEST_HEADER" \
+    --write-out "%{http_code}" \
+    --output /tmp/metadata.out \
+    "$COMPUTE_INSTANCE_METADATA_URL/$path")
+
+  if [ "$response" -eq 200 ]; then
+    cat /tmp/metadata.out
+  else
+    echo ""
+  fi
+  rm  /tmp/metadata.out
 }
 
 # Get the value of the given Custom Metadata Key
@@ -155,17 +165,20 @@ function generate_nomad_config {
   local -r config_dir="$4"
   local -r user="$5"
   local -r consul_token="$6"
+  local -r node_pool="$7"
   local -r config_path="$config_dir/$NOMAD_CONFIG_FILE"
 
   local instance_name=""
   local instance_ip_address=""
   local instance_region=""
   local instance_zone=""
+  local job_constraint=""
 
   instance_name=$(get_instance_name)
   instance_ip_address=$(get_instance_ip_address)
   instance_region=$(get_instance_region)
   zone=$(get_instance_zone)
+  job_constraint=$(get_instance_custom_metadata_value "job-constraint" || true)
 
   local server_config=""
   if [[ "$server" == "true" ]]; then
@@ -186,10 +199,12 @@ EOF
       cat <<EOF
 client {
   enabled = true
-  node_pool = "default"
+  node_pool = "$node_pool"
   meta {
-    node_pool = "default"
+    "node_pool" = "$node_pool"
+    ${job_constraint:+"\"job_constraint\"" = "\"$job_constraint\""}
   }
+  max_kill_timeout = "24h"
 }
 
 plugin "raw_exec" {
@@ -342,13 +357,6 @@ function run {
   local server="false"
   local client="false"
   local num_servers=""
-  local config_dir=""
-  local data_dir=""
-  local bin_dir=""
-  local log_dir=""
-  local user=""
-  local skip_nomad_config="false"
-  local use_sudo=""
   local all_args=()
 
   while [[ $# > 0 ]]; do
@@ -375,34 +383,8 @@ function run {
       consul_token="$2"
       shift
       ;;
-    --config-dir)
-      assert_not_empty "$key" "$2"
-      config_dir="$2"
-      shift
-      ;;
-    --data-dir)
-      assert_not_empty "$key" "$2"
-      data_dir="$2"
-      shift
-      ;;
-    --bin-dir)
-      assert_not_empty "$key" "$2"
-      bin_dir="$2"
-      shift
-      ;;
-    --log-dir)
-      assert_not_empty "$key" "$2"
-      log_dir="$2"
-      shift
-      ;;
-    --user)
-      assert_not_empty "$key" "$2"
-      user="$2"
-      shift
-      ;;
-    --cluster-tag-key)
-      assert_not_empty "$key" "$2"
-      cluster_tag_key="$2"
+    --node-pool)
+      node_pool="$2"
       shift
       ;;
     --cluster-tag-value)
@@ -410,15 +392,8 @@ function run {
       cluster_tag_value="$2"
       shift
       ;;
-    --skip-nomad-config)
-      skip_nomad_config="true"
-      ;;
     --use-sudo)
       use_sudo="true"
-      ;;
-    --help)
-      print_usage
-      exit
       ;;
     *)
       log_error "Unrecognized argument: $key"
@@ -450,44 +425,18 @@ function run {
   assert_is_installed "supervisorctl"
   assert_is_installed "curl"
 
-  if [[ -z "$config_dir" ]]; then
-    config_dir=$(cd "$SCRIPT_DIR/../config" && pwd)
-  fi
+  config_dir=$(cd "$SCRIPT_DIR/../config" && pwd)
 
-  if [[ -z "$data_dir" ]]; then
-    data_dir=$(cd "$SCRIPT_DIR/../data" && pwd)
-  fi
+  data_dir=$(cd "$SCRIPT_DIR/../data" && pwd)
 
-  if [[ -z "$bin_dir" ]]; then
-    bin_dir=$(cd "$SCRIPT_DIR/../bin" && pwd)
-  fi
+  bin_dir=$(cd "$SCRIPT_DIR/../bin" && pwd)
 
-  if [[ -z "$log_dir" ]]; then
-    log_dir=$(cd "$SCRIPT_DIR/../log" && pwd)
-  fi
+  log_dir=$(cd "$SCRIPT_DIR/../log" && pwd)
 
-  if [[ -z "$user" ]]; then
-    user=$(get_owner_of_path "$config_dir")
-  fi
+  user=$(get_owner_of_path "$config_dir")
 
-  if [[ "$skip_nomad_config" == "true" ]]; then
-    log_info "The --skip-nomad-config flag is set, so will not generate a default Nomad config file."
-  else
-    generate_nomad_config "$server" "$client" "$num_servers" "$config_dir" "$user" "$consul_token"
-  fi
-
+  generate_nomad_config "$server" "$client" "$num_servers" "$config_dir" "$user" "$consul_token" "$node_pool"
   generate_supervisor_config "$SUPERVISOR_CONFIG_PATH" "$config_dir" "$data_dir" "$bin_dir" "$log_dir" "$user" "$use_sudo"
-
-  # TODO: Let client wait for Nomad servers to start
-  #  if [[ "$client" == "true" ]]; then
-  #     log_info "Waiting for Nomad servers to start"
-  #     while test -z "$(curl -s http://127.0.0.1:4646/v1/agent/leader)"
-  #     do
-  #       log_info "Nomad servers not yet started. Waiting for 1 second."
-  #       sleep 1
-  #     done
-  #  fi
-
   start_nomad
 
   if [[ "$server" == "true" ]]; then

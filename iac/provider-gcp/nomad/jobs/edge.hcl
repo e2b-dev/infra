@@ -1,6 +1,6 @@
 job "client-proxy" {
   datacenters = ["${gcp_zone}"]
-  node_pool = "api"
+  node_pool = "${node_pool}"
 
   priority = 80
 
