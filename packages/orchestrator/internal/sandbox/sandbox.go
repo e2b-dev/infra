@@ -486,7 +486,7 @@ func ResumeSandbox(
 			LogsCollectorAddress: fmt.Sprintf("http://%s", logsCollectorIP),
 			TraceId:              traceID,
 			TeamId:               runtime.TeamID,
-			EventsAddress:        internal.GetSandboxEventIP(),
+			HyperloopIP:          internal.GetSandboxHyperloopIP(),
 		},
 		fcUffdPath,
 		snapfile,

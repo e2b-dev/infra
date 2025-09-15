@@ -216,14 +216,14 @@ func (s *Slot) CreateNetwork() error {
 		return fmt.Errorf("error creating postrouting rule: %w", err)
 	}
 
-	// Redirect traffic destined for event proxy server
+	// Redirect traffic destined for hyperloop proxy
 	err = tables.Append(
 		"nat", "PREROUTING", "-i", s.VethName(),
-		"-p", "tcp", "-d", consts.GetSandboxEventIP(), "--dport", "80",
-		"-j", "REDIRECT", "--to-port", consts.GetEventProxyPort(),
+		"-p", "tcp", "-d", consts.GetSandboxHyperloopIP(), "--dport", "80",
+		"-j", "REDIRECT", "--to-port", consts.GetHyperloopProxyPort(),
 	)
 	if err != nil {
-		return fmt.Errorf("error creating HTTP redirect rule to sandbox event proxy server: %w", err)
+		return fmt.Errorf("error creating HTTP redirect rule to sandbox hyperloop proxy server: %w", err)
 	}
 
 	return nil
@@ -258,14 +258,14 @@ func (s *Slot) RemoveNetwork() error {
 			errs = append(errs, fmt.Errorf("error deleting host postrouting rule: %w", err))
 		}
 
-		// Delete event proxy redirect rule
+		// Delete hyperloop proxy redirect rule
 		err = tables.Delete(
 			"nat", "PREROUTING", "-i", s.VethName(),
-			"-p", "tcp", "-d", consts.GetSandboxEventIP(), "--dport", "80",
-			"-j", "REDIRECT", "--to-port", consts.GetEventProxyPort(),
+			"-p", "tcp", "-d", consts.GetSandboxHyperloopIP(), "--dport", "80",
+			"-j", "REDIRECT", "--to-port", consts.GetHyperloopProxyPort(),
 		)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting sandbox event proxy redirect rule: %w", err))
+			errs = append(errs, fmt.Errorf("error deleting sandbox hyperloop proxy redirect rule: %w", err))
 		}
 	}
 

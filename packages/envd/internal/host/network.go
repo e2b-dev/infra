@@ -6,8 +6,10 @@ import (
 	"strings"
 )
 
+const eventsHost = "events.e2b.dev"
+
 func AddEventsHostEntry(address string) error {
-	hostsEntry := fmt.Sprintf("%s events.e2b.dev", address)
+	hostsEntry := fmt.Sprintf("%s %s", address, eventsHost)
 	// Read existing hosts file
 	content, err := os.ReadFile("/etc/hosts")
 	if err != nil {
@@ -21,7 +23,8 @@ func AddEventsHostEntry(address string) error {
 		if line == "" {
 			continue
 		}
-		if !strings.Contains(line, "events.e2b.dev") {
+
+		if !strings.Contains(line, eventsHost) {
 			filteredLines = append(filteredLines, line)
 		}
 	}
