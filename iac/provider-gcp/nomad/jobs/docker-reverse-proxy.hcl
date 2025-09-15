@@ -1,88 +1,27 @@
-variable "gcp_zone" {
-  type    = string
-  default = ""
-}
-
-variable "gcp_region" {
-  type    = string
-  default = ""
-}
-
-variable "gcp_project_id" {
-  type    = string
-  default = ""
-}
-
-variable "image_name" {
-  type    = string
-  default = ""
-}
-
-variable "domain_name" {
-  type    = string
-  default = ""
-}
-
-variable "docker_registry" {
-  type    = string
-  default = ""
-}
-
-variable "health_check_path" {
-    type    = string
-    default = "/health"
-}
-
-variable "port_number" {
-  type    = number
-  default = 5000
-}
-
-variable "port_name" {
-  type    = string
-  default = ""
-}
-
-variable "postgres_connection_string" {
-  type    = string
-  default = ""
-}
-
-variable "google_service_account_secret" {
-  type    = string
-  default = ""
-}
-
-variable "node_pool" {
-  type    = string
-  default = ""
-}
-
 job "docker-reverse-proxy" {
-  datacenters = [var.gcp_zone]
-  node_pool = var.node_pool
-
-
-  priority = 85
+  datacenters = ["${gcp_zone}"]
+  node_pool   = "${node_pool}"
+  type        = "service"
+  priority    = 85
 
   group "reverse-proxy" {
     network {
-      port "docker-reverse-proxy" {
-        static = var.port_number
+      port "${port_name}" {
+        static = "${port_number}"
       }
     }
 
     service {
       name = "docker-reverse-proxy"
-      port = var.port_number
+      port = "${port_name}"
 
       check {
         type     = "http"
         name     = "health"
-        path     = var.health_check_path
+        path     = "${health_check_path}"
         interval = "20s"
         timeout  = "5s"
-        port     = var.port_number
+        port     = "${port_number}"
       }
     }
 
@@ -91,25 +30,25 @@ job "docker-reverse-proxy" {
 
       resources {
         memory_max = 2048
-        memory = 512
-        cpu    = 256
+        memory     = 512
+        cpu        = 256
       }
 
       env {
-        POSTGRES_CONNECTION_STRING    = var.postgres_connection_string
-        GOOGLE_SERVICE_ACCOUNT_BASE64 = var.google_service_account_secret
-        GCP_REGION                    = var.gcp_region
-        GCP_PROJECT_ID                = var.gcp_project_id
-        GCP_DOCKER_REPOSITORY_NAME    = var.docker_registry
-        DOMAIN_NAME                   = var.domain_name
+        POSTGRES_CONNECTION_STRING    = "${postgres_connection_string}"
+        GOOGLE_SERVICE_ACCOUNT_BASE64 = "${google_service_account_secret}"
+        GCP_REGION                    = "${gcp_region}"
+        GCP_PROJECT_ID                = "${gcp_project_id}"
+        GCP_DOCKER_REPOSITORY_NAME    = "${docker_registry}"
+        DOMAIN_NAME                   = "${domain_name}"
       }
 
       config {
         network_mode = "host"
-        image        = var.image_name
-        ports        = [var.port_name]
+        image        = "${image_name}"
+        ports        = ["${port_name}"]
         args = [
-          "--port", "${var.port_number}",
+          "--port", "${port_number}",
         ]
       }
     }
