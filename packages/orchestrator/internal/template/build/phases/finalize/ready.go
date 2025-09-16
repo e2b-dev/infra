@@ -16,7 +16,7 @@ const (
 	defaultReadyWait = 20 * time.Second
 
 	readyCommandRetryInterval = 2 * time.Second
-	readyCommandTimeout       = 5 * time.Minute
+	readyCommandTimeout       = 10 * time.Minute
 )
 
 func (ppb *PostProcessingBuilder) runReadyCommand(
