@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -88,12 +89,26 @@ func FilterBasedOnCursor(sandboxes []PaginatedSandbox, cursorTime time.Time, cur
 	}
 	sandboxes = filteredSandboxes
 
+	// Sort the sandboxes to apply limit correctly
+	SortPaginatedSandboxesDesc(sandboxes)
+
 	// Apply limit (get limit + 1 for pagination if possible)
 	if len(sandboxes) > int(limit) {
 		sandboxes = sandboxes[:limit+1]
 	}
 
 	return sandboxes
+}
+
+// SortPaginatedSandboxesDesc sorts the sandboxes by StartedAt (descending),
+// then by SandboxID (ascending) for stability
+func SortPaginatedSandboxesDesc(sandboxes []PaginatedSandbox) {
+	slices.SortFunc(sandboxes, func(a, b PaginatedSandbox) int {
+		if !a.StartedAt.Equal(b.StartedAt) {
+			return b.StartedAt.Compare(a.StartedAt)
+		}
+		return strings.Compare(a.SandboxID, b.SandboxID)
+	})
 }
 
 func FilterSandboxesOnMetadata(sandboxes []PaginatedSandbox, metadata *map[string]string) []PaginatedSandbox {
