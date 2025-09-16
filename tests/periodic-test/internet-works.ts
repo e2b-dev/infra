@@ -16,7 +16,7 @@ try {
   sandbox = await Sandbox.create();
   log("ℹ️ sandbox created", sandbox.sandboxId);
 
-  const out = await sandbox.commands.run("wget https://google.com", {
+  const out = await sandbox.commands.run("wget https://e2b.dev", {
     requestTimeoutMs: 10000,
   });
   log("wget output", out.stderr);
