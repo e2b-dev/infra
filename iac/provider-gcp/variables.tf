@@ -434,3 +434,15 @@ variable "min_cpu_platform" {
   type    = string
   default = "Intel Skylake"
 }
+
+variable "build_base_hugepages_percentage" {
+  description = "The percentage of memory to use for preallocated hugepages."
+  type        = number
+  default     = 60
+}
+
+variable "orchestrator_base_hugepages_percentage" {
+  description = "The percentage of memory to use for preallocated hugepages."
+  type        = number
+  default     = 80
+}
