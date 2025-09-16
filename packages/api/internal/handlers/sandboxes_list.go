@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -90,10 +90,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	runningSandboxes := getRunningSandboxes(sandboxes[instance.StateRunning], metadataFilter)
 
 	// Sort sandboxes by start time descending
-	slices.SortFunc(runningSandboxes, func(a, b utils.PaginatedSandbox) int {
-		// SortFunc sorts the list ascending by default, because we want the opposite behavior we switch `a` and `b`
-		return b.StartedAt.Compare(a.StartedAt)
-	})
+	sortPaginatedSandboxesDesc(runningSandboxes)
 
 	c.JSON(http.StatusOK, runningSandboxes)
 }
@@ -149,6 +146,9 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 
 	sandboxesInCache := a.orchestrator.GetSandboxes(ctx, &team.ID, []instance.State{instance.StateRunning, instance.StatePaused, instance.StatePausing})
 
+	// Sort sandboxes from the cache to properly apply the cursor filtering
+	sortCacheSandboxesDesc(sandboxesInCache)
+
 	// Running Sandbox IDs
 	runningSandboxesIDs := make([]string, 0)
 	for _, info := range sandboxesInCache[instance.StateRunning] {
@@ -187,13 +187,8 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		sandboxes = append(sandboxes, pausingSandboxList...)
 	}
 
-	// Sort by StartedAt (descending), then by SandboxID (ascending) for stability
-	sort.Slice(sandboxes, func(a, b int) bool {
-		if !sandboxes[a].StartedAt.Equal(sandboxes[b].StartedAt) {
-			return sandboxes[a].StartedAt.After(sandboxes[b].StartedAt)
-		}
-		return sandboxes[a].SandboxID < sandboxes[b].SandboxID
-	})
+	// We need to sort again after merging running and paused sandboxes
+	sortPaginatedSandboxesDesc(sandboxes)
 
 	var nextToken *string
 	if len(sandboxes) > int(limit) {
@@ -300,4 +295,28 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []*instance.InstanceInfo)
 	}
 
 	return sandboxes
+}
+
+// sortCacheSandboxesDesc sorts the sandboxes in the cache by StartedAt (descending),
+// then by SandboxID (ascending) for stability
+func sortCacheSandboxesDesc(cache map[instance.State][]*instance.InstanceInfo) {
+	for state := range cache {
+		slices.SortFunc(cache[state], func(a, b *instance.InstanceInfo) int {
+			if !a.StartTime.Equal(b.StartTime) {
+				return b.StartTime.Compare(a.StartTime)
+			}
+			return strings.Compare(a.SandboxID, b.SandboxID)
+		})
+	}
+}
+
+// sortPaginatedSandboxesDesc sorts the sandboxes by StartedAt (descending),
+// then by SandboxID (ascending) for stability
+func sortPaginatedSandboxesDesc(sandboxes []utils.PaginatedSandbox) {
+	slices.SortFunc(sandboxes, func(a, b utils.PaginatedSandbox) int {
+		if !a.StartedAt.Equal(b.StartedAt) {
+			return b.StartedAt.Compare(a.StartedAt)
+		}
+		return strings.Compare(a.SandboxID, b.SandboxID)
+	})
 }

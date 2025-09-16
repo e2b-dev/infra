@@ -88,7 +88,7 @@ func FilterBasedOnCursor(sandboxes []PaginatedSandbox, cursorTime time.Time, cur
 	}
 	sandboxes = filteredSandboxes
 
-	// Apply limit if provided (get limit + 1 for pagination if possible)
+	// Apply limit (get limit + 1 for pagination if possible)
 	if len(sandboxes) > int(limit) {
 		sandboxes = sandboxes[:limit+1]
 	}
