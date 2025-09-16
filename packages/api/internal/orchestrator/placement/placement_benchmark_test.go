@@ -11,9 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"go.opentelemetry.io/otel/trace/noop"
-
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
@@ -155,7 +152,6 @@ func (n *SimulatedNode) removeSandbox(sandboxID string) {
 	metrics := n.Metrics()
 
 	if sandbox, exists := n.sandboxes[sandboxID]; exists {
-
 		n.RemoveSandbox(&instance.InstanceInfo{
 			VCpu:  sandbox.RequestedCPU,
 			RamMB: sandbox.RequestedMemory,
@@ -197,7 +193,7 @@ func (n *SimulatedNode) getUtilization() (cpuUtil, memUtil float64) {
 func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig) *BenchmarkMetrics {
 	b.Helper()
 
-	ctx, cancel := context.WithTimeout(context.Background(), config.BenchmarkDuration)
+	ctx, cancel := context.WithTimeout(b.Context(), config.BenchmarkDuration)
 	defer cancel()
 
 	// Create simulated nodes
@@ -315,7 +311,7 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig) *Be
 					defer wg.Done()
 
 					placementStart := time.Now()
-					node, err := PlaceSandbox(ctx, noop.Tracer{}, algorithm, nodes, nil, &orchestratorgrpc.SandboxCreateRequest{Sandbox: &orchestratorgrpc.SandboxConfig{
+					node, err := PlaceSandbox(ctx, algorithm, nodes, nil, &orchestratorgrpc.SandboxCreateRequest{Sandbox: &orchestratorgrpc.SandboxConfig{
 						Vcpu:  sbx.RequestedCPU,
 						RamMb: sbx.RequestedMemory,
 					}})

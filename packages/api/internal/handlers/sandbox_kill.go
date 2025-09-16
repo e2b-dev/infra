@@ -31,7 +31,7 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 
 	go func(ctx context.Context) {
 		// remove any snapshots when the sandbox is not running
-		ctx, span := a.Tracer.Start(ctx, "delete-snapshot")
+		ctx, span := tracer.Start(ctx, "delete-snapshot")
 		defer span.End()
 		span.SetAttributes(telemetry.WithSandboxID(sandboxID))
 		span.SetAttributes(telemetry.WithTemplateID(env.ID))
@@ -42,7 +42,7 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 				envBuildIDs,
 				template_manager.DeleteBuild{
 					BuildID:    build.ID,
-					TemplateID: *build.EnvID,
+					TemplateID: build.EnvID,
 					ClusterID:  utils.WithClusterFallback(teamClusterID),
 					NodeID:     build.ClusterNodeID,
 				},

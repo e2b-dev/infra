@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -15,8 +16,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/server")
+
 func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanager.TemplateBuildDeleteRequest) (*emptypb.Empty, error) {
-	childCtx, childSpan := s.tracer.Start(ctx, "template-delete-request", trace.WithAttributes(
+	childCtx, childSpan := tracer.Start(ctx, "template-delete-request", trace.WithAttributes(
 		telemetry.WithTemplateID(in.TemplateID),
 		telemetry.WithBuildID(in.BuildID),
 	))
@@ -39,7 +42,7 @@ func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanag
 		})
 	}
 
-	err = template.Delete(childCtx, s.tracer, s.artifactsregistry, s.templateStorage, in.TemplateID, in.BuildID)
+	err = template.Delete(childCtx, s.artifactsregistry, s.templateStorage, in.TemplateID, in.BuildID)
 	if err != nil {
 		return nil, err
 	}

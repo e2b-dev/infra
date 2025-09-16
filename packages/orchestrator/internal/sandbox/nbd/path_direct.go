@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/Merovius/nbd/nbdnl"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
@@ -29,8 +29,9 @@ const (
 	disconnectTimeout = 30 * time.Second
 )
 
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd")
+
 type DirectPathMount struct {
-	tracer   trace.Tracer
 	ctx      context.Context // nolint:containedctx // todo: refactor so this can be removed
 	cancelfn context.CancelFunc
 
@@ -47,11 +48,10 @@ type DirectPathMount struct {
 	handlersWg sync.WaitGroup
 }
 
-func NewDirectPathMount(ctx context.Context, tracer trace.Tracer, b block.Device, devicePool *DevicePool) *DirectPathMount {
+func NewDirectPathMount(ctx context.Context, b block.Device, devicePool *DevicePool) *DirectPathMount {
 	ctx, cancelfn := context.WithCancel(context.WithoutCancel(ctx))
 
 	return &DirectPathMount{
-		tracer:      tracer,
 		Backend:     b,
 		ctx:         ctx,
 		cancelfn:    cancelfn,
@@ -102,7 +102,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			}
 			server.Close()
 
-			dispatch := NewDispatch(d.ctx, serverc, d.Backend)
+			dispatch := NewDispatch(d.ctx, serverc, d.Backend) // nolint:contextcheck // TODO: fix this later
 			// Start reading commands on the socket and dispatching them to our provider
 			d.handlersWg.Add(1)
 			go func() {
@@ -185,7 +185,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 }
 
 func (d *DirectPathMount) Close(ctx context.Context) error {
-	childCtx, childSpan := d.tracer.Start(ctx, "direct-path-mount-close")
+	childCtx, childSpan := tracer.Start(ctx, "direct-path-mount-close")
 	defer childSpan.End()
 
 	var errs []error

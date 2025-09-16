@@ -39,7 +39,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	}
 
 	// Create the build, find the template ID by alias or generate a new one
-	_, span := a.Tracer.Start(ctx, "find-template-alias")
+	_, span := tracer.Start(ctx, "find-template-alias")
 	defer span.End()
 	templateID := id.Generate()
 	isNew := true
@@ -84,7 +84,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		return
 	}
 
-	_, span = a.Tracer.Start(ctx, "posthog-analytics")
+	_, span = tracer.Start(ctx, "posthog-analytics")
 	defer span.End()
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
@@ -108,7 +108,7 @@ func (a *APIStore) GetTeamAndTier(
 	// Deprecated: use API Token authentication instead.
 	teamID *string,
 ) (*queries.Team, *queries.Tier, *api.APIError) {
-	_, span := a.Tracer.Start(c.Request.Context(), "get-team-and-tier")
+	_, span := tracer.Start(c.Request.Context(), "get-team-and-tier")
 	defer span.End()
 
 	if teamInfo, err := auth.GetTeamInfo(c); err == nil {

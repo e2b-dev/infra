@@ -3,7 +3,6 @@ package oci
 import (
 	"archive/tar"
 	"bytes"
-	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -21,7 +20,6 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci/auth"
@@ -55,7 +53,6 @@ func createFileTar(t *testing.T, fileName string) *bytes.Buffer {
 func TestCreateExportLayersOrder(t *testing.T) {
 	ctx := t.Context()
 
-	tracer := noop.NewTracerProvider().Tracer("test")
 	logger := zap.NewNop()
 
 	// Create a dummy image with some layers
@@ -83,7 +80,7 @@ func TestCreateExportLayersOrder(t *testing.T) {
 
 	// Export the layers
 	dir := t.TempDir()
-	layers, err := createExport(ctx, tracer, logger, img, dir)
+	layers, err := createExport(ctx, logger, img, dir)
 	require.NoError(t, err)
 	require.NotNil(t, layers)
 
@@ -129,8 +126,7 @@ func authHandler(handler http.Handler, username, password string) http.Handler {
 }
 
 func TestGetPublicImageWithGeneralAuth(t *testing.T) {
-	ctx := context.Background()
-	tracer := noop.NewTracerProvider().Tracer("test")
+	ctx := t.Context()
 
 	// Create a test image
 	testImage := empty.Image
@@ -189,7 +185,7 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 		require.NotNil(t, authOption)
 
 		// Now test GetPublicImage
-		img, err := GetPublicImage(ctx, tracer, imageRef, authProvider)
+		img, err := GetPublicImage(ctx, imageRef, authProvider)
 		require.NoError(t, err)
 		require.NotNil(t, img)
 
@@ -239,7 +235,7 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 		require.NotNil(t, authOption)
 
 		// Now test GetPublicImage
-		img, err := GetPublicImage(ctx, tracer, imageRef, authProvider)
+		img, err := GetPublicImage(ctx, imageRef, authProvider)
 		require.Error(t, err)
 		require.Nil(t, img)
 	})
@@ -264,7 +260,7 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 		require.NoError(t, err)
 
 		// Get image without auth provider (nil)
-		img, err := GetPublicImage(ctx, tracer, imageRef, nil)
+		img, err := GetPublicImage(ctx, imageRef, nil)
 		require.NoError(t, err)
 		require.NotNil(t, img)
 

@@ -88,7 +88,7 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, templateID api.Templa
 }
 
 func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) (*TemplateBuildResponse, *api.APIError) {
-	ctx, span := a.Tracer.Start(ctx, "build-template-request")
+	ctx, span := tracer.Start(ctx, "build-template-request")
 	defer span.End()
 
 	// Limit concurrent template builds
@@ -385,7 +385,7 @@ func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) 
 	zap.L().Info("template build requested", logger.WithTemplateID(req.TemplateID), logger.WithBuildID(buildID.String()))
 
 	return &TemplateBuildResponse{
-		TemplateID:         *build.EnvID,
+		TemplateID:         build.EnvID,
 		BuildID:            build.ID.String(),
 		Public:             public,
 		Aliases:            aliases,
@@ -530,7 +530,6 @@ func getCPUAndRAM(tier *queries.Tier, cpuCount, memoryMB *int32) (int64, int64, 
 				Code:      http.StatusBadRequest,
 			}
 		}
-
 	}
 
 	if memoryMB != nil {

@@ -67,11 +67,7 @@ func (a *APIStore) GetApiKeys(c *gin.Context) {
 
 	teamID := auth.SafeGetTeamInfo(c).Team.ID
 
-	apiKeysDB, err := a.db.Client.TeamAPIKey.
-		Query().
-		Where(teamapikey.TeamID(teamID)).
-		WithCreator().
-		All(ctx)
+	apiKeysDB, err := a.sqlcDB.GetTeamAPIKeysWithCreator(ctx, teamID)
 	if err != nil {
 		zap.L().Warn("error when getting team API keys", zap.Error(err))
 		c.String(http.StatusInternalServerError, "Error when getting team API keys")
@@ -82,10 +78,10 @@ func (a *APIStore) GetApiKeys(c *gin.Context) {
 	teamAPIKeys := make([]api.TeamAPIKey, len(apiKeysDB))
 	for i, apiKey := range apiKeysDB {
 		var createdBy *api.TeamUser
-		if apiKey.Edges.Creator != nil {
+		if apiKey.CreatedByID != nil && apiKey.CreatedByEmail != nil {
 			createdBy = &api.TeamUser{
-				Email: apiKey.Edges.Creator.Email,
-				Id:    apiKey.Edges.Creator.ID,
+				Email: *apiKey.CreatedByEmail,
+				Id:    *apiKey.CreatedByID,
 			}
 		}
 
@@ -93,10 +89,10 @@ func (a *APIStore) GetApiKeys(c *gin.Context) {
 			Id:   apiKey.ID,
 			Name: apiKey.Name,
 			Mask: api.IdentifierMaskingDetails{
-				Prefix:            apiKey.APIKeyPrefix,
-				ValueLength:       apiKey.APIKeyLength,
-				MaskedValuePrefix: apiKey.APIKeyMaskPrefix,
-				MaskedValueSuffix: apiKey.APIKeyMaskSuffix,
+				Prefix:            apiKey.ApiKeyPrefix,
+				ValueLength:       int(apiKey.ApiKeyLength),
+				MaskedValuePrefix: apiKey.ApiKeyMaskPrefix,
+				MaskedValueSuffix: apiKey.ApiKeyMaskSuffix,
 			},
 			CreatedAt: apiKey.CreatedAt,
 			CreatedBy: createdBy,

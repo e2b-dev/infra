@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"sort"
 	"strconv"
 	"time"
 
@@ -95,10 +94,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	runningSandboxes := getRunningSandboxes(sandboxes[instance.StateRunning], metadataFilter)
 
 	// Sort sandboxes by start time descending
-	slices.SortFunc(runningSandboxes, func(a, b utils.PaginatedSandbox) int {
-		// SortFunc sorts the list ascending by default, because we want the opposite behavior we switch `a` and `b`
-		return b.StartedAt.Compare(a.StartedAt)
-	})
+	utils.SortPaginatedSandboxesDesc(runningSandboxes)
 
 	c.JSON(http.StatusOK, runningSandboxes)
 }
@@ -168,8 +164,8 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		// Set the total (before we apply the limit, but already with all filters)
 		c.Header("X-Total-Running", strconv.Itoa(len(runningSandboxList)))
 
-		// Filter based on cursor and limit
-		runningSandboxList = utils.FilterBasedOnCursor(runningSandboxList, cursorTime, cursorID, limit)
+		// Filter based on cursor
+		runningSandboxList = utils.FilterBasedOnCursor(runningSandboxList, cursorTime, cursorID)
 
 		sandboxes = append(sandboxes, runningSandboxList...)
 	}
@@ -184,17 +180,15 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		}
 
 		pausingSandboxList := instanceInfoToPaginatedSandboxes(sandboxesInCache[instance.StatePausing])
+		pausingSandboxList = utils.FilterSandboxesOnMetadata(pausingSandboxList, metadataFilter)
+		pausingSandboxList = utils.FilterBasedOnCursor(pausingSandboxList, cursorTime, cursorID)
+
 		sandboxes = append(sandboxes, pausedSandboxList...)
 		sandboxes = append(sandboxes, pausingSandboxList...)
 	}
 
-	// Sort by StartedAt (descending), then by SandboxID (ascending) for stability
-	sort.Slice(sandboxes, func(a, b int) bool {
-		if !sandboxes[a].StartedAt.Equal(sandboxes[b].StartedAt) {
-			return sandboxes[a].StartedAt.After(sandboxes[b].StartedAt)
-		}
-		return sandboxes[a].SandboxID < sandboxes[b].SandboxID
-	})
+	// We need to sort again after merging running and paused sandboxes
+	utils.SortPaginatedSandboxesDesc(sandboxes)
 
 	var nextToken *string
 	if len(sandboxes) > int(limit) {

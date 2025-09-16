@@ -12,8 +12,7 @@ locals {
     NOMAD_TOKEN                  = var.nomad_acl_token_secret
     CONSUL_TOKEN                 = var.consul_acl_token_secret
     RUN_CONSUL_FILE_HASH         = local.file_hash["scripts/run-consul.sh"]
-    RUN_NOMAD_FILE_NAME          = var.setup_files["scripts/run-build-cluster-nomad.sh"]
-    RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-build-cluster-nomad.sh"]
+    RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
     NFS_IP_ADDRESS               = var.filestore_cache_enabled ? join(",", module.filestore[0].nfs_ip_addresses) : ""
@@ -21,6 +20,8 @@ locals {
     NFS_MOUNT_SUBDIR             = local.nfs_mount_subdir
     NFS_MOUNT_OPTS               = local.nfs_mount_opts
     USE_FILESTORE_CACHE          = var.filestore_cache_enabled
+    NODE_POOL                    = var.build_node_pool
+    BASE_HUGEPAGES_PERCENTAGE    = var.build_base_hugepages_percentage
   })
 }
 
@@ -152,14 +153,9 @@ resource "google_compute_instance_template" "build" {
   # which this Terraform resource depends will also need this lifecycle statement.
   lifecycle {
     create_before_destroy = true
-
-    # TODO: Temporary workaround to avoid unnecessary updates to the instance template.
-    #  This should be removed once cluster size is removed from the metadata
-    ignore_changes = [metadata]
   }
 
   depends_on = [
-    google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
-    google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
+    google_storage_bucket_object.setup_config_objects,
   ]
 }

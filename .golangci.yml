@@ -18,6 +18,7 @@ linters:
     - bidichk
     - bodyclose
     - containedctx
+    - contextcheck
     - copyloopvar
     - dogsled
     - durationcheck
@@ -25,12 +26,21 @@ linters:
     - errorlint
     - exptostd
     - forcetypeassert
+    - gocritic
     - govet
+    - iface
+    - importas
     - staticcheck
     - testifylint
     - thelper
     - tparallel
+    - usetesting
+    - wastedassign
+    - whitespace
   settings:
+    gocritic:
+      disabled-checks:
+        - appendAssign
     staticcheck:
       checks:
         - all

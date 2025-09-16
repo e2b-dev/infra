@@ -1,6 +1,6 @@
 job "orchestrator-${latest_orchestrator_job_id}" {
   type = "system"
-  node_pool = "default"
+  node_pool = "${node_pool}"
 
   priority = 90
 

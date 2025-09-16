@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"os"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/telemetry")
 
 var OTELTracingPrint = os.Getenv("OTEL_TRACING_PRINT") != "false"
 
@@ -104,7 +107,7 @@ func ReportError(ctx context.Context, message string, err error, attrs ...attrib
 	)
 }
 
-func GetContextFromRemote(ctx context.Context, tracer trace.Tracer, name, spanID, traceID string) (context.Context, trace.Span) {
+func GetContextFromRemote(ctx context.Context, name, spanID, traceID string) (context.Context, trace.Span) {
 	tid, traceIDErr := trace.TraceIDFromHex(traceID)
 	if traceIDErr != nil {
 		ReportError(

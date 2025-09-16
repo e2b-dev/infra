@@ -166,7 +166,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 					continue
 				}
 
-				wg.Go(func() error {
+				wg.Go(func() error { // nolint:contextcheck // TODO: fix this later
 					// Make sure the sandbox doesn't change while we are getting metrics (the slot could be assigned to another sandbox)
 					sbxMetrics, err := sbx.Checks.GetMetrics(timeoutGetMetrics)
 					if err != nil {
@@ -195,6 +195,9 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 						if sbxDrift > maxAcceptableSandboxClockDriftSec {
 							zap.L().Warn("Significant clock drift detected between sandbox and host",
 								logger.WithSandboxID(sbx.Runtime.SandboxID),
+								logger.WithTeamID(sbx.Runtime.TeamID),
+								logger.WithTemplateID(sbx.Runtime.TemplateID),
+								zap.String("envd_version", sbx.Config.Envd.Version),
 								zap.Time("sandbox_start", sbx.StartedAt),
 								zap.Int64("clock_host", hostTm),
 								zap.Int64("clock_sbx", sbxTm),

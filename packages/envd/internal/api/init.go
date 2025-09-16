@@ -50,7 +50,7 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	go func() {
+	go func() { // nolint:contextcheck // TODO: fix this later
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		host.PollForMMDSOpts(ctx, a.mmdsChan, a.envVars)

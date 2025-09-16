@@ -76,7 +76,7 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 			"/templates/:templateID/builds/:buildID/status",
 		),
 		customMiddleware.IncludeRoutes(
-			metricsMiddleware.Middleware(tel.MeterProvider, serviceName),
+			metricsMiddleware.Middleware(tel.MeterProvider, serviceName), // nolint:contextcheck // TODO: fix this later
 			"/sandboxes",
 			"/sandboxes/:sandboxID",
 			"/sandboxes/:sandboxID/pause",
@@ -117,7 +117,6 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 
 	// Create a team API Key auth validator
 	AuthenticationFunc := auth.CreateAuthenticationFunc(
-		apiStore.Tracer,
 		apiStore.GetTeamFromAPIKey,
 		apiStore.GetUserFromAccessToken,
 		apiStore.GetUserIDFromSupabaseToken,

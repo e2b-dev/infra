@@ -19,9 +19,10 @@ locals {
     NOMAD_TOKEN                  = var.nomad_acl_token_secret
     CONSUL_TOKEN                 = var.consul_acl_token_secret
     RUN_CONSUL_FILE_HASH         = local.file_hash["scripts/run-consul.sh"]
-    RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-api-nomad.sh"]
+    RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
+    NODE_POOL                    = var.api_node_pool
   })
 }
 
@@ -68,7 +69,7 @@ resource "google_compute_instance_group_manager" "api_pool" {
   dynamic "named_port" {
     for_each = local.api_additional_ports
     content {
-      name = named_port.value.name
+      name = "${var.prefix}${named_port.value.name}"
       port = named_port.value.port
     }
   }

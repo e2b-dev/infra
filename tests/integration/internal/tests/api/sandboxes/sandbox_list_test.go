@@ -1,4 +1,4 @@
-package api
+package sandboxes
 
 import (
 	"fmt"
@@ -242,6 +242,9 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 	sbx2 := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
 	sandbox2ID := sbx2.SandboxID
 
+	sbx3 := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
+	sandbox3ID := sbx3.SandboxID
+
 	// Test pagination with limit
 	var limit int32 = 1
 
@@ -254,12 +257,12 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, listResponse.StatusCode())
 	require.Len(t, *listResponse.JSON200, 1)
-	assert.Equal(t, sandbox2ID, (*listResponse.JSON200)[0].SandboxID)
+	assert.Equal(t, sandbox3ID, (*listResponse.JSON200)[0].SandboxID)
 
 	totalHeader := listResponse.HTTPResponse.Header.Get("X-Total-Running")
 	total, err := strconv.Atoi(totalHeader)
 	require.NoError(t, err)
-	assert.Equal(t, 2, total)
+	assert.Equal(t, 3, total)
 
 	// Get second page using the next token from first response
 	nextToken := listResponse.HTTPResponse.Header.Get("X-Next-Token")
@@ -274,11 +277,91 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, secondPageResponse.StatusCode())
 	require.Len(t, *secondPageResponse.JSON200, 1)
-	assert.Equal(t, sandbox1ID, (*secondPageResponse.JSON200)[0].SandboxID)
+	assert.Equal(t, sandbox2ID, (*secondPageResponse.JSON200)[0].SandboxID)
+
+	// Get third page using the next token from second response
+	nextToken = secondPageResponse.HTTPResponse.Header.Get("X-Next-Token")
+	assert.NotEmpty(t, nextToken)
+
+	thirdPageResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
+		Limit:     &limit,
+		NextToken: &nextToken,
+		State:     &[]api.SandboxState{api.Running},
+		Metadata:  &metadataString,
+	}, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, thirdPageResponse.StatusCode())
+	require.Len(t, *thirdPageResponse.JSON200, 1)
+	assert.Equal(t, sandbox1ID, (*thirdPageResponse.JSON200)[0].SandboxID)
 
 	// No more pages
-	nextToken = secondPageResponse.HTTPResponse.Header.Get("X-Next-Token")
+	nextToken = thirdPageResponse.HTTPResponse.Header.Get("X-Next-Token")
 	assert.Empty(t, nextToken)
+}
+
+func TestSandboxListPaginationRunningLargerLimit(t *testing.T) {
+	c := setup.GetAPIClient()
+
+	metadataKey := "uniqueIdentifier"
+	metadataValue := id.Generate()
+	metadataString := fmt.Sprintf("%s=%s", metadataKey, metadataValue)
+
+	sbxsCount := 12
+	sandboxes := make([]string, sbxsCount)
+	for i := range sbxsCount {
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
+		sandboxes[sbxsCount-i-1] = sbx.SandboxID
+
+		t.Logf("Created sandbox %d/%d: %s", i+1, sbxsCount, sbx.SandboxID)
+	}
+
+	t.Run("check all sandboxes list", func(t *testing.T) {
+		listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
+			Limit:    sharedUtils.ToPtr(int32(sbxsCount)),
+			State:    &[]api.SandboxState{api.Running},
+			Metadata: &metadataString,
+		}, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, listResponse.StatusCode())
+		require.Len(t, *listResponse.JSON200, sbxsCount)
+		for i := range sbxsCount {
+			assert.Equal(t, sandboxes[i], (*listResponse.JSON200)[i].SandboxID)
+		}
+	})
+
+	t.Run("check paginated list", func(t *testing.T) {
+		// Test pagination with limit
+		limit := 2
+
+		var nextToken *string
+		for i := 0; i < sbxsCount; i += limit {
+			sbxID := sandboxes[i]
+
+			listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
+				Limit:     sharedUtils.ToPtr(int32(limit)),
+				NextToken: nextToken,
+				State:     &[]api.SandboxState{api.Running},
+				Metadata:  &metadataString,
+			}, setup.WithAPIKey())
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, listResponse.StatusCode())
+			require.Len(t, *listResponse.JSON200, int(limit))
+			assert.Equal(t, sbxID, (*listResponse.JSON200)[0].SandboxID, "page starting at %d should start with sandbox %s, token %s", i, sbxID, sharedUtils.Sprintp(nextToken))
+
+			totalHeader := listResponse.HTTPResponse.Header.Get("X-Total-Running")
+			total, err := strconv.Atoi(totalHeader)
+			require.NoError(t, err)
+			assert.Equal(t, sbxsCount, total)
+
+			nextToken = sharedUtils.ToPtr(listResponse.HTTPResponse.Header.Get("X-Next-Token"))
+
+			if i+limit == sbxsCount {
+				assert.Empty(t, *nextToken)
+			} else {
+				assert.NotEmpty(t, *nextToken)
+			}
+		}
+	})
 }
 
 func TestSandboxListPaginationPaused(t *testing.T) {

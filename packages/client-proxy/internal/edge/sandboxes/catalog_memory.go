@@ -6,27 +6,24 @@ import (
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
-	"go.opentelemetry.io/otel/trace"
 )
 
 type MemorySandboxCatalog struct {
-	cache  *ttlcache.Cache[string, *SandboxInfo]
-	mtx    sync.RWMutex
-	tracer trace.Tracer
+	cache *ttlcache.Cache[string, *SandboxInfo]
+	mtx   sync.RWMutex
 }
 
-func NewMemorySandboxesCatalog(tracer trace.Tracer) SandboxesCatalog {
+func NewMemorySandboxesCatalog() SandboxesCatalog {
 	cache := ttlcache.New[string, *SandboxInfo](ttlcache.WithDisableTouchOnHit[string, *SandboxInfo]())
 	go cache.Start()
 
 	return &MemorySandboxCatalog{
-		tracer: tracer,
-		cache:  cache,
+		cache: cache,
 	}
 }
 
 func (c *MemorySandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) (*SandboxInfo, error) {
-	_, span := c.tracer.Start(ctx, "sandbox-catalog-get")
+	_, span := tracer.Start(ctx, "sandbox-catalog-get")
 	defer span.End()
 
 	c.mtx.RLock()
@@ -41,7 +38,7 @@ func (c *MemorySandboxCatalog) GetSandbox(ctx context.Context, sandboxID string)
 }
 
 func (c *MemorySandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string, sandboxInfo *SandboxInfo, expiration time.Duration) error {
-	_, span := c.tracer.Start(ctx, "sandbox-catalog-store")
+	_, span := tracer.Start(ctx, "sandbox-catalog-store")
 	defer span.End()
 
 	c.mtx.Lock()
@@ -52,13 +49,16 @@ func (c *MemorySandboxCatalog) StoreSandbox(ctx context.Context, sandboxID strin
 }
 
 func (c *MemorySandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID string, executionID string) error {
-	_, span := c.tracer.Start(ctx, "sandbox-catalog-delete")
+	_, span := tracer.Start(ctx, "sandbox-catalog-delete")
 	defer span.End()
 
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
 	item := c.cache.Get(sandboxID)
+	if item == nil {
+		return nil
+	}
 
 	// No need for removal here
 	if item.IsExpired() || item.Value() == nil {

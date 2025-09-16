@@ -144,7 +144,7 @@ func TestFilePermissions(t *testing.T) {
 }
 
 func TestStat(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	c := setup.GetAPIClient()
@@ -186,7 +186,7 @@ func TestStat(t *testing.T) {
 }
 
 func TestListDirFileEntry(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	c := setup.GetAPIClient()
@@ -232,7 +232,7 @@ func TestListDirFileEntry(t *testing.T) {
 }
 
 func TestListDirEntry(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	c := setup.GetAPIClient()

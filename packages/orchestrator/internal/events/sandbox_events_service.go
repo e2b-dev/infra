@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -56,14 +57,8 @@ func (es *SandboxEventsService) HandleEvent(ctx context.Context, event event.San
 		return
 	}
 
-	// Create a new context without cancel, so we can pass it to the goroutines
-	// and not worry about the parent context being cancelled.
-	// This is important because we want to ensure that the goroutines are not cancelled
-	// when the parent context is cancelled.
-	childCtx := context.WithoutCancel(ctx)
-
-	go es.handlePubSubEvent(childCtx, event)
-	go es.handleClickhouseBatcherEvent(event)
+	go es.handlePubSubEvent(ctx, event)
+	go es.handleClickhouseBatcherEvent(event) // nolint:contextcheck // TODO: fix this later
 }
 
 func (es *SandboxEventsService) handlePubSubEvent(ctx context.Context, event event.SandboxEvent) {
@@ -114,6 +109,15 @@ func (es *SandboxEventsService) handleClickhouseBatcherEvent(event event.Sandbox
 	if flagErr != nil {
 		es.logger.Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
 	}
+
+	eventData := ""
+	eventDataJson, err := json.Marshal(event.EventData)
+	if err != nil {
+		es.logger.Error("error marshalling sandbox event data", zap.Error(err))
+	} else {
+		eventData = string(eventDataJson)
+	}
+
 	if sandboxLifeCycleEventsWriteFlag {
 		err := es.batcher.Push(clickhouse.SandboxEvent{
 			Timestamp:          event.Timestamp,
@@ -124,7 +128,7 @@ func (es *SandboxEventsService) handleClickhouseBatcherEvent(event event.Sandbox
 			SandboxExecutionID: event.SandboxExecutionID,
 			EventCategory:      event.EventCategory,
 			EventLabel:         event.EventLabel,
-			EventData:          sql.NullString{String: event.EventData, Valid: event.EventData != ""},
+			EventData:          sql.NullString{String: eventData, Valid: eventData != ""},
 		})
 		if err != nil {
 			es.logger.Error("error inserting sandbox event",
