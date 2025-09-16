@@ -21,7 +21,7 @@ try {
   });
   log("wget output", out.stderr);
 
-  const internetWorking = out.stderr.includes("200 OK");
+  const internetWorking = out.stderr.includes("204 No Content");
   // verify internet is working
   if (!internetWorking) {
     log("Internet is not working");
