@@ -118,7 +118,7 @@ func encodePayload[PayloadT any](msg PayloadT) ([]byte, error) {
 }
 
 func decodePayload[PayloadT any](data string, out *PayloadT) error {
-	zap.L().Debug("decoding payload", zap.String("data", data))
+	zap.L().Info("decoding payload", zap.String("data", data))
 	return json.Unmarshal([]byte(data), out)
 }
 
