@@ -21,6 +21,7 @@ locals {
     NFS_MOUNT_OPTS               = local.nfs_mount_opts
     USE_FILESTORE_CACHE          = var.filestore_cache_enabled
     NODE_POOL                    = var.orchestrator_node_pool
+    BASE_HUGEPAGES_PERCENTAGE    = var.orchestrator_base_hugepages_percentage
   })
 }
 
