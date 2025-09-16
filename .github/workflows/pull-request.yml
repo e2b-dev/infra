@@ -10,8 +10,6 @@ concurrency:
 
 on:
   pull_request:
-    branches:
-      - main
 
 jobs:
   lint:

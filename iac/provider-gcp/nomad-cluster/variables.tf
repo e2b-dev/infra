@@ -315,3 +315,13 @@ variable "orchestrator_node_pool" {
   description = "The name of the Nomad pool."
   type        = string
 }
+
+variable "build_base_hugepages_percentage" {
+  description = "The percentage of memory to use for preallocated hugepages."
+  type        = number
+}
+
+variable "orchestrator_base_hugepages_percentage" {
+  description = "The percentage of memory to use for preallocated hugepages."
+  type        = number
+}
