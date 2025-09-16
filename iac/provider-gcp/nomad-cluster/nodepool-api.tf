@@ -69,7 +69,7 @@ resource "google_compute_instance_group_manager" "api_pool" {
   dynamic "named_port" {
     for_each = local.api_additional_ports
     content {
-      name = named_port.value.name
+      name = "${var.prefix}${named_port.value.name}"
       port = named_port.value.port
     }
   }
