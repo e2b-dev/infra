@@ -160,8 +160,8 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		// Set the total (before we apply the limit, but already with all filters)
 		c.Header("X-Total-Running", strconv.Itoa(len(runningSandboxList)))
 
-		// Filter based on cursor and limit
-		runningSandboxList = utils.FilterBasedOnCursor(runningSandboxList, cursorTime, cursorID, limit)
+		// Filter based on cursor
+		runningSandboxList = utils.FilterBasedOnCursor(runningSandboxList, cursorTime, cursorID)
 
 		sandboxes = append(sandboxes, runningSandboxList...)
 	}
@@ -177,7 +177,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 
 		pausingSandboxList := instanceInfoToPaginatedSandboxes(sandboxesInCache[instance.StatePausing])
 		pausingSandboxList = utils.FilterSandboxesOnMetadata(pausingSandboxList, metadataFilter)
-		pausingSandboxList = utils.FilterBasedOnCursor(pausingSandboxList, cursorTime, cursorID, limit)
+		pausingSandboxList = utils.FilterBasedOnCursor(pausingSandboxList, cursorTime, cursorID)
 
 		sandboxes = append(sandboxes, pausedSandboxList...)
 		sandboxes = append(sandboxes, pausingSandboxList...)

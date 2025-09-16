@@ -76,7 +76,7 @@ func ParseCursor(cursor string) (time.Time, string, error) {
 	return cursorTime, parts[1], nil
 }
 
-func FilterBasedOnCursor(sandboxes []PaginatedSandbox, cursorTime time.Time, cursorID string, limit int32) []PaginatedSandbox {
+func FilterBasedOnCursor(sandboxes []PaginatedSandbox, cursorTime time.Time, cursorID string) []PaginatedSandbox {
 	// Apply cursor-based filtering if cursor is provided
 	var filteredSandboxes []PaginatedSandbox
 	for _, sandbox := range sandboxes {
@@ -87,17 +87,8 @@ func FilterBasedOnCursor(sandboxes []PaginatedSandbox, cursorTime time.Time, cur
 			filteredSandboxes = append(filteredSandboxes, sandbox)
 		}
 	}
-	sandboxes = filteredSandboxes
 
-	// Sort the sandboxes to apply limit correctly
-	SortPaginatedSandboxesDesc(sandboxes)
-
-	// Apply limit (get limit + 1 for pagination if possible)
-	if len(sandboxes) > int(limit) {
-		sandboxes = sandboxes[:limit+1]
-	}
-
-	return sandboxes
+	return filteredSandboxes
 }
 
 // SortPaginatedSandboxesDesc sorts the sandboxes by StartedAt (descending),
