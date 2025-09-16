@@ -21,17 +21,29 @@ func (m *Map[K, V]) Delete(key K) {
 
 func (m *Map[K, V]) Load(key K) (value V, ok bool) {
 	v, ok := m.m.Load(key)
-	if ok {
-		value, ok = v.(V)
+	if !ok {
+		return
 	}
+
+	value, ok = v.(V)
+	if !ok {
+		panic(fmt.Sprintf("invalid value type: %T", v))
+	}
+
 	return
 }
 
 func (m *Map[K, V]) LoadAndDelete(key K) (value V, loaded bool) {
 	v, loaded := m.m.LoadAndDelete(key)
-	if loaded {
-		value, loaded = v.(V)
+	if !loaded {
+		return
 	}
+
+	value, cast := v.(V)
+	if !cast {
+		panic(fmt.Sprintf("invalid value type: %T", v))
+	}
+
 	return
 }
 
