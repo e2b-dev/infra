@@ -32,7 +32,7 @@ const (
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd")
 
 type DirectPathMount struct {
-	ctx      context.Context // nolint:containedctx // todo: refactor so this can be removed
+	ctx      context.Context //nolint:containedctx // todo: refactor so this can be removed
 	cancelfn context.CancelFunc
 
 	devicePool *DevicePool
@@ -102,7 +102,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			}
 			server.Close()
 
-			dispatch := NewDispatch(d.ctx, serverc, d.Backend) // nolint:contextcheck // TODO: fix this later
+			dispatch := NewDispatch(d.ctx, serverc, d.Backend) //nolint:contextcheck // TODO: fix this later
 			// Start reading commands on the socket and dispatching them to our provider
 			d.handlersWg.Add(1)
 			go func() {

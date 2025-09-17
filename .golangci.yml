@@ -29,6 +29,7 @@ linters:
     - govet
     - iface
     - importas
+    - nolintlint
     - staticcheck
     - testifylint
     - thelper

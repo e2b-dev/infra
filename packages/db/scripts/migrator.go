@@ -42,7 +42,7 @@ func main() {
 	// Create a session locking
 	sessionLocker, err := lock.NewPostgresSessionLocker()
 	if err != nil {
-		log.Fatalf("failed to create session locker: %v", err) // nolint:gocritic // no harm in exiting after defer here
+		log.Fatalf("failed to create session locker: %v", err) //nolint:gocritic // no harm in exiting after defer here
 	}
 
 	goose.SetTableName(trackingTable)

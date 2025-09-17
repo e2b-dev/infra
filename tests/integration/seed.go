@@ -48,7 +48,7 @@ func main() {
 
 	err = seed(database, data)
 	if err != nil {
-		log.Fatalf("Failed to execute seed: %v", err) // nolint:gocritic // no harm in exiting after defer here
+		log.Fatalf("Failed to execute seed: %v", err) //nolint:gocritic // no harm in exiting after defer here
 	}
 
 	fmt.Println("Seed completed successfully.")
