@@ -14,7 +14,7 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
 
-func TestAccessingHyperloopServer(t *testing.T) {
+func TestAccessingHyperloopServerViaIP(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -23,7 +23,31 @@ func TestAccessingHyperloopServer(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "/bin/bash", "-c", "curl -o output.txt http://203.0.113.0/me")
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "/bin/bash", "-c", "curl -o output.txt http://192.0.2.1/me")
+	require.NoError(t, err, "Should be able to contact hyperloop server")
+
+	readPath := "output.txt"
+	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
+		ctx,
+		&envdapi.GetFilesParams{Path: &readPath, Username: "user"},
+		setup.WithSandbox(sbx.SandboxID),
+	)
+
+	require.NoError(t, readErr)
+	assert.Equal(t, http.StatusOK, readRes.StatusCode())
+	assert.Equal(t, fmt.Sprintf("Responding to sandbox %s", sbx.SandboxID), string(readRes.Body))
+}
+
+func TestAccessingHyperloopServerViaDomain(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	client := setup.GetAPIClient()
+	sbx := utils.SetupSandboxWithCleanup(t, client, utils.WithTimeout(120))
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "/bin/bash", "-c", "curl -o output.txt http://events.e2b.dev/me")
 	require.NoError(t, err, "Should be able to contact hyperloop server")
 
 	readPath := "output.txt"
