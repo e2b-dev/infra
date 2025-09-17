@@ -316,13 +316,12 @@ func ResumeSandbox(
 	useClickhouseMetrics bool,
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
-	ctx, childSpan := tracer.Start(ctx, "resume-sandbox")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "resume-sandbox")
+	defer span.End()
 
 	runCtx := context.WithoutCancel(ctx)
 	runCtx, runSpan := tracer.Start(runCtx, "execute sandbox",
 		trace.WithNewRoot(),
-		trace.WithLinks(trace.LinkFromContext(ctx)),
 	)
 	defer func() {
 		if e != nil {
@@ -330,6 +329,8 @@ func ResumeSandbox(
 			runSpan.End()
 		}
 	}()
+
+	span.AddLink(trace.LinkFromContext(runCtx))
 
 	exit := utils.NewErrorOnce()
 
