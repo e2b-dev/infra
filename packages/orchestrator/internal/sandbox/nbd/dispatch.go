@@ -9,12 +9,14 @@ import (
 	"sync"
 
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 var ErrShuttingDown = errors.New("shutting down. Cannot serve any new requests")
 
 type Provider interface {
-	io.ReaderAt
+	storage.ReaderAtCtx
 	io.WriterAt
 	Size() (int64, error)
 }
@@ -51,8 +53,13 @@ type Response struct {
 	Handle uint64
 }
 
+type ReaderWriter interface {
+	Read(p []byte) (int, error)
+	Write(p []byte) (int, error)
+}
+
 type Dispatch struct {
-	fp               io.ReadWriteCloser
+	fp               ReaderWriter
 	responseHeader   []byte
 	writeLock        sync.Mutex
 	prov             Provider
@@ -62,7 +69,7 @@ type Dispatch struct {
 	fatal            chan error
 }
 
-func NewDispatch(fp io.ReadWriteCloser, prov Provider) *Dispatch {
+func NewDispatch(fp ReaderWriter, prov Provider) *Dispatch {
 	d := &Dispatch{
 		responseHeader: make([]byte, 16),
 		fp:             fp,
@@ -214,7 +221,7 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 		data := make([]byte, length)
 
 		go func() {
-			_, err := d.prov.ReadAt(data, int64(from))
+			_, err := d.prov.ReadAt(ctx, data, int64(from))
 			errchan <- err
 		}()
 
