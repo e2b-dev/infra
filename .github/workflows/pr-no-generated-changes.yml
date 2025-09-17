@@ -1,0 +1,36 @@
+name: Ensure generated files are up-to-date
+on: [workflow_call]
+
+jobs:
+  run-check:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Parse .tool-versions
+        uses: wistia/parse-tool-versions@v2.1.1
+
+      - name: Setup Go
+        uses: ./.github/actions/go-setup-cache
+        with:
+          job_key: integrity-check
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "${{ env.TERRAFORM }}"
+
+      - name: Run integrity check
+        run: make tidy
+
+      - name: Fix tracers
+        run: ./scripts/fix-tracers.sh
+
+      - name: Generate mocks
+        run: make generate-mocks
+
+      - name: Format code
+        run: make fmt
+
+      - name: Fail if changes were made
+        run: git diff --exit-code
