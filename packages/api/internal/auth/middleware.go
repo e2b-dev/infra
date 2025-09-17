@@ -21,7 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/auth")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/auth/blah/blah")
 
 var adminToken = os.Getenv("ADMIN_TOKEN")
 
