@@ -17,7 +17,7 @@ import (
 )
 
 type Chunker struct {
-	ctx context.Context // nolint:containedctx // todo: refactor so this can be removed
+	ctx context.Context //nolint:containedctx // todo: refactor so this can be removed
 
 	base    storage.ReaderAtCtx
 	cache   *Cache

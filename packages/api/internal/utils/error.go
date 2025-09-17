@@ -98,7 +98,7 @@ func MultiErrorHandler(me openapi3.MultiError) error {
 
 	// Recreate logic from oapi-codegen/gin-middleware to handle the error
 	// Source: https://github.com/oapi-codegen/gin-middleware/blob/main/oapi_validate.go
-	switch e := err.(type) { // nolint:errorlint  // we copied this and don't want it to change
+	switch e := err.(type) { //nolint:errorlint  // we copied this and don't want it to change
 	case *openapi3filter.RequestError:
 		// We've got a bad request
 		// Split up the verbose error by lines and return the first one

@@ -48,7 +48,7 @@ func main() {
 
 	err := buildTemplate(ctx, *kernelVersion, *fcVersion, *templateID, *buildID)
 	if err != nil {
-		log.Fatalf("error building template: %v", err) // nolint:gocritic // probably fine to bail if we're done?
+		log.Fatalf("error building template: %v", err) //nolint:gocritic // probably fine to bail if we're done?
 	}
 }
 
@@ -131,7 +131,7 @@ func buildTemplate(
 		}
 	}()
 
-	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider() // nolint:contextcheck // TODO: fix this later
+	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider() //nolint:contextcheck // TODO: fix this later
 	if err != nil {
 		return fmt.Errorf("error getting artifacts registry provider: %w", err)
 	}

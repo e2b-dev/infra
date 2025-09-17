@@ -362,7 +362,7 @@ func run() int {
 		// close all resources that needs to be closed gracefully
 		for _, c := range closers {
 			zap.L().Info(fmt.Sprintf("Closing %T", c))
-			if err := c.Close(closeCtx); err != nil { // nolint:contextcheck // TODO: fix this later
+			if err := c.Close(closeCtx); err != nil { //nolint:contextcheck // TODO: fix this later
 				zap.L().Error("error during shutdown", zap.Error(err))
 			}
 		}
