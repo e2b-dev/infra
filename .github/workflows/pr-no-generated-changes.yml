@@ -1,5 +1,7 @@
 name: Ensure generated files are up-to-date
 on: [workflow_call]
+permissions:
+  contents: read
 
 jobs:
   run-check:
