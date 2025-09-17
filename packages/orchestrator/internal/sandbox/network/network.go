@@ -219,7 +219,7 @@ func (s *Slot) CreateNetwork() error {
 	// Redirect traffic destined for hyperloop proxy
 	err = tables.Append(
 		"nat", "PREROUTING", "-i", s.VethName(),
-		"-p", "tcp", "-d", consts.GetHyperloopIP(), "--dport", "80",
+		"-p", "tcp", "-d", s.HyperloopIPString(), "--dport", "80",
 		"-j", "REDIRECT", "--to-port", consts.GetHyperloopProxyPort(),
 	)
 	if err != nil {
@@ -261,7 +261,7 @@ func (s *Slot) RemoveNetwork() error {
 		// Delete hyperloop proxy redirect rule
 		err = tables.Delete(
 			"nat", "PREROUTING", "-i", s.VethName(),
-			"-p", "tcp", "-d", consts.GetHyperloopIP(), "--dport", "80",
+			"-p", "tcp", "-d", s.HyperloopIPString(), "--dport", "80",
 			"-j", "REDIRECT", "--to-port", consts.GetHyperloopProxyPort(),
 		)
 		if err != nil {
