@@ -135,6 +135,8 @@ func CreateSandbox(
 	ctx, span := tracer.Start(ctx, "create-sandbox")
 	defer span.End()
 
+	runCtx := context.WithoutCancel(ctx)
+
 	exit := utils.NewErrorOnce()
 
 	cleanup := NewCleanup()
@@ -174,7 +176,6 @@ func CreateSandbox(
 	var rootfsProvider rootfs.Provider
 	if rootfsCachePath == "" {
 		rootfsProvider, err = rootfs.NewNBDProvider(
-			ctx,
 			rootFS,
 			sandboxFiles.SandboxCacheRootfsPath(),
 			devicePool,
@@ -194,7 +195,7 @@ func CreateSandbox(
 		return rootfsProvider.Close(ctx)
 	})
 	go func() {
-		runErr := rootfsProvider.Start(ctx)
+		runErr := rootfsProvider.Start(runCtx)
 		if runErr != nil {
 			zap.L().Error("rootfs overlay error", zap.Error(runErr))
 		}
@@ -279,11 +280,7 @@ func CreateSandbox(
 		exit: exit,
 	}
 
-	checks, err := NewChecks(ctx, sbx, false)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create health check: %w", err)
-	}
-	sbx.Checks = checks
+	sbx.Checks = NewChecks(sbx, false)
 
 	cleanup.AddPriority(func(ctx context.Context) error {
 		// Stop the sandbox first if it is still running, otherwise do nothing
@@ -291,7 +288,7 @@ func CreateSandbox(
 	})
 
 	go func() {
-		ctx, span := tracer.Start(context.WithoutCancel(ctx), "sandbox-exit-wait", trace.WithNewRoot())
+		ctx, span := tracer.Start(runCtx, "sandbox-exit-wait")
 		defer span.End()
 
 		// If the process exists, stop the sandbox properly
@@ -319,8 +316,21 @@ func ResumeSandbox(
 	useClickhouseMetrics bool,
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
-	ctx, childSpan := tracer.Start(ctx, "resume-sandbox")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "resume-sandbox")
+	defer span.End()
+
+	runCtx := context.WithoutCancel(ctx)
+	runCtx, runSpan := tracer.Start(runCtx, "execute sandbox",
+		trace.WithNewRoot(),
+	)
+	defer func() {
+		if e != nil {
+			runSpan.AddEvent("resume sandbox aborted")
+			runSpan.End()
+		}
+	}()
+
+	span.AddLink(trace.LinkFromContext(runCtx))
 
 	exit := utils.NewErrorOnce()
 
@@ -363,7 +373,6 @@ func ResumeSandbox(
 	telemetry.ReportEvent(ctx, "got template rootfs")
 
 	rootfsOverlay, err := rootfs.NewNBDProvider(
-		ctx,
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(),
 		devicePool,
@@ -379,7 +388,7 @@ func ResumeSandbox(
 	telemetry.ReportEvent(ctx, "created rootfs overlay")
 
 	go func() {
-		runErr := rootfsOverlay.Start(ctx)
+		runErr := rootfsOverlay.Start(runCtx)
 		if runErr != nil {
 			zap.L().Error("rootfs overlay error", zap.Error(runErr))
 		}
@@ -395,7 +404,7 @@ func ResumeSandbox(
 	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
 
 	fcUffd, err := serveMemory(
-		ctx,
+		runCtx,
 		cleanup,
 		memfile,
 		fcUffdPath,
@@ -518,12 +527,7 @@ func ResumeSandbox(
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
-	checks, err := NewChecks(ctx, sbx, useClickhouseMetrics)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create health check: %w", err)
-	}
-
-	sbx.Checks = checks
+	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
 
 	cleanup.AddPriority(func(ctx context.Context) error {
 		// Stop the sandbox first if it is still running, otherwise do nothing
@@ -538,10 +542,12 @@ func ResumeSandbox(
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
 
-	go sbx.Checks.Start() //nolint:contextcheck // TODO: fix this later
+	go sbx.Checks.Start(runCtx)
 
 	go func() {
-		ctx, span := tracer.Start(context.WithoutCancel(ctx), "sandbox-exit-wait", trace.WithNewRoot())
+		defer runSpan.End()
+
+		ctx, span := tracer.Start(runCtx, "sandbox-exit-wait")
 		defer span.End()
 
 		// Wait for either uffd or fc process to exit

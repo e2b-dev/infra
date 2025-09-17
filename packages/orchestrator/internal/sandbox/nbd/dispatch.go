@@ -52,7 +52,6 @@ type Response struct {
 }
 
 type Dispatch struct {
-	ctx              context.Context //nolint:containedctx // todo: refactor so this can be removed
 	fp               io.ReadWriteCloser
 	responseHeader   []byte
 	writeLock        sync.Mutex
@@ -63,12 +62,11 @@ type Dispatch struct {
 	fatal            chan error
 }
 
-func NewDispatch(ctx context.Context, fp io.ReadWriteCloser, prov Provider) *Dispatch {
+func NewDispatch(fp io.ReadWriteCloser, prov Provider) *Dispatch {
 	d := &Dispatch{
 		responseHeader: make([]byte, 16),
 		fp:             fp,
 		prov:           prov,
-		ctx:            ctx,
 		fatal:          make(chan error, 1),
 	}
 
@@ -114,7 +112,7 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
  * This dispatches incoming NBD requests sequentially to the provider.
  *
  */
-func (d *Dispatch) Handle() error {
+func (d *Dispatch) Handle(ctx context.Context) error {
 	buffer := make([]byte, dispatchBufferSize)
 	wp := 0
 
@@ -135,8 +133,8 @@ func (d *Dispatch) Handle() error {
 			select {
 			case err := <-d.fatal:
 				return err
-			case <-d.ctx.Done():
-				return d.ctx.Err()
+			case <-ctx.Done():
+				return ctx.Err()
 			default:
 			}
 
@@ -162,7 +160,7 @@ func (d *Dispatch) Handle() error {
 					return fmt.Errorf("not supported: Flush")
 				case NBDCmdRead:
 					rp += 28
-					err := d.cmdRead(request.Handle, request.From, request.Length)
+					err := d.cmdRead(ctx, request.Handle, request.From, request.Length)
 					if err != nil {
 						return err
 					}
@@ -175,7 +173,7 @@ func (d *Dispatch) Handle() error {
 					data := make([]byte, request.Length)
 					copy(data, buffer[rp:rp+int(request.Length)])
 					rp += int(request.Length)
-					err := d.cmdWrite(request.Handle, request.From, data)
+					err := d.cmdWrite(ctx, request.Handle, request.From, data)
 					if err != nil {
 						return err
 					}
@@ -200,7 +198,7 @@ func (d *Dispatch) Handle() error {
 	}
 }
 
-func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
+func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
 	d.shuttingDownLock.Lock()
 	if !d.shuttingDown {
 		d.pendingResponses.Add(1)
@@ -222,7 +220,7 @@ func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) e
 
 		// Wait until either the ReadAt completed, or our context is cancelled...
 		select {
-		case <-d.ctx.Done():
+		case <-ctx.Done():
 			return d.writeResponse(1, handle, []byte{})
 		case err := <-errchan:
 			if err != nil {
@@ -249,7 +247,7 @@ func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) e
 	return nil
 }
 
-func (d *Dispatch) cmdWrite(cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
+func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
 	d.shuttingDownLock.Lock()
 	if !d.shuttingDown {
 		d.pendingResponses.Add(1)
@@ -269,7 +267,7 @@ func (d *Dispatch) cmdWrite(cmdHandle uint64, cmdFrom uint64, cmdData []byte) er
 
 		// Wait until either the WriteAt completed, or our context is cancelled...
 		select {
-		case <-d.ctx.Done():
+		case <-ctx.Done():
 			return d.writeResponse(1, handle, []byte{})
 		case err := <-errchan:
 			if err != nil {
