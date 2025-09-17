@@ -545,6 +545,8 @@ func ResumeSandbox(
 	go sbx.Checks.Start(runCtx)
 
 	go func() {
+		defer runSpan.End()
+
 		ctx, span := tracer.Start(runCtx, "sandbox-exit-wait")
 		defer span.End()
 
