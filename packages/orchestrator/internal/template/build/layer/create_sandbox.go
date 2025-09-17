@@ -45,7 +45,7 @@ func (cs *CreateSandbox) Sandbox(
 	ctx context.Context,
 	layerExecutor *LayerExecutor,
 	sourceTemplate sbxtemplate.Template,
-) (*sandbox.Sandbox, error) {
+) (s *sandbox.Sandbox, err error) {
 	// Create new memfile with the size of the sandbox RAM, this updates the underlying memfile.
 	// This is ok as the sandbox is started from the beginning.
 	memfile, err := block.NewEmpty(
@@ -90,6 +90,12 @@ func (cs *CreateSandbox) Sandbox(
 	if err != nil {
 		return nil, fmt.Errorf("create sandbox: %w", err)
 	}
+	defer func() {
+		if err != nil {
+			// Close the sandbox in case of error to avoid leaking resources
+			_ = sbx.Close(ctx)
+		}
+	}()
 
 	err = sbx.WaitForEnvd(
 		ctx,
