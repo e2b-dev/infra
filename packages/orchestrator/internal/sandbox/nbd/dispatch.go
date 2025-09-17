@@ -59,7 +59,6 @@ type ReaderWriter interface {
 }
 
 type Dispatch struct {
-	ctx              context.Context // nolint:containedctx // todo: refactor so this can be removed
 	fp               ReaderWriter
 	responseHeader   []byte
 	writeLock        sync.Mutex
@@ -70,12 +69,11 @@ type Dispatch struct {
 	fatal            chan error
 }
 
-func NewDispatch(ctx context.Context, fp ReaderWriter, prov Provider) *Dispatch {
+func NewDispatch(fp io.ReadWriteCloser, prov Provider) *Dispatch {
 	d := &Dispatch{
 		responseHeader: make([]byte, 16),
 		fp:             fp,
 		prov:           prov,
-		ctx:            ctx,
 		fatal:          make(chan error, 1),
 	}
 
@@ -145,8 +143,8 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 			select {
 			case err := <-d.fatal:
 				return err
-			case <-d.ctx.Done():
-				return d.ctx.Err()
+			case <-ctx.Done():
+				return ctx.Err()
 			default:
 			}
 
@@ -235,7 +233,7 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 
 		// Wait until either the ReadAt completed, or our context is cancelled...
 		select {
-		case <-d.ctx.Done():
+		case <-ctx.Done():
 			return d.writeResponse(1, handle, []byte{})
 		case err := <-errchan:
 			if err != nil {
@@ -288,7 +286,7 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 
 		// Wait until either the WriteAt completed, or our context is cancelled...
 		select {
-		case <-d.ctx.Done():
+		case <-ctx.Done():
 			return d.writeResponse(1, handle, []byte{})
 		case err := <-errchan:
 			if err != nil {

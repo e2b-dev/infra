@@ -6,11 +6,11 @@ STRICT_MODE=${STRICT_MODE:-0}
 # go mod tidy
 modules=$(go work edit -json | jq -r '.Use[].DiskPath')
 for dir in $modules; do
-  echo "Running 'go mod tidy' in $dir"
-  pushd "$dir"
+  echo "$dir"
+  pushd "$dir" > /dev/null
   go mod tidy
-  go run github.com/abhijit-hota/modfmt@latest
-  popd
+  go run github.com/abhijit-hota/modfmt@afa6506f86937f6c3b76e4911d57b769fa4659a0 --in-place
+  popd > /dev/null
 done
 
 # go sync

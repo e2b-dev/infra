@@ -12,7 +12,6 @@ locals {
     NOMAD_TOKEN                  = var.nomad_acl_token_secret
     CONSUL_TOKEN                 = var.consul_acl_token_secret
     RUN_CONSUL_FILE_HASH         = local.file_hash["scripts/run-consul.sh"]
-    RUN_NOMAD_FILE_NAME          = var.setup_files["scripts/run-nomad.sh"]
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
@@ -21,6 +20,8 @@ locals {
     NFS_MOUNT_SUBDIR             = local.nfs_mount_subdir
     NFS_MOUNT_OPTS               = local.nfs_mount_opts
     USE_FILESTORE_CACHE          = var.filestore_cache_enabled
+    NODE_POOL                    = var.orchestrator_node_pool
+    BASE_HUGEPAGES_PERCENTAGE    = var.orchestrator_base_hugepages_percentage
   })
 }
 

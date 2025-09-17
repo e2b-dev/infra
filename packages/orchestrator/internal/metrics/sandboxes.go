@@ -166,9 +166,9 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 					continue
 				}
 
-				wg.Go(func() error { // nolint:contextcheck // TODO: fix this later
+				wg.Go(func() error {
 					// Make sure the sandbox doesn't change while we are getting metrics (the slot could be assigned to another sandbox)
-					sbxMetrics, err := sbx.Checks.GetMetrics(timeoutGetMetrics)
+					sbxMetrics, err := sbx.Checks.GetMetrics(ctx, timeoutGetMetrics)
 					if err != nil {
 						// Sandbox has stopped
 						if errors.Is(err, sandbox.ErrChecksStopped) {
@@ -197,6 +197,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 								logger.WithSandboxID(sbx.Runtime.SandboxID),
 								logger.WithTeamID(sbx.Runtime.TeamID),
 								logger.WithTemplateID(sbx.Runtime.TemplateID),
+								zap.String("envd_version", sbx.Config.Envd.Version),
 								zap.Time("sandbox_start", sbx.StartedAt),
 								zap.Int64("clock_host", hostTm),
 								zap.Int64("clock_sbx", sbxTm),

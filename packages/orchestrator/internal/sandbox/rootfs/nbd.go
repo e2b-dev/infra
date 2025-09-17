@@ -32,7 +32,7 @@ type NBDProvider struct {
 
 var _ Provider = &NBDProvider{}
 
-func NewNBDProvider(ctx context.Context, rootfs block.ReadonlyDevice, cachePath string, devicePool *nbd.DevicePool) (*NBDProvider, error) {
+func NewNBDProvider(rootfs block.ReadonlyDevice, cachePath string, devicePool *nbd.DevicePool) (*NBDProvider, error) {
 	size, err := rootfs.Size()
 	if err != nil {
 		return nil, fmt.Errorf("error getting device size: %w", err)
@@ -47,7 +47,7 @@ func NewNBDProvider(ctx context.Context, rootfs block.ReadonlyDevice, cachePath 
 
 	overlay := block.NewOverlay(rootfs, cache, blockSize)
 
-	mnt := nbd.NewDirectPathMount(ctx, overlay, devicePool)
+	mnt := nbd.NewDirectPathMount(overlay, devicePool)
 
 	return &NBDProvider{
 		mnt:                mnt,

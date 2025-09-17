@@ -79,7 +79,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 		procCtx, cancelProc = context.WithTimeout(procCtx, timeout)
 	}
 
-	proc, err := handler.New( // nolint:contextcheck // TODO: fix this later
+	proc, err := handler.New( //nolint:contextcheck // TODO: fix this later
 		procCtx,
 		u,
 		req.Msg,

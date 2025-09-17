@@ -29,8 +29,8 @@ type Metrics struct {
 	MemUsedMiB int64 `json:"mem_used_mib"` // Used virtual memory in MiB
 }
 
-func (c *Checks) GetMetrics(timeout time.Duration) (*Metrics, error) {
-	ctx, cancel := context.WithTimeout(c.ctx, timeout)
+func (c *Checks) GetMetrics(ctx context.Context, timeout time.Duration) (*Metrics, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	address := fmt.Sprintf("http://%s:%d/metrics", c.sandbox.Slot.HostIPString(), consts.DefaultEnvdServerPort)

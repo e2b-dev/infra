@@ -22,7 +22,6 @@ const (
 type Checks struct {
 	sandbox *Sandbox
 
-	ctx       context.Context // nolint:containedctx // todo: refactor so this can be removed
 	cancelCtx context.CancelCauseFunc
 
 	healthy atomic.Bool
@@ -32,16 +31,10 @@ type Checks struct {
 
 var ErrChecksStopped = errors.New("checks stopped")
 
-func NewChecks(ctx context.Context, sandbox *Sandbox, useClickhouseMetrics bool) (*Checks, error) {
-	_, childSpan := tracer.Start(ctx, "checks-create")
-	defer childSpan.End()
-
+func NewChecks(sandbox *Sandbox, useClickhouseMetrics bool) *Checks {
 	// Create background context, passed ctx is from create/resume request and will be canceled after the request is processed.
-	ctx, cancel := context.WithCancelCause(context.Background())
 	h := &Checks{
 		sandbox:              sandbox,
-		ctx:                  ctx,
-		cancelCtx:            cancel,
 		healthy:              atomic.Bool{}, // defaults to `false`
 		UseClickhouseMetrics: useClickhouseMetrics,
 	}
@@ -49,15 +42,19 @@ func NewChecks(ctx context.Context, sandbox *Sandbox, useClickhouseMetrics bool)
 	// By default, the sandbox should be healthy, if the status change we report it.
 	h.healthy.Store(true)
 
-	return h, nil
+	return h
 }
 
 func (c *Checks) Start(ctx context.Context) {
+	ctx, c.cancelCtx = context.WithCancelCause(ctx)
+
 	c.logHealth(ctx)
 }
 
 func (c *Checks) Stop() {
-	c.cancelCtx(ErrChecksStopped)
+	if c.cancelCtx != nil {
+		c.cancelCtx(ErrChecksStopped)
+	}
 }
 
 func (c *Checks) logHealth(ctx context.Context) {
@@ -73,7 +70,7 @@ func (c *Checks) logHealth(ctx context.Context) {
 		select {
 		case <-healthTicker.C:
 			c.Healthcheck(ctx, false)
-		case <-c.ctx.Done():
+		case <-ctx.Done():
 			return
 		}
 	}

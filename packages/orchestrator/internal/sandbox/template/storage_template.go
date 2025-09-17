@@ -113,7 +113,7 @@ func (t *storageTemplate) AddFetchSpanLink(ctx context.Context) {
 func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore) {
 	parentCtx := ctx
 
-	ctx, span := tracer.Start(ctx, "storageTemplate.Fetch",
+	ctx, span := tracer.Start(ctx, "fetch storage template",
 		trace.WithNewRoot(),
 		trace.WithAttributes(
 			attribute.String("build-id", t.files.BuildID),

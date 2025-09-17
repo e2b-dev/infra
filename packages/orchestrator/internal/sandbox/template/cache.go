@@ -29,7 +29,7 @@ const (
 
 	// buildCacheMaxUsedPercentage the maximum percentage of the cache disk storage
 	// that can be used before the cache starts evicting items.
-	buildCacheMaxUsedPercentage = 75.0
+	buildCacheMaxUsedPercentage = 85.0
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template")

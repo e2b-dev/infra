@@ -13,7 +13,6 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
@@ -106,6 +105,8 @@ type Sandbox struct {
 
 	Checks *Checks
 
+	// Deprecated: to be removed in the future
+	// It was used to store the config to allow API restarts
 	APIStoredConfig *orchestrator.SandboxConfig
 
 	exit *utils.ErrorOnce
@@ -141,6 +142,8 @@ func CreateSandbox(
 ) (s *Sandbox, e error) {
 	ctx, span := tracer.Start(ctx, "create-sandbox")
 	defer span.End()
+
+	runCtx := context.WithoutCancel(ctx)
 
 	exit := utils.NewErrorOnce()
 
@@ -181,7 +184,6 @@ func CreateSandbox(
 	var rootfsProvider rootfs.Provider
 	if rootfsCachePath == "" {
 		rootfsProvider, err = rootfs.NewNBDProvider(
-			ctx,
 			rootFS,
 			sandboxFiles.SandboxCacheRootfsPath(),
 			devicePool,
@@ -201,7 +203,7 @@ func CreateSandbox(
 		return rootfsProvider.Close(ctx)
 	})
 	go func() {
-		runErr := rootfsProvider.Start(ctx)
+		runErr := rootfsProvider.Start(runCtx)
 		if runErr != nil {
 			zap.L().Error("rootfs overlay error", zap.Error(runErr))
 		}
@@ -286,11 +288,7 @@ func CreateSandbox(
 		exit: exit,
 	}
 
-	checks, err := NewChecks(ctx, sbx, false)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create health check: %w", err)
-	}
-	sbx.Checks = checks
+	sbx.Checks = NewChecks(sbx, false)
 
 	cleanup.AddPriority(func(ctx context.Context) error {
 		// Stop the sandbox first if it is still running, otherwise do nothing
@@ -298,7 +296,7 @@ func CreateSandbox(
 	})
 
 	go func() {
-		ctx, span := tracer.Start(context.WithoutCancel(ctx), "sandbox-exit-wait", trace.WithNewRoot())
+		ctx, span := tracer.Start(runCtx, "sandbox-exit-wait")
 		defer span.End()
 
 		// If the process exists, stop the sandbox properly
@@ -370,7 +368,6 @@ func ResumeSandbox(
 	telemetry.ReportEvent(ctx, "got template rootfs")
 
 	rootfsOverlay, err := rootfs.NewNBDProvider(
-		runCtx,
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(),
 		devicePool,
@@ -525,12 +522,7 @@ func ResumeSandbox(
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
-	checks, err := NewChecks(ctx, sbx, useClickhouseMetrics)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create health check: %w", err)
-	}
-
-	sbx.Checks = checks
+	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
 
 	cleanup.AddPriority(func(ctx context.Context) error {
 		// Stop the sandbox first if it is still running, otherwise do nothing
@@ -545,11 +537,10 @@ func ResumeSandbox(
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
 
-	go sbx.Checks.Start(runCtx) // nolint:contextcheck // TODO: fix this later
+	go sbx.Checks.Start(runCtx)
 
 	go func() {
-		ctx := context.WithoutCancel(runCtx)
-		ctx, span := tracer.Start(ctx, "sandbox-exit-wait")
+		ctx, span := tracer.Start(runCtx, "sandbox-exit-wait")
 		defer span.End()
 
 		// Wait for either uffd or fc process to exit

@@ -44,6 +44,14 @@ variable "api_machine_type" {
   type = string
 }
 
+variable "loki_cluster_size" {
+  type = number
+}
+
+variable "loki_machine_type" {
+  type = string
+}
+
 variable "build_image_family" {
   type    = string
   default = "e2b-orch"
@@ -242,11 +250,6 @@ variable "clickhouse_job_constraint_prefix" {
   type        = string
 }
 
-variable "clickhouse_node_pool" {
-  description = "The name of the Nomad pool."
-  type        = string
-}
-
 variable "clickhouse_health_port" {
   type = object({
     name = string
@@ -287,4 +290,38 @@ variable "filestore_cache_capacity_gb" {
 
 variable "min_cpu_platform" {
   type = string
+}
+
+variable "api_node_pool" {
+  description = "The name of the Nomad pool."
+  type        = string
+}
+
+variable "build_node_pool" {
+  description = "The name of the Nomad pool."
+  type        = string
+}
+
+variable "clickhouse_node_pool" {
+  description = "The name of the Nomad pool."
+  type        = string
+}
+
+variable "loki_node_pool" {
+  description = "The name of the Nomad pool."
+  type        = string
+}
+variable "orchestrator_node_pool" {
+  description = "The name of the Nomad pool."
+  type        = string
+}
+
+variable "build_base_hugepages_percentage" {
+  description = "The percentage of memory to use for preallocated hugepages."
+  type        = number
+}
+
+variable "orchestrator_base_hugepages_percentage" {
+  description = "The percentage of memory to use for preallocated hugepages."
+  type        = number
 }
