@@ -31,7 +31,7 @@ type Checks struct {
 
 var ErrChecksStopped = errors.New("checks stopped")
 
-func NewChecks(sandbox *Sandbox, useClickhouseMetrics bool) (*Checks, error) {
+func NewChecks(sandbox *Sandbox, useClickhouseMetrics bool) *Checks {
 	// Create background context, passed ctx is from create/resume request and will be canceled after the request is processed.
 	h := &Checks{
 		sandbox:              sandbox,
@@ -42,7 +42,7 @@ func NewChecks(sandbox *Sandbox, useClickhouseMetrics bool) (*Checks, error) {
 	// By default, the sandbox should be healthy, if the status change we report it.
 	h.healthy.Store(true)
 
-	return h, nil
+	return h
 }
 
 func (c *Checks) Start(ctx context.Context) {

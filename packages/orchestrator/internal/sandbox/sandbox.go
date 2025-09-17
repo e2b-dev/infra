@@ -280,11 +280,7 @@ func CreateSandbox(
 		exit: exit,
 	}
 
-	checks, err := NewChecks(sbx, false)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create health check: %w", err)
-	}
-	sbx.Checks = checks
+	sbx.Checks = NewChecks(sbx, false)
 
 	cleanup.AddPriority(func(ctx context.Context) error {
 		// Stop the sandbox first if it is still running, otherwise do nothing
@@ -292,7 +288,7 @@ func CreateSandbox(
 	})
 
 	go func() {
-		ctx, span := tracer.Start(runCtx, "sandbox-exit-wait", trace.WithNewRoot())
+		ctx, span := tracer.Start(runCtx, "sandbox-exit-wait")
 		defer span.End()
 
 		// If the process exists, stop the sandbox properly
@@ -324,6 +320,16 @@ func ResumeSandbox(
 	defer childSpan.End()
 
 	runCtx := context.WithoutCancel(ctx)
+	runCtx, runSpan := tracer.Start(runCtx, "execute sandbox",
+		trace.WithNewRoot(),
+		trace.WithLinks(trace.LinkFromContext(ctx)),
+	)
+	defer func() {
+		if e != nil {
+			runSpan.AddEvent("resume sandbox aborted")
+			runSpan.End()
+		}
+	}()
 
 	exit := utils.NewErrorOnce()
 
@@ -520,12 +526,7 @@ func ResumeSandbox(
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
-	checks, err := NewChecks(sbx, useClickhouseMetrics)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create health check: %w", err)
-	}
-
-	sbx.Checks = checks
+	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
 
 	cleanup.AddPriority(func(ctx context.Context) error {
 		// Stop the sandbox first if it is still running, otherwise do nothing
@@ -543,7 +544,7 @@ func ResumeSandbox(
 	go sbx.Checks.Start(runCtx)
 
 	go func() {
-		ctx, span := tracer.Start(runCtx, "sandbox-exit-wait", trace.WithNewRoot())
+		ctx, span := tracer.Start(runCtx, "sandbox-exit-wait")
 		defer span.End()
 
 		// Wait for either uffd or fc process to exit
