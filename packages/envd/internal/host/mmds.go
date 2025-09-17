@@ -22,19 +22,17 @@ const (
 )
 
 type MMDSOpts struct {
-	TraceID     string `json:"traceID"`
-	InstanceID  string `json:"instanceID"`
-	EnvID       string `json:"envID"`
-	Address     string `json:"address"`
-	HyperloopIP string `json:"hyperloopIP"`
+	TraceID    string `json:"traceID"`
+	InstanceID string `json:"instanceID"`
+	EnvID      string `json:"envID"`
+	Address    string `json:"address"`
 }
 
-func (opts *MMDSOpts) Update(traceID, instanceID, envID, collectorAddress, hyperloopIP string) {
+func (opts *MMDSOpts) Update(traceID, instanceID, envID, collectorAddress string) {
 	opts.TraceID = traceID
 	opts.InstanceID = instanceID
 	opts.EnvID = envID
 	opts.Address = collectorAddress
-	opts.HyperloopIP = hyperloopIP
 }
 
 func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
@@ -140,7 +138,6 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 
 			envVars.Store("E2B_SANDBOX_ID", mmdsOpts.InstanceID)
 			envVars.Store("E2B_TEMPLATE_ID", mmdsOpts.EnvID)
-			envVars.Store("E2B_EVENTS_ADDRESS", fmt.Sprintf("http://%s", mmdsOpts.HyperloopIP))
 
 			if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_SANDBOX_ID"), []byte(mmdsOpts.InstanceID), 0o666); err != nil {
 				fmt.Fprintf(os.Stderr, "error writing sandbox ID file: %v\n", err)
@@ -151,12 +148,6 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 
 			if mmdsOpts.Address != "" {
 				mmdsChan <- mmdsOpts
-			}
-
-			if mmdsOpts.HyperloopIP != "" {
-				if err := AddEventsHostEntry(mmdsOpts.HyperloopIP); err != nil {
-					fmt.Fprintf(os.Stderr, "error adding events host entry: %v\n", err)
-				}
 			}
 
 			return
