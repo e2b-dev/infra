@@ -2,6 +2,7 @@ package phases
 
 import (
 	"errors"
+	"fmt"
 )
 
 type PhaseBuildError struct {
@@ -16,6 +17,20 @@ func (e *PhaseBuildError) Error() string {
 
 func (e *PhaseBuildError) Unwrap() error {
 	return e.Err
+}
+
+func NewPhaseBuildError(phase BuilderPhase, err error) *PhaseBuildError {
+	m := phase.Metadata()
+
+	step := m.StepType
+	if m.StepNumber != nil {
+		step = fmt.Sprintf("%d", *m.StepNumber)
+	}
+	return &PhaseBuildError{
+		Phase: string(m.Phase),
+		Step:  step,
+		Err:   err,
+	}
 }
 
 func UnwrapPhaseBuildError(err error) *PhaseBuildError {

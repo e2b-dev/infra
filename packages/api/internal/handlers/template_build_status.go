@@ -4,10 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -16,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // GetTemplatesTemplateIDBuildsBuildIDStatus serves to get a template build status (e.g. to CLI)
@@ -95,15 +98,15 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 
 	for _, entry := range cli.GetLogs(ctx, templateID, buildID, offset, apiToLogLevel(params.Level)) {
 		lgs = append(lgs, fmt.Sprintf("[%s] %s\n", entry.Timestamp.Format(time.RFC3339), entry.Message))
-		logEntries = append(logEntries, api.BuildLogEntry{
-			Timestamp: entry.Timestamp,
-			Message:   entry.Message,
-			Level:     api.LogLevel(logs.LevelToString(entry.Level)),
-		})
+		logEntries = append(logEntries, getAPILogEntry(entry))
 	}
 
 	result.Logs = lgs
 	result.LogEntries = logEntries
+
+	if result.Reason != nil && result.Reason.Step != nil {
+		result.Reason.LogEntries = sharedUtils.ToPtr(filterStepLogs(logEntries, *result.Reason.Step, api.LogLevelWarn))
+	}
 
 	c.JSON(http.StatusOK, result)
 }
@@ -127,8 +130,40 @@ func getAPIReason(reason types.BuildReason) *api.BuildStatusReason {
 	}
 
 	return &api.BuildStatusReason{
-		Message: reason.Message,
-		Step:    reason.Step,
+		Message:    reason.Message,
+		Step:       reason.Step,
+		LogEntries: nil,
+	}
+}
+
+func filterStepLogs(logEntries []api.BuildLogEntry, step string, minLevel api.LogLevel) []api.BuildLogEntry {
+	return sharedUtils.Filter(logEntries, func(line api.BuildLogEntry) bool {
+		return logs.CompareLevels(string(line.Level), string(minLevel)) >= 0 && line.Step != nil && *line.Step == step
+	})
+}
+
+func getAPILogEntry(entry logs.LogEntry) api.BuildLogEntry {
+	stepType := entry.Fields["step_type"]
+	stepNumber := entry.Fields["step_number"]
+
+	var step *string
+	if stepType != "" {
+		step = &stepType
+	}
+	if stepNumber != "" {
+		if f, err := strconv.ParseFloat(stepNumber, 64); err == nil {
+			step = sharedUtils.ToPtr(strconv.FormatFloat(f, 'f', 0, 64))
+		} else {
+			zap.L().Warn("error when parsing step number", zap.String("step_number", stepNumber), zap.Error(err))
+			step = nil
+		}
+	}
+
+	return api.BuildLogEntry{
+		Timestamp: entry.Timestamp,
+		Message:   entry.Message,
+		Level:     api.LogLevel(logs.LevelToString(entry.Level)),
+		Step:      step,
 	}
 }
 
