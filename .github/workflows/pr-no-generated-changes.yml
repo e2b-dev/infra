@@ -16,7 +16,7 @@ jobs:
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
         with:
-          job_key: integrity-check
+          job_key: generated-code-check
 
       - uses: hashicorp/setup-terraform@v3
         with:
@@ -28,8 +28,8 @@ jobs:
       - name: Fix tracers
         run: ./scripts/fix-tracers.sh
 
-      - name: Generate mocks
-        run: make generate-mocks
+      - name: Generate all code
+        run: make generate
 
       - name: Format code
         run: make fmt
