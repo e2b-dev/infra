@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -75,16 +74,11 @@ func Run(
 	for _, builder := range builders {
 		meta := builder.Metadata()
 
-		logStep := meta.StepType
-		if meta.StepNumber != nil {
-			logStep = strconv.Itoa(*meta.StepNumber)
-		}
-
 		stepUserLogger := userLogger.With(
 			zap.String("phase", string(meta.Phase)),
 			zap.String("step_type", meta.StepType),
 			zap.Intp("step_number", meta.StepNumber),
-			zap.String("step", logStep),
+			zap.String("step", phaseToStepString(builder)),
 		)
 
 		phaseStartTime := time.Now()
