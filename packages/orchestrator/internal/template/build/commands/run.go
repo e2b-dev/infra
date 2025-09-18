@@ -51,7 +51,7 @@ func (r *Run) Execute(
 		cmdMetadata,
 	)
 	if err != nil {
-		return metadata.Context{}, fmt.Errorf("failed to run command: %w", err)
+		return metadata.Context{}, fmt.Errorf("failed to run command '%s': %w", cmd, err)
 	}
 
 	return originalMetadata, nil

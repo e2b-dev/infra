@@ -1,18 +1,18 @@
-package logs
+package logsloki
 
 import (
-	"encoding/json"
 	"fmt"
 	"slices"
-	"strconv"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
-func LokiResponseMapper(res *loghttp.QueryResponse, offset int32, level *LogLevel) ([]LogEntry, error) {
+func ResponseMapper(res *loghttp.QueryResponse, offset int32, level *logs.LogLevel) ([]logs.LogEntry, error) {
 	logsCrawled := int32(0)
-	logs := make([]LogEntry, 0)
+	logEntries := make([]logs.LogEntry, 0)
 
 	if res.Data.Result.Type() != loghttp.ResultTypeStream {
 		return nil, fmt.Errorf("unexpected value type received from loki query fetch: %s", res.Data.Result.Type())
@@ -20,7 +20,7 @@ func LokiResponseMapper(res *loghttp.QueryResponse, offset int32, level *LogLeve
 
 	for _, stream := range res.Data.Result.(loghttp.Streams) {
 		for _, entry := range stream.Entries {
-			fields, err := lokiFlatJsonLineParser(entry.Line)
+			fields, err := logs.FlatJsonLogLineParser(entry.Line)
 			if err != nil {
 				zap.L().Error("error parsing log line", zap.Error(err), zap.String("line", entry.Line))
 			}
@@ -31,7 +31,7 @@ func LokiResponseMapper(res *loghttp.QueryResponse, offset int32, level *LogLeve
 			}
 
 			// Skip logs that are below the specified level
-			if level != nil && compareLevels(levelName, LevelToString(*level)) < 0 {
+			if level != nil && logs.CompareLevels(levelName, logs.LevelToString(*level)) < 0 {
 				continue
 			}
 
@@ -50,11 +50,11 @@ func LokiResponseMapper(res *loghttp.QueryResponse, offset int32, level *LogLeve
 			delete(fields, "message")
 			delete(fields, "level")
 
-			logs = append(logs, LogEntry{
+			logEntries = append(logEntries, logs.LogEntry{
 				Timestamp: entry.Timestamp,
 				Raw:       entry.Line,
 
-				Level:   StringToLevel(levelName),
+				Level:   logs.StringToLevel(levelName),
 				Message: message,
 				Fields:  fields,
 			})
@@ -62,30 +62,7 @@ func LokiResponseMapper(res *loghttp.QueryResponse, offset int32, level *LogLeve
 	}
 
 	// Sort logs by timestamp (they are returned by the time they arrived in Loki)
-	slices.SortFunc(logs, func(a, b LogEntry) int { return a.Timestamp.Compare(b.Timestamp) })
+	slices.SortFunc(logEntries, func(a, b logs.LogEntry) int { return a.Timestamp.Compare(b.Timestamp) })
 
-	return logs, nil
-}
-
-func lokiFlatJsonLineParser(input string) (map[string]string, error) {
-	var raw map[string]interface{}
-	if err := json.Unmarshal([]byte(input), &raw); err != nil {
-		return nil, err
-	}
-
-	result := make(map[string]string)
-	for key, value := range raw {
-		switch t := value.(type) {
-		case string:
-			result[key] = t
-		case float64:
-			result[key] = strconv.FormatFloat(t, 'E', -1, 64)
-		case bool:
-			result[key] = strconv.FormatBool(t)
-		default:
-			// Reject arrays, objects, nulls, etc.
-		}
-	}
-
-	return result, nil
+	return logEntries, nil
 }

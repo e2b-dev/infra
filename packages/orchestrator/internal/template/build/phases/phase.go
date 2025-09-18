@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
@@ -20,8 +21,9 @@ import (
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases")
 
 type PhaseMeta struct {
-	Phase    metrics.Phase
-	StepType string
+	Phase      metrics.Phase
+	StepType   string
+	StepNumber *int
 }
 
 type BuilderPhase interface {
@@ -31,7 +33,7 @@ type BuilderPhase interface {
 
 	Hash(sourceLayer LayerResult) (string, error)
 	Layer(ctx context.Context, sourceLayer LayerResult, hash string) (LayerResult, error)
-	Build(ctx context.Context, sourceLayer LayerResult, currentLayer LayerResult) (LayerResult, error)
+	Build(ctx context.Context, userLogger *zap.Logger, sourceLayer LayerResult, currentLayer LayerResult) (LayerResult, error)
 }
 
 type LayerResult struct {
@@ -55,6 +57,7 @@ func layerInfo(
 
 func Run(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	bc buildcontext.BuildContext,
 	metrics *metrics.BuildMetrics,
 	builders []BuilderPhase,
@@ -70,6 +73,13 @@ func Run(
 
 	for _, builder := range builders {
 		meta := builder.Metadata()
+
+		stepUserLogger := userLogger.With(
+			zap.String("phase", string(meta.Phase)),
+			zap.String("step_type", meta.StepType),
+			zap.Intp("step_number", meta.StepNumber),
+			zap.String("step", phaseToStepString(builder)),
+		)
 
 		phaseStartTime := time.Now()
 		hash, err := builder.Hash(sourceLayer)
@@ -88,7 +98,7 @@ func Run(
 		if err != nil {
 			return LayerResult{}, fmt.Errorf("getting source: %w", err)
 		}
-		bc.UserLogger.Info(layerInfo(currentLayer.Cached, prefix, source, currentLayer.Hash))
+		stepUserLogger.Info(layerInfo(currentLayer.Cached, prefix, source, currentLayer.Hash))
 
 		if currentLayer.Cached {
 			phaseDuration := time.Since(phaseStartTime)
@@ -103,7 +113,7 @@ func Run(
 			return LayerResult{}, fmt.Errorf("validating layer: %w", err)
 		}
 
-		res, err := builder.Build(ctx, sourceLayer, currentLayer)
+		res, err := builder.Build(ctx, stepUserLogger, sourceLayer, currentLayer)
 		// Record phase duration
 		phaseDuration := time.Since(phaseStartTime)
 		metrics.RecordPhaseDuration(ctx, phaseDuration, meta.Phase, meta.StepType, false)

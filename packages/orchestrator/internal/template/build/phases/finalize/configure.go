@@ -8,6 +8,7 @@ import (
 	tt "text/template"
 	"time"
 
+	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -30,6 +31,7 @@ type ConfigurationParams struct {
 
 func runConfiguration(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	bc buildcontext.BuildContext,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
@@ -51,7 +53,7 @@ func runConfiguration(
 	err = sandboxtools.RunCommandWithLogger(
 		configCtx,
 		proxy,
-		bc.UserLogger,
+		userLogger,
 		zapcore.DebugLevel,
 		"config",
 		sandboxID,

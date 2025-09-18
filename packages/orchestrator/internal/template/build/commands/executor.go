@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -71,6 +72,7 @@ func (ce *CommandExecutor) getCommand(
 
 func (ce *CommandExecutor) Execute(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	sbx *sandbox.Sandbox,
 	prefix string,
 	step *templatemanager.TemplateStep,
@@ -92,7 +94,7 @@ func (ce *CommandExecutor) Execute(
 
 	cmdMetadata, err = cmd.Execute(
 		ctx,
-		ce.UserLogger,
+		userLogger,
 		ce.proxy,
 		sbx.Runtime.SandboxID,
 		prefix,

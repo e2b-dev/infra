@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -54,6 +54,7 @@ func (a *APIStore) V1TemplateBuildLogs(c *gin.Context, buildID string, params ap
 			Timestamp: log.Timestamp,
 			Message:   log.Message,
 			Level:     api.LogLevel(logs.LevelToString(log.Level)),
+			Fields:    log.Fields,
 		})
 	}
 

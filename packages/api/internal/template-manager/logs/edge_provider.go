@@ -45,6 +45,7 @@ func (c *ClusterPlacementProvider) GetLogs(ctx context.Context, templateID strin
 			Timestamp: entry.Timestamp,
 			Message:   entry.Message,
 			Level:     logs.StringToLevel(string(entry.Level)),
+			Fields:    entry.Fields,
 		})
 	}
 
