@@ -39,7 +39,7 @@ import (
 )
 
 type Closeable interface {
-	Close(context.Context) error
+	Close(ctx context.Context) error
 }
 
 const (
