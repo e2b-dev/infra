@@ -97,7 +97,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 
 		defer func() {
 			if r := recover(); r != nil {
-				zap.L().Error("recovered from panic in template build", zap.Any("panic", r))
+				zap.L().Error("recovered from panic in template build", zap.Any("panic", r), logger.WithTemplateID(cfg.TemplateID), logger.WithBuildID(cfg.BuildID))
 			}
 		}()
 
@@ -121,7 +121,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		res, err := s.builder.Build(ctx, metadata, template, core)
 		_ = core.Sync()
 		if err != nil {
-			telemetry.ReportCriticalError(ctx, "error while building template", err)
+			telemetry.ReportCriticalError(ctx, "error while building template", err, telemetry.WithTemplateID(cfg.TemplateID), telemetry.WithBuildID(cfg.BuildID))
 
 			buildInfo.SetFail(builderrors.UnwrapUserError(err))
 		} else {
