@@ -30,6 +30,7 @@ linters:
     - iface
     - importas
     - mirror
+    - misspell
     - nolintlint
     - reassign
     - recvcheck
