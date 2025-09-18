@@ -180,7 +180,7 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 func httpGet(t *testing.T, proxyURL string) (*http.Response, error) {
 	t.Helper()
 
-	req, err := http.NewRequestWithContext(t.Context(), "GET", proxyURL, nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, proxyURL, nil)
 	if err != nil {
 		return nil, err
 	}
