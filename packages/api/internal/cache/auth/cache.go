@@ -3,7 +3,6 @@ package autchcache
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -28,7 +27,6 @@ type TeamInfo struct {
 
 	lastRefresh time.Time
 	once        singleflight.Group
-	lock        sync.Mutex
 }
 
 type DataCallback = func(ctx context.Context, key string) (*queries.Team, *queries.Tier, error)
