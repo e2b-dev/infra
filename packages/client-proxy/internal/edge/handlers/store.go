@@ -31,13 +31,6 @@ type APIStore struct {
 	queryLogsProvider loggerprovider.LogsQueryProvider
 }
 
-type APIUserFacingError struct {
-	internalError error
-
-	prettyErrorMessage string
-	prettyErrorCode    int
-}
-
 const (
 	orchestratorsReadinessCheckInterval = 100 * time.Millisecond
 )

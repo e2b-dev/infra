@@ -29,6 +29,7 @@ linters:
     - govet
     - iface
     - importas
+    - inamedparam
     - mirror
     - misspell
     - nolintlint
@@ -40,6 +41,8 @@ linters:
     - testifylint
     - thelper
     - tparallel
+    - unused
+    - usestdlibvars
     - usetesting
     - wastedassign
     - whitespace
