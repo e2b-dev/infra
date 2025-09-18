@@ -27,8 +27,6 @@ type TeamObserver struct {
 	meter                metric.Meter
 	teamSandboxRunning   metric.Int64ObservableGauge
 	teamSandboxesCreated metric.Int64Counter
-
-	cache *instance.MemoryStore
 }
 
 func NewTeamObserver(ctx context.Context, cache *instance.MemoryStore) (*TeamObserver, error) {

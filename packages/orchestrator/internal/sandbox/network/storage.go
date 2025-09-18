@@ -11,7 +11,7 @@ var localNamespaceStorageSwitch = os.Getenv("USE_LOCAL_NAMESPACE_STORAGE")
 
 type Storage interface {
 	Acquire(ctx context.Context) (*Slot, error)
-	Release(*Slot) error
+	Release(s *Slot) error
 }
 
 // NewStorage creates a new slot storage based on the environment, we are ok with using a memory storage for local

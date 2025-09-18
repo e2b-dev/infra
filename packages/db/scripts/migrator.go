@@ -94,7 +94,7 @@ func main() {
 func setupAuthSchema(db *sql.DB, version int64) error {
 	rows, err := db.Query(`SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'users')`)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to query: %w", err)
 	}
 
 	defer func() {
@@ -108,8 +108,12 @@ func setupAuthSchema(db *sql.DB, version int64) error {
 	for rows.Next() {
 		err = rows.Scan(&exists)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to scan: %w", err)
 		}
+	}
+
+	if err = rows.Err(); err != nil {
+		return fmt.Errorf("failed to finish scanning: %w", err)
 	}
 
 	if !exists {
@@ -117,20 +121,20 @@ func setupAuthSchema(db *sql.DB, version int64) error {
 		_, err = db.Exec(
 			`CREATE SCHEMA IF NOT EXISTS auth;`)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create schema: %w", err)
 		}
 
 		// Create authenticated user
 		_, err = db.Exec("CREATE ROLE authenticated;")
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create role: %w", err)
 		}
 
 		// Create users table
 		_, err = db.Exec(
 			`CREATE TABLE IF NOT EXISTS auth.users (id uuid NOT NULL DEFAULT gen_random_uuid(),email text NOT NULL, PRIMARY KEY (id));`)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create table: %w", err)
 		}
 
 		// Create function to generate a random uuid
@@ -141,13 +145,13 @@ func setupAuthSchema(db *sql.DB, version int64) error {
 		END;
 		$func$ LANGUAGE plpgsql;`)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create function: %w", err)
 		}
 
 		// Grant execute permission to authenticated role
 		_, err = db.Exec(`GRANT EXECUTE ON FUNCTION auth.uid() TO postgres`)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to grant function: %w", err)
 		}
 	}
 
@@ -155,7 +159,7 @@ func setupAuthSchema(db *sql.DB, version int64) error {
 	if version < authMigrationVersion {
 		_, err = db.Exec(fmt.Sprintf("INSERT INTO %s (version_id, is_applied) VALUES (%d, true)", trackingTable, authMigrationVersion))
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to insert version: %w", err)
 		}
 	}
 

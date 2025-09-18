@@ -5,7 +5,7 @@ on: [workflow_call]
 permissions:
   contents: read
 env:
-  GOLANGCI_LINT_VERSION: v2.1.6
+  GOLANGCI_LINT_VERSION: v2.4.0
 
 jobs:
   detect-modules:
