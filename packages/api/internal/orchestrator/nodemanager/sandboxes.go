@@ -52,7 +52,7 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]*instance.InstanceInfo, erro
 				config.GetSandboxId(),
 				config.GetTemplateId(),
 				consts.ClientID,
-				config.GetAlias(),
+				config.Alias, //nolint:protogetter // we need the nil check too
 				config.GetExecutionId(),
 				teamID,
 				buildID,
@@ -69,8 +69,8 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]*instance.InstanceInfo, erro
 				n.ID,
 				n.ClusterID,
 				config.GetAutoPause(),
-				config.GetEnvdAccessToken(),
-				config.GetAllowInternetAccess(),
+				config.EnvdAccessToken,     //nolint:protogetter // we need the nil check too
+				config.AllowInternetAccess, //nolint:protogetter // we need the nil check too
 				config.GetBaseTemplateId(),
 			),
 		)

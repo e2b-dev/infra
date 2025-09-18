@@ -13,6 +13,6 @@ func (sb *StepBuilder) Hash(sourceLayer phases.LayerResult) (string, error) {
 		sourceLayer.Hash,
 		sb.step.GetType(),
 		strings.Join(sb.step.GetArgs(), " "),
-		utils.Sprintp(sb.step.GetFilesHash()),
+		utils.Sprintp(sb.step.FilesHash), //nolint:protogetter // we need the nil check too
 	), nil
 }

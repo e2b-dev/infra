@@ -83,7 +83,7 @@ func (ce *CommandExecutor) Execute(
 		attribute.String("sandbox.id", sbx.Runtime.SandboxID),
 		attribute.String("step.type", step.GetType()),
 		attribute.StringSlice("step.args", step.GetArgs()),
-		attribute.String("step.files.hash", utils.Sprintp(step.GetFilesHash())),
+		attribute.String("step.files.hash", utils.Sprintp(step.FilesHash)), //nolint:protogetter // we need the nil check too
 	))
 	defer span.End()
 
