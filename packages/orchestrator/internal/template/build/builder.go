@@ -275,7 +275,7 @@ func forceSteps(template config.TemplateConfig) config.TemplateConfig {
 	shouldRebuild := template.Force != nil && *template.Force
 	for _, step := range template.Steps {
 		// Force rebuild if the step has a Force flag set to true
-		if step.Force != nil && *step.Force {
+		if step.Force != nil && step.GetForce() {
 			shouldRebuild = true
 		}
 

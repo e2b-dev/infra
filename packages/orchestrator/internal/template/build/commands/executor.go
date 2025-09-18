@@ -44,7 +44,7 @@ func NewCommandExecutor(
 func (ce *CommandExecutor) getCommand(
 	step *templatemanager.TemplateStep,
 ) (Command, error) {
-	cmdType := strings.ToUpper(step.Type)
+	cmdType := strings.ToUpper(step.GetType())
 
 	var cmd Command
 	switch cmdType {
@@ -81,15 +81,15 @@ func (ce *CommandExecutor) Execute(
 	ctx, span := tracer.Start(ctx, "apply-command", trace.WithAttributes(
 		attribute.String("prefix", prefix),
 		attribute.String("sandbox.id", sbx.Runtime.SandboxID),
-		attribute.String("step.type", step.Type),
-		attribute.StringSlice("step.args", step.Args),
-		attribute.String("step.files.hash", utils.Sprintp(step.FilesHash)),
+		attribute.String("step.type", step.GetType()),
+		attribute.StringSlice("step.args", step.GetArgs()),
+		attribute.String("step.files.hash", utils.Sprintp(step.GetFilesHash())),
 	))
 	defer span.End()
 
 	cmd, err := ce.getCommand(step)
 	if err != nil {
-		return metadata.Context{}, fmt.Errorf("failed to get command for step %s: %w", step.Type, err)
+		return metadata.Context{}, fmt.Errorf("failed to get command for step %s: %w", step.GetType(), err)
 	}
 
 	cmdMetadata, err = cmd.Execute(

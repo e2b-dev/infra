@@ -174,7 +174,7 @@ func (c *PollBuildStatus) dispatchBasedOnStatus(ctx context.Context, status *tem
 	switch status.GetStatus() {
 	case templatemanagergrpc.TemplateBuildState_Failed:
 		// build failed
-		err := c.client.SetStatus(ctx, c.templateID, c.buildID, envbuild.StatusFailed, status.Reason)
+		err := c.client.SetStatus(ctx, c.templateID, c.buildID, envbuild.StatusFailed, status.GetReason())
 		if err != nil {
 			return false, errors.Wrap(err, "error when setting build status")
 		}
@@ -186,7 +186,7 @@ func (c *PollBuildStatus) dispatchBasedOnStatus(ctx context.Context, status *tem
 			return false, errors.New("nil metadata")
 		}
 
-		err := c.client.SetFinished(ctx, c.templateID, c.buildID, int64(meta.RootfsSizeKey), meta.EnvdVersionKey)
+		err := c.client.SetFinished(ctx, c.templateID, c.buildID, int64(meta.GetRootfsSizeKey()), meta.GetEnvdVersionKey())
 		if err != nil {
 			return false, errors.Wrap(err, "error when finishing build")
 		}

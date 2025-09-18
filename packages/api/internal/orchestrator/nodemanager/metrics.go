@@ -35,30 +35,30 @@ func (n *Node) UpdateMetricsFromServiceInfoResponse(info *orchestratorinfo.Servi
 	defer n.metricsMu.Unlock()
 
 	// Update host usage metrics
-	n.metrics.CpuPercent = info.MetricCpuPercent
-	n.metrics.MemoryUsedBytes = info.MetricMemoryUsedBytes
+	n.metrics.CpuPercent = info.GetMetricCpuPercent()
+	n.metrics.MemoryUsedBytes = info.GetMetricMemoryUsedBytes()
 
 	// Update host total metrics
-	n.metrics.CpuCount = info.MetricCpuCount
-	n.metrics.MemoryTotalBytes = info.MetricMemoryTotalBytes
+	n.metrics.CpuCount = info.GetMetricCpuCount()
+	n.metrics.MemoryTotalBytes = info.GetMetricMemoryTotalBytes()
 
 	// Update allocated resources
-	n.metrics.CpuAllocated = info.MetricCpuAllocated
-	n.metrics.MemoryAllocatedBytes = info.MetricMemoryAllocatedBytes
+	n.metrics.CpuAllocated = info.GetMetricCpuAllocated()
+	n.metrics.MemoryAllocatedBytes = info.GetMetricMemoryAllocatedBytes()
 
 	// Update total sandbox count
-	n.metrics.SandboxCount = info.MetricSandboxesRunning
+	n.metrics.SandboxCount = info.GetMetricSandboxesRunning()
 
 	// Update detailed disk metrics
-	disks := info.MetricDisks
+	disks := info.GetMetricDisks()
 	n.metrics.HostDisks = make([]DiskMetrics, len(disks))
 	for i, disk := range disks {
 		n.metrics.HostDisks[i] = DiskMetrics{
-			MountPoint:     disk.MountPoint,
-			Device:         disk.Device,
-			FilesystemType: disk.FilesystemType,
-			UsedBytes:      disk.UsedBytes,
-			TotalBytes:     disk.TotalBytes,
+			MountPoint:     disk.GetMountPoint(),
+			Device:         disk.GetDevice(),
+			FilesystemType: disk.GetFilesystemType(),
+			UsedBytes:      disk.GetUsedBytes(),
+			TotalBytes:     disk.GetTotalBytes(),
 		}
 	}
 }

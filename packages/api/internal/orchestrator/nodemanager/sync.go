@@ -25,18 +25,18 @@ func (n *Node) Sync(ctx context.Context, instanceCache *instance.MemoryStore) {
 		}
 
 		// update node status (if changed)
-		nodeStatus, ok := OrchestratorToApiNodeStateMapper[nodeInfo.ServiceStatus]
+		nodeStatus, ok := OrchestratorToApiNodeStateMapper[nodeInfo.GetServiceStatus()]
 		if !ok {
-			zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.ServiceStatus), logger.WithNodeID(n.ID))
+			zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.GetServiceStatus()), logger.WithNodeID(n.ID))
 			nodeStatus = api.NodeStatusUnhealthy
 		}
 
 		n.setStatus(nodeStatus)
 		n.setMetadata(
 			NodeMetadata{
-				ServiceInstanceID: nodeInfo.ServiceId,
-				Commit:            nodeInfo.ServiceCommit,
-				Version:           nodeInfo.ServiceVersion,
+				ServiceInstanceID: nodeInfo.GetServiceId(),
+				Commit:            nodeInfo.GetServiceCommit(),
+				Version:           nodeInfo.GetServiceVersion(),
 			},
 		)
 		// Update host metrics from service info

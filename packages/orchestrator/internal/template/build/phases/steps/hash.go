@@ -11,8 +11,8 @@ import (
 func (sb *StepBuilder) Hash(sourceLayer phases.LayerResult) (string, error) {
 	return cache.HashKeys(
 		sourceLayer.Hash,
-		sb.step.Type,
-		strings.Join(sb.step.Args, " "),
-		utils.Sprintp(sb.step.FilesHash),
+		sb.step.GetType(),
+		strings.Join(sb.step.GetArgs(), " "),
+		utils.Sprintp(sb.step.GetFilesHash()),
 	), nil
 }

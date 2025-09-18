@@ -26,7 +26,7 @@ func (w *Workdir) Execute(
 	step *templatemanager.TemplateStep,
 	cmdMetadata metadata.Context,
 ) (metadata.Context, error) {
-	args := step.Args
+	args := step.GetArgs()
 	// args: [path]
 	if len(args) < 1 {
 		return metadata.Context{}, fmt.Errorf("WORKDIR requires a path argument")
