@@ -4,12 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -143,20 +141,11 @@ func filterStepLogs(logEntries []api.BuildLogEntry, step string, minLevel api.Lo
 }
 
 func getAPILogEntry(entry logs.LogEntry) api.BuildLogEntry {
-	stepType := entry.Fields["step_type"]
-	stepNumber := entry.Fields["step_number"]
+	stepField := entry.Fields["step"]
 
 	var step *string
-	if stepType != "" {
-		step = &stepType
-	}
-	if stepNumber != "" {
-		if f, err := strconv.ParseFloat(stepNumber, 64); err == nil {
-			step = sharedUtils.ToPtr(strconv.FormatFloat(f, 'f', 0, 64))
-		} else {
-			zap.L().Warn("error when parsing step number", zap.String("step_number", stepNumber), zap.Error(err))
-			step = nil
-		}
+	if stepField != "" {
+		step = &stepField
 	}
 
 	return api.BuildLogEntry{

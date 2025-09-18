@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -12,7 +13,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildlogger"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -75,10 +75,16 @@ func Run(
 	for _, builder := range builders {
 		meta := builder.Metadata()
 
+		logStep := meta.StepType
+		if meta.StepNumber != nil {
+			logStep = strconv.Itoa(*meta.StepNumber)
+		}
+
 		stepUserLogger := userLogger.With(
 			zap.String("phase", string(meta.Phase)),
-			zap.String(buildlogger.UserLoggerStepType, meta.StepType),
-			zap.Intp(buildlogger.UserLoggerStepNumber, meta.StepNumber),
+			zap.String("step_type", meta.StepType),
+			zap.Intp("step_number", meta.StepNumber),
+			zap.String("step", logStep),
 		)
 
 		phaseStartTime := time.Now()

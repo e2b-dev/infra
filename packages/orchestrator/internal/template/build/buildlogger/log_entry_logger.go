@@ -13,11 +13,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
-const (
-	UserLoggerStepType   = "step_type"
-	UserLoggerStepNumber = "step_number"
-)
-
 type ZapEntry struct {
 	Ts    float64 `json:"ts"`
 	Msg   string  `json:"msg"`

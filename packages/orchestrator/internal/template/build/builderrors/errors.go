@@ -5,8 +5,6 @@ import (
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
-const minAttachedLogLevel = template_manager.LogLevel_Warn
-
 func UnwrapUserError(err error) *template_manager.TemplateBuildStatusReason {
 	phaseBuildError := phases.UnwrapPhaseBuildError(err)
 	if phaseBuildError != nil {
