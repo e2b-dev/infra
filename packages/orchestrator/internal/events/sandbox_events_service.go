@@ -57,8 +57,14 @@ func (es *SandboxEventsService) HandleEvent(ctx context.Context, event event.San
 		return
 	}
 
-	go es.handlePubSubEvent(ctx, event)
-	go es.handleClickhouseBatcherEvent(event) // nolint:contextcheck // TODO: fix this later
+	// Create a new context without cancel, so we can pass it to the goroutines
+	// and not worry about the parent context being cancelled.
+	// This is important because we want to ensure that the goroutines are not cancelled
+	// when the parent context is cancelled.
+	childCtx := context.WithoutCancel(ctx)
+
+	go es.handlePubSubEvent(childCtx, event)
+	go es.handleClickhouseBatcherEvent(childCtx, event)
 }
 
 func (es *SandboxEventsService) handlePubSubEvent(ctx context.Context, event event.SandboxEvent) {
@@ -103,9 +109,9 @@ func (es *SandboxEventsService) Close(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-func (es *SandboxEventsService) handleClickhouseBatcherEvent(event event.SandboxEvent) {
+func (es *SandboxEventsService) handleClickhouseBatcherEvent(ctx context.Context, event event.SandboxEvent) {
 	sandboxLifeCycleEventsWriteFlag, flagErr := es.featureFlags.BoolFlag(
-		context.Background(), featureflags.SandboxLifeCycleEventsWriteFlagName, featureflags.SandboxContext(event.SandboxID))
+		ctx, featureflags.SandboxLifeCycleEventsWriteFlagName, featureflags.SandboxContext(event.SandboxID))
 	if flagErr != nil {
 		es.logger.Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
 	}

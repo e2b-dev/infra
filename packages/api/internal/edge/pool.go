@@ -161,7 +161,7 @@ func (d poolSynchronizationStore) PoolInsert(ctx context.Context, cluster querie
 
 	zap.L().Info("Initializing newly discovered cluster", l.WithClusterID(cluster.ID))
 
-	c, err := NewCluster( // nolint:contextcheck // TODO: fix this later
+	c, err := NewCluster( //nolint:contextcheck // TODO: fix this later
 		d.pool.tel,
 		cluster.Endpoint,
 		cluster.EndpointTls,

@@ -8,7 +8,6 @@ job "template-manager-system" {
 %{ if update_stanza }
   update {
     max_parallel      = 1    # Update only 1 node at a time
-    stagger           = "1m" # Wait 1 minute between updates
   }
 %{ endif }
 

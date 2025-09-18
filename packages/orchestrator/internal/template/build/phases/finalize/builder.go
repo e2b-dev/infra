@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
@@ -104,6 +105,7 @@ func (ppb *PostProcessingBuilder) Layer(
 // Build runs post-processing actions in the sandbox
 func (ppb *PostProcessingBuilder) Build(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
 ) (phases.LayerResult, error) {
@@ -135,11 +137,11 @@ func (ppb *PostProcessingBuilder) Build(
 		},
 	)
 
-	actionExecutor := layer.NewFunctionAction(ppb.postProcessingFn())
+	actionExecutor := layer.NewFunctionAction(ppb.postProcessingFn(userLogger))
 
 	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template)
 
-	finalLayer, err := ppb.layerExecutor.BuildLayer(ctx, layer.LayerBuildCommand{
+	finalLayer, err := ppb.layerExecutor.BuildLayer(ctx, userLogger, layer.LayerBuildCommand{
 		SourceTemplate: templateProvider,
 		CurrentLayer:   currentLayer.Metadata,
 		Hash:           currentLayer.Hash,
@@ -158,7 +160,7 @@ func (ppb *PostProcessingBuilder) Build(
 	}, nil
 }
 
-func (ppb *PostProcessingBuilder) postProcessingFn() layer.FunctionActionFn {
+func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer.FunctionActionFn {
 	return func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (cm metadata.Template, e error) {
 		defer func() {
 			if e != nil {
@@ -180,16 +182,13 @@ func (ppb *PostProcessingBuilder) postProcessingFn() layer.FunctionActionFn {
 		// Run configuration script
 		err := runConfiguration(
 			ctx,
+			userLogger,
 			ppb.BuildContext,
 			ppb.proxy,
 			sbx.Runtime.SandboxID,
 		)
 		if err != nil {
-			return metadata.Template{}, &phases.PhaseBuildError{
-				Phase: string(metrics.PhaseFinalize),
-				Step:  "finalize",
-				Err:   fmt.Errorf("configuration script failed: %w", err),
-			}
+			return metadata.Template{}, phases.NewPhaseBuildError(ppb, fmt.Errorf("configuration script failed: %w", err))
 		}
 
 		if meta.Start == nil {
@@ -203,12 +202,12 @@ func (ppb *PostProcessingBuilder) postProcessingFn() layer.FunctionActionFn {
 		var startCmdRun errgroup.Group
 		startCmdConfirm := make(chan struct{})
 		if meta.Start.StartCmd != "" {
-			ppb.UserLogger.Info("Running start command")
+			userLogger.Info("Running start command")
 			startCmdRun.Go(func() error {
 				err := sandboxtools.RunCommandWithConfirmation(
 					commandsCtx,
 					ppb.proxy,
-					ppb.UserLogger,
+					userLogger,
 					zapcore.InfoLevel,
 					"start",
 					sbx.Runtime.SandboxID,
@@ -241,26 +240,19 @@ func (ppb *PostProcessingBuilder) postProcessingFn() layer.FunctionActionFn {
 		}
 		err = ppb.runReadyCommand(
 			commandsCtx,
+			userLogger,
 			sbx.Runtime.SandboxID,
 			readyCmd,
 			meta.Start.Context,
 		)
 		if err != nil {
-			return metadata.Template{}, &phases.PhaseBuildError{
-				Phase: string(metrics.PhaseFinalize),
-				Step:  "finalize",
-				Err:   fmt.Errorf("ready command failed: %w", err),
-			}
+			return metadata.Template{}, phases.NewPhaseBuildError(ppb, fmt.Errorf("ready command failed: %w", err))
 		}
 
 		// Wait for the start command to start executing.
 		select {
 		case <-ctx.Done():
-			return metadata.Template{}, &phases.PhaseBuildError{
-				Phase: string(metrics.PhaseFinalize),
-				Step:  "finalize",
-				Err:   fmt.Errorf("waiting for start command failed: %w", commandsCtx.Err()),
-			}
+			return metadata.Template{}, phases.NewPhaseBuildError(ppb, fmt.Errorf("waiting for start command failed: %w", commandsCtx.Err()))
 		case <-startCmdConfirm:
 		}
 		// Cancel the start command context (it's running in the background anyway).
@@ -268,11 +260,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn() layer.FunctionActionFn {
 		commandsCancel()
 		err = startCmdRun.Wait()
 		if err != nil {
-			return metadata.Template{}, &phases.PhaseBuildError{
-				Phase: string(metrics.PhaseFinalize),
-				Step:  "finalize",
-				Err:   fmt.Errorf("start command failed: %w", err),
-			}
+			return metadata.Template{}, phases.NewPhaseBuildError(ppb, fmt.Errorf("start command failed: %w", err))
 		}
 
 		return meta, nil

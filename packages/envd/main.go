@@ -189,7 +189,7 @@ func main() {
 				},
 			})
 		} else {
-			log.Fatalf("error getting user: %v", err) // nolint:gocritic // probably fine to bail if we're done?
+			log.Fatalf("error getting user: %v", err) //nolint:gocritic // probably fine to bail if we're done?
 		}
 	}
 
@@ -205,6 +205,6 @@ func main() {
 
 	err := s.ListenAndServe()
 	if err != nil {
-		log.Fatalf("error starting server: %v", err) // nolint:gocritic // probably fine to bail if we're done?
+		log.Fatalf("error starting server: %v", err)
 	}
 }

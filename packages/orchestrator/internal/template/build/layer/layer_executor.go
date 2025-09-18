@@ -69,6 +69,7 @@ func NewLayerExecutor(
 // BuildLayer orchestrates the layer building process
 func (lb *LayerExecutor) BuildLayer(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	cmd LayerBuildCommand,
 ) (metadata.Template, error) {
 	ctx, childSpan := tracer.Start(ctx, "run-in-sandbox")
@@ -95,7 +96,7 @@ func (lb *LayerExecutor) BuildLayer(
 
 	// Update envd binary to the latest version
 	if cmd.UpdateEnvd {
-		err = lb.updateEnvdInSandbox(ctx, sbx)
+		err = lb.updateEnvdInSandbox(ctx, userLogger, sbx)
 		if err != nil {
 			return metadata.Template{}, fmt.Errorf("update envd: %w", err)
 		}
@@ -116,6 +117,7 @@ func (lb *LayerExecutor) BuildLayer(
 	})
 	err = lb.PauseAndUpload(
 		ctx,
+		userLogger,
 		sbx,
 		cmd.Hash,
 		meta,
@@ -130,6 +132,7 @@ func (lb *LayerExecutor) BuildLayer(
 // updateEnvdInSandbox updates the envd binary in the sandbox to the latest version.
 func (lb *LayerExecutor) updateEnvdInSandbox(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	sbx *sandbox.Sandbox,
 ) error {
 	ctx, childSpan := tracer.Start(ctx, "update-envd")
@@ -139,7 +142,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	if err != nil {
 		return fmt.Errorf("error getting envd version: %w", err)
 	}
-	lb.UserLogger.Debug(fmt.Sprintf("Updating envd to version v%s", envdVersion))
+	userLogger.Debug(fmt.Sprintf("Updating envd to version v%s", envdVersion))
 
 	// Step 1: Copy the updated envd binary from host to /tmp in sandbox
 	tmpEnvdPath := "/tmp/envd_updated"
@@ -165,7 +168,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	err = sandboxtools.RunCommandWithLogger(
 		ctx,
 		lb.proxy,
-		lb.UserLogger,
+		userLogger,
 		zap.DebugLevel,
 		"update-envd-replace",
 		sbx.Runtime.SandboxID,
@@ -200,6 +203,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 
 func (lb *LayerExecutor) PauseAndUpload(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	sbx *sandbox.Sandbox,
 	hash string,
 	meta metadata.Template,
@@ -207,7 +211,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 	ctx, childSpan := tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
 
-	lb.UserLogger.Debug(fmt.Sprintf("Saving layer: %s", meta.Template.BuildID))
+	userLogger.Debug(fmt.Sprintf("Saving layer: %s", meta.Template.BuildID))
 
 	// snapshot is automatically cleared by the templateCache eviction
 	snapshot, err := sbx.Pause(
@@ -255,7 +259,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
 		}
 
-		lb.UserLogger.Debug(fmt.Sprintf("Saved: %s", meta.Template.BuildID))
+		userLogger.Debug(fmt.Sprintf("Saved: %s", meta.Template.BuildID))
 		return nil
 	})
 
