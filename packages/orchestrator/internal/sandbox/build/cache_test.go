@@ -244,13 +244,11 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 
 func TestDiffStoreOldestFromCache(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	ttl := 60 * time.Second
 	delay := 4 * time.Second
 	store, err := NewDiffStore(
-		ctx,
+		t.Context(),
 		cachePath,
 		ttl,
 		delay,
@@ -354,12 +352,14 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 
 				// Try to trigger manual deletion which can race with TTL eviction
 				if j%10 == 0 {
-					store.deleteOldestFromCache()
+					_, err := store.deleteOldestFromCache()
+					assert.NoError(t, err)
 				}
 
 				// Occasionally try to access the item, which calls resetDelete
 				if j%5 == 0 {
-					store.Get(diff)
+					_, err := store.Get(diff)
+					assert.NoError(t, err)
 				}
 			}
 		}(i)
