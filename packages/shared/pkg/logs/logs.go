@@ -63,6 +63,8 @@ func CompareLevels(as, bs string) int32 {
 	return 0
 }
 
+// FlatJsonLogLineParser parses a flat JSON log line into a map of string keys and values.
+// Handles based on the documentation at https://pkg.go.dev/encoding/json#Unmarshal
 func FlatJsonLogLineParser(input string) (map[string]string, error) {
 	var raw map[string]interface{}
 	if err := json.Unmarshal([]byte(input), &raw); err != nil {
@@ -75,7 +77,7 @@ func FlatJsonLogLineParser(input string) (map[string]string, error) {
 		case string:
 			result[key] = t
 		case float64:
-			result[key] = strconv.FormatFloat(t, 'E', -1, 64)
+			result[key] = strconv.FormatFloat(t, 'G', -1, 64)
 		case bool:
 			result[key] = strconv.FormatBool(t)
 		default:
