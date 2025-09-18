@@ -100,7 +100,7 @@ func (g *GRPCServer) GRPCServer() *grpc.Server {
 
 // Start launches
 func (g *GRPCServer) Start(ctx context.Context, port uint) error {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	lis, err := new(net.ListenConfig).Listen(ctx, "tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return fmt.Errorf("failed to listen on port %d: %w", port, err)
 	}

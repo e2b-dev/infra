@@ -184,7 +184,7 @@ func run() int {
 	}
 
 	lisAddr := fmt.Sprintf("0.0.0.0:%d", edgePort)
-	lis, err := net.Listen("tcp", lisAddr)
+	lis, err := new(net.ListenConfig).Listen(ctx, "tcp", lisAddr)
 	if err != nil {
 		logger.Error("Failed to listen on edge port", zap.Int("port", edgePort), zap.Error(err))
 		return 1
@@ -275,7 +275,7 @@ func run() int {
 		proxyRunLogger := logger.With(zap.Int("proxy_port", proxyPort))
 		proxyRunLogger.Info("Http proxy starting")
 
-		err := trafficProxy.ListenAndServe()
+		err := trafficProxy.ListenAndServe(ctx)
 		// Add different handling for the error
 		switch {
 		case errors.Is(err, http.ErrServerClosed):

@@ -116,7 +116,7 @@ func ToExt4(ctx context.Context, logger *zap.Logger, img containerregistry.Image
 	}
 
 	// Check the FS integrity first so no errors occur during shrinking
-	_, err = filesystem.CheckIntegrity(rootfsPath, true)
+	_, err = filesystem.CheckIntegrity(ctx, rootfsPath, true)
 	if err != nil {
 		return 0, fmt.Errorf("error checking filesystem integrity after ext4 creation: %w", err)
 	}
@@ -128,7 +128,7 @@ func ToExt4(ctx context.Context, logger *zap.Logger, img containerregistry.Image
 	}
 
 	// Check the FS integrity after shrinking
-	_, err = filesystem.CheckIntegrity(rootfsPath, true)
+	_, err = filesystem.CheckIntegrity(ctx, rootfsPath, true)
 	if err != nil {
 		return 0, fmt.Errorf("error checking filesystem integrity after shrinking: %w", err)
 	}
@@ -275,7 +275,7 @@ func copyFiles(ctx context.Context, src, dest string) error {
 	//
 	// --whole-file: Copy files without using the delta algorithm, which is faster for local copies
 	// --inplace: Update destination files in place, no need to create temporary files
-	cmd := exec.Command("rsync", "-aH", "--whole-file", "--inplace", src+"/", dest)
+	cmd := exec.CommandContext(ctx, "rsync", "-aH", "--whole-file", "--inplace", src+"/", dest)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("while copying files from %s to %s: %w: %s", src, dest, err, string(out))
 	}

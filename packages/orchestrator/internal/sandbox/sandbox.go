@@ -588,7 +588,7 @@ func (s *Sandbox) Stop(ctx context.Context) error {
 	// Stop the health checks before stopping the sandbox
 	s.Checks.Stop()
 
-	fcStopErr := s.process.Stop()
+	fcStopErr := s.process.Stop(ctx)
 	if fcStopErr != nil {
 		errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
 	}

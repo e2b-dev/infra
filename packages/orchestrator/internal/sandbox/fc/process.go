@@ -102,7 +102,7 @@ func NewProcess(
 		return nil, fmt.Errorf("error stating kernel file: %w", err)
 	}
 
-	cmd := exec.Command(
+	cmd := exec.CommandContext(ctx,
 		"unshare",
 		"-m",
 		"--",
@@ -200,7 +200,7 @@ func (p *Process) configure(
 	if err != nil {
 		errMsg := fmt.Errorf("error waiting for fc socket: %w", err)
 
-		fcStopErr := p.Stop()
+		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(errMsg, fcStopErr)
 	}
@@ -226,7 +226,7 @@ func (p *Process) Create(
 		options.Stderr,
 	)
 	if err != nil {
-		fcStopErr := p.Stop()
+		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error starting fc process: %w", err), fcStopErr)
 	}
@@ -275,7 +275,7 @@ func (p *Process) Create(
 	kernelArgs := args.String()
 	err = p.client.setBootSource(ctx, kernelArgs, p.kernelPath)
 	if err != nil {
-		fcStopErr := p.Stop()
+		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error setting fc boot source config: %w", err), fcStopErr)
 	}
@@ -289,7 +289,7 @@ func (p *Process) Create(
 
 	err = p.client.setRootfsDrive(ctx, p.rootfsPath)
 	if err != nil {
-		fcStopErr := p.Stop()
+		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error setting fc drivers config: %w", err), fcStopErr)
 	}
@@ -298,7 +298,7 @@ func (p *Process) Create(
 	// Network
 	err = p.client.setNetworkInterface(ctx, p.slot.VpeerName(), p.slot.TapName(), p.slot.TapMAC())
 	if err != nil {
-		fcStopErr := p.Stop()
+		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error setting fc network config: %w", err), fcStopErr)
 	}
@@ -306,7 +306,7 @@ func (p *Process) Create(
 
 	err = p.client.setMachineConfig(ctx, vCPUCount, memoryMB, hugePages)
 	if err != nil {
-		fcStopErr := p.Stop()
+		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error setting fc machine config: %w", err), fcStopErr)
 	}
@@ -314,7 +314,7 @@ func (p *Process) Create(
 
 	err = p.client.startVM(ctx)
 	if err != nil {
-		fcStopErr := p.Stop()
+		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error starting fc: %w", err), fcStopErr)
 	}
@@ -340,7 +340,7 @@ func (p *Process) Resume(
 		nil,
 	)
 	if err != nil {
-		fcStopErr := p.Stop()
+		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error starting fc process: %w", err), fcStopErr)
 	}
@@ -359,21 +359,21 @@ func (p *Process) Resume(
 		snapfile,
 	)
 	if err != nil {
-		fcStopErr := p.Stop()
+		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error loading snapshot: %w", err), fcStopErr)
 	}
 
 	err = p.client.resumeVM(ctx)
 	if err != nil {
-		fcStopErr := p.Stop()
+		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error resuming vm: %w", err), fcStopErr)
 	}
 
 	err = p.client.setMmds(ctx, mmdsMetadata)
 	if err != nil {
-		fcStopErr := p.Stop()
+		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error setting mmds: %w", err), fcStopErr)
 	}
@@ -397,8 +397,8 @@ func (p *Process) Pid() (int, error) {
 
 // getProcessState returns the state of the process.
 // It's used to check if the process is in the D state, because gopsutil doesn't show that.
-func getProcessState(pid int) (string, error) {
-	cmd, err := exec.Command("ps", "-o", "stat=", "-p", fmt.Sprint(pid)).Output()
+func getProcessState(ctx context.Context, pid int) (string, error) {
+	cmd, err := exec.CommandContext(ctx, "ps", "-o", "stat=", "-p", fmt.Sprint(pid)).Output()
 	if err != nil {
 		return "", err
 	}
@@ -408,12 +408,12 @@ func getProcessState(pid int) (string, error) {
 	return state, nil
 }
 
-func (p *Process) Stop() error {
+func (p *Process) Stop(ctx context.Context) error {
 	if p.cmd.Process == nil {
 		return fmt.Errorf("fc process not started")
 	}
 
-	state, err := getProcessState(p.cmd.Process.Pid)
+	state, err := getProcessState(ctx, p.cmd.Process.Pid)
 	if err != nil {
 		zap.L().Warn("failed to get fc process state", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 	} else if state == "D" {
@@ -436,7 +436,7 @@ func (p *Process) Stop() error {
 				zap.L().Info("sent SIGKILL to fc process because it was not responding to SIGTERM for 10 seconds", logger.WithSandboxID(p.files.SandboxID))
 			}
 
-			state, err := getProcessState(p.cmd.Process.Pid)
+			state, err := getProcessState(ctx, p.cmd.Process.Pid)
 			if err != nil {
 				zap.L().Warn("failed to get fc process state after sending SIGKILL", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 			} else if state == "D" {

@@ -107,9 +107,11 @@ func assertBackendOutput(t *testing.T, backend *testBackend, resp *http.Response
 }
 
 // newTestProxy creates a new proxy server for testing
-func newTestProxy(getDestination func(r *http.Request) (*pool.Destination, error)) (*Proxy, uint, error) {
+func newTestProxy(t *testing.T, getDestination func(r *http.Request) (*pool.Destination, error)) (*Proxy, uint, error) {
+	t.Helper()
+
 	// Find a free port for the proxy
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	l, err := new(net.ListenConfig).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get free port: %w", err)
 	}
@@ -131,7 +133,7 @@ func newTestProxy(getDestination func(r *http.Request) (*pool.Destination, error
 }
 
 func TestProxyRoutesToTargetServer(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := new(net.ListenConfig).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
 	}
@@ -152,7 +154,7 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 		}, nil
 	}
 
-	proxy, port, err := newTestProxy(getDestination)
+	proxy, port, err := newTestProxy(t, getDestination)
 	if err != nil {
 		t.Fatalf("failed to create proxy: %v", err)
 	}
@@ -163,7 +165,7 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 
 	// Make a request to the proxy
 	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
-	resp, err := http.Get(proxyURL)
+	resp, err := httpGet(t, proxyURL)
 	if err != nil {
 		t.Fatalf("failed to GET from proxy: %v", err)
 	}
@@ -175,8 +177,24 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 	assert.Equal(t, proxy.TotalPoolConnections(), uint64(1), "proxy should have established one connection")
 }
 
+func httpGet(t *testing.T, proxyURL string) (*http.Response, error) {
+	t.Helper()
+
+	req, err := http.NewRequestWithContext(t.Context(), "GET", proxyURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	rsp, err := new(http.Client).Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	return rsp, nil
+}
+
 func TestProxyReusesConnections(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := new(net.ListenConfig).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
 	}
@@ -197,7 +215,7 @@ func TestProxyReusesConnections(t *testing.T) {
 		}, nil
 	}
 
-	proxy, port, err := newTestProxy(getDestination)
+	proxy, port, err := newTestProxy(t, getDestination)
 	if err != nil {
 		t.Fatalf("failed to create proxy: %v", err)
 	}
@@ -207,7 +225,7 @@ func TestProxyReusesConnections(t *testing.T) {
 	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
 
 	// First request
-	resp1, err := http.Get(proxyURL)
+	resp1, err := httpGet(t, proxyURL)
 	if err != nil {
 		t.Fatalf("failed to GET from proxy (first request): %v", err)
 	}
@@ -216,7 +234,7 @@ func TestProxyReusesConnections(t *testing.T) {
 	assertBackendOutput(t, backend, resp1)
 
 	// Second request
-	resp2, err := http.Get(proxyURL)
+	resp2, err := httpGet(t, proxyURL)
 	if err != nil {
 		t.Fatalf("failed to GET from proxy (second request): %v", err)
 	}
@@ -232,7 +250,7 @@ func TestProxyReusesConnections(t *testing.T) {
 // This is a test that verify that the proxy reuse fails when the backend changes.
 func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 	// Create first backend
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := new(net.ListenConfig).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
 	}
@@ -270,7 +288,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 	}
 
 	// Create proxy with the initial routing function
-	proxy, port, err := newTestProxy(getDestination)
+	proxy, port, err := newTestProxy(t, getDestination)
 	if err != nil {
 		t.Fatalf("failed to create proxy: %v", err)
 	}
@@ -279,7 +297,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
 
 	// Make request to first backend
-	resp1, err := http.Get(proxyURL)
+	resp1, err := httpGet(t, proxyURL)
 	if err != nil {
 		t.Fatalf("failed to GET from proxy (first request): %v", err)
 	}
@@ -294,7 +312,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 	backend1.Interrupt()
 
 	// Create second backend on the same address
-	listener, err = net.Listen("tcp", backendAddr)
+	listener, err = new(net.ListenConfig).Listen(t.Context(), "tcp", backendAddr)
 	if err != nil {
 		t.Fatalf("failed to create listener for second backend: %v", err)
 	}
@@ -306,7 +324,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 	defer backend2.Close()
 
 	// Make request to second backend
-	resp2, err := http.Get(proxyURL)
+	resp2, err := httpGet(t, proxyURL)
 	if err != nil {
 		t.Fatalf("failed to GET from proxy (second request): %v", err)
 	}
@@ -317,7 +335,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 
 func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 	// Create first backend
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := new(net.ListenConfig).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
 	}
@@ -355,7 +373,7 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 	}
 
 	// Create proxy with the initial routing function
-	proxy, port, err := newTestProxy(getDestination)
+	proxy, port, err := newTestProxy(t, getDestination)
 	if err != nil {
 		t.Fatalf("failed to create proxy: %v", err)
 	}
@@ -364,7 +382,7 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
 
 	// Make request to first backend
-	resp1, err := http.Get(proxyURL)
+	resp1, err := httpGet(t, proxyURL)
 	if err != nil {
 		t.Fatalf("failed to GET from proxy (first request): %v", err)
 	}
@@ -379,7 +397,7 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 	backend1.Interrupt()
 
 	// Create second backend on the same address
-	listener, err = net.Listen("tcp", backendAddr)
+	listener, err = new(net.ListenConfig).Listen(t.Context(), "tcp", backendAddr)
 	if err != nil {
 		t.Fatalf("failed to create listener for second backend: %v", err)
 	}
@@ -395,7 +413,7 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 	backendMappingMutex.Unlock()
 
 	// Make request to second backend
-	resp2, err := http.Get(proxyURL)
+	resp2, err := httpGet(t, proxyURL)
 	if err != nil {
 		t.Fatalf("failed to GET from proxy (second request): %v", err)
 	}

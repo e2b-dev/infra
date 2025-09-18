@@ -424,7 +424,7 @@ func run(port, proxyPort uint) (success bool) {
 
 	g.Go(func() error {
 		zap.L().Info("Starting session proxy")
-		proxyErr := sandboxProxy.Start()
+		proxyErr := sandboxProxy.Start(ctx)
 		if proxyErr != nil && !errors.Is(proxyErr, http.ErrServerClosed) {
 			proxyErr = fmt.Errorf("proxy server: %w", proxyErr)
 			zap.L().Error("error starting proxy server", zap.Error(proxyErr))

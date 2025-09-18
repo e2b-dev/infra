@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -67,8 +68,8 @@ func (p *Proxy) RemoveFromPool(connectionKey string) {
 	p.pool.Close(connectionKey)
 }
 
-func (p *Proxy) ListenAndServe() error {
-	l, err := net.Listen("tcp", p.Addr)
+func (p *Proxy) ListenAndServe(ctx context.Context) error {
+	l, err := new(net.ListenConfig).Listen(ctx, "tcp", p.Addr)
 	if err != nil {
 		return err
 	}
