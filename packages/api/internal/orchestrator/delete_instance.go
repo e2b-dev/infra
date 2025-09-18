@@ -63,7 +63,10 @@ func (o *Orchestrator) removeSandbox(ctx context.Context, sbx *instance.Instance
 			}
 		}
 	}
-	defer finish(err)
+	defer func() {
+		finish(err)
+	}()
+
 	if done {
 		zap.L().Info("Sandbox was already in the process of being removed", logger.WithSandboxID(sandboxID), zap.String("state", string(sbx.State())))
 
