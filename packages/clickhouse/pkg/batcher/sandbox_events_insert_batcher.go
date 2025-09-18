@@ -17,8 +17,7 @@ type SandboxEventsClickhouseBatcher interface {
 
 type SandboxEventInsertBatcher struct {
 	*Batcher[clickhouse.SandboxEvent]
-	errorHandler func(error)
-	conn         driver.Conn
+	conn driver.Conn
 }
 
 const InsertSandboxEventQuery = `INSERT INTO sandbox_events
