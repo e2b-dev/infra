@@ -137,7 +137,7 @@ func TestBatcherConcurrentPush(t *testing.T) {
 	}
 	var wg sync.WaitGroup
 	ss := uint32(0)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func() {
 			for i := range 100 {
