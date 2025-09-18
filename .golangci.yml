@@ -29,6 +29,7 @@ linters:
     - govet
     - iface
     - importas
+    - misspell
     - nolintlint
     - reassign
     - recvcheck
