@@ -29,6 +29,7 @@ linters:
     - govet
     - iface
     - importas
+    - inamedparam
     - nolintlint
     - staticcheck
     - testifylint
