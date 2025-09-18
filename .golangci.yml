@@ -30,6 +30,10 @@ linters:
     - iface
     - importas
     - nolintlint
+    - reassign
+    - recvcheck
+    - rowserrcheck
+    - sqlclosecheck
     - staticcheck
     - testifylint
     - thelper
