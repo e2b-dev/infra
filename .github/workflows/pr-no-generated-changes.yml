@@ -29,7 +29,7 @@ jobs:
         run: ./scripts/fix-tracers.sh
 
       - name: Generate all code
-        run: make generate
+        run: make -j4 generate
 
       - name: Format code
         run: make fmt
