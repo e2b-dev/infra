@@ -33,6 +33,7 @@ linters:
     - mirror
     - misspell
     - nolintlint
+    - promlinter
     - reassign
     - recvcheck
     - rowserrcheck
