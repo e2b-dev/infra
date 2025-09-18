@@ -87,7 +87,7 @@ func NewInstanceInfo(
 			State:               StateRunning,
 			BaseTemplateID:      baseTemplateID,
 		},
-		dataMu: sync.RWMutex{},
+		mu: sync.RWMutex{},
 	}
 
 	return instance
@@ -127,7 +127,7 @@ type InstanceInfo struct {
 	data Data
 
 	transition *utils.SetOnce[struct{}]
-	dataMu     sync.RWMutex
+	mu         sync.RWMutex
 }
 
 func (i Data) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -143,8 +143,8 @@ func (i Data) IsExpired() bool {
 }
 
 func (i *InstanceInfo) SetExpired() {
-	i.dataMu.Lock()
-	defer i.dataMu.Unlock()
+	i.mu.Lock()
+	defer i.mu.Unlock()
 
 	if !i.data.IsExpired() {
 		i.data.EndTime = time.Now()
@@ -152,15 +152,15 @@ func (i *InstanceInfo) SetExpired() {
 }
 
 func (i *InstanceInfo) Data() Data {
-	i.dataMu.RLock()
-	defer i.dataMu.RUnlock()
+	i.mu.RLock()
+	defer i.mu.RUnlock()
 
 	return i.data
 }
 
 func (i *InstanceInfo) State() State {
-	i.dataMu.RLock()
-	defer i.dataMu.RUnlock()
+	i.mu.RLock()
+	defer i.mu.RUnlock()
 
 	return i.data.State
 }
@@ -181,11 +181,11 @@ func (i *InstanceInfo) StartRemoving(ctx context.Context, removeType RemoveType)
 		newState = StatePaused
 	}
 
-	i.dataMu.Lock()
+	i.mu.Lock()
 	transition := i.transition
 	if transition != nil {
 		currentState := i.data.State
-		i.dataMu.Unlock()
+		i.mu.Unlock()
 
 		if currentState != newState && !allowed[currentState][newState] {
 			return false, nil, fmt.Errorf("invalid state transition, already in transition from %s", currentState)
@@ -209,7 +209,7 @@ func (i *InstanceInfo) StartRemoving(ctx context.Context, removeType RemoveType)
 		}
 	}
 
-	defer i.dataMu.Unlock()
+	defer i.mu.Unlock()
 	if i.data.State == newState {
 		zap.L().Debug("Already in the same state", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)))
 		return true, func(error) {}, nil
@@ -224,8 +224,8 @@ func (i *InstanceInfo) StartRemoving(ctx context.Context, removeType RemoveType)
 
 	callback = func(err error) {
 		zap.L().Debug("Transition complete", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)), zap.Error(err))
-		i.dataMu.Lock()
-		defer i.dataMu.Unlock()
+		i.mu.Lock()
+		defer i.mu.Unlock()
 
 		if err != nil {
 			i.data.Reason = err
@@ -243,9 +243,9 @@ func (i *InstanceInfo) StartRemoving(ctx context.Context, removeType RemoveType)
 }
 
 func (i *InstanceInfo) WaitForStateChange(ctx context.Context) error {
-	i.dataMu.RLock()
+	i.mu.RLock()
 	transition := i.transition
-	i.dataMu.RUnlock()
+	i.mu.RUnlock()
 	if transition == nil {
 		return nil
 	}

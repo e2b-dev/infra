@@ -20,8 +20,8 @@ const (
 
 // Add the instance to the cache
 func (c *MemoryStore) Add(ctx context.Context, sandbox *InstanceInfo, newlyCreated bool) {
-	sandbox.dataMu.Lock()
-	defer sandbox.dataMu.Unlock()
+	sandbox.mu.Lock()
+	defer sandbox.mu.Unlock()
 
 	sbxlogger.I(sandbox.data).Debug("Adding sandbox to cache",
 		zap.Bool("newly_created", newlyCreated),

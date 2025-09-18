@@ -34,8 +34,8 @@ func (c *MemoryStore) KeepAliveFor(instanceID string, duration time.Duration, al
 
 	now := time.Now()
 
-	instance.dataMu.Lock()
-	defer instance.dataMu.Unlock()
+	instance.mu.Lock()
+	defer instance.mu.Unlock()
 
 	endTime := instance.data.EndTime
 	if !allowShorter && endTime.After(now.Add(duration)) {

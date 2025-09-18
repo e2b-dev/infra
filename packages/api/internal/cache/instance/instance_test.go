@@ -26,7 +26,7 @@ func createTestInstance() *InstanceInfo {
 			MaxInstanceLength: time.Hour,
 			State:             StateRunning,
 		},
-		dataMu: sync.RWMutex{},
+		mu: sync.RWMutex{},
 	}
 }
 
