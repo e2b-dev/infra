@@ -445,7 +445,7 @@ func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify that all parts eventually succeeded after retries
-	partAttempts.Range(func(key, value interface{}) bool {
+	partAttempts.Range(func(key, value any) bool {
 		attempts := atomic.LoadInt32(value.(*int32))
 		require.Equal(t, int32(maxAttempts-1), attempts, "Part %s should have exactly %d attempts", key, maxAttempts-1)
 		return true
@@ -710,7 +710,7 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 	t.Logf("Total HTTP requests made: %d", atomic.LoadInt32(&totalRequests))
 
 	// Verify that retries happened correctly under concurrent conditions
-	retryAttempts.Range(func(key, value interface{}) bool {
+	retryAttempts.Range(func(key, value any) bool {
 		attempts := atomic.LoadInt32(value.(*int32))
 		require.GreaterOrEqual(t, attempts, int32(3), "Part %s should have at least 3 attempts", key)
 		return true
