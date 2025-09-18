@@ -30,6 +30,7 @@ linters:
     - iface
     - importas
     - inamedparam
+    - mirror
     - misspell
     - nolintlint
     - reassign
