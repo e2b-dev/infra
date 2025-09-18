@@ -35,7 +35,7 @@ func (c *Checks) GetMetrics(ctx context.Context, timeout time.Duration) (*Metric
 
 	address := fmt.Sprintf("http://%s:%d/metrics", c.sandbox.Slot.HostIPString(), consts.DefaultEnvdServerPort)
 
-	request, err := http.NewRequestWithContext(ctx, "GET", address, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -165,7 +165,7 @@ func (m *MultipartUploader) InitiateUpload() (string, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("failed to initiate upload (status %d): %s", resp.StatusCode, string(body))
 	}
@@ -202,7 +202,7 @@ func (m *MultipartUploader) UploadPart(uploadID string, partNumber int, data []b
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("failed to upload part %d (status %d): %s", partNumber, resp.StatusCode, string(body))
 	}
@@ -245,7 +245,7 @@ func (m *MultipartUploader) CompleteUpload(uploadID string, parts []Part) error 
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("failed to complete upload (status %d): %s", resp.StatusCode, string(body))
 	}
