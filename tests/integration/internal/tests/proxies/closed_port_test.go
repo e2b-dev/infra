@@ -24,7 +24,7 @@ import (
 func waitForStatus(t *testing.T, client *http.Client, sbx *api.Sandbox, url *url.URL, port int, headers *http.Header, expectedStatus int) *http.Response {
 	t.Helper()
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		req := utils.NewRequest(sbx, url, port, headers)
 		resp, err := client.Do(req)
 		if err != nil {

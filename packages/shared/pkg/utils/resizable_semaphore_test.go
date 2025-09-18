@@ -279,10 +279,10 @@ func TestConcurrentStressNoDeadlockOrRace(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(gor)
-	for i := 0; i < gor; i++ {
+	for range gor {
 		go func() {
 			defer wg.Done()
-			for j := 0; j < iterations; j++ {
+			for range iterations {
 				_ = s.Acquire(t.Context(), 1)
 				// tiny critical-section
 				s.Release(1)

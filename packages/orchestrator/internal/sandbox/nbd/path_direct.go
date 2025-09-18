@@ -83,7 +83,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 		d.socksServer = make([]io.Closer, 0)
 		d.dispatchers = make([]*Dispatch, 0)
 
-		for i := 0; i < connections; i++ {
+		for i := range connections {
 			// Create the socket pairs
 			sockPair, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 			if err != nil {

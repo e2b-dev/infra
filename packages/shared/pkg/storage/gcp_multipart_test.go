@@ -733,7 +733,7 @@ func TestCreateRetryableClient_JitterBehavior(t *testing.T) {
 	// Test jitter produces values within expected range
 	t.Run("JitterRange", func(t *testing.T) {
 		// Test first attempt (attemptNum = 0)
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			backoff := client.Backoff(config.InitialBackoff, config.MaxBackoff, 0, nil)
 			require.GreaterOrEqual(t, backoff, time.Duration(0))
 			require.Less(t, backoff, config.InitialBackoff)
@@ -741,7 +741,7 @@ func TestCreateRetryableClient_JitterBehavior(t *testing.T) {
 
 		// Test second attempt (attemptNum = 1) - should be jittered version of 200ms
 		expectedBase := time.Duration(float64(config.InitialBackoff) * config.BackoffMultiplier)
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			backoff := client.Backoff(config.InitialBackoff, config.MaxBackoff, 1, nil)
 			require.GreaterOrEqual(t, backoff, time.Duration(0))
 			require.Less(t, backoff, expectedBase)
@@ -753,7 +753,7 @@ func TestCreateRetryableClient_JitterBehavior(t *testing.T) {
 		values := make(map[time.Duration]bool)
 
 		// Collect 20 jittered values
-		for i := 0; i < 20; i++ {
+		for range 20 {
 			backoff := client.Backoff(config.InitialBackoff, config.MaxBackoff, 1, nil)
 			values[backoff] = true
 		}
@@ -774,7 +774,7 @@ func TestCreateRetryableClient_JitterBehavior(t *testing.T) {
 
 		// Test attempt 2 multiple times and verify max range
 		var maxSeen time.Duration
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			backoff := client.Backoff(config.InitialBackoff, config.MaxBackoff, 2, nil)
 			if backoff > maxSeen {
 				maxSeen = backoff
@@ -791,7 +791,7 @@ func TestCreateRetryableClient_JitterBehavior(t *testing.T) {
 	// Test max backoff cap
 	t.Run("MaxBackoffCap", func(t *testing.T) {
 		// With high attempt numbers, backoff should be capped at MaxBackoff
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			backoff := client.Backoff(config.InitialBackoff, config.MaxBackoff, 10, nil)
 			require.GreaterOrEqual(t, backoff, time.Duration(0))
 			require.Less(t, backoff, config.MaxBackoff)

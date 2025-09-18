@@ -89,7 +89,7 @@ type BenchmarkMetrics struct {
 // createSimulatedNodes creates nodes with realistic resource tracking
 func createSimulatedNodes(config BenchmarkConfig) []*SimulatedNode {
 	nodes := make([]*SimulatedNode, config.NumNodes)
-	for i := 0; i < config.NumNodes; i++ {
+	for i := range config.NumNodes {
 		// Create base node
 		baseNode := nodemanager.NewTestNode(
 			fmt.Sprintf("node-%d", i),
