@@ -25,6 +25,7 @@ linters:
     - errname
     - errorlint
     - exptostd
+    - forcetypeassert
     - gocritic
     - govet
     - iface

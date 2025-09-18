@@ -9,12 +9,12 @@ import (
 var timerPool sync.Pool
 
 func acquireTimer(timeout time.Duration) *time.Timer {
-	tv := timerPool.Get()
+	tv, _ := timerPool.Get().(*time.Timer)
 	if tv == nil {
 		return time.NewTimer(timeout)
 	}
 
-	t := tv.(*time.Timer)
+	t := tv
 	if t.Reset(timeout) {
 		log.Printf("Active timer trapped into AcquireTimer() with timeout %s", timeout)
 	}

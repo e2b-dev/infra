@@ -19,13 +19,12 @@ var OTELTracingPrint = os.Getenv("OTEL_TRACING_PRINT") != "false"
 const DebugID = "debug_id"
 
 func getDebugID(ctx context.Context) *string {
-	if ctx.Value(DebugID) == nil {
+	debugID, ok := ctx.Value(DebugID).(string)
+	if !ok {
 		return nil
 	}
 
-	value := ctx.Value(DebugID).(string)
-
-	return &value
+	return &debugID
 }
 
 func debugFormat(debugID *string, msg string) string {

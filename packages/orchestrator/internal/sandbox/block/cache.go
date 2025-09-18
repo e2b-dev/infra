@@ -236,7 +236,11 @@ func (m *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 func (m *Cache) dirtySortedKeys() []int64 {
 	var keys []int64
 	m.dirty.Range(func(key, _ any) bool {
-		keys = append(keys, key.(int64))
+		n, ok := key.(int64)
+		if !ok {
+			panic(fmt.Sprintf("invalid map key type: %T", key))
+		}
+		keys = append(keys, n)
 		return true
 	})
 	sort.Slice(keys, func(i, j int) bool {

@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
@@ -236,7 +238,8 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig) *Be
 				now := time.Now()
 				// Check and remove expired sandboxes
 				activeSandboxes.Range(func(key, value interface{}) bool {
-					sandbox := value.(*LiveSandbox)
+					sandbox, ok := value.(*LiveSandbox)
+					assert.True(b, ok)
 					if now.Sub(sandbox.StartTime) > sandbox.PlannedDuration {
 						// Remove from node
 						if node, exists := nodeMap[sandbox.NodeID]; exists {

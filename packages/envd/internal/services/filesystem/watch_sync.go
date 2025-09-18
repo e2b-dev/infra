@@ -11,7 +11,6 @@ import (
 	"github.com/e2b-dev/fsnotify"
 	"github.com/rs/zerolog"
 
-	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
@@ -119,7 +118,7 @@ func CreateFileWatcher(ctx context.Context, watchPath string, recursive bool, op
 					logger.
 						Debug().
 						Str("event_type", "filesystem_event").
-						Str(string(logs.OperationIDKey), operationID).
+						Str("operation_id", operationID).
 						Interface("filesystem_event", event).
 						Msg("Streaming filesystem event")
 				}

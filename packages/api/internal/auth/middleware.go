@@ -46,7 +46,7 @@ type commonAuthenticator[T any] struct {
 	securitySchemeName string
 	headerKey          headerKey
 	validationFunction func(context.Context, string) (T, *api.APIError)
-	contextKey         string
+	setContext         func(ginContext *gin.Context, result T)
 	errorMessage       string
 }
 
@@ -109,8 +109,8 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openap
 	telemetry.ReportEvent(ctx, "api key validated")
 
 	// Set the property on the gin context
-	if a.contextKey != "" {
-		middleware.GetGinContext(ctx).Set(a.contextKey, result)
+	if a.setContext != nil {
+		a.setContext(middleware.GetGinContext(ctx), result)
 	}
 
 	return nil
@@ -147,7 +147,7 @@ func CreateAuthenticationFunc(
 				removePrefix: "",
 			},
 			validationFunction: teamValidationFunction,
-			contextKey:         TeamContextKey,
+			setContext:         setTeamInfo,
 			errorMessage:       "Invalid API key, please visit https://e2b.dev/docs/api-key for more information.",
 		},
 		&commonAuthenticator[uuid.UUID]{
@@ -158,7 +158,7 @@ func CreateAuthenticationFunc(
 				removePrefix: "Bearer ",
 			},
 			validationFunction: userValidationFunction,
-			contextKey:         UserIDContextKey,
+			setContext:         setUserID,
 			errorMessage:       "Invalid Access token, try to login again by running `e2b auth login`.",
 		},
 		&commonAuthenticator[uuid.UUID]{
@@ -169,7 +169,7 @@ func CreateAuthenticationFunc(
 				removePrefix: "",
 			},
 			validationFunction: supabaseTokenValidationFunction,
-			contextKey:         UserIDContextKey,
+			setContext:         setUserID,
 			errorMessage:       "Invalid Supabase token.",
 		},
 		&commonAuthenticator[authcache.AuthTeamInfo]{
@@ -180,7 +180,7 @@ func CreateAuthenticationFunc(
 				removePrefix: "",
 			},
 			validationFunction: supabaseTeamValidationFunction,
-			contextKey:         TeamContextKey,
+			setContext:         setTeamInfo,
 			errorMessage:       "Invalid Supabase token teamID.",
 		},
 		&commonAuthenticator[struct{}]{
@@ -191,15 +191,19 @@ func CreateAuthenticationFunc(
 				removePrefix: "",
 			},
 			validationFunction: adminValidationFunction,
-			contextKey:         "",
+			setContext:         nil,
 			errorMessage:       "Invalid Access token.",
 		},
 	}
 
 	return func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
-		ginContext := ctx.Value(middleware.GinContextKey).(*gin.Context)
-		requestContext := ginContext.Request.Context()
+		value := ctx.Value(middleware.GinContextKey)
+		ginContext, ok := value.(*gin.Context)
+		if !ok {
+			return fmt.Errorf("%w: received %T", ErrInvalidType, value)
+		}
 
+		requestContext := ginContext.Request.Context()
 		_, span := tracer.Start(requestContext, "authenticate")
 		defer span.End()
 

@@ -9,7 +9,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -21,8 +20,7 @@ import (
 func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	ctx := c.Request.Context()
 
-	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
-	team := teamInfo.Team
+	team := auth.SafeGetTeamInfo(c).Team
 
 	telemetry.ReportEvent(ctx, "get sandbox")
 

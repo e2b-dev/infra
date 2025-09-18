@@ -20,15 +20,15 @@ import (
 func (s *Service) InitializeStartProcess(ctx context.Context, user *user.User, req *rpc.StartRequest) error {
 	var err error
 
-	ctx = logs.AddRequestIDToContext(ctx)
+	ctx, operationID := logs.AddRequestIDToContext(ctx)
 
 	defer s.logger.
 		Err(err).
 		Interface("request", req).
-		Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).
+		Str("operation_id", operationID).
 		Msg("Initialized startCmd")
 
-	handlerL := s.logger.With().Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).Logger()
+	handlerL := s.logger.With().Str("operation_id", operationID).Logger()
 
 	startProcCtx, startProcCancel := context.WithCancel(ctx)
 	proc, err := handler.New(startProcCtx, user, req, &handlerL, nil, startProcCancel)
@@ -60,7 +60,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 
-	handlerL := s.logger.With().Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).Logger()
+	handlerL := s.logger.With().Str("operation_id", logs.SafeGetRequestID(ctx)).Logger()
 
 	u, err := permissions.GetAuthUser(ctx)
 	if err != nil {

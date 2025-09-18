@@ -10,7 +10,7 @@ import (
 func (a *API) GetEnvs(w http.ResponseWriter, _ *http.Request) {
 	operationID := logs.AssignOperationID()
 
-	a.logger.Debug().Str(string(logs.OperationIDKey), operationID).Msg("Getting env vars")
+	a.logger.Debug().Str("operation_id", operationID).Msg("Getting env vars")
 
 	envs := make(EnvVars)
 	a.envVars.Range(func(key, value string) bool {
