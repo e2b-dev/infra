@@ -23,8 +23,7 @@ type NodePassThroughServer struct {
 	nodes   *e2borchestrators.OrchestratorsPool
 	catalog sandboxes.SandboxesCatalog
 
-	info   *e2binfo.ServiceInfo
-	server *grpc.Server
+	info *e2binfo.ServiceInfo
 
 	authorization authorization.AuthorizationService
 }

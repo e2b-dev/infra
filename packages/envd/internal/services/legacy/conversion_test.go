@@ -3,6 +3,7 @@ package legacy
 import (
 	"bytes"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -35,7 +36,7 @@ func TestFilesystemClient_FieldFormatter(t *testing.T) {
 
 	t.Run("can return all fields", func(t *testing.T) {
 		buf := bytes.NewBuffer([]byte(`{}`))
-		req := httptest.NewRequest("POST", filesystemconnect.FilesystemMoveProcedure, buf)
+		req := httptest.NewRequest(http.MethodPost, filesystemconnect.FilesystemMoveProcedure, buf)
 		req.Header.Set("content-type", "application/json")
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
@@ -54,7 +55,7 @@ func TestFilesystemClient_FieldFormatter(t *testing.T) {
 
 	t.Run("can hide fields when appropriate", func(t *testing.T) {
 		buf := bytes.NewBuffer([]byte(`{}`))
-		req := httptest.NewRequest("POST", filesystemconnect.FilesystemMoveProcedure, buf)
+		req := httptest.NewRequest(http.MethodPost, filesystemconnect.FilesystemMoveProcedure, buf)
 		req.Header.Set("user-agent", brokenUserAgent)
 		req.Header.Set("content-type", "application/json")
 		w := httptest.NewRecorder()

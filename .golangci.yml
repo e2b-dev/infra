@@ -29,12 +29,20 @@ linters:
     - govet
     - iface
     - importas
+    - inamedparam
     - intrange
+    - misspell
     - nolintlint
+    - reassign
+    - recvcheck
+    - rowserrcheck
+    - sqlclosecheck
     - staticcheck
     - testifylint
     - thelper
     - tparallel
+    - unused
+    - usestdlibvars
     - usetesting
     - wastedassign
     - whitespace
