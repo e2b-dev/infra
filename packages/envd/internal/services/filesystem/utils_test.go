@@ -142,7 +142,7 @@ func TestEntryInfoFromFileInfo_Symlink(t *testing.T) {
 	// Canonicalize the expected target path to handle macOS /var → /private/var symlink
 	expectedTarget, err := filepath.EvalSymlinks(symlinkPath)
 	require.NoError(t, err)
-	assert.Equal(t, &expectedTarget, result.GetSymlinkTarget())
+	assert.Equal(t, expectedTarget, result.GetSymlinkTarget())
 }
 
 func TestEntryInfoFromFileInfo_BrokenSymlink(t *testing.T) {
