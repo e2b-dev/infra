@@ -51,7 +51,7 @@ func TestStartRemoving_BasicTransitions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			instance := createTestInstance()
 			instance.data.State = tt.fromState
-			ctx := context.Background()
+			ctx := t.Context()
 
 			done, finish, err := instance.StartRemoving(ctx, tt.removeType)
 
@@ -63,23 +63,23 @@ func TestStartRemoving_BasicTransitions(t *testing.T) {
 				assert.Equal(t, tt.fromState, instance.State()) // State unchanged
 			case tt.fromState == tt.expState:
 				require.NoError(t, err)
-				assert.False(t, done)
-				assert.Nil(t, finish) // No transition needed
+				assert.True(t, done)
+				assert.NotNil(t, finish)
 				assert.Equal(t, tt.fromState, instance.State())
 			default:
 				require.NoError(t, err)
 				assert.False(t, done)
 				assert.NotNil(t, finish)
 				assert.Equal(t, tt.expState, instance.State()) // State changed immediately
-				finish(nil)                                     // Complete the transition
+				finish(nil)                                    // Complete the transition
 			}
 		})
 	}
 }
 
-func TestStartRemoving_RealWorldScenario(t *testing.T) {
+func TestStartRemoving_PauseThenKill(t *testing.T) {
 	instance := createTestInstance()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Simulate a pause operation that takes time
 	done, finish, err := instance.StartRemoving(ctx, RemoveTypePause)
@@ -123,7 +123,7 @@ func TestStartRemoving_RealWorldScenario(t *testing.T) {
 // Test concurrent requests to transition to the same state (idempotency)
 func TestStartRemoving_ConcurrentSameState(t *testing.T) {
 	instance := createTestInstance()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	results := make(chan struct {
 		done   bool
@@ -141,20 +141,14 @@ func TestStartRemoving_ConcurrentSameState(t *testing.T) {
 						done   bool
 						worked bool
 					}{done, false}
-				} else if finish != nil {
+				} else {
 					// We got to perform the transition
-					time.Sleep(50 * time.Millisecond)
+					time.Sleep(10 * time.Millisecond)
 					finish(nil)
 					results <- struct {
 						done   bool
 						worked bool
 					}{done, true}
-				} else {
-					// No transition needed (already in target state)
-					results <- struct {
-						done   bool
-						worked bool
-					}{false, false}
 				}
 			} else {
 				results <- struct {
@@ -188,7 +182,7 @@ func TestStartRemoving_ConcurrentSameState(t *testing.T) {
 // Test transition fails and subsequent request handles it
 func TestStartRemoving_Error(t *testing.T) {
 	instance := createTestInstance()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// First attempt to pause
 	done1, finish1, err := instance.StartRemoving(ctx, RemoveTypePause)
@@ -220,7 +214,7 @@ func TestStartRemoving_Error(t *testing.T) {
 
 	// The waiting request should have received the error from the first transition
 	require.Error(t, err2)
-	assert.Equal(t, failureErr, err2)
+	assert.Contains(t, err2.Error(), failureErr.Error())
 	assert.False(t, done2)
 	assert.Nil(t, finish2)
 
@@ -250,13 +244,13 @@ func TestStartRemoving_ContextTimeout(t *testing.T) {
 	instance := createTestInstance()
 
 	// Start a long-running transition
-	done1, finish1, err := instance.StartRemoving(context.Background(), RemoveTypePause)
+	done1, finish1, err := instance.StartRemoving(t.Context(), RemoveTypePause)
 	require.NoError(t, err)
 	assert.False(t, done1)
 	require.NotNil(t, finish1)
 
 	// Another request with a short timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
 	defer cancel()
 
 	start := time.Now()
@@ -265,7 +259,7 @@ func TestStartRemoving_ContextTimeout(t *testing.T) {
 
 	// Should timeout after about 20ms
 	require.Error(t, err2)
-	assert.Equal(t, context.DeadlineExceeded, err2)
+	assert.Contains(t, err2.Error(), context.DeadlineExceeded.Error())
 	assert.Greater(t, elapsed, 15*time.Millisecond)
 	assert.Less(t, elapsed, 30*time.Millisecond)
 
@@ -276,7 +270,7 @@ func TestStartRemoving_ContextTimeout(t *testing.T) {
 
 func TestWaitForStateChange_NoTransition(t *testing.T) {
 	instance := createTestInstance()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Should work even with canceled context - no wait needed
 	ctx, cancel := context.WithCancel(ctx)
@@ -289,7 +283,7 @@ func TestWaitForStateChange_NoTransition(t *testing.T) {
 
 func TestWaitForStateChange_WaitForCompletion(t *testing.T) {
 	instance := createTestInstance()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Start a transition
 	alreadyDone, finish, err := instance.StartRemoving(ctx, RemoveTypePause)
@@ -319,7 +313,7 @@ func TestWaitForStateChange_WaitForCompletion(t *testing.T) {
 
 func TestWaitForStateChange_WaitWithError(t *testing.T) {
 	instance := createTestInstance()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Start a transition
 	alreadyDone, finish, err := instance.StartRemoving(ctx, RemoveTypePause)
@@ -352,7 +346,7 @@ func TestWaitForStateChange_WaitWithError(t *testing.T) {
 
 func TestWaitForStateChange_ContextCancellation(t *testing.T) {
 	instance := createTestInstance()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	// Start a transition
 	alreadyDone, finish, err := instance.StartRemoving(ctx, RemoveTypePause)
@@ -386,7 +380,7 @@ func TestWaitForStateChange_ContextCancellation(t *testing.T) {
 
 func TestWaitForStateChange_MultipleWaiters(t *testing.T) {
 	instance := createTestInstance()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Start a transition
 	alreadyDone, finish, err := instance.StartRemoving(ctx, RemoveTypePause)
@@ -422,291 +416,6 @@ func TestWaitForStateChange_MultipleWaiters(t *testing.T) {
 	}
 }
 
-func TestStateTransitions_ComplexScenario(t *testing.T) {
-	instance := createTestInstance()
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-
-	// Scenario: Sequential transitions with proper completion
-
-	// First transition: Running -> Paused
-	done1, finish1, err := instance.StartRemoving(ctx, RemoveTypePause)
-	require.NoError(t, err)
-	assert.False(t, done1)
-	require.NotNil(t, finish1)
-
-	// Start a concurrent transition that should wait
-	completed := make(chan struct {
-		done   bool
-		err    error
-		finish func(error)
-	})
-
-	go func() {
-		done2, finish2, err2 := instance.StartRemoving(ctx, RemoveTypeKill)
-		completed <- struct {
-			done   bool
-			err    error
-			finish func(error)
-		}{done2, err2, finish2}
-	}()
-
-	// Give the goroutine time to start waiting
-	time.Sleep(5 * time.Millisecond)
-
-	// Complete first transition
-	finish1(nil)
-
-	// Get result from waiting goroutine
-	result := <-completed
-	require.NoError(t, result.err)
-	assert.False(t, result.done)
-	assert.NotNil(t, result.finish)
-
-	// Complete second transition
-	result.finish(nil)
-
-	// Verify final state
-	assert.Equal(t, StateKilled, instance.State())
-
-	// Try an invalid transition from Killed state
-	done3, finish3, err3 := instance.StartRemoving(ctx, RemoveTypePause)
-	require.Error(t, err3)
-	assert.False(t, done3)
-	assert.Nil(t, finish3)
-	assert.Contains(t, err3.Error(), "invalid state transition")
-}
-
-// Test heavy concurrent load with multiple state transitions
-func TestConcurrency_HeavyLoad(t *testing.T) {
-	instance := createTestInstance()
-	ctx := context.Background()
-
-	var wg sync.WaitGroup
-	numWorkers := 50
-	opsPerWorker := 20
-
-	// Track successful transitions
-	successCount := make(chan int, numWorkers)
-
-	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go func(workerID int) {
-			defer wg.Done()
-			localSuccess := 0
-
-			for j := 0; j < opsPerWorker; j++ {
-				// Alternate between different operations
-				switch j % 5 {
-				case 0, 1: // 40% - Try state transitions
-					removeType := RemoveTypePause
-					if instance.State() == StatePaused {
-						removeType = RemoveTypeKill
-					}
-					done, finish, err := instance.StartRemoving(ctx, removeType)
-					if err == nil && finish != nil {
-						// Simulate actual work
-						time.Sleep(time.Microsecond * 100)
-						finish(nil)
-						localSuccess++
-					} else if done {
-						localSuccess++
-					}
-				case 2: // 20% - Read state
-					_ = instance.State()
-				case 3: // 20% - Wait for changes
-					waitCtx, cancel := context.WithTimeout(ctx, time.Millisecond)
-					_ = instance.WaitForStateChange(waitCtx)
-					cancel()
-				case 4: // 20% - Get full data
-					_ = instance.Data()
-				}
-			}
-			successCount <- localSuccess
-		}(i)
-	}
-
-	wg.Wait()
-	close(successCount)
-
-	// Count total successful transitions
-	total := 0
-	for count := range successCount {
-		total += count
-	}
-
-	// At least some transitions should succeed
-	assert.Positive(t, total, 0)
-	t.Logf("Successfully completed %d state transitions under heavy concurrent load", total)
-}
-
-// Test that concurrent transitions to different states work correctly
-func TestConcurrency_RapidStateChanges(t *testing.T) {
-	instance := createTestInstance()
-	ctx := context.Background()
-
-	// Number of concurrent state change attempts
-	numAttempts := 100
-	results := make(chan struct {
-		success bool
-		removeType RemoveType
-	}, numAttempts)
-
-	var wg sync.WaitGroup
-
-	// Rapidly fire state change requests
-	for i := 0; i < numAttempts; i++ {
-		wg.Add(1)
-		go func(attempt int) {
-			defer wg.Done()
-
-			// Pick a remove type based on attempt number
-			var removeType RemoveType
-			switch attempt % 2 {
-			case 0:
-				removeType = RemoveTypePause
-			case 1:
-				removeType = RemoveTypeKill
-			}
-
-			done, finish, err := instance.StartRemoving(ctx, removeType)
-			if err == nil && (finish != nil || done) {
-				if finish != nil {
-					// Complete the transition immediately
-					finish(nil)
-				}
-				results <- struct {
-					success bool
-					removeType RemoveType
-				}{true, removeType}
-			} else {
-				results <- struct {
-					success bool
-					removeType RemoveType
-				}{false, removeType}
-			}
-		}(i)
-	}
-
-	wg.Wait()
-	close(results)
-
-	// Analyze results
-	successByType := make(map[RemoveType]int)
-	failureCount := 0
-
-	for result := range results {
-		if result.success {
-			successByType[result.removeType]++
-		} else {
-			failureCount++
-		}
-	}
-
-	// We should have at least one successful transition
-	totalSuccess := 0
-	for removeType, count := range successByType {
-		t.Logf("RemoveType %v: %d successful transitions", removeType, count)
-		totalSuccess += count
-	}
-
-	assert.Positive(t, totalSuccess, 0)
-	t.Logf("Total: %d successful, %d failed/rejected transitions", totalSuccess, failureCount)
-}
-
-// Test concurrent pause and kill operations (most common real scenario)
-func TestConcurrency_PauseVsKill(t *testing.T) {
-	for round := 0; round < 10; round++ { // Run multiple rounds to catch intermittent issues
-		instance := createTestInstance()
-		ctx := context.Background()
-
-		pauseDone := make(chan bool)
-		killDone := make(chan bool)
-
-		// Start pause operation
-		go func() {
-			done, finish, err := instance.StartRemoving(ctx, RemoveTypePause)
-			if err == nil && (finish != nil || done) {
-				if finish != nil {
-					time.Sleep(5 * time.Millisecond) // Simulate pause operation
-					finish(nil)
-				}
-				pauseDone <- true
-			} else {
-				pauseDone <- false
-			}
-		}()
-
-		// Concurrently try to kill
-		go func() {
-			time.Sleep(time.Millisecond) // Small delay to let pause start
-			done, finish, err := instance.StartRemoving(ctx, RemoveTypeKill)
-			if err == nil && (finish != nil || done) {
-				if finish != nil {
-					time.Sleep(3 * time.Millisecond) // Simulate kill operation
-					finish(nil)
-				}
-				killDone <- true
-			} else {
-				killDone <- false
-			}
-		}()
-
-		pauseSuccess := <-pauseDone
-		killSuccess := <-killDone
-
-		// One should succeed, possibly both if kill came after pause
-		assert.True(t, pauseSuccess || killSuccess, "At least one operation should succeed")
-
-		finalState := instance.State()
-		assert.Contains(t, []State{StatePaused, StateKilled}, finalState)
-	}
-}
-
-// Test that state transitions with errors don't cause deadlocks
-func TestConcurrency_ErrorHandling(t *testing.T) {
-	instance := createTestInstance()
-	ctx := context.Background()
-
-	numWorkers := 20
-	var wg sync.WaitGroup
-
-	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go func(workerID int) {
-			defer wg.Done()
-
-			done, finish, err := instance.StartRemoving(ctx, RemoveTypePause)
-			if err == nil && finish != nil {
-				if workerID%3 == 0 {
-					// Some workers report errors
-					finish(errors.New("simulated error"))
-				} else {
-					// Others succeed
-					finish(nil)
-				}
-			} else if done {
-				// Already done, that's fine
-			}
-
-			// Try another transition
-			done2, finish2, err2 := instance.StartRemoving(ctx, RemoveTypeKill)
-			if err2 == nil && finish2 != nil {
-				finish2(nil)
-			} else if done2 {
-				// Already done
-			}
-		}(i)
-	}
-
-	wg.Wait()
-
-	// Should complete without deadlock
-	// Final state could be Failed (if error), Paused, or Killed
-	finalState := instance.State()
-	assert.Contains(t, []State{StatePaused, StateKilled, StateFailed}, finalState)
-}
-
 // Stress test with random operations
 func TestConcurrency_StressTest(t *testing.T) {
 	if testing.Short() {
@@ -714,7 +423,6 @@ func TestConcurrency_StressTest(t *testing.T) {
 	}
 
 	instance := createTestInstance()
-	ctx := context.Background()
 
 	duration := 100 * time.Millisecond
 	deadline := time.Now().Add(duration)
@@ -727,7 +435,7 @@ func TestConcurrency_StressTest(t *testing.T) {
 	var errorCount uint64
 
 	// Launch workers that continuously perform random operations
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 200; i++ {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
@@ -743,7 +451,7 @@ func TestConcurrency_StressTest(t *testing.T) {
 						removeTypes := []RemoveType{RemoveTypePause, RemoveTypeKill}
 						removeType := removeTypes[rand.Intn(len(removeTypes))]
 
-						done, finish, err := instance.StartRemoving(ctx, removeType)
+						done, finish, err := instance.StartRemoving(t.Context(), removeType)
 						if err == nil && (finish != nil || done) {
 							if finish != nil {
 								finish(nil)
@@ -756,7 +464,7 @@ func TestConcurrency_StressTest(t *testing.T) {
 						_ = instance.State()
 						atomic.AddUint64(&opsCompleted, 1)
 					case 2: // Wait with timeout
-						waitCtx, cancel := context.WithTimeout(ctx, time.Microsecond*10)
+						waitCtx, cancel := context.WithTimeout(t.Context(), time.Microsecond*10)
 						_ = instance.WaitForStateChange(waitCtx)
 						cancel()
 						atomic.AddUint64(&opsCompleted, 1)

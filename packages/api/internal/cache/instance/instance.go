@@ -11,6 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -125,7 +126,7 @@ type Data struct {
 type InstanceInfo struct {
 	data Data
 
-	transition chan error
+	transition *utils.SetOnce[struct{}]
 	dataMu     sync.RWMutex
 }
 
@@ -186,40 +187,32 @@ func (i *InstanceInfo) StartRemoving(ctx context.Context, removeType RemoveType)
 		currentState := i.data.State
 		i.dataMu.Unlock()
 
+		if currentState != newState && !allowed[currentState][newState] {
+			return false, nil, fmt.Errorf("invalid state transition, already in transition from %s", currentState)
+		}
+
+		zap.L().Debug("State transition already in progress to the same state, waiting", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)))
+		_, err = transition.WaitWithContext(ctx)
+		if err != nil {
+			zap.L().Error("State transition failed", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)), zap.Error(err))
+			return false, nil, fmt.Errorf("sandbox is in failed state: %w", err)
+		}
+
 		// If the transition is to the same state just wait
 		switch {
 		case currentState == newState:
-			zap.L().Debug("State transition already in progress to the same state, waiting", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)))
-			select {
-			case <-ctx.Done():
-				return false, nil, ctx.Err()
-			case err := <-transition:
-				if err != nil {
-					zap.L().Error("State transition failed", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)), zap.Error(err))
-					return false, nil, fmt.Errorf("sandbox is in failed state")
-				}
-			}
 			return true, func(err error) {}, nil
 		case allowed[currentState][newState]:
-			zap.L().Debug("State transition already in progress, waiting", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)))
-			select {
-			case <-ctx.Done():
-				return false, nil, ctx.Err()
-			case err := <-transition:
-				if err != nil {
-					return false, nil, err
-				}
-			}
 			return i.StartRemoving(ctx, removeType)
 		default:
-			return false, nil, fmt.Errorf("invalid state transition, already in transition from %s", currentState)
+			return false, nil, fmt.Errorf("unexpected state transition")
 		}
 	}
 
 	defer i.dataMu.Unlock()
 	if i.data.State == newState {
 		zap.L().Debug("Already in the same state", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)))
-		return false, nil, nil
+		return true, func(error) {}, nil
 	}
 
 	if _, ok := allowed[i.data.State][newState]; !ok {
@@ -227,7 +220,7 @@ func (i *InstanceInfo) StartRemoving(ctx context.Context, removeType RemoveType)
 	}
 
 	i.data.State = newState
-	i.transition = make(chan error, 1)
+	i.transition = utils.NewSetOnce[struct{}]()
 
 	callback = func(err error) {
 		zap.L().Debug("Transition complete", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)), zap.Error(err))
@@ -238,9 +231,11 @@ func (i *InstanceInfo) StartRemoving(ctx context.Context, removeType RemoveType)
 			i.data.Reason = err
 			i.data.State = StateFailed
 		}
+		err = i.transition.SetResult(struct{}{}, err)
+		if err != nil {
+			zap.L().Error("Failed to set transition result", logger.WithSandboxID(i.data.SandboxID), zap.Error(err))
+		}
 
-		i.transition <- err
-		close(i.transition)
 		i.transition = nil
 	}
 
@@ -255,10 +250,6 @@ func (i *InstanceInfo) WaitForStateChange(ctx context.Context) error {
 		return nil
 	}
 
-	select {
-	case err := <-transition:
-		return err
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	_, err := transition.WaitWithContext(ctx)
+	return err
 }
