@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // GetTemplatesTemplateIDBuildsBuildIDStatus serves to get a template build status (e.g. to CLI)
@@ -95,15 +96,15 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 
 	for _, entry := range cli.GetLogs(ctx, templateID, buildID, offset, apiToLogLevel(params.Level)) {
 		lgs = append(lgs, fmt.Sprintf("[%s] %s\n", entry.Timestamp.Format(time.RFC3339), entry.Message))
-		logEntries = append(logEntries, api.BuildLogEntry{
-			Timestamp: entry.Timestamp,
-			Message:   entry.Message,
-			Level:     api.LogLevel(logs.LevelToString(entry.Level)),
-		})
+		logEntries = append(logEntries, getAPILogEntry(entry))
 	}
 
 	result.Logs = lgs
 	result.LogEntries = logEntries
+
+	if result.Reason != nil && result.Reason.Step != nil {
+		result.Reason.LogEntries = sharedUtils.ToPtr(filterStepLogs(logEntries, *result.Reason.Step, api.LogLevelWarn))
+	}
 
 	c.JSON(http.StatusOK, result)
 }
@@ -127,8 +128,31 @@ func getAPIReason(reason types.BuildReason) *api.BuildStatusReason {
 	}
 
 	return &api.BuildStatusReason{
-		Message: reason.Message,
-		Step:    reason.Step,
+		Message:    reason.Message,
+		Step:       reason.Step,
+		LogEntries: nil,
+	}
+}
+
+func filterStepLogs(logEntries []api.BuildLogEntry, step string, minLevel api.LogLevel) []api.BuildLogEntry {
+	return sharedUtils.Filter(logEntries, func(line api.BuildLogEntry) bool {
+		return logs.CompareLevels(string(line.Level), string(minLevel)) >= 0 && line.Step != nil && *line.Step == step
+	})
+}
+
+func getAPILogEntry(entry logs.LogEntry) api.BuildLogEntry {
+	stepField := entry.Fields["step"]
+
+	var step *string
+	if stepField != "" {
+		step = &stepField
+	}
+
+	return api.BuildLogEntry{
+		Timestamp: entry.Timestamp,
+		Message:   entry.Message,
+		Level:     api.LogLevel(logs.LevelToString(entry.Level)),
+		Step:      step,
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs/logsloki"
 )
 
 const (
@@ -35,7 +36,7 @@ func (l *LokiProvider) GetLogs(ctx context.Context, templateID string, buildID s
 		return nil, fmt.Errorf("error when querying loki for template build logs: %w", err)
 	}
 
-	lm, err := logs.LokiResponseMapper(res, offset, level)
+	lm, err := logsloki.ResponseMapper(res, offset, level)
 	if err != nil {
 		return nil, fmt.Errorf("error when mapping loki response: %w", err)
 	}

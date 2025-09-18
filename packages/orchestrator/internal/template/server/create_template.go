@@ -10,9 +10,9 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/builderrors"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildlogger"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci/auth"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -72,7 +72,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		Steps:                cfg.Steps,
 	}
 
-	logs := cache.NewSafeBuffer()
+	logs := buildlogger.NewLogEntryLogger()
 	buildInfo, err := s.buildCache.Create(metadata.BuildID, logs)
 	if err != nil {
 		return nil, fmt.Errorf("error while creating build cache: %w", err)

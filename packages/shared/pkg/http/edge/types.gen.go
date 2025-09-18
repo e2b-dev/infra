@@ -40,6 +40,8 @@ const (
 
 // BuildLogEntry defines model for BuildLogEntry.
 type BuildLogEntry struct {
+	Fields map[string]string `json:"fields"`
+
 	// Level State of the sandbox
 	Level LogLevel `json:"level"`
 

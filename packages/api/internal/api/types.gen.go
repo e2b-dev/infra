@@ -97,12 +97,18 @@ type BuildLogEntry struct {
 	// Message Log message content
 	Message string `json:"message"`
 
+	// Step Step in the build process related to the log entry
+	Step *string `json:"step,omitempty"`
+
 	// Timestamp Timestamp of the log entry
 	Timestamp time.Time `json:"timestamp"`
 }
 
 // BuildStatusReason defines model for BuildStatusReason.
 type BuildStatusReason struct {
+	// LogEntries Log entries related to the status reason
+	LogEntries *[]BuildLogEntry `json:"logEntries,omitempty"`
+
 	// Message Message with the status reason, currently reporting only for error status
 	Message string `json:"message"`
 

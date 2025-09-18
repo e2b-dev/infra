@@ -1,4 +1,4 @@
-package cache
+package buildlogger
 
 import (
 	"bytes"
@@ -10,6 +10,7 @@ import (
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
 type ZapEntry struct {
@@ -18,42 +19,54 @@ type ZapEntry struct {
 	Level string  `json:"level"`
 }
 
-type SafeBuffer struct {
+type LogEntryLogger struct {
 	mu    sync.Mutex
 	lines []*template_manager.TemplateBuildLogEntry
 }
 
-func NewSafeBuffer() *SafeBuffer {
-	return &SafeBuffer{
+func NewLogEntryLogger() *LogEntryLogger {
+	return &LogEntryLogger{
 		lines: make([]*template_manager.TemplateBuildLogEntry, 0),
 	}
 }
 
-func (b *SafeBuffer) Write(p []byte) (n int, err error) {
+func (b *LogEntryLogger) Write(p []byte) (n int, err error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	for line := range bytes.SplitSeq(p, []byte("\n")) {
 		if len(line) > 0 {
+			fields, err := logs.FlatJsonLogLineParser(string(line))
+			if err != nil {
+				zap.L().Error("error parsing log line", zap.Error(err), zap.ByteString("line", line))
+				continue
+			}
+
 			var entry ZapEntry
-			err := json.Unmarshal(line, &entry)
+			err = json.Unmarshal(line, &entry)
 			if err != nil {
 				zap.L().Error("failed to unmarshal log entry", zap.Error(err), zap.ByteString("line", line))
 				continue
 			}
 
 			timestamp := epochToTime(entry.Ts)
+
+			delete(fields, "ts")
+			delete(fields, "msg")
+			delete(fields, "level")
+
 			b.lines = append(b.lines, &template_manager.TemplateBuildLogEntry{
 				Timestamp: timestamppb.New(timestamp),
 				Message:   entry.Msg,
 				Level:     stringToLogLevel(entry.Level),
+				Fields:    fields,
 			})
 		}
 	}
 	return len(p), nil
 }
 
-func (b *SafeBuffer) Sync() error {
+func (b *LogEntryLogger) Sync() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -77,7 +90,7 @@ func stringToLogLevel(level string) template_manager.LogLevel {
 	}
 }
 
-func (b *SafeBuffer) Lines() []*template_manager.TemplateBuildLogEntry {
+func (b *LogEntryLogger) Lines() []*template_manager.TemplateBuildLogEntry {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
