@@ -30,11 +30,17 @@ linters:
     - iface
     - importas
     - inamedparam
+    - misspell
     - nolintlint
+    - reassign
+    - recvcheck
+    - rowserrcheck
+    - sqlclosecheck
     - staticcheck
     - testifylint
     - thelper
     - tparallel
+    - unused
     - usetesting
     - wastedassign
     - whitespace

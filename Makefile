@@ -202,13 +202,13 @@ connect-orchestrator:
 
 .PHONY: fmt
 fmt:
-	@./scripts/golangci-lint-install.sh "2.1.6"
+	@./scripts/golangci-lint-install.sh "2.4.0"
 	golangci-lint fmt
 	terraform fmt -recursive
 
 .PHONY: lint
 lint:
-	@./scripts/golangci-lint-install.sh "2.1.6"
+	@./scripts/golangci-lint-install.sh "2.4.0"
 	go work edit -json | jq -r '.Use[].DiskPath'  | xargs -I{} golangci-lint run {}/... --fix
 
 .PHONY: generate-mocks

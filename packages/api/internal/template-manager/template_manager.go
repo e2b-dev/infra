@@ -22,7 +22,6 @@ import (
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
-	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -31,11 +30,6 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/templat
 
 type processingBuilds struct {
 	templateID string
-}
-
-type LocalTemplateManagerInfo struct {
-	status infogrpc.ServiceInfoStatus
-	nodeID string
 }
 
 type TemplateManager struct {

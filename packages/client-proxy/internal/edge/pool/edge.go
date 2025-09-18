@@ -101,12 +101,6 @@ func (o *EdgeInstance) setInfo(info EdgeInstanceInfo) {
 	o.info = info
 }
 
-func (o *EdgeInstance) setStatus(s api.ClusterNodeStatus) {
-	o.mutex.Lock()
-	defer o.mutex.Unlock()
-	o.info.ServiceStatus = s
-}
-
 func newEdgeApiClient(host string, auth authorization.AuthorizationService) (*api.ClientWithResponses, error) {
 	clientURL := fmt.Sprintf("http://%s", host)
 	clientAuthMiddleware := func(c *api.Client) error {
