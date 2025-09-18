@@ -128,7 +128,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	size, err := device.b.Size()
+	size, err := device.Size()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get size: %w", err)
 	}
