@@ -36,6 +36,7 @@ linters:
     - reassign
     - recvcheck
     - rowserrcheck
+    - spancheck
     - sqlclosecheck
     - staticcheck
     - testifylint
