@@ -31,6 +31,7 @@ linters:
     - importas
     - inamedparam
     - intrange
+    - mirror
     - misspell
     - nolintlint
     - reassign
