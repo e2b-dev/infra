@@ -2,6 +2,7 @@ package instance
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -42,9 +43,17 @@ func (c *MemoryStore) KeepAliveFor(instanceID string, duration time.Duration, al
 		return instance.data, nil
 	}
 
-	maxAllowedTTL := getMaxAllowedTTL(now, instance.data.StartTime, duration, instance.data.MaxInstanceLength)
-	instance.data.EndTime = now.Add(maxAllowedTTL)
-	zap.L().Debug("sandbox ttl updated", zap.String("sandboxID", instance.data.SandboxID), zap.Duration("ttl", maxAllowedTTL))
+	if (time.Since(instance.data.StartTime)) > instance.data.MaxInstanceLength {
+		// Force the sandbox to be killed
+		instance.data.EndTime = now
+
+		msg := fmt.Sprintf("Sandbox '%s' reached maximal allowed uptime", instanceID)
+		return Data{}, &api.APIError{Code: http.StatusForbidden, ClientMsg: msg, Err: errors.New(msg)}
+	} else {
+		maxAllowedTTL := getMaxAllowedTTL(now, instance.data.StartTime, duration, instance.data.MaxInstanceLength)
+		instance.data.EndTime = now.Add(maxAllowedTTL)
+		zap.L().Debug("sandbox ttl updated", zap.String("sandboxID", instance.data.SandboxID), zap.Duration("ttl", maxAllowedTTL))
+	}
 
 	return instance.data, nil
 }
