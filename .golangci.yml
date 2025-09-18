@@ -37,6 +37,7 @@ linters:
     - usetesting
     - wastedassign
     - whitespace
+    - zerologlint
   settings:
     gocritic:
       disabled-checks:
