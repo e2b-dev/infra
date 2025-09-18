@@ -24,8 +24,6 @@ import (
 )
 
 const (
-	tmpBuildCachePrefix = "test-build-cache_"
-
 	blockSize = int64(1024)
 )
 

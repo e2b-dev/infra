@@ -34,6 +34,7 @@ linters:
     - testifylint
     - thelper
     - tparallel
+    - unused
     - usetesting
     - wastedassign
     - whitespace

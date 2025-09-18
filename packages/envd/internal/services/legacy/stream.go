@@ -4,12 +4,10 @@ import (
 	"net/http"
 
 	"connectrpc.com/connect"
-	"github.com/rs/zerolog"
 )
 
 type streamConverter struct {
-	conn   connect.StreamingHandlerConn
-	logger *zerolog.Logger
+	conn connect.StreamingHandlerConn
 }
 
 func (s streamConverter) Spec() connect.Spec {
