@@ -257,5 +257,5 @@ func TestEntryInfoFromFileInfo_SymlinkChain(t *testing.T) {
 	// Canonicalize the expected target path to handle macOS symlink indirections
 	expectedTarget, err := filepath.EvalSymlinks(link1)
 	require.NoError(t, err)
-	assert.Equal(t, &expectedTarget, result.GetSymlinkTarget())
+	assert.Equal(t, expectedTarget, result.GetSymlinkTarget())
 }
