@@ -41,6 +41,9 @@ paths:
             schema:
               type: object
               properties:
+                hyperloopIP:
+                  type: string
+                  description: IP address of the hyperloop server to connect to
                 envVars:
                   $ref: "#/components/schemas/EnvVars"
                 accessToken:

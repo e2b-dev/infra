@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"slices"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -22,8 +23,10 @@ import (
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/batcher"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -70,6 +73,7 @@ var (
 func main() {
 	port := flag.Uint("port", defaultPort, "orchestrator server port")
 	proxyPort := flag.Uint("proxy-port", defaultProxyPort, "orchestrator proxy port")
+
 	flag.Parse()
 
 	if *port > math.MaxUint16 {
@@ -80,7 +84,12 @@ func main() {
 		log.Fatalf("%d is larger than maximum possible proxy port %d", proxyPort, math.MaxInt16)
 	}
 
-	success := run(*port, *proxyPort)
+	hyperloopPort, err := strconv.ParseInt(internal.GetHyperloopProxyPort(), 10, 32)
+	if err != nil {
+		log.Fatalf("failed to get hyperloop proxy port: %v", err)
+	}
+
+	success := run(*port, *proxyPort, uint(hyperloopPort))
 
 	log.Println("Stopping orchestrator, success:", success)
 
@@ -89,7 +98,7 @@ func main() {
 	}
 }
 
-func run(port, proxyPort uint) (success bool) {
+func run(port, proxyPort, hyperloopPort uint) (success bool) {
 	success = true
 
 	services := service.GetServices()
@@ -384,12 +393,18 @@ func run(port, proxyPort uint) (success bool) {
 		}
 	}(tmplSbxLoggerExternal)
 
+	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(hyperloopPort, sandboxes)
+	if err != nil {
+		zap.L().Fatal("failed to create hyperloop server", zap.Error(err))
+	}
+
 	var closers []Closeable
 	closers = append(closers,
 		grpcSrv,
 		networkPool,
 		devicePool,
 		sandboxProxy,
+		hyperloopSrv,
 		featureFlags,
 		sandboxObserver,
 		limiter,
@@ -437,6 +452,27 @@ func run(port, proxyPort uint) (success bool) {
 			}
 
 			return proxyErr
+		}
+
+		return nil
+	})
+
+	g.Go(func() (err error) {
+		// this sets the error declared above so the function
+		// in the defer can check it.
+		hyperloopErr := hyperloopSrv.Start()
+		if hyperloopErr != nil {
+			hyperloopErr = fmt.Errorf("hyperloop server: %w", hyperloopErr)
+			zap.L().Error("hyperloop server error", zap.Error(hyperloopErr))
+
+			select {
+			case serviceError <- hyperloopErr:
+			default:
+				// Don't block if the serviceError channel is already closed
+				// or if the error is already sent
+			}
+
+			return hyperloopErr
 		}
 
 		return nil

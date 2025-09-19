@@ -30,6 +30,7 @@ linters:
     - iface
     - importas
     - inamedparam
+    - ineffassign
     - intrange
     - mirror
     - misspell
@@ -51,6 +52,7 @@ linters:
     - usetesting
     - wastedassign
     - whitespace
+    - zerologlint
   settings:
     gocritic:
       disabled-checks:

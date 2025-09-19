@@ -6,6 +6,15 @@ job "loki" {
   priority = 75
 
   group "loki-service" {
+    // Try to restart the task indefinitely
+    // Tries to restart every 5 seconds
+    restart {
+      interval         = "5s"
+      attempts         = 1
+      delay            = "5s"
+      mode             = "delay"
+    }
+
     network {
       port "loki" {
         to = "${loki_service_port_number}"
