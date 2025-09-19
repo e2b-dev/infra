@@ -22,6 +22,32 @@ func TestCachedFileObjectProvider_MakeChunkFilename(t *testing.T) {
 	assert.Equal(t, "/a/b/c/000000000004-1024.bin", filename)
 }
 
+func TestCachedFileObjectProvider_Size(t *testing.T) {
+	t.Run("can be cached successfully", func(t *testing.T) {
+		const expectedSize int64 = 1024
+
+		inner := storagemocks.NewMockStorageObjectProvider(t)
+		inner.EXPECT().Size(mock.Anything).Return(expectedSize, nil)
+
+		c := CachedFileObjectProvider{path: t.TempDir(), inner: inner}
+
+		// first call will write to cache
+		size, err := c.Size(t.Context())
+		require.NoError(t, err)
+		assert.Equal(t, expectedSize, size)
+
+		// sleep, cache writing is async
+		time.Sleep(20 * time.Millisecond)
+
+		// second call must come from cache
+		c.inner = nil
+
+		size, err = c.Size(t.Context())
+		require.NoError(t, err)
+		assert.Equal(t, expectedSize, size)
+	})
+}
+
 func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 	t.Run("read from cache when the file exists", func(t *testing.T) {
 		tempDir := t.TempDir()
@@ -94,8 +120,6 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 				num, err := dst.Write(fakeData)
 				return int64(num), err
 			})
-		fakeStorageObjectProvider.EXPECT().
-			Size(mock.Anything).Return(int64(len(fakeData)), nil)
 
 		tempDir := t.TempDir()
 		c := CachedFileObjectProvider{
@@ -113,10 +137,8 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		// WriteTo is async, wait for the write to finish
 		time.Sleep(time.Millisecond * 20)
 
-		// second read should go straight to local, although it grabs the size
-		fakeStorageObjectProvider.EXPECT().
-			WriteTo(mock.Anything, mock.Anything).
-			Panic("something bad happened")
+		// second read should go straight to local
+		c.inner = nil
 		var buff2 bytes.Buffer
 		count, err = c.WriteTo(t.Context(), &buff2)
 		require.NoError(t, err)
