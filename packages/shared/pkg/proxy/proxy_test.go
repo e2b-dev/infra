@@ -111,7 +111,8 @@ func newTestProxy(t *testing.T, getDestination func(r *http.Request) (*pool.Dest
 	t.Helper()
 
 	// Find a free port for the proxy
-	l, err := new(net.ListenConfig).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	var lisCfg net.ListenConfig
+	l, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get free port: %w", err)
 	}
@@ -133,7 +134,8 @@ func newTestProxy(t *testing.T, getDestination func(r *http.Request) (*pool.Dest
 }
 
 func TestProxyRoutesToTargetServer(t *testing.T) {
-	listener, err := new(net.ListenConfig).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	var lisCfg net.ListenConfig
+	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
 	}
@@ -194,7 +196,8 @@ func httpGet(t *testing.T, proxyURL string) (*http.Response, error) {
 }
 
 func TestProxyReusesConnections(t *testing.T) {
-	listener, err := new(net.ListenConfig).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	var lisCfg net.ListenConfig
+	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
 	}
@@ -250,7 +253,8 @@ func TestProxyReusesConnections(t *testing.T) {
 // This is a test that verify that the proxy reuse fails when the backend changes.
 func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 	// Create first backend
-	listener, err := new(net.ListenConfig).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	var lisCfg net.ListenConfig
+	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
 	}
@@ -312,7 +316,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 	backend1.Interrupt()
 
 	// Create second backend on the same address
-	listener, err = new(net.ListenConfig).Listen(t.Context(), "tcp", backendAddr)
+	listener, err = lisCfg.Listen(t.Context(), "tcp", backendAddr)
 	if err != nil {
 		t.Fatalf("failed to create listener for second backend: %v", err)
 	}
@@ -335,7 +339,8 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 
 func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 	// Create first backend
-	listener, err := new(net.ListenConfig).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	var lisCfg net.ListenConfig
+	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
 	}
@@ -397,7 +402,7 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 	backend1.Interrupt()
 
 	// Create second backend on the same address
-	listener, err = new(net.ListenConfig).Listen(t.Context(), "tcp", backendAddr)
+	listener, err = lisCfg.Listen(t.Context(), "tcp", backendAddr)
 	if err != nil {
 		t.Fatalf("failed to create listener for second backend: %v", err)
 	}
