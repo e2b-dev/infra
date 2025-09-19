@@ -19,7 +19,8 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx instance.Data, sta
 	sandboxID := sbx.SandboxID
 	done, finish, err := o.sandboxStore.StartRemoving(ctx, sandboxID, stateAction)
 	if err != nil {
-		if stateAction == instance.StateActionKill {
+		switch stateAction {
+		case instance.StateActionKill:
 			switch sbx.State {
 			case instance.StateKilled:
 				zap.L().Info("Sandbox is already killed", logger.WithSandboxID(sandboxID))
@@ -28,7 +29,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx instance.Data, sta
 				zap.L().Error("Error killing sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
 				return ErrSandboxOperationFailed
 			}
-		} else {
+		case instance.StateActionPause:
 			switch sbx.State {
 			case instance.StateKilled:
 				zap.L().Info("Sandbox is already killed", logger.WithSandboxID(sandboxID))
@@ -37,6 +38,9 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx instance.Data, sta
 				zap.L().Error("Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
 				return ErrSandboxOperationFailed
 			}
+		default:
+			zap.L().Error("Invalid state action", logger.WithSandboxID(sandboxID), zap.String("state_action", string(stateAction)))
+			return ErrSandboxOperationFailed
 		}
 	}
 	defer func() {
