@@ -12,8 +12,7 @@ import (
 
 type ProductUsageInsertBatcher struct {
 	*Batcher[clickhouse.ProductUsage]
-	errorHandler func(error)
-	conn         driver.Conn
+	conn driver.Conn
 }
 
 const InsertProductUsageQuery = `

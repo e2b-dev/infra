@@ -58,6 +58,7 @@ func getProvisionScript(
 
 func (bb *BaseBuilder) provisionSandbox(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	sandboxConfig sandbox.Config,
 	sandboxRuntime sandbox.RuntimeMetadata,
 	fcVersions fc.FirecrackerVersions,
@@ -69,7 +70,7 @@ func (bb *BaseBuilder) provisionSandbox(
 	ctx, childSpan := tracer.Start(ctx, "provision-sandbox")
 	defer childSpan.End()
 
-	zapWriter := &zapio.Writer{Log: bb.UserLogger, Level: zap.DebugLevel}
+	zapWriter := &zapio.Writer{Log: userLogger, Level: zap.DebugLevel}
 	logsWriter := &writer.PrefixFilteredWriter{Writer: zapWriter, PrefixFilter: logExternalPrefix}
 	defer logsWriter.Close()
 
@@ -108,7 +109,7 @@ func (bb *BaseBuilder) provisionSandbox(
 	if err != nil {
 		return fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
-	bb.UserLogger.Info("Sandbox template provisioned")
+	userLogger.Info("Sandbox template provisioned")
 
 	// Verify the provisioning script exit status
 	exitStatus, err := filesystem.ReadFile(ctx, rootfsPath, provisionScriptResultPath)

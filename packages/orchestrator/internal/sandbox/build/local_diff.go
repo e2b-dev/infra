@@ -73,6 +73,8 @@ type localDiff struct {
 	cache     *block.Cache
 }
 
+var _ Diff = (*localDiff)(nil)
+
 func newLocalDiff(
 	cacheKey DiffStoreKey,
 	cachePath string,

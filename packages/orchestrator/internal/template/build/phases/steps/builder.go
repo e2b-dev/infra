@@ -84,8 +84,9 @@ func (sb *StepBuilder) String(ctx context.Context) (string, error) {
 
 func (sb *StepBuilder) Metadata() phases.PhaseMeta {
 	return phases.PhaseMeta{
-		Phase:    metrics.PhaseSteps,
-		StepType: sb.step.Type,
+		Phase:      metrics.PhaseSteps,
+		StepType:   sb.step.Type,
+		StepNumber: &sb.stepNumber,
 	}
 }
 
@@ -137,6 +138,7 @@ func (sb *StepBuilder) Layer(
 
 func (sb *StepBuilder) Build(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
 ) (phases.LayerResult, error) {
@@ -180,17 +182,14 @@ func (sb *StepBuilder) Build(
 	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error) {
 		cmdMeta, err := sb.commandExecutor.Execute(
 			ctx,
+			userLogger,
 			sbx,
 			prefix,
 			step,
 			meta.Context,
 		)
 		if err != nil {
-			return metadata.Template{}, &phases.PhaseBuildError{
-				Phase: string(metrics.PhaseSteps),
-				Step:  fmt.Sprintf("%d", sb.stepNumber),
-				Err:   err,
-			}
+			return metadata.Template{}, phases.NewPhaseBuildError(sb, err)
 		}
 
 		err = sandboxtools.SyncChangesToDisk(
@@ -208,7 +207,7 @@ func (sb *StepBuilder) Build(
 
 	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template)
 
-	meta, err := sb.layerExecutor.BuildLayer(ctx, layer.LayerBuildCommand{
+	meta, err := sb.layerExecutor.BuildLayer(ctx, userLogger, layer.LayerBuildCommand{
 		SourceTemplate: templateProvider,
 		CurrentLayer:   currentLayer.Metadata,
 		Hash:           currentLayer.Hash,

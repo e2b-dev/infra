@@ -20,22 +20,23 @@ import (
 const blockSize = 4096
 
 type DeviceWithClose struct {
-	backend backend.Backend
-}
-
-func (d *DeviceWithClose) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
-	return d.backend.ReadAt(p, off)
-}
-
-func (d *DeviceWithClose) Size() (int64, error) {
-	return d.backend.Size()
-}
-
-func (d *DeviceWithClose) WriteAt(p []byte, off int64) (n int, err error) {
-	return d.backend.WriteAt(p, off)
+	b backend.Backend
 }
 
 var _ block.Device = (*DeviceWithClose)(nil)
+
+func (d *DeviceWithClose) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
+	return d.b.ReadAt(p, off)
+}
+
+func (d *DeviceWithClose) Size() (int64, error) {
+	return d.b.Size()
+}
+
+func (d *DeviceWithClose) WriteAt(p []byte, off int64) (n int, err error) {
+	return d.b.WriteAt(p, off)
+}
+
 
 func (d *DeviceWithClose) Close() error {
 	return nil
@@ -44,7 +45,7 @@ func (d *DeviceWithClose) Close() error {
 func (d *DeviceWithClose) Slice(ctx context.Context, offset, length int64) ([]byte, error) {
 	b := make([]byte, length)
 
-	_, err := d.backend.ReadAt(b, offset)
+	_, err := d.b.ReadAt(b, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +58,7 @@ func (d *DeviceWithClose) BlockSize() int64 {
 }
 
 func (d *DeviceWithClose) Header() *header.Header {
-	size, err := d.backend.Size()
+	size, err := d.b.Size()
 	if err != nil {
 		panic(err)
 	}
@@ -79,7 +80,7 @@ func main() {
 	rand.Read(data)
 
 	device := &DeviceWithClose{
-		backend: backend.NewMemoryBackend(data),
+		b: backend.NewMemoryBackend(data),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -144,7 +145,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool
 		counter := 0
 
 		for {
-			counter += 1
+			counter++
 			err = devicePool.ReleaseDevice(deviceIndex)
 			if err != nil {
 				if counter%10 == 0 {

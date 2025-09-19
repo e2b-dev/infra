@@ -172,18 +172,18 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 	buildContext := buildcontext.BuildContext{
 		Config:         config,
 		Template:       template,
-		UserLogger:     logger,
 		UploadErrGroup: &uploadErrGroup,
 		EnvdVersion:    envdVersion,
 		CacheScope:     cacheScope,
 		IsV1Build:      isV1Build,
 	}
 
-	return runBuild(ctx, buildContext, b)
+	return runBuild(ctx, logger, buildContext, b)
 }
 
 func runBuild(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	bc buildcontext.BuildContext,
 	builder *Builder,
 ) (*Result, error) {
@@ -244,7 +244,7 @@ func runBuild(
 	builders = append(builders, stepBuilders...)
 	builders = append(builders, postProcessingBuilder)
 
-	lastLayerResult, err := phases.Run(ctx, bc, builder.metrics, builders)
+	lastLayerResult, err := phases.Run(ctx, userLogger, bc, builder.metrics, builders)
 	if err != nil {
 		return nil, err
 	}

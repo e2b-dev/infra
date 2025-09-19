@@ -53,13 +53,8 @@ type Response struct {
 	Handle uint64
 }
 
-type ReaderWriter interface {
-	Read(p []byte) (int, error)
-	Write(p []byte) (int, error)
-}
-
 type Dispatch struct {
-	fp               ReaderWriter
+	fp               io.ReadWriter
 	responseHeader   []byte
 	writeLock        sync.Mutex
 	prov             Provider
@@ -69,7 +64,7 @@ type Dispatch struct {
 	fatal            chan error
 }
 
-func NewDispatch(fp io.ReadWriteCloser, prov Provider) *Dispatch {
+func NewDispatch(fp io.ReadWriter, prov Provider) *Dispatch {
 	d := &Dispatch{
 		responseHeader: make([]byte, 16),
 		fp:             fp,

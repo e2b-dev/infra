@@ -1,5 +1,10 @@
+ARG GOLANG_VERSION=1.24.7
+
+# It has to match with the host OS version (Ubuntu 22.04 = bookworm)
+ARG DEBIAN_VERSION=bookworm
+
 # Dockerfile for running orchestrator golang tests
-FROM golang:1.24-bookworm AS base
+FROM golang:${GOLANG_VERSION}-${DEBIAN_VERSION} AS base
 
 WORKDIR /build/shared
 

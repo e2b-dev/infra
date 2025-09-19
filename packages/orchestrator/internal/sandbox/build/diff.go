@@ -33,6 +33,8 @@ type Diff interface {
 
 type NoDiff struct{}
 
+var _ Diff = (*NoDiff)(nil)
+
 func (n *NoDiff) CachePath() (string, error) {
 	return "", NoDiffError{}
 }

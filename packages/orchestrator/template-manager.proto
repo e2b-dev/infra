@@ -124,6 +124,7 @@ message TemplateBuildLogEntry {
   google.protobuf.Timestamp timestamp = 1;
   string message = 2;
   LogLevel level = 3;
+  map<string, string> fields = 4;
 }
 
 message TemplateBuildStatusReason {

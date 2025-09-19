@@ -50,7 +50,7 @@ func TestSandboxResume(t *testing.T) {
 		// Pause the sandbox
 		wg := errgroup.Group{}
 		resumed := atomic.Bool{}
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			wg.Go(func() error {
 				resumeResp, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
 				require.NoError(t, err)

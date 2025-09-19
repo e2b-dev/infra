@@ -13,7 +13,7 @@ func TestBatcherStartStop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		if err := b.Start(); err != nil {
 			t.Fatal(err)
 		}
@@ -88,7 +88,7 @@ func TestBatcherPushStop(t *testing.T) {
 	if err := b.Start(); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		ok, err := b.Push(i)
 		if err != nil {
 			t.Fatal(err)
@@ -137,10 +137,10 @@ func TestBatcherConcurrentPush(t *testing.T) {
 	}
 	var wg sync.WaitGroup
 	ss := uint32(0)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Add(1)
 		go func() {
-			for i := 0; i < 100; i++ {
+			for i := range 100 {
 				b.Push(uint32(i))
 				time.Sleep(time.Millisecond)
 				atomic.AddUint32(&ss, uint32(i))
@@ -175,7 +175,7 @@ func TestBatcherQueueSize(t *testing.T) {
 	if err := b.Start(); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		ok, err := b.Push(i)
 		if err != nil {
 			t.Fatal(err)
@@ -185,7 +185,7 @@ func TestBatcherQueueSize(t *testing.T) {
 		}
 	}
 	time.Sleep(time.Millisecond)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		ok, err := b.Push(i)
 		if err != nil {
 			t.Fatal(err)
@@ -197,7 +197,7 @@ func TestBatcherQueueSize(t *testing.T) {
 	if b.QueueLen() != b.QueueSize {
 		t.Fatalf("Unexpected queue size %d. Expecting %d", b.QueueLen(), b.QueueSize)
 	}
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		ok, err := b.Push(123)
 		if err != nil {
 			t.Fatal(err)
@@ -209,7 +209,7 @@ func TestBatcherQueueSize(t *testing.T) {
 	}
 	close(ch)
 	time.Sleep(time.Millisecond)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		ok, err := b.Push(i)
 		if err != nil {
 			t.Fatal(err)
@@ -252,7 +252,7 @@ func testBatcherPushMaxDelay(t *testing.T, itemsCount int, maxDelay time.Duratio
 	if err := b.Start(); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < itemsCount; i++ {
+	for i := range itemsCount {
 		ok, err := b.Push(i)
 		if err != nil {
 			t.Fatal(err)
@@ -302,7 +302,7 @@ func testBatcherPushMaxBatchSize(t *testing.T, itemsCount, batchSize int) {
 	if err := b.Start(); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < itemsCount; i++ {
+	for i := range itemsCount {
 		ok, err := b.Push(i)
 		if err != nil {
 			t.Fatal(err)

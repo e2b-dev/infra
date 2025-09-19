@@ -20,6 +20,19 @@ import (
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+type FromTemplateError struct {
+	err     error
+	message string
+}
+
+func (e *FromTemplateError) Error() string {
+	return e.message
+}
+
+func (e *FromTemplateError) Unwrap() error {
+	return e.err
+}
+
 func (tm *TemplateManager) CreateTemplate(
 	ctx context.Context,
 	teamID uuid.UUID,
@@ -110,7 +123,27 @@ func (tm *TemplateManager) CreateTemplate(
 
 	err = setTemplateSource(ctx, tm, teamID, template, fromImage, fromTemplate)
 	if err != nil {
-		return fmt.Errorf("failed to set template source: %w", err)
+		// If the error is related to fromTemplate, set the build status to failed with the appropriate message
+		// This is to unify the error handling with fromImage errors
+		var fromTemplateErr *FromTemplateError
+		if !errors.As(err, &fromTemplateErr) {
+			return fmt.Errorf("failed to set template source: %w", err)
+		}
+
+		err = tm.SetStatus(
+			ctx,
+			templateID,
+			buildID,
+			envbuild.StatusFailed,
+			&templatemanagergrpc.TemplateBuildStatusReason{
+				Message: err.Error(),
+				Step:    ut.ToPtr("base"),
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("failed to set build status: %w", err)
+		}
+		return nil
 	}
 
 	reqCtx := metadata.NewOutgoingContext(ctx, cli.GRPC.Metadata)
@@ -252,11 +285,17 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 		// Look up the base template by alias to get its metadata
 		baseTemplate, err := tm.sqlcDB.GetTemplateWithBuild(ctx, *fromTemplate)
 		if err != nil {
-			return fmt.Errorf("failed to find base template '%s': %w", *fromTemplate, err)
+			return &FromTemplateError{
+				err:     err,
+				message: fmt.Sprintf("base template '%s' not found", *fromTemplate),
+			}
 		}
 
 		if !baseTemplate.Env.Public && baseTemplate.Env.TeamID != teamID {
-			return fmt.Errorf("you have no access to use '%s' as a base template", *fromTemplate)
+			return &FromTemplateError{
+				err:     nil,
+				message: fmt.Sprintf("you have no access to use '%s' as a base template", *fromTemplate),
+			}
 		}
 
 		template.Source = &templatemanagergrpc.TemplateConfig_FromTemplate{

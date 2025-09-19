@@ -35,7 +35,7 @@ job "clickhouse-backup" {
 
         entrypoint = ["/bin/sh", "-c"]
         args = [
-          "clickhouse-backup create_remote --tables='default.*' auto_backup_$(date +%F_%H-%M)"
+          "clickhouse-backup create_remote --delete-local --tables='default.*' auto_backup_$(date +%F_%H-%M)"
         ]
       }
 
