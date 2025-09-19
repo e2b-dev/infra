@@ -5,13 +5,22 @@ job "client-proxy" {
   priority = 80
 
   group "client-proxy" {
-    // Try to restart the task indefinitely
-    // Tries to restart every 5 seconds
+    // If the service fails, try up to 2 restarts in 10 minutes
+    // if another restart happens, it will trigger reschedule
     restart {
-      interval         = "5s"
-      attempts         = 1
-      delay            = "5s"
-      mode             = "delay"
+      attempts = 2
+      interval = "10m"
+      delay    = "10s"
+      mode     = "fail"
+    }
+
+    // If too many restarts happens on one node,
+    // try to place it on another with exponential backoff
+    reschedule {
+      delay          = "30s"
+      delay_function = "exponential"
+      max_delay      = "10m"
+      unlimited      = true
     }
 
     count = ${count}
