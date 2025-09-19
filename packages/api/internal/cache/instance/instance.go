@@ -117,7 +117,7 @@ type Data struct {
 }
 
 type InstanceInfo struct {
-	data Data
+	_data Data
 
 	transition *utils.ErrorOnce
 	mu         sync.RWMutex
@@ -139,8 +139,12 @@ func (i *InstanceInfo) SetExpired() {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	if !i.data.IsExpired() {
-		i.data.EndTime = time.Now()
+	i.setExpired()
+}
+
+func (i *InstanceInfo) setExpired() {
+	if !i._data.IsExpired() {
+		i._data.EndTime = time.Now()
 	}
 }
 
@@ -148,27 +152,27 @@ func (i *InstanceInfo) Data() Data {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
-	return i.data
+	return i._data
 }
 
 func (i *InstanceInfo) State() State {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
-	return i.data.State
+	return i._data.State
 }
 
 // SandboxID returns the sandbox ID, safe to use without lock, it's immutable
 func (i *InstanceInfo) SandboxID() string {
-	return i.data.SandboxID
+	return i._data.SandboxID
 }
 
 // TeamID returns the team ID, safe to use without lock, it's immutable
 func (i *InstanceInfo) TeamID() uuid.UUID {
-	return i.data.TeamID
+	return i._data.TeamID
 }
 
-func (i *InstanceInfo) StartRemoving(ctx context.Context, stateAction StateAction) (done bool, callback func(error), err error) {
+func (i *InstanceInfo) startRemoving(ctx context.Context, stateAction StateAction) (done bool, callback func(error), err error) {
 	newState := StateKilled
 	if stateAction == StateActionPause {
 		newState = StatePaused
@@ -177,14 +181,14 @@ func (i *InstanceInfo) StartRemoving(ctx context.Context, stateAction StateActio
 	i.mu.Lock()
 	transition := i.transition
 	if transition != nil {
-		currentState := i.data.State
+		currentState := i._data.State
 		i.mu.Unlock()
 
 		if currentState != newState && !allowed[currentState][newState] {
 			return false, nil, fmt.Errorf("invalid state transition, already in transition from %s", currentState)
 		}
 
-		zap.L().Debug("State transition already in progress to the same state, waiting", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)))
+		zap.L().Debug("State transition already in progress to the same state, waiting", logger.WithSandboxID(i.SandboxID()), zap.String("state", string(newState)))
 		err = transition.WaitWithContext(ctx)
 		if err != nil {
 			return false, nil, fmt.Errorf("sandbox is in failed state: %w", err)
@@ -195,34 +199,35 @@ func (i *InstanceInfo) StartRemoving(ctx context.Context, stateAction StateActio
 		case currentState == newState:
 			return true, func(err error) {}, nil
 		case allowed[currentState][newState]:
-			return i.StartRemoving(ctx, stateAction)
+			return i.startRemoving(ctx, stateAction)
 		default:
 			return false, nil, fmt.Errorf("unexpected state transition")
 		}
 	}
 
 	defer i.mu.Unlock()
-	if i.data.State == newState {
-		zap.L().Debug("Already in the same state", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)))
+	if i._data.State == newState {
+		zap.L().Debug("Already in the same state", logger.WithSandboxID(i.SandboxID()), zap.String("state", string(newState)))
 		return true, func(error) {}, nil
 	}
 
-	if _, ok := allowed[i.data.State][newState]; !ok {
-		return false, nil, fmt.Errorf("invalid state transition from %s to %s", i.data.State, newState)
+	if _, ok := allowed[i._data.State][newState]; !ok {
+		return false, nil, fmt.Errorf("invalid state transition from %s to %s", i._data.State, newState)
 	}
 
-	i.data.State = newState
+	i.setExpired()
+	i._data.State = newState
 	i.transition = utils.NewErrorOnce()
 
 	callback = func(err error) {
-		zap.L().Debug("Transition complete", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)), zap.Error(err))
+		zap.L().Debug("Transition complete", logger.WithSandboxID(i.SandboxID()), zap.String("state", string(newState)), zap.Error(err))
 		i.mu.Lock()
 		defer i.mu.Unlock()
 
 		setErr := i.transition.SetError(err)
 		if err != nil {
 			// Keep the transition in place so the error stays
-			zap.L().Error("Failed to set transition result", logger.WithSandboxID(i.data.SandboxID), zap.Error(setErr))
+			zap.L().Error("Failed to set transition result", logger.WithSandboxID(i.SandboxID()), zap.Error(setErr))
 		}
 
 		if err == nil {
@@ -250,11 +255,11 @@ func (i *InstanceInfo) ExtendEndTime(newEndTime time.Time, allowShorter bool) bo
 	defer i.mu.Unlock()
 
 	// If shorter than the current end time, don't extend
-	if !allowShorter && newEndTime.Before(i.data.EndTime) {
+	if !allowShorter && newEndTime.Before(i._data.EndTime) {
 		return false
 	}
 
-	i.data.EndTime = newEndTime
+	i._data.EndTime = newEndTime
 
 	return true
 }

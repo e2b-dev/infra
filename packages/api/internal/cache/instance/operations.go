@@ -35,7 +35,7 @@ func (c *MemoryStore) Add(ctx context.Context, sandbox Data, newlyCreated bool) 
 	}
 
 	c.items.SetIfAbsent(sandbox.SandboxID, &InstanceInfo{
-		data:       sandbox,
+		_data:      sandbox,
 		transition: nil,
 		mu:         sync.RWMutex{},
 	})
@@ -89,7 +89,7 @@ func (c *MemoryStore) Remove(sandboxID string) {
 func (c *MemoryStore) Items(teamID *uuid.UUID) []Data {
 	items := make([]Data, 0)
 	for _, item := range c.items.Items() {
-		data := item.data
+		data := item.Data()
 		if data.IsExpired() {
 			continue
 		}
@@ -104,18 +104,19 @@ func (c *MemoryStore) Items(teamID *uuid.UUID) []Data {
 	return items
 }
 
-func (c *MemoryStore) ItemsToEvict() []*InstanceInfo {
-	items := make([]*InstanceInfo, 0)
+func (c *MemoryStore) ItemsToEvict() []Data {
+	items := make([]Data, 0)
 	for _, item := range c.items.Items() {
-		if !item.data.IsExpired() {
+		data := item.Data()
+		if !data.IsExpired() {
 			continue
 		}
 
-		if item.data.State != StateRunning {
+		if data.State != StateRunning {
 			continue
 		}
 
-		items = append(items, item)
+		items = append(items, data)
 	}
 
 	return items
@@ -124,11 +125,11 @@ func (c *MemoryStore) ItemsToEvict() []*InstanceInfo {
 func (c *MemoryStore) ItemsByState(teamID *uuid.UUID, states []State) map[State][]Data {
 	items := make(map[State][]Data)
 	for _, item := range c.items.Items() {
-		if teamID != nil && item.data.TeamID != *teamID {
+		data := item.Data()
+		if teamID != nil && data.TeamID != *teamID {
 			continue
 		}
 
-		data := item.data
 		if slices.Contains(states, data.State) {
 			if _, ok := items[data.State]; !ok {
 				items[data.State] = []Data{}
@@ -152,4 +153,13 @@ func (c *MemoryStore) ExtendEndTime(sandboxID string, newEndTime time.Time, allo
 	}
 
 	return item.ExtendEndTime(newEndTime, allowShorter), nil
+}
+
+func (c *MemoryStore) StartRemoving(ctx context.Context, sandboxID string, stateAction StateAction) (done bool, callback func(error), err error) {
+	sbx, err := c.Get(sandboxID)
+	if err != nil {
+		return false, nil, err
+	}
+
+	return sbx.startRemoving(ctx, stateAction)
 }

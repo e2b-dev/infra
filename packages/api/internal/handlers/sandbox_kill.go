@@ -85,24 +85,33 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 
 	telemetry.ReportEvent(ctx, "killing sandbox")
 
-	removed := false
-	err := a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, instance.StateActionKill)
-	switch {
-	case err == nil:
-		removed = true
-	case errors.Is(err, orchestrator.ErrSandboxNotFound):
+	killedOrRemoved := false
+
+	sbx, err := a.orchestrator.GetSandboxData(sandboxID, true)
+	if err == nil {
+		if sbx.TeamID != teamID {
+			a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
+			return
+		}
+
+		err = a.orchestrator.RemoveSandbox(ctx, sbx, instance.StateActionKill)
+		switch {
+		case err == nil:
+			killedOrRemoved = true
+		case errors.Is(err, orchestrator.ErrSandboxNotFound):
+			zap.L().Debug("Sandbox not found", logger.WithSandboxID(sandboxID))
+		case errors.Is(err, orchestrator.ErrSandboxOperationFailed):
+			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err))
+			return
+		default:
+			telemetry.ReportError(ctx, "error killing sandbox", err)
+			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err))
+			return
+		}
+	} else {
 		zap.L().Debug("Sandbox not found", logger.WithSandboxID(sandboxID))
-	case errors.Is(err, orchestrator.ErrAccessForbidden):
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
-		return
-	case errors.Is(err, orchestrator.ErrSandboxOperationFailed):
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err))
-		return
-	default:
-		telemetry.ReportError(ctx, "error killing sandbox", err)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err))
-		return
 	}
+
 	// remove any snapshots when the sandbox is not running
 	deleteSnapshotErr := a.deleteSnapshot(ctx, sandboxID, teamID, team.ClusterID)
 	switch {
@@ -113,10 +122,10 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error deleting sandbox: %s", deleteSnapshotErr))
 		return
 	default:
-		removed = true
+		killedOrRemoved = true
 	}
 
-	if removed {
+	if killedOrRemoved {
 		c.Status(http.StatusNoContent)
 	} else {
 		a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox not found")

@@ -137,7 +137,7 @@ func New(
 	o.sandboxStore = sandboxStore
 
 	// Evict old sandboxes
-	sandboxEvictor := evictor.New(sandboxStore, o.removeSandbox)
+	sandboxEvictor := evictor.New(sandboxStore, o.RemoveSandbox)
 	go sandboxEvictor.Start(ctx)
 
 	teamMetricsObserver, err := metrics.NewTeamObserver(ctx, sandboxStore)

@@ -48,10 +48,10 @@ func (r *ReservationCache) list(teamID uuid.UUID) (sandboxIDs []string) {
 
 func (c *MemoryStore) list(teamID uuid.UUID) (sandboxIDs []string) {
 	for _, value := range c.items.Items() {
-		currentTeamID := value.data.TeamID
+		currentTeamID := value.TeamID()
 
 		if currentTeamID == teamID {
-			sandboxIDs = append(sandboxIDs, value.data.SandboxID)
+			sandboxIDs = append(sandboxIDs, value.SandboxID())
 		}
 	}
 

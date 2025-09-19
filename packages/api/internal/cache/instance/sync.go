@@ -20,19 +20,20 @@ func (c *MemoryStore) Sync(ctx context.Context, instances []Data, nodeID string)
 
 	// Remove instances that are not in Orchestrator anymore
 	for _, item := range c.items.Items() {
-		if item.data.IsExpired() {
+		data := item.Data()
+		if data.IsExpired() {
 			continue
 		}
 
-		if item.data.NodeID != nodeID {
+		if data.NodeID != nodeID {
 			continue
 		}
 
-		if time.Since(item.data.StartTime) <= syncSandboxRemoveGracePeriod {
+		if time.Since(data.StartTime) <= syncSandboxRemoveGracePeriod {
 			continue
 		}
 
-		_, found := instanceMap[item.data.SandboxID]
+		_, found := instanceMap[data.SandboxID]
 		if !found {
 			item.SetExpired()
 		}

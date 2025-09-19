@@ -31,7 +31,18 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
 
-	err := a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, instance.StateActionPause)
+	sbx, err := a.orchestrator.GetSandboxData(sandboxID, true)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", sandboxID))
+		return
+	}
+
+	if sbx.TeamID != teamID {
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
+		return
+	}
+
+	err = a.orchestrator.RemoveSandbox(ctx, sbx, instance.StateActionPause)
 	switch {
 	case err == nil:
 	case errors.Is(err, orchestrator.ErrSandboxNotFound):

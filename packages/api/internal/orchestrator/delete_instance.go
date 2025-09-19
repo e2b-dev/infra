@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
@@ -13,32 +12,15 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
-func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction instance.StateAction) error {
-	ctx, childSpan := tracer.Start(ctx, "remove-sandbox-public")
-	defer childSpan.End()
+func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx instance.Data, stateAction instance.StateAction) error {
+	ctx, span := tracer.Start(ctx, "remove-sandbox")
+	defer span.End()
 
-	sbx, err := o.sandboxStore.Get(sandboxID)
+	sandboxID := sbx.SandboxID
+	done, finish, err := o.sandboxStore.StartRemoving(ctx, sandboxID, stateAction)
 	if err != nil {
-		return ErrSandboxNotFound
-	}
-
-	if sbx.TeamID() != teamID {
-		return ErrAccessForbidden
-	}
-
-	return o.removeSandbox(ctx, sbx, stateAction)
-}
-
-func (o *Orchestrator) removeSandbox(ctx context.Context, sbx *instance.InstanceInfo, stateAction instance.StateAction) error {
-	_, childSpan := tracer.Start(ctx, "remove-sandbox")
-	defer childSpan.End()
-
-	sandboxID := sbx.SandboxID()
-	done, finish, err := sbx.StartRemoving(ctx, stateAction)
-	if err != nil {
-		data := sbx.Data()
 		if stateAction == instance.StateActionKill {
-			switch data.State {
+			switch sbx.State {
 			case instance.StateKilled:
 				zap.L().Info("Sandbox is already killed", logger.WithSandboxID(sandboxID))
 				return nil
@@ -47,7 +29,7 @@ func (o *Orchestrator) removeSandbox(ctx context.Context, sbx *instance.Instance
 				return ErrSandboxOperationFailed
 			}
 		} else {
-			switch data.State {
+			switch sbx.State {
 			case instance.StateKilled:
 				zap.L().Info("Sandbox is already killed", logger.WithSandboxID(sandboxID))
 				return ErrSandboxNotFound
@@ -62,20 +44,17 @@ func (o *Orchestrator) removeSandbox(ctx context.Context, sbx *instance.Instance
 	}()
 
 	if done {
-		zap.L().Info("Sandbox was already in the process of being removed", logger.WithSandboxID(sandboxID), zap.String("state", string(sbx.State())))
+		zap.L().Info("Sandbox was already in the process of being removed", logger.WithSandboxID(sandboxID), zap.String("state", string(sbx.State)))
 
 		return nil
 	}
 
-	sbx.SetExpired()
-	data := sbx.Data()
-
-	defer o.countersRemove(context.WithoutCancel(ctx), data, stateAction)
-	defer o.analyticsRemove(context.WithoutCancel(ctx), data, stateAction)
-	defer o.sandboxStore.Remove(sbx.SandboxID())
-	err = o.removeSandboxFromNode(ctx, data, stateAction)
+	defer o.countersRemove(context.WithoutCancel(ctx), sbx, stateAction)
+	defer o.analyticsRemove(context.WithoutCancel(ctx), sbx, stateAction)
+	defer o.sandboxStore.Remove(sbx.SandboxID)
+	err = o.removeSandboxFromNode(ctx, sbx, stateAction)
 	if err != nil {
-		zap.L().Error("Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sbx.SandboxID()))
+		zap.L().Error("Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
 		return ErrSandboxOperationFailed
 	}
 

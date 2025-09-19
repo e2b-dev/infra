@@ -12,12 +12,12 @@ import (
 
 type Evictor struct {
 	store         *instance.MemoryStore
-	removeSandbox func(ctx context.Context, sandbox *instance.InstanceInfo, stateAction instance.StateAction) error
+	removeSandbox func(ctx context.Context, sandbox instance.Data, stateAction instance.StateAction) error
 }
 
 func New(
 	store *instance.MemoryStore,
-	removeSandbox func(ctx context.Context, sandbox *instance.InstanceInfo, stateAction instance.StateAction) error,
+	removeSandbox func(ctx context.Context, sandbox instance.Data, stateAction instance.StateAction) error,
 ) *Evictor {
 	return &Evictor{
 		store:         store,
@@ -33,15 +33,13 @@ func (e *Evictor) Start(ctx context.Context) {
 		case <-time.After(50 * time.Millisecond):
 			for _, item := range e.store.ItemsToEvict() {
 				go func() {
-					data := item.Data()
-
 					stateAction := instance.StateActionKill
-					if data.AutoPause {
+					if item.AutoPause {
 						stateAction = instance.StateActionPause
 					}
 
 					if err := e.removeSandbox(ctx, item, stateAction); err != nil {
-						zap.L().Debug("Evicting sandbox failed", zap.Error(err), logger.WithSandboxID(data.SandboxID))
+						zap.L().Debug("Evicting sandbox failed", zap.Error(err), logger.WithSandboxID(item.SandboxID))
 					}
 				}()
 			}
