@@ -136,7 +136,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	var envdAccessToken *string = nil
-	if body.Secure != nil && *body.Secure == true {
+	if body.Secure != nil && *body.Secure {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
 		if tokenErr != nil {
 			zap.L().Error("Secure envd access token error", zap.Error(tokenErr.Err), logger.WithSandboxID(sandboxID), logger.WithBuildID(build.ID.String()))

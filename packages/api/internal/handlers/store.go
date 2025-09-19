@@ -247,7 +247,7 @@ func (a *APIStore) sendAPIStoreError(c *gin.Context, code int, message string) {
 }
 
 func (a *APIStore) GetHealth(c *gin.Context) {
-	if a.Healthy == true {
+	if a.Healthy {
 		c.String(http.StatusOK, "Health check successful")
 
 		return

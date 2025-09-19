@@ -273,7 +273,7 @@ func New(
 
 		// For backwards compatibility we still set the stdin if not explicitly disabled
 		// If stdin is disabled, the process will use /dev/null as stdin
-		if req.Stdin == nil || *req.Stdin == true {
+		if req.Stdin == nil || *req.Stdin {
 			stdin, err := cmd.StdinPipe()
 			if err != nil {
 				return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stdin pipe for command '%s': %w", cmd, err))

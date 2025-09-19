@@ -80,7 +80,7 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 	var build *queries.EnvBuild
 
 	templateID, found := c.aliasCache.Get(aliasOrEnvID)
-	if found == true {
+	if found {
 		item = c.cache.Get(templateID)
 	}
 

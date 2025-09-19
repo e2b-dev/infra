@@ -93,7 +93,7 @@ func main() {
 
 	log.Println("Stopping orchestrator, success:", success)
 
-	if success == false {
+	if !success {
 		os.Exit(1)
 	}
 }
@@ -123,7 +123,7 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 			}
 
 			// Remove the lock file on graceful shutdown
-			if success == true {
+			if success {
 				if fileErr = os.Remove(fileLockName); fileErr != nil {
 					log.Printf("Failed to remove lock file %s: %v", fileLockName, fileErr)
 				}

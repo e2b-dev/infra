@@ -105,7 +105,6 @@ linters:
     staticcheck:
       checks:
         - all
-        - -S1002  # Omit comparison with boolean constant
         - -SA1019  # TODO: Remove (Using a deprecated function, variable, constant or field)
         - -ST1000  # Incorrect or missing package comment
         - -ST1020  # The documentation of an exported function should start with the function’s name
