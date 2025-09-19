@@ -218,7 +218,7 @@ func CreateSandbox(
 	}
 	ips := <-ipsCh
 	if ips.err != nil {
-		return nil, fmt.Errorf("failed to get network slot: %w", err)
+		return nil, fmt.Errorf("failed to get network slot: %w", ips.err)
 	}
 	fcHandle, err := fc.NewProcess(
 		ctx,
@@ -433,7 +433,7 @@ func ResumeSandbox(
 
 	ips := <-ipsCh
 	if ips.err != nil {
-		return nil, fmt.Errorf("failed to get network slot: %w", err)
+		return nil, fmt.Errorf("failed to get network slot: %w", ips.err)
 	}
 
 	telemetry.ReportEvent(ctx, "got network slot")
