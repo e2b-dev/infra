@@ -509,9 +509,8 @@ resource "nomad_job" "template_manager" {
     orchestrator_services        = "template-manager"
     allow_sandbox_internet       = var.allow_sandbox_internet
     clickhouse_connection_string = local.clickhouse_connection_string
-
-    # For now we DISABLE the shared chunk cache in the template manager
-    shared_chunk_cache_path = ""
+    launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+    shared_chunk_cache_path      = var.shared_chunk_cache_path
   })
 }
 resource "nomad_job" "loki" {

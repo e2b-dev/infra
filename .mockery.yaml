@@ -9,8 +9,13 @@ packages:
 
   github.com/e2b-dev/infra/packages/shared/pkg/storage:
     interfaces:
+      StorageProvider:
+        config:
+          dir: packages/shared/pkg/storage/mocks
+          filename: storageprovider.go
+          pkgname: storagemocks
       StorageObjectProvider:
         config:
           dir: packages/shared/pkg/storage/mocks
-          filename: mocks.go
+          filename: storageobjectprovider.go
           pkgname: storagemocks

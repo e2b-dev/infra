@@ -1,4 +1,4 @@
-package storage
+package providers
 
 import (
 	"context"
@@ -7,22 +7,22 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 type FileSystemStorageProvider struct {
 	basePath string
 	opened   map[string]*os.File
-
-	StorageProvider
 }
 
-var _ StorageProvider = (*FileSystemStorageProvider)(nil)
+var _ storage.StorageProvider = (*FileSystemStorageProvider)(nil)
 
 type FileSystemStorageObjectProvider struct {
 	path string
 }
 
-var _ StorageObjectProvider = (*FileSystemStorageObjectProvider)(nil)
+var _ storage.StorageObjectProvider = (*FileSystemStorageObjectProvider)(nil)
 
 func NewFileSystemStorageProvider(basePath string) (*FileSystemStorageProvider, error) {
 	return &FileSystemStorageProvider{
@@ -44,7 +44,7 @@ func (fs *FileSystemStorageProvider) UploadSignedURL(_ context.Context, _ string
 	return "", fmt.Errorf("file system storage does not support signed URLs")
 }
 
-func (fs *FileSystemStorageProvider) OpenObject(ctx context.Context, path string) (StorageObjectProvider, error) {
+func (fs *FileSystemStorageProvider) OpenObject(ctx context.Context, path string) (storage.StorageObjectProvider, error) {
 	dir := filepath.Dir(fs.getPath(path))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -136,7 +136,7 @@ func (f *FileSystemStorageObjectProvider) getHandle(checkExistence bool) (*os.Fi
 		info, err := os.Stat(f.path)
 		if err != nil {
 			if os.IsNotExist(err) {
-				return nil, ErrObjectNotExist
+				return nil, storage.ErrObjectNotExist
 			}
 
 			return nil, err

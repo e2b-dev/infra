@@ -8,6 +8,7 @@ import (
 	"log"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/providers"
 )
 
 func main() {
@@ -42,7 +43,7 @@ func main() {
 
 	ctx := context.Background()
 
-	storage, err := storage.GetTemplateStorageProvider(ctx, nil)
+	storage, err := providers.GetTemplateStorageProvider(ctx, nil)
 	if err != nil {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}
