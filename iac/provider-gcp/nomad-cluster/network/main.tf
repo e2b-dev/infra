@@ -20,7 +20,8 @@ locals {
 
   parts       = split(".", var.domain_name)
   is_subdomain = length(local.parts) > 2
-  subdomain   = local.is_subdomain ? local.parts[0] : ""
+  // Take everything except last 2 parts
+  subdomain   = local.is_subdomain ? join(".", slice(local.parts, 0, length(local.parts)-2)) : ""
   // Take last 2 parts (1 dot)
   root_domain  = local.is_subdomain ? join(".", slice(local.parts, length(local.parts)-2, length(local.parts))) : var.domain_name
 
