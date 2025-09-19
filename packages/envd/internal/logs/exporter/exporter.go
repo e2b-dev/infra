@@ -84,8 +84,7 @@ func (w *HTTPExporter) listenForMMDSOptsAndStart(ctx context.Context, mmdsChan <
 			}
 
 			w.mmdsLock.Lock()
-			w.mmdsOpts.Update(
-				mmdsOpts.TraceID, mmdsOpts.InstanceID, mmdsOpts.EnvID, mmdsOpts.Address)
+			w.mmdsOpts.Update(mmdsOpts.TraceID, mmdsOpts.InstanceID, mmdsOpts.EnvID, mmdsOpts.Address)
 			w.mmdsLock.Unlock()
 
 			w.startOnce.Do(func() {

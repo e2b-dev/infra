@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	netutils "k8s.io/utils/net"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
@@ -74,6 +75,8 @@ type Slot struct {
 	hostIp   net.IP
 	hostNet  *net.IPNet
 	hostCIDR string
+
+	hyperloopIP string
 }
 
 func NewSlot(key string, idx int) (*Slot, error) {
@@ -128,6 +131,8 @@ func NewSlot(key string, idx int) (*Slot, error) {
 		hostIp:   hostIp,
 		hostNet:  hostNet,
 		hostCIDR: hostCIDR,
+
+		hyperloopIP: internal.GetHyperloopIP(),
 	}
 
 	return slot, nil
@@ -159,6 +164,10 @@ func (s *Slot) HostIP() net.IP {
 
 func (s *Slot) HostIPString() string {
 	return s.HostIP().String()
+}
+
+func (s *Slot) HyperloopIPString() string {
+	return s.hyperloopIP
 }
 
 func (s *Slot) HostMask() net.IPMask {
