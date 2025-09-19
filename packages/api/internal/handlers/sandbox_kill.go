@@ -116,7 +116,6 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	deleteSnapshotErr := a.deleteSnapshot(ctx, sandboxID, teamID, team.ClusterID)
 	switch {
 	case errors.Is(deleteSnapshotErr, db.EnvNotFoundError{}):
-		zap.L().Debug("Snapshot for sandbox not found", logger.WithSandboxID(sandboxID))
 	case deleteSnapshotErr != nil:
 		telemetry.ReportError(ctx, "error deleting sandbox", deleteSnapshotErr)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error deleting sandbox: %s", deleteSnapshotErr))
