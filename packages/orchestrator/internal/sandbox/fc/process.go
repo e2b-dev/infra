@@ -413,6 +413,9 @@ func (p *Process) Stop(ctx context.Context) error {
 		return fmt.Errorf("fc process not started")
 	}
 
+	// this function should never fail b/c a previous context was canceled.
+	ctx = context.WithoutCancel(ctx)
+
 	state, err := getProcessState(ctx, p.cmd.Process.Pid)
 	if err != nil {
 		zap.L().Warn("failed to get fc process state", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
