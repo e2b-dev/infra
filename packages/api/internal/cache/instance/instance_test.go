@@ -404,7 +404,7 @@ func TestWaitForStateChange_MultipleWaiters(t *testing.T) {
 	wg.Wait()
 
 	// All waiters should complete successfully
-	for i := 0; i < numWaiters; i++ {
+	for i := range numWaiters {
 		require.NoError(t, errors[i])
 	}
 }
@@ -428,7 +428,7 @@ func TestConcurrency_StressTest(t *testing.T) {
 	var errorCount uint64
 
 	// Launch workers that continuously perform random operations
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
