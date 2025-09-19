@@ -17,6 +17,14 @@ provider "cloudflare" {
 
 locals {
   domain_map = { for d in var.additional_domains : replace(d, ".", "-") => d }
+
+  parts        = split(".", var.domain_name)
+  is_subdomain = length(local.parts) > 2
+  // Take everything except last 2 parts
+  subdomain = local.is_subdomain ? join(".", slice(local.parts, 0, length(local.parts) - 2)) : ""
+  // Take last 2 parts (1 dot)
+  root_domain = local.is_subdomain ? join(".", slice(local.parts, length(local.parts) - 2, length(local.parts))) : var.domain_name
+
   backends = {
     session = {
       protocol                        = "HTTP"
@@ -98,7 +106,7 @@ resource "google_compute_global_address" "orch_logs_ip" {
 # ======== CLOUDFLARE ====================
 
 data "cloudflare_zone" "domain" {
-  name = var.domain_name
+  name = local.root_domain
 }
 
 resource "cloudflare_record" "dns_auth" {
@@ -111,7 +119,7 @@ resource "cloudflare_record" "dns_auth" {
 
 resource "cloudflare_record" "a_star" {
   zone_id = data.cloudflare_zone.domain.id
-  name    = "*"
+  name    = local.is_subdomain ? "*.${local.subdomain}" : "*"
   value   = google_compute_global_forwarding_rule.https.ip_address
   type    = "A"
   comment = var.gcp_project_id
