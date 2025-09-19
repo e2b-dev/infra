@@ -35,10 +35,12 @@ linters:
     - gochecknoglobals
     - gochecknoinits
     - gocognit
+    - goconst
     - gocyclo
     - godot
     - godox
     - gomoddirectives
+    - gomodguard
     - gosec
     - ireturn
     - lll
