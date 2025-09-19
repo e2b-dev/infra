@@ -172,7 +172,7 @@ func (i *InstanceInfo) TeamID() uuid.UUID {
 	return i._data.TeamID
 }
 
-func (i *InstanceInfo) startRemoving(ctx context.Context, stateAction StateAction) (done bool, callback func(error), err error) {
+func (i *InstanceInfo) startRemoving(ctx context.Context, stateAction StateAction) (alreadyDone bool, callback func(error), err error) {
 	newState := StateKilling
 	if stateAction == StateActionPause {
 		newState = StatePausing

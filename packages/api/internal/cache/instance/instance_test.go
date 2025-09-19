@@ -53,22 +53,22 @@ func TestStartRemoving_BasicTransitions(t *testing.T) {
 			instance._data.State = tt.fromState
 			ctx := t.Context()
 
-			done, finish, err := instance.startRemoving(ctx, tt.stateAction)
+			alreadyDone, finish, err := instance.startRemoving(ctx, tt.stateAction)
 
 			switch {
 			case tt.shouldError:
 				require.Error(t, err)
-				assert.False(t, done)
+				assert.False(t, alreadyDone)
 				assert.Nil(t, finish)
 				assert.Equal(t, tt.fromState, instance.State()) // State unchanged
 			case tt.fromState == tt.expState:
 				require.NoError(t, err)
-				assert.True(t, done)
+				assert.True(t, alreadyDone)
 				assert.NotNil(t, finish)
 				assert.Equal(t, tt.fromState, instance.State())
 			default:
 				require.NoError(t, err)
-				assert.False(t, done)
+				assert.False(t, alreadyDone)
 				assert.NotNil(t, finish)
 				assert.Equal(t, tt.expState, instance.State()) // State changed immediately
 				finish(nil)                                    // Complete the transition
@@ -82,9 +82,9 @@ func TestStartRemoving_PauseThenKill(t *testing.T) {
 	ctx := t.Context()
 
 	// Simulate a pause operation that takes time
-	done, finish, err := instance.startRemoving(ctx, StateActionPause)
+	alreadyDone, finish, err := instance.startRemoving(ctx, StateActionPause)
 	require.NoError(t, err)
-	assert.False(t, done)
+	assert.False(t, alreadyDone)
 	require.NotNil(t, finish)
 
 	// The state should be changed immediately
@@ -105,13 +105,13 @@ func TestStartRemoving_PauseThenKill(t *testing.T) {
 	<-started // Ensure the pause operation has started
 
 	start := time.Now()
-	done2, finish2, err2 := instance.startRemoving(ctx, StateActionKill)
+	alreadyDone2, finish2, err2 := instance.startRemoving(ctx, StateActionKill)
 	elapsed := time.Since(start)
 
 	// Should have waited for the pause to complete
 	assert.Greater(t, elapsed, 80*time.Millisecond)
 	require.NoError(t, err2)
-	assert.False(t, done2)
+	assert.False(t, alreadyDone2)
 	assert.NotNil(t, finish2)
 	assert.Equal(t, StateKilling, instance.State())
 
@@ -126,34 +126,34 @@ func TestStartRemoving_ConcurrentSameState(t *testing.T) {
 	ctx := t.Context()
 
 	results := make(chan struct {
-		done   bool
-		worked bool
+		alreadyDone bool
+		worked      bool
 	}, 3)
 
 	// Three concurrent requests to pause the sandbox
 	for i := 0; i < 3; i++ {
 		go func() {
-			done, finish, err := instance.startRemoving(ctx, StateActionPause)
+			alreadyDone, finish, err := instance.startRemoving(ctx, StateActionPause)
 			if err == nil {
-				if done {
-					// Already done (waited for another transition)
+				if alreadyDone {
+					// Already alreadyDone (waited for another transition)
 					results <- struct {
-						done   bool
-						worked bool
-					}{done, false}
+						alreadyDone bool
+						worked      bool
+					}{alreadyDone, false}
 				} else {
 					// We got to perform the transition
 					time.Sleep(10 * time.Millisecond)
 					finish(nil)
 					results <- struct {
-						done   bool
-						worked bool
-					}{done, true}
+						alreadyDone bool
+						worked      bool
+					}{alreadyDone, true}
 				}
 			} else {
 				results <- struct {
-					done   bool
-					worked bool
+					alreadyDone bool
+					worked      bool
 				}{false, false}
 			}
 		}()
@@ -161,21 +161,21 @@ func TestStartRemoving_ConcurrentSameState(t *testing.T) {
 
 	// Collect results
 	performedCount := 0
-	doneCount := 0
+	alreadyDoneCount := 0
 	for i := 0; i < 3; i++ {
 		result := <-results
 		if result.worked {
 			performedCount++
 		}
-		if result.done {
-			doneCount++
+		if result.alreadyDone {
+			alreadyDoneCount++
 		}
 	}
 
 	// Only one should have actually performed the transition (worked)
-	// But others waiting should get done=true after the transition completes
+	// But others waiting should get alreadyDone=true after the transition completes
 	assert.Equal(t, 1, performedCount, "Only one request should actually perform the transition")
-	assert.Equal(t, 2, doneCount, "Two concurrent requests should see it's already done")
+	assert.Equal(t, 2, alreadyDoneCount, "Two concurrent requests should see it's already alreadyDone")
 	assert.Equal(t, StatePausing, instance.State())
 }
 
@@ -185,20 +185,20 @@ func TestStartRemoving_Error(t *testing.T) {
 	ctx := t.Context()
 
 	// First attempt to pause
-	done1, finish1, err := instance.startRemoving(ctx, StateActionPause)
+	alreadyDone1, finish1, err := instance.startRemoving(ctx, StateActionPause)
 	require.NoError(t, err)
-	assert.False(t, done1)
+	assert.False(t, alreadyDone1)
 	require.NotNil(t, finish1)
 
 	// Start a concurrent request that will wait for the first transition
-	var done2 bool
+	var alreadyDone2 bool
 	var err2 error
 	var finish2 func(error)
 	completed := make(chan bool)
 
 	go func() {
 		// This should wait for the first transition, then try to go to Killed
-		done2, finish2, err2 = instance.startRemoving(ctx, StateActionKill)
+		alreadyDone2, finish2, err2 = instance.startRemoving(ctx, StateActionKill)
 		completed <- true
 	}()
 
@@ -215,21 +215,21 @@ func TestStartRemoving_Error(t *testing.T) {
 	// The waiting request should have received the error from the first transition
 	require.Error(t, err2)
 	assert.Contains(t, err2.Error(), failureErr.Error())
-	assert.False(t, done2)
+	assert.False(t, alreadyDone2)
 	assert.Nil(t, finish2)
 
 	// From Failed state, no transitions are allowed
-	done3, finish3, err3 := instance.startRemoving(ctx, StateActionPause)
+	alreadyDone3, finish3, err3 := instance.startRemoving(ctx, StateActionPause)
 	require.Error(t, err3)
 	require.ErrorIs(t, err3, failureErr)
-	assert.False(t, done3)
+	assert.False(t, alreadyDone3)
 	assert.Nil(t, finish3)
 
 	// Trying to transition to Killed should also fail
-	done4, finish4, err4 := instance.startRemoving(ctx, StateActionKill)
+	alreadyDone4, finish4, err4 := instance.startRemoving(ctx, StateActionKill)
 	require.Error(t, err4)
 	require.ErrorIs(t, err4, failureErr)
-	assert.False(t, done4)
+	assert.False(t, alreadyDone4)
 	assert.Nil(t, finish4)
 }
 
@@ -238,9 +238,9 @@ func TestStartRemoving_ContextTimeout(t *testing.T) {
 	instance := createTestInstance()
 
 	// Start a long-running transition
-	done1, finish1, err := instance.startRemoving(t.Context(), StateActionPause)
+	alreadyDone1, finish1, err := instance.startRemoving(t.Context(), StateActionPause)
 	require.NoError(t, err)
-	assert.False(t, done1)
+	assert.False(t, alreadyDone1)
 	require.NotNil(t, finish1)
 
 	// Another request with a short timeout
@@ -280,18 +280,18 @@ func TestWaitForStateChange_WaitForCompletion(t *testing.T) {
 	ctx := t.Context()
 
 	// Start a transition
-	alreadyDone, finish, err := instance.startRemoving(ctx, StateActionPause)
+	alreadyalreadyDone, finish, err := instance.startRemoving(ctx, StateActionPause)
 	require.NoError(t, err)
-	assert.False(t, alreadyDone)
+	assert.False(t, alreadyalreadyDone)
 	require.NotNil(t, finish)
 
 	// Wait for state change in a goroutine
 	var waitErr error
-	done := make(chan bool)
+	alreadyDone := make(chan bool)
 
 	go func() {
 		waitErr = instance.WaitForStateChange(ctx)
-		done <- true
+		alreadyDone <- true
 	}()
 
 	// Give the goroutine time to start waiting
@@ -301,7 +301,7 @@ func TestWaitForStateChange_WaitForCompletion(t *testing.T) {
 	finish(nil)
 
 	// Wait should complete
-	<-done
+	<-alreadyDone
 	require.NoError(t, waitErr)
 }
 
@@ -310,18 +310,18 @@ func TestWaitForStateChange_WaitWithError(t *testing.T) {
 	ctx := t.Context()
 
 	// Start a transition
-	alreadyDone, finish, err := instance.startRemoving(ctx, StateActionPause)
+	alreadyalreadyDone, finish, err := instance.startRemoving(ctx, StateActionPause)
 	require.NoError(t, err)
-	assert.False(t, alreadyDone)
+	assert.False(t, alreadyalreadyDone)
 	require.NotNil(t, finish)
 
 	// Wait for state change in a goroutine
 	var waitErr error
-	done := make(chan bool)
+	alreadyDone := make(chan bool)
 
 	go func() {
 		waitErr = instance.WaitForStateChange(ctx)
-		done <- true
+		alreadyDone <- true
 	}()
 
 	// Give the goroutine time to start waiting
@@ -332,7 +332,7 @@ func TestWaitForStateChange_WaitWithError(t *testing.T) {
 	finish(testErr)
 
 	// Wait should complete with error
-	<-done
+	<-alreadyDone
 	require.Error(t, waitErr)
 	assert.Equal(t, testErr, waitErr)
 }
@@ -342,18 +342,18 @@ func TestWaitForStateChange_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 
 	// Start a transition
-	alreadyDone, finish, err := instance.startRemoving(ctx, StateActionPause)
+	alreadyalreadyDone, finish, err := instance.startRemoving(ctx, StateActionPause)
 	require.NoError(t, err)
-	assert.False(t, alreadyDone)
+	assert.False(t, alreadyalreadyDone)
 	require.NotNil(t, finish)
 
 	// Wait for state change in a goroutine
 	var waitErr error
-	done := make(chan bool)
+	alreadyDone := make(chan bool)
 
 	go func() {
 		waitErr = instance.WaitForStateChange(ctx)
-		done <- true
+		alreadyDone <- true
 	}()
 
 	// Give the goroutine time to start waiting
@@ -363,7 +363,7 @@ func TestWaitForStateChange_ContextCancellation(t *testing.T) {
 	cancel()
 
 	// Wait should complete with context error
-	<-done
+	<-alreadyDone
 	require.Error(t, waitErr)
 	assert.Equal(t, context.Canceled, waitErr)
 
@@ -376,9 +376,9 @@ func TestWaitForStateChange_MultipleWaiters(t *testing.T) {
 	ctx := t.Context()
 
 	// Start a transition
-	alreadyDone, finish, err := instance.startRemoving(ctx, StateActionPause)
+	alreadyalreadyDone, finish, err := instance.startRemoving(ctx, StateActionPause)
 	require.NoError(t, err)
-	assert.False(t, alreadyDone)
+	assert.False(t, alreadyalreadyDone)
 	require.NotNil(t, finish)
 
 	// Start multiple waiters
@@ -444,8 +444,8 @@ func TestConcurrency_StressTest(t *testing.T) {
 						stateActions := []StateAction{StateActionPause, StateActionKill}
 						stateAction := stateActions[rand.Intn(len(stateActions))]
 
-						done, finish, err := instance.startRemoving(t.Context(), stateAction)
-						if err == nil && (finish != nil || done) {
+						alreadyDone, finish, err := instance.startRemoving(t.Context(), stateAction)
+						if err == nil && (finish != nil || alreadyDone) {
 							if finish != nil {
 								finish(nil)
 							}

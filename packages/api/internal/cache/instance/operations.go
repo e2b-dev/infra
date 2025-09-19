@@ -155,7 +155,7 @@ func (c *MemoryStore) ExtendEndTime(sandboxID string, newEndTime time.Time, allo
 	return item.ExtendEndTime(newEndTime, allowShorter), nil
 }
 
-func (c *MemoryStore) StartRemoving(ctx context.Context, sandboxID string, stateAction StateAction) (done bool, callback func(error), err error) {
+func (c *MemoryStore) StartRemoving(ctx context.Context, sandboxID string, stateAction StateAction) (alreadyDone bool, callback func(error), err error) {
 	sbx, err := c.Get(sandboxID)
 	if err != nil {
 		return false, nil, err

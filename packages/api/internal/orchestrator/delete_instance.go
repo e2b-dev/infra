@@ -17,7 +17,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx instance.Data, sta
 	defer span.End()
 
 	sandboxID := sbx.SandboxID
-	done, finish, err := o.sandboxStore.StartRemoving(ctx, sandboxID, stateAction)
+	alreadyDone, finish, err := o.sandboxStore.StartRemoving(ctx, sandboxID, stateAction)
 	if err != nil {
 		switch stateAction {
 		case instance.StateActionKill:
@@ -47,7 +47,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx instance.Data, sta
 		finish(err)
 	}()
 
-	if done {
+	if alreadyDone {
 		zap.L().Info("Sandbox was already in the process of being removed", logger.WithSandboxID(sandboxID), zap.String("state", string(sbx.State)))
 
 		return nil
