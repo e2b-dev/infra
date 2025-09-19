@@ -206,7 +206,7 @@ func (d *DNS) Start(ctx context.Context, address string, port string) {
 				// encounter a (networking(?)) error
 				// during operation. Panic so that the
 				// service aborts rather than
-				// continuing in an unhealty state.
+				// continuing in an unhealthy state.
 				panic(errors.Join(errors.New("DNS service error"), err))
 			}
 		}

@@ -143,7 +143,7 @@ func (z *ZapFieldToOTELAttributeEncoder) AddUintptr(key string, value uintptr) {
 	z.KeyValue = attribute.String(key, fmt.Sprintf("%v", value))
 }
 
-func (z *ZapFieldToOTELAttributeEncoder) AddReflected(key string, value interface{}) error {
+func (z *ZapFieldToOTELAttributeEncoder) AddReflected(key string, value any) error {
 	z.KeyValue = attribute.String(key, fmt.Sprintf("%v", value))
 	return nil
 }

@@ -177,7 +177,7 @@ func TestBestOfK_Sample(t *testing.T) {
 
 	// Create many test nodes
 	var nodes []*nodemanager.Node
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		node := nodemanager.NewTestNode(string(rune('a'+i)), api.NodeStatusReady, int64(i), 4)
 		nodes = append(nodes, node)
 	}
@@ -221,7 +221,7 @@ func TestBestOfK_PowerOfKChoices(t *testing.T) {
 
 	// Create many nodes with varying loads
 	var nodes []*nodemanager.Node
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		node := nodemanager.NewTestNode(string(rune('A'+i)), api.NodeStatusReady, int64(float64(i)*0.5), 4)
 		nodes = append(nodes, node)
 	}
@@ -235,7 +235,7 @@ func TestBestOfK_PowerOfKChoices(t *testing.T) {
 	// Run multiple times to see distribution
 	selectedCounts := make(map[string]int)
 	successCount := 0
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources)
 		if err == nil && selected != nil {
 			selectedCounts[selected.ID]++

@@ -156,7 +156,7 @@ processors:
           - "nomad_client_host_memory_total"
           - "nomad_client_allocs_memory_usage"
           - "nomad_client_allocs_memory_allocated"
-          - "nomad_client_allocs_cpu_total_percent"
+          - "nomad_client_allocs_cpu_total_ticks"
           - "nomad_client_allocs_cpu_allocated"
 
   filter/external_metrics:

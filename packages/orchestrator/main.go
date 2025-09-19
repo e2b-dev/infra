@@ -50,7 +50,7 @@ import (
 )
 
 type Closeable interface {
-	Close(context.Context) error
+	Close(ctx context.Context) error
 }
 
 const (
@@ -280,7 +280,7 @@ func run(port, proxyPort uint) (success bool) {
 
 		maxBatchSize := 100
 		if val, err := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherMaxBatchSize); err == nil {
-			maxBatchSize = int(val)
+			maxBatchSize = val
 		}
 
 		maxDelay := 1 * time.Second

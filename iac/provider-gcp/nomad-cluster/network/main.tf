@@ -324,7 +324,6 @@ resource "google_compute_target_https_proxy" "default" {
 }
 
 resource "google_compute_global_forwarding_rule" "https" {
-  provider              = google-beta
   name                  = "${var.prefix}forwarding-rule-https"
   target                = google_compute_target_https_proxy.default.self_link
   load_balancing_scheme = "EXTERNAL_MANAGED"
@@ -333,7 +332,6 @@ resource "google_compute_global_forwarding_rule" "https" {
 }
 
 resource "google_compute_backend_service" "default" {
-  provider = google-beta
   for_each = local.backends
 
   name = "${var.prefix}backend-${each.key}"
@@ -367,7 +365,6 @@ resource "google_compute_backend_service" "default" {
 }
 
 resource "google_compute_health_check" "default" {
-  provider = google-beta
   for_each = local.health_checked_backends
   name     = "${var.prefix}hc-${each.key}"
 
@@ -417,7 +414,6 @@ resource "google_compute_health_check" "default" {
 
 
 resource "google_compute_security_policy" "default" {
-  provider = google-beta
   for_each = local.health_checked_backends
   name     = "${var.prefix}${each.key}"
 
@@ -628,7 +624,6 @@ resource "google_compute_firewall" "orch_firewall_egress" {
 # Security policy
 resource "google_compute_security_policy_rule" "api-throttling-api-key" {
   security_policy = google_compute_security_policy.default["api"].name
-  provider        = google-beta
   action          = "throttle"
   priority        = "300"
   match {
@@ -658,7 +653,6 @@ resource "google_compute_security_policy_rule" "api-throttling-api-key" {
 
 resource "google_compute_security_policy_rule" "api-throttling-ip" {
   security_policy = google_compute_security_policy.default["api"].name
-  provider        = google-beta
   action          = "throttle"
   priority        = "500"
   match {
@@ -689,7 +683,6 @@ resource "google_compute_security_policy_rule" "api-throttling-ip" {
 
 resource "google_compute_security_policy_rule" "sandbox-throttling-host" {
   security_policy = google_compute_security_policy.default["session"].name
-  provider        = google-beta
   description     = "WS envd connection requests per sandbox"
 
   action   = "throttle"
@@ -718,7 +711,6 @@ resource "google_compute_security_policy_rule" "sandbox-throttling-host" {
 
 resource "google_compute_security_policy_rule" "sandbox-throttling-ip" {
   security_policy = google_compute_security_policy.default["session"].name
-  provider        = google-beta
   action          = "throttle"
   priority        = "500"
   match {
@@ -749,7 +741,6 @@ resource "google_compute_security_policy_rule" "sandbox-throttling-ip" {
 
 resource "google_compute_security_policy_rule" "disable-consul" {
   security_policy = google_compute_security_policy.default["consul"].name
-  provider        = google-beta
   action          = "deny(403)"
   priority        = "1"
   description     = "Disable all requests to Consul"
@@ -762,8 +753,7 @@ resource "google_compute_security_policy_rule" "disable-consul" {
 }
 
 resource "google_compute_security_policy" "disable-bots-log-collector" {
-  name     = "disable-bots-log-collector"
-  provider = google-beta
+  name = "disable-bots-log-collector"
 
   rule {
     action   = "allow"

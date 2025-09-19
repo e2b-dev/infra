@@ -2,7 +2,7 @@ package port
 
 import (
 	"github.com/rs/zerolog"
-	net "github.com/shirou/gopsutil/v4/net"
+	"github.com/shirou/gopsutil/v4/net"
 )
 
 // If we want to create a listener/subscriber pattern somewhere else we should move
