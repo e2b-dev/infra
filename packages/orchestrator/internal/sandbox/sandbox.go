@@ -889,7 +889,7 @@ func serveMemory(
 	socketPath string,
 	sandboxID string,
 ) (uffd.MemoryBackend, error) {
-	_, span := tracer.Start(ctx, "serve-memory")
+	ctx, span := tracer.Start(ctx, "serve-memory")
 	defer span.End()
 
 	fcUffd, uffdErr := uffd.New(memfile, socketPath, memfile.BlockSize())
@@ -897,7 +897,7 @@ func serveMemory(
 		return nil, fmt.Errorf("failed to create uffd: %w", uffdErr)
 	}
 
-	uffdStartErr := fcUffd.Start(sandboxID)
+	uffdStartErr := fcUffd.Start(ctx, sandboxID)
 	if uffdStartErr != nil {
 		return nil, fmt.Errorf("failed to start uffd: %w", uffdStartErr)
 	}

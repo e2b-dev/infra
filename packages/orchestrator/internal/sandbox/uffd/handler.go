@@ -1,6 +1,7 @@
 package uffd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,6 +38,8 @@ type Uffd struct {
 	socketPath string
 }
 
+var _ MemoryBackend = (*Uffd)(nil)
+
 func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uffd, error) {
 	trackedMemfile, err := block.NewTrackedSliceDevice(blockSize, memfile)
 	if err != nil {
@@ -57,7 +60,7 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 	}, nil
 }
 
-func (u *Uffd) Start(sandboxId string) error {
+func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 	lis, err := net.ListenUnix("unix", &net.UnixAddr{Name: u.socketPath, Net: "unix"})
 	if err != nil {
 		return fmt.Errorf("failed listening on socket: %w", err)
@@ -72,7 +75,7 @@ func (u *Uffd) Start(sandboxId string) error {
 
 	go func() {
 		// TODO: If the handle function fails, we should kill the sandbox
-		handleErr := u.handle(sandboxId)
+		handleErr := u.handle(ctx, sandboxId)
 		closeErr := u.lis.Close()
 		fdExitErr := u.fdExit.Close()
 
@@ -84,7 +87,7 @@ func (u *Uffd) Start(sandboxId string) error {
 	return nil
 }
 
-func (u *Uffd) handle(sandboxId string) error {
+func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 	err := u.lis.SetDeadline(time.Now().Add(uffdMsgListenerTimeout))
 	if err != nil {
 		return fmt.Errorf("failed setting listener deadline: %w", err)
@@ -144,6 +147,7 @@ func (u *Uffd) handle(sandboxId string) error {
 	u.readyCh <- struct{}{}
 
 	err = Serve(
+		ctx,
 		uffd,
 		m,
 		u.memfile,
