@@ -192,7 +192,6 @@ func (i *InstanceInfo) StartRemoving(ctx context.Context, stateAction StateActio
 		zap.L().Debug("State transition already in progress to the same state, waiting", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)))
 		err = transition.WaitWithContext(ctx)
 		if err != nil {
-			zap.L().Error("State transition failed", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)), zap.Error(err))
 			return false, nil, fmt.Errorf("sandbox is in failed state: %w", err)
 		}
 
