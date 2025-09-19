@@ -1,6 +1,7 @@
 package uffd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"syscall"
@@ -26,6 +27,7 @@ type GuestRegionUffdMapping struct {
 }
 
 func Serve(
+	ctx context.Context,
 	uffd int,
 	mappings mapping.Mappings,
 	src block.Slicer,
@@ -151,7 +153,7 @@ outerLoop:
 				}
 			}()
 
-			b, err := src.Slice(offset, pagesize)
+			b, err := src.Slice(ctx, offset, pagesize)
 			if err != nil {
 				signalErr := fdExit.SignalExit()
 
