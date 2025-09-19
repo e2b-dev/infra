@@ -49,26 +49,26 @@ func (c *MemoryStore) Add(ctx context.Context, sandbox *InstanceInfo, newlyCreat
 }
 
 // Exists Check if the instance exists in the cache or is being evicted.
-func (c *MemoryStore) Exists(instanceID string) bool {
-	return c.items.Has(instanceID)
+func (c *MemoryStore) Exists(sandboxID string) bool {
+	return c.items.Has(sandboxID)
 }
 
 // Get the item from the cache.
-func (c *MemoryStore) Get(instanceID string, includeEvicting bool) (*InstanceInfo, error) {
-	item, ok := c.items.Get(instanceID)
+func (c *MemoryStore) Get(sandboxID string, includeEvicting bool) (*InstanceInfo, error) {
+	item, ok := c.items.Get(sandboxID)
 	if !ok {
-		return nil, fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
+		return nil, fmt.Errorf("instance \"%s\" doesn't exist", sandboxID)
 	}
 
 	if item.data.IsExpired() && !includeEvicting {
-		return nil, fmt.Errorf("instance \"%s\" is being evicted", instanceID)
+		return nil, fmt.Errorf("instance \"%s\" is being evicted", sandboxID)
 	}
 
 	return item, nil
 }
 
-func (c *MemoryStore) Remove(instanceID string) {
-	c.items.Remove(instanceID)
+func (c *MemoryStore) Remove(sandboxID string) {
+	c.items.Remove(sandboxID)
 }
 
 func (c *MemoryStore) Items(teamID *uuid.UUID) []Data {
