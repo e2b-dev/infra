@@ -57,8 +57,6 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	sandboxID = utils.ShortID(sandboxID)
 	sbxCache, err := a.orchestrator.GetSandbox(sandboxID)
 	if err == nil {
-		zap.L().Debug("Sandbox found in store", logger.WithSandboxID(sandboxID))
-
 		data := sbxCache.Data()
 		switch data.State {
 		case instance.StatePaused:
@@ -85,7 +83,6 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		}
 	}
 
-	zap.L().Debug("Sandbox wasn't found in store", logger.WithSandboxID(sandboxID))
 	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamInfo.Team.ID})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

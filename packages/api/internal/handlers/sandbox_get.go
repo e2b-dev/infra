@@ -90,8 +90,6 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		return
 	}
 
-	zap.L().Debug("Sandbox wasn't found in store", logger.WithSandboxID(sandboxId))
-
 	// If sandbox not found try to get the latest snapshot
 	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxId, TeamID: team.ID})
 	if err != nil {
