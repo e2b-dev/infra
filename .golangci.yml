@@ -43,6 +43,7 @@ linters:
     - testifylint
     - thelper
     - tparallel
+    - unconvert
     - unused
     - usestdlibvars
     - usetesting

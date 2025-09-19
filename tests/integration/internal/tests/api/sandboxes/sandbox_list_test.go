@@ -345,7 +345,7 @@ func TestSandboxListPaginationRunningLargerLimit(t *testing.T) {
 			}, setup.WithAPIKey())
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, listResponse.StatusCode())
-			require.Len(t, *listResponse.JSON200, int(limit))
+			require.Len(t, *listResponse.JSON200, limit)
 			assert.Equal(t, sbxID, (*listResponse.JSON200)[0].SandboxID, "page starting at %d should start with sandbox %s, token %s", i, sbxID, sharedUtils.Sprintp(nextToken))
 
 			totalHeader := listResponse.HTTPResponse.Header.Get("X-Total-Running")
