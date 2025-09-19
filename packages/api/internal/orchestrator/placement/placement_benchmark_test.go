@@ -235,7 +235,7 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig) *Be
 			case <-ticker.C:
 				now := time.Now()
 				// Check and remove expired sandboxes
-				activeSandboxes.Range(func(key, value interface{}) bool {
+				activeSandboxes.Range(func(key, value any) bool {
 					sandbox := value.(*LiveSandbox)
 					if now.Sub(sandbox.StartTime) > sandbox.PlannedDuration {
 						// Remove from node

@@ -3,7 +3,7 @@ package port
 import (
 	"slices"
 
-	net "github.com/shirou/gopsutil/v4/net"
+	"github.com/shirou/gopsutil/v4/net"
 )
 
 type ScannerFilter struct {

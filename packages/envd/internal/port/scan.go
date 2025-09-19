@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	net "github.com/shirou/gopsutil/v4/net"
+	"github.com/shirou/gopsutil/v4/net"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )

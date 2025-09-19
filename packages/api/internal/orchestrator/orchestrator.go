@@ -181,15 +181,15 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 
 			return
 		case <-ticker.C:
-			connectedNodes := make([]map[string]interface{}, 0, o.nodes.Count())
+			connectedNodes := make([]map[string]any, 0, o.nodes.Count())
 
 			for _, nodeItem := range o.nodes.Items() {
 				if nodeItem == nil {
-					connectedNodes = append(connectedNodes, map[string]interface{}{
+					connectedNodes = append(connectedNodes, map[string]any{
 						"id": "nil",
 					})
 				} else {
-					connectedNodes = append(connectedNodes, map[string]interface{}{
+					connectedNodes = append(connectedNodes, map[string]any{
 						"id":        nodeItem.ID,
 						"status":    nodeItem.Status(),
 						"sandboxes": nodeItem.Metrics().SandboxCount,
