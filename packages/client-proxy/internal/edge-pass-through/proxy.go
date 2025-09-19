@@ -91,7 +91,7 @@ func (s *NodePassThroughServer) director(ctx context.Context) (*grpc.ClientConn,
 //
 // Core implementation is just following methods that are handling forwarding, proper closing and propagating of errors from both sides of the stream.
 // The handler is called for every request that is not handled by any other gRPC service.
-func (s *NodePassThroughServer) handler(srv interface{}, serverStream grpc.ServerStream) (err error) {
+func (s *NodePassThroughServer) handler(srv any, serverStream grpc.ServerStream) (err error) {
 	fullMethodName, ok := grpc.MethodFromServerStream(serverStream)
 	if !ok {
 		return status.Errorf(codes.Internal, "low lever server stream not exists in context")
@@ -139,7 +139,7 @@ func (s *NodePassThroughServer) handler(srv interface{}, serverStream grpc.Serve
 	c2sErrChan := s.forwardClientToServer(clientStream, serverStream)
 
 	// We don't know which side is going to stop sending first, so we need a select between the two.
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		select {
 		case s2cErr := <-s2cErrChan:
 			if errors.Is(s2cErr, io.EOF) {

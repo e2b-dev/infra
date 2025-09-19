@@ -339,7 +339,7 @@ func getJWTClaims(secrets []string, token string) (*supabaseClaims, error) {
 		}
 
 		// Parse the token with the custom claims.
-		token, err := jwt.ParseWithClaims(token, &supabaseClaims{}, func(token *jwt.Token) (interface{}, error) {
+		token, err := jwt.ParseWithClaims(token, &supabaseClaims{}, func(token *jwt.Token) (any, error) {
 			// Verify that the signing method is HMAC (HS256)
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])

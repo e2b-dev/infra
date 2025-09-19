@@ -56,7 +56,7 @@ func NewEdgeInstance(host string, auth authorization.AuthorizationService) (*Edg
 }
 
 func (o *EdgeInstance) sync(ctx context.Context) error {
-	for i := 0; i < edgeSyncMaxRetries; i++ {
+	for range edgeSyncMaxRetries {
 		info := o.GetInfo()
 		res, err := o.client.V1InfoWithResponse(ctx)
 		if err != nil {
