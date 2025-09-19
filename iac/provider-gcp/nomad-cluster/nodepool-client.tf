@@ -44,8 +44,7 @@ resource "google_compute_health_check" "client_nomad_check" {
 }
 
 resource "google_compute_region_autoscaler" "client" {
-  count    = var.client_cluster_size < var.client_cluster_size_max ? 1 : 0
-  provider = google-beta
+  count = var.client_cluster_size < var.client_cluster_size_max ? 1 : 0
 
   name   = "${local.client_pool_name}-client-autoscaler"
   region = var.gcp_region

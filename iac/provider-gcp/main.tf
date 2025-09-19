@@ -1,33 +1,36 @@
 terraform {
   required_version = ">= 1.5.0, < 1.6.0"
+
   backend "gcs" {
     prefix = "terraform/orchestration/state"
   }
+
   required_providers {
     docker = {
       source  = "kreuzwerker/docker"
       version = "3.0.2"
     }
+
     google = {
       source  = "hashicorp/google"
-      version = "6.28.0"
+      version = "6.49.3"
     }
-    google-beta = {
-      source  = "hashicorp/google-beta"
-      version = "6.28.0"
-    }
+
     cloudflare = {
       source  = "cloudflare/cloudflare"
       version = "4.19.0"
     }
+
     nomad = {
       source  = "hashicorp/nomad"
       version = "2.1.0"
     }
+
     random = {
       source  = "hashicorp/random"
       version = "3.5.1"
     }
+
     grafana = {
       source  = "grafana/grafana"
       version = "3.18.3"
@@ -43,12 +46,6 @@ provider "docker" {
     username = "oauth2accesstoken"
     password = data.google_client_config.default.access_token
   }
-}
-
-provider "google-beta" {
-  project = var.gcp_project_id
-  region  = var.gcp_region
-  zone    = var.gcp_zone
 }
 
 provider "google" {

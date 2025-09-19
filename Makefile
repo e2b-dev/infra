@@ -154,7 +154,7 @@ copy-public-builds:
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
 
 .PHONY: generate
-generate: generate/api generate/orchestrator generate/client-proxy generate/envd generate/db generate-tests
+generate: generate/api generate/orchestrator generate/client-proxy generate/envd generate/db generate-tests generate-mocks
 generate/%:
 	@echo "Generating code for *$(notdir $@)*"
 	$(MAKE) -C packages/$(notdir $@) generate
