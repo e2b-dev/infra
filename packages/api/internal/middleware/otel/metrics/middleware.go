@@ -51,7 +51,7 @@ func Middleware(meterProvider metric.MeterProvider, service string, options ...O
 			)
 
 			if cfg.groupedStatus {
-				code := int(ginCtx.Writer.Status()/100) * 100
+				code := ginCtx.Writer.Status() / 100 * 100
 				resAttributes = append(resAttributes, semconv.HTTPStatusCodeKey.Int(code))
 			} else {
 				resAttributes = append(resAttributes, semconv.HTTPAttributesFromHTTPStatusCode(ginCtx.Writer.Status())...)

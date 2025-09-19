@@ -41,14 +41,9 @@ type server struct {
 }
 
 type Service struct {
-	info     *service.ServiceInfo
-	server   *server
-	proxy    *proxy.SandboxProxy
-	shutdown struct {
-		once sync.Once
-		op   func(context.Context) error
-		err  error
-	}
+	info   *service.ServiceInfo
+	server *server
+	proxy  *proxy.SandboxProxy
 
 	persistence storage.StorageProvider
 }

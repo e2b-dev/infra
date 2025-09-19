@@ -36,7 +36,7 @@ func (opts *MMDSOpts) Update(traceID, instanceID, envID, address string) {
 }
 
 func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
-	parsed := make(map[string]interface{})
+	parsed := make(map[string]any)
 
 	err := json.Unmarshal(jsonLogs, &parsed)
 	if err != nil {

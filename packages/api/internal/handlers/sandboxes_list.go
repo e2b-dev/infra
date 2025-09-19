@@ -32,7 +32,7 @@ const (
 
 func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, limit int32, cursorTime time.Time, cursorID string) ([]utils.PaginatedSandbox, error) {
 	// Apply limit + 1 to check if there are more results
-	queryLimit := int32(limit) + 1
+	queryLimit := limit + 1
 	queryMetadata := types.JSONBStringMap{}
 	if metadataFilter != nil {
 		queryMetadata = *metadataFilter

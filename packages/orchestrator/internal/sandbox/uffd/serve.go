@@ -36,7 +36,7 @@ func Serve(
 ) error {
 	pollFds := []unix.PollFd{
 		{Fd: int32(uffd), Events: unix.POLLIN},
-		{Fd: int32(fdExit.Reader()), Events: unix.POLLIN},
+		{Fd: fdExit.Reader(), Events: unix.POLLIN},
 	}
 
 	var eg errgroup.Group
