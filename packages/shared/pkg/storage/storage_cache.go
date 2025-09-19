@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -47,6 +48,10 @@ var (
 		"Total bytes written to the cache",
 		"Total writes to the cache",
 	))
+	cacheHits = must(meter.Int64Counter("orchestrator.storage.cache.hits",
+		metric.WithDescription("total cache hits")))
+	cacheMisses = must(meter.Int64Counter("orchestrator.storage.cache.misses",
+		metric.WithDescription("total cache misses")))
 )
 
 type CachedProvider struct {
@@ -133,9 +138,11 @@ func (c *CachedFileObjectProvider) ReadAt(ctx context.Context, buff []byte, offs
 	readTimer := cacheReadTimerFactory.Begin()
 	count, err := c.readAtFromCache(chunkPath, buff)
 	if ignoreEOF(err) == nil {
+		cacheHits.Add(ctx, 1)
 		readTimer.End(ctx, int64(count))
 		return count, err // return `err` in case it's io.EOF
 	}
+	cacheMisses.Add(ctx, 1)
 
 	zap.L().Debug("failed to read cached chunk, falling back to remote read",
 		zap.String("chunk_path", chunkPath),
@@ -162,30 +169,12 @@ var (
 	ErrBufferTooLarge  = errors.New("buffer is too large")
 )
 
-func (c *CachedFileObjectProvider) validateReadAtParams(buffSize, offset int64) error {
-	if buffSize == 0 {
-		return ErrBufferTooSmall
-	}
-	if buffSize > c.chunkSize {
-		return ErrBufferTooLarge
-	}
-	if offset%c.chunkSize != 0 {
-		return ErrOffsetUnaligned
-	}
-	if (offset%c.chunkSize)+buffSize > c.chunkSize {
-		return ErrMultipleChunks
-	}
-	return nil
-}
-
-func (c *CachedFileObjectProvider) sizeFilename() string {
-	return filepath.Join(c.path, "size.txt")
-}
-
 func (c *CachedFileObjectProvider) Size(ctx context.Context) (int64, error) {
 	if size, ok := c.readLocalSize(); ok {
+		cacheHits.Add(ctx, 1)
 		return size, nil
 	}
+	cacheMisses.Add(ctx, 1)
 
 	size, err := c.inner.Size(ctx)
 	if err != nil {
@@ -195,6 +184,10 @@ func (c *CachedFileObjectProvider) Size(ctx context.Context) (int64, error) {
 	go c.writeLocalSize(size)
 
 	return size, nil
+}
+
+func (c *CachedFileObjectProvider) Delete(ctx context.Context) error {
+	return c.inner.Delete(ctx)
 }
 
 func (c *CachedFileObjectProvider) readLocalSize() (int64, bool) {
@@ -217,6 +210,26 @@ func (c *CachedFileObjectProvider) readLocalSize() (int64, bool) {
 	}
 
 	return size, true
+}
+
+func (c *CachedFileObjectProvider) validateReadAtParams(buffSize, offset int64) error {
+	if buffSize == 0 {
+		return ErrBufferTooSmall
+	}
+	if buffSize > c.chunkSize {
+		return ErrBufferTooLarge
+	}
+	if offset%c.chunkSize != 0 {
+		return ErrOffsetUnaligned
+	}
+	if (offset%c.chunkSize)+buffSize > c.chunkSize {
+		return ErrMultipleChunks
+	}
+	return nil
+}
+
+func (c *CachedFileObjectProvider) sizeFilename() string {
+	return filepath.Join(c.path, "size.txt")
 }
 
 func (c *CachedFileObjectProvider) writeLocalSize(size int64) {
@@ -246,10 +259,6 @@ func (c *CachedFileObjectProvider) writeLocalSize(size int64) {
 			zap.Error(err))
 		return
 	}
-}
-
-func (c *CachedFileObjectProvider) Delete(ctx context.Context) error {
-	return c.inner.Delete(ctx)
 }
 
 func (c *CachedFileObjectProvider) tempFullFilename() string {
@@ -359,9 +368,11 @@ func (c *CachedFileObjectProvider) copyFullFileFromCache(ctx context.Context, ds
 	var fp *os.File
 	fp, err := os.Open(path)
 	if err != nil {
-		zap.L().Error("failed to open full cached file",
-			zap.String("path", path),
-			zap.Error(err))
+		if !os.IsNotExist(err) {
+			zap.L().Error("failed to open full cached file",
+				zap.String("path", path),
+				zap.Error(err))
+		}
 		return 0, false
 	}
 
