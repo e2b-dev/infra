@@ -39,12 +39,12 @@ func TestStartRemoving_BasicTransitions(t *testing.T) {
 		expState    State
 		shouldError bool
 	}{
-		{"Running to Paused", StateRunning, StateActionPause, StatePaused, false},
-		{"Running to Killed", StateRunning, StateActionKill, StateKilled, false},
-		{"Paused to Killed", StatePaused, StateActionKill, StateKilled, false},
-		{"Killed to Paused (invalid)", StateKilled, StateActionPause, StatePaused, true},
-		{"Killed to Killed (same)", StateKilled, StateActionKill, StateKilled, false},
-		{"Paused to Paused (same)", StatePaused, StateActionPause, StatePaused, false},
+		{"Running to Paused", StateRunning, StateActionPause, StatePausing, false},
+		{"Running to Killed", StateRunning, StateActionKill, StateKilling, false},
+		{"Paused to Killed", StatePausing, StateActionKill, StateKilling, false},
+		{"Killed to Paused (invalid)", StateKilling, StateActionPause, StatePausing, true},
+		{"Killed to Killed (same)", StateKilling, StateActionKill, StateKilling, false},
+		{"Paused to Paused (same)", StatePausing, StateActionPause, StatePausing, false},
 	}
 
 	for _, tt := range tests {
@@ -88,7 +88,7 @@ func TestStartRemoving_PauseThenKill(t *testing.T) {
 	require.NotNil(t, finish)
 
 	// The state should be changed immediately
-	assert.Equal(t, StatePaused, instance.State())
+	assert.Equal(t, StatePausing, instance.State())
 
 	// Simulate the actual pause operation taking time
 	started := make(chan struct{})
@@ -97,7 +97,7 @@ func TestStartRemoving_PauseThenKill(t *testing.T) {
 		started <- struct{}{}
 		time.Sleep(100 * time.Millisecond)
 		// The state should still be Paused
-		assert.Equal(t, StatePaused, instance.State())
+		assert.Equal(t, StatePausing, instance.State())
 		finish(nil)
 	}()
 
@@ -113,11 +113,11 @@ func TestStartRemoving_PauseThenKill(t *testing.T) {
 	require.NoError(t, err2)
 	assert.False(t, done2)
 	assert.NotNil(t, finish2)
-	assert.Equal(t, StateKilled, instance.State())
+	assert.Equal(t, StateKilling, instance.State())
 
 	// Complete the kill operation
 	finish2(nil)
-	assert.Equal(t, StateKilled, instance.State())
+	assert.Equal(t, StateKilling, instance.State())
 }
 
 // Test concurrent requests to transition to the same state (idempotency)
@@ -176,7 +176,7 @@ func TestStartRemoving_ConcurrentSameState(t *testing.T) {
 	// But others waiting should get done=true after the transition completes
 	assert.Equal(t, 1, performedCount, "Only one request should actually perform the transition")
 	assert.Equal(t, 2, doneCount, "Two concurrent requests should see it's already done")
-	assert.Equal(t, StatePaused, instance.State())
+	assert.Equal(t, StatePausing, instance.State())
 }
 
 // Test transition fails and subsequent request handles it
@@ -259,7 +259,7 @@ func TestStartRemoving_ContextTimeout(t *testing.T) {
 
 	// Clean up
 	finish1(nil)
-	assert.Equal(t, StatePaused, instance.State())
+	assert.Equal(t, StatePausing, instance.State())
 }
 
 func TestWaitForStateChange_NoTransition(t *testing.T) {

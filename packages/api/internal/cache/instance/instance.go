@@ -24,13 +24,13 @@ type State string
 
 const (
 	StateRunning State = "running"
-	StatePaused  State = "paused"
-	StateKilled  State = "killed"
+	StatePausing State = "paused"
+	StateKilling State = "killed"
 )
 
 var allowed = map[State]map[State]bool{
-	StateRunning: {StatePaused: true, StateKilled: true},
-	StatePaused:  {StateKilled: true},
+	StateRunning: {StatePausing: true, StateKilling: true},
+	StatePausing: {StateKilling: true},
 }
 
 func NewSandbox(
@@ -173,9 +173,9 @@ func (i *InstanceInfo) TeamID() uuid.UUID {
 }
 
 func (i *InstanceInfo) startRemoving(ctx context.Context, stateAction StateAction) (done bool, callback func(error), err error) {
-	newState := StateKilled
+	newState := StateKilling
 	if stateAction == StateActionPause {
-		newState = StatePaused
+		newState = StatePausing
 	}
 
 	i.mu.Lock()

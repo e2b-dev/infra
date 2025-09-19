@@ -143,7 +143,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		return
 	}
 
-	sandboxesInCache := a.orchestrator.GetSandboxes(ctx, &team.ID, []instance.State{instance.StateRunning, instance.StatePaused})
+	sandboxesInCache := a.orchestrator.GetSandboxes(ctx, &team.ID, []instance.State{instance.StateRunning, instance.StatePausing})
 
 	if slices.Contains(states, api.Running) {
 		runningSandboxList := instanceInfoToPaginatedSandboxes(sandboxesInCache[instance.StateRunning])
@@ -166,7 +166,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		for _, info := range sandboxesInCache[instance.StateRunning] {
 			runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
 		}
-		pausing := sandboxesInCache[instance.StatePaused]
+		pausing := sandboxesInCache[instance.StatePausing]
 		for _, info := range pausing {
 			runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
 		}
@@ -270,7 +270,8 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []instance.Data) []utils.
 	// Add running sandboxes to results
 	for _, info := range runningSandboxes {
 		state := api.Running
-		if info.State == instance.StatePaused {
+		// If the sandbox is pausing, for the user it behaves the like a paused sandbox - it can be resumed, etc.
+		if info.State == instance.StatePausing {
 			state = api.Paused
 		}
 

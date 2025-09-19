@@ -55,10 +55,10 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		state := api.Running
 		switch sbx.State {
 		// Sandbox is being paused or already is paused, user can work with that as if it's paused
-		case instance.StatePaused:
+		case instance.StatePausing:
 			state = api.Paused
 		// Sandbox is being stopped or already is stopped, user can't work with it anymore
-		case instance.StateKilled:
+		case instance.StateKilling:
 			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 
 			return

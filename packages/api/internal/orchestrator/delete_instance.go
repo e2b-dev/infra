@@ -22,7 +22,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx instance.Data, sta
 		switch stateAction {
 		case instance.StateActionKill:
 			switch sbx.State {
-			case instance.StateKilled:
+			case instance.StateKilling:
 				zap.L().Info("Sandbox is already killed", logger.WithSandboxID(sandboxID))
 				return nil
 			default: // It shouldn't happen the sandbox ended in paused state
@@ -31,7 +31,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx instance.Data, sta
 			}
 		case instance.StateActionPause:
 			switch sbx.State {
-			case instance.StateKilled:
+			case instance.StateKilling:
 				zap.L().Info("Sandbox is already killed", logger.WithSandboxID(sandboxID))
 				return ErrSandboxNotFound
 			default:

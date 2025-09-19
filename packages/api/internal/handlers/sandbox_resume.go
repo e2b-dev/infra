@@ -59,14 +59,14 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	if err == nil {
 		data := sbxCache.Data()
 		switch data.State {
-		case instance.StatePaused:
+		case instance.StatePausing:
 			zap.L().Debug("Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
 			err = sbxCache.WaitForStateChange(ctx)
 			if err != nil {
 				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error waiting for sandbox to pause")
 				return
 			}
-		case instance.StateKilled:
+		case instance.StateKilling:
 			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found")
 			return
 		case instance.StateRunning:
