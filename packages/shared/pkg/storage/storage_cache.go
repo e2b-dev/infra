@@ -396,7 +396,6 @@ func (c *CachedFileObjectProvider) readAndCacheFullRemoteFile(ctx context.Contex
 
 	written, err := dst.Write(writer.Bytes())
 	return int64(written), err
-
 }
 
 func cleanup(msg string, close func() error) {
