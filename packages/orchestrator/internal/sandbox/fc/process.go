@@ -398,12 +398,12 @@ func (p *Process) Pid() (int, error) {
 // getProcessState returns the state of the process.
 // It's used to check if the process is in the D state, because gopsutil doesn't show that.
 func getProcessState(ctx context.Context, pid int) (string, error) {
-	cmd, err := exec.CommandContext(ctx, "ps", "-o", "stat=", "-p", fmt.Sprint(pid)).Output()
+	output, err := exec.CommandContext(ctx, "ps", "-o", "stat=", "-p", fmt.Sprint(pid)).Output()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error getting process state: %w\noutput: %s", err, string(output))
 	}
 
-	state := strings.TrimSpace(string(cmd))
+	state := strings.TrimSpace(string(output))
 
 	return state, nil
 }
