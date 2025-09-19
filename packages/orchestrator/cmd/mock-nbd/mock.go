@@ -37,7 +37,6 @@ func (d *DeviceWithClose) WriteAt(p []byte, off int64) (n int, err error) {
 	return d.b.WriteAt(p, off)
 }
 
-
 func (d *DeviceWithClose) Close() error {
 	return nil
 }

@@ -48,7 +48,7 @@ func (t *TrackedSliceDevice) Disable() error {
 }
 
 func (t *TrackedSliceDevice) Slice(ctx context.Context, off int64, length int64) ([]byte, error) {
-	ctx, span := tracer.Start(ctx, "TrackedSliceDevice.slice")
+	ctx, span := tracer.Start(ctx, "track slice")
 	defer span.End()
 
 	if t.nilTracking.Load() {
