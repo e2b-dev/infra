@@ -69,7 +69,8 @@ func (p *Proxy) RemoveFromPool(connectionKey string) {
 }
 
 func (p *Proxy) ListenAndServe(ctx context.Context) error {
-	l, err := new(net.ListenConfig).Listen(ctx, "tcp", p.Addr)
+	var lisCfg net.ListenConfig
+	l, err := lisCfg.Listen(ctx, "tcp", p.Addr)
 	if err != nil {
 		return err
 	}
