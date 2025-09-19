@@ -18,9 +18,11 @@ provider "cloudflare" {
 locals {
   domain_map = { for d in var.additional_domains : replace(d, ".", "-") => d }
 
-  root_domain = length(split(".", var.domain_name)) > 2 ? join(".", slice(split(".", var.domain_name), 1, length(split(".", var.domain_name)))) : var.domain_name
-
-  is_subdomain = length(split(".", var.domain_name)) > 2
+  parts       = split(".", var.domain_name)
+  is_subdomain = length(local.parts) > 2
+  subdomain   = local.is_subdomain ? local.parts[0] : ""
+  // Take last 2 parts (1 dot)
+  root_domain  = local.is_subdomain ? join(".", slice(local.parts, length(local.parts)-2, length(local.parts))) : var.domain_name
 
   backends = {
     session = {
@@ -103,7 +105,7 @@ resource "google_compute_global_address" "orch_logs_ip" {
 # ======== CLOUDFLARE ====================
 
 data "cloudflare_zone" "domain" {
-  name = local.is_subdomain ? local.root_domain : var.domain_name
+  name = local.root_domain
 }
 
 resource "cloudflare_record" "dns_auth" {
@@ -115,27 +117,8 @@ resource "cloudflare_record" "dns_auth" {
 }
 
 resource "cloudflare_record" "a_star" {
-  count   = local.is_subdomain ? 0 : 1
   zone_id = data.cloudflare_zone.domain.id
-  name    = "*"
-  value   = google_compute_global_forwarding_rule.https.ip_address
-  type    = "A"
-  comment = var.gcp_project_id
-}
-
-resource "cloudflare_record" "a_subdomain" {
-  count   = local.is_subdomain ? 1 : 0
-  zone_id = data.cloudflare_zone.domain.id
-  name    = split(".", var.domain_name)[0] # Extract subdomain part (e.g., "e2b" from "e2b.example.com")
-  value   = google_compute_global_forwarding_rule.https.ip_address
-  type    = "A"
-  comment = var.gcp_project_id
-}
-
-resource "cloudflare_record" "a_subdomain_wildcard" {
-  count   = local.is_subdomain ? 1 : 0
-  zone_id = data.cloudflare_zone.domain.id
-  name    = "*.${split(".", var.domain_name)[0]}" # e.g., "*.e2b" for "*.e2b.example.com"
+  name    = local.is_subdomain ? "*.${local.subdomain}" : "*"
   value   = google_compute_global_forwarding_rule.https.ip_address
   type    = "A"
   comment = var.gcp_project_id
