@@ -62,19 +62,18 @@ func TestReservation_Release(t *testing.T) {
 func TestReservation_ResumeAlreadyRunningSandbox(t *testing.T) {
 	cache := newInstanceCache()
 
-	info := &InstanceInfo{
-		data: Data{
-			ClientID:   consts.ClientID,
-			SandboxID:  sandboxID,
-			TemplateID: "test",
+	data := Data{
+		ClientID:   consts.ClientID,
+		SandboxID:  sandboxID,
+		TemplateID: "test",
 
-			TeamID:            teamID,
-			StartTime:         time.Now(),
-			EndTime:           time.Now().Add(time.Hour),
-			MaxInstanceLength: time.Hour,
-		},
+		TeamID:            teamID,
+		StartTime:         time.Now(),
+		EndTime:           time.Now().Add(time.Hour),
+		MaxInstanceLength: time.Hour,
 	}
-	cache.Add(t.Context(), info, false)
+
+	cache.Add(t.Context(), data, false)
 
 	_, err := cache.Reserve(sandboxID, teamID, 1)
 	require.Error(t, err)

@@ -197,7 +197,7 @@ func (o *Orchestrator) CreateSandbox(
 	startTime = time.Now()
 	endTime = startTime.Add(timeout)
 
-	instanceInfo := instance.NewInstanceInfo(
+	instanceInfo := instance.NewSandbox(
 		sbx.SandboxID,
 		sbx.TemplateID,
 		sbx.ClientID,

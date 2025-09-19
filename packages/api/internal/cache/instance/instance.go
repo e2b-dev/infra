@@ -33,7 +33,7 @@ var allowed = map[State]map[State]bool{
 	StatePaused:  {StateKilled: true},
 }
 
-func NewInstanceInfo(
+func NewSandbox(
 	sandboxID string,
 	templateID string,
 	clientID string,
@@ -57,39 +57,34 @@ func NewInstanceInfo(
 	envdAccessToken *string,
 	allowInternetAccess *bool,
 	baseTemplateID string,
-) *InstanceInfo {
-	instance := &InstanceInfo{
-		data: Data{
-			SandboxID:  sandboxID,
-			TemplateID: templateID,
-			ClientID:   clientID,
-			Alias:      alias,
+) Data {
+	return Data{
+		SandboxID:  sandboxID,
+		TemplateID: templateID,
+		ClientID:   clientID,
+		Alias:      alias,
 
-			ExecutionID:         executionID,
-			TeamID:              teamID,
-			BuildID:             buildID,
-			Metadata:            metadata,
-			MaxInstanceLength:   maxInstanceLength,
-			StartTime:           startTime,
-			EndTime:             endTime,
-			VCpu:                vcpu,
-			TotalDiskSizeMB:     totalDiskSizeMB,
-			RamMB:               ramMB,
-			KernelVersion:       kernelVersion,
-			FirecrackerVersion:  firecrackerVersion,
-			EnvdVersion:         envdVersion,
-			EnvdAccessToken:     envdAccessToken,
-			AllowInternetAccess: allowInternetAccess,
-			NodeID:              nodeID,
-			ClusterID:           clusterID,
-			AutoPause:           autoPause,
-			State:               StateRunning,
-			BaseTemplateID:      baseTemplateID,
-		},
-		mu: sync.RWMutex{},
+		ExecutionID:         executionID,
+		TeamID:              teamID,
+		BuildID:             buildID,
+		Metadata:            metadata,
+		MaxInstanceLength:   maxInstanceLength,
+		StartTime:           startTime,
+		EndTime:             endTime,
+		VCpu:                vcpu,
+		TotalDiskSizeMB:     totalDiskSizeMB,
+		RamMB:               ramMB,
+		KernelVersion:       kernelVersion,
+		FirecrackerVersion:  firecrackerVersion,
+		EnvdVersion:         envdVersion,
+		EnvdAccessToken:     envdAccessToken,
+		AllowInternetAccess: allowInternetAccess,
+		NodeID:              nodeID,
+		ClusterID:           clusterID,
+		AutoPause:           autoPause,
+		State:               StateRunning,
+		BaseTemplateID:      baseTemplateID,
 	}
-
-	return instance
 }
 
 type Data struct {

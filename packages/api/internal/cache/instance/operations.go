@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,33 +21,34 @@ const (
 )
 
 // Add the instance to the cache
-func (c *MemoryStore) Add(ctx context.Context, sandbox *InstanceInfo, newlyCreated bool) {
-	sandbox.mu.Lock()
-	defer sandbox.mu.Unlock()
-
-	sbxlogger.I(sandbox.data).Debug("Adding sandbox to cache",
+func (c *MemoryStore) Add(ctx context.Context, sandbox Data, newlyCreated bool) {
+	sbxlogger.I(sandbox).Debug("Adding sandbox to cache",
 		zap.Bool("newly_created", newlyCreated),
-		zap.Time("start_time", sandbox.data.StartTime),
-		zap.Time("end_time", sandbox.data.EndTime),
+		zap.Time("start_time", sandbox.StartTime),
+		zap.Time("end_time", sandbox.EndTime),
 	)
 
-	endTime := sandbox.data.EndTime
+	endTime := sandbox.EndTime
 
-	if endTime.Sub(sandbox.data.StartTime) > sandbox.data.MaxInstanceLength {
-		sandbox.data.EndTime = sandbox.data.StartTime.Add(sandbox.data.MaxInstanceLength)
+	if endTime.Sub(sandbox.StartTime) > sandbox.MaxInstanceLength {
+		sandbox.EndTime = sandbox.StartTime.Add(sandbox.MaxInstanceLength)
 	}
 
-	c.items.SetIfAbsent(sandbox.data.SandboxID, sandbox)
+	c.items.SetIfAbsent(sandbox.SandboxID, &InstanceInfo{
+		data:       sandbox,
+		transition: nil,
+		mu:         sync.RWMutex{},
+	})
 
 	for _, callback := range c.insertCallbacks {
-		callback(ctx, sandbox.data, newlyCreated)
+		callback(ctx, sandbox, newlyCreated)
 	}
 
 	for _, callback := range c.insertAsyncCallbacks {
-		go callback(context.WithoutCancel(ctx), sandbox.data, newlyCreated)
+		go callback(context.WithoutCancel(ctx), sandbox, newlyCreated)
 	}
 	// Release the reservation if it exists
-	c.reservations.release(sandbox.data.SandboxID)
+	c.reservations.release(sandbox.SandboxID)
 }
 
 // Exists Check if the instance exists in the cache or is being evicted.
