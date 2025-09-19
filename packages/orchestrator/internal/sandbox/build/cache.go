@@ -28,7 +28,6 @@ type deleteDiff struct {
 type DiffStore struct {
 	cachePath string
 	cache     *ttlcache.Cache[DiffStoreKey, Diff]
-	ctx       context.Context //nolint:containedctx // todo: refactor so this can be removed
 	close     chan struct{}
 
 	// pdSizes is used to keep track of the diff sizes
@@ -51,7 +50,6 @@ func NewDiffStore(ctx context.Context, cachePath string, ttl, delay time.Duratio
 	ds := &DiffStore{
 		cachePath: cachePath,
 		cache:     cache,
-		ctx:       ctx,
 		close:     make(chan struct{}),
 		pdSizes:   make(map[DiffStoreKey]*deleteDiff),
 		pdDelay:   delay,
@@ -68,7 +66,7 @@ func NewDiffStore(ctx context.Context, cachePath string, ttl, delay time.Duratio
 	})
 
 	go cache.Start()
-	go ds.startDiskSpaceEviction(maxUsedPercentage)
+	go ds.startDiskSpaceEviction(ctx, maxUsedPercentage)
 
 	return ds, nil
 }
@@ -84,7 +82,7 @@ func (s *DiffStore) Close() {
 	s.cache.Stop()
 }
 
-func (s *DiffStore) Get(diff Diff) (Diff, error) {
+func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
 	s.resetDelete(diff.CacheKey())
 	source, found := s.cache.GetOrSet(
 		diff.CacheKey(),
@@ -98,7 +96,7 @@ func (s *DiffStore) Get(diff Diff) (Diff, error) {
 	}
 
 	if !found {
-		err := diff.Init(s.ctx)
+		err := diff.Init(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to init source: %w", err)
 		}
@@ -116,7 +114,7 @@ func (s *DiffStore) Has(d Diff) bool {
 	return s.cache.Has(d.CacheKey())
 }
 
-func (s *DiffStore) startDiskSpaceEviction(threshold float64) {
+func (s *DiffStore) startDiskSpaceEviction(ctx context.Context, threshold float64) {
 	getDelay := func(fast bool) time.Duration {
 		if fast {
 			return time.Microsecond
@@ -130,7 +128,7 @@ func (s *DiffStore) startDiskSpaceEviction(threshold float64) {
 
 	for {
 		select {
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-s.close:
 			return
@@ -151,7 +149,7 @@ func (s *DiffStore) startDiskSpaceEviction(threshold float64) {
 				continue
 			}
 
-			succ, err := s.deleteOldestFromCache()
+			succ, err := s.deleteOldestFromCache(ctx)
 			if err != nil {
 				zap.L().Error("failed to delete oldest item from cache", zap.Error(err))
 				timer.Reset(getDelay(false))
@@ -177,7 +175,7 @@ func (s *DiffStore) getPendingDeletesSize() int64 {
 
 // deleteOldestFromCache deletes the oldest item (smallest TTL) from the cache.
 // ttlcache has items in order by TTL
-func (s *DiffStore) deleteOldestFromCache() (suc bool, e error) {
+func (s *DiffStore) deleteOldestFromCache(ctx context.Context) (suc bool, e error) {
 	defer func() {
 		// Because of bug in ttlcache RangeBackwards method, we need to handle potential panic until it gets fixed
 		if r := recover(); r != nil {
@@ -201,7 +199,7 @@ func (s *DiffStore) deleteOldestFromCache() (suc bool, e error) {
 			sfSize = fallbackDiffSize
 		}
 
-		s.scheduleDelete(item.Key(), sfSize)
+		s.scheduleDelete(ctx, item.Key(), sfSize)
 
 		success = true
 		return false
@@ -233,7 +231,7 @@ func (s *DiffStore) isBeingDeleted(key DiffStoreKey) bool {
 	return f
 }
 
-func (s *DiffStore) scheduleDelete(key DiffStoreKey, dSize int64) {
+func (s *DiffStore) scheduleDelete(ctx context.Context, key DiffStoreKey, dSize int64) {
 	s.pdMu.Lock()
 	defer s.pdMu.Unlock()
 
@@ -248,7 +246,7 @@ func (s *DiffStore) scheduleDelete(key DiffStoreKey, dSize int64) {
 	// pending data fetching, or data upload
 	go (func() {
 		select {
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 		case <-cancelCh:
 		case <-time.After(s.pdDelay):
 			s.cache.Delete(key)
