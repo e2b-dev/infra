@@ -400,7 +400,7 @@ func (p *Process) Pid() (int, error) {
 func getProcessState(ctx context.Context, pid int) (string, error) {
 	output, err := exec.CommandContext(ctx, "ps", "-o", "stat=", "-p", fmt.Sprint(pid)).Output()
 	if err != nil {
-		return "", fmt.Errorf("error getting process state: %w\noutput: %s", err, string(output))
+		return "", fmt.Errorf("error getting state of pid=%d: %w", pid, err)
 	}
 
 	state := strings.TrimSpace(string(output))
