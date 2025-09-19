@@ -35,16 +35,16 @@ func TestStartRemoving_BasicTransitions(t *testing.T) {
 	tests := []struct {
 		name        string
 		fromState   State
-		removeType  RemoveType
+		stateAction StateAction
 		expState    State
 		shouldError bool
 	}{
-		{"Running to Paused", StateRunning, RemoveTypePause, StatePaused, false},
-		{"Running to Killed", StateRunning, RemoveTypeKill, StateKilled, false},
-		{"Paused to Killed", StatePaused, RemoveTypeKill, StateKilled, false},
-		{"Killed to Paused (invalid)", StateKilled, RemoveTypePause, StatePaused, true},
-		{"Killed to Killed (same)", StateKilled, RemoveTypeKill, StateKilled, false},
-		{"Paused to Paused (same)", StatePaused, RemoveTypePause, StatePaused, false},
+		{"Running to Paused", StateRunning, StateActionPause, StatePaused, false},
+		{"Running to Killed", StateRunning, StateActionKill, StateKilled, false},
+		{"Paused to Killed", StatePaused, StateActionKill, StateKilled, false},
+		{"Killed to Paused (invalid)", StateKilled, StateActionPause, StatePaused, true},
+		{"Killed to Killed (same)", StateKilled, StateActionKill, StateKilled, false},
+		{"Paused to Paused (same)", StatePaused, StateActionPause, StatePaused, false},
 	}
 
 	for _, tt := range tests {
@@ -53,7 +53,7 @@ func TestStartRemoving_BasicTransitions(t *testing.T) {
 			instance.data.State = tt.fromState
 			ctx := t.Context()
 
-			done, finish, err := instance.StartRemoving(ctx, tt.removeType)
+			done, finish, err := instance.StartRemoving(ctx, tt.stateAction)
 
 			switch {
 			case tt.shouldError:
@@ -82,7 +82,7 @@ func TestStartRemoving_PauseThenKill(t *testing.T) {
 	ctx := t.Context()
 
 	// Simulate a pause operation that takes time
-	done, finish, err := instance.StartRemoving(ctx, RemoveTypePause)
+	done, finish, err := instance.StartRemoving(ctx, StateActionPause)
 	require.NoError(t, err)
 	assert.False(t, done)
 	require.NotNil(t, finish)
@@ -105,7 +105,7 @@ func TestStartRemoving_PauseThenKill(t *testing.T) {
 	<-started // Ensure the pause operation has started
 
 	start := time.Now()
-	done2, finish2, err2 := instance.StartRemoving(ctx, RemoveTypeKill)
+	done2, finish2, err2 := instance.StartRemoving(ctx, StateActionKill)
 	elapsed := time.Since(start)
 
 	// Should have waited for the pause to complete
@@ -133,7 +133,7 @@ func TestStartRemoving_ConcurrentSameState(t *testing.T) {
 	// Three concurrent requests to pause the sandbox
 	for i := 0; i < 3; i++ {
 		go func() {
-			done, finish, err := instance.StartRemoving(ctx, RemoveTypePause)
+			done, finish, err := instance.StartRemoving(ctx, StateActionPause)
 			if err == nil {
 				if done {
 					// Already done (waited for another transition)
@@ -185,7 +185,7 @@ func TestStartRemoving_Error(t *testing.T) {
 	ctx := t.Context()
 
 	// First attempt to pause
-	done1, finish1, err := instance.StartRemoving(ctx, RemoveTypePause)
+	done1, finish1, err := instance.StartRemoving(ctx, StateActionPause)
 	require.NoError(t, err)
 	assert.False(t, done1)
 	require.NotNil(t, finish1)
@@ -198,7 +198,7 @@ func TestStartRemoving_Error(t *testing.T) {
 
 	go func() {
 		// This should wait for the first transition, then try to go to Killed
-		done2, finish2, err2 = instance.StartRemoving(ctx, RemoveTypeKill)
+		done2, finish2, err2 = instance.StartRemoving(ctx, StateActionKill)
 		completed <- true
 	}()
 
@@ -222,14 +222,14 @@ func TestStartRemoving_Error(t *testing.T) {
 	assert.Equal(t, StateFailed, instance.State())
 
 	// From Failed state, no transitions are allowed
-	done3, finish3, err3 := instance.StartRemoving(ctx, RemoveTypePause)
+	done3, finish3, err3 := instance.StartRemoving(ctx, StateActionPause)
 	require.Error(t, err3)
 	assert.Contains(t, err3.Error(), "invalid state transition from failed to paused")
 	assert.False(t, done3)
 	assert.Nil(t, finish3)
 
 	// Trying to transition to Killed should also fail
-	done4, finish4, err4 := instance.StartRemoving(ctx, RemoveTypeKill)
+	done4, finish4, err4 := instance.StartRemoving(ctx, StateActionKill)
 	require.Error(t, err4)
 	assert.Contains(t, err4.Error(), "invalid state transition from failed to killed")
 	assert.False(t, done4)
@@ -244,7 +244,7 @@ func TestStartRemoving_ContextTimeout(t *testing.T) {
 	instance := createTestInstance()
 
 	// Start a long-running transition
-	done1, finish1, err := instance.StartRemoving(t.Context(), RemoveTypePause)
+	done1, finish1, err := instance.StartRemoving(t.Context(), StateActionPause)
 	require.NoError(t, err)
 	assert.False(t, done1)
 	require.NotNil(t, finish1)
@@ -254,7 +254,7 @@ func TestStartRemoving_ContextTimeout(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	_, _, err2 := instance.StartRemoving(ctx, RemoveTypeKill)
+	_, _, err2 := instance.StartRemoving(ctx, StateActionKill)
 	elapsed := time.Since(start)
 
 	// Should timeout after about 20ms
@@ -286,7 +286,7 @@ func TestWaitForStateChange_WaitForCompletion(t *testing.T) {
 	ctx := t.Context()
 
 	// Start a transition
-	alreadyDone, finish, err := instance.StartRemoving(ctx, RemoveTypePause)
+	alreadyDone, finish, err := instance.StartRemoving(ctx, StateActionPause)
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	require.NotNil(t, finish)
@@ -316,7 +316,7 @@ func TestWaitForStateChange_WaitWithError(t *testing.T) {
 	ctx := t.Context()
 
 	// Start a transition
-	alreadyDone, finish, err := instance.StartRemoving(ctx, RemoveTypePause)
+	alreadyDone, finish, err := instance.StartRemoving(ctx, StateActionPause)
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	require.NotNil(t, finish)
@@ -349,7 +349,7 @@ func TestWaitForStateChange_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 
 	// Start a transition
-	alreadyDone, finish, err := instance.StartRemoving(ctx, RemoveTypePause)
+	alreadyDone, finish, err := instance.StartRemoving(ctx, StateActionPause)
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	require.NotNil(t, finish)
@@ -383,7 +383,7 @@ func TestWaitForStateChange_MultipleWaiters(t *testing.T) {
 	ctx := t.Context()
 
 	// Start a transition
-	alreadyDone, finish, err := instance.StartRemoving(ctx, RemoveTypePause)
+	alreadyDone, finish, err := instance.StartRemoving(ctx, StateActionPause)
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	require.NotNil(t, finish)
@@ -448,10 +448,10 @@ func TestConcurrency_StressTest(t *testing.T) {
 					// Random operation
 					switch workerID % 4 {
 					case 0: // State transitions
-						removeTypes := []RemoveType{RemoveTypePause, RemoveTypeKill}
-						removeType := removeTypes[rand.Intn(len(removeTypes))]
+						stateActions := []StateAction{StateActionPause, StateActionKill}
+						stateAction := stateActions[rand.Intn(len(stateActions))]
 
-						done, finish, err := instance.StartRemoving(t.Context(), removeType)
+						done, finish, err := instance.StartRemoving(t.Context(), stateAction)
 						if err == nil && (finish != nil || done) {
 							if finish != nil {
 								finish(nil)

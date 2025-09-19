@@ -77,7 +77,7 @@ func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyt
 	}
 }
 
-func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox instance.Data, removeType instance.RemoveType) {
+func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox instance.Data, stateAction instance.StateAction) {
 	ctx, cancel := context.WithTimeout(ctx, reportTimeout)
 	defer cancel()
 
@@ -89,7 +89,7 @@ func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox instance.Dat
 		"closed_instance", posthog.NewProperties().
 			Set("instance_id", sandbox.SandboxID).
 			Set("environment", sandbox.TemplateID).
-			Set("remove_type", removeType).
+			Set("state_action", stateAction).
 			Set("duration", duration),
 	)
 
@@ -144,7 +144,7 @@ func (o *Orchestrator) countersInsert(ctx context.Context, sandbox instance.Data
 	o.sandboxCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
 }
 
-func (o *Orchestrator) countersRemove(ctx context.Context, sandbox instance.Data, _ instance.RemoveType) {
+func (o *Orchestrator) countersRemove(ctx context.Context, sandbox instance.Data, _ instance.StateAction) {
 	attributes := []attribute.KeyValue{
 		telemetry.WithTeamID(sandbox.TeamID.String()),
 	}

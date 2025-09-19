@@ -11,11 +11,11 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
-type RemoveType string
+type StateAction string
 
 const (
-	RemoveTypePause RemoveType = "pause"
-	RemoveTypeKill  RemoveType = "kill"
+	StateActionPause StateAction = "pause"
+	StateActionKill  StateAction = "kill"
 )
 
 // Add the instance to the cache

@@ -13,7 +13,7 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
-func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sandboxID string, removeType instance.RemoveType) error {
+func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction instance.StateAction) error {
 	_, childSpan := tracer.Start(ctx, "remove-sandbox-public")
 	defer childSpan.End()
 
@@ -26,18 +26,18 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 		return ErrAccessForbidden
 	}
 
-	return o.removeSandbox(ctx, sbx, removeType)
+	return o.removeSandbox(ctx, sbx, stateAction)
 }
 
-func (o *Orchestrator) removeSandbox(ctx context.Context, sbx *instance.InstanceInfo, removeType instance.RemoveType) error {
+func (o *Orchestrator) removeSandbox(ctx context.Context, sbx *instance.InstanceInfo, stateAction instance.StateAction) error {
 	_, childSpan := tracer.Start(ctx, "remove-sandbox")
 	defer childSpan.End()
 
 	sandboxID := sbx.SandboxID()
-	done, finish, err := sbx.StartRemoving(ctx, removeType)
+	done, finish, err := sbx.StartRemoving(ctx, stateAction)
 	if err != nil {
 		data := sbx.Data()
-		if removeType == instance.RemoveTypeKill {
+		if stateAction == instance.StateActionKill {
 			switch data.State {
 			case instance.StateFailed:
 				zap.L().Error("Sandbox is in failed state", logger.WithSandboxID(sandboxID), zap.Error(data.Reason))
@@ -76,10 +76,10 @@ func (o *Orchestrator) removeSandbox(ctx context.Context, sbx *instance.Instance
 	sbx.SetExpired()
 	data := sbx.Data()
 
-	defer o.countersRemove(context.WithoutCancel(ctx), data, removeType)
-	defer o.analyticsRemove(context.WithoutCancel(ctx), data, removeType)
+	defer o.countersRemove(context.WithoutCancel(ctx), data, stateAction)
+	defer o.analyticsRemove(context.WithoutCancel(ctx), data, stateAction)
 	defer o.sandboxStore.Remove(sbx.SandboxID())
-	err = o.removeSandboxFromNode(ctx, data, removeType)
+	err = o.removeSandboxFromNode(ctx, data, stateAction)
 	if err != nil {
 		zap.L().Error("Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sbx.SandboxID()))
 		return ErrSandboxOperationFailed
@@ -88,7 +88,7 @@ func (o *Orchestrator) removeSandbox(ctx context.Context, sbx *instance.Instance
 	return nil
 }
 
-func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sandbox instance.Data, removeType instance.RemoveType) error {
+func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sandbox instance.Data, stateAction instance.StateAction) error {
 	ctx, span := tracer.Start(ctx, "remove-sandbox-from-node")
 	defer span.End()
 
@@ -105,17 +105,17 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sandbox instan
 
 	sbxlogger.I(sandbox).Debug("Removing sandbox",
 		zap.Bool("auto_pause", sandbox.AutoPause),
-		zap.String("remove_type", string(removeType)),
+		zap.String("state_action", string(stateAction)),
 	)
 
-	switch removeType {
-	case instance.RemoveTypePause:
+	switch stateAction {
+	case instance.StateActionPause:
 		var err error
 		err = o.pauseSandbox(ctx, node, sandbox)
 		if err != nil {
 			return fmt.Errorf("failed to auto pause sandbox '%s': %w", sandbox.SandboxID, err)
 		}
-	case instance.RemoveTypeKill:
+	case instance.StateActionKill:
 		var err error
 		req := &orchestrator.SandboxDeleteRequest{SandboxId: sandbox.SandboxID}
 		client, ctx := node.GetClient(ctx)

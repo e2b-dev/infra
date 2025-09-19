@@ -175,9 +175,9 @@ func (i *InstanceInfo) TeamID() uuid.UUID {
 	return i.data.TeamID
 }
 
-func (i *InstanceInfo) StartRemoving(ctx context.Context, removeType RemoveType) (done bool, callback func(error), err error) {
+func (i *InstanceInfo) StartRemoving(ctx context.Context, stateAction StateAction) (done bool, callback func(error), err error) {
 	newState := StateKilled
-	if removeType == RemoveTypePause {
+	if stateAction == StateActionPause {
 		newState = StatePaused
 	}
 
@@ -203,7 +203,7 @@ func (i *InstanceInfo) StartRemoving(ctx context.Context, removeType RemoveType)
 		case currentState == newState:
 			return true, func(err error) {}, nil
 		case allowed[currentState][newState]:
-			return i.StartRemoving(ctx, removeType)
+			return i.StartRemoving(ctx, stateAction)
 		default:
 			return false, nil, fmt.Errorf("unexpected state transition")
 		}

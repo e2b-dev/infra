@@ -31,7 +31,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
 
-	err := a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, instance.RemoveTypePause)
+	err := a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, instance.StateActionPause)
 	switch {
 	case err == nil:
 	case errors.Is(err, orchestrator.ErrSandboxNotFound):

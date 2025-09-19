@@ -86,7 +86,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	telemetry.ReportEvent(ctx, "killing sandbox")
 
 	removed := false
-	err := a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, instance.RemoveTypeKill)
+	err := a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, instance.StateActionKill)
 	switch {
 	case err == nil:
 		removed = true
