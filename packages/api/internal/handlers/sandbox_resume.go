@@ -80,6 +80,9 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 			)
 
 			return
+		default:
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Sandbox is in an unknown state")
+			return
 		}
 	}
 
