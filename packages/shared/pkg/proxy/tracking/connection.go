@@ -7,6 +7,7 @@ import (
 
 type Connection struct {
 	net.Conn
+
 	counter *atomic.Int64
 }
 

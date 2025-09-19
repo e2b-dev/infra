@@ -44,6 +44,7 @@ type mockTemplateClient struct {
 // mockSandboxClientWithSleep implements orchestrator.SandboxServiceClient with a sleep on Create
 type mockSandboxClientWithSleep struct {
 	orchestrator.SandboxServiceClient
+
 	baseSandboxCreateTime time.Duration
 }
 

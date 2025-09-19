@@ -14,6 +14,7 @@ import (
 
 type Client struct {
 	*database.Queries
+
 	conn *pgxpool.Pool
 }
 

@@ -10,6 +10,7 @@ formatters:
         - standard
         - default
         - prefix(github.com/e2b-dev/infra)
+
 linters:
   default: none
   enable:
@@ -22,6 +23,7 @@ linters:
     - copyloopvar
     - dogsled
     - durationcheck
+    - embeddedstructfieldcheck
     - errname
     - errorlint
     - exptostd

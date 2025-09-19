@@ -14,6 +14,7 @@ const (
 
 type SandboxFiles struct {
 	TemplateCacheFiles
+
 	SandboxID string
 	tmpDir    string
 	// We use random id to avoid collision between the paused and restored sandbox caches

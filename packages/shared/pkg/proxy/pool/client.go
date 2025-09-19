@@ -17,6 +17,7 @@ import (
 
 type proxyClient struct {
 	httputil.ReverseProxy
+
 	transport *http.Transport
 }
 

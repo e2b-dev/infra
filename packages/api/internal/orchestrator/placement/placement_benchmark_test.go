@@ -52,6 +52,7 @@ type LiveSandbox struct {
 // SimulatedNode represents a node with realistic resource tracking
 type SimulatedNode struct {
 	*nodemanager.Node
+
 	mu                 sync.RWMutex
 	sandboxes          map[string]*LiveSandbox
 	totalPlacements    int64

@@ -8,6 +8,7 @@ import (
 
 type PrefixFilteredWriter struct {
 	io.Writer
+
 	PrefixFilter string
 	buff         bytes.Buffer
 }

@@ -12,8 +12,6 @@ import (
 type FileSystemStorageProvider struct {
 	basePath string
 	opened   map[string]*os.File
-
-	StorageProvider
 }
 
 var _ StorageProvider = (*FileSystemStorageProvider)(nil)
