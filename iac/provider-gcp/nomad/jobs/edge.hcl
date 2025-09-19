@@ -5,12 +5,30 @@ job "client-proxy" {
   priority = 80
 
   group "client-proxy" {
-  count = ${count}
+    // If the service fails, try up to 2 restarts in 10 minutes
+    // if another restart happens, it will trigger reschedule
+    restart {
+      attempts = 2
+      interval = "10m"
+      delay    = "10s"
+      mode     = "fail"
+    }
 
-  constraint {
-    operator  = "distinct_hosts"
-    value     = "true"
-  }
+    // If too many restarts happens on one node,
+    // try to place it on another with exponential backoff
+    reschedule {
+      delay          = "30s"
+      delay_function = "exponential"
+      max_delay      = "10m"
+      unlimited      = true
+    }
+
+    count = ${count}
+
+    constraint {
+      operator  = "distinct_hosts"
+      value     = "true"
+    }
 
     network {
       port "${proxy_port_name}" {

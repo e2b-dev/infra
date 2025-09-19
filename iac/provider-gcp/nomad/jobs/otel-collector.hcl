@@ -5,6 +5,16 @@ job "otel-collector" {
   priority = 95
 
   group "otel-collector" {
+
+    // Try to restart the task indefinitely
+    // Tries to restart every 5 seconds
+    restart {
+      interval         = "5s"
+      attempts         = 1
+      delay            = "5s"
+      mode             = "delay"
+    }
+
     network {
       port "health" {
         to = 13133
