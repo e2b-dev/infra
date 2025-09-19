@@ -1,4 +1,7 @@
-FROM golang:1.24-alpine
+ARG GOLANG_VERSION=1.24.7
+ARG ALPINE_VERSION=3.22
+
+FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION}
 
 # Install dependencies
 RUN apk add --no-cache git curl bash
