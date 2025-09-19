@@ -24,8 +24,8 @@ type State string
 
 const (
 	StateRunning State = "running"
-	StatePausing State = "paused"
-	StateKilling State = "killed"
+	StatePausing State = "pausing"
+	StateKilling State = "killing"
 )
 
 var allowed = map[State]map[State]bool{
