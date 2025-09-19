@@ -20,29 +20,29 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 
 func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanager.TemplateBuildDeleteRequest) (*emptypb.Empty, error) {
 	childCtx, childSpan := tracer.Start(ctx, "template-delete-request", trace.WithAttributes(
-		telemetry.WithTemplateID(in.TemplateID),
-		telemetry.WithBuildID(in.BuildID),
+		telemetry.WithTemplateID(in.GetTemplateID()),
+		telemetry.WithBuildID(in.GetBuildID()),
 	))
 	defer childSpan.End()
 
 	s.wg.Add(1)
 	defer s.wg.Done()
 
-	if in.TemplateID == "" || in.BuildID == "" {
+	if in.GetTemplateID() == "" || in.GetBuildID() == "" {
 		return nil, errors.New("template id and build id are required fields")
 	}
 
-	buildInfo, err := s.buildCache.Get(in.BuildID)
+	buildInfo, err := s.buildCache.Get(in.GetBuildID())
 	if err == nil && buildInfo.IsRunning() {
 		// Cancel the build if it is running
-		zap.L().Info("Canceling running template build", logger.WithTemplateID(in.TemplateID), logger.WithBuildID(in.BuildID))
+		zap.L().Info("Canceling running template build", logger.WithTemplateID(in.GetTemplateID()), logger.WithBuildID(in.GetBuildID()))
 		telemetry.ReportEvent(ctx, "cancel in progress template build")
 		buildInfo.SetFail(&templatemanager.TemplateBuildStatusReason{
 			Message: cache.CancelledBuildReason,
 		})
 	}
 
-	err = template.Delete(childCtx, s.artifactsregistry, s.templateStorage, in.TemplateID, in.BuildID)
+	err = template.Delete(childCtx, s.artifactsregistry, s.templateStorage, in.GetTemplateID(), in.GetBuildID())
 	if err != nil {
 		return nil, err
 	}

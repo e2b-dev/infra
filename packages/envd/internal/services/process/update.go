@@ -11,7 +11,7 @@ import (
 )
 
 func (s *Service) Update(ctx context.Context, req *connect.Request[rpc.UpdateRequest]) (*connect.Response[rpc.UpdateResponse], error) {
-	proc, err := s.getProcess(req.Msg.Process)
+	proc, err := s.getProcess(req.Msg.GetProcess())
 	if err != nil {
 		return nil, err
 	}

@@ -14,7 +14,7 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 	_, ctxSpan := tracer.Start(ctx, "template-build-status-request")
 	defer ctxSpan.End()
 
-	buildInfo, err := s.buildCache.Get(in.BuildID)
+	buildInfo, err := s.buildCache.Get(in.GetBuildID())
 	if err != nil {
 		return nil, errors.Wrap(err, "error while getting build info, maybe already expired")
 	}
@@ -34,7 +34,7 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 		}
 
 		logEntries = append(logEntries, entry)
-		logs = append(logs, fmt.Sprintf("[%s] %s", entry.Timestamp.AsTime().Format(time.RFC3339), entry.Message))
+		logs = append(logs, fmt.Sprintf("[%s] %s", entry.GetTimestamp().AsTime().Format(time.RFC3339), entry.GetMessage()))
 	}
 
 	result := buildInfo.GetResult()

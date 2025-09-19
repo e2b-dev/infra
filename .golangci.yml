@@ -36,6 +36,7 @@ linters:
     - misspell
     - nilnesserr
     - nolintlint
+    - protogetter
     - reassign
     - recvcheck
     - revive

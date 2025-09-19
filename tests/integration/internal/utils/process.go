@@ -76,9 +76,9 @@ func ExecCommandWithOptions(tb testing.TB, ctx context.Context, sbx *api.Sandbox
 		default:
 			msg := stream.Msg()
 			tb.Logf("Command [%s] output: %s", command, msg.String())
-			if msg.Event.GetEnd() != nil {
-				if msg.Event.GetEnd().GetExitCode() != 0 {
-					return fmt.Errorf("command %s in sandbox %s failed with exit code %d", command, sbx.SandboxID, msg.Event.GetEnd().GetExitCode())
+			if msg.GetEvent().GetEnd() != nil {
+				if msg.GetEvent().GetEnd().GetExitCode() != 0 {
+					return fmt.Errorf("command %s in sandbox %s failed with exit code %d", command, sbx.SandboxID, msg.GetEvent().GetEnd().GetExitCode())
 				}
 				tb.Logf("Command [%s] completed successfully in sandbox %s", command, sbx.SandboxID)
 				return nil
