@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -177,7 +178,7 @@ func (c *CachedFileObjectProvider) validateReadAtParams(buffSize, offset int64) 
 	return nil
 }
 
-func (c *CachedFileObjectProvider) makeSizeFilename() string {
+func (c *CachedFileObjectProvider) sizeFilename() string {
 	return filepath.Join(c.path, "size.txt")
 }
 
@@ -197,7 +198,7 @@ func (c *CachedFileObjectProvider) Size(ctx context.Context) (int64, error) {
 }
 
 func (c *CachedFileObjectProvider) readLocalSize() (int64, bool) {
-	fname := c.makeSizeFilename()
+	fname := c.sizeFilename()
 	content, err := os.ReadFile(fname)
 	if err != nil {
 		zap.L().Warn("failed to read cached size, falling back to remote read",
@@ -237,7 +238,7 @@ func (c *CachedFileObjectProvider) writeLocalSize(size int64) {
 		return
 	}
 
-	finalFilename := c.makeSizeFilename()
+	finalFilename := c.sizeFilename()
 	if err := moveWithoutReplace(tempFilename, finalFilename); err != nil {
 		zap.L().Warn("failed to move temp file",
 			zap.String("temp_path", tempFilename),
@@ -251,13 +252,13 @@ func (c *CachedFileObjectProvider) Delete(ctx context.Context) error {
 	return c.inner.Delete(ctx)
 }
 
-func (c *CachedFileObjectProvider) makeTempFullFilename() string {
+func (c *CachedFileObjectProvider) tempFullFilename() string {
 	tempFilename := uuid.NewString()
 
 	return fmt.Sprintf("%s/.temp.content.bin.%s", c.path, tempFilename)
 }
 
-func (c *CachedFileObjectProvider) makeFullFilename() string {
+func (c *CachedFileObjectProvider) fullFilename() string {
 	return fmt.Sprintf("%s/content.bin", c.path)
 }
 
@@ -303,10 +304,10 @@ func (c *CachedFileObjectProvider) writeChunkToCache(ctx context.Context, offset
 	writeTimer.End(ctx, int64(len(bytes)))
 }
 
-func (c *CachedFileObjectProvider) writeFullFileToCache(ctx context.Context, filePath string, b []byte) {
-	begin := cacheWriteTimerFactory.Begin()
+func (c *CachedFileObjectProvider) writeFullFileToCache(ctx context.Context, b []byte) {
+	timer := cacheWriteTimerFactory.Begin()
 
-	tempPath := c.makeTempFullFilename()
+	tempPath := c.tempFullFilename()
 
 	if err := os.WriteFile(tempPath, b, cacheFilePermissions); err != nil {
 		zap.L().Error("failed to write temp cache file",
@@ -318,10 +319,11 @@ func (c *CachedFileObjectProvider) writeFullFileToCache(ctx context.Context, fil
 		return
 	}
 
-	if err := moveWithoutReplace(tempPath, filePath); err != nil {
+	finalPath := c.fullFilename()
+	if err := moveWithoutReplace(tempPath, finalPath); err != nil {
 		zap.L().Error("failed to rename temp file",
 			zap.String("tempPath", tempPath),
-			zap.String("filePath", filePath),
+			zap.String("filePath", finalPath),
 			zap.Int("length", len(b)),
 			zap.Error(err),
 		)
@@ -329,7 +331,7 @@ func (c *CachedFileObjectProvider) writeFullFileToCache(ctx context.Context, fil
 		return
 	}
 
-	begin.End(ctx, int64(len(b)))
+	timer.End(ctx, int64(len(b)))
 }
 
 func (c *CachedFileObjectProvider) readAtFromCache(chunkPath string, buff []byte) (int, error) {
@@ -350,7 +352,7 @@ func (c *CachedFileObjectProvider) readAtFromCache(chunkPath string, buff []byte
 }
 
 func (c *CachedFileObjectProvider) copyFullFileFromCache(dst io.Writer) (int64, bool) {
-	path := c.makeFullFilename()
+	path := c.fullFilename()
 
 	var fp *os.File
 	fp, err := os.Open(path)
@@ -374,46 +376,27 @@ func (c *CachedFileObjectProvider) copyFullFileFromCache(dst io.Writer) (int64, 
 	return count, true
 }
 
+const (
+	kilobyte = 1024
+	megabyte = 1024 * kilobyte
+)
+
 func (c *CachedFileObjectProvider) readAndCacheFullRemoteFile(ctx context.Context, dst io.Writer) (int64, error) {
-	tempFname := c.makeTempFullFilename()
-	tempWriter, err := os.Create(tempFname)
-	if err != nil {
-		zap.L().Error("failed to create temp full file, bailing on cache",
-			zap.Error(err),
-			zap.String("path", tempFname))
-		return c.inner.WriteTo(ctx, dst)
+	const writeToInitialBufferSize = 2 * megabyte
+
+	writer := bytes.NewBuffer(make([]byte, 0, writeToInitialBufferSize))
+
+	if _, err := c.inner.WriteTo(ctx, writer); ignoreEOF(err) != nil {
+		return 0, err
 	}
 
-	// write to both cache and destination simultaneously
-	writer := io.MultiWriter(dst, tempWriter)
-	written, err := c.inner.WriteTo(ctx, writer)
-	if ignoreEOF(err) != nil {
-		cleanup("failed to close temp file", tempWriter.Close)
-		cleanup("failed to delete temp file", func() error { return os.Remove(tempFname) })
-		return 0, fmt.Errorf("failed to write to temp file: %w", err)
-	}
+	go func() {
+		c.writeFullFileToCache(context.WithoutCancel(ctx), writer.Bytes())
+	}()
 
-	// at this point we can assume that the file has been written to the destination successfully,
-	// any errors beyond now must be logged and not returned.
+	written, err := dst.Write(writer.Bytes())
+	return int64(written), err
 
-	if err := tempWriter.Close(); err != nil {
-		zap.L().Error("failed to close temp file",
-			zap.Error(err),
-			zap.String("path", tempFname))
-		return written, nil
-	}
-
-	finalFilename := c.makeFullFilename()
-	if err := moveWithoutReplace(tempFname, finalFilename); err != nil {
-		zap.L().Error("failed to rename temp file",
-			zap.String("tempPath", tempFname),
-			zap.String("finalPath", finalFilename),
-			zap.Error(err),
-		)
-		return written, nil
-	}
-
-	return written, nil
 }
 
 func cleanup(msg string, close func() error) {
