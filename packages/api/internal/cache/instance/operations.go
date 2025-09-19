@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
@@ -34,11 +35,16 @@ func (c *MemoryStore) Add(ctx context.Context, sandbox Data, newlyCreated bool) 
 		sandbox.EndTime = sandbox.StartTime.Add(sandbox.MaxInstanceLength)
 	}
 
-	c.items.SetIfAbsent(sandbox.SandboxID, &InstanceInfo{
+	added := c.items.SetIfAbsent(sandbox.SandboxID, &InstanceInfo{
 		_data:      sandbox,
 		transition: nil,
 		mu:         sync.RWMutex{},
 	})
+
+	if !added {
+		zap.L().Warn("Sandbox already exists in cache", logger.WithSandboxID(sandbox.SandboxID))
+		return
+	}
 
 	for _, callback := range c.insertCallbacks {
 		callback(ctx, sandbox, newlyCreated)

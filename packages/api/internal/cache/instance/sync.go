@@ -44,6 +44,7 @@ func (c *MemoryStore) Sync(ctx context.Context, instances []Data, nodeID string)
 		if c.Exists(instance.SandboxID) {
 			continue
 		}
+
 		c.Add(ctx, instance, false)
 	}
 }
