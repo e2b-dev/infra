@@ -1,6 +1,6 @@
 module github.com/e2b-dev/infra/packages/proxy
 
-go 1.24.3
+go 1.24.7
 
 replace github.com/ugorji/go v1.1.4 => github.com/ugorji/go/codec v1.2.12
 

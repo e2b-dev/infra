@@ -94,7 +94,7 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 			return nil, fmt.Errorf("failed to read Consul KV: %w", keysErr)
 		}
 
-		for slotIdx := 0; slotIdx < s.slotsSize; slotIdx++ {
+		for slotIdx := range s.slotsSize {
 			key := s.getKVKey(slotIdx)
 
 			if slices.Contains(reservedKeys, key) {

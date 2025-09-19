@@ -13,6 +13,15 @@ job "template-manager-system" {
 
   group "template-manager" {
 
+    // Try to restart the task indefinitely
+    // Tries to restart every 5 seconds
+    restart {
+      interval         = "5s"
+      attempts         = 1
+      delay            = "5s"
+      mode             = "delay"
+    }
+
     network {
       port "template-manager" {
         static = "${port}"

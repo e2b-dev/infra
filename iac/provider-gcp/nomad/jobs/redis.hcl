@@ -5,6 +5,15 @@ job "redis" {
   priority = 95
 
   group "redis" {
+    // Try to restart the task indefinitely
+    // Tries to restart every 5 seconds
+    restart {
+      interval         = "5s"
+      attempts         = 1
+      delay            = "5s"
+      mode             = "delay"
+    }
+
     network {
       port "redis" {
         static = "${port_number}"

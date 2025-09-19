@@ -18,7 +18,7 @@ func createTestNode(id string, status api.NodeStatus, cpuAllocated int64, inProg
 	node := nodemanager.NewTestNode(id, status, cpuAllocated, 4)
 
 	// Add sandboxes to the placement metrics
-	for i := uint32(0); i < inProgressCount; i++ {
+	for i := range inProgressCount {
 		node.PlacementMetrics.StartPlacing(fmt.Sprintf("sandbox-%d", i), nodemanager.SandboxResources{
 			CPUs:      1,
 			MiBMemory: 512,

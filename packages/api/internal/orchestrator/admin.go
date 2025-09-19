@@ -45,7 +45,7 @@ func (o *Orchestrator) AdminNodes() []*api.Node {
 			continue
 		}
 
-		n.SandboxCount += 1
+		n.SandboxCount++
 	}
 
 	var result []*api.Node

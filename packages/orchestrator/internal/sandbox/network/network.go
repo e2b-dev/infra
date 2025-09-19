@@ -10,6 +10,8 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"go.uber.org/zap"
+
+	consts "github.com/e2b-dev/infra/packages/orchestrator/internal"
 )
 
 func (s *Slot) CreateNetwork() error {
@@ -214,6 +216,16 @@ func (s *Slot) CreateNetwork() error {
 		return fmt.Errorf("error creating postrouting rule: %w", err)
 	}
 
+	// Redirect traffic destined for hyperloop proxy
+	err = tables.Append(
+		"nat", "PREROUTING", "-i", s.VethName(),
+		"-p", "tcp", "-d", s.HyperloopIPString(), "--dport", "80",
+		"-j", "REDIRECT", "--to-port", consts.GetHyperloopProxyPort(),
+	)
+	if err != nil {
+		return fmt.Errorf("error creating HTTP redirect rule to sandbox hyperloop proxy server: %w", err)
+	}
+
 	return nil
 }
 
@@ -244,6 +256,16 @@ func (s *Slot) RemoveNetwork() error {
 		err = tables.Delete("nat", "POSTROUTING", "-s", s.HostCIDR(), "-o", defaultGateway, "-j", "MASQUERADE")
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error deleting host postrouting rule: %w", err))
+		}
+
+		// Delete hyperloop proxy redirect rule
+		err = tables.Delete(
+			"nat", "PREROUTING", "-i", s.VethName(),
+			"-p", "tcp", "-d", s.HyperloopIPString(), "--dport", "80",
+			"-j", "REDIRECT", "--to-port", consts.GetHyperloopProxyPort(),
+		)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("error deleting sandbox hyperloop proxy redirect rule: %w", err))
 		}
 	}
 
