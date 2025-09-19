@@ -5,6 +5,15 @@ job "docker-reverse-proxy" {
   priority    = 85
 
   group "reverse-proxy" {
+    // Try to restart the task indefinitely
+    // Tries to restart every 5 seconds
+    restart {
+      interval         = "5s"
+      attempts         = 1
+      delay            = "5s"
+      mode             = "delay"
+    }
+
     network {
       port "${port_name}" {
         static = "${port_number}"

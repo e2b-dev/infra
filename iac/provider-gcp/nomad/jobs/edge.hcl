@@ -5,12 +5,21 @@ job "client-proxy" {
   priority = 80
 
   group "client-proxy" {
-  count = ${count}
+    // Try to restart the task indefinitely
+    // Tries to restart every 5 seconds
+    restart {
+      interval         = "5s"
+      attempts         = 1
+      delay            = "5s"
+      mode             = "delay"
+    }
 
-  constraint {
-    operator  = "distinct_hosts"
-    value     = "true"
-  }
+    count = ${count}
+
+    constraint {
+      operator  = "distinct_hosts"
+      value     = "true"
+    }
 
     network {
       port "${proxy_port_name}" {
