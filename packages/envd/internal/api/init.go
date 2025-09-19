@@ -52,7 +52,7 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if initRequest.HyperloopIP != nil {
-			go a.SetupHyperloop(*initRequest.HyperloopIP)
+			a.SetupHyperloop(*initRequest.HyperloopIP)
 		}
 	}
 
