@@ -1,5 +1,8 @@
+ARG GOLANG_VERSION=1.24.7
+ARG ALPINE_VERSION=3.22
+
 # Builder stage
-FROM golang:1.24-alpine AS builder
+FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
 
 # Shared
 WORKDIR /build/shared
@@ -21,7 +24,7 @@ RUN go build -o ./migrator ./migrator.go
 RUN chmod +x ./migrator
 
 # Final stage
-FROM alpine:latest
+FROM alpine:${ALPINE_VERSION}
 
 COPY --from=builder /build/db/migrator /usr/local/bin/migrator
 
