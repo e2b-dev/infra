@@ -124,7 +124,7 @@ type Data struct {
 type InstanceInfo struct {
 	data Data
 
-	transition *utils.SetOnce[struct{}]
+	transition *utils.ErrorOnce
 	mu         sync.RWMutex
 }
 
@@ -190,7 +190,7 @@ func (i *InstanceInfo) StartRemoving(ctx context.Context, stateAction StateActio
 		}
 
 		zap.L().Debug("State transition already in progress to the same state, waiting", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)))
-		_, err = transition.WaitWithContext(ctx)
+		err = transition.WaitWithContext(ctx)
 		if err != nil {
 			zap.L().Error("State transition failed", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)), zap.Error(err))
 			return false, nil, fmt.Errorf("sandbox is in failed state: %w", err)
@@ -218,14 +218,14 @@ func (i *InstanceInfo) StartRemoving(ctx context.Context, stateAction StateActio
 	}
 
 	i.data.State = newState
-	i.transition = utils.NewSetOnce[struct{}]()
+	i.transition = utils.NewErrorOnce()
 
 	callback = func(err error) {
 		zap.L().Debug("Transition complete", logger.WithSandboxID(i.data.SandboxID), zap.String("state", string(newState)), zap.Error(err))
 		i.mu.Lock()
 		defer i.mu.Unlock()
 
-		setErr := i.transition.SetResult(struct{}{}, err)
+		setErr := i.transition.SetError(err)
 		if err != nil {
 			// Keep the transition in place so the error stays
 			zap.L().Error("Failed to set transition result", logger.WithSandboxID(i.data.SandboxID), zap.Error(setErr))
@@ -248,6 +248,5 @@ func (i *InstanceInfo) WaitForStateChange(ctx context.Context) error {
 		return nil
 	}
 
-	_, err := transition.WaitWithContext(ctx)
-	return err
+	return transition.WaitWithContext(ctx)
 }
