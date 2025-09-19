@@ -61,10 +61,6 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 		data := sbxCache.Data()
 		switch data.State {
-		case instance.StateFailed:
-			zap.L().Error("Sandbox is in failed state", logger.WithSandboxID(sandboxID), zap.Error(data.Reason))
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Sandbox can't be resumed, instance is in failed state")
-			return
 		case instance.StatePaused:
 			zap.L().Debug("Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
 			err = sbxCache.WaitForStateChange(ctx)

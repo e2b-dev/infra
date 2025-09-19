@@ -26,11 +26,10 @@ const (
 	StateRunning State = "running"
 	StatePaused  State = "paused"
 	StateKilled  State = "killed"
-	StateFailed  State = "failed"
 )
 
 var allowed = map[State]map[State]bool{
-	StateRunning: {StatePaused: true, StateKilled: true, StateFailed: true},
+	StateRunning: {StatePaused: true, StateKilled: true},
 	StatePaused:  {StateKilled: true},
 }
 
@@ -119,8 +118,7 @@ type Data struct {
 	ClusterID           uuid.UUID
 	AutoPause           bool
 
-	State  State
-	Reason error
+	State State
 }
 
 type InstanceInfo struct {
@@ -227,16 +225,16 @@ func (i *InstanceInfo) StartRemoving(ctx context.Context, stateAction StateActio
 		i.mu.Lock()
 		defer i.mu.Unlock()
 
+		setErr := i.transition.SetResult(struct{}{}, err)
 		if err != nil {
-			i.data.Reason = err
-			i.data.State = StateFailed
-		}
-		err = i.transition.SetResult(struct{}{}, err)
-		if err != nil {
-			zap.L().Error("Failed to set transition result", logger.WithSandboxID(i.data.SandboxID), zap.Error(err))
+			// Keep the transition in place so the error stays
+			zap.L().Error("Failed to set transition result", logger.WithSandboxID(i.data.SandboxID), zap.Error(setErr))
 		}
 
-		i.transition = nil
+		if err == nil {
+			// Transition is complete and next transition can be started
+			i.transition = nil
+		}
 	}
 
 	return false, callback, nil

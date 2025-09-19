@@ -39,9 +39,6 @@ func (o *Orchestrator) removeSandbox(ctx context.Context, sbx *instance.Instance
 		data := sbx.Data()
 		if stateAction == instance.StateActionKill {
 			switch data.State {
-			case instance.StateFailed:
-				zap.L().Error("Sandbox is in failed state", logger.WithSandboxID(sandboxID), zap.Error(data.Reason))
-				return ErrSandboxOperationFailed
 			case instance.StateKilled:
 				zap.L().Info("Sandbox is already killed", logger.WithSandboxID(sandboxID))
 				return nil
@@ -51,9 +48,6 @@ func (o *Orchestrator) removeSandbox(ctx context.Context, sbx *instance.Instance
 			}
 		} else {
 			switch data.State {
-			case instance.StateFailed:
-				zap.L().Error("Sandbox is in failed state", logger.WithSandboxID(sandboxID), zap.Error(data.Reason))
-				return ErrSandboxOperationFailed
 			case instance.StateKilled:
 				zap.L().Info("Sandbox is already killed", logger.WithSandboxID(sandboxID))
 				return ErrSandboxNotFound

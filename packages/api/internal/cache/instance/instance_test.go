@@ -218,25 +218,19 @@ func TestStartRemoving_Error(t *testing.T) {
 	assert.False(t, done2)
 	assert.Nil(t, finish2)
 
-	// State should be Failed after a failed transition
-	assert.Equal(t, StateFailed, instance.State())
-
 	// From Failed state, no transitions are allowed
 	done3, finish3, err3 := instance.StartRemoving(ctx, StateActionPause)
 	require.Error(t, err3)
-	assert.Contains(t, err3.Error(), "invalid state transition from failed to paused")
+	require.ErrorIs(t, err3, failureErr)
 	assert.False(t, done3)
 	assert.Nil(t, finish3)
 
 	// Trying to transition to Killed should also fail
 	done4, finish4, err4 := instance.StartRemoving(ctx, StateActionKill)
 	require.Error(t, err4)
-	assert.Contains(t, err4.Error(), "invalid state transition from failed to killed")
+	require.ErrorIs(t, err4, failureErr)
 	assert.False(t, done4)
 	assert.Nil(t, finish4)
-
-	// State should remain Failed
-	assert.Equal(t, StateFailed, instance.State())
 }
 
 // Test context timeout during wait
@@ -341,7 +335,6 @@ func TestWaitForStateChange_WaitWithError(t *testing.T) {
 	<-done
 	require.Error(t, waitErr)
 	assert.Equal(t, testErr, waitErr)
-	assert.Equal(t, StateFailed, instance.State())
 }
 
 func TestWaitForStateChange_ContextCancellation(t *testing.T) {
