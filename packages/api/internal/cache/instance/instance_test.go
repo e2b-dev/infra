@@ -131,7 +131,7 @@ func TestStartRemoving_ConcurrentSameState(t *testing.T) {
 	}, 3)
 
 	// Three concurrent requests to pause the sandbox
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		go func() {
 			alreadyDone, finish, err := instance.startRemoving(ctx, StateActionPause)
 			if err == nil {
@@ -162,7 +162,7 @@ func TestStartRemoving_ConcurrentSameState(t *testing.T) {
 	// Collect results
 	performedCount := 0
 	alreadyDoneCount := 0
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		result := <-results
 		if result.worked {
 			performedCount++
@@ -386,7 +386,7 @@ func TestWaitForStateChange_MultipleWaiters(t *testing.T) {
 	errors := make([]error, numWaiters)
 	var wg sync.WaitGroup
 
-	for i := 0; i < numWaiters; i++ {
+	for i := range numWaiters {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
