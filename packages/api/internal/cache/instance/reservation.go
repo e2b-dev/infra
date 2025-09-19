@@ -81,7 +81,7 @@ func (c *MemoryStore) Reserve(sandboxID string, team uuid.UUID, limit int64) (re
 	// Count unique IDs for team
 	ids := map[string]struct{}{}
 
-	// Get all sandbox ids (both running and those currently creating) for the team
+	// GetData all sandbox ids (both running and those currently creating) for the team
 	for _, item := range append(c.reservations.list(team), c.list(team)...) {
 		ids[item] = struct{}{}
 	}

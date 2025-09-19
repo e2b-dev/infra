@@ -249,3 +249,17 @@ func (i *InstanceInfo) WaitForStateChange(ctx context.Context) error {
 
 	return transition.WaitWithContext(ctx)
 }
+
+func (i *InstanceInfo) ExtendEndTime(newEndTime time.Time, allowShorter bool) bool {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	// If shorter than the current end time, don't extend
+	if !allowShorter && newEndTime.Before(i.data.EndTime) {
+		return false
+	}
+
+	i.data.EndTime = newEndTime
+
+	return true
+}

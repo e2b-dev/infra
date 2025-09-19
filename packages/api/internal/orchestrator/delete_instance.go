@@ -14,10 +14,10 @@ import (
 )
 
 func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction instance.StateAction) error {
-	_, childSpan := tracer.Start(ctx, "remove-sandbox-public")
+	ctx, childSpan := tracer.Start(ctx, "remove-sandbox-public")
 	defer childSpan.End()
 
-	sbx, err := o.GetSandbox(sandboxID, true)
+	sbx, err := o.sandboxStore.Get(sandboxID)
 	if err != nil {
 		return ErrSandboxNotFound
 	}

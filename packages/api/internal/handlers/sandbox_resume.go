@@ -25,7 +25,7 @@ import (
 func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.SandboxID) {
 	ctx := c.Request.Context()
 
-	// Get team from context, use TeamContextKey
+	// GetData team from context, use TeamContextKey
 	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
 
 	span := trace.SpanFromContext(ctx)
@@ -55,7 +55,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	}
 
 	sandboxID = utils.ShortID(sandboxID)
-	sbxCache, err := a.orchestrator.GetSandbox(sandboxID, true)
+	sbxCache, err := a.orchestrator.GetSandbox(sandboxID)
 	if err == nil {
 		zap.L().Debug("Sandbox found in store", logger.WithSandboxID(sandboxID))
 

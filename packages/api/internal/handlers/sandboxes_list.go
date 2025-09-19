@@ -131,7 +131,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		return
 	}
 
-	// Get sandboxes with pagination
+	// GetData sandboxes with pagination
 	sandboxes := make([]utils.PaginatedSandbox, 0)
 
 	// Parse the next token to offset sandboxes for pagination

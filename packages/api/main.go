@@ -149,7 +149,7 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 			func(c *gin.Context) {
 				teamID := ""
 
-				// Get team from context, use TeamContextKey
+				// GetData team from context, use TeamContextKey
 				teamInfo := c.Value(auth.TeamContextKey)
 				if teamInfo != nil {
 					teamID = teamInfo.(authcache.AuthTeamInfo).Team.ID.String()

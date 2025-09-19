@@ -42,13 +42,10 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	// Try to get the running sandbox first
-	sbx, err := a.orchestrator.GetSandbox(sandboxId, true)
+	sbx, err := a.orchestrator.GetSandboxData(sandboxId, true)
 	if err == nil {
-		zap.L().Debug("Sandbox found in store", logger.WithSandboxID(sandboxId))
-		info := sbx.Data()
-
 		// Check if sandbox belongs to the team
-		if info.TeamID != team.ID {
+		if sbx.TeamID != team.ID {
 			telemetry.ReportCriticalError(ctx, fmt.Sprintf("sandbox '%s' doesn't belong to team '%s'", sandboxId, team.ID.String()), nil)
 			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 
@@ -56,7 +53,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		}
 
 		state := api.Running
-		switch info.State {
+		switch sbx.State {
 		// Sandbox is being paused or already is paused, user can work with that as if it's paused
 		case instance.StatePaused:
 			state = api.Paused
@@ -67,25 +64,25 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			return
 		}
 
-		// Sandbox exists and belongs to the team - return running sandbox info
+		// Sandbox exists and belongs to the team - return running sandbox sbx
 		sandbox := api.SandboxDetail{
-			ClientID:        info.ClientID,
-			TemplateID:      info.TemplateID,
-			Alias:           info.Alias,
-			SandboxID:       info.SandboxID,
-			StartedAt:       info.StartTime,
-			CpuCount:        api.CPUCount(info.VCpu),
-			MemoryMB:        api.MemoryMB(info.RamMB),
-			DiskSizeMB:      api.DiskSizeMB(info.TotalDiskSizeMB),
-			EndAt:           info.EndTime,
+			ClientID:        sbx.ClientID,
+			TemplateID:      sbx.TemplateID,
+			Alias:           sbx.Alias,
+			SandboxID:       sbx.SandboxID,
+			StartedAt:       sbx.StartTime,
+			CpuCount:        api.CPUCount(sbx.VCpu),
+			MemoryMB:        api.MemoryMB(sbx.RamMB),
+			DiskSizeMB:      api.DiskSizeMB(sbx.TotalDiskSizeMB),
+			EndAt:           sbx.EndTime,
 			State:           state,
-			EnvdVersion:     info.EnvdVersion,
-			EnvdAccessToken: info.EnvdAccessToken,
+			EnvdVersion:     sbx.EnvdVersion,
+			EnvdAccessToken: sbx.EnvdAccessToken,
 			Domain:          sbxDomain,
 		}
 
-		if info.Metadata != nil {
-			meta := api.SandboxMetadata(info.Metadata)
+		if sbx.Metadata != nil {
+			meta := api.SandboxMetadata(sbx.Metadata)
 			sandbox.Metadata = &meta
 		}
 

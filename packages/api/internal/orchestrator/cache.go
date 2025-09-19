@@ -19,10 +19,19 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/orchest
 // cacheSyncTime is the time to sync the cache with the actual instances in Orchestrator.
 const cacheSyncTime = 20 * time.Second
 
-func (o *Orchestrator) GetSandbox(sandboxID string, includeEvicting bool) (*instance.InstanceInfo, error) {
-	item, err := o.sandboxStore.Get(sandboxID, includeEvicting)
+func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, error) {
+	item, err := o.sandboxStore.Get(sandboxID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sandbox '%s': %w", sandboxID, err)
+	}
+
+	return item, nil
+}
+
+func (o *Orchestrator) GetSandboxData(sandboxID string, includeEvicting bool) (instance.Data, error) {
+	item, err := o.sandboxStore.GetData(sandboxID, includeEvicting)
+	if err != nil {
+		return instance.Data{}, fmt.Errorf("failed to get sandbox '%s': %w", sandboxID, err)
 	}
 
 	return item, nil

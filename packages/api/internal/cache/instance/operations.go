@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -54,17 +55,29 @@ func (c *MemoryStore) Exists(sandboxID string) bool {
 }
 
 // Get the item from the cache.
-func (c *MemoryStore) Get(sandboxID string, includeEvicting bool) (*InstanceInfo, error) {
+func (c *MemoryStore) Get(sandboxID string) (*InstanceInfo, error) {
 	item, ok := c.items.Get(sandboxID)
 	if !ok {
 		return nil, fmt.Errorf("instance \"%s\" doesn't exist", sandboxID)
 	}
 
-	if item.data.IsExpired() && !includeEvicting {
-		return nil, fmt.Errorf("instance \"%s\" is being evicted", sandboxID)
+	return item, nil
+}
+
+// GetData the item from the cache.
+func (c *MemoryStore) GetData(sandboxID string, includeEvicting bool) (Data, error) {
+	item, ok := c.items.Get(sandboxID)
+	if !ok {
+		return Data{}, fmt.Errorf("instance \"%s\" doesn't exist", sandboxID)
 	}
 
-	return item, nil
+	data := item.Data()
+
+	if data.IsExpired() && !includeEvicting {
+		return Data{}, fmt.Errorf("instance \"%s\" is being evicted", sandboxID)
+	}
+
+	return data, nil
 }
 
 func (c *MemoryStore) Remove(sandboxID string) {
@@ -128,4 +141,13 @@ func (c *MemoryStore) ItemsByState(teamID *uuid.UUID, states []State) map[State]
 
 func (c *MemoryStore) Len(teamID *uuid.UUID) int {
 	return len(c.Items(teamID))
+}
+
+func (c *MemoryStore) ExtendEndTime(sandboxID string, newEndTime time.Time, allowShorter bool) (bool, error) {
+	item, ok := c.items.Get(sandboxID)
+	if !ok {
+		return false, fmt.Errorf("sandbox \"%s\" doesn't exist", sandboxID)
+	}
+
+	return item.ExtendEndTime(newEndTime, allowShorter), nil
 }

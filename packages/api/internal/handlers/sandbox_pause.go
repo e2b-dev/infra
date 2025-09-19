@@ -21,7 +21,7 @@ import (
 
 func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.SandboxID) {
 	ctx := c.Request.Context()
-	// Get team from context, use TeamContextKey
+	// GetData team from context, use TeamContextKey
 
 	teamID := a.GetTeamInfo(c).Team.ID
 
