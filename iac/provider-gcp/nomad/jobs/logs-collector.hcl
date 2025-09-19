@@ -5,6 +5,15 @@ job "logs-collector" {
   priority = 85
 
   group "logs-collector" {
+    // Try to restart the task indefinitely
+    // Tries to restart every 5 seconds
+    restart {
+      interval         = "5s"
+      attempts         = 1
+      delay            = "5s"
+      mode             = "delay"
+    }
+
     network {
       port "health" {
         to = "${logs_health_port_number}"

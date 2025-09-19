@@ -50,7 +50,7 @@ func main() {
 		panic(err)
 	}
 
-	config := map[string]interface{}{}
+	config := map[string]any{}
 	err = json.Unmarshal(data, &config)
 	if err != nil {
 		panic(err)

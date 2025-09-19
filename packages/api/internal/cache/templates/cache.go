@@ -245,8 +245,6 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 		return item.Value(), nil
 	}
 
-	zap.L().Debug("Template build info found in cache", logger.WithBuildID(buildID.String()))
-
 	return item.Value(), nil
 }
 

@@ -1,5 +1,9 @@
+ARG GOLANG_VERSION=1.24.7
+
 # It has to match with the host OS version (Ubuntu 22.04 = bookworm)
-FROM golang:1.24-bookworm AS builder
+ARG DEBIAN_VERSION=bookworm
+
+FROM golang:${GOLANG_VERSION}-${DEBIAN_VERSION} AS builder
 
 WORKDIR /build/shared
 

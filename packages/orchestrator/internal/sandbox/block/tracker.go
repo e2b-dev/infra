@@ -1,6 +1,7 @@
 package block
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -43,7 +44,7 @@ func (t *TrackedSliceDevice) Disable() error {
 	return nil
 }
 
-func (t *TrackedSliceDevice) Slice(off int64, length int64) ([]byte, error) {
+func (t *TrackedSliceDevice) Slice(ctx context.Context, off int64, length int64) ([]byte, error) {
 	if t.nilTracking.Load() {
 		t.dirtyMu.Lock()
 		t.dirty.Clear(uint(header.BlockIdx(off, t.blockSize)))
@@ -52,7 +53,7 @@ func (t *TrackedSliceDevice) Slice(off int64, length int64) ([]byte, error) {
 		return t.empty, nil
 	}
 
-	return t.data.Slice(off, length)
+	return t.data.Slice(ctx, off, length)
 }
 
 // Return which bytes were not read since Disable.

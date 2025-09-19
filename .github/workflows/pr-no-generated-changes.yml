@@ -1,0 +1,46 @@
+name: Ensure generated files are up-to-date
+on: [workflow_call]
+permissions:
+  contents: read
+
+jobs:
+  run-check:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Parse .tool-versions
+        uses: wistia/parse-tool-versions@v2.1.1
+
+      - name: Setup Go
+        uses: ./.github/actions/go-setup-cache
+        with:
+          job_key: generated-code-check
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "${{ env.TERRAFORM }}"
+
+      - name: Run integrity check
+        run: make tidy
+
+      - name: Fix tracers
+        run: ./scripts/fix-tracers.sh
+
+      - name: Generate all code
+        run: make --jobs=4 generate
+
+      - name: Format code
+        run: make fmt
+
+      - name: Check for uncommitted changes
+        run: |
+          if [[ -n $(git status --porcelain) ]]; then
+            echo "❌ Generated files are not up to date:"
+            git status --short
+            git diff
+            exit 1
+          else
+            echo "✅ No changes detected."
+          fi

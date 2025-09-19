@@ -1,4 +1,7 @@
-FROM golang:1.24-alpine3.20 AS builder
+ARG GOLANG_VERSION=1.24.7
+ARG ALPINE_VERSION=3.22
+
+FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
 
 RUN apk add --no-cache make
 
@@ -41,7 +44,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build make build COMMIT_SHA=${COMM
 
 RUN chmod +x /build/api/bin/api
 
-FROM alpine:3.17
+FROM alpine:${ALPINE_VERSION}
 
 COPY --from=builder /build/api/bin/api .
 
