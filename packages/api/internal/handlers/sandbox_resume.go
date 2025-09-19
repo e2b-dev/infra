@@ -81,6 +81,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 			return
 		default:
+			zap.L().Error("Sandbox is in an unknown state", logger.WithSandboxID(sandboxID), zap.String("state", string(data.State)))
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "Sandbox is in an unknown state")
 			return
 		}
