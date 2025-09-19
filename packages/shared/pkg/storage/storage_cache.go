@@ -101,7 +101,7 @@ func (c *CachedFileObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (
 	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.WriteTo")
 	defer span.End()
 
-	if bytesRead, ok := c.copyFullFileFromCache(dst); ok {
+	if bytesRead, ok := c.copyFullFileFromCache(ctx, dst); ok {
 		return bytesRead, nil
 	}
 
@@ -351,7 +351,9 @@ func (c *CachedFileObjectProvider) readAtFromCache(chunkPath string, buff []byte
 	return count, err // return `err` in case it's io.EOF
 }
 
-func (c *CachedFileObjectProvider) copyFullFileFromCache(dst io.Writer) (int64, bool) {
+func (c *CachedFileObjectProvider) copyFullFileFromCache(ctx context.Context, dst io.Writer) (int64, bool) {
+	cachedRead := cacheReadTimerFactory.Begin()
+
 	path := c.fullFilename()
 
 	var fp *os.File
@@ -373,6 +375,7 @@ func (c *CachedFileObjectProvider) copyFullFileFromCache(dst io.Writer) (int64, 
 		return 0, false
 	}
 
+	cachedRead.End(ctx, count)
 	return count, true
 }
 
