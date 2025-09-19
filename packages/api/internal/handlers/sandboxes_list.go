@@ -145,12 +145,6 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 
 	sandboxesInCache := a.orchestrator.GetSandboxes(ctx, &team.ID, []instance.State{instance.StateRunning, instance.StatePaused})
 
-	// Running Sandbox IDs
-	runningSandboxesIDs := make([]string, 0)
-	for _, info := range sandboxesInCache[instance.StateRunning] {
-		runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
-	}
-
 	if slices.Contains(states, api.Running) {
 		runningSandboxList := instanceInfoToPaginatedSandboxes(sandboxesInCache[instance.StateRunning])
 
@@ -167,6 +161,11 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	}
 
 	if slices.Contains(states, api.Paused) {
+		// Running Sandbox IDs
+		runningSandboxesIDs := make([]string, 0)
+		for _, info := range sandboxesInCache[instance.StateRunning] {
+			runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
+		}
 		pausing := sandboxesInCache[instance.StatePaused]
 		for _, info := range pausing {
 			runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
