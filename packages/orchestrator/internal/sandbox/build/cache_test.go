@@ -330,12 +330,12 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Create multiple goroutines that add and remove items rapidly
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(goroutineID int) {
 			defer wg.Done()
 
-			for j := 0; j < numIterations; j++ {
+			for j := range numIterations {
 				// Create diffs with same buildID but different iterations
 				// This increases chances of race conditions
 				buildID := fmt.Sprintf("build-%d", goroutineID%10) // Limit to 10 different build IDs
@@ -368,7 +368,7 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < numIterations*2; i++ {
+		for range numIterations * 2 {
 			store.deleteOldestFromCache()
 			time.Sleep(time.Microsecond * 50)
 		}
@@ -415,7 +415,7 @@ func TestDiffStoreResetDeleteRace(t *testing.T) {
 	// 2. Schedule it for deletion (creates entry in pdSizes)
 	// 3. Multiple goroutines try to reset the deletion simultaneously
 
-	for i := 0; i < numConcurrentOps; i++ {
+	for i := range numConcurrentOps {
 		wg.Add(1)
 		go func(iteration int) {
 			defer wg.Done()

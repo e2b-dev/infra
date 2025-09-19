@@ -129,7 +129,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool
 		counter := 0
 
 		for {
-			counter += 1
+			counter++
 			err = devicePool.ReleaseDevice(deviceIndex)
 			if err != nil {
 				if counter%10 == 0 {

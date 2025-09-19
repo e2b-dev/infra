@@ -89,7 +89,7 @@ type BenchmarkMetrics struct {
 // createSimulatedNodes creates nodes with realistic resource tracking
 func createSimulatedNodes(config BenchmarkConfig) []*SimulatedNode {
 	nodes := make([]*SimulatedNode, config.NumNodes)
-	for i := 0; i < config.NumNodes; i++ {
+	for i := range config.NumNodes {
 		// Create base node
 		baseNode := nodemanager.NewTestNode(
 			fmt.Sprintf("node-%d", i),
@@ -235,7 +235,7 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig) *Be
 			case <-ticker.C:
 				now := time.Now()
 				// Check and remove expired sandboxes
-				activeSandboxes.Range(func(key, value interface{}) bool {
+				activeSandboxes.Range(func(key, value any) bool {
 					sandbox := value.(*LiveSandbox)
 					if now.Sub(sandbox.StartTime) > sandbox.PlannedDuration {
 						// Remove from node
