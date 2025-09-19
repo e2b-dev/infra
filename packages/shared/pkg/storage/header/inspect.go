@@ -52,7 +52,7 @@ func Visualize(mappings []*BuildMap, size, blockSize, cols uint64, bottomGroup, 
 	}
 
 	for _, mapping := range mappings {
-		for block := range uint64(mapping.Length / blockSize) {
+		for block := range mapping.Length / blockSize {
 			if bottomGroup != nil {
 				if _, ok := (*bottomGroup)[mapping.BuildId]; ok {
 					output[mapping.Offset/blockSize+block] = DirtyBlockChar1
