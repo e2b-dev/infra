@@ -34,5 +34,13 @@ jobs:
       - name: Format code
         run: make fmt
 
-      - name: Fail if changes were made
-        run: git diff --exit-code
+      - name: Check for uncommitted changes
+        run: |
+          if [[ -n $(git status --porcelain) ]]; then
+            echo "❌ Generated files are not up to date:"
+            git status --short
+            git diff
+            exit 1
+          else
+            echo "✅ No changes detected."
+          fi
