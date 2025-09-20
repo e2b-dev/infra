@@ -12,6 +12,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/types/known/emptypb"
+
+	"github.com/e2b-dev/infra/packages/api/internal/testhacks"
 )
 
 var host = strings.TrimSpace(os.Getenv("ANALYTICS_COLLECTOR_HOST"))
@@ -40,12 +42,20 @@ func NewAnalytics() (*Analytics, error) {
 			MinVersion: tls.VersionTLS13,
 		})
 
-		conn, err := grpc.NewClient(
-			fmt.Sprintf("%s:443", host),
+		grpcOptions := []grpc.DialOption{
 			grpc.WithPerRPCCredentials(&gRPCApiKey{}),
 			grpc.WithAuthority(host),
 			grpc.WithTransportCredentials(cred),
-		)
+		}
+
+		if testhacks.IsTesting() {
+			grpcOptions = append(grpcOptions,
+				grpc.WithUnaryInterceptor(testhacks.GRPCUnaryInterceptor),
+				grpc.WithStreamInterceptor(testhacks.GRPCStreamInterceptor),
+			)
+		}
+
+		conn, err := grpc.NewClient(fmt.Sprintf("%s:443", host), grpcOptions...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create GRPC client: %w", err)
 		}

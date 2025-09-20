@@ -25,12 +25,12 @@ func getTestName(ctx context.Context) string {
 func UnaryTestNamePrinter(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
 	testName := getTestName(ctx)
 	if testName != "" {
-		fmt.Printf("====================== START operator request for %s ========================", testName)
+		fmt.Printf("====================== START orchestrator unary for %s ========================", testName)
 	}
 
 	resp, err = handler(ctx, req)
 	if testName != "" {
-		fmt.Printf("====================== FINISH api call for %s ========================", testName)
+		fmt.Printf("====================== FINISH orchestrator unary for %s ========================", testName)
 	}
 
 	return resp, err
@@ -39,13 +39,13 @@ func UnaryTestNamePrinter(ctx context.Context, req any, info *grpc.UnaryServerIn
 func StreamingTestNamePrinter(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 	testName := getTestName(ss.Context())
 	if testName != "" {
-		fmt.Printf("====================== START operator request for %s ========================", testName)
+		fmt.Printf("====================== START orchestrator streaming for %s ========================", testName)
 	}
 
 	err := handler(srv, ss)
 
 	if testName != "" {
-		fmt.Printf("====================== FINISH api call for %s ========================", testName)
+		fmt.Printf("====================== FINISH orchestrator streaming for %s ========================", testName)
 	}
 
 	return err

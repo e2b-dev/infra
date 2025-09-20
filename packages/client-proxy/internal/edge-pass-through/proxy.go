@@ -15,6 +15,7 @@ import (
 	e2binfo "github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
+	"github.com/e2b-dev/infra/packages/proxy/internal/testhacks"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 )
@@ -48,10 +49,19 @@ func NewNodePassThroughServer(
 		info:          info,
 	}
 
-	return grpc.NewServer(
+	serverOpts := []grpc.ServerOption{
 		grpc.UnknownServiceHandler(nodePassThrough.handler),
 		grpc.MaxRecvMsgSize(grpcMaxMsgSize),
-	)
+	}
+
+	if testhacks.IsTesting() {
+		serverOpts = append(serverOpts,
+			grpc.ChainUnaryInterceptor(testhacks.UnaryTestNamePrinter),
+			grpc.ChainStreamInterceptor(testhacks.StreamingTestNamePrinter),
+		)
+	}
+
+	return grpc.NewServer(serverOpts...)
 }
 
 func (s *NodePassThroughServer) director(ctx context.Context) (*grpc.ClientConn, metadata.MD, error) {

@@ -17,6 +17,6 @@ func PrintTestName(c *gin.Context) {
 	c.Next()
 
 	if testName != "" {
-		fmt.Printf("====================== FINISH api call for %s ========================", testName)
+		fmt.Printf("====================== FINISH api request for %s ========================", testName)
 	}
 }
