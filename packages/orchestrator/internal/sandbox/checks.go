@@ -16,7 +16,7 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 
 const (
 	healthCheckInterval = 20 * time.Second
-	healthCheckTimeout  = 100 * time.Millisecond
+	healthCheckTimeout  = 250 * time.Millisecond
 )
 
 type Checks struct {
@@ -77,11 +77,7 @@ func (c *Checks) logHealth(ctx context.Context) {
 }
 
 func (c *Checks) Healthcheck(ctx context.Context, alwaysReport bool) {
-	ok, err := c.GetHealth(ctx, healthCheckTimeout)
-	// Sandbox stopped
-	if errors.Is(err, ErrChecksStopped) {
-		return
-	}
+	ok, err := c.getHealth(ctx, healthCheckTimeout)
 
 	if !ok && c.healthy.CompareAndSwap(true, false) {
 		sbxlogger.E(c.sandbox).Healthcheck(sbxlogger.Fail)
