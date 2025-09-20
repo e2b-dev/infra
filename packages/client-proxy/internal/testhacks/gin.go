@@ -15,9 +15,9 @@ func ProcessGinRequest(c *gin.Context) {
 
 	ctx := addTestName(c.Request.Context(), testName)
 	c.Request = c.Request.WithContext(ctx)
-	fmt.Printf("====================== START client-proxy request for %s ========================", testName)
+	fmt.Printf("====================== START client-proxy request for %s ========================\n", testName)
 
 	c.Next()
 
-	fmt.Printf("====================== FINISH client-proxy call for %s ========================", testName)
+	fmt.Printf("====================== FINISH client-proxy call for %s ========================\n", testName)
 }

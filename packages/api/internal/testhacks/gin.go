@@ -11,12 +11,12 @@ func PrintTestName(c *gin.Context) {
 	if testName != "" {
 		ctx := addTestName(c.Request.Context(), testName)
 		c.Request = c.Request.WithContext(ctx)
-		fmt.Printf("====================== START api request for %s ========================", testName)
+		fmt.Printf("====================== START api request for %s ========================\n", testName)
 	}
 
 	c.Next()
 
 	if testName != "" {
-		fmt.Printf("====================== FINISH api request for %s ========================", testName)
+		fmt.Printf("====================== FINISH api request for %s ========================\n", testName)
 	}
 }

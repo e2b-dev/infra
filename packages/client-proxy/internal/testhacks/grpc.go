@@ -41,12 +41,12 @@ func getTestName(ctx context.Context) string {
 func UnaryTestNamePrinter(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
 	testName := getTestName(ctx)
 	if testName != "" {
-		fmt.Printf("====================== START client-proxy unary for %s ========================", testName)
+		fmt.Printf("====================== START client-proxy unary for %s ========================\n", testName)
 	}
 
 	resp, err = handler(ctx, req)
 	if testName != "" {
-		fmt.Printf("====================== FINISH client-proxy unary for %s ========================", testName)
+		fmt.Printf("====================== FINISH client-proxy unary for %s ========================\n", testName)
 	}
 
 	return resp, err
@@ -55,13 +55,13 @@ func UnaryTestNamePrinter(ctx context.Context, req any, info *grpc.UnaryServerIn
 func StreamingTestNamePrinter(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 	testName := getTestName(ss.Context())
 	if testName != "" {
-		fmt.Printf("====================== START client-proxy streaming for %s ========================", testName)
+		fmt.Printf("====================== START client-proxy streaming for %s ========================\n", testName)
 	}
 
 	err := handler(srv, ss)
 
 	if testName != "" {
-		fmt.Printf("====================== FINISH client-proxy streaming for %s ========================", testName)
+		fmt.Printf("====================== FINISH client-proxy streaming for %s ========================\n", testName)
 	}
 
 	return err
