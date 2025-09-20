@@ -15,19 +15,16 @@ import (
 )
 
 func createTestInstance() *InstanceInfo {
-	return &InstanceInfo{
-		_data: Data{
-			SandboxID:         "test-sandbox",
-			TemplateID:        "test-template",
-			ClientID:          "test-client",
-			TeamID:            uuid.New(),
-			StartTime:         time.Now(),
-			EndTime:           time.Now().Add(time.Hour),
-			MaxInstanceLength: time.Hour,
-			State:             StateRunning,
-		},
-		mu: sync.RWMutex{},
-	}
+	return NewInstanceInfo(Data{
+		SandboxID:         "test-sandbox",
+		TemplateID:        "test-template",
+		ClientID:          "test-client",
+		TeamID:            uuid.New(),
+		StartTime:         time.Now(),
+		EndTime:           time.Now().Add(time.Hour),
+		MaxInstanceLength: time.Hour,
+		State:             StateRunning,
+	})
 }
 
 // Test basic state transitions
