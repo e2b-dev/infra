@@ -66,7 +66,7 @@ func (c *MemoryStore) Exists(sandboxID string) bool {
 func (c *MemoryStore) Get(sandboxID string) (*InstanceInfo, error) {
 	item, ok := c.items.Get(sandboxID)
 	if !ok {
-		return nil, fmt.Errorf("instance \"%s\" doesn't exist", sandboxID)
+		return nil, fmt.Errorf("sandbox \"%s\" doesn't exist", sandboxID)
 	}
 
 	return item, nil
@@ -76,13 +76,13 @@ func (c *MemoryStore) Get(sandboxID string) (*InstanceInfo, error) {
 func (c *MemoryStore) GetData(sandboxID string, includeEvicting bool) (Data, error) {
 	item, ok := c.items.Get(sandboxID)
 	if !ok {
-		return Data{}, fmt.Errorf("instance \"%s\" doesn't exist", sandboxID)
+		return Data{}, fmt.Errorf("sandbox \"%s\" doesn't exist", sandboxID)
 	}
 
 	data := item.Data()
 
 	if data.IsExpired() && !includeEvicting {
-		return Data{}, fmt.Errorf("instance \"%s\" is being evicted", sandboxID)
+		return Data{}, fmt.Errorf("sandbox \"%s\" is being evicted", sandboxID)
 	}
 
 	return data, nil
