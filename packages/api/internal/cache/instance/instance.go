@@ -228,12 +228,11 @@ func (i *InstanceInfo) startRemoving(ctx context.Context, stateAction StateActio
 		if err != nil {
 			// Keep the transition in place so the error stays
 			zap.L().Error("Failed to set transition result", logger.WithSandboxID(i.SandboxID()), zap.Error(setErr))
+			return
 		}
 
-		if err == nil {
-			// Transition is complete and next transition can be started
-			i.transition = nil
-		}
+		// The transition is completed and the next transition can be started
+		i.transition = nil
 	}
 
 	return false, callback, nil
