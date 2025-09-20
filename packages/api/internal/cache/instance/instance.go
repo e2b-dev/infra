@@ -123,6 +123,12 @@ type InstanceInfo struct {
 	mu         sync.RWMutex
 }
 
+func NewInstanceInfo(data Data) *InstanceInfo {
+	return &InstanceInfo{
+		_data: data,
+	}
+}
+
 func (i Data) LoggerMetadata() sbxlogger.SandboxMetadata {
 	return sbxlogger.SandboxMetadata{
 		SandboxID:  i.SandboxID,

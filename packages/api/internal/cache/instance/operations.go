@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -35,12 +34,7 @@ func (c *MemoryStore) Add(ctx context.Context, sandbox Data, newlyCreated bool) 
 		sandbox.EndTime = sandbox.StartTime.Add(sandbox.MaxInstanceLength)
 	}
 
-	added := c.items.SetIfAbsent(sandbox.SandboxID, &InstanceInfo{
-		_data:      sandbox,
-		transition: nil,
-		mu:         sync.RWMutex{},
-	})
-
+	added := c.items.SetIfAbsent(sandbox.SandboxID, NewInstanceInfo(sandbox))
 	if !added {
 		zap.L().Warn("Sandbox already exists in cache", logger.WithSandboxID(sandbox.SandboxID))
 		return
