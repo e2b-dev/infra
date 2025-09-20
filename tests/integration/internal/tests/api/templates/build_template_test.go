@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
-	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
 
 const (
@@ -804,6 +804,63 @@ func TestTemplateBuildStartReadyCommandExecution(t *testing.T) {
 			// Verify order: start command -> waiting for ready -> template ready
 			assert.Greater(t, waitingForReadyIdx, runningStartIdx, "Ready command should run after start command")
 			assert.Greater(t, templateReadyIdx, waitingForReadyIdx, "Template ready should come after waiting for ready")
+		})
+	}
+}
+
+func TestTemplateBuildWithDifferentSourceImages(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name         string
+		templateName string
+		buildConfig  api.TemplateBuildStartV2
+		expectedLogs []string
+	}{
+		{
+			name:         "Test with Ubuntu 24.04 base image",
+			templateName: "test-ubuntu-24-04-source",
+			buildConfig: api.TemplateBuildStartV2{
+				Force:     utils.ToPtr(ForceBaseBuild),
+				FromImage: utils.ToPtr("ubuntu:24.04"),
+				Steps:     utils.ToPtr([]api.TemplateStep{}),
+				StartCmd:  utils.ToPtr("echo 'Initialization complete'"),
+				ReadyCmd:  utils.ToPtr("echo 'Checking readiness...'; sleep 1; echo 'Ready check complete'"),
+			},
+			expectedLogs: []string{
+				"Running start command",
+				"[start] [stdout]: Initialization complete",
+				"Waiting for template to be ready",
+				"Template is ready",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Collect all log messages
+			var logMessages []string
+			logHandler := func(alias string, entry api.BuildLogEntry) {
+				logMessages = append(logMessages, entry.Message)
+				defaultBuildLogHandler(t)(alias, entry)
+			}
+
+			// Build the template
+			assert.True(t, buildTemplate(t, tc.templateName, tc.buildConfig, logHandler))
+
+			// Verify expected log messages appear
+			for _, expectedLog := range tc.expectedLogs {
+				found := false
+				for _, msg := range logMessages {
+					if strings.Contains(msg, expectedLog) {
+						found = true
+						break
+					}
+				}
+				assert.True(t, found, "Expected log message not found: %s", expectedLog)
+			}
 		})
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -20,7 +19,6 @@ var _ Command = (*Run)(nil)
 
 func (r *Run) Execute(
 	ctx context.Context,
-	tracer trace.Tracer,
 	logger *zap.Logger,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
@@ -44,7 +42,6 @@ func (r *Run) Execute(
 	cmd := args[0]
 	err := sandboxtools.RunCommandWithLogger(
 		ctx,
-		tracer,
 		proxy,
 		logger,
 		zapcore.InfoLevel,
@@ -54,7 +51,7 @@ func (r *Run) Execute(
 		cmdMetadata,
 	)
 	if err != nil {
-		return metadata.Context{}, fmt.Errorf("failed to run command: %w", err)
+		return metadata.Context{}, fmt.Errorf("failed to run command '%s': %w", cmd, err)
 	}
 
 	return originalMetadata, nil

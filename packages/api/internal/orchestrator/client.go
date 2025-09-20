@@ -18,7 +18,7 @@ import (
 const nodeHealthCheckTimeout = time.Second * 2
 
 func (o *Orchestrator) connectToNode(ctx context.Context, discovered nodemanager.NomadServiceDiscovery) error {
-	ctx, childSpan := o.tracer.Start(ctx, "connect-to-node")
+	ctx, childSpan := tracer.Start(ctx, "connect-to-node")
 	defer childSpan.End()
 
 	orchestratorNode, err := nodemanager.New(ctx, o.tel.TracerProvider, o.tel.MeterProvider, discovered)
@@ -74,7 +74,7 @@ func (o *Orchestrator) GetClient(ctx context.Context, clusterID uuid.UUID, nodeI
 }
 
 func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]nodemanager.NomadServiceDiscovery, error) {
-	_, listSpan := o.tracer.Start(ctx, "list-nomad-nodes")
+	_, listSpan := tracer.Start(ctx, "list-nomad-nodes")
 	defer listSpan.End()
 
 	options := &nomadapi.QueryOptions{
@@ -113,6 +113,18 @@ func (o *Orchestrator) GetClusterNodes(clusterID uuid.UUID) []*nodemanager.Node 
 	}
 
 	return clusterNodes
+}
+
+// Deprecated: use GetNode instead
+func (o *Orchestrator) GetNodeByIDOrNomadShortID(clusterID uuid.UUID, nodeIDOrNomadNodeShortID string) *nodemanager.Node {
+	// First try to get by nomad short ID
+	n := o.GetNodeByNomadShortID(nodeIDOrNomadNodeShortID)
+	if n != nil {
+		return n
+	}
+
+	// Fallback to use id
+	return o.GetNode(clusterID, nodeIDOrNomadNodeShortID)
 }
 
 // Deprecated: use GetNode instead

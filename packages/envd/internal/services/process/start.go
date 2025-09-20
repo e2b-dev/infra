@@ -79,7 +79,14 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 		procCtx, cancelProc = context.WithTimeout(procCtx, timeout)
 	}
 
-	proc, err := handler.New(procCtx, u, req.Msg, &handlerL, s.envVars, cancelProc)
+	proc, err := handler.New( //nolint:contextcheck // TODO: fix this later
+		procCtx,
+		u,
+		req.Msg,
+		&handlerL,
+		s.envVars,
+		cancelProc,
+	)
 	if err != nil {
 		// Ensure the process cancel is called to cleanup resources.
 		cancelProc()

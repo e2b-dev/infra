@@ -6,11 +6,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox")
 
 const (
 	healthCheckInterval = 20 * time.Second
@@ -20,7 +22,6 @@ const (
 type Checks struct {
 	sandbox *Sandbox
 
-	ctx       context.Context // nolint:containedctx // todo: refactor so this can be removed
 	cancelCtx context.CancelCauseFunc
 
 	healthy atomic.Bool
@@ -30,53 +31,53 @@ type Checks struct {
 
 var ErrChecksStopped = errors.New("checks stopped")
 
-func NewChecks(ctx context.Context, tracer trace.Tracer, sandbox *Sandbox, useClickhouseMetrics bool) (*Checks, error) {
-	_, childSpan := tracer.Start(ctx, "checks-create")
-	defer childSpan.End()
-
+func NewChecks(sandbox *Sandbox, useClickhouseMetrics bool) *Checks {
 	// Create background context, passed ctx is from create/resume request and will be canceled after the request is processed.
-	ctx, cancel := context.WithCancelCause(context.Background())
 	h := &Checks{
 		sandbox:              sandbox,
-		ctx:                  ctx,
-		cancelCtx:            cancel,
 		healthy:              atomic.Bool{}, // defaults to `false`
 		UseClickhouseMetrics: useClickhouseMetrics,
 	}
+
 	// By default, the sandbox should be healthy, if the status change we report it.
 	h.healthy.Store(true)
-	return h, nil
+
+	return h
 }
 
-func (c *Checks) Start() {
-	c.logHealth()
+func (c *Checks) Start(ctx context.Context) {
+	ctx, c.cancelCtx = context.WithCancelCause(ctx)
+
+	c.logHealth(ctx)
 }
 
 func (c *Checks) Stop() {
-	c.cancelCtx(ErrChecksStopped)
+	if c.cancelCtx != nil {
+		c.cancelCtx(ErrChecksStopped)
+	}
 }
 
-func (c *Checks) logHealth() {
+func (c *Checks) logHealth(ctx context.Context) {
 	healthTicker := time.NewTicker(healthCheckInterval)
 	defer func() {
 		healthTicker.Stop()
 	}()
 
 	// Get metrics and health status on sandbox startup
-	go c.Healthcheck(false)
+	go c.Healthcheck(ctx, false)
 
 	for {
 		select {
 		case <-healthTicker.C:
-			c.Healthcheck(false)
-		case <-c.ctx.Done():
+			c.Healthcheck(ctx, false)
+		case <-ctx.Done():
 			return
 		}
 	}
 }
 
-func (c *Checks) Healthcheck(alwaysReport bool) {
-	ok, err := c.GetHealth(healthCheckTimeout)
+func (c *Checks) Healthcheck(ctx context.Context, alwaysReport bool) {
+	ok, err := c.GetHealth(ctx, healthCheckTimeout)
 	// Sandbox stopped
 	if errors.Is(err, ErrChecksStopped) {
 		return

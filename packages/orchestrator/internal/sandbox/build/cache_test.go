@@ -15,7 +15,6 @@ package build
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -25,8 +24,6 @@ import (
 )
 
 const (
-	tmpBuildCachePrefix = "test-build-cache_"
-
 	blockSize = int64(1024)
 )
 
@@ -70,25 +67,9 @@ func newDiffWithAsserts(t *testing.T, cachePath, buildId string, diffType DiffTy
 	return diff, nil
 }
 
-func createTempDir(t *testing.T) string {
-	t.Helper()
-
-	tempDir, err := os.MkdirTemp("", tmpBuildCachePrefix)
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	t.Cleanup(func() {
-		err = os.RemoveAll(tempDir)
-		assert.NoError(t, err)
-	})
-
-	t.Logf("Temp dir: %s\n", tempDir)
-	return tempDir
-}
-
 func TestNewDiffStore(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
 	store, err := NewDiffStore(
@@ -105,8 +86,8 @@ func TestNewDiffStore(t *testing.T) {
 }
 
 func TestDiffStoreTTLEviction(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
 	ttl := 1 * time.Second
@@ -135,8 +116,8 @@ func TestDiffStoreTTLEviction(t *testing.T) {
 }
 
 func TestDiffStoreRefreshTTLEviction(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
 	ttl := 1 * time.Second
@@ -171,8 +152,8 @@ func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 }
 
 func TestDiffStoreDelayEviction(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
 	ttl := 60 * time.Second
@@ -212,8 +193,8 @@ func TestDiffStoreDelayEviction(t *testing.T) {
 }
 
 func TestDiffStoreDelayEvictionAbort(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
 	ttl := 60 * time.Second
@@ -260,8 +241,8 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 }
 
 func TestDiffStoreOldestFromCache(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
 	ttl := 60 * time.Second
@@ -325,8 +306,8 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 // cancel channel in resetDelete method. This test should be run with the race
 // detector enabled: go test -race
 func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
 	// Use very short TTL and delay to trigger rapid evictions
@@ -349,12 +330,12 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Create multiple goroutines that add and remove items rapidly
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(goroutineID int) {
 			defer wg.Done()
 
-			for j := 0; j < numIterations; j++ {
+			for j := range numIterations {
 				// Create diffs with same buildID but different iterations
 				// This increases chances of race conditions
 				buildID := fmt.Sprintf("build-%d", goroutineID%10) // Limit to 10 different build IDs
@@ -387,7 +368,7 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < numIterations*2; i++ {
+		for range numIterations * 2 {
 			store.deleteOldestFromCache()
 			time.Sleep(time.Microsecond * 50)
 		}
@@ -406,8 +387,8 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 // TestDiffStoreResetDeleteRace specifically targets the resetDelete method
 // race condition by simulating the exact scenario from the race report
 func TestDiffStoreResetDeleteRace(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
 	// Very short TTL to trigger evictions quickly
@@ -434,7 +415,7 @@ func TestDiffStoreResetDeleteRace(t *testing.T) {
 	// 2. Schedule it for deletion (creates entry in pdSizes)
 	// 3. Multiple goroutines try to reset the deletion simultaneously
 
-	for i := 0; i < numConcurrentOps; i++ {
+	for i := range numConcurrentOps {
 		wg.Add(1)
 		go func(iteration int) {
 			defer wg.Done()

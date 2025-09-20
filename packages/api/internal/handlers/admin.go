@@ -6,12 +6,10 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -21,18 +19,7 @@ func (a *APIStore) GetNodes(c *gin.Context) {
 }
 
 func (a *APIStore) GetNodesNodeID(c *gin.Context, nodeID api.NodeID, params api.GetNodesNodeIDParams) {
-	clusterID := consts.LocalClusterID
-	if params.ClusterID != nil {
-		clusterUUID, err := uuid.Parse(*params.ClusterID)
-		if err != nil {
-			telemetry.ReportCriticalError(c.Request.Context(), "invalid cluster_id", err)
-			a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid cluster_id")
-
-			return
-		}
-		clusterID = clusterUUID
-	}
-
+	clusterID := utils.WithClusterFallback(params.ClusterID)
 	result, err := a.orchestrator.AdminNodeDetail(clusterID, nodeID)
 	if err != nil {
 		if errors.Is(err, orchestrator.ErrNodeNotFound) {
@@ -60,7 +47,8 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 		return
 	}
 
-	node := a.orchestrator.GetNodeByNomadShortID(nodeId)
+	clusterID := utils.WithClusterFallback(body.ClusterID)
+	node := a.orchestrator.GetNodeByIDOrNomadShortID(clusterID, nodeId)
 	if node == nil {
 		c.Status(http.StatusNotFound)
 		return

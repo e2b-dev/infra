@@ -55,7 +55,6 @@ type AccessTokenMutation struct {
 	op                       Op
 	typ                      string
 	id                       *uuid.UUID
-	access_token             *string
 	access_token_hash        *string
 	access_token_prefix      *string
 	access_token_length      *int
@@ -174,42 +173,6 @@ func (m *AccessTokenMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
 	default:
 		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
 	}
-}
-
-// SetAccessToken sets the "access_token" field.
-func (m *AccessTokenMutation) SetAccessToken(s string) {
-	m.access_token = &s
-}
-
-// AccessToken returns the value of the "access_token" field in the mutation.
-func (m *AccessTokenMutation) AccessToken() (r string, exists bool) {
-	v := m.access_token
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAccessToken returns the old "access_token" field's value of the AccessToken entity.
-// If the AccessToken object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AccessTokenMutation) OldAccessToken(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAccessToken is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAccessToken requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAccessToken: %w", err)
-	}
-	return oldValue.AccessToken, nil
-}
-
-// ResetAccessToken resets all changes to the "access_token" field.
-func (m *AccessTokenMutation) ResetAccessToken() {
-	m.access_token = nil
 }
 
 // SetAccessTokenHash sets the "access_token_hash" field.
@@ -594,10 +557,7 @@ func (m *AccessTokenMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccessTokenMutation) Fields() []string {
-	fields := make([]string, 0, 9)
-	if m.access_token != nil {
-		fields = append(fields, accesstoken.FieldAccessToken)
-	}
+	fields := make([]string, 0, 8)
 	if m.access_token_hash != nil {
 		fields = append(fields, accesstoken.FieldAccessTokenHash)
 	}
@@ -630,8 +590,6 @@ func (m *AccessTokenMutation) Fields() []string {
 // schema.
 func (m *AccessTokenMutation) Field(name string) (ent.Value, bool) {
 	switch name {
-	case accesstoken.FieldAccessToken:
-		return m.AccessToken()
 	case accesstoken.FieldAccessTokenHash:
 		return m.AccessTokenHash()
 	case accesstoken.FieldAccessTokenPrefix:
@@ -657,8 +615,6 @@ func (m *AccessTokenMutation) Field(name string) (ent.Value, bool) {
 // database failed.
 func (m *AccessTokenMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
 	switch name {
-	case accesstoken.FieldAccessToken:
-		return m.OldAccessToken(ctx)
 	case accesstoken.FieldAccessTokenHash:
 		return m.OldAccessTokenHash(ctx)
 	case accesstoken.FieldAccessTokenPrefix:
@@ -684,13 +640,6 @@ func (m *AccessTokenMutation) OldField(ctx context.Context, name string) (ent.Va
 // type.
 func (m *AccessTokenMutation) SetField(name string, value ent.Value) error {
 	switch name {
-	case accesstoken.FieldAccessToken:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAccessToken(v)
-		return nil
 	case accesstoken.FieldAccessTokenHash:
 		v, ok := value.(string)
 		if !ok {
@@ -820,9 +769,6 @@ func (m *AccessTokenMutation) ClearField(name string) error {
 // It returns an error if the field is not defined in the schema.
 func (m *AccessTokenMutation) ResetField(name string) error {
 	switch name {
-	case accesstoken.FieldAccessToken:
-		m.ResetAccessToken()
-		return nil
 	case accesstoken.FieldAccessTokenHash:
 		m.ResetAccessTokenHash()
 		return nil
@@ -3141,7 +3087,7 @@ type EnvBuildMutation struct {
 	firecracker_version   *string
 	envd_version          *string
 	cluster_node_id       *string
-	reason                **schema.BuildReason
+	reason                *schema.BuildReason
 	clearedFields         map[string]struct{}
 	env                   *string
 	clearedenv            bool
@@ -3392,7 +3338,7 @@ func (m *EnvBuildMutation) EnvID() (r string, exists bool) {
 // OldEnvID returns the old "env_id" field's value of the EnvBuild entity.
 // If the EnvBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *EnvBuildMutation) OldEnvID(ctx context.Context) (v *string, err error) {
+func (m *EnvBuildMutation) OldEnvID(ctx context.Context) (v string, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldEnvID is only allowed on UpdateOne operations")
 	}
@@ -3406,22 +3352,9 @@ func (m *EnvBuildMutation) OldEnvID(ctx context.Context) (v *string, err error) 
 	return oldValue.EnvID, nil
 }
 
-// ClearEnvID clears the value of the "env_id" field.
-func (m *EnvBuildMutation) ClearEnvID() {
-	m.env = nil
-	m.clearedFields[envbuild.FieldEnvID] = struct{}{}
-}
-
-// EnvIDCleared returns if the "env_id" field was cleared in this mutation.
-func (m *EnvBuildMutation) EnvIDCleared() bool {
-	_, ok := m.clearedFields[envbuild.FieldEnvID]
-	return ok
-}
-
 // ResetEnvID resets all changes to the "env_id" field.
 func (m *EnvBuildMutation) ResetEnvID() {
 	m.env = nil
-	delete(m.clearedFields, envbuild.FieldEnvID)
 }
 
 // SetStatus sets the "status" field.
@@ -4003,12 +3936,12 @@ func (m *EnvBuildMutation) ResetClusterNodeID() {
 }
 
 // SetReason sets the "reason" field.
-func (m *EnvBuildMutation) SetReason(sr *schema.BuildReason) {
+func (m *EnvBuildMutation) SetReason(sr schema.BuildReason) {
 	m.reason = &sr
 }
 
 // Reason returns the value of the "reason" field in the mutation.
-func (m *EnvBuildMutation) Reason() (r *schema.BuildReason, exists bool) {
+func (m *EnvBuildMutation) Reason() (r schema.BuildReason, exists bool) {
 	v := m.reason
 	if v == nil {
 		return
@@ -4019,7 +3952,7 @@ func (m *EnvBuildMutation) Reason() (r *schema.BuildReason, exists bool) {
 // OldReason returns the old "reason" field's value of the EnvBuild entity.
 // If the EnvBuild object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *EnvBuildMutation) OldReason(ctx context.Context) (v *schema.BuildReason, err error) {
+func (m *EnvBuildMutation) OldReason(ctx context.Context) (v schema.BuildReason, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldReason is only allowed on UpdateOne operations")
 	}
@@ -4033,22 +3966,9 @@ func (m *EnvBuildMutation) OldReason(ctx context.Context) (v *schema.BuildReason
 	return oldValue.Reason, nil
 }
 
-// ClearReason clears the value of the "reason" field.
-func (m *EnvBuildMutation) ClearReason() {
-	m.reason = nil
-	m.clearedFields[envbuild.FieldReason] = struct{}{}
-}
-
-// ReasonCleared returns if the "reason" field was cleared in this mutation.
-func (m *EnvBuildMutation) ReasonCleared() bool {
-	_, ok := m.clearedFields[envbuild.FieldReason]
-	return ok
-}
-
 // ResetReason resets all changes to the "reason" field.
 func (m *EnvBuildMutation) ResetReason() {
 	m.reason = nil
-	delete(m.clearedFields, envbuild.FieldReason)
 }
 
 // ClearEnv clears the "env" edge to the Env entity.
@@ -4059,7 +3979,7 @@ func (m *EnvBuildMutation) ClearEnv() {
 
 // EnvCleared reports if the "env" edge to the Env entity was cleared.
 func (m *EnvBuildMutation) EnvCleared() bool {
-	return m.EnvIDCleared() || m.clearedenv
+	return m.clearedenv
 }
 
 // EnvIDs returns the "env" edge IDs in the mutation.
@@ -4371,7 +4291,7 @@ func (m *EnvBuildMutation) SetField(name string, value ent.Value) error {
 		m.SetClusterNodeID(v)
 		return nil
 	case envbuild.FieldReason:
-		v, ok := value.(*schema.BuildReason)
+		v, ok := value.(schema.BuildReason)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
@@ -4461,9 +4381,6 @@ func (m *EnvBuildMutation) ClearedFields() []string {
 	if m.FieldCleared(envbuild.FieldFinishedAt) {
 		fields = append(fields, envbuild.FieldFinishedAt)
 	}
-	if m.FieldCleared(envbuild.FieldEnvID) {
-		fields = append(fields, envbuild.FieldEnvID)
-	}
 	if m.FieldCleared(envbuild.FieldDockerfile) {
 		fields = append(fields, envbuild.FieldDockerfile)
 	}
@@ -4478,9 +4395,6 @@ func (m *EnvBuildMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(envbuild.FieldEnvdVersion) {
 		fields = append(fields, envbuild.FieldEnvdVersion)
-	}
-	if m.FieldCleared(envbuild.FieldReason) {
-		fields = append(fields, envbuild.FieldReason)
 	}
 	return fields
 }
@@ -4499,9 +4413,6 @@ func (m *EnvBuildMutation) ClearField(name string) error {
 	case envbuild.FieldFinishedAt:
 		m.ClearFinishedAt()
 		return nil
-	case envbuild.FieldEnvID:
-		m.ClearEnvID()
-		return nil
 	case envbuild.FieldDockerfile:
 		m.ClearDockerfile()
 		return nil
@@ -4516,9 +4427,6 @@ func (m *EnvBuildMutation) ClearField(name string) error {
 		return nil
 	case envbuild.FieldEnvdVersion:
 		m.ClearEnvdVersion()
-		return nil
-	case envbuild.FieldReason:
-		m.ClearReason()
 		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild nullable field %s", name)
@@ -6747,7 +6655,6 @@ type TeamAPIKeyMutation struct {
 	op                  Op
 	typ                 string
 	id                  *uuid.UUID
-	api_key             *string
 	api_key_hash        *string
 	api_key_prefix      *string
 	api_key_length      *int
@@ -6870,42 +6777,6 @@ func (m *TeamAPIKeyMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
 	default:
 		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
 	}
-}
-
-// SetAPIKey sets the "api_key" field.
-func (m *TeamAPIKeyMutation) SetAPIKey(s string) {
-	m.api_key = &s
-}
-
-// APIKey returns the value of the "api_key" field in the mutation.
-func (m *TeamAPIKeyMutation) APIKey() (r string, exists bool) {
-	v := m.api_key
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAPIKey returns the old "api_key" field's value of the TeamAPIKey entity.
-// If the TeamAPIKey object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TeamAPIKeyMutation) OldAPIKey(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAPIKey is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAPIKey requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAPIKey: %w", err)
-	}
-	return oldValue.APIKey, nil
-}
-
-// ResetAPIKey resets all changes to the "api_key" field.
-func (m *TeamAPIKeyMutation) ResetAPIKey() {
-	m.api_key = nil
 }
 
 // SetAPIKeyHash sets the "api_key_hash" field.
@@ -7464,10 +7335,7 @@ func (m *TeamAPIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TeamAPIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 12)
-	if m.api_key != nil {
-		fields = append(fields, teamapikey.FieldAPIKey)
-	}
+	fields := make([]string, 0, 11)
 	if m.api_key_hash != nil {
 		fields = append(fields, teamapikey.FieldAPIKeyHash)
 	}
@@ -7509,8 +7377,6 @@ func (m *TeamAPIKeyMutation) Fields() []string {
 // schema.
 func (m *TeamAPIKeyMutation) Field(name string) (ent.Value, bool) {
 	switch name {
-	case teamapikey.FieldAPIKey:
-		return m.APIKey()
 	case teamapikey.FieldAPIKeyHash:
 		return m.APIKeyHash()
 	case teamapikey.FieldAPIKeyPrefix:
@@ -7542,8 +7408,6 @@ func (m *TeamAPIKeyMutation) Field(name string) (ent.Value, bool) {
 // database failed.
 func (m *TeamAPIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
 	switch name {
-	case teamapikey.FieldAPIKey:
-		return m.OldAPIKey(ctx)
 	case teamapikey.FieldAPIKeyHash:
 		return m.OldAPIKeyHash(ctx)
 	case teamapikey.FieldAPIKeyPrefix:
@@ -7575,13 +7439,6 @@ func (m *TeamAPIKeyMutation) OldField(ctx context.Context, name string) (ent.Val
 // type.
 func (m *TeamAPIKeyMutation) SetField(name string, value ent.Value) error {
 	switch name {
-	case teamapikey.FieldAPIKey:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAPIKey(v)
-		return nil
 	case teamapikey.FieldAPIKeyHash:
 		v, ok := value.(string)
 		if !ok {
@@ -7744,9 +7601,6 @@ func (m *TeamAPIKeyMutation) ClearField(name string) error {
 // It returns an error if the field is not defined in the schema.
 func (m *TeamAPIKeyMutation) ResetField(name string) error {
 	switch name {
-	case teamapikey.FieldAPIKey:
-		m.ResetAPIKey()
-		return nil
 	case teamapikey.FieldAPIKeyHash:
 		m.ResetAPIKeyHash()
 		return nil
@@ -7879,23 +7733,25 @@ func (m *TeamAPIKeyMutation) ResetEdge(name string) error {
 // TierMutation represents an operation that mutates the Tier nodes in the graph.
 type TierMutation struct {
 	config
-	op                      Op
-	typ                     string
-	id                      *string
-	name                    *string
-	disk_mb                 *int64
-	adddisk_mb              *int64
-	concurrent_instances    *int64
-	addconcurrent_instances *int64
-	max_length_hours        *int64
-	addmax_length_hours     *int64
-	clearedFields           map[string]struct{}
-	teams                   map[uuid.UUID]struct{}
-	removedteams            map[uuid.UUID]struct{}
-	clearedteams            bool
-	done                    bool
-	oldValue                func(context.Context) (*Tier, error)
-	predicates              []predicate.Tier
+	op                            Op
+	typ                           string
+	id                            *string
+	name                          *string
+	disk_mb                       *int64
+	adddisk_mb                    *int64
+	concurrent_instances          *int64
+	addconcurrent_instances       *int64
+	concurrent_template_builds    *int64
+	addconcurrent_template_builds *int64
+	max_length_hours              *int64
+	addmax_length_hours           *int64
+	clearedFields                 map[string]struct{}
+	teams                         map[uuid.UUID]struct{}
+	removedteams                  map[uuid.UUID]struct{}
+	clearedteams                  bool
+	done                          bool
+	oldValue                      func(context.Context) (*Tier, error)
+	predicates                    []predicate.Tier
 }
 
 var _ ent.Mutation = (*TierMutation)(nil)
@@ -8150,6 +8006,62 @@ func (m *TierMutation) ResetConcurrentInstances() {
 	m.addconcurrent_instances = nil
 }
 
+// SetConcurrentTemplateBuilds sets the "concurrent_template_builds" field.
+func (m *TierMutation) SetConcurrentTemplateBuilds(i int64) {
+	m.concurrent_template_builds = &i
+	m.addconcurrent_template_builds = nil
+}
+
+// ConcurrentTemplateBuilds returns the value of the "concurrent_template_builds" field in the mutation.
+func (m *TierMutation) ConcurrentTemplateBuilds() (r int64, exists bool) {
+	v := m.concurrent_template_builds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConcurrentTemplateBuilds returns the old "concurrent_template_builds" field's value of the Tier entity.
+// If the Tier object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TierMutation) OldConcurrentTemplateBuilds(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConcurrentTemplateBuilds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConcurrentTemplateBuilds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConcurrentTemplateBuilds: %w", err)
+	}
+	return oldValue.ConcurrentTemplateBuilds, nil
+}
+
+// AddConcurrentTemplateBuilds adds i to the "concurrent_template_builds" field.
+func (m *TierMutation) AddConcurrentTemplateBuilds(i int64) {
+	if m.addconcurrent_template_builds != nil {
+		*m.addconcurrent_template_builds += i
+	} else {
+		m.addconcurrent_template_builds = &i
+	}
+}
+
+// AddedConcurrentTemplateBuilds returns the value that was added to the "concurrent_template_builds" field in this mutation.
+func (m *TierMutation) AddedConcurrentTemplateBuilds() (r int64, exists bool) {
+	v := m.addconcurrent_template_builds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetConcurrentTemplateBuilds resets all changes to the "concurrent_template_builds" field.
+func (m *TierMutation) ResetConcurrentTemplateBuilds() {
+	m.concurrent_template_builds = nil
+	m.addconcurrent_template_builds = nil
+}
+
 // SetMaxLengthHours sets the "max_length_hours" field.
 func (m *TierMutation) SetMaxLengthHours(i int64) {
 	m.max_length_hours = &i
@@ -8294,7 +8206,7 @@ func (m *TierMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TierMutation) Fields() []string {
-	fields := make([]string, 0, 4)
+	fields := make([]string, 0, 5)
 	if m.name != nil {
 		fields = append(fields, tier.FieldName)
 	}
@@ -8303,6 +8215,9 @@ func (m *TierMutation) Fields() []string {
 	}
 	if m.concurrent_instances != nil {
 		fields = append(fields, tier.FieldConcurrentInstances)
+	}
+	if m.concurrent_template_builds != nil {
+		fields = append(fields, tier.FieldConcurrentTemplateBuilds)
 	}
 	if m.max_length_hours != nil {
 		fields = append(fields, tier.FieldMaxLengthHours)
@@ -8321,6 +8236,8 @@ func (m *TierMutation) Field(name string) (ent.Value, bool) {
 		return m.DiskMB()
 	case tier.FieldConcurrentInstances:
 		return m.ConcurrentInstances()
+	case tier.FieldConcurrentTemplateBuilds:
+		return m.ConcurrentTemplateBuilds()
 	case tier.FieldMaxLengthHours:
 		return m.MaxLengthHours()
 	}
@@ -8338,6 +8255,8 @@ func (m *TierMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldDiskMB(ctx)
 	case tier.FieldConcurrentInstances:
 		return m.OldConcurrentInstances(ctx)
+	case tier.FieldConcurrentTemplateBuilds:
+		return m.OldConcurrentTemplateBuilds(ctx)
 	case tier.FieldMaxLengthHours:
 		return m.OldMaxLengthHours(ctx)
 	}
@@ -8370,6 +8289,13 @@ func (m *TierMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetConcurrentInstances(v)
 		return nil
+	case tier.FieldConcurrentTemplateBuilds:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConcurrentTemplateBuilds(v)
+		return nil
 	case tier.FieldMaxLengthHours:
 		v, ok := value.(int64)
 		if !ok {
@@ -8391,6 +8317,9 @@ func (m *TierMutation) AddedFields() []string {
 	if m.addconcurrent_instances != nil {
 		fields = append(fields, tier.FieldConcurrentInstances)
 	}
+	if m.addconcurrent_template_builds != nil {
+		fields = append(fields, tier.FieldConcurrentTemplateBuilds)
+	}
 	if m.addmax_length_hours != nil {
 		fields = append(fields, tier.FieldMaxLengthHours)
 	}
@@ -8406,6 +8335,8 @@ func (m *TierMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedDiskMB()
 	case tier.FieldConcurrentInstances:
 		return m.AddedConcurrentInstances()
+	case tier.FieldConcurrentTemplateBuilds:
+		return m.AddedConcurrentTemplateBuilds()
 	case tier.FieldMaxLengthHours:
 		return m.AddedMaxLengthHours()
 	}
@@ -8430,6 +8361,13 @@ func (m *TierMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddConcurrentInstances(v)
+		return nil
+	case tier.FieldConcurrentTemplateBuilds:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddConcurrentTemplateBuilds(v)
 		return nil
 	case tier.FieldMaxLengthHours:
 		v, ok := value.(int64)
@@ -8473,6 +8411,9 @@ func (m *TierMutation) ResetField(name string) error {
 		return nil
 	case tier.FieldConcurrentInstances:
 		m.ResetConcurrentInstances()
+		return nil
+	case tier.FieldConcurrentTemplateBuilds:
+		m.ResetConcurrentTemplateBuilds()
 		return nil
 	case tier.FieldMaxLengthHours:
 		m.ResetMaxLengthHours()

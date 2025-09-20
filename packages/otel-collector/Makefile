@@ -12,7 +12,7 @@ run:
 	clickhouse_username=$(CLICKHOUSE_USERNAME) \
 	clickhouse_port=$(CLICKHOUSE_PORT) \
 	clickhouse_database=$(CLICKHOUSE_DATABASE) \
-	envsubst < ./otel-collector.yaml > "./otel-collector.local.yaml"
+	envsubst < ./tests/otel-collector.yaml > "./otel-collector.local.yaml"
 
 	docker network create e2b || true
 	docker run --rm --name otel-collector \
@@ -20,5 +20,5 @@ run:
 		-p 4317:4317 \
 		-p 13133:13133 \
 		-v ./otel-collector.local.yaml:/etc/otel-collector-config.yaml \
-		otel/opentelemetry-collector-contrib:0.130.0 \
+		e2bdev/opentelemetry-collector-contrib:0.135.0-with-hugepages-metrics \
 		--config /etc/otel-collector-config.yaml

@@ -58,6 +58,7 @@ func getProvisionScript(
 
 func (bb *BaseBuilder) provisionSandbox(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	sandboxConfig sandbox.Config,
 	sandboxRuntime sandbox.RuntimeMetadata,
 	fcVersions fc.FirecrackerVersions,
@@ -66,16 +67,15 @@ func (bb *BaseBuilder) provisionSandbox(
 	provisionScriptResultPath string,
 	logExternalPrefix string,
 ) (e error) {
-	ctx, childSpan := bb.tracer.Start(ctx, "provision-sandbox")
+	ctx, childSpan := tracer.Start(ctx, "provision-sandbox")
 	defer childSpan.End()
 
-	zapWriter := &zapio.Writer{Log: bb.UserLogger, Level: zap.DebugLevel}
+	zapWriter := &zapio.Writer{Log: userLogger, Level: zap.DebugLevel}
 	logsWriter := &writer.PrefixFilteredWriter{Writer: zapWriter, PrefixFilter: logExternalPrefix}
 	defer logsWriter.Close()
 
 	sbx, err := sandbox.CreateSandbox(
 		ctx,
-		bb.tracer,
 		bb.networkPool,
 		bb.devicePool,
 		sandboxConfig,
@@ -90,6 +90,8 @@ func (bb *BaseBuilder) provisionSandbox(
 			// the sandbox is then started with systemd and without kernel logs.
 			KernelLogs: true,
 
+			KvmClock: true,
+
 			// Show provision script logs to the user
 			Stdout: logsWriter,
 			Stderr: logsWriter,
@@ -103,19 +105,18 @@ func (bb *BaseBuilder) provisionSandbox(
 
 	err = sbx.WaitForExit(
 		ctx,
-		bb.tracer,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
-	bb.UserLogger.Info("Sandbox template provisioned")
+	userLogger.Info("Sandbox template provisioned")
 
 	// Verify the provisioning script exit status
-	exitStatus, err := filesystem.ReadFile(ctx, bb.tracer, rootfsPath, provisionScriptResultPath)
+	exitStatus, err := filesystem.ReadFile(ctx, rootfsPath, provisionScriptResultPath)
 	if err != nil {
 		return fmt.Errorf("error reading provision result: %w", err)
 	}
-	defer filesystem.RemoveFile(ctx, bb.tracer, rootfsPath, provisionScriptResultPath)
+	defer filesystem.RemoveFile(ctx, rootfsPath, provisionScriptResultPath)
 
 	// Fallback to "1" if the file is empty or not found
 	if exitStatus == "" {
@@ -136,7 +137,7 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 	rootfsPath := rootfs.Path()
 
 	// Resize rootfs to accommodate for the provisioning script size change
-	rootfsFreeSpace, err := filesystem.GetFreeSpace(ctx, bb.tracer, rootfsPath, template.RootfsBlockSize())
+	rootfsFreeSpace, err := filesystem.GetFreeSpace(ctx, rootfsPath, template.RootfsBlockSize())
 	if err != nil {
 		return fmt.Errorf("error getting free space: %w", err)
 	}
@@ -150,7 +151,7 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 		zap.L().Debug("no need to enlarge rootfs, skipping")
 		return nil
 	}
-	rootfsFinalSize, err := filesystem.Enlarge(ctx, bb.tracer, rootfsPath, sizeDiff)
+	rootfsFinalSize, err := filesystem.Enlarge(ctx, rootfsPath, sizeDiff)
 	if err != nil {
 		// Debug filesystem stats on error
 		cmd := exec.Command("tune2fs", "-l", rootfsPath)

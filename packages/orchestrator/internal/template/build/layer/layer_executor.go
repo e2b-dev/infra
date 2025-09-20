@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -21,10 +21,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer")
+
 type LayerExecutor struct {
 	buildcontext.BuildContext
 
-	tracer trace.Tracer
 	logger *zap.Logger
 
 	networkPool     *network.Pool
@@ -40,7 +41,6 @@ type LayerExecutor struct {
 func NewLayerExecutor(
 	buildContext buildcontext.BuildContext,
 	logger *zap.Logger,
-	tracer trace.Tracer,
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
 	templateCache *sbxtemplate.Cache,
@@ -54,7 +54,6 @@ func NewLayerExecutor(
 		BuildContext: buildContext,
 
 		logger: logger,
-		tracer: tracer,
 
 		networkPool:     networkPool,
 		devicePool:      devicePool,
@@ -70,9 +69,10 @@ func NewLayerExecutor(
 // BuildLayer orchestrates the layer building process
 func (lb *LayerExecutor) BuildLayer(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	cmd LayerBuildCommand,
 ) (metadata.Template, error) {
-	ctx, childSpan := lb.tracer.Start(ctx, "run-in-sandbox")
+	ctx, childSpan := tracer.Start(ctx, "run-in-sandbox")
 	defer childSpan.End()
 
 	localTemplate, err := cmd.SourceTemplate.Get(ctx, lb.templateCache)
@@ -96,7 +96,7 @@ func (lb *LayerExecutor) BuildLayer(
 
 	// Update envd binary to the latest version
 	if cmd.UpdateEnvd {
-		err = lb.updateEnvdInSandbox(ctx, sbx)
+		err = lb.updateEnvdInSandbox(ctx, userLogger, sbx)
 		if err != nil {
 			return metadata.Template{}, fmt.Errorf("update envd: %w", err)
 		}
@@ -117,6 +117,7 @@ func (lb *LayerExecutor) BuildLayer(
 	})
 	err = lb.PauseAndUpload(
 		ctx,
+		userLogger,
 		sbx,
 		cmd.Hash,
 		meta,
@@ -131,22 +132,22 @@ func (lb *LayerExecutor) BuildLayer(
 // updateEnvdInSandbox updates the envd binary in the sandbox to the latest version.
 func (lb *LayerExecutor) updateEnvdInSandbox(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	sbx *sandbox.Sandbox,
 ) error {
-	ctx, childSpan := lb.tracer.Start(ctx, "update-envd")
+	ctx, childSpan := tracer.Start(ctx, "update-envd")
 	defer childSpan.End()
 
 	envdVersion, err := envd.GetEnvdVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("error getting envd version: %w", err)
 	}
-	lb.UserLogger.Debug(fmt.Sprintf("Updating envd to version v%s", envdVersion))
+	userLogger.Debug(fmt.Sprintf("Updating envd to version v%s", envdVersion))
 
 	// Step 1: Copy the updated envd binary from host to /tmp in sandbox
 	tmpEnvdPath := "/tmp/envd_updated"
 	err = sandboxtools.CopyFile(
 		ctx,
-		lb.tracer,
 		lb.proxy,
 		sbx.Runtime.SandboxID,
 		"root",
@@ -166,9 +167,8 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 
 	err = sandboxtools.RunCommandWithLogger(
 		ctx,
-		lb.tracer,
 		lb.proxy,
-		lb.UserLogger,
+		userLogger,
 		zap.DebugLevel,
 		"update-envd-replace",
 		sbx.Runtime.SandboxID,
@@ -183,7 +183,6 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	// Error is ignored because it's expected the envd connection will be lost
 	_ = sandboxtools.RunCommand(
 		ctx,
-		lb.tracer,
 		lb.proxy,
 		sbx.Runtime.SandboxID,
 		"systemctl restart envd",
@@ -193,7 +192,6 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	// Step 4: Wait for envd to initialize
 	err = sbx.WaitForEnvd(
 		ctx,
-		lb.tracer,
 		waitEnvdTimeout,
 	)
 	if err != nil {
@@ -205,19 +203,19 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 
 func (lb *LayerExecutor) PauseAndUpload(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	sbx *sandbox.Sandbox,
 	hash string,
 	meta metadata.Template,
 ) error {
-	ctx, childSpan := lb.tracer.Start(ctx, "pause-and-upload")
+	ctx, childSpan := tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
 
-	lb.UserLogger.Debug(fmt.Sprintf("Saving layer: %s", meta.Template.BuildID))
+	userLogger.Debug(fmt.Sprintf("Saving layer: %s", meta.Template.BuildID))
 
 	// snapshot is automatically cleared by the templateCache eviction
 	snapshot, err := sbx.Pause(
 		ctx,
-		lb.tracer,
 		meta,
 	)
 	if err != nil {
@@ -261,7 +259,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
 		}
 
-		lb.UserLogger.Debug(fmt.Sprintf("Saved: %s", meta.Template.BuildID))
+		userLogger.Debug(fmt.Sprintf("Saved: %s", meta.Template.BuildID))
 		return nil
 	})
 

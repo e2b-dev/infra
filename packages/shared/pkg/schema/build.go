@@ -31,7 +31,7 @@ func (EnvBuild) Fields() []ent.Field {
 			),
 		field.Time("updated_at").Default(time.Now),
 		field.Time("finished_at").Optional().Nillable(),
-		field.String("env_id").SchemaType(map[string]string{dialect.Postgres: "text"}).Optional().Nillable(),
+		field.String("env_id").SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.Enum("status").Values("waiting", "building", "snapshotting", "failed", "success", "uploaded").Default("waiting").SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.String("dockerfile").SchemaType(map[string]string{dialect.Postgres: "text"}).Optional().Nillable(),
 		field.String("start_cmd").SchemaType(map[string]string{dialect.Postgres: "text"}).Optional().Nillable(),
@@ -44,13 +44,13 @@ func (EnvBuild) Fields() []ent.Field {
 		field.String("firecracker_version").SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.String("envd_version").SchemaType(map[string]string{dialect.Postgres: "text"}).Nillable().Optional(),
 		field.String("cluster_node_id").SchemaType(map[string]string{dialect.Postgres: "text"}),
-		field.JSON("reason", &BuildReason{}).SchemaType(map[string]string{dialect.Postgres: "jsonb"}).Optional(),
+		field.JSON("reason", BuildReason{}).SchemaType(map[string]string{dialect.Postgres: "jsonb"}).Default(BuildReason{}),
 	}
 }
 
 func (EnvBuild) Edges() []ent.Edge {
 	return []ent.Edge{
-		edge.From("env", Env.Type).Ref("builds").Unique().Field("env_id"),
+		edge.From("env", Env.Type).Ref("builds").Unique().Field("env_id").Required(),
 	}
 }
 

@@ -15,7 +15,6 @@ import (
 	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
 	middleware "github.com/oapi-codegen/gin-middleware"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
@@ -42,7 +41,7 @@ var (
 	skippedPaths = regexp.MustCompile(`^(?:/health(?:/.*)?|/v1/info)$`)
 )
 
-func NewGinServer(logger *zap.Logger, store *handlers.APIStore, swagger *openapi3.T, tracer trace.Tracer, auth authorization.AuthorizationService) *gin.Engine {
+func NewGinServer(logger *zap.Logger, store *handlers.APIStore, swagger *openapi3.T, auth authorization.AuthorizationService) *gin.Engine {
 	// Clear out the servers array in the swagger spec, that skips validating
 	// that server names match. We don't know how this thing will be run.
 	swagger.Servers = nil
@@ -62,7 +61,7 @@ func NewGinServer(logger *zap.Logger, store *handlers.APIStore, swagger *openapi
 			&middleware.Options{
 				ErrorHandler: ginErrorHandler,
 				Options: openapi3filter.Options{
-					AuthenticationFunc: ginBuildAuthenticationHandler(tracer, auth),
+					AuthenticationFunc: ginBuildAuthenticationHandler(auth),
 					MultiError:         false,
 				},
 			},
@@ -85,7 +84,7 @@ func NewGinServer(logger *zap.Logger, store *handlers.APIStore, swagger *openapi
 	return handler
 }
 
-func ginBuildAuthenticationHandler(tracer trace.Tracer, auth authorization.AuthorizationService) func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
+func ginBuildAuthenticationHandler(auth authorization.AuthorizationService) func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
 	return func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
 		ginContext := ctx.Value(middleware.GinContextKey).(*gin.Context)
 		requestContext := ginContext.Request.Context()

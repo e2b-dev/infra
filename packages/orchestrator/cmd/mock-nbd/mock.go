@@ -10,9 +10,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pojntfx/go-nbd/pkg/backend"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric/noop"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -20,17 +20,31 @@ import (
 const blockSize = 4096
 
 type DeviceWithClose struct {
-	backend.Backend
+	b backend.Backend
+}
+
+var _ block.Device = (*DeviceWithClose)(nil)
+
+func (d *DeviceWithClose) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
+	return d.b.ReadAt(p, off)
+}
+
+func (d *DeviceWithClose) Size() (int64, error) {
+	return d.b.Size()
+}
+
+func (d *DeviceWithClose) WriteAt(p []byte, off int64) (n int, err error) {
+	return d.b.WriteAt(p, off)
 }
 
 func (d *DeviceWithClose) Close() error {
 	return nil
 }
 
-func (d *DeviceWithClose) Slice(offset, length int64) ([]byte, error) {
+func (d *DeviceWithClose) Slice(ctx context.Context, offset, length int64) ([]byte, error) {
 	b := make([]byte, length)
 
-	_, err := d.Backend.ReadAt(b, offset)
+	_, err := d.b.ReadAt(b, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +57,7 @@ func (d *DeviceWithClose) BlockSize() int64 {
 }
 
 func (d *DeviceWithClose) Header() *header.Header {
-	size, err := d.Backend.Size()
+	size, err := d.b.Size()
 	if err != nil {
 		panic(err)
 	}
@@ -65,7 +79,7 @@ func main() {
 	rand.Read(data)
 
 	device := &DeviceWithClose{
-		Backend: backend.NewMemoryBackend(data),
+		b: backend.NewMemoryBackend(data),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -130,7 +144,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool
 		counter := 0
 
 		for {
-			counter += 1
+			counter++
 			err = devicePool.ReleaseDevice(deviceIndex)
 			if err != nil {
 				if counter%10 == 0 {
@@ -150,13 +164,12 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool
 		}
 	}()
 
-	tracer := otel.Tracer("test")
-	mnt = nbd.NewDirectPathMount(ctx, tracer, device, devicePool)
+	mnt = nbd.NewDirectPathMount(device, devicePool)
 
 	go func() {
 		<-ctx.Done()
 
-		mnt.Close(context.TODO())
+		mnt.Close(context.Background()) //nolint:contextcheck // TODO: fix this later
 	}()
 
 	_, err = mnt.Open(ctx)
@@ -165,7 +178,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool
 	}
 
 	data := make([]byte, size)
-	_, err = mnt.Backend.ReadAt(data, 0)
+	_, err = mnt.Backend.ReadAt(ctx, data, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read: %w", err)
 	}

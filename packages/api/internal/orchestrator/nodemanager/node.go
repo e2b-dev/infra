@@ -47,7 +47,7 @@ type Node struct {
 
 	meta NodeMetadata
 
-	buildCache *ttlcache.Cache[string, interface{}]
+	buildCache *ttlcache.Cache[string, any]
 
 	PlacementMetrics PlacementMetrics
 
@@ -65,7 +65,6 @@ func New(
 		return nil, err
 	}
 
-	nodeStatus := api.NodeStatusUnhealthy
 	nodeInfo, err := client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 	if err != nil {
 		_ = client.Close()
@@ -78,7 +77,7 @@ func New(
 		nodeStatus = api.NodeStatusUnhealthy
 	}
 
-	buildCache := ttlcache.New[string, interface{}]()
+	buildCache := ttlcache.New[string, any]()
 	go buildCache.Start()
 
 	nodeMetadata := NodeMetadata{
@@ -116,7 +115,7 @@ func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID
 		nodeStatus = api.NodeStatusUnhealthy
 	}
 
-	buildCache := ttlcache.New[string, interface{}]()
+	buildCache := ttlcache.New[string, any]()
 	go buildCache.Start()
 
 	nodeMetadata := NodeMetadata{

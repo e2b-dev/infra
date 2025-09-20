@@ -11,8 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"go.opentelemetry.io/otel/trace/noop"
-
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
@@ -91,7 +89,7 @@ type BenchmarkMetrics struct {
 // createSimulatedNodes creates nodes with realistic resource tracking
 func createSimulatedNodes(config BenchmarkConfig) []*SimulatedNode {
 	nodes := make([]*SimulatedNode, config.NumNodes)
-	for i := 0; i < config.NumNodes; i++ {
+	for i := range config.NumNodes {
 		// Create base node
 		baseNode := nodemanager.NewTestNode(
 			fmt.Sprintf("node-%d", i),
@@ -154,7 +152,6 @@ func (n *SimulatedNode) removeSandbox(sandboxID string) {
 	metrics := n.Metrics()
 
 	if sandbox, exists := n.sandboxes[sandboxID]; exists {
-
 		n.RemoveSandbox(&instance.InstanceInfo{
 			VCpu:  sandbox.RequestedCPU,
 			RamMB: sandbox.RequestedMemory,
@@ -193,8 +190,10 @@ func (n *SimulatedNode) getUtilization() (cpuUtil, memUtil float64) {
 }
 
 // runBenchmark runs a comprehensive placement benchmark with lifecycle tracking
-func runBenchmark(_ *testing.B, algorithm Algorithm, config BenchmarkConfig) *BenchmarkMetrics {
-	ctx, cancel := context.WithTimeout(context.Background(), config.BenchmarkDuration)
+func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig) *BenchmarkMetrics {
+	b.Helper()
+
+	ctx, cancel := context.WithTimeout(b.Context(), config.BenchmarkDuration)
 	defer cancel()
 
 	// Create simulated nodes
@@ -236,7 +235,7 @@ func runBenchmark(_ *testing.B, algorithm Algorithm, config BenchmarkConfig) *Be
 			case <-ticker.C:
 				now := time.Now()
 				// Check and remove expired sandboxes
-				activeSandboxes.Range(func(key, value interface{}) bool {
+				activeSandboxes.Range(func(key, value any) bool {
 					sandbox := value.(*LiveSandbox)
 					if now.Sub(sandbox.StartTime) > sandbox.PlannedDuration {
 						// Remove from node
@@ -311,7 +310,7 @@ func runBenchmark(_ *testing.B, algorithm Algorithm, config BenchmarkConfig) *Be
 					defer wg.Done()
 
 					placementStart := time.Now()
-					node, err := PlaceSandbox(ctx, noop.Tracer{}, algorithm, nodes, nil, &orchestratorgrpc.SandboxCreateRequest{Sandbox: &orchestratorgrpc.SandboxConfig{
+					node, err := PlaceSandbox(ctx, algorithm, nodes, nil, &orchestratorgrpc.SandboxCreateRequest{Sandbox: &orchestratorgrpc.SandboxConfig{
 						Vcpu:  sbx.RequestedCPU,
 						RamMb: sbx.RequestedMemory,
 					}})

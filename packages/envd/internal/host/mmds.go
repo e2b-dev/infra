@@ -28,15 +28,15 @@ type MMDSOpts struct {
 	Address    string `json:"address"`
 }
 
-func (opts *MMDSOpts) Update(traceID, instanceID, envID, address string) {
+func (opts *MMDSOpts) Update(traceID, instanceID, envID, collectorAddress string) {
 	opts.TraceID = traceID
 	opts.InstanceID = instanceID
 	opts.EnvID = envID
-	opts.Address = address
+	opts.Address = collectorAddress
 }
 
 func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
-	parsed := make(map[string]interface{})
+	parsed := make(map[string]any)
 
 	err := json.Unmarshal(jsonLogs, &parsed)
 	if err != nil {
@@ -138,6 +138,7 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 
 			envVars.Store("E2B_SANDBOX_ID", mmdsOpts.InstanceID)
 			envVars.Store("E2B_TEMPLATE_ID", mmdsOpts.EnvID)
+
 			if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_SANDBOX_ID"), []byte(mmdsOpts.InstanceID), 0o666); err != nil {
 				fmt.Fprintf(os.Stderr, "error writing sandbox ID file: %v\n", err)
 			}
@@ -148,6 +149,7 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 			if mmdsOpts.Address != "" {
 				mmdsChan <- mmdsOpts
 			}
+
 			return
 		}
 	}

@@ -10,13 +10,13 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
-func (c *Checks) GetHealth(timeout time.Duration) (bool, error) {
-	ctx, cancel := context.WithTimeout(c.ctx, timeout)
+func (c *Checks) GetHealth(ctx context.Context, timeout time.Duration) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	address := fmt.Sprintf("http://%s:%d/health", c.sandbox.Slot.HostIPString(), consts.DefaultEnvdServerPort)
 
-	request, err := http.NewRequestWithContext(ctx, "GET", address, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
 	if err != nil {
 		return false, err
 	}

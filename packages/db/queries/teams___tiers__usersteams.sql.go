@@ -12,7 +12,7 @@ import (
 )
 
 const getTeamsWithUsersTeamsWithTier = `-- name: GetTeamsWithUsersTeamsWithTier :many
-SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, ut.id, ut.user_id, ut.team_id, ut.is_default, ut.added_by, ut.created_at, tier.id, tier.name, tier.disk_mb, tier.concurrent_instances, tier.max_length_hours, tier.max_vcpu, tier.max_ram_mb
+SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, ut.id, ut.user_id, ut.team_id, ut.is_default, ut.added_by, ut.created_at, tier.id, tier.name, tier.disk_mb, tier.concurrent_instances, tier.max_length_hours, tier.max_vcpu, tier.max_ram_mb, tier.concurrent_template_builds
 FROM "public"."teams" t
 JOIN "public"."tiers" tier ON t.tier = tier.id
 JOIN "public"."users_teams" ut ON ut.team_id = t.id
@@ -57,6 +57,7 @@ func (q *Queries) GetTeamsWithUsersTeamsWithTier(ctx context.Context, userID uui
 			&i.Tier.MaxLengthHours,
 			&i.Tier.MaxVcpu,
 			&i.Tier.MaxRamMb,
+			&i.Tier.ConcurrentTemplateBuilds,
 		); err != nil {
 			return nil, err
 		}

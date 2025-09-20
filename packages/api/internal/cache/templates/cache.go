@@ -17,10 +17,9 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
-	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 )
 
 const templateInfoExpiration = 5 * time.Minute
@@ -151,7 +150,7 @@ type TemplateBuildInfo struct {
 	TeamID      uuid.UUID
 	TemplateID  string
 	BuildStatus envbuild.Status
-	Reason      *schema.BuildReason
+	Reason      types.BuildReason
 
 	ClusterID uuid.UUID
 	NodeID    string
@@ -165,11 +164,11 @@ func (TemplateBuildInfoNotFoundError) Error() string {
 
 type TemplatesBuildCache struct {
 	cache *ttlcache.Cache[uuid.UUID, TemplateBuildInfo]
-	db    *db.DB
+	db    *sqlcdb.Client
 	mx    sync.Mutex
 }
 
-func NewTemplateBuildCache(db *db.DB) *TemplatesBuildCache {
+func NewTemplateBuildCache(db *sqlcdb.Client) *TemplatesBuildCache {
 	cache := ttlcache.New(ttlcache.WithTTL[uuid.UUID, TemplateBuildInfo](templateInfoExpiration))
 	go cache.Start()
 
@@ -179,7 +178,7 @@ func NewTemplateBuildCache(db *db.DB) *TemplatesBuildCache {
 	}
 }
 
-func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Status, reason *schema.BuildReason) {
+func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Status, reason types.BuildReason) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
@@ -217,35 +216,28 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 	if item == nil {
 		zap.L().Debug("Template build info not found in cache, fetching from DB", logger.WithBuildID(buildID.String()))
 
-		envDB, envDBErr := c.db.GetEnv(ctx, templateID)
-		if envDBErr != nil {
-			if errors.Is(envDBErr, db.TemplateNotFoundError{}) {
+		result, err := c.db.GetTemplateBuildWithTemplate(ctx, queries.GetTemplateBuildWithTemplateParams{
+			TemplateID: templateID,
+			BuildID:    buildID,
+		})
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
 				return TemplateBuildInfo{}, TemplateBuildInfoNotFoundError{}
 			}
 
-			return TemplateBuildInfo{}, fmt.Errorf("failed to get template '%s': %w", buildID, envDBErr)
-		}
-
-		// making sure associated template build really exists
-		envBuildDB, envBuildDBErr := c.db.GetEnvBuild(ctx, buildID)
-		if envBuildDBErr != nil {
-			if errors.Is(envBuildDBErr, db.TemplateBuildNotFoundError{}) {
-				return TemplateBuildInfo{}, TemplateBuildInfoNotFoundError{}
-			}
-
-			return TemplateBuildInfo{}, fmt.Errorf("failed to get template build '%s': %w", buildID, envBuildDBErr)
+			return TemplateBuildInfo{}, fmt.Errorf("failed to get template build '%s': %w", buildID, err)
 		}
 
 		item = c.cache.Set(
 			buildID,
 			TemplateBuildInfo{
-				TeamID:      envDB.TeamID,
-				TemplateID:  envDB.ID,
-				BuildStatus: envBuildDB.Status,
-				Reason:      envBuildDB.Reason,
+				TeamID:      result.Env.TeamID,
+				TemplateID:  result.Env.ID,
+				BuildStatus: envbuild.Status(result.EnvBuild.Status),
+				Reason:      result.EnvBuild.Reason,
 
-				ClusterID: utils.WithClusterFallback(envDB.ClusterID),
-				NodeID:    envBuildDB.ClusterNodeID,
+				ClusterID: utils.WithClusterFallback(result.Env.ClusterID),
+				NodeID:    result.EnvBuild.ClusterNodeID,
 			},
 			templateInfoExpiration,
 		)
@@ -253,7 +245,21 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 		return item.Value(), nil
 	}
 
-	zap.L().Debug("Template build info found in cache", logger.WithBuildID(buildID.String()))
-
 	return item.Value(), nil
+}
+
+// GetRunningBuildsForTeam returns all running builds for the given teamID
+// This is a simple implementation of concurrency limit
+// It does not guarantee that the limit is not exceeded, but it should be good enough for now (considering overall low number of total builds)
+func (c *TemplatesBuildCache) GetRunningBuildsForTeam(teamID uuid.UUID) []TemplateBuildInfo {
+	var builds []TemplateBuildInfo
+	for _, item := range c.cache.Items() {
+		value := item.Value()
+		isRunning := value.BuildStatus == envbuild.StatusBuilding || value.BuildStatus == envbuild.StatusWaiting
+		if value.TeamID == teamID && isRunning {
+			builds = append(builds, value)
+		}
+	}
+
+	return builds
 }

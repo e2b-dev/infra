@@ -46,7 +46,7 @@ type Handler struct {
 
 	cancel context.CancelFunc
 
-	outCtx    context.Context // nolint:containedctx // todo: refactor so this can be removed
+	outCtx    context.Context //nolint:containedctx // todo: refactor so this can be removed
 	outCancel context.CancelFunc
 
 	stdin io.WriteCloser
@@ -271,12 +271,16 @@ func New(
 			}
 		}()
 
-		stdin, err := cmd.StdinPipe()
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stdin pipe for command '%s': %w", cmd, err))
-		}
+		// For backwards compatibility we still set the stdin if not explicitly disabled
+		// If stdin is disabled, the process will use /dev/null as stdin
+		if req.Stdin == nil || *req.Stdin == true {
+			stdin, err := cmd.StdinPipe()
+			if err != nil {
+				return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stdin pipe for command '%s': %w", cmd, err))
+			}
 
-		h.stdin = stdin
+			h.stdin = stdin
+		}
 	}
 
 	go func() {
@@ -313,6 +317,10 @@ func (p *Handler) ResizeTty(size *pty.Winsize) error {
 func (p *Handler) WriteStdin(data []byte) error {
 	if p.tty != nil {
 		return fmt.Errorf("tty assigned to process — input should be written to the pty, not the stdin")
+	}
+
+	if p.stdin == nil {
+		return fmt.Errorf("stdin not enabled — set stdin to true when starting the command")
 	}
 
 	_, err := p.stdin.Write(data)

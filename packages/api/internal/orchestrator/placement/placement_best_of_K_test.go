@@ -1,7 +1,6 @@
 package placement
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -90,7 +89,7 @@ func TestBestOfK_CanFit(t *testing.T) {
 }
 
 func TestBestOfK_ChooseNode(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	config := BestOfKConfig{
 		R:     10, // Higher overcommit ratio to ensure nodes can fit
 		Alpha: 0.5,
@@ -118,7 +117,7 @@ func TestBestOfK_ChooseNode(t *testing.T) {
 }
 
 func TestBestOfK_ChooseNode_WithExclusions(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	config := BestOfKConfig{
 		R:     10,
 		Alpha: 0.5,
@@ -151,7 +150,7 @@ func TestBestOfK_ChooseNode_WithExclusions(t *testing.T) {
 }
 
 func TestBestOfK_ChooseNode_NoAvailableNodes(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	config := DefaultBestOfKConfig()
 	algo := NewBestOfK(config).(*BestOfK)
 
@@ -178,7 +177,7 @@ func TestBestOfK_Sample(t *testing.T) {
 
 	// Create many test nodes
 	var nodes []*nodemanager.Node
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		node := nodemanager.NewTestNode(string(rune('a'+i)), api.NodeStatusReady, int64(i), 4)
 		nodes = append(nodes, node)
 	}
@@ -212,7 +211,7 @@ func TestBestOfK_Sample(t *testing.T) {
 }
 
 func TestBestOfK_PowerOfKChoices(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	config := BestOfKConfig{
 		R:     10,
 		Alpha: 0.5,
@@ -222,7 +221,7 @@ func TestBestOfK_PowerOfKChoices(t *testing.T) {
 
 	// Create many nodes with varying loads
 	var nodes []*nodemanager.Node
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		node := nodemanager.NewTestNode(string(rune('A'+i)), api.NodeStatusReady, int64(float64(i)*0.5), 4)
 		nodes = append(nodes, node)
 	}
@@ -236,7 +235,7 @@ func TestBestOfK_PowerOfKChoices(t *testing.T) {
 	// Run multiple times to see distribution
 	selectedCounts := make(map[string]int)
 	successCount := 0
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources)
 		if err == nil && selected != nil {
 			selectedCounts[selected.ID]++

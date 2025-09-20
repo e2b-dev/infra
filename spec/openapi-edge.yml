@@ -193,6 +193,7 @@ components:
         - timestamp
         - message
         - level
+        - fields
       properties:
         timestamp:
           type: string
@@ -203,6 +204,11 @@ components:
           description: Log message content
         level:
           $ref: "#/components/schemas/LogLevel"
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+            description: Additional fields for the log entry
 
     SandboxLog:
       description: Log entry with timestamp and line

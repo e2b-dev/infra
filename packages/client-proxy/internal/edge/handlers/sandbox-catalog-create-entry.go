@@ -24,7 +24,7 @@ func (a *APIStore) V1SandboxCatalogCreate(c *gin.Context) {
 		return
 	}
 
-	_, span := a.tracer.Start(ctx, "create-sandbox-catalog-entry-handler")
+	_, span := tracer.Start(ctx, "create-sandbox-catalog-entry-handler")
 	defer span.End()
 
 	sbxMaxLifetime := time.Duration(body.SandboxMaxLength) * time.Hour

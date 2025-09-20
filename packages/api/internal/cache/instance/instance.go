@@ -8,12 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -23,73 +20,69 @@ const (
 	InstanceAutoPauseDefault = false
 )
 
-var ErrPausingInstanceNotFound = errors.New("pausing instance not found")
-
-type OnEvictionType string
+type State string
 
 const (
-	EvictionPause  OnEvictionType = "pause"
-	EvictionDelete OnEvictionType = "delete"
+	StateRunning State = "running"
+	StatePausing State = "pausing"
+	StateKilling State = "killing"
+	StatePaused  State = "paused"
+	StateKilled  State = "killed"
 )
 
 func NewInstanceInfo(
-	SandboxID string,
-	TemplateID string,
-	ClientID string,
-	Alias *string,
-	ExecutionID string,
-	TeamID uuid.UUID,
-	BuildID uuid.UUID,
-	Metadata map[string]string,
-	MaxInstanceLength time.Duration,
-	StartTime time.Time,
+	sandboxID string,
+	templateID string,
+	clientID string,
+	alias *string,
+	executionID string,
+	teamID uuid.UUID,
+	buildID uuid.UUID,
+	metadata map[string]string,
+	maxInstanceLength time.Duration,
+	startTime time.Time,
 	endTime time.Time,
-	VCpu int64,
-	TotalDiskSizeMB int64,
-	RamMB int64,
-	KernelVersion string,
-	FirecrackerVersion string,
-	EnvdVersion string,
-	NodeID string,
-	ClusterID uuid.UUID,
-	AutoPause bool,
-	EnvdAccessToken *string,
+	vcpu int64,
+	totalDiskSizeMB int64,
+	ramMB int64,
+	kernelVersion string,
+	firecrackerVersion string,
+	envdVersion string,
+	nodeID string,
+	clusterID uuid.UUID,
+	autoPause bool,
+	envdAccessToken *string,
 	allowInternetAccess *bool,
-	BaseTemplateID string,
+	baseTemplateID string,
 ) *InstanceInfo {
 	instance := &InstanceInfo{
-		SandboxID:  SandboxID,
-		TemplateID: TemplateID,
-		ClientID:   ClientID,
-		Alias:      Alias,
+		SandboxID:  sandboxID,
+		TemplateID: templateID,
+		ClientID:   clientID,
+		Alias:      alias,
 
-		ExecutionID:         ExecutionID,
-		TeamID:              TeamID,
-		BuildID:             BuildID,
-		Metadata:            Metadata,
-		MaxInstanceLength:   MaxInstanceLength,
-		StartTime:           StartTime,
+		ExecutionID:         executionID,
+		TeamID:              teamID,
+		BuildID:             buildID,
+		Metadata:            metadata,
+		MaxInstanceLength:   maxInstanceLength,
+		StartTime:           startTime,
 		endTime:             endTime,
-		VCpu:                VCpu,
-		TotalDiskSizeMB:     TotalDiskSizeMB,
-		RamMB:               RamMB,
-		KernelVersion:       KernelVersion,
-		FirecrackerVersion:  FirecrackerVersion,
-		EnvdVersion:         EnvdVersion,
-		EnvdAccessToken:     EnvdAccessToken,
+		VCpu:                vcpu,
+		TotalDiskSizeMB:     totalDiskSizeMB,
+		RamMB:               ramMB,
+		KernelVersion:       kernelVersion,
+		FirecrackerVersion:  firecrackerVersion,
+		EnvdVersion:         envdVersion,
+		EnvdAccessToken:     envdAccessToken,
 		AllowInternetAccess: allowInternetAccess,
-		NodeID:              NodeID,
-		ClusterID:           ClusterID,
-		AutoPause:           AutoPause,
-		Pausing:             utils.NewSetOnce[string](),
-		BaseTemplateID:      BaseTemplateID,
+		NodeID:              nodeID,
+		ClusterID:           clusterID,
+		AutoPause:           autoPause,
+		state:               StateRunning,
+		stopping:            utils.NewSetOnce[struct{}](),
+		BaseTemplateID:      baseTemplateID,
 		mu:                  sync.RWMutex{},
-	}
-
-	if AutoPause {
-		instance.onEviction = EvictionPause
-	} else {
-		instance.onEviction = EvictionDelete
 	}
 
 	return instance
@@ -120,9 +113,11 @@ type InstanceInfo struct {
 	NodeID              string
 	ClusterID           uuid.UUID
 	AutoPause           bool
-	onEviction          OnEvictionType
-	Pausing             *utils.SetOnce[string]
-	mu                  sync.RWMutex
+
+	state State
+	mu    sync.RWMutex
+
+	stopping *utils.SetOnce[struct{}]
 }
 
 func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -137,6 +132,10 @@ func (i *InstanceInfo) IsExpired() bool {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
+	return i.isExpired()
+}
+
+func (i *InstanceInfo) isExpired() bool {
 	return time.Now().After(i.endTime)
 }
 
@@ -151,143 +150,89 @@ func (i *InstanceInfo) SetEndTime(endTime time.Time) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
+	i.setEndTime(endTime)
+}
+
+func (i *InstanceInfo) setEndTime(endTime time.Time) {
 	i.endTime = endTime
 }
 
 func (i *InstanceInfo) SetExpired() {
-	i.SetEndTime(time.Now())
-}
-
-func (i *InstanceInfo) setOnEviction(onEviction OnEvictionType) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	i.onEviction = onEviction
+	i.setExpired()
 }
 
-func (i *InstanceInfo) OnEviction() OnEvictionType {
+func (i *InstanceInfo) setExpired() {
+	if !i.isExpired() {
+		i.setEndTime(time.Now())
+	}
+}
+
+func (i *InstanceInfo) GetState() State {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
-	return i.onEviction
+	return i.state
 }
 
-type InstanceCache struct {
-	reservations *ReservationCache
-	pausing      *smap.Map[*InstanceInfo]
+var (
+	ErrAlreadyBeingPaused  = errors.New("instance is already being paused")
+	ErrAlreadyBeingDeleted = errors.New("instance is already being removed")
+)
 
-	cache          *lifecycleCache[*InstanceInfo]
-	insertInstance func(data *InstanceInfo, created bool) error
+func (i *InstanceInfo) markRemoving(removeType RemoveType) error {
+	i.mu.Lock()
+	defer i.mu.Unlock()
 
-	sandboxCounter metric.Int64UpDownCounter
-	createdCounter metric.Int64Counter
-
-	mu sync.Mutex
-}
-
-func NewCache(
-	ctx context.Context,
-	meterProvider metric.MeterProvider,
-	insertInstance func(data *InstanceInfo, created bool) error,
-	deleteInstance func(data *InstanceInfo) error,
-) *InstanceCache {
-	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
-	// right now we load them from Orchestrator
-	cache := newLifecycleCache[*InstanceInfo]()
-
-	meter := meterProvider.Meter("api.cache.sandbox")
-	sandboxCounter, err := telemetry.GetUpDownCounter(meter, telemetry.SandboxCountMeterName)
-	if err != nil {
-		zap.L().Error("error getting counter", zap.Error(err))
-	}
-
-	createdCounter, err := telemetry.GetCounter(meter, telemetry.SandboxCreateMeterName)
-	if err != nil {
-		zap.L().Error("error getting counter", zap.Error(err))
-	}
-
-	instanceCache := &InstanceCache{
-		cache:          cache,
-		insertInstance: insertInstance,
-		sandboxCounter: sandboxCounter,
-		createdCounter: createdCounter,
-		reservations:   NewReservationCache(),
-		pausing:        smap.New[*InstanceInfo](),
-	}
-
-	cache.OnEviction(func(ctx context.Context, instanceInfo *InstanceInfo) {
-		err := deleteInstance(instanceInfo)
-		if err != nil {
-			zap.L().Error("Error deleting instance", zap.Error(err))
+	if i.state != StateRunning {
+		if i.state == StatePausing || i.state == StatePaused {
+			return ErrAlreadyBeingPaused
+		} else {
+			return ErrAlreadyBeingDeleted
 		}
-
-		instanceCache.UpdateCounters(ctx, instanceInfo, -1, false)
-	})
-
-	go cache.Start(ctx)
-
-	return instanceCache
-}
-
-func (c *InstanceCache) Len() int {
-	return c.cache.Len()
-}
-
-func (c *InstanceCache) Set(key string, value *InstanceInfo, created bool) {
-	inserted := c.cache.SetIfAbsent(key, value)
-	if inserted {
-		go func() {
-			err := c.insertInstance(value, created)
-			if err != nil {
-				zap.L().Error("error inserting instance", zap.Error(err))
-			}
-		}()
 	}
-}
-
-func (c *InstanceCache) MarkAsPausing(instanceInfo *InstanceInfo) {
-	c.pausing.InsertIfAbsent(instanceInfo.SandboxID, instanceInfo)
-}
-
-func (c *InstanceCache) UnmarkAsPausing(instanceInfo *InstanceInfo) {
-	c.pausing.RemoveCb(instanceInfo.SandboxID, func(key string, v *InstanceInfo, exists bool) bool {
-		if !exists {
-			return false
-		}
-
-		// Make sure it's the same instance and not a sandbox which has been already resumed
-		return v.ExecutionID == instanceInfo.ExecutionID
-	})
-}
-
-// WaitForPause waits for the instance to be paused. Returns the node ID of the node that paused the instance.
-func (c *InstanceCache) WaitForPause(ctx context.Context, sandboxID string) (nodeID string, err error) {
-	instanceInfo, ok := c.pausing.Get(sandboxID)
-	if !ok {
-		return "", ErrPausingInstanceNotFound
+	// Set remove type
+	if removeType == RemoveTypePause {
+		i.state = StatePausing
+	} else {
+		i.state = StateKilling
 	}
 
-	nodeID, err = instanceInfo.Pausing.WaitWithContext(ctx)
+	// Mark the stop time
+	i.setExpired()
+
+	return nil
+}
+
+func (i *InstanceInfo) WaitForStop(ctx context.Context) error {
+	if i.GetState() == StateRunning {
+		return fmt.Errorf("sandbox isn't stopping")
+	}
+
+	_, err := i.stopping.WaitWithContext(ctx)
+	return err
+}
+
+func (i *InstanceInfo) stopDone(err error) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	if i.state == StatePausing {
+		i.state = StatePaused
+	} else {
+		i.state = StateKilled
+	}
+
 	if err != nil {
-		return "", fmt.Errorf("pause waiting was canceled: %w", err)
-	}
-
-	return
-}
-
-func (i *InstanceInfo) PauseDone(err error) {
-	if err == nil {
-		err := i.Pausing.SetValue(i.NodeID)
+		err := i.stopping.SetError(err)
 		if err != nil {
-			zap.L().Error("error setting PauseDone value", zap.Error(err))
-
-			return
+			zap.L().Error("error setting stopDone value", zap.Error(err))
 		}
 	} else {
-		err := i.Pausing.SetError(err)
+		err := i.stopping.SetValue(struct{}{})
 		if err != nil {
-			zap.L().Error("error setting PauseDone error", zap.Error(err))
-
-			return
+			zap.L().Error("error setting stopDone value", zap.Error(err))
 		}
 	}
 }

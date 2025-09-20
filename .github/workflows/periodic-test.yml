@@ -1,8 +1,6 @@
 name: Periodic Tests
 
 on:
-  schedule:
-    - cron: "*/10 * * * *"
   workflow_dispatch:
     inputs:
       dev:

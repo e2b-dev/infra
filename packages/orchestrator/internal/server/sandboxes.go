@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -18,14 +19,17 @@ import (
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/events/event"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/event"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/server")
 
 const (
 	requestTimeout              = 60 * time.Second
@@ -38,7 +42,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	defer cancel()
 
 	// set up tracing
-	ctx, childSpan := s.tracer.Start(ctx, "sandbox-create")
+	ctx, childSpan := tracer.Start(ctx, "sandbox-create")
 	defer childSpan.End()
 
 	childSpan.SetAttributes(
@@ -62,6 +66,18 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			Kind(featureflags.TeamKind).
 			Build(),
 	)
+
+	maxRunningSandboxesPerNode, err := s.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)
+	if err != nil {
+		zap.L().Error("Failed to get MaxSandboxesPerNode flag", zap.Error(err))
+	}
+
+	runningSandboxes := s.sandboxes.Count()
+	if runningSandboxes >= maxRunningSandboxesPerNode {
+		telemetry.ReportEvent(ctx, "max number of running sandboxes reached")
+
+		return nil, status.Errorf(codes.ResourceExhausted, "max number of running sandboxes on node reached (%d), please retry", maxRunningSandboxesPerNode)
+	}
 
 	// Check if we've reached the max number of starting instances on this node
 	acquired := s.startingSandboxes.TryAcquire(1)
@@ -90,7 +106,6 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 	sbx, err := sandbox.ResumeSandbox(
 		ctx,
-		s.tracer,
 		s.networkPool,
 		template,
 		sandbox.Config{
@@ -130,7 +145,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
 	go func() {
-		ctx, childSpan := s.tracer.Start(context.WithoutCancel(ctx), "sandbox-create-stop", trace.WithNewRoot())
+		ctx, childSpan := tracer.Start(context.WithoutCancel(ctx), "sandbox-create-stop", trace.WithNewRoot())
 		defer childSpan.End()
 
 		waitErr := sbx.Wait(ctx)
@@ -169,17 +184,9 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		label = clickhouse.SandboxEventLabelResume
 	}
 
-	teamID, err := uuid.Parse(req.Sandbox.TeamId)
-	if err != nil {
-		sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", req.Sandbox.TeamId), zap.Error(err))
-	}
+	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
 
-	buildId := ""
-	if sbx.APIStoredConfig != nil {
-		buildId = sbx.APIStoredConfig.BuildId
-	}
-
-	go s.sbxEventsService.HandleEvent(ctx, event.SandboxEvent{
+	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), event.SandboxEvent{
 		Timestamp:          time.Now().UTC(),
 		SandboxID:          sbx.Runtime.SandboxID,
 		SandboxExecutionID: sbx.Runtime.ExecutionID,
@@ -188,7 +195,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		SandboxTeamID:      teamID,
 		EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
 		EventLabel:         string(label),
-		EventData:          "",
+		EventData:          eventData,
 	})
 
 	return &orchestrator.SandboxCreateResponse{
@@ -197,7 +204,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 }
 
 func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequest) (*emptypb.Empty, error) {
-	ctx, childSpan := s.tracer.Start(ctx, "sandbox-update")
+	ctx, childSpan := tracer.Start(ctx, "sandbox-update")
 	defer childSpan.End()
 
 	childSpan.SetAttributes(
@@ -214,20 +221,10 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	sbx.EndAt = req.EndTime.AsTime()
 
-	// TODO: adapt when new types of update events are implemented
-	eventData := fmt.Sprintf(`{"set_timeout": "%s"}`, req.EndTime.AsTime().Format(time.RFC3339))
+	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
+	eventData["set_timeout"] = req.EndTime.AsTime().Format(time.RFC3339)
 
-	teamID, err := uuid.Parse(sbx.Runtime.TeamID)
-	if err != nil {
-		sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
-	}
-
-	buildId := ""
-	if sbx.APIStoredConfig != nil {
-		buildId = sbx.APIStoredConfig.BuildId
-	}
-
-	go s.sbxEventsService.HandleEvent(ctx, event.SandboxEvent{
+	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), event.SandboxEvent{
 		Timestamp:          time.Now().UTC(),
 		SandboxID:          sbx.Runtime.SandboxID,
 		SandboxExecutionID: sbx.Runtime.ExecutionID,
@@ -243,7 +240,7 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 }
 
 func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.SandboxListResponse, error) {
-	_, childSpan := s.tracer.Start(ctx, "sandbox-list")
+	_, childSpan := tracer.Start(ctx, "sandbox-list")
 	defer childSpan.End()
 
 	items := s.sandboxes.Items()
@@ -276,7 +273,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	ctx, cancel := context.WithTimeoutCause(ctxConn, requestTimeout, fmt.Errorf("request timed out"))
 	defer cancel()
 
-	ctx, childSpan := s.tracer.Start(ctx, "sandbox-delete")
+	ctx, childSpan := tracer.Start(ctx, "sandbox-delete")
 	defer childSpan.End()
 
 	childSpan.SetAttributes(
@@ -299,30 +296,20 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	s.sandboxes.Remove(in.SandboxId)
 
 	// Check health metrics before stopping the sandbox
-	sbx.Checks.Healthcheck(true)
+	sbx.Checks.Healthcheck(ctx, true)
 
 	// Start the cleanup in a goroutine—the initial kill request should be send as the first thing in stop, and at this point you cannot route to the sandbox anymore.
 	// We don't wait for the whole cleanup to finish here.
 	go func() {
-		err := sbx.Stop(ctx, s.tracer)
+		err := sbx.Stop(ctx)
 		if err != nil {
 			sbxlogger.I(sbx).Error("error stopping sandbox", logger.WithSandboxID(in.SandboxId), zap.Error(err))
 		}
 	}()
 
-	teamID, err := uuid.Parse(sbx.Runtime.TeamID)
-	if err != nil {
-		sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
-	}
+	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
 
-	buildId := ""
-	if sbx.APIStoredConfig != nil {
-		buildId = sbx.APIStoredConfig.BuildId
-	}
-
-	eventCtx := context.WithoutCancel(ctx)
-
-	go s.sbxEventsService.HandleEvent(eventCtx, event.SandboxEvent{
+	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), event.SandboxEvent{
 		Timestamp:          time.Now().UTC(),
 		SandboxID:          sbx.Runtime.SandboxID,
 		SandboxExecutionID: sbx.Runtime.ExecutionID,
@@ -331,14 +318,14 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		SandboxTeamID:      teamID,
 		EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
 		EventLabel:         string(clickhouse.SandboxEventLabelKill),
-		EventData:          "",
+		EventData:          eventData,
 	})
 
 	return &emptypb.Empty{}, nil
 }
 
 func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {
-	ctx, childSpan := s.tracer.Start(ctx, "sandbox-pause")
+	ctx, childSpan := tracer.Start(ctx, "sandbox-pause")
 	defer childSpan.End()
 
 	// setup launch darkly
@@ -369,10 +356,10 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		// sbx.Stop sometimes blocks for several seconds,
 		// so we don't want to block the request and do the cleanup in a goroutine after we already removed sandbox from cache and proxy.
 		go func() {
-			ctx, childSpan := s.tracer.Start(ctx, "sandbox-pause-stop")
+			ctx, childSpan := tracer.Start(ctx, "sandbox-pause-stop", trace.WithNewRoot())
 			defer childSpan.End()
 
-			err := sbx.Stop(ctx, s.tracer)
+			err := sbx.Stop(ctx)
 			if err != nil {
 				sbxlogger.I(sbx).Error("error stopping sandbox after snapshot", logger.WithSandboxID(in.SandboxId), zap.Error(err))
 			}
@@ -390,7 +377,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		KernelVersion:      fcVersions.KernelVersion,
 		FirecrackerVersion: fcVersions.FirecrackerVersion,
 	})
-	snapshot, err := sbx.Pause(ctx, s.tracer, meta)
+	snapshot, err := sbx.Pause(ctx, meta)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox", err, telemetry.WithSandboxID(in.SandboxId))
 
@@ -426,18 +413,9 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		}
 	}(context.WithoutCancel(ctx))
 
-	teamID, err := uuid.Parse(sbx.Runtime.TeamID)
-	if err != nil {
-		sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
-	}
+	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
 
-	buildId := ""
-	if sbx.APIStoredConfig != nil {
-		buildId = sbx.APIStoredConfig.BuildId
-	}
-
-	eventCtx := context.WithoutCancel(ctx)
-	go s.sbxEventsService.HandleEvent(eventCtx, event.SandboxEvent{
+	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), event.SandboxEvent{
 		Timestamp:          time.Now().UTC(),
 		SandboxID:          sbx.Runtime.SandboxID,
 		SandboxExecutionID: sbx.Runtime.ExecutionID,
@@ -446,8 +424,28 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		SandboxTeamID:      teamID,
 		EventCategory:      string(clickhouse.SandboxEventCategoryLifecycle),
 		EventLabel:         string(clickhouse.SandboxEventLabelPause),
-		EventData:          "",
+		EventData:          eventData,
 	})
 
 	return &emptypb.Empty{}, nil
+}
+
+// Extracts common data needed for sandbox events
+func (s *server) prepareSandboxEventData(sbx *sandbox.Sandbox) (uuid.UUID, string, map[string]any) {
+	teamID, err := uuid.Parse(sbx.Runtime.TeamID)
+	if err != nil {
+		sbxlogger.I(sbx).Error("error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
+	}
+
+	buildId := ""
+	eventData := make(map[string]any)
+	if sbx.APIStoredConfig != nil {
+		buildId = sbx.APIStoredConfig.BuildId
+		if sbx.APIStoredConfig.Metadata != nil {
+			// Copy the map to avoid race conditions
+			eventData["sandbox_metadata"] = utils.ShallowCopyMap(sbx.APIStoredConfig.Metadata)
+		}
+	}
+
+	return teamID, buildId, eventData
 }

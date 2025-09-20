@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"sort"
 	"strconv"
 	"time"
 
@@ -18,7 +17,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
-	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/db/types"
@@ -34,7 +32,7 @@ const (
 
 func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, limit int32, cursorTime time.Time, cursorID string) ([]utils.PaginatedSandbox, error) {
 	// Apply limit + 1 to check if there are more results
-	queryLimit := int32(limit) + 1
+	queryLimit := limit + 1
 	queryMetadata := types.JSONBStringMap{}
 	if metadataFilter != nil {
 		queryMetadata = *metadataFilter
@@ -58,10 +56,7 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 	return sandboxes, nil
 }
 
-func getRunningSandboxes(ctx context.Context, orchestrator *orchestrator.Orchestrator, teamID uuid.UUID, metadataFilter *map[string]string) []utils.PaginatedSandbox {
-	// Get all sandbox instances
-	runningSandboxes := orchestrator.GetSandboxes(ctx, &teamID)
-
+func getRunningSandboxes(runningSandboxes []*instance.InstanceInfo, metadataFilter *map[string]string) []utils.PaginatedSandbox {
 	// Running Sandbox IDs
 	runningSandboxList := instanceInfoToPaginatedSandboxes(runningSandboxes)
 
@@ -90,15 +85,13 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		return
 	}
 
-	sandboxes := getRunningSandboxes(ctx, a.orchestrator, team.ID, metadataFilter)
+	sandboxes := a.orchestrator.GetSandboxes(ctx, &team.ID, []instance.State{instance.StateRunning})
+	runningSandboxes := getRunningSandboxes(sandboxes[instance.StateRunning], metadataFilter)
 
 	// Sort sandboxes by start time descending
-	slices.SortFunc(sandboxes, func(a, b utils.PaginatedSandbox) int {
-		// SortFunc sorts the list ascending by default, because we want the opposite behavior we switch `a` and `b`
-		return b.StartedAt.Compare(a.StartedAt)
-	})
+	utils.SortPaginatedSandboxesDesc(runningSandboxes)
 
-	c.JSON(http.StatusOK, sandboxes)
+	c.JSON(http.StatusOK, runningSandboxes)
 }
 
 func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParams) {
@@ -150,23 +143,25 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		return
 	}
 
-	// Get all sandbox instances
-	runningSandboxes := a.orchestrator.GetSandboxes(ctx, &team.ID)
+	sandboxesInCache := a.orchestrator.GetSandboxes(ctx, &team.ID, []instance.State{instance.StateRunning, instance.StatePaused, instance.StatePausing})
 
 	// Running Sandbox IDs
 	runningSandboxesIDs := make([]string, 0)
-	for _, info := range runningSandboxes {
+	for _, info := range sandboxesInCache[instance.StateRunning] {
 		runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
 	}
 
 	if slices.Contains(states, api.Running) {
-		runningSandboxList := instanceInfoToPaginatedSandboxes(runningSandboxes)
+		runningSandboxList := instanceInfoToPaginatedSandboxes(sandboxesInCache[instance.StateRunning])
 
 		// Filter based on metadata
 		runningSandboxList = utils.FilterSandboxesOnMetadata(runningSandboxList, metadataFilter)
 
-		// Filter based on cursor and limit
-		runningSandboxList = utils.FilterBasedOnCursor(runningSandboxList, cursorTime, cursorID, limit)
+		// Set the total (before we apply the limit, but already with all filters)
+		c.Header("X-Total-Running", strconv.Itoa(len(runningSandboxList)))
+
+		// Filter based on cursor
+		runningSandboxList = utils.FilterBasedOnCursor(runningSandboxList, cursorTime, cursorID)
 
 		sandboxes = append(sandboxes, runningSandboxList...)
 	}
@@ -179,16 +174,17 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 
 			return
 		}
+
+		pausingSandboxList := instanceInfoToPaginatedSandboxes(sandboxesInCache[instance.StatePausing])
+		pausingSandboxList = utils.FilterSandboxesOnMetadata(pausingSandboxList, metadataFilter)
+		pausingSandboxList = utils.FilterBasedOnCursor(pausingSandboxList, cursorTime, cursorID)
+
 		sandboxes = append(sandboxes, pausedSandboxList...)
+		sandboxes = append(sandboxes, pausingSandboxList...)
 	}
 
-	// Sort by StartedAt (descending), then by SandboxID (ascending) for stability
-	sort.Slice(sandboxes, func(a, b int) bool {
-		if !sandboxes[a].StartedAt.Equal(sandboxes[b].StartedAt) {
-			return sandboxes[a].StartedAt.After(sandboxes[b].StartedAt)
-		}
-		return sandboxes[a].SandboxID < sandboxes[b].SandboxID
-	})
+	// We need to sort again after merging running and paused sandboxes
+	utils.SortPaginatedSandboxesDesc(sandboxes)
 
 	var nextToken *string
 	if len(sandboxes) > int(limit) {
@@ -206,7 +202,6 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		c.Header("X-Next-Token", *nextToken)
 	}
 
-	c.Header("X-Total-Items", strconv.Itoa(len(sandboxes)))
 	c.JSON(http.StatusOK, sandboxes)
 }
 

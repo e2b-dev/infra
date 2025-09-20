@@ -18,9 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const (
-	metricsExportPeriod = 5 * time.Second
-)
+const ExportPeriod = 5 * time.Second
 
 type TeamObserver struct {
 	meterExporter sdkmetric.Exporter
@@ -29,11 +27,9 @@ type TeamObserver struct {
 	meter                metric.Meter
 	teamSandboxRunning   metric.Int64ObservableGauge
 	teamSandboxesCreated metric.Int64Counter
-
-	cache *instance.InstanceCache
 }
 
-func NewTeamObserver(ctx context.Context, cache *instance.InstanceCache) (*TeamObserver, error) {
+func NewTeamObserver(ctx context.Context, cache *instance.MemoryStore) (*TeamObserver, error) {
 	deltaTemporality := otlpmetricgrpc.WithTemporalitySelector(func(kind sdkmetric.InstrumentKind) metricdata.Temporality {
 		return metricdata.DeltaTemporality
 	})
@@ -43,7 +39,7 @@ func NewTeamObserver(ctx context.Context, cache *instance.InstanceCache) (*TeamO
 		return nil, fmt.Errorf("failed to create external meter exporter: %w", err)
 	}
 
-	meterProvider, err := telemetry.NewMeterProvider(ctx, externalMeterExporter, metricsExportPeriod, nil, sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter))
+	meterProvider, err := telemetry.NewMeterProvider(ctx, externalMeterExporter, ExportPeriod, nil, sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create external metric provider: %w", err)
 	}
@@ -77,11 +73,11 @@ func NewTeamObserver(ctx context.Context, cache *instance.InstanceCache) (*TeamO
 	return observer, nil
 }
 
-func (so *TeamObserver) Start(cache *instance.InstanceCache) (err error) {
+func (so *TeamObserver) Start(cache *instance.MemoryStore) (err error) {
 	// Register callbacks for team sandbox metrics
 	so.registration, err = so.meter.RegisterCallback(
 		func(ctx context.Context, obs metric.Observer) error {
-			sbxs := cache.Items()
+			sbxs := cache.Items(nil)
 			sbxsPerTeam := make(map[string]int64)
 			for _, sbx := range sbxs {
 				teamID := sbx.TeamID.String()
@@ -89,7 +85,7 @@ func (so *TeamObserver) Start(cache *instance.InstanceCache) (err error) {
 					sbxsPerTeam[teamID] = 0
 				}
 
-				sbxsPerTeam[teamID] = sbxsPerTeam[teamID] + 1
+				sbxsPerTeam[teamID]++
 			}
 
 			// Reset the max for the new interval to the current counts

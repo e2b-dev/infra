@@ -51,11 +51,26 @@ type Error struct {
 
 // Metrics Resource usage metrics
 type Metrics struct {
+	// CpuCount Number of CPU cores
+	CpuCount *int `json:"cpu_count,omitempty"`
+
 	// CpuUsedPct CPU usage percentage
 	CpuUsedPct *float32 `json:"cpu_used_pct,omitempty"`
 
-	// MemBytes Total virtual memory usage in bytes
-	MemBytes *int `json:"mem_bytes,omitempty"`
+	// DiskTotal Total disk space in bytes
+	DiskTotal *int `json:"disk_total,omitempty"`
+
+	// DiskUsed Used disk space in bytes
+	DiskUsed *int `json:"disk_used,omitempty"`
+
+	// MemTotal Total virtual memory in bytes
+	MemTotal *int `json:"mem_total,omitempty"`
+
+	// MemUsed Used virtual memory in bytes
+	MemUsed *int `json:"mem_used,omitempty"`
+
+	// Ts Unix timestamp in UTC for current sandbox time
+	Ts *int64 `json:"ts,omitempty"`
 }
 
 // FilePath defines model for FilePath.
@@ -130,6 +145,9 @@ type PostInitJSONBody struct {
 
 	// EnvVars Environment variables to set
 	EnvVars *EnvVars `json:"envVars,omitempty"`
+
+	// HyperloopIP IP address of the hyperloop server to connect to
+	HyperloopIP *string `json:"hyperloopIP,omitempty"`
 }
 
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.

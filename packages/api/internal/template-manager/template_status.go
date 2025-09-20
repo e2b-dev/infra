@@ -10,10 +10,11 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/db/types"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
-	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 )
 
 var (
@@ -106,8 +107,6 @@ func (c *PollBuildStatus) poll(ctx context.Context) {
 
 			return
 		case <-ticker.C:
-			c.logger.Debug("Checking template build status")
-
 			buildCompleted, err := c.checkBuildStatus(ctx)
 			if err != nil {
 				c.logger.Error("Build status polling received unrecoverable error", zap.Error(err))
@@ -242,9 +241,9 @@ func (tm *TemplateManager) createInProcessingQueue(buildID uuid.UUID, templateID
 }
 
 func (tm *TemplateManager) SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason *templatemanagergrpc.TemplateBuildStatusReason) error {
-	var buildReason *schema.BuildReason
+	var buildReason types.BuildReason
 	if reason != nil {
-		buildReason = &schema.BuildReason{
+		buildReason = types.BuildReason{
 			Message: reason.GetMessage(),
 		}
 		if step := reason.GetStep(); step != "" {
@@ -252,8 +251,15 @@ func (tm *TemplateManager) SetStatus(ctx context.Context, templateID string, bui
 		}
 	}
 
+	now := time.Now()
 	// first do database update to prevent race condition while calling status
-	err := tm.db.EnvBuildSetStatus(ctx, templateID, buildID, status, buildReason)
+	err := tm.sqlcDB.UpdateEnvBuildStatus(ctx, queries.UpdateEnvBuildStatusParams{
+		Status:     string(status),
+		FinishedAt: &now,
+		Reason:     buildReason,
+		BuildID:    buildID,
+		TemplateID: templateID,
+	})
 
 	tm.buildCache.SetStatus(buildID, status, buildReason)
 	return err
@@ -263,13 +269,13 @@ func (tm *TemplateManager) SetFinished(ctx context.Context, templateID string, b
 	// first do database update to prevent race condition while calling status
 	err := tm.db.FinishEnvBuild(ctx, templateID, buildID, rootfsSize, envdVersion)
 	if err != nil {
-		tm.buildCache.SetStatus(buildID, envbuild.StatusFailed, &schema.BuildReason{
+		tm.buildCache.SetStatus(buildID, envbuild.StatusFailed, types.BuildReason{
 			Message: fmt.Sprintf("error when finishing build: %s", err.Error()),
 		})
 		return err
 	}
 
-	tm.buildCache.SetStatus(buildID, envbuild.StatusUploaded, nil)
+	tm.buildCache.SetStatus(buildID, envbuild.StatusUploaded, types.BuildReason{})
 
 	return nil
 }

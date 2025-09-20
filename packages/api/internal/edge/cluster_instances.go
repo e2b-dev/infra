@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -30,7 +29,6 @@ type ClusterInstance struct {
 	roles  []infogrpc.ServiceInfoRole
 	status infogrpc.ServiceInfoStatus
 	mutex  sync.RWMutex
-	tracer trace.Tracer
 }
 
 const (
@@ -145,8 +143,7 @@ func (d clusterSynchronizationStore) PoolInsert(ctx context.Context, item api.Cl
 		status: infogrpc.ServiceInfoStatus_Unhealthy,
 		roles:  make([]infogrpc.ServiceInfoRole, 0),
 
-		tracer: d.cluster.tracer,
-		mutex:  sync.RWMutex{},
+		mutex: sync.RWMutex{},
 	}
 
 	d.cluster.instances.Insert(item.NodeID, instance)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
@@ -16,21 +17,22 @@ const (
 	defaultReadyWait = 20 * time.Second
 
 	readyCommandRetryInterval = 2 * time.Second
-	readyCommandTimeout       = 5 * time.Minute
+	readyCommandTimeout       = 10 * time.Minute
 )
 
 func (ppb *PostProcessingBuilder) runReadyCommand(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	sandboxID string,
 	readyCmd string,
 	cmdMetadata metadata.Context,
 ) error {
-	ctx, span := ppb.tracer.Start(ctx, "run-ready-command")
+	ctx, span := tracer.Start(ctx, "run-ready-command")
 	defer span.End()
 
-	ppb.UserLogger.Info("Waiting for template to be ready")
+	userLogger.Info("Waiting for template to be ready")
 
-	ppb.UserLogger.Info(fmt.Sprintf("[ready cmd]: %s", readyCmd))
+	userLogger.Info(fmt.Sprintf("[ready cmd]: %s", readyCmd))
 
 	startTime := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, readyCommandTimeout)
@@ -40,9 +42,8 @@ func (ppb *PostProcessingBuilder) runReadyCommand(
 	for {
 		err := sandboxtools.RunCommandWithLogger(
 			ctx,
-			ppb.tracer,
 			ppb.proxy,
-			ppb.UserLogger,
+			userLogger,
 			zapcore.InfoLevel,
 			"ready",
 			sandboxID,
@@ -51,10 +52,10 @@ func (ppb *PostProcessingBuilder) runReadyCommand(
 		)
 
 		if err == nil {
-			ppb.UserLogger.Info("Template is ready")
+			userLogger.Info("Template is ready")
 			return nil
 		} else {
-			ppb.UserLogger.Info(fmt.Sprintf("Template is not ready: %v", err))
+			userLogger.Info(fmt.Sprintf("Template is not ready: %v", err))
 		}
 
 		select {
@@ -63,7 +64,7 @@ func (ppb *PostProcessingBuilder) runReadyCommand(
 				return fmt.Errorf("ready command timed out after %s", time.Since(startTime))
 			}
 			// Template is ready, the start command finished before the ready command
-			ppb.UserLogger.Info("Template is ready")
+			userLogger.Info("Template is ready")
 			return nil
 		case <-time.After(readyCommandRetryInterval):
 			// Wait for readyCommandRetryInterval time before retrying the ready command

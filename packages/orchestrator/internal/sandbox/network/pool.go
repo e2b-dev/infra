@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -18,7 +17,7 @@ const (
 )
 
 type Pool struct {
-	ctx    context.Context // nolint:containedctx // todo: refactor so this can be removed
+	ctx    context.Context //nolint:containedctx // todo: refactor so this can be removed
 	cancel context.CancelFunc
 
 	newSlots          chan *Slot
@@ -29,7 +28,7 @@ type Pool struct {
 	slotStorage Storage
 }
 
-func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string, tracer trace.Tracer) (*Pool, error) {
+func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string) (*Pool, error) {
 	newSlots := make(chan *Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan *Slot, reusedSlotsPoolSize)
 
@@ -45,7 +44,7 @@ func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPo
 		return nil, fmt.Errorf("failed to create reused slot counter: %w", err)
 	}
 
-	slotStorage, err := NewStorage(vrtSlotsSize, nodeID, tracer)
+	slotStorage, err := NewStorage(vrtSlotsSize, nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create slot storage: %w", err)
 	}
@@ -112,7 +111,7 @@ func (p *Pool) populate(ctx context.Context) error {
 	}
 }
 
-func (p *Pool) Get(ctx context.Context, tracer trace.Tracer, allowInternet bool) (*Slot, error) {
+func (p *Pool) Get(ctx context.Context, allowInternet bool) (*Slot, error) {
 	var slot *Slot
 
 	select {
@@ -133,7 +132,7 @@ func (p *Pool) Get(ctx context.Context, tracer trace.Tracer, allowInternet bool)
 		}
 	}
 
-	err := slot.ConfigureInternet(ctx, tracer, allowInternet)
+	err := slot.ConfigureInternet(ctx, allowInternet)
 	if err != nil {
 		return nil, fmt.Errorf("error setting slot internet access: %w", err)
 	}
@@ -141,8 +140,8 @@ func (p *Pool) Get(ctx context.Context, tracer trace.Tracer, allowInternet bool)
 	return slot, nil
 }
 
-func (p *Pool) Return(ctx context.Context, tracer trace.Tracer, slot *Slot) error {
-	err := slot.ResetInternet(ctx, tracer)
+func (p *Pool) Return(ctx context.Context, slot *Slot) error {
+	err := slot.ResetInternet(ctx)
 	if err != nil {
 		// Cleanup the slot if resetting internet fails
 		if cerr := p.cleanup(slot); cerr != nil {
@@ -154,7 +153,7 @@ func (p *Pool) Return(ctx context.Context, tracer trace.Tracer, slot *Slot) erro
 
 	select {
 	case p.reusedSlots <- slot:
-		p.reusedSlotCounter.Add(context.Background(), 1)
+		p.reusedSlotCounter.Add(context.Background(), 1) //nolint:contextcheck // TODO: fix this later
 	default:
 		err := p.cleanup(slot)
 		if err != nil {

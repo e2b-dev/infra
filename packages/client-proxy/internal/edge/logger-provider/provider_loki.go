@@ -13,6 +13,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs/logsloki"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -60,7 +61,7 @@ func (l *LokiQueryProvider) QueryBuildLogs(ctx context.Context, templateID strin
 		return make([]logs.LogEntry, 0), nil
 	}
 
-	lm, err := logs.LokiResponseMapper(res, offset, level)
+	lm, err := logsloki.ResponseMapper(res, offset, level)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when mapping build logs", err)
 		zap.L().Error("error when mapping logs for template build", zap.Error(err), logger.WithBuildID(buildID))
@@ -84,7 +85,7 @@ func (l *LokiQueryProvider) QuerySandboxLogs(ctx context.Context, teamID string,
 		return make([]logs.LogEntry, 0), nil
 	}
 
-	lm, err := logs.LokiResponseMapper(res, 0, nil)
+	lm, err := logsloki.ResponseMapper(res, 0, nil)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when mapping sandbox logs", err)
 		zap.L().Error("error when mapping logs for sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))

@@ -39,7 +39,7 @@ import (
 )
 
 type Closeable interface {
-	Close(context.Context) error
+	Close(ctx context.Context) error
 }
 
 const (
@@ -118,7 +118,6 @@ func run() int {
 	defer sigCancel()
 
 	logger.Info("Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
-	tracer := tel.TracerProvider.Tracer(serviceName)
 
 	edgeSD, orchestratorsSD, err := service_discovery.NewServiceDiscoveryProvider(ctx, edgePort, orchestratorPort, logger)
 	if err != nil {
@@ -131,17 +130,17 @@ func run() int {
 	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
 		redisClient := redis.NewClusterClient(&redis.ClusterOptions{Addrs: []string{redisClusterUrl}, MinIdleConns: 1})
 		redisSync := redsync.New(goredis.NewPool(redisClient))
-		catalog = sandboxes.NewRedisSandboxesCatalog(tracer, redisClient, redisSync)
+		catalog = sandboxes.NewRedisSandboxesCatalog(redisClient, redisSync)
 	} else if redisUrl := os.Getenv("REDIS_URL"); redisUrl != "" {
 		redisClient := redis.NewClient(&redis.Options{Addr: redisUrl, MinIdleConns: 1})
 		redisSync := redsync.New(goredis.NewPool(redisClient))
-		catalog = sandboxes.NewRedisSandboxesCatalog(tracer, redisClient, redisSync)
+		catalog = sandboxes.NewRedisSandboxesCatalog(redisClient, redisSync)
 	} else {
 		logger.Warn("Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
-		catalog = sandboxes.NewMemorySandboxesCatalog(tracer)
+		catalog = sandboxes.NewMemorySandboxesCatalog()
 	}
 
-	orchestrators := e2borchestrators.NewOrchestratorsPool(logger, tracer, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
+	orchestrators := e2borchestrators.NewOrchestratorsPool(logger, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
 
 	info := &e2binfo.ServiceInfo{
 		NodeID:               nodeID,
@@ -167,12 +166,12 @@ func run() int {
 	}
 
 	authorizationManager := authorization.NewStaticTokenAuthorizationService(edgeSecret)
-	edges := e2borchestrators.NewEdgePool(logger, edgeSD, tracer, info.Host, authorizationManager)
+	edges := e2borchestrators.NewEdgePool(logger, edgeSD, info.Host, authorizationManager)
 
 	var closers []Closeable
 	closers = append(closers, orchestrators, edges)
 
-	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, logger, tracer, info, edges, orchestrators, catalog)
+	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, logger, info, edges, orchestrators, catalog)
 	if err != nil {
 		logger.Error("failed to create edge api store", zap.Error(err))
 		return 1
@@ -198,7 +197,7 @@ func run() int {
 	grpcSrv := edgepassthrough.NewNodePassThroughServer(orchestrators, info, authorizationManager, catalog)
 
 	// Edge REST API
-	restHttpHandler := edge.NewGinServer(logger, edgeApiStore, edgeApiSwagger, tracer, authorizationManager)
+	restHttpHandler := edge.NewGinServer(logger, edgeApiStore, edgeApiSwagger, authorizationManager)
 	restListener := muxServer.Match(cmux.Any())
 	restSrv := &http.Server{Handler: restHttpHandler} // handler requests for REST API
 
@@ -363,7 +362,7 @@ func run() int {
 		// close all resources that needs to be closed gracefully
 		for _, c := range closers {
 			zap.L().Info(fmt.Sprintf("Closing %T", c))
-			if err := c.Close(closeCtx); err != nil {
+			if err := c.Close(closeCtx); err != nil { //nolint:contextcheck // TODO: fix this later
 				zap.L().Error("error during shutdown", zap.Error(err))
 			}
 		}

@@ -11,7 +11,7 @@ import (
 	"github.com/dustin/go-humanize"
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
@@ -23,6 +23,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs")
 
 const (
 	// Max size of the rootfs file in MB.
@@ -67,7 +69,6 @@ func New(
 
 func (r *Rootfs) CreateExt4Filesystem(
 	ctx context.Context,
-	tracer trace.Tracer,
 	logger *zap.Logger,
 	rootfsPath string,
 	provisionScript string,
@@ -87,9 +88,9 @@ func (r *Rootfs) CreateExt4Filesystem(
 	var img containerregistry.Image
 	var err error
 	if r.template.FromImage != "" {
-		img, err = oci.GetPublicImage(childCtx, tracer, r.template.FromImage, r.template.RegistryAuthProvider)
+		img, err = oci.GetPublicImage(childCtx, r.template.FromImage, r.template.RegistryAuthProvider)
 	} else {
-		img, err = oci.GetImage(childCtx, tracer, r.artifactRegistry, r.template.TemplateID, r.metadata.BuildID)
+		img, err = oci.GetImage(childCtx, r.artifactRegistry, r.template.TemplateID, r.metadata.BuildID)
 	}
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error requesting docker image: %w", err)
@@ -113,7 +114,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	telemetry.ReportEvent(childCtx, "set up filesystem")
 
 	logger.Info("Creating file system and pulling Docker image")
-	ext4Size, err := oci.ToExt4(ctx, tracer, logger, img, rootfsPath, maxRootfsSize, r.template.RootfsBlockSize())
+	ext4Size, err := oci.ToExt4(ctx, logger, img, rootfsPath, maxRootfsSize, r.template.RootfsBlockSize())
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error creating ext4 filesystem: %w", err)
 	}
@@ -121,13 +122,13 @@ func (r *Rootfs) CreateExt4Filesystem(
 
 	logger.Debug("Filesystem cleanup")
 	// Make rootfs writable, be default it's readonly
-	err = filesystem.MakeWritable(ctx, tracer, rootfsPath)
+	err = filesystem.MakeWritable(ctx, rootfsPath)
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error making rootfs file writable: %w", err)
 	}
 
 	// Resize rootfs
-	rootfsFreeSpace, err := filesystem.GetFreeSpace(ctx, tracer, rootfsPath, r.template.RootfsBlockSize())
+	rootfsFreeSpace, err := filesystem.GetFreeSpace(ctx, rootfsPath, r.template.RootfsBlockSize())
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error getting free space: %w", err)
 	}
@@ -141,7 +142,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 		zap.Int64("size_free", rootfsFreeSpace),
 	)
 	if diskAdd > 0 {
-		_, err := filesystem.Enlarge(ctx, tracer, rootfsPath, diskAdd)
+		_, err := filesystem.Enlarge(ctx, rootfsPath, diskAdd)
 		if err != nil {
 			return containerregistry.Config{}, fmt.Errorf("error enlarging rootfs: %w", err)
 		}
@@ -269,8 +270,6 @@ echo "System Init"`), Mode: 0o777},
 		map[string]string{
 			// Enable envd service autostart
 			"etc/systemd/system/multi-user.target.wants/envd.service": "etc/systemd/system/envd.service",
-			// Enable chrony service autostart
-			"etc/systemd/system/multi-user.target.wants/chrony.service": "etc/systemd/system/chrony.service",
 		},
 	)
 	if err != nil {

@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"time"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -49,7 +48,7 @@ func main() {
 
 	err := buildTemplate(ctx, *kernelVersion, *fcVersion, *templateID, *buildID)
 	if err != nil {
-		log.Fatalf("error building template: %v", err)
+		log.Fatalf("error building template: %v", err) //nolint:gocritic // probably fine to bail if we're done?
 	}
 }
 
@@ -76,8 +75,6 @@ func buildTemplate(
 	zap.ReplaceGlobals(logger)
 	sbxlogger.SetSandboxLoggerExternal(logger)
 	sbxlogger.SetSandboxLoggerInternal(logger)
-
-	tracer := otel.Tracer("test")
 
 	logger.Info("building template", l.WithTemplateID(templateID), l.WithBuildID(buildID))
 
@@ -123,7 +120,7 @@ func buildTemplate(
 		}
 	}()
 
-	networkPool, err := network.NewPool(ctx, noop.MeterProvider{}, 8, 8, clientID, tracer)
+	networkPool, err := network.NewPool(ctx, noop.MeterProvider{}, 8, 8, clientID)
 	if err != nil {
 		return fmt.Errorf("could not create network pool: %w", err)
 	}
@@ -134,7 +131,7 @@ func buildTemplate(
 		}
 	}()
 
-	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider()
+	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider() //nolint:contextcheck // TODO: fix this later
 	if err != nil {
 		return fmt.Errorf("error getting artifacts registry provider: %w", err)
 	}
@@ -160,7 +157,6 @@ func buildTemplate(
 	}
 	builder := build.NewBuilder(
 		logger,
-		tracer,
 		persistenceTemplate,
 		persistenceBuild,
 		artifactRegistry,

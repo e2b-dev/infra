@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"strings"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -17,10 +19,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/commands")
+
 type CommandExecutor struct {
 	buildcontext.BuildContext
-
-	tracer trace.Tracer
 
 	buildStorage storage.StorageProvider
 	proxy        *proxy.SandboxProxy
@@ -28,14 +30,11 @@ type CommandExecutor struct {
 
 func NewCommandExecutor(
 	buildContext buildcontext.BuildContext,
-	tracer trace.Tracer,
 	buildStorage storage.StorageProvider,
 	proxy *proxy.SandboxProxy,
 ) *CommandExecutor {
 	return &CommandExecutor{
 		BuildContext: buildContext,
-
-		tracer: tracer,
 
 		buildStorage: buildStorage,
 		proxy:        proxy,
@@ -73,12 +72,13 @@ func (ce *CommandExecutor) getCommand(
 
 func (ce *CommandExecutor) Execute(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	sbx *sandbox.Sandbox,
 	prefix string,
 	step *templatemanager.TemplateStep,
 	cmdMetadata metadata.Context,
 ) (metadata.Context, error) {
-	ctx, span := ce.tracer.Start(ctx, "apply-command", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, "apply-command", trace.WithAttributes(
 		attribute.String("prefix", prefix),
 		attribute.String("sandbox.id", sbx.Runtime.SandboxID),
 		attribute.String("step.type", step.Type),
@@ -94,8 +94,7 @@ func (ce *CommandExecutor) Execute(
 
 	cmdMetadata, err = cmd.Execute(
 		ctx,
-		ce.tracer,
-		ce.UserLogger,
+		userLogger,
 		ce.proxy,
 		sbx.Runtime.SandboxID,
 		prefix,

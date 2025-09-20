@@ -8,7 +8,7 @@ import (
 	tt "text/template"
 	"time"
 
-	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -31,8 +31,8 @@ type ConfigurationParams struct {
 
 func runConfiguration(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	bc buildcontext.BuildContext,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 ) error {
@@ -52,9 +52,8 @@ func runConfiguration(
 
 	err = sandboxtools.RunCommandWithLogger(
 		configCtx,
-		tracer,
 		proxy,
-		bc.UserLogger,
+		userLogger,
 		zapcore.DebugLevel,
 		"config",
 		sandboxID,

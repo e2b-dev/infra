@@ -18,17 +18,90 @@ linters:
     - bidichk
     - bodyclose
     - containedctx
+    - contextcheck
     - copyloopvar
     - dogsled
     - durationcheck
     - errname
     - errorlint
+    - exptostd
+    - gocritic
     - govet
+    - iface
+    - importas
+    - inamedparam
+    - ineffassign
+    - intrange
+    - mirror
+    - misspell
+    - nilnesserr
+    - nolintlint
+    - reassign
+    - recvcheck
+    - revive
+    - rowserrcheck
+    - spancheck
+    - sqlclosecheck
     - staticcheck
     - testifylint
     - thelper
     - tparallel
+    - unconvert
+    - unused
+    - usestdlibvars
+    - usetesting
+    - wastedassign
+    - whitespace
+    - zerologlint
   settings:
+    gocritic:
+      disabled-checks:
+        - appendAssign
+    revive:
+      enable-all-rules: true
+      rules:
+        - { disabled: true, name: add-constant }  # todo: enable this
+        - { disabled: true, name: argument-limit }
+        - { disabled: true, name: bare-return }
+        - { disabled: true, name: blank-imports }
+        - { disabled: true, name: bool-literal-in-expr }
+        - { disabled: true, name: cognitive-complexity }
+        - { disabled: true, name: comment-spacings   }
+        - { disabled: true, name: confusing-naming }
+        - { disabled: true, name: confusing-results }
+        - { disabled: true, name: context-as-argument }
+        - { disabled: true, name: cyclomatic }
+        - { disabled: true, name: deep-exit }
+        - { disabled: true, name: defer }  # todo: enable this
+        - { disabled: true, name: early-return }
+        - { disabled: true, name: enforce-switch-style }
+        - { disabled: true, name: exported }
+        - { disabled: true, name: flag-parameter }   # todo: enable this
+        - { disabled: true, name: function-length }
+        - { disabled: true, name: function-result-limit }
+        - { disabled: true, name: get-return }
+        - { disabled: true, name: if-return }
+        - { disabled: true, name: import-alias-naming }
+        - { disabled: true, name: import-shadowing }
+        - { disabled: true, name: indent-error-flow }  #  todo: enable this
+        - { disabled: true, name: line-length-limit }
+        - { disabled: true, name: max-control-nesting }
+        - { disabled: true, name: max-public-structs }
+        - { disabled: true, name: nested-structs }
+        - { disabled: true, name: package-comments }
+        - { disabled: true, name: redefines-builtin-id }
+        - { disabled: true, name: unchecked-type-assertion }
+        - { disabled: true, name: unexported-naming }
+        - { disabled: true, name: unexported-return }
+        - { disabled: true, name: unhandled-error }  #  todo: enable this
+        - { disabled: true, name: unnecessary-format }  # todo: enable this
+        - { disabled: true, name: unnecessary-stmt }  # todo: enable this
+        - { disabled: true, name: unused-parameter }  # todo: enable this
+        - { disabled: true, name: unused-receiver }
+        - { disabled: true, name: use-errors-new }  # todo: enable this
+        - { disabled: true, name: useless-break }  # todo: enable this
+        - { disabled: true, name: var-declaration }
+        - { disabled: true, name: var-naming }
     staticcheck:
       checks:
         - all
@@ -41,4 +114,4 @@ linters:
         - -QF1008  # Omit embedded fields from selector expression
 
 run:
-  go: 1.24.3
+  go: 1.24.7

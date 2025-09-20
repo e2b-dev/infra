@@ -3,7 +3,6 @@ package nodemanager
 import (
 	"context"
 
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -14,7 +13,7 @@ import (
 
 const syncMaxRetries = 4
 
-func (n *Node) Sync(ctx context.Context, tracer trace.Tracer, instanceCache *instance.InstanceCache) {
+func (n *Node) Sync(ctx context.Context, instanceCache *instance.MemoryStore) {
 	syncRetrySuccess := false
 
 	for range syncMaxRetries {
@@ -43,7 +42,7 @@ func (n *Node) Sync(ctx context.Context, tracer trace.Tracer, instanceCache *ins
 		// Update host metrics from service info
 		n.UpdateMetricsFromServiceInfoResponse(nodeInfo)
 
-		activeInstances, instancesErr := n.GetSandboxes(ctx, tracer)
+		activeInstances, instancesErr := n.GetSandboxes(ctx)
 		if instancesErr != nil {
 			zap.L().Error("Error getting instances", zap.Error(instancesErr), logger.WithNodeID(n.ID))
 			continue
@@ -61,7 +60,7 @@ func (n *Node) Sync(ctx context.Context, tracer trace.Tracer, instanceCache *ins
 		return
 	}
 
-	builds, buildsErr := n.listCachedBuilds(ctx, tracer)
+	builds, buildsErr := n.listCachedBuilds(ctx)
 	if buildsErr != nil {
 		zap.L().Error("Error listing cached builds", zap.Error(buildsErr), logger.WithNodeID(n.ID))
 		return

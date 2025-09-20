@@ -20,7 +20,6 @@ var _ StorageProvider = (*FileSystemStorageProvider)(nil)
 
 type FileSystemStorageObjectProvider struct {
 	path string
-	ctx  context.Context // nolint:containedctx // todo: fix the interface so this can be removed
 }
 
 var _ StorageObjectProvider = (*FileSystemStorageObjectProvider)(nil)
@@ -53,7 +52,6 @@ func (fs *FileSystemStorageProvider) OpenObject(ctx context.Context, path string
 
 	return &FileSystemStorageObjectProvider{
 		path: fs.getPath(path),
-		ctx:  ctx,
 	}, nil
 }
 
@@ -147,7 +145,6 @@ func (f *FileSystemStorageObjectProvider) getHandle(checkExistence bool) (*os.Fi
 		if info.IsDir() {
 			return nil, fmt.Errorf("path %s is a directory", f.path)
 		}
-
 	}
 
 	handle, err := os.OpenFile(f.path, os.O_RDWR|os.O_CREATE, 0o644)

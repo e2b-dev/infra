@@ -48,7 +48,7 @@ func main() {
 
 	err = seed(database, data)
 	if err != nil {
-		log.Fatalf("Failed to execute seed: %v", err)
+		log.Fatalf("Failed to execute seed: %v", err) //nolint:gocritic // no harm in exiting after defer here
 	}
 
 	fmt.Println("Seed completed successfully.")
@@ -83,7 +83,6 @@ func seed(db *db.DB, data SeedData) error {
 
 	err = db.Client.AccessToken.Create().
 		SetUser(user).
-		SetAccessToken(data.AccessToken).
 		SetAccessTokenHash(accessTokenHash).
 		SetAccessTokenPrefix(accessTokenMask.Prefix).
 		SetAccessTokenLength(accessTokenMask.ValueLength).
@@ -129,7 +128,6 @@ func seed(db *db.DB, data SeedData) error {
 	}
 	_, err = db.Client.TeamAPIKey.Create().
 		SetTeam(t).
-		SetAPIKey(data.APIKey).
 		SetAPIKeyHash(apiKeyHash).
 		SetAPIKeyPrefix(apiKeyMask.Prefix).
 		SetAPIKeyLength(apiKeyMask.ValueLength).

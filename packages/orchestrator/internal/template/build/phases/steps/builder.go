@@ -30,7 +30,7 @@ import (
 
 const layerTimeout = time.Hour
 
-var tracer = otel.Tracer("orchestrator.template.build.phases.steps")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/steps")
 
 type StepBuilder struct {
 	buildcontext.BuildContext
@@ -39,7 +39,6 @@ type StepBuilder struct {
 	step       *templatemanager.TemplateStep
 
 	logger *zap.Logger
-	tracer trace.Tracer
 	proxy  *proxy.SandboxProxy
 
 	layerExecutor   *layer.LayerExecutor
@@ -51,7 +50,6 @@ type StepBuilder struct {
 func New(
 	buildContext buildcontext.BuildContext,
 	logger *zap.Logger,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	layerExecutor *layer.LayerExecutor,
 	commandExecutor *commands.CommandExecutor,
@@ -67,7 +65,6 @@ func New(
 		step:       step,
 
 		logger: logger,
-		tracer: tracer,
 		proxy:  proxy,
 
 		layerExecutor:   layerExecutor,
@@ -87,8 +84,9 @@ func (sb *StepBuilder) String(ctx context.Context) (string, error) {
 
 func (sb *StepBuilder) Metadata() phases.PhaseMeta {
 	return phases.PhaseMeta{
-		Phase:    metrics.PhaseSteps,
-		StepType: sb.step.Type,
+		Phase:      metrics.PhaseSteps,
+		StepType:   sb.step.Type,
+		StepNumber: &sb.stepNumber,
 	}
 }
 
@@ -140,6 +138,7 @@ func (sb *StepBuilder) Layer(
 
 func (sb *StepBuilder) Build(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
 ) (phases.LayerResult, error) {
@@ -183,22 +182,18 @@ func (sb *StepBuilder) Build(
 	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error) {
 		cmdMeta, err := sb.commandExecutor.Execute(
 			ctx,
+			userLogger,
 			sbx,
 			prefix,
 			step,
 			meta.Context,
 		)
 		if err != nil {
-			return metadata.Template{}, &phases.PhaseBuildError{
-				Phase: string(metrics.PhaseSteps),
-				Step:  fmt.Sprintf("%d", sb.stepNumber),
-				Err:   err,
-			}
+			return metadata.Template{}, phases.NewPhaseBuildError(sb, err)
 		}
 
 		err = sandboxtools.SyncChangesToDisk(
 			ctx,
-			sb.tracer,
 			sb.proxy,
 			sbx.Runtime.SandboxID,
 		)
@@ -212,7 +207,7 @@ func (sb *StepBuilder) Build(
 
 	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template)
 
-	meta, err := sb.layerExecutor.BuildLayer(ctx, layer.LayerBuildCommand{
+	meta, err := sb.layerExecutor.BuildLayer(ctx, userLogger, layer.LayerBuildCommand{
 		SourceTemplate: templateProvider,
 		CurrentLayer:   currentLayer.Metadata,
 		Hash:           currentLayer.Hash,

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/db/client"
@@ -34,8 +33,6 @@ type Pool struct {
 
 	clusters        *smap.Map[*Cluster]
 	synchronization *synchronization.Synchronize[queries.Cluster, *Cluster]
-
-	tracer trace.Tracer
 }
 
 func localClusterConfig() (*queries.Cluster, error) {
@@ -58,11 +55,10 @@ func localClusterConfig() (*queries.Cluster, error) {
 	}, nil
 }
 
-func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, tracer trace.Tracer) (*Pool, error) {
+func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client) (*Pool, error) {
 	p := &Pool{
 		db:       db,
 		tel:      tel,
-		tracer:   tracer,
 		clusters: smap.New[*Cluster](),
 	}
 
@@ -78,7 +74,7 @@ func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, trac
 	}
 
 	store := poolSynchronizationStore{pool: p, localCluster: localCluster}
-	p.synchronization = synchronization.NewSynchronize(p.tracer, "clusters-pool", "Clusters pool", store)
+	p.synchronization = synchronization.NewSynchronize("clusters-pool", "Clusters pool", store)
 
 	// Periodically sync clusters with the database
 	go p.synchronization.Start(poolSyncInterval, poolSyncTimeout, true)
@@ -165,7 +161,14 @@ func (d poolSynchronizationStore) PoolInsert(ctx context.Context, cluster querie
 
 	zap.L().Info("Initializing newly discovered cluster", l.WithClusterID(cluster.ID))
 
-	c, err := NewCluster(d.pool.tracer, d.pool.tel, cluster.Endpoint, cluster.EndpointTls, cluster.Token, cluster.ID, cluster.SandboxProxyDomain)
+	c, err := NewCluster( //nolint:contextcheck // TODO: fix this later
+		d.pool.tel,
+		cluster.Endpoint,
+		cluster.EndpointTls,
+		cluster.Token,
+		cluster.ID,
+		cluster.SandboxProxyDomain,
+	)
 	if err != nil {
 		zap.L().Error("Initializing cluster failed", zap.Error(err), l.WithClusterID(c.ID))
 		return

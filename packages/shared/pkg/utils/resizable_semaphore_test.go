@@ -54,7 +54,7 @@ func TestAcquireWithLimitIncrease(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		err := s.Acquire(context.Background(), 2)
+		err := s.Acquire(t.Context(), 2)
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -190,7 +190,7 @@ func TestAcquireBlocksUntilRelease(t *testing.T) {
 	s, err := NewAdjustableSemaphore(1)
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
 	defer cancel()
 
 	if err := s.Acquire(ctx, 1); err != nil {
@@ -218,13 +218,13 @@ func TestAcquireBlocksUntilRelease(t *testing.T) {
 func TestAcquireUnblocksOnSetLimit(t *testing.T) {
 	s, err := NewAdjustableSemaphore(1)
 	require.NoError(t, err)
-	if err := s.Acquire(context.Background(), 1); err != nil {
+	if err := s.Acquire(t.Context(), 1); err != nil {
 		t.Fatalf("initial acquire failed: %v", err)
 	}
 
 	done := make(chan struct{})
 	go func() {
-		_ = s.Acquire(context.Background(), 1) // waits
+		_ = s.Acquire(t.Context(), 1) // waits
 		close(done)
 	}()
 
@@ -246,9 +246,9 @@ func TestAcquireRespectsContextCancel(t *testing.T) {
 	s, err := NewAdjustableSemaphore(1)
 	require.NoError(t, err)
 
-	_ = s.Acquire(context.Background(), 1)
+	_ = s.Acquire(t.Context(), 1)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	errCh := make(chan error)
 	go func() { errCh <- s.Acquire(ctx, 1) }()
 
@@ -279,11 +279,11 @@ func TestConcurrentStressNoDeadlockOrRace(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(gor)
-	for i := 0; i < gor; i++ {
+	for range gor {
 		go func() {
 			defer wg.Done()
-			for j := 0; j < iterations; j++ {
-				_ = s.Acquire(context.Background(), 1)
+			for range iterations {
+				_ = s.Acquire(t.Context(), 1)
 				// tiny critical-section
 				s.Release(1)
 			}

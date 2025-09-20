@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildlogger"
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -27,7 +28,7 @@ type BuildInfoResult struct {
 }
 
 type BuildInfo struct {
-	logs   *SafeBuffer
+	logs   *buildlogger.LogEntryLogger
 	Result *utils.SetOnce[BuildInfoResult]
 }
 
@@ -121,7 +122,7 @@ func (c *BuildCache) Get(buildID string) (*BuildInfo, error) {
 }
 
 // Create creates a new build if it doesn't exist in the cache or the build was already finished.
-func (c *BuildCache) Create(buildID string, logs *SafeBuffer) (*BuildInfo, error) {
+func (c *BuildCache) Create(buildID string, logs *buildlogger.LogEntryLogger) (*BuildInfo, error) {
 	info := &BuildInfo{
 		logs:   logs,
 		Result: utils.NewSetOnce[BuildInfoResult](),

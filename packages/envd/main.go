@@ -38,7 +38,7 @@ const (
 )
 
 var (
-	Version = "0.2.11"
+	Version = "0.3.1"
 
 	commitSHA string
 
@@ -189,7 +189,7 @@ func main() {
 				},
 			})
 		} else {
-			log.Fatalf("error getting user: %v", err)
+			log.Fatalf("error getting user: %v", err) //nolint:gocritic // probably fine to bail if we're done?
 		}
 	}
 

@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
 
@@ -17,9 +16,9 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
+	"github.com/e2b-dev/infra/packages/shared/pkg/events/event"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/event"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -31,7 +30,6 @@ type server struct {
 	info              *service.ServiceInfo
 	sandboxes         *smap.Map[*sandbox.Sandbox]
 	proxy             *proxy.SandboxProxy
-	tracer            trace.Tracer
 	networkPool       *network.Pool
 	templateCache     *template.Cache
 	pauseMu           sync.Mutex
@@ -43,14 +41,9 @@ type server struct {
 }
 
 type Service struct {
-	info     *service.ServiceInfo
-	server   *server
-	proxy    *proxy.SandboxProxy
-	shutdown struct {
-		once sync.Once
-		op   func(context.Context) error
-		err  error
-	}
+	info   *service.ServiceInfo
+	server *server
+	proxy  *proxy.SandboxProxy
 
 	persistence storage.StorageProvider
 }
@@ -61,7 +54,6 @@ type ServiceConfig struct {
 	NetworkPool      *network.Pool
 	DevicePool       *nbd.DevicePool
 	TemplateCache    *template.Cache
-	Tracer           trace.Tracer
 	Info             *service.ServiceInfo
 	Proxy            *proxy.SandboxProxy
 	Sandboxes        *smap.Map[*sandbox.Sandbox]
@@ -81,7 +73,6 @@ func New(
 	}
 	srv.server = &server{
 		info:              cfg.Info,
-		tracer:            cfg.Tracer,
 		proxy:             srv.proxy,
 		sandboxes:         cfg.Sandboxes,
 		networkPool:       cfg.NetworkPool,

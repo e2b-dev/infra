@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/Merovius/nbd/nbdnl"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
@@ -29,11 +29,10 @@ const (
 	disconnectTimeout = 30 * time.Second
 )
 
-type DirectPathMount struct {
-	tracer   trace.Tracer
-	ctx      context.Context // nolint:containedctx // todo: refactor so this can be removed
-	cancelfn context.CancelFunc
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd")
 
+type DirectPathMount struct {
+	cancelfn   context.CancelFunc
 	devicePool *DevicePool
 
 	Backend     block.Device
@@ -47,14 +46,9 @@ type DirectPathMount struct {
 	handlersWg sync.WaitGroup
 }
 
-func NewDirectPathMount(ctx context.Context, tracer trace.Tracer, b block.Device, devicePool *DevicePool) *DirectPathMount {
-	ctx, cancelfn := context.WithCancel(context.WithoutCancel(ctx))
-
+func NewDirectPathMount(b block.Device, devicePool *DevicePool) *DirectPathMount {
 	return &DirectPathMount{
-		tracer:      tracer,
 		Backend:     b,
-		ctx:         ctx,
-		cancelfn:    cancelfn,
 		blockSize:   4096,
 		devicePool:  devicePool,
 		socksClient: make([]*os.File, 0),
@@ -64,6 +58,8 @@ func NewDirectPathMount(ctx context.Context, tracer trace.Tracer, b block.Device
 }
 
 func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err error) {
+	ctx, d.cancelfn = context.WithCancel(ctx)
+
 	defer func() {
 		// Set the device index to the one returned, correctly capture error values
 		d.deviceIndex = retDeviceIndex
@@ -87,7 +83,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 		d.socksServer = make([]io.Closer, 0)
 		d.dispatchers = make([]*Dispatch, 0)
 
-		for i := 0; i < connections; i++ {
+		for i := range connections {
 			// Create the socket pairs
 			sockPair, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 			if err != nil {
@@ -102,13 +98,13 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			}
 			server.Close()
 
-			dispatch := NewDispatch(d.ctx, serverc, d.Backend)
+			dispatch := NewDispatch(serverc, d.Backend)
 			// Start reading commands on the socket and dispatching them to our provider
 			d.handlersWg.Add(1)
 			go func() {
 				defer d.handlersWg.Done()
 
-				handleErr := dispatch.Handle()
+				handleErr := dispatch.Handle(ctx)
 				// The error is expected to happen if the nbd (socket connection) is closed
 				zap.L().Info("closing handler for NBD commands",
 					zap.Error(handleErr),
@@ -159,8 +155,8 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 		}
 
 		select {
-		case <-d.ctx.Done():
-			return math.MaxUint32, errors.Join(err, d.ctx.Err())
+		case <-ctx.Done():
+			return math.MaxUint32, errors.Join(err, ctx.Err())
 		case <-time.After(25 * time.Millisecond):
 		}
 	}
@@ -168,8 +164,8 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 	// Wait until it's connected...
 	for {
 		select {
-		case <-d.ctx.Done():
-			return math.MaxUint32, d.ctx.Err()
+		case <-ctx.Done():
+			return math.MaxUint32, ctx.Err()
 		default:
 		}
 
@@ -185,19 +181,21 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 }
 
 func (d *DirectPathMount) Close(ctx context.Context) error {
-	childCtx, childSpan := d.tracer.Start(ctx, "direct-path-mount-close")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "direct-path-mount-close")
+	defer span.End()
 
 	var errs []error
 
 	idx := d.deviceIndex
 
 	// First cancel the context, which will stop waiting on pending readAt/writeAt...
-	telemetry.ReportEvent(childCtx, "canceling context")
-	d.cancelfn()
+	telemetry.ReportEvent(ctx, "canceling context")
+	if d.cancelfn != nil {
+		d.cancelfn()
+	}
 
 	// Close all server socket pairs...
-	telemetry.ReportEvent(childCtx, "closing socket pairs server")
+	telemetry.ReportEvent(ctx, "closing socket pairs server")
 	for _, v := range d.socksServer {
 		err := v.Close()
 		if err != nil {
@@ -206,25 +204,25 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 	}
 
 	// Now wait until the handlers return
-	telemetry.ReportEvent(childCtx, "await handlers return")
+	telemetry.ReportEvent(ctx, "await handlers return")
 	d.handlersWg.Wait()
 
 	// Now wait for any pending responses to be sent
-	telemetry.ReportEvent(childCtx, "waiting for pending responses")
+	telemetry.ReportEvent(ctx, "waiting for pending responses")
 	for _, d := range d.dispatchers {
 		d.Drain()
 	}
 
 	// Disconnect NBD
 	if idx != math.MaxUint32 {
-		err := disconnectNBDWithTimeout(childCtx, idx, disconnectTimeout)
+		err := disconnectNBDWithTimeout(ctx, idx, disconnectTimeout)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error disconnecting NBD: %w", err))
 		}
 	}
 
 	// Close all client socket pairs...
-	telemetry.ReportEvent(childCtx, "closing socket pairs client")
+	telemetry.ReportEvent(ctx, "closing socket pairs client")
 	for _, v := range d.socksClient {
 		err := v.Close()
 		if err != nil {
@@ -234,7 +232,7 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 
 	// Release the device back to the pool, retry if it is in use
 	if idx != math.MaxUint32 {
-		telemetry.ReportEvent(childCtx, "releasing device to the pool")
+		telemetry.ReportEvent(ctx, "releasing device to the pool")
 		err := d.devicePool.ReleaseDeviceWithRetry(idx)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error releasing overlay device: %w", err))
