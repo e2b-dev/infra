@@ -111,7 +111,7 @@ func (f *Forwarder) StartForwarding(ctx context.Context) {
 						family: familyToIPVersion(p.Family),
 					}
 					f.ports[key] = ptf
-					f.starPortForwarding(ctx, ptf)
+					f.startPortForwarding(ctx, ptf)
 				}
 			}
 
@@ -126,7 +126,7 @@ func (f *Forwarder) StartForwarding(ctx context.Context) {
 	}
 }
 
-func (f *Forwarder) starPortForwarding(ctx context.Context, p *PortToForward) {
+func (f *Forwarder) startPortForwarding(ctx context.Context, p *PortToForward) {
 	// https://unix.stackexchange.com/questions/311492/redirect-application-listening-on-localhost-to-listening-on-external-interface
 	// socat -d -d TCP4-LISTEN:4000,bind=169.254.0.21,fork TCP4:localhost:4000
 	// reuseaddr is used to fix the "Address already in use" error when restarting socat quickly.

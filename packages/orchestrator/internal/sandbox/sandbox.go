@@ -446,7 +446,7 @@ func ResumeSandbox(
 	telemetry.ReportEvent(ctx, "got metadata")
 
 	fcHandle, fcErr := fc.NewProcess(
-		uffdStartCtx,
+		runCtx,
 		ips.slot,
 		sandboxFiles,
 		// The versions need to base exactly the same as the paused sandbox template because of the FC compatibility.

@@ -13,6 +13,7 @@ import (
 
 	"connectrpc.com/authn"
 	connectcors "connectrpc.com/cors"
+	publicport "github.com/e2b-dev/infra/packages/envd/internal/port"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/cors"
 
@@ -20,7 +21,6 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
-	publicport "github.com/e2b-dev/infra/packages/envd/internal/port"
 	filesystemRpc "github.com/e2b-dev/infra/packages/envd/internal/services/filesystem"
 	processRpc "github.com/e2b-dev/infra/packages/envd/internal/services/process"
 	processSpec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
@@ -178,18 +178,20 @@ func main() {
 		tag := "startCmd"
 		cwd := "/home/user"
 		user, err := permissions.GetUser("root")
-		if err == nil {
-			processService.InitializeStartProcess(ctx, user, &processSpec.StartRequest{
-				Tag: &tag,
-				Process: &processSpec.ProcessConfig{
-					Envs: make(map[string]string),
-					Cmd:  "/bin/bash",
-					Args: []string{"-l", "-c", startCmdFlag},
-					Cwd:  &cwd,
-				},
-			})
-		} else {
+		if err != nil {
 			log.Fatalf("error getting user: %v", err) //nolint:gocritic // probably fine to bail if we're done?
+		}
+
+		if err = processService.InitializeStartProcess(ctx, user, &processSpec.StartRequest{
+			Tag: &tag,
+			Process: &processSpec.ProcessConfig{
+				Envs: make(map[string]string),
+				Cmd:  "/bin/bash",
+				Args: []string{"-l", "-c", startCmdFlag},
+				Cwd:  &cwd,
+			},
+		}); err != nil {
+			log.Fatalf("error starting process: %v", err)
 		}
 	}
 

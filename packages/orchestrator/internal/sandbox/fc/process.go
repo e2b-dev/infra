@@ -69,14 +69,14 @@ type Process struct {
 }
 
 func NewProcess(
-	ctx context.Context,
+	ctx, runCtx context.Context,
 	slot *network.Slot,
 	files *storage.SandboxFiles,
 	versions FirecrackerVersions,
 	rootfsProviderPath string,
 	rootfsPaths RootfsPaths,
 ) (*Process, error) {
-	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
+	ctx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
 		attribute.Int("sandbox.slot.index", slot.Idx),
 	))
 	defer childSpan.End()
@@ -88,7 +88,7 @@ func NewProcess(
 		return nil, err
 	}
 
-	telemetry.SetAttributes(childCtx,
+	telemetry.SetAttributes(ctx,
 		attribute.String("sandbox.cmd", startScript.Value),
 	)
 
@@ -102,7 +102,7 @@ func NewProcess(
 		return nil, fmt.Errorf("error stating kernel file: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx,
+	cmd := exec.CommandContext(runCtx,
 		"unshare",
 		"-m",
 		"--",
