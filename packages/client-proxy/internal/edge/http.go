@@ -19,6 +19,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/handlers"
+	"github.com/e2b-dev/infra/packages/proxy/internal/testhacks"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -50,6 +51,10 @@ func NewGinServer(logger *zap.Logger, store *handlers.APIStore, swagger *openapi
 
 	handler := gin.New()
 	handler.MaxMultipartMemory = maxMultipartMemory
+
+	if testhacks.IsTesting() {
+		handler.Use(testhacks.ProcessGinRequest)
+	}
 
 	// Use our validation middleware to check all requests against the
 	// OpenAPI schema.

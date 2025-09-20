@@ -275,7 +275,7 @@ func run() int {
 		proxyRunLogger := logger.With(zap.Int("proxy_port", proxyPort))
 		proxyRunLogger.Info("Http proxy starting")
 
-		err := trafficProxy.ListenAndServe()
+		err := trafficProxy.ListenAndServe(ctx)
 		// Add different handling for the error
 		switch {
 		case errors.Is(err, http.ErrServerClosed):

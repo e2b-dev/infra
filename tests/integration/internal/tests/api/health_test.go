@@ -14,7 +14,7 @@ func TestHealth(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	resp, err := c.GetHealthWithResponse(ctx)
 	if err != nil {

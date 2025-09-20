@@ -14,7 +14,7 @@ import (
 )
 
 func TestTeamMetrics(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	// Create multiple sandboxes to generate team metrics
 	utils.SetupSandboxWithCleanup(t, c)
@@ -61,7 +61,7 @@ func TestTeamMetrics(t *testing.T) {
 }
 
 func TestTeamMetricsWithTimeRange(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	// Create a sandbox to generate metrics
 	utils.SetupSandboxWithCleanup(t, c)
@@ -102,7 +102,7 @@ func TestTeamMetricsWithTimeRange(t *testing.T) {
 }
 
 func TestTeamMetricsEmpty(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	db := setup.GetTestDBClient(t)
 	teamID := utils.CreateTeamWithUser(t, c, db, "test-team-no-metrics", setup.UserID)
@@ -122,7 +122,7 @@ func TestTeamMetricsEmpty(t *testing.T) {
 }
 
 func TestTeamMetricsInvalidDate(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	// Test getting metrics for a time range where no sandboxes existed
 	now := time.Now().Unix()

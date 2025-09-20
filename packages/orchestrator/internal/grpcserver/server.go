@@ -22,6 +22,7 @@ import (
 
 	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/testhacks"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -52,6 +53,27 @@ func New(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider
 		"/TemplateService/HealthStatus",
 		"/InfoService/ServiceInfo",
 	)
+
+	unaryInterceptors := []grpc.UnaryServerInterceptor{
+		recovery.UnaryServerInterceptor(),
+		selector.UnaryServerInterceptor(
+			logging.UnaryServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
+			ignoredLoggingRoutes,
+		),
+	}
+
+	streamingInterceptors := []grpc.StreamServerInterceptor{
+		selector.StreamServerInterceptor(
+			logging.StreamServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
+			ignoredLoggingRoutes,
+		),
+	}
+
+	if testhacks.IsTesting() {
+		unaryInterceptors = append(unaryInterceptors, testhacks.UnaryTestNamePrinter)
+		streamingInterceptors = append(streamingInterceptors, testhacks.StreamingTestNamePrinter)
+	}
+
 	srv := grpc.NewServer(
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
 			MinTime:             5 * time.Second, // Minimum time between pings from client
@@ -65,19 +87,8 @@ func New(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider
 			otelgrpc.WithTracerProvider(tracerProvider),
 			otelgrpc.WithMeterProvider(meterProvider),
 		))),
-		grpc.ChainUnaryInterceptor(
-			recovery.UnaryServerInterceptor(),
-			selector.UnaryServerInterceptor(
-				logging.UnaryServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
-				ignoredLoggingRoutes,
-			),
-		),
-		grpc.ChainStreamInterceptor(
-			selector.StreamServerInterceptor(
-				logging.StreamServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
-				ignoredLoggingRoutes,
-			),
-		),
+		grpc.ChainUnaryInterceptor(unaryInterceptors...),
+		grpc.ChainStreamInterceptor(streamingInterceptors...),
 	)
 
 	grpcHealth := health.NewServer()

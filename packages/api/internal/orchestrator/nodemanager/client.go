@@ -11,6 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
+	"github.com/e2b-dev/infra/packages/api/internal/testhacks"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
@@ -22,7 +23,7 @@ var OrchestratorToApiNodeStateMapper = map[orchestratorinfo.ServiceInfoStatus]ap
 }
 
 func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string) (*grpclient.GRPCClient, error) {
-	conn, err := grpc.NewClient(host,
+	grpcOptions := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithStatsHandler(
 			otelgrpc.NewClientHandler(
@@ -30,7 +31,16 @@ func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterPr
 				otelgrpc.WithMeterProvider(meterProvider),
 			),
 		),
-	)
+	}
+
+	if testhacks.IsTesting() {
+		grpcOptions = append(grpcOptions,
+			grpc.WithUnaryInterceptor(testhacks.GRPCUnaryInterceptor),
+			grpc.WithStreamInterceptor(testhacks.GRPCStreamInterceptor),
+		)
+	}
+
+	conn, err := grpc.NewClient(host, grpcOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}

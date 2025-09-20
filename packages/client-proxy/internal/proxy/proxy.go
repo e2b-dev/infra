@@ -15,6 +15,7 @@ import (
 
 	orchestratorspool "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
+	"github.com/e2b-dev/infra/packages/proxy/internal/testhacks"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -109,6 +110,8 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 		port,
 		idleTimeout,
 		func(r *http.Request) (*pool.Destination, error) {
+			r = testhacks.ProcessHTTPRequest(r)
+
 			sandboxId, port, err := reverseproxy.ParseHost(r.Host)
 			if err != nil {
 				return nil, err

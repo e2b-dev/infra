@@ -22,7 +22,7 @@ func TestCreateAPIKey(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	// Create the API key
 	resp, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
@@ -40,7 +40,7 @@ func TestCreateAPIKeyForeignTeam(t *testing.T) {
 	ctx := t.Context()
 
 	db := setup.GetTestDBClient(t)
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	// Create first team and API key
 	foreignTeamID := utils.CreateTeam(t, c, db, "test-team-apikey-foreign")
@@ -57,7 +57,7 @@ func TestCreateAPIKeyForeignTeamWithCache(t *testing.T) {
 	ctx := t.Context()
 
 	db := setup.GetTestDBClient(t)
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	// Create first team
 	foreignUserID := utils.CreateUser(t, db)
@@ -78,7 +78,7 @@ func TestDeleteAPIKey(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	t.Run("succeeds", func(t *testing.T) {
 		// Create the API key
@@ -109,7 +109,7 @@ func TestDeleteAPIKey(t *testing.T) {
 	t.Run("cant delete other teams api key", func(t *testing.T) {
 		ctx := t.Context()
 		db := setup.GetTestDBClient(t)
-		c := setup.GetAPIClient()
+		c := setup.GetAPIClient(t)
 
 		// Create first team and API key
 		teamID1 := utils.CreateTeamWithUser(t, c, db, "test-team-apikey-delete-1", setup.UserID)
@@ -169,7 +169,7 @@ func TestListAPIKeys(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	resp, err := c.GetApiKeysWithResponse(ctx, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
 	if err != nil {
@@ -184,7 +184,7 @@ func TestPatchAPIKey(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	// Create the first API key
 	respC, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
@@ -245,7 +245,7 @@ func TestPatchAPIKey(t *testing.T) {
 	t.Run("cant patch other teams api keys", func(t *testing.T) {
 		ctx := t.Context()
 		db := setup.GetTestDBClient(t)
-		c := setup.GetAPIClient()
+		c := setup.GetAPIClient(t)
 
 		// Create first team and API key
 		teamID1 := utils.CreateTeamWithUser(t, c, db, "test-team-apikey-patch-1", setup.UserID)
@@ -301,7 +301,7 @@ func TestPatchAPIKey(t *testing.T) {
 }
 
 func TestAPIKeyLastUsedUpdated(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	// The last used is updated only once a minute
 	expectedLastUsed := time.Now().Add(-2 * time.Minute)

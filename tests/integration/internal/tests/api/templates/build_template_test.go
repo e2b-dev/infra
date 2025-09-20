@@ -35,7 +35,7 @@ func buildTemplate(
 	ctx, cancel := context.WithTimeout(tb.Context(), BuildTimeout)
 	defer cancel()
 
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(tb)
 
 	// Request build
 	resp, err := c.PostV2TemplatesWithResponse(ctx, api.TemplateBuildRequestV2{

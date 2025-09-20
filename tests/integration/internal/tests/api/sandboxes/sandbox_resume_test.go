@@ -15,7 +15,7 @@ import (
 )
 
 func TestSandboxResume(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	t.Run("regular resume", func(t *testing.T) {
 		// Create a sandbox with auto-pause disabled
@@ -93,7 +93,7 @@ func TestSandboxResume(t *testing.T) {
 	})
 
 	t.Run("resume killed sandbox", func(t *testing.T) {
-		c := setup.GetAPIClient()
+		c := setup.GetAPIClient(t)
 
 		// Create a sandbox with auto-pause disabled
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))

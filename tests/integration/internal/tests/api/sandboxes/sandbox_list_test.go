@@ -28,7 +28,7 @@ func pauseSandbox(t *testing.T, c *api.ClientWithResponses, sandboxID string) {
 }
 
 func TestSandboxList(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	// Create a sandbox for testing
 	sbx := utils.SetupSandboxWithCleanup(t, c)
@@ -52,7 +52,7 @@ func TestSandboxList(t *testing.T) {
 }
 
 func TestSandboxListWithFilter(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	// standard sandbox
 	_ = utils.SetupSandboxWithCleanup(t, c)
@@ -75,7 +75,7 @@ func TestSandboxListWithFilter(t *testing.T) {
 }
 
 func TestSandboxListRunning(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	uniqueString := id.Generate()
 	metadataString := fmt.Sprintf("sandboxType=%s", uniqueString)
@@ -104,7 +104,7 @@ func TestSandboxListRunning(t *testing.T) {
 }
 
 func TestSandboxListRunning_NoMetadata(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithoutAnyMetadata())
 	sandboxID := sbx.SandboxID
@@ -122,7 +122,7 @@ func TestSandboxListRunning_NoMetadata(t *testing.T) {
 }
 
 func TestSandboxListPaused(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	metadataKey := "uniqueIdentifier"
 	metadataValue := id.Generate()
@@ -155,7 +155,7 @@ func TestSandboxListPaused(t *testing.T) {
 }
 
 func TestSandboxListPausing(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	metadataKey := "uniqueIdentifier"
 	metadataValue := id.Generate()
@@ -209,7 +209,7 @@ func TestSandboxListPausing(t *testing.T) {
 }
 
 func TestSandboxListPaused_NoMetadata(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithoutAnyMetadata())
 	sandboxID := sbx.SandboxID
@@ -230,7 +230,7 @@ func TestSandboxListPaused_NoMetadata(t *testing.T) {
 }
 
 func TestSandboxListPaginationRunning(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	metadataKey := "uniqueIdentifier"
 	metadataValue := id.Generate()
@@ -300,7 +300,7 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 }
 
 func TestSandboxListPaginationRunningLargerLimit(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	metadataKey := "uniqueIdentifier"
 	metadataValue := id.Generate()
@@ -365,7 +365,7 @@ func TestSandboxListPaginationRunningLargerLimit(t *testing.T) {
 }
 
 func TestSandboxListPaginationPaused(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	metadataKey := "uniqueIdentifier"
 	metadataValue := id.Generate()
@@ -414,7 +414,7 @@ func TestSandboxListPaginationPaused(t *testing.T) {
 }
 
 func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	metadataKey := "uniqueIdentifier"
 	metadataValue := id.Generate()
@@ -465,7 +465,7 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 
 // legacy tests
 func TestSandboxListRunningV1(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	metadataKey := "uniqueIdentifier"
 	metadataValue := id.Generate()
@@ -494,7 +494,7 @@ func TestSandboxListRunningV1(t *testing.T) {
 }
 
 func TestSandboxListWithFilterV1(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	metadataKey := "uniqueIdentifier"
 	metadataValue := id.Generate()
@@ -513,7 +513,7 @@ func TestSandboxListWithFilterV1(t *testing.T) {
 }
 
 func TestSandboxListSortedV1(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	// Create three sandboxes
 	sbx1 := utils.SetupSandboxWithCleanup(t, c)
