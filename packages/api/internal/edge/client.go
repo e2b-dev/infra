@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/keepalive"
 
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
+	"github.com/e2b-dev/infra/packages/api/internal/testhacks"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
@@ -57,6 +58,13 @@ func createClusterClient(tel *telemetry.Client, auth clientAuthorization, endpoi
 		grpcOptions = append(grpcOptions, grpc.WithAuthority(endpoint), grpc.WithTransportCredentials(cred))
 	} else {
 		grpcOptions = append(grpcOptions, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+
+	if testhacks.IsTesting() {
+		grpcOptions = append(grpcOptions,
+			grpc.WithUnaryInterceptor(testhacks.GRPCUnaryInterceptor),
+			grpc.WithStreamInterceptor(testhacks.GRPCStreamInterceptor),
+		)
 	}
 
 	conn, err := grpc.NewClient(endpoint, grpcOptions...)
