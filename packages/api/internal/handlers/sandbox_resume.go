@@ -25,7 +25,7 @@ import (
 func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.SandboxID) {
 	ctx := c.Request.Context()
 
-	// GetData team from context, use TeamContextKey
+	// Get team from context, use TeamContextKey
 	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
 
 	span := trace.SpanFromContext(ctx)

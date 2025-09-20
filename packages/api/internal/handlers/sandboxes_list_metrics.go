@@ -43,7 +43,7 @@ func (a *APIStore) getSandboxesMetrics(
 		zap.L().Error("error getting metrics read feature flag, soft failing", zap.Error(err))
 	}
 
-	// GetData metrics for all sandboxes
+	// Get metrics for all sandboxes
 	if !metricsReadFlag {
 		zap.L().Debug("sandbox metrics read feature flag is disabled")
 		// If we are not reading from ClickHouse, we can return an empty map

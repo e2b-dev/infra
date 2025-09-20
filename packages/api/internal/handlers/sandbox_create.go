@@ -42,7 +42,7 @@ var mostUsedTemplates = map[string]struct{}{
 func (a *APIStore) PostSandboxes(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	// GetData team from context, use TeamContextKey
+	// Get team from context, use TeamContextKey
 	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
 
 	c.Set("teamID", teamInfo.Team.ID.String())
