@@ -59,6 +59,11 @@ moved {
 }
 
 moved {
+  from = module.buckets.google_storage_bucket.vault_backend
+  to   = module.init.google_storage_bucket.vault_backend
+}
+
+moved {
   from = module.buckets.google_storage_bucket.fc_env_pipeline_bucket
   to   = module.init.google_storage_bucket.fc_env_pipeline_bucket
 }

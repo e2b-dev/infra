@@ -242,5 +242,5 @@ resource "google_storage_bucket" "vault_backend" {
 resource "google_storage_bucket_iam_member" "vault_backend_iam" {
   bucket = google_storage_bucket.vault_backend.name
   role   = "roles/storage.objectAdmin"
-  member = "serviceAccount:${var.gcp_service_account_email}"
+  member = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
 }

@@ -508,6 +508,8 @@ variable "vault_orchestrator_approle_secret_id" {
   type        = string
   description = "GCP Secret Manager secret ID for Vault Orchestrator AppRole credentials"
   default     = ""
+}
+
 variable "min_cpu_platform" {
   type    = string
   default = "Intel Skylake"
