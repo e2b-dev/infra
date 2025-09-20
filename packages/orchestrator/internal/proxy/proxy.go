@@ -101,8 +101,8 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint, sandboxes *s
 	return &SandboxProxy{proxy}, nil
 }
 
-func (p *SandboxProxy) Start() error {
-	return p.proxy.ListenAndServe()
+func (p *SandboxProxy) Start(ctx context.Context) error {
+	return p.proxy.ListenAndServe(ctx)
 }
 
 func (p *SandboxProxy) Close(ctx context.Context) error {
