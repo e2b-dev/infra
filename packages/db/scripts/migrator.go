@@ -55,7 +55,7 @@ func main() {
 	fmt.Printf("Current DB version: %d\n", version)
 	if version < authMigrationVersion {
 		fmt.Println("Creating auth.users table...")
-		err = setupAuthSchema(db, version)
+		err = setupAuthSchema(ctx, db, version)
 		if err != nil {
 			log.Fatalf("failed to ensure auth.users table: %v", err)
 		}
@@ -91,8 +91,8 @@ func main() {
 	fmt.Println("Migrations applied successfully.")
 }
 
-func setupAuthSchema(db *sql.DB, version int64) error {
-	rows, err := db.Query(`SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'users')`)
+func setupAuthSchema(ctx context.Context, db *sql.DB, version int64) error {
+	rows, err := db.QueryContext(ctx, `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'users')`)
 	if err != nil {
 		return fmt.Errorf("failed to query: %w", err)
 	}
@@ -118,27 +118,27 @@ func setupAuthSchema(db *sql.DB, version int64) error {
 
 	if !exists {
 		// Setup auth schema
-		_, err = db.Exec(
+		_, err = db.ExecContext(ctx,
 			`CREATE SCHEMA IF NOT EXISTS auth;`)
 		if err != nil {
 			return fmt.Errorf("failed to create schema: %w", err)
 		}
 
 		// Create authenticated user
-		_, err = db.Exec("CREATE ROLE authenticated;")
+		_, err = db.ExecContext(ctx, "CREATE ROLE authenticated;")
 		if err != nil {
 			return fmt.Errorf("failed to create role: %w", err)
 		}
 
 		// Create users table
-		_, err = db.Exec(
+		_, err = db.ExecContext(ctx,
 			`CREATE TABLE IF NOT EXISTS auth.users (id uuid NOT NULL DEFAULT gen_random_uuid(),email text NOT NULL, PRIMARY KEY (id));`)
 		if err != nil {
 			return fmt.Errorf("failed to create table: %w", err)
 		}
 
 		// Create function to generate a random uuid
-		_, err = db.Exec(
+		_, err = db.ExecContext(ctx,
 			`CREATE FUNCTION auth.uid() RETURNS uuid AS $func$
 		BEGIN
 			RETURN gen_random_uuid();
@@ -149,7 +149,7 @@ func setupAuthSchema(db *sql.DB, version int64) error {
 		}
 
 		// Grant execute permission to authenticated role
-		_, err = db.Exec(`GRANT EXECUTE ON FUNCTION auth.uid() TO postgres`)
+		_, err = db.ExecContext(ctx, `GRANT EXECUTE ON FUNCTION auth.uid() TO postgres`)
 		if err != nil {
 			return fmt.Errorf("failed to grant function: %w", err)
 		}
@@ -157,7 +157,7 @@ func setupAuthSchema(db *sql.DB, version int64) error {
 
 	// Insert migration record
 	if version < authMigrationVersion {
-		_, err = db.Exec(fmt.Sprintf("INSERT INTO %s (version_id, is_applied) VALUES (%d, true)", trackingTable, authMigrationVersion))
+		_, err = db.ExecContext(ctx, fmt.Sprintf("INSERT INTO %s (version_id, is_applied) VALUES (%d, true)", trackingTable, authMigrationVersion))
 		if err != nil {
 			return fmt.Errorf("failed to insert version: %w", err)
 		}

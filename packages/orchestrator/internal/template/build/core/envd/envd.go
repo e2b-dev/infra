@@ -11,7 +11,7 @@ import (
 )
 
 func GetEnvdVersion(ctx context.Context) (string, error) {
-	cmd := exec.Command(storage.HostEnvdPath, "-version")
+	cmd := exec.CommandContext(ctx, storage.HostEnvdPath, "-version")
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("error while getting envd version: %w", err)

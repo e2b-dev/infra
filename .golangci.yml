@@ -35,6 +35,7 @@ linters:
     - mirror
     - misspell
     - nilnesserr
+    - noctx
     - nolintlint
     - reassign
     - recvcheck

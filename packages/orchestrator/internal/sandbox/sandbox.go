@@ -221,7 +221,7 @@ func CreateSandbox(
 		return nil, fmt.Errorf("failed to get network slot: %w", ips.err)
 	}
 	fcHandle, err := fc.NewProcess(
-		ctx,
+		ctx, runCtx,
 		ips.slot,
 		sandboxFiles,
 		fcVersions,
@@ -446,7 +446,7 @@ func ResumeSandbox(
 	telemetry.ReportEvent(ctx, "got metadata")
 
 	fcHandle, fcErr := fc.NewProcess(
-		uffdStartCtx,
+		ctx, runCtx,
 		ips.slot,
 		sandboxFiles,
 		// The versions need to base exactly the same as the paused sandbox template because of the FC compatibility.
@@ -588,7 +588,7 @@ func (s *Sandbox) Stop(ctx context.Context) error {
 	// Stop the health checks before stopping the sandbox
 	s.Checks.Stop()
 
-	fcStopErr := s.process.Stop()
+	fcStopErr := s.process.Stop(ctx)
 	if fcStopErr != nil {
 		errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
 	}

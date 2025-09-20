@@ -10,7 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
-func (c *Checks) GetHealth(ctx context.Context, timeout time.Duration) (bool, error) {
+func (c *Checks) getHealth(ctx context.Context, timeout time.Duration) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
