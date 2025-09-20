@@ -67,6 +67,17 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 
 	r := gin.New()
 
+	r.Use(func(c *gin.Context) {
+		testName := c.GetHeader("x-test-name")
+		if testName != "" {
+			println(fmt.Printf("====================== START api request for %s ========================", testName))
+		}
+		c.Next()
+		if testName != "" {
+			println(fmt.Printf("====================== FINISH api call for %s ========================", testName))
+		}
+	})
+
 	r.Use(
 		// We use custom otel gin middleware because we want to log 4xx errors in the otel
 		customMiddleware.ExcludeRoutes(

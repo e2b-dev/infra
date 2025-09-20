@@ -15,7 +15,7 @@ import (
 )
 
 func TestSandboxAutoPausePauseResume(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
 	sbxId := sbx.SandboxID

@@ -10,9 +10,30 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 )
 
-func GetAPIClient() *api.ClientWithResponses {
+type addHeaders struct {
+	headers map[string]string
+	rt      http.RoundTripper
+}
+
+func (a addHeaders) RoundTrip(request *http.Request) (*http.Response, error) {
+	for key, val := range a.headers {
+		request.Header.Add(key, val)
+	}
+
+	return a.rt.RoundTrip(request)
+}
+
+var _ http.RoundTripper = (*addHeaders)(nil)
+
+func GetAPIClient(t *testing.T) *api.ClientWithResponses {
 	hc := http.Client{
 		Timeout: apiTimeout,
+		Transport: addHeaders{
+			headers: map[string]string{
+				"x-test-name": t.Name(),
+			},
+			rt: http.DefaultTransport,
+		},
 	}
 
 	c, err := api.NewClientWithResponses(APIServerURL, api.WithHTTPClient(&hc))
