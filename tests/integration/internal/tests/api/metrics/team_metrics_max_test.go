@@ -13,7 +13,7 @@ import (
 )
 
 func TestTeamMetricsMaxConcurrentSandboxes(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	// Create multiple sandboxes to generate team metrics
 	utils.SetupSandboxWithCleanup(t, c)
@@ -52,7 +52,7 @@ func TestTeamMetricsMaxConcurrentSandboxes(t *testing.T) {
 }
 
 func TestTeamMetricsMaxSandboxStartRate(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	// Create sandboxes to generate start rate metrics
 	utils.SetupSandboxWithCleanup(t, c)
@@ -91,7 +91,7 @@ func TestTeamMetricsMaxSandboxStartRate(t *testing.T) {
 }
 
 func TestTeamMetricsMaxEmpty(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	db := setup.GetTestDBClient(t)
 

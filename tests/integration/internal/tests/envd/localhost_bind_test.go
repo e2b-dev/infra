@@ -19,7 +19,7 @@ import (
 func TestBindLocalhost(t *testing.T) {
 	ctx := t.Context()
 
-	client := setup.GetAPIClient()
+	client := setup.GetAPIClient(t)
 
 	testCases := []struct {
 		name         string

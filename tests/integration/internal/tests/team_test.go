@@ -21,7 +21,7 @@ type ForbiddenErrorResponse struct {
 func TestBannedTeam(t *testing.T) {
 	ctx := t.Context()
 	db := setup.GetTestDBClient(t)
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	teamName := "test-team-banned"
 	teamID := utils.CreateTeamWithUser(t, c, db, teamName, setup.UserID)
@@ -50,7 +50,7 @@ func TestBannedTeam(t *testing.T) {
 func TestBlockedTeam(t *testing.T) {
 	ctx := t.Context()
 	db := setup.GetTestDBClient(t)
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	teamName := "test-team-blocked"
 	blockReason := "test-reason"

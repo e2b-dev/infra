@@ -28,7 +28,7 @@ func TestDeleteTemplate(t *testing.T) {
 
 	require.True(t, res)
 
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 	deleteRes, err := c.DeleteTemplatesTemplateIDWithResponse(
 		t.Context(),
 		alias,

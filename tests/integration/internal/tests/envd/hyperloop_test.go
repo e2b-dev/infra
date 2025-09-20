@@ -18,7 +18,7 @@ func TestAccessingHyperloopServerViaIP(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	client := setup.GetAPIClient()
+	client := setup.GetAPIClient(t)
 	sbx := utils.SetupSandboxWithCleanup(t, client, utils.WithTimeout(120))
 
 	envdClient := setup.GetEnvdClient(t, ctx)
@@ -42,7 +42,7 @@ func TestAccessingHyperloopServerViaDomain(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	client := setup.GetAPIClient()
+	client := setup.GetAPIClient(t)
 	sbx := utils.SetupSandboxWithCleanup(t, client, utils.WithTimeout(120))
 
 	envdClient := setup.GetEnvdClient(t, ctx)

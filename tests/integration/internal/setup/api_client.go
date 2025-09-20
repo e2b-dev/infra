@@ -25,12 +25,14 @@ func (a addHeaders) RoundTrip(request *http.Request) (*http.Response, error) {
 
 var _ http.RoundTripper = (*addHeaders)(nil)
 
-func GetAPIClient(t *testing.T) *api.ClientWithResponses {
+func GetAPIClient(tb testing.TB) *api.ClientWithResponses {
+	tb.Helper()
+
 	hc := http.Client{
 		Timeout: apiTimeout,
 		Transport: addHeaders{
 			headers: map[string]string{
-				"x-test-name": t.Name(),
+				"x-test-name": tb.Name(),
 			},
 			rt: http.DefaultTransport,
 		},

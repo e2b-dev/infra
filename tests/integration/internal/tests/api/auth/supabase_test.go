@@ -19,7 +19,7 @@ func createSandbox(t *testing.T, reqEditors ...api.RequestEditorFn) int {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	sbxTimeout := int32(10)
 	resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
@@ -74,7 +74,7 @@ func TestSandboxCreateWithSupabaseToken(t *testing.T) {
 
 func TestSandboxCreateWithForeignTeamAccess(t *testing.T) {
 	db := setup.GetTestDBClient(t)
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	userID2 := utils.CreateUser(t, db)
 	teamID2 := utils.CreateTeamWithUser(t, c, db, "test-team-2", userID2.String())

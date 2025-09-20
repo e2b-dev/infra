@@ -53,7 +53,7 @@ func TestSandboxProxyWorkingPort(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 	sbx := utils.SetupSandboxWithCleanup(t, c)
 	envdClient := setup.GetEnvdClient(t, ctx)
 
@@ -95,7 +95,7 @@ func TestSandboxProxyWorkingPort(t *testing.T) {
 }
 
 func TestSandboxProxyClosedPort(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 	sbx := utils.SetupSandboxWithCleanup(t, c)
 
 	url, err := url.Parse(setup.EnvdProxy)

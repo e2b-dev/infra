@@ -13,7 +13,7 @@ import (
 )
 
 func TestSandboxMetrics(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	// Create a sandbox for testing
 	sbx := utils.SetupSandboxWithCleanup(t, c)

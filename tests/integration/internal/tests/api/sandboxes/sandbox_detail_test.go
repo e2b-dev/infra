@@ -16,7 +16,7 @@ import (
 )
 
 func TestSandboxDetailRunning(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	// Create a sandbox for testing
 	sbx := utils.SetupSandboxWithCleanup(t, c)
@@ -32,7 +32,7 @@ func TestSandboxDetailRunning(t *testing.T) {
 }
 
 func TestSandboxDetailPaused(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	sbx := utils.SetupSandboxWithCleanup(t, c)
 	sandboxID := sbx.SandboxID
@@ -47,7 +47,7 @@ func TestSandboxDetailPaused(t *testing.T) {
 }
 
 func TestSandboxDetailPausingSandbox(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	sbx := utils.SetupSandboxWithCleanup(t, c)
 	sandboxID := sbx.SandboxID

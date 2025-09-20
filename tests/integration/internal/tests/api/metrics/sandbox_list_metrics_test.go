@@ -14,7 +14,7 @@ import (
 )
 
 func TestSandboxListMetrics(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	// Create a sandbox for testing
 	sbx1 := utils.SetupSandboxWithCleanup(t, c)

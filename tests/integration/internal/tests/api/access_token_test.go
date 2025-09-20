@@ -18,7 +18,7 @@ func TestCreateAccessToken(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	resp, err := c.PostAccessTokensWithResponse(ctx, api.PostAccessTokensJSONRequestBody{
 		Name: "test",
@@ -37,7 +37,7 @@ func TestDeleteAccessToken(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	t.Run("succeeds", func(t *testing.T) {
 		respC, err := c.PostAccessTokensWithResponse(ctx, api.PostAccessTokensJSONRequestBody{

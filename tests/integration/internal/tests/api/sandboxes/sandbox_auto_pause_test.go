@@ -52,7 +52,7 @@ func TestSandboxAutoPausePauseResume(t *testing.T) {
 }
 
 func TestSandboxAutoPauseResumePersisted(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	// Create a sandbox with auto-pause disabled
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
@@ -136,7 +136,7 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 }
 
 func TestSandboxNotAutoPause(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	// Create a sandbox with auto-pause disabled
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
