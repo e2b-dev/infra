@@ -97,7 +97,7 @@ func (o *Orchestrator) AdminNodeDetail(clusterID uuid.UUID, nodeIDOrNomadNodeSho
 				CpuCount:   api.CPUCount(sbx.VCpu),
 				MemoryMB:   api.MemoryMB(sbx.RamMB),
 				DiskSizeMB: api.DiskSizeMB(sbx.TotalDiskSizeMB),
-				EndAt:      sbx.GetEndTime(),
+				EndAt:      sbx.EndTime,
 				Metadata:   metadata,
 				SandboxID:  sbx.SandboxID,
 				StartedAt:  sbx.StartTime,

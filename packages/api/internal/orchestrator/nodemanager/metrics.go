@@ -86,7 +86,7 @@ func (n *Node) Metrics() Metrics {
 	return result
 }
 
-func (n *Node) AddSandbox(sandbox *instance.InstanceInfo) {
+func (n *Node) AddSandbox(sandbox instance.Data) {
 	n.metricsMu.Lock()
 	defer n.metricsMu.Unlock()
 
@@ -94,7 +94,7 @@ func (n *Node) AddSandbox(sandbox *instance.InstanceInfo) {
 	n.metrics.RamUsage += sandbox.RamMB
 }
 
-func (n *Node) RemoveSandbox(sandbox *instance.InstanceInfo) {
+func (n *Node) RemoveSandbox(sandbox instance.Data) {
 	n.metricsMu.Lock()
 	defer n.metricsMu.Unlock()
 

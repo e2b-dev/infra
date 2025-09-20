@@ -1,7 +1,6 @@
 package instance
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -19,9 +18,7 @@ const (
 var teamID = uuid.New()
 
 func newInstanceCache() *MemoryStore {
-	deleteFunc := func(ctx context.Context, data *InstanceInfo, removeType RemoveType) error { return nil }
-
-	cache := NewStore(deleteFunc, nil, nil, nil)
+	cache := NewStore(nil, nil)
 	return cache
 }
 
@@ -65,19 +62,19 @@ func TestReservation_Release(t *testing.T) {
 func TestReservation_ResumeAlreadyRunningSandbox(t *testing.T) {
 	cache := newInstanceCache()
 
-	info := &InstanceInfo{
+	data := Data{
 		ClientID:   consts.ClientID,
 		SandboxID:  sandboxID,
 		TemplateID: "test",
 
 		TeamID:            teamID,
 		StartTime:         time.Now(),
-		endTime:           time.Now().Add(time.Hour),
+		EndTime:           time.Now().Add(time.Hour),
 		MaxInstanceLength: time.Hour,
 	}
-	err := cache.Add(t.Context(), info, false)
-	require.NoError(t, err)
 
-	_, err = cache.Reserve(sandboxID, teamID, 1)
+	cache.Add(t.Context(), data, false)
+
+	_, err := cache.Reserve(sandboxID, teamID, 1)
 	require.Error(t, err)
 }

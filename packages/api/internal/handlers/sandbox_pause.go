@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -30,8 +31,21 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
 
-	sbx, err := a.orchestrator.GetSandbox(sandboxID, true)
+	sbx, err := a.orchestrator.GetSandboxData(sandboxID, true)
 	if err != nil {
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", sandboxID))
+		return
+	}
+
+	if sbx.TeamID != teamID {
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
+		return
+	}
+
+	err = a.orchestrator.RemoveSandbox(ctx, sbx, instance.StateActionPause)
+	switch {
+	case err == nil:
+	case errors.Is(err, orchestrator.ErrSandboxNotFound):
 		_, fErr := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamID})
 		if fErr == nil {
 			zap.L().Warn("Sandbox is already paused", logger.WithSandboxID(sandboxID))
@@ -48,47 +62,12 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		zap.L().Error("Error getting snapshot", zap.Error(fErr), logger.WithSandboxID(sandboxID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
 		return
-	}
+	default:
+		telemetry.ReportError(ctx, "error pausing sandbox", err)
 
-	if sbx.TeamID != teamID {
-		telemetry.ReportCriticalError(ctx, "sandbox does not belong to team", fmt.Errorf("sandbox '%s' does not belong to team '%s'", sandboxID, teamID.String()))
-
-		a.sendAPIStoreError(c, http.StatusUnauthorized, fmt.Sprintf("Error pausing sandbox - sandbox '%s' does not belong to your team '%s'", sandboxID, teamID.String()))
-
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
 		return
 	}
 
-	err = a.orchestrator.RemoveInstance(ctx, sbx, instance.RemoveTypePause)
-	if err == nil {
-		c.Status(http.StatusNoContent)
-		return
-	}
-
-	if errors.Is(err, instance.ErrAlreadyBeingDeleted) {
-		telemetry.ReportEvent(ctx, "sandbox is already being deleted", telemetry.WithSandboxID(sandboxID))
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already being deleted", sandboxID))
-
-		return
-	}
-
-	if errors.Is(err, instance.ErrAlreadyBeingPaused) {
-		telemetry.ReportEvent(ctx, "sandbox is already being paused", telemetry.WithSandboxID(sandboxID))
-
-		err = sbx.WaitForStop(ctx)
-		if err != nil {
-			telemetry.ReportError(ctx, "error when waiting for sandbox to pause", err)
-
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
-
-			return
-		}
-
-		// Successfully paused
-		c.Status(http.StatusNoContent)
-		return
-	}
-
-	telemetry.ReportError(ctx, "error pausing sandbox", err)
-
-	a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
+	c.Status(http.StatusNoContent)
 }

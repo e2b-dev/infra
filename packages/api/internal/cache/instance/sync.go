@@ -2,14 +2,7 @@ package instance
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"net/http"
 	"time"
-
-	"go.uber.org/zap"
-
-	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
 
 // TODO: this should be removed once we have a better way to handle node sync
@@ -17,46 +10,8 @@ import (
 // This is to prevent remove instances that are still being started
 const syncSandboxRemoveGracePeriod = 10 * time.Second
 
-func getMaxAllowedTTL(now time.Time, startTime time.Time, duration, maxInstanceLength time.Duration) time.Duration {
-	timeLeft := maxInstanceLength - now.Sub(startTime)
-	if timeLeft <= 0 {
-		return 0
-	}
-
-	return min(timeLeft, duration)
-}
-
-// KeepAliveFor the instance's expiration timer.
-func (c *MemoryStore) KeepAliveFor(instanceID string, duration time.Duration, allowShorter bool) (*InstanceInfo, *api.APIError) {
-	instance, err := c.Get(instanceID, false)
-	if err != nil {
-		return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("Sandbox '%s' is not running anymore", instanceID), Err: err}
-	}
-
-	now := time.Now()
-
-	endTime := instance.GetEndTime()
-	if !allowShorter && endTime.After(now.Add(duration)) {
-		return instance, nil
-	}
-
-	if (time.Since(instance.StartTime)) > instance.MaxInstanceLength {
-		instance.SetExpired()
-
-		msg := fmt.Sprintf("Sandbox '%s' reached maximal allowed uptime", instanceID)
-		return nil, &api.APIError{Code: http.StatusForbidden, ClientMsg: msg, Err: errors.New(msg)}
-	} else {
-		maxAllowedTTL := getMaxAllowedTTL(now, instance.StartTime, duration, instance.MaxInstanceLength)
-
-		newEndTime := now.Add(maxAllowedTTL)
-		instance.SetEndTime(newEndTime)
-	}
-
-	return instance, nil
-}
-
-func (c *MemoryStore) Sync(ctx context.Context, instances []*InstanceInfo, nodeID string) {
-	instanceMap := make(map[string]*InstanceInfo)
+func (c *MemoryStore) Sync(ctx context.Context, instances []Data, nodeID string) {
+	instanceMap := make(map[string]Data)
 
 	// Use a map for faster lookup
 	for _, instance := range instances {
@@ -64,15 +19,21 @@ func (c *MemoryStore) Sync(ctx context.Context, instances []*InstanceInfo, nodeI
 	}
 
 	// Remove instances that are not in Orchestrator anymore
-	for _, item := range c.Items(nil) {
-		if item.NodeID != nodeID {
+	for _, item := range c.items.Items() {
+		data := item.Data()
+		if data.IsExpired() {
 			continue
 		}
 
-		if time.Since(item.StartTime) <= syncSandboxRemoveGracePeriod {
+		if data.NodeID != nodeID {
 			continue
 		}
-		_, found := instanceMap[item.SandboxID]
+
+		if time.Since(data.StartTime) <= syncSandboxRemoveGracePeriod {
+			continue
+		}
+
+		_, found := instanceMap[data.SandboxID]
 		if !found {
 			item.SetExpired()
 		}
@@ -83,9 +44,7 @@ func (c *MemoryStore) Sync(ctx context.Context, instances []*InstanceInfo, nodeI
 		if c.Exists(instance.SandboxID) {
 			continue
 		}
-		err := c.Add(ctx, instance, false)
-		if err != nil {
-			zap.L().Error("error adding instance to cache", zap.Error(err))
-		}
+
+		c.Add(ctx, instance, false)
 	}
 }

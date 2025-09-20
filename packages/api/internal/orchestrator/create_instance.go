@@ -197,7 +197,7 @@ func (o *Orchestrator) CreateSandbox(
 	startTime = time.Now()
 	endTime = startTime.Add(timeout)
 
-	instanceInfo := instance.NewInstanceInfo(
+	instanceInfo := instance.NewSandbox(
 		sbx.SandboxID,
 		sbx.TemplateID,
 		sbx.ClientID,
@@ -223,21 +223,6 @@ func (o *Orchestrator) CreateSandbox(
 		baseTemplateID,
 	)
 
-	cacheErr := o.sandboxStore.Add(ctx, instanceInfo, true)
-	if cacheErr != nil {
-		telemetry.ReportError(ctx, "error when adding instance to cache", cacheErr)
-
-		err := o.RemoveInstance(ctx, instanceInfo, instance.RemoveTypeKill)
-		if err != nil {
-			telemetry.ReportError(ctx, "Error while removing sandbox error after cache error", err)
-		}
-
-		return nil, &api.APIError{
-			Code:      http.StatusInternalServerError,
-			ClientMsg: "Failed to create sandbox",
-			Err:       fmt.Errorf("error when adding instance to cache: %w", cacheErr),
-		}
-	}
-
+	o.sandboxStore.Add(ctx, instanceInfo, true)
 	return &sbx, nil
 }

@@ -1,4 +1,4 @@
-package instance
+package orchestrator
 
 import (
 	"testing"

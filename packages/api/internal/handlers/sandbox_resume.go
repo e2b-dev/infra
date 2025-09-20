@@ -55,17 +55,18 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	}
 
 	sandboxID = utils.ShortID(sandboxID)
-	sbxCache, err := a.orchestrator.GetSandbox(sandboxID, true)
+	sbxCache, err := a.orchestrator.GetSandbox(sandboxID)
 	if err == nil {
-		state := sbxCache.GetState()
-		switch state {
-		case instance.StatePaused, instance.StatePausing:
-			err = sbxCache.WaitForStop(ctx)
+		data := sbxCache.Data()
+		switch data.State {
+		case instance.StatePausing:
+			zap.L().Debug("Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
+			err = sbxCache.WaitForStateChange(ctx)
 			if err != nil {
-				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when resuming sandbox")
+				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error waiting for sandbox to pause")
 				return
 			}
-		case instance.StateKilling, instance.StateKilled:
+		case instance.StateKilling:
 			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found")
 			return
 		case instance.StateRunning:
@@ -73,11 +74,15 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 			zap.L().Debug("Sandbox is already running",
 				logger.WithSandboxID(sandboxID),
-				zap.Time("end_time", sbxCache.GetEndTime()),
-				zap.Time("start_time", sbxCache.StartTime),
-				zap.String("node_id", sbxCache.NodeID),
+				zap.Time("end_time", data.EndTime),
+				zap.Time("start_time", data.StartTime),
+				zap.String("node_id", data.NodeID),
 			)
 
+			return
+		default:
+			zap.L().Error("Sandbox is in an unknown state", logger.WithSandboxID(sandboxID), zap.String("state", string(data.State)))
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Sandbox is in an unknown state")
 			return
 		}
 	}
