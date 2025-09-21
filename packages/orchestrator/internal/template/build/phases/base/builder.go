@@ -376,18 +376,18 @@ func (bb *BaseBuilder) Layer(
 			bb.logger.Info("base layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
 
 			return notCachedResult, nil
-		} else {
-			meta, err := bb.index.Cached(ctx, bm.Template.BuildID)
-			if err != nil {
-				zap.L().Info("base layer metadata not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
-
-				return notCachedResult, nil
-			}
-			return phases.LayerResult{
-				Metadata: meta,
-				Cached:   true,
-				Hash:     hash,
-			}, nil
 		}
+
+		meta, err = bb.index.Cached(ctx, bm.Template.BuildID)
+		if err != nil {
+			zap.L().Info("base layer metadata not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
+
+			return notCachedResult, nil
+		}
+		return phases.LayerResult{
+			Metadata: meta,
+			Cached:   true,
+			Hash:     hash,
+		}, nil
 	}
 }

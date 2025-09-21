@@ -101,7 +101,6 @@ linters:
         - { disabled: true, name: if-return }
         - { disabled: true, name: import-alias-naming }
         - { disabled: true, name: import-shadowing }
-        - { disabled: true, name: indent-error-flow }  #  todo: enable this
         - { disabled: true, name: line-length-limit }
         - { disabled: true, name: max-control-nesting }
         - { disabled: true, name: max-public-structs }

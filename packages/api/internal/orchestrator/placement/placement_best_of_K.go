@@ -108,9 +108,9 @@ func (b *BestOfK) excludeNode(err error) bool {
 	// If the node is just exhausted, keep it
 	if ok && st.Code() == codes.ResourceExhausted {
 		return false
-	} else {
-		return true
 	}
+
+	return true
 }
 
 // chooseNode selects the best node for placing a VM with the given quota

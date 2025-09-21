@@ -188,9 +188,9 @@ func (i *InstanceInfo) markRemoving(removeType RemoveType) error {
 	if i.state != StateRunning {
 		if i.state == StatePausing || i.state == StatePaused {
 			return ErrAlreadyBeingPaused
-		} else {
-			return ErrAlreadyBeingDeleted
 		}
+
+		return ErrAlreadyBeingDeleted
 	}
 	// Set remove type
 	if removeType == RemoveTypePause {

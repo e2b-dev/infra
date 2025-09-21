@@ -45,12 +45,12 @@ func (c *MemoryStore) KeepAliveFor(instanceID string, duration time.Duration, al
 
 		msg := fmt.Sprintf("Sandbox '%s' reached maximal allowed uptime", instanceID)
 		return nil, &api.APIError{Code: http.StatusForbidden, ClientMsg: msg, Err: errors.New(msg)}
-	} else {
-		maxAllowedTTL := getMaxAllowedTTL(now, instance.StartTime, duration, instance.MaxInstanceLength)
-
-		newEndTime := now.Add(maxAllowedTTL)
-		instance.SetEndTime(newEndTime)
 	}
+
+	maxAllowedTTL := getMaxAllowedTTL(now, instance.StartTime, duration, instance.MaxInstanceLength)
+
+	newEndTime := now.Add(maxAllowedTTL)
+	instance.SetEndTime(newEndTime)
 
 	return instance, nil
 }
