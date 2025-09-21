@@ -50,7 +50,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 		fakeStorageObjectProvider.EXPECT().
 			ReadAt(mock.Anything, mock.Anything, mock.Anything).
-			RunAndReturn(func(ctx context.Context, buff []byte, off int64) (int, error) {
+			RunAndReturn(func(_ context.Context, buff []byte, off int64) (int, error) {
 				start := off
 				end := off + int64(len(buff))
 				end = min(end, int64(len(fakeData)))
@@ -90,7 +90,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		fakeStorageObjectProvider := storagemocks.NewMockStorageObjectProvider(t)
 		fakeStorageObjectProvider.EXPECT().
 			WriteTo(mock.Anything, mock.Anything).
-			RunAndReturn(func(ctx context.Context, dst io.Writer) (int64, error) {
+			RunAndReturn(func(_ context.Context, dst io.Writer) (int64, error) {
 				num, err := dst.Write(fakeData)
 				return int64(num), err
 			})

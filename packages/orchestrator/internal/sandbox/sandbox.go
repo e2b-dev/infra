@@ -159,7 +159,7 @@ func CreateSandbox(
 	}()
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
-	cleanup.Add(func(ctx context.Context) error {
+	cleanup.Add(func(context.Context) error {
 		filesErr := cleanupFiles(sandboxFiles)
 		if filesErr != nil {
 			return fmt.Errorf("failed to cleanup files: %w", filesErr)
@@ -354,7 +354,7 @@ func ResumeSandbox(
 	}()
 
 	sandboxFiles := t.Files().NewSandboxFiles(runtime.SandboxID)
-	cleanup.Add(func(ctx context.Context) error {
+	cleanup.Add(func(context.Context) error {
 		filesErr := cleanupFiles(sandboxFiles)
 		if filesErr != nil {
 			return fmt.Errorf("failed to cleanup files: %w", filesErr)
@@ -682,7 +682,7 @@ func (s *Sandbox) Pause(
 			memfile:    memfile,
 			dirtyPages: s.memory.Dirty(),
 			blockSize:  originalMemfile.BlockSize(),
-			doneHook: func(ctx context.Context) error {
+			doneHook: func(context.Context) error {
 				return memfile.Close()
 			},
 		},

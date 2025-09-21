@@ -57,7 +57,7 @@ func NewDiffStore(ctx context.Context, cachePath string, ttl, delay time.Duratio
 		pdDelay:   delay,
 	}
 
-	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[DiffStoreKey, Diff]) {
+	cache.OnEviction(func(_ context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[DiffStoreKey, Diff]) {
 		buildData := item.Value()
 		// buildData will be deleted by calling buildData.Close()
 		defer ds.resetDelete(item.Key())

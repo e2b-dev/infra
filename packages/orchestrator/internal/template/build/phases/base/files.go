@@ -17,16 +17,7 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 )
 
-func constructLayerFilesFromOCI(
-	ctx context.Context,
-	userLogger *zap.Logger,
-	buildContext buildcontext.BuildContext,
-	// The base build ID can be different from the final requested template build ID.
-	baseBuildID string,
-	artifactRegistry artifactsregistry.ArtifactsRegistry,
-	templateBuildDir string,
-	rootfsPath string,
-) (r *block.Local, m block.ReadonlyDevice, c containerregistry.Config, e error) {
+func constructLayerFilesFromOCI(ctx context.Context, userLogger *zap.Logger, buildContext buildcontext.BuildContext, baseBuildID string, artifactRegistry artifactsregistry.ArtifactsRegistry, rootfsPath string) (r *block.Local, m block.ReadonlyDevice, c containerregistry.Config, e error) {
 	childCtx, childSpan := tracer.Start(ctx, "template-build")
 	defer childSpan.End()
 

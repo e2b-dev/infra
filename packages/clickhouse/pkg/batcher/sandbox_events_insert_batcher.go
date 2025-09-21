@@ -107,7 +107,7 @@ func (b *SandboxEventInsertBatcher) Push(event clickhouse.SandboxEvent) error {
 	return nil
 }
 
-func (b *SandboxEventInsertBatcher) Close(ctx context.Context) error {
+func (b *SandboxEventInsertBatcher) Close(context.Context) error {
 	stopErr := b.Batcher.Stop()
 	closeErr := b.conn.Close()
 

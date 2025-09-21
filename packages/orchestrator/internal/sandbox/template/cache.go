@@ -56,7 +56,7 @@ func NewCache(
 		ttlcache.WithTTL[string, Template](templateExpiration),
 	)
 
-	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, Template]) {
+	cache.OnEviction(func(_ context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[string, Template]) {
 		template := item.Value()
 
 		err := template.Close()

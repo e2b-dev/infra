@@ -82,7 +82,7 @@ func NewSandboxObserver(ctx context.Context, nodeID, serviceName, serviceCommit,
 		return nil, fmt.Errorf("failed to create resource: %w", err)
 	}
 
-	meterProvider, err := telemetry.NewMeterProvider(ctx, externalMeterExporter, sandboxMetricExportPeriod, res, sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter))
+	meterProvider, err := telemetry.NewMeterProvider(externalMeterExporter, sandboxMetricExportPeriod, res, sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create external metric provider: %w", err)
 	}

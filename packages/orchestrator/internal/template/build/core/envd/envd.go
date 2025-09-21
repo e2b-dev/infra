@@ -1,7 +1,6 @@
 package envd
 
 import (
-	"context"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -10,7 +9,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-func GetEnvdVersion(ctx context.Context) (string, error) {
+func GetEnvdVersion() (string, error) {
 	cmd := exec.Command(storage.HostEnvdPath, "-version")
 	out, err := cmd.Output()
 	if err != nil {

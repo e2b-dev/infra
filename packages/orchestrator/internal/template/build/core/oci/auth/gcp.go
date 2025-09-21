@@ -22,7 +22,7 @@ func NewGCPAuthProvider(registry *templatemanager.GCPRegistry) *GCPAuthProvider 
 }
 
 // GetAuthOption returns the authentication option for GCP
-func (p *GCPAuthProvider) GetAuthOption(ctx context.Context) (remote.Option, error) {
+func (p *GCPAuthProvider) GetAuthOption(context.Context) (remote.Option, error) {
 	// Create authenticator using the service account JSON
 	authenticator := google.NewJSONKeyAuthenticator(p.registry.ServiceAccountJson)
 	return remote.WithAuth(authenticator), nil

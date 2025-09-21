@@ -62,10 +62,7 @@ type ServiceConfig struct {
 	SbxEventsService events.EventsService[event.SandboxEvent]
 }
 
-func New(
-	ctx context.Context,
-	cfg ServiceConfig,
-) (*Service, error) {
+func New(cfg ServiceConfig) (*Service, error) {
 	srv := &Service{
 		info:        cfg.Info,
 		proxy:       cfg.Proxy,
@@ -85,7 +82,7 @@ func New(
 	}
 
 	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")
-	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(srv.server.sandboxes.Count()))
 
 		return nil

@@ -103,11 +103,11 @@ func (b *localDiff) Close() error {
 	return b.cache.Close()
 }
 
-func (b *localDiff) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
+func (b *localDiff) ReadAt(_ context.Context, p []byte, off int64) (int, error) {
 	return b.cache.ReadAt(p, off)
 }
 
-func (b *localDiff) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+func (b *localDiff) Slice(_ context.Context, off, length int64) ([]byte, error) {
 	return b.cache.Slice(off, length)
 }
 
@@ -119,6 +119,6 @@ func (b *localDiff) CacheKey() DiffStoreKey {
 	return b.cacheKey
 }
 
-func (b *localDiff) Init(ctx context.Context) error {
+func (b *localDiff) Init(context.Context) error {
 	return nil
 }

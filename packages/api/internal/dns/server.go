@@ -43,7 +43,7 @@ type DNS struct {
 	}
 }
 
-func New(ctx context.Context, redisClient redis.UniversalClient) *DNS {
+func New(redisClient redis.UniversalClient) *DNS {
 	d := &DNS{}
 
 	if redisClient != nil && !reflect.ValueOf(redisClient).IsNil() {
@@ -79,7 +79,7 @@ func (d *DNS) Remove(ctx context.Context, sandboxID, ip string) {
 			zap.L().Debug("removing item from DNS cache", zap.Error(err), logger.WithSandboxID(sandboxID))
 		}
 	case d.local != nil:
-		d.local.RemoveCb(d.cacheKey(sandboxID), func(k string, v string, ok bool) bool { return v == ip })
+		d.local.RemoveCb(d.cacheKey(sandboxID), func(_, v string, _ bool) bool { return v == ip })
 	}
 }
 

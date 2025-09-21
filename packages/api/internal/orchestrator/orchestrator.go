@@ -72,7 +72,7 @@ func New(
 		return nil, err
 	}
 
-	dnsServer := dns.New(ctx, redisClient)
+	dnsServer := dns.New(redisClient)
 
 	if env.IsLocal() {
 		zap.L().Info("Running locally, skipping starting DNS server")

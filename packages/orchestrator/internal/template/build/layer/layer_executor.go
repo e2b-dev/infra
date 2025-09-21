@@ -138,7 +138,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	ctx, childSpan := tracer.Start(ctx, "update-envd")
 	defer childSpan.End()
 
-	envdVersion, err := envd.GetEnvdVersion(ctx)
+	envdVersion, err := envd.GetEnvdVersion()
 	if err != nil {
 		return fmt.Errorf("error getting envd version: %w", err)
 	}

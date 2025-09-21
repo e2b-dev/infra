@@ -127,7 +127,7 @@ func (g *GCPBucketStorageProvider) UploadSignedURL(_ context.Context, path strin
 	return url, nil
 }
 
-func (g *GCPBucketStorageProvider) OpenObject(ctx context.Context, path string) (StorageObjectProvider, error) {
+func (g *GCPBucketStorageProvider) OpenObject(_ context.Context, path string) (StorageObjectProvider, error) {
 	handle := g.bucket.Object(path).Retryer(
 		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),

@@ -170,7 +170,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 	)
 
 	meter := meterProvider.Meter(serviceName)
-	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.ClientProxyPoolConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.ClientProxyPoolConnectionsMeterCounterName, func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(proxy.CurrentServerConnections())
 		return nil
 	},
@@ -179,7 +179,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 		return nil, fmt.Errorf("error registering client proxy connections metric (%s): %w", telemetry.ClientProxyPoolConnectionsMeterCounterName, err)
 	}
 
-	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.ClientProxyPoolSizeMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.ClientProxyPoolSizeMeterCounterName, func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(proxy.CurrentPoolSize()))
 		return nil
 	},
@@ -188,7 +188,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 		return nil, fmt.Errorf("error registering client proxy pool size metric (%s): %w", telemetry.ClientProxyPoolSizeMeterCounterName, err)
 	}
 
-	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.ClientProxyServerConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.ClientProxyServerConnectionsMeterCounterName, func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(proxy.CurrentPoolConnections())
 		return nil
 	},

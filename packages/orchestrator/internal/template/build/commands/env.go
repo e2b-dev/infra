@@ -20,10 +20,10 @@ var _ Command = (*Env)(nil)
 
 func (e *Env) Execute(
 	ctx context.Context,
-	logger *zap.Logger,
+	_ *zap.Logger,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
-	prefix string,
+	_ string,
 	step *templatemanager.TemplateStep,
 	cmdMetadata metadata.Context,
 ) (metadata.Context, error) {
@@ -67,7 +67,7 @@ func evaluateValue(
 		metadata.Context{
 			User: "root",
 		},
-		func(stdout, stderr string) {
+		func(stdout, _ string) {
 			envValue = stdout
 		},
 	)

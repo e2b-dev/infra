@@ -57,7 +57,6 @@ const (
 )
 
 func New(
-	ctx context.Context,
 	tracerProvider trace.TracerProvider,
 	meterProvider metric.MeterProvider,
 	db *db.DB,

@@ -52,7 +52,7 @@ func createRetryableClient(config RetryConfig) *retryablehttp.Client {
 	client.RetryWaitMax = config.MaxBackoff
 
 	// Custom backoff function with full jitter to avoid thundering herd
-	client.Backoff = func(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+	client.Backoff = func(min, max time.Duration, attemptNum int, _ *http.Response) time.Duration {
 		// Calculate exponential backoff
 		backoff := min
 		for range attemptNum {
@@ -93,7 +93,7 @@ func (z *zapLogger) Info(msg string, keysAndValues ...any) {
 	zap.L().Info(msg, zap.Any("details", keysAndValues))
 }
 
-func (z *zapLogger) Debug(msg string, keysAndValues ...any) {
+func (z *zapLogger) Debug(string, ...any) {
 	// Ignore debug logs
 }
 

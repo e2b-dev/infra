@@ -161,7 +161,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 	}
 
 	templateBuildsCache := templatecache.NewTemplateBuildCache(sqlcDB)
-	templateManager, err := template_manager.New(ctx, tel.TracerProvider, tel.MeterProvider, dbClient, sqlcDB, clustersPool, templateBuildsCache, templateCache)
+	templateManager, err := template_manager.New(tel.TracerProvider, tel.MeterProvider, dbClient, sqlcDB, clustersPool, templateBuildsCache, templateCache)
 	if err != nil {
 		zap.L().Fatal("Initializing Template manager client", zap.Error(err))
 	}
@@ -366,7 +366,7 @@ func getJWTClaims(secrets []string, token string) (*supabaseClaims, error) {
 	return nil, errors.Join(errs...)
 }
 
-func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
+func (a *APIStore) GetUserIDFromSupabaseToken(_ context.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
 	claims, err := getJWTClaims(supabaseJWTSecrets, supabaseToken)
 	if err != nil {
 		return uuid.UUID{}, &api.APIError{
@@ -401,7 +401,7 @@ func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) 
 	userID := a.GetUserID(middleware.GetGinContext(ctx))
 
 	cacheKey := fmt.Sprintf("%s-%s", userID.String(), teamID)
-	team, tier, err := a.authCache.GetOrSet(ctx, cacheKey, func(ctx context.Context, key string) (*queries.Team, *queries.Tier, error) {
+	team, tier, err := a.authCache.GetOrSet(ctx, cacheKey, func(ctx context.Context, _ string) (*queries.Team, *queries.Tier, error) {
 		return dbapi.GetTeamByIDAndUserIDAuth(ctx, a.sqlcDB, teamID, userID)
 	})
 	if err != nil {

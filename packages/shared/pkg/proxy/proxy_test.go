@@ -41,7 +41,7 @@ func newTestBackend(listener net.Listener, id string) (*testBackend, error) {
 
 	backend := &testBackend{
 		server: &http.Server{
-			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				select {
 				case <-ctx.Done():
 					w.WriteHeader(http.StatusBadGateway)
@@ -143,7 +143,7 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 	defer backend.Close()
 
 	// Set up a routing function that always returns the backend
-	getDestination := func(r *http.Request) (*pool.Destination, error) {
+	getDestination := func(*http.Request) (*pool.Destination, error) {
 		return &pool.Destination{
 			Url:           backend.url,
 			SandboxId:     "test-sandbox",
@@ -188,7 +188,7 @@ func TestProxyReusesConnections(t *testing.T) {
 	defer backend.Close()
 
 	// Set up a routing function that always returns the backend
-	getDestination := func(r *http.Request) (*pool.Destination, error) {
+	getDestination := func(*http.Request) (*pool.Destination, error) {
 		return &pool.Destination{
 			Url:           backend.url,
 			SandboxId:     "test-sandbox",
@@ -252,7 +252,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 	var backendMappingMutex sync.Mutex
 
 	// Set up a routing function that returns the current backend
-	getDestination := func(r *http.Request) (*pool.Destination, error) {
+	getDestination := func(_ *http.Request) (*pool.Destination, error) {
 		backendMappingMutex.Lock()
 		defer backendMappingMutex.Unlock()
 
@@ -337,7 +337,7 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 	var backendMappingMutex sync.Mutex
 
 	// Set up a routing function that returns the current backend
-	getDestination := func(r *http.Request) (*pool.Destination, error) {
+	getDestination := func(_ *http.Request) (*pool.Destination, error) {
 		backendMappingMutex.Lock()
 		defer backendMappingMutex.Unlock()
 

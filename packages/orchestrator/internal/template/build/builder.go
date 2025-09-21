@@ -155,7 +155,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 		}
 	}(context.WithoutCancel(ctx))
 
-	envdVersion, err := envd.GetEnvdVersion(ctx)
+	envdVersion, err := envd.GetEnvdVersion()
 	if err != nil {
 		return nil, fmt.Errorf("error getting envd version: %w", err)
 	}

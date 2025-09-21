@@ -22,7 +22,7 @@ func NewGeneralAuthProvider(registry *templatemanager.GeneralRegistry) *GeneralA
 }
 
 // GetAuthOption returns the authentication option for general registries
-func (p *GeneralAuthProvider) GetAuthOption(ctx context.Context) (remote.Option, error) {
+func (p *GeneralAuthProvider) GetAuthOption(context.Context) (remote.Option, error) {
 	return remote.WithAuth(&authn.Basic{
 		Username: p.registry.Username,
 		Password: p.registry.Password,

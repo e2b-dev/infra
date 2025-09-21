@@ -19,7 +19,7 @@ const (
 var teamID = uuid.New()
 
 func newInstanceCache() *MemoryStore {
-	deleteFunc := func(ctx context.Context, data *InstanceInfo, removeType RemoveType) error { return nil }
+	deleteFunc := func(_ context.Context, _ *InstanceInfo, _ RemoveType) error { return nil }
 
 	cache := NewStore(deleteFunc, nil, nil, nil)
 	return cache
