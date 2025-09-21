@@ -121,7 +121,7 @@ func (n *SimulatedNode) placeSandbox(sandbox *LiveSandbox) bool {
 		return false
 	}
 
-	n.AddSandbox(&instance.InstanceInfo{
+	n.AddSandbox(instance.Data{
 		VCpu:  sandbox.RequestedCPU,
 		RamMB: sandbox.RequestedMemory,
 	})
@@ -152,7 +152,7 @@ func (n *SimulatedNode) removeSandbox(sandboxID string) {
 	metrics := n.Metrics()
 
 	if sandbox, exists := n.sandboxes[sandboxID]; exists {
-		n.RemoveSandbox(&instance.InstanceInfo{
+		n.RemoveSandbox(instance.Data{
 			VCpu:  sandbox.RequestedCPU,
 			RamMB: sandbox.RequestedMemory,
 		})

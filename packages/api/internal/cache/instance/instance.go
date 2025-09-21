@@ -2,7 +2,6 @@ package instance
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -10,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -26,11 +26,14 @@ const (
 	StateRunning State = "running"
 	StatePausing State = "pausing"
 	StateKilling State = "killing"
-	StatePaused  State = "paused"
-	StateKilled  State = "killed"
 )
 
-func NewInstanceInfo(
+var allowed = map[State]map[State]bool{
+	StateRunning: {StatePausing: true, StateKilling: true},
+	StatePausing: {StateKilling: true},
+}
+
+func NewSandbox(
 	sandboxID string,
 	templateID string,
 	clientID string,
@@ -54,8 +57,8 @@ func NewInstanceInfo(
 	envdAccessToken *string,
 	allowInternetAccess *bool,
 	baseTemplateID string,
-) *InstanceInfo {
-	instance := &InstanceInfo{
+) Data {
+	return Data{
 		SandboxID:  sandboxID,
 		TemplateID: templateID,
 		ClientID:   clientID,
@@ -67,7 +70,7 @@ func NewInstanceInfo(
 		Metadata:            metadata,
 		MaxInstanceLength:   maxInstanceLength,
 		StartTime:           startTime,
-		endTime:             endTime,
+		EndTime:             endTime,
 		VCpu:                vcpu,
 		TotalDiskSizeMB:     totalDiskSizeMB,
 		RamMB:               ramMB,
@@ -79,16 +82,12 @@ func NewInstanceInfo(
 		NodeID:              nodeID,
 		ClusterID:           clusterID,
 		AutoPause:           autoPause,
-		state:               StateRunning,
-		stopping:            utils.NewSetOnce[struct{}](),
+		State:               StateRunning,
 		BaseTemplateID:      baseTemplateID,
-		mu:                  sync.RWMutex{},
 	}
-
-	return instance
 }
 
-type InstanceInfo struct {
+type Data struct {
 	SandboxID  string
 	TemplateID string
 	ClientID   string
@@ -101,7 +100,7 @@ type InstanceInfo struct {
 	Metadata            map[string]string
 	MaxInstanceLength   time.Duration
 	StartTime           time.Time
-	endTime             time.Time
+	EndTime             time.Time
 	VCpu                int64
 	TotalDiskSizeMB     int64
 	RamMB               int64
@@ -114,13 +113,23 @@ type InstanceInfo struct {
 	ClusterID           uuid.UUID
 	AutoPause           bool
 
-	state State
-	mu    sync.RWMutex
-
-	stopping *utils.SetOnce[struct{}]
+	State State
 }
 
-func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
+type InstanceInfo struct {
+	_data Data
+
+	transition *utils.ErrorOnce
+	mu         sync.RWMutex
+}
+
+func NewInstanceInfo(data Data) *InstanceInfo {
+	return &InstanceInfo{
+		_data: data,
+	}
+}
+
+func (i Data) LoggerMetadata() sbxlogger.SandboxMetadata {
 	return sbxlogger.SandboxMetadata{
 		SandboxID:  i.SandboxID,
 		TemplateID: i.TemplateID,
@@ -128,111 +137,134 @@ func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
 	}
 }
 
-func (i *InstanceInfo) IsExpired() bool {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-
-	return i.isExpired()
-}
-
-func (i *InstanceInfo) isExpired() bool {
-	return time.Now().After(i.endTime)
-}
-
-func (i *InstanceInfo) GetEndTime() time.Time {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-
-	return i.endTime
-}
-
-func (i *InstanceInfo) SetEndTime(endTime time.Time) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	i.setEndTime(endTime)
-}
-
-func (i *InstanceInfo) setEndTime(endTime time.Time) {
-	i.endTime = endTime
+func (i Data) IsExpired() bool {
+	return time.Now().After(i.EndTime)
 }
 
 func (i *InstanceInfo) SetExpired() {
 	i.mu.Lock()
 	defer i.mu.Unlock()
+
 	i.setExpired()
 }
 
 func (i *InstanceInfo) setExpired() {
-	if !i.isExpired() {
-		i.setEndTime(time.Now())
+	if !i._data.IsExpired() {
+		i._data.EndTime = time.Now()
 	}
 }
 
-func (i *InstanceInfo) GetState() State {
+func (i *InstanceInfo) Data() Data {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
-	return i.state
+	return i._data
 }
 
-var (
-	ErrAlreadyBeingPaused  = errors.New("instance is already being paused")
-	ErrAlreadyBeingDeleted = errors.New("instance is already being removed")
-)
+func (i *InstanceInfo) State() State {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
 
-func (i *InstanceInfo) markRemoving(removeType RemoveType) error {
+	return i._data.State
+}
+
+// SandboxID returns the sandbox ID, safe to use without lock, it's immutable
+func (i *InstanceInfo) SandboxID() string {
+	return i._data.SandboxID
+}
+
+// TeamID returns the team ID, safe to use without lock, it's immutable
+func (i *InstanceInfo) TeamID() uuid.UUID {
+	return i._data.TeamID
+}
+
+func (i *InstanceInfo) startRemoving(ctx context.Context, stateAction StateAction) (alreadyDone bool, callback func(error), err error) {
+	newState := StateKilling
+	if stateAction == StateActionPause {
+		newState = StatePausing
+	}
+
 	i.mu.Lock()
-	defer i.mu.Unlock()
+	transition := i.transition
+	if transition != nil {
+		currentState := i._data.State
+		i.mu.Unlock()
 
-	if i.state != StateRunning {
-		if i.state == StatePausing || i.state == StatePaused {
-			return ErrAlreadyBeingPaused
-		} else {
-			return ErrAlreadyBeingDeleted
+		if currentState != newState && !allowed[currentState][newState] {
+			return false, nil, fmt.Errorf("invalid state transition, already in transition from %s", currentState)
+		}
+
+		zap.L().Debug("State transition already in progress to the same state, waiting", logger.WithSandboxID(i.SandboxID()), zap.String("state", string(newState)))
+		err = transition.WaitWithContext(ctx)
+		if err != nil {
+			return false, nil, fmt.Errorf("sandbox is in failed state: %w", err)
+		}
+
+		// If the transition is to the same state just wait
+		switch {
+		case currentState == newState:
+			return true, func(err error) {}, nil
+		case allowed[currentState][newState]:
+			return i.startRemoving(ctx, stateAction)
+		default:
+			return false, nil, fmt.Errorf("unexpected state transition")
 		}
 	}
-	// Set remove type
-	if removeType == RemoveTypePause {
-		i.state = StatePausing
-	} else {
-		i.state = StateKilling
+
+	defer i.mu.Unlock()
+	if i._data.State == newState {
+		zap.L().Debug("Already in the same state", logger.WithSandboxID(i.SandboxID()), zap.String("state", string(newState)))
+		return true, func(error) {}, nil
 	}
 
-	// Mark the stop time
+	if _, ok := allowed[i._data.State][newState]; !ok {
+		return false, nil, fmt.Errorf("invalid state transition from %s to %s", i._data.State, newState)
+	}
+
 	i.setExpired()
+	i._data.State = newState
+	i.transition = utils.NewErrorOnce()
 
-	return nil
-}
+	callback = func(err error) {
+		zap.L().Debug("Transition complete", logger.WithSandboxID(i.SandboxID()), zap.String("state", string(newState)), zap.Error(err))
+		i.mu.Lock()
+		defer i.mu.Unlock()
 
-func (i *InstanceInfo) WaitForStop(ctx context.Context) error {
-	if i.GetState() == StateRunning {
-		return fmt.Errorf("sandbox isn't stopping")
+		setErr := i.transition.SetError(err)
+		if err != nil {
+			// Keep the transition in place so the error stays
+			zap.L().Error("Failed to set transition result", logger.WithSandboxID(i.SandboxID()), zap.Error(setErr))
+			return
+		}
+
+		// The transition is completed and the next transition can be started
+		i.transition = nil
 	}
 
-	_, err := i.stopping.WaitWithContext(ctx)
-	return err
+	return false, callback, nil
 }
 
-func (i *InstanceInfo) stopDone(err error) {
+func (i *InstanceInfo) WaitForStateChange(ctx context.Context) error {
+	i.mu.RLock()
+	transition := i.transition
+	i.mu.RUnlock()
+	if transition == nil {
+		return nil
+	}
+
+	return transition.WaitWithContext(ctx)
+}
+
+func (i *InstanceInfo) ExtendEndTime(newEndTime time.Time, allowShorter bool) bool {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	if i.state == StatePausing {
-		i.state = StatePaused
-	} else {
-		i.state = StateKilled
+	// If shorter than the current end time, don't extend
+	if !allowShorter && newEndTime.Before(i._data.EndTime) {
+		return false
 	}
 
-	if err != nil {
-		err := i.stopping.SetError(err)
-		if err != nil {
-			zap.L().Error("error setting stopDone value", zap.Error(err))
-		}
-	} else {
-		err := i.stopping.SetValue(struct{}{})
-		if err != nil {
-			zap.L().Error("error setting stopDone value", zap.Error(err))
-		}
-	}
+	i._data.EndTime = newEndTime
+
+	return true
 }
