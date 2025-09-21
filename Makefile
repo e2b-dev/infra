@@ -3,62 +3,6 @@ ENV_FILE := $(PWD)/.env.${ENV}
 
 -include ${ENV_FILE}
 
-TF := $(shell which terraform)
-TERRAFORM_STATE_BUCKET ?= $(GCP_PROJECT_ID)-terraform-state
-TEMPLATE_BUCKET_LOCATION ?= $(GCP_REGION)
-
-# Set the terraform environment variable only if the environment variable is set
-# Strip the passed variable name (it's space sensitive) and check if the variable is set, if yes return TF_VAR_<variable_name>=<value> with the variable name in lower case
-define tfvar
-$(if $(value $(strip $(1))), TF_VAR_$(shell echo $(strip $(1)) | tr A-Z a-z)=$($(strip $(1))))
-endef
-
-tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
-	$(call tfvar, CLIENT_MACHINE_TYPE) \
-	$(call tfvar, CLIENT_CLUSTER_SIZE) \
-	$(call tfvar, CLIENT_CLUSTER_SIZE_MAX) \
-	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_SIZE_GB) \
-	$(call tfvar, API_MACHINE_TYPE) \
-	$(call tfvar, API_CLUSTER_SIZE) \
-	$(call tfvar, BUILD_MACHINE_TYPE) \
-	$(call tfvar, BUILD_CLUSTER_SIZE) \
-	$(call tfvar, BUILD_CLUSTER_ROOT_DISK_SIZE_GB) \
-	$(call tfvar, BUILD_CLUSTER_CACHE_DISK_SIZE_GB) \
-	$(call tfvar, SERVER_MACHINE_TYPE) \
-	$(call tfvar, SERVER_CLUSTER_SIZE) \
-	$(call tfvar, CLICKHOUSE_CLUSTER_SIZE) \
-	$(call tfvar, CLICKHOUSE_MACHINE_TYPE) \
-	$(call tfvar, GCP_PROJECT_ID) \
-	$(call tfvar, GCP_REGION) \
-	$(call tfvar, GCP_ZONE) \
-	$(call tfvar, DOMAIN_NAME) \
-	$(call tfvar, ADDITIONAL_DOMAINS) \
-	$(call tfvar, ADDITIONAL_API_SERVICES_JSON) \
-	$(call tfvar, PREFIX) \
-	$(call tfvar, OTEL_TRACING_PRINT) \
-	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
-	$(call tfvar, CLIENT_PROXY_COUNT) \
-	$(call tfvar, CLIENT_PROXY_CPU_COUNT) \
-	$(call tfvar, CLIENT_PROXY_RESOURCES_MEMORY_MB) \
-	$(call tfvar, CLICKHOUSE_RESOURCES_CPU_COUNT) \
-	$(call tfvar, CLICKHOUSE_RESOURCES_MEMORY_MB) \
-	$(call tfvar, LOKI_RESOURCES_CPU_COUNT) \
-	$(call tfvar, LOKI_RESOURCES_MEMORY_MB) \
-	$(call tfvar, OTEL_TRACING_PRINT) \
-	$(call tfvar, OTEL_COLLECTOR_RESOURCES_CPU_COUNT) \
-	$(call tfvar, OTEL_COLLECTOR_RESOURCES_MEMORY_MB) \
-	$(call tfvar, TEMPLATE_BUCKET_NAME) \
-	$(call tfvar, TEMPLATE_BUCKET_LOCATION) \
-	$(call tfvar, ENVD_TIMEOUT) \
-	$(call tfvar, REDIS_MANAGED) \
-	$(call tfvar, GRAFANA_MANAGED) \
-	$(call tfvar, FILESTORE_CACHE_ENABLED) \
-	$(call tfvar, FILESTORE_CACHE_TIER) \
-	$(call tfvar, FILESTORE_CACHE_CAPACITY_GB) \
-	$(call tfvar, BUILD_CLUSTER_CACHE_DISK_TYPE) \
-	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_TYPE) \
-	$(call tfvar, MIN_CPU_PLATFORM)
-
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)
 .PHONY: login-gcloud
@@ -154,7 +98,7 @@ copy-public-builds:
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
 
 .PHONY: generate
-generate: generate/api generate/orchestrator generate/client-proxy generate/envd generate/db generate-tests
+generate: generate/api generate/orchestrator generate/client-proxy generate/envd generate/db generate-tests generate-mocks
 generate/%:
 	@echo "Generating code for *$(notdir $@)*"
 	$(MAKE) -C packages/$(notdir $@) generate

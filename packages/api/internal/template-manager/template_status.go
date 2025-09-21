@@ -107,8 +107,6 @@ func (c *PollBuildStatus) poll(ctx context.Context) {
 
 			return
 		case <-ticker.C:
-			c.logger.Debug("Checking template build status")
-
 			buildCompleted, err := c.checkBuildStatus(ctx)
 			if err != nil {
 				c.logger.Error("Build status polling received unrecoverable error", zap.Error(err))

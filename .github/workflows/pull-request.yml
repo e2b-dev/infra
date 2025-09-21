@@ -14,15 +14,14 @@ on:
 jobs:
   lint:
     uses: ./.github/workflows/lint.yml
-  integrity-check:
-    uses: ./.github/workflows/pr-go-integrity.yml
+  generated-code-check:
+    uses: ./.github/workflows/pr-no-generated-changes.yml
   out-of-order-migrations:
     uses: ./.github/workflows/out-of-order-migrations.yml
   unit-tests:
-    needs: [ integrity-check ]
     uses: ./.github/workflows/pr-tests.yml
   integration-tests:
-    needs: [ lint, integrity-check, out-of-order-migrations ]
+    needs: [ lint, out-of-order-migrations ]
     uses: ./.github/workflows/integration_tests.yml
   publish-test-results:
     needs:

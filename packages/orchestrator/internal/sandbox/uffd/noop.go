@@ -1,6 +1,8 @@
 package uffd
 
 import (
+	"context"
+
 	"github.com/bits-and-blooms/bitset"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -15,6 +17,8 @@ type NoopMemory struct {
 
 	exit *utils.ErrorOnce
 }
+
+var _ MemoryBackend = (*NoopMemory)(nil)
 
 func NewNoopMemory(size, blockSize int64) *NoopMemory {
 	blocks := header.TotalBlocks(size, blockSize)
@@ -38,7 +42,7 @@ func (m *NoopMemory) Dirty() *bitset.BitSet {
 	return m.dirty
 }
 
-func (m *NoopMemory) Start(sandboxId string) error {
+func (m *NoopMemory) Start(ctx context.Context, sandboxId string) error {
 	return nil
 }
 

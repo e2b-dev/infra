@@ -46,7 +46,7 @@ func TestSandboxPause(t *testing.T) {
 
 		// Pause the sandbox
 		wg := errgroup.Group{}
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			wg.Go(func() error {
 				pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
 				require.NoError(t, err)

@@ -218,7 +218,7 @@ func CreateSandbox(
 	}
 	ips := <-ipsCh
 	if ips.err != nil {
-		return nil, fmt.Errorf("failed to get network slot: %w", err)
+		return nil, fmt.Errorf("failed to get network slot: %w", ips.err)
 	}
 	fcHandle, err := fc.NewProcess(
 		ctx,
@@ -433,7 +433,7 @@ func ResumeSandbox(
 
 	ips := <-ipsCh
 	if ips.err != nil {
-		return nil, fmt.Errorf("failed to get network slot: %w", err)
+		return nil, fmt.Errorf("failed to get network slot: %w", ips.err)
 	}
 
 	telemetry.ReportEvent(ctx, "got network slot")
@@ -889,7 +889,7 @@ func serveMemory(
 	socketPath string,
 	sandboxID string,
 ) (uffd.MemoryBackend, error) {
-	_, span := tracer.Start(ctx, "serve-memory")
+	ctx, span := tracer.Start(ctx, "serve-memory")
 	defer span.End()
 
 	fcUffd, uffdErr := uffd.New(memfile, socketPath, memfile.BlockSize())
@@ -897,7 +897,7 @@ func serveMemory(
 		return nil, fmt.Errorf("failed to create uffd: %w", uffdErr)
 	}
 
-	uffdStartErr := fcUffd.Start(sandboxID)
+	uffdStartErr := fcUffd.Start(ctx, sandboxID)
 	if uffdStartErr != nil {
 		return nil, fmt.Errorf("failed to start uffd: %w", uffdStartErr)
 	}

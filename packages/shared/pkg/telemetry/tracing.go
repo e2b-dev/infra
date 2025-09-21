@@ -5,14 +5,11 @@ import (
 	"fmt"
 	"os"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
-
-var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/telemetry")
 
 var OTELTracingPrint = os.Getenv("OTEL_TRACING_PRINT") != "false"
 
@@ -104,44 +101,6 @@ func ReportError(ctx context.Context, message string, err error, attrs ...attrib
 		trace.WithStackTrace(true),
 		trace.WithAttributes(
 			attrs...,
-		),
-	)
-}
-
-func GetContextFromRemote(ctx context.Context, name, spanID, traceID string) (context.Context, trace.Span) {
-	tid, traceIDErr := trace.TraceIDFromHex(traceID)
-	if traceIDErr != nil {
-		ReportError(
-			ctx,
-			traceIDErr.Error(),
-			traceIDErr,
-			attribute.String("trace.id", traceID),
-			attribute.Int("trace.id.length", len(traceID)),
-		)
-	}
-
-	sid, spanIDErr := trace.SpanIDFromHex(spanID)
-	if spanIDErr != nil {
-		ReportError(
-			ctx,
-			spanIDErr.Error(),
-			spanIDErr,
-			attribute.String("span.id", spanID),
-			attribute.Int("span.id.length", len(spanID)),
-		)
-	}
-
-	remoteCtx := trace.NewSpanContext(trace.SpanContextConfig{
-		TraceID:    tid,
-		SpanID:     sid,
-		TraceFlags: 0x0,
-	})
-
-	return tracer.Start(
-		trace.ContextWithRemoteSpanContext(ctx, remoteCtx),
-		name,
-		trace.WithLinks(
-			trace.LinkFromContext(ctx, attribute.String("link", "validation")),
 		),
 	)
 }

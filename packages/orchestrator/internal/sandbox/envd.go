@@ -52,15 +52,18 @@ func doRequestWithInfiniteRetries(ctx context.Context, method, address string, r
 type PostInitJSONBody struct {
 	EnvVars     *map[string]string `json:"envVars"`
 	AccessToken *string            `json:"accessToken,omitempty"`
+	HyperloopIP *string            `json:"hyperloopIP,omitempty"`
 }
 
 func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string, accessToken *string) error {
 	childCtx, childSpan := tracer.Start(ctx, "envd-init")
 	defer childSpan.End()
 
+	hyperloopIP := s.Slot.HyperloopIPString()
 	address := fmt.Sprintf("http://%s:%d/init", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
 	jsonBody := &PostInitJSONBody{
 		EnvVars:     &envVars,
+		HyperloopIP: &hyperloopIP,
 		AccessToken: accessToken,
 	}
 

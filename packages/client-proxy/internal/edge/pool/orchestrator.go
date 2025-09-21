@@ -80,7 +80,7 @@ func NewOrchestratorInstance(tracerProvider trace.TracerProvider, meterProvider 
 }
 
 func (o *OrchestratorInstance) sync(ctx context.Context) error {
-	for i := 0; i < orchestratorSyncMaxRetries; i++ {
+	for range orchestratorSyncMaxRetries {
 		freshInfo := o.GetInfo()
 
 		status, err := o.client.Info.ServiceInfo(ctx, &emptypb.Empty{})
