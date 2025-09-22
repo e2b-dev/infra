@@ -202,7 +202,7 @@ func (c *CachedFileObjectProvider) readLocalSize() (int64, bool) {
 
 	size, err := strconv.ParseInt(string(content), 10, 64)
 	if err != nil {
-		zap.L().Warn("failed to parse cached size, falling back to remote read",
+		zap.L().Error("failed to parse cached size, falling back to remote read",
 			zap.String("path", fname),
 			zap.String("content", string(content)),
 			zap.Error(err))
