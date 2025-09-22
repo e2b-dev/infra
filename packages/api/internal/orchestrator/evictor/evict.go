@@ -11,11 +11,18 @@ import (
 )
 
 type Evictor struct {
-	store *instance.MemoryStore
+	store         *instance.MemoryStore
+	removeSandbox func(ctx context.Context, sandbox instance.Data, stateAction instance.StateAction) error
 }
 
-func New(store *instance.MemoryStore) *Evictor {
-	return &Evictor{store: store}
+func New(
+	store *instance.MemoryStore,
+	removeSandbox func(ctx context.Context, sandbox instance.Data, stateAction instance.StateAction) error,
+) *Evictor {
+	return &Evictor{
+		store:         store,
+		removeSandbox: removeSandbox,
+	}
 }
 
 func (e *Evictor) Start(ctx context.Context) {
@@ -24,25 +31,17 @@ func (e *Evictor) Start(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-time.After(50 * time.Millisecond):
-			// Get all items from the cache before iterating over them
-			// to avoid holding the lock while removing items from the cache.
-			items := e.store.ExpiredItems()
+			for _, item := range e.store.ItemsToEvict() {
+				go func() {
+					stateAction := instance.StateActionKill
+					if item.AutoPause {
+						stateAction = instance.StateActionPause
+					}
 
-			for _, item := range items {
-				if item.IsExpired() && item.GetState() == instance.StateRunning {
-					go func() {
-						removeType := instance.RemoveTypeKill
-						if item.AutoPause {
-							removeType = instance.RemoveTypePause
-						}
-
-						zap.L().Debug("Evicting sandbox", logger.WithSandboxID(item.SandboxID), zap.String("remove_type", string(removeType)))
-
-						if err := e.store.Remove(ctx, item.SandboxID, removeType); err != nil {
-							zap.L().Error("Error evicting sandbox", zap.Error(err), logger.WithSandboxID(item.SandboxID))
-						}
-					}()
-				}
+					if err := e.removeSandbox(ctx, item, stateAction); err != nil {
+						zap.L().Debug("Evicting sandbox failed", zap.Error(err), logger.WithSandboxID(item.SandboxID))
+					}
+				}()
 			}
 		}
 	}

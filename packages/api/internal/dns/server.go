@@ -87,12 +87,8 @@ func (d *DNS) Get(ctx context.Context, sandboxID string) net.IP {
 	var res string
 	switch {
 	case d.redisCache != nil:
-		if err := d.redisCache.Get(ctx, d.cacheKey(sandboxID), &res); err != nil {
-			if errors.Is(err, cache.ErrCacheMiss) {
-				zap.L().Debug("item missing in redisCache DNS cache", logger.WithSandboxID(sandboxID))
-			} else {
-				zap.L().Error("resolving item from redisCache DNS cache", logger.WithSandboxID(sandboxID), zap.Error(err))
-			}
+		if err := d.redisCache.Get(ctx, d.cacheKey(sandboxID), &res); err != nil && !errors.Is(err, cache.ErrCacheMiss) {
+			zap.L().Error("resolving item from redisCache DNS cache", logger.WithSandboxID(sandboxID), zap.Error(err))
 		}
 	case d.local != nil:
 		var ok bool

@@ -140,7 +140,7 @@ func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 
 	// Refresh diff expiration
 	time.Sleep(ttl / 2)
-	_, err = store.Get(diff)
+	_, err = store.Get(t.Context(), diff)
 	require.NoError(t, err)
 
 	// Try to expire diff
@@ -225,7 +225,7 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 	assert.True(t, dFound)
 
 	// Abort removal of diff
-	_, err = store.Get(diff)
+	_, err = store.Get(t.Context(), diff)
 	require.NoError(t, err)
 
 	found = store.Has(diff)
@@ -265,7 +265,7 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	assert.True(t, found)
 
 	// Delete oldest item
-	_, err = store.deleteOldestFromCache()
+	_, err = store.deleteOldestFromCache(t.Context())
 	require.NoError(t, err)
 
 	assert.True(t, store.isBeingDeleted(diff.CacheKey()))
@@ -284,7 +284,7 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	store.Add(diff3)
 
 	// Delete oldest item
-	_, err = store.deleteOldestFromCache()
+	_, err = store.deleteOldestFromCache(t.Context())
 	require.NoError(t, err)
 
 	assert.True(t, store.isBeingDeleted(diff2.CacheKey()))
@@ -350,13 +350,13 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 
 				// Try to trigger manual deletion which can race with TTL eviction
 				if j%10 == 0 {
-					_, err := store.deleteOldestFromCache()
+					_, err := store.deleteOldestFromCache(t.Context())
 					assert.NoError(t, err)
 				}
 
 				// Occasionally try to access the item, which calls resetDelete
 				if j%5 == 0 {
-					_, err := store.Get(diff)
+					_, err := store.Get(t.Context(), diff)
 					assert.NoError(t, err)
 				}
 			}
@@ -369,7 +369,8 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for range numIterations * 2 {
-			store.deleteOldestFromCache()
+			_, err = store.deleteOldestFromCache(t.Context())
+			assert.NoError(t, err)
 			time.Sleep(time.Microsecond * 50)
 		}
 	}()
@@ -430,14 +431,15 @@ func TestDiffStoreResetDeleteRace(t *testing.T) {
 			store.Add(iterDiff)
 
 			// Immediately schedule for deletion to populate pdSizes
-			store.scheduleDelete(iterDiff.CacheKey(), 1024)
+			store.scheduleDelete(t.Context(), iterDiff.CacheKey(), 1024)
 
 			// Small random delay to desynchronize goroutines slightly
 			time.Sleep(time.Duration(iteration%10) * time.Microsecond)
 
 			// This call to Get() will trigger resetDelete, which is where the race occurs
 			// Multiple goroutines calling resetDelete on the same key can race
-			store.Get(iterDiff)
+			_, err = store.Get(t.Context(), iterDiff)
+			assert.NoError(t, err)
 
 			// Also try direct resetDelete calls to increase race probability
 			store.resetDelete(iterDiff.CacheKey())

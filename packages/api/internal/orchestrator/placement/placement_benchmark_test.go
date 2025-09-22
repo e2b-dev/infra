@@ -52,6 +52,7 @@ type LiveSandbox struct {
 // SimulatedNode represents a node with realistic resource tracking
 type SimulatedNode struct {
 	*nodemanager.Node
+
 	mu                 sync.RWMutex
 	sandboxes          map[string]*LiveSandbox
 	totalPlacements    int64
@@ -121,7 +122,7 @@ func (n *SimulatedNode) placeSandbox(sandbox *LiveSandbox) bool {
 		return false
 	}
 
-	n.AddSandbox(&instance.InstanceInfo{
+	n.AddSandbox(instance.Data{
 		VCpu:  sandbox.RequestedCPU,
 		RamMB: sandbox.RequestedMemory,
 	})
@@ -152,7 +153,7 @@ func (n *SimulatedNode) removeSandbox(sandboxID string) {
 	metrics := n.Metrics()
 
 	if sandbox, exists := n.sandboxes[sandboxID]; exists {
-		n.RemoveSandbox(&instance.InstanceInfo{
+		n.RemoveSandbox(instance.Data{
 			VCpu:  sandbox.RequestedCPU,
 			RamMB: sandbox.RequestedMemory,
 		})
