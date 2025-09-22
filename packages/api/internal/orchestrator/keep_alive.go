@@ -2,6 +2,8 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -12,16 +14,44 @@ import (
 )
 
 func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, duration time.Duration, allowShorter bool) *api.APIError {
-	sbx, apiErr := o.sandboxStore.KeepAliveFor(sandboxID, duration, allowShorter)
-	if apiErr != nil {
-		return apiErr
+	data, err := o.GetSandboxData(sandboxID, false)
+	if err != nil {
+		return &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("Sandbox '%s' is not running anymore", sandboxID), Err: err}
 	}
 
-	err := o.UpdateSandbox(ctx, sbx.SandboxID, sbx.GetEndTime(), sbx.ClusterID, sbx.NodeID)
+	if (time.Since(data.StartTime)) > data.MaxInstanceLength {
+		msg := fmt.Sprintf("Sandbox '%s' reached maximal allowed uptime", sandboxID)
+		return &api.APIError{Code: http.StatusForbidden, ClientMsg: msg, Err: errors.New(msg)}
+	}
+
+	now := time.Now()
+	maxAllowedTTL := getMaxAllowedTTL(now, data.StartTime, duration, data.MaxInstanceLength)
+	newEndTime := now.Add(maxAllowedTTL)
+	zap.L().Debug("sandbox ttl updated", logger.WithSandboxID(data.SandboxID), zap.Time("end_time", newEndTime))
+
+	updated, err := o.sandboxStore.ExtendEndTime(sandboxID, newEndTime, allowShorter)
 	if err != nil {
-		zap.L().Warn("Error when setting sandbox timeout", zap.Error(err), logger.WithSandboxID(sandboxID))
+		return &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("Sandbox '%s' is not running anymore", sandboxID), Err: err}
+	}
+
+	if !updated {
+		// No need to update in orchestrator
+		return nil
+	}
+
+	err = o.UpdateSandbox(ctx, data.SandboxID, newEndTime, data.ClusterID, data.NodeID)
+	if err != nil {
 		return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}
 	}
 
 	return nil
+}
+
+func getMaxAllowedTTL(now time.Time, startTime time.Time, duration, maxInstanceLength time.Duration) time.Duration {
+	timeLeft := maxInstanceLength - now.Sub(startTime)
+	if timeLeft <= 0 {
+		return 0
+	}
+
+	return min(timeLeft, duration)
 }
