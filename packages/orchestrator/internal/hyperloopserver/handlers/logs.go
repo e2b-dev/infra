@@ -3,19 +3,19 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 func (h *APIStore) Logs(c *gin.Context) {
 	sbx, err := h.findSandbox(c)
 	if err != nil {
 		h.sendAPIStoreError(c, http.StatusBadRequest, "Error when finding source sandbox")
-		telemetry.ReportError(c, fmt.Sprintf("error finding sandbox for source addr %s", c.Request.RemoteAddr), err)
+		h.logger.Error("error finding sandbox for source addr", zap.String("addr", c.Request.RemoteAddr), zap.Error(err))
 		return
 	}
 
@@ -24,7 +24,7 @@ func (h *APIStore) Logs(c *gin.Context) {
 	var payload map[string]interface{}
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		h.sendAPIStoreError(c, http.StatusBadRequest, "Invalid body for logs")
-		telemetry.ReportError(c, "error when parsing sandbox logs request", err, telemetry.WithSandboxID(sbxID))
+		h.logger.Error("error when parsing sandbox logs request", zap.Error(err), logger.WithSandboxID(sbxID))
 		return
 	}
 
@@ -34,14 +34,14 @@ func (h *APIStore) Logs(c *gin.Context) {
 	logs, err := json.Marshal(payload)
 	if err != nil {
 		h.sendAPIStoreError(c, http.StatusInternalServerError, "Error when parsing logs payload")
-		telemetry.ReportError(c, "error when parsing logs payload", err, telemetry.WithSandboxID(sbxID))
+		h.logger.Error("error when parsing logs payload", zap.Error(err), logger.WithSandboxID(sbxID))
 		return
 	}
 
 	request, err := http.NewRequestWithContext(c, http.MethodPost, h.collectorAddr, bytes.NewBuffer(logs))
 	if err != nil {
 		h.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating request to forwarding sandbox logs")
-		telemetry.ReportError(c, "error when creating forwarding sandbox logs", err, telemetry.WithSandboxID(sbxID))
+		h.logger.Error("error when creating request to forwarding sandbox logs", zap.Error(err), logger.WithSandboxID(sbxID))
 		return
 	}
 
@@ -49,7 +49,7 @@ func (h *APIStore) Logs(c *gin.Context) {
 	response, err := h.collectorClient.Do(request)
 	if err != nil {
 		h.sendAPIStoreError(c, http.StatusInternalServerError, "Error when forwarding sandbox logs")
-		telemetry.ReportError(c, "error when forwarding sandbox logs", err, telemetry.WithSandboxID(sbxID))
+		h.logger.Error("error when forwarding sandbox logs", zap.Error(err), logger.WithSandboxID(sbxID))
 		return
 	}
 	defer response.Body.Close()
