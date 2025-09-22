@@ -110,12 +110,9 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
 	return nil
 }
 
-/**
- * This dispatches incoming NBD requests sequentially to the provider.
- *
- */
+// Handle dispatches incoming NBD requests sequentially to the provider.
 func (d *Dispatch) Handle(ctx context.Context) error {
-	ctx, span := tracer.Start(ctx, "dispatch-handle")
+	ctx, span := tracer.Start(ctx, "handle dispatch-requests")
 	defer span.End()
 
 	buffer := make([]byte, dispatchBufferSize)
@@ -253,7 +250,7 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 }
 
 func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
-	ctx, span := tracer.Start(ctx, "dispatch-cmd-write")
+	ctx, span := tracer.Start(ctx, "dispatch write command")
 	defer span.End()
 
 	d.shuttingDownLock.Lock()
@@ -306,7 +303,7 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
  *
  */
 func (d *Dispatch) cmdTrim(ctx context.Context, handle uint64, _ uint64, _ uint32) error {
-	_, span := tracer.Start(ctx, "dispatch-cmd-trim")
+	_, span := tracer.Start(ctx, "dispatch trim-command")
 	defer span.End()
 
 	// TODO: Ask the provider

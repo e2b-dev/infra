@@ -39,7 +39,7 @@ func doRequestWithInfiniteRetries(ctx context.Context, method, address string, r
 }
 
 func doRequest(ctx context.Context, method, address string, requestBody []byte, accessToken *string) (*http.Response, error) {
-	ctx, span := tracer.Start(ctx, "env-init-request")
+	ctx, span := tracer.Start(ctx, "perform envd-init")
 	defer span.End()
 
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
