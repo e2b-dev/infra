@@ -21,7 +21,7 @@ func (h *APIStore) Logs(c *gin.Context) {
 
 	sbxID := sbx.Runtime.SandboxID
 
-	var payload map[string]interface{}
+	payload := make(map[string]any)
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		h.sendAPIStoreError(c, http.StatusBadRequest, "Invalid body for logs")
 		h.logger.Error("error when parsing sandbox logs request", zap.Error(err), logger.WithSandboxID(sbxID))
