@@ -10,11 +10,11 @@ formatters:
         - standard
         - default
         - prefix(github.com/e2b-dev/infra)
+
 linters:
   default: all
   disable:
     # these are in other PRs already
-    - embeddedstructfieldcheck
     - forcetypeassert
     - noctx
 
@@ -89,7 +89,6 @@ linters:
         - { disabled: true, name: context-as-argument }
         - { disabled: true, name: cyclomatic }
         - { disabled: true, name: deep-exit }
-        - { disabled: true, name: defer }  # todo: enable this
         - { disabled: true, name: early-return }
         - { disabled: true, name: enforce-switch-style }
         - { disabled: true, name: exported }
