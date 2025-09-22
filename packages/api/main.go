@@ -251,7 +251,7 @@ func run() int {
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
 			IsInternal:       false,
-			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+			CollectorAddress: env.LogsCollectorAddress(),
 		},
 	)
 	defer sbxLoggerExternal.Sync()
@@ -263,7 +263,7 @@ func run() int {
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
 			IsInternal:       true,
-			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+			CollectorAddress: env.LogsCollectorAddress(),
 		},
 	)
 	defer sbxLoggerInternal.Sync()
