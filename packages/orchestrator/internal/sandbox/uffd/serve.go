@@ -150,9 +150,6 @@ outerLoop:
 		missingPagesBeingHandled[offset] = struct{}{}
 
 		eg.Go(func() error {
-			ctx, span := tracer.Start(ctx, "UFFD serve one slab")
-			defer span.End()
-
 			defer func() {
 				if r := recover(); r != nil {
 					logger.Error("UFFD serve panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))

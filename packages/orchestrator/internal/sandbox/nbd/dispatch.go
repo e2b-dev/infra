@@ -204,9 +204,6 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 }
 
 func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
-	ctx, span := tracer.Start(ctx, "dispatch-cmd-read")
-	defer span.End()
-
 	d.shuttingDownLock.Lock()
 	if !d.shuttingDown {
 		d.pendingResponses.Add(1)
@@ -241,9 +238,6 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 	}
 
 	go func() {
-		ctx, span := tracer.Start(ctx, "handle-cmd-read")
-		defer span.End()
-
 		err := performRead(ctx, cmdHandle, cmdFrom, cmdLength)
 		if err != nil {
 			select {
@@ -294,9 +288,6 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 	}
 
 	go func() {
-		ctx, span := tracer.Start(ctx, "handle-cmd-write")
-		defer span.End()
-
 		err := performWrite(ctx, cmdHandle, cmdFrom, cmdData)
 		if err != nil {
 			select {
