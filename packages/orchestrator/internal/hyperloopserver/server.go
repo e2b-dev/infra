@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"time"
 
+	limits "github.com/gin-contrib/size"
 	"github.com/gin-gonic/gin"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"go.uber.org/zap"
@@ -18,11 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
-const (
-	maxReadTimeout  = 75 * time.Second
-	maxWriteTimeout = 75 * time.Second
-	idleTimeout     = 620 * time.Second
-)
+const maxUploadLimit = 1 << 28 // 256 MiB
 
 func NewHyperloopServer(ctx context.Context, port uint, logger *zap.Logger, sandboxes *smap.Map[*sandbox.Sandbox]) (*http.Server, error) {
 	sandboxCollectorAddr := env.LogsCollectorAddress()
@@ -35,17 +31,13 @@ func NewHyperloopServer(ctx context.Context, port uint, logger *zap.Logger, sand
 	engine := gin.New()
 	engine.Use(
 		gin.Recovery(),
+		limits.RequestSizeLimiter(maxUploadLimit),
 		middleware.OapiRequestValidatorWithOptions(swagger, &middleware.Options{}),
 	)
 
 	server := &http.Server{
 		Handler: engine,
 		Addr:    fmt.Sprintf("0.0.0.0:%d", port),
-
-		// Configure timeouts to be greater than the proxy timeouts.
-		ReadTimeout:  maxReadTimeout,
-		WriteTimeout: maxWriteTimeout,
-		IdleTimeout:  idleTimeout,
 
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
