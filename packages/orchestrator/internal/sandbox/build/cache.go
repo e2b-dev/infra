@@ -120,9 +120,9 @@ func (s *DiffStore) startDiskSpaceEviction(threshold float64) {
 	getDelay := func(fast bool) time.Duration {
 		if fast {
 			return time.Microsecond
-		} else {
-			return time.Second
 		}
+
+		return time.Second
 	}
 
 	timer := time.NewTimer(getDelay(false))
