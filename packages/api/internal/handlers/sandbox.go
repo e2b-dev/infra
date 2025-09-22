@@ -61,7 +61,7 @@ func (a *APIStore) startSandbox(
 		allowInternetAccess,
 	)
 	if instanceErr != nil {
-		telemetry.ReportCriticalError(ctx, "error when creating instance", instanceErr.Err)
+		telemetry.ReportError(ctx, "error when creating instance", instanceErr.Err)
 		return nil, instanceErr
 	}
 

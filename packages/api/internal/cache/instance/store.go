@@ -8,8 +8,7 @@ import (
 )
 
 type (
-	InsertCallback func(ctx context.Context, sbx *InstanceInfo, created bool)
-	RemoveCallback func(ctx context.Context, sbx *InstanceInfo, removeType RemoveType)
+	InsertCallback func(ctx context.Context, sbx Data, created bool)
 )
 
 type MemoryStore struct {
@@ -20,28 +19,20 @@ type MemoryStore struct {
 	insertCallbacks      []InsertCallback
 	insertAsyncCallbacks []InsertCallback
 
-	removeSandbox        func(ctx context.Context, sbx *InstanceInfo, removeType RemoveType) error
-	removeAsyncCallbacks []RemoveCallback
-
 	mu sync.Mutex
 }
 
 func NewStore(
-	removeSandbox func(ctx context.Context, sbx *InstanceInfo, removeType RemoveType) error,
 	insertCallbacks []InsertCallback,
 	insertAsyncCallbacks []InsertCallback,
-	removeAsyncCallbacks []RemoveCallback,
 ) *MemoryStore {
 	instanceCache := &MemoryStore{
 		items: cmap.New[*InstanceInfo](),
 
-		removeSandbox: removeSandbox,
-
 		insertCallbacks:      insertCallbacks,
 		insertAsyncCallbacks: insertAsyncCallbacks,
 
-		removeAsyncCallbacks: removeAsyncCallbacks,
-		reservations:         NewReservationCache(),
+		reservations: NewReservationCache(),
 	}
 
 	return instanceCache

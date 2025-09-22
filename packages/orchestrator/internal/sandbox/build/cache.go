@@ -118,9 +118,9 @@ func (s *DiffStore) startDiskSpaceEviction(ctx context.Context, threshold float6
 	getDelay := func(fast bool) time.Duration {
 		if fast {
 			return time.Microsecond
-		} else {
-			return time.Second
 		}
+
+		return time.Second
 	}
 
 	timer := time.NewTimer(getDelay(false))

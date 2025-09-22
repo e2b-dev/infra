@@ -124,7 +124,6 @@ func New(
 	}
 
 	sandboxStore := instance.NewStore(
-		o.removeSandbox,
 		[]instance.InsertCallback{
 			o.addToNode,
 		},
@@ -133,16 +132,12 @@ func New(
 			o.countersInsert,
 			o.analyticsInsert,
 		},
-		[]instance.RemoveCallback{
-			o.countersRemove,
-			o.analyticsRemove,
-		},
 	)
 
 	o.sandboxStore = sandboxStore
 
 	// Evict old sandboxes
-	sandboxEvictor := evictor.New(sandboxStore)
+	sandboxEvictor := evictor.New(sandboxStore, o.RemoveSandbox)
 	go sandboxEvictor.Start(ctx)
 
 	teamMetricsObserver, err := metrics.NewTeamObserver(ctx, sandboxStore)

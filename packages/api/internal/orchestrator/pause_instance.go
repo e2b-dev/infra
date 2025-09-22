@@ -25,7 +25,7 @@ func (PauseQueueExhaustedError) Error() string {
 	return "The pause queue is exhausted"
 }
 
-func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node, sbx *instance.InstanceInfo) (err error) {
+func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node, sbx instance.Data) (err error) {
 	ctx, span := tracer.Start(ctx, "pause-sandbox")
 	defer span.End()
 
@@ -87,7 +87,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	return nil
 }
 
-func snapshotInstance(ctx context.Context, orch *Orchestrator, node *nodemanager.Node, sbx *instance.InstanceInfo, templateID, buildID string) error {
+func snapshotInstance(ctx context.Context, orch *Orchestrator, node *nodemanager.Node, sbx instance.Data, templateID, buildID string) error {
 	childCtx, childSpan := tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
 

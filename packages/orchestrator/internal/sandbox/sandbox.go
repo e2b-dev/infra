@@ -882,7 +882,7 @@ func serveMemory(
 	socketPath string,
 	sandboxID string,
 ) (uffd.MemoryBackend, error) {
-	ctx, span := tracer.Start(ctx, "serve-memory")
+	_, span := tracer.Start(ctx, "serve memory")
 	defer span.End()
 
 	fcUffd, uffdErr := uffd.New(memfile, socketPath, memfile.BlockSize())
@@ -896,7 +896,7 @@ func serveMemory(
 	}
 
 	cleanup.Add(func(ctx context.Context) error {
-		_, span := tracer.Start(ctx, "uffd-stop")
+		_, span := tracer.Start(ctx, "stop uffd")
 		defer span.End()
 
 		stopErr := fcUffd.Stop()
@@ -965,9 +965,9 @@ func (s *Sandbox) WaitForEnvd(
 	initErr := s.initEnvd(syncCtx, s.Config.Envd.Vars, s.Config.Envd.AccessToken)
 	if initErr != nil {
 		return fmt.Errorf("failed to init new envd: %w", initErr)
-	} else {
-		telemetry.ReportEvent(syncCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", s.Metadata.Runtime.SandboxID))
 	}
+
+	telemetry.ReportEvent(syncCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", s.Metadata.Runtime.SandboxID))
 
 	return nil
 }

@@ -295,12 +295,14 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 
 				// Try to trigger manual deletion which can race with TTL eviction
 				if j%10 == 0 {
-					store.deleteOldestFromCache(t.Context())
+					_, err := store.deleteOldestFromCache(t.Context())
+					assert.NoError(t, err)
 				}
 
 				// Occasionally try to access the item, which calls resetDelete
 				if j%5 == 0 {
-					store.Get(t.Context(), diff)
+					_, err := store.Get(t.Context(), diff)
+					assert.NoError(t, err)
 				}
 			}
 		}(i)
@@ -373,7 +375,8 @@ func TestDiffStoreResetDeleteRace(t *testing.T) {
 
 			// This call to Get() will trigger resetDelete, which is where the race occurs
 			// Multiple goroutines calling resetDelete on the same key can race
-			store.Get(t.Context(), iterDiff)
+			_, err = store.Get(t.Context(), iterDiff)
+			assert.NoError(t, err)
 
 			// Also try direct resetDelete calls to increase race probability
 			store.resetDelete(iterDiff.CacheKey())

@@ -36,7 +36,7 @@ const (
 	maxStartingInstancesPerNode = 3
 )
 
-func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
+func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (r *orchestrator.SandboxCreateResponse, err error) {
 	// set max request timeout for this request
 	ctx, cancel := context.WithTimeoutCause(ctx, requestTimeout, fmt.Errorf("request timed out"))
 	defer cancel()
@@ -106,15 +106,14 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 	// span/context used for the running of the sandbox
 	runCtx := context.WithoutCancel(ctx)
-	runCtx, runSpan := tracer.Start(runCtx, "execute sandbox", trace.WithNewRoot(), trace.WithAttributes(
+	runCtx, runSpan := tracer.Start(runCtx, "execute sandbox", trace.WithNewRoot(), trace.WithAttributes( //nolint:spancheck // it actually does, the linter is wrong
 		attribute.String("template_id", req.GetSandbox().GetTemplateId()),
 		attribute.String("sandbox_id", req.GetSandbox().GetSandboxId()),
 		attribute.String("client_id", s.info.ClientId),
 	))
 	span.AddLink(trace.LinkFromContext(runCtx))
-	runSpanHasForked := false
 	defer func() {
-		if !runSpanHasForked {
+		if err != nil {
 			runSpan.End()
 		}
 	}()
@@ -153,13 +152,12 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		req.Sandbox,
 	)
 	if err != nil {
-		err := errors.Join(err, context.Cause(ctx))
+		err = errors.Join(err, context.Cause(ctx))
 		telemetry.ReportCriticalError(ctx, "failed to create sandbox", err)
-		return nil, status.Errorf(codes.Internal, "failed to create sandbox: %s", err)
+		return nil, status.Errorf(codes.Internal, "failed to create sandbox: %s", err) //nolint:spancheck // it actually does, the linter is wrong
 	}
 
 	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
-	runSpanHasForked = true
 
 	go func() {
 		defer runSpan.End()
