@@ -527,7 +527,7 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 	}
 
 	zap.L().Info("Shutting down hyperloop server")
-	err = hyperloopSrv.Shutdown(ctx)
+	err = hyperloopSrv.Shutdown(closeCtx)
 	if err != nil {
 		zap.L().Error("error shutting down hyperloop server", zap.Error(err))
 		success = false
