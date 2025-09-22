@@ -235,20 +235,10 @@ func (c *CachedFileObjectProvider) sizeFilename() string {
 func (c *CachedFileObjectProvider) writeLocalSize(size int64) {
 	tempFilename := filepath.Join(c.path, fmt.Sprintf(".size.bin.%s", uuid.NewString()))
 
-	fp, err := os.OpenFile(tempFilename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, cacheFilePermissions)
-	if err != nil {
-		zap.L().Warn("failed to open temp file",
-			zap.String("path", tempFilename),
-			zap.Error(err))
-		return
-	}
-	defer cleanup("failed to close temp file", fp.Close)
-
-	if _, err := fmt.Fprintf(fp, "%d", size); err != nil {
+	if err := os.WriteFile(tempFilename, []byte(fmt.Sprintf("%d", size)), cacheFilePermissions); err != nil {
 		zap.L().Warn("failed to write to temp file",
 			zap.String("path", tempFilename),
 			zap.Error(err))
-		return
 	}
 
 	finalFilename := c.sizeFilename()
