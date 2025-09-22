@@ -239,6 +239,7 @@ func (c *CachedFileObjectProvider) writeLocalSize(size int64) {
 		zap.L().Warn("failed to write to temp file",
 			zap.String("path", tempFilename),
 			zap.Error(err))
+		return
 	}
 
 	finalFilename := c.sizeFilename()
@@ -386,6 +387,9 @@ const (
 )
 
 func (c *CachedFileObjectProvider) readAndCacheFullRemoteFile(ctx context.Context, dst io.Writer) (int64, error) {
+	// This is semi-arbitrary. this code path is called for files that tend to be less than 1 MB (headers, metadata, etc),
+	// so 2 MB allows us to read the file without needing to allocate more memory, with some room for growth. If the
+	// file is larger than 2 MB, the buffer will grow, it just won't be as efficient WRT memory allocations.
 	const writeToInitialBufferSize = 2 * megabyte
 
 	writer := bytes.NewBuffer(make([]byte, 0, writeToInitialBufferSize))
