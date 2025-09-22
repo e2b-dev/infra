@@ -35,7 +35,7 @@ func TestAccessingHyperloopServerViaIP(t *testing.T) {
 
 	require.NoError(t, readErr)
 	assert.Equal(t, http.StatusOK, readRes.StatusCode())
-	assert.JSONEq(t, fmt.Sprintf("{\"sandboxID\": \"%s\"", sbx.SandboxID), string(readRes.Body))
+	assert.JSONEq(t, fmt.Sprintf("{\"sandboxID\": \"%s\"}", sbx.SandboxID), string(readRes.Body))
 }
 
 func TestAccessingHyperloopServerViaDomain(t *testing.T) {
@@ -59,5 +59,5 @@ func TestAccessingHyperloopServerViaDomain(t *testing.T) {
 
 	require.NoError(t, readErr)
 	assert.Equal(t, http.StatusOK, readRes.StatusCode())
-	assert.JSONEq(t, fmt.Sprintf("{\"sandboxID\": \"%s\"", sbx.SandboxID), string(readRes.Body))
+	assert.JSONEq(t, fmt.Sprintf("{\"sandboxID\": \"%s\"}", sbx.SandboxID), string(readRes.Body))
 }
