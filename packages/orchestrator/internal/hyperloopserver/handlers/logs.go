@@ -28,8 +28,9 @@ func (h *APIStore) Logs(c *gin.Context) {
 		return
 	}
 
-	// Overwrite instanceID to ensure logs are from the correct sandbox
-	payload["instanceID"] = sbx.Runtime.SandboxID
+	// Overwrite instanceID and teamID to avoid spoofing
+	payload["instanceID"] = sbxID
+	payload["teamID"] = sbx.Runtime.TeamID
 
 	logs, err := json.Marshal(payload)
 	if err != nil {
