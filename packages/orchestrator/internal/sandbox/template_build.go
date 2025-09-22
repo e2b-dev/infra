@@ -195,11 +195,7 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 	})
 
 	eg.Go(func() error {
-		if err := t.uploadMetadata(ctx, metadataPath); err != nil {
-			return err
-		}
-
-		return nil
+		return t.uploadMetadata(ctx, metadataPath)
 	})
 
 	done := make(chan error)
