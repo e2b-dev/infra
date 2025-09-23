@@ -3,7 +3,7 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 
 .PHONY: generate-fc
 generate-fc:
-	cd pkg/fc && swagger generate client -f firecracker.yml -A firecracker
+	cd pkg/fc && go tool swagger generate client -f firecracker.yml -A firecracker
 
 .PHONY: generate-models
 generate-models:
