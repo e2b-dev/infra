@@ -11,7 +11,7 @@ type MmdsMetadata struct {
 	TraceID    string `json:"traceID"`
 	TeamID     string `json:"teamID"`
 
-	Address string `json:"address"`
+	LogsCollectorAddress string `json:"address"`
 }
 
 func (mm MmdsMetadata) LoggerMetadata() sbxlogger.SandboxMetadata {

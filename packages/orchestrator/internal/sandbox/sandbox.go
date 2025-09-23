@@ -479,9 +479,10 @@ func ResumeSandbox(
 		&fc.MmdsMetadata{
 			SandboxID:  runtime.SandboxID,
 			TemplateID: runtime.TemplateID,
-			Address:    fmt.Sprintf("http://%s/logs", ips.slot.HyperloopIPString()),
-			TraceID:    traceID,
 			TeamID:     runtime.TeamID,
+			TraceID:    traceID,
+
+			LogsCollectorAddress: fmt.Sprintf("http://%s/logs", ips.slot.HyperloopIPString()),
 		},
 		fcUffdPath,
 		snapfile,
