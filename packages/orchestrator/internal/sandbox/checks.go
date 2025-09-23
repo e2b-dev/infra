@@ -78,6 +78,10 @@ func (c *Checks) logHealth(ctx context.Context) {
 
 func (c *Checks) Healthcheck(ctx context.Context, alwaysReport bool) {
 	ok, err := c.getHealth(ctx, healthCheckTimeout)
+	// Sandbox stopped
+	if errors.Is(err, ErrChecksStopped) {
+		return
+	}
 
 	if !ok && c.healthy.CompareAndSwap(true, false) {
 		sbxlogger.E(c.sandbox).Healthcheck(sbxlogger.Fail)
