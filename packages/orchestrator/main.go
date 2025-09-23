@@ -61,14 +61,19 @@ const (
 	defaultProxyPort = 5007
 
 	version = "0.1.0"
-
-	fileLockName = "/orchestrator.lock"
 )
 
 var (
-	forceStop = env.GetEnv("FORCE_STOP", "false") == "true"
-	commitSHA string
+	forceStop    = env.GetEnv("FORCE_STOP", "false") == "true"
+	commitSHA    string
+	fileLockName = "/orchestrator.lock"
 )
+
+func init() {
+	if value := os.Getenv("ORCHESTRATOR_LOCK_PATH"); value != "" {
+		fileLockName = value
+	}
+}
 
 func main() {
 	port := flag.Uint("port", defaultPort, "orchestrator server port")

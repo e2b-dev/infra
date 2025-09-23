@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg"
 )
 
 const (
@@ -17,7 +20,7 @@ const (
 	fallbackDiffSize = 100 << ToMBShift
 )
 
-const DefaultCachePath = "/orchestrator/build"
+var DefaultCachePath = filepath.Join(pkg.OrchestratorBasePath, "build")
 
 type deleteDiff struct {
 	size      int64

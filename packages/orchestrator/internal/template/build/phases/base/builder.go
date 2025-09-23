@@ -30,14 +30,15 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-const (
-	templatesDirectory = "/orchestrator/build-templates"
+var templatesDirectory = filepath.Join(pkg.OrchestratorBasePath, "build-templates")
 
+const (
 	rootfsBuildFileName = "rootfs.filesystem.build"
 	rootfsProvisionLink = "rootfs.filesystem.build.provision"
 
