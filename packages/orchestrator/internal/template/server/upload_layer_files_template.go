@@ -38,10 +38,10 @@ func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanag
 			Present: false,
 			Url:     &signedUrl,
 		}, nil
-	} else {
-		return &templatemanager.InitLayerFileUploadResponse{
-			Present: true,
-			Url:     &signedUrl,
-		}, nil
 	}
+
+	return &templatemanager.InitLayerFileUploadResponse{
+		Present: true,
+		Url:     &signedUrl,
+	}, nil
 }

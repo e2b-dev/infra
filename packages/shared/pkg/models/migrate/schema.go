@@ -148,6 +148,7 @@ var (
 		{Name: "env_secure", Type: field.TypeBool, Default: false},
 		{Name: "auto_pause", Type: field.TypeBool, Default: false},
 		{Name: "origin_node_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "team_id", Type: field.TypeUUID},
 		{Name: "allow_internet_access", Type: field.TypeBool, Nullable: true},
 		{Name: "env_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 	}
@@ -159,7 +160,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "snapshots_envs_snapshots",
-				Columns:    []*schema.Column{SnapshotsColumns[10]},
+				Columns:    []*schema.Column{SnapshotsColumns[11]},
 				RefColumns: []*schema.Column{EnvsColumns[0]},
 				OnDelete:   schema.Cascade,
 			},

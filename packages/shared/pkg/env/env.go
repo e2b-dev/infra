@@ -49,3 +49,7 @@ func GetNodeID() string {
 func GetNodeIP() string {
 	return utils.RequiredEnv("NODE_IP", "Node IP of the instance node is required")
 }
+
+func LogsCollectorAddress() string {
+	return os.Getenv("LOGS_COLLECTOR_ADDRESS")
+}
