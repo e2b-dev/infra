@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/googleapis/gax-go/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -34,13 +35,13 @@ const (
 )
 
 var (
-	googleReadTimerFactory = must(telemetry.NewTimerFactory(meter,
+	googleReadTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
 		"orchestrator.storage.gcs.read",
 		"Duration of GCS reads",
 		"Total GCS bytes read",
 		"Total GCS reads",
 	))
-	googleWriteTimerFactory = must(telemetry.NewTimerFactory(meter,
+	googleWriteTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
 		"orchestrator.storage.gcs.write",
 		"Duration of GCS writes",
 		"Total bytes written to GCS",

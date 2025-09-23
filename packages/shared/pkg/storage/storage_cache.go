@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -26,23 +27,15 @@ const (
 	cacheDirPermissions  = 0o700
 )
 
-func must[T any](t T, err error) T {
-	if err != nil {
-		panic(err)
-	}
-
-	return t
-}
-
 var (
 	meter                 = otel.GetMeterProvider().Meter("shared.pkg.storage")
-	cacheReadTimerFactory = must(telemetry.NewTimerFactory(meter,
+	cacheReadTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
 		"orchestrator.storage.cache.read",
 		"Duration of cached reads",
 		"Total cached bytes read",
 		"Total cached reads",
 	))
-	cacheWriteTimerFactory = must(telemetry.NewTimerFactory(meter,
+	cacheWriteTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
 		"orchestrator.storage.cache.write",
 		"Duration of cache writes",
 		"Total bytes written to the cache",
