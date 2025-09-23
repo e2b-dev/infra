@@ -197,7 +197,7 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
 			IsInternal:       false,
-			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+			CollectorAddress: env.LogsCollectorAddress(),
 		},
 	)
 	defer func(l *zap.Logger) {
@@ -215,7 +215,7 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
 			IsInternal:       true,
-			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+			CollectorAddress: env.LogsCollectorAddress(),
 		},
 	)
 	defer func(l *zap.Logger) {
@@ -382,7 +382,7 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      constants.ServiceNameTemplate,
 			IsInternal:       false,
-			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+			CollectorAddress: env.LogsCollectorAddress(),
 		},
 	)
 	defer func(l *zap.Logger) {
@@ -393,7 +393,7 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 		}
 	}(tmplSbxLoggerExternal)
 
-	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(hyperloopPort, sandboxes)
+	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(ctx, hyperloopPort, globalLogger, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create hyperloop server", zap.Error(err))
 	}
@@ -404,7 +404,6 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 		networkPool,
 		devicePool,
 		sandboxProxy,
-		hyperloopSrv,
 		featureFlags,
 		sandboxObserver,
 		limiter,
@@ -460,7 +459,7 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 	g.Go(func() (err error) {
 		// this sets the error declared above so the function
 		// in the defer can check it.
-		hyperloopErr := hyperloopSrv.Start()
+		hyperloopErr := hyperloopSrv.ListenAndServe()
 		if hyperloopErr != nil {
 			hyperloopErr = fmt.Errorf("hyperloop server: %w", hyperloopErr)
 			zap.L().Error("hyperloop server error", zap.Error(hyperloopErr))
@@ -525,6 +524,13 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 			zap.L().Error("error during shutdown", zap.Error(err))
 			success = false
 		}
+	}
+
+	zap.L().Info("Shutting down hyperloop server")
+	err = hyperloopSrv.Shutdown(closeCtx)
+	if err != nil {
+		zap.L().Error("error shutting down hyperloop server", zap.Error(err))
+		success = false
 	}
 
 	zap.L().Info("Waiting for services to finish")
