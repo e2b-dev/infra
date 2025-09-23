@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -26,31 +27,23 @@ const (
 	cacheDirPermissions  = 0o700
 )
 
-func must[T any](t T, err error) T {
-	if err != nil {
-		panic(err)
-	}
-
-	return t
-}
-
 var (
 	meter                 = otel.GetMeterProvider().Meter("shared.pkg.storage")
-	cacheReadTimerFactory = must(telemetry.NewTimerFactory(meter,
+	cacheReadTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
 		"orchestrator.storage.cache.read",
 		"Duration of cached reads",
 		"Total cached bytes read",
 		"Total cached reads",
 	))
-	cacheWriteTimerFactory = must(telemetry.NewTimerFactory(meter,
+	cacheWriteTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
 		"orchestrator.storage.cache.write",
 		"Duration of cache writes",
 		"Total bytes written to the cache",
 		"Total writes to the cache",
 	))
-	cacheHits = must(meter.Int64Counter("orchestrator.storage.cache.hits",
+	cacheHits = utils.Must(meter.Int64Counter("orchestrator.storage.cache.hits",
 		metric.WithDescription("total cache hits")))
-	cacheMisses = must(meter.Int64Counter("orchestrator.storage.cache.misses",
+	cacheMisses = utils.Must(meter.Int64Counter("orchestrator.storage.cache.misses",
 		metric.WithDescription("total cache misses")))
 )
 
