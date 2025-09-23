@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptrace"
-	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -470,16 +469,15 @@ func ResumeSandbox(
 
 	telemetry.ReportEvent(ctx, "got snapfile")
 
-	logsCollectorIP := os.Getenv("LOGS_COLLECTOR_PUBLIC_IP")
-
 	fcStartErr := fcHandle.Resume(
 		uffdStartCtx,
 		&fc.MmdsMetadata{
-			SandboxId:            runtime.SandboxID,
-			TemplateId:           runtime.TemplateID,
-			LogsCollectorAddress: fmt.Sprintf("http://%s", logsCollectorIP),
-			TraceId:              traceID,
-			TeamId:               runtime.TeamID,
+			SandboxID:  runtime.SandboxID,
+			TemplateID: runtime.TemplateID,
+			TeamID:     runtime.TeamID,
+			TraceID:    traceID,
+
+			LogsCollectorAddress: fmt.Sprintf("http://%s/logs", ips.slot.HyperloopIPString()),
 		},
 		fcUffdPath,
 		snapfile,

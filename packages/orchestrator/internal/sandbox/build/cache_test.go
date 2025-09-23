@@ -204,7 +204,13 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 
 	ttl := 60 * time.Second
 	delay := 4 * time.Second
-	store, err := NewDiffStore(t.Context(), cachePath, ttl, delay, 100.0)
+	store, err := NewDiffStore(
+		t.Context(),
+		cachePath,
+		ttl,
+		delay,
+		100.0,
+	)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
