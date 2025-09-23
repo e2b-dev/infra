@@ -73,7 +73,6 @@ job "template-manager-system" {
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
         LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"
         ORCHESTRATOR_SERVICES         = "${orchestrator_services}"
-        LOGS_COLLECTOR_PUBLIC_IP      = "${logs_collector_public_ip}"
         ALLOW_SANDBOX_INTERNET        = "${allow_sandbox_internet}"
         SHARED_CHUNK_CACHE_PATH       = "${shared_chunk_cache_path}"
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"

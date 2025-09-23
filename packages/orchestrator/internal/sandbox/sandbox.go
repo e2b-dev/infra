@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -475,16 +474,15 @@ func ResumeSandbox(
 
 	telemetry.ReportEvent(ctx, "got snapfile")
 
-	logsCollectorIP := os.Getenv("LOGS_COLLECTOR_PUBLIC_IP")
-
 	fcStartErr := fcHandle.Resume(
 		uffdStartCtx,
 		&fc.MmdsMetadata{
-			SandboxId:            runtime.SandboxID,
-			TemplateId:           runtime.TemplateID,
-			LogsCollectorAddress: fmt.Sprintf("http://%s", logsCollectorIP),
-			TraceId:              traceID,
-			TeamId:               runtime.TeamID,
+			SandboxID:  runtime.SandboxID,
+			TemplateID: runtime.TemplateID,
+			TeamID:     runtime.TeamID,
+			TraceID:    traceID,
+
+			LogsCollectorAddress: fmt.Sprintf("http://%s/logs", ips.slot.HyperloopIPString()),
 		},
 		fcUffdPath,
 		snapfile,
@@ -972,9 +970,9 @@ func (s *Sandbox) WaitForEnvd(
 	initErr := s.initEnvd(syncCtx, s.Config.Envd.Vars, s.Config.Envd.AccessToken)
 	if initErr != nil {
 		return fmt.Errorf("failed to init new envd: %w", initErr)
-	} else {
-		telemetry.ReportEvent(syncCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", s.Metadata.Runtime.SandboxID))
 	}
+
+	telemetry.ReportEvent(syncCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", s.Metadata.Runtime.SandboxID))
 
 	return nil
 }

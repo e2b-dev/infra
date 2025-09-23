@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
-func (n *Node) GetSandboxes(ctx context.Context) ([]*instance.InstanceInfo, error) {
+func (n *Node) GetSandboxes(ctx context.Context) ([]instance.Data, error) {
 	childCtx, childSpan := tracer.Start(ctx, "get-sandboxes-from-orchestrator")
 	defer childSpan.End()
 
@@ -27,7 +27,7 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]*instance.InstanceInfo, erro
 
 	sandboxes := res.GetSandboxes()
 
-	sandboxesInfo := make([]*instance.InstanceInfo, 0, len(sandboxes))
+	sandboxesInfo := make([]instance.Data, 0, len(sandboxes))
 
 	for _, sbx := range sandboxes {
 		config := sbx.GetConfig()
@@ -48,7 +48,7 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]*instance.InstanceInfo, erro
 
 		sandboxesInfo = append(
 			sandboxesInfo,
-			instance.NewInstanceInfo(
+			instance.NewSandbox(
 				config.SandboxId,
 				config.TemplateId,
 				consts.ClientID,

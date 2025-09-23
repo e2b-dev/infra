@@ -98,6 +98,7 @@ locals {
 
 # ======== IP ADDRESSES ====================
 
+// todo: (2025-09-22): this can be removed when all orchestrator will be rolled with internal logs collector server
 resource "google_compute_global_address" "orch_logs_ip" {
   name = "${var.prefix}logs-ip"
 }
