@@ -1,4 +1,15 @@
-package uffd
+package userfaultfd
+
+/*
+This is the flow of the UFFD events:
+
+```mermaid
+flowchart TD
+A[missing page] -- write (WRITE flag) --> B(COPY) --> C[mark as dirty]
+A -- read (0 flag) --> D(COPY + WP protect) --> E[faulted page]
+E -- write (WP|WRITE flag) --> F(remove WP) --> C
+```
+*/
 
 import (
 	"context"
@@ -14,34 +25,22 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
 )
 
-var ErrUnexpectedEventType = errors.New("unexpected event type")
-
-type GuestRegionUffdMapping struct {
-	BaseHostVirtAddr uintptr `json:"base_host_virt_addr"`
-	Size             uintptr `json:"size"`
-	Offset           uintptr `json:"offset"`
-	PageSize         uintptr `json:"page_size_kib"`
-}
-
-func Serve(
-	ctx context.Context,
-	uffd int,
+func (u *userfaultfd) Serve(
 	mappings mapping.Mappings,
 	src block.Slicer,
 	fdExit *fdexit.FdExit,
 	logger *zap.Logger,
 ) error {
 	pollFds := []unix.PollFd{
-		{Fd: int32(uffd), Events: unix.POLLIN},
-		{Fd: fdExit.Reader(), Events: unix.POLLIN},
+		{Fd: int32(u.fd), Events: unix.POLLIN},
+		{Fd: int32(fdExit.Reader()), Events: unix.POLLIN},
 	}
 
 	var eg errgroup.Group
 
-	missingPagesBeingHandled := map[int64]struct{}{}
+	handledPages := map[int64]struct{}{}
 
 outerLoop:
 	for {
@@ -94,10 +93,10 @@ outerLoop:
 			continue
 		}
 
-		buf := make([]byte, unsafe.Sizeof(userfaultfd.UffdMsg{}))
+		buf := make([]byte, unsafe.Sizeof(UffdMsg{}))
 
 		for {
-			n, err := syscall.Read(uffd, buf)
+			n, err := syscall.Read(int(u.fd), buf)
 			if err == syscall.EINTR {
 				logger.Debug("uffd: interrupted read, reading again")
 
@@ -121,73 +120,67 @@ outerLoop:
 			return fmt.Errorf("failed to read: %w", err)
 		}
 
-		msg := *(*userfaultfd.UffdMsg)(unsafe.Pointer(&buf[0]))
-		if userfaultfd.GetMsgEvent(&msg) != userfaultfd.UFFD_EVENT_PAGEFAULT {
-			logger.Error("UFFD serve unexpected event type", zap.Any("event_type", userfaultfd.GetMsgEvent(&msg)))
+		msg := *(*UffdMsg)(unsafe.Pointer(&buf[0]))
+		if GetMsgEvent(&msg) != UFFD_EVENT_PAGEFAULT {
+			logger.Error("UFFD serve unexpected event type", zap.Any("event_type", GetMsgEvent(&msg)))
 
 			return ErrUnexpectedEventType
 		}
 
-		arg := userfaultfd.GetMsgArg(&msg)
-		pagefault := (*(*userfaultfd.UffdPagefault)(unsafe.Pointer(&arg[0])))
+		arg := GetMsgArg(&msg)
+		pagefault := (*(*UffdPagefault)(unsafe.Pointer(&arg[0])))
 
-		addr := userfaultfd.GetPagefaultAddress(&pagefault)
+		addr := GetPagefaultAddress(&pagefault)
 
-		offset, pagesize, err := mappings.GetRange(uintptr(addr))
+		offset, pagesize, err := mappings.GetRange(addr)
 		if err != nil {
 			logger.Error("UFFD serve get mapping error", zap.Error(err))
 
 			return fmt.Errorf("failed to map: %w", err)
 		}
 
-		if _, ok := missingPagesBeingHandled[offset]; ok {
+		// This prevents serving missing pages multiple times.
+		// For normal sized pages with swap on, the behavior seems not to be properly described in docs
+		// and it's not clear if the missing can be legitimately triggered multiple times.
+		if _, ok := handledPages[offset]; ok {
 			continue
 		}
 
-		missingPagesBeingHandled[offset] = struct{}{}
+		handledPages[offset] = struct{}{}
 
 		eg.Go(func() error {
 			defer func() {
 				if r := recover(); r != nil {
-					logger.Error("UFFD serve panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
+					logger.Error("UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
 				}
 			}()
 
-			b, err := src.Slice(ctx, offset, pagesize)
-			if err != nil {
+			var copyMode CULong
+
+			b, sliceErr := src.Slice(offset, int64(pagesize))
+			if sliceErr != nil {
 				signalErr := fdExit.SignalExit()
 
-				joinedErr := errors.Join(err, signalErr)
+				joinedErr := errors.Join(sliceErr, signalErr)
 
 				logger.Error("UFFD serve slice error", zap.Error(joinedErr))
 
 				return fmt.Errorf("failed to read from source: %w", joinedErr)
 			}
 
-			cpy := userfaultfd.NewUffdioCopy(
-				b,
-				addr&^userfaultfd.CULong(pagesize-1),
-				userfaultfd.CULong(pagesize),
-				0,
-				0,
-			)
+			copyErr := u.copy(addr, b, pagesize, copyMode)
+			if copyErr == unix.EEXIST {
+				logger.Debug("UFFD serve page already mapped", zap.Any("offset", addr), zap.Any("pagesize", pagesize))
 
-			if _, _, errno := syscall.Syscall(
-				syscall.SYS_IOCTL,
-				uintptr(uffd),
-				userfaultfd.UFFDIO_COPY,
-				uintptr(unsafe.Pointer(&cpy)),
-			); errno != 0 {
-				if errno == unix.EEXIST {
-					logger.Debug("UFFD serve page already mapped", zap.Any("offset", offset), zap.Any("pagesize", pagesize))
+				// Page is already mapped
 
-					// Page is already mapped
-					return nil
-				}
+				return nil
+			}
 
+			if copyErr != nil {
 				signalErr := fdExit.SignalExit()
 
-				joinedErr := errors.Join(errno, signalErr)
+				joinedErr := errors.Join(copyErr, signalErr)
 
 				logger.Error("UFFD serve uffdio copy error", zap.Error(joinedErr))
 
