@@ -47,7 +47,7 @@ func TestAccessingHyperloopServerViaDomain(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "/bin/bash", "-c", "curl -o output.txt http://events.e2b.dev/me")
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "/bin/bash", "-c", "curl -o output.txt http://events.e2b.local/me")
 	require.NoError(t, err, "Should be able to contact hyperloop server")
 
 	readPath := "output.txt"
