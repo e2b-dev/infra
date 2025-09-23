@@ -83,13 +83,13 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 			}
 
 			st, ok := status.FromError(err)
-			if ok && st.Code() == codes.ResourceExhausted {
-				node.PlacementMetrics.Skip(sbxRequest.Sandbox.SandboxId)
-				zap.L().Warn("Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.Sandbox.SandboxId), logger.WithNodeID(node.ID))
-			} else {
+			if !ok || st.Code() != codes.ResourceExhausted {
 				node.PlacementMetrics.Fail(sbxRequest.Sandbox.SandboxId)
 				zap.L().Error("Failed to create sandbox", logger.WithSandboxID(sbxRequest.Sandbox.SandboxId), logger.WithNodeID(node.ID), zap.Int("attempt", attempt+1), zap.Error(utils.UnwrapGRPCError(err)))
 				attempt++
+			} else {
+				node.PlacementMetrics.Skip(sbxRequest.Sandbox.SandboxId)
+				zap.L().Warn("Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.Sandbox.SandboxId), logger.WithNodeID(node.ID))
 			}
 
 			node = nil
