@@ -404,14 +404,12 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
-	go func(ctx context.Context) {
-		err := snapshot.Upload(ctx, s.persistence, meta.Template)
-		if err != nil {
-			sbxlogger.I(sbx).Error("error uploading sandbox snapshot", zap.Error(err))
+	err = snapshot.Upload(ctx, s.persistence, meta.Template)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error uploading sandbox snapshot", err, telemetry.WithSandboxID(in.SandboxId))
 
-			return
-		}
-	}(context.WithoutCancel(ctx))
+		return nil, status.Errorf(codes.Internal, "error uploading sandbox snapshot: %s", err)
+	}
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
 

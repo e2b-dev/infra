@@ -119,6 +119,12 @@ type BuildStatusReason struct {
 // CPUCount CPU cores for the sandbox
 type CPUCount = int32
 
+// ClonedSandbox defines model for ClonedSandbox.
+type ClonedSandbox struct {
+	// Timeout Time to live for the sandbox in seconds.
+	Timeout *int32 `json:"timeout,omitempty"`
+}
+
 // CreatedAccessToken defines model for CreatedAccessToken.
 type CreatedAccessToken struct {
 	// CreatedAt Timestamp of access token creation
@@ -958,6 +964,9 @@ type PostNodesNodeIDJSONRequestBody = NodeStatusChange
 
 // PostSandboxesJSONRequestBody defines body for PostSandboxes for application/json ContentType.
 type PostSandboxesJSONRequestBody = NewSandbox
+
+// PostSandboxesSandboxIDCloneJSONRequestBody defines body for PostSandboxesSandboxIDClone for application/json ContentType.
+type PostSandboxesSandboxIDCloneJSONRequestBody = ClonedSandbox
 
 // PostSandboxesSandboxIDRefreshesJSONRequestBody defines body for PostSandboxesSandboxIDRefreshes for application/json ContentType.
 type PostSandboxesSandboxIDRefreshesJSONRequestBody PostSandboxesSandboxIDRefreshesJSONBody
