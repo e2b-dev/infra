@@ -477,11 +477,11 @@ func ResumeSandbox(
 	fcStartErr := fcHandle.Resume(
 		uffdStartCtx,
 		&fc.MmdsMetadata{
-			SandboxId:  runtime.SandboxID,
-			TemplateId: runtime.TemplateID,
-			Address:    fmt.Sprintf("http://%s", ips.slot.HyperloopIPString()),
-			TraceId:    traceID,
-			TeamId:     runtime.TeamID,
+			SandboxID:  runtime.SandboxID,
+			TemplateID: runtime.TemplateID,
+			Address:    fmt.Sprintf("http://%s/logs", ips.slot.HyperloopIPString()),
+			TraceID:    traceID,
+			TeamID:     runtime.TeamID,
 		},
 		fcUffdPath,
 		snapfile,

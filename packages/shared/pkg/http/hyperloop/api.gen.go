@@ -10,7 +10,7 @@ import (
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
-	// (POST /)
+	// (POST /logs)
 	Logs(c *gin.Context)
 
 	// (GET /me)
@@ -79,6 +79,6 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 		ErrorHandler:       errorHandler,
 	}
 
-	router.POST(options.BaseURL+"/", wrapper.Logs)
+	router.POST(options.BaseURL+"/logs", wrapper.Logs)
 	router.GET(options.BaseURL+"/me", wrapper.Me)
 }
