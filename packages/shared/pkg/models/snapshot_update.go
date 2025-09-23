@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/internal"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
+	"github.com/google/uuid"
 )
 
 // SnapshotUpdate is the builder for updating Snapshot entities.
@@ -135,6 +136,20 @@ func (su *SnapshotUpdate) SetNillableOriginNodeID(s *string) *SnapshotUpdate {
 	return su
 }
 
+// SetTeamID sets the "team_id" field.
+func (su *SnapshotUpdate) SetTeamID(u uuid.UUID) *SnapshotUpdate {
+	su.mutation.SetTeamID(u)
+	return su
+}
+
+// SetNillableTeamID sets the "team_id" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillableTeamID(u *uuid.UUID) *SnapshotUpdate {
+	if u != nil {
+		su.SetTeamID(*u)
+	}
+	return su
+}
+
 // SetAllowInternetAccess sets the "allow_internet_access" field.
 func (su *SnapshotUpdate) SetAllowInternetAccess(b bool) *SnapshotUpdate {
 	su.mutation.SetAllowInternetAccess(b)
@@ -244,6 +259,9 @@ func (su *SnapshotUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if value, ok := su.mutation.OriginNodeID(); ok {
 		_spec.SetField(snapshot.FieldOriginNodeID, field.TypeString, value)
+	}
+	if value, ok := su.mutation.TeamID(); ok {
+		_spec.SetField(snapshot.FieldTeamID, field.TypeUUID, value)
 	}
 	if value, ok := su.mutation.AllowInternetAccess(); ok {
 		_spec.SetField(snapshot.FieldAllowInternetAccess, field.TypeBool, value)
@@ -410,6 +428,20 @@ func (suo *SnapshotUpdateOne) SetNillableOriginNodeID(s *string) *SnapshotUpdate
 	return suo
 }
 
+// SetTeamID sets the "team_id" field.
+func (suo *SnapshotUpdateOne) SetTeamID(u uuid.UUID) *SnapshotUpdateOne {
+	suo.mutation.SetTeamID(u)
+	return suo
+}
+
+// SetNillableTeamID sets the "team_id" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillableTeamID(u *uuid.UUID) *SnapshotUpdateOne {
+	if u != nil {
+		suo.SetTeamID(*u)
+	}
+	return suo
+}
+
 // SetAllowInternetAccess sets the "allow_internet_access" field.
 func (suo *SnapshotUpdateOne) SetAllowInternetAccess(b bool) *SnapshotUpdateOne {
 	suo.mutation.SetAllowInternetAccess(b)
@@ -549,6 +581,9 @@ func (suo *SnapshotUpdateOne) sqlSave(ctx context.Context) (_node *Snapshot, err
 	}
 	if value, ok := suo.mutation.OriginNodeID(); ok {
 		_spec.SetField(snapshot.FieldOriginNodeID, field.TypeString, value)
+	}
+	if value, ok := suo.mutation.TeamID(); ok {
+		_spec.SetField(snapshot.FieldTeamID, field.TypeUUID, value)
 	}
 	if value, ok := suo.mutation.AllowInternetAccess(); ok {
 		_spec.SetField(snapshot.FieldAllowInternetAccess, field.TypeBool, value)
