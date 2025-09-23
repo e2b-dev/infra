@@ -19,6 +19,7 @@ const (
 
 type Proxy struct {
 	http.Server
+
 	pool                      *pool.ProxyPool
 	currentServerConnsCounter atomic.Int64
 }

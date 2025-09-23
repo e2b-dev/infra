@@ -54,9 +54,9 @@ func (ppb *PostProcessingBuilder) runReadyCommand(
 		if err == nil {
 			userLogger.Info("Template is ready")
 			return nil
-		} else {
-			userLogger.Info(fmt.Sprintf("Template is not ready: %v", err))
 		}
+
+		userLogger.Info(fmt.Sprintf("Template is not ready: %v", err))
 
 		select {
 		case <-ctx.Done():

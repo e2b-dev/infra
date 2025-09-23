@@ -12,15 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// helper: make sure f panics.
-func mustPanic(t *testing.T) {
-	t.Helper()
-
-	if r := recover(); r == nil {
-		t.Fatalf("expected panic but none occurred")
-	}
-}
-
 // -----------------------------------------------------------------------------
 // basic correctness
 // -----------------------------------------------------------------------------
@@ -135,8 +126,9 @@ func TestReleaseErrorsOnNegativeN(t *testing.T) {
 	s, err := NewAdjustableSemaphore(2)
 	require.NoError(t, err)
 
-	defer mustPanic(t)
-	s.Release(-1)
+	require.Panics(t, func() {
+		s.Release(-1)
+	})
 }
 
 func TestReleaseMoreThanAcquired(t *testing.T) {
@@ -144,16 +136,18 @@ func TestReleaseMoreThanAcquired(t *testing.T) {
 	require.NoError(t, err)
 
 	// should panic on negative release
-	defer mustPanic(t)
-	s.Release(2)
+	require.Panics(t, func() {
+		s.Release(2)
+	})
 }
 
 func TestReleaseErrorsOnZero(t *testing.T) {
 	s, err := NewAdjustableSemaphore(2)
 	require.NoError(t, err)
 
-	defer mustPanic(t)
-	s.Release(0)
+	require.Panics(t, func() {
+		s.Release(0)
+	})
 }
 
 func TestSetLimitErrorsOnNegativeLimit(t *testing.T) {
