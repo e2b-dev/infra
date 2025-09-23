@@ -97,6 +97,11 @@ func OriginNodeID(v string) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldEQ(FieldOriginNodeID, v))
 }
 
+// TeamID applies equality check predicate on the "team_id" field. It's identical to TeamIDEQ.
+func TeamID(v uuid.UUID) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldTeamID, v))
+}
+
 // AllowInternetAccess applies equality check predicate on the "allow_internet_access" field. It's identical to AllowInternetAccessEQ.
 func AllowInternetAccess(v bool) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldEQ(FieldAllowInternetAccess, v))
@@ -460,6 +465,46 @@ func OriginNodeIDEqualFold(v string) predicate.Snapshot {
 // OriginNodeIDContainsFold applies the ContainsFold predicate on the "origin_node_id" field.
 func OriginNodeIDContainsFold(v string) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldContainsFold(FieldOriginNodeID, v))
+}
+
+// TeamIDEQ applies the EQ predicate on the "team_id" field.
+func TeamIDEQ(v uuid.UUID) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldTeamID, v))
+}
+
+// TeamIDNEQ applies the NEQ predicate on the "team_id" field.
+func TeamIDNEQ(v uuid.UUID) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNEQ(FieldTeamID, v))
+}
+
+// TeamIDIn applies the In predicate on the "team_id" field.
+func TeamIDIn(vs ...uuid.UUID) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldIn(FieldTeamID, vs...))
+}
+
+// TeamIDNotIn applies the NotIn predicate on the "team_id" field.
+func TeamIDNotIn(vs ...uuid.UUID) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNotIn(FieldTeamID, vs...))
+}
+
+// TeamIDGT applies the GT predicate on the "team_id" field.
+func TeamIDGT(v uuid.UUID) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldGT(FieldTeamID, v))
+}
+
+// TeamIDGTE applies the GTE predicate on the "team_id" field.
+func TeamIDGTE(v uuid.UUID) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldGTE(FieldTeamID, v))
+}
+
+// TeamIDLT applies the LT predicate on the "team_id" field.
+func TeamIDLT(v uuid.UUID) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldLT(FieldTeamID, v))
+}
+
+// TeamIDLTE applies the LTE predicate on the "team_id" field.
+func TeamIDLTE(v uuid.UUID) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldLTE(FieldTeamID, v))
 }
 
 // AllowInternetAccessEQ applies the EQ predicate on the "allow_internet_access" field.
