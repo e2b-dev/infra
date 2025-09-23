@@ -41,9 +41,9 @@ var (
 		"Total bytes written to the cache",
 		"Total writes to the cache",
 	))
-	cacheHits = must(meter.Int64Counter("orchestrator.storage.cache.hits",
+	cacheHits = utils.Must(meter.Int64Counter("orchestrator.storage.cache.hits",
 		metric.WithDescription("total cache hits")))
-	cacheMisses = must(meter.Int64Counter("orchestrator.storage.cache.misses",
+	cacheMisses = utils.Must(meter.Int64Counter("orchestrator.storage.cache.misses",
 		metric.WithDescription("total cache misses")))
 )
 
