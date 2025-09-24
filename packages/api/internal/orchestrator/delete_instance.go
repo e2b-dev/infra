@@ -90,6 +90,7 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sandbox instan
 		var err error
 		err = o.pauseSandbox(ctx, node, sandbox)
 		if err != nil {
+			zap.L().Debug("failed to create snapshot", logger.WithSandboxID(sandbox.SandboxID), zap.String("base_template_id", sandbox.BaseTemplateID))
 			return fmt.Errorf("failed to auto pause sandbox '%s': %w", sandbox.SandboxID, err)
 		}
 	case instance.StateActionKill:
