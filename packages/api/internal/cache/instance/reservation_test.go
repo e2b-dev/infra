@@ -17,20 +17,20 @@ const (
 
 var teamID = uuid.New()
 
-func newInstanceCache() *MemoryStore {
+func newMemoryStore() *MemoryStore {
 	cache := NewStore(nil, nil)
 	return cache
 }
 
 func TestReservation(t *testing.T) {
-	cache := newInstanceCache()
+	cache := newMemoryStore()
 
 	_, err := cache.Reserve(sandboxID, teamID, 1)
 	assert.NoError(t, err)
 }
 
 func TestReservation_Exceeded(t *testing.T) {
-	cache := newInstanceCache()
+	cache := newMemoryStore()
 
 	_, err := cache.Reserve(sandboxID, teamID, 0)
 	require.Error(t, err)
@@ -38,7 +38,7 @@ func TestReservation_Exceeded(t *testing.T) {
 }
 
 func TestReservation_SameSandbox(t *testing.T) {
-	cache := newInstanceCache()
+	cache := newMemoryStore()
 
 	_, err := cache.Reserve(sandboxID, teamID, 10)
 	require.NoError(t, err)
@@ -49,7 +49,7 @@ func TestReservation_SameSandbox(t *testing.T) {
 }
 
 func TestReservation_Release(t *testing.T) {
-	cache := newInstanceCache()
+	cache := newMemoryStore()
 
 	release, err := cache.Reserve(sandboxID, teamID, 1)
 	require.NoError(t, err)
@@ -60,9 +60,9 @@ func TestReservation_Release(t *testing.T) {
 }
 
 func TestReservation_ResumeAlreadyRunningSandbox(t *testing.T) {
-	cache := newInstanceCache()
+	cache := newMemoryStore()
 
-	data := Data{
+	data := Sandbox{
 		ClientID:   consts.ClientID,
 		SandboxID:  sandboxID,
 		TemplateID: "test",

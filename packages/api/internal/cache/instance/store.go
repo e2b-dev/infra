@@ -8,12 +8,12 @@ import (
 )
 
 type (
-	InsertCallback func(ctx context.Context, sbx Data, created bool)
+	InsertCallback func(ctx context.Context, sbx Sandbox, created bool)
 )
 
 type MemoryStore struct {
 	reservations *ReservationCache
-	items        cmap.ConcurrentMap[string, *InstanceInfo]
+	items        cmap.ConcurrentMap[string, *memorySandbox]
 
 	// If the callback isn't very simple, consider running it in a goroutine to prevent blocking the main flow
 	insertCallbacks      []InsertCallback
@@ -27,7 +27,7 @@ func NewStore(
 	insertAsyncCallbacks []InsertCallback,
 ) *MemoryStore {
 	instanceCache := &MemoryStore{
-		items: cmap.New[*InstanceInfo](),
+		items: cmap.New[*memorySandbox](),
 
 		insertCallbacks:      insertCallbacks,
 		insertAsyncCallbacks: insertAsyncCallbacks,

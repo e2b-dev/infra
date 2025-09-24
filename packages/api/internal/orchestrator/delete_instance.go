@@ -12,7 +12,7 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
-func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx instance.Data, stateAction instance.StateAction) error {
+func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx instance.Sandbox, stateAction instance.StateAction) error {
 	ctx, span := tracer.Start(ctx, "remove-sandbox")
 	defer span.End()
 
@@ -65,7 +65,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx instance.Data, sta
 	return nil
 }
 
-func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sandbox instance.Data, stateAction instance.StateAction) error {
+func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sandbox instance.Sandbox, stateAction instance.StateAction) error {
 	ctx, span := tracer.Start(ctx, "remove-sandbox-from-node")
 	defer span.End()
 

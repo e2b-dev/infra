@@ -56,7 +56,7 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 	return sandboxes, nil
 }
 
-func getRunningSandboxes(runningSandboxes []instance.Data, metadataFilter *map[string]string) []utils.PaginatedSandbox {
+func getRunningSandboxes(runningSandboxes []instance.Sandbox, metadataFilter *map[string]string) []utils.PaginatedSandbox {
 	// Running Sandbox IDs
 	runningSandboxList := instanceInfoToPaginatedSandboxes(runningSandboxes)
 
@@ -264,7 +264,7 @@ func snapshotsToPaginatedSandboxes(snapshots []queries.GetSnapshotsWithCursorRow
 	return sandboxes
 }
 
-func instanceInfoToPaginatedSandboxes(runningSandboxes []instance.Data) []utils.PaginatedSandbox {
+func instanceInfoToPaginatedSandboxes(runningSandboxes []instance.Sandbox) []utils.PaginatedSandbox {
 	sandboxes := make([]utils.PaginatedSandbox, 0)
 
 	// Add running sandboxes to results
