@@ -169,9 +169,12 @@ module "nomad" {
   vault_resources                      = var.vault_resources
   vault_kms_keyring                    = module.init.vault_kms_keyring
   vault_kms_crypto_key                 = module.init.vault_kms_crypto_key
-  vault_backend_bucket_name            = module.init.vault_backend_bucket_name
   vault_api_approle_secret_id          = module.init.vault_api_approle_secret_id
   vault_orchestrator_approle_secret_id = module.init.vault_orchestrator_approle_secret_id
+  vault_tls_cert_secret_id             = module.init.vault_tls_cert_secret_id
+  vault_tls_key_secret_id              = module.init.vault_tls_key_secret_id
+  vault_tls_ca_secret_id               = module.init.vault_tls_ca_secret_id
+  vault_spanner_database_path          = "projects/${var.gcp_project_id}/instances/${var.prefix}${var.vault_spanner_instance_name}/databases/${var.vault_spanner_database_name}"
 
   # Clickhouse
   clickhouse_resources_cpu_count   = var.clickhouse_resources_cpu_count
@@ -269,8 +272,4 @@ module "redis" {
   gcp_zone       = var.gcp_zone
 
   prefix = var.prefix
-}
-
-module "vault" {
-  source = "./vault"
 }

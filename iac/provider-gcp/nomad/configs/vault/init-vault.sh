@@ -3,7 +3,7 @@
 set -e
 
 # Configuration
-VAULT_ADDR="${VAULT_ADDR:-http://localhost:8200}"
+VAULT_ADDR="${VAULT_ADDR:-https://localhost:8200}"
 GCP_PROJECT="${GCP_PROJECT}"
 SECRET_PREFIX="${SECRET_PREFIX:-e2b-}"
 VAULT_INIT_OUTPUT="/tmp/vault-init.json"

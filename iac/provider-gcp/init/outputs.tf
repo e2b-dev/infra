@@ -71,6 +71,21 @@ output "vault_orchestrator_approle_secret_id" {
   value       = google_secret_manager_secret.vault_orchestrator_approle.secret_id
   description = "Secret Manager secret ID for Vault Orchestrator service AppRole credentials"
 }
+
+output "vault_tls_cert_secret_id" {
+  value       = google_secret_manager_secret.vault_tls_cert.secret_id
+  description = "Secret Manager secret ID for Vault TLS certificate"
+}
+
+output "vault_tls_key_secret_id" {
+  value       = google_secret_manager_secret.vault_tls_key.secret_id
+  description = "Secret Manager secret ID for Vault TLS private key"
+}
+
+output "vault_tls_ca_secret_id" {
+  value       = google_secret_manager_secret.vault_tls_ca.secret_id
+  description = "Secret Manager secret ID for Vault TLS CA certificate"
+}
 output "loki_bucket_name" {
   value = google_storage_bucket.loki_storage_bucket.name
 }

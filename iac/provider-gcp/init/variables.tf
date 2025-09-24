@@ -26,8 +26,3 @@ variable "template_bucket_name" {
   description = "The name of the FC template bucket"
   default     = ""
 }
-
-output "vault_backend_bucket_name" {
-  description = "The name of the GCS bucket for Vault backend storage"
-  value       = google_storage_bucket.vault_backend.name
-}

@@ -708,24 +708,39 @@ resource "nomad_job" "clickhouse_migrator" {
   })
 }
 
+# Vault TLS Certificate Data Sources
+data "google_secret_manager_secret_version" "vault_tls_cert" {
+  secret = var.vault_tls_cert_secret_id
+}
+
+data "google_secret_manager_secret_version" "vault_tls_key" {
+  secret = var.vault_tls_key_secret_id
+}
+
+data "google_secret_manager_secret_version" "vault_tls_ca" {
+  secret = var.vault_tls_ca_secret_id
+}
+
+
+
 # Vault Configuration
 locals {
-  vault_config = templatefile("${path.module}/../vault/configs/vault-config.hcl", {
-    vault_port         = var.vault_port.port
-    vault_cluster_port = var.vault_cluster_port.port
-    consul_acl_token   = var.consul_acl_token_secret
-    gcp_project_id     = var.gcp_project_id
-    gcp_region         = var.gcp_region
-    kms_keyring        = var.vault_kms_keyring
-    kms_crypto_key     = var.vault_kms_crypto_key
-    gcs_bucket_name    = var.vault_backend_bucket_name
+  vault_config = templatefile("${path.module}/configs/vault/config.hcl", {
+    vault_port            = var.vault_port.port
+    vault_cluster_port    = var.vault_cluster_port.port
+    consul_acl_token      = var.consul_acl_token_secret
+    gcp_project_id        = var.gcp_project_id
+    gcp_region            = var.gcp_region
+    kms_keyring           = var.vault_kms_keyring
+    kms_crypto_key        = var.vault_kms_crypto_key
+    spanner_database_path = var.vault_spanner_database_path
   })
 }
 
 resource "nomad_job" "vault" {
   count = var.vault_server_count
 
-  jobspec = templatefile("${path.module}/../vault/vault.hcl", {
+  jobspec = templatefile("${path.module}/jobs/vault.hcl", {
     gcp_zone           = var.gcp_zone
     vault_server_count = var.vault_server_count
     vault_port         = var.vault_port.port
@@ -736,7 +751,17 @@ resource "nomad_job" "vault" {
     cpu                = var.vault_resources.cpu
     vault_config       = local.vault_config
     consul_acl_token   = var.consul_acl_token_secret
+    vault_tls_cert     = data.google_secret_manager_secret_version.vault_tls_cert.secret_data
+    vault_tls_key      = data.google_secret_manager_secret_version.vault_tls_key.secret_data
+    vault_tls_ca       = data.google_secret_manager_secret_version.vault_tls_ca.secret_data
+
+    otel_agent_config = templatefile("${path.module}/configs/vault/otel-agent.yaml", {
+      vault_port                   = var.vault_port.port
+      otel_collector_grpc_port     = var.otel_collector_grpc_port
+      grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
+      grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
+      grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
+    })
   })
 
-  purge_on_destroy = true
 }

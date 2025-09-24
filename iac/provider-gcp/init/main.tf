@@ -1,4 +1,13 @@
 
+terraform {
+  required_providers {
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
+  }
+}
+
 # Enable Secrets Manager API
 resource "google_project_service" "secrets_manager_api" {
   service = "secretmanager.googleapis.com"
@@ -33,6 +42,14 @@ resource "google_project_service" "compute_engine_api" {
 resource "google_project_service" "artifact_registry_api" {
   #project = var.gcp_project_id
   service = "artifactregistry.googleapis.com"
+
+  disable_on_destroy = false
+}
+
+# Enable Spanner API
+resource "google_project_service" "spanner_api" {
+  #project = var.gcp_project_id
+  service = "spanner.googleapis.com"
 
   disable_on_destroy = false
 }
@@ -246,6 +263,40 @@ resource "google_secret_manager_secret_version" "notification_email_value" {
   secret_data = "placeholder@example.com"
 }
 
+# TLS Private Key for Vault
+resource "tls_private_key" "vault" {
+  algorithm = "RSA"
+  rsa_bits  = 2048
+}
+
+# TLS Self-Signed Certificate for Vault
+resource "tls_self_signed_cert" "vault" {
+  private_key_pem = tls_private_key.vault.private_key_pem
+
+  subject {
+    common_name  = "vault.service.consul"
+    organization = "e2b.dev"
+  }
+
+  validity_period_hours = 87600 # 10 years
+
+  allowed_uses = [
+    "key_encipherment",
+    "digital_signature",
+    "server_auth",
+  ]
+
+  dns_names = [
+    "vault.service.consul",
+    "localhost",
+    "127.0.0.1",
+  ]
+
+  ip_addresses = [
+    "127.0.0.1",
+  ]
+}
+
 # GCP KMS resources for Vault auto-unseal
 resource "google_kms_key_ring" "vault" {
   name     = "${var.prefix}vault-keyring"
@@ -381,4 +432,46 @@ resource "google_secret_manager_secret_version" "vault_orchestrator_approle" {
   lifecycle {
     ignore_changes = [secret_data]
   }
+}
+
+# Secret for storing Vault TLS server certificate
+resource "google_secret_manager_secret" "vault_tls_cert" {
+  secret_id = "${var.prefix}vault-tls-cert"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "vault_tls_cert" {
+  secret      = google_secret_manager_secret.vault_tls_cert.name
+  secret_data = tls_self_signed_cert.vault.cert_pem
+}
+
+# Secret for storing Vault TLS private key
+resource "google_secret_manager_secret" "vault_tls_key" {
+  secret_id = "${var.prefix}vault-tls-key"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "vault_tls_key" {
+  secret      = google_secret_manager_secret.vault_tls_key.name
+  secret_data = tls_private_key.vault.private_key_pem
+}
+
+# Secret for storing Vault TLS root CA certificate
+resource "google_secret_manager_secret" "vault_tls_ca" {
+  secret_id = "${var.prefix}vault-tls-ca"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "vault_tls_ca" {
+  secret      = google_secret_manager_secret.vault_tls_ca.name
+  secret_data = tls_self_signed_cert.vault.cert_pem
 }

@@ -439,7 +439,7 @@ variable "vault_server_count" {
 variable "vault_version" {
   type        = string
   description = "HashiCorp Vault version"
-  default     = "1.14.8"
+  default     = "1.19.5"
 }
 
 variable "vault_port" {
@@ -474,9 +474,9 @@ variable "vault_resources" {
   })
   description = "Resource allocation for Vault containers"
   default = {
-    memory     = 2048
+    memory     = 4096
     memory_max = 4096
-    cpu        = 2000
+    cpu        = 4000
   }
 }
 
@@ -489,12 +489,6 @@ variable "vault_kms_keyring" {
 variable "vault_kms_crypto_key" {
   type        = string
   description = "GCP KMS crypto key name for Vault auto-unseal"
-  default     = ""
-}
-
-variable "vault_backend_bucket_name" {
-  type        = string
-  description = "GCS bucket name for Vault backend storage"
   default     = ""
 }
 
@@ -525,4 +519,22 @@ variable "orchestrator_base_hugepages_percentage" {
   description = "The percentage of memory to use for preallocated hugepages."
   type        = number
   default     = 80
+}
+
+variable "vault_spanner_instance_name" {
+  type        = string
+  description = "Name of the Spanner instance for Vault backend"
+  default     = "vault-spanner"
+}
+
+variable "vault_spanner_database_name" {
+  type        = string
+  description = "Name of the Spanner database for Vault backend"
+  default     = "vault-data"
+}
+
+variable "vault_spanner_processing_units" {
+  type        = number
+  description = "Number of processing units for the Spanner instance"
+  default     = 100
 }

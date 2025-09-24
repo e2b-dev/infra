@@ -350,13 +350,14 @@ variable "filestore_cache_max_disk_usage_target" {
 variable "vault_server_count" {
   type        = number
   description = "Number of Vault server instances"
-  default     = 1
+  default     = 3
 }
 
 variable "vault_version" {
   type        = string
   description = "HashiCorp Vault version"
-  default     = "1.14.8"
+  default     = "1.19.5"
+
 }
 
 variable "vault_port" {
@@ -409,11 +410,6 @@ variable "vault_kms_crypto_key" {
   default     = ""
 }
 
-variable "vault_backend_bucket_name" {
-  type        = string
-  description = "GCS bucket name for Vault backend storage"
-}
-
 variable "vault_api_approle_secret_id" {
   type        = string
   description = "GCP Secret Manager secret ID for Vault API AppRole credentials"
@@ -422,4 +418,24 @@ variable "vault_api_approle_secret_id" {
 variable "vault_orchestrator_approle_secret_id" {
   type        = string
   description = "GCP Secret Manager secret ID for Vault Orchestrator AppRole credentials"
+}
+
+variable "vault_tls_cert_secret_id" {
+  type        = string
+  description = "GCP Secret Manager secret ID for Vault TLS certificate"
+}
+
+variable "vault_tls_key_secret_id" {
+  type        = string
+  description = "GCP Secret Manager secret ID for Vault TLS private key"
+}
+
+variable "vault_tls_ca_secret_id" {
+  type        = string
+  description = "GCP Secret Manager secret ID for Vault TLS CA certificate"
+}
+
+variable "vault_spanner_database_path" {
+  type        = string
+  description = "Full path to the Spanner database for Vault backend"
 }
