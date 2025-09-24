@@ -36,7 +36,7 @@ func (o *Orchestrator) reportLongRunningSandboxes(ctx context.Context) {
 			return
 		case <-ticker.C:
 			sandboxes := o.sandboxStore.Items(nil)
-			longRunningSandboxes := make([]instance.Data, 0, len(sandboxes))
+			longRunningSandboxes := make([]instance.Sandbox, 0, len(sandboxes))
 			for _, sandbox := range sandboxes {
 				if time.Since(sandbox.StartTime) > oldSandboxThreshold {
 					longRunningSandboxes = append(longRunningSandboxes, sandbox)
@@ -49,7 +49,7 @@ func (o *Orchestrator) reportLongRunningSandboxes(ctx context.Context) {
 }
 
 // sendAnalyticsForLongRunningSandboxes sends long-running instances event to analytics
-func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyticscollector.Analytics, instances []instance.Data) {
+func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyticscollector.Analytics, instances []instance.Sandbox) {
 	if len(instances) == 0 {
 		zap.L().Debug("No long-running instances to report to analytics")
 		return
@@ -77,7 +77,7 @@ func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyt
 	}
 }
 
-func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox instance.Data, stateAction instance.StateAction) {
+func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox instance.Sandbox, stateAction instance.StateAction) {
 	ctx, cancel := context.WithTimeout(ctx, reportTimeout)
 	defer cancel()
 
@@ -109,7 +109,7 @@ func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox instance.Dat
 	}
 }
 
-func (o *Orchestrator) analyticsInsert(ctx context.Context, sandbox instance.Data, created bool) {
+func (o *Orchestrator) analyticsInsert(ctx context.Context, sandbox instance.Sandbox, created bool) {
 	ctx, cancel := context.WithTimeout(ctx, reportTimeout)
 	defer cancel()
 
@@ -132,7 +132,7 @@ func (o *Orchestrator) analyticsInsert(ctx context.Context, sandbox instance.Dat
 	}
 }
 
-func (o *Orchestrator) countersInsert(ctx context.Context, sandbox instance.Data, newlyCreated bool) {
+func (o *Orchestrator) countersInsert(ctx context.Context, sandbox instance.Sandbox, newlyCreated bool) {
 	attributes := []attribute.KeyValue{
 		telemetry.WithTeamID(sandbox.TeamID.String()),
 	}
@@ -144,7 +144,7 @@ func (o *Orchestrator) countersInsert(ctx context.Context, sandbox instance.Data
 	o.sandboxCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
 }
 
-func (o *Orchestrator) countersRemove(ctx context.Context, sandbox instance.Data, _ instance.StateAction) {
+func (o *Orchestrator) countersRemove(ctx context.Context, sandbox instance.Sandbox, _ instance.StateAction) {
 	attributes := []attribute.KeyValue{
 		telemetry.WithTeamID(sandbox.TeamID.String()),
 	}

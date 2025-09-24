@@ -31,7 +31,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
 
-	sbx, err := a.orchestrator.GetSandboxData(sandboxID, true)
+	sbx, err := a.orchestrator.GetSandbox(sandboxID, true)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", sandboxID))
 		return

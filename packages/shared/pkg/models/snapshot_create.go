@@ -103,6 +103,12 @@ func (sc *SnapshotCreate) SetOriginNodeID(s string) *SnapshotCreate {
 	return sc
 }
 
+// SetTeamID sets the "team_id" field.
+func (sc *SnapshotCreate) SetTeamID(u uuid.UUID) *SnapshotCreate {
+	sc.mutation.SetTeamID(u)
+	return sc
+}
+
 // SetAllowInternetAccess sets the "allow_internet_access" field.
 func (sc *SnapshotCreate) SetAllowInternetAccess(b bool) *SnapshotCreate {
 	sc.mutation.SetAllowInternetAccess(b)
@@ -206,6 +212,9 @@ func (sc *SnapshotCreate) check() error {
 	if _, ok := sc.mutation.OriginNodeID(); !ok {
 		return &ValidationError{Name: "origin_node_id", err: errors.New(`models: missing required field "Snapshot.origin_node_id"`)}
 	}
+	if _, ok := sc.mutation.TeamID(); !ok {
+		return &ValidationError{Name: "team_id", err: errors.New(`models: missing required field "Snapshot.team_id"`)}
+	}
 	if _, ok := sc.mutation.EnvID(); !ok {
 		return &ValidationError{Name: "env", err: errors.New(`models: missing required edge "Snapshot.env"`)}
 	}
@@ -277,6 +286,10 @@ func (sc *SnapshotCreate) createSpec() (*Snapshot, *sqlgraph.CreateSpec) {
 	if value, ok := sc.mutation.OriginNodeID(); ok {
 		_spec.SetField(snapshot.FieldOriginNodeID, field.TypeString, value)
 		_node.OriginNodeID = value
+	}
+	if value, ok := sc.mutation.TeamID(); ok {
+		_spec.SetField(snapshot.FieldTeamID, field.TypeUUID, value)
+		_node.TeamID = value
 	}
 	if value, ok := sc.mutation.AllowInternetAccess(); ok {
 		_spec.SetField(snapshot.FieldAllowInternetAccess, field.TypeBool, value)
@@ -445,6 +458,18 @@ func (u *SnapshotUpsert) SetOriginNodeID(v string) *SnapshotUpsert {
 // UpdateOriginNodeID sets the "origin_node_id" field to the value that was provided on create.
 func (u *SnapshotUpsert) UpdateOriginNodeID() *SnapshotUpsert {
 	u.SetExcluded(snapshot.FieldOriginNodeID)
+	return u
+}
+
+// SetTeamID sets the "team_id" field.
+func (u *SnapshotUpsert) SetTeamID(v uuid.UUID) *SnapshotUpsert {
+	u.Set(snapshot.FieldTeamID, v)
+	return u
+}
+
+// UpdateTeamID sets the "team_id" field to the value that was provided on create.
+func (u *SnapshotUpsert) UpdateTeamID() *SnapshotUpsert {
+	u.SetExcluded(snapshot.FieldTeamID)
 	return u
 }
 
@@ -626,6 +651,20 @@ func (u *SnapshotUpsertOne) SetOriginNodeID(v string) *SnapshotUpsertOne {
 func (u *SnapshotUpsertOne) UpdateOriginNodeID() *SnapshotUpsertOne {
 	return u.Update(func(s *SnapshotUpsert) {
 		s.UpdateOriginNodeID()
+	})
+}
+
+// SetTeamID sets the "team_id" field.
+func (u *SnapshotUpsertOne) SetTeamID(v uuid.UUID) *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetTeamID(v)
+	})
+}
+
+// UpdateTeamID sets the "team_id" field to the value that was provided on create.
+func (u *SnapshotUpsertOne) UpdateTeamID() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateTeamID()
 	})
 }
 
@@ -977,6 +1016,20 @@ func (u *SnapshotUpsertBulk) SetOriginNodeID(v string) *SnapshotUpsertBulk {
 func (u *SnapshotUpsertBulk) UpdateOriginNodeID() *SnapshotUpsertBulk {
 	return u.Update(func(s *SnapshotUpsert) {
 		s.UpdateOriginNodeID()
+	})
+}
+
+// SetTeamID sets the "team_id" field.
+func (u *SnapshotUpsertBulk) SetTeamID(v uuid.UUID) *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetTeamID(v)
+	})
+}
+
+// UpdateTeamID sets the "team_id" field to the value that was provided on create.
+func (u *SnapshotUpsertBulk) UpdateTeamID() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateTeamID()
 	})
 }
 

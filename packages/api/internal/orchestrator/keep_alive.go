@@ -14,7 +14,7 @@ import (
 )
 
 func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, duration time.Duration, allowShorter bool) *api.APIError {
-	data, err := o.GetSandboxData(sandboxID, false)
+	data, err := o.GetSandbox(sandboxID, false)
 	if err != nil {
 		return &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("Sandbox '%s' is not running anymore", sandboxID), Err: err}
 	}

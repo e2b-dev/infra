@@ -242,13 +242,11 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 
 func TestDiffStoreOldestFromCache(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	ttl := 60 * time.Second
 	delay := 4 * time.Second
 	store, err := NewDiffStore(
-		ctx,
+		t.Context(),
 		cachePath,
 		ttl,
 		delay,

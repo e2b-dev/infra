@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 
 	"github.com/google/uuid"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg"
 )
 
-const (
-	templateCacheDir = "/orchestrator/template"
-)
+var templateCacheDir = filepath.Join(pkg.OrchestratorBasePath, "template")
 
 type TemplateCacheFiles struct {
 	TemplateFiles

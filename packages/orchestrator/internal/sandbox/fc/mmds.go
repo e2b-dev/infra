@@ -6,17 +6,18 @@ import (
 
 // The metadata serialization should not be changed — it is different from the field names we use here!
 type MmdsMetadata struct {
-	SandboxId            string `json:"instanceID"`
-	TemplateId           string `json:"envID"`
+	SandboxID  string `json:"instanceID"`
+	TemplateID string `json:"envID"`
+	TraceID    string `json:"traceID"`
+	TeamID     string `json:"teamID"`
+
 	LogsCollectorAddress string `json:"address"`
-	TraceId              string `json:"traceID"`
-	TeamId               string `json:"teamID"`
 }
 
 func (mm MmdsMetadata) LoggerMetadata() sbxlogger.SandboxMetadata {
 	return sbxlogger.SandboxMetadata{
-		SandboxID:  mm.SandboxId,
-		TemplateID: mm.TemplateId,
-		TeamID:     mm.TeamId,
+		SandboxID:  mm.SandboxID,
+		TemplateID: mm.TemplateID,
+		TeamID:     mm.TeamID,
 	}
 }
