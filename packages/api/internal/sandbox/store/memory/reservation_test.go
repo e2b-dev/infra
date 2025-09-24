@@ -35,7 +35,7 @@ func TestReservation_Exceeded(t *testing.T) {
 
 	_, err := cache.Reserve(sandboxID, teamID, 0)
 	require.Error(t, err)
-	assert.IsType(t, &SandboxLimitExceededError{}, err)
+	assert.IsType(t, &sandbox.LimitExceededError{}, err)
 }
 
 func TestReservation_SameSandbox(t *testing.T) {
@@ -46,7 +46,7 @@ func TestReservation_SameSandbox(t *testing.T) {
 
 	_, err = cache.Reserve(sandboxID, teamID, 10)
 	require.Error(t, err)
-	assert.IsType(t, &AlreadyBeingStartedError{}, err)
+	assert.IsType(t, &sandbox.AlreadyBeingStartedError{}, err)
 }
 
 func TestReservation_Release(t *testing.T) {
