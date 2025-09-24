@@ -12,7 +12,7 @@ import (
 // This is to prevent remove instances that are still being started
 const syncSandboxRemoveGracePeriod = 10 * time.Second
 
-func (ms *Store) Sync(ctx context.Context, sandboxes []sandbox.Sandbox, nodeID string) {
+func (s *Store) Sync(ctx context.Context, sandboxes []sandbox.Sandbox, nodeID string) {
 	sandboxMap := make(map[string]sandbox.Sandbox)
 
 	// Use a map for faster lookup
@@ -21,7 +21,7 @@ func (ms *Store) Sync(ctx context.Context, sandboxes []sandbox.Sandbox, nodeID s
 	}
 
 	// Remove sandboxes that are not in Orchestrator anymore
-	for _, item := range ms.items.Items() {
+	for _, item := range s.items.Items() {
 		data := item.Data()
 		if data.IsExpired() {
 			continue
@@ -43,10 +43,10 @@ func (ms *Store) Sync(ctx context.Context, sandboxes []sandbox.Sandbox, nodeID s
 
 	// Add sandboxes that are not in the cache with the default TTL
 	for _, sandbox := range sandboxes {
-		if ms.exists(sandbox.SandboxID) {
+		if s.exists(sandbox.SandboxID) {
 			continue
 		}
 
-		ms.Add(ctx, sandbox, false)
+		s.Add(ctx, sandbox, false)
 	}
 }

@@ -75,7 +75,7 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 		return fmt.Errorf("node '%s' not found", sbx.NodeID)
 	}
 
-	// Remove the sbx resources after the sandbox is deleted
+	// Remove the sandbox resources after the sandbox is deleted
 	defer node.RemoveSandbox(sbx)
 
 	o.dns.Remove(ctx, sbx.SandboxID, node.IPAddress)

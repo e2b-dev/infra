@@ -7,6 +7,10 @@ import (
 	"github.com/google/uuid"
 )
 
+type (
+	InsertCallback func(ctx context.Context, sbx Sandbox, created bool)
+)
+
 type Store interface {
 	Add(ctx context.Context, sandbox Sandbox, newlyCreated bool)
 	Get(sandboxID string, includeEvicting bool) (Sandbox, error)

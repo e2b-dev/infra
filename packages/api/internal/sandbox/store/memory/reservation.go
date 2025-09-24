@@ -45,8 +45,8 @@ func (r *ReservationCache) list(teamID uuid.UUID) (sandboxIDs []string) {
 	return sandboxIDs
 }
 
-func (ms *Store) list(teamID uuid.UUID) (sandboxIDs []string) {
-	for _, value := range ms.items.Items() {
+func (s *Store) list(teamID uuid.UUID) (sandboxIDs []string) {
+	for _, value := range s.items.Items() {
 		currentTeamID := value.TeamID()
 
 		if currentTeamID == teamID {
@@ -57,15 +57,15 @@ func (ms *Store) list(teamID uuid.UUID) (sandboxIDs []string) {
 	return sandboxIDs
 }
 
-func (ms *Store) Reserve(sandboxID string, team uuid.UUID, limit int64) (release func(), err error) {
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
+func (s *Store) Reserve(sandboxID string, team uuid.UUID, limit int64) (release func(), err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	// Count unique IDs for team
 	ids := map[string]struct{}{}
 
 	// Get all sandbox ids (both running and those currently creating) for the team
-	for _, item := range append(ms.reservations.list(team), ms.list(team)...) {
+	for _, item := range append(s.reservations.list(team), s.list(team)...) {
 		ids[item] = struct{}{}
 	}
 
@@ -79,7 +79,7 @@ func (ms *Store) Reserve(sandboxID string, team uuid.UUID, limit int64) (release
 		}
 	}
 
-	inserted := ms.reservations.insertIfAbsent(sandboxID, team)
+	inserted := s.reservations.insertIfAbsent(sandboxID, team)
 	if !inserted {
 		// This shouldn't happen
 		return nil, &sandbox.AlreadyBeingStartedError{
@@ -89,6 +89,6 @@ func (ms *Store) Reserve(sandboxID string, team uuid.UUID, limit int64) (release
 
 	return func() {
 		// We will call this method with defer to ensure the reservation is released even if the function panics/returns an error.
-		ms.reservations.release(sandboxID)
+		s.reservations.release(sandboxID)
 	}, nil
 }
