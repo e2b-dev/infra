@@ -111,35 +111,35 @@ func createSimulatedNodes(config BenchmarkConfig) []*SimulatedNode {
 }
 
 // placeSandbox places a sandbox on the node
-func (n *SimulatedNode) placeSandbox(sandbox *LiveSandbox) bool {
+func (n *SimulatedNode) placeSandbox(sbx *LiveSandbox) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
 	metrics := n.Metrics()
 	// Check capacity with overcommit
-	if metrics.CpuAllocated+uint32(sandbox.RequestedCPU) > metrics.CpuCount*4 { // 4x overcommit
+	if metrics.CpuAllocated+uint32(sbx.RequestedCPU) > metrics.CpuCount*4 { // 4x overcommit
 		atomic.AddInt64(&n.rejectedPlacements, 1)
 		return false
 	}
 
 	n.AddSandbox(sandbox.Sandbox{
-		VCpu:  sandbox.RequestedCPU,
-		RamMB: sandbox.RequestedMemory,
+		VCpu:  sbx.RequestedCPU,
+		RamMB: sbx.RequestedMemory,
 	})
 
 	n.UpdateMetricsFromServiceInfoResponse(&orchestrator.ServiceInfoResponse{
 		MetricSandboxesRunning: uint32(len(n.sandboxes)) + 1,
 		// Host system usage metrics
-		MetricCpuPercent:      metrics.CpuPercent + uint32(sandbox.ActualCPUUsage*100),
-		MetricMemoryUsedBytes: metrics.MemoryUsedBytes + uint64(sandbox.ActualMemUsage),
+		MetricCpuPercent:      metrics.CpuPercent + uint32(sbx.ActualCPUUsage*100),
+		MetricMemoryUsedBytes: metrics.MemoryUsedBytes + uint64(sbx.ActualMemUsage),
 		// Host system total resources
 		MetricCpuCount:         metrics.CpuCount,
 		MetricMemoryTotalBytes: metrics.MemoryTotalBytes,
 		// Allocated resources to sandboxes
-		MetricCpuAllocated:         metrics.CpuAllocated + uint32(sandbox.RequestedCPU),
-		MetricMemoryAllocatedBytes: metrics.MemoryAllocatedBytes + uint64(sandbox.RequestedMemory)*1024*1024,
+		MetricCpuAllocated:         metrics.CpuAllocated + uint32(sbx.RequestedCPU),
+		MetricMemoryAllocatedBytes: metrics.MemoryAllocatedBytes + uint64(sbx.RequestedMemory)*1024*1024,
 	})
-	n.sandboxes[sandbox.ID] = sandbox
+	n.sandboxes[sbx.ID] = sbx
 	atomic.AddInt64(&n.totalPlacements, 1)
 
 	return true
@@ -152,19 +152,19 @@ func (n *SimulatedNode) removeSandbox(sandboxID string) {
 
 	metrics := n.Metrics()
 
-	if sandbox, exists := n.sandboxes[sandboxID]; exists {
+	if sbx, exists := n.sandboxes[sandboxID]; exists {
 		n.RemoveSandbox(sandbox.Sandbox{
-			VCpu:  sandbox.RequestedCPU,
-			RamMB: sandbox.RequestedMemory,
+			VCpu:  sbx.RequestedCPU,
+			RamMB: sbx.RequestedMemory,
 		})
 		n.UpdateMetricsFromServiceInfoResponse(&orchestrator.ServiceInfoResponse{
 			MetricSandboxesRunning: uint32(len(n.sandboxes)) - 1,
 
-			MetricCpuPercent:      metrics.CpuPercent - uint32(sandbox.ActualCPUUsage*100),
-			MetricMemoryUsedBytes: metrics.MemoryUsedBytes - uint64(sandbox.ActualMemUsage),
+			MetricCpuPercent:      metrics.CpuPercent - uint32(sbx.ActualCPUUsage*100),
+			MetricMemoryUsedBytes: metrics.MemoryUsedBytes - uint64(sbx.ActualMemUsage),
 
-			MetricCpuAllocated:         metrics.CpuAllocated - uint32(sandbox.RequestedCPU),
-			MetricMemoryAllocatedBytes: metrics.MemoryAllocatedBytes - uint64(sandbox.RequestedMemory)*1024*1024,
+			MetricCpuAllocated:         metrics.CpuAllocated - uint32(sbx.RequestedCPU),
+			MetricMemoryAllocatedBytes: metrics.MemoryAllocatedBytes - uint64(sbx.RequestedMemory)*1024*1024,
 
 			MetricCpuCount:         metrics.CpuCount,
 			MetricMemoryTotalBytes: metrics.MemoryTotalBytes,
