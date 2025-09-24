@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -658,7 +659,7 @@ func (s *Sandbox) Pause(
 	err = s.process.CreateSnapshot(
 		ctx,
 		snapfile.Path(),
-		memfile.Path(),
+		"/dev/null",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating snapshot: %w", err)
@@ -680,7 +681,7 @@ func (s *Sandbox) Pause(
 	}
 	defer memoryView.Close()
 
-	memfileFd, err := os.Open(memfile.Path())
+	memfileFd, err := os.Create(memfile.Path())
 	if err != nil {
 		return nil, fmt.Errorf("failed to open memfile: %w", err)
 	}
@@ -705,6 +706,10 @@ func (s *Sandbox) Pause(
 	for i := int64(0); i < originalMemfileSize; i += originalMemfile.BlockSize() {
 		_, err = memoryView.ReadAt(buf, i)
 		if err != nil {
+			// If we get EIO, continue as that was yet unmapped page.
+			if errors.Is(err, syscall.EIO) {
+				continue
+			}
 			return nil, fmt.Errorf("failed to read memory view: %w", err)
 		}
 

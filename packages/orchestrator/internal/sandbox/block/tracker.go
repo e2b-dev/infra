@@ -21,6 +21,7 @@ func NewTrackedSliceDevice(blockSize int64, device ReadonlyDevice) (*TrackedSlic
 	return &TrackedSliceDevice{
 		data:      device,
 		blockSize: blockSize,
+		dirty:     bitset.New(0),
 	}, nil
 }
 

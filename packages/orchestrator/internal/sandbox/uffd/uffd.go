@@ -59,6 +59,7 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 	}
 
 	return &Uffd{
+		exit:            utils.NewErrorOnce(),
 		memoryMap:       utils.NewSetOnce[memory.MemoryMap](),
 		exitCh:          make(chan error, 1),
 		readyCh:         make(chan struct{}, 1),
