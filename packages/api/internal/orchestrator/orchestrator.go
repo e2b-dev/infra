@@ -125,10 +125,10 @@ func New(
 	}
 
 	sandboxStore := memory.NewStore(
-		[]memory.InsertCallback{
+		[]sandbox.InsertCallback{
 			o.addToNode,
 		},
-		[]memory.InsertCallback{
+		[]sandbox.InsertCallback{
 			o.observeTeamSandbox,
 			o.countersInsert,
 			o.analyticsInsert,

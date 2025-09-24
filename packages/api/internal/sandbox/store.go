@@ -11,7 +11,7 @@ type (
 	InsertCallback func(ctx context.Context, sbx Sandbox, created bool)
 )
 
-type Store interface {
+type Store interface { //nolint:interfacebloat
 	Add(ctx context.Context, sandbox Sandbox, newlyCreated bool)
 	Get(sandboxID string, includeEvicting bool) (Sandbox, error)
 	Remove(sandboxID string)
