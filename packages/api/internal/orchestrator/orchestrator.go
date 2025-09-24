@@ -194,6 +194,7 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 			}
 
 			zap.L().Info("API internal status",
+				zap.Int("sandboxes_count", len(o.sandboxStore.Items(nil))),
 				zap.Int("nodes_count", o.nodes.Count()),
 				zap.Any("nodes", connectedNodes),
 			)
