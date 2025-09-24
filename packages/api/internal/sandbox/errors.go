@@ -15,5 +15,5 @@ type LimitExceededError struct {
 }
 
 func (e *LimitExceededError) Error() string {
-	return fmt.Sprintf("sandbox %s has exceeded the limit", e.TeamID)
+	return fmt.Sprintf("team %s has exceeded the limit", e.TeamID)
 }
