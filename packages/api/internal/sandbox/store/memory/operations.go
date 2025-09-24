@@ -137,10 +137,6 @@ func (s *Store) ItemsByState(teamID *uuid.UUID, states []sandbox.State) map[sand
 	return items
 }
 
-func (s *Store) Len(teamID *uuid.UUID) int {
-	return len(s.Items(teamID))
-}
-
 func (s *Store) ExtendEndTime(sandboxID string, newEndTime time.Time, allowShorter bool) (bool, error) {
 	item, ok := s.items.Get(sandboxID)
 	if !ok {
