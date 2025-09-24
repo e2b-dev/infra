@@ -15,7 +15,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -28,8 +28,12 @@ const (
 )
 
 type Uffd struct {
-	exit    *utils.ErrorOnce
+	exit *utils.ErrorOnce
+
+	exitCh  chan error
 	readyCh chan struct{}
+
+	memoryMap *utils.SetOnce[memory.MemoryMap]
 
 	fdExit *fdexit.FdExit
 
@@ -55,6 +59,7 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 	}
 
 	return &Uffd{
+		memoryMap:       utils.NewSetOnce[memory.MemoryMap](),
 		exitCh:          make(chan error, 1),
 		readyCh:         make(chan struct{}, 1),
 		fdExit:          fdExit,
@@ -114,7 +119,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 
 	mappingsBuf = mappingsBuf[:numBytesMappings]
 
-	var m mapping.FcMappings
+	var m memory.MemfileMap
 
 	err = json.Unmarshal(mappingsBuf, &m)
 	if err != nil {
@@ -148,9 +153,15 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		}
 	}()
 
+	err = u.memoryMap.SetValue(m)
+	if err != nil {
+		return fmt.Errorf("failed to set memory map: %w", err)
+	}
+
 	u.readyCh <- struct{}{}
 
 	err = uffd.Serve(
+		ctx,
 		m,
 		u.memfile,
 		u.fdExit,
@@ -175,10 +186,12 @@ func (u *Uffd) Exit() *utils.ErrorOnce {
 	return u.exit
 }
 
-func (u *Uffd) Disable() error {
-	return u.memfile.Disable()
-}
-
 func (u *Uffd) Dirty() *bitset.BitSet {
 	return u.memfile.Dirty()
+}
+
+// Returns the memory map between the host and the sandbox memory.
+// It is only valid after the sandbox was started and before it is destroyed—in the running or paused state.
+func (u *Uffd) GetMemoryMap(ctx context.Context) (memory.MemoryMap, error) {
+	return u.memoryMap.WaitWithContext(ctx)
 }

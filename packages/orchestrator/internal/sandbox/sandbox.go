@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -633,9 +634,9 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	if err := s.memory.Disable(); err != nil {
-		return nil, fmt.Errorf("failed to disable uffd: %w", err)
-	}
+	// if err := s.memory.Disable(); err != nil {
+	// 	return nil, fmt.Errorf("failed to disable uffd: %w", err)
+	// }
 
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
 	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath())
@@ -663,6 +664,28 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("error creating snapshot: %w", err)
 	}
 
+	memoryMap, err := s.memory.GetMemoryMap(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get memory map: %w", err)
+	}
+
+	fcPid, err := s.process.Pid()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get fc pid: %w", err)
+	}
+
+	memoryView, err := memory.NewView(fcPid, memoryMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create memory view: %w", err)
+	}
+	defer memoryView.Close()
+
+	memfileFd, err := os.Open(memfile.Path())
+	if err != nil {
+		return nil, fmt.Errorf("failed to open memfile: %w", err)
+	}
+	defer memfileFd.Close()
+
 	// Gather data for postprocessing
 	originalMemfile, err := s.Template.Memfile()
 	if err != nil {
@@ -671,6 +694,24 @@ func (s *Sandbox) Pause(
 	originalRootfs, err := s.Template.Rootfs()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
+	}
+
+	originalMemfileSize, err := originalMemfile.Size()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get original memfile size: %w", err)
+	}
+
+	buf := make([]byte, originalMemfile.BlockSize())
+	for i := int64(0); i < originalMemfileSize; i += originalMemfile.BlockSize() {
+		_, err = memoryView.ReadAt(buf, i)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read memory view: %w", err)
+		}
+
+		_, err = memfileFd.WriteAt(buf, i)
+		if err != nil {
+			return nil, fmt.Errorf("failed to write memfile: %w", err)
+		}
 	}
 
 	// Start POSTPROCESSING

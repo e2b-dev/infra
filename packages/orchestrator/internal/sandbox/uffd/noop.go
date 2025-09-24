@@ -5,6 +5,7 @@ import (
 
 	"github.com/bits-and-blooms/bitset"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -58,4 +59,8 @@ func (m *NoopMemory) Ready() chan struct{} {
 
 func (m *NoopMemory) Exit() *utils.ErrorOnce {
 	return m.exit
+}
+
+func (m *NoopMemory) GetMemoryMap(ctx context.Context) (memory.MemoryMap, error) {
+	return nil, nil
 }

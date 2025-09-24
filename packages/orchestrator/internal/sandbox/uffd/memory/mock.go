@@ -1,6 +1,7 @@
-package userfaultfd
+package memory
 
 import (
+	"context"
 	"math"
 	"syscall"
 	"unsafe"
@@ -12,44 +13,23 @@ import (
 
 const pagesInTestData = 32
 
-type mockMappings struct {
-	start    uintptr
-	size     uint64
-	pagesize uint64
-}
-
-func newMockMappings(start uintptr, size, pagesize uint64) *mockMappings {
-	return &mockMappings{
-		start:    start,
-		size:     size,
-		pagesize: pagesize,
-	}
-}
-
-func (m *mockMappings) GetRange(addr uintptr) (int64, uint64, error) {
-	offset := addr - m.start
-	pagesize := m.pagesize
-
-	return int64(offset), pagesize, nil
-}
-
 type mockSlicer struct {
 	content []byte
 }
 
-func newMockSlicer(content []byte) *mockSlicer {
+func NewMockSlicer(content []byte) *mockSlicer {
 	return &mockSlicer{content: content}
 }
 
-func (s *mockSlicer) Slice(offset, size int64) ([]byte, error) {
+func (s *mockSlicer) Slice(_ context.Context, offset, size int64) ([]byte, error) {
 	return s.content[offset : offset+size], nil
 }
 
-func newMock4KPageMmap(size uint64) ([]byte, uintptr) {
+func NewMock4KPageMmap(size uint64) ([]byte, uintptr) {
 	return newMockMmap(size, header.PageSize, 0)
 }
 
-func newMock2MPageMmap(size uint64) ([]byte, uintptr) {
+func NewMock2MPageMmap(size uint64) ([]byte, uintptr) {
 	return newMockMmap(size, header.HugepageSize, unix.MAP_HUGETLB|unix.MAP_HUGE_2MB)
 }
 
@@ -69,7 +49,7 @@ func newMockMmap(size, pagesize uint64, flags int) ([]byte, uintptr) {
 	return b, uintptr(unsafe.Pointer(&b[0]))
 }
 
-func repeatToSize(src []byte, size uint64) []byte {
+func RepeatToSize(src []byte, size uint64) []byte {
 	if len(src) == 0 || size <= 0 {
 		return nil
 	}
@@ -86,11 +66,11 @@ func repeatToSize(src []byte, size uint64) []byte {
 	return dst
 }
 
-func prepareTestData(pagesize uint64) (data *mockSlicer, size uint64) {
+func PrepareTestData(pagesize uint64) (data *mockSlicer, size uint64) {
 	size = pagesize * pagesInTestData
 
-	data = newMockSlicer(
-		repeatToSize(
+	data = NewMockSlicer(
+		RepeatToSize(
 			[]byte("Hello from userfaultfd! This is our test content that should be readable after the page fault."),
 			size,
 		),
