@@ -578,7 +578,7 @@ func (s *Sandbox) Close(ctx context.Context) error {
 
 // Stop kills the sandbox.
 func (s *Sandbox) Stop(ctx context.Context) error {
-	_, span := tracer.Start(ctx, "sandbox-close")
+	ctx, span := tracer.Start(ctx, "sandbox-close")
 	defer span.End()
 
 	var errs []error
