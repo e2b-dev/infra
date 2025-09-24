@@ -46,8 +46,8 @@ func (r *ReservationCache) list(teamID uuid.UUID) (sandboxIDs []string) {
 	return sandboxIDs
 }
 
-func (c *MemoryStore) list(teamID uuid.UUID) (sandboxIDs []string) {
-	for _, value := range c.items.Items() {
+func (ms *MemoryStore) list(teamID uuid.UUID) (sandboxIDs []string) {
+	for _, value := range ms.items.Items() {
 		currentTeamID := value.TeamID()
 
 		if currentTeamID == teamID {
@@ -74,15 +74,15 @@ func (e *SandboxLimitExceededError) Error() string {
 	return fmt.Sprintf("sandbox %s has exceeded the limit", e.teamID)
 }
 
-func (c *MemoryStore) Reserve(sandboxID string, team uuid.UUID, limit int64) (release func(), err error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+func (ms *MemoryStore) Reserve(sandboxID string, team uuid.UUID, limit int64) (release func(), err error) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
 
 	// Count unique IDs for team
 	ids := map[string]struct{}{}
 
 	// Get all sandbox ids (both running and those currently creating) for the team
-	for _, item := range append(c.reservations.list(team), c.list(team)...) {
+	for _, item := range append(ms.reservations.list(team), ms.list(team)...) {
 		ids[item] = struct{}{}
 	}
 
@@ -96,7 +96,7 @@ func (c *MemoryStore) Reserve(sandboxID string, team uuid.UUID, limit int64) (re
 		}
 	}
 
-	inserted := c.reservations.insertIfAbsent(sandboxID, team)
+	inserted := ms.reservations.insertIfAbsent(sandboxID, team)
 	if !inserted {
 		// This shouldn't happen
 		return nil, &AlreadyBeingStartedError{
@@ -106,6 +106,6 @@ func (c *MemoryStore) Reserve(sandboxID string, team uuid.UUID, limit int64) (re
 
 	return func() {
 		// We will call this method with defer to ensure the reservation is released even if the function panics/returns an error.
-		c.reservations.release(sandboxID)
+		ms.reservations.release(sandboxID)
 	}, nil
 }

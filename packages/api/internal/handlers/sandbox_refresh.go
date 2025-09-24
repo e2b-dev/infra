@@ -32,13 +32,13 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 	}
 
 	if body.Duration == nil {
-		duration = instance.InstanceExpiration
+		duration = instance.SandboxExpiration
 	} else {
 		duration = time.Duration(*body.Duration) * time.Second
 	}
 
-	if duration < instance.InstanceExpiration {
-		duration = instance.InstanceExpiration
+	if duration < instance.SandboxExpiration {
+		duration = instance.SandboxExpiration
 	}
 
 	apiErr := a.orchestrator.KeepAliveFor(ctx, sandboxID, duration, false)
