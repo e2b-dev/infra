@@ -22,6 +22,7 @@ func newMemorySandbox(data sandbox.Sandbox) *memorySandbox {
 		_data: data,
 	}
 }
+
 func (i *memorySandbox) SetExpired() {
 	i.mu.Lock()
 	defer i.mu.Unlock()
