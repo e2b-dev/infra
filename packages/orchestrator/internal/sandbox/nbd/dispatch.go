@@ -110,11 +110,11 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
 	return nil
 }
 
-/**
- * This dispatches incoming NBD requests sequentially to the provider.
- *
- */
+// Handle dispatches incoming NBD requests sequentially to the provider.
 func (d *Dispatch) Handle(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "handle dispatch-requests")
+	defer span.End()
+
 	buffer := make([]byte, dispatchBufferSize)
 	wp := 0
 
@@ -181,7 +181,7 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 					}
 				case NBDCmdTrim:
 					rp += 28
-					err := d.cmdTrim(request.Handle, request.From, request.Length)
+					err := d.cmdTrim(ctx, request.Handle, request.From, request.Length)
 					if err != nil {
 						return err
 					}
@@ -210,7 +210,7 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 	}
 	d.shuttingDownLock.Unlock()
 
-	performRead := func(handle uint64, from uint64, length uint32) error {
+	performRead := func(ctx context.Context, handle uint64, from uint64, length uint32) error {
 		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
 		data := make([]byte, length)
@@ -235,7 +235,7 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 	}
 
 	go func() {
-		err := performRead(cmdHandle, cmdFrom, cmdLength)
+		err := performRead(ctx, cmdHandle, cmdFrom, cmdLength)
 		if err != nil {
 			select {
 			case d.fatal <- err:
@@ -250,6 +250,9 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 }
 
 func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
+	ctx, span := tracer.Start(ctx, "dispatch write command")
+	defer span.End()
+
 	d.shuttingDownLock.Lock()
 	if !d.shuttingDown {
 		d.pendingResponses.Add(1)
@@ -259,7 +262,7 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 	}
 	d.shuttingDownLock.Unlock()
 
-	performWrite := func(handle uint64, from uint64, data []byte) error {
+	performWrite := func(ctx context.Context, handle uint64, from uint64, data []byte) error {
 		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
 		go func() {
@@ -282,7 +285,7 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 	}
 
 	go func() {
-		err := performWrite(cmdHandle, cmdFrom, cmdData)
+		err := performWrite(ctx, cmdHandle, cmdFrom, cmdData)
 		if err != nil {
 			select {
 			case d.fatal <- err:
@@ -299,7 +302,10 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
  * cmdTrim
  *
  */
-func (d *Dispatch) cmdTrim(handle uint64, _ uint64, _ uint32) error {
+func (d *Dispatch) cmdTrim(ctx context.Context, handle uint64, _ uint64, _ uint32) error {
+	_, span := tracer.Start(ctx, "dispatch trim-command")
+	defer span.End()
+
 	// TODO: Ask the provider
 	/*
 		e := d.prov.Trim(from, length)

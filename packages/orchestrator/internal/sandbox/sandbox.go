@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptrace"
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
@@ -35,6 +37,12 @@ var defaultEnvdTimeout = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT"
 
 var httpClient = http.Client{
 	Timeout: 10 * time.Second,
+	Transport: otelhttp.NewTransport(
+		http.DefaultTransport,
+		otelhttp.WithClientTrace(func(ctx context.Context) *httptrace.ClientTrace {
+			return otelhttptrace.NewClientTrace(ctx)
+		}),
+	),
 }
 
 type Config struct {
@@ -303,7 +311,7 @@ func CreateSandbox(
 // ResumeSandbox resumes the sandbox from already saved template or snapshot.
 // IMPORTANT: You must Close() the sandbox after you are done with it.
 func ResumeSandbox(
-	ctx context.Context,
+	ctx, runCtx context.Context,
 	networkPool *network.Pool,
 	t template.Template,
 	config Config,
@@ -317,19 +325,6 @@ func ResumeSandbox(
 ) (s *Sandbox, e error) {
 	ctx, span := tracer.Start(ctx, "resume-sandbox")
 	defer span.End()
-
-	runCtx := context.WithoutCancel(ctx)
-	runCtx, runSpan := tracer.Start(runCtx, "execute sandbox",
-		trace.WithNewRoot(),
-	)
-	defer func() {
-		if e != nil {
-			runSpan.AddEvent("resume sandbox aborted")
-			runSpan.End()
-		}
-	}()
-
-	span.AddLink(trace.LinkFromContext(runCtx))
 
 	exit := utils.NewErrorOnce()
 
@@ -403,7 +398,7 @@ func ResumeSandbox(
 	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
 
 	fcUffd, err := serveMemory(
-		runCtx,
+		ctx, runCtx,
 		cleanup,
 		memfile,
 		fcUffdPath,
@@ -543,8 +538,6 @@ func ResumeSandbox(
 	go sbx.Checks.Start(runCtx)
 
 	go func() {
-		defer runSpan.End()
-
 		ctx, span := tracer.Start(runCtx, "sandbox-exit-wait")
 		defer span.End()
 
@@ -881,13 +874,13 @@ func getNetworkSlotAsync(
 }
 
 func serveMemory(
-	ctx context.Context,
+	ctx, runCtx context.Context,
 	cleanup *Cleanup,
 	memfile block.ReadonlyDevice,
 	socketPath string,
 	sandboxID string,
 ) (uffd.MemoryBackend, error) {
-	ctx, span := tracer.Start(ctx, "serve-memory")
+	_, span := tracer.Start(ctx, "serve memory")
 	defer span.End()
 
 	fcUffd, uffdErr := uffd.New(memfile, socketPath, memfile.BlockSize())
@@ -895,13 +888,13 @@ func serveMemory(
 		return nil, fmt.Errorf("failed to create uffd: %w", uffdErr)
 	}
 
-	uffdStartErr := fcUffd.Start(ctx, sandboxID)
+	uffdStartErr := fcUffd.Start(runCtx, sandboxID)
 	if uffdStartErr != nil {
 		return nil, fmt.Errorf("failed to start uffd: %w", uffdStartErr)
 	}
 
 	cleanup.Add(func(ctx context.Context) error {
-		_, span := tracer.Start(ctx, "uffd-stop")
+		_, span := tracer.Start(ctx, "stop uffd")
 		defer span.End()
 
 		stopErr := fcUffd.Stop()

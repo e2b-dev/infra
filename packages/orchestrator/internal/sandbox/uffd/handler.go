@@ -11,6 +11,9 @@ import (
 	"time"
 
 	"github.com/bits-and-blooms/bitset"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
@@ -19,6 +22,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd")
 
 const (
 	uffdMsgListenerTimeout = 10 * time.Second
@@ -74,6 +79,11 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 	}
 
 	go func() {
+		ctx, span := tracer.Start(ctx, "Uffd:Start", trace.WithAttributes(
+			attribute.String("sandbox-id", sandboxId),
+		))
+		defer span.End()
+
 		// TODO: If the handle function fails, we should kill the sandbox
 		handleErr := u.handle(ctx, sandboxId)
 		closeErr := u.lis.Close()
@@ -88,6 +98,9 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 }
 
 func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
+	ctx, span := tracer.Start(ctx, "Uffd:handle")
+	defer span.End()
+
 	err := u.lis.SetDeadline(time.Now().Add(uffdMsgListenerTimeout))
 	if err != nil {
 		return fmt.Errorf("failed setting listener deadline: %w", err)
@@ -138,6 +151,9 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 	uffd := fds[0]
 
 	defer func() {
+		_, span := tracer.Start(ctx, "Uffd:handle (close)")
+		defer span.End()
+
 		closeErr := syscall.Close(uffd)
 		if closeErr != nil {
 			zap.L().Error("failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
