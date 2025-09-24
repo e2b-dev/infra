@@ -1,10 +1,9 @@
 package memory
 
 import (
-	"fmt"
-
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -58,22 +57,6 @@ func (ms *Store) list(teamID uuid.UUID) (sandboxIDs []string) {
 	return sandboxIDs
 }
 
-type AlreadyBeingStartedError struct {
-	sandboxID string
-}
-
-func (e *AlreadyBeingStartedError) Error() string {
-	return fmt.Sprintf("sandbox %s is already being started", e.sandboxID)
-}
-
-type SandboxLimitExceededError struct {
-	teamID string
-}
-
-func (e *SandboxLimitExceededError) Error() string {
-	return fmt.Sprintf("sandbox %s has exceeded the limit", e.teamID)
-}
-
 func (ms *Store) Reserve(sandboxID string, team uuid.UUID, limit int64) (release func(), err error) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -87,20 +70,20 @@ func (ms *Store) Reserve(sandboxID string, team uuid.UUID, limit int64) (release
 	}
 
 	if int64(len(ids)) >= limit {
-		return nil, &SandboxLimitExceededError{teamID: team.String()}
+		return nil, &sandbox.LimitExceededError{TeamID: team.String()}
 	}
 
 	if _, ok := ids[sandboxID]; ok {
-		return nil, &AlreadyBeingStartedError{
-			sandboxID: sandboxID,
+		return nil, &sandbox.AlreadyBeingStartedError{
+			SandboxID: sandboxID,
 		}
 	}
 
 	inserted := ms.reservations.insertIfAbsent(sandboxID, team)
 	if !inserted {
 		// This shouldn't happen
-		return nil, &AlreadyBeingStartedError{
-			sandboxID: sandboxID,
+		return nil, &sandbox.AlreadyBeingStartedError{
+			SandboxID: sandboxID,
 		}
 	}
 

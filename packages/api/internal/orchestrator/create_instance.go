@@ -17,7 +17,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store/memory"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -52,8 +51,8 @@ func (o *Orchestrator) CreateSandbox(
 	// Check if team has reached max instances
 	releaseTeamSandboxReservation, err := o.sandboxStore.Reserve(sandboxID, team.Team.ID, team.Tier.ConcurrentInstances)
 	if err != nil {
-		var limitErr *memory.SandboxLimitExceededError
-		var alreadyErr *memory.AlreadyBeingStartedError
+		var limitErr *sandbox.LimitExceededError
+		var alreadyErr *sandbox.AlreadyBeingStartedError
 
 		telemetry.ReportCriticalError(ctx, "failed to reserve sandbox for team", err)
 
