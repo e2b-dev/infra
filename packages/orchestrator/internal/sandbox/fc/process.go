@@ -69,7 +69,7 @@ type Process struct {
 }
 
 func NewProcess(
-	ctx, runCtx context.Context,
+	ctx context.Context,
 	slot *network.Slot,
 	files *storage.SandboxFiles,
 	versions FirecrackerVersions,
@@ -102,7 +102,7 @@ func NewProcess(
 		return nil, fmt.Errorf("error stating kernel file: %w", err)
 	}
 
-	cmd := exec.CommandContext(runCtx,
+	cmd := exec.CommandContext(ctx,
 		"unshare",
 		"-m",
 		"--",
