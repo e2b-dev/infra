@@ -6,13 +6,13 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
-func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx instance.Sandbox, stateAction instance.StateAction) error {
+func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx sandbox.Sandbox, stateAction sandbox.StateAction) error {
 	ctx, span := tracer.Start(ctx, "remove-sandbox")
 	defer span.End()
 
@@ -20,18 +20,18 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx instance.Sandbox, 
 	alreadyDone, finish, err := o.sandboxStore.StartRemoving(ctx, sandboxID, stateAction)
 	if err != nil {
 		switch stateAction {
-		case instance.StateActionKill:
+		case sandbox.StateActionKill:
 			switch sbx.State {
-			case instance.StateKilling:
+			case sandbox.StateKilling:
 				zap.L().Info("Sandbox is already killed", logger.WithSandboxID(sandboxID))
 				return nil
 			default: // It shouldn't happen the sandbox ended in paused state
 				zap.L().Error("Error killing sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
 				return ErrSandboxOperationFailed
 			}
-		case instance.StateActionPause:
+		case sandbox.StateActionPause:
 			switch sbx.State {
-			case instance.StateKilling:
+			case sandbox.StateKilling:
 				zap.L().Info("Sandbox is already killed", logger.WithSandboxID(sandboxID))
 				return ErrSandboxNotFound
 			default:
@@ -65,41 +65,41 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx instance.Sandbox, 
 	return nil
 }
 
-func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sandbox instance.Sandbox, stateAction instance.StateAction) error {
+func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sandbox, stateAction sandbox.StateAction) error {
 	ctx, span := tracer.Start(ctx, "remove-sandbox-from-node")
 	defer span.End()
 
-	node := o.GetNode(sandbox.ClusterID, sandbox.NodeID)
+	node := o.GetNode(sbx.ClusterID, sbx.NodeID)
 	if node == nil {
-		zap.L().Error("failed to get node", logger.WithNodeID(sandbox.NodeID))
-		return fmt.Errorf("node '%s' not found", sandbox.NodeID)
+		zap.L().Error("failed to get node", logger.WithNodeID(sbx.NodeID))
+		return fmt.Errorf("node '%s' not found", sbx.NodeID)
 	}
 
-	// Remove the sandbox resources after the sandbox is deleted
-	defer node.RemoveSandbox(sandbox)
+	// Remove the sbx resources after the sandbox is deleted
+	defer node.RemoveSandbox(sbx)
 
-	o.dns.Remove(ctx, sandbox.SandboxID, node.IPAddress)
+	o.dns.Remove(ctx, sbx.SandboxID, node.IPAddress)
 
-	sbxlogger.I(sandbox).Debug("Removing sandbox",
-		zap.Bool("auto_pause", sandbox.AutoPause),
+	sbxlogger.I(sbx).Debug("Removing sandbox",
+		zap.Bool("auto_pause", sbx.AutoPause),
 		zap.String("state_action", string(stateAction)),
 	)
 
 	switch stateAction {
-	case instance.StateActionPause:
+	case sandbox.StateActionPause:
 		var err error
-		err = o.pauseSandbox(ctx, node, sandbox)
+		err = o.pauseSandbox(ctx, node, sbx)
 		if err != nil {
-			zap.L().Debug("failed to create snapshot", logger.WithSandboxID(sandbox.SandboxID), zap.String("base_template_id", sandbox.BaseTemplateID))
-			return fmt.Errorf("failed to auto pause sandbox '%s': %w", sandbox.SandboxID, err)
+			zap.L().Debug("failed to create snapshot", logger.WithSandboxID(sbx.SandboxID), zap.String("base_template_id", sbx.BaseTemplateID))
+			return fmt.Errorf("failed to auto pause sandbox '%s': %w", sbx.SandboxID, err)
 		}
-	case instance.StateActionKill:
+	case sandbox.StateActionKill:
 		var err error
-		req := &orchestrator.SandboxDeleteRequest{SandboxId: sandbox.SandboxID}
+		req := &orchestrator.SandboxDeleteRequest{SandboxId: sbx.SandboxID}
 		client, ctx := node.GetClient(ctx)
-		_, err = client.Sandbox.Delete(node.GetSandboxDeleteCtx(ctx, sandbox.SandboxID, sandbox.ExecutionID), req)
+		_, err = client.Sandbox.Delete(node.GetSandboxDeleteCtx(ctx, sbx.SandboxID, sbx.ExecutionID), req)
 		if err != nil {
-			return fmt.Errorf("failed to delete sandbox '%s': %w", sandbox.SandboxID, err)
+			return fmt.Errorf("failed to delete sandbox '%s': %w", sbx.SandboxID, err)
 		}
 	}
 

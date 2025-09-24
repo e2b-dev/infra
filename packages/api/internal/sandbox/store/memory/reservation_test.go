@@ -1,4 +1,4 @@
-package instance
+package memory
 
 import (
 	"testing"
@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
@@ -17,7 +18,7 @@ const (
 
 var teamID = uuid.New()
 
-func newMemoryStore() *MemoryStore {
+func newMemoryStore() *Store {
 	cache := NewStore(nil, nil)
 	return cache
 }
@@ -62,7 +63,7 @@ func TestReservation_Release(t *testing.T) {
 func TestReservation_ResumeAlreadyRunningSandbox(t *testing.T) {
 	cache := newMemoryStore()
 
-	data := Sandbox{
+	data := sandbox.Sandbox{
 		ClientID:   consts.ClientID,
 		SandboxID:  sandboxID,
 		TemplateID: "test",

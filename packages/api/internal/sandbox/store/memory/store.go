@@ -1,17 +1,19 @@
-package instance
+package memory
 
 import (
 	"context"
 	"sync"
 
 	cmap "github.com/orcaman/concurrent-map/v2"
+
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 )
 
 type (
-	InsertCallback func(ctx context.Context, sbx Sandbox, created bool)
+	InsertCallback func(ctx context.Context, sbx sandbox.Sandbox, created bool)
 )
 
-type MemoryStore struct {
+type Store struct {
 	reservations *ReservationCache
 	items        cmap.ConcurrentMap[string, *memorySandbox]
 
@@ -25,8 +27,8 @@ type MemoryStore struct {
 func NewStore(
 	insertCallbacks []InsertCallback,
 	insertAsyncCallbacks []InsertCallback,
-) *MemoryStore {
-	instanceCache := &MemoryStore{
+) *Store {
+	instanceCache := &Store{
 		items: cmap.New[*memorySandbox](),
 
 		insertCallbacks:      insertCallbacks,

@@ -14,10 +14,10 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store/memory"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -52,8 +52,8 @@ func (o *Orchestrator) CreateSandbox(
 	// Check if team has reached max instances
 	releaseTeamSandboxReservation, err := o.sandboxStore.Reserve(sandboxID, team.Team.ID, team.Tier.ConcurrentInstances)
 	if err != nil {
-		var limitErr *instance.SandboxLimitExceededError
-		var alreadyErr *instance.AlreadyBeingStartedError
+		var limitErr *memory.SandboxLimitExceededError
+		var alreadyErr *memory.AlreadyBeingStartedError
 
 		telemetry.ReportCriticalError(ctx, "failed to reserve sandbox for team", err)
 
@@ -197,7 +197,7 @@ func (o *Orchestrator) CreateSandbox(
 	startTime = time.Now()
 	endTime = startTime.Add(timeout)
 
-	instanceInfo := instance.NewSandbox(
+	instanceInfo := sandbox.NewSandbox(
 		sbx.SandboxID,
 		sbx.TemplateID,
 		sbx.ClientID,

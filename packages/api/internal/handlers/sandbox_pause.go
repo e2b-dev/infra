@@ -11,8 +11,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -42,7 +42,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		return
 	}
 
-	err = a.orchestrator.RemoveSandbox(ctx, sbx, instance.StateActionPause)
+	err = a.orchestrator.RemoveSandbox(ctx, sbx, sandbox.StateActionPause)
 	switch {
 	case err == nil:
 	case errors.Is(err, orchestrator.ErrSandboxNotFound):

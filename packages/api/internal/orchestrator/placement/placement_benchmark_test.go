@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
@@ -122,7 +122,7 @@ func (n *SimulatedNode) placeSandbox(sandbox *LiveSandbox) bool {
 		return false
 	}
 
-	n.AddSandbox(instance.Sandbox{
+	n.AddSandbox(sandbox.Sandbox{
 		VCpu:  sandbox.RequestedCPU,
 		RamMB: sandbox.RequestedMemory,
 	})
@@ -153,7 +153,7 @@ func (n *SimulatedNode) removeSandbox(sandboxID string) {
 	metrics := n.Metrics()
 
 	if sandbox, exists := n.sandboxes[sandboxID]; exists {
-		n.RemoveSandbox(instance.Sandbox{
+		n.RemoveSandbox(sandbox.Sandbox{
 			VCpu:  sandbox.RequestedCPU,
 			RamMB: sandbox.RequestedMemory,
 		})

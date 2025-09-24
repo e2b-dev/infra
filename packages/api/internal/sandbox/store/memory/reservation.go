@@ -1,4 +1,4 @@
-package instance
+package memory
 
 import (
 	"fmt"
@@ -46,7 +46,7 @@ func (r *ReservationCache) list(teamID uuid.UUID) (sandboxIDs []string) {
 	return sandboxIDs
 }
 
-func (ms *MemoryStore) list(teamID uuid.UUID) (sandboxIDs []string) {
+func (ms *Store) list(teamID uuid.UUID) (sandboxIDs []string) {
 	for _, value := range ms.items.Items() {
 		currentTeamID := value.TeamID()
 
@@ -74,7 +74,7 @@ func (e *SandboxLimitExceededError) Error() string {
 	return fmt.Sprintf("sandbox %s has exceeded the limit", e.teamID)
 }
 
-func (ms *MemoryStore) Reserve(sandboxID string, team uuid.UUID, limit int64) (release func(), err error) {
+func (ms *Store) Reserve(sandboxID string, team uuid.UUID, limit int64) (release func(), err error) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
