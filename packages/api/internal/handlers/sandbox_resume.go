@@ -43,7 +43,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
-	timeout := instance.SandboxExpiration
+	timeout := instance.SandboxTimeoutDefault
 	if body.Timeout != nil {
 		timeout = time.Duration(*body.Timeout) * time.Second
 

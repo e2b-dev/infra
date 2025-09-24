@@ -120,7 +120,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		envVars = *body.EnvVars
 	}
 
-	timeout := instance.SandboxExpiration
+	timeout := instance.SandboxTimeoutDefault
 	if body.Timeout != nil {
 		timeout = time.Duration(*body.Timeout) * time.Second
 

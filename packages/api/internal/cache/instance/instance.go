@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	SandboxExpiration = time.Second * 15
+	SandboxTimeoutDefault = time.Second * 15
 	// Should we auto pause the instance by default instead of killing it,
 	AutoPauseDefault = false
 )
