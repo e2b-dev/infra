@@ -16,7 +16,7 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 
 const (
 	healthCheckInterval = 20 * time.Second
-	healthCheckTimeout  = 250 * time.Millisecond
+	healthCheckTimeout  = 100 * time.Millisecond
 )
 
 type Checks struct {
