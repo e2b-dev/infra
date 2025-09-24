@@ -108,9 +108,6 @@ module "cluster" {
   api_use_nat = var.api_use_nat
   api_nat_ips = var.api_nat_ips
 
-  logs_health_proxy_port = var.logs_health_proxy_port
-  logs_proxy_port        = var.logs_proxy_port
-
   edge_api_port                = var.edge_api_port
   edge_proxy_port              = var.edge_proxy_port
   api_port                     = var.api_port
@@ -205,10 +202,6 @@ module "nomad" {
   edge_api_secret = random_password.edge_api_secret.result
 
   domain_name = var.domain_name
-
-  # Telemetry
-  logs_health_proxy_port = var.logs_health_proxy_port
-  logs_proxy_port        = var.logs_proxy_port
 
   # Logs
   loki_node_pool           = var.loki_node_pool

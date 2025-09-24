@@ -74,16 +74,6 @@ resource "google_compute_region_instance_group_manager" "client_pool" {
     instance_template = google_compute_instance_template.client.id
   }
 
-  named_port {
-    name = var.logs_health_proxy_port.name
-    port = var.logs_health_proxy_port.port
-  }
-
-  named_port {
-    name = var.logs_proxy_port.name
-    port = var.logs_proxy_port.port
-  }
-
   auto_healing_policies {
     health_check      = google_compute_health_check.client_nomad_check.id
     initial_delay_sec = 600
