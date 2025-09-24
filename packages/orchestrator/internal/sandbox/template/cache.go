@@ -141,7 +141,7 @@ func (c *Cache) GetTemplate(
 		return nil, fmt.Errorf("failed to create template cache from storage: %w", err)
 	}
 
-	return c.getPopulatedTemplate(ctx, storageTemplate), nil
+	return c.getTemplateWithFetch(ctx, storageTemplate), nil
 }
 
 func (c *Cache) AddSnapshot(
@@ -185,7 +185,7 @@ func (c *Cache) AddSnapshot(
 		return fmt.Errorf("failed to create template cache from storage: %w", err)
 	}
 
-	c.getPopulatedTemplate(ctx, storageTemplate)
+	c.getTemplateWithFetch(ctx, storageTemplate)
 
 	return nil
 }
@@ -233,7 +233,7 @@ func cleanDir(path string) error {
 	return nil
 }
 
-func (c *Cache) getPopulatedTemplate(ctx context.Context, storageTemplate *storageTemplate) Template {
+func (c *Cache) getTemplateWithFetch(ctx context.Context, storageTemplate *storageTemplate) Template {
 	t, found := c.cache.GetOrSet(
 		storageTemplate.Files().CacheKey(),
 		storageTemplate,
