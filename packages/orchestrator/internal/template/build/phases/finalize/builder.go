@@ -162,7 +162,7 @@ func (ppb *PostProcessingBuilder) Build(
 
 func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer.FunctionActionFn {
 	return func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (cm metadata.Template, e error) {
-		ctx, span := tracer.Start(ctx, "post processing")
+		ctx, span := tracer.Start(ctx, "run postprocessing")
 		defer span.End()
 
 		defer func() {
