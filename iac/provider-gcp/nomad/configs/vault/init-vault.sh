@@ -190,7 +190,7 @@ EOF
 
   save_to_secret_manager $SECRET_PREFIX"vault-api-approle" "$api_creds"
 
-  log_info "API service AppRole created and saved to $SECRET_PREFIX.vault-api-approle"
+  log_info "API service AppRole created and saved to $SECRET_PREFIX"vault-api-approle"
 }
 
 function create_orchestrator_approle {
@@ -321,8 +321,8 @@ function main {
     configure_vault_approles "$root_token"
     
     log_info "AppRole credentials have been saved to GCP Secret Manager:"
-    log_info "  - API Service: $SECRET_PREFIX.vault-api-approle (write/delete permissions)"
-    log_info "  - Orchestrator Service: $SECRET_PREFIX.vault-orchestrator-approle (read-only permissions)"
+    log_info "  - API Service: $SECRET_PREFIX"vault-api-approle" (write/delete permissions)"
+    log_info "  - Orchestrator Service: $SECRET_PREFIX"vault-orchestrator-approle" (read-only permissions)"
   elif [ "$sealed" == "true" ]; then
     # If already initialized but sealed, wait for auto-unseal
     log_info "Vault is initialized but sealed, waiting for auto-unseal..."
