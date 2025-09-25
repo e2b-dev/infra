@@ -24,42 +24,43 @@ var (
 	EmptyBlock    = make([]byte, RootfsBlockSize)
 )
 
-func WriteDiffWithTrace(ctx context.Context, source io.ReaderAt, blockSize int64, dirty *bitset.BitSet, diff io.Writer) (*DiffMetadata, error) {
+func WriteDiffWithTrace(ctx context.Context, source io.ReaderAt, originalMemfile Slicer, blockSize int64, dirty *bitset.BitSet, diff io.Writer) (*DiffMetadata, error) {
 	_, childSpan := tracer.Start(ctx, "create-diff")
 	defer childSpan.End()
 	childSpan.SetAttributes(attribute.Int64("dirty.length", int64(dirty.Count())))
 	childSpan.SetAttributes(attribute.Int64("block.size", blockSize))
 
-	return writeDiff(source, blockSize, dirty, diff)
+	return writeDiff(source, originalMemfile, blockSize, dirty, diff)
 }
 
-func writeDiff(source io.ReaderAt, blockSize int64, dirty *bitset.BitSet, diff io.Writer) (*DiffMetadata, error) {
+func writeDiff(source io.ReaderAt, originalMemfile Slicer, blockSize int64, dirtyBig *bitset.BitSet, diff io.Writer) (*DiffMetadata, error) {
 	b := make([]byte, blockSize)
 
 	empty := bitset.New(0)
+	dirty := bitset.New(0)
 
-	for i, e := dirty.NextSet(0); e; i, e = dirty.NextSet(i + 1) {
-		_, err := source.ReadAt(b, int64(i)*blockSize)
+	for bigPageIdx, e := dirtyBig.NextSet(0); e; bigPageIdx, e = dirtyBig.NextSet(bigPageIdx + 1) {
+		_, err := source.ReadAt(b, int64(bigPageIdx)*blockSize)
 		if err != nil {
 			return nil, fmt.Errorf("error reading from source: %w", err)
 		}
 
-		// If the block is empty, we don't need to write it to the diff.
-		// Because we checked it does not equal to the base, so we keep it separately.
-		isEmpty, err := IsEmptyBlock(b, blockSize)
+		originalPage, err := originalMemfile.Slice(context.Background(), int64(bigPageIdx)*blockSize, blockSize)
 		if err != nil {
-			return nil, fmt.Errorf("error checking empty block: %w", err)
-		}
-		if isEmpty {
-			dirty.Clear(i)
-			empty.Set(i)
-
-			continue
+			return nil, fmt.Errorf("error reading from original memfile: %w", err)
 		}
 
-		_, err = diff.Write(b)
-		if err != nil {
-			return nil, fmt.Errorf("error writing to diff: %w", err)
+		for i := int64(0); i < blockSize; i += PageSize {
+			if bytes.Equal(b[i:i+PageSize], originalPage[i:i+PageSize]) {
+				continue
+			}
+
+			dirty.Set((uint(bigPageIdx*uint(blockSize)+uint(i)) / PageSize))
+
+			_, err = diff.Write(b[i : i+PageSize])
+			if err != nil {
+				return nil, fmt.Errorf("error writing to diff: %w", err)
+			}
 		}
 	}
 

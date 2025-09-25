@@ -28,10 +28,11 @@ func (r *RootfsDiffCreator) process(ctx context.Context, out io.Writer) (*header
 }
 
 type MemoryDiffCreator struct {
-	memfile    *storage.TemporaryMemfile
-	dirtyPages *bitset.BitSet
-	blockSize  int64
-	doneHook   func(context.Context) error
+	memfile         *storage.TemporaryMemfile
+	originalMemfile header.Slicer
+	dirtyPages      *bitset.BitSet
+	blockSize       int64
+	doneHook        func(context.Context) error
 }
 
 func (r *MemoryDiffCreator) process(ctx context.Context, out io.Writer) (h *header.DiffMetadata, e error) {
@@ -51,6 +52,7 @@ func (r *MemoryDiffCreator) process(ctx context.Context, out io.Writer) (h *head
 	return header.WriteDiffWithTrace(
 		ctx,
 		memfileSource,
+		r.originalMemfile,
 		r.blockSize,
 		r.dirtyPages,
 		out,

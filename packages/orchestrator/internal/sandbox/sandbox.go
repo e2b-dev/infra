@@ -718,9 +718,10 @@ func (s *Sandbox) Pause(
 		buildID,
 		originalMemfile.Header(),
 		&MemoryDiffCreator{
-			memfile:    memfile,
-			dirtyPages: s.memory.Dirty(),
-			blockSize:  originalMemfile.BlockSize(),
+			memfile:         memfile,
+			dirtyPages:      s.memory.Dirty(),
+			blockSize:       originalMemfile.BlockSize(),
+			originalMemfile: originalMemfile,
 			doneHook: func(ctx context.Context) error {
 				return memfile.Close()
 			},
@@ -796,7 +797,7 @@ func pauseProcessMemory(
 	memfileMappings = header.NormalizeMappings(memfileMappings)
 	telemetry.ReportEvent(ctx, "merged memfile mappings")
 
-	memfileDiff, err := memfileDiffFile.CloseToDiff(int64(originalHeader.Metadata.BlockSize))
+	memfileDiff, err := memfileDiffFile.CloseToDiff(int64(m.BlockSize))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to convert memfile diff file to local diff: %w", err)
 	}

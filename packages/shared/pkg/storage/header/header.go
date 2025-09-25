@@ -29,13 +29,13 @@ func NewHeader(metadata *Metadata, mapping []*BuildMap) (*Header, error) {
 		}}
 	}
 
-	blocks := TotalBlocks(int64(metadata.Size), int64(metadata.BlockSize))
+	blocks := TotalBlocks(int64(metadata.Size), int64(PageSize))
 
 	intervals := bitset.New(uint(blocks))
 	startMap := make(map[int64]*BuildMap, len(mapping))
 
 	for _, mapping := range mapping {
-		block := BlockIdx(int64(mapping.Offset), int64(metadata.BlockSize))
+		block := BlockIdx(int64(mapping.Offset), int64(PageSize))
 
 		intervals.Set(uint(block))
 		startMap[block] = mapping
@@ -59,7 +59,7 @@ func (t *Header) GetShiftedMapping(offset int64) (mappedOffset int64, mappedLeng
 }
 
 func (t *Header) getMapping(offset int64) (*BuildMap, int64, error) {
-	block := BlockIdx(offset, int64(t.Metadata.BlockSize))
+	block := BlockIdx(offset, int64(PageSize))
 
 	start, ok := t.blockStarts.PreviousSet(uint(block))
 	if !ok {
@@ -71,7 +71,7 @@ func (t *Header) getMapping(offset int64) (*BuildMap, int64, error) {
 		return nil, 0, fmt.Errorf("no mapping found for offset %d", offset)
 	}
 
-	shift := (block - int64(start)) * int64(t.Metadata.BlockSize)
+	shift := (block - int64(start)) * int64(PageSize)
 
 	return mapping, shift, nil
 }

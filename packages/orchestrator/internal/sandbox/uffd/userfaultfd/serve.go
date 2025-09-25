@@ -22,15 +22,15 @@ import (
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 func (u *userfaultfd) Serve(
 	ctx context.Context,
 	m memory.MemoryMap,
-	src block.Slicer,
+	src header.Slicer,
 	fdExit *fdexit.FdExit,
 	logger *zap.Logger,
 ) error {

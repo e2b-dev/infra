@@ -4,8 +4,8 @@ import (
 	"context"
 	"io"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type DiffType string
@@ -24,7 +24,7 @@ const (
 type Diff interface {
 	io.Closer
 	storage.ReaderAtCtx
-	block.Slicer
+	header.Slicer
 	CacheKey() DiffStoreKey
 	CachePath() (string, error)
 	FileSize() (int64, error)

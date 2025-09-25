@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -56,6 +57,8 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 
 		readLength := min(mappedLength, remainingReadLength)
 
+		fmt.Fprintf(os.Stderr, "[ReadAt %v] [off: %d, len: %d] -> [start: %d, end: %d] mappedOffset: %d, mappedLength: %d, buildID: %v blockSize: %d\n", b.fileType, off, len(p), n, n+int(readLength), mappedOffset, mappedLength, buildID, b.header.Metadata.BlockSize)
+
 		if readLength <= 0 {
 			zap.L().Error(fmt.Sprintf(
 				"(%d bytes left to read, off %d) reading %d bytes from %+v/%+v: [%d:] -> [%d:%d] <> %d (mapped length: %d, remaining read length: %d)\n>>> EOF\n",
@@ -105,22 +108,14 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 
 // The slice access must be in the predefined blocksize of the build.
 func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
-	mappedOffset, _, buildID, err := b.header.GetShiftedMapping(off)
+	out := make([]byte, length)
+
+	_, err := b.ReadAt(ctx, out, off)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get mapping: %w", err)
+		return nil, fmt.Errorf("failed to read at: %w", err)
 	}
 
-	// Pass empty huge page when the build id is nil.
-	if *buildID == uuid.Nil {
-		return header.EmptyHugePage, nil
-	}
-
-	build, err := b.getBuild(ctx, buildID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get build: %w", err)
-	}
-
-	return build.Slice(ctx, mappedOffset, int64(b.header.Metadata.BlockSize))
+	return out, nil
 }
 
 func (b *File) getBuild(ctx context.Context, buildID *uuid.UUID) (Diff, error) {
