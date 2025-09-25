@@ -1,6 +1,7 @@
 job "vault" {
   type        = "service"
   priority    = 90
+  node_pool   = "api"
 
   group "vault" {
     count = ${vault_server_count}
