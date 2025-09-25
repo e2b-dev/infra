@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -697,23 +696,17 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
 	}
 
-	originalMemfileSize, err := originalMemfile.Size()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get original memfile size: %w", err)
-	}
-
 	buf := make([]byte, originalMemfile.BlockSize())
-	for i := int64(0); i < originalMemfileSize; i += originalMemfile.BlockSize() {
-		_, err = memoryView.ReadAt(buf, i)
+
+	dirty := s.memory.Dirty()
+
+	for i, e := dirty.NextSet(0); e; i, e = dirty.NextSet(i + 1) {
+		_, err = memoryView.ReadAt(buf, int64(i)*originalMemfile.BlockSize())
 		if err != nil {
-			// If we get EIO, continue as that was yet unmapped page.
-			if errors.Is(err, syscall.EIO) {
-				continue
-			}
 			return nil, fmt.Errorf("failed to read memory view: %w", err)
 		}
 
-		_, err = memfileFd.WriteAt(buf, i)
+		_, err = memfileFd.WriteAt(buf, int64(i)*originalMemfile.BlockSize())
 		if err != nil {
 			return nil, fmt.Errorf("failed to write memfile: %w", err)
 		}
