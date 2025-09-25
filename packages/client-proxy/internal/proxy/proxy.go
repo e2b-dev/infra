@@ -132,15 +132,15 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 
 					if !useDnsResolution {
 						return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
-					} else {
-						nodeIP, err = dnsResolution(sandboxId, logger)
-						if err != nil {
-							if !errors.Is(err, ErrNodeNotFound) {
-								logger.Warn("failed to resolve node ip with DNS resolution", zap.Error(err))
-							}
+					}
 
-							return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
+					nodeIP, err = dnsResolution(sandboxId, logger)
+					if err != nil {
+						if !errors.Is(err, ErrNodeNotFound) {
+							logger.Warn("failed to resolve node ip with DNS resolution", zap.Error(err))
 						}
+
+						return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
 					}
 				}
 			} else {

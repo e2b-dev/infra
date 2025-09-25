@@ -1,23 +1,19 @@
 package instance
 
 import (
-	"context"
-	"errors"
-	"fmt"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
-	InstanceExpiration = time.Second * 15
+	SandboxTimeoutDefault = time.Second * 15
 	// Should we auto pause the instance by default instead of killing it,
-	InstanceAutoPauseDefault = false
+	AutoPauseDefault = false
 )
 
 type State string
@@ -26,11 +22,14 @@ const (
 	StateRunning State = "running"
 	StatePausing State = "pausing"
 	StateKilling State = "killing"
-	StatePaused  State = "paused"
-	StateKilled  State = "killed"
 )
 
-func NewInstanceInfo(
+var allowed = map[State]map[State]bool{
+	StateRunning: {StatePausing: true, StateKilling: true},
+	StatePausing: {StateKilling: true},
+}
+
+func NewSandbox(
 	sandboxID string,
 	templateID string,
 	clientID string,
@@ -54,8 +53,8 @@ func NewInstanceInfo(
 	envdAccessToken *string,
 	allowInternetAccess *bool,
 	baseTemplateID string,
-) *InstanceInfo {
-	instance := &InstanceInfo{
+) Sandbox {
+	return Sandbox{
 		SandboxID:  sandboxID,
 		TemplateID: templateID,
 		ClientID:   clientID,
@@ -67,7 +66,7 @@ func NewInstanceInfo(
 		Metadata:            metadata,
 		MaxInstanceLength:   maxInstanceLength,
 		StartTime:           startTime,
-		endTime:             endTime,
+		EndTime:             endTime,
 		VCpu:                vcpu,
 		TotalDiskSizeMB:     totalDiskSizeMB,
 		RamMB:               ramMB,
@@ -79,16 +78,12 @@ func NewInstanceInfo(
 		NodeID:              nodeID,
 		ClusterID:           clusterID,
 		AutoPause:           autoPause,
-		state:               StateRunning,
-		stopping:            utils.NewSetOnce[struct{}](),
+		State:               StateRunning,
 		BaseTemplateID:      baseTemplateID,
-		mu:                  sync.RWMutex{},
 	}
-
-	return instance
 }
 
-type InstanceInfo struct {
+type Sandbox struct {
 	SandboxID  string
 	TemplateID string
 	ClientID   string
@@ -101,7 +96,7 @@ type InstanceInfo struct {
 	Metadata            map[string]string
 	MaxInstanceLength   time.Duration
 	StartTime           time.Time
-	endTime             time.Time
+	EndTime             time.Time
 	VCpu                int64
 	TotalDiskSizeMB     int64
 	RamMB               int64
@@ -114,125 +109,81 @@ type InstanceInfo struct {
 	ClusterID           uuid.UUID
 	AutoPause           bool
 
-	state State
-	mu    sync.RWMutex
-
-	stopping *utils.SetOnce[struct{}]
+	State State
 }
 
-func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
+type memorySandbox struct {
+	_data Sandbox
+
+	transition *utils.ErrorOnce
+	mu         sync.RWMutex
+}
+
+func newMemorySandbox(data Sandbox) *memorySandbox {
+	return &memorySandbox{
+		_data: data,
+	}
+}
+
+func (s Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 	return sbxlogger.SandboxMetadata{
-		SandboxID:  i.SandboxID,
-		TemplateID: i.TemplateID,
-		TeamID:     i.TeamID.String(),
+		SandboxID:  s.SandboxID,
+		TemplateID: s.TemplateID,
+		TeamID:     s.TeamID.String(),
 	}
 }
 
-func (i *InstanceInfo) IsExpired() bool {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-
-	return i.isExpired()
+func (s Sandbox) IsExpired() bool {
+	return time.Now().After(s.EndTime)
 }
 
-func (i *InstanceInfo) isExpired() bool {
-	return time.Now().After(i.endTime)
-}
-
-func (i *InstanceInfo) GetEndTime() time.Time {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-
-	return i.endTime
-}
-
-func (i *InstanceInfo) SetEndTime(endTime time.Time) {
+func (i *memorySandbox) SetExpired() {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	i.setEndTime(endTime)
-}
-
-func (i *InstanceInfo) setEndTime(endTime time.Time) {
-	i.endTime = endTime
-}
-
-func (i *InstanceInfo) SetExpired() {
-	i.mu.Lock()
-	defer i.mu.Unlock()
 	i.setExpired()
 }
 
-func (i *InstanceInfo) setExpired() {
-	if !i.isExpired() {
-		i.setEndTime(time.Now())
+func (i *memorySandbox) setExpired() {
+	if !i._data.IsExpired() {
+		i._data.EndTime = time.Now()
 	}
 }
 
-func (i *InstanceInfo) GetState() State {
+func (i *memorySandbox) Data() Sandbox {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
-	return i.state
+	return i._data
 }
 
-var (
-	ErrAlreadyBeingPaused  = errors.New("instance is already being paused")
-	ErrAlreadyBeingDeleted = errors.New("instance is already being removed")
-)
+func (i *memorySandbox) State() State {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
 
-func (i *InstanceInfo) markRemoving(removeType RemoveType) error {
+	return i._data.State
+}
+
+// SandboxID returns the sandbox ID, safe to use without lock, it's immutable
+func (i *memorySandbox) SandboxID() string {
+	return i._data.SandboxID
+}
+
+// TeamID returns the team ID, safe to use without lock, it's immutable
+func (i *memorySandbox) TeamID() uuid.UUID {
+	return i._data.TeamID
+}
+
+func (i *memorySandbox) extendEndTime(newEndTime time.Time, allowShorter bool) bool {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	if i.state != StateRunning {
-		if i.state == StatePausing || i.state == StatePaused {
-			return ErrAlreadyBeingPaused
-		} else {
-			return ErrAlreadyBeingDeleted
-		}
-	}
-	// Set remove type
-	if removeType == RemoveTypePause {
-		i.state = StatePausing
-	} else {
-		i.state = StateKilling
+	// If shorter than the current end time, don't extend
+	if !allowShorter && newEndTime.Before(i._data.EndTime) {
+		return false
 	}
 
-	// Mark the stop time
-	i.setExpired()
+	i._data.EndTime = newEndTime
 
-	return nil
-}
-
-func (i *InstanceInfo) WaitForStop(ctx context.Context) error {
-	if i.GetState() == StateRunning {
-		return fmt.Errorf("sandbox isn't stopping")
-	}
-
-	_, err := i.stopping.WaitWithContext(ctx)
-	return err
-}
-
-func (i *InstanceInfo) stopDone(err error) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	if i.state == StatePausing {
-		i.state = StatePaused
-	} else {
-		i.state = StateKilled
-	}
-
-	if err != nil {
-		err := i.stopping.SetError(err)
-		if err != nil {
-			zap.L().Error("error setting stopDone value", zap.Error(err))
-		}
-	} else {
-		err := i.stopping.SetValue(struct{}{})
-		if err != nil {
-			zap.L().Error("error setting stopDone value", zap.Error(err))
-		}
-	}
+	return true
 }

@@ -3,7 +3,6 @@ package network
 import (
 	"fmt"
 	"net/netip"
-	"os"
 
 	"github.com/google/nftables"
 	"github.com/google/nftables/expr"
@@ -233,19 +232,5 @@ func (fw *Firewall) ResetBlockedCustom() error {
 
 // ResetAllowedCustom resets allow set back to original ranges.
 func (fw *Firewall) ResetAllowedCustom() error {
-	initIps := make([]string, 0)
-
-	// Allow Logs Collector IP for logs
-	if ip := os.Getenv("LOGS_COLLECTOR_PUBLIC_IP"); ip != "" {
-		initIps = append(initIps, ip+"/32")
-	}
-
-	initData, err := set.AddressStringsToSetData(initIps)
-	if err != nil {
-		return fmt.Errorf("parse initial allow CIDRs: %w", err)
-	}
-	if err := fw.allowSet.ClearAndAddElements(fw.conn, initData); err != nil {
-		return err
-	}
-	return fw.conn.Flush()
+	return nil
 }

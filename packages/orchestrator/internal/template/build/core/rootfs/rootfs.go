@@ -270,6 +270,8 @@ echo "System Init"`), Mode: 0o777},
 		map[string]string{
 			// Enable envd service autostart
 			"etc/systemd/system/multi-user.target.wants/envd.service": "etc/systemd/system/envd.service",
+			// Enable chrony service autostart
+			"etc/systemd/system/multi-user.target.wants/chrony.service": "etc/systemd/system/chrony.service",
 		},
 	)
 	if err != nil {

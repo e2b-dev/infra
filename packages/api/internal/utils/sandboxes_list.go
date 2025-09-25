@@ -18,6 +18,7 @@ const maxSandboxID = "zzzzzzzzzzzzzzzzzzzz"
 // extend the api.ListedSandbox with a timestamp to use for pagination
 type PaginatedSandbox struct {
 	api.ListedSandbox
+
 	PaginationTimestamp time.Time `json:"-"`
 }
 

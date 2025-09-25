@@ -5,15 +5,15 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 )
 
-const (
-	sandboxCacheDir = "/orchestrator/sandbox"
-)
+var sandboxCacheDir = filepath.Join(pkg.OrchestratorBasePath, "sandbox")
 
 type SandboxFiles struct {
 	TemplateCacheFiles
+
 	SandboxID string
 	tmpDir    string
 	// We use random id to avoid collision between the paused and restored sandbox caches

@@ -35,7 +35,7 @@ func TestAccessingHyperloopServerViaIP(t *testing.T) {
 
 	require.NoError(t, readErr)
 	assert.Equal(t, http.StatusOK, readRes.StatusCode())
-	assert.Equal(t, fmt.Sprintf("Responding to sandbox %s", sbx.SandboxID), string(readRes.Body))
+	assert.JSONEq(t, fmt.Sprintf("{\"sandboxID\": \"%s\"}", sbx.SandboxID), string(readRes.Body))
 }
 
 func TestAccessingHyperloopServerViaDomain(t *testing.T) {
@@ -47,7 +47,7 @@ func TestAccessingHyperloopServerViaDomain(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "/bin/bash", "-c", "curl -o output.txt http://events.e2b.dev/me")
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "/bin/bash", "-c", "curl -o output.txt http://events.e2b.local/me")
 	require.NoError(t, err, "Should be able to contact hyperloop server")
 
 	readPath := "output.txt"
@@ -59,5 +59,5 @@ func TestAccessingHyperloopServerViaDomain(t *testing.T) {
 
 	require.NoError(t, readErr)
 	assert.Equal(t, http.StatusOK, readRes.StatusCode())
-	assert.Equal(t, fmt.Sprintf("Responding to sandbox %s", sbx.SandboxID), string(readRes.Body))
+	assert.JSONEq(t, fmt.Sprintf("{\"sandboxID\": \"%s\"}", sbx.SandboxID), string(readRes.Body))
 }

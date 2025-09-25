@@ -84,7 +84,7 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 			continue
 		}
 
-		mappedBuild, err := b.getBuild(buildID)
+		mappedBuild, err := b.getBuild(ctx, buildID)
 		if err != nil {
 			return 0, fmt.Errorf("failed to get build: %w", err)
 		}
@@ -115,7 +115,7 @@ func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 		return header.EmptyHugePage, nil
 	}
 
-	build, err := b.getBuild(buildID)
+	build, err := b.getBuild(ctx, buildID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build: %w", err)
 	}
@@ -123,7 +123,7 @@ func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	return build.Slice(ctx, mappedOffset, int64(b.header.Metadata.BlockSize))
 }
 
-func (b *File) getBuild(buildID *uuid.UUID) (Diff, error) {
+func (b *File) getBuild(ctx context.Context, buildID *uuid.UUID) (Diff, error) {
 	storageDiff := newStorageDiff(
 		b.store.cachePath,
 		buildID.String(),
@@ -133,7 +133,7 @@ func (b *File) getBuild(buildID *uuid.UUID) (Diff, error) {
 		b.persistence,
 	)
 
-	source, err := b.store.Get(storageDiff)
+	source, err := b.store.Get(ctx, storageDiff)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build from store: %w", err)
 	}

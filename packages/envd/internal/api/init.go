@@ -75,9 +75,9 @@ func (a *API) SetupHyperloop(address string) {
 		return
 	}
 
-	// Update /etc/hosts to point events.e2b.dev to the hyperloop IP
-	// This will remove any existing entries for events.e2b.dev first
-	hosts.AddHost(address, "events.e2b.dev")
+	// Update /etc/hosts to point events.e2b.local to the hyperloop IP
+	// This will remove any existing entries for events.e2b.local first
+	hosts.AddHost(address, "events.e2b.local")
 	err = hosts.Save()
 	if err != nil {
 		a.logger.Error().Msgf("Failed to add events host entry: %v", err)

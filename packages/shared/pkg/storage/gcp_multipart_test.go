@@ -25,6 +25,7 @@ const (
 	testBucketName = "test-bucket"
 	testObjectName = "test-object"
 	testToken      = "test-token"
+	uploadsPath    = "uploads"
 )
 
 // createTestMultipartUploader creates a test uploader with a mock HTTP client
@@ -61,7 +62,7 @@ func TestMultipartUploader_InitiateUpload_Success(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "POST", r.Method)
 		assert.Contains(t, r.URL.Path, testObjectName)
-		assert.Contains(t, r.URL.RawQuery, "uploads")
+		assert.Contains(t, r.URL.RawQuery, uploadsPath)
 		assert.Equal(t, "Bearer "+testToken, r.Header.Get("Authorization"))
 		assert.Equal(t, "application/octet-stream", r.Header.Get("Content-Type"))
 
@@ -167,7 +168,7 @@ func TestMultipartUploader_UploadFileInParallel_Success(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.RawQuery == "uploads":
+		case r.URL.RawQuery == uploadsPath:
 			// Initiate upload
 			atomic.AddInt32(&initiateCount, 1)
 			uploadID = "test-upload-id-123"
@@ -266,7 +267,7 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.RawQuery == "uploads":
+		case r.URL.RawQuery == uploadsPath:
 			atomic.AddInt32(&initiateCalls, 1)
 			response := InitiateMultipartUploadResult{
 				Bucket:   testBucketName,
@@ -340,7 +341,7 @@ func TestMultipartUploader_RandomFailures_ChaosTest(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.RawQuery == "uploads":
+		case r.URL.RawQuery == uploadsPath:
 			response := InitiateMultipartUploadResult{
 				Bucket:   testBucketName,
 				Key:      testObjectName,
@@ -400,7 +401,7 @@ func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.RawQuery == "uploads":
+		case r.URL.RawQuery == uploadsPath:
 			response := InitiateMultipartUploadResult{
 				Bucket:   testBucketName,
 				Key:      testObjectName,
@@ -462,7 +463,7 @@ func TestMultipartUploader_EdgeCases_EmptyFile(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.RawQuery == "uploads":
+		case r.URL.RawQuery == uploadsPath:
 			atomic.AddInt32(&initiateCalls, 1)
 			response := InitiateMultipartUploadResult{
 				Bucket:   testBucketName,
@@ -507,7 +508,7 @@ func TestMultipartUploader_EdgeCases_VerySmallFile(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.RawQuery == "uploads":
+		case r.URL.RawQuery == uploadsPath:
 			response := InitiateMultipartUploadResult{
 				Bucket:   testBucketName,
 				Key:      testObjectName,
@@ -547,7 +548,7 @@ func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testin
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.RawQuery == "uploads":
+		case r.URL.RawQuery == uploadsPath:
 			response := InitiateMultipartUploadResult{
 				Bucket:   testBucketName,
 				Key:      testObjectName,
@@ -605,7 +606,7 @@ func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.RawQuery == "uploads":
+		case r.URL.RawQuery == uploadsPath:
 			response := InitiateMultipartUploadResult{
 				Bucket:   testBucketName,
 				Key:      testObjectName,
@@ -662,7 +663,7 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 		atomic.AddInt32(&totalRequests, 1)
 
 		switch {
-		case r.URL.RawQuery == "uploads":
+		case r.URL.RawQuery == uploadsPath:
 			response := InitiateMultipartUploadResult{
 				Bucket:   testBucketName,
 				Key:      testObjectName,

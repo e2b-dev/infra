@@ -92,6 +92,7 @@ type Snapshot struct {
 	OriginNodeID        string
 	AllowInternetAccess *bool
 	AutoPause           bool
+	TeamID              uuid.UUID
 }
 
 type Team struct {
