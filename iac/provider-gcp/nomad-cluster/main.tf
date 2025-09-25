@@ -92,15 +92,15 @@ module "network" {
 
   gcp_project_id = var.gcp_project_id
 
-  api_port                  = var.api_port
-  docker_reverse_proxy_port = var.docker_reverse_proxy_port
-  network_name              = var.network_name
-  domain_name               = var.domain_name
-  additional_domains        = var.additional_domains
+  // api_port                  = var.api_port
+  // docker_reverse_proxy_port = var.docker_reverse_proxy_port
+  network_name       = var.network_name
+  domain_name        = var.domain_name
+  additional_domains = var.additional_domains
 
-  client_instance_group    = google_compute_region_instance_group_manager.client_pool.instance_group
-  client_proxy_port        = var.edge_proxy_port
-  client_proxy_health_port = var.edge_api_port
+  client_instance_group = google_compute_region_instance_group_manager.client_pool.instance_group
+  //client_proxy_port        = var.edge_proxy_port
+  //client_proxy_health_port = var.edge_api_port
 
   api_instance_group    = google_compute_instance_group_manager.api_pool.instance_group
   build_instance_group  = google_compute_instance_group_manager.build_pool.instance_group
@@ -115,14 +115,23 @@ module "network" {
   labels = var.labels
   prefix = var.prefix
 
-  additional_api_path_rules = [
-    for service in var.additional_api_services : {
-      paths      = service.paths
-      service_id = service.service_id
-    }
-  ]
+  //additional_api_path_rules = [
+  //  for service in var.additional_api_services : {
+  //    paths      = service.paths
+  //    service_id = service.service_id
+  //  }
+  //]
 
-  additional_ports = [for service in var.additional_api_services : service.api_node_group_port]
+  //additional_ports = [for service in var.additional_api_services : service.api_node_group_port]
+
+
+  ingress = {
+    port_name        = "ingress"
+    port             = 8800
+    health_port_name = "ingress-health"
+    health_port      = 8900
+    health_path      = "/ping"
+  }
 }
 
 module "filestore" {

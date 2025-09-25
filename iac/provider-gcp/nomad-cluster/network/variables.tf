@@ -32,34 +32,14 @@ variable "cloudflare_api_token_secret_name" {
   type = string
 }
 
-variable "api_port" {
+variable "ingress" {
   type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
-}
+    port_name = string
+    port      = number
 
-variable "docker_reverse_proxy_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
-}
-
-variable "client_proxy_health_port" {
-  type = object({
-    name = string
-    port = number
-    path = string
-  })
-}
-
-variable "client_proxy_port" {
-  type = object({
-    name = string
-    port = number
+    health_port_name = string
+    health_port      = number
+    health_path      = string
   })
 }
 
@@ -103,6 +83,7 @@ variable "labels" {
   type        = map(string)
 }
 
+/*
 variable "additional_api_path_rules" {
   description = "Additional path rules to add to the load balancer routing."
   type = list(object({
@@ -115,3 +96,35 @@ variable "additional_ports" {
   description = "Additional ports to expose on the load balancer."
   type        = list(number)
 }
+
+variable "api_port" {
+  type = object({
+    name        = string
+    port        = number
+    health_path = string
+  })
+}
+
+variable "docker_reverse_proxy_port" {
+  type = object({
+    name        = string
+    port        = number
+    health_path = string
+  })
+}
+
+variable "client_proxy_health_port" {
+  type = object({
+    name = string
+    port = number
+    path = string
+  })
+}
+
+variable "client_proxy_port" {
+  type = object({
+    name = string
+    port = number
+  })
+}
+*/

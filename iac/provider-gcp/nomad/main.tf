@@ -72,8 +72,8 @@ resource "nomad_job" "ingress" {
   jobspec = templatefile("${path.module}/jobs/ingress.hcl",
     {
       update_stanza = var.api_machine_count > 1
-      cpu_count     = var.api_resources_cpu_count
-      memory_mb     = var.api_resources_memory_mb
+      cpu_count     = 1
+      memory_mb     = 512
       node_pool     = var.api_node_pool
       gcp_zone      = var.gcp_zone
 

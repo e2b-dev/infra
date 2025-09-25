@@ -22,11 +22,19 @@ job "ingress" {
     }
 %{ endif }
 
-    // todo: health check
     service {
-      port     = "ingress"
-      name     = "ingress"
-      provider = "nomad"
+      port = "ingress"
+      name = "ingress"
+      task = "ingress"
+
+      check {
+        type     = "http"
+        name     = "health"
+        path     = "/ping"
+        interval = "3s"
+        timeout  = "3s"
+        port     = "${control_port}"
+      }
     }
 
     task "ingress" {
@@ -55,7 +63,7 @@ job "ingress" {
 
           "--accesslog=true",
           "--ping=true",
-          "--ping.entryPoint=web",
+          "--ping.entryPoint=traefik",
           "--metrics=true",
           "--metrics.prometheus=true",
           "--metrics.prometheus.entryPoint=traefik",

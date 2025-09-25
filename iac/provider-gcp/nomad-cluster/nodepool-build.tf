@@ -50,11 +50,6 @@ resource "google_compute_instance_group_manager" "build_pool" {
     instance_template = google_compute_instance_template.build.id
   }
 
-  named_port {
-    name = var.docker_reverse_proxy_port.name
-    port = var.docker_reverse_proxy_port.port
-  }
-
   auto_healing_policies {
     health_check      = google_compute_health_check.build_nomad_check.id
     initial_delay_sec = 600

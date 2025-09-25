@@ -20,12 +20,16 @@ locals {
 
   parts        = split(".", var.domain_name)
   is_subdomain = length(local.parts) > 2
+
   // Take everything except last 2 parts
   subdomain = local.is_subdomain ? join(".", slice(local.parts, 0, length(local.parts) - 2)) : ""
+
   // Take last 2 parts (1 dot)
   root_domain = local.is_subdomain ? join(".", slice(local.parts, length(local.parts) - 2, length(local.parts))) : var.domain_name
 
   backends = {
+
+    /*
     session = {
       protocol                        = "HTTP"
       port                            = var.client_proxy_port.port
@@ -66,6 +70,32 @@ locals {
       }
       groups = [{ group = var.build_instance_group }]
     }
+*/
+
+
+
+
+
+
+
+
+
+
+    ingress = {
+      protocol                        = "HTTP"
+      port                            = var.ingress.port
+      port_name                       = var.ingress.port_name
+      timeout_sec                     = 86400
+      connection_draining_timeout_sec = 1
+      http_health_check = {
+        request_path       = var.ingress.health_path
+        port               = var.ingress.health_port
+        timeout_sec        = 3
+        check_interval_sec = 3
+      }
+      groups = [{ group = var.api_instance_group }]
+    }
+
     nomad = {
       protocol                        = "HTTP"
       port                            = 80
@@ -78,6 +108,7 @@ locals {
       }
       groups = [{ group = var.server_instance_group }]
     }
+
     consul = {
       protocol                        = "HTTP"
       port                            = 80
@@ -251,17 +282,7 @@ resource "google_certificate_manager_certificate_map_entry" "subdomains_map_entr
 # Load balancers
 resource "google_compute_url_map" "orch_map" {
   name            = "${var.prefix}orch-map"
-  default_service = google_compute_backend_service.default["nomad"].self_link
-
-  host_rule {
-    hosts        = concat(["api.${var.domain_name}"], [for d in var.additional_domains : "api.${d}"])
-    path_matcher = "api-paths"
-  }
-
-  host_rule {
-    hosts        = concat(["docker.${var.domain_name}"], [for d in var.additional_domains : "docker.${d}"])
-    path_matcher = "docker-reverse-proxy-paths"
-  }
+  default_service = google_compute_backend_service.default["ingress"].self_link
 
   host_rule {
     hosts        = concat(["nomad.${var.domain_name}"], [for d in var.additional_domains : "nomad.${d}"])
@@ -273,33 +294,10 @@ resource "google_compute_url_map" "orch_map" {
     path_matcher = "consul-paths"
   }
 
-  host_rule {
-    hosts        = concat(["*.${var.domain_name}"], [for d in var.additional_domains : "*.${d}"])
-    path_matcher = "session-paths"
-  }
-
-  path_matcher {
-    name            = "api-paths"
-    default_service = google_compute_backend_service.default["api"].self_link
-
-    dynamic "path_rule" {
-      for_each = var.additional_api_path_rules
-      content {
-        paths   = path_rule.value.paths
-        service = path_rule.value.service_id
-      }
-    }
-  }
-
-  path_matcher {
-    name            = "docker-reverse-proxy-paths"
-    default_service = google_compute_backend_service.default["docker-reverse-proxy"].self_link
-  }
-
-  path_matcher {
-    name            = "session-paths"
-    default_service = google_compute_backend_service.default["session"].self_link
-  }
+  //host_rule {
+  //  hosts        = concat(["*.${var.domain_name}"], [for d in var.additional_domains : "*.${d}"])
+  //  path_matcher = "ingress-paths"
+  //}
 
   path_matcher {
     name            = "nomad-paths"
@@ -322,6 +320,11 @@ resource "google_compute_url_map" "orch_map" {
     name            = "consul-paths"
     default_service = google_compute_backend_service.default["consul"].self_link
   }
+
+  //path_matcher {
+  //  name            = "ingress-paths"
+  //  default_service = google_compute_backend_service.default["ingress"].self_link
+  //}
 }
 
 ### IPv4 block ###
@@ -526,32 +529,10 @@ resource "google_compute_firewall" "default-hc" {
     }
   }
 
-  dynamic "allow" {
-    for_each = toset(var.additional_ports)
-
-    content {
-      protocol = "tcp"
-      ports    = [allow.value]
-    }
-  }
-}
-
-resource "google_compute_firewall" "client_proxy_firewall_ingress" {
-  name    = "${var.prefix}${var.cluster_tag_name}-client-proxy-firewall-ingress"
-  network = var.network_name
-
   allow {
     protocol = "tcp"
-    ports    = ["3002"]
+    ports    = [var.ingress.port]
   }
-
-  priority = 999
-
-  direction   = "INGRESS"
-  target_tags = [var.cluster_tag_name]
-  # Load balancer health check IP ranges
-  # https://cloud.google.com/load-balancing/docs/health-check-concepts
-  source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
 }
 
 resource "google_compute_firewall" "logs_collector_firewall_ingress" {
@@ -628,6 +609,9 @@ resource "google_compute_firewall" "orch_firewall_egress" {
   direction   = "EGRESS"
   target_tags = [var.cluster_tag_name]
 }
+
+/*
+todo
 
 
 # Security policy
@@ -760,7 +744,7 @@ resource "google_compute_security_policy_rule" "disable-consul" {
     }
   }
 }
-
+ */
 resource "google_compute_security_policy" "disable-bots-log-collector" {
   name = "disable-bots-log-collector"
 
