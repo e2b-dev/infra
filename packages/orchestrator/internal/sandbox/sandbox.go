@@ -552,17 +552,17 @@ func ResumeSandbox(
 }
 
 func startSpan(ctx context.Context, spanName string) (context.Context, trace.Span, func(error)) {
-	ctx, span := tracer.Start(ctx, spanName)
+	ctx, span := tracer.Start(ctx, spanName) //nolint:spancheck // this is just a helper method
 	parentSpan := span
 
 	ctx = context.WithoutCancel(ctx)
-	ctx, span = tracer.Start(ctx, "execute sandbox",
+	ctx, span = tracer.Start(ctx, "execute sandbox", //nolint:spancheck // this is still just a helper method
 		trace.WithNewRoot(),
 	)
 
 	parentSpan.AddLink(trace.LinkFromContext(ctx))
 
-	return ctx, span, func(err error) {
+	return ctx, span, func(err error) { //nolint:spancheck // still just a helper method
 		parentSpan.End()
 
 		if err != nil {
@@ -572,7 +572,6 @@ func startSpan(ctx context.Context, spanName string) (context.Context, trace.Spa
 			span.AddEvent("success")
 		}
 	}
-
 }
 
 func (s *Sandbox) Wait(ctx context.Context) error {
