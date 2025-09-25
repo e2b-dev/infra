@@ -54,16 +54,16 @@ function save_to_secret_manager {
   local secret_name="$1"
   local secret_data="$2"
 
-  log_info "Saving data to Secret Manager: $secret_name"
+  log_info "Saving data to Secret Manager: $secret_name" >&2
 
   echo "$secret_data" | gcloud secrets versions add "$secret_name" \
     --data-file=- \
-    --project="$GCP_PROJECT"
+    --project="$GCP_PROJECT" >&2
 }
 
 
 function initialize_vault {
-  log_info "Initializing Vault with GCP KMS auto-unseal..."
+  log_info "Initializing Vault with GCP KMS auto-unseal..." >&2
 
   # Initialize Vault with recovery keys instead of unseal keys (auto-unseal mode)
   # Recovery keys are used for operations like generating a new root token
@@ -73,11 +73,11 @@ function initialize_vault {
     -format=json > "$VAULT_INIT_OUTPUT"
 
   if [ $? -eq 0 ]; then
-    log_info "Vault initialized successfully with auto-unseal"
+    log_info "Vault initialized successfully with auto-unseal" >&2
 
     # Extract recovery keys and root token
     local recovery_keys=$(jq -r '.recovery_keys_b64[]' "$VAULT_INIT_OUTPUT" | tr '\n' ',' | sed 's/,$//')
-    local root_token=$(jq -r '.root_token' "$VAULT_INIT_OUTPUT")
+    local root_token=$(jq -r '.root_token' "$VAULT_INIT_OUTPUT" | tr -d '\n')
 
     # Save root token to vault-root-key secret
     save_to_secret_manager $SECRET_PREFIX"vault-root-key" "$root_token"
@@ -101,7 +101,7 @@ function initialize_vault {
     echo "$root_token"
     return 0
   else
-    log_error "Failed to initialize Vault"
+    log_error "Failed to initialize Vault" >&2
     return 1
   fi
 }
@@ -265,7 +265,7 @@ function configure_vault_approles {
   # Unset token for security
   unset VAULT_TOKEN
 
-  log_info "AppRoles configuration completed"
+  log_info "AppRoles configuration completed!"
 }
 
 function main {

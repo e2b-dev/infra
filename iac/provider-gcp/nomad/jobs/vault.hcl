@@ -27,7 +27,7 @@ job "vault" {
       check {
         type     = "http"
         protocol = "https"
-        path     = "/v1/sys/health?standbyok=true" # return 200 for all nodes
+        path     = "/v1/sys/health?standbyok=true&uninitcode=200&sealcode=200" # return 200 for all nodes, also returning 200 for uninitialized and sealed nodes so that the init job can run
         interval = "1s"
         timeout  = "2s"
         tls_skip_verify = "true"
@@ -162,7 +162,7 @@ EOT
       }
 
       env {
-        VAULT_ADDR = "https://vault-leader.service.consul:8200"
+        VAULT_ADDR = "https://vault.service.consul:8200"
         GCP_PROJECT = "${gcp_project_id}"
         SECRET_PREFIX = "${prefix}"
         VAULT_SKIP_VERIFY = "true"

@@ -299,7 +299,7 @@ resource "tls_self_signed_cert" "vault" {
 
 # GCP KMS resources for Vault auto-unseal
 resource "google_kms_key_ring" "vault" {
-  name     = "${var.prefix}vault-keyring"
+  name     = "${var.prefix}vault-unseal-keyring"
   location = var.gcp_region
   project  = var.gcp_project_id
 }
