@@ -6,14 +6,15 @@ import (
 	"path/filepath"
 
 	"github.com/google/uuid"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg"
 )
 
-const (
-	templateCacheDir = "/orchestrator/template"
-)
+var templateCacheDir = filepath.Join(pkg.OrchestratorBasePath, "template")
 
 type TemplateCacheFiles struct {
 	TemplateFiles
+
 	// CacheIdentifier is used to distinguish between each entry in the cache to prevent deleting the cache files when the template cache entry is being closed and a new one is being created.
 	CacheIdentifier string
 }

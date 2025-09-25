@@ -43,7 +43,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
-	timeout := instance.InstanceExpiration
+	timeout := instance.SandboxTimeoutDefault
 	if body.Timeout != nil {
 		timeout = time.Duration(*body.Timeout) * time.Second
 
@@ -55,17 +55,17 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	}
 
 	sandboxID = utils.ShortID(sandboxID)
-	sbxCache, err := a.orchestrator.GetSandbox(sandboxID, true)
+	sandboxData, err := a.orchestrator.GetSandbox(sandboxID, true)
 	if err == nil {
-		state := sbxCache.GetState()
-		switch state {
-		case instance.StatePaused, instance.StatePausing:
-			err = sbxCache.WaitForStop(ctx)
+		switch sandboxData.State {
+		case instance.StatePausing:
+			zap.L().Debug("Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
+			err = a.orchestrator.WaitForStateChange(ctx, sandboxID)
 			if err != nil {
-				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when resuming sandbox")
+				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error waiting for sandbox to pause")
 				return
 			}
-		case instance.StateKilling, instance.StateKilled:
+		case instance.StateKilling:
 			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found")
 			return
 		case instance.StateRunning:
@@ -73,11 +73,15 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 			zap.L().Debug("Sandbox is already running",
 				logger.WithSandboxID(sandboxID),
-				zap.Time("end_time", sbxCache.GetEndTime()),
-				zap.Time("start_time", sbxCache.StartTime),
-				zap.String("node_id", sbxCache.NodeID),
+				zap.Time("end_time", sandboxData.EndTime),
+				zap.Time("start_time", sandboxData.StartTime),
+				zap.String("node_id", sandboxData.NodeID),
 			)
 
+			return
+		default:
+			zap.L().Error("Sandbox is in an unknown state", logger.WithSandboxID(sandboxID), zap.String("state", string(sandboxData.State)))
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Sandbox is in an unknown state")
 			return
 		}
 	}

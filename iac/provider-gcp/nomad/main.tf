@@ -424,7 +424,6 @@ locals {
     bucket_name                      = var.fc_env_pipeline_bucket_name
     orchestrator_checksum            = data.external.orchestrator_checksum.result.hex
     logs_collector_address           = "http://localhost:${var.logs_proxy_port.port}"
-    logs_collector_public_ip         = var.logs_collector_public_ip
     otel_tracing_print               = var.otel_tracing_print
     template_bucket_name             = var.template_bucket_name
     otel_collector_grpc_endpoint     = "localhost:${var.otel_collector_grpc_port}"
@@ -434,7 +433,7 @@ locals {
     redis_url                        = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "" : "redis.service.consul:${var.redis_port.port}"
     redis_cluster_url                = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
     shared_chunk_cache_path          = var.shared_chunk_cache_path
-    vault_addr                       = "http://vault.service.consul:8200"
+    vault_addr                       = "http://vault-leader.service.consul:8200"
     vault_api_approle_creds          = data.google_secret_manager_secret_version.vault_api_approle.secret_data
     vault_orchestrator_approle_creds = data.google_secret_manager_secret_version.vault_orchestrator_approle.secret_data
   }
@@ -518,11 +517,10 @@ resource "nomad_job" "template_manager" {
     build_cache_bucket_name          = var.build_cache_bucket_name
     otel_collector_grpc_endpoint     = "localhost:${var.otel_collector_grpc_port}"
     logs_collector_address           = "http://localhost:${var.logs_proxy_port.port}"
-    logs_collector_public_ip         = var.logs_collector_public_ip
     orchestrator_services            = "template-manager"
     allow_sandbox_internet           = var.allow_sandbox_internet
     clickhouse_connection_string     = local.clickhouse_connection_string
-    vault_addr                       = "http://vault.service.consul:8200"
+    vault_addr                       = "http://vault-leader.service.consul:8200"
     vault_api_approle_creds          = data.google_secret_manager_secret_version.vault_api_approle.secret_data
     vault_orchestrator_approle_creds = data.google_secret_manager_secret_version.vault_orchestrator_approle.secret_data
 

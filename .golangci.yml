@@ -10,49 +10,67 @@ formatters:
         - standard
         - default
         - prefix(github.com/e2b-dev/infra)
+
 linters:
-  default: none
-  enable:
-    - asasalint
-    - asciicheck
-    - bidichk
-    - bodyclose
-    - containedctx
-    - contextcheck
-    - copyloopvar
-    - dogsled
-    - durationcheck
-    - errname
-    - errorlint
-    - exptostd
-    - gocritic
-    - govet
-    - iface
-    - importas
-    - inamedparam
-    - ineffassign
-    - intrange
-    - mirror
-    - misspell
-    - nilnesserr
-    - nolintlint
-    - reassign
-    - recvcheck
-    - revive
-    - rowserrcheck
-    - spancheck
-    - sqlclosecheck
-    - staticcheck
-    - testifylint
-    - thelper
-    - tparallel
-    - unconvert
-    - unused
-    - usestdlibvars
-    - usetesting
-    - wastedassign
-    - whitespace
-    - zerologlint
+  default: all
+  disable:
+    # these are in other PRs already
+    - forcetypeassert
+    - noctx
+    - protogetter
+
+    # todo: determine if we want this
+    - canonicalheader
+    - cyclop
+    - depguard
+    - dupl
+    - dupword
+    - errcheck
+    - errchkjson
+    - exhaustive
+    - exhaustruct
+    - forbidigo
+    - funcorder
+    - funlen
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - goconst
+    - gocyclo
+    - godot
+    - godox
+    - gomoddirectives
+    - gomodguard
+    - gosec
+    - ireturn
+    - lll
+    - maintidx
+    - mnd
+    - nestif
+    - nilnil
+    - nlreturn
+    - noinlineerr
+    - nonamedreturns
+    - nosprintfhostport
+    - paralleltest
+    - perfsprint
+    - prealloc
+    - predeclared
+    - tagliatelle
+    - testpackage
+    - unparam
+    - varnamelen
+    - wrapcheck
+
+    # todo: enable these
+    - err113
+
+    # deprecated, remove when golangci-lint makes us
+    - wsl
+    - wsl_v5
+
+    # disabled intentionally
+
   settings:
     gocritic:
       disabled-checks:
@@ -66,13 +84,12 @@ linters:
         - { disabled: true, name: blank-imports }
         - { disabled: true, name: bool-literal-in-expr }
         - { disabled: true, name: cognitive-complexity }
-        - { disabled: true, name: comment-spacings   }
+        - { disabled: true, name: comment-spacings }
         - { disabled: true, name: confusing-naming }
         - { disabled: true, name: confusing-results }
         - { disabled: true, name: context-as-argument }
         - { disabled: true, name: cyclomatic }
         - { disabled: true, name: deep-exit }
-        - { disabled: true, name: defer }  # todo: enable this
         - { disabled: true, name: early-return }
         - { disabled: true, name: enforce-switch-style }
         - { disabled: true, name: exported }
@@ -83,7 +100,6 @@ linters:
         - { disabled: true, name: if-return }
         - { disabled: true, name: import-alias-naming }
         - { disabled: true, name: import-shadowing }
-        - { disabled: true, name: indent-error-flow }  #  todo: enable this
         - { disabled: true, name: line-length-limit }
         - { disabled: true, name: max-control-nesting }
         - { disabled: true, name: max-public-structs }

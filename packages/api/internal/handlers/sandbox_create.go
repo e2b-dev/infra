@@ -120,7 +120,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		envVars = *body.EnvVars
 	}
 
-	timeout := instance.InstanceExpiration
+	timeout := instance.SandboxTimeoutDefault
 	if body.Timeout != nil {
 		timeout = time.Duration(*body.Timeout) * time.Second
 
@@ -130,7 +130,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 	}
 
-	autoPause := instance.InstanceAutoPauseDefault
+	autoPause := instance.AutoPauseDefault
 	if body.AutoPause != nil {
 		autoPause = *body.AutoPause
 	}

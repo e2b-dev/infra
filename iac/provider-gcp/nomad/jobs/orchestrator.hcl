@@ -65,7 +65,6 @@ EOT
         CONSUL_TOKEN                 = "${consul_acl_token}"
         OTEL_TRACING_PRINT           = "${otel_tracing_print}"
         LOGS_COLLECTOR_ADDRESS       = "${logs_collector_address}"
-        LOGS_COLLECTOR_PUBLIC_IP     = "${logs_collector_public_ip}"
         ENVIRONMENT                  = "${environment}"
         ENVD_TIMEOUT                 = "${envd_timeout}"
         TEMPLATE_BUCKET_NAME         = "${template_bucket_name}"

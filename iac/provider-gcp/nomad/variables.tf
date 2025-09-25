@@ -84,10 +84,6 @@ variable "sandbox_access_token_hash_seed" {
   type = string
 }
 
-variable "logs_collector_public_ip" {
-  type = string
-}
-
 variable "environment" {
   type = string
 }
