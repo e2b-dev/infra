@@ -44,6 +44,12 @@ job "client-proxy" {
       name = "proxy"
       port = "${proxy_port_name}"
 
+      tags = [
+        "traefik.enable=true",
+        "traefik.http.routers.edge_proxy.rule=HostRegexp(`^.+\\.e2b-jirka\\.dev$`)",
+        "traefik.http.routers.edge_proxy.priority=1" // make it the lowest priority router as it will catch all requests
+      ]
+
       check {
         type     = "http"
         name     = "health"
@@ -58,6 +64,12 @@ job "client-proxy" {
       name = "edge-api"
       port = "${api_port}"
 
+      tags = [
+        "traefik.enable=true",
+        "traefik.http.routers.edge_api.rule=Host(`edge.e2b-jirka.dev`)",
+        "traefik.http.routers.edge_api.priority=11"
+      ]
+
       check {
         type     = "http"
         name     = "health"
@@ -68,7 +80,6 @@ job "client-proxy" {
       }
     }
 
-%{ if update_stanza }
     # An update stanza to enable rolling updates of the service
     update {
       # The number of extra instances to run during the update
@@ -84,7 +95,6 @@ job "client-proxy" {
       # Deadline for the update to be completed
       progress_deadline = "24h"
     }
-%{ endif }
 
     task "start" {
       driver = "docker"
@@ -137,9 +147,8 @@ job "client-proxy" {
       }
 
       config {
-        network_mode = "host"
-        image        = "${image_name}"
-        ports        = ["${proxy_port_name}", "${api_port_name}"]
+        image = "${image_name}"
+        ports = ["${proxy_port_name}", "${api_port_name}"]
       }
     }
   }
