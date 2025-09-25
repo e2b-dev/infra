@@ -430,6 +430,80 @@ variable "filestore_cache_capacity_gb" {
   default     = 0
 }
 
+variable "vault_server_count" {
+  type        = number
+  description = "Number of Vault server instances"
+  default     = 3
+}
+
+variable "vault_version" {
+  type        = string
+  description = "HashiCorp Vault version"
+  default     = "1.20.3"
+}
+
+variable "vault_port" {
+  type = object({
+    name = string
+    port = number
+  })
+  description = "Vault API port configuration"
+  default = {
+    name = "vault"
+    port = 8200
+  }
+}
+
+variable "vault_cluster_port" {
+  type = object({
+    name = string
+    port = number
+  })
+  description = "Vault cluster port configuration"
+  default = {
+    name = "vault_cluster"
+    port = 8201
+  }
+}
+
+variable "vault_resources" {
+  type = object({
+    memory     = number
+    memory_max = number
+    cpu        = number
+  })
+  description = "Resource allocation for Vault containers"
+  default = {
+    memory     = 4096
+    memory_max = 4096
+    cpu        = 4000
+  }
+}
+
+variable "vault_kms_keyring" {
+  type        = string
+  description = "GCP KMS keyring name for Vault auto-unseal"
+  default     = ""
+}
+
+variable "vault_kms_crypto_key" {
+  type        = string
+  description = "GCP KMS crypto key name for Vault auto-unseal"
+  default     = ""
+}
+
+variable "vault_api_approle_secret_id" {
+  type        = string
+  description = "GCP Secret Manager secret ID for Vault API AppRole credentials"
+  default     = ""
+}
+
+variable "vault_orchestrator_approle_secret_id" {
+  type        = string
+  description = "GCP Secret Manager secret ID for Vault Orchestrator AppRole credentials"
+  default     = ""
+}
+
 variable "min_cpu_platform" {
   type    = string
   default = "Intel Skylake"
@@ -445,4 +519,22 @@ variable "orchestrator_base_hugepages_percentage" {
   description = "The percentage of memory to use for preallocated hugepages."
   type        = number
   default     = 80
+}
+
+variable "vault_spanner_instance_name" {
+  type        = string
+  description = "Name of the Spanner instance for Vault backend"
+  default     = "vault-spanner"
+}
+
+variable "vault_spanner_database_name" {
+  type        = string
+  description = "Name of the Spanner database for Vault backend"
+  default     = "vault-data"
+}
+
+variable "vault_spanner_processing_units" {
+  type        = number
+  description = "Number of processing units for the Spanner instance"
+  default     = 100
 }

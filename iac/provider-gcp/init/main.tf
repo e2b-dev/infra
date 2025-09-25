@@ -1,7 +1,23 @@
 
+terraform {
+  required_providers {
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
+  }
+}
+
 # Enable Secrets Manager API
 resource "google_project_service" "secrets_manager_api" {
   service = "secretmanager.googleapis.com"
+
+  disable_on_destroy = false
+}
+
+# Enable Cloud KMS API
+resource "google_project_service" "cloudkms_api" {
+  service = "cloudkms.googleapis.com"
 
   disable_on_destroy = false
 }
@@ -30,6 +46,14 @@ resource "google_project_service" "artifact_registry_api" {
   disable_on_destroy = false
 }
 
+# Enable Spanner API
+resource "google_project_service" "spanner_api" {
+  #project = var.gcp_project_id
+  service = "spanner.googleapis.com"
+
+  disable_on_destroy = false
+}
+
 # Enable OS Config API
 resource "google_project_service" "os_config_api" {
   #project = var.gcp_project_id
@@ -50,14 +74,6 @@ resource "google_project_service" "monitoring_api" {
 resource "google_project_service" "logging_api" {
   #project = var.gcp_project_id
   service = "logging.googleapis.com"
-
-  disable_on_destroy = false
-}
-
-# Enable Filestore API
-resource "google_project_service" "filestore_api" {
-  #project = var.gcp_project_id
-  service = "file.googleapis.com"
 
   disable_on_destroy = false
 }
@@ -245,4 +261,260 @@ resource "google_secret_manager_secret_version" "notification_email_value" {
   secret = google_secret_manager_secret.notification_email.id
 
   secret_data = "placeholder@example.com"
+}
+
+# TLS Private Key for Vault
+resource "tls_private_key" "vault" {
+  algorithm = "RSA"
+  rsa_bits  = 2048
+}
+
+# TLS Self-Signed Certificate for Vault
+resource "tls_self_signed_cert" "vault" {
+  private_key_pem = tls_private_key.vault.private_key_pem
+
+  subject {
+    common_name  = "vault.service.consul"
+    organization = "e2b.dev"
+  }
+
+  validity_period_hours = 87600 # 10 years
+
+  allowed_uses = [
+    "key_encipherment",
+    "digital_signature",
+    "server_auth",
+  ]
+
+  dns_names = [
+    "vault.service.consul",
+    "localhost",
+    "127.0.0.1",
+  ]
+
+  ip_addresses = [
+    "127.0.0.1",
+  ]
+}
+
+# GCP KMS resources for Vault auto-unseal
+resource "google_kms_key_ring" "vault" {
+  name     = "${var.prefix}vault-keyring"
+  location = var.gcp_region
+  project  = var.gcp_project_id
+}
+
+resource "google_kms_crypto_key" "vault_unseal" {
+  name            = "${var.prefix}vault-unseal-key"
+  key_ring        = google_kms_key_ring.vault.id
+  rotation_period = "7776000s" # 90 days
+  # https://developer.hashicorp.com/vault/docs/configuration/seal/gcpckms#key-rotation
+  # Auto rotating kms key is fine, just *never* delete old versions or you will break the vault
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# Get the default compute service account
+data "google_compute_default_service_account" "default" {
+  project = var.gcp_project_id
+}
+
+# Grant the compute service account permissions to use the KMS key
+resource "google_kms_crypto_key_iam_member" "vault_unseal" {
+  crypto_key_id = google_kms_crypto_key.vault_unseal.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = "serviceAccount:${data.google_compute_default_service_account.default.email}"
+}
+
+# Grant the compute service account permissions to view the KMS key
+resource "google_kms_crypto_key_iam_member" "vault_unseal_viewer" {
+  crypto_key_id = google_kms_crypto_key.vault_unseal.id
+  role          = "roles/cloudkms.viewer"
+  member        = "serviceAccount:${data.google_compute_default_service_account.default.email}"
+}
+
+# Grant the infra instances service account permissions to use the KMS key
+resource "google_kms_crypto_key_iam_member" "vault_unseal_infra_instances" {
+  crypto_key_id = google_kms_crypto_key.vault_unseal.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+}
+
+# Grant the infra instances service account permissions to view the KMS key
+resource "google_kms_crypto_key_iam_member" "vault_unseal_infra_instances_viewer" {
+  crypto_key_id = google_kms_crypto_key.vault_unseal.id
+  role          = "roles/cloudkms.viewer"
+  member        = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+}
+
+# Secret for storing Vault root keys
+resource "google_secret_manager_secret" "vault_root_key" {
+  secret_id = "${var.prefix}vault-root-key"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "vault_root_key" {
+  secret      = google_secret_manager_secret.vault_root_key.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+
+}
+
+# Secret for storing Vault recovery keys
+resource "google_secret_manager_secret" "vault_recovery_keys" {
+  secret_id = "${var.prefix}vault-recovery-keys"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "vault_recovery_keys" {
+  secret = google_secret_manager_secret.vault_recovery_keys.name
+  secret_data = jsonencode({
+    recovery_keys = []
+  })
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+# Secret for storing Vault API service AppRole credentials
+resource "google_secret_manager_secret" "vault_api_approle" {
+  secret_id = "${var.prefix}vault-api-approle"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "vault_api_approle" {
+  secret = google_secret_manager_secret.vault_api_approle.name
+  secret_data = jsonencode({
+    role_id     = ""
+    secret_id   = ""
+    role        = "api-service"
+    permissions = ["write", "delete"]
+  })
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+# Secret for storing Vault Orchestrator service AppRole credentials
+resource "google_secret_manager_secret" "vault_orchestrator_approle" {
+  secret_id = "${var.prefix}vault-orchestrator-approle"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "vault_orchestrator_approle" {
+  secret = google_secret_manager_secret.vault_orchestrator_approle.name
+  secret_data = jsonencode({
+    role_id     = ""
+    secret_id   = ""
+    role        = "orchestrator-service"
+    permissions = ["read"]
+  })
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+# Secret for storing Vault TLS server certificate
+resource "google_secret_manager_secret" "vault_tls_cert" {
+  secret_id = "${var.prefix}vault-tls-cert"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "vault_tls_cert" {
+  secret      = google_secret_manager_secret.vault_tls_cert.name
+  secret_data = tls_self_signed_cert.vault.cert_pem
+}
+
+# Secret for storing Vault TLS private key
+resource "google_secret_manager_secret" "vault_tls_key" {
+  secret_id = "${var.prefix}vault-tls-key"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "vault_tls_key" {
+  secret      = google_secret_manager_secret.vault_tls_key.name
+  secret_data = tls_private_key.vault.private_key_pem
+}
+
+# Secret for storing Vault TLS root CA certificate
+resource "google_secret_manager_secret" "vault_tls_ca" {
+  secret_id = "${var.prefix}vault-tls-ca"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "vault_tls_ca" {
+  secret      = google_secret_manager_secret.vault_tls_ca.name
+  secret_data = tls_self_signed_cert.vault.cert_pem
+}
+
+# Grant infra instances service account write access to Vault secrets
+resource "google_secret_manager_secret_iam_member" "vault_root_key_access" {
+  secret_id = google_secret_manager_secret.vault_root_key.secret_id
+  role      = "roles/secretmanager.secretVersionAdder"
+  member    = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "vault_recovery_keys_access" {
+  secret_id = google_secret_manager_secret.vault_recovery_keys.secret_id
+  role      = "roles/secretmanager.secretVersionAdder"
+  member    = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "vault_api_approle_access" {
+  secret_id = google_secret_manager_secret.vault_api_approle.secret_id
+  role      = "roles/secretmanager.secretVersionAdder"
+  member    = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "vault_orchestrator_approle_access" {
+  secret_id = google_secret_manager_secret.vault_orchestrator_approle.secret_id
+  role      = "roles/secretmanager.secretVersionAdder"
+  member    = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "vault_tls_cert_access" {
+  secret_id = google_secret_manager_secret.vault_tls_cert.secret_id
+  role      = "roles/secretmanager.secretVersionAdder"
+  member    = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "vault_tls_key_access" {
+  secret_id = google_secret_manager_secret.vault_tls_key.secret_id
+  role      = "roles/secretmanager.secretVersionAdder"
+  member    = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "vault_tls_ca_access" {
+  secret_id = google_secret_manager_secret.vault_tls_ca.secret_id
+  role      = "roles/secretmanager.secretVersionAdder"
+  member    = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
 }

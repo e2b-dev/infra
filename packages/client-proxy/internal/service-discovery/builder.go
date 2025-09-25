@@ -76,7 +76,7 @@ func createDnsProvider(ctx context.Context, prefix string, port int, logger *zap
 }
 
 func createK8sProvider(ctx context.Context, prefix string, port int, logger *zap.Logger) (ServiceDiscoveryAdapter, error) {
-	podNamespaceEnv := fmt.Sprintf("%s_POD_NAMESPACE", prefix)
+	pod Env := fmt.Sprintf("%s_POD_NAMESPACE", prefix)
 	podNamespace := os.Getenv(podNamespaceEnv)
 	if podNamespace == "" {
 		return nil, fmt.Errorf("missing %s environment variable", podNamespaceEnv)

@@ -162,6 +162,20 @@ module "nomad" {
   otel_tracing_print            = var.otel_tracing_print
   orchestration_repository_name = module.init.orchestration_repository_name
 
+  # Vault
+  vault_version                        = var.vault_version
+  vault_port                           = var.vault_port
+  vault_cluster_port                   = var.vault_cluster_port
+  vault_resources                      = var.vault_resources
+  vault_kms_keyring                    = module.init.vault_kms_keyring
+  vault_kms_crypto_key                 = module.init.vault_kms_crypto_key
+  vault_api_approle_secret_id          = module.init.vault_api_approle_secret_id
+  vault_orchestrator_approle_secret_id = module.init.vault_orchestrator_approle_secret_id
+  vault_tls_cert_secret_id             = module.init.vault_tls_cert_secret_id
+  vault_tls_key_secret_id              = module.init.vault_tls_key_secret_id
+  vault_tls_ca_secret_id               = module.init.vault_tls_ca_secret_id
+  vault_spanner_database_path          = "projects/${var.gcp_project_id}/instances/${var.prefix}${var.vault_spanner_instance_name}/databases/${var.vault_spanner_database_name}"
+
   # Clickhouse
   clickhouse_resources_cpu_count   = var.clickhouse_resources_cpu_count
   clickhouse_resources_memory_mb   = var.clickhouse_resources_memory_mb

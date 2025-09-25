@@ -341,3 +341,97 @@ variable "filestore_cache_max_disk_usage_target" {
   description = "The maximum disk usage target for the Filestore cache in percent"
   default     = 90
 }
+
+
+variable "vault_server_count" {
+  type        = number
+  description = "Number of Vault server instances"
+  default     = 3
+}
+
+variable "vault_version" {
+  type        = string
+  description = "HashiCorp Vault version"
+  default     = "1.20.3"
+
+}
+
+variable "vault_port" {
+  type = object({
+    name = string
+    port = number
+  })
+  description = "Vault API port configuration"
+  default = {
+    name = "vault"
+    port = 8200
+  }
+}
+
+variable "vault_cluster_port" {
+  type = object({
+    name = string
+    port = number
+  })
+  description = "Vault cluster port configuration"
+  default = {
+    name = "vault_cluster"
+    port = 8201
+  }
+}
+
+variable "vault_resources" {
+  type = object({
+    memory     = number
+    memory_max = number
+    cpu        = number
+  })
+  description = "Resource allocation for Vault containers"
+  default = {
+    memory     = 2048
+    memory_max = 4096
+    cpu        = 2000
+  }
+}
+
+variable "vault_kms_keyring" {
+  type        = string
+  description = "GCP KMS keyring name for Vault auto-unseal"
+  default     = ""
+}
+
+variable "vault_kms_crypto_key" {
+  type        = string
+  description = "GCP KMS crypto key name for Vault auto-unseal"
+  default     = ""
+}
+
+variable "vault_api_approle_secret_id" {
+  type        = string
+  description = "GCP Secret Manager secret ID for Vault API AppRole credentials"
+}
+
+variable "vault_orchestrator_approle_secret_id" {
+  type        = string
+  description = "GCP Secret Manager secret ID for Vault Orchestrator AppRole credentials"
+}
+
+variable "vault_tls_cert_secret_id" {
+  type        = string
+  description = "GCP Secret Manager secret ID for Vault TLS certificate"
+}
+
+variable "vault_tls_key_secret_id" {
+  type        = string
+  description = "GCP Secret Manager secret ID for Vault TLS private key"
+}
+
+variable "vault_tls_ca_secret_id" {
+  type        = string
+  description = "GCP Secret Manager secret ID for Vault TLS CA certificate"
+}
+
+variable "vault_spanner_database_path" {
+  type        = string
+  description = "Full path to the Spanner database for Vault backend"
+}

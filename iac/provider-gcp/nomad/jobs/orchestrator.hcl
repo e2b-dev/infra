@@ -72,6 +72,9 @@ EOT
         ALLOW_SANDBOX_INTERNET       = "${allow_sandbox_internet}"
         SHARED_CHUNK_CACHE_PATH    = "${shared_chunk_cache_path}"
         CLICKHOUSE_CONNECTION_STRING = "${clickhouse_connection_string}"
+        VAULT_ADDR                   = "${vault_addr}"
+        VAULT_APPROLE_ROLE_ID        = "${jsondecode(vault_orchestrator_approle_creds).role_id}"
+        VAULT_APPROLE_SECRET_ID      = "${jsondecode(vault_orchestrator_approle_creds).secret_id}"
         REDIS_URL                    = "${redis_url}"
         REDIS_CLUSTER_URL            = "${redis_cluster_url}"
 

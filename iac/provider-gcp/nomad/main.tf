@@ -47,6 +47,14 @@ data "google_secret_manager_secret_version" "redis_url" {
   secret = var.redis_url_secret_version.secret
 }
 
+data "google_secret_manager_secret_version" "vault_api_approle" {
+  secret = var.vault_api_approle_secret_id
+}
+
+data "google_secret_manager_secret_version" "vault_orchestrator_approle" {
+  secret = var.vault_orchestrator_approle_secret_id
+}
+
 
 data "docker_registry_image" "api_image" {
   name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/api:latest"
@@ -104,6 +112,8 @@ resource "nomad_job" "api" {
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
     db_migrator_docker_image       = docker_image.db_migrator_image.repo_digest
     launch_darkly_api_key          = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+    vault_addr                     = "http://vault.service.consul:8200"
+    vault_api_approle_creds        = data.google_secret_manager_secret_version.vault_api_approle.secret_data
 
     local_cluster_endpoint = "edge-api.service.consul:${var.edge_api_port.port}"
     local_cluster_token    = var.edge_api_secret
@@ -410,19 +420,22 @@ locals {
     environment      = var.environment
     consul_acl_token = var.consul_acl_token_secret
 
-    envd_timeout                 = var.envd_timeout
-    bucket_name                  = var.fc_env_pipeline_bucket_name
-    orchestrator_checksum        = data.external.orchestrator_checksum.result.hex
-    logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
-    otel_tracing_print           = var.otel_tracing_print
-    template_bucket_name         = var.template_bucket_name
-    otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
-    allow_sandbox_internet       = var.allow_sandbox_internet
-    launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
-    clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
-    redis_url                    = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "" : "redis.service.consul:${var.redis_port.port}"
-    redis_cluster_url            = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
-    shared_chunk_cache_path      = var.shared_chunk_cache_path
+    envd_timeout                     = var.envd_timeout
+    bucket_name                      = var.fc_env_pipeline_bucket_name
+    orchestrator_checksum            = data.external.orchestrator_checksum.result.hex
+    logs_collector_address           = "http://localhost:${var.logs_proxy_port.port}"
+    otel_tracing_print               = var.otel_tracing_print
+    template_bucket_name             = var.template_bucket_name
+    otel_collector_grpc_endpoint     = "localhost:${var.otel_collector_grpc_port}"
+    allow_sandbox_internet           = var.allow_sandbox_internet
+    launch_darkly_api_key            = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+    clickhouse_connection_string     = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
+    redis_url                        = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "" : "redis.service.consul:${var.redis_port.port}"
+    redis_cluster_url                = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
+    shared_chunk_cache_path          = var.shared_chunk_cache_path
+    vault_addr                       = "http://vault-leader.service.consul:8200"
+    vault_api_approle_creds          = data.google_secret_manager_secret_version.vault_api_approle.secret_data
+    vault_orchestrator_approle_creds = data.google_secret_manager_secret_version.vault_orchestrator_approle.secret_data
   }
 
   orchestrator_job_check = templatefile("${path.module}/jobs/orchestrator.hcl", merge(
@@ -494,19 +507,22 @@ resource "nomad_job" "template_manager" {
     environment      = var.environment
     consul_acl_token = var.consul_acl_token_secret
 
-    api_secret                   = var.api_secret
-    bucket_name                  = var.fc_env_pipeline_bucket_name
-    docker_registry              = var.custom_envs_repository_name
-    google_service_account_key   = var.google_service_account_key
-    template_manager_checksum    = data.external.template_manager.result.hex
-    otel_tracing_print           = var.otel_tracing_print
-    template_bucket_name         = var.template_bucket_name
-    build_cache_bucket_name      = var.build_cache_bucket_name
-    otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
-    logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
-    orchestrator_services        = "template-manager"
-    allow_sandbox_internet       = var.allow_sandbox_internet
-    clickhouse_connection_string = local.clickhouse_connection_string
+    api_secret                       = var.api_secret
+    bucket_name                      = var.fc_env_pipeline_bucket_name
+    docker_registry                  = var.custom_envs_repository_name
+    google_service_account_key       = var.google_service_account_key
+    template_manager_checksum        = data.external.template_manager.result.hex
+    otel_tracing_print               = var.otel_tracing_print
+    template_bucket_name             = var.template_bucket_name
+    build_cache_bucket_name          = var.build_cache_bucket_name
+    otel_collector_grpc_endpoint     = "localhost:${var.otel_collector_grpc_port}"
+    logs_collector_address           = "http://localhost:${var.logs_proxy_port.port}"
+    orchestrator_services            = "template-manager"
+    allow_sandbox_internet           = var.allow_sandbox_internet
+    clickhouse_connection_string     = local.clickhouse_connection_string
+    vault_addr                       = "http://vault-leader.service.consul:8200"
+    vault_api_approle_creds          = data.google_secret_manager_secret_version.vault_api_approle.secret_data
+    vault_orchestrator_approle_creds = data.google_secret_manager_secret_version.vault_orchestrator_approle.secret_data
 
     # For now we DISABLE the shared chunk cache in the template manager
     shared_chunk_cache_path = ""
@@ -689,3 +705,65 @@ resource "nomad_job" "clickhouse_migrator" {
     clickhouse_connection_string = local.clickhouse_connection_string
   })
 }
+
+# Vault TLS Certificate Data Sources
+data "google_secret_manager_secret_version" "vault_tls_cert" {
+  secret = var.vault_tls_cert_secret_id
+}
+
+data "google_secret_manager_secret_version" "vault_tls_key" {
+  secret = var.vault_tls_key_secret_id
+}
+
+data "google_secret_manager_secret_version" "vault_tls_ca" {
+  secret = var.vault_tls_ca_secret_id
+}
+
+
+
+# Vault Configuration
+locals {
+  vault_config = templatefile("${path.module}/configs/vault/config.hcl", {
+    vault_port            = var.vault_port.port
+    vault_cluster_port    = var.vault_cluster_port.port
+    consul_acl_token      = var.consul_acl_token_secret
+    gcp_project_id        = var.gcp_project_id
+    gcp_region            = var.gcp_region
+    kms_keyring           = var.vault_kms_keyring
+    kms_crypto_key        = var.vault_kms_crypto_key
+    spanner_database_path = var.vault_spanner_database_path
+  })
+}
+
+resource "nomad_job" "vault" {
+  count = var.vault_server_count
+
+  jobspec = templatefile("${path.module}/jobs/vault.hcl", {
+    gcp_zone           = var.gcp_zone
+    gcp_project_id     = var.gcp_project_id
+    prefix             = var.prefix
+    vault_server_count = var.vault_server_count
+    vault_port         = var.vault_port.port
+    vault_cluster_port = var.vault_cluster_port.port
+    vault_version      = var.vault_version
+    init_vault_script  = templatefile("${path.module}/configs/vault/init-vault.sh", {})
+    memory             = var.vault_resources.memory
+    memory_max         = var.vault_resources.memory_max
+    cpu                = var.vault_resources.cpu
+    vault_config       = local.vault_config
+    consul_acl_token   = var.consul_acl_token_secret
+    vault_tls_cert     = data.google_secret_manager_secret_version.vault_tls_cert.secret_data
+    vault_tls_key      = data.google_secret_manager_secret_version.vault_tls_key.secret_data
+    vault_tls_ca       = data.google_secret_manager_secret_version.vault_tls_ca.secret_data
+
+    otel_agent_config = templatefile("${path.module}/configs/vault/otel-agent.yaml", {
+      vault_port                   = var.vault_port.port
+      otel_collector_grpc_port     = var.otel_collector_grpc_port
+      grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
+      grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
+      grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
+    })
+  })
+
+}
+
