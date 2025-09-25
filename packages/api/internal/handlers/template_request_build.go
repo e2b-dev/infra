@@ -426,7 +426,7 @@ func findTeamAndTier(teams []queries.GetTeamsWithUsersTeamsWithTierRow, teamID *
 	return nil, nil, fmt.Errorf("default team not found")
 }
 
-func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateID, new bool) *api.Template {
+func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateID, isNew bool) *api.Template {
 	ctx := c.Request.Context()
 
 	body, err := utils.ParseBody[api.TemplateBuildRequest](ctx, c)
@@ -474,7 +474,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		ClusterID:     utils.WithClusterFallback(team.ClusterID),
 		BuilderNodeID: builderNodeID,
 		TemplateID:    templateID,
-		IsNew:         new,
+		IsNew:         isNew,
 		UserID:        userID,
 		Team:          team,
 		Tier:          tier,

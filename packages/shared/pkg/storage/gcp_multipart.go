@@ -52,13 +52,13 @@ func createRetryableClient(config RetryConfig) *retryablehttp.Client {
 	client.RetryWaitMax = config.MaxBackoff
 
 	// Custom backoff function with full jitter to avoid thundering herd
-	client.Backoff = func(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+	client.Backoff = func(start, maxBackoff time.Duration, attemptNum int, resp *http.Response) time.Duration {
 		// Calculate exponential backoff
-		backoff := min
+		backoff := start
 		for range attemptNum {
 			backoff = time.Duration(float64(backoff) * config.BackoffMultiplier)
-			if backoff > max {
-				backoff = max
+			if backoff > maxBackoff {
+				backoff = maxBackoff
 				break
 			}
 		}
