@@ -6,7 +6,7 @@ This package deploys HashiCorp Vault 1.20.3 on Nomad with Google Spanner as the 
 
 Vault is deployed as a highly available cluster with the following features:
 - **Version**: 1.20.3
-- **Storage Backend**: GCS
+- **Storage Backend**: Spanner
 - **High Availability**: 3 instances, 1 is always the active node (reachable through `vault-leader` service)
 - **TLS**: Self-signed, created through TLS provider + stored in GCP Secret Manager
 - **Auto-Unseal**: GCP Cloud KMS integration for automatic unsealing
