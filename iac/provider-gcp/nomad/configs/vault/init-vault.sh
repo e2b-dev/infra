@@ -1,11 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-set -e
+set -euo pipefail
+set -x
 
 # Configuration
-VAULT_ADDR="${VAULT_ADDR:-https://localhost:8200}"
-GCP_PROJECT="${GCP_PROJECT}"
-SECRET_PREFIX="${SECRET_PREFIX:-e2b-}"
+VAULT_ADDR="$VAULT_ADDR"
+GCP_PROJECT="$GCP_PROJECT"
+SECRET_PREFIX="$SECRET_PREFIX"
 VAULT_INIT_OUTPUT="/tmp/vault-init.json"
 
 # Colors for output
@@ -15,30 +16,29 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 function print_usage {
-  echo "Usage: $0 [OPTIONS]"
+  echo "Usage: $0"
   echo ""
   echo "Initialize HashiCorp Vault with GCP KMS auto-unseal"
   echo ""
-  echo "Options:"
-  echo "  --project       GCP project ID (required)"
-  echo "  --prefix        Prefix for GCP Secret Manager secrets (required)"
-  echo "  --vault-addr    Vault address (default: http://vault.service.consul:8200)"
-  echo "  --help          Show this help message"
+  echo "Required environment variables:"
+  echo "  GCP_PROJECT     GCP project ID"
+  echo "  SECRET_PREFIX   Prefix for GCP Secret Manager secrets"
+  echo "  VAULT_ADDR      Vault address (default: http://vault.service.consul:8200)"
   echo ""
   echo "Example:"
-  echo "  $0 --project my-project --prefix prod-"
+  echo "  GCP_PROJECT=my-project SECRET_PREFIX=prod- $0"
 }
 
 function log_info {
-  echo -e "${GREEN}[INFO]${NC} $1"
+  echo -e "$GREEN[INFO]$NC $1"
 }
 
 function log_warn {
-  echo -e "${YELLOW}[WARN]${NC} $1"
+  echo -e "$YELLOW[WARN]$NC $1"
 }
 
 function log_error {
-  echo -e "${RED}[ERROR]${NC} $1"
+  echo -e "$RED[ERROR]$NC $1"
 }
 
 function check_vault_status {
@@ -54,20 +54,13 @@ function save_to_secret_manager {
   local secret_name="$1"
   local secret_data="$2"
 
-  log_info "Saving data to Secret Manager: ${secret_name}"
+  log_info "Saving data to Secret Manager: $secret_name"
 
-  echo "$secret_data" | gcloud secrets versions add "${secret_name}" \
+  echo "$secret_data" | gcloud secrets versions add "$secret_name" \
     --data-file=- \
-    --project="${GCP_PROJECT}"
+    --project="$GCP_PROJECT"
 }
 
-function get_from_secret_manager {
-  local secret_name="$1"
-
-  gcloud secrets versions access latest \
-    --secret="${secret_name}" \
-    --project="${GCP_PROJECT}" 2>/dev/null || echo ""
-}
 
 function initialize_vault {
   log_info "Initializing Vault with GCP KMS auto-unseal..."
@@ -77,18 +70,18 @@ function initialize_vault {
   vault operator init \
     -recovery-shares=5 \
     -recovery-threshold=3 \
-    -format=json > "${VAULT_INIT_OUTPUT}"
+    -format=json > "$VAULT_INIT_OUTPUT"
 
   if [ $? -eq 0 ]; then
     log_info "Vault initialized successfully with auto-unseal"
 
     # Extract recovery keys and root token
-    local recovery_keys=$(jq -r '.recovery_keys_b64[]' "${VAULT_INIT_OUTPUT}" | tr '\n' ',' | sed 's/,$//')
-    local root_token=$(jq -r '.root_token' "${VAULT_INIT_OUTPUT}")
+    local recovery_keys=$(jq -r '.recovery_keys_b64[]' "$VAULT_INIT_OUTPUT" | tr '\n' ',' | sed 's/,$//')
+    local root_token=$(jq -r '.root_token' "$VAULT_INIT_OUTPUT")
 
     # Save root token to vault-root-key secret
-    save_to_secret_manager "${SECRET_PREFIX}vault-root-key" "$root_token"
-
+    save_to_secret_manager $SECRET_PREFIX"vault-root-key" "$root_token"
+  
     # Save recovery keys to vault-recovery-keys secret in the expected format
     local recovery_keys_data=$(jq -n \
       --arg keys "$recovery_keys" \
@@ -99,11 +92,13 @@ function initialize_vault {
         initialized_at: now | todate
       }')
 
-    save_to_secret_manager "${SECRET_PREFIX}vault-recovery-keys" "$recovery_keys_data"
+    save_to_secret_manager $SECRET_PREFIX"vault-recovery-keys" "$recovery_keys_data"
 
     # Clean up temp file
-    rm -f "${VAULT_INIT_OUTPUT}"
+    rm -f "$VAULT_INIT_OUTPUT"
 
+    # Return the root token
+    echo "$root_token"
     return 0
   else
     log_error "Failed to initialize Vault"
@@ -193,9 +188,9 @@ EOF
       permissions: ["write", "delete"]
     }')
 
-  save_to_secret_manager "${SECRET_PREFIX}vault-api-approle" "$api_creds"
+  save_to_secret_manager $SECRET_PREFIX"vault-api-approle" "$api_creds"
 
-  log_info "API service AppRole created and saved to ${SECRET_PREFIX}vault-api-approle"
+  log_info "API service AppRole created and saved to $SECRET_PREFIX.vault-api-approle"
 }
 
 function create_orchestrator_approle {
@@ -242,19 +237,18 @@ EOF
       permissions: ["read"]
     }')
 
-  save_to_secret_manager "${SECRET_PREFIX}vault-orchestrator-approle" "$orchestrator_creds"
+  save_to_secret_manager "$SECRET_PREFIXvault-orchestrator-approle" "$orchestrator_creds"
 
-  log_info "Orchestrator service AppRole created and saved to ${SECRET_PREFIX}vault-orchestrator-approle"
+  log_info "Orchestrator service AppRole created and saved to $SECRET_PREFIXvault-orchestrator-approle"
 }
 
 function configure_vault_approles {
+  local root_token="$1"
+  
   log_info "Configuring Vault AppRoles for services..."
 
-  # Get root token from Secret Manager
-  local root_token=$(get_from_secret_manager "${SECRET_PREFIX}vault-root-key")
-
   if [ -z "$root_token" ]; then
-    log_error "Root token not found in Secret Manager"
+    log_error "Root token is required"
     return 1
   fi
 
@@ -275,36 +269,9 @@ function configure_vault_approles {
 }
 
 function main {
-  # Parse arguments
-  while [[ $# -gt 0 ]]; do
-    case $1 in
-      --project)
-        GCP_PROJECT="$2"
-        shift 2
-        ;;
-      --prefix)
-        SECRET_PREFIX="$2"
-        shift 2
-        ;;
-      --vault-addr)
-        VAULT_ADDR="$2"
-        shift 2
-        ;;
-      --help)
-        print_usage
-        exit 0
-        ;;
-      *)
-        log_error "Unknown option: $1"
-        print_usage
-        exit 1
-        ;;
-    esac
-  done
-
-  # Validate required parameters
+  # Validate required environment variables
   if [ -z "$GCP_PROJECT" ] || [ -z "$SECRET_PREFIX" ]; then
-    log_error "Missing required parameters"
+    log_error "Missing required environment variables"
     print_usage
     exit 1
   fi
@@ -324,7 +291,8 @@ function main {
     exit 1
   fi
 
-  log_info "Checking Vault status at ${VAULT_ADDR}..."
+  log_info "Checking Vault status at $VAULT_ADDR..."
+  log_info "Using project $GCP_PROJECT and prefix $SECRET_PREFIX"
 
   # Get Vault status
   local status=$(check_vault_status)
@@ -336,7 +304,8 @@ function main {
 
   # Initialize if needed
   if [ "$initialized" == "false" ]; then
-    initialize_vault
+    log_info "Vault is not initialized, initializing now..."
+    local root_token=$(initialize_vault)
     if [ $? -ne 0 ]; then
       exit 1
     fi
@@ -345,6 +314,15 @@ function main {
     if [ $? -ne 0 ]; then
       exit 1
     fi
+    
+    log_info "Vault is ready with GCP KMS auto-unseal!"
+    
+    # Configure AppRoles for services (only on first initialization)
+    configure_vault_approles "$root_token"
+    
+    log_info "AppRole credentials have been saved to GCP Secret Manager:"
+    log_info "  - API Service: $SECRET_PREFIX.vault-api-approle (write/delete permissions)"
+    log_info "  - Orchestrator Service: $SECRET_PREFIX.vault-orchestrator-approle (read-only permissions)"
   elif [ "$sealed" == "true" ]; then
     # If already initialized but sealed, wait for auto-unseal
     log_info "Vault is initialized but sealed, waiting for auto-unseal..."
@@ -352,31 +330,11 @@ function main {
     if [ $? -ne 0 ]; then
       exit 1
     fi
+    log_info "Vault is ready with GCP KMS auto-unseal!"
+  else
+    # Vault is already initialized and unsealed
+    log_info "Vault is already initialized and unsealed - no action needed"
   fi
-
-  log_info "Vault is ready with GCP KMS auto-unseal!"
-
-  # Configure AppRoles for services
-  configure_vault_approles
-
-  # Show root token for initial configuration
-  #local root_token=$(get_from_secret_manager "${SECRET_PREFIX}vault-root-key")
-  #if [ -n "$root_token" ]; then
-  #  echo ""
-  #  log_info "Root token (save this securely and delete after creating admin policies):"
-  #  echo "$root_token"
-  #  echo ""
-  #fi
-
-  log_info "AppRole credentials have been saved to GCP Secret Manager:"
-  log_info "  - API Service: ${SECRET_PREFIX}vault-api-approle (write/delete permissions)"
-  log_info "  - Orchestrator Service: ${SECRET_PREFIX}vault-orchestrator-approle (read-only permissions)"
-
-  log_warn "Remember to:"
-  log_warn "1. Create additional authentication methods if needed (userpass, etc.)"
-  log_warn "2. Create additional policies for different access levels"
-  log_warn "3. Revoke the root token after initial setup"
-  log_warn "4. Recovery keys are stored in Secret Manager and used for emergency procedures only"
 }
 
 main "$@"

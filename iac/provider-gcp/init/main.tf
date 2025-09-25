@@ -475,3 +475,46 @@ resource "google_secret_manager_secret_version" "vault_tls_ca" {
   secret      = google_secret_manager_secret.vault_tls_ca.name
   secret_data = tls_self_signed_cert.vault.cert_pem
 }
+
+# Grant infra instances service account write access to Vault secrets
+resource "google_secret_manager_secret_iam_member" "vault_root_key_access" {
+  secret_id = google_secret_manager_secret.vault_root_key.secret_id
+  role      = "roles/secretmanager.secretVersionAdder"
+  member    = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "vault_recovery_keys_access" {
+  secret_id = google_secret_manager_secret.vault_recovery_keys.secret_id
+  role      = "roles/secretmanager.secretVersionAdder"
+  member    = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "vault_api_approle_access" {
+  secret_id = google_secret_manager_secret.vault_api_approle.secret_id
+  role      = "roles/secretmanager.secretVersionAdder"
+  member    = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "vault_orchestrator_approle_access" {
+  secret_id = google_secret_manager_secret.vault_orchestrator_approle.secret_id
+  role      = "roles/secretmanager.secretVersionAdder"
+  member    = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "vault_tls_cert_access" {
+  secret_id = google_secret_manager_secret.vault_tls_cert.secret_id
+  role      = "roles/secretmanager.secretVersionAdder"
+  member    = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "vault_tls_key_access" {
+  secret_id = google_secret_manager_secret.vault_tls_key.secret_id
+  role      = "roles/secretmanager.secretVersionAdder"
+  member    = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "vault_tls_ca_access" {
+  secret_id = google_secret_manager_secret.vault_tls_ca.secret_id
+  role      = "roles/secretmanager.secretVersionAdder"
+  member    = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+}

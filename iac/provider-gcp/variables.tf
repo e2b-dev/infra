@@ -439,7 +439,7 @@ variable "vault_server_count" {
 variable "vault_version" {
   type        = string
   description = "HashiCorp Vault version"
-  default     = "1.19.5"
+  default     = "1.20.3"
 }
 
 variable "vault_port" {

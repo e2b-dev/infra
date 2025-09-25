@@ -127,6 +127,48 @@ EOF
 
   }
 
+  group "vault-init" {
+    count = 1
+
+    constraint {
+      operator = "distinct_hosts"
+      value    = "true"
+    }
+
+    task "vault-init" {
+      driver = "raw_exec"
+
+      lifecycle {
+        hook = "prestart"
+        sidecar = false
+      }
+
+      config {
+        command = "/bin/bash"
+        args = ["local/init-vault.sh"]
+      }
+
+      resources {
+        cpu    = 500
+        memory = 256
+      }
+
+      template {
+        data = <<EOT
+${init_vault_script}
+EOT
+        destination = "local/init-vault.sh"
+      }
+
+      env {
+        VAULT_ADDR = "https://vault-leader.service.consul:8200"
+        GCP_PROJECT = "${gcp_project_id}"
+        SECRET_PREFIX = "${prefix}"
+        VAULT_SKIP_VERIFY = "true"
+      }
+    }
+  }
+
   group "otel-collector" {
     count = 1
 

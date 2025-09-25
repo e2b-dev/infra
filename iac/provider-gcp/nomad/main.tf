@@ -742,10 +742,13 @@ resource "nomad_job" "vault" {
 
   jobspec = templatefile("${path.module}/jobs/vault.hcl", {
     gcp_zone           = var.gcp_zone
+    gcp_project_id     = var.gcp_project_id
+    prefix             = var.prefix
     vault_server_count = var.vault_server_count
     vault_port         = var.vault_port.port
     vault_cluster_port = var.vault_cluster_port.port
     vault_version      = var.vault_version
+    init_vault_script  = templatefile("${path.module}/configs/vault/init-vault.sh", {})
     memory             = var.vault_resources.memory
     memory_max         = var.vault_resources.memory_max
     cpu                = var.vault_resources.cpu
@@ -765,3 +768,4 @@ resource "nomad_job" "vault" {
   })
 
 }
+

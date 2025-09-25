@@ -1,11 +1,11 @@
 # HashiCorp Vault Deployment
 
-This package deploys HashiCorp Vault 1.19.5 on Nomad with Google Spanner as the storage backend.
+This package deploys HashiCorp Vault 1.20.3 on Nomad with Google Spanner as the storage backend.
 
 ## Overview
 
 Vault is deployed as a highly available cluster with the following features:
-- **Version**: 1.19.5
+- **Version**: 1.20.3
 - **Storage Backend**: GCS
 - **High Availability**: 3 instances, 1 is always the active node (reachable through `vault-leader` service)
 - **TLS**: Self-signed, created through TLS provider + stored in GCP Secret Manager
@@ -17,30 +17,6 @@ Vault is deployed as a highly available cluster with the following features:
   - API: 8200
   - Cluster: 8201
 
-## Deployment
-
-```bash
-cd packages/vault/scripts
-
-gcloud compute ssh e2b-orch-client-r0m1 --zone=europe-west3-c --project=e2b-dev-jonas-scholz -- -L 8200:localhost:8200 -
-
-# Initialize Vault with GCP KMS auto-unseal and configure AppRoles
-VAULT_SKIP_VERIFY=true ./init-vault.sh \
-  --project e2b-dev-jonas-scholz \
-  --prefix e2b- \
-  --vault-addr https://localhost:8200
-```
-
-This script will:
-- Store root token in GCP Secret Manager
-- Configure GCP KMS auto-unseal (Vault automatically unseals on restart)
-- Enable KV v2 secrets engine at `secret/`
-- Create AppRoles for services:
-  - **API Service** (`api-service`): Write and delete permissions
-  - **Orchestrator Service** (`orchestrator-service`): Read-only permissions
-- Save AppRole credentials to GCP Secret Manager
-
-**Note**: The script is idempotent and can be safely re-run. It will skip creating AppRoles if they already exist.
 
 ## Google KMS
 
