@@ -85,7 +85,6 @@ resource "google_project_service" "filestore_api" {
   disable_on_destroy = false
 }
 
-
 resource "time_sleep" "secrets_api_wait_60_seconds" {
   depends_on = [google_project_service.secrets_manager_api]
 
