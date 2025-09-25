@@ -289,7 +289,7 @@ func (sc *SnapshotCreate) createSpec() (*Snapshot, *sqlgraph.CreateSpec) {
 	}
 	if value, ok := sc.mutation.TeamID(); ok {
 		_spec.SetField(snapshot.FieldTeamID, field.TypeUUID, value)
-		_node.TeamID = &value
+		_node.TeamID = value
 	}
 	if value, ok := sc.mutation.AllowInternetAccess(); ok {
 		_spec.SetField(snapshot.FieldAllowInternetAccess, field.TypeBool, value)

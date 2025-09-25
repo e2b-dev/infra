@@ -1,7 +1,6 @@
 -- name: GetSnapshotsWithCursor :many
 SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, sqlc.embed(s), sqlc.embed(eb)
 FROM "public"."snapshots" s
-JOIN "public"."envs" e ON e.id = s.env_id
 LEFT JOIN LATERAL (
     SELECT ARRAY_AGG(alias ORDER BY alias) AS aliases
     FROM "public"."env_aliases"
@@ -17,7 +16,7 @@ JOIN LATERAL (
     LIMIT 1
 ) eb ON TRUE
 WHERE
-    e.team_id = @team_id
+    s.team_id = @team_id
     AND (
         -- When metadata arg is empty json, accept all as row metadata column can be empty json or NULL
         -- And NULL does not match with empty json

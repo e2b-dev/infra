@@ -1,23 +1,19 @@
 package instance
 
 import (
-	"context"
-	"fmt"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
-	InstanceExpiration = time.Second * 15
+	SandboxTimeoutDefault = time.Second * 15
 	// Should we auto pause the instance by default instead of killing it,
-	InstanceAutoPauseDefault = false
+	AutoPauseDefault = false
 )
 
 type State string
@@ -57,8 +53,8 @@ func NewSandbox(
 	envdAccessToken *string,
 	allowInternetAccess *bool,
 	baseTemplateID string,
-) Data {
-	return Data{
+) Sandbox {
+	return Sandbox{
 		SandboxID:  sandboxID,
 		TemplateID: templateID,
 		ClientID:   clientID,
@@ -87,7 +83,7 @@ func NewSandbox(
 	}
 }
 
-type Data struct {
+type Sandbox struct {
 	SandboxID  string
 	TemplateID string
 	ClientID   string
@@ -116,52 +112,52 @@ type Data struct {
 	State State
 }
 
-type InstanceInfo struct {
-	_data Data
+type memorySandbox struct {
+	_data Sandbox
 
 	transition *utils.ErrorOnce
 	mu         sync.RWMutex
 }
 
-func NewInstanceInfo(data Data) *InstanceInfo {
-	return &InstanceInfo{
+func newMemorySandbox(data Sandbox) *memorySandbox {
+	return &memorySandbox{
 		_data: data,
 	}
 }
 
-func (i Data) LoggerMetadata() sbxlogger.SandboxMetadata {
+func (s Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 	return sbxlogger.SandboxMetadata{
-		SandboxID:  i.SandboxID,
-		TemplateID: i.TemplateID,
-		TeamID:     i.TeamID.String(),
+		SandboxID:  s.SandboxID,
+		TemplateID: s.TemplateID,
+		TeamID:     s.TeamID.String(),
 	}
 }
 
-func (i Data) IsExpired() bool {
-	return time.Now().After(i.EndTime)
+func (s Sandbox) IsExpired() bool {
+	return time.Now().After(s.EndTime)
 }
 
-func (i *InstanceInfo) SetExpired() {
+func (i *memorySandbox) SetExpired() {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
 	i.setExpired()
 }
 
-func (i *InstanceInfo) setExpired() {
+func (i *memorySandbox) setExpired() {
 	if !i._data.IsExpired() {
 		i._data.EndTime = time.Now()
 	}
 }
 
-func (i *InstanceInfo) Data() Data {
+func (i *memorySandbox) Data() Sandbox {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
 	return i._data
 }
 
-func (i *InstanceInfo) State() State {
+func (i *memorySandbox) State() State {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
@@ -169,93 +165,16 @@ func (i *InstanceInfo) State() State {
 }
 
 // SandboxID returns the sandbox ID, safe to use without lock, it's immutable
-func (i *InstanceInfo) SandboxID() string {
+func (i *memorySandbox) SandboxID() string {
 	return i._data.SandboxID
 }
 
 // TeamID returns the team ID, safe to use without lock, it's immutable
-func (i *InstanceInfo) TeamID() uuid.UUID {
+func (i *memorySandbox) TeamID() uuid.UUID {
 	return i._data.TeamID
 }
 
-func (i *InstanceInfo) startRemoving(ctx context.Context, stateAction StateAction) (alreadyDone bool, callback func(error), err error) {
-	newState := StateKilling
-	if stateAction == StateActionPause {
-		newState = StatePausing
-	}
-
-	i.mu.Lock()
-	transition := i.transition
-	if transition != nil {
-		currentState := i._data.State
-		i.mu.Unlock()
-
-		if currentState != newState && !allowed[currentState][newState] {
-			return false, nil, fmt.Errorf("invalid state transition, already in transition from %s", currentState)
-		}
-
-		zap.L().Debug("State transition already in progress to the same state, waiting", logger.WithSandboxID(i.SandboxID()), zap.String("state", string(newState)))
-		err = transition.WaitWithContext(ctx)
-		if err != nil {
-			return false, nil, fmt.Errorf("sandbox is in failed state: %w", err)
-		}
-
-		// If the transition is to the same state just wait
-		switch {
-		case currentState == newState:
-			return true, func(err error) {}, nil
-		case allowed[currentState][newState]:
-			return i.startRemoving(ctx, stateAction)
-		default:
-			return false, nil, fmt.Errorf("unexpected state transition")
-		}
-	}
-
-	defer i.mu.Unlock()
-	if i._data.State == newState {
-		zap.L().Debug("Already in the same state", logger.WithSandboxID(i.SandboxID()), zap.String("state", string(newState)))
-		return true, func(error) {}, nil
-	}
-
-	if _, ok := allowed[i._data.State][newState]; !ok {
-		return false, nil, fmt.Errorf("invalid state transition from %s to %s", i._data.State, newState)
-	}
-
-	i.setExpired()
-	i._data.State = newState
-	i.transition = utils.NewErrorOnce()
-
-	callback = func(err error) {
-		zap.L().Debug("Transition complete", logger.WithSandboxID(i.SandboxID()), zap.String("state", string(newState)), zap.Error(err))
-		i.mu.Lock()
-		defer i.mu.Unlock()
-
-		setErr := i.transition.SetError(err)
-		if err != nil {
-			// Keep the transition in place so the error stays
-			zap.L().Error("Failed to set transition result", logger.WithSandboxID(i.SandboxID()), zap.Error(setErr))
-			return
-		}
-
-		// The transition is completed and the next transition can be started
-		i.transition = nil
-	}
-
-	return false, callback, nil
-}
-
-func (i *InstanceInfo) WaitForStateChange(ctx context.Context) error {
-	i.mu.RLock()
-	transition := i.transition
-	i.mu.RUnlock()
-	if transition == nil {
-		return nil
-	}
-
-	return transition.WaitWithContext(ctx)
-}
-
-func (i *InstanceInfo) ExtendEndTime(newEndTime time.Time, allowShorter bool) bool {
+func (i *memorySandbox) extendEndTime(newEndTime time.Time, allowShorter bool) bool {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 

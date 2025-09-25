@@ -12,12 +12,12 @@ import (
 
 type Evictor struct {
 	store         *instance.MemoryStore
-	removeSandbox func(ctx context.Context, sandbox instance.Data, stateAction instance.StateAction) error
+	removeSandbox func(ctx context.Context, sandbox instance.Sandbox, stateAction instance.StateAction) error
 }
 
 func New(
 	store *instance.MemoryStore,
-	removeSandbox func(ctx context.Context, sandbox instance.Data, stateAction instance.StateAction) error,
+	removeSandbox func(ctx context.Context, sandbox instance.Sandbox, stateAction instance.StateAction) error,
 ) *Evictor {
 	return &Evictor{
 		store:         store,

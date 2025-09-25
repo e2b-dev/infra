@@ -8,10 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/template"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -65,7 +63,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		return
 	}
 
-	buildReq := BuildTemplateRequest{
+	buildReq := template.RegisterBuildData{
 		ClusterID:     apiutils.WithClusterFallback(team.ClusterID),
 		BuilderNodeID: builderNodeID,
 		IsNew:         isNew,
@@ -78,7 +76,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		MemoryMB:      body.MemoryMB,
 	}
 
-	template, apiError := a.BuildTemplate(ctx, buildReq)
+	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.db, a.sqlcDB, buildReq)
 	if apiError != nil {
 		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "invalid request body", err)
@@ -102,44 +100,4 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		Public:     template.Public,
 		Aliases:    template.Aliases,
 	})
-}
-
-func (a *APIStore) GetTeamAndTier(
-	c *gin.Context,
-	// Deprecated: use API Token authentication instead.
-	teamID *string,
-) (*queries.Team, *queries.Tier, *api.APIError) {
-	_, span := tracer.Start(c.Request.Context(), "get-team-and-tier")
-	defer span.End()
-
-	if c.Value(auth.TeamContextKey) != nil {
-		teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
-
-		return teamInfo.Team, teamInfo.Tier, nil
-	} else if c.Value(auth.UserIDContextKey) != nil {
-		_, teams, err := a.GetUserAndTeams(c)
-		if err != nil {
-			return nil, nil, &api.APIError{
-				Code:      http.StatusInternalServerError,
-				ClientMsg: "Error when getting user and teams",
-				Err:       err,
-			}
-		}
-		team, tier, err := findTeamAndTier(teams, teamID)
-		if err != nil {
-			return nil, nil, &api.APIError{
-				Code:      http.StatusForbidden,
-				ClientMsg: "You are not allowed to access this team",
-				Err:       err,
-			}
-		}
-
-		return team, tier, nil
-	}
-
-	return nil, nil, &api.APIError{
-		Code:      http.StatusUnauthorized,
-		ClientMsg: "You are not authenticated",
-		Err:       errors.New("invalid authentication context for team and tier"),
-	}
 }
