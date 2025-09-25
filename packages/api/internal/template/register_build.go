@@ -61,7 +61,7 @@ func RegisterBuild(
 	sqlcDB *sqlcdb.Client,
 	data RegisterBuildData,
 ) (*RegisterBuildResponse, *api.APIError) {
-	ctx, span := tracer.Start(ctx, "build-template-request")
+	ctx, span := tracer.Start(ctx, "register build")
 	defer span.End()
 
 	// Limit concurrent template builds
