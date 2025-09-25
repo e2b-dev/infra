@@ -14,7 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
-	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
@@ -40,7 +39,6 @@ type RegisterBuildData struct {
 	Tier          *queries.Tier
 	Dockerfile    string
 	Alias         *string
-	IsNew         bool
 	StartCmd      *string
 	ReadyCmd      *string
 	CpuCount      *int32
@@ -51,14 +49,12 @@ type RegisterBuildResponse struct {
 	TemplateID string
 	BuildID    string
 	Aliases    []string
-	Public     bool
 }
 
 func RegisterBuild(
 	ctx context.Context,
 	templateBuildsCache *templatecache.TemplatesBuildCache,
 	db *db.DB,
-	sqlcDB *sqlcdb.Client,
 	data RegisterBuildData,
 ) (*RegisterBuildResponse, *api.APIError) {
 	ctx, span := tracer.Start(ctx, "register build")
@@ -80,36 +76,6 @@ func RegisterBuild(
 				data.Tier.ConcurrentTemplateBuilds),
 			Err: fmt.Errorf("team '%s' has reached the maximum number of concurrent template builds (%d)", data.Team.ID, data.Tier.ConcurrentTemplateBuilds),
 		}
-	}
-
-	public := false
-	if !data.IsNew {
-		// Check if the user has access to the template
-		aliasOrTemplateID := data.TemplateID
-		if data.Alias != nil {
-			aliasOrTemplateID = *data.Alias
-		}
-
-		template, err := sqlcDB.GetTemplateByID(ctx, data.TemplateID)
-		if err != nil {
-			telemetry.ReportCriticalError(ctx, "error when getting template", err, telemetry.WithTemplateID(data.TemplateID), telemetry.WithTeamID(data.Team.ID.String()))
-			return nil, &api.APIError{
-				Err:       err,
-				ClientMsg: fmt.Sprintf("Template '%s' not found", aliasOrTemplateID),
-				Code:      http.StatusNotFound,
-			}
-		}
-
-		if template.TeamID != data.Team.ID {
-			return nil, &api.APIError{
-				Err:       fmt.Errorf("template '%s' is not accessible for the team '%s'", aliasOrTemplateID, data.Team.ID.String()),
-				ClientMsg: fmt.Sprintf("Template '%s' is not accessible for the team '%s'", aliasOrTemplateID, data.Team.ID.String()),
-				Code:      http.StatusForbidden,
-			}
-		}
-
-		public = template.Public
-		telemetry.ReportEvent(ctx, "checked user access to template")
 	}
 
 	// Generate a build id for the new build
@@ -361,6 +327,5 @@ func RegisterBuild(
 		TemplateID: build.EnvID,
 		BuildID:    build.ID.String(),
 		Aliases:    aliases,
-		Public:     public,
 	}, nil
 }

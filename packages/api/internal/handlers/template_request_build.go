@@ -1,112 +1,53 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/template"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/dberrors"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (a *APIStore) PostTemplates(c *gin.Context) {
 	ctx := c.Request.Context()
-	envID := id.Generate()
+	span := trace.SpanFromContext(ctx)
 
-	telemetry.ReportEvent(ctx, "started creating new environment")
-
-	template := a.TemplateRequestBuild(c, envID, true)
-	if template != nil {
-		c.JSON(http.StatusAccepted, &template)
-	}
-}
-
-func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, templateID api.TemplateID) {
-	cleanedTemplateID, err := id.CleanEnvID(templateID)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", cleanedTemplateID))
-
-		telemetry.ReportCriticalError(c.Request.Context(), "invalid template ID", err)
-
-		return
-	}
-
-	template := a.TemplateRequestBuild(c, cleanedTemplateID, false)
-
-	if template != nil {
-		c.JSON(http.StatusAccepted, &template)
-	}
-}
-
-func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateID, new bool) *api.Template {
-	ctx := c.Request.Context()
+	userID := a.GetUserID(c)
 
 	body, err := utils.ParseBody[api.TemplateBuildRequest](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
 		telemetry.ReportCriticalError(ctx, "invalid request body", err)
-
-		return nil
+		return
 	}
 
-	// Prepare info for rebuilding env
-	userID, teams, err := a.GetUserAndTeams(c)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting user: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when getting user", err)
-
-		return nil
+	team, tier, apiErr := a.GetTeamAndTier(c, body.TeamID)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+		return
 	}
 
-	// Find the team and tier
-	team, tier, err := findTeamAndTier(teams, body.TeamID)
-	if err != nil {
-		var statusCode int
-		if body.TeamID != nil {
-			statusCode = http.StatusNotFound
-		} else {
-			statusCode = http.StatusInternalServerError
-		}
+	telemetry.ReportEvent(ctx, "started creating new environment")
 
-		a.sendAPIStoreError(c, statusCode, err.Error())
-		telemetry.ReportCriticalError(ctx, "error finding team and tier", err)
-		return nil
-	}
+	templateID := id.Generate()
+	span.SetAttributes(telemetry.WithTemplateID(templateID))
 
-	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, utils.WithClusterFallback(team.ClusterID))
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
-		a.sendAPIStoreError(c, http.StatusBadRequest, "Error when getting available build client")
-		return nil
-	}
-
-	// Create the build
-	buildReq := template.RegisterBuildData{
-		ClusterID:     utils.WithClusterFallback(team.ClusterID),
-		BuilderNodeID: builderNodeID,
-		TemplateID:    templateID,
-		IsNew:         new,
-		UserID:        userID,
-		Team:          team,
-		Tier:          tier,
-		Dockerfile:    body.Dockerfile,
-		Alias:         body.Alias,
-		StartCmd:      body.StartCmd,
-		ReadyCmd:      body.ReadyCmd,
-		CpuCount:      body.CpuCount,
-		MemoryMB:      body.MemoryMB,
-	}
-
-	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.db, a.sqlcDB, buildReq)
-	if apiError != nil {
-		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
-		telemetry.ReportCriticalError(ctx, "build template request failed", err)
-		return nil
+	template, apiErr := a.buildTemplate(ctx, userID, team, tier, templateID, body)
+	if apiErr != nil {
+		telemetry.ReportCriticalError(ctx, "error when requesting template build", apiErr.Err, telemetry.WithTemplateID(templateID))
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		return
 	}
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
@@ -117,10 +58,115 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		Set("alias", body.Alias),
 	)
 
-	return &api.Template{
+	c.JSON(http.StatusAccepted, &api.Template{
 		TemplateID: template.TemplateID,
 		BuildID:    template.BuildID,
-		Public:     template.Public,
 		Aliases:    template.Aliases,
+		Public:     false,
+	})
+}
+
+func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.TemplateID) {
+	ctx := c.Request.Context()
+	span := trace.SpanFromContext(ctx)
+
+	userID := a.GetUserID(c)
+
+	body, err := utils.ParseBody[api.TemplateBuildRequest](ctx, c)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
+		telemetry.ReportCriticalError(ctx, "invalid request body", err)
+		return
 	}
+
+	templateID, err := id.CleanEnvID(rawTemplateID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", rawTemplateID))
+		telemetry.ReportCriticalError(c.Request.Context(), "invalid template ID", err)
+		return
+	}
+	span.SetAttributes(telemetry.WithTemplateID(templateID))
+
+	team, tier, apiErr := a.GetTeamAndTier(c, body.TeamID)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+		return
+	}
+
+	templateDB, err := a.sqlcDB.GetTemplateByID(ctx, templateID)
+	switch {
+	case err == nil:
+		if templateDB.TeamID != team.ID {
+			a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You do not have access to the template '%s'", templateID))
+			telemetry.ReportError(ctx, "template access forbidden", nil, telemetry.WithTemplateID(templateID), telemetry.WithTeamID(team.ID.String()))
+			return
+		}
+	case dberrors.IsNotFoundError(err):
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", templateID))
+		telemetry.ReportError(ctx, "template not found", err, telemetry.WithTemplateID(templateID))
+		return
+	default:
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting template: %s", err))
+		telemetry.ReportCriticalError(ctx, "error when getting template", err, telemetry.WithTemplateID(templateID))
+		return
+	}
+
+	template, apiErr := a.buildTemplate(ctx, userID, team, tier, templateID, body)
+	if apiErr != nil {
+		telemetry.ReportCriticalError(ctx, "error when requesting template build", apiErr.Err, telemetry.WithTemplateID(templateID))
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		return
+	}
+
+	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
+	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
+	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "submitted environment build request", properties.
+		Set("environment", template.TemplateID).
+		Set("build_id", template.BuildID).
+		Set("alias", body.Alias),
+	)
+
+	c.JSON(http.StatusAccepted, &api.Template{
+		TemplateID: template.TemplateID,
+		BuildID:    template.BuildID,
+		Aliases:    template.Aliases,
+		Public:     templateDB.Public,
+	})
+}
+
+func (a *APIStore) buildTemplate(
+	ctx context.Context,
+	userID uuid.UUID,
+	team *queries.Team,
+	tier *queries.Tier,
+	templateID api.TemplateID,
+	body api.TemplateBuildRequest,
+) (*template.RegisterBuildResponse, *api.APIError) {
+	builderNodeID, err := a.templateManager.GetAvailableBuildClient(ctx, utils.WithClusterFallback(team.ClusterID))
+	if err != nil {
+		return nil, &api.APIError{
+			Code:      http.StatusBadRequest,
+			ClientMsg: "Error when getting available build client",
+			Err:       fmt.Errorf("error when getting available build client: %w", err),
+		}
+	}
+
+	// Create the build
+	data := template.RegisterBuildData{
+		ClusterID:     utils.WithClusterFallback(team.ClusterID),
+		BuilderNodeID: builderNodeID,
+		TemplateID:    templateID,
+		UserID:        &userID,
+		Team:          team,
+		Tier:          tier,
+		Dockerfile:    body.Dockerfile,
+		Alias:         body.Alias,
+		StartCmd:      body.StartCmd,
+		ReadyCmd:      body.ReadyCmd,
+		CpuCount:      body.CpuCount,
+		MemoryMB:      body.MemoryMB,
+	}
+
+	return template.RegisterBuild(ctx, a.templateBuildsCache, a.db, data)
 }
