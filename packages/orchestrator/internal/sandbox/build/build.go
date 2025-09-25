@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -56,8 +55,6 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 		remainingReadLength := int64(len(p)) - int64(n)
 
 		readLength := min(mappedLength, remainingReadLength)
-
-		fmt.Fprintf(os.Stderr, "[ReadAt %v] [off: %d, len: %d] -> [start: %d, end: %d] mappedOffset: %d, mappedLength: %d, buildID: %v blockSize: %d\n", b.fileType, off, len(p), n, n+int(readLength), mappedOffset, mappedLength, buildID, b.header.Metadata.BlockSize)
 
 		if readLength <= 0 {
 			zap.L().Error(fmt.Sprintf(
