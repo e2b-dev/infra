@@ -48,7 +48,6 @@ resource "google_project_service" "artifact_registry_api" {
 
 # Enable Spanner API
 resource "google_project_service" "spanner_api" {
-  #project = var.gcp_project_id
   service = "spanner.googleapis.com"
 
   disable_on_destroy = false
