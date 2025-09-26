@@ -34,7 +34,7 @@ func NewStorage(
 ) (*Storage, error) {
 	if h == nil {
 		headerObjectPath := buildId + "/" + string(fileType) + storage.HeaderSuffix
-		headerObject, err := persistence.OpenObject(ctx, headerObjectPath)
+		headerObject, err := persistence.OpenObject(ctx, headerObjectPath, false)
 		if err != nil {
 			return nil, err
 		}
@@ -54,7 +54,7 @@ func NewStorage(
 	// If we can't find the diff header in storage, we try to find the "old" style template without a header as a fallback.
 	if h == nil {
 		objectPath := buildId + "/" + string(fileType)
-		object, err := persistence.OpenObject(ctx, objectPath)
+		object, err := persistence.OpenObject(ctx, objectPath, false)
 		if err != nil {
 			return nil, err
 		}

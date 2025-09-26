@@ -384,25 +384,25 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.Errorf(codes.Internal, "error snapshotting sandbox '%s': %s", in.SandboxId, err)
 	}
 
-	err = s.templateCache.AddSnapshot(
-		ctx,
-		meta.Template.BuildID,
-		meta.Template.KernelVersion,
-		meta.Template.FirecrackerVersion,
-		snapshot.MemfileDiffHeader,
-		snapshot.RootfsDiffHeader,
-		snapshot.Snapfile,
-		snapshot.Metafile,
-		snapshot.MemfileDiff,
-		snapshot.RootfsDiff,
-	)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error adding snapshot to template cache", err)
+	// err = s.templateCache.AddSnapshot(
+	// 	ctx,
+	// 	meta.Template.BuildID,
+	// 	meta.Template.KernelVersion,
+	// 	meta.Template.FirecrackerVersion,
+	// 	snapshot.MemfileDiffHeader,
+	// 	snapshot.RootfsDiffHeader,
+	// 	snapshot.Snapfile,
+	// 	snapshot.Metafile,
+	// 	snapshot.MemfileDiff,
+	// 	snapshot.RootfsDiff,
+	// )
+	// if err != nil {
+	// 	telemetry.ReportCriticalError(ctx, "error adding snapshot to template cache", err)
 
-		return nil, status.Errorf(codes.Internal, "error adding snapshot to template cache: %s", err)
-	}
+	// 	return nil, status.Errorf(codes.Internal, "error adding snapshot to template cache: %s", err)
+	// }
 
-	telemetry.ReportEvent(ctx, "added snapshot to template cache")
+	// telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
 	err = snapshot.Upload(ctx, s.persistence, meta.Template)
 	if err != nil {

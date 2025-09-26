@@ -36,7 +36,7 @@ const (
 type StorageProvider interface {
 	DeleteObjectsWithPrefix(ctx context.Context, prefix string) error
 	UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error)
-	OpenObject(ctx context.Context, path string) (StorageObjectProvider, error)
+	OpenObject(ctx context.Context, path string, compressed bool) (StorageObjectProvider, error)
 	GetDetails() string
 }
 
@@ -57,7 +57,7 @@ type StorageObjectProvider interface {
 	WriterToCtx
 	ReaderAtCtx
 
-	WriteFromFileSystem(ctx context.Context, path string) error
+	WriteFromFileSystem(ctx context.Context, path string, compressed bool) error
 
 	Size(ctx context.Context) (int64, error)
 	Delete(ctx context.Context) error

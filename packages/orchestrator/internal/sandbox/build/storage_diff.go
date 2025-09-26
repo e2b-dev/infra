@@ -26,6 +26,7 @@ type StorageDiff struct {
 	blockSize   int64
 	metrics     blockmetrics.Metrics
 	persistence storage.StorageProvider
+	compressed  bool
 }
 
 var _ Diff = (*StorageDiff)(nil)
@@ -37,6 +38,7 @@ func newStorageDiff(
 	blockSize int64,
 	metrics blockmetrics.Metrics,
 	persistence storage.StorageProvider,
+	compressed bool,
 ) *StorageDiff {
 	cachePathSuffix := id.Generate()
 
@@ -52,6 +54,7 @@ func newStorageDiff(
 		metrics:     metrics,
 		persistence: persistence,
 		cacheKey:    GetDiffStoreKey(buildId, diffType),
+		compressed:  compressed,
 	}
 }
 
@@ -60,7 +63,7 @@ func (b *StorageDiff) CacheKey() DiffStoreKey {
 }
 
 func (b *StorageDiff) Init(ctx context.Context) error {
-	obj, err := b.persistence.OpenObject(ctx, b.storagePath)
+	obj, err := b.persistence.OpenObject(ctx, b.storagePath, b.compressed)
 	if err != nil {
 		return err
 	}

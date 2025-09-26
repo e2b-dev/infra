@@ -6,9 +6,9 @@ import (
 	"crypto/md5"
 	"encoding/base64"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
-	"math"
 	"math/rand"
 	"net/http"
 	"os"
@@ -16,7 +16,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SaveTheRbtz/fastcdc-go"
+	seekable "github.com/SaveTheRbtz/zstd-seekable-format-go/pkg"
 	"github.com/hashicorp/go-retryablehttp"
+	"github.com/klauspost/compress/zstd"
 	"go.uber.org/zap"
 	"golang.org/x/oauth2/google"
 	"golang.org/x/sync/errgroup"
@@ -24,6 +27,7 @@ import (
 
 const (
 	gcpMultipartUploadChunkSize = 50 * 1024 * 1024 // 50MB chunks
+	targetFrameSize             = 4 * 1024 * 1024  // 4MiB target frame size
 )
 
 // RetryConfig holds the configuration for retry logic
@@ -253,25 +257,36 @@ func (m *MultipartUploader) CompleteUpload(uploadID string, parts []Part) error 
 	return nil
 }
 
-func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath string, maxConcurrency int) error {
-	// Open file
+func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath string, maxConcurrency int, compressed bool) error {
+	// Open input file
 	file, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
-	// Get file size
-	fileInfo, err := file.Stat()
-	if err != nil {
-		return fmt.Errorf("failed to get file info: %w", err)
+	if !compressed {
+		// Use original simple implementation - upload file as-is
+		return m.uploadFileUncompressed(ctx, file, maxConcurrency)
 	}
-	fileSize := fileInfo.Size()
+
+	// Use compressed implementation
+	return m.uploadFileCompressed(ctx, file, maxConcurrency)
+}
+
+// uploadFileUncompressed uploads the file without compression (original implementation)
+func (m *MultipartUploader) uploadFileUncompressed(ctx context.Context, file *os.File, maxConcurrency int) error {
+	// Get file size
+	stat, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to get file stats: %w", err)
+	}
+	fileSize := stat.Size()
 
 	// Calculate number of parts
-	numParts := int(math.Ceil(float64(fileSize) / float64(gcpMultipartUploadChunkSize)))
+	numParts := int((fileSize + gcpMultipartUploadChunkSize - 1) / gcpMultipartUploadChunkSize)
 	if numParts == 0 {
-		numParts = 1 // Always upload at least 1 part, even for empty files
+		numParts = 1
 	}
 
 	// Initiate multipart upload
@@ -281,45 +296,40 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(maxConcurrency) // Limit concurrent goroutines
+	g.SetLimit(maxConcurrency)
 
-	// Thread-safe map to collect parts
+	// Thread-safe slice to collect parts
 	var partsMu sync.Mutex
 	parts := make([]Part, numParts)
 
 	// Upload each part concurrently
 	for partNumber := 1; partNumber <= numParts; partNumber++ {
+		partNum := partNumber // Capture for closure
 		g.Go(func() error {
-			// Check if context was cancelled
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-			}
-
-			// Read chunk from file
-			offset := int64(partNumber-1) * gcpMultipartUploadChunkSize
+			// Calculate chunk boundaries
+			offset := int64(partNum-1) * gcpMultipartUploadChunkSize
 			chunkSize := gcpMultipartUploadChunkSize
 			if offset+int64(chunkSize) > fileSize {
 				chunkSize = int(fileSize - offset)
 			}
 
+			// Read chunk from file
 			chunk := make([]byte, chunkSize)
 			_, err := file.ReadAt(chunk, offset)
 			if err != nil {
-				return fmt.Errorf("failed to read chunk for part %d: %w", partNumber, err)
+				return fmt.Errorf("failed to read chunk: %w", err)
 			}
 
 			// Upload part
-			etag, err := m.UploadPart(uploadID, partNumber, chunk)
+			etag, err := m.UploadPart(uploadID, partNum, chunk)
 			if err != nil {
-				return fmt.Errorf("failed to upload part %d: %w", partNumber, err)
+				return fmt.Errorf("failed to upload part %d: %w", partNum, err)
 			}
 
 			// Store result thread-safely
 			partsMu.Lock()
-			parts[partNumber-1] = Part{
-				PartNumber: partNumber,
+			parts[partNum-1] = Part{
+				PartNumber: partNum,
 				ETag:       etag,
 			}
 			partsMu.Unlock()
@@ -333,9 +343,156 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 		return fmt.Errorf("upload failed: %w", err)
 	}
 
-	if err := m.CompleteUpload(uploadID, parts); err != nil {
-		return fmt.Errorf("failed to complete upload: %w", err)
+	return m.CompleteUpload(uploadID, parts)
+}
+
+// uploadFileCompressed uploads the file with zstd seekable compression
+func (m *MultipartUploader) uploadFileCompressed(ctx context.Context, file *os.File, maxConcurrency int) error {
+	// Get file size for comparison
+	stat, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to get file stats: %w", err)
+	}
+	originalSize := stat.Size()
+	fmt.Fprintf(os.Stderr, "[DEBUG] Original file size: %d bytes\n", originalSize)
+
+	// Create a buffer to hold the compressed data
+	var compressedBuf bytes.Buffer
+
+	// Create ZSTD encoder - hardcode best compression like main.go
+	enc, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(11)))
+	if err != nil {
+		return fmt.Errorf("failed to create zstd encoder: %w", err)
+	}
+	defer enc.Close()
+	fmt.Fprintf(os.Stderr, "[DEBUG] Created ZSTD encoder with level 11\n")
+
+	// Create seekable writer
+	w, err := seekable.NewWriter(&compressedBuf, enc, seekable.WithWLogger(zap.L()))
+	if err != nil {
+		return fmt.Errorf("failed to create seekable writer: %w", err)
+	}
+	defer w.Close()
+	fmt.Fprintf(os.Stderr, "[DEBUG] Created seekable writer\n")
+
+	// Create FastCDC chunker - hardcode params like main.go
+	chunker, err := fastcdc.NewChunker(
+		file,
+		fastcdc.Options{
+			MinSize:     128 * 1024,  // 128KB
+			AverageSize: 1024 * 1024, // 1MB
+			MaxSize:     8192 * 1024, // 8MB
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create chunker: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "[DEBUG] Created FastCDC chunker (128KB/1MB/8MB)\n")
+
+	var totalFrames int
+	var totalFrameBytes int64
+
+	// Frame source function - exactly like main.go
+	frameSource := func() ([]byte, error) {
+		var frameBuffer bytes.Buffer
+
+		// Accumulate chunks until we reach target frame size
+		for frameBuffer.Len() < targetFrameSize {
+			chunk, err := chunker.Next()
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					// Return any remaining data in buffer
+					if frameBuffer.Len() > 0 {
+						totalFrames++
+						totalFrameBytes += int64(frameBuffer.Len())
+						fmt.Fprintf(os.Stderr, "[DEBUG] Final frame %d: %d bytes\n", totalFrames, frameBuffer.Len())
+						return frameBuffer.Bytes(), nil
+					}
+					return nil, nil
+				}
+				return nil, err
+			}
+
+			// Add chunk data to frame buffer
+			frameBuffer.Write(chunk.Data)
+		}
+
+		totalFrames++
+		totalFrameBytes += int64(frameBuffer.Len())
+		fmt.Fprintf(os.Stderr, "[DEBUG] Frame %d: %d bytes\n", totalFrames, frameBuffer.Len())
+		return frameBuffer.Bytes(), nil
 	}
 
-	return nil
+	// Use WriteMany to compress data in frames - exactly like main.go
+	err = w.WriteMany(ctx, frameSource)
+	if err != nil {
+		return fmt.Errorf("failed to write data: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "[DEBUG] WriteMany completed. Total frames: %d, total frame bytes: %d\n", totalFrames, totalFrameBytes)
+
+	w.Close()
+
+	// Now upload the compressed data using multipart
+	compressedData := compressedBuf.Bytes()
+	compressedSize := int64(len(compressedData))
+	fmt.Fprintf(os.Stderr, "[DEBUG] Compressed size: %d bytes\n", compressedSize)
+	fmt.Fprintf(os.Stderr, "[DEBUG] Compression ratio: %.2f:1\n", float64(originalSize)/float64(compressedSize))
+
+	// Calculate number of parts based on compressed size
+	numParts := int((compressedSize + gcpMultipartUploadChunkSize - 1) / gcpMultipartUploadChunkSize)
+	if numParts == 0 {
+		numParts = 1 // Always upload at least 1 part, even for empty files
+	}
+
+	// Initiate multipart upload
+	uploadID, err := m.InitiateUpload()
+	if err != nil {
+		return fmt.Errorf("failed to initiate upload: %w", err)
+	}
+
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(maxConcurrency)
+
+	// Thread-safe slice to collect parts
+	var partsMu sync.Mutex
+	parts := make([]Part, numParts)
+
+	// Upload each part concurrently
+	for partNumber := 1; partNumber <= numParts; partNumber++ {
+		partNum := partNumber // Capture for closure
+		g.Go(func() error {
+			// Calculate chunk boundaries
+			offset := int64(partNum-1) * gcpMultipartUploadChunkSize
+			chunkSize := gcpMultipartUploadChunkSize
+			if offset+int64(chunkSize) > compressedSize {
+				chunkSize = int(compressedSize - offset)
+			}
+
+			// Extract chunk from compressed data
+			chunk := compressedData[offset : offset+int64(chunkSize)]
+
+			// Upload part
+			etag, err := m.UploadPart(uploadID, partNum, chunk)
+			if err != nil {
+				return fmt.Errorf("failed to upload part %d: %w", partNum, err)
+			}
+
+			// Store result thread-safely
+			partsMu.Lock()
+			parts[partNum-1] = Part{
+				PartNumber: partNum,
+				ETag:       etag,
+			}
+			partsMu.Unlock()
+
+			return nil
+		})
+	}
+
+	// Wait for all parts to complete or first error
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("upload failed: %w", err)
+	}
+
+	return m.CompleteUpload(uploadID, parts)
 }

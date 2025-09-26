@@ -123,6 +123,7 @@ func (b *File) getBuild(ctx context.Context, buildID *uuid.UUID) (Diff, error) {
 		int64(b.header.Metadata.BlockSize),
 		b.metrics,
 		b.persistence,
+		b.header.Metadata.Version == 3,
 	)
 
 	source, err := b.store.Get(ctx, storageDiff)

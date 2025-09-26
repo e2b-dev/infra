@@ -68,8 +68,8 @@ func (c CachedProvider) UploadSignedURL(ctx context.Context, path string, ttl ti
 	return c.inner.UploadSignedURL(ctx, path, ttl)
 }
 
-func (c CachedProvider) OpenObject(ctx context.Context, path string) (StorageObjectProvider, error) {
-	innerObject, err := c.inner.OpenObject(ctx, path)
+func (c CachedProvider) OpenObject(ctx context.Context, path string, compressed bool) (StorageObjectProvider, error) {
+	innerObject, err := c.inner.OpenObject(ctx, path, compressed)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}
@@ -150,8 +150,8 @@ func (c *CachedFileObjectProvider) WriteTo(ctx context.Context, dst io.Writer) (
 	return int64(written), err
 }
 
-func (c *CachedFileObjectProvider) WriteFromFileSystem(ctx context.Context, path string) error {
-	return c.inner.WriteFromFileSystem(ctx, path)
+func (c *CachedFileObjectProvider) WriteFromFileSystem(ctx context.Context, path string, compressed bool) error {
+	return c.inner.WriteFromFileSystem(ctx, path, compressed)
 }
 
 func (c *CachedFileObjectProvider) Write(ctx context.Context, src []byte) (int, error) {

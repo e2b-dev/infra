@@ -63,7 +63,7 @@ func (h *HashIndex) LayerMetaFromHash(ctx context.Context, hash string) (LayerMe
 	ctx, span := tracer.Start(ctx, "get layer_metadata")
 	defer span.End()
 
-	obj, err := h.indexStorage.OpenObject(ctx, paths.HashToPath(h.cacheScope, hash))
+	obj, err := h.indexStorage.OpenObject(ctx, paths.HashToPath(h.cacheScope, hash), false)
 	if err != nil {
 		return LayerMetadata{}, fmt.Errorf("error opening object for layer metadata: %w", err)
 	}
@@ -91,7 +91,7 @@ func (h *HashIndex) SaveLayerMeta(ctx context.Context, hash string, template Lay
 	ctx, span := tracer.Start(ctx, "save layer_metadata")
 	defer span.End()
 
-	obj, err := h.indexStorage.OpenObject(ctx, paths.HashToPath(h.cacheScope, hash))
+	obj, err := h.indexStorage.OpenObject(ctx, paths.HashToPath(h.cacheScope, hash), false)
 	if err != nil {
 		return fmt.Errorf("error creating object for saving UUID: %w", err)
 	}

@@ -38,7 +38,7 @@ func (t *TemplateBuild) Remove(ctx context.Context) error {
 }
 
 func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Header) error {
-	object, err := t.persistence.OpenObject(ctx, t.files.StorageMemfileHeaderPath())
+	object, err := t.persistence.OpenObject(ctx, t.files.StorageMemfileHeaderPath(), false)
 	if err != nil {
 		return err
 	}
@@ -57,12 +57,12 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 }
 
 func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) error {
-	object, err := t.persistence.OpenObject(ctx, t.files.StorageMemfilePath())
+	object, err := t.persistence.OpenObject(ctx, t.files.StorageMemfilePath(), false)
 	if err != nil {
 		return err
 	}
 
-	err = object.WriteFromFileSystem(ctx, memfilePath)
+	err = object.WriteFromFileSystem(ctx, memfilePath, true)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile: %w", err)
 	}
@@ -71,7 +71,7 @@ func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) e
 }
 
 func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Header) error {
-	object, err := t.persistence.OpenObject(ctx, t.files.StorageRootfsHeaderPath())
+	object, err := t.persistence.OpenObject(ctx, t.files.StorageRootfsHeaderPath(), false)
 	if err != nil {
 		return err
 	}
@@ -90,12 +90,12 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Heade
 }
 
 func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) error {
-	object, err := t.persistence.OpenObject(ctx, t.files.StorageRootfsPath())
+	object, err := t.persistence.OpenObject(ctx, t.files.StorageRootfsPath(), false)
 	if err != nil {
 		return err
 	}
 
-	err = object.WriteFromFileSystem(ctx, rootfsPath)
+	err = object.WriteFromFileSystem(ctx, rootfsPath, false)
 	if err != nil {
 		return fmt.Errorf("error when uploading rootfs: %w", err)
 	}
@@ -105,12 +105,12 @@ func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) err
 
 // Snap-file is small enough so we don't use composite upload.
 func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
-	object, err := t.persistence.OpenObject(ctx, t.files.StorageSnapfilePath())
+	object, err := t.persistence.OpenObject(ctx, t.files.StorageSnapfilePath(), false)
 	if err != nil {
 		return err
 	}
 
-	if err = object.WriteFromFileSystem(ctx, path); err != nil {
+	if err = object.WriteFromFileSystem(ctx, path, false); err != nil {
 		return fmt.Errorf("error when uploading snapfile: %w", err)
 	}
 
@@ -119,12 +119,12 @@ func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
 
 // Metadata is small enough so we don't use composite upload.
 func (t *TemplateBuild) uploadMetadata(ctx context.Context, path string) error {
-	object, err := t.persistence.OpenObject(ctx, t.files.StorageMetadataPath())
+	object, err := t.persistence.OpenObject(ctx, t.files.StorageMetadataPath(), false)
 	if err != nil {
 		return err
 	}
 
-	if err := object.WriteFromFileSystem(ctx, path); err != nil {
+	if err := object.WriteFromFileSystem(ctx, path, false); err != nil {
 		return fmt.Errorf("error when uploading metadata: %w", err)
 	}
 
