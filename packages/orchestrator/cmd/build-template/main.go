@@ -174,6 +174,7 @@ func buildTemplate(
 
 	force := true
 	template := config.TemplateConfig{
+		TeamID:     "",
 		TemplateID: templateID,
 		FromImage:  baseImage,
 		Force:      &force,
