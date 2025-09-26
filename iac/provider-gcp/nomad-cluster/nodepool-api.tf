@@ -52,26 +52,13 @@ resource "google_compute_instance_group_manager" "api_pool" {
   }
 
   named_port {
-    name = var.edge_api_port.name
-    port = var.edge_api_port.port
+    name = "ingress"
+    port = 8800
   }
 
   named_port {
-    name = var.edge_proxy_port.name
-    port = var.edge_proxy_port.port
-  }
-
-  named_port {
-    name = var.api_port.name
-    port = var.api_port.port
-  }
-
-  dynamic "named_port" {
-    for_each = local.api_additional_ports
-    content {
-      name = "${var.prefix}${named_port.value.name}"
-      port = named_port.value.port
-    }
+    name = "ingress-health"
+    port = 8900
   }
 
   auto_healing_policies {

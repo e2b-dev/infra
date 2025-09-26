@@ -44,11 +44,6 @@ resource "google_compute_instance_group_manager" "clickhouse_pool" {
     instance_template = google_compute_instance_template.clickhouse.id
   }
 
-  named_port {
-    name = var.clickhouse_health_port.name
-    port = var.clickhouse_health_port.port
-  }
-
   auto_healing_policies {
     health_check      = google_compute_health_check.clickhouse_nomad_check.id
     initial_delay_sec = 600
