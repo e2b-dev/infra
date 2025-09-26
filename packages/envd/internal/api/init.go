@@ -9,11 +9,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/txn2/txeh"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
