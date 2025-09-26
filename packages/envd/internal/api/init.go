@@ -69,19 +69,27 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) SetupHyperloop(address string) {
-	hosts, err := txeh.NewHosts(&txeh.HostsConfig{ReadFilePath: "/etc/hosts", WriteFilePath: "/etc/hosts"})
-	if err != nil {
-		a.logger.Error().Msgf("Failed to create hosts: %v", err)
+	if err := rewriteHostsFile(address, "/etc/hosts", "/etc/hosts"); err != nil {
+		a.logger.Error().Err(err).Msg("failed to modify hosts file")
 		return
+	}
+
+	a.envVars.Store("E2B_EVENTS_ADDRESS", fmt.Sprintf("http://%s", address))
+}
+
+func rewriteHostsFile(address, inputPath, outputPath string) error {
+	hosts, err := txeh.NewHosts(&txeh.HostsConfig{ReadFilePath: inputPath, WriteFilePath: outputPath})
+	if err != nil {
+		return fmt.Errorf("failed to create hosts: %w", err)
 	}
 
 	// Update /etc/hosts to point events.e2b.local to the hyperloop IP
 	// This will remove any existing entries for events.e2b.local first
 	hosts.AddHost(address, "events.e2b.local")
-	err = hosts.Save()
-	if err != nil {
-		a.logger.Error().Msgf("Failed to add events host entry: %v", err)
+
+	if err = hosts.Save(); err != nil {
+		return fmt.Errorf("failed to add events host entry: %w", err)
 	}
 
-	a.envVars.Store("E2B_EVENTS_ADDRESS", fmt.Sprintf("http://%s", address))
+	return nil
 }
