@@ -26,7 +26,7 @@ func TestParse(t *testing.T) {
 		assert.ErrorContains(t, err, `environment variable "POSTGRES_CONNECTION_STRING" should not be empty`)
 	})
 
-	t.Run("supabase secrets are comma seperated", func(t *testing.T) {
+	t.Run("supabase secrets are comma separated", func(t *testing.T) {
 		t.Setenv("SUPABASE_JWT_SECRETS", "aaa,bbb")
 		result, err := Parse()
 		require.NoError(t, err)
