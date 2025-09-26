@@ -208,7 +208,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 }
 
 func (a *APIStore) Close(ctx context.Context) error {
-	a.templateSpawnCounter.Close()
+	a.templateSpawnCounter.Close(ctx)
 
 	errs := []error{}
 	if err := a.posthog.Close(); err != nil {
