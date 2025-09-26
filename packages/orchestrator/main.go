@@ -361,25 +361,22 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
 
-	_, err = server.New(
-		ctx,
-		server.ServiceConfig{
-			GRPC:             grpcSrv,
-			Tel:              tel,
-			NetworkPool:      networkPool,
-			DevicePool:       devicePool,
-			TemplateCache:    templateCache,
-			Info:             serviceInfo,
-			Proxy:            sandboxProxy,
-			Sandboxes:        sandboxes,
-			Persistence:      persistence,
-			FeatureFlags:     featureFlags,
-			SbxEventsService: sbxEventsService,
-		},
-	)
-	if err != nil {
-		zap.L().Fatal("failed to create server", zap.Error(err))
-	}
+	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, env.GetEnv("ALLOW_SANDBOX_INTERNET", "true") != "false")
+
+	server.New(server.ServiceConfig{
+		SandboxFactory:   sandboxFactory,
+		GRPC:             grpcSrv,
+		Tel:              tel,
+		NetworkPool:      networkPool,
+		DevicePool:       devicePool,
+		TemplateCache:    templateCache,
+		Info:             serviceInfo,
+		Proxy:            sandboxProxy,
+		Sandboxes:        sandboxes,
+		Persistence:      persistence,
+		FeatureFlags:     featureFlags,
+		SbxEventsService: sbxEventsService,
+	})
 
 	tmplSbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,

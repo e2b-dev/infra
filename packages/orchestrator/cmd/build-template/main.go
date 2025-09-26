@@ -155,8 +155,12 @@ func buildTemplate(
 	if err != nil {
 		zap.L().Fatal("failed to create build metrics", zap.Error(err))
 	}
+
+	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, true)
+
 	builder := build.NewBuilder(
 		logger,
+		sandboxFactory,
 		persistenceTemplate,
 		persistenceBuild,
 		artifactRegistry,
