@@ -5,9 +5,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParse(t *testing.T) {
+	// set base required values
+	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres-connection-string")
+
 	t.Run("postgres connection string is required", func(t *testing.T) {
 		removeEnv(t, "POSTGRES_CONNECTION_STRING")
 
@@ -20,6 +24,13 @@ func TestParse(t *testing.T) {
 
 		_, err := Parse()
 		assert.ErrorContains(t, err, `environment variable "POSTGRES_CONNECTION_STRING" should not be empty`)
+	})
+
+	t.Run("supabase secrets are comma seperated", func(t *testing.T) {
+		t.Setenv("SUPABASE_JWT_SECRETS", "aaa,bbb")
+		result, err := Parse()
+		require.NoError(t, err)
+		assert.Equal(t, []string{"aaa", "bbb"}, result.SupabaseJWTSecrets)
 	})
 }
 

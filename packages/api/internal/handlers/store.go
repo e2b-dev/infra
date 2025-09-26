@@ -162,6 +162,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 	go templateManager.BuildsStatusPeriodicalSync(ctx)
 
 	a := &APIStore{
+		config:                   config,
 		Healthy:                  false,
 		orchestrator:             orch,
 		templateManager:          templateManager,
