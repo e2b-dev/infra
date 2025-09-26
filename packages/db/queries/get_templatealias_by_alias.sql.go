@@ -7,17 +7,34 @@ package queries
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 const getTemplateAliasByAlias = `-- name: GetTemplateAliasByAlias :one
-SELECT ea.alias, ea.is_renamable, ea.env_id
+SELECT ea.alias, ea.is_renamable, ea.env_id, e.team_id, e.public
 FROM "public"."env_aliases" ea
+JOIN "public"."envs" e ON ea.env_id = e.id
 WHERE ea.alias = $1
 `
 
-func (q *Queries) GetTemplateAliasByAlias(ctx context.Context, alias string) (EnvAlias, error) {
+type GetTemplateAliasByAliasRow struct {
+	Alias       string
+	IsRenamable bool
+	EnvID       string
+	TeamID      uuid.UUID
+	Public      bool
+}
+
+func (q *Queries) GetTemplateAliasByAlias(ctx context.Context, alias string) (GetTemplateAliasByAliasRow, error) {
 	row := q.db.QueryRow(ctx, getTemplateAliasByAlias, alias)
-	var i EnvAlias
-	err := row.Scan(&i.Alias, &i.IsRenamable, &i.EnvID)
+	var i GetTemplateAliasByAliasRow
+	err := row.Scan(
+		&i.Alias,
+		&i.IsRenamable,
+		&i.EnvID,
+		&i.TeamID,
+		&i.Public,
+	)
 	return i, err
 }
