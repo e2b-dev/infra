@@ -14,7 +14,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/exemplar"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -29,7 +29,7 @@ type TeamObserver struct {
 	teamSandboxesCreated metric.Int64Counter
 }
 
-func NewTeamObserver(ctx context.Context, cache *instance.MemoryStore) (*TeamObserver, error) {
+func NewTeamObserver(ctx context.Context, sandboxStore sandbox.Store) (*TeamObserver, error) {
 	deltaTemporality := otlpmetricgrpc.WithTemporalitySelector(func(kind sdkmetric.InstrumentKind) metricdata.Temporality {
 		return metricdata.DeltaTemporality
 	})
@@ -65,7 +65,7 @@ func NewTeamObserver(ctx context.Context, cache *instance.MemoryStore) (*TeamObs
 		teamSandboxesCreated: teamSandboxCreated,
 	}
 
-	err = observer.Start(cache)
+	err = observer.Start(sandboxStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start team observer: %w", err)
 	}
@@ -73,7 +73,7 @@ func NewTeamObserver(ctx context.Context, cache *instance.MemoryStore) (*TeamObs
 	return observer, nil
 }
 
-func (so *TeamObserver) Start(cache *instance.MemoryStore) (err error) {
+func (so *TeamObserver) Start(cache sandbox.Store) (err error) {
 	// Register callbacks for team sandbox metrics
 	so.registration, err = so.meter.RegisterCallback(
 		func(ctx context.Context, obs metric.Observer) error {

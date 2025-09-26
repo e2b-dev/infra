@@ -1,33 +1,12 @@
-package instance
+package sandbox
 
 import (
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
 
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
-
-const (
-	SandboxTimeoutDefault = time.Second * 15
-	// Should we auto pause the instance by default instead of killing it,
-	AutoPauseDefault = false
-)
-
-type State string
-
-const (
-	StateRunning State = "running"
-	StatePausing State = "pausing"
-	StateKilling State = "killing"
-)
-
-var allowed = map[State]map[State]bool{
-	StateRunning: {StatePausing: true, StateKilling: true},
-	StatePausing: {StateKilling: true},
-}
 
 func NewSandbox(
 	sandboxID string,
@@ -112,19 +91,6 @@ type Sandbox struct {
 	State State
 }
 
-type memorySandbox struct {
-	_data Sandbox
-
-	transition *utils.ErrorOnce
-	mu         sync.RWMutex
-}
-
-func newMemorySandbox(data Sandbox) *memorySandbox {
-	return &memorySandbox{
-		_data: data,
-	}
-}
-
 func (s Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 	return sbxlogger.SandboxMetadata{
 		SandboxID:  s.SandboxID,
@@ -135,55 +101,4 @@ func (s Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 
 func (s Sandbox) IsExpired() bool {
 	return time.Now().After(s.EndTime)
-}
-
-func (i *memorySandbox) SetExpired() {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	i.setExpired()
-}
-
-func (i *memorySandbox) setExpired() {
-	if !i._data.IsExpired() {
-		i._data.EndTime = time.Now()
-	}
-}
-
-func (i *memorySandbox) Data() Sandbox {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-
-	return i._data
-}
-
-func (i *memorySandbox) State() State {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-
-	return i._data.State
-}
-
-// SandboxID returns the sandbox ID, safe to use without lock, it's immutable
-func (i *memorySandbox) SandboxID() string {
-	return i._data.SandboxID
-}
-
-// TeamID returns the team ID, safe to use without lock, it's immutable
-func (i *memorySandbox) TeamID() uuid.UUID {
-	return i._data.TeamID
-}
-
-func (i *memorySandbox) extendEndTime(newEndTime time.Time, allowShorter bool) bool {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	// If shorter than the current end time, don't extend
-	if !allowShorter && newEndTime.Before(i._data.EndTime) {
-		return false
-	}
-
-	i._data.EndTime = newEndTime
-
-	return true
 }

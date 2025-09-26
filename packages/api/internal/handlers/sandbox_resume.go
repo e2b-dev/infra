@@ -14,7 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -43,7 +43,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
-	timeout := instance.SandboxTimeoutDefault
+	timeout := sandbox.SandboxTimeoutDefault
 	if body.Timeout != nil {
 		timeout = time.Duration(*body.Timeout) * time.Second
 
@@ -58,17 +58,17 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	sandboxData, err := a.orchestrator.GetSandbox(sandboxID, true)
 	if err == nil {
 		switch sandboxData.State {
-		case instance.StatePausing:
+		case sandbox.StatePausing:
 			zap.L().Debug("Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
 			err = a.orchestrator.WaitForStateChange(ctx, sandboxID)
 			if err != nil {
 				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error waiting for sandbox to pause")
 				return
 			}
-		case instance.StateKilling:
+		case sandbox.StateKilling:
 			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found")
 			return
-		case instance.StateRunning:
+		case sandbox.StateRunning:
 			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox %s is already running", sandboxID))
 
 			zap.L().Debug("Sandbox is already running",
