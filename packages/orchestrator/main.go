@@ -361,7 +361,9 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
 
-	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, env.GetEnv("ALLOW_SANDBOX_INTERNET", "true") != "false")
+	defaultAllowSandboxInternet := env.GetEnv("ALLOW_SANDBOX_INTERNET", "true") != "false"
+
+	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, defaultAllowSandboxInternet)
 
 	server.New(server.ServiceConfig{
 		SandboxFactory:   sandboxFactory,
@@ -428,6 +430,7 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 			persistence,
 			limiter,
 			serviceInfo,
+			defaultAllowSandboxInternet,
 		)
 		if err != nil {
 			zap.L().Fatal("failed to create template manager", zap.Error(err))

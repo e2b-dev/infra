@@ -58,6 +58,7 @@ func New(
 	templatePersistence storage.StorageProvider,
 	limiter *limit.Limiter,
 	info *service.ServiceInfo,
+	defaultAllowSandboxInternet bool,
 ) (*ServerStore, error) {
 	logger.Info("Initializing template manager")
 
@@ -82,7 +83,7 @@ func New(
 		return nil, fmt.Errorf("failed to create feature flags client: %w", err)
 	}
 
-	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, true)
+	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, defaultAllowSandboxInternet)
 
 	builder := build.NewBuilder(
 		logger,
