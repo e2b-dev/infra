@@ -18,7 +18,7 @@ type Config struct {
 	NomadAddress string `env:"NOMAD_ADDRESS" envDefault:"http://localhost:4646"`
 	NomadToken   string `env:"NOMAD_TOKEN"`
 
-	PostgresConnectionString string `env:"POSTGRES_CONNECTION_STRING"`
+	PostgresConnectionString string `env:"POSTGRES_CONNECTION_STRING,required,notEmpty"`
 
 	PosthogAPIKey string `env:"POSTHOG_API_KEY"`
 
