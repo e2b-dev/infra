@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"sync"
 
 	"github.com/rs/zerolog"
 
@@ -11,11 +12,12 @@ import (
 )
 
 type API struct {
-	isNotFC     bool
-	logger      *zerolog.Logger
-	accessToken *string
-	envVars     *utils.Map[string, string]
-	mmdsChan    chan *host.MMDSOpts
+	isNotFC       bool
+	logger        *zerolog.Logger
+	accessToken   *string
+	envVars       *utils.Map[string, string]
+	mmdsChan      chan *host.MMDSOpts
+	hyperloopLock *sync.Mutex
 }
 
 func New(l *zerolog.Logger, envVars *utils.Map[string, string], mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
