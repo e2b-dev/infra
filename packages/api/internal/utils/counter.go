@@ -52,6 +52,12 @@ func (t *TemplateSpawnCounter) processUpdates(ctx context.Context, dbClient *sql
 		case <-ctx.Done():
 			t.ticker.Stop()
 			return
+		case <-t.done:
+			t.ticker.Stop()
+
+			// Final flush before stopping
+			t.flushCounters(ctx, dbClient)
+			return
 		}
 	}
 }
@@ -81,5 +87,9 @@ func (t *TemplateSpawnCounter) flushCounters(ctx context.Context, dbClient *sqlc
 }
 
 func (t *TemplateSpawnCounter) Close() {
-	t.done <- true
+	select {
+	case t.done <- true:
+	default:
+		zap.L().Debug("template spawn counter already closed")
+	}
 }
