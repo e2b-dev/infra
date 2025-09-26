@@ -7,11 +7,12 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/db/queries"
 )
 
 type TemplateCounter struct {
-	count      int
+	count      int64
 	lastUpdate time.Time
 }
 
@@ -22,14 +23,14 @@ type TemplateSpawnCounter struct {
 	done     chan bool
 }
 
-func NewTemplateSpawnCounter(tickerDuration time.Duration, dbClient *db.DB) *TemplateSpawnCounter {
+func NewTemplateSpawnCounter(ctx context.Context, tickerDuration time.Duration, dbClient *sqlcdb.Client) *TemplateSpawnCounter {
 	counter := &TemplateSpawnCounter{
 		counters: make(map[string]*TemplateCounter),
 		ticker:   time.NewTicker(tickerDuration),
 		done:     make(chan bool),
 	}
 
-	go counter.processUpdates(dbClient)
+	go counter.processUpdates(ctx, dbClient)
 	return counter
 }
 
@@ -43,19 +44,19 @@ func (t *TemplateSpawnCounter) IncreaseTemplateSpawnCount(templateID string, tim
 	t.mu.Unlock()
 }
 
-func (t *TemplateSpawnCounter) processUpdates(dbClient *db.DB) {
+func (t *TemplateSpawnCounter) processUpdates(ctx context.Context, dbClient *sqlcdb.Client) {
 	for {
 		select {
 		case <-t.ticker.C:
-			t.flushCounters(dbClient)
-		case <-t.done:
+			t.flushCounters(ctx, dbClient)
+		case <-ctx.Done():
 			t.ticker.Stop()
 			return
 		}
 	}
 }
 
-func (t *TemplateSpawnCounter) flushCounters(dbClient *db.DB) {
+func (t *TemplateSpawnCounter) flushCounters(ctx context.Context, dbClient *sqlcdb.Client) {
 	t.mu.Lock()
 	updates := make(map[string]*TemplateCounter)
 	for templateID, counter := range t.counters {
@@ -68,7 +69,11 @@ func (t *TemplateSpawnCounter) flushCounters(dbClient *db.DB) {
 	t.mu.Unlock()
 
 	for templateID, counter := range updates {
-		err := dbClient.UpdateEnvLastUsed(context.Background(), int64(counter.count), counter.lastUpdate, templateID)
+		err := dbClient.UpdateTemplateSpawnCount(ctx, queries.UpdateTemplateSpawnCountParams{
+			SpawnCount:    counter.count,
+			LastSpawnedAt: &counter.lastUpdate,
+			TemplateID:    templateID,
+		})
 		if err != nil {
 			zap.L().Error("error updating template spawn count", zap.Error(err))
 		}
