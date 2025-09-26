@@ -27,8 +27,8 @@ func (e *Env) Execute(
 	step *templatemanager.TemplateStep,
 	cmdMetadata metadata.Context,
 ) (metadata.Context, error) {
-	cmdType := strings.ToUpper(step.Type)
-	args := step.Args
+	cmdType := strings.ToUpper(step.GetType())
+	args := step.GetArgs()
 	// args: [key1 value1 key2 value2 ...]
 	if len(args) == 0 {
 		return metadata.Context{}, fmt.Errorf("%s does not support passing no arguments", cmdType)

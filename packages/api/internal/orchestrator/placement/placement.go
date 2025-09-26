@@ -56,7 +56,7 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 				return nil, fmt.Errorf("no nodes available")
 			}
 
-			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.Sandbox.Vcpu, MiBMemory: sbxRequest.Sandbox.RamMb})
+			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()})
 			if err != nil {
 				return nil, err
 			}
@@ -64,9 +64,9 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 			telemetry.ReportEvent(ctx, "Placing sandbox on the node", telemetry.WithNodeID(node.ID))
 		}
 
-		node.PlacementMetrics.StartPlacing(sbxRequest.Sandbox.SandboxId, nodemanager.SandboxResources{
-			CPUs:      sbxRequest.Sandbox.Vcpu,
-			MiBMemory: sbxRequest.Sandbox.RamMb,
+		node.PlacementMetrics.StartPlacing(sbxRequest.GetSandbox().GetSandboxId(), nodemanager.SandboxResources{
+			CPUs:      sbxRequest.GetSandbox().GetVcpu(),
+			MiBMemory: sbxRequest.GetSandbox().GetRamMb(),
 		})
 
 		ctx, span := tracer.Start(ctx, "create-sandbox")
@@ -78,18 +78,18 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 		span.End()
 		if err != nil {
 			if algorithm.excludeNode(err) {
-				zap.L().Warn("Excluding node", logger.WithSandboxID(sbxRequest.Sandbox.SandboxId), logger.WithNodeID(node.ID))
+				zap.L().Warn("Excluding node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(node.ID))
 				nodesExcluded[node.ID] = struct{}{}
 			}
 
 			st, ok := status.FromError(err)
 			if !ok || st.Code() != codes.ResourceExhausted {
-				node.PlacementMetrics.Fail(sbxRequest.Sandbox.SandboxId)
-				zap.L().Error("Failed to create sandbox", logger.WithSandboxID(sbxRequest.Sandbox.SandboxId), logger.WithNodeID(node.ID), zap.Int("attempt", attempt+1), zap.Error(utils.UnwrapGRPCError(err)))
+				node.PlacementMetrics.Fail(sbxRequest.GetSandbox().GetSandboxId())
+				zap.L().Error("Failed to create sandbox", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(node.ID), zap.Int("attempt", attempt+1), zap.Error(utils.UnwrapGRPCError(err)))
 				attempt++
 			} else {
-				node.PlacementMetrics.Skip(sbxRequest.Sandbox.SandboxId)
-				zap.L().Warn("Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.Sandbox.SandboxId), logger.WithNodeID(node.ID))
+				node.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
+				zap.L().Warn("Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(node.ID))
 			}
 
 			node = nil
@@ -97,7 +97,7 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 			continue
 		}
 
-		node.PlacementMetrics.Success(sbxRequest.Sandbox.SandboxId)
+		node.PlacementMetrics.Success(sbxRequest.GetSandbox().GetSandboxId())
 		return node, nil
 	}
 

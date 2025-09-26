@@ -34,8 +34,8 @@ func TestWatcher(t *testing.T) {
 	createResp, err := envdClient.FilesystemClient.CreateWatcher(t.Context(), createReq)
 	require.NoError(t, err)
 	require.NotNil(t, createResp)
-	assert.NotEmpty(t, createResp.Msg.WatcherId)
-	watcherId := createResp.Msg.WatcherId
+	assert.NotEmpty(t, createResp.Msg.GetWatcherId())
+	watcherId := createResp.Msg.GetWatcherId()
 
 	// Get events (should be empty initially)
 	getReq := connect.NewRequest(&filesystem.GetWatcherEventsRequest{
@@ -46,7 +46,7 @@ func TestWatcher(t *testing.T) {
 
 	getResp, err := envdClient.FilesystemClient.GetWatcherEvents(t.Context(), getReq)
 	require.NoError(t, err)
-	assert.Empty(t, getResp.Msg.Events)
+	assert.Empty(t, getResp.Msg.GetEvents())
 
 	testFile := fmt.Sprintf("%s/test.txt", watchDir)
 	utils.UploadFile(t, t.Context(), sbx, envdClient, testFile, "hello world")
@@ -55,12 +55,12 @@ func TestWatcher(t *testing.T) {
 	require.Eventually(t, func() bool {
 		getResp, err := envdClient.FilesystemClient.GetWatcherEvents(t.Context(), getReq)
 		require.NoError(t, err)
-		events = getResp.Msg.Events
+		events = getResp.Msg.GetEvents()
 		return len(events) > 0
 	}, 5*time.Second, 20*time.Millisecond, "Expected to receive file system events")
 	require.NotEmpty(t, events)
-	assert.Equal(t, filesystem.EventType_EVENT_TYPE_CREATE, events[0].Type)
-	assert.Equal(t, "test.txt", events[0].Name)
+	assert.Equal(t, filesystem.EventType_EVENT_TYPE_CREATE, events[0].GetType())
+	assert.Equal(t, "test.txt", events[0].GetName())
 
 	// Remove watcher
 	removeReq := connect.NewRequest(&filesystem.RemoveWatcherRequest{

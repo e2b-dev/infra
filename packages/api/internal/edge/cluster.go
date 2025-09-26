@@ -185,9 +185,9 @@ func (c *Cluster) RegisterSandboxInCatalog(ctx context.Context, serviceInstanceI
 	body := api.V1SandboxCatalogCreateJSONRequestBody{
 		OrchestratorID: serviceInstanceID,
 
-		ExecutionID:      sandboxConfig.ExecutionId,
-		SandboxID:        sandboxConfig.SandboxId,
-		SandboxMaxLength: sandboxConfig.MaxSandboxLength,
+		ExecutionID:      sandboxConfig.GetExecutionId(),
+		SandboxID:        sandboxConfig.GetSandboxId(),
+		SandboxMaxLength: sandboxConfig.GetMaxSandboxLength(),
 		SandboxStartTime: sandboxStartTime,
 	}
 
