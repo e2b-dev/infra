@@ -33,6 +33,7 @@ import (
 	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
 	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	tracingMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
+	"github.com/e2b-dev/infra/packages/api/internal/testhacks"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -66,6 +67,10 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 	swagger.Servers = nil
 
 	r := gin.New()
+
+	if testhacks.IsTesting() {
+		r.Use(testhacks.PrintTestName)
+	}
 
 	r.Use(
 		// We use custom otel gin middleware because we want to log 4xx errors in the otel

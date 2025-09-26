@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/keepalive"
 
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
+	"github.com/e2b-dev/infra/packages/api/internal/testhacks"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
@@ -19,7 +20,7 @@ import (
 var templateManagerHost = os.Getenv("TEMPLATE_MANAGER_HOST")
 
 func createClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider) (*grpclient.GRPCClient, error) {
-	conn, err := grpc.NewClient(templateManagerHost,
+	grpcOptions := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithStatsHandler(
 			otelgrpc.NewClientHandler(
@@ -32,7 +33,16 @@ func createClient(tracerProvider trace.TracerProvider, meterProvider metric.Mete
 			Timeout:             2 * time.Second,  // Wait 2s for response
 			PermitWithoutStream: true,
 		}),
-	)
+	}
+
+	if testhacks.IsTesting() {
+		grpcOptions = append(grpcOptions,
+			grpc.WithUnaryInterceptor(testhacks.GRPCUnaryInterceptor),
+			grpc.WithStreamInterceptor(testhacks.GRPCStreamInterceptor),
+		)
+	}
+
+	conn, err := grpc.NewClient(templateManagerHost, grpcOptions...)
 	if err != nil {
 		return nil, err
 	}

@@ -15,7 +15,7 @@ func TestInternetAccess(t *testing.T) {
 	ctx := t.Context()
 	sbxTimeout := int32(30)
 
-	client := setup.GetAPIClient()
+	client := setup.GetAPIClient(t)
 
 	testCases := []struct {
 		name           string
@@ -59,7 +59,7 @@ func TestInternetAccessResumedSbx(t *testing.T) {
 	ctx := t.Context()
 	sbxTimeout := int32(30)
 
-	client := setup.GetAPIClient()
+	client := setup.GetAPIClient(t)
 
 	testCases := []struct {
 		name           string

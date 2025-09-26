@@ -25,7 +25,7 @@ func createSandbox(t *testing.T, sbxWithAuth bool, reqEditors ...api.RequestEdit
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	sbxTimeout := int32(10)
 	resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
@@ -43,7 +43,7 @@ func createSandbox(t *testing.T, sbxWithAuth bool, reqEditors ...api.RequestEdit
 		}
 
 		if resp.JSON201 != nil {
-			utils.TeardownSandbox(t, setup.GetAPIClient(), resp.JSON201.SandboxID)
+			utils.TeardownSandbox(t, setup.GetAPIClient(t), resp.JSON201.SandboxID)
 		}
 	})
 
@@ -135,7 +135,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 	// create a test file
 	utils.UploadFile(t, ctx, sbxMeta, envdClient, filePath, fileContent)
 
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	// stop sandbox
 	_, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxMeta.SandboxID, setup.WithAPIKey())
@@ -191,7 +191,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 	// create a test file
 	utils.UploadFile(t, ctx, sbxMeta, envdClient, filePath, fileContent)
 
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	// stop sandbox
 	_, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxMeta.SandboxID, setup.WithAPIKey())

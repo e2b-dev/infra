@@ -14,7 +14,7 @@ import (
 )
 
 func TestSandboxPause(t *testing.T) {
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	t.Run("regular pause", func(t *testing.T) {
 		// Create a sandbox with auto-pause disabled

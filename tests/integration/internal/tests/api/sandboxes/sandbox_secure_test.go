@@ -17,7 +17,7 @@ func TestCreateSandboxWithSecuredEnvd(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	c := setup.GetAPIClient()
+	c := setup.GetAPIClient(t)
 
 	sbxTimeout := int32(60)
 	sbxSecure := true

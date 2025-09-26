@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/e2b-dev/infra/packages/proxy/internal/testhacks"
 	e2bgrpcorchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -161,7 +162,7 @@ func getMappedStatus(s e2bgrpcorchestratorinfo.ServiceInfoStatus) OrchestratorSt
 }
 
 func newClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string) (*OrchestratorGRPCClient, error) {
-	conn, err := grpc.NewClient(host,
+	grpcOptions := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithStatsHandler(
 			otelgrpc.NewClientHandler(
@@ -169,7 +170,16 @@ func newClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterPr
 				otelgrpc.WithMeterProvider(meterProvider),
 			),
 		),
-	)
+	}
+
+	if testhacks.IsTesting() {
+		grpcOptions = append(grpcOptions,
+			grpc.WithUnaryInterceptor(testhacks.GRPCUnaryInterceptor),
+			grpc.WithStreamInterceptor(testhacks.GRPCStreamInterceptor),
+		)
+	}
+
+	conn, err := grpc.NewClient(host, grpcOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GRPC client: %w", err)
 	}
