@@ -106,6 +106,7 @@ func (tm *TemplateManager) CreateTemplate(
 	}
 
 	template := &templatemanagergrpc.TemplateConfig{
+		TeamID:             teamID.String(),
 		TemplateID:         templateID,
 		BuildID:            buildID.String(),
 		VCpuCount:          int32(vCpuCount),
