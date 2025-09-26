@@ -25,6 +25,7 @@ func TestSimpleCases(t *testing.T) {
 			tempDir := t.TempDir()
 
 			value := `
+# comment
 127.0.0.1        one.host
 127.0.0.2        two.host
 `
@@ -39,7 +40,8 @@ func TestSimpleCases(t *testing.T) {
 			data, err := os.ReadFile(inputPath)
 			require.NoError(t, err)
 
-			assert.Equal(t, `127.0.0.1        one.host
+			assert.Equal(t, `# comment
+127.0.0.1        one.host
 127.0.0.2        two.host
 127.0.0.3        events.e2b.local`, strings.TrimSpace(string(data)))
 		})

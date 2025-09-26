@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/txn2/txeh"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
@@ -78,7 +80,17 @@ func (a *API) SetupHyperloop(address string) {
 }
 
 func rewriteHostsFile(address, inputPath, outputPath string) error {
-	hosts, err := txeh.NewHosts(&txeh.HostsConfig{ReadFilePath: inputPath, WriteFilePath: outputPath})
+	data, err := os.ReadFile(inputPath)
+	if err != nil {
+		return fmt.Errorf("failed to read hosts file: %w", err)
+	}
+
+	// the txeh library drops an entry if the file does not end with a newline
+	if data[len(data)-1] != '\n' {
+		data = append(data, '\n')
+	}
+
+	hosts, err := txeh.NewHosts(&txeh.HostsConfig{RawText: utils.ToPtr(string(data))})
 	if err != nil {
 		return fmt.Errorf("failed to create hosts: %w", err)
 	}
@@ -87,8 +99,8 @@ func rewriteHostsFile(address, inputPath, outputPath string) error {
 	// This will remove any existing entries for events.e2b.local first
 	hosts.AddHost(address, "events.e2b.local")
 
-	if err = hosts.Save(); err != nil {
-		return fmt.Errorf("failed to add events host entry: %w", err)
+	if err = os.WriteFile(outputPath, []byte(hosts.RenderHostsFile()), 0); err != nil {
+		return fmt.Errorf("failed to save hosts file: %w", err)
 	}
 
 	return nil
