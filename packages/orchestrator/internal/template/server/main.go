@@ -22,10 +22,12 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/providers"
 )
 
 type ServerStore struct {
@@ -57,6 +59,7 @@ func New(
 	templatePersistence storage.StorageProvider,
 	limiter *limit.Limiter,
 	info *service.ServiceInfo,
+	flags *feature_flags.Client,
 ) (*ServerStore, error) {
 	logger.Info("Initializing template manager")
 
@@ -65,7 +68,7 @@ func New(
 		return nil, fmt.Errorf("error getting artifacts registry provider: %w", err)
 	}
 
-	buildPersistance, err := storage.GetBuildCacheStorageProvider(ctx, limiter)
+	buildPersistance, err := providers.GetBuildCacheStorageProvider(ctx, limiter)
 	if err != nil {
 		return nil, fmt.Errorf("error getting build cache storage provider: %w", err)
 	}
@@ -86,6 +89,7 @@ func New(
 		sandboxes,
 		templateCache,
 		buildMetrics,
+		flags,
 	)
 
 	store := &ServerStore{

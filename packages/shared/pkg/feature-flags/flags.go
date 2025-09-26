@@ -47,6 +47,7 @@ var (
 	SandboxLifeCycleEventsWriteFlagName = newBoolFlag("sandbox-lifecycle-events-write", env.IsDevelopment())
 	SnapshotFeatureFlagName             = newBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
 	TemplateFeatureFlagName             = newBoolFlag("use-nfs-for-templates", env.IsDevelopment())
+	BuildingFeatureFlagName             = newBoolFlag("use-nfs-for-building-templates", env.IsDevelopment())
 	SandboxEventsPublishFlagName        = newBoolFlag("sandbox-events-publish", env.IsDevelopment())
 	BestOfKPlacementAlgorithm           = newBoolFlag("best-of-k-placement-algorithm", env.IsDevelopment())
 	BestOfKCanFit                       = newBoolFlag("best-of-k-can-fit", true)
