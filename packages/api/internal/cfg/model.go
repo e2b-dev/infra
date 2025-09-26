@@ -27,6 +27,9 @@ type Config struct {
 
 	SandboxAccessTokenHashSeed string `env:"SANDBOX_ACCESS_TOKEN_HASH_SEED"`
 
+	// SupabaseJWTSecrets is a list of secrets used to verify the Supabase JWT.
+	// More secrets are possible in the case of JWT secret rotation where we need to accept
+	// tokens signed with the old secret for some time.
 	SupabaseJWTSecrets []string `env:"SUPABASE_JWT_SECRETS"`
 
 	TemplateManagerHost string `env:"TEMPLATE_MANAGER_HOST"`
