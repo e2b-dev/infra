@@ -17,6 +17,7 @@ type TemplateCounter struct {
 }
 
 type TemplateSpawnCounter struct {
+	db       *sqlcdb.Client
 	counters map[string]*TemplateCounter
 	mu       sync.Mutex
 	ticker   *time.Ticker
@@ -25,12 +26,13 @@ type TemplateSpawnCounter struct {
 
 func NewTemplateSpawnCounter(ctx context.Context, tickerDuration time.Duration, dbClient *sqlcdb.Client) *TemplateSpawnCounter {
 	counter := &TemplateSpawnCounter{
+		db:       dbClient,
 		counters: make(map[string]*TemplateCounter),
 		ticker:   time.NewTicker(tickerDuration),
 		done:     make(chan bool),
 	}
 
-	go counter.processUpdates(ctx, dbClient)
+	go counter.processUpdates(ctx)
 	return counter
 }
 
@@ -44,25 +46,22 @@ func (t *TemplateSpawnCounter) IncreaseTemplateSpawnCount(templateID string, tim
 	t.mu.Unlock()
 }
 
-func (t *TemplateSpawnCounter) processUpdates(ctx context.Context, dbClient *sqlcdb.Client) {
+func (t *TemplateSpawnCounter) processUpdates(ctx context.Context) {
 	for {
 		select {
 		case <-t.ticker.C:
-			t.flushCounters(ctx, dbClient)
+			t.flushCounters(ctx)
 		case <-ctx.Done():
 			t.ticker.Stop()
 			return
 		case <-t.done:
 			t.ticker.Stop()
-
-			// Final flush before stopping
-			t.flushCounters(ctx, dbClient)
 			return
 		}
 	}
 }
 
-func (t *TemplateSpawnCounter) flushCounters(ctx context.Context, dbClient *sqlcdb.Client) {
+func (t *TemplateSpawnCounter) flushCounters(ctx context.Context) {
 	t.mu.Lock()
 	updates := make(map[string]*TemplateCounter)
 	for templateID, counter := range t.counters {
@@ -75,7 +74,7 @@ func (t *TemplateSpawnCounter) flushCounters(ctx context.Context, dbClient *sqlc
 	t.mu.Unlock()
 
 	for templateID, counter := range updates {
-		err := dbClient.UpdateTemplateSpawnCount(ctx, queries.UpdateTemplateSpawnCountParams{
+		err := t.db.UpdateTemplateSpawnCount(ctx, queries.UpdateTemplateSpawnCountParams{
 			SpawnCount:    counter.count,
 			LastSpawnedAt: &counter.lastUpdate,
 			TemplateID:    templateID,
@@ -86,9 +85,10 @@ func (t *TemplateSpawnCounter) flushCounters(ctx context.Context, dbClient *sqlc
 	}
 }
 
-func (t *TemplateSpawnCounter) Close() {
+func (t *TemplateSpawnCounter) Close(ctx context.Context) {
 	select {
 	case t.done <- true:
+		t.flushCounters(ctx)
 	default:
 		zap.L().Debug("template spawn counter already closed")
 	}
