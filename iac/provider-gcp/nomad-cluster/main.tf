@@ -106,9 +106,7 @@ module "network" {
   build_instance_group  = google_compute_instance_group_manager.build_pool.instance_group
   server_instance_group = google_compute_instance_group_manager.server_pool.instance_group
 
-  nomad_port             = var.nomad_port
-  logs_proxy_port        = var.logs_proxy_port
-  logs_health_proxy_port = var.logs_health_proxy_port
+  nomad_port = var.nomad_port
 
   cluster_tag_name = var.cluster_tag_name
 

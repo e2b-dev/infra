@@ -96,14 +96,6 @@ locals {
   health_checked_backends = { for backend_index, backend_value in local.backends : backend_index => backend_value }
 }
 
-# ======== IP ADDRESSES ====================
-
-// todo: (2025-09-22): this can be removed when all orchestrator will be rolled with internal logs collector server
-resource "google_compute_global_address" "orch_logs_ip" {
-  name = "${var.prefix}logs-ip"
-}
-
-
 # ======== CLOUDFLARE ====================
 
 data "cloudflare_zone" "domain" {
@@ -437,73 +429,6 @@ resource "google_compute_security_policy" "default" {
   }
 }
 
-module "gce_lb_http_logs" {
-  source            = "GoogleCloudPlatform/lb-http/google"
-  version           = "~> 12.1"
-  name              = "${var.prefix}external-logs-endpoint"
-  project           = var.gcp_project_id
-  address           = google_compute_global_address.orch_logs_ip.address
-  create_address    = false
-  target_tags       = [var.cluster_tag_name]
-  firewall_networks = [var.network_name]
-
-  labels = var.labels
-  backends = {
-    default = {
-      description                     = null
-      protocol                        = "HTTP"
-      port                            = var.logs_proxy_port.port
-      port_name                       = var.logs_proxy_port.name
-      timeout_sec                     = 20
-      connection_draining_timeout_sec = 1
-      enable_cdn                      = false
-      session_affinity                = null
-      affinity_cookie_ttl_sec         = null
-      custom_request_headers          = null
-      custom_response_headers         = null
-      security_policy                 = google_compute_security_policy.disable-bots-log-collector.self_link
-
-      health_check = {
-        check_interval_sec  = null
-        timeout_sec         = null
-        healthy_threshold   = null
-        unhealthy_threshold = null
-        request_path        = var.logs_health_proxy_port.health_path
-        port                = var.logs_health_proxy_port.port
-        host                = null
-        logging             = null
-      }
-
-      log_config = {
-        enable      = false
-        sample_rate = 0.0
-      }
-
-      groups = [
-        {
-          group                        = var.client_instance_group
-          balancing_mode               = null
-          capacity_scaler              = null
-          description                  = null
-          max_connections              = null
-          max_connections_per_instance = null
-          max_connections_per_endpoint = null
-          max_rate                     = null
-          max_rate_per_instance        = null
-          max_rate_per_endpoint        = null
-          max_utilization              = null
-        },
-      ]
-
-      iap_config = {
-        enable               = false
-        oauth2_client_id     = ""
-        oauth2_client_secret = ""
-      }
-    }
-  }
-}
-
 # Firewalls
 resource "google_compute_firewall" "default-hc" {
   name    = "${var.prefix}load-balancer-hc"
@@ -553,26 +478,6 @@ resource "google_compute_firewall" "client_proxy_firewall_ingress" {
   # https://cloud.google.com/load-balancing/docs/health-check-concepts
   source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
 }
-
-resource "google_compute_firewall" "logs_collector_firewall_ingress" {
-  name    = "${var.prefix}${var.cluster_tag_name}-logs-collector-firewall-ingress"
-  network = var.network_name
-
-  allow {
-    protocol = "tcp"
-    # Health end point is already added by load balancer module automatically, but also adding it here just to make sure we don't remove it by accident
-    ports = [var.logs_proxy_port.port, var.logs_health_proxy_port.port]
-  }
-
-  priority = 999
-
-  direction   = "INGRESS"
-  target_tags = [var.cluster_tag_name]
-  # Load balancer health check IP ranges
-  # https://cloud.google.com/load-balancing/docs/health-check-concepts
-  source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
-}
-
 
 resource "google_compute_firewall" "internal_remote_connection_firewall_ingress" {
   name    = "${var.prefix}${var.cluster_tag_name}-internal-remote-connection-firewall-ingress"
@@ -757,34 +662,6 @@ resource "google_compute_security_policy_rule" "disable-consul" {
     versioned_expr = "SRC_IPS_V1"
     config {
       src_ip_ranges = ["*"]
-    }
-  }
-}
-
-resource "google_compute_security_policy" "disable-bots-log-collector" {
-  name = "disable-bots-log-collector"
-
-  rule {
-    action   = "allow"
-    priority = "300"
-    match {
-      expr {
-        expression = "request.path == \"/\" && request.method == \"POST\""
-      }
-    }
-
-    description = "Allow POST requests  to / (collecting logs)"
-  }
-
-  rule {
-    action      = "deny(403)"
-    priority    = "2147483647"
-    description = "Default rule, higher priority overrides it"
-    match {
-      versioned_expr = "SRC_IPS_V1"
-      config {
-        src_ip_ranges = ["*"]
-      }
     }
   }
 }

@@ -179,6 +179,10 @@ variable "logs_proxy_port" {
     name = string
     port = number
   })
+  default = {
+    name = "logs"
+    port = 30006
+  }
 }
 
 variable "logs_health_proxy_port" {
@@ -187,6 +191,11 @@ variable "logs_health_proxy_port" {
     port        = number
     health_path = string
   })
+  default = {
+    name        = "logs-health"
+    port        = 44313
+    health_path = "/health"
+  }
 }
 
 variable "analytics_collector_host_secret_name" {

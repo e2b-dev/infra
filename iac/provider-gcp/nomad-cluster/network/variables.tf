@@ -63,21 +63,6 @@ variable "client_proxy_port" {
   })
 }
 
-variable "logs_proxy_port" {
-  type = object({
-    name = string
-    port = number
-  })
-}
-
-variable "logs_health_proxy_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
-}
-
 variable "nomad_port" {
   type = number
 }
