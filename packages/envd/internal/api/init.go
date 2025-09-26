@@ -89,7 +89,7 @@ func rewriteHostsFile(address, inputPath, outputPath string) error {
 	}
 
 	// the txeh library drops an entry if the file does not end with a newline
-	if data[len(data)-1] != '\n' {
+	if len(data) > 0 && data[len(data)-1] != '\n' {
 		data = append(data, '\n')
 	}
 
@@ -102,7 +102,7 @@ func rewriteHostsFile(address, inputPath, outputPath string) error {
 	// This will remove any existing entries for events.e2b.local first
 	hosts.AddHost(address, "events.e2b.local")
 
-	if err = os.WriteFile(outputPath, []byte(hosts.RenderHostsFile()), 0); err != nil {
+	if err = os.WriteFile(outputPath, []byte(hosts.RenderHostsFile()), 0o644); err != nil {
 		return fmt.Errorf("failed to save hosts file: %w", err)
 	}
 
