@@ -54,7 +54,7 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if initRequest.HyperloopIP != nil {
-			a.SetupHyperloop(*initRequest.HyperloopIP)
+			go a.SetupHyperloop(*initRequest.HyperloopIP)
 		}
 	}
 
@@ -71,6 +71,9 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) SetupHyperloop(address string) {
+	a.hyperloopLock.Lock()
+	defer a.hyperloopLock.Unlock()
+
 	if err := rewriteHostsFile(address, "/etc/hosts", "/etc/hosts"); err != nil {
 		a.logger.Error().Err(err).Msg("failed to modify hosts file")
 		return
