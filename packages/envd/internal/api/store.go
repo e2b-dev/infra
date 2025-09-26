@@ -17,7 +17,7 @@ type API struct {
 	accessToken   *string
 	envVars       *utils.Map[string, string]
 	mmdsChan      chan *host.MMDSOpts
-	hyperloopLock *sync.Mutex
+	hyperloopLock sync.Mutex
 }
 
 func New(l *zerolog.Logger, envVars *utils.Map[string, string], mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
