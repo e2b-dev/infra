@@ -17,7 +17,7 @@ func TestSimpleCases(t *testing.T) {
 		"both newlines":               func(s string) string { return s },
 		"no newline prefix":           func(s string) string { return strings.TrimPrefix(s, "\n") },
 		"no newline suffix":           func(s string) string { return strings.TrimSuffix(s, "\n") },
-		"no newline prefix or suffix": func(s string) string { return strings.TrimSpace(s) },
+		"no newline prefix or suffix": strings.TrimSpace,
 	}
 
 	for name, preprocessor := range testCases {
@@ -42,7 +42,6 @@ func TestSimpleCases(t *testing.T) {
 			assert.Equal(t, `127.0.0.1        one.host
 127.0.0.2        two.host
 127.0.0.3        events.e2b.local`, strings.TrimSpace(string(data)))
-
 		})
 	}
 }
