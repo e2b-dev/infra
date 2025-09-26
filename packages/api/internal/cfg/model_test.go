@@ -21,7 +21,6 @@ func TestParse(t *testing.T) {
 		_, err := Parse()
 		assert.ErrorContains(t, err, `environment variable "POSTGRES_CONNECTION_STRING" should not be empty`)
 	})
-
 }
 
 // removeEnv was mostly copied from the implementation of t.Setenv
@@ -36,12 +35,11 @@ func removeEnv(t *testing.T, key string) {
 
 	if ok {
 		t.Cleanup(func() {
-			os.Setenv(key, prevValue)
+			os.Setenv(key, prevValue) //nolint:usetesting // we're doing fancy things here
 		})
 	} else {
 		t.Cleanup(func() {
 			os.Unsetenv(key)
 		})
 	}
-
 }

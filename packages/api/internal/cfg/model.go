@@ -10,7 +10,7 @@ type Config struct {
 
 	ClickhouseConnectionString string `env:"CLICKHOUSE_CONNECTION_STRING"`
 
-	DNSPort string `env:"DNS_PORT"`
+	DNSPort uint16 `env:"DNS_PORT" envDefault:"5353"`
 
 	LocalClusterEndpoint string `env:"LOCAL_CLUSTER_ENDPOINT"`
 	LocalClusterToken    string `env:"LOCAL_CLUSTER_TOKEN"`
