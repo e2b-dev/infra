@@ -17,11 +17,12 @@ type TemplateCounter struct {
 }
 
 type TemplateSpawnCounter struct {
-	db       *sqlcdb.Client
-	counters map[string]*TemplateCounter
-	mu       sync.Mutex
-	ticker   *time.Ticker
-	done     chan bool
+	db        *sqlcdb.Client
+	counters  map[string]*TemplateCounter
+	mu        sync.Mutex
+	ticker    *time.Ticker
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 func NewTemplateSpawnCounter(ctx context.Context, tickerDuration time.Duration, dbClient *sqlcdb.Client) *TemplateSpawnCounter {
@@ -29,7 +30,7 @@ func NewTemplateSpawnCounter(ctx context.Context, tickerDuration time.Duration, 
 		db:       dbClient,
 		counters: make(map[string]*TemplateCounter),
 		ticker:   time.NewTicker(tickerDuration),
-		done:     make(chan bool),
+		done:     make(chan struct{}),
 	}
 
 	go counter.processUpdates(ctx)
@@ -86,10 +87,8 @@ func (t *TemplateSpawnCounter) flushCounters(ctx context.Context) {
 }
 
 func (t *TemplateSpawnCounter) Close(ctx context.Context) {
-	select {
-	case t.done <- true:
+	t.closeOnce.Do(func() {
+		close(t.done)
 		t.flushCounters(ctx)
-	default:
-		zap.L().Debug("template spawn counter already closed")
-	}
+	})
 }
