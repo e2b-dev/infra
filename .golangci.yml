@@ -16,7 +16,6 @@ linters:
   disable:
     # these are in other PRs already
     - forcetypeassert
-    - noctx
     - protogetter
 
     # todo: determine if we want this

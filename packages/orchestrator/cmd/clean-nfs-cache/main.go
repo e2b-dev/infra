@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,13 +17,13 @@ import (
 )
 
 func main() {
-	if err := cleanNFSCache(); err != nil {
+	if err := cleanNFSCache(context.Background()); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 }
 
-func cleanNFSCache() error {
+func cleanNFSCache(ctx context.Context) error {
 	path, opts, err := parseArgs()
 	if err != nil {
 		return fmt.Errorf("invalid arguments: %w", err)
@@ -32,7 +33,7 @@ func cleanNFSCache() error {
 
 	var diskInfo diskInfo
 	timeit(fmt.Sprintf("getting disk info for %q ... ", path), func() {
-		diskInfo, err = getDiskInfo(path)
+		diskInfo, err = getDiskInfo(ctx, path)
 	})
 	if err != nil {
 		return fmt.Errorf("could not get disk info: %w", err)
@@ -192,9 +193,9 @@ type diskInfo struct {
 	total, used int64
 }
 
-func getDiskInfo(path string) (diskInfo, error) {
+func getDiskInfo(ctx context.Context, path string) (diskInfo, error) {
 	// Execute: df <path>
-	cmd := exec.Command("df", path)
+	cmd := exec.CommandContext(ctx, "df", path)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return diskInfo{}, fmt.Errorf("df command failed: %w: %s", err, strings.TrimSpace(string(out)))
