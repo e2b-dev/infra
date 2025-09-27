@@ -246,7 +246,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	}
 
 	// Check the rootfs filesystem corruption
-	ext4Check, err := filesystem.CheckIntegrity(rootfsPath, true)
+	ext4Check, err := filesystem.CheckIntegrity(ctx, rootfsPath, true)
 	if err != nil {
 		zap.L().Error("provisioned filesystem ext4 integrity",
 			zap.String("result", ext4Check),

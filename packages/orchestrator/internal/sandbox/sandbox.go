@@ -151,10 +151,8 @@ func (f *Factory) CreateSandbox(
 	processOptions fc.ProcessOptions,
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
-	ctx, span := tracer.Start(ctx, "create-sandbox")
-	defer span.End()
-
-	runCtx := context.WithoutCancel(ctx)
+	ctx, span, done := startSpan(ctx, "create sandbox")
+	defer func() { done(e) }()
 
 	exit := utils.NewErrorOnce()
 
@@ -214,7 +212,7 @@ func (f *Factory) CreateSandbox(
 		return rootfsProvider.Close(ctx)
 	})
 	go func() {
-		runErr := rootfsProvider.Start(runCtx)
+		runErr := rootfsProvider.Start(ctx)
 		if runErr != nil {
 			zap.L().Error("rootfs overlay error", zap.Error(runErr))
 		}
@@ -307,7 +305,9 @@ func (f *Factory) CreateSandbox(
 	})
 
 	go func() {
-		ctx, span := tracer.Start(runCtx, "sandbox-exit-wait")
+		defer span.End()
+
+		ctx, span := tracer.Start(ctx, "sandbox-exit-wait")
 		defer span.End()
 
 		// If the process exists, stop the sandbox properly
@@ -332,21 +332,8 @@ func (f *Factory) ResumeSandbox(
 	endAt time.Time,
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
-	ctx, span := tracer.Start(ctx, "resume-sandbox")
-	defer span.End()
-
-	runCtx := context.WithoutCancel(ctx)
-	runCtx, runSpan := tracer.Start(runCtx, "execute sandbox",
-		trace.WithNewRoot(),
-	)
-	defer func() {
-		if e != nil {
-			runSpan.AddEvent("resume sandbox aborted")
-			runSpan.End()
-		}
-	}()
-
-	span.AddLink(trace.LinkFromContext(runCtx))
+	ctx, span, done := startSpan(ctx, "resume sandbox")
+	defer func() { done(e) }()
 
 	exit := utils.NewErrorOnce()
 
@@ -404,7 +391,7 @@ func (f *Factory) ResumeSandbox(
 	telemetry.ReportEvent(ctx, "created rootfs overlay")
 
 	go func() {
-		runErr := rootfsOverlay.Start(runCtx)
+		runErr := rootfsOverlay.Start(ctx)
 		if runErr != nil {
 			zap.L().Error("rootfs overlay error", zap.Error(runErr))
 		}
@@ -420,7 +407,7 @@ func (f *Factory) ResumeSandbox(
 	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
 
 	fcUffd, err := serveMemory(
-		runCtx,
+		ctx,
 		cleanup,
 		memfile,
 		fcUffdPath,
@@ -462,7 +449,7 @@ func (f *Factory) ResumeSandbox(
 	telemetry.ReportEvent(ctx, "got metadata")
 
 	fcHandle, fcErr := fc.NewProcess(
-		uffdStartCtx,
+		ctx,
 		ips.slot,
 		sandboxFiles,
 		// The versions need to base exactly the same as the paused sandbox template because of the FC compatibility.
@@ -562,12 +549,12 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
 
-	go sbx.Checks.Start(runCtx)
+	go sbx.Checks.Start(ctx)
 
 	go func() {
-		defer runSpan.End()
+		defer span.End()
 
-		ctx, span := tracer.Start(runCtx, "sandbox-exit-wait")
+		ctx, span := tracer.Start(ctx, "sandbox-exit-wait")
 		defer span.End()
 
 		// Wait for either uffd or fc process to exit
@@ -586,6 +573,29 @@ func (f *Factory) ResumeSandbox(
 	return sbx, nil
 }
 
+func startSpan(ctx context.Context, spanName string) (context.Context, trace.Span, func(error)) {
+	ctx, span := tracer.Start(ctx, spanName) //nolint:spancheck // this is just a helper method
+	parentSpan := span
+
+	ctx = context.WithoutCancel(ctx)
+	ctx, span = tracer.Start(ctx, "execute sandbox", //nolint:spancheck // this is still just a helper method
+		trace.WithNewRoot(),
+	)
+
+	parentSpan.AddLink(trace.LinkFromContext(ctx))
+
+	return ctx, span, func(err error) { //nolint:spancheck // still just a helper method
+		parentSpan.End()
+
+		if err != nil {
+			span.AddEvent("an error occurred")
+			span.End()
+		} else {
+			span.AddEvent("success")
+		}
+	}
+}
+
 func (s *Sandbox) Wait(ctx context.Context) error {
 	return s.exit.WaitWithContext(ctx)
 }
@@ -600,7 +610,7 @@ func (s *Sandbox) Close(ctx context.Context) error {
 
 // Stop kills the sandbox.
 func (s *Sandbox) Stop(ctx context.Context) error {
-	_, span := tracer.Start(ctx, "sandbox-close")
+	ctx, span := tracer.Start(ctx, "sandbox-close")
 	defer span.End()
 
 	var errs []error
@@ -608,7 +618,7 @@ func (s *Sandbox) Stop(ctx context.Context) error {
 	// Stop the health checks before stopping the sandbox
 	s.Checks.Stop()
 
-	fcStopErr := s.process.Stop()
+	fcStopErr := s.process.Stop(ctx)
 	if fcStopErr != nil {
 		errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
 	}
