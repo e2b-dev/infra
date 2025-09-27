@@ -104,7 +104,7 @@ func NewBuildCache(meterProvider metric.MeterProvider) *BuildCache {
 		return nil
 	})
 	if err != nil {
-		zap.L().Error("error creating counter", zap.Error(err), zap.Any("counter_name", telemetry.BuildCounterMeterName))
+		zap.L().Error("error creating counter", zap.Error(err), zap.String("counter_name", string(telemetry.BuildCounterMeterName)))
 	}
 
 	go cache.Start()
