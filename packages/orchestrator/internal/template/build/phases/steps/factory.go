@@ -4,6 +4,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/commands"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer"
@@ -14,6 +15,7 @@ import (
 
 func CreateStepPhases(
 	bc buildcontext.BuildContext,
+	sandboxFactory *sandbox.Factory,
 	logger *zap.Logger,
 	proxy *proxy.SandboxProxy,
 	layerExecutor *layer.LayerExecutor,
@@ -27,6 +29,7 @@ func CreateStepPhases(
 		steps = append(steps,
 			New(
 				bc,
+				sandboxFactory,
 				logger,
 				proxy,
 				layerExecutor,

@@ -20,9 +20,10 @@ import (
 
 // CreateSandbox creates sandboxes for new templates
 type CreateSandbox struct {
-	config     sandbox.Config
-	timeout    time.Duration
-	fcVersions fc.FirecrackerVersions
+	config         sandbox.Config
+	timeout        time.Duration
+	fcVersions     fc.FirecrackerVersions
+	sandboxFactory *sandbox.Factory
 
 	rootfsCachePath string
 }
@@ -33,12 +34,24 @@ const (
 
 var _ SandboxCreator = (*CreateSandbox)(nil)
 
-func NewCreateSandbox(config sandbox.Config, timeout time.Duration, fcVersions fc.FirecrackerVersions) *CreateSandbox {
-	return &CreateSandbox{config: config, timeout: timeout, fcVersions: fcVersions, rootfsCachePath: ""}
+func NewCreateSandbox(config sandbox.Config, sandboxFactory *sandbox.Factory, timeout time.Duration, fcVersions fc.FirecrackerVersions) *CreateSandbox {
+	return &CreateSandbox{
+		config:          config,
+		sandboxFactory:  sandboxFactory,
+		timeout:         timeout,
+		fcVersions:      fcVersions,
+		rootfsCachePath: "",
+	}
 }
 
-func NewCreateSandboxFromCache(config sandbox.Config, timeout time.Duration, fcVersions fc.FirecrackerVersions, rootfsCachePath string) *CreateSandbox {
-	return &CreateSandbox{config: config, timeout: timeout, fcVersions: fcVersions, rootfsCachePath: rootfsCachePath}
+func NewCreateSandboxFromCache(config sandbox.Config, sandboxFactory *sandbox.Factory, timeout time.Duration, fcVersions fc.FirecrackerVersions, rootfsCachePath string) *CreateSandbox {
+	return &CreateSandbox{
+		config:          config,
+		timeout:         timeout,
+		fcVersions:      fcVersions,
+		rootfsCachePath: rootfsCachePath,
+		sandboxFactory:  sandboxFactory,
+	}
 }
 
 func (cs *CreateSandbox) Sandbox(
@@ -65,10 +78,8 @@ func (cs *CreateSandbox) Sandbox(
 	}
 
 	// In case of a new sandbox, base template ID is now used as the potentially exported template base ID.
-	sbx, err := sandbox.CreateSandbox(
+	sbx, err := cs.sandboxFactory.CreateSandbox(
 		ctx,
-		layerExecutor.networkPool,
-		layerExecutor.devicePool,
 		cs.config,
 		sandbox.RuntimeMetadata{
 			TemplateID:  layerExecutor.Config.TemplateID,

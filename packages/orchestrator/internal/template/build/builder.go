@@ -42,6 +42,7 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 type Builder struct {
 	logger *zap.Logger
 
+	sandboxFactory   *sandbox.Factory
 	templateStorage  storage.StorageProvider
 	buildStorage     storage.StorageProvider
 	devicePool       *nbd.DevicePool
@@ -55,6 +56,7 @@ type Builder struct {
 
 func NewBuilder(
 	logger *zap.Logger,
+	sandboxFactory *sandbox.Factory,
 	templateStorage storage.StorageProvider,
 	buildStorage storage.StorageProvider,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
@@ -76,6 +78,7 @@ func NewBuilder(
 		sandboxes:        sandboxes,
 		templateCache:    templateCache,
 		metrics:          buildMetrics,
+		sandboxFactory:   sandboxFactory,
 	}
 }
 
@@ -212,6 +215,7 @@ func runBuild(
 		layerExecutor,
 		index,
 		builder.metrics,
+		builder.sandboxFactory,
 	)
 
 	commandExecutor := commands.NewCommandExecutor(
@@ -222,6 +226,7 @@ func runBuild(
 
 	stepBuilders := steps.CreateStepPhases(
 		bc,
+		builder.sandboxFactory,
 		builder.logger,
 		builder.proxy,
 		layerExecutor,
@@ -232,6 +237,7 @@ func runBuild(
 
 	postProcessingBuilder := finalize.New(
 		bc,
+		builder.sandboxFactory,
 		builder.templateStorage,
 		builder.proxy,
 		layerExecutor,

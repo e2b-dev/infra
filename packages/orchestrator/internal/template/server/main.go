@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -57,6 +58,7 @@ func New(
 	templatePersistence storage.StorageProvider,
 	limiter *limit.Limiter,
 	info *service.ServiceInfo,
+	defaultAllowSandboxInternet bool,
 ) (*ServerStore, error) {
 	logger.Info("Initializing template manager")
 
@@ -75,8 +77,17 @@ func New(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build metrics: %w", err)
 	}
+
+	featureFlags, err := featureflags.NewClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create feature flags client: %w", err)
+	}
+
+	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, defaultAllowSandboxInternet)
+
 	builder := build.NewBuilder(
 		logger,
+		sandboxFactory,
 		templatePersistence,
 		buildPersistance,
 		artifactsregistry,

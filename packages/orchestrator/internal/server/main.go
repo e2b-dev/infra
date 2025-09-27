@@ -27,6 +27,7 @@ import (
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 
+	sandboxFactory    *sandbox.Factory
 	info              *service.ServiceInfo
 	sandboxes         *smap.Map[*sandbox.Sandbox]
 	proxy             *proxy.SandboxProxy
@@ -56,22 +57,21 @@ type ServiceConfig struct {
 	TemplateCache    *template.Cache
 	Info             *service.ServiceInfo
 	Proxy            *proxy.SandboxProxy
+	SandboxFactory   *sandbox.Factory
 	Sandboxes        *smap.Map[*sandbox.Sandbox]
 	Persistence      storage.StorageProvider
 	FeatureFlags     *featureflags.Client
 	SbxEventsService events.EventsService[event.SandboxEvent]
 }
 
-func New(
-	ctx context.Context,
-	cfg ServiceConfig,
-) (*Service, error) {
+func New(cfg ServiceConfig) *Service {
 	srv := &Service{
 		info:        cfg.Info,
 		proxy:       cfg.Proxy,
 		persistence: cfg.Persistence,
 	}
 	srv.server = &server{
+		sandboxFactory:    cfg.SandboxFactory,
 		info:              cfg.Info,
 		proxy:             srv.proxy,
 		sandboxes:         cfg.Sandboxes,
@@ -96,5 +96,5 @@ func New(
 
 	orchestrator.RegisterSandboxServiceServer(cfg.GRPC.GRPCServer(), srv.server)
 
-	return srv, nil
+	return srv
 }
