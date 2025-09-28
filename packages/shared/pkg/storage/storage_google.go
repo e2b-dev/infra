@@ -217,6 +217,10 @@ func (g *GCPBucketStorageObjectProvider) Delete(ctx context.Context) error {
 }
 
 func (g *GCPBucketStorageObjectProvider) Size(ctx context.Context) (int64, error) {
+	if g.compressed {
+		return g.seekableReader.Seek(0, io.SeekEnd)
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
 	defer cancel()
 

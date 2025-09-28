@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -21,7 +22,8 @@ type Chunker struct {
 	cache   *Cache
 	metrics metrics.Metrics
 
-	size int64
+	size      int64
+	blockSize int64
 
 	// TODO: Optimize this so we don't need to keep the fetchers in memory.
 	fetchers *utils.WaitMap
@@ -39,11 +41,12 @@ func NewChunker(
 	}
 
 	chunker := &Chunker{
-		size:     size,
-		base:     base,
-		cache:    cache,
-		fetchers: utils.NewWaitMap(),
-		metrics:  metrics,
+		size:      size,
+		base:      base,
+		cache:     cache,
+		fetchers:  utils.NewWaitMap(),
+		metrics:   metrics,
+		blockSize: blockSize,
 	}
 
 	return chunker, nil
@@ -110,7 +113,7 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 			attribute.String(result, resultTypeFailure),
 			attribute.String(pullType, pullTypeLocal),
 			attribute.String(failureReason, failureTypeLocalReadAgain))
-		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
+		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d, length: %d, cache block size: %d: %w", off, off+length, length, c.blockSize, cacheErr)
 	}
 
 	timer.End(ctx, length,
@@ -160,8 +163,10 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 				}
 				fetchSW.End(ctx, int64(readBytes), attribute.String("result", resultTypeSuccess))
 
+				fmt.Fprintf(os.Stderr, "readBytes in the fetch handler: %d\n", readBytes)
+
 				writeSW := c.metrics.WriteChunksTimerFactory.Begin()
-				_, cacheErr := c.cache.WriteAtWithoutLock(b, fetchOff)
+				n, cacheErr := c.cache.WriteAtWithoutLock(b[:readBytes], fetchOff)
 				if cacheErr != nil {
 					writeSW.End(ctx,
 						int64(readBytes),
@@ -170,6 +175,8 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 					)
 					return fmt.Errorf("failed to write chunk %d to cache: %w", fetchOff, cacheErr)
 				}
+
+				fmt.Fprintf(os.Stderr, "n written to cache during fetch handler: %d\n", n)
 
 				writeSW.End(ctx, int64(readBytes), attribute.String("result", resultTypeSuccess))
 

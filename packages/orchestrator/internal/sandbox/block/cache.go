@@ -221,6 +221,7 @@ func (m *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 
 	end := off + int64(len(b))
 	if end > m.size {
+		fmt.Fprintf(os.Stderr, "end is greater than m.size: %d > %d\n", end, m.size)
 		end = m.size
 	}
 

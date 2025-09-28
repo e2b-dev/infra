@@ -360,7 +360,7 @@ func (m *MultipartUploader) uploadFileCompressed(ctx context.Context, file *os.F
 	var compressedBuf bytes.Buffer
 
 	// Create ZSTD encoder - hardcode best compression like main.go
-	enc, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(11)))
+	enc, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(1)))
 	if err != nil {
 		return fmt.Errorf("failed to create zstd encoder: %w", err)
 	}
@@ -379,9 +379,9 @@ func (m *MultipartUploader) uploadFileCompressed(ctx context.Context, file *os.F
 	chunker, err := fastcdc.NewChunker(
 		file,
 		fastcdc.Options{
-			MinSize:     128 * 1024,  // 128KB
-			AverageSize: 1024 * 1024, // 1MB
-			MaxSize:     8192 * 1024, // 8MB
+			MinSize:     4 * 1024,        // 4KB
+			AverageSize: 1024 * 1024,     // 1MB
+			MaxSize:     4 * 1024 * 1024, // 4MB
 		},
 	)
 	if err != nil {
