@@ -27,7 +27,7 @@ func (n *Node) Sync(ctx context.Context, instanceCache *instance.MemoryStore) {
 		// update node status (if changed)
 		nodeStatus, ok := OrchestratorToApiNodeStateMapper[nodeInfo.ServiceStatus]
 		if !ok {
-			zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.ServiceStatus), logger.WithNodeID(n.ID))
+			zap.L().Error("Unknown service info status", zap.String("status", nodeInfo.ServiceStatus.String()), logger.WithNodeID(n.ID))
 			nodeStatus = api.NodeStatusUnhealthy
 		}
 
