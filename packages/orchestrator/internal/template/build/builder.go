@@ -28,7 +28,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/docker"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -41,15 +41,17 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 type Builder struct {
 	logger *zap.Logger
 
-	sandboxFactory         *sandbox.Factory
-	templateStorage        storage.StorageProvider
-	buildStorage           storage.StorageProvider
-	artifactRegistry       artifactsregistry.ArtifactsRegistry
-	dockerRemoteRepository docker.RemoteRepository
-	proxy                  *proxy.SandboxProxy
-	sandboxes              *smap.Map[*sandbox.Sandbox]
-	templateCache          *sbxtemplate.Cache
-	metrics                *metrics.BuildMetrics
+sandboxFactory         *sandbox.Factory	
+templateStorage     storage.StorageProvider
+	buildStorage        storage.StorageProvider
+	devicePool          *nbd.DevicePool
+	networkPool         *network.Pool
+	artifactRegistry    artifactsregistry.ArtifactsRegistry
+	dockerhubRepository dockerhub.RemoteRepository
+	proxy               *proxy.SandboxProxy
+	sandboxes           *smap.Map[*sandbox.Sandbox]
+	templateCache       *sbxtemplate.Cache
+	metrics             *metrics.BuildMetrics
 }
 
 func NewBuilder(
@@ -205,7 +207,7 @@ func runBuild(
 		builder.proxy,
 		builder.templateStorage,
 		builder.artifactRegistry,
-		builder.dockerRemoteRepository,
+		builder.dockerhubRepository,
 		layerExecutor,
 		index,
 		builder.metrics,

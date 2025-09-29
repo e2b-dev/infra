@@ -21,7 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci/auth"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/docker"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -38,7 +38,7 @@ var DefaultPlatform = containerregistry.Platform{
 	Architecture: "amd64",
 }
 
-func GetPublicImage(ctx context.Context, dockerRemoteRepository docker.RemoteRepository, tag string, authProvider auth.RegistryAuthProvider) (containerregistry.Image, error) {
+func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRepository, tag string, authProvider auth.RegistryAuthProvider) (containerregistry.Image, error) {
 	ctx, span := tracer.Start(ctx, "pull-public-docker-image")
 	defer span.End()
 
@@ -50,7 +50,7 @@ func GetPublicImage(ctx context.Context, dockerRemoteRepository docker.RemoteRep
 	// When no auth provider is provided and the image is from the default registry
 	// use docker remote repository proxy with cached images
 	if authProvider == nil && ref.Context().RegistryStr() == name.DefaultRegistry {
-		img, err := dockerRemoteRepository.GetImage(ctx, tag, DefaultPlatform)
+		img, err := dockerhubRepository.GetImage(ctx, tag, DefaultPlatform)
 		if err != nil {
 			return nil, fmt.Errorf("error getting image: %w", err)
 		}

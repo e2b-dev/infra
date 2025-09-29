@@ -232,12 +232,12 @@ module "nomad" {
   envd_timeout                = var.envd_timeout
 
   # Template manager
-  builder_node_pool              = var.build_node_pool
-  template_manager_port          = var.template_manager_port
-  template_bucket_name           = module.init.fc_template_bucket_name
-  build_cache_bucket_name        = module.init.fc_build_cache_bucket_name
-  template_manager_machine_count = var.build_cluster_size
-  docker_remote_repository_url   = var.remote_repository_enabled ? module.remote_repository[0].docker_remote_repository_url : ""
+  builder_node_pool               = var.build_node_pool
+  template_manager_port           = var.template_manager_port
+  template_bucket_name            = module.init.fc_template_bucket_name
+  build_cache_bucket_name         = module.init.fc_build_cache_bucket_name
+  template_manager_machine_count  = var.build_cluster_size
+  dockerhub_remote_repository_url = var.remote_repository_enabled ? module.remote_repository[0].dockerhub_remote_repository_url : ""
 
   # Redis
   redis_managed = var.redis_managed

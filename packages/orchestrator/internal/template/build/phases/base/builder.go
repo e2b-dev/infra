@@ -29,7 +29,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/docker"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -56,10 +56,12 @@ type BaseBuilder struct {
 	logger *zap.Logger
 	proxy  *proxy.SandboxProxy
 
-	sandboxFactory         *sandbox.Factory
-	templateStorage        storage.StorageProvider
-	artifactRegistry       artifactsregistry.ArtifactsRegistry
-	dockerRemoteRepository docker.RemoteRepository
+sandboxFactory         *sandbox.Factory	
+templateStorage     storage.StorageProvider
+	devicePool          *nbd.DevicePool
+	networkPool         *network.Pool
+	artifactRegistry    artifactsregistry.ArtifactsRegistry
+	dockerhubRepository dockerhub.RemoteRepository
 
 	layerExecutor *layer.LayerExecutor
 	index         cache.Index
@@ -72,7 +74,7 @@ func New(
 	proxy *proxy.SandboxProxy,
 	templateStorage storage.StorageProvider,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
-	dockerRemoteRepository docker.RemoteRepository,
+	dockerhubRepository dockerhub.RemoteRepository,
 	layerExecutor *layer.LayerExecutor,
 	index cache.Index,
 	metrics *metrics.BuildMetrics,
@@ -84,6 +86,11 @@ func New(
 		logger: logger,
 		proxy:  proxy,
 
+		templateStorage:     templateStorage,
+		devicePool:          devicePool,
+		networkPool:         networkPool,
+		artifactRegistry:    artifactRegistry,
+		dockerhubRepository: dockerhubRepository,
 		templateStorage:        templateStorage,
 		artifactRegistry:       artifactRegistry,
 		dockerRemoteRepository: dockerRemoteRepository,
@@ -180,7 +187,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		bb.BuildContext,
 		baseMetadata.Template.BuildID,
 		bb.artifactRegistry,
-		bb.dockerRemoteRepository,
+		bb.dockerhubRepository,
 		templateBuildDir,
 		rootfsPath,
 	)

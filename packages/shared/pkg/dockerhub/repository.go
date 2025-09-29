@@ -1,4 +1,4 @@
-package docker
+package dockerhub
 
 import (
 	"context"
@@ -19,8 +19,8 @@ const (
 
 	DefaultRegistryProvider RemoteRepositoryProvider = GCPStorageProvider
 
-	storageProviderEnv         = "DOCKER_REMOTE_REPOSITORY_PROVIDER"
-	storageRemoteRepositoryURL = "DOCKER_REMOTE_REPOSITORY_URL"
+	storageProviderEnv         = "DOCKERHUB_REMOTE_REPOSITORY_PROVIDER"
+	storageRemoteRepositoryURL = "DOCKERHUB_REMOTE_REPOSITORY_URL"
 )
 
 type RemoteRepository interface {
@@ -47,5 +47,5 @@ func GetRemoteRepository(ctx context.Context) (RemoteRepository, error) {
 		return NewNoopRemoteRepository(), nil
 	}
 
-	return nil, fmt.Errorf("unknown docker remote repository provider: %s", provider)
+	return nil, fmt.Errorf("unknown dockerhub remote repository provider: %s", provider)
 }

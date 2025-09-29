@@ -23,7 +23,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci/auth"
-	"github.com/e2b-dev/infra/packages/shared/pkg/docker"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
@@ -146,7 +146,7 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 	testRepository := "test/image"
 	testImageRef := testRepository + ":latest"
 
-	dockerRemoteRepository := docker.NewNoopRemoteRepository()
+	dockerhubRepository := dockerhub.NewNoopRemoteRepository()
 
 	t.Run("successful auth and pull", func(t *testing.T) {
 		reg := registry.New()
@@ -188,7 +188,7 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 		require.NotNil(t, authOption)
 
 		// Now test GetPublicImage
-		img, err := GetPublicImage(ctx, dockerRemoteRepository, imageRef, authProvider)
+		img, err := GetPublicImage(ctx, dockerhubRepository, imageRef, authProvider)
 		require.NoError(t, err)
 		require.NotNil(t, img)
 
@@ -238,7 +238,7 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 		require.NotNil(t, authOption)
 
 		// Now test GetPublicImage
-		img, err := GetPublicImage(ctx, dockerRemoteRepository, imageRef, authProvider)
+		img, err := GetPublicImage(ctx, dockerhubRepository, imageRef, authProvider)
 		require.Error(t, err)
 		require.Nil(t, img)
 	})
@@ -263,7 +263,7 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 		require.NoError(t, err)
 
 		// Get image without auth provider (nil)
-		img, err := GetPublicImage(ctx, dockerRemoteRepository, imageRef, nil)
+		img, err := GetPublicImage(ctx, dockerhubRepository, imageRef, nil)
 		require.NoError(t, err)
 		require.NotNil(t, img)
 

@@ -1,4 +1,4 @@
-resource "google_artifact_registry_repository" "docker_remote_repository" {
+resource "google_artifact_registry_repository" "dockerhub_remote_repository" {
   location      = var.gcp_region
   repository_id = "${var.prefix}docker-remote-repository"
   description   = "remote docker repository"
@@ -20,8 +20,8 @@ resource "google_artifact_registry_repository" "docker_remote_repository" {
   }
 }
 
-resource "google_artifact_registry_repository_iam_member" "docker_remote_repository_member" {
-  repository = google_artifact_registry_repository.docker_remote_repository.name
+resource "google_artifact_registry_repository_iam_member" "dockerhub_remote_repository_member" {
+  repository = google_artifact_registry_repository.dockerhub_remote_repository.name
   role       = "roles/artifactregistry.repoAdmin"
   member     = "serviceAccount:${var.google_service_account_email}"
 }

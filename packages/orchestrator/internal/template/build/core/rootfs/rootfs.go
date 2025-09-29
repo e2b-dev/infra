@@ -20,7 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/systeminit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/docker"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -36,10 +36,10 @@ const (
 )
 
 type Rootfs struct {
-	metadata               storage.TemplateFiles
-	template               config.TemplateConfig
-	artifactRegistry       artifactsregistry.ArtifactsRegistry
-	dockerRemoteRepository docker.RemoteRepository
+	metadata            storage.TemplateFiles
+	template            config.TemplateConfig
+	artifactRegistry    artifactsregistry.ArtifactsRegistry
+	dockerhubRepository dockerhub.RemoteRepository
 }
 
 type MultiWriter struct {
@@ -59,15 +59,15 @@ func (mw *MultiWriter) Write(p []byte) (int, error) {
 
 func New(
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
-	dockerRemoteRepository docker.RemoteRepository,
+	dockerhubRepository dockerhub.RemoteRepository,
 	metadata storage.TemplateFiles,
 	template config.TemplateConfig,
 ) *Rootfs {
 	return &Rootfs{
-		metadata:               metadata,
-		template:               template,
-		artifactRegistry:       artifactRegistry,
-		dockerRemoteRepository: dockerRemoteRepository,
+		metadata:            metadata,
+		template:            template,
+		artifactRegistry:    artifactRegistry,
+		dockerhubRepository: dockerhubRepository,
 	}
 }
 
@@ -92,7 +92,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	var img containerregistry.Image
 	var err error
 	if r.template.FromImage != "" {
-		img, err = oci.GetPublicImage(childCtx, r.dockerRemoteRepository, r.template.FromImage, r.template.RegistryAuthProvider)
+		img, err = oci.GetPublicImage(childCtx, r.dockerhubRepository, r.template.FromImage, r.template.RegistryAuthProvider)
 	} else {
 		img, err = oci.GetImage(childCtx, r.artifactRegistry, r.template.TemplateID, r.metadata.BuildID)
 	}
