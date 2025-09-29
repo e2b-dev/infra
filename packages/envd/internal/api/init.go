@@ -3,12 +3,14 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
 
 	"github.com/txn2/txeh"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
@@ -24,11 +26,20 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		var initRequest PostInitJSONBody
 
 		err := json.NewDecoder(r.Body).Decode(&initRequest)
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Is(err, io.EOF) {
 			logger.Error().Msgf("Failed to decode request: %v", err)
 			w.WriteHeader(http.StatusBadRequest)
 
 			return
+		}
+
+		if initRequest.Timestamp != nil {
+			logger.Debug().Msgf("Setting sandbox start time to: %v", *initRequest.Timestamp)
+			ts := unix.NsecToTimespec(initRequest.Timestamp.UnixNano())
+			err = unix.ClockSettime(unix.CLOCK_REALTIME, &ts)
+			if err != nil {
+				logger.Error().Msgf("Failed to set system time: %v", err)
+			}
 		}
 
 		if initRequest.EnvVars != nil {

@@ -4,6 +4,8 @@
 package api
 
 import (
+	"time"
+
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -142,6 +144,9 @@ type PostInitJSONBody struct {
 
 	// HyperloopIP IP address of the hyperloop server to connect to
 	HyperloopIP *string `json:"hyperloopIP,omitempty"`
+
+	// Timestamp The current timestamp in RFC3339 format
+	Timestamp *time.Time `json:"timestamp,omitempty"`
 }
 
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
