@@ -60,7 +60,7 @@ func New(
 ) (*ServerStore, error) {
 	logger.Info("Initializing template manager")
 
-	artifactsregistry, err := artifactsregistry.GetArtifactsRegistryProvider() //nolint:contextcheck // TODO: fix this later
+	artifactsregistry, err := artifactsregistry.GetArtifactsRegistryProvider()
 	if err != nil {
 		return nil, fmt.Errorf("error getting artifacts registry provider: %w", err)
 	}

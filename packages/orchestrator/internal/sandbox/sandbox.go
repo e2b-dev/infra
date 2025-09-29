@@ -136,11 +136,6 @@ func CreateSandbox(
 	defer func() { endSpan(span, e) }()
 
 	execCtx, execSpan := startExecutionSpan(ctx)
-	defer func() {
-		if e != nil {
-			endSpan(execSpan, e)
-		}
-	}()
 
 	exit := utils.NewErrorOnce()
 
@@ -149,6 +144,7 @@ func CreateSandbox(
 		if e != nil {
 			cleanupErr := cleanup.Run(ctx)
 			e = errors.Join(e, cleanupErr)
+			endSpan(execSpan, e)
 		}
 	}()
 
@@ -217,7 +213,8 @@ func CreateSandbox(
 		return nil, fmt.Errorf("failed to get network slot: %w", ips.err)
 	}
 	fcHandle, err := fc.NewProcess(
-		ctx, execCtx,
+		ctx,
+		execCtx,
 		ips.slot,
 		sandboxFiles,
 		fcVersions,
@@ -325,13 +322,6 @@ func ResumeSandbox(
 	defer func() { endSpan(span, e) }()
 
 	execCtx, execSpan := startExecutionSpan(ctx)
-	defer func() {
-		// only end the span if we've encountered an error.
-		// otherwise, the span will be ended by the "wait for sandbox" goroutine.
-		if e != nil {
-			endSpan(execSpan, e)
-		}
-	}()
 
 	exit := utils.NewErrorOnce()
 
@@ -340,6 +330,7 @@ func ResumeSandbox(
 		if e != nil {
 			cleanupErr := cleanup.Run(ctx)
 			e = errors.Join(e, cleanupErr)
+			endSpan(execSpan, e)
 		}
 	}()
 
@@ -395,7 +386,13 @@ func ResumeSandbox(
 
 	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
 
-	fcUffd, err := serveMemory(execCtx, cleanup, memfile, fcUffdPath, runtime.SandboxID)
+	fcUffd, err := serveMemory(
+		execCtx,
+		cleanup,
+		memfile,
+		fcUffdPath,
+		runtime.SandboxID,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serve memory: %w", err)
 	}
@@ -432,7 +429,8 @@ func ResumeSandbox(
 	telemetry.ReportEvent(ctx, "got metadata")
 
 	fcHandle, fcErr := fc.NewProcess(
-		ctx, execCtx,
+		ctx,
+		execCtx,
 		ips.slot,
 		sandboxFiles,
 		// The versions need to base exactly the same as the paused sandbox template because of the FC compatibility.
@@ -880,7 +878,12 @@ func getNetworkSlotAsync(
 	return r
 }
 
-func serveMemory(ctx context.Context, cleanup *Cleanup, memfile block.ReadonlyDevice, socketPath, sandboxID string) (uffd.MemoryBackend, error) {
+func serveMemory(
+	ctx context.Context,
+	cleanup *Cleanup,
+	memfile block.ReadonlyDevice,
+	socketPath, sandboxID string,
+) (uffd.MemoryBackend, error) {
 	fcUffd, err := uffd.New(memfile, socketPath, memfile.BlockSize())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create uffd: %w", err)

@@ -69,7 +69,8 @@ type Process struct {
 }
 
 func NewProcess(
-	ctx, execCtx context.Context,
+	ctx context.Context,
+	execCtx context.Context,
 	slot *network.Slot,
 	files *storage.SandboxFiles,
 	versions FirecrackerVersions,
