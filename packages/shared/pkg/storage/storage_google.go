@@ -170,9 +170,8 @@ func (g *GCPBucketStorageProvider) OpenObject(ctx context.Context, path string, 
 		storage:    g,
 		path:       path,
 		handle:     handle,
+		limiter:    g.limiter,
 		compressed: compressed,
-
-		limiter: g.limiter,
 	}
 
 	if compressed {
@@ -182,7 +181,7 @@ func (g *GCPBucketStorageProvider) OpenObject(ctx context.Context, path string, 
 			return nil, fmt.Errorf("failed to create zstd reader: %w", err)
 		}
 
-		size, err := obj.Size(ctx)
+		size, err := obj.size(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get object size: %w", err)
 		}
@@ -221,6 +220,10 @@ func (g *GCPBucketStorageObjectProvider) Size(ctx context.Context) (int64, error
 		return g.seekableReader.Seek(0, io.SeekEnd)
 	}
 
+	return g.size(ctx)
+}
+
+func (g *GCPBucketStorageObjectProvider) size(ctx context.Context) (int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
 	defer cancel()
 
