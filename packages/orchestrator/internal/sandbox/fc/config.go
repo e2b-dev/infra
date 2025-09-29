@@ -6,7 +6,6 @@ import (
 )
 
 const (
-	SandboxDir        = "/fc-vm"
 	SandboxKernelFile = "vmlinux.bin"
 
 	FirecrackerBinaryName = "firecracker"
@@ -16,6 +15,14 @@ const (
 
 	SandboxRootfsFile = "rootfs.ext4"
 )
+
+func SandboxDir() string {
+	if value := os.Getenv("SANDBOX_DIR"); value != "" {
+		return value
+	}
+
+	return "/fc-vm"
+}
 
 func HostKernelsDir() string {
 	if value := os.Getenv("HOST_KERNELS_DIR"); value != "" {

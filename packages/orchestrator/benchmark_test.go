@@ -42,9 +42,10 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	b.Setenv("HOST_ENVD_PATH", abs(filepath.Join("..", "envd", "bin", "envd")))
 	b.Setenv("FIRECRACKER_VERSIONS_DIR", abs(filepath.Join("..", "fc-versions", "builds")))
 	b.Setenv("HOST_KERNELS_DIR", abs(filepath.Join("..", "fc-kernels")))
+	b.Setenv("SANDBOX_DIR", abs(filepath.Join(tempDir, "fc-vm")))
 
 	// prep directories
-	for _, subdir := range []string{"build", "build-templates", "sandbox", "template"} {
+	for _, subdir := range []string{"build", "build-templates", "fc-vm", "sandbox", "template"} {
 		fullDirName := filepath.Join(tempDir, subdir)
 		err := os.MkdirAll(fullDirName, 0755)
 		require.NoError(b, err)
