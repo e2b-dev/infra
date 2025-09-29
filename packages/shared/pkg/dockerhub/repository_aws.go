@@ -34,7 +34,12 @@ func NewAWSRemoteRepository(ctx context.Context, repositoryURL string) (*AWSRemo
 }
 
 func (g *AWSRemoteRepository) GetImage(ctx context.Context, tag string, platform containerregistry.Platform) (containerregistry.Image, error) {
-	ref, err := name.ParseReference(g.repositoryURL + "/" + tag)
+	tagWithoutRegistry, err := removeRegistryFromTag(tag)
+	if err != nil {
+		return nil, fmt.Errorf("error removing registry from tag: %w", err)
+	}
+
+	ref, err := name.ParseReference(g.repositoryURL + "/" + tagWithoutRegistry)
 	if err != nil {
 		return nil, fmt.Errorf("invalid image reference: %w", err)
 	}

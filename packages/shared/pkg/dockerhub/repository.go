@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/go-containerregistry/pkg/name"
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -48,4 +49,14 @@ func GetRemoteRepository(ctx context.Context) (RemoteRepository, error) {
 	}
 
 	return nil, fmt.Errorf("unknown dockerhub remote repository provider: %s", provider)
+}
+
+func removeRegistryFromTag(tag string) (string, error) {
+	ref, err := name.ParseReference(tag)
+	if err != nil {
+		return "", fmt.Errorf("invalid image reference: %w", err)
+	}
+	refWithoutRegistry := ref.String()
+
+	return refWithoutRegistry, nil
 }
