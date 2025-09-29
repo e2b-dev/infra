@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,7 +26,7 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		var initRequest PostInitJSONBody
 
 		err := json.NewDecoder(r.Body).Decode(&initRequest)
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Is(err, io.EOF) {
 			logger.Error().Msgf("Failed to decode request: %v", err)
 			w.WriteHeader(http.StatusBadRequest)
 
