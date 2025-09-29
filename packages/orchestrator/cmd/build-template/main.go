@@ -87,7 +87,7 @@ func buildTemplate(
 		logger.Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 	go func() {
-		err := sandboxProxy.Start()
+		err := sandboxProxy.Start(parentCtx)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("failed to start sandbox proxy", zap.Error(err))
 		}
@@ -174,6 +174,7 @@ func buildTemplate(
 
 	force := true
 	template := config.TemplateConfig{
+		TeamID:     "",
 		TemplateID: templateID,
 		FromImage:  baseImage,
 		Force:      &force,

@@ -52,7 +52,7 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if initRequest.HyperloopIP != nil {
-			a.SetupHyperloop(*initRequest.HyperloopIP)
+			go a.SetupHyperloop(*initRequest.HyperloopIP)
 		}
 	}
 
@@ -69,6 +69,9 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) SetupHyperloop(address string) {
+	a.hyperloopLock.Lock()
+	defer a.hyperloopLock.Unlock()
+
 	hosts, err := txeh.NewHosts(&txeh.HostsConfig{ReadFilePath: "/etc/hosts", WriteFilePath: "/etc/hosts"})
 	if err != nil {
 		a.logger.Error().Msgf("Failed to create hosts: %v", err)

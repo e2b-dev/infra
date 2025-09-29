@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	nomadapi "github.com/hashicorp/nomad/api"
@@ -14,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
+	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/metrics"
@@ -58,6 +58,7 @@ type Orchestrator struct {
 
 func New(
 	ctx context.Context,
+	config cfg.Config,
 	tel *telemetry.Client,
 	nomadClient *nomadapi.Client,
 	posthogClient *analyticscollector.PosthogClient,
@@ -67,7 +68,10 @@ func New(
 	clusters *edge.Pool,
 	featureFlags *featureflags.Client,
 ) (*Orchestrator, error) {
-	analyticsInstance, err := analyticscollector.NewAnalytics()
+	analyticsInstance, err := analyticscollector.NewAnalytics(
+		config.AnalyticsCollectorHost,
+		config.AnalyticsCollectorAPIToken,
+	)
 	if err != nil {
 		zap.L().Error("Error initializing Analytics client", zap.Error(err))
 		return nil, err
@@ -79,7 +83,7 @@ func New(
 		zap.L().Info("Running locally, skipping starting DNS server")
 	} else {
 		zap.L().Info("Starting DNS server")
-		dnsServer.Start(ctx, "0.0.0.0", os.Getenv("DNS_PORT"))
+		dnsServer.Start(ctx, "0.0.0.0", config.DNSPort)
 	}
 
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,

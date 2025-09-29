@@ -3,7 +3,6 @@ package utils
 import (
 	"database/sql"
 	"fmt"
-	"os"
 
 	"github.com/pressly/goose/v3"
 	"go.uber.org/zap"
@@ -11,8 +10,7 @@ import (
 
 const trackingTable = "_migrations"
 
-func CheckMigrationVersion(expectedMigration int64) error {
-	connectionString := os.Getenv("POSTGRES_CONNECTION_STRING")
+func CheckMigrationVersion(connectionString string, expectedMigration int64) error {
 	db, err := sql.Open("postgres", connectionString)
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)

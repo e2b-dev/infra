@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -86,11 +87,13 @@ func (o *GetFirecrackerVersionOK) Code() int {
 }
 
 func (o *GetFirecrackerVersionOK) Error() string {
-	return fmt.Sprintf("[GET /version][%d] getFirecrackerVersionOK  %+v", 200, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[GET /version][%d] getFirecrackerVersionOK %s", 200, payload)
 }
 
 func (o *GetFirecrackerVersionOK) String() string {
-	return fmt.Sprintf("[GET /version][%d] getFirecrackerVersionOK  %+v", 200, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[GET /version][%d] getFirecrackerVersionOK %s", 200, payload)
 }
 
 func (o *GetFirecrackerVersionOK) GetPayload() *models.FirecrackerVersion {
@@ -158,11 +161,13 @@ func (o *GetFirecrackerVersionDefault) Code() int {
 }
 
 func (o *GetFirecrackerVersionDefault) Error() string {
-	return fmt.Sprintf("[GET /version][%d] getFirecrackerVersion default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[GET /version][%d] getFirecrackerVersion default %s", o._statusCode, payload)
 }
 
 func (o *GetFirecrackerVersionDefault) String() string {
-	return fmt.Sprintf("[GET /version][%d] getFirecrackerVersion default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[GET /version][%d] getFirecrackerVersion default %s", o._statusCode, payload)
 }
 
 func (o *GetFirecrackerVersionDefault) GetPayload() *models.Error {

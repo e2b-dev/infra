@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
+	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	buildlogs "github.com/e2b-dev/infra/packages/api/internal/template-manager/logs"
@@ -57,7 +58,7 @@ const (
 )
 
 func New(
-	ctx context.Context,
+	config cfg.Config,
 	tracerProvider trace.TracerProvider,
 	meterProvider metric.MeterProvider,
 	db *db.DB,
@@ -66,7 +67,7 @@ func New(
 	buildCache *templatecache.TemplatesBuildCache,
 	templateCache *templatecache.TemplateCache,
 ) (*TemplateManager, error) {
-	client, err := createClient(tracerProvider, meterProvider)
+	client, err := createClient(config, tracerProvider, meterProvider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}

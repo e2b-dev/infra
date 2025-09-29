@@ -154,7 +154,7 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 	rootfsFinalSize, err := filesystem.Enlarge(ctx, rootfsPath, sizeDiff)
 	if err != nil {
 		// Debug filesystem stats on error
-		cmd := exec.Command("tune2fs", "-l", rootfsPath)
+		cmd := exec.CommandContext(ctx, "tune2fs", "-l", rootfsPath)
 		output, dErr := cmd.Output()
 		zap.L().Error(string(output), zap.Error(dErr))
 
@@ -162,7 +162,7 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 	}
 
 	// Check the rootfs filesystem corruption
-	ext4Check, err := filesystem.CheckIntegrity(rootfsPath, false)
+	ext4Check, err := filesystem.CheckIntegrity(ctx, rootfsPath, false)
 	if err != nil {
 		zap.L().Error("final enlarge filesystem ext4 integrity",
 			zap.String("result", ext4Check),
@@ -170,7 +170,7 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 		)
 
 		// Occasionally there are Block bitmap differences. For this reason, we retry with fix.
-		ext4Check, err := filesystem.CheckIntegrity(rootfsPath, true)
+		ext4Check, err := filesystem.CheckIntegrity(ctx, rootfsPath, true)
 		zap.L().Error("final enlarge filesystem ext4 integrity - retry with fix",
 			zap.String("result", ext4Check),
 			zap.Error(err),
