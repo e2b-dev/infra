@@ -32,6 +32,15 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if initRequest.Timestamp != nil {
+			logger.Debug().Msgf("Setting sandbox start time to: %v", *initRequest.Timestamp)
+			ts := unix.NsecToTimespec(initRequest.Timestamp.UnixNano())
+			err = unix.ClockSettime(unix.CLOCK_REALTIME, &ts)
+			if err != nil {
+				logger.Error().Msgf("Failed to set system time: %v", err)
+			}
+		}
+
 		if initRequest.EnvVars != nil {
 			logger.Debug().Msg(fmt.Sprintf("Setting %d env vars", len(*initRequest.EnvVars)))
 
@@ -54,15 +63,6 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 
 		if initRequest.HyperloopIP != nil {
 			go a.SetupHyperloop(*initRequest.HyperloopIP)
-		}
-
-		if initRequest.Timestamp != nil {
-			logger.Debug().Msgf("Setting sandbox start time to: %v", *initRequest.Timestamp)
-			ts := unix.NsecToTimespec(initRequest.Timestamp.UnixNano())
-			err = unix.ClockSettime(unix.CLOCK_REALTIME, &ts)
-			if err != nil {
-				logger.Error().Msgf("Failed to set system time: %v", err)
-			}
 		}
 	}
 
