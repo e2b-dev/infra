@@ -76,6 +76,7 @@ job "template-manager-system" {
         ALLOW_SANDBOX_INTERNET        = "${allow_sandbox_internet}"
         SHARED_CHUNK_CACHE_PATH       = "${shared_chunk_cache_path}"
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
+        DOCKER_REMOTE_REPOSITORY_URL  = "${docker_remote_repository_url}"
 %{ if !update_stanza }
         FORCE_STOP                    = "true"
 %{ endif }

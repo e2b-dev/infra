@@ -340,3 +340,7 @@ variable "filestore_cache_max_disk_usage_target" {
   type        = number
   description = "The maximum disk usage target for the Filestore cache in percent"
 }
+
+variable "docker_remote_repository_url" {
+  type = string
+}

@@ -452,3 +452,9 @@ variable "orchestrator_base_hugepages_percentage" {
   type        = number
   default     = 80
 }
+
+variable "remote_repository_enabled" {
+  type        = bool
+  description = "Set to true to enable remote repository cache. Can be set via TF_VAR_remote_repository_enabled or REMOTE_REPOSITORY_ENABLED env var."
+  default     = false
+}

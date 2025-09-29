@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	docker "github.com/e2b-dev/infra/packages/shared/pkg/docker"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
@@ -62,6 +63,11 @@ func New(
 		return nil, fmt.Errorf("error getting artifacts registry provider: %w", err)
 	}
 
+	dockerRemoteRepository, err := docker.GetRemoteRepository(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting docker remote repository provider: %w", err)
+	}
+
 	buildPersistance, err := storage.GetBuildCacheStorageProvider(ctx, limiter)
 	if err != nil {
 		return nil, fmt.Errorf("error getting build cache storage provider: %w", err)
@@ -79,6 +85,7 @@ func New(
 		templatePersistence,
 		buildPersistance,
 		artifactsregistry,
+		dockerRemoteRepository,
 		proxy,
 		sandboxes,
 		templateCache,

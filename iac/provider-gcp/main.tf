@@ -237,6 +237,7 @@ module "nomad" {
   template_bucket_name           = module.init.fc_template_bucket_name
   build_cache_bucket_name        = module.init.fc_build_cache_bucket_name
   template_manager_machine_count = var.build_cluster_size
+  docker_remote_repository_url   = var.remote_repository_enabled ? module.remote_repository[0].docker_remote_repository_url : ""
 
   # Redis
   redis_managed = var.redis_managed
@@ -258,4 +259,17 @@ module "redis" {
   gcp_zone       = var.gcp_zone
 
   prefix = var.prefix
+}
+
+module "remote_repository" {
+  source = "./remote-repository"
+
+  count = var.remote_repository_enabled ? 1 : 0
+
+  prefix = var.prefix
+
+  gcp_project_id = var.gcp_project_id
+  gcp_region     = var.gcp_region
+
+  google_service_account_email = module.init.service_account_email
 }

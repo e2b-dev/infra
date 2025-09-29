@@ -29,6 +29,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/docker"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -55,9 +56,10 @@ type BaseBuilder struct {
 	logger *zap.Logger
 	proxy  *proxy.SandboxProxy
 
-	sandboxFactory   *sandbox.Factory
-	templateStorage  storage.StorageProvider
-	artifactRegistry artifactsregistry.ArtifactsRegistry
+	sandboxFactory         *sandbox.Factory
+	templateStorage        storage.StorageProvider
+	artifactRegistry       artifactsregistry.ArtifactsRegistry
+	dockerRemoteRepository docker.RemoteRepository
 
 	layerExecutor *layer.LayerExecutor
 	index         cache.Index
@@ -70,6 +72,7 @@ func New(
 	proxy *proxy.SandboxProxy,
 	templateStorage storage.StorageProvider,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
+	dockerRemoteRepository docker.RemoteRepository,
 	layerExecutor *layer.LayerExecutor,
 	index cache.Index,
 	metrics *metrics.BuildMetrics,
@@ -81,9 +84,10 @@ func New(
 		logger: logger,
 		proxy:  proxy,
 
-		sandboxFactory:   sandboxFactory,
-		templateStorage:  templateStorage,
-		artifactRegistry: artifactRegistry,
+		templateStorage:        templateStorage,
+		artifactRegistry:       artifactRegistry,
+		dockerRemoteRepository: dockerRemoteRepository,
+		sandboxFactory:         sandboxFactory,
 
 		layerExecutor: layerExecutor,
 		index:         index,
@@ -176,6 +180,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		bb.BuildContext,
 		baseMetadata.Template.BuildID,
 		bb.artifactRegistry,
+		bb.dockerRemoteRepository,
 		templateBuildDir,
 		rootfsPath,
 	)

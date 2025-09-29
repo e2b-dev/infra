@@ -507,6 +507,7 @@ resource "nomad_job" "template_manager" {
     orchestrator_services        = "template-manager"
     allow_sandbox_internet       = var.allow_sandbox_internet
     clickhouse_connection_string = local.clickhouse_connection_string
+    docker_remote_repository_url = var.docker_remote_repository_url
 
     # For now we DISABLE the shared chunk cache in the template manager
     shared_chunk_cache_path = ""

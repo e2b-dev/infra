@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/docker"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -164,6 +165,7 @@ func buildTemplate(
 		persistenceTemplate,
 		persistenceBuild,
 		artifactRegistry,
+		docker.NewNoopRemoteRepository(),
 		sandboxProxy,
 		sandboxes,
 		templateCache,
