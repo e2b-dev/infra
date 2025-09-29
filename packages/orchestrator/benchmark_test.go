@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,12 +31,24 @@ import (
 func BenchmarkBaseImageLaunch(b *testing.B) {
 	tempDir := b.TempDir()
 
+	abs := func(s string) string {
+		return utils.Must(filepath.Abs(s))
+	}
+
 	// hacks, these should go away
 	b.Setenv("USE_LOCAL_NAMESPACE_STORAGE", "true")
 	b.Setenv("STORAGE_PROVIDER", "Local")
 	b.Setenv("ORCHESTRATOR_BASE_PATH", tempDir)
-	b.Setenv("HOST_ENVD_PATH", filepath.Join("..", "envd", "bin", "envd"))
-	b.Setenv("FIRECRACKER_VERSIONS_DIR", filepath.Join("..", "fc-versions", "builds"))
+	b.Setenv("HOST_ENVD_PATH", abs(filepath.Join("..", "envd", "bin", "envd")))
+	b.Setenv("FIRECRACKER_VERSIONS_DIR", abs(filepath.Join("..", "fc-versions", "builds")))
+	b.Setenv("HOST_KERNELS_DIR", abs(filepath.Join("..", "fc-kernels")))
+
+	// prep directories
+	for _, subdir := range []string{"build", "build-templates", "sandbox", "template"} {
+		fullDirName := filepath.Join(tempDir, subdir)
+		err := os.MkdirAll(fullDirName, 0755)
+		require.NoError(b, err)
+	}
 
 	clientID := uuid.NewString()
 
@@ -59,6 +72,10 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	featureFlags, err := featureflags.NewClient()
 	require.NoError(b, err)
+	b.Cleanup(func() {
+		err := featureFlags.Close(b.Context())
+		assert.NoError(b, err)
+	})
 
 	limiter, err := limit.New(b.Context(), featureFlags)
 	require.NoError(b, err)
@@ -67,10 +84,6 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	require.NoError(b, err)
 
 	blockMetrics, err := blockmetrics.NewMetrics(&noop.MeterProvider{})
-	require.NoError(b, err)
-
-	cachePath := filepath.Join(tempDir, "build")
-	err = os.MkdirAll(cachePath, 0755)
 	require.NoError(b, err)
 
 	templateCache, err := template.NewCache(b.Context(), featureFlags, persistence, blockMetrics)
@@ -122,7 +135,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		templateID := uuid.NewString()
 		baseImage := "e2bdev/base"
 		buildID := uuid.NewString()
-		kernelVersion := "some-version" // todo: fill in later
+		kernelVersion := "vmlinux-6.1.102" // todo: fill in later
 		fcVersion := "v1.12.1_d990331f7"
 
 		builder := build.NewBuilder(

@@ -277,7 +277,7 @@ func (p *Process) Create(
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 
-		return errors.Join(fmt.Errorf("error setting fc boot source config: %w", err), fcStopErr)
+		return errors.Join(fmt.Errorf("error setting fc boot source %q): %w", p.kernelPath, err), fcStopErr)
 	}
 	telemetry.ReportEvent(ctx, "set fc boot source config")
 

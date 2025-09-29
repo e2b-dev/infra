@@ -6,8 +6,6 @@ import (
 )
 
 const (
-	HostKernelsDir = "/fc-kernels"
-
 	SandboxDir        = "/fc-vm"
 	SandboxKernelFile = "vmlinux.bin"
 
@@ -18,6 +16,14 @@ const (
 
 	SandboxRootfsFile = "rootfs.ext4"
 )
+
+func HostKernelsDir() string {
+	if value := os.Getenv("HOST_KERNELS_DIR"); value != "" {
+		return value
+	}
+
+	return "/fc-kernels"
+}
 
 func FirecrackerVersionsDir() string {
 	if value := os.Getenv("FIRECRACKER_VERSIONS_DIR"); value != "" {
@@ -37,7 +43,7 @@ func (t FirecrackerVersions) SandboxKernelDir() string {
 }
 
 func (t FirecrackerVersions) HostKernelPath() string {
-	return filepath.Join(HostKernelsDir, t.KernelVersion, SandboxKernelFile)
+	return filepath.Join(HostKernelsDir(), t.KernelVersion, SandboxKernelFile)
 }
 
 func (t FirecrackerVersions) FirecrackerPath() string {
