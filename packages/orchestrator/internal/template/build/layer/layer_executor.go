@@ -151,7 +151,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		lb.proxy,
 		sbx.Runtime.SandboxID,
 		"root",
-		storage.HostEnvdPath,
+		storage.HostEnvdPath(),
 		tmpEnvdPath,
 	)
 	if err != nil {

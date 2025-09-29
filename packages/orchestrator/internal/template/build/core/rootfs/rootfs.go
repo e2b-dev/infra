@@ -209,7 +209,7 @@ ff02::2	ip6-allrouters
 127.0.1.1	%s
 `, hostname)
 
-	envdFileData, err := os.ReadFile(storage.HostEnvdPath)
+	envdFileData, err := os.ReadFile(storage.HostEnvdPath())
 	if err != nil {
 		return nil, fmt.Errorf("error reading envd file: %w", err)
 	}

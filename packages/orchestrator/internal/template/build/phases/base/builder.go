@@ -36,7 +36,9 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-var templatesDirectory = filepath.Join(pkg.OrchestratorBasePath, "build-templates")
+func templatesDirectory() string {
+	return filepath.Join(pkg.OrchestratorBasePath(), "build-templates")
+}
 
 const (
 	rootfsBuildFileName = "rootfs.filesystem.build"
@@ -159,7 +161,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	baseMetadata metadata.Template,
 	hash string,
 ) (metadata.Template, error) {
-	templateBuildDir := filepath.Join(templatesDirectory, bb.Template.BuildID)
+	templateBuildDir := filepath.Join(templatesDirectory(), bb.Template.BuildID)
 	err := os.MkdirAll(templateBuildDir, 0o777)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("error creating template build directory: %w", err)

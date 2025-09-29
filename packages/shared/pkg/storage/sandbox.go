@@ -9,7 +9,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 )
 
-var sandboxCacheDir = filepath.Join(pkg.OrchestratorBasePath, "sandbox")
+var sandboxCacheDir = filepath.Join(pkg.OrchestratorBasePath(), "sandbox")
 
 type SandboxFiles struct {
 	TemplateCacheFiles

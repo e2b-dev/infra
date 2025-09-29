@@ -10,7 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg"
 )
 
-var templateCacheDir = filepath.Join(pkg.OrchestratorBasePath, "template")
+var templateCacheDir = filepath.Join(pkg.OrchestratorBasePath(), "template")
 
 type TemplateCacheFiles struct {
 	TemplateFiles
