@@ -98,10 +98,6 @@ func printSummary(r results, opts opts) {
 	fmt.Printf("- most recently used: %s\n", minDuration(r.lastAccessed).Round(time.Second))
 	fmt.Printf("- least recently used: %s\n", maxDuration(r.lastAccessed).Round(time.Second))
 	fmt.Printf("- standard deviation: %s\n", standardDeviation(r.lastAccessed).Round(time.Second))
-	fmt.Println("creation time:")
-	fmt.Printf("- oldest File: %s\n", minDuration(r.createdDurations).Round(time.Second))
-	fmt.Printf("- newest File: %s\n", maxDuration(r.createdDurations).Round(time.Second))
-	fmt.Printf("- standard deviation: %s\n", standardDeviation(r.createdDurations).Round(time.Second))
 }
 
 func standardDeviation(accessed []time.Duration) time.Duration {
