@@ -3,9 +3,7 @@ package memory
 import (
 	"context"
 	"fmt"
-	"slices"
 
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -80,57 +78,21 @@ func (s *Store) Remove(sandboxID string) {
 	s.items.Remove(sandboxID)
 }
 
-func (s *Store) Items(teamID *uuid.UUID) []sandbox.Sandbox {
+func (s *Store) Items(options ...sandbox.ItemsOption) []sandbox.Sandbox {
+	filter := &sandbox.ItemsFilter{}
+	for _, opt := range options {
+		opt(filter)
+	}
+
 	items := make([]sandbox.Sandbox, 0)
 	for _, item := range s.items.Items() {
 		data := item.Data()
-		if data.IsExpired() {
-			continue
-		}
 
-		if teamID != nil && data.TeamID != *teamID {
+		if !applyFilter(data, filter) {
 			continue
 		}
 
 		items = append(items, data)
-	}
-
-	return items
-}
-
-func (s *Store) ItemsToEvict() []sandbox.Sandbox {
-	items := make([]sandbox.Sandbox, 0)
-	for _, item := range s.items.Items() {
-		data := item.Data()
-		if !data.IsExpired() {
-			continue
-		}
-
-		if data.State != sandbox.StateRunning {
-			continue
-		}
-
-		items = append(items, data)
-	}
-
-	return items
-}
-
-func (s *Store) ItemsByState(teamID *uuid.UUID, states []sandbox.State) map[sandbox.State][]sandbox.Sandbox {
-	items := make(map[sandbox.State][]sandbox.Sandbox)
-	for _, item := range s.items.Items() {
-		data := item.Data()
-		if teamID != nil && data.TeamID != *teamID {
-			continue
-		}
-
-		if slices.Contains(states, data.State) {
-			if _, ok := items[data.State]; !ok {
-				items[data.State] = []sandbox.Sandbox{}
-			}
-
-			items[data.State] = append(items[data.State], data)
-		}
 	}
 
 	return items
@@ -177,7 +139,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.
 			return false, nil, fmt.Errorf("invalid state transition, already in transition from %s", currentState)
 		}
 
-		zap.L().Debug("State transition already in progress to the same state, waiting", logger.WithSandboxID(sbx.SandboxID()), zap.String("state", string(newState)))
+		zap.L().Debug("States transition already in progress to the same state, waiting", logger.WithSandboxID(sbx.SandboxID()), zap.String("state", string(newState)))
 		err = transition.WaitWithContext(ctx)
 		if err != nil {
 			return false, nil, fmt.Errorf("sandbox is in failed state: %w", err)
