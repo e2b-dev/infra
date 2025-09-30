@@ -799,7 +799,7 @@ resource "google_compute_router" "nat_router" {
 
 # Static IP addresses for NAT
 resource "google_compute_address" "nat_ips" {
-  count  = var.api_use_nat ? 3 : 0
+  count  = var.api_use_nat ? 2 : 0
   name   = "${var.prefix}nat-ip-${count.index + 1}"
   region = var.gcp_region
 }
