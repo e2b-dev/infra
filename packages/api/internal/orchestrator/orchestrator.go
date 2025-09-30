@@ -13,7 +13,6 @@ import (
 	"go.uber.org/zap"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
@@ -21,6 +20,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/evictor"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store/memory"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -36,7 +37,7 @@ var ErrNodeNotFound = errors.New("node not found")
 type Orchestrator struct {
 	httpClient              *http.Client
 	nomadClient             *nomadapi.Client
-	sandboxStore            *instance.MemoryStore
+	sandboxStore            sandbox.Store
 	nodes                   *smap.Map[*nodemanager.Node]
 	leastBusyAlgorithm      placement.Algorithm
 	bestOfKAlgorithm        *placement.BestOfK
@@ -127,11 +128,11 @@ func New(
 		createdCounter: createdCounter,
 	}
 
-	sandboxStore := instance.NewStore(
-		[]instance.InsertCallback{
+	sandboxStore := memory.NewStore(
+		[]sandbox.InsertCallback{
 			o.addToNode,
 		},
-		[]instance.InsertCallback{
+		[]sandbox.InsertCallback{
 			o.observeTeamSandbox,
 			o.countersInsert,
 			o.analyticsInsert,
@@ -197,7 +198,7 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 			}
 
 			zap.L().Info("API internal status",
-				zap.Int("sandboxes_count", o.sandboxStore.Len(nil)),
+				zap.Int("sandboxes_count", len(o.sandboxStore.Items(nil))),
 				zap.Int("nodes_count", o.nodes.Count()),
 				zap.Any("nodes", connectedNodes),
 			)
