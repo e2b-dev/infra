@@ -105,6 +105,9 @@ module "cluster" {
   loki_node_pool         = var.loki_node_pool
   orchestrator_node_pool = var.orchestrator_node_pool
 
+  api_use_nat = var.api_use_nat
+  api_nat_ips = var.api_nat_ips
+
   logs_health_proxy_port = var.logs_health_proxy_port
   logs_proxy_port        = var.logs_proxy_port
 

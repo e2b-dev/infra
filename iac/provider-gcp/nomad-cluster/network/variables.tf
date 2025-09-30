@@ -27,6 +27,18 @@ variable "gcp_project_id" {
   type = string
 }
 
+variable "gcp_region" {
+  type = string
+}
+
+variable "api_use_nat" {
+  type = bool
+}
+
+variable "api_nat_ips" {
+  type        = list(string)
+  description = "List of static IP addresses to use for NAT. If empty and api_use_nat is true, IPs will be created automatically."
+}
 
 variable "cloudflare_api_token_secret_name" {
   type = string
