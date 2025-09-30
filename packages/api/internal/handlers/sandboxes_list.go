@@ -173,8 +173,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		for _, info := range runningSandboxes {
 			runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
 		}
-		pausing := pausingSandboxes
-		for _, info := range pausing {
+		for _, info := range pausingSandboxes {
 			runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
 		}
 
@@ -186,7 +185,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 			return
 		}
 
-		pausingSandboxList := instanceInfoToPaginatedSandboxes(pausing)
+		pausingSandboxList := instanceInfoToPaginatedSandboxes(pausingSandboxes)
 		pausingSandboxList = utils.FilterSandboxesOnMetadata(pausingSandboxList, metadataFilter)
 		pausingSandboxList = utils.FilterBasedOnCursor(pausingSandboxList, cursorTime, cursorID)
 
