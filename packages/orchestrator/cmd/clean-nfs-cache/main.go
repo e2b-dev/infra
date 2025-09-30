@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
 	"sort"
 	"time"
 
@@ -28,6 +27,8 @@ func cleanNFSCache(ctx context.Context) error {
 	}
 
 	// get free space information for path
+	fmt.Printf("dry run: %t\n", opts.dryRun)
+	fmt.Printf("target disk usage percentage: %f%%\n", opts.targetDiskUsagePercent)
 
 	var diskInfo pkg.DiskInfo
 	timeit(fmt.Sprintf("getting disk info for %q", path), func() {
@@ -187,7 +188,7 @@ func deleteOldestFiles(cache *pkg.ListingCache, files []pkg.File, opts opts, dis
 			fmt.Print("\n")
 		}
 
-		cache.Decache(filepath.Dir(file.Path))
+		cache.Decache(file.Path)
 		results.deletedFiles++
 		results.deletedBytes += file.Size
 		results.lastAccessed = append(results.lastAccessed, now.Sub(file.ATime))
@@ -301,7 +302,7 @@ func timeit(message string, fn func()) {
 	fn()
 	done := time.Since(start).Round(time.Millisecond)
 
-	fmt.Printf(message+": done in [%s]\n", done)
+	fmt.Print(message + fmt.Sprintf(": done in [%s]\n", done))
 }
 
 func formatBytes(b int64) string {
