@@ -24,6 +24,9 @@ const (
 	SandboxCreateMeterName          CounterType = "api.env.instance.started"
 
 	TeamSandboxCreated CounterType = "e2b.team.sandbox.created"
+
+	EnvdInitAttempts CounterType = "orchestrator.envd.init.attempts"
+	EnvdInitSuccess  CounterType = "orchestrator.envd.init.success"
 )
 
 const (
@@ -92,6 +95,8 @@ var counterDesc = map[CounterType]string{
 	BuildResultCounterName:          "Number of template build results",
 	BuildCacheResultCounterName:     "Number of build cache results",
 	TeamSandboxCreated:              "Counter of started sandboxes for the team in the interval",
+	EnvdInitAttempts:                "Number of envd initialization attempts",
+	EnvdInitSuccess:                 "Number of successful envd initializations",
 }
 
 var counterUnits = map[CounterType]string{
@@ -100,6 +105,8 @@ var counterUnits = map[CounterType]string{
 	BuildResultCounterName:          "{build}",
 	BuildCacheResultCounterName:     "{layer}",
 	TeamSandboxCreated:              "{sandbox}",
+	EnvdInitAttempts:                "1",
+	EnvdInitSuccess:                 "1",
 }
 
 var observableCounterDesc = map[ObservableCounterType]string{

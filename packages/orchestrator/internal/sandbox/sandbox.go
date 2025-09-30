@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -32,7 +33,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var defaultEnvdTimeout = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT", "10s")))
+var (
+	defaultEnvdTimeout = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT", "10s")))
+	meter              = otel.GetMeterProvider().Meter("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox")
+	envdInitAttempts   = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitAttempts))
+	envdInitSuccess    = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitSuccess))
+)
 
 var httpClient = http.Client{
 	Timeout: 10 * time.Second,
@@ -335,6 +341,7 @@ func (f *Factory) ResumeSandbox(
 	startedAt time.Time,
 	endAt time.Time,
 	apiConfigToStore *orchestrator.SandboxConfig,
+	envdInitRequestTimeout time.Duration,
 ) (s *Sandbox, e error) {
 	ctx, span := tracer.Start(ctx, "resume sandbox")
 	defer func() { endSpan(span, e) }()
@@ -545,6 +552,7 @@ func (f *Factory) ResumeSandbox(
 	err = sbx.WaitForEnvd(
 		ctx,
 		defaultEnvdTimeout,
+		envdInitRequestTimeout,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
@@ -956,6 +964,7 @@ func (s *Sandbox) WaitForExit(ctx context.Context) error {
 func (s *Sandbox) WaitForEnvd(
 	ctx context.Context,
 	timeout time.Duration,
+	envdInitRequestTimeout time.Duration,
 ) (e error) {
 	ctx, span := tracer.Start(ctx, "sandbox-wait-for-start")
 	defer span.End()
@@ -984,7 +993,7 @@ func (s *Sandbox) WaitForEnvd(
 		}
 	}()
 
-	if err := s.initEnvd(ctx, s.Config.Envd.Vars, s.Config.Envd.AccessToken); err != nil {
+	if err := s.initEnvd(ctx, s.Config.Envd.Vars, s.Config.Envd.AccessToken, envdInitRequestTimeout); err != nil {
 		return fmt.Errorf("failed to init new envd: %w", err)
 	}
 

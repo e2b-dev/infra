@@ -185,6 +185,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	err = sbx.WaitForEnvd(
 		ctx,
 		waitEnvdTimeout,
+		defaultEnvdInitRequestTimeout,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to wait for envd initialization after update: %w", err)
