@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -29,13 +30,17 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 	newEndTime := now.Add(maxAllowedTTL)
 	zap.L().Debug("sandbox ttl updated", logger.WithSandboxID(data.SandboxID), zap.Time("end_time", newEndTime))
 
-	updated, err := o.sandboxStore.ExtendEndTime(sandboxID, newEndTime, allowShorter)
-	if err != nil {
-		return &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("Sandbox '%s' is not running anymore", sandboxID), Err: err}
+	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, bool) {
+		if !allowShorter && sbx.EndTime.Sub(newEndTime) <= 0 {
+			return sbx, false
+		}
+
+		sbx.EndTime = newEndTime
+		return sbx, true
 	}
 
-	if !updated {
-		// No need to update in orchestrator
+	ok := o.sandboxStore.Update(sandboxID, updateFunc)
+	if !ok {
 		return nil
 	}
 

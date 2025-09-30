@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -137,13 +136,20 @@ func (s *Store) ItemsByState(teamID *uuid.UUID, states []sandbox.State) map[sand
 	return items
 }
 
-func (s *Store) ExtendEndTime(sandboxID string, newEndTime time.Time, allowShorter bool) (bool, error) {
+func (s *Store) Update(sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, bool)) bool {
 	item, ok := s.items.Get(sandboxID)
 	if !ok {
-		return false, fmt.Errorf("sandbox \"%s\" doesn't exist", sandboxID)
+		return false
 	}
 
-	return item.extendEndTime(newEndTime, allowShorter), nil
+	item.mu.Lock()
+	defer item.mu.Unlock()
+	newData, ok := updateFunc(item._data)
+	if ok {
+		item._data = newData
+	}
+
+	return ok
 }
 
 func (s *Store) StartRemoving(ctx context.Context, sandboxID string, stateAction sandbox.StateAction) (alreadyDone bool, callback func(error), err error) {
