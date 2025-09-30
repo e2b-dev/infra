@@ -31,7 +31,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 	zap.L().Debug("sandbox ttl updated", logger.WithSandboxID(data.SandboxID), zap.Time("end_time", newEndTime))
 
 	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, bool) {
-		if !allowShorter && sbx.EndTime.Sub(newEndTime) <= 0 {
+		if !allowShorter && newEndTime.Before(data.EndTime) {
 			return sbx, false
 		}
 
