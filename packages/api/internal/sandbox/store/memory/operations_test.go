@@ -1,4 +1,4 @@
-package instance
+package memory
 
 import (
 	"context"
@@ -12,10 +12,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 )
 
 func createTestSandbox() *memorySandbox {
-	return newMemorySandbox(Sandbox{
+	return newMemorySandbox(sandbox.Sandbox{
 		SandboxID:         "test-sandbox",
 		TemplateID:        "test-template",
 		ClientID:          "test-client",
@@ -23,7 +25,7 @@ func createTestSandbox() *memorySandbox {
 		StartTime:         time.Now(),
 		EndTime:           time.Now().Add(time.Hour),
 		MaxInstanceLength: time.Hour,
-		State:             StateRunning,
+		State:             sandbox.StateRunning,
 	})
 }
 
@@ -31,61 +33,61 @@ func createTestSandbox() *memorySandbox {
 func TestStartRemoving_BasicTransitions(t *testing.T) {
 	tests := []struct {
 		name        string
-		fromState   State
-		stateAction StateAction
-		expState    State
+		fromState   sandbox.State
+		stateAction sandbox.StateAction
+		expState    sandbox.State
 		shouldError bool
 	}{
-		{"Running to Paused", StateRunning, StateActionPause, StatePausing, false},
-		{"Running to Killed", StateRunning, StateActionKill, StateKilling, false},
-		{"Paused to Killed", StatePausing, StateActionKill, StateKilling, false},
-		{"Killed to Paused (invalid)", StateKilling, StateActionPause, StatePausing, true},
-		{"Killed to Killed (same)", StateKilling, StateActionKill, StateKilling, false},
-		{"Paused to Paused (same)", StatePausing, StateActionPause, StatePausing, false},
+		{"Running to Paused", sandbox.StateRunning, sandbox.StateActionPause, sandbox.StatePausing, false},
+		{"Running to Killed", sandbox.StateRunning, sandbox.StateActionKill, sandbox.StateKilling, false},
+		{"Paused to Killed", sandbox.StatePausing, sandbox.StateActionKill, sandbox.StateKilling, false},
+		{"Killed to Paused (invalid)", sandbox.StateKilling, sandbox.StateActionPause, sandbox.StatePausing, true},
+		{"Killed to Killed (same)", sandbox.StateKilling, sandbox.StateActionKill, sandbox.StateKilling, false},
+		{"Paused to Paused (same)", sandbox.StatePausing, sandbox.StateActionPause, sandbox.StatePausing, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sandbox := createTestSandbox()
-			sandbox._data.State = tt.fromState
+			sbx := createTestSandbox()
+			sbx._data.State = tt.fromState
 			ctx := t.Context()
 
-			alreadyDone, finish, err := startRemoving(ctx, sandbox, tt.stateAction)
+			alreadyDone, finish, err := startRemoving(ctx, sbx, tt.stateAction)
 
 			switch {
 			case tt.shouldError:
 				require.Error(t, err)
 				assert.False(t, alreadyDone)
 				assert.Nil(t, finish)
-				assert.Equal(t, tt.fromState, sandbox.State()) // State unchanged
+				assert.Equal(t, tt.fromState, sbx.State()) // State unchanged
 			case tt.fromState == tt.expState:
 				require.NoError(t, err)
 				assert.True(t, alreadyDone)
 				assert.NotNil(t, finish)
-				assert.Equal(t, tt.fromState, sandbox.State())
+				assert.Equal(t, tt.fromState, sbx.State())
 			default:
 				require.NoError(t, err)
 				assert.False(t, alreadyDone)
 				assert.NotNil(t, finish)
-				assert.Equal(t, tt.expState, sandbox.State()) // State changed immediately
-				finish(nil)                                   // Complete the transition
+				assert.Equal(t, tt.expState, sbx.State()) // State changed immediately
+				finish(nil)                               // Complete the transition
 			}
 		})
 	}
 }
 
 func TestStartRemoving_PauseThenKill(t *testing.T) {
-	sandbox := createTestSandbox()
+	sbx := createTestSandbox()
 	ctx := t.Context()
 
 	// Simulate a pause operation that takes time
-	alreadyDone, finish, err := startRemoving(ctx, sandbox, StateActionPause)
+	alreadyDone, finish, err := startRemoving(ctx, sbx, sandbox.StateActionPause)
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	require.NotNil(t, finish)
 
 	// The state should be changed immediately
-	assert.Equal(t, StatePausing, sandbox.State())
+	assert.Equal(t, sandbox.StatePausing, sbx.State())
 
 	// Simulate the actual pause operation taking time
 	started := make(chan struct{})
@@ -94,7 +96,7 @@ func TestStartRemoving_PauseThenKill(t *testing.T) {
 		started <- struct{}{}
 		time.Sleep(100 * time.Millisecond)
 		// The state should still be Paused
-		assert.Equal(t, StatePausing, sandbox.State())
+		assert.Equal(t, sandbox.StatePausing, sbx.State())
 		finish(nil)
 	}()
 
@@ -102,7 +104,7 @@ func TestStartRemoving_PauseThenKill(t *testing.T) {
 	<-started // Ensure the pause operation has started
 
 	start := time.Now()
-	alreadyDone2, finish2, err2 := startRemoving(ctx, sandbox, StateActionKill)
+	alreadyDone2, finish2, err2 := startRemoving(ctx, sbx, sandbox.StateActionKill)
 	elapsed := time.Since(start)
 
 	// Should have waited for the pause to complete
@@ -110,16 +112,16 @@ func TestStartRemoving_PauseThenKill(t *testing.T) {
 	require.NoError(t, err2)
 	assert.False(t, alreadyDone2)
 	assert.NotNil(t, finish2)
-	assert.Equal(t, StateKilling, sandbox.State())
+	assert.Equal(t, sandbox.StateKilling, sbx.State())
 
 	// Complete the kill operation
 	finish2(nil)
-	assert.Equal(t, StateKilling, sandbox.State())
+	assert.Equal(t, sandbox.StateKilling, sbx.State())
 }
 
 // Test concurrent requests to transition to the same state (idempotency)
 func TestStartRemoving_ConcurrentSameState(t *testing.T) {
-	sandbox := createTestSandbox()
+	sbx := createTestSandbox()
 	ctx := t.Context()
 
 	results := make(chan struct {
@@ -130,7 +132,7 @@ func TestStartRemoving_ConcurrentSameState(t *testing.T) {
 	// Three concurrent requests to pause the sandbox
 	for range 3 {
 		go func() {
-			alreadyDone, finish, err := startRemoving(ctx, sandbox, StateActionPause)
+			alreadyDone, finish, err := startRemoving(ctx, sbx, sandbox.StateActionPause)
 			if err == nil {
 				if alreadyDone {
 					// Already alreadyDone (waited for another transition)
@@ -173,16 +175,16 @@ func TestStartRemoving_ConcurrentSameState(t *testing.T) {
 	// But others waiting should get alreadyDone=true after the transition completes
 	assert.Equal(t, 1, performedCount, "Only one request should actually perform the transition")
 	assert.Equal(t, 2, alreadyDoneCount, "Two concurrent requests should see it's already alreadyDone")
-	assert.Equal(t, StatePausing, sandbox.State())
+	assert.Equal(t, sandbox.StatePausing, sbx.State())
 }
 
 // Test transition fails and subsequent request handles it
 func TestStartRemoving_Error(t *testing.T) {
-	sandbox := createTestSandbox()
+	sbx := createTestSandbox()
 	ctx := t.Context()
 
 	// First attempt to pause
-	alreadyDone1, finish1, err := startRemoving(ctx, sandbox, StateActionPause)
+	alreadyDone1, finish1, err := startRemoving(ctx, sbx, sandbox.StateActionPause)
 	require.NoError(t, err)
 	assert.False(t, alreadyDone1)
 	require.NotNil(t, finish1)
@@ -195,7 +197,7 @@ func TestStartRemoving_Error(t *testing.T) {
 
 	go func() {
 		// This should wait for the first transition, then try to go to Killed
-		alreadyDone2, finish2, err2 = startRemoving(ctx, sandbox, StateActionKill)
+		alreadyDone2, finish2, err2 = startRemoving(ctx, sbx, sandbox.StateActionKill)
 		completed <- true
 	}()
 
@@ -216,14 +218,14 @@ func TestStartRemoving_Error(t *testing.T) {
 	assert.Nil(t, finish2)
 
 	// From Failed state, no transitions are allowed
-	alreadyDone3, finish3, err3 := startRemoving(ctx, sandbox, StateActionPause)
+	alreadyDone3, finish3, err3 := startRemoving(ctx, sbx, sandbox.StateActionPause)
 	require.Error(t, err3)
 	require.ErrorIs(t, err3, failureErr)
 	assert.False(t, alreadyDone3)
 	assert.Nil(t, finish3)
 
 	// Trying to transition to Killed should also fail
-	alreadyDone4, finish4, err4 := startRemoving(ctx, sandbox, StateActionKill)
+	alreadyDone4, finish4, err4 := startRemoving(ctx, sbx, sandbox.StateActionKill)
 	require.Error(t, err4)
 	require.ErrorIs(t, err4, failureErr)
 	assert.False(t, alreadyDone4)
@@ -232,10 +234,10 @@ func TestStartRemoving_Error(t *testing.T) {
 
 // Test context timeout during wait
 func TestStartRemoving_ContextTimeout(t *testing.T) {
-	sandbox := createTestSandbox()
+	sbx := createTestSandbox()
 
 	// Start a long-running transition
-	alreadyDone1, finish1, err := startRemoving(t.Context(), sandbox, StateActionPause)
+	alreadyDone1, finish1, err := startRemoving(t.Context(), sbx, sandbox.StateActionPause)
 	require.NoError(t, err)
 	assert.False(t, alreadyDone1)
 	require.NotNil(t, finish1)
@@ -245,7 +247,7 @@ func TestStartRemoving_ContextTimeout(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	_, _, err2 := startRemoving(ctx, sandbox, StateActionKill)
+	_, _, err2 := startRemoving(ctx, sbx, sandbox.StateActionKill)
 	elapsed := time.Since(start)
 
 	// Should timeout after about 20ms
@@ -256,11 +258,11 @@ func TestStartRemoving_ContextTimeout(t *testing.T) {
 
 	// Clean up
 	finish1(nil)
-	assert.Equal(t, StatePausing, sandbox.State())
+	assert.Equal(t, sandbox.StatePausing, sbx.State())
 }
 
 func TestWaitForStateChange_NoTransition(t *testing.T) {
-	sandbox := createTestSandbox()
+	sbx := createTestSandbox()
 	ctx := t.Context()
 
 	// Should work even with canceled context - no wait needed
@@ -268,16 +270,16 @@ func TestWaitForStateChange_NoTransition(t *testing.T) {
 	cancel()
 
 	// No transition in progress, no need to wait
-	err := waitForStateChange(ctx, sandbox)
+	err := waitForStateChange(ctx, sbx)
 	require.NoError(t, err)
 }
 
 func TestWaitForStateChange_WaitForCompletion(t *testing.T) {
-	sandbox := createTestSandbox()
+	sbx := createTestSandbox()
 	ctx := t.Context()
 
 	// Start a transition
-	alreadyalreadyDone, finish, err := startRemoving(ctx, sandbox, StateActionPause)
+	alreadyalreadyDone, finish, err := startRemoving(ctx, sbx, sandbox.StateActionPause)
 	require.NoError(t, err)
 	assert.False(t, alreadyalreadyDone)
 	require.NotNil(t, finish)
@@ -287,7 +289,7 @@ func TestWaitForStateChange_WaitForCompletion(t *testing.T) {
 	alreadyDone := make(chan bool)
 
 	go func() {
-		waitErr = waitForStateChange(ctx, sandbox)
+		waitErr = waitForStateChange(ctx, sbx)
 		alreadyDone <- true
 	}()
 
@@ -303,11 +305,11 @@ func TestWaitForStateChange_WaitForCompletion(t *testing.T) {
 }
 
 func TestWaitForStateChange_WaitWithError(t *testing.T) {
-	sandbox := createTestSandbox()
+	sbx := createTestSandbox()
 	ctx := t.Context()
 
 	// Start a transition
-	alreadyalreadyDone, finish, err := startRemoving(ctx, sandbox, StateActionPause)
+	alreadyalreadyDone, finish, err := startRemoving(ctx, sbx, sandbox.StateActionPause)
 	require.NoError(t, err)
 	assert.False(t, alreadyalreadyDone)
 	require.NotNil(t, finish)
@@ -317,7 +319,7 @@ func TestWaitForStateChange_WaitWithError(t *testing.T) {
 	alreadyDone := make(chan bool)
 
 	go func() {
-		waitErr = waitForStateChange(ctx, sandbox)
+		waitErr = waitForStateChange(ctx, sbx)
 		alreadyDone <- true
 	}()
 
@@ -335,11 +337,11 @@ func TestWaitForStateChange_WaitWithError(t *testing.T) {
 }
 
 func TestWaitForStateChange_ContextCancellation(t *testing.T) {
-	sandbox := createTestSandbox()
+	sbx := createTestSandbox()
 	ctx, cancel := context.WithCancel(t.Context())
 
 	// Start a transition
-	alreadyalreadyDone, finish, err := startRemoving(ctx, sandbox, StateActionPause)
+	alreadyalreadyDone, finish, err := startRemoving(ctx, sbx, sandbox.StateActionPause)
 	require.NoError(t, err)
 	assert.False(t, alreadyalreadyDone)
 	require.NotNil(t, finish)
@@ -349,7 +351,7 @@ func TestWaitForStateChange_ContextCancellation(t *testing.T) {
 	alreadyDone := make(chan bool)
 
 	go func() {
-		waitErr = waitForStateChange(ctx, sandbox)
+		waitErr = waitForStateChange(ctx, sbx)
 		alreadyDone <- true
 	}()
 
@@ -369,25 +371,25 @@ func TestWaitForStateChange_ContextCancellation(t *testing.T) {
 }
 
 func TestWaitForStateChange_MultipleWaiters(t *testing.T) {
-	sandbox := createTestSandbox()
+	sbx := createTestSandbox()
 	ctx := t.Context()
 
 	// Start a transition
-	alreadyalreadyDone, finish, err := startRemoving(ctx, sandbox, StateActionPause)
+	alreadyalreadyDone, finish, err := startRemoving(ctx, sbx, sandbox.StateActionPause)
 	require.NoError(t, err)
 	assert.False(t, alreadyalreadyDone)
 	require.NotNil(t, finish)
 
 	// Start multiple waiters
 	numWaiters := 5
-	errors := make([]error, numWaiters)
+	errs := make([]error, numWaiters)
 	var wg sync.WaitGroup
 
 	for i := range numWaiters {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			errors[idx] = waitForStateChange(ctx, sandbox)
+			errs[idx] = waitForStateChange(ctx, sbx)
 		}(i)
 	}
 
@@ -402,7 +404,7 @@ func TestWaitForStateChange_MultipleWaiters(t *testing.T) {
 
 	// All waiters should complete successfully
 	for i := range numWaiters {
-		require.NoError(t, errors[i])
+		require.NoError(t, errs[i])
 	}
 }
 
@@ -412,7 +414,7 @@ func TestConcurrency_StressTest(t *testing.T) {
 		t.Skip("Skipping stress test in short mode")
 	}
 
-	sandbox := createTestSandbox()
+	sbx := createTestSandbox()
 
 	duration := 100 * time.Millisecond
 	deadline := time.Now().Add(duration)
@@ -438,10 +440,10 @@ func TestConcurrency_StressTest(t *testing.T) {
 					// Random operation
 					switch workerID % 4 {
 					case 0: // State transitions
-						stateActions := []StateAction{StateActionPause, StateActionKill}
+						stateActions := []sandbox.StateAction{sandbox.StateActionPause, sandbox.StateActionKill}
 						stateAction := stateActions[rand.Intn(len(stateActions))]
 
-						alreadyDone, finish, err := startRemoving(t.Context(), sandbox, stateAction)
+						alreadyDone, finish, err := startRemoving(t.Context(), sbx, stateAction)
 						if err == nil && (finish != nil || alreadyDone) {
 							if finish != nil {
 								finish(nil)
@@ -451,15 +453,15 @@ func TestConcurrency_StressTest(t *testing.T) {
 							atomic.AddUint64(&errorCount, 1)
 						}
 					case 1: // Read state
-						_ = sandbox.State()
+						_ = sbx.State()
 						atomic.AddUint64(&opsCompleted, 1)
 					case 2: // Wait with timeout
 						waitCtx, cancel := context.WithTimeout(t.Context(), time.Microsecond*10)
-						_ = waitForStateChange(waitCtx, sandbox)
+						_ = waitForStateChange(waitCtx, sbx)
 						cancel()
 						atomic.AddUint64(&opsCompleted, 1)
 					case 3: // Read _data
-						_ = sandbox.Data()
+						_ = sbx.Data()
 						atomic.AddUint64(&opsCompleted, 1)
 					}
 				}
