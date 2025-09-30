@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/containers/storage/pkg/archive"
 	"github.com/dustin/go-humanize"
@@ -224,6 +225,8 @@ func unpackRootfs(ctx context.Context, logger *zap.Logger, srcImage containerreg
 		return fmt.Errorf("while mounting overlayfs with layers: %w", err)
 	}
 	defer func() {
+		syscall.Sync()
+
 		if unmountErr := filesystem.Unmount(context.WithoutCancel(ctx), mountPath); unmountErr != nil {
 			zap.L().Error("error unmounting overlayfs mount point", zap.Error(unmountErr))
 		}
@@ -276,7 +279,8 @@ func copyFiles(ctx context.Context, src, dest string) error {
 	// --whole-file: Copy files without using the delta algorithm, which is faster for local copies
 	// --inplace: Update destination files in place, no need to create temporary files
 	cmd := exec.CommandContext(ctx, "rsync", "-aH", "--whole-file", "--inplace", src+"/", dest)
-	if out, err := cmd.CombinedOutput(); err != nil {
+	out, err := cmd.CombinedOutput()
+	if err != nil {
 		return fmt.Errorf("while copying files from %s to %s: %w: %s", src, dest, err, string(out))
 	}
 	return nil
