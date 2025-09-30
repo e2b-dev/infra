@@ -16,8 +16,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
@@ -57,8 +55,6 @@ type BaseBuilder struct {
 
 	sandboxFactory   *sandbox.Factory
 	templateStorage  storage.StorageProvider
-	devicePool       *nbd.DevicePool
-	networkPool      *network.Pool
 	artifactRegistry artifactsregistry.ArtifactsRegistry
 
 	layerExecutor *layer.LayerExecutor
@@ -71,8 +67,6 @@ func New(
 	logger *zap.Logger,
 	proxy *proxy.SandboxProxy,
 	templateStorage storage.StorageProvider,
-	devicePool *nbd.DevicePool,
-	networkPool *network.Pool,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	layerExecutor *layer.LayerExecutor,
 	index cache.Index,
@@ -87,8 +81,6 @@ func New(
 
 		sandboxFactory:   sandboxFactory,
 		templateStorage:  templateStorage,
-		devicePool:       devicePool,
-		networkPool:      networkPool,
 		artifactRegistry: artifactRegistry,
 
 		layerExecutor: layerExecutor,

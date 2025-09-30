@@ -9,8 +9,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/envd"
@@ -28,8 +26,6 @@ type LayerExecutor struct {
 
 	logger *zap.Logger
 
-	networkPool     *network.Pool
-	devicePool      *nbd.DevicePool
 	templateCache   *sbxtemplate.Cache
 	proxy           *proxy.SandboxProxy
 	sandboxes       *smap.Map[*sandbox.Sandbox]
@@ -41,8 +37,6 @@ type LayerExecutor struct {
 func NewLayerExecutor(
 	buildContext buildcontext.BuildContext,
 	logger *zap.Logger,
-	networkPool *network.Pool,
-	devicePool *nbd.DevicePool,
 	templateCache *sbxtemplate.Cache,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
@@ -55,8 +49,6 @@ func NewLayerExecutor(
 
 		logger: logger,
 
-		networkPool:     networkPool,
-		devicePool:      devicePool,
 		templateCache:   templateCache,
 		proxy:           proxy,
 		sandboxes:       sandboxes,

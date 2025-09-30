@@ -164,8 +164,6 @@ func buildTemplate(
 		persistenceTemplate,
 		persistenceBuild,
 		artifactRegistry,
-		devicePool,
-		networkPool,
 		sandboxProxy,
 		sandboxes,
 		templateCache,

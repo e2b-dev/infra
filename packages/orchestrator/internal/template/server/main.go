@@ -91,8 +91,6 @@ func New(
 		templatePersistence,
 		buildPersistance,
 		artifactsregistry,
-		devicePool,
-		networkPool,
 		proxy,
 		sandboxes,
 		templateCache,

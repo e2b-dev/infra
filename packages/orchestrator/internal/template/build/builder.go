@@ -13,8 +13,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/commands"
@@ -45,8 +43,6 @@ type Builder struct {
 	sandboxFactory   *sandbox.Factory
 	templateStorage  storage.StorageProvider
 	buildStorage     storage.StorageProvider
-	devicePool       *nbd.DevicePool
-	networkPool      *network.Pool
 	artifactRegistry artifactsregistry.ArtifactsRegistry
 	proxy            *proxy.SandboxProxy
 	sandboxes        *smap.Map[*sandbox.Sandbox]
@@ -60,8 +56,6 @@ func NewBuilder(
 	templateStorage storage.StorageProvider,
 	buildStorage storage.StorageProvider,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
-	devicePool *nbd.DevicePool,
-	networkPool *network.Pool,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 	templateCache *sbxtemplate.Cache,
@@ -72,8 +66,6 @@ func NewBuilder(
 		templateStorage:  templateStorage,
 		buildStorage:     buildStorage,
 		artifactRegistry: artifactRegistry,
-		devicePool:       devicePool,
-		networkPool:      networkPool,
 		proxy:            proxy,
 		sandboxes:        sandboxes,
 		templateCache:    templateCache,
@@ -192,31 +184,9 @@ func runBuild(
 ) (*Result, error) {
 	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, builder.templateStorage)
 
-	layerExecutor := layer.NewLayerExecutor(bc,
-		builder.logger,
-		builder.networkPool,
-		builder.devicePool,
-		builder.templateCache,
-		builder.proxy,
-		builder.sandboxes,
-		builder.templateStorage,
-		builder.buildStorage,
-		index,
-	)
+	layerExecutor := layer.NewLayerExecutor(bc, builder.logger, builder.templateCache, builder.proxy, builder.sandboxes, builder.templateStorage, builder.buildStorage, index)
 
-	baseBuilder := base.New(
-		bc,
-		builder.logger,
-		builder.proxy,
-		builder.templateStorage,
-		builder.devicePool,
-		builder.networkPool,
-		builder.artifactRegistry,
-		layerExecutor,
-		index,
-		builder.metrics,
-		builder.sandboxFactory,
-	)
+	baseBuilder := base.New(bc, builder.logger, builder.proxy, builder.templateStorage, builder.artifactRegistry, layerExecutor, index, builder.metrics, builder.sandboxFactory)
 
 	commandExecutor := commands.NewCommandExecutor(
 		bc,
