@@ -1,3 +1,12 @@
+name: Auto-request same-site reviewers
+
+on:
+  # Works for PRs from branches and forks (runs in base-repo context)
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize, edited]
+
+permissions: {}  # we use the GitHub App token, not GITHUB_TOKEN
+
 jobs:
   assign:
     runs-on: ubuntu-latest
@@ -10,7 +19,7 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           owner: e2b-dev
 
-      - name: Checkout repo
+      - name: Checkout repo (needed because the script lives in the repo)
         uses: actions/checkout@v4
 
       - name: Setup Node
