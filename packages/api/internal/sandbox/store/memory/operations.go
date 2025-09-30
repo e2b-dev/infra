@@ -98,20 +98,21 @@ func (s *Store) Items(options ...sandbox.ItemsOption) []sandbox.Sandbox {
 	return items
 }
 
-func (s *Store) Update(sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, bool)) bool {
+func (s *Store) Update(sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
 	item, ok := s.items.Get(sandboxID)
 	if !ok {
-		return false
+		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}
 	}
 
 	item.mu.Lock()
 	defer item.mu.Unlock()
-	newData, ok := updateFunc(item._data)
-	if ok {
-		item._data = newData
+	sbx, err := updateFunc(item._data)
+	if err != nil {
+		return sandbox.Sandbox{}, err
 	}
 
-	return ok
+	item._data = sbx
+	return sbx, nil
 }
 
 func (s *Store) StartRemoving(ctx context.Context, sandboxID string, stateAction sandbox.StateAction) (alreadyDone bool, callback func(error), err error) {

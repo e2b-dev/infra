@@ -25,7 +25,7 @@ type Store interface {
 
 	Items(options ...ItemsOption) []Sandbox
 
-	Update(sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, bool)) bool
+	Update(sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error)
 	StartRemoving(ctx context.Context, sandboxID string, stateAction StateAction) (alreadyDone bool, callback func(error), err error)
 	WaitForStateChange(ctx context.Context, sandboxID string) error
 }

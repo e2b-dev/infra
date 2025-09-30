@@ -14,37 +14,46 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+var (
+	errMaxInstanceLengthExceeded = fmt.Errorf("max instance length exceeded")
+	errCannotSetTTL              = fmt.Errorf("cannot set ttl")
+)
+
 func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, duration time.Duration, allowShorter bool) *api.APIError {
-	data, err := o.GetSandbox(sandboxID, false)
-	if err != nil {
-		return &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("Sandbox '%s' is not running anymore", sandboxID), Err: err}
-	}
-
-	if (time.Since(data.StartTime)) > data.MaxInstanceLength {
-		msg := fmt.Sprintf("Sandbox '%s' reached maximal allowed uptime", sandboxID)
-		return &api.APIError{Code: http.StatusForbidden, ClientMsg: msg, Err: errors.New(msg)}
-	}
-
 	now := time.Now()
-	maxAllowedTTL := getMaxAllowedTTL(now, data.StartTime, duration, data.MaxInstanceLength)
-	newEndTime := now.Add(maxAllowedTTL)
-	zap.L().Debug("sandbox ttl updated", logger.WithSandboxID(data.SandboxID), zap.Time("end_time", newEndTime))
 
-	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, bool) {
+	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
+		maxAllowedTTL := getMaxAllowedTTL(now, sbx.StartTime, duration, sbx.MaxInstanceLength)
+		newEndTime := now.Add(maxAllowedTTL)
+		zap.L().Debug("sandbox ttl updated", logger.WithSandboxID(sbx.SandboxID), zap.Time("end_time", newEndTime))
+
+		if (time.Since(sbx.StartTime)) > sbx.MaxInstanceLength {
+			return sbx, errMaxInstanceLengthExceeded
+		}
+
 		if !allowShorter && newEndTime.Before(sbx.EndTime) {
-			return sbx, false
+			return sbx, errCannotSetTTL
 		}
 
 		sbx.EndTime = newEndTime
-		return sbx, true
+		return sbx, nil
 	}
 
-	ok := o.sandboxStore.Update(sandboxID, updateFunc)
-	if !ok {
-		return nil
+	var sbxNotFoundErr *sandbox.NotFoundError
+	sbx, err := o.sandboxStore.Update(sandboxID, updateFunc)
+	if err != nil {
+		switch {
+		case errors.As(err, &sbxNotFoundErr):
+			return &api.APIError{Code: http.StatusNotFound, ClientMsg: "Sandbox not found", Err: err}
+		case errors.Is(err, errMaxInstanceLengthExceeded):
+			return &api.APIError{Code: http.StatusBadRequest, ClientMsg: "Max instance length exceeded", Err: err}
+		case errors.Is(err, errCannotSetTTL):
+			return &api.APIError{Code: http.StatusBadRequest, ClientMsg: "Cannot set ttl", Err: err}
+		default:
+			return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}
+		}
 	}
-
-	err = o.UpdateSandbox(ctx, data.SandboxID, newEndTime, data.ClusterID, data.NodeID)
+	err = o.UpdateSandbox(ctx, sandboxID, sbx.EndTime, sbx.ClusterID, sbx.NodeID)
 	if err != nil {
 		return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}
 	}
