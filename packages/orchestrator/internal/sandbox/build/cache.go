@@ -20,7 +20,9 @@ const (
 	fallbackDiffSize = 100 << ToMBShift
 )
 
-var DefaultCachePath = filepath.Join(pkg.OrchestratorBasePath, "build")
+func DefaultCachePath() string {
+	return filepath.Join(pkg.OrchestratorBasePath(), "build")
+}
 
 type deleteDiff struct {
 	size      int64
