@@ -1,6 +1,6 @@
 //go:build darwin
 
-package main
+package pkg
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func getMetadata(path string) (file, error) {
+func GetFileMetadata(path string) (File, error) {
 	stat, err := os.Stat(path)
 	if err != nil {
 		return file{}, fmt.Errorf("could not stat info: %w", err)
