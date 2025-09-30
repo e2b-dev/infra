@@ -41,6 +41,7 @@ func WithState(state State) ItemsOption {
 		f.States = &[]State{state}
 	}
 }
+
 func WithStates(states ...State) ItemsOption {
 	return func(f *ItemsFilter) {
 		f.States = &states
