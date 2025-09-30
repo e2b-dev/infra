@@ -10,7 +10,9 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg"
 )
 
-var templateCacheDir = filepath.Join(pkg.OrchestratorBasePath(), "template")
+func templateCacheDir() string {
+	return filepath.Join(pkg.OrchestratorBasePath(), "template")
+}
 
 type TemplateCacheFiles struct {
 	TemplateFiles
@@ -47,5 +49,5 @@ func (c TemplateCacheFiles) CacheMetadataPath() string {
 }
 
 func (c TemplateCacheFiles) cacheDir() string {
-	return filepath.Join(templateCacheDir, c.BuildID, "cache", c.CacheIdentifier)
+	return filepath.Join(templateCacheDir(), c.BuildID, "cache", c.CacheIdentifier)
 }

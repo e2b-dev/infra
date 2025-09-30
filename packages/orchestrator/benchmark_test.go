@@ -18,6 +18,7 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -29,6 +30,10 @@ import (
 )
 
 func BenchmarkBaseImageLaunch(b *testing.B) {
+	baseImage := "e2bdev/base"
+	kernelVersion := "vmlinux-6.1.102"
+	fcVersion := "v1.10.1_1fcdaec08"
+
 	tempDir := b.TempDir()
 
 	abs := func(s string) string {
@@ -43,9 +48,10 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	b.Setenv("FIRECRACKER_VERSIONS_DIR", abs(filepath.Join("..", "fc-versions", "builds")))
 	b.Setenv("HOST_KERNELS_DIR", abs(filepath.Join("..", "fc-kernels")))
 	b.Setenv("SANDBOX_DIR", abs(filepath.Join(tempDir, "fc-vm")))
+	b.Setenv("SNAPSHOT_CACHE_DIR", abs(filepath.Join(tempDir, "snapshot-cache")))
 
 	// prep directories
-	for _, subdir := range []string{"build", "build-templates", "fc-vm", "sandbox", "template"} {
+	for _, subdir := range []string{"build", "build-templates" /*"fc-vm",*/, "sandbox", "snapshot-cache", "template"} {
 		fullDirName := filepath.Join(tempDir, subdir)
 		err := os.MkdirAll(fullDirName, 0755)
 		require.NoError(b, err)
@@ -53,7 +59,11 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	clientID := uuid.NewString()
 
-	logger := zap.L()
+	logger, err := zap.NewDevelopment()
+	require.NoError(b, err)
+
+	sbxlogger.SetSandboxLoggerInternal(logger)
+	//sbxlogger.SetSandboxLoggerExternal(logger)
 
 	networkPool, err := network.NewPool(
 		b.Context(), noop.MeterProvider{}, 8, 8, clientID,
@@ -97,7 +107,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		Vcpu:                1,
 		RamMB:               2,
 		TotalDiskSizeMB:     400,
-		HugePages:           true,
+		HugePages:           false,
 		AllowInternetAccess: &allowInternetAccess,
 		Envd: sandbox.EnvdMetadata{
 			Vars:        map[string]string{"HELLO": "WORLD"},
@@ -128,16 +138,21 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes)
 	require.NoError(b, err)
+	go func() {
+		err := sandboxProxy.Start(b.Context())
+		assert.NoError(b, err)
+	}()
+	b.Cleanup(func() {
+		err := sandboxProxy.Close(b.Context())
+		assert.NoError(b, err)
+	})
 
 	buildMetrics, err := metrics.NewBuildMetrics(noop.MeterProvider{})
 	require.NoError(b, err)
 
 	for b.Loop() {
 		templateID := uuid.NewString()
-		baseImage := "e2bdev/base"
 		buildID := uuid.NewString()
-		kernelVersion := "vmlinux-6.1.102" // todo: fill in later
-		fcVersion := "v1.12.1_d990331f7"
 
 		builder := build.NewBuilder(
 			logger,

@@ -71,11 +71,7 @@ func Mount(ctx context.Context, rootfsPath string, mountPoint string) error {
 	mountStderrWriter := telemetry.NewEventWriter(ctx, "stderr")
 	cmd.Stderr = mountStderrWriter
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("error mounting ext4 filesystem: %w", err)
-	}
-
-	return nil
+	return cmd.Run()
 }
 
 func Unmount(ctx context.Context, rootfsPath string) error {
