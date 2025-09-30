@@ -48,7 +48,8 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 		case errors.Is(err, errMaxInstanceLengthExceeded):
 			return &api.APIError{Code: http.StatusBadRequest, ClientMsg: "Max instance length exceeded", Err: err}
 		case errors.Is(err, errCannotSetTTL):
-			return &api.APIError{Code: http.StatusBadRequest, ClientMsg: "Cannot set ttl", Err: err}
+			// If shorter than the current end time, we don't extend, so we can return
+			return nil
 		default:
 			return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}
 		}
