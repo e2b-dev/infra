@@ -91,7 +91,7 @@ func New(cfg ServiceConfig) *Service {
 		return nil
 	})
 	if err != nil {
-		zap.L().Error("Error registering sandbox count metric", zap.Any("metric_name", telemetry.OrchestratorSandboxCountMeterName), zap.Error(err))
+		zap.L().Error("Error registering sandbox count metric", zap.String("metric_name", string(telemetry.OrchestratorSandboxCountMeterName)), zap.Error(err))
 	}
 
 	orchestrator.RegisterSandboxServiceServer(cfg.GRPC.GRPCServer(), srv.server)

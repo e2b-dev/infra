@@ -156,7 +156,7 @@ func getMappedStatus(s e2bgrpcorchestratorinfo.ServiceInfoStatus) OrchestratorSt
 		return OrchestratorStatusUnhealthy
 	}
 
-	zap.L().Error("Unknown service info status", zap.Any("status", s))
+	zap.L().Error("Unknown service info status", zap.String("status", s.String()))
 	return OrchestratorStatusUnhealthy
 }
 

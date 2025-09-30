@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -151,8 +152,10 @@ func (f *Factory) CreateSandbox(
 	processOptions fc.ProcessOptions,
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
-	ctx, span, done := startSpan(ctx, "create sandbox")
-	defer func() { done(e) }()
+	ctx, span := tracer.Start(ctx, "create sandbox")
+	defer func() { endSpan(span, e) }()
+
+	execCtx, execSpan := startExecutionSpan(ctx)
 
 	exit := utils.NewErrorOnce()
 
@@ -161,6 +164,7 @@ func (f *Factory) CreateSandbox(
 		if e != nil {
 			cleanupErr := cleanup.Run(ctx)
 			e = errors.Join(e, cleanupErr)
+			endSpan(execSpan, e)
 		}
 	}()
 
@@ -177,14 +181,7 @@ func (f *Factory) CreateSandbox(
 	}()
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
-	cleanup.Add(func(ctx context.Context) error {
-		filesErr := cleanupFiles(sandboxFiles)
-		if filesErr != nil {
-			return fmt.Errorf("failed to cleanup files: %w", filesErr)
-		}
-
-		return nil
-	})
+	cleanup.Add(cleanupFiles(sandboxFiles))
 
 	rootFS, err := template.Rootfs()
 	if err != nil {
@@ -209,11 +206,9 @@ func (f *Factory) CreateSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
-	cleanup.Add(func(ctx context.Context) error {
-		return rootfsProvider.Close(ctx)
-	})
+	cleanup.Add(rootfsProvider.Close)
 	go func() {
-		runErr := rootfsProvider.Start(ctx)
+		runErr := rootfsProvider.Start(execCtx)
 		if runErr != nil {
 			zap.L().Error("rootfs overlay error", zap.Error(runErr))
 		}
@@ -240,6 +235,7 @@ func (f *Factory) CreateSandbox(
 	}
 	fcHandle, err := fc.NewProcess(
 		ctx,
+		execCtx,
 		ips.slot,
 		sandboxFiles,
 		fcVersions,
@@ -300,15 +296,13 @@ func (f *Factory) CreateSandbox(
 
 	sbx.Checks = NewChecks(sbx, false)
 
-	cleanup.AddPriority(func(ctx context.Context) error {
-		// Stop the sandbox first if it is still running, otherwise do nothing
-		return sbx.Stop(ctx)
-	})
+	// Stop the sandbox first if it is still running, otherwise do nothing
+	cleanup.AddPriority(sbx.Stop)
 
 	go func() {
-		defer span.End()
+		defer execSpan.End()
 
-		ctx, span := tracer.Start(ctx, "sandbox-exit-wait")
+		ctx, span := tracer.Start(execCtx, "sandbox-exit-wait")
 		defer span.End()
 
 		// If the process exists, stop the sandbox properly
@@ -319,6 +313,15 @@ func (f *Factory) CreateSandbox(
 	}()
 
 	return sbx, nil
+}
+
+func endSpan(span trace.Span, err error) {
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+
+	span.End()
 }
 
 // ResumeSandbox resumes the sandbox from already saved template or snapshot.
@@ -333,8 +336,10 @@ func (f *Factory) ResumeSandbox(
 	endAt time.Time,
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
-	ctx, span, done := startSpan(ctx, "resume sandbox")
-	defer func() { done(e) }()
+	ctx, span := tracer.Start(ctx, "resume sandbox")
+	defer func() { endSpan(span, e) }()
+
+	execCtx, execSpan := startExecutionSpan(ctx)
 
 	exit := utils.NewErrorOnce()
 
@@ -343,6 +348,7 @@ func (f *Factory) ResumeSandbox(
 		if e != nil {
 			cleanupErr := cleanup.Run(ctx)
 			e = errors.Join(e, cleanupErr)
+			endSpan(execSpan, e)
 		}
 	}()
 
@@ -354,19 +360,12 @@ func (f *Factory) ResumeSandbox(
 
 	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, allowInternet)
 	defer func() {
-		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
+		// Ensure the slot is received from chan before ResumeSandbox returns so the slot is cleaned up properly in cleanup
 		<-ipsCh
 	}()
 
 	sandboxFiles := t.Files().NewSandboxFiles(runtime.SandboxID)
-	cleanup.Add(func(ctx context.Context) error {
-		filesErr := cleanupFiles(sandboxFiles)
-		if filesErr != nil {
-			return fmt.Errorf("failed to cleanup files: %w", filesErr)
-		}
-
-		return nil
-	})
+	cleanup.Add(cleanupFiles(sandboxFiles))
 
 	telemetry.ReportEvent(ctx, "created sandbox files")
 
@@ -386,14 +385,12 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
 
-	cleanup.Add(func(ctx context.Context) error {
-		return rootfsOverlay.Close(ctx)
-	})
+	cleanup.Add(rootfsOverlay.Close)
 
 	telemetry.ReportEvent(ctx, "created rootfs overlay")
 
 	go func() {
-		runErr := rootfsOverlay.Start(ctx)
+		runErr := rootfsOverlay.Start(execCtx)
 		if runErr != nil {
 			zap.L().Error("rootfs overlay error", zap.Error(runErr))
 		}
@@ -409,7 +406,7 @@ func (f *Factory) ResumeSandbox(
 	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
 
 	fcUffd, err := serveMemory(
-		ctx,
+		execCtx,
 		cleanup,
 		memfile,
 		fcUffdPath,
@@ -452,6 +449,7 @@ func (f *Factory) ResumeSandbox(
 
 	fcHandle, fcErr := fc.NewProcess(
 		ctx,
+		execCtx,
 		ips.slot,
 		sandboxFiles,
 		// The versions need to base exactly the same as the paused sandbox template because of the FC compatibility.
@@ -551,12 +549,12 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
 
-	go sbx.Checks.Start(ctx)
+	go sbx.Checks.Start(execCtx)
 
 	go func() {
-		defer span.End()
+		defer execSpan.End()
 
-		ctx, span := tracer.Start(ctx, "sandbox-exit-wait")
+		ctx, span := tracer.Start(execCtx, "sandbox-exit-wait")
 		defer span.End()
 
 		// Wait for either uffd or fc process to exit
@@ -575,27 +573,17 @@ func (f *Factory) ResumeSandbox(
 	return sbx, nil
 }
 
-func startSpan(ctx context.Context, spanName string) (context.Context, trace.Span, func(error)) {
-	ctx, span := tracer.Start(ctx, spanName) //nolint:spancheck // this is just a helper method
-	parentSpan := span
+func startExecutionSpan(ctx context.Context) (context.Context, trace.Span) {
+	parentSpan := trace.SpanFromContext(ctx)
 
 	ctx = context.WithoutCancel(ctx)
-	ctx, span = tracer.Start(ctx, "execute sandbox", //nolint:spancheck // this is still just a helper method
+	ctx, span := tracer.Start(ctx, "execute sandbox", //nolint:spancheck // this is still just a helper method
 		trace.WithNewRoot(),
 	)
 
 	parentSpan.AddLink(trace.LinkFromContext(ctx))
 
-	return ctx, span, func(err error) { //nolint:spancheck // still just a helper method
-		parentSpan.End()
-
-		if err != nil {
-			span.AddEvent("an error occurred")
-			span.End()
-		} else {
-			span.AddEvent("success")
-		}
-	}
+	return ctx, span //nolint:spancheck // this is still just a helper method
 }
 
 func (s *Sandbox) Wait(ctx context.Context) error {
@@ -918,29 +906,23 @@ func serveMemory(
 	ctx context.Context,
 	cleanup *Cleanup,
 	memfile block.ReadonlyDevice,
-	socketPath string,
-	sandboxID string,
+	socketPath, sandboxID string,
 ) (uffd.MemoryBackend, error) {
-	ctx, span := tracer.Start(ctx, "serve-memory")
-	defer span.End()
-
-	fcUffd, uffdErr := uffd.New(memfile, socketPath, memfile.BlockSize())
-	if uffdErr != nil {
-		return nil, fmt.Errorf("failed to create uffd: %w", uffdErr)
+	fcUffd, err := uffd.New(memfile, socketPath, memfile.BlockSize())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create uffd: %w", err)
 	}
 
-	uffdStartErr := fcUffd.Start(ctx, sandboxID)
-	if uffdStartErr != nil {
-		return nil, fmt.Errorf("failed to start uffd: %w", uffdStartErr)
+	if err = fcUffd.Start(ctx, sandboxID); err != nil {
+		return nil, fmt.Errorf("failed to start uffd: %w", err)
 	}
 
 	cleanup.Add(func(ctx context.Context) error {
 		_, span := tracer.Start(ctx, "uffd-stop")
 		defer span.End()
 
-		stopErr := fcUffd.Stop()
-		if stopErr != nil {
-			return fmt.Errorf("failed to stop uffd: %w", stopErr)
+		if err := fcUffd.Stop(); err != nil {
+			return fmt.Errorf("failed to stop uffd: %w", err)
 		}
 
 		return nil
@@ -984,29 +966,28 @@ func (s *Sandbox) WaitForEnvd(
 		// Update the sandbox as started now
 		s.Metadata.StartedAt = time.Now()
 	}()
-	syncCtx, syncCancel := context.WithCancelCause(ctx)
-	defer syncCancel(nil)
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 
 	go func() {
 		select {
 		// Ensure the syncing takes at most timeout seconds.
 		case <-time.After(timeout):
-			syncCancel(fmt.Errorf("syncing took too long"))
-		case <-syncCtx.Done():
+			cancel(fmt.Errorf("syncing took too long"))
+		case <-ctx.Done():
 			return
 		case <-s.process.Exit.Done():
 			err := s.process.Exit.Error()
 
-			syncCancel(fmt.Errorf("fc process exited prematurely: %w", err))
+			cancel(fmt.Errorf("fc process exited prematurely: %w", err))
 		}
 	}()
 
-	initErr := s.initEnvd(syncCtx, s.Config.Envd.Vars, s.Config.Envd.AccessToken)
-	if initErr != nil {
-		return fmt.Errorf("failed to init new envd: %w", initErr)
+	if err := s.initEnvd(ctx, s.Config.Envd.Vars, s.Config.Envd.AccessToken); err != nil {
+		return fmt.Errorf("failed to init new envd: %w", err)
 	}
 
-	telemetry.ReportEvent(syncCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", s.Metadata.Runtime.SandboxID))
+	telemetry.ReportEvent(ctx, fmt.Sprintf("[sandbox %s]: initialized new envd", s.Metadata.Runtime.SandboxID))
 
 	return nil
 }

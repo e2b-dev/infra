@@ -7,13 +7,13 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const syncMaxRetries = 4
 
-func (n *Node) Sync(ctx context.Context, instanceCache *instance.MemoryStore) {
+func (n *Node) Sync(ctx context.Context, instanceCache *memory.Store) {
 	syncRetrySuccess := false
 
 	for range syncMaxRetries {
@@ -27,7 +27,7 @@ func (n *Node) Sync(ctx context.Context, instanceCache *instance.MemoryStore) {
 		// update node status (if changed)
 		nodeStatus, ok := OrchestratorToApiNodeStateMapper[nodeInfo.ServiceStatus]
 		if !ok {
-			zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.ServiceStatus), logger.WithNodeID(n.ID))
+			zap.L().Error("Unknown service info status", zap.String("status", nodeInfo.ServiceStatus.String()), logger.WithNodeID(n.ID))
 			nodeStatus = api.NodeStatusUnhealthy
 		}
 

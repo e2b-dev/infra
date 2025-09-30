@@ -101,9 +101,7 @@ func (bb *BaseBuilder) provisionSandbox(
 	}
 	defer sbx.Close(ctx)
 
-	err = sbx.WaitForExit(
-		ctx,
-	)
+	err = sbx.WaitForExit(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
