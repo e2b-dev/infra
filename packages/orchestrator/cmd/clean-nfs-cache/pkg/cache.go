@@ -44,7 +44,7 @@ func (c *ListingCache) GetRandomFile() (string, error) {
 			if len(history) == 0 {
 				return "", ErrEmptyDir
 			}
-			path = history[len(path)-1]
+			path = history[len(history)-1]
 			continue
 		}
 
