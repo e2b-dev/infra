@@ -51,8 +51,6 @@ func (c *ListingCache) GetRandomFile() (string, error) {
 		if !item.isDir {
 			return item.path, nil
 		}
-
-		path = item.path
 	}
 }
 
