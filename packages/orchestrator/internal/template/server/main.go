@@ -57,7 +57,7 @@ func New(
 	templatePersistence storage.StorageProvider,
 	limiter *limit.Limiter,
 	info *service.ServiceInfo,
-) (*ServerStore, error) {
+) (s *ServerStore, e error) {
 	logger.Info("Initializing template manager")
 
 	artifactsregistry, err := artifactsregistry.GetArtifactsRegistryProvider(ctx)
@@ -69,6 +69,15 @@ func New(
 	if err != nil {
 		return nil, fmt.Errorf("error getting docker remote repository provider: %w", err)
 	}
+	defer func() {
+		if e == nil {
+			return
+		}
+
+		if err := dockerhubRepository.Close(); err != nil {
+			logger.Error("error closing docker remote repository provider", zap.Error(err))
+		}
+	}()
 
 	buildPersistance, err := storage.GetBuildCacheStorageProvider(ctx, limiter)
 	if err != nil {
