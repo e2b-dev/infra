@@ -422,15 +422,13 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 			globalLogger,
 			tmplSbxLoggerExternal,
 			grpcSrv,
-			networkPool,
-			devicePool,
+			sandboxFactory,
 			sandboxProxy,
 			sandboxes,
 			templateCache,
 			persistence,
 			limiter,
 			serviceInfo,
-			defaultAllowSandboxInternet,
 		)
 		if err != nil {
 			zap.L().Fatal("failed to create template manager", zap.Error(err))
