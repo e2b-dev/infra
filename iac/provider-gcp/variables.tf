@@ -47,6 +47,12 @@ variable "api_node_pool" {
   default = "api"
 }
 
+variable "api_use_nat" {
+  type        = bool
+  description = "Whether API nodes should use NAT with dedicated external IPs."
+  default     = false
+}
+
 variable "api_resources_cpu_count" {
   type    = number
   default = 2
