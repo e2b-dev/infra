@@ -119,7 +119,7 @@ func rewriteHostsFile(address, path string) error {
 		return fmt.Errorf("failed to get ip family: %w", err)
 	}
 
-	if ok, _, _ := hosts.HostAddressLookup(eventsHost, ipFamily); ok {
+	if ok, current, _ := hosts.HostAddressLookup(eventsHost, ipFamily); ok && current == address {
 		return nil // nothing to be done
 	}
 
