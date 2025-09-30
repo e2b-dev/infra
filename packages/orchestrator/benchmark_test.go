@@ -35,15 +35,25 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		b.Skip("skipping benchmark because not running as root")
 	}
 
+	clientID := uuid.NewString()
 	baseImage := "e2bdev/base"
 	kernelVersion := "vmlinux-6.1.102"
 	fcVersion := "v1.10.1_1fcdaec08"
+	templateID := "fcb33d09-3141-42c4-8d3b-c2df411681db"
+	buildID := "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
+
+	persistenceDir := filepath.Join(os.TempDir(), "e2b-orchestrator-benchmark")
+	err := os.MkdirAll(persistenceDir, 0755)
 
 	tempDir := b.TempDir()
 
 	abs := func(s string) string {
 		return utils.Must(filepath.Abs(s))
 	}
+
+	linuxKernelFilename := filepath.Join(persistenceDir, "kernels", kernelVersion, "vmlinux.bin")
+
+	downloadKernel(b, kernelVersion, persistenceDir)
 
 	// hacks, these should go away
 	b.Setenv("USE_LOCAL_NAMESPACE_STORAGE", "true")
@@ -62,8 +72,6 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		err := os.MkdirAll(fullDirName, 0755)
 		require.NoError(b, err)
 	}
-
-	clientID := uuid.NewString()
 
 	logger, err := zap.NewDevelopment()
 	require.NoError(b, err)
@@ -109,7 +117,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	allowInternetAccess := true
 	accessToken := "access-token"
 	sandboxConfig := sandbox.Config{
-		BaseTemplateID:      "base-template-id",
+		BaseTemplateID:      templateID,
 		Vcpu:                2,
 		RamMB:               512,
 		TotalDiskSizeMB:     2 * 1024,
@@ -123,7 +131,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	}
 
 	runtime := sandbox.RuntimeMetadata{
-		TemplateID:  "template-id",
+		TemplateID:  templateID,
 		SandboxID:   "sandbox-id",
 		ExecutionID: "execution-id",
 		TeamID:      "team-id",
@@ -155,9 +163,6 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	buildMetrics, err := metrics.NewBuildMetrics(noop.MeterProvider{})
 	require.NoError(b, err)
-
-	templateID := "fcb33d09-3141-42c4-8d3b-c2df411681db"
-	buildID := "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
 
 	builder := build.NewBuilder(
 		logger,
@@ -243,4 +248,14 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		err = sbx.Close(b.Context())
 		require.NoError(b, err)
 	}
+}
+
+func downloadKernel(b *testing.B, kernelVersion string, kernelDir string) {
+	b.Helper()
+
+	linuxKernelURL := filepath.Join("https://storage.googleapis.com/e2b-prod-public-builds/kernels/", kernelVersion, "vmlinux.bin")
+
+	err = os.MkdirAll(filepath.Dir(linuxKernelFilename), 0755)
+	require.NoError(b, err)
+
 }
