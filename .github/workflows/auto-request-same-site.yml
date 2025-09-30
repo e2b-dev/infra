@@ -1,13 +1,3 @@
-name: Auto-request same-site reviewers
-
-on:
-  # Works for PRs from branches AND forks (runs in base-repo context)
-  pull_request_target:
-    types: [opened, reopened, ready_for_review, synchronize, edited]
-
-# We’ll use a GitHub App installation token; the default GITHUB_TOKEN isn’t needed
-permissions: {}
-
 jobs:
   assign:
     runs-on: ubuntu-latest
@@ -19,7 +9,9 @@ jobs:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           owner: e2b-dev
-          # repositories: infra-stable  # optionally narrow
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -37,6 +29,6 @@ jobs:
           ORG: e2b-dev
           SF_TEAM_SLUG: eng-sf
           PRG_TEAM_SLUG: eng-prg
-          REVIEWERS_TO_REQUEST: "1"     # change to "2" if you want two people
-          TEAM_MODE: "false"            # set to "true" to request the whole team instead of individuals
+          REVIEWERS_TO_REQUEST: "1"
+          TEAM_MODE: "false"
         run: node .github/actions/auto-request-same-site/script.js
