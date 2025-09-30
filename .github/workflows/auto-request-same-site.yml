@@ -1,0 +1,37 @@
+name: Auto-request same-site reviewers
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize, edited]
+
+permissions: {}
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get GitHub App installation token
+        id: app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: e2b-dev
+
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+
+      - run: npm init -y && npm i @octokit/rest
+
+      # No checkout needed since we don't run repo code,
+      # but if you want the file *in* the repo, do checkout + run it:
+      - uses: actions/checkout@v4
+
+      - name: Request reviewers (same-site)
+        env:
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+          ORG: e2b-dev
+          SF_TEAM_SLUG: eng-sf
+          PRG_TEAM_SLUG: eng-prg
+          REVIEWERS_TO_REQUEST: "1"
+        run: node .github/actions/auto-request-same-site/script.js
