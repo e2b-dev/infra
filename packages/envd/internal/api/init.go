@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -85,7 +86,7 @@ func (a *API) SetupHyperloop(address string) {
 	a.hyperloopLock.Lock()
 	defer a.hyperloopLock.Unlock()
 
-	if err := rewriteHostsFile(address, "/etc/hosts", "/etc/hosts"); err != nil {
+	if err := rewriteHostsFile(address, "/etc/hosts"); err != nil {
 		a.logger.Error().Err(err).Msg("failed to modify hosts file")
 		return
 	}
@@ -93,8 +94,10 @@ func (a *API) SetupHyperloop(address string) {
 	a.envVars.Store("E2B_EVENTS_ADDRESS", fmt.Sprintf("http://%s", address))
 }
 
-func rewriteHostsFile(address, inputPath, outputPath string) error {
-	data, err := os.ReadFile(inputPath)
+const eventsHost = "events.e2b.local"
+
+func rewriteHostsFile(address, path string) error {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("failed to read hosts file: %w", err)
 	}
@@ -111,11 +114,34 @@ func rewriteHostsFile(address, inputPath, outputPath string) error {
 
 	// Update /etc/hosts to point events.e2b.local to the hyperloop IP
 	// This will remove any existing entries for events.e2b.local first
-	hosts.AddHost(address, "events.e2b.local")
+	ipFamily, err := getIPFamily(address)
+	if err != nil {
+		return fmt.Errorf("failed to get ip family: %w", err)
+	}
 
-	if err = os.WriteFile(outputPath, []byte(hosts.RenderHostsFile()), 0o644); err != nil {
+	if ok, _, _ := hosts.HostAddressLookup(eventsHost, ipFamily); ok {
+		return nil // nothing to be done
+	}
+
+	hosts.AddHost(address, eventsHost)
+
+	if err = os.WriteFile(path, []byte(hosts.RenderHostsFile()), 0o644); err != nil {
 		return fmt.Errorf("failed to save hosts file: %w", err)
 	}
 
 	return nil
+}
+
+var ErrEmptyAddress = errors.New("empty address")
+
+func getIPFamily(address string) (txeh.IPFamily, error) {
+	addressIP := net.ParseIP(address)
+	if addressIP == nil {
+		return txeh.IPFamilyV4, ErrEmptyAddress
+	}
+	ipFamily := txeh.IPFamilyV4
+	if addressIP.To4() == nil {
+		ipFamily = txeh.IPFamilyV6
+	}
+	return ipFamily, nil
 }

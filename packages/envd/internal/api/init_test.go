@@ -34,7 +34,7 @@ func TestSimpleCases(t *testing.T) {
 			err := os.WriteFile(inputPath, []byte(value), perms)
 			require.NoError(t, err)
 
-			err = rewriteHostsFile("127.0.0.3", inputPath, inputPath)
+			err = rewriteHostsFile("127.0.0.3", inputPath)
 			require.NoError(t, err)
 
 			data, err := os.ReadFile(inputPath)
