@@ -16,8 +16,8 @@ jobs:
         id: app
         uses: actions/create-github-app-token@v1
         with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.E2B_GH_APP_AUTO_REQUEST_SAME_SITE_APP_ID }}
+          private-key: ${{ secrets.E2B_GH_APP_AUTO_REQUEST_SAME_SITE_APP_PRIVATE_KEY }}
           owner: e2b-dev
 
       - name: Checkout repo (needed because the script lives in the repo)
@@ -26,7 +26,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Install deps
         run: |
