@@ -22,10 +22,13 @@ const (
 
 	storageProviderEnv         = "DOCKERHUB_REMOTE_REPOSITORY_PROVIDER"
 	storageRemoteRepositoryURL = "DOCKERHUB_REMOTE_REPOSITORY_URL"
+
+	setupTimeout = 10 * time.Second
 )
 
 type RemoteRepository interface {
 	GetImage(ctx context.Context, tag string, platform containerregistry.Platform) (containerregistry.Image, error)
+	Close() error
 }
 
 func GetRemoteRepository(ctx context.Context) (RemoteRepository, error) {
@@ -36,7 +39,7 @@ func GetRemoteRepository(ctx context.Context) (RemoteRepository, error) {
 		return NewNoopRemoteRepository(), nil
 	}
 
-	setupCtx, setupCtxCancel := context.WithTimeout(ctx, 10*time.Second)
+	setupCtx, setupCtxCancel := context.WithTimeout(ctx, setupTimeout)
 	defer setupCtxCancel()
 
 	switch provider {

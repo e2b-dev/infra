@@ -147,6 +147,12 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 	testImageRef := testRepository + ":latest"
 
 	dockerhubRepository := dockerhub.NewNoopRemoteRepository()
+	t.Cleanup(func() {
+		err := dockerhubRepository.Close()
+		if err != nil {
+			t.Errorf("error closing dockerhub repository: %v", err)
+		}
+	})
 
 	t.Run("successful auth and pull", func(t *testing.T) {
 		reg := registry.New()

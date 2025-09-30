@@ -28,3 +28,7 @@ func (n *NoopRemoteRepository) GetImage(ctx context.Context, tag string, platfor
 
 	return img, nil
 }
+
+func (n *NoopRemoteRepository) Close() error {
+	return nil
+}

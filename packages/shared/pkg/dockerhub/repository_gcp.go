@@ -18,6 +18,7 @@ import (
 type GCPRemoteRepository struct {
 	repositoryURL string
 	registry      *artifactregistry.Client
+	authToken     authn.Authenticator
 }
 
 var gcpAuthConfig = authn.Basic{
@@ -31,7 +32,12 @@ func NewGCPRemoteRepository(ctx context.Context, repositoryURL string) (*GCPRemo
 		return nil, fmt.Errorf("error creating artifact registry client: %w", err)
 	}
 
-	return &GCPRemoteRepository{repositoryURL: repositoryURL, registry: registry}, nil
+	authToken, err := getAuthToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting auth token: %w", err)
+	}
+
+	return &GCPRemoteRepository{repositoryURL: repositoryURL, registry: registry, authToken: authToken}, nil
 }
 
 func (g *GCPRemoteRepository) GetImage(ctx context.Context, tag string, platform containerregistry.Platform) (containerregistry.Image, error) {
@@ -45,12 +51,7 @@ func (g *GCPRemoteRepository) GetImage(ctx context.Context, tag string, platform
 		return nil, fmt.Errorf("invalid image reference: %w", err)
 	}
 
-	authToken, err := g.getAuthToken(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("error getting auth token: %w", err)
-	}
-
-	img, err := remote.Image(ref, remote.WithAuth(authToken), remote.WithPlatform(platform))
+	img, err := remote.Image(ref, remote.WithAuth(g.authToken), remote.WithPlatform(platform))
 	if err != nil {
 		return nil, fmt.Errorf("error pulling image: %w", err)
 	}
@@ -58,7 +59,7 @@ func (g *GCPRemoteRepository) GetImage(ctx context.Context, tag string, platform
 	return img, nil
 }
 
-func (g *GCPRemoteRepository) getAuthToken(_ context.Context) (authn.Authenticator, error) {
+func getAuthToken(_ context.Context) (authn.Authenticator, error) {
 	authCfg := consts.DockerAuthConfig
 	if authCfg == "" {
 		return &gcpAuthConfig, nil
@@ -82,4 +83,8 @@ func (g *GCPRemoteRepository) getAuthToken(_ context.Context) (authn.Authenticat
 		Username: cfg.Username,
 		Password: cfg.Password,
 	}, nil
+}
+
+func (g *GCPRemoteRepository) Close() error {
+	return g.registry.Close()
 }

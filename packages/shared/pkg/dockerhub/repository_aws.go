@@ -87,3 +87,7 @@ func (g *AWSRemoteRepository) getAuthToken(ctx context.Context) (authn.Authentic
 		Password: password,
 	}, nil
 }
+
+func (g *AWSRemoteRepository) Close() error {
+	return nil
+}

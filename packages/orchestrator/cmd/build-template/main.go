@@ -137,6 +137,17 @@ func buildTemplate(
 		return fmt.Errorf("error getting artifacts registry provider: %w", err)
 	}
 
+	dockerhubRepository, err := dockerhub.GetRemoteRepository(ctx)
+	if err != nil {
+		return fmt.Errorf("error getting dockerhub repository: %w", err)
+	}
+	defer func() {
+		err := dockerhubRepository.Close()
+		if err != nil {
+			logger.Error("error closing dockerhub repository", zap.Error(err))
+		}
+	}()
+
 	blockMetrics, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
 	if err != nil {
 		return fmt.Errorf("error creating metrics: %w", err)
@@ -165,7 +176,7 @@ func buildTemplate(
 		persistenceTemplate,
 		persistenceBuild,
 		artifactRegistry,
-		docker.NewNoopRemoteRepository(),
+		dockerhubRepository,
 		sandboxProxy,
 		sandboxes,
 		templateCache,
