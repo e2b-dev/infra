@@ -215,15 +215,13 @@ func sortFilesByATime(files []pkg.File) {
 
 func reportGetFilesProgress(usedFiles, dupeHits int) {
 	total := usedFiles + dupeHits
-	if total > 0 && total%100 != 0 {
-		return
+	if total > 0 && total%100 == 0 {
+		msg := fmt.Sprintf("%d files", usedFiles)
+		if dupeHits > 0 {
+			msg += fmt.Sprintf(", %d dupe hits", dupeHits)
+		}
+		fmt.Printf("\r%s ... ", msg)
 	}
-
-	msg := fmt.Sprintf("%d files", usedFiles)
-	if dupeHits > 0 {
-		msg += fmt.Sprintf(", %d dupe hits", dupeHits)
-	}
-	fmt.Printf("\r%s ... ", msg)
 }
 
 func getFiles(cache *pkg.ListingCache, maxFiles int) ([]pkg.File, error) {
