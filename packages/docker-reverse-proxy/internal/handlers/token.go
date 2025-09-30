@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -91,7 +92,7 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	// Get docker token from the actual registry
-	dockerToken, err := getToken(templateID)
+	dockerToken, err := getToken(ctx, templateID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 
@@ -107,7 +108,7 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 }
 
 // getToken gets a new token from the actual registry for the required scope
-func getToken(templateID string) (*DockerToken, error) {
+func getToken(ctx context.Context, templateID string) (*DockerToken, error) {
 	scope := fmt.Sprintf(
 		"?service=%s-docker.pkg.dev&scope=repository:%s/%s/%s:push,pull",
 		consts.GCPRegion,
@@ -121,7 +122,7 @@ func getToken(templateID string) (*DockerToken, error) {
 		scope,
 	)
 
-	r, err := http.NewRequest(http.MethodGet, url, nil)
+	r, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request for scope - %s: %w", templateID, err)
 	}

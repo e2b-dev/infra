@@ -53,6 +53,7 @@ type PostInitJSONBody struct {
 	EnvVars     *map[string]string `json:"envVars"`
 	AccessToken *string            `json:"accessToken,omitempty"`
 	HyperloopIP *string            `json:"hyperloopIP,omitempty"`
+	Timestamp   *time.Time         `json:"timestamp,omitempty"`
 }
 
 func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string, accessToken *string) error {
@@ -61,10 +62,12 @@ func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string, acces
 
 	hyperloopIP := s.Slot.HyperloopIPString()
 	address := fmt.Sprintf("http://%s:%d/init", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
+	now := time.Now()
 	jsonBody := &PostInitJSONBody{
 		EnvVars:     &envVars,
 		HyperloopIP: &hyperloopIP,
 		AccessToken: accessToken,
+		Timestamp:   &now,
 	}
 
 	body, err := json.Marshal(jsonBody)

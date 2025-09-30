@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
@@ -27,7 +28,7 @@ func TestCreateAccessToken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assert.Equal(t, http.StatusCreated, resp.StatusCode())
+	require.Equal(t, http.StatusCreated, resp.StatusCode(), string(resp.Body))
 	assert.Equal(t, "test", resp.JSON201.Name)
 	assert.NotEmpty(t, resp.JSON201.Token)
 	assert.Regexp(t, fmt.Sprintf("^%s.+$", keys.AccessTokenPrefix), resp.JSON201.Token)

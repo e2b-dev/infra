@@ -5,6 +5,7 @@ const sandbox = await Sandbox.create();
 log("ℹ️ sandbox created", sandbox.sandboxId);
 
 await sandbox.files.write("/hello.txt", "Hello World");
+log("File written");
 const result = await sandbox.files.read("/hello.txt");
 
 if (result !== "Hello World") {

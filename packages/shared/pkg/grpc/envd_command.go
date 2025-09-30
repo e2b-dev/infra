@@ -18,7 +18,6 @@ func StreamToChannel[Res any](ctx context.Context, stream *connect.ServerStreamF
 
 	go func() {
 		defer close(out)
-		defer close(errCh)
 
 		for stream.Receive() {
 			select {

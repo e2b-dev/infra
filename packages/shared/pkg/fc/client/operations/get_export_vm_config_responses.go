@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -86,11 +87,13 @@ func (o *GetExportVMConfigOK) Code() int {
 }
 
 func (o *GetExportVMConfigOK) Error() string {
-	return fmt.Sprintf("[GET /vm/config][%d] getExportVmConfigOK  %+v", 200, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[GET /vm/config][%d] getExportVmConfigOK %s", 200, payload)
 }
 
 func (o *GetExportVMConfigOK) String() string {
-	return fmt.Sprintf("[GET /vm/config][%d] getExportVmConfigOK  %+v", 200, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[GET /vm/config][%d] getExportVmConfigOK %s", 200, payload)
 }
 
 func (o *GetExportVMConfigOK) GetPayload() *models.FullVMConfiguration {
@@ -158,11 +161,13 @@ func (o *GetExportVMConfigDefault) Code() int {
 }
 
 func (o *GetExportVMConfigDefault) Error() string {
-	return fmt.Sprintf("[GET /vm/config][%d] getExportVmConfig default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[GET /vm/config][%d] getExportVmConfig default %s", o._statusCode, payload)
 }
 
 func (o *GetExportVMConfigDefault) String() string {
-	return fmt.Sprintf("[GET /vm/config][%d] getExportVmConfig default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[GET /vm/config][%d] getExportVmConfig default %s", o._statusCode, payload)
 }
 
 func (o *GetExportVMConfigDefault) GetPayload() *models.Error {

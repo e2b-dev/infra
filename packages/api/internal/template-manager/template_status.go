@@ -159,7 +159,7 @@ func (c *PollBuildStatus) setStatus(ctx context.Context) error {
 	}
 
 	// debug log the status
-	c.logger.Debug("setting status pointer", zap.Any("status", status))
+	c.logger.Debug("setting status pointer", zap.String("status", status.Status.String()))
 
 	c.status = status
 	return nil
@@ -190,7 +190,7 @@ func (c *PollBuildStatus) dispatchBasedOnStatus(ctx context.Context, status *tem
 		}
 		return true, nil
 	default:
-		c.logger.Debug("skipping status", zap.Any("status", status))
+		c.logger.Debug("skipping status", zap.String("status", status.Status.String()))
 		return false, nil
 	}
 }
@@ -210,7 +210,7 @@ func (c *PollBuildStatus) checkBuildStatus(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	c.logger.Debug("dispatching based on status", zap.Any("status", c.status))
+	c.logger.Debug("dispatching based on status", zap.String("status", c.status.Status.String()))
 
 	buildCompleted, err := c.dispatchBasedOnStatus(ctx, c.status)
 	if err != nil {

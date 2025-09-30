@@ -98,8 +98,9 @@ func (m *BuildMetrics) RecordPhaseDuration(ctx context.Context, duration time.Du
 }
 
 // RecordBuildResult records the result of a build (success or failure)
-func (m *BuildMetrics) RecordBuildResult(ctx context.Context, success bool) {
+func (m *BuildMetrics) RecordBuildResult(ctx context.Context, teamID string, success bool) {
 	attrs := []attribute.KeyValue{
+		telemetry.WithTeamID(teamID),
 		attribute.Bool("success", success),
 	}
 	m.BuildResultCounter.Add(ctx, 1, metric.WithAttributes(attrs...))

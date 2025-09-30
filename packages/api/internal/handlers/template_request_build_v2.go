@@ -1,18 +1,16 @@
 package handlers
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/template"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"github.com/e2b-dev/infra/packages/db/dberrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -43,18 +41,24 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	_, span := tracer.Start(ctx, "find-template-alias")
 	defer span.End()
 	templateID := id.Generate()
-	isNew := true
+	public := false
 	templateAlias, err := a.sqlcDB.GetTemplateAliasByAlias(ctx, body.Alias)
-	if err != nil {
-		var notFoundErr db.NotFoundError
-		if !errors.As(err, &notFoundErr) {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting template alias: %s", err))
-			telemetry.ReportCriticalError(ctx, "error when getting template alias", err)
+	switch {
+	case err == nil:
+		if templateAlias.TeamID != team.ID {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Alias `%s` is already taken", body.Alias))
+			telemetry.ReportError(ctx, "template alias is already taken", nil, telemetry.WithTemplateID(templateAlias.EnvID), telemetry.WithTeamID(team.ID.String()), attribute.String("alias", body.Alias))
 			return
 		}
-	} else {
+
 		templateID = templateAlias.EnvID
-		isNew = false
+		public = templateAlias.Public
+	case dberrors.IsNotFoundError(err):
+		// Alias is available and not used
+	default:
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting template alias: %s", err))
+		telemetry.ReportCriticalError(ctx, "error when getting template alias", err)
+		return
 	}
 	span.End()
 
@@ -65,10 +69,9 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		return
 	}
 
-	buildReq := BuildTemplateRequest{
+	buildReq := template.RegisterBuildData{
 		ClusterID:     apiutils.WithClusterFallback(team.ClusterID),
 		BuilderNodeID: builderNodeID,
-		IsNew:         isNew,
 		TemplateID:    templateID,
 		UserID:        nil,
 		Team:          team,
@@ -78,10 +81,10 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		MemoryMB:      body.MemoryMB,
 	}
 
-	template, apiError := a.BuildTemplate(ctx, buildReq)
+	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.db, buildReq)
 	if apiError != nil {
 		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
-		telemetry.ReportCriticalError(ctx, "invalid request body", err)
+		telemetry.ReportCriticalError(ctx, "build template register failed", apiError.Err)
 		return
 	}
 
@@ -99,47 +102,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	c.JSON(http.StatusAccepted, &api.Template{
 		TemplateID: template.TemplateID,
 		BuildID:    template.BuildID,
-		Public:     template.Public,
 		Aliases:    template.Aliases,
+		Public:     public,
 	})
-}
-
-func (a *APIStore) GetTeamAndTier(
-	c *gin.Context,
-	// Deprecated: use API Token authentication instead.
-	teamID *string,
-) (*queries.Team, *queries.Tier, *api.APIError) {
-	_, span := tracer.Start(c.Request.Context(), "get-team-and-tier")
-	defer span.End()
-
-	if c.Value(auth.TeamContextKey) != nil {
-		teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
-
-		return teamInfo.Team, teamInfo.Tier, nil
-	} else if c.Value(auth.UserIDContextKey) != nil {
-		_, teams, err := a.GetUserAndTeams(c)
-		if err != nil {
-			return nil, nil, &api.APIError{
-				Code:      http.StatusInternalServerError,
-				ClientMsg: "Error when getting user and teams",
-				Err:       err,
-			}
-		}
-		team, tier, err := findTeamAndTier(teams, teamID)
-		if err != nil {
-			return nil, nil, &api.APIError{
-				Code:      http.StatusForbidden,
-				ClientMsg: "You are not allowed to access this team",
-				Err:       err,
-			}
-		}
-
-		return team, tier, nil
-	}
-
-	return nil, nil, &api.APIError{
-		Code:      http.StatusUnauthorized,
-		ClientMsg: "You are not authenticated",
-		Err:       errors.New("invalid authentication context for team and tier"),
-	}
 }

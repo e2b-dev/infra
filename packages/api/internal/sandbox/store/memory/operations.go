@@ -1,4 +1,4 @@
-package instance
+package memory
 
 import (
 	"context"
@@ -9,20 +9,14 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-type StateAction string
-
-const (
-	StateActionPause StateAction = "pause"
-	StateActionKill  StateAction = "kill"
-)
-
 // Add the sandbox to the cache
-func (ms *MemoryStore) Add(ctx context.Context, sandbox Sandbox, newlyCreated bool) {
+func (s *Store) Add(ctx context.Context, sandbox sandbox.Sandbox, newlyCreated bool) {
 	sbxlogger.I(sandbox).Debug("Adding sandbox to cache",
 		zap.Bool("newly_created", newlyCreated),
 		zap.Time("start_time", sandbox.StartTime),
@@ -35,31 +29,31 @@ func (ms *MemoryStore) Add(ctx context.Context, sandbox Sandbox, newlyCreated bo
 		sandbox.EndTime = sandbox.StartTime.Add(sandbox.MaxInstanceLength)
 	}
 
-	added := ms.items.SetIfAbsent(sandbox.SandboxID, newMemorySandbox(sandbox))
+	added := s.items.SetIfAbsent(sandbox.SandboxID, newMemorySandbox(sandbox))
 	if !added {
 		zap.L().Warn("Sandbox already exists in cache", logger.WithSandboxID(sandbox.SandboxID))
 		return
 	}
 
-	for _, callback := range ms.insertCallbacks {
+	for _, callback := range s.insertCallbacks {
 		callback(ctx, sandbox, newlyCreated)
 	}
 
-	for _, callback := range ms.insertAsyncCallbacks {
+	for _, callback := range s.insertAsyncCallbacks {
 		go callback(context.WithoutCancel(ctx), sandbox, newlyCreated)
 	}
 	// Release the reservation if it exists
-	ms.reservations.release(sandbox.SandboxID)
+	s.reservations.release(sandbox.SandboxID)
 }
 
-// Exists Check if the sandbox exists in the cache or is being evicted.
-func (ms *MemoryStore) Exists(sandboxID string) bool {
-	return ms.items.Has(sandboxID)
+// exists check if the sandbox exists in the cache or is being evicted.
+func (s *Store) exists(sandboxID string) bool {
+	return s.items.Has(sandboxID)
 }
 
 // Get the item from the cache.
-func (ms *MemoryStore) get(sandboxID string) (*memorySandbox, error) {
-	item, ok := ms.items.Get(sandboxID)
+func (s *Store) get(sandboxID string) (*memorySandbox, error) {
+	item, ok := s.items.Get(sandboxID)
 	if !ok {
 		return nil, fmt.Errorf("sandbox \"%s\" doesn't exist", sandboxID)
 	}
@@ -68,28 +62,28 @@ func (ms *MemoryStore) get(sandboxID string) (*memorySandbox, error) {
 }
 
 // Get the item from the cache.
-func (ms *MemoryStore) Get(sandboxID string, includeEvicting bool) (Sandbox, error) {
-	item, ok := ms.items.Get(sandboxID)
+func (s *Store) Get(sandboxID string, includeEvicting bool) (sandbox.Sandbox, error) {
+	item, ok := s.items.Get(sandboxID)
 	if !ok {
-		return Sandbox{}, fmt.Errorf("sandbox \"%s\" doesn't exist", sandboxID)
+		return sandbox.Sandbox{}, fmt.Errorf("sandbox \"%s\" doesn't exist", sandboxID)
 	}
 
 	data := item.Data()
 
 	if data.IsExpired() && !includeEvicting {
-		return Sandbox{}, fmt.Errorf("sandbox \"%s\" is being evicted", sandboxID)
+		return sandbox.Sandbox{}, fmt.Errorf("sandbox \"%s\" is being evicted", sandboxID)
 	}
 
 	return data, nil
 }
 
-func (ms *MemoryStore) Remove(sandboxID string) {
-	ms.items.Remove(sandboxID)
+func (s *Store) Remove(sandboxID string) {
+	s.items.Remove(sandboxID)
 }
 
-func (ms *MemoryStore) Items(teamID *uuid.UUID) []Sandbox {
-	items := make([]Sandbox, 0)
-	for _, item := range ms.items.Items() {
+func (s *Store) Items(teamID *uuid.UUID) []sandbox.Sandbox {
+	items := make([]sandbox.Sandbox, 0)
+	for _, item := range s.items.Items() {
 		data := item.Data()
 		if data.IsExpired() {
 			continue
@@ -105,15 +99,15 @@ func (ms *MemoryStore) Items(teamID *uuid.UUID) []Sandbox {
 	return items
 }
 
-func (ms *MemoryStore) ItemsToEvict() []Sandbox {
-	items := make([]Sandbox, 0)
-	for _, item := range ms.items.Items() {
+func (s *Store) ItemsToEvict() []sandbox.Sandbox {
+	items := make([]sandbox.Sandbox, 0)
+	for _, item := range s.items.Items() {
 		data := item.Data()
 		if !data.IsExpired() {
 			continue
 		}
 
-		if data.State != StateRunning {
+		if data.State != sandbox.StateRunning {
 			continue
 		}
 
@@ -123,9 +117,9 @@ func (ms *MemoryStore) ItemsToEvict() []Sandbox {
 	return items
 }
 
-func (ms *MemoryStore) ItemsByState(teamID *uuid.UUID, states []State) map[State][]Sandbox {
-	items := make(map[State][]Sandbox)
-	for _, item := range ms.items.Items() {
+func (s *Store) ItemsByState(teamID *uuid.UUID, states []sandbox.State) map[sandbox.State][]sandbox.Sandbox {
+	items := make(map[sandbox.State][]sandbox.Sandbox)
+	for _, item := range s.items.Items() {
 		data := item.Data()
 		if teamID != nil && data.TeamID != *teamID {
 			continue
@@ -133,7 +127,7 @@ func (ms *MemoryStore) ItemsByState(teamID *uuid.UUID, states []State) map[State
 
 		if slices.Contains(states, data.State) {
 			if _, ok := items[data.State]; !ok {
-				items[data.State] = []Sandbox{}
+				items[data.State] = []sandbox.Sandbox{}
 			}
 
 			items[data.State] = append(items[data.State], data)
@@ -143,12 +137,8 @@ func (ms *MemoryStore) ItemsByState(teamID *uuid.UUID, states []State) map[State
 	return items
 }
 
-func (ms *MemoryStore) Len(teamID *uuid.UUID) int {
-	return len(ms.Items(teamID))
-}
-
-func (ms *MemoryStore) ExtendEndTime(sandboxID string, newEndTime time.Time, allowShorter bool) (bool, error) {
-	item, ok := ms.items.Get(sandboxID)
+func (s *Store) ExtendEndTime(sandboxID string, newEndTime time.Time, allowShorter bool) (bool, error) {
+	item, ok := s.items.Get(sandboxID)
 	if !ok {
 		return false, fmt.Errorf("sandbox \"%s\" doesn't exist", sandboxID)
 	}
@@ -156,8 +146,8 @@ func (ms *MemoryStore) ExtendEndTime(sandboxID string, newEndTime time.Time, all
 	return item.extendEndTime(newEndTime, allowShorter), nil
 }
 
-func (ms *MemoryStore) StartRemoving(ctx context.Context, sandboxID string, stateAction StateAction) (alreadyDone bool, callback func(error), err error) {
-	sbx, err := ms.get(sandboxID)
+func (s *Store) StartRemoving(ctx context.Context, sandboxID string, stateAction sandbox.StateAction) (alreadyDone bool, callback func(error), err error) {
+	sbx, err := s.get(sandboxID)
 	if err != nil {
 		return false, nil, err
 	}
@@ -165,10 +155,10 @@ func (ms *MemoryStore) StartRemoving(ctx context.Context, sandboxID string, stat
 	return startRemoving(ctx, sbx, stateAction)
 }
 
-func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction StateAction) (alreadyDone bool, callback func(error), err error) {
-	newState := StateKilling
-	if stateAction == StateActionPause {
-		newState = StatePausing
+func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.StateAction) (alreadyDone bool, callback func(error), err error) {
+	newState := sandbox.StateKilling
+	if stateAction == sandbox.StateActionPause {
+		newState = sandbox.StatePausing
 	}
 
 	sbx.mu.Lock()
@@ -177,7 +167,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction StateAct
 		currentState := sbx._data.State
 		sbx.mu.Unlock()
 
-		if currentState != newState && !allowed[currentState][newState] {
+		if currentState != newState && !sandbox.AllowedTransitions[currentState][newState] {
 			return false, nil, fmt.Errorf("invalid state transition, already in transition from %s", currentState)
 		}
 
@@ -191,7 +181,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction StateAct
 		switch {
 		case currentState == newState:
 			return true, func(err error) {}, nil
-		case allowed[currentState][newState]:
+		case sandbox.AllowedTransitions[currentState][newState]:
 			return startRemoving(ctx, sbx, stateAction)
 		default:
 			return false, nil, fmt.Errorf("unexpected state transition")
@@ -204,7 +194,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction StateAct
 		return true, func(error) {}, nil
 	}
 
-	if _, ok := allowed[sbx._data.State][newState]; !ok {
+	if _, ok := sandbox.AllowedTransitions[sbx._data.State][newState]; !ok {
 		return false, nil, fmt.Errorf("invalid state transition from %s to %s", sbx._data.State, newState)
 	}
 
@@ -231,8 +221,8 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction StateAct
 	return false, callback, nil
 }
 
-func (ms *MemoryStore) WaitForStateChange(ctx context.Context, sandboxID string) error {
-	sbx, err := ms.get(sandboxID)
+func (s *Store) WaitForStateChange(ctx context.Context, sandboxID string) error {
+	sbx, err := s.get(sandboxID)
 	if err != nil {
 		return fmt.Errorf("failed to get sandbox: %w", err)
 	}

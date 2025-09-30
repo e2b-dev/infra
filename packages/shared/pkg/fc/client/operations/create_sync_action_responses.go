@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -91,11 +92,11 @@ func (o *CreateSyncActionNoContent) Code() int {
 }
 
 func (o *CreateSyncActionNoContent) Error() string {
-	return fmt.Sprintf("[PUT /actions][%d] createSyncActionNoContent ", 204)
+	return fmt.Sprintf("[PUT /actions][%d] createSyncActionNoContent", 204)
 }
 
 func (o *CreateSyncActionNoContent) String() string {
-	return fmt.Sprintf("[PUT /actions][%d] createSyncActionNoContent ", 204)
+	return fmt.Sprintf("[PUT /actions][%d] createSyncActionNoContent", 204)
 }
 
 func (o *CreateSyncActionNoContent) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -148,11 +149,13 @@ func (o *CreateSyncActionBadRequest) Code() int {
 }
 
 func (o *CreateSyncActionBadRequest) Error() string {
-	return fmt.Sprintf("[PUT /actions][%d] createSyncActionBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /actions][%d] createSyncActionBadRequest %s", 400, payload)
 }
 
 func (o *CreateSyncActionBadRequest) String() string {
-	return fmt.Sprintf("[PUT /actions][%d] createSyncActionBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /actions][%d] createSyncActionBadRequest %s", 400, payload)
 }
 
 func (o *CreateSyncActionBadRequest) GetPayload() *models.Error {
@@ -220,11 +223,13 @@ func (o *CreateSyncActionDefault) Code() int {
 }
 
 func (o *CreateSyncActionDefault) Error() string {
-	return fmt.Sprintf("[PUT /actions][%d] createSyncAction default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /actions][%d] createSyncAction default %s", o._statusCode, payload)
 }
 
 func (o *CreateSyncActionDefault) String() string {
-	return fmt.Sprintf("[PUT /actions][%d] createSyncAction default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /actions][%d] createSyncAction default %s", o._statusCode, payload)
 }
 
 func (o *CreateSyncActionDefault) GetPayload() *models.Error {

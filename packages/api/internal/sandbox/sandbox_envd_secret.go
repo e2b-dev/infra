@@ -2,19 +2,16 @@ package sandbox
 
 import (
 	"errors"
-	"os"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 
-var seedKey = os.Getenv("SANDBOX_ACCESS_TOKEN_HASH_SEED")
-
 type EnvdAccessTokenGenerator struct {
 	hasher *keys.HMACSha256Hashing
 }
 
-func NewEnvdAccessTokenGenerator() (*EnvdAccessTokenGenerator, error) {
+func NewEnvdAccessTokenGenerator(seedKey string) (*EnvdAccessTokenGenerator, error) {
 	if seedKey == "" {
 		return nil, errors.New("seed key is not set")
 	}

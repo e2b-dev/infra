@@ -82,6 +82,8 @@ message TemplateConfig {
    }
 
   optional FromImageRegistry fromImageRegistry = 15;
+
+  string teamID = 16;
 }
 
 message TemplateCreateRequest {

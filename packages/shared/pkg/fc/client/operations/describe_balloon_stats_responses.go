@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -92,11 +93,13 @@ func (o *DescribeBalloonStatsOK) Code() int {
 }
 
 func (o *DescribeBalloonStatsOK) Error() string {
-	return fmt.Sprintf("[GET /balloon/statistics][%d] describeBalloonStatsOK  %+v", 200, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[GET /balloon/statistics][%d] describeBalloonStatsOK %s", 200, payload)
 }
 
 func (o *DescribeBalloonStatsOK) String() string {
-	return fmt.Sprintf("[GET /balloon/statistics][%d] describeBalloonStatsOK  %+v", 200, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[GET /balloon/statistics][%d] describeBalloonStatsOK %s", 200, payload)
 }
 
 func (o *DescribeBalloonStatsOK) GetPayload() *models.BalloonStats {
@@ -160,11 +163,13 @@ func (o *DescribeBalloonStatsBadRequest) Code() int {
 }
 
 func (o *DescribeBalloonStatsBadRequest) Error() string {
-	return fmt.Sprintf("[GET /balloon/statistics][%d] describeBalloonStatsBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[GET /balloon/statistics][%d] describeBalloonStatsBadRequest %s", 400, payload)
 }
 
 func (o *DescribeBalloonStatsBadRequest) String() string {
-	return fmt.Sprintf("[GET /balloon/statistics][%d] describeBalloonStatsBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[GET /balloon/statistics][%d] describeBalloonStatsBadRequest %s", 400, payload)
 }
 
 func (o *DescribeBalloonStatsBadRequest) GetPayload() *models.Error {
@@ -232,11 +237,13 @@ func (o *DescribeBalloonStatsDefault) Code() int {
 }
 
 func (o *DescribeBalloonStatsDefault) Error() string {
-	return fmt.Sprintf("[GET /balloon/statistics][%d] describeBalloonStats default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[GET /balloon/statistics][%d] describeBalloonStats default %s", o._statusCode, payload)
 }
 
 func (o *DescribeBalloonStatsDefault) String() string {
-	return fmt.Sprintf("[GET /balloon/statistics][%d] describeBalloonStats default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[GET /balloon/statistics][%d] describeBalloonStats default %s", o._statusCode, payload)
 }
 
 func (o *DescribeBalloonStatsDefault) GetPayload() *models.Error {

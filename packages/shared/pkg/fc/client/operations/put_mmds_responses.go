@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -91,11 +92,11 @@ func (o *PutMmdsNoContent) Code() int {
 }
 
 func (o *PutMmdsNoContent) Error() string {
-	return fmt.Sprintf("[PUT /mmds][%d] putMmdsNoContent ", 204)
+	return fmt.Sprintf("[PUT /mmds][%d] putMmdsNoContent", 204)
 }
 
 func (o *PutMmdsNoContent) String() string {
-	return fmt.Sprintf("[PUT /mmds][%d] putMmdsNoContent ", 204)
+	return fmt.Sprintf("[PUT /mmds][%d] putMmdsNoContent", 204)
 }
 
 func (o *PutMmdsNoContent) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -148,11 +149,13 @@ func (o *PutMmdsBadRequest) Code() int {
 }
 
 func (o *PutMmdsBadRequest) Error() string {
-	return fmt.Sprintf("[PUT /mmds][%d] putMmdsBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /mmds][%d] putMmdsBadRequest %s", 400, payload)
 }
 
 func (o *PutMmdsBadRequest) String() string {
-	return fmt.Sprintf("[PUT /mmds][%d] putMmdsBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /mmds][%d] putMmdsBadRequest %s", 400, payload)
 }
 
 func (o *PutMmdsBadRequest) GetPayload() *models.Error {
@@ -220,11 +223,13 @@ func (o *PutMmdsDefault) Code() int {
 }
 
 func (o *PutMmdsDefault) Error() string {
-	return fmt.Sprintf("[PUT /mmds][%d] putMmds default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /mmds][%d] putMmds default %s", o._statusCode, payload)
 }
 
 func (o *PutMmdsDefault) String() string {
-	return fmt.Sprintf("[PUT /mmds][%d] putMmds default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /mmds][%d] putMmds default %s", o._statusCode, payload)
 }
 
 func (o *PutMmdsDefault) GetPayload() *models.Error {

@@ -1,7 +1,6 @@
 package template_manager
 
 import (
-	"os"
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -11,15 +10,14 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 
+	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
-var templateManagerHost = os.Getenv("TEMPLATE_MANAGER_HOST")
-
-func createClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider) (*grpclient.GRPCClient, error) {
-	conn, err := grpc.NewClient(templateManagerHost,
+func createClient(config cfg.Config, tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider) (*grpclient.GRPCClient, error) {
+	conn, err := grpc.NewClient(config.TemplateManagerHost,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithStatsHandler(
 			otelgrpc.NewClientHandler(

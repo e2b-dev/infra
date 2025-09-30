@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -91,11 +92,11 @@ func (o *PutLoggerNoContent) Code() int {
 }
 
 func (o *PutLoggerNoContent) Error() string {
-	return fmt.Sprintf("[PUT /logger][%d] putLoggerNoContent ", 204)
+	return fmt.Sprintf("[PUT /logger][%d] putLoggerNoContent", 204)
 }
 
 func (o *PutLoggerNoContent) String() string {
-	return fmt.Sprintf("[PUT /logger][%d] putLoggerNoContent ", 204)
+	return fmt.Sprintf("[PUT /logger][%d] putLoggerNoContent", 204)
 }
 
 func (o *PutLoggerNoContent) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -148,11 +149,13 @@ func (o *PutLoggerBadRequest) Code() int {
 }
 
 func (o *PutLoggerBadRequest) Error() string {
-	return fmt.Sprintf("[PUT /logger][%d] putLoggerBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /logger][%d] putLoggerBadRequest %s", 400, payload)
 }
 
 func (o *PutLoggerBadRequest) String() string {
-	return fmt.Sprintf("[PUT /logger][%d] putLoggerBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /logger][%d] putLoggerBadRequest %s", 400, payload)
 }
 
 func (o *PutLoggerBadRequest) GetPayload() *models.Error {
@@ -220,11 +223,13 @@ func (o *PutLoggerDefault) Code() int {
 }
 
 func (o *PutLoggerDefault) Error() string {
-	return fmt.Sprintf("[PUT /logger][%d] putLogger default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /logger][%d] putLogger default %s", o._statusCode, payload)
 }
 
 func (o *PutLoggerDefault) String() string {
-	return fmt.Sprintf("[PUT /logger][%d] putLogger default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /logger][%d] putLogger default %s", o._statusCode, payload)
 }
 
 func (o *PutLoggerDefault) GetPayload() *models.Error {

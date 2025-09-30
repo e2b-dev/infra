@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -91,11 +92,11 @@ func (o *PutGuestBootSourceNoContent) Code() int {
 }
 
 func (o *PutGuestBootSourceNoContent) Error() string {
-	return fmt.Sprintf("[PUT /boot-source][%d] putGuestBootSourceNoContent ", 204)
+	return fmt.Sprintf("[PUT /boot-source][%d] putGuestBootSourceNoContent", 204)
 }
 
 func (o *PutGuestBootSourceNoContent) String() string {
-	return fmt.Sprintf("[PUT /boot-source][%d] putGuestBootSourceNoContent ", 204)
+	return fmt.Sprintf("[PUT /boot-source][%d] putGuestBootSourceNoContent", 204)
 }
 
 func (o *PutGuestBootSourceNoContent) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -148,11 +149,13 @@ func (o *PutGuestBootSourceBadRequest) Code() int {
 }
 
 func (o *PutGuestBootSourceBadRequest) Error() string {
-	return fmt.Sprintf("[PUT /boot-source][%d] putGuestBootSourceBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /boot-source][%d] putGuestBootSourceBadRequest %s", 400, payload)
 }
 
 func (o *PutGuestBootSourceBadRequest) String() string {
-	return fmt.Sprintf("[PUT /boot-source][%d] putGuestBootSourceBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /boot-source][%d] putGuestBootSourceBadRequest %s", 400, payload)
 }
 
 func (o *PutGuestBootSourceBadRequest) GetPayload() *models.Error {
@@ -220,11 +223,13 @@ func (o *PutGuestBootSourceDefault) Code() int {
 }
 
 func (o *PutGuestBootSourceDefault) Error() string {
-	return fmt.Sprintf("[PUT /boot-source][%d] putGuestBootSource default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /boot-source][%d] putGuestBootSource default %s", o._statusCode, payload)
 }
 
 func (o *PutGuestBootSourceDefault) String() string {
-	return fmt.Sprintf("[PUT /boot-source][%d] putGuestBootSource default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /boot-source][%d] putGuestBootSource default %s", o._statusCode, payload)
 }
 
 func (o *PutGuestBootSourceDefault) GetPayload() *models.Error {

@@ -49,6 +49,10 @@ paths:
                 accessToken:
                   type: string
                   description: Access token for secure access to envd service
+                timestamp:
+                  type: string
+                  format: date-time
+                  description: The current timestamp in RFC3339 format
       responses:
         "204":
           description: Env vars set, the time and metadata is synced with the host

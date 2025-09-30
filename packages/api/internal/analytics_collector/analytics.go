@@ -26,8 +26,7 @@ type PosthogClient struct {
 	client posthog.Client
 }
 
-func NewPosthogClient() (*PosthogClient, error) {
-	posthogAPIKey := os.Getenv("POSTHOG_API_KEY")
+func NewPosthogClient(posthogAPIKey string) (*PosthogClient, error) {
 	posthogLogger := posthog.StdLogger(log.New(os.Stderr, "posthog ", log.LstdFlags))
 
 	if strings.TrimSpace(posthogAPIKey) == "" {

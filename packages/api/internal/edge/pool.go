@@ -3,13 +3,13 @@ package edge
 import (
 	"context"
 	"errors"
-	"os"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -20,9 +20,6 @@ import (
 )
 
 const (
-	clusterEndpointEnv = "LOCAL_CLUSTER_ENDPOINT"
-	clusterTokenEnv    = "LOCAL_CLUSTER_TOKEN"
-
 	poolSyncInterval = 60 * time.Second
 	poolSyncTimeout  = 15 * time.Second
 )
@@ -35,13 +32,10 @@ type Pool struct {
 	synchronization *synchronization.Synchronize[queries.Cluster, *Cluster]
 }
 
-func localClusterConfig() (*queries.Cluster, error) {
-	clusterEndpoint := os.Getenv(clusterEndpointEnv)
+func localClusterConfig(clusterEndpoint, clusterToken string) (*queries.Cluster, error) {
 	if clusterEndpoint == "" {
 		return nil, nil
 	}
-
-	clusterToken := os.Getenv(clusterTokenEnv)
 	if clusterToken == "" {
 		return nil, errors.New("no local cluster token provided")
 	}
@@ -55,7 +49,7 @@ func localClusterConfig() (*queries.Cluster, error) {
 	}, nil
 }
 
-func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client) (*Pool, error) {
+func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, config cfg.Config) (*Pool, error) {
 	p := &Pool{
 		db:       db,
 		tel:      tel,
@@ -68,7 +62,7 @@ func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client) (*Po
 		p.Close()
 	}()
 
-	localCluster, err := localClusterConfig()
+	localCluster, err := localClusterConfig(config.LocalClusterEndpoint, config.LocalClusterToken)
 	if err != nil {
 		return nil, err
 	}

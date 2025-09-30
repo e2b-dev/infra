@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -86,11 +87,13 @@ func (o *GetMachineConfigurationOK) Code() int {
 }
 
 func (o *GetMachineConfigurationOK) Error() string {
-	return fmt.Sprintf("[GET /machine-config][%d] getMachineConfigurationOK  %+v", 200, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[GET /machine-config][%d] getMachineConfigurationOK %s", 200, payload)
 }
 
 func (o *GetMachineConfigurationOK) String() string {
-	return fmt.Sprintf("[GET /machine-config][%d] getMachineConfigurationOK  %+v", 200, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[GET /machine-config][%d] getMachineConfigurationOK %s", 200, payload)
 }
 
 func (o *GetMachineConfigurationOK) GetPayload() *models.MachineConfiguration {
@@ -158,11 +161,13 @@ func (o *GetMachineConfigurationDefault) Code() int {
 }
 
 func (o *GetMachineConfigurationDefault) Error() string {
-	return fmt.Sprintf("[GET /machine-config][%d] getMachineConfiguration default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[GET /machine-config][%d] getMachineConfiguration default %s", o._statusCode, payload)
 }
 
 func (o *GetMachineConfigurationDefault) String() string {
-	return fmt.Sprintf("[GET /machine-config][%d] getMachineConfiguration default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[GET /machine-config][%d] getMachineConfiguration default %s", o._statusCode, payload)
 }
 
 func (o *GetMachineConfigurationDefault) GetPayload() *models.Error {

@@ -149,7 +149,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	}
 
 	// Check the rootfs filesystem corruption
-	ext4Check, err := filesystem.CheckIntegrity(rootfsPath, true)
+	ext4Check, err := filesystem.CheckIntegrity(ctx, rootfsPath, true)
 	zap.L().Debug("filesystem ext4 integrity",
 		zap.String("result", ext4Check),
 		zap.Error(err),

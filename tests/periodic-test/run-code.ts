@@ -19,8 +19,9 @@ try {
   // Execute JavaScript cells
   log("running code");
   await sandbox.runCode("x = 1");
+  log("first code executed");
   const execution = await sandbox.runCode("x+=1; x");
-  log("code executed");
+  log("second code executed");
   // Output result
   log(execution.text);
 } catch (error) {

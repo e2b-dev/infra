@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -91,11 +92,11 @@ func (o *PatchGuestDriveByIDNoContent) Code() int {
 }
 
 func (o *PatchGuestDriveByIDNoContent) Error() string {
-	return fmt.Sprintf("[PATCH /drives/{drive_id}][%d] patchGuestDriveByIdNoContent ", 204)
+	return fmt.Sprintf("[PATCH /drives/{drive_id}][%d] patchGuestDriveByIdNoContent", 204)
 }
 
 func (o *PatchGuestDriveByIDNoContent) String() string {
-	return fmt.Sprintf("[PATCH /drives/{drive_id}][%d] patchGuestDriveByIdNoContent ", 204)
+	return fmt.Sprintf("[PATCH /drives/{drive_id}][%d] patchGuestDriveByIdNoContent", 204)
 }
 
 func (o *PatchGuestDriveByIDNoContent) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -148,11 +149,13 @@ func (o *PatchGuestDriveByIDBadRequest) Code() int {
 }
 
 func (o *PatchGuestDriveByIDBadRequest) Error() string {
-	return fmt.Sprintf("[PATCH /drives/{drive_id}][%d] patchGuestDriveByIdBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /drives/{drive_id}][%d] patchGuestDriveByIdBadRequest %s", 400, payload)
 }
 
 func (o *PatchGuestDriveByIDBadRequest) String() string {
-	return fmt.Sprintf("[PATCH /drives/{drive_id}][%d] patchGuestDriveByIdBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /drives/{drive_id}][%d] patchGuestDriveByIdBadRequest %s", 400, payload)
 }
 
 func (o *PatchGuestDriveByIDBadRequest) GetPayload() *models.Error {
@@ -220,11 +223,13 @@ func (o *PatchGuestDriveByIDDefault) Code() int {
 }
 
 func (o *PatchGuestDriveByIDDefault) Error() string {
-	return fmt.Sprintf("[PATCH /drives/{drive_id}][%d] patchGuestDriveByID default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /drives/{drive_id}][%d] patchGuestDriveByID default %s", o._statusCode, payload)
 }
 
 func (o *PatchGuestDriveByIDDefault) String() string {
-	return fmt.Sprintf("[PATCH /drives/{drive_id}][%d] patchGuestDriveByID default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /drives/{drive_id}][%d] patchGuestDriveByID default %s", o._statusCode, payload)
 }
 
 func (o *PatchGuestDriveByIDDefault) GetPayload() *models.Error {

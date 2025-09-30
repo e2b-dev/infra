@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -91,11 +92,11 @@ func (o *PutGuestDriveByIDNoContent) Code() int {
 }
 
 func (o *PutGuestDriveByIDNoContent) Error() string {
-	return fmt.Sprintf("[PUT /drives/{drive_id}][%d] putGuestDriveByIdNoContent ", 204)
+	return fmt.Sprintf("[PUT /drives/{drive_id}][%d] putGuestDriveByIdNoContent", 204)
 }
 
 func (o *PutGuestDriveByIDNoContent) String() string {
-	return fmt.Sprintf("[PUT /drives/{drive_id}][%d] putGuestDriveByIdNoContent ", 204)
+	return fmt.Sprintf("[PUT /drives/{drive_id}][%d] putGuestDriveByIdNoContent", 204)
 }
 
 func (o *PutGuestDriveByIDNoContent) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -148,11 +149,13 @@ func (o *PutGuestDriveByIDBadRequest) Code() int {
 }
 
 func (o *PutGuestDriveByIDBadRequest) Error() string {
-	return fmt.Sprintf("[PUT /drives/{drive_id}][%d] putGuestDriveByIdBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /drives/{drive_id}][%d] putGuestDriveByIdBadRequest %s", 400, payload)
 }
 
 func (o *PutGuestDriveByIDBadRequest) String() string {
-	return fmt.Sprintf("[PUT /drives/{drive_id}][%d] putGuestDriveByIdBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /drives/{drive_id}][%d] putGuestDriveByIdBadRequest %s", 400, payload)
 }
 
 func (o *PutGuestDriveByIDBadRequest) GetPayload() *models.Error {
@@ -220,11 +223,13 @@ func (o *PutGuestDriveByIDDefault) Code() int {
 }
 
 func (o *PutGuestDriveByIDDefault) Error() string {
-	return fmt.Sprintf("[PUT /drives/{drive_id}][%d] putGuestDriveByID default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /drives/{drive_id}][%d] putGuestDriveByID default %s", o._statusCode, payload)
 }
 
 func (o *PutGuestDriveByIDDefault) String() string {
-	return fmt.Sprintf("[PUT /drives/{drive_id}][%d] putGuestDriveByID default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /drives/{drive_id}][%d] putGuestDriveByID default %s", o._statusCode, payload)
 }
 
 func (o *PutGuestDriveByIDDefault) GetPayload() *models.Error {

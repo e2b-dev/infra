@@ -139,6 +139,7 @@ processors:
           - "orchestrator.*"
           - "template.*"
           - "api.*"
+          - "vault.*"
           - "client_proxy.*"
           - "Click*"
           - "otelcol.*"

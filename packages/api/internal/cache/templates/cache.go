@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const templateInfoExpiration = 5 * time.Minute
@@ -193,7 +194,8 @@ func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Statu
 		logger.WithBuildID(buildID.String()),
 		zap.String("to_status", status.String()),
 		zap.String("from_status", item.BuildStatus.String()),
-		zap.Any("reason", reason),
+		zap.String("reason", reason.Message),
+		zap.String("step", sharedUtils.Sprintp(reason.Step)),
 	)
 
 	_ = c.cache.Set(

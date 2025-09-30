@@ -5,8 +5,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"os"
-	"strings"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -14,14 +12,12 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-var host = strings.TrimSpace(os.Getenv("ANALYTICS_COLLECTOR_HOST"))
-
 type Analytics struct {
 	client     AnalyticsCollectorClient
 	connection *grpc.ClientConn
 }
 
-func NewAnalytics() (*Analytics, error) {
+func NewAnalytics(host, grpcAPIKey string) (*Analytics, error) {
 	var client AnalyticsCollectorClient
 	var connection *grpc.ClientConn
 
@@ -42,7 +38,7 @@ func NewAnalytics() (*Analytics, error) {
 
 		conn, err := grpc.NewClient(
 			fmt.Sprintf("%s:443", host),
-			grpc.WithPerRPCCredentials(&gRPCApiKey{}),
+			grpc.WithPerRPCCredentials(newGRPCAPIKey(grpcAPIKey)),
 			grpc.WithAuthority(host),
 			grpc.WithTransportCredentials(cred),
 		)

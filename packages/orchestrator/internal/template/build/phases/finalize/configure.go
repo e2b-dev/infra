@@ -36,8 +36,8 @@ func runConfiguration(
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 ) error {
-	configCtx, configCancel := context.WithTimeout(ctx, configurationTimeout)
-	defer configCancel()
+	ctx, span := tracer.Start(ctx, "run configuration")
+	defer span.End()
 
 	// Run configuration script
 	var scriptDef bytes.Buffer
@@ -51,7 +51,7 @@ func runConfiguration(
 	}
 
 	err = sandboxtools.RunCommandWithLogger(
-		configCtx,
+		ctx,
 		proxy,
 		userLogger,
 		zapcore.DebugLevel,

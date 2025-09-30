@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -91,11 +92,11 @@ func (o *PatchGuestNetworkInterfaceByIDNoContent) Code() int {
 }
 
 func (o *PatchGuestNetworkInterfaceByIDNoContent) Error() string {
-	return fmt.Sprintf("[PATCH /network-interfaces/{iface_id}][%d] patchGuestNetworkInterfaceByIdNoContent ", 204)
+	return fmt.Sprintf("[PATCH /network-interfaces/{iface_id}][%d] patchGuestNetworkInterfaceByIdNoContent", 204)
 }
 
 func (o *PatchGuestNetworkInterfaceByIDNoContent) String() string {
-	return fmt.Sprintf("[PATCH /network-interfaces/{iface_id}][%d] patchGuestNetworkInterfaceByIdNoContent ", 204)
+	return fmt.Sprintf("[PATCH /network-interfaces/{iface_id}][%d] patchGuestNetworkInterfaceByIdNoContent", 204)
 }
 
 func (o *PatchGuestNetworkInterfaceByIDNoContent) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -148,11 +149,13 @@ func (o *PatchGuestNetworkInterfaceByIDBadRequest) Code() int {
 }
 
 func (o *PatchGuestNetworkInterfaceByIDBadRequest) Error() string {
-	return fmt.Sprintf("[PATCH /network-interfaces/{iface_id}][%d] patchGuestNetworkInterfaceByIdBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /network-interfaces/{iface_id}][%d] patchGuestNetworkInterfaceByIdBadRequest %s", 400, payload)
 }
 
 func (o *PatchGuestNetworkInterfaceByIDBadRequest) String() string {
-	return fmt.Sprintf("[PATCH /network-interfaces/{iface_id}][%d] patchGuestNetworkInterfaceByIdBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /network-interfaces/{iface_id}][%d] patchGuestNetworkInterfaceByIdBadRequest %s", 400, payload)
 }
 
 func (o *PatchGuestNetworkInterfaceByIDBadRequest) GetPayload() *models.Error {
@@ -220,11 +223,13 @@ func (o *PatchGuestNetworkInterfaceByIDDefault) Code() int {
 }
 
 func (o *PatchGuestNetworkInterfaceByIDDefault) Error() string {
-	return fmt.Sprintf("[PATCH /network-interfaces/{iface_id}][%d] patchGuestNetworkInterfaceByID default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /network-interfaces/{iface_id}][%d] patchGuestNetworkInterfaceByID default %s", o._statusCode, payload)
 }
 
 func (o *PatchGuestNetworkInterfaceByIDDefault) String() string {
-	return fmt.Sprintf("[PATCH /network-interfaces/{iface_id}][%d] patchGuestNetworkInterfaceByID default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /network-interfaces/{iface_id}][%d] patchGuestNetworkInterfaceByID default %s", o._statusCode, payload)
 }
 
 func (o *PatchGuestNetworkInterfaceByIDDefault) GetPayload() *models.Error {

@@ -83,19 +83,25 @@ func (c *Cleanup) run(ctx context.Context) {
 	c.error = errors.Join(errs...)
 }
 
-func cleanupFiles(files *storage.SandboxFiles) error {
-	var errs []error
+func cleanupFiles(files *storage.SandboxFiles) func(context.Context) error {
+	return func(ctx context.Context) error {
+		var errs []error
 
-	for _, p := range []string{
-		files.SandboxFirecrackerSocketPath(),
-		files.SandboxUffdSocketPath(),
-		files.SandboxCacheRootfsLinkPath(),
-	} {
-		err := os.RemoveAll(p)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("failed to delete '%s': %w", p, err))
+		for _, p := range []string{
+			files.SandboxFirecrackerSocketPath(),
+			files.SandboxUffdSocketPath(),
+			files.SandboxCacheRootfsLinkPath(),
+		} {
+			err := os.RemoveAll(p)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("failed to delete '%s': %w", p, err))
+			}
 		}
-	}
 
-	return errors.Join(errs...)
+		if len(errs) == 0 {
+			return nil
+		}
+
+		return fmt.Errorf("failed to cleanup files: %w", errors.Join(errs...))
+	}
 }
