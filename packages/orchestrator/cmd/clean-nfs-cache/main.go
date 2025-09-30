@@ -169,9 +169,8 @@ func deleteOldestFiles(cache *pkg.ListingCache, files []pkg.File, opts opts, dis
 	var results results
 	for index, file := range files {
 		if opts.dryRun {
-			fmt.Printf("DRY RUN: would delete %q (%d bytes, created: %s, last access: %s)\n",
+			fmt.Printf("DRY RUN: would delete %q (%d bytes, last access: %s)\n",
 				file.Path, file.Size,
-				time.Since(file.BTime).Round(time.Second),
 				time.Since(file.ATime).Round(time.Minute))
 		} else {
 			// remove File
