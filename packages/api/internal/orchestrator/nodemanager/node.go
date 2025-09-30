@@ -73,7 +73,7 @@ func New(
 
 	nodeStatus, ok := OrchestratorToApiNodeStateMapper[nodeInfo.GetServiceStatus()]
 	if !ok {
-		zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.GetServiceStatus()), logger.WithNodeID(nodeInfo.GetNodeId()))
+		zap.L().Error("Unknown service info status", zap.String("status", nodeInfo.GetServiceStatus().String()), logger.WithNodeID(nodeInfo.GetNodeId()))
 		nodeStatus = api.NodeStatusUnhealthy
 	}
 
@@ -111,7 +111,7 @@ func New(
 func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID uuid.UUID, i *edge.ClusterInstance) (*Node, error) {
 	nodeStatus, ok := OrchestratorToApiNodeStateMapper[i.GetStatus()]
 	if !ok {
-		zap.L().Error("Unknown service info status", zap.Any("status", i.GetStatus()), logger.WithNodeID(i.NodeID))
+		zap.L().Error("Unknown service info status", zap.String("status", i.GetStatus().String()), logger.WithNodeID(i.NodeID))
 		nodeStatus = api.NodeStatusUnhealthy
 	}
 

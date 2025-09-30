@@ -56,7 +56,11 @@ if [ -z "$entry" ]; then
  exit 1
 fi
 
-if [ -f "$entry" ]; then
+if [ -L "$entry" ]; then
+ # It's a symlink file – create parent folders and move+rename it to the exact path
+ mkdir -p "$(dirname "$targetPath")"
+ mv "$entry" "$targetPath"
+elif [ -f "$entry" ]; then
  # It's a file – create parent folders and move+rename it to the exact path
  mkdir -p "$(dirname "$targetPath")"
  mv "$entry" "$targetPath"

@@ -16,7 +16,6 @@ linters:
   disable:
     # these are in other PRs already
     - forcetypeassert
-    - noctx
 
     # todo: determine if we want this
     - canonicalheader
@@ -28,7 +27,7 @@ linters:
     - errchkjson
     - exhaustive
     - exhaustruct
-    - forbidigo
+    - forbidigo  # enable this when we're committed to avoiding os.Getenv
     - funcorder
     - funlen
     - gochecknoglobals
@@ -71,6 +70,12 @@ linters:
     # disabled intentionally
 
   settings:
+    # enable this when we're committed to avoiding os.Getenv
+    #    forbidigo:
+    #      forbid:
+    #        - pattern: os\.Getenv
+    #          msg: Add your field to the configuration model instead.
+
     gocritic:
       disabled-checks:
         - appendAssign
@@ -117,6 +122,7 @@ linters:
         - { disabled: true, name: useless-break }  # todo: enable this
         - { disabled: true, name: var-declaration }
         - { disabled: true, name: var-naming }
+
     staticcheck:
       checks:
         - all

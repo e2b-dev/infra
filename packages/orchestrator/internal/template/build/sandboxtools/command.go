@@ -118,6 +118,9 @@ func runCommandWithAllOptions(
 	confirmCh chan<- struct{},
 	processOutput func(stdout, stderr string),
 ) error {
+	ctx, span := tracer.Start(ctx, "run command")
+	defer span.End()
+
 	runCmdReq := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
 			Cmd: "/bin/bash",
@@ -158,9 +161,9 @@ func runCommandWithAllOptions(
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("context: %w", ctx.Err())
 		case err := <-msgErrCh:
-			return err
+			return fmt.Errorf("command failed: %w", err)
 		case msg, ok := <-msgCh:
 			if !ok {
 				return nil

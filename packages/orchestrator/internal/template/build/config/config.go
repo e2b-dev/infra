@@ -9,6 +9,9 @@ import (
 const InstanceBuildPrefix = "b"
 
 type TemplateConfig struct {
+	// TeamID is the ID of the team to build the template for.
+	TeamID string
+
 	// TemplateID is the ID of the template to build.
 	TemplateID string
 

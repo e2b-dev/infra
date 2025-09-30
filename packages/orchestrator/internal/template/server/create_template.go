@@ -57,6 +57,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	authProvider := auth.NewAuthProvider(cfg.GetFromImageRegistry())
 
 	template := config.TemplateConfig{
+		TeamID:               cfg.GetTeamID(),
 		TemplateID:           cfg.GetTemplateID(),
 		CacheScope:           cacheScope,
 		VCpuCount:            int64(cfg.GetVCpuCount()),
@@ -73,7 +74,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	}
 
 	logs := buildlogger.NewLogEntryLogger()
-	buildInfo, err := s.buildCache.Create(metadata.BuildID, logs)
+	buildInfo, err := s.buildCache.Create(template.TeamID, metadata.BuildID, logs)
 	if err != nil {
 		return nil, fmt.Errorf("error while creating build cache: %w", err)
 	}

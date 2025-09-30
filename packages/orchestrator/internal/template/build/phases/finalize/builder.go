@@ -162,6 +162,9 @@ func (ppb *PostProcessingBuilder) Build(
 
 func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer.FunctionActionFn {
 	return func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (cm metadata.Template, e error) {
+		ctx, span := tracer.Start(ctx, "run postprocessing")
+		defer span.End()
+
 		defer func() {
 			if e != nil {
 				return
@@ -180,8 +183,10 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer
 		}()
 
 		// Run configuration script
+		configCtx, configCancel := context.WithTimeout(ctx, configurationTimeout)
+		defer configCancel()
 		err := runConfiguration(
-			ctx,
+			configCtx,
 			userLogger,
 			ppb.BuildContext,
 			ppb.proxy,
