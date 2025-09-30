@@ -30,28 +30,33 @@ func (c *ListingCache) Decache(path string) {
 }
 
 func (c *ListingCache) GetRandomFile() (string, error) {
-	history := []string{c.root}
+	return c.getRandomFile(c.root)
+}
 
-	for {
-		path := history[len(history)-1]
-		items, err := c.getList(path)
-		if err != nil {
-			return "", err
-		}
+func (c *ListingCache) getRandomFile(path string) (string, error) {
+	items, err := c.getList(path)
+	if err != nil {
+		return "", err
+	}
 
-		if len(items) == 0 {
-			history = history[:len(path)-1]
-			if len(history) == 0 {
-				return "", ErrEmptyDir
-			}
-			continue
-		}
+	rand.Shuffle(len(items), func(i, j int) {
+		items[i], items[j] = items[j], items[i]
+	})
 
-		item := items[rand.Intn(len(items))]
+	for _, item := range items {
 		if !item.isDir {
 			return item.path, nil
 		}
+
+		path, err := c.getRandomFile(item.path)
+		if err == nil {
+			return path, nil
+		}
+
+		continue
 	}
+
+	return "", ErrNoFiles
 }
 
 func (c *ListingCache) getList(path string) ([]cacheEntry, error) {
@@ -78,4 +83,4 @@ func (c *ListingCache) getList(path string) ([]cacheEntry, error) {
 	return entries, nil
 }
 
-var ErrEmptyDir = errors.New("empty directory")
+var ErrNoFiles = errors.New("no files")
