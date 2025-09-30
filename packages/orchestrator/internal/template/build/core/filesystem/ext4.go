@@ -217,7 +217,7 @@ func CheckIntegrity(ctx context.Context, rootfsPath string, fix bool) (string, e
 		exitCode := cmd.ProcessState.ExitCode()
 
 		if exitCode > accExitCode {
-			return string(out), fmt.Errorf("error running e2fsck: %w", err)
+			return string(out), fmt.Errorf("error running e2fsck [exit %d]\n%s", exitCode, out)
 		}
 	}
 

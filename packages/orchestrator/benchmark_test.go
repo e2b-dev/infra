@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -104,8 +105,8 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	accessToken := "access-token"
 	sandboxConfig := sandbox.Config{
 		BaseTemplateID:      "base-template-id",
-		Vcpu:                1,
-		RamMB:               2,
+		Vcpu:                2,
+		RamMB:               512,
 		TotalDiskSizeMB:     400,
 		HugePages:           false,
 		AllowInternetAccess: &allowInternetAccess,
@@ -140,7 +141,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	require.NoError(b, err)
 	go func() {
 		err := sandboxProxy.Start(b.Context())
-		assert.NoError(b, err)
+		assert.ErrorIs(b, http.ErrServerClosed, err)
 	}()
 	b.Cleanup(func() {
 		err := sandboxProxy.Close(b.Context())
@@ -150,55 +151,55 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	buildMetrics, err := metrics.NewBuildMetrics(noop.MeterProvider{})
 	require.NoError(b, err)
 
+	templateID := uuid.NewString()
+	buildID := uuid.NewString()
+
+	builder := build.NewBuilder(
+		logger,
+		persistenceTemplate,
+		persistenceBuild,
+		artifactRegistry,
+		devicePool,
+		networkPool,
+		sandboxProxy,
+		sandboxes,
+		templateCache,
+		buildMetrics,
+	)
+
+	// build template
+	force := true
+	templateConfig := config.TemplateConfig{
+		TemplateID: templateID,
+		FromImage:  baseImage,
+		Force:      &force,
+		VCpuCount:  sandboxConfig.Vcpu,
+		MemoryMB:   sandboxConfig.RamMB,
+		StartCmd:   "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
+		DiskSizeMB: sandboxConfig.TotalDiskSizeMB,
+		HugePages:  sandboxConfig.HugePages,
+	}
+
+	metadata := storage.TemplateFiles{
+		BuildID:            buildID,
+		KernelVersion:      kernelVersion,
+		FirecrackerVersion: fcVersion,
+	}
+	_, err = builder.Build(b.Context(), metadata, templateConfig, logger.Core())
+	require.NoError(b, err)
+
+	// retrieve template
+	tmpl, err := templateCache.GetTemplate(
+		b.Context(),
+		buildID,
+		kernelVersion,
+		fcVersion,
+		false,
+		false,
+	)
+	require.NoError(b, err)
+
 	for b.Loop() {
-		templateID := uuid.NewString()
-		buildID := uuid.NewString()
-
-		builder := build.NewBuilder(
-			logger,
-			persistenceTemplate,
-			persistenceBuild,
-			artifactRegistry,
-			devicePool,
-			networkPool,
-			sandboxProxy,
-			sandboxes,
-			templateCache,
-			buildMetrics,
-		)
-
-		// build template
-		force := true
-		templateConfig := config.TemplateConfig{
-			TemplateID: templateID,
-			FromImage:  baseImage,
-			Force:      &force,
-			VCpuCount:  2,
-			MemoryMB:   1024,
-			StartCmd:   "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
-			DiskSizeMB: 1024,
-			HugePages:  true,
-		}
-
-		metadata := storage.TemplateFiles{
-			BuildID:            buildID,
-			KernelVersion:      kernelVersion,
-			FirecrackerVersion: fcVersion,
-		}
-		_, err := builder.Build(b.Context(), metadata, templateConfig, logger.Core())
-		require.NoError(b, err)
-
-		// retrieve template
-		tmpl, err := templateCache.GetTemplate(
-			b.Context(),
-			buildID,
-			kernelVersion,
-			fcVersion,
-			false,
-			false,
-		)
-		require.NoError(b, err)
-
 		// create sandbox
 		sbx, err := sandbox.ResumeSandbox(
 			b.Context(),
@@ -215,18 +216,23 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		)
 		require.NoError(b, err)
 
-		//// pause sandbox
-		//// build base template
-		//templateMetadata := tmpl.SameVersionTemplate(storage.TemplateFiles{
-		//	BuildID:            "build-id",
-		//	KernelVersion:      "kernel-version",
-		//	FirecrackerVersion: "firecracker-version",
-		//})
-		//snap, err := sbx.Pause(b.Context(), templateMetadata)
-		//require.NoError(b, err)
-		//require.NotNil(b, snap)
+		// pause sandbox
+		// build base template
+		meta, err := sbx.Template.Metadata()
+		require.NoError(b, err)
+
+		templateMetadata := meta.SameVersionTemplate(storage.TemplateFiles{
+			BuildID:            "build-id",
+			KernelVersion:      "kernel-version",
+			FirecrackerVersion: "firecracker-version",
+		})
+		snap, err := sbx.Pause(b.Context(), templateMetadata)
+		require.NoError(b, err)
+		require.NotNil(b, snap)
 
 		// resume sandbox
+		sbx, err = sandbox.ResumeSandbox(b.Context(), networkPool, tmpl, sandboxConfig, runtime, uuid.NewString(), time.Now(), time.Now().Add(time.Second*15), devicePool, false, nil)
+		require.NoError(b, err)
 
 		// close sandbox
 		err = sbx.Close(b.Context())
