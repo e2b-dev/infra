@@ -3,6 +3,7 @@ package dockerhub
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/go-containerregistry/pkg/name"
@@ -59,7 +60,10 @@ func removeRegistryFromTag(tag string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("invalid image reference: %w", err)
 	}
-	refWithoutRegistry := ref.String()
 
-	return refWithoutRegistry, nil
+	registry := ref.Context().RegistryStr()
+	withoutRegistry := strings.TrimPrefix(ref.Name(), registry)
+	withoutRegistry = strings.TrimPrefix(withoutRegistry, "/")
+
+	return withoutRegistry, nil
 }
