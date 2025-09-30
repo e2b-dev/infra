@@ -25,7 +25,6 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
 		maxAllowedTTL := getMaxAllowedTTL(now, sbx.StartTime, duration, sbx.MaxInstanceLength)
 		newEndTime := now.Add(maxAllowedTTL)
-		zap.L().Debug("sandbox ttl updated", logger.WithSandboxID(sbx.SandboxID), zap.Time("end_time", newEndTime))
 
 		if (time.Since(sbx.StartTime)) > sbx.MaxInstanceLength {
 			return sbx, errMaxInstanceLengthExceeded
@@ -35,6 +34,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 			return sbx, errCannotSetTTL
 		}
 
+		zap.L().Debug("sandbox ttl updated", logger.WithSandboxID(sbx.SandboxID), zap.Time("end_time", newEndTime))
 		sbx.EndTime = newEndTime
 		return sbx, nil
 	}
