@@ -30,10 +30,10 @@ func (c *ListingCache) Decache(path string) {
 }
 
 func (c *ListingCache) GetRandomFile() (string, error) {
-	path := c.root
-	history := []string{path}
+	history := []string{c.root}
 
 	for {
+		path := history[len(history)-1]
 		items, err := c.getList(path)
 		if err != nil {
 			return "", err
@@ -44,7 +44,6 @@ func (c *ListingCache) GetRandomFile() (string, error) {
 			if len(history) == 0 {
 				return "", ErrEmptyDir
 			}
-			path = history[len(history)-1]
 			continue
 		}
 
