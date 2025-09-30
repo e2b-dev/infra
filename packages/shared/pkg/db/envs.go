@@ -104,7 +104,3 @@ func (db *DB) FinishEnvBuild(
 
 	return nil
 }
-
-func (db *DB) UpdateEnvLastUsed(ctx context.Context, count int64, time time.Time, envID string) (err error) {
-	return db.Client.Env.UpdateOneID(envID).AddSpawnCount(count).SetLastSpawnedAt(time).Exec(ctx)
-}

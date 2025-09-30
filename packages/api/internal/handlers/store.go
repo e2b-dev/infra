@@ -145,7 +145,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 
 	authCache := authcache.NewTeamAuthCache()
 	templateCache := templatecache.NewTemplateCache(sqlcDB)
-	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient) //nolint:contextcheck // TODO: fix this later
+	templateSpawnCounter := utils.NewTemplateSpawnCounter(ctx, time.Minute, sqlcDB)
 
 	accessTokenGenerator, err := sandbox.NewEnvdAccessTokenGenerator(config.SandboxAccessTokenHashSeed)
 	if err != nil {
@@ -201,7 +201,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 }
 
 func (a *APIStore) Close(ctx context.Context) error {
-	a.templateSpawnCounter.Close()
+	a.templateSpawnCounter.Close(ctx)
 
 	errs := []error{}
 	if err := a.posthog.Close(); err != nil {
