@@ -22,7 +22,7 @@ func GetFileMetadata(path string) (File, error) {
 	}
 
 	return File{
-		Path:  stat.Name(),
+		Path:  path,
 		Size:  stat.Size(),
 		ATime: fromTimespec(actualStruct.Atimespec),
 		BTime: fromTimespec(actualStruct.Birthtimespec),
