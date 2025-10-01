@@ -339,5 +339,8 @@ variable "shared_chunk_cache_path" {
 variable "filestore_cache_max_disk_usage_target" {
   type        = number
   description = "The maximum disk usage target for the Filestore cache in percent"
-  default     = 90
+}
+
+variable "dockerhub_remote_repository_url" {
+  type = string
 }

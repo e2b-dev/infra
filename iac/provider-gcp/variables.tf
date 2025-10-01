@@ -430,6 +430,12 @@ variable "filestore_cache_capacity_gb" {
   default     = 0
 }
 
+variable "filestore_max_disk_usage_target" {
+  type        = number
+  description = "The max disk usage target of the Filestore"
+  default     = 90
+}
+
 variable "min_cpu_platform" {
   type    = string
   default = "Intel Skylake"
@@ -445,4 +451,10 @@ variable "orchestrator_base_hugepages_percentage" {
   description = "The percentage of memory to use for preallocated hugepages."
   type        = number
   default     = 80
+}
+
+variable "remote_repository_enabled" {
+  type        = bool
+  description = "Set to true to enable remote repository cache. Can be set via TF_VAR_remote_repository_enabled or REMOTE_REPOSITORY_ENABLED env var."
+  default     = false
 }
