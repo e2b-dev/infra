@@ -22,6 +22,13 @@ const serviceName = "clean-nfs-cache"
 
 func main() {
 	ctx := context.Background()
+	if err := cleanNFSCache(ctx); err != nil {
+		zap.L().Error("clean NFS cache failed", zap.Error(err))
+		os.Exit(1)
+	}
+}
+
+func cleanNFSCache(ctx context.Context) error {
 	globalLogger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName:   serviceName,
 		IsInternal:    true,
@@ -37,13 +44,6 @@ func main() {
 	}(globalLogger)
 	zap.ReplaceGlobals(globalLogger)
 
-	if err := cleanNFSCache(ctx); err != nil {
-		zap.L().Error("clean NFS cache failed", zap.Error(err))
-		os.Exit(1)
-	}
-}
-
-func cleanNFSCache(ctx context.Context) error {
 	path, opts, err := parseArgs()
 	if err != nil {
 		return fmt.Errorf("invalid arguments: %w", err)
