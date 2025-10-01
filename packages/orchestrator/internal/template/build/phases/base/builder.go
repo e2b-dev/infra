@@ -221,6 +221,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		Envd: sandbox.EnvdMetadata{
 			Version: bb.EnvdVersion,
 		},
+		EnvdInitRequestTimeout: bb.sandboxFactory.GetEnvdInitRequestTimeout(ctx),
 	}
 	err = bb.provisionSandbox(
 		ctx,
@@ -301,7 +302,6 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 			SandboxCreator: sandboxCreator,
 			ActionExecutor: actionExecutor,
 		},
-		bb.sandboxFactory.GetEnvdInitRequestTimeout(ctx),
 	)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("error building base layer: %w", err)

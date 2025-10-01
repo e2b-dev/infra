@@ -59,7 +59,8 @@ type Config struct {
 
 	AllowInternetAccess *bool
 
-	Envd EnvdMetadata
+	Envd                   EnvdMetadata
+	EnvdInitRequestTimeout time.Duration
 }
 
 type EnvdMetadata struct {
@@ -549,11 +550,9 @@ func (f *Factory) ResumeSandbox(
 		return sbx.Stop(ctx)
 	})
 
-	envdInitRequestTimeout := f.GetEnvdInitRequestTimeout(ctx)
 	err = sbx.WaitForEnvd(
 		ctx,
 		defaultEnvdTimeout,
-		envdInitRequestTimeout,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
@@ -965,7 +964,6 @@ func (s *Sandbox) WaitForExit(ctx context.Context) error {
 func (s *Sandbox) WaitForEnvd(
 	ctx context.Context,
 	timeout time.Duration,
-	envdInitRequestTimeout time.Duration,
 ) (e error) {
 	start := time.Now()
 	ctx, span := tracer.Start(ctx, "sandbox-wait-for-start")
@@ -978,7 +976,7 @@ func (s *Sandbox) WaitForEnvd(
 		duration := time.Since(start).Milliseconds()
 		waitForEnvdDurationHistogram.Record(ctx, duration, metric.WithAttributes(
 			telemetry.WithEnvdVersion(s.Config.Envd.Version),
-			attribute.Int64("timeout_ms", envdInitRequestTimeout.Milliseconds()),
+			attribute.Int64("timeout_ms", s.Config.EnvdInitRequestTimeout.Milliseconds()),
 		))
 		// Update the sandbox as started now
 		s.Metadata.StartedAt = time.Now()
@@ -1000,7 +998,7 @@ func (s *Sandbox) WaitForEnvd(
 		}
 	}()
 
-	if err := s.initEnvd(ctx, s.Config.Envd.Vars, s.Config.Envd.AccessToken, envdInitRequestTimeout); err != nil {
+	if err := s.initEnvd(ctx, s.Config.Envd.Vars, s.Config.Envd.AccessToken, s.Config.EnvdInitRequestTimeout); err != nil {
 		return fmt.Errorf("failed to init new envd: %w", err)
 	}
 

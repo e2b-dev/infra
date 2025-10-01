@@ -117,6 +117,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 				AccessToken: req.Sandbox.EnvdAccessToken,
 				Vars:        req.Sandbox.EnvVars,
 			},
+			EnvdInitRequestTimeout: s.sandboxFactory.GetEnvdInitRequestTimeout(ctx),
 		},
 		sandbox.RuntimeMetadata{
 			TemplateID:  req.Sandbox.TemplateId,

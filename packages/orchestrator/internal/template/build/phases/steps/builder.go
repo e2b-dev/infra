@@ -162,6 +162,7 @@ func (sb *StepBuilder) Build(
 		Envd: sandbox.EnvdMetadata{
 			Version: sb.EnvdVersion,
 		},
+		EnvdInitRequestTimeout: sb.sandboxFactory.GetEnvdInitRequestTimeout(ctx),
 	}
 
 	// First not cached layer is create (to change CPU, Memory, etc), subsequent are layers are resumes.
@@ -219,7 +220,6 @@ func (sb *StepBuilder) Build(
 			SandboxCreator: sandboxCreator,
 			ActionExecutor: actionExecutor,
 		},
-		sb.sandboxFactory.GetEnvdInitRequestTimeout(ctx),
 	)
 	if err != nil {
 		return phases.LayerResult{}, fmt.Errorf("error building step %d: %w", sb.stepNumber, err)

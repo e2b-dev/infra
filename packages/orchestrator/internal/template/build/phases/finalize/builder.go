@@ -125,6 +125,7 @@ func (ppb *PostProcessingBuilder) Build(
 		Envd: sandbox.EnvdMetadata{
 			Version: ppb.EnvdVersion,
 		},
+		EnvdInitRequestTimeout: ppb.sandboxFactory.GetEnvdInitRequestTimeout(ctx),
 	}
 
 	// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template
@@ -153,7 +154,6 @@ func (ppb *PostProcessingBuilder) Build(
 			SandboxCreator: sandboxCreator,
 			ActionExecutor: actionExecutor,
 		},
-		ppb.sandboxFactory.GetEnvdInitRequestTimeout(ctx),
 	)
 	if err != nil {
 		return phases.LayerResult{}, fmt.Errorf("error running start and ready commands in sandbox: %w", err)
