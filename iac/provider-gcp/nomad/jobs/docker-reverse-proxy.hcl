@@ -24,6 +24,12 @@ job "docker-reverse-proxy" {
       name = "docker-reverse-proxy"
       port = "${port_name}"
 
+      tags = [
+        "traefik.enable=true",
+        "traefik.http.routers.docker_reverse_proxy.rule=Host(`docker.e2b-jirka.dev`)",
+        "traefik.http.routers.docker_reverse_proxy.priority=12"
+      ]
+
       check {
         type     = "http"
         name     = "health"
@@ -53,10 +59,9 @@ job "docker-reverse-proxy" {
       }
 
       config {
-        network_mode = "host"
-        image        = "${image_name}"
-        ports        = ["${port_name}"]
-        args = [
+        image = "${image_name}"
+        ports = ["${port_name}"]
+        args  = [
           "--port", "${port_number}",
         ]
       }

@@ -37,6 +37,12 @@ job "api" {
       port = "${port_number}"
       task = "start"
 
+      tags = [
+        "traefik.enable=true",
+        "traefik.http.routers.api.rule=Host(`api.e2b-jirka.dev`)",
+        "traefik.http.routers.api.priority=10"
+      ]
+
       check {
         type     = "http"
         name     = "health"
@@ -47,7 +53,6 @@ job "api" {
       }
     }
 
-%{ if update_stanza }
     # An update stanza to enable rolling updates of the service
     update {
       # The number of extra instances to run during the update
@@ -61,7 +66,6 @@ job "api" {
       # Whether to promote the canary if the rest of the group is not healthy
       auto_promote     = true
     }
-%{ endif }
 
     task "start" {
       driver       = "docker"
@@ -109,7 +113,6 @@ job "api" {
       }
 
       config {
-        network_mode = "host"
         image        = "${api_docker_image}"
         ports        = ["${port_name}"]
         args         = [
