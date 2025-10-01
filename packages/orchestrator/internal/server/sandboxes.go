@@ -128,7 +128,6 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		req.StartTime.AsTime(),
 		req.EndTime.AsTime(),
 		req.Sandbox,
-		envdInitRequestTimeout,
 	)
 	if err != nil {
 		err := errors.Join(err, context.Cause(ctx))

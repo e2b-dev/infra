@@ -44,7 +44,6 @@ func (rs *ResumeSandbox) Sandbox(
 		time.Now(),
 		time.Now().Add(rs.timeout),
 		nil,
-		defaultEnvdInitRequestTimeout,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("resume sandbox: %w", err)
