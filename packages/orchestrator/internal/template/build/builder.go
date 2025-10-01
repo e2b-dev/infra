@@ -184,9 +184,28 @@ func runBuild(
 ) (*Result, error) {
 	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, builder.templateStorage)
 
-	layerExecutor := layer.NewLayerExecutor(bc, builder.logger, builder.templateCache, builder.proxy, builder.sandboxes, builder.templateStorage, builder.buildStorage, index)
+	layerExecutor := layer.NewLayerExecutor(
+		bc,
+		builder.logger,
+		builder.templateCache,
+		builder.proxy,
+		builder.sandboxes,
+		builder.templateStorage,
+		builder.buildStorage,
+		index,
+	)
 
-	baseBuilder := base.New(bc, builder.logger, builder.proxy, builder.templateStorage, builder.artifactRegistry, layerExecutor, index, builder.metrics, builder.sandboxFactory)
+	baseBuilder := base.New(
+		bc,
+		builder.logger,
+		builder.proxy,
+		builder.templateStorage,
+		builder.artifactRegistry,
+		layerExecutor,
+		index,
+		builder.metrics,
+		builder.sandboxFactory,
+	)
 
 	commandExecutor := commands.NewCommandExecutor(
 		bc,
