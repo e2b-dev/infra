@@ -128,7 +128,7 @@ func newOtelCore(ctx context.Context, opts opts) (zapcore.Core, error) {
 
 	resource, err := telemetry.GetResource(ctx, nodeID, serviceName, commitSHA, serviceVersion, serviceInstanceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create logs exporter: %w", err)
+		return nil, fmt.Errorf("failed to create resource: %w", err)
 	}
 
 	logsExporter, err := telemetry.NewLogExporter(ctx,
