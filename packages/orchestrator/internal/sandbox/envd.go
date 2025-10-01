@@ -93,15 +93,15 @@ func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string, acces
 	if err != nil {
 		envdInitCalls.Add(ctx, count, metric.WithAttributes(attributesFail...))
 		return fmt.Errorf("failed to init envd: %w", err)
-	} else {
-		if count > 1 {
-			// Track failed envd init calls
-			envdInitCalls.Add(ctx, count-1, metric.WithAttributes(attributesFail...))
-		}
-
-		// Track successful envd init
-		envdInitCalls.Add(ctx, 1, metric.WithAttributes(attributesSuccess...))
 	}
+
+	if count > 1 {
+		// Track failed envd init calls
+		envdInitCalls.Add(ctx, count-1, metric.WithAttributes(attributesFail...))
+	}
+
+	// Track successful envd init
+	envdInitCalls.Add(ctx, 1, metric.WithAttributes(attributesSuccess...))
 
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusNoContent {
