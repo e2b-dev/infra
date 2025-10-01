@@ -244,7 +244,7 @@ var histogramDesc = map[HistogramType]string{
 	BuildPhaseDurationHistogramName:  "Time taken to build each phase of a template",
 	BuildStepDurationHistogramName:   "Time taken to build each step of a template",
 	BuildRootfsSizeHistogramName:     "Size of the built template rootfs in bytes",
-	WaitForEnvdDurationHistogramName: "Time taken for Envd to start",
+	WaitForEnvdDurationHistogramName: "Time taken for Envd to initialize successfully",
 }
 
 var histogramUnits = map[HistogramType]string{
