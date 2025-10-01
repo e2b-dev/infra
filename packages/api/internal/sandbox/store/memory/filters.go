@@ -14,7 +14,7 @@ func applyFilter(sbx sandbox.Sandbox, filter *sandbox.ItemsFilter) bool {
 	if filter.States != nil && !slices.Contains(filter.States, sbx.State) {
 		return false
 	}
-	if sbx.IsExpired() != filter.OnlyExpired {
+	if filter.OnlyExpired && !sbx.IsExpired() {
 		return false
 	}
 	return true
