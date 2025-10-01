@@ -302,7 +302,7 @@ func parseArgs() (string, opts, error) {
 	var opts opts
 	flags.Float64Var(&opts.targetDiskUsagePercent, "disk-usage-target-percent", 10, "disk usage target as a % (0-100)")
 	flags.BoolVar(&opts.dryRun, "dry-run", true, "dry run")
-	flags.IntVar(&opts.filesPerLoop, "files-per-iteration", 10000, "number of files to gather metadata for per loop")
+	flags.IntVar(&opts.filesPerLoop, "files-per-iteration", 5000, "number of files to gather metadata for per loop")
 	flags.Int64Var(&opts.filesToDeletePerLoop, "max-files-per-iteration", 100, "maximum number of files to delete per loop")
 
 	args := os.Args[1:] // skip the command name
