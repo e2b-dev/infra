@@ -66,7 +66,9 @@ func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string, acces
 	ctx, span := tracer.Start(ctx, "envd-init", trace.WithAttributes(telemetry.WithEnvdVersion(s.Config.Envd.Version)))
 	defer span.End()
 
-	attributes := metric.WithAttributes(telemetry.WithEnvdVersion(s.Config.Envd.Version), attribute.Int64("timeout_ms", envdInitRequestTimeout.Milliseconds()))
+	attributes := []attribute.KeyValue{telemetry.WithEnvdVersion(s.Config.Envd.Version), attribute.Int64("timeout_ms", envdInitRequestTimeout.Milliseconds())}
+	attributesFail := append(attributes, attribute.Bool("success", false))
+	attributesSuccess := append(attributes, attribute.Bool("success", true))
 
 	hyperloopIP := s.Slot.HyperloopIPString()
 	address := fmt.Sprintf("http://%s:%d/init", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
@@ -84,9 +86,17 @@ func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string, acces
 	}
 
 	response, count, err := doRequestWithInfiniteRetries(ctx, "POST", address, body, accessToken, envdInitRequestTimeout, s.Runtime.SandboxID)
-	envdInitAttempts.Add(ctx, count, attributes)
 	if err != nil {
+		envdInitCalls.Add(ctx, count, metric.WithAttributes(attributesFail...))
 		return fmt.Errorf("failed to init envd: %w", err)
+	} else {
+		if count > 1 {
+			// Track failed envd init calls
+			envdInitCalls.Add(ctx, count-1, metric.WithAttributes(attributesFail...))
+		}
+
+		// Track successful envd init
+		envdInitCalls.Add(ctx, 1, metric.WithAttributes(attributesSuccess...))
 	}
 
 	defer response.Body.Close()
@@ -98,9 +108,6 @@ func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string, acces
 	if err != nil {
 		return err
 	}
-
-	// Track successful envd init
-	envdInitSuccess.Add(ctx, 1, attributes)
 
 	return nil
 }

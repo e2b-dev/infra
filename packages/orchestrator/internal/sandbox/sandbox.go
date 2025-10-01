@@ -36,8 +36,7 @@ import (
 var (
 	defaultEnvdTimeout = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT", "10s")))
 	meter              = otel.GetMeterProvider().Meter("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox")
-	envdInitAttempts   = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitAttempts))
-	envdInitSuccess    = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitSuccess))
+	envdInitCalls      = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitCalls))
 )
 
 var httpClient = http.Client{
@@ -341,7 +340,6 @@ func (f *Factory) ResumeSandbox(
 	startedAt time.Time,
 	endAt time.Time,
 	apiConfigToStore *orchestrator.SandboxConfig,
-	envdInitRequestTimeout time.Duration,
 ) (s *Sandbox, e error) {
 	ctx, span := tracer.Start(ctx, "resume sandbox")
 	defer func() { endSpan(span, e) }()
@@ -548,6 +546,13 @@ func (f *Factory) ResumeSandbox(
 		// Stop the sandbox first if it is still running, otherwise do nothing
 		return sbx.Stop(ctx)
 	})
+
+	// Get timeout from feature flag
+	envdInitRequestTimeoutMs, err := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutSeconds)
+	if err != nil {
+		zap.L().Warn("failed to get envd timeout from feature flag, using default", zap.Error(err))
+	}
+	envdInitRequestTimeout := time.Duration(envdInitRequestTimeoutMs) * time.Millisecond
 
 	err = sbx.WaitForEnvd(
 		ctx,
