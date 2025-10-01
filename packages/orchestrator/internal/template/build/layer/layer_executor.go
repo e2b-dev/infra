@@ -3,6 +3,7 @@ package layer
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
@@ -63,6 +64,7 @@ func (lb *LayerExecutor) BuildLayer(
 	ctx context.Context,
 	userLogger *zap.Logger,
 	cmd LayerBuildCommand,
+	envdInitRequestTimeout time.Duration,
 ) (metadata.Template, error) {
 	ctx, childSpan := tracer.Start(ctx, "run-in-sandbox")
 	defer childSpan.End()
@@ -88,7 +90,7 @@ func (lb *LayerExecutor) BuildLayer(
 
 	// Update envd binary to the latest version
 	if cmd.UpdateEnvd {
-		err = lb.updateEnvdInSandbox(ctx, userLogger, sbx)
+		err = lb.updateEnvdInSandbox(ctx, userLogger, sbx, envdInitRequestTimeout)
 		if err != nil {
 			return metadata.Template{}, fmt.Errorf("update envd: %w", err)
 		}
@@ -126,6 +128,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	ctx context.Context,
 	userLogger *zap.Logger,
 	sbx *sandbox.Sandbox,
+	envdInitRequestTimeout time.Duration,
 ) error {
 	ctx, childSpan := tracer.Start(ctx, "update-envd")
 	defer childSpan.End()
@@ -185,7 +188,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	err = sbx.WaitForEnvd(
 		ctx,
 		waitEnvdTimeout,
-		defaultEnvdInitRequestTimeout,
+		envdInitRequestTimeout,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to wait for envd initialization after update: %w", err)

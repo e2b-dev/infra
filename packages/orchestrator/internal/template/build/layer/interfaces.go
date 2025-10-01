@@ -10,8 +10,7 @@ import (
 )
 
 const (
-	defaultEnvdInitRequestTimeout = 50 * time.Millisecond
-	waitEnvdTimeout               = 60 * time.Second
+	waitEnvdTimeout = 60 * time.Second
 )
 
 // SandboxCreator creates sandboxes for layer building

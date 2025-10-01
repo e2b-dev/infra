@@ -108,10 +108,11 @@ func (cs *CreateSandbox) Sandbox(
 		}
 	}()
 
+	envdInitRequestTimeout := cs.sandboxFactory.GetEnvdInitTimeout(ctx)
 	err = sbx.WaitForEnvd(
 		ctx,
 		waitEnvdTimeout,
-		defaultEnvdInitRequestTimeout,
+		envdInitRequestTimeout,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("wait for envd: %w", err)

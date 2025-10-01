@@ -142,14 +142,19 @@ func (ppb *PostProcessingBuilder) Build(
 
 	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template)
 
-	finalLayer, err := ppb.layerExecutor.BuildLayer(ctx, userLogger, layer.LayerBuildCommand{
-		SourceTemplate: templateProvider,
-		CurrentLayer:   currentLayer.Metadata,
-		Hash:           currentLayer.Hash,
-		UpdateEnvd:     sourceLayer.Cached,
-		SandboxCreator: sandboxCreator,
-		ActionExecutor: actionExecutor,
-	})
+	finalLayer, err := ppb.layerExecutor.BuildLayer(
+		ctx,
+		userLogger,
+		layer.LayerBuildCommand{
+			SourceTemplate: templateProvider,
+			CurrentLayer:   currentLayer.Metadata,
+			Hash:           currentLayer.Hash,
+			UpdateEnvd:     sourceLayer.Cached,
+			SandboxCreator: sandboxCreator,
+			ActionExecutor: actionExecutor,
+		},
+		ppb.sandboxFactory.GetEnvdInitTimeout(ctx),
+	)
 	if err != nil {
 		return phases.LayerResult{}, fmt.Errorf("error running start and ready commands in sandbox: %w", err)
 	}
