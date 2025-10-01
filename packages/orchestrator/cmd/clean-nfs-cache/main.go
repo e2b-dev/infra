@@ -5,30 +5,55 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"sort"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/clean-nfs-cache/pkg"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+const serviceName = "clean-nfs-cache"
+
 func main() {
-	if err := cleanNFSCache(context.Background()); err != nil {
-		fmt.Println(err)
+	ctx := context.Background()
+	if err := cleanNFSCache(ctx); err != nil {
+		zap.L().Error("clean NFS cache failed", zap.Error(err))
 		os.Exit(1)
 	}
 }
 
 func cleanNFSCache(ctx context.Context) error {
+	globalLogger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+		ServiceName:   serviceName,
+		IsInternal:    true,
+		IsDebug:       env.IsDebug(),
+		Cores:         nil,
+		EnableConsole: true,
+	}))
+	defer func(l *zap.Logger) {
+		err := l.Sync()
+		if err != nil {
+			log.Printf("error while shutting down logger: %v", err)
+		}
+	}(globalLogger)
+	zap.ReplaceGlobals(globalLogger)
+
 	path, opts, err := parseArgs()
 	if err != nil {
 		return fmt.Errorf("invalid arguments: %w", err)
 	}
 
 	// get free space information for path
-	fmt.Printf("dry run: %t\n", opts.dryRun)
-	fmt.Printf("target disk usage percentage: %f%%\n", opts.targetDiskUsagePercent)
+	zap.L().Info("starting",
+		zap.Bool("dry_run", opts.dryRun),
+		zap.Float64("target_percent", opts.targetDiskUsagePercent),
+		zap.String("path", path))
 
 	var diskInfo pkg.DiskInfo
 	timeit(fmt.Sprintf("getting disk info for %q", path), func() {
@@ -40,7 +65,9 @@ func cleanNFSCache(ctx context.Context) error {
 	targetDiskUsage := int64(float64(opts.targetDiskUsagePercent) / 100 * float64(diskInfo.Total))
 	areWeDone := func() bool {
 		currentUsedPercentage := (float64(diskInfo.Used) / float64(diskInfo.Total)) * 100
-		fmt.Printf("current usage: %d%% (%s)\n", int(currentUsedPercentage), formatBytes(diskInfo.Used))
+		zap.L().Info("current usage",
+			zap.Float64("percent", currentUsedPercentage),
+			zap.String("size", formatBytes(diskInfo.Used)))
 		return diskInfo.Used < targetDiskUsage
 	}
 
@@ -55,7 +82,7 @@ func cleanNFSCache(ctx context.Context) error {
 		var files []pkg.File
 		timeit(fmt.Sprintf("gathering metadata on %d files", opts.filesPerLoop), func() {
 			files, err = getFiles(cache, opts.filesPerLoop)
-			fmt.Printf("got %d files", len(files))
+			zap.L().Info("got files", zap.Int("count", len(files)))
 		})
 		if err != nil {
 			return fmt.Errorf("could not get File metadata: %w", err)
@@ -67,8 +94,11 @@ func cleanNFSCache(ctx context.Context) error {
 		})
 
 		var results results
-		timeit(fmt.Sprintf("deleting bottom %d%% files\n", opts.filesToDeletePerLoop), func() {
+		timeit(fmt.Sprintf("deleting bottom %d files", opts.filesToDeletePerLoop), func() {
 			results, err = deleteOldestFiles(cache, files, opts, &diskInfo, areWeDone, opts.filesToDeletePerLoop)
+			zap.L().Info("deleted files",
+				zap.Int64("count", results.deletedFiles),
+				zap.Int64("bytes", results.deletedBytes))
 		})
 		allResults = allResults.union(results)
 		if err != nil {
@@ -81,26 +111,24 @@ func cleanNFSCache(ctx context.Context) error {
 
 func printSummary(r results, opts opts) {
 	if r.deletedFiles == 0 {
-		fmt.Fprintln(os.Stderr, "no files deleted")
+		zap.L().Info("no files deleted")
 		return
 	}
 
-	var notice string
-	if opts.dryRun {
-		notice = "would be "
-	}
-	fmt.Println("======= summary =======")
-	if opts.dryRun {
-		fmt.Println("(note: dry-run mode enabled, no files were actually deleted)")
-	}
-	fmt.Printf(" %d files (%d bytes) %sdeleted\n", r.deletedFiles, r.deletedBytes, notice)
-	fmt.Println("access time:")
-	fmt.Printf("- most recently used: %s\n", minDuration(r.lastAccessed).Round(time.Second))
-	fmt.Printf("- least recently used: %s\n", maxDuration(r.lastAccessed).Round(time.Second))
-	fmt.Printf("- standard deviation: %s\n", standardDeviation(r.lastAccessed).Round(time.Second))
+	zap.L().Info("summary",
+		zap.Bool("dry_run", opts.dryRun),
+		zap.Int64("files", r.deletedFiles),
+		zap.Int64("bytes", r.deletedBytes),
+		zap.Duration("most_recently_used", minDuration(r.lastAccessed).Round(time.Second)),
+		zap.Duration("least_recently_used", maxDuration(r.lastAccessed).Round(time.Second)),
+		zap.Duration("std_deviation", standardDeviation(r.lastAccessed).Round(time.Second)))
 }
 
 func standardDeviation(accessed []time.Duration) time.Duration {
+	if len(accessed) == 0 {
+		return 0
+	}
+
 	var sum time.Duration
 	for i := range accessed {
 		sum += accessed[i]
@@ -169,18 +197,21 @@ func deleteOldestFiles(cache *pkg.ListingCache, files []pkg.File, opts opts, dis
 	var results results
 	for index, file := range files {
 		if opts.dryRun {
-			fmt.Printf("DRY RUN: would delete %q (%d bytes, last access: %s)\n",
-				file.Path, file.Size,
-				time.Since(file.ATime).Round(time.Minute))
+			zap.L().Debug("would delete",
+				zap.String("path", file.Path),
+				zap.Int64("bytes", file.Size),
+				zap.Duration("last_access", time.Since(file.ATime).Round(time.Minute)))
 		} else {
-			// remove File
-			fmt.Printf("deleting #%d: %q (%d bytes) ... ", index+1, file.Path, file.Size)
+			zap.L().Debug("deleting",
+				zap.Int("index", index+1),
+				zap.String("path", file.Path),
+				zap.Int64("bytes", file.Size))
 			if err := os.Remove(file.Path); err != nil {
-				// if we fail to delete the File, try the next one
-				fmt.Printf("failed to delete %q: %v\n", file.Path, err)
+				zap.L().Error("failed to delete",
+					zap.String("path", file.Path),
+					zap.Error(err))
 				continue
 			}
-			fmt.Print("\n")
 		}
 
 		cache.Decache(file.Path)
@@ -211,11 +242,9 @@ func sortFilesByATime(files []pkg.File) {
 func reportGetFilesProgress(usedFiles, dupeHits int) {
 	total := usedFiles + dupeHits
 	if total > 0 && total%100 == 0 {
-		msg := fmt.Sprintf("%d files", usedFiles)
-		if dupeHits > 0 {
-			msg += fmt.Sprintf(", %d dupe hits", dupeHits)
-		}
-		fmt.Printf("\r%s ... ", msg)
+		zap.L().Debug("gathering files progress",
+			zap.Int("files", usedFiles),
+			zap.Int("dupe_hits", dupeHits))
 	}
 }
 
@@ -230,7 +259,7 @@ func getFiles(cache *pkg.ListingCache, maxFiles int) ([]pkg.File, error) {
 
 		path, err := cache.GetRandomFile()
 		if err != nil {
-			return items, err
+			return nil, err
 		}
 
 		if _, ok := usedFiles[path]; ok {
@@ -251,6 +280,7 @@ func getFiles(cache *pkg.ListingCache, maxFiles int) ([]pkg.File, error) {
 		usedFiles[path] = struct{}{}
 	}
 
+	reportGetFilesProgress(len(usedFiles), dupeHits)
 	return items, nil
 }
 
@@ -289,13 +319,11 @@ func parseArgs() (string, opts, error) {
 }
 
 func timeit(message string, fn func()) {
-	fmt.Print(message + " ... \n")
-
 	start := time.Now()
 	fn()
 	done := time.Since(start).Round(time.Millisecond)
 
-	fmt.Print(message + fmt.Sprintf(": done in [%s]\n", done))
+	zap.L().Debug(message, zap.Duration("duration", done))
 }
 
 func formatBytes(b int64) string {
