@@ -81,10 +81,6 @@ func cleanNFSCache(ctx context.Context) error {
 	}
 	targetDiskUsage := int64(float64(opts.targetDiskUsagePercent) / 100 * float64(diskInfo.Total))
 	areWeDone := func() bool {
-		currentUsedPercentage := (float64(diskInfo.Used) / float64(diskInfo.Total)) * 100
-		zap.L().Info("current usage",
-			zap.Float64("percent", currentUsedPercentage),
-			zap.String("size", formatBytes(diskInfo.Used)))
 		return diskInfo.Used < targetDiskUsage
 	}
 
