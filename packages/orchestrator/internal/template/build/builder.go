@@ -13,8 +13,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/commands"
@@ -42,10 +40,9 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 type Builder struct {
 	logger *zap.Logger
 
+	sandboxFactory   *sandbox.Factory
 	templateStorage  storage.StorageProvider
 	buildStorage     storage.StorageProvider
-	devicePool       *nbd.DevicePool
-	networkPool      *network.Pool
 	artifactRegistry artifactsregistry.ArtifactsRegistry
 	proxy            *proxy.SandboxProxy
 	sandboxes        *smap.Map[*sandbox.Sandbox]
@@ -55,11 +52,10 @@ type Builder struct {
 
 func NewBuilder(
 	logger *zap.Logger,
+	sandboxFactory *sandbox.Factory,
 	templateStorage storage.StorageProvider,
 	buildStorage storage.StorageProvider,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
-	devicePool *nbd.DevicePool,
-	networkPool *network.Pool,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 	templateCache *sbxtemplate.Cache,
@@ -70,12 +66,11 @@ func NewBuilder(
 		templateStorage:  templateStorage,
 		buildStorage:     buildStorage,
 		artifactRegistry: artifactRegistry,
-		devicePool:       devicePool,
-		networkPool:      networkPool,
 		proxy:            proxy,
 		sandboxes:        sandboxes,
 		templateCache:    templateCache,
 		metrics:          buildMetrics,
+		sandboxFactory:   sandboxFactory,
 	}
 }
 
@@ -189,10 +184,9 @@ func runBuild(
 ) (*Result, error) {
 	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, builder.templateStorage)
 
-	layerExecutor := layer.NewLayerExecutor(bc,
+	layerExecutor := layer.NewLayerExecutor(
+		bc,
 		builder.logger,
-		builder.networkPool,
-		builder.devicePool,
 		builder.templateCache,
 		builder.proxy,
 		builder.sandboxes,
@@ -206,12 +200,11 @@ func runBuild(
 		builder.logger,
 		builder.proxy,
 		builder.templateStorage,
-		builder.devicePool,
-		builder.networkPool,
 		builder.artifactRegistry,
 		layerExecutor,
 		index,
 		builder.metrics,
+		builder.sandboxFactory,
 	)
 
 	commandExecutor := commands.NewCommandExecutor(
@@ -222,6 +215,7 @@ func runBuild(
 
 	stepBuilders := steps.CreateStepPhases(
 		bc,
+		builder.sandboxFactory,
 		builder.logger,
 		builder.proxy,
 		layerExecutor,
@@ -232,6 +226,7 @@ func runBuild(
 
 	postProcessingBuilder := finalize.New(
 		bc,
+		builder.sandboxFactory,
 		builder.templateStorage,
 		builder.proxy,
 		layerExecutor,

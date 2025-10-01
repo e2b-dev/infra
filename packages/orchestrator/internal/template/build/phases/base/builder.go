@@ -13,12 +13,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
@@ -36,7 +33,9 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-var templatesDirectory = filepath.Join(pkg.OrchestratorBasePath, "build-templates")
+func templatesDirectory() string {
+	return filepath.Join(pkg.OrchestratorBasePath(), "build-templates")
+}
 
 const (
 	rootfsBuildFileName = "rootfs.filesystem.build"
@@ -56,9 +55,8 @@ type BaseBuilder struct {
 	logger *zap.Logger
 	proxy  *proxy.SandboxProxy
 
+	sandboxFactory   *sandbox.Factory
 	templateStorage  storage.StorageProvider
-	devicePool       *nbd.DevicePool
-	networkPool      *network.Pool
 	artifactRegistry artifactsregistry.ArtifactsRegistry
 
 	layerExecutor *layer.LayerExecutor
@@ -71,12 +69,11 @@ func New(
 	logger *zap.Logger,
 	proxy *proxy.SandboxProxy,
 	templateStorage storage.StorageProvider,
-	devicePool *nbd.DevicePool,
-	networkPool *network.Pool,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	layerExecutor *layer.LayerExecutor,
 	index cache.Index,
 	metrics *metrics.BuildMetrics,
+	sandboxFactory *sandbox.Factory,
 ) *BaseBuilder {
 	return &BaseBuilder{
 		BuildContext: buildContext,
@@ -84,9 +81,8 @@ func New(
 		logger: logger,
 		proxy:  proxy,
 
+		sandboxFactory:   sandboxFactory,
 		templateStorage:  templateStorage,
-		devicePool:       devicePool,
-		networkPool:      networkPool,
 		artifactRegistry: artifactRegistry,
 
 		layerExecutor: layerExecutor,
@@ -159,7 +155,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	baseMetadata metadata.Template,
 	hash string,
 ) (metadata.Template, error) {
-	templateBuildDir := filepath.Join(templatesDirectory, bb.Template.BuildID)
+	templateBuildDir := filepath.Join(templatesDirectory(), bb.Template.BuildID)
 	err := os.MkdirAll(templateBuildDir, 0o777)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("error creating template build directory: %w", err)
@@ -264,11 +260,9 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	// Create sandbox for building template
 	userLogger.Debug("Creating base sandbox template layer")
 
-	// TODO: Temporarily set this based on global config, should be removed later (it should be passed as a parameter in build)
-	baseSbxConfig.AllowInternetAccess = &globalconfig.AllowSandboxInternet
-
 	sandboxCreator := layer.NewCreateSandboxFromCache(
 		baseSbxConfig,
+		bb.sandboxFactory,
 		baseLayerTimeout,
 		fc.FirecrackerVersions{
 			KernelVersion:      bb.Template.KernelVersion,

@@ -245,7 +245,8 @@ module "nomad" {
   launch_darkly_api_key_secret_name = module.init.launch_darkly_api_key_secret_version.secret
 
   # Filestore
-  shared_chunk_cache_path = module.cluster.shared_chunk_cache_path
+  shared_chunk_cache_path               = module.cluster.shared_chunk_cache_path
+  filestore_cache_max_disk_usage_target = var.filestore_max_disk_usage_target
 }
 
 module "redis" {
