@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -43,7 +44,8 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	buildID := "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
 
 	persistenceDir := filepath.Join(os.TempDir(), "e2b-orchestrator-benchmark")
-	err := os.MkdirAll(persistenceDir, 0755)
+	kernelsDir := filepath.Join(persistenceDir, "kernels")
+	err := os.MkdirAll(kernelsDir, 0755)
 
 	tempDir := b.TempDir()
 
@@ -51,9 +53,11 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		return utils.Must(filepath.Abs(s))
 	}
 
-	linuxKernelFilename := filepath.Join(persistenceDir, "kernels", kernelVersion, "vmlinux.bin")
+	linuxKernelURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/kernels/", kernelVersion, "vmlinux.bin")
+	require.NoError(b, err)
+	linuxKernelFilename := filepath.Join(kernelsDir, kernelVersion, "vmlinux.bin")
 
-	downloadKernel(b, kernelVersion, persistenceDir)
+	downloadKernel(b, linuxKernelFilename, linuxKernelURL)
 
 	// hacks, these should go away
 	b.Setenv("USE_LOCAL_NAMESPACE_STORAGE", "true")
@@ -61,10 +65,10 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	b.Setenv("ORCHESTRATOR_BASE_PATH", tempDir)
 	b.Setenv("HOST_ENVD_PATH", abs(filepath.Join("..", "envd", "bin", "envd")))
 	b.Setenv("FIRECRACKER_VERSIONS_DIR", abs(filepath.Join("..", "fc-versions", "builds")))
-	b.Setenv("HOST_KERNELS_DIR", abs(filepath.Join("..", "fc-kernels")))
+	b.Setenv("HOST_KERNELS_DIR", abs(kernelsDir))
 	b.Setenv("SANDBOX_DIR", abs(filepath.Join(tempDir, "fc-vm")))
 	b.Setenv("SNAPSHOT_CACHE_DIR", abs(filepath.Join(tempDir, "snapshot-cache")))
-	b.Setenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", abs(filepath.Join(tempDir, "templates")))
+	b.Setenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", abs(filepath.Join(persistenceDir, "templates")))
 
 	// prep directories
 	for _, subdir := range []string{"build", "build-templates" /*"fc-vm",*/, "sandbox", "snapshot-cache", "template"} {
@@ -177,26 +181,29 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		buildMetrics,
 	)
 
-	// build template
-	force := true
-	templateConfig := config.TemplateConfig{
-		TemplateID: templateID,
-		FromImage:  baseImage,
-		Force:      &force,
-		VCpuCount:  sandboxConfig.Vcpu,
-		MemoryMB:   sandboxConfig.RamMB,
-		StartCmd:   "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
-		DiskSizeMB: sandboxConfig.TotalDiskSizeMB,
-		HugePages:  sandboxConfig.HugePages,
-	}
+	buildPath := filepath.Join(os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH"), buildID, "rootfs.ext4")
+	if _, err := os.Stat(buildPath); os.IsNotExist(err) {
+		// build template
+		force := true
+		templateConfig := config.TemplateConfig{
+			TemplateID: templateID,
+			FromImage:  baseImage,
+			Force:      &force,
+			VCpuCount:  sandboxConfig.Vcpu,
+			MemoryMB:   sandboxConfig.RamMB,
+			StartCmd:   "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
+			DiskSizeMB: sandboxConfig.TotalDiskSizeMB,
+			HugePages:  sandboxConfig.HugePages,
+		}
 
-	metadata := storage.TemplateFiles{
-		BuildID:            buildID,
-		KernelVersion:      kernelVersion,
-		FirecrackerVersion: fcVersion,
+		metadata := storage.TemplateFiles{
+			BuildID:            buildID,
+			KernelVersion:      kernelVersion,
+			FirecrackerVersion: fcVersion,
+		}
+		_, err = builder.Build(b.Context(), metadata, templateConfig, logger.Core())
+		require.NoError(b, err)
 	}
-	_, err = builder.Build(b.Context(), metadata, templateConfig, logger.Core())
-	require.NoError(b, err)
 
 	// retrieve template
 	tmpl, err := templateCache.GetTemplate(
@@ -209,8 +216,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	)
 	require.NoError(b, err)
 
-	for b.Loop() {
-		// create sandbox
+	resumeSandbox := func(tmpl template.Template) (*sandbox.Sandbox, error) {
 		sbx, err := sandbox.ResumeSandbox(
 			b.Context(),
 			networkPool,
@@ -225,9 +231,13 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 			nil,
 		)
 		require.NoError(b, err)
+		return sbx, err
+	}
 
-		// pause sandbox
-		// build base template
+	for b.Loop() {
+		sbx, err := resumeSandbox(tmpl)
+		require.NoError(b, err)
+
 		meta, err := sbx.Template.Metadata()
 		require.NoError(b, err)
 
@@ -250,12 +260,26 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	}
 }
 
-func downloadKernel(b *testing.B, kernelVersion string, kernelDir string) {
+func downloadKernel(b *testing.B, filename, url string) {
 	b.Helper()
 
-	linuxKernelURL := filepath.Join("https://storage.googleapis.com/e2b-prod-public-builds/kernels/", kernelVersion, "vmlinux.bin")
-
-	err = os.MkdirAll(filepath.Dir(linuxKernelFilename), 0755)
+	dirname := filepath.Dir(filename)
+	err := os.MkdirAll(dirname, 0755)
 	require.NoError(b, err)
 
+	// kernel already exists
+	if _, err := os.Stat(filename); err == nil {
+		return
+	}
+
+	response, err := http.Get(url)
+	require.NoError(b, err)
+	defer response.Body.Close()
+
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
+	require.NoError(b, err)
+	defer file.Close()
+
+	_, err = file.ReadFrom(response.Body)
+	require.NoError(b, err)
 }
