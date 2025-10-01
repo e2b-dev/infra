@@ -66,11 +66,11 @@ type PostInitJSONBody struct {
 	Timestamp   *time.Time         `json:"timestamp,omitempty"`
 }
 
-func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string, accessToken *string, envdInitRequestTimeout time.Duration) error {
+func (s *Sandbox) initEnvd(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "envd-init", trace.WithAttributes(telemetry.WithEnvdVersion(s.Config.Envd.Version)))
 	defer span.End()
 
-	attributes := []attribute.KeyValue{telemetry.WithEnvdVersion(s.Config.Envd.Version), attribute.Int64("timeout_ms", envdInitRequestTimeout.Milliseconds())}
+	attributes := []attribute.KeyValue{telemetry.WithEnvdVersion(s.Config.Envd.Version), attribute.Int64("timeout_ms", s.Config.EnvdInitRequestTimeout.Milliseconds())}
 	attributesFail := append(attributes, attribute.Bool("success", false))
 	attributesSuccess := append(attributes, attribute.Bool("success", true))
 
@@ -78,9 +78,9 @@ func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string, acces
 	address := fmt.Sprintf("http://%s:%d/init", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
 	now := time.Now()
 	jsonBody := &PostInitJSONBody{
-		EnvVars:     &envVars,
+		EnvVars:     &s.Config.Envd.Vars,
 		HyperloopIP: &hyperloopIP,
-		AccessToken: accessToken,
+		AccessToken: s.Config.Envd.AccessToken,
 		Timestamp:   &now,
 	}
 
@@ -89,7 +89,7 @@ func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string, acces
 		return err
 	}
 
-	response, count, err := doRequestWithInfiniteRetries(ctx, "POST", address, body, accessToken, envdInitRequestTimeout, s.Runtime.SandboxID, s.Config.Envd.Version)
+	response, count, err := doRequestWithInfiniteRetries(ctx, "POST", address, body, s.Config.Envd.AccessToken, s.Config.EnvdInitRequestTimeout, s.Runtime.SandboxID, s.Config.Envd.Version)
 	if err != nil {
 		envdInitCalls.Add(ctx, count, metric.WithAttributes(attributesFail...))
 		return fmt.Errorf("failed to init envd: %w", err)

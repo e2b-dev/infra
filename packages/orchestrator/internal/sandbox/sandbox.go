@@ -998,7 +998,7 @@ func (s *Sandbox) WaitForEnvd(
 		}
 	}()
 
-	if err := s.initEnvd(ctx, s.Config.Envd.Vars, s.Config.Envd.AccessToken, s.Config.EnvdInitRequestTimeout); err != nil {
+	if err := s.initEnvd(ctx); err != nil {
 		return fmt.Errorf("failed to init new envd: %w", err)
 	}
 
