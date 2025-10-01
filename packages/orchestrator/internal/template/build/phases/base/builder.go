@@ -56,10 +56,8 @@ type BaseBuilder struct {
 	logger *zap.Logger
 	proxy  *proxy.SandboxProxy
 
-sandboxFactory         *sandbox.Factory	
-templateStorage     storage.StorageProvider
-	devicePool          *nbd.DevicePool
-	networkPool         *network.Pool
+	sandboxFactory      *sandbox.Factory
+	templateStorage     storage.StorageProvider
 	artifactRegistry    artifactsregistry.ArtifactsRegistry
 	dockerhubRepository dockerhub.RemoteRepository
 
@@ -87,14 +85,9 @@ func New(
 		proxy:  proxy,
 
 		templateStorage:     templateStorage,
-		devicePool:          devicePool,
-		networkPool:         networkPool,
 		artifactRegistry:    artifactRegistry,
 		dockerhubRepository: dockerhubRepository,
-		templateStorage:        templateStorage,
-		artifactRegistry:       artifactRegistry,
-		dockerRemoteRepository: dockerRemoteRepository,
-		sandboxFactory:         sandboxFactory,
+		sandboxFactory:      sandboxFactory,
 
 		layerExecutor: layerExecutor,
 		index:         index,

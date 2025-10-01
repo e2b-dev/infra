@@ -41,11 +41,9 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 type Builder struct {
 	logger *zap.Logger
 
-sandboxFactory         *sandbox.Factory	
-templateStorage     storage.StorageProvider
+	sandboxFactory      *sandbox.Factory
+	templateStorage     storage.StorageProvider
 	buildStorage        storage.StorageProvider
-	devicePool          *nbd.DevicePool
-	networkPool         *network.Pool
 	artifactRegistry    artifactsregistry.ArtifactsRegistry
 	dockerhubRepository dockerhub.RemoteRepository
 	proxy               *proxy.SandboxProxy
@@ -60,23 +58,23 @@ func NewBuilder(
 	templateStorage storage.StorageProvider,
 	buildStorage storage.StorageProvider,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
-	dockerRemoteRepository docker.RemoteRepository,
+	dockerhubRepository dockerhub.RemoteRepository,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 	templateCache *sbxtemplate.Cache,
 	buildMetrics *metrics.BuildMetrics,
 ) *Builder {
 	return &Builder{
-		logger:                 logger,
-		sandboxFactory:         sandboxFactory,
-		templateStorage:        templateStorage,
-		buildStorage:           buildStorage,
-		artifactRegistry:       artifactRegistry,
-		dockerRemoteRepository: dockerRemoteRepository,
-		proxy:                  proxy,
-		sandboxes:              sandboxes,
-		templateCache:          templateCache,
-		metrics:                buildMetrics,
+		logger:              logger,
+		sandboxFactory:      sandboxFactory,
+		templateStorage:     templateStorage,
+		buildStorage:        buildStorage,
+		artifactRegistry:    artifactRegistry,
+		dockerhubRepository: dockerhubRepository,
+		proxy:               proxy,
+		sandboxes:           sandboxes,
+		templateCache:       templateCache,
+		metrics:             buildMetrics,
 	}
 }
 

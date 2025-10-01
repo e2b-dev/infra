@@ -96,7 +96,7 @@ func New(
 		templatePersistence,
 		buildPersistance,
 		artifactsregistry,
-		dockerRemoteRepository,
+		dockerhubRepository,
 		proxy,
 		sandboxes,
 		templateCache,
