@@ -8,6 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
@@ -18,17 +24,13 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
-	"go.uber.org/zap"
 )
 
 func BenchmarkBaseImageLaunch(b *testing.B) {
@@ -45,7 +47,9 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	persistenceDir := filepath.Join(os.TempDir(), "e2b-orchestrator-benchmark")
 	kernelsDir := filepath.Join(persistenceDir, "kernels")
-	err := os.MkdirAll(kernelsDir, 0755)
+	sandboxDir := filepath.Join(persistenceDir, "sandbox")
+	err := os.MkdirAll(kernelsDir, 0o755)
+	require.NoError(b, err)
 
 	tempDir := b.TempDir()
 
@@ -60,20 +64,21 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	downloadKernel(b, linuxKernelFilename, linuxKernelURL)
 
 	// hacks, these should go away
+	b.Setenv("ARTIFACTS_REGISTRY_PROVIDER", "Local")
 	b.Setenv("USE_LOCAL_NAMESPACE_STORAGE", "true")
 	b.Setenv("STORAGE_PROVIDER", "Local")
 	b.Setenv("ORCHESTRATOR_BASE_PATH", tempDir)
 	b.Setenv("HOST_ENVD_PATH", abs(filepath.Join("..", "envd", "bin", "envd")))
 	b.Setenv("FIRECRACKER_VERSIONS_DIR", abs(filepath.Join("..", "fc-versions", "builds")))
 	b.Setenv("HOST_KERNELS_DIR", abs(kernelsDir))
-	b.Setenv("SANDBOX_DIR", abs(filepath.Join(tempDir, "fc-vm")))
+	b.Setenv("SANDBOX_DIR", abs(sandboxDir))
 	b.Setenv("SNAPSHOT_CACHE_DIR", abs(filepath.Join(tempDir, "snapshot-cache")))
 	b.Setenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", abs(filepath.Join(persistenceDir, "templates")))
 
 	// prep directories
 	for _, subdir := range []string{"build", "build-templates" /*"fc-vm",*/, "sandbox", "snapshot-cache", "template"} {
 		fullDirName := filepath.Join(tempDir, subdir)
-		err := os.MkdirAll(fullDirName, 0755)
+		err := os.MkdirAll(fullDirName, 0o755)
 		require.NoError(b, err)
 	}
 
@@ -81,7 +86,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	require.NoError(b, err)
 
 	sbxlogger.SetSandboxLoggerInternal(logger)
-	//sbxlogger.SetSandboxLoggerExternal(logger)
+	// sbxlogger.SetSandboxLoggerExternal(logger)
 
 	networkPool, err := network.NewPool(
 		b.Context(), noop.MeterProvider{}, 8, 8, clientID,
@@ -117,6 +122,15 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	templateCache, err := template.NewCache(b.Context(), featureFlags, persistence, blockMetrics)
 	require.NoError(b, err)
+
+	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, true)
+
+	dockerhubRepository, err := dockerhub.GetRemoteRepository(b.Context())
+	require.NoError(b, err)
+	b.Cleanup(func() {
+		err := dockerhubRepository.Close()
+		assert.NoError(b, err)
+	})
 
 	allowInternetAccess := true
 	accessToken := "access-token"
@@ -170,11 +184,11 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	builder := build.NewBuilder(
 		logger,
+		sandboxFactory,
 		persistenceTemplate,
 		persistenceBuild,
 		artifactRegistry,
-		devicePool,
-		networkPool,
+		dockerhubRepository,
 		sandboxProxy,
 		sandboxes,
 		templateCache,
@@ -216,27 +230,36 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	)
 	require.NoError(b, err)
 
-	resumeSandbox := func(tmpl template.Template) (*sandbox.Sandbox, error) {
-		sbx, err := sandbox.ResumeSandbox(
+	type testCycle string
+
+	const (
+		onlyStart        testCycle = "only-start"
+		startAndPause    testCycle = "start-and-pause"
+		startPauseResume testCycle = "start-pause-resume"
+	)
+
+	testType := onlyStart
+
+	for b.Loop() {
+		sbx, err := sandboxFactory.ResumeSandbox(
 			b.Context(),
-			networkPool,
 			tmpl,
 			sandboxConfig,
 			runtime,
 			uuid.NewString(),
 			time.Now(),
 			time.Now().Add(time.Second*15),
-			devicePool,
-			false,
 			nil,
 		)
 		require.NoError(b, err)
-		return sbx, err
-	}
 
-	for b.Loop() {
-		sbx, err := resumeSandbox(tmpl)
-		require.NoError(b, err)
+		if testType == onlyStart {
+			b.StopTimer()
+			err = sbx.Close(b.Context())
+			require.NoError(b, err)
+			b.StartTimer()
+			continue
+		}
 
 		meta, err := sbx.Template.Metadata()
 		require.NoError(b, err)
@@ -251,7 +274,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		require.NotNil(b, snap)
 
 		// resume sandbox
-		sbx, err = sandbox.ResumeSandbox(b.Context(), networkPool, tmpl, sandboxConfig, runtime, uuid.NewString(), time.Now(), time.Now().Add(time.Second*15), devicePool, false, nil)
+		sbx, err = sandboxFactory.ResumeSandbox(b.Context(), tmpl, sandboxConfig, runtime, uuid.NewString(), time.Now(), time.Now().Add(time.Second*15), nil)
 		require.NoError(b, err)
 
 		// close sandbox
@@ -264,7 +287,7 @@ func downloadKernel(b *testing.B, filename, url string) {
 	b.Helper()
 
 	dirname := filepath.Dir(filename)
-	err := os.MkdirAll(dirname, 0755)
+	err := os.MkdirAll(dirname, 0o755)
 	require.NoError(b, err)
 
 	// kernel already exists
@@ -272,11 +295,14 @@ func downloadKernel(b *testing.B, filename, url string) {
 		return
 	}
 
-	response, err := http.Get(url)
+	client := &http.Client{}
+	req, err := http.NewRequestWithContext(b.Context(), http.MethodGet, url, nil)
+	require.NoError(b, err)
+	response, err := client.Do(req)
 	require.NoError(b, err)
 	defer response.Body.Close()
 
-	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0o644)
 	require.NoError(b, err)
 	defer file.Close()
 
