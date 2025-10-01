@@ -27,6 +27,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
+type closeable interface {
+	Close() error
+}
+
 type ServerStore struct {
 	templatemanager.UnimplementedTemplateServiceServer
 
@@ -41,7 +45,7 @@ type ServerStore struct {
 	wg   *sync.WaitGroup // wait group for running builds
 	info *service.ServiceInfo
 
-	_close func() error
+	closers []closeable
 }
 
 func New(
@@ -60,6 +64,19 @@ func New(
 ) (s *ServerStore, e error) {
 	logger.Info("Initializing template manager")
 
+	closers := make([]closeable, 0)
+	defer func() {
+		if e == nil {
+			return
+		}
+
+		for _, closer := range closers {
+			if err := closer.Close(); err != nil {
+				logger.Error("error closing resource", zap.Error(err))
+			}
+		}
+	}()
+
 	artifactsregistry, err := artifactsregistry.GetArtifactsRegistryProvider(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting artifacts registry provider: %w", err)
@@ -69,15 +86,7 @@ func New(
 	if err != nil {
 		return nil, fmt.Errorf("error getting docker remote repository provider: %w", err)
 	}
-	defer func() {
-		if e == nil {
-			return
-		}
-
-		if err := dockerhubRepository.Close(); err != nil {
-			logger.Error("error closing docker remote repository provider", zap.Error(err))
-		}
-	}()
+	closers = append(closers, dockerhubRepository)
 
 	buildPersistance, err := storage.GetBuildCacheStorageProvider(ctx, limiter)
 	if err != nil {
@@ -113,13 +122,7 @@ func New(
 		buildStorage:      buildPersistance,
 		info:              info,
 		wg:                &sync.WaitGroup{},
-		_close: func() error {
-			err := dockerhubRepository.Close()
-			if err != nil {
-				return fmt.Errorf("failed to close dockerhub repository: %w", err)
-			}
-			return nil
-		},
+		closers:           closers,
 	}
 
 	templatemanager.RegisterTemplateServiceServer(grpc.GRPCServer(), store)
@@ -147,10 +150,17 @@ func (s *ServerStore) Close(ctx context.Context) error {
 
 		s.logger.Info("Template build queue cleaned")
 
-		err := s._close()
-		if err != nil {
-			return fmt.Errorf("failed to close services: %w", err)
+		var closersErr error
+		for _, closer := range s.closers {
+			err := closer.Close()
+			if err != nil {
+				closersErr = errors.Join(closersErr, err)
+			}
 		}
+		if closersErr != nil {
+			return fmt.Errorf("failed to close services: %w", closersErr)
+		}
+
 		return nil
 	}
 }
