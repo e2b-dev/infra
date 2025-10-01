@@ -76,17 +76,17 @@ func TestStat(t *testing.T) {
 			resp, err := svc.Stat(ctx, req)
 			require.NoError(t, err)
 			require.NotEmpty(t, resp.Msg)
-			require.NotNil(t, resp.Msg.Entry)
-			assert.Equal(t, tt.path, resp.Msg.Entry.Path)
-			assert.Equal(t, filesystem.FileType_FILE_TYPE_FILE, resp.Msg.Entry.Type)
-			assert.Equal(t, u.Username, resp.Msg.Entry.Owner)
-			assert.Equal(t, group.Name, resp.Msg.Entry.Group)
-			assert.Equal(t, uint32(0o644), resp.Msg.Entry.Mode)
+			require.NotNil(t, resp.Msg.GetEntry())
+			assert.Equal(t, tt.path, resp.Msg.GetEntry().GetPath())
+			assert.Equal(t, filesystem.FileType_FILE_TYPE_FILE, resp.Msg.GetEntry().GetType())
+			assert.Equal(t, u.Username, resp.Msg.GetEntry().GetOwner())
+			assert.Equal(t, group.Name, resp.Msg.GetEntry().GetGroup())
+			assert.Equal(t, uint32(0o644), resp.Msg.GetEntry().GetMode())
 			if tt.path == linkedFile {
-				require.NotNil(t, resp.Msg.Entry.SymlinkTarget)
-				assert.Equal(t, testFile, *resp.Msg.Entry.SymlinkTarget)
+				require.NotNil(t, resp.Msg.GetEntry().GetSymlinkTarget())
+				assert.Equal(t, testFile, resp.Msg.GetEntry().GetSymlinkTarget())
 			} else {
-				assert.Empty(t, resp.Msg.Entry.SymlinkTarget)
+				assert.Empty(t, resp.Msg.GetEntry().GetSymlinkTarget())
 			}
 		})
 	}

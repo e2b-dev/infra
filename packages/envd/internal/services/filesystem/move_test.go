@@ -53,7 +53,7 @@ func TestMove(t *testing.T) {
 	// Verify the move was successful
 	require.NoError(t, err)
 	assert.NotNil(t, resp)
-	assert.Equal(t, destFile, resp.Msg.Entry.Path)
+	assert.Equal(t, destFile, resp.Msg.GetEntry().GetPath())
 
 	// Verify the file exists at the destination
 	_, err = os.Stat(destFile)
@@ -110,7 +110,7 @@ func TestMoveDirectory(t *testing.T) {
 	// Verify the move was successful
 	require.NoError(t, err)
 	assert.NotNil(t, resp)
-	assert.Equal(t, destDir, resp.Msg.Entry.Path)
+	assert.Equal(t, destDir, resp.Msg.GetEntry().GetPath())
 
 	// Verify the directory exists at the destination
 	_, err = os.Stat(destDir)
@@ -212,7 +212,7 @@ func TestMoveRelativePath(t *testing.T) {
 	// Verify the move was successful
 	require.NoError(t, err)
 	assert.NotNil(t, resp)
-	assert.Equal(t, destFile, resp.Msg.Entry.Path)
+	assert.Equal(t, destFile, resp.Msg.GetEntry().GetPath())
 
 	// Verify the file exists at the destination
 	_, err = os.Stat(destFile)
@@ -273,7 +273,7 @@ func TestMove_Symlinks(t *testing.T) {
 		})
 		resp, err := svc.Move(ctx, req)
 		require.NoError(t, err)
-		assert.Equal(t, destPath, resp.Msg.Entry.Path)
+		assert.Equal(t, destPath, resp.Msg.GetEntry().GetPath())
 
 		// Verify the symlink was moved
 		_, err = os.Stat(destPath)
@@ -307,7 +307,7 @@ func TestMove_Symlinks(t *testing.T) {
 		})
 		resp, err := svc.Move(ctx, req)
 		require.NoError(t, err)
-		assert.Equal(t, destPath, resp.Msg.Entry.Path)
+		assert.Equal(t, destPath, resp.Msg.GetEntry().GetPath())
 
 		// Verify the symlink was moved
 		_, err = os.Stat(destPath)
@@ -345,7 +345,7 @@ func TestMove_Symlinks(t *testing.T) {
 		})
 		resp, err := svc.Move(ctx, req)
 		require.NoError(t, err)
-		assert.Equal(t, destPath, resp.Msg.Entry.Path)
+		assert.Equal(t, destPath, resp.Msg.GetEntry().GetPath())
 
 		// Verify the real file was moved
 		_, err = os.Stat(destPath)

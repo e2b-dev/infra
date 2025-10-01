@@ -16,7 +16,7 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/orchest
 
 func (n *Node) SyncBuilds(builds []*orchestrator.CachedBuildInfo) {
 	for _, build := range builds {
-		n.buildCache.Set(build.BuildId, struct{}{}, time.Until(build.ExpirationTime.AsTime()))
+		n.buildCache.Set(build.GetBuildId(), struct{}{}, time.Until(build.GetExpirationTime().AsTime()))
 	}
 }
 

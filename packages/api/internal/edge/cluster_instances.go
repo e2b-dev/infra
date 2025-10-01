@@ -56,8 +56,8 @@ func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
 	instance.mutex.Lock()
 	defer instance.mutex.Unlock()
 
-	instance.status = info.ServiceStatus
-	instance.roles = info.ServiceRoles
+	instance.status = info.GetServiceStatus()
+	instance.roles = info.GetServiceRoles()
 }
 
 func (n *ClusterInstance) GetStatus() infogrpc.ServiceInfoStatus {

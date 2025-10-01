@@ -291,8 +291,8 @@ func getSandboxLogs(t *testing.T, ctx context.Context, client *setup.EnvdClient,
 	for stream.Receive() {
 		msg := stream.Msg()
 
-		if msg.Event.GetData() != nil {
-			switch data := msg.Event.GetData().GetOutput().(type) {
+		if msg.GetEvent().GetData() != nil {
+			switch data := msg.GetEvent().GetData().GetOutput().(type) {
 			case *process.ProcessEvent_DataEvent_Stdout:
 				out = append(out, string(data.Stdout))
 			case *process.ProcessEvent_DataEvent_Stderr:

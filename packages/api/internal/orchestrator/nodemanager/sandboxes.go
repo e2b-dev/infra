@@ -36,42 +36,42 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 			return nil, fmt.Errorf("sandbox config is nil when listing sandboxes: %#v", sbx)
 		}
 
-		teamID, parseErr := uuid.Parse(config.TeamId)
+		teamID, parseErr := uuid.Parse(config.GetTeamId())
 		if parseErr != nil {
-			return nil, fmt.Errorf("failed to parse team ID '%s' for job: %w", config.TeamId, parseErr)
+			return nil, fmt.Errorf("failed to parse team ID '%s' for job: %w", config.GetTeamId(), parseErr)
 		}
 
-		buildID, parseErr := uuid.Parse(config.BuildId)
+		buildID, parseErr := uuid.Parse(config.GetBuildId())
 		if parseErr != nil {
-			return nil, fmt.Errorf("failed to parse build ID '%s' for job: %w", config.BuildId, parseErr)
+			return nil, fmt.Errorf("failed to parse build ID '%s' for job: %w", config.GetBuildId(), parseErr)
 		}
 
 		sandboxesInfo = append(
 			sandboxesInfo,
 			sandbox.NewSandbox(
-				config.SandboxId,
-				config.TemplateId,
+				config.GetSandboxId(),
+				config.GetTemplateId(),
 				consts.ClientID,
-				config.Alias,
-				config.ExecutionId,
+				config.Alias, //nolint:protogetter // we need the nil check too
+				config.GetExecutionId(),
 				teamID,
 				buildID,
-				config.Metadata,
-				time.Duration(config.MaxSandboxLength)*time.Hour,
-				sbx.StartTime.AsTime(),
-				sbx.EndTime.AsTime(),
-				config.Vcpu,
-				config.TotalDiskSizeMb,
-				config.RamMb,
-				config.KernelVersion,
-				config.FirecrackerVersion,
-				config.EnvdVersion,
+				config.GetMetadata(),
+				time.Duration(config.GetMaxSandboxLength())*time.Hour,
+				sbx.GetStartTime().AsTime(),
+				sbx.GetEndTime().AsTime(),
+				config.GetVcpu(),
+				config.GetTotalDiskSizeMb(),
+				config.GetRamMb(),
+				config.GetKernelVersion(),
+				config.GetFirecrackerVersion(),
+				config.GetEnvdVersion(),
 				n.ID,
 				n.ClusterID,
-				config.AutoPause,
-				config.EnvdAccessToken,
-				config.AllowInternetAccess,
-				config.BaseTemplateId,
+				config.GetAutoPause(),
+				config.EnvdAccessToken,     //nolint:protogetter // we need the nil check too
+				config.AllowInternetAccess, //nolint:protogetter // we need the nil check too
+				config.GetBaseTemplateId(),
 			),
 		)
 	}

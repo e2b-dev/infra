@@ -49,7 +49,7 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 	}
 	defer w.Close()
 
-	err = w.Add(utils.FsnotifyPath(watchPath, req.Msg.Recursive))
+	err = w.Add(utils.FsnotifyPath(watchPath, req.Msg.GetRecursive()))
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, fmt.Errorf("error adding path %s to watcher: %w", watchPath, err))
 	}

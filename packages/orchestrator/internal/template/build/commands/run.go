@@ -26,7 +26,7 @@ func (r *Run) Execute(
 	step *templatemanager.TemplateStep,
 	cmdMetadata metadata.Context,
 ) (metadata.Context, error) {
-	args := step.Args
+	args := step.GetArgs()
 	// args: [command optional_user]
 	if len(args) < 1 {
 		return metadata.Context{}, fmt.Errorf("RUN requires command argument")
