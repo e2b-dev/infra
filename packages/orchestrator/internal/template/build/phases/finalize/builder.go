@@ -153,7 +153,7 @@ func (ppb *PostProcessingBuilder) Build(
 			SandboxCreator: sandboxCreator,
 			ActionExecutor: actionExecutor,
 		},
-		ppb.sandboxFactory.GetEnvdInitTimeout(ctx),
+		ppb.sandboxFactory.GetEnvdInitRequestTimeout(ctx),
 	)
 	if err != nil {
 		return phases.LayerResult{}, fmt.Errorf("error running start and ready commands in sandbox: %w", err)

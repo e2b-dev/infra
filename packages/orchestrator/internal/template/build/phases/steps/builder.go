@@ -219,7 +219,7 @@ func (sb *StepBuilder) Build(
 			SandboxCreator: sandboxCreator,
 			ActionExecutor: actionExecutor,
 		},
-		sb.sandboxFactory.GetEnvdInitTimeout(ctx),
+		sb.sandboxFactory.GetEnvdInitRequestTimeout(ctx),
 	)
 	if err != nil {
 		return phases.LayerResult{}, fmt.Errorf("error building step %d: %w", sb.stepNumber, err)

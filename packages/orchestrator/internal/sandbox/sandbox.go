@@ -549,7 +549,7 @@ func (f *Factory) ResumeSandbox(
 		return sbx.Stop(ctx)
 	})
 
-	envdInitRequestTimeout := f.GetEnvdInitTimeout(ctx)
+	envdInitRequestTimeout := f.GetEnvdInitRequestTimeout(ctx)
 	err = sbx.WaitForEnvd(
 		ctx,
 		defaultEnvdTimeout,
@@ -1009,7 +1009,7 @@ func (s *Sandbox) WaitForEnvd(
 	return nil
 }
 
-func (f *Factory) GetEnvdInitTimeout(ctx context.Context) time.Duration {
+func (f *Factory) GetEnvdInitRequestTimeout(ctx context.Context) time.Duration {
 	envdInitRequestTimeoutMs, err := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutSeconds)
 	if err != nil {
 		zap.L().Warn("failed to get envd timeout from feature flag, using default", zap.Error(err))
