@@ -221,7 +221,6 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		Envd: sandbox.EnvdMetadata{
 			Version: bb.EnvdVersion,
 		},
-		EnvdInitRequestTimeout: bb.sandboxFactory.GetEnvdInitRequestTimeout(ctx),
 	}
 	err = bb.provisionSandbox(
 		ctx,

@@ -59,8 +59,7 @@ type Config struct {
 
 	AllowInternetAccess *bool
 
-	Envd                   EnvdMetadata
-	EnvdInitRequestTimeout time.Duration
+	Envd EnvdMetadata
 }
 
 type EnvdMetadata struct {
@@ -84,9 +83,14 @@ type Resources struct {
 	memory uffd.MemoryBackend
 }
 
+type internalConfig struct {
+	EnvdInitRequestTimeout time.Duration
+}
+
 type Metadata struct {
-	Config  Config
-	Runtime RuntimeMetadata
+	internalConfig internalConfig
+	Config         Config
+	Runtime        RuntimeMetadata
 
 	StartedAt time.Time
 	EndAt     time.Time
@@ -280,6 +284,10 @@ func (f *Factory) CreateSandbox(
 	}
 
 	metadata := &Metadata{
+		internalConfig: internalConfig{
+			EnvdInitRequestTimeout: f.GetEnvdInitRequestTimeout(ctx),
+		},
+
 		Config:  config,
 		Runtime: runtime,
 
@@ -514,6 +522,10 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	metadata := &Metadata{
+		internalConfig: internalConfig{
+			EnvdInitRequestTimeout: f.GetEnvdInitRequestTimeout(ctx),
+		},
+
 		Config:  config,
 		Runtime: runtime,
 
@@ -976,7 +988,7 @@ func (s *Sandbox) WaitForEnvd(
 		duration := time.Since(start).Milliseconds()
 		waitForEnvdDurationHistogram.Record(ctx, duration, metric.WithAttributes(
 			telemetry.WithEnvdVersion(s.Config.Envd.Version),
-			attribute.Int64("timeout_ms", s.Config.EnvdInitRequestTimeout.Milliseconds()),
+			attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
 		))
 		// Update the sandbox as started now
 		s.Metadata.StartedAt = time.Now()

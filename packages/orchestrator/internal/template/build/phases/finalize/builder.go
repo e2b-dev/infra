@@ -125,7 +125,6 @@ func (ppb *PostProcessingBuilder) Build(
 		Envd: sandbox.EnvdMetadata{
 			Version: ppb.EnvdVersion,
 		},
-		EnvdInitRequestTimeout: ppb.sandboxFactory.GetEnvdInitRequestTimeout(ctx),
 	}
 
 	// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template

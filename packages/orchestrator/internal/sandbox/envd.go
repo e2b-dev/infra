@@ -70,7 +70,7 @@ func (s *Sandbox) initEnvd(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "envd-init", trace.WithAttributes(telemetry.WithEnvdVersion(s.Config.Envd.Version)))
 	defer span.End()
 
-	attributes := []attribute.KeyValue{telemetry.WithEnvdVersion(s.Config.Envd.Version), attribute.Int64("timeout_ms", s.Config.EnvdInitRequestTimeout.Milliseconds())}
+	attributes := []attribute.KeyValue{telemetry.WithEnvdVersion(s.Config.Envd.Version), attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds())}
 	attributesFail := append(attributes, attribute.Bool("success", false))
 	attributesSuccess := append(attributes, attribute.Bool("success", true))
 
@@ -89,7 +89,7 @@ func (s *Sandbox) initEnvd(ctx context.Context) error {
 		return err
 	}
 
-	response, count, err := doRequestWithInfiniteRetries(ctx, "POST", address, body, s.Config.Envd.AccessToken, s.Config.EnvdInitRequestTimeout, s.Runtime.SandboxID, s.Config.Envd.Version)
+	response, count, err := doRequestWithInfiniteRetries(ctx, "POST", address, body, s.Config.Envd.AccessToken, s.internalConfig.EnvdInitRequestTimeout, s.Runtime.SandboxID, s.Config.Envd.Version)
 	if err != nil {
 		envdInitCalls.Add(ctx, count, metric.WithAttributes(attributesFail...))
 		return fmt.Errorf("failed to init envd: %w", err)
