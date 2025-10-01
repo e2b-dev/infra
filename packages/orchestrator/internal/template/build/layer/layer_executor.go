@@ -88,7 +88,7 @@ func (lb *LayerExecutor) BuildLayer(
 
 	// Update envd binary to the latest version
 	if cmd.UpdateEnvd {
-		err = lb.updateEnvdInSandbox(ctx, userLogger, sbx, envdInitRequestTimeout)
+		err = lb.updateEnvdInSandbox(ctx, userLogger, sbx)
 		if err != nil {
 			return metadata.Template{}, fmt.Errorf("update envd: %w", err)
 		}
