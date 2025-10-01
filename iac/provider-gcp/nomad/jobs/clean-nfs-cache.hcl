@@ -22,8 +22,10 @@ job "filestore-cleanup" {
             config {
                 command = "local/clean-nfs-cache"
                 args = [
-                    "--dry-run=false",
+                    "--dry-run=${dry_run}",
                     "--disk-usage-target-percent=${max_disk_usage_target}",
+                    "--files-per-iteration=${files_per_iteration}",
+                    "--deletions-per-iteration=${deletions_per_iteration}",
                     "${nfs_cache_mount_path}",
                 ]
             }
