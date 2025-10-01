@@ -1,3 +1,6 @@
+// run with something like:
+//
+//	sudo `which go` test -benchtime=15s -bench=. -v
 package main
 
 import (
