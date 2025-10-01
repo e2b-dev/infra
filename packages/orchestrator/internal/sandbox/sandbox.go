@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -32,7 +34,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var defaultEnvdTimeout = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT", "10s")))
+var (
+	defaultEnvdTimeout           = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT", "10s")))
+	meter                        = otel.GetMeterProvider().Meter("orchestrator.internal.sandbox")
+	envdInitCalls                = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitCalls))
+	waitForEnvdDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.WaitForEnvdDurationHistogramName))
+)
 
 var httpClient = http.Client{
 	Timeout: 10 * time.Second,
@@ -76,9 +83,14 @@ type Resources struct {
 	memory uffd.MemoryBackend
 }
 
+type internalConfig struct {
+	EnvdInitRequestTimeout time.Duration
+}
+
 type Metadata struct {
-	Config  Config
-	Runtime RuntimeMetadata
+	internalConfig internalConfig
+	Config         Config
+	Runtime        RuntimeMetadata
 
 	StartedAt time.Time
 	EndAt     time.Time
@@ -272,6 +284,10 @@ func (f *Factory) CreateSandbox(
 	}
 
 	metadata := &Metadata{
+		internalConfig: internalConfig{
+			EnvdInitRequestTimeout: f.GetEnvdInitRequestTimeout(ctx),
+		},
+
 		Config:  config,
 		Runtime: runtime,
 
@@ -506,6 +522,10 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	metadata := &Metadata{
+		internalConfig: internalConfig{
+			EnvdInitRequestTimeout: f.GetEnvdInitRequestTimeout(ctx),
+		},
+
 		Config:  config,
 		Runtime: runtime,
 
@@ -957,6 +977,7 @@ func (s *Sandbox) WaitForEnvd(
 	ctx context.Context,
 	timeout time.Duration,
 ) (e error) {
+	start := time.Now()
 	ctx, span := tracer.Start(ctx, "sandbox-wait-for-start")
 	defer span.End()
 
@@ -964,6 +985,11 @@ func (s *Sandbox) WaitForEnvd(
 		if e != nil {
 			return
 		}
+		duration := time.Since(start).Milliseconds()
+		waitForEnvdDurationHistogram.Record(ctx, duration, metric.WithAttributes(
+			telemetry.WithEnvdVersion(s.Config.Envd.Version),
+			attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
+		))
 		// Update the sandbox as started now
 		s.Metadata.StartedAt = time.Now()
 	}()
@@ -984,11 +1010,19 @@ func (s *Sandbox) WaitForEnvd(
 		}
 	}()
 
-	if err := s.initEnvd(ctx, s.Config.Envd.Vars, s.Config.Envd.AccessToken); err != nil {
+	if err := s.initEnvd(ctx); err != nil {
 		return fmt.Errorf("failed to init new envd: %w", err)
 	}
 
 	telemetry.ReportEvent(ctx, fmt.Sprintf("[sandbox %s]: initialized new envd", s.Metadata.Runtime.SandboxID))
 
 	return nil
+}
+
+func (f *Factory) GetEnvdInitRequestTimeout(ctx context.Context) time.Duration {
+	envdInitRequestTimeoutMs, err := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutSeconds)
+	if err != nil {
+		zap.L().Warn("failed to get envd timeout from feature flag, using default", zap.Error(err))
+	}
+	return time.Duration(envdInitRequestTimeoutMs) * time.Millisecond
 }
