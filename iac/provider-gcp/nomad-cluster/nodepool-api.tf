@@ -66,6 +66,11 @@ resource "google_compute_instance_group_manager" "api_pool" {
     port = var.api_port.port
   }
 
+  named_port {
+    name = var.docker_reverse_proxy_port.name
+    port = var.docker_reverse_proxy_port.port
+  }
+
   dynamic "named_port" {
     for_each = local.api_additional_ports
     content {
