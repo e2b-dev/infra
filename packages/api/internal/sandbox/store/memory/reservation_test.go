@@ -1,4 +1,4 @@
-package instance
+package memory
 
 import (
 	"testing"
@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
@@ -17,39 +18,39 @@ const (
 
 var teamID = uuid.New()
 
-func newInstanceCache() *MemoryStore {
+func newMemoryStore() *Store {
 	cache := NewStore(nil, nil)
 	return cache
 }
 
 func TestReservation(t *testing.T) {
-	cache := newInstanceCache()
+	cache := newMemoryStore()
 
 	_, err := cache.Reserve(sandboxID, teamID, 1)
 	assert.NoError(t, err)
 }
 
 func TestReservation_Exceeded(t *testing.T) {
-	cache := newInstanceCache()
+	cache := newMemoryStore()
 
 	_, err := cache.Reserve(sandboxID, teamID, 0)
 	require.Error(t, err)
-	assert.IsType(t, &SandboxLimitExceededError{}, err)
+	assert.IsType(t, &sandbox.LimitExceededError{}, err)
 }
 
 func TestReservation_SameSandbox(t *testing.T) {
-	cache := newInstanceCache()
+	cache := newMemoryStore()
 
 	_, err := cache.Reserve(sandboxID, teamID, 10)
 	require.NoError(t, err)
 
 	_, err = cache.Reserve(sandboxID, teamID, 10)
 	require.Error(t, err)
-	assert.IsType(t, &AlreadyBeingStartedError{}, err)
+	assert.IsType(t, &sandbox.AlreadyBeingStartedError{}, err)
 }
 
 func TestReservation_Release(t *testing.T) {
-	cache := newInstanceCache()
+	cache := newMemoryStore()
 
 	release, err := cache.Reserve(sandboxID, teamID, 1)
 	require.NoError(t, err)
@@ -60,9 +61,9 @@ func TestReservation_Release(t *testing.T) {
 }
 
 func TestReservation_ResumeAlreadyRunningSandbox(t *testing.T) {
-	cache := newInstanceCache()
+	cache := newMemoryStore()
 
-	data := Data{
+	data := sandbox.Sandbox{
 		ClientID:   consts.ClientID,
 		SandboxID:  sandboxID,
 		TemplateID: "test",

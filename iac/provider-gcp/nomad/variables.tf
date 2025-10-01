@@ -336,8 +336,31 @@ variable "shared_chunk_cache_path" {
   default = ""
 }
 
-variable "filestore_cache_max_disk_usage_target" {
+variable "filestore_cache_cleanup_disk_usage_target" {
   type        = number
-  description = "The maximum disk usage target for the Filestore cache in percent"
-  default     = 90
+  description = "The disk usage target for the Filestore cache in percent"
+  validation {
+    condition     = var.filestore_cache_cleanup_disk_usage_target >= 0 && var.filestore_cache_cleanup_disk_usage_target < 100
+    error_message = "Must be between 0 and 100"
+  }
+}
+
+variable "filestore_cache_cleanup_dry_run" {
+  type = bool
+}
+
+variable "filestore_cache_cleanup_deletions_per_loop" {
+  type = number
+  validation {
+    condition     = var.filestore_cache_cleanup_deletions_per_loop > 0
+    error_message = "Must be greater than 0"
+  }
+}
+
+variable "filestore_cache_cleanup_files_per_loop" {
+  type = number
+}
+
+variable "dockerhub_remote_repository_url" {
+  type = string
 }

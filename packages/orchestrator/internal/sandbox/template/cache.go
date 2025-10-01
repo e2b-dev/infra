@@ -9,6 +9,7 @@ import (
 
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
@@ -17,6 +18,7 @@ import (
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // How long to keep the template in the cache since the last access.
@@ -32,7 +34,14 @@ const (
 	buildCacheMaxUsedPercentage = 85.0
 )
 
-var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template")
+var (
+	tracer     = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template")
+	meter      = otel.GetMeterProvider().Meter("orchestrator.internal.sandbox.template")
+	hitsMetric = utils.Must(meter.Int64Counter("orchestrator.templates.cache.hits",
+		metric.WithDescription("Requests for templates that were already cached")))
+	missesMetric = utils.Must(meter.Int64Counter("orchestrator.templates.cache.misses",
+		metric.WithDescription("Requests for templates that were not cached")))
+)
 
 type Cache struct {
 	flags         *featureflags.Client
@@ -66,12 +75,18 @@ func NewCache(
 	})
 
 	// Delete the old build cache directory content.
-	err := cleanDir(build.DefaultCachePath)
+	err := cleanDir(build.DefaultCachePath())
 	if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("failed to remove old build cache directory: %w", err)
 	}
 
-	buildStore, err := build.NewDiffStore(ctx, build.DefaultCachePath, buildCacheTTL, buildCacheDelayEviction, buildCacheMaxUsedPercentage)
+	buildStore, err := build.NewDiffStore(
+		ctx,
+		build.DefaultCachePath(),
+		buildCacheTTL,
+		buildCacheDelayEviction,
+		buildCacheMaxUsedPercentage,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build store: %w", err)
 	}
@@ -123,21 +138,7 @@ func (c *Cache) GetTemplate(
 		return nil, fmt.Errorf("failed to create template cache from storage: %w", err)
 	}
 
-	t, found := c.cache.GetOrSet(
-		template.Files().CacheKey(),
-		template,
-		ttlcache.WithTTL[string, *storageTemplate](templateExpiration),
-	)
-
-	if !found {
-		// We don't want to cancel the request if the request was canceled, because it can be used by other templates
-		// It's a little bit problematic, because shutdown won't cancel the fetch
-		go template.Fetch(context.WithoutCancel(ctx), c.buildStore)
-	} else {
-		template.AddFetchSpanLink(ctx)
-	}
-
-	return t.Value(), nil
+	return c.getTemplateWithFetch(ctx, template), nil
 }
 
 func (c *Cache) AddSnapshot(
@@ -181,17 +182,7 @@ func (c *Cache) AddSnapshot(
 		return fmt.Errorf("failed to create template cache from storage: %w", err)
 	}
 
-	_, found := c.cache.GetOrSet(
-		template.Files().CacheKey(),
-		template,
-		ttlcache.WithTTL[string, *storageTemplate](templateExpiration),
-	)
-
-	if !found {
-		// We don't want to cancel the request if the request was canceled/finished
-		// It's a little bit problematic, because shutdown won't cancel the fetch
-		go template.Fetch(context.WithoutCancel(ctx), c.buildStore)
-	}
+	c.getTemplateWithFetch(ctx, template)
 
 	return nil
 }
@@ -237,4 +228,23 @@ func cleanDir(path string) error {
 	}
 
 	return nil
+}
+
+func (c *Cache) getTemplateWithFetch(ctx context.Context, template *storageTemplate) Template {
+	t, found := c.cache.GetOrSet(
+		template.Files().CacheKey(),
+		template,
+		ttlcache.WithTTL[string, *storageTemplate](templateExpiration),
+	)
+
+	if !found {
+		missesMetric.Add(ctx, 1)
+		// We don't want to cancel the request if the request was canceled, because it can be used by other templates
+		// It's a little bit problematic, because shutdown won't cancel the fetch
+		go template.Fetch(context.WithoutCancel(ctx), c.buildStore)
+	} else {
+		hitsMetric.Add(ctx, 1)
+	}
+
+	return t.Value()
 }

@@ -9,36 +9,54 @@ import (
 	"net/http"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
-	requestTimeout = 50 * time.Millisecond
-	loopDelay      = 5 * time.Millisecond
+	loopDelay = 5 * time.Millisecond
 )
 
 // doRequestWithInfiniteRetries does a request with infinite retries until the context is done.
 // The parent context should have a deadline or a timeout.
-func doRequestWithInfiniteRetries(ctx context.Context, method, address string, requestBody []byte, accessToken *string) (*http.Response, error) {
+func doRequestWithInfiniteRetries(
+	ctx context.Context,
+	method, address string,
+	requestBody []byte,
+	accessToken *string,
+	envdInitRequestTimeout time.Duration,
+	sandboxID, envdVersion string,
+) (*http.Response, int64, error) {
+	requestCount := int64(0)
 	for {
-		response, err := doRequest(ctx, method, address, requestBody, accessToken)
-		if response != nil {
-			return response, nil
+		requestCount++
+
+		response, err := doRequest(ctx, method, address, requestBody, accessToken, envdInitRequestTimeout)
+		if err == nil {
+			return response, requestCount, nil
 		}
 
-		if err != nil {
-			return nil, err
-		}
+		zap.L().Warn("failed to do request to envd, retrying",
+			logger.WithSandboxID(sandboxID),
+			logger.WithEnvdVersion(envdVersion),
+			zap.Int64("timeout_ms", envdInitRequestTimeout.Milliseconds()),
+			zap.Error(err))
 
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("%w with cause: %w", ctx.Err(), context.Cause(ctx))
+			return nil, requestCount, fmt.Errorf("%w with cause: %w", ctx.Err(), context.Cause(ctx))
 		case <-time.After(loopDelay):
 		}
 	}
 }
 
-func doRequest(ctx context.Context, method, address string, requestBody []byte, accessToken *string) (*http.Response, error) {
+func doRequest(ctx context.Context, method, address string, requestBody []byte, accessToken *string, requestTimeout time.Duration) (*http.Response, error) {
 	ctx, span := tracer.Start(ctx, "perform envd-init")
 	defer span.End()
 
@@ -69,18 +87,25 @@ type PostInitJSONBody struct {
 	EnvVars     *map[string]string `json:"envVars"`
 	AccessToken *string            `json:"accessToken,omitempty"`
 	HyperloopIP *string            `json:"hyperloopIP,omitempty"`
+	Timestamp   *time.Time         `json:"timestamp,omitempty"`
 }
 
-func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string, accessToken *string) error {
-	childCtx, childSpan := tracer.Start(ctx, "envd-init")
-	defer childSpan.End()
+func (s *Sandbox) initEnvd(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "envd-init", trace.WithAttributes(telemetry.WithEnvdVersion(s.Config.Envd.Version)))
+	defer span.End()
+
+	attributes := []attribute.KeyValue{telemetry.WithEnvdVersion(s.Config.Envd.Version), attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds())}
+	attributesFail := append(attributes, attribute.Bool("success", false))
+	attributesSuccess := append(attributes, attribute.Bool("success", true))
 
 	hyperloopIP := s.Slot.HyperloopIPString()
 	address := fmt.Sprintf("http://%s:%d/init", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
+	now := time.Now()
 	jsonBody := &PostInitJSONBody{
-		EnvVars:     &envVars,
+		EnvVars:     &s.Config.Envd.Vars,
 		HyperloopIP: &hyperloopIP,
-		AccessToken: accessToken,
+		AccessToken: s.Config.Envd.AccessToken,
+		Timestamp:   &now,
 	}
 
 	body, err := json.Marshal(jsonBody)
@@ -88,10 +113,19 @@ func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string, acces
 		return err
 	}
 
-	response, err := doRequestWithInfiniteRetries(childCtx, "POST", address, body, accessToken)
+	response, count, err := doRequestWithInfiniteRetries(ctx, "POST", address, body, s.Config.Envd.AccessToken, s.internalConfig.EnvdInitRequestTimeout, s.Runtime.SandboxID, s.Config.Envd.Version)
 	if err != nil {
+		envdInitCalls.Add(ctx, count, metric.WithAttributes(attributesFail...))
 		return fmt.Errorf("failed to init envd: %w", err)
 	}
+
+	if count > 1 {
+		// Track failed envd init calls
+		envdInitCalls.Add(ctx, count-1, metric.WithAttributes(attributesFail...))
+	}
+
+	// Track successful envd init
+	envdInitCalls.Add(ctx, 1, metric.WithAttributes(attributesSuccess...))
 
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusNoContent {

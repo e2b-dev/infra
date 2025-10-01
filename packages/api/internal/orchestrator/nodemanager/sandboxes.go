@@ -8,12 +8,12 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
-func (n *Node) GetSandboxes(ctx context.Context) ([]instance.Data, error) {
+func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 	childCtx, childSpan := tracer.Start(ctx, "get-sandboxes-from-orchestrator")
 	defer childSpan.End()
 
@@ -27,7 +27,7 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]instance.Data, error) {
 
 	sandboxes := res.GetSandboxes()
 
-	sandboxesInfo := make([]instance.Data, 0, len(sandboxes))
+	sandboxesInfo := make([]sandbox.Sandbox, 0, len(sandboxes))
 
 	for _, sbx := range sandboxes {
 		config := sbx.GetConfig()
@@ -48,7 +48,7 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]instance.Data, error) {
 
 		sandboxesInfo = append(
 			sandboxesInfo,
-			instance.NewSandbox(
+			sandbox.NewSandbox(
 				config.SandboxId,
 				config.TemplateId,
 				consts.ClientID,

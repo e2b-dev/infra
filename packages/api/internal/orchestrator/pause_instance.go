@@ -9,8 +9,8 @@ import (
 	"github.com/gogo/status"
 	"google.golang.org/grpc/codes"
 
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
@@ -25,7 +25,7 @@ func (PauseQueueExhaustedError) Error() string {
 	return "The pause queue is exhausted"
 }
 
-func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node, sbx instance.Data) (err error) {
+func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox) (err error) {
 	ctx, span := tracer.Start(ctx, "pause-sandbox")
 	defer span.End()
 
@@ -87,7 +87,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	return nil
 }
 
-func snapshotInstance(ctx context.Context, orch *Orchestrator, node *nodemanager.Node, sbx instance.Data, templateID, buildID string) error {
+func snapshotInstance(ctx context.Context, orch *Orchestrator, node *nodemanager.Node, sbx sandbox.Sandbox, templateID, buildID string) error {
 	childCtx, childSpan := tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
 
@@ -120,4 +120,8 @@ func snapshotInstance(ctx context.Context, orch *Orchestrator, node *nodemanager
 	}
 
 	return fmt.Errorf("failed to pause sandbox '%s': %w", sbx.SandboxID, err)
+}
+
+func (o *Orchestrator) WaitForStateChange(ctx context.Context, sandboxID string) error {
+	return o.sandboxStore.WaitForStateChange(ctx, sandboxID)
 }

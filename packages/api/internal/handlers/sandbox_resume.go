@@ -14,7 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -43,7 +43,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
-	timeout := instance.InstanceExpiration
+	timeout := sandbox.SandboxTimeoutDefault
 	if body.Timeout != nil {
 		timeout = time.Duration(*body.Timeout) * time.Second
 
@@ -55,33 +55,32 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	}
 
 	sandboxID = utils.ShortID(sandboxID)
-	sbxCache, err := a.orchestrator.GetSandbox(sandboxID)
+	sandboxData, err := a.orchestrator.GetSandbox(sandboxID, true)
 	if err == nil {
-		data := sbxCache.Data()
-		switch data.State {
-		case instance.StatePausing:
+		switch sandboxData.State {
+		case sandbox.StatePausing:
 			zap.L().Debug("Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
-			err = sbxCache.WaitForStateChange(ctx)
+			err = a.orchestrator.WaitForStateChange(ctx, sandboxID)
 			if err != nil {
 				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error waiting for sandbox to pause")
 				return
 			}
-		case instance.StateKilling:
+		case sandbox.StateKilling:
 			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found")
 			return
-		case instance.StateRunning:
+		case sandbox.StateRunning:
 			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox %s is already running", sandboxID))
 
 			zap.L().Debug("Sandbox is already running",
 				logger.WithSandboxID(sandboxID),
-				zap.Time("end_time", data.EndTime),
-				zap.Time("start_time", data.StartTime),
-				zap.String("node_id", data.NodeID),
+				zap.Time("end_time", sandboxData.EndTime),
+				zap.Time("start_time", sandboxData.StartTime),
+				zap.String("node_id", sandboxData.NodeID),
 			)
 
 			return
 		default:
-			zap.L().Error("Sandbox is in an unknown state", logger.WithSandboxID(sandboxID), zap.String("state", string(data.State)))
+			zap.L().Error("Sandbox is in an unknown state", logger.WithSandboxID(sandboxID), zap.String("state", string(sandboxData.State)))
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "Sandbox is in an unknown state")
 			return
 		}

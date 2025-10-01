@@ -2,7 +2,7 @@ package nodemanager
 
 import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
 
@@ -86,7 +86,7 @@ func (n *Node) Metrics() Metrics {
 	return result
 }
 
-func (n *Node) AddSandbox(sandbox instance.Data) {
+func (n *Node) AddSandbox(sandbox sandbox.Sandbox) {
 	n.metricsMu.Lock()
 	defer n.metricsMu.Unlock()
 
@@ -94,7 +94,7 @@ func (n *Node) AddSandbox(sandbox instance.Data) {
 	n.metrics.RamUsage += sandbox.RamMB
 }
 
-func (n *Node) RemoveSandbox(sandbox instance.Data) {
+func (n *Node) RemoveSandbox(sandbox sandbox.Sandbox) {
 	n.metricsMu.Lock()
 	defer n.metricsMu.Unlock()
 

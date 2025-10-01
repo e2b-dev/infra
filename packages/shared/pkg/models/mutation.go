@@ -4579,6 +4579,7 @@ type SnapshotMutation struct {
 	env_secure            *bool
 	auto_pause            *bool
 	origin_node_id        *string
+	team_id               *uuid.UUID
 	allow_internet_access *bool
 	clearedFields         map[string]struct{}
 	env                   *string
@@ -5016,6 +5017,42 @@ func (m *SnapshotMutation) ResetOriginNodeID() {
 	m.origin_node_id = nil
 }
 
+// SetTeamID sets the "team_id" field.
+func (m *SnapshotMutation) SetTeamID(u uuid.UUID) {
+	m.team_id = &u
+}
+
+// TeamID returns the value of the "team_id" field in the mutation.
+func (m *SnapshotMutation) TeamID() (r uuid.UUID, exists bool) {
+	v := m.team_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTeamID returns the old "team_id" field's value of the Snapshot entity.
+// If the Snapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SnapshotMutation) OldTeamID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTeamID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTeamID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTeamID: %w", err)
+	}
+	return oldValue.TeamID, nil
+}
+
+// ResetTeamID resets all changes to the "team_id" field.
+func (m *SnapshotMutation) ResetTeamID() {
+	m.team_id = nil
+}
+
 // SetAllowInternetAccess sets the "allow_internet_access" field.
 func (m *SnapshotMutation) SetAllowInternetAccess(b bool) {
 	m.allow_internet_access = &b
@@ -5126,7 +5163,7 @@ func (m *SnapshotMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SnapshotMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 11)
 	if m.created_at != nil {
 		fields = append(fields, snapshot.FieldCreatedAt)
 	}
@@ -5153,6 +5190,9 @@ func (m *SnapshotMutation) Fields() []string {
 	}
 	if m.origin_node_id != nil {
 		fields = append(fields, snapshot.FieldOriginNodeID)
+	}
+	if m.team_id != nil {
+		fields = append(fields, snapshot.FieldTeamID)
 	}
 	if m.allow_internet_access != nil {
 		fields = append(fields, snapshot.FieldAllowInternetAccess)
@@ -5183,6 +5223,8 @@ func (m *SnapshotMutation) Field(name string) (ent.Value, bool) {
 		return m.AutoPause()
 	case snapshot.FieldOriginNodeID:
 		return m.OriginNodeID()
+	case snapshot.FieldTeamID:
+		return m.TeamID()
 	case snapshot.FieldAllowInternetAccess:
 		return m.AllowInternetAccess()
 	}
@@ -5212,6 +5254,8 @@ func (m *SnapshotMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldAutoPause(ctx)
 	case snapshot.FieldOriginNodeID:
 		return m.OldOriginNodeID(ctx)
+	case snapshot.FieldTeamID:
+		return m.OldTeamID(ctx)
 	case snapshot.FieldAllowInternetAccess:
 		return m.OldAllowInternetAccess(ctx)
 	}
@@ -5285,6 +5329,13 @@ func (m *SnapshotMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetOriginNodeID(v)
+		return nil
+	case snapshot.FieldTeamID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTeamID(v)
 		return nil
 	case snapshot.FieldAllowInternetAccess:
 		v, ok := value.(bool)
@@ -5377,6 +5428,9 @@ func (m *SnapshotMutation) ResetField(name string) error {
 		return nil
 	case snapshot.FieldOriginNodeID:
 		m.ResetOriginNodeID()
+		return nil
+	case snapshot.FieldTeamID:
+		m.ResetTeamID()
 		return nil
 	case snapshot.FieldAllowInternetAccess:
 		m.ResetAllowInternetAccess()

@@ -12,8 +12,6 @@ import (
 
 	"github.com/bits-and-blooms/bitset"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
@@ -79,9 +77,7 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 	}
 
 	go func() {
-		ctx, span := tracer.Start(ctx, "Uffd:Start", trace.WithAttributes(
-			attribute.String("sandbox-id", sandboxId),
-		))
+		ctx, span := tracer.Start(ctx, "serve uffd")
 		defer span.End()
 
 		// TODO: If the handle function fails, we should kill the sandbox

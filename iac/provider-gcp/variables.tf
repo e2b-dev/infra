@@ -430,6 +430,27 @@ variable "filestore_cache_capacity_gb" {
   default     = 0
 }
 
+variable "filestore_cache_cleanup_disk_usage_target" {
+  type        = number
+  description = "The max disk usage target of the Filestore"
+  default     = 90
+}
+
+variable "filestore_cache_cleanup_dry_run" {
+  type    = bool
+  default = false
+}
+
+variable "filestore_cache_cleanup_files_per_loop" {
+  type    = number
+  default = 10000
+}
+
+variable "filestore_cache_cleanup_deletions_per_loop" {
+  type    = number
+  default = 900
+}
+
 variable "min_cpu_platform" {
   type    = string
   default = "Intel Skylake"
@@ -445,4 +466,10 @@ variable "orchestrator_base_hugepages_percentage" {
   description = "The percentage of memory to use for preallocated hugepages."
   type        = number
   default     = 80
+}
+
+variable "remote_repository_enabled" {
+  type        = bool
+  description = "Set to true to enable remote repository cache. Can be set via TF_VAR_remote_repository_enabled or REMOTE_REPOSITORY_ENABLED env var."
+  default     = false
 }

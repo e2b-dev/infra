@@ -6,18 +6,18 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type Evictor struct {
-	store         *instance.MemoryStore
-	removeSandbox func(ctx context.Context, sandbox instance.Data, stateAction instance.StateAction) error
+	store         sandbox.Store
+	removeSandbox func(ctx context.Context, sandbox sandbox.Sandbox, stateAction sandbox.StateAction) error
 }
 
 func New(
-	store *instance.MemoryStore,
-	removeSandbox func(ctx context.Context, sandbox instance.Data, stateAction instance.StateAction) error,
+	store sandbox.Store,
+	removeSandbox func(ctx context.Context, sandbox sandbox.Sandbox, stateAction sandbox.StateAction) error,
 ) *Evictor {
 	return &Evictor{
 		store:         store,
@@ -33,9 +33,9 @@ func (e *Evictor) Start(ctx context.Context) {
 		case <-time.After(50 * time.Millisecond):
 			for _, item := range e.store.ItemsToEvict() {
 				go func() {
-					stateAction := instance.StateActionKill
+					stateAction := sandbox.StateActionKill
 					if item.AutoPause {
-						stateAction = instance.StateActionPause
+						stateAction = sandbox.StateActionPause
 					}
 
 					if err := e.removeSandbox(ctx, item, stateAction); err != nil {

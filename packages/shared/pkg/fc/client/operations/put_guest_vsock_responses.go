@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -91,11 +92,11 @@ func (o *PutGuestVsockNoContent) Code() int {
 }
 
 func (o *PutGuestVsockNoContent) Error() string {
-	return fmt.Sprintf("[PUT /vsock][%d] putGuestVsockNoContent ", 204)
+	return fmt.Sprintf("[PUT /vsock][%d] putGuestVsockNoContent", 204)
 }
 
 func (o *PutGuestVsockNoContent) String() string {
-	return fmt.Sprintf("[PUT /vsock][%d] putGuestVsockNoContent ", 204)
+	return fmt.Sprintf("[PUT /vsock][%d] putGuestVsockNoContent", 204)
 }
 
 func (o *PutGuestVsockNoContent) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -148,11 +149,13 @@ func (o *PutGuestVsockBadRequest) Code() int {
 }
 
 func (o *PutGuestVsockBadRequest) Error() string {
-	return fmt.Sprintf("[PUT /vsock][%d] putGuestVsockBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /vsock][%d] putGuestVsockBadRequest %s", 400, payload)
 }
 
 func (o *PutGuestVsockBadRequest) String() string {
-	return fmt.Sprintf("[PUT /vsock][%d] putGuestVsockBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /vsock][%d] putGuestVsockBadRequest %s", 400, payload)
 }
 
 func (o *PutGuestVsockBadRequest) GetPayload() *models.Error {
@@ -220,11 +223,13 @@ func (o *PutGuestVsockDefault) Code() int {
 }
 
 func (o *PutGuestVsockDefault) Error() string {
-	return fmt.Sprintf("[PUT /vsock][%d] putGuestVsock default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /vsock][%d] putGuestVsock default %s", o._statusCode, payload)
 }
 
 func (o *PutGuestVsockDefault) String() string {
-	return fmt.Sprintf("[PUT /vsock][%d] putGuestVsock default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /vsock][%d] putGuestVsock default %s", o._statusCode, payload)
 }
 
 func (o *PutGuestVsockDefault) GetPayload() *models.Error {

@@ -21,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci/auth"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -37,21 +38,33 @@ var DefaultPlatform = containerregistry.Platform{
 	Architecture: "amd64",
 }
 
-func GetPublicImage(ctx context.Context, tag string, authProvider auth.RegistryAuthProvider) (containerregistry.Image, error) {
-	childCtx, childSpan := tracer.Start(ctx, "pull-public-docker-image")
-	defer childSpan.End()
+func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRepository, tag string, authProvider auth.RegistryAuthProvider) (containerregistry.Image, error) {
+	ctx, span := tracer.Start(ctx, "pull-public-docker-image")
+	defer span.End()
 
 	ref, err := name.ParseReference(tag)
 	if err != nil {
 		return nil, fmt.Errorf("invalid image reference: %w", err)
 	}
 
-	// Build authentication options
+	// When no auth provider is provided and the image is from the default registry
+	// use docker remote repository proxy with cached images
+	if authProvider == nil && ref.Context().RegistryStr() == name.DefaultRegistry {
+		img, err := dockerhubRepository.GetImage(ctx, tag, DefaultPlatform)
+		if err != nil {
+			return nil, fmt.Errorf("error getting image: %w", err)
+		}
+
+		telemetry.ReportEvent(ctx, "pulled public image")
+		return img, nil
+	}
+
+	// Build options
 	opts := []remote.Option{remote.WithPlatform(DefaultPlatform)}
 
 	// Use the auth provider if provided
 	if authProvider != nil {
-		authOption, err := authProvider.GetAuthOption(childCtx)
+		authOption, err := authProvider.GetAuthOption(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("error getting auth option: %w", err)
 		}
@@ -65,7 +78,7 @@ func GetPublicImage(ctx context.Context, tag string, authProvider auth.RegistryA
 		return nil, fmt.Errorf("error pulling image: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "pulled public image")
+	telemetry.ReportEvent(ctx, "pulled public image")
 	return img, nil
 }
 
@@ -116,7 +129,7 @@ func ToExt4(ctx context.Context, logger *zap.Logger, img containerregistry.Image
 	}
 
 	// Check the FS integrity first so no errors occur during shrinking
-	_, err = filesystem.CheckIntegrity(rootfsPath, true)
+	_, err = filesystem.CheckIntegrity(ctx, rootfsPath, true)
 	if err != nil {
 		return 0, fmt.Errorf("error checking filesystem integrity after ext4 creation: %w", err)
 	}
@@ -128,7 +141,7 @@ func ToExt4(ctx context.Context, logger *zap.Logger, img containerregistry.Image
 	}
 
 	// Check the FS integrity after shrinking
-	_, err = filesystem.CheckIntegrity(rootfsPath, true)
+	_, err = filesystem.CheckIntegrity(ctx, rootfsPath, true)
 	if err != nil {
 		return 0, fmt.Errorf("error checking filesystem integrity after shrinking: %w", err)
 	}
@@ -275,7 +288,7 @@ func copyFiles(ctx context.Context, src, dest string) error {
 	//
 	// --whole-file: Copy files without using the delta algorithm, which is faster for local copies
 	// --inplace: Update destination files in place, no need to create temporary files
-	cmd := exec.Command("rsync", "-aH", "--whole-file", "--inplace", src+"/", dest)
+	cmd := exec.CommandContext(ctx, "rsync", "-aH", "--whole-file", "--inplace", src+"/", dest)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("while copying files from %s to %s: %w: %s", src, dest, err, string(out))
 	}

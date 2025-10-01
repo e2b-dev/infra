@@ -13,20 +13,23 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
+
+type closeable interface {
+	Close() error
+}
 
 type ServerStore struct {
 	templatemanager.UnimplementedTemplateServiceServer
@@ -41,6 +44,8 @@ type ServerStore struct {
 
 	wg   *sync.WaitGroup // wait group for running builds
 	info *service.ServiceInfo
+
+	closers []closeable
 }
 
 func New(
@@ -49,21 +54,39 @@ func New(
 	logger *zap.Logger,
 	buildLogger *zap.Logger,
 	grpc *grpcserver.GRPCServer,
-	networkPool *network.Pool,
-	devicePool *nbd.DevicePool,
+	sandboxFactory *sandbox.Factory,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 	templateCache *sbxtemplate.Cache,
 	templatePersistence storage.StorageProvider,
 	limiter *limit.Limiter,
 	info *service.ServiceInfo,
-) (*ServerStore, error) {
+) (s *ServerStore, e error) {
 	logger.Info("Initializing template manager")
 
-	artifactsregistry, err := artifactsregistry.GetArtifactsRegistryProvider() //nolint:contextcheck // TODO: fix this later
+	closers := make([]closeable, 0)
+	defer func() {
+		if e == nil {
+			return
+		}
+
+		for _, closer := range closers {
+			if err := closer.Close(); err != nil {
+				logger.Error("error closing resource", zap.Error(err))
+			}
+		}
+	}()
+
+	artifactsregistry, err := artifactsregistry.GetArtifactsRegistryProvider(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting artifacts registry provider: %w", err)
 	}
+
+	dockerhubRepository, err := dockerhub.GetRemoteRepository(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting docker remote repository provider: %w", err)
+	}
+	closers = append(closers, dockerhubRepository)
 
 	buildPersistance, err := storage.GetBuildCacheStorageProvider(ctx, limiter)
 	if err != nil {
@@ -75,13 +98,14 @@ func New(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build metrics: %w", err)
 	}
+
 	builder := build.NewBuilder(
 		logger,
+		sandboxFactory,
 		templatePersistence,
 		buildPersistance,
 		artifactsregistry,
-		devicePool,
-		networkPool,
+		dockerhubRepository,
 		proxy,
 		sandboxes,
 		templateCache,
@@ -98,6 +122,7 @@ func New(
 		buildStorage:      buildPersistance,
 		info:              info,
 		wg:                &sync.WaitGroup{},
+		closers:           closers,
 	}
 
 	templatemanager.RegisterTemplateServiceServer(grpc.GRPCServer(), store)
@@ -124,6 +149,18 @@ func (s *ServerStore) Close(ctx context.Context) error {
 		}
 
 		s.logger.Info("Template build queue cleaned")
+
+		var closersErr error
+		for _, closer := range s.closers {
+			err := closer.Close()
+			if err != nil {
+				closersErr = errors.Join(closersErr, err)
+			}
+		}
+		if closersErr != nil {
+			return fmt.Errorf("failed to close services: %w", closersErr)
+		}
+
 		return nil
 	}
 }

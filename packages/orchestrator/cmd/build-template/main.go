@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -87,7 +88,7 @@ func buildTemplate(
 		logger.Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 	go func() {
-		err := sandboxProxy.Start()
+		err := sandboxProxy.Start(parentCtx)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("failed to start sandbox proxy", zap.Error(err))
 		}
@@ -131,10 +132,21 @@ func buildTemplate(
 		}
 	}()
 
-	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider() //nolint:contextcheck // TODO: fix this later
+	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider(ctx)
 	if err != nil {
 		return fmt.Errorf("error getting artifacts registry provider: %w", err)
 	}
+
+	dockerhubRepository, err := dockerhub.GetRemoteRepository(ctx)
+	if err != nil {
+		return fmt.Errorf("error getting dockerhub repository: %w", err)
+	}
+	defer func() {
+		err := dockerhubRepository.Close()
+		if err != nil {
+			logger.Error("error closing dockerhub repository", zap.Error(err))
+		}
+	}()
 
 	blockMetrics, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
 	if err != nil {
@@ -155,13 +167,16 @@ func buildTemplate(
 	if err != nil {
 		zap.L().Fatal("failed to create build metrics", zap.Error(err))
 	}
+
+	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, true)
+
 	builder := build.NewBuilder(
 		logger,
+		sandboxFactory,
 		persistenceTemplate,
 		persistenceBuild,
 		artifactRegistry,
-		devicePool,
-		networkPool,
+		dockerhubRepository,
 		sandboxProxy,
 		sandboxes,
 		templateCache,
@@ -174,6 +189,7 @@ func buildTemplate(
 
 	force := true
 	template := config.TemplateConfig{
+		TeamID:     "",
 		TemplateID: templateID,
 		FromImage:  baseImage,
 		Force:      &force,

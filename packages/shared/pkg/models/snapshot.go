@@ -38,6 +38,8 @@ type Snapshot struct {
 	AutoPause bool `json:"auto_pause,omitempty"`
 	// OriginNodeID holds the value of the "origin_node_id" field.
 	OriginNodeID string `json:"origin_node_id,omitempty"`
+	// TeamID holds the value of the "team_id" field.
+	TeamID uuid.UUID `json:"team_id,omitempty"`
 	// AllowInternetAccess holds the value of the "allow_internet_access" field.
 	AllowInternetAccess *bool `json:"allow_internet_access,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -81,7 +83,7 @@ func (*Snapshot) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullString)
 		case snapshot.FieldCreatedAt, snapshot.FieldSandboxStartedAt:
 			values[i] = new(sql.NullTime)
-		case snapshot.FieldID:
+		case snapshot.FieldID, snapshot.FieldTeamID:
 			values[i] = new(uuid.UUID)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -160,6 +162,12 @@ func (s *Snapshot) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				s.OriginNodeID = value.String
 			}
+		case snapshot.FieldTeamID:
+			if value, ok := values[i].(*uuid.UUID); !ok {
+				return fmt.Errorf("unexpected type %T for field team_id", values[i])
+			} else if value != nil {
+				s.TeamID = *value
+			}
 		case snapshot.FieldAllowInternetAccess:
 			if value, ok := values[i].(*sql.NullBool); !ok {
 				return fmt.Errorf("unexpected type %T for field allow_internet_access", values[i])
@@ -234,6 +242,9 @@ func (s *Snapshot) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("origin_node_id=")
 	builder.WriteString(s.OriginNodeID)
+	builder.WriteString(", ")
+	builder.WriteString("team_id=")
+	builder.WriteString(fmt.Sprintf("%v", s.TeamID))
 	builder.WriteString(", ")
 	if v := s.AllowInternetAccess; v != nil {
 		builder.WriteString("allow_internet_access=")

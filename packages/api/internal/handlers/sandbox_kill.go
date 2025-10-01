@@ -13,8 +13,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
@@ -87,14 +87,14 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 
 	killedOrRemoved := false
 
-	sbx, err := a.orchestrator.GetSandboxData(sandboxID, true)
+	sbx, err := a.orchestrator.GetSandbox(sandboxID, true)
 	if err == nil {
 		if sbx.TeamID != teamID {
 			a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
 			return
 		}
 
-		err = a.orchestrator.RemoveSandbox(ctx, sbx, instance.StateActionKill)
+		err = a.orchestrator.RemoveSandbox(ctx, sbx, sandbox.StateActionKill)
 		switch {
 		case err == nil:
 			killedOrRemoved = true

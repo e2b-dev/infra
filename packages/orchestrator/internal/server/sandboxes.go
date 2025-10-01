@@ -87,11 +87,6 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}
 	defer s.startingSandboxes.Release(1)
 
-	metricsWriteFlag, flagErr := s.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlagName)
-	if flagErr != nil {
-		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
-	}
-
 	template, err := s.templateCache.GetTemplate(
 		ctx,
 		req.GetSandbox().GetBuildId(),
@@ -104,23 +99,8 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
 
-	// span/context used for the running of the sandbox
-	runCtx := context.WithoutCancel(ctx)
-	runCtx, runSpan := tracer.Start(runCtx, "execute sandbox", trace.WithNewRoot(), trace.WithAttributes( //nolint:spancheck // it actually does, the linter is wrong
-		attribute.String("template_id", req.GetSandbox().GetTemplateId()),
-		attribute.String("sandbox_id", req.GetSandbox().GetSandboxId()),
-		attribute.String("client_id", s.info.ClientId),
-	))
-	span.AddLink(trace.LinkFromContext(runCtx))
-	defer func() {
-		if err != nil {
-			runSpan.End()
-		}
-	}()
-
-	sbx, err := sandbox.ResumeSandbox(
-		ctx, runCtx,
-		s.networkPool,
+	sbx, err := s.sandboxFactory.ResumeSandbox(
+		ctx,
 		template,
 		sandbox.Config{
 			BaseTemplateID: req.Sandbox.BaseTemplateId,
@@ -147,22 +127,18 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		span.SpanContext().TraceID().String(),
 		req.StartTime.AsTime(),
 		req.EndTime.AsTime(),
-		s.devicePool,
-		metricsWriteFlag,
 		req.Sandbox,
 	)
 	if err != nil {
 		err = errors.Join(err, context.Cause(ctx))
 		telemetry.ReportCriticalError(ctx, "failed to create sandbox", err)
-		return nil, status.Errorf(codes.Internal, "failed to create sandbox: %s", err) //nolint:spancheck // it actually does, the linter is wrong
+		return nil, status.Errorf(codes.Internal, "failed to create sandbox: %s", err)
 	}
 
 	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
 
 	go func() {
-		defer runSpan.End()
-
-		ctx, childSpan := tracer.Start(runCtx, "wait-for-stop")
+		ctx, childSpan := tracer.Start(ctx, "wait-for-stop", trace.WithNewRoot())
 		defer childSpan.End()
 
 		waitErr := sbx.Wait(ctx)
@@ -318,7 +294,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	// Start the cleanup in a goroutine—the initial kill request should be send as the first thing in stop, and at this point you cannot route to the sandbox anymore.
 	// We don't wait for the whole cleanup to finish here.
 	go func() {
-		err := sbx.Stop(ctx)
+		err := sbx.Stop(context.WithoutCancel(ctx))
 		if err != nil {
 			sbxlogger.I(sbx).Error("error stopping sandbox", logger.WithSandboxID(in.SandboxId), zap.Error(err))
 		}
