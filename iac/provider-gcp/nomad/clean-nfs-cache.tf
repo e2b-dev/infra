@@ -22,7 +22,7 @@ resource "nomad_job" "clean_nfs_cache" {
     nfs_cache_mount_path     = var.shared_chunk_cache_path
     max_disk_usage_target    = var.filestore_cache_cleanup_disk_usage_target
     dry_run                  = var.filestore_cache_cleanup_dry_run
-    deletions_per_iteration  = var.filestore_cache_cleanup_deletions_per_loop
-    files_per_iteration      = var.filestore_cache_cleanup_files_per_loop
+    deletions_per_loop       = var.filestore_cache_cleanup_deletions_per_loop
+    files_per_loop           = var.filestore_cache_cleanup_files_per_loop
   })
 }

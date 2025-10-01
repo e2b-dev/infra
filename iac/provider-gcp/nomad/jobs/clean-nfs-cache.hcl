@@ -24,8 +24,8 @@ job "filestore-cleanup" {
                 args = [
                     "--dry-run=${dry_run}",
                     "--disk-usage-target-percent=${max_disk_usage_target}",
-                    "--files-per-iteration=${files_per_iteration}",
-                    "--deletions-per-iteration=${deletions_per_iteration}",
+                    "--files-per-loop=${files_per_loop}",
+                    "--deletions-per-loop=${deletions_per_loop}",
                     "${nfs_cache_mount_path}",
                 ]
             }
