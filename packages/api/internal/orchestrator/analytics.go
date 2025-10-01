@@ -35,7 +35,7 @@ func (o *Orchestrator) reportLongRunningSandboxes(ctx context.Context) {
 			zap.L().Info("Stopping node analytics reporting due to context cancellation")
 			return
 		case <-ticker.C:
-			sandboxes := o.sandboxStore.Items(sandbox.WithState(sandbox.StateRunning), sandbox.WithIsExpired(false))
+			sandboxes := o.sandboxStore.Items(sandbox.WithState(sandbox.StateRunning), sandbox.WithAllTeams())
 			longRunningSandboxes := make([]sandbox.Sandbox, 0, len(sandboxes))
 			for _, sandbox := range sandboxes {
 				if time.Since(sandbox.StartTime) > oldSandboxThreshold {

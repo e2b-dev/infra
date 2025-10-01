@@ -12,9 +12,18 @@ type (
 )
 
 type ItemsFilter struct {
-	TeamID    *uuid.UUID
-	States    *[]State
-	IsExpired *bool
+	TeamID      *uuid.UUID
+	States      []State
+	OnlyExpired bool
+}
+
+func NewItemsFilter() *ItemsFilter {
+	// Defaults to prevent accidental full scans
+	return &ItemsFilter{
+		States:      nil,
+		TeamID:      &uuid.Nil,
+		OnlyExpired: false,
+	}
 }
 
 type Store interface {
@@ -36,20 +45,31 @@ func WithTeamID(teamID uuid.UUID) ItemsOption {
 	}
 }
 
+func WithAllTeams() ItemsOption {
+	return func(f *ItemsFilter) {
+		f.TeamID = nil
+	}
+}
+
 func WithState(state State) ItemsOption {
 	return func(f *ItemsFilter) {
-		f.States = &[]State{state}
+		f.States = []State{state}
 	}
 }
 
 func WithStates(states ...State) ItemsOption {
 	return func(f *ItemsFilter) {
-		f.States = &states
+		if len(states) == 0 {
+			f.States = nil
+			return
+		}
+
+		f.States = states
 	}
 }
 
-func WithIsExpired(isExpired bool) ItemsOption {
+func WithOnlyExpired(isExpired bool) ItemsOption {
 	return func(f *ItemsFilter) {
-		f.IsExpired = &isExpired
+		f.OnlyExpired = isExpired
 	}
 }

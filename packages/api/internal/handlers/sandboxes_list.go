@@ -86,7 +86,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		return
 	}
 
-	sandboxes := a.orchestrator.GetSandboxes(ctx, sandbox.WithTeamID(team.ID), sandbox.WithState(sandbox.StateRunning), sandbox.WithIsExpired(false))
+	sandboxes := a.orchestrator.GetSandboxes(ctx, sandbox.WithTeamID(team.ID), sandbox.WithState(sandbox.StateRunning))
 	runningSandboxes := getRunningSandboxes(sandboxes, metadataFilter)
 
 	// Sort sandboxes by start time descending

@@ -79,7 +79,7 @@ func (s *Store) Remove(sandboxID string) {
 }
 
 func (s *Store) Items(options ...sandbox.ItemsOption) []sandbox.Sandbox {
-	filter := &sandbox.ItemsFilter{}
+	filter := sandbox.NewItemsFilter()
 	for _, opt := range options {
 		opt(filter)
 	}

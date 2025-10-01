@@ -11,10 +11,10 @@ func applyFilter(sbx sandbox.Sandbox, filter *sandbox.ItemsFilter) bool {
 	if filter.TeamID != nil && sbx.TeamID != *filter.TeamID {
 		return false
 	}
-	if filter.States != nil && !slices.Contains(*filter.States, sbx.State) {
+	if filter.States != nil && !slices.Contains(filter.States, sbx.State) {
 		return false
 	}
-	if filter.IsExpired != nil && sbx.IsExpired() != *filter.IsExpired {
+	if sbx.IsExpired() != filter.OnlyExpired {
 		return false
 	}
 	return true
