@@ -290,14 +290,18 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 
 	templateProvider := layer.NewDirectSourceTemplateProvider(localTemplate)
 
-	baseLayer, err := bb.layerExecutor.BuildLayer(ctx, userLogger, layer.LayerBuildCommand{
-		SourceTemplate: templateProvider,
-		CurrentLayer:   baseMetadata,
-		Hash:           hash,
-		UpdateEnvd:     false,
-		SandboxCreator: sandboxCreator,
-		ActionExecutor: actionExecutor,
-	})
+	baseLayer, err := bb.layerExecutor.BuildLayer(
+		ctx,
+		userLogger,
+		layer.LayerBuildCommand{
+			SourceTemplate: templateProvider,
+			CurrentLayer:   baseMetadata,
+			Hash:           hash,
+			UpdateEnvd:     false,
+			SandboxCreator: sandboxCreator,
+			ActionExecutor: actionExecutor,
+		},
+	)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("error building base layer: %w", err)
 	}

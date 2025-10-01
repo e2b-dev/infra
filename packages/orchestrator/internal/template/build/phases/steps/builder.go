@@ -208,14 +208,18 @@ func (sb *StepBuilder) Build(
 
 	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template)
 
-	meta, err := sb.layerExecutor.BuildLayer(ctx, userLogger, layer.LayerBuildCommand{
-		SourceTemplate: templateProvider,
-		CurrentLayer:   currentLayer.Metadata,
-		Hash:           currentLayer.Hash,
-		UpdateEnvd:     sourceLayer.Cached,
-		SandboxCreator: sandboxCreator,
-		ActionExecutor: actionExecutor,
-	})
+	meta, err := sb.layerExecutor.BuildLayer(
+		ctx,
+		userLogger,
+		layer.LayerBuildCommand{
+			SourceTemplate: templateProvider,
+			CurrentLayer:   currentLayer.Metadata,
+			Hash:           currentLayer.Hash,
+			UpdateEnvd:     sourceLayer.Cached,
+			SandboxCreator: sandboxCreator,
+			ActionExecutor: actionExecutor,
+		},
+	)
 	if err != nil {
 		return phases.LayerResult{}, fmt.Errorf("error building step %d: %w", sb.stepNumber, err)
 	}
