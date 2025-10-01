@@ -726,7 +726,7 @@ func pauseProcessMemory(
 	defer span.End()
 
 	memfileDiffFile, err := build.NewLocalDiffFile(
-		build.DefaultCachePath,
+		build.DefaultCachePath(),
 		buildId.String(),
 		build.Memfile,
 	)
@@ -790,7 +790,7 @@ func pauseProcessRootfs(
 	ctx, span := tracer.Start(ctx, "process-rootfs")
 	defer span.End()
 
-	rootfsDiffFile, err := build.NewLocalDiffFile(build.DefaultCachePath, buildId.String(), build.Rootfs)
+	rootfsDiffFile, err := build.NewLocalDiffFile(build.DefaultCachePath(), buildId.String(), build.Rootfs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create rootfs diff: %w", err)
 	}

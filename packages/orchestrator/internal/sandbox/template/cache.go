@@ -75,14 +75,14 @@ func NewCache(
 	})
 
 	// Delete the old build cache directory content.
-	err := cleanDir(build.DefaultCachePath)
+	err := cleanDir(build.DefaultCachePath())
 	if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("failed to remove old build cache directory: %w", err)
 	}
 
 	buildStore, err := build.NewDiffStore(
 		ctx,
-		build.DefaultCachePath,
+		build.DefaultCachePath(),
 		buildCacheTTL,
 		buildCacheDelayEviction,
 		buildCacheMaxUsedPercentage,

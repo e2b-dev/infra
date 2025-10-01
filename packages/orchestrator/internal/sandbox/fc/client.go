@@ -171,11 +171,7 @@ func (c *apiClient) setBootSource(ctx context.Context, kernelArgs string, kernel
 	}
 
 	_, err := c.client.Operations.PutGuestBootSource(&bootSourceConfig)
-	if err != nil {
-		return fmt.Errorf("error setting fc boot source config: %w", err)
-	}
-
-	return nil
+	return err
 }
 
 func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string) error {

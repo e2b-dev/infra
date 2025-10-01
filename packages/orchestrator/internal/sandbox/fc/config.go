@@ -1,21 +1,44 @@
 package fc
 
-import "path/filepath"
+import (
+	"os"
+	"path/filepath"
+)
 
 const (
-	HostKernelsDir = "/fc-kernels"
-
-	SandboxDir        = "/fc-vm"
 	SandboxKernelFile = "vmlinux.bin"
 
-	FirecrackerVersionsDir = "/fc-versions"
-	FirecrackerBinaryName  = "firecracker"
+	FirecrackerBinaryName = "firecracker"
 
 	envsDisk     = "/mnt/disks/fc-envs/v1"
 	buildDirName = "builds"
 
 	SandboxRootfsFile = "rootfs.ext4"
 )
+
+func SandboxDir() string {
+	if value := os.Getenv("SANDBOX_DIR"); value != "" {
+		return value
+	}
+
+	return "/fc-vm"
+}
+
+func HostKernelsDir() string {
+	if value := os.Getenv("HOST_KERNELS_DIR"); value != "" {
+		return value
+	}
+
+	return "/fc-kernels"
+}
+
+func FirecrackerVersionsDir() string {
+	if value := os.Getenv("FIRECRACKER_VERSIONS_DIR"); value != "" {
+		return value
+	}
+
+	return "/fc-versions"
+}
 
 type FirecrackerVersions struct {
 	KernelVersion      string
@@ -27,11 +50,11 @@ func (t FirecrackerVersions) SandboxKernelDir() string {
 }
 
 func (t FirecrackerVersions) HostKernelPath() string {
-	return filepath.Join(HostKernelsDir, t.KernelVersion, SandboxKernelFile)
+	return filepath.Join(HostKernelsDir(), t.KernelVersion, SandboxKernelFile)
 }
 
 func (t FirecrackerVersions) FirecrackerPath() string {
-	return filepath.Join(FirecrackerVersionsDir, t.FirecrackerVersion, FirecrackerBinaryName)
+	return filepath.Join(FirecrackerVersionsDir(), t.FirecrackerVersion, FirecrackerBinaryName)
 }
 
 type RootfsPaths struct {
