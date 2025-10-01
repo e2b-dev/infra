@@ -12,8 +12,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -23,7 +25,7 @@ const (
 
 // doRequestWithInfiniteRetries does a request with infinite retries until the context is done.
 // The parent context should have a deadline or a timeout.
-func doRequestWithInfiniteRetries(ctx context.Context, method, address string, requestBody []byte, accessToken *string, envdInitRequestTimeout time.Duration, sandboxID string) (*http.Response, int64, error) {
+func doRequestWithInfiniteRetries(ctx context.Context, method, address string, requestBody []byte, accessToken *string, envdInitRequestTimeout time.Duration, sandboxID, envdVersion string) (*http.Response, int64, error) {
 	requestCount := int64(0)
 	for {
 		requestCount++
@@ -46,6 +48,8 @@ func doRequestWithInfiniteRetries(ctx context.Context, method, address string, r
 		if err == nil {
 			return response, requestCount, nil
 		}
+
+		zap.L().Warn("failed to do request to envd, retrying", logger.WithSandboxID(sandboxID), logger.WithEnvdVersion(envdVersion), zap.Error(err))
 
 		select {
 		case <-ctx.Done():
@@ -85,7 +89,7 @@ func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string, acces
 		return err
 	}
 
-	response, count, err := doRequestWithInfiniteRetries(ctx, "POST", address, body, accessToken, envdInitRequestTimeout, s.Runtime.SandboxID)
+	response, count, err := doRequestWithInfiniteRetries(ctx, "POST", address, body, accessToken, envdInitRequestTimeout, s.Runtime.SandboxID, s.Config.Envd.Version)
 	if err != nil {
 		envdInitCalls.Add(ctx, count, metric.WithAttributes(attributesFail...))
 		return fmt.Errorf("failed to init envd: %w", err)
