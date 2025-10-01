@@ -35,7 +35,7 @@ import (
 
 var (
 	defaultEnvdTimeout = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT", "10s")))
-	meter              = otel.GetMeterProvider().Meter("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox")
+	meter              = otel.GetMeterProvider().Meter("orchestrator.internal.sandbox")
 	envdInitCalls      = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitCalls))
 )
 
