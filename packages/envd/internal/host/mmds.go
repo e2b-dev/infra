@@ -149,8 +149,6 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 			if mmdsOpts.Address != "" {
 				mmdsChan <- mmdsOpts
 			}
-
-			return
 		}
 	}
 }
