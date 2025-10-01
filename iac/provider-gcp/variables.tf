@@ -430,6 +430,12 @@ variable "filestore_cache_capacity_gb" {
   default     = 0
 }
 
+variable "filestore_max_disk_usage_target" {
+  type        = number
+  description = "The max disk usage target of the Filestore"
+  default     = 90
+}
+
 variable "min_cpu_platform" {
   type    = string
   default = "Intel Skylake"

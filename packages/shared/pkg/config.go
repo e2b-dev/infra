@@ -2,10 +2,10 @@ package pkg
 
 import "os"
 
-var OrchestratorBasePath = "/orchestrator"
-
-func init() {
+func OrchestratorBasePath() string {
 	if value := os.Getenv("ORCHESTRATOR_BASE_PATH"); value != "" {
-		OrchestratorBasePath = value
+		return value
 	}
+
+	return "/orchestrator"
 }

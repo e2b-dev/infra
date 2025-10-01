@@ -11,7 +11,7 @@ import (
 )
 
 func GetEnvdVersion(ctx context.Context) (string, error) {
-	cmd := exec.CommandContext(ctx, storage.HostEnvdPath, "-version")
+	cmd := exec.CommandContext(ctx, storage.HostEnvdPath(), "-version")
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("error while getting envd version: %w", err)
@@ -20,5 +20,5 @@ func GetEnvdVersion(ctx context.Context) (string, error) {
 }
 
 func GetEnvdHash() (string, error) {
-	return utils.GetFileHash(storage.HostEnvdPath)
+	return utils.GetFileHash(storage.HostEnvdPath())
 }

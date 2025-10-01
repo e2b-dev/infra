@@ -71,11 +71,7 @@ func Mount(ctx context.Context, rootfsPath string, mountPoint string) error {
 	mountStderrWriter := telemetry.NewEventWriter(ctx, "stderr")
 	cmd.Stderr = mountStderrWriter
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("error mounting ext4 filesystem: %w", err)
-	}
-
-	return nil
+	return cmd.Run()
 }
 
 func Unmount(ctx context.Context, rootfsPath string) error {
@@ -221,7 +217,7 @@ func CheckIntegrity(ctx context.Context, rootfsPath string, fix bool) (string, e
 		exitCode := cmd.ProcessState.ExitCode()
 
 		if exitCode > accExitCode {
-			return string(out), fmt.Errorf("error running e2fsck: %w", err)
+			return string(out), fmt.Errorf("error running e2fsck [exit %d]\n%s", exitCode, out)
 		}
 	}
 

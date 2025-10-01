@@ -116,7 +116,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	logger.Info("Creating file system and pulling Docker image")
 	ext4Size, err := oci.ToExt4(ctx, logger, img, rootfsPath, maxRootfsSize, r.template.RootfsBlockSize())
 	if err != nil {
-		return containerregistry.Config{}, fmt.Errorf("error creating ext4 filesystem: %w", err)
+		return containerregistry.Config{}, fmt.Errorf("error converting oci to ext4: %w", err)
 	}
 	telemetry.ReportEvent(childCtx, "created rootfs ext4 file")
 
@@ -209,7 +209,7 @@ ff02::2	ip6-allrouters
 127.0.1.1	%s
 `, hostname)
 
-	envdFileData, err := os.ReadFile(storage.HostEnvdPath)
+	envdFileData, err := os.ReadFile(storage.HostEnvdPath())
 	if err != nil {
 		return nil, fmt.Errorf("error reading envd file: %w", err)
 	}

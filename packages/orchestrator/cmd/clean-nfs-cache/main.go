@@ -5,15 +5,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/fs"
 	"math"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"sort"
-	"strconv"
-	"strings"
 	"time"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/cmd/clean-nfs-cache/pkg"
 )
 
 func main() {
@@ -30,70 +27,77 @@ func cleanNFSCache(ctx context.Context) error {
 	}
 
 	// get free space information for path
+	fmt.Printf("dry run: %t\n", opts.dryRun)
+	fmt.Printf("target disk usage percentage: %f%%\n", opts.targetDiskUsagePercent)
 
-	var diskInfo diskInfo
-	timeit(fmt.Sprintf("getting disk info for %q ... ", path), func() {
-		diskInfo, err = getDiskInfo(ctx, path)
+	var diskInfo pkg.DiskInfo
+	timeit(fmt.Sprintf("getting disk info for %q", path), func() {
+		diskInfo, err = pkg.GetDiskInfo(ctx, path)
 	})
 	if err != nil {
 		return fmt.Errorf("could not get disk info: %w", err)
 	}
-	targetDiskUsage := int64(float64(opts.targetDiskUsagePercent) / 100 * float64(diskInfo.total))
+	targetDiskUsage := int64(float64(opts.targetDiskUsagePercent) / 100 * float64(diskInfo.Total))
 	areWeDone := func() bool {
-		fmt.Printf("testing %d < %d", diskInfo.used, targetDiskUsage)
-		return diskInfo.used < targetDiskUsage
+		currentUsedPercentage := (float64(diskInfo.Used) / float64(diskInfo.Total)) * 100
+		fmt.Printf("current usage: %d%% (%s)\n", int(currentUsedPercentage), formatBytes(diskInfo.Used))
+		return diskInfo.Used < targetDiskUsage
 	}
+
+	cache := pkg.NewListingCache(path)
+
+	var allResults results
+	defer printSummary(allResults, opts)
 
 	// if conditions are met, we're done
-	currentUsedPercentage := (float64(diskInfo.used) / float64(diskInfo.total)) * 100
-	if areWeDone() {
-		fmt.Printf("condition already met (disk usage target: %.2f%% > actual: %.2f%%)\n",
-			opts.targetDiskUsagePercent, currentUsedPercentage)
-		return nil
+	for !areWeDone() {
+		// get File metadata, including path, size, and last access timestamp
+		var files []pkg.File
+		timeit(fmt.Sprintf("gathering metadata on %d files", opts.filesPerLoop), func() {
+			files, err = getFiles(cache, opts.filesPerLoop)
+			fmt.Printf("got %d files", len(files))
+		})
+		if err != nil {
+			return fmt.Errorf("could not get File metadata: %w", err)
+		}
+
+		// sort files by access timestamp
+		timeit(fmt.Sprintf("sorting %d files by access time", len(files)), func() {
+			sortFilesByATime(files)
+		})
+
+		var results results
+		timeit(fmt.Sprintf("deleting bottom %d%% files\n", opts.filesToDeletePerLoop), func() {
+			results, err = deleteOldestFiles(cache, files, opts, &diskInfo, areWeDone, opts.filesToDeletePerLoop)
+		})
+		allResults = allResults.union(results)
+		if err != nil {
+			return fmt.Errorf("failed to delete files: %w", err)
+		}
 	}
 
-	fmt.Printf("disk is currently %.2f%% full, target is: %.2f%%\n",
-		currentUsedPercentage, opts.targetDiskUsagePercent)
-
-	// get file metadata, including path, size, and last access timestamp
-	var files []file
-	timeit("gathering metadata ... ", func() {
-		files, err = getFileMetadata(path)
-	})
-	if err != nil {
-		return fmt.Errorf("could not get file metadata: %w", err)
-	}
-
-	// sort files by access timestamp
-	timeit(fmt.Sprintf("sorting %d files by access time ...", len(files)), func() {
-		sortFiles(files)
-	})
-
-	var results results
-	err = nil
-	timeit(fmt.Sprintf("looking through %d files for deletion candidates ... \n", len(files)), func() {
-		results, err = deleteFiles(files, opts, &diskInfo, areWeDone)
-	})
-
-	printSummary(results, opts)
-
-	return err
+	return nil
 }
 
 func printSummary(r results, opts opts) {
-	fmt.Println("======= summary of deleted files =======")
+	if r.deletedFiles == 0 {
+		fmt.Fprintln(os.Stderr, "no files deleted")
+		return
+	}
+
+	var notice string
+	if opts.dryRun {
+		notice = "would be "
+	}
+	fmt.Println("======= summary =======")
 	if opts.dryRun {
 		fmt.Println("(note: dry-run mode enabled, no files were actually deleted)")
 	}
-	fmt.Printf(" %d files (%d bytes) deleted\n", r.deletedFiles, r.deletedBytes)
+	fmt.Printf(" %d files (%d bytes) %sdeleted\n", r.deletedFiles, r.deletedBytes, notice)
 	fmt.Println("access time:")
 	fmt.Printf("- most recently used: %s\n", minDuration(r.lastAccessed).Round(time.Second))
 	fmt.Printf("- least recently used: %s\n", maxDuration(r.lastAccessed).Round(time.Second))
 	fmt.Printf("- standard deviation: %s\n", standardDeviation(r.lastAccessed).Round(time.Second))
-	fmt.Println("creation time:")
-	fmt.Printf("- oldest file: %s\n", minDuration(r.createdDurations).Round(time.Second))
-	fmt.Printf("- newest file: %s\n", maxDuration(r.createdDurations).Round(time.Second))
-	fmt.Printf("- standard deviation: %s\n", standardDeviation(r.createdDurations).Round(time.Second))
 }
 
 func standardDeviation(accessed []time.Duration) time.Duration {
@@ -151,34 +155,43 @@ type results struct {
 	createdDurations []time.Duration
 }
 
-func deleteFiles(files []file, opts opts, diskInfo *diskInfo, areWeDone func() bool) (results, error) {
+func (r results) union(other results) results {
+	return results{
+		deletedFiles:     r.deletedFiles + other.deletedFiles,
+		deletedBytes:     r.deletedBytes + other.deletedBytes,
+		lastAccessed:     append(r.lastAccessed, other.lastAccessed...),
+		createdDurations: append(r.createdDurations, other.createdDurations...),
+	}
+}
+
+func deleteOldestFiles(cache *pkg.ListingCache, files []pkg.File, opts opts, diskInfo *pkg.DiskInfo, areWeDone func() bool, deleteCount int64) (results, error) {
 	now := time.Now()
 	var results results
-	for _, file := range files {
+	for index, file := range files {
 		if opts.dryRun {
-			fmt.Printf("DRY RUN: would delete %q (%d bytes, created: %s, last access: %s)\n",
-				file.path, file.size,
-				time.Since(file.btime).Round(time.Second),
-				time.Since(file.atime).Round(time.Minute))
+			fmt.Printf("DRY RUN: would delete %q (%d bytes, last access: %s)\n",
+				file.Path, file.Size,
+				time.Since(file.ATime).Round(time.Minute))
 		} else {
-			// remove file
-			fmt.Printf("deleting %q (%d bytes) ... ", file.path, file.size)
-			if err := os.Remove(file.path); err != nil {
-				// if we fail to delete the file, try the next one
-				fmt.Printf("failed to delete %q: %v\n", file.path, err)
+			// remove File
+			fmt.Printf("deleting #%d: %q (%d bytes) ... ", index+1, file.Path, file.Size)
+			if err := os.Remove(file.Path); err != nil {
+				// if we fail to delete the File, try the next one
+				fmt.Printf("failed to delete %q: %v\n", file.Path, err)
 				continue
 			}
 			fmt.Print("\n")
 		}
 
+		cache.Decache(file.Path)
 		results.deletedFiles++
-		results.deletedBytes += file.size
-		results.lastAccessed = append(results.lastAccessed, now.Sub(file.atime))
-		results.createdDurations = append(results.createdDurations, time.Since(file.btime))
+		results.deletedBytes += file.Size
+		results.lastAccessed = append(results.lastAccessed, now.Sub(file.ATime))
+		results.createdDurations = append(results.createdDurations, time.Since(file.BTime))
 
-		// record the file as free space
-		diskInfo.used -= file.size
-		if areWeDone() {
+		// record the File as free space
+		diskInfo.Used -= file.Size
+		if areWeDone() || results.deletedFiles >= deleteCount {
 			// we're done!
 			return results, nil
 		}
@@ -186,81 +199,56 @@ func deleteFiles(files []file, opts opts, diskInfo *diskInfo, areWeDone func() b
 
 	return results, fmt.Errorf("%w: target: %.2f%% < actual: %.2f%%",
 		ErrFail, opts.targetDiskUsagePercent,
-		(float64(diskInfo.used)/float64(diskInfo.total))*100)
+		(float64(diskInfo.Used)/float64(diskInfo.Total))*100)
 }
 
-type diskInfo struct {
-	total, used int64
-}
-
-func getDiskInfo(ctx context.Context, path string) (diskInfo, error) {
-	// Execute: df <path>
-	cmd := exec.CommandContext(ctx, "df", path)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return diskInfo{}, fmt.Errorf("df command failed: %w: %s", err, strings.TrimSpace(string(out)))
-	}
-
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	if len(lines) < 2 {
-		return diskInfo{}, fmt.Errorf("unexpected df output: %q", strings.TrimSpace(string(out)))
-	}
-
-	// Skip header (line 0) and parse the first data line
-	for i := 1; i < len(lines); i++ {
-		line := strings.TrimSpace(lines[i])
-		if line == "" {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) == 0 {
-			continue
-		}
-
-		totalSize, err := strconv.ParseInt(fields[1], 10, 64)
-		if err != nil {
-			return diskInfo{}, fmt.Errorf("failed to parse total size: %w", err)
-		}
-
-		usedSpace, err := strconv.ParseInt(fields[2], 10, 64)
-		if err != nil {
-			return diskInfo{}, fmt.Errorf("failed to parse available space: %w", err)
-		}
-
-		// "df" returns kilobytes, not bytes
-		return diskInfo{total: totalSize * 1024, used: usedSpace * 1024}, nil
-	}
-
-	return diskInfo{}, fmt.Errorf("could not parse mount point from df output: %q", strings.TrimSpace(string(out)))
-}
-
-func sortFiles(files []file) {
+func sortFilesByATime(files []pkg.File) {
 	sort.Slice(files, func(i, j int) bool {
-		return files[j].atime.After(files[i].atime)
+		return files[j].ATime.After(files[i].ATime)
 	})
 }
 
-func getFileMetadata(path string) ([]file, error) {
-	var items []file
+func reportGetFilesProgress(usedFiles, dupeHits int) {
+	total := usedFiles + dupeHits
+	if total > 0 && total%100 == 0 {
+		msg := fmt.Sprintf("%d files", usedFiles)
+		if dupeHits > 0 {
+			msg += fmt.Sprintf(", %d dupe hits", dupeHits)
+		}
+		fmt.Printf("\r%s ... ", msg)
+	}
+}
 
-	if err := filepath.WalkDir(path, func(path string, info fs.DirEntry, err error) error {
+func getFiles(cache *pkg.ListingCache, maxFiles int) ([]pkg.File, error) {
+	var items []pkg.File
+
+	usedFiles := make(map[string]struct{})
+	var dupeHits int
+
+	for len(items) != maxFiles {
+		reportGetFilesProgress(len(usedFiles), dupeHits)
+
+		path, err := cache.GetRandomFile()
 		if err != nil {
-			return fmt.Errorf("could not walk dir %q: %w", path, err)
+			return items, err
 		}
 
-		if info.IsDir() {
-			return nil
+		if _, ok := usedFiles[path]; ok {
+			dupeHits++
+			if dupeHits == maxFiles {
+				return items, nil // we found too many repeats, we're done
+			}
+
+			continue
 		}
 
-		item, err := getMetadata(path)
+		metadata, err := pkg.GetFileMetadata(path)
 		if err != nil {
-			return fmt.Errorf("could not get metadata: %w", err)
+			return nil, err
 		}
 
-		items = append(items, item)
-		return nil
-	}); err != nil {
-		return nil, fmt.Errorf("walk failed: %w", err)
+		items = append(items, metadata)
+		usedFiles[path] = struct{}{}
 	}
 
 	return items, nil
@@ -269,12 +257,8 @@ func getFileMetadata(path string) ([]file, error) {
 type opts struct {
 	targetDiskUsagePercent float64
 	dryRun                 bool
-}
-
-type file struct {
-	path         string
-	size         int64
-	atime, btime time.Time
+	filesPerLoop           int
+	filesToDeletePerLoop   int64
 }
 
 var (
@@ -288,12 +272,15 @@ func parseArgs() (string, opts, error) {
 	var opts opts
 	flags.Float64Var(&opts.targetDiskUsagePercent, "disk-usage-target-percent", 10, "disk usage target as a % (0-100)")
 	flags.BoolVar(&opts.dryRun, "dry-run", true, "dry run")
+	flags.IntVar(&opts.filesPerLoop, "files-per-iteration", 10000, "number of files to gather metadata for per loop")
+	flags.Int64Var(&opts.filesToDeletePerLoop, "max-files-per-iteration", 100, "maximum number of files to delete per loop")
 
-	if err := flags.Parse(os.Args[1:]); err != nil {
+	args := os.Args[1:] // skip the command name
+	if err := flags.Parse(args); err != nil {
 		return "", opts, fmt.Errorf("could not parse flags: %w", err)
 	}
 
-	args := flags.Args()
+	args = flags.Args()
 	if len(args) != 1 {
 		return "", opts, ErrUsage
 	}
@@ -302,11 +289,25 @@ func parseArgs() (string, opts, error) {
 }
 
 func timeit(message string, fn func()) {
-	fmt.Print(message)
+	fmt.Print(message + " ... \n")
 
 	start := time.Now()
 	fn()
 	done := time.Since(start).Round(time.Millisecond)
 
-	fmt.Printf("done in [%s]\n", done)
+	fmt.Print(message + fmt.Sprintf(": done in [%s]\n", done))
+}
+
+func formatBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB",
+		float64(b)/float64(div), "KMGTPE"[exp])
 }
