@@ -94,7 +94,7 @@ func cleanNFSCache(ctx context.Context) error {
 		})
 
 		var results results
-		timeit(fmt.Sprintf("deleting bottom %d files\n", opts.filesToDeletePerLoop), func() {
+		timeit(fmt.Sprintf("deleting bottom %d files", opts.filesToDeletePerLoop), func() {
 			results, err = deleteOldestFiles(cache, files, opts, &diskInfo, areWeDone, opts.filesToDeletePerLoop)
 			zap.L().Info("deleted files",
 				zap.Int64("count", results.deletedFiles),
