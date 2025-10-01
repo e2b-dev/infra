@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -34,9 +35,10 @@ import (
 )
 
 var (
-	defaultEnvdTimeout = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT", "10s")))
-	meter              = otel.GetMeterProvider().Meter("orchestrator.internal.sandbox")
-	envdInitCalls      = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitCalls))
+	defaultEnvdTimeout           = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT", "10s")))
+	meter                        = otel.GetMeterProvider().Meter("orchestrator.internal.sandbox")
+	envdInitCalls                = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitCalls))
+	waitForEnvdDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.WaitForEnvdDurationHistogramName))
 )
 
 var httpClient = http.Client{
@@ -965,6 +967,7 @@ func (s *Sandbox) WaitForEnvd(
 	timeout time.Duration,
 	envdInitRequestTimeout time.Duration,
 ) (e error) {
+	start := time.Now()
 	ctx, span := tracer.Start(ctx, "sandbox-wait-for-start")
 	defer span.End()
 
@@ -972,6 +975,11 @@ func (s *Sandbox) WaitForEnvd(
 		if e != nil {
 			return
 		}
+		duration := time.Since(start).Milliseconds()
+		waitForEnvdDurationHistogram.Record(ctx, duration, metric.WithAttributes(
+			telemetry.WithEnvdVersion(s.Config.Envd.Version),
+			attribute.Int64("timeout_ms", envdInitRequestTimeout.Milliseconds()),
+		))
 		// Update the sandbox as started now
 		s.Metadata.StartedAt = time.Now()
 	}()
