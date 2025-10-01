@@ -1,0 +1,44 @@
+name: Auto-request same-site reviewers
+
+on:
+  # Works for PRs from branches and forks (runs in base-repo context)
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get GitHub App installation token
+        id: app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.E2B_GH_APP_AUTO_REQUEST_SAME_SITE_APP_ID }}
+          private-key: ${{ secrets.E2B_GH_APP_AUTO_REQUEST_SAME_SITE_APP_PRIVATE_KEY }}
+          owner: e2b-dev
+
+      - name: Checkout repo (needed because the script lives in the repo)
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install deps
+        run: |
+          npm init -y
+          npm i @octokit/rest
+
+      - name: Run same-site override
+        env:
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+          ORG: e2b-dev
+          SF_TEAM_SLUG: eng-sf
+          PRG_TEAM_SLUG: eng-prg
+          REVIEWERS_TO_REQUEST: "1"
+          TEAM_MODE: "false"
+        run: node .github/actions/auto-request-same-site/script.js
