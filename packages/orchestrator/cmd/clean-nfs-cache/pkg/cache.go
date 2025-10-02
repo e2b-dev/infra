@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"slices"
 )
 
 type ListingCache struct {
@@ -26,7 +27,31 @@ func NewListingCache(root string) *ListingCache {
 
 func (c *ListingCache) Decache(path string) {
 	dirName := filepath.Dir(path)
-	delete(c.cache, dirName)
+	items, ok := c.cache[dirName]
+	if !ok {
+		return
+	}
+
+	index := slices.IndexFunc(items, func(e cacheEntry) bool {
+		return e.path == path
+	})
+	items = removeByIndex(items, index)
+	c.cache[dirName] = items
+}
+
+func removeByIndex[E any](items []E, index int) []E {
+	if index < 0 || index >= len(items) {
+		return items
+	}
+
+	switch index {
+	case 0:
+		return items[1:]
+	case len(items) - 1:
+		return items[:len(items)-1]
+	default:
+		return append(items[:index], items[index+1:]...)
+	}
 }
 
 func (c *ListingCache) GetRandomFile() (string, error) {

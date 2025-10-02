@@ -430,10 +430,25 @@ variable "filestore_cache_capacity_gb" {
   default     = 0
 }
 
-variable "filestore_max_disk_usage_target" {
+variable "filestore_cache_cleanup_disk_usage_target" {
   type        = number
   description = "The max disk usage target of the Filestore"
   default     = 90
+}
+
+variable "filestore_cache_cleanup_dry_run" {
+  type    = bool
+  default = false
+}
+
+variable "filestore_cache_cleanup_files_per_loop" {
+  type    = number
+  default = 10000
+}
+
+variable "filestore_cache_cleanup_deletions_per_loop" {
+  type    = number
+  default = 900
 }
 
 variable "min_cpu_platform" {
