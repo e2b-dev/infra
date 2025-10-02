@@ -15,6 +15,7 @@ import (
 
 	orchestratorspool "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -57,7 +58,7 @@ func dnsResolution(sandboxId string, l *zap.Logger) (string, error) {
 		// the api server wasn't found, maybe the API server is rolling and the DNS server is not updated yet
 		if dnsErr != nil || len(resp.Answer) == 0 {
 			err = dnsErr
-			l.Warn(fmt.Sprintf("host for sandbox %s not found: %s", sandboxId, err), zap.Error(err), zap.Int("retry", i+1))
+			l.Warn("host for sandbox not found", zap.Error(err), logger.WithSandboxID(sandboxId), zap.Int("retry", i+1))
 
 			// Jitter
 			time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
