@@ -41,7 +41,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var tracer = otel.Tracer("e2b-orchestrator-benchmark")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator")
 
 func BenchmarkBaseImageLaunch(b *testing.B) {
 	if os.Geteuid() != 0 {
