@@ -16,6 +16,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
 
@@ -35,8 +37,11 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+var tracer = otel.Tracer("e2b-orchestrator-benchmark")
 
 func BenchmarkBaseImageLaunch(b *testing.B) {
 	if os.Geteuid() != 0 {
@@ -60,6 +65,22 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	abs := func(s string) string {
 		return utils.Must(filepath.Abs(s))
+	}
+
+	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	if endpoint != "" {
+		spanExporter, err := telemetry.NewSpanExporter(b.Context(),
+			otlptracegrpc.WithEndpoint(endpoint),
+		)
+		defer func() {
+			err := spanExporter.Shutdown(b.Context())
+			assert.NoError(b, err)
+		}()
+		require.NoError(b, err)
+		resource, err := telemetry.GetResource(b.Context(), "node-id", "BenchmarkBaseImageLaunch", "service-commit", "service-version", "service-instance-id")
+		require.NoError(b, err)
+		tracerProvider := telemetry.NewTracerProvider(b.Context(), spanExporter, resource)
+		otel.SetTracerProvider(tracerProvider)
 	}
 
 	linuxKernelURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/kernels/", kernelVersion, "vmlinux.bin")
@@ -235,57 +256,80 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	)
 	require.NoError(b, err)
 
-	type testCycle string
-
-	const (
-		onlyStart        testCycle = "only-start"
-		startAndPause    testCycle = "start-and-pause"
-		startPauseResume testCycle = "start-pause-resume"
-	)
-
 	testType := onlyStart
 
-	for b.Loop() {
-		sbx, err := sandboxFactory.ResumeSandbox(
-			b.Context(),
-			tmpl,
-			sandboxConfig,
-			runtime,
-			uuid.NewString(),
-			time.Now(),
-			time.Now().Add(time.Second*15),
-			nil,
-		)
-		require.NoError(b, err)
-
-		if testType == onlyStart {
-			b.StopTimer()
-			err = sbx.Close(b.Context())
-			require.NoError(b, err)
-			b.StartTimer()
-			continue
-		}
-
-		meta, err := sbx.Template.Metadata()
-		require.NoError(b, err)
-
-		templateMetadata := meta.SameVersionTemplate(storage.TemplateFiles{
-			BuildID:            buildID,
-			KernelVersion:      kernelVersion,
-			FirecrackerVersion: fcVersion,
-		})
-		snap, err := sbx.Pause(b.Context(), templateMetadata)
-		require.NoError(b, err)
-		require.NotNil(b, snap)
-
-		// resume sandbox
-		sbx, err = sandboxFactory.ResumeSandbox(b.Context(), tmpl, sandboxConfig, runtime, uuid.NewString(), time.Now(), time.Now().Add(time.Second*15), nil)
-		require.NoError(b, err)
-
-		// close sandbox
-		err = sbx.Close(b.Context())
-		require.NoError(b, err)
+	tc := testContainer{
+		sandboxFactory: sandboxFactory,
+		testType:       testType,
+		tmpl:           tmpl,
+		sandboxConfig:  sandboxConfig,
+		runtime:        runtime,
 	}
+
+	for b.Loop() {
+		tc.testOneItem(b, buildID, kernelVersion, fcVersion)
+	}
+}
+
+type testCycle string
+
+const (
+	onlyStart        testCycle = "only-start"
+	startAndPause    testCycle = "start-and-pause"
+	startPauseResume testCycle = "start-pause-resume"
+)
+
+type testContainer struct {
+	testType       testCycle
+	sandboxFactory *sandbox.Factory
+	tmpl           template.Template
+	sandboxConfig  sandbox.Config
+	runtime        sandbox.RuntimeMetadata
+}
+
+func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVersion string) {
+	ctx, span := tracer.Start(b.Context(), "testOneItem")
+	defer span.End()
+
+	sbx, err := tc.sandboxFactory.ResumeSandbox(
+		ctx,
+		tc.tmpl,
+		tc.sandboxConfig,
+		tc.runtime,
+		uuid.NewString(),
+		time.Now(),
+		time.Now().Add(time.Second*15),
+		nil,
+	)
+	require.NoError(b, err)
+
+	if tc.testType == onlyStart {
+		b.StopTimer()
+		err = sbx.Close(ctx)
+		require.NoError(b, err)
+		b.StartTimer()
+		return
+	}
+
+	meta, err := sbx.Template.Metadata()
+	require.NoError(b, err)
+
+	templateMetadata := meta.SameVersionTemplate(storage.TemplateFiles{
+		BuildID:            buildID,
+		KernelVersion:      kernelVersion,
+		FirecrackerVersion: fcVersion,
+	})
+	snap, err := sbx.Pause(ctx, templateMetadata)
+	require.NoError(b, err)
+	require.NotNil(b, snap)
+
+	// resume sandbox
+	sbx, err = tc.sandboxFactory.ResumeSandbox(ctx, tc.tmpl, tc.sandboxConfig, tc.runtime, uuid.NewString(), time.Now(), time.Now().Add(time.Second*15), nil)
+	require.NoError(b, err)
+
+	// close sandbox
+	err = sbx.Close(ctx)
+	require.NoError(b, err)
 }
 
 func downloadKernel(b *testing.B, filename, url string) {
