@@ -288,6 +288,8 @@ type testContainer struct {
 }
 
 func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVersion string) {
+	b.Helper()
+
 	ctx, span := tracer.Start(b.Context(), "testOneItem")
 	defer span.End()
 
