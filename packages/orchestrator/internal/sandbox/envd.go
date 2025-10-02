@@ -27,17 +27,48 @@ const (
 // The parent context should have a deadline or a timeout.
 func doRequestWithInfiniteRetries(
 	ctx context.Context,
-	method, address string,
-	requestBody []byte,
+	method,
+	address string,
 	accessToken *string,
 	envdInitRequestTimeout time.Duration,
-	sandboxID, envdVersion string,
+	envVars map[string]string,
+	sandboxID,
+	envdVersion,
+	hyperloopIP string,
 ) (*http.Response, int64, error) {
 	requestCount := int64(0)
 	for {
-		requestCount++
+		now := time.Now()
 
-		response, err := doRequest(ctx, method, address, requestBody, accessToken, envdInitRequestTimeout)
+		jsonBody := &PostInitJSONBody{
+			EnvVars:     &envVars,
+			HyperloopIP: &hyperloopIP,
+			AccessToken: accessToken,
+			Timestamp:   &now,
+		}
+
+		body, err := json.Marshal(jsonBody)
+		if err != nil {
+			return nil, requestCount, err
+		}
+
+		requestCount++
+		reqCtx, cancel := context.WithTimeout(ctx, envdInitRequestTimeout)
+		request, err := http.NewRequestWithContext(reqCtx, method, address, bytes.NewReader(body))
+		if err != nil {
+			cancel()
+			return nil, requestCount, err
+		}
+
+		// make sure request to already authorized envd will not fail
+		// this can happen in sandbox resume and in some edge cases when previous request was success, but we continued
+		if accessToken != nil {
+			request.Header.Set("X-Access-Token", *accessToken)
+		}
+
+		response, err := httpClient.Do(request)
+		cancel()
+
 		if err == nil {
 			return response, requestCount, nil
 		}
@@ -100,20 +131,18 @@ func (s *Sandbox) initEnvd(ctx context.Context) error {
 
 	hyperloopIP := s.Slot.HyperloopIPString()
 	address := fmt.Sprintf("http://%s:%d/init", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
-	now := time.Now()
-	jsonBody := &PostInitJSONBody{
-		EnvVars:     &s.Config.Envd.Vars,
-		HyperloopIP: &hyperloopIP,
-		AccessToken: s.Config.Envd.AccessToken,
-		Timestamp:   &now,
-	}
 
-	body, err := json.Marshal(jsonBody)
-	if err != nil {
-		return err
-	}
-
-	response, count, err := doRequestWithInfiniteRetries(ctx, "POST", address, body, s.Config.Envd.AccessToken, s.internalConfig.EnvdInitRequestTimeout, s.Runtime.SandboxID, s.Config.Envd.Version)
+	response, count, err := doRequestWithInfiniteRetries(
+		ctx,
+		http.MethodPost,
+		address,
+		s.Config.Envd.AccessToken,
+		s.internalConfig.EnvdInitRequestTimeout,
+		s.Config.Envd.Vars,
+		s.Runtime.SandboxID,
+		s.Config.Envd.Version,
+		hyperloopIP,
+	)
 	if err != nil {
 		envdInitCalls.Add(ctx, count, metric.WithAttributes(attributesFail...))
 		return fmt.Errorf("failed to init envd: %w", err)
