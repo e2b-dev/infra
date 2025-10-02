@@ -88,11 +88,11 @@ try {
 
   console.log("ℹ️ starting command");
   const localDate = new Date().getTime() / 1000;
-  const date = await sandbox.commands.run("date +%s");
+  const date = await sandbox.commands.run("date +%s%3N");
   console.log("localDate", localDate);
 
   console.log("date", date.stdout);
-  const dateUnix = parseInt(date.stdout);
+  const dateUnix = parseFloat(date.stdout) / 1000;
   console.log("ℹ️ comparing dates", dateUnix, localDate);
 
   // compare the dates, should be within 1 second
