@@ -235,6 +235,9 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 	}
 
 	go func() {
+		ctx, span := tracer.Start(ctx, "perform read command")
+		defer span.End()
+
 		err := performRead(ctx, cmdHandle, cmdFrom, cmdLength)
 		if err != nil {
 			select {
@@ -250,8 +253,6 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 }
 
 func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
-	ctx, span := tracer.Start(ctx, "dispatch write command")
-	defer span.End()
 
 	d.shuttingDownLock.Lock()
 	if !d.shuttingDown {
@@ -263,6 +264,9 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 	d.shuttingDownLock.Unlock()
 
 	performWrite := func(ctx context.Context, handle uint64, from uint64, data []byte) error {
+		ctx, span := tracer.Start(ctx, "perform write command")
+		defer span.End()
+
 		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
 		go func() {

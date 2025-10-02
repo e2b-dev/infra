@@ -26,7 +26,7 @@ type GuestRegionUffdMapping struct {
 	PageSize         uintptr `json:"page_size_kib"`
 }
 
-func Serve(
+func serve(
 	ctx context.Context,
 	uffd int,
 	mappings mapping.Mappings,
@@ -34,7 +34,7 @@ func Serve(
 	fdExit *fdexit.FdExit,
 	logger *zap.Logger,
 ) error {
-	ctx, span := tracer.Start(ctx, "serve uffd")
+	ctx, span := tracer.Start(ctx, "loop for uffd requests")
 	defer span.End()
 
 	pollFds := []unix.PollFd{

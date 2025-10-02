@@ -128,6 +128,9 @@ func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 }
 
 func (b *File) getBuild(ctx context.Context, buildID *uuid.UUID) (Diff, error) {
+	ctx, span := tracer.Start(ctx, "getBuild")
+	defer span.End()
+
 	storageDiff := newStorageDiff(
 		b.store.cachePath,
 		buildID.String(),
