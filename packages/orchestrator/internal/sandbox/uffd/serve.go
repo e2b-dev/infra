@@ -34,7 +34,7 @@ func Serve(
 	fdExit *fdexit.FdExit,
 	logger *zap.Logger,
 ) error {
-	ctx, span := tracer.Start(ctx, "uffd-serve")
+	ctx, span := tracer.Start(ctx, "serve uffd")
 	defer span.End()
 
 	pollFds := []unix.PollFd{

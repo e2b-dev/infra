@@ -73,11 +73,7 @@ func doRequestWithInfiniteRetries(
 			return response, requestCount, nil
 		}
 
-		zap.L().Warn("failed to do request to envd, retrying",
-			logger.WithSandboxID(sandboxID),
-			logger.WithEnvdVersion(envdVersion),
-			zap.Int64("timeout_ms", envdInitRequestTimeout.Milliseconds()),
-			zap.Error(err))
+		zap.L().Warn("failed to do request to envd, retrying", logger.WithSandboxID(sandboxID), logger.WithEnvdVersion(envdVersion), zap.Int64("timeout_ms", envdInitRequestTimeout.Milliseconds()), zap.Error(err))
 
 		select {
 		case <-ctx.Done():
@@ -85,33 +81,6 @@ func doRequestWithInfiniteRetries(
 		case <-time.After(loopDelay):
 		}
 	}
-}
-
-func doRequest(ctx context.Context, method, address string, requestBody []byte, accessToken *string, requestTimeout time.Duration) (*http.Response, error) {
-	ctx, span := tracer.Start(ctx, "perform envd-init")
-	defer span.End()
-
-	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
-	defer cancel()
-
-	request, err := http.NewRequestWithContext(ctx, method, address, bytes.NewReader(requestBody))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// make sure request to already authorized envd will not fail
-	// this can happen in sandbox resume and in some edge cases when previous request was success, but we continued
-	if accessToken != nil {
-		request.Header.Set("X-Access-Token", *accessToken)
-	}
-
-	response, err := httpClient.Do(request)
-	if err != nil {
-		span.AddEvent("request failed")
-		return nil, nil
-	}
-
-	return response, nil
 }
 
 type PostInitJSONBody struct {
