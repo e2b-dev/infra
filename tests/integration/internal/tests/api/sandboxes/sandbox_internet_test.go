@@ -44,7 +44,7 @@ func TestInternetAccess(t *testing.T) {
 
 			envdClient := setup.GetEnvdClient(t, ctx)
 
-			err = utils.ExecCommand(t, ctx, resp.JSON201, envdClient, "curl", "--connect-timeout", "3", "--max-time", "5", "-Is", "https://www.google.com")
+			err = utils.ExecCommand(t, ctx, resp.JSON201, envdClient, "curl", "--connect-timeout", "3", "--max-time", "5", "-Is", "https://www.gstatic.com/generate_204")
 			if tc.internetAccess {
 				require.NoError(t, err, "Expected curl command to succeed when internet access is allowed")
 			} else {
