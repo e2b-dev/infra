@@ -1,6 +1,8 @@
 // run with something like:
 //
-//	sudo `which go` test -benchtime=15s -bench=. -v
+// sudo `which go` test -benchtime=15s -bench=. -v
+// sudo modprobe nbd
+// echo 1024 | sudo tee /proc/sys/vm/nr_hugepages
 package main
 
 import (
@@ -142,7 +144,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		Vcpu:                2,
 		RamMB:               512,
 		TotalDiskSizeMB:     2 * 1024,
-		HugePages:           false,
+		HugePages:           true,
 		AllowInternetAccess: &allowInternetAccess,
 		Envd: sandbox.EnvdMetadata{
 			Vars:        map[string]string{"HELLO": "WORLD"},
