@@ -57,7 +57,7 @@ func dnsResolution(sandboxId string, logger *zap.Logger) (string, error) {
 		// the api server wasn't found, maybe the API server is rolling and the DNS server is not updated yet
 		if dnsErr != nil || len(resp.Answer) == 0 {
 			err = dnsErr
-			logger.Warn(fmt.Sprintf("host for sandbox %s not found: %s", sandboxId, err), zap.Error(err), zap.Int("retry", i+1))
+			logger.Warn("host for sandbox not found", zap.Error(err), l.WithSandboxID(sandboxId), zap.Int("retry", i+1))
 
 			// Jitter
 			time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
@@ -76,7 +76,7 @@ func dnsResolution(sandboxId string, logger *zap.Logger) (string, error) {
 
 	// there's no answer, we can't proxy the request
 	if err != nil {
-		return "", ErrNodeNotFound
+		return "", fmt.Errorf("failed to resolve sandbox: %w", err)
 	}
 
 	return node, nil
