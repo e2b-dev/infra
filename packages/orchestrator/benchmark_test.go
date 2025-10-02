@@ -97,24 +97,24 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		b.Context(), noop.MeterProvider{}, 8, 8, clientID,
 	)
 	require.NoError(b, err)
-	b.Cleanup(func() {
+	defer func() {
 		err := networkPool.Close(b.Context())
 		assert.NoError(b, err)
-	})
+	}()
 
 	devicePool, err := nbd.NewDevicePool(b.Context(), noop.MeterProvider{})
 	require.NoError(b, err, "do you have the nbd kernel module installed?")
-	b.Cleanup(func() {
+	defer func() {
 		err := devicePool.Close(b.Context())
 		assert.NoError(b, err)
-	})
+	}()
 
 	featureFlags, err := featureflags.NewClient()
 	require.NoError(b, err)
-	b.Cleanup(func() {
+	defer func() {
 		err := featureFlags.Close(b.Context())
 		assert.NoError(b, err)
-	})
+	}()
 
 	limiter, err := limit.New(b.Context(), featureFlags)
 	require.NoError(b, err)
@@ -132,10 +132,10 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	dockerhubRepository, err := dockerhub.GetRemoteRepository(b.Context())
 	require.NoError(b, err)
-	b.Cleanup(func() {
+	defer func() {
 		err := dockerhubRepository.Close()
 		assert.NoError(b, err)
-	})
+	}()
 
 	allowInternetAccess := true
 	accessToken := "access-token"
@@ -179,10 +179,10 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		err := sandboxProxy.Start(b.Context())
 		assert.ErrorIs(b, http.ErrServerClosed, err)
 	}()
-	b.Cleanup(func() {
+	defer func() {
 		err := sandboxProxy.Close(b.Context())
 		assert.NoError(b, err)
-	})
+	}()
 
 	buildMetrics, err := metrics.NewBuildMetrics(noop.MeterProvider{})
 	require.NoError(b, err)
