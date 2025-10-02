@@ -43,7 +43,7 @@ var (
 	ErrNodeNotFound = errors.New("node not found")
 )
 
-func dnsResolution(sandboxId string, logger *zap.Logger) (string, error) {
+func dnsResolution(sandboxId string, l *zap.Logger) (string, error) {
 	var err error
 
 	msg := new(dns.Msg)
@@ -57,7 +57,7 @@ func dnsResolution(sandboxId string, logger *zap.Logger) (string, error) {
 		// the api server wasn't found, maybe the API server is rolling and the DNS server is not updated yet
 		if dnsErr != nil || len(resp.Answer) == 0 {
 			err = dnsErr
-			logger.Warn(fmt.Sprintf("host for sandbox %s not found: %s", sandboxId, err), zap.Error(err), zap.Int("retry", i+1))
+			l.Warn(fmt.Sprintf("host for sandbox %s not found: %s", sandboxId, err), zap.Error(err), zap.Int("retry", i+1))
 
 			// Jitter
 			time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
@@ -76,7 +76,7 @@ func dnsResolution(sandboxId string, logger *zap.Logger) (string, error) {
 
 	// there's no answer, we can't proxy the request
 	if err != nil {
-		return "", ErrNodeNotFound
+		return "", fmt.Errorf("failed to resolve sandbox: %w", err)
 	}
 
 	return node, nil
@@ -127,7 +127,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				nodeIP, err = catalogResolution(r.Context(), sandboxId, catalog, orchestrators)
 				if err != nil {
 					if !errors.Is(err, ErrNodeNotFound) {
-						logger.Warn("failed to resolve node ip with Redis resolution", zap.Error(err))
+						logger.Warn("failed to resolve node ip with Redis resolution", zap.Error(err), zap.String("node_ip", nodeIP))
 					}
 
 					if !useDnsResolution {
@@ -137,7 +137,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 					nodeIP, err = dnsResolution(sandboxId, logger)
 					if err != nil {
 						if !errors.Is(err, ErrNodeNotFound) {
-							logger.Warn("failed to resolve node ip with DNS resolution", zap.Error(err))
+							logger.Warn("failed to resolve node ip with DNS resolution", zap.Error(err), zap.String("node_ip", nodeIP))
 						}
 
 						return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
@@ -147,7 +147,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				nodeIP, err = dnsResolution(sandboxId, logger)
 				if err != nil {
 					if !errors.Is(err, ErrNodeNotFound) {
-						logger.Warn("failed to resolve node ip with DNS resolution", zap.Error(err))
+						logger.Warn("failed to resolve node ip with DNS resolution", zap.Error(err), zap.String("node_ip", nodeIP))
 					}
 
 					return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
