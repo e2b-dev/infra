@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -78,7 +79,7 @@ func (s *Store) Remove(sandboxID string) {
 	s.items.Remove(sandboxID)
 }
 
-func (s *Store) Items(options ...sandbox.ItemsOption) []sandbox.Sandbox {
+func (s *Store) Items(teamID *uuid.UUID, options ...sandbox.ItemsOption) []sandbox.Sandbox {
 	filter := sandbox.NewItemsFilter()
 	for _, opt := range options {
 		opt(filter)
@@ -87,6 +88,10 @@ func (s *Store) Items(options ...sandbox.ItemsOption) []sandbox.Sandbox {
 	items := make([]sandbox.Sandbox, 0)
 	for _, item := range s.items.Items() {
 		data := item.Data()
+
+		if teamID != nil && *teamID != data.TeamID {
+			continue
+		}
 
 		if !applyFilter(data, filter) {
 			continue

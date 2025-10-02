@@ -21,7 +21,6 @@ func NewItemsFilter() *ItemsFilter {
 	// Defaults to prevent accidental full scans
 	return &ItemsFilter{
 		States:      nil,
-		TeamID:      &uuid.Nil,
 		OnlyExpired: false,
 	}
 }
@@ -32,23 +31,11 @@ type Store interface {
 	Get(sandboxID string, includeEvicting bool) (Sandbox, error)
 	Remove(sandboxID string)
 
-	Items(options ...ItemsOption) []Sandbox
+	Items(teamID *uuid.UUID, options ...ItemsOption) []Sandbox
 
 	Update(sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error)
 	StartRemoving(ctx context.Context, sandboxID string, stateAction StateAction) (alreadyDone bool, callback func(error), err error)
 	WaitForStateChange(ctx context.Context, sandboxID string) error
-}
-
-func WithTeamID(teamID uuid.UUID) ItemsOption {
-	return func(f *ItemsFilter) {
-		f.TeamID = &teamID
-	}
-}
-
-func WithAllTeams() ItemsOption {
-	return func(f *ItemsFilter) {
-		f.TeamID = nil
-	}
 }
 
 func WithState(state State) ItemsOption {
