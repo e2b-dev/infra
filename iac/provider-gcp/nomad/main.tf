@@ -508,6 +508,7 @@ resource "nomad_job" "template_manager" {
     allow_sandbox_internet          = var.allow_sandbox_internet
     clickhouse_connection_string    = local.clickhouse_connection_string
     dockerhub_remote_repository_url = var.dockerhub_remote_repository_url
+    launch_darkly_api_key           = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
 
     # For now we DISABLE the shared chunk cache in the template manager
     shared_chunk_cache_path = ""
