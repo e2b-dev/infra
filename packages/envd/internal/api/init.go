@@ -17,6 +17,10 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 )
 
+var (
+	ErrAccessTokenAlreadySet = errors.New("access token is already set")
+)
+
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
@@ -39,8 +43,13 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 			(initRequest.Timestamp != nil && a.lastSetTime.Compare(initRequest.Timestamp.UnixNano())) {
 			err = a.SetData(logger, initRequest)
 			if err != nil {
-				logger.Error().Msgf("Failed to set data: %v", err)
-				w.WriteHeader(http.StatusBadRequest)
+				switch {
+				case errors.Is(err, ErrAccessTokenAlreadySet):
+					w.WriteHeader(http.StatusConflict)
+				default:
+					logger.Error().Msgf("Failed to set data: %v", err)
+					w.WriteHeader(http.StatusBadRequest)
+				}
 				w.Write([]byte(err.Error()))
 				return
 			}
@@ -81,7 +90,7 @@ func (a *API) SetData(logger zerolog.Logger, data PostInitJSONBody) error {
 	if data.AccessToken != nil {
 		if a.accessToken != nil && *data.AccessToken != *a.accessToken {
 			logger.Error().Msg("Access token is already set and cannot be changed")
-			return fmt.Errorf("access token is already set and cannot be changed")
+			return ErrAccessTokenAlreadySet
 		}
 
 		logger.Debug().Msg("Setting access token")
