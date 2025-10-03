@@ -45,7 +45,7 @@ var (
 
 type Cache struct {
 	flags         *featureflags.Client
-	cache         *ttlcache.Cache[string, Template]
+	cache         *ttlcache.Cache[string, *storageTemplate]
 	persistence   storage.StorageProvider
 	buildStore    *build.DiffStore
 	blockMetrics  blockmetrics.Metrics
@@ -62,10 +62,10 @@ func NewCache(
 	metrics blockmetrics.Metrics,
 ) (*Cache, error) {
 	cache := ttlcache.New(
-		ttlcache.WithTTL[string, Template](templateExpiration),
+		ttlcache.WithTTL[string, *storageTemplate](templateExpiration),
 	)
 
-	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, Template]) {
+	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, *storageTemplate]) {
 		template := item.Value()
 
 		err := template.Close()
@@ -103,7 +103,7 @@ func NewCache(
 	}, nil
 }
 
-func (c *Cache) Items() map[string]*ttlcache.Item[string, Template] {
+func (c *Cache) Items() map[string]*ttlcache.Item[string, *storageTemplate] {
 	return c.cache.Items()
 }
 
@@ -115,9 +115,6 @@ func (c *Cache) GetTemplate(
 	isSnapshot bool,
 	isBuilding bool,
 ) (Template, error) {
-	ctx, span := tracer.Start(ctx, "get template")
-	defer span.End()
-
 	persistence := c.persistence
 	// Because of the template caching, if we enable the shared cache feature flag,
 	// it will start working only for new orchestrators or new builds.
@@ -126,7 +123,7 @@ func (c *Cache) GetTemplate(
 		persistence = storage.NewCachedProvider(c.rootCachePath, persistence)
 	}
 
-	storageTemplate, err := newTemplateFromStorage(
+	template, err := newTemplateFromStorage(
 		buildID,
 		kernelVersion,
 		firecrackerVersion,
@@ -141,7 +138,7 @@ func (c *Cache) GetTemplate(
 		return nil, fmt.Errorf("failed to create template cache from storage: %w", err)
 	}
 
-	return c.getTemplateWithFetch(ctx, storageTemplate), nil
+	return c.getTemplateWithFetch(ctx, template), nil
 }
 
 func (c *Cache) AddSnapshot(
@@ -170,7 +167,7 @@ func (c *Cache) AddSnapshot(
 		c.buildStore.Add(rootfsDiff)
 	}
 
-	storageTemplate, err := newTemplateFromStorage(
+	template, err := newTemplateFromStorage(
 		buildId,
 		kernelVersion,
 		firecrackerVersion,
@@ -185,7 +182,7 @@ func (c *Cache) AddSnapshot(
 		return fmt.Errorf("failed to create template cache from storage: %w", err)
 	}
 
-	c.getTemplateWithFetch(ctx, storageTemplate)
+	c.getTemplateWithFetch(ctx, template)
 
 	return nil
 }
@@ -233,18 +230,18 @@ func cleanDir(path string) error {
 	return nil
 }
 
-func (c *Cache) getTemplateWithFetch(ctx context.Context, storageTemplate *storageTemplate) Template {
+func (c *Cache) getTemplateWithFetch(ctx context.Context, template *storageTemplate) Template {
 	t, found := c.cache.GetOrSet(
-		storageTemplate.Files().CacheKey(),
-		storageTemplate,
-		ttlcache.WithTTL[string, Template](templateExpiration),
+		template.Files().CacheKey(),
+		template,
+		ttlcache.WithTTL[string, *storageTemplate](templateExpiration),
 	)
 
 	if !found {
 		missesMetric.Add(ctx, 1)
 		// We don't want to cancel the request if the request was canceled, because it can be used by other templates
 		// It's a little bit problematic, because shutdown won't cancel the fetch
-		go storageTemplate.Fetch(context.WithoutCancel(ctx), c.buildStore)
+		go template.Fetch(context.WithoutCancel(ctx), c.buildStore)
 	} else {
 		hitsMetric.Add(ctx, 1)
 	}

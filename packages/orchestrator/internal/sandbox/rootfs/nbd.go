@@ -30,7 +30,9 @@ type NBDProvider struct {
 	devicePool         *nbd.DevicePool
 }
 
-func NewNBDProvider(rootfs block.ReadonlyDevice, cachePath string, devicePool *nbd.DevicePool) (Provider, error) {
+var _ Provider = &NBDProvider{}
+
+func NewNBDProvider(rootfs block.ReadonlyDevice, cachePath string, devicePool *nbd.DevicePool) (*NBDProvider, error) {
 	size, err := rootfs.Size()
 	if err != nil {
 		return nil, fmt.Errorf("error getting device size: %w", err)
@@ -58,6 +60,9 @@ func NewNBDProvider(rootfs block.ReadonlyDevice, cachePath string, devicePool *n
 }
 
 func (o *NBDProvider) Start(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "cow-start")
+	defer span.End()
+
 	deviceIndex, err := o.mnt.Open(ctx)
 	if err != nil {
 		return o.ready.SetError(fmt.Errorf("error opening overlay file: %w", err))

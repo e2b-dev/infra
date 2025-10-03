@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
@@ -33,6 +36,9 @@ type storageTemplate struct {
 
 	metrics     blockmetrics.Metrics
 	persistence storage.StorageProvider
+
+	fetchLinkLock sync.RWMutex
+	fetchLink     *trace.Link
 }
 
 func newTemplateFromStorage(
@@ -70,7 +76,56 @@ func newTemplateFromStorage(
 	}, nil
 }
 
+func (t *storageTemplate) removeFetchLink() {
+	t.fetchLinkLock.Lock()
+	defer t.fetchLinkLock.Unlock()
+
+	t.fetchLink = nil
+}
+
+func (t *storageTemplate) setFetchLink(ctx, parentCtx context.Context) {
+	t.fetchLinkLock.Lock()
+	defer t.fetchLinkLock.Unlock()
+
+	link := trace.LinkFromContext(ctx)
+	t.fetchLink = &link
+
+	parentSpan := trace.SpanFromContext(parentCtx)
+	if parentSpan != nil {
+		parentSpan.AddLink(link)
+	}
+}
+
+func (t *storageTemplate) AddFetchSpanLink(ctx context.Context) {
+	t.fetchLinkLock.RLock()
+	defer t.fetchLinkLock.RUnlock()
+
+	span := trace.SpanFromContext(ctx)
+	if span == nil {
+		return
+	}
+
+	if t.fetchLink != nil {
+		span.AddLink(*t.fetchLink)
+	}
+}
+
 func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore) {
+	parentCtx := ctx
+
+	ctx, span := tracer.Start(ctx, "fetch storage template",
+		trace.WithNewRoot(),
+		trace.WithAttributes(
+			attribute.String("build-id", t.files.BuildID),
+			attribute.String("kernel-version", t.files.KernelVersion),
+			attribute.String("firecracker-version", t.files.FirecrackerVersion),
+		),
+	)
+	defer span.End()
+
+	t.setFetchLink(ctx, parentCtx)
+	defer t.removeFetchLink()
+
 	var wg errgroup.Group
 
 	wg.Go(func() error {
@@ -81,6 +136,9 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 
 			return nil
 		}
+
+		ctx, span := tracer.Start(ctx, "fetch-snapfile")
+		defer span.End()
 
 		snapfile, snapfileErr := newStorageFile(
 			ctx,
@@ -113,6 +171,9 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 
 			return nil
 		}
+
+		ctx, span := tracer.Start(ctx, "fetch-metadata")
+		defer span.End()
 
 		meta, err := newStorageFile(
 			ctx,
@@ -164,6 +225,9 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 	})
 
 	wg.Go(func() error {
+		ctx, span := tracer.Start(ctx, "fetch-memfile")
+		defer span.End()
+
 		memfileStorage, memfileErr := NewStorage(
 			ctx,
 			buildStore,
@@ -192,6 +256,9 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 	})
 
 	wg.Go(func() error {
+		ctx, span := tracer.Start(ctx, "fetch-rootfs")
+		defer span.End()
+
 		rootfsStorage, rootfsErr := NewStorage(
 			ctx,
 			buildStore,

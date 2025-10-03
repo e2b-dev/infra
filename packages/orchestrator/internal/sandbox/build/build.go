@@ -6,12 +6,15 @@ import (
 	"io"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build")
 
 type File struct {
 	header      *header.Header
@@ -89,7 +92,8 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 			return 0, fmt.Errorf("failed to get build: %w", err)
 		}
 
-		buildN, err := mappedBuild.ReadAt(ctx,
+		buildN, err := mappedBuild.ReadAt(
+			ctx,
 			p[n:int64(n)+readLength],
 			mappedOffset,
 		)
@@ -124,6 +128,9 @@ func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 }
 
 func (b *File) getBuild(ctx context.Context, buildID *uuid.UUID) (Diff, error) {
+	ctx, span := tracer.Start(ctx, "getBuild")
+	defer span.End()
+
 	storageDiff := newStorageDiff(
 		b.store.cachePath,
 		buildID.String(),

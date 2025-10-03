@@ -91,7 +91,7 @@ type PostInitJSONBody struct {
 }
 
 func (s *Sandbox) initEnvd(ctx context.Context) error {
-	ctx, span := tracer.Start(ctx, "envd-init", trace.WithAttributes(telemetry.WithEnvdVersion(s.Config.Envd.Version)))
+	ctx, span := tracer.Start(ctx, "init envd", trace.WithAttributes(telemetry.WithEnvdVersion(s.Config.Envd.Version)))
 	defer span.End()
 
 	attributes := []attribute.KeyValue{telemetry.WithEnvdVersion(s.Config.Envd.Version), attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds())}

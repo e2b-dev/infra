@@ -58,6 +58,9 @@ func NewDirectPathMount(b block.Device, devicePool *DevicePool) *DirectPathMount
 }
 
 func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err error) {
+	ctx, span := tracer.Start(ctx, "open direct-path-mount")
+	defer span.End()
+
 	ctx, d.cancelfn = context.WithCancel(ctx)
 
 	defer func() {

@@ -36,16 +36,16 @@ const (
 	maxStartingInstancesPerNode = 3
 )
 
-func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
+func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (r *orchestrator.SandboxCreateResponse, err error) {
 	// set max request timeout for this request
 	ctx, cancel := context.WithTimeoutCause(ctx, requestTimeout, fmt.Errorf("request timed out"))
 	defer cancel()
 
 	// set up tracing
-	ctx, childSpan := tracer.Start(ctx, "sandbox-create")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "sandbox-create")
+	defer span.End()
 
-	childSpan.SetAttributes(
+	span.SetAttributes(
 		telemetry.WithTemplateID(req.Sandbox.TemplateId),
 		attribute.String("kernel.version", req.Sandbox.KernelVersion),
 		telemetry.WithSandboxID(req.Sandbox.SandboxId),
@@ -124,20 +124,21 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			ExecutionID: req.Sandbox.ExecutionId,
 			TeamID:      req.Sandbox.TeamId,
 		},
-		childSpan.SpanContext().TraceID().String(),
+		span.SpanContext().TraceID().String(),
 		req.StartTime.AsTime(),
 		req.EndTime.AsTime(),
 		req.Sandbox,
 	)
 	if err != nil {
-		err := errors.Join(err, context.Cause(ctx))
+		err = errors.Join(err, context.Cause(ctx))
 		telemetry.ReportCriticalError(ctx, "failed to create sandbox", err)
 		return nil, status.Errorf(codes.Internal, "failed to create sandbox: %s", err)
 	}
 
 	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
+
 	go func() {
-		ctx, childSpan := tracer.Start(context.WithoutCancel(ctx), "sandbox-create-stop", trace.WithNewRoot())
+		ctx, childSpan := tracer.Start(ctx, "wait-for-stop", trace.WithNewRoot())
 		defer childSpan.End()
 
 		waitErr := sbx.Wait(ctx)
@@ -348,7 +349,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		// sbx.Stop sometimes blocks for several seconds,
 		// so we don't want to block the request and do the cleanup in a goroutine after we already removed sandbox from cache and proxy.
 		go func() {
-			ctx, childSpan := tracer.Start(ctx, "sandbox-pause-stop", trace.WithNewRoot())
+			ctx, childSpan := tracer.Start(ctx, "stop sandbox", trace.WithNewRoot())
 			defer childSpan.End()
 
 			err := sbx.Stop(ctx)

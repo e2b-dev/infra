@@ -13,7 +13,6 @@ package build
 // causing a race when closing the cancel channel.
 
 import (
-	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -69,16 +68,8 @@ func newDiffWithAsserts(t *testing.T, cachePath, buildId string, diffType DiffTy
 
 func TestNewDiffStore(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
-	store, err := NewDiffStore(
-		ctx,
-		cachePath,
-		25*time.Hour,
-		60*time.Second,
-		90.0,
-	)
+	store, err := NewDiffStore(t.Context(), cachePath, 25*time.Hour, 60*time.Second, 90.0)
 	t.Cleanup(store.Close)
 
 	require.NoError(t, err)
@@ -87,18 +78,10 @@ func TestNewDiffStore(t *testing.T) {
 
 func TestDiffStoreTTLEviction(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	ttl := 1 * time.Second
 	delay := 60 * time.Second
-	store, err := NewDiffStore(
-		ctx,
-		cachePath,
-		ttl,
-		delay,
-		100.0,
-	)
+	store, err := NewDiffStore(t.Context(), cachePath, ttl, delay, 100.0)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
@@ -117,18 +100,10 @@ func TestDiffStoreTTLEviction(t *testing.T) {
 
 func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	ttl := 1 * time.Second
 	delay := 60 * time.Second
-	store, err := NewDiffStore(
-		ctx,
-		cachePath,
-		ttl,
-		delay,
-		100.0,
-	)
+	store, err := NewDiffStore(t.Context(), cachePath, ttl, delay, 100.0)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
@@ -153,18 +128,10 @@ func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 
 func TestDiffStoreDelayEviction(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	ttl := 60 * time.Second
 	delay := 4 * time.Second
-	store, err := NewDiffStore(
-		ctx,
-		cachePath,
-		ttl,
-		delay,
-		0.0,
-	)
+	store, err := NewDiffStore(t.Context(), cachePath, ttl, delay, 0.0)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
@@ -194,18 +161,10 @@ func TestDiffStoreDelayEviction(t *testing.T) {
 
 func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	ttl := 60 * time.Second
 	delay := 4 * time.Second
-	store, err := NewDiffStore(
-		ctx,
-		cachePath,
-		ttl,
-		delay,
-		0.0,
-	)
+	store, err := NewDiffStore(t.Context(), cachePath, ttl, delay, 0.0)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
@@ -305,19 +264,11 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 // detector enabled: go test -race
 func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	// Use very short TTL and delay to trigger rapid evictions
 	ttl := 10 * time.Millisecond
 	delay := 50 * time.Millisecond
-	store, err := NewDiffStore(
-		ctx,
-		cachePath,
-		ttl,
-		delay,
-		0.0, // Set to 0% to trigger disk space evictions
-	)
+	store, err := NewDiffStore(t.Context(), cachePath, ttl, delay, 0.0)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
@@ -369,7 +320,7 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for range numIterations * 2 {
-			_, err = store.deleteOldestFromCache(t.Context())
+			_, err := store.deleteOldestFromCache(t.Context())
 			assert.NoError(t, err)
 			time.Sleep(time.Microsecond * 50)
 		}
@@ -389,19 +340,11 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 // race condition by simulating the exact scenario from the race report
 func TestDiffStoreResetDeleteRace(t *testing.T) {
 	cachePath := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
 	// Very short TTL to trigger evictions quickly
 	ttl := 5 * time.Millisecond
 	delay := 100 * time.Millisecond
-	store, err := NewDiffStore(
-		ctx,
-		cachePath,
-		ttl,
-		delay,
-		100.0,
-	)
+	store, err := NewDiffStore(t.Context(), cachePath, ttl, delay, 100.0)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
 

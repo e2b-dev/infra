@@ -59,6 +59,9 @@ func (b *StorageDiff) CacheKey() DiffStoreKey {
 }
 
 func (b *StorageDiff) Init(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "init StorageDiff")
+	defer span.End()
+
 	obj, err := b.persistence.OpenObject(ctx, b.storagePath)
 	if err != nil {
 		return err

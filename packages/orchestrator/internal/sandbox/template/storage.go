@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -22,6 +23,8 @@ type Storage struct {
 	header *header.Header
 	source *build.File
 }
+
+var _ block.ReadonlyDevice = (*Storage)(nil)
 
 func NewStorage(
 	ctx context.Context,
