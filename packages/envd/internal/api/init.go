@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 var ErrAccessTokenAlreadySet = errors.New("access token is already set")
@@ -108,19 +111,62 @@ func (a *API) SetupHyperloop(address string) {
 	a.hyperloopLock.Lock()
 	defer a.hyperloopLock.Unlock()
 
-	hosts, err := txeh.NewHosts(&txeh.HostsConfig{ReadFilePath: "/etc/hosts", WriteFilePath: "/etc/hosts"})
-	if err != nil {
-		a.logger.Error().Msgf("Failed to create hosts: %v", err)
+	if err := rewriteHostsFile(address, "/etc/hosts"); err != nil {
+		a.logger.Error().Err(err).Msg("failed to modify hosts file")
 		return
+	}
+
+	a.envVars.Store("E2B_EVENTS_ADDRESS", fmt.Sprintf("http://%s", address))
+}
+
+const eventsHost = "events.e2b.local"
+
+func rewriteHostsFile(address, path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("failed to read hosts file: %w", err)
+	}
+
+	// the txeh library drops an entry if the file does not end with a newline
+	if len(data) > 0 && data[len(data)-1] != '\n' {
+		data = append(data, '\n')
+	}
+
+	hosts, err := txeh.NewHosts(&txeh.HostsConfig{RawText: utils.ToPtr(string(data))})
+	if err != nil {
+		return fmt.Errorf("failed to create hosts: %w", err)
 	}
 
 	// Update /etc/hosts to point events.e2b.local to the hyperloop IP
 	// This will remove any existing entries for events.e2b.local first
-	hosts.AddHost(address, "events.e2b.local")
-	err = hosts.Save()
+	ipFamily, err := getIPFamily(address)
 	if err != nil {
-		a.logger.Error().Msgf("Failed to add events host entry: %v", err)
+		return fmt.Errorf("failed to get ip family: %w", err)
 	}
 
-	a.envVars.Store("E2B_EVENTS_ADDRESS", fmt.Sprintf("http://%s", address))
+	if ok, current, _ := hosts.HostAddressLookup(eventsHost, ipFamily); ok && current == address {
+		return nil // nothing to be done
+	}
+
+	hosts.AddHost(address, eventsHost)
+
+	if err = os.WriteFile(path, []byte(hosts.RenderHostsFile()), 0o644); err != nil {
+		return fmt.Errorf("failed to save hosts file: %w", err)
+	}
+
+	return nil
+}
+
+var ErrEmptyAddress = errors.New("empty address")
+
+func getIPFamily(address string) (txeh.IPFamily, error) {
+	addressIP := net.ParseIP(address)
+	if addressIP == nil {
+		return txeh.IPFamilyV4, ErrEmptyAddress
+	}
+	ipFamily := txeh.IPFamilyV4
+	if addressIP.To4() == nil {
+		ipFamily = txeh.IPFamilyV6
+	}
+	return ipFamily, nil
 }
