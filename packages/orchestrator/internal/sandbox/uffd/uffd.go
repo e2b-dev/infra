@@ -59,7 +59,6 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 
 	return &Uffd{
 		exit:            utils.NewErrorOnce(),
-		exitCh:          make(chan error, 1),
 		readyCh:         make(chan struct{}, 1),
 		fdExit:          fdExit,
 		memfile:         trackedMemfile,
@@ -157,9 +156,8 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 
 	u.readyCh <- struct{}{}
 
-	err = Serve(
+	err = uffd.Serve(
 		ctx,
-		uffd,
 		m,
 		u.memfile,
 		u.fdExit,

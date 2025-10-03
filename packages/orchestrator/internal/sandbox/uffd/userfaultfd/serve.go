@@ -158,7 +158,7 @@ outerLoop:
 
 			var copyMode CULong
 
-			b, sliceErr := src.Slice(offset, int64(pagesize))
+			b, sliceErr := src.Slice(ctx, offset, int64(pagesize))
 			if sliceErr != nil {
 				signalErr := fdExit.SignalExit()
 
