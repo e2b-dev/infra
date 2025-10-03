@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/txn2/txeh"
 	"golang.org/x/sys/unix"
 
@@ -33,37 +34,16 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if initRequest.Timestamp != nil {
-			logger.Debug().Msgf("Setting sandbox start time to: %v", *initRequest.Timestamp)
-			ts := unix.NsecToTimespec(initRequest.Timestamp.UnixNano())
-			err = unix.ClockSettime(unix.CLOCK_REALTIME, &ts)
+		// Update data only if the request is newer or if there's no timestamp at all
+		if initRequest.Timestamp == nil ||
+			(initRequest.Timestamp != nil && a.lastSetTime.Compare(initRequest.Timestamp.UnixNano())) {
+			err = a.SetData(logger, initRequest)
 			if err != nil {
-				logger.Error().Msgf("Failed to set system time: %v", err)
-			}
-		}
-
-		if initRequest.EnvVars != nil {
-			logger.Debug().Msg(fmt.Sprintf("Setting %d env vars", len(*initRequest.EnvVars)))
-
-			for key, value := range *initRequest.EnvVars {
-				logger.Debug().Msgf("Setting env var for %s", key)
-				a.envVars.Store(key, value)
-			}
-		}
-
-		if initRequest.AccessToken != nil {
-			if a.accessToken != nil && *initRequest.AccessToken != *a.accessToken {
-				logger.Error().Msg("Access token is already set and cannot be changed")
-				w.WriteHeader(http.StatusConflict)
+				logger.Error().Msgf("Failed to set data: %v", err)
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte(err.Error()))
 				return
 			}
-
-			logger.Debug().Msg("Setting access token")
-			a.accessToken = initRequest.AccessToken
-		}
-
-		if initRequest.HyperloopIP != nil {
-			go a.SetupHyperloop(*initRequest.HyperloopIP)
 		}
 	}
 
@@ -77,6 +57,42 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "")
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *API) SetData(logger zerolog.Logger, data PostInitJSONBody) error {
+	if data.Timestamp != nil {
+		logger.Debug().Msgf("Setting sandbox start time to: %v", *data.Timestamp)
+		ts := unix.NsecToTimespec(data.Timestamp.UnixNano())
+		err := unix.ClockSettime(unix.CLOCK_REALTIME, &ts)
+		if err != nil {
+			logger.Error().Msgf("Failed to set system time: %v", err)
+		}
+	}
+
+	if data.EnvVars != nil {
+		logger.Debug().Msg(fmt.Sprintf("Setting %d env vars", len(*data.EnvVars)))
+
+		for key, value := range *data.EnvVars {
+			logger.Debug().Msgf("Setting env var for %s", key)
+			a.envVars.Store(key, value)
+		}
+	}
+
+	if data.AccessToken != nil {
+		if a.accessToken != nil && *data.AccessToken != *a.accessToken {
+			logger.Error().Msg("Access token is already set and cannot be changed")
+			return fmt.Errorf("access token is already set and cannot be changed")
+		}
+
+		logger.Debug().Msg("Setting access token")
+		a.accessToken = data.AccessToken
+	}
+
+	if data.HyperloopIP != nil {
+		go a.SetupHyperloop(*data.HyperloopIP)
+	}
+
+	return nil
 }
 
 func (a *API) SetupHyperloop(address string) {

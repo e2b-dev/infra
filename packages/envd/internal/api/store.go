@@ -18,10 +18,12 @@ type API struct {
 	envVars       *utils.Map[string, string]
 	mmdsChan      chan *host.MMDSOpts
 	hyperloopLock sync.Mutex
+
+	lastSetTime *utils.AtomicMax
 }
 
 func New(l *zerolog.Logger, envVars *utils.Map[string, string], mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
-	return &API{logger: l, envVars: envVars, mmdsChan: mmdsChan, isNotFC: isNotFC}
+	return &API{logger: l, envVars: envVars, mmdsChan: mmdsChan, isNotFC: isNotFC, lastSetTime: utils.NewAtomicMax()}
 }
 
 func (a *API) GetHealth(w http.ResponseWriter, r *http.Request) {
