@@ -94,12 +94,47 @@ message SandboxListCachedBuildsResponse {
   repeated CachedBuildInfo builds = 1;
 }
 
+message DiffStoreConfig {
+  oneof store {
+    Bucket bucket = 1;
+  }
+
+  message Bucket {
+    string name = 1;
+    string path = 2;
+  }
+}
+
+message SandboxCopyRequest {
+  string sandbox_id = 1;
+  string build_id = 2;
+
+  DiffStoreConfig store = 3;
+}
+
+message SandboxCopyResponse {}
+
+message SandboxResumeCopyRequest {
+  SandboxConfig sandbox = 1;
+
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp end_time = 3;
+
+  DiffStoreConfig store = 4;
+}
+
+message SandboxResumeCopyResponse {}
+
+
 service SandboxService {
   rpc Create(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc Update(SandboxUpdateRequest) returns (google.protobuf.Empty);
   rpc List(google.protobuf.Empty) returns (SandboxListResponse);
   rpc Delete(SandboxDeleteRequest) returns (google.protobuf.Empty);
   rpc Pause(SandboxPauseRequest) returns (google.protobuf.Empty);
+
+  rpc CopyToStore(SandboxCopyRequest) returns (SandboxCopyResponse);
+  rpc ResumeFromStore(SandboxResumeCopyRequest) returns (SandboxResumeCopyResponse);
 
   rpc ListCachedBuilds(google.protobuf.Empty) returns (SandboxListCachedBuildsResponse);
 }

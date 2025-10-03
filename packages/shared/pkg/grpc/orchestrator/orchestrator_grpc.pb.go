@@ -28,6 +28,8 @@ type SandboxServiceClient interface {
 	List(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SandboxListResponse, error)
 	Delete(ctx context.Context, in *SandboxDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Pause(ctx context.Context, in *SandboxPauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	CopyToStore(ctx context.Context, in *SandboxCopyRequest, opts ...grpc.CallOption) (*SandboxCopyResponse, error)
+	ResumeFromStore(ctx context.Context, in *SandboxResumeCopyRequest, opts ...grpc.CallOption) (*SandboxResumeCopyResponse, error)
 	ListCachedBuilds(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SandboxListCachedBuildsResponse, error)
 }
 
@@ -84,6 +86,24 @@ func (c *sandboxServiceClient) Pause(ctx context.Context, in *SandboxPauseReques
 	return out, nil
 }
 
+func (c *sandboxServiceClient) CopyToStore(ctx context.Context, in *SandboxCopyRequest, opts ...grpc.CallOption) (*SandboxCopyResponse, error) {
+	out := new(SandboxCopyResponse)
+	err := c.cc.Invoke(ctx, "/SandboxService/CopyToStore", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sandboxServiceClient) ResumeFromStore(ctx context.Context, in *SandboxResumeCopyRequest, opts ...grpc.CallOption) (*SandboxResumeCopyResponse, error) {
+	out := new(SandboxResumeCopyResponse)
+	err := c.cc.Invoke(ctx, "/SandboxService/ResumeFromStore", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *sandboxServiceClient) ListCachedBuilds(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SandboxListCachedBuildsResponse, error) {
 	out := new(SandboxListCachedBuildsResponse)
 	err := c.cc.Invoke(ctx, "/SandboxService/ListCachedBuilds", in, out, opts...)
@@ -102,6 +122,8 @@ type SandboxServiceServer interface {
 	List(context.Context, *emptypb.Empty) (*SandboxListResponse, error)
 	Delete(context.Context, *SandboxDeleteRequest) (*emptypb.Empty, error)
 	Pause(context.Context, *SandboxPauseRequest) (*emptypb.Empty, error)
+	CopyToStore(context.Context, *SandboxCopyRequest) (*SandboxCopyResponse, error)
+	ResumeFromStore(context.Context, *SandboxResumeCopyRequest) (*SandboxResumeCopyResponse, error)
 	ListCachedBuilds(context.Context, *emptypb.Empty) (*SandboxListCachedBuildsResponse, error)
 	mustEmbedUnimplementedSandboxServiceServer()
 }
@@ -124,6 +146,12 @@ func (UnimplementedSandboxServiceServer) Delete(context.Context, *SandboxDeleteR
 }
 func (UnimplementedSandboxServiceServer) Pause(context.Context, *SandboxPauseRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Pause not implemented")
+}
+func (UnimplementedSandboxServiceServer) CopyToStore(context.Context, *SandboxCopyRequest) (*SandboxCopyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CopyToStore not implemented")
+}
+func (UnimplementedSandboxServiceServer) ResumeFromStore(context.Context, *SandboxResumeCopyRequest) (*SandboxResumeCopyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ResumeFromStore not implemented")
 }
 func (UnimplementedSandboxServiceServer) ListCachedBuilds(context.Context, *emptypb.Empty) (*SandboxListCachedBuildsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListCachedBuilds not implemented")
@@ -231,6 +259,42 @@ func _SandboxService_Pause_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SandboxService_CopyToStore_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxCopyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SandboxServiceServer).CopyToStore(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/SandboxService/CopyToStore",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SandboxServiceServer).CopyToStore(ctx, req.(*SandboxCopyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SandboxService_ResumeFromStore_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxResumeCopyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SandboxServiceServer).ResumeFromStore(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/SandboxService/ResumeFromStore",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SandboxServiceServer).ResumeFromStore(ctx, req.(*SandboxResumeCopyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SandboxService_ListCachedBuilds_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -275,6 +339,14 @@ var SandboxService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Pause",
 			Handler:    _SandboxService_Pause_Handler,
+		},
+		{
+			MethodName: "CopyToStore",
+			Handler:    _SandboxService_CopyToStore_Handler,
+		},
+		{
+			MethodName: "ResumeFromStore",
+			Handler:    _SandboxService_ResumeFromStore_Handler,
 		},
 		{
 			MethodName: "ListCachedBuilds",

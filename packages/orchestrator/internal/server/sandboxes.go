@@ -384,32 +384,34 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.Errorf(codes.Internal, "error snapshotting sandbox '%s': %s", in.SandboxId, err)
 	}
 
-	// err = s.templateCache.AddSnapshot(
-	// 	ctx,
-	// 	meta.Template.BuildID,
-	// 	meta.Template.KernelVersion,
-	// 	meta.Template.FirecrackerVersion,
-	// 	snapshot.MemfileDiffHeader,
-	// 	snapshot.RootfsDiffHeader,
-	// 	snapshot.Snapfile,
-	// 	snapshot.Metafile,
-	// 	snapshot.MemfileDiff,
-	// 	snapshot.RootfsDiff,
-	// )
-	// if err != nil {
-	// 	telemetry.ReportCriticalError(ctx, "error adding snapshot to template cache", err)
-
-	// 	return nil, status.Errorf(codes.Internal, "error adding snapshot to template cache: %s", err)
-	// }
-
-	// telemetry.ReportEvent(ctx, "added snapshot to template cache")
-
-	err = snapshot.Upload(ctx, s.persistence, meta.Template)
+	err = s.templateCache.AddSnapshot(
+		ctx,
+		meta.Template.BuildID,
+		meta.Template.KernelVersion,
+		meta.Template.FirecrackerVersion,
+		snapshot.MemfileDiffHeader,
+		snapshot.RootfsDiffHeader,
+		snapshot.Snapfile,
+		snapshot.Metafile,
+		snapshot.MemfileDiff,
+		snapshot.RootfsDiff,
+	)
 	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error uploading sandbox snapshot", err, telemetry.WithSandboxID(in.SandboxId))
+		telemetry.ReportCriticalError(ctx, "error adding snapshot to template cache", err)
 
-		return nil, status.Errorf(codes.Internal, "error uploading sandbox snapshot: %s", err)
+		return nil, status.Errorf(codes.Internal, "error adding snapshot to template cache: %s", err)
 	}
+
+	telemetry.ReportEvent(ctx, "added snapshot to template cache")
+
+	go func(ctx context.Context) {
+		err := snapshot.Upload(ctx, s.persistence, meta.Template)
+		if err != nil {
+			sbxlogger.I(sbx).Error("error uploading sandbox snapshot", zap.Error(err))
+
+			return
+		}
+	}(context.WithoutCancel(ctx))
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
 
@@ -446,4 +448,59 @@ func (s *server) prepareSandboxEventData(sbx *sandbox.Sandbox) (uuid.UUID, strin
 	}
 
 	return teamID, buildId, eventData
+}
+
+func (s *server) CopyToStore(ctx context.Context, in *orchestrator.SandboxCopyRequest) (*emptypb.Empty, error) {
+	ctx, childSpan := tracer.Start(ctx, "sandbox-copy-to-store")
+	defer childSpan.End()
+
+	// setup launch darkly
+	ctx = featureflags.SetContext(
+		ctx,
+		ldcontext.NewBuilder(in.SandboxId).
+			Kind(featureflags.SandboxKind).
+			Build(),
+	)
+
+	sbx, ok := s.sandboxes.Get(in.SandboxId)
+	if !ok {
+		s.pauseMu.Unlock()
+
+		telemetry.ReportCriticalError(ctx, "sandbox not found", nil)
+
+		return nil, status.Error(codes.NotFound, "sandbox not found")
+	}
+
+	sbx.OperationInProgress.Lock()
+	defer sbx.OperationInProgress.Unlock()
+
+	meta, err := sbx.Template.Metadata()
+	if err != nil {
+		return nil, fmt.Errorf("no metadata found in template: %w", err)
+	}
+
+	fcVersions := sbx.FirecrackerVersions()
+	meta = meta.SameVersionTemplate(storage.TemplateFiles{
+		BuildID:            in.BuildId,
+		KernelVersion:      fcVersions.KernelVersion,
+		FirecrackerVersion: fcVersions.FirecrackerVersion,
+	})
+
+	snapshot, err := sbx.Pause(ctx, meta)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox", err, telemetry.WithSandboxID(in.SandboxId))
+
+		return nil, status.Errorf(codes.Internal, "error snapshotting sandbox '%s': %s", in.SandboxId, err)
+	}
+
+	err = snapshot.Upload(ctx, s.persistence, meta.Template)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error uploading sandbox snapshot", err, telemetry.WithSandboxID(in.SandboxId))
+
+		return nil, status.Errorf(codes.Internal, "error uploading sandbox snapshot: %s", err)
+	}
+
+	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
+
+	return &emptypb.Empty{}, nil
 }

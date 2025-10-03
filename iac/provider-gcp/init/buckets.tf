@@ -138,6 +138,32 @@ resource "google_storage_bucket" "fc_build_cache_bucket" {
   labels = var.labels
 }
 
+resource "google_storage_bucket" "fc_copy_cache_bucket" {
+  name     = "${var.gcp_project_id}-fc-copy-cache"
+  location = var.gcp_region
+
+  lifecycle_rule {
+    condition {
+      age = 1
+    }
+
+    action {
+      type = "Delete"
+    }
+  }
+
+  public_access_prevention    = "enforced"
+  storage_class               = "STANDARD"
+  uniform_bucket_level_access = true
+
+  soft_delete_policy {
+    retention_duration_seconds = 0
+  }
+
+  labels = var.labels
+}
+
+
 resource "google_storage_bucket_iam_member" "loki_storage_iam" {
   bucket = google_storage_bucket.loki_storage_bucket.name
   role   = "roles/storage.objectUser"
@@ -189,6 +215,12 @@ resource "google_storage_bucket_iam_member" "fc_template_bucket_iam" {
 resource "google_storage_bucket_iam_member" "fc_template_bucket_iam_reader" {
   bucket = google_storage_bucket.fc_template_bucket.name
   role   = "roles/storage.legacyBucketReader"
+  member = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+}
+
+resource "google_storage_bucket_iam_member" "fc_copy_cache_bucket_iam" {
+  bucket = google_storage_bucket.fc_copy_cache_bucket.name
+  role   = "roles/storage.objectUser"
   member = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
 }
 

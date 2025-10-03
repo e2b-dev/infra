@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -103,6 +104,8 @@ type Sandbox struct {
 	APIStoredConfig *orchestrator.SandboxConfig
 
 	exit *utils.ErrorOnce
+
+	OperationInProgress sync.Mutex
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {

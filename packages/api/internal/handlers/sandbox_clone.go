@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"database/sql"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -11,16 +9,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
-	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -67,121 +63,12 @@ func (a *APIStore) PostSandboxesSandboxIDClone(c *gin.Context, sandboxID api.San
 		isOriginalSbxRunning = false
 	}
 
-	if isOriginalSbxRunning {
-		if originalSbx.TeamID != teamID {
-			a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
-
-			return
-		}
-
-		err = a.orchestrator.RemoveSandbox(ctx, originalSbx, instance.StateActionPause)
-		switch {
-		case err == nil:
-		case errors.Is(err, orchestrator.ErrSandboxNotFound):
-			_, fErr := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamID})
-			if fErr == nil {
-				zap.L().Warn("Sandbox is already paused", logger.WithSandboxID(sandboxID))
-				a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already paused", sandboxID))
-				return
-			}
-
-			if errors.Is(fErr, sql.ErrNoRows) {
-				zap.L().Debug("Snapshot not found", logger.WithSandboxID(sandboxID))
-				a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error pausing sandbox - snapshot for sandbox '%s' was not found", sandboxID))
-				return
-			}
-
-			zap.L().Error("Error getting snapshot", zap.Error(fErr), logger.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
-
-			return
-		default:
-			telemetry.ReportError(ctx, "error pausing sandbox", err)
-
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
-			return
-		}
-	}
-
-	// Paused sandbox, now we need to start it twice if the original sandbox is running, otherwise just start the cloned sandbox.
-	originalSbxCache, err := a.orchestrator.GetSandbox(sandboxID)
-	if err == nil {
-		data := originalSbxCache.Data()
-		switch data.State {
-		case instance.StatePausing:
-			zap.L().Debug("Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
-			err = originalSbxCache.WaitForStateChange(ctx)
-			if err != nil {
-				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error waiting for sandbox to pause")
-
-				return
-			}
-		case instance.StateKilling:
-			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found")
-
-			return
-		case instance.StateRunning:
-			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox %s is already running", sandboxID))
-
-			zap.L().Debug("Sandbox is already running",
-				logger.WithSandboxID(sandboxID),
-				zap.Time("end_time", data.EndTime),
-				zap.Time("start_time", data.StartTime),
-				zap.String("node_id", data.NodeID),
-			)
-
-			return
-		default:
-			zap.L().Error("Sandbox is in an unknown state", logger.WithSandboxID(sandboxID), zap.String("state", string(data.State)))
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Sandbox is in an unknown state")
-
-			return
-		}
-	}
-
-	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamInfo.Team.ID})
+	storeConfig, err := a.orchestrator.CopySandboxToBucket(ctx, sandboxID, originalSbx.ClusterID, originalSbx.NodeID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			zap.L().Debug("Snapshot not found", logger.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found")
-			return
-		}
-
-		zap.L().Error("Error getting last snapshot", logger.WithSandboxID(sandboxID), zap.Error(err))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting snapshot")
+		zap.L().Error("Failed to copy sandbox to bucket", zap.Error(err), logger.WithSandboxID(sandboxID))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to copy sandbox to bucket")
 
 		return
-	}
-
-	autoPause := lastSnapshot.Snapshot.AutoPause
-
-	snap := lastSnapshot.Snapshot
-	build := lastSnapshot.EnvBuild
-
-	nodeID := &snap.OriginNodeID
-
-	alias := ""
-	if len(lastSnapshot.Aliases) > 0 {
-		alias = lastSnapshot.Aliases[0]
-	}
-
-	sbxlogger.E(&sbxlogger.SandboxMetadata{
-		SandboxID:  sandboxID,
-		TemplateID: build.EnvID,
-		TeamID:     teamInfo.Team.ID.String(),
-	}).Debug("Started resuming sandbox")
-
-	var envdAccessToken *string = nil
-	if snap.EnvSecure {
-		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
-		if tokenErr != nil {
-			zap.L().Error("Secure envd access token error", zap.Error(tokenErr.Err), logger.WithTemplateID(build.EnvID), logger.WithBuildID(build.ID.String()))
-			a.sendAPIStoreError(c, tokenErr.Code, tokenErr.ClientMsg)
-
-			return
-		}
-
-		envdAccessToken = &accessToken
 	}
 
 	if isOriginalSbxRunning && !originalSbx.IsExpired() {
@@ -189,13 +76,24 @@ func (a *APIStore) PostSandboxesSandboxIDClone(c *gin.Context, sandboxID api.San
 
 		_, createErr := a.startSandbox(
 			ctx,
-			snap.SandboxID,
+			originalSbx.SandboxID,
 			originalSandboxTimeout,
 			nil,
-			snap.Metadata,
-			alias,
+			originalSbx.Metadata,
+			*originalSbx.Alias,
 			teamInfo,
-			build,
+			queries.EnvBuild{
+				ID: originalSbx.BuildID,
+				EnvID: originalSbx.TemplateID,
+				KernelVersion: originalSbx.KernelVersion,
+				FirecrackerVersion: originalSbx.FirecrackerVersion,
+				EnvdVersion: &originalSbx.EnvdVersion,
+				RamMb: originalSbx.RamMB,
+				Vcpu: originalSbx.VCpu,
+				TotalDiskSizeMb: &originalSbx.TotalDiskSizeMB,
+				ClusterNodeID: originalSbx.NodeID,
+				
+			},
 			&c.Request.Header,
 			true,
 			nodeID,

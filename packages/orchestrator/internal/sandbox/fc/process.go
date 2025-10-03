@@ -364,6 +364,8 @@ func (p *Process) Resume(
 		return errors.Join(fmt.Errorf("error loading snapshot: %w", err), fcStopErr)
 	}
 
+	// TODO: Pagefault the data from original memfile to the uffd
+
 	err = p.client.resumeVM(ctx)
 	if err != nil {
 		fcStopErr := p.Stop()
