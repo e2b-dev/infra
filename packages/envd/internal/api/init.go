@@ -41,7 +41,7 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 
 		// Update data only if the request is newer or if there's no timestamp at all
 		if initRequest.Timestamp == nil ||
-			(initRequest.Timestamp != nil && a.lastSetTime.Compare(initRequest.Timestamp.UnixNano())) {
+			(initRequest.Timestamp != nil && a.lastSetTime.SetToGreater(initRequest.Timestamp.UnixNano())) {
 			err = a.SetData(logger, initRequest)
 			if err != nil {
 				switch {

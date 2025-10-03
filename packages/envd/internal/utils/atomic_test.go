@@ -14,41 +14,41 @@ func TestAtomicMax_NewAtomicMax(t *testing.T) {
 	require.Equal(t, int64(0), am.val)
 }
 
-func TestAtomicMax_Compare_InitialValue(t *testing.T) {
+func TestAtomicMax_SetToGreater_InitialValue(t *testing.T) {
 	am := NewAtomicMax()
 
 	// Should succeed when newValue > current
-	assert.True(t, am.Compare(10))
+	assert.True(t, am.SetToGreater(10))
 	assert.Equal(t, int64(10), am.val)
 }
 
-func TestAtomicMax_Compare_EqualValue(t *testing.T) {
+func TestAtomicMax_SetToGreater_EqualValue(t *testing.T) {
 	am := NewAtomicMax()
 	am.val = 10
 
 	// Should succeed when newValue > current
-	assert.True(t, am.Compare(20))
+	assert.True(t, am.SetToGreater(20))
 	assert.Equal(t, int64(20), am.val)
 }
 
-func TestAtomicMax_Compare_GreaterValue(t *testing.T) {
+func TestAtomicMax_SetToGreater_GreaterValue(t *testing.T) {
 	am := NewAtomicMax()
 	am.val = 10
 
 	// Should fail when newValue < current, keeping the max value
-	assert.False(t, am.Compare(5))
+	assert.False(t, am.SetToGreater(5))
 	assert.Equal(t, int64(10), am.val)
 }
 
-func TestAtomicMax_Compare_NegativeValues(t *testing.T) {
+func TestAtomicMax_SetToGreater_NegativeValues(t *testing.T) {
 	am := NewAtomicMax()
 	am.val = -5
 
-	assert.True(t, am.Compare(-2))
+	assert.True(t, am.SetToGreater(-2))
 	assert.Equal(t, int64(-2), am.val)
 }
 
-func TestAtomicMax_Compare_Concurrent(t *testing.T) {
+func TestAtomicMax_SetToGreater_Concurrent(t *testing.T) {
 	am := NewAtomicMax()
 	var wg sync.WaitGroup
 
@@ -59,7 +59,7 @@ func TestAtomicMax_Compare_Concurrent(t *testing.T) {
 	for i := range numGoroutines {
 		go func(val int64) {
 			defer wg.Done()
-			am.Compare(val)
+			am.SetToGreater(val)
 		}(int64(i))
 	}
 

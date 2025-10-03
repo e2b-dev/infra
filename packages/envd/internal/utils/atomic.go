@@ -13,7 +13,7 @@ func NewAtomicMax() *AtomicMax {
 	return &AtomicMax{}
 }
 
-func (a *AtomicMax) Compare(newValue int64) bool {
+func (a *AtomicMax) SetToGreater(newValue int64) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
