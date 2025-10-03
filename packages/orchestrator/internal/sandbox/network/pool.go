@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -26,6 +27,9 @@ type Pool struct {
 	reusedSlotCounter metric.Int64UpDownCounter
 
 	slotStorage Storage
+
+	closeOnce sync.Once
+	closeErr  error
 }
 
 func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string) (*Pool, error) {
@@ -167,7 +171,7 @@ func (p *Pool) Return(ctx context.Context, slot *Slot) error {
 func (p *Pool) cleanup(slot *Slot) error {
 	var errs []error
 
-	err := slot.RemoveNetwork()
+	err := slot.removeNetwork()
 	if err != nil {
 		errs = append(errs, fmt.Errorf("cannot remove network when releasing slot '%d': %w", slot.Idx, err))
 	}
@@ -180,7 +184,23 @@ func (p *Pool) cleanup(slot *Slot) error {
 	return errors.Join(errs...)
 }
 
-func (p *Pool) Close(_ context.Context) error {
+func (p *Pool) Close(ctx context.Context) error {
+	p.closeOnce.Do(func() {
+		p.closeErr = p.close(ctx)
+	})
+
+	return p.closeErr
+}
+
+func (p *Pool) close(ctx context.Context) (err error) {
+	ctx, span := tracer.Start(ctx, "close network-pool")
+	defer func() {
+		if err != nil {
+			telemetry.ReportCriticalError(ctx, "failed to close network-pool", err)
+		}
+		span.End()
+	}()
+
 	p.cancel()
 
 	zap.L().Info("Closing network pool")

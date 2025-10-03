@@ -233,7 +233,7 @@ func (s *Slot) InitializeFirewall() error {
 	return nil
 }
 
-func (s *Slot) CloseFirewall() error {
+func (s *Slot) closeFirewall() error {
 	if s.Firewall == nil {
 		return nil
 	}

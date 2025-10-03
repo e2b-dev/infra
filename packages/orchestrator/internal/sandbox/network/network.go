@@ -229,10 +229,10 @@ func (s *Slot) CreateNetwork() error {
 	return nil
 }
 
-func (s *Slot) RemoveNetwork() error {
+func (s *Slot) removeNetwork() error {
 	var errs []error
 
-	err := s.CloseFirewall()
+	err := s.closeFirewall()
 	if err != nil {
 		errs = append(errs, fmt.Errorf("error closing firewall: %w", err))
 	}
