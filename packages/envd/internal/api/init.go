@@ -17,9 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 )
 
-var (
-	ErrAccessTokenAlreadySet = errors.New("access token is already set")
-)
+var ErrAccessTokenAlreadySet = errors.New("access token is already set")
 
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
