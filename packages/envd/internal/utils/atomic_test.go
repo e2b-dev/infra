@@ -56,7 +56,7 @@ func TestAtomicMax_Compare_Concurrent(t *testing.T) {
 	numGoroutines := 100
 	wg.Add(numGoroutines)
 
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		go func(val int64) {
 			defer wg.Done()
 			am.Compare(val)
