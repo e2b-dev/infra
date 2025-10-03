@@ -36,6 +36,9 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		a.initLock.Lock()
+		defer a.initLock.Unlock()
+
 		// Update data only if the request is newer or if there's no timestamp at all
 		if initRequest.Timestamp == nil ||
 			(initRequest.Timestamp != nil && a.lastSetTime.Compare(initRequest.Timestamp.UnixNano())) {

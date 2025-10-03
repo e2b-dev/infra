@@ -20,6 +20,7 @@ type API struct {
 	hyperloopLock sync.Mutex
 
 	lastSetTime *utils.AtomicMax
+	initLock    sync.Mutex
 }
 
 func New(l *zerolog.Logger, envVars *utils.Map[string, string], mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
