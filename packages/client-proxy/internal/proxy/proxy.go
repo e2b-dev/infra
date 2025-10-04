@@ -100,7 +100,7 @@ func catalogResolution(ctx context.Context, sandboxId string, catalog sandboxes.
 	return o.GetInfo().Ip, nil
 }
 
-func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool, useCatalogResolution bool, useDnsResolution bool) (*reverseproxy.Proxy, error) {
+func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool, useCatalogResolution bool, useDnsResolution bool) (*reverseproxy.Proxy, error) {
 	if !useCatalogResolution && !useDnsResolution {
 		return nil, errors.New("catalog resolution and DNS resolution are both disabled, at least one must be enabled")
 	}
