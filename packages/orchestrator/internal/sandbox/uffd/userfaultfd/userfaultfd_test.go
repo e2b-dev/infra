@@ -6,14 +6,16 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 func TestUffdMissing(t *testing.T) {
 	pagesize := uint64(header.PageSize)
-	data, size := prepareTestData(pagesize)
+	data, size := testutils.PrepareTestData(pagesize, pagesInTestData)
 
 	uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	if err != nil {
@@ -26,14 +28,14 @@ func TestUffdMissing(t *testing.T) {
 		t.Fatal("failed to configure uffd api", err)
 	}
 
-	memoryArea, memoryStart := newMock4KPageMmap(size)
+	memoryArea, memoryStart := testutils.New4KPageMmap(size)
 
 	err = uffd.Register(memoryStart, size, UFFDIO_REGISTER_MODE_MISSING)
 	if err != nil {
 		t.Fatal("failed to register memory", err)
 	}
 
-	mappings := newMockMappings(memoryStart, size, pagesize)
+	m := testutils.NewContiguousMap(memoryStart, size, pagesize)
 
 	fdExit, err := fdexit.New()
 	if err != nil {
@@ -42,13 +44,13 @@ func TestUffdMissing(t *testing.T) {
 	defer fdExit.Close()
 
 	go func() {
-		err := uffd.Serve(mappings, data, fdExit, zap.L())
+		err := uffd.Serve(t.Context(), m, data, fdExit, zap.L())
 		if err != nil {
 			fmt.Println("[TestUffdMissing] failed to serve uffd", err)
 		}
 	}()
 
-	d, err := data.Slice(0, int64(pagesize))
+	d, err := data.Slice(t.Context(), 0, int64(pagesize))
 	if err != nil {
 		t.Fatal("cannot read content", err)
 	}
@@ -60,7 +62,7 @@ func TestUffdMissing(t *testing.T) {
 
 func TestUffdWriteProtect(t *testing.T) {
 	pagesize := uint64(header.PageSize)
-	data, size := prepareTestData(pagesize)
+	data, size := testutils.PrepareTestData(pagesize, pagesInTestData)
 
 	uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	if err != nil {
@@ -73,7 +75,7 @@ func TestUffdWriteProtect(t *testing.T) {
 		t.Fatal("failed to configure uffd api", err)
 	}
 
-	memoryArea, memoryStart := newMock4KPageMmap(size)
+	memoryArea, memoryStart := testutils.New4KPageMmap(size)
 
 	err = uffd.Register(memoryStart, size, UFFDIO_REGISTER_MODE_WP)
 	if err != nil {
@@ -91,10 +93,10 @@ func TestUffdWriteProtect(t *testing.T) {
 	}
 	defer fdExit.Close()
 
-	mappings := newMockMappings(memoryStart, size, pagesize)
+	m := testutils.NewContiguousMap(memoryStart, size, pagesize)
 
 	go func() {
-		err := uffd.Serve(mappings, data, fdExit, zap.L())
+		err := uffd.Serve(t.Context(), m, data, fdExit, zap.L())
 		if err != nil {
 			fmt.Println("[TestUffdWriteProtect] failed to serve uffd", err)
 		}
@@ -108,7 +110,7 @@ func TestUffdWriteProtect(t *testing.T) {
 func TestUffdWriteProtectWithMissing(t *testing.T) {
 	pagesize := uint64(header.PageSize)
 
-	data, size := prepareTestData(pagesize)
+	data, size := testutils.PrepareTestData(pagesize, pagesInTestData)
 
 	uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	if err != nil {
@@ -121,7 +123,7 @@ func TestUffdWriteProtectWithMissing(t *testing.T) {
 		t.Fatal("failed to configure uffd api", err)
 	}
 
-	memoryArea, memoryStart := newMock4KPageMmap(size)
+	memoryArea, memoryStart := testutils.New4KPageMmap(size)
 
 	err = uffd.Register(memoryStart, size, UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
 	if err != nil {
@@ -133,7 +135,7 @@ func TestUffdWriteProtectWithMissing(t *testing.T) {
 		t.Fatal("failed to write protect memory", err)
 	}
 
-	mappings := newMockMappings(memoryStart, size, pagesize)
+	m := testutils.NewContiguousMap(memoryStart, size, pagesize)
 
 	fdExit, err := fdexit.New()
 	if err != nil {
@@ -142,13 +144,13 @@ func TestUffdWriteProtectWithMissing(t *testing.T) {
 	defer fdExit.Close()
 
 	go func() {
-		err := uffd.Serve(mappings, data, fdExit, zap.L())
+		err := uffd.Serve(t.Context(), m, data, fdExit, zap.L())
 		if err != nil {
 			fmt.Println("[TestUffdWriteProtect] failed to serve uffd", err)
 		}
 	}()
 
-	d, err := data.Slice(0, int64(pagesize))
+	d, err := data.Slice(t.Context(), 0, int64(pagesize))
 	if err != nil {
 		t.Fatal("cannot read content", err)
 	}
@@ -165,7 +167,7 @@ func TestUffdWriteProtectWithMissing(t *testing.T) {
 // We are trying to simulate registering the missing handler in the FC and then registering the missing+wp handler again in the orchestrator
 func TestUffdWriteProtectWithMissingDoubleRegistration(t *testing.T) {
 	pagesize := uint64(header.PageSize)
-	data, size := prepareTestData(pagesize)
+	data, size := testutils.PrepareTestData(pagesize, pagesInTestData)
 
 	uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	if err != nil {
@@ -178,7 +180,7 @@ func TestUffdWriteProtectWithMissingDoubleRegistration(t *testing.T) {
 		t.Fatal("failed to configure uffd api", err)
 	}
 
-	memoryArea, memoryStart := newMock4KPageMmap(size)
+	memoryArea, memoryStart := testutils.New4KPageMmap(size)
 
 	// done in the FC
 	err = uffd.Register(memoryStart, size, UFFDIO_REGISTER_MODE_MISSING)
@@ -200,7 +202,7 @@ func TestUffdWriteProtectWithMissingDoubleRegistration(t *testing.T) {
 		t.Fatal("failed to write protect memory", err)
 	}
 
-	mappings := newMockMappings(memoryStart, size, pagesize)
+	m := testutils.NewContiguousMap(memoryStart, size, pagesize)
 
 	fdExit, err := fdexit.New()
 	if err != nil {
@@ -209,13 +211,13 @@ func TestUffdWriteProtectWithMissingDoubleRegistration(t *testing.T) {
 	defer fdExit.Close()
 
 	go func() {
-		err := uffd.Serve(mappings, data, fdExit, zap.L())
+		err := uffd.Serve(t.Context(), m, data, fdExit, zap.L())
 		if err != nil {
 			fmt.Println("[TestUffdWriteProtect] failed to serve uffd", err)
 		}
 	}()
 
-	d, err := data.Slice(0, int64(pagesize))
+	d, err := data.Slice(t.Context(), 0, int64(pagesize))
 	if err != nil {
 		t.Fatal("cannot read content", err)
 	}
