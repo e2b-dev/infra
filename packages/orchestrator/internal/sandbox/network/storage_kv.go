@@ -8,10 +8,12 @@ import (
 
 	consulApi "github.com/hashicorp/consul/api"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type StorageKV struct {
+	config       cfg.Config
 	slotsSize    int
 	consulClient *consulApi.Client
 	nodeID       string
@@ -21,7 +23,7 @@ func (s *StorageKV) getKVKey(slotIdx int) string {
 	return fmt.Sprintf("%s/%d", s.nodeID, slotIdx)
 }
 
-func NewStorageKV(slotsSize int, nodeID string) (*StorageKV, error) {
+func NewStorageKV(slotsSize int, nodeID string, config cfg.Config) (*StorageKV, error) {
 	consulToken := utils.RequiredEnv("CONSUL_TOKEN", "Consul token for authenticating requests to the Consul API")
 
 	consulClient, err := newConsulClient(consulToken)
@@ -30,6 +32,7 @@ func NewStorageKV(slotsSize int, nodeID string) (*StorageKV, error) {
 	}
 
 	return &StorageKV{
+		config:       config,
 		slotsSize:    slotsSize,
 		consulClient: consulClient,
 		nodeID:       nodeID,
@@ -63,7 +66,7 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 		}
 
 		if status {
-			return NewSlot(key, slotIdx)
+			return NewSlot(key, slotIdx, s.config)
 		}
 
 		return nil, nil

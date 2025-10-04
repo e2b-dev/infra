@@ -3,15 +3,12 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"log"
-	"math"
 	"net/http"
 	"os"
 	"os/signal"
 	"slices"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -23,7 +20,7 @@ import (
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/batcher"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver"
@@ -56,45 +53,17 @@ type Closeable interface {
 	Close(ctx context.Context) error
 }
 
-const (
-	defaultPort      = 5008
-	defaultProxyPort = 5007
+const version = "0.1.0"
 
-	version = "0.1.0"
-)
-
-var (
-	forceStop    = env.GetEnv("FORCE_STOP", "false") == "true"
-	commitSHA    string
-	fileLockName = "/orchestrator.lock"
-)
-
-func init() {
-	if value := os.Getenv("ORCHESTRATOR_LOCK_PATH"); value != "" {
-		fileLockName = value
-	}
-}
+var commitSHA string
 
 func main() {
-	port := flag.Uint("port", defaultPort, "orchestrator server port")
-	proxyPort := flag.Uint("proxy-port", defaultProxyPort, "orchestrator proxy port")
-
-	flag.Parse()
-
-	if *port > math.MaxUint16 {
-		log.Fatalf("%d is larger than maximum possible port %d", port, math.MaxInt16)
-	}
-
-	if *proxyPort > math.MaxUint16 {
-		log.Fatalf("%d is larger than maximum possible proxy port %d", proxyPort, math.MaxInt16)
-	}
-
-	hyperloopPort, err := strconv.ParseInt(internal.GetHyperloopProxyPort(), 10, 32)
+	config, err := cfg.Parse()
 	if err != nil {
-		log.Fatalf("failed to get hyperloop proxy port: %v", err)
+		log.Fatalf("failed to parse config: %v", err)
 	}
 
-	success := run(*port, *proxyPort, uint(hyperloopPort))
+	success := run(config)
 
 	log.Println("Stopping orchestrator, success:", success)
 
@@ -103,15 +72,16 @@ func main() {
 	}
 }
 
-func run(port, proxyPort, hyperloopPort uint) (success bool) {
+func run(config cfg.Config) (success bool) {
 	success = true
 
-	services := service.GetServices()
+	services := service.GetServices(config)
 
 	// Check if the orchestrator crashed and restarted
 	// Skip this check in development mode
 	// We don't want to lock if the service is running with force stop; the subsequent start would fail.
-	if !env.IsDevelopment() && !forceStop && slices.Contains(services, service.Orchestrator) {
+	if !env.IsDevelopment() && !config.ForceStop && slices.Contains(services, service.Orchestrator) {
+		fileLockName := config.OrchestratorLockPath
 		info, err := os.Stat(fileLockName)
 		if err == nil {
 			log.Fatalf("Orchestrator was already started at %s, exiting", info.ModTime())
@@ -145,7 +115,7 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 	nodeID := env.GetNodeID()
 	serviceName := service.GetServiceName(services)
 	serviceInstanceID := uuid.NewString()
-	serviceInfo := service.NewInfoContainer(nodeID, version, commitSHA, serviceInstanceID)
+	serviceInfo := service.NewInfoContainer(nodeID, version, commitSHA, serviceInstanceID, config)
 
 	serviceError := make(chan error)
 	defer close(serviceError)
@@ -238,12 +208,12 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 	// to propagate information about sandbox routing.
 	sandboxes := smap.New[*sandbox.Sandbox]()
 
-	sandboxProxy, err := proxy.NewSandboxProxy(tel.MeterProvider, proxyPort, sandboxes)
+	sandboxProxy, err := proxy.NewSandboxProxy(tel.MeterProvider, config.ProxyPort, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 
-	networkPool, err := network.NewPool(ctx, tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, nodeID)
+	networkPool, err := network.NewPool(ctx, tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, nodeID, config)
 	if err != nil {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
@@ -282,7 +252,7 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 
 	var sandboxEventBatcher batcher.ClickhouseInsertBatcher[clickhouse.SandboxEvent]
 
-	clickhouseConnectionString := os.Getenv("CLICKHOUSE_CONNECTION_STRING")
+	clickhouseConnectionString := config.ClickhouseConnectionString
 	if clickhouseConnectionString == "" {
 		sandboxEventBatcher = batcher.NewNoopBatcher[clickhouse.SandboxEvent]()
 	} else {
@@ -321,7 +291,7 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 	}
 
 	var redisClient redis.UniversalClient
-	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
+	if redisClusterUrl := config.RedisClusterURL; redisClusterUrl != "" {
 		// For managed Redis Cluster in GCP we should use Cluster Client, because
 		// > Redis node endpoints can change and can be recycled as nodes are added and removed over time.
 		// https://cloud.google.com/memorystore/docs/cluster/cluster-node-specification#cluster_endpoints
@@ -330,13 +300,13 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 			Addrs:        []string{redisClusterUrl},
 			MinIdleConns: 1,
 		})
-	} else if rurl := os.Getenv("REDIS_URL"); rurl != "" {
+	} else if rurl := config.RedisURL; rurl != "" {
 		redisClient = redis.NewClient(&redis.Options{
 			Addr:         rurl,
 			MinIdleConns: 1,
 		})
 	} else {
-		zap.L().Warn("REDIS_URL not set, using no-op pubsub")
+		zap.L().Warn("REDIS_URL|REDIS_CLUSTER_URL not set, using no-op pubsub")
 	}
 
 	if redisClient != nil {
@@ -361,7 +331,7 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
 
-	defaultAllowSandboxInternet := env.GetEnv("ALLOW_SANDBOX_INTERNET", "true") != "false"
+	defaultAllowSandboxInternet := config.AllowSandboxInternet
 
 	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, defaultAllowSandboxInternet)
 
@@ -397,7 +367,7 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 		}
 	}(tmplSbxLoggerExternal)
 
-	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(ctx, hyperloopPort, globalLogger, sandboxes)
+	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(ctx, config.HyperloopProxyPort, globalLogger, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create hyperloop server", zap.Error(err))
 	}
@@ -483,7 +453,7 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 	g.Go(func() (err error) {
 		// this sets the error declared above so the function
 		// in the defer can check it.
-		grpcErr := grpcSrv.Start(ctx, port)
+		grpcErr := grpcSrv.Start(ctx, config.GRPCPort)
 		if grpcErr != nil {
 			grpcErr = fmt.Errorf("grpc server: %w", grpcErr)
 			zap.L().Error("grpc server error", zap.Error(grpcErr))
@@ -511,7 +481,7 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 
 	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
 	defer cancelCloseCtx()
-	if forceStop {
+	if config.ForceStop {
 		cancelCloseCtx()
 	}
 
@@ -522,7 +492,7 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 	}
 
 	for _, c := range closers {
-		zap.L().Info(fmt.Sprintf("Closing %T, forced: %v", c, forceStop))
+		zap.L().Info(fmt.Sprintf("Closing %T, forced: %v", c, config.ForceStop))
 		if err := c.Close(closeCtx); err != nil {
 			zap.L().Error("error during shutdown", zap.Error(err))
 			success = false

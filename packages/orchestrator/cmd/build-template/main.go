@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
@@ -121,7 +122,7 @@ func buildTemplate(
 		}
 	}()
 
-	networkPool, err := network.NewPool(ctx, noop.MeterProvider{}, 8, 8, clientID)
+	networkPool, err := network.NewPool(ctx, noop.MeterProvider{}, 8, 8, clientID, cfg.Config{UseLocalNamespaceStorage: true})
 	if err != nil {
 		return fmt.Errorf("could not create network pool: %w", err)
 	}

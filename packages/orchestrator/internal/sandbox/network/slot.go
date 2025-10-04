@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"path/filepath"
+	"strconv"
 	"sync/atomic"
 
 	"github.com/containernetworking/plugins/pkg/ns"
@@ -14,7 +15,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	netutils "k8s.io/utils/net"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
@@ -76,10 +77,10 @@ type Slot struct {
 	hostNet  *net.IPNet
 	hostCIDR string
 
-	hyperloopIP string
+	hyperloopIP, hyperloopPort string
 }
 
-func NewSlot(key string, idx int) (*Slot, error) {
+func NewSlot(key string, idx int, config cfg.Config) (*Slot, error) {
 	if idx < 1 || idx > vrtSlotsSize {
 		return nil, fmt.Errorf("slot index %d is out of range [1, %d)", idx, vrtSlotsSize)
 	}
@@ -132,7 +133,8 @@ func NewSlot(key string, idx int) (*Slot, error) {
 		hostNet:  hostNet,
 		hostCIDR: hostCIDR,
 
-		hyperloopIP: internal.GetHyperloopIP(),
+		hyperloopIP:   config.HyperloopIPAddress,
+		hyperloopPort: strconv.FormatUint(uint64(config.HyperloopProxyPort), 10),
 	}
 
 	return slot, nil

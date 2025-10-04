@@ -5,16 +5,20 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 )
 
 type StorageMemory struct {
+	config      cfg.Config
 	slotsSize   int
 	freeSlots   []bool
 	freeSlotsMu sync.Mutex
 }
 
-func NewStorageMemory(slotsSize int) (*StorageMemory, error) {
+func NewStorageMemory(slotsSize int, config cfg.Config) (*StorageMemory, error) {
 	return &StorageMemory{
+		config:      config,
 		slotsSize:   slotsSize,
 		freeSlots:   make([]bool, slotsSize),
 		freeSlotsMu: sync.Mutex{},
@@ -31,7 +35,7 @@ func (s *StorageMemory) Acquire(_ context.Context) (*Slot, error) {
 		key := getMemoryKey(slotIdx)
 		if !s.freeSlots[slotIdx] {
 			s.freeSlots[slotIdx] = true
-			return NewSlot(key, slotIdx)
+			return NewSlot(key, slotIdx, s.config)
 		}
 	}
 
