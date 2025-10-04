@@ -50,7 +50,7 @@ func (u *userfaultfd) Register(addr uintptr, size uint64, mode CULong) error {
 
 	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.fd, UFFDIO_REGISTER, uintptr(unsafe.Pointer(&register)))
 	if errno != 0 {
-		return fmt.Errorf("UFFDIO_REGISTER ioctl failed: %v (ret=%d)", errno, ret)
+		return fmt.Errorf("UFFDIO_REGISTER ioctl failed: %w (ret=%d)", errno, ret)
 	}
 
 	return nil
