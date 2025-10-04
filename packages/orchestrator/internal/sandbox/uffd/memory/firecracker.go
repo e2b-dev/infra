@@ -7,13 +7,9 @@ type MemfileMap []GuestRegionUffdMapping
 // GetOffset returns the relative offset and the page size of the mapped range for a given address
 func (m MemfileMap) GetOffset(hostVirtAddr uintptr) (int64, uint64, error) {
 	for _, m := range m {
-		if hostVirtAddr < m.BaseHostVirtAddr || m.BaseHostVirtAddr+m.Size <= hostVirtAddr {
-			// Outside of this mapping
-
-			continue
+		if hostVirtAddr >= m.BaseHostVirtAddr && hostVirtAddr < m.BaseHostVirtAddr+m.Size {
+			return m.relativeOffset(hostVirtAddr), uint64(m.PageSize), nil
 		}
-
-		return m.relativeOffset(hostVirtAddr), uint64(m.PageSize), nil
 	}
 
 	return 0, 0, fmt.Errorf("address %d not found in any mapping", hostVirtAddr)
