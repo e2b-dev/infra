@@ -61,7 +61,7 @@ func (u *userfaultfd) writeProtect(addr uintptr, size uint64, mode CULong) error
 
 	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.fd, UFFDIO_WRITEPROTECT, uintptr(unsafe.Pointer(&register)))
 	if errno != 0 {
-		return fmt.Errorf("UFFDIO_WRITEPROTECT ioctl failed: %v (ret=%d)", errno, ret)
+		return fmt.Errorf("UFFDIO_WRITEPROTECT ioctl failed: %w (ret=%d)", errno, ret)
 	}
 
 	return nil
