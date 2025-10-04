@@ -17,7 +17,7 @@ type userfaultfd struct {
 func newUserfaultfd(flags uintptr) (*userfaultfd, error) {
 	uffd, _, errno := syscall.Syscall(NR_userfaultfd, flags, 0, 0)
 	if errno != 0 {
-		return nil, fmt.Errorf("userfaultfd syscall failed: %v", errno)
+		return nil, fmt.Errorf("userfaultfd syscall failed: %w", errno)
 	}
 
 	return NewUserfaultfdFromFd(uffd), nil
@@ -36,7 +36,7 @@ func (u *userfaultfd) configureApi(features CULong) error {
 	api := NewUffdioAPI(UFFD_API, features)
 	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.fd, UFFDIO_API, uintptr(unsafe.Pointer(&api)))
 	if errno != 0 {
-		return fmt.Errorf("UFFDIO_API ioctl failed: %v (ret=%d)", errno, ret)
+		return fmt.Errorf("UFFDIO_API ioctl failed: %w (ret=%d)", errno, ret)
 	}
 
 	return nil
