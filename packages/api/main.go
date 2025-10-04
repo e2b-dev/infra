@@ -39,6 +39,7 @@ import (
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/vault"
 )
 
 const (
@@ -263,6 +264,11 @@ func run() int {
 	)
 	defer sbxLoggerExternal.Sync()
 	sbxlogger.SetSandboxLoggerExternal(sbxLoggerExternal)
+
+	_, err = vault.NewClientFromEnv(ctx)
+	if err != nil {
+		zap.L().Fatal("failed to create secret vault client", zap.Error(err))
+	}
 
 	sbxLoggerInternal := sbxlogger.NewLogger(
 		ctx,

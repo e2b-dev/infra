@@ -190,6 +190,8 @@ module "nomad" {
   api_admin_token                           = random_password.api_admin_secret.result
   redis_url_secret_version                  = google_secret_manager_secret_version.redis_url
   sandbox_access_token_hash_seed            = random_password.sandbox_access_token_hash_seed.result
+  vault_api_approle_secret_name             = "${var.prefix}vault-api-approle"
+  vault_tls_ca_secret_name                  = "${var.prefix}vault-tls-ca"
 
   # Click Proxy
   client_proxy_count               = var.client_proxy_count
