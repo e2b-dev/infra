@@ -1,7 +1,7 @@
 package userfaultfd
 
 /*
-This is the flow of the UFFD events:
+This is the flow of the UFFD events when using write protection:
 
 ```mermaid
 flowchart TD
