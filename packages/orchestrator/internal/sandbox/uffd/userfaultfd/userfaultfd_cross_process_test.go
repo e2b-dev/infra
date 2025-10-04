@@ -98,7 +98,8 @@ func TestHelperProcess(t *testing.T) {
 	startRaw, err := strconv.Atoi(mmapStart)
 	if err != nil {
 		fmt.Print("exit parsing mmap start", err)
-		os.Exit(1)
+
+		t.Fatal("exit parsing mmap start", err)
 	}
 
 	start := uintptr(startRaw)
@@ -111,7 +112,8 @@ func TestHelperProcess(t *testing.T) {
 	err = uffd.Register(start, testCrossProcessSize, UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
 	if err != nil {
 		fmt.Print("exit registering uffd", err)
-		os.Exit(1)
+
+		t.Fatal("exit registering uffd", err)
 	}
 
 	fmt.Println("after register")
@@ -124,7 +126,8 @@ func TestHelperProcess(t *testing.T) {
 	fdExit, err := fdexit.New()
 	if err != nil {
 		fmt.Print("exit creating fd exit", err)
-		os.Exit(1)
+
+		t.Fatal("exit creating fd exit", err)
 	}
 	defer fdExit.Close()
 
@@ -138,6 +141,4 @@ func TestHelperProcess(t *testing.T) {
 	}()
 
 	time.Sleep(10 * time.Second)
-
-	os.Exit(0)
 }
