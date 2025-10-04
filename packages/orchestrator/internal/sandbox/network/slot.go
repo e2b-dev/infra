@@ -15,7 +15,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	netutils "k8s.io/utils/net"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
@@ -80,7 +79,7 @@ type Slot struct {
 	hyperloopIP, hyperloopPort string
 }
 
-func NewSlot(key string, idx int, config cfg.Config) (*Slot, error) {
+func NewSlot(key string, idx int, config Config) (*Slot, error) {
 	if idx < 1 || idx > vrtSlotsSize {
 		return nil, fmt.Errorf("slot index %d is out of range [1, %d)", idx, vrtSlotsSize)
 	}

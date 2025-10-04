@@ -10,12 +10,10 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 )
 
 type StorageLocal struct {
-	config       cfg.Config
+	config       Config
 	slotsSize    int
 	foreignNs    map[string]struct{}
 	acquiredNs   map[string]struct{}
@@ -24,7 +22,7 @@ type StorageLocal struct {
 
 const netNamespacesDir = "/var/run/netns"
 
-func NewStorageLocal(slotsSize int, config cfg.Config) (*StorageLocal, error) {
+func NewStorageLocal(slotsSize int, config Config) (*StorageLocal, error) {
 	// get namespaces that we want to always skip
 	foreignNs, err := getForeignNamespaces()
 	if err != nil {

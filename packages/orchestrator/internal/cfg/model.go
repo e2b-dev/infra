@@ -2,6 +2,8 @@ package cfg
 
 import (
 	"github.com/caarlos0/env/v11"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 )
 
 type Config struct {
@@ -9,8 +11,6 @@ type Config struct {
 	ClickhouseConnectionString string   `env:"CLICKHOUSE_CONNECTION_STRING"`
 	ForceStop                  bool     `env:"FORCE_STOP"`
 	GRPCPort                   uint16   `env:"GRPC_PORT"                    envDefault:"5008"`
-	HyperloopIPAddress         string   `env:"SANDBOX_HYPERLOOP_IP"         envDefault:"192.0.2.1"`
-	HyperloopProxyPort         uint16   `env:"SANDBOX_HYPERLOOP_PROXY_PORT" envDefault:"5010"`
 	LaunchDarklyAPIKey         string   `env:"LAUNCH_DARKLY_API_KEY"`
 	OrchestratorBasePath       string   `env:"ORCHESTRATOR_BASE_PATH"       envDefault:"/orchestrator"`
 	OrchestratorLockPath       string   `env:"ORCHESTRATOR_LOCK_PATH"       envDefault:"/orchestrator.lock"`
@@ -18,7 +18,8 @@ type Config struct {
 	RedisClusterURL            string   `env:"REDIS_CLUSTER_URL"`
 	RedisURL                   string   `env:"REDIS_URL"`
 	Services                   []string `env:"ORCHESTRATOR_SERVICES"        envDefault:"orchestrator"`
-	UseLocalNamespaceStorage   bool     `env:"USE_LOCAL_NAMESPACE_STORAGE"`
+
+	NetworkConfig network.Config
 }
 
 func Parse() (Config, error) {
