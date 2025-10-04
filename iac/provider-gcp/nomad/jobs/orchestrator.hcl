@@ -70,10 +70,12 @@ EOT
         TEMPLATE_BUCKET_NAME         = "${template_bucket_name}"
         OTEL_COLLECTOR_GRPC_ENDPOINT = "${otel_collector_grpc_endpoint}"
         ALLOW_SANDBOX_INTERNET       = "${allow_sandbox_internet}"
-        SHARED_CHUNK_CACHE_PATH    = "${shared_chunk_cache_path}"
+        SHARED_CHUNK_CACHE_PATH      = "${shared_chunk_cache_path}"
         CLICKHOUSE_CONNECTION_STRING = "${clickhouse_connection_string}"
         REDIS_URL                    = "${redis_url}"
         REDIS_CLUSTER_URL            = "${redis_cluster_url}"
+        GRPC_PORT                    = "${port}"
+        PROXY_PORT                   = "${proxy_port}"
 
 %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
@@ -82,7 +84,7 @@ EOT
 
       config {
         command = "/bin/bash"
-        args    = ["-c", " chmod +x local/orchestrator && local/orchestrator --port ${port} --proxy-port ${proxy_port}"]
+        args    = ["-c", " chmod +x local/orchestrator && local/orchestrator"]
       }
 
       artifact {

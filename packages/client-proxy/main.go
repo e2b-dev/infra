@@ -159,7 +159,7 @@ func run() int {
 	}
 
 	// Proxy sandbox http traffic to orchestrator nodes
-	trafficProxy, err := e2bproxy.NewClientProxy(tel.MeterProvider, serviceName, uint(proxyPort), catalog, orchestrators, useProxyCatalogResolution, useDnsResolution)
+	trafficProxy, err := e2bproxy.NewClientProxy(tel.MeterProvider, serviceName, uint16(proxyPort), catalog, orchestrators, useProxyCatalogResolution, useDnsResolution)
 	if err != nil {
 		logger.Error("Failed to create client proxy", zap.Error(err))
 		return 1

@@ -6,6 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
 
@@ -45,8 +46,8 @@ func (s *ServiceInfo) SetStatus(status orchestratorinfo.ServiceInfoStatus) {
 	}
 }
 
-func NewInfoContainer(clientId string, version string, commit string, instanceID string) *ServiceInfo {
-	services := GetServices()
+func NewInfoContainer(clientId string, version string, commit string, instanceID string, config cfg.Config) *ServiceInfo {
+	services := GetServices(config)
 	serviceRoles := make([]orchestratorinfo.ServiceInfoRole, 0)
 
 	for _, service := range services {

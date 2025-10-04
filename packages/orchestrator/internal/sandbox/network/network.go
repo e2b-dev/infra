@@ -10,8 +10,6 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"go.uber.org/zap"
-
-	consts "github.com/e2b-dev/infra/packages/orchestrator/internal"
 )
 
 func (s *Slot) CreateNetwork() error {
@@ -220,7 +218,7 @@ func (s *Slot) CreateNetwork() error {
 	err = tables.Append(
 		"nat", "PREROUTING", "-i", s.VethName(),
 		"-p", "tcp", "-d", s.HyperloopIPString(), "--dport", "80",
-		"-j", "REDIRECT", "--to-port", consts.GetHyperloopProxyPort(),
+		"-j", "REDIRECT", "--to-port", s.hyperloopPort,
 	)
 	if err != nil {
 		return fmt.Errorf("error creating HTTP redirect rule to sandbox hyperloop proxy server: %w", err)
@@ -262,7 +260,7 @@ func (s *Slot) RemoveNetwork() error {
 		err = tables.Delete(
 			"nat", "PREROUTING", "-i", s.VethName(),
 			"-p", "tcp", "-d", s.HyperloopIPString(), "--dport", "80",
-			"-j", "REDIRECT", "--to-port", consts.GetHyperloopProxyPort(),
+			"-j", "REDIRECT", "--to-port", s.hyperloopPort,
 		)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error deleting sandbox hyperloop proxy redirect rule: %w", err))
