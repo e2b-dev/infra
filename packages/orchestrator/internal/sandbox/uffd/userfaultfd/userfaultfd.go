@@ -67,7 +67,7 @@ func (u *userfaultfd) writeProtect(addr uintptr, size uint64, mode CULong) error
 	return nil
 }
 
-func (u *userfaultfd) removeWriteProtection(addr uintptr, size uint64) error {
+func (u *userfaultfd) RemoveWriteProtection(addr uintptr, size uint64) error {
 	return u.writeProtect(addr, size, 0)
 }
 
