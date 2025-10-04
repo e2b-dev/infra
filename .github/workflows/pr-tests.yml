@@ -33,6 +33,11 @@ jobs:
         with:
           job_key: unit-tests-${{ matrix.package }}
 
+      - name: Enable unprivileged uffd mode
+        cmd: |
+          sudo modprobe userfaultfd
+          sudo sysctl -w kernel.unprivileged_userns_clone=1
+
       - name: Run tests
         working-directory: ${{ matrix.package }}
         run: go test -v ${{ matrix.test_path }}
