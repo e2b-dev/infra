@@ -18,6 +18,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.44.0
 	github.com/bits-and-blooms/bitset v1.22.0
 	github.com/bmatcuk/doublestar/v4 v4.9.1
+	github.com/caarlos0/env/v11 v11.3.1
 	github.com/containernetworking/plugins v1.6.0
 	github.com/containers/storage v1.58.0
 	github.com/coreos/go-iptables v0.8.0
