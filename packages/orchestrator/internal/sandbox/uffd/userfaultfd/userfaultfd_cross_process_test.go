@@ -28,10 +28,8 @@ const (
 	inheritedFdIndex         = 3
 )
 
-var (
-	// Data shared across the testing processes to check if the served and received data is the same
-	testCrossProcessData, testCrossProcessSize = testutils.PrepareTestData(testCrossProcessPageSize, pagesInTestData)
-)
+// Data shared across the testing processes to check if the served and received data is the same
+var testCrossProcessData, testCrossProcessSize = testutils.PrepareTestData(testCrossProcessPageSize, pagesInTestData)
 
 // Main process, FC in our case
 func TestCrossProcessDoubleRegistration(t *testing.T) {
