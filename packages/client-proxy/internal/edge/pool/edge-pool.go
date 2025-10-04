@@ -78,7 +78,7 @@ type edgeInstancesSyncStore struct {
 	pool *EdgePool
 }
 
-func (e *edgeInstancesSyncStore) getHost(ip string, port int) string {
+func (e *edgeInstancesSyncStore) getHost(ip string, port uint16) string {
 	return fmt.Sprintf("%s:%d", ip, port)
 }
 

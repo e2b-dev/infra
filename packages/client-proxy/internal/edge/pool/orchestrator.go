@@ -60,7 +60,7 @@ type OrchestratorGRPCClient struct {
 	Connection *grpc.ClientConn
 }
 
-func NewOrchestratorInstance(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, ip string, port int) (*OrchestratorInstance, error) {
+func NewOrchestratorInstance(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, ip string, port uint16) (*OrchestratorInstance, error) {
 	host := fmt.Sprintf("%s:%d", ip, port)
 
 	client, err := newClient(tracerProvider, meterProvider, host)

@@ -6,7 +6,7 @@ import (
 
 type ServiceDiscoveryItem struct {
 	NodeIP   string `json:"node_ip"`
-	NodePort int    `json:"node_port"`
+	NodePort uint16 `json:"node_port"`
 }
 
 type ServiceDiscoveryAdapter interface {

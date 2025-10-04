@@ -125,7 +125,7 @@ type orchestratorInstancesSyncStore struct {
 	pool *OrchestratorsPool
 }
 
-func (e *orchestratorInstancesSyncStore) getHost(ip string, port int) string {
+func (e *orchestratorInstancesSyncStore) getHost(ip string, port uint16) string {
 	return fmt.Sprintf("%s:%d", ip, port)
 }
 
