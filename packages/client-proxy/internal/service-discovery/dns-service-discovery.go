@@ -17,7 +17,7 @@ type DnsServiceDiscovery struct {
 	resolver string
 
 	hosts       []string
-	servicePort int
+	servicePort uint16
 }
 
 const (
@@ -32,7 +32,7 @@ var dnsClient = dns.Client{
 	Timeout: time.Second * 2,
 }
 
-func NewDnsServiceDiscovery(ctx context.Context, logger *zap.Logger, hosts []string, resolver string, servicePort int) *DnsServiceDiscovery {
+func NewDnsServiceDiscovery(ctx context.Context, logger *zap.Logger, hosts []string, resolver string, servicePort uint16) *DnsServiceDiscovery {
 	sd := &DnsServiceDiscovery{
 		hosts:       hosts,
 		logger:      logger,

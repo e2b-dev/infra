@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/proxy/internal/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
@@ -12,6 +13,6 @@ type LogsQueryProvider interface {
 	QuerySandboxLogs(ctx context.Context, teamID string, sandboxID string, start time.Time, end time.Time, limit int) ([]logs.LogEntry, error)
 }
 
-func GetLogsQueryProvider() (LogsQueryProvider, error) {
-	return NewLokiQueryProvider()
+func GetLogsQueryProvider(config cfg.Config) (LogsQueryProvider, error) {
+	return NewLokiQueryProvider(config)
 }
