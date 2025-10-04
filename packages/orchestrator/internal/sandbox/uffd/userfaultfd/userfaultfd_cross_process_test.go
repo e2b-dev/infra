@@ -24,7 +24,7 @@ import (
 
 const (
 	pagesInTestData          = 32
-	testCrossProcessPageSize = uint64(header.HugepageSize)
+	testCrossProcessPageSize = uint64(header.PageSize)
 	inheritedFdIndex         = 3
 )
 
@@ -33,7 +33,7 @@ var testCrossProcessData, testCrossProcessSize = testutils.PrepareTestData(testC
 
 // Main process, FC in our case
 func TestCrossProcessDoubleRegistration(t *testing.T) {
-	memoryArea, memoryStart := testutils.New2MPageMmap(testCrossProcessSize)
+	memoryArea, memoryStart := testutils.New4KPageMmap(testCrossProcessSize)
 
 	uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	if err != nil {
