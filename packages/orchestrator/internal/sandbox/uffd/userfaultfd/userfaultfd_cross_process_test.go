@@ -54,7 +54,7 @@ func TestCrossProcessDoubleRegistration(t *testing.T) {
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, syscall.SIGUSR1)
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestHelperProcess")
 	cmd.Env = append(os.Environ(), "GO_TEST_HELPER_PROCESS=1")
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_START=%d", memoryStart))
 
