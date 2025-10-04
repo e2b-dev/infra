@@ -24,5 +24,6 @@ resource "nomad_job" "clean_nfs_cache" {
     dry_run                  = var.filestore_cache_cleanup_dry_run
     deletions_per_loop       = var.filestore_cache_cleanup_deletions_per_loop
     files_per_loop           = var.filestore_cache_cleanup_files_per_loop
+    otel_collector_endpoint  = data.google_secret_manager_secret_version.grafana_logs_url.secret_data
   })
 }

@@ -26,6 +26,9 @@ job "filestore-cleanup" {
                     "--disk-usage-target-percent=${max_disk_usage_target}",
                     "--files-per-loop=${files_per_loop}",
                     "--deletions-per-loop=${deletions_per_loop}",
+                    %{ if otel_collector_endpoint != "" }
+                    "--otel-collector-endpoint=${otel_collector_endpoint}",
+                    %{ endif }
                     "${nfs_cache_mount_path}",
                 ]
             }
