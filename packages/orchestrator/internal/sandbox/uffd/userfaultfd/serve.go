@@ -170,7 +170,7 @@ outerLoop:
 			}
 
 			copyErr := u.copy(addr, b, pagesize, copyMode)
-			if copyErr == unix.EEXIST {
+			if errors.Is(copyErr, unix.EEXIST) {
 				logger.Debug("UFFD serve page already mapped", zap.Any("offset", addr), zap.Any("pagesize", pagesize))
 
 				// Page is already mapped
