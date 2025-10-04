@@ -15,20 +15,26 @@ import (
 	"testing"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+)
+
+const (
+	pagesInTestData          = 32
+	testCrossProcessPageSize = uint64(header.HugepageSize)
 )
 
 var (
 	// Data shared across the testing processes to check if the served and received data is the same
-	testCrossProcessPageSize                   = uint64(header.HugepageSize)
-	testCrossProcessData, testCrossProcessSize = prepareTestData(testCrossProcessPageSize)
+	testCrossProcessData, testCrossProcessSize = testutils.PrepareTestData(testCrossProcessPageSize, pagesInTestData)
 )
 
 // Main process, FC in our case
 func TestCrossProcessDoubleRegistration(t *testing.T) {
-	memoryArea, memoryStart := newMock2MPageMmap(testCrossProcessSize)
+	memoryArea, memoryStart := testutils.New2MPageMmap(testCrossProcessSize)
 
 	uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	if err != nil {
@@ -73,7 +79,7 @@ func TestCrossProcessDoubleRegistration(t *testing.T) {
 
 	data := testCrossProcessData
 
-	servedContent, err := data.Slice(0, int64(testCrossProcessPageSize))
+	servedContent, err := data.Slice(t.Context(), 0, int64(testCrossProcessPageSize))
 	if err != nil {
 		t.Fatal("cannot read content", err)
 	}
@@ -114,7 +120,7 @@ func TestHelperProcess(t *testing.T) {
 	ppid := os.Getppid()
 	syscall.Kill(ppid, syscall.SIGUSR1)
 
-	mappings := newMockMappings(start, testCrossProcessSize, testCrossProcessPageSize)
+	m := testutils.NewContiguousMap(start, testCrossProcessSize, testCrossProcessPageSize)
 
 	fdExit, err := fdexit.New()
 	if err != nil {
@@ -126,7 +132,7 @@ func TestHelperProcess(t *testing.T) {
 	data := testCrossProcessData
 
 	go func() {
-		err := uffd.Serve(mappings, data, fdExit, zap.L())
+		err := uffd.Serve(t.Context(), m, data, fdExit, zap.L())
 		if err != nil {
 			fmt.Println("[TestUffdWriteProtect] failed to serve uffd", err)
 		}

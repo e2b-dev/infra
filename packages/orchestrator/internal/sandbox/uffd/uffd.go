@@ -16,7 +16,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -120,7 +120,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 
 	mappingsBuf = mappingsBuf[:numBytesMappings]
 
-	var m mapping.FcMappings
+	var m memory.MemfileMap
 
 	err = json.Unmarshal(mappingsBuf, &m)
 	if err != nil {

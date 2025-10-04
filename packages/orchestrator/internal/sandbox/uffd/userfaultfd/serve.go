@@ -24,12 +24,12 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 )
 
 func (u *userfaultfd) Serve(
 	ctx context.Context,
-	mappings mapping.Mappings,
+	m memory.MemoryMap,
 	src block.Slicer,
 	fdExit *fdexit.FdExit,
 	logger *zap.Logger,
@@ -133,7 +133,7 @@ outerLoop:
 
 		addr := GetPagefaultAddress(&pagefault)
 
-		offset, pagesize, err := mappings.GetRange(addr)
+		offset, pagesize, err := m.GetOffset(addr)
 		if err != nil {
 			logger.Error("UFFD serve get mapping error", zap.Error(err))
 
