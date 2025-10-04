@@ -25,6 +25,7 @@ import (
 const (
 	pagesInTestData          = 32
 	testCrossProcessPageSize = uint64(header.HugepageSize)
+	inheritedFdIndex         = 3
 )
 
 var (
@@ -104,7 +105,7 @@ func TestHelperProcess(t *testing.T) {
 
 	start := uintptr(startRaw)
 
-	uffdFile := os.NewFile(uintptr(3), "userfaultfd")
+	uffdFile := os.NewFile(uintptr(inheritedFdIndex), "userfaultfd")
 	uffd := NewUserfaultfdFromFd(uffdFile.Fd())
 
 	// done in the FC
