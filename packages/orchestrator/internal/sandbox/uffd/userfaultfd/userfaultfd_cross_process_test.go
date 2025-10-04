@@ -135,7 +135,7 @@ func TestHelperProcess(t *testing.T) {
 	go func() {
 		err := uffd.Serve(t.Context(), m, data, fdExit, zap.L())
 		if err != nil {
-			fmt.Println("[TestUffdWriteProtect] failed to serve uffd", err)
+			fmt.Println("[TestHelperProcess] failed to serve uffd", err)
 		}
 	}()
 
