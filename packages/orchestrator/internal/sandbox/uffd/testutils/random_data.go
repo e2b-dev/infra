@@ -4,8 +4,8 @@ import (
 	"crypto/rand"
 )
 
-func GenerateTestData(pagesize, pagesInTestData uint64) (data *mockSlicer, size uint64) {
-	size = pagesize * pagesInTestData
+func RandomPages(pagesize, numberOfPages uint64) (data *contentSlicer, size uint64) {
+	size = pagesize * numberOfPages
 
 	n := int(size)
 	buf := make([]byte, n)
@@ -13,7 +13,7 @@ func GenerateTestData(pagesize, pagesInTestData uint64) (data *mockSlicer, size 
 		panic(err)
 	}
 
-	data = newMockSlicer(buf)
+	data = newContentSlicer(buf)
 
 	return data, size
 }
