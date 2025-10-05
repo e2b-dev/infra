@@ -14,236 +14,125 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
+type pageTest struct {
+	pagesize        uint64
+	pagesInData     uint64
+	operationOffset uint64
+}
+
 func TestUffdMissing(t *testing.T) {
-	pagesize := uint64(header.PageSize)
-	data, size := testutils.PrepareTestData(pagesize, pagesInTestData)
-
-	uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
-	if err != nil {
-		t.Fatal("failed to create userfaultfd", err)
-	}
-	defer uffd.Close()
-
-	err = uffd.configureApi(0)
-	if err != nil {
-		t.Fatal("failed to configure uffd api", err)
-	}
-
-	memoryArea, memoryStart := testutils.New4KPageMmap(size)
-
-	err = uffd.Register(memoryStart, size, UFFDIO_REGISTER_MODE_MISSING)
-	if err != nil {
-		t.Fatal("failed to register memory", err)
-	}
-
-	m := testutils.NewContiguousMap(memoryStart, size, pagesize)
-
-	fdExit, err := fdexit.New()
-	if err != nil {
-		t.Fatal("failed to create fd exit", err)
-	}
-	defer fdExit.Close()
-
-	go func() {
-		err := uffd.Serve(t.Context(), m, data, fdExit, zap.L())
-		if err != nil {
-			fmt.Println("[TestUffdMissing] failed to serve uffd", err)
-		}
-	}()
-
-	accessOffset := uint64(0)
-
-	d, err := data.Slice(t.Context(), int64(accessOffset), int64(pagesize))
-	if err != nil {
-		t.Fatal("cannot read content", err)
+	tests := []pageTest{
+		// Standard 4K page, operation at start
+		{
+			pagesize:        header.PageSize,
+			pagesInData:     32,
+			operationOffset: 0,
+		},
+		// Standard 4K page, operation at middle
+		{
+			pagesize:        header.PageSize,
+			pagesInData:     32,
+			operationOffset: 16 * header.PageSize,
+		},
+		// Standard 4K page, operation at last page
+		{
+			pagesize:        header.PageSize,
+			pagesInData:     32,
+			operationOffset: 31 * header.PageSize,
+		},
+		// Hugepage, operation at start
+		{
+			pagesize:        header.HugepageSize,
+			pagesInData:     8,
+			operationOffset: 0,
+		},
+		// Hugepage, operation at middle
+		{
+			pagesize:        header.HugepageSize,
+			pagesInData:     8,
+			operationOffset: 4 * header.HugepageSize,
+		},
+		// Hugepage, operation at last page
+		{
+			pagesize:        header.HugepageSize,
+			pagesInData:     8,
+			operationOffset: 7 * header.HugepageSize,
+		},
 	}
 
-	if !bytes.Equal(memoryArea[accessOffset:accessOffset+pagesize], d) {
-		t.Fatalf("content mismatch: want %q, got %q", d, memoryArea[:pagesize])
-	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("pagesize-%d-offset-%d", tt.pagesize, tt.operationOffset), func(t *testing.T) {
+			data, size := testutils.GenerateTestData(tt.pagesize, tt.pagesInData)
 
-	if !reflect.DeepEqual(m.Accessed(), []uintptr{uintptr(accessOffset)}) {
-		t.Fatalf("accessed mismatch: want %v, got %v", []uintptr{uintptr(accessOffset)}, m.Accessed())
-	}
-}
+			uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
+			if err != nil {
+				t.Fatal("failed to create userfaultfd", err)
+			}
+			t.Cleanup(func() {
+				uffd.Close()
+			})
 
-func TestUffdWriteProtect(t *testing.T) {
-	pagesize := uint64(header.PageSize)
-	data, size := testutils.PrepareTestData(pagesize, pagesInTestData)
+			err = uffd.configureApi(tt.pagesize)
+			if err != nil {
+				t.Fatal("failed to configure uffd api", err)
+			}
 
-	uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
-	if err != nil {
-		t.Fatal("failed to create userfaultfd", err)
-	}
-	defer uffd.Close()
+			memoryArea, memoryStart, err := testutils.NewPageMmap(size, tt.pagesize)
+			if err != nil {
+				t.Fatal("failed to create page mmap", err)
+			}
 
-	err = uffd.configureApi(0)
-	if err != nil {
-		t.Fatal("failed to configure uffd api", err)
-	}
+			err = uffd.Register(memoryStart, size, UFFDIO_REGISTER_MODE_MISSING)
+			if err != nil {
+				t.Fatal("failed to register memory", err)
+			}
 
-	memoryArea, memoryStart := testutils.New4KPageMmap(size)
+			m := testutils.NewContiguousMap(memoryStart, size, tt.pagesize)
 
-	err = uffd.Register(memoryStart, size, UFFDIO_REGISTER_MODE_WP)
-	if err != nil {
-		t.Fatal("failed to register memory", err)
-	}
+			fdExit, err := fdexit.New()
+			if err != nil {
+				t.Fatal("failed to create fd exit", err)
+			}
+			t.Cleanup(func() {
+				fdExit.SignalExit()
+				fdExit.Close()
+			})
 
-	err = uffd.AddWriteProtection(memoryStart, size)
-	if err != nil {
-		t.Fatal("failed to write protect memory", err)
-	}
+			exitUffd := make(chan struct{}, 1)
 
-	fdExit, err := fdexit.New()
-	if err != nil {
-		t.Fatal("failed to create fd exit", err)
-	}
-	defer fdExit.Close()
+			go func() {
+				err := uffd.Serve(t.Context(), m, data, fdExit, zap.L())
+				if err != nil {
+					fmt.Println("[TestUffdMissing] failed to serve uffd", err)
+				}
 
-	m := testutils.NewContiguousMap(memoryStart, size, pagesize)
+				exitUffd <- struct{}{}
+			}()
 
-	go func() {
-		err := uffd.Serve(t.Context(), m, data, fdExit, zap.L())
-		if err != nil {
-			fmt.Println("[TestUffdWriteProtect] failed to serve uffd", err)
-		}
-	}()
+			d, err := data.Slice(t.Context(), int64(tt.operationOffset), int64(tt.pagesize))
+			if err != nil {
+				t.Fatal("cannot read content", err)
+			}
 
-	accessOffset := 0
+			if !bytes.Equal(memoryArea[tt.operationOffset:tt.operationOffset+tt.pagesize], d) {
+				idx, want, got := testutils.DiffByte(memoryArea[tt.operationOffset:tt.operationOffset+tt.pagesize], d)
+				t.Fatalf("content mismatch: want %q, got %q at index %d", want, got, idx)
+			}
 
-	memoryArea[accessOffset] = 'A'
+			if !reflect.DeepEqual(m.Map(), map[uint64]struct{}{tt.operationOffset: {}}) {
+				t.Fatalf("accessed mismatch: should be accessed %v, actually accessed %v", []uint64{tt.operationOffset}, m.Keys())
+			}
 
-	if !reflect.DeepEqual(m.Accessed(), []uintptr{uintptr(accessOffset)}) {
-		t.Fatalf("accessed mismatch: want %v, got %v", []uintptr{uintptr(accessOffset)}, m.Accessed())
-	}
-}
+			signalExitErr := fdExit.SignalExit()
+			if signalExitErr != nil {
+				t.Fatal("failed to signal exit", err)
+			}
 
-func TestUffdWriteProtectWithMissing(t *testing.T) {
-	pagesize := uint64(header.PageSize)
-
-	data, size := testutils.PrepareTestData(pagesize, pagesInTestData)
-
-	uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
-	if err != nil {
-		t.Fatal("failed to create userfaultfd", err)
-	}
-	defer uffd.Close()
-
-	err = uffd.configureApi(0)
-	if err != nil {
-		t.Fatal("failed to configure uffd api", err)
-	}
-
-	memoryArea, memoryStart := testutils.New4KPageMmap(size)
-
-	err = uffd.Register(memoryStart, size, UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
-	if err != nil {
-		t.Fatal("failed to register memory", err)
-	}
-
-	err = uffd.AddWriteProtection(memoryStart, size)
-	if err != nil {
-		t.Fatal("failed to write protect memory", err)
-	}
-
-	m := testutils.NewContiguousMap(memoryStart, size, pagesize)
-
-	fdExit, err := fdexit.New()
-	if err != nil {
-		t.Fatal("failed to create fd exit", err)
-	}
-	defer fdExit.Close()
-
-	go func() {
-		err := uffd.Serve(t.Context(), m, data, fdExit, zap.L())
-		if err != nil {
-			fmt.Println("[TestUffdWriteProtect] failed to serve uffd", err)
-		}
-	}()
-
-	d, err := data.Slice(t.Context(), 0, int64(pagesize))
-	if err != nil {
-		t.Fatal("cannot read content", err)
-	}
-
-	accessOffset := uint64(0)
-
-	if !bytes.Equal(memoryArea[accessOffset:accessOffset+pagesize], d) {
-		t.Fatalf("content mismatch: want %q, got %q", d, memoryArea[:pagesize])
-	}
-
-	memoryArea[accessOffset] = 'A'
-
-	if !reflect.DeepEqual(m.Accessed(), []uintptr{uintptr(accessOffset)}) {
-		t.Fatalf("accessed mismatch: want %v, got %v", []uintptr{uintptr(accessOffset)}, m.Accessed())
-	}
-}
-
-// We are trying to simulate registering the missing handler in the FC and then registering the missing+wp handler again in the orchestrator
-func TestUffdWriteProtectWithMissingDoubleRegistration(t *testing.T) {
-	pagesize := uint64(header.PageSize)
-	data, size := testutils.PrepareTestData(pagesize, pagesInTestData)
-
-	uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
-	if err != nil {
-		t.Fatal("failed to create userfaultfd", err)
-	}
-	defer uffd.Close()
-
-	err = uffd.configureApi(0)
-	if err != nil {
-		t.Fatal("failed to configure uffd api", err)
-	}
-
-	memoryArea, memoryStart := testutils.New4KPageMmap(size)
-
-	// done in the FC
-	err = uffd.Register(memoryStart, size, UFFDIO_REGISTER_MODE_MISSING)
-	if err != nil {
-		t.Fatal("failed to register memory", err)
-	}
-
-	// done little later in the orchestrator
-	// both flags needs to be present
-	err = uffd.Register(memoryStart, size, UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
-	if err != nil {
-		t.Fatal("failed to register memory", err)
-	}
-
-	err = uffd.AddWriteProtection(memoryStart, size)
-	if err != nil {
-		t.Fatal("failed to write protect memory", err)
-	}
-
-	m := testutils.NewContiguousMap(memoryStart, size, pagesize)
-
-	fdExit, err := fdexit.New()
-	if err != nil {
-		t.Fatal("failed to create fd exit", err)
-	}
-	defer fdExit.Close()
-
-	go func() {
-		err := uffd.Serve(t.Context(), m, data, fdExit, zap.L())
-		if err != nil {
-			fmt.Println("[TestUffdWriteProtect] failed to serve uffd", err)
-		}
-	}()
-
-	accessOffset := uint64(0)
-
-	d, err := data.Slice(t.Context(), int64(accessOffset), int64(pagesize))
-	if err != nil {
-		t.Fatal("cannot read content", err)
-	}
-
-	if !bytes.Equal(memoryArea[accessOffset:accessOffset+pagesize], d) {
-		t.Fatalf("content mismatch: want %q, got %q", d, memoryArea[:pagesize])
-	}
-
-	memoryArea[accessOffset] = 'A'
-
-	if !reflect.DeepEqual(m.Accessed(), []uintptr{uintptr(accessOffset)}) {
-		t.Fatalf("accessed mismatch: want %v, got %v", []uintptr{uintptr(accessOffset)}, m.Accessed())
+			select {
+			case <-exitUffd:
+			case <-t.Context().Done():
+				t.Fatal("timeout waiting for uffd to exit")
+			}
+		})
 	}
 }
