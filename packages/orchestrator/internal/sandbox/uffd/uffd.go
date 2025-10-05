@@ -40,8 +40,6 @@ type Uffd struct {
 
 	memfile    *block.TrackedSliceDevice
 	socketPath string
-
-	writeProtection bool
 }
 
 var _ MemoryBackend = (*Uffd)(nil)
@@ -58,12 +56,11 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 	}
 
 	return &Uffd{
-		exit:            utils.NewErrorOnce(),
-		readyCh:         make(chan struct{}, 1),
-		fdExit:          fdExit,
-		memfile:         trackedMemfile,
-		socketPath:      socketPath,
-		writeProtection: true,
+		exit:       utils.NewErrorOnce(),
+		readyCh:    make(chan struct{}, 1),
+		fdExit:     fdExit,
+		memfile:    trackedMemfile,
+		socketPath: socketPath,
 	}, nil
 }
 
