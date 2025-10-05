@@ -3,6 +3,7 @@ package userfaultfd
 import (
 	"bytes"
 	"fmt"
+	"reflect"
 	"syscall"
 	"testing"
 
@@ -50,13 +51,19 @@ func TestUffdMissing(t *testing.T) {
 		}
 	}()
 
-	d, err := data.Slice(t.Context(), 0, int64(pagesize))
+	accessOffset := uint64(0)
+
+	d, err := data.Slice(t.Context(), int64(accessOffset), int64(pagesize))
 	if err != nil {
 		t.Fatal("cannot read content", err)
 	}
 
-	if !bytes.Equal(memoryArea[0:pagesize], d) {
+	if !bytes.Equal(memoryArea[accessOffset:accessOffset+pagesize], d) {
 		t.Fatalf("content mismatch: want %q, got %q", d, memoryArea[:pagesize])
+	}
+
+	if !reflect.DeepEqual(m.Accessed(), []uintptr{uintptr(accessOffset)}) {
+		t.Fatalf("accessed mismatch: want %v, got %v", []uintptr{uintptr(accessOffset)}, m.Accessed())
 	}
 }
 
@@ -102,9 +109,13 @@ func TestUffdWriteProtect(t *testing.T) {
 		}
 	}()
 
-	memoryArea[0] = 'A'
+	accessOffset := 0
 
-	// TODO: the write should be unblocked here, ideally we should also wait to check it was blocked then unblocked from the uffd
+	memoryArea[accessOffset] = 'A'
+
+	if !reflect.DeepEqual(m.Accessed(), []uintptr{uintptr(accessOffset)}) {
+		t.Fatalf("accessed mismatch: want %v, got %v", []uintptr{uintptr(accessOffset)}, m.Accessed())
+	}
 }
 
 func TestUffdWriteProtectWithMissing(t *testing.T) {
@@ -155,13 +166,17 @@ func TestUffdWriteProtectWithMissing(t *testing.T) {
 		t.Fatal("cannot read content", err)
 	}
 
-	if !bytes.Equal(memoryArea[0:pagesize], d) {
+	accessOffset := uint64(0)
+
+	if !bytes.Equal(memoryArea[accessOffset:accessOffset+pagesize], d) {
 		t.Fatalf("content mismatch: want %q, got %q", d, memoryArea[:pagesize])
 	}
 
-	memoryArea[0] = 'A'
+	memoryArea[accessOffset] = 'A'
 
-	// TODO: the write should be unblocked here, ideally we should also wait to check it was blocked then unblocked from the uffd
+	if !reflect.DeepEqual(m.Accessed(), []uintptr{uintptr(accessOffset)}) {
+		t.Fatalf("accessed mismatch: want %v, got %v", []uintptr{uintptr(accessOffset)}, m.Accessed())
+	}
 }
 
 // We are trying to simulate registering the missing handler in the FC and then registering the missing+wp handler again in the orchestrator
@@ -187,8 +202,6 @@ func TestUffdWriteProtectWithMissingDoubleRegistration(t *testing.T) {
 	if err != nil {
 		t.Fatal("failed to register memory", err)
 	}
-
-	// TODO: Can we reregister after triggering missing and still properly handle such a page later?
 
 	// done little later in the orchestrator
 	// both flags needs to be present
@@ -217,16 +230,20 @@ func TestUffdWriteProtectWithMissingDoubleRegistration(t *testing.T) {
 		}
 	}()
 
-	d, err := data.Slice(t.Context(), 0, int64(pagesize))
+	accessOffset := uint64(0)
+
+	d, err := data.Slice(t.Context(), int64(accessOffset), int64(pagesize))
 	if err != nil {
 		t.Fatal("cannot read content", err)
 	}
 
-	if !bytes.Equal(memoryArea[0:pagesize], d) {
+	if !bytes.Equal(memoryArea[accessOffset:accessOffset+pagesize], d) {
 		t.Fatalf("content mismatch: want %q, got %q", d, memoryArea[:pagesize])
 	}
 
-	memoryArea[0] = 'A'
+	memoryArea[accessOffset] = 'A'
 
-	// TODO: the write should be unblocked here, ideally we should also wait to check it was blocked then unblocked from the uffd
+	if !reflect.DeepEqual(m.Accessed(), []uintptr{uintptr(accessOffset)}) {
+		t.Fatalf("accessed mismatch: want %v, got %v", []uintptr{uintptr(accessOffset)}, m.Accessed())
+	}
 }
