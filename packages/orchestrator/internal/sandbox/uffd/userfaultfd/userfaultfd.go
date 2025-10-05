@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"syscall"
 	"unsafe"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
@@ -32,7 +34,14 @@ func NewUserfaultfdFromFd(fd uintptr) *userfaultfd {
 
 // features: UFFD_FEATURE_MISSING_HUGETLBFS
 // This is already called by the FC
-func (u *userfaultfd) configureApi(features CULong) error {
+func (u *userfaultfd) configureApi(pagesize uint64) error {
+	var features CULong
+
+	// Only set the hugepage feature if we're using hugepages
+	if pagesize == header.HugepageSize {
+		features |= UFFD_FEATURE_MISSING_HUGETLBFS
+	}
+
 	api := NewUffdioAPI(UFFD_API, features)
 	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.fd, UFFDIO_API, uintptr(unsafe.Pointer(&api)))
 	if errno != 0 {
@@ -54,25 +63,6 @@ func (u *userfaultfd) Register(addr uintptr, size uint64, mode CULong) error {
 	}
 
 	return nil
-}
-
-func (u *userfaultfd) writeProtect(addr uintptr, size uint64, mode CULong) error {
-	register := NewUffdioWriteProtect(CULong(addr), CULong(size), mode)
-
-	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.fd, UFFDIO_WRITEPROTECT, uintptr(unsafe.Pointer(&register)))
-	if errno != 0 {
-		return fmt.Errorf("UFFDIO_WRITEPROTECT ioctl failed: %w (ret=%d)", errno, ret)
-	}
-
-	return nil
-}
-
-func (u *userfaultfd) RemoveWriteProtection(addr uintptr, size uint64) error {
-	return u.writeProtect(addr, size, 0)
-}
-
-func (u *userfaultfd) AddWriteProtection(addr uintptr, size uint64) error {
-	return u.writeProtect(addr, size, UFFDIO_WRITEPROTECT_MODE_WP)
 }
 
 // mode: UFFDIO_COPY_MODE_WP

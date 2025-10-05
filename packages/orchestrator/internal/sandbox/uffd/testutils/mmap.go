@@ -2,6 +2,7 @@ package testutils
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"syscall"
 	"unsafe"
@@ -23,15 +24,19 @@ func (s *mockSlicer) Slice(_ context.Context, offset, size int64) ([]byte, error
 	return s.content[offset : offset+size], nil
 }
 
-func New4KPageMmap(size uint64) ([]byte, uintptr) {
-	return newMockMmap(size, header.PageSize, 0)
+func NewPageMmap(size, pagesize uint64) ([]byte, uintptr, error) {
+	if pagesize == header.PageSize {
+		return newMockMmap(size, header.PageSize, 0)
+	}
+
+	if pagesize == header.HugepageSize {
+		return newMockMmap(size, header.HugepageSize, unix.MAP_HUGETLB|unix.MAP_HUGE_2MB)
+	}
+
+	panic(fmt.Sprintf("unsupported page size: %d", pagesize))
 }
 
-func New2MPageMmap(size uint64) ([]byte, uintptr) {
-	return newMockMmap(size, header.HugepageSize, unix.MAP_HUGETLB|unix.MAP_HUGE_2MB)
-}
-
-func newMockMmap(size, pagesize uint64, flags int) ([]byte, uintptr) {
+func newMockMmap(size, pagesize uint64, flags int) ([]byte, uintptr, error) {
 	l := int(math.Ceil(float64(size)/float64(pagesize)) * float64(pagesize))
 	b, err := syscall.Mmap(
 		-1,
@@ -41,8 +46,8 @@ func newMockMmap(size, pagesize uint64, flags int) ([]byte, uintptr) {
 		syscall.MAP_PRIVATE|syscall.MAP_ANONYMOUS|flags,
 	)
 	if err != nil {
-		return nil, 0
+		return nil, 0, err
 	}
 
-	return b, uintptr(unsafe.Pointer(&b[0]))
+	return b, uintptr(unsafe.Pointer(&b[0])), nil
 }

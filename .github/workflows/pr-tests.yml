@@ -37,6 +37,12 @@ jobs:
         run: |
           echo 1 | sudo tee /proc/sys/vm/unprivileged_userfaultfd
 
+      - name: Enable hugepages
+        run: |
+          sudo mkdir -p /mnt/hugepages
+          sudo mount -t hugetlbfs none /mnt/hugepages
+          echo 128 | sudo tee /proc/sys/vm/nr_hugepages
+
       - name: Run tests
         working-directory: ${{ matrix.package }}
         run: go test -v ${{ matrix.test_path }}
