@@ -65,6 +65,25 @@ func (u *userfaultfd) Register(addr uintptr, size uint64, mode CULong) error {
 	return nil
 }
 
+func (u *userfaultfd) writeProtect(addr uintptr, size uint64, mode CULong) error {
+	register := NewUffdioWriteProtect(CULong(addr), CULong(size), mode)
+
+	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.fd, UFFDIO_WRITEPROTECT, uintptr(unsafe.Pointer(&register)))
+	if errno != 0 {
+		return fmt.Errorf("UFFDIO_WRITEPROTECT ioctl failed: %w (ret=%d)", errno, ret)
+	}
+
+	return nil
+}
+
+func (u *userfaultfd) RemoveWriteProtection(addr uintptr, size uint64) error {
+	return u.writeProtect(addr, size, 0)
+}
+
+func (u *userfaultfd) AddWriteProtection(addr uintptr, size uint64) error {
+	return u.writeProtect(addr, size, UFFDIO_WRITEPROTECT_MODE_WP)
+}
+
 // mode: UFFDIO_COPY_MODE_WP
 // When we use both missing and wp, we need to use UFFDIO_COPY_MODE_WP, otherwise copying would unprotect the page
 func (u *userfaultfd) copy(addr uintptr, data []byte, pagesize uint64, mode CULong) error {
