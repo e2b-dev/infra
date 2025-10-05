@@ -1,16 +1,5 @@
 package userfaultfd
 
-/*
-This is the flow of the UFFD events when using write protection:
-
-```mermaid
-flowchart TD
-A[missing page] -- write (WRITE flag) --> B(COPY) --> C[mark as dirty]
-A -- read (0 flag) --> D(COPY + WP protect) --> E[faulted page]
-E -- write (WP|WRITE flag) --> F(remove WP) --> C
-```
-*/
-
 import (
 	"context"
 	"errors"
