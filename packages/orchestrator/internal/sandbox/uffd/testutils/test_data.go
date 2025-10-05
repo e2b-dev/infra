@@ -13,9 +13,7 @@ func GenerateTestData(pagesize, pagesInTestData uint64) (data *mockSlicer, size 
 		panic(err)
 	}
 
-	data = newMockSlicer(
-		buf,
-	)
+	data = newMockSlicer(buf)
 
 	return data, size
 }
@@ -28,13 +26,16 @@ func DiffByte(a, b []byte) (idx int, want, got byte) {
 	if len(b) < minLen {
 		minLen = len(b)
 	}
-	for i := 0; i < minLen; i++ {
+
+	for i := range minLen {
 		if a[i] != b[i] {
 			return i, b[i], a[i]
 		}
 	}
+
 	if len(a) != len(b) {
 		return minLen, 0, 0
 	}
+
 	return -1, 0, 0
 }
