@@ -2,7 +2,7 @@ package testutils
 
 import "context"
 
-// contentSlicer is a slicer that returns content via exposing the Slicer interface.
+// contentSlicer exposes byte slice via the Slicer interface.
 // This is used for testing purposes.
 type contentSlicer struct {
 	content []byte
