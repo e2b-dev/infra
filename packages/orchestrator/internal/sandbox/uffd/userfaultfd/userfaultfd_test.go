@@ -16,7 +16,7 @@ import (
 
 type pageTest struct {
 	pagesize        uint64
-	pagesInData     uint64
+	numberOfPages   uint64
 	operationOffset uint64
 }
 
@@ -25,44 +25,44 @@ func TestUffdMissing(t *testing.T) {
 		// Standard 4K page, operation at start
 		{
 			pagesize:        header.PageSize,
-			pagesInData:     32,
+			numberOfPages:   32,
 			operationOffset: 0,
 		},
 		// Standard 4K page, operation at middle
 		{
 			pagesize:        header.PageSize,
-			pagesInData:     32,
+			numberOfPages:   32,
 			operationOffset: 16 * header.PageSize,
 		},
 		// Standard 4K page, operation at last page
 		{
 			pagesize:        header.PageSize,
-			pagesInData:     32,
+			numberOfPages:   32,
 			operationOffset: 31 * header.PageSize,
 		},
 		// Hugepage, operation at start
 		{
 			pagesize:        header.HugepageSize,
-			pagesInData:     8,
+			numberOfPages:   8,
 			operationOffset: 0,
 		},
 		// Hugepage, operation at middle
 		{
 			pagesize:        header.HugepageSize,
-			pagesInData:     8,
+			numberOfPages:   8,
 			operationOffset: 4 * header.HugepageSize,
 		},
 		// Hugepage, operation at last page
 		{
 			pagesize:        header.HugepageSize,
-			pagesInData:     8,
+			numberOfPages:   8,
 			operationOffset: 7 * header.HugepageSize,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("pagesize-%d-offset-%d", tt.pagesize, tt.operationOffset), func(t *testing.T) {
-			data, size := testutils.GenerateTestData(tt.pagesize, tt.pagesInData)
+			data, size := testutils.RandomPages(tt.pagesize, tt.numberOfPages)
 
 			uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 			if err != nil {
