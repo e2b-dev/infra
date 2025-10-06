@@ -129,7 +129,9 @@ func (s *NodePassThroughServer) handler(srv any, serverStream grpc.ServerStream)
 	}
 
 	if callback != nil {
-		defer callback(err)
+		defer func() {
+			callback(err)
+		}()
 	}
 
 	// Explicitly *do not close* s2cErrChan and c2sErrChan, otherwise the select below will not terminate.
