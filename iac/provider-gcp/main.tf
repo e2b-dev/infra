@@ -195,6 +195,7 @@ module "nomad" {
   client_proxy_count               = var.client_proxy_count
   client_proxy_resources_cpu_count = var.client_proxy_resources_cpu_count
   client_proxy_resources_memory_mb = var.client_proxy_resources_memory_mb
+  client_proxy_update_max_parallel = var.client_proxy_update_max_parallel
 
   edge_proxy_port = var.edge_proxy_port
   edge_api_port   = var.edge_api_port
