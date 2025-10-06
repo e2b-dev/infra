@@ -14,14 +14,14 @@ import (
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
 	e2binfo "github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 type NodePassThroughServer struct {
 	nodes   *e2borchestrators.OrchestratorsPool
-	catalog sandboxes.SandboxesCatalog
+	catalog catalog.SandboxesCatalog
 
 	info *e2binfo.ServiceInfo
 
@@ -39,7 +39,7 @@ func NewNodePassThroughServer(
 	nodes *e2borchestrators.OrchestratorsPool,
 	info *e2binfo.ServiceInfo,
 	authorization authorization.AuthorizationService,
-	catalog sandboxes.SandboxesCatalog,
+	catalog catalog.SandboxesCatalog,
 ) *grpc.Server {
 	nodePassThrough := &NodePassThroughServer{
 		authorization: authorization,
