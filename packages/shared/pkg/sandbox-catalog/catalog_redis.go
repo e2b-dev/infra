@@ -3,18 +3,16 @@ package sandbox_catalog
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/redis/go-redis/v9"
-	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
-
-var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog")
 
 const (
 	catalogRedisTimeout = time.Second * 1
@@ -55,7 +53,11 @@ func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) 
 
 	data, err := c.redisClient.Get(ctx, c.getCatalogKey(sandboxID)).Bytes()
 	if err != nil {
-		return nil, ErrSandboxNotFound
+		if errors.Is(err, redis.Nil) {
+			return nil, ErrSandboxNotFound
+		}
+
+		return nil, fmt.Errorf("failed to get sandbox info from redis: %w", err)
 	}
 
 	var info *SandboxInfo
@@ -123,5 +125,5 @@ func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID strin
 }
 
 func (c *RedisSandboxCatalog) getCatalogKey(sandboxID string) string {
-	return fmt.Sprintf("sandbox-%s", sandboxID)
+	return fmt.Sprintf("sandbox:catalog:%s", sandboxID)
 }
