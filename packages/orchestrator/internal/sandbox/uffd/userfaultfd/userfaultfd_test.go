@@ -112,7 +112,7 @@ func TestUffdMissing(t *testing.T) {
 				t.Fatalf("content mismatch: want %q, got %q at index %d", want, got, idx)
 			}
 
-			assert.Equal(t, m.Map(), map[uint64]struct{}{tt.operationOffset: {}})
+			assert.Equal(t, map[uint64]struct{}{tt.operationOffset: {}}, m.Map())
 
 			signalExitErr := fdExit.SignalExit()
 			require.NoError(t, signalExitErr)
