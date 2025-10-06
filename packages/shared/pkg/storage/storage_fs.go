@@ -101,7 +101,7 @@ func (f *FileSystemStorageObjectProvider) Write(_ context.Context, data []byte) 
 }
 
 func (f *FileSystemStorageObjectProvider) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
-	ctx, span := tracer.Start(ctx, "FileSystemStorageObjectProvider.ReadAt")
+	_, span := tracer.Start(ctx, "FileSystemStorageObjectProvider.ReadAt")
 	defer span.End()
 
 	handle, err := f.getHandle(true)
@@ -114,7 +114,7 @@ func (f *FileSystemStorageObjectProvider) ReadAt(ctx context.Context, buff []byt
 }
 
 func (f *FileSystemStorageObjectProvider) Size(ctx context.Context) (int64, error) {
-	ctx, span := tracer.Start(ctx, "FileSystemStorageObjectProvider.Size")
+	_, span := tracer.Start(ctx, "FileSystemStorageObjectProvider.Size")
 	defer span.End()
 
 	handle, err := f.getHandle(true)
