@@ -75,6 +75,7 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) SetData(logger zerolog.Logger, data PostInitJSONBody) error {
 	if data.Timestamp != nil {
+		// Check if the time is before maxTimeInPast or after maxTimeInFuture
 		if data.Timestamp.Before(time.Now().Add(-maxTimeInPast)) ||
 			data.Timestamp.After(time.Now().Add(maxTimeInFuture)) {
 			logger.Debug().Msgf("Setting sandbox start time to: %v", *data.Timestamp)
