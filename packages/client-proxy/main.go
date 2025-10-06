@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -104,6 +105,11 @@ func run() int {
 	zap.ReplaceGlobals(logger)
 
 	proxyPort := internal.GetProxyServicePort()
+	if proxyPort <= 0 || proxyPort > int(math.MaxUint16) {
+		logger.Error("Proxy port is outside the valid uint16 range", zap.Int("value", proxyPort))
+		return 1
+	}
+
 	edgePort := internal.GetEdgeServicePort()
 	edgeSecret := internal.GetEdgeServiceSecret()
 	orchestratorPort := internal.GetOrchestratorServicePort()
