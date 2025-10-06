@@ -87,11 +87,6 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}
 	defer s.startingSandboxes.Release(1)
 
-	metricsWriteFlag, flagErr := s.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlagName)
-	if flagErr != nil {
-		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
-	}
-
 	template, err := s.templateCache.GetTemplate(
 		ctx,
 		req.GetSandbox().GetBuildId(),
@@ -104,9 +99,8 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
 
-	sbx, err := sandbox.ResumeSandbox(
+	sbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,
-		s.networkPool,
 		template,
 		sandbox.Config{
 			BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
@@ -133,8 +127,6 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		childSpan.SpanContext().TraceID().String(),
 		req.GetStartTime().AsTime(),
 		req.GetEndTime().AsTime(),
-		s.devicePool,
-		metricsWriteFlag,
 		req.GetSandbox(),
 	)
 	if err != nil {

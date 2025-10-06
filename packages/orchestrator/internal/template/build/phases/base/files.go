@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 )
 
 func constructLayerFilesFromOCI(
@@ -24,6 +25,7 @@ func constructLayerFilesFromOCI(
 	// The base build ID can be different from the final requested template build ID.
 	baseBuildID string,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
+	dockerhubRepository dockerhub.RemoteRepository,
 	templateBuildDir string,
 	rootfsPath string,
 ) (r *block.Local, m block.ReadonlyDevice, c containerregistry.Config, e error) {
@@ -33,6 +35,7 @@ func constructLayerFilesFromOCI(
 	// Create a rootfs file
 	rtfs := rootfs.New(
 		artifactRegistry,
+		dockerhubRepository,
 		buildContext.Template,
 		buildContext.Config,
 	)

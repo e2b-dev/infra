@@ -7,14 +7,13 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/commands"
@@ -30,9 +29,11 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const progressDelay = 5 * time.Second
@@ -42,40 +43,40 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 type Builder struct {
 	logger *zap.Logger
 
-	templateStorage  storage.StorageProvider
-	buildStorage     storage.StorageProvider
-	devicePool       *nbd.DevicePool
-	networkPool      *network.Pool
-	artifactRegistry artifactsregistry.ArtifactsRegistry
-	proxy            *proxy.SandboxProxy
-	sandboxes        *smap.Map[*sandbox.Sandbox]
-	templateCache    *sbxtemplate.Cache
-	metrics          *metrics.BuildMetrics
+	sandboxFactory      *sandbox.Factory
+	templateStorage     storage.StorageProvider
+	buildStorage        storage.StorageProvider
+	artifactRegistry    artifactsregistry.ArtifactsRegistry
+	dockerhubRepository dockerhub.RemoteRepository
+	proxy               *proxy.SandboxProxy
+	sandboxes           *smap.Map[*sandbox.Sandbox]
+	templateCache       *sbxtemplate.Cache
+	metrics             *metrics.BuildMetrics
 }
 
 func NewBuilder(
 	logger *zap.Logger,
+	sandboxFactory *sandbox.Factory,
 	templateStorage storage.StorageProvider,
 	buildStorage storage.StorageProvider,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
-	devicePool *nbd.DevicePool,
-	networkPool *network.Pool,
+	dockerhubRepository dockerhub.RemoteRepository,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 	templateCache *sbxtemplate.Cache,
 	buildMetrics *metrics.BuildMetrics,
 ) *Builder {
 	return &Builder{
-		logger:           logger,
-		templateStorage:  templateStorage,
-		buildStorage:     buildStorage,
-		artifactRegistry: artifactRegistry,
-		devicePool:       devicePool,
-		networkPool:      networkPool,
-		proxy:            proxy,
-		sandboxes:        sandboxes,
-		templateCache:    templateCache,
-		metrics:          buildMetrics,
+		logger:              logger,
+		sandboxFactory:      sandboxFactory,
+		templateStorage:     templateStorage,
+		buildStorage:        buildStorage,
+		artifactRegistry:    artifactRegistry,
+		dockerhubRepository: dockerhubRepository,
+		proxy:               proxy,
+		sandboxes:           sandboxes,
+		templateCache:       templateCache,
+		metrics:             buildMetrics,
 	}
 }
 
@@ -135,6 +136,13 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 		}
 	}()
 
+	defer func() {
+		if r := recover(); r != nil {
+			telemetry.ReportCriticalError(ctx, "recovered from panic in template build", nil, attribute.String("panic", fmt.Sprintf("%v", r)), telemetry.WithTemplateID(config.TemplateID), telemetry.WithBuildID(template.BuildID))
+			e = errors.New("fatal error occurred during template build, please contact us")
+		}
+	}()
+
 	if isV1Build {
 		hookedCore, done := writer.NewPostProcessor(progressDelay, logsCore)
 		defer done()
@@ -189,10 +197,9 @@ func runBuild(
 ) (*Result, error) {
 	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, builder.templateStorage)
 
-	layerExecutor := layer.NewLayerExecutor(bc,
+	layerExecutor := layer.NewLayerExecutor(
+		bc,
 		builder.logger,
-		builder.networkPool,
-		builder.devicePool,
 		builder.templateCache,
 		builder.proxy,
 		builder.sandboxes,
@@ -206,12 +213,12 @@ func runBuild(
 		builder.logger,
 		builder.proxy,
 		builder.templateStorage,
-		builder.devicePool,
-		builder.networkPool,
 		builder.artifactRegistry,
+		builder.dockerhubRepository,
 		layerExecutor,
 		index,
 		builder.metrics,
+		builder.sandboxFactory,
 	)
 
 	commandExecutor := commands.NewCommandExecutor(
@@ -222,6 +229,7 @@ func runBuild(
 
 	stepBuilders := steps.CreateStepPhases(
 		bc,
+		builder.sandboxFactory,
 		builder.logger,
 		builder.proxy,
 		layerExecutor,
@@ -232,6 +240,7 @@ func runBuild(
 
 	postProcessingBuilder := finalize.New(
 		bc,
+		builder.sandboxFactory,
 		builder.templateStorage,
 		builder.proxy,
 		layerExecutor,

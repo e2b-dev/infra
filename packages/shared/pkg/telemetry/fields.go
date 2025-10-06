@@ -36,6 +36,10 @@ func WithTeamID(teamID string) attribute.KeyValue {
 	return zapFieldToOTELAttribute(logger.WithTeamID(teamID))
 }
 
+func WithEnvdVersion(envdVersion string) attribute.KeyValue {
+	return zapFieldToOTELAttribute(logger.WithEnvdVersion(envdVersion))
+}
+
 func zapFieldToOTELAttribute(f zap.Field) attribute.KeyValue {
 	e := &ZapFieldToOTELAttributeEncoder{}
 	f.AddTo(e)

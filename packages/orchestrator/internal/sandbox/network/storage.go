@@ -7,8 +7,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
-var localNamespaceStorageSwitch = os.Getenv("USE_LOCAL_NAMESPACE_STORAGE")
-
 type Storage interface {
 	Acquire(ctx context.Context) (*Slot, error)
 	Release(s *Slot) error
@@ -16,7 +14,7 @@ type Storage interface {
 
 // NewStorage creates a new slot storage based on the environment, we are ok with using a memory storage for local
 func NewStorage(slotsSize int, nodeID string) (Storage, error) {
-	if env.IsDevelopment() || localNamespaceStorageSwitch == "true" {
+	if env.IsDevelopment() || os.Getenv("USE_LOCAL_NAMESPACE_STORAGE") == "true" {
 		return NewStorageLocal(slotsSize)
 	}
 

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -98,7 +99,8 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 
 		defer func() {
 			if r := recover(); r != nil {
-				zap.L().Error("recovered from panic in template build", zap.Any("panic", r), logger.WithTemplateID(cfg.GetTemplateID()), logger.WithBuildID(cfg.GetBuildID()))
+				telemetry.ReportCriticalError(ctx, "recovered from panic in template build handler", nil, attribute.String("panic", fmt.Sprintf("%v", r)), telemetry.WithTemplateID(cfg.GetTemplateID()), telemetry.WithBuildID(cfg.GetBuildID()))
+				buildInfo.SetFail(builderrors.UnwrapUserError(errors.New("fatal error occurred, please contact us")))
 			}
 		}()
 

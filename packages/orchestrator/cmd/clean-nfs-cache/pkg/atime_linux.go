@@ -1,6 +1,6 @@
 //go:build linux
 
-package main
+package pkg
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func getMetadata(fullPath string) (file, error) {
+func GetFileMetadata(fullPath string) (File, error) {
 	var statx unix.Statx_t
 	err := unix.Statx(unix.AT_FDCWD, fullPath,
 		unix.AT_STATX_SYNC_AS_STAT,
@@ -17,16 +17,16 @@ func getMetadata(fullPath string) (file, error) {
 		&statx,
 	)
 	if err != nil {
-		return file{}, fmt.Errorf("failed to statx %q: %w", fullPath, err)
+		return File{}, fmt.Errorf("failed to statx %q: %w", fullPath, err)
 	}
 
-	var t file
-	t.path = fullPath
-	t.size = int64(statx.Size)
-	t.atime = statxTimestampToTime(statx.Atime)
+	var t File
+	t.Path = fullPath
+	t.Size = int64(statx.Size)
+	t.ATime = statxTimestampToTime(statx.Atime)
 
 	if statx.Mask&unix.STATX_BTIME == unix.STATX_BTIME {
-		t.btime = statxTimestampToTime(statx.Btime)
+		t.BTime = statxTimestampToTime(statx.Btime)
 	}
 	return t, nil
 }
