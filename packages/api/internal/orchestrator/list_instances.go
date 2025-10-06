@@ -10,9 +10,9 @@ import (
 )
 
 // GetSandboxes returns all instances for a given node.
-func (o *Orchestrator) GetSandboxes(ctx context.Context, teamID *uuid.UUID, states []sandbox.State) map[sandbox.State][]sandbox.Sandbox {
+func (o *Orchestrator) GetSandboxes(ctx context.Context, teamID uuid.UUID, options ...sandbox.ItemsOption) []sandbox.Sandbox {
 	_, childSpan := tracer.Start(ctx, "get-sandboxes")
 	defer childSpan.End()
 
-	return o.sandboxStore.ItemsByState(teamID, states)
+	return o.sandboxStore.Items(&teamID, options...)
 }

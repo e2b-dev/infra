@@ -10,36 +10,51 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+var (
+	errMaxInstanceLengthExceeded = fmt.Errorf("max instance length exceeded")
+	errCannotSetTTL              = fmt.Errorf("cannot set ttl")
+)
+
 func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, duration time.Duration, allowShorter bool) *api.APIError {
-	data, err := o.GetSandbox(sandboxID, false)
-	if err != nil {
-		return &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("Sandbox '%s' is not running anymore", sandboxID), Err: err}
-	}
-
-	if (time.Since(data.StartTime)) > data.MaxInstanceLength {
-		msg := fmt.Sprintf("Sandbox '%s' reached maximal allowed uptime", sandboxID)
-		return &api.APIError{Code: http.StatusForbidden, ClientMsg: msg, Err: errors.New(msg)}
-	}
-
 	now := time.Now()
-	maxAllowedTTL := getMaxAllowedTTL(now, data.StartTime, duration, data.MaxInstanceLength)
-	newEndTime := now.Add(maxAllowedTTL)
-	zap.L().Debug("sandbox ttl updated", logger.WithSandboxID(data.SandboxID), zap.Time("end_time", newEndTime))
 
-	updated, err := o.sandboxStore.ExtendEndTime(sandboxID, newEndTime, allowShorter)
+	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
+		maxAllowedTTL := getMaxAllowedTTL(now, sbx.StartTime, duration, sbx.MaxInstanceLength)
+		newEndTime := now.Add(maxAllowedTTL)
+
+		if (time.Since(sbx.StartTime)) > sbx.MaxInstanceLength {
+			return sbx, errMaxInstanceLengthExceeded
+		}
+
+		if !allowShorter && newEndTime.Before(sbx.EndTime) {
+			return sbx, errCannotSetTTL
+		}
+
+		zap.L().Debug("sandbox ttl updated", logger.WithSandboxID(sbx.SandboxID), zap.Time("end_time", newEndTime))
+		sbx.EndTime = newEndTime
+		return sbx, nil
+	}
+
+	var sbxNotFoundErr *sandbox.NotFoundError
+	sbx, err := o.sandboxStore.Update(sandboxID, updateFunc)
 	if err != nil {
-		return &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("Sandbox '%s' is not running anymore", sandboxID), Err: err}
+		switch {
+		case errors.As(err, &sbxNotFoundErr):
+			return &api.APIError{Code: http.StatusNotFound, ClientMsg: "Sandbox not found", Err: err}
+		case errors.Is(err, errMaxInstanceLengthExceeded):
+			return &api.APIError{Code: http.StatusBadRequest, ClientMsg: "Max instance length exceeded", Err: err}
+		case errors.Is(err, errCannotSetTTL):
+			// If shorter than the current end time, we don't extend, so we can return
+			return nil
+		default:
+			return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}
+		}
 	}
-
-	if !updated {
-		// No need to update in orchestrator
-		return nil
-	}
-
-	err = o.UpdateSandbox(ctx, data.SandboxID, newEndTime, data.ClusterID, data.NodeID)
+	err = o.UpdateSandbox(ctx, sandboxID, sbx.EndTime, sbx.ClusterID, sbx.NodeID)
 	if err != nil {
 		return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}
 	}

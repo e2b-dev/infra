@@ -13,11 +13,10 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
-	orchestratorspool "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
+	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -82,25 +81,28 @@ func dnsResolution(sandboxId string, logger *zap.Logger) (string, error) {
 	return node, nil
 }
 
-func catalogResolution(ctx context.Context, sandboxId string, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool) (string, error) {
-	s, err := catalog.GetSandbox(ctx, sandboxId)
+func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog) (string, error) {
+	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
-		if errors.Is(err, sandboxes.ErrSandboxNotFound) {
+		if errors.Is(err, catalog.ErrSandboxNotFound) {
 			return "", ErrNodeNotFound
 		}
 
 		return "", fmt.Errorf("failed to get sandbox from catalog: %w", err)
 	}
 
-	o, ok := orchestrators.GetOrchestrator(s.OrchestratorID)
-	if !ok {
-		return "", errors.New("orchestrator not found")
-	}
-
-	return o.GetInfo().Ip, nil
+	// todo: when we will use edge for orchestrators discovery we can stop sending IP in the catalog
+	//  and just resolve node from pool to get the IP of the node
+	return s.OrchestratorIP, nil
 }
 
-func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool, useCatalogResolution bool, useDnsResolution bool) (*reverseproxy.Proxy, error) {
+func NewClientProxy(
+	meterProvider metric.MeterProvider,
+	serviceName string,
+	port uint16,
+	catalog catalog.SandboxesCatalog,
+	useCatalogResolution, useDnsResolution bool,
+) (*reverseproxy.Proxy, error) {
 	if !useCatalogResolution && !useDnsResolution {
 		return nil, errors.New("catalog resolution and DNS resolution are both disabled, at least one must be enabled")
 	}
@@ -124,7 +126,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 			var nodeIP string
 
 			if useCatalogResolution {
-				nodeIP, err = catalogResolution(r.Context(), sandboxId, catalog, orchestrators)
+				nodeIP, err = catalogResolution(r.Context(), sandboxId, catalog)
 				if err != nil {
 					if !errors.Is(err, ErrNodeNotFound) {
 						logger.Warn("failed to resolve node ip with Redis resolution", zap.Error(err))
