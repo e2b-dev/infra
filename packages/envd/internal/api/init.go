@@ -19,6 +19,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+const hostsFilePermissions = 0o644
+
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
@@ -124,7 +126,7 @@ func rewriteHostsFile(address, path string) error {
 
 	hosts.AddHost(address, eventsHost)
 
-	if err = os.WriteFile(path, []byte(hosts.RenderHostsFile()), 0o644); err != nil {
+	if err = os.WriteFile(path, []byte(hosts.RenderHostsFile()), hostsFilePermissions); err != nil {
 		return fmt.Errorf("failed to save hosts file: %w", err)
 	}
 

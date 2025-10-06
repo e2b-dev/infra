@@ -10,8 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const perms = 0o700
-
 func TestSimpleCases(t *testing.T) {
 	testCases := map[string]func(string) string{
 		"both newlines":               func(s string) string { return s },
@@ -31,7 +29,7 @@ func TestSimpleCases(t *testing.T) {
 `
 			value = preprocessor(value)
 			inputPath := filepath.Join(tempDir, "hosts")
-			err := os.WriteFile(inputPath, []byte(value), perms)
+			err := os.WriteFile(inputPath, []byte(value), hostsFilePermissions)
 			require.NoError(t, err)
 
 			err = rewriteHostsFile("127.0.0.3", inputPath)
