@@ -8,6 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/template"
 )
@@ -60,13 +61,13 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 
 		var notFoundErr *SandboxNotFoundError
 		if errors.As(err, &notFoundErr) {
-			zap.L().Warn("sandbox not found", zap.String("host", r.Host))
+			zap.L().Warn("sandbox not found", zap.String("host", r.Host), logger.WithSandboxID(notFoundErr.SandboxId))
 
 			err := template.
 				NewSandboxNotFoundError(notFoundErr.SandboxId, r.Host).
 				HandleError(w, r)
 			if err != nil {
-				zap.L().Error("failed to handle sandbox not found error", zap.Error(err))
+				zap.L().Error("failed to handle sandbox not found error", zap.Error(err), logger.WithSandboxID(notFoundErr.SandboxId))
 				http.Error(w, "Failed to handle sandbox not found error", http.StatusInternalServerError)
 
 				return

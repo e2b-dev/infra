@@ -41,8 +41,8 @@ func Make(ctx context.Context, rootfsPath string, sizeMb int64, blockSize int64)
 	cmd := exec.CommandContext(ctx,
 		"mkfs.ext4",
 		// Matches the final ext4 features used by tar2ext4 tool
-		// But enables resize_inode, sparse_super (default, required for resize_inode)
-		"-O", `^has_journal,^dir_index,^64bit,^dir_nlink,^metadata_csum,ext_attr,sparse_super2,filetype,extent,flex_bg,large_file,huge_file,extra_isize`,
+		// But enables resize_inode, sparse_super (default, required for resize_inode), has_journal (default), metadata_csum (default)
+		"-O", `^dir_index,^64bit,^dir_nlink,ext_attr,sparse_super2,filetype,extent,flex_bg,large_file,huge_file,extra_isize`,
 		"-b", strconv.FormatInt(blockSize, 10),
 		"-m", strconv.FormatInt(reservedBlocksPercentage, 10),
 		"-i", strconv.FormatInt(inodesRatio, 10),
@@ -71,11 +71,7 @@ func Mount(ctx context.Context, rootfsPath string, mountPoint string) error {
 	mountStderrWriter := telemetry.NewEventWriter(ctx, "stderr")
 	cmd.Stderr = mountStderrWriter
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("error mounting ext4 filesystem: %w", err)
-	}
-
-	return nil
+	return cmd.Run()
 }
 
 func Unmount(ctx context.Context, rootfsPath string) error {
@@ -221,7 +217,7 @@ func CheckIntegrity(ctx context.Context, rootfsPath string, fix bool) (string, e
 		exitCode := cmd.ProcessState.ExitCode()
 
 		if exitCode > accExitCode {
-			return string(out), fmt.Errorf("error running e2fsck: %w", err)
+			return string(out), fmt.Errorf("error running e2fsck [exit %d]\n%s", exitCode, out)
 		}
 	}
 

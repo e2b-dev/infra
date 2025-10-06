@@ -9,7 +9,9 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 )
 
-var sandboxCacheDir = filepath.Join(pkg.OrchestratorBasePath, "sandbox")
+func sandboxCacheDir() string {
+	return filepath.Join(pkg.OrchestratorBasePath(), "sandbox")
+}
 
 type SandboxFiles struct {
 	TemplateCacheFiles
@@ -41,7 +43,7 @@ func (c TemplateCacheFiles) NewSandboxFilesWithStaticID(sandboxID string, static
 }
 
 func (s *SandboxFiles) SandboxCacheRootfsPath() string {
-	return filepath.Join(sandboxCacheDir, fmt.Sprintf("rootfs-%s-%s.cow", s.SandboxID, s.randomID))
+	return filepath.Join(sandboxCacheDir(), fmt.Sprintf("rootfs-%s-%s.cow", s.SandboxID, s.randomID))
 }
 
 func (s *SandboxFiles) SandboxFirecrackerSocketPath() string {
@@ -53,5 +55,5 @@ func (s *SandboxFiles) SandboxUffdSocketPath() string {
 }
 
 func (s *SandboxFiles) SandboxCacheRootfsLinkPath() string {
-	return filepath.Join(sandboxCacheDir, fmt.Sprintf("rootfs-%s-%s.link", s.SandboxID, s.randomID))
+	return filepath.Join(sandboxCacheDir(), fmt.Sprintf("rootfs-%s-%s.link", s.SandboxID, s.randomID))
 }

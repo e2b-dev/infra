@@ -74,10 +74,8 @@ func (bb *BaseBuilder) provisionSandbox(
 	logsWriter := &writer.PrefixFilteredWriter{Writer: zapWriter, PrefixFilter: logExternalPrefix}
 	defer logsWriter.Close()
 
-	sbx, err := sandbox.CreateSandbox(
+	sbx, err := bb.sandboxFactory.CreateSandbox(
 		ctx,
-		bb.networkPool,
-		bb.devicePool,
 		sandboxConfig,
 		sandboxRuntime,
 		fcVersions,

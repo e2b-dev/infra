@@ -76,8 +76,12 @@ job "template-manager-system" {
         ALLOW_SANDBOX_INTERNET        = "${allow_sandbox_internet}"
         SHARED_CHUNK_CACHE_PATH       = "${shared_chunk_cache_path}"
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
+        DOCKERHUB_REMOTE_REPOSITORY_URL  = "${dockerhub_remote_repository_url}"
 %{ if !update_stanza }
         FORCE_STOP                    = "true"
+%{ endif }
+%{ if launch_darkly_api_key != "" }
+        LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
 %{ endif }
       }
 

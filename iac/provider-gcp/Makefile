@@ -37,15 +37,15 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, ADDITIONAL_DOMAINS) \
 	$(call tfvar, ADDITIONAL_API_SERVICES_JSON) \
 	$(call tfvar, PREFIX) \
-	$(call tfvar, OTEL_TRACING_PRINT) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
 	$(call tfvar, API_RESOURCES_CPU_COUNT) \
 	$(call tfvar, API_RESOURCES_MEMORY_MB) \
 	$(call tfvar, CLIENT_PROXY_COUNT) \
-	$(call tfvar, CLIENT_PROXY_CPU_COUNT) \
+	$(call tfvar, CLIENT_PROXY_RESOURCES_CPU_COUNT) \
 	$(call tfvar, CLIENT_PROXY_RESOURCES_MEMORY_MB) \
 	$(call tfvar, CLICKHOUSE_RESOURCES_CPU_COUNT) \
 	$(call tfvar, CLICKHOUSE_RESOURCES_MEMORY_MB) \
+	$(call tfvar, CLIENT_PROXY_UPDATE_MAX_PARALLEL) \
 	$(call tfvar, LOKI_RESOURCES_CPU_COUNT) \
 	$(call tfvar, LOKI_RESOURCES_MEMORY_MB) \
 	$(call tfvar, OTEL_TRACING_PRINT) \
@@ -59,9 +59,11 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, FILESTORE_CACHE_ENABLED) \
 	$(call tfvar, FILESTORE_CACHE_TIER) \
 	$(call tfvar, FILESTORE_CACHE_CAPACITY_GB) \
+	$(call tfvar, FILESTORE_MAX_DISK_USAGE_TARGET) \
 	$(call tfvar, BUILD_CLUSTER_CACHE_DISK_TYPE) \
 	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_TYPE) \
-	$(call tfvar, MIN_CPU_PLATFORM)
+	$(call tfvar, MIN_CPU_PLATFORM) \
+	$(call tfvar, REMOTE_REPOSITORY_ENABLED)
 
 .PHONY: init
 init:

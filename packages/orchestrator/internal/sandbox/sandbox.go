@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -24,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -32,7 +34,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var defaultEnvdTimeout = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT", "10s")))
+var (
+	defaultEnvdTimeout           = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT", "10s")))
+	meter                        = otel.GetMeterProvider().Meter("orchestrator.internal.sandbox")
+	envdInitCalls                = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitCalls))
+	waitForEnvdDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.WaitForEnvdDurationHistogramName))
+)
 
 var httpClient = http.Client{
 	Timeout: 10 * time.Second,
@@ -76,9 +83,14 @@ type Resources struct {
 	memory uffd.MemoryBackend
 }
 
+type internalConfig struct {
+	EnvdInitRequestTimeout time.Duration
+}
+
 type Metadata struct {
-	Config  Config
-	Runtime RuntimeMetadata
+	internalConfig internalConfig
+	Config         Config
+	Runtime        RuntimeMetadata
 
 	StartedAt time.Time
 	EndAt     time.Time
@@ -117,12 +129,32 @@ type networkSlotRes struct {
 	err  error
 }
 
-// CreateSandbox creates the sandbox.
-// IMPORTANT: You must Close() the sandbox after you are done with it.
-func CreateSandbox(
-	ctx context.Context,
+type Factory struct {
+	networkPool  *network.Pool
+	devicePool   *nbd.DevicePool
+	featureFlags *featureflags.Client
+
+	defaultAllowInternetAccess bool
+}
+
+func NewFactory(
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
+	featureFlags *featureflags.Client,
+	defaultAllowInternetAccess bool,
+) *Factory {
+	return &Factory{
+		networkPool:                networkPool,
+		devicePool:                 devicePool,
+		featureFlags:               featureFlags,
+		defaultAllowInternetAccess: defaultAllowInternetAccess,
+	}
+}
+
+// CreateSandbox creates the sandbox.
+// IMPORTANT: You must Close() the sandbox after you are done with it.
+func (f *Factory) CreateSandbox(
+	ctx context.Context,
 	config Config,
 	runtime RuntimeMetadata,
 	fcVersions fc.FirecrackerVersions,
@@ -148,12 +180,13 @@ func CreateSandbox(
 		}
 	}()
 
-	allowInternet := globalconfig.AllowSandboxInternet
+	// TODO: Temporarily set this based on global config, should be removed later (it should be passed as a parameter in build)
+	allowInternet := f.defaultAllowInternetAccess
 	if config.AllowInternetAccess != nil {
 		allowInternet = *config.AllowInternetAccess
 	}
 
-	ipsCh := getNetworkSlotAsync(ctx, networkPool, cleanup, allowInternet)
+	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, allowInternet)
 	defer func() {
 		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
 		<-ipsCh
@@ -172,7 +205,7 @@ func CreateSandbox(
 		rootfsProvider, err = rootfs.NewNBDProvider(
 			rootFS,
 			sandboxFiles.SandboxCacheRootfsPath(),
-			devicePool,
+			f.devicePool,
 		)
 	} else {
 		rootfsProvider, err = rootfs.NewDirectProvider(
@@ -251,6 +284,10 @@ func CreateSandbox(
 	}
 
 	metadata := &Metadata{
+		internalConfig: internalConfig{
+			EnvdInitRequestTimeout: f.GetEnvdInitRequestTimeout(ctx),
+		},
+
 		Config:  config,
 		Runtime: runtime,
 
@@ -305,17 +342,14 @@ func endSpan(span trace.Span, err error) {
 
 // ResumeSandbox resumes the sandbox from already saved template or snapshot.
 // IMPORTANT: You must Close() the sandbox after you are done with it.
-func ResumeSandbox(
+func (f *Factory) ResumeSandbox(
 	ctx context.Context,
-	networkPool *network.Pool,
 	t template.Template,
 	config Config,
 	runtime RuntimeMetadata,
 	traceID string,
 	startedAt time.Time,
 	endAt time.Time,
-	devicePool *nbd.DevicePool,
-	useClickhouseMetrics bool,
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
 	ctx, span := tracer.Start(ctx, "resume sandbox")
@@ -334,12 +368,14 @@ func ResumeSandbox(
 		}
 	}()
 
-	allowInternet := globalconfig.AllowSandboxInternet
+	// TODO: Temporarily set this based on global config, should be removed later
+	//  (it should be passed as a non nil parameter from API)
+	allowInternet := f.defaultAllowInternetAccess
 	if config.AllowInternetAccess != nil {
 		allowInternet = *config.AllowInternetAccess
 	}
 
-	ipsCh := getNetworkSlotAsync(ctx, networkPool, cleanup, allowInternet)
+	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, allowInternet)
 	defer func() {
 		// Ensure the slot is received from chan before ResumeSandbox returns so the slot is cleaned up properly in cleanup
 		<-ipsCh
@@ -360,7 +396,7 @@ func ResumeSandbox(
 	rootfsOverlay, err := rootfs.NewNBDProvider(
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(),
-		devicePool,
+		f.devicePool,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
@@ -486,6 +522,10 @@ func ResumeSandbox(
 	}
 
 	metadata := &Metadata{
+		internalConfig: internalConfig{
+			EnvdInitRequestTimeout: f.GetEnvdInitRequestTimeout(ctx),
+		},
+
 		Config:  config,
 		Runtime: runtime,
 
@@ -506,6 +546,11 @@ func ResumeSandbox(
 		APIStoredConfig: apiConfigToStore,
 
 		exit: exit,
+	}
+
+	useClickhouseMetrics, flagErr := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlagName)
+	if flagErr != nil {
+		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
 	}
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
@@ -726,7 +771,7 @@ func pauseProcessMemory(
 	defer span.End()
 
 	memfileDiffFile, err := build.NewLocalDiffFile(
-		build.DefaultCachePath,
+		build.DefaultCachePath(),
 		buildId.String(),
 		build.Memfile,
 	)
@@ -790,7 +835,7 @@ func pauseProcessRootfs(
 	ctx, span := tracer.Start(ctx, "process-rootfs")
 	defer span.End()
 
-	rootfsDiffFile, err := build.NewLocalDiffFile(build.DefaultCachePath, buildId.String(), build.Rootfs)
+	rootfsDiffFile, err := build.NewLocalDiffFile(build.DefaultCachePath(), buildId.String(), build.Rootfs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create rootfs diff: %w", err)
 	}
@@ -932,6 +977,7 @@ func (s *Sandbox) WaitForEnvd(
 	ctx context.Context,
 	timeout time.Duration,
 ) (e error) {
+	start := time.Now()
 	ctx, span := tracer.Start(ctx, "sandbox-wait-for-start")
 	defer span.End()
 
@@ -939,6 +985,11 @@ func (s *Sandbox) WaitForEnvd(
 		if e != nil {
 			return
 		}
+		duration := time.Since(start).Milliseconds()
+		waitForEnvdDurationHistogram.Record(ctx, duration, metric.WithAttributes(
+			telemetry.WithEnvdVersion(s.Config.Envd.Version),
+			attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
+		))
 		// Update the sandbox as started now
 		s.Metadata.StartedAt = time.Now()
 	}()
@@ -959,11 +1010,19 @@ func (s *Sandbox) WaitForEnvd(
 		}
 	}()
 
-	if err := s.initEnvd(ctx, s.Config.Envd.Vars, s.Config.Envd.AccessToken); err != nil {
+	if err := s.initEnvd(ctx); err != nil {
 		return fmt.Errorf("failed to init new envd: %w", err)
 	}
 
 	telemetry.ReportEvent(ctx, fmt.Sprintf("[sandbox %s]: initialized new envd", s.Metadata.Runtime.SandboxID))
 
 	return nil
+}
+
+func (f *Factory) GetEnvdInitRequestTimeout(ctx context.Context) time.Duration {
+	envdInitRequestTimeoutMs, err := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutSeconds)
+	if err != nil {
+		zap.L().Warn("failed to get envd timeout from feature flag, using default", zap.Error(err))
+	}
+	return time.Duration(envdInitRequestTimeoutMs) * time.Millisecond
 }
