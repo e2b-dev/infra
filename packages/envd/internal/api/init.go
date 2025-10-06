@@ -46,24 +46,17 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 
 		// Update data only if the request is newer or if there's no timestamp at all
 		if initRequest.Timestamp == nil || a.lastSetTime.SetToGreater(initRequest.Timestamp.UnixNano()) {
-			// Check if the time is before maxTimeInPast or after maxTimeInFuture
-			validTime := initRequest.Timestamp == nil ||
-				initRequest.Timestamp.Before(time.Now().Add(-maxTimeInPast)) ||
-				initRequest.Timestamp.After(time.Now().Add(maxTimeInFuture))
-
-			if validTime {
-				err = a.SetData(logger, initRequest)
-				if err != nil {
-					switch {
-					case errors.Is(err, ErrAccessTokenAlreadySet):
-						w.WriteHeader(http.StatusConflict)
-					default:
-						logger.Error().Msgf("Failed to set data: %v", err)
-						w.WriteHeader(http.StatusBadRequest)
-					}
-					w.Write([]byte(err.Error()))
-					return
+			err = a.SetData(logger, initRequest)
+			if err != nil {
+				switch {
+				case errors.Is(err, ErrAccessTokenAlreadySet):
+					w.WriteHeader(http.StatusConflict)
+				default:
+					logger.Error().Msgf("Failed to set data: %v", err)
+					w.WriteHeader(http.StatusBadRequest)
 				}
+				w.Write([]byte(err.Error()))
+				return
 			}
 		}
 	}
@@ -82,11 +75,14 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) SetData(logger zerolog.Logger, data PostInitJSONBody) error {
 	if data.Timestamp != nil {
-		logger.Debug().Msgf("Setting sandbox start time to: %v", *data.Timestamp)
-		ts := unix.NsecToTimespec(data.Timestamp.UnixNano())
-		err := unix.ClockSettime(unix.CLOCK_REALTIME, &ts)
-		if err != nil {
-			logger.Error().Msgf("Failed to set system time: %v", err)
+		if data.Timestamp.Before(time.Now().Add(-maxTimeInPast)) ||
+			data.Timestamp.After(time.Now().Add(maxTimeInFuture)) {
+			logger.Debug().Msgf("Setting sandbox start time to: %v", *data.Timestamp)
+			ts := unix.NsecToTimespec(data.Timestamp.UnixNano())
+			err := unix.ClockSettime(unix.CLOCK_REALTIME, &ts)
+			if err != nil {
+				logger.Error().Msgf("Failed to set system time: %v", err)
+			}
 		}
 	}
 
