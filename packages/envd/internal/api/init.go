@@ -84,6 +84,8 @@ func (a *API) SetData(logger zerolog.Logger, data PostInitJSONBody) error {
 			if err != nil {
 				logger.Error().Msgf("Failed to set system time: %v", err)
 			}
+		} else {
+			logger.Debug().Msgf("Timestamp %v is not far enough in the past or future, not setting system time", *data.Timestamp)
 		}
 	}
 
