@@ -323,11 +323,11 @@ func (bb *BaseBuilder) Layer(
 	case bb.Config.FromTemplate != nil:
 		sourceMeta := metadata.FromTemplate{
 			Alias:   bb.Config.FromTemplate.GetAlias(),
-			BuildID: bb.Config.FromTemplate.BuildID,
+			BuildID: bb.Config.FromTemplate.GetBuildID(),
 		}
 
 		// If the template is built from another template, use its metadata
-		tm, err := bb.index.Cached(ctx, bb.Config.FromTemplate.BuildID)
+		tm, err := bb.index.Cached(ctx, bb.Config.FromTemplate.GetBuildID())
 		if err != nil {
 			return phases.LayerResult{}, fmt.Errorf("error getting base layer from cache, you may need to rebuild the base template: %w", err)
 		}
