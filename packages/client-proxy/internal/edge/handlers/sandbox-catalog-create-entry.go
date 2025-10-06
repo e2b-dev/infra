@@ -30,7 +30,6 @@ func (a *APIStore) V1SandboxCatalogCreate(c *gin.Context) {
 	o, ok := a.orchestratorPool.GetOrchestrator(body.OrchestratorID)
 	if !ok {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Orchestrator not found")
-		telemetry.ReportError(ctx, "orchestrator not found", err)
 		return
 	}
 
