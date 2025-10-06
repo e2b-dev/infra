@@ -2,11 +2,11 @@ package userfaultfd
 
 import (
 	"bytes"
-	"fmt"
-	"reflect"
 	"syscall"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
@@ -66,37 +66,30 @@ func TestUffdMissing(t *testing.T) {
 			data, size := testutils.RandomPages(tt.pagesize, tt.numberOfPages)
 
 			uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
-			if err != nil {
-				t.Fatal("failed to create userfaultfd", err)
-			}
+			require.NoError(t, err)
+
 			t.Cleanup(func() {
 				uffd.Close()
 			})
 
 			err = uffd.configureApi(tt.pagesize)
-			if err != nil {
-				t.Fatal("failed to configure uffd api", err)
-			}
+			require.NoError(t, err)
 
 			memoryArea, memoryStart, unmap, err := testutils.NewPageMmap(size, tt.pagesize)
-			if err != nil {
-				t.Fatal("failed to create page mmap", err)
-			}
+			require.NoError(t, err)
+
 			t.Cleanup(func() {
 				unmap()
 			})
 
 			err = uffd.Register(memoryStart, size, UFFDIO_REGISTER_MODE_MISSING)
-			if err != nil {
-				t.Fatal("failed to register memory", err)
-			}
+			require.NoError(t, err)
 
 			m := testutils.NewContiguousMap(memoryStart, size, tt.pagesize)
 
 			fdExit, err := fdexit.New()
-			if err != nil {
-				t.Fatal("failed to create fd exit", err)
-			}
+			require.NoError(t, err)
+
 			t.Cleanup(func() {
 				fdExit.SignalExit()
 				fdExit.Close()
@@ -106,36 +99,28 @@ func TestUffdMissing(t *testing.T) {
 
 			go func() {
 				err := uffd.Serve(t.Context(), m, data, fdExit, zap.L())
-				if err != nil {
-					fmt.Println("[TestUffdMissing] failed to serve uffd", err)
-				}
+				assert.NoError(t, err)
 
 				exitUffd <- struct{}{}
 			}()
 
 			d, err := data.Slice(t.Context(), int64(tt.operationOffset), int64(tt.pagesize))
-			if err != nil {
-				t.Fatal("cannot read content", err)
-			}
+			require.NoError(t, err)
 
 			if !bytes.Equal(memoryArea[tt.operationOffset:tt.operationOffset+tt.pagesize], d) {
 				idx, want, got := testutils.DiffByte(memoryArea[tt.operationOffset:tt.operationOffset+tt.pagesize], d)
 				t.Fatalf("content mismatch: want %q, got %q at index %d", want, got, idx)
 			}
 
-			if !reflect.DeepEqual(m.Map(), map[uint64]struct{}{tt.operationOffset: {}}) {
-				t.Fatalf("accessed mismatch: should be accessed %v, actually accessed %v", []uint64{tt.operationOffset}, m.Keys())
-			}
+			assert.Equal(t, m.Map(), map[uint64]struct{}{tt.operationOffset: {}})
 
 			signalExitErr := fdExit.SignalExit()
-			if signalExitErr != nil {
-				t.Fatal("failed to signal exit", err)
-			}
+			require.NoError(t, signalExitErr)
 
 			select {
 			case <-exitUffd:
 			case <-t.Context().Done():
-				t.Fatal("context done", t.Context().Err())
+				t.Fatal("context done before exit", t.Context().Err())
 			}
 		})
 	}
