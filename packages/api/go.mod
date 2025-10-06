@@ -47,7 +47,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/grafana/loki v0.0.0-20250609195516-7b805ba7c843
 	github.com/hashicorp/nomad/api v0.0.0-20231208134655-099ee06a607c
-	github.com/jackc/pgx/v5 v5.7.4
+	github.com/jackc/pgx/v5 v5.7.5
 	github.com/jellydator/ttlcache/v3 v3.4.0
 	github.com/launchdarkly/go-sdk-common/v3 v3.3.0
 	github.com/miekg/dns v1.1.63
@@ -56,7 +56,7 @@ require (
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/posthog/posthog-go v0.0.0-20230801140217-d607812dee69
-	github.com/pressly/goose/v3 v3.24.2
+	github.com/pressly/goose/v3 v3.26.0
 	github.com/redis/go-redis/v9 v9.12.1
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.57.0
@@ -76,19 +76,19 @@ require (
 	ariga.io/atlas v0.15.0 // indirect
 	dario.cat/mergo v1.0.1 // indirect
 	entgo.io/ent v0.12.5 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.14.0 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.7.0 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/internal v1.10.0 // indirect
-	github.com/AzureAD/microsoft-authentication-library-for-go v1.2.2 // indirect
-	github.com/ClickHouse/ch-go v0.66.1 // indirect
-	github.com/ClickHouse/clickhouse-go/v2 v2.37.2 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.18.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.10.1 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.1 // indirect
+	github.com/AzureAD/microsoft-authentication-library-for-go v1.4.2 // indirect
+	github.com/ClickHouse/ch-go v0.67.0 // indirect
+	github.com/ClickHouse/clickhouse-go/v2 v2.40.1 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/sprig/v3 v3.2.3 // indirect
 	github.com/Workiva/go-datastructures v1.1.0 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/air-verse/air v1.61.7 // indirect
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137 // indirect
-	github.com/andybalholm/brotli v1.1.1 // indirect
+	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
@@ -243,6 +243,7 @@ require (
 	github.com/speakeasy-api/openapi-overlay v0.9.0 // indirect
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/spf13/cast v1.8.0 // indirect
+	github.com/spf13/pflag v1.0.7 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/tdewolff/parse/v2 v2.7.15 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
@@ -278,7 +279,7 @@ require (
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f // indirect
 	golang.org/x/arch v0.16.0 // indirect
 	golang.org/x/crypto v0.42.0 // indirect
-	golang.org/x/exp v0.0.0-20250531010427-b6e5de432a8b // indirect
+	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
 	golang.org/x/image v0.25.0 // indirect
 	golang.org/x/mod v0.27.0 // indirect
 	golang.org/x/net v0.44.0 // indirect

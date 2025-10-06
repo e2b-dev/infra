@@ -1,0 +1,9 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    queries: "internal/limits/queries"
+    schema: "internal/limits/migrations"
+    gen:
+      go:
+        package: "queries"
+        out: "internal/limits/queries"

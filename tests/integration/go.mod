@@ -27,10 +27,10 @@ require (
 require (
 	ariga.io/atlas v0.15.0 // indirect
 	entgo.io/ent v0.12.5 // indirect
-	github.com/ClickHouse/ch-go v0.66.1 // indirect
-	github.com/ClickHouse/clickhouse-go/v2 v2.37.2 // indirect
+	github.com/ClickHouse/ch-go v0.67.0 // indirect
+	github.com/ClickHouse/clickhouse-go/v2 v2.40.1 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
-	github.com/andybalholm/brotli v1.1.1 // indirect
+	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/bitfield/gotestdox v0.2.2 // indirect

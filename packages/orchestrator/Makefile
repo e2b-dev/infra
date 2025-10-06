@@ -17,6 +17,8 @@ generate:
 	$(codegen) -old-config-style -generate gin --package api $(openapi) > ../shared/pkg/http/hyperloop/api.gen.go
 	$(codegen) -old-config-style -generate types --package api $(openapi) > ../shared/pkg/http/hyperloop/types.gen.go
 	$(codegen) -old-config-style -generate spec --package api $(openapi) > ../shared/pkg/http/hyperloop/spec.gen.go
+	@echo "Generating sqlite code..."
+	go tool sqlc generate
 	@echo "Done"
 
 .PHONY: build
