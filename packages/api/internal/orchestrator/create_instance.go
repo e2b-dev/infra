@@ -14,7 +14,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -52,8 +51,8 @@ func (o *Orchestrator) CreateSandbox(
 	// Check if team has reached max instances
 	releaseTeamSandboxReservation, err := o.sandboxStore.Reserve(sandboxID, team.Team.ID, team.Tier.ConcurrentInstances)
 	if err != nil {
-		var limitErr *instance.SandboxLimitExceededError
-		var alreadyErr *instance.AlreadyBeingStartedError
+		var limitErr *sandbox.LimitExceededError
+		var alreadyErr *sandbox.AlreadyBeingStartedError
 
 		telemetry.ReportCriticalError(ctx, "failed to reserve sandbox for team", err)
 
@@ -197,7 +196,7 @@ func (o *Orchestrator) CreateSandbox(
 	startTime = time.Now()
 	endTime = startTime.Add(timeout)
 
-	instanceInfo := instance.NewInstanceInfo(
+	instanceInfo := sandbox.NewSandbox(
 		sbx.SandboxID,
 		sbx.TemplateID,
 		sbx.ClientID,
@@ -223,21 +222,6 @@ func (o *Orchestrator) CreateSandbox(
 		baseTemplateID,
 	)
 
-	cacheErr := o.sandboxStore.Add(ctx, instanceInfo, true)
-	if cacheErr != nil {
-		telemetry.ReportError(ctx, "error when adding instance to cache", cacheErr)
-
-		err := o.RemoveInstance(ctx, instanceInfo, instance.RemoveTypeKill)
-		if err != nil {
-			telemetry.ReportError(ctx, "Error while removing sandbox error after cache error", err)
-		}
-
-		return nil, &api.APIError{
-			Code:      http.StatusInternalServerError,
-			ClientMsg: "Failed to create sandbox",
-			Err:       fmt.Errorf("error when adding instance to cache: %w", cacheErr),
-		}
-	}
-
+	o.sandboxStore.Add(ctx, instanceInfo, true)
 	return &sbx, nil
 }

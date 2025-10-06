@@ -32,6 +32,8 @@ const (
 	FieldAutoPause = "auto_pause"
 	// FieldOriginNodeID holds the string denoting the origin_node_id field in the database.
 	FieldOriginNodeID = "origin_node_id"
+	// FieldTeamID holds the string denoting the team_id field in the database.
+	FieldTeamID = "team_id"
 	// FieldAllowInternetAccess holds the string denoting the allow_internet_access field in the database.
 	FieldAllowInternetAccess = "allow_internet_access"
 	// EdgeEnv holds the string denoting the env edge name in mutations.
@@ -59,6 +61,7 @@ var Columns = []string{
 	FieldEnvSecure,
 	FieldAutoPause,
 	FieldOriginNodeID,
+	FieldTeamID,
 	FieldAllowInternetAccess,
 }
 
@@ -127,6 +130,11 @@ func ByAutoPause(opts ...sql.OrderTermOption) OrderOption {
 // ByOriginNodeID orders the results by the origin_node_id field.
 func ByOriginNodeID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldOriginNodeID, opts...).ToFunc()
+}
+
+// ByTeamID orders the results by the team_id field.
+func ByTeamID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTeamID, opts...).ToFunc()
 }
 
 // ByAllowInternetAccess orders the results by the allow_internet_access field.

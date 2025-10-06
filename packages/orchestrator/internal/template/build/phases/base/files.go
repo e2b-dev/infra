@@ -15,15 +15,25 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 )
 
-func constructLayerFilesFromOCI(ctx context.Context, userLogger *zap.Logger, buildContext buildcontext.BuildContext, baseBuildID string, artifactRegistry artifactsregistry.ArtifactsRegistry, rootfsPath string) (r *block.Local, m block.ReadonlyDevice, c containerregistry.Config, e error) {
+func constructLayerFilesFromOCI(
+	ctx context.Context,
+	userLogger *zap.Logger,
+	buildContext buildcontext.BuildContext,
+	baseBuildID string,
+	artifactRegistry artifactsregistry.ArtifactsRegistry,
+	dockerhubRepository dockerhub.RemoteRepository,
+	rootfsPath string,
+) (r *block.Local, m block.ReadonlyDevice, c containerregistry.Config, e error) {
 	childCtx, childSpan := tracer.Start(ctx, "template-build")
 	defer childSpan.End()
 
 	// Create a rootfs file
 	rtfs := rootfs.New(
 		artifactRegistry,
+		dockerhubRepository,
 		buildContext.Template,
 		buildContext.Config,
 	)

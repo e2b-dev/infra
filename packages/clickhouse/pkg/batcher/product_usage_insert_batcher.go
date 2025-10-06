@@ -12,6 +12,7 @@ import (
 
 type ProductUsageInsertBatcher struct {
 	*Batcher[clickhouse.ProductUsage]
+
 	conn driver.Conn
 }
 

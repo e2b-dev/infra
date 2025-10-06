@@ -56,7 +56,11 @@ if [ -z "$entry" ]; then
  exit 1
 fi
 
-if [ -f "$entry" ]; then
+if [ -L "$entry" ]; then
+ # It's a symlink file – create parent folders and move+rename it to the exact path
+ mkdir -p "$(dirname "$targetPath")"
+ mv "$entry" "$targetPath"
+elif [ -f "$entry" ]; then
  # It's a file – create parent folders and move+rename it to the exact path
  mkdir -p "$(dirname "$targetPath")"
  mv "$entry" "$targetPath"
@@ -90,19 +94,19 @@ func (c *Copy) Execute(
 	step *templatemanager.TemplateStep,
 	cmdMetadata metadata.Context,
 ) (metadata.Context, error) {
-	cmdType := strings.ToUpper(step.Type)
-	args := step.Args
+	cmdType := strings.ToUpper(step.GetType())
+	args := step.GetArgs()
 	// args: [localPath containerPath optional_owner optional_permissions]
 	if len(args) < 2 {
 		return metadata.Context{}, fmt.Errorf("%s requires a local path and a container path argument", cmdType)
 	}
 
-	if step.FilesHash == nil || *step.FilesHash == "" {
+	if step.FilesHash == nil || step.GetFilesHash() == "" {
 		return metadata.Context{}, fmt.Errorf("%s requires files hash to be set", cmdType)
 	}
 
 	// 1) Download the layer tar file from the storage to the local filesystem
-	obj, err := c.FilesStorage.OpenObject(ctx, paths.GetLayerFilesCachePath(c.CacheScope, *step.FilesHash))
+	obj, err := c.FilesStorage.OpenObject(ctx, paths.GetLayerFilesCachePath(c.CacheScope, step.GetFilesHash()))
 	if err != nil {
 		return metadata.Context{}, fmt.Errorf("failed to open files object from storage: %w", err)
 	}
@@ -130,14 +134,14 @@ func (c *Copy) Execute(
 
 	// The file is automatically cleaned up by the sandbox restart in the last step.
 	// This is happening because the /tmp is mounted as a tmpfs and deleted on restart.
-	sbxTargetPath := filepath.Join("/tmp", fmt.Sprintf("%s.tar", *step.FilesHash))
+	sbxTargetPath := filepath.Join("/tmp", fmt.Sprintf("%s.tar", step.GetFilesHash()))
 	// 2) Copy the tar file to the sandbox
 	err = sandboxtools.CopyFile(ctx, proxy, sandboxID, cmdMetadata.User, tmpFile.Name(), sbxTargetPath)
 	if err != nil {
 		return metadata.Context{}, fmt.Errorf("failed to copy layer tar data to sandbox: %w", err)
 	}
 
-	sbxUnpackPath := filepath.Join("/tmp", *step.FilesHash)
+	sbxUnpackPath := filepath.Join("/tmp", step.GetFilesHash())
 
 	// 3) Extract the tar file in the sandbox's /tmp directory
 	err = sandboxtools.RunCommand(

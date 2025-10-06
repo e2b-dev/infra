@@ -17,6 +17,7 @@ type SandboxEventsClickhouseBatcher interface {
 
 type SandboxEventInsertBatcher struct {
 	*Batcher[clickhouse.SandboxEvent]
+
 	conn driver.Conn
 }
 

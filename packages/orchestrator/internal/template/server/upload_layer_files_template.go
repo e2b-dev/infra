@@ -16,12 +16,12 @@ func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanag
 	defer childSpan.End()
 
 	// default to scope by template ID
-	cacheScope := in.TemplateID
+	cacheScope := in.GetTemplateID()
 	if in.CacheScope != nil {
-		cacheScope = *in.CacheScope
+		cacheScope = in.GetCacheScope()
 	}
 
-	path := paths.GetLayerFilesCachePath(cacheScope, in.Hash)
+	path := paths.GetLayerFilesCachePath(cacheScope, in.GetHash())
 	obj, err := s.buildStorage.OpenObject(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open layer files cache: %w", err)
@@ -38,10 +38,10 @@ func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanag
 			Present: false,
 			Url:     &signedUrl,
 		}, nil
-	} else {
-		return &templatemanager.InitLayerFileUploadResponse{
-			Present: true,
-			Url:     &signedUrl,
-		}, nil
 	}
+
+	return &templatemanager.InitLayerFileUploadResponse{
+		Present: true,
+		Url:     &signedUrl,
+	}, nil
 }

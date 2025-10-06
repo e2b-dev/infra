@@ -7,6 +7,7 @@
 package port
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os/exec"
@@ -64,7 +65,7 @@ func NewForwarder(
 	}
 }
 
-func (f *Forwarder) StartForwarding() {
+func (f *Forwarder) StartForwarding(ctx context.Context) {
 	if f.scannerSubscriber == nil {
 		f.logger.Error().Msg("Cannot start forwarding because scanner subscriber is nil")
 
@@ -110,7 +111,7 @@ func (f *Forwarder) StartForwarding() {
 						family: familyToIPVersion(p.Family),
 					}
 					f.ports[key] = ptf
-					f.starPortForwarding(ptf)
+					f.startPortForwarding(ctx, ptf)
 				}
 			}
 
@@ -125,11 +126,11 @@ func (f *Forwarder) StartForwarding() {
 	}
 }
 
-func (f *Forwarder) starPortForwarding(p *PortToForward) {
+func (f *Forwarder) startPortForwarding(ctx context.Context, p *PortToForward) {
 	// https://unix.stackexchange.com/questions/311492/redirect-application-listening-on-localhost-to-listening-on-external-interface
 	// socat -d -d TCP4-LISTEN:4000,bind=169.254.0.21,fork TCP4:localhost:4000
 	// reuseaddr is used to fix the "Address already in use" error when restarting socat quickly.
-	cmd := exec.Command(
+	cmd := exec.CommandContext(ctx,
 		"socat", "-d", "-d", "-d",
 		fmt.Sprintf("TCP4-LISTEN:%v,bind=%s,reuseaddr,fork", p.port, f.sourceIP.To4()),
 		fmt.Sprintf("TCP%d:localhost:%v", p.family, p.port),

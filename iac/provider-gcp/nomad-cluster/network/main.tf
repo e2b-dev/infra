@@ -64,7 +64,11 @@ locals {
         request_path = var.docker_reverse_proxy_port.health_path
         port         = var.docker_reverse_proxy_port.port
       }
-      groups = [{ group = var.build_instance_group }]
+      # TODO: (2025-10-01) - this should be only api instance group, but keeping this here for a migration period (at least until 2025-10-15)
+      groups = [
+        { group = var.api_instance_group },
+        { group = var.build_instance_group },
+      ]
     }
     nomad = {
       protocol                        = "HTTP"
@@ -98,6 +102,7 @@ locals {
 
 # ======== IP ADDRESSES ====================
 
+// todo: (2025-09-22): this can be removed when all orchestrator will be rolled with internal logs collector server
 resource "google_compute_global_address" "orch_logs_ip" {
   name = "${var.prefix}logs-ip"
 }

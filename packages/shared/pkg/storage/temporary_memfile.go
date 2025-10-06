@@ -14,11 +14,15 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-const (
-	// snapshotCacheDir is a tmpfs directory mounted on the host.
-	// This is used for speed optimization as the final diff is copied to the persistent storage.
-	snapshotCacheDir = "/mnt/snapshot-cache"
-)
+// snapshotCacheDir is a tmpfs directory mounted on the host.
+// This is used for speed optimization as the final diff is copied to the persistent storage.
+func snapshotCacheDir() string {
+	if value := os.Getenv("SNAPSHOT_CACHE_DIR"); value != "" {
+		return value
+	}
+
+	return "/mnt/snapshot-cache"
+}
 
 var maxParallelMemfileSnapshotting = utils.Must(env.GetEnvAsInt("MAX_PARALLEL_MEMFILE_SNAPSHOTTING", 8))
 
@@ -65,5 +69,5 @@ func (f *TemporaryMemfile) Close() error {
 func cacheMemfileFullSnapshotPath(buildID string, randomID string) string {
 	name := fmt.Sprintf("%s-%s-%s.full", buildID, MemfileName, randomID)
 
-	return filepath.Join(snapshotCacheDir, name)
+	return filepath.Join(snapshotCacheDir(), name)
 }

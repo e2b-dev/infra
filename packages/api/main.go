@@ -29,6 +29,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
 	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
@@ -60,7 +61,7 @@ var (
 	expectedMigrationTimestamp string
 )
 
-func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger, apiStore *handlers.APIStore, swagger *openapi3.T, port int) *http.Server {
+func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client, logger *zap.Logger, apiStore *handlers.APIStore, swagger *openapi3.T, port int) *http.Server {
 	// Clear out the servers array in the swagger spec, that skips validating
 	// that server names match. We don't know how this thing will be run.
 	swagger.Servers = nil
@@ -86,10 +87,10 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 		gin.Recovery(),
 	)
 
-	config := cors.DefaultConfig()
+	corsConfig := cors.DefaultConfig()
 	// Allow all origins
-	config.AllowAllOrigins = true
-	config.AllowHeaders = []string{
+	corsConfig.AllowAllOrigins = true
+	corsConfig.AllowHeaders = []string{
 		// Default headers
 		"Origin",
 		"Content-Length",
@@ -114,10 +115,11 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 		"sdk_runtime",
 		"system",
 	}
-	r.Use(cors.New(config))
+	r.Use(cors.New(corsConfig))
 
 	// Create a team API Key auth validator
 	AuthenticationFunc := auth.CreateAuthenticationFunc(
+		config,
 		apiStore.GetTeamFromAPIKey,
 		apiStore.GetUserFromAccessToken,
 		apiStore.GetUserIDFromSupabaseToken,
@@ -215,6 +217,11 @@ func run() int {
 	flag.StringVar(&debug, "debug", "false", "is debug")
 	flag.Parse()
 
+	config, err := cfg.Parse()
+	if err != nil {
+		zap.L().Fatal("Error parsing config", zap.Error(err))
+	}
+
 	serviceInstanceID := uuid.New().String()
 	nodeID := env.GetNodeID()
 
@@ -251,7 +258,7 @@ func run() int {
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
 			IsInternal:       false,
-			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+			CollectorAddress: env.LogsCollectorAddress(),
 		},
 	)
 	defer sbxLoggerExternal.Sync()
@@ -263,7 +270,7 @@ func run() int {
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
 			IsInternal:       true,
-			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+			CollectorAddress: env.LogsCollectorAddress(),
 		},
 	)
 	defer sbxLoggerInternal.Sync()
@@ -277,7 +284,7 @@ func run() int {
 		expectedMigration = 0
 	}
 
-	err = utils.CheckMigrationVersion(expectedMigration)
+	err = utils.CheckMigrationVersion(config.PostgresConnectionString, expectedMigration)
 	if err != nil {
 		logger.Fatal("failed to check migration version", zap.Error(err))
 	}
@@ -342,11 +349,11 @@ func run() int {
 	// Create an instance of our handler which satisfies the generated interface
 	//  (use the outer context rather than the signal handling
 	//   context so it doesn't exit first.)
-	apiStore := handlers.NewAPIStore(ctx, tel)
+	apiStore := handlers.NewAPIStore(ctx, tel, config)
 	cleanupFns = append(cleanupFns, apiStore.Close)
 
 	// pass the signal context so that handlers know when shutdown is happening.
-	s := NewGinServer(ctx, tel, logger, apiStore, swagger, port)
+	s := NewGinServer(ctx, config, tel, logger, apiStore, swagger, port)
 
 	// ////////////////////////
 	//

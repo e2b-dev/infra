@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -91,11 +92,11 @@ func (o *PatchMachineConfigurationNoContent) Code() int {
 }
 
 func (o *PatchMachineConfigurationNoContent) Error() string {
-	return fmt.Sprintf("[PATCH /machine-config][%d] patchMachineConfigurationNoContent ", 204)
+	return fmt.Sprintf("[PATCH /machine-config][%d] patchMachineConfigurationNoContent", 204)
 }
 
 func (o *PatchMachineConfigurationNoContent) String() string {
-	return fmt.Sprintf("[PATCH /machine-config][%d] patchMachineConfigurationNoContent ", 204)
+	return fmt.Sprintf("[PATCH /machine-config][%d] patchMachineConfigurationNoContent", 204)
 }
 
 func (o *PatchMachineConfigurationNoContent) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -148,11 +149,13 @@ func (o *PatchMachineConfigurationBadRequest) Code() int {
 }
 
 func (o *PatchMachineConfigurationBadRequest) Error() string {
-	return fmt.Sprintf("[PATCH /machine-config][%d] patchMachineConfigurationBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /machine-config][%d] patchMachineConfigurationBadRequest %s", 400, payload)
 }
 
 func (o *PatchMachineConfigurationBadRequest) String() string {
-	return fmt.Sprintf("[PATCH /machine-config][%d] patchMachineConfigurationBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /machine-config][%d] patchMachineConfigurationBadRequest %s", 400, payload)
 }
 
 func (o *PatchMachineConfigurationBadRequest) GetPayload() *models.Error {
@@ -220,11 +223,13 @@ func (o *PatchMachineConfigurationDefault) Code() int {
 }
 
 func (o *PatchMachineConfigurationDefault) Error() string {
-	return fmt.Sprintf("[PATCH /machine-config][%d] patchMachineConfiguration default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /machine-config][%d] patchMachineConfiguration default %s", o._statusCode, payload)
 }
 
 func (o *PatchMachineConfigurationDefault) String() string {
-	return fmt.Sprintf("[PATCH /machine-config][%d] patchMachineConfiguration default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /machine-config][%d] patchMachineConfiguration default %s", o._statusCode, payload)
 }
 
 func (o *PatchMachineConfigurationDefault) GetPayload() *models.Error {

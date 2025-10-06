@@ -10,8 +10,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/edge"
+	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 func (s *NodePassThroughServer) eventsHandler(ctx context.Context, md metadata.MD) (func(error), error) {
@@ -41,12 +41,19 @@ func (s *NodePassThroughServer) catalogCreateEventHandler(ctx context.Context, m
 		return nil, err
 	}
 
+	o, ok := s.nodes.GetOrchestrator(c.OrchestratorID)
+	if !ok {
+		return nil, status.Errorf(codes.InvalidArgument, "orchestrator %s not found", c.OrchestratorID)
+	}
+
 	err = s.catalog.StoreSandbox(
 		ctx,
 		c.SandboxID,
-		&sandboxes.SandboxInfo{
-			OrchestratorID:          c.OrchestratorID,
-			ExecutionID:             c.ExecutionID,
+		&catalog.SandboxInfo{
+			OrchestratorID: c.OrchestratorID,
+			OrchestratorIP: o.GetInfo().IP,
+			ExecutionID:    c.ExecutionID,
+
 			SandboxStartedAt:        c.SandboxStartTime,
 			SandboxMaxLengthInHours: c.SandboxMaxLengthInHours,
 		},

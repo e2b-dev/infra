@@ -12,7 +12,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -41,6 +40,7 @@ type StepBuilder struct {
 	logger *zap.Logger
 	proxy  *proxy.SandboxProxy
 
+	sandboxFactory  *sandbox.Factory
 	layerExecutor   *layer.LayerExecutor
 	commandExecutor *commands.CommandExecutor
 	index           cache.Index
@@ -49,6 +49,7 @@ type StepBuilder struct {
 
 func New(
 	buildContext buildcontext.BuildContext,
+	sandboxFactory *sandbox.Factory,
 	logger *zap.Logger,
 	proxy *proxy.SandboxProxy,
 	layerExecutor *layer.LayerExecutor,
@@ -67,6 +68,7 @@ func New(
 		logger: logger,
 		proxy:  proxy,
 
+		sandboxFactory:  sandboxFactory,
 		layerExecutor:   layerExecutor,
 		commandExecutor: commandExecutor,
 		index:           index,
@@ -79,13 +81,13 @@ func (sb *StepBuilder) Prefix() string {
 }
 
 func (sb *StepBuilder) String(context.Context) (string, error) {
-	return fmt.Sprintf("%s %s", strings.ToUpper(sb.step.Type), strings.Join(sb.step.Args, " ")), nil
+	return fmt.Sprintf("%s %s", strings.ToUpper(sb.step.GetType()), strings.Join(sb.step.GetArgs(), " ")), nil
 }
 
 func (sb *StepBuilder) Metadata() phases.PhaseMeta {
 	return phases.PhaseMeta{
 		Phase:      metrics.PhaseSteps,
-		StepType:   sb.step.Type,
+		StepType:   sb.step.GetType(),
 		StepNumber: &sb.stepNumber,
 	}
 }
@@ -97,12 +99,12 @@ func (sb *StepBuilder) Layer(
 ) (phases.LayerResult, error) {
 	ctx, span := tracer.Start(ctx, "compute step", trace.WithAttributes(
 		attribute.Int("step", sb.stepNumber),
-		attribute.String("type", sb.step.Type),
+		attribute.String("type", sb.step.GetType()),
 		attribute.String("hash", hash),
 	))
 	defer span.End()
 
-	forceBuild := sb.step.Force != nil && *sb.step.Force
+	forceBuild := sb.step.Force != nil && sb.step.GetForce()
 	if !forceBuild {
 		m, err := sb.index.LayerMetaFromHash(ctx, hash)
 		if err != nil {
@@ -144,7 +146,7 @@ func (sb *StepBuilder) Build(
 ) (phases.LayerResult, error) {
 	ctx, span := tracer.Start(ctx, "build step", trace.WithAttributes(
 		attribute.Int("step", sb.stepNumber),
-		attribute.String("type", sb.step.Type),
+		attribute.String("type", sb.step.GetType()),
 		attribute.String("hash", currentLayer.Hash),
 	))
 	defer span.End()
@@ -157,8 +159,6 @@ func (sb *StepBuilder) Build(
 		RamMB:     sb.Config.MemoryMB,
 		HugePages: sb.Config.HugePages,
 
-		AllowInternetAccess: &globalconfig.AllowSandboxInternet,
-
 		Envd: sandbox.EnvdMetadata{
 			Version: sb.EnvdVersion,
 		},
@@ -169,6 +169,7 @@ func (sb *StepBuilder) Build(
 	if sourceLayer.Cached {
 		sandboxCreator = layer.NewCreateSandbox(
 			sbxConfig,
+			sb.sandboxFactory,
 			layerTimeout,
 			fc.FirecrackerVersions{
 				KernelVersion:      sb.Template.KernelVersion,
@@ -176,7 +177,7 @@ func (sb *StepBuilder) Build(
 			},
 		)
 	} else {
-		sandboxCreator = layer.NewResumeSandbox(sbxConfig, layerTimeout)
+		sandboxCreator = layer.NewResumeSandbox(sbxConfig, sb.sandboxFactory, layerTimeout)
 	}
 
 	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error) {
@@ -207,14 +208,18 @@ func (sb *StepBuilder) Build(
 
 	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template)
 
-	meta, err := sb.layerExecutor.BuildLayer(ctx, userLogger, layer.LayerBuildCommand{
-		SourceTemplate: templateProvider,
-		CurrentLayer:   currentLayer.Metadata,
-		Hash:           currentLayer.Hash,
-		UpdateEnvd:     sourceLayer.Cached,
-		SandboxCreator: sandboxCreator,
-		ActionExecutor: actionExecutor,
-	})
+	meta, err := sb.layerExecutor.BuildLayer(
+		ctx,
+		userLogger,
+		layer.LayerBuildCommand{
+			SourceTemplate: templateProvider,
+			CurrentLayer:   currentLayer.Metadata,
+			Hash:           currentLayer.Hash,
+			UpdateEnvd:     sourceLayer.Cached,
+			SandboxCreator: sandboxCreator,
+			ActionExecutor: actionExecutor,
+		},
+	)
 	if err != nil {
 		return phases.LayerResult{}, fmt.Errorf("error building step %d: %w", sb.stepNumber, err)
 	}

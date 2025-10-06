@@ -197,7 +197,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 								logger.WithSandboxID(sbx.Runtime.SandboxID),
 								logger.WithTeamID(sbx.Runtime.TeamID),
 								logger.WithTemplateID(sbx.Runtime.TemplateID),
-								zap.String("envd_version", sbx.Config.Envd.Version),
+								logger.WithEnvdVersion(sbx.Config.Envd.Version),
 								zap.Time("sandbox_start", sbx.StartedAt),
 								zap.Int64("clock_host", hostTm),
 								zap.Int64("clock_sbx", sbxTm),

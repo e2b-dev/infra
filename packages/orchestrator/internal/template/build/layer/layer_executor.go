@@ -9,8 +9,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/envd"
@@ -28,8 +26,6 @@ type LayerExecutor struct {
 
 	logger *zap.Logger
 
-	networkPool     *network.Pool
-	devicePool      *nbd.DevicePool
 	templateCache   *sbxtemplate.Cache
 	proxy           *proxy.SandboxProxy
 	sandboxes       *smap.Map[*sandbox.Sandbox]
@@ -41,8 +37,6 @@ type LayerExecutor struct {
 func NewLayerExecutor(
 	buildContext buildcontext.BuildContext,
 	logger *zap.Logger,
-	networkPool *network.Pool,
-	devicePool *nbd.DevicePool,
 	templateCache *sbxtemplate.Cache,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
@@ -55,8 +49,6 @@ func NewLayerExecutor(
 
 		logger: logger,
 
-		networkPool:     networkPool,
-		devicePool:      devicePool,
 		templateCache:   templateCache,
 		proxy:           proxy,
 		sandboxes:       sandboxes,
@@ -138,7 +130,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	ctx, childSpan := tracer.Start(ctx, "update-envd")
 	defer childSpan.End()
 
-	envdVersion, err := envd.GetEnvdVersion()
+	envdVersion, err := envd.GetEnvdVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("error getting envd version: %w", err)
 	}
@@ -151,7 +143,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 		lb.proxy,
 		sbx.Runtime.SandboxID,
 		"root",
-		storage.HostEnvdPath,
+		storage.HostEnvdPath(),
 		tmpEnvdPath,
 	)
 	if err != nil {

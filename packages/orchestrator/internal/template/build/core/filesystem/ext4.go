@@ -41,8 +41,8 @@ func Make(ctx context.Context, rootfsPath string, sizeMb int64, blockSize int64)
 	cmd := exec.CommandContext(ctx,
 		"mkfs.ext4",
 		// Matches the final ext4 features used by tar2ext4 tool
-		// But enables resize_inode, sparse_super (default, required for resize_inode)
-		"-O", `^has_journal,^dir_index,^64bit,^dir_nlink,^metadata_csum,ext_attr,sparse_super2,filetype,extent,flex_bg,large_file,huge_file,extra_isize`,
+		// But enables resize_inode, sparse_super (default, required for resize_inode), has_journal (default), metadata_csum (default)
+		"-O", `^dir_index,^64bit,^dir_nlink,ext_attr,sparse_super2,filetype,extent,flex_bg,large_file,huge_file,extra_isize`,
 		"-b", strconv.FormatInt(blockSize, 10),
 		"-m", strconv.FormatInt(reservedBlocksPercentage, 10),
 		"-i", strconv.FormatInt(inodesRatio, 10),
@@ -71,11 +71,7 @@ func Mount(ctx context.Context, rootfsPath string, mountPoint string) error {
 	mountStderrWriter := telemetry.NewEventWriter(ctx, "stderr")
 	cmd.Stderr = mountStderrWriter
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("error mounting ext4 filesystem: %w", err)
-	}
-
-	return nil
+	return cmd.Run()
 }
 
 func Unmount(ctx context.Context, rootfsPath string) error {
@@ -138,7 +134,7 @@ func Resize(ctx context.Context, rootfsPath string, targetSize int64) (int64, er
 	cmd.Stderr = resizeStderrWriter
 	err := cmd.Run()
 	if err != nil {
-		LogMetadata(rootfsPath)
+		LogMetadata(ctx, rootfsPath)
 		return 0, fmt.Errorf("error resizing rootfs file: %w", err)
 	}
 
@@ -163,7 +159,7 @@ func Shrink(ctx context.Context, rootfsPath string) (int64, error) {
 	cmd.Stderr = resizeStderrWriter
 	err := cmd.Run()
 	if err != nil {
-		LogMetadata(rootfsPath)
+		LogMetadata(ctx, rootfsPath)
 		return 0, fmt.Errorf("error shrinking rootfs file: %w", err)
 	}
 
@@ -179,7 +175,7 @@ func GetFreeSpace(ctx context.Context, rootfsPath string, blockSize int64) (int6
 	_, statSpan := tracer.Start(ctx, "stat-ext4-file")
 	defer statSpan.End()
 
-	cmd := exec.Command("debugfs", "-R", "stats", rootfsPath)
+	cmd := exec.CommandContext(ctx, "debugfs", "-R", "stats", rootfsPath)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err := cmd.Run()
@@ -204,8 +200,8 @@ func GetFreeSpace(ctx context.Context, rootfsPath string, blockSize int64) (int6
 	return freeBytes, nil
 }
 
-func CheckIntegrity(rootfsPath string, fix bool) (string, error) {
-	LogMetadata(rootfsPath)
+func CheckIntegrity(ctx context.Context, rootfsPath string, fix bool) (string, error) {
+	LogMetadata(ctx, rootfsPath)
 	accExitCode := 0
 	args := "-nfv"
 	if fix {
@@ -215,13 +211,13 @@ func CheckIntegrity(rootfsPath string, fix bool) (string, error) {
 		accExitCode = 2
 		args = "-pfv"
 	}
-	cmd := exec.Command("e2fsck", args, rootfsPath)
+	cmd := exec.CommandContext(ctx, "e2fsck", args, rootfsPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		exitCode := cmd.ProcessState.ExitCode()
 
 		if exitCode > accExitCode {
-			return string(out), fmt.Errorf("error running e2fsck: %w", err)
+			return string(out), fmt.Errorf("error running e2fsck [exit %d]\n%s", exitCode, out)
 		}
 	}
 
@@ -237,7 +233,7 @@ func ReadFile(ctx context.Context, rootfsPath string, filePath string) (string, 
 		return "2", fmt.Errorf("rootfs file does not exist: %w", err)
 	}
 
-	cmd := exec.Command("debugfs", "-R", fmt.Sprintf("cat \"%s\"", filePath), rootfsPath)
+	cmd := exec.CommandContext(ctx, "debugfs", "-R", fmt.Sprintf("cat \"%s\"", filePath), rootfsPath)
 	out, err := cmd.Output()
 	if err != nil {
 		return "2", fmt.Errorf("error reading file %s: %w", filePath, err)
@@ -251,7 +247,7 @@ func RemoveFile(ctx context.Context, rootfsPath string, filePath string) error {
 	defer statSpan.End()
 
 	// -w is used to open the filesystem in writable mode
-	cmd := exec.Command("debugfs", "-w", "-R", fmt.Sprintf("rm \"%s\"", filePath), rootfsPath)
+	cmd := exec.CommandContext(ctx, "debugfs", "-w", "-R", fmt.Sprintf("rm \"%s\"", filePath), rootfsPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		zap.L().Error("error removing file", zap.Error(err), zap.String("output", string(out)))
@@ -306,8 +302,8 @@ func MountOverlayFS(ctx context.Context, layers []string, mountPoint string) err
 	return nil
 }
 
-func LogMetadata(rootfsPath string, extraFields ...zap.Field) {
-	cmd := exec.Command("tune2fs", "-l", rootfsPath)
+func LogMetadata(ctx context.Context, rootfsPath string, extraFields ...zap.Field) {
+	cmd := exec.CommandContext(ctx, "tune2fs", "-l", rootfsPath)
 	output, err := cmd.CombinedOutput()
 
 	zap.L().With(extraFields...).Debug("tune2fs -l output", zap.String("path", rootfsPath), zap.String("output", string(output)), zap.Error(err))

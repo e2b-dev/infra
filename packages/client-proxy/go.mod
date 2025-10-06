@@ -27,11 +27,9 @@ require (
 	github.com/gin-contrib/size v1.0.2
 	github.com/gin-contrib/zap v1.1.5
 	github.com/gin-gonic/gin v1.10.1
-	github.com/go-redsync/redsync/v4 v4.13.0
 	github.com/google/uuid v1.6.0
 	github.com/grafana/loki v0.0.0-20250609195516-7b805ba7c843
 	github.com/hashicorp/nomad/api v0.0.0-20231208134655-099ee06a607c
-	github.com/jellydator/ttlcache/v3 v3.3.1-0.20250207140243-aefc35918359
 	github.com/miekg/dns v1.1.63
 	github.com/oapi-codegen/gin-middleware v1.0.2
 	github.com/redis/go-redis/v9 v9.12.1
@@ -135,6 +133,7 @@ require (
 	github.com/hashicorp/serf v0.10.1 // indirect
 	github.com/huandu/xstrings v1.4.0 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
+	github.com/jellydator/ttlcache/v3 v3.4.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
@@ -185,7 +184,6 @@ require (
 	github.com/sony/gobreaker v0.5.0 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/spf13/cast v1.8.0 // indirect
-	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
@@ -194,9 +192,9 @@ require (
 	github.com/ugorji/go/codec v1.2.12 // indirect
 	github.com/willf/bitset v1.1.11 // indirect
 	github.com/willf/bloom v2.0.3+incompatible // indirect
-	go.etcd.io/etcd/api/v3 v3.5.4 // indirect
-	go.etcd.io/etcd/client/pkg/v3 v3.5.4 // indirect
-	go.etcd.io/etcd/client/v3 v3.5.4 // indirect
+	go.etcd.io/etcd/api/v3 v3.5.10 // indirect
+	go.etcd.io/etcd/client/pkg/v3 v3.5.10 // indirect
+	go.etcd.io/etcd/client/v3 v3.5.10 // indirect
 	go.mongodb.org/mongo-driver v1.17.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.0 // indirect
 	go.opentelemetry.io/collector/pdata v1.0.0-rcv0015 // indirect

@@ -30,6 +30,7 @@ func (Snapshot) Fields() []ent.Field {
 		field.Bool("env_secure").Default(false),
 		field.Bool("auto_pause").Default(false),
 		field.String("origin_node_id").SchemaType(map[string]string{dialect.Postgres: "text"}),
+		field.UUID("team_id", uuid.UUID{}),
 		field.Bool("allow_internet_access").Nillable().Optional(),
 	}
 }

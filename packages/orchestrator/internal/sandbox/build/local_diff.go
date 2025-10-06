@@ -12,6 +12,7 @@ import (
 
 type LocalDiffFile struct {
 	*os.File
+
 	cachePath string
 	cacheKey  DiffStoreKey
 }

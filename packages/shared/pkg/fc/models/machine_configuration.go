@@ -24,7 +24,7 @@ type MachineConfiguration struct {
 	CPUTemplate *CPUTemplate `json:"cpu_template,omitempty"`
 
 	// Which huge pages configuration (if any) should be used to back guest memory.
-	// Enum: [None 2M]
+	// Enum: ["None","2M"]
 	HugePages string `json:"huge_pages,omitempty"`
 
 	// Memory size of VM

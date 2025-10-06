@@ -3,14 +3,17 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 
 .PHONY: generate-fc
 generate-fc:
-	cd pkg/fc && swagger generate client -f firecracker.yml -A firecracker
+	cd pkg/fc && go tool swagger generate client -f firecracker.yml -A firecracker
 
 .PHONY: generate-models
 generate-models:
 	@echo "Generating models..."
-	@find pkg/models/* -not -path "pkg/models/clickhouse*" -delete
+	@find pkg/models/*  -delete
 	@go generate ./pkg/generate_models.go
 	@echo "Done"
+
+.PHONE: generate
+generate: generate-fc generate-models
 
 .PHONY: build-base-template
 build-base-template:
