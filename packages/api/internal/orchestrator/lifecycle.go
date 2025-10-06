@@ -23,9 +23,10 @@ func (o *Orchestrator) addToNode(ctx context.Context, sandbox sandbox.Sandbox, _
 		node.AddSandbox(sandbox)
 
 		info := e2bcatalog.SandboxInfo{
-			OrchestratorID:          node.ID,
-			OrchestratorIP:          node.IPAddress,
-			ExecutionID:             sandbox.ExecutionID,
+			OrchestratorID: node.Metadata().ServiceInstanceID,
+			OrchestratorIP: node.IPAddress,
+			ExecutionID:    sandbox.ExecutionID,
+
 			SandboxStartedAt:        sandbox.StartTime,
 			SandboxMaxLengthInHours: int64(sandbox.MaxInstanceLength / time.Hour),
 		}

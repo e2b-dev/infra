@@ -20,16 +20,24 @@ func (a *APIStore) V1SandboxCatalogCreate(c *gin.Context) {
 	body, err := parseBody[api.V1SandboxCatalogCreateJSONRequestBody](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
-		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
+		telemetry.ReportError(ctx, "error when parsing request", err)
 		return
 	}
 
 	_, span := tracer.Start(ctx, "create-sandbox-catalog-entry-handler")
 	defer span.End()
 
+	o, ok := a.orchestratorPool.GetOrchestrator(body.OrchestratorID)
+	if !ok {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Orchestrator not found")
+		telemetry.ReportError(ctx, "orchestrator not found", err)
+		return
+	}
+
 	sbxMaxLifetime := time.Duration(body.SandboxMaxLength) * time.Hour
 	sbxInfo := &catalog.SandboxInfo{
 		OrchestratorID: body.OrchestratorID,
+		OrchestratorIP: o.GetInfo().IP,
 		ExecutionID:    body.ExecutionID,
 
 		SandboxMaxLengthInHours: body.SandboxMaxLength,

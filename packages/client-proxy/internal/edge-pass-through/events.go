@@ -41,12 +41,19 @@ func (s *NodePassThroughServer) catalogCreateEventHandler(ctx context.Context, m
 		return nil, err
 	}
 
+	o, ok := s.nodes.GetOrchestrator(c.OrchestratorID)
+	if !ok {
+		return nil, status.Errorf(codes.InvalidArgument, "orchestrator %s not found", c.OrchestratorID)
+	}
+
 	err = s.catalog.StoreSandbox(
 		ctx,
 		c.SandboxID,
 		&catalog.SandboxInfo{
-			OrchestratorID:          c.OrchestratorID,
-			ExecutionID:             c.ExecutionID,
+			OrchestratorID: c.OrchestratorID,
+			OrchestratorIP: o.GetInfo().IP,
+			ExecutionID:    c.ExecutionID,
+
 			SandboxStartedAt:        c.SandboxStartTime,
 			SandboxMaxLengthInHours: c.SandboxMaxLengthInHours,
 		},

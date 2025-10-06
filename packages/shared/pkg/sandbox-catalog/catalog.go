@@ -8,7 +8,7 @@ import (
 
 type SandboxInfo struct {
 	OrchestratorID string `json:"orchestrator_id"`
-	OrchestratorIP string `json:"orchestrator_ip"`
+	OrchestratorIP string `json:"orchestrator_ip"` // used only for cases where orchestrator is not registered in edge pool
 	ExecutionID    string `json:"execution_id"`
 
 	SandboxStartedAt        time.Time `json:"sandbox_started_at"`          // when sandbox was started
