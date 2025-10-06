@@ -31,7 +31,7 @@ func (e *Evictor) Start(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-time.After(50 * time.Millisecond):
-			for _, item := range e.store.Items(nil, sandbox.WithOnlyExpired(true)) {
+			for _, item := range e.store.Items(nil, sandbox.WithOnlyExpired(true), sandbox.WithState(sandbox.StateRunning)) {
 				go func() {
 					stateAction := sandbox.StateActionKill
 					if item.AutoPause {
