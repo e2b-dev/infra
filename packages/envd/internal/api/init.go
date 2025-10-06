@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"time"
 
@@ -133,16 +133,21 @@ func rewriteHostsFile(address, path string) error {
 	return nil
 }
 
-var ErrEmptyAddress = errors.New("empty address")
+var ErrInvalidAddress = errors.New("invalid IP address")
+var ErrUnknownAddressFormat = errors.New("unknown IP address format")
 
 func getIPFamily(address string) (txeh.IPFamily, error) {
-	addressIP := net.ParseIP(address)
-	if addressIP == nil {
-		return txeh.IPFamilyV4, ErrEmptyAddress
+	addressIP, err := netip.ParseAddr(address)
+	if err != nil {
+		return txeh.IPFamilyV4, fmt.Errorf("failed to parse IP address: %w", err)
 	}
-	ipFamily := txeh.IPFamilyV4
-	if addressIP.To4() == nil {
-		ipFamily = txeh.IPFamilyV6
+
+	switch {
+	case addressIP.Is4():
+		return txeh.IPFamilyV4, nil
+	case addressIP.Is6():
+		return txeh.IPFamilyV6, nil
+	default:
+		return txeh.IPFamilyV4, fmt.Errorf("%w: %s", ErrUnknownAddressFormat, address)
 	}
-	return ipFamily, nil
 }
