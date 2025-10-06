@@ -153,6 +153,12 @@ variable "client_proxy_resources_cpu_count" {
   default = 1
 }
 
+variable "client_proxy_update_max_parallel" {
+  type        = number
+  description = "The number of client proxies to update in parallel during a rolling update."
+  default     = 1
+}
+
 variable "edge_api_port" {
   type = object({
     name = string
