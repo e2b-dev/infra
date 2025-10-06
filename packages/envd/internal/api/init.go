@@ -19,6 +19,11 @@ import (
 
 var ErrAccessTokenAlreadySet = errors.New("access token is already set")
 
+const (
+	maxTimeInPast   = 50 * time.Millisecond
+	maxTimeInFuture = 5 * time.Second
+)
+
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
@@ -40,18 +45,25 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		defer a.initLock.Unlock()
 
 		// Update data only if the request is newer or if there's no timestamp at all
-		if initRequest.Timestamp == nil || a.lastSetTime.SetToGreater(initRequest.Timestamp.UnixNano()) {
-			err = a.SetData(logger, initRequest)
-			if err != nil {
-				switch {
-				case errors.Is(err, ErrAccessTokenAlreadySet):
-					w.WriteHeader(http.StatusConflict)
-				default:
-					logger.Error().Msgf("Failed to set data: %v", err)
-					w.WriteHeader(http.StatusBadRequest)
+		if initRequest.Timestamp != nil || a.lastSetTime.SetToGreater(initRequest.Timestamp.UnixNano()) {
+			// Check if the time is before maxTimeInPast or after maxTimeInFuture
+			validTime := initRequest.Timestamp == nil ||
+				initRequest.Timestamp.Before(time.Now().Add(-maxTimeInPast)) ||
+				initRequest.Timestamp.After(time.Now().Add(maxTimeInFuture))
+
+			if validTime {
+				err = a.SetData(logger, initRequest)
+				if err != nil {
+					switch {
+					case errors.Is(err, ErrAccessTokenAlreadySet):
+						w.WriteHeader(http.StatusConflict)
+					default:
+						logger.Error().Msgf("Failed to set data: %v", err)
+						w.WriteHeader(http.StatusBadRequest)
+					}
+					w.Write([]byte(err.Error()))
+					return
 				}
-				w.Write([]byte(err.Error()))
-				return
 			}
 		}
 	}
