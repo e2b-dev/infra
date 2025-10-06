@@ -12,7 +12,6 @@ type (
 )
 
 type ItemsFilter struct {
-	TeamID      *uuid.UUID
 	States      []State
 	OnlyExpired bool
 }
