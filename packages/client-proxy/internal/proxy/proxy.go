@@ -14,10 +14,10 @@ import (
 	"go.uber.org/zap"
 
 	orchestratorspool "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
+	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -82,10 +82,10 @@ func dnsResolution(sandboxId string, logger *zap.Logger) (string, error) {
 	return node, nil
 }
 
-func catalogResolution(ctx context.Context, sandboxId string, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool) (string, error) {
-	s, err := catalog.GetSandbox(ctx, sandboxId)
+func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool) (string, error) {
+	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
-		if errors.Is(err, sandboxes.ErrSandboxNotFound) {
+		if errors.Is(err, catalog.ErrSandboxNotFound) {
 			return "", ErrNodeNotFound
 		}
 
@@ -100,7 +100,7 @@ func catalogResolution(ctx context.Context, sandboxId string, catalog sandboxes.
 	return o.GetInfo().Ip, nil
 }
 
-func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool, useCatalogResolution bool, useDnsResolution bool) (*reverseproxy.Proxy, error) {
+func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint, catalog catalog.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool, useCatalogResolution bool, useDnsResolution bool) (*reverseproxy.Proxy, error) {
 	if !useCatalogResolution && !useDnsResolution {
 		return nil, errors.New("catalog resolution and DNS resolution are both disabled, at least one must be enabled")
 	}

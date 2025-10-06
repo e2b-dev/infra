@@ -10,8 +10,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/edge"
+	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 func (s *NodePassThroughServer) eventsHandler(ctx context.Context, md metadata.MD) (func(error), error) {
@@ -44,7 +44,7 @@ func (s *NodePassThroughServer) catalogCreateEventHandler(ctx context.Context, m
 	err = s.catalog.StoreSandbox(
 		ctx,
 		c.SandboxID,
-		&sandboxes.SandboxInfo{
+		&catalog.SandboxInfo{
 			OrchestratorID:          c.OrchestratorID,
 			ExecutionID:             c.ExecutionID,
 			SandboxStartedAt:        c.SandboxStartTime,

@@ -29,12 +29,12 @@ import (
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
 	e2binfo "github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	e2bproxy "github.com/e2b-dev/infra/packages/proxy/internal/proxy"
-	service_discovery "github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
+	servicediscovery "github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
-	e2bLogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	e2blogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -85,12 +85,12 @@ func run() int {
 	}()
 
 	logger := zap.Must(
-		e2bLogger.NewLogger(
-			ctx, e2bLogger.LoggerConfig{
+		e2blogger.NewLogger(
+			ctx, e2blogger.LoggerConfig{
 				ServiceName:   serviceName,
 				IsInternal:    true,
 				IsDebug:       env.IsDebug(),
-				Cores:         []zapcore.Core{e2bLogger.GetOTELCore(tel.LogsProvider, serviceName)},
+				Cores:         []zapcore.Core{e2blogger.GetOTELCore(tel.LogsProvider, serviceName)},
 				EnableConsole: true,
 			},
 		),
@@ -119,25 +119,25 @@ func run() int {
 
 	logger.Info("Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
 
-	edgeSD, orchestratorsSD, err := service_discovery.NewServiceDiscoveryProvider(ctx, edgePort, orchestratorPort, logger)
+	edgeSD, orchestratorsSD, err := servicediscovery.NewServiceDiscoveryProvider(ctx, edgePort, orchestratorPort, logger)
 	if err != nil {
 		logger.Error("Failed to resolve service discovery config", zap.Error(err))
 		return 1
 	}
 
-	var catalog sandboxes.SandboxesCatalog
+	var catalog e2bcatalog.SandboxesCatalog
 
 	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
 		redisClient := redis.NewClusterClient(&redis.ClusterOptions{Addrs: []string{redisClusterUrl}, MinIdleConns: 1})
 		redisSync := redsync.New(goredis.NewPool(redisClient))
-		catalog = sandboxes.NewRedisSandboxesCatalog(redisClient, redisSync)
+		catalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient, redisSync)
 	} else if redisUrl := os.Getenv("REDIS_URL"); redisUrl != "" {
 		redisClient := redis.NewClient(&redis.Options{Addr: redisUrl, MinIdleConns: 1})
 		redisSync := redsync.New(goredis.NewPool(redisClient))
-		catalog = sandboxes.NewRedisSandboxesCatalog(redisClient, redisSync)
+		catalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient, redisSync)
 	} else {
 		logger.Warn("Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
-		catalog = sandboxes.NewMemorySandboxesCatalog()
+		catalog = e2bcatalog.NewMemorySandboxesCatalog()
 	}
 
 	orchestrators := e2borchestrators.NewOrchestratorsPool(logger, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)

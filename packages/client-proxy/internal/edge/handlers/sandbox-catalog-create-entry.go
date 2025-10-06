@@ -8,9 +8,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -28,7 +28,7 @@ func (a *APIStore) V1SandboxCatalogCreate(c *gin.Context) {
 	defer span.End()
 
 	sbxMaxLifetime := time.Duration(body.SandboxMaxLength) * time.Hour
-	sbxInfo := &sandboxes.SandboxInfo{
+	sbxInfo := &catalog.SandboxInfo{
 		OrchestratorID: body.OrchestratorID,
 		ExecutionID:    body.ExecutionID,
 

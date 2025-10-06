@@ -1,4 +1,4 @@
-package sandboxes
+package sandbox_catalog
 
 import (
 	"context"
