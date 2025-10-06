@@ -17,11 +17,11 @@ import (
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/client-proxy/internal/edge/sandboxes")
 
 const (
-	catalogRedisTimeout = time.Second * 5
+	catalogRedisTimeout = time.Second * 1
 
 	// this is just how long we are keeping sandbox in local cache so we don't have to query redis every time
 	// we don't want to go too high because then sbx can be run on different orchestrator, and we will not be able to find it
-	catalogRedisLocalCacheTtl = time.Second * 5
+	catalogRedisLocalCacheTtl = time.Millisecond * 500
 )
 
 type RedisSandboxCatalog struct {

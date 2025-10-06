@@ -14,7 +14,7 @@ type MemorySandboxCatalog struct {
 }
 
 func NewMemorySandboxesCatalog() SandboxesCatalog {
-	cache := ttlcache.New[string, *SandboxInfo](ttlcache.WithDisableTouchOnHit[string, *SandboxInfo]())
+	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogRedisLocalCacheTtl), ttlcache.WithDisableTouchOnHit[string, *SandboxInfo]())
 	go cache.Start()
 
 	return &MemorySandboxCatalog{
