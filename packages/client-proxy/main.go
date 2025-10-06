@@ -15,8 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-redsync/redsync/v4"
-	"github.com/go-redsync/redsync/v4/redis/goredis/v9"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/soheilhy/cmux"
@@ -129,12 +127,10 @@ func run() int {
 
 	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
 		redisClient := redis.NewClusterClient(&redis.ClusterOptions{Addrs: []string{redisClusterUrl}, MinIdleConns: 1})
-		redisSync := redsync.New(goredis.NewPool(redisClient))
-		catalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient, redisSync)
+		catalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient)
 	} else if redisUrl := os.Getenv("REDIS_URL"); redisUrl != "" {
 		redisClient := redis.NewClient(&redis.Options{Addr: redisUrl, MinIdleConns: 1})
-		redisSync := redsync.New(goredis.NewPool(redisClient))
-		catalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient, redisSync)
+		catalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient)
 	} else {
 		logger.Warn("Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
 		catalog = e2bcatalog.NewMemorySandboxesCatalog()

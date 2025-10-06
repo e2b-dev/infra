@@ -38,7 +38,6 @@ require (
 	github.com/go-openapi/strfmt v0.23.0
 	github.com/go-openapi/swag v0.23.0
 	github.com/go-openapi/validate v0.24.0
-	github.com/go-redsync/redsync/v4 v4.13.0
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/go-containerregistry v0.20.6
 	github.com/google/uuid v1.6.0

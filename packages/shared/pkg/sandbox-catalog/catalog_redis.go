@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-redsync/redsync/v4"
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
@@ -18,8 +17,7 @@ import (
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/client-proxy/internal/edge/sandboxes")
 
 const (
-	catalogClusterLockName = "sandboxes-catalog-cluster-lock"
-	catalogRedisTimeout    = time.Second * 5
+	catalogRedisTimeout = time.Second * 5
 
 	// this is just how long we are keeping sandbox in local cache so we don't have to query redis every time
 	// we don't want to go too high because then sbx can be run on different orchestrator, and we will not be able to find it
@@ -27,23 +25,17 @@ const (
 )
 
 type RedisSandboxCatalog struct {
-	// todo: ideally we want to support per sandbox locking, but for now we are using one global lock per cluster
-	clusterMutex *redsync.Mutex
-	redisClient  redis.UniversalClient
-
-	cache *ttlcache.Cache[string, *SandboxInfo]
+	redisClient redis.UniversalClient
+	cache       *ttlcache.Cache[string, *SandboxInfo]
 }
 
-func NewRedisSandboxesCatalog(redisClient redis.UniversalClient, redisSync *redsync.Redsync) *RedisSandboxCatalog {
-	clusterLockMutex := redisSync.NewMutex(catalogClusterLockName)
-
+func NewRedisSandboxesCatalog(redisClient redis.UniversalClient) *RedisSandboxCatalog {
 	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogRedisLocalCacheTtl), ttlcache.WithDisableTouchOnHit[string, *SandboxInfo]())
 	go cache.Start()
 
 	return &RedisSandboxCatalog{
-		redisClient:  redisClient,
-		clusterMutex: clusterLockMutex,
-		cache:        cache,
+		redisClient: redisClient,
+		cache:       cache,
 	}
 }
 
@@ -88,13 +80,6 @@ func (c *RedisSandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string
 	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-store")
 	defer span.End()
 
-	err := c.clusterMutex.Lock()
-	if err != nil {
-		return fmt.Errorf("error while locking the cluster mutex: %w", err)
-	}
-
-	defer c.clusterMutex.Unlock()
-
 	ctx, ctxCancel := context.WithTimeout(spanCtx, catalogRedisTimeout)
 	defer ctxCancel()
 
@@ -117,13 +102,6 @@ func (c *RedisSandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string
 func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID string, executionID string) error {
 	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-delete")
 	defer span.End()
-
-	err := c.clusterMutex.Lock()
-	if err != nil {
-		return fmt.Errorf("error while locking the cluster mutex: %w", err)
-	}
-
-	defer c.clusterMutex.Unlock()
 
 	ctx, ctxCancel := context.WithTimeout(spanCtx, catalogRedisTimeout)
 	defer ctxCancel()
