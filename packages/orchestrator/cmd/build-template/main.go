@@ -38,8 +38,7 @@ const (
 )
 
 func main() {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := context.Background()
 
 	templateID := flag.String("template", "", "template id")
 	buildID := flag.String("build", "", "build id")
@@ -47,9 +46,14 @@ func main() {
 	fcVersion := flag.String("firecracker", "", "firecracker version")
 	flag.Parse()
 
-	err := buildTemplate(ctx, *kernelVersion, *fcVersion, *templateID, *buildID)
+	networkConfig, err := network.ParseConfig()
 	if err != nil {
-		log.Fatalf("error building template: %v", err) //nolint:gocritic // probably fine to bail if we're done?
+		log.Fatalf("error building template: %v", err)
+	}
+
+	err = buildTemplate(ctx, *kernelVersion, *fcVersion, *templateID, *buildID, networkConfig)
+	if err != nil {
+		log.Fatalf("error building template: %v", err)
 	}
 }
 
@@ -59,6 +63,7 @@ func buildTemplate(
 	fcVersion,
 	templateID,
 	buildID string,
+	networkConfig network.Config,
 ) error {
 	ctx, cancel := context.WithTimeout(parentCtx, time.Minute*5)
 	defer cancel()
@@ -121,7 +126,7 @@ func buildTemplate(
 		}
 	}()
 
-	networkPool, err := network.NewPool(ctx, noop.MeterProvider{}, 8, 8, clientID, network.Config{UseLocalNamespaceStorage: true})
+	networkPool, err := network.NewPool(ctx, noop.MeterProvider{}, 8, 8, clientID, networkConfig)
 	if err != nil {
 		return fmt.Errorf("could not create network pool: %w", err)
 	}

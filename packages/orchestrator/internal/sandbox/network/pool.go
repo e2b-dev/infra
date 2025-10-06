@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/caarlos0/env/v11"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
@@ -17,9 +18,15 @@ const (
 )
 
 type Config struct {
+	// Using reserver IPv4 in range that is used for experiments and documentation
+	// https://en.wikipedia.org/wiki/Reserved_IP_addresses
 	HyperloopIPAddress       string `env:"SANDBOX_HYPERLOOP_IP"         envDefault:"192.0.2.1"`
 	HyperloopProxyPort       uint16 `env:"SANDBOX_HYPERLOOP_PROXY_PORT" envDefault:"5010"`
 	UseLocalNamespaceStorage bool   `env:"USE_LOCAL_NAMESPACE_STORAGE"`
+}
+
+func ParseConfig() (Config, error) {
+	return env.ParseAs[Config]()
 }
 
 type Pool struct {
