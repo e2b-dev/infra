@@ -1,49 +1,39 @@
-package sandboxes
+package sandbox_catalog
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
-	"github.com/go-redsync/redsync/v4"
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/redis/go-redis/v9"
-	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/client-proxy/internal/edge/sandboxes")
-
 const (
-	catalogClusterLockName = "sandboxes-catalog-cluster-lock"
-	catalogRedisTimeout    = time.Second * 5
+	catalogRedisTimeout = time.Second * 1
 
 	// this is just how long we are keeping sandbox in local cache so we don't have to query redis every time
 	// we don't want to go too high because then sbx can be run on different orchestrator, and we will not be able to find it
-	catalogRedisLocalCacheTtl = time.Second * 5
+	catalogRedisLocalCacheTtl = time.Millisecond * 500
 )
 
 type RedisSandboxCatalog struct {
-	// todo: ideally we want to support per sandbox locking, but for now we are using one global lock per cluster
-	clusterMutex *redsync.Mutex
-	redisClient  redis.UniversalClient
-
-	cache *ttlcache.Cache[string, *SandboxInfo]
+	redisClient redis.UniversalClient
+	cache       *ttlcache.Cache[string, *SandboxInfo]
 }
 
-func NewRedisSandboxesCatalog(redisClient redis.UniversalClient, redisSync *redsync.Redsync) *RedisSandboxCatalog {
-	clusterLockMutex := redisSync.NewMutex(catalogClusterLockName)
-
+func NewRedisSandboxesCatalog(redisClient redis.UniversalClient) *RedisSandboxCatalog {
 	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogRedisLocalCacheTtl), ttlcache.WithDisableTouchOnHit[string, *SandboxInfo]())
 	go cache.Start()
 
 	return &RedisSandboxCatalog{
-		redisClient:  redisClient,
-		clusterMutex: clusterLockMutex,
-		cache:        cache,
+		redisClient: redisClient,
+		cache:       cache,
 	}
 }
 
@@ -63,7 +53,11 @@ func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) 
 
 	data, err := c.redisClient.Get(ctx, c.getCatalogKey(sandboxID)).Bytes()
 	if err != nil {
-		return nil, ErrSandboxNotFound
+		if errors.Is(err, redis.Nil) {
+			return nil, ErrSandboxNotFound
+		}
+
+		return nil, fmt.Errorf("failed to get sandbox info from redis: %w", err)
 	}
 
 	var info *SandboxInfo
@@ -72,14 +66,8 @@ func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) 
 		return nil, fmt.Errorf("failed to unmarshal sandbox info: %w", err)
 	}
 
-	deadline := info.SandboxStartedAt.
-		Add(time.Duration(info.SandboxMaxLengthInHours) * time.Hour).
-		Add(sandboxTtlBuffer)
-
-	err = c.StoreSandbox(ctx, sandboxID, info, time.Until(deadline))
-	if err != nil {
-		return nil, fmt.Errorf("failed to store sandbox info taken from redis: %w", err)
-	}
+	// Store in local cache if needed
+	c.cache.Set(sandboxID, info, catalogRedisLocalCacheTtl)
 
 	return info, nil
 }
@@ -87,13 +75,6 @@ func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) 
 func (c *RedisSandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string, sandboxInfo *SandboxInfo, expiration time.Duration) error {
 	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-store")
 	defer span.End()
-
-	err := c.clusterMutex.Lock()
-	if err != nil {
-		return fmt.Errorf("error while locking the cluster mutex: %w", err)
-	}
-
-	defer c.clusterMutex.Unlock()
 
 	ctx, ctxCancel := context.WithTimeout(spanCtx, catalogRedisTimeout)
 	defer ctxCancel()
@@ -117,13 +98,6 @@ func (c *RedisSandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string
 func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID string, executionID string) error {
 	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-delete")
 	defer span.End()
-
-	err := c.clusterMutex.Lock()
-	if err != nil {
-		return fmt.Errorf("error while locking the cluster mutex: %w", err)
-	}
-
-	defer c.clusterMutex.Unlock()
 
 	ctx, ctxCancel := context.WithTimeout(spanCtx, catalogRedisTimeout)
 	defer ctxCancel()
@@ -151,5 +125,5 @@ func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID strin
 }
 
 func (c *RedisSandboxCatalog) getCatalogKey(sandboxID string) string {
-	return fmt.Sprintf("sandbox-%s", sandboxID)
+	return fmt.Sprintf("sandbox:catalog:%s", sandboxID)
 }

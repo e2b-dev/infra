@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -85,8 +86,8 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		return
 	}
 
-	sandboxes := a.orchestrator.GetSandboxes(ctx, &team.ID, []sandbox.State{sandbox.StateRunning})
-	runningSandboxes := getRunningSandboxes(sandboxes[sandbox.StateRunning], metadataFilter)
+	sandboxes := a.orchestrator.GetSandboxes(ctx, team.ID, sandbox.WithState(sandbox.StateRunning))
+	runningSandboxes := getRunningSandboxes(sandboxes, metadataFilter)
 
 	// Sort sandboxes by start time descending
 	utils.SortPaginatedSandboxesDesc(runningSandboxes)
@@ -143,10 +144,16 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		return
 	}
 
-	sandboxesInCache := a.orchestrator.GetSandboxes(ctx, &team.ID, []sandbox.State{sandbox.StateRunning, sandbox.StatePausing})
+	allSandboxes := a.orchestrator.GetSandboxes(ctx, team.ID, sandbox.WithStates(sandbox.StateRunning, sandbox.StatePausing))
+	runningSandboxes := sharedUtils.Filter(allSandboxes, func(sbx sandbox.Sandbox) bool {
+		return sbx.State == sandbox.StateRunning
+	})
+	pausingSandboxes := sharedUtils.Filter(allSandboxes, func(sbx sandbox.Sandbox) bool {
+		return sbx.State == sandbox.StatePausing
+	})
 
 	if slices.Contains(states, api.Running) {
-		runningSandboxList := instanceInfoToPaginatedSandboxes(sandboxesInCache[sandbox.StateRunning])
+		runningSandboxList := instanceInfoToPaginatedSandboxes(runningSandboxes)
 
 		// Filter based on metadata
 		runningSandboxList = utils.FilterSandboxesOnMetadata(runningSandboxList, metadataFilter)
@@ -163,11 +170,10 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	if slices.Contains(states, api.Paused) {
 		// Running Sandbox IDs
 		runningSandboxesIDs := make([]string, 0)
-		for _, info := range sandboxesInCache[sandbox.StateRunning] {
+		for _, info := range runningSandboxes {
 			runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
 		}
-		pausing := sandboxesInCache[sandbox.StatePausing]
-		for _, info := range pausing {
+		for _, info := range pausingSandboxes {
 			runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
 		}
 
@@ -179,7 +185,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 			return
 		}
 
-		pausingSandboxList := instanceInfoToPaginatedSandboxes(pausing)
+		pausingSandboxList := instanceInfoToPaginatedSandboxes(pausingSandboxes)
 		pausingSandboxList = utils.FilterSandboxesOnMetadata(pausingSandboxList, metadataFilter)
 		pausingSandboxList = utils.FilterBasedOnCursor(pausingSandboxList, cursorTime, cursorID)
 

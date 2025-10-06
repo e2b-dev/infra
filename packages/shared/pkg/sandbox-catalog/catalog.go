@@ -1,13 +1,16 @@
-package sandboxes
+package sandbox_catalog
 
 import (
 	"context"
 	"errors"
 	"time"
+
+	"go.opentelemetry.io/otel"
 )
 
 type SandboxInfo struct {
 	OrchestratorID string `json:"orchestrator_id"`
+	OrchestratorIP string `json:"orchestrator_ip"` // used only for cases where orchestrator is not registered in edge pool
 	ExecutionID    string `json:"execution_id"`
 
 	SandboxStartedAt        time.Time `json:"sandbox_started_at"`          // when sandbox was started
@@ -22,11 +25,6 @@ type SandboxesCatalog interface {
 
 type CatalogProvider string
 
-const (
-	// We want to have some buffer so redis ttl will not expire exactly before api will try to shut down or do some other operation
-	// with sandbox running behind edge node. For resume this should not be problem because for both redis and memory backed catalogs
-	// we will re-write sandbox info with new one and local machine-level cache is tiny.
-	sandboxTtlBuffer = 1 * time.Minute
-)
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog")
 
 var ErrSandboxNotFound = errors.New("sandbox not found")

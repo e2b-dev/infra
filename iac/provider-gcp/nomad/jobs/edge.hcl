@@ -72,7 +72,7 @@ job "client-proxy" {
     # An update stanza to enable rolling updates of the service
     update {
       # The number of extra instances to run during the update
-      max_parallel     = 1
+      max_parallel     = ${update_max_parallel}
       # Allows to spawn new version of the service before killing the old one
       canary           = 1
       # Time to wait for the canary to be healthy
@@ -122,8 +122,8 @@ job "client-proxy" {
 
         ENVIRONMENT = "${environment}"
 
-        // use legacy dns resolution for orchestrator services
-        USE_PROXY_CATALOG_RESOLUTION = "false"
+        USE_CATALOG_RESOLUTION = "true"
+        USE_DNS_RESOLUTION     = "true"
 
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
         LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"

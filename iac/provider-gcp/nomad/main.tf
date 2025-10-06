@@ -166,10 +166,11 @@ resource "docker_image" "client_proxy_image" {
 resource "nomad_job" "client_proxy" {
   jobspec = templatefile("${path.module}/jobs/edge.hcl",
     {
-      update_stanza = var.api_machine_count > 1
-      count         = var.client_proxy_count
-      cpu_count     = var.client_proxy_resources_cpu_count
-      memory_mb     = var.client_proxy_resources_memory_mb
+      update_stanza       = var.api_machine_count > 1
+      count               = var.client_proxy_count
+      cpu_count           = var.client_proxy_resources_cpu_count
+      memory_mb           = var.client_proxy_resources_memory_mb
+      update_max_parallel = var.client_proxy_update_max_parallel
 
       node_pool = var.api_node_pool
 
