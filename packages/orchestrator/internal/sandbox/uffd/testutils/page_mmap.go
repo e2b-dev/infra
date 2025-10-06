@@ -11,7 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-func NewPageMmap(size, pagesize uint64) ([]byte, uintptr, error) {
+func NewPageMmap(size, pagesize uint64) ([]byte, uintptr, func() error, error) {
 	if pagesize == header.PageSize {
 		return newMmap(size, header.PageSize, 0)
 	}
@@ -20,10 +20,10 @@ func NewPageMmap(size, pagesize uint64) ([]byte, uintptr, error) {
 		return newMmap(size, header.HugepageSize, unix.MAP_HUGETLB|unix.MAP_HUGE_2MB)
 	}
 
-	panic(fmt.Sprintf("unsupported page size: %d", pagesize))
+	return nil, 0, nil, fmt.Errorf("unsupported page size: %d", pagesize)
 }
 
-func newMmap(size, pagesize uint64, flags int) ([]byte, uintptr, error) {
+func newMmap(size, pagesize uint64, flags int) ([]byte, uintptr, func() error, error) {
 	l := int(math.Ceil(float64(size)/float64(pagesize)) * float64(pagesize))
 	b, err := syscall.Mmap(
 		-1,
@@ -33,8 +33,12 @@ func newMmap(size, pagesize uint64, flags int) ([]byte, uintptr, error) {
 		syscall.MAP_PRIVATE|syscall.MAP_ANONYMOUS|flags,
 	)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 
-	return b, uintptr(unsafe.Pointer(&b[0])), nil
+	close := func() error {
+		return syscall.Munmap(b)
+	}
+
+	return b, uintptr(unsafe.Pointer(&b[0])), close, nil
 }

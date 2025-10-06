@@ -77,10 +77,13 @@ func TestUffdMissing(t *testing.T) {
 				t.Fatal("failed to configure uffd api", err)
 			}
 
-			memoryArea, memoryStart, err := testutils.NewPageMmap(size, tt.pagesize)
+			memoryArea, memoryStart, unmap, err := testutils.NewPageMmap(size, tt.pagesize)
 			if err != nil {
 				t.Fatal("failed to create page mmap", err)
 			}
+			t.Cleanup(func() {
+				unmap()
+			})
 
 			err = uffd.Register(memoryStart, size, UFFDIO_REGISTER_MODE_MISSING)
 			if err != nil {
