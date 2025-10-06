@@ -40,7 +40,7 @@ type OrchestratorInstanceInfo struct {
 	ServiceStartup       time.Time
 
 	Host  string
-	Ip    string
+	IP    string
 	Roles []e2bgrpcorchestratorinfo.ServiceInfoRole
 }
 
@@ -72,7 +72,7 @@ func NewOrchestratorInstance(tracerProvider trace.TracerProvider, meterProvider 
 		client: client,
 		info: OrchestratorInstanceInfo{
 			Host: host,
-			Ip:   ip,
+			IP:   ip,
 		},
 	}
 

@@ -15,8 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-redsync/redsync/v4"
-	"github.com/go-redsync/redsync/v4/redis/goredis/v9"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/soheilhy/cmux"
@@ -29,12 +27,12 @@ import (
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
 	e2binfo "github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	e2bproxy "github.com/e2b-dev/infra/packages/proxy/internal/proxy"
-	service_discovery "github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
+	servicediscovery "github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
-	e2bLogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	e2blogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -85,12 +83,12 @@ func run() int {
 	}()
 
 	logger := zap.Must(
-		e2bLogger.NewLogger(
-			ctx, e2bLogger.LoggerConfig{
+		e2blogger.NewLogger(
+			ctx, e2blogger.LoggerConfig{
 				ServiceName:   serviceName,
 				IsInternal:    true,
 				IsDebug:       env.IsDebug(),
-				Cores:         []zapcore.Core{e2bLogger.GetOTELCore(tel.LogsProvider, serviceName)},
+				Cores:         []zapcore.Core{e2blogger.GetOTELCore(tel.LogsProvider, serviceName)},
 				EnableConsole: true,
 			},
 		),
@@ -114,31 +112,29 @@ func run() int {
 
 	logger.Info("Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
 
-	edgeSD, err := service_discovery.BuildServiceDiscoveryProvider(ctx, config.EdgeServiceDiscovery, config.EdgePort, logger)
+	edgeSD, err := servicediscovery.BuildServiceDiscoveryProvider(ctx, config.EdgeServiceDiscovery, config.EdgePort, logger)
 	if err != nil {
 		logger.Error("Failed to build edge discovery config", zap.Error(err))
 		return 1
 	}
 
-	orchestratorsSD, err := service_discovery.BuildServiceDiscoveryProvider(ctx, config.OrchestratorServiceDiscovery, config.OrchestratorPort, logger)
+	orchestratorsSD, err := servicediscovery.BuildServiceDiscoveryProvider(ctx, config.OrchestratorServiceDiscovery, config.OrchestratorPort, logger)
 	if err != nil {
 		logger.Error("Failed to build orchestrator discovery config", zap.Error(err))
 		return 1
 	}
 
-	var catalog sandboxes.SandboxesCatalog
+	var catalog e2bcatalog.SandboxesCatalog
 
 	if redisClusterUrl := config.RedisClusterURL; redisClusterUrl != "" {
 		redisClient := redis.NewClusterClient(&redis.ClusterOptions{Addrs: []string{redisClusterUrl}, MinIdleConns: 1})
-		redisSync := redsync.New(goredis.NewPool(redisClient))
-		catalog = sandboxes.NewRedisSandboxesCatalog(redisClient, redisSync)
+		catalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient)
 	} else if redisUrl := config.RedisURL; redisUrl != "" {
 		redisClient := redis.NewClient(&redis.Options{Addr: redisUrl, MinIdleConns: 1})
-		redisSync := redsync.New(goredis.NewPool(redisClient))
-		catalog = sandboxes.NewRedisSandboxesCatalog(redisClient, redisSync)
+		catalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient)
 	} else {
 		logger.Warn("Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
-		catalog = sandboxes.NewMemorySandboxesCatalog()
+		catalog = e2bcatalog.NewMemorySandboxesCatalog()
 	}
 
 	orchestrators := e2borchestrators.NewOrchestratorsPool(logger, tel.TracerProvider, tel.MeterProvider, orchestratorsSD)
@@ -160,7 +156,7 @@ func run() int {
 	}
 
 	// Proxy sandbox http traffic to orchestrator nodes
-	trafficProxy, err := e2bproxy.NewClientProxy(tel.MeterProvider, serviceName, uint(config.ProxyPort), catalog, orchestrators, config.UseProxyCatalogResolution, config.UseDNSResolution)
+	trafficProxy, err := e2bproxy.NewClientProxy(tel.MeterProvider, serviceName, uint(config.ProxyPort), catalog, config.UseProxyCatalogResolution, config.UseDNSResolution)
 	if err != nil {
 		logger.Error("Failed to create client proxy", zap.Error(err))
 		return 1
