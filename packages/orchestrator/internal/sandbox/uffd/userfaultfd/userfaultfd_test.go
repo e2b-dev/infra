@@ -135,7 +135,7 @@ func TestUffdMissing(t *testing.T) {
 			select {
 			case <-exitUffd:
 			case <-t.Context().Done():
-				t.Fatal("timeout waiting for uffd to exit")
+				t.Fatal("context done", t.Context().Err())
 			}
 		})
 	}
