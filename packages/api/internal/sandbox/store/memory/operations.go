@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -79,7 +80,7 @@ func (s *Store) Remove(sandboxID string) {
 	s.items.Remove(sandboxID)
 }
 
-func (s *Store) Items(teamID *uuid.UUID, options ...sandbox.ItemsOption) []sandbox.Sandbox {
+func (s *Store) Items(teamID *uuid.UUID, states []sandbox.State, options ...sandbox.ItemsOption) []sandbox.Sandbox {
 	filter := sandbox.NewItemsFilter()
 	for _, opt := range options {
 		opt(filter)
@@ -90,6 +91,10 @@ func (s *Store) Items(teamID *uuid.UUID, options ...sandbox.ItemsOption) []sandb
 		data := item.Data()
 
 		if teamID != nil && *teamID != data.TeamID {
+			continue
+		}
+
+		if !slices.Contains(states, data.State) {
 			continue
 		}
 
@@ -145,7 +150,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.
 			return false, nil, fmt.Errorf("invalid state transition, already in transition from %s", currentState)
 		}
 
-		zap.L().Debug("States transition already in progress to the same state, waiting", logger.WithSandboxID(sbx.SandboxID()), zap.String("state", string(newState)))
+		zap.L().Debug("State transition already in progress to the same state, waiting", logger.WithSandboxID(sbx.SandboxID()), zap.String("state", string(newState)))
 		err = transition.WaitWithContext(ctx)
 		if err != nil {
 			return false, nil, fmt.Errorf("sandbox is in failed state: %w", err)
