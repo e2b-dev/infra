@@ -16,7 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 const (
@@ -30,11 +30,9 @@ const defaultRoutingIP = "127.0.0.1"
 const cachedDnsPrefix = "sandbox.dns."
 
 type DNS struct {
-	srv *resolver.Server
-
+	srv        *resolver.Server
 	redisCache *cache.Cache
-
-	local *smap.Map[string]
+	catalog    e2bcatalog.SandboxesCatalog
 
 	closer struct {
 		once sync.Once
@@ -48,60 +46,60 @@ func New(ctx context.Context, redisClient redis.UniversalClient) *DNS {
 
 	if redisClient != nil && !reflect.ValueOf(redisClient).IsNil() {
 		d.redisCache = cache.New(&cache.Options{Redis: redisClient, LocalCache: cache.NewTinyLFU(10_000, time.Hour)})
+		d.catalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient)
 	} else {
-		d.local = smap.New[string]()
+		d.catalog = e2bcatalog.NewMemorySandboxesCatalog()
 	}
 
 	return d
 }
 
-func (d *DNS) Add(ctx context.Context, sandboxID, ip string) {
-	switch {
-	case d.redisCache != nil:
+func (d *DNS) Add(ctx context.Context, sandboxID string, info e2bcatalog.SandboxInfo) {
+	if d.redisCache != nil {
 		err := d.redisCache.Set(&cache.Item{
 			Ctx:   ctx,
 			TTL:   redisTTL,
 			Key:   d.cacheKey(sandboxID),
-			Value: ip,
+			Value: info.OrchestratorIP,
 		})
 		if err != nil {
 			zap.L().Error("error adding DNS item to redis cache", zap.Error(err), logger.WithSandboxID(sandboxID))
 		}
-	case d.local != nil:
-		d.local.Insert(sandboxID, ip)
+	}
+
+	lifetime := time.Duration(info.SandboxMaxLengthInHours) * time.Hour
+	err := d.catalog.StoreSandbox(ctx, sandboxID, &info, lifetime)
+	if err != nil {
+		zap.L().Error("error adding routing record to catalog", zap.Error(err), logger.WithSandboxID(sandboxID))
 	}
 }
 
-func (d *DNS) Remove(ctx context.Context, sandboxID, ip string) {
-	switch {
-	case d.redisCache != nil:
+func (d *DNS) Remove(ctx context.Context, sandboxID, executionID string) {
+	if d.redisCache != nil {
 		if err := d.redisCache.Delete(ctx, d.cacheKey(sandboxID)); err != nil {
 			zap.L().Debug("removing item from DNS cache", zap.Error(err), logger.WithSandboxID(sandboxID))
 		}
-	case d.local != nil:
-		d.local.RemoveCb(d.cacheKey(sandboxID), func(k string, v string, ok bool) bool { return v == ip })
+	}
+
+	err := d.catalog.DeleteSandbox(ctx, sandboxID, executionID)
+	if err != nil {
+		zap.L().Error("error removing routing record from catalog", zap.Error(err), logger.WithSandboxID(sandboxID))
 	}
 }
 
 func (d *DNS) Get(ctx context.Context, sandboxID string) net.IP {
 	var res string
-	switch {
-	case d.redisCache != nil:
+
+	if d.redisCache != nil {
 		if err := d.redisCache.Get(ctx, d.cacheKey(sandboxID), &res); err != nil && !errors.Is(err, cache.ErrCacheMiss) {
 			zap.L().Error("resolving item from redisCache DNS cache", logger.WithSandboxID(sandboxID), zap.Error(err))
-		}
-	case d.local != nil:
-		var ok bool
-		res, ok = d.local.Get(d.cacheKey(sandboxID))
-		if !ok {
-			zap.L().Debug("item not found in local DNS cache", logger.WithSandboxID(sandboxID))
 		}
 	}
 
 	addr := net.ParseIP(res)
 	if addr == nil {
 		if res != "" {
-			zap.L().Error("malformed address in cache", zap.Bool("local", d.local != nil), zap.String("addr", res))
+			zap.L().Error("malformed address in cache", zap.Bool("mocked", d.redisCache == nil), zap.String("addr", res))
 		}
 
 		addr = net.ParseIP(defaultRoutingIP)
@@ -159,8 +157,6 @@ func (d *DNS) handleDNSRequest(ctx context.Context, w resolver.ResponseWriter, r
 }
 
 var errOnStartup = errors.New("failed to start DNS server")
-
-func CheckErrOnStartup(err error) bool { return errors.Is(err, errOnStartup) }
 
 func (d *DNS) Start(ctx context.Context, address string, port uint16) {
 	if d.srv != nil {

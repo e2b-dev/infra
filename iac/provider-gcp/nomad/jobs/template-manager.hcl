@@ -80,6 +80,9 @@ job "template-manager-system" {
 %{ if !update_stanza }
         FORCE_STOP                    = "true"
 %{ endif }
+%{ if launch_darkly_api_key != "" }
+        LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
+%{ endif }
       }
 
       config {

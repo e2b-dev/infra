@@ -14,7 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-const hashingVersion = "v1"
+const hashingVersion = "v2"
 
 const minimalCachedTemplateVersion = 2
 

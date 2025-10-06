@@ -37,15 +37,15 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, ADDITIONAL_DOMAINS) \
 	$(call tfvar, ADDITIONAL_API_SERVICES_JSON) \
 	$(call tfvar, PREFIX) \
-	$(call tfvar, OTEL_TRACING_PRINT) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
 	$(call tfvar, API_RESOURCES_CPU_COUNT) \
 	$(call tfvar, API_RESOURCES_MEMORY_MB) \
 	$(call tfvar, CLIENT_PROXY_COUNT) \
-	$(call tfvar, CLIENT_PROXY_CPU_COUNT) \
+	$(call tfvar, CLIENT_PROXY_RESOURCES_CPU_COUNT) \
 	$(call tfvar, CLIENT_PROXY_RESOURCES_MEMORY_MB) \
 	$(call tfvar, CLICKHOUSE_RESOURCES_CPU_COUNT) \
 	$(call tfvar, CLICKHOUSE_RESOURCES_MEMORY_MB) \
+	$(call tfvar, CLIENT_PROXY_UPDATE_MAX_PARALLEL) \
 	$(call tfvar, LOKI_RESOURCES_CPU_COUNT) \
 	$(call tfvar, LOKI_RESOURCES_MEMORY_MB) \
 	$(call tfvar, OTEL_TRACING_PRINT) \

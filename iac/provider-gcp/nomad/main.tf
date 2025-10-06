@@ -166,10 +166,11 @@ resource "docker_image" "client_proxy_image" {
 resource "nomad_job" "client_proxy" {
   jobspec = templatefile("${path.module}/jobs/edge.hcl",
     {
-      update_stanza = var.api_machine_count > 1
-      count         = var.client_proxy_count
-      cpu_count     = var.client_proxy_resources_cpu_count
-      memory_mb     = var.client_proxy_resources_memory_mb
+      update_stanza       = var.api_machine_count > 1
+      count               = var.client_proxy_count
+      cpu_count           = var.client_proxy_resources_cpu_count
+      memory_mb           = var.client_proxy_resources_memory_mb
+      update_max_parallel = var.client_proxy_update_max_parallel
 
       node_pool = var.api_node_pool
 
@@ -508,6 +509,7 @@ resource "nomad_job" "template_manager" {
     allow_sandbox_internet          = var.allow_sandbox_internet
     clickhouse_connection_string    = local.clickhouse_connection_string
     dockerhub_remote_repository_url = var.dockerhub_remote_repository_url
+    launch_darkly_api_key           = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
 
     # For now we DISABLE the shared chunk cache in the template manager
     shared_chunk_cache_path = ""
