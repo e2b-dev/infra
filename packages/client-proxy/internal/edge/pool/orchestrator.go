@@ -40,7 +40,7 @@ type OrchestratorInstanceInfo struct {
 	ServiceStartup       time.Time
 
 	Host  string
-	Ip    string
+	IP    string
 	Roles []e2bgrpcorchestratorinfo.ServiceInfoRole
 }
 
@@ -72,7 +72,7 @@ func NewOrchestratorInstance(tracerProvider trace.TracerProvider, meterProvider 
 		client: client,
 		info: OrchestratorInstanceInfo{
 			Host: host,
-			Ip:   ip,
+			IP:   ip,
 		},
 	}
 
@@ -89,19 +89,19 @@ func (o *OrchestratorInstance) sync(ctx context.Context) error {
 			continue
 		}
 
-		freshInfo.NodeID = status.NodeId
-		freshInfo.ServiceInstanceID = status.ServiceId
-		freshInfo.ServiceStartup = status.ServiceStartup.AsTime()
-		freshInfo.ServiceStatus = getMappedStatus(status.ServiceStatus)
-		freshInfo.ServiceVersion = status.ServiceVersion
-		freshInfo.ServiceVersionCommit = status.ServiceCommit
-		freshInfo.Roles = status.ServiceRoles
+		freshInfo.NodeID = status.GetNodeId()
+		freshInfo.ServiceInstanceID = status.GetServiceId()
+		freshInfo.ServiceStartup = status.GetServiceStartup().AsTime()
+		freshInfo.ServiceStatus = getMappedStatus(status.GetServiceStatus())
+		freshInfo.ServiceVersion = status.GetServiceVersion()
+		freshInfo.ServiceVersionCommit = status.GetServiceCommit()
+		freshInfo.Roles = status.GetServiceRoles()
 		o.setInfo(freshInfo)
 
-		o.MetricSandboxesRunning.Store(status.MetricSandboxesRunning)
-		o.MetricMemoryUsedBytes.Store(status.MetricMemoryUsedBytes)
-		o.MetricDiskUsedBytes.Store(status.MetricDiskAllocatedBytes)
-		o.MetricVCpuUsed.Store(status.MetricCpuCount)
+		o.MetricSandboxesRunning.Store(status.GetMetricSandboxesRunning())
+		o.MetricMemoryUsedBytes.Store(status.GetMetricMemoryUsedBytes())
+		o.MetricDiskUsedBytes.Store(status.GetMetricDiskAllocatedBytes())
+		o.MetricVCpuUsed.Store(status.GetMetricCpuCount())
 
 		return nil
 	}

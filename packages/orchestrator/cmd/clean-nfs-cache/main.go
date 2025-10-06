@@ -87,7 +87,9 @@ func cleanNFSCache(ctx context.Context) error {
 	cache := pkg.NewListingCache(path)
 
 	var allResults results
-	defer printSummary(allResults, opts)
+	defer func() {
+		printSummary(allResults, opts)
+	}()
 
 	// if conditions are met, we're done
 	for !areWeDone() {

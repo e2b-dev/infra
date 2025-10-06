@@ -41,8 +41,8 @@ func Make(ctx context.Context, rootfsPath string, sizeMb int64, blockSize int64)
 	cmd := exec.CommandContext(ctx,
 		"mkfs.ext4",
 		// Matches the final ext4 features used by tar2ext4 tool
-		// But enables resize_inode, sparse_super (default, required for resize_inode)
-		"-O", `^has_journal,^dir_index,^64bit,^dir_nlink,^metadata_csum,ext_attr,sparse_super2,filetype,extent,flex_bg,large_file,huge_file,extra_isize`,
+		// But enables resize_inode, sparse_super (default, required for resize_inode), has_journal (default), metadata_csum (default)
+		"-O", `^dir_index,^64bit,^dir_nlink,ext_attr,sparse_super2,filetype,extent,flex_bg,large_file,huge_file,extra_isize`,
 		"-b", strconv.FormatInt(blockSize, 10),
 		"-m", strconv.FormatInt(reservedBlocksPercentage, 10),
 		"-i", strconv.FormatInt(inodesRatio, 10),

@@ -53,7 +53,7 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 	}
 
 	c.JSON(http.StatusCreated, &api.TemplateBuildFileUpload{
-		Present: resp.Present,
+		Present: resp.GetPresent(),
 		Url:     resp.Url,
 	})
 }

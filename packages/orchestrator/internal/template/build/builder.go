@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -32,6 +33,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const progressDelay = 5 * time.Second
@@ -131,6 +133,13 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 		} else {
 			logger.Info(fmt.Sprintf("Build finished, took %s",
 				time.Since(startTime).Truncate(time.Second).String()))
+		}
+	}()
+
+	defer func() {
+		if r := recover(); r != nil {
+			telemetry.ReportCriticalError(ctx, "recovered from panic in template build", nil, attribute.String("panic", fmt.Sprintf("%v", r)), telemetry.WithTemplateID(config.TemplateID), telemetry.WithBuildID(template.BuildID))
+			e = errors.New("fatal error occurred during template build, please contact us")
 		}
 	}()
 
@@ -275,7 +284,7 @@ func forceSteps(template config.TemplateConfig) config.TemplateConfig {
 	shouldRebuild := template.Force != nil && *template.Force
 	for _, step := range template.Steps {
 		// Force rebuild if the step has a Force flag set to true
-		if step.Force != nil && *step.Force {
+		if step.Force != nil && step.GetForce() {
 			shouldRebuild = true
 		}
 

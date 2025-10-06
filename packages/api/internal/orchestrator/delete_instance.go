@@ -78,7 +78,7 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 	// Remove the sandbox resources after the sandbox is deleted
 	defer node.RemoveSandbox(sbx)
 
-	o.dns.Remove(ctx, sbx.SandboxID, node.IPAddress)
+	o.dns.Remove(ctx, sbx.SandboxID, sbx.ExecutionID)
 
 	sbxlogger.I(sbx).Debug("Removing sandbox",
 		zap.Bool("auto_pause", sbx.AutoPause),
