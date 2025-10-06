@@ -22,11 +22,4 @@ type SandboxesCatalog interface {
 
 type CatalogProvider string
 
-const (
-	// We want to have some buffer so redis ttl will not expire exactly before api will try to shut down or do some other operation
-	// with sandbox running behind edge node. For resume this should not be problem because for both redis and memory backed catalogs
-	// we will re-write sandbox info with new one and local machine-level cache is tiny.
-	sandboxTtlBuffer = 1 * time.Minute
-)
-
 var ErrSandboxNotFound = errors.New("sandbox not found")

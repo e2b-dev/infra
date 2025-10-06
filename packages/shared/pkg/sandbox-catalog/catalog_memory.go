@@ -13,8 +13,12 @@ type MemorySandboxCatalog struct {
 	mtx   sync.RWMutex
 }
 
+const (
+	catalogMemoryLocalCacheTtl = time.Millisecond * 500
+)
+
 func NewMemorySandboxesCatalog() SandboxesCatalog {
-	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogRedisLocalCacheTtl), ttlcache.WithDisableTouchOnHit[string, *SandboxInfo]())
+	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogMemoryLocalCacheTtl), ttlcache.WithDisableTouchOnHit[string, *SandboxInfo]())
 	go cache.Start()
 
 	return &MemorySandboxCatalog{
