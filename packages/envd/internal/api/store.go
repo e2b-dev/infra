@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"sync"
 
 	"github.com/rs/zerolog"
 
@@ -11,15 +12,19 @@ import (
 )
 
 type API struct {
-	isNotFC     bool
-	logger      *zerolog.Logger
-	accessToken *string
-	envVars     *utils.Map[string, string]
-	mmdsChan    chan *host.MMDSOpts
+	isNotFC       bool
+	logger        *zerolog.Logger
+	accessToken   *string
+	envVars       *utils.Map[string, string]
+	mmdsChan      chan *host.MMDSOpts
+	hyperloopLock sync.Mutex
+
+	lastSetTime *utils.AtomicMax
+	initLock    sync.Mutex
 }
 
 func New(l *zerolog.Logger, envVars *utils.Map[string, string], mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
-	return &API{logger: l, envVars: envVars, mmdsChan: mmdsChan, isNotFC: isNotFC}
+	return &API{logger: l, envVars: envVars, mmdsChan: mmdsChan, isNotFC: isNotFC, lastSetTime: utils.NewAtomicMax()}
 }
 
 func (a *API) GetHealth(w http.ResponseWriter, r *http.Request) {

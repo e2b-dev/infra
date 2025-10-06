@@ -82,6 +82,7 @@ func (db *DB) NewSnapshotBuild(
 			Create().
 			SetSandboxID(snapshotConfig.SandboxID).
 			SetBaseEnvID(snapshotConfig.BaseTemplateID).
+			SetTeamID(teamID).
 			SetEnv(e).
 			SetMetadata(snapshotConfig.Metadata).
 			SetSandboxStartedAt(snapshotConfig.SandboxStartedAt).

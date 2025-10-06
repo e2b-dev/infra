@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/systeminit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -35,9 +36,10 @@ const (
 )
 
 type Rootfs struct {
-	metadata         storage.TemplateFiles
-	template         config.TemplateConfig
-	artifactRegistry artifactsregistry.ArtifactsRegistry
+	metadata            storage.TemplateFiles
+	template            config.TemplateConfig
+	artifactRegistry    artifactsregistry.ArtifactsRegistry
+	dockerhubRepository dockerhub.RemoteRepository
 }
 
 type MultiWriter struct {
@@ -57,13 +59,15 @@ func (mw *MultiWriter) Write(p []byte) (int, error) {
 
 func New(
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
+	dockerhubRepository dockerhub.RemoteRepository,
 	metadata storage.TemplateFiles,
 	template config.TemplateConfig,
 ) *Rootfs {
 	return &Rootfs{
-		metadata:         metadata,
-		template:         template,
-		artifactRegistry: artifactRegistry,
+		metadata:            metadata,
+		template:            template,
+		artifactRegistry:    artifactRegistry,
+		dockerhubRepository: dockerhubRepository,
 	}
 }
 
@@ -88,7 +92,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	var img containerregistry.Image
 	var err error
 	if r.template.FromImage != "" {
-		img, err = oci.GetPublicImage(childCtx, r.template.FromImage, r.template.RegistryAuthProvider)
+		img, err = oci.GetPublicImage(childCtx, r.dockerhubRepository, r.template.FromImage, r.template.RegistryAuthProvider)
 	} else {
 		img, err = oci.GetImage(childCtx, r.artifactRegistry, r.template.TemplateID, r.metadata.BuildID)
 	}
@@ -116,7 +120,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	logger.Info("Creating file system and pulling Docker image")
 	ext4Size, err := oci.ToExt4(ctx, logger, img, rootfsPath, maxRootfsSize, r.template.RootfsBlockSize())
 	if err != nil {
-		return containerregistry.Config{}, fmt.Errorf("error creating ext4 filesystem: %w", err)
+		return containerregistry.Config{}, fmt.Errorf("error converting oci to ext4: %w", err)
 	}
 	telemetry.ReportEvent(childCtx, "created rootfs ext4 file")
 
@@ -149,7 +153,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	}
 
 	// Check the rootfs filesystem corruption
-	ext4Check, err := filesystem.CheckIntegrity(rootfsPath, true)
+	ext4Check, err := filesystem.CheckIntegrity(ctx, rootfsPath, true)
 	zap.L().Debug("filesystem ext4 integrity",
 		zap.String("result", ext4Check),
 		zap.Error(err),
@@ -209,7 +213,7 @@ ff02::2	ip6-allrouters
 127.0.1.1	%s
 `, hostname)
 
-	envdFileData, err := os.ReadFile(storage.HostEnvdPath)
+	envdFileData, err := os.ReadFile(storage.HostEnvdPath())
 	if err != nil {
 		return nil, fmt.Errorf("error reading envd file: %w", err)
 	}
@@ -270,6 +274,8 @@ echo "System Init"`), Mode: 0o777},
 		map[string]string{
 			// Enable envd service autostart
 			"etc/systemd/system/multi-user.target.wants/envd.service": "etc/systemd/system/envd.service",
+			// Enable chrony service autostart
+			"etc/systemd/system/multi-user.target.wants/chrony.service": "etc/systemd/system/chrony.service",
 		},
 	)
 	if err != nil {

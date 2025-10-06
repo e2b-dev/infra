@@ -5,15 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -24,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -32,7 +34,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var defaultEnvdTimeout = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT", "10s")))
+var (
+	defaultEnvdTimeout           = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT", "10s")))
+	meter                        = otel.GetMeterProvider().Meter("orchestrator.internal.sandbox")
+	envdInitCalls                = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitCalls))
+	waitForEnvdDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.WaitForEnvdDurationHistogramName))
+)
 
 var httpClient = http.Client{
 	Timeout: 10 * time.Second,
@@ -76,9 +83,14 @@ type Resources struct {
 	memory uffd.MemoryBackend
 }
 
+type internalConfig struct {
+	EnvdInitRequestTimeout time.Duration
+}
+
 type Metadata struct {
-	Config  Config
-	Runtime RuntimeMetadata
+	internalConfig internalConfig
+	Config         Config
+	Runtime        RuntimeMetadata
 
 	StartedAt time.Time
 	EndAt     time.Time
@@ -117,12 +129,32 @@ type networkSlotRes struct {
 	err  error
 }
 
-// CreateSandbox creates the sandbox.
-// IMPORTANT: You must Close() the sandbox after you are done with it.
-func CreateSandbox(
-	ctx context.Context,
+type Factory struct {
+	networkPool  *network.Pool
+	devicePool   *nbd.DevicePool
+	featureFlags *featureflags.Client
+
+	defaultAllowInternetAccess bool
+}
+
+func NewFactory(
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
+	featureFlags *featureflags.Client,
+	defaultAllowInternetAccess bool,
+) *Factory {
+	return &Factory{
+		networkPool:                networkPool,
+		devicePool:                 devicePool,
+		featureFlags:               featureFlags,
+		defaultAllowInternetAccess: defaultAllowInternetAccess,
+	}
+}
+
+// CreateSandbox creates the sandbox.
+// IMPORTANT: You must Close() the sandbox after you are done with it.
+func (f *Factory) CreateSandbox(
+	ctx context.Context,
 	config Config,
 	runtime RuntimeMetadata,
 	fcVersions fc.FirecrackerVersions,
@@ -132,10 +164,10 @@ func CreateSandbox(
 	processOptions fc.ProcessOptions,
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
-	ctx, span := tracer.Start(ctx, "create-sandbox")
-	defer span.End()
+	ctx, span := tracer.Start(ctx, "create sandbox")
+	defer func() { endSpan(span, e) }()
 
-	runCtx := context.WithoutCancel(ctx)
+	execCtx, execSpan := startExecutionSpan(ctx)
 
 	exit := utils.NewErrorOnce()
 
@@ -144,29 +176,24 @@ func CreateSandbox(
 		if e != nil {
 			cleanupErr := cleanup.Run(ctx)
 			e = errors.Join(e, cleanupErr)
+			endSpan(execSpan, e)
 		}
 	}()
 
-	allowInternet := globalconfig.AllowSandboxInternet
+	// TODO: Temporarily set this based on global config, should be removed later (it should be passed as a parameter in build)
+	allowInternet := f.defaultAllowInternetAccess
 	if config.AllowInternetAccess != nil {
 		allowInternet = *config.AllowInternetAccess
 	}
 
-	ipsCh := getNetworkSlotAsync(ctx, networkPool, cleanup, allowInternet)
+	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, allowInternet)
 	defer func() {
 		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
 		<-ipsCh
 	}()
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
-	cleanup.Add(func(ctx context.Context) error {
-		filesErr := cleanupFiles(sandboxFiles)
-		if filesErr != nil {
-			return fmt.Errorf("failed to cleanup files: %w", filesErr)
-		}
-
-		return nil
-	})
+	cleanup.Add(cleanupFiles(sandboxFiles))
 
 	rootFS, err := template.Rootfs()
 	if err != nil {
@@ -178,7 +205,7 @@ func CreateSandbox(
 		rootfsProvider, err = rootfs.NewNBDProvider(
 			rootFS,
 			sandboxFiles.SandboxCacheRootfsPath(),
-			devicePool,
+			f.devicePool,
 		)
 	} else {
 		rootfsProvider, err = rootfs.NewDirectProvider(
@@ -191,11 +218,9 @@ func CreateSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
-	cleanup.Add(func(ctx context.Context) error {
-		return rootfsProvider.Close(ctx)
-	})
+	cleanup.Add(rootfsProvider.Close)
 	go func() {
-		runErr := rootfsProvider.Start(runCtx)
+		runErr := rootfsProvider.Start(execCtx)
 		if runErr != nil {
 			zap.L().Error("rootfs overlay error", zap.Error(runErr))
 		}
@@ -222,6 +247,7 @@ func CreateSandbox(
 	}
 	fcHandle, err := fc.NewProcess(
 		ctx,
+		execCtx,
 		ips.slot,
 		sandboxFiles,
 		fcVersions,
@@ -258,6 +284,10 @@ func CreateSandbox(
 	}
 
 	metadata := &Metadata{
+		internalConfig: internalConfig{
+			EnvdInitRequestTimeout: f.GetEnvdInitRequestTimeout(ctx),
+		},
+
 		Config:  config,
 		Runtime: runtime,
 
@@ -282,13 +312,13 @@ func CreateSandbox(
 
 	sbx.Checks = NewChecks(sbx, false)
 
-	cleanup.AddPriority(func(ctx context.Context) error {
-		// Stop the sandbox first if it is still running, otherwise do nothing
-		return sbx.Stop(ctx)
-	})
+	// Stop the sandbox first if it is still running, otherwise do nothing
+	cleanup.AddPriority(sbx.Stop)
 
 	go func() {
-		ctx, span := tracer.Start(runCtx, "sandbox-exit-wait")
+		defer execSpan.End()
+
+		ctx, span := tracer.Start(execCtx, "sandbox-exit-wait")
 		defer span.End()
 
 		// If the process exists, stop the sandbox properly
@@ -301,36 +331,31 @@ func CreateSandbox(
 	return sbx, nil
 }
 
+func endSpan(span trace.Span, err error) {
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+
+	span.End()
+}
+
 // ResumeSandbox resumes the sandbox from already saved template or snapshot.
 // IMPORTANT: You must Close() the sandbox after you are done with it.
-func ResumeSandbox(
+func (f *Factory) ResumeSandbox(
 	ctx context.Context,
-	networkPool *network.Pool,
 	t template.Template,
 	config Config,
 	runtime RuntimeMetadata,
 	traceID string,
 	startedAt time.Time,
 	endAt time.Time,
-	devicePool *nbd.DevicePool,
-	useClickhouseMetrics bool,
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
-	ctx, span := tracer.Start(ctx, "resume-sandbox")
-	defer span.End()
+	ctx, span := tracer.Start(ctx, "resume sandbox")
+	defer func() { endSpan(span, e) }()
 
-	runCtx := context.WithoutCancel(ctx)
-	runCtx, runSpan := tracer.Start(runCtx, "execute sandbox",
-		trace.WithNewRoot(),
-	)
-	defer func() {
-		if e != nil {
-			runSpan.AddEvent("resume sandbox aborted")
-			runSpan.End()
-		}
-	}()
-
-	span.AddLink(trace.LinkFromContext(runCtx))
+	execCtx, execSpan := startExecutionSpan(ctx)
 
 	exit := utils.NewErrorOnce()
 
@@ -339,29 +364,25 @@ func ResumeSandbox(
 		if e != nil {
 			cleanupErr := cleanup.Run(ctx)
 			e = errors.Join(e, cleanupErr)
+			endSpan(execSpan, e)
 		}
 	}()
 
-	allowInternet := globalconfig.AllowSandboxInternet
+	// TODO: Temporarily set this based on global config, should be removed later
+	//  (it should be passed as a non nil parameter from API)
+	allowInternet := f.defaultAllowInternetAccess
 	if config.AllowInternetAccess != nil {
 		allowInternet = *config.AllowInternetAccess
 	}
 
-	ipsCh := getNetworkSlotAsync(ctx, networkPool, cleanup, allowInternet)
+	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, allowInternet)
 	defer func() {
-		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
+		// Ensure the slot is received from chan before ResumeSandbox returns so the slot is cleaned up properly in cleanup
 		<-ipsCh
 	}()
 
 	sandboxFiles := t.Files().NewSandboxFiles(runtime.SandboxID)
-	cleanup.Add(func(ctx context.Context) error {
-		filesErr := cleanupFiles(sandboxFiles)
-		if filesErr != nil {
-			return fmt.Errorf("failed to cleanup files: %w", filesErr)
-		}
-
-		return nil
-	})
+	cleanup.Add(cleanupFiles(sandboxFiles))
 
 	telemetry.ReportEvent(ctx, "created sandbox files")
 
@@ -375,20 +396,18 @@ func ResumeSandbox(
 	rootfsOverlay, err := rootfs.NewNBDProvider(
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(),
-		devicePool,
+		f.devicePool,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
 
-	cleanup.Add(func(ctx context.Context) error {
-		return rootfsOverlay.Close(ctx)
-	})
+	cleanup.Add(rootfsOverlay.Close)
 
 	telemetry.ReportEvent(ctx, "created rootfs overlay")
 
 	go func() {
-		runErr := rootfsOverlay.Start(runCtx)
+		runErr := rootfsOverlay.Start(execCtx)
 		if runErr != nil {
 			zap.L().Error("rootfs overlay error", zap.Error(runErr))
 		}
@@ -404,7 +423,7 @@ func ResumeSandbox(
 	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
 
 	fcUffd, err := serveMemory(
-		runCtx,
+		execCtx,
 		cleanup,
 		memfile,
 		fcUffdPath,
@@ -446,7 +465,8 @@ func ResumeSandbox(
 	telemetry.ReportEvent(ctx, "got metadata")
 
 	fcHandle, fcErr := fc.NewProcess(
-		uffdStartCtx,
+		ctx,
+		execCtx,
 		ips.slot,
 		sandboxFiles,
 		// The versions need to base exactly the same as the paused sandbox template because of the FC compatibility.
@@ -475,16 +495,15 @@ func ResumeSandbox(
 
 	telemetry.ReportEvent(ctx, "got snapfile")
 
-	logsCollectorIP := os.Getenv("LOGS_COLLECTOR_PUBLIC_IP")
-
 	fcStartErr := fcHandle.Resume(
 		uffdStartCtx,
 		&fc.MmdsMetadata{
-			SandboxId:            runtime.SandboxID,
-			TemplateId:           runtime.TemplateID,
-			LogsCollectorAddress: fmt.Sprintf("http://%s", logsCollectorIP),
-			TraceId:              traceID,
-			TeamId:               runtime.TeamID,
+			SandboxID:  runtime.SandboxID,
+			TemplateID: runtime.TemplateID,
+			TeamID:     runtime.TeamID,
+			TraceID:    traceID,
+
+			LogsCollectorAddress: fmt.Sprintf("http://%s/logs", ips.slot.HyperloopIPString()),
 		},
 		fcUffdPath,
 		snapfile,
@@ -503,6 +522,10 @@ func ResumeSandbox(
 	}
 
 	metadata := &Metadata{
+		internalConfig: internalConfig{
+			EnvdInitRequestTimeout: f.GetEnvdInitRequestTimeout(ctx),
+		},
+
 		Config:  config,
 		Runtime: runtime,
 
@@ -525,6 +548,11 @@ func ResumeSandbox(
 		exit: exit,
 	}
 
+	useClickhouseMetrics, flagErr := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlagName)
+	if flagErr != nil {
+		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
+	}
+
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
 	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
@@ -542,12 +570,12 @@ func ResumeSandbox(
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
 
-	go sbx.Checks.Start(runCtx)
+	go sbx.Checks.Start(execCtx)
 
 	go func() {
-		defer runSpan.End()
+		defer execSpan.End()
 
-		ctx, span := tracer.Start(runCtx, "sandbox-exit-wait")
+		ctx, span := tracer.Start(execCtx, "sandbox-exit-wait")
 		defer span.End()
 
 		// Wait for either uffd or fc process to exit
@@ -566,6 +594,19 @@ func ResumeSandbox(
 	return sbx, nil
 }
 
+func startExecutionSpan(ctx context.Context) (context.Context, trace.Span) {
+	parentSpan := trace.SpanFromContext(ctx)
+
+	ctx = context.WithoutCancel(ctx)
+	ctx, span := tracer.Start(ctx, "execute sandbox", //nolint:spancheck // this is still just a helper method
+		trace.WithNewRoot(),
+	)
+
+	parentSpan.AddLink(trace.LinkFromContext(ctx))
+
+	return ctx, span //nolint:spancheck // this is still just a helper method
+}
+
 func (s *Sandbox) Wait(ctx context.Context) error {
 	return s.exit.WaitWithContext(ctx)
 }
@@ -580,7 +621,7 @@ func (s *Sandbox) Close(ctx context.Context) error {
 
 // Stop kills the sandbox.
 func (s *Sandbox) Stop(ctx context.Context) error {
-	_, span := tracer.Start(ctx, "sandbox-close")
+	ctx, span := tracer.Start(ctx, "sandbox-close")
 	defer span.End()
 
 	var errs []error
@@ -588,7 +629,7 @@ func (s *Sandbox) Stop(ctx context.Context) error {
 	// Stop the health checks before stopping the sandbox
 	s.Checks.Stop()
 
-	fcStopErr := s.process.Stop()
+	fcStopErr := s.process.Stop(ctx)
 	if fcStopErr != nil {
 		errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
 	}
@@ -730,7 +771,7 @@ func pauseProcessMemory(
 	defer span.End()
 
 	memfileDiffFile, err := build.NewLocalDiffFile(
-		build.DefaultCachePath,
+		build.DefaultCachePath(),
 		buildId.String(),
 		build.Memfile,
 	)
@@ -794,7 +835,7 @@ func pauseProcessRootfs(
 	ctx, span := tracer.Start(ctx, "process-rootfs")
 	defer span.End()
 
-	rootfsDiffFile, err := build.NewLocalDiffFile(build.DefaultCachePath, buildId.String(), build.Rootfs)
+	rootfsDiffFile, err := build.NewLocalDiffFile(build.DefaultCachePath(), buildId.String(), build.Rootfs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create rootfs diff: %w", err)
 	}
@@ -886,29 +927,23 @@ func serveMemory(
 	ctx context.Context,
 	cleanup *Cleanup,
 	memfile block.ReadonlyDevice,
-	socketPath string,
-	sandboxID string,
+	socketPath, sandboxID string,
 ) (uffd.MemoryBackend, error) {
-	ctx, span := tracer.Start(ctx, "serve-memory")
-	defer span.End()
-
-	fcUffd, uffdErr := uffd.New(memfile, socketPath, memfile.BlockSize())
-	if uffdErr != nil {
-		return nil, fmt.Errorf("failed to create uffd: %w", uffdErr)
+	fcUffd, err := uffd.New(memfile, socketPath, memfile.BlockSize())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create uffd: %w", err)
 	}
 
-	uffdStartErr := fcUffd.Start(ctx, sandboxID)
-	if uffdStartErr != nil {
-		return nil, fmt.Errorf("failed to start uffd: %w", uffdStartErr)
+	if err = fcUffd.Start(ctx, sandboxID); err != nil {
+		return nil, fmt.Errorf("failed to start uffd: %w", err)
 	}
 
 	cleanup.Add(func(ctx context.Context) error {
 		_, span := tracer.Start(ctx, "uffd-stop")
 		defer span.End()
 
-		stopErr := fcUffd.Stop()
-		if stopErr != nil {
-			return fmt.Errorf("failed to stop uffd: %w", stopErr)
+		if err := fcUffd.Stop(); err != nil {
+			return fmt.Errorf("failed to stop uffd: %w", err)
 		}
 
 		return nil
@@ -942,6 +977,7 @@ func (s *Sandbox) WaitForEnvd(
 	ctx context.Context,
 	timeout time.Duration,
 ) (e error) {
+	start := time.Now()
 	ctx, span := tracer.Start(ctx, "sandbox-wait-for-start")
 	defer span.End()
 
@@ -949,32 +985,44 @@ func (s *Sandbox) WaitForEnvd(
 		if e != nil {
 			return
 		}
+		duration := time.Since(start).Milliseconds()
+		waitForEnvdDurationHistogram.Record(ctx, duration, metric.WithAttributes(
+			telemetry.WithEnvdVersion(s.Config.Envd.Version),
+			attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
+		))
 		// Update the sandbox as started now
 		s.Metadata.StartedAt = time.Now()
 	}()
-	syncCtx, syncCancel := context.WithCancelCause(ctx)
-	defer syncCancel(nil)
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 
 	go func() {
 		select {
 		// Ensure the syncing takes at most timeout seconds.
 		case <-time.After(timeout):
-			syncCancel(fmt.Errorf("syncing took too long"))
-		case <-syncCtx.Done():
+			cancel(fmt.Errorf("syncing took too long"))
+		case <-ctx.Done():
 			return
 		case <-s.process.Exit.Done():
 			err := s.process.Exit.Error()
 
-			syncCancel(fmt.Errorf("fc process exited prematurely: %w", err))
+			cancel(fmt.Errorf("fc process exited prematurely: %w", err))
 		}
 	}()
 
-	initErr := s.initEnvd(syncCtx, s.Config.Envd.Vars, s.Config.Envd.AccessToken)
-	if initErr != nil {
-		return fmt.Errorf("failed to init new envd: %w", initErr)
-	} else {
-		telemetry.ReportEvent(syncCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", s.Metadata.Runtime.SandboxID))
+	if err := s.initEnvd(ctx); err != nil {
+		return fmt.Errorf("failed to init new envd: %w", err)
 	}
 
+	telemetry.ReportEvent(ctx, fmt.Sprintf("[sandbox %s]: initialized new envd", s.Metadata.Runtime.SandboxID))
+
 	return nil
+}
+
+func (f *Factory) GetEnvdInitRequestTimeout(ctx context.Context) time.Duration {
+	envdInitRequestTimeoutMs, err := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutSeconds)
+	if err != nil {
+		zap.L().Warn("failed to get envd timeout from feature flag, using default", zap.Error(err))
+	}
+	return time.Duration(envdInitRequestTimeoutMs) * time.Millisecond
 }

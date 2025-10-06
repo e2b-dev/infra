@@ -11,7 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -35,8 +35,8 @@ func (o *Orchestrator) reportLongRunningSandboxes(ctx context.Context) {
 			zap.L().Info("Stopping node analytics reporting due to context cancellation")
 			return
 		case <-ticker.C:
-			sandboxes := o.sandboxStore.Items(nil)
-			longRunningSandboxes := make([]*instance.InstanceInfo, 0, len(sandboxes))
+			sandboxes := o.sandboxStore.Items(nil, sandbox.WithState(sandbox.StateRunning))
+			longRunningSandboxes := make([]sandbox.Sandbox, 0, len(sandboxes))
 			for _, sandbox := range sandboxes {
 				if time.Since(sandbox.StartTime) > oldSandboxThreshold {
 					longRunningSandboxes = append(longRunningSandboxes, sandbox)
@@ -49,7 +49,7 @@ func (o *Orchestrator) reportLongRunningSandboxes(ctx context.Context) {
 }
 
 // sendAnalyticsForLongRunningSandboxes sends long-running instances event to analytics
-func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyticscollector.Analytics, instances []*instance.InstanceInfo) {
+func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyticscollector.Analytics, instances []sandbox.Sandbox) {
 	if len(instances) == 0 {
 		zap.L().Debug("No long-running instances to report to analytics")
 		return
@@ -77,7 +77,7 @@ func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyt
 	}
 }
 
-func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox *instance.InstanceInfo, removeType instance.RemoveType) {
+func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox sandbox.Sandbox, stateAction sandbox.StateAction) {
 	ctx, cancel := context.WithTimeout(ctx, reportTimeout)
 	defer cancel()
 
@@ -89,7 +89,7 @@ func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox *instance.In
 		"closed_instance", posthog.NewProperties().
 			Set("instance_id", sandbox.SandboxID).
 			Set("environment", sandbox.TemplateID).
-			Set("remove_type", removeType).
+			Set("state_action", stateAction).
 			Set("duration", duration),
 	)
 
@@ -109,7 +109,7 @@ func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox *instance.In
 	}
 }
 
-func (o *Orchestrator) analyticsInsert(ctx context.Context, sandbox *instance.InstanceInfo, created bool) {
+func (o *Orchestrator) analyticsInsert(ctx context.Context, sandbox sandbox.Sandbox, created bool) {
 	ctx, cancel := context.WithTimeout(ctx, reportTimeout)
 	defer cancel()
 
@@ -132,7 +132,7 @@ func (o *Orchestrator) analyticsInsert(ctx context.Context, sandbox *instance.In
 	}
 }
 
-func (o *Orchestrator) countersInsert(ctx context.Context, sandbox *instance.InstanceInfo, newlyCreated bool) {
+func (o *Orchestrator) countersInsert(ctx context.Context, sandbox sandbox.Sandbox, newlyCreated bool) {
 	attributes := []attribute.KeyValue{
 		telemetry.WithTeamID(sandbox.TeamID.String()),
 	}
@@ -144,7 +144,7 @@ func (o *Orchestrator) countersInsert(ctx context.Context, sandbox *instance.Ins
 	o.sandboxCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
 }
 
-func (o *Orchestrator) countersRemove(ctx context.Context, sandbox *instance.InstanceInfo, _ instance.RemoveType) {
+func (o *Orchestrator) countersRemove(ctx context.Context, sandbox sandbox.Sandbox, _ sandbox.StateAction) {
 	attributes := []attribute.KeyValue{
 		telemetry.WithTeamID(sandbox.TeamID.String()),
 	}

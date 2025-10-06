@@ -50,6 +50,7 @@ resource "google_compute_instance_group_manager" "build_pool" {
     instance_template = google_compute_instance_template.build.id
   }
 
+  # TODO: (2025-10-01) - keep this here for a migration period (at least until 2025-10-15)
   named_port {
     name = var.docker_reverse_proxy_port.name
     port = var.docker_reverse_proxy_port.port

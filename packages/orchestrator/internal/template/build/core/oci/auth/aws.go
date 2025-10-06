@@ -31,10 +31,10 @@ func NewAWSAuthProvider(registry *templatemanager.AWSRegistry) *AWSAuthProvider 
 func (p *AWSAuthProvider) GetAuthOption(ctx context.Context) (remote.Option, error) {
 	// Load AWS configuration with the provided credentials
 	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithRegion(p.registry.AwsRegion),
+		config.WithRegion(p.registry.GetAwsRegion()),
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-			p.registry.AwsAccessKeyId,
-			p.registry.AwsSecretAccessKey,
+			p.registry.GetAwsAccessKeyId(),
+			p.registry.GetAwsSecretAccessKey(),
 			"",
 		)),
 	)

@@ -75,21 +75,21 @@ func TestCommandKillNextApp(t *testing.T) {
 	listResp, err := envdClient.ProcessClient.List(ctx, listReq)
 	require.NoError(t, err)
 
-	assert.Len(t, listResp.Msg.Processes, 1, "Expected one process (next dev) running")
+	assert.Len(t, listResp.Msg.GetProcesses(), 1, "Expected one process (next dev) running")
 
 	// Kill all processes
-	for _, proc := range listResp.Msg.Processes {
-		t.Logf("killing process PID=%d CMD=%s", proc.Pid, proc.Config.Cmd)
-		killPid(t, ctx, envdClient, sbx.SandboxID, proc.Pid)
+	for _, proc := range listResp.Msg.GetProcesses() {
+		t.Logf("killing process PID=%d CMD=%s", proc.GetPid(), proc.GetConfig().GetCmd())
+		killPid(t, ctx, envdClient, sbx.SandboxID, proc.GetPid())
 	}
 
 	// Final process list
 	finalListResp, err := envdClient.ProcessClient.List(ctx, listReq)
 	require.NoError(t, err)
 
-	assert.Empty(t, finalListResp.Msg.Processes, "Expected no processes running")
-	for _, proc := range finalListResp.Msg.Processes {
-		t.Errorf("remaining process: PID=%d CMD=%s", proc.Pid, proc.Config.Cmd)
+	assert.Empty(t, finalListResp.Msg.GetProcesses(), "Expected no processes running")
+	for _, proc := range finalListResp.Msg.GetProcesses() {
+		t.Errorf("remaining process: PID=%d CMD=%s", proc.GetPid(), proc.GetConfig().GetCmd())
 	}
 }
 
@@ -151,21 +151,21 @@ func TestCommandKillWithAnd(t *testing.T) {
 	listResp, err := envdClient.ProcessClient.List(ctx, listReq)
 	require.NoError(t, err)
 
-	assert.Len(t, listResp.Msg.Processes, 1, "Expected one process running")
+	assert.Len(t, listResp.Msg.GetProcesses(), 1, "Expected one process running")
 
 	// Kill all processes
-	for _, proc := range listResp.Msg.Processes {
-		t.Logf("killing process PID=%d CMD=%s", proc.Pid, proc.Config.Cmd)
-		killPid(t, ctx, envdClient, sbx.SandboxID, proc.Pid)
+	for _, proc := range listResp.Msg.GetProcesses() {
+		t.Logf("killing process PID=%d CMD=%s", proc.GetPid(), proc.GetConfig().GetCmd())
+		killPid(t, ctx, envdClient, sbx.SandboxID, proc.GetPid())
 	}
 
 	// Final process list
 	finalListResp, err := envdClient.ProcessClient.List(ctx, listReq)
 	require.NoError(t, err)
 
-	assert.Empty(t, finalListResp.Msg.Processes, "Expected no processes running")
-	for _, proc := range finalListResp.Msg.Processes {
-		t.Errorf("remaining process: PID=%d CMD=%s", proc.Pid, proc.Config.Cmd)
+	assert.Empty(t, finalListResp.Msg.GetProcesses(), "Expected no processes running")
+	for _, proc := range finalListResp.Msg.GetProcesses() {
+		t.Errorf("remaining process: PID=%d CMD=%s", proc.GetPid(), proc.GetConfig().GetCmd())
 	}
 }
 

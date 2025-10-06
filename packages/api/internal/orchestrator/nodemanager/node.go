@@ -71,9 +71,9 @@ func New(
 		return nil, fmt.Errorf("failed to get node service info: %w", err)
 	}
 
-	nodeStatus, ok := OrchestratorToApiNodeStateMapper[nodeInfo.ServiceStatus]
+	nodeStatus, ok := OrchestratorToApiNodeStateMapper[nodeInfo.GetServiceStatus()]
 	if !ok {
-		zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.ServiceStatus), logger.WithNodeID(nodeInfo.NodeId))
+		zap.L().Error("Unknown service info status", zap.String("status", nodeInfo.GetServiceStatus().String()), logger.WithNodeID(nodeInfo.GetNodeId()))
 		nodeStatus = api.NodeStatusUnhealthy
 	}
 
@@ -81,15 +81,15 @@ func New(
 	go buildCache.Start()
 
 	nodeMetadata := NodeMetadata{
-		ServiceInstanceID: nodeInfo.ServiceId,
-		Commit:            nodeInfo.ServiceCommit,
-		Version:           nodeInfo.ServiceVersion,
+		ServiceInstanceID: nodeInfo.GetServiceId(),
+		Commit:            nodeInfo.GetServiceCommit(),
+		Version:           nodeInfo.GetServiceVersion(),
 	}
 
 	n := &Node{
 		NomadNodeShortID: discoveredNode.NomadNodeShortID,
 		ClusterID:        consts.LocalClusterID,
-		ID:               nodeInfo.NodeId,
+		ID:               nodeInfo.GetNodeId(),
 		IPAddress:        discoveredNode.IPAddress,
 
 		client: client,
@@ -111,7 +111,7 @@ func New(
 func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID uuid.UUID, i *edge.ClusterInstance) (*Node, error) {
 	nodeStatus, ok := OrchestratorToApiNodeStateMapper[i.GetStatus()]
 	if !ok {
-		zap.L().Error("Unknown service info status", zap.Any("status", i.GetStatus()), logger.WithNodeID(i.NodeID))
+		zap.L().Error("Unknown service info status", zap.String("status", i.GetStatus().String()), logger.WithNodeID(i.NodeID))
 		nodeStatus = api.NodeStatusUnhealthy
 	}
 

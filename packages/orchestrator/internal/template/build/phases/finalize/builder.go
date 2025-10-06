@@ -13,7 +13,6 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
-	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -34,6 +33,7 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 type PostProcessingBuilder struct {
 	buildcontext.BuildContext
 
+	sandboxFactory  *sandbox.Factory
 	templateStorage storage.StorageProvider
 	proxy           *proxy.SandboxProxy
 
@@ -42,6 +42,7 @@ type PostProcessingBuilder struct {
 
 func New(
 	buildContext buildcontext.BuildContext,
+	sandboxFactory *sandbox.Factory,
 	templateStorage storage.StorageProvider,
 	proxy *proxy.SandboxProxy,
 	layerExecutor *layer.LayerExecutor,
@@ -49,6 +50,7 @@ func New(
 	return &PostProcessingBuilder{
 		BuildContext: buildContext,
 
+		sandboxFactory:  sandboxFactory,
 		templateStorage: templateStorage,
 		proxy:           proxy,
 
@@ -120,8 +122,6 @@ func (ppb *PostProcessingBuilder) Build(
 		RamMB:     ppb.Config.MemoryMB,
 		HugePages: ppb.Config.HugePages,
 
-		AllowInternetAccess: &globalconfig.AllowSandboxInternet,
-
 		Envd: sandbox.EnvdMetadata{
 			Version: ppb.EnvdVersion,
 		},
@@ -130,6 +130,7 @@ func (ppb *PostProcessingBuilder) Build(
 	// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template
 	sandboxCreator := layer.NewCreateSandbox(
 		sbxConfig,
+		ppb.sandboxFactory,
 		finalizeTimeout,
 		fc.FirecrackerVersions{
 			KernelVersion:      currentLayer.Metadata.Template.KernelVersion,
@@ -141,14 +142,18 @@ func (ppb *PostProcessingBuilder) Build(
 
 	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template)
 
-	finalLayer, err := ppb.layerExecutor.BuildLayer(ctx, userLogger, layer.LayerBuildCommand{
-		SourceTemplate: templateProvider,
-		CurrentLayer:   currentLayer.Metadata,
-		Hash:           currentLayer.Hash,
-		UpdateEnvd:     sourceLayer.Cached,
-		SandboxCreator: sandboxCreator,
-		ActionExecutor: actionExecutor,
-	})
+	finalLayer, err := ppb.layerExecutor.BuildLayer(
+		ctx,
+		userLogger,
+		layer.LayerBuildCommand{
+			SourceTemplate: templateProvider,
+			CurrentLayer:   currentLayer.Metadata,
+			Hash:           currentLayer.Hash,
+			UpdateEnvd:     sourceLayer.Cached,
+			SandboxCreator: sandboxCreator,
+			ActionExecutor: actionExecutor,
+		},
+	)
 	if err != nil {
 		return phases.LayerResult{}, fmt.Errorf("error running start and ready commands in sandbox: %w", err)
 	}
@@ -162,6 +167,9 @@ func (ppb *PostProcessingBuilder) Build(
 
 func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer.FunctionActionFn {
 	return func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (cm metadata.Template, e error) {
+		ctx, span := tracer.Start(ctx, "run postprocessing")
+		defer span.End()
+
 		defer func() {
 			if e != nil {
 				return
@@ -180,8 +188,10 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer
 		}()
 
 		// Run configuration script
+		configCtx, configCancel := context.WithTimeout(ctx, configurationTimeout)
+		defer configCancel()
 		err := runConfiguration(
-			ctx,
+			configCtx,
 			userLogger,
 			ppb.BuildContext,
 			ppb.proxy,

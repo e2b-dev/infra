@@ -5,15 +5,17 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 )
 
-const (
-	sandboxCacheDir = "/orchestrator/sandbox"
-)
+func sandboxCacheDir() string {
+	return filepath.Join(pkg.OrchestratorBasePath(), "sandbox")
+}
 
 type SandboxFiles struct {
 	TemplateCacheFiles
+
 	SandboxID string
 	tmpDir    string
 	// We use random id to avoid collision between the paused and restored sandbox caches
@@ -41,7 +43,7 @@ func (c TemplateCacheFiles) NewSandboxFilesWithStaticID(sandboxID string, static
 }
 
 func (s *SandboxFiles) SandboxCacheRootfsPath() string {
-	return filepath.Join(sandboxCacheDir, fmt.Sprintf("rootfs-%s-%s.cow", s.SandboxID, s.randomID))
+	return filepath.Join(sandboxCacheDir(), fmt.Sprintf("rootfs-%s-%s.cow", s.SandboxID, s.randomID))
 }
 
 func (s *SandboxFiles) SandboxFirecrackerSocketPath() string {
@@ -53,5 +55,5 @@ func (s *SandboxFiles) SandboxUffdSocketPath() string {
 }
 
 func (s *SandboxFiles) SandboxCacheRootfsLinkPath() string {
-	return filepath.Join(sandboxCacheDir, fmt.Sprintf("rootfs-%s-%s.link", s.SandboxID, s.randomID))
+	return filepath.Join(sandboxCacheDir(), fmt.Sprintf("rootfs-%s-%s.link", s.SandboxID, s.randomID))
 }

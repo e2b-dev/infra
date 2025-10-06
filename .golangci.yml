@@ -10,14 +10,12 @@ formatters:
         - standard
         - default
         - prefix(github.com/e2b-dev/infra)
+
 linters:
   default: all
   disable:
     # these are in other PRs already
-    - embeddedstructfieldcheck
     - forcetypeassert
-    - noctx
-    - protogetter
 
     # todo: determine if we want this
     - canonicalheader
@@ -29,7 +27,7 @@ linters:
     - errchkjson
     - exhaustive
     - exhaustruct
-    - forbidigo
+    - forbidigo  # enable this when we're committed to avoiding os.Getenv
     - funcorder
     - funlen
     - gochecknoglobals
@@ -72,6 +70,12 @@ linters:
     # disabled intentionally
 
   settings:
+    # enable this when we're committed to avoiding os.Getenv
+    #    forbidigo:
+    #      forbid:
+    #        - pattern: os\.Getenv
+    #          msg: Add your field to the configuration model instead.
+
     gocritic:
       disabled-checks:
         - appendAssign
@@ -90,7 +94,6 @@ linters:
         - { disabled: true, name: context-as-argument }
         - { disabled: true, name: cyclomatic }
         - { disabled: true, name: deep-exit }
-        - { disabled: true, name: defer }  # todo: enable this
         - { disabled: true, name: early-return }
         - { disabled: true, name: enforce-switch-style }
         - { disabled: true, name: exported }
@@ -101,7 +104,6 @@ linters:
         - { disabled: true, name: if-return }
         - { disabled: true, name: import-alias-naming }
         - { disabled: true, name: import-shadowing }
-        - { disabled: true, name: indent-error-flow }  #  todo: enable this
         - { disabled: true, name: line-length-limit }
         - { disabled: true, name: max-control-nesting }
         - { disabled: true, name: max-public-structs }
@@ -119,6 +121,7 @@ linters:
         - { disabled: true, name: useless-break }  # todo: enable this
         - { disabled: true, name: var-declaration }
         - { disabled: true, name: var-naming }
+
     staticcheck:
       checks:
         - all

@@ -14,8 +14,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -120,7 +120,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		envVars = *body.EnvVars
 	}
 
-	timeout := instance.InstanceExpiration
+	timeout := sandbox.SandboxTimeoutDefault
 	if body.Timeout != nil {
 		timeout = time.Duration(*body.Timeout) * time.Second
 
@@ -130,7 +130,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 	}
 
-	autoPause := instance.InstanceAutoPauseDefault
+	autoPause := sandbox.AutoPauseDefault
 	if body.AutoPause != nil {
 		autoPause = *body.AutoPause
 	}

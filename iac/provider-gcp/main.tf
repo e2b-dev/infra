@@ -177,7 +177,6 @@ module "nomad" {
   api_resources_memory_mb                   = var.api_resources_memory_mb
   api_machine_count                         = var.api_cluster_size
   api_node_pool                             = var.api_node_pool
-  logs_collector_public_ip                  = module.cluster.logs_proxy_ip
   api_port                                  = var.api_port
   environment                               = var.environment
   google_service_account_key                = module.init.google_service_account_key
@@ -196,6 +195,7 @@ module "nomad" {
   client_proxy_count               = var.client_proxy_count
   client_proxy_resources_cpu_count = var.client_proxy_resources_cpu_count
   client_proxy_resources_memory_mb = var.client_proxy_resources_memory_mb
+  client_proxy_update_max_parallel = var.client_proxy_update_max_parallel
 
   edge_proxy_port = var.edge_proxy_port
   edge_api_port   = var.edge_api_port
@@ -233,11 +233,12 @@ module "nomad" {
   envd_timeout                = var.envd_timeout
 
   # Template manager
-  builder_node_pool              = var.build_node_pool
-  template_manager_port          = var.template_manager_port
-  template_bucket_name           = module.init.fc_template_bucket_name
-  build_cache_bucket_name        = module.init.fc_build_cache_bucket_name
-  template_manager_machine_count = var.build_cluster_size
+  builder_node_pool               = var.build_node_pool
+  template_manager_port           = var.template_manager_port
+  template_bucket_name            = module.init.fc_template_bucket_name
+  build_cache_bucket_name         = module.init.fc_build_cache_bucket_name
+  template_manager_machine_count  = var.build_cluster_size
+  dockerhub_remote_repository_url = var.remote_repository_enabled ? module.remote_repository[0].dockerhub_remote_repository_url : ""
 
   # Redis
   redis_managed = var.redis_managed
@@ -246,7 +247,11 @@ module "nomad" {
   launch_darkly_api_key_secret_name = module.init.launch_darkly_api_key_secret_version.secret
 
   # Filestore
-  shared_chunk_cache_path = module.cluster.shared_chunk_cache_path
+  shared_chunk_cache_path                    = module.cluster.shared_chunk_cache_path
+  filestore_cache_cleanup_disk_usage_target  = var.filestore_cache_cleanup_disk_usage_target
+  filestore_cache_cleanup_dry_run            = var.filestore_cache_cleanup_dry_run
+  filestore_cache_cleanup_deletions_per_loop = var.filestore_cache_cleanup_deletions_per_loop
+  filestore_cache_cleanup_files_per_loop     = var.filestore_cache_cleanup_files_per_loop
 }
 
 module "redis" {
@@ -258,4 +263,17 @@ module "redis" {
   gcp_zone       = var.gcp_zone
 
   prefix = var.prefix
+}
+
+module "remote_repository" {
+  source = "./remote-repository"
+
+  count = var.remote_repository_enabled ? 1 : 0
+
+  prefix = var.prefix
+
+  gcp_project_id = var.gcp_project_id
+  gcp_region     = var.gcp_region
+
+  google_service_account_email = module.init.service_account_email
 }

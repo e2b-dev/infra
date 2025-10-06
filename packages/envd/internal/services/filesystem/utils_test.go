@@ -81,19 +81,19 @@ func TestEntryInfoFromFileInfo(t *testing.T) {
 	require.NoError(t, err)
 
 	// Basic assertions
-	assert.Equal(t, "test.txt", result.Name)
-	assert.Equal(t, testFile, result.Path)
-	assert.Equal(t, int64(len(testContent)), result.Size)
-	assert.Equal(t, rpc.FileType_FILE_TYPE_FILE, result.Type)
-	assert.Equal(t, uint32(0o644), result.Mode)
-	assert.Contains(t, result.Permissions, "-rw-r--r--")
-	assert.Equal(t, currentUser.Username, result.Owner)
-	assert.NotEmpty(t, result.Group)
-	assert.NotNil(t, result.ModifiedTime)
-	assert.Empty(t, result.SymlinkTarget)
+	assert.Equal(t, "test.txt", result.GetName())
+	assert.Equal(t, testFile, result.GetPath())
+	assert.Equal(t, int64(len(testContent)), result.GetSize())
+	assert.Equal(t, rpc.FileType_FILE_TYPE_FILE, result.GetType())
+	assert.Equal(t, uint32(0o644), result.GetMode())
+	assert.Contains(t, result.GetPermissions(), "-rw-r--r--")
+	assert.Equal(t, currentUser.Username, result.GetOwner())
+	assert.NotEmpty(t, result.GetGroup())
+	assert.NotNil(t, result.GetModifiedTime())
+	assert.Empty(t, result.GetSymlinkTarget())
 
 	// Check that modified time is reasonable (within last minute)
-	modTime := result.ModifiedTime.AsTime()
+	modTime := result.GetModifiedTime().AsTime()
 	assert.WithinDuration(t, time.Now(), modTime, time.Minute)
 }
 
@@ -107,12 +107,12 @@ func TestEntryInfoFromFileInfo_Directory(t *testing.T) {
 	result, err := entryInfo(testDir)
 	require.NoError(t, err)
 
-	assert.Equal(t, "testdir", result.Name)
-	assert.Equal(t, testDir, result.Path)
-	assert.Equal(t, rpc.FileType_FILE_TYPE_DIRECTORY, result.Type)
-	assert.Equal(t, uint32(0o755), result.Mode)
-	assert.Contains(t, result.Permissions, "d")
-	assert.Empty(t, result.SymlinkTarget)
+	assert.Equal(t, "testdir", result.GetName())
+	assert.Equal(t, testDir, result.GetPath())
+	assert.Equal(t, rpc.FileType_FILE_TYPE_DIRECTORY, result.GetType())
+	assert.Equal(t, uint32(0o755), result.GetMode())
+	assert.Contains(t, result.GetPermissions(), "d")
+	assert.Empty(t, result.GetSymlinkTarget())
 }
 
 func TestEntryInfoFromFileInfo_Symlink(t *testing.T) {
@@ -134,15 +134,15 @@ func TestEntryInfoFromFileInfo_Symlink(t *testing.T) {
 	result, err := entryInfo(symlinkPath)
 	require.NoError(t, err)
 
-	assert.Equal(t, "symlink", result.Name)
-	assert.Equal(t, symlinkPath, result.Path)
-	assert.Equal(t, rpc.FileType_FILE_TYPE_FILE, result.Type) // Should resolve to target type
-	assert.Contains(t, result.Permissions, "L")               // Should show as symlink in permissions
+	assert.Equal(t, "symlink", result.GetName())
+	assert.Equal(t, symlinkPath, result.GetPath())
+	assert.Equal(t, rpc.FileType_FILE_TYPE_FILE, result.GetType()) // Should resolve to target type
+	assert.Contains(t, result.GetPermissions(), "L")               // Should show as symlink in permissions
 
 	// Canonicalize the expected target path to handle macOS /var → /private/var symlink
 	expectedTarget, err := filepath.EvalSymlinks(symlinkPath)
 	require.NoError(t, err)
-	assert.Equal(t, &expectedTarget, result.SymlinkTarget)
+	assert.Equal(t, expectedTarget, result.GetSymlinkTarget())
 }
 
 func TestEntryInfoFromFileInfo_BrokenSymlink(t *testing.T) {
@@ -157,10 +157,10 @@ func TestEntryInfoFromFileInfo_BrokenSymlink(t *testing.T) {
 	result, err := entryInfo(brokenSymlink)
 	require.NoError(t, err)
 
-	assert.Equal(t, "broken", result.Name)
-	assert.Equal(t, brokenSymlink, result.Path)
-	assert.Equal(t, rpc.FileType_FILE_TYPE_UNSPECIFIED, result.Type)
-	assert.Contains(t, result.Permissions, "L")
+	assert.Equal(t, "broken", result.GetName())
+	assert.Equal(t, brokenSymlink, result.GetPath())
+	assert.Equal(t, rpc.FileType_FILE_TYPE_UNSPECIFIED, result.GetType())
+	assert.Contains(t, result.GetPermissions(), "L")
 	// SymlinkTarget might be empty if followSymlink fails
 }
 
@@ -176,10 +176,10 @@ func TestEntryInfoFromFileInfo_CyclicSymlink(t *testing.T) {
 	result, err := entryInfo(cyclicSymlink)
 	require.NoError(t, err)
 
-	assert.Equal(t, "cyclic", result.Name)
-	assert.Equal(t, cyclicSymlink, result.Path)
-	assert.Equal(t, rpc.FileType_FILE_TYPE_UNSPECIFIED, result.Type)
-	assert.Contains(t, result.Permissions, "L")
+	assert.Equal(t, "cyclic", result.GetName())
+	assert.Equal(t, cyclicSymlink, result.GetPath())
+	assert.Equal(t, rpc.FileType_FILE_TYPE_UNSPECIFIED, result.GetType())
+	assert.Contains(t, result.GetPermissions(), "L")
 }
 
 func TestEntryInfoFromFileInfo_EmptyFile(t *testing.T) {
@@ -192,10 +192,10 @@ func TestEntryInfoFromFileInfo_EmptyFile(t *testing.T) {
 	result, err := entryInfo(emptyFile)
 	require.NoError(t, err)
 
-	assert.Equal(t, "empty.txt", result.Name)
-	assert.Equal(t, int64(0), result.Size)
-	assert.Equal(t, uint32(0o600), result.Mode)
-	assert.Equal(t, rpc.FileType_FILE_TYPE_FILE, result.Type)
+	assert.Equal(t, "empty.txt", result.GetName())
+	assert.Equal(t, int64(0), result.GetSize())
+	assert.Equal(t, uint32(0o600), result.GetMode())
+	assert.Equal(t, rpc.FileType_FILE_TYPE_FILE, result.GetType())
 }
 
 func TestEntryInfoFromFileInfo_DifferentPermissions(t *testing.T) {
@@ -223,7 +223,7 @@ func TestEntryInfoFromFileInfo_DifferentPermissions(t *testing.T) {
 
 			result, err := entryInfo(testFile)
 			require.NoError(t, err)
-			assert.Equal(t, tc.expected, result.Mode)
+			assert.Equal(t, tc.expected, result.GetMode())
 		})
 	}
 }
@@ -249,13 +249,13 @@ func TestEntryInfoFromFileInfo_SymlinkChain(t *testing.T) {
 	result, err := entryInfo(link1)
 	require.NoError(t, err)
 
-	assert.Equal(t, "link1", result.Name)
-	assert.Equal(t, link1, result.Path)
-	assert.Equal(t, rpc.FileType_FILE_TYPE_DIRECTORY, result.Type) // Should resolve to final target type
-	assert.Contains(t, result.Permissions, "L")
+	assert.Equal(t, "link1", result.GetName())
+	assert.Equal(t, link1, result.GetPath())
+	assert.Equal(t, rpc.FileType_FILE_TYPE_DIRECTORY, result.GetType()) // Should resolve to final target type
+	assert.Contains(t, result.GetPermissions(), "L")
 
 	// Canonicalize the expected target path to handle macOS symlink indirections
 	expectedTarget, err := filepath.EvalSymlinks(link1)
 	require.NoError(t, err)
-	assert.Equal(t, &expectedTarget, result.SymlinkTarget)
+	assert.Equal(t, expectedTarget, result.GetSymlinkTarget())
 }

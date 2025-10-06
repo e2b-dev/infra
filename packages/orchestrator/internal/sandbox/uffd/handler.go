@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bits-and-blooms/bitset"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
@@ -19,6 +20,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd")
 
 const (
 	uffdMsgListenerTimeout = 10 * time.Second
@@ -74,6 +77,9 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 	}
 
 	go func() {
+		ctx, span := tracer.Start(ctx, "serve uffd")
+		defer span.End()
+
 		// TODO: If the handle function fails, we should kill the sandbox
 		handleErr := u.handle(ctx, sandboxId)
 		closeErr := u.lis.Close()
