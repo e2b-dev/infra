@@ -46,11 +46,11 @@ func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.Sandbo
 
 	md := edge.SerializeSandboxCatalogCreateEvent(
 		edge.SandboxCatalogCreateEvent{
-			SandboxID:               req.Sandbox.SandboxId,
-			SandboxMaxLengthInHours: req.Sandbox.MaxSandboxLength,
-			SandboxStartTime:        req.StartTime.AsTime(),
+			SandboxID:               req.GetSandbox().GetSandboxId(),
+			SandboxMaxLengthInHours: req.GetSandbox().GetMaxSandboxLength(),
+			SandboxStartTime:        req.GetStartTime().AsTime(),
 
-			ExecutionID:    req.Sandbox.ExecutionId,
+			ExecutionID:    req.GetSandbox().GetExecutionId(),
 			OrchestratorID: n.Metadata().ServiceInstanceID,
 		},
 	)
