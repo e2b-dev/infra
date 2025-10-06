@@ -88,10 +88,9 @@ func (a *API) SetupHyperloop(address string) {
 
 	if err := rewriteHostsFile(address, "/etc/hosts"); err != nil {
 		a.logger.Error().Err(err).Msg("failed to modify hosts file")
-		return
+	} else {
+		a.envVars.Store("E2B_EVENTS_ADDRESS", fmt.Sprintf("http://%s", address))
 	}
-
-	a.envVars.Store("E2B_EVENTS_ADDRESS", fmt.Sprintf("http://%s", address))
 }
 
 const eventsHost = "events.e2b.local"
