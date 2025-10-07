@@ -244,7 +244,6 @@ func (c *Client) WriteSecret(ctx context.Context, path string, value string, met
 		DeleteVersionAfter: time.Duration(0).String(),
 		MaxVersions:        1,
 	}); err != nil {
-
 		// clean up the secret if metadata write fails
 		_, err := c.client.Secrets.KvV2Delete(ctx, path)
 		if err != nil {
