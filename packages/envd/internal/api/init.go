@@ -19,6 +19,11 @@ import (
 
 var ErrAccessTokenAlreadySet = errors.New("access token is already set")
 
+const (
+	maxTimeInPast   = 50 * time.Millisecond
+	maxTimeInFuture = 5 * time.Second
+)
+
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
@@ -70,11 +75,17 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) SetData(logger zerolog.Logger, data PostInitJSONBody) error {
 	if data.Timestamp != nil {
-		logger.Debug().Msgf("Setting sandbox start time to: %v", *data.Timestamp)
-		ts := unix.NsecToTimespec(data.Timestamp.UnixNano())
-		err := unix.ClockSettime(unix.CLOCK_REALTIME, &ts)
-		if err != nil {
-			logger.Error().Msgf("Failed to set system time: %v", err)
+		// Check if the time is before maxTimeInPast or after maxTimeInFuture
+		if data.Timestamp.Before(time.Now().Add(-maxTimeInPast)) ||
+			data.Timestamp.After(time.Now().Add(maxTimeInFuture)) {
+			logger.Debug().Msgf("Setting sandbox start time to: %v", *data.Timestamp)
+			ts := unix.NsecToTimespec(data.Timestamp.UnixNano())
+			err := unix.ClockSettime(unix.CLOCK_REALTIME, &ts)
+			if err != nil {
+				logger.Error().Msgf("Failed to set system time: %v", err)
+			}
+		} else {
+			logger.Debug().Msgf("Timestamp %v is not far enough in the past or future, not setting system time", *data.Timestamp)
 		}
 	}
 

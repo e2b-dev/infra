@@ -150,6 +150,10 @@ variable "client_proxy_resources_cpu_count" {
   type = number
 }
 
+variable "client_proxy_update_max_parallel" {
+  type = number
+}
+
 variable "edge_api_port" {
   type = object({
     name = string

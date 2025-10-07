@@ -59,17 +59,3 @@ func (i *memorySandbox) SandboxID() string {
 func (i *memorySandbox) TeamID() uuid.UUID {
 	return i._data.TeamID
 }
-
-func (i *memorySandbox) extendEndTime(newEndTime time.Time, allowShorter bool) bool {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	// If shorter than the current end time, don't extend
-	if !allowShorter && newEndTime.Before(i._data.EndTime) {
-		return false
-	}
-
-	i._data.EndTime = newEndTime
-
-	return true
-}
