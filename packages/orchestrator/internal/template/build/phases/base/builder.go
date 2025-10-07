@@ -174,16 +174,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	// Created here to be able to pass it to CreateSandbox for populating COW cache
 	rootfsPath := filepath.Join(templateBuildDir, rootfsBuildFileName)
 
-	rootfs, memfile, envsImg, err := constructLayerFilesFromOCI(
-		ctx,
-		userLogger,
-		bb.BuildContext,
-		baseMetadata.Template.BuildID,
-		bb.artifactRegistry,
-		bb.dockerhubRepository,
-		templateBuildDir,
-		rootfsPath,
-	)
+	rootfs, memfile, envsImg, err := constructLayerFilesFromOCI(ctx, userLogger, bb.BuildContext, baseMetadata.Template.BuildID, bb.artifactRegistry, bb.dockerhubRepository, rootfsPath)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("error building environment: %w", err)
 	}
@@ -196,7 +187,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		return metadata.Template{}, fmt.Errorf("error creating template files: %w", err)
 	}
 	localTemplate := sbxtemplate.NewLocalTemplate(cacheFiles, rootfs, memfile)
-	defer localTemplate.Close()
+	defer localTemplate.Close(ctx)
 
 	// Provision sandbox with systemd and other vital parts
 	userLogger.Info("Provisioning sandbox template")
@@ -323,11 +314,11 @@ func (bb *BaseBuilder) Layer(
 	case bb.Config.FromTemplate != nil:
 		sourceMeta := metadata.FromTemplate{
 			Alias:   bb.Config.FromTemplate.GetAlias(),
-			BuildID: bb.Config.FromTemplate.BuildID,
+			BuildID: bb.Config.FromTemplate.GetBuildID(),
 		}
 
 		// If the template is built from another template, use its metadata
-		tm, err := bb.index.Cached(ctx, bb.Config.FromTemplate.BuildID)
+		tm, err := bb.index.Cached(ctx, bb.Config.FromTemplate.GetBuildID())
 		if err != nil {
 			return phases.LayerResult{}, fmt.Errorf("error getting base layer from cache, you may need to rebuild the base template: %w", err)
 		}

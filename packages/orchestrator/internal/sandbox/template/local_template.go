@@ -1,6 +1,7 @@
 package template
 
 import (
+	"context"
 	"errors"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
@@ -27,15 +28,18 @@ func NewLocalTemplate(
 	}
 }
 
-func (t *LocalTemplate) Close() error {
-	return closeTemplate(t)
+func (t *LocalTemplate) Close(ctx context.Context) error {
+	return closeTemplate(ctx, t)
 }
 
 func (t *LocalTemplate) Files() storage.TemplateCacheFiles {
 	return t.files
 }
 
-func (t *LocalTemplate) Memfile() (block.ReadonlyDevice, error) {
+func (t *LocalTemplate) Memfile(ctx context.Context) (block.ReadonlyDevice, error) {
+	_, span := tracer.Start(ctx, "local-template-memfile")
+	defer span.End()
+
 	return t.memfile, nil
 }
 

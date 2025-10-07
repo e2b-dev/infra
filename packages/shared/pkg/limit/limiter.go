@@ -33,7 +33,7 @@ func New(ctx context.Context, featureFlags *featureflags.Client) (*Limiter, erro
 	return l, nil
 }
 
-func (l *Limiter) Close(ctx context.Context) error {
+func (l *Limiter) Close(_ context.Context) error {
 	l.closeOnce.Do(func() {
 		close(l.done)
 	})

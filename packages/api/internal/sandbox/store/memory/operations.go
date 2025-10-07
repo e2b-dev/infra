@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -62,34 +61,38 @@ func (s *Store) get(sandboxID string) (*memorySandbox, error) {
 }
 
 // Get the item from the cache.
-func (s *Store) Get(sandboxID string, includeEvicting bool) (sandbox.Sandbox, error) {
+func (s *Store) Get(sandboxID string) (sandbox.Sandbox, error) {
 	item, ok := s.items.Get(sandboxID)
 	if !ok {
-		return sandbox.Sandbox{}, fmt.Errorf("sandbox \"%s\" doesn't exist", sandboxID)
+		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}
 	}
 
-	data := item.Data()
-
-	if data.IsExpired() && !includeEvicting {
-		return sandbox.Sandbox{}, fmt.Errorf("sandbox \"%s\" is being evicted", sandboxID)
-	}
-
-	return data, nil
+	return item.Data(), nil
 }
 
 func (s *Store) Remove(sandboxID string) {
 	s.items.Remove(sandboxID)
 }
 
-func (s *Store) Items(teamID *uuid.UUID) []sandbox.Sandbox {
+func (s *Store) Items(teamID *uuid.UUID, states []sandbox.State, options ...sandbox.ItemsOption) []sandbox.Sandbox {
+	filter := sandbox.NewItemsFilter()
+	for _, opt := range options {
+		opt(filter)
+	}
+
 	items := make([]sandbox.Sandbox, 0)
 	for _, item := range s.items.Items() {
 		data := item.Data()
-		if data.IsExpired() {
+
+		if teamID != nil && *teamID != data.TeamID {
 			continue
 		}
 
-		if teamID != nil && data.TeamID != *teamID {
+		if states != nil && !slices.Contains(states, data.State) {
+			continue
+		}
+
+		if !applyFilter(data, filter) {
 			continue
 		}
 
@@ -99,51 +102,21 @@ func (s *Store) Items(teamID *uuid.UUID) []sandbox.Sandbox {
 	return items
 }
 
-func (s *Store) ItemsToEvict() []sandbox.Sandbox {
-	items := make([]sandbox.Sandbox, 0)
-	for _, item := range s.items.Items() {
-		data := item.Data()
-		if !data.IsExpired() {
-			continue
-		}
-
-		if data.State != sandbox.StateRunning {
-			continue
-		}
-
-		items = append(items, data)
-	}
-
-	return items
-}
-
-func (s *Store) ItemsByState(teamID *uuid.UUID, states []sandbox.State) map[sandbox.State][]sandbox.Sandbox {
-	items := make(map[sandbox.State][]sandbox.Sandbox)
-	for _, item := range s.items.Items() {
-		data := item.Data()
-		if teamID != nil && data.TeamID != *teamID {
-			continue
-		}
-
-		if slices.Contains(states, data.State) {
-			if _, ok := items[data.State]; !ok {
-				items[data.State] = []sandbox.Sandbox{}
-			}
-
-			items[data.State] = append(items[data.State], data)
-		}
-	}
-
-	return items
-}
-
-func (s *Store) ExtendEndTime(sandboxID string, newEndTime time.Time, allowShorter bool) (bool, error) {
+func (s *Store) Update(sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
 	item, ok := s.items.Get(sandboxID)
 	if !ok {
-		return false, fmt.Errorf("sandbox \"%s\" doesn't exist", sandboxID)
+		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}
 	}
 
-	return item.extendEndTime(newEndTime, allowShorter), nil
+	item.mu.Lock()
+	defer item.mu.Unlock()
+	sbx, err := updateFunc(item._data)
+	if err != nil {
+		return sandbox.Sandbox{}, err
+	}
+
+	item._data = sbx
+	return sbx, nil
 }
 
 func (s *Store) StartRemoving(ctx context.Context, sandboxID string, stateAction sandbox.StateAction) (alreadyDone bool, callback func(error), err error) {
@@ -180,7 +153,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.
 		// If the transition is to the same state just wait
 		switch {
 		case currentState == newState:
-			return true, func(err error) {}, nil
+			return true, func(error) {}, nil
 		case sandbox.AllowedTransitions[currentState][newState]:
 			return startRemoving(ctx, sbx, stateAction)
 		default:

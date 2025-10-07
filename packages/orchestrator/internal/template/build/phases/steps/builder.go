@@ -80,14 +80,14 @@ func (sb *StepBuilder) Prefix() string {
 	return fmt.Sprintf("builder %d/%d", sb.stepNumber, len(sb.Config.Steps))
 }
 
-func (sb *StepBuilder) String(ctx context.Context) (string, error) {
-	return fmt.Sprintf("%s %s", strings.ToUpper(sb.step.Type), strings.Join(sb.step.Args, " ")), nil
+func (sb *StepBuilder) String(context.Context) (string, error) {
+	return fmt.Sprintf("%s %s", strings.ToUpper(sb.step.GetType()), strings.Join(sb.step.GetArgs(), " ")), nil
 }
 
 func (sb *StepBuilder) Metadata() phases.PhaseMeta {
 	return phases.PhaseMeta{
 		Phase:      metrics.PhaseSteps,
-		StepType:   sb.step.Type,
+		StepType:   sb.step.GetType(),
 		StepNumber: &sb.stepNumber,
 	}
 }
@@ -99,12 +99,12 @@ func (sb *StepBuilder) Layer(
 ) (phases.LayerResult, error) {
 	ctx, span := tracer.Start(ctx, "compute step", trace.WithAttributes(
 		attribute.Int("step", sb.stepNumber),
-		attribute.String("type", sb.step.Type),
+		attribute.String("type", sb.step.GetType()),
 		attribute.String("hash", hash),
 	))
 	defer span.End()
 
-	forceBuild := sb.step.Force != nil && *sb.step.Force
+	forceBuild := sb.step.Force != nil && sb.step.GetForce()
 	if !forceBuild {
 		m, err := sb.index.LayerMetaFromHash(ctx, hash)
 		if err != nil {
@@ -146,7 +146,7 @@ func (sb *StepBuilder) Build(
 ) (phases.LayerResult, error) {
 	ctx, span := tracer.Start(ctx, "build step", trace.WithAttributes(
 		attribute.Int("step", sb.stepNumber),
-		attribute.String("type", sb.step.Type),
+		attribute.String("type", sb.step.GetType()),
 		attribute.String("hash", currentLayer.Hash),
 	))
 	defer span.End()

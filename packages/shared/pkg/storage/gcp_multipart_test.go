@@ -111,7 +111,7 @@ func TestMultipartUploader_UploadPart_Success(t *testing.T) {
 }
 
 func TestMultipartUploader_UploadPart_MissingETag(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		// Don't set ETag header
 		w.WriteHeader(http.StatusOK)
 	})
@@ -218,7 +218,7 @@ func TestMultipartUploader_InitiateUpload_WithRetries(t *testing.T) {
 	var requestCount int32
 	expectedUploadID := "retry-upload-id"
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		count := atomic.AddInt32(&requestCount, 1)
 		if count < 2 {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -285,8 +285,8 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 
 			// Update max concurrent parts
 			for {
-				max := atomic.LoadInt32(&maxConcurrentParts)
-				if current <= max || atomic.CompareAndSwapInt32(&maxConcurrentParts, max, current) {
+				maxConcurrent := atomic.LoadInt32(&maxConcurrentParts)
+				if current <= maxConcurrent || atomic.CompareAndSwapInt32(&maxConcurrentParts, maxConcurrent, current) {
 					break
 				}
 			}
@@ -564,8 +564,8 @@ func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testin
 
 			// Track max observed concurrency
 			for {
-				max := atomic.LoadInt32(&maxObservedConcurrency)
-				if current <= max || atomic.CompareAndSwapInt32(&maxObservedConcurrency, max, current) {
+				maxObserved := atomic.LoadInt32(&maxObservedConcurrency)
+				if current <= maxObserved || atomic.CompareAndSwapInt32(&maxObservedConcurrency, maxObserved, current) {
 					break
 				}
 			}
@@ -640,9 +640,9 @@ func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
 }
 
 func TestMultipartUploader_FileNotFound_Error(t *testing.T) {
-	uploader := createTestMultipartUploader(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	uploader := createTestMultipartUploader(t, func(http.ResponseWriter, *http.Request) {
 		t.Error("Should not make any HTTP requests for missing file")
-	}))
+	})
 
 	err := uploader.UploadFileInParallel(t.Context(), "/nonexistent/file.txt", 5)
 	require.Error(t, err)
@@ -841,7 +841,7 @@ func TestRetryableClient_ActualRetryBehavior(t *testing.T) {
 	var retryDelays []time.Duration
 	var retryTimes []time.Time
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		count := atomic.AddInt32(&requestCount, 1)
 		retryTimes = append(retryTimes, time.Now())
 

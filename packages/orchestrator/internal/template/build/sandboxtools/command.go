@@ -56,7 +56,7 @@ func RunCommand(
 		metadata,
 		// No confirmation needed for this command
 		make(chan struct{}),
-		func(stdout, stderr string) {},
+		func(_, _ string) {},
 	)
 }
 
@@ -168,7 +168,7 @@ func runCommandWithAllOptions(
 			if !ok {
 				return nil
 			}
-			e := msg.Event
+			e := msg.GetEvent()
 			if e == nil {
 				zap.L().Error("received nil command event")
 				return nil

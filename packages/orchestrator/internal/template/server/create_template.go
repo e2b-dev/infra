@@ -25,53 +25,53 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	_, childSpan := tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
-	cfg := templateRequest.Template
+	cfg := templateRequest.GetTemplate()
 	childSpan.SetAttributes(
-		telemetry.WithTemplateID(cfg.TemplateID),
-		telemetry.WithBuildID(cfg.BuildID),
-		attribute.String("env.kernel.version", cfg.KernelVersion),
-		attribute.String("env.firecracker.version", cfg.FirecrackerVersion),
-		attribute.String("env.start_cmd", cfg.StartCommand),
-		attribute.Int64("env.memory_mb", int64(cfg.MemoryMB)),
-		attribute.Int64("env.vcpu_count", int64(cfg.VCpuCount)),
-		attribute.Bool("env.huge_pages", cfg.HugePages),
+		telemetry.WithTemplateID(cfg.GetTemplateID()),
+		telemetry.WithBuildID(cfg.GetBuildID()),
+		attribute.String("env.kernel.version", cfg.GetKernelVersion()),
+		attribute.String("env.firecracker.version", cfg.GetFirecrackerVersion()),
+		attribute.String("env.start_cmd", cfg.GetStartCommand()),
+		attribute.Int64("env.memory_mb", int64(cfg.GetMemoryMB())),
+		attribute.Int64("env.vcpu_count", int64(cfg.GetVCpuCount())),
+		attribute.Bool("env.huge_pages", cfg.GetHugePages()),
 	)
 
 	if s.info.GetStatus() != orchestrator.ServiceInfoStatus_Healthy {
-		s.logger.Error("Requesting template creation while server not healthy is not possible", logger.WithTemplateID(cfg.TemplateID))
+		s.logger.Error("Requesting template creation while server not healthy is not possible", logger.WithTemplateID(cfg.GetTemplateID()))
 		return nil, fmt.Errorf("server is draining")
 	}
 
 	metadata := storage.TemplateFiles{
-		BuildID:            cfg.BuildID,
-		KernelVersion:      cfg.KernelVersion,
-		FirecrackerVersion: cfg.FirecrackerVersion,
+		BuildID:            cfg.GetBuildID(),
+		KernelVersion:      cfg.GetKernelVersion(),
+		FirecrackerVersion: cfg.GetFirecrackerVersion(),
 	}
 
 	// default to scope by template ID
-	cacheScope := cfg.TemplateID
+	cacheScope := cfg.GetTemplateID()
 	if templateRequest.CacheScope != nil {
-		cacheScope = *templateRequest.CacheScope
+		cacheScope = templateRequest.GetCacheScope()
 	}
 
 	// Create the auth provider using the factory
-	authProvider := auth.NewAuthProvider(cfg.FromImageRegistry)
+	authProvider := auth.NewAuthProvider(cfg.GetFromImageRegistry())
 
 	template := config.TemplateConfig{
-		TeamID:               cfg.TeamID,
-		TemplateID:           cfg.TemplateID,
+		TeamID:               cfg.GetTeamID(),
+		TemplateID:           cfg.GetTemplateID(),
 		CacheScope:           cacheScope,
-		VCpuCount:            int64(cfg.VCpuCount),
-		MemoryMB:             int64(cfg.MemoryMB),
-		StartCmd:             cfg.StartCommand,
-		ReadyCmd:             cfg.ReadyCommand,
-		DiskSizeMB:           int64(cfg.DiskSizeMB),
-		HugePages:            cfg.HugePages,
+		VCpuCount:            int64(cfg.GetVCpuCount()),
+		MemoryMB:             int64(cfg.GetMemoryMB()),
+		StartCmd:             cfg.GetStartCommand(),
+		ReadyCmd:             cfg.GetReadyCommand(),
+		DiskSizeMB:           int64(cfg.GetDiskSizeMB()),
+		HugePages:            cfg.GetHugePages(),
 		FromImage:            cfg.GetFromImage(),
 		FromTemplate:         cfg.GetFromTemplate(),
 		RegistryAuthProvider: authProvider,
 		Force:                cfg.Force,
-		Steps:                cfg.Steps,
+		Steps:                cfg.GetSteps(),
 	}
 
 	logs := buildlogger.NewLogEntryLogger()
@@ -85,7 +85,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	bufferCore := zapcore.NewCore(encoder, logs, zapcore.DebugLevel)
 	core := zapcore.NewTee(bufferCore, s.buildLogger.Core().
 		With([]zap.Field{
-			{Type: zapcore.StringType, Key: "envID", String: cfg.TemplateID},
+			{Type: zapcore.StringType, Key: "envID", String: cfg.GetTemplateID()},
 			{Type: zapcore.StringType, Key: "buildID", String: metadata.BuildID},
 		}),
 	)
@@ -99,7 +99,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 
 		defer func() {
 			if r := recover(); r != nil {
-				telemetry.ReportCriticalError(ctx, "recovered from panic in template build handler", nil, attribute.String("panic", fmt.Sprintf("%v", r)), telemetry.WithTemplateID(cfg.TemplateID), telemetry.WithBuildID(cfg.BuildID))
+				telemetry.ReportCriticalError(ctx, "recovered from panic in template build handler", nil, attribute.String("panic", fmt.Sprintf("%v", r)), telemetry.WithTemplateID(cfg.GetTemplateID()), telemetry.WithBuildID(cfg.GetBuildID()))
 				buildInfo.SetFail(builderrors.UnwrapUserError(errors.New("fatal error occurred, please contact us")))
 			}
 		}()
@@ -124,7 +124,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		res, err := s.builder.Build(ctx, metadata, template, core)
 		_ = core.Sync()
 		if err != nil {
-			telemetry.ReportCriticalError(ctx, "error while building template", err, telemetry.WithTemplateID(cfg.TemplateID), telemetry.WithBuildID(cfg.BuildID))
+			telemetry.ReportCriticalError(ctx, "error while building template", err, telemetry.WithTemplateID(cfg.GetTemplateID()), telemetry.WithBuildID(cfg.GetBuildID()))
 
 			buildInfo.SetFail(builderrors.UnwrapUserError(err))
 		} else {

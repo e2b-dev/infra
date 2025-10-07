@@ -10,23 +10,20 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 )
 
-func CreateTeam(t *testing.T, c *api.ClientWithResponses, db *db.DB, teamName string) uuid.UUID {
+func CreateTeam(t *testing.T, db *db.DB, teamName string) uuid.UUID {
 	t.Helper()
 
-	return CreateTeamWithUser(t, c, db, teamName, "")
+	return CreateTeamWithUser(t, db, teamName, "")
 }
 
 func CreateTeamWithUser(
 	t *testing.T,
-	c *api.ClientWithResponses,
 	db *db.DB,
-	teamName string,
-	userID string,
+	teamName, userID string,
 ) uuid.UUID {
 	t.Helper()
 
@@ -39,7 +36,7 @@ func CreateTeamWithUser(
 	assert.Equal(t, teamID, team.ID)
 
 	if userID != "" {
-		AddUserToTeam(t, c, db, teamID, userID)
+		AddUserToTeam(t, db, teamID, userID)
 	}
 
 	t.Cleanup(func() {
@@ -50,7 +47,7 @@ func CreateTeamWithUser(
 	return team.ID
 }
 
-func AddUserToTeam(t *testing.T, c *api.ClientWithResponses, db *db.DB, teamID uuid.UUID, userID string) {
+func AddUserToTeam(t *testing.T, db *db.DB, teamID uuid.UUID, userID string) {
 	t.Helper()
 
 	userUUID, err := uuid.Parse(userID)
@@ -66,18 +63,6 @@ func AddUserToTeam(t *testing.T, c *api.ClientWithResponses, db *db.DB, teamID u
 	t.Cleanup(func() {
 		db.Client.UsersTeams.DeleteOne(userTeam).Exec(t.Context())
 	})
-}
-
-func RemoveUserFromTeam(t *testing.T, c *api.ClientWithResponses, db *db.DB, teamID uuid.UUID, userID string) {
-	t.Helper()
-
-	userUUID, err := uuid.Parse(userID)
-	require.NoError(t, err)
-
-	_, err = db.Client.UsersTeams.Delete().
-		Where(usersteams.UserID(userUUID), usersteams.TeamID(teamID)).
-		Exec(t.Context())
-	require.NoError(t, err, "failed to remove user from team")
 }
 
 func CreateAPIKey(t *testing.T, ctx context.Context, c *api.ClientWithResponses, userID string, teamID uuid.UUID) string {

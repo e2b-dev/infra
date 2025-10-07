@@ -26,7 +26,7 @@ func (u *User) Execute(
 	step *templatemanager.TemplateStep,
 	cmdMetadata metadata.Context,
 ) (metadata.Context, error) {
-	args := step.Args
+	args := step.GetArgs()
 	// args: [username]
 	if len(args) < 1 {
 		return metadata.Context{}, fmt.Errorf("USER requires a username argument")
@@ -69,7 +69,7 @@ func saveUserMeta(
 		metadata.Context{
 			User: "root",
 		},
-		func(stdout, stderr string) {
+		func(stdout, _ string) {
 			user = stdout
 		},
 	)

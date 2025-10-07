@@ -54,7 +54,7 @@ func NewCluster(tel *telemetry.Client, endpoint string, endpointTLS bool, secret
 	clientAuthMiddleware := func(c *api.Client) error {
 		c.RequestEditors = append(
 			c.RequestEditors,
-			func(ctx context.Context, req *http.Request) error {
+			func(_ context.Context, req *http.Request) error {
 				req.Header.Set(consts.EdgeApiAuthHeader, secret)
 				return nil
 			},
@@ -185,9 +185,9 @@ func (c *Cluster) RegisterSandboxInCatalog(ctx context.Context, serviceInstanceI
 	body := api.V1SandboxCatalogCreateJSONRequestBody{
 		OrchestratorID: serviceInstanceID,
 
-		ExecutionID:      sandboxConfig.ExecutionId,
-		SandboxID:        sandboxConfig.SandboxId,
-		SandboxMaxLength: sandboxConfig.MaxSandboxLength,
+		ExecutionID:      sandboxConfig.GetExecutionId(),
+		SandboxID:        sandboxConfig.GetSandboxId(),
+		SandboxMaxLength: sandboxConfig.GetMaxSandboxLength(),
 		SandboxStartTime: sandboxStartTime,
 	}
 

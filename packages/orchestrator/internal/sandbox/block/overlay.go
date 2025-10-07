@@ -60,7 +60,7 @@ func (o *Overlay) EjectCache() (*Cache, error) {
 // but creating and copying the bytes from the cache and device to the new slice.
 //
 // When we are implementing this we might want to just enforce the length to be the same as the block size.
-func (o *Overlay) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+func (o *Overlay) Slice(_ context.Context, _, _ int64) ([]byte, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 

@@ -34,7 +34,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0
 	github.com/hashicorp/consul/api v1.30.0
-	github.com/jellydator/ttlcache/v3 v3.3.1-0.20250207140243-aefc35918359
+	github.com/jellydator/ttlcache/v3 v3.4.0
 	github.com/launchdarkly/go-sdk-common/v3 v3.3.0
 	github.com/ngrok/firewall_toolkit v0.0.18
 	github.com/oapi-codegen/gin-middleware v1.0.2
@@ -48,6 +48,7 @@ require (
 	github.com/vishvananda/netns v0.0.5
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.63.0
 	go.opentelemetry.io/otel v1.38.0
+	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.14.0
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.38.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.38.0
 	go.opentelemetry.io/otel/metric v1.38.0
@@ -233,7 +234,6 @@ require (
 	go.opentelemetry.io/contrib/bridges/otelzap v0.13.0 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.38.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.63.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.14.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.38.0 // indirect
 	go.opentelemetry.io/otel/log v0.14.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.38.0 // indirect

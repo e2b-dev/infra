@@ -18,9 +18,9 @@ func convertEntryInfo(info *filesystem.EntryInfo) *EntryInfo {
 	}
 
 	return &EntryInfo{
-		Name: info.Name,
-		Type: FileType(info.Type),
-		Path: info.Path,
+		Name: info.GetName(),
+		Type: FileType(info.GetType()),
+		Path: info.GetPath(),
 	}
 }
 
@@ -54,13 +54,13 @@ func addConverter[TIn, TOut any](fn func(TIn) TOut) {
 func init() {
 	addConverter(func(in *filesystem.MoveResponse) MoveResponse {
 		return MoveResponse{
-			Entry: convertEntryInfo(in.Entry),
+			Entry: convertEntryInfo(in.GetEntry()),
 		}
 	})
 
 	addConverter(func(in *filesystem.ListDirResponse) ListDirResponse {
 		var old []*EntryInfo
-		for _, item := range in.Entries {
+		for _, item := range in.GetEntries() {
 			old = append(old, convertEntryInfo(item))
 		}
 
@@ -71,24 +71,24 @@ func init() {
 
 	addConverter(func(in *filesystem.MakeDirResponse) MakeDirResponse {
 		return MakeDirResponse{
-			Entry: convertEntryInfo(in.Entry),
+			Entry: convertEntryInfo(in.GetEntry()),
 		}
 	})
 
-	addConverter(func(in *filesystem.RemoveResponse) RemoveResponse {
+	addConverter(func(*filesystem.RemoveResponse) RemoveResponse {
 		return RemoveResponse{}
 	})
 
 	addConverter(func(in *filesystem.StatResponse) StatResponse {
 		return StatResponse{
-			Entry: convertEntryInfo(in.Entry),
+			Entry: convertEntryInfo(in.GetEntry()),
 		}
 	})
 
 	addConverter(func(in *filesystem.WatchDirResponse) WatchDirResponse {
 		var event isWatchDirResponse_Event
 
-		switch e := in.Event.(type) {
+		switch e := in.GetEvent().(type) {
 		case *filesystem.WatchDirResponse_Start:
 			event = &WatchDirResponse_Start{
 				Start: convertStartEvent(e.Start),
@@ -110,14 +110,14 @@ func init() {
 
 	addConverter(func(in *filesystem.CreateWatcherResponse) CreateWatcherResponse {
 		return CreateWatcherResponse{
-			WatcherId: in.WatcherId,
+			WatcherId: in.GetWatcherId(),
 		}
 	})
 
 	addConverter(func(in *filesystem.GetWatcherEventsResponse) GetWatcherEventsResponse {
 		var events []*FilesystemEvent
 
-		for _, item := range in.Events {
+		for _, item := range in.GetEvents() {
 			events = append(events, convertFilesystemEvent(item))
 		}
 
@@ -189,8 +189,8 @@ func convertFilesystemEvent(e *filesystem.FilesystemEvent) *FilesystemEvent {
 		return nil
 	}
 	return &FilesystemEvent{
-		Name: e.Name,
-		Type: EventType(e.Type),
+		Name: e.GetName(),
+		Type: EventType(e.GetType()),
 	}
 }
 

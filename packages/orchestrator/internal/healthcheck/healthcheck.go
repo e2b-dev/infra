@@ -59,7 +59,7 @@ func (h *Healthcheck) getStatus() e2bHealth.Status {
 	return e2bHealth.Unhealthy
 }
 
-func (h *Healthcheck) healthHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Healthcheck) healthHandler(w http.ResponseWriter, _ *http.Request) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 

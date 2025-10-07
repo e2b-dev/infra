@@ -20,15 +20,15 @@ var _ Command = (*Env)(nil)
 
 func (e *Env) Execute(
 	ctx context.Context,
-	logger *zap.Logger,
+	_ *zap.Logger,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
-	prefix string,
+	_ string,
 	step *templatemanager.TemplateStep,
 	cmdMetadata metadata.Context,
 ) (metadata.Context, error) {
-	cmdType := strings.ToUpper(step.Type)
-	args := step.Args
+	cmdType := strings.ToUpper(step.GetType())
+	args := step.GetArgs()
 	// args: [key1 value1 key2 value2 ...]
 	if len(args) == 0 {
 		return metadata.Context{}, fmt.Errorf("%s does not support passing no arguments", cmdType)
@@ -67,7 +67,7 @@ func evaluateValue(
 		metadata.Context{
 			User: "root",
 		},
-		func(stdout, stderr string) {
+		func(stdout, _ string) {
 			envValue = stdout
 		},
 	)

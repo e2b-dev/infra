@@ -31,7 +31,7 @@ func TestSandboxListMetrics(t *testing.T) {
 
 		require.NotNil(t, response.JSON200)
 		require.NotNil(t, response.JSON200.Sandboxes)
-		if len(response.JSON200.Sandboxes) == 0 {
+		if len(response.JSON200.Sandboxes) < 2 {
 			return false
 		}
 
