@@ -64,6 +64,14 @@ variable "api_port" {
   })
 }
 
+variable "ingress_port" {
+  type = object({
+    name        = string
+    port        = number
+    health_path = string
+  })
+}
+
 variable "api_resources_cpu_count" {
   type = number
 }

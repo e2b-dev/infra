@@ -116,6 +116,7 @@ module "cluster" {
   api_use_nat = var.api_use_nat
   api_nat_ips = var.api_nat_ips
 
+  ingress_port                 = var.ingress_port
   edge_api_port                = var.edge_api_port
   edge_proxy_port              = var.edge_proxy_port
   api_port                     = var.api_port
@@ -178,6 +179,9 @@ module "nomad" {
   clickhouse_server_port           = var.clickhouse_server_service_port
   clickhouse_job_constraint_prefix = var.clickhouse_job_constraint_prefix
   clickhouse_node_pool             = var.clickhouse_node_pool
+
+  # Ingress
+  ingress_port = var.ingress_port
 
   # API
   api_resources_cpu_count                   = var.api_resources_cpu_count
