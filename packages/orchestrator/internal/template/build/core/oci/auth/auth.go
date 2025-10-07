@@ -20,7 +20,7 @@ func NewAuthProvider(registry *templatemanager.FromImageRegistry) RegistryAuthPr
 		return nil
 	}
 
-	switch auth := registry.Type.(type) {
+	switch auth := registry.GetType().(type) {
 	case *templatemanager.FromImageRegistry_Aws:
 		return NewAWSAuthProvider(auth.Aws)
 	case *templatemanager.FromImageRegistry_Gcp:

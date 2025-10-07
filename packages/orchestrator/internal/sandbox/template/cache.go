@@ -158,14 +158,12 @@ func (c *Cache) AddSnapshot(
 ) error {
 	switch memfileDiff.(type) {
 	case *build.NoDiff:
-		break
 	default:
 		c.buildStore.Add(memfileDiff)
 	}
 
 	switch rootfsDiff.(type) {
 	case *build.NoDiff:
-		break
 	default:
 		c.buildStore.Add(rootfsDiff)
 	}
