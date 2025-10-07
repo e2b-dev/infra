@@ -37,8 +37,8 @@ func (_m *MockCopyAndSet) EXPECT() *MockCopyAndSet_Expecter {
 }
 
 // CAS provides a mock function for the type MockCopyAndSet
-func (_mock *MockCopyAndSet) CAS(kVPair *api.KVPair, writeOptions *api.WriteOptions) (bool, *api.WriteMeta, error) {
-	ret := _mock.Called(kVPair, writeOptions)
+func (_mock *MockCopyAndSet) CAS(kv *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error) {
+	ret := _mock.Called(kv, opts)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CAS")
@@ -48,22 +48,22 @@ func (_mock *MockCopyAndSet) CAS(kVPair *api.KVPair, writeOptions *api.WriteOpti
 	var r1 *api.WriteMeta
 	var r2 error
 	if returnFunc, ok := ret.Get(0).(func(*api.KVPair, *api.WriteOptions) (bool, *api.WriteMeta, error)); ok {
-		return returnFunc(kVPair, writeOptions)
+		return returnFunc(kv, opts)
 	}
 	if returnFunc, ok := ret.Get(0).(func(*api.KVPair, *api.WriteOptions) bool); ok {
-		r0 = returnFunc(kVPair, writeOptions)
+		r0 = returnFunc(kv, opts)
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
 	if returnFunc, ok := ret.Get(1).(func(*api.KVPair, *api.WriteOptions) *api.WriteMeta); ok {
-		r1 = returnFunc(kVPair, writeOptions)
+		r1 = returnFunc(kv, opts)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*api.WriteMeta)
 		}
 	}
 	if returnFunc, ok := ret.Get(2).(func(*api.KVPair, *api.WriteOptions) error); ok {
-		r2 = returnFunc(kVPair, writeOptions)
+		r2 = returnFunc(kv, opts)
 	} else {
 		r2 = ret.Error(2)
 	}
@@ -76,13 +76,13 @@ type MockCopyAndSet_CAS_Call struct {
 }
 
 // CAS is a helper method to define mock.On call
-//   - kVPair *api.KVPair
-//   - writeOptions *api.WriteOptions
-func (_e *MockCopyAndSet_Expecter) CAS(kVPair interface{}, writeOptions interface{}) *MockCopyAndSet_CAS_Call {
-	return &MockCopyAndSet_CAS_Call{Call: _e.mock.On("CAS", kVPair, writeOptions)}
+//   - kv *api.KVPair
+//   - opts *api.WriteOptions
+func (_e *MockCopyAndSet_Expecter) CAS(kv interface{}, opts interface{}) *MockCopyAndSet_CAS_Call {
+	return &MockCopyAndSet_CAS_Call{Call: _e.mock.On("CAS", kv, opts)}
 }
 
-func (_c *MockCopyAndSet_CAS_Call) Run(run func(kVPair *api.KVPair, writeOptions *api.WriteOptions)) *MockCopyAndSet_CAS_Call {
+func (_c *MockCopyAndSet_CAS_Call) Run(run func(kv *api.KVPair, opts *api.WriteOptions)) *MockCopyAndSet_CAS_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 *api.KVPair
 		if args[0] != nil {
@@ -105,14 +105,14 @@ func (_c *MockCopyAndSet_CAS_Call) Return(b bool, writeMeta *api.WriteMeta, err 
 	return _c
 }
 
-func (_c *MockCopyAndSet_CAS_Call) RunAndReturn(run func(kVPair *api.KVPair, writeOptions *api.WriteOptions) (bool, *api.WriteMeta, error)) *MockCopyAndSet_CAS_Call {
+func (_c *MockCopyAndSet_CAS_Call) RunAndReturn(run func(kv *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)) *MockCopyAndSet_CAS_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // DeleteCAS provides a mock function for the type MockCopyAndSet
-func (_mock *MockCopyAndSet) DeleteCAS(kVPair *api.KVPair, writeOptions *api.WriteOptions) (bool, *api.WriteMeta, error) {
-	ret := _mock.Called(kVPair, writeOptions)
+func (_mock *MockCopyAndSet) DeleteCAS(kv *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error) {
+	ret := _mock.Called(kv, opts)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteCAS")
@@ -122,22 +122,22 @@ func (_mock *MockCopyAndSet) DeleteCAS(kVPair *api.KVPair, writeOptions *api.Wri
 	var r1 *api.WriteMeta
 	var r2 error
 	if returnFunc, ok := ret.Get(0).(func(*api.KVPair, *api.WriteOptions) (bool, *api.WriteMeta, error)); ok {
-		return returnFunc(kVPair, writeOptions)
+		return returnFunc(kv, opts)
 	}
 	if returnFunc, ok := ret.Get(0).(func(*api.KVPair, *api.WriteOptions) bool); ok {
-		r0 = returnFunc(kVPair, writeOptions)
+		r0 = returnFunc(kv, opts)
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
 	if returnFunc, ok := ret.Get(1).(func(*api.KVPair, *api.WriteOptions) *api.WriteMeta); ok {
-		r1 = returnFunc(kVPair, writeOptions)
+		r1 = returnFunc(kv, opts)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*api.WriteMeta)
 		}
 	}
 	if returnFunc, ok := ret.Get(2).(func(*api.KVPair, *api.WriteOptions) error); ok {
-		r2 = returnFunc(kVPair, writeOptions)
+		r2 = returnFunc(kv, opts)
 	} else {
 		r2 = ret.Error(2)
 	}
@@ -150,13 +150,13 @@ type MockCopyAndSet_DeleteCAS_Call struct {
 }
 
 // DeleteCAS is a helper method to define mock.On call
-//   - kVPair *api.KVPair
-//   - writeOptions *api.WriteOptions
-func (_e *MockCopyAndSet_Expecter) DeleteCAS(kVPair interface{}, writeOptions interface{}) *MockCopyAndSet_DeleteCAS_Call {
-	return &MockCopyAndSet_DeleteCAS_Call{Call: _e.mock.On("DeleteCAS", kVPair, writeOptions)}
+//   - kv *api.KVPair
+//   - opts *api.WriteOptions
+func (_e *MockCopyAndSet_Expecter) DeleteCAS(kv interface{}, opts interface{}) *MockCopyAndSet_DeleteCAS_Call {
+	return &MockCopyAndSet_DeleteCAS_Call{Call: _e.mock.On("DeleteCAS", kv, opts)}
 }
 
-func (_c *MockCopyAndSet_DeleteCAS_Call) Run(run func(kVPair *api.KVPair, writeOptions *api.WriteOptions)) *MockCopyAndSet_DeleteCAS_Call {
+func (_c *MockCopyAndSet_DeleteCAS_Call) Run(run func(kv *api.KVPair, opts *api.WriteOptions)) *MockCopyAndSet_DeleteCAS_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 *api.KVPair
 		if args[0] != nil {
@@ -179,7 +179,7 @@ func (_c *MockCopyAndSet_DeleteCAS_Call) Return(b bool, writeMeta *api.WriteMeta
 	return _c
 }
 
-func (_c *MockCopyAndSet_DeleteCAS_Call) RunAndReturn(run func(kVPair *api.KVPair, writeOptions *api.WriteOptions) (bool, *api.WriteMeta, error)) *MockCopyAndSet_DeleteCAS_Call {
+func (_c *MockCopyAndSet_DeleteCAS_Call) RunAndReturn(run func(kv *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)) *MockCopyAndSet_DeleteCAS_Call {
 	_c.Call.Return(run)
 	return _c
 }
