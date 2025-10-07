@@ -88,9 +88,6 @@ func (s *DiffStore) Close() {
 }
 
 func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
-	ctx, span := tracer.Start(ctx, "get diff from cache")
-	defer span.End()
-
 	s.resetDelete(diff.CacheKey())
 	source, found := s.cache.GetOrSet(
 		diff.CacheKey(),
