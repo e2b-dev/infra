@@ -11,10 +11,21 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+type copyAndSet interface {
+	CAS(*consulApi.KVPair, *consulApi.WriteOptions) (bool, *consulApi.WriteMeta, error)
+	DeleteCAS(*consulApi.KVPair, *consulApi.WriteOptions) (bool, *consulApi.WriteMeta, error)
+	Get(key string, q *consulApi.QueryOptions) (*consulApi.KVPair, *consulApi.QueryMeta, error)
+	Keys(prefix, separator string, q *consulApi.QueryOptions) ([]string, *consulApi.QueryMeta, error)
+}
+
+var _ copyAndSet = (*consulApi.KV)(nil)
+
+const attempts = 10
+
 type StorageKV struct {
-	slotsSize    int
-	consulClient *consulApi.Client
-	nodeID       string
+	slotsSize int
+	kv        copyAndSet
+	nodeID    string
 }
 
 func (s *StorageKV) getKVKey(slotIdx int) string {
@@ -30,9 +41,9 @@ func NewStorageKV(slotsSize int, nodeID string) (*StorageKV, error) {
 	}
 
 	return &StorageKV{
-		slotsSize:    slotsSize,
-		consulClient: consulClient,
-		nodeID:       nodeID,
+		slotsSize: slotsSize,
+		kv:        consulClient.KV(),
+		nodeID:    nodeID,
 	}, nil
 }
 
@@ -49,12 +60,10 @@ func newConsulClient(token string) (*consulApi.Client, error) {
 }
 
 func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
-	kv := s.consulClient.KV()
-
 	var slot *Slot
 
 	trySlot := func(slotIdx int, key string) (*Slot, error) {
-		status, _, err := kv.CAS(&consulApi.KVPair{
+		status, _, err := s.kv.CAS(&consulApi.KVPair{
 			Key:         key,
 			ModifyIndex: 0,
 		}, nil)
@@ -69,8 +78,8 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 		return nil, nil
 	}
 
-	for randomTry := 1; randomTry <= 10; randomTry++ {
-		slotIdx := rand.Intn(s.slotsSize)
+	for randomTry := 0; randomTry < attempts; randomTry++ {
+		slotIdx := rand.Intn(s.slotsSize) + 1 // network slots are 1-based
 		key := s.getKVKey(slotIdx)
 
 		maybeSlot, err := trySlot(slotIdx, key)
@@ -89,7 +98,7 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 		// This is a fallback for the case when all slots are taken.
 		// There is no Consul lock so it's possible that multiple sandboxes will try to acquire the same slot.
 		// In this case, only one of them will succeed and other will try with different slots.
-		reservedKeys, _, keysErr := kv.Keys(s.nodeID+"/", "", nil)
+		reservedKeys, _, keysErr := s.kv.Keys(s.nodeID+"/", "", nil)
 		if keysErr != nil {
 			return nil, fmt.Errorf("failed to read Consul KV: %w", keysErr)
 		}
@@ -122,9 +131,7 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 }
 
 func (s *StorageKV) Release(ips *Slot) error {
-	kv := s.consulClient.KV()
-
-	pair, _, err := kv.Get(ips.Key, nil)
+	pair, _, err := s.kv.Get(ips.Key, nil)
 	if err != nil {
 		return fmt.Errorf("failed to release IPSlot: Failed to read Consul KV: %w", err)
 	}
@@ -133,7 +140,7 @@ func (s *StorageKV) Release(ips *Slot) error {
 		return fmt.Errorf("IP slot %d was already released", ips.Idx)
 	}
 
-	status, _, err := kv.DeleteCAS(&consulApi.KVPair{
+	status, _, err := s.kv.DeleteCAS(&consulApi.KVPair{
 		Key:         ips.Key,
 		ModifyIndex: pair.ModifyIndex,
 	}, nil)

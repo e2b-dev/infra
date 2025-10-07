@@ -14,3 +14,12 @@ packages:
           dir: packages/shared/pkg/storage/mocks
           filename: mocks.go
           pkgname: storagemocks
+
+  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network:
+    interfaces:
+      copyAndSet:
+        config:
+          dir: packages/orchestrator/internal/sandbox/network/mocks
+          filename: copyandset.go
+          pkgname: networkmocks
+          structname: MockCopyAndSet
