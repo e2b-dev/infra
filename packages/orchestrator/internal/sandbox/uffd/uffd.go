@@ -38,16 +38,17 @@ type Uffd struct {
 
 	lis *net.UnixListener
 
-	memfile    *block.TrackedSliceDevice
+	memfile    block.ReadonlyDevice
+	dirty      *memory.Tracker
 	socketPath string
 }
 
 var _ MemoryBackend = (*Uffd)(nil)
 
 func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uffd, error) {
-	trackedMemfile, err := block.NewTrackedSliceDevice(blockSize, memfile)
+	size, err := memfile.Size()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create tracked slice device: %w", err)
+		return nil, fmt.Errorf("failed to get memfile size: %w", err)
 	}
 
 	fdExit, err := fdexit.New()
@@ -59,8 +60,9 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 		exit:       utils.NewErrorOnce(),
 		readyCh:    make(chan struct{}, 1),
 		fdExit:     fdExit,
-		memfile:    trackedMemfile,
 		socketPath: socketPath,
+		memfile:    memfile,
+		dirty:      memory.NewTracker(size, memfile.BlockSize()),
 	}, nil
 }
 
@@ -171,6 +173,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		ctx,
 		m,
 		u.memfile,
+		u.dirty,
 		u.fdExit,
 		zap.L().With(logger.WithSandboxID(sandboxId)),
 	)
@@ -193,10 +196,6 @@ func (u *Uffd) Exit() *utils.ErrorOnce {
 	return u.exit
 }
 
-func (u *Uffd) Disable() error {
-	return u.memfile.Disable()
-}
-
 func (u *Uffd) Dirty() *bitset.BitSet {
-	return u.memfile.Dirty()
+	return u.dirty.BitSet()
 }
