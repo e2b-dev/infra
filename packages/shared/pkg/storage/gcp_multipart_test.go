@@ -285,8 +285,8 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 
 			// Update max concurrent parts
 			for {
-				max := atomic.LoadInt32(&maxConcurrentParts)
-				if current <= max || atomic.CompareAndSwapInt32(&maxConcurrentParts, max, current) {
+				maxConcurrent := atomic.LoadInt32(&maxConcurrentParts)
+				if current <= maxConcurrent || atomic.CompareAndSwapInt32(&maxConcurrentParts, maxConcurrent, current) {
 					break
 				}
 			}
@@ -564,8 +564,8 @@ func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testin
 
 			// Track max observed concurrency
 			for {
-				max := atomic.LoadInt32(&maxObservedConcurrency)
-				if current <= max || atomic.CompareAndSwapInt32(&maxObservedConcurrency, max, current) {
+				maxObserved := atomic.LoadInt32(&maxObservedConcurrency)
+				if current <= maxObserved || atomic.CompareAndSwapInt32(&maxObservedConcurrency, maxObserved, current) {
 					break
 				}
 			}
