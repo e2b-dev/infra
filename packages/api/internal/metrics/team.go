@@ -77,7 +77,7 @@ func (so *TeamObserver) Start(cache sandbox.Store) (err error) {
 	// Register callbacks for team sandbox metrics
 	so.registration, err = so.meter.RegisterCallback(
 		func(ctx context.Context, obs metric.Observer) error {
-			sbxs := cache.Items(nil)
+			sbxs := cache.Items(nil, []sandbox.State{sandbox.StateRunning})
 			sbxsPerTeam := make(map[string]int64)
 			for _, sbx := range sbxs {
 				teamID := sbx.TeamID.String()

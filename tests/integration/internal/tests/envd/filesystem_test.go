@@ -91,11 +91,11 @@ func TestListDir(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.NotEmpty(t, folderListResp.Msg)
-			assert.Len(t, folderListResp.Msg.Entries, len(tt.expectedPaths))
+			assert.Len(t, folderListResp.Msg.GetEntries(), len(tt.expectedPaths))
 
-			actualPaths := make([]string, len(folderListResp.Msg.Entries))
-			for i, entry := range folderListResp.Msg.Entries {
-				actualPaths[i] = entry.Path
+			actualPaths := make([]string, len(folderListResp.Msg.GetEntries()))
+			for i, entry := range folderListResp.Msg.GetEntries() {
+				actualPaths[i] = entry.GetPath()
 			}
 			assert.ElementsMatch(t, tt.expectedPaths, actualPaths)
 		})
@@ -164,25 +164,25 @@ func TestStat(t *testing.T) {
 
 	// Verify the stat response
 	require.NotNil(t, statResp.Msg)
-	require.NotNil(t, statResp.Msg.Entry)
-	entry := statResp.Msg.Entry
+	require.NotNil(t, statResp.Msg.GetEntry())
+	entry := statResp.Msg.GetEntry()
 
 	// Verify basic file info
-	assert.Equal(t, "test.txt", entry.Name)
-	assert.Equal(t, filePath, entry.Path)
-	assert.Equal(t, filesystem.FileType_FILE_TYPE_FILE, entry.Type)
+	assert.Equal(t, "test.txt", entry.GetName())
+	assert.Equal(t, filePath, entry.GetPath())
+	assert.Equal(t, filesystem.FileType_FILE_TYPE_FILE, entry.GetType())
 
 	// Verify permissions and ownership
-	assert.Equal(t, uint32(0o644), entry.Mode)
-	assert.Equal(t, "-rw-r--r--", entry.Permissions)
-	assert.Equal(t, "user", entry.Owner)
-	assert.Equal(t, "user", entry.Group)
+	assert.Equal(t, uint32(0o644), entry.GetMode())
+	assert.Equal(t, "-rw-r--r--", entry.GetPermissions())
+	assert.Equal(t, "user", entry.GetOwner())
+	assert.Equal(t, "user", entry.GetGroup())
 
 	// Verify file size
-	assert.Equal(t, int64(13), entry.Size)
+	assert.Equal(t, int64(13), entry.GetSize())
 
 	// Verify modified time
-	require.NotNil(t, entry.ModifiedTime)
+	require.NotNil(t, entry.GetModifiedTime())
 }
 
 func TestListDirFileEntry(t *testing.T) {
@@ -214,21 +214,21 @@ func TestListDirFileEntry(t *testing.T) {
 
 	// Verify response
 	require.NotEmpty(t, folderListResp.Msg)
-	require.Len(t, folderListResp.Msg.Entries, 1)
+	require.Len(t, folderListResp.Msg.GetEntries(), 1)
 
 	// Get the file entry
-	fileEntry := folderListResp.Msg.Entries[0]
+	fileEntry := folderListResp.Msg.GetEntries()[0]
 
 	// Verify file entry
-	assert.Equal(t, "test.txt", fileEntry.Name)
-	assert.Equal(t, filePath, fileEntry.Path)
-	assert.Equal(t, filesystem.FileType_FILE_TYPE_FILE, fileEntry.Type)
-	assert.Equal(t, uint32(0o644), fileEntry.Mode)
-	assert.Equal(t, "-rw-r--r--", fileEntry.Permissions)
-	assert.Equal(t, "user", fileEntry.Owner)
-	assert.Equal(t, "user", fileEntry.Group)
-	assert.Equal(t, int64(13), fileEntry.Size) // "Hello, World!" is 13 bytes
-	require.NotNil(t, fileEntry.ModifiedTime)
+	assert.Equal(t, "test.txt", fileEntry.GetName())
+	assert.Equal(t, filePath, fileEntry.GetPath())
+	assert.Equal(t, filesystem.FileType_FILE_TYPE_FILE, fileEntry.GetType())
+	assert.Equal(t, uint32(0o644), fileEntry.GetMode())
+	assert.Equal(t, "-rw-r--r--", fileEntry.GetPermissions())
+	assert.Equal(t, "user", fileEntry.GetOwner())
+	assert.Equal(t, "user", fileEntry.GetGroup())
+	assert.Equal(t, int64(13), fileEntry.GetSize()) // "Hello, World!" is 13 bytes
+	require.NotNil(t, fileEntry.GetModifiedTime())
 }
 
 func TestListDirEntry(t *testing.T) {
@@ -258,20 +258,20 @@ func TestListDirEntry(t *testing.T) {
 
 	// Verify response
 	require.NotEmpty(t, folderListResp.Msg)
-	require.Len(t, folderListResp.Msg.Entries, 1)
+	require.Len(t, folderListResp.Msg.GetEntries(), 1)
 
 	// Get the subdirectory entry
-	entry := folderListResp.Msg.Entries[0]
+	entry := folderListResp.Msg.GetEntries()[0]
 
 	// Verify EntryInfo
-	assert.Equal(t, "subdir", entry.Name)
-	assert.Equal(t, subDir, entry.Path)
-	assert.Equal(t, filesystem.FileType_FILE_TYPE_DIRECTORY, entry.Type)
-	assert.Equal(t, uint32(0o755), entry.Mode)
-	assert.Equal(t, "drwxr-xr-x", entry.Permissions)
-	assert.Equal(t, "user", entry.Owner)
-	assert.Equal(t, "user", entry.Group)
-	require.NotNil(t, entry.ModifiedTime)
+	assert.Equal(t, "subdir", entry.GetName())
+	assert.Equal(t, subDir, entry.GetPath())
+	assert.Equal(t, filesystem.FileType_FILE_TYPE_DIRECTORY, entry.GetType())
+	assert.Equal(t, uint32(0o755), entry.GetMode())
+	assert.Equal(t, "drwxr-xr-x", entry.GetPermissions())
+	assert.Equal(t, "user", entry.GetOwner())
+	assert.Equal(t, "user", entry.GetGroup())
+	require.NotNil(t, entry.GetModifiedTime())
 }
 
 func TestListDirMixedEntries(t *testing.T) {
@@ -305,36 +305,36 @@ func TestListDirMixedEntries(t *testing.T) {
 
 	// Verify response
 	require.NotEmpty(t, folderListResp.Msg)
-	require.Len(t, folderListResp.Msg.Entries, 2)
+	require.Len(t, folderListResp.Msg.GetEntries(), 2)
 
 	// Create a map of entries by name for easier verification
 	entries := make(map[string]*filesystem.EntryInfo)
-	for _, entry := range folderListResp.Msg.Entries {
-		entries[entry.Name] = entry
+	for _, entry := range folderListResp.Msg.GetEntries() {
+		entries[entry.GetName()] = entry
 	}
 
 	// Verify directory entry
 	dirEntry, exists := entries["subdir"]
 	require.True(t, exists)
-	assert.Equal(t, subDir, dirEntry.Path)
-	assert.Equal(t, filesystem.FileType_FILE_TYPE_DIRECTORY, dirEntry.Type)
-	assert.Equal(t, uint32(0o755), dirEntry.Mode)
-	assert.Equal(t, "drwxr-xr-x", dirEntry.Permissions)
-	assert.Equal(t, "user", dirEntry.Owner)
-	assert.Equal(t, "user", dirEntry.Group)
-	require.NotNil(t, dirEntry.ModifiedTime)
+	assert.Equal(t, subDir, dirEntry.GetPath())
+	assert.Equal(t, filesystem.FileType_FILE_TYPE_DIRECTORY, dirEntry.GetType())
+	assert.Equal(t, uint32(0o755), dirEntry.GetMode())
+	assert.Equal(t, "drwxr-xr-x", dirEntry.GetPermissions())
+	assert.Equal(t, "user", dirEntry.GetOwner())
+	assert.Equal(t, "user", dirEntry.GetGroup())
+	require.NotNil(t, dirEntry.GetModifiedTime())
 
 	// Verify file entry
 	fileEntry, exists := entries["test.txt"]
 	require.True(t, exists)
-	assert.Equal(t, filePath, fileEntry.Path)
-	assert.Equal(t, filesystem.FileType_FILE_TYPE_FILE, fileEntry.Type)
-	assert.Equal(t, uint32(0o644), fileEntry.Mode)
-	assert.Equal(t, "-rw-r--r--", fileEntry.Permissions)
-	assert.Equal(t, "user", fileEntry.Owner)
-	assert.Equal(t, "user", fileEntry.Group)
-	assert.Equal(t, int64(13), fileEntry.Size) // "Hello, World!" is 13 bytes
-	require.NotNil(t, fileEntry.ModifiedTime)
+	assert.Equal(t, filePath, fileEntry.GetPath())
+	assert.Equal(t, filesystem.FileType_FILE_TYPE_FILE, fileEntry.GetType())
+	assert.Equal(t, uint32(0o644), fileEntry.GetMode())
+	assert.Equal(t, "-rw-r--r--", fileEntry.GetPermissions())
+	assert.Equal(t, "user", fileEntry.GetOwner())
+	assert.Equal(t, "user", fileEntry.GetGroup())
+	assert.Equal(t, int64(13), fileEntry.GetSize()) // "Hello, World!" is 13 bytes
+	require.NotNil(t, fileEntry.GetModifiedTime())
 }
 
 func TestRelativePath(t *testing.T) {
@@ -358,7 +358,7 @@ func TestRelativePath(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NotEmpty(t, folderListResp.Msg)
-	assert.Len(t, folderListResp.Msg.Entries, 1)
+	assert.Len(t, folderListResp.Msg.GetEntries(), 1)
 
-	assert.Equal(t, path.Join(userHome, relativeTestFolder, "test.txt"), folderListResp.Msg.Entries[0].Path)
+	assert.Equal(t, path.Join(userHome, relativeTestFolder, "test.txt"), folderListResp.Msg.GetEntries()[0].GetPath())
 }
