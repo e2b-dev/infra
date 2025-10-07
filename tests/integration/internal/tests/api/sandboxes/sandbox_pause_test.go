@@ -82,8 +82,7 @@ func TestSandboxPause(t *testing.T) {
 	})
 
 	t.Run("pause already paused sandbox", func(t *testing.T) {
-		// Create a sandbox with auto-pause disabled
-		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
+		sbx := utils.SetupSandboxWithCleanup(t, c)
 		sbxId := sbx.SandboxID
 
 		// Pause the sandbox
