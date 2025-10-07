@@ -423,7 +423,7 @@ func TestCreateSecret(t *testing.T) {
 
 	t.Run("succeeds with label exactly 256 characters", func(t *testing.T) {
 		maxLabel := ""
-		for i := 0; i < 256; i++ {
+		for range 256 {
 			maxLabel += "a"
 		}
 
