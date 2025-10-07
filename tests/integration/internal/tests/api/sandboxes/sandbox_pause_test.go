@@ -91,7 +91,7 @@ func TestSandboxPause(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNoContent, resp.StatusCode())
 
-		// Set timeout to 0 to force sandbox to be stopped
+		// Try to pause the sandbox again
 		resp, err = c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusConflict, resp.StatusCode())
