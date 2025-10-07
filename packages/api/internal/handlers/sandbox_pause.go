@@ -34,10 +34,16 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
 
-	sbx, err := a.orchestrator.GetSandbox(sandboxID, true)
+	sbx, err := a.orchestrator.GetSandbox(sandboxID)
 	if err != nil {
-		apiErr := pauseHandleNotRunningSandbox(ctx, a.sqlcDB, sandboxID, teamID)
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		if errors.Is(err, orchestrator.ErrSandboxNotFound) {
+			apiErr := pauseHandleNotRunningSandbox(ctx, a.sqlcDB, sandboxID, teamID)
+			a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+			return
+		}
+
+		telemetry.ReportError(ctx, "error when getting sandbox", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
 		return
 	}
 

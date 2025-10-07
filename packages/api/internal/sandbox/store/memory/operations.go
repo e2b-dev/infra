@@ -61,19 +61,13 @@ func (s *Store) get(sandboxID string) (*memorySandbox, error) {
 }
 
 // Get the item from the cache.
-func (s *Store) Get(sandboxID string, includeEvicting bool) (sandbox.Sandbox, error) {
+func (s *Store) Get(sandboxID string) (sandbox.Sandbox, error) {
 	item, ok := s.items.Get(sandboxID)
 	if !ok {
-		return sandbox.Sandbox{}, fmt.Errorf("sandbox \"%s\" doesn't exist", sandboxID)
+		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}
 	}
 
-	data := item.Data()
-
-	if data.IsExpired() && !includeEvicting {
-		return sandbox.Sandbox{}, fmt.Errorf("sandbox \"%s\" is being evicted", sandboxID)
-	}
-
-	return data, nil
+	return item.Data(), nil
 }
 
 func (s *Store) Remove(sandboxID string) {
