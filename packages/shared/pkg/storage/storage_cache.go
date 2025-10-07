@@ -127,6 +127,7 @@ func (c *CachedFileObjectProvider) ReadAt(ctx context.Context, buff []byte, offs
 
 	// try to read from cache first
 	chunkPath := c.makeChunkFilename(offset)
+	span.SetAttributes(attribute.String("chunk_path", chunkPath))
 
 	readTimer := cacheReadTimerFactory.Begin()
 	count, err := c.readAtFromCache(chunkPath, buff)
