@@ -25,14 +25,13 @@ func New(db queries.DBTX) *SQLiteLimiter {
 	return &SQLiteLimiter{queries: queries.New(db)}
 }
 
-var ErrFailed = errors.New("failed to acquire limit")
 var ErrTimeout = errors.New("timeout")
 
 func (l *SQLiteLimiter) TryAcquire(ctx context.Context, key string, limit int64) error {
 	setID := uuid.NewString()
 
 	for range retries {
-		result, err := l.queries.Acquire(ctx, queries.AcquireParams{
+		_, err := l.queries.Acquire(ctx, queries.AcquireParams{
 			Key:   key,
 			Setid: setID,
 		})
@@ -52,7 +51,6 @@ func (l *SQLiteLimiter) TryAcquire(ctx context.Context, key string, limit int64)
 			return fmt.Errorf("failed to acquire item: %w", err)
 		}
 
-		fmt.Printf("acquired item: %v\n", result)
 		return nil
 	}
 
