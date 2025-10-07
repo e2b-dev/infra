@@ -140,7 +140,7 @@ func newOtelCore(ctx context.Context, opts opts) (zapcore.Core, error) {
 		return nil, fmt.Errorf("failed to create logs exporter: %w", err)
 	}
 
-	loggerProvider := telemetry.NewLogProvider(ctx, logsExporter, resource)
+	loggerProvider := telemetry.NewLogProvider(logsExporter, resource)
 	otelCore := logger.GetOTELCore(loggerProvider, serviceName)
 	return otelCore, nil
 }
