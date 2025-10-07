@@ -34,8 +34,12 @@ const (
 
 func (a *APIStore) GetSecrets(c *gin.Context) {
 	ctx := c.Request.Context()
-
 	teamID := a.GetTeamInfo(c).Team.ID
+
+	if a.secretVault == nil {
+		a.sendAPIStoreError(c, http.StatusForbidden, "Secrets are disabled. Configure the secret vault to enable secrets.")
+		return
+	}
 
 	secretsFeatureFlag, err := a.featureFlags.BoolFlag(ctx, featureflags.SecretsFeatureFlag)
 	if err != nil {
@@ -78,8 +82,12 @@ func (a *APIStore) GetSecrets(c *gin.Context) {
 
 func (a *APIStore) PostSecrets(c *gin.Context) {
 	ctx := c.Request.Context()
-
 	teamID := a.GetTeamInfo(c).Team.ID
+
+	if a.secretVault == nil {
+		a.sendAPIStoreError(c, http.StatusForbidden, "Secrets are disabled. Configure the secret vault to enable secrets.")
+		return
+	}
 
 	secretsFeatureFlag, err := a.featureFlags.BoolFlag(ctx, featureflags.SecretsFeatureFlag)
 	if err != nil {
@@ -177,6 +185,11 @@ func (a *APIStore) PatchSecretsSecretID(c *gin.Context, secretID string) {
 	ctx := c.Request.Context()
 	teamID := a.GetTeamInfo(c).Team.ID
 
+	if a.secretVault == nil {
+		a.sendAPIStoreError(c, http.StatusForbidden, "Secrets are disabled. Configure the secret vault to enable secrets.")
+		return
+	}
+
 	secretsFeatureFlag, err := a.featureFlags.BoolFlag(ctx, featureflags.SecretsFeatureFlag)
 	if err != nil {
 		zap.L().Error("Failed to get Secrets feature flag", zap.Error(err))
@@ -243,6 +256,11 @@ func (a *APIStore) PatchSecretsSecretID(c *gin.Context, secretID string) {
 func (a *APIStore) DeleteSecretsSecretID(c *gin.Context, secretID string) {
 	ctx := c.Request.Context()
 	teamID := a.GetTeamInfo(c).Team.ID
+
+	if a.secretVault == nil {
+		a.sendAPIStoreError(c, http.StatusForbidden, "Secrets are disabled. Configure the secret vault to enable secrets.")
+		return
+	}
 
 	secretsFeatureFlag, err := a.featureFlags.BoolFlag(ctx, featureflags.SecretsFeatureFlag)
 	if err != nil {
