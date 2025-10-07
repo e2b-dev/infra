@@ -6,19 +6,19 @@ import (
 	"math/rand"
 	"slices"
 
-	consulApi "github.com/hashicorp/consul/api"
+	consul "github.com/hashicorp/consul/api"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type copyAndSet interface {
-	CAS(*consulApi.KVPair, *consulApi.WriteOptions) (bool, *consulApi.WriteMeta, error)
-	DeleteCAS(*consulApi.KVPair, *consulApi.WriteOptions) (bool, *consulApi.WriteMeta, error)
-	Get(key string, q *consulApi.QueryOptions) (*consulApi.KVPair, *consulApi.QueryMeta, error)
-	Keys(prefix, separator string, q *consulApi.QueryOptions) ([]string, *consulApi.QueryMeta, error)
+	CAS(kv *consul.KVPair, opts *consul.WriteOptions) (bool, *consul.WriteMeta, error)
+	DeleteCAS(kv *consul.KVPair, opts *consul.WriteOptions) (bool, *consul.WriteMeta, error)
+	Get(key string, q *consul.QueryOptions) (*consul.KVPair, *consul.QueryMeta, error)
+	Keys(prefix, separator string, q *consul.QueryOptions) ([]string, *consul.QueryMeta, error)
 }
 
-var _ copyAndSet = (*consulApi.KV)(nil)
+var _ copyAndSet = (*consul.KV)(nil)
 
 const attempts = 10
 
@@ -47,11 +47,11 @@ func NewStorageKV(slotsSize int, nodeID string) (*StorageKV, error) {
 	}, nil
 }
 
-func newConsulClient(token string) (*consulApi.Client, error) {
-	config := consulApi.DefaultConfig()
+func newConsulClient(token string) (*consul.Client, error) {
+	config := consul.DefaultConfig()
 	config.Token = token
 
-	consulClient, err := consulApi.NewClient(config)
+	consulClient, err := consul.NewClient(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Consul client: %w", err)
 	}
@@ -59,14 +59,14 @@ func newConsulClient(token string) (*consulApi.Client, error) {
 	return consulClient, nil
 }
 
-func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
+func (s *StorageKV) Acquire(ctx context.Context) (*Slot, error) {
 	var slot *Slot
 
 	trySlot := func(slotIdx int, key string) (*Slot, error) {
-		status, _, err := s.kv.CAS(&consulApi.KVPair{
+		status, _, err := s.kv.CAS(&consul.KVPair{
 			Key:         key,
 			ModifyIndex: 0,
-		}, nil)
+		}, new(consul.WriteOptions).WithContext(ctx))
 		if err != nil {
 			return nil, fmt.Errorf("failed to write to Consul KV: %w", err)
 		}
@@ -78,7 +78,7 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 		return nil, nil
 	}
 
-	for randomTry := 0; randomTry < attempts; randomTry++ {
+	for range attempts {
 		slotIdx := rand.Intn(s.slotsSize) + 1 // network slots are 1-based
 		key := s.getKVKey(slotIdx)
 
@@ -98,7 +98,7 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 		// This is a fallback for the case when all slots are taken.
 		// There is no Consul lock so it's possible that multiple sandboxes will try to acquire the same slot.
 		// In this case, only one of them will succeed and other will try with different slots.
-		reservedKeys, _, keysErr := s.kv.Keys(s.nodeID+"/", "", nil)
+		reservedKeys, _, keysErr := s.kv.Keys(s.nodeID+"/", "", new(consul.QueryOptions).WithContext(ctx))
 		if keysErr != nil {
 			return nil, fmt.Errorf("failed to read Consul KV: %w", keysErr)
 		}
@@ -130,8 +130,8 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 	return slot, nil
 }
 
-func (s *StorageKV) Release(ips *Slot) error {
-	pair, _, err := s.kv.Get(ips.Key, nil)
+func (s *StorageKV) Release(ctx context.Context, ips *Slot) error {
+	pair, _, err := s.kv.Get(ips.Key, new(consul.QueryOptions).WithContext(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to release IPSlot: Failed to read Consul KV: %w", err)
 	}
@@ -140,10 +140,10 @@ func (s *StorageKV) Release(ips *Slot) error {
 		return fmt.Errorf("IP slot %d was already released", ips.Idx)
 	}
 
-	status, _, err := s.kv.DeleteCAS(&consulApi.KVPair{
+	status, _, err := s.kv.DeleteCAS(&consul.KVPair{
 		Key:         ips.Key,
 		ModifyIndex: pair.ModifyIndex,
-	}, nil)
+	}, new(consul.WriteOptions).WithContext(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to release IPSlot: Failed to delete slot from Consul KV: %w", err)
 	}
