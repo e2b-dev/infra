@@ -99,24 +99,23 @@ runs:
         export VAULT_ADDR='http://localhost:8200'
         export VAULT_TOKEN='myroot'
 
-        echo "Enabling KV v2 secrets engine..."
-        docker exec -e VAULT_ADDR=$VAULT_ADDR -e VAULT_TOKEN=$VAULT_TOKEN vault \
-          vault secrets enable -version=2 -path=secret kv || true
-
         echo "Enabling AppRole auth..."
         docker exec -e VAULT_ADDR=$VAULT_ADDR -e VAULT_TOKEN=$VAULT_TOKEN vault \
           vault auth enable approle || true
 
         echo "Creating Vault policy..."
-        docker exec -e VAULT_ADDR=$VAULT_ADDR -e VAULT_TOKEN=$VAULT_TOKEN vault \
-          vault policy write test-policy - <<EOF
+        cat > /tmp/vault-policy.hcl <<'POLICY'
         path "secret/data/*" {
           capabilities = ["create", "read", "update", "delete"]
         }
         path "secret/metadata/*" {
           capabilities = ["create", "read", "update", "delete"]
         }
-        EOF
+        POLICY
+        
+        docker cp /tmp/vault-policy.hcl vault:/tmp/vault-policy.hcl
+        docker exec -e VAULT_ADDR=$VAULT_ADDR -e VAULT_TOKEN=$VAULT_TOKEN vault \
+          vault policy write test-policy /tmp/vault-policy.hcl
 
         echo "Creating AppRole..."
         docker exec -e VAULT_ADDR=$VAULT_ADDR -e VAULT_TOKEN=$VAULT_TOKEN vault \
