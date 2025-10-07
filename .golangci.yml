@@ -108,7 +108,6 @@ linters:
         - { disabled: true, name: max-public-structs }
         - { disabled: true, name: nested-structs }
         - { disabled: true, name: package-comments }
-        - { disabled: true, name: redefines-builtin-id }
         - { disabled: true, name: unchecked-type-assertion }
         - { disabled: true, name: unexported-naming }
         - { disabled: true, name: unexported-return }
