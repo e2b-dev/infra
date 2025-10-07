@@ -60,7 +60,7 @@ func TestValidateHostname(t *testing.T) {
 		for _, hostname := range invalidMixed {
 			t.Run(hostname, func(t *testing.T) {
 				err := validateHostname(hostname)
-				assert.Error(t, err, "hostname %q with mixed wildcard should be invalid", hostname)
+				require.Error(t, err, "hostname %q with mixed wildcard should be invalid", hostname)
 				assert.Contains(t, err.Error(), "invalid hostname pattern")
 			})
 		}
@@ -110,7 +110,7 @@ func TestValidateHostname(t *testing.T) {
 		for _, hostname := range invalidSchemes {
 			t.Run(hostname, func(t *testing.T) {
 				err := validateHostname(hostname)
-				assert.Error(t, err, "hostname %q with scheme should be invalid", hostname)
+				require.Error(t, err, "hostname %q with scheme should be invalid", hostname)
 				assert.Contains(t, err.Error(), "cannot contain schemes")
 			})
 		}
@@ -126,7 +126,7 @@ func TestValidateHostname(t *testing.T) {
 		for _, hostname := range invalidPaths {
 			t.Run(hostname, func(t *testing.T) {
 				err := validateHostname(hostname)
-				assert.Error(t, err, "hostname %q with path should be invalid", hostname)
+				require.Error(t, err, "hostname %q with path should be invalid", hostname)
 				assert.Contains(t, err.Error(), "cannot contain schemes")
 			})
 		}
@@ -142,7 +142,7 @@ func TestValidateHostname(t *testing.T) {
 		for _, hostname := range invalidPorts {
 			t.Run(hostname, func(t *testing.T) {
 				err := validateHostname(hostname)
-				assert.Error(t, err, "hostname %q with port should be invalid", hostname)
+				require.Error(t, err, "hostname %q with port should be invalid", hostname)
 				assert.Contains(t, err.Error(), "invalid hostname pattern")
 			})
 		}
@@ -168,7 +168,7 @@ func TestValidateHostname(t *testing.T) {
 		for _, hostname := range invalidChars {
 			t.Run(hostname, func(t *testing.T) {
 				err := validateHostname(hostname)
-				assert.Error(t, err, "hostname %q with special characters should be invalid", hostname)
+				require.Error(t, err, "hostname %q with special characters should be invalid", hostname)
 				assert.Contains(t, err.Error(), "invalid hostname pattern")
 			})
 		}
@@ -186,7 +186,7 @@ func TestValidateHostname(t *testing.T) {
 		for _, hostname := range invalidWhitespace {
 			t.Run(hostname, func(t *testing.T) {
 				err := validateHostname(hostname)
-				assert.Error(t, err, "hostname %q with whitespace should be invalid", hostname)
+				require.Error(t, err, "hostname %q with whitespace should be invalid", hostname)
 				assert.Contains(t, err.Error(), "invalid hostname pattern")
 			})
 		}
@@ -218,7 +218,7 @@ func TestValidateHostname(t *testing.T) {
 		for _, hostname := range invalidHyphens {
 			t.Run(hostname, func(t *testing.T) {
 				err := validateHostname(hostname)
-				assert.Error(t, err, "hostname %q with label ending with hyphen should be invalid", hostname)
+				require.Error(t, err, "hostname %q with label ending with hyphen should be invalid", hostname)
 				assert.Contains(t, err.Error(), "invalid hostname pattern")
 			})
 		}
@@ -234,7 +234,7 @@ func TestValidateHostname(t *testing.T) {
 		for _, hostname := range invalidDots {
 			t.Run(hostname, func(t *testing.T) {
 				err := validateHostname(hostname)
-				assert.Error(t, err, "hostname %q with consecutive dots should be invalid", hostname)
+				require.Error(t, err, "hostname %q with consecutive dots should be invalid", hostname)
 				assert.Contains(t, err.Error(), "invalid hostname pattern")
 			})
 		}
@@ -250,7 +250,7 @@ func TestValidateHostname(t *testing.T) {
 		for _, hostname := range invalidDots {
 			t.Run(hostname, func(t *testing.T) {
 				err := validateHostname(hostname)
-				assert.Error(t, err, "hostname %q with leading dot should be invalid", hostname)
+				require.Error(t, err, "hostname %q with leading dot should be invalid", hostname)
 				assert.Contains(t, err.Error(), "invalid hostname pattern")
 			})
 		}
@@ -265,7 +265,7 @@ func TestValidateHostname(t *testing.T) {
 		for _, hostname := range invalidDots {
 			t.Run(hostname, func(t *testing.T) {
 				err := validateHostname(hostname)
-				assert.Error(t, err, "hostname %q with trailing dot should be invalid", hostname)
+				require.Error(t, err, "hostname %q with trailing dot should be invalid", hostname)
 				assert.Contains(t, err.Error(), "invalid hostname pattern")
 			})
 		}
@@ -273,7 +273,7 @@ func TestValidateHostname(t *testing.T) {
 
 	t.Run("empty string is invalid", func(t *testing.T) {
 		err := validateHostname("")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid hostname pattern")
 	})
 
@@ -287,7 +287,7 @@ func TestValidateHostname(t *testing.T) {
 		for _, hostname := range invalidDots {
 			t.Run(hostname, func(t *testing.T) {
 				err := validateHostname(hostname)
-				assert.Error(t, err, "hostname %q should be invalid", hostname)
+				require.Error(t, err, "hostname %q should be invalid", hostname)
 				assert.Contains(t, err.Error(), "invalid hostname pattern")
 			})
 		}
@@ -316,8 +316,8 @@ func TestValidateHostname(t *testing.T) {
 		hostname := longLabel + ".example.com"
 
 		err := validateHostname(hostname)
-		assert.Error(t, err, "hostname with 64-character label should be invalid")
-		assert.Contains(t, err.Error(), "invalid hostname pattern")
+		require.Error(t, err, "hostname with 64-character label should be invalid")
+		require.Contains(t, err.Error(), "invalid hostname pattern")
 	})
 
 	t.Run("label with exactly 63 characters is valid", func(t *testing.T) {
