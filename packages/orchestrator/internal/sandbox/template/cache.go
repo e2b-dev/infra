@@ -65,10 +65,10 @@ func NewCache(
 		ttlcache.WithTTL[string, Template](templateExpiration),
 	)
 
-	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, Template]) {
+	cache.OnEviction(func(_ context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[string, Template]) {
 		template := item.Value()
 
-		err := template.Close()
+		err := template.Close(ctx)
 		if err != nil {
 			zap.L().Warn("failed to cleanup template data", zap.String("item_key", item.Key()), zap.Error(err))
 		}
@@ -158,14 +158,12 @@ func (c *Cache) AddSnapshot(
 ) error {
 	switch memfileDiff.(type) {
 	case *build.NoDiff:
-		break
 	default:
 		c.buildStore.Add(memfileDiff)
 	}
 
 	switch rootfsDiff.(type) {
 	case *build.NoDiff:
-		break
 	default:
 		c.buildStore.Add(rootfsDiff)
 	}

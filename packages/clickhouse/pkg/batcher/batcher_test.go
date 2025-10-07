@@ -9,7 +9,7 @@ import (
 )
 
 func TestBatcherStartStop(t *testing.T) {
-	b, err := NewBatcher[int](func(batch []int) error { return nil }, BatcherOptions{})
+	b, err := NewBatcher[int](func([]int) error { return nil }, BatcherOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func TestBatcherStartStop(t *testing.T) {
 }
 
 func TestBatcherPushNotStarted(t *testing.T) {
-	b, err := NewBatcher[int](func(batch []int) error { return nil }, BatcherOptions{})
+	b, err := NewBatcher[int](func([]int) error { return nil }, BatcherOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestBatcherPushNotStarted(t *testing.T) {
 }
 
 func TestBatcherStopNotStarted(t *testing.T) {
-	b, err := NewBatcher[int](func(batch []int) error { return nil }, BatcherOptions{})
+	b, err := NewBatcher[int](func([]int) error { return nil }, BatcherOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestBatcherStopNotStarted(t *testing.T) {
 }
 
 func TestBatcherDoubleStop(t *testing.T) {
-	b, err := NewBatcher[int](func(batch []int) error { return nil }, BatcherOptions{})
+	b, err := NewBatcher[int](func([]int) error { return nil }, BatcherOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestBatcherDoubleStop(t *testing.T) {
 }
 
 func TestBatcherDoubleStart(t *testing.T) {
-	b, err := NewBatcher[int](func(batch []int) error { return nil }, BatcherOptions{})
+	b, err := NewBatcher[int](func([]int) error { return nil }, BatcherOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -76,7 +76,7 @@ func (c *Client) IntFlag(ctx context.Context, flag IntFlag, contexts ...ldcontex
 	return value, nil
 }
 
-func (c *Client) Close(ctx context.Context) error {
+func (c *Client) Close(context.Context) error {
 	if c.ld == nil {
 		return nil
 	}

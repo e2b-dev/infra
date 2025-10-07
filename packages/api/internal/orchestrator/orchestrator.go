@@ -77,7 +77,7 @@ func New(
 		return nil, err
 	}
 
-	dnsServer := dns.New(ctx, redisClient)
+	dnsServer := dns.New(redisClient)
 
 	if env.IsLocal() {
 		zap.L().Info("Running locally, skipping starting DNS server")
@@ -198,7 +198,7 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 			}
 
 			zap.L().Info("API internal status",
-				zap.Int("sandboxes_count", len(o.sandboxStore.Items(nil))),
+				zap.Int("sandboxes_count", len(o.sandboxStore.Items(nil, []sandbox.State{sandbox.StateRunning}))),
 				zap.Int("nodes_count", o.nodes.Count()),
 				zap.Any("nodes", connectedNodes),
 			)
