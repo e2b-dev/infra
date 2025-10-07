@@ -169,8 +169,6 @@ func (c *Client) startTokenRenewal(ctx context.Context, leaseDuration time.Durat
 				return
 			case <-c.renewTicker.C:
 				// Use a context with timeout for each renewal attempt
-				// Derive from parent to satisfy linter, but don't let parent cancellation
-				// interrupt an in-flight renewal
 				renewCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 				c.renewToken(renewCtx)
 				cancel()
@@ -254,6 +252,13 @@ func (c *Client) WriteSecret(ctx context.Context, path string, value string, met
 		DeleteVersionAfter: time.Duration(0).String(),
 		MaxVersions:        1,
 	}, vault.WithMountPath(c.secretsEngine)); err != nil {
+
+		// clean up the secret if metadata write fails
+		_, err := c.client.Secrets.KvV2Delete(ctx, path, vault.WithMountPath(c.secretsEngine))
+		if err != nil {
+			c.logger.Error("failed to clean up secret", zap.Error(err))
+		}
+
 		return errors.Wrap(err, fmt.Sprintf("failed to write metadata at path %s", path))
 	}
 
