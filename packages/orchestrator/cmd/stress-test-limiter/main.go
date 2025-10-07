@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
 	"os/signal"
@@ -10,26 +9,29 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/limits"
+	"github.com/redis/go-redis/v9"
 	_ "modernc.org/sqlite"
 )
 
 func main() {
 	ctx := context.Background()
 
-	connectionString := os.Getenv("SQLITE_CONNECTION_STRING")
+	connectionString := os.Getenv("REDIS_CONNECTION_STRING")
 	if connectionString == "" {
-		panic("SQLITE_CONNECTION_STRING is not set")
+		panic("REDIS_CONNECTION_STRING is not set")
 	}
 
-	db, err := sql.Open("sqlite", connectionString)
-	panicIfErr(err)
-
-	if os.Getenv("SKIP_MIGRATION") != "true" {
-		err = limits.Migrate(ctx, db)
-		panicIfErr(err)
+	hostname, err := os.Hostname()
+	if err != nil {
+		panic(err)
 	}
 
-	l := limits.New(db)
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: connectionString,
+	})
+	panicIfErr(redisClient.Ping(ctx).Err())
+
+	l := limits.New(hostname, redisClient)
 
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGKILL, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
