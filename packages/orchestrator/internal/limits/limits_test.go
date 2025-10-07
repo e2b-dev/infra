@@ -62,9 +62,9 @@ func TestConcurrentAcquire(t *testing.T) {
 
 	wg.Wait()
 
-	assert.Equal(t, int32(5), timeouts.Load(), "should have zero errors")
+	assert.Equal(t, int32(5), timeouts.Load(), "should have 5 acquisition timeouts")
 	assert.Equal(t, int32(5), successes.Load(), "should have 5 successes")
-	assert.Equal(t, int32(0), unknownErrs.Load(), "should have 5 timeouts")
+	assert.Equal(t, int32(0), unknownErrs.Load(), "should have 0 unknown errors")
 }
 
 func buildQueryString(path string, query map[string]string) string {
