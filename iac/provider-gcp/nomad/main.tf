@@ -47,6 +47,14 @@ data "google_secret_manager_secret_version" "redis_url" {
   secret = var.redis_url_secret_version.secret
 }
 
+data "google_secret_manager_secret_version" "vault_api_approle" {
+  secret = var.vault_api_approle_secret_name
+}
+
+data "google_secret_manager_secret_version" "vault_tls_ca" {
+  secret = var.vault_tls_ca_secret_name
+}
+
 
 data "docker_registry_image" "api_image" {
   name = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${var.orchestration_repository_name}/api:latest"
@@ -101,6 +109,9 @@ resource "nomad_job" "api" {
     redis_cluster_url              = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
     dns_port_number                = var.api_dns_port_number
     clickhouse_connection_string   = local.clickhouse_connection_string
+    vault_addr                     = "https://vault-leader.service.consul:8200"
+    vault_api_approle_creds        = data.google_secret_manager_secret_version.vault_api_approle.secret_data
+    vault_tls_ca                   = data.google_secret_manager_secret_version.vault_tls_ca.secret_data
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
     db_migrator_docker_image       = docker_image.db_migrator_image.repo_digest
     launch_darkly_api_key          = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
@@ -572,8 +583,8 @@ resource "google_secret_manager_secret_version" "clickhouse_server_secret_value"
 }
 
 resource "google_service_account" "clickhouse_service_account" {
-  account_id   = "${var.prefix}clickhouse-service-account"
-  display_name = "${var.prefix}clickhouse-service-account"
+  account_id   = "${var.prefix}clickhouse"
+  display_name = "${var.prefix}clickhouse"
 }
 
 resource "google_storage_bucket_iam_member" "clickhouse_service_account_iam" {

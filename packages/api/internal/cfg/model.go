@@ -33,6 +33,13 @@ type Config struct {
 	SupabaseJWTSecrets []string `env:"SUPABASE_JWT_SECRETS"`
 
 	TemplateManagerHost string `env:"TEMPLATE_MANAGER_HOST"`
+
+	// Vault configuration
+	VaultAddr            string `env:"VAULT_ADDR"`
+	VaultApproleRoleID   string `env:"VAULT_APPROLE_ROLE_ID"`
+	VaultApproleSecretID string `env:"VAULT_APPROLE_SECRET_ID"`
+	VaultSecretsEngine   string `env:"VAULT_SECRETS_ENGINE"`
+	VaultTLSCA           string `env:"VAULT_TLS_CA"`
 }
 
 func Parse() (Config, error) {

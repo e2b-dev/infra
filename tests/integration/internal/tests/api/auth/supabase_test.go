@@ -76,7 +76,7 @@ func TestSandboxCreateWithForeignTeamAccess(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	userID2 := utils.CreateUser(t, db)
-	teamID2 := utils.CreateTeamWithUser(t, c, db, "test-team-2", userID2.String())
+	teamID2 := utils.CreateTeamWithUser(t, t.Context(), c, db, "test-team-2", userID2.String())
 
 	t.Run("Fail when using first user token with second team ID", func(t *testing.T) {
 		// This should fail because the first user doesn't belong to the second team

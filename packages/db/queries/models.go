@@ -80,6 +80,16 @@ type EnvBuild struct {
 	Reason             types.BuildReason
 }
 
+type Secret struct {
+	ID          uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   *time.Time
+	TeamID      uuid.UUID
+	Label       string
+	Description string
+	Allowlist   []string
+}
+
 type Snapshot struct {
 	CreatedAt           pgtype.Timestamptz
 	EnvID               string

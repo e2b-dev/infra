@@ -368,3 +368,13 @@ variable "filestore_cache_cleanup_files_per_loop" {
 variable "dockerhub_remote_repository_url" {
   type = string
 }
+
+variable "vault_api_approle_secret_name" {
+  type        = string
+  description = "The name of the Google Secret Manager secret containing Vault API AppRole credentials"
+}
+
+variable "vault_tls_ca_secret_name" {
+  type        = string
+  description = "The name of the Google Secret Manager secret containing Vault TLS CA certificate"
+}

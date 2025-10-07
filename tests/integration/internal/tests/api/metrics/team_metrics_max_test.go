@@ -95,7 +95,7 @@ func TestTeamMetricsMaxEmpty(t *testing.T) {
 
 	db := setup.GetTestDBClient(t)
 
-	teamID := utils.CreateTeamWithUser(t, c, db, "metric-test", setup.UserID)
+	teamID := utils.CreateTeamWithUser(t, t.Context(), c, db, "metric-test", setup.UserID)
 
 	tests := []struct {
 		metric api.GetTeamsTeamIDMetricsMaxParamsMetric

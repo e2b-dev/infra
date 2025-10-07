@@ -43,7 +43,7 @@ func TestCreateAPIKeyForeignTeam(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create first team and API key
-	foreignTeamID := utils.CreateTeam(t, c, db, "test-team-apikey-foreign")
+	foreignTeamID := utils.CreateTeam(t, ctx, c, db, "test-team-apikey-foreign")
 
 	// Create the API key
 	resp, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
@@ -61,7 +61,7 @@ func TestCreateAPIKeyForeignTeamWithCache(t *testing.T) {
 
 	// Create first team
 	foreignUserID := utils.CreateUser(t, db)
-	foreignTeamID := utils.CreateTeamWithUser(t, c, db, "test-team-apikey-foreign-cache", foreignUserID.String())
+	foreignTeamID := utils.CreateTeamWithUser(t, ctx, c, db, "test-team-apikey-foreign-cache", foreignUserID.String())
 
 	// Populate cache by calling some endpoint
 	utils.CreateAPIKey(t, ctx, c, foreignUserID.String(), foreignTeamID)
@@ -112,10 +112,10 @@ func TestDeleteAPIKey(t *testing.T) {
 		c := setup.GetAPIClient()
 
 		// Create first team and API key
-		teamID1 := utils.CreateTeamWithUser(t, c, db, "test-team-apikey-delete-1", setup.UserID)
+		teamID1 := utils.CreateTeamWithUser(t, ctx, c, db, "test-team-apikey-delete-1", setup.UserID)
 
 		// Create second team and API key
-		teamID2 := utils.CreateTeamWithUser(t, c, db, "test-team-apikey-delete-2", setup.UserID)
+		teamID2 := utils.CreateTeamWithUser(t, ctx, c, db, "test-team-apikey-delete-2", setup.UserID)
 
 		// Create an additional API key for team1
 		resp, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
@@ -248,10 +248,10 @@ func TestPatchAPIKey(t *testing.T) {
 		c := setup.GetAPIClient()
 
 		// Create first team and API key
-		teamID1 := utils.CreateTeamWithUser(t, c, db, "test-team-apikey-patch-1", setup.UserID)
+		teamID1 := utils.CreateTeamWithUser(t, ctx, c, db, "test-team-apikey-patch-1", setup.UserID)
 
 		// Create second team and API key
-		teamID2 := utils.CreateTeamWithUser(t, c, db, "test-team-apikey-patch-2", setup.UserID)
+		teamID2 := utils.CreateTeamWithUser(t, ctx, c, db, "test-team-apikey-patch-2", setup.UserID)
 
 		// Create an additional API key for team1
 		resp, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
