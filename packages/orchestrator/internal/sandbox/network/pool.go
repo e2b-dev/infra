@@ -17,7 +17,6 @@ const (
 )
 
 type Pool struct {
-	ctx    context.Context //nolint:containedctx // todo: refactor so this can be removed
 	cancel context.CancelFunc
 
 	newSlots          chan *Slot
@@ -55,7 +54,6 @@ func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPo
 		reusedSlots:       reusedSlots,
 		newSlotCounter:    newSlotCounter,
 		reusedSlotCounter: reusedSlotsCounter,
-		ctx:               ctx,
 		cancel:            cancel,
 		slotStorage:       slotStorage,
 	}
@@ -72,8 +70,8 @@ func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPo
 	return pool, nil
 }
 
-func (p *Pool) createNetworkSlot() (*Slot, error) {
-	ips, err := p.slotStorage.Acquire(p.ctx)
+func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
+	ips, err := p.slotStorage.Acquire(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network: %w", err)
 	}
@@ -98,7 +96,7 @@ func (p *Pool) populate(ctx context.Context) error {
 			// Do not return an error here, this is expected on close
 			return nil
 		default:
-			slot, err := p.createNetworkSlot()
+			slot, err := p.createNetworkSlot(ctx)
 			if err != nil {
 				zap.L().Error("[network slot pool]: failed to create network", zap.Error(err))
 
