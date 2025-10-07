@@ -115,7 +115,7 @@ func cleanNFSCache(ctx context.Context) error {
 				zap.Int64("count", results.deletedFiles),
 				zap.Int64("bytes", results.deletedBytes))
 		})
-		allResults = allResults.union(results)
+		allResults = allResults.sum(results)
 		if err != nil {
 			return fmt.Errorf("failed to delete files: %w", err)
 		}
@@ -219,7 +219,7 @@ type results struct {
 	createdDurations []time.Duration
 }
 
-func (r results) union(other results) results {
+func (r results) sum(other results) results {
 	return results{
 		deletedFiles:     r.deletedFiles + other.deletedFiles,
 		deletedBytes:     r.deletedBytes + other.deletedBytes,
@@ -231,17 +231,8 @@ func (r results) union(other results) results {
 func deleteOldestFiles(cache *pkg.ListingCache, files []pkg.File, opts opts, diskInfo *pkg.DiskInfo, areWeDone func() bool, deleteCount int64) (results, error) {
 	now := time.Now()
 	var results results
-	for index, file := range files {
-		if opts.dryRun {
-			zap.L().Debug("would delete",
-				zap.String("path", file.Path),
-				zap.Int64("bytes", file.Size),
-				zap.Duration("last_access", time.Since(file.ATime).Round(time.Minute)))
-		} else {
-			zap.L().Debug("deleting",
-				zap.Int("index", index+1),
-				zap.String("path", file.Path),
-				zap.Int64("bytes", file.Size))
+	for _, file := range files {
+		if !opts.dryRun {
 			if err := os.Remove(file.Path); err != nil {
 				zap.L().Error("failed to delete",
 					zap.String("path", file.Path),
