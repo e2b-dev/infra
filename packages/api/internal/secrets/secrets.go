@@ -31,9 +31,7 @@ func CreateSecret(
 	// Store secret value in vault
 	vaultPath := getVaultPath(teamID, secretID)
 	if err := vaultClient.WriteSecret(ctx, vaultPath, value, map[string]any{
-		"team_id":   teamID.String(),
-		"secret_id": secretID.String(),
-		"label":     label,
+		"allowlist": allowlist,
 	}); err != nil {
 		return nil, fmt.Errorf("failed to store secret in vault: %w", err)
 	}

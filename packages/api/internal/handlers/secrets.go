@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/secrets"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -48,8 +49,10 @@ func (a *APIStore) GetSecrets(c *gin.Context) {
 
 	secretsDB, err := a.sqlcDB.GetTeamSecrets(ctx, teamID)
 	if err != nil {
-		zap.L().Warn("error when getting team secrets", zap.Error(err))
+		zap.L().Warn("error when getting team secrets", zap.Error(err), logger.WithTeamID(teamID.String()))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting team secrets")
+
+		telemetry.ReportCriticalError(ctx, "error when getting team secrets", err)
 
 		return
 	}
@@ -64,6 +67,11 @@ func (a *APIStore) GetSecrets(c *gin.Context) {
 			CreatedAt:   secret.CreatedAt,
 		}
 	}
+
+	zap.L().Debug("Fetched team secrets",
+		logger.WithTeamID(teamID.String()),
+		zap.Int("secrets_count", len(secretsList)),
+	)
 
 	c.JSON(http.StatusOK, secretsList)
 }
@@ -145,12 +153,23 @@ func (a *APIStore) PostSecrets(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "Created secret")
 
+	isWildcardAllowlist := len(secret.Allowlist) == 1 && secret.Allowlist[0] == "*"
+	zap.L().Debug("Created secret",
+		logger.WithTeamID(teamID.String()),
+		zap.String("secret_id", secret.ID.String()),
+		zap.Int("label_length", len(secret.Label)),
+		zap.Int("allowlist_size", len(secret.Allowlist)),
+		zap.Bool("wildcard_allowlist", isWildcardAllowlist),
+		zap.Int("value_bytes", len(body.Value)),
+	)
+
 	c.JSON(http.StatusCreated, api.CreatedSecret{
 		Id:          secret.ID,
 		Label:       secret.Label,
 		Description: secret.Description,
-		Allowlist:   secret.Allowlist,
-		CreatedAt:   secret.CreatedAt,
+
+		Allowlist: secret.Allowlist,
+		CreatedAt: secret.CreatedAt,
 	})
 }
 
@@ -211,7 +230,12 @@ func (a *APIStore) PatchSecretsSecretID(c *gin.Context, secretID string) {
 		return
 	}
 
-	telemetry.ReportEvent(ctx, "Updated secret")
+	zap.L().Debug("Updated secret",
+		logger.WithTeamID(teamID.String()),
+		zap.String("secret_id", secretID),
+		zap.Int("label_length", len(body.Label)),
+		zap.Int("description_length", len(body.Description)),
+	)
 
 	c.Status(http.StatusOK)
 }
@@ -249,12 +273,18 @@ func (a *APIStore) DeleteSecretsSecretID(c *gin.Context, secretID string) {
 		return
 	}
 
+	zap.L().Debug("Deleted secret",
+		logger.WithTeamID(teamID.String()),
+		zap.String("secret_id", secretID),
+	)
+
 	c.Status(http.StatusNoContent)
 }
 
 // ValidateHostname validates a hostname with wildcard support
 // Allowed: example.com, *.example.com, something.*.example.com, *, *.*
 // Not allowed: URLs with schemes, paths, or invalid characters
+// See the test cases for more examples.
 func validateHostname(hostname string) error {
 	// Most will be a wildcard anyway so we can skip the rest of the checks
 	if hostname == "*" {
