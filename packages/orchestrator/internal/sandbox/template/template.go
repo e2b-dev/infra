@@ -1,6 +1,7 @@
 package template
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -12,17 +13,17 @@ import (
 
 type Template interface {
 	Files() storage.TemplateCacheFiles
-	Memfile() (block.ReadonlyDevice, error)
+	Memfile(ctx context.Context) (block.ReadonlyDevice, error)
 	Rootfs() (block.ReadonlyDevice, error)
 	Snapfile() (File, error)
 	Metadata() (metadata.Template, error)
-	Close() error
+	Close(ctx context.Context) error
 }
 
-func closeTemplate(t Template) (e error) {
+func closeTemplate(ctx context.Context, t Template) (e error) {
 	closable := make([]io.Closer, 0)
 
-	memfile, err := t.Memfile()
+	memfile, err := t.Memfile(ctx)
 	if err != nil {
 		e = errors.Join(e, err)
 	} else {
