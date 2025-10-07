@@ -62,7 +62,6 @@ EOT
 
       env {
         NODE_ID                      = "$${node.unique.name}"
-        CONSUL_TOKEN                 = "${consul_acl_token}"
         OTEL_TRACING_PRINT           = "${otel_tracing_print}"
         LOGS_COLLECTOR_ADDRESS       = "${logs_collector_address}"
         ENVIRONMENT                  = "${environment}"

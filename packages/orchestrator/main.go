@@ -243,7 +243,7 @@ func run(port, proxyPort, hyperloopPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 
-	networkPool, err := network.NewPool(ctx, tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, nodeID)
+	networkPool, err := network.NewPool(ctx, tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize)
 	if err != nil {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}

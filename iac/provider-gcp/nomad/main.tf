@@ -405,11 +405,10 @@ data "external" "orchestrator_checksum" {
 
 locals {
   orchestrator_envs = {
-    node_pool        = var.orchestrator_node_pool
-    port             = var.orchestrator_port
-    proxy_port       = var.orchestrator_proxy_port
-    environment      = var.environment
-    consul_acl_token = var.consul_acl_token_secret
+    node_pool   = var.orchestrator_node_pool
+    port        = var.orchestrator_port
+    proxy_port  = var.orchestrator_proxy_port
+    environment = var.environment
 
     envd_timeout                 = var.envd_timeout
     bucket_name                  = var.fc_env_pipeline_bucket_name
@@ -488,12 +487,11 @@ resource "nomad_job" "template_manager" {
     update_stanza = var.template_manager_machine_count > 1
     node_pool     = var.builder_node_pool
 
-    gcp_project      = var.gcp_project_id
-    gcp_region       = var.gcp_region
-    gcp_zone         = var.gcp_zone
-    port             = var.template_manager_port
-    environment      = var.environment
-    consul_acl_token = var.consul_acl_token_secret
+    gcp_project = var.gcp_project_id
+    gcp_region  = var.gcp_region
+    gcp_zone    = var.gcp_zone
+    port        = var.template_manager_port
+    environment = var.environment
 
     api_secret                      = var.api_secret
     bucket_name                     = var.fc_env_pipeline_bucket_name

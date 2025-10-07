@@ -121,7 +121,7 @@ func buildTemplate(
 		}
 	}()
 
-	networkPool, err := network.NewPool(ctx, noop.MeterProvider{}, 8, 8, clientID)
+	networkPool, err := network.NewPool(ctx, noop.MeterProvider{}, 8, 8)
 	if err != nil {
 		return fmt.Errorf("could not create network pool: %w", err)
 	}

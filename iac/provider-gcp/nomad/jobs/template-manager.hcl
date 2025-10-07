@@ -60,7 +60,6 @@ job "template-manager-system" {
 
       env {
         NODE_ID                       = "$${node.unique.name}"
-        CONSUL_TOKEN                  = "${consul_acl_token}"
         GOOGLE_SERVICE_ACCOUNT_BASE64 = "${google_service_account_key}"
         GCP_PROJECT_ID                = "${gcp_project}"
         GCP_REGION                    = "${gcp_region}"
