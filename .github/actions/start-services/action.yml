@@ -152,6 +152,11 @@ runs:
         SHARED_CHUNK_CACHE_PATH: "./.e2b-chunk-cache"
         EDGE_TOKEN: "abdcdefghijklmnop"
       run: |
+        # Load environment variables from .env.test
+        set -a
+        source .env.test
+        set +a
+        
         mkdir -p $SHARED_CHUNK_CACHE_PATH
         mkdir -p ~/logs
 
