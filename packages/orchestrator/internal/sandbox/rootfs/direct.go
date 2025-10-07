@@ -71,7 +71,6 @@ func (o *DirectProvider) ExportDiff(
 
 	select {
 	case <-o.finishedOperations:
-		break
 	case <-ctx.Done():
 		return nil, fmt.Errorf("timeout waiting for overlay device to be released")
 	}

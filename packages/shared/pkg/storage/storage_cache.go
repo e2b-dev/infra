@@ -401,8 +401,8 @@ func (c *CachedFileObjectProvider) readAndCacheFullRemoteFile(ctx context.Contex
 	return int64(written), err
 }
 
-func cleanup(msg string, close func() error) {
-	if err := close(); err != nil {
+func cleanup(msg string, fn func() error) {
+	if err := fn(); err != nil {
 		zap.L().Warn(msg, zap.Error(err))
 	}
 }

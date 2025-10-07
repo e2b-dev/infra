@@ -101,7 +101,6 @@ linters:
         - { disabled: true, name: function-length }
         - { disabled: true, name: function-result-limit }
         - { disabled: true, name: get-return }
-        - { disabled: true, name: if-return }
         - { disabled: true, name: import-alias-naming }
         - { disabled: true, name: import-shadowing }
         - { disabled: true, name: line-length-limit }
@@ -109,7 +108,6 @@ linters:
         - { disabled: true, name: max-public-structs }
         - { disabled: true, name: nested-structs }
         - { disabled: true, name: package-comments }
-        - { disabled: true, name: redefines-builtin-id }
         - { disabled: true, name: unchecked-type-assertion }
         - { disabled: true, name: unexported-naming }
         - { disabled: true, name: unexported-return }
@@ -119,7 +117,6 @@ linters:
         - { disabled: true, name: unused-parameter }  # todo: enable this
         - { disabled: true, name: unused-receiver }
         - { disabled: true, name: use-errors-new }  # todo: enable this
-        - { disabled: true, name: useless-break }  # todo: enable this
         - { disabled: true, name: var-declaration }
         - { disabled: true, name: var-naming }
 
@@ -136,3 +133,7 @@ linters:
 
 run:
   go: 1.24.7
+
+issues:
+  max-issues-per-linter: 50
+  max-same-issues: 50
