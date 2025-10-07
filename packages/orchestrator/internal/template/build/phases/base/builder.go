@@ -196,7 +196,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		return metadata.Template{}, fmt.Errorf("error creating template files: %w", err)
 	}
 	localTemplate := sbxtemplate.NewLocalTemplate(cacheFiles, rootfs, memfile)
-	defer localTemplate.Close()
+	defer localTemplate.Close(ctx)
 
 	// Provision sandbox with systemd and other vital parts
 	userLogger.Info("Provisioning sandbox template")
