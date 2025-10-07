@@ -51,7 +51,7 @@ func (c *MaskTemplate) Files() storage.TemplateCacheFiles {
 }
 
 func (c *MaskTemplate) Memfile(ctx context.Context) (block.ReadonlyDevice, error) {
-	_, span := tracer.Start(ctx, "mask-template-memfile")
+	ctx, span := tracer.Start(ctx, "mask-template-memfile")
 	defer span.End()
 
 	if c.memfile != nil {
