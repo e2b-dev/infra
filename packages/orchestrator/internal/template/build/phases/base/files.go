@@ -22,6 +22,7 @@ func constructLayerFilesFromOCI(
 	ctx context.Context,
 	userLogger *zap.Logger,
 	buildContext buildcontext.BuildContext,
+	// The base build ID can be different from the final requested template build ID.
 	baseBuildID string,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	dockerhubRepository dockerhub.RemoteRepository,

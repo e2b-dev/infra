@@ -20,7 +20,11 @@ func CreateTeam(t *testing.T, db *db.DB, teamName string) uuid.UUID {
 	return CreateTeamWithUser(t, db, teamName, "")
 }
 
-func CreateTeamWithUser(t *testing.T, db *db.DB, teamName string, userID string) uuid.UUID {
+func CreateTeamWithUser(
+	t *testing.T,
+	db *db.DB,
+	teamName, userID string,
+) uuid.UUID {
 	t.Helper()
 
 	teamID := uuid.New()
