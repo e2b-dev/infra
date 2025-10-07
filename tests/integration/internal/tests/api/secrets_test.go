@@ -598,7 +598,7 @@ func TestUpdateSecret(t *testing.T) {
 		assert.Equal(t, http.StatusCreated, respC.StatusCode())
 
 		longLabel := ""
-		for i := 0; i < 257; i++ {
+		for range 257 {
 			longLabel += "a"
 		}
 
@@ -718,8 +718,8 @@ func TestUpdateSecret(t *testing.T) {
 		db := setup.GetTestDBClient(t)
 
 		// Create a second team with its own API key
-		team2ID := utils.CreateTeam(t, c, db, "test-team-secrets-update-foreign")
-		utils.AddUserToTeam(t, c, db, team2ID, setup.UserID)
+		team2ID := utils.CreateTeam(t, ctx, c, db, "test-team-secrets-update-foreign")
+		utils.AddUserToTeam(t, ctx, c, db, team2ID, setup.UserID)
 		team2APIKey := utils.CreateAPIKey(t, ctx, c, setup.UserID, team2ID)
 
 		// Create a secret on team2
@@ -807,8 +807,8 @@ func TestDeleteSecret(t *testing.T) {
 		db := setup.GetTestDBClient(t)
 
 		// Create a second team with its own API key
-		team2ID := utils.CreateTeam(t, c, db, "test-team-secrets-foreign")
-		utils.AddUserToTeam(t, c, db, team2ID, setup.UserID)
+		team2ID := utils.CreateTeam(t, ctx, c, db, "test-team-secrets-foreign")
+		utils.AddUserToTeam(t, ctx, c, db, team2ID, setup.UserID)
 		team2APIKey := utils.CreateAPIKey(t, ctx, c, setup.UserID, team2ID)
 
 		// Create a secret on team2
@@ -933,8 +933,8 @@ func TestListSecrets(t *testing.T) {
 		db := setup.GetTestDBClient(t)
 
 		// Create a second team with its own API key
-		team2ID := utils.CreateTeam(t, c, db, "test-team-secrets-list-foreign")
-		utils.AddUserToTeam(t, c, db, team2ID, setup.UserID)
+		team2ID := utils.CreateTeam(t, ctx, c, db, "test-team-secrets-list-foreign")
+		utils.AddUserToTeam(t, ctx, c, db, team2ID, setup.UserID)
 		team2APIKey := utils.CreateAPIKey(t, ctx, c, setup.UserID, team2ID)
 
 		// Create a secret on team2

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestValidateHostname(t *testing.T) {
@@ -75,7 +76,7 @@ func TestValidateHostname(t *testing.T) {
 		for _, hostname := range invalidGlobs {
 			t.Run(hostname, func(t *testing.T) {
 				err := validateHostname(hostname)
-				assert.Error(t, err, "hostname %q with question mark should be invalid", hostname)
+				require.Error(t, err, "hostname %q with question mark should be invalid", hostname)
 				assert.Contains(t, err.Error(), "invalid hostname pattern")
 			})
 		}
@@ -92,7 +93,7 @@ func TestValidateHostname(t *testing.T) {
 		for _, hostname := range invalidGlobs {
 			t.Run(hostname, func(t *testing.T) {
 				err := validateHostname(hostname)
-				assert.Error(t, err, "hostname %q with brackets should be invalid", hostname)
+				require.Error(t, err, "hostname %q with brackets should be invalid", hostname)
 				assert.Contains(t, err.Error(), "invalid hostname pattern")
 			})
 		}
@@ -201,7 +202,7 @@ func TestValidateHostname(t *testing.T) {
 		for _, hostname := range invalidHyphens {
 			t.Run(hostname, func(t *testing.T) {
 				err := validateHostname(hostname)
-				assert.Error(t, err, "hostname %q with label starting with hyphen should be invalid", hostname)
+				require.Error(t, err, "hostname %q with label starting with hyphen should be invalid", hostname)
 				assert.Contains(t, err.Error(), "invalid hostname pattern")
 			})
 		}

@@ -15,14 +15,15 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 )
 
-func CreateTeam(t *testing.T, c *api.ClientWithResponses, db *db.DB, teamName string) uuid.UUID {
+func CreateTeam(t *testing.T, ctx context.Context, c *api.ClientWithResponses, db *db.DB, teamName string) uuid.UUID {
 	t.Helper()
 
-	return CreateTeamWithUser(t, c, db, teamName, "")
+	return CreateTeamWithUser(t, ctx, c, db, teamName, "")
 }
 
 func CreateTeamWithUser(
 	t *testing.T,
+	ctx context.Context,
 	c *api.ClientWithResponses,
 	db *db.DB,
 	teamName string,
@@ -32,25 +33,27 @@ func CreateTeamWithUser(
 
 	teamID := uuid.New()
 
-	team, err := db.Client.Team.Create().SetID(teamID).SetEmail(fmt.Sprintf("test-integration-%s@e2b.dev", teamID)).SetName(teamName).SetTier("base_v1").Save(t.Context())
+	team, err := db.Client.Team.Create().SetID(teamID).SetEmail(fmt.Sprintf("test-integration-%s@e2b.dev", teamID)).SetName(teamName).SetTier("base_v1").Save(ctx)
 	require.NoError(t, err)
 
 	assert.Equal(t, teamName, team.Name)
 	assert.Equal(t, teamID, team.ID)
 
 	if userID != "" {
-		AddUserToTeam(t, c, db, teamID, userID)
+		AddUserToTeam(t, ctx, c, db, teamID, userID)
 	}
 
+	// Cleanup should use background context as test context may be canceled
+	//nolint:contextcheck
 	t.Cleanup(func() {
-		db.Client.Team.DeleteOneID(teamID).Exec(t.Context())
-		db.Client.TeamAPIKey.DeleteOneID(teamID).Exec(t.Context())
+		db.Client.Team.DeleteOneID(teamID).Exec(context.Background())
+		db.Client.TeamAPIKey.DeleteOneID(teamID).Exec(context.Background())
 	})
 
 	return team.ID
 }
 
-func AddUserToTeam(t *testing.T, c *api.ClientWithResponses, db *db.DB, teamID uuid.UUID, userID string) {
+func AddUserToTeam(t *testing.T, ctx context.Context, c *api.ClientWithResponses, db *db.DB, teamID uuid.UUID, userID string) {
 	t.Helper()
 
 	userUUID, err := uuid.Parse(userID)
@@ -60,15 +63,17 @@ func AddUserToTeam(t *testing.T, c *api.ClientWithResponses, db *db.DB, teamID u
 		SetUserID(userUUID).
 		SetTeamID(teamID).
 		SetIsDefault(false).
-		Save(t.Context())
+		Save(ctx)
 	require.NoError(t, err)
 
+	// Cleanup should use background context as test context may be canceled
+	//nolint:contextcheck
 	t.Cleanup(func() {
-		db.Client.UsersTeams.DeleteOne(userTeam).Exec(t.Context())
+		db.Client.UsersTeams.DeleteOne(userTeam).Exec(context.Background())
 	})
 }
 
-func RemoveUserFromTeam(t *testing.T, c *api.ClientWithResponses, db *db.DB, teamID uuid.UUID, userID string) {
+func RemoveUserFromTeam(t *testing.T, ctx context.Context, c *api.ClientWithResponses, db *db.DB, teamID uuid.UUID, userID string) {
 	t.Helper()
 
 	userUUID, err := uuid.Parse(userID)
@@ -76,7 +81,7 @@ func RemoveUserFromTeam(t *testing.T, c *api.ClientWithResponses, db *db.DB, tea
 
 	_, err = db.Client.UsersTeams.Delete().
 		Where(usersteams.UserID(userUUID), usersteams.TeamID(teamID)).
-		Exec(t.Context())
+		Exec(ctx)
 	require.NoError(t, err, "failed to remove user from team")
 }
 

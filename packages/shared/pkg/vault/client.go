@@ -15,7 +15,7 @@ import (
 )
 
 // key used where the actual secret is stored under the given path
-const SECRET_KEY = "value"
+const secretKey = "value"
 
 type Client struct {
 	client        *vault.Client
@@ -202,7 +202,7 @@ func (c *Client) GetSecret(ctx context.Context, path string) (string, map[string
 		return "", nil, ErrSecretNotFound
 	}
 
-	value, ok := resp.Data.Data[SECRET_KEY].(string)
+	value, ok := resp.Data.Data[secretKey].(string)
 	if !ok {
 		return "", nil, ErrSecretNotFound
 	}
@@ -218,7 +218,7 @@ func (c *Client) GetSecret(ctx context.Context, path string) (string, map[string
 func (c *Client) WriteSecret(ctx context.Context, path string, value string, metadata map[string]any) error {
 	_, err := c.client.Secrets.KvV2Write(ctx, path, schema.KvV2WriteRequest{
 		Data: map[string]any{
-			SECRET_KEY: value,
+			secretKey: value,
 		},
 	}, vault.WithMountPath(c.secretsEngine))
 	if err != nil {
