@@ -40,7 +40,7 @@ func NewSpanExporter(ctx context.Context, extraOption ...otlptracegrpc.Option) (
 	return traceExporter, nil
 }
 
-func NewTracerProvider(ctx context.Context, spanExporter sdktrace.SpanExporter, res *resource.Resource) trace.TracerProvider {
+func NewTracerProvider(spanExporter sdktrace.SpanExporter, res *resource.Resource) trace.TracerProvider {
 	// Register the trace exporter with a TracerProvider, using a batch
 	// span processor to aggregate spans before export.
 	bsp := sdktrace.NewBatchSpanProcessor(spanExporter)

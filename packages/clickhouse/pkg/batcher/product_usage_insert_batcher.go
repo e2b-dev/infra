@@ -92,7 +92,7 @@ func (b *ProductUsageInsertBatcher) Push(event clickhouse.ProductUsage) error {
 	return nil
 }
 
-func (b *ProductUsageInsertBatcher) Close(ctx context.Context) error {
+func (b *ProductUsageInsertBatcher) Close(context.Context) error {
 	stopErr := b.Batcher.Stop()
 	closeErr := b.conn.Close()
 

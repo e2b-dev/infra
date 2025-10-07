@@ -235,7 +235,7 @@ func (f *Factory) CreateSandbox(
 		}
 	}()
 
-	memfile, err := template.Memfile()
+	memfile, err := template.Memfile(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memfile: %w", err)
 	}
@@ -422,7 +422,7 @@ func (f *Factory) ResumeSandbox(
 		}
 	}()
 
-	memfile, err := t.Memfile()
+	memfile, err := t.Memfile(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memfile: %w", err)
 	}
@@ -714,7 +714,7 @@ func (s *Sandbox) Pause(
 	}
 
 	// Gather data for postprocessing
-	originalMemfile, err := s.Template.Memfile()
+	originalMemfile, err := s.Template.Memfile(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original memfile: %w", err)
 	}
@@ -732,7 +732,7 @@ func (s *Sandbox) Pause(
 			memfile:    memfile,
 			dirtyPages: s.memory.Dirty(),
 			blockSize:  originalMemfile.BlockSize(),
-			doneHook: func(ctx context.Context) error {
+			doneHook: func(context.Context) error {
 				return memfile.Close()
 			},
 		},
@@ -939,6 +939,9 @@ func serveMemory(
 	socketPath,
 	sandboxID string,
 ) (uffd.MemoryBackend, error) {
+	ctx, span := tracer.Start(ctx, "serve-memory")
+	defer span.End()
+
 	fcUffd, err := uffd.New(memfile, socketPath, memfile.BlockSize())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create uffd: %w", err)

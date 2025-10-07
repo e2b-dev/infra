@@ -295,15 +295,18 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 	}
 }
 
-func (t *storageTemplate) Close() error {
-	return closeTemplate(t)
+func (t *storageTemplate) Close(ctx context.Context) error {
+	return closeTemplate(ctx, t)
 }
 
 func (t *storageTemplate) Files() storage.TemplateCacheFiles {
 	return t.files
 }
 
-func (t *storageTemplate) Memfile() (block.ReadonlyDevice, error) {
+func (t *storageTemplate) Memfile(ctx context.Context) (block.ReadonlyDevice, error) {
+	_, span := tracer.Start(ctx, "storage-template-memfile")
+	defer span.End()
+
 	return t.memfile.Wait()
 }
 

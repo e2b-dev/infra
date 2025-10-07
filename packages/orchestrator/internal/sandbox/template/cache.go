@@ -65,10 +65,10 @@ func NewCache(
 		ttlcache.WithTTL[string, *storageTemplate](templateExpiration),
 	)
 
-	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, *storageTemplate]) {
+	cache.OnEviction(func(ctx context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[string, Template]) {
 		template := item.Value()
 
-		err := template.Close()
+		err := template.Close(ctx)
 		if err != nil {
 			zap.L().Warn("failed to cleanup template data", zap.String("item_key", item.Key()), zap.Error(err))
 		}

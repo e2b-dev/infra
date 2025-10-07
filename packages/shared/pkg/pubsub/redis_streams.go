@@ -272,7 +272,7 @@ func (r *RedisStreams[PayloadT, SubMetaDataT]) processMessage(msg redis.XMessage
 	}
 }
 
-func (r *RedisStreams[PayloadT, SubMetaDataT]) Close(ctx context.Context) error {
+func (r *RedisStreams[PayloadT, SubMetaDataT]) Close(context.Context) error {
 	return r.redisClient.Close()
 }
 
