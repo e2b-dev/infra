@@ -70,7 +70,7 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 	}
 
 	for randomTry := 1; randomTry <= 10; randomTry++ {
-		slotIdx := rand.Intn(s.slotsSize) + 1
+		slotIdx := rand.Intn(s.slotsSize)
 		key := s.getKVKey(slotIdx)
 
 		maybeSlot, err := trySlot(slotIdx, key)
