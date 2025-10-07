@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"slices"
 
 	consulApi "github.com/hashicorp/consul/api"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -39,6 +41,9 @@ func NewStorageKV(slotsSize int, nodeID string) (*StorageKV, error) {
 func newConsulClient(token string) (*consulApi.Client, error) {
 	config := consulApi.DefaultConfig()
 	config.Token = token
+	config.HttpClient = &http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
 
 	consulClient, err := consulApi.NewClient(config)
 	if err != nil {
@@ -48,7 +53,7 @@ func newConsulClient(token string) (*consulApi.Client, error) {
 	return consulClient, nil
 }
 
-func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
+func (s *StorageKV) Acquire(ctx context.Context) (*Slot, error) {
 	kv := s.consulClient.KV()
 
 	var slot *Slot
@@ -57,7 +62,7 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 		status, _, err := kv.CAS(&consulApi.KVPair{
 			Key:         key,
 			ModifyIndex: 0,
-		}, nil)
+		}, new(consulApi.WriteOptions).WithContext(ctx))
 		if err != nil {
 			return nil, fmt.Errorf("failed to write to Consul KV: %w", err)
 		}
@@ -89,7 +94,7 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 		// This is a fallback for the case when all slots are taken.
 		// There is no Consul lock so it's possible that multiple sandboxes will try to acquire the same slot.
 		// In this case, only one of them will succeed and other will try with different slots.
-		reservedKeys, _, keysErr := kv.Keys(s.nodeID+"/", "", nil)
+		reservedKeys, _, keysErr := kv.Keys(s.nodeID+"/", "", new(consulApi.QueryOptions).WithContext(ctx))
 		if keysErr != nil {
 			return nil, fmt.Errorf("failed to read Consul KV: %w", keysErr)
 		}
@@ -121,10 +126,10 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 	return slot, nil
 }
 
-func (s *StorageKV) Release(ips *Slot) error {
+func (s *StorageKV) Release(ctx context.Context, ips *Slot) error {
 	kv := s.consulClient.KV()
 
-	pair, _, err := kv.Get(ips.Key, nil)
+	pair, _, err := kv.Get(ips.Key, new(consulApi.QueryOptions).WithContext(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to release IPSlot: Failed to read Consul KV: %w", err)
 	}
@@ -136,7 +141,7 @@ func (s *StorageKV) Release(ips *Slot) error {
 	status, _, err := kv.DeleteCAS(&consulApi.KVPair{
 		Key:         ips.Key,
 		ModifyIndex: pair.ModifyIndex,
-	}, nil)
+	}, new(consulApi.WriteOptions).WithContext(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to release IPSlot: Failed to delete slot from Consul KV: %w", err)
 	}
