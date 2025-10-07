@@ -54,6 +54,14 @@ provider "google" {
   zone    = var.gcp_zone
 }
 
+data "google_secret_manager_secret_version" "routing_domains" {
+  secret = module.init.routing_domains_secret_name
+}
+
+locals {
+  routing_domains = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
+}
+
 module "init" {
   source = "./init"
 
@@ -115,8 +123,7 @@ module "cluster" {
   nomad_port                   = var.nomad_port
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
-  additional_domains = (var.additional_domains != "" ?
-  [for item in split(",", var.additional_domains) : trimspace(item)] : [])
+  additional_domains           = local.routing_domains
 
   additional_api_services = (var.additional_api_services_json != "" ?
     jsondecode(var.additional_api_services_json) :
