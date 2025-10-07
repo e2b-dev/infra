@@ -161,11 +161,17 @@ func (c *Client) startTokenRenewal(ctx context.Context, leaseDuration time.Durat
 	go func() {
 		for {
 			select {
+			case <-ctx.Done():
+				c.logger.Info("stopping token renewal due to context cancellation")
+				return
 			case <-c.stopRenew:
 				c.logger.Info("stopping token renewal")
 				return
 			case <-c.renewTicker.C:
-				c.renewToken(ctx)
+				// Use a fresh context with timeout for each renewal attempt
+				renewCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				c.renewToken(renewCtx)
+				cancel()
 			}
 		}
 	}()
