@@ -3,11 +3,12 @@ package network
 import (
 	"testing"
 
-	networkmocks "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network/mocks"
 	"github.com/hashicorp/consul/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	networkmocks "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network/mocks"
 )
 
 func TestSlotsHaveAppropriateNumbers(t *testing.T) {
@@ -46,7 +47,7 @@ func TestSlotsHaveAppropriateNumbers(t *testing.T) {
 			})
 
 		kv.EXPECT().Keys(mock.Anything, mock.Anything, mock.Anything).
-			RunAndReturn(func(prefix string, separator string, q *api.QueryOptions) ([]string, *api.QueryMeta, error) {
+			RunAndReturn(func(string, string, *api.QueryOptions) ([]string, *api.QueryMeta, error) {
 				expectedKey = "node-id/2"
 				storage.slotsSize = 2
 
