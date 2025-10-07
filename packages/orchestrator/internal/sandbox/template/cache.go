@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -29,9 +30,7 @@ const (
 	buildCacheTTL           = time.Hour * 25
 	buildCacheDelayEviction = time.Second * 60
 
-	// buildCacheMaxUsedPercentage the maximum percentage of the cache disk storage
-	// that can be used before the cache starts evicting items.
-	buildCacheMaxUsedPercentage = 85.0
+	defaultBuildCachePercentage = 85.0
 )
 
 var (
@@ -85,7 +84,7 @@ func NewCache(
 		build.DefaultCachePath(),
 		buildCacheTTL,
 		buildCacheDelayEviction,
-		buildCacheMaxUsedPercentage,
+		getBuildCacheMaxUsedPercentage(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build store: %w", err)
@@ -248,4 +247,30 @@ func (c *Cache) getTemplateWithFetch(ctx context.Context, storageTemplate *stora
 	}
 
 	return t.Value()
+}
+
+// getBuildCacheMaxUsedPercentage the maximum percentage of the cache disk storage
+// that can be used before the cache starts evicting items.
+func getBuildCacheMaxUsedPercentage() float64 {
+	valueString := env.GetEnv("BUILD_CACHE_MAX_USAGE_PERCENTAGE", fmt.Sprintf("%f", defaultBuildCachePercentage))
+
+	value, err := strconv.ParseFloat(valueString, 64)
+	if err != nil {
+		zap.L().Warn("failed to parse BUILD_CACHE_MAX_USAGE_PERCENTAGE, using default value",
+			zap.String("value", valueString),
+			zap.Float64("default_value", defaultBuildCachePercentage),
+			zap.Error(err),
+		)
+		return defaultBuildCachePercentage
+	}
+
+	if value < 0 || value > 100 {
+		zap.L().Warn("BUILD_CACHE_MAX_USAGE_PERCENTAGE must be between 0 and 100, using default value",
+			zap.Float64("value", value),
+			zap.Float64("default_value", defaultBuildCachePercentage),
+		)
+		return defaultBuildCachePercentage
+	}
+
+	return value
 }
