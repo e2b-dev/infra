@@ -10,6 +10,8 @@ type Config struct {
 
 	ClickhouseConnectionString string `env:"CLICKHOUSE_CONNECTION_STRING"`
 
+	EnableSecrets bool `env:"ENABLE_SECRETS" envDefault:"false"`
+
 	DNSPort uint16 `env:"DNS_PORT" envDefault:"5353"`
 
 	LocalClusterEndpoint string `env:"LOCAL_CLUSTER_ENDPOINT"`

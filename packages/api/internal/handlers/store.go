@@ -140,9 +140,15 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
 
-	secretVault, err := vault.NewClientFromEnv(ctx)
-	if err != nil {
-		zap.L().Fatal("failed to create secret vault client", zap.Error(err))
+	var secretVault *vault.Client
+	if config.EnableSecrets {
+		secretVault, err = vault.NewClientFromEnv(ctx)
+		if err != nil {
+			zap.L().Fatal("failed to create secret vault client", zap.Error(err))
+		}
+		zap.L().Info("Secret vault client initialized")
+	} else {
+		zap.L().Info("Secret vault disabled via ENABLE_SECRETS=false")
 	}
 
 	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, dbClient, sqlcDB, clustersPool, featureFlags)

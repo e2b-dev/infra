@@ -134,6 +134,7 @@ runs:
         echo "VAULT_ADDR=http://localhost:8200" >> $GITHUB_ENV
         echo "VAULT_APPROLE_ROLE_ID=${ROLE_ID}" >> $GITHUB_ENV
         echo "VAULT_APPROLE_SECRET_ID=${SECRET_ID}" >> $GITHUB_ENV
+        echo "ENABLE_SECRETS=true" >> $GITHUB_ENV
 
         echo "Vault setup complete!"
       shell: bash

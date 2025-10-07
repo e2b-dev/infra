@@ -118,6 +118,7 @@ resource "nomad_job" "api" {
 
     local_cluster_endpoint = "edge-api.service.consul:${var.edge_api_port.port}"
     local_cluster_token    = var.edge_api_secret
+    enable_secrets         = var.enable_secrets
   })
 }
 
@@ -583,8 +584,8 @@ resource "google_secret_manager_secret_version" "clickhouse_server_secret_value"
 }
 
 resource "google_service_account" "clickhouse_service_account" {
-  account_id   = "${var.prefix}clickhouse-service-account"
-  display_name = "${var.prefix}clickhouse-service-account"
+  account_id   = "${var.prefix}clickhouse"
+  display_name = "${var.prefix}clickhouse"
 }
 
 resource "google_storage_bucket_iam_member" "clickhouse_service_account_iam" {

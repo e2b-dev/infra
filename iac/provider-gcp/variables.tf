@@ -311,6 +311,12 @@ variable "environment" {
   default = "prod"
 }
 
+variable "enable_secrets" {
+  type        = bool
+  description = "Enable the secrets vault integration"
+  default     = false
+}
+
 variable "otel_collector_resources_memory_mb" {
   type    = number
   default = 1024
