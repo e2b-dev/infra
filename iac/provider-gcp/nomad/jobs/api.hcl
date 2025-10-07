@@ -100,7 +100,6 @@ job "api" {
         VAULT_APPROLE_ROLE_ID          = "${jsondecode(vault_api_approle_creds).role_id}"
         VAULT_APPROLE_SECRET_ID        = "${jsondecode(vault_api_approle_creds).secret_id}"
         VAULT_TLS_CA                   = ${jsonencode(vault_tls_ca)}
-        ENABLE_SECRETS                 = "${enable_secrets}"
 
         LOCAL_CLUSTER_ENDPOINT = "${local_cluster_endpoint}"
         LOCAL_CLUSTER_TOKEN    = "${local_cluster_token}"

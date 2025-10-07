@@ -118,7 +118,6 @@ resource "nomad_job" "api" {
 
     local_cluster_endpoint = "edge-api.service.consul:${var.edge_api_port.port}"
     local_cluster_token    = var.edge_api_secret
-    enable_secrets         = var.enable_secrets
   })
 }
 

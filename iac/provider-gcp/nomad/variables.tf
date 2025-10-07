@@ -88,11 +88,6 @@ variable "environment" {
   type = string
 }
 
-variable "enable_secrets" {
-  type        = bool
-  description = "Enable the secrets vault integration"
-}
-
 variable "api_machine_count" {
   type = number
 }

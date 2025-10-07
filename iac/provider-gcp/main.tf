@@ -179,7 +179,6 @@ module "nomad" {
   api_node_pool                             = var.api_node_pool
   api_port                                  = var.api_port
   environment                               = var.environment
-  enable_secrets                            = var.enable_secrets
   google_service_account_key                = module.init.google_service_account_key
   api_secret                                = random_password.api_secret.result
   custom_envs_repository_name               = google_artifact_registry_repository.custom_environments_repository.name

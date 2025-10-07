@@ -141,14 +141,21 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 	}
 
 	var secretVault *vault.Client
-	if config.EnableSecrets {
-		secretVault, err = vault.NewClientFromEnv(ctx)
+	if config.VaultAddr != "" {
+		secretVault, err = vault.NewClient(ctx, vault.ClientConfig{
+			Address:       config.VaultAddr,
+			RoleID:        config.VaultApproleRoleID,
+			SecretID:      config.VaultApproleSecretID,
+			SecretsEngine: config.VaultSecretsEngine,
+			CACert:        config.VaultTLSCA,
+			Logger:        zap.L(),
+		})
 		if err != nil {
 			zap.L().Fatal("failed to create secret vault client", zap.Error(err))
 		}
 		zap.L().Info("Secret vault client initialized")
 	} else {
-		zap.L().Info("Secret vault disabled via ENABLE_SECRETS=false")
+		zap.L().Info("Secret vault disabled (VAULT_ADDR not set)")
 	}
 
 	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, dbClient, sqlcDB, clustersPool, featureFlags)

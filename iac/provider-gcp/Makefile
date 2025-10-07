@@ -63,8 +63,7 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, BUILD_CLUSTER_CACHE_DISK_TYPE) \
 	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_TYPE) \
 	$(call tfvar, MIN_CPU_PLATFORM) \
-	$(call tfvar, REMOTE_REPOSITORY_ENABLED) \
-	$(call tfvar, ENABLE_SECRETS)
+	$(call tfvar, REMOTE_REPOSITORY_ENABLED)
 
 .PHONY: init
 init:
