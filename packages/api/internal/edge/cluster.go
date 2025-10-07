@@ -54,7 +54,7 @@ func NewCluster(tel *telemetry.Client, endpoint string, endpointTLS bool, secret
 	clientAuthMiddleware := func(c *api.Client) error {
 		c.RequestEditors = append(
 			c.RequestEditors,
-			func(ctx context.Context, req *http.Request) error {
+			func(_ context.Context, req *http.Request) error {
 				req.Header.Set(consts.EdgeApiAuthHeader, secret)
 				return nil
 			},

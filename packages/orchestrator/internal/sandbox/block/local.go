@@ -81,7 +81,7 @@ func (d *Local) Close() (e error) {
 	return nil
 }
 
-func (d *Local) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+func (d *Local) Slice(_ context.Context, off, length int64) ([]byte, error) {
 	end := off + length
 	size := int64(d.header.Metadata.Size)
 	if end > size {

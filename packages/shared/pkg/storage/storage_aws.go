@@ -118,7 +118,7 @@ func (a *AWSBucketStorageProvider) UploadSignedURL(ctx context.Context, path str
 	return resp.URL, nil
 }
 
-func (a *AWSBucketStorageProvider) OpenObject(ctx context.Context, path string) (StorageObjectProvider, error) {
+func (a *AWSBucketStorageProvider) OpenObject(_ context.Context, path string) (StorageObjectProvider, error) {
 	return &AWSBucketStorageObjectProvider{
 		client:     a.client,
 		bucketName: a.bucketName,

@@ -174,16 +174,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	// Created here to be able to pass it to CreateSandbox for populating COW cache
 	rootfsPath := filepath.Join(templateBuildDir, rootfsBuildFileName)
 
-	rootfs, memfile, envsImg, err := constructLayerFilesFromOCI(
-		ctx,
-		userLogger,
-		bb.BuildContext,
-		baseMetadata.Template.BuildID,
-		bb.artifactRegistry,
-		bb.dockerhubRepository,
-		templateBuildDir,
-		rootfsPath,
-	)
+	rootfs, memfile, envsImg, err := constructLayerFilesFromOCI(ctx, userLogger, bb.BuildContext, baseMetadata.Template.BuildID, bb.artifactRegistry, bb.dockerhubRepository, rootfsPath)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("error building environment: %w", err)
 	}

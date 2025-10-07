@@ -153,7 +153,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.
 		// If the transition is to the same state just wait
 		switch {
 		case currentState == newState:
-			return true, func(err error) {}, nil
+			return true, func(error) {}, nil
 		case sandbox.AllowedTransitions[currentState][newState]:
 			return startRemoving(ctx, sbx, stateAction)
 		default:

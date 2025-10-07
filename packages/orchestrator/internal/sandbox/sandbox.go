@@ -723,7 +723,7 @@ func (s *Sandbox) Pause(
 			memfile:    memfile,
 			dirtyPages: s.memory.Dirty(),
 			blockSize:  originalMemfile.BlockSize(),
-			doneHook: func(ctx context.Context) error {
+			doneHook: func(context.Context) error {
 				return memfile.Close()
 			},
 		},

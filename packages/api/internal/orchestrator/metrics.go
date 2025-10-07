@@ -17,7 +17,7 @@ func (o *Orchestrator) setupMetrics(meterProvider metric.MeterProvider) error {
 		return fmt.Errorf("failed to create orchestrators gauge: %w", err)
 	}
 
-	_, err = telemetry.GetObservableCounter(meter, telemetry.ApiOrchestratorSbxCreateSuccess, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err = telemetry.GetObservableCounter(meter, telemetry.ApiOrchestratorSbxCreateSuccess, func(_ context.Context, observer metric.Int64Observer) error {
 		for _, node := range o.nodes.Items() {
 			observer.Observe(int64(node.PlacementMetrics.SuccessCount()), metric.WithAttributes(
 				attribute.String("node.id", node.ID),
@@ -29,7 +29,7 @@ func (o *Orchestrator) setupMetrics(meterProvider metric.MeterProvider) error {
 		return fmt.Errorf("failed to create sandbox create success counter: %w", err)
 	}
 
-	_, err = telemetry.GetObservableCounter(meter, telemetry.ApiOrchestratorSbxCreateFailure, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err = telemetry.GetObservableCounter(meter, telemetry.ApiOrchestratorSbxCreateFailure, func(_ context.Context, observer metric.Int64Observer) error {
 		for _, node := range o.nodes.Items() {
 			observer.Observe(int64(node.PlacementMetrics.FailsCount()), metric.WithAttributes(
 				attribute.String("node.id", node.ID),
@@ -42,7 +42,7 @@ func (o *Orchestrator) setupMetrics(meterProvider metric.MeterProvider) error {
 	}
 
 	o.metricsRegistration, err = meter.RegisterCallback(
-		func(ctx context.Context, obs metric.Observer) error {
+		func(_ context.Context, obs metric.Observer) error {
 			for _, node := range o.nodes.Items() {
 				obs.ObserveInt64(gauge, 1, metric.WithAttributes(
 					attribute.String("status", string(node.Status())),

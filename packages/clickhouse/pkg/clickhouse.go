@@ -61,6 +61,6 @@ func New(connectionString string) (*Client, error) {
 }
 
 // Close drains the queue and flushes remaining items
-func (c *Client) Close(ctx context.Context) error {
+func (c *Client) Close(context.Context) error {
 	return c.conn.Close()
 }

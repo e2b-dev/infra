@@ -40,7 +40,7 @@ func NewGCPRemoteRepository(ctx context.Context, repositoryURL string) (*GCPRemo
 	return &GCPRemoteRepository{repositoryURL: repositoryURL, registry: registry, authToken: authToken}, nil
 }
 
-func (g *GCPRemoteRepository) GetImage(ctx context.Context, tag string, platform containerregistry.Platform) (containerregistry.Image, error) {
+func (g *GCPRemoteRepository) GetImage(_ context.Context, tag string, platform containerregistry.Platform) (containerregistry.Image, error) {
 	tagWithoutRegistry, err := removeRegistryFromTag(tag)
 	if err != nil {
 		return nil, fmt.Errorf("error removing registry from tag: %w", err)
