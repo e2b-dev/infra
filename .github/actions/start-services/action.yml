@@ -130,10 +130,10 @@ runs:
         SECRET_ID=$(docker exec -e VAULT_ADDR=$VAULT_ADDR -e VAULT_TOKEN=$VAULT_TOKEN vault \
           vault write -field=secret_id -f auth/approle/role/test-role/secret-id)
 
-        echo "Adding Vault configuration to .env.test..."
-        echo "VAULT_ADDR=http://localhost:8200" >> .env.test
-        echo "VAULT_APPROLE_ROLE_ID=${ROLE_ID}" >> .env.test
-        echo "VAULT_APPROLE_SECRET_ID=${SECRET_ID}" >> .env.test
+        echo "Exporting Vault configuration..."
+        echo "VAULT_ADDR=http://localhost:8200" >> $GITHUB_ENV
+        echo "VAULT_APPROLE_ROLE_ID=${ROLE_ID}" >> $GITHUB_ENV
+        echo "VAULT_APPROLE_SECRET_ID=${SECRET_ID}" >> $GITHUB_ENV
 
         echo "Vault setup complete!"
       shell: bash
@@ -152,11 +152,6 @@ runs:
         SHARED_CHUNK_CACHE_PATH: "./.e2b-chunk-cache"
         EDGE_TOKEN: "abdcdefghijklmnop"
       run: |
-        # Load environment variables from .env.test
-        set -a
-        source .env.test
-        set +a
-        
         mkdir -p $SHARED_CHUNK_CACHE_PATH
         mkdir -p ~/logs
 
