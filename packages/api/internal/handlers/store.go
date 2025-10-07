@@ -33,6 +33,7 @@ import (
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/vault"
 )
 
 // minSupabaseJWTSecretLength is the minimum length of a secret used to verify the Supabase JWT.
@@ -56,6 +57,7 @@ type APIStore struct {
 	envdAccessTokenGenerator *sandbox.EnvdAccessTokenGenerator
 	featureFlags             *featureflags.Client
 	clustersPool             *edge.Pool
+	secretVault              *vault.Client
 }
 
 func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) *APIStore {
@@ -138,6 +140,11 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
 
+	secretVault, err := vault.NewClientFromEnv(ctx)
+	if err != nil {
+		zap.L().Fatal("failed to create secret vault client", zap.Error(err))
+	}
+
 	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, dbClient, sqlcDB, clustersPool, featureFlags)
 	if err != nil {
 		zap.L().Fatal("Initializing Orchestrator client", zap.Error(err))
@@ -178,6 +185,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		envdAccessTokenGenerator: accessTokenGenerator,
 		clustersPool:             clustersPool,
 		featureFlags:             featureFlags,
+		secretVault:              secretVault,
 	}
 
 	// Wait till there's at least one, otherwise we can't create sandboxes yet
@@ -222,6 +230,10 @@ func (a *APIStore) Close(ctx context.Context) error {
 
 	if err := a.db.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("closing database client: %w", err))
+	}
+
+	if a.secretVault != nil {
+		a.secretVault.Close()
 	}
 
 	return errors.Join(errs...)

@@ -77,6 +77,18 @@ type ServerInterface interface {
 	// (POST /sandboxes/{sandboxID}/timeout)
 	PostSandboxesSandboxIDTimeout(c *gin.Context, sandboxID SandboxID)
 
+	// (GET /secrets)
+	GetSecrets(c *gin.Context)
+
+	// (POST /secrets)
+	PostSecrets(c *gin.Context)
+
+	// (DELETE /secrets/{secretID})
+	DeleteSecretsSecretID(c *gin.Context, secretID SecretID)
+
+	// (PATCH /secrets/{secretID})
+	PatchSecretsSecretID(c *gin.Context, secretID SecretID)
+
 	// (GET /teams)
 	GetTeams(c *gin.Context)
 
@@ -719,6 +731,104 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDTimeout(c *gin.Context)
 	siw.Handler.PostSandboxesSandboxIDTimeout(c, sandboxID)
 }
 
+// GetSecrets operation middleware
+func (siw *ServerInterfaceWrapper) GetSecrets(c *gin.Context) {
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetSecrets(c)
+}
+
+// PostSecrets operation middleware
+func (siw *ServerInterfaceWrapper) PostSecrets(c *gin.Context) {
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostSecrets(c)
+}
+
+// DeleteSecretsSecretID operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSecretsSecretID(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "secretID" -------------
+	var secretID SecretID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "secretID", c.Param("secretID"), &secretID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter secretID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteSecretsSecretID(c, secretID)
+}
+
+// PatchSecretsSecretID operation middleware
+func (siw *ServerInterfaceWrapper) PatchSecretsSecretID(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "secretID" -------------
+	var secretID SecretID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "secretID", c.Param("secretID"), &secretID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter secretID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PatchSecretsSecretID(c, secretID)
+}
+
 // GetTeams operation middleware
 func (siw *ServerInterfaceWrapper) GetTeams(c *gin.Context) {
 
@@ -1274,6 +1384,10 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/sandboxes/:sandboxID/refreshes", wrapper.PostSandboxesSandboxIDRefreshes)
 	router.POST(options.BaseURL+"/sandboxes/:sandboxID/resume", wrapper.PostSandboxesSandboxIDResume)
 	router.POST(options.BaseURL+"/sandboxes/:sandboxID/timeout", wrapper.PostSandboxesSandboxIDTimeout)
+	router.GET(options.BaseURL+"/secrets", wrapper.GetSecrets)
+	router.POST(options.BaseURL+"/secrets", wrapper.PostSecrets)
+	router.DELETE(options.BaseURL+"/secrets/:secretID", wrapper.DeleteSecretsSecretID)
+	router.PATCH(options.BaseURL+"/secrets/:secretID", wrapper.PatchSecretsSecretID)
 	router.GET(options.BaseURL+"/teams", wrapper.GetTeams)
 	router.GET(options.BaseURL+"/teams/:teamID/metrics", wrapper.GetTeamsTeamIDMetrics)
 	router.GET(options.BaseURL+"/teams/:teamID/metrics/max", wrapper.GetTeamsTeamIDMetricsMax)
