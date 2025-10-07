@@ -8,6 +8,9 @@ import (
 	"io"
 	"sync"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -210,7 +213,7 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 	}
 	d.shuttingDownLock.Unlock()
 
-	performRead := func(ctx context.Context, handle uint64, from uint64, length uint32) error {
+	performRead := func(ctx context.Context, handle uint64, from uint64, length uint32) (bool, error) {
 		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
 		data := make([]byte, length)
@@ -223,28 +226,34 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 		// Wait until either the ReadAt completed, or our context is cancelled...
 		select {
 		case <-ctx.Done():
-			return d.writeResponse(1, handle, []byte{})
+			return false, d.writeResponse(1, handle, []byte{})
 		case err := <-errchan:
 			if err != nil {
-				return d.writeResponse(1, handle, []byte{})
+				return false, d.writeResponse(1, handle, []byte{})
 			}
 		}
 
 		// read was successful
-		return d.writeResponse(0, handle, data)
+		return true, d.writeResponse(0, handle, data)
 	}
 
 	go func() {
-		ctx, span := tracer.Start(ctx, "perform read command")
+		ctx, span := tracer.Start(ctx, "perform read command", trace.WithAttributes(
+			attribute.Int64("length", int64(cmdLength)),
+			attribute.Int64("offset", int64(cmdFrom)),
+		))
 		defer span.End()
 
-		err := performRead(ctx, cmdHandle, cmdFrom, cmdLength)
+		ok, err := performRead(ctx, cmdHandle, cmdFrom, cmdLength)
 		if err != nil {
 			select {
 			case d.fatal <- err:
 			default:
 				zap.L().Error("nbd error cmd read", zap.Error(err))
 			}
+		}
+		if !ok {
+			span.SetStatus(codes.Error, "read failed")
 		}
 		d.pendingResponses.Done()
 	}()

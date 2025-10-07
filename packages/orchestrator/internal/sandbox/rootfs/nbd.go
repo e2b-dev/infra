@@ -8,6 +8,8 @@ import (
 	"os"
 	"syscall"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
@@ -24,6 +26,7 @@ type NBDProvider struct {
 
 	ready *utils.SetOnce[string]
 
+	cachePath string
 	blockSize int64
 
 	finishedOperations chan struct{}
@@ -50,6 +53,7 @@ func NewNBDProvider(rootfs block.ReadonlyDevice, cachePath string, devicePool *n
 	mnt := nbd.NewDirectPathMount(overlay, devicePool)
 
 	return &NBDProvider{
+		cachePath:          cachePath,
 		mnt:                mnt,
 		overlay:            overlay,
 		ready:              utils.NewSetOnce[string](),
@@ -60,7 +64,8 @@ func NewNBDProvider(rootfs block.ReadonlyDevice, cachePath string, devicePool *n
 }
 
 func (o *NBDProvider) Start(ctx context.Context) error {
-	ctx, span := tracer.Start(ctx, "cow-start")
+	ctx, span := tracer.Start(ctx, "cow-start", trace.WithAttributes(
+		attribute.String("path", o.cachePath)))
 	defer span.End()
 
 	deviceIndex, err := o.mnt.Open(ctx)
