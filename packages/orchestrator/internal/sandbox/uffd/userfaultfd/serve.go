@@ -141,7 +141,7 @@ outerLoop:
 		eg.Go(func() error {
 			defer func() {
 				if r := recover(); r != nil {
-					logger.Error("UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
+					logger.Error("UFFD serve panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
 				}
 			}()
 
