@@ -229,7 +229,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 }
 
 func (t *storageTemplate) Close(ctx context.Context) error {
-	return closeTemplate(t, ctx)
+	return closeTemplate(ctx, t)
 }
 
 func (t *storageTemplate) Files() storage.TemplateCacheFiles {

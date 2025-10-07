@@ -20,7 +20,7 @@ type Template interface {
 	Close(ctx context.Context) error
 }
 
-func closeTemplate(t Template, ctx context.Context) (e error) {
+func closeTemplate(ctx context.Context, t Template) (e error) {
 	closable := make([]io.Closer, 0)
 
 	memfile, err := t.Memfile(ctx)

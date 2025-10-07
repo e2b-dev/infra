@@ -29,7 +29,7 @@ func NewLocalTemplate(
 }
 
 func (t *LocalTemplate) Close(ctx context.Context) error {
-	return closeTemplate(t, ctx)
+	return closeTemplate(ctx, t)
 }
 
 func (t *LocalTemplate) Files() storage.TemplateCacheFiles {
