@@ -143,12 +143,11 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 	var secretVault *vault.Client
 	if config.VaultAddr != "" {
 		secretVault, err = vault.NewClient(ctx, vault.ClientConfig{
-			Address:       config.VaultAddr,
-			RoleID:        config.VaultApproleRoleID,
-			SecretID:      config.VaultApproleSecretID,
-			SecretsEngine: config.VaultSecretsEngine,
-			CACert:        config.VaultTLSCA,
-			Logger:        zap.L(),
+			Address:  config.VaultAddr,
+			RoleID:   config.VaultApproleRoleID,
+			SecretID: config.VaultApproleSecretID,
+			CACert:   config.VaultTLSCA,
+			Logger:   zap.L(),
 		})
 		if err != nil {
 			zap.L().Fatal("failed to create secret vault client", zap.Error(err))

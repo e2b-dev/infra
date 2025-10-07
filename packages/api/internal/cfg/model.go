@@ -38,7 +38,6 @@ type Config struct {
 	VaultAddr            string `env:"VAULT_ADDR"`
 	VaultApproleRoleID   string `env:"VAULT_APPROLE_ROLE_ID"`
 	VaultApproleSecretID string `env:"VAULT_APPROLE_SECRET_ID"`
-	VaultSecretsEngine   string `env:"VAULT_SECRETS_ENGINE"`
 	VaultTLSCA           string `env:"VAULT_TLS_CA"`
 }
 

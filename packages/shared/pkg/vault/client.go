@@ -18,11 +18,10 @@ import (
 const secretKey = "value"
 
 type Client struct {
-	client        *vault.Client
-	logger        *zap.Logger
-	secretsEngine string
-	renewTicker   *time.Ticker
-	stopRenew     chan struct{}
+	client      *vault.Client
+	logger      *zap.Logger
+	renewTicker *time.Ticker
+	stopRenew   chan struct{}
 }
 
 type ClientConfig struct {
@@ -32,8 +31,6 @@ type ClientConfig struct {
 	RoleID string
 	// AppRole Secret ID for authentication
 	SecretID string
-	// Secrets engine mount path (defaults to "secret", don't change)
-	SecretsEngine string
 	// CA certificate to verify server (optional, PEM format)
 	CACert string
 	// Logger instance (optional)
@@ -42,9 +39,6 @@ type ClientConfig struct {
 
 func NewClient(ctx context.Context, config ClientConfig) (*Client, error) {
 	// Set defaults
-	if config.SecretsEngine == "" {
-		config.SecretsEngine = "secret"
-	}
 	if config.Logger == nil {
 		config.Logger = zap.NewNop()
 	}
@@ -76,10 +70,9 @@ func NewClient(ctx context.Context, config ClientConfig) (*Client, error) {
 	}
 
 	client := &Client{
-		client:        vaultClient,
-		logger:        config.Logger,
-		secretsEngine: config.SecretsEngine,
-		stopRenew:     make(chan struct{}),
+		client:    vaultClient,
+		logger:    config.Logger,
+		stopRenew: make(chan struct{}),
 	}
 
 	// Authenticate with AppRole
@@ -100,12 +93,11 @@ func NewClientFromEnv(ctx context.Context) (*Client, error) {
 	logger, _ := zap.NewProduction()
 
 	config := ClientConfig{
-		Address:       os.Getenv("VAULT_ADDR"),
-		RoleID:        os.Getenv("VAULT_APPROLE_ROLE_ID"),
-		SecretID:      os.Getenv("VAULT_APPROLE_SECRET_ID"),
-		SecretsEngine: os.Getenv("VAULT_SECRETS_ENGINE"),
-		CACert:        os.Getenv("VAULT_TLS_CA"),
-		Logger:        logger,
+		Address:  os.Getenv("VAULT_ADDR"),
+		RoleID:   os.Getenv("VAULT_APPROLE_ROLE_ID"),
+		SecretID: os.Getenv("VAULT_APPROLE_SECRET_ID"),
+		CACert:   os.Getenv("VAULT_TLS_CA"),
+		Logger:   logger,
 	}
 
 	if config.Address == "" {
@@ -199,7 +191,7 @@ var ErrSecretNotFound = errors.New("secret not found")
 
 // GetSecret retrieves a secret and its unseralized metadata from Vault at the specified path
 func (c *Client) GetSecret(ctx context.Context, path string) (string, map[string]any, error) {
-	resp, err := c.client.Secrets.KvV2Read(ctx, path, vault.WithMountPath(c.secretsEngine))
+	resp, err := c.client.Secrets.KvV2Read(ctx, path)
 	if err != nil && !vault.IsErrorStatus(err, http.StatusNotFound) {
 		return "", nil, errors.Wrap(err, "failed to read secret")
 	}
@@ -226,7 +218,7 @@ func (c *Client) WriteSecret(ctx context.Context, path string, value string, met
 		Data: map[string]any{
 			secretKey: value,
 		},
-	}, vault.WithMountPath(c.secretsEngine))
+	})
 	if err != nil {
 		return errors.Wrap(err, fmt.Sprintf("failed to write secret at path %s", path))
 	}
@@ -251,10 +243,10 @@ func (c *Client) WriteSecret(ctx context.Context, path string, value string, met
 		CustomMetadata:     serializedMetadata,
 		DeleteVersionAfter: time.Duration(0).String(),
 		MaxVersions:        1,
-	}, vault.WithMountPath(c.secretsEngine)); err != nil {
+	}); err != nil {
 
 		// clean up the secret if metadata write fails
-		_, err := c.client.Secrets.KvV2Delete(ctx, path, vault.WithMountPath(c.secretsEngine))
+		_, err := c.client.Secrets.KvV2Delete(ctx, path)
 		if err != nil {
 			c.logger.Error("failed to clean up secret", zap.Error(err))
 		}
@@ -268,7 +260,7 @@ func (c *Client) WriteSecret(ctx context.Context, path string, value string, met
 // DeleteSecret deletes a secret and all its versions from Vault at the specified path
 func (c *Client) DeleteSecret(ctx context.Context, path string) error {
 	// Delete all versions of the secret
-	_, err := c.client.Secrets.KvV2DeleteMetadataAndAllVersions(ctx, path, vault.WithMountPath(c.secretsEngine))
+	_, err := c.client.Secrets.KvV2DeleteMetadataAndAllVersions(ctx, path)
 	if err != nil {
 		return errors.Wrap(err, fmt.Sprintf("failed to delete secret at path %s", path))
 	}
