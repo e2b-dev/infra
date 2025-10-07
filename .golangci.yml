@@ -101,7 +101,6 @@ linters:
         - { disabled: true, name: function-length }
         - { disabled: true, name: function-result-limit }
         - { disabled: true, name: get-return }
-        - { disabled: true, name: if-return }
         - { disabled: true, name: import-alias-naming }
         - { disabled: true, name: import-shadowing }
         - { disabled: true, name: line-length-limit }
