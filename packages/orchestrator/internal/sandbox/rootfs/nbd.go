@@ -89,7 +89,6 @@ func (o *NBDProvider) ExportDiff(
 
 	select {
 	case <-o.finishedOperations:
-		break
 	case <-childCtx.Done():
 		return nil, fmt.Errorf("timeout waiting for overlay device to be released")
 	}

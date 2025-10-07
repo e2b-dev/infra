@@ -9,7 +9,7 @@ import (
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 )
 
-func (s *Service) List(ctx context.Context, req *connect.Request[rpc.ListRequest]) (*connect.Response[rpc.ListResponse], error) {
+func (s *Service) List(context.Context, *connect.Request[rpc.ListRequest]) (*connect.Response[rpc.ListResponse], error) {
 	processes := make([]*rpc.ProcessInfo, 0)
 
 	s.processes.Range(func(pid uint32, value *handler.Handler) bool {

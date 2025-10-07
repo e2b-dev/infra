@@ -51,7 +51,7 @@ func (e *Empty) Close() error {
 	return nil
 }
 
-func (e *Empty) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+func (e *Empty) Slice(_ context.Context, off, length int64) ([]byte, error) {
 	end := off + length
 	size := int64(e.header.Metadata.Size)
 	if end > size {

@@ -15,12 +15,12 @@ func NewLocalArtifactsRegistry() (*LocalArtifactsRegistry, error) {
 	return &LocalArtifactsRegistry{}, nil
 }
 
-func (g *LocalArtifactsRegistry) Delete(ctx context.Context, templateId string, buildId string) error {
+func (g *LocalArtifactsRegistry) Delete(context.Context, string, string) error {
 	// for now, just assume local image can be deleted manually
 	return nil
 }
 
-func (g *LocalArtifactsRegistry) GetTag(ctx context.Context, templateId string, buildId string) (string, error) {
+func (g *LocalArtifactsRegistry) GetTag(_ context.Context, templateId string, buildId string) (string, error) {
 	return fmt.Sprintf("%s:%s", templateId, buildId), nil
 }
 

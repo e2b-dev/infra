@@ -83,7 +83,7 @@ func NewBatcher[T any](fn BatcherFunc[T], cfg BatcherOptions) (*Batcher[T], erro
 	}
 
 	if b.ErrorHandler == nil {
-		b.ErrorHandler = func(err error) {}
+		b.ErrorHandler = func(error) {}
 	}
 
 	if b.MaxBatchSize <= 0 {

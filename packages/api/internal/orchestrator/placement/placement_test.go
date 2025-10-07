@@ -105,7 +105,7 @@ func TestPlaceSandbox_ContextTimeout(t *testing.T) {
 
 	algorithm := &mockAlgorithm{}
 	algorithm.On("chooseNode", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Run(func(args mock.Arguments) {
+		Run(func(_ mock.Arguments) {
 			// Simulate slow node selection
 			time.Sleep(10 * time.Millisecond)
 		}).

@@ -37,14 +37,6 @@ func NewFile(
 	}
 }
 
-func min(a, b int64) int64 {
-	if a < b {
-		return a
-	}
-
-	return b
-}
-
 func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
 	for n < len(p) {
 		mappedOffset, mappedLength, buildID, err := b.header.GetShiftedMapping(off + int64(n))
@@ -104,7 +96,7 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 }
 
 // The slice access must be in the predefined blocksize of the build.
-func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 	mappedOffset, _, buildID, err := b.header.GetShiftedMapping(off)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mapping: %w", err)

@@ -34,10 +34,8 @@ func (n *Node) Status() api.NodeStatus {
 	case connectivity.Connecting:
 		return api.NodeStatusConnecting
 	default:
-		break
+		return n.status
 	}
-
-	return n.status
 }
 
 func (n *Node) setStatus(status api.NodeStatus) {

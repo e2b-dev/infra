@@ -62,7 +62,7 @@ func TestSandboxCreateWithSupabaseToken(t *testing.T) {
 	})
 
 	t.Run("Fail creation with invalid token", func(t *testing.T) {
-		response := createSandbox(t, func(ctx context.Context, req *http.Request) error {
+		response := createSandbox(t, func(_ context.Context, req *http.Request) error {
 			req.Header.Set("X-Supabase-Token", "invalid")
 
 			return nil
@@ -73,10 +73,9 @@ func TestSandboxCreateWithSupabaseToken(t *testing.T) {
 
 func TestSandboxCreateWithForeignTeamAccess(t *testing.T) {
 	db := setup.GetTestDBClient(t)
-	c := setup.GetAPIClient()
 
 	userID2 := utils.CreateUser(t, db)
-	teamID2 := utils.CreateTeamWithUser(t, c, db, "test-team-2", userID2.String())
+	teamID2 := utils.CreateTeamWithUser(t, db, "test-team-2", userID2.String())
 
 	t.Run("Fail when using first user token with second team ID", func(t *testing.T) {
 		// This should fail because the first user doesn't belong to the second team

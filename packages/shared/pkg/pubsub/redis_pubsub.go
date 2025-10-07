@@ -106,7 +106,7 @@ func (r *RedisPubSub[PayloadT, SubMetaDataT]) Subscribe(ctx context.Context, pub
 	}
 }
 
-func (r *RedisPubSub[PayloadT, SubMetaDataT]) Close(ctx context.Context) error {
+func (r *RedisPubSub[PayloadT, SubMetaDataT]) Close(context.Context) error {
 	return r.redisClient.Close()
 }
 

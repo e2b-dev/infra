@@ -25,7 +25,7 @@ type DeviceWithClose struct {
 
 var _ block.Device = (*DeviceWithClose)(nil)
 
-func (d *DeviceWithClose) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
+func (d *DeviceWithClose) ReadAt(_ context.Context, p []byte, off int64) (n int, err error) {
 	return d.b.ReadAt(p, off)
 }
 
@@ -41,7 +41,7 @@ func (d *DeviceWithClose) Close() error {
 	return nil
 }
 
-func (d *DeviceWithClose) Slice(ctx context.Context, offset, length int64) ([]byte, error) {
+func (d *DeviceWithClose) Slice(_ context.Context, offset, length int64) ([]byte, error) {
 	b := make([]byte, length)
 
 	_, err := d.b.ReadAt(b, offset)

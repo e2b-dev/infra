@@ -12,8 +12,8 @@ type MockEventsService[T any] struct {
 
 func NewMockEventsService[T any]() *MockEventsService[T] {
 	return &MockEventsService[T]{
-		HandleEventFunc: func(ctx context.Context, event T) error { return nil },
-		CloseFunc:       func(ctx context.Context) error { return nil },
+		HandleEventFunc: func(context.Context, T) error { return nil },
+		CloseFunc:       func(context.Context) error { return nil },
 	}
 }
 

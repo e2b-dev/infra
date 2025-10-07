@@ -86,7 +86,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		return
 	}
 
-	sandboxes := a.orchestrator.GetSandboxes(ctx, team.ID, sandbox.WithState(sandbox.StateRunning))
+	sandboxes := a.orchestrator.GetSandboxes(ctx, team.ID, []sandbox.State{sandbox.StateRunning})
 	runningSandboxes := getRunningSandboxes(sandboxes, metadataFilter)
 
 	// Sort sandboxes by start time descending
@@ -144,7 +144,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		return
 	}
 
-	allSandboxes := a.orchestrator.GetSandboxes(ctx, team.ID, sandbox.WithStates(sandbox.StateRunning, sandbox.StatePausing))
+	allSandboxes := a.orchestrator.GetSandboxes(ctx, team.ID, []sandbox.State{sandbox.StateRunning, sandbox.StatePausing})
 	runningSandboxes := sharedUtils.Filter(allSandboxes, func(sbx sandbox.Sandbox) bool {
 		return sbx.State == sandbox.StateRunning
 	})

@@ -1,8 +1,8 @@
 package utils
 
-func SubstringMax(s string, max int) string {
-	if len(s) <= max {
+func SubstringMax(s string, maxLen int) string {
+	if len(s) <= maxLen {
 		return s
 	}
-	return s[:max] + "..."
+	return s[:maxLen] + "..."
 }

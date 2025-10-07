@@ -56,7 +56,7 @@ func RunCommand(
 		metadata,
 		// No confirmation needed for this command
 		make(chan struct{}),
-		func(stdout, stderr string) {},
+		func(_, _ string) {},
 	)
 }
 

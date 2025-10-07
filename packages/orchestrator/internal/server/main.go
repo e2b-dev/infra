@@ -85,7 +85,7 @@ func New(cfg ServiceConfig) *Service {
 	}
 
 	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")
-	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(srv.server.sandboxes.Count()))
 
 		return nil

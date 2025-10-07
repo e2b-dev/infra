@@ -54,7 +54,7 @@ func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion
 		return nil, fmt.Errorf("failed to create resource: %w", err)
 	}
 
-	meterProvider, err := NewMeterProvider(ctx, metricsExporter, metricExportPeriod, res)
+	meterProvider, err := NewMeterProvider(metricsExporter, metricExportPeriod, res)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create metrics provider: %w", err)
 	}
@@ -66,7 +66,7 @@ func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion
 		return nil, fmt.Errorf("failed to create logs exporter: %w", err)
 	}
 
-	logsProvider := NewLogProvider(ctx, logsExporter, res)
+	logsProvider := NewLogProvider(logsExporter, res)
 
 	// Setup tracing
 	spanExporter, err := NewSpanExporter(ctx)
@@ -74,7 +74,7 @@ func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion
 		return nil, fmt.Errorf("failed to create span exporter: %w", err)
 	}
 
-	tracerProvider := NewTracerProvider(ctx, spanExporter, res)
+	tracerProvider := NewTracerProvider(spanExporter, res)
 	otel.SetTracerProvider(tracerProvider)
 
 	// There's probably not a reason why not to set the trace propagator globally, it's used in SDKs

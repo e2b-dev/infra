@@ -101,7 +101,7 @@ func (p *OrchestratorsPool) statusLogSync() {
 	}
 }
 
-func (p *OrchestratorsPool) Close(ctx context.Context) error {
+func (p *OrchestratorsPool) Close(_ context.Context) error {
 	p.synchronization.Close()
 
 	// Close all orchestrator instances in the pool
@@ -133,7 +133,7 @@ func (e *orchestratorInstancesSyncStore) SourceList(ctx context.Context) ([]sd.S
 	return e.pool.discovery.ListNodes(ctx)
 }
 
-func (e *orchestratorInstancesSyncStore) SourceExists(ctx context.Context, s []sd.ServiceDiscoveryItem, p *OrchestratorInstance) bool {
+func (e *orchestratorInstancesSyncStore) SourceExists(_ context.Context, s []sd.ServiceDiscoveryItem, p *OrchestratorInstance) bool {
 	itself := p.GetInfo()
 	for _, item := range s {
 		itemHost := e.getHost(item.NodeIP, item.NodePort)
@@ -145,7 +145,7 @@ func (e *orchestratorInstancesSyncStore) SourceExists(ctx context.Context, s []s
 	return false
 }
 
-func (e *orchestratorInstancesSyncStore) PoolList(ctx context.Context) []*OrchestratorInstance {
+func (e *orchestratorInstancesSyncStore) PoolList(_ context.Context) []*OrchestratorInstance {
 	items := make([]*OrchestratorInstance, 0)
 	for _, item := range e.pool.instances.Items() {
 		items = append(items, item)
@@ -153,7 +153,7 @@ func (e *orchestratorInstancesSyncStore) PoolList(ctx context.Context) []*Orches
 	return items
 }
 
-func (e *orchestratorInstancesSyncStore) PoolExists(ctx context.Context, source sd.ServiceDiscoveryItem) bool {
+func (e *orchestratorInstancesSyncStore) PoolExists(_ context.Context, source sd.ServiceDiscoveryItem) bool {
 	host := e.getHost(source.NodeIP, source.NodePort)
 	_, found := e.pool.instances.Get(host)
 	return found
@@ -191,7 +191,7 @@ func (e *orchestratorInstancesSyncStore) PoolUpdate(ctx context.Context, item *O
 	}
 }
 
-func (e *orchestratorInstancesSyncStore) PoolRemove(ctx context.Context, item *OrchestratorInstance) {
+func (e *orchestratorInstancesSyncStore) PoolRemove(_ context.Context, item *OrchestratorInstance) {
 	info := item.GetInfo()
 	zap.L().Info("Orchestrator instance connection is not active anymore, closing.", l.WithNodeID(info.NodeID))
 

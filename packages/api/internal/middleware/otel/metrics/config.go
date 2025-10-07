@@ -30,7 +30,7 @@ func defaultConfig() *config {
 	}
 }
 
-var DefaultAttributes = func(serverName, route string, request *http.Request) []attribute.KeyValue {
+var DefaultAttributes = func(_, route string, request *http.Request) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{
 		semconv.HTTPMethodKey.String(request.Method),
 	}

@@ -39,8 +39,8 @@ func GetEnvdClient(tb testing.TB, _ context.Context) *EnvdClient {
 	}
 }
 
-func WithSandbox(sandboxID string) func(ctx context.Context, req *http.Request) error {
-	return func(ctx context.Context, req *http.Request) error {
+func WithSandbox(sandboxID string) func(context.Context, *http.Request) error {
+	return func(_ context.Context, req *http.Request) error {
 		SetSandboxHeader(req.Header, sandboxID)
 		req.Host = req.Header.Get("Host")
 
@@ -49,7 +49,7 @@ func WithSandbox(sandboxID string) func(ctx context.Context, req *http.Request) 
 }
 
 func WithEnvdAccessToken(accessToken string) func(ctx context.Context, req *http.Request) error {
-	return func(ctx context.Context, req *http.Request) error {
+	return func(_ context.Context, req *http.Request) error {
 		SetAccessTokenHeader(req.Header, accessToken)
 		return nil
 	}

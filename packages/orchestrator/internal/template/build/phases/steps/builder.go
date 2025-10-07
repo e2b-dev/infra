@@ -80,7 +80,7 @@ func (sb *StepBuilder) Prefix() string {
 	return fmt.Sprintf("builder %d/%d", sb.stepNumber, len(sb.Config.Steps))
 }
 
-func (sb *StepBuilder) String(ctx context.Context) (string, error) {
+func (sb *StepBuilder) String(context.Context) (string, error) {
 	return fmt.Sprintf("%s %s", strings.ToUpper(sb.step.GetType()), strings.Join(sb.step.GetArgs(), " ")), nil
 }
 

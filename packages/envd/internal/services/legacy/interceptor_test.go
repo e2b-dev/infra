@@ -21,7 +21,7 @@ func TestInterceptor(t *testing.T) {
 		return func(mockFS *filesystemconnectmocks.MockFilesystemHandler) {
 			mockFS.EXPECT().
 				WatchDir(mock.Anything, mock.Anything, mock.Anything).
-				Run(func(context1 context.Context, request *connect.Request[filesystem.WatchDirRequest], serverStream *connect.ServerStream[filesystem.WatchDirResponse]) {
+				Run(func(_ context.Context, _ *connect.Request[filesystem.WatchDirRequest], serverStream *connect.ServerStream[filesystem.WatchDirResponse]) {
 					for range count {
 						err := serverStream.Send(&filesystem.WatchDirResponse{Event: &filesystem.WatchDirResponse_Start{Start: &filesystem.WatchDirResponse_StartEvent{}}})
 						require.NoError(t, err)
@@ -163,7 +163,7 @@ func (u userAgentInterceptor) WrapStreamingClient(clientFunc connect.StreamingCl
 	}
 }
 
-func (u userAgentInterceptor) WrapStreamingHandler(handlerFunc connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+func (u userAgentInterceptor) WrapStreamingHandler(connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	// TODO implement me
 	panic("implement me")
 }

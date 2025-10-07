@@ -20,15 +20,15 @@ type fakeTemplateManagerClient struct {
 	getStatusErr      error
 }
 
-func (f fakeTemplateManagerClient) SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason *templatemanagergrpc.TemplateBuildStatusReason) error {
+func (f fakeTemplateManagerClient) SetStatus(context.Context, string, uuid.UUID, envbuild.Status, *templatemanagergrpc.TemplateBuildStatusReason) error {
 	return f.setStatusError
 }
 
-func (f fakeTemplateManagerClient) SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string) error {
+func (f fakeTemplateManagerClient) SetFinished(context.Context, string, uuid.UUID, int64, string) error {
 	return f.setFinishedError
 }
 
-func (f fakeTemplateManagerClient) GetStatus(ctx context.Context, buildID uuid.UUID, templateID string, clusterID uuid.UUID, nodeID string) (*templatemanagergrpc.TemplateBuildStatusResponse, error) {
+func (f fakeTemplateManagerClient) GetStatus(context.Context, uuid.UUID, string, uuid.UUID, string) (*templatemanagergrpc.TemplateBuildStatusResponse, error) {
 	return f.getStatusResponse, f.getStatusErr
 }
 

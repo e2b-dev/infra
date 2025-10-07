@@ -75,7 +75,7 @@ func init() {
 		}
 	})
 
-	addConverter(func(in *filesystem.RemoveResponse) RemoveResponse {
+	addConverter(func(*filesystem.RemoveResponse) RemoveResponse {
 		return RemoveResponse{}
 	})
 

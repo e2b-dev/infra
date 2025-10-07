@@ -69,7 +69,7 @@ func saveUserMeta(
 		metadata.Context{
 			User: "root",
 		},
-		func(stdout, stderr string) {
+		func(stdout, _ string) {
 			user = stdout
 		},
 	)

@@ -207,6 +207,6 @@ type errorReader struct {
 	err error
 }
 
-func (er *errorReader) Read(p []byte) (n int, err error) {
+func (er *errorReader) Read([]byte) (n int, err error) {
 	return 0, er.err
 }

@@ -119,7 +119,7 @@ func (a *commonAuthenticator[T]) SecuritySchemeName() string {
 }
 
 func adminValidationFunction(adminToken string) func(context.Context, string) (struct{}, *api.APIError) {
-	return func(ctx context.Context, token string) (struct{}, *api.APIError) {
+	return func(_ context.Context, token string) (struct{}, *api.APIError) {
 		if token != adminToken {
 			return struct{}{}, &api.APIError{
 				Code:      http.StatusUnauthorized,

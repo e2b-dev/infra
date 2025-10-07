@@ -21,12 +21,12 @@ func NewStatsWrapper(statsHandler stats.Handler) stats.Handler {
 }
 
 // HandleConn exists to satisfy gRPC stats.Handler.
-func (s *statsWrapper) HandleConn(ctx context.Context, cs stats.ConnStats) {
+func (s *statsWrapper) HandleConn(context.Context, stats.ConnStats) {
 	// no-op
 }
 
 // TagConn exists to satisfy gRPC stats.Handler.
-func (s *statsWrapper) TagConn(ctx context.Context, cti *stats.ConnTagInfo) context.Context {
+func (s *statsWrapper) TagConn(ctx context.Context, _ *stats.ConnTagInfo) context.Context {
 	// no-op
 	return ctx
 }

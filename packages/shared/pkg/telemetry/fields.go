@@ -50,11 +50,11 @@ type ZapFieldToOTELAttributeEncoder struct {
 	attribute.KeyValue
 }
 
-func (z *ZapFieldToOTELAttributeEncoder) AddArray(key string, marshaler zapcore.ArrayMarshaler) error {
+func (z *ZapFieldToOTELAttributeEncoder) AddArray(_ string, _ zapcore.ArrayMarshaler) error {
 	return nil
 }
 
-func (z *ZapFieldToOTELAttributeEncoder) AddObject(key string, marshaler zapcore.ObjectMarshaler) error {
+func (z *ZapFieldToOTELAttributeEncoder) AddObject(_ string, _ zapcore.ObjectMarshaler) error {
 	return nil
 }
 
@@ -152,5 +152,5 @@ func (z *ZapFieldToOTELAttributeEncoder) AddReflected(key string, value any) err
 	return nil
 }
 
-func (z *ZapFieldToOTELAttributeEncoder) OpenNamespace(key string) {
+func (z *ZapFieldToOTELAttributeEncoder) OpenNamespace(_ string) {
 }

@@ -80,4 +80,19 @@ func TestSandboxPause(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNotFound, pauseResp.StatusCode())
 	})
+
+	t.Run("pause already paused sandbox", func(t *testing.T) {
+		sbx := utils.SetupSandboxWithCleanup(t, c)
+		sbxId := sbx.SandboxID
+
+		// Pause the sandbox
+		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+		// Try to pause the sandbox again
+		resp, err = c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusConflict, resp.StatusCode())
+	})
 }

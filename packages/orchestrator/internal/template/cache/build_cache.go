@@ -85,7 +85,7 @@ func NewBuildCache(meterProvider metric.MeterProvider) *BuildCache {
 	meter := meterProvider.Meter("orchestrator.cache.build")
 
 	cache := ttlcache.New(ttlcache.WithTTL[string, *BuildInfo](buildInfoExpiration))
-	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.BuildCounterMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.BuildCounterMeterName, func(_ context.Context, observer metric.Int64Observer) error {
 		items := utils.MapValues(cache.Items())
 
 		// Group by teamID

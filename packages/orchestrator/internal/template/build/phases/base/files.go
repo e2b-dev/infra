@@ -26,7 +26,6 @@ func constructLayerFilesFromOCI(
 	baseBuildID string,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	dockerhubRepository dockerhub.RemoteRepository,
-	templateBuildDir string,
 	rootfsPath string,
 ) (r *block.Local, m block.ReadonlyDevice, c containerregistry.Config, e error) {
 	childCtx, childSpan := tracer.Start(ctx, "template-build")

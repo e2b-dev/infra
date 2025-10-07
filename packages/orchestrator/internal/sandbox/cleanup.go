@@ -84,7 +84,7 @@ func (c *Cleanup) run(ctx context.Context) {
 }
 
 func cleanupFiles(files *storage.SandboxFiles) func(context.Context) error {
-	return func(ctx context.Context) error {
+	return func(context.Context) error {
 		var errs []error
 
 		for _, p := range []string{

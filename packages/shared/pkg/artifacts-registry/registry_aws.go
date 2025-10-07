@@ -45,7 +45,7 @@ func NewAWSArtifactsRegistry(ctx context.Context) (*AWSArtifactsRegistry, error)
 	}, nil
 }
 
-func (g *AWSArtifactsRegistry) Delete(ctx context.Context, templateId string, buildId string) error {
+func (g *AWSArtifactsRegistry) Delete(ctx context.Context, _ string, buildId string) error {
 	imageIds := []types.ImageIdentifier{
 		{ImageTag: &buildId},
 	}
@@ -67,7 +67,7 @@ func (g *AWSArtifactsRegistry) Delete(ctx context.Context, templateId string, bu
 	return nil
 }
 
-func (g *AWSArtifactsRegistry) GetTag(ctx context.Context, templateId string, buildId string) (string, error) {
+func (g *AWSArtifactsRegistry) GetTag(ctx context.Context, _ string, buildId string) (string, error) {
 	res, err := g.client.DescribeRepositories(ctx, &ecr.DescribeRepositoriesInput{RepositoryNames: []string{g.repositoryName}})
 	if err != nil {
 		return "", fmt.Errorf("failed to describe aws ecr repository: %w", err)

@@ -114,7 +114,7 @@ func TestCreateDiff_EmptyDirtyBitset(t *testing.T) {
 
 type errorReader struct{}
 
-func (e errorReader) ReadAt(p []byte, off int64) (n int, err error) {
+func (e errorReader) ReadAt(_ []byte, _ int64) (n int, err error) {
 	return 0, fmt.Errorf("simulated read error")
 }
 
@@ -137,7 +137,7 @@ func TestCreateDiff_ReadError(t *testing.T) {
 // errorWriter implements io.Writer and always returns an error
 type errorWriter struct{}
 
-func (e errorWriter) Write(p []byte) (n int, err error) {
+func (e errorWriter) Write(_ []byte) (n int, err error) {
 	return 0, fmt.Errorf("simulated write error")
 }
 
@@ -189,7 +189,7 @@ type largeOffsetReader struct {
 	data []byte
 }
 
-func (r *largeOffsetReader) ReadAt(p []byte, off int64) (n int, err error) {
+func (r *largeOffsetReader) ReadAt(p []byte, _ int64) (n int, err error) {
 	// Always return the same data regardless of offset
 	copy(p, r.data)
 	// Fill the rest with zeros

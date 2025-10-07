@@ -33,7 +33,7 @@ func New(maxClientConns int, idleTimeout time.Duration) *ProxyPool {
 }
 
 func (p *ProxyPool) Get(d *Destination) *proxyClient {
-	return p.pool.Upsert(d.ConnectionKey, nil, func(exist bool, inMapValue *proxyClient, newValue *proxyClient) *proxyClient {
+	return p.pool.Upsert(d.ConnectionKey, nil, func(exist bool, inMapValue *proxyClient, _ *proxyClient) *proxyClient {
 		if exist && inMapValue != nil {
 			return inMapValue
 		}
@@ -67,7 +67,7 @@ func (p *ProxyPool) Get(d *Destination) *proxyClient {
 }
 
 func (p *ProxyPool) Close(connectionKey string) {
-	p.pool.RemoveCb(connectionKey, func(key string, proxy *proxyClient, exists bool) bool {
+	p.pool.RemoveCb(connectionKey, func(_ string, proxy *proxyClient, _ bool) bool {
 		if proxy != nil {
 			proxy.closeIdleConnections()
 		}

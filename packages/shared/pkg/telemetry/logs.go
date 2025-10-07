@@ -38,7 +38,7 @@ func NewLogExporter(ctx context.Context, extraOption ...otlploggrpc.Option) (sdk
 	return logsExporter, nil
 }
 
-func NewLogProvider(ctx context.Context, logsExporter sdklog.Exporter, res *resource.Resource) log.LoggerProvider {
+func NewLogProvider(logsExporter sdklog.Exporter, res *resource.Resource) log.LoggerProvider {
 	logsProcessor := sdklog.NewBatchProcessor(logsExporter)
 	logsProvider := sdklog.NewLoggerProvider(
 		sdklog.WithResource(res),

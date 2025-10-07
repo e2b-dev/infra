@@ -42,7 +42,7 @@ func (l ConversionInterceptor) WrapUnary(unaryFunc connect.UnaryFunc) connect.Un
 	}
 }
 
-func (l ConversionInterceptor) WrapStreamingClient(clientFunc connect.StreamingClientFunc) connect.StreamingClientFunc {
+func (l ConversionInterceptor) WrapStreamingClient(connect.StreamingClientFunc) connect.StreamingClientFunc {
 	// only used for client, not server
 	panic("unused by server")
 }
