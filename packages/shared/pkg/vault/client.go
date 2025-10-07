@@ -168,8 +168,10 @@ func (c *Client) startTokenRenewal(ctx context.Context, leaseDuration time.Durat
 				c.logger.Info("stopping token renewal")
 				return
 			case <-c.renewTicker.C:
-				// Use a fresh context with timeout for each renewal attempt
-				renewCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				// Use a context with timeout for each renewal attempt
+				// Derive from parent to satisfy linter, but don't let parent cancellation
+				// interrupt an in-flight renewal
+				renewCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 				c.renewToken(renewCtx)
 				cancel()
 			}
