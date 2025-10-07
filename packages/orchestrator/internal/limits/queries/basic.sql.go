@@ -7,15 +7,15 @@ package queries
 
 import (
 	"context"
+	"database/sql"
 )
 
-const acquire = `-- name: Acquire :one
+const acquire = `-- name: Acquire :execresult
 INSERT INTO counts(key, count, setID) VALUES (?1, 1, ?2)
 ON CONFLICT(key) DO UPDATE SET
     count = count + excluded.count,
 	setID = excluded.setID
 WHERE count < 5
-RETURNING key, count, setID
 `
 
 type AcquireParams struct {
@@ -23,11 +23,8 @@ type AcquireParams struct {
 	Setid string
 }
 
-func (q *Queries) Acquire(ctx context.Context, arg AcquireParams) (Count, error) {
-	row := q.db.QueryRowContext(ctx, acquire, arg.Key, arg.Setid)
-	var i Count
-	err := row.Scan(&i.Key, &i.Count, &i.Setid)
-	return i, err
+func (q *Queries) Acquire(ctx context.Context, arg AcquireParams) (sql.Result, error) {
+	return q.db.ExecContext(ctx, acquire, arg.Key, arg.Setid)
 }
 
 const release = `-- name: Release :exec

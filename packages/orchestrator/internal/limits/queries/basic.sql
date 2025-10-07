@@ -1,10 +1,9 @@
--- name: Acquire :one
+-- name: Acquire :execresult
 INSERT INTO counts(key, count, setID) VALUES (sqlc.arg(key), 1, sqlc.arg(setID))
 ON CONFLICT(key) DO UPDATE SET
     count = count + excluded.count,
 	setID = excluded.setID
-WHERE count < 5
-RETURNING key, count, setID;
+WHERE count < 5;
 
 -- name: Release :exec
 UPDATE counts

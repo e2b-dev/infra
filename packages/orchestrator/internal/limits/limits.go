@@ -31,7 +31,7 @@ func (l *SQLiteLimiter) TryAcquire(ctx context.Context, key string, limit int64)
 	setID := uuid.NewString()
 
 	for range retries {
-		_, err := l.queries.Acquire(ctx, queries.AcquireParams{
+		result, err := l.queries.Acquire(ctx, queries.AcquireParams{
 			Key:   key,
 			Setid: setID,
 		})
@@ -43,7 +43,12 @@ func (l *SQLiteLimiter) TryAcquire(ctx context.Context, key string, limit int64)
 			continue
 		}
 
+		rowsAffected, err := result.RowsAffected()
 		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+
+		if rowsAffected != 1 {
 			continue
 		}
 
