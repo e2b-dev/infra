@@ -80,4 +80,20 @@ func TestSandboxPause(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNotFound, pauseResp.StatusCode())
 	})
+
+	t.Run("pause already paused sandbox", func(t *testing.T) {
+		// Create a sandbox with auto-pause disabled
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
+		sbxId := sbx.SandboxID
+
+		// Pause the sandbox
+		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+		// Set timeout to 0 to force sandbox to be stopped
+		resp, err = c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusConflict, resp.StatusCode())
+	})
 }
