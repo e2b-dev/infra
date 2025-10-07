@@ -94,7 +94,7 @@ func (s *Store) Items(teamID *uuid.UUID, states []sandbox.State, options ...sand
 			continue
 		}
 
-		if !slices.Contains(states, data.State) {
+		if states != nil && !slices.Contains(states, data.State) {
 			continue
 		}
 
