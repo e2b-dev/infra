@@ -77,6 +77,7 @@ job "template-manager-system" {
         SHARED_CHUNK_CACHE_PATH       = "${shared_chunk_cache_path}"
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
         DOCKERHUB_REMOTE_REPOSITORY_URL  = "${dockerhub_remote_repository_url}"
+        GRPC_PORT                     = "${port}"
 %{ if !update_stanza }
         FORCE_STOP                    = "true"
 %{ endif }
@@ -87,7 +88,7 @@ job "template-manager-system" {
 
       config {
         command = "/bin/bash"
-        args    = ["-c", " chmod +x local/template-manager && local/template-manager --port ${port}"]
+        args    = ["-c", " chmod +x local/template-manager && local/template-manager"]
       }
 
       artifact {
