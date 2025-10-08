@@ -48,11 +48,6 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		b.Skip("skipping benchmark because not running as root")
 	}
 
-	networkConfig, err := network.ParseConfig()
-	if err != nil {
-		b.Fatalf("error parsing config: %v", err)
-	}
-
 	// test configuration
 	const (
 		testType            = onlyStart
@@ -69,7 +64,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	persistenceDir := filepath.Join(os.TempDir(), "e2b-orchestrator-benchmark")
 	kernelsDir := filepath.Join(persistenceDir, "kernels")
 	sandboxDir := filepath.Join(persistenceDir, "sandbox")
-	err = os.MkdirAll(kernelsDir, 0o755)
+	err := os.MkdirAll(kernelsDir, 0o755)
 	require.NoError(b, err)
 
 	// ephemeral data
@@ -113,6 +108,11 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	b.Setenv("SANDBOX_DIR", abs(sandboxDir))
 	b.Setenv("SNAPSHOT_CACHE_DIR", abs(filepath.Join(tempDir, "snapshot-cache")))
 	b.Setenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", abs(filepath.Join(persistenceDir, "templates")))
+
+	networkConfig, err := network.ParseConfig()
+	if err != nil {
+		b.Fatalf("error parsing config: %v", err)
+	}
 
 	// prep directories
 	for _, subdir := range []string{"build", "build-templates" /*"fc-vm",*/, "sandbox", "snapshot-cache", "template"} {
