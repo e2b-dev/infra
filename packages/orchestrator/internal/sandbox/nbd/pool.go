@@ -285,7 +285,8 @@ func (d *DevicePool) ReleaseDeviceWithRetry(idx DeviceSlot) error {
 	for {
 		attempt++
 		err := d.ReleaseDevice(idx)
-		if errors.Is(err, DeviceInUseError{}) {
+		var deviceInUseErr DeviceInUseError
+		if errors.As(err, &deviceInUseErr) {
 			if attempt%100 == 0 {
 				zap.L().Error("error releasing device", zap.Int("attempt", attempt), zap.Error(err))
 			}

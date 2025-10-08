@@ -23,14 +23,8 @@ import (
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/auth")
 
-type AuthorizationHeaderMissingError struct{}
-
-func (e *AuthorizationHeaderMissingError) Error() string {
-	return "authorization header is missing"
-}
-
 var (
-	ErrNoAuthHeader      = &AuthorizationHeaderMissingError{}
+	ErrNoAuthHeader      = errors.New("authorization header is missing")
 	ErrInvalidAuthHeader = errors.New("authorization header is malformed")
 )
 

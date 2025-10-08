@@ -13,17 +13,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/template"
 )
 
-type InvalidHostError struct{}
-
-func (e *InvalidHostError) Error() string {
-	return "invalid url host"
-}
-
-type InvalidSandboxPortError struct{}
-
-func (e *InvalidSandboxPortError) Error() string {
-	return "invalid sandbox port"
-}
+var (
+	invalidHostErr = errors.New("invalid url host")
+	invalidPortErr = errors.New("invalid sandbox port")
+)
 
 func NewErrSandboxNotFound(sandboxId string) *SandboxNotFoundError {
 	return &SandboxNotFoundError{
@@ -43,16 +36,14 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		d, err := getDestination(r)
 
-		var invalidHostErr *InvalidHostError
-		if errors.As(err, &invalidHostErr) {
+		if errors.Is(err, invalidHostErr) {
 			zap.L().Warn("invalid host", zap.String("host", r.Host))
 			http.Error(w, "Invalid host", http.StatusBadRequest)
 
 			return
 		}
 
-		var invalidPortErr *InvalidSandboxPortError
-		if errors.As(err, &invalidPortErr) {
+		if errors.Is(err, invalidPortErr) {
 			zap.L().Warn("invalid sandbox port", zap.String("host", r.Host))
 			http.Error(w, "Invalid sandbox port", http.StatusBadRequest)
 
