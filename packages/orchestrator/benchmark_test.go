@@ -48,6 +48,11 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		b.Skip("skipping benchmark because not running as root")
 	}
 
+	networkConfig, err := network.ParseConfig()
+	if err != nil {
+		b.Fatalf("error parsing config: %v", err)
+	}
+
 	// test configuration
 	const (
 		testType            = onlyStart
@@ -64,7 +69,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	persistenceDir := filepath.Join(os.TempDir(), "e2b-orchestrator-benchmark")
 	kernelsDir := filepath.Join(persistenceDir, "kernels")
 	sandboxDir := filepath.Join(persistenceDir, "sandbox")
-	err := os.MkdirAll(kernelsDir, 0o755)
+	err = os.MkdirAll(kernelsDir, 0o755)
 	require.NoError(b, err)
 
 	// ephemeral data
@@ -123,7 +128,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	// sbxlogger.SetSandboxLoggerExternal(logger)
 
 	networkPool, err := network.NewPool(
-		b.Context(), noop.MeterProvider{}, 8, 8, clientID,
+		b.Context(), noop.MeterProvider{}, 8, 8, clientID, networkConfig,
 	)
 	require.NoError(b, err)
 	defer func() {
@@ -197,7 +202,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	persistenceBuild, err := storage.GetBuildCacheStorageProvider(b.Context(), nil)
 	require.NoError(b, err)
 
-	var proxyPort uint = 5007
+	var proxyPort uint16 = 5007
 
 	sandboxes := smap.New[*sandbox.Sandbox]()
 
