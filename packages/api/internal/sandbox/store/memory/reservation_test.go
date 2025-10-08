@@ -47,7 +47,7 @@ func TestReservation_SameSandbox(t *testing.T) {
 
 	_, err = cache.Reserve(sandboxID, teamID, 10)
 	require.Error(t, err)
-	var alreadyBeingStartedErr *sandbox.LimitExceededError
+	var alreadyBeingStartedErr *sandbox.AlreadyBeingStartedError
 	assert.ErrorAs(t, err, &alreadyBeingStartedErr)
 }
 
