@@ -48,7 +48,7 @@ func main() {
 
 	networkConfig, err := network.ParseConfig()
 	if err != nil {
-		log.Fatalf("error building template: %v", err)
+		log.Fatalf("error parsing config: %v", err)
 	}
 
 	err = buildTemplate(ctx, *kernelVersion, *fcVersion, *templateID, *buildID, networkConfig)
