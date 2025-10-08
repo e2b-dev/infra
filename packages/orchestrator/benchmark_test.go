@@ -367,6 +367,7 @@ func downloadKernel(b *testing.B, filename, url string) {
 	require.NoError(b, err)
 	response, err := client.Do(req)
 	require.NoError(b, err)
+	require.Equal(b, http.StatusOK, response.StatusCode)
 	defer response.Body.Close()
 
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0o644)
