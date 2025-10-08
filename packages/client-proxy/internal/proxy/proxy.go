@@ -45,13 +45,13 @@ var (
 func dnsResolution(sandboxId string, logger *zap.Logger) (string, error) {
 	var err error
 
-	msg := new(dns.Msg)
+	var msg dns.Msg
 	msg.SetQuestion(fmt.Sprintf("%s.", sandboxId), dns.TypeA)
 
 	var node string
 	for i := range maxRetries {
 		// send the query to the server
-		resp, _, dnsErr := dnsClient.Exchange(msg, dnsServer)
+		resp, _, dnsErr := dnsClient.Exchange(&msg, dnsServer)
 
 		// the api server wasn't found, maybe the API server is rolling and the DNS server is not updated yet
 		if dnsErr != nil || len(resp.Answer) == 0 {

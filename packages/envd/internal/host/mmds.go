@@ -53,7 +53,7 @@ func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
 }
 
 func getMMDSToken(ctx context.Context, client *http.Client) (string, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodPut, "http://"+mmdsDefaultAddress+"/latest/api/token", new(bytes.Buffer))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPut, "http://"+mmdsDefaultAddress+"/latest/api/token", &bytes.Buffer{})
 	if err != nil {
 		return "", err
 	}
@@ -81,7 +81,7 @@ func getMMDSToken(ctx context.Context, client *http.Client) (string, error) {
 }
 
 func getMMDSOpts(ctx context.Context, client *http.Client, token string) (*MMDSOpts, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+mmdsDefaultAddress, new(bytes.Buffer))
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+mmdsDefaultAddress, &bytes.Buffer{})
 	if err != nil {
 		return nil, err
 	}
