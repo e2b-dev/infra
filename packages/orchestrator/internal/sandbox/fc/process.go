@@ -324,7 +324,7 @@ func (p *Process) Create(
 	return nil
 }
 
-func (p *Process) Resume(ctx context.Context, sbxMetadata sbxlogger.LoggerMetadata, uffdSocketPath string, snapfile template.File, uffdReady chan struct{}, slot *network.Slot) error {
+func (p *Process) Resume(ctx context.Context, sbxMetadata sbxlogger.SandboxMetadata, uffdSocketPath string, snapfile template.File, uffdReady chan struct{}, slot *network.Slot) error {
 	ctx, span := tracer.Start(ctx, "resume-fc")
 	defer span.End()
 
@@ -367,8 +367,8 @@ func (p *Process) Resume(ctx context.Context, sbxMetadata sbxlogger.LoggerMetada
 	}
 
 	meta := &MmdsMetadata{
-		SandboxID:            p.files.SandboxID,
-		TemplateID:           sbxMetadata.LoggerMetadata().TemplateID,
+		SandboxID:            sbxMetadata.SandboxID,
+		TemplateID:           sbxMetadata.TemplateID,
 		LogsCollectorAddress: fmt.Sprintf("http://%s/logs", slot.HyperloopIPString()),
 	}
 
