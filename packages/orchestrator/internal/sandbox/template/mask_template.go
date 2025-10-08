@@ -38,7 +38,7 @@ func NewMaskTemplate(
 	return t
 }
 
-func (c *MaskTemplate) Close(_ context.Context) error {
+func (c *MaskTemplate) Close(context.Context) error {
 	if c.memfile != nil {
 		return (*c.memfile).Close()
 	}
