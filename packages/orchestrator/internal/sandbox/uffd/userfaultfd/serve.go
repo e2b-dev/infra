@@ -20,6 +20,7 @@ func (u *userfaultfd) Serve(
 	ctx context.Context,
 	m memory.MemoryMap,
 	src block.Slicer,
+	dirty *memory.Tracker,
 	fdExit *fdexit.FdExit,
 	logger *zap.Logger,
 ) error {
@@ -129,6 +130,26 @@ outerLoop:
 			return fmt.Errorf("failed to map: %w", err)
 		}
 
+		if pagefault.flags&UFFD_PAGEFAULT_FLAG_WP != 0 {
+			eg.Go(func() error {
+				defer func() {
+					if r := recover(); r != nil {
+						logger.Error("UFFD remove write protection panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
+					}
+				}()
+				defer dirty.Mark(offset)
+
+				wpErr := u.RemoveWriteProtection(addr, pagesize)
+				if wpErr != nil {
+					return fmt.Errorf("error removing write protection from page %d", addr)
+				}
+
+				return nil
+			})
+
+			continue
+		}
+
 		// This prevents serving missing pages multiple times.
 		// For normal sized pages with swap on, the behavior seems not to be properly described in docs
 		// and it's not clear if the missing can be legitimately triggered multiple times.
@@ -137,6 +158,14 @@ outerLoop:
 		}
 
 		handledPages[offset] = struct{}{}
+
+		if pagefault.flags == 0 {
+			// fmt.Fprintf(os.Stderr, "read trigger %d %d\n", addr, offset/pagesize)
+		}
+
+		if pagefault.flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
+			// fmt.Fprintf(os.Stderr, "write trigger %d %d\n", addr, offset/pagesize)
+		}
 
 		eg.Go(func() error {
 			defer func() {

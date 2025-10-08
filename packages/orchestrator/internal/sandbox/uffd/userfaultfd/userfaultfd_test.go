@@ -125,3 +125,8 @@ func TestUffdMissing(t *testing.T) {
 		})
 	}
 }
+
+// TODO: Test write protection
+// TODO: Test write protection with missing
+// TODO: Test async write protection (if we decide for it)
+// TODO: Test write protection double registration (with missing) to simulate the FC situation

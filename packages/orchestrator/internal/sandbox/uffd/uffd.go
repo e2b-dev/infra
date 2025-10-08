@@ -38,16 +38,17 @@ type Uffd struct {
 
 	lis *net.UnixListener
 
-	memfile    *block.TrackedSliceDevice
+	memfile    block.ReadonlyDevice
+	dirty      *memory.Tracker
 	socketPath string
 }
 
 var _ MemoryBackend = (*Uffd)(nil)
 
 func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uffd, error) {
-	trackedMemfile, err := block.NewTrackedSliceDevice(blockSize, memfile)
+	size, err := memfile.Size()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create tracked slice device: %w", err)
+		return nil, fmt.Errorf("failed to get memfile size: %w", err)
 	}
 
 	fdExit, err := fdexit.New()
@@ -59,8 +60,9 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 		exit:       utils.NewErrorOnce(),
 		readyCh:    make(chan struct{}, 1),
 		fdExit:     fdExit,
-		memfile:    trackedMemfile,
 		socketPath: socketPath,
+		memfile:    memfile,
+		dirty:      memory.NewTracker(size, memfile.BlockSize()),
 	}, nil
 }
 
@@ -151,12 +153,27 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		}
 	}()
 
+	for _, region := range m {
+		// Register the WP. It is possible that the memory region was already registered (with missing pages in FC), but registering it again with bigger flag subset should merge these.
+		// - https://github.com/firecracker-microvm/firecracker/blob/f335a0adf46f0680a141eb1e76fe31ac258918c5/src/vmm/src/persist.rs#L477
+		// - https://github.com/bytecodealliance/userfaultfd-rs/blob/main/src/builder.rs
+		err := uffd.Register(
+			region.BaseHostVirtAddr+region.Offset,
+			uint64(region.Size),
+			userfaultfd.UFFDIO_REGISTER_MODE_WP|userfaultfd.UFFDIO_REGISTER_MODE_MISSING,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to reregister memory region with write protection %d-%d", region.Offset, region.Offset+region.Size)
+		}
+	}
+
 	u.readyCh <- struct{}{}
 
 	err = uffd.Serve(
 		ctx,
 		m,
 		u.memfile,
+		u.dirty,
 		u.fdExit,
 		zap.L().With(logger.WithSandboxID(sandboxId)),
 	)
@@ -179,10 +196,6 @@ func (u *Uffd) Exit() *utils.ErrorOnce {
 	return u.exit
 }
 
-func (u *Uffd) Disable() error {
-	return u.memfile.Disable()
-}
-
 func (u *Uffd) Dirty() *bitset.BitSet {
-	return u.memfile.Dirty()
+	return u.dirty.BitSet()
 }

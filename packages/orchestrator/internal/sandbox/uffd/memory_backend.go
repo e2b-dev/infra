@@ -9,7 +9,6 @@ import (
 )
 
 type MemoryBackend interface {
-	Disable() error
 	Dirty() *bitset.BitSet
 
 	Start(ctx context.Context, sandboxId string) error
