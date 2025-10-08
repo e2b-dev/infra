@@ -211,7 +211,7 @@ func (p *Process) configure(
 
 func (p *Process) Create(
 	ctx context.Context,
-	loggerMetadata sbxlogger.LoggerMetadata,
+	sbxMetadata sbxlogger.LoggerMetadata,
 	vCPUCount int64,
 	memoryMB int64,
 	hugePages bool,
@@ -222,7 +222,7 @@ func (p *Process) Create(
 
 	err := p.configure(
 		ctx,
-		loggerMetadata,
+		sbxMetadata,
 		options.Stdout,
 		options.Stderr,
 	)
@@ -324,19 +324,13 @@ func (p *Process) Create(
 	return nil
 }
 
-func (p *Process) Resume(
-	ctx context.Context,
-	mmdsMetadata *MmdsMetadata,
-	uffdSocketPath string,
-	snapfile template.File,
-	uffdReady chan struct{},
-) error {
+func (p *Process) Resume(ctx context.Context, sbxMetadata sbxlogger.LoggerMetadata, uffdSocketPath string, snapfile template.File, uffdReady chan struct{}, slot *network.Slot) error {
 	ctx, span := tracer.Start(ctx, "resume-fc")
 	defer span.End()
 
 	err := p.configure(
 		ctx,
-		mmdsMetadata,
+		sbxMetadata,
 		nil,
 		nil,
 	)
@@ -372,7 +366,13 @@ func (p *Process) Resume(
 		return errors.Join(fmt.Errorf("error resuming vm: %w", err), fcStopErr)
 	}
 
-	err = p.client.setMmds(ctx, mmdsMetadata)
+	meta := &MmdsMetadata{
+		SandboxID:            p.files.SandboxID,
+		TemplateID:           sbxMetadata.LoggerMetadata().TemplateID,
+		LogsCollectorAddress: fmt.Sprintf("http://%s/logs", slot.HyperloopIPString()),
+	}
+
+	err = p.client.setMmds(ctx, meta)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 

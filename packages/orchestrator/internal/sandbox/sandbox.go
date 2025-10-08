@@ -497,17 +497,15 @@ func (f *Factory) ResumeSandbox(
 
 	fcStartErr := fcHandle.Resume(
 		uffdStartCtx,
-		&fc.MmdsMetadata{
+		sbxlogger.SandboxMetadata{
 			SandboxID:  runtime.SandboxID,
 			TemplateID: runtime.TemplateID,
 			TeamID:     runtime.TeamID,
-			TraceID:    traceID,
-
-			LogsCollectorAddress: fmt.Sprintf("http://%s/logs", ips.slot.HyperloopIPString()),
 		},
 		fcUffdPath,
 		snapfile,
 		fcUffd.Ready(),
+		ips.slot,
 	)
 	if fcStartErr != nil {
 		return nil, fmt.Errorf("failed to start FC: %w", fcStartErr)
