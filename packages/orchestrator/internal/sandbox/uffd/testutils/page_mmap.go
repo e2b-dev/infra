@@ -36,9 +36,9 @@ func newMmap(size, pagesize uint64, flags int) ([]byte, uintptr, func() error, e
 		return nil, 0, nil, err
 	}
 
-	close := func() error {
+	closeMmap := func() error {
 		return syscall.Munmap(b)
 	}
 
-	return b, uintptr(unsafe.Pointer(&b[0])), close, nil
+	return b, uintptr(unsafe.Pointer(&b[0])), closeMmap, nil
 }
