@@ -48,20 +48,28 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		b.Skip("skipping benchmark because not running as root")
 	}
 
-	clientID := uuid.NewString()
-	baseImage := "e2bdev/base"
-	kernelVersion := "vmlinux-6.1.102"
-	fcVersion := "v1.10.1_1fcdaec08"
-	templateID := "fcb33d09-3141-42c4-8d3b-c2df411681db"
-	buildID := "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
+	// test configuration
+	const (
+		testType            = onlyStart
+		baseImage           = "e2bdev/base"
+		kernelVersion       = "vmlinux-6.1.102"
+		fcVersion           = "v1.10.1_1fcdaec08"
+		templateID          = "fcb33d09-3141-42c4-8d3b-c2df411681db"
+		buildID             = "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
+		useHugePages        = false
+		allowInternetAccess = true
+	)
 
+	// cache paths, to speed up test runs. these paths aren't wiped between tests
 	persistenceDir := filepath.Join(os.TempDir(), "e2b-orchestrator-benchmark")
 	kernelsDir := filepath.Join(persistenceDir, "kernels")
 	sandboxDir := filepath.Join(persistenceDir, "sandbox")
 	err := os.MkdirAll(kernelsDir, 0o755)
 	require.NoError(b, err)
 
+	// ephemeral data
 	tempDir := b.TempDir()
+	clientID := uuid.NewString()
 
 	abs := func(s string) string {
 		return utils.Must(filepath.Abs(s))
@@ -158,15 +166,14 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		assert.NoError(b, err)
 	}()
 
-	allowInternetAccess := true
 	accessToken := "access-token"
 	sandboxConfig := sandbox.Config{
 		BaseTemplateID:      templateID,
 		Vcpu:                2,
 		RamMB:               512,
 		TotalDiskSizeMB:     2 * 1024,
-		HugePages:           true,
-		AllowInternetAccess: &allowInternetAccess,
+		HugePages:           useHugePages,
+		AllowInternetAccess: ptr(allowInternetAccess),
 		Envd: sandbox.EnvdMetadata{
 			Vars:        map[string]string{"HELLO": "WORLD"},
 			AccessToken: &accessToken,
@@ -256,8 +263,6 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	)
 	require.NoError(b, err)
 
-	testType := onlyStart
-
 	tc := testContainer{
 		sandboxFactory: sandboxFactory,
 		testType:       testType,
@@ -269,6 +274,10 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	for b.Loop() {
 		tc.testOneItem(b, buildID, kernelVersion, fcVersion)
 	}
+}
+
+func ptr[T any](v T) *T {
+	return &v
 }
 
 type testCycle string
@@ -324,6 +333,13 @@ func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVer
 	snap, err := sbx.Pause(ctx, templateMetadata)
 	require.NoError(b, err)
 	require.NotNil(b, snap)
+
+	if tc.testType == startAndPause {
+		b.StopTimer()
+		err = sbx.Close(ctx)
+		require.NoError(b, err)
+		b.StartTimer()
+	}
 
 	// resume sandbox
 	sbx, err = tc.sandboxFactory.ResumeSandbox(ctx, tc.tmpl, tc.sandboxConfig, tc.runtime, uuid.NewString(), time.Now(), time.Now().Add(time.Second*15), nil)
