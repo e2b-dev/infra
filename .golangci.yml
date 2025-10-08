@@ -114,7 +114,6 @@ linters:
         - { disabled: true, name: unhandled-error }  #  todo: enable this
         - { disabled: true, name: unnecessary-format }  # todo: enable this
         - { disabled: true, name: unnecessary-stmt }  # todo: enable this
-        - { disabled: true, name: unused-parameter }  # todo: enable this
         - { disabled: true, name: unused-receiver }
         - { disabled: true, name: use-errors-new }  # todo: enable this
         - { disabled: true, name: var-declaration }
