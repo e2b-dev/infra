@@ -109,6 +109,11 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	b.Setenv("SNAPSHOT_CACHE_DIR", abs(filepath.Join(tempDir, "snapshot-cache")))
 	b.Setenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", abs(filepath.Join(persistenceDir, "templates")))
 
+	networkConfig, err := network.ParseConfig()
+	if err != nil {
+		b.Fatalf("error parsing config: %v", err)
+	}
+
 	// prep directories
 	for _, subdir := range []string{"build", "build-templates" /*"fc-vm",*/, "sandbox", "snapshot-cache", "template"} {
 		fullDirName := filepath.Join(tempDir, subdir)
@@ -123,7 +128,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	// sbxlogger.SetSandboxLoggerExternal(logger)
 
 	networkPool, err := network.NewPool(
-		b.Context(), noop.MeterProvider{}, 8, 8, clientID,
+		b.Context(), noop.MeterProvider{}, 8, 8, clientID, networkConfig,
 	)
 	require.NoError(b, err)
 	defer func() {
@@ -197,7 +202,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	persistenceBuild, err := storage.GetBuildCacheStorageProvider(b.Context(), nil)
 	require.NoError(b, err)
 
-	var proxyPort uint = 5007
+	var proxyPort uint16 = 5007
 
 	sandboxes := smap.New[*sandbox.Sandbox]()
 
