@@ -35,7 +35,8 @@ func (o *Overlay) ReadAt(ctx context.Context, p []byte, off int64) (int, error) 
 			continue
 		}
 
-		if !errors.As(err, &BytesNotAvailableError{}) {
+		var bytesNotAvailableErr BytesNotAvailableError
+		if !errors.As(err, &bytesNotAvailableErr) {
 			return n, fmt.Errorf("error reading from cache: %w", err)
 		}
 
