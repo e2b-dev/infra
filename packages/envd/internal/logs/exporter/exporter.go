@@ -88,7 +88,7 @@ func (w *HTTPExporter) listenForMMDSOptsAndStart(ctx context.Context, mmdsChan <
 			w.mmdsLock.Unlock()
 
 			w.startOnce.Do(func() {
-				w.start(ctx)
+				go w.start(ctx)
 			})
 		}
 	}
