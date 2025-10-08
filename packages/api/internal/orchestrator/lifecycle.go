@@ -18,7 +18,7 @@ func (o *Orchestrator) observeTeamSandbox(ctx context.Context, sandbox sandbox.S
 func (o *Orchestrator) addToNode(ctx context.Context, sandbox sandbox.Sandbox, _ bool) {
 	node := o.GetNode(sandbox.ClusterID, sandbox.NodeID)
 	if node == nil {
-		zap.L().Error("failed to get node", logger.WithNodeID(sandbox.NodeID))
+		zap.L().Error("failed to get node", logger.WithNodeID(sandbox.NodeID), logger.WithSandboxID(sandbox.SandboxID))
 	} else {
 		node.AddSandbox(sandbox)
 

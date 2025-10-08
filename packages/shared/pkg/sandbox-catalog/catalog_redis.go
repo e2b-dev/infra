@@ -40,15 +40,12 @@ func NewRedisSandboxesCatalog(redisClient redis.UniversalClient) *RedisSandboxCa
 var _ SandboxesCatalog = (*RedisSandboxCatalog)(nil)
 
 func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) (*SandboxInfo, error) {
-	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-get")
-	defer span.End()
-
 	sandboxInfo := c.cache.Get(sandboxID)
 	if sandboxInfo != nil {
 		return sandboxInfo.Value(), nil
 	}
 
-	ctx, ctxCancel := context.WithTimeout(spanCtx, catalogRedisTimeout)
+	ctx, ctxCancel := context.WithTimeout(ctx, catalogRedisTimeout)
 	defer ctxCancel()
 
 	data, err := c.redisClient.Get(ctx, c.getCatalogKey(sandboxID)).Bytes()
