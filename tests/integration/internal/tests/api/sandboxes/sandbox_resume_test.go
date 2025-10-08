@@ -1,6 +1,7 @@
 package sandboxes
 
 import (
+	"fmt"
 	"net/http"
 	"sync/atomic"
 	"testing"
@@ -99,7 +100,7 @@ func TestSandboxResume(t *testing.T) {
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
 		sbxId := sbx.SandboxID
 
-		// Set timeout to 0 to force sandbox to be stopped
+		// Pause the sandbox
 		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNoContent, resp.StatusCode())
@@ -113,5 +114,52 @@ func TestSandboxResume(t *testing.T) {
 		sbxResume, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNotFound, sbxResume.StatusCode())
+	})
+
+	t.Run("concurrent resumes - not returning early", func(t *testing.T) {
+		c := setup.GetAPIClient()
+
+		// Create a sandbox with auto-pause disabled
+		sbx := utils.SetupSandboxWithCleanup(t, c)
+		sbxId := sbx.SandboxID
+
+		// Pause the sandbox
+		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+		wg := errgroup.Group{}
+		for range 5 {
+			wg.Go(func() error {
+				// Try to kill the sandbox
+				sbxResume, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
+				if err != nil {
+					return fmt.Errorf("resume sandbox - %w", err)
+				}
+
+				// Try to check the status of the sandbox
+				sbxState, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+				if err != nil {
+					return fmt.Errorf("get sandbox - %w", err)
+				}
+
+				if sbxState.StatusCode() != http.StatusOK {
+					return fmt.Errorf("get sandbox - unexpected status code: %d", sbxState.StatusCode())
+				}
+
+				if sbxState.JSON200.State != api.Running {
+					return fmt.Errorf("get sandbox - unexpected state: %s", sbxState.JSON200.State)
+				}
+
+				if sbxResume.StatusCode() != http.StatusCreated {
+					return fmt.Errorf("resume sandbox - unexpected status code: %d", sbxResume.StatusCode())
+				}
+
+				return nil
+			})
+		}
+
+		err = wg.Wait()
+		require.NoError(t, err)
 	})
 }
