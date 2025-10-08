@@ -79,7 +79,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		require.NoError(b, err)
 		resource, err := telemetry.GetResource(b.Context(), "node-id", "BenchmarkBaseImageLaunch", "service-commit", "service-version", "service-instance-id")
 		require.NoError(b, err)
-		tracerProvider := telemetry.NewTracerProvider(b.Context(), spanExporter, resource)
+		tracerProvider := telemetry.NewTracerProvider(spanExporter, resource)
 		otel.SetTracerProvider(tracerProvider)
 	}
 
