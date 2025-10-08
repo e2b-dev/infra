@@ -216,6 +216,10 @@ func (c *Cache) useNFSCache(ctx context.Context, isBuilding bool, isSnapshot boo
 }
 
 func cleanDir(path string) error {
+	if err := os.MkdirAll(path, 0755); err != nil {
+		return fmt.Errorf("failed to create dir %q: %w", path, err)
+	}
+
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return fmt.Errorf("reading directory contents: %w", err)

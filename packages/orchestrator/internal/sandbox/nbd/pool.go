@@ -98,11 +98,13 @@ func NewDevicePool(ctx context.Context, meterProvider metric.MeterProvider) (*De
 	return pool, nil
 }
 
+var ErrNBDModuleNotLoaded = errors.New("NBD module not loaded")
+
 func getMaxDevices() (uint, error) {
 	data, err := os.ReadFile("/sys/module/nbd/parameters/nbds_max")
 
 	if errors.Is(err, os.ErrNotExist) {
-		return 0, nil
+		return 0, ErrNBDModuleNotLoaded
 	}
 
 	if err != nil {

@@ -56,6 +56,16 @@ run-debug:
 	MAX_PARALLEL_MEMFILE_SNAPSHOTTING=$(MAX_PARALLEL_MEMFILE_SNAPSHOTTING) \
 	./bin/orchestrator
 
+define setup_local_env
+	$(eval include .env.local)
+	$(eval export $(shell sed 's/=.*//' .env.local))
+endef
+
+.PHONY: run-local
+run-local:
+	$(call setup_local_env)
+	NODE_ID=$$(hostname) go run . --port 3000
+
 .PHONY: upload/clean-nfs-cache
 upload/clean-nfs-cache:
 	./upload-clean-nfs-cache.sh $(GCP_PROJECT_ID)
