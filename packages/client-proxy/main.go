@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -104,6 +105,11 @@ func run() int {
 	zap.ReplaceGlobals(logger)
 
 	proxyPort := internal.GetProxyServicePort()
+	if proxyPort <= 0 || proxyPort > int(math.MaxUint16) {
+		logger.Error("Proxy port is outside the valid uint16 range", zap.Int("value", proxyPort))
+		return 1
+	}
+
 	edgePort := internal.GetEdgeServicePort()
 	edgeSecret := internal.GetEdgeServiceSecret()
 	orchestratorPort := internal.GetOrchestratorServicePort()
@@ -155,7 +161,7 @@ func run() int {
 	}
 
 	// Proxy sandbox http traffic to orchestrator nodes
-	trafficProxy, err := e2bproxy.NewClientProxy(tel.MeterProvider, serviceName, uint(proxyPort), catalog, useProxyCatalogResolution, useDnsResolution)
+	trafficProxy, err := e2bproxy.NewClientProxy(tel.MeterProvider, serviceName, uint16(proxyPort), catalog, useProxyCatalogResolution, useDnsResolution)
 	if err != nil {
 		logger.Error("Failed to create client proxy", zap.Error(err))
 		return 1

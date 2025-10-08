@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/caarlos0/env/v11"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
@@ -16,7 +17,21 @@ const (
 	ReusedSlotsPoolSize = 100
 )
 
+type Config struct {
+	// Using reserver IPv4 in range that is used for experiments and documentation
+	// https://en.wikipedia.org/wiki/Reserved_IP_addresses
+	HyperloopIPAddress       string `env:"SANDBOX_HYPERLOOP_IP"         envDefault:"192.0.2.1"`
+	HyperloopProxyPort       uint16 `env:"SANDBOX_HYPERLOOP_PROXY_PORT" envDefault:"5010"`
+	UseLocalNamespaceStorage bool   `env:"USE_LOCAL_NAMESPACE_STORAGE"`
+}
+
+func ParseConfig() (Config, error) {
+	return env.ParseAs[Config]()
+}
+
 type Pool struct {
+	config Config
+
 	cancel context.CancelFunc
 
 	newSlots          chan *Slot
@@ -27,7 +42,7 @@ type Pool struct {
 	slotStorage Storage
 }
 
-func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string) (*Pool, error) {
+func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string, config Config) (*Pool, error) {
 	newSlots := make(chan *Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan *Slot, reusedSlotsPoolSize)
 
@@ -43,13 +58,14 @@ func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPo
 		return nil, fmt.Errorf("failed to create reused slot counter: %w", err)
 	}
 
-	slotStorage, err := NewStorage(vrtSlotsSize, nodeID)
+	slotStorage, err := NewStorage(vrtSlotsSize, nodeID, config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create slot storage: %w", err)
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	pool := &Pool{
+		config:            config,
 		newSlots:          newSlots,
 		reusedSlots:       reusedSlots,
 		newSlotCounter:    newSlotCounter,

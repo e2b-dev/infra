@@ -20,7 +20,7 @@ import (
 
 const maxUploadLimit = 1 << 28 // 256 MiB
 
-func NewHyperloopServer(ctx context.Context, port uint, logger *zap.Logger, sandboxes *smap.Map[*sandbox.Sandbox]) (*http.Server, error) {
+func NewHyperloopServer(ctx context.Context, port uint16, logger *zap.Logger, sandboxes *smap.Map[*sandbox.Sandbox]) (*http.Server, error) {
 	sandboxCollectorAddr := env.LogsCollectorAddress()
 	store := handlers.NewHyperloopStore(logger, sandboxes, sandboxCollectorAddr)
 	swagger, err := api.GetSwagger()
