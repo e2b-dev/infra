@@ -347,7 +347,6 @@ func (f *Factory) ResumeSandbox(
 	t template.Template,
 	config Config,
 	runtime RuntimeMetadata,
-	traceID string,
 	startedAt time.Time,
 	endAt time.Time,
 	apiConfigToStore *orchestrator.SandboxConfig,
