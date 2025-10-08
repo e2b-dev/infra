@@ -62,7 +62,7 @@ func (ppb *PostProcessingBuilder) Prefix() string {
 	return "finalize"
 }
 
-func (ppb *PostProcessingBuilder) String(ctx context.Context) (string, error) {
+func (ppb *PostProcessingBuilder) String(context.Context) (string, error) {
 	return "Finalizing template build", nil
 }
 

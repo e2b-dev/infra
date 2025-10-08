@@ -24,7 +24,7 @@ func NewItemsFilter() *ItemsFilter {
 type Store interface {
 	Reserve(sandboxID string, teamID uuid.UUID, limit int64) (func(), error)
 	Add(ctx context.Context, sandbox Sandbox, newlyCreated bool)
-	Get(sandboxID string, includeEvicting bool) (Sandbox, error)
+	Get(sandboxID string) (Sandbox, error)
 	Remove(sandboxID string)
 
 	Items(teamID *uuid.UUID, states []State, options ...ItemsOption) []Sandbox

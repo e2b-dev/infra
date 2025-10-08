@@ -69,7 +69,7 @@ func saveWorkdirMeta(
 		metadata.Context{
 			User: "root",
 		},
-		func(stdout, stderr string) {
+		func(stdout, _ string) {
 			workdir = stdout
 		},
 	)

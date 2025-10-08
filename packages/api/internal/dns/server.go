@@ -41,7 +41,7 @@ type DNS struct {
 	}
 }
 
-func New(ctx context.Context, redisClient redis.UniversalClient) *DNS {
+func New(redisClient redis.UniversalClient) *DNS {
 	d := &DNS{}
 
 	if redisClient != nil && !reflect.ValueOf(redisClient).IsNil() {

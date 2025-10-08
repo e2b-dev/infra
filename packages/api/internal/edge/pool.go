@@ -127,7 +127,7 @@ func (d poolSynchronizationStore) SourceList(ctx context.Context) ([]queries.Clu
 	return entries, nil
 }
 
-func (d poolSynchronizationStore) SourceExists(ctx context.Context, s []queries.Cluster, p *Cluster) bool {
+func (d poolSynchronizationStore) SourceExists(_ context.Context, s []queries.Cluster, p *Cluster) bool {
 	for _, item := range s {
 		if item.ID == p.ID {
 			return true
@@ -137,7 +137,7 @@ func (d poolSynchronizationStore) SourceExists(ctx context.Context, s []queries.
 	return false
 }
 
-func (d poolSynchronizationStore) PoolList(ctx context.Context) []*Cluster {
+func (d poolSynchronizationStore) PoolList(_ context.Context) []*Cluster {
 	items := make([]*Cluster, 0)
 	for _, item := range d.pool.clusters.Items() {
 		items = append(items, item)
@@ -145,12 +145,12 @@ func (d poolSynchronizationStore) PoolList(ctx context.Context) []*Cluster {
 	return items
 }
 
-func (d poolSynchronizationStore) PoolExists(ctx context.Context, cluster queries.Cluster) bool {
+func (d poolSynchronizationStore) PoolExists(_ context.Context, cluster queries.Cluster) bool {
 	_, found := d.pool.clusters.Get(cluster.ID.String())
 	return found
 }
 
-func (d poolSynchronizationStore) PoolInsert(ctx context.Context, cluster queries.Cluster) {
+func (d poolSynchronizationStore) PoolInsert(_ context.Context, cluster queries.Cluster) {
 	clusterID := cluster.ID.String()
 
 	zap.L().Info("Initializing newly discovered cluster", l.WithClusterID(cluster.ID))
@@ -172,11 +172,11 @@ func (d poolSynchronizationStore) PoolInsert(ctx context.Context, cluster querie
 	d.pool.clusters.Insert(clusterID, c)
 }
 
-func (d poolSynchronizationStore) PoolUpdate(ctx context.Context, cluster *Cluster) {
+func (d poolSynchronizationStore) PoolUpdate(_ context.Context, _ *Cluster) {
 	// Clusters pool currently does not do something special during synchronization
 }
 
-func (d poolSynchronizationStore) PoolRemove(ctx context.Context, cluster *Cluster) {
+func (d poolSynchronizationStore) PoolRemove(_ context.Context, cluster *Cluster) {
 	zap.L().Info("Removing cluster from pool", l.WithClusterID(cluster.ID))
 
 	err := cluster.Close()

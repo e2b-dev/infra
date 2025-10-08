@@ -15,7 +15,7 @@ func NewNoopRemoteRepository() *NoopRemoteRepository {
 	return &NoopRemoteRepository{}
 }
 
-func (n *NoopRemoteRepository) GetImage(ctx context.Context, tag string, platform containerregistry.Platform) (containerregistry.Image, error) {
+func (n *NoopRemoteRepository) GetImage(_ context.Context, tag string, platform containerregistry.Platform) (containerregistry.Image, error) {
 	ref, err := name.ParseReference(tag)
 	if err != nil {
 		return nil, fmt.Errorf("invalid image reference: %w", err)
