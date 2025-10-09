@@ -104,13 +104,7 @@ func (s *Store) Reserve(sandboxID string, team uuid.UUID, limit int64) (release 
 	}
 
 	return func(sbx sandbox.Sandbox, err error) {
-		var setErr error
-		if err != nil {
-			setErr = start.SetError(err)
-		} else {
-			setErr = start.SetValue(sbx)
-		}
-
+		setErr := start.SetResult(sbx, err)
 		if setErr != nil {
 			zap.L().Error("failed to set the result of the reservation", zap.Error(setErr), logger.WithSandboxID(sandboxID))
 		}
