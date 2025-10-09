@@ -324,7 +324,14 @@ func (p *Process) Create(
 	return nil
 }
 
-func (p *Process) Resume(ctx context.Context, sbxMetadata sbxlogger.SandboxMetadata, uffdSocketPath string, snapfile template.File, uffdReady chan struct{}, slot *network.Slot) error {
+func (p *Process) Resume(
+	ctx context.Context,
+	sbxMetadata sbxlogger.SandboxMetadata,
+	uffdSocketPath string,
+	snapfile template.File,
+	uffdReady chan struct{},
+	slot *network.Slot,
+) error {
 	ctx, span := tracer.Start(ctx, "resume-fc")
 	defer span.End()
 
