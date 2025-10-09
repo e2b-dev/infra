@@ -27,6 +27,17 @@ variable "gcp_project_id" {
   type = string
 }
 
+variable "gcp_region" {
+  type = string
+}
+
+variable "api_use_nat" {
+  type = bool
+}
+
+variable "api_nat_ips" {
+  type = list(string)
+}
 
 variable "cloudflare_api_token_secret_name" {
   type = string

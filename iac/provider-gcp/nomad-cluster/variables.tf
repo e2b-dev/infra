@@ -325,3 +325,13 @@ variable "orchestrator_base_hugepages_percentage" {
   description = "The percentage of memory to use for preallocated hugepages."
   type        = number
 }
+
+variable "api_use_nat" {
+  description = "Whether API nodes should use NAT with dedicated external IPs."
+  type        = bool
+}
+
+variable "api_nat_ips" {
+  type        = list(string)
+  description = "List of names for static IP addresses to use for NAT. If empty and api_use_nat is true, IPs will be created automatically."
+}

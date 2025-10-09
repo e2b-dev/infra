@@ -792,3 +792,37 @@ resource "google_compute_security_policy" "disable-bots-log-collector" {
     }
   }
 }
+
+# Cloud Router for NAT
+resource "google_compute_router" "nat_router" {
+  count   = var.api_use_nat ? 1 : 0
+  name    = "${var.prefix}nat-router"
+  network = var.network_name
+  region  = var.gcp_region
+}
+
+# Static IP addresses for NAT (only created if explicit IPs not provided)
+resource "google_compute_address" "nat_ips" {
+  count  = var.api_use_nat && length(var.api_nat_ips) == 0 ? 2 : 0
+  name   = "${var.prefix}nat-ip-${count.index + 1}"
+  region = var.gcp_region
+}
+
+# Cloud NAT for API nodes
+resource "google_compute_router_nat" "api_nat" {
+  count                              = var.api_use_nat ? 1 : 0
+  name                               = "${var.prefix}api-nat"
+  router                             = google_compute_router.nat_router[0].name
+  nat_ip_allocate_option             = "MANUAL_ONLY"
+  nat_ips                            = length(var.api_nat_ips) > 0 ? var.api_nat_ips : google_compute_address.nat_ips[*].self_link
+  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+
+  log_config {
+    enable = true
+    filter = "ERRORS_ONLY"
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
