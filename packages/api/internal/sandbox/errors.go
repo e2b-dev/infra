@@ -7,8 +7,8 @@ import (
 )
 
 type AlreadyBeingStartedError struct {
-	SandboxID string
-	Start     *utils.SetOnce[Sandbox]
+	SandboxID   string
+	StartResult *utils.SetOnce[Sandbox]
 }
 
 func (e *AlreadyBeingStartedError) Error() string {

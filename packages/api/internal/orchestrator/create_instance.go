@@ -66,15 +66,13 @@ func (o *Orchestrator) CreateSandbox(
 				Err: fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.Team.ID, team.Tier.ConcurrentInstances),
 			}
 		case errors.As(err, &alreadyErr):
-			zap.L().Info("sandbox already being started", logger.WithSandboxID(sandboxID), zap.Error(err))
-			if alreadyErr.Start != nil {
-				sbx, err = alreadyErr.Start.WaitWithContext(ctx)
+			if alreadyErr.StartResult != nil {
+				sbx, err = alreadyErr.StartResult.WaitWithContext(ctx)
 				if err != nil {
-					zap.L().Error("Error waiting for sandbox to start", zap.Error(err), logger.WithSandboxID(sandboxID))
+					zap.L().Warn("Error waiting for sandbox to start", zap.Error(err), logger.WithSandboxID(sandboxID))
 
 					var apiErr *api.APIError
 					if errors.As(err, &apiErr) {
-						zap.L().Error("Error waiting for sandbox to start", zap.Error(apiErr), logger.WithSandboxID(sandboxID))
 						return sandbox.Sandbox{}, apiErr
 					}
 
@@ -88,6 +86,7 @@ func (o *Orchestrator) CreateSandbox(
 				return sbx, nil
 			}
 
+			zap.L().Info("Sandbox has been already started", logger.WithSandboxID(sandboxID), zap.Error(err))
 			// TODO: Handle this error better
 			return sandbox.Sandbox{}, &api.APIError{
 				Code:      http.StatusConflict,

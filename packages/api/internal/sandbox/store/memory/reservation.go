@@ -89,8 +89,8 @@ func (s *Store) Reserve(sandboxID string, team uuid.UUID, limit int64) (release 
 		}
 
 		return nil, &sandbox.AlreadyBeingStartedError{
-			SandboxID: sandboxID,
-			Start:     start,
+			SandboxID:   sandboxID,
+			StartResult: start,
 		}
 	}
 
