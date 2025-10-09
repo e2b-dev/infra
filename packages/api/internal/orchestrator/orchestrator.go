@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"reflect"
 	"time"
 
 	nomadapi "github.com/hashicorp/nomad/api"
@@ -79,7 +78,7 @@ func New(
 	}
 
 	var routingCatalog e2bcatalog.SandboxesCatalog
-	if redisClient != nil && !reflect.ValueOf(redisClient).IsNil() {
+	if redisClient != nil {
 		routingCatalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient)
 	} else {
 		routingCatalog = e2bcatalog.NewMemorySandboxesCatalog()
