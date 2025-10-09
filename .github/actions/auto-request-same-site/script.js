@@ -155,6 +155,14 @@ async function readDefaultCodeownersOwners(baseRef) {
   if (reviewers.length) {
     await gh.pulls.requestReviewers({ owner, repo, pull_number: num, reviewers });
     console.log(`Requested ${reviewers.join(", ")} from ${site}`);
+
+    await gh.issues.addAssignees({
+      owner,
+      repo,
+      issue_number: num,
+      assignees: reviewers,
+    });
+    console.log(`Assigned ${reviewers.join(", ")} to PR #${num}`);
   } else {
     console.log(`No candidates to request from ${site}.`);
   }
