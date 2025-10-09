@@ -84,10 +84,6 @@ function pickRandom(arr, k) {
   }
 
   const needed = Math.max(0, n - assignedFromSite.length);
-  if (!needed) {
-    console.log(`PR #${num} meets assignment target; skipping.`);
-    return;
-  }
 
   const candidates = siteMembers.filter((member) => !alreadyAssigned.has(member));
   if (!candidates.length) {
