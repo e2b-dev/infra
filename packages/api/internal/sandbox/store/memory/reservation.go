@@ -26,11 +26,11 @@ func NewReservationCache() *ReservationCache {
 	}
 }
 
-func (r *ReservationCache) insertIfAbsent(sandboxID string, team uuid.UUID, start *utils.SetOnce[sandbox.Sandbox]) bool {
+func (r *ReservationCache) insertIfAbsent(sandboxID string, team uuid.UUID, startResult *utils.SetOnce[sandbox.Sandbox]) bool {
 	return r.reservations.InsertIfAbsent(sandboxID, &Reservation{
 		team:        team,
 		sandboxID:   sandboxID,
-		startResult: start,
+		startResult: startResult,
 	})
 }
 
