@@ -507,6 +507,8 @@ func TestDiffStoreResetDeleteRace(t *testing.T) {
 }
 
 func flagsWithMaxBuildCachePercentage(tb testing.TB, maxBuildCachePercentage int) *featureflags.Client {
+	tb.Helper()
+
 	flags, err := featureflags.NewClient()
 	require.NoError(tb, err)
 
