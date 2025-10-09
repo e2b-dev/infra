@@ -19,7 +19,7 @@ const (
 	buildInfoExpiration = time.Minute * 10 // 10 minutes
 )
 
-var CancelledBuildReason = "build was cancelled"
+var CanceledBuildReason = "build was cancelled"
 
 type BuildInfoResult struct {
 	Status   template_manager.TemplateBuildState

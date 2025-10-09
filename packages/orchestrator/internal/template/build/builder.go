@@ -27,6 +27,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/steps"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
+	buildcache "github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
@@ -128,9 +129,12 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 
 	logger := zap.New(logsCore)
 	defer func() {
-		if e != nil {
+		switch {
+		case errors.Is(ctx.Err(), context.Canceled):
+			logger.Error(fmt.Sprintf("Build failed: %v", errors.New(buildcache.CanceledBuildReason)))
+		case e != nil:
 			logger.Error(fmt.Sprintf("Build failed: %v", e))
-		} else {
+		default:
 			logger.Info(fmt.Sprintf("Build finished, took %s",
 				time.Since(startTime).Truncate(time.Second).String()))
 		}
