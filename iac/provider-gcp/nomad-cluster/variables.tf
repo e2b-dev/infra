@@ -333,5 +333,5 @@ variable "api_use_nat" {
 
 variable "api_nat_ips" {
   type        = list(string)
-  description = "List of static IP addresses to use for NAT. If empty and api_use_nat is true, IPs will be created automatically."
+  description = "List of names for static IP addresses to use for NAT. If empty and api_use_nat is true, IPs will be created automatically."
 }
