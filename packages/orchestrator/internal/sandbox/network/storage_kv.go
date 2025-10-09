@@ -126,7 +126,7 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 func (s *StorageKV) Release(ips *Slot) error {
 	kv := s.consulClient.KV()
 
-	pair, _, err := kv.Get(ips.Key, nil)
+	pair, _, err := kv.Get(ips.Name, nil)
 	if err != nil {
 		return fmt.Errorf("failed to release IPSlot: Failed to read Consul KV: %w", err)
 	}
@@ -136,7 +136,7 @@ func (s *StorageKV) Release(ips *Slot) error {
 	}
 
 	status, _, err := kv.DeleteCAS(&consulApi.KVPair{
-		Key:         ips.Key,
+		Key:         ips.Name,
 		ModifyIndex: pair.ModifyIndex,
 	}, nil)
 	if err != nil {
