@@ -36,7 +36,7 @@ variable "api_use_nat" {
 }
 
 variable "api_nat_ips" {
-  type        = list(string)
+  type = list(string)
 }
 
 variable "cloudflare_api_token_secret_name" {
