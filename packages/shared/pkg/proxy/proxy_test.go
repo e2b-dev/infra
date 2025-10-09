@@ -187,7 +187,7 @@ func httpGet(t *testing.T, proxyURL string) (*http.Response, error) {
 		return nil, err
 	}
 
-	rsp, err := new(http.Client).Do(req)
+	rsp, err := (&http.Client{}).Do(req)
 	if err != nil {
 		return nil, err
 	}
