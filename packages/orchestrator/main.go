@@ -77,35 +77,6 @@ func run(config cfg.Config) (success bool) {
 
 	services := cfg.GetServices(config)
 
-	// Check if the orchestrator crashed and restarted
-	// Skip this check in development mode
-	// We don't want to lock if the service is running with force stop; the subsequent start would fail.
-	if !env.IsDevelopment() && !config.ForceStop && slices.Contains(services, cfg.Orchestrator) {
-		fileLockName := config.OrchestratorLockPath
-		info, err := os.Stat(fileLockName)
-		if err == nil {
-			log.Fatalf("Orchestrator was already started at %s, exiting", info.ModTime())
-		}
-
-		f, err := os.Create(fileLockName)
-		if err != nil {
-			log.Fatalf("Failed to create lock file %s: %v", fileLockName, err)
-		}
-		defer func() {
-			fileErr := f.Close()
-			if fileErr != nil {
-				log.Printf("Failed to close lock file %s: %v", fileLockName, fileErr)
-			}
-
-			// Remove the lock file on graceful shutdown
-			if success == true {
-				if fileErr = os.Remove(fileLockName); fileErr != nil {
-					log.Printf("Failed to remove lock file %s: %v", fileLockName, fileErr)
-				}
-			}
-		}()
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
