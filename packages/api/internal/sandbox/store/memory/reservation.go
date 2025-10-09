@@ -11,9 +11,9 @@ import (
 )
 
 type Reservation struct {
-	sandboxID string
-	team      uuid.UUID
-	start     *utils.SetOnce[sandbox.Sandbox]
+	sandboxID   string
+	team        uuid.UUID
+	startResult *utils.SetOnce[sandbox.Sandbox]
 }
 
 type ReservationCache struct {
@@ -28,9 +28,9 @@ func NewReservationCache() *ReservationCache {
 
 func (r *ReservationCache) insertIfAbsent(sandboxID string, team uuid.UUID, start *utils.SetOnce[sandbox.Sandbox]) bool {
 	return r.reservations.InsertIfAbsent(sandboxID, &Reservation{
-		team:      team,
-		sandboxID: sandboxID,
-		start:     start,
+		team:        team,
+		sandboxID:   sandboxID,
+		startResult: start,
 	})
 }
 
@@ -83,19 +83,19 @@ func (s *Store) Reserve(sandboxID string, team uuid.UUID, limit int64) (release 
 	}
 
 	if sbx, ok := ids[sandboxID]; ok {
-		var start *utils.SetOnce[sandbox.Sandbox]
+		var startResult *utils.SetOnce[sandbox.Sandbox]
 		if sbx != nil {
-			start = sbx.start
+			startResult = sbx.startResult
 		}
 
 		return nil, &sandbox.AlreadyBeingStartedError{
 			SandboxID:   sandboxID,
-			StartResult: start,
+			StartResult: startResult,
 		}
 	}
 
-	start := utils.NewSetOnce[sandbox.Sandbox]()
-	inserted := s.reservations.insertIfAbsent(sandboxID, team, start)
+	startResult := utils.NewSetOnce[sandbox.Sandbox]()
+	inserted := s.reservations.insertIfAbsent(sandboxID, team, startResult)
 	if !inserted {
 		// This shouldn't happen
 		return nil, &sandbox.AlreadyBeingStartedError{
@@ -104,7 +104,7 @@ func (s *Store) Reserve(sandboxID string, team uuid.UUID, limit int64) (release 
 	}
 
 	return func(sbx sandbox.Sandbox, err error) {
-		setErr := start.SetResult(sbx, err)
+		setErr := startResult.SetResult(sbx, err)
 		if setErr != nil {
 			zap.L().Error("failed to set the result of the reservation", zap.Error(setErr), logger.WithSandboxID(sandboxID))
 		}
