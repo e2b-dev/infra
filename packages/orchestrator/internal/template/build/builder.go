@@ -131,7 +131,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 	defer func() {
 		switch {
 		case errors.Is(ctx.Err(), context.Canceled):
-			logger.Error(fmt.Sprintf("Build failed: %v", errors.New(buildcache.CanceledBuildReason)))
+			logger.Error(fmt.Sprintf("Build failed: %s", buildcache.CanceledBuildReason))
 		case e != nil:
 			logger.Error(fmt.Sprintf("Build failed: %v", e))
 		default:
