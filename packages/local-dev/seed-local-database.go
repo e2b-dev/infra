@@ -9,18 +9,18 @@ import (
 	"os"
 	"strings"
 
+	"github.com/google/uuid"
+	"github.com/lib/pq"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-	"github.com/google/uuid"
-	"github.com/lib/pq"
 )
 
 var (
 	tokenID        = uuid.MustParse("3d98c426-d348-446b-bdf6-5be3ca4123e2")
 	userTokenValue = "89215020937a4c989cde33d7bc647715"
 	teamTokenValue = "53ae1fed82754c17ad8077fbc8bcdd90"
-	clusterToken   = "6e15ed023bd545d88f71446f14b28661"
 )
 
 func main() {
@@ -57,7 +57,9 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("failed to upsert team: %w", err)
 	}
 
-	err = ensureUserIsOnTeam(ctx, database, user, team)
+	if err = ensureUserIsOnTeam(ctx, database, user, team); err != nil {
+		return fmt.Errorf("failed to ensure user is on team: %w", err)
+	}
 
 	// create user token
 	if err = upsertUserToken(ctx, database, user, keys.AccessTokenPrefix, userTokenValue); err != nil {
@@ -70,7 +72,7 @@ func run(ctx context.Context) error {
 	}
 
 	// create local cluster
-	//if err = upsertLocalCluster(ctx, database); err != nil {
+	// if err = upsertLocalCluster(ctx, database); err != nil {
 	//	return fmt.Errorf("failed to upsert local cluster: %w", err)
 	//}
 
@@ -131,45 +133,6 @@ func upsertUserToken(ctx context.Context, database *db.DB, user *models.User, to
 	return nil
 }
 
-type command[T any] interface {
-	Save(ctx context.Context) (T, error)
-}
-
-type clusterCommand[T any] interface {
-	SetEndpointTLS(b bool) T
-	SetEndpoint(s string) T
-	SetToken(t string) T
-	SetSandboxProxyDomain(s string) T
-}
-
-func updateCluster[T clusterCommand[T]](cmd T) T {
-	return cmd.
-		SetEndpointTLS(false).
-		SetToken(clusterToken).
-		SetSandboxProxyDomain("e2b-dev.local").
-		SetEndpoint("http://localhost:10666")
-}
-
-func upsertLocalCluster(ctx context.Context, database *db.DB) error {
-	clusterID := uuid.MustParse("c8c92517-474f-411b-aa99-29139498bd51")
-	clusters := database.Client.Cluster
-	cluster, err := clusters.Get(ctx, clusterID)
-
-	var cmd command[*models.Cluster]
-	if err == nil {
-		cmd = updateCluster(clusters.UpdateOne(cluster))
-	} else if models.IsNotFound(err) {
-		cmd = updateCluster(clusters.Create()).SetID(clusterID)
-	} else {
-		return fmt.Errorf("failed to get cluster: %w", err)
-	}
-	cluster, err = cmd.Save(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to create team: %w", err)
-	}
-	return nil
-}
-
 func ignoreConstraints(err error) error {
 	var pqerr *pq.Error
 	if errors.As(err, &pqerr) {
@@ -181,9 +144,9 @@ func ignoreConstraints(err error) error {
 }
 
 func updateTeam[T interface {
-	SetEmail(string) T
-	SetName(string) T
-	SetTier(string) T
+	SetEmail(value string) T
+	SetName(value string) T
+	SetTier(value string) T
 }](cmd T) T {
 	return cmd.
 		SetEmail("team@e2b-dev.local").
@@ -229,7 +192,7 @@ func upsertUser(ctx context.Context, database *db.DB) (*models.User, error) {
 
 func updateUser[T interface {
 	SetEmail(email string) T
-	AddTeams(...*models.Team) T
+	AddTeams(teams ...*models.Team) T
 }](cmd T) T {
 	return cmd.
 		SetEmail("user@e2b-dev.local")

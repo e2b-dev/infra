@@ -17,7 +17,7 @@ type DB struct {
 }
 
 func NewClient(maxConns, maxIdle int) (*DB, error) {
-	var databaseURL = os.Getenv("POSTGRES_CONNECTION_STRING")
+	databaseURL := os.Getenv("POSTGRES_CONNECTION_STRING")
 	if databaseURL == "" {
 		return nil, fmt.Errorf("database URL is empty")
 	}
