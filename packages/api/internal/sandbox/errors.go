@@ -6,7 +6,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-// AlreadyBeingStartedError indicates a sandbox is being started or already running.
 type AlreadyBeingStartedError struct {
 	SandboxID string
 	Start     *utils.SetOnce[Sandbox]

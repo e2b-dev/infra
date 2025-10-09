@@ -1,7 +1,6 @@
 package memory
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -75,7 +74,7 @@ func TestReservation_ResumeAlreadyRunningSandbox(t *testing.T) {
 		MaxInstanceLength: time.Hour,
 	}
 
-	cache.Add(context.Background(), data, false)
+	cache.Add(t.Context(), data, false)
 
 	_, err := cache.Reserve(sandboxID, teamID, 1)
 	require.Error(t, err)
