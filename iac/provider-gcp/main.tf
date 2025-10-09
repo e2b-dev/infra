@@ -59,7 +59,12 @@ data "google_secret_manager_secret_version" "routing_domains" {
 }
 
 locals {
-  routing_domains = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
+  // Taking additional domains from local env is there just for backward compatibility
+  additional_domains_from_secret = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
+  additional_domains_from_env = (var.additional_domains != "" ?
+  [for item in split(",", var.additional_domains) : trimspace(item)] : [])
+
+  additional_domains = distinct(concat(local.additional_domains_from_env, local.additional_domains_from_secret))
 }
 
 module "init" {
@@ -124,8 +129,8 @@ module "cluster" {
   nomad_port                   = var.nomad_port
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
-  additional_domains           = local.routing_domains
 
+  additional_domains = local.additional_domains
   additional_api_services = (var.additional_api_services_json != "" ?
     jsondecode(var.additional_api_services_json) :
   [])
