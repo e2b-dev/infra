@@ -13,7 +13,7 @@ import (
 
 const syncMaxRetries = 4
 
-func (n *Node) Sync(ctx context.Context, instanceCache *memory.Store, sandboxDomain *string) {
+func (n *Node) Sync(ctx context.Context, instanceCache *memory.Store) {
 	syncRetrySuccess := false
 
 	for range syncMaxRetries {
@@ -42,7 +42,7 @@ func (n *Node) Sync(ctx context.Context, instanceCache *memory.Store, sandboxDom
 		// Update host metrics from service info
 		n.UpdateMetricsFromServiceInfoResponse(nodeInfo)
 
-		activeInstances, instancesErr := n.GetSandboxes(ctx, sandboxDomain)
+		activeInstances, instancesErr := n.GetSandboxes(ctx)
 		if instancesErr != nil {
 			zap.L().Error("Error getting instances", zap.Error(instancesErr), logger.WithNodeID(n.ID))
 			continue
