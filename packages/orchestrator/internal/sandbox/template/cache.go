@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -13,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -56,6 +56,7 @@ type Cache struct {
 // as it may contain stale data that are not managed by anyone.
 func NewCache(
 	ctx context.Context,
+	config cfg.Config,
 	flags *featureflags.Client,
 	persistence storage.StorageProvider,
 	metrics blockmetrics.Metrics,
@@ -84,7 +85,7 @@ func NewCache(
 		build.DefaultCachePath(),
 		buildCacheTTL,
 		buildCacheDelayEviction,
-		getBuildCacheMaxUsedPercentage(),
+		config.BuildCacheMaxUsagePercentage,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build store: %w", err)
@@ -247,30 +248,4 @@ func (c *Cache) getTemplateWithFetch(ctx context.Context, storageTemplate *stora
 	}
 
 	return t.Value()
-}
-
-// getBuildCacheMaxUsedPercentage the maximum percentage of the cache disk storage
-// that can be used before the cache starts evicting items.
-func getBuildCacheMaxUsedPercentage() float64 {
-	valueString := env.GetEnv("BUILD_CACHE_MAX_USAGE_PERCENTAGE", fmt.Sprintf("%f", defaultBuildCachePercentage))
-
-	value, err := strconv.ParseFloat(valueString, 64)
-	if err != nil {
-		zap.L().Warn("failed to parse BUILD_CACHE_MAX_USAGE_PERCENTAGE, using default value",
-			zap.String("value", valueString),
-			zap.Float64("default_value", defaultBuildCachePercentage),
-			zap.Error(err),
-		)
-		return defaultBuildCachePercentage
-	}
-
-	if value < 0 || value > 100 {
-		zap.L().Warn("BUILD_CACHE_MAX_USAGE_PERCENTAGE must be between 0 and 100, using default value",
-			zap.Float64("value", value),
-			zap.Float64("default_value", defaultBuildCachePercentage),
-		)
-		return defaultBuildCachePercentage
-	}
-
-	return value
 }

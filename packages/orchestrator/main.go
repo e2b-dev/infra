@@ -245,7 +245,7 @@ func run(config cfg.Config) (success bool) {
 		zap.L().Fatal("failed to create metrics provider", zap.Error(err))
 	}
 
-	templateCache, err := template.NewCache(ctx, featureFlags, persistence, blockMetrics)
+	templateCache, err := template.NewCache(ctx, config, featureFlags, persistence, blockMetrics)
 	if err != nil {
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}

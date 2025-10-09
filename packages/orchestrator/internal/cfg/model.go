@@ -19,6 +19,10 @@ type Config struct {
 	RedisURL                   string   `env:"REDIS_URL"`
 	Services                   []string `env:"ORCHESTRATOR_SERVICES"        envDefault:"orchestrator"`
 
+	// BuildCacheMaxUsagePercentage the maximum percentage of the cache disk storage
+	// that can be used before the cache starts evicting items.
+	BuildCacheMaxUsagePercentage float64 `env:"BUILD_CACHE_MAX_USAGE_PERCENTAGE" envDefault:"85"`
+
 	NetworkConfig network.Config
 }
 
