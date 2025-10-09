@@ -12,7 +12,10 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
 const (
@@ -42,7 +45,13 @@ type DiffStore struct {
 	pdDelay time.Duration
 }
 
-func NewDiffStore(ctx context.Context, cachePath string, ttl, delay time.Duration, maxUsedPercentage float64) (*DiffStore, error) {
+func NewDiffStore(
+	ctx context.Context,
+	config cfg.Config,
+	flags *featureflags.Client,
+	cachePath string,
+	ttl, delay time.Duration,
+) (*DiffStore, error) {
 	err := os.MkdirAll(cachePath, 0o755)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
@@ -71,7 +80,7 @@ func NewDiffStore(ctx context.Context, cachePath string, ttl, delay time.Duratio
 	})
 
 	go cache.Start()
-	go ds.startDiskSpaceEviction(ctx, maxUsedPercentage)
+	go ds.startDiskSpaceEviction(ctx, config, flags)
 
 	return ds, nil
 }
@@ -119,7 +128,13 @@ func (s *DiffStore) Has(d Diff) bool {
 	return s.cache.Has(d.CacheKey())
 }
 
-func (s *DiffStore) startDiskSpaceEviction(ctx context.Context, threshold float64) {
+func (s *DiffStore) startDiskSpaceEviction(
+	ctx context.Context,
+	config cfg.Config,
+	flags *featureflags.Client,
+) {
+	services := service.GetServices(config)
+
 	getDelay := func(fast bool) time.Duration {
 		if fast {
 			return time.Microsecond
@@ -149,7 +164,20 @@ func (s *DiffStore) startDiskSpaceEviction(ctx context.Context, threshold float6
 			used := int64(dUsed) - pUsed
 			percentage := float64(used) / float64(dTotal) * 100
 
-			if percentage <= threshold {
+			threshold := featureflags.BuildCacheMaxUsagePercentage.Fallback()
+			for s := range services {
+				st, err := flags.IntFlag(ctx, featureflags.BuildCacheMaxUsagePercentage, featureflags.ServiceContext(string(s)))
+				if err != nil {
+					zap.L().Warn("failed to get build cache max usage percentage flag", zap.Error(err))
+					continue
+				}
+
+				if st < threshold {
+					threshold = st
+				}
+			}
+
+			if percentage <= float64(threshold) {
 				timer.Reset(getDelay(false))
 				continue
 			}

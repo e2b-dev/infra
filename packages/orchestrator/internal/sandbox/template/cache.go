@@ -29,8 +29,6 @@ const (
 
 	buildCacheTTL           = time.Hour * 25
 	buildCacheDelayEviction = time.Second * 60
-
-	defaultBuildCachePercentage = 85.0
 )
 
 var (
@@ -82,10 +80,11 @@ func NewCache(
 
 	buildStore, err := build.NewDiffStore(
 		ctx,
+		config,
+		flags,
 		build.DefaultCachePath(),
 		buildCacheTTL,
 		buildCacheDelayEviction,
-		config.BuildCacheMaxUsagePercentage,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build store: %w", err)
