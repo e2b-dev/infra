@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -54,7 +55,7 @@ func TestReservation_Release(t *testing.T) {
 
 	release, err := cache.Reserve(sandboxID, teamID, 1)
 	require.NoError(t, err)
-	release()
+	release(sandbox.Sandbox{}, nil)
 
 	_, err = cache.Reserve(sandboxID, teamID, 1)
 	assert.NoError(t, err)
@@ -74,7 +75,7 @@ func TestReservation_ResumeAlreadyRunningSandbox(t *testing.T) {
 		MaxInstanceLength: time.Hour,
 	}
 
-	cache.Add(t.Context(), data, false)
+	cache.Add(context.Background(), data, false)
 
 	_, err := cache.Reserve(sandboxID, teamID, 1)
 	require.Error(t, err)

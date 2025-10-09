@@ -178,7 +178,7 @@ func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.No
 	}
 
 	// Unified call for syncing node state across different node types
-	node.Sync(ctx, instanceCache)
+	node.Sync(ctx, instanceCache, cluster.SandboxDomain)
 
 	return nil
 }
@@ -201,7 +201,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, dis
 	}
 
 	// Unified call for syncing node state across different node types
-	node.Sync(ctx, instanceCache)
+	node.Sync(ctx, instanceCache, nil)
 
 	return nil
 }

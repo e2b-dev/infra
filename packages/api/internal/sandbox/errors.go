@@ -1,9 +1,15 @@
 package sandbox
 
-import "fmt"
+import (
+	"fmt"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+)
+
+// AlreadyBeingStartedError indicates a sandbox is being started or already running.
 type AlreadyBeingStartedError struct {
 	SandboxID string
+	Start     *utils.SetOnce[Sandbox]
 }
 
 func (e *AlreadyBeingStartedError) Error() string {

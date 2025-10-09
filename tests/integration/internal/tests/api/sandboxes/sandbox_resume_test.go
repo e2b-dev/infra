@@ -131,7 +131,7 @@ func TestSandboxResume(t *testing.T) {
 		wg := errgroup.Group{}
 		for range 5 {
 			wg.Go(func() error {
-				// Try to kill the sandbox
+				// Try to resume the sandbox
 				sbxResume, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
 				if err != nil {
 					return fmt.Errorf("resume sandbox - %w", err)

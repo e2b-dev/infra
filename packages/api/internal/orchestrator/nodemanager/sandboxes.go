@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
-func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
+func (n *Node) GetSandboxes(ctx context.Context, sandboxDomain *string) ([]sandbox.Sandbox, error) {
 	childCtx, childSpan := tracer.Start(ctx, "get-sandboxes-from-orchestrator")
 	defer childSpan.End()
 
@@ -72,6 +72,7 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 				config.EnvdAccessToken,     //nolint:protogetter // we need the nil check too
 				config.AllowInternetAccess, //nolint:protogetter // we need the nil check too
 				config.GetBaseTemplateId(),
+				sandboxDomain,
 			),
 		)
 	}
