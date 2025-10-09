@@ -13,7 +13,6 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
@@ -133,7 +132,7 @@ func (s *DiffStore) startDiskSpaceEviction(
 	config cfg.Config,
 	flags *featureflags.Client,
 ) {
-	services := service.GetServices(config)
+	services := cfg.GetServices(config)
 
 	getDelay := func(fast bool) time.Duration {
 		if fast {
