@@ -72,6 +72,10 @@ variable "ingress_port" {
   })
 }
 
+variable "ingress_count" {
+  type = number
+}
+
 variable "api_resources_cpu_count" {
   type = number
 }

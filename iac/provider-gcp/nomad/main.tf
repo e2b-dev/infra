@@ -71,7 +71,7 @@ resource "docker_image" "db_migrator_image" {
 resource "nomad_job" "ingress" {
   jobspec = templatefile("${path.module}/jobs/ingress.hcl",
     {
-      count         = 1
+      count         = var.ingress_count
       update_stanza = var.api_machine_count > 1
       cpu_count     = 1
       memory_mb     = 512
