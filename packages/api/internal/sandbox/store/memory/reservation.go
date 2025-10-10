@@ -42,7 +42,7 @@ func (s *ReservationStorage) Reserve(teamID, sandboxID string, limit int64) (fin
 		sandboxes: make(map[string]*sandboxReservation),
 	}, func(exist bool, valueInMap, newValue *TeamSandboxes) *TeamSandboxes {
 		if exist {
-			if len(valueInMap.sandboxes) >= int(limit) {
+			if limit > 0 && len(valueInMap.sandboxes) >= int(limit) {
 				limitExceeded = true
 				return valueInMap
 			}
@@ -57,6 +57,7 @@ func (s *ReservationStorage) Reserve(teamID, sandboxID string, limit int64) (fin
 			return valueInMap
 		}
 
+		newValue.sandboxes[sandboxID] = &sandboxReservation{start: startResult}
 		return newValue
 	})
 
