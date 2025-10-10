@@ -83,7 +83,7 @@ function pickRandom(arr, k) {
     return;
   }
 
-  const needed = Math.max(0, n - assignedFromSite.length);
+  const needed = n - assignedFromSite.length;
 
   const candidates = siteMembers.filter((member) => !alreadyAssigned.has(member));
   if (!candidates.length) {
