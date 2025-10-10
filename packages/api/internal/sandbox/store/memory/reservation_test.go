@@ -33,7 +33,9 @@ func TestReservation(t *testing.T) {
 func TestReservation_Exceeded(t *testing.T) {
 	cache := newMemoryStore()
 
-	_, _, err := cache.Reserve(teamID.String(), sandboxID, 0)
+	_, _, err := cache.Reserve(teamID.String(), sandboxID, 1)
+	require.NoError(t, err)
+	_, _, err = cache.Reserve(teamID.String(), "sandbox-2", 1)
 	require.Error(t, err)
 	assert.IsType(t, &sandbox.LimitExceededError{}, err)
 }
@@ -41,10 +43,10 @@ func TestReservation_Exceeded(t *testing.T) {
 func TestReservation_SameSandbox(t *testing.T) {
 	cache := newMemoryStore()
 
-	_, _, err := cache.Reserve(teamID.String(), sandboxID, 10)
+	_, _, err := cache.Reserve(teamID.String(), sandboxID, 1)
 	require.NoError(t, err)
 
-	_, waitForStart, err := cache.Reserve(teamID.String(), sandboxID, 10)
+	_, waitForStart, err := cache.Reserve(teamID.String(), sandboxID, 1)
 	require.NoError(t, err)
 	assert.NotNil(t, waitForStart)
 }
@@ -52,9 +54,9 @@ func TestReservation_SameSandbox(t *testing.T) {
 func TestReservation_Release(t *testing.T) {
 	cache := newMemoryStore()
 
-	finishStart, _, err := cache.Reserve(teamID.String(), sandboxID, 1)
+	_, _, err := cache.Reserve(teamID.String(), sandboxID, 1)
 	require.NoError(t, err)
-	finishStart(sandbox.Sandbox{}, nil)
+	cache.Remove(teamID.String(), sandboxID)
 
 	_, _, err = cache.Reserve(teamID.String(), sandboxID, 1)
 	assert.NoError(t, err)
