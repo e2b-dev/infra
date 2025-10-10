@@ -18,6 +18,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/events/event"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -67,25 +68,24 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			Build(),
 	)
 
-	maxRunningSandboxesPerNode, err := s.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)
-	if err != nil {
-		zap.L().Error("Failed to get MaxSandboxesPerNode flag", zap.Error(err))
-	}
-
-	runningSandboxes := s.sandboxes.Count()
-	if runningSandboxes >= maxRunningSandboxesPerNode {
-		telemetry.ReportEvent(ctx, "max number of running sandboxes reached")
-
-		return nil, status.Errorf(codes.ResourceExhausted, "max number of running sandboxes on node reached (%d), please retry", maxRunningSandboxesPerNode)
-	}
-
 	// Check if we've reached the max number of starting instances on this node
-	acquired := s.startingSandboxes.TryAcquire(1)
-	if !acquired {
-		telemetry.ReportEvent(ctx, "too many starting sandboxes on node")
-		return nil, status.Errorf(codes.ResourceExhausted, "too many sandboxes starting on this node, please retry")
+	if err := s.metricsTracker.AcquireStarting(ctx); err != nil {
+		var tooManyRunning metrics.TooManySandboxesRunningError
+		var tooManyStarting metrics.TooManySandboxesStartingError
+		switch {
+		case errors.As(err, &tooManyRunning):
+			telemetry.ReportEvent(ctx, "max number of running sandboxes reached")
+			return nil, status.Errorf(codes.ResourceExhausted, "too many sandboxes on node reached (%d>=%d), please retry", tooManyRunning.Current, tooManyRunning.Max)
+		case errors.As(err, &tooManyStarting):
+			telemetry.ReportEvent(ctx, "too many starting sandboxes on node")
+			return nil, status.Errorf(codes.ResourceExhausted, "too many sandboxes starting on this node (%d>=%d, please retry", tooManyStarting.Current, tooManyStarting.Max)
+		default:
+			return nil, fmt.Errorf("unexpected error while acquiring starting lock: %w", err)
+		}
 	}
-	defer s.startingSandboxes.Release(1)
+	defer func() {
+		s.metricsTracker.ReleaseStarting()
+	}()
 
 	template, err := s.templateCache.GetTemplate(
 		ctx,

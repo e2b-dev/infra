@@ -406,7 +406,18 @@ func run(config cfg.Config) (success bool) {
 		closers = append([]Closeable{tmpl}, closers...)
 	}
 
-	service.NewInfoService(ctx, grpcSrv.GRPCServer(), serviceInfo, sandboxes)
+	metricsTracker, err := metrics.NewTracker(config.MaxStartingInstances, config.MetricsDirectory, config.MetricsWriteInterval, featureFlags)
+	if err != nil {
+		zap.L().Fatal("failed to create metrics tracker", zap.Error(err))
+	}
+	sandboxes.Subscribe(metricsTracker)
+	go func() {
+		if err := metricsTracker.Run(ctx); err != nil {
+			zap.L().Error("metrics tracker failed", zap.Error(err))
+		}
+	}()
+
+	service.NewInfoService(ctx, grpcSrv.GRPCServer(), serviceInfo, metricsTracker)
 
 	g.Go(func() error {
 		zap.L().Info("Starting session proxy")

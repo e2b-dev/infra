@@ -9,21 +9,20 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
 
 type Server struct {
 	orchestratorinfo.UnimplementedInfoServiceServer
 
-	info      *ServiceInfo
-	sandboxes *sandbox.Map
+	info    *ServiceInfo
+	tracker *metrics.Tracker
 }
 
-func NewInfoService(_ context.Context, grpc *grpc.Server, info *ServiceInfo, sandboxes *sandbox.Map) *Server {
+func NewInfoService(_ context.Context, grpc *grpc.Server, info *ServiceInfo, tracker *metrics.Tracker) *Server {
 	s := &Server{
-		info:      info,
-		sandboxes: sandboxes,
+		info:    info,
+		tracker: tracker,
 	}
 
 	orchestratorinfo.RegisterInfoServiceServer(grpc, s)
@@ -53,15 +52,7 @@ func (s *Server) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestrator
 	}
 
 	// Calculate sandbox resource allocation
-	sandboxVCpuAllocated := uint32(0)
-	sandboxMemoryAllocated := uint64(0)
-	sandboxDiskAllocated := uint64(0)
-
-	for _, item := range s.sandboxes.Items() {
-		sandboxVCpuAllocated += uint32(item.Config.Vcpu)
-		sandboxMemoryAllocated += uint64(item.Config.RamMB) * 1024 * 1024
-		sandboxDiskAllocated += uint64(item.Config.TotalDiskSizeMB) * 1024 * 1024
-	}
+	allocated := s.tracker.TotalAllocated()
 
 	return &orchestratorinfo.ServiceInfoResponse{
 		NodeId:        info.ClientId,
@@ -75,10 +66,10 @@ func (s *Server) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestrator
 		ServiceRoles:   info.Roles,
 
 		// Allocated resources to sandboxes
-		MetricCpuAllocated:         sandboxVCpuAllocated,
-		MetricMemoryAllocatedBytes: sandboxMemoryAllocated,
-		MetricDiskAllocatedBytes:   sandboxDiskAllocated,
-		MetricSandboxesRunning:     uint32(s.sandboxes.Count()),
+		MetricCpuAllocated:         allocated.VCPUs,
+		MetricMemoryAllocatedBytes: allocated.MemoryBytes,
+		MetricDiskAllocatedBytes:   allocated.DiskBytes,
+		MetricSandboxesRunning:     allocated.Sandboxes,
 
 		// Host system usage metrics
 		MetricCpuPercent:      uint32(cpuMetrics.UsedPercent),
@@ -92,9 +83,9 @@ func (s *Server) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestrator
 		MetricDisks: convertDiskMetrics(diskMetrics),
 
 		// TODO: Remove when migrated
-		MetricVcpuUsed:     int64(sandboxVCpuAllocated),
-		MetricMemoryUsedMb: int64(sandboxMemoryAllocated / (1024 * 1024)),
-		MetricDiskMb:       int64(sandboxDiskAllocated / (1024 * 1024)),
+		MetricVcpuUsed:     int64(allocated.VCPUs),
+		MetricMemoryUsedMb: int64(allocated.MemoryBytes / (1024 * 1024)),
+		MetricDiskMb:       int64(allocated.DiskBytes / (1024 * 1024)),
 	}, nil
 }
 
