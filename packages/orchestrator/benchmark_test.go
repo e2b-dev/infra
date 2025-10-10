@@ -318,7 +318,6 @@ func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVer
 		tc.tmpl,
 		tc.sandboxConfig,
 		tc.runtime,
-		uuid.NewString(),
 		time.Now(),
 		time.Now().Add(time.Second*15),
 		nil,
@@ -353,7 +352,7 @@ func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVer
 	}
 
 	// resume sandbox
-	sbx, err = tc.sandboxFactory.ResumeSandbox(ctx, tc.tmpl, tc.sandboxConfig, tc.runtime, uuid.NewString(), time.Now(), time.Now().Add(time.Second*15), nil)
+	sbx, err = tc.sandboxFactory.ResumeSandbox(ctx, tc.tmpl, tc.sandboxConfig, tc.runtime, time.Now(), time.Now().Add(time.Second*15), nil)
 	require.NoError(b, err)
 
 	// close sandbox
