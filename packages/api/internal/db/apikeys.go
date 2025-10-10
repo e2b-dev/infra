@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 )
@@ -36,18 +37,27 @@ func validateTeamUsage(team queries.Team) error {
 	return nil
 }
 
-func GetTeamAuth(ctx context.Context, db *sqlcdb.Client, apiKey string) (*queries.Team, *queries.Tier, error) {
+func GetTeamAuth(ctx context.Context, db *sqlcdb.Client, apiKey string) (*types.Team, error) {
 	result, err := db.GetTeamWithTierByAPIKeyWithUpdateLastUsed(ctx, apiKey)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get team from API key: %w", err)
 
-		return nil, nil, errMsg
+		return nil, errMsg
 	}
 
 	err = validateTeamUsage(result.Team)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return &result.Team, &result.Tier, nil
+	team := types.NewTeam(
+		&result.Team,
+		&result.Tier,
+		result.ExtraConcurrentSandboxes,
+		result.ExtraConcurrentTemplateBuilds,
+		result.ExtraMaxVcpu,
+		result.ExtraMaxRamMb,
+		result.ExtraDiskMb,
+	)
+	return team, nil
 }

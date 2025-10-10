@@ -11,7 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	apiedge "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -21,14 +21,14 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID string, p
 	ctx := c.Request.Context()
 	sandboxID = utils.ShortID(sandboxID)
 
-	team := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo).Team
+	team := c.Value(auth.TeamContextKey).(*types.Team)
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("instance.id", sandboxID),
 		telemetry.WithTeamID(team.ID.String()),
 	)
 
-	/// Sandboxes living in a cluster
+	// Sandboxes living in a cluster
 	sbxLogs, err := a.getClusterSandboxLogs(ctx, sandboxID, team.ID.String(), utils.WithClusterFallback(team.ClusterID), params.Limit, params.Start)
 	if err != nil {
 		a.sendAPIStoreError(c, int(err.Code), err.Message)

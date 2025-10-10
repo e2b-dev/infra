@@ -27,9 +27,6 @@ type Snapshot func(*sql.Selector)
 // Team is the predicate function for team builders.
 type Team func(*sql.Selector)
 
-// Tier is the predicate function for tier builders.
-type Tier func(*sql.Selector)
-
 // User is the predicate function for user builders.
 type User func(*sql.Selector)
 
