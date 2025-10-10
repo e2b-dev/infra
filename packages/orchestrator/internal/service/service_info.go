@@ -17,10 +17,10 @@ type Server struct {
 	orchestratorinfo.UnimplementedInfoServiceServer
 
 	info      *ServiceInfo
-	sandboxes *sandbox.SandboxesMap
+	sandboxes *sandbox.Map
 }
 
-func NewInfoService(_ context.Context, grpc *grpc.Server, info *ServiceInfo, sandboxes *sandbox.SandboxesMap) *Server {
+func NewInfoService(_ context.Context, grpc *grpc.Server, info *ServiceInfo, sandboxes *sandbox.Map) *Server {
 	s := &Server{
 		info:      info,
 		sandboxes: sandboxes,

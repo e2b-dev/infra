@@ -49,7 +49,7 @@ type Builder struct {
 	artifactRegistry    artifactsregistry.ArtifactsRegistry
 	dockerhubRepository dockerhub.RemoteRepository
 	proxy               *proxy.SandboxProxy
-	sandboxes           *sandbox.SandboxesMap
+	sandboxes           *sandbox.Map
 	templateCache       *sbxtemplate.Cache
 	metrics             *metrics.BuildMetrics
 }
@@ -62,7 +62,7 @@ func NewBuilder(
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	dockerhubRepository dockerhub.RemoteRepository,
 	proxy *proxy.SandboxProxy,
-	sandboxes *sandbox.SandboxesMap,
+	sandboxes *sandbox.Map,
 	templateCache *sbxtemplate.Cache,
 	buildMetrics *metrics.BuildMetrics,
 ) *Builder {

@@ -55,7 +55,7 @@ func New(
 	grpc *grpcserver.GRPCServer,
 	sandboxFactory *sandbox.Factory,
 	proxy *proxy.SandboxProxy,
-	sandboxes *sandbox.SandboxesMap,
+	sandboxes *sandbox.Map,
 	templateCache *sbxtemplate.Cache,
 	templatePersistence storage.StorageProvider,
 	limiter *limit.Limiter,

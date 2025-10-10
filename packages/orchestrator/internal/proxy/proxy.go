@@ -28,7 +28,7 @@ type SandboxProxy struct {
 	proxy *reverseproxy.Proxy
 }
 
-func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes *sandbox.SandboxesMap) (*SandboxProxy, error) {
+func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes *sandbox.Map) (*SandboxProxy, error) {
 	proxy := reverseproxy.New(
 		port,
 		idleTimeout,

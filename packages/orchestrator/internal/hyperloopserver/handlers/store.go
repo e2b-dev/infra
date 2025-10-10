@@ -18,13 +18,13 @@ const CollectorExporterTimeout = 10 * time.Second
 
 type APIStore struct {
 	logger    *zap.Logger
-	sandboxes *sandbox.SandboxesMap
+	sandboxes *sandbox.Map
 
 	collectorClient http.Client
 	collectorAddr   string
 }
 
-func NewHyperloopStore(logger *zap.Logger, sandboxes *sandbox.SandboxesMap, sandboxCollectorAddr string) *APIStore {
+func NewHyperloopStore(logger *zap.Logger, sandboxes *sandbox.Map, sandboxCollectorAddr string) *APIStore {
 	return &APIStore{
 		logger:    logger,
 		sandboxes: sandboxes,

@@ -28,7 +28,7 @@ type server struct {
 
 	sandboxFactory    *sandbox.Factory
 	info              *service.ServiceInfo
-	sandboxes         *sandbox.SandboxesMap
+	sandboxes         *sandbox.Map
 	proxy             *proxy.SandboxProxy
 	networkPool       *network.Pool
 	templateCache     *template.Cache
@@ -57,7 +57,7 @@ type ServiceConfig struct {
 	Info             *service.ServiceInfo
 	Proxy            *proxy.SandboxProxy
 	SandboxFactory   *sandbox.Factory
-	Sandboxes        *sandbox.SandboxesMap
+	Sandboxes        *sandbox.Map
 	Persistence      storage.StorageProvider
 	FeatureFlags     *featureflags.Client
 	SbxEventsService events.EventsService[event.SandboxEvent]
