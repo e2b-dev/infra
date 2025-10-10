@@ -97,8 +97,8 @@ job "api" {
         DNS_PORT                       = "${dns_port_number}"
         SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
         VAULT_ADDR                     = "${vault_addr}"
-        VAULT_APPROLE_ROLE_ID          = "${jsondecode(vault_api_approle_creds).role_id}"
-        VAULT_APPROLE_SECRET_ID        = "${jsondecode(vault_api_approle_creds).secret_id}"
+        VAULT_APPROLE_ROLE_ID          = "${vault_api_approle_creds != "" ? jsondecode(vault_api_approle_creds).role_id : ""}"
+        VAULT_APPROLE_SECRET_ID        = "${vault_api_approle_creds != "" ? jsondecode(vault_api_approle_creds).secret_id : ""}"
         VAULT_TLS_CA                   = ${jsonencode(vault_tls_ca)}
 
         LOCAL_CLUSTER_ENDPOINT = "${local_cluster_endpoint}"
