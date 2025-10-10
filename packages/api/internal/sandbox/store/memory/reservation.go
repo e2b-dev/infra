@@ -2,7 +2,6 @@ package memory
 
 import (
 	"context"
-	"sync"
 
 	"go.uber.org/zap"
 
@@ -17,7 +16,6 @@ type sandboxReservation struct {
 }
 
 type TeamSandboxes struct {
-	mu        sync.RWMutex
 	teamID    string
 	sandboxes map[string]*sandboxReservation
 }
