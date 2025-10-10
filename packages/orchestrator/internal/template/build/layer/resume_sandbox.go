@@ -40,7 +40,6 @@ func (rs *ResumeSandbox) Sandbox(
 			SandboxID:   config.InstanceBuildPrefix + id.Generate(),
 			ExecutionID: uuid.NewString(),
 		},
-		uuid.New().String(),
 		time.Now(),
 		time.Now().Add(rs.timeout),
 		nil,

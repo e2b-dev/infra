@@ -88,11 +88,11 @@ func (sd *DnsServiceDiscovery) sync(ctx context.Context) {
 		return
 	default:
 		for _, host := range sd.hosts {
-			msg := new(dns.Msg)
+			var msg dns.Msg
 			msg.SetQuestion(dns.Fqdn(host), dns.TypeA)
 
 			for range dnsMaxRetries {
-				response, _, err := dnsClient.Exchange(msg, sd.resolver)
+				response, _, err := dnsClient.Exchange(&msg, sd.resolver)
 				if err != nil {
 					sd.logger.Error("DNS service discovery failed", zap.Error(err))
 					time.Sleep(dnsRetryWait)

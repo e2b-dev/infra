@@ -78,7 +78,10 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 	// Remove the sandbox resources after the sandbox is deleted
 	defer node.RemoveSandbox(sbx)
 
-	o.dns.Remove(ctx, sbx.SandboxID, sbx.ExecutionID)
+	err := o.routingCatalog.DeleteSandbox(ctx, sbx.SandboxID, sbx.ExecutionID)
+	if err != nil {
+		zap.L().Error("error removing routing record from catalog", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
+	}
 
 	sbxlogger.I(sbx).Debug("Removing sandbox",
 		zap.Bool("auto_pause", sbx.AutoPause),

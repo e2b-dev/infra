@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -28,10 +29,6 @@ const (
 
 	buildCacheTTL           = time.Hour * 25
 	buildCacheDelayEviction = time.Second * 60
-
-	// buildCacheMaxUsedPercentage the maximum percentage of the cache disk storage
-	// that can be used before the cache starts evicting items.
-	buildCacheMaxUsedPercentage = 85.0
 )
 
 var (
@@ -57,6 +54,7 @@ type Cache struct {
 // as it may contain stale data that are not managed by anyone.
 func NewCache(
 	ctx context.Context,
+	config cfg.Config,
 	flags *featureflags.Client,
 	persistence storage.StorageProvider,
 	metrics blockmetrics.Metrics,
@@ -82,10 +80,11 @@ func NewCache(
 
 	buildStore, err := build.NewDiffStore(
 		ctx,
+		config,
+		flags,
 		build.DefaultCachePath(),
 		buildCacheTTL,
 		buildCacheDelayEviction,
-		buildCacheMaxUsedPercentage,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build store: %w", err)

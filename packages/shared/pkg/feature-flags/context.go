@@ -144,3 +144,7 @@ func TierContext(tierID, tierName string) ldcontext.Context {
 func UserContext(userID string) ldcontext.Context {
 	return ldcontext.NewWithKind(UserKind, userID)
 }
+
+func ServiceContext(serviceName string) ldcontext.Context {
+	return ldcontext.NewWithKind(ServiceKind, serviceName)
+}

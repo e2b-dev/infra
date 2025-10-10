@@ -21,9 +21,9 @@ type TemplatedError[T jsonErrorMessage] struct {
 }
 
 func (e *TemplatedError[T]) buildHtml() ([]byte, error) {
-	html := new(bytes.Buffer)
+	var html bytes.Buffer
 
-	err := e.template.Execute(html, e.vars)
+	err := e.template.Execute(&html, e.vars)
 	if err != nil {
 		return nil, err
 	}

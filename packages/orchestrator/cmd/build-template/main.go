@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
@@ -163,7 +164,12 @@ func buildTemplate(
 		return fmt.Errorf("failed to create feature flags client: %w", err)
 	}
 
-	templateCache, err := sbxtemplate.NewCache(ctx, featureFlags, persistenceTemplate, blockMetrics)
+	c, err := cfg.Parse()
+	if err != nil {
+		return fmt.Errorf("error parsing config: %w", err)
+	}
+
+	templateCache, err := sbxtemplate.NewCache(ctx, c, featureFlags, persistenceTemplate, blockMetrics)
 	if err != nil {
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}

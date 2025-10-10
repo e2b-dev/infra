@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
@@ -32,12 +33,14 @@ func NewSandbox(
 	envdAccessToken *string,
 	allowInternetAccess *bool,
 	baseTemplateID string,
+	domain *string,
 ) Sandbox {
 	return Sandbox{
 		SandboxID:  sandboxID,
 		TemplateID: templateID,
 		ClientID:   clientID,
 		Alias:      alias,
+		Domain:     domain,
 
 		ExecutionID:         executionID,
 		TeamID:              teamID,
@@ -67,6 +70,7 @@ type Sandbox struct {
 	TemplateID string
 	ClientID   string
 	Alias      *string
+	Domain     *string
 
 	ExecutionID         string
 	TeamID              uuid.UUID
@@ -89,6 +93,18 @@ type Sandbox struct {
 	AutoPause           bool
 
 	State State
+}
+
+func (s Sandbox) ToAPISandbox() *api.Sandbox {
+	return &api.Sandbox{
+		SandboxID:       s.SandboxID,
+		TemplateID:      s.TemplateID,
+		ClientID:        s.ClientID,
+		Alias:           s.Alias,
+		EnvdVersion:     s.EnvdVersion,
+		EnvdAccessToken: s.EnvdAccessToken,
+		Domain:          s.Domain,
+	}
 }
 
 func (s Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {

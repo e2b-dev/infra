@@ -1,9 +1,7 @@
-package service
+package cfg
 
 import (
 	"strings"
-
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 )
 
 type ServiceType string
@@ -29,7 +27,7 @@ func ParseServiceType(s string) ServiceType {
 
 // GetServices parses the ORCHESTRATOR_SERVICES environment variable
 // and returns a slice of known ServiceTypes.
-func GetServices(config cfg.Config) []ServiceType {
+func GetServices(config Config) []ServiceType {
 	rawServiceNames := config.Services
 
 	var services []ServiceType

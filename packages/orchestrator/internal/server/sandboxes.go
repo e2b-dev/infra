@@ -124,7 +124,6 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			ExecutionID: req.GetSandbox().GetExecutionId(),
 			TeamID:      req.GetSandbox().GetTeamId(),
 		},
-		childSpan.SpanContext().TraceID().String(),
 		req.GetStartTime().AsTime(),
 		req.GetEndTime().AsTime(),
 		req.GetSandbox(),

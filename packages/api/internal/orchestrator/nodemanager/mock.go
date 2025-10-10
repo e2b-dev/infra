@@ -84,11 +84,12 @@ func WithSandboxSleepingClient(baseSandboxCreateTime time.Duration) TestOptions 
 // It uses a mock gRPC client and has simplified Status() method behavior
 func NewTestNode(id string, status api.NodeStatus, cpuAllocated int64, cpuCount uint32, options ...TestOptions) *TestNode {
 	node := &Node{
-		ID:        id,
-		ClusterID: uuid.New(),
-		client:    newMockGRPCClient(),
-		IPAddress: "127.0.0.1",
-		status:    status,
+		ID:            id,
+		ClusterID:     uuid.New(),
+		client:        newMockGRPCClient(),
+		IPAddress:     "127.0.0.1",
+		SandboxDomain: nil,
+		status:        status,
 		metrics: Metrics{
 			CpuUsage:     cpuAllocated,
 			CpuAllocated: uint32(cpuAllocated),

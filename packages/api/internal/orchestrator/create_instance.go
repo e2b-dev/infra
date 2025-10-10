@@ -44,7 +44,7 @@ func (o *Orchestrator) CreateSandbox(
 	autoPause bool,
 	envdAuthToken *string,
 	allowInternetAccess *bool,
-) (*api.Sandbox, *api.APIError) {
+) (sbx sandbox.Sandbox, apiErr *api.APIError) {
 	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
 
@@ -58,7 +58,7 @@ func (o *Orchestrator) CreateSandbox(
 
 		switch {
 		case errors.As(err, &limitErr):
-			return nil, &api.APIError{
+			return sandbox.Sandbox{}, &api.APIError{
 				Code: http.StatusTooManyRequests,
 				ClientMsg: fmt.Sprintf(
 					"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
@@ -66,15 +66,36 @@ func (o *Orchestrator) CreateSandbox(
 				Err: fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.Team.ID, team.Tier.ConcurrentInstances),
 			}
 		case errors.As(err, &alreadyErr):
-			zap.L().Warn("sandbox already being started", logger.WithSandboxID(sandboxID), zap.Error(err))
-			return nil, &api.APIError{
+			if alreadyErr.StartResult != nil {
+				sbx, err = alreadyErr.StartResult.WaitWithContext(ctx)
+				if err != nil {
+					zap.L().Warn("Error waiting for sandbox to start", zap.Error(err), logger.WithSandboxID(sandboxID))
+
+					var apiErr *api.APIError
+					if errors.As(err, &apiErr) {
+						return sandbox.Sandbox{}, apiErr
+					}
+
+					return sandbox.Sandbox{}, &api.APIError{
+						Code:      http.StatusInternalServerError,
+						ClientMsg: "Error waiting for sandbox to start",
+						Err:       err,
+					}
+				}
+
+				return sbx, nil
+			}
+
+			zap.L().Info("Sandbox has been already started", logger.WithSandboxID(sandboxID), zap.Error(err))
+			// TODO: Handle this error better
+			return sandbox.Sandbox{}, &api.APIError{
 				Code:      http.StatusConflict,
 				ClientMsg: fmt.Sprintf("Sandbox %s is already being started", sandboxID),
 				Err:       err,
 			}
 		default:
 			zap.L().Error("failed to reserve sandbox for team", logger.WithSandboxID(sandboxID), zap.Error(err))
-			return nil, &api.APIError{
+			return sandbox.Sandbox{}, &api.APIError{
 				Code:      http.StatusInternalServerError,
 				ClientMsg: fmt.Sprintf("Failed to create sandbox: %s", err),
 				Err:       err,
@@ -83,13 +104,21 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	telemetry.ReportEvent(ctx, "Reserved sandbox for team")
-	defer releaseTeamSandboxReservation()
+	defer func() {
+		// Don't change this handling
+		// https://go.dev/play/p/4oy02s7BDMc
+		if apiErr != nil {
+			releaseTeamSandboxReservation(sbx, apiErr)
+		} else {
+			releaseTeamSandboxReservation(sbx, nil)
+		}
+	}()
 
 	features, err := sandbox.NewVersionInfo(build.FirecrackerVersion)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get features for firecracker version '%s': %w", build.FirecrackerVersion, err)
 
-		return nil, &api.APIError{
+		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
 			ClientMsg: "Failed to get build information for the template",
 			Err:       errMsg,
@@ -102,7 +131,7 @@ func (o *Orchestrator) CreateSandbox(
 	if team.Team.ClusterID != nil {
 		cluster, ok := o.clusters.GetClusterById(*team.Team.ClusterID)
 		if !ok {
-			return nil, &api.APIError{
+			return sandbox.Sandbox{}, &api.APIError{
 				Code:      http.StatusInternalServerError,
 				ClientMsg: "Error while looking for sandbox cluster information",
 				Err:       fmt.Errorf("cannot access cluster %s associated with team id %s that spawned sandbox %s", *team.Team.ClusterID, team.Team.ID, sandboxID),
@@ -160,7 +189,7 @@ func (o *Orchestrator) CreateSandbox(
 	if err != nil {
 		telemetry.ReportError(ctx, "failed to create sandbox", err)
 
-		return nil, &api.APIError{
+		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
 			ClientMsg: "Failed to create sandbox",
 			Err:       fmt.Errorf("failed to get create sandbox: %w", err),
@@ -181,26 +210,16 @@ func (o *Orchestrator) CreateSandbox(
 	telemetry.SetAttributes(ctx, attribute.String("node.id", node.ID))
 	telemetry.ReportEvent(ctx, "Created sandbox")
 
-	sbx := api.Sandbox{
-		ClientID:        consts.ClientID,
-		SandboxID:       sandboxID,
-		TemplateID:      build.EnvID,
-		Alias:           &alias,
-		EnvdVersion:     *build.EnvdVersion,
-		EnvdAccessToken: envdAuthToken,
-		Domain:          sbxDomain,
-	}
-
 	// This is to compensate for the time it takes to start the instance
 	// Otherwise it could cause the instance to expire before user has a chance to use it
 	startTime = time.Now()
 	endTime = startTime.Add(timeout)
 
-	instanceInfo := sandbox.NewSandbox(
-		sbx.SandboxID,
-		sbx.TemplateID,
-		sbx.ClientID,
-		sbx.Alias,
+	sbx = sandbox.NewSandbox(
+		sandboxID,
+		build.EnvID,
+		consts.ClientID,
+		&alias,
 		executionID,
 		team.Team.ID,
 		build.ID,
@@ -220,8 +239,9 @@ func (o *Orchestrator) CreateSandbox(
 		envdAuthToken,
 		allowInternetAccess,
 		baseTemplateID,
+		sbxDomain,
 	)
 
-	o.sandboxStore.Add(ctx, instanceInfo, true)
-	return &sbx, nil
+	o.sandboxStore.Add(ctx, sbx, true)
+	return sbx, nil
 }

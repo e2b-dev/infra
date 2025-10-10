@@ -27,7 +27,6 @@ linters:
     - errchkjson
     - exhaustive
     - exhaustruct
-    - forbidigo  # enable this when we're committed to avoiding os.Getenv
     - funcorder
     - funlen
     - gochecknoglobals
@@ -70,11 +69,12 @@ linters:
     # disabled intentionally
 
   settings:
-    # enable this when we're committed to avoiding os.Getenv
-    #    forbidigo:
-    #      forbid:
-    #        - pattern: os\.Getenv
-    #          msg: Add your field to the configuration model instead.
+    forbidigo:
+      forbid:
+        - pattern: "^new$"
+          msg: "Use &Type{} instead."
+#        - pattern: os\.Getenv
+#          msg: "Add your field to the configuration model instead."
 
     gocritic:
       disabled-checks:
