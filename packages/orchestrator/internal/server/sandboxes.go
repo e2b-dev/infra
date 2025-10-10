@@ -134,7 +134,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, status.Errorf(codes.Internal, "failed to create sandbox: %s", err)
 	}
 
-	s.sandboxes.Insert(req.GetSandbox().GetSandboxId(), sbx)
+	s.sandboxes.Insert(sbx)
 	go func() {
 		ctx, childSpan := tracer.Start(context.WithoutCancel(ctx), "sandbox-create-stop", trace.WithNewRoot())
 		defer childSpan.End()
@@ -152,17 +152,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		// Remove the sandbox from cache only if the cleanup IDs match.
 		// This prevents us from accidentally removing started sandbox (via resume) from the cache if cleanup is taking longer than the request timeout.
 		// This could have caused the "invisible" sandboxes that are not in orchestrator or API, but are still on client.
-		s.sandboxes.RemoveCb(req.GetSandbox().GetSandboxId(), func(_ string, v *sandbox.Sandbox, exists bool) bool {
-			if !exists {
-				return false
-			}
-
-			if v == nil {
-				return false
-			}
-
-			return sbx.Runtime.ExecutionID == v.Runtime.ExecutionID
-		})
+		s.sandboxes.RemoveByExecutionID(req.GetSandbox().GetSandboxId(), sbx.Runtime.ExecutionID)
 
 		// Remove the proxies assigned to the sandbox from the pool to prevent them from being reused.
 		s.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)

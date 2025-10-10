@@ -33,7 +33,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -52,7 +51,7 @@ type Builder struct {
 	artifactRegistry    artifactsregistry.ArtifactsRegistry
 	dockerhubRepository dockerhub.RemoteRepository
 	proxy               *proxy.SandboxProxy
-	sandboxes           *smap.Map[*sandbox.Sandbox]
+	sandboxes           *sandbox.Map
 	templateCache       *sbxtemplate.Cache
 	metrics             *metrics.BuildMetrics
 	flags               *featureflags.Client
@@ -68,7 +67,7 @@ func NewBuilder(
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	dockerhubRepository dockerhub.RemoteRepository,
 	proxy *proxy.SandboxProxy,
-	sandboxes *smap.Map[*sandbox.Sandbox],
+	sandboxes *sandbox.Map,
 	templateCache *sbxtemplate.Cache,
 	buildMetrics *metrics.BuildMetrics,
 	flags *featureflags.Client,
