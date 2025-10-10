@@ -165,4 +165,4 @@ tidy:
 
 .PHONY: local-infra
 local-infra:
-	docker compose up --abort-on-container-failure
+	docker compose --file ./packages/local-dev/docker-compose.yaml up --abort-on-container-failure
