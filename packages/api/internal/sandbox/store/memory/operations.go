@@ -34,6 +34,12 @@ func (s *Store) Add(ctx context.Context, sandbox sandbox.Sandbox, newlyCreated b
 		return
 	}
 
+	// Ensure the team reservation is set - no limit
+	_, _, err := s.reservations.Reserve(sandbox.TeamID.String(), sandbox.SandboxID, -1)
+	if err != nil {
+		zap.L().Error("Failed to reserve sandbox", zap.Error(err), logger.WithSandboxID(sandbox.SandboxID))
+	}
+
 	for _, callback := range s.insertCallbacks {
 		callback(ctx, sandbox, newlyCreated)
 	}
