@@ -12,16 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
 func TestTrackerRoundTrip(t *testing.T) {
 	tempDir := t.TempDir()
 
-	flags, err := featureflags.NewClient()
-	require.NoError(t, err)
-
-	tracker, err := NewTracker(1, tempDir, time.Millisecond*100, flags)
+	tracker, err := NewTracker(tempDir, time.Millisecond*100)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -152,10 +148,7 @@ func TestTrackerRoundTrip(t *testing.T) {
 func TestTracker_handleWriteSelf(t *testing.T) {
 	tempDir := t.TempDir()
 
-	flags, err := featureflags.NewClient()
-	require.NoError(t, err)
-
-	tracker, err := NewTracker(1, tempDir, 10*time.Second, flags)
+	tracker, err := NewTracker(tempDir, 10*time.Second)
 	require.NoError(t, err)
 
 	tracker.OnInsert(&sandbox.Sandbox{

@@ -26,6 +26,7 @@ import (
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 
+	limiter          *Limiter
 	metricsTracker   *metrics.Tracker
 	sandboxFactory   *sandbox.Factory
 	info             *service.ServiceInfo
@@ -62,6 +63,7 @@ type ServiceConfig struct {
 	Persistence      storage.StorageProvider
 	FeatureFlags     *featureflags.Client
 	SbxEventsService events.EventsService[event.SandboxEvent]
+	Limiter          *Limiter
 }
 
 func New(cfg ServiceConfig) *Service {
@@ -82,6 +84,7 @@ func New(cfg ServiceConfig) *Service {
 		featureFlags:     cfg.FeatureFlags,
 		sbxEventsService: cfg.SbxEventsService,
 		metricsTracker:   cfg.MetricsTracker,
+		limiter:          cfg.Limiter,
 	}
 
 	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")

@@ -18,7 +18,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/events/event"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -32,10 +31,7 @@ import (
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/server")
 
-const (
-	requestTimeout              = 60 * time.Second
-	maxStartingInstancesPerNode = 3
-)
+const requestTimeout = 60 * time.Second
 
 func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
 	// set max request timeout for this request
@@ -69,9 +65,9 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	)
 
 	// Check if we've reached the max number of starting instances on this node
-	if err := s.metricsTracker.AcquireStarting(ctx); err != nil {
-		var tooManyRunning metrics.TooManySandboxesRunningError
-		var tooManyStarting metrics.TooManySandboxesStartingError
+	if err := s.limiter.AcquireStarting(ctx); err != nil {
+		var tooManyRunning TooManySandboxesRunningError
+		var tooManyStarting TooManySandboxesStartingError
 		switch {
 		case errors.As(err, &tooManyRunning):
 			telemetry.ReportEvent(ctx, "max number of running sandboxes reached")
@@ -84,7 +80,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		}
 	}
 	defer func() {
-		s.metricsTracker.ReleaseStarting()
+		s.limiter.ReleaseStarting()
 	}()
 
 	template, err := s.templateCache.GetTemplate(

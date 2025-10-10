@@ -229,12 +229,12 @@ func run(config cfg.Config) (success bool) {
 		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
 
-	limiter, err := limit.New(ctx, featureFlags)
+	googleStorageLimiter, err := limit.New(ctx, featureFlags)
 	if err != nil {
 		zap.L().Fatal("failed to create limiter", zap.Error(err))
 	}
 
-	persistence, err := storage.GetTemplateStorageProvider(ctx, limiter)
+	persistence, err := storage.GetTemplateStorageProvider(ctx, googleStorageLimiter)
 	if err != nil {
 		zap.L().Fatal("failed to create template storage provider", zap.Error(err))
 	}
@@ -334,6 +334,20 @@ func run(config cfg.Config) (success bool) {
 
 	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, defaultAllowSandboxInternet)
 
+	metricsTracker, err := metrics.NewTracker(config.MetricsDirectory, config.MetricsWriteInterval)
+	if err != nil {
+		zap.L().Fatal("failed to create metrics tracker", zap.Error(err))
+	}
+	sandboxes.Subscribe(metricsTracker)
+	g.Go(func() error {
+		if err := metricsTracker.Run(ctx); err != nil {
+			zap.L().Error("metrics tracker failed", zap.Error(err))
+		}
+		return nil
+	})
+
+	limiter := server.NewLimiter(config.MaxStartingInstances, featureFlags, metricsTracker)
+
 	server.New(server.ServiceConfig{
 		SandboxFactory:   sandboxFactory,
 		GRPC:             grpcSrv,
@@ -347,6 +361,7 @@ func run(config cfg.Config) (success bool) {
 		Persistence:      persistence,
 		FeatureFlags:     featureFlags,
 		SbxEventsService: sbxEventsService,
+		Limiter:          limiter,
 	})
 
 	tmplSbxLoggerExternal := sbxlogger.NewLogger(
@@ -379,7 +394,7 @@ func run(config cfg.Config) (success bool) {
 		sandboxProxy,
 		featureFlags,
 		sandboxObserver,
-		limiter,
+		googleStorageLimiter,
 		sandboxEventBatcher,
 	)
 
@@ -396,7 +411,7 @@ func run(config cfg.Config) (success bool) {
 			sandboxes,
 			templateCache,
 			persistence,
-			limiter,
+			googleStorageLimiter,
 			serviceInfo,
 		)
 		if err != nil {
@@ -405,18 +420,6 @@ func run(config cfg.Config) (success bool) {
 
 		closers = append([]Closeable{tmpl}, closers...)
 	}
-
-	metricsTracker, err := metrics.NewTracker(config.MaxStartingInstances, config.MetricsDirectory, config.MetricsWriteInterval, featureFlags)
-	if err != nil {
-		zap.L().Fatal("failed to create metrics tracker", zap.Error(err))
-	}
-	sandboxes.Subscribe(metricsTracker)
-	g.Go(func() error {
-		if err := metricsTracker.Run(ctx); err != nil {
-			zap.L().Error("metrics tracker failed", zap.Error(err))
-		}
-		return nil
-	})
 
 	service.NewInfoService(ctx, grpcSrv.GRPCServer(), serviceInfo, metricsTracker)
 

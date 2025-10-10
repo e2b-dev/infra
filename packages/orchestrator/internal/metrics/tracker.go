@@ -14,18 +14,13 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"go.uber.org/zap"
-	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 type Tracker struct {
-	featureFlags      *featureflags.Client
-	watcher           *fsnotify.Watcher
-	startingSandboxes *semaphore.Weighted
+	watcher *fsnotify.Watcher
 
 	selfPath             string
 	selfSandboxResources *smap.Map[sandbox.Config]
@@ -42,7 +37,7 @@ func (t *Tracker) OnRemove(sandboxID string) {
 	t.selfSandboxResources.Remove(sandboxID)
 }
 
-func NewTracker(maxStartingInstancesPerNode int64, directory string, selfWriteInterval time.Duration, featureFlags *featureflags.Client) (*Tracker, error) {
+func NewTracker(directory string, selfWriteInterval time.Duration) (*Tracker, error) {
 	filename := fmt.Sprintf("%d.json", os.Getpid())
 	selfPath := filepath.Join(directory, filename)
 
@@ -59,15 +54,25 @@ func NewTracker(maxStartingInstancesPerNode int64, directory string, selfWriteIn
 	}
 
 	return &Tracker{
-		featureFlags: featureFlags,
 		watcher:      watcher,
 		otherMetrics: map[int]Allocations{},
 
 		selfPath:             selfPath,
 		selfWriteInterval:    selfWriteInterval,
 		selfSandboxResources: smap.New[sandbox.Config](),
-		startingSandboxes:    semaphore.NewWeighted(maxStartingInstancesPerNode),
 	}, nil
+}
+
+func (t *Tracker) TotalRunningCount() int {
+	count := t.selfSandboxResources.Count()
+
+	t.otherLock.RLock()
+	for _, item := range t.otherMetrics {
+		count += int(item.Sandboxes)
+	}
+	t.otherLock.RUnlock()
+
+	return count
 }
 
 func (t *Tracker) getSelfAllocated() Allocations {
@@ -183,55 +188,6 @@ func (t *Tracker) handleOtherWrite(name string) error {
 	t.otherMetrics[pid] = allocations
 
 	return nil
-}
-
-var ErrTooManyStarting = errors.New("too many starting sandboxes")
-
-type TooManySandboxesRunningError struct {
-	Current, Max int
-}
-
-func (t TooManySandboxesRunningError) Error() string {
-	return fmt.Sprintf("max number of running sandboxes on node reached (%d), please retry", t.Max)
-}
-
-var _ error = TooManySandboxesRunningError{}
-
-type TooManySandboxesStartingError struct {
-	Current, Max int
-}
-
-var _ error = TooManySandboxesStartingError{}
-
-func (t TooManySandboxesStartingError) Error() string {
-	return fmt.Sprintf("max number of starting sandboxes on node reached (%d), please retry", t.Max)
-}
-
-func (t *Tracker) AcquireStarting(ctx context.Context) error {
-	maxRunningSandboxesPerNode, err := t.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)
-	if err != nil {
-		zap.L().Error("Failed to get MaxSandboxesPerNode flag", zap.Error(err))
-	}
-
-	runningSandboxes := t.selfSandboxResources.Count()
-	if runningSandboxes >= maxRunningSandboxesPerNode {
-		telemetry.ReportEvent(ctx, "max number of running sandboxes reached")
-
-		return TooManySandboxesRunningError{runningSandboxes, maxRunningSandboxesPerNode}
-	}
-
-	// Check if we've reached the max number of starting instances on this node
-	acquired := t.startingSandboxes.TryAcquire(1)
-	if !acquired {
-		telemetry.ReportEvent(ctx, "too many starting sandboxes on node")
-		return ErrTooManyStarting
-	}
-
-	return nil
-}
-
-func (t *Tracker) ReleaseStarting() {
-	defer t.startingSandboxes.Release(1)
 }
 
 type Allocations struct {
