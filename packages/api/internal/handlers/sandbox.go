@@ -94,5 +94,5 @@ func (a *APIStore) startSandbox(
 		TeamID:     team.Team.ID.String(),
 	}).Info("Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
 
-	return sandbox, nil
+	return sandbox.ToAPISandbox(), nil
 }

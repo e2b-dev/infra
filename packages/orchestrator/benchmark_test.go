@@ -21,6 +21,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
@@ -159,7 +160,12 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	blockMetrics, err := blockmetrics.NewMetrics(&noop.MeterProvider{})
 	require.NoError(b, err)
 
-	templateCache, err := template.NewCache(b.Context(), featureFlags, persistence, blockMetrics)
+	c, err := cfg.Parse()
+	if err != nil {
+		b.Fatalf("error parsing config: %v", err)
+	}
+
+	templateCache, err := template.NewCache(b.Context(), c, featureFlags, persistence, blockMetrics)
 	require.NoError(b, err)
 
 	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, true)
@@ -312,7 +318,6 @@ func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVer
 		tc.tmpl,
 		tc.sandboxConfig,
 		tc.runtime,
-		uuid.NewString(),
 		time.Now(),
 		time.Now().Add(time.Second*15),
 		nil,
@@ -347,7 +352,7 @@ func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVer
 	}
 
 	// resume sandbox
-	sbx, err = tc.sandboxFactory.ResumeSandbox(ctx, tc.tmpl, tc.sandboxConfig, tc.runtime, uuid.NewString(), time.Now(), time.Now().Add(time.Second*15), nil)
+	sbx, err = tc.sandboxFactory.ResumeSandbox(ctx, tc.tmpl, tc.sandboxConfig, tc.runtime, time.Now(), time.Now().Add(time.Second*15), nil)
 	require.NoError(b, err)
 
 	// close sandbox

@@ -22,7 +22,7 @@ func NewItemsFilter() *ItemsFilter {
 }
 
 type Store interface {
-	Reserve(sandboxID string, teamID uuid.UUID, limit int64) (func(), error)
+	Reserve(sandboxID string, teamID uuid.UUID, limit int64) (func(Sandbox, error), error)
 	Add(ctx context.Context, sandbox Sandbox, newlyCreated bool)
 	Get(sandboxID string) (Sandbox, error)
 	Remove(sandboxID string)
