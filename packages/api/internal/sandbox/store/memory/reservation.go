@@ -72,6 +72,10 @@ func (s *ReservationStorage) Reserve(teamID, sandboxID string, limit int64) (fin
 		if setErr != nil {
 			zap.L().Error("failed to set the result of the reservation", zap.Error(setErr), logger.WithSandboxID(sandboxID))
 		}
+
+		if err != nil {
+			s.Remove(teamID, sandboxID)
+		}
 	}, nil, nil
 }
 
