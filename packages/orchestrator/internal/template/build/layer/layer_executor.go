@@ -15,7 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -28,7 +27,7 @@ type LayerExecutor struct {
 
 	templateCache   *sbxtemplate.Cache
 	proxy           *proxy.SandboxProxy
-	sandboxes       *smap.Map[*sandbox.Sandbox]
+	sandboxes       *sandbox.SandboxesMap
 	templateStorage storage.StorageProvider
 	buildStorage    storage.StorageProvider
 	index           cache.Index
@@ -39,7 +38,7 @@ func NewLayerExecutor(
 	logger *zap.Logger,
 	templateCache *sbxtemplate.Cache,
 	proxy *proxy.SandboxProxy,
-	sandboxes *smap.Map[*sandbox.Sandbox],
+	sandboxes *sandbox.SandboxesMap,
 	templateStorage storage.StorageProvider,
 	buildStorage storage.StorageProvider,
 	index cache.Index,
@@ -80,7 +79,7 @@ func (lb *LayerExecutor) BuildLayer(
 	defer sbx.Close(ctx)
 
 	// Add to proxy so we can call envd commands
-	lb.sandboxes.Insert(sbx.Runtime.SandboxID, sbx)
+	lb.sandboxes.Insert(sbx)
 	defer func() {
 		lb.sandboxes.Remove(sbx.Runtime.SandboxID)
 		lb.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)

@@ -14,7 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -29,7 +28,7 @@ type SandboxProxy struct {
 	proxy *reverseproxy.Proxy
 }
 
-func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes *smap.Map[*sandbox.Sandbox]) (*SandboxProxy, error) {
+func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes *sandbox.SandboxesMap) (*SandboxProxy, error) {
 	proxy := reverseproxy.New(
 		port,
 		idleTimeout,
