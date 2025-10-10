@@ -15,6 +15,12 @@ type sandboxReservation struct {
 	start *utils.SetOnce[sandbox.Sandbox]
 }
 
+func newSandboxReservation(start *utils.SetOnce[sandbox.Sandbox]) *sandboxReservation {
+	return &sandboxReservation{
+		start: start,
+	}
+}
+
 type TeamSandboxes struct {
 	teamID    string
 	sandboxes map[string]*sandboxReservation
@@ -32,31 +38,31 @@ func NewReservationStorage() *ReservationStorage {
 
 func (s *ReservationStorage) Reserve(teamID, sandboxID string, limit int64) (finishStart func(sandbox.Sandbox, error), waitForStart func(ctx context.Context) (sandbox.Sandbox, error), err error) {
 	alreadyPresent := false
-	startResult := utils.NewSetOnce[sandbox.Sandbox]()
 	limitExceeded := false
+	var startResult *utils.SetOnce[sandbox.Sandbox]
 
-	s.reservations.Upsert(teamID, &TeamSandboxes{
-		teamID:    teamID,
-		sandboxes: make(map[string]*sandboxReservation),
-	}, func(exist bool, valueInMap, newValue *TeamSandboxes) *TeamSandboxes {
-		if exist {
-			if sbx, ok := valueInMap.sandboxes[sandboxID]; ok {
-				alreadyPresent = true
-				startResult = sbx.start
-				return valueInMap
+	s.reservations.Upsert(teamID, nil, func(exist bool, teamSandboxes, _ *TeamSandboxes) *TeamSandboxes {
+		if !exist {
+			teamSandboxes = &TeamSandboxes{
+				teamID:    teamID,
+				sandboxes: make(map[string]*sandboxReservation),
 			}
-
-			if limit > 0 && len(valueInMap.sandboxes) >= int(limit) {
-				limitExceeded = true
-				return valueInMap
-			}
-
-			valueInMap.sandboxes[sandboxID] = &sandboxReservation{start: startResult}
-			return valueInMap
 		}
 
-		newValue.sandboxes[sandboxID] = &sandboxReservation{start: startResult}
-		return newValue
+		if sbx, ok := teamSandboxes.sandboxes[sandboxID]; ok {
+			alreadyPresent = true
+			startResult = sbx.start
+			return teamSandboxes
+		}
+
+		if limit > 0 && len(teamSandboxes.sandboxes) >= int(limit) {
+			limitExceeded = true
+			return teamSandboxes
+		}
+
+		startResult = utils.NewSetOnce[sandbox.Sandbox]()
+		teamSandboxes.sandboxes[sandboxID] = newSandboxReservation(startResult)
+		return teamSandboxes
 	})
 
 	if limitExceeded {
@@ -73,6 +79,7 @@ func (s *ReservationStorage) Reserve(teamID, sandboxID string, limit int64) (fin
 			zap.L().Error("failed to set the result of the reservation", zap.Error(setErr), logger.WithSandboxID(sandboxID))
 		}
 
+		// Remove the reservation if the sandbox creation failed
 		if err != nil {
 			s.Remove(teamID, sandboxID)
 		}
