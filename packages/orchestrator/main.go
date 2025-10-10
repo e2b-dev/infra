@@ -411,11 +411,12 @@ func run(config cfg.Config) (success bool) {
 		zap.L().Fatal("failed to create metrics tracker", zap.Error(err))
 	}
 	sandboxes.Subscribe(metricsTracker)
-	go func() {
+	g.Go(func() error {
 		if err := metricsTracker.Run(ctx); err != nil {
 			zap.L().Error("metrics tracker failed", zap.Error(err))
 		}
-	}()
+		return nil
+	})
 
 	service.NewInfoService(ctx, grpcSrv.GRPCServer(), serviceInfo, metricsTracker)
 
