@@ -27,10 +27,10 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/steps"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
+	buildcache "github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -49,7 +49,7 @@ type Builder struct {
 	artifactRegistry    artifactsregistry.ArtifactsRegistry
 	dockerhubRepository dockerhub.RemoteRepository
 	proxy               *proxy.SandboxProxy
-	sandboxes           *smap.Map[*sandbox.Sandbox]
+	sandboxes           *sandbox.Map
 	templateCache       *sbxtemplate.Cache
 	metrics             *metrics.BuildMetrics
 }
@@ -62,7 +62,7 @@ func NewBuilder(
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	dockerhubRepository dockerhub.RemoteRepository,
 	proxy *proxy.SandboxProxy,
-	sandboxes *smap.Map[*sandbox.Sandbox],
+	sandboxes *sandbox.Map,
 	templateCache *sbxtemplate.Cache,
 	buildMetrics *metrics.BuildMetrics,
 ) *Builder {
@@ -128,9 +128,12 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 
 	logger := zap.New(logsCore)
 	defer func() {
-		if e != nil {
+		switch {
+		case errors.Is(ctx.Err(), context.Canceled):
+			logger.Error(fmt.Sprintf("Build failed: %s", buildcache.CanceledBuildReason))
+		case e != nil:
 			logger.Error(fmt.Sprintf("Build failed: %v", e))
-		} else {
+		default:
 			logger.Info(fmt.Sprintf("Build finished, took %s",
 				time.Since(startTime).Truncate(time.Second).String()))
 		}

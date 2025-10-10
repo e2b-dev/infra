@@ -44,7 +44,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/pubsub"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -75,12 +74,12 @@ func main() {
 func run(config cfg.Config) (success bool) {
 	success = true
 
-	services := service.GetServices(config)
+	services := cfg.GetServices(config)
 
 	// Check if the orchestrator crashed and restarted
 	// Skip this check in development mode
 	// We don't want to lock if the service is running with force stop; the subsequent start would fail.
-	if !env.IsDevelopment() && !config.ForceStop && slices.Contains(services, service.Orchestrator) {
+	if !env.IsDevelopment() && !config.ForceStop && slices.Contains(services, cfg.Orchestrator) {
 		fileLockName := config.OrchestratorLockPath
 		info, err := os.Stat(fileLockName)
 		if err == nil {
@@ -113,7 +112,7 @@ func run(config cfg.Config) (success bool) {
 	defer sigCancel()
 
 	nodeID := env.GetNodeID()
-	serviceName := service.GetServiceName(services)
+	serviceName := cfg.GetServiceName(services)
 	serviceInstanceID := uuid.NewString()
 	serviceInfo := service.NewInfoContainer(nodeID, version, commitSHA, serviceInstanceID, config)
 
@@ -206,7 +205,7 @@ func run(config cfg.Config) (success bool) {
 
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.
-	sandboxes := smap.New[*sandbox.Sandbox]()
+	sandboxes := sandbox.NewSandboxesMap()
 
 	sandboxProxy, err := proxy.NewSandboxProxy(tel.MeterProvider, config.ProxyPort, sandboxes)
 	if err != nil {
@@ -245,7 +244,7 @@ func run(config cfg.Config) (success bool) {
 		zap.L().Fatal("failed to create metrics provider", zap.Error(err))
 	}
 
-	templateCache, err := template.NewCache(ctx, featureFlags, persistence, blockMetrics)
+	templateCache, err := template.NewCache(ctx, config, featureFlags, persistence, blockMetrics)
 	if err != nil {
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}
@@ -385,7 +384,7 @@ func run(config cfg.Config) (success bool) {
 	)
 
 	// Initialize the template manager only if the service is enabled
-	if slices.Contains(services, service.TemplateManager) {
+	if slices.Contains(services, cfg.TemplateManager) {
 		tmpl, err := tmplserver.New(
 			ctx,
 			tel.MeterProvider,

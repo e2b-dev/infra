@@ -12,20 +12,19 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/hyperloop"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 const CollectorExporterTimeout = 10 * time.Second
 
 type APIStore struct {
 	logger    *zap.Logger
-	sandboxes *smap.Map[*sandbox.Sandbox]
+	sandboxes *sandbox.Map
 
 	collectorClient http.Client
 	collectorAddr   string
 }
 
-func NewHyperloopStore(logger *zap.Logger, sandboxes *smap.Map[*sandbox.Sandbox], sandboxCollectorAddr string) *APIStore {
+func NewHyperloopStore(logger *zap.Logger, sandboxes *sandbox.Map, sandboxCollectorAddr string) *APIStore {
 	return &APIStore{
 		logger:    logger,
 		sandboxes: sandboxes,
