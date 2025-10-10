@@ -2,7 +2,6 @@ package logger_provider
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -22,13 +21,7 @@ type LokiQueryProvider struct {
 	client *loki.DefaultClient
 }
 
-var ErrEmptyLokiURL = errors.New("loki address is empty, please set the LOKI_URL environment variable")
-
 func NewLokiQueryProvider(config cfg.Config) (*LokiQueryProvider, error) {
-	if config.LokiURL == "" {
-		return nil, ErrEmptyLokiURL
-	}
-
 	lokiClient := &loki.DefaultClient{
 		Address:  config.LokiURL,
 		Username: config.LokiUser,
