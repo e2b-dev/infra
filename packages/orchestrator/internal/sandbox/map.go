@@ -1,6 +1,10 @@
 package sandbox
 
-import "github.com/e2b-dev/infra/packages/shared/pkg/smap"
+import (
+	"sync"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+)
 
 type MapSubscriber interface {
 	OnInsert(sandbox *Sandbox)
@@ -8,16 +12,24 @@ type MapSubscriber interface {
 }
 
 type Map struct {
-	sandboxes   *smap.Map[*Sandbox]
-	subscribers []MapSubscriber
+	sandboxes *smap.Map[*Sandbox]
+
+	subs     []MapSubscriber
+	subsLock sync.RWMutex
 }
 
 func (m *Map) Subscribe(subscriber MapSubscriber) {
-	m.subscribers = append(m.subscribers, subscriber)
+	m.subsLock.Lock()
+	defer m.subsLock.Unlock()
+
+	m.subs = append(m.subs, subscriber)
 }
 
 func (m *Map) trigger(fn func(MapSubscriber)) {
-	for _, subscriber := range m.subscribers {
+	m.subsLock.RLock()
+	defer m.subsLock.RUnlock()
+
+	for _, subscriber := range m.subs {
 		fn(subscriber)
 	}
 }
