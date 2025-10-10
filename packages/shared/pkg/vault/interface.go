@@ -10,4 +10,6 @@ type VaultBackend interface {
 	WriteSecret(ctx context.Context, path string, value string, metadata map[string]any) error
 
 	DeleteSecret(ctx context.Context, path string) error
+
+	Close()
 }

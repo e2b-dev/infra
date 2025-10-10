@@ -57,7 +57,7 @@ type APIStore struct {
 	envdAccessTokenGenerator *sandbox.EnvdAccessTokenGenerator
 	featureFlags             *featureflags.Client
 	clustersPool             *edge.Pool
-	secretVault              *vault.Client
+	secretVault              vault.VaultBackend
 }
 
 func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) *APIStore {
