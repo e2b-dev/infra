@@ -80,7 +80,7 @@ func (s *ReservationStorage) Reserve(teamID, sandboxID string, limit int64) (fin
 }
 
 func (s *ReservationStorage) Remove(teamID, sandboxID string) {
-	s.reservations.RemoveCb(teamID, func(key string, ts *TeamSandboxes, exists bool) bool {
+	s.reservations.RemoveCb(teamID, func(_ string, ts *TeamSandboxes, exists bool) bool {
 		if !exists {
 			return true
 		}
