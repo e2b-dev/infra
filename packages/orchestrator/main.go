@@ -44,7 +44,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/pubsub"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -206,7 +205,7 @@ func run(config cfg.Config) (success bool) {
 
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.
-	sandboxes := smap.New[*sandbox.Sandbox]()
+	sandboxes := sandbox.NewSandboxesMap()
 
 	sandboxProxy, err := proxy.NewSandboxProxy(tel.MeterProvider, config.ProxyPort, sandboxes)
 	if err != nil {
@@ -230,12 +229,12 @@ func run(config cfg.Config) (success bool) {
 		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
 
-	limiter, err := limit.New(ctx, featureFlags)
+	googleStorageLimiter, err := limit.New(ctx, featureFlags)
 	if err != nil {
 		zap.L().Fatal("failed to create limiter", zap.Error(err))
 	}
 
-	persistence, err := storage.GetTemplateStorageProvider(ctx, limiter)
+	persistence, err := storage.GetTemplateStorageProvider(ctx, googleStorageLimiter)
 	if err != nil {
 		zap.L().Fatal("failed to create template storage provider", zap.Error(err))
 	}
@@ -335,6 +334,20 @@ func run(config cfg.Config) (success bool) {
 
 	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, defaultAllowSandboxInternet)
 
+	metricsTracker, err := metrics.NewTracker(config.MetricsWriteInterval)
+	if err != nil {
+		zap.L().Fatal("failed to create metrics tracker", zap.Error(err))
+	}
+	sandboxes.Subscribe(metricsTracker)
+	g.Go(func() error {
+		if err := metricsTracker.Run(ctx, config.MetricsDirectory); err != nil {
+			zap.L().Error("metrics tracker failed", zap.Error(err))
+		}
+		return nil
+	})
+
+	limiter := server.NewLimiter(config.MaxStartingInstances, featureFlags, metricsTracker)
+
 	server.New(server.ServiceConfig{
 		SandboxFactory:   sandboxFactory,
 		GRPC:             grpcSrv,
@@ -348,6 +361,7 @@ func run(config cfg.Config) (success bool) {
 		Persistence:      persistence,
 		FeatureFlags:     featureFlags,
 		SbxEventsService: sbxEventsService,
+		Limiter:          limiter,
 	})
 
 	tmplSbxLoggerExternal := sbxlogger.NewLogger(
@@ -380,7 +394,7 @@ func run(config cfg.Config) (success bool) {
 		sandboxProxy,
 		featureFlags,
 		sandboxObserver,
-		limiter,
+		googleStorageLimiter,
 		sandboxEventBatcher,
 	)
 
@@ -397,7 +411,7 @@ func run(config cfg.Config) (success bool) {
 			sandboxes,
 			templateCache,
 			persistence,
-			limiter,
+			googleStorageLimiter,
 			serviceInfo,
 		)
 		if err != nil {
@@ -407,7 +421,7 @@ func run(config cfg.Config) (success bool) {
 		closers = append([]Closeable{tmpl}, closers...)
 	}
 
-	service.NewInfoService(ctx, grpcSrv.GRPCServer(), serviceInfo, sandboxes)
+	service.NewInfoService(ctx, grpcSrv.GRPCServer(), serviceInfo, metricsTracker)
 
 	g.Go(func() error {
 		zap.L().Info("Starting session proxy")

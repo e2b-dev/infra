@@ -31,10 +31,7 @@ import (
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/server")
 
-const (
-	requestTimeout              = 60 * time.Second
-	maxStartingInstancesPerNode = 3
-)
+const requestTimeout = 60 * time.Second
 
 func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
 	// set max request timeout for this request
@@ -67,25 +64,24 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			Build(),
 	)
 
-	maxRunningSandboxesPerNode, err := s.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)
-	if err != nil {
-		zap.L().Error("Failed to get MaxSandboxesPerNode flag", zap.Error(err))
-	}
-
-	runningSandboxes := s.sandboxes.Count()
-	if runningSandboxes >= maxRunningSandboxesPerNode {
-		telemetry.ReportEvent(ctx, "max number of running sandboxes reached")
-
-		return nil, status.Errorf(codes.ResourceExhausted, "max number of running sandboxes on node reached (%d), please retry", maxRunningSandboxesPerNode)
-	}
-
 	// Check if we've reached the max number of starting instances on this node
-	acquired := s.startingSandboxes.TryAcquire(1)
-	if !acquired {
-		telemetry.ReportEvent(ctx, "too many starting sandboxes on node")
-		return nil, status.Errorf(codes.ResourceExhausted, "too many sandboxes starting on this node, please retry")
+	if err := s.limiter.AcquireStarting(ctx); err != nil {
+		var tooManyRunning TooManySandboxesRunningError
+		var tooManyStarting TooManySandboxesStartingError
+		switch {
+		case errors.As(err, &tooManyRunning):
+			telemetry.ReportEvent(ctx, "max number of running sandboxes reached")
+			return nil, status.Errorf(codes.ResourceExhausted, "too many sandboxes on node reached (%d>=%d), please retry", tooManyRunning.Current, tooManyRunning.Max)
+		case errors.As(err, &tooManyStarting):
+			telemetry.ReportEvent(ctx, "too many starting sandboxes on node")
+			return nil, status.Errorf(codes.ResourceExhausted, "too many sandboxes starting on this node (%d>=%d, please retry", tooManyStarting.Current, tooManyStarting.Max)
+		default:
+			return nil, fmt.Errorf("unexpected error while acquiring starting lock: %w", err)
+		}
 	}
-	defer s.startingSandboxes.Release(1)
+	defer func() {
+		s.limiter.ReleaseStarting()
+	}()
 
 	template, err := s.templateCache.GetTemplate(
 		ctx,
@@ -134,7 +130,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, status.Errorf(codes.Internal, "failed to create sandbox: %s", err)
 	}
 
-	s.sandboxes.Insert(req.GetSandbox().GetSandboxId(), sbx)
+	s.sandboxes.Insert(sbx)
 	go func() {
 		ctx, childSpan := tracer.Start(context.WithoutCancel(ctx), "sandbox-create-stop", trace.WithNewRoot())
 		defer childSpan.End()
@@ -152,17 +148,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		// Remove the sandbox from cache only if the cleanup IDs match.
 		// This prevents us from accidentally removing started sandbox (via resume) from the cache if cleanup is taking longer than the request timeout.
 		// This could have caused the "invisible" sandboxes that are not in orchestrator or API, but are still on client.
-		s.sandboxes.RemoveCb(req.GetSandbox().GetSandboxId(), func(_ string, v *sandbox.Sandbox, exists bool) bool {
-			if !exists {
-				return false
-			}
-
-			if v == nil {
-				return false
-			}
-
-			return sbx.Runtime.ExecutionID == v.Runtime.ExecutionID
-		})
+		s.sandboxes.RemoveByExecutionID(req.GetSandbox().GetSandboxId(), sbx.Runtime.ExecutionID)
 
 		// Remove the proxies assigned to the sandbox from the pool to prevent them from being reused.
 		s.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)

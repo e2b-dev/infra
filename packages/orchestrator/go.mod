@@ -27,6 +27,7 @@ require (
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/edsrzf/mmap-go v1.2.0
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.0
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gin-contrib/size v1.0.2
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-openapi/strfmt v0.23.0

@@ -6,10 +6,10 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
-	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -19,7 +19,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/events/event"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -27,18 +26,19 @@ import (
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 
-	sandboxFactory    *sandbox.Factory
-	info              *service.ServiceInfo
-	sandboxes         *smap.Map[*sandbox.Sandbox]
-	proxy             *proxy.SandboxProxy
-	networkPool       *network.Pool
-	templateCache     *template.Cache
-	pauseMu           sync.Mutex
-	devicePool        *nbd.DevicePool
-	persistence       storage.StorageProvider
-	featureFlags      *featureflags.Client
-	sbxEventsService  events.EventsService[event.SandboxEvent]
-	startingSandboxes *semaphore.Weighted
+	limiter          *Limiter
+	metricsTracker   *metrics.Tracker
+	sandboxFactory   *sandbox.Factory
+	info             *service.ServiceInfo
+	sandboxes        *sandbox.Map
+	proxy            *proxy.SandboxProxy
+	networkPool      *network.Pool
+	templateCache    *template.Cache
+	pauseMu          sync.Mutex
+	devicePool       *nbd.DevicePool
+	persistence      storage.StorageProvider
+	featureFlags     *featureflags.Client
+	sbxEventsService events.EventsService[event.SandboxEvent]
 }
 
 type Service struct {
@@ -56,12 +56,14 @@ type ServiceConfig struct {
 	DevicePool       *nbd.DevicePool
 	TemplateCache    *template.Cache
 	Info             *service.ServiceInfo
+	MetricsTracker   *metrics.Tracker
 	Proxy            *proxy.SandboxProxy
 	SandboxFactory   *sandbox.Factory
-	Sandboxes        *smap.Map[*sandbox.Sandbox]
+	Sandboxes        *sandbox.Map
 	Persistence      storage.StorageProvider
 	FeatureFlags     *featureflags.Client
 	SbxEventsService events.EventsService[event.SandboxEvent]
+	Limiter          *Limiter
 }
 
 func New(cfg ServiceConfig) *Service {
@@ -71,17 +73,18 @@ func New(cfg ServiceConfig) *Service {
 		persistence: cfg.Persistence,
 	}
 	srv.server = &server{
-		sandboxFactory:    cfg.SandboxFactory,
-		info:              cfg.Info,
-		proxy:             srv.proxy,
-		sandboxes:         cfg.Sandboxes,
-		networkPool:       cfg.NetworkPool,
-		templateCache:     cfg.TemplateCache,
-		devicePool:        cfg.DevicePool,
-		persistence:       cfg.Persistence,
-		featureFlags:      cfg.FeatureFlags,
-		sbxEventsService:  cfg.SbxEventsService,
-		startingSandboxes: semaphore.NewWeighted(maxStartingInstancesPerNode),
+		sandboxFactory:   cfg.SandboxFactory,
+		info:             cfg.Info,
+		proxy:            srv.proxy,
+		sandboxes:        cfg.Sandboxes,
+		networkPool:      cfg.NetworkPool,
+		templateCache:    cfg.TemplateCache,
+		devicePool:       cfg.DevicePool,
+		persistence:      cfg.Persistence,
+		featureFlags:     cfg.FeatureFlags,
+		sbxEventsService: cfg.SbxEventsService,
+		metricsTracker:   cfg.MetricsTracker,
+		limiter:          cfg.Limiter,
 	}
 
 	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")

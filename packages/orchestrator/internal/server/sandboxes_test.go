@@ -12,7 +12,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 var (
@@ -68,11 +67,11 @@ func Test_server_List(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &server{
-				sandboxes: smap.New[*sandbox.Sandbox](),
+				sandboxes: sandbox.NewSandboxesMap(),
 				info:      &service.ServiceInfo{},
 			}
 			for _, sbx := range tt.data {
-				s.sandboxes.Insert(sbx.Runtime.SandboxID, sbx)
+				s.sandboxes.Insert(sbx)
 			}
 			got, err := s.List(t.Context(), tt.args.in1)
 			if (err != nil) != tt.wantErr {
