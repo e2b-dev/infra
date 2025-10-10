@@ -14,18 +14,37 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 )
 
+func TestTracker_CreateMissingDirectory(t *testing.T) {
+	tempDir := t.TempDir()
+	metricsDir := filepath.Join(tempDir, "metrics")
+
+	selfWriteInterval := time.Millisecond * 100
+
+	tracker, err := NewTracker(selfWriteInterval)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(t.Context(), selfWriteInterval*2)
+	t.Cleanup(cancel)
+
+	// run the tracker for a bit
+	err = tracker.Run(ctx, metricsDir)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
 func TestTrackerRoundTrip(t *testing.T) {
 	tempDir := t.TempDir()
 
-	tracker, err := NewTracker(tempDir, time.Millisecond*100)
+	os.WriteFile(filepath.Join(tempDir, "990.json"), []byte(`{"diskBytes": 0, "memoryBytes": 0, "sandboxes": 0, "vcpus": 1}`), 0o644)
+
+	tracker, err := NewTracker(time.Millisecond * 100)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
+	t.Cleanup(cancel)
 
 	// start the tracker in the background
 	go func() {
-		err := tracker.Run(ctx)
+		err := tracker.Run(ctx, tempDir)
 		assert.ErrorIs(t, err, context.Canceled)
 	}()
 
@@ -47,7 +66,7 @@ func TestTrackerRoundTrip(t *testing.T) {
 		DiskBytes:   1 * megabytes,
 		MemoryBytes: 2 * megabytes,
 		Sandboxes:   3,
-		VCPUs:       4,
+		VCPUs:       5,
 	}, allocated)
 
 	// write a second file
@@ -69,7 +88,7 @@ func TestTrackerRoundTrip(t *testing.T) {
 		DiskBytes:   2 * megabytes,
 		MemoryBytes: 4 * megabytes,
 		Sandboxes:   6,
-		VCPUs:       8,
+		VCPUs:       9,
 	}, allocated)
 
 	// modify the second file
@@ -91,7 +110,7 @@ func TestTrackerRoundTrip(t *testing.T) {
 		DiskBytes:   4 * megabytes,
 		MemoryBytes: 6 * megabytes,
 		Sandboxes:   8,
-		VCPUs:       10,
+		VCPUs:       11,
 	}, allocated)
 
 	// add a local sandbox
@@ -114,7 +133,7 @@ func TestTrackerRoundTrip(t *testing.T) {
 		DiskBytes:   7 * megabytes,
 		MemoryBytes: 8 * megabytes,
 		Sandboxes:   9,
-		VCPUs:       11,
+		VCPUs:       12,
 	}, allocated)
 
 	err = os.Remove(filepath.Join(tempDir, "998.json"))
@@ -129,11 +148,13 @@ func TestTrackerRoundTrip(t *testing.T) {
 		DiskBytes:   4 * megabytes,
 		MemoryBytes: 4 * megabytes,
 		Sandboxes:   4,
-		VCPUs:       5,
+		VCPUs:       6,
 	}, allocated)
 
+	selfPath := tracker.makeSelfPath(tempDir)
+
 	// ensure the self file has been created
-	_, err = os.Stat(tracker.selfPath)
+	_, err = os.Stat(selfPath)
 	require.NoError(t, err)
 
 	cancel()
@@ -141,14 +162,14 @@ func TestTrackerRoundTrip(t *testing.T) {
 	time.Sleep(time.Millisecond * 100)
 
 	// ensure the self file has been removed
-	_, err = os.Stat(tracker.selfPath)
+	_, err = os.Stat(selfPath)
 	assert.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func TestTracker_handleWriteSelf(t *testing.T) {
 	tempDir := t.TempDir()
 
-	tracker, err := NewTracker(tempDir, 10*time.Second)
+	tracker, err := NewTracker(10 * time.Second)
 	require.NoError(t, err)
 
 	tracker.OnInsert(&sandbox.Sandbox{
@@ -161,10 +182,12 @@ func TestTracker_handleWriteSelf(t *testing.T) {
 		},
 	})
 
-	err = tracker.handleWriteSelf()
+	selfPath := tracker.makeSelfPath(tempDir)
+
+	err = tracker.handleWriteSelf(selfPath)
 	require.NoError(t, err)
 
-	data, err := os.ReadFile(tracker.selfPath)
+	data, err := os.ReadFile(selfPath)
 	require.NoError(t, err)
 
 	var allocations Allocations

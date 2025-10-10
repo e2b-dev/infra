@@ -334,13 +334,13 @@ func run(config cfg.Config) (success bool) {
 
 	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, defaultAllowSandboxInternet)
 
-	metricsTracker, err := metrics.NewTracker(config.MetricsDirectory, config.MetricsWriteInterval)
+	metricsTracker, err := metrics.NewTracker(config.MetricsWriteInterval)
 	if err != nil {
 		zap.L().Fatal("failed to create metrics tracker", zap.Error(err))
 	}
 	sandboxes.Subscribe(metricsTracker)
 	g.Go(func() error {
-		if err := metricsTracker.Run(ctx); err != nil {
+		if err := metricsTracker.Run(ctx, config.MetricsDirectory); err != nil {
 			zap.L().Error("metrics tracker failed", zap.Error(err))
 		}
 		return nil
