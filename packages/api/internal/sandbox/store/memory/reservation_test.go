@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -267,19 +268,24 @@ func TestReservation_FailedStartWithWaiters(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, finishStart)
 
-	var wg sync.WaitGroup
+	var wg errgroup.Group
 	waiters := make([]func(ctx context.Context) (sandbox.Sandbox, error), numWaiters)
 
 	// Multiple waiters
-	for i := 0; i < numWaiters; i++ {
-		wg.Add(1)
-		go func(index int) {
-			defer wg.Done()
+	for i := range numWaiters {
+		wg.Go(func() error {
 			_, waitForStart, err := cache.Reserve(team.String(), sbxID, 100)
-			require.NoError(t, err)
-			require.NotNil(t, waitForStart)
-			waiters[index] = waitForStart
-		}(i)
+			if err != nil {
+				return err
+			}
+
+			if waitForStart == nil {
+				return errors.New("waitForStart should not be nil")
+			}
+			waiters[i] = waitForStart
+
+			return nil
+		})
 	}
 
 	wg.Wait()
@@ -317,7 +323,7 @@ func TestReservation_ConcurrentReservations(t *testing.T) {
 	var successCount atomic.Int32
 	var limitExceededCount atomic.Int32
 
-	for i := 0; i < concurrency; i++ {
+	for i := range concurrency {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -347,17 +353,17 @@ func TestReservation_ConcurrentSameSandbox(t *testing.T) {
 	sbxID := "concurrent-sandbox"
 	concurrency := 50
 
-	var wg sync.WaitGroup
+	var wg errgroup.Group
 	var finishStartCount atomic.Int32
 	var waitForStartCount atomic.Int32
 
 	// Multiple goroutines try to reserve the same sandbox
-	for i := 0; i < concurrency; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range concurrency {
+		wg.Go(func() error {
 			finishStart, waitForStart, err := cache.Reserve(team.String(), sbxID, 10)
-			require.NoError(t, err)
+			if err != nil {
+				return err
+			}
 
 			if finishStart != nil {
 				finishStartCount.Add(1)
@@ -365,7 +371,9 @@ func TestReservation_ConcurrentSameSandbox(t *testing.T) {
 			if waitForStart != nil {
 				waitForStartCount.Add(1)
 			}
-		}()
+
+			return nil
+		})
 	}
 
 	wg.Wait()
@@ -386,19 +394,24 @@ func TestReservation_ConcurrentWaitAndFinish(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, finishStart)
 
-	var wg sync.WaitGroup
+	var wg errgroup.Group
 	waiters := make([]func(ctx context.Context) (sandbox.Sandbox, error), numWaiters)
 
 	// Multiple waiters
-	for i := 0; i < numWaiters; i++ {
-		wg.Add(1)
-		go func(index int) {
-			defer wg.Done()
+	for i := range numWaiters {
+		wg.Go(func() error {
 			_, waitForStart, err := cache.Reserve(team.String(), sbxID, 1)
-			require.NoError(t, err)
-			require.NotNil(t, waitForStart)
-			waiters[index] = waitForStart
-		}(i)
+			if err != nil {
+				return err
+			}
+
+			if waitForStart == nil {
+				return errors.New("waitForStart should not be nil")
+			}
+
+			waiters[i] = waitForStart
+			return nil
+		})
 	}
 
 	wg.Wait()
@@ -439,29 +452,34 @@ func TestReservation_ConcurrentRemove(t *testing.T) {
 	team := uuid.New()
 	concurrency := 50
 
-	var wg sync.WaitGroup
+	var wg errgroup.Group
 
 	// Concurrently reserve and remove sandboxes
-	for i := 0; i < concurrency; i++ {
-		wg.Add(1)
-		go func(index int) {
-			defer wg.Done()
-			sbxID := fmt.Sprintf("sandbox-%d", index)
+	for i := range concurrency {
+		wg.Go(func() error {
+			sbxID := fmt.Sprintf("sandbox-%d", i)
 
 			// Reserve
 			_, _, err := cache.Reserve(team.String(), sbxID, 100)
-			require.NoError(t, err)
+			if err != nil {
+				return err
+			}
 
 			// Remove
 			cache.Remove(team.String(), sbxID)
 
 			// Should be able to reserve again
 			_, _, err = cache.Reserve(team.String(), sbxID, 100)
-			require.NoError(t, err)
-		}(i)
+			if err != nil {
+				return err
+			}
+
+			return nil
+		})
 	}
 
-	wg.Wait()
+	err := wg.Wait()
+	require.NoError(t, err)
 }
 
 func TestReservation_RaceConditionStressTest(t *testing.T) {
@@ -475,13 +493,13 @@ func TestReservation_RaceConditionStressTest(t *testing.T) {
 	var operationCount atomic.Int32
 
 	// Mix of reserve, remove, and finish operations
-	for i := 0; i < numOperations; i++ {
+	for i := range numOperations {
 		wg.Add(1)
-		go func(index int) {
+		go func() {
 			defer wg.Done()
-			sbxID := fmt.Sprintf("sandbox-%d", index%numSandboxes)
+			sbxID := fmt.Sprintf("sandbox-%d", i%numSandboxes)
 
-			switch index % 3 {
+			switch i % 3 {
 			case 0:
 				// Reserve
 				finishStart, waitForStart, err := cache.Reserve(team.String(), sbxID, limit)
@@ -518,7 +536,7 @@ func TestReservation_RaceConditionStressTest(t *testing.T) {
 				_, _, _ = cache.Reserve(team.String(), sbxID, limit)
 				operationCount.Add(1)
 			}
-		}(i)
+		}()
 	}
 
 	wg.Wait()
