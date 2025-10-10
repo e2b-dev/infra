@@ -8,8 +8,10 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 )
 
+var _ sandbox.Store = (*Store)(nil)
+
 type Store struct {
-	reservations *ReservationCache
+	reservations *ReservationStorage
 	items        cmap.ConcurrentMap[string, *memorySandbox]
 
 	// If the callback isn't very simple, consider running it in a goroutine to prevent blocking the main flow
@@ -29,7 +31,7 @@ func NewStore(
 		insertCallbacks:      insertCallbacks,
 		insertAsyncCallbacks: insertAsyncCallbacks,
 
-		reservations: NewReservationCache(),
+		reservations: NewReservationStorage(),
 	}
 
 	return instanceCache
