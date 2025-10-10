@@ -13,7 +13,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -31,7 +31,7 @@ func (o *Orchestrator) CreateSandbox(
 	sandboxID,
 	executionID,
 	alias string,
-	team authcache.AuthTeamInfo,
+	team *types.Team,
 	build queries.EnvBuild,
 	metadata map[string]string,
 	envVars map[string]string,
@@ -48,8 +48,11 @@ func (o *Orchestrator) CreateSandbox(
 	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
 
+	// Calculate total concurrent instances including addons
+	totalConcurrentInstances := team.Limits.SandboxConcurrency
+
 	// Check if team has reached max instances
-	releaseTeamSandboxReservation, err := o.sandboxStore.Reserve(sandboxID, team.Team.ID, team.Tier.ConcurrentInstances)
+	releaseTeamSandboxReservation, err := o.sandboxStore.Reserve(sandboxID, team.ID, totalConcurrentInstances)
 	if err != nil {
 		var limitErr *sandbox.LimitExceededError
 		var alreadyErr *sandbox.AlreadyBeingStartedError
@@ -62,8 +65,8 @@ func (o *Orchestrator) CreateSandbox(
 				Code: http.StatusTooManyRequests,
 				ClientMsg: fmt.Sprintf(
 					"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
-						"please contact us at 'https://e2b.dev/docs/getting-help'", team.Tier.ConcurrentInstances),
-				Err: fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.Team.ID, team.Tier.ConcurrentInstances),
+						"please contact us at 'https://e2b.dev/docs/getting-help'", totalConcurrentInstances),
+				Err: fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.ID, totalConcurrentInstances),
 			}
 		case errors.As(err, &alreadyErr):
 			if alreadyErr.StartResult != nil {
@@ -128,13 +131,13 @@ func (o *Orchestrator) CreateSandbox(
 	telemetry.ReportEvent(ctx, "Got FC version info")
 
 	var sbxDomain *string
-	if team.Team.ClusterID != nil {
-		cluster, ok := o.clusters.GetClusterById(*team.Team.ClusterID)
+	if team.ClusterID != nil {
+		cluster, ok := o.clusters.GetClusterById(*team.ClusterID)
 		if !ok {
 			return sandbox.Sandbox{}, &api.APIError{
 				Code:      http.StatusInternalServerError,
 				ClientMsg: "Error while looking for sandbox cluster information",
-				Err:       fmt.Errorf("cannot access cluster %s associated with team id %s that spawned sandbox %s", *team.Team.ClusterID, team.Team.ID, sandboxID),
+				Err:       fmt.Errorf("cannot access cluster %s associated with team id %s that spawned sandbox %s", *team.ClusterID, team.ID, sandboxID),
 			}
 		}
 
@@ -146,7 +149,7 @@ func (o *Orchestrator) CreateSandbox(
 			BaseTemplateId:      baseTemplateID,
 			TemplateId:          build.EnvID,
 			Alias:               &alias,
-			TeamId:              team.Team.ID.String(),
+			TeamId:              team.ID.String(),
 			BuildId:             build.ID.String(),
 			SandboxId:           sandboxID,
 			ExecutionId:         executionID,
@@ -156,7 +159,7 @@ func (o *Orchestrator) CreateSandbox(
 			Metadata:            metadata,
 			EnvVars:             envVars,
 			EnvdAccessToken:     envdAuthToken,
-			MaxSandboxLength:    team.Tier.MaxLengthHours,
+			MaxSandboxLength:    team.Limits.MaxLengthHours,
 			HugePages:           features.HasHugePages(),
 			RamMb:               build.RamMb,
 			Vcpu:                build.Vcpu,
@@ -174,14 +177,14 @@ func (o *Orchestrator) CreateSandbox(
 	if isResume && nodeID != nil {
 		telemetry.ReportEvent(ctx, "Placing sandbox on the node where the snapshot was taken")
 
-		clusterID := utils.WithClusterFallback(team.Team.ClusterID)
+		clusterID := utils.WithClusterFallback(team.ClusterID)
 		node = o.GetNode(clusterID, *nodeID)
 		if node != nil && node.Status() != api.NodeStatusReady {
 			node = nil
 		}
 	}
 
-	nodeClusterID := utils.WithClusterFallback(team.Team.ClusterID)
+	nodeClusterID := utils.WithClusterFallback(team.ClusterID)
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
 	algorithm := o.getPlacementAlgorithm(ctx)
@@ -221,10 +224,10 @@ func (o *Orchestrator) CreateSandbox(
 		consts.ClientID,
 		&alias,
 		executionID,
-		team.Team.ID,
+		team.ID,
 		build.ID,
 		metadata,
-		time.Duration(team.Tier.MaxLengthHours)*time.Hour,
+		time.Duration(team.Limits.MaxLengthHours)*time.Hour,
 		startTime,
 		endTime,
 		build.Vcpu,

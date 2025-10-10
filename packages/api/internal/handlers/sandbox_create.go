@@ -13,7 +13,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -43,7 +43,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	// Get team from context, use TeamContextKey
-	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
+	teamInfo := c.Value(auth.TeamContextKey).(*types.Team)
 
 	c.Set("teamID", teamInfo.Team.ID.String())
 
@@ -124,8 +124,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	if body.Timeout != nil {
 		timeout = time.Duration(*body.Timeout) * time.Second
 
-		if timeout > time.Duration(teamInfo.Tier.MaxLengthHours)*time.Hour {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Tier.MaxLengthHours))
+		if timeout > time.Duration(teamInfo.Limits.MaxLengthHours)*time.Hour {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Limits.MaxLengthHours))
 			return
 		}
 	}

@@ -25,6 +25,22 @@ type AccessToken struct {
 	AccessTokenMaskSuffix string
 }
 
+type Addon struct {
+	ID                       string
+	Name                     string
+	Description              *string
+	ConcurrentInstances      int64
+	MaxLengthHours           int64
+	ConcurrentTemplateBuilds int64
+	MaxVcpu                  int64
+	MaxRamMb                 int64
+	DiskMb                   int64
+	TeamID                   uuid.UUID
+	ValidFrom                pgtype.Timestamp
+	ValidTo                  pgtype.Timestamp
+	AddedBy                  uuid.UUID
+}
+
 type AuthUser struct {
 	ID    uuid.UUID
 	Email string

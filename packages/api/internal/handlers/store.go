@@ -21,6 +21,7 @@ import (
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -28,7 +29,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
@@ -249,23 +249,23 @@ func (a *APIStore) GetHealth(c *gin.Context) {
 	c.String(http.StatusServiceUnavailable, "Service is unavailable")
 }
 
-func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authcache.AuthTeamInfo, *api.APIError) {
+func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (*types.Team, *api.APIError) {
 	hashedApiKey, err := keys.VerifyKey(keys.ApiKeyPrefix, apiKey)
 	if err != nil {
-		return authcache.AuthTeamInfo{}, &api.APIError{
+		return nil, &api.APIError{
 			Err:       fmt.Errorf("failed to verify api key: %w", err),
 			ClientMsg: "Invalid API key format",
 			Code:      http.StatusUnauthorized,
 		}
 	}
 
-	team, tier, err := a.authCache.GetOrSet(ctx, hashedApiKey, func(ctx context.Context, key string) (*queries.Team, *queries.Tier, error) {
+	team, err := a.authCache.GetOrSet(ctx, hashedApiKey, func(ctx context.Context, key string) (*types.Team, error) {
 		return dbapi.GetTeamAuth(ctx, a.sqlcDB, key)
 	})
 	if err != nil {
 		var usageErr *dbapi.TeamForbiddenError
 		if errors.As(err, &usageErr) {
-			return authcache.AuthTeamInfo{}, &api.APIError{
+			return nil, &api.APIError{
 				Err:       err,
 				ClientMsg: err.Error(),
 				Code:      http.StatusForbidden,
@@ -274,24 +274,21 @@ func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authca
 
 		var blockedErr *dbapi.TeamBlockedError
 		if errors.As(err, &blockedErr) {
-			return authcache.AuthTeamInfo{}, &api.APIError{
+			return nil, &api.APIError{
 				Err:       err,
 				ClientMsg: err.Error(),
 				Code:      http.StatusForbidden,
 			}
 		}
 
-		return authcache.AuthTeamInfo{}, &api.APIError{
+		return nil, &api.APIError{
 			Err:       fmt.Errorf("failed to get the team from db for an api key: %w", err),
 			ClientMsg: "Cannot get the team for the given API key",
 			Code:      http.StatusUnauthorized,
 		}
 	}
 
-	return authcache.AuthTeamInfo{
-		Team: team,
-		Tier: tier,
-	}, nil
+	return team, nil
 }
 
 func (a *APIStore) GetUserFromAccessToken(ctx context.Context, accessToken string) (uuid.UUID, *api.APIError) {
@@ -390,17 +387,17 @@ func (a *APIStore) GetUserIDFromSupabaseToken(_ context.Context, supabaseToken s
 	return userIDParsed, nil
 }
 
-func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) (authcache.AuthTeamInfo, *api.APIError) {
+func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) (*types.Team, *api.APIError) {
 	userID := a.GetUserID(middleware.GetGinContext(ctx))
 
 	cacheKey := fmt.Sprintf("%s-%s", userID.String(), teamID)
-	team, tier, err := a.authCache.GetOrSet(ctx, cacheKey, func(ctx context.Context, _ string) (*queries.Team, *queries.Tier, error) {
+	team, err := a.authCache.GetOrSet(ctx, cacheKey, func(ctx context.Context, _ string) (*types.Team, error) {
 		return dbapi.GetTeamByIDAndUserIDAuth(ctx, a.sqlcDB, teamID, userID)
 	})
 	if err != nil {
 		var usageErr *dbapi.TeamForbiddenError
 		if errors.As(err, &usageErr) {
-			return authcache.AuthTeamInfo{}, &api.APIError{
+			return nil, &api.APIError{
 				Err:       fmt.Errorf("failed getting team: %w", err),
 				ClientMsg: fmt.Sprintf("Forbidden: %s", err.Error()),
 				Code:      http.StatusForbidden,
@@ -409,22 +406,19 @@ func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) 
 
 		var blockedErr *dbapi.TeamBlockedError
 		if errors.As(err, &blockedErr) {
-			return authcache.AuthTeamInfo{}, &api.APIError{
+			return nil, &api.APIError{
 				Err:       fmt.Errorf("failed getting team: %w", err),
 				ClientMsg: fmt.Sprintf("Blocked: %s", err.Error()),
 				Code:      http.StatusForbidden,
 			}
 		}
 
-		return authcache.AuthTeamInfo{}, &api.APIError{
+		return nil, &api.APIError{
 			Err:       fmt.Errorf("failed getting team: %w", err),
 			ClientMsg: "Backend authentication failed",
 			Code:      http.StatusUnauthorized,
 		}
 	}
 
-	return authcache.AuthTeamInfo{
-		Team: team,
-		Tier: tier,
-	}, nil
+	return team, nil
 }

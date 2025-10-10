@@ -6,7 +6,7 @@ import (
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
@@ -39,7 +39,7 @@ func createLaunchDarklyUserContext(c *gin.Context) (ldcontext.Context, bool) {
 }
 
 func createLaunchDarklyTeamContext(c *gin.Context) (ldcontext.Context, bool) {
-	authTeamInfo, ok := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
+	authTeamInfo, ok := c.Value(auth.TeamContextKey).(*types.Team)
 	if !ok {
 		return ldcontext.Context{}, false
 	}
@@ -52,8 +52,8 @@ func createLaunchDarklyTeamContext(c *gin.Context) (ldcontext.Context, bool) {
 		}
 	}
 
-	if tier := authTeamInfo.Tier; tier != nil {
-		contexts = append(contexts, featureflags.TierContext(tier.ID, tier.Name))
+	if team := authTeamInfo.Team; team != nil {
+		contexts = append(contexts, featureflags.TierContext(team.Tier, team.Tier))
 	}
 
 	if len(contexts) == 0 {
