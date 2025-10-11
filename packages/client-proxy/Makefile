@@ -43,6 +43,17 @@ run:
 	LOKI_URL=unset \
 	./bin/client-proxy
 
+define setup_local_env
+	$(eval include .env.local)
+	$(eval export $(shell sed 's/=.*//' .env.local))
+endef
+
+.PHONY: run-local
+run-local:
+	make build-debug
+	$(call setup_local_env)
+	NODE_ID=$$(hostname) ./bin/client-proxy
+
 .PHONY: generate
 generate:
 	$(codegen) -old-config-style -generate gin --package api $(openapi) > ../shared/pkg/http/edge/api.gen.go

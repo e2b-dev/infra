@@ -89,7 +89,7 @@ func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPo
 func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
 	ips, err := p.slotStorage.Acquire(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create network: %w", err)
+		return nil, fmt.Errorf("failed to acquire network slot: %w", err)
 	}
 
 	err = ips.CreateNetwork()

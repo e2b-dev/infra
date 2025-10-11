@@ -98,11 +98,13 @@ func NewDevicePool(ctx context.Context, meterProvider metric.MeterProvider) (*De
 	return pool, nil
 }
 
+var ErrNBDModuleNotLoaded = errors.New("NBD module not loaded")
+
 func getMaxDevices() (uint, error) {
 	data, err := os.ReadFile("/sys/module/nbd/parameters/nbds_max")
 
 	if errors.Is(err, os.ErrNotExist) {
-		return 0, nil
+		return 0, ErrNBDModuleNotLoaded
 	}
 
 	if err != nil {
@@ -131,7 +133,10 @@ func (d *DevicePool) Populate() error {
 			device, err := d.getFreeDeviceSlot()
 			if err != nil {
 				if failedCount%100 == 0 {
-					zap.L().Error("[nbd pool]: failed to create network", zap.Error(err), zap.Int("failed_count", failedCount))
+					zap.L().Error("[nbd pool]: failed to create network",
+						zap.Error(err),
+						zap.Int("failed_count", failedCount),
+					)
 				}
 
 				failedCount++
