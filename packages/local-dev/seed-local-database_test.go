@@ -27,6 +27,7 @@ func TestRun(t *testing.T) {
 	})
 
 	connectionString, err := postgresContainer.ConnectionString(t.Context(), "sslmode=disable")
+	require.NoError(t, err)
 	t.Setenv("POSTGRES_CONNECTION_STRING", connectionString)
 
 	// run the db migration
