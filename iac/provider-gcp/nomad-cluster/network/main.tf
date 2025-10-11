@@ -455,6 +455,11 @@ resource "google_compute_firewall" "default-hc" {
     }
   }
 
+  allow {
+    protocol = "tcp"
+    ports    = [var.ingress_port.port]
+  }
+
   dynamic "allow" {
     for_each = toset(var.additional_ports)
 

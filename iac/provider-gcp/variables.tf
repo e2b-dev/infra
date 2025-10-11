@@ -155,6 +155,11 @@ variable "client_proxy_count" {
   default = 1
 }
 
+variable "ingress_count" {
+  type    = number
+  default = 1
+}
+
 variable "client_proxy_resources_memory_mb" {
   type    = number
   default = 1024
@@ -220,6 +225,19 @@ variable "api_port" {
     name        = "api"
     port        = 50001
     health_path = "/health"
+  }
+}
+
+variable "ingress_port" {
+  type = object({
+    name        = string
+    port        = number
+    health_path = string
+  })
+  default = {
+    name        = "ingress"
+    port        = 8800
+    health_path = "/ping"
   }
 }
 

@@ -68,6 +68,27 @@ resource "docker_image" "db_migrator_image" {
   platform      = "linux/amd64/v8"
 }
 
+resource "nomad_job" "ingress" {
+  jobspec = templatefile("${path.module}/jobs/ingress.hcl",
+    {
+      count         = var.ingress_count
+      update_stanza = var.api_machine_count > 1
+      cpu_count     = 1
+      memory_mb     = 512
+      node_pool     = var.api_node_pool
+      gcp_zone      = var.gcp_zone
+
+      ingress_port = var.ingress_port.port
+      control_port = 8900
+
+      nomad_endpoint = "http://localhost:4646"
+      nomad_token    = var.nomad_acl_token_secret
+
+      consul_token    = var.consul_acl_token_secret
+      consul_endpoint = "http://localhost:8500"
+  })
+}
+
 resource "nomad_job" "api" {
   jobspec = templatefile("${path.module}/jobs/api.hcl", {
     update_stanza = var.api_machine_count > 1

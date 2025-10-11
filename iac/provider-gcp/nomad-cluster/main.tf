@@ -96,6 +96,7 @@ module "network" {
   api_use_nat = var.api_use_nat
   api_nat_ips = var.api_nat_ips
 
+  ingress_port              = var.ingress_port
   api_port                  = var.api_port
   docker_reverse_proxy_port = var.docker_reverse_proxy_port
   network_name              = var.network_name

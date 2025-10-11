@@ -208,6 +208,27 @@ resource "google_secret_manager_secret_version" "analytics_collector_api_token" 
   depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
+resource "google_secret_manager_secret" "routing_domains" {
+  secret_id = "${var.prefix}routing-domains"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+resource "google_secret_manager_secret_version" "routing_domains" {
+  secret      = google_secret_manager_secret.routing_domains.name
+  secret_data = jsonencode([])
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
 resource "google_artifact_registry_repository" "orchestration_repository" {
   format        = "DOCKER"
   repository_id = "e2b-orchestration"
@@ -221,7 +242,6 @@ resource "time_sleep" "artifact_registry_api_wait_90_seconds" {
 
   create_duration = "90s"
 }
-
 
 resource "google_artifact_registry_repository_iam_member" "orchestration_repository_member" {
   repository = google_artifact_registry_repository.orchestration_repository.name
