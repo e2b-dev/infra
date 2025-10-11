@@ -5,24 +5,35 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"slices"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
 	"github.com/redis/go-redis/v9"
+	"github.com/soheilhy/cmux"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/keepalive"
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/batcher"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
+	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -39,7 +50,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/events/event"
 	"github.com/e2b-dev/infra/packages/shared/pkg/events/webhooks"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -108,7 +122,7 @@ func run(config cfg.Config) (success bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sig, sigCancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	sig, sigCancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
 	defer sigCancel()
 
 	nodeID := env.GetNodeID()
@@ -222,8 +236,6 @@ func run(config cfg.Config) (success bool) {
 		zap.L().Fatal("failed to create device pool", zap.Error(err))
 	}
 
-	grpcSrv := grpcserver.New(tel.TracerProvider, tel.MeterProvider, serviceInfo)
-
 	featureFlags, err := featureflags.NewClient()
 	if err != nil {
 		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
@@ -334,9 +346,8 @@ func run(config cfg.Config) (success bool) {
 
 	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, defaultAllowSandboxInternet)
 
-	server.New(server.ServiceConfig{
+	orchestratorService := server.New(server.ServiceConfig{
 		SandboxFactory:   sandboxFactory,
-		GRPC:             grpcSrv,
 		Tel:              tel,
 		NetworkPool:      networkPool,
 		DevicePool:       devicePool,
@@ -371,9 +382,11 @@ func run(config cfg.Config) (success bool) {
 		zap.L().Fatal("failed to create hyperloop server", zap.Error(err))
 	}
 
+	grpcServer := createGRPCServer(tel)
+	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
+
 	var closers []Closeable
 	closers = append(closers,
-		grpcSrv,
 		networkPool,
 		devicePool,
 		sandboxProxy,
@@ -390,7 +403,6 @@ func run(config cfg.Config) (success bool) {
 			tel.MeterProvider,
 			globalLogger,
 			tmplSbxLoggerExternal,
-			grpcSrv,
 			sandboxFactory,
 			sandboxProxy,
 			sandboxes,
@@ -403,71 +415,90 @@ func run(config cfg.Config) (success bool) {
 			zap.L().Fatal("failed to create template manager", zap.Error(err))
 		}
 
+		templatemanager.RegisterTemplateServiceServer(grpcServer, tmpl)
+
 		closers = append([]Closeable{tmpl}, closers...)
 	}
 
-	service.NewInfoService(ctx, grpcSrv.GRPCServer(), serviceInfo, sandboxes)
+	infoService := service.NewInfoService(serviceInfo, sandboxes)
+	orchestratorinfo.RegisterInfoServiceServer(grpcServer, infoService)
 
-	g.Go(func() error {
-		zap.L().Info("Starting session proxy")
-		proxyErr := sandboxProxy.Start(ctx)
-		if proxyErr != nil && !errors.Is(proxyErr, http.ErrServerClosed) {
-			proxyErr = fmt.Errorf("proxy server: %w", proxyErr)
-			zap.L().Error("error starting proxy server", zap.Error(proxyErr))
+	startService := func(name string, f func() error) {
+		g.Go(func() error {
+			l := globalLogger.With(zap.String("service", name))
+			l.Info("starting service")
+
+			if err := f(); err != nil {
+				l.Error("service returned an error", zap.Error(err))
+			}
 
 			select {
-			case serviceError <- proxyErr:
+			case serviceError <- err:
 			default:
 				// Don't block if the serviceError channel is already closed
 				// or if the error is already sent
 			}
 
-			return proxyErr
-		}
+			return serviceDoneError{name: name}
+		})
+	}
 
-		return nil
+	healthcheck, err := e2bhealthcheck.NewHealthcheck(serviceInfo)
+	if err != nil {
+		zap.L().Fatal("failed to create healthcheck: %w", zap.Error(err))
+	}
+
+	httpServer := &http.Server{
+		Handler: healthcheck.CreateHandler(),
+	}
+
+	grpcHealth := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcServer, grpcHealth)
+
+	// Reuse the same TCP port between grpc and HTTP requests
+	cmuxServer, err := createCMUXServer(ctx, config.GRPCPort)
+	if err != nil {
+		zap.L().Fatal("failed to create cmux server", zap.Error(err))
+	}
+
+	httpListener := cmuxServer.Match(cmux.HTTP1Fast())
+
+	startService("session proxy", func() error {
+		err := sandboxProxy.Start(ctx)
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
 	})
 
-	g.Go(func() (err error) {
-		// this sets the error declared above so the function
-		// in the defer can check it.
-		hyperloopErr := hyperloopSrv.ListenAndServe()
-		if hyperloopErr != nil {
-			hyperloopErr = fmt.Errorf("hyperloop server: %w", hyperloopErr)
-			zap.L().Error("hyperloop server error", zap.Error(hyperloopErr))
-
-			select {
-			case serviceError <- hyperloopErr:
-			default:
-				// Don't block if the serviceError channel is already closed
-				// or if the error is already sent
-			}
-
-			return hyperloopErr
+	startService("http server", func() error {
+		err := httpServer.Serve(httpListener)
+		if errors.Is(err, cmux.ErrServerClosed) {
+			return nil
 		}
-
-		return nil
+		return err
 	})
 
-	g.Go(func() (err error) {
-		// this sets the error declared above so the function
-		// in the defer can check it.
-		grpcErr := grpcSrv.Start(ctx, config.GRPCPort)
-		if grpcErr != nil {
-			grpcErr = fmt.Errorf("grpc server: %w", grpcErr)
-			zap.L().Error("grpc server error", zap.Error(grpcErr))
+	grpcListener := cmuxServer.Match(cmux.Any()) // the rest are GRPC requests
+	startService("grpc server", func() error {
+		return grpcServer.Serve(grpcListener)
+	})
 
-			select {
-			case serviceError <- grpcErr:
-			default:
-				// Don't block if the serviceError channel is already closed
-				// or if the error is already sent
-			}
-
-			return grpcErr
+	startService("cmux server", func() error {
+		zap.L().Info("Starting GRPC server", zap.Uint16("port", config.GRPCPort))
+		err := cmuxServer.Serve()
+		if err != nil && strings.Contains(err.Error(), "use of closed network connection") {
+			return nil
 		}
+		return err
+	})
 
-		return nil
+	startService("hyperloop server", func() error {
+		err := hyperloopSrv.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
 	})
 
 	// Wait for the shutdown signal or if some service fails
@@ -486,8 +517,8 @@ func run(config cfg.Config) (success bool) {
 
 	// Mark service draining if not already.
 	// If service stats was previously changed via API, we don't want to override it.
-	if serviceInfo.GetStatus() == orchestrator.ServiceInfoStatus_Healthy {
-		serviceInfo.SetStatus(orchestrator.ServiceInfoStatus_Draining)
+	if serviceInfo.GetStatus() == orchestratorinfo.ServiceInfoStatus_Healthy {
+		serviceInfo.SetStatus(orchestratorinfo.ServiceInfoStatus_Draining)
 	}
 
 	for _, c := range closers {
@@ -498,18 +529,94 @@ func run(config cfg.Config) (success bool) {
 		}
 	}
 
+	zap.L().Info("Shutting down grpc server")
+	grpcServer.GracefulStop()
+
+	zap.L().Info("Shutting down http server")
+	if err := httpServer.Shutdown(closeCtx); err != nil {
+		zap.L().Error("error shutting down http server", zap.Error(err))
+		success = false
+	}
+
+	zap.L().Info("Shutting down cmux server")
+	cmuxServer.Close()
+
 	zap.L().Info("Shutting down hyperloop server")
-	err = hyperloopSrv.Shutdown(closeCtx)
-	if err != nil {
+	if err := hyperloopSrv.Shutdown(closeCtx); err != nil {
 		zap.L().Error("error shutting down hyperloop server", zap.Error(err))
 		success = false
 	}
 
 	zap.L().Info("Waiting for services to finish")
-	if err := g.Wait(); err != nil {
+	var sde serviceDoneError
+	if err := g.Wait(); err != nil && !errors.As(err, &sde) {
 		zap.L().Error("service group error", zap.Error(err))
 		success = false
 	}
 
 	return success
+}
+
+type serviceDoneError struct {
+	name string
+}
+
+func (e serviceDoneError) Error() string {
+	return fmt.Sprintf("service %s finished", e.name)
+}
+
+func createGRPCServer(tel *telemetry.Client) *grpc.Server {
+	opts := []logging.Option{
+		logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
+		logging.WithLevels(logging.DefaultServerCodeToLevel),
+		logging.WithFieldsFromContext(logging.ExtractFields),
+	}
+
+	ignoredLoggingRoutes := logger.WithoutRoutes(
+		logger.HealthCheckRoute,
+		"/TemplateService/TemplateBuildStatus",
+		"/TemplateService/HealthStatus",
+		"/InfoService/ServiceInfo",
+	)
+
+	srv := grpc.NewServer(
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime:             5 * time.Second, // Minimum time between pings from client
+			PermitWithoutStream: true,            // Allow pings even when no active streams
+		}),
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			Time:    15 * time.Second, // Server sends keepalive pings every 15s
+			Timeout: 5 * time.Second,  // Wait 5s for response before considering dead
+		}),
+		grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler(
+			otelgrpc.WithTracerProvider(tel.TracerProvider),
+			otelgrpc.WithMeterProvider(tel.MeterProvider),
+		))),
+		grpc.ChainUnaryInterceptor(
+			recovery.UnaryServerInterceptor(),
+			selector.UnaryServerInterceptor(
+				logging.UnaryServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
+				ignoredLoggingRoutes,
+			),
+		),
+		grpc.ChainStreamInterceptor(
+			selector.StreamServerInterceptor(
+				logging.StreamServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
+				ignoredLoggingRoutes,
+			),
+		),
+	)
+
+	return srv
+}
+
+func createCMUXServer(ctx context.Context, port uint16) (cmux.CMux, error) {
+	var lisCfg net.ListenConfig
+	lis, err := lisCfg.Listen(ctx, "tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return nil, fmt.Errorf("failed to listen on port %d: %w", port, err)
+	}
+
+	m := cmux.New(lis)
+	return m, nil
 }
