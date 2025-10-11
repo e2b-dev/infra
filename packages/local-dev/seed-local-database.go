@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -21,6 +20,7 @@ var (
 	tokenID        = uuid.MustParse("3d98c426-d348-446b-bdf6-5be3ca4123e2")
 	userTokenValue = "89215020937a4c989cde33d7bc647715"
 	teamTokenValue = "53ae1fed82754c17ad8077fbc8bcdd90"
+	userID         = uuid.MustParse("fb69f46f-eb51-4a87-a14e-306f7a3fd89c")
 )
 
 func main() {
@@ -106,7 +106,9 @@ func ensureUserIsOnTeam(ctx context.Context, database *db.DB, user *models.User,
 		SetTeamID(team.ID).
 		SetUserID(user.ID).
 		Save(ctx); err != nil {
-		return fmt.Errorf("failed to add user to team: %w", err)
+		if !models.IsConstraintError(err) {
+			return fmt.Errorf("failed to add user to team: %w", err)
+		}
 	}
 
 	return nil
@@ -161,7 +163,7 @@ func upsertTeam(ctx context.Context, database *db.DB) (*models.Team, error) {
 		cmd := database.Client.Team.UpdateOne(team)
 		cmd = updateTeam(cmd)
 		team, err = cmd.Save(ctx)
-	} else if errors.Is(err, sql.ErrNoRows) {
+	} else if models.IsNotFound(err) {
 		cmd := database.Client.Team.Create()
 		cmd = updateTeam(cmd).SetID(teamID)
 		team, err = cmd.Save(ctx)
@@ -173,19 +175,18 @@ func upsertTeam(ctx context.Context, database *db.DB) (*models.Team, error) {
 }
 
 func upsertUser(ctx context.Context, database *db.DB) (*models.User, error) {
-	userID := uuid.MustParse("fb69f46f-eb51-4a87-a14e-306f7a3fd89c")
 	user, err := database.Client.User.Get(ctx, userID)
 	if err == nil {
 		cmd := database.Client.User.UpdateOne(user)
 		cmd = updateUser(cmd)
 		user, err = cmd.Save(ctx)
-	} else if errors.Is(err, sql.ErrNoRows) {
+	} else if models.IsNotFound(err) {
 		cmd := database.Client.User.Create()
 		cmd = updateUser(cmd).SetID(userID)
 		user, err = cmd.Save(ctx)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to create team: %w", err)
+		return nil, fmt.Errorf("failed to upsert user: %w", err)
 	}
 	return user, nil
 }
