@@ -226,12 +226,12 @@ func run(config cfg.Config) (success bool) {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 
-	networkPool, err := network.NewPool(ctx, tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, nodeID, config.NetworkConfig)
+	networkPool, err := network.NewPool(tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, nodeID, config.NetworkConfig)
 	if err != nil {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
 
-	devicePool, err := nbd.NewDevicePool(ctx, tel.MeterProvider)
+	devicePool, err := nbd.NewDevicePool(tel.MeterProvider)
 	if err != nil {
 		zap.L().Fatal("failed to create device pool", zap.Error(err))
 	}
@@ -463,6 +463,14 @@ func run(config cfg.Config) (success bool) {
 
 	httpListener := cmuxServer.Match(cmux.HTTP1Fast())
 
+	startService("network pool", func() error {
+		return networkPool.Populate(ctx)
+	})
+
+	startService("nbd device pool", func() error {
+		return devicePool.Populate(ctx)
+	})
+
 	startService("session proxy", func() error {
 		err := sandboxProxy.Start(ctx)
 		if errors.Is(err, http.ErrServerClosed) {
@@ -473,10 +481,14 @@ func run(config cfg.Config) (success bool) {
 
 	startService("http server", func() error {
 		err := httpServer.Serve(httpListener)
-		if errors.Is(err, cmux.ErrServerClosed) {
+		switch {
+		case errors.Is(err, cmux.ErrServerClosed):
 			return nil
+		case errors.Is(err, http.ErrServerClosed):
+			return nil
+		default:
+			return err
 		}
-		return err
 	})
 
 	grpcListener := cmuxServer.Match(cmux.Any()) // the rest are GRPC requests
@@ -485,7 +497,7 @@ func run(config cfg.Config) (success bool) {
 	})
 
 	startService("cmux server", func() error {
-		zap.L().Info("Starting GRPC server", zap.Uint16("port", config.GRPCPort))
+		zap.L().Info("Starting network server", zap.Uint16("port", config.GRPCPort))
 		err := cmuxServer.Serve()
 		if err != nil && strings.Contains(err.Error(), "use of closed network connection") {
 			return nil
