@@ -55,8 +55,8 @@ var (
 // Vpeer receives the first IP in the block, and Veth receives the second IP. Block is calculated as (slot index * addresses per slot allocation).
 // Vrt address per slot is always 2, so we can allocate /31 CIDR block for each slot.
 type Slot struct {
-	Key string
-	Idx int
+	Name string
+	Idx  int
 
 	Firewall *Firewall
 
@@ -79,7 +79,7 @@ type Slot struct {
 	hyperloopIP, hyperloopPort string
 }
 
-func NewSlot(key string, idx int, config Config) (*Slot, error) {
+func NewSlot(name string, idx int, config Config) (*Slot, error) {
 	if idx < 1 || idx > vrtSlotsSize {
 		return nil, fmt.Errorf("slot index %d is out of range [1, %d)", idx, vrtSlotsSize)
 	}
@@ -118,8 +118,8 @@ func NewSlot(key string, idx int, config Config) (*Slot, error) {
 	}
 
 	slot := &Slot{
-		Key: key,
-		Idx: idx,
+		Name: name,
+		Idx:  idx,
 
 		vPeerIp: vPeerIp,
 		vEthIp:  vEthIp,
@@ -188,7 +188,7 @@ func (s *Slot) NamespaceIP() string {
 }
 
 func (s *Slot) NamespaceID() string {
-	return fmt.Sprintf("ns-%d", s.Idx)
+	return s.Name
 }
 
 func (s *Slot) TapName() string {
@@ -222,7 +222,7 @@ func (s *Slot) TapMAC() string {
 
 func (s *Slot) InitializeFirewall() error {
 	if s.Firewall != nil {
-		return fmt.Errorf("firewall is already initialized for slot %s", s.Key)
+		return fmt.Errorf("firewall is already initialized for slot %s", s.Name)
 	}
 
 	fw, err := NewFirewall(s.TapName())
