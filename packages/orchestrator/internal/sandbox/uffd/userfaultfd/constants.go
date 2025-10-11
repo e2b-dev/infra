@@ -27,21 +27,12 @@ const (
 	UFFD_EVENT_PAGEFAULT = C.UFFD_EVENT_PAGEFAULT
 
 	UFFDIO_REGISTER_MODE_MISSING = C.UFFDIO_REGISTER_MODE_MISSING
-	UFFDIO_REGISTER_MODE_WP      = C.UFFDIO_REGISTER_MODE_WP
 
-	UFFDIO_WRITEPROTECT_MODE_WP = C.UFFDIO_WRITEPROTECT_MODE_WP
-	UFFDIO_COPY_MODE_WP         = C.UFFDIO_COPY_MODE_WP
+	UFFDIO_API      = C.UFFDIO_API
+	UFFDIO_REGISTER = C.UFFDIO_REGISTER
+	UFFDIO_COPY     = C.UFFDIO_COPY
 
-	UFFDIO_API          = C.UFFDIO_API
-	UFFDIO_REGISTER     = C.UFFDIO_REGISTER
-	UFFDIO_WRITEPROTECT = C.UFFDIO_WRITEPROTECT
-	UFFDIO_COPY         = C.UFFDIO_COPY
-
-	UFFD_PAGEFAULT_FLAG_WP    = C.UFFD_PAGEFAULT_FLAG_WP
-	UFFD_PAGEFAULT_FLAG_WRITE = C.UFFD_PAGEFAULT_FLAG_WRITE
-
-	UFFD_FEATURE_MISSING_HUGETLBFS  = C.UFFD_FEATURE_MISSING_HUGETLBFS
-	UFFD_FEATURE_WP_HUGETLBFS_SHMEM = C.UFFD_FEATURE_WP_HUGETLBFS_SHMEM
+	UFFD_FEATURE_MISSING_HUGETLBFS = C.UFFD_FEATURE_MISSING_HUGETLBFS
 )
 
 type (
@@ -52,11 +43,10 @@ type (
 	UffdMsg       = C.struct_uffd_msg
 	UffdPagefault = C.struct_uffd_pagefault
 
-	UffdioAPI          = C.struct_uffdio_api
-	UffdioRegister     = C.struct_uffdio_register
-	UffdioRange        = C.struct_uffdio_range
-	UffdioCopy         = C.struct_uffdio_copy
-	UffdioWriteProtect = C.struct_uffdio_writeprotect
+	UffdioAPI      = C.struct_uffdio_api
+	UffdioRegister = C.struct_uffdio_register
+	UffdioRange    = C.struct_uffdio_range
+	UffdioCopy     = C.struct_uffdio_copy
 )
 
 func NewUffdioAPI(api, features CULong) UffdioAPI {
@@ -79,20 +69,10 @@ func NewUffdioRegister(start, length, mode CULong) UffdioRegister {
 func NewUffdioCopy(b []byte, address CULong, pagesize CULong, mode CULong, bytesCopied CLong) UffdioCopy {
 	return UffdioCopy{
 		src:  CULong(uintptr(unsafe.Pointer(&b[0]))),
-		dst:  address &^ (pagesize - 1),
+		dst:  address,
 		len:  pagesize,
 		mode: mode,
 		copy: bytesCopied,
-	}
-}
-
-func NewUffdioWriteProtect(start, length, mode CULong) UffdioWriteProtect {
-	return UffdioWriteProtect{
-		_range: UffdioRange{
-			start: start,
-			len:   length,
-		},
-		mode: mode,
 	}
 }
 
@@ -104,14 +84,6 @@ func GetMsgArg(msg *UffdMsg) [24]byte {
 	return msg.arg
 }
 
-func GetPagefaultAddress(pagefault *UffdPagefault) CULong {
-	return pagefault.address
-}
-
-func IsWritePageFault(pagefault *UffdPagefault) bool {
-	return pagefault.flags&UFFD_PAGEFAULT_FLAG_WRITE != 0
-}
-
-func IsWriteProtectPageFault(pagefault *UffdPagefault) bool {
-	return pagefault.flags&UFFD_PAGEFAULT_FLAG_WP != 0
+func GetPagefaultAddress(pagefault *UffdPagefault) uintptr {
+	return uintptr(pagefault.address)
 }

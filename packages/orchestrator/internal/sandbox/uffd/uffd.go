@@ -16,7 +16,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -116,7 +117,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 
 	mappingsBuf = mappingsBuf[:numBytesMappings]
 
-	var m mapping.FcMappings
+	var m memory.MemfileMap
 
 	err = json.Unmarshal(mappingsBuf, &m)
 	if err != nil {
@@ -141,10 +142,10 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		return fmt.Errorf("expected 1 fd: found %d", len(fds))
 	}
 
-	uffd := fds[0]
+	uffd := userfaultfd.NewUserfaultfdFromFd(uintptr(fds[0]))
 
 	defer func() {
-		closeErr := syscall.Close(uffd)
+		closeErr := uffd.Close()
 		if closeErr != nil {
 			zap.L().Error("failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
 		}
@@ -152,9 +153,8 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 
 	u.readyCh <- struct{}{}
 
-	err = Serve(
+	err = uffd.Serve(
 		ctx,
-		uffd,
 		m,
 		u.memfile,
 		u.fdExit,
@@ -177,10 +177,6 @@ func (u *Uffd) Ready() chan struct{} {
 
 func (u *Uffd) Exit() *utils.ErrorOnce {
 	return u.exit
-}
-
-func (u *Uffd) TrackAndReturnNil() error {
-	return u.lis.Close()
 }
 
 func (u *Uffd) Disable() error {
