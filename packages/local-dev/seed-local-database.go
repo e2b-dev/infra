@@ -32,11 +32,15 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	if err := os.Setenv(
-		"POSTGRES_CONNECTION_STRING",
-		"postgresql://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable",
-	); err != nil {
-		return fmt.Errorf("failed to set environment variable: %w", err)
+	connectionString := os.Getenv("POSTGRES_CONNECTION_STRING")
+
+	if connectionString == "" {
+		if err := os.Setenv(
+			"POSTGRES_CONNECTION_STRING",
+			"postgresql://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable",
+		); err != nil {
+			return fmt.Errorf("failed to set environment variable: %w", err)
+		}
 	}
 
 	// init database
