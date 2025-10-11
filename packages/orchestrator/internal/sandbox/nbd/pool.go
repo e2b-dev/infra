@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -50,7 +51,6 @@ type (
 //
 // Use `sudo modprobe nbd nbds_max=4096` to set the max number of devices to 4096, which is a good default for now.
 type DevicePool struct {
-	ctx  context.Context //nolint:containedctx // todo: refactor so this can be removed
 	exit chan error
 
 	// We use the bitset to speedup the free device lookup.
@@ -62,7 +62,7 @@ type DevicePool struct {
 	slotCounter metric.Int64UpDownCounter
 }
 
-func NewDevicePool(ctx context.Context, meterProvider metric.MeterProvider) (*DevicePool, error) {
+func NewDevicePool(meterProvider metric.MeterProvider) (*DevicePool, error) {
 	maxDevices, err := getMaxDevices()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get max devices: %w", err)
@@ -79,21 +79,11 @@ func NewDevicePool(ctx context.Context, meterProvider metric.MeterProvider) (*De
 	}
 
 	pool := &DevicePool{
-		ctx:         ctx,
 		exit:        make(chan error, 1),
 		usedSlots:   bitset.New(maxDevices),
-		slots:       make(chan DeviceSlot, maxSlotsReady),
+		slots:       make(chan DeviceSlot, int(math.Min(maxSlotsReady, float64(maxDevices)))),
 		slotCounter: counter,
 	}
-
-	go func() {
-		err = pool.Populate()
-		if err != nil {
-			zap.L().Fatal("failed during populating device pool", zap.Error(err))
-		}
-
-		zap.L().Info("device pool populate closed")
-	}()
 
 	return pool, nil
 }
@@ -119,14 +109,14 @@ func getMaxDevices() (uint, error) {
 	return uint(maxDevices), nil
 }
 
-func (d *DevicePool) Populate() error {
+func (d *DevicePool) Populate(ctx context.Context) error {
 	defer close(d.slots)
 
 	failedCount := 0
 	for {
 		select {
-		case <-d.ctx.Done():
-			return d.ctx.Err()
+		case <-ctx.Done():
+			return ctx.Err()
 		case err := <-d.exit:
 			return err
 		default:
@@ -145,7 +135,7 @@ func (d *DevicePool) Populate() error {
 			}
 			failedCount = 0
 
-			d.slotCounter.Add(d.ctx, 1)
+			d.slotCounter.Add(ctx, 1)
 
 			// Use select to avoid panic if context is canceled before writing
 			select {
@@ -261,7 +251,7 @@ func (d *DevicePool) GetDevice(ctx context.Context) (DeviceSlot, error) {
 	}
 
 	slot := <-d.slots
-	d.slotCounter.Add(d.ctx, -1) //nolint:contextcheck // TODO: fix this later
+	d.slotCounter.Add(ctx, -1)
 
 	return slot, nil
 }

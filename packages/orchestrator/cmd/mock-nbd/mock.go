@@ -87,7 +87,7 @@ func main() {
 
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt)
-	devicePool, err := nbd.NewDevicePool(ctx, noop.MeterProvider{})
+	devicePool, err := nbd.NewDevicePool(noop.MeterProvider{})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create device pool: %v\n", err)
 

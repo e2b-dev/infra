@@ -10,7 +10,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -52,7 +51,6 @@ func New(
 	meterProvider metric.MeterProvider,
 	logger *zap.Logger,
 	buildLogger *zap.Logger,
-	grpc *grpcserver.GRPCServer,
 	sandboxFactory *sandbox.Factory,
 	proxy *proxy.SandboxProxy,
 	sandboxes *sandbox.Map,
@@ -123,8 +121,6 @@ func New(
 		wg:                &sync.WaitGroup{},
 		closers:           closers,
 	}
-
-	templatemanager.RegisterTemplateServiceServer(grpc.GRPCServer(), store)
 
 	return store, nil
 }

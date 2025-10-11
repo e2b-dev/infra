@@ -32,7 +32,7 @@ func ParseConfig() (Config, error) {
 type Pool struct {
 	config Config
 
-	cancel context.CancelFunc
+	done chan struct{}
 
 	newSlots          chan *Slot
 	reusedSlots       chan *Slot
@@ -42,7 +42,7 @@ type Pool struct {
 	slotStorage Storage
 }
 
-func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string, config Config) (*Pool, error) {
+func NewPool(meterProvider metric.MeterProvider, newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string, config Config) (*Pool, error) {
 	newSlots := make(chan *Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan *Slot, reusedSlotsPoolSize)
 
@@ -63,25 +63,15 @@ func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPo
 		return nil, fmt.Errorf("failed to create slot storage: %w", err)
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
 	pool := &Pool{
 		config:            config,
+		done:              make(chan struct{}),
 		newSlots:          newSlots,
 		reusedSlots:       reusedSlots,
 		newSlotCounter:    newSlotCounter,
 		reusedSlotCounter: reusedSlotsCounter,
-		cancel:            cancel,
 		slotStorage:       slotStorage,
 	}
-
-	go func() {
-		err := pool.populate(ctx)
-		if err != nil {
-			zap.L().Fatal("error when populating network slot pool", zap.Error(err))
-		}
-
-		zap.L().Info("network slot pool populate closed")
-	}()
 
 	return pool, nil
 }
@@ -103,11 +93,13 @@ func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
 	return ips, nil
 }
 
-func (p *Pool) populate(ctx context.Context) error {
+func (p *Pool) Populate(ctx context.Context) error {
 	defer close(p.newSlots)
 
 	for {
 		select {
+		case <-p.done:
+			return nil
 		case <-ctx.Done():
 			// Do not return an error here, this is expected on close
 			return nil
@@ -195,7 +187,7 @@ func (p *Pool) cleanup(slot *Slot) error {
 }
 
 func (p *Pool) Close(_ context.Context) error {
-	p.cancel()
+	close(p.done)
 
 	zap.L().Info("Closing network pool")
 
