@@ -15,11 +15,11 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/db/types"
+	dbtypes "github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -34,7 +34,7 @@ const (
 func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, limit int32, cursorTime time.Time, cursorID string) ([]utils.PaginatedSandbox, error) {
 	// Apply limit + 1 to check if there are more results
 	queryLimit := limit + 1
-	queryMetadata := types.JSONBStringMap{}
+	queryMetadata := dbtypes.JSONBStringMap{}
 	if metadataFilter != nil {
 		queryMetadata = *metadataFilter
 	}
@@ -71,7 +71,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "list sandboxes")
 
-	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
+	teamInfo := c.Value(auth.TeamContextKey).(*types.Team)
 	team := teamInfo.Team
 
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
@@ -99,7 +99,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "list sandboxes")
 
-	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
+	teamInfo := c.Value(auth.TeamContextKey).(*types.Team)
 	team := teamInfo.Team
 
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
