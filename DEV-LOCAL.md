@@ -1,5 +1,7 @@
 # Develop the application locally
 
+> Note: Linux is required for developing on bare metal. This is a work in progress. Not everything will function as expected.
+
 1. `sudo modprobe nbd nbds_max=64`
 2. `make local-infra`: runs clickhouse, grafana, loki, memcached, mimir, otel, postgres, redis, tempo
 3. `cd packages/db && make migrate-local` initialize the database
