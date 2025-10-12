@@ -3,6 +3,7 @@ package uffd
 import (
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 
@@ -40,6 +41,17 @@ func Serve(
 	var eg errgroup.Group
 
 	missingPagesBeingHandled := map[int64]struct{}{}
+
+	var readEagainCount atomic.Int64
+
+	logEagainCount := func(message string) {
+		eagainOccurences := readEagainCount.Swap(0)
+		if eagainOccurences > 0 {
+			logger.Debug(message, zap.Any("occurences", eagainOccurences))
+		}
+	}
+
+	defer logEagainCount("uffd: closing with accumulated read EAGAIN occurences")
 
 outerLoop:
 	for {
@@ -108,6 +120,8 @@ outerLoop:
 			}
 
 			if err == syscall.EAGAIN {
+				readEagainCount.Add(1)
+
 				// Continue polling the fd.
 				continue outerLoop
 			}
@@ -148,6 +162,8 @@ outerLoop:
 					logger.Error("UFFD serve panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
 				}
 			}()
+
+			defer logEagainCount("uffd: serving with accumulated read eagain occurences")
 
 			b, err := src.Slice(offset, pagesize)
 			if err != nil {
