@@ -54,7 +54,7 @@ outerLoop:
 			}
 
 			if err == unix.EAGAIN {
-				logger.Debug("uffd: eagain during polling, going back to polling")
+				logger.Debug("uffd: eagain fd polling, going back to polling")
 
 				continue
 			}
