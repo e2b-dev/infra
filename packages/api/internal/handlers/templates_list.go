@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -24,20 +23,9 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 	}
 
 	if params.TeamID != nil {
-		teamUUID, err := uuid.Parse(*params.TeamID)
-		if err != nil {
-			a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid team ID")
-
-			telemetry.ReportError(ctx, "invalid team ID", err)
-
-			return
-		}
-
-		if team.ID != teamUUID {
-			a.sendAPIStoreError(c, http.StatusNotFound, "Team not found")
-
-			telemetry.ReportError(ctx, "team not found", err)
-
+		if team.ID.String() != *params.TeamID {
+			a.sendAPIStoreError(c, http.StatusBadRequest, "Team ID param mismatch with the API key")
+			telemetry.ReportError(ctx, "team param mismatch with the API key", nil, telemetry.WithTeamID(team.ID.String()))
 			return
 		}
 	}
