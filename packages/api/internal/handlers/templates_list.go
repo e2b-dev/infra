@@ -5,12 +5,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -19,15 +16,10 @@ import (
 func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 	ctx := c.Request.Context()
 
-	userID := c.Value(auth.UserIDContextKey).(uuid.UUID)
-
-	var team *queries.Team
-	teams, err := a.sqlcDB.GetTeamsWithUsersTeams(ctx, userID)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting teams")
-
-		telemetry.ReportCriticalError(ctx, "error when getting teams", err)
-
+	team, _, apiErr := a.GetTeamAndTier(c, params.TeamID)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
 		return
 	}
 
@@ -41,39 +33,16 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 			return
 		}
 
-		for _, t := range teams {
-			if t.Team.ID == teamUUID {
-				team = &t.Team
-				break
-			}
-		}
-
-		if team == nil {
+		if team.ID != teamUUID {
 			a.sendAPIStoreError(c, http.StatusNotFound, "Team not found")
 
 			telemetry.ReportError(ctx, "team not found", err)
 
 			return
 		}
-	} else {
-		for _, t := range teams {
-			if t.UsersTeam.IsDefault {
-				team = &t.Team
-				break
-			}
-		}
-
-		if team == nil {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Default team not found")
-
-			telemetry.ReportError(ctx, "default team not found", err)
-
-			return
-		}
 	}
 
 	telemetry.SetAttributes(ctx,
-		attribute.String("user.id", userID.String()),
 		telemetry.WithTeamID(team.ID.String()),
 	)
 
@@ -88,7 +57,7 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "listed environments", properties)
+	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed environments", properties)
 
 	templates := make([]*api.Template, 0, len(envs))
 	for _, item := range envs {
