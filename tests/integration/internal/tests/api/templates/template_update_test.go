@@ -160,7 +160,9 @@ func TestUpdateTemplateWithSupabaseToken(t *testing.T) {
 	// Verify the update by fetching the template
 	getResp, err := c.GetTemplatesWithResponse(
 		t.Context(),
-		nil,
+		&api.GetTemplatesParams{
+			TeamID: utils.ToPtr(setup.TeamID),
+		},
 		setup.WithSupabaseToken(t),
 		setup.WithSupabaseTeam(t),
 	)
