@@ -15,7 +15,7 @@ import (
 
 func TestUpdateTemplateVisibilityToPublicWithAPIKey(t *testing.T) {
 	// Create a test template
-	template := testutils.BuildSimpleTemplate(t, "test-update-public-api-key")
+	template := testutils.BuildSimpleTemplate(t, "test-update-public-api-key", setup.WithAPIKey())
 
 	c := setup.GetAPIClient()
 
@@ -52,7 +52,7 @@ func TestUpdateTemplateVisibilityToPublicWithAPIKey(t *testing.T) {
 
 func TestUpdateTemplateVisibilityToPrivateWithAPIKey(t *testing.T) {
 	// Create a test template
-	template := testutils.BuildSimpleTemplate(t, "test-update-private-api-key")
+	template := testutils.BuildSimpleTemplate(t, "test-update-private-api-key", setup.WithAPIKey())
 
 	c := setup.GetAPIClient()
 
@@ -100,7 +100,7 @@ func TestUpdateTemplateVisibilityToPrivateWithAPIKey(t *testing.T) {
 
 func TestUpdateTemplateWithInvalidAPIKey(t *testing.T) {
 	// Create a test template with valid API key
-	template := testutils.BuildSimpleTemplate(t, "test-update-invalid-key")
+	template := testutils.BuildSimpleTemplate(t, "test-update-invalid-key", setup.WithAPIKey())
 
 	c := setup.GetAPIClient()
 
@@ -140,7 +140,7 @@ func TestUpdateNonExistentTemplateWithAPIKey(t *testing.T) {
 
 func TestUpdateTemplateWithSupabaseToken(t *testing.T) {
 	// Create a test template with API key first
-	template := testutils.BuildSimpleTemplate(t, "test-update-supabase-token")
+	template := testutils.BuildSimpleTemplate(t, "test-update-supabase-token", setup.WithAPIKey())
 
 	c := setup.GetAPIClient()
 
