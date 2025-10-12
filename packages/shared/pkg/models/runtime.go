@@ -12,7 +12,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
 	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
@@ -108,16 +107,6 @@ func init() {
 	teamDescEmail := teamFields[7].Descriptor()
 	// team.EmailValidator is a validator for the "email" field. It is called by the builders before save.
 	team.EmailValidator = teamDescEmail.Validators[0].(func(string) error)
-	teamapikeyFields := schema.TeamAPIKey{}.Fields()
-	_ = teamapikeyFields
-	// teamapikeyDescCreatedAt is the schema descriptor for created_at field.
-	teamapikeyDescCreatedAt := teamapikeyFields[6].Descriptor()
-	// teamapikey.DefaultCreatedAt holds the default value on creation for the created_at field.
-	teamapikey.DefaultCreatedAt = teamapikeyDescCreatedAt.Default.(func() time.Time)
-	// teamapikeyDescName is the schema descriptor for name field.
-	teamapikeyDescName := teamapikeyFields[9].Descriptor()
-	// teamapikey.DefaultName holds the default value on creation for the name field.
-	teamapikey.DefaultName = teamapikeyDescName.Default.(string)
 	userFields := schema.User{}.Fields()
 	_ = userFields
 	// userDescEmail is the schema descriptor for email field.
