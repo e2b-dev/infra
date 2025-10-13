@@ -430,3 +430,85 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 	assert.Equal(t, backend1.RequestCount(), uint64(1), "first backend should have been called once")
 	assert.Equal(t, proxy.TotalPoolConnections(), uint64(2), "proxy should not have reused the connection")
 }
+
+// TestProxyRetriesOnDelayedBackendStartup simulates the scenario where a backend
+// server starts up after the initial connection attempt (like envd port forwarding delay).
+func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
+	var lisCfg net.ListenConfig
+	tempListener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to get free port: %v", err)
+	}
+	backendAddr := tempListener.Addr().String()
+	tempListener.Close() // Close it so we can bind to it later
+
+	backendURL, err := url.Parse(fmt.Sprintf("http://%s", backendAddr))
+	if err != nil {
+		t.Fatalf("failed to parse backend URL: %v", err)
+	}
+
+	getDestination := func(r *http.Request) (*pool.Destination, error) {
+		return &pool.Destination{
+			Url:           backendURL,
+			SandboxId:     "test-sandbox",
+			RequestLogger: zap.NewNop(),
+			ConnectionKey: "delayed-backend",
+		}, nil
+	}
+
+	proxy, port, err := newTestProxy(t, getDestination)
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
+	defer proxy.Close()
+
+	backendReady := make(chan struct{})
+	var backend *testBackend
+
+	// Start backend after a delay (simulating envd port forwarding)
+	go func() {
+		// Wait 300ms before starting the backend (should succeed on retry 2 or 3)
+		time.Sleep(300 * time.Millisecond)
+
+		// Now create the backend on the reserved address
+		listener, err := lisCfg.Listen(context.Background(), "tcp", backendAddr)
+		if err != nil {
+			t.Errorf("failed to create delayed backend listener: %v", err)
+			return
+		}
+
+		backend, err = newTestBackend(listener, "delayed-backend")
+		if err != nil {
+			t.Errorf("failed to create delayed backend: %v", err)
+			return
+		}
+
+		close(backendReady)
+	}()
+
+	// Make request - this should retry and eventually succeed
+	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
+	start := time.Now()
+
+	resp, err := httpGet(t, proxyURL)
+	if err != nil {
+		t.Fatalf("failed to GET from proxy: %v", err)
+	}
+	defer resp.Body.Close()
+
+	elapsed := time.Since(start)
+
+	// Wait for backend to be ready before checking
+	<-backendReady
+	defer backend.Close()
+
+	assertBackendOutput(t, backend, resp)
+
+	// Verify that it took at least the delay time (proving retries happened)
+	assert.Assert(t, elapsed >= 300*time.Millisecond, "request should have waited for backend to start")
+	assert.Assert(t, elapsed < 2*time.Second, "request should have succeeded before all retries exhausted")
+
+	// Verify the connection was established
+	assert.Equal(t, backend.RequestCount(), uint64(1), "backend should have been called once")
+	assert.Equal(t, proxy.TotalPoolConnections(), uint64(1), "proxy should have established one connection")
+}
