@@ -447,7 +447,7 @@ func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
 		t.Fatalf("failed to parse backend URL: %v", err)
 	}
 
-	getDestination := func(r *http.Request) (*pool.Destination, error) {
+	getDestination := func(_ *http.Request) (*pool.Destination, error) {
 		return &pool.Destination{
 			Url:           backendURL,
 			SandboxId:     "test-sandbox",
