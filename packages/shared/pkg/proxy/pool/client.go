@@ -59,7 +59,7 @@ func newProxyClient(
 				}
 
 				if ctx.Err() != nil {
-					return nil, err
+					return nil, ctx.Err()
 				}
 
 				// Don't sleep on the last attempt
