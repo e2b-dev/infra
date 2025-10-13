@@ -257,7 +257,8 @@ func run(config cfg.Config) (success bool) {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
 	startService("network pool", func() error {
-		return networkPool.Populate(ctx)
+		networkPool.Populate(ctx)
+		return nil
 	})
 	closers = append(closers, closer{"network pool", networkPool.Close})
 
@@ -266,7 +267,8 @@ func run(config cfg.Config) (success bool) {
 		zap.L().Fatal("failed to create device pool", zap.Error(err))
 	}
 	startService("nbd device pool", func() error {
-		return devicePool.Populate(ctx)
+		devicePool.Populate(ctx)
+		return nil
 	})
 	closers = append(closers, closer{"device pool", devicePool.Close})
 

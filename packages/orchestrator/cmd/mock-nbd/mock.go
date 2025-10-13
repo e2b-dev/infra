@@ -93,11 +93,8 @@ func main() {
 		return
 	}
 	go func() {
-		err = devicePool.Populate(ctx)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to populate device pool: %v\n", err)
-			return
-		}
+		devicePool.Populate(ctx)
+		fmt.Fprintf(os.Stderr, "device pool done populating\n")
 	}()
 	defer func() {
 		err = devicePool.Close(ctx)

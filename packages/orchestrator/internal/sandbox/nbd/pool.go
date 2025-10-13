@@ -109,7 +109,7 @@ func getMaxDevices() (uint, error) {
 	return uint(maxDevices), nil
 }
 
-func (d *DevicePool) Populate(ctx context.Context) error {
+func (d *DevicePool) Populate(ctx context.Context) {
 	defer close(d.slots)
 
 	failedCount := 0
@@ -134,9 +134,9 @@ func (d *DevicePool) Populate(ctx context.Context) error {
 		// Use select to avoid panic if context is canceled before writing
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return
 		case <-d.done:
-			return nil
+			return
 		case d.slots <- *device:
 			// sent successfully
 		}

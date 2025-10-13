@@ -130,8 +130,8 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	networkPool, err := network.NewPool(noop.MeterProvider{}, 8, 8, clientID, networkConfig)
 	require.NoError(b, err)
 	go func() {
-		err := networkPool.Populate(b.Context())
-		assert.NoError(b, err)
+		networkPool.Populate(b.Context())
+		logger.Info("network pool populated")
 	}()
 	defer func() {
 		err := networkPool.Close(b.Context())
@@ -141,8 +141,8 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	devicePool, err := nbd.NewDevicePool(noop.MeterProvider{})
 	require.NoError(b, err, "do you have the nbd kernel module installed?")
 	go func() {
-		err := devicePool.Populate(b.Context())
-		assert.NoError(b, err)
+		devicePool.Populate(b.Context())
+		logger.Info("device pool populated")
 	}()
 	defer func() {
 		err := devicePool.Close(b.Context())

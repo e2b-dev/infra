@@ -93,15 +93,15 @@ func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
 	return ips, nil
 }
 
-func (p *Pool) Populate(ctx context.Context) error {
+func (p *Pool) Populate(ctx context.Context) {
 	defer close(p.newSlots)
 
 	for {
 		select {
 		case <-p.done:
-			return nil
+			return
 		case <-ctx.Done():
-			return ctx.Err()
+			return
 		default:
 			slot, err := p.createNetworkSlot(ctx)
 			if err != nil {

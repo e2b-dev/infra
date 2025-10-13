@@ -120,9 +120,8 @@ func buildTemplate(
 		return fmt.Errorf("could not create device pool: %w", err)
 	}
 	go func() {
-		if err := devicePool.Populate(ctx); err != nil {
-			logger.Error("error populating device pool", zap.Error(err))
-		}
+		devicePool.Populate(ctx)
+		logger.Info("device pool done populating")
 	}()
 	defer func() {
 		if err := devicePool.Close(parentCtx); err != nil {
@@ -135,9 +134,8 @@ func buildTemplate(
 		return fmt.Errorf("could not create network pool: %w", err)
 	}
 	go func() {
-		if err := networkPool.Populate(ctx); err != nil {
-			logger.Error("error populating network pool", zap.Error(err))
-		}
+		networkPool.Populate(ctx)
+		logger.Info("network pool done populating")
 	}()
 	defer func() {
 		err := networkPool.Close(parentCtx)
