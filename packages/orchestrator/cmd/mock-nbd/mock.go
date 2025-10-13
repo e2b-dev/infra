@@ -155,7 +155,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool
 
 		for {
 			counter++
-			err = devicePool.ReleaseDevice(deviceIndex)
+			err = devicePool.ReleaseDevice(ctx, deviceIndex)
 			if err != nil {
 				if counter%10 == 0 {
 					fmt.Printf("[%d] failed to release device: %v\n", index, err)
