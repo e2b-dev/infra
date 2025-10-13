@@ -508,7 +508,7 @@ func run(config cfg.Config) (success bool) {
 
 	healthcheck, err := e2bhealthcheck.NewHealthcheck(serviceInfo)
 	if err != nil {
-		zap.L().Fatal("failed to create healthcheck: %w", zap.Error(err))
+		zap.L().Fatal("failed to create healthcheck", zap.Error(err))
 	}
 
 	httpServer := createHTTPServer()
