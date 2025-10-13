@@ -15,24 +15,19 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
-	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
-	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
 	"github.com/redis/go-redis/v9"
 	"github.com/soheilhy/cmux"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/keepalive"
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/batcher"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpc"
 	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
@@ -50,7 +45,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/events/event"
 	"github.com/e2b-dev/infra/packages/shared/pkg/events/webhooks"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
-	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -434,7 +428,7 @@ func run(config cfg.Config) (success bool) {
 	})
 	closers = append(closers, closer{"hyperloop server", hyperloopSrv.Shutdown})
 
-	grpcServer := createGRPCServer(tel)
+	grpcServer := grpc.New(tel)
 	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
 
 	// Initialize the template manager only if the service is enabled
@@ -569,51 +563,6 @@ type serviceDoneError struct {
 
 func (e serviceDoneError) Error() string {
 	return fmt.Sprintf("service %s finished", e.name)
-}
-
-func createGRPCServer(tel *telemetry.Client) *grpc.Server {
-	opts := []logging.Option{
-		logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
-		logging.WithLevels(logging.DefaultServerCodeToLevel),
-		logging.WithFieldsFromContext(logging.ExtractFields),
-	}
-
-	ignoredLoggingRoutes := logger.WithoutRoutes(
-		logger.HealthCheckRoute,
-		"/TemplateService/TemplateBuildStatus",
-		"/TemplateService/HealthStatus",
-		"/InfoService/ServiceInfo",
-	)
-
-	srv := grpc.NewServer(
-		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-			MinTime:             5 * time.Second, // Minimum time between pings from client
-			PermitWithoutStream: true,            // Allow pings even when no active streams
-		}),
-		grpc.KeepaliveParams(keepalive.ServerParameters{
-			Time:    15 * time.Second, // Server sends keepalive pings every 15s
-			Timeout: 5 * time.Second,  // Wait 5s for response before considering dead
-		}),
-		grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler(
-			otelgrpc.WithTracerProvider(tel.TracerProvider),
-			otelgrpc.WithMeterProvider(tel.MeterProvider),
-		))),
-		grpc.ChainUnaryInterceptor(
-			recovery.UnaryServerInterceptor(),
-			selector.UnaryServerInterceptor(
-				logging.UnaryServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
-				ignoredLoggingRoutes,
-			),
-		),
-		grpc.ChainStreamInterceptor(
-			selector.StreamServerInterceptor(
-				logging.StreamServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
-				ignoredLoggingRoutes,
-			),
-		),
-	)
-
-	return srv
 }
 
 func createCMUXServer(ctx context.Context, port uint16) (cmux.CMux, error) {
