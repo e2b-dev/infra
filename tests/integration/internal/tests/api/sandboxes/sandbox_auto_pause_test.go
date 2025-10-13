@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
@@ -87,7 +88,7 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 		t.Context(),
 		&envdapi.GetFilesParams{
 			Path:     &path,
-			Username: "user",
+			Username: sharedUtils.ToPtr("user"),
 		},
 		setup.WithSandbox(sbxId),
 	)
@@ -126,7 +127,7 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 		t.Context(),
 		&envdapi.GetFilesParams{
 			Path:     &path,
-			Username: "user",
+			Username: sharedUtils.ToPtr("user"),
 		},
 		setup.WithSandbox(sbxId),
 	)
