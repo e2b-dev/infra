@@ -90,9 +90,22 @@ func main() {
 	devicePool, err := nbd.NewDevicePool(noop.MeterProvider{})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create device pool: %v\n", err)
-
 		return
 	}
+	go func() {
+		err = devicePool.Populate(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to populate device pool: %v\n", err)
+			return
+		}
+	}()
+	defer func() {
+		err = devicePool.Close(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to close device pool: %v\n", err)
+			return
+		}
+	}()
 
 	go func() {
 		<-done

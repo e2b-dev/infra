@@ -217,6 +217,29 @@ func run(config cfg.Config) (success bool) {
 
 	globalLogger.Info("Starting orchestrator", zap.String("version", version), zap.String("commit", commitSHA), logger.WithServiceInstanceID(serviceInstanceID))
 
+	startService := func(name string, f func() error) {
+		g.Go(func() error {
+			l := globalLogger.With(zap.String("service", name))
+			l.Info("starting service")
+
+			err := f()
+			if err != nil {
+				l.Error("service returned an error", zap.Error(err))
+			}
+
+			select {
+			case serviceError <- err:
+			default:
+				// Don't block if the serviceError channel is already closed
+				// or if the error is already sent
+			}
+
+			return serviceDoneError{name: name}
+		})
+	}
+
+	var closers []Closeable
+
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.
 	sandboxes := sandbox.NewSandboxesMap()
@@ -225,26 +248,37 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
+	closers = append(closers, sandboxProxy)
 
 	networkPool, err := network.NewPool(tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, nodeID, config.NetworkConfig)
 	if err != nil {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
+	startService("network pool", func() error {
+		return networkPool.Populate(ctx)
+	})
+	closers = append(closers, networkPool)
 
 	devicePool, err := nbd.NewDevicePool(tel.MeterProvider)
 	if err != nil {
 		zap.L().Fatal("failed to create device pool", zap.Error(err))
 	}
+	startService("nbd device pool", func() error {
+		return devicePool.Populate(ctx)
+	})
+	closers = append(closers, devicePool)
 
 	featureFlags, err := featureflags.NewClient()
 	if err != nil {
 		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
+	closers = append(closers, featureFlags)
 
 	limiter, err := limit.New(ctx, featureFlags)
 	if err != nil {
 		zap.L().Fatal("failed to create limiter", zap.Error(err))
 	}
+	closers = append(closers, limiter)
 
 	persistence, err := storage.GetTemplateStorageProvider(ctx, limiter)
 	if err != nil {
@@ -300,6 +334,7 @@ func run(config cfg.Config) (success bool) {
 			zap.L().Fatal("failed to create clickhouse batcher", zap.Error(err))
 		}
 	}
+	closers = append(closers, sandboxEventBatcher)
 
 	var redisClient redis.UniversalClient
 	if redisClusterUrl := config.RedisClusterURL; redisClusterUrl != "" {
@@ -341,6 +376,7 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
+	closers = append(closers, sandboxObserver)
 
 	defaultAllowSandboxInternet := config.AllowSandboxInternet
 
@@ -385,17 +421,6 @@ func run(config cfg.Config) (success bool) {
 	grpcServer := createGRPCServer(tel)
 	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
 
-	var closers []Closeable
-	closers = append(closers,
-		networkPool,
-		devicePool,
-		sandboxProxy,
-		featureFlags,
-		sandboxObserver,
-		limiter,
-		sandboxEventBatcher,
-	)
-
 	// Initialize the template manager only if the service is enabled
 	if slices.Contains(services, cfg.TemplateManager) {
 		tmpl, err := tmplserver.New(
@@ -423,26 +448,6 @@ func run(config cfg.Config) (success bool) {
 	infoService := service.NewInfoService(serviceInfo, sandboxes)
 	orchestratorinfo.RegisterInfoServiceServer(grpcServer, infoService)
 
-	startService := func(name string, f func() error) {
-		g.Go(func() error {
-			l := globalLogger.With(zap.String("service", name))
-			l.Info("starting service")
-
-			if err := f(); err != nil {
-				l.Error("service returned an error", zap.Error(err))
-			}
-
-			select {
-			case serviceError <- err:
-			default:
-				// Don't block if the serviceError channel is already closed
-				// or if the error is already sent
-			}
-
-			return serviceDoneError{name: name}
-		})
-	}
-
 	healthcheck, err := e2bhealthcheck.NewHealthcheck(serviceInfo)
 	if err != nil {
 		zap.L().Fatal("failed to create healthcheck: %w", zap.Error(err))
@@ -462,14 +467,6 @@ func run(config cfg.Config) (success bool) {
 	}
 
 	httpListener := cmuxServer.Match(cmux.HTTP1Fast())
-
-	startService("network pool", func() error {
-		return networkPool.Populate(ctx)
-	})
-
-	startService("nbd device pool", func() error {
-		return devicePool.Populate(ctx)
-	})
 
 	startService("session proxy", func() error {
 		err := sandboxProxy.Start(ctx)
