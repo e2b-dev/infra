@@ -62,8 +62,9 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-type Closeable interface {
-	Close(ctx context.Context) error
+type closer struct {
+	name  string
+	close func(ctx context.Context) error
 }
 
 const version = "0.1.0"
@@ -238,7 +239,7 @@ func run(config cfg.Config) (success bool) {
 		})
 	}
 
-	var closers []Closeable
+	var closers []closer
 
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.
@@ -248,7 +249,14 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
-	closers = append(closers, sandboxProxy)
+	startService("session proxy", func() error {
+		err := sandboxProxy.Start(ctx)
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	})
+	closers = append(closers, closer{"session proxy", sandboxProxy.Close})
 
 	networkPool, err := network.NewPool(tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, nodeID, config.NetworkConfig)
 	if err != nil {
@@ -257,7 +265,7 @@ func run(config cfg.Config) (success bool) {
 	startService("network pool", func() error {
 		return networkPool.Populate(ctx)
 	})
-	closers = append(closers, networkPool)
+	closers = append(closers, closer{"network pool", networkPool.Close})
 
 	devicePool, err := nbd.NewDevicePool(tel.MeterProvider)
 	if err != nil {
@@ -266,19 +274,19 @@ func run(config cfg.Config) (success bool) {
 	startService("nbd device pool", func() error {
 		return devicePool.Populate(ctx)
 	})
-	closers = append(closers, devicePool)
+	closers = append(closers, closer{"device pool", devicePool.Close})
 
 	featureFlags, err := featureflags.NewClient()
 	if err != nil {
 		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
-	closers = append(closers, featureFlags)
+	closers = append(closers, closer{"feature flags", featureFlags.Close})
 
 	limiter, err := limit.New(ctx, featureFlags)
 	if err != nil {
 		zap.L().Fatal("failed to create limiter", zap.Error(err))
 	}
-	closers = append(closers, limiter)
+	closers = append(closers, closer{"limiter", limiter.Close})
 
 	persistence, err := storage.GetTemplateStorageProvider(ctx, limiter)
 	if err != nil {
@@ -334,7 +342,7 @@ func run(config cfg.Config) (success bool) {
 			zap.L().Fatal("failed to create clickhouse batcher", zap.Error(err))
 		}
 	}
-	closers = append(closers, sandboxEventBatcher)
+	closers = append(closers, closer{"sandbox event batcher", sandboxEventBatcher.Close})
 
 	var redisClient redis.UniversalClient
 	if redisClusterUrl := config.RedisClusterURL; redisClusterUrl != "" {
@@ -376,7 +384,7 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
-	closers = append(closers, sandboxObserver)
+	closers = append(closers, closer{"sandbox observer", sandboxObserver.Close})
 
 	defaultAllowSandboxInternet := config.AllowSandboxInternet
 
@@ -417,6 +425,14 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		zap.L().Fatal("failed to create hyperloop server", zap.Error(err))
 	}
+	startService("hyperloop server", func() error {
+		err := hyperloopSrv.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	})
+	closers = append(closers, closer{"hyperloop server", hyperloopSrv.Shutdown})
 
 	grpcServer := createGRPCServer(tel)
 	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
@@ -442,7 +458,7 @@ func run(config cfg.Config) (success bool) {
 
 		templatemanager.RegisterTemplateServiceServer(grpcServer, tmpl)
 
-		closers = append(closers, tmpl)
+		closers = append(closers, closer{"template server", tmpl.Close})
 	}
 
 	infoService := service.NewInfoService(serviceInfo, sandboxes)
@@ -453,11 +469,11 @@ func run(config cfg.Config) (success bool) {
 		zap.L().Fatal("failed to create healthcheck: %w", zap.Error(err))
 	}
 
-	httpServer := createHTTPServer()
-	httpServer.Handler = healthcheck.CreateHandler()
-
 	grpcHealth := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, grpcHealth)
+
+	httpServer := createHTTPServer()
+	httpServer.Handler = healthcheck.CreateHandler()
 
 	// Reuse the same TCP port between grpc and HTTP requests
 	cmuxServer, err := createCMUXServer(ctx, config.GRPCPort)
@@ -466,15 +482,6 @@ func run(config cfg.Config) (success bool) {
 	}
 
 	httpListener := cmuxServer.Match(cmux.HTTP1Fast())
-
-	startService("session proxy", func() error {
-		err := sandboxProxy.Start(ctx)
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-		return err
-	})
-
 	startService("http server", func() error {
 		err := httpServer.Serve(httpListener)
 		switch {
@@ -486,11 +493,17 @@ func run(config cfg.Config) (success bool) {
 			return err
 		}
 	})
+	closers = append(closers, closer{"http server", httpServer.Shutdown})
 
 	grpcListener := cmuxServer.Match(cmux.Any()) // the rest are GRPC requests
 	startService("grpc server", func() error {
 		return grpcServer.Serve(grpcListener)
 	})
+	closers = append(closers, closer{"grpc server", func(context.Context) error {
+		zap.L().Info("Shutting down grpc server")
+		grpcServer.GracefulStop()
+		return nil
+	}})
 
 	startService("cmux server", func() error {
 		zap.L().Info("Starting network server", zap.Uint16("port", config.GRPCPort))
@@ -500,14 +513,11 @@ func run(config cfg.Config) (success bool) {
 		}
 		return err
 	})
-
-	startService("hyperloop server", func() error {
-		err := hyperloopSrv.ListenAndServe()
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-		return err
-	})
+	closers = append(closers, closer{"cmux server", func(context.Context) error {
+		zap.L().Info("Shutting down cmux server")
+		cmuxServer.Close()
+		return nil
+	}})
 
 	// Wait for the shutdown signal or if some service fails
 	select {
@@ -531,29 +541,12 @@ func run(config cfg.Config) (success bool) {
 
 	for idx := len(closers) - 1; idx >= 0; idx-- {
 		c := closers[idx]
-		zap.L().Info(fmt.Sprintf("Closing %T, forced: %v", c, config.ForceStop))
-		if err := c.Close(closeCtx); err != nil {
+		clog := globalLogger.With(zap.String("service", c.name), zap.Bool("forced", config.ForceStop))
+		clog.Info("closing")
+		if err := c.close(closeCtx); err != nil {
 			zap.L().Error("error during shutdown", zap.Error(err))
 			success = false
 		}
-	}
-
-	zap.L().Info("Shutting down grpc server")
-	grpcServer.GracefulStop()
-
-	zap.L().Info("Shutting down http server")
-	if err := httpServer.Shutdown(closeCtx); err != nil {
-		zap.L().Error("error shutting down http server", zap.Error(err))
-		success = false
-	}
-
-	zap.L().Info("Shutting down cmux server")
-	cmuxServer.Close()
-
-	zap.L().Info("Shutting down hyperloop server")
-	if err := hyperloopSrv.Shutdown(closeCtx); err != nil {
-		zap.L().Error("error shutting down hyperloop server", zap.Error(err))
-		success = false
 	}
 
 	zap.L().Info("Waiting for services to finish")
