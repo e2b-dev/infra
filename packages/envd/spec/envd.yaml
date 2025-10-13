@@ -14,7 +14,7 @@ paths:
       responses:
         "204":
           description: The service is healthy
-          
+
   /metrics:
     get:
       summary: Get the stats of the service
@@ -26,8 +26,8 @@ paths:
           description: The resource usage metrics of the service
           content:
             application/json:
-                schema:
-                  $ref: "#/components/schemas/Metrics"
+              schema:
+                $ref: "#/components/schemas/Metrics"
 
   /init:
     post:
@@ -53,6 +53,12 @@ paths:
                   type: string
                   format: date-time
                   description: The current timestamp in RFC3339 format
+                defaultUser:
+                  type: string
+                  description: The default user to use for operations
+                defaultWorkdir:
+                  type: string
+                  description: The default working directory to use for operations
       responses:
         "204":
           description: Env vars set, the time and metadata is synced with the host
@@ -137,11 +143,11 @@ components:
     User:
       name: username
       in: query
-      required: true
+      required: false
       description: User used for setting the owner, or resolving relative paths.
       schema:
         type: string
-        pattern: "^(root|user)$"
+        pattern: "^(root|user|.+)$"
     Signature:
       name: signature
       in: query
@@ -246,12 +252,12 @@ components:
           type: string
           description: Type of the file
           enum:
-              - file
+            - file
     EnvVars:
       type: object
       description: Environment variables to set
       additionalProperties:
-          type: string
+        type: string
     Metrics:
       type: object
       description: Resource usage metrics

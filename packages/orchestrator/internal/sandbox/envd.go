@@ -35,16 +35,20 @@ func doRequestWithInfiniteRetries(
 	sandboxID,
 	envdVersion,
 	hyperloopIP string,
+	defaultUser *string,
+	defaultWorkdir *string,
 ) (*http.Response, int64, error) {
 	requestCount := int64(0)
 	for {
 		now := time.Now()
 
 		jsonBody := &PostInitJSONBody{
-			EnvVars:     &envVars,
-			HyperloopIP: &hyperloopIP,
-			AccessToken: accessToken,
-			Timestamp:   &now,
+			EnvVars:        &envVars,
+			HyperloopIP:    &hyperloopIP,
+			AccessToken:    accessToken,
+			Timestamp:      &now,
+			DefaultUser:    defaultUser,
+			DefaultWorkdir: defaultWorkdir,
 		}
 
 		body, err := json.Marshal(jsonBody)
@@ -84,10 +88,12 @@ func doRequestWithInfiniteRetries(
 }
 
 type PostInitJSONBody struct {
-	EnvVars     *map[string]string `json:"envVars"`
-	AccessToken *string            `json:"accessToken,omitempty"`
-	HyperloopIP *string            `json:"hyperloopIP,omitempty"`
-	Timestamp   *time.Time         `json:"timestamp,omitempty"`
+	EnvVars        *map[string]string `json:"envVars"`
+	AccessToken    *string            `json:"accessToken,omitempty"`
+	HyperloopIP    *string            `json:"hyperloopIP,omitempty"`
+	Timestamp      *time.Time         `json:"timestamp,omitempty"`
+	DefaultUser    *string            `json:"defaultUser,omitempty"`
+	DefaultWorkdir *string            `json:"defaultWorkdir,omitempty"`
 }
 
 func (s *Sandbox) initEnvd(ctx context.Context) error {
@@ -111,6 +117,8 @@ func (s *Sandbox) initEnvd(ctx context.Context) error {
 		s.Runtime.SandboxID,
 		s.Config.Envd.Version,
 		hyperloopIP,
+		s.Config.Envd.DefaultUser,
+		s.Config.Envd.DefaultWorkdir,
 	)
 	if err != nil {
 		envdInitCalls.Add(ctx, count, metric.WithAttributes(attributesFail...))
@@ -126,13 +134,14 @@ func (s *Sandbox) initEnvd(ctx context.Context) error {
 	envdInitCalls.Add(ctx, 1, metric.WithAttributes(attributesSuccess...))
 
 	defer response.Body.Close()
-	if response.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read envd init response body: %w", err)
 	}
 
-	_, err = io.Copy(io.Discard, response.Body)
-	if err != nil {
-		return err
+	if response.StatusCode != http.StatusNoContent {
+		zap.L().Error("envd init request failed", logger.WithSandboxID(s.Runtime.SandboxID), logger.WithEnvdVersion(s.Config.Envd.Version), zap.Int("status_code", response.StatusCode), zap.String("response_body", string(body)))
+		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
 	}
 
 	return nil

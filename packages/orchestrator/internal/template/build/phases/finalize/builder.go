@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 var finalizeTimeout = configurationTimeout + readyCommandTimeout + 5*time.Minute
@@ -116,6 +117,16 @@ func (ppb *PostProcessingBuilder) Build(
 	))
 	defer span.End()
 
+	defaultUser := utils.ToPtr(currentLayer.Metadata.Context.User)
+	defaultWorkdir := currentLayer.Metadata.Context.WorkDir
+
+	if ppb.IsV1Build {
+		// For v1 builds, always use "user" as the default user
+		// and do not set a default workdir (defaults to the user homedir).
+		defaultUser = utils.ToPtr("user")
+		defaultWorkdir = nil
+	}
+
 	// Configure sandbox for final layer
 	sbxConfig := sandbox.Config{
 		Vcpu:      ppb.Config.VCpuCount,
@@ -123,7 +134,9 @@ func (ppb *PostProcessingBuilder) Build(
 		HugePages: ppb.Config.HugePages,
 
 		Envd: sandbox.EnvdMetadata{
-			Version: ppb.EnvdVersion,
+			Version:        ppb.EnvdVersion,
+			DefaultUser:    defaultUser,
+			DefaultWorkdir: defaultWorkdir,
 		},
 	}
 
