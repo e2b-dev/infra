@@ -442,7 +442,7 @@ func run(config cfg.Config) (success bool) {
 
 		templatemanager.RegisterTemplateServiceServer(grpcServer, tmpl)
 
-		closers = append([]Closeable{tmpl}, closers...)
+		closers = append(closers, tmpl)
 	}
 
 	infoService := service.NewInfoService(serviceInfo, sandboxes)
@@ -529,7 +529,8 @@ func run(config cfg.Config) (success bool) {
 		serviceInfo.SetStatus(orchestratorinfo.ServiceInfoStatus_Draining)
 	}
 
-	for _, c := range closers {
+	for idx := len(closers) - 1; idx >= 0; idx-- {
+		c := closers[idx]
 		zap.L().Info(fmt.Sprintf("Closing %T, forced: %v", c, config.ForceStop))
 		if err := c.Close(closeCtx); err != nil {
 			zap.L().Error("error during shutdown", zap.Error(err))
