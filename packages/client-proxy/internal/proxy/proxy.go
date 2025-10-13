@@ -53,7 +53,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 	proxy := reverseproxy.New(
 		port,
 		// Retries that are needed to handle port forwarding delays in sandbox envd are handled by the orchestrator proxy
-		1,
+		reverseproxy.ClientProxyRetries,
 		idleTimeout,
 		func(r *http.Request) (*pool.Destination, error) {
 			sandboxId, port, err := reverseproxy.ParseHost(r.Host)

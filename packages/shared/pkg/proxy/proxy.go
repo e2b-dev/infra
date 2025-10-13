@@ -24,15 +24,22 @@ type Proxy struct {
 	currentServerConnsCounter atomic.Int64
 }
 
+type MaxConnectionAttempts int
+
+const (
+	ClientProxyRetries  = 1
+	SandboxProxyRetries = 5
+)
+
 func New(
 	port uint16,
-	maxConnectionAttempts int,
+	maxConnectionAttempts MaxConnectionAttempts,
 	idleTimeout time.Duration,
 	getDestination func(r *http.Request) (*pool.Destination, error),
 ) *Proxy {
 	p := pool.New(
 		maxClientConns,
-		maxConnectionAttempts,
+		int(maxConnectionAttempts),
 		idleTimeout,
 	)
 
