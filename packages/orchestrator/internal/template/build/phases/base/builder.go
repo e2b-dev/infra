@@ -32,6 +32,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func templatesDirectory() string {
@@ -338,8 +339,7 @@ func (bb *BaseBuilder) Layer(
 
 		// This is a compatibility for v1 template builds
 		if bb.IsV1Build {
-			cwd := "/home/user"
-			cmdMeta.WorkDir = &cwd
+			cmdMeta.WorkDir = utils.ToPtr("/home/user")
 		}
 
 		meta := metadata.Template{

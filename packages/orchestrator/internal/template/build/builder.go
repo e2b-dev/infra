@@ -25,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/base"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/finalize"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/steps"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/user"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	buildcache "github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
@@ -230,6 +231,18 @@ func runBuild(
 		builder.proxy,
 	)
 
+	userBuilder := user.New(
+		bc,
+		builder.sandboxFactory,
+		builder.logger,
+		builder.proxy,
+		layerExecutor,
+		commandExecutor,
+		index,
+		builder.metrics,
+		config.TemplateDefaultUser,
+	)
+
 	stepBuilders := steps.CreateStepPhases(
 		bc,
 		builder.sandboxFactory,
@@ -252,6 +265,10 @@ func runBuild(
 	// Construct the phases/steps to run
 	builders := []phases.BuilderPhase{
 		baseBuilder,
+	}
+	// For v1 builds the default user is not set
+	if !bc.IsV1Build {
+		builders = append(builders, userBuilder)
 	}
 	builders = append(builders, stepBuilders...)
 	builders = append(builders, postProcessingBuilder)

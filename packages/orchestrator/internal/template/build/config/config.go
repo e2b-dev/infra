@@ -6,7 +6,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-const InstanceBuildPrefix = "b"
+const (
+	InstanceBuildPrefix = "b"
+
+	// TemplateDefaultUser is the default user to use in the template to run all commands.
+	TemplateDefaultUser = "user"
+)
 
 type TemplateConfig struct {
 	// TeamID is the ID of the team to build the template for.
