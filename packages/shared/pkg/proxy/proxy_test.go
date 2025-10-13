@@ -121,6 +121,7 @@ func newTestProxy(t *testing.T, getDestination func(r *http.Request) (*pool.Dest
 	// Set up the proxy server
 	proxy := New(
 		uint16(port),
+		5,
 		20*time.Second, // Short idle timeout
 		getDestination,
 	)
@@ -440,7 +441,7 @@ func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
 		t.Fatalf("failed to get free port: %v", err)
 	}
 	backendAddr := tempListener.Addr().String()
-	tempListener.Close() // Close it so we can bind to it later
+	// Keep listener open to avoid port binding race
 
 	backendURL, err := url.Parse(fmt.Sprintf("http://%s", backendAddr))
 	if err != nil {
@@ -462,28 +463,41 @@ func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
 	}
 	defer proxy.Close()
 
-	backendReady := make(chan struct{})
-	var backend *testBackend
+	type backendResult struct {
+		backend *testBackend
+		err     error
+	}
+	backendReady := make(chan backendResult, 1)
 
 	// Start backend after a delay (simulating envd port forwarding)
 	go func() {
+		defer func() {
+			// Ensure channel is always closed to prevent test hangs
+			if len(backendReady) == 0 {
+				backendReady <- backendResult{nil, errors.New("goroutine exited without sending result")}
+			}
+		}()
+
 		// Wait 300ms before starting the backend (should succeed on retry 2 or 3)
 		time.Sleep(300 * time.Millisecond)
 
-		// Now create the backend on the reserved address
-		listener, err := lisCfg.Listen(context.Background(), "tcp", backendAddr)
+		// Close the temp listener and create the backend on the same address
+		tempListener.Close()
+
+		listener, err := lisCfg.Listen(t.Context(), "tcp", backendAddr)
 		if err != nil {
-			t.Errorf("failed to create delayed backend listener: %v", err)
+			backendReady <- backendResult{nil, fmt.Errorf("failed to create delayed backend listener: %w", err)}
 			return
 		}
 
-		backend, err = newTestBackend(listener, "delayed-backend")
+		backend, err := newTestBackend(listener, "delayed-backend")
 		if err != nil {
-			t.Errorf("failed to create delayed backend: %v", err)
+			listener.Close()
+			backendReady <- backendResult{nil, fmt.Errorf("failed to create delayed backend: %w", err)}
 			return
 		}
 
-		close(backendReady)
+		backendReady <- backendResult{backend, nil}
 	}()
 
 	// Make request - this should retry and eventually succeed
@@ -499,7 +513,11 @@ func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
 	elapsed := time.Since(start)
 
 	// Wait for backend to be ready before checking
-	<-backendReady
+	result := <-backendReady
+	if result.err != nil {
+		t.Fatalf("backend setup failed: %v", result.err)
+	}
+	backend := result.backend
 	defer backend.Close()
 
 	assertBackendOutput(t, backend, resp)

@@ -24,6 +24,7 @@ type proxyClient struct {
 func newProxyClient(
 	maxIdleConns,
 	maxHostIdleConns int,
+	maxConnectionAttempts int,
 	idleTimeout time.Duration,
 	totalConnsCounter *atomic.Uint64,
 	currentConnsCounter *atomic.Int64,
@@ -45,7 +46,7 @@ func newProxyClient(
 			// Retry connection attempts to handle port forwarding delays in sandbox envd.
 			// When a process binds to localhost inside the sandbox, it can take up to 1s (delay is 1s + socat startup delay)
 			// for the port scanner to detect it and start socat forwarding to the host IP.
-			maxAttempts := 5
+			maxAttempts := maxConnectionAttempts
 			for attempt := range maxAttempts {
 				conn, err = (&net.Dialer{
 					Timeout:   30 * time.Second,
@@ -65,7 +66,12 @@ func newProxyClient(
 				if attempt < maxAttempts-1 {
 					// Linear backoff: 100ms, 200ms, 300ms, 400ms
 					backoff := time.Duration(100*(attempt+1)) * time.Millisecond
-					time.Sleep(backoff)
+					select {
+					case <-time.After(backoff):
+						// Continue to next attempt
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					}
 				}
 			}
 

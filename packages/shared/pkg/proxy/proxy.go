@@ -26,11 +26,13 @@ type Proxy struct {
 
 func New(
 	port uint16,
+	maxConnectionAttempts int,
 	idleTimeout time.Duration,
 	getDestination func(r *http.Request) (*pool.Destination, error),
 ) *Proxy {
 	p := pool.New(
 		maxClientConns,
+		maxConnectionAttempts,
 		idleTimeout,
 	)
 
