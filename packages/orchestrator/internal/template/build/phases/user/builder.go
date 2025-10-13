@@ -60,7 +60,7 @@ func (ub *UserBuilder) Prefix() string {
 	return "base"
 }
 
-func (ub *UserBuilder) String(ctx context.Context) (string, error) {
+func (ub *UserBuilder) String(_ context.Context) (string, error) {
 	return fmt.Sprintf("DEFAULT USER %s", ub.user), nil
 }
 
