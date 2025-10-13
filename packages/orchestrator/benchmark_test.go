@@ -243,6 +243,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		// build template
 		force := true
 		templateConfig := config.TemplateConfig{
+			Version:    "v2.0.0",
 			TemplateID: templateID,
 			FromImage:  baseImage,
 			Force:      &force,

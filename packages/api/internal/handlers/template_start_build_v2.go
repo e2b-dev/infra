@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,6 +16,17 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+)
+
+const (
+	jsSDKPrefix     = "e2b-js-sdk/"
+	pythonSDKPrefix = "e2b-python-sdk/"
+)
+
+const (
+	buildSystem2Version         = "v2.0.0"
+	buildDefaultUserUserVersion = "v2.1.0"
 )
 
 type dockerfileStore struct {
@@ -117,6 +129,13 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
+	version, err := templateUserAgentToVersion(c.Request.UserAgent())
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing user agent: %s", err))
+		telemetry.ReportCriticalError(ctx, "error when parsing user agent", err, telemetry.WithTemplateID(templateID))
+		return
+	}
+
 	// Call the Template Manager to build the environment
 	buildErr := a.templateManager.CreateTemplate(
 		ctx,
@@ -137,6 +156,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		body.Steps,
 		apiutils.WithClusterFallback(team.ClusterID),
 		build.ClusterNodeID,
+		version,
 	)
 	if buildErr != nil {
 		telemetry.ReportCriticalError(ctx, "build failed", buildErr, telemetry.WithTemplateID(templateID))
@@ -152,4 +172,31 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	)
 
 	c.Status(http.StatusAccepted)
+}
+
+func templateUserAgentToVersion(userAgent string) (string, error) {
+	version := buildSystem2Version
+
+	switch {
+	case strings.HasPrefix(userAgent, jsSDKPrefix):
+		sdk := strings.TrimPrefix(userAgent, jsSDKPrefix)
+		ok, err := utils.IsGTEVersion(sdk, "2.3.0")
+		if err != nil {
+			return "", fmt.Errorf("parsing JS SDK version: %w", err)
+		}
+		if ok {
+			version = buildDefaultUserUserVersion
+		}
+	case strings.HasPrefix(userAgent, pythonSDKPrefix):
+		sdk := strings.TrimPrefix(userAgent, pythonSDKPrefix)
+		ok, err := utils.IsGTEVersion(sdk, "2.3.0")
+		if err != nil {
+			return "", fmt.Errorf("parsing Python SDK version: %w", err)
+		}
+		if ok {
+			version = buildDefaultUserUserVersion
+		}
+	}
+
+	return version, nil
 }

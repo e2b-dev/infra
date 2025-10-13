@@ -10,10 +10,14 @@ const (
 	InstanceBuildPrefix = "b"
 
 	// TemplateDefaultUser is the default user to use in the template to run all commands.
-	TemplateDefaultUser = "user"
+	TemplateDefaultUser        = "user"
+	TemplateDefaultUserVersion = "v2.1.0"
 )
 
 type TemplateConfig struct {
+	// Builder version
+	Version string
+
 	// TeamID is the ID of the team to build the template for.
 	TeamID string
 

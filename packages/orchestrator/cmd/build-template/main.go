@@ -199,6 +199,7 @@ func buildTemplate(
 
 	force := true
 	template := config.TemplateConfig{
+		Version:    "v2.0.0",
 		TeamID:     "",
 		TemplateID: templateID,
 		FromImage:  baseImage,

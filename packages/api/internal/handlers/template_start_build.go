@@ -21,6 +21,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+const templateBuildV1 = "v1.0.0"
+
 // CheckAndCancelConcurrentBuilds checks for concurrent builds and cancels them if found
 func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateID api.TemplateID, buildID uuid.UUID, teamClusterID uuid.UUID) error {
 	concurrentlyRunningBuilds, err := a.db.
@@ -160,6 +162,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		nil,
 		apiutils.WithClusterFallback(team.ClusterID),
 		build.ClusterNodeID,
+		templateBuildV1,
 	)
 	if buildErr != nil {
 		telemetry.ReportCriticalError(ctx, "build failed", buildErr, telemetry.WithTemplateID(templateID))

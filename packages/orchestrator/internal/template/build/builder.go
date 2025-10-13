@@ -35,6 +35,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const progressDelay = 5 * time.Second
@@ -125,7 +126,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 	// Validate template, update force layers if needed
 	config = forceSteps(config)
 
-	isV1Build := config.FromImage == "" && config.FromTemplate == nil
+	isV1Build := utils.IsVersion(config.Version, "v1.0.0") || (config.FromImage == "" && config.FromTemplate == nil)
 
 	logger := zap.New(logsCore)
 	defer func() {
@@ -188,6 +189,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 		EnvdVersion:    envdVersion,
 		CacheScope:     cacheScope,
 		IsV1Build:      isV1Build,
+		Version:        config.Version,
 	}
 
 	return runBuild(ctx, logger, buildContext, b)
@@ -266,8 +268,12 @@ func runBuild(
 	builders := []phases.BuilderPhase{
 		baseBuilder,
 	}
-	// For v1 builds the default user is not set
-	if !bc.IsV1Build {
+	// Default user is only set for version TemplateDefaultUserVersion
+	ok, err := utils.IsGTEVersion(bc.Version, config.TemplateDefaultUserVersion)
+	if err != nil {
+		return nil, fmt.Errorf("error checking build version: %w", err)
+	}
+	if ok {
 		builders = append(builders, userBuilder)
 	}
 	builders = append(builders, stepBuilders...)

@@ -58,6 +58,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	authProvider := auth.NewAuthProvider(cfg.GetFromImageRegistry())
 
 	template := config.TemplateConfig{
+		Version:              templateRequest.GetVersion(),
 		TeamID:               cfg.GetTeamID(),
 		TemplateID:           cfg.GetTemplateID(),
 		CacheScope:           cacheScope,
