@@ -441,7 +441,7 @@ func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
 		t.Fatalf("failed to get free port: %v", err)
 	}
 	backendAddr := tempListener.Addr().String()
-	// Keep listener open to avoid port binding race
+	tempListener.Close() // Close to simulate "connection refused" - small race is acceptable
 
 	backendURL, err := url.Parse(fmt.Sprintf("http://%s", backendAddr))
 	if err != nil {
@@ -480,9 +480,6 @@ func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
 
 		// Wait 300ms before starting the backend (should succeed on retry 2 or 3)
 		time.Sleep(300 * time.Millisecond)
-
-		// Close the temp listener and create the backend on the same address
-		tempListener.Close()
 
 		listener, err := lisCfg.Listen(t.Context(), "tcp", backendAddr)
 		if err != nil {
