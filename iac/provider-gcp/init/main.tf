@@ -77,17 +77,6 @@ resource "google_service_account_key" "google_service_key" {
   service_account_id = google_service_account.infra_instances_service_account.name
 }
 
-
-resource "google_secret_manager_secret" "cloudflare_api_token" {
-  secret_id = "${var.prefix}cloudflare-api-token"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
 resource "google_secret_manager_secret" "consul_acl_token" {
   secret_id = "${var.prefix}consul-secret-id"
 

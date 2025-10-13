@@ -39,10 +39,6 @@ variable "api_nat_ips" {
   type = list(string)
 }
 
-variable "cloudflare_api_token_secret_name" {
-  type = string
-}
-
 variable "api_port" {
   type = object({
     name        = string

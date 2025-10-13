@@ -88,8 +88,6 @@ module "network" {
 
   environment = var.environment
 
-  cloudflare_api_token_secret_name = var.cloudflare_api_token_secret_name
-
   gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region
 

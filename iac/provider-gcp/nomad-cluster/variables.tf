@@ -258,10 +258,6 @@ variable "filestore_cache_enabled" {
   default = false
 }
 
-variable "cloudflare_api_token_secret_name" {
-  type = string
-}
-
 variable "filestore_cache_tier" {
   type    = string
   default = "BASIC_HDD"

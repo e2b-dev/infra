@@ -16,9 +16,9 @@ terraform {
       version = "6.49.3"
     }
 
-    cloudflare = {
-      source  = "cloudflare/cloudflare"
-      version = "4.19.0"
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
     }
 
     nomad = {
@@ -72,7 +72,6 @@ module "cluster" {
 
   environment = var.environment
 
-  cloudflare_api_token_secret_name = module.init.cloudflare_api_token_secret_name
   gcp_project_id                   = var.gcp_project_id
   gcp_region                       = var.gcp_region
   gcp_zone                         = var.gcp_zone
