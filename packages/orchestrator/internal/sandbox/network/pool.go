@@ -44,6 +44,8 @@ type Pool struct {
 	slotStorage Storage
 }
 
+var ErrClosed = errors.New("cannot read from a closed pool")
+
 func NewPool(meterProvider metric.MeterProvider, newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string, config Config) (*Pool, error) {
 	newSlots := make(chan *Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan *Slot, reusedSlotsPoolSize)
@@ -122,6 +124,8 @@ func (p *Pool) Get(ctx context.Context, allowInternet bool) (*Slot, error) {
 	var slot *Slot
 
 	select {
+	case <-p.done:
+		return nil, ErrClosed
 	case s := <-p.reusedSlots:
 		p.reusedSlotCounter.Add(ctx, -1)
 		telemetry.ReportEvent(ctx, "reused network slot")
@@ -129,6 +133,8 @@ func (p *Pool) Get(ctx context.Context, allowInternet bool) (*Slot, error) {
 		slot = s
 	default:
 		select {
+		case <-p.done:
+			return nil, ErrClosed
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case s := <-p.newSlots:
@@ -148,6 +154,14 @@ func (p *Pool) Get(ctx context.Context, allowInternet bool) (*Slot, error) {
 }
 
 func (p *Pool) Return(ctx context.Context, slot *Slot) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-p.done:
+		return ErrClosed
+	default:
+	}
+
 	err := slot.ResetInternet(ctx)
 	if err != nil {
 		// Cleanup the slot if resetting internet fails
@@ -159,8 +173,12 @@ func (p *Pool) Return(ctx context.Context, slot *Slot) error {
 	}
 
 	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-p.done:
+		return ErrClosed
 	case p.reusedSlots <- slot:
-		p.reusedSlotCounter.Add(context.Background(), 1) //nolint:contextcheck // TODO: fix this later
+		p.reusedSlotCounter.Add(ctx, 1)
 	default:
 		err := p.cleanup(slot)
 		if err != nil {
@@ -194,20 +212,23 @@ func (p *Pool) Close(_ context.Context) error {
 		close(p.done)
 	})
 
+	var errs []error
+
 	for slot := range p.newSlots {
 		err := p.cleanup(slot)
 		if err != nil {
-			return fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err)
+			errs = append(errs, fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err))
 		}
 	}
 
 	close(p.reusedSlots)
+
 	for slot := range p.reusedSlots {
 		err := p.cleanup(slot)
 		if err != nil {
-			return fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err)
+			errs = append(errs, fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err))
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
