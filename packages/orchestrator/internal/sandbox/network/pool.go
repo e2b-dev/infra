@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/caarlos0/env/v11"
 	"go.opentelemetry.io/otel/metric"
@@ -32,7 +33,8 @@ func ParseConfig() (Config, error) {
 type Pool struct {
 	config Config
 
-	done chan struct{}
+	done     chan struct{}
+	doneOnce sync.Once
 
 	newSlots          chan *Slot
 	reusedSlots       chan *Slot
@@ -186,9 +188,11 @@ func (p *Pool) cleanup(slot *Slot) error {
 }
 
 func (p *Pool) Close(_ context.Context) error {
-	close(p.done)
-
 	zap.L().Info("Closing network pool")
+
+	p.doneOnce.Do(func() {
+		close(p.done)
+	})
 
 	for slot := range p.newSlots {
 		err := p.cleanup(slot)

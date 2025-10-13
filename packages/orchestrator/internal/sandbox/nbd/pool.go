@@ -51,7 +51,8 @@ type (
 //
 // Use `sudo modprobe nbd nbds_max=4096` to set the max number of devices to 4096, which is a good default for now.
 type DevicePool struct {
-	done chan struct{}
+	done     chan struct{}
+	doneOnce sync.Once
 
 	// We use the bitset to speedup the free device lookup.
 	usedSlots *bitset.BitSet
@@ -302,7 +303,9 @@ func GetDevicePath(slot DeviceSlot) DevicePath {
 func (d *DevicePool) Close(_ context.Context) error {
 	zap.L().Info("Closing device pool", zap.Uint("used_slots", d.usedSlots.Count()))
 
-	close(d.done)
+	d.doneOnce.Do(func() {
+		close(d.done)
+	})
 
 	var errs error
 	for slotIdx, e := d.usedSlots.NextSet(0); e; slotIdx, e = d.usedSlots.NextSet(slotIdx + 1) {
