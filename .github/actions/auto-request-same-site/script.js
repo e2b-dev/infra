@@ -49,6 +49,24 @@ function pickRandom(arr, k) {
   return list.slice(0, Math.max(0, Math.min(k, list.length)));
 }
 
+function parseCodeowners(content) {
+  const lines = content.split("\n");
+  const owners = new Set();
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    // Match @username patterns
+    const matches = trimmed.matchAll(/@(\S+)/g);
+    for (const match of matches) {
+      owners.add(match[1]);
+    }
+  }
+
+  return Array.from(owners);
+}
+
 (async () => {
   const ev = getEvent();
   const num = prNumber(ev);
@@ -64,37 +82,76 @@ function pickRandom(arr, k) {
   const teams = await getUserTeams(author);
   const site = teams.includes(sf) ? sf : teams.includes(prg) ? prg : null;
 
+  let assignees;
+
   if (!site) {
-    console.log("Author not in configured teams; skipping assignee update.");
-    return;
-  }
+    console.log("Author not in configured teams; assigning from CODEOWNERS.");
 
-  const siteMembers = (await listTeamMembers(site)).filter((user) => user !== author);
-  if (!siteMembers.length) {
-    console.log(`No teammates found in ${site}; skipping assignee update.`);
-    return;
-  }
+    // Read and parse CODEOWNERS file
+    let codeownersContent;
+    try {
+      codeownersContent = fs.readFileSync("CODEOWNERS", "utf8");
+    } catch (error) {
+      console.log(`Failed to read CODEOWNERS file: ${error.message}`);
+      return;
+    }
 
-  const siteMemberSet = new Set(siteMembers);
-  const assignedFromSite = [...alreadyAssigned].filter((login) => siteMemberSet.has(login));
+    const codeowners = parseCodeowners(codeownersContent);
 
-  if (assignedFromSite.length >= n) {
-    console.log(`PR #${num} already has ${assignedFromSite.length} teammate assignee(s); nothing to do.`);
-    return;
-  }
+    if (!codeowners.length) {
+      console.log("No CODEOWNERS found; skipping assignee update.");
+      return;
+    }
 
-  const needed = n - assignedFromSite.length;
+    const codeownerSet = new Set(codeowners);
+    const assignedFromCodeowners = [...alreadyAssigned].filter((login) => codeownerSet.has(login));
 
-  const candidates = siteMembers.filter((member) => !alreadyAssigned.has(member));
-  if (!candidates.length) {
-    console.log(`All teammates from ${site} are already assigned; nothing to add.`);
-    return;
-  }
+    if (assignedFromCodeowners.length >= n) {
+      console.log(`PR #${num} already has ${assignedFromCodeowners.length} CODEOWNER assignee(s); nothing to do.`);
+      return;
+    }
 
-  const assignees = pickRandom(candidates, needed);
-  if (!assignees.length) {
-    console.log(`Unable to select additional assignees from ${site}; skipping.`);
-    return;
+    const needed = n - assignedFromCodeowners.length;
+    const candidates = codeowners.filter((owner) => owner !== author && !alreadyAssigned.has(owner));
+
+    if (!candidates.length) {
+      console.log("All CODEOWNERS are either the author or already assigned; nothing to add.");
+      return;
+    }
+
+    assignees = pickRandom(candidates, needed);
+    if (!assignees.length) {
+      console.log("Unable to select assignees from CODEOWNERS; skipping.");
+      return;
+    }
+  } else {
+    const siteMembers = (await listTeamMembers(site)).filter((user) => user !== author);
+    if (!siteMembers.length) {
+      console.log(`No teammates found in ${site}; skipping assignee update.`);
+      return;
+    }
+
+    const siteMemberSet = new Set(siteMembers);
+    const assignedFromSite = [...alreadyAssigned].filter((login) => siteMemberSet.has(login));
+
+    if (assignedFromSite.length >= n) {
+      console.log(`PR #${num} already has ${assignedFromSite.length} teammate assignee(s); nothing to do.`);
+      return;
+    }
+
+    const needed = n - assignedFromSite.length;
+
+    const candidates = siteMembers.filter((member) => !alreadyAssigned.has(member));
+    if (!candidates.length) {
+      console.log(`All teammates from ${site} are already assigned; nothing to add.`);
+      return;
+    }
+
+    assignees = pickRandom(candidates, needed);
+    if (!assignees.length) {
+      console.log(`Unable to select additional assignees from ${site}; skipping.`);
+      return;
+    }
   }
 
   await gh.issues.addAssignees({
