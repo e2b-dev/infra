@@ -51,7 +51,7 @@ type (
 //
 // Use `sudo modprobe nbd nbds_max=4096` to set the max number of devices to 4096, which is a good default for now.
 type DevicePool struct {
-	exit chan error
+	done chan struct{}
 
 	// We use the bitset to speedup the free device lookup.
 	usedSlots *bitset.BitSet
@@ -79,7 +79,7 @@ func NewDevicePool(meterProvider metric.MeterProvider) (*DevicePool, error) {
 	}
 
 	pool := &DevicePool{
-		exit:        make(chan error, 1),
+		done:        make(chan struct{}, 1),
 		usedSlots:   bitset.New(maxDevices),
 		slots:       make(chan DeviceSlot, int(math.Min(maxSlotsReady, float64(maxDevices)))),
 		slotCounter: counter,
@@ -114,36 +114,31 @@ func (d *DevicePool) Populate(ctx context.Context) error {
 
 	failedCount := 0
 	for {
+		device, err := d.getFreeDeviceSlot()
+		if err != nil {
+			if failedCount%100 == 0 {
+				zap.L().Error("[nbd pool]: failed to create network",
+					zap.Error(err),
+					zap.Int("failed_count", failedCount),
+				)
+			}
+
+			failedCount++
+			time.Sleep(waitOnNBDError)
+			continue
+		}
+		failedCount = 0
+
+		d.slotCounter.Add(ctx, 1)
+
+		// Use select to avoid panic if context is canceled before writing
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case err := <-d.exit:
-			return err
-		default:
-			device, err := d.getFreeDeviceSlot()
-			if err != nil {
-				if failedCount%100 == 0 {
-					zap.L().Error("[nbd pool]: failed to create network",
-						zap.Error(err),
-						zap.Int("failed_count", failedCount),
-					)
-				}
-
-				failedCount++
-				time.Sleep(waitOnNBDError)
-				continue
-			}
-			failedCount = 0
-
-			d.slotCounter.Add(ctx, 1)
-
-			// Use select to avoid panic if context is canceled before writing
-			select {
-			case err := <-d.exit:
-				return err
-			case d.slots <- *device:
-				// sent successfully
-			}
+		case <-d.done:
+			return nil
+		case d.slots <- *device:
+			// sent successfully
 		}
 	}
 }
@@ -307,7 +302,7 @@ func GetDevicePath(slot DeviceSlot) DevicePath {
 func (d *DevicePool) Close(_ context.Context) error {
 	zap.L().Info("Closing device pool", zap.Uint("used_slots", d.usedSlots.Count()))
 
-	close(d.exit)
+	close(d.done)
 
 	var errs error
 	for slotIdx, e := d.usedSlots.NextSet(0); e; slotIdx, e = d.usedSlots.NextSet(slotIdx + 1) {

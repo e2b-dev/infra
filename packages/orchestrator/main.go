@@ -453,9 +453,8 @@ func run(config cfg.Config) (success bool) {
 		zap.L().Fatal("failed to create healthcheck: %w", zap.Error(err))
 	}
 
-	httpServer := &http.Server{
-		Handler: healthcheck.CreateHandler(),
-	}
+	httpServer := createHTTPServer()
+	httpServer.Handler = healthcheck.CreateHandler()
 
 	grpcHealth := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, grpcHealth)
@@ -564,6 +563,10 @@ func run(config cfg.Config) (success bool) {
 	}
 
 	return success
+}
+
+func createHTTPServer() *http.Server {
+	return &http.Server{}
 }
 
 type serviceDoneError struct {
