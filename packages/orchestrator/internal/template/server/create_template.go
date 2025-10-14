@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 )
 
 func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templatemanager.TemplateCreateRequest) (*emptypb.Empty, error) {
@@ -57,8 +58,18 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	// Create the auth provider using the factory
 	authProvider := auth.NewAuthProvider(cfg.GetFromImageRegistry())
 
+	// TODO: Remove, temporary handling when version is not sent from the API
+	version := templateRequest.GetVersion()
+	if version == "" {
+		if cfg.GetFromImage() == "" && cfg.GetFromTemplate() == nil {
+			version = templates.TemplateV1Version
+		} else {
+			version = templates.TemplateV2BetaVersion
+		}
+	}
+
 	template := config.TemplateConfig{
-		Version:              templateRequest.GetVersion(),
+		Version:              version,
 		TeamID:               cfg.GetTeamID(),
 		TemplateID:           cfg.GetTemplateID(),
 		CacheScope:           cacheScope,
