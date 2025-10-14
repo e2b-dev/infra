@@ -22,7 +22,7 @@ func TestStorageLocalRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Positive(t, slot2.Idx)
 
-	err = instance.Release(slot1)
+	err = instance.Release(t.Context(), slot1)
 	require.NoError(t, err)
 
 	slot1, err = instance.Acquire(t.Context())

@@ -94,7 +94,7 @@ func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
 
 	err = ips.CreateNetwork()
 	if err != nil {
-		releaseErr := p.slotStorage.Release(ips)
+		releaseErr := p.slotStorage.Release(ctx, ips)
 		err = errors.Join(err, releaseErr)
 
 		return nil, fmt.Errorf("failed to create network: %w", err)
@@ -158,7 +158,7 @@ func (p *Pool) Return(ctx context.Context, slot *Slot) error {
 	err := slot.ResetInternet(ctx)
 	if err != nil {
 		// Cleanup the slot if resetting internet fails
-		if cerr := p.cleanup(slot); cerr != nil {
+		if cerr := p.cleanup(ctx, slot); cerr != nil {
 			return fmt.Errorf("reset internet: %w; cleanup: %w", err, cerr)
 		}
 
@@ -169,7 +169,7 @@ func (p *Pool) Return(ctx context.Context, slot *Slot) error {
 	case p.reusedSlots <- slot:
 		p.reusedSlotCounter.Add(context.Background(), 1) //nolint:contextcheck // TODO: fix this later
 	default:
-		err := p.cleanup(slot)
+		err := p.cleanup(ctx, slot)
 		if err != nil {
 			return fmt.Errorf("failed to return slot '%d': %w", slot.Idx, err)
 		}
@@ -178,7 +178,7 @@ func (p *Pool) Return(ctx context.Context, slot *Slot) error {
 	return nil
 }
 
-func (p *Pool) cleanup(slot *Slot) error {
+func (p *Pool) cleanup(ctx context.Context, slot *Slot) error {
 	var errs []error
 
 	err := slot.RemoveNetwork()
@@ -186,7 +186,7 @@ func (p *Pool) cleanup(slot *Slot) error {
 		errs = append(errs, fmt.Errorf("cannot remove network when releasing slot '%d': %w", slot.Idx, err))
 	}
 
-	err = p.slotStorage.Release(slot)
+	err = p.slotStorage.Release(ctx, slot)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("failed to release slot '%d': %w", slot.Idx, err))
 	}
@@ -194,13 +194,13 @@ func (p *Pool) cleanup(slot *Slot) error {
 	return errors.Join(errs...)
 }
 
-func (p *Pool) Close(_ context.Context) error {
+func (p *Pool) Close(ctx context.Context) error {
 	p.cancel()
 
 	zap.L().Info("Closing network pool")
 
 	for slot := range p.newSlots {
-		err := p.cleanup(slot)
+		err := p.cleanup(ctx, slot)
 		if err != nil {
 			return fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err)
 		}
@@ -208,7 +208,7 @@ func (p *Pool) Close(_ context.Context) error {
 
 	close(p.reusedSlots)
 	for slot := range p.reusedSlots {
-		err := p.cleanup(slot)
+		err := p.cleanup(ctx, slot)
 		if err != nil {
 			return fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err)
 		}
