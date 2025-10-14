@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -121,8 +122,12 @@ func (ppb *PostProcessingBuilder) Build(
 	defaultUser := utils.ToPtr(currentLayer.Metadata.Context.User)
 	defaultWorkdir := currentLayer.Metadata.Context.WorkDir
 
-	if ppb.IsV1Build {
-		// For v1 builds, always use "user" as the default user
+	ok, err := utils.IsGTEVersion(ppb.Version, templates.TemplateDefaultUserVersion)
+	if err != nil {
+		return phases.LayerResult{}, fmt.Errorf("error checking build version: %w", err)
+	}
+	if !ok {
+		// For older builds, always use "user" as the default user
 		// and do not set a default workdir (defaults to the user homedir).
 		defaultUser = utils.ToPtr("user")
 		defaultWorkdir = nil
