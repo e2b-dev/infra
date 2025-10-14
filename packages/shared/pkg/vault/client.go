@@ -22,6 +22,8 @@ type Client struct {
 	logger      *zap.Logger
 	renewTicker *time.Ticker
 	stopRenew   chan struct{}
+	roleID      string
+	secretID    string
 }
 
 type ClientConfig struct {
@@ -73,12 +75,18 @@ func NewClient(ctx context.Context, config ClientConfig) (*Client, error) {
 		client:    vaultClient,
 		logger:    config.Logger,
 		stopRenew: make(chan struct{}),
+		roleID:    config.RoleID,
+		secretID:  config.SecretID,
 	}
 
 	// Authenticate with AppRole
-	if err := client.authenticate(ctx, config.RoleID, config.SecretID); err != nil {
+	leaseDuration, err := client.authenticate(ctx, config.RoleID, config.SecretID)
+	if err != nil {
 		return nil, errors.Wrap(err, "failed to authenticate with vault")
 	}
+
+	// Start token renewal once, based on the initial lease duration
+	client.startTokenRenewal(ctx, leaseDuration)
 
 	return client, nil
 }
@@ -115,22 +123,22 @@ func NewClientFromEnv(ctx context.Context) (*Client, error) {
 
 var ErrAuthResponseMissing = errors.New("authentication response missing auth data")
 
-// authenticate performs AppRole authentication and sets up token renewal
-func (c *Client) authenticate(ctx context.Context, roleID, secretID string) error {
+// authenticate performs AppRole authentication and returns the lease duration
+func (c *Client) authenticate(ctx context.Context, roleID, secretID string) (time.Duration, error) {
 	resp, err := c.client.Auth.AppRoleLogin(ctx, schema.AppRoleLoginRequest{
 		RoleId:   roleID,
 		SecretId: secretID,
 	})
 	if err != nil {
-		return errors.Wrap(err, "failed to authenticate with vault")
+		return 0, errors.Wrap(err, "failed to authenticate with vault")
 	}
 
 	if resp == nil || resp.Auth == nil {
-		return ErrAuthResponseMissing
+		return 0, ErrAuthResponseMissing
 	}
 
 	if err := c.client.SetToken(resp.Auth.ClientToken); err != nil {
-		return errors.Wrap(err, "failed to set client token")
+		return 0, errors.Wrap(err, "failed to set client token")
 	}
 
 	c.logger.Info("successfully authenticated with vault",
@@ -138,15 +146,16 @@ func (c *Client) authenticate(ctx context.Context, roleID, secretID string) erro
 		zap.Int("lease_duration", resp.Auth.LeaseDuration),
 	)
 
-	c.startTokenRenewal(ctx, time.Duration(resp.Auth.LeaseDuration)*time.Second)
-
-	return nil
+	return time.Duration(resp.Auth.LeaseDuration) * time.Second, nil
 }
 
 // startTokenRenewal starts a background goroutine to renew the token
 func (c *Client) startTokenRenewal(ctx context.Context, leaseDuration time.Duration) {
-	// Renew at 2/3 of the lease duration
-	renewInterval := max(leaseDuration*2/3, time.Minute)
+	if c.renewTicker != nil {
+		return
+	}
+	// Renew at 1/3 of the lease duration
+	renewInterval := max(leaseDuration/3, time.Minute)
 
 	c.renewTicker = time.NewTicker(renewInterval)
 
@@ -175,7 +184,19 @@ var ErrTokenRenewalFailed = errors.New("failed to renew token")
 func (c *Client) renewToken(ctx context.Context) {
 	resp, err := c.client.Auth.TokenRenewSelf(ctx, schema.TokenRenewSelfRequest{})
 	if err != nil {
-		c.logger.Error("failed to renew token", zap.Error(err))
+		c.logger.Error("failed to renew token, attempting re-authentication", zap.Error(err))
+		if _, authErr := c.authenticate(ctx, c.roleID, c.secretID); authErr != nil {
+			c.logger.Error("failed to re-authenticate", zap.Error(authErr))
+		}
+		return
+	}
+
+	// if the token is not renewable, we need to re-authenticate
+	if resp.Auth != nil && !resp.Auth.Renewable {
+		c.logger.Warn("token is not renewable, attempting re-authentication")
+		if _, authErr := c.authenticate(ctx, c.roleID, c.secretID); authErr != nil {
+			c.logger.Error("failed to re-authenticate", zap.Error(authErr))
+		}
 		return
 	}
 
