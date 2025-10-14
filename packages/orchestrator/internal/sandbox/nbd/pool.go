@@ -20,8 +20,9 @@ import (
 
 // maxSlotsReady is the number of slots that are ready to be used.
 const (
-	maxSlotsReady  = 64
-	waitOnNBDError = 50 * time.Millisecond
+	maxSlotsReady                 = 64
+	waitOnNBDError                = 50 * time.Millisecond
+	devicePoolCloseReleaseTimeout = 10 * time.Minute
 )
 
 // NoFreeSlotsError is returned when there are no free slots.
@@ -335,7 +336,7 @@ func (d *DevicePool) Close(ctx context.Context) error {
 	for _, slot := range slotsToRelease {
 		err := d.ReleaseDevice(ctx, slot,
 			WithInfiniteRetry(),
-			WithTimeout(10*time.Minute),
+			WithTimeout(devicePoolCloseReleaseTimeout),
 		)
 		if err != nil {
 			errs = errors.Join(errs, fmt.Errorf("failed to release device %d: %w", slot, err))
