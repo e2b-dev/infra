@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -53,6 +54,7 @@ func New(
 			},
 			// This step number shouldn't be used, but in case it does, defining as 1
 			1,
+			zapcore.DebugLevel,
 		),
 		user: user,
 	}
@@ -63,7 +65,7 @@ func (ub *UserBuilder) Prefix() string {
 }
 
 func (ub *UserBuilder) String(_ context.Context) (string, error) {
-	return fmt.Sprintf("DEFAULT USER %s", ub.user), nil
+	return fmt.Sprintf("%s %s", prefix, ub.user), nil
 }
 
 func (ub *UserBuilder) Metadata() phases.PhaseMeta {

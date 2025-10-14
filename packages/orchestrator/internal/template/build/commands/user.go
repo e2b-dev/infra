@@ -20,6 +20,7 @@ var _ Command = (*User)(nil)
 func (u *User) Execute(
 	ctx context.Context,
 	logger *zap.Logger,
+	lvl zapcore.Level,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	prefix string,
@@ -34,21 +35,37 @@ func (u *User) Execute(
 
 	userArg := args[0]
 
-	err := sandboxtools.RunCommandWithLogger(
+	// Check if user already exists
+	err := sandboxtools.RunCommand(
 		ctx,
 		proxy,
-		logger,
-		zapcore.InfoLevel,
-		prefix,
 		sandboxID,
-		fmt.Sprintf("adduser -disabled-password --gecos \"\" %s || true", userArg),
+		fmt.Sprintf("id -u %s", userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,
 		},
 	)
-	if err != nil {
-		return metadata.Context{}, fmt.Errorf("failed to create user: %w", err)
+	userExists := err == nil
+
+	// Only create user if it doesn't exist
+	if !userExists {
+		err = sandboxtools.RunCommandWithLogger(
+			ctx,
+			proxy,
+			logger,
+			lvl,
+			prefix,
+			sandboxID,
+			fmt.Sprintf("adduser --disabled-password --gecos \"\" %s", userArg),
+			metadata.Context{
+				User:    "root",
+				EnvVars: cmdMetadata.EnvVars,
+			},
+		)
+		if err != nil {
+			return metadata.Context{}, fmt.Errorf("failed to create user: %w", err)
+		}
 	}
 
 	if len(args) > 1 && args[1] == "true" {

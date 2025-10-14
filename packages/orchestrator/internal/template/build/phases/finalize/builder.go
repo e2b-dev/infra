@@ -109,6 +109,7 @@ func (ppb *PostProcessingBuilder) Layer(
 func (ppb *PostProcessingBuilder) Build(
 	ctx context.Context,
 	userLogger *zap.Logger,
+	_ string,
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
 ) (phases.LayerResult, error) {

@@ -129,6 +129,7 @@ func (bb *BaseBuilder) Metadata() phases.PhaseMeta {
 func (bb *BaseBuilder) Build(
 	ctx context.Context,
 	userLogger *zap.Logger,
+	_ string,
 	_ phases.LayerResult,
 	currentLayer phases.LayerResult,
 ) (phases.LayerResult, error) {

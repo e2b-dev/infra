@@ -24,6 +24,7 @@ var _ Command = (*Workdir)(nil)
 func (w *Workdir) Execute(
 	ctx context.Context,
 	logger *zap.Logger,
+	lvl zapcore.Level,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	prefix string,
@@ -50,7 +51,7 @@ func (w *Workdir) Execute(
 		ctx,
 		proxy,
 		logger,
-		zapcore.InfoLevel,
+		lvl,
 		prefix,
 		sandboxID,
 		// Use mkdir -p to create any missing parents
