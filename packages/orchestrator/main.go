@@ -558,11 +558,11 @@ func run(config cfg.Config) (success bool) {
 		serviceInfo.SetStatus(orchestratorinfo.ServiceInfoStatus_Draining)
 	}
 
-	for idx := len(closers) - 1; idx >= 0; idx-- {
-		c := closers[idx]
-		clog := globalLogger.With(zap.String("service", c.name), zap.Bool("forced", config.ForceStop))
+	slices.Reverse(closers)
+	for _, closer := range closers {
+		clog := globalLogger.With(zap.String("service", closer.name), zap.Bool("forced", config.ForceStop))
 		clog.Info("closing")
-		if err := c.close(closeCtx); err != nil {
+		if err := closer.close(closeCtx); err != nil {
 			clog.Error("error during shutdown", zap.Error(err))
 			success = false
 		}

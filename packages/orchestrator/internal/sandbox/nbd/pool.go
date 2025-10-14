@@ -82,7 +82,7 @@ func NewDevicePool(meterProvider metric.MeterProvider) (*DevicePool, error) {
 	}
 
 	pool := &DevicePool{
-		done:        make(chan struct{}, 1),
+		done:        make(chan struct{}),
 		usedSlots:   bitset.New(maxDevices),
 		slots:       make(chan DeviceSlot, int(math.Min(maxSlotsReady, float64(maxDevices)))),
 		slotCounter: counter,
@@ -260,13 +260,27 @@ func (d *DevicePool) ReleaseDevice(ctx context.Context, idx DeviceSlot, opts ...
 		o(&opt)
 	}
 
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	if opt.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, opt.timeout)
 		defer cancel()
+	}
+
+	release := func() error {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+
+		free, err := d.isDeviceFree(idx)
+		if err != nil {
+			return fmt.Errorf("failed to check if device is free: %w", err)
+		}
+
+		if !free {
+			return DeviceInUseError{}
+		}
+
+		d.usedSlots.Clear(uint(idx))
+		return nil
 	}
 
 	attempt := 0
@@ -278,26 +292,22 @@ func (d *DevicePool) ReleaseDevice(ctx context.Context, idx DeviceSlot, opts ...
 		}
 
 		attempt++
-		free, err := d.isDeviceFree(idx)
-		if err != nil {
-			return fmt.Errorf("failed to check if device is free: %w", err)
+
+		err := release()
+		if err == nil {
+			return nil
 		}
 
-		if !free {
-			if opt.infiniteRetry {
-				if attempt%100 == 0 {
-					zap.L().Error("error releasing device", zap.Int("attempt", attempt), zap.Error(err))
-				}
-
-				time.Sleep(500 * time.Millisecond)
-				continue
-			}
-
-			return DeviceInUseError{}
+		if !opt.infiniteRetry {
+			return err
 		}
 
-		d.usedSlots.Clear(uint(idx))
-		return nil
+		if attempt%100 == 0 {
+			zap.L().Error("error releasing device", zap.Int("attempt", attempt), zap.Error(err))
+		}
+
+		time.Sleep(500 * time.Millisecond)
+		continue
 	}
 }
 
