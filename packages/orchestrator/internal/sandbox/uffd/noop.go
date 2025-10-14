@@ -34,12 +34,12 @@ func NewNoopMemory(size, blockSize int64) *NoopMemory {
 	}
 }
 
-func (m *NoopMemory) Disable() error {
-	return nil
+func (m *NoopMemory) Disable(context.Context) (*bitset.BitSet, error) {
+	return m.dirty, nil
 }
 
-func (m *NoopMemory) Dirty() *bitset.BitSet {
-	return m.dirty
+func (m *NoopMemory) Dirty(context.Context) (*bitset.BitSet, error) {
+	return m.dirty, nil
 }
 
 func (m *NoopMemory) Start(ctx context.Context, sandboxId string) error {

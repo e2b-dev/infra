@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -41,6 +42,14 @@ type Uffd struct {
 	memfile    block.ReadonlyDevice
 	dirty      *memory.Tracker
 	socketPath string
+
+	missingMap *userfaultfd.OffsetMap
+	writeMap   *userfaultfd.OffsetMap
+	wpMap      *userfaultfd.OffsetMap
+
+	disabled atomic.Bool
+
+	writeRequestCounter utils.WaitCounter
 }
 
 var _ MemoryBackend = (*Uffd)(nil)
@@ -174,7 +183,12 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		m,
 		u.memfile,
 		u.dirty,
+		&u.writeRequestCounter,
+		u.missingMap,
+		u.writeMap,
+		u.wpMap,
 		u.fdExit,
+		&u.disabled,
 		zap.L().With(logger.WithSandboxID(sandboxId)),
 	)
 	if err != nil {
@@ -192,10 +206,32 @@ func (u *Uffd) Ready() chan struct{} {
 	return u.readyCh
 }
 
+func (u *Uffd) Disable(ctx context.Context) (*bitset.BitSet, error) {
+	dirty, err := u.Dirty(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dirty bitset: %w", err)
+	}
+
+	u.disabled.Store(true)
+
+	return dirty, nil
+}
+
 func (u *Uffd) Exit() *utils.ErrorOnce {
 	return u.exit
 }
 
-func (u *Uffd) Dirty() *bitset.BitSet {
-	return u.dirty.BitSet()
+// Dirty waits for all the requests in flight to be finished and then returns the dirty bitset.
+// Call *after* pausing the firecracker process.
+func (u *Uffd) Dirty(ctx context.Context) (*bitset.BitSet, error) {
+	err := u.writeRequestCounter.Wait(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for write requests: %w", err)
+	}
+
+	u.missingMap.Reset()
+	u.writeMap.Reset()
+	u.wpMap.Reset()
+
+	return u.dirty.BitSet(), nil
 }

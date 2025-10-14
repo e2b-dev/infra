@@ -9,7 +9,12 @@ import (
 )
 
 type MemoryBackend interface {
-	Dirty() *bitset.BitSet
+	// Dirty returns the dirty bitset.
+	// It waits for all the requests in flight to be finished.
+	Dirty(ctx context.Context) (*bitset.BitSet, error)
+	// Disable switch the uffd to start serving empty pages and returns the dirty bitset.
+	// It waits for all the requests in flight to be finished.
+	Disable(ctx context.Context) (*bitset.BitSet, error)
 
 	Start(ctx context.Context, sandboxId string) error
 	Stop() error

@@ -674,7 +674,8 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	if err := s.memory.Disable(); err != nil {
+	dirtyPages, err := s.memory.Disable(ctx)
+	if err != nil {
 		return nil, fmt.Errorf("failed to disable uffd: %w", err)
 	}
 
@@ -721,7 +722,7 @@ func (s *Sandbox) Pause(
 		originalMemfile.Header(),
 		&MemoryDiffCreator{
 			memfile:    memfile,
-			dirtyPages: s.memory.Dirty(),
+			dirtyPages: dirtyPages,
 			blockSize:  originalMemfile.BlockSize(),
 			doneHook: func(ctx context.Context) error {
 				return memfile.Close()
