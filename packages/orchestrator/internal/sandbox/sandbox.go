@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -24,7 +25,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -35,7 +35,6 @@ import (
 )
 
 var (
-	defaultEnvdTimeout           = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT", "10s")))
 	meter                        = otel.GetMeterProvider().Meter("orchestrator.internal.sandbox")
 	envdInitCalls                = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitCalls))
 	waitForEnvdDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.WaitForEnvdDurationHistogramName))
@@ -132,6 +131,7 @@ type networkSlotRes struct {
 }
 
 type Factory struct {
+	config       cfg.BuilderConfig
 	networkPool  *network.Pool
 	devicePool   *nbd.DevicePool
 	featureFlags *featureflags.Client
@@ -140,16 +140,16 @@ type Factory struct {
 }
 
 func NewFactory(
+	config cfg.BuilderConfig,
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
 	featureFlags *featureflags.Client,
-	defaultAllowInternetAccess bool,
 ) *Factory {
 	return &Factory{
-		networkPool:                networkPool,
-		devicePool:                 devicePool,
-		featureFlags:               featureFlags,
-		defaultAllowInternetAccess: defaultAllowInternetAccess,
+		config:       config,
+		networkPool:  networkPool,
+		devicePool:   devicePool,
+		featureFlags: featureFlags,
 	}
 }
 
@@ -250,6 +250,7 @@ func (f *Factory) CreateSandbox(
 	fcHandle, err := fc.NewProcess(
 		ctx,
 		execCtx,
+		f.config,
 		ips.slot,
 		sandboxFiles,
 		fcVersions,
@@ -468,6 +469,7 @@ func (f *Factory) ResumeSandbox(
 	fcHandle, fcErr := fc.NewProcess(
 		ctx,
 		execCtx,
+		f.config,
 		ips.slot,
 		sandboxFiles,
 		// The versions need to base exactly the same as the paused sandbox template because of the FC compatibility.
@@ -563,7 +565,7 @@ func (f *Factory) ResumeSandbox(
 
 	err = sbx.WaitForEnvd(
 		ctx,
-		defaultEnvdTimeout,
+		f.config.EnvdTimeout,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	txtTemplate "text/template"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -60,17 +61,19 @@ ip netns exec {{ .NamespaceID }} {{ .FirecrackerPath }} --api-sock {{ .Firecrack
 
 // StartScriptBuilder handles the creation and execution of firecracker start scripts
 type StartScriptBuilder struct {
-	templateV1 *txtTemplate.Template
-	templateV2 *txtTemplate.Template
+	builderConfig cfg.BuilderConfig
+	templateV1    *txtTemplate.Template
+	templateV2    *txtTemplate.Template
 }
 
 // NewStartScriptBuilder creates a new StartScriptBuilder instance
-func NewStartScriptBuilder() *StartScriptBuilder {
+func NewStartScriptBuilder(builderConfig cfg.BuilderConfig) *StartScriptBuilder {
 	templateV1 := txtTemplate.Must(txtTemplate.New("fc-start-v1").Parse(startScriptV1))
 	templateV2 := txtTemplate.Must(txtTemplate.New("fc-start-v2").Parse(startScriptV2))
 	return &StartScriptBuilder{
-		templateV1: templateV1,
-		templateV2: templateV2,
+		builderConfig: builderConfig,
+		templateV1:    templateV1,
+		templateV2:    templateV2,
 	}
 }
 
@@ -83,10 +86,10 @@ func (sb *StartScriptBuilder) buildArgs(
 ) startScriptArgs {
 	return startScriptArgs{
 		// General
-		SandboxDir: SandboxDir(),
+		SandboxDir: sb.builderConfig.SandboxDir,
 
 		// Kernel
-		HostKernelPath:    versions.HostKernelPath(),
+		HostKernelPath:    versions.HostKernelPath(sb.builderConfig),
 		SandboxKernelDir:  versions.SandboxKernelDir(),
 		SandboxKernelFile: SandboxKernelFile,
 
@@ -97,7 +100,7 @@ func (sb *StartScriptBuilder) buildArgs(
 
 		// FC
 		NamespaceID:       namespaceID,
-		FirecrackerPath:   versions.FirecrackerPath(),
+		FirecrackerPath:   versions.FirecrackerPath(sb.builderConfig),
 		FirecrackerSocket: files.SandboxFirecrackerSocketPath(),
 	}
 }

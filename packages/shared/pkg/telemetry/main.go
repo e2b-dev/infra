@@ -33,6 +33,10 @@ type Client struct {
 }
 
 func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID string) (*Client, error) {
+	if otelCollectorGRPCEndpoint == "" {
+		return NewNoopClient(), nil
+	}
+
 	// Setup metrics
 	metricsExporter, err := NewMeterExporter(ctx, otlpmetricgrpc.WithAggregationSelector(func(kind sdkmetric.InstrumentKind) sdkmetric.Aggregation {
 		if kind == sdkmetric.InstrumentKindHistogram {
