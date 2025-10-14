@@ -58,6 +58,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		buildID             = "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
 		useHugePages        = false
 		allowInternetAccess = true
+		templateVersion     = "v2.0.0"
 	)
 
 	// cache paths, to speed up test runs. these paths aren't wiped between tests
@@ -243,7 +244,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		// build template
 		force := true
 		templateConfig := config.TemplateConfig{
-			Version:    "v2.0.0",
+			Version:    templateVersion,
 			TemplateID: templateID,
 			FromImage:  baseImage,
 			Force:      &force,

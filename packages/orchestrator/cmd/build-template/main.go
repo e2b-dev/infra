@@ -29,6 +29,7 @@ import (
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 )
 
 const (
@@ -199,7 +200,7 @@ func buildTemplate(
 
 	force := true
 	template := config.TemplateConfig{
-		Version:    "v2.0.0",
+		Version:    templates.TemplateV2LatestVersion,
 		TeamID:     "",
 		TemplateID: templateID,
 		FromImage:  baseImage,

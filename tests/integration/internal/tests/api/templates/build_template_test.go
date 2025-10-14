@@ -421,7 +421,7 @@ func TestTemplateBuildFromTemplateCommandOverride(t *testing.T) {
 					},
 					{
 						Type: "RUN",
-						Args: utils.ToPtr([]string{"echo 'override_expected' > /override_check.txt"}),
+						Args: utils.ToPtr([]string{"echo 'override_expected' > /override_check.txt", "root"}),
 					},
 				}),
 				// Override the base start command - simple success proves override worked

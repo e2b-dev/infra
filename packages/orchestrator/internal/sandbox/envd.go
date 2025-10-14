@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -140,7 +141,12 @@ func (s *Sandbox) initEnvd(ctx context.Context) error {
 	}
 
 	if response.StatusCode != http.StatusNoContent {
-		zap.L().Error("envd init request failed", logger.WithSandboxID(s.Runtime.SandboxID), logger.WithEnvdVersion(s.Config.Envd.Version), zap.Int("status_code", response.StatusCode), zap.String("response_body", string(body)))
+		zap.L().Error("envd init request failed",
+			logger.WithSandboxID(s.Runtime.SandboxID),
+			logger.WithEnvdVersion(s.Config.Envd.Version),
+			zap.Int("status_code", response.StatusCode),
+			zap.String("response_body", utils.Truncate(string(body), 100)),
+		)
 		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
 	}
 

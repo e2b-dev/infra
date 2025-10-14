@@ -16,18 +16,13 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
 	jsSDKPrefix     = "e2b-js-sdk/"
 	pythonSDKPrefix = "e2b-python-sdk/"
-	testsUserAgent  = "e2b-tests/"
-)
-
-const (
-	buildSystem2Version = "v2.0.0"
-	buildLatestVersion  = "v2.1.0"
 )
 
 type dockerfileStore struct {
@@ -130,7 +125,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
-	version, err := templateUserAgentToVersion(c.Request.UserAgent())
+	version, err := userAgentToTemplateVersion(c.Request.UserAgent())
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing user agent: %s", err))
 		telemetry.ReportCriticalError(ctx, "error when parsing user agent", err, telemetry.WithTemplateID(templateID))
@@ -175,30 +170,28 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	c.Status(http.StatusAccepted)
 }
 
-func templateUserAgentToVersion(userAgent string) (string, error) {
-	version := buildSystem2Version
+func userAgentToTemplateVersion(userAgent string) (string, error) {
+	version := templates.TemplateV2LatestVersion
 
 	switch {
 	case strings.HasPrefix(userAgent, jsSDKPrefix):
 		sdk := strings.TrimPrefix(userAgent, jsSDKPrefix)
-		ok, err := utils.IsGTEVersion(sdk, "2.3.0")
+		ok, err := utils.IsGTEVersion(sdk, templates.SDKDefaultUserVersion)
 		if err != nil {
 			return "", fmt.Errorf("parsing JS SDK version: %w", err)
 		}
-		if ok {
-			version = buildLatestVersion
+		if !ok {
+			version = templates.TemplateV2BetaVersion
 		}
 	case strings.HasPrefix(userAgent, pythonSDKPrefix):
 		sdk := strings.TrimPrefix(userAgent, pythonSDKPrefix)
-		ok, err := utils.IsGTEVersion(sdk, "2.3.0")
+		ok, err := utils.IsGTEVersion(sdk, templates.SDKDefaultUserVersion)
 		if err != nil {
 			return "", fmt.Errorf("parsing Python SDK version: %w", err)
 		}
-		if ok {
-			version = buildLatestVersion
+		if !ok {
+			version = templates.TemplateV2BetaVersion
 		}
-	case strings.HasPrefix(userAgent, testsUserAgent):
-		version = buildLatestVersion
 	}
 
 	return version, nil

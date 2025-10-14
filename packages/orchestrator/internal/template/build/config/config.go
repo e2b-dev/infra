@@ -10,8 +10,7 @@ const (
 	InstanceBuildPrefix = "b"
 
 	// TemplateDefaultUser is the default user to use in the template to run all commands.
-	TemplateDefaultUser        = "user"
-	TemplateDefaultUserVersion = "v2.1.0"
+	TemplateDefaultUser = "user"
 )
 
 type TemplateConfig struct {
