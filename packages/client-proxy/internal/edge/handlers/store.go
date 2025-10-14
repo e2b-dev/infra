@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/proxy/internal/cfg"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
 	loggerprovider "github.com/e2b-dev/infra/packages/proxy/internal/edge/logger-provider"
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
@@ -35,10 +35,16 @@ const (
 	orchestratorsReadinessCheckInterval = 100 * time.Millisecond
 )
 
-var skipInitialOrchestratorCheck = os.Getenv("SKIP_ORCHESTRATOR_READINESS_CHECK") == "true"
-
-func NewStore(ctx context.Context, logger *zap.Logger, info *info.ServiceInfo, orchestratorsPool *e2borchestrators.OrchestratorsPool, edgePool *e2borchestrators.EdgePool, catalog catalog.SandboxesCatalog) (*APIStore, error) {
-	queryLogsProvider, err := loggerprovider.GetLogsQueryProvider()
+func NewStore(
+	ctx context.Context,
+	logger *zap.Logger,
+	info *info.ServiceInfo,
+	orchestratorsPool *e2borchestrators.OrchestratorsPool,
+	edgePool *e2borchestrators.EdgePool,
+	catalog catalog.SandboxesCatalog,
+	config cfg.Config,
+) (*APIStore, error) {
+	queryLogsProvider, err := loggerprovider.GetLogsQueryProvider(config)
 	if err != nil {
 		return nil, fmt.Errorf("error when getting logs query provider: %w", err)
 	}
@@ -64,7 +70,7 @@ func NewStore(ctx context.Context, logger *zap.Logger, info *info.ServiceInfo, o
 
 		// we don't want to skip it entirely, and we want to wait few seconds in case of cluster already contains orchestrators
 		// so we are not propagating API without not yet registered orchestrators
-		if skipInitialOrchestratorCheck {
+		if config.SkipInitialOrchestratorReadinessCheck {
 			time.Sleep(10 * time.Second)
 			store.info.SetStatus(api.Healthy)
 			return
