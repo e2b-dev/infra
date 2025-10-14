@@ -386,9 +386,9 @@ func configureTest(t *testing.T, tt testConfig) (*testHandler, *testutils.Contig
 	dirty := memory.NewTracker(int64(size), int64(tt.pagesize))
 
 	writeRequestCounter := utils.WaitCounter{}
-	missingMap := NewResetMap()
-	writeMap := NewResetMap()
-	wpMap := NewResetMap()
+	missingMap := NewOffsetMap()
+	writeMap := NewOffsetMap()
+	wpMap := NewOffsetMap()
 	disabled := atomic.Bool{}
 
 	go func() {
