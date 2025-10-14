@@ -5,17 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"slices"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 	"github.com/soheilhy/cmux"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -27,7 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/batcher"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpc"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
 	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
@@ -274,35 +271,12 @@ func run(config cfg.Config) (success bool) {
 	if clickhouseConnectionString == "" {
 		sandboxEventBatcher = batcher.NewNoopBatcher[clickhouse.SandboxEvent]()
 	} else {
-		var err error
 		clickhouseConn, err := clickhouse.NewDriver(clickhouseConnectionString)
 		if err != nil {
 			zap.L().Fatal("failed to create clickhouse driver", zap.Error(err))
 		}
 
-		maxBatchSize := 100
-		if val, err := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherMaxBatchSize); err == nil {
-			maxBatchSize = val
-		}
-
-		maxDelay := 1 * time.Second
-		if val, err := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherMaxDelay); err == nil {
-			maxDelay = time.Duration(val) * time.Millisecond
-		}
-
-		bactherQueueSize := 1000
-		if val, err := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherQueueSize, featureflags.SandboxContext("clickhouse-batcher")); err == nil {
-			bactherQueueSize = val
-		}
-
-		sandboxEventBatcher, err = batcher.NewSandboxEventInsertsBatcher(clickhouseConn, batcher.BatcherOptions{
-			MaxBatchSize: maxBatchSize,
-			MaxDelay:     maxDelay,
-			QueueSize:    bactherQueueSize,
-			ErrorHandler: func(err error) {
-				zap.L().Error("error batching sandbox events", zap.Error(err))
-			},
-		})
+		sandboxEventBatcher, err = factories.NewSandboxInsertsEventBatcher(ctx, clickhouseConn, featureFlags)
 		if err != nil {
 			zap.L().Fatal("failed to create clickhouse batcher", zap.Error(err))
 		}
@@ -310,38 +284,12 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{"sandbox event batcher", sandboxEventBatcher.Close})
 
 	// redis
-	var redisClient redis.UniversalClient
-	if redisClusterUrl := config.RedisClusterURL; redisClusterUrl != "" {
-		// For managed Redis Cluster in GCP we should use Cluster Client, because
-		// > Redis node endpoints can change and can be recycled as nodes are added and removed over time.
-		// https://cloud.google.com/memorystore/docs/cluster/cluster-node-specification#cluster_endpoints
-		// https://cloud.google.com/memorystore/docs/cluster/client-library-code-samples#go-redis
-		redisClient = redis.NewClusterClient(&redis.ClusterOptions{
-			Addrs:        []string{redisClusterUrl},
-			MinIdleConns: 1,
-		})
-	} else if rurl := config.RedisURL; rurl != "" {
-		redisClient = redis.NewClient(&redis.Options{
-			Addr:         rurl,
-			MinIdleConns: 1,
-		})
-	} else {
-		zap.L().Warn("REDIS_URL|REDIS_CLUSTER_URL not set, using no-op pubsub")
-	}
-
-	if redisClient != nil {
-		_, err := redisClient.Ping(ctx).Result()
-		if err != nil {
-			zap.L().Fatal("Could not connect to Redis", zap.Error(err))
-		}
-
-		zap.L().Info("Connected to Redis cluster")
-
+	redisClient, err := factories.NewRedisClient(ctx, config)
+	if err != nil && !errors.Is(err, factories.ErrRedisDisabled) {
+		zap.L().Fatal("Could not connect to Redis", zap.Error(err))
+	} else if err == nil {
 		closers = append(closers, closer{"redis client", func(context.Context) error {
-			if err := redisClient.Close(); err != nil && !errors.Is(err, redis.ErrClosed) {
-				return err
-			}
-			return nil
+			return factories.CloseCleanly(redisClient)
 		}})
 	}
 
@@ -451,7 +399,7 @@ func run(config cfg.Config) (success bool) {
 	})
 	closers = append(closers, closer{"hyperloop server", hyperloopSrv.Shutdown})
 
-	grpcServer := grpc.New(tel)
+	grpcServer := factories.NewGRPCServer(tel)
 	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
 
 	// template manager
@@ -485,7 +433,7 @@ func run(config cfg.Config) (success bool) {
 	grpc_health_v1.RegisterHealthServer(grpcServer, grpcHealth)
 
 	// cmux server, allows us to reuse the same TCP port between grpc and HTTP requests
-	cmuxServer, err := createCMUXServer(ctx, config.GRPCPort)
+	cmuxServer, err := factories.NewCMUXServer(ctx, config.GRPCPort)
 	if err != nil {
 		zap.L().Fatal("failed to create cmux server", zap.Error(err))
 	}
@@ -511,7 +459,7 @@ func run(config cfg.Config) (success bool) {
 		zap.L().Fatal("failed to create healthcheck", zap.Error(err))
 	}
 
-	httpServer := createHTTPServer()
+	httpServer := factories.NewHTTPServer()
 	httpServer.Handler = healthcheck.CreateHandler()
 
 	startService("http server", func() error {
@@ -578,25 +526,10 @@ func run(config cfg.Config) (success bool) {
 	return success
 }
 
-func createHTTPServer() *http.Server {
-	return &http.Server{}
-}
-
 type serviceDoneError struct {
 	name string
 }
 
 func (e serviceDoneError) Error() string {
 	return fmt.Sprintf("service %s finished", e.name)
-}
-
-func createCMUXServer(ctx context.Context, port uint16) (cmux.CMux, error) {
-	var lisCfg net.ListenConfig
-	lis, err := lisCfg.Listen(ctx, "tcp", fmt.Sprintf(":%d", port))
-	if err != nil {
-		return nil, fmt.Errorf("failed to listen on port %d: %w", port, err)
-	}
-
-	m := cmux.New(lis)
-	return m, nil
 }

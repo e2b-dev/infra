@@ -1,4 +1,4 @@
-package grpc
+package factories
 
 import (
 	"time"
@@ -16,7 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func New(tel *telemetry.Client) *grpc.Server {
+func NewGRPCServer(tel *telemetry.Client) *grpc.Server {
 	opts := []logging.Option{
 		logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
 		logging.WithLevels(logging.DefaultServerCodeToLevel),

@@ -254,6 +254,23 @@ func (d *DevicePool) GetDevice(ctx context.Context) (DeviceSlot, error) {
 	}
 }
 
+func (d *DevicePool) release(idx DeviceSlot) error {
+	free, err := d.isDeviceFree(idx)
+	if err != nil {
+		return fmt.Errorf("failed to check if device is free: %w", err)
+	}
+
+	if !free {
+		return DeviceInUseError{}
+	}
+
+	d.mu.Lock()
+	d.usedSlots.Clear(uint(idx))
+	d.mu.Unlock()
+
+	return nil
+}
+
 // ReleaseDevice will return an error if the device is not free and not release the slot — you can retry.
 func (d *DevicePool) ReleaseDevice(ctx context.Context, idx DeviceSlot, opts ...ReleaseOption) error {
 	opt := releaseOptions{}
@@ -267,23 +284,6 @@ func (d *DevicePool) ReleaseDevice(ctx context.Context, idx DeviceSlot, opts ...
 		defer cancel()
 	}
 
-	release := func() error {
-		d.mu.Lock()
-		defer d.mu.Unlock()
-
-		free, err := d.isDeviceFree(idx)
-		if err != nil {
-			return fmt.Errorf("failed to check if device is free: %w", err)
-		}
-
-		if !free {
-			return DeviceInUseError{}
-		}
-
-		d.usedSlots.Clear(uint(idx))
-		return nil
-	}
-
 	attempt := 0
 	for {
 		select {
@@ -294,7 +294,7 @@ func (d *DevicePool) ReleaseDevice(ctx context.Context, idx DeviceSlot, opts ...
 
 		attempt++
 
-		err := release()
+		err := d.release(idx)
 		if err == nil {
 			return nil
 		}
@@ -308,7 +308,6 @@ func (d *DevicePool) ReleaseDevice(ctx context.Context, idx DeviceSlot, opts ...
 		}
 
 		time.Sleep(500 * time.Millisecond)
-		continue
 	}
 }
 
