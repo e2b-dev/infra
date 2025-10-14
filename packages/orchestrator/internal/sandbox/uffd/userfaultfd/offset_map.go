@@ -9,9 +9,13 @@ type OffsetMap struct {
 }
 
 func NewResetMap() *OffsetMap {
-	return &OffsetMap{
+	m := &OffsetMap{
 		r: atomic.Pointer[map[int64]struct{}]{},
 	}
+
+	m.r.Store(&map[int64]struct{}{})
+
+	return m
 }
 
 func (r *OffsetMap) Reset() {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"sync/atomic"
 	"syscall"
 	"testing"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func TestUffdMissing(t *testing.T) {
@@ -383,8 +385,14 @@ func configureTest(t *testing.T, tt testConfig) (*testHandler, *testutils.Contig
 
 	dirty := memory.NewTracker(int64(size), int64(tt.pagesize))
 
+	writeRequestCounter := utils.WaitCounter{}
+	missingMap := NewResetMap()
+	writeMap := NewResetMap()
+	wpMap := NewResetMap()
+	disabled := atomic.Bool{}
+
 	go func() {
-		err := uffd.Serve(t.Context(), m, data, dirty, fdExit, logger)
+		err := uffd.Serve(t.Context(), m, data, dirty, &writeRequestCounter, missingMap, writeMap, wpMap, fdExit, &disabled, logger)
 		assert.NoError(t, err)
 
 		exitUffd <- struct{}{}
