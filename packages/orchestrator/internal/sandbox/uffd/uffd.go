@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -38,16 +39,25 @@ type Uffd struct {
 
 	lis *net.UnixListener
 
-	memfile    *block.TrackedSliceDevice
+	memfile    block.ReadonlyDevice
+	dirty      *memory.Tracker
 	socketPath string
+
+	missingMap *userfaultfd.OffsetMap
+	writeMap   *userfaultfd.OffsetMap
+	wpMap      *userfaultfd.OffsetMap
+
+	disabled atomic.Bool
+
+	writeRequestCounter utils.WaitCounter
 }
 
 var _ MemoryBackend = (*Uffd)(nil)
 
 func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uffd, error) {
-	trackedMemfile, err := block.NewTrackedSliceDevice(blockSize, memfile)
+	size, err := memfile.Size()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create tracked slice device: %w", err)
+		return nil, fmt.Errorf("failed to get memfile size: %w", err)
 	}
 
 	fdExit, err := fdexit.New()
@@ -59,8 +69,9 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 		exit:       utils.NewErrorOnce(),
 		readyCh:    make(chan struct{}, 1),
 		fdExit:     fdExit,
-		memfile:    trackedMemfile,
 		socketPath: socketPath,
+		memfile:    memfile,
+		dirty:      memory.NewTracker(size, memfile.BlockSize()),
 	}, nil
 }
 
@@ -151,13 +162,33 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		}
 	}()
 
+	for _, region := range m {
+		// Register the WP. It is possible that the memory region was already registered (with missing pages in FC), but registering it again with bigger flag subset should merge these.
+		// - https://github.com/firecracker-microvm/firecracker/blob/f335a0adf46f0680a141eb1e76fe31ac258918c5/src/vmm/src/persist.rs#L477
+		// - https://github.com/bytecodealliance/userfaultfd-rs/blob/main/src/builder.rs
+		err := uffd.Register(
+			region.BaseHostVirtAddr+region.Offset,
+			uint64(region.Size),
+			userfaultfd.UFFDIO_REGISTER_MODE_WP|userfaultfd.UFFDIO_REGISTER_MODE_MISSING,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to reregister memory region with write protection %d-%d", region.Offset, region.Offset+region.Size)
+		}
+	}
+
 	u.readyCh <- struct{}{}
 
 	err = uffd.Serve(
 		ctx,
 		m,
 		u.memfile,
+		u.dirty,
+		&u.writeRequestCounter,
+		u.missingMap,
+		u.writeMap,
+		u.wpMap,
 		u.fdExit,
+		&u.disabled,
 		zap.L().With(logger.WithSandboxID(sandboxId)),
 	)
 	if err != nil {
@@ -175,14 +206,32 @@ func (u *Uffd) Ready() chan struct{} {
 	return u.readyCh
 }
 
+func (u *Uffd) Disable(ctx context.Context) (*bitset.BitSet, error) {
+	dirty, err := u.Dirty(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dirty bitset: %w", err)
+	}
+
+	u.disabled.Store(true)
+
+	return dirty, nil
+}
+
 func (u *Uffd) Exit() *utils.ErrorOnce {
 	return u.exit
 }
 
-func (u *Uffd) Disable() error {
-	return u.memfile.Disable()
-}
+// Dirty waits for all the requests in flight to be finished and then returns the dirty bitset.
+// Call *after* pausing the firecracker process.
+func (u *Uffd) Dirty(ctx context.Context) (*bitset.BitSet, error) {
+	err := u.writeRequestCounter.Wait(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for write requests: %w", err)
+	}
 
-func (u *Uffd) Dirty() *bitset.BitSet {
-	return u.memfile.Dirty()
+	u.missingMap.Reset()
+	u.writeMap.Reset()
+	u.wpMap.Reset()
+
+	return u.dirty.BitSet(), nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 
@@ -14,13 +15,21 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (u *userfaultfd) Serve(
 	ctx context.Context,
 	m memory.MemoryMap,
 	src block.Slicer,
+	dirty *memory.Tracker,
+	writeRequestCounter *utils.WaitCounter,
+	missingMap *OffsetMap,
+	writeMap *OffsetMap,
+	wpMap *OffsetMap,
 	fdExit *fdexit.FdExit,
+	disabled *atomic.Bool,
 	logger *zap.Logger,
 ) error {
 	pollFds := []unix.PollFd{
@@ -29,8 +38,6 @@ func (u *userfaultfd) Serve(
 	}
 
 	var eg errgroup.Group
-
-	handledPages := map[int64]struct{}{}
 
 outerLoop:
 	for {
@@ -119,6 +126,7 @@ outerLoop:
 
 		arg := GetMsgArg(&msg)
 		pagefault := (*(*UffdPagefault)(unsafe.Pointer(&arg[0])))
+		flags := pagefault.flags
 
 		addr := GetPagefaultAddress(&pagefault)
 
@@ -129,33 +137,89 @@ outerLoop:
 			return fmt.Errorf("failed to map: %w", err)
 		}
 
-		// This prevents serving missing pages multiple times.
+		// The maps prevent serving pages multiple times (as we now add WP only once we don't have to remove entries from any map.)
 		// For normal sized pages with swap on, the behavior seems not to be properly described in docs
 		// and it's not clear if the missing can be legitimately triggered multiple times.
-		if _, ok := handledPages[offset]; ok {
+
+		if flags&UFFD_PAGEFAULT_FLAG_WP != 0 {
+			if !wpMap.TryAdd(offset) {
+				continue
+			}
+
+			writeRequestCounter.Add()
+
+			eg.Go(func() error {
+				defer func() {
+					if r := recover(); r != nil {
+						logger.Error("UFFD remove write protection panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
+					}
+				}()
+
+				defer writeRequestCounter.Done()
+
+				wpErr := u.RemoveWriteProtection(addr, pagesize)
+				if wpErr != nil {
+					return fmt.Errorf("error removing write protection from page %d", addr)
+				}
+
+				// We mark the page as dirty if it was a write to a page that was already mapped.
+				dirty.Mark(offset)
+
+				return nil
+			})
+
 			continue
 		}
 
-		handledPages[offset] = struct{}{}
+		if flags == 0 {
+			if !missingMap.TryAdd(offset) {
+				continue
+			}
+		}
+
+		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
+			if !writeMap.TryAdd(offset) {
+				continue
+			}
+
+			writeRequestCounter.Add()
+		}
 
 		eg.Go(func() error {
 			defer func() {
 				if r := recover(); r != nil {
-					logger.Error("UFFD serve panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
+					logger.Error("UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
 				}
 			}()
 
+			defer func() {
+				if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
+					writeRequestCounter.Done()
+				}
+			}()
+
+			var b []byte
+
+			if disabled.Load() {
+				b = header.EmptyHugePage[:pagesize]
+			} else {
+				sliceB, sliceErr := src.Slice(ctx, offset, int64(pagesize))
+				if sliceErr != nil {
+					signalErr := fdExit.SignalExit()
+
+					joinedErr := errors.Join(sliceErr, signalErr)
+
+					logger.Error("UFFD serve slice error", zap.Error(joinedErr))
+
+					return fmt.Errorf("failed to read from source: %w", joinedErr)
+				}
+
+				b = sliceB
+			}
 			var copyMode CULong
 
-			b, sliceErr := src.Slice(ctx, offset, int64(pagesize))
-			if sliceErr != nil {
-				signalErr := fdExit.SignalExit()
-
-				joinedErr := errors.Join(sliceErr, signalErr)
-
-				logger.Error("UFFD serve slice error", zap.Error(joinedErr))
-
-				return fmt.Errorf("failed to read from source: %w", joinedErr)
+			if flags == 0 {
+				copyMode = copyMode | UFFDIO_COPY_MODE_WP
 			}
 
 			copyErr := u.copy(addr, b, pagesize, copyMode)
@@ -175,6 +239,11 @@ outerLoop:
 				logger.Error("UFFD serve uffdio copy error", zap.Error(joinedErr))
 
 				return fmt.Errorf("failed uffdio copy %w", joinedErr)
+			}
+
+			// We mark the page as dirty if it was a write to a page that was not already mapped.
+			if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
+				dirty.Mark(offset)
 			}
 
 			return nil
