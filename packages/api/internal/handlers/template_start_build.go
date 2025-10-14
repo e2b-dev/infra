@@ -174,7 +174,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		Set("environment", templateID).
 		Set("build_id", buildID).
 		Set("duration", time.Since(startTime).String()).
-		Set("success", err != nil),
+		Set("success", err == nil),
 	)
 
 	c.Status(http.StatusAccepted)
