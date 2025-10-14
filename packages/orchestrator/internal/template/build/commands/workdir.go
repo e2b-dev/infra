@@ -3,6 +3,8 @@ package commands
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -12,6 +14,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
+
+const defaultRelativeToAbsoluteWorkdir = "/"
 
 type Workdir struct{}
 
@@ -32,7 +36,11 @@ func (w *Workdir) Execute(
 		return metadata.Context{}, fmt.Errorf("WORKDIR requires a path argument")
 	}
 
-	workdirArg := args[0]
+	workDir := defaultRelativeToAbsoluteWorkdir
+	if cmdMetadata.WorkDir != nil {
+		workDir = *cmdMetadata.WorkDir
+	}
+	workdirArg := filepath.Join(workDir, args[0])
 
 	err := sandboxtools.RunCommandWithLogger(
 		ctx,
@@ -41,10 +49,25 @@ func (w *Workdir) Execute(
 		zapcore.InfoLevel,
 		prefix,
 		sandboxID,
-		fmt.Sprintf(`mkdir -p "%s"`, workdirArg),
+		// Use mkdir -p to create any missing parents
+		// Find the first existing parent and chown from there
+		// This ensures that if we have e.g. /home/user and we create /home/user/project/test
+		// we only chown /home/user/project (including /home/user/project/test) and not /home or /home/user
+		fmt.Sprintf(`
+        target="%s"
+        # Find the first non-existent parent
+        check="$target"
+        while [ ! -d "$check" ]; do
+            first_new="$check"
+            check=$(dirname "$check")
+        done
+        # Create and chown from the top
+        mkdir -p "$target" && chown -R %s:%s "$first_new"
+    `, workdirArg, cmdMetadata.User, cmdMetadata.User),
 		metadata.Context{
-			User:    cmdMetadata.User,
+			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,
+			// Workdir can't be set here to not error when current workdir is deleted
 		},
 	)
 	if err != nil {
@@ -60,19 +83,29 @@ func saveWorkdirMeta(
 	sandboxID string,
 	cmdMetadata metadata.Context,
 	workdir string,
-) (metadata.Context, error) {
+) (m metadata.Context, e error) {
+	var outputErr error
 	err := sandboxtools.RunCommandWithOutput(
 		ctx,
 		proxy,
 		sandboxID,
-		fmt.Sprintf(`printf "%s"`, workdir),
+		fmt.Sprintf(`cd "%s" && pwd`, workdir),
 		metadata.Context{
 			User: "root",
+			// Workdir can't be set here to not error when current workdir is deleted
 		},
-		func(stdout, _ string) {
-			workdir = stdout
+		func(stdout, stderr string) {
+			if stderr != "" {
+				outputErr = fmt.Errorf("error getting absolute path of workdir: %s", stderr)
+				return
+			}
+			workdir = strings.TrimSpace(stdout)
 		},
 	)
+	if outputErr != nil {
+		return metadata.Context{}, outputErr
+	}
+
 	if err != nil {
 		return metadata.Context{}, fmt.Errorf("failed to save workdir %s: %w", workdir, err)
 	}
