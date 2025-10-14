@@ -22,11 +22,12 @@ import (
 const (
 	jsSDKPrefix     = "e2b-js-sdk/"
 	pythonSDKPrefix = "e2b-python-sdk/"
+	testsUserAgent  = "e2b-tests/"
 )
 
 const (
-	buildSystem2Version         = "v2.0.0"
-	buildDefaultUserUserVersion = "v2.1.0"
+	buildSystem2Version = "v2.0.0"
+	buildLatestVersion  = "v2.1.0"
 )
 
 type dockerfileStore struct {
@@ -185,7 +186,7 @@ func templateUserAgentToVersion(userAgent string) (string, error) {
 			return "", fmt.Errorf("parsing JS SDK version: %w", err)
 		}
 		if ok {
-			version = buildDefaultUserUserVersion
+			version = buildLatestVersion
 		}
 	case strings.HasPrefix(userAgent, pythonSDKPrefix):
 		sdk := strings.TrimPrefix(userAgent, pythonSDKPrefix)
@@ -194,8 +195,10 @@ func templateUserAgentToVersion(userAgent string) (string, error) {
 			return "", fmt.Errorf("parsing Python SDK version: %w", err)
 		}
 		if ok {
-			version = buildDefaultUserUserVersion
+			version = buildLatestVersion
 		}
+	case strings.HasPrefix(userAgent, testsUserAgent):
+		version = buildLatestVersion
 	}
 
 	return version, nil
