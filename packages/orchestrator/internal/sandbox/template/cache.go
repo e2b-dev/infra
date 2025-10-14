@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -28,10 +29,6 @@ const (
 
 	buildCacheTTL           = time.Hour * 25
 	buildCacheDelayEviction = time.Second * 60
-
-	// buildCacheMaxUsedPercentage the maximum percentage of the cache disk storage
-	// that can be used before the cache starts evicting items.
-	buildCacheMaxUsedPercentage = 85.0
 )
 
 var (
@@ -57,6 +54,7 @@ type Cache struct {
 // as it may contain stale data that are not managed by anyone.
 func NewCache(
 	ctx context.Context,
+	config cfg.Config,
 	flags *featureflags.Client,
 	persistence storage.StorageProvider,
 	metrics blockmetrics.Metrics,
@@ -65,10 +63,10 @@ func NewCache(
 		ttlcache.WithTTL[string, Template](templateExpiration),
 	)
 
-	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, Template]) {
+	cache.OnEviction(func(_ context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[string, Template]) {
 		template := item.Value()
 
-		err := template.Close()
+		err := template.Close(ctx)
 		if err != nil {
 			zap.L().Warn("failed to cleanup template data", zap.String("item_key", item.Key()), zap.Error(err))
 		}
@@ -82,10 +80,11 @@ func NewCache(
 
 	buildStore, err := build.NewDiffStore(
 		ctx,
+		config,
+		flags,
 		build.DefaultCachePath(),
 		buildCacheTTL,
 		buildCacheDelayEviction,
-		buildCacheMaxUsedPercentage,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build store: %w", err)
@@ -158,14 +157,12 @@ func (c *Cache) AddSnapshot(
 ) error {
 	switch memfileDiff.(type) {
 	case *build.NoDiff:
-		break
 	default:
 		c.buildStore.Add(memfileDiff)
 	}
 
 	switch rootfsDiff.(type) {
 	case *build.NoDiff:
-		break
 	default:
 		c.buildStore.Add(rootfsDiff)
 	}

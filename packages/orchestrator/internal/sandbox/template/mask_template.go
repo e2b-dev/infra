@@ -1,6 +1,8 @@
 package template
 
 import (
+	"context"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -36,7 +38,7 @@ func NewMaskTemplate(
 	return t
 }
 
-func (c *MaskTemplate) Close() error {
+func (c *MaskTemplate) Close(context.Context) error {
 	if c.memfile != nil {
 		return (*c.memfile).Close()
 	}
@@ -48,11 +50,14 @@ func (c *MaskTemplate) Files() storage.TemplateCacheFiles {
 	return c.template.Files()
 }
 
-func (c *MaskTemplate) Memfile() (block.ReadonlyDevice, error) {
+func (c *MaskTemplate) Memfile(ctx context.Context) (block.ReadonlyDevice, error) {
+	ctx, span := tracer.Start(ctx, "mask-template-memfile")
+	defer span.End()
+
 	if c.memfile != nil {
 		return *c.memfile, nil
 	}
-	return c.template.Memfile()
+	return c.template.Memfile(ctx)
 }
 
 func (c *MaskTemplate) Rootfs() (block.ReadonlyDevice, error) {

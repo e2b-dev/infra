@@ -12,6 +12,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
@@ -67,7 +68,8 @@ elif [ -f "$entry" ]; then
 elif [ -d "$entry" ]; then
  # It's a directory – move all its contents into the destination folder
  mkdir -p "$targetPath"
- mv "$entry"/* "$targetPath/"
+ # Move all contents including hidden files
+ find "$entry" -mindepth 1 -maxdepth 1 -exec mv {} "$targetPath/" \;
 else
  echo "Error: entry is neither file nor directory"
  exit 1
@@ -90,7 +92,7 @@ func (c *Copy) Execute(
 	logger *zap.Logger,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
-	prefix string,
+	_ string,
 	step *templatemanager.TemplateStep,
 	cmdMetadata metadata.Context,
 ) (metadata.Context, error) {
@@ -141,7 +143,8 @@ func (c *Copy) Execute(
 		return metadata.Context{}, fmt.Errorf("failed to copy layer tar data to sandbox: %w", err)
 	}
 
-	sbxUnpackPath := filepath.Join("/tmp", step.GetFilesHash())
+	// Create nested unpack directory to allow multiple files in the root be correctly detected
+	sbxUnpackPath := filepath.Join("/tmp", step.GetFilesHash(), "unpack")
 
 	// 3) Extract the tar file in the sandbox's /tmp directory
 	err = sandboxtools.RunCommand(
@@ -169,9 +172,12 @@ func (c *Copy) Execute(
 		return metadata.Context{}, fmt.Errorf("failed to execute copy script template: %w", err)
 	}
 
-	err = sandboxtools.RunCommand(
+	err = sandboxtools.RunCommandWithLogger(
 		ctx,
 		proxy,
+		logger,
+		zapcore.DebugLevel,
+		"unpack",
 		sandboxID,
 		moveScript.String(),
 		cmdMetadata,

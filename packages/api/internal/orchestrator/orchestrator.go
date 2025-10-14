@@ -14,7 +14,6 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
-	"github.com/e2b-dev/infra/packages/api/internal/dns"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/evictor"
@@ -26,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -44,7 +44,7 @@ type Orchestrator struct {
 	featureFlagsClient      *featureflags.Client
 	analytics               *analyticscollector.Analytics
 	posthogClient           *analyticscollector.PosthogClient
-	dns                     *dns.DNS
+	routingCatalog          e2bcatalog.SandboxesCatalog
 	dbClient                *db.DB
 	sqlcDB                  *sqlcdb.Client
 	tel                     *telemetry.Client
@@ -77,13 +77,11 @@ func New(
 		return nil, err
 	}
 
-	dnsServer := dns.New(ctx, redisClient)
-
-	if env.IsLocal() {
-		zap.L().Info("Running locally, skipping starting DNS server")
+	var routingCatalog e2bcatalog.SandboxesCatalog
+	if redisClient != nil {
+		routingCatalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient)
 	} else {
-		zap.L().Info("Starting DNS server")
-		dnsServer.Start(ctx, "0.0.0.0", config.DNSPort)
+		routingCatalog = e2bcatalog.NewMemorySandboxesCatalog()
 	}
 
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
@@ -118,7 +116,7 @@ func New(
 		leastBusyAlgorithm: leastBusyAlgorithm,
 		bestOfKAlgorithm:   bestOfKAlgorithm,
 		featureFlagsClient: featureFlags,
-		dns:                dnsServer,
+		routingCatalog:     routingCatalog,
 		dbClient:           dbClient,
 		sqlcDB:             sqlcDB,
 		tel:                tel,
@@ -198,7 +196,7 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 			}
 
 			zap.L().Info("API internal status",
-				zap.Int("sandboxes_count", len(o.sandboxStore.Items(nil))),
+				zap.Int("sandboxes_count", len(o.sandboxStore.Items(nil, []sandbox.State{sandbox.StateRunning}))),
 				zap.Int("nodes_count", o.nodes.Count()),
 				zap.Any("nodes", connectedNodes),
 			)
@@ -232,12 +230,6 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 
 	if err := o.analytics.Close(); err != nil {
 		errs = append(errs, err)
-	}
-
-	if o.dns != nil {
-		if err := o.dns.Close(ctx); err != nil {
-			errs = append(errs, err)
-		}
 	}
 
 	return errors.Join(errs...)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -49,12 +50,7 @@ const (
 	version = "1.0.0"
 )
 
-var (
-	commitSHA string
-
-	useProxyCatalogResolution = os.Getenv("USE_CATALOG_RESOLUTION") == "true"
-	useDnsResolution          = os.Getenv("USE_DNS_RESOLUTION") != "false"
-)
+var commitSHA string
 
 func run() int {
 	ctx, ctxCancel := context.WithCancel(context.Background())
@@ -104,6 +100,11 @@ func run() int {
 	zap.ReplaceGlobals(logger)
 
 	proxyPort := internal.GetProxyServicePort()
+	if proxyPort <= 0 || proxyPort > int(math.MaxUint16) {
+		logger.Error("Proxy port is outside the valid uint16 range", zap.Int("value", proxyPort))
+		return 1
+	}
+
 	edgePort := internal.GetEdgeServicePort()
 	edgeSecret := internal.GetEdgeServiceSecret()
 	orchestratorPort := internal.GetOrchestratorServicePort()
@@ -150,12 +151,8 @@ func run() int {
 	// service starts in unhealthy state, and we are waiting for initial health check to pass
 	info.SetStatus(api.Unhealthy)
 
-	if !useProxyCatalogResolution {
-		logger.Warn("Skipping proxy catalog resolution, using just DNS resolution instead. This is not recommended for production use, as it may lead to issues with sandbox resolution.")
-	}
-
 	// Proxy sandbox http traffic to orchestrator nodes
-	trafficProxy, err := e2bproxy.NewClientProxy(tel.MeterProvider, serviceName, uint(proxyPort), catalog, useProxyCatalogResolution, useDnsResolution)
+	trafficProxy, err := e2bproxy.NewClientProxy(tel.MeterProvider, serviceName, uint16(proxyPort), catalog)
 	if err != nil {
 		logger.Error("Failed to create client proxy", zap.Error(err))
 		return 1

@@ -91,6 +91,10 @@ module "network" {
   cloudflare_api_token_secret_name = var.cloudflare_api_token_secret_name
 
   gcp_project_id = var.gcp_project_id
+  gcp_region     = var.gcp_region
+
+  api_use_nat = var.api_use_nat
+  api_nat_ips = var.api_nat_ips
 
   api_port                  = var.api_port
   docker_reverse_proxy_port = var.docker_reverse_proxy_port
@@ -106,9 +110,7 @@ module "network" {
   build_instance_group  = google_compute_instance_group_manager.build_pool.instance_group
   server_instance_group = google_compute_instance_group_manager.server_pool.instance_group
 
-  nomad_port             = var.nomad_port
-  logs_proxy_port        = var.logs_proxy_port
-  logs_health_proxy_port = var.logs_health_proxy_port
+  nomad_port = var.nomad_port
 
   cluster_tag_name = var.cluster_tag_name
 

@@ -20,8 +20,8 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/orchest
 // cacheSyncTime is the time to sync the cache with the actual instances in Orchestrator.
 const cacheSyncTime = 20 * time.Second
 
-func (o *Orchestrator) GetSandbox(sandboxID string, includeEvicting bool) (sandbox.Sandbox, error) {
-	return o.sandboxStore.Get(sandboxID, includeEvicting)
+func (o *Orchestrator) GetSandbox(sandboxID string) (sandbox.Sandbox, error) {
+	return o.sandboxStore.Get(sandboxID)
 }
 
 // keepInSync the cache with the actual instances in Orchestrator to handle instances that died.

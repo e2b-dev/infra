@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/caarlos0/env/v11"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
@@ -16,8 +17,21 @@ const (
 	ReusedSlotsPoolSize = 100
 )
 
+type Config struct {
+	// Using reserver IPv4 in range that is used for experiments and documentation
+	// https://en.wikipedia.org/wiki/Reserved_IP_addresses
+	HyperloopIPAddress       string `env:"SANDBOX_HYPERLOOP_IP"         envDefault:"192.0.2.1"`
+	HyperloopProxyPort       uint16 `env:"SANDBOX_HYPERLOOP_PROXY_PORT" envDefault:"5010"`
+	UseLocalNamespaceStorage bool   `env:"USE_LOCAL_NAMESPACE_STORAGE"`
+}
+
+func ParseConfig() (Config, error) {
+	return env.ParseAs[Config]()
+}
+
 type Pool struct {
-	ctx    context.Context //nolint:containedctx // todo: refactor so this can be removed
+	config Config
+
 	cancel context.CancelFunc
 
 	newSlots          chan *Slot
@@ -28,7 +42,7 @@ type Pool struct {
 	slotStorage Storage
 }
 
-func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string) (*Pool, error) {
+func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string, config Config) (*Pool, error) {
 	newSlots := make(chan *Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan *Slot, reusedSlotsPoolSize)
 
@@ -44,18 +58,18 @@ func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPo
 		return nil, fmt.Errorf("failed to create reused slot counter: %w", err)
 	}
 
-	slotStorage, err := NewStorage(vrtSlotsSize, nodeID)
+	slotStorage, err := NewStorage(vrtSlotsSize, nodeID, config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create slot storage: %w", err)
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	pool := &Pool{
+		config:            config,
 		newSlots:          newSlots,
 		reusedSlots:       reusedSlots,
 		newSlotCounter:    newSlotCounter,
 		reusedSlotCounter: reusedSlotsCounter,
-		ctx:               ctx,
 		cancel:            cancel,
 		slotStorage:       slotStorage,
 	}
@@ -72,10 +86,10 @@ func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPo
 	return pool, nil
 }
 
-func (p *Pool) createNetworkSlot() (*Slot, error) {
-	ips, err := p.slotStorage.Acquire(p.ctx)
+func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
+	ips, err := p.slotStorage.Acquire(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create network: %w", err)
+		return nil, fmt.Errorf("failed to acquire network slot: %w", err)
 	}
 
 	err = ips.CreateNetwork()
@@ -98,7 +112,7 @@ func (p *Pool) populate(ctx context.Context) error {
 			// Do not return an error here, this is expected on close
 			return nil
 		default:
-			slot, err := p.createNetworkSlot()
+			slot, err := p.createNetworkSlot(ctx)
 			if err != nil {
 				zap.L().Error("[network slot pool]: failed to create network", zap.Error(err))
 

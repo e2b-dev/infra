@@ -55,7 +55,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	}
 
 	sandboxID = utils.ShortID(sandboxID)
-	sandboxData, err := a.orchestrator.GetSandbox(sandboxID, true)
+	sandboxData, err := a.orchestrator.GetSandbox(sandboxID)
 	if err == nil {
 		switch sandboxData.State {
 		case sandbox.StatePausing:
@@ -123,7 +123,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	if snap.EnvSecure {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
 		if tokenErr != nil {
-			zap.L().Error("Secure envd access token error", zap.Error(tokenErr.Err), logger.WithTemplateID(build.EnvID), logger.WithBuildID(build.ID.String()))
+			zap.L().Error("Secure envd access token error", zap.Error(tokenErr.Err), logger.WithTemplateID(build.EnvID), logger.WithBuildID(build.ID.String()), logger.WithSandboxID(sandboxID))
 			a.sendAPIStoreError(c, tokenErr.Code, tokenErr.ClientMsg)
 			return
 		}
@@ -148,7 +148,6 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		envdAccessToken,
 		snap.AllowInternetAccess,
 	)
-
 	if createErr != nil {
 		zap.L().Error("Failed to resume sandbox", zap.Error(createErr.Err))
 		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)

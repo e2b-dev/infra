@@ -15,22 +15,22 @@ func NewMockPubSub[PayloadT, SubMetaDataT any]() *MockPubSub[PayloadT, SubMetaDa
 	}
 }
 
-func (m *MockPubSub[PayloadT, SubMetaDataT]) Publish(ctx context.Context, payload PayloadT) error {
+func (m *MockPubSub[PayloadT, SubMetaDataT]) Publish(context.Context, PayloadT) error {
 	// Mock implementation - does nothing
 	return nil
 }
 
-func (m *MockPubSub[PayloadT, SubMetaDataT]) Subscribe(ctx context.Context, pubSubQueue chan<- PayloadT) error {
+func (m *MockPubSub[PayloadT, SubMetaDataT]) Subscribe(context.Context, chan<- PayloadT) error {
 	// Mock implementation - does nothing
 	return nil
 }
 
-func (m *MockPubSub[PayloadT, SubMetaDataT]) ShouldPublish(ctx context.Context, key string) (bool, error) {
+func (m *MockPubSub[PayloadT, SubMetaDataT]) ShouldPublish(context.Context, string) (bool, error) {
 	// Mock implementation - returns the configured shouldPublish value
 	return m.shouldPublish, nil
 }
 
-func (m *MockPubSub[PayloadT, SubMetaDataT]) GetSubMetaData(ctx context.Context, key string) (SubMetaDataT, error) {
+func (m *MockPubSub[PayloadT, SubMetaDataT]) GetSubMetaData(_ context.Context, key string) (SubMetaDataT, error) {
 	var metadata SubMetaDataT
 	// Mock implementation - returns metadata if it exists
 	if meta, exists := m.metadata[key]; exists {
@@ -39,7 +39,7 @@ func (m *MockPubSub[PayloadT, SubMetaDataT]) GetSubMetaData(ctx context.Context,
 	return metadata, nil
 }
 
-func (m *MockPubSub[PayloadT, SubMetaDataT]) SetSubMetaData(ctx context.Context, key string, metaData SubMetaDataT) error {
+func (m *MockPubSub[PayloadT, SubMetaDataT]) SetSubMetaData(_ context.Context, key string, metaData SubMetaDataT) error {
 	// Mock implementation - stores metadata
 	if m.metadata == nil {
 		m.metadata = make(map[string]SubMetaDataT)
@@ -48,13 +48,13 @@ func (m *MockPubSub[PayloadT, SubMetaDataT]) SetSubMetaData(ctx context.Context,
 	return nil
 }
 
-func (m *MockPubSub[PayloadT, SubMetaDataT]) DeleteSubMetaData(ctx context.Context, key string) error {
+func (m *MockPubSub[PayloadT, SubMetaDataT]) DeleteSubMetaData(_ context.Context, key string) error {
 	// Mock implementation - deletes metadata
 	delete(m.metadata, key)
 	return nil
 }
 
-func (m *MockPubSub[PayloadT, SubMetaDataT]) Close(ctx context.Context) error {
+func (m *MockPubSub[PayloadT, SubMetaDataT]) Close(context.Context) error {
 	// Mock implementation - does nothing
 	return nil
 }

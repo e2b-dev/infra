@@ -24,7 +24,7 @@ func GetAPIClient() *api.ClientWithResponses {
 }
 
 func WithAPIKey(apiKey ...string) func(ctx context.Context, req *http.Request) error {
-	return func(ctx context.Context, req *http.Request) error {
+	return func(_ context.Context, req *http.Request) error {
 		apiKey_ := APIKey
 		if len(apiKey) > 0 {
 			apiKey_ = apiKey[0]
@@ -36,7 +36,7 @@ func WithAPIKey(apiKey ...string) func(ctx context.Context, req *http.Request) e
 }
 
 func WithAccessToken() func(ctx context.Context, req *http.Request) error {
-	return func(ctx context.Context, req *http.Request) error {
+	return func(_ context.Context, req *http.Request) error {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", AccessToken))
 
 		return nil
@@ -57,7 +57,7 @@ func WithSupabaseToken(t *testing.T, userID ...string) func(ctx context.Context,
 
 	token := tests.SignTestToken(t, SupabaseJWTSecret, userID_)
 
-	return func(ctx context.Context, req *http.Request) error {
+	return func(_ context.Context, req *http.Request) error {
 		req.Header.Set("X-Supabase-Token", token)
 
 		return nil
@@ -75,7 +75,7 @@ func WithSupabaseTeam(t *testing.T, teamID ...string) func(ctx context.Context, 
 		t.Skip("Supabase team ID is not set")
 	}
 
-	return func(ctx context.Context, req *http.Request) error {
+	return func(_ context.Context, req *http.Request) error {
 		req.Header.Set("X-Supabase-Team", teamID_)
 
 		return nil

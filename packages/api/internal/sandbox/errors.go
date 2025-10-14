@@ -1,9 +1,14 @@
 package sandbox
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+)
 
 type AlreadyBeingStartedError struct {
-	SandboxID string
+	SandboxID   string
+	StartResult *utils.SetOnce[Sandbox]
 }
 
 func (e *AlreadyBeingStartedError) Error() string {

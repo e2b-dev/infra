@@ -42,7 +42,7 @@ func (m *NoopMemory) Dirty(context.Context) (*bitset.BitSet, error) {
 	return m.dirty, nil
 }
 
-func (m *NoopMemory) Start(ctx context.Context, sandboxId string) error {
+func (m *NoopMemory) Start(context.Context, string) error {
 	return nil
 }
 
