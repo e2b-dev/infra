@@ -34,6 +34,7 @@ func New(
 	index cache.Index,
 	metrics *metrics.BuildMetrics,
 	user string,
+	force *bool,
 ) *UserBuilder {
 	return &UserBuilder{
 		StepBuilder: steps.New(
@@ -46,8 +47,9 @@ func New(
 			index,
 			metrics,
 			&template_manager.TemplateStep{
-				Type: "USER",
-				Args: []string{user},
+				Type:  "USER",
+				Args:  []string{user, "true"},
+				Force: force,
 			},
 			// This step number shouldn't be used, but in case it does, defining as 1
 			1,

@@ -244,6 +244,7 @@ func runBuild(
 		index,
 		builder.metrics,
 		config.TemplateDefaultUser,
+		bc.Config.Force,
 	)
 
 	stepBuilders := steps.CreateStepPhases(

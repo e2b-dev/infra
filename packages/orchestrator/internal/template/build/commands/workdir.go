@@ -40,7 +40,11 @@ func (w *Workdir) Execute(
 	if cmdMetadata.WorkDir != nil {
 		workDir = *cmdMetadata.WorkDir
 	}
-	workdirArg := filepath.Join(workDir, args[0])
+
+	workdirArg := args[0]
+	if !filepath.IsAbs(workdirArg) {
+		workdirArg = filepath.Join(workDir, workdirArg)
+	}
 
 	err := sandboxtools.RunCommandWithLogger(
 		ctx,
@@ -54,15 +58,25 @@ func (w *Workdir) Execute(
 		// This ensures that if we have e.g. /home/user and we create /home/user/project/test
 		// we only chown /home/user/project (including /home/user/project/test) and not /home or /home/user
 		fmt.Sprintf(`
-        target="%s"
-        # Find the first non-existent parent
-        check="$target"
-        while [ ! -d "$check" ]; do
-            first_new="$check"
-            check=$(dirname "$check")
-        done
-        # Create and chown from the top
-        mkdir -p "$target" && chown -R %s:%s "$first_new"
+			target="%s"
+
+			# Exit early if target already exists
+			if [ -d "$target" ]; then
+			    exit 0
+			fi
+
+			# Find the first non-existent parent
+			first_new=""
+			check="$target"
+			while [ ! -d "$check" ]; do
+			    first_new="$check"
+			    check=$(dirname "$check")
+			done
+
+			# Create and chown from the top (only if we found new directories to create)
+			if [ -n "$first_new" ]; then
+			    mkdir -p "$target" && chown -R %s:%s "$first_new"
+			fi
     `, workdirArg, cmdMetadata.User, cmdMetadata.User),
 		metadata.Context{
 			User:    "root",

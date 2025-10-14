@@ -27,7 +27,7 @@ func (u *User) Execute(
 	cmdMetadata metadata.Context,
 ) (metadata.Context, error) {
 	args := step.GetArgs()
-	// args: [username]
+	// args: [username, optional_add_to_sudo]
 	if len(args) < 1 {
 		return metadata.Context{}, fmt.Errorf("USER requires a username argument")
 	}
@@ -51,7 +51,81 @@ func (u *User) Execute(
 		return metadata.Context{}, fmt.Errorf("failed to create user: %w", err)
 	}
 
+	if len(args) > 1 && args[1] == "true" {
+		cmdMetadata, err = addToSudoers(ctx, logger, proxy, sandboxID, prefix, zapcore.DebugLevel, cmdMetadata, userArg)
+		if err != nil {
+			return metadata.Context{}, err
+		}
+	}
+
 	return saveUserMeta(ctx, proxy, sandboxID, cmdMetadata, userArg)
+}
+
+func addToSudoers(
+	ctx context.Context,
+	logger *zap.Logger,
+	proxy *proxy.SandboxProxy,
+	sandboxID string,
+	prefix string,
+	lvl zapcore.Level,
+	cmdMetadata metadata.Context,
+	userArg string,
+) (metadata.Context, error) {
+	// Add user to sudo group
+	err := sandboxtools.RunCommandWithLogger(
+		ctx,
+		proxy,
+		logger,
+		lvl,
+		prefix,
+		sandboxID,
+		fmt.Sprintf("usermod -aG sudo %s", userArg),
+		metadata.Context{
+			User:    "root",
+			EnvVars: cmdMetadata.EnvVars,
+		},
+	)
+	if err != nil {
+		return metadata.Context{}, fmt.Errorf("failed to add user to sudo group: %w", err)
+	}
+
+	// Remove password
+	err = sandboxtools.RunCommandWithLogger(
+		ctx,
+		proxy,
+		logger,
+		lvl,
+		prefix,
+		sandboxID,
+		fmt.Sprintf("passwd -d %s", userArg),
+		metadata.Context{
+			User:    "root",
+			EnvVars: cmdMetadata.EnvVars,
+		},
+	)
+	if err != nil {
+		return metadata.Context{}, fmt.Errorf("failed to remove user password: %w", err)
+	}
+
+	// Add to sudoers if not already present
+	err = sandboxtools.RunCommandWithLogger(
+		ctx,
+		proxy,
+		logger,
+		lvl,
+		prefix,
+		sandboxID,
+		fmt.Sprintf("grep -q '^%s ALL=(ALL:ALL) NOPASSWD: ALL' /etc/sudoers || echo '%s ALL=(ALL:ALL) NOPASSWD: ALL' >>/etc/sudoers", userArg, userArg),
+		metadata.Context{
+			User:    "root",
+			EnvVars: cmdMetadata.EnvVars,
+		},
+	)
+	if err != nil {
+		return metadata.Context{}, fmt.Errorf("failed to configure sudoers: %w", err)
+	}
+
+	return cmdMetadata, nil
 }
 
 func saveUserMeta(
