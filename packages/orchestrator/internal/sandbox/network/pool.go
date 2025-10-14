@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/caarlos0/env/v11"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
@@ -16,18 +15,6 @@ const (
 	NewSlotsPoolSize    = 32
 	ReusedSlotsPoolSize = 100
 )
-
-type Config struct {
-	// Using reserver IPv4 in range that is used for experiments and documentation
-	// https://en.wikipedia.org/wiki/Reserved_IP_addresses
-	HyperloopIPAddress       string `env:"SANDBOX_HYPERLOOP_IP"         envDefault:"192.0.2.1"`
-	HyperloopProxyPort       uint16 `env:"SANDBOX_HYPERLOOP_PROXY_PORT" envDefault:"5010"`
-	UseLocalNamespaceStorage bool   `env:"USE_LOCAL_NAMESPACE_STORAGE"`
-}
-
-func ParseConfig() (Config, error) {
-	return env.ParseAs[Config]()
-}
 
 type Pool struct {
 	config Config
@@ -58,6 +45,7 @@ func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPo
 		return nil, fmt.Errorf("failed to create reused slot counter: %w", err)
 	}
 
+	vrtSlotsSize := config.GetVirtualSlotsSize()
 	slotStorage, err := NewStorage(vrtSlotsSize, nodeID, config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create slot storage: %w", err)

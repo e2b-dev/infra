@@ -3,7 +3,6 @@ package network
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"path/filepath"
 	"strconv"
@@ -14,16 +13,11 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	netutils "k8s.io/utils/net"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network")
 
 const (
-	defaultHostNetworkCIDR = "10.11.0.0/16"
-	defaultVrtNetworkCIDR  = "10.12.0.0/16"
-
 	hostMask          = 32
 	vrtMask           = 31                  // 2 usable ips per block (vpeer and veth)
 	vrtAddressPerSlot = 1 << (32 - vrtMask) // vrt addresses per slot (vpeer and veth)
@@ -32,12 +26,6 @@ const (
 	tapInterfaceName = "tap0"
 	tapIp            = "169.254.0.22"
 	tapMAC           = "02:FC:00:00:00:05"
-)
-
-var (
-	hostNetworkCIDR = getHostNetworkCIDR()
-	vrtNetworkCIDR  = getVrtNetworkCIDR()
-	vrtSlotsSize    = GetVrtSlotsSize()
 )
 
 // Slot network allocation
@@ -80,9 +68,11 @@ type Slot struct {
 }
 
 func NewSlot(name string, idx int, config Config) (*Slot, error) {
-	if idx < 1 || idx > vrtSlotsSize {
+	if vrtSlotsSize := config.GetVirtualSlotsSize(); idx < 1 || idx > vrtSlotsSize {
 		return nil, fmt.Errorf("slot index %d is out of range [1, %d)", idx, vrtSlotsSize)
 	}
+
+	vrtNetworkCIDR := config.SandboxesVirtualNetworkCIDR
 
 	vEthIp, err := netutils.GetIndexedIP(vrtNetworkCIDR, idx*vrtAddressPerSlot)
 	if err != nil {
@@ -100,7 +90,7 @@ func NewSlot(name string, idx int, config Config) (*Slot, error) {
 		return nil, fmt.Errorf("failed to parse vrt CIDR: %w", err)
 	}
 
-	hostIp, err := netutils.GetIndexedIP(hostNetworkCIDR, idx)
+	hostIp, err := netutils.GetIndexedIP(config.SandboxesHostNetworkCIDR, idx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get host IP: %w", err)
 	}
@@ -311,43 +301,4 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func getHostNetworkCIDR() *net.IPNet {
-	cidr := env.GetEnv("SANDBOXES_HOST_NETWORK_CIDR", defaultHostNetworkCIDR)
-
-	_, subnet, err := net.ParseCIDR(cidr)
-	if err != nil {
-		log.Fatalf("Failed to parse network CIDR %s: %v", cidr, err)
-	}
-
-	log.Println("Using host network cidr", "cidr", cidr)
-	return subnet
-}
-
-func getVrtNetworkCIDR() *net.IPNet {
-	cidr := env.GetEnv("SANDBOXES_VRT_NETWORK_CIDR", defaultVrtNetworkCIDR)
-
-	_, subnet, err := net.ParseCIDR(cidr)
-	if err != nil {
-		log.Fatalf("Failed to parse network CIDR %s: %v", cidr, err)
-	}
-
-	log.Printf("Using vrt network cidr %s", cidr)
-	return subnet
-}
-
-func GetVrtSlotsSize() int {
-	ones, _ := getVrtNetworkCIDR().Mask.Size()
-
-	// total IPs in the CIDR block
-	totalIPs := 1 << (32 - ones)
-
-	// total slots that we can allocate
-	// we need to divide total IPs by number of addresses per slot (vpeer and veth)
-	// then we subtract the number of addresses so it will not overflow, because we are adding them incrementally by slot index
-	totalSlots := (totalIPs / vrtAddressPerSlot) - vrtAddressPerSlot
-
-	log.Printf("Using network slot size: %d", totalSlots)
-	return totalSlots
 }

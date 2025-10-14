@@ -1,6 +1,9 @@
 package cfg
 
 import (
+	"net"
+	"reflect"
+
 	"github.com/caarlos0/env/v11"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
@@ -23,7 +26,9 @@ type Config struct {
 }
 
 func Parse() (Config, error) {
-	var model Config
-	err := env.Parse(&model)
-	return model, err
+	return env.ParseAsWithOptions[Config](env.Options{
+		FuncMap: map[reflect.Type]env.ParserFunc{
+			reflect.TypeOf(net.IPNet{}): network.ParseIPNet,
+		},
+	})
 }
