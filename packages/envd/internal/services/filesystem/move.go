@@ -12,18 +12,18 @@ import (
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
 )
 
-func (Service) Move(ctx context.Context, req *connect.Request[rpc.MoveRequest]) (*connect.Response[rpc.MoveResponse], error) {
-	u, err := permissions.GetAuthUser(ctx)
+func (s Service) Move(ctx context.Context, req *connect.Request[rpc.MoveRequest]) (*connect.Response[rpc.MoveResponse], error) {
+	u, err := permissions.GetAuthUser(ctx, s.defaults.User)
 	if err != nil {
 		return nil, err
 	}
 
-	source, err := permissions.ExpandAndResolve(req.Msg.GetSource(), u)
+	source, err := permissions.ExpandAndResolve(req.Msg.GetSource(), u, s.defaults.Workdir)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	destination, err := permissions.ExpandAndResolve(req.Msg.GetDestination(), u)
+	destination, err := permissions.ExpandAndResolve(req.Msg.GetDestination(), u, s.defaults.Workdir)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}

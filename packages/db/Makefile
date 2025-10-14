@@ -2,6 +2,8 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
 goose := GOOSE_DBSTRING=$(POSTGRES_CONNECTION_STRING) go tool goose -table "_migrations" -dir "migrations" postgres
+goose-local := GOOSE_DBSTRING=postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable go tool goose -table "_migrations" -dir "migrations" postgres
+
 IMAGE := e2b-orchestration/db-migrator
 
 .PHONY: migrate
@@ -9,6 +11,11 @@ migrate:
 	@echo "Applying Postgres migration *$(notdir $@)* for ${ENV}"
 	@$(goose) up
 	@echo "Done"
+migrate-local:
+	@echo "Applying Postgres migration *$(notdir $@)* for ${ENV}"
+	@$(goose-local) up
+	@echo "Done"
+
 migrate/up: migrate
 migrate/down:
 	@echo "Reverting Postgres migration *$(notdir $@)* for ${ENV}"

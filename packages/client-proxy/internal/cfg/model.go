@@ -13,8 +13,6 @@ type Config struct {
 	SkipInitialOrchestratorReadinessCheck bool                   `env:"SKIP_INITIAL_ORCHESTRATOR_READINESS_CHECK"`
 	EdgeServiceDiscovery                  ServiceDiscoveryConfig `envPrefix:"SD_EDGE_"`
 	OrchestratorServiceDiscovery          ServiceDiscoveryConfig `envPrefix:"SD_ORCHESTRATOR_"`
-	UseProxyCatalogResolution             bool                   `env:"USE_CATALOG_RESOLUTION"`
-	UseDNSResolution                      bool                   `env:"USE_DNS_RESOLUTION"                        envDefault:"true"`
 	RedisClusterURL                       string                 `env:"REDIS_CLUSTER_URL"`
 	RedisURL                              string                 `env:"REDIS_URL"`
 }

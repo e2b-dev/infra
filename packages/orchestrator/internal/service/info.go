@@ -24,9 +24,9 @@ type ServiceInfo struct {
 	statusMu sync.RWMutex
 }
 
-var serviceRolesMapper = map[ServiceType]orchestratorinfo.ServiceInfoRole{
-	Orchestrator:    orchestratorinfo.ServiceInfoRole_Orchestrator,
-	TemplateManager: orchestratorinfo.ServiceInfoRole_TemplateBuilder,
+var serviceRolesMapper = map[cfg.ServiceType]orchestratorinfo.ServiceInfoRole{
+	cfg.Orchestrator:    orchestratorinfo.ServiceInfoRole_Orchestrator,
+	cfg.TemplateManager: orchestratorinfo.ServiceInfoRole_TemplateBuilder,
 }
 
 func (s *ServiceInfo) GetStatus() orchestratorinfo.ServiceInfoStatus {
@@ -47,7 +47,7 @@ func (s *ServiceInfo) SetStatus(status orchestratorinfo.ServiceInfoStatus) {
 }
 
 func NewInfoContainer(clientId string, version string, commit string, instanceID string, config cfg.Config) *ServiceInfo {
-	services := GetServices(config)
+	services := cfg.GetServices(config)
 	serviceRoles := make([]orchestratorinfo.ServiceInfoRole, 0)
 
 	for _, service := range services {

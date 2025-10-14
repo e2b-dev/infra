@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
@@ -27,8 +28,8 @@ import (
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 )
 
 const (
@@ -86,7 +87,7 @@ func buildTemplate(
 
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.
-	sandboxes := smap.New[*sandbox.Sandbox]()
+	sandboxes := sandbox.NewSandboxesMap()
 
 	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes)
 	if err != nil {
@@ -163,7 +164,12 @@ func buildTemplate(
 		return fmt.Errorf("failed to create feature flags client: %w", err)
 	}
 
-	templateCache, err := sbxtemplate.NewCache(ctx, featureFlags, persistenceTemplate, blockMetrics)
+	c, err := cfg.Parse()
+	if err != nil {
+		return fmt.Errorf("error parsing config: %w", err)
+	}
+
+	templateCache, err := sbxtemplate.NewCache(ctx, c, featureFlags, persistenceTemplate, blockMetrics)
 	if err != nil {
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}
@@ -194,6 +200,7 @@ func buildTemplate(
 
 	force := true
 	template := config.TemplateConfig{
+		Version:    templates.TemplateV2LatestVersion,
 		TeamID:     "",
 		TemplateID: templateID,
 		FromImage:  baseImage,

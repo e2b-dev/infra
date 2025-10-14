@@ -38,10 +38,19 @@ run:
 	SD_ORCHESTRATOR_PROVIDER=STATIC \
 	SD_ORCHESTRATOR_STATIC=127.0.0.1 \
 	SKIP_ORCHESTRATOR_READINESS_CHECK=true \
-	USE_CATALOG_RESOLUTION=true \
-	USE_DNS_RESOLUTION=false \
 	LOKI_URL=unset \
 	./bin/client-proxy
+
+define setup_local_env
+	$(eval include .env.local)
+	$(eval export $(shell sed 's/=.*//' .env.local))
+endef
+
+.PHONY: run-local
+run-local:
+	make build-debug
+	$(call setup_local_env)
+	NODE_ID=$$(hostname) ./bin/client-proxy
 
 .PHONY: generate
 generate:

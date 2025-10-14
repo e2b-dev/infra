@@ -151,18 +151,12 @@ func run() int {
 	// service starts in unhealthy state, and we are waiting for initial health check to pass
 	info.SetStatus(api.Unhealthy)
 
-	if !config.UseProxyCatalogResolution {
-		logger.Warn("Skipping proxy catalog resolution, using just DNS resolution instead. This is not recommended for production use, as it may lead to issues with sandbox resolution.")
-	}
-
 	// Proxy sandbox http traffic to orchestrator nodes
 	trafficProxy, err := e2bproxy.NewClientProxy(
 		tel.MeterProvider,
 		serviceName,
 		config.ProxyPort,
 		catalog,
-		config.UseProxyCatalogResolution,
-		config.UseDNSResolution,
 	)
 	if err != nil {
 		logger.Error("Failed to create client proxy", zap.Error(err))

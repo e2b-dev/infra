@@ -54,7 +54,7 @@ func TestReservation_Release(t *testing.T) {
 
 	release, err := cache.Reserve(sandboxID, teamID, 1)
 	require.NoError(t, err)
-	release()
+	release(sandbox.Sandbox{}, nil)
 
 	_, err = cache.Reserve(sandboxID, teamID, 1)
 	assert.NoError(t, err)
