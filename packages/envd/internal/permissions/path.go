@@ -7,6 +7,8 @@ import (
 	"os/user"
 	"path/filepath"
 	"slices"
+
+	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 )
 
 func expand(path, homedir string) (string, error) {
@@ -25,7 +27,9 @@ func expand(path, homedir string) (string, error) {
 	return filepath.Join(homedir, path[1:]), nil
 }
 
-func ExpandAndResolve(path string, user *user.User) (string, error) {
+func ExpandAndResolve(path string, user *user.User, defaultPath *string) (string, error) {
+	path = execcontext.ResolveDefaultWorkdir(path, defaultPath)
+
 	path, err := expand(path, user.HomeDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to expand path '%s' for user '%s': %w", path, user.Username, err)
