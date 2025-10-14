@@ -9,6 +9,6 @@ const (
 )
 
 const (
-	SDKDefaultUserVersion      = "2.3.0"
+	SDKTemplateReleaseVersion  = "2.3.0"
 	TemplateDefaultUserVersion = "v2.1.0"
 )

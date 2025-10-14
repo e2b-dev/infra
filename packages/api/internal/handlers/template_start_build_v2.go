@@ -10,10 +10,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/posthog/posthog-go"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
@@ -125,7 +127,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
-	version, err := userAgentToTemplateVersion(c.Request.UserAgent())
+	version, err := userAgentToTemplateVersion(zap.L().With(logger.WithTemplateID(templateID), logger.WithBuildID(buildID)), c.Request.UserAgent())
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing user agent: %s", err))
 		telemetry.ReportCriticalError(ctx, "error when parsing user agent", err, telemetry.WithTemplateID(templateID))
@@ -133,7 +135,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	}
 
 	// Call the Template Manager to build the environment
-	buildErr := a.templateManager.CreateTemplate(
+	err = a.templateManager.CreateTemplate(
 		ctx,
 		team.ID,
 		templateID,
@@ -159,25 +161,29 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		Set("environment", templateID).
 		Set("build_id", buildID).
 		Set("duration", time.Since(startTime).String()).
-		Set("success", buildErr == nil),
+		Set("success", err == nil),
 	)
 
-	if buildErr != nil {
-		telemetry.ReportCriticalError(ctx, "build failed", buildErr, telemetry.WithTemplateID(templateID))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when starting template build: %s", buildErr))
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "build failed", err, telemetry.WithTemplateID(templateID))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when starting template build: %s", err))
 		return
 	}
 
 	c.Status(http.StatusAccepted)
 }
 
-func userAgentToTemplateVersion(userAgent string) (string, error) {
+// userAgentToTemplateVersion returns the template semver version based on the user agent string.
+// If the user agent is not recognized, it defaults to the latest stable version.
+func userAgentToTemplateVersion(logger *zap.Logger, userAgent string) (string, error) {
 	version := templates.TemplateV2LatestVersion
 
 	switch {
 	case strings.HasPrefix(userAgent, jsSDKPrefix):
 		sdk := strings.TrimPrefix(userAgent, jsSDKPrefix)
-		ok, err := utils.IsGTEVersion(sdk, templates.SDKDefaultUserVersion)
+
+		// Check if the SDK version supports the latest template version
+		ok, err := utils.IsGTEVersion(sdk, templates.SDKTemplateReleaseVersion)
 		if err != nil {
 			return "", fmt.Errorf("parsing JS SDK version: %w", err)
 		}
@@ -186,13 +192,17 @@ func userAgentToTemplateVersion(userAgent string) (string, error) {
 		}
 	case strings.HasPrefix(userAgent, pythonSDKPrefix):
 		sdk := strings.TrimPrefix(userAgent, pythonSDKPrefix)
-		ok, err := utils.IsGTEVersion(sdk, templates.SDKDefaultUserVersion)
+
+		// Check if the SDK version supports the latest template version
+		ok, err := utils.IsGTEVersion(sdk, templates.SDKTemplateReleaseVersion)
 		if err != nil {
 			return "", fmt.Errorf("parsing Python SDK version: %w", err)
 		}
 		if !ok {
 			version = templates.TemplateV2BetaVersion
 		}
+	default:
+		logger.Debug("Unrecognized user agent, defaulting to the latest template version", zap.String("user_agent", userAgent), zap.String("version", version))
 	}
 
 	return version, nil
