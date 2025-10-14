@@ -418,13 +418,6 @@ func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
 
 	// Start backend after a delay (simulating envd port forwarding)
 	go func() {
-		defer func() {
-			// Ensure channel is always closed to prevent test hangs
-			if len(backendReady) == 0 {
-				backendReady <- backendResult{nil, errors.New("goroutine exited without sending result")}
-			}
-		}()
-
 		// Wait 300ms before starting the backend (should succeed on retry 2 or 3)
 		time.Sleep(300 * time.Millisecond)
 
