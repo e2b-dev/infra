@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"sync/atomic"
 	"syscall"
 	"testing"
 
@@ -17,7 +16,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func TestUffdMissing(t *testing.T) {
@@ -349,9 +347,21 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 }
 
 func configureTest(t *testing.T, tt testConfig) (*testHandler, *testutils.ContiguousMap, *memory.Tracker, chan struct{}, *fdexit.FdExit) {
-	data, size := testutils.RandomPages(tt.pagesize, tt.numberOfPages)
+	data := testutils.RandomPages(tt.pagesize, tt.numberOfPages)
 
-	uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
+	size, err := data.Size()
+	require.NoError(t, err)
+
+	memoryArea, memoryStart, unmap, err := testutils.NewPageMmap(uint64(size), tt.pagesize)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		unmap()
+	})
+
+	m := testutils.NewContiguousMap(memoryStart, uint64(size), tt.pagesize)
+
+	uffd, err := newUserfaultfd(syscall.O_CLOEXEC|syscall.O_NONBLOCK, data, m, logger)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -361,17 +371,8 @@ func configureTest(t *testing.T, tt testConfig) (*testHandler, *testutils.Contig
 	err = uffd.configureApi(tt.pagesize)
 	require.NoError(t, err)
 
-	memoryArea, memoryStart, unmap, err := testutils.NewPageMmap(size, tt.pagesize)
+	err = uffd.Register(memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
 	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		unmap()
-	})
-
-	err = uffd.Register(memoryStart, size, UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
-	require.NoError(t, err)
-
-	m := testutils.NewContiguousMap(memoryStart, size, tt.pagesize)
 
 	fdExit, err := fdexit.New()
 	require.NoError(t, err)
@@ -385,14 +386,8 @@ func configureTest(t *testing.T, tt testConfig) (*testHandler, *testutils.Contig
 
 	dirty := memory.NewTracker(int64(size), int64(tt.pagesize))
 
-	writeRequestCounter := utils.WaitCounter{}
-	missingMap := NewOffsetMap()
-	writeMap := NewOffsetMap()
-	wpMap := NewOffsetMap()
-	disabled := atomic.Bool{}
-
 	go func() {
-		err := uffd.Serve(t.Context(), m, data, dirty, &writeRequestCounter, missingMap, writeMap, wpMap, fdExit, &disabled, logger)
+		err := uffd.Serve(t.Context(), fdExit)
 		assert.NoError(t, err)
 
 		exitUffd <- struct{}{}

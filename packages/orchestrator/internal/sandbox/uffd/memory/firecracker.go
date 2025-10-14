@@ -15,6 +15,17 @@ func (m MemfileMap) GetOffset(hostVirtAddr uintptr) (int64, uint64, error) {
 	return 0, 0, fmt.Errorf("address %d not found in any mapping", hostVirtAddr)
 }
 
+// GetHostVirtAddr returns the host virtual address for a given offset
+func (m MemfileMap) GetHostVirtAddr(offset int64) (int64, uint64, error) {
+	for _, m := range m {
+		if offset >= int64(m.Offset) && offset < int64(m.Offset+m.Size) {
+			return int64(m.BaseHostVirtAddr) + offset, uint64(m.PageSize), nil
+		}
+	}
+
+	return 0, 0, fmt.Errorf("offset %d not found in any mapping", offset)
+}
+
 type GuestRegionUffdMapping struct {
 	BaseHostVirtAddr uintptr `json:"base_host_virt_addr"`
 	Size             uintptr `json:"size"`

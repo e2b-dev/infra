@@ -27,15 +27,15 @@ const (
 	UFFD_EVENT_PAGEFAULT = C.UFFD_EVENT_PAGEFAULT
 
 	UFFDIO_REGISTER_MODE_MISSING = C.UFFDIO_REGISTER_MODE_MISSING
+	UFFDIO_REGISTER_MODE_WP      = C.UFFDIO_REGISTER_MODE_WP
 
-	UFFDIO_API      = C.UFFDIO_API
-	UFFDIO_REGISTER = C.UFFDIO_REGISTER
-	UFFDIO_COPY     = C.UFFDIO_COPY
+	UFFDIO_WRITEPROTECT_MODE_WP = C.UFFDIO_WRITEPROTECT_MODE_WP
+	UFFDIO_COPY_MODE_WP         = C.UFFDIO_COPY_MODE_WP
 
 	UFFDIO_API          = C.UFFDIO_API
 	UFFDIO_REGISTER     = C.UFFDIO_REGISTER
-	UFFDIO_WRITEPROTECT = C.UFFDIO_WRITEPROTECT
 	UFFDIO_COPY         = C.UFFDIO_COPY
+	UFFDIO_WRITEPROTECT = C.UFFDIO_WRITEPROTECT
 
 	UFFD_PAGEFAULT_FLAG_WP    = C.UFFD_PAGEFAULT_FLAG_WP
 	UFFD_PAGEFAULT_FLAG_WRITE = C.UFFD_PAGEFAULT_FLAG_WRITE
@@ -51,10 +51,11 @@ type (
 	UffdMsg       = C.struct_uffd_msg
 	UffdPagefault = C.struct_uffd_pagefault
 
-	UffdioAPI      = C.struct_uffdio_api
-	UffdioRegister = C.struct_uffdio_register
-	UffdioRange    = C.struct_uffdio_range
-	UffdioCopy     = C.struct_uffdio_copy
+	UffdioAPI          = C.struct_uffdio_api
+	UffdioRegister     = C.struct_uffdio_register
+	UffdioRange        = C.struct_uffdio_range
+	UffdioCopy         = C.struct_uffdio_copy
+	UffdioWriteProtect = C.struct_uffdio_writeprotect
 )
 
 func NewUffdioAPI(api, features CULong) UffdioAPI {
@@ -81,6 +82,16 @@ func NewUffdioCopy(b []byte, address CULong, pagesize CULong, mode CULong, bytes
 		len:  pagesize,
 		mode: mode,
 		copy: bytesCopied,
+	}
+}
+
+func NewUffdioWriteProtect(start, length, mode CULong) UffdioWriteProtect {
+	return UffdioWriteProtect{
+		_range: UffdioRange{
+			start: start,
+			len:   length,
+		},
+		mode: mode,
 	}
 }
 

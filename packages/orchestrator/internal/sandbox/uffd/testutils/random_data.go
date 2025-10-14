@@ -4,8 +4,8 @@ import (
 	"crypto/rand"
 )
 
-func RandomPages(pagesize, numberOfPages uint64) (data *contentSlicer, size uint64) {
-	size = pagesize * numberOfPages
+func RandomPages(pagesize, numberOfPages uint64) *contentSlicer {
+	size := pagesize * numberOfPages
 
 	n := int(size)
 	buf := make([]byte, n)
@@ -13,9 +13,7 @@ func RandomPages(pagesize, numberOfPages uint64) (data *contentSlicer, size uint
 		panic(err)
 	}
 
-	data = newContentSlicer(buf)
-
-	return data, size
+	return newContentSlicer(buf, int64(pagesize))
 }
 
 // DiffByte returns the first byte index where a and b differ.

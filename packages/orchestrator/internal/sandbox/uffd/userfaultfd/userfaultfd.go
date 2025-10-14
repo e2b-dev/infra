@@ -1,40 +1,102 @@
 package userfaultfd
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 
+	"github.com/bits-and-blooms/bitset"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
-type userfaultfd struct {
+type slicerWithSize interface {
+	block.Slicer
+	Size() (int64, error)
+	BlockSize() int64
+}
+
+type Userfaultfd struct {
 	fd uintptr
+
+	src      block.Slicer
+	ma       memory.MemoryMap
+	dirty    *memory.Tracker
+	disabled atomic.Bool
+
+	// The maps prevent serving pages multiple times (as we now add WP only once we don't have to remove entries from any map.)
+	// For normal sized pages with swap on, the behavior seems not to be properly described in docs
+	// and it's not clear if the missing can be legitimately triggered multiple times.
+	missingMap *OffsetMap
+	writeMap   *OffsetMap
+	wpMap      *OffsetMap
+
+	writeRequestCounter utils.WaitCounter
+	wg                  errgroup.Group
+
+	logger *zap.Logger
 }
 
 // flags: syscall.O_CLOEXEC|syscall.O_NONBLOCK
-func newUserfaultfd(flags uintptr) (*userfaultfd, error) {
+func newUserfaultfd(flags uintptr, src slicerWithSize, m memory.MemoryMap, logger *zap.Logger) (*Userfaultfd, error) {
 	uffd, _, errno := syscall.Syscall(NR_userfaultfd, flags, 0, 0)
 	if errno != 0 {
 		return nil, fmt.Errorf("userfaultfd syscall failed: %w", errno)
 	}
 
-	return NewUserfaultfdFromFd(uffd), nil
+	return NewUserfaultfdFromFd(uffd, src, m, logger)
 }
 
 // NewUserfaultfdFromFd creates a new userfaultfd instance with optional configuration.
-func NewUserfaultfdFromFd(fd uintptr) *userfaultfd {
-	return &userfaultfd{
-		fd: fd,
+func NewUserfaultfdFromFd(fd uintptr, src slicerWithSize, m memory.MemoryMap, logger *zap.Logger) (*Userfaultfd, error) {
+	size, err := src.Size()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get memfile size: %w", err)
 	}
+
+	return &Userfaultfd{
+		fd:                  fd,
+		src:                 src,
+		dirty:               memory.NewTracker(size, src.BlockSize()),
+		missingMap:          NewOffsetMap(),
+		writeMap:            NewOffsetMap(),
+		wpMap:               NewOffsetMap(),
+		disabled:            atomic.Bool{},
+		ma:                  m,
+		writeRequestCounter: utils.WaitCounter{},
+		logger:              logger,
+	}, nil
+}
+
+func (b *Userfaultfd) Disable() {
+	b.disabled.Store(true)
+}
+
+func (b *Userfaultfd) Dirty(ctx context.Context) (*bitset.BitSet, error) {
+	err := b.writeRequestCounter.Wait(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for write requests: %w", err)
+	}
+
+	b.missingMap.Reset()
+	b.writeMap.Reset()
+	b.wpMap.Reset()
+
+	return b.dirty.BitSet(), nil
 }
 
 // features: UFFD_FEATURE_MISSING_HUGETLBFS
 // This is already called by the FC
-func (u *userfaultfd) configureApi(pagesize uint64) error {
+func (u *Userfaultfd) configureApi(pagesize uint64) error {
 	var features CULong
 
 	// Only set the hugepage feature if we're using hugepages
@@ -54,7 +116,7 @@ func (u *userfaultfd) configureApi(pagesize uint64) error {
 // mode: UFFDIO_REGISTER_MODE_WP|UFFDIO_REGISTER_MODE_MISSING
 // This is already called by the FC, but only with the UFFDIO_REGISTER_MODE_MISSING
 // We need to call it with UFFDIO_REGISTER_MODE_WP when we use both missing and wp
-func (u *userfaultfd) Register(addr uintptr, size uint64, mode CULong) error {
+func (u *Userfaultfd) Register(addr uintptr, size uint64, mode CULong) error {
 	register := NewUffdioRegister(CULong(addr), CULong(size), mode)
 
 	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.fd, UFFDIO_REGISTER, uintptr(unsafe.Pointer(&register)))
@@ -65,7 +127,7 @@ func (u *userfaultfd) Register(addr uintptr, size uint64, mode CULong) error {
 	return nil
 }
 
-func (u *userfaultfd) writeProtect(addr uintptr, size uint64, mode CULong) error {
+func (u *Userfaultfd) writeProtect(addr uintptr, size uint64, mode CULong) error {
 	register := NewUffdioWriteProtect(CULong(addr), CULong(size), mode)
 
 	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.fd, UFFDIO_WRITEPROTECT, uintptr(unsafe.Pointer(&register)))
@@ -76,17 +138,17 @@ func (u *userfaultfd) writeProtect(addr uintptr, size uint64, mode CULong) error
 	return nil
 }
 
-func (u *userfaultfd) RemoveWriteProtection(addr uintptr, size uint64) error {
+func (u *Userfaultfd) RemoveWriteProtection(addr uintptr, size uint64) error {
 	return u.writeProtect(addr, size, 0)
 }
 
-func (u *userfaultfd) AddWriteProtection(addr uintptr, size uint64) error {
+func (u *Userfaultfd) AddWriteProtection(addr uintptr, size uint64) error {
 	return u.writeProtect(addr, size, UFFDIO_WRITEPROTECT_MODE_WP)
 }
 
 // mode: UFFDIO_COPY_MODE_WP
 // When we use both missing and wp, we need to use UFFDIO_COPY_MODE_WP, otherwise copying would unprotect the page
-func (u *userfaultfd) copy(addr uintptr, data []byte, pagesize uint64, mode CULong) error {
+func (u *Userfaultfd) copy(addr uintptr, data []byte, pagesize uint64, mode CULong) error {
 	cpy := NewUffdioCopy(data, CULong(addr)&^CULong(pagesize-1), CULong(pagesize), mode, 0)
 
 	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, u.fd, UFFDIO_COPY, uintptr(unsafe.Pointer(&cpy))); errno != 0 {
@@ -101,6 +163,6 @@ func (u *userfaultfd) copy(addr uintptr, data []byte, pagesize uint64, mode CULo
 	return nil
 }
 
-func (u *userfaultfd) Close() error {
+func (u *Userfaultfd) Close() error {
 	return syscall.Close(int(u.fd))
 }

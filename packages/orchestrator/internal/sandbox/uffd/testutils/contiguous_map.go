@@ -44,3 +44,7 @@ func (m *ContiguousMap) Map() map[uint64]struct{} {
 func (m *ContiguousMap) Keys() []uint64 {
 	return utils.MapKeys(m.accessedOffsets)
 }
+
+func (m *ContiguousMap) GetHostVirtAddr(offset int64) (int64, uint64, error) {
+	return int64(m.start) + offset, m.pagesize, nil
+}

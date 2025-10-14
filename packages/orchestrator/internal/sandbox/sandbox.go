@@ -930,7 +930,7 @@ func serveMemory(
 	ctx, span := tracer.Start(ctx, "serve-memory")
 	defer span.End()
 
-	fcUffd, err := uffd.New(memfile, socketPath, memfile.BlockSize())
+	fcUffd, err := uffd.New(memfile, socketPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create uffd: %w", err)
 	}

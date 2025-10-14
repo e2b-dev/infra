@@ -4,40 +4,24 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync/atomic"
 	"syscall"
 	"unsafe"
 
 	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-func (u *userfaultfd) Serve(
+func (u *Userfaultfd) Serve(
 	ctx context.Context,
-	m memory.MemoryMap,
-	src block.Slicer,
-	dirty *memory.Tracker,
-	writeRequestCounter *utils.WaitCounter,
-	missingMap *OffsetMap,
-	writeMap *OffsetMap,
-	wpMap *OffsetMap,
 	fdExit *fdexit.FdExit,
-	disabled *atomic.Bool,
-	logger *zap.Logger,
 ) error {
 	pollFds := []unix.PollFd{
 		{Fd: int32(u.fd), Events: unix.POLLIN},
 		{Fd: fdExit.Reader(), Events: unix.POLLIN},
 	}
-
-	var eg errgroup.Group
 
 outerLoop:
 	for {
@@ -46,27 +30,27 @@ outerLoop:
 			-1,
 		); err != nil {
 			if err == unix.EINTR {
-				logger.Debug("uffd: interrupted polling, going back to polling")
+				u.logger.Debug("uffd: interrupted polling, going back to polling")
 
 				continue
 			}
 
 			if err == unix.EAGAIN {
-				logger.Debug("uffd: eagain during polling, going back to polling")
+				u.logger.Debug("uffd: eagain during polling, going back to polling")
 
 				continue
 			}
 
-			logger.Error("UFFD serve polling error", zap.Error(err))
+			u.logger.Error("UFFD serve polling error", zap.Error(err))
 
 			return fmt.Errorf("failed polling: %w", err)
 		}
 
 		exitFd := pollFds[1]
 		if exitFd.Revents&unix.POLLIN != 0 {
-			errMsg := eg.Wait()
+			errMsg := u.wg.Wait()
 			if errMsg != nil {
-				logger.Warn("UFFD fd exit error while waiting for goroutines to finish", zap.Error(errMsg))
+				u.logger.Warn("UFFD fd exit error while waiting for goroutines to finish", zap.Error(errMsg))
 
 				return fmt.Errorf("failed to handle uffd: %w", errMsg)
 			}
@@ -85,7 +69,7 @@ outerLoop:
 			// - https://man7.org/linux/man-pages/man2/userfaultfd.2.html
 			// It might be possible to just check for data != 0 in the syscall.Read loop
 			// but I don't feel confident about doing that.
-			logger.Debug("uffd: no data in fd, going back to polling")
+			u.logger.Debug("uffd: no data in fd, going back to polling")
 
 			continue
 		}
@@ -95,7 +79,7 @@ outerLoop:
 		for {
 			n, err := syscall.Read(int(u.fd), buf)
 			if err == syscall.EINTR {
-				logger.Debug("uffd: interrupted read, reading again")
+				u.logger.Debug("uffd: interrupted read, reading again")
 
 				continue
 			}
@@ -106,20 +90,20 @@ outerLoop:
 			}
 
 			if err == syscall.EAGAIN {
-				logger.Debug("uffd: eagain error, going back to polling", zap.Error(err), zap.Int("read_bytes", n))
+				u.logger.Debug("uffd: eagain error, going back to polling", zap.Error(err), zap.Int("read_bytes", n))
 
 				// Continue polling the fd.
 				continue outerLoop
 			}
 
-			logger.Error("uffd: read error", zap.Error(err))
+			u.logger.Error("uffd: read error", zap.Error(err))
 
 			return fmt.Errorf("failed to read: %w", err)
 		}
 
 		msg := *(*UffdMsg)(unsafe.Pointer(&buf[0]))
 		if GetMsgEvent(&msg) != UFFD_EVENT_PAGEFAULT {
-			logger.Error("UFFD serve unexpected event type", zap.Any("event_type", GetMsgEvent(&msg)))
+			u.logger.Error("UFFD serve unexpected event type", zap.Any("event_type", GetMsgEvent(&msg)))
 
 			return ErrUnexpectedEventType
 		}
@@ -130,123 +114,168 @@ outerLoop:
 
 		addr := GetPagefaultAddress(&pagefault)
 
-		offset, pagesize, err := m.GetOffset(addr)
+		offset, pagesize, err := u.ma.GetOffset(addr)
 		if err != nil {
-			logger.Error("UFFD serve get mapping error", zap.Error(err))
+			u.logger.Error("UFFD serve get mapping error", zap.Error(err))
 
 			return fmt.Errorf("failed to map: %w", err)
 		}
 
-		// The maps prevent serving pages multiple times (as we now add WP only once we don't have to remove entries from any map.)
-		// For normal sized pages with swap on, the behavior seems not to be properly described in docs
-		// and it's not clear if the missing can be legitimately triggered multiple times.
-
-		if flags&UFFD_PAGEFAULT_FLAG_WP != 0 {
-			if !wpMap.TryAdd(offset) {
-				continue
-			}
-
-			writeRequestCounter.Add()
-
-			eg.Go(func() error {
-				defer func() {
-					if r := recover(); r != nil {
-						logger.Error("UFFD remove write protection panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
-					}
-				}()
-
-				defer writeRequestCounter.Done()
-
-				wpErr := u.RemoveWriteProtection(addr, pagesize)
-				if wpErr != nil {
-					return fmt.Errorf("error removing write protection from page %d", addr)
-				}
-
-				// We mark the page as dirty if it was a write to a page that was already mapped.
-				dirty.Mark(offset)
-
-				return nil
-			})
+		// Handle read to missing page (MISSING flag)
+		if flags == 0 {
+			u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize, false)
 
 			continue
 		}
 
-		if flags == 0 {
-			if !missingMap.TryAdd(offset) {
-				continue
-			}
-		}
-
+		// Handle write to missing page (WRITE flag)
 		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
-			if !writeMap.TryAdd(offset) {
-				continue
-			}
+			u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize, true)
 
-			writeRequestCounter.Add()
+			continue
 		}
 
-		eg.Go(func() error {
-			defer func() {
-				if r := recover(); r != nil {
-					logger.Error("UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
-				}
-			}()
+		// Handle write to write protected page (WP flag)
+		if flags&UFFD_PAGEFAULT_FLAG_WP != 0 {
+			u.handleWriteProtection(addr, offset, pagesize)
 
-			defer func() {
-				if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
-					writeRequestCounter.Done()
-				}
-			}()
+			continue
+		}
+	}
+}
 
-			var b []byte
+func (u *Userfaultfd) handleMissing(
+	ctx context.Context,
+	onFailure func() error,
+	addr uintptr,
+	offset int64,
+	pagesize uint64,
+	write bool,
+) {
+	if !u.missingMap.TryAdd(offset) {
+		return
+	}
 
-			if disabled.Load() {
-				b = header.EmptyHugePage[:pagesize]
-			} else {
-				sliceB, sliceErr := src.Slice(ctx, offset, int64(pagesize))
-				if sliceErr != nil {
-					signalErr := fdExit.SignalExit()
+	if write {
+		if !u.writeMap.TryAdd(offset) {
+			return
+		}
 
-					joinedErr := errors.Join(sliceErr, signalErr)
+		u.writeRequestCounter.Add()
+	}
 
-					logger.Error("UFFD serve slice error", zap.Error(joinedErr))
-
-					return fmt.Errorf("failed to read from source: %w", joinedErr)
-				}
-
-				b = sliceB
+	u.wg.Go(func() error {
+		defer func() {
+			if r := recover(); r != nil {
+				u.logger.Error("UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
 			}
-			var copyMode CULong
+		}()
 
-			if flags == 0 {
-				copyMode = copyMode | UFFDIO_COPY_MODE_WP
+		defer func() {
+			if write {
+				u.writeRequestCounter.Done()
+			}
+		}()
+
+		var b []byte
+
+		if u.disabled.Load() {
+			b = header.EmptyHugePage[:pagesize]
+		} else {
+			sliceB, sliceErr := u.src.Slice(ctx, offset, int64(pagesize))
+			if sliceErr != nil {
+				signalErr := onFailure()
+
+				joinedErr := errors.Join(sliceErr, signalErr)
+
+				u.logger.Error("UFFD serve slice error", zap.Error(joinedErr))
+
+				return fmt.Errorf("failed to read from source: %w", joinedErr)
 			}
 
-			copyErr := u.copy(addr, b, pagesize, copyMode)
-			if errors.Is(copyErr, unix.EEXIST) {
-				logger.Debug("UFFD serve page already mapped", zap.Any("offset", addr), zap.Any("pagesize", pagesize))
+			b = sliceB
+		}
+		var copyMode CULong
 
-				// Page is already mapped
+		if !write {
+			copyMode = copyMode | UFFDIO_COPY_MODE_WP
+		}
 
-				return nil
-			}
+		copyErr := u.copy(addr, b, pagesize, copyMode)
+		if errors.Is(copyErr, unix.EEXIST) {
+			u.logger.Debug("UFFD serve page already mapped", zap.Any("offset", addr), zap.Any("pagesize", pagesize))
 
-			if copyErr != nil {
-				signalErr := fdExit.SignalExit()
-
-				joinedErr := errors.Join(copyErr, signalErr)
-
-				logger.Error("UFFD serve uffdio copy error", zap.Error(joinedErr))
-
-				return fmt.Errorf("failed uffdio copy %w", joinedErr)
-			}
-
-			// We mark the page as dirty if it was a write to a page that was not already mapped.
-			if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
-				dirty.Mark(offset)
-			}
+			// Page is already mapped
 
 			return nil
-		})
+		}
+
+		if copyErr != nil {
+			signalErr := onFailure()
+
+			joinedErr := errors.Join(copyErr, signalErr)
+
+			u.logger.Error("UFFD serve uffdio copy error", zap.Error(joinedErr))
+
+			return fmt.Errorf("failed uffdio copy %w", joinedErr)
+		}
+
+		// We mark the page as dirty if it was a write to a page that was not already mapped.
+		if write {
+			u.dirty.Mark(offset)
+		}
+
+		return nil
+	})
+
+}
+
+func (u *Userfaultfd) handleWriteProtection(addr uintptr, offset int64, pagesize uint64) {
+	if !u.writeMap.TryAdd(offset) {
+		return
 	}
+
+	u.writeRequestCounter.Add()
+
+	u.wg.Go(func() error {
+		defer func() {
+			if r := recover(); r != nil {
+				u.logger.Error("UFFD remove write protection panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
+			}
+		}()
+
+		defer u.writeRequestCounter.Done()
+
+		wpErr := u.RemoveWriteProtection(addr, pagesize)
+		if wpErr != nil {
+			return fmt.Errorf("error removing write protection from page %d", addr)
+		}
+
+		// We mark the page as dirty if it was a write to a page that was already mapped.
+		u.dirty.Mark(offset)
+
+		return nil
+	})
+}
+
+func (u *Userfaultfd) TriggerPagefault(ctx context.Context, offset int64) error {
+	addr, pagesize, err := u.ma.GetHostVirtAddr(offset)
+	if err != nil {
+		return fmt.Errorf("failed to get host virt addr: %w", err)
+	}
+
+	// If the page was already faulted it should just return `EAGAIN`.
+	// If there is a hanging WRITE it should be handled by a separate write handle in the serve loop.
+	// TODO: Can we accidentally lose a WRITE if we manually trigger for a page that just now WRITE faulted and would be handled by the serve loop?
+	// - I don't think so as if we fault this page, we will also add WP so we should get WP in the serve loop. We should test this by triggering WRITE and then copying + adding WP for the page, to see if we get the WP triggered in the serve loop.
+	u.handleMissing(
+		ctx,
+		func() error { return nil },
+		uintptr(addr),
+		offset,
+		pagesize,
+		false,
+	)
+
+	return nil
 }
