@@ -193,7 +193,7 @@ func (c *Client) renewToken(ctx context.Context) {
 
 	// if the token is not renewable, we need to re-authenticate
 	if resp.Auth != nil && !resp.Auth.Renewable {
-		c.logger.Warn("token is not renewable, attempting re-authentication")
+		c.logger.Info("token is not renewable, attempting re-authentication")
 		if _, authErr := c.authenticate(ctx, c.roleID, c.secretID); authErr != nil {
 			c.logger.Error("failed to re-authenticate", zap.Error(authErr))
 		}
