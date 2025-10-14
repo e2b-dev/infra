@@ -217,11 +217,6 @@ func run() int {
 	flag.StringVar(&debug, "debug", "false", "is debug")
 	flag.Parse()
 
-	config, err := cfg.Parse()
-	if err != nil {
-		zap.L().Fatal("Error parsing config", zap.Error(err))
-	}
-
 	serviceInstanceID := uuid.New().String()
 	nodeID := env.GetNodeID()
 
@@ -282,6 +277,11 @@ func run() int {
 		// If expectedMigrationTimestamp is not set, we set it to 0
 		logger.Warn("Failed to parse expected migration timestamp", zap.Error(err))
 		expectedMigration = 0
+	}
+
+	config, err := cfg.Parse()
+	if err != nil {
+		zap.L().Fatal("Error parsing config", zap.Error(err))
 	}
 
 	err = utils.CheckMigrationVersion(config.PostgresConnectionString, expectedMigration)

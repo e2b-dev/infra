@@ -63,7 +63,7 @@ func (a *API) generateSignature(path string, username string, operation string, 
 	return fmt.Sprintf("v1_%s", hasher.HashWithoutPrefix([]byte(signature))), nil
 }
 
-func (a *API) validateSigning(r *http.Request, signature *string, signatureExpiration *int, username string, path string, operation string) (err error) {
+func (a *API) validateSigning(r *http.Request, signature *string, signatureExpiration *int, username *string, path string, operation string) (err error) {
 	var expectedSignature string
 
 	// no need to validate signing key if access token is not set
@@ -85,11 +85,17 @@ func (a *API) validateSigning(r *http.Request, signature *string, signatureExpir
 		return fmt.Errorf("missing signature query parameter")
 	}
 
+	// Empty string is used when no username is provided and the default user should be used
+	signatureUsername := ""
+	if username != nil {
+		signatureUsername = *username
+	}
+
 	if signatureExpiration == nil {
-		expectedSignature, err = a.generateSignature(path, username, operation, nil)
+		expectedSignature, err = a.generateSignature(path, signatureUsername, operation, nil)
 	} else {
 		exp := int64(*signatureExpiration)
-		expectedSignature, err = a.generateSignature(path, username, operation, &exp)
+		expectedSignature, err = a.generateSignature(path, signatureUsername, operation, &exp)
 	}
 
 	if err != nil {

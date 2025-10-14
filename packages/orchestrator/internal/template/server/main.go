@@ -23,7 +23,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -56,7 +55,7 @@ func New(
 	grpc *grpcserver.GRPCServer,
 	sandboxFactory *sandbox.Factory,
 	proxy *proxy.SandboxProxy,
-	sandboxes *smap.Map[*sandbox.Sandbox],
+	sandboxes *sandbox.Map,
 	templateCache *sbxtemplate.Cache,
 	templatePersistence storage.StorageProvider,
 	limiter *limit.Limiter,

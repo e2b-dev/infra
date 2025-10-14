@@ -31,6 +31,10 @@ func (o *Orchestrator) addToNode(ctx context.Context, sandbox sandbox.Sandbox, _
 			SandboxMaxLengthInHours: int64(sandbox.MaxInstanceLength / time.Hour),
 		}
 
-		o.dns.Add(ctx, sandbox.SandboxID, info)
+		lifetime := time.Duration(info.SandboxMaxLengthInHours) * time.Hour
+		err := o.routingCatalog.StoreSandbox(ctx, sandbox.SandboxID, &info, lifetime)
+		if err != nil {
+			zap.L().Error("error adding routing record to catalog", zap.Error(err), logger.WithSandboxID(sandbox.SandboxID))
+		}
 	}
 }

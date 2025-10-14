@@ -47,6 +47,18 @@ variable "api_node_pool" {
   default = "api"
 }
 
+variable "api_use_nat" {
+  type        = bool
+  description = "Whether API nodes should use NAT with dedicated external IPs."
+  default     = false
+}
+
+variable "api_nat_ips" {
+  type        = list(string)
+  description = "List of names for static IP addresses to use for NAT. If empty and api_use_nat is true, IPs will be created automatically."
+  default     = []
+}
+
 variable "api_resources_cpu_count" {
   type    = number
   default = 2
@@ -180,30 +192,6 @@ variable "edge_proxy_port" {
   default = {
     name = "session"
     port = 3002
-  }
-}
-
-variable "logs_proxy_port" {
-  type = object({
-    name = string
-    port = number
-  })
-  default = {
-    name = "logs"
-    port = 30006
-  }
-}
-
-variable "logs_health_proxy_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
-  default = {
-    name        = "logs-health"
-    port        = 44313
-    health_path = "/health"
   }
 }
 
