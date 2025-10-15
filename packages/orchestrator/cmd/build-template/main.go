@@ -116,7 +116,7 @@ func buildTemplate(
 		return fmt.Errorf("could not create storage provider: %w", err)
 	}
 
-	devicePool, err := nbd.NewDevicePool(noop.MeterProvider{})
+	devicePool, err := nbd.NewDevicePool()
 	if err != nil {
 		return fmt.Errorf("could not create device pool: %w", err)
 	}
@@ -130,7 +130,7 @@ func buildTemplate(
 		}
 	}()
 
-	networkPool, err := network.NewPool(noop.MeterProvider{}, 8, 8, clientID, networkConfig)
+	networkPool, err := network.NewPool(8, 8, clientID, networkConfig)
 	if err != nil {
 		return fmt.Errorf("could not create network pool: %w", err)
 	}

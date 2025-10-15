@@ -128,7 +128,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	sbxlogger.SetSandboxLoggerInternal(logger)
 	// sbxlogger.SetSandboxLoggerExternal(logger)
 
-	networkPool, err := network.NewPool(noop.MeterProvider{}, 8, 8, clientID, networkConfig)
+	networkPool, err := network.NewPool(8, 8, clientID, networkConfig)
 	require.NoError(b, err)
 	go func() {
 		networkPool.Populate(b.Context())
@@ -139,7 +139,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		assert.NoError(b, err)
 	}()
 
-	devicePool, err := nbd.NewDevicePool(noop.MeterProvider{})
+	devicePool, err := nbd.NewDevicePool()
 	require.NoError(b, err, "do you have the nbd kernel module installed?")
 	go func() {
 		devicePool.Populate(b.Context())
