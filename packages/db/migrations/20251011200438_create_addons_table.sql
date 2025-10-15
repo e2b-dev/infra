@@ -32,14 +32,14 @@ INSERT INTO "auth"."users" (id, email) VALUES ('00000000-0000-0000-0000-00000000
 CREATE INDEX IF NOT EXISTS "addons_team_id_idx" ON "public"."addons" ("team_id");
 
 
-CREATE VIEW "team_limits" AS
+CREATE OR REPLACE VIEW "team_limits" AS
 SELECT
     t.id,
     tier.max_length_hours,
     (tier.concurrent_instances + a.extra_concurrent_sandboxes) as concurrent_sandboxes,
     (tier.concurrent_template_builds + a.extra_concurrent_template_builds) as concurrent_template_builds,
     (tier.max_vcpu + a.extra_max_vcpu) as max_vcpu,
-    (tier.max_ram_mb + a.extra_max_ram_mb) as ram_mb,
+    (tier.max_ram_mb + a.extra_max_ram_mb) as max_ram_mb,
     (tier.disk_mb + a.extra_disk_mb) as disk_mb
 FROM "public".teams t
 JOIN "public"."tiers" tier on t.tier = tier.id

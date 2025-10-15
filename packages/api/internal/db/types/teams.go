@@ -18,7 +18,7 @@ func newTeamLimits(
 		BuildConcurrency:   int64(teamLimits.ConcurrentTemplateBuilds),
 		MaxLengthHours:     teamLimits.MaxLengthHours,
 		MaxVcpu:            int64(teamLimits.MaxVcpu),
-		MaxRamMb:           int64(teamLimits.RamMb),
+		MaxRamMb:           int64(teamLimits.MaxRamMb),
 		DiskMb:             int64(teamLimits.DiskMb),
 	}
 }

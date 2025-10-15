@@ -144,7 +144,7 @@ type TeamLimit struct {
 	ConcurrentSandboxes      int32
 	ConcurrentTemplateBuilds int32
 	MaxVcpu                  int32
-	RamMb                    int32
+	MaxRamMb                 int32
 	DiskMb                   int32
 }
 
