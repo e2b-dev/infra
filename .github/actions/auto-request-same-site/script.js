@@ -1,4 +1,5 @@
 const { Octokit } = require("@octokit/rest");
+const { WebClient } = require("@slack/web-api");
 const fs = require("fs");
 
 const token = process.env.APP_TOKEN;
@@ -9,6 +10,10 @@ const n = Math.max(1, parseInt(process.env.REVIEWERS_TO_REQUEST || "1", 10));
 
 const gh = new Octokit({ auth: token });
 const [owner, repo] = process.env.GITHUB_REPOSITORY.split("/");
+
+// Slack configuration
+const slackToken = process.env.SLACK_BOT_TOKEN;
+const slack = slackToken ? new WebClient(slackToken) : null;
 
 function getEvent() {
   return JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
@@ -38,6 +43,81 @@ async function getUserTeams(login) {
 async function listTeamMembers(teamSlug) {
   const res = await gh.teams.listMembersInOrg({ org, team_slug: teamSlug, per_page: 100 });
   return res.data.map((u) => u.login);
+}
+
+async function getGitHubUserEmail(username) {
+  try {
+    const { data } = await gh.users.getByUsername({ username });
+    return data.email || null;
+  } catch (error) {
+    console.log(`Failed to fetch email for ${username}: ${error.message}`);
+    return null;
+  }
+}
+
+async function getSlackUserId(githubUsername) {
+  if (!slack) {
+    return null;
+  }
+
+  const email = await getGitHubUserEmail(githubUsername);
+  if (!email || !email.endsWith("@e2b.dev")) {
+    console.log(`No @e2b.dev email found for ${githubUsername}`);
+    return null;
+  }
+
+  try {
+    const result = await slack.users.lookupByEmail({ email });
+    if (result.ok && result.user?.id) {
+      console.log(`Found Slack user ${result.user.id} for ${githubUsername} via ${email}`);
+      return result.user.id;
+    }
+  } catch (error) {
+    console.log(`Slack lookup failed for ${githubUsername} (${email}): ${error.message}`);
+  }
+
+  return null;
+}
+
+async function notifySlackUsers(assignees, prNumber, prUrl, prTitle) {
+  if (!slack) {
+    console.log("Slack not configured; skipping notifications.");
+    return;
+  }
+
+  for (const assignee of assignees) {
+    const slackUserId = await getSlackUserId(assignee);
+    if (!slackUserId) {
+      console.log(`Skipping Slack notification for ${assignee} (no Slack user found)`);
+      continue;
+    }
+
+    try {
+      await slack.chat.postMessage({
+        channel: slackUserId,
+        text: `You've been assigned to review PR #${prNumber}: ${prTitle}\n${prUrl}`,
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `You've been assigned to review *<${prUrl}|PR #${prNumber}>*`,
+            },
+          },
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `*${prTitle}*`,
+            },
+          },
+        ],
+      });
+      console.log(`Sent Slack DM to ${assignee} (${slackUserId})`);
+    } catch (error) {
+      console.log(`Failed to send Slack DM to ${assignee}: ${error.message}`);
+    }
+  }
 }
 
 function pickRandom(arr, k) {
@@ -162,6 +242,9 @@ function parseCodeowners(content) {
   });
 
   console.log(`Assigned ${assignees.join(", ")} to PR #${num}.`);
+
+  // Send Slack notifications
+  await notifySlackUsers(assignees, num, pr.html_url, pr.title);
 })().catch((error) => {
   console.error(error);
   process.exit(1);

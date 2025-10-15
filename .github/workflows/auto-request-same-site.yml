@@ -35,7 +35,7 @@ jobs:
       - name: Install deps
         run: |
           npm init -y
-          npm i @octokit/rest
+          npm i @octokit/rest @slack/web-api
 
       - name: Run same-site override
         env:
@@ -45,4 +45,5 @@ jobs:
           PRG_TEAM_SLUG: eng-prg
           REVIEWERS_TO_REQUEST: "1"
           TEAM_MODE: "false"
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         run: node .github/actions/auto-request-same-site/script.js
