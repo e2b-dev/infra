@@ -116,22 +116,12 @@ func getMaxDevices() (uint, error) {
 func (d *DevicePool) Populate(ctx context.Context) {
 	defer close(d.slots)
 
-	failedCount := 0
 	for {
 		device, err := d.getFreeDeviceSlot()
 		if err != nil {
-			if failedCount%100 == 0 {
-				zap.L().Error("[nbd pool]: failed to create network",
-					zap.Error(err),
-					zap.Int("failed_count", failedCount),
-				)
-			}
-
-			failedCount++
 			time.Sleep(waitOnNBDError)
 			continue
 		}
-		failedCount = 0
 
 		d.slotCounter.Add(ctx, 1)
 

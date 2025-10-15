@@ -4,13 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/signal"
 	"sync"
 	"syscall"
+
+	"go.uber.org/zap"
 )
 
 type Runner struct {
-	tasks []Task
+	tasks  []Task
+	logger *zap.Logger
 
 	mu          sync.Mutex
 	started     bool
@@ -21,8 +25,10 @@ type Runner struct {
 	cleanupsRun bool
 }
 
-func New() *Runner {
-	return &Runner{}
+func New(logger *zap.Logger) *Runner {
+	return &Runner{
+		logger: logger.Named("supervisor"),
+	}
 }
 
 func (s *Runner) Run(ctx context.Context) error {
@@ -37,35 +43,31 @@ func (s *Runner) Run(ctx context.Context) error {
 	s.mu.Unlock()
 
 	// Start tasks
+	s.logger.Info("starting tasks", zap.Int("count", len(s.tasks)))
 	for _, task := range s.tasks {
-		if task.Background != nil {
-			s.startTask(runCtx, task)
-		}
+		s.startTask(runCtx, task)
 	}
 
 	// Setup OS signal listener
-	sigCtx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
 	// Wait for a stop condition
 	var reason error
 	select {
 	case <-ctx.Done():
-		reason = ctx.Err()
-	case <-sigCtx.Done():
-		reason = context.Canceled
+		reason = fmt.Errorf("supervisor context canceled: %w", ctx.Err())
+	case sig := <-sigs:
+		s.logger.Info("received OS signal", zap.String("signal", sig.String()))
+		reason = nil
 	case res := <-s.doneCh:
 		// A task finished (with or without error)
 		if res.err == nil {
-			reason = fmt.Errorf("%s exited successfully", res.name)
+			reason = fmt.Errorf("%s exited", res.name)
 		} else {
 			reason = fmt.Errorf("%s exited with %w", res.name, res.err)
 		}
 	}
-
-	// Cancel all tasks and wait for them to finish
-	cancel()
-	s.wg.Wait()
 
 	return reason
 }
@@ -80,6 +82,9 @@ func (s *Runner) startTask(ctx context.Context, task Task) {
 		return
 	}
 
+	logger := s.logger.Named(task.Name)
+
+	logger.Info("starting task")
 	s.wg.Add(1)
 	go func(t Task) {
 		defer s.wg.Done()
@@ -90,6 +95,8 @@ func (s *Runner) startTask(ctx context.Context, task Task) {
 		case s.doneCh <- taskResult{name: t.Name, err: err}:
 		default:
 		}
+
+		logger.Info("task finished", zap.Error(err))
 	}(task)
 }
 
@@ -106,15 +113,16 @@ func (s *Runner) Close(ctx context.Context) error {
 	if cancel != nil {
 		cancel()
 	}
-	// Wait for tasks to exit
-	s.wg.Wait()
 
 	// run cleanups in reverse order
 	var errs []error
 	for index := len(s.tasks) - 1; index >= 0; index-- {
 		task := s.tasks[index]
 		if task.Cleanup != nil {
+			logger := s.logger.Named(task.Name)
+			logger.Info("running cleanup")
 			if err := task.Cleanup(ctx); err != nil {
+				logger.Warn("cleanup failed", zap.Error(err))
 				errs = append(errs, err)
 			}
 		}

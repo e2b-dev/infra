@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -11,7 +10,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/supervisor"
 	"github.com/google/uuid"
 	"github.com/soheilhy/cmux"
 	"go.uber.org/zap"
@@ -50,13 +48,9 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/pubsub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/supervisor"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
-
-type closer struct {
-	name  string
-	close func(ctx context.Context) error
-}
 
 const version = "0.1.0"
 
@@ -81,8 +75,6 @@ func run(config cfg.Config) (success bool) {
 	success = true
 
 	services := cfg.GetServices(config)
-
-	runner := supervisor.New()
 
 	// Check if the orchestrator crashed and restarted
 	// Skip this check in development mode
@@ -162,12 +154,10 @@ func run(config cfg.Config) (success bool) {
 		EnableConsole: true,
 	}))
 	zap.ReplaceGlobals(globalLogger)
-
+	runner := supervisor.New(globalLogger)
 	runner.AddTask(
 		"global logger",
-		supervisor.WithCleanup(func(ctx context.Context) error {
-			return globalLogger.Sync()
-		}),
+		supervisor.WithCleanup(cleanupLogger(globalLogger)),
 	)
 
 	sbxLoggerExternal := sbxlogger.NewLogger(
@@ -182,9 +172,7 @@ func run(config cfg.Config) (success bool) {
 	sbxlogger.SetSandboxLoggerExternal(sbxLoggerExternal)
 	runner.AddTask(
 		"sandbox logger (external)",
-		supervisor.WithCleanup(func(ctx context.Context) error {
-			return sbxLoggerExternal.Sync()
-		}),
+		supervisor.WithCleanup(cleanupLogger(sbxLoggerExternal)),
 	)
 
 	sbxLoggerInternal := sbxlogger.NewLogger(
@@ -199,9 +187,7 @@ func run(config cfg.Config) (success bool) {
 	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
 	runner.AddTask(
 		"sandbox logger (internal)",
-		supervisor.WithCleanup(func(ctx context.Context) error {
-			return sbxLoggerInternal.Sync()
-		}),
+		supervisor.WithCleanup(cleanupLogger(sbxLoggerInternal)),
 	)
 
 	globalLogger.Info("Starting orchestrator", zap.String("version", version), zap.String("commit", commitSHA), logger.WithServiceInstanceID(serviceInstanceID))
@@ -315,7 +301,6 @@ func run(config cfg.Config) (success bool) {
 		supervisor.WithBackgroundJob(func(ctx context.Context) error {
 			devicePool.Populate(ctx)
 			return nil
-
 		}),
 		supervisor.WithCleanup(devicePool.Close),
 	)
@@ -359,13 +344,7 @@ func run(config cfg.Config) (success bool) {
 		},
 	)
 	runner.AddTask("template manager sandbox logger (external)",
-		supervisor.WithCleanup(func(ctx context.Context) error {
-			// Sync returns EINVAL when path is /dev/stdout (for example)
-			if err := tmplSbxLoggerExternal.Sync(); err != nil && !errors.Is(err, syscall.EINVAL) {
-				return err
-			}
-			return nil
-		}),
+		supervisor.WithCleanup(cleanupLogger(tmplSbxLoggerExternal)),
 	)
 
 	// hyperloop server
@@ -374,7 +353,7 @@ func run(config cfg.Config) (success bool) {
 		zap.L().Fatal("failed to create hyperloop server", zap.Error(err))
 	}
 	runner.AddTask("hyperloop server",
-		supervisor.WithBackgroundJob(func(ctx context.Context) error {
+		supervisor.WithBackgroundJob(func(context.Context) error {
 			err := hyperloopSrv.ListenAndServe()
 			if errors.Is(err, http.ErrServerClosed) {
 				return nil
@@ -423,7 +402,7 @@ func run(config cfg.Config) (success bool) {
 		zap.L().Fatal("failed to create cmux server", zap.Error(err))
 	}
 	runner.AddTask("cmux server",
-		supervisor.WithBackgroundJob(func(ctx context.Context) error {
+		supervisor.WithBackgroundJob(func(context.Context) error {
 			zap.L().Info("Starting network server", zap.Uint16("port", config.GRPCPort))
 			err := cmuxServer.Serve()
 			if err != nil && strings.Contains(err.Error(), "use of closed network connection") {
@@ -431,7 +410,7 @@ func run(config cfg.Config) (success bool) {
 			}
 			return err
 		}),
-		supervisor.WithCleanup(func(ctx context.Context) error {
+		supervisor.WithCleanup(func(context.Context) error {
 			zap.L().Info("Shutting down cmux server")
 			cmuxServer.Close()
 			return nil
@@ -450,7 +429,7 @@ func run(config cfg.Config) (success bool) {
 	httpServer.Handler = healthcheck.CreateHandler()
 
 	runner.AddTask("http server",
-		supervisor.WithBackgroundJob(func(ctx context.Context) error {
+		supervisor.WithBackgroundJob(func(context.Context) error {
 			err := httpServer.Serve(httpListener)
 			switch {
 			case errors.Is(err, cmux.ErrServerClosed):
@@ -470,10 +449,10 @@ func run(config cfg.Config) (success bool) {
 	// grpc server
 	grpcListener := cmuxServer.Match(cmux.Any()) // the rest are GRPC requests
 	runner.AddTask("grpc server",
-		supervisor.WithBackgroundJob(func(ctx context.Context) error {
+		supervisor.WithBackgroundJob(func(context.Context) error {
 			return grpcServer.Serve(grpcListener)
 		}),
-		supervisor.WithCleanup(func(ctx context.Context) error {
+		supervisor.WithCleanup(func(context.Context) error {
 			zap.L().Info("Shutting down grpc server")
 			grpcServer.GracefulStop()
 			return nil
@@ -505,10 +484,14 @@ func run(config cfg.Config) (success bool) {
 	return success
 }
 
-type serviceDoneError struct {
-	name string
-}
-
-func (e serviceDoneError) Error() string {
-	return fmt.Sprintf("service %s finished", e.name)
+func cleanupLogger(logger *zap.Logger) func(context.Context) error {
+	return func(context.Context) error {
+		if err := logger.Sync(); err != nil {
+			// We expect /dev/stdout and /dev/stderr to error, as they don't implement `sync`
+			if !errors.Is(err, syscall.EINVAL) {
+				return nil
+			}
+		}
+		return nil
+	}
 }
