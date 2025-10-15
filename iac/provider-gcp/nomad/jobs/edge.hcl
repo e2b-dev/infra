@@ -115,10 +115,10 @@ job "client-proxy" {
         SD_ORCHESTRATOR_NOMAD_TOKEN      = "${nomad_token}"
         SD_ORCHESTRATOR_NOMAD_JOB_PREFIX = "template-manager"
 
-        SD_EDGE_PROVIDER       = "NOMAD"
-        SD_EDGE_NOMAD_ENDPOINT = "${nomad_endpoint}"
-        SD_EDGE_NOMAD_TOKEN    = "${nomad_token}"
-        SD_EDGE_JOB_PREFIX     = "client-proxy"
+        SD_EDGE_PROVIDER             = "NOMAD"
+        SD_EDGE_NOMAD_ENDPOINT       = "${nomad_endpoint}"
+        SD_EDGE_NOMAD_TOKEN          = "${nomad_token}"
+        SD_EDGE_NOMAD_JOB_PREFIX     = "client-proxy"
 
         ENVIRONMENT = "${environment}"
 
