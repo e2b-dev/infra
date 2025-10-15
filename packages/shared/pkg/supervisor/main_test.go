@@ -46,6 +46,11 @@ func TestHappyPath(t *testing.T) {
 
 	// verify that the task only ran twice
 	assert.Equal(t, 2, counter)
+	assert.False(t, cleanup)
+
+	// clean up
+	err = s.Close(ctx)
+	require.NoError(t, err)
 
 	// verify that the cleanup function was called
 	assert.True(t, cleanup)
