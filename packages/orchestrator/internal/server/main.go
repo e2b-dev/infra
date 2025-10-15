@@ -8,8 +8,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -23,11 +21,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-type server struct {
+type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 
 	limiter          *Limiter
-	metricsTracker   *metrics.Tracker
 	sandboxFactory   *sandbox.Factory
 	info             *service.ServiceInfo
 	sandboxes        *sandbox.Map
@@ -41,22 +38,12 @@ type server struct {
 	sbxEventsService events.EventsService[event.SandboxEvent]
 }
 
-type Service struct {
-	info   *service.ServiceInfo
-	server *server
-	proxy  *proxy.SandboxProxy
-
-	persistence storage.StorageProvider
-}
-
 type ServiceConfig struct {
-	GRPC             *grpcserver.GRPCServer
 	Tel              *telemetry.Client
 	NetworkPool      *network.Pool
 	DevicePool       *nbd.DevicePool
 	TemplateCache    *template.Cache
 	Info             *service.ServiceInfo
-	MetricsTracker   *metrics.Tracker
 	Proxy            *proxy.SandboxProxy
 	SandboxFactory   *sandbox.Factory
 	Sandboxes        *sandbox.Map
@@ -66,16 +53,11 @@ type ServiceConfig struct {
 	Limiter          *Limiter
 }
 
-func New(cfg ServiceConfig) *Service {
-	srv := &Service{
-		info:        cfg.Info,
-		proxy:       cfg.Proxy,
-		persistence: cfg.Persistence,
-	}
-	srv.server = &server{
+func New(cfg ServiceConfig) *Server {
+	server := &Server{
 		sandboxFactory:   cfg.SandboxFactory,
 		info:             cfg.Info,
-		proxy:            srv.proxy,
+		proxy:            cfg.Proxy,
 		sandboxes:        cfg.Sandboxes,
 		networkPool:      cfg.NetworkPool,
 		templateCache:    cfg.TemplateCache,
@@ -83,13 +65,12 @@ func New(cfg ServiceConfig) *Service {
 		persistence:      cfg.Persistence,
 		featureFlags:     cfg.FeatureFlags,
 		sbxEventsService: cfg.SbxEventsService,
-		metricsTracker:   cfg.MetricsTracker,
 		limiter:          cfg.Limiter,
 	}
 
 	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")
 	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
-		observer.Observe(int64(srv.server.sandboxes.Count()))
+		observer.Observe(int64(server.sandboxes.Count()))
 
 		return nil
 	})
@@ -97,7 +78,5 @@ func New(cfg ServiceConfig) *Service {
 		zap.L().Error("Error registering sandbox count metric", zap.String("metric_name", string(telemetry.OrchestratorSandboxCountMeterName)), zap.Error(err))
 	}
 
-	orchestrator.RegisterSandboxServiceServer(cfg.GRPC.GRPCServer(), srv.server)
-
-	return srv
+	return server
 }

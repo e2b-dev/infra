@@ -15,7 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/internal"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/tier"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
@@ -25,16 +24,15 @@ import (
 // TeamQuery is the builder for querying Team entities.
 type TeamQuery struct {
 	config
-	ctx             *QueryContext
-	order           []team.OrderOption
-	inters          []Interceptor
-	predicates      []predicate.Team
-	withUsers       *UserQuery
-	withTeamAPIKeys *TeamAPIKeyQuery
-	withTeamTier    *TierQuery
-	withEnvs        *EnvQuery
-	withUsersTeams  *UsersTeamsQuery
-	modifiers       []func(*sql.Selector)
+	ctx            *QueryContext
+	order          []team.OrderOption
+	inters         []Interceptor
+	predicates     []predicate.Team
+	withUsers      *UserQuery
+	withTeamTier   *TierQuery
+	withEnvs       *EnvQuery
+	withUsersTeams *UsersTeamsQuery
+	modifiers      []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -90,31 +88,6 @@ func (tq *TeamQuery) QueryUsers() *UserQuery {
 		schemaConfig := tq.schemaConfig
 		step.To.Schema = schemaConfig.User
 		step.Edge.Schema = schemaConfig.UsersTeams
-		fromU = sqlgraph.SetNeighbors(tq.driver.Dialect(), step)
-		return fromU, nil
-	}
-	return query
-}
-
-// QueryTeamAPIKeys chains the current query on the "team_api_keys" edge.
-func (tq *TeamQuery) QueryTeamAPIKeys() *TeamAPIKeyQuery {
-	query := (&TeamAPIKeyClient{config: tq.config}).Query()
-	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
-		if err := tq.prepareQuery(ctx); err != nil {
-			return nil, err
-		}
-		selector := tq.sqlQuery(ctx)
-		if err := selector.Err(); err != nil {
-			return nil, err
-		}
-		step := sqlgraph.NewStep(
-			sqlgraph.From(team.Table, team.FieldID, selector),
-			sqlgraph.To(teamapikey.Table, teamapikey.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, team.TeamAPIKeysTable, team.TeamAPIKeysColumn),
-		)
-		schemaConfig := tq.schemaConfig
-		step.To.Schema = schemaConfig.TeamAPIKey
-		step.Edge.Schema = schemaConfig.TeamAPIKey
 		fromU = sqlgraph.SetNeighbors(tq.driver.Dialect(), step)
 		return fromU, nil
 	}
@@ -383,16 +356,15 @@ func (tq *TeamQuery) Clone() *TeamQuery {
 		return nil
 	}
 	return &TeamQuery{
-		config:          tq.config,
-		ctx:             tq.ctx.Clone(),
-		order:           append([]team.OrderOption{}, tq.order...),
-		inters:          append([]Interceptor{}, tq.inters...),
-		predicates:      append([]predicate.Team{}, tq.predicates...),
-		withUsers:       tq.withUsers.Clone(),
-		withTeamAPIKeys: tq.withTeamAPIKeys.Clone(),
-		withTeamTier:    tq.withTeamTier.Clone(),
-		withEnvs:        tq.withEnvs.Clone(),
-		withUsersTeams:  tq.withUsersTeams.Clone(),
+		config:         tq.config,
+		ctx:            tq.ctx.Clone(),
+		order:          append([]team.OrderOption{}, tq.order...),
+		inters:         append([]Interceptor{}, tq.inters...),
+		predicates:     append([]predicate.Team{}, tq.predicates...),
+		withUsers:      tq.withUsers.Clone(),
+		withTeamTier:   tq.withTeamTier.Clone(),
+		withEnvs:       tq.withEnvs.Clone(),
+		withUsersTeams: tq.withUsersTeams.Clone(),
 		// clone intermediate query.
 		sql:  tq.sql.Clone(),
 		path: tq.path,
@@ -407,17 +379,6 @@ func (tq *TeamQuery) WithUsers(opts ...func(*UserQuery)) *TeamQuery {
 		opt(query)
 	}
 	tq.withUsers = query
-	return tq
-}
-
-// WithTeamAPIKeys tells the query-builder to eager-load the nodes that are connected to
-// the "team_api_keys" edge. The optional arguments are used to configure the query builder of the edge.
-func (tq *TeamQuery) WithTeamAPIKeys(opts ...func(*TeamAPIKeyQuery)) *TeamQuery {
-	query := (&TeamAPIKeyClient{config: tq.config}).Query()
-	for _, opt := range opts {
-		opt(query)
-	}
-	tq.withTeamAPIKeys = query
 	return tq
 }
 
@@ -532,9 +493,8 @@ func (tq *TeamQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Team, e
 	var (
 		nodes       = []*Team{}
 		_spec       = tq.querySpec()
-		loadedTypes = [5]bool{
+		loadedTypes = [4]bool{
 			tq.withUsers != nil,
-			tq.withTeamAPIKeys != nil,
 			tq.withTeamTier != nil,
 			tq.withEnvs != nil,
 			tq.withUsersTeams != nil,
@@ -567,13 +527,6 @@ func (tq *TeamQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Team, e
 		if err := tq.loadUsers(ctx, query, nodes,
 			func(n *Team) { n.Edges.Users = []*User{} },
 			func(n *Team, e *User) { n.Edges.Users = append(n.Edges.Users, e) }); err != nil {
-			return nil, err
-		}
-	}
-	if query := tq.withTeamAPIKeys; query != nil {
-		if err := tq.loadTeamAPIKeys(ctx, query, nodes,
-			func(n *Team) { n.Edges.TeamAPIKeys = []*TeamAPIKey{} },
-			func(n *Team, e *TeamAPIKey) { n.Edges.TeamAPIKeys = append(n.Edges.TeamAPIKeys, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -659,36 +612,6 @@ func (tq *TeamQuery) loadUsers(ctx context.Context, query *UserQuery, nodes []*T
 		for kn := range nodes {
 			assign(kn, n)
 		}
-	}
-	return nil
-}
-func (tq *TeamQuery) loadTeamAPIKeys(ctx context.Context, query *TeamAPIKeyQuery, nodes []*Team, init func(*Team), assign func(*Team, *TeamAPIKey)) error {
-	fks := make([]driver.Value, 0, len(nodes))
-	nodeids := make(map[uuid.UUID]*Team)
-	for i := range nodes {
-		fks = append(fks, nodes[i].ID)
-		nodeids[nodes[i].ID] = nodes[i]
-		if init != nil {
-			init(nodes[i])
-		}
-	}
-	if len(query.ctx.Fields) > 0 {
-		query.ctx.AppendFieldOnce(teamapikey.FieldTeamID)
-	}
-	query.Where(predicate.TeamAPIKey(func(s *sql.Selector) {
-		s.Where(sql.InValues(s.C(team.TeamAPIKeysColumn), fks...))
-	}))
-	neighbors, err := query.All(ctx)
-	if err != nil {
-		return err
-	}
-	for _, n := range neighbors {
-		fk := n.TeamID
-		node, ok := nodeids[fk]
-		if !ok {
-			return fmt.Errorf(`unexpected referenced foreign-key "team_id" returned %v for node %v`, fk, n.ID)
-		}
-		assign(node, n)
 	}
 	return nil
 }

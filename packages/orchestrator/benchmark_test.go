@@ -58,6 +58,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		buildID             = "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
 		useHugePages        = false
 		allowInternetAccess = true
+		templateVersion     = "v2.0.0"
 	)
 
 	// cache paths, to speed up test runs. these paths aren't wiped between tests
@@ -127,17 +128,23 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	sbxlogger.SetSandboxLoggerInternal(logger)
 	// sbxlogger.SetSandboxLoggerExternal(logger)
 
-	networkPool, err := network.NewPool(
-		b.Context(), noop.MeterProvider{}, 8, 8, clientID, networkConfig,
-	)
+	networkPool, err := network.NewPool(8, 8, clientID, networkConfig)
 	require.NoError(b, err)
+	go func() {
+		networkPool.Populate(b.Context())
+		logger.Info("network pool populated")
+	}()
 	defer func() {
 		err := networkPool.Close(b.Context())
 		assert.NoError(b, err)
 	}()
 
-	devicePool, err := nbd.NewDevicePool(b.Context(), noop.MeterProvider{})
+	devicePool, err := nbd.NewDevicePool()
 	require.NoError(b, err, "do you have the nbd kernel module installed?")
+	go func() {
+		devicePool.Populate(b.Context())
+		logger.Info("device pool populated")
+	}()
 	defer func() {
 		err := devicePool.Close(b.Context())
 		assert.NoError(b, err)
@@ -243,6 +250,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		// build template
 		force := true
 		templateConfig := config.TemplateConfig{
+			Version:    templateVersion,
 			TemplateID: templateID,
 			FromImage:  baseImage,
 			Force:      &force,

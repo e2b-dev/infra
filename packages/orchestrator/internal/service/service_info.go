@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -19,13 +18,12 @@ type Server struct {
 	tracker *metrics.Tracker
 }
 
-func NewInfoService(_ context.Context, grpc *grpc.Server, info *ServiceInfo, tracker *metrics.Tracker) *Server {
+func NewInfoService(info *ServiceInfo, tracker *metrics.Tracker) *Server {
 	s := &Server{
 		info:    info,
 		tracker: tracker,
 	}
 
-	orchestratorinfo.RegisterInfoServiceServer(grpc, s)
 	return s
 }
 

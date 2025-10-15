@@ -6,6 +6,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/proxy/internal/cfg"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/handlers"
 	e2binfo "github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
@@ -21,8 +22,9 @@ func NewEdgeAPIStore(
 	edges *e2borchestrators.EdgePool,
 	orchestrators *e2borchestrators.OrchestratorsPool,
 	catalog catalog.SandboxesCatalog,
+	config cfg.Config,
 ) (*handlers.APIStore, error) {
-	store, err := handlers.NewStore(ctx, logger, info, orchestrators, edges, catalog)
+	store, err := handlers.NewStore(ctx, logger, info, orchestrators, edges, catalog, config)
 	if err != nil {
 		return nil, err
 	}

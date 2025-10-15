@@ -3,7 +3,6 @@ package logger_provider
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -11,36 +10,22 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/proxy/internal/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs/logsloki"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-var (
-	lokiAddressEnvName = "LOKI_URL"
-	lokiAddress        = os.Getenv(lokiAddressEnvName)
-)
-
 type LokiQueryProvider struct {
 	client *loki.DefaultClient
 }
 
-func NewLokiQueryProvider() (*LokiQueryProvider, error) {
-	var lokiClient *loki.DefaultClient
-
-	if lokiAddress == "" {
-		return nil, fmt.Errorf("loki address is empty, please set the %s environment variable", lokiAddressEnvName)
-	}
-
-	// optional authentication supported
-	lokiUser := os.Getenv("LOKI_USER")
-	lokiPassword := os.Getenv("LOKI_PASSWORD")
-
-	lokiClient = &loki.DefaultClient{
-		Address:  lokiAddress,
-		Username: lokiUser,
-		Password: lokiPassword,
+func NewLokiQueryProvider(config cfg.Config) (*LokiQueryProvider, error) {
+	lokiClient := &loki.DefaultClient{
+		Address:  config.LokiURL,
+		Username: config.LokiUser,
+		Password: config.LokiPassword,
 	}
 
 	return &LokiQueryProvider{client: lokiClient}, nil
