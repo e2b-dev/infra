@@ -39,7 +39,7 @@ SELECT
     (tier.concurrent_instances + a.extra_concurrent_sandboxes) as concurrent_sandboxes,
     (tier.concurrent_template_builds + a.extra_concurrent_template_builds) as concurrent_template_builds,
     (tier.max_vcpu + a.extra_max_vcpu) as max_vcpu,
-    (tier.max_ram_mb + a.extra_disk_mb) as ram_mb,
+    (tier.max_ram_mb + a.extra_max_ram_mb) as ram_mb,
     (tier.disk_mb + a.extra_disk_mb) as disk_mb
 FROM "public".teams t
 JOIN "public"."tiers" tier on t.tier = tier.id
