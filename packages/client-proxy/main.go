@@ -64,17 +64,10 @@ func run() int {
 	nodeID := env.GetNodeID()
 
 	// Setup telemetry
-	var tel *telemetry.Client
-	if telemetry.OtelCollectorGRPCEndpoint == "" {
-		tel = telemetry.NewNoopClient()
-	} else {
-		var err error
-		tel, err = telemetry.New(ctx, nodeID, serviceName, commitSHA, version, instanceID)
-		if err != nil {
-			zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
-		}
+	tel, err := telemetry.New(ctx, nodeID, serviceName, commitSHA, version, instanceID)
+	if err != nil {
+		zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
 	}
-
 	defer func() {
 		err := tel.Shutdown(ctx)
 		if err != nil {
