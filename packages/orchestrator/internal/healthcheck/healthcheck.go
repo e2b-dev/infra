@@ -1,15 +1,10 @@
 package healthcheck
 
 import (
-	"context"
 	"encoding/json"
-	"log"
-	"net"
 	"net/http"
 	"sync"
 	"time"
-
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	e2borchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
@@ -32,20 +27,11 @@ func NewHealthcheck(info *service.ServiceInfo) (*Healthcheck, error) {
 	}, nil
 }
 
-func (h *Healthcheck) Start(_ context.Context, listener net.Listener) {
+func (h *Healthcheck) CreateHandler() http.Handler {
 	// Start /health HTTP server
 	routeMux := http.NewServeMux()
 	routeMux.HandleFunc("/health", h.healthHandler)
-	httpServer := &http.Server{
-		Handler: routeMux,
-	}
-
-	go func() {
-		zap.L().Info("Starting health server")
-		if err := httpServer.Serve(listener); err != nil {
-			log.Fatal(err)
-		}
-	}()
+	return routeMux
 }
 
 func (h *Healthcheck) getStatus() e2bHealth.Status {
