@@ -21,18 +21,15 @@ func newSandboxReservation(start *utils.SetOnce[sandbox.Sandbox]) *sandboxReserv
 	}
 }
 
-type TeamSandboxes struct {
-	teamID    string
-	sandboxes map[string]*sandboxReservation
-}
+type TeamSandboxes map[string]*sandboxReservation
 
 type ReservationStorage struct {
-	reservations *smap.Map[*TeamSandboxes]
+	reservations *smap.Map[TeamSandboxes]
 }
 
 func NewReservationStorage() *ReservationStorage {
 	return &ReservationStorage{
-		reservations: smap.New[*TeamSandboxes](),
+		reservations: smap.New[TeamSandboxes](),
 	}
 }
 
@@ -41,27 +38,24 @@ func (s *ReservationStorage) Reserve(teamID, sandboxID string, limit int64) (fin
 	limitExceeded := false
 	var startResult *utils.SetOnce[sandbox.Sandbox]
 
-	s.reservations.Upsert(teamID, nil, func(exist bool, teamSandboxes, _ *TeamSandboxes) *TeamSandboxes {
+	s.reservations.Upsert(teamID, nil, func(exist bool, teamSandboxes, _ TeamSandboxes) TeamSandboxes {
 		if !exist {
-			teamSandboxes = &TeamSandboxes{
-				teamID:    teamID,
-				sandboxes: make(map[string]*sandboxReservation),
-			}
+			teamSandboxes = make(map[string]*sandboxReservation)
 		}
 
-		if sbx, ok := teamSandboxes.sandboxes[sandboxID]; ok {
+		if sbx, ok := teamSandboxes[sandboxID]; ok {
 			alreadyPresent = true
 			startResult = sbx.start
 			return teamSandboxes
 		}
 
-		if limit > 0 && len(teamSandboxes.sandboxes) >= int(limit) {
+		if limit > 0 && len(teamSandboxes) >= int(limit) {
 			limitExceeded = true
 			return teamSandboxes
 		}
 
 		startResult = utils.NewSetOnce[sandbox.Sandbox]()
-		teamSandboxes.sandboxes[sandboxID] = newSandboxReservation(startResult)
+		teamSandboxes[sandboxID] = newSandboxReservation(startResult)
 		return teamSandboxes
 	})
 
@@ -87,12 +81,12 @@ func (s *ReservationStorage) Reserve(teamID, sandboxID string, limit int64) (fin
 }
 
 func (s *ReservationStorage) Remove(teamID, sandboxID string) {
-	s.reservations.RemoveCb(teamID, func(_ string, ts *TeamSandboxes, exists bool) bool {
+	s.reservations.RemoveCb(teamID, func(_ string, ts TeamSandboxes, exists bool) bool {
 		if !exists {
 			return true
 		}
 
-		delete(ts.sandboxes, sandboxID)
-		return len(ts.sandboxes) == 0
+		delete(ts, sandboxID)
+		return len(ts) == 0
 	})
 }
