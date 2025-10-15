@@ -97,7 +97,7 @@ try {
   console.log("sandbox date", dateUnix);
 
   // check if date is sandbox within 1 second of local
-  if ((Math.abs(dateUnix - localDateStart) > 1) || (Math.abs(localDateEnd - dateUnix) > 1)) {
+  if ((dateUnix - localDateStart > 1) || (localDateEnd - dateUnix) > 1) {
     throw new Error("❌ Date is not synchronized");
   }
 
