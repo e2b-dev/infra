@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"go.opentelemetry.io/otel"
@@ -14,7 +15,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+const maxAttempts = 25
+
 var (
+	ErrNoSlotFound = fmt.Errorf("failed to acquire IP slot")
+
 	meter = otel.GetMeterProvider().Meter(
 		"orchestrator.internal.sandbox.network.storage.local",
 	)
@@ -30,40 +35,34 @@ var (
 )
 
 type StorageLocal struct {
-	config       Config
-	slotsSize    int
-	acquiredNs   map[string]struct{}
+	config   Config
+	maxSlots int
+
+	// these are only to improve performance,
+	// we rely on the files to prevent us from doing bad things
+	acquiredNs   map[int]struct{}
 	acquiredNsMu sync.Mutex
 
 	pid int
 }
 
-const (
-	netNamespacesDir = "/var/run/netns"
-	maxAttempts      = 25
-)
-
 func NewStorageLocal(slotsSize int, config Config) (*StorageLocal, error) {
+	if err := os.MkdirAll(config.LocalNamespaceStorageDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create storage dir: %w", err)
+	}
+
 	return &StorageLocal{
-		config:       config,
-		slotsSize:    slotsSize,
-		acquiredNs:   make(map[string]struct{}, slotsSize),
-		acquiredNsMu: sync.Mutex{},
-		pid:          os.Getpid(),
+		config:   config,
+		maxSlots: slotsSize,
+
+		acquiredNs: make(map[int]struct{}),
+		pid:        os.Getpid(),
 	}, nil
 }
-
-var (
-	ErrTimeout               = fmt.Errorf("failed to acquire IP slot: timeout")
-	ErrNetworkSlotsExhausted = fmt.Errorf("failed to acquire IP slot: no empty slots found")
-)
 
 func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 	ctx, span := tracer.Start(ctx, "network-namespace-acquire")
 	defer span.End()
-
-	s.acquiredNsMu.Lock()
-	defer s.acquiredNsMu.Unlock()
 
 	for attempt := range maxAttempts {
 		select {
@@ -72,39 +71,87 @@ func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 		default:
 		}
 
-		if len(s.acquiredNs) >= s.slotsSize {
-			return nil, ErrNetworkSlotsExhausted
-		}
-
 		if attempt != 0 {
 			acquisitionRetries.Add(ctx, 1)
 		}
 
-		slotIdx := rand.Intn(s.slotsSize) + 1
-		slotName := s.getSlotName(slotIdx)
+		slotIdx := rand.Intn(s.maxSlots) + 1
 
-		// skip the slot if it's already acquired
-		if _, found := s.acquiredNs[slotName]; found {
-			continue
+		if slot, ok := s.tryAcquire(ctx, slotIdx); ok {
+			acquisitions.Add(ctx, 1)
+			return slot, nil
 		}
-
-		slot, err := NewSlot(slotName, slotIdx, s.config)
-		if err != nil {
-			zap.L().Warn("failed to create network slot",
-				zap.Error(err),
-				zap.Int("slotIdx", slotIdx),
-				zap.String("slotName", slotName),
-			)
-			continue
-		}
-
-		s.acquiredNs[slotName] = struct{}{}
-		acquisitions.Add(ctx, 1)
-
-		return slot, nil
 	}
 
-	return nil, ErrTimeout
+	return nil, ErrNoSlotFound
+}
+
+func (s *StorageLocal) tryAcquire(ctx context.Context, slotIdx int) (*Slot, bool) {
+	s.acquiredNsMu.Lock()
+	defer s.acquiredNsMu.Unlock()
+
+	// skip the slot if it's already acquired
+	if _, found := s.acquiredNs[slotIdx]; found {
+		return nil, false
+	}
+
+	if err := s.lockSlot(slotIdx); err != nil {
+		zap.L().Warn("failed to reserve network slot",
+			zap.Error(err),
+			zap.Int("slotIdx", slotIdx),
+		)
+		return nil, false
+	}
+
+	slotName := s.getSlotName(slotIdx)
+	slot, err := NewSlot(slotName, slotIdx, s.config)
+	if err != nil {
+		s.unlockSlot(slotIdx)
+		zap.L().Warn("failed to create network slot",
+			zap.Error(err),
+			zap.Int("slotIdx", slotIdx),
+			zap.String("slotName", slotName),
+		)
+		return nil, false
+	}
+
+	s.acquiredNs[slotIdx] = struct{}{}
+
+	acquisitions.Add(ctx, 1)
+
+	return slot, true
+}
+
+func (s *StorageLocal) createPidFilename(slotIdx int) string {
+	return filepath.Join(s.config.LocalNamespaceStorageDir, fmt.Sprintf("%d.pid", slotIdx))
+}
+
+func (s *StorageLocal) lockSlot(slotIdx int) error {
+	fullPath := s.createPidFilename(slotIdx)
+	fileContent := []byte(fmt.Sprintf("%d", s.pid))
+
+	file, err := os.OpenFile(fullPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open file %q: %w", fullPath, err)
+	}
+	defer file.Close()
+
+	if _, err = file.Write(fileContent); err != nil {
+		return fmt.Errorf("failed to write to file %q: %w", fullPath, err)
+	}
+
+	return nil
+}
+
+func (s *StorageLocal) unlockSlot(slotIdx int) {
+	fullPath := s.createPidFilename(slotIdx)
+
+	if err := os.Remove(fullPath); err != nil {
+		zap.L().Warn("failed to remove file",
+			zap.Error(err),
+			zap.String("fullPath", fullPath),
+		)
+	}
 }
 
 func (s *StorageLocal) Release(ctx context.Context, ips *Slot) error {
@@ -113,8 +160,9 @@ func (s *StorageLocal) Release(ctx context.Context, ips *Slot) error {
 	s.acquiredNsMu.Lock()
 	defer s.acquiredNsMu.Unlock()
 
-	slotName := s.getSlotName(ips.Idx)
-	delete(s.acquiredNs, slotName)
+	delete(s.acquiredNs, ips.Idx)
+
+	s.unlockSlot(ips.Idx)
 
 	return nil
 }

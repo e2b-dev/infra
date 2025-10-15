@@ -14,6 +14,7 @@ type Config struct {
 	HyperloopIPAddress       string `env:"SANDBOX_HYPERLOOP_IP"         envDefault:"192.0.2.1"`
 	HyperloopProxyPort       uint16 `env:"SANDBOX_HYPERLOOP_PROXY_PORT" envDefault:"5010"`
 	UseLocalNamespaceStorage bool   `env:"USE_LOCAL_NAMESPACE_STORAGE"`
+	LocalNamespaceStorageDir string `env:"LOCAL_NAMESPACE_STORAGE_DIR"  envDefault:"/run/orchestrator/netns"`
 
 	SandboxesHostNetworkCIDR    *net.IPNet `env:"SANDBOXES_HOST_NETWORK_CIDR"    envDefault:"10.11.0.0/16"`
 	SandboxesVirtualNetworkCIDR *net.IPNet `env:"SANDBOXES_VIRTUAL_NETWORK_CIDR" envDefault:"10.12.0.0/16"`

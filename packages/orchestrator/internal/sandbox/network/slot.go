@@ -15,6 +15,8 @@ import (
 	netutils "k8s.io/utils/net"
 )
 
+const netNamespacesDir = "/var/run/netns"
+
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network")
 
 const (
