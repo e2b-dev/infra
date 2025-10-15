@@ -12,10 +12,11 @@ import (
 	"time"
 
 	"github.com/bits-and-blooms/bitset"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // maxSlotsReady is the number of slots that are ready to be used.
@@ -23,6 +24,22 @@ const (
 	maxSlotsReady                 = 64
 	waitOnNBDError                = 50 * time.Millisecond
 	devicePoolCloseReleaseTimeout = 10 * time.Minute
+)
+
+var (
+	meter       = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd")
+	slotCounter = utils.Must(meter.Int64UpDownCounter("orchestrator.nbd.slots_pool.ready",
+		metric.WithDescription("Number of nbd slots ready to be used."),
+		metric.WithUnit("{slot}"),
+	))
+	acquired = utils.Must(meter.Int64Counter("orchestrator.nbd.slots_pool.acquired",
+		metric.WithDescription("Number of nbd slots acquired."),
+		metric.WithUnit("{slot}"),
+	))
+	released = utils.Must(meter.Int64Counter("orchestrator.nbd.slots_pool.released",
+		metric.WithDescription("Number of nbd slots released."),
+		metric.WithUnit("{slot}"),
+	))
 )
 
 // NoFreeSlotsError is returned when there are no free slots.
@@ -62,11 +79,9 @@ type DevicePool struct {
 	mu        sync.Mutex
 
 	slots chan DeviceSlot
-
-	slotCounter metric.Int64UpDownCounter
 }
 
-func NewDevicePool(meterProvider metric.MeterProvider) (*DevicePool, error) {
+func NewDevicePool() (*DevicePool, error) {
 	maxDevices, err := getMaxDevices()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get max devices: %w", err)
@@ -76,17 +91,10 @@ func NewDevicePool(meterProvider metric.MeterProvider) (*DevicePool, error) {
 		return nil, errors.New("max devices is 0")
 	}
 
-	meter := meterProvider.Meter("orchestrator.device.pool")
-	counter, err := telemetry.GetUpDownCounter(meter, telemetry.NBDkSlotSReadyPoolCounterMeterName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get slot pool counter: %w", err)
-	}
-
 	pool := &DevicePool{
-		done:        make(chan struct{}),
-		usedSlots:   bitset.New(maxDevices),
-		slots:       make(chan DeviceSlot, int(math.Min(maxSlotsReady, float64(maxDevices)))),
-		slotCounter: counter,
+		done:      make(chan struct{}),
+		usedSlots: bitset.New(maxDevices),
+		slots:     make(chan DeviceSlot, int(math.Min(maxSlotsReady, float64(maxDevices)))),
 	}
 
 	return pool, nil
@@ -133,7 +141,7 @@ func (d *DevicePool) Populate(ctx context.Context) {
 		}
 		failedCount = 0
 
-		d.slotCounter.Add(ctx, 1)
+		slotCounter.Add(ctx, 1)
 
 		// Use select to avoid panic if context is canceled before writing
 		select {
@@ -249,12 +257,13 @@ func (d *DevicePool) GetDevice(ctx context.Context) (DeviceSlot, error) {
 	case <-ctx.Done():
 		return 0, ctx.Err()
 	case slot := <-d.slots:
-		d.slotCounter.Add(ctx, -1)
+		acquired.Add(ctx, 1)
+		slotCounter.Add(ctx, -1)
 		return slot, nil
 	}
 }
 
-func (d *DevicePool) release(idx DeviceSlot) error {
+func (d *DevicePool) release(ctx context.Context, idx DeviceSlot) error {
 	free, err := d.isDeviceFree(idx)
 	if err != nil {
 		return fmt.Errorf("failed to check if device is free: %w", err)
@@ -268,6 +277,7 @@ func (d *DevicePool) release(idx DeviceSlot) error {
 	d.usedSlots.Clear(uint(idx))
 	d.mu.Unlock()
 
+	released.Add(ctx, 1)
 	return nil
 }
 
@@ -294,7 +304,7 @@ func (d *DevicePool) ReleaseDevice(ctx context.Context, idx DeviceSlot, opts ...
 
 		attempt++
 
-		err := d.release(idx)
+		err := d.release(ctx, idx)
 		if err == nil {
 			return nil
 		}

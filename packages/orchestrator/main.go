@@ -320,7 +320,7 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{"sandbox proxy", sandboxProxy.Close})
 
 	// device pool
-	devicePool, err := nbd.NewDevicePool(tel.MeterProvider)
+	devicePool, err := nbd.NewDevicePool()
 	if err != nil {
 		zap.L().Fatal("failed to create device pool", zap.Error(err))
 	}
@@ -331,7 +331,7 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{"device pool", devicePool.Close})
 
 	// network pool
-	networkPool, err := network.NewPool(tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, nodeID, config.NetworkConfig)
+	networkPool, err := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, nodeID, config.NetworkConfig)
 	if err != nil {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
