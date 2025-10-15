@@ -37,7 +37,7 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("error while extracting access token: %w", err)
 	}
 
-	if !auth.ValidateAccessToken(ctx, a.db.Client, accessToken) {
+	if !auth.ValidateAccessToken(ctx, a.db, accessToken) {
 		log.Printf("Invalid access token: '%s'\n", accessToken)
 
 		w.WriteHeader(http.StatusForbidden)
@@ -78,7 +78,7 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	// Validate if the user has access to the template
-	hasAccess, err := auth.Validate(ctx, a.db.Client, accessToken, templateID)
+	hasAccess, err := auth.Validate(ctx, a.db, accessToken, templateID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 

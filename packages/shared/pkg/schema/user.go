@@ -31,6 +31,5 @@ func (User) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.From("teams", Team.Type).Through("users_teams", UsersTeams.Type).Ref("users"),
 		edge.To("created_envs", Env.Type).Annotations(entsql.OnDelete(entsql.SetNull)),
-		edge.To("access_tokens", AccessToken.Type).Annotations(entsql.OnDelete(entsql.Cascade)),
 	}
 }

@@ -11,7 +11,6 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/internal"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
@@ -24,15 +23,14 @@ import (
 // UserQuery is the builder for querying User entities.
 type UserQuery struct {
 	config
-	ctx              *QueryContext
-	order            []user.OrderOption
-	inters           []Interceptor
-	predicates       []predicate.User
-	withTeams        *TeamQuery
-	withCreatedEnvs  *EnvQuery
-	withAccessTokens *AccessTokenQuery
-	withUsersTeams   *UsersTeamsQuery
-	modifiers        []func(*sql.Selector)
+	ctx             *QueryContext
+	order           []user.OrderOption
+	inters          []Interceptor
+	predicates      []predicate.User
+	withTeams       *TeamQuery
+	withCreatedEnvs *EnvQuery
+	withUsersTeams  *UsersTeamsQuery
+	modifiers       []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -113,31 +111,6 @@ func (uq *UserQuery) QueryCreatedEnvs() *EnvQuery {
 		schemaConfig := uq.schemaConfig
 		step.To.Schema = schemaConfig.Env
 		step.Edge.Schema = schemaConfig.Env
-		fromU = sqlgraph.SetNeighbors(uq.driver.Dialect(), step)
-		return fromU, nil
-	}
-	return query
-}
-
-// QueryAccessTokens chains the current query on the "access_tokens" edge.
-func (uq *UserQuery) QueryAccessTokens() *AccessTokenQuery {
-	query := (&AccessTokenClient{config: uq.config}).Query()
-	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
-		if err := uq.prepareQuery(ctx); err != nil {
-			return nil, err
-		}
-		selector := uq.sqlQuery(ctx)
-		if err := selector.Err(); err != nil {
-			return nil, err
-		}
-		step := sqlgraph.NewStep(
-			sqlgraph.From(user.Table, user.FieldID, selector),
-			sqlgraph.To(accesstoken.Table, accesstoken.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, user.AccessTokensTable, user.AccessTokensColumn),
-		)
-		schemaConfig := uq.schemaConfig
-		step.To.Schema = schemaConfig.AccessToken
-		step.Edge.Schema = schemaConfig.AccessToken
 		fromU = sqlgraph.SetNeighbors(uq.driver.Dialect(), step)
 		return fromU, nil
 	}
@@ -356,15 +329,14 @@ func (uq *UserQuery) Clone() *UserQuery {
 		return nil
 	}
 	return &UserQuery{
-		config:           uq.config,
-		ctx:              uq.ctx.Clone(),
-		order:            append([]user.OrderOption{}, uq.order...),
-		inters:           append([]Interceptor{}, uq.inters...),
-		predicates:       append([]predicate.User{}, uq.predicates...),
-		withTeams:        uq.withTeams.Clone(),
-		withCreatedEnvs:  uq.withCreatedEnvs.Clone(),
-		withAccessTokens: uq.withAccessTokens.Clone(),
-		withUsersTeams:   uq.withUsersTeams.Clone(),
+		config:          uq.config,
+		ctx:             uq.ctx.Clone(),
+		order:           append([]user.OrderOption{}, uq.order...),
+		inters:          append([]Interceptor{}, uq.inters...),
+		predicates:      append([]predicate.User{}, uq.predicates...),
+		withTeams:       uq.withTeams.Clone(),
+		withCreatedEnvs: uq.withCreatedEnvs.Clone(),
+		withUsersTeams:  uq.withUsersTeams.Clone(),
 		// clone intermediate query.
 		sql:  uq.sql.Clone(),
 		path: uq.path,
@@ -390,17 +362,6 @@ func (uq *UserQuery) WithCreatedEnvs(opts ...func(*EnvQuery)) *UserQuery {
 		opt(query)
 	}
 	uq.withCreatedEnvs = query
-	return uq
-}
-
-// WithAccessTokens tells the query-builder to eager-load the nodes that are connected to
-// the "access_tokens" edge. The optional arguments are used to configure the query builder of the edge.
-func (uq *UserQuery) WithAccessTokens(opts ...func(*AccessTokenQuery)) *UserQuery {
-	query := (&AccessTokenClient{config: uq.config}).Query()
-	for _, opt := range opts {
-		opt(query)
-	}
-	uq.withAccessTokens = query
 	return uq
 }
 
@@ -493,10 +454,9 @@ func (uq *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{}
 		_spec       = uq.querySpec()
-		loadedTypes = [4]bool{
+		loadedTypes = [3]bool{
 			uq.withTeams != nil,
 			uq.withCreatedEnvs != nil,
-			uq.withAccessTokens != nil,
 			uq.withUsersTeams != nil,
 		}
 	)
@@ -534,13 +494,6 @@ func (uq *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 		if err := uq.loadCreatedEnvs(ctx, query, nodes,
 			func(n *User) { n.Edges.CreatedEnvs = []*Env{} },
 			func(n *User, e *Env) { n.Edges.CreatedEnvs = append(n.Edges.CreatedEnvs, e) }); err != nil {
-			return nil, err
-		}
-	}
-	if query := uq.withAccessTokens; query != nil {
-		if err := uq.loadAccessTokens(ctx, query, nodes,
-			func(n *User) { n.Edges.AccessTokens = []*AccessToken{} },
-			func(n *User, e *AccessToken) { n.Edges.AccessTokens = append(n.Edges.AccessTokens, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -644,36 +597,6 @@ func (uq *UserQuery) loadCreatedEnvs(ctx context.Context, query *EnvQuery, nodes
 		node, ok := nodeids[*fk]
 		if !ok {
 			return fmt.Errorf(`unexpected referenced foreign-key "created_by" returned %v for node %v`, *fk, n.ID)
-		}
-		assign(node, n)
-	}
-	return nil
-}
-func (uq *UserQuery) loadAccessTokens(ctx context.Context, query *AccessTokenQuery, nodes []*User, init func(*User), assign func(*User, *AccessToken)) error {
-	fks := make([]driver.Value, 0, len(nodes))
-	nodeids := make(map[uuid.UUID]*User)
-	for i := range nodes {
-		fks = append(fks, nodes[i].ID)
-		nodeids[nodes[i].ID] = nodes[i]
-		if init != nil {
-			init(nodes[i])
-		}
-	}
-	if len(query.ctx.Fields) > 0 {
-		query.ctx.AppendFieldOnce(accesstoken.FieldUserID)
-	}
-	query.Where(predicate.AccessToken(func(s *sql.Selector) {
-		s.Where(sql.InValues(s.C(user.AccessTokensColumn), fks...))
-	}))
-	neighbors, err := query.All(ctx)
-	if err != nil {
-		return err
-	}
-	for _, n := range neighbors {
-		fk := n.UserID
-		node, ok := nodeids[fk]
-		if !ok {
-			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
 		}
 		assign(node, n)
 	}

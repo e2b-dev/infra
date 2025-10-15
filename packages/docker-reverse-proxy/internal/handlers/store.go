@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -8,20 +9,20 @@ import (
 	"net/http/httputil"
 	"net/url"
 
+	"github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/cache"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 )
 
 type APIStore struct {
-	db        *db.DB
+	db        *client.Client
 	AuthCache *cache.AuthCache
 	proxy     *httputil.ReverseProxy
 }
 
-func NewStore() *APIStore {
+func NewStore(ctx context.Context) *APIStore {
 	authCache := cache.New()
-	database, err := db.NewClient(3, 2)
+	database, err := client.NewClient(ctx, client.WithMaxConnections(3))
 	if err != nil {
 		log.Fatal(err)
 	}

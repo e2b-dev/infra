@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -16,6 +17,8 @@ import (
 var commitSHA string
 
 func main() {
+	ctx := context.Background()
+
 	err := constants.CheckRequired()
 	if err != nil {
 		log.Fatal(err)
@@ -26,7 +29,7 @@ func main() {
 
 	log.Println("Starting docker reverse proxy", "commit", commitSHA)
 
-	store := handlers.NewStore()
+	store := handlers.NewStore(ctx)
 
 	// https://distribution.github.io/distribution/spec/api/
 	http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
