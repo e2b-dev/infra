@@ -120,6 +120,11 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		envVars = *body.EnvVars
 	}
 
+	var mcp api.Mcp
+	if body.Mcp != nil {
+		mcp = *body.Mcp
+	}
+
 	timeout := sandbox.SandboxTimeoutDefault
 	if body.Timeout != nil {
 		timeout = time.Duration(*body.Timeout) * time.Second
@@ -165,6 +170,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		autoPause,
 		envdAccessToken,
 		allowInternetAccess,
+		mcp,
 	)
 	if createErr != nil {
 		zap.L().Error("Failed to create sandbox", zap.Error(createErr.Err))
