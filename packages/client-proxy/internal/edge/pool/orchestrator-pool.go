@@ -88,7 +88,7 @@ func (p *OrchestratorsPool) statusLogSync() {
 	for {
 		select {
 		case <-p.close:
-			p.logger.Info("Stopping analytics sync")
+			p.logger.Info("Stopping orchestrators pool sync")
 			return
 		case <-ticker.C:
 			orchestrators := len(p.GetOrchestrators())
