@@ -192,41 +192,6 @@ var (
 			},
 		},
 	}
-	// TeamAPIKeysColumns holds the columns for the "team_api_keys" table.
-	TeamAPIKeysColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeUUID, Unique: true, Default: "gen_random_uuid()"},
-		{Name: "api_key_hash", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "character varying(64)"}},
-		{Name: "api_key_prefix", Type: field.TypeString, SchemaType: map[string]string{"postgres": "character varying(10)"}},
-		{Name: "api_key_length", Type: field.TypeInt},
-		{Name: "api_key_mask_prefix", Type: field.TypeString, SchemaType: map[string]string{"postgres": "character varying(5)"}},
-		{Name: "api_key_mask_suffix", Type: field.TypeString, SchemaType: map[string]string{"postgres": "character varying(5)"}},
-		{Name: "created_at", Type: field.TypeTime, Default: "CURRENT_TIMESTAMP"},
-		{Name: "updated_at", Type: field.TypeTime, Nullable: true},
-		{Name: "name", Type: field.TypeString, Default: "Unnamed API Key", SchemaType: map[string]string{"postgres": "text"}},
-		{Name: "last_used", Type: field.TypeTime, Nullable: true},
-		{Name: "team_id", Type: field.TypeUUID},
-		{Name: "created_by", Type: field.TypeUUID, Nullable: true},
-	}
-	// TeamAPIKeysTable holds the schema information for the "team_api_keys" table.
-	TeamAPIKeysTable = &schema.Table{
-		Name:       "team_api_keys",
-		Columns:    TeamAPIKeysColumns,
-		PrimaryKey: []*schema.Column{TeamAPIKeysColumns[0]},
-		ForeignKeys: []*schema.ForeignKey{
-			{
-				Symbol:     "team_api_keys_teams_team_api_keys",
-				Columns:    []*schema.Column{TeamAPIKeysColumns[10]},
-				RefColumns: []*schema.Column{TeamsColumns[0]},
-				OnDelete:   schema.Cascade,
-			},
-			{
-				Symbol:     "team_api_keys_users_created_api_keys",
-				Columns:    []*schema.Column{TeamAPIKeysColumns[11]},
-				RefColumns: []*schema.Column{UsersColumns[0]},
-				OnDelete:   schema.SetNull,
-			},
-		},
-	}
 	// TiersColumns holds the columns for the "tiers" table.
 	TiersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "text"}},
@@ -296,7 +261,6 @@ var (
 		EnvBuildsTable,
 		SnapshotsTable,
 		TeamsTable,
-		TeamAPIKeysTable,
 		TiersTable,
 		UsersTable,
 		UsersTeamsTable,
@@ -320,9 +284,6 @@ func init() {
 	SnapshotsTable.Annotation = &entsql.Annotation{}
 	TeamsTable.ForeignKeys[0].RefTable = TiersTable
 	TeamsTable.Annotation = &entsql.Annotation{}
-	TeamAPIKeysTable.ForeignKeys[0].RefTable = TeamsTable
-	TeamAPIKeysTable.ForeignKeys[1].RefTable = UsersTable
-	TeamAPIKeysTable.Annotation = &entsql.Annotation{}
 	TiersTable.Annotation = &entsql.Annotation{}
 	TiersTable.Annotation.Checks = map[string]string{
 		"tiers_concurrent_sessions_check":        "concurrent_instances > 0",
