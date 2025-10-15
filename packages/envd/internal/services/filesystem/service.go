@@ -5,6 +5,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
 
+	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/legacy"
 	spec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem/filesystemconnect"
@@ -14,12 +15,14 @@ import (
 type Service struct {
 	logger   *zerolog.Logger
 	watchers *utils.Map[string, *FileWatcher]
+	defaults *execcontext.Defaults
 }
 
-func Handle(server *chi.Mux, l *zerolog.Logger) {
+func Handle(server *chi.Mux, l *zerolog.Logger, defaults *execcontext.Defaults) {
 	service := Service{
 		logger:   l,
 		watchers: utils.NewMap[string, *FileWatcher](),
+		defaults: defaults,
 	}
 
 	interceptors := connect.WithInterceptors(

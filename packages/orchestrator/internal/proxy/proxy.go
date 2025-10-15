@@ -31,6 +31,8 @@ type SandboxProxy struct {
 func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes *sandbox.Map) (*SandboxProxy, error) {
 	proxy := reverseproxy.New(
 		port,
+		// Retry 5 times to handle port forwarding delays in sandbox envd.
+		reverseproxy.SandboxProxyRetries,
 		idleTimeout,
 		func(r *http.Request) (*pool.Destination, error) {
 			sandboxId, port, err := reverseproxy.ParseHost(r.Host)

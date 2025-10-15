@@ -1764,6 +1764,7 @@ paths:
       description: List all templates
       tags: [templates]
       security:
+        - ApiKeyAuth: []
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
       parameters:
@@ -1861,6 +1862,7 @@ paths:
       description: Update template
       tags: [templates]
       security:
+        - ApiKeyAuth: []
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
       parameters:

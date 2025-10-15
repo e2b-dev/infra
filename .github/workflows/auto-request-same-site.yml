@@ -3,10 +3,14 @@ name: Auto-request same-site reviewers
 on:
   # Works for PRs from branches and forks (runs in base-repo context)
   pull_request_target:
-    types: [opened]
+    types:
+      - opened
+      - ready_for_review
 
 permissions:
   contents: read
+  pull-requests: write
+  issues: write
 
 jobs:
   assign:

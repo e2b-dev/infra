@@ -63,9 +63,11 @@ type Config struct {
 }
 
 type EnvdMetadata struct {
-	Vars        map[string]string
-	AccessToken *string
-	Version     string
+	Vars           map[string]string
+	DefaultUser    *string
+	DefaultWorkdir *string
+	AccessToken    *string
+	Version        string
 }
 
 type RuntimeMetadata struct {

@@ -14,7 +14,6 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/tier"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
@@ -136,21 +135,6 @@ func (tc *TeamCreate) AddUsers(u ...*User) *TeamCreate {
 		ids[i] = u[i].ID
 	}
 	return tc.AddUserIDs(ids...)
-}
-
-// AddTeamAPIKeyIDs adds the "team_api_keys" edge to the TeamAPIKey entity by IDs.
-func (tc *TeamCreate) AddTeamAPIKeyIDs(ids ...uuid.UUID) *TeamCreate {
-	tc.mutation.AddTeamAPIKeyIDs(ids...)
-	return tc
-}
-
-// AddTeamAPIKeys adds the "team_api_keys" edges to the TeamAPIKey entity.
-func (tc *TeamCreate) AddTeamAPIKeys(t ...*TeamAPIKey) *TeamCreate {
-	ids := make([]uuid.UUID, len(t))
-	for i := range t {
-		ids[i] = t[i].ID
-	}
-	return tc.AddTeamAPIKeyIDs(ids...)
 }
 
 // SetTeamTierID sets the "team_tier" edge to the Tier entity by ID.
@@ -341,23 +325,6 @@ func (tc *TeamCreate) createSpec() (*Team, *sqlgraph.CreateSpec) {
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
-		_spec.Edges = append(_spec.Edges, edge)
-	}
-	if nodes := tc.mutation.TeamAPIKeysIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   team.TeamAPIKeysTable,
-			Columns: []string{team.TeamAPIKeysColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID),
-			},
-		}
-		edge.Schema = tc.schemaConfig.TeamAPIKey
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	if nodes := tc.mutation.TeamTierIDs(); len(nodes) > 0 {

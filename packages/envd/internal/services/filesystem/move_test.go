@@ -40,7 +40,7 @@ func TestMove(t *testing.T) {
 	destFile := filepath.Join(destDir, "test-file.txt")
 
 	// Service instance
-	svc := Service{}
+	svc := mockService()
 
 	// Call the Move function
 	ctx := authn.SetInfo(t.Context(), u)
@@ -97,7 +97,7 @@ func TestMoveDirectory(t *testing.T) {
 	destDir := filepath.Join(destParent, "test-dir")
 
 	// Service instance
-	svc := Service{}
+	svc := mockService()
 
 	// Call the Move function
 	ctx := authn.SetInfo(t.Context(), u)
@@ -157,7 +157,7 @@ func TestMoveNonExistingFile(t *testing.T) {
 	destFile := filepath.Join(destDir, "moved-file.txt")
 
 	// Service instance
-	svc := Service{}
+	svc := mockService()
 
 	// Call the Move function
 	ctx := authn.SetInfo(t.Context(), u)
@@ -199,7 +199,7 @@ func TestMoveRelativePath(t *testing.T) {
 	destFile := filepath.Join(destFolderPath, "moved-file.txt")
 
 	// Service instance
-	svc := Service{}
+	svc := mockService()
 
 	// Call the Move function with relative paths
 	ctx := authn.SetInfo(t.Context(), u)
@@ -262,7 +262,7 @@ func TestMove_Symlinks(t *testing.T) {
 	require.NoError(t, os.Symlink(realDir, linkToDir))
 	require.NoError(t, os.Symlink(realFile, linkToFile))
 
-	svc := Service{}
+	svc := mockService()
 
 	t.Run("move symlink to directory", func(t *testing.T) {
 		destPath := filepath.Join(destRoot, "moved-link-dir")

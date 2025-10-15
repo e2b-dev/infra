@@ -20,6 +20,7 @@ var _ Command = (*Run)(nil)
 func (r *Run) Execute(
 	ctx context.Context,
 	logger *zap.Logger,
+	lvl zapcore.Level,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	prefix string,
@@ -44,7 +45,7 @@ func (r *Run) Execute(
 		ctx,
 		proxy,
 		logger,
-		zapcore.InfoLevel,
+		lvl,
 		prefix,
 		sandboxID,
 		cmd,

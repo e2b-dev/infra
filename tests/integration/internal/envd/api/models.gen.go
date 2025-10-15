@@ -105,7 +105,7 @@ type GetFilesParams struct {
 	Path *FilePath `form:"path,omitempty" json:"path,omitempty"`
 
 	// Username User used for setting the owner, or resolving relative paths.
-	Username User `form:"username" json:"username"`
+	Username *User `form:"username,omitempty" json:"username,omitempty"`
 
 	// Signature Signature used for file access permission verification.
 	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
@@ -125,7 +125,7 @@ type PostFilesParams struct {
 	Path *FilePath `form:"path,omitempty" json:"path,omitempty"`
 
 	// Username User used for setting the owner, or resolving relative paths.
-	Username User `form:"username" json:"username"`
+	Username *User `form:"username,omitempty" json:"username,omitempty"`
 
 	// Signature Signature used for file access permission verification.
 	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
@@ -138,6 +138,12 @@ type PostFilesParams struct {
 type PostInitJSONBody struct {
 	// AccessToken Access token for secure access to envd service
 	AccessToken *string `json:"accessToken,omitempty"`
+
+	// DefaultUser The default user to use for operations
+	DefaultUser *string `json:"defaultUser,omitempty"`
+
+	// DefaultWorkdir The default working directory to use for operations
+	DefaultWorkdir *string `json:"defaultWorkdir,omitempty"`
 
 	// EnvVars Environment variables to set
 	EnvVars *EnvVars `json:"envVars,omitempty"`

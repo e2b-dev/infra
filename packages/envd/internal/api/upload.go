@@ -14,6 +14,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
@@ -108,7 +109,7 @@ func processFile(r *http.Request, path string, part *multipart.Part, user *user.
 	return http.StatusNoContent, nil
 }
 
-func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, params PostFilesParams) (string, error) {
+func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, defaultPath *string, params PostFilesParams) (string, error) {
 	var pathToResolve string
 
 	if params.Path != nil {
@@ -122,7 +123,7 @@ func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, param
 		}
 	}
 
-	filePath, err := permissions.ExpandAndResolve(pathToResolve, u)
+	filePath, err := permissions.ExpandAndResolve(pathToResolve, u, defaultPath)
 	if err != nil {
 		return "", fmt.Errorf("error resolving path: %w", err)
 	}
@@ -170,13 +171,20 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 		return
 	}
 
+	username, err := execcontext.ResolveDefaultUsername(params.Username, a.defaults.User)
+	if err != nil {
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("no user specified")
+		jsonError(w, http.StatusBadRequest, err)
+		return
+	}
+
 	defer func() {
 		l := a.logger.
 			Err(errMsg).
 			Str("method", r.Method+" "+r.URL.Path).
 			Str(string(logs.OperationIDKey), operationID).
 			Str("path", path).
-			Str("username", params.Username)
+			Str("username", username)
 
 		if errMsg != nil {
 			l = l.Int("error_code", errorCode)
@@ -194,9 +202,9 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 		return
 	}
 
-	u, err := user.Lookup(params.Username)
+	u, err := user.Lookup(username)
 	if err != nil {
-		errMsg = fmt.Errorf("error looking up user '%s': %w", params.Username, err)
+		errMsg = fmt.Errorf("error looking up user '%s': %w", username, err)
 		errorCode = http.StatusUnauthorized
 
 		jsonError(w, errorCode, errMsg)
@@ -221,7 +229,7 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 		}
 
 		if part.FormName() == "file" {
-			filePath, err := resolvePath(part, &paths, u, params)
+			filePath, err := resolvePath(part, &paths, u, a.defaults.Workdir, params)
 			if err != nil {
 				errorCode = http.StatusBadRequest
 				errMsg = err

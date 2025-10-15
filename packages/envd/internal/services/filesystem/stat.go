@@ -9,13 +9,13 @@ import (
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
 )
 
-func (Service) Stat(ctx context.Context, req *connect.Request[rpc.StatRequest]) (*connect.Response[rpc.StatResponse], error) {
-	u, err := permissions.GetAuthUser(ctx)
+func (s Service) Stat(ctx context.Context, req *connect.Request[rpc.StatRequest]) (*connect.Response[rpc.StatResponse], error) {
+	u, err := permissions.GetAuthUser(ctx, s.defaults.User)
 	if err != nil {
 		return nil, err
 	}
 
-	path, err := permissions.ExpandAndResolve(req.Msg.GetPath(), u)
+	path, err := permissions.ExpandAndResolve(req.Msg.GetPath(), u, s.defaults.Workdir)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}

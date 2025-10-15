@@ -90,6 +90,7 @@ fi
 func (c *Copy) Execute(
 	ctx context.Context,
 	logger *zap.Logger,
+	_ zapcore.Level,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	_ string,

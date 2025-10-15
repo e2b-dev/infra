@@ -145,7 +145,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			sock.Close()
 		}
 		// Release the device back to the pool
-		releaseErr := d.devicePool.ReleaseDevice(deviceIndex)
+		releaseErr := d.devicePool.ReleaseDevice(ctx, deviceIndex)
 		if releaseErr != nil {
 			zap.L().Error("error opening NBD, error releasing device", zap.Error(releaseErr), zap.Uint32("device_index", deviceIndex))
 		}
@@ -233,7 +233,7 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 	// Release the device back to the pool, retry if it is in use
 	if idx != math.MaxUint32 {
 		telemetry.ReportEvent(ctx, "releasing device to the pool")
-		err := d.devicePool.ReleaseDeviceWithRetry(idx)
+		err := d.devicePool.ReleaseDevice(ctx, idx, WithInfiniteRetry())
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error releasing overlay device: %w", err))
 		}

@@ -11,6 +11,8 @@ import (
 
 	"github.com/google/uuid"
 
+	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
@@ -28,6 +30,12 @@ func main() {
 		panic(err)
 	}
 	defer database.Close()
+
+	sqlcDB, err := sqlcdb.NewClient(ctx)
+	if err != nil {
+		panic(err)
+	}
+	defer sqlcDB.Close()
 
 	count, err := database.Client.Team.Query().Count(ctx)
 	if err != nil {
@@ -135,15 +143,16 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	_, err = database.Client.TeamAPIKey.Create().
-		SetTeam(t).
-		SetAPIKeyHash(apiKeyHash).
-		SetAPIKeyPrefix(apiKeyMask.Prefix).
-		SetAPIKeyLength(apiKeyMask.ValueLength).
-		SetAPIKeyMaskPrefix(apiKeyMask.MaskedValuePrefix).
-		SetAPIKeyMaskSuffix(apiKeyMask.MaskedValueSuffix).
-		SetName("Seed API Key").
-		Save(ctx)
+	_, err = sqlcDB.CreateTeamAPIKey(ctx, queries.CreateTeamAPIKeyParams{
+		TeamID:           t.ID,
+		CreatedBy:        &user.ID,
+		ApiKeyHash:       apiKeyHash,
+		ApiKeyPrefix:     apiKeyMask.Prefix,
+		ApiKeyLength:     int32(apiKeyMask.ValueLength),
+		ApiKeyMaskPrefix: apiKeyMask.MaskedValuePrefix,
+		ApiKeyMaskSuffix: apiKeyMask.MaskedValueSuffix,
+		Name:             "Seed API Key",
+	})
 	if err != nil {
 		panic(err)
 	}

@@ -89,6 +89,7 @@ message TemplateConfig {
 message TemplateCreateRequest {
   TemplateConfig template = 1;
   optional string cacheScope = 2;
+  optional string version = 3;
 }
 
 enum LogLevel {

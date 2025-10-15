@@ -88,7 +88,7 @@ func (p *OrchestratorsPool) statusLogSync() {
 	for {
 		select {
 		case <-p.close:
-			p.logger.Info("Stopping analytics sync")
+			p.logger.Info("Stopping orchestrators pool sync")
 			return
 		case <-ticker.C:
 			orchestrators := len(p.GetOrchestrators())
@@ -125,7 +125,7 @@ type orchestratorInstancesSyncStore struct {
 	pool *OrchestratorsPool
 }
 
-func (e *orchestratorInstancesSyncStore) getHost(ip string, port int) string {
+func (e *orchestratorInstancesSyncStore) getHost(ip string, port uint16) string {
 	return fmt.Sprintf("%s:%d", ip, port)
 }
 

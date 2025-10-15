@@ -52,6 +52,7 @@ func (tm *TemplateManager) CreateTemplate(
 	steps *[]api.TemplateStep,
 	clusterID uuid.UUID,
 	nodeID string,
+	version string,
 ) (e error) {
 	ctx, span := tracer.Start(ctx, "create-template",
 		trace.WithAttributes(
@@ -152,6 +153,7 @@ func (tm *TemplateManager) CreateTemplate(
 		reqCtx, &templatemanagergrpc.TemplateCreateRequest{
 			Template:   template,
 			CacheScope: ut.ToPtr(teamID.String()),
+			Version:    &version,
 		},
 	)
 

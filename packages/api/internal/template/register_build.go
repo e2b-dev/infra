@@ -130,7 +130,7 @@ func RegisterBuild(
 			telemetry.ReportCriticalError(ctx, "invalid alias", err)
 			return nil, &api.APIError{
 				Err:       err,
-				ClientMsg: fmt.Sprintf("Invalid alias: %s", alias),
+				ClientMsg: fmt.Sprintf("Invalid alias: %s", *data.Alias),
 				Code:      http.StatusBadRequest,
 			}
 		}

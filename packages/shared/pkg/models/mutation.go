@@ -19,7 +19,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/tier"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
@@ -43,7 +42,6 @@ const (
 	TypeEnvBuild    = "EnvBuild"
 	TypeSnapshot    = "Snapshot"
 	TypeTeam        = "Team"
-	TypeTeamAPIKey  = "TeamAPIKey"
 	TypeTier        = "Tier"
 	TypeUser        = "User"
 	TypeUsersTeams  = "UsersTeams"
@@ -5516,34 +5514,31 @@ func (m *SnapshotMutation) ResetEdge(name string) error {
 // TeamMutation represents an operation that mutates the Team nodes in the graph.
 type TeamMutation struct {
 	config
-	op                   Op
-	typ                  string
-	id                   *uuid.UUID
-	created_at           *time.Time
-	is_banned            *bool
-	is_blocked           *bool
-	blocked_reason       *string
-	name                 *string
-	email                *string
-	cluster_id           *uuid.UUID
-	clearedFields        map[string]struct{}
-	users                map[uuid.UUID]struct{}
-	removedusers         map[uuid.UUID]struct{}
-	clearedusers         bool
-	team_api_keys        map[uuid.UUID]struct{}
-	removedteam_api_keys map[uuid.UUID]struct{}
-	clearedteam_api_keys bool
-	team_tier            *string
-	clearedteam_tier     bool
-	envs                 map[string]struct{}
-	removedenvs          map[string]struct{}
-	clearedenvs          bool
-	users_teams          map[int]struct{}
-	removedusers_teams   map[int]struct{}
-	clearedusers_teams   bool
-	done                 bool
-	oldValue             func(context.Context) (*Team, error)
-	predicates           []predicate.Team
+	op                 Op
+	typ                string
+	id                 *uuid.UUID
+	created_at         *time.Time
+	is_banned          *bool
+	is_blocked         *bool
+	blocked_reason     *string
+	name               *string
+	email              *string
+	cluster_id         *uuid.UUID
+	clearedFields      map[string]struct{}
+	users              map[uuid.UUID]struct{}
+	removedusers       map[uuid.UUID]struct{}
+	clearedusers       bool
+	team_tier          *string
+	clearedteam_tier   bool
+	envs               map[string]struct{}
+	removedenvs        map[string]struct{}
+	clearedenvs        bool
+	users_teams        map[int]struct{}
+	removedusers_teams map[int]struct{}
+	clearedusers_teams bool
+	done               bool
+	oldValue           func(context.Context) (*Team, error)
+	predicates         []predicate.Team
 }
 
 var _ ent.Mutation = (*TeamMutation)(nil)
@@ -6044,60 +6039,6 @@ func (m *TeamMutation) ResetUsers() {
 	m.removedusers = nil
 }
 
-// AddTeamAPIKeyIDs adds the "team_api_keys" edge to the TeamAPIKey entity by ids.
-func (m *TeamMutation) AddTeamAPIKeyIDs(ids ...uuid.UUID) {
-	if m.team_api_keys == nil {
-		m.team_api_keys = make(map[uuid.UUID]struct{})
-	}
-	for i := range ids {
-		m.team_api_keys[ids[i]] = struct{}{}
-	}
-}
-
-// ClearTeamAPIKeys clears the "team_api_keys" edge to the TeamAPIKey entity.
-func (m *TeamMutation) ClearTeamAPIKeys() {
-	m.clearedteam_api_keys = true
-}
-
-// TeamAPIKeysCleared reports if the "team_api_keys" edge to the TeamAPIKey entity was cleared.
-func (m *TeamMutation) TeamAPIKeysCleared() bool {
-	return m.clearedteam_api_keys
-}
-
-// RemoveTeamAPIKeyIDs removes the "team_api_keys" edge to the TeamAPIKey entity by IDs.
-func (m *TeamMutation) RemoveTeamAPIKeyIDs(ids ...uuid.UUID) {
-	if m.removedteam_api_keys == nil {
-		m.removedteam_api_keys = make(map[uuid.UUID]struct{})
-	}
-	for i := range ids {
-		delete(m.team_api_keys, ids[i])
-		m.removedteam_api_keys[ids[i]] = struct{}{}
-	}
-}
-
-// RemovedTeamAPIKeys returns the removed IDs of the "team_api_keys" edge to the TeamAPIKey entity.
-func (m *TeamMutation) RemovedTeamAPIKeysIDs() (ids []uuid.UUID) {
-	for id := range m.removedteam_api_keys {
-		ids = append(ids, id)
-	}
-	return
-}
-
-// TeamAPIKeysIDs returns the "team_api_keys" edge IDs in the mutation.
-func (m *TeamMutation) TeamAPIKeysIDs() (ids []uuid.UUID) {
-	for id := range m.team_api_keys {
-		ids = append(ids, id)
-	}
-	return
-}
-
-// ResetTeamAPIKeys resets all changes to the "team_api_keys" edge.
-func (m *TeamMutation) ResetTeamAPIKeys() {
-	m.team_api_keys = nil
-	m.clearedteam_api_keys = false
-	m.removedteam_api_keys = nil
-}
-
 // SetTeamTierID sets the "team_tier" edge to the Tier entity by id.
 func (m *TeamMutation) SetTeamTierID(id string) {
 	m.team_tier = &id
@@ -6525,12 +6466,9 @@ func (m *TeamMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *TeamMutation) AddedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 4)
 	if m.users != nil {
 		edges = append(edges, team.EdgeUsers)
-	}
-	if m.team_api_keys != nil {
-		edges = append(edges, team.EdgeTeamAPIKeys)
 	}
 	if m.team_tier != nil {
 		edges = append(edges, team.EdgeTeamTier)
@@ -6551,12 +6489,6 @@ func (m *TeamMutation) AddedIDs(name string) []ent.Value {
 	case team.EdgeUsers:
 		ids := make([]ent.Value, 0, len(m.users))
 		for id := range m.users {
-			ids = append(ids, id)
-		}
-		return ids
-	case team.EdgeTeamAPIKeys:
-		ids := make([]ent.Value, 0, len(m.team_api_keys))
-		for id := range m.team_api_keys {
 			ids = append(ids, id)
 		}
 		return ids
@@ -6582,12 +6514,9 @@ func (m *TeamMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *TeamMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 4)
 	if m.removedusers != nil {
 		edges = append(edges, team.EdgeUsers)
-	}
-	if m.removedteam_api_keys != nil {
-		edges = append(edges, team.EdgeTeamAPIKeys)
 	}
 	if m.removedenvs != nil {
 		edges = append(edges, team.EdgeEnvs)
@@ -6605,12 +6534,6 @@ func (m *TeamMutation) RemovedIDs(name string) []ent.Value {
 	case team.EdgeUsers:
 		ids := make([]ent.Value, 0, len(m.removedusers))
 		for id := range m.removedusers {
-			ids = append(ids, id)
-		}
-		return ids
-	case team.EdgeTeamAPIKeys:
-		ids := make([]ent.Value, 0, len(m.removedteam_api_keys))
-		for id := range m.removedteam_api_keys {
 			ids = append(ids, id)
 		}
 		return ids
@@ -6632,12 +6555,9 @@ func (m *TeamMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *TeamMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 4)
 	if m.clearedusers {
 		edges = append(edges, team.EdgeUsers)
-	}
-	if m.clearedteam_api_keys {
-		edges = append(edges, team.EdgeTeamAPIKeys)
 	}
 	if m.clearedteam_tier {
 		edges = append(edges, team.EdgeTeamTier)
@@ -6657,8 +6577,6 @@ func (m *TeamMutation) EdgeCleared(name string) bool {
 	switch name {
 	case team.EdgeUsers:
 		return m.clearedusers
-	case team.EdgeTeamAPIKeys:
-		return m.clearedteam_api_keys
 	case team.EdgeTeamTier:
 		return m.clearedteam_tier
 	case team.EdgeEnvs:
@@ -6687,9 +6605,6 @@ func (m *TeamMutation) ResetEdge(name string) error {
 	case team.EdgeUsers:
 		m.ResetUsers()
 		return nil
-	case team.EdgeTeamAPIKeys:
-		m.ResetTeamAPIKeys()
-		return nil
 	case team.EdgeTeamTier:
 		m.ResetTeamTier()
 		return nil
@@ -6701,1087 +6616,6 @@ func (m *TeamMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Team edge %s", name)
-}
-
-// TeamAPIKeyMutation represents an operation that mutates the TeamAPIKey nodes in the graph.
-type TeamAPIKeyMutation struct {
-	config
-	op                  Op
-	typ                 string
-	id                  *uuid.UUID
-	api_key_hash        *string
-	api_key_prefix      *string
-	api_key_length      *int
-	addapi_key_length   *int
-	api_key_mask_prefix *string
-	api_key_mask_suffix *string
-	created_at          *time.Time
-	updated_at          *time.Time
-	name                *string
-	last_used           *time.Time
-	clearedFields       map[string]struct{}
-	team                *uuid.UUID
-	clearedteam         bool
-	creator             *uuid.UUID
-	clearedcreator      bool
-	done                bool
-	oldValue            func(context.Context) (*TeamAPIKey, error)
-	predicates          []predicate.TeamAPIKey
-}
-
-var _ ent.Mutation = (*TeamAPIKeyMutation)(nil)
-
-// teamapikeyOption allows management of the mutation configuration using functional options.
-type teamapikeyOption func(*TeamAPIKeyMutation)
-
-// newTeamAPIKeyMutation creates new mutation for the TeamAPIKey entity.
-func newTeamAPIKeyMutation(c config, op Op, opts ...teamapikeyOption) *TeamAPIKeyMutation {
-	m := &TeamAPIKeyMutation{
-		config:        c,
-		op:            op,
-		typ:           TypeTeamAPIKey,
-		clearedFields: make(map[string]struct{}),
-	}
-	for _, opt := range opts {
-		opt(m)
-	}
-	return m
-}
-
-// withTeamAPIKeyID sets the ID field of the mutation.
-func withTeamAPIKeyID(id uuid.UUID) teamapikeyOption {
-	return func(m *TeamAPIKeyMutation) {
-		var (
-			err   error
-			once  sync.Once
-			value *TeamAPIKey
-		)
-		m.oldValue = func(ctx context.Context) (*TeamAPIKey, error) {
-			once.Do(func() {
-				if m.done {
-					err = errors.New("querying old values post mutation is not allowed")
-				} else {
-					value, err = m.Client().TeamAPIKey.Get(ctx, id)
-				}
-			})
-			return value, err
-		}
-		m.id = &id
-	}
-}
-
-// withTeamAPIKey sets the old TeamAPIKey of the mutation.
-func withTeamAPIKey(node *TeamAPIKey) teamapikeyOption {
-	return func(m *TeamAPIKeyMutation) {
-		m.oldValue = func(context.Context) (*TeamAPIKey, error) {
-			return node, nil
-		}
-		m.id = &node.ID
-	}
-}
-
-// Client returns a new `ent.Client` from the mutation. If the mutation was
-// executed in a transaction (ent.Tx), a transactional client is returned.
-func (m TeamAPIKeyMutation) Client() *Client {
-	client := &Client{config: m.config}
-	client.init()
-	return client
-}
-
-// Tx returns an `ent.Tx` for mutations that were executed in transactions;
-// it returns an error otherwise.
-func (m TeamAPIKeyMutation) Tx() (*Tx, error) {
-	if _, ok := m.driver.(*txDriver); !ok {
-		return nil, errors.New("models: mutation is not running in a transaction")
-	}
-	tx := &Tx{config: m.config}
-	tx.init()
-	return tx, nil
-}
-
-// SetID sets the value of the id field. Note that this
-// operation is only accepted on creation of TeamAPIKey entities.
-func (m *TeamAPIKeyMutation) SetID(id uuid.UUID) {
-	m.id = &id
-}
-
-// ID returns the ID value in the mutation. Note that the ID is only available
-// if it was provided to the builder or after it was returned from the database.
-func (m *TeamAPIKeyMutation) ID() (id uuid.UUID, exists bool) {
-	if m.id == nil {
-		return
-	}
-	return *m.id, true
-}
-
-// IDs queries the database and returns the entity ids that match the mutation's predicate.
-// That means, if the mutation is applied within a transaction with an isolation level such
-// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
-// or updated by the mutation.
-func (m *TeamAPIKeyMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
-	switch {
-	case m.op.Is(OpUpdateOne | OpDeleteOne):
-		id, exists := m.ID()
-		if exists {
-			return []uuid.UUID{id}, nil
-		}
-		fallthrough
-	case m.op.Is(OpUpdate | OpDelete):
-		return m.Client().TeamAPIKey.Query().Where(m.predicates...).IDs(ctx)
-	default:
-		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
-	}
-}
-
-// SetAPIKeyHash sets the "api_key_hash" field.
-func (m *TeamAPIKeyMutation) SetAPIKeyHash(s string) {
-	m.api_key_hash = &s
-}
-
-// APIKeyHash returns the value of the "api_key_hash" field in the mutation.
-func (m *TeamAPIKeyMutation) APIKeyHash() (r string, exists bool) {
-	v := m.api_key_hash
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAPIKeyHash returns the old "api_key_hash" field's value of the TeamAPIKey entity.
-// If the TeamAPIKey object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TeamAPIKeyMutation) OldAPIKeyHash(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAPIKeyHash is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAPIKeyHash requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAPIKeyHash: %w", err)
-	}
-	return oldValue.APIKeyHash, nil
-}
-
-// ResetAPIKeyHash resets all changes to the "api_key_hash" field.
-func (m *TeamAPIKeyMutation) ResetAPIKeyHash() {
-	m.api_key_hash = nil
-}
-
-// SetAPIKeyPrefix sets the "api_key_prefix" field.
-func (m *TeamAPIKeyMutation) SetAPIKeyPrefix(s string) {
-	m.api_key_prefix = &s
-}
-
-// APIKeyPrefix returns the value of the "api_key_prefix" field in the mutation.
-func (m *TeamAPIKeyMutation) APIKeyPrefix() (r string, exists bool) {
-	v := m.api_key_prefix
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAPIKeyPrefix returns the old "api_key_prefix" field's value of the TeamAPIKey entity.
-// If the TeamAPIKey object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TeamAPIKeyMutation) OldAPIKeyPrefix(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAPIKeyPrefix is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAPIKeyPrefix requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAPIKeyPrefix: %w", err)
-	}
-	return oldValue.APIKeyPrefix, nil
-}
-
-// ResetAPIKeyPrefix resets all changes to the "api_key_prefix" field.
-func (m *TeamAPIKeyMutation) ResetAPIKeyPrefix() {
-	m.api_key_prefix = nil
-}
-
-// SetAPIKeyLength sets the "api_key_length" field.
-func (m *TeamAPIKeyMutation) SetAPIKeyLength(i int) {
-	m.api_key_length = &i
-	m.addapi_key_length = nil
-}
-
-// APIKeyLength returns the value of the "api_key_length" field in the mutation.
-func (m *TeamAPIKeyMutation) APIKeyLength() (r int, exists bool) {
-	v := m.api_key_length
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAPIKeyLength returns the old "api_key_length" field's value of the TeamAPIKey entity.
-// If the TeamAPIKey object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TeamAPIKeyMutation) OldAPIKeyLength(ctx context.Context) (v int, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAPIKeyLength is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAPIKeyLength requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAPIKeyLength: %w", err)
-	}
-	return oldValue.APIKeyLength, nil
-}
-
-// AddAPIKeyLength adds i to the "api_key_length" field.
-func (m *TeamAPIKeyMutation) AddAPIKeyLength(i int) {
-	if m.addapi_key_length != nil {
-		*m.addapi_key_length += i
-	} else {
-		m.addapi_key_length = &i
-	}
-}
-
-// AddedAPIKeyLength returns the value that was added to the "api_key_length" field in this mutation.
-func (m *TeamAPIKeyMutation) AddedAPIKeyLength() (r int, exists bool) {
-	v := m.addapi_key_length
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetAPIKeyLength resets all changes to the "api_key_length" field.
-func (m *TeamAPIKeyMutation) ResetAPIKeyLength() {
-	m.api_key_length = nil
-	m.addapi_key_length = nil
-}
-
-// SetAPIKeyMaskPrefix sets the "api_key_mask_prefix" field.
-func (m *TeamAPIKeyMutation) SetAPIKeyMaskPrefix(s string) {
-	m.api_key_mask_prefix = &s
-}
-
-// APIKeyMaskPrefix returns the value of the "api_key_mask_prefix" field in the mutation.
-func (m *TeamAPIKeyMutation) APIKeyMaskPrefix() (r string, exists bool) {
-	v := m.api_key_mask_prefix
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAPIKeyMaskPrefix returns the old "api_key_mask_prefix" field's value of the TeamAPIKey entity.
-// If the TeamAPIKey object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TeamAPIKeyMutation) OldAPIKeyMaskPrefix(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAPIKeyMaskPrefix is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAPIKeyMaskPrefix requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAPIKeyMaskPrefix: %w", err)
-	}
-	return oldValue.APIKeyMaskPrefix, nil
-}
-
-// ResetAPIKeyMaskPrefix resets all changes to the "api_key_mask_prefix" field.
-func (m *TeamAPIKeyMutation) ResetAPIKeyMaskPrefix() {
-	m.api_key_mask_prefix = nil
-}
-
-// SetAPIKeyMaskSuffix sets the "api_key_mask_suffix" field.
-func (m *TeamAPIKeyMutation) SetAPIKeyMaskSuffix(s string) {
-	m.api_key_mask_suffix = &s
-}
-
-// APIKeyMaskSuffix returns the value of the "api_key_mask_suffix" field in the mutation.
-func (m *TeamAPIKeyMutation) APIKeyMaskSuffix() (r string, exists bool) {
-	v := m.api_key_mask_suffix
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAPIKeyMaskSuffix returns the old "api_key_mask_suffix" field's value of the TeamAPIKey entity.
-// If the TeamAPIKey object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TeamAPIKeyMutation) OldAPIKeyMaskSuffix(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAPIKeyMaskSuffix is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAPIKeyMaskSuffix requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAPIKeyMaskSuffix: %w", err)
-	}
-	return oldValue.APIKeyMaskSuffix, nil
-}
-
-// ResetAPIKeyMaskSuffix resets all changes to the "api_key_mask_suffix" field.
-func (m *TeamAPIKeyMutation) ResetAPIKeyMaskSuffix() {
-	m.api_key_mask_suffix = nil
-}
-
-// SetCreatedAt sets the "created_at" field.
-func (m *TeamAPIKeyMutation) SetCreatedAt(t time.Time) {
-	m.created_at = &t
-}
-
-// CreatedAt returns the value of the "created_at" field in the mutation.
-func (m *TeamAPIKeyMutation) CreatedAt() (r time.Time, exists bool) {
-	v := m.created_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldCreatedAt returns the old "created_at" field's value of the TeamAPIKey entity.
-// If the TeamAPIKey object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TeamAPIKeyMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
-	}
-	return oldValue.CreatedAt, nil
-}
-
-// ResetCreatedAt resets all changes to the "created_at" field.
-func (m *TeamAPIKeyMutation) ResetCreatedAt() {
-	m.created_at = nil
-}
-
-// SetUpdatedAt sets the "updated_at" field.
-func (m *TeamAPIKeyMutation) SetUpdatedAt(t time.Time) {
-	m.updated_at = &t
-}
-
-// UpdatedAt returns the value of the "updated_at" field in the mutation.
-func (m *TeamAPIKeyMutation) UpdatedAt() (r time.Time, exists bool) {
-	v := m.updated_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldUpdatedAt returns the old "updated_at" field's value of the TeamAPIKey entity.
-// If the TeamAPIKey object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TeamAPIKeyMutation) OldUpdatedAt(ctx context.Context) (v *time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
-	}
-	return oldValue.UpdatedAt, nil
-}
-
-// ClearUpdatedAt clears the value of the "updated_at" field.
-func (m *TeamAPIKeyMutation) ClearUpdatedAt() {
-	m.updated_at = nil
-	m.clearedFields[teamapikey.FieldUpdatedAt] = struct{}{}
-}
-
-// UpdatedAtCleared returns if the "updated_at" field was cleared in this mutation.
-func (m *TeamAPIKeyMutation) UpdatedAtCleared() bool {
-	_, ok := m.clearedFields[teamapikey.FieldUpdatedAt]
-	return ok
-}
-
-// ResetUpdatedAt resets all changes to the "updated_at" field.
-func (m *TeamAPIKeyMutation) ResetUpdatedAt() {
-	m.updated_at = nil
-	delete(m.clearedFields, teamapikey.FieldUpdatedAt)
-}
-
-// SetTeamID sets the "team_id" field.
-func (m *TeamAPIKeyMutation) SetTeamID(u uuid.UUID) {
-	m.team = &u
-}
-
-// TeamID returns the value of the "team_id" field in the mutation.
-func (m *TeamAPIKeyMutation) TeamID() (r uuid.UUID, exists bool) {
-	v := m.team
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldTeamID returns the old "team_id" field's value of the TeamAPIKey entity.
-// If the TeamAPIKey object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TeamAPIKeyMutation) OldTeamID(ctx context.Context) (v uuid.UUID, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldTeamID is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldTeamID requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldTeamID: %w", err)
-	}
-	return oldValue.TeamID, nil
-}
-
-// ResetTeamID resets all changes to the "team_id" field.
-func (m *TeamAPIKeyMutation) ResetTeamID() {
-	m.team = nil
-}
-
-// SetName sets the "name" field.
-func (m *TeamAPIKeyMutation) SetName(s string) {
-	m.name = &s
-}
-
-// Name returns the value of the "name" field in the mutation.
-func (m *TeamAPIKeyMutation) Name() (r string, exists bool) {
-	v := m.name
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldName returns the old "name" field's value of the TeamAPIKey entity.
-// If the TeamAPIKey object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TeamAPIKeyMutation) OldName(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldName is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldName requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldName: %w", err)
-	}
-	return oldValue.Name, nil
-}
-
-// ResetName resets all changes to the "name" field.
-func (m *TeamAPIKeyMutation) ResetName() {
-	m.name = nil
-}
-
-// SetCreatedBy sets the "created_by" field.
-func (m *TeamAPIKeyMutation) SetCreatedBy(u uuid.UUID) {
-	m.creator = &u
-}
-
-// CreatedBy returns the value of the "created_by" field in the mutation.
-func (m *TeamAPIKeyMutation) CreatedBy() (r uuid.UUID, exists bool) {
-	v := m.creator
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldCreatedBy returns the old "created_by" field's value of the TeamAPIKey entity.
-// If the TeamAPIKey object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TeamAPIKeyMutation) OldCreatedBy(ctx context.Context) (v *uuid.UUID, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldCreatedBy is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldCreatedBy requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldCreatedBy: %w", err)
-	}
-	return oldValue.CreatedBy, nil
-}
-
-// ClearCreatedBy clears the value of the "created_by" field.
-func (m *TeamAPIKeyMutation) ClearCreatedBy() {
-	m.creator = nil
-	m.clearedFields[teamapikey.FieldCreatedBy] = struct{}{}
-}
-
-// CreatedByCleared returns if the "created_by" field was cleared in this mutation.
-func (m *TeamAPIKeyMutation) CreatedByCleared() bool {
-	_, ok := m.clearedFields[teamapikey.FieldCreatedBy]
-	return ok
-}
-
-// ResetCreatedBy resets all changes to the "created_by" field.
-func (m *TeamAPIKeyMutation) ResetCreatedBy() {
-	m.creator = nil
-	delete(m.clearedFields, teamapikey.FieldCreatedBy)
-}
-
-// SetLastUsed sets the "last_used" field.
-func (m *TeamAPIKeyMutation) SetLastUsed(t time.Time) {
-	m.last_used = &t
-}
-
-// LastUsed returns the value of the "last_used" field in the mutation.
-func (m *TeamAPIKeyMutation) LastUsed() (r time.Time, exists bool) {
-	v := m.last_used
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldLastUsed returns the old "last_used" field's value of the TeamAPIKey entity.
-// If the TeamAPIKey object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TeamAPIKeyMutation) OldLastUsed(ctx context.Context) (v *time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldLastUsed is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldLastUsed requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldLastUsed: %w", err)
-	}
-	return oldValue.LastUsed, nil
-}
-
-// ClearLastUsed clears the value of the "last_used" field.
-func (m *TeamAPIKeyMutation) ClearLastUsed() {
-	m.last_used = nil
-	m.clearedFields[teamapikey.FieldLastUsed] = struct{}{}
-}
-
-// LastUsedCleared returns if the "last_used" field was cleared in this mutation.
-func (m *TeamAPIKeyMutation) LastUsedCleared() bool {
-	_, ok := m.clearedFields[teamapikey.FieldLastUsed]
-	return ok
-}
-
-// ResetLastUsed resets all changes to the "last_used" field.
-func (m *TeamAPIKeyMutation) ResetLastUsed() {
-	m.last_used = nil
-	delete(m.clearedFields, teamapikey.FieldLastUsed)
-}
-
-// ClearTeam clears the "team" edge to the Team entity.
-func (m *TeamAPIKeyMutation) ClearTeam() {
-	m.clearedteam = true
-	m.clearedFields[teamapikey.FieldTeamID] = struct{}{}
-}
-
-// TeamCleared reports if the "team" edge to the Team entity was cleared.
-func (m *TeamAPIKeyMutation) TeamCleared() bool {
-	return m.clearedteam
-}
-
-// TeamIDs returns the "team" edge IDs in the mutation.
-// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
-// TeamID instead. It exists only for internal usage by the builders.
-func (m *TeamAPIKeyMutation) TeamIDs() (ids []uuid.UUID) {
-	if id := m.team; id != nil {
-		ids = append(ids, *id)
-	}
-	return
-}
-
-// ResetTeam resets all changes to the "team" edge.
-func (m *TeamAPIKeyMutation) ResetTeam() {
-	m.team = nil
-	m.clearedteam = false
-}
-
-// SetCreatorID sets the "creator" edge to the User entity by id.
-func (m *TeamAPIKeyMutation) SetCreatorID(id uuid.UUID) {
-	m.creator = &id
-}
-
-// ClearCreator clears the "creator" edge to the User entity.
-func (m *TeamAPIKeyMutation) ClearCreator() {
-	m.clearedcreator = true
-	m.clearedFields[teamapikey.FieldCreatedBy] = struct{}{}
-}
-
-// CreatorCleared reports if the "creator" edge to the User entity was cleared.
-func (m *TeamAPIKeyMutation) CreatorCleared() bool {
-	return m.CreatedByCleared() || m.clearedcreator
-}
-
-// CreatorID returns the "creator" edge ID in the mutation.
-func (m *TeamAPIKeyMutation) CreatorID() (id uuid.UUID, exists bool) {
-	if m.creator != nil {
-		return *m.creator, true
-	}
-	return
-}
-
-// CreatorIDs returns the "creator" edge IDs in the mutation.
-// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
-// CreatorID instead. It exists only for internal usage by the builders.
-func (m *TeamAPIKeyMutation) CreatorIDs() (ids []uuid.UUID) {
-	if id := m.creator; id != nil {
-		ids = append(ids, *id)
-	}
-	return
-}
-
-// ResetCreator resets all changes to the "creator" edge.
-func (m *TeamAPIKeyMutation) ResetCreator() {
-	m.creator = nil
-	m.clearedcreator = false
-}
-
-// Where appends a list predicates to the TeamAPIKeyMutation builder.
-func (m *TeamAPIKeyMutation) Where(ps ...predicate.TeamAPIKey) {
-	m.predicates = append(m.predicates, ps...)
-}
-
-// WhereP appends storage-level predicates to the TeamAPIKeyMutation builder. Using this method,
-// users can use type-assertion to append predicates that do not depend on any generated package.
-func (m *TeamAPIKeyMutation) WhereP(ps ...func(*sql.Selector)) {
-	p := make([]predicate.TeamAPIKey, len(ps))
-	for i := range ps {
-		p[i] = ps[i]
-	}
-	m.Where(p...)
-}
-
-// Op returns the operation name.
-func (m *TeamAPIKeyMutation) Op() Op {
-	return m.op
-}
-
-// SetOp allows setting the mutation operation.
-func (m *TeamAPIKeyMutation) SetOp(op Op) {
-	m.op = op
-}
-
-// Type returns the node type of this mutation (TeamAPIKey).
-func (m *TeamAPIKeyMutation) Type() string {
-	return m.typ
-}
-
-// Fields returns all fields that were changed during this mutation. Note that in
-// order to get all numeric fields that were incremented/decremented, call
-// AddedFields().
-func (m *TeamAPIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 11)
-	if m.api_key_hash != nil {
-		fields = append(fields, teamapikey.FieldAPIKeyHash)
-	}
-	if m.api_key_prefix != nil {
-		fields = append(fields, teamapikey.FieldAPIKeyPrefix)
-	}
-	if m.api_key_length != nil {
-		fields = append(fields, teamapikey.FieldAPIKeyLength)
-	}
-	if m.api_key_mask_prefix != nil {
-		fields = append(fields, teamapikey.FieldAPIKeyMaskPrefix)
-	}
-	if m.api_key_mask_suffix != nil {
-		fields = append(fields, teamapikey.FieldAPIKeyMaskSuffix)
-	}
-	if m.created_at != nil {
-		fields = append(fields, teamapikey.FieldCreatedAt)
-	}
-	if m.updated_at != nil {
-		fields = append(fields, teamapikey.FieldUpdatedAt)
-	}
-	if m.team != nil {
-		fields = append(fields, teamapikey.FieldTeamID)
-	}
-	if m.name != nil {
-		fields = append(fields, teamapikey.FieldName)
-	}
-	if m.creator != nil {
-		fields = append(fields, teamapikey.FieldCreatedBy)
-	}
-	if m.last_used != nil {
-		fields = append(fields, teamapikey.FieldLastUsed)
-	}
-	return fields
-}
-
-// Field returns the value of a field with the given name. The second boolean
-// return value indicates that this field was not set, or was not defined in the
-// schema.
-func (m *TeamAPIKeyMutation) Field(name string) (ent.Value, bool) {
-	switch name {
-	case teamapikey.FieldAPIKeyHash:
-		return m.APIKeyHash()
-	case teamapikey.FieldAPIKeyPrefix:
-		return m.APIKeyPrefix()
-	case teamapikey.FieldAPIKeyLength:
-		return m.APIKeyLength()
-	case teamapikey.FieldAPIKeyMaskPrefix:
-		return m.APIKeyMaskPrefix()
-	case teamapikey.FieldAPIKeyMaskSuffix:
-		return m.APIKeyMaskSuffix()
-	case teamapikey.FieldCreatedAt:
-		return m.CreatedAt()
-	case teamapikey.FieldUpdatedAt:
-		return m.UpdatedAt()
-	case teamapikey.FieldTeamID:
-		return m.TeamID()
-	case teamapikey.FieldName:
-		return m.Name()
-	case teamapikey.FieldCreatedBy:
-		return m.CreatedBy()
-	case teamapikey.FieldLastUsed:
-		return m.LastUsed()
-	}
-	return nil, false
-}
-
-// OldField returns the old value of the field from the database. An error is
-// returned if the mutation operation is not UpdateOne, or the query to the
-// database failed.
-func (m *TeamAPIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
-	switch name {
-	case teamapikey.FieldAPIKeyHash:
-		return m.OldAPIKeyHash(ctx)
-	case teamapikey.FieldAPIKeyPrefix:
-		return m.OldAPIKeyPrefix(ctx)
-	case teamapikey.FieldAPIKeyLength:
-		return m.OldAPIKeyLength(ctx)
-	case teamapikey.FieldAPIKeyMaskPrefix:
-		return m.OldAPIKeyMaskPrefix(ctx)
-	case teamapikey.FieldAPIKeyMaskSuffix:
-		return m.OldAPIKeyMaskSuffix(ctx)
-	case teamapikey.FieldCreatedAt:
-		return m.OldCreatedAt(ctx)
-	case teamapikey.FieldUpdatedAt:
-		return m.OldUpdatedAt(ctx)
-	case teamapikey.FieldTeamID:
-		return m.OldTeamID(ctx)
-	case teamapikey.FieldName:
-		return m.OldName(ctx)
-	case teamapikey.FieldCreatedBy:
-		return m.OldCreatedBy(ctx)
-	case teamapikey.FieldLastUsed:
-		return m.OldLastUsed(ctx)
-	}
-	return nil, fmt.Errorf("unknown TeamAPIKey field %s", name)
-}
-
-// SetField sets the value of a field with the given name. It returns an error if
-// the field is not defined in the schema, or if the type mismatched the field
-// type.
-func (m *TeamAPIKeyMutation) SetField(name string, value ent.Value) error {
-	switch name {
-	case teamapikey.FieldAPIKeyHash:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAPIKeyHash(v)
-		return nil
-	case teamapikey.FieldAPIKeyPrefix:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAPIKeyPrefix(v)
-		return nil
-	case teamapikey.FieldAPIKeyLength:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAPIKeyLength(v)
-		return nil
-	case teamapikey.FieldAPIKeyMaskPrefix:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAPIKeyMaskPrefix(v)
-		return nil
-	case teamapikey.FieldAPIKeyMaskSuffix:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAPIKeyMaskSuffix(v)
-		return nil
-	case teamapikey.FieldCreatedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetCreatedAt(v)
-		return nil
-	case teamapikey.FieldUpdatedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetUpdatedAt(v)
-		return nil
-	case teamapikey.FieldTeamID:
-		v, ok := value.(uuid.UUID)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetTeamID(v)
-		return nil
-	case teamapikey.FieldName:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetName(v)
-		return nil
-	case teamapikey.FieldCreatedBy:
-		v, ok := value.(uuid.UUID)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetCreatedBy(v)
-		return nil
-	case teamapikey.FieldLastUsed:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetLastUsed(v)
-		return nil
-	}
-	return fmt.Errorf("unknown TeamAPIKey field %s", name)
-}
-
-// AddedFields returns all numeric fields that were incremented/decremented during
-// this mutation.
-func (m *TeamAPIKeyMutation) AddedFields() []string {
-	var fields []string
-	if m.addapi_key_length != nil {
-		fields = append(fields, teamapikey.FieldAPIKeyLength)
-	}
-	return fields
-}
-
-// AddedField returns the numeric value that was incremented/decremented on a field
-// with the given name. The second boolean return value indicates that this field
-// was not set, or was not defined in the schema.
-func (m *TeamAPIKeyMutation) AddedField(name string) (ent.Value, bool) {
-	switch name {
-	case teamapikey.FieldAPIKeyLength:
-		return m.AddedAPIKeyLength()
-	}
-	return nil, false
-}
-
-// AddField adds the value to the field with the given name. It returns an error if
-// the field is not defined in the schema, or if the type mismatched the field
-// type.
-func (m *TeamAPIKeyMutation) AddField(name string, value ent.Value) error {
-	switch name {
-	case teamapikey.FieldAPIKeyLength:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddAPIKeyLength(v)
-		return nil
-	}
-	return fmt.Errorf("unknown TeamAPIKey numeric field %s", name)
-}
-
-// ClearedFields returns all nullable fields that were cleared during this
-// mutation.
-func (m *TeamAPIKeyMutation) ClearedFields() []string {
-	var fields []string
-	if m.FieldCleared(teamapikey.FieldUpdatedAt) {
-		fields = append(fields, teamapikey.FieldUpdatedAt)
-	}
-	if m.FieldCleared(teamapikey.FieldCreatedBy) {
-		fields = append(fields, teamapikey.FieldCreatedBy)
-	}
-	if m.FieldCleared(teamapikey.FieldLastUsed) {
-		fields = append(fields, teamapikey.FieldLastUsed)
-	}
-	return fields
-}
-
-// FieldCleared returns a boolean indicating if a field with the given name was
-// cleared in this mutation.
-func (m *TeamAPIKeyMutation) FieldCleared(name string) bool {
-	_, ok := m.clearedFields[name]
-	return ok
-}
-
-// ClearField clears the value of the field with the given name. It returns an
-// error if the field is not defined in the schema.
-func (m *TeamAPIKeyMutation) ClearField(name string) error {
-	switch name {
-	case teamapikey.FieldUpdatedAt:
-		m.ClearUpdatedAt()
-		return nil
-	case teamapikey.FieldCreatedBy:
-		m.ClearCreatedBy()
-		return nil
-	case teamapikey.FieldLastUsed:
-		m.ClearLastUsed()
-		return nil
-	}
-	return fmt.Errorf("unknown TeamAPIKey nullable field %s", name)
-}
-
-// ResetField resets all changes in the mutation for the field with the given name.
-// It returns an error if the field is not defined in the schema.
-func (m *TeamAPIKeyMutation) ResetField(name string) error {
-	switch name {
-	case teamapikey.FieldAPIKeyHash:
-		m.ResetAPIKeyHash()
-		return nil
-	case teamapikey.FieldAPIKeyPrefix:
-		m.ResetAPIKeyPrefix()
-		return nil
-	case teamapikey.FieldAPIKeyLength:
-		m.ResetAPIKeyLength()
-		return nil
-	case teamapikey.FieldAPIKeyMaskPrefix:
-		m.ResetAPIKeyMaskPrefix()
-		return nil
-	case teamapikey.FieldAPIKeyMaskSuffix:
-		m.ResetAPIKeyMaskSuffix()
-		return nil
-	case teamapikey.FieldCreatedAt:
-		m.ResetCreatedAt()
-		return nil
-	case teamapikey.FieldUpdatedAt:
-		m.ResetUpdatedAt()
-		return nil
-	case teamapikey.FieldTeamID:
-		m.ResetTeamID()
-		return nil
-	case teamapikey.FieldName:
-		m.ResetName()
-		return nil
-	case teamapikey.FieldCreatedBy:
-		m.ResetCreatedBy()
-		return nil
-	case teamapikey.FieldLastUsed:
-		m.ResetLastUsed()
-		return nil
-	}
-	return fmt.Errorf("unknown TeamAPIKey field %s", name)
-}
-
-// AddedEdges returns all edge names that were set/added in this mutation.
-func (m *TeamAPIKeyMutation) AddedEdges() []string {
-	edges := make([]string, 0, 2)
-	if m.team != nil {
-		edges = append(edges, teamapikey.EdgeTeam)
-	}
-	if m.creator != nil {
-		edges = append(edges, teamapikey.EdgeCreator)
-	}
-	return edges
-}
-
-// AddedIDs returns all IDs (to other nodes) that were added for the given edge
-// name in this mutation.
-func (m *TeamAPIKeyMutation) AddedIDs(name string) []ent.Value {
-	switch name {
-	case teamapikey.EdgeTeam:
-		if id := m.team; id != nil {
-			return []ent.Value{*id}
-		}
-	case teamapikey.EdgeCreator:
-		if id := m.creator; id != nil {
-			return []ent.Value{*id}
-		}
-	}
-	return nil
-}
-
-// RemovedEdges returns all edge names that were removed in this mutation.
-func (m *TeamAPIKeyMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 2)
-	return edges
-}
-
-// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
-// the given name in this mutation.
-func (m *TeamAPIKeyMutation) RemovedIDs(name string) []ent.Value {
-	return nil
-}
-
-// ClearedEdges returns all edge names that were cleared in this mutation.
-func (m *TeamAPIKeyMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 2)
-	if m.clearedteam {
-		edges = append(edges, teamapikey.EdgeTeam)
-	}
-	if m.clearedcreator {
-		edges = append(edges, teamapikey.EdgeCreator)
-	}
-	return edges
-}
-
-// EdgeCleared returns a boolean which indicates if the edge with the given name
-// was cleared in this mutation.
-func (m *TeamAPIKeyMutation) EdgeCleared(name string) bool {
-	switch name {
-	case teamapikey.EdgeTeam:
-		return m.clearedteam
-	case teamapikey.EdgeCreator:
-		return m.clearedcreator
-	}
-	return false
-}
-
-// ClearEdge clears the value of the edge with the given name. It returns an error
-// if that edge is not defined in the schema.
-func (m *TeamAPIKeyMutation) ClearEdge(name string) error {
-	switch name {
-	case teamapikey.EdgeTeam:
-		m.ClearTeam()
-		return nil
-	case teamapikey.EdgeCreator:
-		m.ClearCreator()
-		return nil
-	}
-	return fmt.Errorf("unknown TeamAPIKey unique edge %s", name)
-}
-
-// ResetEdge resets all changes to the edge with the given name in this mutation.
-// It returns an error if the edge is not defined in the schema.
-func (m *TeamAPIKeyMutation) ResetEdge(name string) error {
-	switch name {
-	case teamapikey.EdgeTeam:
-		m.ResetTeam()
-		return nil
-	case teamapikey.EdgeCreator:
-		m.ResetCreator()
-		return nil
-	}
-	return fmt.Errorf("unknown TeamAPIKey edge %s", name)
 }
 
 // TierMutation represents an operation that mutates the Tier nodes in the graph.
@@ -8563,29 +7397,26 @@ func (m *TierMutation) ResetEdge(name string) error {
 // UserMutation represents an operation that mutates the User nodes in the graph.
 type UserMutation struct {
 	config
-	op                      Op
-	typ                     string
-	id                      *uuid.UUID
-	email                   *string
-	clearedFields           map[string]struct{}
-	teams                   map[uuid.UUID]struct{}
-	removedteams            map[uuid.UUID]struct{}
-	clearedteams            bool
-	created_envs            map[string]struct{}
-	removedcreated_envs     map[string]struct{}
-	clearedcreated_envs     bool
-	access_tokens           map[uuid.UUID]struct{}
-	removedaccess_tokens    map[uuid.UUID]struct{}
-	clearedaccess_tokens    bool
-	created_api_keys        map[uuid.UUID]struct{}
-	removedcreated_api_keys map[uuid.UUID]struct{}
-	clearedcreated_api_keys bool
-	users_teams             map[int]struct{}
-	removedusers_teams      map[int]struct{}
-	clearedusers_teams      bool
-	done                    bool
-	oldValue                func(context.Context) (*User, error)
-	predicates              []predicate.User
+	op                   Op
+	typ                  string
+	id                   *uuid.UUID
+	email                *string
+	clearedFields        map[string]struct{}
+	teams                map[uuid.UUID]struct{}
+	removedteams         map[uuid.UUID]struct{}
+	clearedteams         bool
+	created_envs         map[string]struct{}
+	removedcreated_envs  map[string]struct{}
+	clearedcreated_envs  bool
+	access_tokens        map[uuid.UUID]struct{}
+	removedaccess_tokens map[uuid.UUID]struct{}
+	clearedaccess_tokens bool
+	users_teams          map[int]struct{}
+	removedusers_teams   map[int]struct{}
+	clearedusers_teams   bool
+	done                 bool
+	oldValue             func(context.Context) (*User, error)
+	predicates           []predicate.User
 }
 
 var _ ent.Mutation = (*UserMutation)(nil)
@@ -8890,60 +7721,6 @@ func (m *UserMutation) ResetAccessTokens() {
 	m.removedaccess_tokens = nil
 }
 
-// AddCreatedAPIKeyIDs adds the "created_api_keys" edge to the TeamAPIKey entity by ids.
-func (m *UserMutation) AddCreatedAPIKeyIDs(ids ...uuid.UUID) {
-	if m.created_api_keys == nil {
-		m.created_api_keys = make(map[uuid.UUID]struct{})
-	}
-	for i := range ids {
-		m.created_api_keys[ids[i]] = struct{}{}
-	}
-}
-
-// ClearCreatedAPIKeys clears the "created_api_keys" edge to the TeamAPIKey entity.
-func (m *UserMutation) ClearCreatedAPIKeys() {
-	m.clearedcreated_api_keys = true
-}
-
-// CreatedAPIKeysCleared reports if the "created_api_keys" edge to the TeamAPIKey entity was cleared.
-func (m *UserMutation) CreatedAPIKeysCleared() bool {
-	return m.clearedcreated_api_keys
-}
-
-// RemoveCreatedAPIKeyIDs removes the "created_api_keys" edge to the TeamAPIKey entity by IDs.
-func (m *UserMutation) RemoveCreatedAPIKeyIDs(ids ...uuid.UUID) {
-	if m.removedcreated_api_keys == nil {
-		m.removedcreated_api_keys = make(map[uuid.UUID]struct{})
-	}
-	for i := range ids {
-		delete(m.created_api_keys, ids[i])
-		m.removedcreated_api_keys[ids[i]] = struct{}{}
-	}
-}
-
-// RemovedCreatedAPIKeys returns the removed IDs of the "created_api_keys" edge to the TeamAPIKey entity.
-func (m *UserMutation) RemovedCreatedAPIKeysIDs() (ids []uuid.UUID) {
-	for id := range m.removedcreated_api_keys {
-		ids = append(ids, id)
-	}
-	return
-}
-
-// CreatedAPIKeysIDs returns the "created_api_keys" edge IDs in the mutation.
-func (m *UserMutation) CreatedAPIKeysIDs() (ids []uuid.UUID) {
-	for id := range m.created_api_keys {
-		ids = append(ids, id)
-	}
-	return
-}
-
-// ResetCreatedAPIKeys resets all changes to the "created_api_keys" edge.
-func (m *UserMutation) ResetCreatedAPIKeys() {
-	m.created_api_keys = nil
-	m.clearedcreated_api_keys = false
-	m.removedcreated_api_keys = nil
-}
-
 // AddUsersTeamIDs adds the "users_teams" edge to the UsersTeams entity by ids.
 func (m *UserMutation) AddUsersTeamIDs(ids ...int) {
 	if m.users_teams == nil {
@@ -9131,7 +7908,7 @@ func (m *UserMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 4)
 	if m.teams != nil {
 		edges = append(edges, user.EdgeTeams)
 	}
@@ -9140,9 +7917,6 @@ func (m *UserMutation) AddedEdges() []string {
 	}
 	if m.access_tokens != nil {
 		edges = append(edges, user.EdgeAccessTokens)
-	}
-	if m.created_api_keys != nil {
-		edges = append(edges, user.EdgeCreatedAPIKeys)
 	}
 	if m.users_teams != nil {
 		edges = append(edges, user.EdgeUsersTeams)
@@ -9172,12 +7946,6 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
-	case user.EdgeCreatedAPIKeys:
-		ids := make([]ent.Value, 0, len(m.created_api_keys))
-		for id := range m.created_api_keys {
-			ids = append(ids, id)
-		}
-		return ids
 	case user.EdgeUsersTeams:
 		ids := make([]ent.Value, 0, len(m.users_teams))
 		for id := range m.users_teams {
@@ -9190,7 +7958,7 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 4)
 	if m.removedteams != nil {
 		edges = append(edges, user.EdgeTeams)
 	}
@@ -9199,9 +7967,6 @@ func (m *UserMutation) RemovedEdges() []string {
 	}
 	if m.removedaccess_tokens != nil {
 		edges = append(edges, user.EdgeAccessTokens)
-	}
-	if m.removedcreated_api_keys != nil {
-		edges = append(edges, user.EdgeCreatedAPIKeys)
 	}
 	if m.removedusers_teams != nil {
 		edges = append(edges, user.EdgeUsersTeams)
@@ -9231,12 +7996,6 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
-	case user.EdgeCreatedAPIKeys:
-		ids := make([]ent.Value, 0, len(m.removedcreated_api_keys))
-		for id := range m.removedcreated_api_keys {
-			ids = append(ids, id)
-		}
-		return ids
 	case user.EdgeUsersTeams:
 		ids := make([]ent.Value, 0, len(m.removedusers_teams))
 		for id := range m.removedusers_teams {
@@ -9249,7 +8008,7 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 4)
 	if m.clearedteams {
 		edges = append(edges, user.EdgeTeams)
 	}
@@ -9258,9 +8017,6 @@ func (m *UserMutation) ClearedEdges() []string {
 	}
 	if m.clearedaccess_tokens {
 		edges = append(edges, user.EdgeAccessTokens)
-	}
-	if m.clearedcreated_api_keys {
-		edges = append(edges, user.EdgeCreatedAPIKeys)
 	}
 	if m.clearedusers_teams {
 		edges = append(edges, user.EdgeUsersTeams)
@@ -9278,8 +8034,6 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedcreated_envs
 	case user.EdgeAccessTokens:
 		return m.clearedaccess_tokens
-	case user.EdgeCreatedAPIKeys:
-		return m.clearedcreated_api_keys
 	case user.EdgeUsersTeams:
 		return m.clearedusers_teams
 	}
@@ -9306,9 +8060,6 @@ func (m *UserMutation) ResetEdge(name string) error {
 		return nil
 	case user.EdgeAccessTokens:
 		m.ResetAccessTokens()
-		return nil
-	case user.EdgeCreatedAPIKeys:
-		m.ResetCreatedAPIKeys()
 		return nil
 	case user.EdgeUsersTeams:
 		m.ResetUsersTeams()

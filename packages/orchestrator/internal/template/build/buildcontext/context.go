@@ -14,4 +14,5 @@ type BuildContext struct {
 	EnvdVersion    string
 	CacheScope     string
 	IsV1Build      bool
+	Version        string
 }

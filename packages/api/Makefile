@@ -43,6 +43,17 @@ run:
 	LOCAL_CLUSTER_TOKEN=$(EDGE_TOKEN) \
 	./bin/api --port 3000
 
+define setup_local_env
+	$(eval include .env.local)
+	$(eval export $(shell sed 's/=.*//' .env.local))
+endef
+
+.PHONY: run-local
+run-local:
+	make build-debug
+	$(call setup_local_env)
+	NODE_ID=$$(hostname) ./bin/api --port 3000
+
 # Run the API using air
 .PHONY: dev
 dev:

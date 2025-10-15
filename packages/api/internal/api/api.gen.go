@@ -854,6 +854,8 @@ func (siw *ServerInterfaceWrapper) GetTemplates(c *gin.Context) {
 
 	var err error
 
+	c.Set(ApiKeyAuthScopes, []string{})
+
 	c.Set(AccessTokenAuthScopes, []string{})
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
@@ -939,6 +941,8 @@ func (siw *ServerInterfaceWrapper) PatchTemplatesTemplateID(c *gin.Context) {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter templateID: %w", err), http.StatusBadRequest)
 		return
 	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
 
 	c.Set(AccessTokenAuthScopes, []string{})
 

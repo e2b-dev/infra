@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
@@ -29,7 +30,7 @@ func TestAccessingHyperloopServerViaIP(t *testing.T) {
 	readPath := "output.txt"
 	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
-		&envdapi.GetFilesParams{Path: &readPath, Username: "user"},
+		&envdapi.GetFilesParams{Path: &readPath, Username: sharedUtils.ToPtr("user")},
 		setup.WithSandbox(sbx.SandboxID),
 	)
 
@@ -53,7 +54,7 @@ func TestAccessingHyperloopServerViaDomain(t *testing.T) {
 	readPath := "output.txt"
 	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
-		&envdapi.GetFilesParams{Path: &readPath, Username: "user"},
+		&envdapi.GetFilesParams{Path: &readPath, Username: sharedUtils.ToPtr("user")},
 		setup.WithSandbox(sbx.SandboxID),
 	)
 

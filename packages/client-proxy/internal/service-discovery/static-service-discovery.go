@@ -6,7 +6,7 @@ type StaticServiceDiscovery struct {
 	items []ServiceDiscoveryItem
 }
 
-func NewStaticServiceDiscovery(results []string, port int) *StaticServiceDiscovery {
+func NewStaticServiceDiscovery(results []string, port uint16) *StaticServiceDiscovery {
 	items := make([]ServiceDiscoveryItem, 0)
 
 	for _, result := range results {

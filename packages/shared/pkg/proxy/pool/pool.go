@@ -17,18 +17,20 @@ import (
 const hostConnectionSplit = 4
 
 type ProxyPool struct {
-	pool                *smap.Map[*proxyClient]
-	maxClientConns      int
-	idleTimeout         time.Duration
-	totalConnsCounter   atomic.Uint64
-	currentConnsCounter atomic.Int64
+	pool                  *smap.Map[*proxyClient]
+	maxClientConns        int
+	maxConnectionAttempts int
+	idleTimeout           time.Duration
+	totalConnsCounter     atomic.Uint64
+	currentConnsCounter   atomic.Int64
 }
 
-func New(maxClientConns int, idleTimeout time.Duration) *ProxyPool {
+func New(maxClientConns int, maxConnectionAttempts int, idleTimeout time.Duration) *ProxyPool {
 	return &ProxyPool{
-		pool:           smap.New[*proxyClient](),
-		maxClientConns: maxClientConns,
-		idleTimeout:    idleTimeout,
+		pool:                  smap.New[*proxyClient](),
+		maxClientConns:        maxClientConns,
+		maxConnectionAttempts: maxConnectionAttempts,
+		idleTimeout:           idleTimeout,
 	}
 }
 
@@ -58,6 +60,7 @@ func (p *ProxyPool) Get(d *Destination) *proxyClient {
 
 				return p.maxClientConns / hostConnectionSplit
 			}(),
+			p.maxConnectionAttempts,
 			p.idleTimeout,
 			&p.totalConnsCounter,
 			&p.currentConnsCounter,

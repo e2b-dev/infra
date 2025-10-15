@@ -44,7 +44,7 @@ func TestStat(t *testing.T) {
 	require.NoError(t, err)
 
 	// Service instance
-	svc := Service{}
+	svc := mockService()
 
 	// Helper to inject user into context
 	injectUser := func(ctx context.Context, u *user.User) context.Context {

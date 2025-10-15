@@ -52,11 +52,11 @@ func NewSandboxEventInsertsBatcher(conn driver.Conn, opts BatcherOptions) (*Sand
 
 	batcher, err := NewBatcher(b.processInsertSandboxEventsBatch, opts)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create batcher: %w", err)
 	}
 
 	if err := batcher.Start(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to start batcher: %w", err)
 	}
 
 	b.Batcher = batcher

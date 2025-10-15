@@ -11,6 +11,7 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
@@ -28,7 +29,7 @@ func UploadFile(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient
 
 	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
 		ctx,
-		&envdapi.PostFilesParams{Path: &path, Username: "user"},
+		&envdapi.PostFilesParams{Path: &path, Username: utils.ToPtr("user")},
 		contentType,
 		buffer,
 		reqEditors...,

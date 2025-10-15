@@ -16,7 +16,9 @@ type HTTPWriter struct {
 	ctx        context.Context //nolint:containedctx // todo: fix the interface so this can be removed
 	url        string
 	httpClient *http.Client
-	wg         sync.WaitGroup
+
+	wgLock sync.Mutex
+	wg     *sync.WaitGroup
 }
 
 func NewHTTPWriter(ctx context.Context, endpoint string) zapcore.WriteSyncer {
@@ -26,12 +28,18 @@ func NewHTTPWriter(ctx context.Context, endpoint string) zapcore.WriteSyncer {
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		wg: sync.WaitGroup{},
+
+		wgLock: sync.Mutex{},
+		wg:     &sync.WaitGroup{},
 	}
 }
 
 func (h *HTTPWriter) Write(source []byte) (n int, err error) {
-	h.wg.Add(1)
+	h.wgLock.Lock()
+	// Capture the current WaitGroup to match Add/Done calls
+	wg := h.wg
+	wg.Add(1)
+	h.wgLock.Unlock()
 
 	// zap is reusing the buffer, so since we're processing it in a Go routine, we need to make a copy.
 	p := make([]byte, len(source))
@@ -39,7 +47,7 @@ func (h *HTTPWriter) Write(source []byte) (n int, err error) {
 
 	// Run in a goroutine to avoid blocking the main thread
 	go func() {
-		defer h.wg.Done()
+		defer wg.Done()
 
 		start := 0
 		for i, b := range p {
@@ -47,7 +55,7 @@ func (h *HTTPWriter) Write(source []byte) (n int, err error) {
 				if start < i { // Ignore empty lines
 					line := p[start:i]
 					if err := h.sendLogLine(line); err != nil {
-						log.Printf("Failed to send a log line: %s\n", line)
+						log.Printf("%v: %s\n", err, line)
 						return
 					}
 				}
@@ -59,7 +67,7 @@ func (h *HTTPWriter) Write(source []byte) (n int, err error) {
 		if start < len(p) {
 			line := p[start:]
 			if err := h.sendLogLine(line); err != nil {
-				log.Printf("Failed to send a log line: %s\n", line)
+				log.Printf("%v: %s\n", err, line)
 				return
 			}
 		}
@@ -69,7 +77,14 @@ func (h *HTTPWriter) Write(source []byte) (n int, err error) {
 }
 
 func (h *HTTPWriter) Sync() error {
-	h.wg.Wait()
+	h.wgLock.Lock()
+	// Capture the current WaitGroup for Wait() and replace the WaitGroup with a new one
+	// Should fix: WaitGroup is reused before previous Wait has returned
+	wg := h.wg
+	h.wg = &sync.WaitGroup{}
+	h.wgLock.Unlock()
+
+	wg.Wait()
 	return nil
 }
 

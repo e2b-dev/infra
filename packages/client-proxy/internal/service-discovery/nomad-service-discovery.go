@@ -20,11 +20,11 @@ type NomadServiceDiscovery struct {
 	entries *smap.Map[ServiceDiscoveryItem]
 	client  *nomadapi.Client
 
-	port   int
+	port   uint16
 	filter string
 }
 
-func NewNomadServiceDiscovery(ctx context.Context, logger *zap.Logger, port int, nomadEndpoint string, nomadToken string, job string) (*NomadServiceDiscovery, error) {
+func NewNomadServiceDiscovery(ctx context.Context, logger *zap.Logger, port uint16, nomadEndpoint string, nomadToken string, job string) (*NomadServiceDiscovery, error) {
 	config := &nomadapi.Config{Address: nomadEndpoint, SecretID: nomadToken}
 	client, err := nomadapi.NewClient(config)
 	if err != nil {

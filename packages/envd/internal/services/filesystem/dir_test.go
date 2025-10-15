@@ -34,7 +34,7 @@ func TestListDir(t *testing.T) {
 	require.NoError(t, os.WriteFile(filePath, []byte("Hello, World!"), 0o644))
 
 	// Service instance
-	svc := Service{}
+	svc := mockService()
 
 	// Helper to inject user into context
 	injectUser := func(ctx context.Context, u *user.User) context.Context {
@@ -106,7 +106,7 @@ func TestListDir(t *testing.T) {
 func TestListDirNonExistingPath(t *testing.T) {
 	t.Parallel()
 
-	svc := Service{}
+	svc := mockService()
 	u, err := user.Current()
 	require.NoError(t, err)
 	ctx := authn.SetInfo(t.Context(), u)
@@ -136,7 +136,7 @@ func TestListDirRelativePath(t *testing.T) {
 	require.NoError(t, os.WriteFile(filePath, []byte("Hello, World!"), 0o644))
 
 	// Service instance
-	svc := Service{}
+	svc := mockService()
 	ctx := authn.SetInfo(t.Context(), u)
 
 	req := connect.NewRequest(&filesystem.ListDirRequest{
@@ -188,7 +188,7 @@ func TestListDir_Symlinks(t *testing.T) {
 	require.NoError(t, os.Symlink(realFile, linkToFile))
 	require.NoError(t, os.Symlink(cyclicLink, cyclicLink))
 
-	svc := Service{}
+	svc := mockService()
 
 	t.Run("symlink to directory behaves like directory and the content looks like inside the directory", func(t *testing.T) {
 		t.Parallel()
