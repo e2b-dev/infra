@@ -57,7 +57,6 @@ LEFT JOIN LATERAL (
 
 -- Revoke all permissions to ensure no public access
 REVOKE ALL ON public.team_limits FROM PUBLIC;
-REVOKE ALL ON public.team_limits FROM anon;
 REVOKE ALL ON public.team_limits FROM authenticated;
 -- +goose StatementEnd
 
