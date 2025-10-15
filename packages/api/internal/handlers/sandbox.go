@@ -4,6 +4,7 @@ import (
 	"context"
 	"maps"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -78,7 +79,7 @@ func (a *APIStore) startSandbox(
 		Set("alias", alias)
 
 	if mcp != nil {
-		props = props.Set("mcp_servers", maps.Keys(mcp))
+		props = props.Set("mcp_servers", slices.Collect(maps.Keys(mcp)))
 	}
 
 	a.posthog.CreateAnalyticsTeamEvent(team.Team.ID.String(), "created_instance", props)
