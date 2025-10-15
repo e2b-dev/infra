@@ -135,8 +135,6 @@ type Factory struct {
 	networkPool  *network.Pool
 	devicePool   *nbd.DevicePool
 	featureFlags *featureflags.Client
-
-	defaultAllowInternetAccess bool
 }
 
 func NewFactory(
@@ -183,7 +181,7 @@ func (f *Factory) CreateSandbox(
 	}()
 
 	// TODO: Temporarily set this based on global config, should be removed later (it should be passed as a parameter in build)
-	allowInternet := f.defaultAllowInternetAccess
+	allowInternet := f.config.AllowSandboxInternet
 	if config.AllowInternetAccess != nil {
 		allowInternet = *config.AllowInternetAccess
 	}
@@ -372,7 +370,7 @@ func (f *Factory) ResumeSandbox(
 
 	// TODO: Temporarily set this based on global config, should be removed later
 	//  (it should be passed as a non nil parameter from API)
-	allowInternet := f.defaultAllowInternetAccess
+	allowInternet := f.config.AllowSandboxInternet
 	if config.AllowInternetAccess != nil {
 		allowInternet = *config.AllowInternetAccess
 	}
