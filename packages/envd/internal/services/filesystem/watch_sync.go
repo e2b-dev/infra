@@ -136,12 +136,12 @@ func (fw *FileWatcher) Close() {
 }
 
 func (s Service) CreateWatcher(ctx context.Context, req *connect.Request[rpc.CreateWatcherRequest]) (*connect.Response[rpc.CreateWatcherResponse], error) {
-	u, err := permissions.GetAuthUser(ctx)
+	u, err := permissions.GetAuthUser(ctx, s.defaults.User)
 	if err != nil {
 		return nil, err
 	}
 
-	watchPath, err := permissions.ExpandAndResolve(req.Msg.GetPath(), u)
+	watchPath, err := permissions.ExpandAndResolve(req.Msg.GetPath(), u, s.defaults.Workdir)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}

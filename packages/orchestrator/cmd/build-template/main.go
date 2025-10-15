@@ -29,6 +29,7 @@ import (
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 )
 
 const (
@@ -115,21 +116,28 @@ func buildTemplate(
 		return fmt.Errorf("could not create storage provider: %w", err)
 	}
 
-	devicePool, err := nbd.NewDevicePool(ctx, noop.MeterProvider{})
+	devicePool, err := nbd.NewDevicePool(noop.MeterProvider{})
 	if err != nil {
 		return fmt.Errorf("could not create device pool: %w", err)
 	}
+	go func() {
+		devicePool.Populate(ctx)
+		logger.Info("device pool done populating")
+	}()
 	defer func() {
-		err := devicePool.Close(parentCtx)
-		if err != nil {
+		if err := devicePool.Close(parentCtx); err != nil {
 			logger.Error("error closing device pool", zap.Error(err))
 		}
 	}()
 
-	networkPool, err := network.NewPool(ctx, noop.MeterProvider{}, 8, 8, clientID, networkConfig)
+	networkPool, err := network.NewPool(noop.MeterProvider{}, 8, 8, clientID, networkConfig)
 	if err != nil {
 		return fmt.Errorf("could not create network pool: %w", err)
 	}
+	go func() {
+		networkPool.Populate(ctx)
+		logger.Info("network pool done populating")
+	}()
 	defer func() {
 		err := networkPool.Close(parentCtx)
 		if err != nil {
@@ -199,6 +207,7 @@ func buildTemplate(
 
 	force := true
 	template := config.TemplateConfig{
+		Version:    templates.TemplateV2LatestVersion,
 		TeamID:     "",
 		TemplateID: templateID,
 		FromImage:  baseImage,

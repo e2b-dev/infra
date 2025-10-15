@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -141,7 +142,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	// Call the Template Manager to build the environment
 	forceRebuild := true
 	fromImage := ""
-	buildErr := a.templateManager.CreateTemplate(
+	err = a.templateManager.CreateTemplate(
 		ctx,
 		team.ID,
 		templateID,
@@ -160,20 +161,22 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		nil,
 		apiutils.WithClusterFallback(team.ClusterID),
 		build.ClusterNodeID,
+		templates.TemplateV1Version,
 	)
-	if buildErr != nil {
-		telemetry.ReportCriticalError(ctx, "build failed", buildErr, telemetry.WithTemplateID(templateID))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when starting template build: %s", buildErr))
-		return
-	}
 
 	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "built environment", posthog.NewProperties().
 		Set("user_id", userID).
 		Set("environment", templateID).
 		Set("build_id", buildID).
 		Set("duration", time.Since(startTime).String()).
-		Set("success", err != nil),
+		Set("success", err == nil),
 	)
+
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "build failed", err, telemetry.WithTemplateID(templateID))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when starting template build: %s", err))
+		return
+	}
 
 	c.Status(http.StatusAccepted)
 }

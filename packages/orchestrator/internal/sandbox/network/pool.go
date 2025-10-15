@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/caarlos0/env/v11"
 	"go.opentelemetry.io/otel/metric"
@@ -32,7 +33,8 @@ func ParseConfig() (Config, error) {
 type Pool struct {
 	config Config
 
-	cancel context.CancelFunc
+	done     chan struct{}
+	doneOnce sync.Once
 
 	newSlots          chan *Slot
 	reusedSlots       chan *Slot
@@ -42,7 +44,9 @@ type Pool struct {
 	slotStorage Storage
 }
 
-func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string, config Config) (*Pool, error) {
+var ErrClosed = errors.New("cannot read from a closed pool")
+
+func NewPool(meterProvider metric.MeterProvider, newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string, config Config) (*Pool, error) {
 	newSlots := make(chan *Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan *Slot, reusedSlotsPoolSize)
 
@@ -63,25 +67,15 @@ func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPo
 		return nil, fmt.Errorf("failed to create slot storage: %w", err)
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
 	pool := &Pool{
 		config:            config,
+		done:              make(chan struct{}),
 		newSlots:          newSlots,
 		reusedSlots:       reusedSlots,
 		newSlotCounter:    newSlotCounter,
 		reusedSlotCounter: reusedSlotsCounter,
-		cancel:            cancel,
 		slotStorage:       slotStorage,
 	}
-
-	go func() {
-		err := pool.populate(ctx)
-		if err != nil {
-			zap.L().Fatal("error when populating network slot pool", zap.Error(err))
-		}
-
-		zap.L().Info("network slot pool populate closed")
-	}()
 
 	return pool, nil
 }
@@ -103,14 +97,15 @@ func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
 	return ips, nil
 }
 
-func (p *Pool) populate(ctx context.Context) error {
+func (p *Pool) Populate(ctx context.Context) {
 	defer close(p.newSlots)
 
 	for {
 		select {
+		case <-p.done:
+			return
 		case <-ctx.Done():
-			// Do not return an error here, this is expected on close
-			return nil
+			return
 		default:
 			slot, err := p.createNetworkSlot(ctx)
 			if err != nil {
@@ -129,6 +124,8 @@ func (p *Pool) Get(ctx context.Context, allowInternet bool) (*Slot, error) {
 	var slot *Slot
 
 	select {
+	case <-p.done:
+		return nil, ErrClosed
 	case s := <-p.reusedSlots:
 		p.reusedSlotCounter.Add(ctx, -1)
 		telemetry.ReportEvent(ctx, "reused network slot")
@@ -136,6 +133,8 @@ func (p *Pool) Get(ctx context.Context, allowInternet bool) (*Slot, error) {
 		slot = s
 	default:
 		select {
+		case <-p.done:
+			return nil, ErrClosed
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case s := <-p.newSlots:
@@ -155,6 +154,14 @@ func (p *Pool) Get(ctx context.Context, allowInternet bool) (*Slot, error) {
 }
 
 func (p *Pool) Return(ctx context.Context, slot *Slot) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-p.done:
+		return ErrClosed
+	default:
+	}
+
 	err := slot.ResetInternet(ctx)
 	if err != nil {
 		// Cleanup the slot if resetting internet fails
@@ -166,8 +173,12 @@ func (p *Pool) Return(ctx context.Context, slot *Slot) error {
 	}
 
 	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-p.done:
+		return ErrClosed
 	case p.reusedSlots <- slot:
-		p.reusedSlotCounter.Add(context.Background(), 1) //nolint:contextcheck // TODO: fix this later
+		p.reusedSlotCounter.Add(ctx, 1)
 	default:
 		err := p.cleanup(slot)
 		if err != nil {
@@ -195,24 +206,29 @@ func (p *Pool) cleanup(slot *Slot) error {
 }
 
 func (p *Pool) Close(_ context.Context) error {
-	p.cancel()
-
 	zap.L().Info("Closing network pool")
+
+	p.doneOnce.Do(func() {
+		close(p.done)
+	})
+
+	var errs []error
 
 	for slot := range p.newSlots {
 		err := p.cleanup(slot)
 		if err != nil {
-			return fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err)
+			errs = append(errs, fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err))
 		}
 	}
 
 	close(p.reusedSlots)
+
 	for slot := range p.reusedSlots {
 		err := p.cleanup(slot)
 		if err != nil {
-			return fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err)
+			errs = append(errs, fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err))
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
