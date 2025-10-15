@@ -54,6 +54,11 @@ LEFT JOIN LATERAL (
       AND addon.valid_from <= now()
       AND (addon.valid_to IS NULL OR addon.valid_to > now())
     ) a ON true;
+
+-- Revoke all permissions to ensure no public access
+REVOKE ALL ON public.team_limits FROM PUBLIC;
+REVOKE ALL ON public.team_limits FROM anon;
+REVOKE ALL ON public.team_limits FROM authenticated;
 -- +goose StatementEnd
 
 -- +goose Down
