@@ -34,14 +34,6 @@ func GetTeamByIDAndUserIDAuth(ctx context.Context, db *sqlcdb.Client, teamID str
 		return nil, err
 	}
 
-	team := types.NewTeam(
-		&result.Team,
-		&result.Tier,
-		result.ExtraConcurrentSandboxes,
-		result.ExtraConcurrentTemplateBuilds,
-		result.ExtraMaxVcpu,
-		result.ExtraMaxRamMb,
-		result.ExtraDiskMb,
-	)
+	team := types.NewTeam(&result.Team, &result.TeamLimit)
 	return team, nil
 }

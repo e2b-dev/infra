@@ -30,11 +30,36 @@ INSERT INTO "auth"."users" (id, email) VALUES ('00000000-0000-0000-0000-00000000
 
 -- Create index on team_id for faster lookups
 CREATE INDEX IF NOT EXISTS "addons_team_id_idx" ON "public"."addons" ("team_id");
+
+
+CREATE VIEW "team_limits" AS
+SELECT
+    t.id,
+    tier.max_length_hours,
+    (tier.concurrent_instances + a.extra_concurrent_sandboxes) as concurrent_sandboxes,
+    (tier.concurrent_template_builds + a.extra_concurrent_template_builds) as concurrent_template_builds,
+    (tier.max_vcpu + a.extra_max_vcpu) as max_vcpu,
+    (tier.max_ram_mb + a.extra_disk_mb) as ram_mb,
+    (tier.disk_mb + a.extra_disk_mb) as disk_mb
+FROM "public".teams t
+JOIN "public"."tiers" tier on t.tier = tier.id
+LEFT JOIN LATERAL (
+    SELECT COALESCE(SUM(extra_concurrent_sandboxes),0)::bigint           as extra_concurrent_sandboxes,
+           COALESCE(SUM(extra_concurrent_template_builds),0)::bigint     as extra_concurrent_template_builds,
+           COALESCE(SUM(extra_max_vcpu),0)::bigint                       as extra_max_vcpu,
+           COALESCE(SUM(extra_max_ram_mb),0)::bigint                     as extra_max_ram_mb,
+           COALESCE(SUM(extra_disk_mb),0)::bigint                        as extra_disk_mb
+    FROM "public"."addons" addon
+    WHERE addon.team_id = t.id
+      AND addon.valid_from <= now()
+      AND (addon.valid_to IS NULL OR addon.valid_to > now())
+    ) a ON true;
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
 
+DROP VIEW IF EXISTS "team_limits";
 DROP TABLE IF EXISTS "public"."addons" CASCADE;
 
 -- +goose StatementEnd

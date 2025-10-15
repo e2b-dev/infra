@@ -15,31 +15,15 @@ const getTeamWithTierByAPIKeyWithUpdateLastUsed = `-- name: GetTeamWithTierByAPI
 UPDATE "public"."team_api_keys" tak
 SET last_used = now()
 FROM "public"."teams" t
-         JOIN "public"."tiers" tier ON t.tier = tier.id
-         LEFT JOIN LATERAL (
-    SELECT COALESCE(SUM(extra_concurrent_sandboxes),0)::bigint           as extra_concurrent_sandboxes,
-           COALESCE(SUM(extra_concurrent_template_builds),0)::bigint     as extra_concurrent_template_builds,
-           COALESCE(SUM(extra_max_vcpu),0)::bigint                       as extra_max_vcpu,
-           COALESCE(SUM(extra_max_ram_mb),0)::bigint                     as extra_max_ram_mb,
-           COALESCE(SUM(extra_disk_mb),0)::bigint                        as extra_disk_mb
-    FROM "public"."addons" addon
-    WHERE addon.team_id = t.id
-      AND addon.valid_from <= now()
-      AND (addon.valid_to IS NULL OR addon.valid_to > now())
-    ) a ON true
+JOIN "public"."team_limits" tl on tl.id = t.id
 WHERE tak.team_id = t.id
   AND tak.api_key_hash = $1
-RETURNING t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, tier.id, tier.name, tier.disk_mb, tier.concurrent_instances, tier.max_length_hours, tier.max_vcpu, tier.max_ram_mb, tier.concurrent_template_builds, a.extra_concurrent_sandboxes, a.extra_concurrent_template_builds, a.extra_max_vcpu, a.extra_max_ram_mb, a.extra_disk_mb
+RETURNING t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, tl.id, tl.max_length_hours, tl.concurrent_sandboxes, tl.concurrent_template_builds, tl.max_vcpu, tl.ram_mb, tl.disk_mb
 `
 
 type GetTeamWithTierByAPIKeyWithUpdateLastUsedRow struct {
-	Team                          Team
-	Tier                          Tier
-	ExtraConcurrentSandboxes      int64
-	ExtraConcurrentTemplateBuilds int64
-	ExtraMaxVcpu                  int64
-	ExtraMaxRamMb                 int64
-	ExtraDiskMb                   int64
+	Team      Team
+	TeamLimit TeamLimit
 }
 
 func (q *Queries) GetTeamWithTierByAPIKeyWithUpdateLastUsed(ctx context.Context, apiKeyHash string) (GetTeamWithTierByAPIKeyWithUpdateLastUsedRow, error) {
@@ -55,39 +39,22 @@ func (q *Queries) GetTeamWithTierByAPIKeyWithUpdateLastUsed(ctx context.Context,
 		&i.Team.IsBanned,
 		&i.Team.BlockedReason,
 		&i.Team.ClusterID,
-		&i.Tier.ID,
-		&i.Tier.Name,
-		&i.Tier.DiskMb,
-		&i.Tier.ConcurrentInstances,
-		&i.Tier.MaxLengthHours,
-		&i.Tier.MaxVcpu,
-		&i.Tier.MaxRamMb,
-		&i.Tier.ConcurrentTemplateBuilds,
-		&i.ExtraConcurrentSandboxes,
-		&i.ExtraConcurrentTemplateBuilds,
-		&i.ExtraMaxVcpu,
-		&i.ExtraMaxRamMb,
-		&i.ExtraDiskMb,
+		&i.TeamLimit.ID,
+		&i.TeamLimit.MaxLengthHours,
+		&i.TeamLimit.ConcurrentSandboxes,
+		&i.TeamLimit.ConcurrentTemplateBuilds,
+		&i.TeamLimit.MaxVcpu,
+		&i.TeamLimit.RamMb,
+		&i.TeamLimit.DiskMb,
 	)
 	return i, err
 }
 
 const getTeamWithTierByTeamAndUser = `-- name: GetTeamWithTierByTeamAndUser :one
-SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, tier.id, tier.name, tier.disk_mb, tier.concurrent_instances, tier.max_length_hours, tier.max_vcpu, tier.max_ram_mb, tier.concurrent_template_builds, a.extra_concurrent_sandboxes, a.extra_concurrent_template_builds, a.extra_max_vcpu, a.extra_max_ram_mb, a.extra_disk_mb
+SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, tl.id, tl.max_length_hours, tl.concurrent_sandboxes, tl.concurrent_template_builds, tl.max_vcpu, tl.ram_mb, tl.disk_mb
 FROM "public"."teams" t
-JOIN "public"."tiers" tier ON t.tier = tier.id
 JOIN "public"."users_teams" ut ON ut.team_id = t.id
-LEFT JOIN LATERAL (
-    SELECT COALESCE(SUM(extra_concurrent_sandboxes),0)::bigint           as extra_concurrent_sandboxes,
-           COALESCE(SUM(extra_concurrent_template_builds),0)::bigint     as extra_concurrent_template_builds,
-           COALESCE(SUM(extra_max_vcpu),0)::bigint                       as extra_max_vcpu,
-           COALESCE(SUM(extra_max_ram_mb),0)::bigint                     as extra_max_ram_mb,
-           COALESCE(SUM(extra_disk_mb),0)::bigint                        as extra_disk_mb
-    FROM "public"."addons" addon
-    WHERE addon.team_id = t.id
-      AND addon.valid_from <= now()
-      AND (addon.valid_to IS NULL OR addon.valid_to > now())
-    ) a ON true
+JOIN "public"."team_limits" tl on tl.id = t.id
 WHERE ut.user_id = $1 AND t.id = $2
 `
 
@@ -97,13 +64,8 @@ type GetTeamWithTierByTeamAndUserParams struct {
 }
 
 type GetTeamWithTierByTeamAndUserRow struct {
-	Team                          Team
-	Tier                          Tier
-	ExtraConcurrentSandboxes      int64
-	ExtraConcurrentTemplateBuilds int64
-	ExtraMaxVcpu                  int64
-	ExtraMaxRamMb                 int64
-	ExtraDiskMb                   int64
+	Team      Team
+	TeamLimit TeamLimit
 }
 
 func (q *Queries) GetTeamWithTierByTeamAndUser(ctx context.Context, arg GetTeamWithTierByTeamAndUserParams) (GetTeamWithTierByTeamAndUserRow, error) {
@@ -119,51 +81,29 @@ func (q *Queries) GetTeamWithTierByTeamAndUser(ctx context.Context, arg GetTeamW
 		&i.Team.IsBanned,
 		&i.Team.BlockedReason,
 		&i.Team.ClusterID,
-		&i.Tier.ID,
-		&i.Tier.Name,
-		&i.Tier.DiskMb,
-		&i.Tier.ConcurrentInstances,
-		&i.Tier.MaxLengthHours,
-		&i.Tier.MaxVcpu,
-		&i.Tier.MaxRamMb,
-		&i.Tier.ConcurrentTemplateBuilds,
-		&i.ExtraConcurrentSandboxes,
-		&i.ExtraConcurrentTemplateBuilds,
-		&i.ExtraMaxVcpu,
-		&i.ExtraMaxRamMb,
-		&i.ExtraDiskMb,
+		&i.TeamLimit.ID,
+		&i.TeamLimit.MaxLengthHours,
+		&i.TeamLimit.ConcurrentSandboxes,
+		&i.TeamLimit.ConcurrentTemplateBuilds,
+		&i.TeamLimit.MaxVcpu,
+		&i.TeamLimit.RamMb,
+		&i.TeamLimit.DiskMb,
 	)
 	return i, err
 }
 
 const getTeamsWithUsersTeamsWithTier = `-- name: GetTeamsWithUsersTeamsWithTier :many
-SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, ut.id, ut.user_id, ut.team_id, ut.is_default, ut.added_by, ut.created_at, tier.id, tier.name, tier.disk_mb, tier.concurrent_instances, tier.max_length_hours, tier.max_vcpu, tier.max_ram_mb, tier.concurrent_template_builds, a.extra_concurrent_sandboxes, a.extra_concurrent_template_builds, a.extra_max_vcpu, a.extra_max_ram_mb, a.extra_disk_mb
+SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, ut.id, ut.user_id, ut.team_id, ut.is_default, ut.added_by, ut.created_at, tl.id, tl.max_length_hours, tl.concurrent_sandboxes, tl.concurrent_template_builds, tl.max_vcpu, tl.ram_mb, tl.disk_mb
 FROM "public"."teams" t
-         JOIN "public"."tiers" tier ON t.tier = tier.id
-         JOIN "public"."users_teams" ut ON ut.team_id = t.id
-         LEFT JOIN LATERAL (
-    SELECT COALESCE(SUM(extra_concurrent_sandboxes),0)::bigint           as extra_concurrent_sandboxes,
-           COALESCE(SUM(extra_concurrent_template_builds),0)::bigint     as extra_concurrent_template_builds,
-           COALESCE(SUM(extra_max_vcpu),0)::bigint                       as extra_max_vcpu,
-           COALESCE(SUM(extra_max_ram_mb),0)::bigint                     as extra_max_ram_mb,
-           COALESCE(SUM(extra_disk_mb),0)::bigint                        as extra_disk_mb
-    FROM "public"."addons" addon
-    WHERE addon.team_id = t.id
-      AND addon.valid_from <= now()
-      AND (addon.valid_to IS NULL OR addon.valid_to > now())
-    ) a ON true
+JOIN "public"."users_teams" ut ON ut.team_id = t.id
+JOIN "public"."team_limits" tl on tl.id = t.id
 WHERE ut.user_id = $1
 `
 
 type GetTeamsWithUsersTeamsWithTierRow struct {
-	Team                          Team
-	UsersTeam                     UsersTeam
-	Tier                          Tier
-	ExtraConcurrentSandboxes      int64
-	ExtraConcurrentTemplateBuilds int64
-	ExtraMaxVcpu                  int64
-	ExtraMaxRamMb                 int64
-	ExtraDiskMb                   int64
+	Team      Team
+	UsersTeam UsersTeam
+	TeamLimit TeamLimit
 }
 
 func (q *Queries) GetTeamsWithUsersTeamsWithTier(ctx context.Context, userID uuid.UUID) ([]GetTeamsWithUsersTeamsWithTierRow, error) {
@@ -191,19 +131,13 @@ func (q *Queries) GetTeamsWithUsersTeamsWithTier(ctx context.Context, userID uui
 			&i.UsersTeam.IsDefault,
 			&i.UsersTeam.AddedBy,
 			&i.UsersTeam.CreatedAt,
-			&i.Tier.ID,
-			&i.Tier.Name,
-			&i.Tier.DiskMb,
-			&i.Tier.ConcurrentInstances,
-			&i.Tier.MaxLengthHours,
-			&i.Tier.MaxVcpu,
-			&i.Tier.MaxRamMb,
-			&i.Tier.ConcurrentTemplateBuilds,
-			&i.ExtraConcurrentSandboxes,
-			&i.ExtraConcurrentTemplateBuilds,
-			&i.ExtraMaxVcpu,
-			&i.ExtraMaxRamMb,
-			&i.ExtraDiskMb,
+			&i.TeamLimit.ID,
+			&i.TeamLimit.MaxLengthHours,
+			&i.TeamLimit.ConcurrentSandboxes,
+			&i.TeamLimit.ConcurrentTemplateBuilds,
+			&i.TeamLimit.MaxVcpu,
+			&i.TeamLimit.RamMb,
+			&i.TeamLimit.DiskMb,
 		); err != nil {
 			return nil, err
 		}

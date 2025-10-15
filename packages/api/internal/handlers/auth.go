@@ -22,7 +22,7 @@ func (a *APIStore) GetUserAndTeams(c *gin.Context) (*uuid.UUID, []*types.TeamWit
 	userID := a.GetUserID(c)
 	ctx := c.Request.Context()
 
-	teams, err := dbapi.GetTeamByUser(ctx, a.sqlcDB, userID)
+	teams, err := dbapi.GetTeamsByUser(ctx, a.sqlcDB, userID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error when getting default team: %w", err)
 	}

@@ -11,43 +11,25 @@ type Team struct {
 }
 
 func newTeamLimits(
-	tier *queries.Tier,
-	extraMaxSandboxes int64,
-	extraMaxConcurrentBuilds int64,
-	extraMaxVcpu int64,
-	extraMaxRamMb int64,
-	addonsDiskMb int64,
+	teamLimits *queries.TeamLimit,
 ) *TeamLimits {
 	return &TeamLimits{
-		SandboxConcurrency: tier.ConcurrentInstances + extraMaxSandboxes,
-		BuildConcurrency:   tier.ConcurrentTemplateBuilds + extraMaxConcurrentBuilds,
-		MaxLengthHours:     tier.MaxLengthHours,
-
-		MaxVcpu:  tier.MaxVcpu + extraMaxVcpu,
-		MaxRamMb: tier.MaxRamMb + extraMaxRamMb,
-		DiskMb:   tier.DiskMb + addonsDiskMb,
+		SandboxConcurrency: int64(teamLimits.ConcurrentSandboxes),
+		BuildConcurrency:   int64(teamLimits.ConcurrentTemplateBuilds),
+		MaxLengthHours:     teamLimits.MaxLengthHours,
+		MaxVcpu:            int64(teamLimits.MaxVcpu),
+		MaxRamMb:           int64(teamLimits.RamMb),
+		DiskMb:             int64(teamLimits.DiskMb),
 	}
 }
 
 func NewTeam(
 	team *queries.Team,
-	tier *queries.Tier,
-	extraMaxSandboxes int64,
-	extraMaxConcurrentBuilds int64,
-	extraMaxVcpu int64,
-	extraMaxRamMb int64,
-	extraDiskMb int64,
+	teamLimits *queries.TeamLimit,
 ) *Team {
 	return &Team{
-		Team: team,
-		Limits: newTeamLimits(
-			tier,
-			extraMaxSandboxes,
-			extraMaxConcurrentBuilds,
-			extraMaxVcpu,
-			extraMaxRamMb,
-			extraDiskMb,
-		),
+		Team:   team,
+		Limits: newTeamLimits(teamLimits),
 	}
 }
 
