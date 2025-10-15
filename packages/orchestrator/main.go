@@ -363,7 +363,7 @@ func run(config cfg.Config) (success bool) {
 		return nil
 	})
 
-	limiter := server.NewLimiter(config.MaxStartingInstances, featureFlags, metricsTracker)
+	sandboxLimiter := server.NewLimiter(config.MaxStartingInstances, featureFlags, metricsTracker)
 
 	orchestratorService := server.New(server.ServiceConfig{
 		SandboxFactory:   sandboxFactory,
@@ -377,7 +377,7 @@ func run(config cfg.Config) (success bool) {
 		Persistence:      persistence,
 		FeatureFlags:     featureFlags,
 		SbxEventsService: sbxEventsService,
-		Limiter:          limiter,
+		SandboxLimiter:   sandboxLimiter,
 	})
 
 	// template manager sandbox logger

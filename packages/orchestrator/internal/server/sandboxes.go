@@ -65,7 +65,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	)
 
 	// Check if we've reached the max number of starting instances on this node
-	if err := s.limiter.AcquireStarting(ctx); err != nil {
+	if err := s.sandboxLimiter.AcquireStarting(ctx); err != nil {
 		var tooManyRunning TooManySandboxesRunningError
 		var tooManyStarting TooManySandboxesStartingError
 		switch {
@@ -80,7 +80,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		}
 	}
 	defer func() {
-		s.limiter.ReleaseStarting()
+		s.sandboxLimiter.ReleaseStarting()
 	}()
 
 	template, err := s.templateCache.GetTemplate(
