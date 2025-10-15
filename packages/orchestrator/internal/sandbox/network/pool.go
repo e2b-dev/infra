@@ -206,8 +206,6 @@ func (p *Pool) cleanup(slot *Slot) error {
 }
 
 func (p *Pool) Close(_ context.Context) error {
-	zap.L().Info("Closing network pool")
-
 	p.doneOnce.Do(func() {
 		close(p.done)
 	})
