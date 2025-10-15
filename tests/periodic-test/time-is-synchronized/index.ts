@@ -96,8 +96,8 @@ try {
   console.log("local date - end of request", localDateEnd);
   console.log("sandbox date", dateUnix);
 
-  // check if date is sandbox within 1 second of local
-  if ((dateUnix - localDateStart > 1) || (localDateEnd - dateUnix) > 1) {
+  // check if the diff between sandbox time and local time is less than 1 second (taking into consideration the request latency)
+  if (dateUnix < localDateStart - 1 || dateUnix > localDateEnd + 1) {
     throw new Error("❌ Date is not synchronized");
   }
 
