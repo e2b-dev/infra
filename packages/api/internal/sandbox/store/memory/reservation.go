@@ -49,7 +49,7 @@ func (s *ReservationStorage) Reserve(teamID, sandboxID string, limit int64) (fin
 			return teamSandboxes
 		}
 
-		if limit > 0 && len(teamSandboxes) >= int(limit) {
+		if limit >= 0 && len(teamSandboxes) >= int(limit) {
 			limitExceeded = true
 			return teamSandboxes
 		}
