@@ -71,10 +71,10 @@ job "client-proxy" {
 %{ if update_stanza }
     # An update stanza to enable rolling updates of the service
     update {
-      # The number of extra instances to run during the update
+      # The number of instances that can be updated at the same time
       max_parallel     = ${update_max_parallel}
-      # Allows to spawn new version of the service before killing the old one
-      canary           = 1
+      # Number of extra instances that can be spawn before killing the old one
+      canary           = ${update_max_parallel}
       # Time to wait for the canary to be healthy
       min_healthy_time = "10s"
       # Time to wait for the canary to be healthy, if not it will be marked as failed
@@ -110,15 +110,15 @@ job "client-proxy" {
         PROXY_PORT        = "${proxy_port}"
         ORCHESTRATOR_PORT = "${orchestrator_port}"
 
-        SD_ORCHESTRATOR_PROVIDER       = "NOMAD"
-        SD_ORCHESTRATOR_NOMAD_ENDPOINT = "${nomad_endpoint}"
-        SD_ORCHESTRATOR_NOMAD_TOKEN    = "${nomad_token}"
-        SD_ORCHESTRATOR_JOB_PREFIX     = "template-manager"
+        SD_ORCHESTRATOR_PROVIDER         = "NOMAD"
+        SD_ORCHESTRATOR_NOMAD_ENDPOINT   = "${nomad_endpoint}"
+        SD_ORCHESTRATOR_NOMAD_TOKEN      = "${nomad_token}"
+        SD_ORCHESTRATOR_NOMAD_JOB_PREFIX = "template-manager"
 
-        SD_EDGE_PROVIDER       = "NOMAD"
-        SD_EDGE_NOMAD_ENDPOINT = "${nomad_endpoint}"
-        SD_EDGE_NOMAD_TOKEN    = "${nomad_token}"
-        SD_EDGE_JOB_PREFIX     = "client-proxy"
+        SD_EDGE_PROVIDER             = "NOMAD"
+        SD_EDGE_NOMAD_ENDPOINT       = "${nomad_endpoint}"
+        SD_EDGE_NOMAD_TOKEN          = "${nomad_token}"
+        SD_EDGE_NOMAD_JOB_PREFIX     = "client-proxy"
 
         ENVIRONMENT = "${environment}"
 
