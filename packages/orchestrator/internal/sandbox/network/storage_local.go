@@ -47,7 +47,7 @@ type StorageLocal struct {
 }
 
 func NewStorageLocal(slotsSize int, config Config) (*StorageLocal, error) {
-	if err := os.MkdirAll(config.LocalNamespaceStorageDir, 0755); err != nil {
+	if err := os.MkdirAll(config.LocalNamespaceStorageDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create storage dir: %w", err)
 	}
 
@@ -130,7 +130,7 @@ func (s *StorageLocal) lockSlot(slotIdx int) error {
 	fullPath := s.createPidFilename(slotIdx)
 	fileContent := []byte(fmt.Sprintf("%d", s.pid))
 
-	file, err := os.OpenFile(fullPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(fullPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to open file %q: %w", fullPath, err)
 	}
