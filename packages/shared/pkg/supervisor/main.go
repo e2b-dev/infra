@@ -136,29 +136,12 @@ func (s *Runner) Close(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-func (s *Runner) AddTask(name string, options ...Option) {
-	task := Task{Name: name}
-	for _, o := range options {
-		o(&task)
+func (s *Runner) AddTask(task Task) {
+	if task.Name == "" {
+		panic("task name must not be empty")
 	}
 
-	s.Register(task)
-}
-
-func (s *Runner) Register(task Task) {
 	s.tasks = append(s.tasks, task)
-}
-
-func WithCleanup(fn func(context.Context) error) Option {
-	return func(t *Task) {
-		t.Cleanup = fn
-	}
-}
-
-func WithBackgroundJob(fn func(context.Context) error) Option {
-	return func(t *Task) {
-		t.Background = fn
-	}
 }
 
 type Task struct {
@@ -166,5 +149,3 @@ type Task struct {
 	Background func(context.Context) error
 	Cleanup    func(context.Context) error
 }
-
-type Option func(*Task)

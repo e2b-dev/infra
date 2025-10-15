@@ -155,10 +155,10 @@ func run(config cfg.Config) (success bool) {
 	}))
 	zap.ReplaceGlobals(globalLogger)
 	runner := supervisor.New(globalLogger)
-	runner.AddTask(
-		"global logger",
-		supervisor.WithCleanup(cleanupLogger(globalLogger)),
-	)
+	runner.AddTask(supervisor.Task{
+		Name:    "global logger",
+		Cleanup: cleanupLogger(globalLogger),
+	})
 
 	sbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
@@ -170,10 +170,10 @@ func run(config cfg.Config) (success bool) {
 		},
 	)
 	sbxlogger.SetSandboxLoggerExternal(sbxLoggerExternal)
-	runner.AddTask(
-		"sandbox logger (external)",
-		supervisor.WithCleanup(cleanupLogger(sbxLoggerExternal)),
-	)
+	runner.AddTask(supervisor.Task{
+		Name:    "sandbox logger (external)",
+		Cleanup: cleanupLogger(sbxLoggerExternal),
+	})
 
 	sbxLoggerInternal := sbxlogger.NewLogger(
 		ctx,
@@ -185,10 +185,10 @@ func run(config cfg.Config) (success bool) {
 		},
 	)
 	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
-	runner.AddTask(
-		"sandbox logger (internal)",
-		supervisor.WithCleanup(cleanupLogger(sbxLoggerInternal)),
-	)
+	runner.AddTask(supervisor.Task{
+		Name:    "sandbox logger (internal)",
+		Cleanup: cleanupLogger(sbxLoggerInternal),
+	})
 
 	globalLogger.Info("Starting orchestrator", zap.String("version", version), zap.String("commit", commitSHA), logger.WithServiceInstanceID(serviceInstanceID))
 
@@ -201,19 +201,19 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
-	runner.AddTask(
-		"feature flags",
-		supervisor.WithCleanup(func(ctx context.Context) error {
+	runner.AddTask(supervisor.Task{
+		Name: "feature flags",
+		Cleanup: func(ctx context.Context) error {
 			return featureFlags.Close(ctx)
-		}),
-	)
+		},
+	})
 
 	// gcp concurrent upload limiter
 	limiter, err := limit.New(ctx, featureFlags)
 	if err != nil {
 		zap.L().Fatal("failed to create limiter", zap.Error(err))
 	}
-	runner.AddTask("gcp concurrent upload limiter", supervisor.WithCleanup(limiter.Close))
+	runner.AddTask(supervisor.Task{Name: "gcp concurrent upload limiter", Cleanup: limiter.Close})
 
 	persistence, err := storage.GetTemplateStorageProvider(ctx, limiter)
 	if err != nil {
@@ -246,16 +246,16 @@ func run(config cfg.Config) (success bool) {
 			zap.L().Fatal("failed to create clickhouse batcher", zap.Error(err))
 		}
 	}
-	runner.AddTask("sandbox event batcher", supervisor.WithCleanup(sandboxEventBatcher.Close))
+	runner.AddTask(supervisor.Task{Name: "sandbox event batcher", Cleanup: sandboxEventBatcher.Close})
 
 	// redis
 	redisClient, err := factories.NewRedisClient(ctx, config)
 	if err != nil && !errors.Is(err, factories.ErrRedisDisabled) {
 		zap.L().Fatal("Could not connect to Redis", zap.Error(err))
 	} else if err == nil {
-		runner.AddTask("redis client", supervisor.WithCleanup(func(context.Context) error {
+		runner.AddTask(supervisor.Task{Name: "redis client", Cleanup: func(context.Context) error {
 			return factories.CloseCleanly(redisClient)
-		}))
+		}})
 	}
 
 	// pubsub
@@ -265,7 +265,7 @@ func run(config cfg.Config) (success bool) {
 	} else {
 		redisPubSub = pubsub.NewMockPubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData]()
 	}
-	runner.AddTask("redis pubsub", supervisor.WithCleanup(redisPubSub.Close))
+	runner.AddTask(supervisor.Task{Name: "redis pubsub", Cleanup: redisPubSub.Close})
 
 	sbxEventsService := events.NewSandboxEventsService(featureFlags, redisPubSub, sandboxEventBatcher, globalLogger)
 
@@ -274,46 +274,52 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
-	runner.AddTask("sandbox observer", supervisor.WithCleanup(sandboxObserver.Close))
+	runner.AddTask(supervisor.Task{Name: "sandbox observer", Cleanup: sandboxObserver.Close})
 
 	// sandbox proxy
 	sandboxProxy, err := proxy.NewSandboxProxy(tel.MeterProvider, config.ProxyPort, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
-	runner.AddTask("sandbox proxy",
-		supervisor.WithBackgroundJob(func(ctx context.Context) error {
+	runner.AddTask(supervisor.Task{
+		Name: "sandbox proxy",
+		Background: func(ctx context.Context) error {
 			err := sandboxProxy.Start(ctx)
 			if errors.Is(err, http.ErrServerClosed) {
 				return nil
 			}
 			return err
-		}),
-		supervisor.WithCleanup(sandboxProxy.Close),
-	)
+		},
+		Cleanup: sandboxProxy.Close,
+	})
 
 	// device pool
 	devicePool, err := nbd.NewDevicePool(tel.MeterProvider)
 	if err != nil {
 		zap.L().Fatal("failed to create device pool", zap.Error(err))
 	}
-	runner.AddTask("device pool",
-		supervisor.WithBackgroundJob(func(ctx context.Context) error {
+	runner.AddTask(supervisor.Task{
+		Name: "device pool",
+		Background: func(ctx context.Context) error {
 			devicePool.Populate(ctx)
 			return nil
-		}),
-		supervisor.WithCleanup(devicePool.Close),
-	)
+		},
+		Cleanup: devicePool.Close,
+	})
 
 	// network pool
 	networkPool, err := network.NewPool(tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, nodeID, config.NetworkConfig)
 	if err != nil {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
-	runner.AddTask("network pool", supervisor.WithBackgroundJob(func(ctx context.Context) error {
-		networkPool.Populate(ctx)
-		return nil
-	}), supervisor.WithCleanup(networkPool.Close))
+	runner.AddTask(supervisor.Task{
+		Name: "network pool",
+		Background: func(ctx context.Context) error {
+			networkPool.Populate(ctx)
+			return nil
+		},
+		Cleanup: networkPool.Close,
+	})
 
 	// sandbox factory
 	defaultAllowSandboxInternet := config.AllowSandboxInternet
@@ -343,25 +349,27 @@ func run(config cfg.Config) (success bool) {
 			CollectorAddress: env.LogsCollectorAddress(),
 		},
 	)
-	runner.AddTask("template manager sandbox logger (external)",
-		supervisor.WithCleanup(cleanupLogger(tmplSbxLoggerExternal)),
-	)
+	runner.AddTask(supervisor.Task{
+		Name:    "template manager sandbox logger (external)",
+		Cleanup: cleanupLogger(tmplSbxLoggerExternal),
+	})
 
 	// hyperloop server
 	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(ctx, config.NetworkConfig.HyperloopProxyPort, globalLogger, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create hyperloop server", zap.Error(err))
 	}
-	runner.AddTask("hyperloop server",
-		supervisor.WithBackgroundJob(func(context.Context) error {
+	runner.AddTask(supervisor.Task{
+		Name: "hyperloop server",
+		Background: func(context.Context) error {
 			err := hyperloopSrv.ListenAndServe()
 			if errors.Is(err, http.ErrServerClosed) {
 				return nil
 			}
 			return err
-		}),
-		supervisor.WithCleanup(hyperloopSrv.Shutdown),
-	)
+		},
+		Cleanup: hyperloopSrv.Shutdown,
+	})
 
 	grpcServer := factories.NewGRPCServer(tel)
 	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
@@ -387,7 +395,10 @@ func run(config cfg.Config) (success bool) {
 
 		templatemanager.RegisterTemplateServiceServer(grpcServer, tmpl)
 
-		runner.AddTask("template manager", supervisor.WithCleanup(tmpl.Close))
+		runner.AddTask(supervisor.Task{
+			Name:    "template manager",
+			Cleanup: tmpl.Close,
+		})
 	}
 
 	infoService := service.NewInfoService(serviceInfo, sandboxes)
@@ -401,21 +412,22 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		zap.L().Fatal("failed to create cmux server", zap.Error(err))
 	}
-	runner.AddTask("cmux server",
-		supervisor.WithBackgroundJob(func(context.Context) error {
+	runner.AddTask(supervisor.Task{
+		Name: "cmux server",
+		Background: func(context.Context) error {
 			zap.L().Info("Starting network server", zap.Uint16("port", config.GRPCPort))
 			err := cmuxServer.Serve()
 			if err != nil && strings.Contains(err.Error(), "use of closed network connection") {
 				return nil
 			}
 			return err
-		}),
-		supervisor.WithCleanup(func(context.Context) error {
+		},
+		Cleanup: func(context.Context) error {
 			zap.L().Info("Shutting down cmux server")
 			cmuxServer.Close()
 			return nil
-		}),
-	)
+		},
+	})
 
 	// http server
 	httpListener := cmuxServer.Match(cmux.HTTP1Fast())
@@ -428,8 +440,9 @@ func run(config cfg.Config) (success bool) {
 	httpServer := factories.NewHTTPServer()
 	httpServer.Handler = healthcheck.CreateHandler()
 
-	runner.AddTask("http server",
-		supervisor.WithBackgroundJob(func(context.Context) error {
+	runner.AddTask(supervisor.Task{
+		Name: "http server",
+		Background: func(context.Context) error {
 			err := httpServer.Serve(httpListener)
 			switch {
 			case errors.Is(err, cmux.ErrServerClosed):
@@ -439,25 +452,25 @@ func run(config cfg.Config) (success bool) {
 			default:
 				return err
 			}
-		}),
-		supervisor.WithCleanup(func(ctx context.Context) error {
+		},
+		Cleanup: func(ctx context.Context) error {
 			zap.L().Info("Shutting down http server")
 			return httpServer.Shutdown(ctx)
-		}),
-	)
+		},
+	})
 
 	// grpc server
 	grpcListener := cmuxServer.Match(cmux.Any()) // the rest are GRPC requests
-	runner.AddTask("grpc server",
-		supervisor.WithBackgroundJob(func(context.Context) error {
+	runner.AddTask(supervisor.Task{
+		Name: "grpc server",
+		Background: func(context.Context) error {
 			return grpcServer.Serve(grpcListener)
-		}),
-		supervisor.WithCleanup(func(context.Context) error {
-			zap.L().Info("Shutting down grpc server")
+		},
+		Cleanup: func(context.Context) error {
 			grpcServer.GracefulStop()
 			return nil
-		}),
-	)
+		},
+	})
 
 	// Wait for the shutdown signal or if some service fails
 	if err := runner.Run(ctx); err != nil {
