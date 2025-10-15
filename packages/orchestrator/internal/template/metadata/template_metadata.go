@@ -132,7 +132,7 @@ func fromTemplate(ctx context.Context, s storage.StorageProvider, files storage.
 	ctx, span := tracer.Start(ctx, "from template")
 	defer span.End()
 
-	obj, err := s.OpenObject(ctx, files.StorageMetadataPath())
+	obj, err := s.OpenObject(ctx, files.StorageMetadataPath(), storage.MetadataFileType)
 	if err != nil {
 		return Template{}, fmt.Errorf("error opening object for template metadata: %w", err)
 	}

@@ -18,6 +18,7 @@ func newStorageFile(
 	persistence storage.StorageProvider,
 	objectPath string,
 	path string,
+	fileType storage.FileType,
 ) (*storageFile, error) {
 	f, err := os.Create(path)
 	if err != nil {
@@ -26,7 +27,7 @@ func newStorageFile(
 
 	defer f.Close()
 
-	object, err := persistence.OpenObject(ctx, objectPath)
+	object, err := persistence.OpenObject(ctx, objectPath, fileType)
 	if err != nil {
 		return nil, err
 	}

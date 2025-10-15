@@ -31,14 +31,17 @@ func main() {
 
 	var baseStoragePath string
 	var diffStoragePath string
+	var fileType storage.FileType
 
 	switch *kind {
 	case "memfile":
 		baseStoragePath = baseTemplate.StorageMemfileHeaderPath()
 		diffStoragePath = diffTemplate.StorageMemfileHeaderPath()
+		fileType = storage.MemfileHeaderFileType
 	case "rootfs":
 		baseStoragePath = baseTemplate.StorageRootfsHeaderPath()
 		diffStoragePath = diffTemplate.StorageRootfsHeaderPath()
+		fileType = storage.RootFSHeaderFileType
 	default:
 		log.Fatalf("invalid kind: %s", *kind)
 	}
@@ -50,12 +53,12 @@ func main() {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}
 
-	baseObj, err := storageProvider.OpenObject(ctx, baseStoragePath)
+	baseObj, err := storageProvider.OpenObject(ctx, baseStoragePath, fileType)
 	if err != nil {
 		log.Fatalf("failed to open object: %s", err)
 	}
 
-	diffObj, err := storageProvider.OpenObject(ctx, diffStoragePath)
+	diffObj, err := storageProvider.OpenObject(ctx, diffStoragePath, fileType)
 	if err != nil {
 		log.Fatalf("failed to open object: %s", err)
 	}

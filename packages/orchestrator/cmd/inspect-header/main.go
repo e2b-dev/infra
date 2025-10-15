@@ -22,6 +22,7 @@ func main() {
 	}
 
 	var storagePath string
+	var fileType storage.FileType
 
 	switch *kind {
 	case "memfile":
@@ -38,7 +39,7 @@ func main() {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}
 
-	obj, err := storage.OpenObject(ctx, storagePath)
+	obj, err := storage.OpenObject(ctx, storagePath, fileType)
 	if err != nil {
 		log.Fatalf("failed to open object: %s", err)
 	}

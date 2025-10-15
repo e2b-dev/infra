@@ -18,10 +18,12 @@ func storagePath(buildId string, diffType DiffType) string {
 }
 
 type StorageDiff struct {
-	chunker     *utils.SetOnce[*block.Chunker]
-	cachePath   string
-	cacheKey    DiffStoreKey
-	storagePath string
+	chunker         *utils.SetOnce[*block.Chunker]
+	cachePath       string
+	cacheKey        DiffStoreKey
+	storagePath     string
+	storageFileType storage.SeekableFileType
+
 	blockSize   int64
 	metrics     blockmetrics.Metrics
 	persistence storage.StorageProvider
@@ -40,17 +42,30 @@ func newStorageDiff(
 	cachePathSuffix := id.Generate()
 
 	storagePath := storagePath(buildId, diffType)
+	storageFileType := storageFileType(diffType)
 	cacheFile := fmt.Sprintf("%s-%s-%s", buildId, diffType, cachePathSuffix)
 	cachePath := filepath.Join(basePath, cacheFile)
 
 	return &StorageDiff{
-		storagePath: storagePath,
-		cachePath:   cachePath,
-		chunker:     utils.NewSetOnce[*block.Chunker](),
-		blockSize:   blockSize,
-		metrics:     metrics,
-		persistence: persistence,
-		cacheKey:    GetDiffStoreKey(buildId, diffType),
+		storagePath:     storagePath,
+		storageFileType: storageFileType,
+		cachePath:       cachePath,
+		chunker:         utils.NewSetOnce[*block.Chunker](),
+		blockSize:       blockSize,
+		metrics:         metrics,
+		persistence:     persistence,
+		cacheKey:        GetDiffStoreKey(buildId, diffType),
+	}
+}
+
+func storageFileType(diffType DiffType) storage.SeekableFileType {
+	switch diffType {
+	case Memfile:
+		return storage.MemfileFileType
+	case Rootfs:
+		return storage.RootFSFileType
+	default:
+		panic(fmt.Sprintf("unknown diff type: %s", diffType))
 	}
 }
 
@@ -59,7 +74,7 @@ func (b *StorageDiff) CacheKey() DiffStoreKey {
 }
 
 func (b *StorageDiff) Init(ctx context.Context) error {
-	obj, err := b.persistence.OpenObject(ctx, b.storagePath)
+	obj, err := b.persistence.OpenSeekableObject(ctx, b.storagePath, b.storageFileType)
 	if err != nil {
 		return err
 	}

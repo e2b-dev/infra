@@ -14,7 +14,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage")
+var (
+	tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage")
+	meter  = otel.GetMeterProvider().Meter("shared.pkg.storage")
+)
 
 var ErrObjectNotExist = errors.New("object does not exist")
 
@@ -33,10 +36,31 @@ const (
 	MemoryChunkSize = 4 * 1024 * 1024 // 4 MB
 )
 
+type (
+	SeekableFileType string
+	FileType         string
+)
+
+const (
+	MemfileFileType       SeekableFileType = "memfile"
+	MemfileHeaderFileType FileType         = "memfile-header"
+
+	RootFSFileType       SeekableFileType = "rootfs"
+	RootFSHeaderFileType FileType         = "rootfs-header"
+
+	SnapfileFileType FileType = "snapfile"
+
+	MetadataFileType FileType = "metadata"
+
+	LayerFileType         FileType = "layer"
+	LayerMetadataFileType FileType = "layer-metadata"
+)
+
 type StorageProvider interface {
 	DeleteObjectsWithPrefix(ctx context.Context, prefix string) error
 	UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error)
-	OpenObject(ctx context.Context, path string) (StorageObjectProvider, error)
+	OpenObject(ctx context.Context, path string, fileType FileType) (StorageObjectProvider, error)
+	OpenSeekableObject(ctx context.Context, path string, fileType SeekableFileType) (StorageSeekableObjectProvider, error)
 	GetDetails() string
 }
 
@@ -53,14 +77,26 @@ type ReaderAtCtx interface {
 }
 
 type StorageObjectProvider interface {
+	// write
 	WriterCtx
-	WriterToCtx
-	ReaderAtCtx
-
 	WriteFromFileSystem(ctx context.Context, path string) error
 
+	// read
+	WriterToCtx
+
+	// utility
+	Exists(ctx context.Context) (bool, error)
+}
+
+type StorageSeekableObjectProvider interface {
+	// write
+	WriteFromFileSystem(ctx context.Context, path string) error
+
+	// read
+	ReaderAtCtx
+
+	// utility
 	Size(ctx context.Context) (int64, error)
-	Delete(ctx context.Context) error
 }
 
 func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (StorageProvider, error) {

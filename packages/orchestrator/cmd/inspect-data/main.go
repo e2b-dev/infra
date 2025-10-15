@@ -24,14 +24,17 @@ func main() {
 
 	var storagePath string
 	var blockSize int64
+	var fileType storage.SeekableFileType
 
 	switch *kind {
 	case "memfile":
 		storagePath = template.StorageMemfilePath()
 		blockSize = 2097152
+		fileType = storage.MemfileFileType
 	case "rootfs":
 		storagePath = template.StorageRootfsPath()
 		blockSize = 4096
+		fileType = storage.RootFSFileType
 	default:
 		log.Fatalf("invalid kind: %s", *kind)
 	}
@@ -47,7 +50,7 @@ func main() {
 		log.Fatalf("failed to get storage provider: %s", err)
 	}
 
-	obj, err := storage.OpenObject(ctx, storagePath)
+	obj, err := storage.OpenSeekableObject(ctx, storagePath, fileType)
 	if err != nil {
 		log.Fatalf("failed to open object: %s", err)
 	}
