@@ -25,6 +25,23 @@ type Runner struct {
 	cleanupsRun bool
 }
 
+type TaskExitedError struct {
+	TaskName  string
+	TaskError error
+}
+
+func (e TaskExitedError) Unwrap() error {
+	return e.TaskError
+}
+
+func (e TaskExitedError) Error() string {
+	if e.TaskError == nil {
+		return fmt.Sprintf("%s exited", e.TaskName)
+	}
+
+	return fmt.Sprintf("%s exited with %s", e.TaskName, e.TaskError.Error())
+}
+
 func New(logger *zap.Logger) *Runner {
 	return &Runner{
 		logger: logger.Named("supervisor"),
@@ -62,11 +79,7 @@ func (s *Runner) Run(ctx context.Context) error {
 		reason = nil
 	case res := <-s.doneCh:
 		// A task finished (with or without error)
-		if res.err == nil {
-			reason = fmt.Errorf("%s exited", res.name)
-		} else {
-			reason = fmt.Errorf("%s exited with %w", res.name, res.err)
-		}
+		reason = TaskExitedError{TaskName: res.name, TaskError: res.err}
 	}
 
 	return reason
@@ -127,6 +140,8 @@ func (s *Runner) Close(ctx context.Context) error {
 			}
 		}
 	}
+
+	s.wg.Wait()
 
 	s.mu.Lock()
 	s.cleanupsRun = true
