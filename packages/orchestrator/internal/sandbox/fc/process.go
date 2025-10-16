@@ -17,6 +17,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapio"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -71,6 +72,7 @@ type Process struct {
 func NewProcess(
 	ctx context.Context,
 	execCtx context.Context,
+	config cfg.BuilderConfig,
 	slot *network.Slot,
 	files *storage.SandboxFiles,
 	versions FirecrackerVersions,
@@ -83,7 +85,7 @@ func NewProcess(
 	defer childSpan.End()
 
 	// Build the firecracker start script and get computed paths
-	startBuilder := NewStartScriptBuilder()
+	startBuilder := NewStartScriptBuilder(config)
 	startScript, err := startBuilder.Build(versions, files, rootfsPaths, slot.NamespaceID())
 	if err != nil {
 		return nil, err
@@ -93,12 +95,12 @@ func NewProcess(
 		attribute.String("sandbox.cmd", startScript.Value),
 	)
 
-	_, err = os.Stat(versions.FirecrackerPath())
+	_, err = os.Stat(versions.FirecrackerPath(config))
 	if err != nil {
 		return nil, fmt.Errorf("error stating firecracker binary: %w", err)
 	}
 
-	_, err = os.Stat(versions.HostKernelPath())
+	_, err = os.Stat(versions.HostKernelPath(config))
 	if err != nil {
 		return nil, fmt.Errorf("error stating kernel file: %w", err)
 	}

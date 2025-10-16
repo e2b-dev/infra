@@ -7,10 +7,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 func TestStartScriptBuilder_Build(t *testing.T) {
+	config, err := cfg.ParseBuilder()
+	require.NoError(t, err)
+
 	tests := []struct {
 		name                  string
 		versions              FirecrackerVersions
@@ -97,7 +101,7 @@ func TestStartScriptBuilder_Build(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			builder := NewStartScriptBuilder()
+			builder := NewStartScriptBuilder(config)
 
 			// Call Build function directly with the four parameters
 			result, err := builder.Build(tt.versions, tt.files, tt.rootfsPaths, tt.namespaceID)
