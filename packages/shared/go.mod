@@ -2,6 +2,8 @@ module github.com/e2b-dev/infra/packages/shared
 
 go 1.24.7
 
+replace github.com/e2b-dev/infra/packages/db => ../db
+
 // https://github.com/grafana/loki/issues/2826
 replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.14.5
 

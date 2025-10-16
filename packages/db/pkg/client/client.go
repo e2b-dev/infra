@@ -2,6 +2,8 @@ package client
 
 import (
 	"context"
+	"errors"
+	"os"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -9,7 +11,6 @@ import (
 	"go.uber.org/zap"
 
 	database "github.com/e2b-dev/infra/packages/db/pkg/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type Client struct {
@@ -33,7 +34,10 @@ func WithMinIdle(minIdle int32) Option {
 }
 
 func NewClient(ctx context.Context, options ...Option) (*Client, error) {
-	databaseURL := utils.RequiredEnv("POSTGRES_CONNECTION_STRING", "Postgres connection string")
+	databaseURL := os.Getenv("POSTGRES_CONNECTION_STRING")
+	if databaseURL == "" {
+		return nil, errors.New("POSTGRES_CONNECTION_STRING is required")
+	}
 
 	// Parse the connection pool configuration
 	config, err := pgxpool.ParseConfig(databaseURL)
