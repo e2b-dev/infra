@@ -19,6 +19,7 @@ WORKDIR /build
 COPY ./shared/pkg ./shared/pkg
 
 COPY ./db/scripts/migrator.go ./db/scripts/migrator.go
+COPY ./db/migrations/ ./db/migrations
 
 WORKDIR /build/db
 
@@ -28,5 +29,6 @@ RUN chmod +x ./bin/migrator
 FROM alpine:${ALPINE_VERSION}
 
 COPY --from=builder /build/db/bin/migrator .
+COPY --from=builder  /build/db/migrations ./migrations
 
 ENTRYPOINT ["./migrator"]
