@@ -38,8 +38,8 @@ type AWSBucketStorageObjectProvider struct {
 }
 
 var (
-	_ StorageSeekableObjectProvider = (*AWSBucketStorageObjectProvider)(nil)
-	_ StorageObjectProvider         = (*AWSBucketStorageObjectProvider)(nil)
+	_ SeekableObjectProvider = (*AWSBucketStorageObjectProvider)(nil)
+	_ ObjectProvider         = (*AWSBucketStorageObjectProvider)(nil)
 )
 
 func NewAWSBucketStorageProvider(ctx context.Context, bucketName string) (*AWSBucketStorageProvider, error) {
@@ -121,7 +121,7 @@ func (a *AWSBucketStorageProvider) UploadSignedURL(ctx context.Context, path str
 	return resp.URL, nil
 }
 
-func (a *AWSBucketStorageProvider) OpenSeekableObject(_ context.Context, path string, _ SeekableFileType) (StorageSeekableObjectProvider, error) {
+func (a *AWSBucketStorageProvider) OpenSeekableObject(_ context.Context, path string, _ SeekableObjectType) (SeekableObjectProvider, error) {
 	return &AWSBucketStorageObjectProvider{
 		client:     a.client,
 		bucketName: a.bucketName,
@@ -129,7 +129,7 @@ func (a *AWSBucketStorageProvider) OpenSeekableObject(_ context.Context, path st
 	}, nil
 }
 
-func (a *AWSBucketStorageProvider) OpenObject(_ context.Context, path string, _ FileType) (StorageObjectProvider, error) {
+func (a *AWSBucketStorageProvider) OpenObject(_ context.Context, path string, _ ObjectType) (ObjectProvider, error) {
 	return &AWSBucketStorageObjectProvider{
 		client:     a.client,
 		bucketName: a.bucketName,

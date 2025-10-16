@@ -18,11 +18,11 @@ func storagePath(buildId string, diffType DiffType) string {
 }
 
 type StorageDiff struct {
-	chunker         *utils.SetOnce[*block.Chunker]
-	cachePath       string
-	cacheKey        DiffStoreKey
-	storagePath     string
-	storageFileType storage.SeekableFileType
+	chunker           *utils.SetOnce[*block.Chunker]
+	cachePath         string
+	cacheKey          DiffStoreKey
+	storagePath       string
+	storageObjectType storage.SeekableObjectType
 
 	blockSize   int64
 	metrics     blockmetrics.Metrics
@@ -42,28 +42,28 @@ func newStorageDiff(
 	cachePathSuffix := id.Generate()
 
 	storagePath := storagePath(buildId, diffType)
-	storageFileType := storageFileType(diffType)
+	storageObjectType := storageObjectType(diffType)
 	cacheFile := fmt.Sprintf("%s-%s-%s", buildId, diffType, cachePathSuffix)
 	cachePath := filepath.Join(basePath, cacheFile)
 
 	return &StorageDiff{
-		storagePath:     storagePath,
-		storageFileType: storageFileType,
-		cachePath:       cachePath,
-		chunker:         utils.NewSetOnce[*block.Chunker](),
-		blockSize:       blockSize,
-		metrics:         metrics,
-		persistence:     persistence,
-		cacheKey:        GetDiffStoreKey(buildId, diffType),
+		storagePath:       storagePath,
+		storageObjectType: storageObjectType,
+		cachePath:         cachePath,
+		chunker:           utils.NewSetOnce[*block.Chunker](),
+		blockSize:         blockSize,
+		metrics:           metrics,
+		persistence:       persistence,
+		cacheKey:          GetDiffStoreKey(buildId, diffType),
 	}
 }
 
-func storageFileType(diffType DiffType) storage.SeekableFileType {
+func storageObjectType(diffType DiffType) storage.SeekableObjectType {
 	switch diffType {
 	case Memfile:
-		return storage.MemfileFileType
+		return storage.MemfileObjectType
 	case Rootfs:
-		return storage.RootFSFileType
+		return storage.RootFSObjectType
 	default:
 		panic(fmt.Sprintf("unknown diff type: %s", diffType))
 	}
@@ -74,7 +74,7 @@ func (b *StorageDiff) CacheKey() DiffStoreKey {
 }
 
 func (b *StorageDiff) Init(ctx context.Context) error {
-	obj, err := b.persistence.OpenSeekableObject(ctx, b.storagePath, b.storageFileType)
+	obj, err := b.persistence.OpenSeekableObject(ctx, b.storagePath, b.storageObjectType)
 	if err != nil {
 		return err
 	}

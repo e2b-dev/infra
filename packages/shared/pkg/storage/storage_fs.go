@@ -21,8 +21,8 @@ type FileSystemStorageObjectProvider struct {
 }
 
 var (
-	_ StorageSeekableObjectProvider = (*FileSystemStorageObjectProvider)(nil)
-	_ StorageObjectProvider         = (*FileSystemStorageObjectProvider)(nil)
+	_ SeekableObjectProvider = (*FileSystemStorageObjectProvider)(nil)
+	_ ObjectProvider         = (*FileSystemStorageObjectProvider)(nil)
 )
 
 func NewFileSystemStorageProvider(basePath string) (*FileSystemStorageProvider, error) {
@@ -45,7 +45,7 @@ func (fs *FileSystemStorageProvider) UploadSignedURL(_ context.Context, _ string
 	return "", fmt.Errorf("file system storage does not support signed URLs")
 }
 
-func (fs *FileSystemStorageProvider) OpenSeekableObject(_ context.Context, path string, _ SeekableFileType) (StorageSeekableObjectProvider, error) {
+func (fs *FileSystemStorageProvider) OpenSeekableObject(_ context.Context, path string, _ SeekableObjectType) (SeekableObjectProvider, error) {
 	dir := filepath.Dir(fs.getPath(path))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -56,7 +56,7 @@ func (fs *FileSystemStorageProvider) OpenSeekableObject(_ context.Context, path 
 	}, nil
 }
 
-func (fs *FileSystemStorageProvider) OpenObject(_ context.Context, path string, _ FileType) (StorageObjectProvider, error) {
+func (fs *FileSystemStorageProvider) OpenObject(_ context.Context, path string, _ ObjectType) (ObjectProvider, error) {
 	dir := filepath.Dir(fs.getPath(path))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err

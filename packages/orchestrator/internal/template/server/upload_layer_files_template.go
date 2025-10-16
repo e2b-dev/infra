@@ -23,7 +23,7 @@ func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanag
 	}
 
 	path := paths.GetLayerFilesCachePath(cacheScope, in.GetHash())
-	obj, err := s.buildStorage.OpenObject(ctx, path, storage.LayerFileType)
+	obj, err := s.buildStorage.OpenObject(ctx, path, storage.LayerObjectType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open layer files cache: %w", err)
 	}

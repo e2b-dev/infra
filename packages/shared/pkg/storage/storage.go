@@ -37,30 +37,30 @@ const (
 )
 
 type (
-	SeekableFileType string
-	FileType         string
+	SeekableObjectType string
+	ObjectType         string
 )
 
 const (
-	MemfileFileType       SeekableFileType = "memfile"
-	MemfileHeaderFileType FileType         = "memfile-header"
+	MemfileObjectType       SeekableObjectType = "memfile"
+	MemfileHeaderObjectType ObjectType         = "memfile-header"
 
-	RootFSFileType       SeekableFileType = "rootfs"
-	RootFSHeaderFileType FileType         = "rootfs-header"
+	RootFSObjectType       SeekableObjectType = "rootfs"
+	RootFSHeaderObjectType ObjectType         = "rootfs-header"
 
-	SnapfileFileType FileType = "snapfile"
+	SnapfileObjectType ObjectType = "snapfile"
 
-	MetadataFileType FileType = "metadata"
+	MetadataObjectType ObjectType = "metadata"
 
-	LayerFileType         FileType = "layer"
-	LayerMetadataFileType FileType = "layer-metadata"
+	LayerObjectType         ObjectType = "layer"
+	LayerMetadataObjectType ObjectType = "layer-metadata"
 )
 
 type StorageProvider interface {
 	DeleteObjectsWithPrefix(ctx context.Context, prefix string) error
 	UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error)
-	OpenObject(ctx context.Context, path string, fileType FileType) (StorageObjectProvider, error)
-	OpenSeekableObject(ctx context.Context, path string, fileType SeekableFileType) (StorageSeekableObjectProvider, error)
+	OpenObject(ctx context.Context, path string, objectType ObjectType) (ObjectProvider, error)
+	OpenSeekableObject(ctx context.Context, path string, seekableObjectType SeekableObjectType) (SeekableObjectProvider, error)
 	GetDetails() string
 }
 
@@ -76,7 +76,7 @@ type ReaderAtCtx interface {
 	ReadAt(ctx context.Context, p []byte, off int64) (n int, err error)
 }
 
-type StorageObjectProvider interface {
+type ObjectProvider interface {
 	// write
 	WriterCtx
 	WriteFromFileSystem(ctx context.Context, path string) error
@@ -88,7 +88,7 @@ type StorageObjectProvider interface {
 	Exists(ctx context.Context) (bool, error)
 }
 
-type StorageSeekableObjectProvider interface {
+type SeekableObjectProvider interface {
 	// write
 	WriteFromFileSystem(ctx context.Context, path string) error
 

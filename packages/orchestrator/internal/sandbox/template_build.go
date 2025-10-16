@@ -38,7 +38,7 @@ func (t *TemplateBuild) Remove(ctx context.Context) error {
 }
 
 func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Header) error {
-	object, err := t.persistence.OpenObject(ctx, t.files.StorageMemfileHeaderPath(), storage.MemfileHeaderFileType)
+	object, err := t.persistence.OpenObject(ctx, t.files.StorageMemfileHeaderPath(), storage.MemfileHeaderObjectType)
 	if err != nil {
 		return err
 	}
@@ -57,7 +57,7 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 }
 
 func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) error {
-	object, err := t.persistence.OpenSeekableObject(ctx, t.files.StorageMemfilePath(), storage.MemfileFileType)
+	object, err := t.persistence.OpenSeekableObject(ctx, t.files.StorageMemfilePath(), storage.MemfileObjectType)
 	if err != nil {
 		return err
 	}
@@ -71,7 +71,7 @@ func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) e
 }
 
 func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Header) error {
-	object, err := t.persistence.OpenObject(ctx, t.files.StorageRootfsHeaderPath(), storage.RootFSHeaderFileType)
+	object, err := t.persistence.OpenObject(ctx, t.files.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
 	if err != nil {
 		return err
 	}
@@ -90,7 +90,7 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Heade
 }
 
 func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) error {
-	object, err := t.persistence.OpenSeekableObject(ctx, t.files.StorageRootfsPath(), storage.RootFSFileType)
+	object, err := t.persistence.OpenSeekableObject(ctx, t.files.StorageRootfsPath(), storage.RootFSObjectType)
 	if err != nil {
 		return err
 	}
@@ -119,7 +119,7 @@ func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
 
 // Metadata is small enough so we don't use composite upload.
 func (t *TemplateBuild) uploadMetadata(ctx context.Context, path string) error {
-	object, err := t.persistence.OpenObject(ctx, t.files.StorageMetadataPath(), storage.MetadataFileType)
+	object, err := t.persistence.OpenObject(ctx, t.files.StorageMetadataPath(), storage.MetadataObjectType)
 	if err != nil {
 		return err
 	}

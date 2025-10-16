@@ -24,10 +24,10 @@ var (
 type CachedSeekableObjectProvider struct {
 	path      string
 	chunkSize int64
-	inner     StorageSeekableObjectProvider
+	inner     SeekableObjectProvider
 }
 
-var _ StorageSeekableObjectProvider = CachedSeekableObjectProvider{}
+var _ SeekableObjectProvider = CachedSeekableObjectProvider{}
 
 func (c CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, offset int64) (n int, err error) {
 	ctx, span := tracer.Start(ctx, "CachedFileObjectProvider.ReadAt", trace.WithAttributes(

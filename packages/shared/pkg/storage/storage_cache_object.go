@@ -19,10 +19,10 @@ const (
 type CachedObjectProvider struct {
 	path      string
 	chunkSize int64
-	inner     StorageObjectProvider
+	inner     ObjectProvider
 }
 
-var _ StorageObjectProvider = CachedObjectProvider{}
+var _ ObjectProvider = CachedObjectProvider{}
 
 func (c CachedObjectProvider) Exists(ctx context.Context) (bool, error) {
 	return c.inner.Exists(ctx)

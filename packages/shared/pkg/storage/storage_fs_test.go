@@ -24,7 +24,7 @@ func TestOpenObject_Write_Exists_WriteTo(t *testing.T) {
 	p := newTempProvider(t)
 	ctx := t.Context()
 
-	obj, err := p.OpenObject(ctx, filepath.Join("sub", "file.txt"), MetadataFileType)
+	obj, err := p.OpenObject(ctx, filepath.Join("sub", "file.txt"), MetadataObjectType)
 	require.NoError(t, err)
 
 	contents := []byte("hello world")

@@ -109,7 +109,7 @@ func (c *Copy) Execute(
 	}
 
 	// 1) Download the layer tar file from the storage to the local filesystem
-	obj, err := c.FilesStorage.OpenObject(ctx, paths.GetLayerFilesCachePath(c.CacheScope, step.GetFilesHash()), storage.LayerFileType)
+	obj, err := c.FilesStorage.OpenObject(ctx, paths.GetLayerFilesCachePath(c.CacheScope, step.GetFilesHash()), storage.LayerObjectType)
 	if err != nil {
 		return metadata.Context{}, fmt.Errorf("failed to open files object from storage: %w", err)
 	}

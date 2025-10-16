@@ -67,8 +67,8 @@ type GCPBucketStorageObjectProvider struct {
 }
 
 var (
-	_ StorageSeekableObjectProvider = (*GCPBucketStorageObjectProvider)(nil)
-	_ StorageObjectProvider         = (*GCPBucketStorageObjectProvider)(nil)
+	_ SeekableObjectProvider = (*GCPBucketStorageObjectProvider)(nil)
+	_ ObjectProvider         = (*GCPBucketStorageObjectProvider)(nil)
 )
 
 func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, limiter *limit.Limiter) (*GCPBucketStorageProvider, error) {
@@ -131,7 +131,7 @@ func (g *GCPBucketStorageProvider) UploadSignedURL(_ context.Context, path strin
 	return url, nil
 }
 
-func (g *GCPBucketStorageProvider) OpenSeekableObject(_ context.Context, path string, _ SeekableFileType) (StorageSeekableObjectProvider, error) {
+func (g *GCPBucketStorageProvider) OpenSeekableObject(_ context.Context, path string, _ SeekableObjectType) (SeekableObjectProvider, error) {
 	handle := g.bucket.Object(path).Retryer(
 		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),
@@ -153,7 +153,7 @@ func (g *GCPBucketStorageProvider) OpenSeekableObject(_ context.Context, path st
 	}, nil
 }
 
-func (g *GCPBucketStorageProvider) OpenObject(_ context.Context, path string, _ FileType) (StorageObjectProvider, error) {
+func (g *GCPBucketStorageProvider) OpenObject(_ context.Context, path string, _ ObjectType) (ObjectProvider, error) {
 	handle := g.bucket.Object(path).Retryer(
 		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),
