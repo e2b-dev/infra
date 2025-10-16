@@ -78,24 +78,82 @@ func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]nodemanager.NomadS
 	defer listSpan.End()
 
 	options := &nomadapi.QueryOptions{
-		// TODO: Use variable for node pool name ("default")
-		Filter: "Status == \"ready\" and NodePool == \"default\"",
+		Filter: `ClientStatus == "running" and JobID contains "orchestrator-"`,
+		Params: map[string]string{"resources": "true"},
 	}
-	nomadNodes, _, err := o.nomadClient.Nodes().List(options.WithContext(ctx))
+	nomadAllocations, _, err := o.nomadClient.Allocations().List(options.WithContext(ctx))
 	if err != nil {
 		return nil, err
 	}
 
-	result := make([]nodemanager.NomadServiceDiscovery, 0, len(nomadNodes))
-	for _, n := range nomadNodes {
+	result := make([]nodemanager.NomadServiceDiscovery, 0, len(nomadAllocations))
+	for _, alloc := range nomadAllocations {
+		ip, port, ok := o.findPortInAllocation(alloc, "grpc")
+		if !ok {
+			zap.L().Warn("Cannot find port in allocation",
+				zap.String("allocation_id", alloc.ID), zap.String("port_name", "grpc"))
+			continue
+		}
+
+		zap.L().Debug("Found port in allocation",
+			zap.String("allocation_id", alloc.ID),
+			zap.String("port_name", "grpc"),
+			zap.String("ip", ip),
+			zap.Int("port", port),
+		)
+
 		result = append(result, nodemanager.NomadServiceDiscovery{
-			NomadNodeShortID:    n.ID[:consts.NodeIDLength],
-			OrchestratorAddress: fmt.Sprintf("%s:%s", n.Address, consts.OrchestratorPort),
-			IPAddress:           n.Address,
+			NomadNodeShortID:    alloc.NodeID[:consts.NodeIDLength],
+			OrchestratorAddress: fmt.Sprintf("%s:%d", ip, port),
+			IPAddress:           ip,
 		})
 	}
 
 	return result, nil
+}
+
+func (o *Orchestrator) findPortInAllocation(allocation *nomadapi.AllocationListStub, portLabel string) (string, int, bool) {
+	for _, task := range allocation.AllocatedResources.Tasks {
+		for _, network := range task.Networks {
+			host, port, ok := o.findPortInNetwork(network, portLabel)
+			if ok {
+				return host, port, true
+			}
+		}
+	}
+
+	for _, net := range allocation.AllocatedResources.Shared.Networks {
+		host, port, ok := o.findPortInNetwork(net, portLabel)
+		if ok {
+			return host, port, true
+		}
+	}
+
+	return "", 0, false
+}
+
+func (o *Orchestrator) findPortInNetwork(net *nomadapi.NetworkResource, portLabel string) (string, int, bool) {
+	for _, port := range net.ReservedPorts {
+		if port.Label == portLabel {
+			return net.IP, port.Value, true
+		}
+
+		if port.Value == o.defaultPort {
+			return net.IP, o.defaultPort, true
+		}
+	}
+
+	for _, port := range net.DynamicPorts {
+		if port.Label == portLabel {
+			return net.IP, port.Value, true
+		}
+
+		if port.Value == o.defaultPort {
+			return net.IP, o.defaultPort, true
+		}
+	}
+
+	return "", 0, false
 }
 
 func (o *Orchestrator) GetNode(clusterID uuid.UUID, nodeID string) *nodemanager.Node {
