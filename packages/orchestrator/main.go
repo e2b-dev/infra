@@ -494,9 +494,10 @@ func cleanupLogger(logger *zap.Logger) func(context.Context) error {
 	return func(context.Context) error {
 		if err := logger.Sync(); err != nil {
 			// We expect /dev/stdout and /dev/stderr to error, as they don't implement `sync`
-			if !errors.Is(err, syscall.EINVAL) {
+			if errors.Is(err, syscall.EINVAL) {
 				return nil
 			}
+			return err
 		}
 		return nil
 	}
