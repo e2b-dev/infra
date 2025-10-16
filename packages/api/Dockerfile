@@ -5,38 +5,38 @@ FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
 
 RUN apk add --no-cache make
 
-# Shared
+# Cached golang dependencies
 WORKDIR /build/shared
-
-COPY .shared/go.mod .shared/go.sum ./
+COPY ./shared/go.mod ./db/go.sum ./
 RUN go mod download
 
-COPY .shared/pkg pkg
-
-# Clickhouse
 WORKDIR /build/clickhouse
-
-COPY .clickhouse/go.mod .clickhouse/go.sum ./
+COPY ./clickhouse/go.mod ./clickhouse/go.sum ./
 RUN go mod download
 
-COPY .clickhouse/pkg pkg
-
-# DB
 WORKDIR /build/db
-
-COPY .db/go.mod .db/go.sum ./
+COPY ./db/go.mod ./db/go.sum ./
 RUN go mod download
 
-COPY .db .
-
-# API
 WORKDIR /build/api
-
-COPY go.mod go.sum Makefile ./
+COPY ./api/go.mod ./api/go.sum ./
 RUN go mod download
 
-COPY internal internal
-COPY main.go main.go
+# Copy source code
+WORKDIR /build
+
+COPY ./clickhouse/pkg ./clickhouse/pkg
+COPY ./shared/pkg ./shared/pkg
+COPY ./db/client ./db/client
+COPY ./db/dberrors ./db/dberrors
+COPY ./db/queries ./db/queries
+COPY ./db/types ./db/types
+
+COPY ./api/internal ./api/internal
+COPY ./api/main.go ./api/main.go
+COPY ./api/Makefile ./api/Makefile
+
+WORKDIR /build/api
 
 ARG COMMIT_SHA
 ARG EXPECTED_MIGRATION_TIMESTAMP
@@ -50,4 +50,5 @@ COPY --from=builder /build/api/bin/api .
 
 # Set Gin server to the production mode
 ENV GIN_MODE=release
+
 ENTRYPOINT [ "./api"]
