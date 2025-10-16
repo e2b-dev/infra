@@ -6,7 +6,7 @@ FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
 
 # Cached golang dependencies
 WORKDIR /build/shared
-COPY ./shared/go.mod ./db/go.sum ./
+COPY ./shared/go.mod ./shared/go.sum ./
 RUN go mod download
 
 WORKDIR /build/db

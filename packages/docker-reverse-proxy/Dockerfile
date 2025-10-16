@@ -7,7 +7,7 @@ RUN apk add --no-cache make
 
 # Cached golang dependencies
 WORKDIR /build/shared
-COPY ./shared/go.mod ./db/go.sum ./
+COPY ./shared/go.mod ./shared/go.sum ./
 RUN go mod download
 
 WORKDIR /build/docker-reverse-proxy
