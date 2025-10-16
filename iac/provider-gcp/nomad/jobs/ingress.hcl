@@ -24,7 +24,18 @@ job "ingress" {
 # https://developer.hashicorp.com/nomad/docs/job-specification/update
 %{ if update_stanza }
     update {
-      max_parallel = 1    # Update only 1 node at a time
+      # The number of instances that can be updated at the same time
+      max_parallel     = 1
+      # Number of extra instances that can be spawn before killing the old one
+      canary           = 1
+      # Time to wait for the canary to be healthy
+      min_healthy_time = "10s"
+      # Time to wait for the canary to be healthy, if not it will be marked as failed
+      healthy_deadline = "30s"
+      # Whether to promote the canary if the rest of the group is not healthy
+      auto_promote     = true
+      # Deadline for the update to be completed
+      progress_deadline = "24h"
     }
 %{ endif }
 
@@ -49,7 +60,6 @@ job "ingress" {
       %{ if update_stanza }
         kill_timeout = "24h"
       %{ endif }
-
       kill_signal  = "SIGTERM"
 
       config {
