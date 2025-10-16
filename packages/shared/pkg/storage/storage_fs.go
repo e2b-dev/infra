@@ -126,6 +126,9 @@ func (f *FileSystemStorageObjectProvider) ReadAt(_ context.Context, buff []byte,
 
 func (f *FileSystemStorageObjectProvider) Exists(_ context.Context) (bool, error) {
 	_, err := os.Stat(f.path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
 	return err == nil, err
 }
 

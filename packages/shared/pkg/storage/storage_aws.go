@@ -259,7 +259,7 @@ func (a *AWSBucketStorageObjectProvider) Size(ctx context.Context) (int64, error
 
 func (a *AWSBucketStorageObjectProvider) Exists(ctx context.Context) (bool, error) {
 	_, err := a.Size(ctx)
-	return err == nil, err
+	return err == nil, ignoreNotExists(err)
 }
 
 func (a *AWSBucketStorageObjectProvider) Delete(ctx context.Context) error {
@@ -272,6 +272,14 @@ func (a *AWSBucketStorageObjectProvider) Delete(ctx context.Context) error {
 			Key:    aws.String(a.path),
 		},
 	)
+
+	return err
+}
+
+func ignoreNotExists(err error) error {
+	if errors.Is(err, ErrObjectNotExist) {
+		return nil
+	}
 
 	return err
 }

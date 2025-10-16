@@ -12,5 +12,10 @@ packages:
       StorageObjectProvider:
         config:
           dir: packages/shared/pkg/storage/mocks
-          filename: mocks.go
+          filename: mockobjectprovider.go
+          pkgname: storagemocks
+      StorageSeekableObjectProvider:
+        config:
+          dir: packages/shared/pkg/storage/mocks
+          filename: mockseekableobjectprovider.go
           pkgname: storagemocks

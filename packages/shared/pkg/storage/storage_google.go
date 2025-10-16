@@ -188,7 +188,7 @@ func (g *GCPBucketStorageObjectProvider) Delete(ctx context.Context) error {
 
 func (g *GCPBucketStorageObjectProvider) Exists(ctx context.Context) (bool, error) {
 	_, err := g.Size(ctx)
-	return err == nil, err
+	return err == nil, ignoreNotExists(err)
 }
 
 func (g *GCPBucketStorageObjectProvider) Size(ctx context.Context) (int64, error) {

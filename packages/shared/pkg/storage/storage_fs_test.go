@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,11 +20,11 @@ func newTempProvider(t *testing.T) *FileSystemStorageProvider {
 	return p
 }
 
-func TestOpenObject_ReadWrite_Size_ReadAt(t *testing.T) {
+func TestOpenObject_Write_Exists_WriteTo(t *testing.T) {
 	p := newTempProvider(t)
 	ctx := t.Context()
 
-	obj, err := p.OpenSmallObject(ctx, filepath.Join("sub", "file.txt"), MetadataFileType)
+	obj, err := p.OpenObject(ctx, filepath.Join("sub", "file.txt"), MetadataFileType)
 	require.NoError(t, err)
 
 	contents := []byte("hello world")
@@ -33,9 +34,9 @@ func TestOpenObject_ReadWrite_Size_ReadAt(t *testing.T) {
 	require.Equal(t, len(contents), n)
 
 	// check Size
-	size, err := obj.Size(t.Context())
+	exists, err := obj.Exists(t.Context())
 	require.NoError(t, err)
-	require.Equal(t, int64(len(contents)), size)
+	require.True(t, exists)
 
 	// read the entire file back via WriteTo
 	var buf bytes.Buffer
@@ -43,13 +44,6 @@ func TestOpenObject_ReadWrite_Size_ReadAt(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(len(contents)), n64)
 	require.Equal(t, contents, buf.Bytes())
-
-	// read a slice via ReadAt ("world")
-	part := make([]byte, 5)
-	nRead, err := obj.ReadAt(t.Context(), part, 6)
-	require.NoError(t, err)
-	require.Equal(t, 5, nRead)
-	require.Equal(t, []byte("world"), part)
 }
 
 func TestWriteFromFileSystem(t *testing.T) {
@@ -61,7 +55,7 @@ func TestWriteFromFileSystem(t *testing.T) {
 	const payload = "copy me please"
 	require.NoError(t, os.WriteFile(srcPath, []byte(payload), 0o600))
 
-	obj, err := p.OpenObject(ctx, "copy/dst.txt")
+	obj, err := p.OpenObject(ctx, "copy/dst.txt", "")
 	require.NoError(t, err)
 	require.NoError(t, obj.WriteFromFileSystem(t.Context(), srcPath))
 
@@ -75,16 +69,23 @@ func TestDelete(t *testing.T) {
 	p := newTempProvider(t)
 	ctx := t.Context()
 
-	obj, err := p.OpenObject(ctx, "to/delete.txt")
+	obj, err := p.OpenObject(ctx, "to/delete.txt", "")
 	require.NoError(t, err)
 
 	_, err = obj.Write(t.Context(), []byte("bye"))
 	require.NoError(t, err)
-	require.NoError(t, obj.Delete(t.Context()))
+
+	exists, err := obj.Exists(t.Context())
+	require.NoError(t, err)
+	assert.True(t, exists)
+
+	err = p.DeleteObjectsWithPrefix(t.Context(), "to/delete.txt")
+	require.NoError(t, err)
 
 	// subsequent Size call should fail with ErrorObjectNotExist
-	_, err = obj.Size(t.Context())
-	require.ErrorIs(t, err, ErrObjectNotExist)
+	exists, err = obj.Exists(t.Context())
+	require.NoError(t, err)
+	assert.False(t, exists)
 }
 
 func TestDeleteObjectsWithPrefix(t *testing.T) {
@@ -97,7 +98,7 @@ func TestDeleteObjectsWithPrefix(t *testing.T) {
 		"data/sub/c.txt",
 	}
 	for _, pth := range paths {
-		obj, err := p.OpenObject(ctx, pth)
+		obj, err := p.OpenObject(ctx, pth, "")
 		require.NoError(t, err)
 		_, err = obj.Write(t.Context(), []byte("x"))
 		require.NoError(t, err)
@@ -117,7 +118,7 @@ func TestWriteToNonExistentObject(t *testing.T) {
 	p := newTempProvider(t)
 
 	ctx := t.Context()
-	obj, err := p.OpenObject(ctx, "missing/file.txt")
+	obj, err := p.OpenObject(ctx, "missing/file.txt", "")
 	require.NoError(t, err)
 
 	var sink bytes.Buffer
