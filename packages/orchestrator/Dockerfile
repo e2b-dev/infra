@@ -5,26 +5,30 @@ ARG DEBIAN_VERSION=bookworm
 
 FROM golang:${GOLANG_VERSION}-${DEBIAN_VERSION} AS builder
 
+# Cached golang dependencies
 WORKDIR /build/shared
-
-COPY .shared/go.mod .shared/go.sum ./
+COPY ./shared/go.mod ./shared/go.sum ./
 RUN go mod download
-
-COPY .shared/pkg pkg
 
 WORKDIR /build/clickhouse
-
-COPY .clickhouse/go.mod .clickhouse/go.sum ./
+COPY ./clickhouse/go.mod ./clickhouse/go.sum ./
 RUN go mod download
-
-COPY .clickhouse/pkg pkg
 
 WORKDIR /build/orchestrator
-
-COPY go.mod go.sum ./
+COPY ./orchestrator/go.mod ./orchestrator/go.sum ./
 RUN go mod download
 
-COPY . ./
+# Copy source code
+WORKDIR /build
+
+COPY ./shared/pkg ./shared/pkg
+COPY ./clickhouse/pkg ./clickhouse/pkg
+
+COPY ./orchestrator/internal ./orchestrator/internal
+COPY ./orchestrator/main.go ./orchestrator/main.go
+COPY ./orchestrator/Makefile ./orchestrator/Makefile
+
+WORKDIR /build/orchestrator
 
 ARG COMMIT_SHA
 RUN --mount=type=cache,target=/root/.cache/go-build make build-local COMMIT_SHA=${COMMIT_SHA}
