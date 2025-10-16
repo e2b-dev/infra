@@ -45,8 +45,6 @@ type Team struct {
 type TeamEdges struct {
 	// Users holds the value of the users edge.
 	Users []*User `json:"users,omitempty"`
-	// TeamAPIKeys holds the value of the team_api_keys edge.
-	TeamAPIKeys []*TeamAPIKey `json:"team_api_keys,omitempty"`
 	// TeamTier holds the value of the team_tier edge.
 	TeamTier *Tier `json:"team_tier,omitempty"`
 	// Envs holds the value of the envs edge.
@@ -55,7 +53,7 @@ type TeamEdges struct {
 	UsersTeams []*UsersTeams `json:"users_teams,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [5]bool
+	loadedTypes [4]bool
 }
 
 // UsersOrErr returns the Users value or an error if the edge
@@ -67,19 +65,10 @@ func (e TeamEdges) UsersOrErr() ([]*User, error) {
 	return nil, &NotLoadedError{edge: "users"}
 }
 
-// TeamAPIKeysOrErr returns the TeamAPIKeys value or an error if the edge
-// was not loaded in eager-loading.
-func (e TeamEdges) TeamAPIKeysOrErr() ([]*TeamAPIKey, error) {
-	if e.loadedTypes[1] {
-		return e.TeamAPIKeys, nil
-	}
-	return nil, &NotLoadedError{edge: "team_api_keys"}
-}
-
 // TeamTierOrErr returns the TeamTier value or an error if the edge
 // was not loaded in eager-loading, or loaded but was not found.
 func (e TeamEdges) TeamTierOrErr() (*Tier, error) {
-	if e.loadedTypes[2] {
+	if e.loadedTypes[1] {
 		if e.TeamTier == nil {
 			// Edge was loaded but was not found.
 			return nil, &NotFoundError{label: tier.Label}
@@ -92,7 +81,7 @@ func (e TeamEdges) TeamTierOrErr() (*Tier, error) {
 // EnvsOrErr returns the Envs value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamEdges) EnvsOrErr() ([]*Env, error) {
-	if e.loadedTypes[3] {
+	if e.loadedTypes[2] {
 		return e.Envs, nil
 	}
 	return nil, &NotLoadedError{edge: "envs"}
@@ -101,7 +90,7 @@ func (e TeamEdges) EnvsOrErr() ([]*Env, error) {
 // UsersTeamsOrErr returns the UsersTeams value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamEdges) UsersTeamsOrErr() ([]*UsersTeams, error) {
-	if e.loadedTypes[4] {
+	if e.loadedTypes[3] {
 		return e.UsersTeams, nil
 	}
 	return nil, &NotLoadedError{edge: "users_teams"}
@@ -209,11 +198,6 @@ func (t *Team) Value(name string) (ent.Value, error) {
 // QueryUsers queries the "users" edge of the Team entity.
 func (t *Team) QueryUsers() *UserQuery {
 	return NewTeamClient(t.config).QueryUsers(t)
-}
-
-// QueryTeamAPIKeys queries the "team_api_keys" edge of the Team entity.
-func (t *Team) QueryTeamAPIKeys() *TeamAPIKeyQuery {
-	return NewTeamClient(t.config).QueryTeamAPIKeys(t)
 }
 
 // QueryTeamTier queries the "team_tier" edge of the Team entity.

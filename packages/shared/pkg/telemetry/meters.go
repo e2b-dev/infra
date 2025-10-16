@@ -34,10 +34,7 @@ const (
 )
 
 const (
-	SandboxCountMeterName                  UpDownCounterType = "api.env.instance.running"
-	NewNetworkSlotSPoolCounterMeterName    UpDownCounterType = "orchestrator.network.slots_pool.new"
-	ReusedNetworkSlotSPoolCounterMeterName UpDownCounterType = "orchestrator.network.slots_pool.reused"
-	NBDkSlotSReadyPoolCounterMeterName     UpDownCounterType = "orchestrator.nbd.slots_pool.read"
+	SandboxCountMeterName UpDownCounterType = "api.env.instance.running"
 )
 
 const (
@@ -120,17 +117,11 @@ var observableCounterUnits = map[ObservableCounterType]string{
 }
 
 var upDownCounterDesc = map[UpDownCounterType]string{
-	SandboxCountMeterName:                  "Counter of started instances.",
-	ReusedNetworkSlotSPoolCounterMeterName: "Number of reused network slots ready to be used.",
-	NewNetworkSlotSPoolCounterMeterName:    "Number of new network slots ready to be used.",
-	NBDkSlotSReadyPoolCounterMeterName:     "Number of nbd slots ready to be used.",
+	SandboxCountMeterName: "Counter of started instances.",
 }
 
 var upDownCounterUnits = map[UpDownCounterType]string{
-	SandboxCountMeterName:                  "{sandbox}",
-	ReusedNetworkSlotSPoolCounterMeterName: "{slot}",
-	NewNetworkSlotSPoolCounterMeterName:    "{slot}",
-	NBDkSlotSReadyPoolCounterMeterName:     "{slot}",
+	SandboxCountMeterName: "{sandbox}",
 }
 
 var observableUpDownCounterDesc = map[ObservableUpDownCounterType]string{

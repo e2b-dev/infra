@@ -128,15 +128,9 @@ func run(config cfg.Config) (success bool) {
 	}(&g)
 
 	// Setup telemetry
-	var tel *telemetry.Client
-	if telemetry.OtelCollectorGRPCEndpoint == "" {
-		tel = telemetry.NewNoopClient()
-	} else {
-		var err error
-		tel, err = telemetry.New(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID)
-		if err != nil {
-			zap.L().Fatal("failed to init telemetry", zap.Error(err))
-		}
+	tel, err := telemetry.New(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID)
+	if err != nil {
+		zap.L().Fatal("failed to init telemetry", zap.Error(err))
 	}
 	defer func() {
 		err := tel.Shutdown(ctx)
@@ -294,7 +288,7 @@ func run(config cfg.Config) (success bool) {
 	})
 
 	// device pool
-	devicePool, err := nbd.NewDevicePool(tel.MeterProvider)
+	devicePool, err := nbd.NewDevicePool()
 	if err != nil {
 		zap.L().Fatal("failed to create device pool", zap.Error(err))
 	}
@@ -308,7 +302,7 @@ func run(config cfg.Config) (success bool) {
 	})
 
 	// network pool
-	networkPool, err := network.NewPool(tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, nodeID, config.NetworkConfig)
+	networkPool, err := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, nodeID, config.NetworkConfig)
 	if err != nil {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
@@ -322,8 +316,7 @@ func run(config cfg.Config) (success bool) {
 	})
 
 	// sandbox factory
-	defaultAllowSandboxInternet := config.AllowSandboxInternet
-	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, defaultAllowSandboxInternet)
+	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags)
 
 	orchestratorService := server.New(server.ServiceConfig{
 		SandboxFactory:   sandboxFactory,
