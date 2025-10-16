@@ -200,8 +200,8 @@ func getIPFamily(address string) (txeh.IPFamily, error) {
 }
 
 // shouldSetSystemTime returns true if the current time differs significantly from the received timestamp,
-// indicating the system clock should be adjusted. Returns true when the current time (hostTime) is more than
-// maxTimeInPast before the timestamp or more than maxTimeInFuture after the timestamp.
+// indicating the system clock should be adjusted. Returns true when the sandboxTime is more than
+// maxTimeInPast before the hostTime or more than maxTimeInFuture after the hostTime.
 func shouldSetSystemTime(sandboxTime, hostTime time.Time) bool {
 	return sandboxTime.Before(hostTime.Add(-maxTimeInPast)) || sandboxTime.After(hostTime.Add(maxTimeInFuture))
 }

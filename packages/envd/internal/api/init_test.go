@@ -56,47 +56,47 @@ func TestShouldSetSystemTime(t *testing.T) {
 		want     bool
 	}{
 		{
-			name:     "current time far in past compared to sandboxTime (should set)",
+			name:     "sandbox time far ahead of host time (should set)",
 			hostTime: sandboxTime.Add(-10 * time.Second),
 			want:     true,
 		},
 		{
-			name:     "current time at maxTimeInPast boundary before sandboxTime (should set)",
+			name:     "sandbox time at maxTimeInPast boundary ahead of host time (should not set)",
 			hostTime: sandboxTime.Add(-50 * time.Millisecond),
-			want:     true,
+			want:     false,
 		},
 		{
-			name:     "current time just within maxTimeInPast before sandboxTime (should not set)",
+			name:     "sandbox time just within maxTimeInPast ahead of host time (should not set)",
 			hostTime: sandboxTime.Add(-40 * time.Millisecond),
 			want:     false,
 		},
 		{
-			name:     "current time slightly before sandboxTime (should not set)",
+			name:     "sandbox time slightly ahead of host time (should not set)",
 			hostTime: sandboxTime.Add(-10 * time.Millisecond),
 			want:     false,
 		},
 		{
-			name:     "current time equals sandboxTime (should not set)",
+			name:     "sandbox time equals host time (should not set)",
 			hostTime: sandboxTime,
 			want:     false,
 		},
 		{
-			name:     "current time slightly after sandboxTime (should not set)",
+			name:     "sandbox time slightly behind host time (should not set)",
 			hostTime: sandboxTime.Add(1 * time.Second),
 			want:     false,
 		},
 		{
-			name:     "current time just within maxTimeInFuture after sandboxTime (should not set)",
+			name:     "sandbox time just within maxTimeInFuture behind host time (should not set)",
 			hostTime: sandboxTime.Add(4 * time.Second),
 			want:     false,
 		},
 		{
-			name:     "current time at maxTimeInFuture boundary after sandboxTime (should set)",
+			name:     "sandbox time at maxTimeInFuture boundary behind host time (should not set)",
 			hostTime: sandboxTime.Add(5 * time.Second),
-			want:     true,
+			want:     false,
 		},
 		{
-			name:     "current time far in future compared to sandboxTime (should set)",
+			name:     "sandbox time far behind host time (should set)",
 			hostTime: sandboxTime.Add(1 * time.Minute),
 			want:     true,
 		},
