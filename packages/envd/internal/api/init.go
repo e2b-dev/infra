@@ -80,9 +80,8 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) SetData(logger zerolog.Logger, data PostInitJSONBody) error {
 	if data.Timestamp != nil {
-		// Check if the time is before maxTimeInPast or after maxTimeInFuture
-		if data.Timestamp.Before(time.Now().Add(-maxTimeInPast)) ||
-			data.Timestamp.After(time.Now().Add(maxTimeInFuture)) {
+		// Check if current time differs significantly from the received timestamp
+		if shouldSetSystemTime(time.Now(), *data.Timestamp) {
 			logger.Debug().Msgf("Setting sandbox start time to: %v", *data.Timestamp)
 			ts := unix.NsecToTimespec(data.Timestamp.UnixNano())
 			err := unix.ClockSettime(unix.CLOCK_REALTIME, &ts)
@@ -90,7 +89,7 @@ func (a *API) SetData(logger zerolog.Logger, data PostInitJSONBody) error {
 				logger.Error().Msgf("Failed to set system time: %v", err)
 			}
 		} else {
-			logger.Debug().Msgf("Timestamp %v is not far enough in the past or future, not setting system time", *data.Timestamp)
+			logger.Debug().Msgf("Current time is within acceptable range of timestamp %v, not setting system time", *data.Timestamp)
 		}
 	}
 
@@ -198,4 +197,11 @@ func getIPFamily(address string) (txeh.IPFamily, error) {
 	default:
 		return txeh.IPFamilyV4, fmt.Errorf("%w: %s", ErrUnknownAddressFormat, address)
 	}
+}
+
+// shouldSetSystemTime returns true if the current time differs significantly from the received timestamp,
+// indicating the system clock should be adjusted. Returns true when the current time (hostTime) is more than
+// maxTimeInPast before the timestamp or more than maxTimeInFuture after the timestamp.
+func shouldSetSystemTime(sandboxTime, hostTime time.Time) bool {
+	return sandboxTime.Before(hostTime.Add(-maxTimeInPast)) || sandboxTime.After(hostTime.Add(maxTimeInFuture))
 }
