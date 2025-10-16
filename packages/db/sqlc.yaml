@@ -1,13 +1,13 @@
 version: "2"
 sql:
   - engine: "postgresql"
-    queries: "queries"
+    queries: "pkg/queries"
     schema: "migrations"
     gen:
       go:
         emit_pointers_for_null_types: true
         package: "queries"
-        out: "queries/"
+        out: "pkg/queries/"
         sql_package: "pgx/v5"
         overrides:
           - column: "public.env_builds.reason"

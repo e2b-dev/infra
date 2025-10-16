@@ -7,8 +7,8 @@ import (
 
 	"go.uber.org/zap"
 
-	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/db/queries"
+	sqlcdb "github.com/e2b-dev/infra/packages/db/pkg/client"
+	"github.com/e2b-dev/infra/packages/db/pkg/queries"
 )
 
 type TemplateCounter struct {

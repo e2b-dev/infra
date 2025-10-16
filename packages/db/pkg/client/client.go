@@ -3,12 +3,12 @@ package client
 import (
 	"context"
 
+	database "github.com/e2b-dev/infra/packages/db/pkg/queries"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq"
 	"go.uber.org/zap"
 
-	database "github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 

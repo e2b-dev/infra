@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
-	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/db/queries"
+	sqlcdb "github.com/e2b-dev/infra/packages/db/pkg/client"
+	"github.com/e2b-dev/infra/packages/db/pkg/queries"
 )
 
 type TeamForbiddenError struct {

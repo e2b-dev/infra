@@ -18,12 +18,12 @@ WORKDIR /build
 
 COPY ./shared/pkg ./shared/pkg
 
-COPY ./db/scripts/migrator.go ./db/scripts/migrator.go
+COPY ./db/cmd/migrator/migrator.go ./db/cmd/migrator/migrator.go
 COPY ./db/migrations/ ./db/migrations
 
 WORKDIR /build/db
 
-RUN go build -o ./bin/migrator ./scripts/migrator.go
+RUN go build -o ./bin/migrator ./cmd/migrator/migrator.go
 RUN chmod +x ./bin/migrator
 
 FROM alpine:${ALPINE_VERSION}

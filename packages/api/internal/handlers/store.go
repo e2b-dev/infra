@@ -28,7 +28,7 @@ import (
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
-	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	sqlcdb "github.com/e2b-dev/infra/packages/db/pkg/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
