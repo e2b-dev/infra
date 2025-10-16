@@ -11,7 +11,7 @@ sql:
         sql_package: "pgx/v5"
         overrides:
           - column: "public.env_builds.reason"
-            go_type: "github.com/e2b-dev/infra/packages/db/types.BuildReason"
+            go_type: "github.com/e2b-dev/infra/packages/db/pkg/types.BuildReason"
           - db_type: "uuid"
             go_type:
               import: "github.com/google/uuid"
@@ -39,5 +39,5 @@ sql:
             nullable: true
 
           - db_type: "jsonb"
-            go_type: "github.com/e2b-dev/infra/packages/db/types.JSONBStringMap"
+            go_type: "github.com/e2b-dev/infra/packages/db/pkg/types.JSONBStringMap"
             nullable: true
