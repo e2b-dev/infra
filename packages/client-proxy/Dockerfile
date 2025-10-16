@@ -33,4 +33,4 @@ FROM alpine:${ALPINE_VERSION}
 
 COPY --from=builder /build/client-proxy/bin/client-proxy .
 
-ENTRYPOINT [ "./client-proxy"]
+ENTRYPOINT ["./client-proxy"]
