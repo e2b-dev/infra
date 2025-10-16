@@ -25,6 +25,21 @@ type AccessToken struct {
 	AccessTokenMaskSuffix string
 }
 
+type Addon struct {
+	ID                            uuid.UUID
+	TeamID                        uuid.UUID
+	Name                          string
+	Description                   *string
+	ExtraConcurrentSandboxes      int64
+	ExtraConcurrentTemplateBuilds int64
+	ExtraMaxVcpu                  int64
+	ExtraMaxRamMb                 int64
+	ExtraDiskMb                   int64
+	ValidFrom                     time.Time
+	ValidTo                       *time.Time
+	AddedBy                       uuid.UUID
+}
+
 type AuthUser struct {
 	ID    uuid.UUID
 	Email string
@@ -121,6 +136,16 @@ type TeamApiKey struct {
 	ApiKeyLength     int32
 	ApiKeyMaskPrefix string
 	ApiKeyMaskSuffix string
+}
+
+type TeamLimit struct {
+	ID                       uuid.UUID
+	MaxLengthHours           int64
+	ConcurrentSandboxes      int32
+	ConcurrentTemplateBuilds int32
+	MaxVcpu                  int32
+	MaxRamMb                 int32
+	DiskMb                   int32
 }
 
 type Tier struct {
