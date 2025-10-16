@@ -87,12 +87,10 @@ func TestHappyPath(t *testing.T) {
 			Background: func(ctx context.Context) error {
 				defer func() { task = true }()
 
-				select {
-				case <-ctx.Done():
-					return nil
-				}
+				<-ctx.Done()
+				return nil
 			},
-			Cleanup: func(ctx context.Context) error {
+			Cleanup: func(context.Context) error {
 				cleanup = true
 				return nil
 			},
@@ -106,7 +104,7 @@ func TestHappyPath(t *testing.T) {
 		var tee TaskExitedError
 		require.ErrorAs(t, err, &tee)
 		assert.Equal(t, "task which will exit", tee.TaskName)
-		assert.NoError(t, tee.TaskError)
+		require.NoError(t, tee.TaskError)
 
 		err = s.Close(ctx)
 		require.NoError(t, err)
