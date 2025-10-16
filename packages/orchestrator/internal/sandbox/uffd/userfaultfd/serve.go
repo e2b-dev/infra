@@ -77,7 +77,7 @@ outerLoop:
 		buf := make([]byte, unsafe.Sizeof(UffdMsg{}))
 
 		for {
-			n, err := syscall.Read(int(u.fd), buf)
+			_, err := syscall.Read(int(u.fd), buf)
 			if err == syscall.EINTR {
 				u.logger.Debug("uffd: interrupted read, reading again")
 
@@ -121,9 +121,10 @@ outerLoop:
 			return fmt.Errorf("failed to map: %w", err)
 		}
 
-		// Handle read to missing page (MISSING flag)
-		if flags == 0 {
-			u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize, false)
+		// Handle write to write protected page (WP+WRITE flag)
+		// TODO: Check if the WP is always with WP+WRITE flag
+		if flags&UFFD_PAGEFAULT_FLAG_WP != 0 && flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
+			u.handleWriteProtection(addr, offset, pagesize)
 
 			continue
 		}
@@ -135,9 +136,9 @@ outerLoop:
 			continue
 		}
 
-		// Handle write to write protected page (WP flag)
-		if flags&UFFD_PAGEFAULT_FLAG_WP != 0 {
-			u.handleWriteProtection(addr, offset, pagesize)
+		// Handle read to missing page (MISSING flag)
+		if flags == 0 {
+			u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize, false)
 
 			continue
 		}
@@ -152,16 +153,17 @@ func (u *Userfaultfd) handleMissing(
 	pagesize uint64,
 	write bool,
 ) {
-	if !u.missingMap.TryAdd(offset) {
-		return
-	}
-
 	if write {
 		if !u.writeMap.TryAdd(offset) {
 			return
 		}
 
 		u.writeRequestCounter.Add()
+	} else {
+		// TODO: We should be able to add the page to the missing map on the write handle as well.
+		if !u.missingMap.TryAdd(offset) {
+			return
+		}
 	}
 
 	u.wg.Go(func() error {

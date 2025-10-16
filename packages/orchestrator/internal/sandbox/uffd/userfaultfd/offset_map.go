@@ -25,7 +25,6 @@ func (r *OffsetMap) TryAdd(key int64) bool {
 	defer r.mu.Unlock()
 
 	if _, ok := r.m[key]; ok {
-
 		return false
 	}
 
