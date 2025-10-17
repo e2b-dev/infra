@@ -15,9 +15,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/db"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -134,13 +134,13 @@ func adminValidationFunction(adminToken string) func(context.Context, string) (s
 
 func CreateAuthenticationFunc(
 	config cfg.Config,
-	teamValidationFunction func(context.Context, string) (authcache.AuthTeamInfo, *api.APIError),
+	teamValidationFunction func(context.Context, string) (*types.Team, *api.APIError),
 	userValidationFunction func(context.Context, string) (uuid.UUID, *api.APIError),
 	supabaseTokenValidationFunction func(context.Context, string) (uuid.UUID, *api.APIError),
-	supabaseTeamValidationFunction func(context.Context, string) (authcache.AuthTeamInfo, *api.APIError),
+	supabaseTeamValidationFunction func(context.Context, string) (*types.Team, *api.APIError),
 ) openapi3filter.AuthenticationFunc {
 	authenticators := []authenticator{
-		&commonAuthenticator[authcache.AuthTeamInfo]{
+		&commonAuthenticator[*types.Team]{
 			securitySchemeName: "ApiKeyAuth",
 			headerKey: headerKey{
 				name:         "X-API-Key",
@@ -173,7 +173,7 @@ func CreateAuthenticationFunc(
 			contextKey:         UserIDContextKey,
 			errorMessage:       "Invalid Supabase token.",
 		},
-		&commonAuthenticator[authcache.AuthTeamInfo]{
+		&commonAuthenticator[*types.Team]{
 			securitySchemeName: "Supabase2TeamAuth",
 			headerKey: headerKey{
 				name:         "X-Supabase-Team",

@@ -10,7 +10,7 @@ import (
 	"go.opentelemetry.io/otel/semconv/v1.21.0"
 )
 
-var OtelCollectorGRPCEndpoint = os.Getenv("OTEL_COLLECTOR_GRPC_ENDPOINT")
+var otelCollectorGRPCEndpoint = os.Getenv("OTEL_COLLECTOR_GRPC_ENDPOINT")
 
 func GetResource(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID string) (*resource.Resource, error) {
 	attributes := []attribute.KeyValue{

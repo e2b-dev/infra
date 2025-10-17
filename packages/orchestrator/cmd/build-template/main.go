@@ -116,7 +116,7 @@ func buildTemplate(
 		return fmt.Errorf("could not create storage provider: %w", err)
 	}
 
-	devicePool, err := nbd.NewDevicePool(noop.MeterProvider{})
+	devicePool, err := nbd.NewDevicePool()
 	if err != nil {
 		return fmt.Errorf("could not create device pool: %w", err)
 	}
@@ -130,7 +130,7 @@ func buildTemplate(
 		}
 	}()
 
-	networkPool, err := network.NewPool(noop.MeterProvider{}, 8, 8, clientID, networkConfig)
+	networkPool, err := network.NewPool(8, 8, clientID, networkConfig)
 	if err != nil {
 		return fmt.Errorf("could not create network pool: %w", err)
 	}
@@ -186,7 +186,7 @@ func buildTemplate(
 		zap.L().Fatal("failed to create build metrics", zap.Error(err))
 	}
 
-	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, true)
+	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags)
 
 	builder := build.NewBuilder(
 		logger,

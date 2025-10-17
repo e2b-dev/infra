@@ -1,8 +1,9 @@
 package fc
 
 import (
-	"os"
 	"path/filepath"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 )
 
 const (
@@ -16,30 +17,6 @@ const (
 	SandboxRootfsFile = "rootfs.ext4"
 )
 
-func SandboxDir() string {
-	if value := os.Getenv("SANDBOX_DIR"); value != "" {
-		return value
-	}
-
-	return "/fc-vm"
-}
-
-func HostKernelsDir() string {
-	if value := os.Getenv("HOST_KERNELS_DIR"); value != "" {
-		return value
-	}
-
-	return "/fc-kernels"
-}
-
-func FirecrackerVersionsDir() string {
-	if value := os.Getenv("FIRECRACKER_VERSIONS_DIR"); value != "" {
-		return value
-	}
-
-	return "/fc-versions"
-}
-
 type FirecrackerVersions struct {
 	KernelVersion      string
 	FirecrackerVersion string
@@ -49,12 +26,12 @@ func (t FirecrackerVersions) SandboxKernelDir() string {
 	return t.KernelVersion
 }
 
-func (t FirecrackerVersions) HostKernelPath() string {
-	return filepath.Join(HostKernelsDir(), t.KernelVersion, SandboxKernelFile)
+func (t FirecrackerVersions) HostKernelPath(config cfg.BuilderConfig) string {
+	return filepath.Join(config.HostKernelsDir, t.KernelVersion, SandboxKernelFile)
 }
 
-func (t FirecrackerVersions) FirecrackerPath() string {
-	return filepath.Join(FirecrackerVersionsDir(), t.FirecrackerVersion, FirecrackerBinaryName)
+func (t FirecrackerVersions) FirecrackerPath(config cfg.BuilderConfig) string {
+	return filepath.Join(config.FirecrackerVersionsDir, t.FirecrackerVersion, FirecrackerBinaryName)
 }
 
 type RootfsPaths struct {
