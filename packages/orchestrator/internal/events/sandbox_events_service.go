@@ -153,7 +153,7 @@ func validateEvent(event events.SandboxEvent) error {
 	}
 
 	if event.Type == "" {
-		return &MissingEventFieldError{"event"}
+		return &MissingEventFieldError{"type"}
 	}
 
 	if event.SandboxID == "" {
