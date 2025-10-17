@@ -9,37 +9,20 @@ import (
 	"github.com/google/uuid"
 )
 
-type SandboxEventCategory string
-
-const (
-	SandboxEventCategoryLifecycle SandboxEventCategory = "lifecycle"
-	SandboxEventCategoryMetric    SandboxEventCategory = "metric"
-	SandboxEventCategoryProcess   SandboxEventCategory = "process"
-	SandboxEventCategoryNetwork   SandboxEventCategory = "network"
-	SandboxEventCategoryFile      SandboxEventCategory = "file"
-	SandboxEventCategoryError     SandboxEventCategory = "error"
-)
-
-type SandboxEventLabel string
-
-const (
-	SandboxEventLabelCreate SandboxEventLabel = "create"
-	SandboxEventLabelPause  SandboxEventLabel = "pause"
-	SandboxEventLabelResume SandboxEventLabel = "resume"
-	SandboxEventLabelUpdate SandboxEventLabel = "update"
-	SandboxEventLabelKill   SandboxEventLabel = "kill"
-)
-
 type SandboxEvent struct {
-	Timestamp          time.Time      `ch:"timestamp"`
-	SandboxID          string         `ch:"sandbox_id"`
-	SandboxExecutionID string         `ch:"sandbox_execution_id"`
-	SandboxTemplateID  string         `ch:"sandbox_template_id"`
-	SandboxBuildID     string         `ch:"sandbox_build_id"`
-	SandboxTeamID      uuid.UUID      `ch:"sandbox_team_id"`
-	EventCategory      string         `ch:"event_category"`
-	EventLabel         string         `ch:"event_label"`
-	EventData          sql.NullString `ch:"event_data"`
+	Version string `ch:"version"`
+	Type    string `ch:"type"`
+
+	EventCategory string         `ch:"event_category"`
+	EventLabel    string         `ch:"event_label"`
+	EventData     sql.NullString `ch:"event_data"`
+
+	Timestamp          time.Time `ch:"timestamp"`
+	SandboxID          string    `ch:"sandbox_id"`
+	SandboxExecutionID string    `ch:"sandbox_execution_id"`
+	SandboxTemplateID  string    `ch:"sandbox_template_id"`
+	SandboxBuildID     string    `ch:"sandbox_build_id"`
+	SandboxTeamID      uuid.UUID `ch:"sandbox_team_id"`
 }
 
 const existsSandboxIdQuery = `
