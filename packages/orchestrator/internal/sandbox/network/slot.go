@@ -180,7 +180,7 @@ func (s *Slot) NamespaceIP() string {
 }
 
 func (s *Slot) NamespaceID() string {
-	return s.Name
+	return fmt.Sprintf("ns-%d", s.Idx)
 }
 
 func (s *Slot) TapName() string {
