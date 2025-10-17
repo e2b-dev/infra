@@ -40,8 +40,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/events/event"
-	"github.com/e2b-dev/infra/packages/shared/pkg/events/webhooks"
+	events2 "github.com/e2b-dev/infra/packages/shared/pkg/events"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
@@ -289,11 +288,11 @@ func run(config cfg.Config) (success bool) {
 	}
 
 	// pubsub
-	var redisPubSub pubsub.PubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData]
+	var redisPubSub pubsub.PubSub[events2.SandboxEvent, struct{}]
 	if redisClient != nil {
-		redisPubSub = pubsub.NewRedisPubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData](redisClient, "sandbox-webhooks")
+		redisPubSub = pubsub.NewRedisPubSub[events2.SandboxEvent, struct{}](redisClient, "sandbox-webhooks")
 	} else {
-		redisPubSub = pubsub.NewMockPubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData]()
+		redisPubSub = pubsub.NewMockPubSub[events2.SandboxEvent, struct{}]()
 	}
 	closers = append(closers, closer{"pubsub", redisPubSub.Close})
 

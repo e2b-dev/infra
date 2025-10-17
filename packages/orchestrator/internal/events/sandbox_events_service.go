@@ -12,7 +12,7 @@ import (
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/batcher"
-	"github.com/e2b-dev/infra/packages/shared/pkg/events/event"
+	"github.com/e2b-dev/infra/packages/shared/pkg/events"
 	"github.com/e2b-dev/infra/packages/shared/pkg/events/webhooks"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/pubsub"
@@ -30,14 +30,14 @@ func (e *MissingEventFieldError) Error() string {
 // as well as persisting using a ClickHouse Batcher
 type SandboxEventsService struct {
 	featureFlags *featureflags.Client
-	pubsub       pubsub.PubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData]
+	pubsub       pubsub.PubSub[events.SandboxEvent, struct{}]
 	batcher      batcher.SandboxEventsClickhouseBatcher
 	logger       *zap.Logger
 }
 
 func NewSandboxEventsService(
 	featureFlags *featureflags.Client,
-	pubsub pubsub.PubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData],
+	pubsub pubsub.PubSub[events.SandboxEvent, struct{}],
 	batcher batcher.SandboxEventsClickhouseBatcher,
 	logger *zap.Logger,
 ) *SandboxEventsService {
@@ -50,7 +50,7 @@ func NewSandboxEventsService(
 }
 
 // Should be non-blocking no matter what
-func (es *SandboxEventsService) HandleEvent(ctx context.Context, event event.SandboxEvent) {
+func (es *SandboxEventsService) HandleEvent(ctx context.Context, event events.SandboxEvent) {
 	err := validateEvent(event)
 	if err != nil {
 		es.logger.Error("error validating sandbox event", zap.Error(err))
@@ -68,7 +68,7 @@ func (es *SandboxEventsService) HandleEvent(ctx context.Context, event event.San
 	go es.handleClickhouseBatcherEvent(childCtx, event)
 }
 
-func (es *SandboxEventsService) handlePubSubEvent(ctx context.Context, event event.SandboxEvent) {
+func (es *SandboxEventsService) handlePubSubEvent(ctx context.Context, event events.SandboxEvent) {
 	sandboxEventsPublishFlag, flagErr := es.featureFlags.BoolFlag(
 		ctx, featureflags.SandboxEventsPublishFlagName, featureflags.SandboxContext(event.SandboxID))
 	if flagErr != nil {
@@ -111,12 +111,15 @@ func (es *SandboxEventsService) Close(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-func (es *SandboxEventsService) handleClickhouseBatcherEvent(ctx context.Context, event event.SandboxEvent) {
-	sandboxLifeCycleEventsWriteFlag, flagErr := es.featureFlags.BoolFlag(
-		ctx, featureflags.SandboxLifeCycleEventsWriteFlagName, featureflags.SandboxContext(event.SandboxID))
-	if flagErr != nil {
-		es.logger.Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
-	}
+func (es *SandboxEventsService) handleClickhouseBatcherEvent(ctx context.Context, event events.SandboxEvent) {
+	sandboxLifeCycleEventsWriteFlag := true
+
+	/*
+		sandboxLifeCycleEventsWriteFlag, flagErr := es.featureFlags.BoolFlag(ctx, featureflags.SandboxLifeCycleEventsWriteFlagName, featureflags.SandboxContext(event.SandboxID))
+		if flagErr != nil {
+			es.logger.Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
+		}
+	*/
 
 	eventData := ""
 	eventDataJson, err := json.Marshal(event.EventData)
@@ -127,41 +130,44 @@ func (es *SandboxEventsService) handleClickhouseBatcherEvent(ctx context.Context
 	}
 
 	if sandboxLifeCycleEventsWriteFlag {
+		println("Writing sandbox event to ClickHouse:", event.Type, "for sandbox ID:", event.SandboxID)
+
 		err := es.batcher.Push(clickhouse.SandboxEvent{
-			Timestamp:          event.Timestamp,
+			Type:      event.Type,
+			Version:   event.Version,
+			Timestamp: event.Timestamp,
+
+			EventCategory: event.EventCategory,
+			EventLabel:    event.EventLabel,
+			EventData:     sql.NullString{String: eventData, Valid: eventData != ""},
+
 			SandboxID:          event.SandboxID,
 			SandboxTemplateID:  event.SandboxTemplateID,
 			SandboxBuildID:     event.SandboxBuildID,
 			SandboxTeamID:      event.SandboxTeamID,
 			SandboxExecutionID: event.SandboxExecutionID,
-			EventCategory:      event.EventCategory,
-			EventLabel:         event.EventLabel,
-			EventData:          sql.NullString{String: eventData, Valid: eventData != ""},
 		})
 		if err != nil {
-			es.logger.Error("error inserting sandbox event",
-				zap.String("event_label", event.EventLabel),
-				zap.Error(err),
-			)
+			es.logger.Error("error inserting sandbox event", zap.String("event", event.Type), zap.Error(err))
 		}
 	}
 }
 
-func validateEvent(event event.SandboxEvent) error {
+func validateEvent(event events.SandboxEvent) error {
+	if event.Version == "" {
+		return &MissingEventFieldError{"version"}
+	}
+
+	if event.Type == "" {
+		return &MissingEventFieldError{"event"}
+	}
+
 	if event.SandboxID == "" {
 		return &MissingEventFieldError{"sandbox_id"}
 	}
 
 	if event.SandboxTeamID == uuid.Nil {
 		return &MissingEventFieldError{"sandbox_team_id"}
-	}
-
-	if event.EventCategory == "" {
-		return &MissingEventFieldError{"event_category"}
-	}
-
-	if event.EventLabel == "" {
-		return &MissingEventFieldError{"event_label"}
 	}
 
 	if event.Timestamp.IsZero() {
