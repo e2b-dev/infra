@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/constants"
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/handlers"
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 )
 
 var commitSHA string
@@ -26,7 +28,16 @@ func main() {
 
 	log.Println("Starting docker reverse proxy", "commit", commitSHA)
 
-	store := handlers.NewStore()
+	ctx := context.Background()
+
+	dbPool, err := db.NewPool(ctx, db.WithMinIdle(1), db.WithMaxConnections(1))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	dbConn := db.Open(dbPool)
+
+	store := handlers.NewStore(dbConn)
 
 	// https://distribution.github.io/distribution/spec/api/
 	http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
@@ -88,5 +99,14 @@ func main() {
 	})
 
 	log.Printf("Starting server on port: %d\n", *port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", strconv.Itoa(*port)), nil))
+
+	err = http.ListenAndServe(fmt.Sprintf(":%s", strconv.Itoa(*port)), nil)
+
+	// clean up
+	dbConn.Close()
+	dbPool.Close()
+
+	if err != nil {
+		log.Fatal(err)
+	}
 }

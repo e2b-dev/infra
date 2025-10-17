@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"fmt"
 	"io"
 	"log"
@@ -19,12 +20,9 @@ type APIStore struct {
 	proxy     *httputil.ReverseProxy
 }
 
-func NewStore() *APIStore {
+func NewStore(dbConn *sql.DB) *APIStore {
 	authCache := cache.New()
-	database, err := db.NewClient(3, 2)
-	if err != nil {
-		log.Fatal(err)
-	}
+	database := db.NewClient(dbConn)
 
 	targetUrl := &url.URL{
 		Scheme: "https",

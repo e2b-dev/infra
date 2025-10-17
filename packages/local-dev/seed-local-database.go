@@ -45,37 +45,37 @@ func run(ctx context.Context) error {
 		}
 	}
 
-	// init database
-	database, err := db.NewClient(1, 0)
+	dbPool, err := db.NewPool(ctx, db.WithMaxConnections(1), db.WithMinIdle(0))
 	if err != nil {
-		return fmt.Errorf("failed to initialize db: %w", err)
+		return fmt.Errorf("failed to create db pool: %w", err)
 	}
-	defer database.Close()
+	defer dbPool.Close()
 
-	sqlcDB, err := client.NewClient(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to connect to database: %w", err)
-	}
-	defer sqlcDB.Close()
+	dbConn := db.Open(dbPool)
+	defer dbConn.Close()
+
+	// init database
+	dbClient := db.NewClient(dbConn)
+	sqlcDB := client.NewClient(dbPool)
 
 	// create user
-	user, err := upsertUser(ctx, database)
+	user, err := upsertUser(ctx, dbClient)
 	if err != nil {
 		return fmt.Errorf("failed to upsert user: %w", err)
 	}
 
 	// create team
-	team, err := upsertTeam(ctx, database)
+	team, err := upsertTeam(ctx, dbClient)
 	if err != nil {
 		return fmt.Errorf("failed to upsert team: %w", err)
 	}
 
-	if err = ensureUserIsOnTeam(ctx, database, user, team); err != nil {
+	if err = ensureUserIsOnTeam(ctx, dbClient, user, team); err != nil {
 		return fmt.Errorf("failed to ensure user is on team: %w", err)
 	}
 
 	// create user token
-	if err = upsertUserToken(ctx, database, user, keys.AccessTokenPrefix, userTokenValue); err != nil {
+	if err = upsertUserToken(ctx, dbClient, user, keys.AccessTokenPrefix, userTokenValue); err != nil {
 		return fmt.Errorf("failed to upsert token: %w", err)
 	}
 

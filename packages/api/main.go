@@ -35,6 +35,7 @@ import (
 	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	tracingMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -278,7 +279,18 @@ func run() int {
 		zap.L().Fatal("Error parsing config", zap.Error(err))
 	}
 
-	err = utils.CheckMigrationVersion(config.PostgresConnectionString, expectedMigration)
+	dbPool, err := db.NewPool(ctx,
+		db.WithMaxConnections(config.PostgresMaxConnections),
+		db.WithMinIdle(config.PostgresMinIdleConnections),
+	)
+	if err != nil {
+		logger.Fatal("failed to create database pool", zap.Error(err))
+	}
+
+	dbConn := db.Open(dbPool)
+	defer dbConn.Close()
+
+	err = utils.CheckMigrationVersion(dbConn, expectedMigration)
 	if err != nil {
 		logger.Fatal("failed to check migration version", zap.Error(err))
 	}
@@ -343,7 +355,7 @@ func run() int {
 	// Create an instance of our handler which satisfies the generated interface
 	//  (use the outer context rather than the signal handling
 	//   context so it doesn't exit first.)
-	apiStore := handlers.NewAPIStore(ctx, tel, config)
+	apiStore := handlers.NewAPIStore(ctx, tel, config, dbConn, dbPool)
 	cleanupFns = append(cleanupFns, apiStore.Close)
 
 	// pass the signal context so that handlers know when shutdown is happening.

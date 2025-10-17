@@ -46,19 +46,18 @@ func run(ctx context.Context) int {
 		return 1
 	}
 
-	database, err := db.NewClient(1, 1)
+	dbPool, err := db.NewPool(ctx)
 	if err != nil {
 		log.Printf("Failed to connect to database: %v", err)
 		return 1
 	}
+
+	dbConn := db.Open(dbPool)
+
+	database := db.NewClient(dbConn)
 	defer database.Close()
 
-	sqlcDB, err := client.NewClient(ctx)
-	if err != nil {
-		log.Printf("Failed to connect to database: %v", err)
-		return 1
-	}
-	defer sqlcDB.Close()
+	sqlcDB := client.NewClient(dbPool)
 
 	data := SeedData{
 		AccessToken: os.Getenv("TESTS_E2B_ACCESS_TOKEN"),

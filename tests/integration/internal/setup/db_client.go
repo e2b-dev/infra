@@ -11,12 +11,15 @@ import (
 func GetTestDBClient(tb testing.TB) *db.DB {
 	tb.Helper()
 
-	database, err := db.NewClient(1, 1)
+	dbPool, err := db.NewPool(tb.Context())
 	require.NoError(tb, err)
+	tb.Cleanup(func() { dbPool.Close() })
 
-	tb.Cleanup(func() {
-		database.Close()
-	})
+	dbConn := db.Open(dbPool)
+
+	database := db.NewClient(dbConn)
+	require.NoError(tb, err)
+	tb.Cleanup(func() { database.Close() })
 
 	return database
 }
