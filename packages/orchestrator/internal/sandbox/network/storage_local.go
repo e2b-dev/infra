@@ -78,7 +78,6 @@ func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 		slotIdx := rand.Intn(s.maxSlots) + 1
 
 		if slot, ok := s.tryAcquire(ctx, slotIdx); ok {
-			acquisitions.Add(ctx, 1)
 			return slot, nil
 		}
 	}
