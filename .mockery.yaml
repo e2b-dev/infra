@@ -9,12 +9,12 @@ packages:
 
   github.com/e2b-dev/infra/packages/shared/pkg/storage:
     interfaces:
-      StorageObjectProvider:
+      ObjectProvider:
         config:
           dir: packages/shared/pkg/storage/mocks
           filename: mockobjectprovider.go
           pkgname: storagemocks
-      StorageSeekableObjectProvider:
+      SeekableObjectProvider:
         config:
           dir: packages/shared/pkg/storage/mocks
           filename: mockseekableobjectprovider.go
