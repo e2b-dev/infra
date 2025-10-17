@@ -43,16 +43,19 @@ var SandboxKilledEventPair = SandboxEventType{
 func LegacySandboxEventMigrationMapping(e SandboxEvent) SandboxEvent {
 	e.Version = StructureVersionV1
 
-	if e.EventCategory == SandboxCreatedEventPair.LegacyCategory && e.EventLabel == SandboxCreatedEventPair.LegacyLabel {
-		e.Type = SandboxCreatedEventPair.Type
-	} else if e.EventCategory == SandboxPausedEventPair.LegacyCategory && e.EventLabel == SandboxPausedEventPair.LegacyLabel {
-		e.Type = SandboxPausedEventPair.Type
-	} else if e.EventCategory == SandboxResumedEventPair.LegacyCategory && e.EventLabel == SandboxResumedEventPair.LegacyLabel {
-		e.Type = SandboxResumedEventPair.Type
-	} else if e.EventCategory == SandboxUpdatedEventPair.LegacyCategory && e.EventLabel == SandboxUpdatedEventPair.LegacyLabel {
-		e.Type = SandboxUpdatedEventPair.Type
-	} else if e.EventCategory == SandboxKilledEventPair.LegacyCategory && e.EventLabel == SandboxKilledEventPair.LegacyLabel {
-		e.Type = SandboxKilledEventPair.Type
+	if e.EventCategory == "lifecycle" {
+		switch e.EventLabel {
+		case "create":
+			e.Type = SandboxCreatedEventPair.Type
+		case "pause":
+			e.Type = SandboxPausedEventPair.Type
+		case "resume":
+			e.Type = SandboxResumedEventPair.Type
+		case "update":
+			e.Type = SandboxUpdatedEventPair.Type
+		case "kill":
+			e.Type = SandboxKilledEventPair.Type
+		}
 	}
 
 	return e
