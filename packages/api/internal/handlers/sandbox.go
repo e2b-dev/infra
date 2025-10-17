@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"context"
+	"maps"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -35,6 +37,7 @@ func (a *APIStore) startSandbox(
 	autoPause bool,
 	envdAccessToken *string,
 	allowInternetAccess *bool,
+	mcp api.Mcp,
 ) (*api.Sandbox, *api.APIError) {
 	startTime := time.Now()
 	endTime := startTime.Add(timeout)
@@ -70,12 +73,16 @@ func (a *APIStore) startSandbox(
 	_, analyticsSpan := tracer.Start(ctx, "analytics")
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(requestHeader)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "created_instance",
-		properties.
-			Set("environment", build.EnvID).
-			Set("instance_id", sandbox.SandboxID).
-			Set("alias", alias),
-	)
+	props := properties.
+		Set("environment", build.EnvID).
+		Set("instance_id", sandbox.SandboxID).
+		Set("alias", alias)
+
+	if mcp != nil {
+		props = props.Set("mcp_servers", slices.Collect(maps.Keys(mcp)))
+	}
+
+	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "created_instance", props)
 	analyticsSpan.End()
 
 	telemetry.ReportEvent(ctx, "Created analytics event")
