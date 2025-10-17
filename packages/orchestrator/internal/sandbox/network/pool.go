@@ -60,7 +60,7 @@ func NewPool(newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string, config Co
 	newSlots := make(chan *Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan *Slot, reusedSlotsPoolSize)
 
-	vrtSlotsSize := config.GetVirtualSlotsSize()
+	vrtSlotsSize := config.VirtualSlotSize
 
 	slotStorage, err := NewStorage(vrtSlotsSize, nodeID, config)
 	if err != nil {
