@@ -70,7 +70,7 @@ type Slot struct {
 }
 
 func NewSlot(name string, idx int, config Config) (*Slot, error) {
-	if vrtSlotsSize := config.VirtualSlotSize; idx < 1 || idx > vrtSlotsSize {
+	if vrtSlotsSize := config.GetVirtualSlotsSize(); idx < 1 || idx > vrtSlotsSize {
 		return nil, fmt.Errorf("slot index %d is out of range [1, %d)", idx, vrtSlotsSize)
 	}
 

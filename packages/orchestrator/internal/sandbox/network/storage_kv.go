@@ -22,7 +22,7 @@ func (s *StorageKV) getKVKey(slotIdx int) string {
 	return fmt.Sprintf("%s/%d", s.nodeID, slotIdx)
 }
 
-func NewStorageKV(slotsSize int, nodeID string, config Config) (*StorageKV, error) {
+func NewStorageKV(nodeID string, config Config) (*StorageKV, error) {
 	consulToken := utils.RequiredEnv("CONSUL_TOKEN", "Consul token for authenticating requests to the Consul API")
 
 	consulClient, err := newConsulClient(consulToken)
@@ -32,7 +32,7 @@ func NewStorageKV(slotsSize int, nodeID string, config Config) (*StorageKV, erro
 
 	return &StorageKV{
 		config:       config,
-		slotsSize:    slotsSize,
+		slotsSize:    config.GetVirtualSlotsSize(),
 		consulClient: consulClient,
 		nodeID:       nodeID,
 	}, nil

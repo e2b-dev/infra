@@ -46,14 +46,14 @@ type StorageLocal struct {
 	pid int
 }
 
-func NewStorageLocal(slotsSize int, config Config) (*StorageLocal, error) {
+func NewStorageLocal(config Config) (*StorageLocal, error) {
 	if err := os.MkdirAll(config.LocalNamespaceStorageDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create storage dir: %w", err)
 	}
 
 	return &StorageLocal{
 		config:   config,
-		maxSlots: slotsSize,
+		maxSlots: config.GetVirtualSlotsSize(),
 
 		acquiredNs: make(map[int]struct{}),
 		pid:        os.Getpid(),

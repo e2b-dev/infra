@@ -18,12 +18,9 @@ type Config struct {
 
 	SandboxesHostNetworkCIDR    *net.IPNet `env:"SANDBOXES_HOST_NETWORK_CIDR"    envDefault:"10.11.0.0/16"`
 	SandboxesVirtualNetworkCIDR *net.IPNet `env:"SANDBOXES_VIRTUAL_NETWORK_CIDR" envDefault:"10.12.0.0/16"`
-
-	// not set by env, but calculated at runtime
-	VirtualSlotSize int
 }
 
-func getVirtualSlotsSize(c Config) int {
+func (c Config) GetVirtualSlotsSize() int {
 	ones, _ := c.SandboxesVirtualNetworkCIDR.Mask.Size()
 
 	// total IPs in the CIDR block
@@ -38,17 +35,11 @@ func getVirtualSlotsSize(c Config) int {
 }
 
 func ParseConfig() (Config, error) {
-	config, err := env.ParseAsWithOptions[Config](env.Options{
+	return env.ParseAsWithOptions[Config](env.Options{
 		FuncMap: map[reflect.Type]env.ParserFunc{
 			reflect.TypeOf(net.IPNet{}): ParseIPNet,
 		},
 	})
-	if err != nil {
-		return config, err
-	}
-
-	config.VirtualSlotSize = getVirtualSlotsSize(config)
-	return config, nil
 }
 
 func ParseIPNet(cidr string) (any, error) {

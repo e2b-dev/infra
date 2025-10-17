@@ -15,7 +15,7 @@ func TestStorageLocalRoundTrip(t *testing.T) {
 	config, err := ParseConfig()
 	require.NoError(t, err)
 
-	instance, err := NewStorageLocal(2, config)
+	instance, err := NewStorageLocal(config)
 	require.NoError(t, err)
 
 	slot1, err := instance.Acquire(t.Context())
@@ -43,7 +43,7 @@ func TestStorageLocal_LockingCreatesDirsWhenAppropriate(t *testing.T) {
 		LocalNamespaceStorageDir: filepath.Join(t.TempDir(), "missing-dir"),
 	}
 
-	instance, err := NewStorageLocal(2, config)
+	instance, err := NewStorageLocal(config)
 	require.NoError(t, err)
 
 	err = instance.lockSlot(1)
@@ -55,7 +55,7 @@ func TestStorageLocal_LockingAndUnlocking(t *testing.T) {
 		LocalNamespaceStorageDir: t.TempDir(),
 	}
 
-	instance, err := NewStorageLocal(2, config)
+	instance, err := NewStorageLocal(config)
 	require.NoError(t, err)
 
 	// lock the first slot
