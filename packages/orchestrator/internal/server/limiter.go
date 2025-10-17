@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -30,8 +29,6 @@ func NewLimiter(
 		startingSandboxes: semaphore.NewWeighted(maxStartingSandboxes),
 	}
 }
-
-var ErrTooManyStarting = errors.New("too many starting sandboxes")
 
 type TooManySandboxesRunningError struct {
 	Current, Max int
@@ -70,7 +67,7 @@ func (t *Limiter) AcquireStarting(ctx context.Context) error {
 	acquired := t.startingSandboxes.TryAcquire(1)
 	if !acquired {
 		telemetry.ReportEvent(ctx, "too many starting sandboxes on node")
-		return ErrTooManyStarting
+		return TooManySandboxesStartingError{runningSandboxes, maxRunningSandboxesPerNode}
 	}
 
 	return nil
