@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	templatemanager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -100,11 +101,11 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		return
 	}
 
-	var team *queries.Team
+	var team *types.Team
 	// Check if the user has access to the template
 	for _, t := range teams {
 		if t.Team.ID == templateBuildDB.Env.TeamID {
-			team = &t.Team
+			team = t.Team
 			break
 		}
 	}

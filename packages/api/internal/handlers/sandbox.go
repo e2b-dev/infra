@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -28,7 +28,7 @@ func (a *APIStore) startSandbox(
 	envVars map[string]string,
 	metadata map[string]string,
 	alias string,
-	team authcache.AuthTeamInfo,
+	team *types.Team,
 	build queries.EnvBuild,
 	requestHeader *http.Header,
 	isResume bool,
@@ -71,7 +71,7 @@ func (a *APIStore) startSandbox(
 	telemetry.ReportEvent(ctx, "Created sandbox")
 
 	_, analyticsSpan := tracer.Start(ctx, "analytics")
-	a.posthog.IdentifyAnalyticsTeam(team.Team.ID.String(), team.Team.Name)
+	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(requestHeader)
 	props := properties.
 		Set("environment", build.EnvID).
@@ -82,7 +82,7 @@ func (a *APIStore) startSandbox(
 		props = props.Set("mcp_servers", slices.Collect(maps.Keys(mcp)))
 	}
 
-	a.posthog.CreateAnalyticsTeamEvent(team.Team.ID.String(), "created_instance", props)
+	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "created_instance", props)
 	analyticsSpan.End()
 
 	telemetry.ReportEvent(ctx, "Created analytics event")
@@ -98,7 +98,7 @@ func (a *APIStore) startSandbox(
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandbox.SandboxID,
 		TemplateID: build.EnvID,
-		TeamID:     team.Team.ID.String(),
+		TeamID:     team.ID.String(),
 	}).Info("Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
 
 	return sandbox.ToAPISandbox(), nil
