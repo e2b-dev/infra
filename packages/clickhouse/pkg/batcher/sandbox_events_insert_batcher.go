@@ -32,7 +32,7 @@ const InsertSandboxEventQuery = `INSERT INTO sandbox_events
     event_category,
     event_label,
     event_data,
-    event,
+    type,
     version
 )
 VALUES (
