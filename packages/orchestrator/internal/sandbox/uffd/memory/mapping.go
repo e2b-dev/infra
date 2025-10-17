@@ -47,7 +47,7 @@ func (m *Mapping) GetHostVirtAddr(offset int64) (int64, uint64, error) {
 }
 
 // GetHostVirtRanges returns the host virtual addresses with size (ranges) that cover the given offset to offset+length.
-func (m *Mapping) GetHostVirtRanges(offset int64, length int64) (hostVirtRanges []block.Range[int64, int64], err error) {
+func (m *Mapping) GetHostVirtRanges(offset int64, length int64) (hostVirtRanges []block.Range, err error) {
 	for n := int64(0); n < length; {
 		currentOffset := offset + n
 

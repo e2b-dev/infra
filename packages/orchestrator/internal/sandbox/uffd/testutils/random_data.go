@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 )
 
-func RandomPages(pagesize, numberOfPages uint64) *memorySlicer {
+func RandomPages(pagesize, numberOfPages uint64) *MemorySlicer {
 	size := pagesize * numberOfPages
 
 	n := int(size)

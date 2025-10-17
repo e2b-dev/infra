@@ -7,30 +7,30 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-type Address interface {
-	~int64 | ~uint64 | ~int | ~uint | ~uintptr
+type Range struct {
+	// Start is the start address of the range in bytes.
+	Start int64
+	// Size is the size of the range in bytes.
+	Size int64
 }
 
-type Range[T Address, U Address] struct {
-	// Start is the start address of the range in bytes.
-	Start T
-	// Size is the size of the range in bytes.
-	Size U
+func (r *Range) End() int64 {
+	return r.Start + r.Size
 }
 
 // NewRange creates a new range from a start address and size in bytes.
-func NewRange[T Address, U Address](start T, size U) Range[T, U] {
-	return Range[T, U]{
+func NewRange(start, size int64) Range {
+	return Range{
 		Start: start,
 		Size:  size,
 	}
 }
 
 // NewBlockRange creates a new range from a start index and number of blocks.
-func NewBlockRange[T Address, U Address](startIdx, numberOfBlocks T, blockSize U) Range[T, U] {
-	return Range[T, U]{
-		Start: T(header.BlockOffset(int64(startIdx), int64(blockSize))),
-		Size:  U(header.BlockOffset(int64(numberOfBlocks), int64(blockSize))),
+func NewBlockRange(startIdx, numberOfBlocks, blockSize int64) Range {
+	return Range{
+		Start: header.BlockOffset(int64(startIdx), int64(blockSize)),
+		Size:  header.BlockOffset(int64(numberOfBlocks), int64(blockSize)),
 	}
 }
 
