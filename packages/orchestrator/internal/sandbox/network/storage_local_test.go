@@ -1,6 +1,7 @@
 package network
 
 import (
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,19 +10,37 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestStorageLocalRoundTrip(t *testing.T) {
-	t.Setenv("LOCAL_NAMESPACE_STORAGE_DIR", t.TempDir())
+func configWithTwoSlots(t *testing.T) Config {
+	t.Helper()
 
-	config, err := ParseConfig()
-	require.NoError(t, err)
+	return Config{
+		LocalNamespaceStorageDir: t.TempDir(),
+		SandboxesVirtualNetworkCIDR: &net.IPNet{
+			IP:   net.ParseIP("10.0.100.10"),
+			Mask: net.IPv4Mask(255, 255, 255, 248),
+		},
+		SandboxesHostNetworkCIDR: &net.IPNet{
+			IP:   net.ParseIP("192.168.50.0"),
+			Mask: net.IPv4Mask(255, 255, 255, 0),
+		},
+	}
+}
+
+func TestStorageLocalRoundTrip(t *testing.T) {
+	config := configWithTwoSlots(t)
+
+	slotSize := config.GetVirtualSlotsSize()
+	require.Equal(t, 2, slotSize)
 
 	instance, err := NewStorageLocal(config)
 	require.NoError(t, err)
 
+	// acquire a slot
 	slot1, err := instance.Acquire(t.Context())
 	require.NoError(t, err)
 	assert.Positive(t, slot1.Idx)
 
+	// acquire the second slot
 	slot2, err := instance.Acquire(t.Context())
 	require.NoError(t, err)
 	assert.Positive(t, slot2.Idx)
@@ -39,9 +58,8 @@ func TestStorageLocalRoundTrip(t *testing.T) {
 }
 
 func TestStorageLocal_LockingCreatesDirsWhenAppropriate(t *testing.T) {
-	config := Config{
-		LocalNamespaceStorageDir: filepath.Join(t.TempDir(), "missing-dir"),
-	}
+	config := configWithTwoSlots(t)
+	config.LocalNamespaceStorageDir = filepath.Join(t.TempDir(), "missing-dir")
 
 	instance, err := NewStorageLocal(config)
 	require.NoError(t, err)
@@ -51,9 +69,7 @@ func TestStorageLocal_LockingCreatesDirsWhenAppropriate(t *testing.T) {
 }
 
 func TestStorageLocal_LockingAndUnlocking(t *testing.T) {
-	config := Config{
-		LocalNamespaceStorageDir: t.TempDir(),
-	}
+	config := configWithTwoSlots(t)
 
 	instance, err := NewStorageLocal(config)
 	require.NoError(t, err)
