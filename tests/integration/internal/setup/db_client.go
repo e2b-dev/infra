@@ -18,7 +18,6 @@ func GetTestDBClient(tb testing.TB) *db.DB {
 	dbConn := db.Open(dbPool)
 
 	database := db.NewClient(dbConn)
-	require.NoError(tb, err)
 	tb.Cleanup(func() { database.Close() })
 
 	return database

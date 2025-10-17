@@ -286,6 +286,7 @@ func run() int {
 	if err != nil {
 		logger.Fatal("failed to create database pool", zap.Error(err))
 	}
+	defer dbPool.Close()
 
 	dbConn := db.Open(dbPool)
 	defer dbConn.Close()
