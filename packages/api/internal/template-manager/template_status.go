@@ -44,6 +44,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 			err = tm.SetStatus(ctx, templateID, buildID, envbuild.StatusFailed, &templatemanagergrpc.TemplateBuildStatusReason{
 				Message: "build is in waiting state for too long",
 			})
+
 			return fmt.Errorf("build is in waiting state for too long, failing it: %w", err)
 		}
 
@@ -67,6 +68,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 	defer buildCancel()
 
 	checker.poll(ctx)
+
 	return nil
 }
 
@@ -117,6 +119,7 @@ func (c *PollBuildStatus) poll(ctx context.Context) {
 				if statusErr != nil {
 					c.logger.Error("error when setting build status", zap.Error(statusErr))
 				}
+
 				return
 			}
 
@@ -151,6 +154,7 @@ func (c *PollBuildStatus) setStatus(ctx context.Context) error {
 		return errors.Wrap(err, "context deadline exceeded")
 	} else if err != nil { // retry only on context deadline exceeded
 		c.logger.Error("terminal error when polling build status", zap.Error(err))
+
 		return newTerminalError(err)
 	}
 
@@ -162,6 +166,7 @@ func (c *PollBuildStatus) setStatus(ctx context.Context) error {
 	c.logger.Debug("setting status pointer", zap.String("status", status.GetStatus().String()))
 
 	c.status = status
+
 	return nil
 }
 
@@ -176,6 +181,7 @@ func (c *PollBuildStatus) dispatchBasedOnStatus(ctx context.Context, status *tem
 		if err != nil {
 			return false, errors.Wrap(err, "error when setting build status")
 		}
+
 		return true, nil
 	case templatemanagergrpc.TemplateBuildState_Completed:
 		// build completed
@@ -188,9 +194,11 @@ func (c *PollBuildStatus) dispatchBasedOnStatus(ctx context.Context, status *tem
 		if err != nil {
 			return false, errors.Wrap(err, "error when finishing build")
 		}
+
 		return true, nil
 	default:
 		c.logger.Debug("skipping status", zap.String("status", status.GetStatus().String()))
+
 		return false, nil
 	}
 }
@@ -207,6 +215,7 @@ func (c *PollBuildStatus) checkBuildStatus(ctx context.Context) (bool, error) {
 	err := retrier.RunContext(ctx, c.setStatus)
 	if err != nil {
 		c.logger.Error("error when calling setStatus", zap.Error(err))
+
 		return false, err
 	}
 
@@ -237,6 +246,7 @@ func (tm *TemplateManager) createInProcessingQueue(buildID uuid.UUID, templateID
 	}
 
 	tm.processing[buildID] = processingBuilds{templateID: templateID}
+
 	return false
 }
 
@@ -262,6 +272,7 @@ func (tm *TemplateManager) SetStatus(ctx context.Context, templateID string, bui
 	})
 
 	tm.buildCache.SetStatus(buildID, status, buildReason)
+
 	return err
 }
 
@@ -272,6 +283,7 @@ func (tm *TemplateManager) SetFinished(ctx context.Context, templateID string, b
 		tm.buildCache.SetStatus(buildID, envbuild.StatusFailed, types.BuildReason{
 			Message: fmt.Sprintf("error when finishing build: %s", err.Error()),
 		})
+
 		return err
 	}
 

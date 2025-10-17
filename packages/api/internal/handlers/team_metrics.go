@@ -43,6 +43,7 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 		// This is here just to have the possibility to turn off ClickHouse metrics reading
 
 		c.JSON(http.StatusOK, []api.TeamMetric{})
+
 		return
 	}
 
@@ -60,6 +61,7 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 	if err != nil {
 		telemetry.ReportError(ctx, "error validating dates", err, telemetry.WithTeamID(team.ID.String()))
 		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
+
 		return
 	}
 
@@ -69,6 +71,7 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 	if err != nil {
 		telemetry.ReportError(ctx, "error fetching team metrics", err, telemetry.WithTeamID(team.ID.String()))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("error querying team metrics: %s", err))
+
 		return
 	}
 

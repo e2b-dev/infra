@@ -47,5 +47,6 @@ func (rs *ResumeSandbox) Sandbox(
 	if err != nil {
 		return nil, fmt.Errorf("resume sandbox: %w", err)
 	}
+
 	return sbx, nil
 }

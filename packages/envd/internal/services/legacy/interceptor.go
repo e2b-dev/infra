@@ -18,6 +18,7 @@ func shouldHideChanges(request http.Header, response http.Header) bool {
 	}
 
 	response.Set(notifyHeader, "true")
+
 	return true
 }
 

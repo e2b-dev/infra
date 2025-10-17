@@ -58,6 +58,7 @@ func (a *API) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		a.logger.Error().Err(err).Msg("Failed to get metrics")
 		w.WriteHeader(http.StatusInternalServerError)
+
 		return
 	}
 

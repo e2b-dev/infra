@@ -107,6 +107,7 @@ func createSimulatedNodes(config BenchmarkConfig) []*SimulatedNode {
 		}
 		nodes[i] = simNode
 	}
+
 	return nodes
 }
 
@@ -119,6 +120,7 @@ func (n *SimulatedNode) placeSandbox(sbx *LiveSandbox) bool {
 	// Check capacity with overcommit
 	if metrics.CpuAllocated+uint32(sbx.RequestedCPU) > metrics.CpuCount*4 { // 4x overcommit
 		atomic.AddInt64(&n.rejectedPlacements, 1)
+
 		return false
 	}
 
@@ -246,6 +248,7 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig) *Be
 						// Remove from active list
 						activeSandboxes.Delete(key)
 					}
+
 					return true
 				})
 			case <-stopCleanup:

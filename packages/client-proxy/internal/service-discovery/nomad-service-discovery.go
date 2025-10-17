@@ -69,6 +69,7 @@ func (sd *NomadServiceDiscovery) keepInSync(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			sd.logger.Info("Stopping service discovery keep-in-sync")
+
 			return
 		case <-ticker.C:
 			sd.sync(ctx)
@@ -91,6 +92,7 @@ func (sd *NomadServiceDiscovery) sync(ctx context.Context) {
 	results, _, err := sd.client.Allocations().List(options.WithContext(ctx))
 	if err != nil {
 		sd.logger.Error("Failed to list Nomad allocations in service discovery", zap.Error(err))
+
 		return
 	}
 
@@ -98,12 +100,14 @@ func (sd *NomadServiceDiscovery) sync(ctx context.Context) {
 	for _, v := range results {
 		if v.AllocatedResources == nil {
 			sd.logger.Warn("No allocated resources found", zap.String("job", v.JobID), zap.String("alloc", v.ID))
+
 			continue
 		}
 
 		nets := v.AllocatedResources.Shared.Networks
 		if len(nets) == 0 {
 			sd.logger.Warn("No allocation networks found", zap.String("job", v.JobID), zap.String("alloc", v.ID))
+
 			continue
 		}
 

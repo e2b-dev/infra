@@ -21,5 +21,6 @@ func WriteToFileFromReader(path string, r io.Reader) (err error) {
 	if _, err = io.Copy(f, r); err != nil {
 		return err
 	}
+
 	return f.Sync() // ensure contents hit disk
 }
