@@ -40,19 +40,15 @@ func main() {
 }
 
 func run(ctx context.Context) int {
-	connectionString := os.Getenv("POSTGRES_CONNECTION_STRING")
-	if connectionString == "" {
-		log.Printf("POSTGRES_CONNECTION_STRING is not set")
-		return 1
-	}
-
 	dbPool, err := db.NewPool(ctx)
 	if err != nil {
 		log.Printf("Failed to connect to database: %v", err)
 		return 1
 	}
+	defer dbPool.Close()
 
 	dbConn := db.Open(dbPool)
+	defer dbConn.Close()
 
 	database := db.NewClient(dbConn)
 	defer database.Close()

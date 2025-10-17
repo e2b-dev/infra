@@ -3,12 +3,11 @@ package db
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type PoolOption func(config *pgxpool.Config)
@@ -26,7 +25,10 @@ func WithMinIdle(minIdle int) PoolOption {
 }
 
 func NewPool(ctx context.Context, options ...PoolOption) (*pgxpool.Pool, error) {
-	databaseURL := utils.RequiredEnv("POSTGRES_CONNECTION_STRING", "Postgres connection string")
+	databaseURL := os.Getenv("POSTGRES_CONNECTION_STRING")
+	if databaseURL == "" {
+		return nil, fmt.Errorf("POSTGRES_CONNECTION_STRING is not set")
+	}
 
 	config, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
