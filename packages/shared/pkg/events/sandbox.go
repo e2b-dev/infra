@@ -1,0 +1,44 @@
+package events
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
+const StructureVersionV1 = "v1"
+
+const (
+	SandboxCreatedEvent = "sandbox.lifecycle.created"
+	SandboxKilledEvent  = "sandbox.lifecycle.killed"
+	SandboxPausedEvent  = "sandbox.lifecycle.paused"
+	SandboxResumedEvent = "sandbox.lifecycle.resumed"
+	SandboxUpdatedEvent = "sandbox.lifecycle.updated"
+)
+
+var ValidSandboxEventTypes = []string{
+	SandboxCreatedEvent,
+	SandboxKilledEvent,
+	SandboxPausedEvent,
+	SandboxResumedEvent,
+	SandboxUpdatedEvent,
+}
+
+type SandboxEvent struct {
+	Version string `json:"version"`
+	Type    string `json:"type"`
+
+	// Deprecated: for new events use event field with dot syntax
+	EventCategory string `json:"event_category"`
+	// Deprecated: for new events use event field with dot syntax
+	EventLabel string         `json:"event_label"`
+	EventData  map[string]any `json:"event_data,omitempty"`
+
+	Timestamp time.Time `json:"timestamp"`
+
+	SandboxID          string    `json:"sandbox_id"`
+	SandboxExecutionID string    `json:"sandbox_execution_id"`
+	SandboxTemplateID  string    `json:"sandbox_template_id"`
+	SandboxBuildID     string    `json:"sandbox_build_id"`
+	SandboxTeamID      uuid.UUID `json:"sandbox_team_id"`
+}
