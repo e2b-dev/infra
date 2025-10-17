@@ -102,7 +102,8 @@ func TestUffdMissing(t *testing.T) {
 				}
 			}
 
-			memoryMapAccesses := getOperationsOffsets(tt.operations, operationModeRead)
+			h.
+				memoryMapAccesses := getOperationsOffsets(tt.operations, operationModeRead)
 			assert.Equal(t, memoryMapAccesses, h.memoryMap.Map(), "checking which pages were accessed")
 		})
 	}
@@ -275,8 +276,8 @@ type testHandler struct {
 	memoryArea       *[]byte
 	pagesize         uint64
 	data             block.Slicer
-	dirty            *memory.Tracker
-	memoryMap        *testutils.ContiguousMap
+	dirty            *block.Tracker
+	memoryMap        *memory.Mapping
 }
 
 // If mode is 0, we will return offsets for all operations.
@@ -311,7 +312,7 @@ func (h *testHandler) executeRead(ctx context.Context, op operation) error {
 	}
 
 	if !bytes.Equal(readBytes, expectedBytes) {
-		idx, want, got := testutils.DiffByte(readBytes, expectedBytes)
+		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
 		return fmt.Errorf("content mismatch: want %q, got %q at index %d", want, got, idx)
 	}
 
@@ -331,7 +332,7 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 		return fmt.Errorf("failed to wait for write requests finish: %w", err)
 	}
 
-	if !h.dirty.Check(int64(op.offset)) {
+	if !h.dirty.Test(int64(op.offset)) {
 		return fmt.Errorf("dirty bit not set for page at offset %d, all dirty offsets: %v", op.offset, slices.Collect(maps.Keys(getOffsetsFromBitset(h.dirty.BitSet(), h.pagesize))))
 	}
 
@@ -344,14 +345,21 @@ func configureTest(t *testing.T, tt testConfig) *testHandler {
 	size, err := data.Size()
 	require.NoError(t, err)
 
-	memoryArea, memoryStart, unmap, err := testutils.NewPageMmap(uint64(size), tt.pagesize)
+	memoryArea, memoryStart, unmap, err := memory(uint64(size), tt.pagesize)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		unmap()
 	})
 
-	m := testutils.NewContiguousMap(memoryStart, uint64(size), tt.pagesize)
+	m := memory.NewMapping([]memory.Region{
+		{
+			BaseHostVirtAddr: uintptr(memoryStart),
+			Size:             uintptr(size),
+			Offset:           uintptr(0),
+			PageSize:         uintptr(tt.pagesize),
+		},
+	})
 
 	logger := testutils.NewTestLogger(t)
 

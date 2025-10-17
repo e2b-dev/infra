@@ -154,14 +154,14 @@ func (u *Userfaultfd) handleMissing(
 	write bool,
 ) {
 	if write {
-		if !u.writeMap.TryAdd(offset) {
+		if !u.writeRequests.Add(offset) {
 			return
 		}
 
 		u.writeRequestCounter.Add()
 	} else {
 		// TODO: We should be able to add the page to the missing map on the write handle as well.
-		if !u.missingMap.TryAdd(offset) {
+		if !u.missingRequests.Add(offset) {
 			return
 		}
 	}
@@ -224,7 +224,7 @@ func (u *Userfaultfd) handleMissing(
 
 		// We mark the page as dirty if it was a write to a page that was not already mapped.
 		if write {
-			u.dirty.Mark(offset)
+			u.dirty.Add(offset)
 		}
 
 		return nil
@@ -233,7 +233,7 @@ func (u *Userfaultfd) handleMissing(
 }
 
 func (u *Userfaultfd) handleWriteProtection(addr uintptr, offset int64, pagesize uint64) {
-	if !u.writeMap.TryAdd(offset) {
+	if !u.writeRequests.Add(offset) {
 		return
 	}
 
@@ -254,13 +254,13 @@ func (u *Userfaultfd) handleWriteProtection(addr uintptr, offset int64, pagesize
 		}
 
 		// We mark the page as dirty if it was a write to a page that was already mapped.
-		u.dirty.Mark(offset)
+		u.dirty.Add(offset)
 
 		return nil
 	})
 }
 
-func (u *Userfaultfd) TriggerPagefault(ctx context.Context, offset int64) error {
+func (u *Userfaultfd) ServePage(ctx context.Context, offset int64) error {
 	addr, pagesize, err := u.ma.GetHostVirtAddr(offset)
 	if err != nil {
 		return fmt.Errorf("failed to get host virt addr: %w", err)

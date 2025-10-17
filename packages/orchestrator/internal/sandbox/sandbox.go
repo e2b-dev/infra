@@ -671,10 +671,17 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	dirtyPages, err := s.memory.Disable(ctx)
+	err = s.memory.Disable(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to disable uffd: %w", err)
 	}
+
+	dirty, err := s.memory.Dirty(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dirty pages: %w", err)
+	}
+
+	dirtyPages := dirty.BitSet()
 
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
 	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath())

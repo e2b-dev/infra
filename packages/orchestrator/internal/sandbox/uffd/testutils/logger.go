@@ -17,6 +17,7 @@ func (w *testWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+// NewTestLogger creates a new zap logger that logs all zap logs to the test output.
 func NewTestLogger(t *testing.T) *zap.Logger {
 	encoderCfg := zap.NewDevelopmentEncoderConfig()
 	encoderCfg.EncodeLevel = zapcore.CapitalColorLevelEncoder
