@@ -13,6 +13,8 @@ import (
 )
 
 type Limiter struct {
+	maxStartingSandboxes int64
+
 	featureFlags      *featureflags.Client
 	startingSandboxes *semaphore.Weighted
 	metricsTracker    *metrics.Tracker
@@ -24,9 +26,10 @@ func NewLimiter(
 	metricsTracker *metrics.Tracker,
 ) *Limiter {
 	return &Limiter{
-		featureFlags:      featureFlags,
-		metricsTracker:    metricsTracker,
-		startingSandboxes: semaphore.NewWeighted(maxStartingSandboxes),
+		featureFlags:         featureFlags,
+		metricsTracker:       metricsTracker,
+		maxStartingSandboxes: maxStartingSandboxes,
+		startingSandboxes:    semaphore.NewWeighted(maxStartingSandboxes),
 	}
 }
 
@@ -41,7 +44,7 @@ func (t TooManySandboxesRunningError) Error() string {
 var _ error = TooManySandboxesRunningError{}
 
 type TooManySandboxesStartingError struct {
-	Current, Max int
+	Max int64
 }
 
 var _ error = TooManySandboxesStartingError{}
@@ -67,7 +70,7 @@ func (t *Limiter) AcquireStarting(ctx context.Context) error {
 	acquired := t.startingSandboxes.TryAcquire(1)
 	if !acquired {
 		telemetry.ReportEvent(ctx, "too many starting sandboxes on node")
-		return TooManySandboxesStartingError{runningSandboxes, maxRunningSandboxesPerNode}
+		return TooManySandboxesStartingError{t.maxStartingSandboxes}
 	}
 
 	return nil
