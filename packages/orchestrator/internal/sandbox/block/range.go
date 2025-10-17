@@ -14,6 +14,8 @@ type Range struct {
 	Size int64
 }
 
+// End returns the end address of the range in bytes.
+// The end address is exclusive.
 func (r *Range) End() int64 {
 	return r.Start + r.Size
 }

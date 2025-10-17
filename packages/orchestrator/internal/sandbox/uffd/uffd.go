@@ -156,7 +156,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		}
 	}()
 
-	for _, region := range m.Regions() {
+	for _, region := range m.Regions {
 		// Register the WP. It is possible that the memory region was already registered (with missing pages in FC), but registering it again with bigger flag subset should merge these.
 		// - https://github.com/firecracker-microvm/firecracker/blob/f335a0adf46f0680a141eb1e76fe31ac258918c5/src/vmm/src/persist.rs#L477
 		// - https://github.com/bytecodealliance/userfaultfd-rs/blob/main/src/builder.rs

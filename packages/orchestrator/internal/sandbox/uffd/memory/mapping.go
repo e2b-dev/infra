@@ -7,29 +7,18 @@ import (
 )
 
 type Mapping struct {
-	regions []Region
+	Regions []Region
 }
 
 func NewMapping(regions []Region) *Mapping {
-	return &Mapping{regions: regions}
-}
-
-// Region is a mapping of a region of memory in the guest to a region of memory on the host.
-// The serialization is based on the Firecracker UFFD protocol communication.
-type Region struct {
-	BaseHostVirtAddr uintptr `json:"base_host_virt_addr"`
-	Size             uintptr `json:"size"`
-	Offset           uintptr `json:"offset"`
-	// This is actually in bytes.
-	// This field is deprecated in the newer version of the Firecracer with a new field `page_size`.
-	PageSize uintptr `json:"page_size_kib"`
+	return &Mapping{Regions: regions}
 }
 
 // GetOffset returns the relative offset and the page size of the mapped range for a given address.
 func (m *Mapping) GetOffset(hostVirtAddr uintptr) (int64, uint64, error) {
-	for _, r := range m.regions {
-		if hostVirtAddr >= r.BaseHostVirtAddr && hostVirtAddr < r.BaseHostVirtAddr+r.Size {
-			return int64(r.Offset + hostVirtAddr - r.BaseHostVirtAddr), uint64(r.PageSize), nil
+	for _, r := range m.Regions {
+		if hostVirtAddr >= r.BaseHostVirtAddr && hostVirtAddr < r.endHostVirtAddr() {
+			return r.shiftedOffset(hostVirtAddr), uint64(r.PageSize), nil
 		}
 	}
 
@@ -37,57 +26,44 @@ func (m *Mapping) GetOffset(hostVirtAddr uintptr) (int64, uint64, error) {
 }
 
 // GetHostVirtAddr returns the host virtual address for a given offset.
-func (m *Mapping) GetHostVirtAddr(offset int64) (int64, uint64, error) {
-	r, err := m.getHostVirtMapping(offset)
+func (m *Mapping) GetHostVirtAddr(off int64) (int64, uint64, error) {
+	r, err := m.getHostVirtMapping(off)
 	if err != nil {
 		return 0, 0, err
 	}
 
-	return int64(r.BaseHostVirtAddr), uint64(r.PageSize), nil
+	return int64(r.shiftedHostVirtAddr(off)), uint64(r.PageSize), nil
 }
 
-// GetHostVirtRanges returns the host virtual addresses with size (ranges) that cover the given offset to offset+length.
-func (m *Mapping) GetHostVirtRanges(offset int64, length int64) (hostVirtRanges []block.Range, err error) {
-	for n := int64(0); n < length; {
-		currentOffset := offset + n
+// GetHostVirtRanges returns the host virtual addresses and sizes (ranges) that cover exactly the given [offset, offset+length) range in the host virtual address space.
+func (m *Mapping) GetHostVirtRanges(off int64, size int64) (hostVirtRanges []block.Range, err error) {
+	for n := int64(0); n < size; {
+		currentOff := off + n
 
-		mapping, err := m.getHostVirtMapping(currentOffset)
+		region, err := m.getHostVirtMapping(currentOff)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get host virt mapping: %w", err)
 		}
 
-		addr := int64(mapping.BaseHostVirtAddr) + currentOffset - int64(mapping.Offset)
+		start := region.shiftedHostVirtAddr(currentOff)
+		s := min(int64(region.endHostVirtAddr()-start), size-n)
 
-		if addr < 0 {
-			return nil, fmt.Errorf("address %d is less than 0, which is not possible", addr)
-		}
-
-		size := min(int64(mapping.Size)-currentOffset+int64(mapping.Offset), length-n)
-
-		if size < 0 {
-			return nil, fmt.Errorf("size %d is less than 0, which is not possible. offset: %d, length: %d, n: %d", size, offset, length, n)
-		}
-
-		r := block.NewRange(addr, size)
+		r := block.NewRange(int64(start), s)
 
 		hostVirtRanges = append(hostVirtRanges, r)
 
-		n += int64(r.Size)
+		n += r.Size
 	}
 
 	return hostVirtRanges, nil
 }
 
-func (m *Mapping) Regions() []Region {
-	return m.regions
-}
-
-func (m *Mapping) getHostVirtMapping(offset int64) (*Region, error) {
-	for _, r := range m.regions {
-		if offset >= int64(r.Offset) && offset < int64(r.Offset+r.Size) {
+func (m *Mapping) getHostVirtMapping(off int64) (*Region, error) {
+	for _, r := range m.Regions {
+		if off >= int64(r.Offset) && off < r.endOffset() {
 			return &r, nil
 		}
 	}
 
-	return nil, fmt.Errorf("offset %d not found in any mapping", offset)
+	return nil, fmt.Errorf("offset %d not found in any mapping", off)
 }
