@@ -6,15 +6,40 @@ import (
 	"fmt"
 	"sync"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
 	NewSlotsPoolSize    = 32
 	ReusedSlotsPoolSize = 100
+)
+
+var (
+	newSlotsAvailableCounter = utils.Must(meter.Int64UpDownCounter("orchestrator.network.slots_pool.new",
+		metric.WithDescription("Number of new network slots ready to be used."),
+		metric.WithUnit("{slot"),
+	))
+	reusableSlotsAvailableCounter = utils.Must(meter.Int64UpDownCounter("orchestrator.network.slots_pool.reused",
+		metric.WithDescription("Number of reused network slots ready to be used."),
+		metric.WithUnit("{slot}"),
+	))
+	acquiredSlots = utils.Must(meter.Int64Counter("orchestrator.network.slots_pool.acquired",
+		metric.WithDescription("Number of network slots acquired."),
+		metric.WithUnit("{slot}"),
+	))
+	returnedSlotCounter = utils.Must(meter.Int64Counter("orchestrator.network.slots_pool.returned",
+		metric.WithDescription("Number of network slots returned."),
+		metric.WithUnit("{slot}"),
+	))
+	releasedSlotCounter = utils.Must(meter.Int64Counter("orchestrator.network.slots_pool.released",
+		metric.WithDescription("Number of network slots released."),
+		metric.WithUnit("{slot}"),
+	))
 )
 
 type Pool struct {
@@ -23,46 +48,31 @@ type Pool struct {
 	done     chan struct{}
 	doneOnce sync.Once
 
-	newSlots          chan *Slot
-	reusedSlots       chan *Slot
-	newSlotCounter    metric.Int64UpDownCounter
-	reusedSlotCounter metric.Int64UpDownCounter
+	newSlots    chan *Slot
+	reusedSlots chan *Slot
 
 	slotStorage Storage
 }
 
 var ErrClosed = errors.New("cannot read from a closed pool")
 
-func NewPool(meterProvider metric.MeterProvider, newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string, config Config) (*Pool, error) {
+func NewPool(newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string, config Config) (*Pool, error) {
 	newSlots := make(chan *Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan *Slot, reusedSlotsPoolSize)
 
-	meter := meterProvider.Meter("orchestrator.network.pool")
-
-	newSlotCounter, err := telemetry.GetUpDownCounter(meter, telemetry.NewNetworkSlotSPoolCounterMeterName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create new slot counter: %w", err)
-	}
-
-	reusedSlotsCounter, err := telemetry.GetUpDownCounter(meter, telemetry.ReusedNetworkSlotSPoolCounterMeterName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create reused slot counter: %w", err)
-	}
-
 	vrtSlotsSize := config.GetVirtualSlotsSize()
+
 	slotStorage, err := NewStorage(vrtSlotsSize, nodeID, config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create slot storage: %w", err)
 	}
 
 	pool := &Pool{
-		config:            config,
-		done:              make(chan struct{}),
-		newSlots:          newSlots,
-		reusedSlots:       reusedSlots,
-		newSlotCounter:    newSlotCounter,
-		reusedSlotCounter: reusedSlotsCounter,
-		slotStorage:       slotStorage,
+		config:      config,
+		done:        make(chan struct{}),
+		newSlots:    newSlots,
+		reusedSlots: reusedSlots,
+		slotStorage: slotStorage,
 	}
 
 	return pool, nil
@@ -102,7 +112,7 @@ func (p *Pool) Populate(ctx context.Context) {
 				continue
 			}
 
-			p.newSlotCounter.Add(ctx, 1)
+			newSlotsAvailableCounter.Add(ctx, 1)
 			p.newSlots <- slot
 		}
 	}
@@ -115,7 +125,8 @@ func (p *Pool) Get(ctx context.Context, allowInternet bool) (*Slot, error) {
 	case <-p.done:
 		return nil, ErrClosed
 	case s := <-p.reusedSlots:
-		p.reusedSlotCounter.Add(ctx, -1)
+		reusableSlotsAvailableCounter.Add(ctx, -1)
+		acquiredSlots.Add(ctx, 1, metric.WithAttributes(attribute.String("pool", "reused")))
 		telemetry.ReportEvent(ctx, "reused network slot")
 
 		slot = s
@@ -126,7 +137,8 @@ func (p *Pool) Get(ctx context.Context, allowInternet bool) (*Slot, error) {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case s := <-p.newSlots:
-			p.newSlotCounter.Add(ctx, -1)
+			newSlotsAvailableCounter.Add(ctx, -1)
+			acquiredSlots.Add(ctx, 1, metric.WithAttributes(attribute.String("pool", "new")))
 			telemetry.ReportEvent(ctx, "new network slot")
 
 			slot = s
@@ -166,7 +178,8 @@ func (p *Pool) Return(ctx context.Context, slot *Slot) error {
 	case <-p.done:
 		return ErrClosed
 	case p.reusedSlots <- slot:
-		p.reusedSlotCounter.Add(ctx, 1)
+		returnedSlotCounter.Add(ctx, 1)
+		reusableSlotsAvailableCounter.Add(ctx, 1)
 	default:
 		err := p.cleanup(ctx, slot)
 		if err != nil {
@@ -189,6 +202,8 @@ func (p *Pool) cleanup(ctx context.Context, slot *Slot) error {
 	if err != nil {
 		errs = append(errs, fmt.Errorf("failed to release slot '%d': %w", slot.Idx, err))
 	}
+
+	releasedSlotCounter.Add(ctx, 1)
 
 	return errors.Join(errs...)
 }

@@ -47,7 +47,4 @@ generate:
 
 .PHONY: build-and-upload
 build-and-upload:
-	@rm -rf .shared/
-	@cp -r ../shared .shared/
-	@docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push .
-	@rm -rf .shared/
+	@docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push -f ./Dockerfile ..

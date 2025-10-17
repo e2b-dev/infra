@@ -526,35 +526,6 @@ func HasUsersWith(preds ...predicate.User) predicate.Team {
 	})
 }
 
-// HasTeamTier applies the HasEdge predicate on the "team_tier" edge.
-func HasTeamTier() predicate.Team {
-	return predicate.Team(func(s *sql.Selector) {
-		step := sqlgraph.NewStep(
-			sqlgraph.From(Table, FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, true, TeamTierTable, TeamTierColumn),
-		)
-		schemaConfig := internal.SchemaConfigFromContext(s.Context())
-		step.To.Schema = schemaConfig.Tier
-		step.Edge.Schema = schemaConfig.Team
-		sqlgraph.HasNeighbors(s, step)
-	})
-}
-
-// HasTeamTierWith applies the HasEdge predicate on the "team_tier" edge with a given conditions (other predicates).
-func HasTeamTierWith(preds ...predicate.Tier) predicate.Team {
-	return predicate.Team(func(s *sql.Selector) {
-		step := newTeamTierStep()
-		schemaConfig := internal.SchemaConfigFromContext(s.Context())
-		step.To.Schema = schemaConfig.Tier
-		step.Edge.Schema = schemaConfig.Team
-		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
-			for _, p := range preds {
-				p(s)
-			}
-		})
-	})
-}
-
 // HasEnvs applies the HasEdge predicate on the "envs" edge.
 func HasEnvs() predicate.Team {
 	return predicate.Team(func(s *sql.Selector) {
