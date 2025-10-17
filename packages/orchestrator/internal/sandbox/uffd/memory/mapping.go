@@ -27,7 +27,7 @@ func (m *Mapping) GetOffset(hostVirtAddr uintptr) (int64, uint64, error) {
 
 // GetHostVirtAddr returns the host virtual address for a given offset.
 func (m *Mapping) GetHostVirtAddr(off int64) (int64, uint64, error) {
-	r, err := m.getHostVirtMapping(off)
+	r, err := m.getHostVirtRegion(off)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -40,7 +40,7 @@ func (m *Mapping) GetHostVirtRanges(off int64, size int64) (hostVirtRanges []blo
 	for n := int64(0); n < size; {
 		currentOff := off + n
 
-		region, err := m.getHostVirtMapping(currentOff)
+		region, err := m.getHostVirtRegion(currentOff)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get host virt mapping: %w", err)
 		}
@@ -58,7 +58,8 @@ func (m *Mapping) GetHostVirtRanges(off int64, size int64) (hostVirtRanges []blo
 	return hostVirtRanges, nil
 }
 
-func (m *Mapping) getHostVirtMapping(off int64) (*Region, error) {
+// getHostVirtRegion returns the region that contains the given offset.
+func (m *Mapping) getHostVirtRegion(off int64) (*Region, error) {
 	for _, r := range m.Regions {
 		if off >= int64(r.Offset) && off < r.endOffset() {
 			return &r, nil
