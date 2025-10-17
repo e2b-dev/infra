@@ -28,8 +28,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
 	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
@@ -154,7 +154,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 				// Get team from context, use TeamContextKey
 				teamInfo := c.Value(auth.TeamContextKey)
 				if teamInfo != nil {
-					teamID = teamInfo.(authcache.AuthTeamInfo).Team.ID.String()
+					teamID = teamInfo.(*types.Team).ID.String()
 				}
 
 				reqLogger := logger
@@ -220,15 +220,9 @@ func run() int {
 	serviceInstanceID := uuid.New().String()
 	nodeID := env.GetNodeID()
 
-	var tel *telemetry.Client
-	if telemetry.OtelCollectorGRPCEndpoint == "" {
-		tel = telemetry.NewNoopClient()
-	} else {
-		var err error
-		tel, err = telemetry.New(ctx, nodeID, serviceName, commitSHA, serviceVersion, serviceInstanceID)
-		if err != nil {
-			zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
-		}
+	tel, err := telemetry.New(ctx, nodeID, serviceName, commitSHA, serviceVersion, serviceInstanceID)
+	if err != nil {
+		zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
 	}
 	defer func() {
 		err := tel.Shutdown(ctx)

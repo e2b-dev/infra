@@ -8,6 +8,22 @@ import (
 )
 
 func TestParse(t *testing.T) {
+	t.Run("embedded structs get defaults", func(t *testing.T) {
+		config, err := Parse()
+		require.NoError(t, err)
+
+		assert.Equal(t, "/fc-vm", config.SandboxDir)
+	})
+
+	t.Run("embedded structs get overrides", func(t *testing.T) {
+		t.Setenv("SANDBOX_DIR", "/fc-vm2")
+
+		config, err := Parse()
+		require.NoError(t, err)
+
+		assert.Equal(t, "/fc-vm2", config.SandboxDir)
+	})
+
 	t.Run("network config local flag defaults to false", func(t *testing.T) {
 		config, err := Parse()
 		require.NoError(t, err)

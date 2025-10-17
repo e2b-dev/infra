@@ -6,10 +6,10 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/constants"
-	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 )
 
-func LimitResources(tier *queries.Tier, cpuCount, memoryMB *int32) (int64, int64, *api.APIError) {
+func LimitResources(limits *types.TeamLimits, cpuCount, memoryMB *int32) (int64, int64, *api.APIError) {
 	cpu := constants.DefaultTemplateCPU
 	ramMB := constants.DefaultTemplateMemory
 
@@ -23,10 +23,10 @@ func LimitResources(tier *queries.Tier, cpuCount, memoryMB *int32) (int64, int64
 			}
 		}
 
-		if cpu > tier.MaxVcpu {
+		if cpu > limits.MaxVcpu {
 			return 0, 0, &api.APIError{
-				Err:       fmt.Errorf("CPU count exceeds team limits (%d)", tier.MaxVcpu),
-				ClientMsg: fmt.Sprintf("CPU count can't be higher than %d (if you need to increase this limit, please contact support)", tier.MaxVcpu),
+				Err:       fmt.Errorf("CPU count exceeds team limits (%d)", limits.MaxVcpu),
+				ClientMsg: fmt.Sprintf("CPU count can't be higher than %d (if you need to increase this limit, please contact support)", limits.MaxVcpu),
 				Code:      http.StatusBadRequest,
 			}
 		}
@@ -51,10 +51,10 @@ func LimitResources(tier *queries.Tier, cpuCount, memoryMB *int32) (int64, int64
 			}
 		}
 
-		if ramMB > tier.MaxRamMb {
+		if ramMB > limits.MaxRamMb {
 			return 0, 0, &api.APIError{
-				Err:       fmt.Errorf("memory exceeds team limits (%d MiB)", tier.MaxRamMb),
-				ClientMsg: fmt.Sprintf("Memory can't be higher than %d MiB (if you need to increase this limit, please contact support)", tier.MaxRamMb),
+				Err:       fmt.Errorf("memory exceeds team limits (%d MiB)", limits.MaxRamMb),
+				ClientMsg: fmt.Sprintf("Memory can't be higher than %d MiB (if you need to increase this limit, please contact support)", limits.MaxRamMb),
 				Code:      http.StatusBadRequest,
 			}
 		}

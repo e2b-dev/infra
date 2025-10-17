@@ -24,7 +24,7 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 	}
 
 	dbTeamID := templateDB.TeamID.String()
-	team, _, apiErr := a.GetTeamAndTier(c, &dbTeamID)
+	team, apiErr := a.GetTeamAndLimits(c, &dbTeamID)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)

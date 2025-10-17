@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
@@ -75,7 +75,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	ctx := c.Request.Context()
 	sandboxID = utils.ShortID(sandboxID)
 
-	team := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo).Team
+	team := c.Value(auth.TeamContextKey).(*types.Team)
 	teamID := team.ID
 
 	telemetry.SetAttributes(ctx,
