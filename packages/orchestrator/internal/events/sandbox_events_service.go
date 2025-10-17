@@ -112,14 +112,10 @@ func (es *SandboxEventsService) Close(ctx context.Context) error {
 }
 
 func (es *SandboxEventsService) handleClickhouseBatcherEvent(ctx context.Context, event events.SandboxEvent) {
-	sandboxLifeCycleEventsWriteFlag := true
-
-	/*
-		sandboxLifeCycleEventsWriteFlag, flagErr := es.featureFlags.BoolFlag(ctx, featureflags.SandboxLifeCycleEventsWriteFlagName, featureflags.SandboxContext(event.SandboxID))
-		if flagErr != nil {
-			es.logger.Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
-		}
-	*/
+	sandboxLifeCycleEventsWriteFlag, flagErr := es.featureFlags.BoolFlag(ctx, featureflags.SandboxLifeCycleEventsWriteFlagName, featureflags.SandboxContext(event.SandboxID))
+	if flagErr != nil {
+		es.logger.Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
+	}
 
 	eventData := ""
 	eventDataJson, err := json.Marshal(event.EventData)
@@ -130,8 +126,6 @@ func (es *SandboxEventsService) handleClickhouseBatcherEvent(ctx context.Context
 	}
 
 	if sandboxLifeCycleEventsWriteFlag {
-		println("Writing sandbox event to ClickHouse:", event.Type, "for sandbox ID:", event.SandboxID)
-
 		err := es.batcher.Push(clickhouse.SandboxEvent{
 			Type:      event.Type,
 			Version:   event.Version,
