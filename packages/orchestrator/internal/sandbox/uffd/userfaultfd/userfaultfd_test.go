@@ -138,6 +138,21 @@ func TestUffdWriteProtection(t *testing.T) {
 			},
 		},
 		{
+			name:          "standard 4k page, single write then read on first page",
+			pagesize:      header.PageSize,
+			numberOfPages: 32,
+			operations: []operation{
+				{
+					offset: 0,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0,
+					mode:   operationModeRead,
+				},
+			},
+		},
+		{
 			name:          "standard 4k page, single read then write on non-first page",
 			pagesize:      header.PageSize,
 			numberOfPages: 32,
@@ -205,6 +220,21 @@ func TestUffdWriteProtection(t *testing.T) {
 				{
 					offset: 3 * header.HugepageSize,
 					mode:   operationModeWrite,
+				},
+			},
+		},
+		{
+			name:          "hugepage, single write then read on non-first page",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 8,
+			operations: []operation{
+				{
+					offset: 3 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 3 * header.HugepageSize,
+					mode:   operationModeRead,
 				},
 			},
 		},
