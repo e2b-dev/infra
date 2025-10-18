@@ -1,6 +1,6 @@
 package memory
 
-// Region is a mapping of a region of memory in the guest to a region of memory on the host.
+// Region is a mapping of a region of memory of the guest to a region of memory on the host.
 // The serialization is based on the Firecracker UFFD protocol communication.
 type Region struct {
 	BaseHostVirtAddr uintptr `json:"base_host_virt_addr"`
@@ -11,8 +11,8 @@ type Region struct {
 	PageSize uintptr `json:"page_size_kib"`
 }
 
-// End returns the end address of the region in bytes.
-// The end address is exclusive.
+// endOffset returns the end offset of the region in bytes.
+// The end offset is exclusive.
 func (r *Region) endOffset() int64 {
 	return int64(r.Offset + r.Size)
 }

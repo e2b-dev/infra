@@ -31,7 +31,7 @@ type Userfaultfd struct {
 	writeRequests   *block.Tracker
 	wpRequests      *block.Tracker
 
-	writeRequestCounter utils.WaitCounter
+	writeRequestCounter *utils.SettleCounter
 	wg                  errgroup.Group
 
 	logger *zap.Logger
@@ -48,7 +48,7 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, pagesize int64, m *memor
 		wpRequests:          block.NewTracker(pagesize),
 		disabled:            atomic.Bool{},
 		ma:                  m,
-		writeRequestCounter: utils.WaitCounter{},
+		writeRequestCounter: utils.NewZeroSettleCounter(),
 		logger:              logger,
 	}, nil
 }

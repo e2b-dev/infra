@@ -5,5 +5,5 @@ import (
 )
 
 func TestMapping(t *testing.T) {
-
+	t.Fatal("not implemented")
 }

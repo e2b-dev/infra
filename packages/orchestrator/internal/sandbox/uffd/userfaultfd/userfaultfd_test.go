@@ -101,6 +101,9 @@ func TestUffdMissing(t *testing.T) {
 				}
 			}
 
+			err := h.writeWaitCounter.Wait(t.Context())
+			require.NoError(t, err)
+
 			expectedReadOffsets := getOperationsOffsets(tt.operations, operationModeRead)
 			assert.Equal(t, expectedReadOffsets, h.getReadOffsets(), "checking which pages were faulted)")
 		})
@@ -239,11 +242,15 @@ func TestUffdWriteProtection(t *testing.T) {
 				}
 			}
 
+			err := h.writeWaitCounter.Wait(t.Context())
+			require.NoError(t, err)
+
 			expectedWriteOffsets := getOperationsOffsets(tt.operations, operationModeWrite)
 			assert.Equal(t, expectedWriteOffsets, h.getWriteOffsets(), "checking which pages were written to")
 
 			expectedReadOffsets := getOperationsOffsets(tt.operations, operationModeRead)
-			assert.Equal(t, expectedReadOffsets, h.getReadOffsets(), "checking which pages were faulted)")
+			offsets := h.getReadOffsets()
+			assert.Equal(t, expectedReadOffsets, offsets, "checking which pages were faulted)")
 		})
 	}
 }
@@ -269,7 +276,7 @@ type testConfig struct {
 }
 
 type testHandler struct {
-	writeWaitCounter *utils.WaitCounter
+	writeWaitCounter *utils.SettleCounter
 	memoryArea       *[]byte
 	pagesize         uint64
 	data             *testutils.MemorySlicer
@@ -313,6 +320,7 @@ func (h *testHandler) executeRead(ctx context.Context, op operation) error {
 
 	if !bytes.Equal(readBytes, expectedBytes) {
 		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
+
 		return fmt.Errorf("content mismatch: want %q, got %q at index %d", want, got, idx)
 	}
 
@@ -366,7 +374,7 @@ func configureTest(t *testing.T, tt testConfig) *testHandler {
 
 	logger := testutils.NewTestLogger(t)
 
-	uffd, err := newUserfaultfd(syscall.O_CLOEXEC|syscall.O_NONBLOCK, data, data.BlockSize(), m, logger)
+	uffd, err := newUserfaultfd(syscall.O_CLOEXEC|syscall.O_NONBLOCK, data, int64(tt.pagesize), m, logger)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -413,7 +421,7 @@ func configureTest(t *testing.T, tt testConfig) *testHandler {
 		pagesize:         tt.pagesize,
 		dirty:            uffd.dirty,
 		data:             data,
-		writeWaitCounter: &uffd.writeRequestCounter,
+		writeWaitCounter: uffd.writeRequestCounter,
 		uffd:             uffd,
 	}
 }

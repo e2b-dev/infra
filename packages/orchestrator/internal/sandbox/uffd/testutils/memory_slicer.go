@@ -11,7 +11,6 @@ import (
 type MemorySlicer struct {
 	content  []byte
 	pagesize int64
-	size     int64
 
 	accessed *block.Tracker
 }
@@ -22,7 +21,6 @@ func newMemorySlicer(content []byte, pagesize int64) *MemorySlicer {
 	return &MemorySlicer{
 		content:  content,
 		pagesize: pagesize,
-		size:     int64(len(content)),
 		accessed: block.NewTracker(pagesize),
 	}
 }
@@ -36,11 +34,7 @@ func (s *MemorySlicer) Slice(_ context.Context, offset, size int64) ([]byte, err
 }
 
 func (s *MemorySlicer) Size() (int64, error) {
-	return s.size, nil
-}
-
-func (s *MemorySlicer) BlockSize() int64 {
-	return s.pagesize
+	return int64(len(s.content)), nil
 }
 
 func (s *MemorySlicer) Content() []byte {
