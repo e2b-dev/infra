@@ -18,9 +18,15 @@ import (
 var commitSHA string
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	err := constants.CheckRequired()
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("required environment variables are not set: %w", err)
 	}
 
 	port := flag.Int("port", 5000, "Port for test HTTP server")
@@ -32,10 +38,12 @@ func main() {
 
 	dbPool, err := db.NewPool(ctx, db.WithMinIdle(1), db.WithMaxConnections(1))
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("failed to create db pool: %w", err)
 	}
+	defer dbPool.Close()
 
 	dbConn := db.Open(dbPool)
+	defer dbConn.Close()
 
 	store := handlers.NewStore(dbConn)
 
@@ -100,13 +108,9 @@ func main() {
 
 	log.Printf("Starting server on port: %d\n", *port)
 
-	err = http.ListenAndServe(fmt.Sprintf(":%s", strconv.Itoa(*port)), nil)
-
-	// clean up
-	dbConn.Close()
-	dbPool.Close()
-
-	if err != nil {
-		log.Fatal(err)
+	if err := http.ListenAndServe(fmt.Sprintf(":%s", strconv.Itoa(*port)), nil); err != nil {
+		return fmt.Errorf("failed to start server: %w", err)
 	}
+
+	return nil
 }
