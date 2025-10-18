@@ -13,10 +13,9 @@ import (
 )
 
 type AccessToken struct {
-	AccessToken string
-	UserID      uuid.UUID
-	CreatedAt   time.Time
-	ID          *uuid.UUID
+	UserID    uuid.UUID
+	CreatedAt time.Time
+	ID        uuid.UUID
 	// sensitive
 	AccessTokenHash       string
 	Name                  string
@@ -74,11 +73,11 @@ type EnvBuild struct {
 	TotalDiskSizeMb    *int64
 	KernelVersion      string
 	FirecrackerVersion string
-	EnvID              *string
+	EnvID              string
 	EnvdVersion        *string
 	ReadyCmd           *string
 	ClusterNodeID      string
-	Reason             types.JSONBStringMap
+	Reason             types.BuildReason
 }
 
 type Snapshot struct {
@@ -93,6 +92,7 @@ type Snapshot struct {
 	OriginNodeID        string
 	AllowInternetAccess *bool
 	AutoPause           bool
+	TeamID              uuid.UUID
 }
 
 type Team struct {
@@ -108,7 +108,6 @@ type Team struct {
 }
 
 type TeamApiKey struct {
-	ApiKey    string
 	CreatedAt time.Time
 	TeamID    uuid.UUID
 	UpdatedAt *time.Time
@@ -133,6 +132,8 @@ type Tier struct {
 	MaxLengthHours      int64
 	MaxVcpu             int64
 	MaxRamMb            int64
+	// The number of concurrent template builds the team can run
+	ConcurrentTemplateBuilds int64
 }
 
 type UsersTeam struct {

@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -18,12 +19,13 @@ const (
 
 type Proxy struct {
 	http.Server
+
 	pool                      *pool.ProxyPool
 	currentServerConnsCounter atomic.Int64
 }
 
 func New(
-	port uint,
+	port uint16,
 	idleTimeout time.Duration,
 	getDestination func(r *http.Request) (*pool.Destination, error),
 ) *Proxy {
@@ -67,8 +69,9 @@ func (p *Proxy) RemoveFromPool(connectionKey string) {
 	p.pool.Close(connectionKey)
 }
 
-func (p *Proxy) ListenAndServe() error {
-	l, err := net.Listen("tcp", p.Addr)
+func (p *Proxy) ListenAndServe(ctx context.Context) error {
+	var lisCfg net.ListenConfig
+	l, err := lisCfg.Listen(ctx, "tcp", p.Addr)
 	if err != nil {
 		return err
 	}

@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -38,14 +39,14 @@ func (o *Orchestrator) AdminNodes() []*api.Node {
 		}
 	}
 
-	for _, sbx := range o.instanceCache.Items() {
+	for _, sbx := range o.sandboxStore.Items(nil, []sandbox.State{sandbox.StateRunning}) {
 		n, ok := apiNodes[sbx.NodeID]
 		if !ok {
 			zap.L().Error("node for sandbox wasn't found", logger.WithNodeID(sbx.NodeID), logger.WithSandboxID(sbx.SandboxID))
 			continue
 		}
 
-		n.SandboxCount += 1
+		n.SandboxCount++
 	}
 
 	var result []*api.Node
@@ -61,7 +62,7 @@ func (o *Orchestrator) AdminNodes() []*api.Node {
 }
 
 func (o *Orchestrator) AdminNodeDetail(clusterID uuid.UUID, nodeIDOrNomadNodeShortID string) (*api.NodeDetail, error) {
-	n := o.GetNodeByIDOrNomadShortID(nodeIDOrNomadNodeShortID)
+	n := o.GetNodeByIDOrNomadShortID(clusterID, nodeIDOrNomadNodeShortID)
 	if n == nil {
 		return nil, ErrNodeNotFound
 	}
@@ -83,7 +84,7 @@ func (o *Orchestrator) AdminNodeDetail(clusterID uuid.UUID, nodeIDOrNomadNodeSho
 		Metrics:         metrics,
 	}
 
-	for _, sbx := range o.instanceCache.Items() {
+	for _, sbx := range o.sandboxStore.Items(nil, []sandbox.State{sandbox.StateRunning}) {
 		if sbx.NodeID == n.ID && sbx.ClusterID == n.ClusterID {
 			var metadata *api.SandboxMetadata
 			if sbx.Metadata != nil {
@@ -97,7 +98,7 @@ func (o *Orchestrator) AdminNodeDetail(clusterID uuid.UUID, nodeIDOrNomadNodeSho
 				CpuCount:   api.CPUCount(sbx.VCpu),
 				MemoryMB:   api.MemoryMB(sbx.RamMB),
 				DiskSizeMB: api.DiskSizeMB(sbx.TotalDiskSizeMB),
-				EndAt:      sbx.GetEndTime(),
+				EndAt:      sbx.EndTime,
 				Metadata:   metadata,
 				SandboxID:  sbx.SandboxID,
 				StartedAt:  sbx.StartTime,

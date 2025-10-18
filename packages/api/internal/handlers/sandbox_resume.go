@@ -14,7 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -43,7 +43,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
-	timeout := instance.InstanceExpiration
+	timeout := sandbox.SandboxTimeoutDefault
 	if body.Timeout != nil {
 		timeout = time.Duration(*body.Timeout) * time.Second
 
@@ -55,27 +55,42 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	}
 
 	sandboxID = utils.ShortID(sandboxID)
-
-	// This is also checked during in orchestrator.CreateSandbox, where the sandbox ID is reserved,
-	// but we want to do a quick check here to return an error quickly if possible.
-	sbxCache, err := a.orchestrator.GetSandbox(sandboxID)
+	sandboxData, err := a.orchestrator.GetSandbox(sandboxID)
 	if err == nil {
-		zap.L().Debug("Sandbox is already running",
-			logger.WithSandboxID(sandboxID),
-			zap.Time("end_time", sbxCache.GetEndTime()),
-			zap.Time("start_time", sbxCache.StartTime),
-			zap.String("node_id", sbxCache.NodeID),
-		)
-		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox %s is already running", sandboxID))
+		switch sandboxData.State {
+		case sandbox.StatePausing:
+			zap.L().Debug("Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
+			err = a.orchestrator.WaitForStateChange(ctx, sandboxID)
+			if err != nil {
+				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error waiting for sandbox to pause")
+				return
+			}
+		case sandbox.StateKilling:
+			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found")
+			return
+		case sandbox.StateRunning:
+			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox %s is already running", sandboxID))
 
-		return
+			zap.L().Debug("Sandbox is already running",
+				logger.WithSandboxID(sandboxID),
+				zap.Time("end_time", sandboxData.EndTime),
+				zap.Time("start_time", sandboxData.StartTime),
+				zap.String("node_id", sandboxData.NodeID),
+			)
+
+			return
+		default:
+			zap.L().Error("Sandbox is in an unknown state", logger.WithSandboxID(sandboxID), zap.String("state", string(sandboxData.State)))
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Sandbox is in an unknown state")
+			return
+		}
 	}
 
 	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamInfo.Team.ID})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			zap.L().Debug("Snapshot not found", logger.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox snapshot not found")
+			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found")
 			return
 		}
 
@@ -93,19 +108,6 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 	nodeID := &snap.OriginNodeID
 
-	// Wait for any pausing for this sandbox in progress.
-	pausedOnNode, err := a.orchestrator.WaitForPause(ctx, sandboxID)
-	if err != nil && !errors.Is(err, instance.ErrPausingInstanceNotFound) {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error while pausing sandbox %s: %s", sandboxID, err))
-
-		return
-	}
-
-	if err == nil {
-		// If the pausing was in progress, prefer to restore on the node where the pausing happened.
-		nodeID = &pausedOnNode
-	}
-
 	alias := ""
 	if len(lastSnapshot.Aliases) > 0 {
 		alias = lastSnapshot.Aliases[0]
@@ -113,7 +115,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandboxID,
-		TemplateID: *build.EnvID,
+		TemplateID: build.EnvID,
 		TeamID:     teamInfo.Team.ID.String(),
 	}).Debug("Started resuming sandbox")
 
@@ -121,7 +123,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	if snap.EnvSecure {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
 		if tokenErr != nil {
-			zap.L().Error("Secure envd access token error", zap.Error(tokenErr.Err), logger.WithTemplateID(*build.EnvID), logger.WithBuildID(build.ID.String()))
+			zap.L().Error("Secure envd access token error", zap.Error(tokenErr.Err), logger.WithTemplateID(build.EnvID), logger.WithBuildID(build.ID.String()), logger.WithSandboxID(sandboxID))
 			a.sendAPIStoreError(c, tokenErr.Code, tokenErr.ClientMsg)
 			return
 		}
@@ -146,7 +148,6 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		envdAccessToken,
 		snap.AllowInternetAccess,
 	)
-
 	if createErr != nil {
 		zap.L().Error("Failed to resume sandbox", zap.Error(createErr.Err))
 		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)

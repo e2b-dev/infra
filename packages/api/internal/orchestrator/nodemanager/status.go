@@ -34,10 +34,8 @@ func (n *Node) Status() api.NodeStatus {
 	case connectivity.Connecting:
 		return api.NodeStatusConnecting
 	default:
-		break
+		return n.status
 	}
-
-	return n.status
 }
 
 func (n *Node) setStatus(status api.NodeStatus) {
@@ -53,7 +51,7 @@ func (n *Node) setStatus(status api.NodeStatus) {
 func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
 	nodeStatus, ok := ApiNodeToOrchestratorStateMapper[s]
 	if !ok {
-		zap.L().Error("Unknown service info status", zap.Any("status", s), logger.WithNodeID(n.ID))
+		zap.L().Error("Unknown service info status", zap.String("status", string(s)), logger.WithNodeID(n.ID))
 		return fmt.Errorf("unknown service info status: %s", s)
 	}
 

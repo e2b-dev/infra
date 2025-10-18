@@ -5,23 +5,23 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	middleware "github.com/oapi-codegen/gin-middleware"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-var adminToken = os.Getenv("ADMIN_TOKEN")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/auth")
 
 type AuthorizationHeaderMissingError struct{}
 
@@ -118,20 +118,22 @@ func (a *commonAuthenticator[T]) SecuritySchemeName() string {
 	return a.securitySchemeName
 }
 
-func adminValidationFunction(_ context.Context, token string) (struct{}, *api.APIError) {
-	if token != adminToken {
-		return struct{}{}, &api.APIError{
-			Code:      http.StatusUnauthorized,
-			Err:       errors.New("invalid access token"),
-			ClientMsg: "Invalid Access token.",
+func adminValidationFunction(adminToken string) func(context.Context, string) (struct{}, *api.APIError) {
+	return func(_ context.Context, token string) (struct{}, *api.APIError) {
+		if token != adminToken {
+			return struct{}{}, &api.APIError{
+				Code:      http.StatusUnauthorized,
+				Err:       errors.New("invalid access token"),
+				ClientMsg: "Invalid Access token.",
+			}
 		}
-	}
 
-	return struct{}{}, nil
+		return struct{}{}, nil
+	}
 }
 
 func CreateAuthenticationFunc(
-	tracer trace.Tracer,
+	config cfg.Config,
 	teamValidationFunction func(context.Context, string) (authcache.AuthTeamInfo, *api.APIError),
 	userValidationFunction func(context.Context, string) (uuid.UUID, *api.APIError),
 	supabaseTokenValidationFunction func(context.Context, string) (uuid.UUID, *api.APIError),
@@ -189,7 +191,7 @@ func CreateAuthenticationFunc(
 				prefix:       "",
 				removePrefix: "",
 			},
-			validationFunction: adminValidationFunction,
+			validationFunction: adminValidationFunction(config.AdminToken),
 			contextKey:         "",
 			errorMessage:       "Invalid Access token.",
 		},

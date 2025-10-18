@@ -5,11 +5,18 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 init:
 	brew install protobuf
 
+openapi := ../../spec/openapi-hyperloop.yml
+codegen := go tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
+
 .PHONY: generate
 generate:
 	@echo "Generating..."
 	docker build -t proto-gen -f generate.Dockerfile .
 	docker run --rm -v .:/workspace -v ./../shared/pkg/grpc:/shared/pkg/grpc proto-gen
+	@echo "Generating hyperloop api..."
+	$(codegen) -old-config-style -generate gin --package api $(openapi) > ../shared/pkg/http/hyperloop/api.gen.go
+	$(codegen) -old-config-style -generate types --package api $(openapi) > ../shared/pkg/http/hyperloop/types.gen.go
+	$(codegen) -old-config-style -generate spec --package api $(openapi) > ../shared/pkg/http/hyperloop/spec.gen.go
 	@echo "Done"
 
 .PHONY: build
@@ -48,6 +55,16 @@ run-debug:
 	OTEL_COLLECTOR_GRPC_ENDPOINT=$(OTEL_COLLECTOR_GRPC_ENDPOINT) \
 	MAX_PARALLEL_MEMFILE_SNAPSHOTTING=$(MAX_PARALLEL_MEMFILE_SNAPSHOTTING) \
 	./bin/orchestrator
+
+define setup_local_env
+	$(eval include .env.local)
+	$(eval export $(shell sed 's/=.*//' .env.local))
+endef
+
+.PHONY: run-local
+run-local:
+	$(call setup_local_env)
+	NODE_ID=$$(hostname) ./bin/orchestrator --port 3000
 
 .PHONY: upload/clean-nfs-cache
 upload/clean-nfs-cache:

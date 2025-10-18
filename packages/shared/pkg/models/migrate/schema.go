@@ -12,7 +12,6 @@ var (
 	// AccessTokensColumns holds the columns for the "access_tokens" table.
 	AccessTokensColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true, Default: "gen_random_uuid()"},
-		{Name: "access_token", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "access_token_hash", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "access_token_prefix", Type: field.TypeString, SchemaType: map[string]string{"postgres": "character varying(10)"}},
 		{Name: "access_token_length", Type: field.TypeInt},
@@ -30,7 +29,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "access_tokens_users_access_tokens",
-				Columns:    []*schema.Column{AccessTokensColumns[9]},
+				Columns:    []*schema.Column{AccessTokensColumns[8]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.Cascade,
 			},
@@ -121,8 +120,8 @@ var (
 		{Name: "firecracker_version", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "envd_version", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "cluster_node_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
-		{Name: "reason", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
-		{Name: "env_id", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "reason", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "env_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 	}
 	// EnvBuildsTable holds the schema information for the "env_builds" table.
 	EnvBuildsTable = &schema.Table{
@@ -149,6 +148,7 @@ var (
 		{Name: "env_secure", Type: field.TypeBool, Default: false},
 		{Name: "auto_pause", Type: field.TypeBool, Default: false},
 		{Name: "origin_node_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "team_id", Type: field.TypeUUID},
 		{Name: "allow_internet_access", Type: field.TypeBool, Nullable: true},
 		{Name: "env_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 	}
@@ -160,7 +160,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "snapshots_envs_snapshots",
-				Columns:    []*schema.Column{SnapshotsColumns[10]},
+				Columns:    []*schema.Column{SnapshotsColumns[11]},
 				RefColumns: []*schema.Column{EnvsColumns[0]},
 				OnDelete:   schema.Cascade,
 			},
@@ -195,7 +195,6 @@ var (
 	// TeamAPIKeysColumns holds the columns for the "team_api_keys" table.
 	TeamAPIKeysColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true, Default: "gen_random_uuid()"},
-		{Name: "api_key", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "character varying(44)"}},
 		{Name: "api_key_hash", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "character varying(64)"}},
 		{Name: "api_key_prefix", Type: field.TypeString, SchemaType: map[string]string{"postgres": "character varying(10)"}},
 		{Name: "api_key_length", Type: field.TypeInt},
@@ -216,13 +215,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "team_api_keys_teams_team_api_keys",
-				Columns:    []*schema.Column{TeamAPIKeysColumns[11]},
+				Columns:    []*schema.Column{TeamAPIKeysColumns[10]},
 				RefColumns: []*schema.Column{TeamsColumns[0]},
 				OnDelete:   schema.Cascade,
 			},
 			{
 				Symbol:     "team_api_keys_users_created_api_keys",
-				Columns:    []*schema.Column{TeamAPIKeysColumns[12]},
+				Columns:    []*schema.Column{TeamAPIKeysColumns[11]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -234,6 +233,7 @@ var (
 		{Name: "name", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "disk_mb", Type: field.TypeInt64, Default: "512"},
 		{Name: "concurrent_instances", Type: field.TypeInt64, Comment: "The number of instances the team can run concurrently"},
+		{Name: "concurrent_template_builds", Type: field.TypeInt64, Comment: "The number of concurrent template builds the team can run"},
 		{Name: "max_length_hours", Type: field.TypeInt64},
 	}
 	// TiersTable holds the schema information for the "tiers" table.
@@ -325,8 +325,9 @@ func init() {
 	TeamAPIKeysTable.Annotation = &entsql.Annotation{}
 	TiersTable.Annotation = &entsql.Annotation{}
 	TiersTable.Annotation.Checks = map[string]string{
-		"tiers_concurrent_sessions_check": "concurrent_instances > 0",
-		"tiers_disk_mb_check":             "disk_mb > 0",
+		"tiers_concurrent_sessions_check":        "concurrent_instances > 0",
+		"tiers_concurrent_template_builds_check": "concurrent_template_builds > 0",
+		"tiers_disk_mb_check":                    "disk_mb > 0",
 	}
 	UsersTable.Annotation = &entsql.Annotation{}
 	UsersTeamsTable.ForeignKeys[0].RefTable = UsersTable

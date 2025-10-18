@@ -45,6 +45,7 @@ func (t *TemplateManagerProvider) GetLogs(ctx context.Context, templateID string
 			Timestamp: entry.GetTimestamp().AsTime(),
 			Message:   entry.GetMessage(),
 			Level:     logs.LogLevel(entry.GetLevel()),
+			Fields:    entry.GetFields(),
 		})
 	}
 

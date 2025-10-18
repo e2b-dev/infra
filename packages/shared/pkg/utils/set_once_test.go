@@ -74,7 +74,7 @@ func TestSetOnceWait(t *testing.T) {
 func TestSetOnceWaitWithContext(t *testing.T) {
 	setOnce := NewSetOnce[int]()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	wg := sync.WaitGroup{}
@@ -96,7 +96,7 @@ func TestSetOnceWaitWithContext(t *testing.T) {
 func TestSetOnceWaitWithContextCanceled(t *testing.T) {
 	setOnce := NewSetOnce[int]()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	wg := sync.WaitGroup{}
@@ -154,7 +154,7 @@ func TestSetOnceSetResultConcurrent(t *testing.T) {
 func TestSetOnceSetResultConcurrentWithContext(t *testing.T) {
 	setOnce := NewSetOnce[int]()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	wg1 := sync.WaitGroup{}
@@ -202,7 +202,7 @@ func TestSetOnceConcurrentReads(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(numReaders)
 
-	for i := 0; i < numReaders; i++ {
+	for range numReaders {
 		go func() {
 			defer wg.Done()
 			value, err := setOnce.Wait()
@@ -218,7 +218,7 @@ func TestSetOnceConcurrentReadsWithContext(t *testing.T) {
 	setOnce := NewSetOnce[int]()
 	const numReaders = 100
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	// Set value first
@@ -228,7 +228,7 @@ func TestSetOnceConcurrentReadsWithContext(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(numReaders)
 
-	for i := 0; i < numReaders; i++ {
+	for range numReaders {
 		go func() {
 			defer wg.Done()
 			value, err := setOnce.WaitWithContext(ctx)
@@ -251,7 +251,7 @@ func TestSetOnceConcurrentReadersBeforeWrite(t *testing.T) {
 	results := make(chan int, numReaders)
 
 	// Launch readers
-	for i := 0; i < numReaders; i++ {
+	for range numReaders {
 		go func() {
 			defer wg.Done()
 			value, err := setOnce.Wait()
@@ -284,7 +284,7 @@ func TestSetOnceConcurrentReadWriteRace(t *testing.T) {
 	wg.Add(numOperations * 2) // For both readers and writers
 
 	// Launch concurrent readers and writers
-	for i := 0; i < numOperations; i++ {
+	for range numOperations {
 		// Reader
 		go func() {
 			defer wg.Done()

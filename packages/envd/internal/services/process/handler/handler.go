@@ -46,7 +46,7 @@ type Handler struct {
 
 	cancel context.CancelFunc
 
-	outCtx    context.Context // nolint:containedctx // todo: refactor so this can be removed
+	outCtx    context.Context //nolint:containedctx // todo: refactor so this can be removed
 	outCancel context.CancelFunc
 
 	stdin io.WriteCloser
@@ -143,11 +143,11 @@ func New(
 		// The pty should ideally start only in the Start method, but the package does not support that and we would have to code it manually.
 		// The output of the pty should correctly be passed though.
 		tty, err := pty.StartWithSize(cmd, &pty.Winsize{
-			Cols: uint16(req.GetPty().GetSize().Cols),
-			Rows: uint16(req.GetPty().GetSize().Rows),
+			Cols: uint16(req.GetPty().GetSize().GetCols()),
+			Rows: uint16(req.GetPty().GetSize().GetRows()),
 		})
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("error starting pty with command '%s' in dir '%s' with '%d' cols and '%d' rows: %w", cmd, cmd.Dir, req.GetPty().GetSize().Cols, req.GetPty().GetSize().Rows, err))
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("error starting pty with command '%s' in dir '%s' with '%d' cols and '%d' rows: %w", cmd, cmd.Dir, req.GetPty().GetSize().GetCols(), req.GetPty().GetSize().GetRows(), err))
 		}
 
 		outWg.Add(1)
@@ -271,12 +271,16 @@ func New(
 			}
 		}()
 
-		stdin, err := cmd.StdinPipe()
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stdin pipe for command '%s': %w", cmd, err))
-		}
+		// For backwards compatibility we still set the stdin if not explicitly disabled
+		// If stdin is disabled, the process will use /dev/null as stdin
+		if req.Stdin == nil || req.GetStdin() == true {
+			stdin, err := cmd.StdinPipe()
+			if err != nil {
+				return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stdin pipe for command '%s': %w", cmd, err))
+			}
 
-		h.stdin = stdin
+			h.stdin = stdin
+		}
 	}
 
 	go func() {
@@ -313,6 +317,10 @@ func (p *Handler) ResizeTty(size *pty.Winsize) error {
 func (p *Handler) WriteStdin(data []byte) error {
 	if p.tty != nil {
 		return fmt.Errorf("tty assigned to process — input should be written to the pty, not the stdin")
+	}
+
+	if p.stdin == nil {
+		return fmt.Errorf("stdin not enabled — set stdin to true when starting the command")
 	}
 
 	_, err := p.stdin.Write(data)

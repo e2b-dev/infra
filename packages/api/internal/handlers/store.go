@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,13 +13,13 @@ import (
 	nomadapi "github.com/hashicorp/nomad/api"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"github.com/redis/go-redis/v9"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
+	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
@@ -32,27 +30,19 @@ import (
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-var supabaseJWTSecretsString = strings.TrimSpace(os.Getenv("SUPABASE_JWT_SECRETS"))
-
 // minSupabaseJWTSecretLength is the minimum length of a secret used to verify the Supabase JWT.
 // This is a security measure to prevent the use of weak secrets (like empty).
 const minSupabaseJWTSecretLength = 16
 
-// supabaseJWTSecrets is a list of secrets used to verify the Supabase JWT.
-// More secrets are possible in the case of JWT secret rotation where we need to accept
-// tokens signed with the old secret for some time.
-var supabaseJWTSecrets = strings.Split(supabaseJWTSecretsString, ",")
-
 type APIStore struct {
 	Healthy                  bool
+	config                   cfg.Config
 	posthog                  *analyticscollector.PosthogClient
-	Tracer                   trace.Tracer
 	Telemetry                *telemetry.Client
 	orchestrator             *orchestrator.Orchestrator
 	templateManager          *template_manager.TemplateManager
@@ -68,9 +58,7 @@ type APIStore struct {
 	clustersPool             *edge.Pool
 }
 
-func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
-	tracer := tel.TracerProvider.Tracer("api")
-
+func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) *APIStore {
 	zap.L().Info("Initializing API store and services")
 
 	dbClient, err := db.NewClient(40, 20)
@@ -87,7 +75,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 
 	var clickhouseStore clickhouse.Clickhouse
 
-	clickhouseConnectionString := strings.TrimSpace(os.Getenv("CLICKHOUSE_CONNECTION_STRING"))
+	clickhouseConnectionString := config.ClickhouseConnectionString
 	if clickhouseConnectionString == "" {
 		clickhouseStore = clickhouse.NewNoopClient()
 	} else {
@@ -97,14 +85,14 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		}
 	}
 
-	posthogClient, posthogErr := analyticscollector.NewPosthogClient()
+	posthogClient, posthogErr := analyticscollector.NewPosthogClient(config.PosthogAPIKey)
 	if posthogErr != nil {
 		zap.L().Fatal("Initializing Posthog client", zap.Error(posthogErr))
 	}
 
 	nomadConfig := &nomadapi.Config{
-		Address:  env.GetEnv("NOMAD_ADDRESS", "http://localhost:4646"),
-		SecretID: os.Getenv("NOMAD_TOKEN"),
+		Address:  config.NomadAddress,
+		SecretID: config.NomadToken,
 	}
 
 	nomadClient, err := nomadapi.NewClient(nomadConfig)
@@ -113,7 +101,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 	}
 
 	var redisClient redis.UniversalClient
-	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
+	if redisClusterUrl := config.RedisClusterURL; redisClusterUrl != "" {
 		// For managed Redis Cluster in GCP we should use Cluster Client, because
 		// > Redis node endpoints can change and can be recycled as nodes are added and removed over time.
 		// https://cloud.google.com/memorystore/docs/cluster/cluster-node-specification#cluster_endpoints
@@ -122,7 +110,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 			Addrs:        []string{redisClusterUrl},
 			MinIdleConns: 1,
 		})
-	} else if rurl := os.Getenv("REDIS_URL"); rurl != "" {
+	} else if rurl := config.RedisURL; rurl != "" {
 		redisClient = redis.NewClient(&redis.Options{
 			Addr:         rurl,
 			MinIdleConns: 1,
@@ -140,7 +128,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		zap.L().Info("Connected to Redis cluster")
 	}
 
-	clustersPool, err := edge.NewPool(ctx, tel, sqlcDB, tracer)
+	clustersPool, err := edge.NewPool(ctx, tel, sqlcDB, config)
 	if err != nil {
 		zap.L().Fatal("initializing edge clusters pool failed", zap.Error(err))
 	}
@@ -150,22 +138,22 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
 
-	orch, err := orchestrator.New(ctx, tel, tracer, nomadClient, posthogClient, redisClient, dbClient, clustersPool, featureFlags)
+	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, dbClient, sqlcDB, clustersPool, featureFlags)
 	if err != nil {
 		zap.L().Fatal("Initializing Orchestrator client", zap.Error(err))
 	}
 
 	authCache := authcache.NewTeamAuthCache()
 	templateCache := templatecache.NewTemplateCache(sqlcDB)
-	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
+	templateSpawnCounter := utils.NewTemplateSpawnCounter(ctx, time.Minute, sqlcDB)
 
-	accessTokenGenerator, err := sandbox.NewEnvdAccessTokenGenerator()
+	accessTokenGenerator, err := sandbox.NewEnvdAccessTokenGenerator(config.SandboxAccessTokenHashSeed)
 	if err != nil {
 		zap.L().Fatal("Initializing access token generator failed", zap.Error(err))
 	}
 
-	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
-	templateManager, err := template_manager.New(ctx, tracer, tel.TracerProvider, tel.MeterProvider, dbClient, sqlcDB, clustersPool, templateBuildsCache, templateCache)
+	templateBuildsCache := templatecache.NewTemplateBuildCache(sqlcDB)
+	templateManager, err := template_manager.New(config, tel.TracerProvider, tel.MeterProvider, dbClient, sqlcDB, clustersPool, templateBuildsCache, templateCache)
 	if err != nil {
 		zap.L().Fatal("Initializing Template manager client", zap.Error(err))
 	}
@@ -174,13 +162,13 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 	go templateManager.BuildsStatusPeriodicalSync(ctx)
 
 	a := &APIStore{
+		config:                   config,
 		Healthy:                  false,
 		orchestrator:             orch,
 		templateManager:          templateManager,
 		db:                       dbClient,
 		sqlcDB:                   sqlcDB,
 		Telemetry:                tel,
-		Tracer:                   tracer,
 		posthog:                  posthogClient,
 		templateCache:            templateCache,
 		templateBuildsCache:      templateBuildsCache,
@@ -213,7 +201,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 }
 
 func (a *APIStore) Close(ctx context.Context) error {
-	a.templateSpawnCounter.Close()
+	a.templateSpawnCounter.Close(ctx)
 
 	errs := []error{}
 	if err := a.posthog.Close(); err != nil {
@@ -344,7 +332,7 @@ func getJWTClaims(secrets []string, token string) (*supabaseClaims, error) {
 		}
 
 		// Parse the token with the custom claims.
-		token, err := jwt.ParseWithClaims(token, &supabaseClaims{}, func(token *jwt.Token) (interface{}, error) {
+		token, err := jwt.ParseWithClaims(token, &supabaseClaims{}, func(token *jwt.Token) (any, error) {
 			// Verify that the signing method is HMAC (HS256)
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -371,8 +359,8 @@ func getJWTClaims(secrets []string, token string) (*supabaseClaims, error) {
 	return nil, errors.Join(errs...)
 }
 
-func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
-	claims, err := getJWTClaims(supabaseJWTSecrets, supabaseToken)
+func (a *APIStore) GetUserIDFromSupabaseToken(_ context.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
+	claims, err := getJWTClaims(a.config.SupabaseJWTSecrets, supabaseToken)
 	if err != nil {
 		return uuid.UUID{}, &api.APIError{
 			Err:       err,
@@ -406,7 +394,7 @@ func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) 
 	userID := a.GetUserID(middleware.GetGinContext(ctx))
 
 	cacheKey := fmt.Sprintf("%s-%s", userID.String(), teamID)
-	team, tier, err := a.authCache.GetOrSet(ctx, cacheKey, func(ctx context.Context, key string) (*queries.Team, *queries.Tier, error) {
+	team, tier, err := a.authCache.GetOrSet(ctx, cacheKey, func(ctx context.Context, _ string) (*queries.Team, *queries.Tier, error) {
 		return dbapi.GetTeamByIDAndUserIDAuth(ctx, a.sqlcDB, teamID, userID)
 	})
 	if err != nil {

@@ -13,7 +13,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
-	models "github.com/e2b-dev/infra/packages/shared/pkg/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	userModel "github.com/e2b-dev/infra/packages/shared/pkg/models/user"
@@ -50,7 +50,7 @@ func main() {
 		panic(err)
 	}
 
-	config := map[string]interface{}{}
+	config := map[string]any{}
 	err = json.Unmarshal(data, &config)
 	if err != nil {
 		panic(err)
@@ -113,7 +113,6 @@ func main() {
 	}
 	_, err = database.Client.AccessToken.Create().
 		SetUser(user).
-		SetAccessToken(accessToken).
 		SetAccessTokenHash(accessTokenHash).
 		SetAccessTokenPrefix(accessTokenMask.Prefix).
 		SetAccessTokenLength(accessTokenMask.ValueLength).
@@ -138,7 +137,6 @@ func main() {
 	}
 	_, err = database.Client.TeamAPIKey.Create().
 		SetTeam(t).
-		SetAPIKey(teamAPIKey).
 		SetAPIKeyHash(apiKeyHash).
 		SetAPIKeyPrefix(apiKeyMask.Prefix).
 		SetAPIKeyLength(apiKeyMask.ValueLength).

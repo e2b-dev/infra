@@ -50,7 +50,7 @@ type (
 //
 // Use `sudo modprobe nbd nbds_max=4096` to set the max number of devices to 4096, which is a good default for now.
 type DevicePool struct {
-	ctx  context.Context // nolint:containedctx // todo: refactor so this can be removed
+	ctx  context.Context //nolint:containedctx // todo: refactor so this can be removed
 	exit chan error
 
 	// We use the bitset to speedup the free device lookup.
@@ -98,11 +98,13 @@ func NewDevicePool(ctx context.Context, meterProvider metric.MeterProvider) (*De
 	return pool, nil
 }
 
+var ErrNBDModuleNotLoaded = errors.New("NBD module not loaded")
+
 func getMaxDevices() (uint, error) {
 	data, err := os.ReadFile("/sys/module/nbd/parameters/nbds_max")
 
 	if errors.Is(err, os.ErrNotExist) {
-		return 0, nil
+		return 0, ErrNBDModuleNotLoaded
 	}
 
 	if err != nil {
@@ -131,7 +133,10 @@ func (d *DevicePool) Populate() error {
 			device, err := d.getFreeDeviceSlot()
 			if err != nil {
 				if failedCount%100 == 0 {
-					zap.L().Error("[nbd pool]: failed to create network", zap.Error(err), zap.Int("failed_count", failedCount))
+					zap.L().Error("[nbd pool]: failed to create network",
+						zap.Error(err),
+						zap.Int("failed_count", failedCount),
+					)
 				}
 
 				failedCount++
@@ -256,7 +261,7 @@ func (d *DevicePool) GetDevice(ctx context.Context) (DeviceSlot, error) {
 	}
 
 	slot := <-d.slots
-	d.slotCounter.Add(d.ctx, -1)
+	d.slotCounter.Add(d.ctx, -1) //nolint:contextcheck // TODO: fix this later
 
 	return slot, nil
 }

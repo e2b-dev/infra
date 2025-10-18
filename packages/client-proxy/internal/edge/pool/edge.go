@@ -56,7 +56,7 @@ func NewEdgeInstance(host string, auth authorization.AuthorizationService) (*Edg
 }
 
 func (o *EdgeInstance) sync(ctx context.Context) error {
-	for i := 0; i < edgeSyncMaxRetries; i++ {
+	for range edgeSyncMaxRetries {
 		info := o.GetInfo()
 		res, err := o.client.V1InfoWithResponse(ctx)
 		if err != nil {
@@ -101,18 +101,12 @@ func (o *EdgeInstance) setInfo(info EdgeInstanceInfo) {
 	o.info = info
 }
 
-func (o *EdgeInstance) setStatus(s api.ClusterNodeStatus) {
-	o.mutex.Lock()
-	defer o.mutex.Unlock()
-	o.info.ServiceStatus = s
-}
-
 func newEdgeApiClient(host string, auth authorization.AuthorizationService) (*api.ClientWithResponses, error) {
 	clientURL := fmt.Sprintf("http://%s", host)
 	clientAuthMiddleware := func(c *api.Client) error {
 		c.RequestEditors = append(
 			c.RequestEditors,
-			func(ctx context.Context, req *http.Request) error {
+			func(_ context.Context, req *http.Request) error {
 				req.Header.Set(consts.EdgeApiAuthHeader, auth.GetSecret())
 				return nil
 			},

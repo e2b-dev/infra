@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -17,6 +18,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/filesystem")
 
 const (
 	// creates an inode for every bytes-per-inode byte of space on the disk
@@ -27,7 +30,7 @@ const (
 	ToMBShift = 20
 )
 
-func Make(ctx context.Context, tracer trace.Tracer, rootfsPath string, sizeMb int64, blockSize int64) error {
+func Make(ctx context.Context, rootfsPath string, sizeMb int64, blockSize int64) error {
 	ctx, tuneSpan := tracer.Start(ctx, "make-ext4")
 	defer tuneSpan.End()
 
@@ -38,8 +41,8 @@ func Make(ctx context.Context, tracer trace.Tracer, rootfsPath string, sizeMb in
 	cmd := exec.CommandContext(ctx,
 		"mkfs.ext4",
 		// Matches the final ext4 features used by tar2ext4 tool
-		// But enables resize_inode, sparse_super (default, required for resize_inode)
-		"-O", `^has_journal,^dir_index,^64bit,^dir_nlink,^metadata_csum,ext_attr,sparse_super2,filetype,extent,flex_bg,large_file,huge_file,extra_isize`,
+		// But enables resize_inode, sparse_super (default, required for resize_inode), has_journal (default), metadata_csum (default)
+		"-O", `^dir_index,^64bit,^dir_nlink,ext_attr,sparse_super2,filetype,extent,flex_bg,large_file,huge_file,extra_isize`,
 		"-b", strconv.FormatInt(blockSize, 10),
 		"-m", strconv.FormatInt(reservedBlocksPercentage, 10),
 		"-i", strconv.FormatInt(inodesRatio, 10),
@@ -56,7 +59,7 @@ func Make(ctx context.Context, tracer trace.Tracer, rootfsPath string, sizeMb in
 	return cmd.Run()
 }
 
-func Mount(ctx context.Context, tracer trace.Tracer, rootfsPath string, mountPoint string) error {
+func Mount(ctx context.Context, rootfsPath string, mountPoint string) error {
 	ctx, mountSpan := tracer.Start(ctx, "mount-ext4")
 	defer mountSpan.End()
 
@@ -68,14 +71,10 @@ func Mount(ctx context.Context, tracer trace.Tracer, rootfsPath string, mountPoi
 	mountStderrWriter := telemetry.NewEventWriter(ctx, "stderr")
 	cmd.Stderr = mountStderrWriter
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("error mounting ext4 filesystem: %w", err)
-	}
-
-	return nil
+	return cmd.Run()
 }
 
-func Unmount(ctx context.Context, tracer trace.Tracer, rootfsPath string) error {
+func Unmount(ctx context.Context, rootfsPath string) error {
 	ctx, unmountSpan := tracer.Start(ctx, "unmount-ext4")
 	defer unmountSpan.End()
 
@@ -94,7 +93,7 @@ func Unmount(ctx context.Context, tracer trace.Tracer, rootfsPath string) error 
 	return nil
 }
 
-func MakeWritable(ctx context.Context, tracer trace.Tracer, rootfsPath string) error {
+func MakeWritable(ctx context.Context, rootfsPath string) error {
 	ctx, tuneSpan := tracer.Start(ctx, "tune-ext4-writable")
 	defer tuneSpan.End()
 
@@ -109,7 +108,7 @@ func MakeWritable(ctx context.Context, tracer trace.Tracer, rootfsPath string) e
 	return cmd.Run()
 }
 
-func Enlarge(ctx context.Context, tracer trace.Tracer, rootfsPath string, addSize int64) (int64, error) {
+func Enlarge(ctx context.Context, rootfsPath string, addSize int64) (int64, error) {
 	ctx, resizeSpan := tracer.Start(ctx, "enlarge-ext4")
 	defer resizeSpan.End()
 
@@ -119,10 +118,10 @@ func Enlarge(ctx context.Context, tracer trace.Tracer, rootfsPath string, addSiz
 	}
 	finalSize := stat.Size() + addSize
 
-	return Resize(ctx, tracer, rootfsPath, finalSize)
+	return Resize(ctx, rootfsPath, finalSize)
 }
 
-func Resize(ctx context.Context, tracer trace.Tracer, rootfsPath string, targetSize int64) (int64, error) {
+func Resize(ctx context.Context, rootfsPath string, targetSize int64) (int64, error) {
 	ctx, resizeSpan := tracer.Start(ctx, "resize-ext4")
 	defer resizeSpan.End()
 
@@ -135,7 +134,7 @@ func Resize(ctx context.Context, tracer trace.Tracer, rootfsPath string, targetS
 	cmd.Stderr = resizeStderrWriter
 	err := cmd.Run()
 	if err != nil {
-		LogMetadata(rootfsPath)
+		LogMetadata(ctx, rootfsPath)
 		return 0, fmt.Errorf("error resizing rootfs file: %w", err)
 	}
 
@@ -147,7 +146,7 @@ func Resize(ctx context.Context, tracer trace.Tracer, rootfsPath string, targetS
 	return stat.Size(), err
 }
 
-func Shrink(ctx context.Context, tracer trace.Tracer, rootfsPath string) (int64, error) {
+func Shrink(ctx context.Context, rootfsPath string) (int64, error) {
 	ctx, resizeSpan := tracer.Start(ctx, "shrink-ext4")
 	defer resizeSpan.End()
 
@@ -160,7 +159,7 @@ func Shrink(ctx context.Context, tracer trace.Tracer, rootfsPath string) (int64,
 	cmd.Stderr = resizeStderrWriter
 	err := cmd.Run()
 	if err != nil {
-		LogMetadata(rootfsPath)
+		LogMetadata(ctx, rootfsPath)
 		return 0, fmt.Errorf("error shrinking rootfs file: %w", err)
 	}
 
@@ -172,11 +171,11 @@ func Shrink(ctx context.Context, tracer trace.Tracer, rootfsPath string) (int64,
 	return stat.Size(), err
 }
 
-func GetFreeSpace(ctx context.Context, tracer trace.Tracer, rootfsPath string, blockSize int64) (int64, error) {
+func GetFreeSpace(ctx context.Context, rootfsPath string, blockSize int64) (int64, error) {
 	_, statSpan := tracer.Start(ctx, "stat-ext4-file")
 	defer statSpan.End()
 
-	cmd := exec.Command("debugfs", "-R", "stats", rootfsPath)
+	cmd := exec.CommandContext(ctx, "debugfs", "-R", "stats", rootfsPath)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err := cmd.Run()
@@ -201,8 +200,8 @@ func GetFreeSpace(ctx context.Context, tracer trace.Tracer, rootfsPath string, b
 	return freeBytes, nil
 }
 
-func CheckIntegrity(rootfsPath string, fix bool) (string, error) {
-	LogMetadata(rootfsPath)
+func CheckIntegrity(ctx context.Context, rootfsPath string, fix bool) (string, error) {
+	LogMetadata(ctx, rootfsPath)
 	accExitCode := 0
 	args := "-nfv"
 	if fix {
@@ -212,20 +211,20 @@ func CheckIntegrity(rootfsPath string, fix bool) (string, error) {
 		accExitCode = 2
 		args = "-pfv"
 	}
-	cmd := exec.Command("e2fsck", args, rootfsPath)
+	cmd := exec.CommandContext(ctx, "e2fsck", args, rootfsPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		exitCode := cmd.ProcessState.ExitCode()
 
 		if exitCode > accExitCode {
-			return string(out), fmt.Errorf("error running e2fsck: %w", err)
+			return string(out), fmt.Errorf("error running e2fsck [exit %d]\n%s", exitCode, out)
 		}
 	}
 
 	return strings.TrimSpace(string(out)), nil
 }
 
-func ReadFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, filePath string) (string, error) {
+func ReadFile(ctx context.Context, rootfsPath string, filePath string) (string, error) {
 	_, statSpan := tracer.Start(ctx, "ext4-read-file")
 	defer statSpan.End()
 
@@ -234,7 +233,7 @@ func ReadFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, fileP
 		return "2", fmt.Errorf("rootfs file does not exist: %w", err)
 	}
 
-	cmd := exec.Command("debugfs", "-R", fmt.Sprintf("cat \"%s\"", filePath), rootfsPath)
+	cmd := exec.CommandContext(ctx, "debugfs", "-R", fmt.Sprintf("cat \"%s\"", filePath), rootfsPath)
 	out, err := cmd.Output()
 	if err != nil {
 		return "2", fmt.Errorf("error reading file %s: %w", filePath, err)
@@ -243,12 +242,12 @@ func ReadFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, fileP
 	return string(out), nil
 }
 
-func RemoveFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, filePath string) error {
+func RemoveFile(ctx context.Context, rootfsPath string, filePath string) error {
 	_, statSpan := tracer.Start(ctx, "ext4-remove-file")
 	defer statSpan.End()
 
 	// -w is used to open the filesystem in writable mode
-	cmd := exec.Command("debugfs", "-w", "-R", fmt.Sprintf("rm \"%s\"", filePath), rootfsPath)
+	cmd := exec.CommandContext(ctx, "debugfs", "-w", "-R", fmt.Sprintf("rm \"%s\"", filePath), rootfsPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		zap.L().Error("error removing file", zap.Error(err), zap.String("output", string(out)))
@@ -261,7 +260,7 @@ func RemoveFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, fil
 // MountOverlayFS mounts an overlay filesystem with the specified layers at the given mount point.
 // It requires kernel version 6.8 or later to use the fsconfig interface for overlayfs.
 // Older mount syscall is not used because it has lowerdirs character limit (4096 characters).
-func MountOverlayFS(ctx context.Context, tracer trace.Tracer, layers []string, mountPoint string) error {
+func MountOverlayFS(ctx context.Context, layers []string, mountPoint string) error {
 	_, mountSpan := tracer.Start(ctx, "mount-overlay-fs", trace.WithAttributes(
 		attribute.String("mount", mountPoint),
 		attribute.StringSlice("layers", layers),
@@ -303,8 +302,8 @@ func MountOverlayFS(ctx context.Context, tracer trace.Tracer, layers []string, m
 	return nil
 }
 
-func LogMetadata(rootfsPath string, extraFields ...zap.Field) {
-	cmd := exec.Command("tune2fs", "-l", rootfsPath)
+func LogMetadata(ctx context.Context, rootfsPath string, extraFields ...zap.Field) {
+	cmd := exec.CommandContext(ctx, "tune2fs", "-l", rootfsPath)
 	output, err := cmd.CombinedOutput()
 
 	zap.L().With(extraFields...).Debug("tune2fs -l output", zap.String("path", rootfsPath), zap.String("output", string(output)), zap.Error(err))

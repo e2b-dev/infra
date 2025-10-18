@@ -6,15 +6,14 @@ import (
 	"fmt"
 	"time"
 
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/commands"
@@ -28,55 +27,56 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/steps"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
+	buildcache "github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const progressDelay = 5 * time.Second
 
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build")
+
 type Builder struct {
 	logger *zap.Logger
-	tracer trace.Tracer
 
-	templateStorage  storage.StorageProvider
-	buildStorage     storage.StorageProvider
-	devicePool       *nbd.DevicePool
-	networkPool      *network.Pool
-	artifactRegistry artifactsregistry.ArtifactsRegistry
-	proxy            *proxy.SandboxProxy
-	sandboxes        *smap.Map[*sandbox.Sandbox]
-	templateCache    *sbxtemplate.Cache
-	metrics          *metrics.BuildMetrics
+	sandboxFactory      *sandbox.Factory
+	templateStorage     storage.StorageProvider
+	buildStorage        storage.StorageProvider
+	artifactRegistry    artifactsregistry.ArtifactsRegistry
+	dockerhubRepository dockerhub.RemoteRepository
+	proxy               *proxy.SandboxProxy
+	sandboxes           *sandbox.Map
+	templateCache       *sbxtemplate.Cache
+	metrics             *metrics.BuildMetrics
 }
 
 func NewBuilder(
 	logger *zap.Logger,
-	tracer trace.Tracer,
+	sandboxFactory *sandbox.Factory,
 	templateStorage storage.StorageProvider,
 	buildStorage storage.StorageProvider,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
-	devicePool *nbd.DevicePool,
-	networkPool *network.Pool,
+	dockerhubRepository dockerhub.RemoteRepository,
 	proxy *proxy.SandboxProxy,
-	sandboxes *smap.Map[*sandbox.Sandbox],
+	sandboxes *sandbox.Map,
 	templateCache *sbxtemplate.Cache,
 	buildMetrics *metrics.BuildMetrics,
 ) *Builder {
 	return &Builder{
-		logger:           logger,
-		tracer:           tracer,
-		templateStorage:  templateStorage,
-		buildStorage:     buildStorage,
-		artifactRegistry: artifactRegistry,
-		devicePool:       devicePool,
-		networkPool:      networkPool,
-		proxy:            proxy,
-		sandboxes:        sandboxes,
-		templateCache:    templateCache,
-		metrics:          buildMetrics,
+		logger:              logger,
+		sandboxFactory:      sandboxFactory,
+		templateStorage:     templateStorage,
+		buildStorage:        buildStorage,
+		artifactRegistry:    artifactRegistry,
+		dockerhubRepository: dockerhubRepository,
+		proxy:               proxy,
+		sandboxes:           sandboxes,
+		templateCache:       templateCache,
+		metrics:             buildMetrics,
 	}
 }
 
@@ -100,7 +100,7 @@ type Result struct {
 // 8. Snapshot
 // 9. Upload template (and all not yet uploaded layers)
 func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, config config.TemplateConfig, logsCore zapcore.Core) (r *Result, e error) {
-	ctx, childSpan := b.tracer.Start(ctx, "build")
+	ctx, childSpan := tracer.Start(ctx, "build")
 	defer childSpan.End()
 
 	// Record build duration and result at the end
@@ -111,13 +111,11 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 		b.metrics.RecordBuildDuration(ctx, duration, success)
 
 		if success {
-			b.metrics.RecordBuildResult(ctx, true)
+			b.metrics.RecordBuildResult(ctx, config.TeamID, true)
 			b.metrics.RecordRootfsSize(ctx, r.RootfsSizeMB<<constants.ToMBShift)
-		} else {
+		} else if !errors.Is(e, context.Canceled) {
 			// Skip reporting failure metrics only on explicit cancellation
-			if !errors.Is(e, context.Canceled) {
-				b.metrics.RecordBuildResult(ctx, false)
-			}
+			b.metrics.RecordBuildResult(ctx, config.TeamID, false)
 		}
 	}()
 
@@ -130,11 +128,21 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 
 	logger := zap.New(logsCore)
 	defer func() {
-		if e != nil {
+		switch {
+		case errors.Is(ctx.Err(), context.Canceled):
+			logger.Error(fmt.Sprintf("Build failed: %s", buildcache.CanceledBuildReason))
+		case e != nil:
 			logger.Error(fmt.Sprintf("Build failed: %v", e))
-		} else {
+		default:
 			logger.Info(fmt.Sprintf("Build finished, took %s",
 				time.Since(startTime).Truncate(time.Second).String()))
+		}
+	}()
+
+	defer func() {
+		if r := recover(); r != nil {
+			telemetry.ReportCriticalError(ctx, "recovered from panic in template build", nil, attribute.String("panic", fmt.Sprintf("%v", r)), telemetry.WithTemplateID(config.TemplateID), telemetry.WithBuildID(template.BuildID))
+			e = errors.New("fatal error occurred during template build, please contact us")
 		}
 	}()
 
@@ -175,28 +183,26 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 	buildContext := buildcontext.BuildContext{
 		Config:         config,
 		Template:       template,
-		UserLogger:     logger,
 		UploadErrGroup: &uploadErrGroup,
 		EnvdVersion:    envdVersion,
 		CacheScope:     cacheScope,
 		IsV1Build:      isV1Build,
 	}
 
-	return runBuild(ctx, buildContext, b)
+	return runBuild(ctx, logger, buildContext, b)
 }
 
 func runBuild(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	bc buildcontext.BuildContext,
 	builder *Builder,
 ) (*Result, error) {
 	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, builder.templateStorage)
 
-	layerExecutor := layer.NewLayerExecutor(bc,
+	layerExecutor := layer.NewLayerExecutor(
+		bc,
 		builder.logger,
-		builder.tracer,
-		builder.networkPool,
-		builder.devicePool,
 		builder.templateCache,
 		builder.proxy,
 		builder.sandboxes,
@@ -208,28 +214,26 @@ func runBuild(
 	baseBuilder := base.New(
 		bc,
 		builder.logger,
-		builder.tracer,
 		builder.proxy,
 		builder.templateStorage,
-		builder.devicePool,
-		builder.networkPool,
 		builder.artifactRegistry,
+		builder.dockerhubRepository,
 		layerExecutor,
 		index,
 		builder.metrics,
+		builder.sandboxFactory,
 	)
 
 	commandExecutor := commands.NewCommandExecutor(
 		bc,
-		builder.tracer,
 		builder.buildStorage,
 		builder.proxy,
 	)
 
 	stepBuilders := steps.CreateStepPhases(
 		bc,
+		builder.sandboxFactory,
 		builder.logger,
-		builder.tracer,
 		builder.proxy,
 		layerExecutor,
 		commandExecutor,
@@ -239,7 +243,7 @@ func runBuild(
 
 	postProcessingBuilder := finalize.New(
 		bc,
-		builder.tracer,
+		builder.sandboxFactory,
 		builder.templateStorage,
 		builder.proxy,
 		layerExecutor,
@@ -252,7 +256,7 @@ func runBuild(
 	builders = append(builders, stepBuilders...)
 	builders = append(builders, postProcessingBuilder)
 
-	lastLayerResult, err := phases.Run(ctx, bc, builder.metrics, builders)
+	lastLayerResult, err := phases.Run(ctx, userLogger, bc, builder.metrics, builders)
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +287,7 @@ func forceSteps(template config.TemplateConfig) config.TemplateConfig {
 	shouldRebuild := template.Force != nil && *template.Force
 	for _, step := range template.Steps {
 		// Force rebuild if the step has a Force flag set to true
-		if step.Force != nil && *step.Force {
+		if step.Force != nil && step.GetForce() {
 			shouldRebuild = true
 		}
 

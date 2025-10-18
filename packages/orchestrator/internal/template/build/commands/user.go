@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -20,7 +19,6 @@ var _ Command = (*User)(nil)
 
 func (u *User) Execute(
 	ctx context.Context,
-	tracer trace.Tracer,
 	logger *zap.Logger,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
@@ -28,7 +26,7 @@ func (u *User) Execute(
 	step *templatemanager.TemplateStep,
 	cmdMetadata metadata.Context,
 ) (metadata.Context, error) {
-	args := step.Args
+	args := step.GetArgs()
 	// args: [username]
 	if len(args) < 1 {
 		return metadata.Context{}, fmt.Errorf("USER requires a username argument")
@@ -38,7 +36,6 @@ func (u *User) Execute(
 
 	err := sandboxtools.RunCommandWithLogger(
 		ctx,
-		tracer,
 		proxy,
 		logger,
 		zapcore.InfoLevel,
@@ -54,12 +51,11 @@ func (u *User) Execute(
 		return metadata.Context{}, fmt.Errorf("failed to create user: %w", err)
 	}
 
-	return saveUserMeta(ctx, tracer, proxy, sandboxID, cmdMetadata, userArg)
+	return saveUserMeta(ctx, proxy, sandboxID, cmdMetadata, userArg)
 }
 
 func saveUserMeta(
 	ctx context.Context,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	cmdMetadata metadata.Context,
@@ -67,14 +63,13 @@ func saveUserMeta(
 ) (metadata.Context, error) {
 	err := sandboxtools.RunCommandWithOutput(
 		ctx,
-		tracer,
 		proxy,
 		sandboxID,
 		fmt.Sprintf(`printf "%s"`, user),
 		metadata.Context{
 			User: "root",
 		},
-		func(stdout, stderr string) {
+		func(stdout, _ string) {
 			user = stdout
 		},
 	)

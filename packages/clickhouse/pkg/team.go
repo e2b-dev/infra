@@ -81,3 +81,94 @@ func (c *Client) QueryTeamMetrics(ctx context.Context, teamID string, start time
 
 	return out, nil
 }
+
+type MaxTeamMetric struct {
+	Timestamp time.Time `ch:"ts"`
+	Value     float64   `ch:"max_value"`
+}
+
+var maxStartRateTeamMetricsSelectQuery = fmt.Sprintf(`
+WITH 
+	aggregated AS (
+		SELECT 
+			toStartOfInterval(timestamp, interval {step:UInt32} second) AS agg_ts,
+  			sum(value) AS agg_value
+	FROM team_metrics_sum
+	WHERE metric_name = '%s'
+	  AND team_id = {team_id:String}
+	  AND timestamp BETWEEN {start_time:DateTime64} AND {end_time:DateTime64}
+	GROUP BY agg_ts
+	)
+SELECT
+	argMax(agg_ts, agg_value) AS ts,
+	max(agg_value) / {step:UInt32}::Float32 AS max_value
+FROM aggregated
+`, telemetry.TeamSandboxCreated)
+
+func (c *Client) QueryMaxStartRateTeamMetrics(ctx context.Context, teamID string, start time.Time, end time.Time, step time.Duration) (MaxTeamMetric, error) {
+	rows, err := c.conn.Query(ctx, maxStartRateTeamMetricsSelectQuery,
+		clickhouse.Named("team_id", teamID),
+		clickhouse.Named("step", strconv.Itoa(int(step.Seconds()))),
+		clickhouse.DateNamed("start_time", start, clickhouse.Seconds),
+		clickhouse.DateNamed("end_time", end, clickhouse.Seconds),
+	)
+	if err != nil {
+		return MaxTeamMetric{}, fmt.Errorf("query max start rate team metrics: %w", err)
+	}
+	defer rows.Close()
+
+	// No data -> return 0
+	if !rows.Next() {
+		return MaxTeamMetric{
+			Value:     0,
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	var out MaxTeamMetric
+	err = rows.Scan(&out.Timestamp, &out.Value)
+	if err != nil {
+		return MaxTeamMetric{}, fmt.Errorf("error scanning max start rate team metrics: %w", err)
+	}
+
+	return out, nil
+}
+
+var maxConcurrentTeamMetricsSelectQuery = fmt.Sprintf(`
+SELECT
+  argMax(timestamp, value) AS ts,
+  max(value) as max_value
+FROM team_metrics_gauge
+WHERE metric_name = '%s'
+  AND team_id = {team_id:String}
+  AND timestamp BETWEEN {start_time:DateTime64} AND {end_time:DateTime64};
+`, telemetry.TeamSandboxRunningGaugeName)
+
+func (c *Client) QueryMaxConcurrentTeamMetrics(ctx context.Context, teamID string, start time.Time, end time.Time) (MaxTeamMetric, error) {
+	rows, err := c.conn.Query(ctx, maxConcurrentTeamMetricsSelectQuery,
+		clickhouse.Named("team_id", teamID),
+		clickhouse.DateNamed("start_time", start, clickhouse.Seconds),
+		clickhouse.DateNamed("end_time", end, clickhouse.Seconds),
+	)
+	if err != nil {
+		return MaxTeamMetric{}, fmt.Errorf("query max concurrent team metrics: %w", err)
+	}
+
+	defer rows.Close()
+
+	// No data -> return 0
+	if !rows.Next() {
+		return MaxTeamMetric{
+			Value:     0,
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	var out MaxTeamMetric
+	err = rows.Scan(&out.Timestamp, &out.Value)
+	if err != nil {
+		return MaxTeamMetric{}, fmt.Errorf("error scanning max concurrent team metrics: %w", err)
+	}
+
+	return out, nil
+}

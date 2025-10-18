@@ -105,44 +105,6 @@ func ReportError(ctx context.Context, message string, err error, attrs ...attrib
 	)
 }
 
-func GetContextFromRemote(ctx context.Context, tracer trace.Tracer, name, spanID, traceID string) (context.Context, trace.Span) {
-	tid, traceIDErr := trace.TraceIDFromHex(traceID)
-	if traceIDErr != nil {
-		ReportError(
-			ctx,
-			traceIDErr.Error(),
-			traceIDErr,
-			attribute.String("trace.id", traceID),
-			attribute.Int("trace.id.length", len(traceID)),
-		)
-	}
-
-	sid, spanIDErr := trace.SpanIDFromHex(spanID)
-	if spanIDErr != nil {
-		ReportError(
-			ctx,
-			spanIDErr.Error(),
-			spanIDErr,
-			attribute.String("span.id", spanID),
-			attribute.Int("span.id.length", len(spanID)),
-		)
-	}
-
-	remoteCtx := trace.NewSpanContext(trace.SpanContextConfig{
-		TraceID:    tid,
-		SpanID:     sid,
-		TraceFlags: 0x0,
-	})
-
-	return tracer.Start(
-		trace.ContextWithRemoteSpanContext(ctx, remoteCtx),
-		name,
-		trace.WithLinks(
-			trace.LinkFromContext(ctx, attribute.String("link", "validation")),
-		),
-	)
-}
-
 func attributesToZapFields(attrs ...attribute.KeyValue) []zap.Field {
 	fields := make([]zap.Field, 0, len(attrs))
 	for _, attr := range attrs {

@@ -37,9 +37,9 @@ func NewHTTPLogsExporter(ctx context.Context, isNotFC bool, mmdsChan <-chan *hos
 		isNotFC:   isNotFC,
 		startOnce: sync.Once{},
 		mmdsOpts: &host.MMDSOpts{
-			InstanceID: "unknown",
-			EnvID:      "unknown",
-			Address:    "",
+			SandboxID:            "unknown",
+			TemplateID:           "unknown",
+			LogsCollectorAddress: "",
 		},
 	}
 
@@ -84,12 +84,11 @@ func (w *HTTPExporter) listenForMMDSOptsAndStart(ctx context.Context, mmdsChan <
 			}
 
 			w.mmdsLock.Lock()
-			w.mmdsOpts.Update(
-				mmdsOpts.TraceID, mmdsOpts.InstanceID, mmdsOpts.EnvID, mmdsOpts.Address)
+			w.mmdsOpts.Update(mmdsOpts.SandboxID, mmdsOpts.TemplateID, mmdsOpts.LogsCollectorAddress)
 			w.mmdsLock.Unlock()
 
 			w.startOnce.Do(func() {
-				w.start(ctx)
+				go w.start(ctx)
 			})
 		}
 	}
@@ -123,7 +122,7 @@ func (w *HTTPExporter) start(ctx context.Context) {
 				continue
 			}
 
-			err = w.sendInstanceLogs(ctx, logLineWithOpts, w.mmdsOpts.Address)
+			err = w.sendInstanceLogs(ctx, logLineWithOpts, w.mmdsOpts.LogsCollectorAddress)
 			if err != nil {
 				log.Printf("error sending instance logs: %+v", err)
 

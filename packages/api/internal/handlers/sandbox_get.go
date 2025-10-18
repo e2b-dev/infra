@@ -3,7 +3,6 @@ package handlers
 import (
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -11,6 +10,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -25,7 +26,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	telemetry.ReportEvent(ctx, "get sandbox")
 
-	sandboxId := strings.Split(id, "-")[0]
+	sandboxId := utils.ShortID(id)
 
 	var sbxDomain *string
 	if team.ClusterID != nil {
@@ -41,35 +42,47 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	// Try to get the running sandbox first
-	info, err := a.orchestrator.GetInstance(ctx, sandboxId)
+	sbx, err := a.orchestrator.GetSandbox(sandboxId)
 	if err == nil {
 		// Check if sandbox belongs to the team
-		if info.TeamID != team.ID {
+		if sbx.TeamID != team.ID {
 			telemetry.ReportCriticalError(ctx, fmt.Sprintf("sandbox '%s' doesn't belong to team '%s'", sandboxId, team.ID.String()), nil)
 			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 
 			return
 		}
 
-		// Sandbox exists and belongs to the team - return running sandbox info
+		state := api.Running
+		switch sbx.State {
+		// Sandbox is being paused or already is paused, user can work with that as if it's paused
+		case sandbox.StatePausing:
+			state = api.Paused
+		// Sandbox is being stopped or already is stopped, user can't work with it anymore
+		case sandbox.StateKilling:
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
+
+			return
+		}
+
+		// Sandbox exists and belongs to the team - return running sandbox sbx
 		sandbox := api.SandboxDetail{
-			ClientID:        info.ClientID,
-			TemplateID:      info.TemplateID,
-			Alias:           info.Alias,
-			SandboxID:       info.SandboxID,
-			StartedAt:       info.StartTime,
-			CpuCount:        api.CPUCount(info.VCpu),
-			MemoryMB:        api.MemoryMB(info.RamMB),
-			DiskSizeMB:      api.DiskSizeMB(info.TotalDiskSizeMB),
-			EndAt:           info.GetEndTime(),
-			State:           api.Running,
-			EnvdVersion:     info.EnvdVersion,
-			EnvdAccessToken: info.EnvdAccessToken,
+			ClientID:        sbx.ClientID,
+			TemplateID:      sbx.TemplateID,
+			Alias:           sbx.Alias,
+			SandboxID:       sbx.SandboxID,
+			StartedAt:       sbx.StartTime,
+			CpuCount:        api.CPUCount(sbx.VCpu),
+			MemoryMB:        api.MemoryMB(sbx.RamMB),
+			DiskSizeMB:      api.DiskSizeMB(sbx.TotalDiskSizeMB),
+			EndAt:           sbx.EndTime,
+			State:           state,
+			EnvdVersion:     sbx.EnvdVersion,
+			EnvdAccessToken: sbx.EnvdAccessToken,
 			Domain:          sbxDomain,
 		}
 
-		if info.Metadata != nil {
-			meta := api.SandboxMetadata(info.Metadata)
+		if sbx.Metadata != nil {
+			meta := api.SandboxMetadata(sbx.Metadata)
 			sandbox.Metadata = &meta
 		}
 

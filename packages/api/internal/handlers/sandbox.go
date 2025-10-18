@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
@@ -15,6 +16,8 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/handlers")
 
 func (a *APIStore) startSandbox(
 	ctx context.Context,
@@ -58,18 +61,18 @@ func (a *APIStore) startSandbox(
 		allowInternetAccess,
 	)
 	if instanceErr != nil {
-		telemetry.ReportCriticalError(ctx, "error when creating instance", instanceErr.Err)
+		telemetry.ReportError(ctx, "error when creating instance", instanceErr.Err)
 		return nil, instanceErr
 	}
 
 	telemetry.ReportEvent(ctx, "Created sandbox")
 
-	_, analyticsSpan := a.Tracer.Start(ctx, "analytics")
+	_, analyticsSpan := tracer.Start(ctx, "analytics")
 	a.posthog.IdentifyAnalyticsTeam(team.Team.ID.String(), team.Team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(requestHeader)
 	a.posthog.CreateAnalyticsTeamEvent(team.Team.ID.String(), "created_instance",
 		properties.
-			Set("environment", *build.EnvID).
+			Set("environment", build.EnvID).
 			Set("instance_id", sandbox.SandboxID).
 			Set("alias", alias),
 	)
@@ -87,9 +90,9 @@ func (a *APIStore) startSandbox(
 
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandbox.SandboxID,
-		TemplateID: *build.EnvID,
+		TemplateID: build.EnvID,
 		TeamID:     team.Team.ID.String(),
 	}).Info("Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
 
-	return sandbox, nil
+	return sandbox.ToAPISandbox(), nil
 }

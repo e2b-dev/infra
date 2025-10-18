@@ -1,6 +1,4 @@
-go 1.24.3
-
-toolchain go1.24.3
+go 1.24.7
 
 use (
 	./packages/api
@@ -9,6 +7,7 @@ use (
 	./packages/db
 	./packages/docker-reverse-proxy
 	./packages/envd
+	./packages/local-dev
 	./packages/orchestrator
 	./packages/shared
 

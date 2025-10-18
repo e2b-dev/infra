@@ -4,12 +4,17 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/shared/pkg"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
 const (
@@ -17,7 +22,9 @@ const (
 	fallbackDiffSize = 100 << ToMBShift
 )
 
-const DefaultCachePath = "/orchestrator/build"
+func DefaultCachePath() string {
+	return filepath.Join(pkg.OrchestratorBasePath(), "build")
+}
 
 type deleteDiff struct {
 	size      int64
@@ -28,7 +35,6 @@ type deleteDiff struct {
 type DiffStore struct {
 	cachePath string
 	cache     *ttlcache.Cache[DiffStoreKey, Diff]
-	ctx       context.Context // nolint:containedctx // todo: refactor so this can be removed
 	close     chan struct{}
 
 	// pdSizes is used to keep track of the diff sizes
@@ -38,7 +44,13 @@ type DiffStore struct {
 	pdDelay time.Duration
 }
 
-func NewDiffStore(ctx context.Context, cachePath string, ttl, delay time.Duration, maxUsedPercentage float64) (*DiffStore, error) {
+func NewDiffStore(
+	ctx context.Context,
+	config cfg.Config,
+	flags *featureflags.Client,
+	cachePath string,
+	ttl, delay time.Duration,
+) (*DiffStore, error) {
 	err := os.MkdirAll(cachePath, 0o755)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
@@ -51,13 +63,12 @@ func NewDiffStore(ctx context.Context, cachePath string, ttl, delay time.Duratio
 	ds := &DiffStore{
 		cachePath: cachePath,
 		cache:     cache,
-		ctx:       ctx,
 		close:     make(chan struct{}),
 		pdSizes:   make(map[DiffStoreKey]*deleteDiff),
 		pdDelay:   delay,
 	}
 
-	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[DiffStoreKey, Diff]) {
+	cache.OnEviction(func(_ context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[DiffStoreKey, Diff]) {
 		buildData := item.Value()
 		// buildData will be deleted by calling buildData.Close()
 		defer ds.resetDelete(item.Key())
@@ -68,7 +79,7 @@ func NewDiffStore(ctx context.Context, cachePath string, ttl, delay time.Duratio
 	})
 
 	go cache.Start()
-	go ds.startDiskSpaceEviction(maxUsedPercentage)
+	go ds.startDiskSpaceEviction(ctx, config, flags)
 
 	return ds, nil
 }
@@ -84,7 +95,7 @@ func (s *DiffStore) Close() {
 	s.cache.Stop()
 }
 
-func (s *DiffStore) Get(diff Diff) (Diff, error) {
+func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
 	s.resetDelete(diff.CacheKey())
 	source, found := s.cache.GetOrSet(
 		diff.CacheKey(),
@@ -98,7 +109,7 @@ func (s *DiffStore) Get(diff Diff) (Diff, error) {
 	}
 
 	if !found {
-		err := diff.Init(s.ctx)
+		err := diff.Init(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to init source: %w", err)
 		}
@@ -116,13 +127,19 @@ func (s *DiffStore) Has(d Diff) bool {
 	return s.cache.Has(d.CacheKey())
 }
 
-func (s *DiffStore) startDiskSpaceEviction(threshold float64) {
+func (s *DiffStore) startDiskSpaceEviction(
+	ctx context.Context,
+	config cfg.Config,
+	flags *featureflags.Client,
+) {
+	services := cfg.GetServices(config)
+
 	getDelay := func(fast bool) time.Duration {
 		if fast {
 			return time.Microsecond
-		} else {
-			return time.Second
 		}
+
+		return time.Second
 	}
 
 	timer := time.NewTimer(getDelay(false))
@@ -130,7 +147,7 @@ func (s *DiffStore) startDiskSpaceEviction(threshold float64) {
 
 	for {
 		select {
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-s.close:
 			return
@@ -146,12 +163,27 @@ func (s *DiffStore) startDiskSpaceEviction(threshold float64) {
 			used := int64(dUsed) - pUsed
 			percentage := float64(used) / float64(dTotal) * 100
 
-			if percentage <= threshold {
+			threshold := featureflags.BuildCacheMaxUsagePercentage.Fallback()
+			// When multiple services (template manager, orchestrator) are defined, take the lowest threshold
+			// to ensure we don't exceed any of the set limits
+			for _, s := range services {
+				st, err := flags.IntFlag(ctx, featureflags.BuildCacheMaxUsagePercentage, featureflags.ServiceContext(string(s)))
+				if err != nil {
+					zap.L().Warn("failed to get build cache max usage percentage flag", zap.Error(err))
+					continue
+				}
+
+				if st < threshold {
+					threshold = st
+				}
+			}
+
+			if percentage <= float64(threshold) {
 				timer.Reset(getDelay(false))
 				continue
 			}
 
-			succ, err := s.deleteOldestFromCache()
+			succ, err := s.deleteOldestFromCache(ctx)
 			if err != nil {
 				zap.L().Error("failed to delete oldest item from cache", zap.Error(err))
 				timer.Reset(getDelay(false))
@@ -177,7 +209,7 @@ func (s *DiffStore) getPendingDeletesSize() int64 {
 
 // deleteOldestFromCache deletes the oldest item (smallest TTL) from the cache.
 // ttlcache has items in order by TTL
-func (s *DiffStore) deleteOldestFromCache() (suc bool, e error) {
+func (s *DiffStore) deleteOldestFromCache(ctx context.Context) (suc bool, e error) {
 	defer func() {
 		// Because of bug in ttlcache RangeBackwards method, we need to handle potential panic until it gets fixed
 		if r := recover(); r != nil {
@@ -201,7 +233,7 @@ func (s *DiffStore) deleteOldestFromCache() (suc bool, e error) {
 			sfSize = fallbackDiffSize
 		}
 
-		s.scheduleDelete(item.Key(), sfSize)
+		s.scheduleDelete(ctx, item.Key(), sfSize)
 
 		success = true
 		return false
@@ -233,7 +265,7 @@ func (s *DiffStore) isBeingDeleted(key DiffStoreKey) bool {
 	return f
 }
 
-func (s *DiffStore) scheduleDelete(key DiffStoreKey, dSize int64) {
+func (s *DiffStore) scheduleDelete(ctx context.Context, key DiffStoreKey, dSize int64) {
 	s.pdMu.Lock()
 	defer s.pdMu.Unlock()
 
@@ -248,7 +280,7 @@ func (s *DiffStore) scheduleDelete(key DiffStoreKey, dSize int64) {
 	// pending data fetching, or data upload
 	go (func() {
 		select {
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 		case <-cancelCh:
 		case <-time.After(s.pdDelay):
 			s.cache.Delete(key)

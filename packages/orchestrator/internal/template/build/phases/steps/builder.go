@@ -12,7 +12,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -30,7 +29,7 @@ import (
 
 const layerTimeout = time.Hour
 
-var tracer = otel.Tracer("orchestrator.template.build.phases.steps")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/steps")
 
 type StepBuilder struct {
 	buildcontext.BuildContext
@@ -39,9 +38,9 @@ type StepBuilder struct {
 	step       *templatemanager.TemplateStep
 
 	logger *zap.Logger
-	tracer trace.Tracer
 	proxy  *proxy.SandboxProxy
 
+	sandboxFactory  *sandbox.Factory
 	layerExecutor   *layer.LayerExecutor
 	commandExecutor *commands.CommandExecutor
 	index           cache.Index
@@ -50,8 +49,8 @@ type StepBuilder struct {
 
 func New(
 	buildContext buildcontext.BuildContext,
+	sandboxFactory *sandbox.Factory,
 	logger *zap.Logger,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	layerExecutor *layer.LayerExecutor,
 	commandExecutor *commands.CommandExecutor,
@@ -67,9 +66,9 @@ func New(
 		step:       step,
 
 		logger: logger,
-		tracer: tracer,
 		proxy:  proxy,
 
+		sandboxFactory:  sandboxFactory,
 		layerExecutor:   layerExecutor,
 		commandExecutor: commandExecutor,
 		index:           index,
@@ -81,14 +80,15 @@ func (sb *StepBuilder) Prefix() string {
 	return fmt.Sprintf("builder %d/%d", sb.stepNumber, len(sb.Config.Steps))
 }
 
-func (sb *StepBuilder) String(ctx context.Context) (string, error) {
-	return fmt.Sprintf("%s %s", strings.ToUpper(sb.step.Type), strings.Join(sb.step.Args, " ")), nil
+func (sb *StepBuilder) String(context.Context) (string, error) {
+	return fmt.Sprintf("%s %s", strings.ToUpper(sb.step.GetType()), strings.Join(sb.step.GetArgs(), " ")), nil
 }
 
 func (sb *StepBuilder) Metadata() phases.PhaseMeta {
 	return phases.PhaseMeta{
-		Phase:    metrics.PhaseSteps,
-		StepType: sb.step.Type,
+		Phase:      metrics.PhaseSteps,
+		StepType:   sb.step.GetType(),
+		StepNumber: &sb.stepNumber,
 	}
 }
 
@@ -99,12 +99,12 @@ func (sb *StepBuilder) Layer(
 ) (phases.LayerResult, error) {
 	ctx, span := tracer.Start(ctx, "compute step", trace.WithAttributes(
 		attribute.Int("step", sb.stepNumber),
-		attribute.String("type", sb.step.Type),
+		attribute.String("type", sb.step.GetType()),
 		attribute.String("hash", hash),
 	))
 	defer span.End()
 
-	forceBuild := sb.step.Force != nil && *sb.step.Force
+	forceBuild := sb.step.Force != nil && sb.step.GetForce()
 	if !forceBuild {
 		m, err := sb.index.LayerMetaFromHash(ctx, hash)
 		if err != nil {
@@ -140,12 +140,13 @@ func (sb *StepBuilder) Layer(
 
 func (sb *StepBuilder) Build(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
 ) (phases.LayerResult, error) {
 	ctx, span := tracer.Start(ctx, "build step", trace.WithAttributes(
 		attribute.Int("step", sb.stepNumber),
-		attribute.String("type", sb.step.Type),
+		attribute.String("type", sb.step.GetType()),
 		attribute.String("hash", currentLayer.Hash),
 	))
 	defer span.End()
@@ -158,8 +159,6 @@ func (sb *StepBuilder) Build(
 		RamMB:     sb.Config.MemoryMB,
 		HugePages: sb.Config.HugePages,
 
-		AllowInternetAccess: &globalconfig.AllowSandboxInternet,
-
 		Envd: sandbox.EnvdMetadata{
 			Version: sb.EnvdVersion,
 		},
@@ -170,6 +169,7 @@ func (sb *StepBuilder) Build(
 	if sourceLayer.Cached {
 		sandboxCreator = layer.NewCreateSandbox(
 			sbxConfig,
+			sb.sandboxFactory,
 			layerTimeout,
 			fc.FirecrackerVersions{
 				KernelVersion:      sb.Template.KernelVersion,
@@ -177,28 +177,24 @@ func (sb *StepBuilder) Build(
 			},
 		)
 	} else {
-		sandboxCreator = layer.NewResumeSandbox(sbxConfig, layerTimeout)
+		sandboxCreator = layer.NewResumeSandbox(sbxConfig, sb.sandboxFactory, layerTimeout)
 	}
 
 	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error) {
 		cmdMeta, err := sb.commandExecutor.Execute(
 			ctx,
+			userLogger,
 			sbx,
 			prefix,
 			step,
 			meta.Context,
 		)
 		if err != nil {
-			return metadata.Template{}, &phases.PhaseBuildError{
-				Phase: string(metrics.PhaseSteps),
-				Step:  fmt.Sprintf("%d", sb.stepNumber),
-				Err:   err,
-			}
+			return metadata.Template{}, phases.NewPhaseBuildError(sb, err)
 		}
 
 		err = sandboxtools.SyncChangesToDisk(
 			ctx,
-			sb.tracer,
 			sb.proxy,
 			sbx.Runtime.SandboxID,
 		)
@@ -212,14 +208,18 @@ func (sb *StepBuilder) Build(
 
 	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template)
 
-	meta, err := sb.layerExecutor.BuildLayer(ctx, layer.LayerBuildCommand{
-		SourceTemplate: templateProvider,
-		CurrentLayer:   currentLayer.Metadata,
-		Hash:           currentLayer.Hash,
-		UpdateEnvd:     sourceLayer.Cached,
-		SandboxCreator: sandboxCreator,
-		ActionExecutor: actionExecutor,
-	})
+	meta, err := sb.layerExecutor.BuildLayer(
+		ctx,
+		userLogger,
+		layer.LayerBuildCommand{
+			SourceTemplate: templateProvider,
+			CurrentLayer:   currentLayer.Metadata,
+			Hash:           currentLayer.Hash,
+			UpdateEnvd:     sourceLayer.Cached,
+			SandboxCreator: sandboxCreator,
+			ActionExecutor: actionExecutor,
+		},
+	)
 	if err != nil {
 		return phases.LayerResult{}, fmt.Errorf("error building step %d: %w", sb.stepNumber, err)
 	}

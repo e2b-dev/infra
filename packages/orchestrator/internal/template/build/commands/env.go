@@ -6,7 +6,6 @@ import (
 	"maps"
 	"strings"
 
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -21,16 +20,15 @@ var _ Command = (*Env)(nil)
 
 func (e *Env) Execute(
 	ctx context.Context,
-	tracer trace.Tracer,
-	logger *zap.Logger,
+	_ *zap.Logger,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
-	prefix string,
+	_ string,
 	step *templatemanager.TemplateStep,
 	cmdMetadata metadata.Context,
 ) (metadata.Context, error) {
-	cmdType := strings.ToUpper(step.Type)
-	args := step.Args
+	cmdType := strings.ToUpper(step.GetType())
+	args := step.GetArgs()
 	// args: [key1 value1 key2 value2 ...]
 	if len(args) == 0 {
 		return metadata.Context{}, fmt.Errorf("%s does not support passing no arguments", cmdType)
@@ -43,7 +41,7 @@ func (e *Env) Execute(
 	envVars := maps.Clone(cmdMetadata.EnvVars)
 	for i := 0; i < len(args)-1; i += 2 {
 		k := args[i]
-		v, err := evaluateValue(ctx, tracer, proxy, sandboxID, args[i+1])
+		v, err := evaluateValue(ctx, proxy, sandboxID, args[i+1])
 		if err != nil {
 			return metadata.Context{}, fmt.Errorf("failed to evaluate environment variable %s: %w", k, err)
 		}
@@ -57,21 +55,19 @@ func (e *Env) Execute(
 
 func evaluateValue(
 	ctx context.Context,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	envValue string,
 ) (string, error) {
 	err := sandboxtools.RunCommandWithOutput(
 		ctx,
-		tracer,
 		proxy,
 		sandboxID,
 		fmt.Sprintf(`printf "%s"`, envValue),
 		metadata.Context{
 			User: "root",
 		},
-		func(stdout, stderr string) {
+		func(stdout, _ string) {
 			envValue = stdout
 		},
 	)

@@ -6,3 +6,4 @@ orchestrator
 bin
 .clickhouse
 .shared
+/tmp

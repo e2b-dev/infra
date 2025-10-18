@@ -23,7 +23,7 @@ const (
 
 type Diff interface {
 	io.Closer
-	io.ReaderAt
+	storage.ReaderAtCtx
 	block.Slicer
 	CacheKey() DiffStoreKey
 	CachePath() (string, error)
@@ -33,11 +33,13 @@ type Diff interface {
 
 type NoDiff struct{}
 
+var _ Diff = (*NoDiff)(nil)
+
 func (n *NoDiff) CachePath() (string, error) {
 	return "", NoDiffError{}
 }
 
-func (n *NoDiff) Slice(off, length int64) ([]byte, error) {
+func (n *NoDiff) Slice(_ context.Context, _, _ int64) ([]byte, error) {
 	return nil, NoDiffError{}
 }
 
@@ -45,7 +47,7 @@ func (n *NoDiff) Close() error {
 	return nil
 }
 
-func (n *NoDiff) ReadAt(p []byte, off int64) (int, error) {
+func (n *NoDiff) ReadAt(_ context.Context, _ []byte, _ int64) (int, error) {
 	return 0, NoDiffError{}
 }
 
@@ -57,6 +59,6 @@ func (n *NoDiff) CacheKey() DiffStoreKey {
 	return ""
 }
 
-func (n *NoDiff) Init(ctx context.Context) error {
+func (n *NoDiff) Init(context.Context) error {
 	return NoDiffError{}
 }

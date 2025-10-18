@@ -3,18 +3,17 @@ package nodemanager
 import (
 	"context"
 
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const syncMaxRetries = 4
 
-func (n *Node) Sync(ctx context.Context, tracer trace.Tracer, instanceCache *instance.InstanceCache) {
+func (n *Node) Sync(ctx context.Context, instanceCache *memory.Store) {
 	syncRetrySuccess := false
 
 	for range syncMaxRetries {
@@ -26,24 +25,24 @@ func (n *Node) Sync(ctx context.Context, tracer trace.Tracer, instanceCache *ins
 		}
 
 		// update node status (if changed)
-		nodeStatus, ok := OrchestratorToApiNodeStateMapper[nodeInfo.ServiceStatus]
+		nodeStatus, ok := OrchestratorToApiNodeStateMapper[nodeInfo.GetServiceStatus()]
 		if !ok {
-			zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.ServiceStatus), logger.WithNodeID(n.ID))
+			zap.L().Error("Unknown service info status", zap.String("status", nodeInfo.GetServiceStatus().String()), logger.WithNodeID(n.ID))
 			nodeStatus = api.NodeStatusUnhealthy
 		}
 
 		n.setStatus(nodeStatus)
 		n.setMetadata(
 			NodeMetadata{
-				ServiceInstanceID: nodeInfo.ServiceId,
-				Commit:            nodeInfo.ServiceCommit,
-				Version:           nodeInfo.ServiceVersion,
+				ServiceInstanceID: nodeInfo.GetServiceId(),
+				Commit:            nodeInfo.GetServiceCommit(),
+				Version:           nodeInfo.GetServiceVersion(),
 			},
 		)
 		// Update host metrics from service info
 		n.UpdateMetricsFromServiceInfoResponse(nodeInfo)
 
-		activeInstances, instancesErr := n.GetSandboxes(ctx, tracer)
+		activeInstances, instancesErr := n.GetSandboxes(ctx)
 		if instancesErr != nil {
 			zap.L().Error("Error getting instances", zap.Error(instancesErr), logger.WithNodeID(n.ID))
 			continue
@@ -61,7 +60,7 @@ func (n *Node) Sync(ctx context.Context, tracer trace.Tracer, instanceCache *ins
 		return
 	}
 
-	builds, buildsErr := n.listCachedBuilds(ctx, tracer)
+	builds, buildsErr := n.listCachedBuilds(ctx)
 	if buildsErr != nil {
 		zap.L().Error("Error listing cached builds", zap.Error(buildsErr), logger.WithNodeID(n.ID))
 		return

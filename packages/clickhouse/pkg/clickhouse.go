@@ -25,6 +25,8 @@ type Clickhouse interface {
 
 	// Team metrics queries
 	QueryTeamMetrics(ctx context.Context, teamID string, start time.Time, end time.Time, step time.Duration) ([]TeamMetrics, error)
+	QueryMaxStartRateTeamMetrics(ctx context.Context, teamID string, start time.Time, end time.Time, step time.Duration) (MaxTeamMetric, error)
+	QueryMaxConcurrentTeamMetrics(ctx context.Context, teamID string, start time.Time, end time.Time) (MaxTeamMetric, error)
 }
 
 type Client struct {
@@ -59,6 +61,6 @@ func New(connectionString string) (*Client, error) {
 }
 
 // Close drains the queue and flushes remaining items
-func (c *Client) Close(ctx context.Context) error {
+func (c *Client) Close(context.Context) error {
 	return c.conn.Close()
 }

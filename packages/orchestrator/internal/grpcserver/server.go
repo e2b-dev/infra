@@ -99,8 +99,9 @@ func (g *GRPCServer) GRPCServer() *grpc.Server {
 }
 
 // Start launches
-func (g *GRPCServer) Start(ctx context.Context, port uint) error {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+func (g *GRPCServer) Start(ctx context.Context, port uint16) error {
+	var lisCfg net.ListenConfig
+	lis, err := lisCfg.Listen(ctx, "tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return fmt.Errorf("failed to listen on port %d: %w", port, err)
 	}
@@ -117,7 +118,7 @@ func (g *GRPCServer) Start(ctx context.Context, port uint) error {
 	// Match gRPC requests.
 	grpcL := m.Match(cmux.Any())
 
-	zap.L().Info("Starting GRPC server", zap.Uint("port", port))
+	zap.L().Info("Starting GRPC server", zap.Uint16("port", port))
 
 	go func() {
 		if err := g.grpc.Serve(grpcL); err != nil {

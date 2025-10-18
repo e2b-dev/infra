@@ -89,7 +89,6 @@ func removeUndefined(contexts []ldcontext.Context) []ldcontext.Context {
 	var result []ldcontext.Context
 
 	for _, item := range contexts {
-
 		if !item.IsDefined() {
 			continue
 		}
@@ -144,4 +143,8 @@ func TierContext(tierID, tierName string) ldcontext.Context {
 
 func UserContext(userID string) ldcontext.Context {
 	return ldcontext.NewWithKind(UserKind, userID)
+}
+
+func ServiceContext(serviceName string) ldcontext.Context {
+	return ldcontext.NewWithKind(ServiceKind, serviceName)
 }

@@ -83,7 +83,7 @@ func (sb *StartScriptBuilder) buildArgs(
 ) startScriptArgs {
 	return startScriptArgs{
 		// General
-		SandboxDir: SandboxDir,
+		SandboxDir: SandboxDir(),
 
 		// Kernel
 		HostKernelPath:    versions.HostKernelPath(),

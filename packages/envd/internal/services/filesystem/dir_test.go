@@ -85,7 +85,7 @@ func TestListDir(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			ctx := injectUser(context.Background(), u)
+			ctx := injectUser(t.Context(), u)
 			req := connect.NewRequest(&filesystem.ListDirRequest{
 				Path:  testFolder,
 				Depth: tt.depth,
@@ -93,10 +93,10 @@ func TestListDir(t *testing.T) {
 			resp, err := svc.ListDir(ctx, req)
 			require.NoError(t, err)
 			assert.NotEmpty(t, resp.Msg)
-			assert.Len(t, resp.Msg.Entries, len(tt.expectedPaths))
-			actualPaths := make([]string, len(resp.Msg.Entries))
-			for i, entry := range resp.Msg.Entries {
-				actualPaths[i] = entry.Path
+			assert.Len(t, resp.Msg.GetEntries(), len(tt.expectedPaths))
+			actualPaths := make([]string, len(resp.Msg.GetEntries()))
+			for i, entry := range resp.Msg.GetEntries() {
+				actualPaths[i] = entry.GetPath()
 			}
 			assert.ElementsMatch(t, tt.expectedPaths, actualPaths)
 		})
@@ -109,7 +109,7 @@ func TestListDirNonExistingPath(t *testing.T) {
 	svc := Service{}
 	u, err := user.Current()
 	require.NoError(t, err)
-	ctx := authn.SetInfo(context.Background(), u)
+	ctx := authn.SetInfo(t.Context(), u)
 
 	req := connect.NewRequest(&filesystem.ListDirRequest{
 		Path:  "/non-existing-path",
@@ -137,7 +137,7 @@ func TestListDirRelativePath(t *testing.T) {
 
 	// Service instance
 	svc := Service{}
-	ctx := authn.SetInfo(context.Background(), u)
+	ctx := authn.SetInfo(t.Context(), u)
 
 	req := connect.NewRequest(&filesystem.ListDirRequest{
 		Path:  testRelativePath,
@@ -150,11 +150,11 @@ func TestListDirRelativePath(t *testing.T) {
 	expectedPaths := []string{
 		filepath.Join(testFolderPath, "file.txt"),
 	}
-	assert.Len(t, resp.Msg.Entries, len(expectedPaths))
+	assert.Len(t, resp.Msg.GetEntries(), len(expectedPaths))
 
-	actualPaths := make([]string, len(resp.Msg.Entries))
-	for i, entry := range resp.Msg.Entries {
-		actualPaths[i] = entry.Path
+	actualPaths := make([]string, len(resp.Msg.GetEntries()))
+	for i, entry := range resp.Msg.GetEntries() {
+		actualPaths[i] = entry.GetPath()
 	}
 	assert.ElementsMatch(t, expectedPaths, actualPaths)
 }
@@ -165,7 +165,7 @@ func TestListDir_Symlinks(t *testing.T) {
 	root := t.TempDir()
 	u, err := user.Current()
 	require.NoError(t, err)
-	ctx := authn.SetInfo(context.Background(), u)
+	ctx := authn.SetInfo(t.Context(), u)
 
 	symlinkRoot := filepath.Join(root, "test-symlinks")
 	require.NoError(t, os.MkdirAll(symlinkRoot, 0o755))
@@ -202,9 +202,9 @@ func TestListDir_Symlinks(t *testing.T) {
 		expected := []string{
 			filepath.Join(linkToDir, "file.txt"),
 		}
-		actual := make([]string, len(resp.Msg.Entries))
-		for i, e := range resp.Msg.Entries {
-			actual[i] = e.Path
+		actual := make([]string, len(resp.Msg.GetEntries()))
+		for i, e := range resp.Msg.GetEntries() {
+			actual[i] = e.GetPath()
 		}
 		assert.ElementsMatch(t, expected, actual)
 	})
@@ -253,9 +253,9 @@ func TestListDir_Symlinks(t *testing.T) {
 			filepath.Join(symlinkRoot, "real-dir", "file.txt"),
 			filepath.Join(symlinkRoot, "real-file.txt"),
 		}
-		actual := make([]string, len(res.Msg.Entries))
-		for i, e := range res.Msg.Entries {
-			actual[i] = e.Path
+		actual := make([]string, len(res.Msg.GetEntries()))
+		for i, e := range res.Msg.GetEntries() {
+			actual[i] = e.GetPath()
 		}
 		assert.ElementsMatch(t, expected, actual, "symlinks should not be resolved when listing the symlink root directory")
 	})
@@ -384,7 +384,7 @@ func TestWalkDir_Depth(t *testing.T) {
 	// Collect the names for easier assertions.
 	names := make([]string, 0, len(entries))
 	for _, e := range entries {
-		names = append(names, e.Name)
+		names = append(names, e.GetName())
 	}
 
 	require.Contains(t, names, "sub")

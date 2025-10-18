@@ -13,12 +13,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	globalconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
@@ -30,14 +27,18 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-const (
-	templatesDirectory = "/orchestrator/build-templates"
+func templatesDirectory() string {
+	return filepath.Join(pkg.OrchestratorBasePath(), "build-templates")
+}
 
+const (
 	rootfsBuildFileName = "rootfs.filesystem.build"
 	rootfsProvisionLink = "rootfs.filesystem.build.provision"
 
@@ -47,19 +48,18 @@ const (
 	defaultUser = "root"
 )
 
-var tracer = otel.Tracer("orchestrator.template.build.phases.base")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/base")
 
 type BaseBuilder struct {
 	buildcontext.BuildContext
 
 	logger *zap.Logger
-	tracer trace.Tracer
 	proxy  *proxy.SandboxProxy
 
-	templateStorage  storage.StorageProvider
-	devicePool       *nbd.DevicePool
-	networkPool      *network.Pool
-	artifactRegistry artifactsregistry.ArtifactsRegistry
+	sandboxFactory      *sandbox.Factory
+	templateStorage     storage.StorageProvider
+	artifactRegistry    artifactsregistry.ArtifactsRegistry
+	dockerhubRepository dockerhub.RemoteRepository
 
 	layerExecutor *layer.LayerExecutor
 	index         cache.Index
@@ -69,27 +69,25 @@ type BaseBuilder struct {
 func New(
 	buildContext buildcontext.BuildContext,
 	logger *zap.Logger,
-	tracer trace.Tracer,
 	proxy *proxy.SandboxProxy,
 	templateStorage storage.StorageProvider,
-	devicePool *nbd.DevicePool,
-	networkPool *network.Pool,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
+	dockerhubRepository dockerhub.RemoteRepository,
 	layerExecutor *layer.LayerExecutor,
 	index cache.Index,
 	metrics *metrics.BuildMetrics,
+	sandboxFactory *sandbox.Factory,
 ) *BaseBuilder {
 	return &BaseBuilder{
 		BuildContext: buildContext,
 
 		logger: logger,
-		tracer: tracer,
 		proxy:  proxy,
 
-		templateStorage:  templateStorage,
-		devicePool:       devicePool,
-		networkPool:      networkPool,
-		artifactRegistry: artifactRegistry,
+		templateStorage:     templateStorage,
+		artifactRegistry:    artifactRegistry,
+		dockerhubRepository: dockerhubRepository,
+		sandboxFactory:      sandboxFactory,
 
 		layerExecutor: layerExecutor,
 		index:         index,
@@ -129,6 +127,7 @@ func (bb *BaseBuilder) Metadata() phases.PhaseMeta {
 
 func (bb *BaseBuilder) Build(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	_ phases.LayerResult,
 	currentLayer phases.LayerResult,
 ) (phases.LayerResult, error) {
@@ -139,15 +138,12 @@ func (bb *BaseBuilder) Build(
 
 	baseMetadata, err := bb.buildLayerFromOCI(
 		ctx,
+		userLogger,
 		currentLayer.Metadata,
 		currentLayer.Hash,
 	)
 	if err != nil {
-		return phases.LayerResult{}, &phases.PhaseBuildError{
-			Phase: string(metrics.PhaseBase),
-			Step:  "base",
-			Err:   err,
-		}
+		return phases.LayerResult{}, phases.NewPhaseBuildError(bb, err)
 	}
 
 	return phases.LayerResult{
@@ -159,10 +155,11 @@ func (bb *BaseBuilder) Build(
 
 func (bb *BaseBuilder) buildLayerFromOCI(
 	ctx context.Context,
+	userLogger *zap.Logger,
 	baseMetadata metadata.Template,
 	hash string,
 ) (metadata.Template, error) {
-	templateBuildDir := filepath.Join(templatesDirectory, bb.Template.BuildID)
+	templateBuildDir := filepath.Join(templatesDirectory(), bb.Template.BuildID)
 	err := os.MkdirAll(templateBuildDir, 0o777)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("error creating template build directory: %w", err)
@@ -177,15 +174,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	// Created here to be able to pass it to CreateSandbox for populating COW cache
 	rootfsPath := filepath.Join(templateBuildDir, rootfsBuildFileName)
 
-	rootfs, memfile, envsImg, err := constructLayerFilesFromOCI(
-		ctx,
-		bb.tracer,
-		bb.BuildContext,
-		baseMetadata.Template.BuildID,
-		bb.artifactRegistry,
-		templateBuildDir,
-		rootfsPath,
-	)
+	rootfs, memfile, envsImg, err := constructLayerFilesFromOCI(ctx, userLogger, bb.BuildContext, baseMetadata.Template.BuildID, bb.artifactRegistry, bb.dockerhubRepository, rootfsPath)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("error building environment: %w", err)
 	}
@@ -198,10 +187,10 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		return metadata.Template{}, fmt.Errorf("error creating template files: %w", err)
 	}
 	localTemplate := sbxtemplate.NewLocalTemplate(cacheFiles, rootfs, memfile)
-	defer localTemplate.Close()
+	defer localTemplate.Close(ctx)
 
 	// Provision sandbox with systemd and other vital parts
-	bb.UserLogger.Info("Provisioning sandbox template")
+	userLogger.Info("Provisioning sandbox template")
 	// Just a symlink to the rootfs build file, so when the COW cache deletes the underlying file (here symlink),
 	// it will not delete the rootfs file. We use the rootfs again later on to start the sandbox template.
 	rootfsProvisionPath := filepath.Join(templateBuildDir, rootfsProvisionLink)
@@ -226,6 +215,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	}
 	err = bb.provisionSandbox(
 		ctx,
+		userLogger,
 		baseSbxConfig,
 		sandbox.RuntimeMetadata{
 			TemplateID:  bb.Config.TemplateID,
@@ -246,7 +236,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	}
 
 	// Check the rootfs filesystem corruption
-	ext4Check, err := filesystem.CheckIntegrity(rootfsPath, true)
+	ext4Check, err := filesystem.CheckIntegrity(ctx, rootfsPath, true)
 	if err != nil {
 		zap.L().Error("provisioned filesystem ext4 integrity",
 			zap.String("result", ext4Check),
@@ -264,13 +254,11 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	}
 
 	// Create sandbox for building template
-	bb.UserLogger.Debug("Creating base sandbox template layer")
-
-	// TODO: Temporarily set this based on global config, should be removed later (it should be passed as a parameter in build)
-	baseSbxConfig.AllowInternetAccess = &globalconfig.AllowSandboxInternet
+	userLogger.Debug("Creating base sandbox template layer")
 
 	sandboxCreator := layer.NewCreateSandboxFromCache(
 		baseSbxConfig,
+		bb.sandboxFactory,
 		baseLayerTimeout,
 		fc.FirecrackerVersions{
 			KernelVersion:      bb.Template.KernelVersion,
@@ -282,7 +270,6 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error) {
 		err = sandboxtools.SyncChangesToDisk(
 			ctx,
-			bb.tracer,
 			bb.proxy,
 			sbx.Runtime.SandboxID,
 		)
@@ -294,14 +281,18 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 
 	templateProvider := layer.NewDirectSourceTemplateProvider(localTemplate)
 
-	baseLayer, err := bb.layerExecutor.BuildLayer(ctx, layer.LayerBuildCommand{
-		SourceTemplate: templateProvider,
-		CurrentLayer:   baseMetadata,
-		Hash:           hash,
-		UpdateEnvd:     false,
-		SandboxCreator: sandboxCreator,
-		ActionExecutor: actionExecutor,
-	})
+	baseLayer, err := bb.layerExecutor.BuildLayer(
+		ctx,
+		userLogger,
+		layer.LayerBuildCommand{
+			SourceTemplate: templateProvider,
+			CurrentLayer:   baseMetadata,
+			Hash:           hash,
+			UpdateEnvd:     false,
+			SandboxCreator: sandboxCreator,
+			ActionExecutor: actionExecutor,
+		},
+	)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("error building base layer: %w", err)
 	}
@@ -323,11 +314,11 @@ func (bb *BaseBuilder) Layer(
 	case bb.Config.FromTemplate != nil:
 		sourceMeta := metadata.FromTemplate{
 			Alias:   bb.Config.FromTemplate.GetAlias(),
-			BuildID: bb.Config.FromTemplate.BuildID,
+			BuildID: bb.Config.FromTemplate.GetBuildID(),
 		}
 
 		// If the template is built from another template, use its metadata
-		tm, err := bb.index.Cached(ctx, bb.Config.FromTemplate.BuildID)
+		tm, err := bb.index.Cached(ctx, bb.Config.FromTemplate.GetBuildID())
 		if err != nil {
 			return phases.LayerResult{}, fmt.Errorf("error getting base layer from cache, you may need to rebuild the base template: %w", err)
 		}
@@ -380,18 +371,18 @@ func (bb *BaseBuilder) Layer(
 			bb.logger.Info("base layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
 
 			return notCachedResult, nil
-		} else {
-			meta, err := bb.index.Cached(ctx, bm.Template.BuildID)
-			if err != nil {
-				zap.L().Info("base layer metadata not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
-
-				return notCachedResult, nil
-			}
-			return phases.LayerResult{
-				Metadata: meta,
-				Cached:   true,
-				Hash:     hash,
-			}, nil
 		}
+
+		meta, err = bb.index.Cached(ctx, bm.Template.BuildID)
+		if err != nil {
+			zap.L().Info("base layer metadata not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
+
+			return notCachedResult, nil
+		}
+		return phases.LayerResult{
+			Metadata: meta,
+			Cached:   true,
+			Hash:     hash,
+		}, nil
 	}
 }

@@ -9,11 +9,11 @@ import (
 	"net/http"
 	"time"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
@@ -24,10 +24,10 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -38,8 +38,7 @@ const (
 )
 
 func main() {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := context.Background()
 
 	templateID := flag.String("template", "", "template id")
 	buildID := flag.String("build", "", "build id")
@@ -47,7 +46,12 @@ func main() {
 	fcVersion := flag.String("firecracker", "", "firecracker version")
 	flag.Parse()
 
-	err := buildTemplate(ctx, *kernelVersion, *fcVersion, *templateID, *buildID)
+	networkConfig, err := network.ParseConfig()
+	if err != nil {
+		log.Fatalf("error parsing config: %v", err)
+	}
+
+	err = buildTemplate(ctx, *kernelVersion, *fcVersion, *templateID, *buildID, networkConfig)
 	if err != nil {
 		log.Fatalf("error building template: %v", err)
 	}
@@ -59,6 +63,7 @@ func buildTemplate(
 	fcVersion,
 	templateID,
 	buildID string,
+	networkConfig network.Config,
 ) error {
 	ctx, cancel := context.WithTimeout(parentCtx, time.Minute*5)
 	defer cancel()
@@ -77,20 +82,18 @@ func buildTemplate(
 	sbxlogger.SetSandboxLoggerExternal(logger)
 	sbxlogger.SetSandboxLoggerInternal(logger)
 
-	tracer := otel.Tracer("test")
-
 	logger.Info("building template", l.WithTemplateID(templateID), l.WithBuildID(buildID))
 
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.
-	sandboxes := smap.New[*sandbox.Sandbox]()
+	sandboxes := sandbox.NewSandboxesMap()
 
 	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes)
 	if err != nil {
 		logger.Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 	go func() {
-		err := sandboxProxy.Start()
+		err := sandboxProxy.Start(parentCtx)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("failed to start sandbox proxy", zap.Error(err))
 		}
@@ -123,7 +126,7 @@ func buildTemplate(
 		}
 	}()
 
-	networkPool, err := network.NewPool(ctx, noop.MeterProvider{}, 8, 8, clientID, tracer)
+	networkPool, err := network.NewPool(ctx, noop.MeterProvider{}, 8, 8, clientID, networkConfig)
 	if err != nil {
 		return fmt.Errorf("could not create network pool: %w", err)
 	}
@@ -134,10 +137,21 @@ func buildTemplate(
 		}
 	}()
 
-	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider()
+	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider(ctx)
 	if err != nil {
 		return fmt.Errorf("error getting artifacts registry provider: %w", err)
 	}
+
+	dockerhubRepository, err := dockerhub.GetRemoteRepository(ctx)
+	if err != nil {
+		return fmt.Errorf("error getting dockerhub repository: %w", err)
+	}
+	defer func() {
+		err := dockerhubRepository.Close()
+		if err != nil {
+			logger.Error("error closing dockerhub repository", zap.Error(err))
+		}
+	}()
 
 	blockMetrics, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
 	if err != nil {
@@ -149,7 +163,12 @@ func buildTemplate(
 		return fmt.Errorf("failed to create feature flags client: %w", err)
 	}
 
-	templateCache, err := sbxtemplate.NewCache(ctx, featureFlags, persistenceTemplate, blockMetrics)
+	c, err := cfg.Parse()
+	if err != nil {
+		return fmt.Errorf("error parsing config: %w", err)
+	}
+
+	templateCache, err := sbxtemplate.NewCache(ctx, c, featureFlags, persistenceTemplate, blockMetrics)
 	if err != nil {
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}
@@ -158,14 +177,16 @@ func buildTemplate(
 	if err != nil {
 		zap.L().Fatal("failed to create build metrics", zap.Error(err))
 	}
+
+	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, true)
+
 	builder := build.NewBuilder(
 		logger,
-		tracer,
+		sandboxFactory,
 		persistenceTemplate,
 		persistenceBuild,
 		artifactRegistry,
-		devicePool,
-		networkPool,
+		dockerhubRepository,
 		sandboxProxy,
 		sandboxes,
 		templateCache,
@@ -178,6 +199,7 @@ func buildTemplate(
 
 	force := true
 	template := config.TemplateConfig{
+		TeamID:     "",
 		TemplateID: templateID,
 		FromImage:  baseImage,
 		Force:      &force,

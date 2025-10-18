@@ -16,12 +16,12 @@ try {
   sandbox = await Sandbox.create();
   log("ℹ️ sandbox created", sandbox.sandboxId);
 
-  const out = await sandbox.commands.run("wget https://google.com", {
+  const out = await sandbox.commands.run("wget https://www.gstatic.com/generate_204", {
     requestTimeoutMs: 10000,
   });
   log("wget output", out.stderr);
 
-  const internetWorking = out.stderr.includes("200 OK");
+  const internetWorking = out.stderr.includes("204 No Content");
   // verify internet is working
   if (!internetWorking) {
     log("Internet is not working");

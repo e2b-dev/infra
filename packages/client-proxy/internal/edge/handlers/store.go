@@ -8,33 +8,27 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
 	loggerprovider "github.com/e2b-dev/infra/packages/proxy/internal/edge/logger-provider"
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/client-proxy/internal/edge/handlers")
+
 type APIStore struct {
-	tracer            trace.Tracer
 	logger            *zap.Logger
 	info              *info.ServiceInfo
 	orchestratorPool  *e2borchestrators.OrchestratorsPool
 	edgePool          *e2borchestrators.EdgePool
-	sandboxes         sandboxes.SandboxesCatalog
+	sandboxes         catalog.SandboxesCatalog
 	queryLogsProvider loggerprovider.LogsQueryProvider
-}
-
-type APIUserFacingError struct {
-	internalError error
-
-	prettyErrorMessage string
-	prettyErrorCode    int
 }
 
 const (
@@ -43,7 +37,7 @@ const (
 
 var skipInitialOrchestratorCheck = os.Getenv("SKIP_ORCHESTRATOR_READINESS_CHECK") == "true"
 
-func NewStore(ctx context.Context, logger *zap.Logger, tracer trace.Tracer, info *info.ServiceInfo, orchestratorsPool *e2borchestrators.OrchestratorsPool, edgePool *e2borchestrators.EdgePool, catalog sandboxes.SandboxesCatalog) (*APIStore, error) {
+func NewStore(ctx context.Context, logger *zap.Logger, info *info.ServiceInfo, orchestratorsPool *e2borchestrators.OrchestratorsPool, edgePool *e2borchestrators.EdgePool, catalog catalog.SandboxesCatalog) (*APIStore, error) {
 	queryLogsProvider, err := loggerprovider.GetLogsQueryProvider()
 	if err != nil {
 		return nil, fmt.Errorf("error when getting logs query provider: %w", err)
@@ -55,7 +49,6 @@ func NewStore(ctx context.Context, logger *zap.Logger, tracer trace.Tracer, info
 		queryLogsProvider: queryLogsProvider,
 
 		info:      info,
-		tracer:    tracer,
 		logger:    logger,
 		sandboxes: catalog,
 	}

@@ -32,3 +32,7 @@ func WithClusterID(clusterID uuid.UUID) zap.Field {
 func WithServiceInstanceID(instanceID string) zap.Field {
 	return zap.String("service.instance.id", instanceID)
 }
+
+func WithEnvdVersion(envdVersion string) zap.Field {
+	return zap.String("envd.version", envdVersion)
+}

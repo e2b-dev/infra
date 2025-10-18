@@ -1,17 +1,22 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -31,44 +36,54 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 
 	sbx, err := a.orchestrator.GetSandbox(sandboxID)
 	if err != nil {
-		_, fErr := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamID})
-		if fErr == nil {
-			zap.L().Warn("Sandbox is already paused", logger.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already paused", sandboxID))
-			return
-		}
-
-		if errors.Is(fErr, sql.ErrNoRows) {
-			zap.L().Debug("Snapshot not found", logger.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error pausing sandbox - snapshot for sandbox '%s' was not found", sandboxID))
-			return
-		}
-
-		zap.L().Error("Error getting snapshot", zap.Error(fErr), logger.WithSandboxID(sandboxID))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
+		apiErr := pauseHandleNotRunningSandbox(ctx, a.sqlcDB, sandboxID, teamID)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		return
 	}
 
 	if sbx.TeamID != teamID {
-		telemetry.ReportCriticalError(ctx, "sandbox does not belong to team", fmt.Errorf("sandbox '%s' does not belong to team '%s'", sandboxID, teamID.String()))
-
-		a.sendAPIStoreError(c, http.StatusUnauthorized, fmt.Sprintf("Error pausing sandbox - sandbox '%s' does not belong to your team '%s'", sandboxID, teamID.String()))
-
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
 		return
 	}
 
-	found := a.orchestrator.DeleteInstance(ctx, sandboxID, true)
-	if !found {
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error pausing sandbox - sandbox '%s' was not found", sandboxID))
+	err = a.orchestrator.RemoveSandbox(ctx, sbx, sandbox.StateActionPause)
+	switch {
+	case err == nil:
+	case errors.Is(err, orchestrator.ErrSandboxNotFound):
+		apiErr := pauseHandleNotRunningSandbox(ctx, a.sqlcDB, sandboxID, teamID)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		return
-	}
+	default:
+		telemetry.ReportError(ctx, "error pausing sandbox", err)
 
-	_, err = sbx.Pausing.WaitWithContext(ctx)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox: %s", err))
-
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
 		return
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+func pauseHandleNotRunningSandbox(ctx context.Context, sqlcDB *sqlcdb.Client, sandboxID string, teamID uuid.UUID) api.APIError {
+	_, err := sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamID})
+	if err == nil {
+		zap.L().Warn("Sandbox is already paused", logger.WithSandboxID(sandboxID))
+		return api.APIError{
+			Code:      http.StatusConflict,
+			ClientMsg: fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already paused", sandboxID),
+		}
+	}
+
+	if errors.Is(err, sql.ErrNoRows) {
+		zap.L().Debug("Snapshot not found", logger.WithSandboxID(sandboxID))
+		return api.APIError{
+			Code:      http.StatusNotFound,
+			ClientMsg: fmt.Sprintf("Error pausing sandbox - snapshot for sandbox '%s' was not found", sandboxID),
+		}
+	}
+
+	zap.L().Error("Error getting snapshot", zap.Error(err), logger.WithSandboxID(sandboxID))
+	return api.APIError{
+		Code:      http.StatusInternalServerError,
+		ClientMsg: "Error pausing sandbox",
+	}
 }

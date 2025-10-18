@@ -18,7 +18,7 @@ func createTestNode(id string, status api.NodeStatus, cpuAllocated int64, inProg
 	node := nodemanager.NewTestNode(id, status, cpuAllocated, 4)
 
 	// Add sandboxes to the placement metrics
-	for i := uint32(0); i < inProgressCount; i++ {
+	for i := range inProgressCount {
 		node.PlacementMetrics.StartPlacing(fmt.Sprintf("sandbox-%d", i), nodemanager.SandboxResources{
 			CPUs:      1,
 			MiBMemory: 512,
@@ -129,7 +129,7 @@ func TestLeastBusyAlgorithm_FindLeastBusyNode_SkipsOverloadedNodes(t *testing.T)
 }
 
 func TestLeastBusyAlgorithm_ChooseNode_ContextTimeout(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
 	defer cancel()
 
 	algorithm := &LeastBusyAlgorithm{}

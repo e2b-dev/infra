@@ -5,7 +5,6 @@ import (
 	"sync"
 	"testing"
 
-	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
 )
 
@@ -28,11 +27,11 @@ func newTestStore(source []string, preExistingPool []string) *testStore {
 	return &testStore{source: source, pool: pool}
 }
 
-func (s *testStore) SourceList(ctx context.Context) ([]string, error) {
+func (s *testStore) SourceList(context.Context) ([]string, error) {
 	return append([]string(nil), s.source...), nil
 }
 
-func (s *testStore) SourceExists(ctx context.Context, source []string, p string) bool {
+func (s *testStore) SourceExists(_ context.Context, source []string, p string) bool {
 	for _, v := range source {
 		if v == p {
 			return true
@@ -42,7 +41,7 @@ func (s *testStore) SourceExists(ctx context.Context, source []string, p string)
 	return false
 }
 
-func (s *testStore) PoolList(ctx context.Context) []string {
+func (s *testStore) PoolList(context.Context) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -54,23 +53,23 @@ func (s *testStore) PoolList(ctx context.Context) []string {
 	return out
 }
 
-func (s *testStore) PoolExists(ctx context.Context, item string) bool {
+func (s *testStore) PoolExists(_ context.Context, item string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, ok := s.pool[item]
 	return ok
 }
 
-func (s *testStore) PoolInsert(ctx context.Context, value string) {
+func (s *testStore) PoolInsert(_ context.Context, value string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.pool[value] = value
 	s.inserts++
 }
 
-func (s *testStore) PoolUpdate(ctx context.Context, value string) { /* not used */ }
+func (s *testStore) PoolUpdate(context.Context, string) { /* not used */ }
 
-func (s *testStore) PoolRemove(ctx context.Context, item string) {
+func (s *testStore) PoolRemove(_ context.Context, item string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -88,14 +87,13 @@ func newSynchronizer(store Store[string, string]) *Synchronize[string, string] {
 	zap.ReplaceGlobals(zap.NewNop())
 	return &Synchronize[string, string]{
 		store:            store,
-		tracer:           noop.NewTracerProvider().Tracer("test"),
 		tracerSpanPrefix: "test synchronization",
 		logsPrefix:       "test synchronization",
 	}
 }
 
 func TestSynchronize_InsertAndRemove(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Start with empty pool; source has a & b.
 	s := newTestStore([]string{"a", "b"}, nil)

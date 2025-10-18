@@ -272,13 +272,13 @@ func (r *RedisStreams[PayloadT, SubMetaDataT]) processMessage(msg redis.XMessage
 	}
 }
 
-func (r *RedisStreams[PayloadT, SubMetaDataT]) Close(ctx context.Context) error {
+func (r *RedisStreams[PayloadT, SubMetaDataT]) Close(context.Context) error {
 	return r.redisClient.Close()
 }
 
 // Private helper functions
 func structToMapJSON(obj any) (map[string]any, error) {
-	var result map[string]interface{}
+	var result map[string]any
 	jsonBytes, err := json.Marshal(obj)
 	if err != nil {
 		return nil, err

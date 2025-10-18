@@ -3,7 +3,6 @@ package oci
 import (
 	"archive/tar"
 	"bytes"
-	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -21,10 +20,10 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
@@ -55,7 +54,6 @@ func createFileTar(t *testing.T, fileName string) *bytes.Buffer {
 func TestCreateExportLayersOrder(t *testing.T) {
 	ctx := t.Context()
 
-	tracer := noop.NewTracerProvider().Tracer("test")
 	logger := zap.NewNop()
 
 	// Create a dummy image with some layers
@@ -83,7 +81,7 @@ func TestCreateExportLayersOrder(t *testing.T) {
 
 	// Export the layers
 	dir := t.TempDir()
-	layers, err := createExport(ctx, tracer, logger, img, dir)
+	layers, err := createExport(ctx, logger, img, dir)
 	require.NoError(t, err)
 	require.NotNil(t, layers)
 
@@ -129,8 +127,7 @@ func authHandler(handler http.Handler, username, password string) http.Handler {
 }
 
 func TestGetPublicImageWithGeneralAuth(t *testing.T) {
-	ctx := context.Background()
-	tracer := noop.NewTracerProvider().Tracer("test")
+	ctx := t.Context()
 
 	// Create a test image
 	testImage := empty.Image
@@ -148,6 +145,14 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 
 	testRepository := "test/image"
 	testImageRef := testRepository + ":latest"
+
+	dockerhubRepository := dockerhub.NewNoopRemoteRepository()
+	t.Cleanup(func() {
+		err := dockerhubRepository.Close()
+		if err != nil {
+			t.Errorf("error closing dockerhub repository: %v", err)
+		}
+	})
 
 	t.Run("successful auth and pull", func(t *testing.T) {
 		reg := registry.New()
@@ -189,7 +194,7 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 		require.NotNil(t, authOption)
 
 		// Now test GetPublicImage
-		img, err := GetPublicImage(ctx, tracer, imageRef, authProvider)
+		img, err := GetPublicImage(ctx, dockerhubRepository, imageRef, authProvider)
 		require.NoError(t, err)
 		require.NotNil(t, img)
 
@@ -239,7 +244,7 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 		require.NotNil(t, authOption)
 
 		// Now test GetPublicImage
-		img, err := GetPublicImage(ctx, tracer, imageRef, authProvider)
+		img, err := GetPublicImage(ctx, dockerhubRepository, imageRef, authProvider)
 		require.Error(t, err)
 		require.Nil(t, img)
 	})
@@ -264,7 +269,7 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 		require.NoError(t, err)
 
 		// Get image without auth provider (nil)
-		img, err := GetPublicImage(ctx, tracer, imageRef, nil)
+		img, err := GetPublicImage(ctx, dockerhubRepository, imageRef, nil)
 		require.NoError(t, err)
 		require.NotNil(t, img)
 

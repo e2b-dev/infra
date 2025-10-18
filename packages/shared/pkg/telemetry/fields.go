@@ -36,6 +36,10 @@ func WithTeamID(teamID string) attribute.KeyValue {
 	return zapFieldToOTELAttribute(logger.WithTeamID(teamID))
 }
 
+func WithEnvdVersion(envdVersion string) attribute.KeyValue {
+	return zapFieldToOTELAttribute(logger.WithEnvdVersion(envdVersion))
+}
+
 func zapFieldToOTELAttribute(f zap.Field) attribute.KeyValue {
 	e := &ZapFieldToOTELAttributeEncoder{}
 	f.AddTo(e)
@@ -46,11 +50,11 @@ type ZapFieldToOTELAttributeEncoder struct {
 	attribute.KeyValue
 }
 
-func (z *ZapFieldToOTELAttributeEncoder) AddArray(key string, marshaler zapcore.ArrayMarshaler) error {
+func (z *ZapFieldToOTELAttributeEncoder) AddArray(_ string, _ zapcore.ArrayMarshaler) error {
 	return nil
 }
 
-func (z *ZapFieldToOTELAttributeEncoder) AddObject(key string, marshaler zapcore.ObjectMarshaler) error {
+func (z *ZapFieldToOTELAttributeEncoder) AddObject(_ string, _ zapcore.ObjectMarshaler) error {
 	return nil
 }
 
@@ -143,10 +147,10 @@ func (z *ZapFieldToOTELAttributeEncoder) AddUintptr(key string, value uintptr) {
 	z.KeyValue = attribute.String(key, fmt.Sprintf("%v", value))
 }
 
-func (z *ZapFieldToOTELAttributeEncoder) AddReflected(key string, value interface{}) error {
+func (z *ZapFieldToOTELAttributeEncoder) AddReflected(key string, value any) error {
 	z.KeyValue = attribute.String(key, fmt.Sprintf("%v", value))
 	return nil
 }
 
-func (z *ZapFieldToOTELAttributeEncoder) OpenNamespace(key string) {
+func (z *ZapFieldToOTELAttributeEncoder) OpenNamespace(_ string) {
 }

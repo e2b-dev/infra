@@ -87,6 +87,27 @@ func (tu *TierUpdate) AddConcurrentInstances(i int64) *TierUpdate {
 	return tu
 }
 
+// SetConcurrentTemplateBuilds sets the "concurrent_template_builds" field.
+func (tu *TierUpdate) SetConcurrentTemplateBuilds(i int64) *TierUpdate {
+	tu.mutation.ResetConcurrentTemplateBuilds()
+	tu.mutation.SetConcurrentTemplateBuilds(i)
+	return tu
+}
+
+// SetNillableConcurrentTemplateBuilds sets the "concurrent_template_builds" field if the given value is not nil.
+func (tu *TierUpdate) SetNillableConcurrentTemplateBuilds(i *int64) *TierUpdate {
+	if i != nil {
+		tu.SetConcurrentTemplateBuilds(*i)
+	}
+	return tu
+}
+
+// AddConcurrentTemplateBuilds adds i to the "concurrent_template_builds" field.
+func (tu *TierUpdate) AddConcurrentTemplateBuilds(i int64) *TierUpdate {
+	tu.mutation.AddConcurrentTemplateBuilds(i)
+	return tu
+}
+
 // SetMaxLengthHours sets the "max_length_hours" field.
 func (tu *TierUpdate) SetMaxLengthHours(i int64) *TierUpdate {
 	tu.mutation.ResetMaxLengthHours()
@@ -205,6 +226,12 @@ func (tu *TierUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if value, ok := tu.mutation.AddedConcurrentInstances(); ok {
 		_spec.AddField(tier.FieldConcurrentInstances, field.TypeInt64, value)
+	}
+	if value, ok := tu.mutation.ConcurrentTemplateBuilds(); ok {
+		_spec.SetField(tier.FieldConcurrentTemplateBuilds, field.TypeInt64, value)
+	}
+	if value, ok := tu.mutation.AddedConcurrentTemplateBuilds(); ok {
+		_spec.AddField(tier.FieldConcurrentTemplateBuilds, field.TypeInt64, value)
 	}
 	if value, ok := tu.mutation.MaxLengthHours(); ok {
 		_spec.SetField(tier.FieldMaxLengthHours, field.TypeInt64, value)
@@ -337,6 +364,27 @@ func (tuo *TierUpdateOne) SetNillableConcurrentInstances(i *int64) *TierUpdateOn
 // AddConcurrentInstances adds i to the "concurrent_instances" field.
 func (tuo *TierUpdateOne) AddConcurrentInstances(i int64) *TierUpdateOne {
 	tuo.mutation.AddConcurrentInstances(i)
+	return tuo
+}
+
+// SetConcurrentTemplateBuilds sets the "concurrent_template_builds" field.
+func (tuo *TierUpdateOne) SetConcurrentTemplateBuilds(i int64) *TierUpdateOne {
+	tuo.mutation.ResetConcurrentTemplateBuilds()
+	tuo.mutation.SetConcurrentTemplateBuilds(i)
+	return tuo
+}
+
+// SetNillableConcurrentTemplateBuilds sets the "concurrent_template_builds" field if the given value is not nil.
+func (tuo *TierUpdateOne) SetNillableConcurrentTemplateBuilds(i *int64) *TierUpdateOne {
+	if i != nil {
+		tuo.SetConcurrentTemplateBuilds(*i)
+	}
+	return tuo
+}
+
+// AddConcurrentTemplateBuilds adds i to the "concurrent_template_builds" field.
+func (tuo *TierUpdateOne) AddConcurrentTemplateBuilds(i int64) *TierUpdateOne {
+	tuo.mutation.AddConcurrentTemplateBuilds(i)
 	return tuo
 }
 
@@ -488,6 +536,12 @@ func (tuo *TierUpdateOne) sqlSave(ctx context.Context) (_node *Tier, err error) 
 	}
 	if value, ok := tuo.mutation.AddedConcurrentInstances(); ok {
 		_spec.AddField(tier.FieldConcurrentInstances, field.TypeInt64, value)
+	}
+	if value, ok := tuo.mutation.ConcurrentTemplateBuilds(); ok {
+		_spec.SetField(tier.FieldConcurrentTemplateBuilds, field.TypeInt64, value)
+	}
+	if value, ok := tuo.mutation.AddedConcurrentTemplateBuilds(); ok {
+		_spec.AddField(tier.FieldConcurrentTemplateBuilds, field.TypeInt64, value)
 	}
 	if value, ok := tuo.mutation.MaxLengthHours(); ok {
 		_spec.SetField(tier.FieldMaxLengthHours, field.TypeInt64, value)

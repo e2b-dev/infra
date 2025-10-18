@@ -52,13 +52,13 @@ func createRetryableClient(config RetryConfig) *retryablehttp.Client {
 	client.RetryWaitMax = config.MaxBackoff
 
 	// Custom backoff function with full jitter to avoid thundering herd
-	client.Backoff = func(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+	client.Backoff = func(start, maxBackoff time.Duration, attemptNum int, _ *http.Response) time.Duration {
 		// Calculate exponential backoff
-		backoff := min
+		backoff := start
 		for range attemptNum {
 			backoff = time.Duration(float64(backoff) * config.BackoffMultiplier)
-			if backoff > max {
-				backoff = max
+			if backoff > maxBackoff {
+				backoff = maxBackoff
 				break
 			}
 		}
@@ -93,7 +93,7 @@ func (z *zapLogger) Info(msg string, keysAndValues ...any) {
 	zap.L().Info(msg, zap.Any("details", keysAndValues))
 }
 
-func (z *zapLogger) Debug(msg string, keysAndValues ...any) {
+func (z *zapLogger) Debug(string, ...any) {
 	// Ignore debug logs
 }
 
@@ -165,7 +165,7 @@ func (m *MultipartUploader) InitiateUpload() (string, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("failed to initiate upload (status %d): %s", resp.StatusCode, string(body))
 	}
@@ -202,7 +202,7 @@ func (m *MultipartUploader) UploadPart(uploadID string, partNumber int, data []b
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("failed to upload part %d (status %d): %s", partNumber, resp.StatusCode, string(body))
 	}
@@ -245,7 +245,7 @@ func (m *MultipartUploader) CompleteUpload(uploadID string, parts []Part) error 
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("failed to complete upload (status %d): %s", resp.StatusCode, string(body))
 	}

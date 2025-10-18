@@ -1,16 +1,16 @@
 # envd
 
-Daemon that runs inside a sandbox and allows interacting with the sandbox via calls from the SDK.
+Daemon that runs inside a sandbox that allows interacting with the sandbox via calls from the SDK.
 
 ## Development
 
-Run the following command to (re)build the envd daemon and start a Docker container and run the it inside:
+Run the following command to (re)build the envd daemon and start a Docker container with envd running inside:
 
 ```bash
 make build && make start-docker
 ```
 
-You can use E2B SDKs with env var `E2B_DEBUG=true` or with a debug parameter set to true when creating or connecting to a sandbox to connect to the envd started with this command locally.
+You can use E2B SDKs with env var `E2B_DEBUG=true` or with a debug parameter set to `true` when creating or connecting to a sandbox, to connect to the envd started with this command.
 
 ### Generating API server stubs
 
@@ -33,5 +33,4 @@ make generate
 - <https://golangforall.com/en/post/go-docker-delve-remote-debug.html>
 - <https://github.com/golang/vscode-go/blob/master/docs/debugging.md>
 
-Run `make run-debug` and then connect to the port 2345 with a debugger or
-use the VSCode run/debug and run the "Debug envd" to build the envd, Docker, and start the debugging.
+Run `make run-debug` and then connect to the port `2345` with a debugger or use the VSCode run/debug and run the "Debug envd" to build the envd, Docker, and start the debugging.

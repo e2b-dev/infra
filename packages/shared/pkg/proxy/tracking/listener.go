@@ -7,6 +7,7 @@ import (
 
 type Listener struct {
 	net.Listener
+
 	counter *atomic.Int64
 }
 

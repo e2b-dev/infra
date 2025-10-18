@@ -17,8 +17,8 @@ type SandboxEventsClickhouseBatcher interface {
 
 type SandboxEventInsertBatcher struct {
 	*Batcher[clickhouse.SandboxEvent]
-	errorHandler func(error)
-	conn         driver.Conn
+
+	conn driver.Conn
 }
 
 const InsertSandboxEventQuery = `INSERT INTO sandbox_events
@@ -108,7 +108,7 @@ func (b *SandboxEventInsertBatcher) Push(event clickhouse.SandboxEvent) error {
 	return nil
 }
 
-func (b *SandboxEventInsertBatcher) Close(ctx context.Context) error {
+func (b *SandboxEventInsertBatcher) Close(context.Context) error {
 	stopErr := b.Batcher.Stop()
 	closeErr := b.conn.Close()
 

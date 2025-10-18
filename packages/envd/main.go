@@ -38,7 +38,7 @@ const (
 )
 
 var (
-	Version = "0.2.11"
+	Version = "0.3.7"
 
 	commitSHA string
 
@@ -178,18 +178,20 @@ func main() {
 		tag := "startCmd"
 		cwd := "/home/user"
 		user, err := permissions.GetUser("root")
-		if err == nil {
-			processService.InitializeStartProcess(ctx, user, &processSpec.StartRequest{
-				Tag: &tag,
-				Process: &processSpec.ProcessConfig{
-					Envs: make(map[string]string),
-					Cmd:  "/bin/bash",
-					Args: []string{"-l", "-c", startCmdFlag},
-					Cwd:  &cwd,
-				},
-			})
-		} else {
-			log.Fatalf("error getting user: %v", err)
+		if err != nil {
+			log.Fatalf("error getting user: %v", err) //nolint:gocritic // probably fine to bail if we're done?
+		}
+
+		if err = processService.InitializeStartProcess(ctx, user, &processSpec.StartRequest{
+			Tag: &tag,
+			Process: &processSpec.ProcessConfig{
+				Envs: make(map[string]string),
+				Cmd:  "/bin/bash",
+				Args: []string{"-l", "-c", startCmdFlag},
+				Cwd:  &cwd,
+			},
+		}); err != nil {
+			log.Fatalf("error starting process: %v", err)
 		}
 	}
 
@@ -199,7 +201,7 @@ func main() {
 
 	portLogger := l.With().Str("logger", "port-forwarder").Logger()
 	portForwarder := publicport.NewForwarder(&portLogger, portScanner)
-	go portForwarder.StartForwarding()
+	go portForwarder.StartForwarding(ctx)
 
 	go portScanner.ScanAndBroadcast()
 

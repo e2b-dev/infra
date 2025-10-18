@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildlogger"
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -18,7 +19,7 @@ const (
 	buildInfoExpiration = time.Minute * 10 // 10 minutes
 )
 
-var CancelledBuildReason = "build was cancelled"
+const CanceledBuildReason = "build was cancelled"
 
 type BuildInfoResult struct {
 	Status   template_manager.TemplateBuildState
@@ -27,7 +28,8 @@ type BuildInfoResult struct {
 }
 
 type BuildInfo struct {
-	logs   *SafeBuffer
+	TeamID string
+	logs   *buildlogger.LogEntryLogger
 	Result *utils.SetOnce[BuildInfoResult]
 }
 
@@ -83,19 +85,26 @@ func NewBuildCache(meterProvider metric.MeterProvider) *BuildCache {
 	meter := meterProvider.Meter("orchestrator.cache.build")
 
 	cache := ttlcache.New(ttlcache.WithTTL[string, *BuildInfo](buildInfoExpiration))
-	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.BuildCounterMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.BuildCounterMeterName, func(_ context.Context, observer metric.Int64Observer) error {
 		items := utils.MapValues(cache.Items())
 
-		// Filter running builds
-		runningCount := len(utils.Filter(items, func(item *ttlcache.Item[string, *BuildInfo]) bool {
-			return item != nil && item.Value() != nil && item.Value().IsRunning()
-		}))
+		// Group by teamID
+		teamCounts := make(map[string]int)
+		for _, item := range items {
+			// Filter only running builds
+			if item != nil && item.Value() != nil && item.Value().IsRunning() {
+				teamID := item.Value().TeamID
+				teamCounts[teamID]++
+			}
+		}
 
-		observer.Observe(int64(runningCount))
+		for teamID, count := range teamCounts {
+			observer.Observe(int64(count), metric.WithAttributes(telemetry.WithTeamID(teamID)))
+		}
 		return nil
 	})
 	if err != nil {
-		zap.L().Error("error creating counter", zap.Error(err), zap.Any("counter_name", telemetry.BuildCounterMeterName))
+		zap.L().Error("error creating counter", zap.Error(err), zap.String("counter_name", string(telemetry.BuildCounterMeterName)))
 	}
 
 	go cache.Start()
@@ -121,8 +130,9 @@ func (c *BuildCache) Get(buildID string) (*BuildInfo, error) {
 }
 
 // Create creates a new build if it doesn't exist in the cache or the build was already finished.
-func (c *BuildCache) Create(buildID string, logs *SafeBuffer) (*BuildInfo, error) {
+func (c *BuildCache) Create(teamID string, buildID string, logs *buildlogger.LogEntryLogger) (*BuildInfo, error) {
 	info := &BuildInfo{
+		TeamID: teamID,
 		logs:   logs,
 		Result: utils.NewSetOnce[BuildInfoResult](),
 	}

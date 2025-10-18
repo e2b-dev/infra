@@ -5,80 +5,98 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
-	"github.com/e2b-dev/infra/packages/api/internal/dns"
+	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/metrics"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/evictor"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/store/memory"
+	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const (
-	// cacheHookTimeout is the timeout for all requests inside cache insert/delete hooks.
-	cacheHookTimeout = 5 * time.Minute
-
-	statusLogInterval = time.Second * 20
-)
+const statusLogInterval = time.Second * 20
 
 var ErrNodeNotFound = errors.New("node not found")
 
 type Orchestrator struct {
 	httpClient              *http.Client
 	nomadClient             *nomadapi.Client
-	instanceCache           *instance.InstanceCache
+	sandboxStore            sandbox.Store
 	nodes                   *smap.Map[*nodemanager.Node]
 	leastBusyAlgorithm      placement.Algorithm
 	bestOfKAlgorithm        *placement.BestOfK
 	featureFlagsClient      *featureflags.Client
-	tracer                  trace.Tracer
 	analytics               *analyticscollector.Analytics
-	dns                     *dns.DNS
+	posthogClient           *analyticscollector.PosthogClient
+	routingCatalog          e2bcatalog.SandboxesCatalog
 	dbClient                *db.DB
+	sqlcDB                  *sqlcdb.Client
 	tel                     *telemetry.Client
 	clusters                *edge.Pool
 	metricsRegistration     metric.Registration
 	createdSandboxesCounter metric.Int64Counter
 	teamMetricsObserver     *metrics.TeamObserver
+	sandboxCounter          metric.Int64UpDownCounter
+	createdCounter          metric.Int64Counter
 }
 
 func New(
 	ctx context.Context,
+	config cfg.Config,
 	tel *telemetry.Client,
-	tracer trace.Tracer,
 	nomadClient *nomadapi.Client,
 	posthogClient *analyticscollector.PosthogClient,
 	redisClient redis.UniversalClient,
 	dbClient *db.DB,
+	sqlcDB *sqlcdb.Client,
 	clusters *edge.Pool,
 	featureFlags *featureflags.Client,
 ) (*Orchestrator, error) {
-	analyticsInstance, err := analyticscollector.NewAnalytics()
+	analyticsInstance, err := analyticscollector.NewAnalytics(
+		config.AnalyticsCollectorHost,
+		config.AnalyticsCollectorAPIToken,
+	)
 	if err != nil {
 		zap.L().Error("Error initializing Analytics client", zap.Error(err))
+		return nil, err
 	}
 
-	dnsServer := dns.New(ctx, redisClient)
-
-	if env.IsLocal() {
-		zap.L().Info("Running locally, skipping starting DNS server")
+	var routingCatalog e2bcatalog.SandboxesCatalog
+	if redisClient != nil {
+		routingCatalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient)
 	} else {
-		zap.L().Info("Starting DNS server")
-		dnsServer.Start(ctx, "0.0.0.0", os.Getenv("DNS_PORT"))
+		routingCatalog = e2bcatalog.NewMemorySandboxesCatalog()
+	}
+
+	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
+	// right now we load them from Orchestrator
+	meter := tel.MeterProvider.Meter("api.cache.sandbox")
+	sandboxCounter, err := telemetry.GetUpDownCounter(meter, telemetry.SandboxCountMeterName)
+	if err != nil {
+		zap.L().Error("error getting counter", zap.Error(err))
+		return nil, err
+	}
+
+	createdCounter, err := telemetry.GetCounter(meter, telemetry.SandboxCreateMeterName)
+	if err != nil {
+		zap.L().Error("error getting counter", zap.Error(err))
+		return nil, err
 	}
 
 	httpClient := &http.Client{
@@ -92,28 +110,40 @@ func New(
 	o := Orchestrator{
 		httpClient:         httpClient,
 		analytics:          analyticsInstance,
+		posthogClient:      posthogClient,
 		nomadClient:        nomadClient,
-		tracer:             tracer,
 		nodes:              smap.New[*nodemanager.Node](),
 		leastBusyAlgorithm: leastBusyAlgorithm,
 		bestOfKAlgorithm:   bestOfKAlgorithm,
 		featureFlagsClient: featureFlags,
-		dns:                dnsServer,
+		routingCatalog:     routingCatalog,
 		dbClient:           dbClient,
+		sqlcDB:             sqlcDB,
 		tel:                tel,
 		clusters:           clusters,
+
+		sandboxCounter: sandboxCounter,
+		createdCounter: createdCounter,
 	}
 
-	cache := instance.NewCache(
-		ctx,
-		tel.MeterProvider,
-		o.getInsertInstanceFunction(ctx, cacheHookTimeout),
-		o.getDeleteInstanceFunction(ctx, posthogClient, cacheHookTimeout),
+	sandboxStore := memory.NewStore(
+		[]sandbox.InsertCallback{
+			o.addToNode,
+		},
+		[]sandbox.InsertCallback{
+			o.observeTeamSandbox,
+			o.countersInsert,
+			o.analyticsInsert,
+		},
 	)
 
-	o.instanceCache = cache
+	o.sandboxStore = sandboxStore
 
-	teamMetricsObserver, err := metrics.NewTeamObserver(ctx, cache)
+	// Evict old sandboxes
+	sandboxEvictor := evictor.New(sandboxStore, o.RemoveSandbox)
+	go sandboxEvictor.Start(ctx)
+
+	teamMetricsObserver, err := metrics.NewTeamObserver(ctx, sandboxStore)
 	if err != nil {
 		zap.L().Error("Failed to create team metrics observer", zap.Error(err))
 		return nil, fmt.Errorf("failed to create team metrics observer: %w", err)
@@ -124,7 +154,7 @@ func New(
 	// For local development and testing, we skip the Nomad sync
 	// Local cluster is used for single-node setups instead
 	skipNomadSync := env.IsLocal()
-	go o.keepInSync(ctx, cache, skipNomadSync)
+	go o.keepInSync(ctx, sandboxStore, skipNomadSync)
 
 	if err := o.setupMetrics(tel.MeterProvider); err != nil {
 		zap.L().Error("Failed to setup metrics", zap.Error(err))
@@ -149,15 +179,15 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 
 			return
 		case <-ticker.C:
-			connectedNodes := make([]map[string]interface{}, 0, o.nodes.Count())
+			connectedNodes := make([]map[string]any, 0, o.nodes.Count())
 
 			for _, nodeItem := range o.nodes.Items() {
 				if nodeItem == nil {
-					connectedNodes = append(connectedNodes, map[string]interface{}{
+					connectedNodes = append(connectedNodes, map[string]any{
 						"id": "nil",
 					})
 				} else {
-					connectedNodes = append(connectedNodes, map[string]interface{}{
+					connectedNodes = append(connectedNodes, map[string]any{
 						"id":        nodeItem.ID,
 						"status":    nodeItem.Status(),
 						"sandboxes": nodeItem.Metrics().SandboxCount,
@@ -166,7 +196,7 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 			}
 
 			zap.L().Info("API internal status",
-				zap.Int("sandboxes_count", o.instanceCache.Len()),
+				zap.Int("sandboxes_count", len(o.sandboxStore.Items(nil, []sandbox.State{sandbox.StateRunning}))),
 				zap.Int("nodes_count", o.nodes.Count()),
 				zap.Any("nodes", connectedNodes),
 			)
@@ -202,18 +232,7 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 		errs = append(errs, err)
 	}
 
-	if o.dns != nil {
-		if err := o.dns.Close(ctx); err != nil {
-			errs = append(errs, err)
-		}
-	}
-
 	return errors.Join(errs...)
-}
-
-// WaitForPause waits for the instance to be paused and returns the node info where the instance was paused on.
-func (o *Orchestrator) WaitForPause(ctx context.Context, sandboxID string) (nodeID string, err error) {
-	return o.instanceCache.WaitForPause(ctx, sandboxID)
 }
 
 // getPlacementAlgorithm returns the appropriate placement algorithm based on the passed context

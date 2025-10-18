@@ -12,6 +12,7 @@ import (
 )
 
 type StorageKV struct {
+	config       Config
 	slotsSize    int
 	consulClient *consulApi.Client
 	nodeID       string
@@ -21,7 +22,7 @@ func (s *StorageKV) getKVKey(slotIdx int) string {
 	return fmt.Sprintf("%s/%d", s.nodeID, slotIdx)
 }
 
-func NewStorageKV(slotsSize int, nodeID string) (*StorageKV, error) {
+func NewStorageKV(slotsSize int, nodeID string, config Config) (*StorageKV, error) {
 	consulToken := utils.RequiredEnv("CONSUL_TOKEN", "Consul token for authenticating requests to the Consul API")
 
 	consulClient, err := newConsulClient(consulToken)
@@ -30,6 +31,7 @@ func NewStorageKV(slotsSize int, nodeID string) (*StorageKV, error) {
 	}
 
 	return &StorageKV{
+		config:       config,
 		slotsSize:    slotsSize,
 		consulClient: consulClient,
 		nodeID:       nodeID,
@@ -63,7 +65,7 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 		}
 
 		if status {
-			return NewSlot(key, slotIdx)
+			return NewSlot(key, slotIdx, s.config)
 		}
 
 		return nil, nil
@@ -94,7 +96,7 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 			return nil, fmt.Errorf("failed to read Consul KV: %w", keysErr)
 		}
 
-		for slotIdx := 0; slotIdx < s.slotsSize; slotIdx++ {
+		for slotIdx := range s.slotsSize {
 			key := s.getKVKey(slotIdx)
 
 			if slices.Contains(reservedKeys, key) {

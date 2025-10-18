@@ -3,7 +3,6 @@ package commands
 import (
 	"context"
 
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -14,7 +13,6 @@ import (
 type Command interface {
 	Execute(
 		ctx context.Context,
-		tracer trace.Tracer,
 		logger *zap.Logger,
 		proxy *proxy.SandboxProxy,
 		sandboxID string,

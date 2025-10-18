@@ -35,9 +35,10 @@ type Node struct {
 	// Deprecated
 	NomadNodeShortID string
 
-	ID        string
-	ClusterID uuid.UUID
-	IPAddress string
+	ID            string
+	ClusterID     uuid.UUID
+	IPAddress     string
+	SandboxDomain *string
 
 	client *grpclient.GRPCClient
 	status api.NodeStatus
@@ -47,7 +48,7 @@ type Node struct {
 
 	meta NodeMetadata
 
-	buildCache *ttlcache.Cache[string, interface{}]
+	buildCache *ttlcache.Cache[string, any]
 
 	PlacementMetrics PlacementMetrics
 
@@ -65,33 +66,33 @@ func New(
 		return nil, err
 	}
 
-	nodeStatus := api.NodeStatusUnhealthy
 	nodeInfo, err := client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 	if err != nil {
 		_ = client.Close()
 		return nil, fmt.Errorf("failed to get node service info: %w", err)
 	}
 
-	nodeStatus, ok := OrchestratorToApiNodeStateMapper[nodeInfo.ServiceStatus]
+	nodeStatus, ok := OrchestratorToApiNodeStateMapper[nodeInfo.GetServiceStatus()]
 	if !ok {
-		zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.ServiceStatus), logger.WithNodeID(nodeInfo.NodeId))
+		zap.L().Error("Unknown service info status", zap.String("status", nodeInfo.GetServiceStatus().String()), logger.WithNodeID(nodeInfo.GetNodeId()))
 		nodeStatus = api.NodeStatusUnhealthy
 	}
 
-	buildCache := ttlcache.New[string, interface{}]()
+	buildCache := ttlcache.New[string, any]()
 	go buildCache.Start()
 
 	nodeMetadata := NodeMetadata{
-		ServiceInstanceID: nodeInfo.ServiceId,
-		Commit:            nodeInfo.ServiceCommit,
-		Version:           nodeInfo.ServiceVersion,
+		ServiceInstanceID: nodeInfo.GetServiceId(),
+		Commit:            nodeInfo.GetServiceCommit(),
+		Version:           nodeInfo.GetServiceVersion(),
 	}
 
 	n := &Node{
 		NomadNodeShortID: discoveredNode.NomadNodeShortID,
 		ClusterID:        consts.LocalClusterID,
-		ID:               nodeInfo.NodeId,
+		ID:               nodeInfo.GetNodeId(),
 		IPAddress:        discoveredNode.IPAddress,
+		SandboxDomain:    nil,
 
 		client: client,
 		status: nodeStatus,
@@ -109,14 +110,14 @@ func New(
 	return n, nil
 }
 
-func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID uuid.UUID, i *edge.ClusterInstance) (*Node, error) {
+func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID uuid.UUID, sandboxDomain *string, i *edge.ClusterInstance) (*Node, error) {
 	nodeStatus, ok := OrchestratorToApiNodeStateMapper[i.GetStatus()]
 	if !ok {
-		zap.L().Error("Unknown service info status", zap.Any("status", i.GetStatus()), logger.WithNodeID(i.NodeID))
+		zap.L().Error("Unknown service info status", zap.String("status", i.GetStatus().String()), logger.WithNodeID(i.NodeID))
 		nodeStatus = api.NodeStatusUnhealthy
 	}
 
-	buildCache := ttlcache.New[string, interface{}]()
+	buildCache := ttlcache.New[string, any]()
 	go buildCache.Start()
 
 	nodeMetadata := NodeMetadata{
@@ -130,7 +131,8 @@ func NewClusterNode(ctx context.Context, client *grpclient.GRPCClient, clusterID
 		ClusterID:        clusterID,
 		ID:               i.NodeID,
 		// We can't connect directly to the node in the cluster
-		IPAddress: "",
+		IPAddress:     "",
+		SandboxDomain: sandboxDomain,
 
 		client: client,
 		status: nodeStatus,

@@ -7,7 +7,7 @@ import (
 
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
@@ -15,16 +15,17 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 )
 
 func constructLayerFilesFromOCI(
 	ctx context.Context,
-	tracer trace.Tracer,
+	userLogger *zap.Logger,
 	buildContext buildcontext.BuildContext,
 	// The base build ID can be different from the final requested template build ID.
 	baseBuildID string,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
-	templateBuildDir string,
+	dockerhubRepository dockerhub.RemoteRepository,
 	rootfsPath string,
 ) (r *block.Local, m block.ReadonlyDevice, c containerregistry.Config, e error) {
 	childCtx, childSpan := tracer.Start(ctx, "template-build")
@@ -33,6 +34,7 @@ func constructLayerFilesFromOCI(
 	// Create a rootfs file
 	rtfs := rootfs.New(
 		artifactRegistry,
+		dockerhubRepository,
 		buildContext.Template,
 		buildContext.Config,
 	)
@@ -43,7 +45,7 @@ func constructLayerFilesFromOCI(
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error getting provision script: %w", err)
 	}
-	imgConfig, err := rtfs.CreateExt4Filesystem(childCtx, tracer, buildContext.UserLogger, rootfsPath, provisionScript, provisionLogPrefix)
+	imgConfig, err := rtfs.CreateExt4Filesystem(childCtx, userLogger, rootfsPath, provisionScript, provisionLogPrefix)
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating ext4 filesystem: %w", err)
 	}

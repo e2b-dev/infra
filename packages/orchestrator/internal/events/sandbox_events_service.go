@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -11,9 +12,9 @@ import (
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/batcher"
+	"github.com/e2b-dev/infra/packages/shared/pkg/events/event"
+	"github.com/e2b-dev/infra/packages/shared/pkg/events/webhooks"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/event"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/webhooks"
 	"github.com/e2b-dev/infra/packages/shared/pkg/pubsub"
 )
 
@@ -63,7 +64,7 @@ func (es *SandboxEventsService) HandleEvent(ctx context.Context, event event.San
 	childCtx := context.WithoutCancel(ctx)
 
 	go es.handlePubSubEvent(childCtx, event)
-	go es.handleClickhouseBatcherEvent(event)
+	go es.handleClickhouseBatcherEvent(childCtx, event)
 }
 
 func (es *SandboxEventsService) handlePubSubEvent(ctx context.Context, event event.SandboxEvent) {
@@ -108,12 +109,21 @@ func (es *SandboxEventsService) Close(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-func (es *SandboxEventsService) handleClickhouseBatcherEvent(event event.SandboxEvent) {
+func (es *SandboxEventsService) handleClickhouseBatcherEvent(ctx context.Context, event event.SandboxEvent) {
 	sandboxLifeCycleEventsWriteFlag, flagErr := es.featureFlags.BoolFlag(
-		context.Background(), featureflags.SandboxLifeCycleEventsWriteFlagName, featureflags.SandboxContext(event.SandboxID))
+		ctx, featureflags.SandboxLifeCycleEventsWriteFlagName, featureflags.SandboxContext(event.SandboxID))
 	if flagErr != nil {
 		es.logger.Error("soft failing during sandbox lifecycle events write feature flag receive", zap.Error(flagErr))
 	}
+
+	eventData := ""
+	eventDataJson, err := json.Marshal(event.EventData)
+	if err != nil {
+		es.logger.Error("error marshalling sandbox event data", zap.Error(err))
+	} else {
+		eventData = string(eventDataJson)
+	}
+
 	if sandboxLifeCycleEventsWriteFlag {
 		err := es.batcher.Push(clickhouse.SandboxEvent{
 			Timestamp:          event.Timestamp,
@@ -124,7 +134,7 @@ func (es *SandboxEventsService) handleClickhouseBatcherEvent(event event.Sandbox
 			SandboxExecutionID: event.SandboxExecutionID,
 			EventCategory:      event.EventCategory,
 			EventLabel:         event.EventLabel,
-			EventData:          sql.NullString{String: event.EventData, Valid: event.EventData != ""},
+			EventData:          sql.NullString{String: eventData, Valid: eventData != ""},
 		})
 		if err != nil {
 			es.logger.Error("error inserting sandbox event",

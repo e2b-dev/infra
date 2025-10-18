@@ -18,6 +18,8 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // Test constants
@@ -25,6 +27,7 @@ const (
 	testBucketName = "test-bucket"
 	testObjectName = "test-object"
 	testToken      = "test-token"
+	uploadsPath    = "uploads"
 )
 
 // createTestMultipartUploader creates a test uploader with a mock HTTP client
@@ -61,7 +64,7 @@ func TestMultipartUploader_InitiateUpload_Success(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "POST", r.Method)
 		assert.Contains(t, r.URL.Path, testObjectName)
-		assert.Contains(t, r.URL.RawQuery, "uploads")
+		assert.Contains(t, r.URL.RawQuery, uploadsPath)
 		assert.Equal(t, "Bearer "+testToken, r.Header.Get("Authorization"))
 		assert.Equal(t, "application/octet-stream", r.Header.Get("Content-Type"))
 
@@ -110,7 +113,7 @@ func TestMultipartUploader_UploadPart_Success(t *testing.T) {
 }
 
 func TestMultipartUploader_UploadPart_MissingETag(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		// Don't set ETag header
 		w.WriteHeader(http.StatusOK)
 	})
@@ -167,7 +170,7 @@ func TestMultipartUploader_UploadFileInParallel_Success(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.RawQuery == "uploads":
+		case r.URL.RawQuery == uploadsPath:
 			// Initiate upload
 			atomic.AddInt32(&initiateCount, 1)
 			uploadID = "test-upload-id-123"
@@ -217,7 +220,7 @@ func TestMultipartUploader_InitiateUpload_WithRetries(t *testing.T) {
 	var requestCount int32
 	expectedUploadID := "retry-upload-id"
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		count := atomic.AddInt32(&requestCount, 1)
 		if count < 2 {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -266,7 +269,7 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.RawQuery == "uploads":
+		case r.URL.RawQuery == uploadsPath:
 			atomic.AddInt32(&initiateCalls, 1)
 			response := InitiateMultipartUploadResult{
 				Bucket:   testBucketName,
@@ -284,8 +287,8 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 
 			// Update max concurrent parts
 			for {
-				max := atomic.LoadInt32(&maxConcurrentParts)
-				if current <= max || atomic.CompareAndSwapInt32(&maxConcurrentParts, max, current) {
+				maxConcurrent := atomic.LoadInt32(&maxConcurrentParts)
+				if current <= maxConcurrent || atomic.CompareAndSwapInt32(&maxConcurrentParts, maxConcurrent, current) {
 					break
 				}
 			}
@@ -340,7 +343,7 @@ func TestMultipartUploader_RandomFailures_ChaosTest(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.RawQuery == "uploads":
+		case r.URL.RawQuery == uploadsPath:
 			response := InitiateMultipartUploadResult{
 				Bucket:   testBucketName,
 				Key:      testObjectName,
@@ -400,7 +403,7 @@ func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.RawQuery == "uploads":
+		case r.URL.RawQuery == uploadsPath:
 			response := InitiateMultipartUploadResult{
 				Bucket:   testBucketName,
 				Key:      testObjectName,
@@ -414,7 +417,7 @@ func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
 			partNumStr := strings.Split(strings.Split(r.URL.RawQuery, "partNumber=")[1], "&")[0]
 
 			// Track attempts per part
-			val, _ := partAttempts.LoadOrStore(partNumStr, new(int32))
+			val, _ := partAttempts.LoadOrStore(partNumStr, utils.ToPtr(int32(0)))
 			attempts := val.(*int32)
 			currentAttempts := atomic.AddInt32(attempts, 1)
 
@@ -445,7 +448,7 @@ func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify that all parts eventually succeeded after retries
-	partAttempts.Range(func(key, value interface{}) bool {
+	partAttempts.Range(func(key, value any) bool {
 		attempts := atomic.LoadInt32(value.(*int32))
 		require.Equal(t, int32(maxAttempts-1), attempts, "Part %s should have exactly %d attempts", key, maxAttempts-1)
 		return true
@@ -462,7 +465,7 @@ func TestMultipartUploader_EdgeCases_EmptyFile(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.RawQuery == "uploads":
+		case r.URL.RawQuery == uploadsPath:
 			atomic.AddInt32(&initiateCalls, 1)
 			response := InitiateMultipartUploadResult{
 				Bucket:   testBucketName,
@@ -507,7 +510,7 @@ func TestMultipartUploader_EdgeCases_VerySmallFile(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.RawQuery == "uploads":
+		case r.URL.RawQuery == uploadsPath:
 			response := InitiateMultipartUploadResult{
 				Bucket:   testBucketName,
 				Key:      testObjectName,
@@ -547,7 +550,7 @@ func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testin
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.RawQuery == "uploads":
+		case r.URL.RawQuery == uploadsPath:
 			response := InitiateMultipartUploadResult{
 				Bucket:   testBucketName,
 				Key:      testObjectName,
@@ -563,8 +566,8 @@ func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testin
 
 			// Track max observed concurrency
 			for {
-				max := atomic.LoadInt32(&maxObservedConcurrency)
-				if current <= max || atomic.CompareAndSwapInt32(&maxObservedConcurrency, max, current) {
+				maxObserved := atomic.LoadInt32(&maxObservedConcurrency)
+				if current <= maxObserved || atomic.CompareAndSwapInt32(&maxObservedConcurrency, maxObserved, current) {
 					break
 				}
 			}
@@ -605,7 +608,7 @@ func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.RawQuery == "uploads":
+		case r.URL.RawQuery == uploadsPath:
 			response := InitiateMultipartUploadResult{
 				Bucket:   testBucketName,
 				Key:      testObjectName,
@@ -639,9 +642,9 @@ func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
 }
 
 func TestMultipartUploader_FileNotFound_Error(t *testing.T) {
-	uploader := createTestMultipartUploader(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	uploader := createTestMultipartUploader(t, func(http.ResponseWriter, *http.Request) {
 		t.Error("Should not make any HTTP requests for missing file")
-	}))
+	})
 
 	err := uploader.UploadFileInParallel(t.Context(), "/nonexistent/file.txt", 5)
 	require.Error(t, err)
@@ -662,7 +665,7 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 		atomic.AddInt32(&totalRequests, 1)
 
 		switch {
-		case r.URL.RawQuery == "uploads":
+		case r.URL.RawQuery == uploadsPath:
 			response := InitiateMultipartUploadResult{
 				Bucket:   testBucketName,
 				Key:      testObjectName,
@@ -676,7 +679,7 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 			partNumStr := strings.Split(strings.Split(r.URL.RawQuery, "partNumber=")[1], "&")[0]
 
 			// Track retry attempts per part with race-safe operations
-			val, _ := retryAttempts.LoadOrStore(partNumStr, new(int32))
+			val, _ := retryAttempts.LoadOrStore(partNumStr, utils.ToPtr(int32(0)))
 			attempts := val.(*int32)
 			currentAttempt := atomic.AddInt32(attempts, 1)
 
@@ -710,7 +713,7 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 	t.Logf("Total HTTP requests made: %d", atomic.LoadInt32(&totalRequests))
 
 	// Verify that retries happened correctly under concurrent conditions
-	retryAttempts.Range(func(key, value interface{}) bool {
+	retryAttempts.Range(func(key, value any) bool {
 		attempts := atomic.LoadInt32(value.(*int32))
 		require.GreaterOrEqual(t, attempts, int32(3), "Part %s should have at least 3 attempts", key)
 		return true
@@ -733,7 +736,7 @@ func TestCreateRetryableClient_JitterBehavior(t *testing.T) {
 	// Test jitter produces values within expected range
 	t.Run("JitterRange", func(t *testing.T) {
 		// Test first attempt (attemptNum = 0)
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			backoff := client.Backoff(config.InitialBackoff, config.MaxBackoff, 0, nil)
 			require.GreaterOrEqual(t, backoff, time.Duration(0))
 			require.Less(t, backoff, config.InitialBackoff)
@@ -741,7 +744,7 @@ func TestCreateRetryableClient_JitterBehavior(t *testing.T) {
 
 		// Test second attempt (attemptNum = 1) - should be jittered version of 200ms
 		expectedBase := time.Duration(float64(config.InitialBackoff) * config.BackoffMultiplier)
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			backoff := client.Backoff(config.InitialBackoff, config.MaxBackoff, 1, nil)
 			require.GreaterOrEqual(t, backoff, time.Duration(0))
 			require.Less(t, backoff, expectedBase)
@@ -753,7 +756,7 @@ func TestCreateRetryableClient_JitterBehavior(t *testing.T) {
 		values := make(map[time.Duration]bool)
 
 		// Collect 20 jittered values
-		for i := 0; i < 20; i++ {
+		for range 20 {
 			backoff := client.Backoff(config.InitialBackoff, config.MaxBackoff, 1, nil)
 			values[backoff] = true
 		}
@@ -774,7 +777,7 @@ func TestCreateRetryableClient_JitterBehavior(t *testing.T) {
 
 		// Test attempt 2 multiple times and verify max range
 		var maxSeen time.Duration
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			backoff := client.Backoff(config.InitialBackoff, config.MaxBackoff, 2, nil)
 			if backoff > maxSeen {
 				maxSeen = backoff
@@ -791,7 +794,7 @@ func TestCreateRetryableClient_JitterBehavior(t *testing.T) {
 	// Test max backoff cap
 	t.Run("MaxBackoffCap", func(t *testing.T) {
 		// With high attempt numbers, backoff should be capped at MaxBackoff
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			backoff := client.Backoff(config.InitialBackoff, config.MaxBackoff, 10, nil)
 			require.GreaterOrEqual(t, backoff, time.Duration(0))
 			require.Less(t, backoff, config.MaxBackoff)
@@ -840,7 +843,7 @@ func TestRetryableClient_ActualRetryBehavior(t *testing.T) {
 	var retryDelays []time.Duration
 	var retryTimes []time.Time
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		count := atomic.AddInt32(&requestCount, 1)
 		retryTimes = append(retryTimes, time.Now())
 

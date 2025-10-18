@@ -15,18 +15,19 @@ package build
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
 const (
-	tmpBuildCachePrefix = "test-build-cache_"
-
 	blockSize = int64(1024)
 )
 
@@ -70,33 +71,23 @@ func newDiffWithAsserts(t *testing.T, cachePath, buildId string, diffType DiffTy
 	return diff, nil
 }
 
-func createTempDir(t *testing.T) string {
-	t.Helper()
-
-	tempDir, err := os.MkdirTemp("", tmpBuildCachePrefix)
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	t.Cleanup(func() {
-		err = os.RemoveAll(tempDir)
-		assert.NoError(t, err)
-	})
-
-	t.Logf("Temp dir: %s\n", tempDir)
-	return tempDir
-}
-
 func TestNewDiffStore(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
+
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+
+	flags := flagsWithMaxBuildCachePercentage(t, 90)
 
 	store, err := NewDiffStore(
 		ctx,
+		c,
+		flags,
 		cachePath,
 		25*time.Hour,
 		60*time.Second,
-		90.0,
 	)
 	t.Cleanup(store.Close)
 
@@ -105,18 +96,24 @@ func TestNewDiffStore(t *testing.T) {
 }
 
 func TestDiffStoreTTLEviction(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
+
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+
+	flags := flagsWithMaxBuildCachePercentage(t, 100)
 
 	ttl := 1 * time.Second
 	delay := 60 * time.Second
 	store, err := NewDiffStore(
 		ctx,
+		c,
+		flags,
 		cachePath,
 		ttl,
 		delay,
-		100.0,
 	)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
@@ -135,18 +132,24 @@ func TestDiffStoreTTLEviction(t *testing.T) {
 }
 
 func TestDiffStoreRefreshTTLEviction(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
+
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+
+	flags := flagsWithMaxBuildCachePercentage(t, 100)
 
 	ttl := 1 * time.Second
 	delay := 60 * time.Second
 	store, err := NewDiffStore(
 		ctx,
+		c,
+		flags,
 		cachePath,
 		ttl,
 		delay,
-		100.0,
 	)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
@@ -159,7 +162,7 @@ func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 
 	// Refresh diff expiration
 	time.Sleep(ttl / 2)
-	_, err = store.Get(diff)
+	_, err = store.Get(t.Context(), diff)
 	require.NoError(t, err)
 
 	// Try to expire diff
@@ -171,18 +174,24 @@ func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 }
 
 func TestDiffStoreDelayEviction(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
+
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+
+	flags := flagsWithMaxBuildCachePercentage(t, 0)
 
 	ttl := 60 * time.Second
 	delay := 4 * time.Second
 	store, err := NewDiffStore(
 		ctx,
+		c,
+		flags,
 		cachePath,
 		ttl,
 		delay,
-		0.0,
 	)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
@@ -212,18 +221,24 @@ func TestDiffStoreDelayEviction(t *testing.T) {
 }
 
 func TestDiffStoreDelayEvictionAbort(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
+
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+
+	flags := flagsWithMaxBuildCachePercentage(t, 0)
 
 	ttl := 60 * time.Second
 	delay := 4 * time.Second
 	store, err := NewDiffStore(
 		ctx,
+		c,
+		flags,
 		cachePath,
 		ttl,
 		delay,
-		0.0,
 	)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
@@ -244,7 +259,7 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 	assert.True(t, dFound)
 
 	// Abort removal of diff
-	_, err = store.Get(diff)
+	_, err = store.Get(t.Context(), diff)
 	require.NoError(t, err)
 
 	found = store.Has(diff)
@@ -260,18 +275,22 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 }
 
 func TestDiffStoreOldestFromCache(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+	cachePath := t.TempDir()
+
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+
+	flags := flagsWithMaxBuildCachePercentage(t, 100)
 
 	ttl := 60 * time.Second
 	delay := 4 * time.Second
 	store, err := NewDiffStore(
-		ctx,
+		t.Context(),
+		c,
+		flags,
 		cachePath,
 		ttl,
 		delay,
-		100.0,
 	)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
@@ -286,7 +305,7 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	assert.True(t, found)
 
 	// Delete oldest item
-	_, err = store.deleteOldestFromCache()
+	_, err = store.deleteOldestFromCache(t.Context())
 	require.NoError(t, err)
 
 	assert.True(t, store.isBeingDeleted(diff.CacheKey()))
@@ -305,7 +324,7 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	store.Add(diff3)
 
 	// Delete oldest item
-	_, err = store.deleteOldestFromCache()
+	_, err = store.deleteOldestFromCache(t.Context())
 	require.NoError(t, err)
 
 	assert.True(t, store.isBeingDeleted(diff2.CacheKey()))
@@ -325,19 +344,26 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 // cancel channel in resetDelete method. This test should be run with the race
 // detector enabled: go test -race
 func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
+
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+
+	// Set to 0% to trigger disk space evictions
+	flags := flagsWithMaxBuildCachePercentage(t, 0)
 
 	// Use very short TTL and delay to trigger rapid evictions
 	ttl := 10 * time.Millisecond
 	delay := 50 * time.Millisecond
 	store, err := NewDiffStore(
 		ctx,
+		c,
+		flags,
 		cachePath,
 		ttl,
 		delay,
-		0.0, // Set to 0% to trigger disk space evictions
 	)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
@@ -349,12 +375,12 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Create multiple goroutines that add and remove items rapidly
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(goroutineID int) {
 			defer wg.Done()
 
-			for j := 0; j < numIterations; j++ {
+			for j := range numIterations {
 				// Create diffs with same buildID but different iterations
 				// This increases chances of race conditions
 				buildID := fmt.Sprintf("build-%d", goroutineID%10) // Limit to 10 different build IDs
@@ -371,12 +397,14 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 
 				// Try to trigger manual deletion which can race with TTL eviction
 				if j%10 == 0 {
-					store.deleteOldestFromCache()
+					_, err := store.deleteOldestFromCache(t.Context())
+					assert.NoError(t, err)
 				}
 
 				// Occasionally try to access the item, which calls resetDelete
 				if j%5 == 0 {
-					store.Get(diff)
+					_, err := store.Get(t.Context(), diff)
+					assert.NoError(t, err)
 				}
 			}
 		}(i)
@@ -387,8 +415,9 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < numIterations*2; i++ {
-			store.deleteOldestFromCache()
+		for range numIterations * 2 {
+			_, err = store.deleteOldestFromCache(t.Context())
+			assert.NoError(t, err)
 			time.Sleep(time.Microsecond * 50)
 		}
 	}()
@@ -406,19 +435,25 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 // TestDiffStoreResetDeleteRace specifically targets the resetDelete method
 // race condition by simulating the exact scenario from the race report
 func TestDiffStoreResetDeleteRace(t *testing.T) {
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	cachePath := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
+
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+
+	flags := flagsWithMaxBuildCachePercentage(t, 100)
 
 	// Very short TTL to trigger evictions quickly
 	ttl := 5 * time.Millisecond
 	delay := 100 * time.Millisecond
 	store, err := NewDiffStore(
 		ctx,
+		c,
+		flags,
 		cachePath,
 		ttl,
 		delay,
-		100.0,
 	)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
@@ -434,7 +469,7 @@ func TestDiffStoreResetDeleteRace(t *testing.T) {
 	// 2. Schedule it for deletion (creates entry in pdSizes)
 	// 3. Multiple goroutines try to reset the deletion simultaneously
 
-	for i := 0; i < numConcurrentOps; i++ {
+	for i := range numConcurrentOps {
 		wg.Add(1)
 		go func(iteration int) {
 			defer wg.Done()
@@ -449,14 +484,15 @@ func TestDiffStoreResetDeleteRace(t *testing.T) {
 			store.Add(iterDiff)
 
 			// Immediately schedule for deletion to populate pdSizes
-			store.scheduleDelete(iterDiff.CacheKey(), 1024)
+			store.scheduleDelete(t.Context(), iterDiff.CacheKey(), 1024)
 
 			// Small random delay to desynchronize goroutines slightly
 			time.Sleep(time.Duration(iteration%10) * time.Microsecond)
 
 			// This call to Get() will trigger resetDelete, which is where the race occurs
 			// Multiple goroutines calling resetDelete on the same key can race
-			store.Get(iterDiff)
+			_, err = store.Get(t.Context(), iterDiff)
+			assert.NoError(t, err)
 
 			// Also try direct resetDelete calls to increase race probability
 			store.resetDelete(iterDiff.CacheKey())
@@ -468,4 +504,24 @@ func TestDiffStoreResetDeleteRace(t *testing.T) {
 
 	// Allow cleanup to complete
 	time.Sleep(delay * 2)
+}
+
+func flagsWithMaxBuildCachePercentage(tb testing.TB, maxBuildCachePercentage int) *featureflags.Client {
+	tb.Helper()
+
+	flags, err := featureflags.NewClient()
+	require.NoError(tb, err)
+
+	tb.Cleanup(func() {
+		defer func() {
+			err := flags.Close(tb.Context())
+			assert.NoError(tb, err)
+		}()
+	})
+
+	featureflags.LaunchDarklyOfflineStore.Update(
+		featureflags.LaunchDarklyOfflineStore.Flag(featureflags.BuildCacheMaxUsagePercentage.String()).ValueForAll(ldvalue.Int(maxBuildCachePercentage)),
+	)
+
+	return flags
 }

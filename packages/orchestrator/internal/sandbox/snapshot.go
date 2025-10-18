@@ -28,7 +28,6 @@ func (s *Snapshot) Upload(
 	var memfilePath *string
 	switch r := s.MemfileDiff.(type) {
 	case *build.NoDiff:
-		break
 	default:
 		memfileLocalPath, err := r.CachePath()
 		if err != nil {
@@ -41,7 +40,6 @@ func (s *Snapshot) Upload(
 	var rootfsPath *string
 	switch r := s.RootfsDiff.(type) {
 	case *build.NoDiff:
-		break
 	default:
 		rootfsLocalPath, err := r.CachePath()
 		if err != nil {

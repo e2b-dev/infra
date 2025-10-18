@@ -11,8 +11,8 @@ import (
 	txtTemplate "text/template"
 
 	"github.com/bmatcuk/doublestar/v4"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
@@ -57,14 +57,19 @@ if [ -z "$entry" ]; then
  exit 1
 fi
 
-if [ -f "$entry" ]; then
+if [ -L "$entry" ]; then
+ # It's a symlink file – create parent folders and move+rename it to the exact path
+ mkdir -p "$(dirname "$targetPath")"
+ mv "$entry" "$targetPath"
+elif [ -f "$entry" ]; then
  # It's a file – create parent folders and move+rename it to the exact path
  mkdir -p "$(dirname "$targetPath")"
  mv "$entry" "$targetPath"
 elif [ -d "$entry" ]; then
  # It's a directory – move all its contents into the destination folder
  mkdir -p "$targetPath"
- mv "$entry"/* "$targetPath/"
+ # Move all contents including hidden files
+ find "$entry" -mindepth 1 -maxdepth 1 -exec mv {} "$targetPath/" \;
 else
  echo "Error: entry is neither file nor directory"
  exit 1
@@ -84,27 +89,26 @@ fi
 // because the /tmp is mounted as a tmpfs and deleted on restart.
 func (c *Copy) Execute(
 	ctx context.Context,
-	tracer trace.Tracer,
 	logger *zap.Logger,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
-	prefix string,
+	_ string,
 	step *templatemanager.TemplateStep,
 	cmdMetadata metadata.Context,
 ) (metadata.Context, error) {
-	cmdType := strings.ToUpper(step.Type)
-	args := step.Args
+	cmdType := strings.ToUpper(step.GetType())
+	args := step.GetArgs()
 	// args: [localPath containerPath optional_owner optional_permissions]
 	if len(args) < 2 {
 		return metadata.Context{}, fmt.Errorf("%s requires a local path and a container path argument", cmdType)
 	}
 
-	if step.FilesHash == nil || *step.FilesHash == "" {
+	if step.FilesHash == nil || step.GetFilesHash() == "" {
 		return metadata.Context{}, fmt.Errorf("%s requires files hash to be set", cmdType)
 	}
 
 	// 1) Download the layer tar file from the storage to the local filesystem
-	obj, err := c.FilesStorage.OpenObject(ctx, paths.GetLayerFilesCachePath(c.CacheScope, *step.FilesHash))
+	obj, err := c.FilesStorage.OpenObject(ctx, paths.GetLayerFilesCachePath(c.CacheScope, step.GetFilesHash()))
 	if err != nil {
 		return metadata.Context{}, fmt.Errorf("failed to open files object from storage: %w", err)
 	}
@@ -132,19 +136,19 @@ func (c *Copy) Execute(
 
 	// The file is automatically cleaned up by the sandbox restart in the last step.
 	// This is happening because the /tmp is mounted as a tmpfs and deleted on restart.
-	sbxTargetPath := filepath.Join("/tmp", fmt.Sprintf("%s.tar", *step.FilesHash))
+	sbxTargetPath := filepath.Join("/tmp", fmt.Sprintf("%s.tar", step.GetFilesHash()))
 	// 2) Copy the tar file to the sandbox
-	err = sandboxtools.CopyFile(ctx, tracer, proxy, sandboxID, cmdMetadata.User, tmpFile.Name(), sbxTargetPath)
+	err = sandboxtools.CopyFile(ctx, proxy, sandboxID, cmdMetadata.User, tmpFile.Name(), sbxTargetPath)
 	if err != nil {
 		return metadata.Context{}, fmt.Errorf("failed to copy layer tar data to sandbox: %w", err)
 	}
 
-	sbxUnpackPath := filepath.Join("/tmp", *step.FilesHash)
+	// Create nested unpack directory to allow multiple files in the root be correctly detected
+	sbxUnpackPath := filepath.Join("/tmp", step.GetFilesHash(), "unpack")
 
 	// 3) Extract the tar file in the sandbox's /tmp directory
 	err = sandboxtools.RunCommand(
 		ctx,
-		tracer,
 		proxy,
 		sandboxID,
 		fmt.Sprintf(`mkdir -p "%s" && tar -xzvf "%s" -C "%s"`, sbxUnpackPath, sbxTargetPath, sbxUnpackPath),
@@ -168,10 +172,12 @@ func (c *Copy) Execute(
 		return metadata.Context{}, fmt.Errorf("failed to execute copy script template: %w", err)
 	}
 
-	err = sandboxtools.RunCommand(
+	err = sandboxtools.RunCommandWithLogger(
 		ctx,
-		tracer,
 		proxy,
+		logger,
+		zapcore.DebugLevel,
+		"unpack",
 		sandboxID,
 		moveScript.String(),
 		cmdMetadata,
@@ -187,7 +193,6 @@ func (c *Copy) Execute(
 		if owner != "" {
 			err = sandboxtools.RunCommand(
 				ctx,
-				tracer,
 				proxy,
 				sandboxID,
 				fmt.Sprintf(`chown -R %s "%s"`, owner, targetPath),
@@ -207,7 +212,6 @@ func (c *Copy) Execute(
 		if permissions != "" {
 			err = sandboxtools.RunCommand(
 				ctx,
-				tracer,
 				proxy,
 				sandboxID,
 				fmt.Sprintf(`chmod -R %s "%s"`, permissions, targetPath),

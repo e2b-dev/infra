@@ -65,6 +65,12 @@ const (
 	TemplateBuildStatusWaiting  TemplateBuildStatus = "waiting"
 )
 
+// Defines values for GetTeamsTeamIDMetricsMaxParamsMetric.
+const (
+	ConcurrentSandboxes GetTeamsTeamIDMetricsMaxParamsMetric = "concurrent_sandboxes"
+	SandboxStartRate    GetTeamsTeamIDMetricsMaxParamsMetric = "sandbox_start_rate"
+)
+
 // AWSRegistry defines model for AWSRegistry.
 type AWSRegistry struct {
 	// AwsAccessKeyId AWS Access Key ID for ECR authentication
@@ -91,12 +97,18 @@ type BuildLogEntry struct {
 	// Message Log message content
 	Message string `json:"message"`
 
+	// Step Step in the build process related to the log entry
+	Step *string `json:"step,omitempty"`
+
 	// Timestamp Timestamp of the log entry
 	Timestamp time.Time `json:"timestamp"`
 }
 
 // BuildStatusReason defines model for BuildStatusReason.
 type BuildStatusReason struct {
+	// LogEntries Log entries related to the status reason
+	LogEntries *[]BuildLogEntry `json:"logEntries,omitempty"`
+
 	// Message Message with the status reason, currently reporting only for error status
 	Message string `json:"message"`
 
@@ -267,6 +279,19 @@ type ListedSandbox struct {
 // LogLevel State of the sandbox
 type LogLevel string
 
+// MaxTeamMetric Team metric with timestamp
+type MaxTeamMetric struct {
+	// Timestamp Timestamp of the metric entry
+	// Deprecated:
+	Timestamp time.Time `json:"timestamp"`
+
+	// TimestampUnix Timestamp of the metric entry in Unix time (seconds since epoch)
+	TimestampUnix int64 `json:"timestampUnix"`
+
+	// Value The maximum value of the requested metric in the given interval
+	Value float32 `json:"value"`
+}
+
 // MemoryMB Memory for the sandbox in MiB
 type MemoryMB = int32
 
@@ -411,6 +436,9 @@ type NodeStatus string
 
 // NodeStatusChange defines model for NodeStatusChange.
 type NodeStatusChange struct {
+	// ClusterID Identifier of the cluster
+	ClusterID *openapi_types.UUID `json:"clusterID,omitempty"`
+
 	// Status Status of the node
 	Status NodeStatus `json:"status"`
 }
@@ -550,7 +578,11 @@ type SandboxMetric struct {
 	MemUsed int64 `json:"memUsed"`
 
 	// Timestamp Timestamp of the metric entry
+	// Deprecated:
 	Timestamp time.Time `json:"timestamp"`
+
+	// TimestampUnix Timestamp of the metric entry in Unix time (seconds since epoch)
+	TimestampUnix int64 `json:"timestampUnix"`
 }
 
 // SandboxState State of the sandbox
@@ -602,7 +634,11 @@ type TeamMetric struct {
 	SandboxStartRate float32 `json:"sandboxStartRate"`
 
 	// Timestamp Timestamp of the metric entry
+	// Deprecated:
 	Timestamp time.Time `json:"timestamp"`
+
+	// TimestampUnix Timestamp of the metric entry in Unix time (seconds since epoch)
+	TimestampUnix int64 `json:"timestampUnix"`
 }
 
 // TeamUser defines model for TeamUser.
@@ -818,7 +854,7 @@ type N500 = Error
 // GetNodesNodeIDParams defines parameters for GetNodesNodeID.
 type GetNodesNodeIDParams struct {
 	// ClusterID Identifier of the cluster
-	ClusterID *string `form:"clusterID,omitempty" json:"clusterID,omitempty"`
+	ClusterID *openapi_types.UUID `form:"clusterID,omitempty" json:"clusterID,omitempty"`
 }
 
 // GetSandboxesParams defines parameters for GetSandboxes.
@@ -867,6 +903,19 @@ type GetTeamsTeamIDMetricsParams struct {
 	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
 	End   *int64 `form:"end,omitempty" json:"end,omitempty"`
 }
+
+// GetTeamsTeamIDMetricsMaxParams defines parameters for GetTeamsTeamIDMetricsMax.
+type GetTeamsTeamIDMetricsMaxParams struct {
+	// Start Unix timestamp for the start of the interval, in seconds, for which the metrics
+	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
+	End   *int64 `form:"end,omitempty" json:"end,omitempty"`
+
+	// Metric Metric to retrieve the maximum value for
+	Metric GetTeamsTeamIDMetricsMaxParamsMetric `form:"metric" json:"metric"`
+}
+
+// GetTeamsTeamIDMetricsMaxParamsMetric defines parameters for GetTeamsTeamIDMetricsMax.
+type GetTeamsTeamIDMetricsMaxParamsMetric string
 
 // GetTemplatesParams defines parameters for GetTemplates.
 type GetTemplatesParams struct {

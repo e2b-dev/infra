@@ -11,17 +11,16 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 type Server struct {
 	orchestratorinfo.UnimplementedInfoServiceServer
 
 	info      *ServiceInfo
-	sandboxes *smap.Map[*sandbox.Sandbox]
+	sandboxes *sandbox.Map
 }
 
-func NewInfoService(_ context.Context, grpc *grpc.Server, info *ServiceInfo, sandboxes *smap.Map[*sandbox.Sandbox]) *Server {
+func NewInfoService(_ context.Context, grpc *grpc.Server, info *ServiceInfo, sandboxes *sandbox.Map) *Server {
 	s := &Server{
 		info:      info,
 		sandboxes: sandboxes,
@@ -115,7 +114,7 @@ func convertDiskMetrics(disks []metrics.DiskInfo) []*orchestratorinfo.DiskMetric
 }
 
 func (s *Server) ServiceStatusOverride(_ context.Context, req *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
-	zap.L().Info("service status override request received", zap.String("status", req.ServiceStatus.String()))
-	s.info.SetStatus(req.ServiceStatus)
+	zap.L().Info("service status override request received", zap.String("status", req.GetServiceStatus().String()))
+	s.info.SetStatus(req.GetServiceStatus())
 	return &emptypb.Empty{}, nil
 }

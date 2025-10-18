@@ -1,7 +1,6 @@
 package placement
 
 import (
-	"context"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -11,7 +10,7 @@ import (
 )
 
 func BenchmarkChooseNode(b *testing.B) {
-	ctx := context.Background()
+	ctx := b.Context()
 
 	tests := []struct {
 		name   string
@@ -42,7 +41,7 @@ func BenchmarkChooseNode(b *testing.B) {
 			b.Run(fmt.Sprintf("%s/nodes=%d", tc.name, n), func(b *testing.B) {
 				// Build input once per sub-benchmark
 				nodes := make([]*nodemanager.Node, n)
-				for i := 0; i < n; i++ {
+				for i := range n {
 					nodes[i] = nodemanager.NewTestNode(
 						fmt.Sprintf("node-%d", i),
 						api.NodeStatusReady,
@@ -56,7 +55,7 @@ func BenchmarkChooseNode(b *testing.B) {
 
 				b.ReportAllocs()
 				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
+				for range b.N {
 					_, _ = alg.chooseNode(ctx, nodes, exclude, resources)
 				}
 			})

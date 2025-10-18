@@ -18,7 +18,7 @@ import (
 const nodeHealthCheckTimeout = time.Second * 2
 
 func (o *Orchestrator) connectToNode(ctx context.Context, discovered nodemanager.NomadServiceDiscovery) error {
-	ctx, childSpan := o.tracer.Start(ctx, "connect-to-node")
+	ctx, childSpan := tracer.Start(ctx, "connect-to-node")
 	defer childSpan.End()
 
 	orchestratorNode, err := nodemanager.New(ctx, o.tel.TracerProvider, o.tel.MeterProvider, discovered)
@@ -35,7 +35,7 @@ func (o *Orchestrator) connectToClusterNode(ctx context.Context, cluster *edge.C
 	// this way we don't need to worry about multiple clusters with the same node ID in shared pool
 	clusterGRPC := cluster.GetGRPC(i.ServiceInstanceID)
 
-	orchestratorNode, err := nodemanager.NewClusterNode(ctx, clusterGRPC.Client, cluster.ID, i)
+	orchestratorNode, err := nodemanager.NewClusterNode(ctx, clusterGRPC.Client, cluster.ID, cluster.SandboxDomain, i)
 	if err != nil {
 		zap.L().Error("Failed to create node", zap.Error(err))
 		return
@@ -74,7 +74,7 @@ func (o *Orchestrator) GetClient(ctx context.Context, clusterID uuid.UUID, nodeI
 }
 
 func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]nodemanager.NomadServiceDiscovery, error) {
-	_, listSpan := o.tracer.Start(ctx, "list-nomad-nodes")
+	_, listSpan := tracer.Start(ctx, "list-nomad-nodes")
 	defer listSpan.End()
 
 	options := &nomadapi.QueryOptions{
@@ -116,15 +116,15 @@ func (o *Orchestrator) GetClusterNodes(clusterID uuid.UUID) []*nodemanager.Node 
 }
 
 // Deprecated: use GetNode instead
-func (o *Orchestrator) GetNodeByIDOrNomadShortID(id string) *nodemanager.Node {
+func (o *Orchestrator) GetNodeByIDOrNomadShortID(clusterID uuid.UUID, nodeIDOrNomadNodeShortID string) *nodemanager.Node {
 	// First try to get by nomad short ID
-	n := o.GetNodeByNomadShortID(id)
+	n := o.GetNodeByNomadShortID(nodeIDOrNomadNodeShortID)
 	if n != nil {
 		return n
 	}
 
 	// Fallback to use id
-	return o.GetNode(uuid.Nil, id)
+	return o.GetNode(clusterID, nodeIDOrNomadNodeShortID)
 }
 
 // Deprecated: use GetNode instead

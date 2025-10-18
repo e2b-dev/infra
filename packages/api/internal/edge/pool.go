@@ -3,14 +3,13 @@ package edge
 import (
 	"context"
 	"errors"
-	"os"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -21,9 +20,6 @@ import (
 )
 
 const (
-	clusterEndpointEnv = "LOCAL_CLUSTER_ENDPOINT"
-	clusterTokenEnv    = "LOCAL_CLUSTER_TOKEN"
-
 	poolSyncInterval = 60 * time.Second
 	poolSyncTimeout  = 15 * time.Second
 )
@@ -34,17 +30,12 @@ type Pool struct {
 
 	clusters        *smap.Map[*Cluster]
 	synchronization *synchronization.Synchronize[queries.Cluster, *Cluster]
-
-	tracer trace.Tracer
 }
 
-func localClusterConfig() (*queries.Cluster, error) {
-	clusterEndpoint := os.Getenv(clusterEndpointEnv)
+func localClusterConfig(clusterEndpoint, clusterToken string) (*queries.Cluster, error) {
 	if clusterEndpoint == "" {
 		return nil, nil
 	}
-
-	clusterToken := os.Getenv(clusterTokenEnv)
 	if clusterToken == "" {
 		return nil, errors.New("no local cluster token provided")
 	}
@@ -58,11 +49,10 @@ func localClusterConfig() (*queries.Cluster, error) {
 	}, nil
 }
 
-func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, tracer trace.Tracer) (*Pool, error) {
+func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, config cfg.Config) (*Pool, error) {
 	p := &Pool{
 		db:       db,
 		tel:      tel,
-		tracer:   tracer,
 		clusters: smap.New[*Cluster](),
 	}
 
@@ -72,13 +62,13 @@ func NewPool(ctx context.Context, tel *telemetry.Client, db *client.Client, trac
 		p.Close()
 	}()
 
-	localCluster, err := localClusterConfig()
+	localCluster, err := localClusterConfig(config.LocalClusterEndpoint, config.LocalClusterToken)
 	if err != nil {
 		return nil, err
 	}
 
 	store := poolSynchronizationStore{pool: p, localCluster: localCluster}
-	p.synchronization = synchronization.NewSynchronize(p.tracer, "clusters-pool", "Clusters pool", store)
+	p.synchronization = synchronization.NewSynchronize("clusters-pool", "Clusters pool", store)
 
 	// Periodically sync clusters with the database
 	go p.synchronization.Start(poolSyncInterval, poolSyncTimeout, true)
@@ -137,7 +127,7 @@ func (d poolSynchronizationStore) SourceList(ctx context.Context) ([]queries.Clu
 	return entries, nil
 }
 
-func (d poolSynchronizationStore) SourceExists(ctx context.Context, s []queries.Cluster, p *Cluster) bool {
+func (d poolSynchronizationStore) SourceExists(_ context.Context, s []queries.Cluster, p *Cluster) bool {
 	for _, item := range s {
 		if item.ID == p.ID {
 			return true
@@ -147,7 +137,7 @@ func (d poolSynchronizationStore) SourceExists(ctx context.Context, s []queries.
 	return false
 }
 
-func (d poolSynchronizationStore) PoolList(ctx context.Context) []*Cluster {
+func (d poolSynchronizationStore) PoolList(_ context.Context) []*Cluster {
 	items := make([]*Cluster, 0)
 	for _, item := range d.pool.clusters.Items() {
 		items = append(items, item)
@@ -155,17 +145,24 @@ func (d poolSynchronizationStore) PoolList(ctx context.Context) []*Cluster {
 	return items
 }
 
-func (d poolSynchronizationStore) PoolExists(ctx context.Context, cluster queries.Cluster) bool {
+func (d poolSynchronizationStore) PoolExists(_ context.Context, cluster queries.Cluster) bool {
 	_, found := d.pool.clusters.Get(cluster.ID.String())
 	return found
 }
 
-func (d poolSynchronizationStore) PoolInsert(ctx context.Context, cluster queries.Cluster) {
+func (d poolSynchronizationStore) PoolInsert(_ context.Context, cluster queries.Cluster) {
 	clusterID := cluster.ID.String()
 
 	zap.L().Info("Initializing newly discovered cluster", l.WithClusterID(cluster.ID))
 
-	c, err := NewCluster(d.pool.tracer, d.pool.tel, cluster.Endpoint, cluster.EndpointTls, cluster.Token, cluster.ID, cluster.SandboxProxyDomain)
+	c, err := NewCluster( //nolint:contextcheck // TODO: fix this later
+		d.pool.tel,
+		cluster.Endpoint,
+		cluster.EndpointTls,
+		cluster.Token,
+		cluster.ID,
+		cluster.SandboxProxyDomain,
+	)
 	if err != nil {
 		zap.L().Error("Initializing cluster failed", zap.Error(err), l.WithClusterID(c.ID))
 		return
@@ -175,11 +172,11 @@ func (d poolSynchronizationStore) PoolInsert(ctx context.Context, cluster querie
 	d.pool.clusters.Insert(clusterID, c)
 }
 
-func (d poolSynchronizationStore) PoolUpdate(ctx context.Context, cluster *Cluster) {
+func (d poolSynchronizationStore) PoolUpdate(_ context.Context, _ *Cluster) {
 	// Clusters pool currently does not do something special during synchronization
 }
 
-func (d poolSynchronizationStore) PoolRemove(ctx context.Context, cluster *Cluster) {
+func (d poolSynchronizationStore) PoolRemove(_ context.Context, cluster *Cluster) {
 	zap.L().Info("Removing cluster from pool", l.WithClusterID(cluster.ID))
 
 	err := cluster.Close()

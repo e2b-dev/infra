@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -34,13 +35,13 @@ const (
 )
 
 var (
-	googleReadTimerFactory = must(telemetry.NewTimerFactory(meter,
+	googleReadTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
 		"orchestrator.storage.gcs.read",
 		"Duration of GCS reads",
 		"Total GCS bytes read",
 		"Total GCS reads",
 	))
-	googleWriteTimerFactory = must(telemetry.NewTimerFactory(meter,
+	googleWriteTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
 		"orchestrator.storage.gcs.write",
 		"Duration of GCS writes",
 		"Total bytes written to GCS",
@@ -127,7 +128,7 @@ func (g *GCPBucketStorageProvider) UploadSignedURL(_ context.Context, path strin
 	return url, nil
 }
 
-func (g *GCPBucketStorageProvider) OpenObject(ctx context.Context, path string) (StorageObjectProvider, error) {
+func (g *GCPBucketStorageProvider) OpenObject(_ context.Context, path string) (StorageObjectProvider, error) {
 	handle := g.bucket.Object(path).Retryer(
 		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),
@@ -153,7 +154,11 @@ func (g *GCPBucketStorageObjectProvider) Delete(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
 	defer cancel()
 
-	return g.handle.Delete(ctx)
+	if err := g.handle.Delete(ctx); err != nil {
+		return fmt.Errorf("failed to delete %q: %w", g.path, err)
+	}
+
+	return nil
 }
 
 func (g *GCPBucketStorageObjectProvider) Size(ctx context.Context) (int64, error) {
@@ -163,10 +168,11 @@ func (g *GCPBucketStorageObjectProvider) Size(ctx context.Context) (int64, error
 	attrs, err := g.handle.Attrs(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
-			return 0, ErrObjectNotExist
+			// use ours instead of theirs
+			return 0, fmt.Errorf("failed to get GCS object (%q) attributes: %w", g.path, ErrObjectNotExist)
 		}
 
-		return 0, fmt.Errorf("failed to get GCS object (%s) attributes: %w", g.path, err)
+		return 0, fmt.Errorf("failed to get GCS object (%q) attributes: %w", g.path, err)
 	}
 
 	return attrs.Size, nil
@@ -181,7 +187,7 @@ func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte
 	// The file should not be gzip compressed
 	reader, err := g.handle.NewRangeReader(ctx, off, int64(len(buff)))
 	if err != nil {
-		return 0, fmt.Errorf("failed to create GCS reader: %w", err)
+		return 0, fmt.Errorf("failed to create GCS reader for %q: %w", g.path, err)
 	}
 
 	defer reader.Close()
@@ -198,7 +204,7 @@ func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte
 			break
 		}
 
-		return n, fmt.Errorf("failed to read from GCS object: %w", readErr)
+		return n, fmt.Errorf("failed to read %q: %w", g.path, readErr)
 	}
 
 	timer.End(ctx, int64(n))
@@ -213,7 +219,7 @@ func (g *GCPBucketStorageObjectProvider) Write(ctx context.Context, data []byte)
 
 	n, err := w.Write(data)
 	if err != nil && !errors.Is(err, io.EOF) {
-		return n, fmt.Errorf("failed to copy buffer to persistence: %w", err)
+		return n, fmt.Errorf("failed to write to %q: %w", g.path, err)
 	}
 
 	timer.End(ctx, int64(n))
@@ -229,10 +235,10 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Wri
 	reader, err := g.handle.NewReader(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
-			return 0, ErrObjectNotExist
+			return 0, fmt.Errorf("failed to create reader for %q: %w", g.path, ErrObjectNotExist)
 		}
 
-		return 0, err
+		return 0, fmt.Errorf("failed to create reader for %q: %w", g.path, err)
 	}
 
 	defer reader.Close()
@@ -240,7 +246,7 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Wri
 	buff := make([]byte, googleBufferSize)
 	n, err := io.CopyBuffer(dst, reader, buff)
 	if err != nil {
-		return n, fmt.Errorf("failed to copy GCS object to writer: %w", err)
+		return n, fmt.Errorf("failed to copy %q to buffer: %w", g.path, err)
 	}
 
 	timer.End(ctx, n)
