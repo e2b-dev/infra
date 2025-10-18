@@ -29,7 +29,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
+	buildconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
@@ -58,6 +58,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		buildID             = "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
 		useHugePages        = false
 		allowInternetAccess = true
+		templateVersion     = "v2.0.0"
 	)
 
 	// cache paths, to speed up test runs. these paths aren't wiped between tests
@@ -109,10 +110,8 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	b.Setenv("SNAPSHOT_CACHE_DIR", abs(filepath.Join(tempDir, "snapshot-cache")))
 	b.Setenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", abs(filepath.Join(persistenceDir, "templates")))
 
-	networkConfig, err := network.ParseConfig()
-	if err != nil {
-		b.Fatalf("error parsing config: %v", err)
-	}
+	config, err := cfg.Parse()
+	require.NoError(b, err)
 
 	// prep directories
 	for _, subdir := range []string{"build", "build-templates" /*"fc-vm",*/, "sandbox", "snapshot-cache", "template"} {
@@ -127,17 +126,23 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	sbxlogger.SetSandboxLoggerInternal(logger)
 	// sbxlogger.SetSandboxLoggerExternal(logger)
 
-	networkPool, err := network.NewPool(
-		b.Context(), noop.MeterProvider{}, 8, 8, clientID, networkConfig,
-	)
+	networkPool, err := network.NewPool(8, 8, clientID, config.NetworkConfig)
 	require.NoError(b, err)
+	go func() {
+		networkPool.Populate(b.Context())
+		logger.Info("network pool populated")
+	}()
 	defer func() {
 		err := networkPool.Close(b.Context())
 		assert.NoError(b, err)
 	}()
 
-	devicePool, err := nbd.NewDevicePool(b.Context(), noop.MeterProvider{})
+	devicePool, err := nbd.NewDevicePool()
 	require.NoError(b, err, "do you have the nbd kernel module installed?")
+	go func() {
+		devicePool.Populate(b.Context())
+		logger.Info("device pool populated")
+	}()
 	defer func() {
 		err := devicePool.Close(b.Context())
 		assert.NoError(b, err)
@@ -167,7 +172,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	templateCache, err := template.NewCache(b.Context(), c, featureFlags, persistence, blockMetrics)
 	require.NoError(b, err)
 
-	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, true)
+	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags)
 
 	dockerhubRepository, err := dockerhub.GetRemoteRepository(b.Context())
 	require.NoError(b, err)
@@ -242,7 +247,8 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	if _, err := os.Stat(buildPath); os.IsNotExist(err) {
 		// build template
 		force := true
-		templateConfig := config.TemplateConfig{
+		templateConfig := buildconfig.TemplateConfig{
+			Version:    templateVersion,
 			TemplateID: templateID,
 			FromImage:  baseImage,
 			Force:      &force,

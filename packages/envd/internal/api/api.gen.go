@@ -110,7 +110,7 @@ type GetFilesParams struct {
 	Path *FilePath `form:"path,omitempty" json:"path,omitempty"`
 
 	// Username User used for setting the owner, or resolving relative paths.
-	Username User `form:"username" json:"username"`
+	Username *User `form:"username,omitempty" json:"username,omitempty"`
 
 	// Signature Signature used for file access permission verification.
 	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
@@ -130,7 +130,7 @@ type PostFilesParams struct {
 	Path *FilePath `form:"path,omitempty" json:"path,omitempty"`
 
 	// Username User used for setting the owner, or resolving relative paths.
-	Username User `form:"username" json:"username"`
+	Username *User `form:"username,omitempty" json:"username,omitempty"`
 
 	// Signature Signature used for file access permission verification.
 	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
@@ -143,6 +143,12 @@ type PostFilesParams struct {
 type PostInitJSONBody struct {
 	// AccessToken Access token for secure access to envd service
 	AccessToken *string `json:"accessToken,omitempty"`
+
+	// DefaultUser The default user to use for operations
+	DefaultUser *string `json:"defaultUser,omitempty"`
+
+	// DefaultWorkdir The default working directory to use for operations
+	DefaultWorkdir *string `json:"defaultWorkdir,omitempty"`
 
 	// EnvVars Environment variables to set
 	EnvVars *EnvVars `json:"envVars,omitempty"`
@@ -273,16 +279,9 @@ func (siw *ServerInterfaceWrapper) GetFiles(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// ------------- Required query parameter "username" -------------
+	// ------------- Optional query parameter "username" -------------
 
-	if paramValue := r.URL.Query().Get("username"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "username"})
-		return
-	}
-
-	err = runtime.BindQueryParameter("form", true, true, "username", r.URL.Query(), &params.Username)
+	err = runtime.BindQueryParameter("form", true, false, "username", r.URL.Query(), &params.Username)
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
 		return
@@ -337,16 +336,9 @@ func (siw *ServerInterfaceWrapper) PostFiles(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// ------------- Required query parameter "username" -------------
+	// ------------- Optional query parameter "username" -------------
 
-	if paramValue := r.URL.Query().Get("username"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "username"})
-		return
-	}
-
-	err = runtime.BindQueryParameter("form", true, true, "username", r.URL.Query(), &params.Username)
+	err = runtime.BindQueryParameter("form", true, false, "username", r.URL.Query(), &params.Username)
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
 		return

@@ -14,8 +14,6 @@ type SchemaConfig struct {
 	EnvBuild    string // EnvBuild table.
 	Snapshot    string // Snapshot table.
 	Team        string // Team table.
-	TeamAPIKey  string // TeamAPIKey table.
-	Tier        string // Tier table.
 	User        string // User table.
 	UsersTeams  string // UsersTeams table.
 }
