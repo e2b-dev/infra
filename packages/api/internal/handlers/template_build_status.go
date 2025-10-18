@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -95,8 +96,19 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		offset = *params.LogsOffset
 	}
 
+	// Check if we need to return legacy logs format too, used only for the v1 template builds in the CLI
+	cv := sharedUtils.DerefOrDefault(buildInfo.Version, templates.TemplateV1Version)
+	legacyLogs, err := sharedUtils.IsSmallerVersion(cv, templates.TemplateV2ReleaseVersion)
+	if err != nil {
+		telemetry.ReportError(ctx, "error when comparing versions", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when processing build logs")
+		return
+	}
+
 	for _, entry := range cli.GetLogs(ctx, templateID, buildID, offset, apiToLogLevel(params.Level)) {
-		lgs = append(lgs, fmt.Sprintf("[%s] %s\n", entry.Timestamp.Format(time.RFC3339), entry.Message))
+		if legacyLogs {
+			lgs = append(lgs, fmt.Sprintf("[%s] %s\n", entry.Timestamp.Format(time.RFC3339), entry.Message))
+		}
 		logEntries = append(logEntries, getAPILogEntry(entry))
 	}
 

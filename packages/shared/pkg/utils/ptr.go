@@ -22,3 +22,11 @@ func Sprintp[T any](s *T) string {
 
 	return fmt.Sprintf("%v", *s)
 }
+
+func DerefOrDefault[T any](s *T, defaultValue T) T {
+	if s == nil {
+		return defaultValue
+	}
+
+	return *s
+}

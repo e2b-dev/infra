@@ -45,6 +45,7 @@ func (EnvBuild) Fields() []ent.Field {
 		field.String("envd_version").SchemaType(map[string]string{dialect.Postgres: "text"}).Nillable().Optional(),
 		field.String("cluster_node_id").SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.JSON("reason", BuildReason{}).SchemaType(map[string]string{dialect.Postgres: "jsonb"}).Default(BuildReason{}),
+		field.String("version").SchemaType(map[string]string{dialect.Postgres: "text"}).Nillable(),
 	}
 }
 

@@ -121,6 +121,7 @@ var (
 		{Name: "envd_version", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "cluster_node_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "reason", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "version", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "env_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 	}
 	// EnvBuildsTable holds the schema information for the "env_builds" table.
@@ -131,7 +132,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "env_builds_envs_builds",
-				Columns:    []*schema.Column{EnvBuildsColumns[17]},
+				Columns:    []*schema.Column{EnvBuildsColumns[18]},
 				RefColumns: []*schema.Column{EnvsColumns[0]},
 				OnDelete:   schema.Cascade,
 			},

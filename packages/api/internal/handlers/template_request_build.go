@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/dberrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 )
 
 func (a *APIStore) PostTemplates(c *gin.Context) {
@@ -164,6 +165,7 @@ func (a *APIStore) buildTemplate(
 		ReadyCmd:      body.ReadyCmd,
 		CpuCount:      body.CpuCount,
 		MemoryMB:      body.MemoryMB,
+		Version:       templates.TemplateV1Version,
 	}
 
 	return template.RegisterBuild(ctx, a.templateBuildsCache, a.db, data)

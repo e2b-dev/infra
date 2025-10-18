@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/dberrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 )
 
 // PostV2Templates triggers a new template build
@@ -78,6 +79,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		Alias:         &body.Alias,
 		CpuCount:      body.CpuCount,
 		MemoryMB:      body.MemoryMB,
+		Version:       templates.TemplateV2LatestVersion,
 	}
 
 	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.db, buildReq)
