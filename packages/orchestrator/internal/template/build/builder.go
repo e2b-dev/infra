@@ -32,6 +32,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -55,6 +57,9 @@ type Builder struct {
 	sandboxes           *sandbox.Map
 	templateCache       *sbxtemplate.Cache
 	metrics             *metrics.BuildMetrics
+	flags               *featureflags.Client
+
+	rootCachePath string
 }
 
 func NewBuilder(
@@ -68,6 +73,7 @@ func NewBuilder(
 	sandboxes *sandbox.Map,
 	templateCache *sbxtemplate.Cache,
 	buildMetrics *metrics.BuildMetrics,
+	flags *featureflags.Client,
 ) *Builder {
 	return &Builder{
 		logger:              logger,
@@ -80,6 +86,8 @@ func NewBuilder(
 		sandboxes:           sandboxes,
 		templateCache:       templateCache,
 		metrics:             buildMetrics,
+		flags:               flags,
+		rootCachePath:       env.GetEnv("SHARED_CHUNK_CACHE_PATH", ""),
 	}
 }
 
@@ -196,13 +204,32 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 	return runBuild(ctx, logger, buildContext, b)
 }
 
+func (b *Builder) useNFSCache(ctx context.Context) bool {
+	if b.rootCachePath == "" {
+		// can't enable cache if we don't have a cache path
+		return false
+	}
+
+	flag, err := b.flags.BoolFlag(ctx, featureflags.BuildingFeatureFlagName)
+	if err != nil {
+		zap.L().Error("failed to get nfs cache feature flag", zap.Error(err))
+	}
+
+	return flag
+}
+
 func runBuild(
 	ctx context.Context,
 	userLogger *zap.Logger,
 	bc buildcontext.BuildContext,
 	builder *Builder,
 ) (*Result, error) {
-	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, builder.templateStorage)
+	templateStorage := builder.templateStorage
+	if builder.useNFSCache(ctx) {
+		templateStorage = storage.NewCachedProvider(builder.rootCachePath, templateStorage)
+	}
+
+	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, templateStorage)
 
 	layerExecutor := layer.NewLayerExecutor(
 		bc,
@@ -210,7 +237,7 @@ func runBuild(
 		builder.templateCache,
 		builder.proxy,
 		builder.sandboxes,
-		builder.templateStorage,
+		templateStorage,
 		builder.buildStorage,
 		index,
 	)
@@ -219,7 +246,7 @@ func runBuild(
 		bc,
 		builder.logger,
 		builder.proxy,
-		builder.templateStorage,
+		templateStorage,
 		builder.artifactRegistry,
 		builder.dockerhubRepository,
 		layerExecutor,
@@ -261,7 +288,7 @@ func runBuild(
 	postProcessingBuilder := finalize.New(
 		bc,
 		builder.sandboxFactory,
-		builder.templateStorage,
+		templateStorage,
 		builder.proxy,
 		layerExecutor,
 	)
@@ -295,7 +322,7 @@ func runBuild(
 	// Get the base rootfs size from the template files
 	// This is the size of the rootfs after provisioning and before building the layers
 	// (as they don't change the rootfs size)
-	rootfsSize, err := getRootfsSize(ctx, builder.templateStorage, lastLayerResult.Metadata.Template)
+	rootfsSize, err := getRootfsSize(ctx, templateStorage, lastLayerResult.Metadata.Template)
 	if err != nil {
 		return nil, fmt.Errorf("error getting rootfs size: %w", err)
 	}
