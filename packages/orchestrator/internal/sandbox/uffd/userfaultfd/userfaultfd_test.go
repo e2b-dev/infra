@@ -19,6 +19,29 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+type testConfig struct {
+	name string
+	// Page size of the memory area.
+	pagesize uint64
+	// Number of pages in the memory area.
+	numberOfPages uint64
+	// Operations to trigger on the memory area.
+	operations []operation
+}
+
+type operationMode uint32
+
+const (
+	operationModeRead operationMode = 1 << iota
+	operationModeWrite
+)
+
+type operation struct {
+	// Offset in bytes. Must be smaller than the (numberOfPages-1) * pagesize as it reads a page and it must be aligned to the pagesize from the testConfig.
+	offset int64
+	mode   operationMode
+}
+
 func TestUffdMissing(t *testing.T) {
 	tests := []testConfig{
 		{
@@ -103,7 +126,7 @@ func TestUffdMissing(t *testing.T) {
 			err := h.uffd.writeRequestCounter.Wait(t.Context())
 			require.NoError(t, err)
 
-			expectedReadOffsets := getOperationsOffsets(tt.operations, operationModeAll)
+			expectedReadOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
 			assert.Equal(t, expectedReadOffsets, h.getReadOffsets(), "checking which pages were faulted)")
 		})
 	}
@@ -277,32 +300,10 @@ func TestUffdWriteProtection(t *testing.T) {
 			expectedWriteOffsets := getOperationsOffsets(tt.operations, operationModeWrite)
 			assert.Equal(t, expectedWriteOffsets, h.getWriteOffsets(), "checking which pages were written to")
 
-			expectedReadOffsets := getOperationsOffsets(tt.operations, operationModeAll)
+			expectedReadOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
 			assert.Equal(t, expectedReadOffsets, h.getReadOffsets(), "checking which pages were faulted)")
 		})
 	}
-}
-
-type operationMode uint
-
-const (
-	// When filtering for reads we need to use this mode as even writes via UFFD trigger reads.
-	operationModeAll operationMode = iota
-	operationModeRead
-	operationModeWrite
-)
-
-type operation struct {
-	// Offset in bytes. Must be smaller than the (numberOfPages-1) * pagesize as it reads a page and it must be aligned to the pagesize from the testConfig.
-	offset int64
-	mode   operationMode
-}
-
-type testConfig struct {
-	name          string
-	pagesize      uint64
-	numberOfPages uint64
-	operations    []operation
 }
 
 type testHandler struct {
@@ -311,19 +312,6 @@ type testHandler struct {
 	data       *testutils.MemorySlicer
 	memoryMap  *memory.Mapping
 	uffd       *Userfaultfd
-}
-
-// Get a bitset of the offsets of the operations for the given mode.
-func getOperationsOffsets(operations []operation, mode operationMode) []uint {
-	b := bitset.New(0)
-
-	for _, operation := range operations {
-		if operation.mode == mode || mode == operationModeAll {
-			b.Set(uint(operation.offset))
-		}
-	}
-
-	return slices.Collect(b.EachSet())
 }
 
 func (h *testHandler) getReadOffsets() []uint {
@@ -450,6 +438,19 @@ func configureTest(t *testing.T, tt testConfig) *testHandler {
 		data:       data,
 		uffd:       uffd,
 	}
+}
+
+// Get a bitset of the offsets of the operations for the given mode.
+func getOperationsOffsets(ops []operation, m operationMode) []uint {
+	b := bitset.New(0)
+
+	for _, operation := range ops {
+		if operation.mode&m != 0 {
+			b.Set(uint(operation.offset))
+		}
+	}
+
+	return slices.Collect(b.EachSet())
 }
 
 // TODO: Test write protection
