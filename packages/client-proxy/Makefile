@@ -17,11 +17,8 @@ build-debug:
 .PHONY: build-and-upload
 build-and-upload:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
-	@rm -rf .shared/
-	@cp -r ../shared .shared/
 	@docker buildx install # sets up the buildx as default docker builder (otherwise the command below won't work)
-	@docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" .
-	@rm -rf .shared/
+	@docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
 
 openapi := ../../spec/openapi-edge.yml
 codegen := go tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
@@ -38,8 +35,6 @@ run:
 	SD_ORCHESTRATOR_PROVIDER=STATIC \
 	SD_ORCHESTRATOR_STATIC=127.0.0.1 \
 	SKIP_ORCHESTRATOR_READINESS_CHECK=true \
-	USE_CATALOG_RESOLUTION=true \
-	USE_DNS_RESOLUTION=false \
 	LOKI_URL=unset \
 	./bin/client-proxy
 

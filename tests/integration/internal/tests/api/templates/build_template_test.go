@@ -42,7 +42,7 @@ func buildTemplate(
 		Alias:    templateAlias,
 		CpuCount: utils.ToPtr[int32](2),
 		MemoryMB: utils.ToPtr[int32](1024),
-	}, setup.WithAPIKey())
+	}, setup.WithAPIKey(), setup.WithTestsUserAgent())
 	require.NoError(tb, err)
 	require.Equal(tb, http.StatusAccepted, resp.StatusCode())
 	require.NotNil(tb, resp.JSON202)
@@ -54,6 +54,7 @@ func buildTemplate(
 		resp.JSON202.BuildID,
 		data,
 		setup.WithAPIKey(),
+		setup.WithTestsUserAgent(),
 	)
 	require.NoError(tb, err)
 	assert.Equal(tb, http.StatusAccepted, startResp.StatusCode())
@@ -75,6 +76,7 @@ func buildTemplate(
 				Level:      &logLevel,
 			},
 			setup.WithAPIKey(),
+			setup.WithTestsUserAgent(),
 		)
 		require.NoError(tb, err)
 		assert.Equal(tb, http.StatusOK, statusResp.StatusCode(), string(statusResp.Body))
@@ -419,7 +421,7 @@ func TestTemplateBuildFromTemplateCommandOverride(t *testing.T) {
 					},
 					{
 						Type: "RUN",
-						Args: utils.ToPtr([]string{"echo 'override_expected' > /override_check.txt"}),
+						Args: utils.ToPtr([]string{"echo 'override_expected' > /override_check.txt", "root"}),
 					},
 				}),
 				// Override the base start command - simple success proves override worked

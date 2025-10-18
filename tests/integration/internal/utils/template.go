@@ -72,14 +72,16 @@ func BuildTemplate(tb testing.TB, opts TemplateBuildOptions) *api.Template {
 	ctx, cancel := context.WithTimeout(tb.Context(), opts.Timeout)
 	defer cancel()
 
+	reqEditors := append(opts.ReqEditors, setup.WithTestsUserAgent())
+
 	// Request build
-	template := requestTemplateBuild(tb, opts.Alias, opts.CPUCount, opts.MemoryMB, opts.ReqEditors...)
+	template := requestTemplateBuild(tb, opts.Alias, opts.CPUCount, opts.MemoryMB, reqEditors...)
 
 	// Start build
-	startTemplateBuild(tb, template.TemplateID, template.BuildID, opts.BuildData, opts.ReqEditors...)
+	startTemplateBuild(tb, template.TemplateID, template.BuildID, opts.BuildData, reqEditors...)
 
 	// Wait for build to complete
-	WaitForBuildCompletion(tb, ctx, template.TemplateID, template.BuildID, opts.Alias, opts.LogHandler, opts.EnableDebug, opts.ReqEditors...)
+	WaitForBuildCompletion(tb, ctx, template.TemplateID, template.BuildID, opts.Alias, opts.LogHandler, opts.EnableDebug, reqEditors...)
 
 	return template
 }
