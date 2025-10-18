@@ -62,7 +62,7 @@ variable "api_nat_ips" {
 variable "api_nat_min_ports_per_vm" {
   type        = number
   description = "The default API NAT minimum ports per VM."
-  default     = 140
+  default     = 170
 }
 
 variable "api_resources_cpu_count" {
