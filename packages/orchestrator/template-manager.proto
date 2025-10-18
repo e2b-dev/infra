@@ -104,7 +104,7 @@ message TemplateStatusRequest {
   string buildID = 2;
   optional int32 offset = 3;
   optional LogLevel level = 4;
-  optional int32 limit = 5;
+  optional uint32 limit = 5;
 }
 
 // Data required for deleting a template.

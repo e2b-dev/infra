@@ -8,7 +8,7 @@ import (
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
-const maxLogEntriesPerRequest = int32(100)
+const maxLogEntriesPerRequest = uint32(100)
 
 func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_manager.TemplateStatusRequest) (*template_manager.TemplateBuildStatusResponse, error) {
 	_, ctxSpan := tracer.Start(ctx, "template-build-status-request")
@@ -37,7 +37,7 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 			continue
 		}
 
-		if int32(len(logEntries)) >= limit {
+		if uint32(len(logEntries)) >= limit {
 			break
 		}
 
