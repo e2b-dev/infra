@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/caarlos0/env/v11"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -22,8 +20,6 @@ const (
 )
 
 var (
-	meter = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network")
-
 	newSlotsAvailableCounter = utils.Must(meter.Int64UpDownCounter("orchestrator.network.slots_pool.new",
 		metric.WithDescription("Number of new network slots ready to be used."),
 		metric.WithUnit("{slot"),
@@ -46,18 +42,6 @@ var (
 	))
 )
 
-type Config struct {
-	// Using reserver IPv4 in range that is used for experiments and documentation
-	// https://en.wikipedia.org/wiki/Reserved_IP_addresses
-	HyperloopIPAddress       string `env:"SANDBOX_HYPERLOOP_IP"         envDefault:"192.0.2.1"`
-	HyperloopProxyPort       uint16 `env:"SANDBOX_HYPERLOOP_PROXY_PORT" envDefault:"5010"`
-	UseLocalNamespaceStorage bool   `env:"USE_LOCAL_NAMESPACE_STORAGE"`
-}
-
-func ParseConfig() (Config, error) {
-	return env.ParseAs[Config]()
-}
-
 type Pool struct {
 	config Config
 
@@ -76,7 +60,7 @@ func NewPool(newSlotsPoolSize, reusedSlotsPoolSize int, nodeID string, config Co
 	newSlots := make(chan *Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan *Slot, reusedSlotsPoolSize)
 
-	slotStorage, err := NewStorage(vrtSlotsSize, nodeID, config)
+	slotStorage, err := NewStorage(nodeID, config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create slot storage: %w", err)
 	}
@@ -100,7 +84,7 @@ func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
 
 	err = ips.CreateNetwork()
 	if err != nil {
-		releaseErr := p.slotStorage.Release(ips)
+		releaseErr := p.slotStorage.Release(ctx, ips)
 		err = errors.Join(err, releaseErr)
 
 		return nil, fmt.Errorf("failed to create network: %w", err)
@@ -212,7 +196,7 @@ func (p *Pool) cleanup(ctx context.Context, slot *Slot) error {
 		errs = append(errs, fmt.Errorf("cannot remove network when releasing slot '%d': %w", slot.Idx, err))
 	}
 
-	err = p.slotStorage.Release(slot)
+	err = p.slotStorage.Release(ctx, slot)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("failed to release slot '%d': %w", slot.Idx, err))
 	}
