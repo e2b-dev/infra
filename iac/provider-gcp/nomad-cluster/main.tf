@@ -93,8 +93,9 @@ module "network" {
   gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region
 
-  api_use_nat = var.api_use_nat
-  api_nat_ips = var.api_nat_ips
+  api_use_nat              = var.api_use_nat
+  api_nat_ips              = var.api_nat_ips
+  api_nat_min_ports_per_vm = var.api_nat_min_ports_per_vm
 
   ingress_port              = var.ingress_port
   api_port                  = var.api_port
