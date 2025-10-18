@@ -76,6 +76,7 @@ func Test_server_List(t *testing.T) {
 			got, err := s.List(t.Context(), tt.args.in1)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("server.List() error = %v, wantErr %v", err, tt.wantErr)
+
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {

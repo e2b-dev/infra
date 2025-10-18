@@ -31,6 +31,7 @@ func (e *ErrorOnce) SetSuccess() error {
 // Returns nil if the operation completed successfully.
 func (e *ErrorOnce) Wait() error {
 	_, err := e.setOnce.Wait()
+
 	return err
 }
 
@@ -38,6 +39,7 @@ func (e *ErrorOnce) Wait() error {
 // Unlike Wait, this doesn't block.
 func (e *ErrorOnce) Error() error {
 	_, err := e.setOnce.Result()
+
 	return err
 }
 
@@ -45,6 +47,7 @@ func (e *ErrorOnce) Error() error {
 // Returns the set error or ctx.Err() if the context is cancelled first.
 func (e *ErrorOnce) WaitWithContext(ctx context.Context) error {
 	_, err := e.setOnce.WaitWithContext(ctx)
+
 	return err
 }
 

@@ -23,6 +23,7 @@ func (p *CustomPart) FileNameWithPath() (string, error) {
 	if !ok {
 		return "", errors.New("filename not found in Content-Disposition header")
 	}
+
 	return filename, nil
 }
 
@@ -32,6 +33,7 @@ func (p *CustomPart) parseContentDisposition() (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return dispositionParams, nil
 }
 

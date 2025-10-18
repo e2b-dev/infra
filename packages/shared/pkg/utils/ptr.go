@@ -9,6 +9,7 @@ func ToPtr[T any](v T) *T {
 func FromPtr[T any](s *T) T {
 	if s == nil {
 		var zero T
+
 		return zero
 	}
 

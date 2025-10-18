@@ -107,6 +107,7 @@ func snapshotInstance(ctx context.Context, orch *Orchestrator, node *nodemanager
 
 	if err == nil {
 		telemetry.ReportEvent(ctx, "Paused sandbox")
+
 		return nil
 	}
 

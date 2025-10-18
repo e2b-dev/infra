@@ -54,6 +54,7 @@ func (es *SandboxEventsService) HandleEvent(ctx context.Context, event event.San
 	err := validateEvent(event)
 	if err != nil {
 		es.logger.Error("error validating sandbox event", zap.Error(err))
+
 		return
 	}
 
@@ -77,6 +78,7 @@ func (es *SandboxEventsService) handlePubSubEvent(ctx context.Context, event eve
 		shouldPublish, err := es.pubsub.ShouldPublish(ctx, webhooks.DeriveKey(event.SandboxTeamID))
 		if err != nil {
 			es.logger.Error("error checking if sandbox should publish", zap.Error(err))
+
 			return
 		}
 

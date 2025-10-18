@@ -37,6 +37,7 @@ func addConverter[TIn, TOut any](fn func(TIn) TOut) {
 		}
 
 		c := fn(b)
+
 		return connect.NewResponse[TOut](&c), nil
 	}
 
@@ -47,6 +48,7 @@ func addConverter[TIn, TOut any](fn func(TIn) TOut) {
 		}
 
 		c := fn(b)
+
 		return &c
 	}
 }
@@ -144,6 +146,7 @@ func maybeConvertResponse(logger *zerolog.Logger, response connect.AnyResponse) 
 		logger.Warn().
 			Type("response", response).
 			Msg("cannot convert, expected protoreflect.ProtoMessage")
+
 		return response
 	}
 
@@ -153,6 +156,7 @@ func maybeConvertResponse(logger *zerolog.Logger, response connect.AnyResponse) 
 		logger.Error().
 			Type("response", response).
 			Msg("do not know how to convert")
+
 		return response
 	}
 
@@ -181,6 +185,7 @@ func convertStartEvent(e *filesystem.WatchDirResponse_StartEvent) *WatchDirRespo
 	if e == nil {
 		return nil
 	}
+
 	return &WatchDirResponse_StartEvent{}
 }
 
@@ -188,6 +193,7 @@ func convertFilesystemEvent(e *filesystem.FilesystemEvent) *FilesystemEvent {
 	if e == nil {
 		return nil
 	}
+
 	return &FilesystemEvent{
 		Name: e.GetName(),
 		Type: EventType(e.GetType()),
@@ -198,5 +204,6 @@ func convertKeepAlive(e *filesystem.WatchDirResponse_KeepAlive) *WatchDirRespons
 	if e == nil {
 		return nil
 	}
+
 	return &WatchDirResponse_KeepAlive{}
 }

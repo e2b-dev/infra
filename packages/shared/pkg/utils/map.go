@@ -7,5 +7,6 @@ func Map[T any, U any](input []T, f func(T) U) []U {
 	for i, v := range input {
 		output[i] = f(v)
 	}
+
 	return output
 }

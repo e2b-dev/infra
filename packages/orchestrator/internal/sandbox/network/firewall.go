@@ -80,6 +80,7 @@ func NewFirewall(tapIf string) (*Firewall, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error while configuring initial block set: %w", err)
 	}
+
 	return fw, nil
 }
 
@@ -181,6 +182,7 @@ func (fw *Firewall) AddBlockedIP(cidr string) error {
 	if err != nil {
 		return fmt.Errorf("flush add blocked IP changes: %w", err)
 	}
+
 	return nil
 }
 
@@ -203,6 +205,7 @@ func (fw *Firewall) AddAllowedIP(cidr string) error {
 	if err != nil {
 		return fmt.Errorf("flush add allowed IP changes: %w", err)
 	}
+
 	return nil
 }
 
@@ -227,6 +230,7 @@ func (fw *Firewall) ResetBlockedCustom() error {
 	if err := fw.blockSet.ClearAndAddElements(fw.conn, initData); err != nil {
 		return err
 	}
+
 	return fw.conn.Flush()
 }
 

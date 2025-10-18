@@ -33,6 +33,7 @@ func (o *Orchestrator) reportLongRunningSandboxes(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			zap.L().Info("Stopping node analytics reporting due to context cancellation")
+
 			return
 		case <-ticker.C:
 			sandboxes := o.sandboxStore.Items(nil, []sandbox.State{sandbox.StateRunning})
@@ -52,6 +53,7 @@ func (o *Orchestrator) reportLongRunningSandboxes(ctx context.Context) {
 func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyticscollector.Analytics, instances []sandbox.Sandbox) {
 	if len(instances) == 0 {
 		zap.L().Debug("No long-running instances to report to analytics")
+
 		return
 	}
 

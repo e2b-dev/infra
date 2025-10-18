@@ -334,6 +334,7 @@ func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVer
 		err = sbx.Close(ctx)
 		require.NoError(b, err)
 		b.StartTimer()
+
 		return
 	}
 

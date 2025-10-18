@@ -61,6 +61,7 @@ func NewClient(ctx context.Context, options ...Option) (*Client, error) {
 
 func (db *Client) Close() error {
 	db.conn.Close()
+
 	return nil
 }
 
@@ -72,5 +73,6 @@ func (db *Client) WithTx(ctx context.Context) (*Client, pgx.Tx, error) {
 	}
 
 	client := &Client{Queries: db.Queries.WithTx(tx), conn: db.conn}
+
 	return client, tx, nil
 }

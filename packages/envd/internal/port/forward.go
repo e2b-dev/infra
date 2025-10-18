@@ -189,6 +189,7 @@ func (f *Forwarder) stopPortForwarding(p *PortToForward) {
 
 	if err := syscall.Kill(-p.socat.Process.Pid, syscall.SIGKILL); err != nil {
 		logger.Error().Err(err).Msg("Failed to kill process group")
+
 		return
 	}
 

@@ -49,6 +49,7 @@ func main() {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Println("Error getting home directory:", err)
+
 		return
 	}
 

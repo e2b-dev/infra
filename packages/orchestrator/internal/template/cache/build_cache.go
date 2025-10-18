@@ -101,6 +101,7 @@ func NewBuildCache(meterProvider metric.MeterProvider) *BuildCache {
 		for teamID, count := range teamCounts {
 			observer.Observe(int64(count), metric.WithAttributes(telemetry.WithTeamID(teamID)))
 		}
+
 		return nil
 	})
 	if err != nil {

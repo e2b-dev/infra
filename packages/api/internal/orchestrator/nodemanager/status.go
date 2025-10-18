@@ -52,6 +52,7 @@ func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
 	nodeStatus, ok := ApiNodeToOrchestratorStateMapper[s]
 	if !ok {
 		zap.L().Error("Unknown service info status", zap.String("status", string(s)), logger.WithNodeID(n.ID))
+
 		return fmt.Errorf("unknown service info status: %s", s)
 	}
 
@@ -59,6 +60,7 @@ func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
 	_, err := client.Info.ServiceStatusOverride(ctx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: nodeStatus})
 	if err != nil {
 		zap.L().Error("Failed to send status change", zap.Error(err))
+
 		return err
 	}
 

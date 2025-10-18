@@ -101,6 +101,7 @@ func authHandler(handler http.Handler, username, password string) http.Handler {
 		// Allow certain endpoints without auth (like /v2/)
 		if r.URL.Path == "/v2/" || r.URL.Path == "/v2" {
 			handler.ServeHTTP(w, r)
+
 			return
 		}
 
@@ -110,6 +111,7 @@ func authHandler(handler http.Handler, username, password string) http.Handler {
 			// Send WWW-Authenticate challenge
 			w.Header().Set("WWW-Authenticate", `Basic realm="Registry"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+
 			return
 		}
 
@@ -118,6 +120,7 @@ func authHandler(handler http.Handler, username, password string) http.Handler {
 		if !ok || user != username || pass != password {
 			w.Header().Set("WWW-Authenticate", `Basic realm="Registry"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+
 			return
 		}
 

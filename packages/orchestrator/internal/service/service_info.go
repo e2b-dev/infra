@@ -108,11 +108,13 @@ func convertDiskMetrics(disks []metrics.DiskInfo) []*orchestratorinfo.DiskMetric
 			TotalBytes:     disk.TotalBytes,
 		}
 	}
+
 	return result
 }
 
 func (s *Server) ServiceStatusOverride(_ context.Context, req *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
 	zap.L().Info("service status override request received", zap.String("status", req.GetServiceStatus().String()))
 	s.info.SetStatus(req.GetServiceStatus())
+
 	return &emptypb.Empty{}, nil
 }

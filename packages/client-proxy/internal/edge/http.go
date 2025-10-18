@@ -70,6 +70,7 @@ func NewGinServer(logger *zap.Logger, store *handlers.APIStore, swagger *openapi
 		func(c *gin.Context) {
 			if skippedPaths.MatchString(c.Request.URL.Path) {
 				c.Next()
+
 				return
 			}
 
@@ -81,6 +82,7 @@ func NewGinServer(logger *zap.Logger, store *handlers.APIStore, swagger *openapi
 	)
 
 	api.RegisterHandlersWithOptions(handler, store, api.GinServerOptions{})
+
 	return handler
 }
 

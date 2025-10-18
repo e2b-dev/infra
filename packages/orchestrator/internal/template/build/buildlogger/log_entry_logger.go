@@ -39,6 +39,7 @@ func (b *LogEntryLogger) Write(p []byte) (n int, err error) {
 			fields, err := logs.FlatJsonLogLineParser(string(line))
 			if err != nil {
 				zap.L().Error("error parsing log line", zap.Error(err), zap.ByteString("line", line))
+
 				continue
 			}
 
@@ -46,6 +47,7 @@ func (b *LogEntryLogger) Write(p []byte) (n int, err error) {
 			err = json.Unmarshal(line, &entry)
 			if err != nil {
 				zap.L().Error("failed to unmarshal log entry", zap.Error(err), zap.ByteString("line", line))
+
 				continue
 			}
 
@@ -63,6 +65,7 @@ func (b *LogEntryLogger) Write(p []byte) (n int, err error) {
 			})
 		}
 	}
+
 	return len(p), nil
 }
 
@@ -97,6 +100,7 @@ func (b *LogEntryLogger) Lines() []*template_manager.TemplateBuildLogEntry {
 	// Shallow copy of the slice (not the entries themselves)
 	copied := make([]*template_manager.TemplateBuildLogEntry, len(b.lines))
 	copy(copied, b.lines)
+
 	return copied
 }
 

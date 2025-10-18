@@ -50,6 +50,7 @@ func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
 		zap.L().Error("Failed to get instance info", zap.Error(err), l.WithClusterID(c.ID), l.WithNodeID(instance.NodeID), l.WithServiceInstanceID(instance.ServiceInstanceID))
+
 		return
 	}
 
@@ -63,12 +64,14 @@ func (c *Cluster) syncInstance(ctx context.Context, instance *ClusterInstance) {
 func (n *ClusterInstance) GetStatus() infogrpc.ServiceInfoStatus {
 	n.mutex.RLock()
 	defer n.mutex.RUnlock()
+
 	return n.status
 }
 
 func (n *ClusterInstance) hasRole(r infogrpc.ServiceInfoRole) bool {
 	n.mutex.RLock()
 	defer n.mutex.RUnlock()
+
 	return slices.Contains(n.roles, r)
 }
 
@@ -126,6 +129,7 @@ func (d clusterSynchronizationStore) PoolList(_ context.Context) []*ClusterInsta
 
 func (d clusterSynchronizationStore) PoolExists(_ context.Context, s api.ClusterOrchestratorNode) bool {
 	_, found := d.cluster.instances.Get(s.NodeID)
+
 	return found
 }
 

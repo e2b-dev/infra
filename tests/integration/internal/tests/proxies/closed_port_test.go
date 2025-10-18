@@ -29,6 +29,7 @@ func waitForStatus(t *testing.T, client *http.Client, sbx *api.Sandbox, url *url
 		resp, err := client.Do(req)
 		if err != nil {
 			t.Logf("Error: %v", err)
+
 			continue
 		}
 
@@ -46,6 +47,7 @@ func waitForStatus(t *testing.T, client *http.Client, sbx *api.Sandbox, url *url
 	}
 
 	t.Fail()
+
 	return nil
 }
 

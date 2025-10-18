@@ -133,6 +133,7 @@ func (c *CachedFileObjectProvider) ReadAt(ctx context.Context, buff []byte, offs
 	if ignoreEOF(err) == nil {
 		cacheHits.Add(ctx, 1)
 		readTimer.End(ctx, int64(count))
+
 		return count, err // return `err` in case it's io.EOF
 	}
 	cacheMisses.Add(ctx, 1)
@@ -165,6 +166,7 @@ var (
 func (c *CachedFileObjectProvider) Size(ctx context.Context) (int64, error) {
 	if size, ok := c.readLocalSize(); ok {
 		cacheHits.Add(ctx, 1)
+
 		return size, nil
 	}
 	cacheMisses.Add(ctx, 1)
@@ -190,6 +192,7 @@ func (c *CachedFileObjectProvider) readLocalSize() (int64, bool) {
 		zap.L().Warn("failed to read cached size, falling back to remote read",
 			zap.String("path", fname),
 			zap.Error(err))
+
 		return 0, false
 	}
 
@@ -199,6 +202,7 @@ func (c *CachedFileObjectProvider) readLocalSize() (int64, bool) {
 			zap.String("path", fname),
 			zap.String("content", string(content)),
 			zap.Error(err))
+
 		return 0, false
 	}
 
@@ -218,6 +222,7 @@ func (c *CachedFileObjectProvider) validateReadAtParams(buffSize, offset int64) 
 	if (offset%c.chunkSize)+buffSize > c.chunkSize {
 		return ErrMultipleChunks
 	}
+
 	return nil
 }
 
@@ -232,6 +237,7 @@ func (c *CachedFileObjectProvider) writeLocalSize(size int64) {
 		zap.L().Warn("failed to write to temp file",
 			zap.String("path", tempFilename),
 			zap.Error(err))
+
 		return
 	}
 
@@ -241,6 +247,7 @@ func (c *CachedFileObjectProvider) writeLocalSize(size int64) {
 			zap.String("temp_path", tempFilename),
 			zap.String("final_path", finalFilename),
 			zap.Error(err))
+
 		return
 	}
 }
@@ -357,6 +364,7 @@ func (c *CachedFileObjectProvider) copyFullFileFromCache(ctx context.Context, ds
 				zap.String("path", path),
 				zap.Error(err))
 		}
+
 		return 0, false
 	}
 
@@ -367,10 +375,12 @@ func (c *CachedFileObjectProvider) copyFullFileFromCache(ctx context.Context, ds
 		zap.L().Error("failed to read full cached file",
 			zap.String("path", path),
 			zap.Error(err))
+
 		return 0, false
 	}
 
 	cachedRead.End(ctx, count)
+
 	return count, true
 }
 
@@ -396,6 +406,7 @@ func (c *CachedFileObjectProvider) readAndCacheFullRemoteFile(ctx context.Contex
 	}()
 
 	written, err := dst.Write(writer.Bytes())
+
 	return int64(written), err
 }
 
@@ -409,6 +420,7 @@ func ignoreEOF(err error) error {
 	if errors.Is(err, io.EOF) {
 		return nil
 	}
+
 	return err
 }
 

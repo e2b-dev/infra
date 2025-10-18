@@ -69,6 +69,7 @@ func (sd *DnsServiceDiscovery) keepInSync(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			sd.logger.Info("Stopping service discovery keep-in-sync")
+
 			return
 		case <-ticker.C:
 			sd.sync(ctx)
@@ -85,6 +86,7 @@ func (sd *DnsServiceDiscovery) sync(ctx context.Context) {
 	select {
 	case <-ctxTimeout.Done():
 		sd.logger.Error("Service discovery sync timed out")
+
 		return
 	default:
 		for _, host := range sd.hosts {
@@ -96,6 +98,7 @@ func (sd *DnsServiceDiscovery) sync(ctx context.Context) {
 				if err != nil {
 					sd.logger.Error("DNS service discovery failed", zap.Error(err))
 					time.Sleep(dnsRetryWait)
+
 					continue
 				}
 

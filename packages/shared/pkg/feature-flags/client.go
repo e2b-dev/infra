@@ -84,6 +84,7 @@ func (c *Client) Close(context.Context) error {
 	err := c.ld.Close()
 	if err != nil {
 		zap.L().Error("Error during launch-darkly client shutdown", zap.Error(err))
+
 		return err
 	}
 

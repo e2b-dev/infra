@@ -166,5 +166,6 @@ func saveUserMeta(
 	)
 
 	cmdMetadata.User = user
+
 	return cmdMetadata, err
 }

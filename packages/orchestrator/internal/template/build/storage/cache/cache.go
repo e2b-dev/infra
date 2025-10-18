@@ -116,6 +116,7 @@ func HashKeys(baseKey string, keys ...string) string {
 		sha.Write([]byte(";"))
 		sha.Write([]byte(key))
 	}
+
 	return fmt.Sprintf("%x", sha.Sum(nil))
 }
 

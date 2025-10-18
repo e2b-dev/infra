@@ -24,22 +24,27 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx sandbox.Sandbox, s
 			switch sbx.State {
 			case sandbox.StateKilling:
 				zap.L().Info("Sandbox is already killed", logger.WithSandboxID(sandboxID))
+
 				return nil
 			default: // It shouldn't happen the sandbox ended in paused state
 				zap.L().Error("Error killing sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
+
 				return ErrSandboxOperationFailed
 			}
 		case sandbox.StateActionPause:
 			switch sbx.State {
 			case sandbox.StateKilling:
 				zap.L().Info("Sandbox is already killed", logger.WithSandboxID(sandboxID))
+
 				return ErrSandboxNotFound
 			default:
 				zap.L().Error("Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
+
 				return ErrSandboxOperationFailed
 			}
 		default:
 			zap.L().Error("Invalid state action", logger.WithSandboxID(sandboxID), zap.String("state_action", string(stateAction)))
+
 			return ErrSandboxOperationFailed
 		}
 	}
@@ -59,6 +64,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx sandbox.Sandbox, s
 	err = o.removeSandboxFromNode(ctx, sbx, stateAction)
 	if err != nil {
 		zap.L().Error("Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
+
 		return ErrSandboxOperationFailed
 	}
 
@@ -72,6 +78,7 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 	node := o.GetNode(sbx.ClusterID, sbx.NodeID)
 	if node == nil {
 		zap.L().Error("failed to get node", logger.WithNodeID(sbx.NodeID))
+
 		return fmt.Errorf("node '%s' not found", sbx.NodeID)
 	}
 
@@ -94,6 +101,7 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 		err = o.pauseSandbox(ctx, node, sbx)
 		if err != nil {
 			zap.L().Debug("failed to create snapshot", logger.WithSandboxID(sbx.SandboxID), zap.String("base_template_id", sbx.BaseTemplateID))
+
 			return fmt.Errorf("failed to auto pause sandbox '%s': %w", sbx.SandboxID, err)
 		}
 	case sandbox.StateActionKill:

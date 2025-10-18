@@ -45,6 +45,7 @@ func TestSandboxList(t *testing.T) {
 	for _, s := range *listResponse.JSON200 {
 		if s.SandboxID == sbx.SandboxID {
 			found = true
+
 			break
 		}
 	}
@@ -97,6 +98,7 @@ func TestSandboxListRunning(t *testing.T) {
 		if s.SandboxID == sbx.SandboxID {
 			found = true
 			assert.Equal(t, api.Running, s.State)
+
 			break
 		}
 	}
@@ -148,6 +150,7 @@ func TestSandboxListPaused(t *testing.T) {
 		if s.SandboxID == sandboxID {
 			found = true
 			assert.Equal(t, api.Paused, s.State)
+
 			break
 		}
 	}
@@ -201,6 +204,7 @@ func TestSandboxListPausing(t *testing.T) {
 
 		// The sandbox has to be always present
 		require.True(t, found)
+
 		return false
 	}, 10*time.Second, 100*time.Millisecond, "Sandbox did not reach paused state in time")
 
@@ -487,6 +491,7 @@ func TestSandboxListRunningV1(t *testing.T) {
 		if s.SandboxID == sbx.SandboxID {
 			found = true
 			assert.Equal(t, api.Running, s.State)
+
 			break
 		}
 	}

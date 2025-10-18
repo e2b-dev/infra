@@ -10,6 +10,7 @@ func sanitizeVersion(version string) string {
 	if len(version) > 0 && version[0] != 'v' {
 		version = "v" + version
 	}
+
 	return version
 }
 

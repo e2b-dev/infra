@@ -137,6 +137,7 @@ func (d *DevicePool) Populate(ctx context.Context) {
 
 			failedCount++
 			time.Sleep(waitOnNBDError)
+
 			continue
 		}
 		failedCount = 0
@@ -259,6 +260,7 @@ func (d *DevicePool) GetDevice(ctx context.Context) (DeviceSlot, error) {
 	case slot := <-d.slots:
 		acquired.Add(ctx, 1)
 		slotCounter.Add(ctx, -1)
+
 		return slot, nil
 	}
 }
@@ -278,6 +280,7 @@ func (d *DevicePool) release(ctx context.Context, idx DeviceSlot) error {
 	d.mu.Unlock()
 
 	released.Add(ctx, 1)
+
 	return nil
 }
 

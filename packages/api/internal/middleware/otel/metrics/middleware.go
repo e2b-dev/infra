@@ -86,5 +86,6 @@ func attributesFromGinContext(ginCtx *gin.Context, filterPrefix string) []attrib
 			attrs = append(attrs, attribute.String(k, fmt.Sprintf("%v", val)))
 		}
 	}
+
 	return attrs
 }

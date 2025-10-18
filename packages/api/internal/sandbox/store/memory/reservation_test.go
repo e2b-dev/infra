@@ -26,6 +26,7 @@ var teamID = uuid.New()
 
 func newMemoryStore() *Store {
 	cache := NewStore(nil, nil)
+
 	return cache
 }
 

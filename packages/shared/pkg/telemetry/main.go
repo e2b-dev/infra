@@ -47,6 +47,7 @@ func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion
 				NoMinMax: false,
 			}
 		}
+
 		return sdkmetric.DefaultAggregationSelector(kind)
 	}))
 	if err != nil {

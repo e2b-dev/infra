@@ -98,6 +98,7 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 		}
 
 		node.PlacementMetrics.Success(sbxRequest.GetSandbox().GetSandboxId())
+
 		return node, nil
 	}
 

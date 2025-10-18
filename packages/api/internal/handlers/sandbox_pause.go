@@ -38,11 +38,13 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	if err != nil {
 		apiErr := pauseHandleNotRunningSandbox(ctx, a.sqlcDB, sandboxID, teamID)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+
 		return
 	}
 
 	if sbx.TeamID != teamID {
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
+
 		return
 	}
 
@@ -52,11 +54,13 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	case errors.Is(err, orchestrator.ErrSandboxNotFound):
 		apiErr := pauseHandleNotRunningSandbox(ctx, a.sqlcDB, sandboxID, teamID)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+
 		return
 	default:
 		telemetry.ReportError(ctx, "error pausing sandbox", err)
 
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
+
 		return
 	}
 
@@ -67,6 +71,7 @@ func pauseHandleNotRunningSandbox(ctx context.Context, sqlcDB *sqlcdb.Client, sa
 	_, err := sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamID})
 	if err == nil {
 		zap.L().Warn("Sandbox is already paused", logger.WithSandboxID(sandboxID))
+
 		return api.APIError{
 			Code:      http.StatusConflict,
 			ClientMsg: fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already paused", sandboxID),
@@ -75,6 +80,7 @@ func pauseHandleNotRunningSandbox(ctx context.Context, sqlcDB *sqlcdb.Client, sa
 
 	if errors.Is(err, sql.ErrNoRows) {
 		zap.L().Debug("Snapshot not found", logger.WithSandboxID(sandboxID))
+
 		return api.APIError{
 			Code:      http.StatusNotFound,
 			ClientMsg: fmt.Sprintf("Error pausing sandbox - snapshot for sandbox '%s' was not found", sandboxID),
@@ -82,6 +88,7 @@ func pauseHandleNotRunningSandbox(ctx context.Context, sqlcDB *sqlcdb.Client, sa
 	}
 
 	zap.L().Error("Error getting snapshot", zap.Error(err), logger.WithSandboxID(sandboxID))
+
 	return api.APIError{
 		Code:      http.StatusInternalServerError,
 		ClientMsg: "Error pausing sandbox",

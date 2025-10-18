@@ -21,6 +21,7 @@ func SetContext(ctx context.Context, contexts ...ldcontext.Context) context.Cont
 	}
 
 	ctx = context.WithValue(ctx, ctxKey{}, val)
+
 	return ctx
 }
 
@@ -28,6 +29,7 @@ func getContext(ctx context.Context) (ldcontext.Context, bool) {
 	if val, ok := ctx.Value(ctxKey{}).(ldcontext.Context); ok {
 		return val, true
 	}
+
 	return ldcontext.Context{}, false
 }
 
@@ -46,6 +48,7 @@ func flattenContexts(contexts []ldcontext.Context) []ldcontext.Context {
 			} else {
 				contextMap[item.Kind()] = item
 			}
+
 			continue
 		}
 

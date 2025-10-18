@@ -15,6 +15,7 @@ func (a *APIStore) HealthCheck(c *gin.Context) {
 	if status == api.Healthy || status == api.Draining {
 		c.Status(http.StatusOK)
 		c.Writer.Write([]byte("healthy"))
+
 		return
 	}
 
@@ -27,6 +28,7 @@ func (a *APIStore) HealthCheckTraffic(c *gin.Context) {
 	if a.info.GetStatus() == api.Healthy {
 		c.Status(http.StatusOK)
 		c.Writer.Write([]byte("healthy"))
+
 		return
 	}
 
@@ -39,6 +41,7 @@ func (a *APIStore) HealthCheckMachine(c *gin.Context) {
 	if a.info.IsTerminating() {
 		c.Status(http.StatusServiceUnavailable)
 		c.Writer.Write([]byte("service is terminating"))
+
 		return
 	}
 

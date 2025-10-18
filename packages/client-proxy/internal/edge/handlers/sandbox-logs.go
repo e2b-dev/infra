@@ -39,6 +39,7 @@ func (a *APIStore) V1SandboxLogs(c *gin.Context, sandboxID string, params api.V1
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when fetching sandbox logs")
 		telemetry.ReportCriticalError(ctx, "error when fetching sandbox logs", err)
+
 		return
 	}
 

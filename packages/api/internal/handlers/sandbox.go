@@ -65,6 +65,7 @@ func (a *APIStore) startSandbox(
 	)
 	if instanceErr != nil {
 		telemetry.ReportError(ctx, "error when creating instance", instanceErr.Err)
+
 		return nil, instanceErr
 	}
 

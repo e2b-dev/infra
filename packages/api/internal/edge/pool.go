@@ -142,11 +142,13 @@ func (d poolSynchronizationStore) PoolList(_ context.Context) []*Cluster {
 	for _, item := range d.pool.clusters.Items() {
 		items = append(items, item)
 	}
+
 	return items
 }
 
 func (d poolSynchronizationStore) PoolExists(_ context.Context, cluster queries.Cluster) bool {
 	_, found := d.pool.clusters.Get(cluster.ID.String())
+
 	return found
 }
 
@@ -165,6 +167,7 @@ func (d poolSynchronizationStore) PoolInsert(_ context.Context, cluster queries.
 	)
 	if err != nil {
 		zap.L().Error("Initializing cluster failed", zap.Error(err), l.WithClusterID(c.ID))
+
 		return
 	}
 

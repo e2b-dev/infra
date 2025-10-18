@@ -40,6 +40,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 
 	if s.info.GetStatus() != orchestrator.ServiceInfoStatus_Healthy {
 		s.logger.Error("Requesting template creation while server not healthy is not possible", logger.WithTemplateID(cfg.GetTemplateID()))
+
 		return nil, fmt.Errorf("server is draining")
 	}
 
@@ -129,6 +130,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 				if res.Status == templatemanager.TemplateBuildState_Failed {
 					cancel()
 				}
+
 				return
 			}
 		}()

@@ -123,11 +123,13 @@ func TestFlatJsonLogLineParser(t *testing.T) {
 				if err == nil {
 					t.Errorf("expected error but got none")
 				}
+
 				return
 			}
 
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
+
 				return
 			}
 

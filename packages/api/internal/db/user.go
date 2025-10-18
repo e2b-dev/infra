@@ -35,5 +35,6 @@ func GetTeamByIDAndUserIDAuth(ctx context.Context, db *sqlcdb.Client, teamID str
 	}
 
 	team := types.NewTeam(&result.Team, &result.TeamLimit)
+
 	return team, nil
 }

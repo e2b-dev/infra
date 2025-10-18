@@ -145,6 +145,7 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 	)
 	if sizeDiff <= 0 {
 		zap.L().Debug("no need to enlarge rootfs, skipping")
+
 		return nil
 	}
 	rootfsFinalSize, err := filesystem.Enlarge(ctx, rootfsPath, sizeDiff)

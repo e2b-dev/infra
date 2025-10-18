@@ -45,5 +45,6 @@ func CloseCleanly(client redis.UniversalClient) error {
 	if err := client.Close(); err != nil && !errors.Is(err, redis.ErrClosed) {
 		return err
 	}
+
 	return nil
 }

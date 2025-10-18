@@ -40,6 +40,7 @@ func newBoolFlag(name string, fallback bool) BoolFlag {
 	flag := BoolFlag{name: name, fallback: fallback}
 	builder := LaunchDarklyOfflineStore.Flag(flag.name).VariationForAll(fallback)
 	LaunchDarklyOfflineStore.Update(builder)
+
 	return flag
 }
 
@@ -72,6 +73,7 @@ func newIntFlag(name string, fallback int) IntFlag {
 	flag := IntFlag{name: name, fallback: fallback}
 	builder := LaunchDarklyOfflineStore.Flag(flag.name).ValueForAll(ldvalue.Int(fallback))
 	LaunchDarklyOfflineStore.Update(builder)
+
 	return flag
 }
 

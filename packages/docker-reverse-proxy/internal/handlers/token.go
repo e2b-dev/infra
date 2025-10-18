@@ -34,6 +34,7 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 	accessToken, err := auth.ExtractAccessToken(authHeader, "Basic ")
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
+
 		return fmt.Errorf("error while extracting access token: %w", err)
 	}
 

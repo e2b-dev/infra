@@ -45,7 +45,6 @@ linters:
     - mnd
     - nestif
     - nilnil
-    - nlreturn
     - noinlineerr
     - nonamedreturns
     - nosprintfhostport

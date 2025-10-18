@@ -35,6 +35,7 @@ func (a *APIStore) Proxy(w http.ResponseWriter, req *http.Request) {
 	// Other methods than PATCH require the Authorization header
 	if strings.HasPrefix(path, constants.GCPArtifactUploadPrefix) {
 		a.ServeHTTP(w, req)
+
 		return
 	}
 
@@ -45,6 +46,7 @@ func (a *APIStore) Proxy(w http.ResponseWriter, req *http.Request) {
 		log.Printf("No matching route found for path: %s\n", path)
 
 		w.WriteHeader(http.StatusForbidden)
+
 		return
 	}
 

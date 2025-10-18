@@ -114,6 +114,7 @@ func withCORS(h http.Handler) http.Handler {
 		),
 		MaxAge: int(maxAge.Seconds()),
 	})
+
 	return middleware.Handler(h)
 }
 
@@ -122,11 +123,13 @@ func main() {
 
 	if versionFlag {
 		fmt.Printf("%s\n", Version)
+
 		return
 	}
 
 	if commitFlag {
 		fmt.Printf("%s\n", commitSHA)
+
 		return
 	}
 

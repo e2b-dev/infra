@@ -18,5 +18,6 @@ func (ka KernelArgs) String() string {
 		}
 	}
 	sort.Strings(args) // optional: for consistent output
+
 	return strings.Join(args, " ")
 }

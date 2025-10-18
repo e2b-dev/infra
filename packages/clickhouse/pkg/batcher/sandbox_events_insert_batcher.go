@@ -105,6 +105,7 @@ func (b *SandboxEventInsertBatcher) Push(event clickhouse.SandboxEvent) error {
 	if !success {
 		return ErrBatcherQueueFull
 	}
+
 	return nil
 }
 
@@ -122,5 +123,6 @@ func (b *SandboxEventInsertBatcher) Close(context.Context) error {
 	if len(errs) > 0 {
 		return errors.Join(errs...)
 	}
+
 	return nil
 }

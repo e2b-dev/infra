@@ -89,6 +89,7 @@ func (b *ProductUsageInsertBatcher) Push(event clickhouse.ProductUsage) error {
 	if !success {
 		return ErrBatcherQueueFull
 	}
+
 	return nil
 }
 
@@ -106,5 +107,6 @@ func (b *ProductUsageInsertBatcher) Close(context.Context) error {
 	if len(errs) > 0 {
 		return errors.Join(errs...)
 	}
+
 	return nil
 }

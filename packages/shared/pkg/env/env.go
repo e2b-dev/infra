@@ -26,6 +26,7 @@ func GetEnv(key, defaultValue string) string {
 	if len(value) == 0 {
 		return defaultValue
 	}
+
 	return value
 }
 

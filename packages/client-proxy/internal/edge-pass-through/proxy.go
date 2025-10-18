@@ -153,6 +153,7 @@ func (s *NodePassThroughServer) handler(_ any, serverStream grpc.ServerStream) (
 				// to cancel the clientStream to the backend, let all of its goroutines be freed up by the CancelFunc and
 				// exit with an error to the stack
 				clientCancel()
+
 				return status.Errorf(codes.Internal, "failed proxying s2c: %v", s2cErr)
 			}
 		case c2sErr := <-c2sErrChan:
@@ -164,6 +165,7 @@ func (s *NodePassThroughServer) handler(_ any, serverStream grpc.ServerStream) (
 			if !errors.Is(c2sErr, io.EOF) {
 				return c2sErr
 			}
+
 			return nil
 		}
 	}
@@ -178,11 +180,13 @@ func (s *NodePassThroughServer) forwardClientToServer(src grpc.ClientStream, dst
 		md, err := src.Header()
 		if err != nil {
 			ret <- err
+
 			return
 		}
 
 		if err := dst.SendHeader(md); err != nil {
 			ret <- err
+
 			return
 		}
 
@@ -190,11 +194,13 @@ func (s *NodePassThroughServer) forwardClientToServer(src grpc.ClientStream, dst
 		for {
 			if err := src.RecvMsg(f); err != nil {
 				ret <- err // this can be io.EOF which is happy case
+
 				break
 			}
 
 			if err := dst.SendMsg(f); err != nil {
 				ret <- err
+
 				break
 			}
 		}
@@ -211,10 +217,12 @@ func (s *NodePassThroughServer) forwardServerToClient(src grpc.ServerStream, dst
 		for {
 			if err := src.RecvMsg(f); err != nil {
 				ret <- err // this can be io.EOF which is happy case
+
 				break
 			}
 			if err := dst.SendMsg(f); err != nil {
 				ret <- err
+
 				break
 			}
 		}

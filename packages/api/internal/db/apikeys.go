@@ -51,5 +51,6 @@ func GetTeamAuth(ctx context.Context, db *sqlcdb.Client, apiKey string) (*types.
 	}
 
 	team := types.NewTeam(&result.Team, &result.TeamLimit)
+
 	return team, nil
 }

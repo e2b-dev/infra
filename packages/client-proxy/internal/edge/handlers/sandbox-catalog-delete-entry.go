@@ -19,6 +19,7 @@ func (a *APIStore) V1SandboxCatalogDelete(c *gin.Context) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
+
 		return
 	}
 
@@ -30,6 +31,7 @@ func (a *APIStore) V1SandboxCatalogDelete(c *gin.Context) {
 		zap.L().Error("Error when deleting sandbox from catalog", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting sandbox from catalog")
 		telemetry.ReportCriticalError(ctx, "error when deleting sandbox from catalog", err)
+
 		return
 	}
 

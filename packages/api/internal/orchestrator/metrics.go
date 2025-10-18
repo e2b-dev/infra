@@ -23,6 +23,7 @@ func (o *Orchestrator) setupMetrics(meterProvider metric.MeterProvider) error {
 				attribute.String("node.id", node.ID),
 			))
 		}
+
 		return nil
 	})
 	if err != nil {
@@ -35,6 +36,7 @@ func (o *Orchestrator) setupMetrics(meterProvider metric.MeterProvider) error {
 				attribute.String("node.id", node.ID),
 			))
 		}
+
 		return nil
 	})
 	if err != nil {

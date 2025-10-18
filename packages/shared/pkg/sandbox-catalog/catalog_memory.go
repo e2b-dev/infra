@@ -49,6 +49,7 @@ func (c *MemorySandboxCatalog) StoreSandbox(ctx context.Context, sandboxID strin
 	defer c.mtx.Unlock()
 
 	c.cache.Set(sandboxID, sandboxInfo, expiration)
+
 	return nil
 }
 
@@ -75,5 +76,6 @@ func (c *MemorySandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID stri
 	}
 
 	c.cache.Delete(sandboxID)
+
 	return nil
 }

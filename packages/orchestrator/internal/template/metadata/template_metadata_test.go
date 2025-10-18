@@ -129,6 +129,7 @@ func TestDeserialize(t *testing.T) {
 			if tt.expectedError != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedError)
+
 				return
 			}
 

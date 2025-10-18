@@ -21,6 +21,7 @@ func (a *APIStore) V1SandboxCatalogCreate(c *gin.Context) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 		telemetry.ReportError(ctx, "error when parsing request", err)
+
 		return
 	}
 
@@ -31,6 +32,7 @@ func (a *APIStore) V1SandboxCatalogCreate(c *gin.Context) {
 	if !ok {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Orchestrator not found")
 		telemetry.ReportError(ctx, "orchestrator not found", nil)
+
 		return
 	}
 
@@ -49,6 +51,7 @@ func (a *APIStore) V1SandboxCatalogCreate(c *gin.Context) {
 		zap.L().Error("Error when storing sandbox in catalog", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when storing sandbox in catalog")
 		telemetry.ReportCriticalError(ctx, "error when storing sandbox in catalog", err)
+
 		return
 	}
 

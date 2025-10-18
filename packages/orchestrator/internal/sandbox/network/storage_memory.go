@@ -33,6 +33,7 @@ func (s *StorageMemory) Acquire(_ context.Context) (*Slot, error) {
 		key := getMemoryKey(slotIdx)
 		if !s.freeSlots[slotIdx] {
 			s.freeSlots[slotIdx] = true
+
 			return NewSlot(key, slotIdx, s.config)
 		}
 	}

@@ -81,6 +81,7 @@ func ExecCommandWithOptions(tb testing.TB, ctx context.Context, sbx *api.Sandbox
 					return fmt.Errorf("command %s in sandbox %s failed with exit code %d", command, sbx.SandboxID, msg.GetEvent().GetEnd().GetExitCode())
 				}
 				tb.Logf("Command [%s] completed successfully in sandbox %s", command, sbx.SandboxID)
+
 				return nil
 			}
 		}

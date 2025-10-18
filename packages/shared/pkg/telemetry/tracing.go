@@ -130,5 +130,6 @@ func attributesToZapFields(attrs ...attribute.KeyValue) []zap.Field {
 			fields = append(fields, zap.Any(key, attr.Value.AsInterface()))
 		}
 	}
+
 	return fields
 }

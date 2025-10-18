@@ -84,6 +84,7 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 		timer.End(ctx, length,
 			attribute.String(result, resultTypeSuccess),
 			attribute.String(pullType, pullTypeLocal))
+
 		return b, nil
 	}
 
@@ -92,6 +93,7 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 			attribute.String(result, "failure"),
 			attribute.String(pullType, pullTypeLocal),
 			attribute.String(failureReason, failureTypeLocalRead))
+
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
@@ -101,6 +103,7 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 			attribute.String(result, resultTypeFailure),
 			attribute.String(pullType, pullTypeRemote),
 			attribute.String(failureReason, failureTypeCacheFetch))
+
 		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, chunkErr)
 	}
 
@@ -110,12 +113,14 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 			attribute.String(result, resultTypeFailure),
 			attribute.String(pullType, pullTypeLocal),
 			attribute.String(failureReason, failureTypeLocalReadAgain))
+
 		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
 	timer.End(ctx, length,
 		attribute.String(result, resultTypeSuccess),
 		attribute.String(pullType, pullTypeRemote))
+
 	return b, nil
 }
 
@@ -156,6 +161,7 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 						attribute.String(result, resultTypeFailure),
 						attribute.String(failureReason, failureTypeRemoteRead),
 					)
+
 					return fmt.Errorf("failed to read chunk from base %d: %w", fetchOff, err)
 				}
 				fetchSW.End(ctx, int64(readBytes), attribute.String("result", resultTypeSuccess))
@@ -168,6 +174,7 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 						attribute.String(result, resultTypeFailure),
 						attribute.String(failureReason, failureTypeLocalWrite),
 					)
+
 					return fmt.Errorf("failed to write chunk %d to cache: %w", fetchOff, cacheErr)
 				}
 

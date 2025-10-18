@@ -140,5 +140,6 @@ func getMetadataValue(md metadata.MD, key string) (value string, found bool) {
 	if values, ok := md[key]; ok && len(values) > 0 {
 		return values[0], true
 	}
+
 	return "", false
 }

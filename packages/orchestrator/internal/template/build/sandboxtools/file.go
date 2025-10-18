@@ -64,11 +64,13 @@ func CopyFile(
 		part, err := writer.CreateFormFile("file", filepath.Base(sourcePath))
 		if err != nil {
 			err = fmt.Errorf("failed to create form file: %w", err)
+
 			return
 		}
 
 		if _, errCopy := io.Copy(part, file); errCopy != nil {
 			err = fmt.Errorf("failed to copy file: %w", errCopy)
+
 			return
 		}
 	}()

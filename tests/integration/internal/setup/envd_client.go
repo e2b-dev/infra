@@ -51,6 +51,7 @@ func WithSandbox(sandboxID string) func(context.Context, *http.Request) error {
 func WithEnvdAccessToken(accessToken string) func(ctx context.Context, req *http.Request) error {
 	return func(_ context.Context, req *http.Request) error {
 		SetAccessTokenHeader(req.Header, accessToken)
+
 		return nil
 	}
 }

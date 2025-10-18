@@ -53,6 +53,7 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 	if cfg.Propagators == nil {
 		cfg.Propagators = otel.GetTextMapPropagator()
 	}
+
 	return func(c *gin.Context) {
 		c.Set(tracerKey, tracer)
 		ctx := c.Request.Context()

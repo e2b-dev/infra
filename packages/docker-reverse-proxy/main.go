@@ -36,6 +36,7 @@ func main() {
 		// Health check for nomad
 		if req.URL.Path == "/health" {
 			store.HealthCheck(w, req)
+
 			return
 		}
 
@@ -45,6 +46,7 @@ func main() {
 		// https://distribution.github.io/distribution/spec/api/#starting-an-upload
 		if req.Method == http.MethodPatch && strings.HasPrefix(path, constants.GCPArtifactUploadPrefix) {
 			store.ServeHTTP(w, req)
+
 			return
 		}
 
@@ -52,6 +54,7 @@ func main() {
 		// We are using Token validation, and not OAuth2, so we need to return 404 for the POST /v2/token endpoint
 		if req.URL.Path == "/v2/token" && req.Method == http.MethodPost {
 			w.WriteHeader(http.StatusNotFound)
+
 			return
 		}
 
@@ -69,6 +72,7 @@ func main() {
 			if err != nil {
 				log.Printf("Error while getting token: %s\n", err)
 			}
+
 			return
 		}
 

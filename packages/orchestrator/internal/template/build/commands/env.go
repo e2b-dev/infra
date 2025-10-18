@@ -52,6 +52,7 @@ func (e *Env) Execute(
 	}
 
 	cmdMetadata.EnvVars = envVars
+
 	return cmdMetadata, nil
 }
 

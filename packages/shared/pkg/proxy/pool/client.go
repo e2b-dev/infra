@@ -55,6 +55,7 @@ func newProxyClient(
 
 				if err == nil {
 					totalConnsCounter.Add(1)
+
 					return tracking.NewConnection(conn, currentConnsCounter), nil
 				}
 

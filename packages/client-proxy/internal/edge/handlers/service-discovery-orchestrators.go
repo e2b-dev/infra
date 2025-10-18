@@ -58,6 +58,7 @@ func getOrchestratorStatusResolved(s e2borchestrators.OrchestratorStatus) api.Cl
 		return api.Unhealthy
 	default:
 		zap.L().Error("Unknown orchestrator status", zap.String("status", string(s)))
+
 		return api.Unhealthy
 	}
 }

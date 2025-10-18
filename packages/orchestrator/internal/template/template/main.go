@@ -31,6 +31,7 @@ func Delete(ctx context.Context, artifactRegistry artifactsregistry.ArtifactsReg
 		}
 
 		telemetry.ReportEvent(childCtx, err.Error())
+
 		return err
 	}
 

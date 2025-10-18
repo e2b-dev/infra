@@ -41,6 +41,7 @@ func StringToLevel(name string) LogLevel {
 	if level, ok := stringToLevel[name]; ok {
 		return level
 	}
+
 	return LevelInfo // Default to info if not found
 }
 
@@ -48,6 +49,7 @@ func LevelToString(level LogLevel) string {
 	if name, ok := levelToString[level]; ok {
 		return name
 	}
+
 	return "info"
 }
 
@@ -60,6 +62,7 @@ func CompareLevels(as, bs string) int32 {
 	} else if a > b {
 		return 1
 	}
+
 	return 0
 }
 

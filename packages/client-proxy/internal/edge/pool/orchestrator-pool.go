@@ -89,6 +89,7 @@ func (p *OrchestratorsPool) statusLogSync() {
 		select {
 		case <-p.close:
 			p.logger.Info("Stopping orchestrators pool sync")
+
 			return
 		case <-ticker.C:
 			orchestrators := len(p.GetOrchestrators())
@@ -150,12 +151,14 @@ func (e *orchestratorInstancesSyncStore) PoolList(_ context.Context) []*Orchestr
 	for _, item := range e.pool.instances.Items() {
 		items = append(items, item)
 	}
+
 	return items
 }
 
 func (e *orchestratorInstancesSyncStore) PoolExists(_ context.Context, source sd.ServiceDiscoveryItem) bool {
 	host := e.getHost(source.NodeIP, source.NodePort)
 	_, found := e.pool.instances.Get(host)
+
 	return found
 }
 
@@ -164,6 +167,7 @@ func (e *orchestratorInstancesSyncStore) PoolInsert(ctx context.Context, source 
 	o, err := NewOrchestratorInstance(e.pool.tracerProvider, e.pool.metricProvider, source.NodeIP, source.NodePort)
 	if err != nil {
 		zap.L().Error("failed to register new orchestrator instance", zap.String("host", host), zap.Error(err))
+
 		return
 	}
 
@@ -175,6 +179,7 @@ func (e *orchestratorInstancesSyncStore) PoolInsert(ctx context.Context, source 
 	err = o.sync(ctx)
 	if err != nil {
 		zap.L().Error("Failed to finish initial orchestrator instance sync", zap.Error(err), l.WithNodeID(o.GetInfo().NodeID))
+
 		return
 	}
 

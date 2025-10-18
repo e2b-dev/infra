@@ -43,6 +43,7 @@ func (a *APIStore) GetTeamsTeamIDMetricsMax(c *gin.Context, teamID string, param
 		// This is here just to have the possibility to turn off ClickHouse metrics reading
 
 		c.JSON(http.StatusOK, api.MaxTeamMetric{})
+
 		return
 	}
 

@@ -69,6 +69,7 @@ func (s *Snapshot) Upload(
 	if uploadErr != nil {
 		return fmt.Errorf("error uploading template build: %w", uploadErr)
 	}
+
 	return nil
 }
 

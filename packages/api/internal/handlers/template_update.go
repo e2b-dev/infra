@@ -69,6 +69,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+
 		return
 	}
 
@@ -90,6 +91,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 			telemetry.ReportError(ctx, "error when updating env", dbErr)
 
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when updating env")
+
 			return
 		}
 	}

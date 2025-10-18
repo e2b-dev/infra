@@ -28,6 +28,7 @@ func (s streamConverter) RequestHeader() http.Header {
 
 func (s streamConverter) Send(a any) error {
 	a = maybeConvertValue(a)
+
 	return s.conn.Send(a)
 }
 

@@ -24,6 +24,7 @@ type PaginatedSandbox struct {
 
 func (p *PaginatedSandbox) GenerateCursor() string {
 	cursor := fmt.Sprintf("%s__%s", p.PaginationTimestamp.Format(time.RFC3339Nano), p.SandboxID)
+
 	return base64.URLEncoding.EncodeToString([]byte(cursor))
 }
 
@@ -99,6 +100,7 @@ func SortPaginatedSandboxesDesc(sandboxes []PaginatedSandbox) {
 		if !a.StartedAt.Equal(b.StartedAt) {
 			return b.StartedAt.Compare(a.StartedAt)
 		}
+
 		return strings.Compare(a.SandboxID, b.SandboxID)
 	})
 }
@@ -119,6 +121,7 @@ func FilterSandboxesOnMetadata(sandboxes []PaginatedSandbox, metadata *map[strin
 		for key, value := range *metadata {
 			if metadataValue, ok := (*sbx.Metadata)[key]; !ok || metadataValue != value {
 				matchesAll = false
+
 				break
 			}
 		}

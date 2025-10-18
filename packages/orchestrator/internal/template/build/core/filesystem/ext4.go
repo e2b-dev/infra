@@ -135,6 +135,7 @@ func Resize(ctx context.Context, rootfsPath string, targetSize int64) (int64, er
 	err := cmd.Run()
 	if err != nil {
 		LogMetadata(ctx, rootfsPath)
+
 		return 0, fmt.Errorf("error resizing rootfs file: %w", err)
 	}
 
@@ -160,6 +161,7 @@ func Shrink(ctx context.Context, rootfsPath string) (int64, error) {
 	err := cmd.Run()
 	if err != nil {
 		LogMetadata(ctx, rootfsPath)
+
 		return 0, fmt.Errorf("error shrinking rootfs file: %w", err)
 	}
 
@@ -182,6 +184,7 @@ func GetFreeSpace(ctx context.Context, rootfsPath string, blockSize int64) (int6
 	output := out.String()
 	if err != nil {
 		zap.L().Error("Error getting free space", zap.Error(err), zap.String("output", output))
+
 		return 0, fmt.Errorf("error statting ext4: %w", err)
 	}
 
@@ -197,6 +200,7 @@ func GetFreeSpace(ctx context.Context, rootfsPath string, blockSize int64) (int6
 	}
 
 	freeBytes := (freeBlocks - reservedBlocks) * blockSize
+
 	return freeBytes, nil
 }
 
@@ -251,6 +255,7 @@ func RemoveFile(ctx context.Context, rootfsPath string, filePath string) error {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		zap.L().Error("error removing file", zap.Error(err), zap.String("output", string(out)))
+
 		return fmt.Errorf("error removing file: %w", err)
 	}
 
@@ -320,6 +325,7 @@ func parseFreeBlocks(debugfsOutput string) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("could not parse free blocks: %w", err)
 	}
+
 	return freeBlocks, nil
 }
 
@@ -334,5 +340,6 @@ func parseReservedBlocks(debugfsOutput string) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("could not parse reserved blocks: %w", err)
 	}
+
 	return reservedBlocks, nil
 }

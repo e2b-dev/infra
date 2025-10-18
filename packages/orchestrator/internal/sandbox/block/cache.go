@@ -107,6 +107,7 @@ func (m *Cache) ExportToDiff(out io.Writer) (*header.DiffMetadata, error) {
 		}
 		if isEmpty {
 			empty.Set(uint(blockIdx))
+
 			continue
 		}
 
@@ -242,6 +243,7 @@ func (m *Cache) dirtySortedKeys() []int64 {
 	var keys []int64
 	m.dirty.Range(func(key, _ any) bool {
 		keys = append(keys, key.(int64))
+
 		return true
 	})
 	sort.Slice(keys, func(i, j int) bool {

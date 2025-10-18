@@ -32,6 +32,7 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID string, p
 	sbxLogs, err := a.getClusterSandboxLogs(ctx, sandboxID, team.ID.String(), utils.WithClusterFallback(team.ClusterID), params.Limit, params.Start)
 	if err != nil {
 		a.sendAPIStoreError(c, int(err.Code), err.Message)
+
 		return
 	}
 
@@ -42,6 +43,7 @@ func (a *APIStore) getClusterSandboxLogs(ctx context.Context, sandboxID string, 
 	cluster, ok := a.clustersPool.GetClusterById(clusterID)
 	if !ok {
 		telemetry.ReportCriticalError(ctx, "error getting cluster by ID", fmt.Errorf("cluster with ID '%s' not found", clusterID))
+
 		return nil, &api.Error{
 			Code:    http.StatusInternalServerError,
 			Message: fmt.Sprintf("Error getting cluster '%s'", clusterID),
@@ -57,6 +59,7 @@ func (a *APIStore) getClusterSandboxLogs(ctx context.Context, sandboxID string, 
 	)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when returning logs for sandbox", err)
+
 		return nil, &api.Error{
 			Code:    http.StatusInternalServerError,
 			Message: fmt.Sprintf("Error returning logs for sandbox '%s'", sandboxID),
@@ -65,6 +68,7 @@ func (a *APIStore) getClusterSandboxLogs(ctx context.Context, sandboxID string, 
 
 	if res.JSON200 == nil {
 		telemetry.ReportCriticalError(ctx, "error when returning logs for sandbox", fmt.Errorf("unexpected response for sandbox '%s': %s", sandboxID, string(res.Body)))
+
 		return nil, &api.Error{
 			Code:    http.StatusInternalServerError,
 			Message: fmt.Sprintf("Error returning logs for sandbox '%s'", sandboxID),

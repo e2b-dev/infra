@@ -61,5 +61,6 @@ func (c *AuthCache) Create(templateID, token string, expiresIn int) string {
 	c.cache.Set(userToken, data, authInfoExpiration)
 
 	log.Printf("Created new auth token for '%s' expiring in '%d'\n", templateID, expiresIn)
+
 	return jsonResponse
 }

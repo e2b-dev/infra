@@ -224,6 +224,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			logger.WithBuildID(t.files.BuildID),
 			zap.Error(err),
 		)
+
 		return
 	}
 }

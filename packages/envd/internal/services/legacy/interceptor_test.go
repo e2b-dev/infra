@@ -65,6 +65,7 @@ func TestInterceptor(t *testing.T) {
 		req := connect.NewRequest[filesystem.ListDirRequest](&filesystem.ListDirRequest{Path: "/a/b/c"})
 		resp, err := client.ListDir(t.Context(), req)
 		require.NoError(t, err)
+
 		return resp.Header()
 	}
 
@@ -159,6 +160,7 @@ func (u userAgentInterceptor) WrapStreamingClient(clientFunc connect.StreamingCl
 	return func(ctx context.Context, s connect.Spec) connect.StreamingClientConn {
 		conn := clientFunc(ctx, s)
 		conn.RequestHeader().Set("user-agent", u.userAgent)
+
 		return conn
 	}
 }

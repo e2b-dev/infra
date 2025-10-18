@@ -208,6 +208,7 @@ func (sb *StepBuilder) Build(
 		}
 
 		meta.Context = cmdMeta
+
 		return meta, nil
 	})
 

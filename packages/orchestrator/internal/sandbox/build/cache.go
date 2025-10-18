@@ -156,6 +156,7 @@ func (s *DiffStore) startDiskSpaceEviction(
 			if err != nil {
 				zap.L().Error("failed to get disk usage", zap.Error(err))
 				timer.Reset(getDelay(false))
+
 				continue
 			}
 
@@ -170,6 +171,7 @@ func (s *DiffStore) startDiskSpaceEviction(
 				st, err := flags.IntFlag(ctx, featureflags.BuildCacheMaxUsagePercentage, featureflags.ServiceContext(string(s)))
 				if err != nil {
 					zap.L().Warn("failed to get build cache max usage percentage flag", zap.Error(err))
+
 					continue
 				}
 
@@ -180,6 +182,7 @@ func (s *DiffStore) startDiskSpaceEviction(
 
 			if percentage <= float64(threshold) {
 				timer.Reset(getDelay(false))
+
 				continue
 			}
 
@@ -187,6 +190,7 @@ func (s *DiffStore) startDiskSpaceEviction(
 			if err != nil {
 				zap.L().Error("failed to delete oldest item from cache", zap.Error(err))
 				timer.Reset(getDelay(false))
+
 				continue
 			}
 
@@ -204,6 +208,7 @@ func (s *DiffStore) getPendingDeletesSize() int64 {
 	for _, value := range s.pdSizes {
 		pendingSize += value.size
 	}
+
 	return pendingSize
 }
 
@@ -236,6 +241,7 @@ func (s *DiffStore) deleteOldestFromCache(ctx context.Context) (suc bool, e erro
 		s.scheduleDelete(ctx, item.Key(), sfSize)
 
 		success = true
+
 		return false
 	})
 
@@ -262,6 +268,7 @@ func (s *DiffStore) isBeingDeleted(key DiffStoreKey) bool {
 	defer s.pdMu.RUnlock()
 
 	_, f := s.pdSizes[key]
+
 	return f
 }
 

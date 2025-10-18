@@ -16,6 +16,7 @@ func GetEnvdVersion(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("error while getting envd version: %w", err)
 	}
+
 	return strings.TrimSpace(string(out)), nil
 }
 

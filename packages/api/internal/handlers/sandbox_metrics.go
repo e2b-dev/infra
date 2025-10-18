@@ -39,12 +39,14 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 		// This is here just to have the possibility to turn off ClickHouse metrics reading
 
 		c.JSON(http.StatusOK, []api.SandboxMetric{})
+
 		return
 	}
 
 	start, end, err := getSandboxStartEndTime(ctx, a.clickhouseStore, team.ID.String(), sandboxID, params)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("error when getting metrics time range: %s", err))
+
 		return
 	}
 
@@ -52,6 +54,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 	if err != nil {
 		telemetry.ReportError(ctx, "error validating dates", err, telemetry.WithTeamID(team.ID.String()))
 		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
+
 		return
 	}
 
@@ -67,6 +70,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 		)
 
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("error querying sandbox metrics: %s", err))
+
 		return
 	}
 
@@ -139,5 +143,6 @@ func getSandboxStartEndTime(ctx context.Context, clickhouseStore clickhouse.Clic
 			end = sbxEnd
 		}
 	}
+
 	return start, end, nil
 }

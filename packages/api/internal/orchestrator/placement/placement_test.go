@@ -21,6 +21,7 @@ type mockAlgorithm struct {
 
 func (m *mockAlgorithm) excludeNode(err error) bool {
 	args := m.Called(err)
+
 	return args.Bool(0)
 }
 
@@ -29,6 +30,7 @@ func (m *mockAlgorithm) chooseNode(ctx context.Context, nodes []*nodemanager.Nod
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).(*nodemanager.Node), args.Error(1)
 }
 

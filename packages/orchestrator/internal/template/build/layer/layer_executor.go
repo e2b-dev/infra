@@ -251,6 +251,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 		}
 
 		userLogger.Debug(fmt.Sprintf("Saved: %s", meta.Template.BuildID))
+
 		return nil
 	})
 

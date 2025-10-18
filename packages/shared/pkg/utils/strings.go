@@ -10,5 +10,6 @@ func Truncate(s string, maxLen int) string {
 	if maxLen <= len(ellipses) {
 		return string(runes[:maxLen])
 	}
+
 	return string(runes[:maxLen-len(ellipses)]) + ellipses
 }

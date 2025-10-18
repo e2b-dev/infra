@@ -33,5 +33,6 @@ func UnwrapPhaseBuildError(err error) *PhaseBuildError {
 	if errors.As(err, &phaseBuildError) {
 		return phaseBuildError
 	}
+
 	return nil
 }

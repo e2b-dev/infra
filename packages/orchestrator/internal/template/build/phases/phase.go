@@ -52,6 +52,7 @@ func layerInfo(
 	if cached {
 		cachedPrefix = "CACHED "
 	}
+
 	return fmt.Sprintf("%s[%s] %s [%s]", cachedPrefix, prefix, text, hash)
 }
 
@@ -105,6 +106,7 @@ func Run(
 			metrics.RecordPhaseDuration(ctx, phaseDuration, meta.Phase, meta.StepType, true)
 
 			sourceLayer = currentLayer
+
 			continue
 		}
 

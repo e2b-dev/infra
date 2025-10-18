@@ -32,6 +32,7 @@ func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
+
 		return
 	}
 
@@ -39,6 +40,7 @@ func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context) {
 	if body.ServiceInstanceID == a.info.ServiceInstanceID && body.ServiceType == api.ClusterNodeTypeEdge {
 		a.info.SetStatus(api.Draining)
 		c.Status(http.StatusOK)
+
 		return
 	}
 
@@ -49,6 +51,7 @@ func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context) {
 	err = a.sendNodeRequest(reqTimeout, body.ServiceInstanceID, body.ServiceType, api.Draining)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Error when calling service discovery service")
+
 		return
 	}
 
@@ -86,6 +89,7 @@ func (a *APIStore) sendOrchestratorRequest(ctx context.Context, serviceInstanceI
 	)
 	if err != nil {
 		logger.Error("failed to request orchestrator status change", zap.Error(err))
+
 		return errors.New("failed to request orchestrator status change")
 	}
 
@@ -99,6 +103,7 @@ func (a *APIStore) sendEdgeRequest(ctx context.Context, serviceInstanceID string
 	e, err := a.edgePool.GetInstanceByID(serviceInstanceID)
 	if err != nil {
 		logger.Error("failed to get service instance from edge pool", zap.Error(err))
+
 		return errors.New("failed to get edge service instance")
 	}
 
@@ -116,6 +121,7 @@ func (a *APIStore) sendEdgeRequest(ctx context.Context, serviceInstanceID string
 
 	if err != nil {
 		logger.Error("failed to request edge service instance status change", zap.Error(err))
+
 		return errors.New("failed to request edge service instance status change")
 	}
 

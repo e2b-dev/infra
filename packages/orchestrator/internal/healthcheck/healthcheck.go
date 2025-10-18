@@ -31,6 +31,7 @@ func (h *Healthcheck) CreateHandler() http.Handler {
 	// Start /health HTTP server
 	routeMux := http.NewServeMux()
 	routeMux.HandleFunc("/health", h.healthHandler)
+
 	return routeMux
 }
 

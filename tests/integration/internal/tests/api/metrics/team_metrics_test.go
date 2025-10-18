@@ -35,6 +35,7 @@ func TestTeamMetrics(t *testing.T) {
 		}
 
 		metrics = *response.JSON200
+
 		return true
 	}, maxDuration, tick, "team metrics not available in time")
 
@@ -89,6 +90,7 @@ func TestTeamMetricsWithTimeRange(t *testing.T) {
 		}
 
 		metrics = *resp.JSON200
+
 		return true
 	}, maxDuration, tick, "team metrics not available in time")
 

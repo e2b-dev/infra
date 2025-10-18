@@ -53,6 +53,7 @@ func (ppb *PostProcessingBuilder) runReadyCommand(
 
 		if err == nil {
 			userLogger.Info("Template is ready")
+
 			return nil
 		}
 
@@ -65,6 +66,7 @@ func (ppb *PostProcessingBuilder) runReadyCommand(
 			}
 			// Template is ready, the start command finished before the ready command
 			userLogger.Info("Template is ready")
+
 			return nil
 		case <-time.After(readyCommandRetryInterval):
 			// Wait for readyCommandRetryInterval time before retrying the ready command

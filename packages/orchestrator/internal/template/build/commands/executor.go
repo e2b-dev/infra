@@ -107,5 +107,6 @@ func (ce *CommandExecutor) Execute(
 	if err != nil {
 		return metadata.Context{}, err
 	}
+
 	return cmdMetadata, nil
 }

@@ -202,6 +202,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer
 			)
 			if err != nil {
 				e = fmt.Errorf("error running sync command: %w", err)
+
 				return
 			}
 		}()
@@ -248,6 +249,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer
 				if err != nil && !errors.Is(err, context.Canceled) {
 					// Cancel the ready command context, so the ready command does not wait anymore if an error occurs.
 					commandsCancel()
+
 					return fmt.Errorf("error running start command: %w", err)
 				}
 

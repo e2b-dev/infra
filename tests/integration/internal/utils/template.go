@@ -112,6 +112,7 @@ func WaitForBuildCompletion(
 		select {
 		case <-ctx.Done():
 			tb.Fatal("Build timeout exceeded")
+
 			return
 		default:
 		}
@@ -138,9 +139,11 @@ func WaitForBuildCompletion(
 		switch statusResp.JSON200.Status {
 		case api.TemplateBuildStatusReady:
 			tb.Log("Build completed successfully")
+
 			return
 		case api.TemplateBuildStatusError:
 			tb.Fatalf("Build failed: %v", safeValue(statusResp.JSON200.Reason))
+
 			return
 		}
 
@@ -209,6 +212,7 @@ func safeValue[T any](item *T) T {
 		return *item
 	}
 	var t T
+
 	return t
 }
 

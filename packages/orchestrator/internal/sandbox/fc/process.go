@@ -323,6 +323,7 @@ func (p *Process) Create(
 	}
 
 	telemetry.ReportEvent(ctx, "started fc")
+
 	return nil
 }
 
