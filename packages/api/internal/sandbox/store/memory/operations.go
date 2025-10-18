@@ -34,6 +34,16 @@ func (s *Store) Add(ctx context.Context, sandbox sandbox.Sandbox, newlyCreated b
 		return
 	}
 
+	// Ensure the team reservation is set - no limit
+	finishStart, _, err := s.reservations.Reserve(sandbox.TeamID.String(), sandbox.SandboxID, -1)
+	if err != nil {
+		zap.L().Error("Failed to reserve sandbox", zap.Error(err), logger.WithSandboxID(sandbox.SandboxID))
+	}
+
+	if finishStart != nil {
+		finishStart(sandbox, nil)
+	}
+
 	for _, callback := range s.insertCallbacks {
 		callback(ctx, sandbox, newlyCreated)
 	}
@@ -41,8 +51,6 @@ func (s *Store) Add(ctx context.Context, sandbox sandbox.Sandbox, newlyCreated b
 	for _, callback := range s.insertAsyncCallbacks {
 		go callback(context.WithoutCancel(ctx), sandbox, newlyCreated)
 	}
-	// Release the reservation if it exists
-	s.reservations.release(sandbox.SandboxID)
 }
 
 // exists check if the sandbox exists in the cache or is being evicted.
@@ -70,7 +78,8 @@ func (s *Store) Get(sandboxID string) (sandbox.Sandbox, error) {
 	return item.Data(), nil
 }
 
-func (s *Store) Remove(sandboxID string) {
+func (s *Store) Remove(teamID, sandboxID string) {
+	s.reservations.Remove(teamID, sandboxID)
 	s.items.Remove(sandboxID)
 }
 
@@ -211,4 +220,8 @@ func waitForStateChange(ctx context.Context, sbx *memorySandbox) error {
 	}
 
 	return transition.WaitWithContext(ctx)
+}
+
+func (s *Store) Reserve(teamID, sandboxID string, limit int64) (finishStart func(sandbox.Sandbox, error), waitForStart func(ctx context.Context) (sandbox.Sandbox, error), err error) {
+	return s.reservations.Reserve(teamID, sandboxID, limit)
 }
