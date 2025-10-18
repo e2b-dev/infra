@@ -35,6 +35,10 @@ const statusLogInterval = time.Second * 20
 var ErrNodeNotFound = errors.New("node not found")
 
 type Orchestrator struct {
+	// Deprecated: Nomad knows which port the orchestrator is listening on. Keep this
+	// around temporarily until all nomad jobs have a port labeled "grpc", then this can be removed.
+	defaultPort int
+
 	httpClient              *http.Client
 	nomadClient             *nomadapi.Client
 	sandboxStore            sandbox.Store
@@ -121,6 +125,7 @@ func New(
 		sqlcDB:             sqlcDB,
 		tel:                tel,
 		clusters:           clusters,
+		defaultPort:        config.DefaultOrchestratorPort,
 
 		sandboxCounter: sandboxCounter,
 		createdCounter: createdCounter,
