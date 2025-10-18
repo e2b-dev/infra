@@ -43,7 +43,7 @@ func Serve(
 
 	missingPagesBeingHandled := map[int64]struct{}{}
 
-	eagainCounter := NewEagainCounter(logger, "uffd: eagain fd read count")
+	eagainCounter := newEagainCounter(logger, "uffd: eagain fd read count")
 	defer eagainCounter.Close()
 
 outerLoop:

@@ -6,7 +6,7 @@ import (
 	"go.uber.org/zap"
 )
 
-type EagainCounter struct {
+type eagainCounter struct {
 	count     uint64
 	startTime time.Time
 	endTime   time.Time
@@ -14,8 +14,8 @@ type EagainCounter struct {
 	msg       string
 }
 
-func NewEagainCounter(logger *zap.Logger, msg string) *EagainCounter {
-	return &EagainCounter{
+func newEagainCounter(logger *zap.Logger, msg string) *eagainCounter {
+	return &eagainCounter{
 		count:     0,
 		startTime: time.Time{},
 		endTime:   time.Time{},
@@ -24,7 +24,7 @@ func NewEagainCounter(logger *zap.Logger, msg string) *EagainCounter {
 	}
 }
 
-func (c *EagainCounter) Increase() {
+func (c *eagainCounter) Increase() {
 	if c.count == 0 {
 		c.startTime = time.Now()
 	}
@@ -34,7 +34,7 @@ func (c *EagainCounter) Increase() {
 	c.endTime = time.Now()
 }
 
-func (c *EagainCounter) log(closing bool) {
+func (c *eagainCounter) log(closing bool) {
 	if c.count > 0 {
 		c.logger.Debug(
 			c.msg,
@@ -48,10 +48,10 @@ func (c *EagainCounter) log(closing bool) {
 	}
 }
 
-func (c *EagainCounter) Close() {
+func (c *eagainCounter) Close() {
 	c.log(true)
 }
 
-func (c *EagainCounter) Log() {
+func (c *eagainCounter) Log() {
 	c.log(false)
 }
