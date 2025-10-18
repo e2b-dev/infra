@@ -1,7 +1,7 @@
 package types
 
 import (
-	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/db/pkg/queries"
 )
 
 type Team struct {

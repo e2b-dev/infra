@@ -41,7 +41,7 @@ status:
 
 .PHONY: generate
 generate:
-	rm -rf queries/*.go
+	rm -rf pkg/queries/*.go
 	go tool sqlc generate
 
 
