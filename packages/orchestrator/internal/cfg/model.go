@@ -23,15 +23,18 @@ type BuilderConfig struct {
 type Config struct {
 	BuilderConfig
 
-	ClickhouseConnectionString string   `env:"CLICKHOUSE_CONNECTION_STRING"`
-	ForceStop                  bool     `env:"FORCE_STOP"`
-	GRPCPort                   uint16   `env:"GRPC_PORT"                    envDefault:"5008"`
-	LaunchDarklyAPIKey         string   `env:"LAUNCH_DARKLY_API_KEY"`
-	OrchestratorLockPath       string   `env:"ORCHESTRATOR_LOCK_PATH"       envDefault:"/orchestrator.lock"`
-	ProxyPort                  uint16   `env:"PROXY_PORT"                   envDefault:"5007"`
-	RedisClusterURL            string   `env:"REDIS_CLUSTER_URL"`
-	RedisURL                   string   `env:"REDIS_URL"`
-	Services                   []string `env:"ORCHESTRATOR_SERVICES"        envDefault:"orchestrator"`
+	ClickhouseConnectionString string        `env:"CLICKHOUSE_CONNECTION_STRING"`
+	ForceStop                  bool          `env:"FORCE_STOP"`
+	GRPCPort                   uint16        `env:"GRPC_PORT"                    envDefault:"5008"`
+	LaunchDarklyAPIKey         string        `env:"LAUNCH_DARKLY_API_KEY"`
+	OrchestratorLockPath       string        `env:"ORCHESTRATOR_LOCK_PATH"       envDefault:"/orchestrator.lock"`
+	ProxyPort                  uint16        `env:"PROXY_PORT"                   envDefault:"5007"`
+	RedisClusterURL            string        `env:"REDIS_CLUSTER_URL"`
+	RedisURL                   string        `env:"REDIS_URL"`
+	Services                   []string      `env:"ORCHESTRATOR_SERVICES"        envDefault:"orchestrator"`
+	MetricsDirectory           string        `env:"METRICS_DIRECTORY"            envDefault:"/orchestrator/metrics"`
+	MetricsWriteInterval       time.Duration `env:"METRICS_WRITE_INTERVAL"       envDefault:"1m"`
+	MaxStartingInstances       int64         `env:"MAX_STARTING_INSTANCES"       envDefault:"3"`
 }
 
 func Parse() (Config, error) {
