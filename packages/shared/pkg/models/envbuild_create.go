@@ -222,6 +222,14 @@ func (ebc *EnvBuildCreate) SetVersion(s string) *EnvBuildCreate {
 	return ebc
 }
 
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (ebc *EnvBuildCreate) SetNillableVersion(s *string) *EnvBuildCreate {
+	if s != nil {
+		ebc.SetVersion(*s)
+	}
+	return ebc
+}
+
 // SetID sets the "id" field.
 func (ebc *EnvBuildCreate) SetID(u uuid.UUID) *EnvBuildCreate {
 	ebc.mutation.SetID(u)
@@ -329,9 +337,6 @@ func (ebc *EnvBuildCreate) check() error {
 	}
 	if _, ok := ebc.mutation.Reason(); !ok {
 		return &ValidationError{Name: "reason", err: errors.New(`models: missing required field "EnvBuild.reason"`)}
-	}
-	if _, ok := ebc.mutation.Version(); !ok {
-		return &ValidationError{Name: "version", err: errors.New(`models: missing required field "EnvBuild.version"`)}
 	}
 	if _, ok := ebc.mutation.EnvID(); !ok {
 		return &ValidationError{Name: "env", err: errors.New(`models: missing required edge "EnvBuild.env"`)}
@@ -775,6 +780,12 @@ func (u *EnvBuildUpsert) UpdateVersion() *EnvBuildUpsert {
 	return u
 }
 
+// ClearVersion clears the value of the "version" field.
+func (u *EnvBuildUpsert) ClearVersion() *EnvBuildUpsert {
+	u.SetNull(envbuild.FieldVersion)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
 // Using this option is equivalent to using:
 //
@@ -1131,6 +1142,13 @@ func (u *EnvBuildUpsertOne) SetVersion(v string) *EnvBuildUpsertOne {
 func (u *EnvBuildUpsertOne) UpdateVersion() *EnvBuildUpsertOne {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.UpdateVersion()
+	})
+}
+
+// ClearVersion clears the value of the "version" field.
+func (u *EnvBuildUpsertOne) ClearVersion() *EnvBuildUpsertOne {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.ClearVersion()
 	})
 }
 
@@ -1657,6 +1675,13 @@ func (u *EnvBuildUpsertBulk) SetVersion(v string) *EnvBuildUpsertBulk {
 func (u *EnvBuildUpsertBulk) UpdateVersion() *EnvBuildUpsertBulk {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.UpdateVersion()
+	})
+}
+
+// ClearVersion clears the value of the "version" field.
+func (u *EnvBuildUpsertBulk) ClearVersion() *EnvBuildUpsertBulk {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.ClearVersion()
 	})
 }
 

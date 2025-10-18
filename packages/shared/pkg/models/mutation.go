@@ -3999,9 +3999,22 @@ func (m *EnvBuildMutation) OldVersion(ctx context.Context) (v *string, err error
 	return oldValue.Version, nil
 }
 
+// ClearVersion clears the value of the "version" field.
+func (m *EnvBuildMutation) ClearVersion() {
+	m.version = nil
+	m.clearedFields[envbuild.FieldVersion] = struct{}{}
+}
+
+// VersionCleared returns if the "version" field was cleared in this mutation.
+func (m *EnvBuildMutation) VersionCleared() bool {
+	_, ok := m.clearedFields[envbuild.FieldVersion]
+	return ok
+}
+
 // ResetVersion resets all changes to the "version" field.
 func (m *EnvBuildMutation) ResetVersion() {
 	m.version = nil
+	delete(m.clearedFields, envbuild.FieldVersion)
 }
 
 // ClearEnv clears the "env" edge to the Env entity.
@@ -4443,6 +4456,9 @@ func (m *EnvBuildMutation) ClearedFields() []string {
 	if m.FieldCleared(envbuild.FieldEnvdVersion) {
 		fields = append(fields, envbuild.FieldEnvdVersion)
 	}
+	if m.FieldCleared(envbuild.FieldVersion) {
+		fields = append(fields, envbuild.FieldVersion)
+	}
 	return fields
 }
 
@@ -4474,6 +4490,9 @@ func (m *EnvBuildMutation) ClearField(name string) error {
 		return nil
 	case envbuild.FieldEnvdVersion:
 		m.ClearEnvdVersion()
+		return nil
+	case envbuild.FieldVersion:
+		m.ClearVersion()
 		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild nullable field %s", name)

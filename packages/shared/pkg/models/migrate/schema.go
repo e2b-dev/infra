@@ -121,7 +121,7 @@ var (
 		{Name: "envd_version", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "cluster_node_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "reason", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
-		{Name: "version", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "version", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "env_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 	}
 	// EnvBuildsTable holds the schema information for the "env_builds" table.

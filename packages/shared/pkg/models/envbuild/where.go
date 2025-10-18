@@ -1072,6 +1072,16 @@ func VersionHasSuffix(v string) predicate.EnvBuild {
 	return predicate.EnvBuild(sql.FieldHasSuffix(FieldVersion, v))
 }
 
+// VersionIsNil applies the IsNil predicate on the "version" field.
+func VersionIsNil() predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldIsNull(FieldVersion))
+}
+
+// VersionNotNil applies the NotNil predicate on the "version" field.
+func VersionNotNil() predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldNotNull(FieldVersion))
+}
+
 // VersionEqualFold applies the EqualFold predicate on the "version" field.
 func VersionEqualFold(v string) predicate.EnvBuild {
 	return predicate.EnvBuild(sql.FieldEqualFold(FieldVersion, v))
