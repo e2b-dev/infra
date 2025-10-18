@@ -39,8 +39,8 @@ func (c *EagainCounter) log(closing bool) {
 		c.logger.Debug(
 			c.msg,
 			zap.Uint64("count", c.count),
-			zap.Time("start time", c.startTime),
-			zap.Time("end time", c.endTime),
+			zap.Time("start", c.startTime),
+			zap.Time("end", c.endTime),
 			zap.Bool("closing", closing),
 		)
 
