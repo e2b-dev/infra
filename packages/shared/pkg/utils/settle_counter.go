@@ -16,7 +16,7 @@ type SettleCounter struct {
 func NewZeroSettleCounter() *SettleCounter {
 	return &SettleCounter{
 		counter:     atomic.Int64{},
-		cond:        sync.Cond{},
+		cond:        *sync.NewCond(&sync.Mutex{}),
 		settleValue: 0,
 	}
 }
@@ -37,7 +37,7 @@ func (w *SettleCounter) Done() {
 
 // Wait waits for the counter to be the settle value.
 func (w *SettleCounter) Wait(ctx context.Context) error {
-	// Ensure we can break out of the loop when the context is done.
+	// Ensure we can break out of this Wait when the context is done.
 	go func() {
 		<-ctx.Done()
 

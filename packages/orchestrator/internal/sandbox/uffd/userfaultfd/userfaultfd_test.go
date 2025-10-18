@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
@@ -101,10 +100,10 @@ func TestUffdMissing(t *testing.T) {
 				}
 			}
 
-			err := h.writeWaitCounter.Wait(t.Context())
+			err := h.uffd.writeRequestCounter.Wait(t.Context())
 			require.NoError(t, err)
 
-			expectedReadOffsets := getOperationsOffsets(tt.operations, operationModeRead)
+			expectedReadOffsets := getOperationsOffsets(tt.operations, operationModeAll)
 			assert.Equal(t, expectedReadOffsets, h.getReadOffsets(), "checking which pages were faulted)")
 		})
 	}
@@ -233,24 +232,23 @@ func TestUffdWriteProtection(t *testing.T) {
 			for _, operation := range tt.operations {
 				if operation.mode == operationModeRead {
 					err := h.executeRead(t.Context(), operation)
-					require.NoError(t, err)
+					assert.NoError(t, err)
 				}
 
 				if operation.mode == operationModeWrite {
 					err := h.executeWrite(t.Context(), operation)
-					require.NoError(t, err)
+					assert.NoError(t, err)
 				}
 			}
 
-			err := h.writeWaitCounter.Wait(t.Context())
+			err := h.uffd.writeRequestCounter.Wait(t.Context())
 			require.NoError(t, err)
 
 			expectedWriteOffsets := getOperationsOffsets(tt.operations, operationModeWrite)
 			assert.Equal(t, expectedWriteOffsets, h.getWriteOffsets(), "checking which pages were written to")
 
-			expectedReadOffsets := getOperationsOffsets(tt.operations, operationModeRead)
-			offsets := h.getReadOffsets()
-			assert.Equal(t, expectedReadOffsets, offsets, "checking which pages were faulted)")
+			expectedReadOffsets := getOperationsOffsets(tt.operations, operationModeAll)
+			assert.Equal(t, expectedReadOffsets, h.getReadOffsets(), "checking which pages were faulted)")
 		})
 	}
 }
@@ -258,7 +256,9 @@ func TestUffdWriteProtection(t *testing.T) {
 type operationMode uint
 
 const (
-	operationModeRead operationMode = iota
+	// When filtering for reads we need to use this mode as even writes via UFFD trigger reads.
+	operationModeAll operationMode = iota
+	operationModeRead
 	operationModeWrite
 )
 
@@ -276,13 +276,11 @@ type testConfig struct {
 }
 
 type testHandler struct {
-	writeWaitCounter *utils.SettleCounter
-	memoryArea       *[]byte
-	pagesize         uint64
-	data             *testutils.MemorySlicer
-	dirty            *block.Tracker
-	memoryMap        *memory.Mapping
-	uffd             *Userfaultfd
+	memoryArea *[]byte
+	pagesize   uint64
+	data       *testutils.MemorySlicer
+	memoryMap  *memory.Mapping
+	uffd       *Userfaultfd
 }
 
 // Get a bitset of the offsets of the operations for the given mode.
@@ -290,7 +288,7 @@ func getOperationsOffsets(operations []operation, mode operationMode) []uint {
 	b := bitset.New(0)
 
 	for _, operation := range operations {
-		if operation.mode == mode {
+		if operation.mode == mode || mode == operationModeAll {
 			b.Set(uint(operation.offset))
 		}
 	}
@@ -321,7 +319,7 @@ func (h *testHandler) executeRead(ctx context.Context, op operation) error {
 	if !bytes.Equal(readBytes, expectedBytes) {
 		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
 
-		return fmt.Errorf("content mismatch: want %q, got %q at index %d", want, got, idx)
+		return fmt.Errorf("content mismatch: want '%x, got %x at index %d", want, got, idx)
 	}
 
 	return nil
@@ -338,12 +336,12 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 		return fmt.Errorf("copy length mismatch: want %d, got %d", h.pagesize, n)
 	}
 
-	err = h.writeWaitCounter.Wait(ctx)
+	err = h.uffd.writeRequestCounter.Wait(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to wait for write requests finish: %w", err)
 	}
 
-	if !h.dirty.Has(op.offset) {
+	if !h.uffd.dirty.Has(op.offset) {
 		return fmt.Errorf("dirty bit not set for page at offset %d, all dirty offsets: %v", op.offset, h.getWriteOffsets())
 	}
 
@@ -416,13 +414,11 @@ func configureTest(t *testing.T, tt testConfig) *testHandler {
 	})
 
 	return &testHandler{
-		memoryArea:       &memoryArea,
-		memoryMap:        m,
-		pagesize:         tt.pagesize,
-		dirty:            uffd.dirty,
-		data:             data,
-		writeWaitCounter: uffd.writeRequestCounter,
-		uffd:             uffd,
+		memoryArea: &memoryArea,
+		memoryMap:  m,
+		pagesize:   tt.pagesize,
+		data:       data,
+		uffd:       uffd,
 	}
 }
 

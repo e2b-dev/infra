@@ -49,7 +49,7 @@ func TestView(t *testing.T) {
 
 		if !bytes.Equal(readBytes, expectedBytes) {
 			idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-			t.Fatalf("content mismatch: want %v, got %v at index %d", want, got, idx)
+			t.Fatalf("content mismatch: want %x, got %x at index %d", want, got, idx)
 		}
 	}
 }
