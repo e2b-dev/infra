@@ -144,7 +144,7 @@ func run(config cfg.Config) (success bool) {
 	}))
 	defer func(l *zap.Logger) {
 		err := l.Sync()
-		if err != nil && !errors.Is(err, syscall.EINVAL) {
+		if logger.IsSyncError(err) {
 			log.Printf("error while shutting down logger: %v", err)
 			success = false
 		}
@@ -162,8 +162,8 @@ func run(config cfg.Config) (success bool) {
 	)
 	defer func(l *zap.Logger) {
 		err := l.Sync()
-		if err != nil && !errors.Is(err, syscall.EINVAL) {
-			log.Printf("error while shutting down sandbox logger: %v", err)
+		if logger.IsSyncError(err) {
+			log.Printf("error while shutting down sandbox external logger: %v", err)
 			success = false
 		}
 	}(sbxLoggerExternal)
@@ -180,8 +180,8 @@ func run(config cfg.Config) (success bool) {
 	)
 	defer func(l *zap.Logger) {
 		err := l.Sync()
-		if err != nil {
-			log.Printf("error while shutting down sandbox logger: %v", err)
+		if logger.IsSyncError(err) {
+			log.Printf("error while shutting down sandbox internal logger: %v", err)
 			success = false
 		}
 	}(sbxLoggerInternal)
@@ -371,8 +371,7 @@ func run(config cfg.Config) (success bool) {
 	)
 	closers = append(closers, closer{
 		"template manager sandbox logger", func(context.Context) error {
-			// Sync returns EINVAL when path is /dev/stdout (for example)
-			if err := tmplSbxLoggerExternal.Sync(); err != nil && !errors.Is(err, syscall.EINVAL) {
+			if err := tmplSbxLoggerExternal.Sync(); logger.IsSyncError(err) {
 				return err
 			}
 			return nil

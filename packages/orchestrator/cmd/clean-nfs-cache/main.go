@@ -60,7 +60,7 @@ func cleanNFSCache(ctx context.Context) error {
 	}))
 	defer func(l *zap.Logger) {
 		err := l.Sync()
-		if err != nil {
+		if logger.IsSyncError(err) {
 			log.Printf("error while shutting down logger: %v", err)
 		}
 	}(globalLogger)
