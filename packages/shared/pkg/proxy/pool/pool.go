@@ -17,7 +17,7 @@ import (
 const hostConnectionSplit = 4
 
 type ProxyPool struct {
-	pool                  *smap.Map[*proxyClient]
+	pool                  *smap.Map[*ProxyClient]
 	maxClientConns        int
 	maxConnectionAttempts int
 	idleTimeout           time.Duration
@@ -27,15 +27,15 @@ type ProxyPool struct {
 
 func New(maxClientConns int, maxConnectionAttempts int, idleTimeout time.Duration) *ProxyPool {
 	return &ProxyPool{
-		pool:                  smap.New[*proxyClient](),
+		pool:                  smap.New[*ProxyClient](),
 		maxClientConns:        maxClientConns,
 		maxConnectionAttempts: maxConnectionAttempts,
 		idleTimeout:           idleTimeout,
 	}
 }
 
-func (p *ProxyPool) Get(d *Destination) *proxyClient {
-	return p.pool.Upsert(d.ConnectionKey, nil, func(exist bool, inMapValue *proxyClient, _ *proxyClient) *proxyClient {
+func (p *ProxyPool) Get(d *Destination) *ProxyClient {
+	return p.pool.Upsert(d.ConnectionKey, nil, func(exist bool, inMapValue *ProxyClient, _ *ProxyClient) *ProxyClient {
 		if exist && inMapValue != nil {
 			return inMapValue
 		}
@@ -70,7 +70,7 @@ func (p *ProxyPool) Get(d *Destination) *proxyClient {
 }
 
 func (p *ProxyPool) Close(connectionKey string) {
-	p.pool.RemoveCb(connectionKey, func(_ string, proxy *proxyClient, _ bool) bool {
+	p.pool.RemoveCb(connectionKey, func(_ string, proxy *ProxyClient, _ bool) bool {
 		if proxy != nil {
 			proxy.closeIdleConnections()
 		}
