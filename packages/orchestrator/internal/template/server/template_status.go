@@ -2,13 +2,13 @@ package server
 
 import (
 	"context"
-	"fmt"
-	"time"
 
 	"github.com/pkg/errors"
 
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
+
+const maxLogEntriesPerRequest = int32(100)
 
 func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_manager.TemplateStatusRequest) (*template_manager.TemplateBuildStatusResponse, error) {
 	_, ctxSpan := tracer.Start(ctx, "template-build-status-request")
@@ -19,7 +19,11 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 		return nil, errors.Wrap(err, "error while getting build info, maybe already expired")
 	}
 
-	logs := make([]string, 0)
+	limit := maxLogEntriesPerRequest
+	if in.Limit != nil && in.GetLimit() < maxLogEntriesPerRequest {
+		limit = in.GetLimit()
+	}
+
 	logEntries := make([]*template_manager.TemplateBuildLogEntry, 0)
 	logsCrawled := int32(0)
 	for _, entry := range buildInfo.GetLogs() {
@@ -33,8 +37,11 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 			continue
 		}
 
+		if int32(len(logEntries)) >= limit {
+			break
+		}
+
 		logEntries = append(logEntries, entry)
-		logs = append(logs, fmt.Sprintf("[%s] %s", entry.GetTimestamp().AsTime().Format(time.RFC3339), entry.GetMessage()))
 	}
 
 	result := buildInfo.GetResult()
@@ -43,7 +50,6 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 			Status:     template_manager.TemplateBuildState_Building,
 			Reason:     nil,
 			Metadata:   nil,
-			Logs:       logs,
 			LogEntries: logEntries,
 		}, nil
 	}
@@ -52,7 +58,6 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 		Status:     result.Status,
 		Reason:     result.Reason,
 		Metadata:   result.Metadata,
-		Logs:       logs,
 		LogEntries: logEntries,
 	}, nil
 }
