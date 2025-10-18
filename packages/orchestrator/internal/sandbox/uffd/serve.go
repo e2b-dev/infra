@@ -43,7 +43,7 @@ func Serve(
 
 	missingPagesBeingHandled := map[int64]struct{}{}
 
-	eagainCounter := newEagainCounter(logger, "uffd: eagain fd read count")
+	eagainCounter := newEagainCounter(logger, "uffd: eagain during fd read (accumulated)")
 	defer eagainCounter.Close()
 
 outerLoop:
@@ -59,7 +59,7 @@ outerLoop:
 			}
 
 			if err == unix.EAGAIN {
-				logger.Debug("uffd: eagain fd polling, going back to polling")
+				logger.Debug("uffd: eagain during fd polling, going back to polling")
 
 				continue
 			}
