@@ -98,7 +98,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 
 	// Check if we need to return legacy logs format too, used only for the v1 template builds in the CLI
 	cv := sharedUtils.DerefOrDefault(buildInfo.Version, templates.TemplateV1Version)
-	legacyLogs, err := sharedUtils.IsSmallerVersion(cv, templates.TemplateV2ReleaseVersion)
+	legacyLogs, err := sharedUtils.IsSmallerVersion(cv, templates.TemplateV2BetaVersion)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when comparing versions", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when processing build logs")
