@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync/atomic"
 	"syscall"
 	"unsafe"
 
@@ -44,16 +43,8 @@ func Serve(
 
 	missingPagesBeingHandled := map[int64]struct{}{}
 
-	var readEagainCount atomic.Int64
-
-	logEagainCount := func(message string) {
-		eagainOccurences := readEagainCount.Swap(0)
-		if eagainOccurences > 0 {
-			logger.Debug(message, zap.Any("occurences", eagainOccurences))
-		}
-	}
-
-	defer logEagainCount("uffd: closing with accumulated read EAGAIN occurences")
+	eagainCounter := NewEagainCounter(logger, "uffd: eagain fd read count")
+	defer eagainCounter.Close()
 
 outerLoop:
 	for {
@@ -122,7 +113,7 @@ outerLoop:
 			}
 
 			if err == syscall.EAGAIN {
-				readEagainCount.Add(1)
+				eagainCounter.Increase()
 
 				// Continue polling the fd.
 				continue outerLoop
@@ -132,6 +123,8 @@ outerLoop:
 
 			return fmt.Errorf("failed to read: %w", err)
 		}
+
+		eagainCounter.Log()
 
 		msg := *(*userfaultfd.UffdMsg)(unsafe.Pointer(&buf[0]))
 		if userfaultfd.GetMsgEvent(&msg) != userfaultfd.UFFD_EVENT_PAGEFAULT {
