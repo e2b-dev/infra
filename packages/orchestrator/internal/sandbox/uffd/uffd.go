@@ -7,11 +7,9 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"sync/atomic"
 	"syscall"
 	"time"
 
-	"github.com/bits-and-blooms/bitset"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
@@ -28,38 +26,22 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 const (
 	uffdMsgListenerTimeout = 10 * time.Second
 	fdSize                 = 4
-	mappingsSize           = 1024
+	regionMappingsSize     = 1024
 )
 
 type Uffd struct {
-	exit    *utils.ErrorOnce
-	readyCh chan struct{}
-
-	fdExit *fdexit.FdExit
-
-	lis *net.UnixListener
-
-	memfile    block.ReadonlyDevice
-	dirty      *memory.Tracker
+	exit       *utils.ErrorOnce
+	readyCh    chan struct{}
+	fdExit     *fdexit.FdExit
+	lis        *net.UnixListener
 	socketPath string
-
-	missingMap *userfaultfd.OffsetMap
-	writeMap   *userfaultfd.OffsetMap
-	wpMap      *userfaultfd.OffsetMap
-
-	disabled atomic.Bool
-
-	writeRequestCounter utils.WaitCounter
+	memfile    block.ReadonlyDevice
+	handler    utils.SetOnce[*userfaultfd.Userfaultfd]
 }
 
 var _ MemoryBackend = (*Uffd)(nil)
 
-func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uffd, error) {
-	size, err := memfile.Size()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get memfile size: %w", err)
-	}
-
+func New(memfile block.ReadonlyDevice, socketPath string) (*Uffd, error) {
 	fdExit, err := fdexit.New()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create fd exit: %w", err)
@@ -71,7 +53,6 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 		fdExit:     fdExit,
 		socketPath: socketPath,
 		memfile:    memfile,
-		dirty:      memory.NewTracker(size, memfile.BlockSize()),
 	}, nil
 }
 
@@ -118,19 +99,19 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 
 	unixConn := conn.(*net.UnixConn)
 
-	mappingsBuf := make([]byte, mappingsSize)
+	regionMappingsBuf := make([]byte, regionMappingsSize)
 	uffdBuf := make([]byte, syscall.CmsgSpace(fdSize))
 
-	numBytesMappings, numBytesFd, _, _, err := unixConn.ReadMsgUnix(mappingsBuf, uffdBuf)
+	numBytesMappings, numBytesFd, _, _, err := unixConn.ReadMsgUnix(regionMappingsBuf, uffdBuf)
 	if err != nil {
 		return fmt.Errorf("failed to read unix msg from connection: %w", err)
 	}
 
-	mappingsBuf = mappingsBuf[:numBytesMappings]
+	regionMappingsBuf = regionMappingsBuf[:numBytesMappings]
 
-	var m memory.MemfileMap
+	var regions []memory.Region
 
-	err = json.Unmarshal(mappingsBuf, &m)
+	err = json.Unmarshal(regionMappingsBuf, &regions)
 	if err != nil {
 		return fmt.Errorf("failed parsing memory mapping data: %w", err)
 	}
@@ -153,7 +134,20 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		return fmt.Errorf("expected 1 fd: found %d", len(fds))
 	}
 
-	uffd := userfaultfd.NewUserfaultfdFromFd(uintptr(fds[0]))
+	m := memory.NewMapping(regions)
+
+	uffd, err := userfaultfd.NewUserfaultfdFromFd(
+		uintptr(fds[0]),
+		u.memfile,
+		u.memfile.BlockSize(),
+		m,
+		zap.L().With(logger.WithSandboxID(sandboxId)),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create uffd: %w", err)
+	}
+
+	u.handler.SetValue(uffd)
 
 	defer func() {
 		closeErr := uffd.Close()
@@ -162,7 +156,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		}
 	}()
 
-	for _, region := range m {
+	for _, region := range m.Regions {
 		// Register the WP. It is possible that the memory region was already registered (with missing pages in FC), but registering it again with bigger flag subset should merge these.
 		// - https://github.com/firecracker-microvm/firecracker/blob/f335a0adf46f0680a141eb1e76fe31ac258918c5/src/vmm/src/persist.rs#L477
 		// - https://github.com/bytecodealliance/userfaultfd-rs/blob/main/src/builder.rs
@@ -180,16 +174,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 
 	err = uffd.Serve(
 		ctx,
-		m,
-		u.memfile,
-		u.dirty,
-		&u.writeRequestCounter,
-		u.missingMap,
-		u.writeMap,
-		u.wpMap,
 		u.fdExit,
-		&u.disabled,
-		zap.L().With(logger.WithSandboxID(sandboxId)),
 	)
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)
@@ -206,32 +191,37 @@ func (u *Uffd) Ready() chan struct{} {
 	return u.readyCh
 }
 
-func (u *Uffd) Disable(ctx context.Context) (*bitset.BitSet, error) {
-	dirty, err := u.Dirty(ctx)
+func (u *Uffd) Disable(ctx context.Context) error {
+	uffd, err := u.handler.WaitWithContext(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get dirty bitset: %w", err)
+		return fmt.Errorf("failed to get uffd: %w", err)
 	}
 
-	u.disabled.Store(true)
+	uffd.Disable()
 
-	return dirty, nil
+	return nil
 }
 
 func (u *Uffd) Exit() *utils.ErrorOnce {
 	return u.exit
 }
 
-// Dirty waits for all the requests in flight to be finished and then returns the dirty bitset.
-// Call *after* pausing the firecracker process.
-func (u *Uffd) Dirty(ctx context.Context) (*bitset.BitSet, error) {
-	err := u.writeRequestCounter.Wait(ctx)
+// Dirty waits for all the requests in flight to be finished and then returns clone of the dirty tracker.
+// Call *after* pausing the firecracker process—to let the uffd process all the requests.
+func (u *Uffd) Dirty(ctx context.Context) (*block.Tracker, error) {
+	uffd, err := u.handler.WaitWithContext(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to wait for write requests: %w", err)
+		return nil, fmt.Errorf("failed to get uffd: %w", err)
 	}
 
-	u.missingMap.Reset()
-	u.writeMap.Reset()
-	u.wpMap.Reset()
+	return uffd.Dirty(ctx)
+}
 
-	return u.dirty.BitSet(), nil
+func (u *Uffd) ServePage(ctx context.Context, offset int64) error {
+	uffd, err := u.handler.WaitWithContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get uffd: %w", err)
+	}
+
+	return uffd.ServePage(ctx, offset)
 }

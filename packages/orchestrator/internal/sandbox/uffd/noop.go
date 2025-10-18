@@ -3,9 +3,7 @@ package uffd
 import (
 	"context"
 
-	"github.com/bits-and-blooms/bitset"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -13,7 +11,7 @@ type NoopMemory struct {
 	size      int64
 	blockSize int64
 
-	dirty *bitset.BitSet
+	dirty *block.Tracker
 
 	exit *utils.ErrorOnce
 }
@@ -21,25 +19,20 @@ type NoopMemory struct {
 var _ MemoryBackend = (*NoopMemory)(nil)
 
 func NewNoopMemory(size, blockSize int64) *NoopMemory {
-	blocks := header.TotalBlocks(size, blockSize)
-
-	dirty := bitset.New(uint(blocks))
-	dirty.FlipRange(0, dirty.Len())
-
 	return &NoopMemory{
 		size:      size,
 		blockSize: blockSize,
-		dirty:     dirty,
+		dirty:     block.NewTracker(blockSize),
 		exit:      utils.NewErrorOnce(),
 	}
 }
 
-func (m *NoopMemory) Disable(context.Context) (*bitset.BitSet, error) {
-	return m.dirty, nil
+func (m *NoopMemory) Disable(context.Context) error {
+	return nil
 }
 
-func (m *NoopMemory) Dirty(context.Context) (*bitset.BitSet, error) {
-	return m.dirty, nil
+func (m *NoopMemory) Dirty(context.Context) (*block.Tracker, error) {
+	return m.dirty.Clone(), nil
 }
 
 func (m *NoopMemory) Start(context.Context, string) error {
@@ -53,6 +46,7 @@ func (m *NoopMemory) Stop() error {
 func (m *NoopMemory) Ready() chan struct{} {
 	ch := make(chan struct{})
 	ch <- struct{}{}
+
 	return ch
 }
 

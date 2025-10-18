@@ -1,0 +1,115 @@
+package block
+
+import (
+	"iter"
+	"slices"
+	"sync"
+
+	"github.com/bits-and-blooms/bitset"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+)
+
+type Tracker struct {
+	b  *bitset.BitSet
+	mu sync.RWMutex
+
+	blockSize int64
+}
+
+func NewTracker(blockSize int64) *Tracker {
+	return &Tracker{
+		// The bitset resizes automatically based on the maximum set bit.
+		b:         bitset.New(0),
+		blockSize: blockSize,
+	}
+}
+
+func NewTrackerFromBitSet(b *bitset.BitSet, blockSize int64) *Tracker {
+	return &Tracker{
+		b:         b.Clone(),
+		blockSize: blockSize,
+	}
+}
+
+func (t *Tracker) Offsets() []int64 {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	return slices.Collect(bitsetOffsets(t.b, t.blockSize))
+}
+
+func (t *Tracker) Ranges() []Range {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	return slices.Collect(bitsetRanges(t.b))
+}
+
+func (t *Tracker) Has(off int64) bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	return t.b.Test(uint(header.BlockIdx(off, t.blockSize)))
+}
+
+func (t *Tracker) Add(off int64) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.b.Test(uint(header.BlockIdx(off, t.blockSize))) {
+		return false
+	}
+
+	t.b.Set(uint(header.BlockIdx(off, t.blockSize)))
+
+	return true
+}
+
+func (t *Tracker) Reset() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.b.ClearAll()
+}
+
+func (t *Tracker) BitSet() *bitset.BitSet {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	return t.b.Clone()
+}
+
+func (t *Tracker) Clone() *Tracker {
+	return &Tracker{
+		b:         t.BitSet(),
+		blockSize: t.blockSize,
+	}
+}
+
+func bitsetOffsets(b *bitset.BitSet, blockSize int64) iter.Seq[int64] {
+	return utils.TransformTo(b.EachSet(), func(idx uint) int64 {
+		return header.BlockOffset(int64(idx), blockSize)
+	})
+}
+
+// bitsetRanges returns a sequence of the ranges of the set bits of the bitset.
+func bitsetRanges(b *bitset.BitSet) iter.Seq[Range] {
+	return func(yield func(Range) bool) {
+		for start, ok := b.NextSet(0); ok; {
+			end, ok := b.NextClear(start)
+			if !ok {
+				yield(NewRange(int64(start), int64(b.Len()-start)))
+
+				return
+			}
+
+			if !yield(NewRange(int64(start), int64(end-start))) {
+				return
+			}
+
+			start, ok = b.NextSet(end + 1)
+		}
+	}
+}

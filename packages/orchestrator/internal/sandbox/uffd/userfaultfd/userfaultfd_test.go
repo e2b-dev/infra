@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"sync/atomic"
+	"slices"
 	"syscall"
 	"testing"
 
@@ -12,13 +12,35 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+type testConfig struct {
+	name string
+	// Page size of the memory area.
+	pagesize uint64
+	// Number of pages in the memory area.
+	numberOfPages uint64
+	// Operations to trigger on the memory area.
+	operations []operation
+}
+
+type operationMode uint32
+
+const (
+	operationModeRead operationMode = 1 << iota
+	operationModeWrite
+)
+
+type operation struct {
+	// Offset in bytes. Must be smaller than the (numberOfPages-1) * pagesize as it reads a page and it must be aligned to the pagesize from the testConfig.
+	offset int64
+	mode   operationMode
+}
 
 func TestUffdMissing(t *testing.T) {
 	tests := []testConfig{
@@ -92,7 +114,7 @@ func TestUffdMissing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, memoryMap, _, exitUffd, fdExit := configureTest(t, tt)
+			h := configureTest(t, tt)
 
 			for _, operation := range tt.operations {
 				if operation.mode == operationModeRead {
@@ -101,17 +123,11 @@ func TestUffdMissing(t *testing.T) {
 				}
 			}
 
-			memoryMapAccesses := getOperationsOffsets(tt.operations, operationModeRead)
-			assert.Equal(t, memoryMapAccesses, memoryMap.Map(), "checking which pages were accessed")
+			err := h.uffd.writeRequestCounter.Wait(t.Context())
+			require.NoError(t, err)
 
-			signalExitErr := fdExit.SignalExit()
-			require.NoError(t, signalExitErr)
-
-			select {
-			case <-exitUffd:
-			case <-t.Context().Done():
-				t.Fatal("context done before exit", t.Context().Err())
-			}
+			expectedReadOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
+			assert.Equal(t, expectedReadOffsets, h.getReadOffsets(), "checking which pages were faulted)")
 		})
 	}
 }
@@ -141,6 +157,21 @@ func TestUffdWriteProtection(t *testing.T) {
 				{
 					offset: 0,
 					mode:   operationModeWrite,
+				},
+			},
+		},
+		{
+			name:          "standard 4k page, single write then read on first page",
+			pagesize:      header.PageSize,
+			numberOfPages: 32,
+			operations: []operation{
+				{
+					offset: 0,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0,
+					mode:   operationModeRead,
 				},
 			},
 		},
@@ -216,6 +247,21 @@ func TestUffdWriteProtection(t *testing.T) {
 			},
 		},
 		{
+			name:          "hugepage, single write then read on non-first page",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 8,
+			operations: []operation{
+				{
+					offset: 3 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 3 * header.HugepageSize,
+					mode:   operationModeRead,
+				},
+			},
+		},
+		{
 			name:          "hugepage, two writes on different pages",
 			pagesize:      header.HugepageSize,
 			numberOfPages: 8,
@@ -234,100 +280,64 @@ func TestUffdWriteProtection(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, memoryMap, dirty, exitUffd, fdExit := configureTest(t, tt)
+			h := configureTest(t, tt)
 
 			for _, operation := range tt.operations {
 				if operation.mode == operationModeRead {
 					err := h.executeRead(t.Context(), operation)
-					require.NoError(t, err)
+					assert.NoError(t, err)
 				}
 
 				if operation.mode == operationModeWrite {
 					err := h.executeWrite(t.Context(), operation)
-					require.NoError(t, err)
+					assert.NoError(t, err)
 				}
 			}
 
-			writeOperations := getOperationsOffsets(tt.operations, operationModeWrite)
-			assert.Equal(t, writeOperations, getOffsetsFromBitset(dirty.BitSet(), tt.pagesize), "checking written to pages")
+			err := h.uffd.writeRequestCounter.Wait(t.Context())
+			require.NoError(t, err)
 
-			memoryAccesses := getOperationsOffsets(tt.operations, 0)
-			assert.Equal(t, memoryAccesses, memoryMap.Map(), "checking which pages were accessed (read and write)")
+			expectedWriteOffsets := getOperationsOffsets(tt.operations, operationModeWrite)
+			assert.Equal(t, expectedWriteOffsets, h.getWriteOffsets(), "checking which pages were written to")
 
-			signalExitErr := fdExit.SignalExit()
-			require.NoError(t, signalExitErr)
-
-			select {
-			case <-exitUffd:
-			case <-t.Context().Done():
-				t.Fatal("context done before exit", t.Context().Err())
-			}
+			expectedReadOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
+			assert.Equal(t, expectedReadOffsets, h.getReadOffsets(), "checking which pages were faulted)")
 		})
 	}
-}
-
-var logger = testutils.NewLogger()
-
-type operationMode uint
-
-const (
-	operationModeRead operationMode = iota + 1
-	operationModeWrite
-)
-
-type operation struct {
-	offset uint
-	mode   operationMode
-}
-
-type testConfig struct {
-	name          string
-	pagesize      uint64
-	numberOfPages uint64
-	operations    []operation
 }
 
 type testHandler struct {
 	memoryArea *[]byte
 	pagesize   uint64
-	data       block.Slicer
-	dirty      *memory.Tracker
+	data       *testutils.MemorySlicer
+	memoryMap  *memory.Mapping
+	uffd       *Userfaultfd
 }
 
-func getOperationsOffsets(operations []operation, mode operationMode) map[uint64]struct{} {
-	count := map[uint64]struct{}{}
-
-	for _, operation := range operations {
-		// If mode is 0, we want to get all operations
-		if operation.mode == mode || mode == 0 {
-			count[uint64(operation.offset)] = struct{}{}
-		}
-	}
-
-	return count
+func (h *testHandler) getReadOffsets() []uint {
+	return utils.Map(slices.Collect(h.uffd.missingRequests.BitSet().Union(h.uffd.writeRequests.BitSet()).EachSet()), func(offset uint) uint {
+		return uint(header.BlockOffset(int64(offset), int64(h.pagesize)))
+	})
 }
 
-func getOffsetsFromBitset(bitset *bitset.BitSet, pagesize uint64) map[uint64]struct{} {
-	count := map[uint64]struct{}{}
-
-	for i, e := bitset.NextSet(0); e; i, e = bitset.NextSet(i + 1) {
-		count[uint64(i)*pagesize] = struct{}{}
-	}
-
-	return count
+func (h *testHandler) getWriteOffsets() []uint {
+	return utils.Map(slices.Collect(h.uffd.dirty.BitSet().EachSet()), func(offset uint) uint {
+		return uint(header.BlockOffset(int64(offset), int64(h.pagesize)))
+	})
 }
 
 func (h *testHandler) executeRead(ctx context.Context, op operation) error {
-	readBytes := (*h.memoryArea)[op.offset : op.offset+uint(h.pagesize)]
+	readBytes := (*h.memoryArea)[op.offset : op.offset+int64(h.pagesize)]
 
-	expectedBytes, err := h.data.Slice(ctx, int64(op.offset), int64(h.pagesize))
+	expectedBytes, err := h.data.Slice(ctx, op.offset, int64(h.pagesize))
 	if err != nil {
 		return err
 	}
 
 	if !bytes.Equal(readBytes, expectedBytes) {
-		idx, want, got := testutils.DiffByte(readBytes, expectedBytes)
-		return fmt.Errorf("content mismatch: want %q, got %q at index %d", want, got, idx)
+		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
+
+		return fmt.Errorf("content mismatch: want '%x, got %x at index %d", want, got, idx)
 	}
 
 	return nil
@@ -339,19 +349,48 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 		return err
 	}
 
-	copy((*h.memoryArea)[op.offset:op.offset+uint(h.pagesize)], bytesToWrite)
+	n := copy((*h.memoryArea)[op.offset:op.offset+int64(h.pagesize)], bytesToWrite)
+	if n != int(h.pagesize) {
+		return fmt.Errorf("copy length mismatch: want %d, got %d", h.pagesize, n)
+	}
 
-	if !h.dirty.Check(int64(op.offset)) {
-		return fmt.Errorf("dirty bit not set for page at offset %d", op.offset)
+	err = h.uffd.writeRequestCounter.Wait(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to wait for write requests finish: %w", err)
+	}
+
+	if !h.uffd.dirty.Has(op.offset) {
+		return fmt.Errorf("dirty bit not set for page at offset %d, all dirty offsets: %v", op.offset, h.getWriteOffsets())
 	}
 
 	return nil
 }
 
-func configureTest(t *testing.T, tt testConfig) (*testHandler, *testutils.ContiguousMap, *memory.Tracker, chan struct{}, *fdexit.FdExit) {
-	data, size := testutils.RandomPages(tt.pagesize, tt.numberOfPages)
+func configureTest(t *testing.T, tt testConfig) *testHandler {
+	data := testutils.RandomPages(tt.pagesize, tt.numberOfPages)
 
-	uffd, err := newUserfaultfd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
+	size, err := data.Size()
+	require.NoError(t, err)
+
+	memoryArea, memoryStart, unmap, err := testutils.NewPageMmap(uint64(size), tt.pagesize)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		unmap()
+	})
+
+	m := memory.NewMapping([]memory.Region{
+		{
+			BaseHostVirtAddr: uintptr(memoryStart),
+			Size:             uintptr(size),
+			Offset:           uintptr(0),
+			PageSize:         uintptr(tt.pagesize),
+		},
+	})
+
+	logger := testutils.NewTestLogger(t)
+
+	uffd, err := newUserfaultfd(syscall.O_CLOEXEC|syscall.O_NONBLOCK, data, int64(tt.pagesize), m, logger)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -361,17 +400,8 @@ func configureTest(t *testing.T, tt testConfig) (*testHandler, *testutils.Contig
 	err = uffd.configureApi(tt.pagesize)
 	require.NoError(t, err)
 
-	memoryArea, memoryStart, unmap, err := testutils.NewPageMmap(size, tt.pagesize)
+	err = uffd.Register(memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
 	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		unmap()
-	})
-
-	err = uffd.Register(memoryStart, size, UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
-	require.NoError(t, err)
-
-	m := testutils.NewContiguousMap(memoryStart, size, tt.pagesize)
 
 	fdExit, err := fdexit.New()
 	require.NoError(t, err)
@@ -383,27 +413,44 @@ func configureTest(t *testing.T, tt testConfig) (*testHandler, *testutils.Contig
 
 	exitUffd := make(chan struct{}, 1)
 
-	dirty := memory.NewTracker(int64(size), int64(tt.pagesize))
-
-	writeRequestCounter := utils.WaitCounter{}
-	missingMap := NewResetMap()
-	writeMap := NewResetMap()
-	wpMap := NewResetMap()
-	disabled := atomic.Bool{}
-
 	go func() {
-		err := uffd.Serve(t.Context(), m, data, dirty, &writeRequestCounter, missingMap, writeMap, wpMap, fdExit, &disabled, logger)
+		err := uffd.Serve(t.Context(), fdExit)
 		assert.NoError(t, err)
 
 		exitUffd <- struct{}{}
 	}()
 
+	t.Cleanup(func() {
+		signalExitErr := fdExit.SignalExit()
+		require.NoError(t, signalExitErr)
+
+		select {
+		case <-exitUffd:
+		case <-t.Context().Done():
+			t.Log("context done before exit:", t.Context().Err())
+		}
+	})
+
 	return &testHandler{
 		memoryArea: &memoryArea,
+		memoryMap:  m,
 		pagesize:   tt.pagesize,
-		dirty:      dirty,
 		data:       data,
-	}, m, dirty, exitUffd, fdExit
+		uffd:       uffd,
+	}
+}
+
+// Get a bitset of the offsets of the operations for the given mode.
+func getOperationsOffsets(ops []operation, m operationMode) []uint {
+	b := bitset.New(0)
+
+	for _, operation := range ops {
+		if operation.mode&m != 0 {
+			b.Set(uint(operation.offset))
+		}
+	}
+
+	return slices.Collect(b.EachSet())
 }
 
 // TODO: Test write protection

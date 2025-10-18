@@ -33,7 +33,7 @@ func newMmap(size, pagesize uint64, flags int) ([]byte, uintptr, func() error, e
 		syscall.MAP_PRIVATE|syscall.MAP_ANONYMOUS|flags,
 	)
 	if err != nil {
-		return nil, 0, nil, err
+		return nil, 0, nil, fmt.Errorf("failed to mmap: %w", err)
 	}
 
 	closeMmap := func() error {
