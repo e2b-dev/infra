@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	nomadapi "github.com/hashicorp/nomad/api"
+	"github.com/jackc/pgx/v5/pgxpool"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -58,22 +60,15 @@ type APIStore struct {
 	clustersPool             *edge.Pool
 }
 
-func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) *APIStore {
+func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, sqlConn *sql.DB, pool *pgxpool.Pool) *APIStore {
 	zap.L().Info("Initializing API store and services")
 
-	dbClient, err := db.NewClient(40, 20)
-	if err != nil {
-		zap.L().Fatal("Initializing Supabase client", zap.Error(err))
-	}
+	dbClient := db.NewClient(sqlConn)
 
-	sqlcDB, err := sqlcdb.NewClient(ctx, sqlcdb.WithMaxConnections(40), sqlcdb.WithMinIdle(5))
-	if err != nil {
-		zap.L().Fatal("Initializing SQLC client", zap.Error(err))
-	}
-
-	zap.L().Info("Created database client")
+	sqlcDB := sqlcdb.NewClient(pool)
 
 	var clickhouseStore clickhouse.Clickhouse
+	var err error
 
 	clickhouseConnectionString := config.ClickhouseConnectionString
 	if clickhouseConnectionString == "" {
@@ -214,14 +209,6 @@ func (a *APIStore) Close(ctx context.Context) error {
 
 	if err := a.templateManager.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("closing Template manager client: %w", err))
-	}
-
-	if err := a.sqlcDB.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("closing sqlc database client: %w", err))
-	}
-
-	if err := a.db.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("closing database client: %w", err))
 	}
 
 	return errors.Join(errs...)

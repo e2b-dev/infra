@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -11,14 +12,21 @@ import (
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/constants"
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/handlers"
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 )
 
 var commitSHA string
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	err := constants.CheckRequired()
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("required environment variables are not set: %w", err)
 	}
 
 	port := flag.Int("port", 5000, "Port for test HTTP server")
@@ -26,7 +34,18 @@ func main() {
 
 	log.Println("Starting docker reverse proxy", "commit", commitSHA)
 
-	store := handlers.NewStore()
+	ctx := context.Background()
+
+	dbPool, err := db.NewPool(ctx, db.WithMinIdle(1), db.WithMaxConnections(1))
+	if err != nil {
+		return fmt.Errorf("failed to create db pool: %w", err)
+	}
+	defer dbPool.Close()
+
+	dbConn := db.Open(dbPool)
+	defer dbConn.Close()
+
+	store := handlers.NewStore(dbConn)
 
 	// https://distribution.github.io/distribution/spec/api/
 	http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
@@ -88,5 +107,10 @@ func main() {
 	})
 
 	log.Printf("Starting server on port: %d\n", *port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", strconv.Itoa(*port)), nil))
+
+	if err := http.ListenAndServe(fmt.Sprintf(":%s", strconv.Itoa(*port)), nil); err != nil {
+		return fmt.Errorf("failed to start server: %w", err)
+	}
+
+	return nil
 }

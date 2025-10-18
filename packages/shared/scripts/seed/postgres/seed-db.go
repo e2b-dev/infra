@@ -25,17 +25,19 @@ func main() {
 	ctx := context.Background()
 	hasher := keys.NewSHA256Hashing()
 
-	database, err := db.NewClient(1, 1)
+	dbPool, err := db.NewPool(ctx)
 	if err != nil {
 		panic(err)
 	}
+	defer dbPool.Close()
+
+	dbConn := db.Open(dbPool)
+	defer dbConn.Close()
+
+	database := db.NewClient(dbConn)
 	defer database.Close()
 
-	sqlcDB, err := sqlcdb.NewClient(ctx)
-	if err != nil {
-		panic(err)
-	}
-	defer sqlcDB.Close()
+	sqlcDB := sqlcdb.NewClient(dbPool)
 
 	count, err := database.Client.Team.Query().Count(ctx)
 	if err != nil {
