@@ -37,7 +37,10 @@ type AWSBucketStorageObjectProvider struct {
 	bucketName string
 }
 
-var _ StorageObjectProvider = (*AWSBucketStorageObjectProvider)(nil)
+var (
+	_ SeekableObjectProvider = (*AWSBucketStorageObjectProvider)(nil)
+	_ ObjectProvider         = (*AWSBucketStorageObjectProvider)(nil)
+)
 
 func NewAWSBucketStorageProvider(ctx context.Context, bucketName string) (*AWSBucketStorageProvider, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
@@ -118,7 +121,15 @@ func (a *AWSBucketStorageProvider) UploadSignedURL(ctx context.Context, path str
 	return resp.URL, nil
 }
 
-func (a *AWSBucketStorageProvider) OpenObject(_ context.Context, path string) (StorageObjectProvider, error) {
+func (a *AWSBucketStorageProvider) OpenSeekableObject(_ context.Context, path string, _ SeekableObjectType) (SeekableObjectProvider, error) {
+	return &AWSBucketStorageObjectProvider{
+		client:     a.client,
+		bucketName: a.bucketName,
+		path:       path,
+	}, nil
+}
+
+func (a *AWSBucketStorageProvider) OpenObject(_ context.Context, path string, _ ObjectType) (ObjectProvider, error) {
 	return &AWSBucketStorageObjectProvider{
 		client:     a.client,
 		bucketName: a.bucketName,
@@ -246,6 +257,11 @@ func (a *AWSBucketStorageObjectProvider) Size(ctx context.Context) (int64, error
 	return *resp.ContentLength, nil
 }
 
+func (a *AWSBucketStorageObjectProvider) Exists(ctx context.Context) (bool, error) {
+	_, err := a.Size(ctx)
+	return err == nil, ignoreNotExists(err)
+}
+
 func (a *AWSBucketStorageObjectProvider) Delete(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
 	defer cancel()
@@ -256,6 +272,14 @@ func (a *AWSBucketStorageObjectProvider) Delete(ctx context.Context) error {
 			Key:    aws.String(a.path),
 		},
 	)
+
+	return err
+}
+
+func ignoreNotExists(err error) error {
+	if errors.Is(err, ErrObjectNotExist) {
+		return nil
+	}
 
 	return err
 }
