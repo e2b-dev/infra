@@ -29,6 +29,8 @@ import (
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/template-manager")
 
+var _ templateManagerClient = (*TemplateManager)(nil)
+
 type processingBuilds struct {
 	templateID string
 }

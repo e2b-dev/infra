@@ -122,7 +122,7 @@ func (ppb *PostProcessingBuilder) Build(
 	defaultUser := utils.ToPtr(currentLayer.Metadata.Context.User)
 	defaultWorkdir := currentLayer.Metadata.Context.WorkDir
 
-	ok, err := utils.IsGTEVersion(ppb.Version, templates.TemplateDefaultUserVersion)
+	ok, err := utils.IsGTEVersion(ppb.Version, templates.TemplateV2ReleaseVersion)
 	if err != nil {
 		return phases.LayerResult{}, fmt.Errorf("error checking build version: %w", err)
 	}

@@ -320,6 +320,26 @@ func (ebu *EnvBuildUpdate) SetNillableReason(sr *schema.BuildReason) *EnvBuildUp
 	return ebu
 }
 
+// SetVersion sets the "version" field.
+func (ebu *EnvBuildUpdate) SetVersion(s string) *EnvBuildUpdate {
+	ebu.mutation.SetVersion(s)
+	return ebu
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (ebu *EnvBuildUpdate) SetNillableVersion(s *string) *EnvBuildUpdate {
+	if s != nil {
+		ebu.SetVersion(*s)
+	}
+	return ebu
+}
+
+// ClearVersion clears the value of the "version" field.
+func (ebu *EnvBuildUpdate) ClearVersion() *EnvBuildUpdate {
+	ebu.mutation.ClearVersion()
+	return ebu
+}
+
 // SetEnv sets the "env" edge to the Env entity.
 func (ebu *EnvBuildUpdate) SetEnv(e *Env) *EnvBuildUpdate {
 	return ebu.SetEnvID(e.ID)
@@ -468,6 +488,12 @@ func (ebu *EnvBuildUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if value, ok := ebu.mutation.Reason(); ok {
 		_spec.SetField(envbuild.FieldReason, field.TypeJSON, value)
+	}
+	if value, ok := ebu.mutation.Version(); ok {
+		_spec.SetField(envbuild.FieldVersion, field.TypeString, value)
+	}
+	if ebu.mutation.VersionCleared() {
+		_spec.ClearField(envbuild.FieldVersion, field.TypeString)
 	}
 	if ebu.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -812,6 +838,26 @@ func (ebuo *EnvBuildUpdateOne) SetNillableReason(sr *schema.BuildReason) *EnvBui
 	return ebuo
 }
 
+// SetVersion sets the "version" field.
+func (ebuo *EnvBuildUpdateOne) SetVersion(s string) *EnvBuildUpdateOne {
+	ebuo.mutation.SetVersion(s)
+	return ebuo
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (ebuo *EnvBuildUpdateOne) SetNillableVersion(s *string) *EnvBuildUpdateOne {
+	if s != nil {
+		ebuo.SetVersion(*s)
+	}
+	return ebuo
+}
+
+// ClearVersion clears the value of the "version" field.
+func (ebuo *EnvBuildUpdateOne) ClearVersion() *EnvBuildUpdateOne {
+	ebuo.mutation.ClearVersion()
+	return ebuo
+}
+
 // SetEnv sets the "env" edge to the Env entity.
 func (ebuo *EnvBuildUpdateOne) SetEnv(e *Env) *EnvBuildUpdateOne {
 	return ebuo.SetEnvID(e.ID)
@@ -990,6 +1036,12 @@ func (ebuo *EnvBuildUpdateOne) sqlSave(ctx context.Context) (_node *EnvBuild, er
 	}
 	if value, ok := ebuo.mutation.Reason(); ok {
 		_spec.SetField(envbuild.FieldReason, field.TypeJSON, value)
+	}
+	if value, ok := ebuo.mutation.Version(); ok {
+		_spec.SetField(envbuild.FieldVersion, field.TypeString, value)
+	}
+	if ebuo.mutation.VersionCleared() {
+		_spec.ClearField(envbuild.FieldVersion, field.TypeString)
 	}
 	if ebuo.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{

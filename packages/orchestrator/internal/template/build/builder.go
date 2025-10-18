@@ -271,7 +271,7 @@ func runBuild(
 		baseBuilder,
 	}
 	// Default user is only set for version TemplateDefaultUserVersion
-	ok, err := utils.IsGTEVersion(bc.Version, templates.TemplateDefaultUserVersion)
+	ok, err := utils.IsGTEVersion(bc.Version, templates.TemplateV2ReleaseVersion)
 	if err != nil {
 		return nil, fmt.Errorf("error checking build version: %w", err)
 	}

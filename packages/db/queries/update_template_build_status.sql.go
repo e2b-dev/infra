@@ -17,14 +17,16 @@ const updateEnvBuildStatus = `-- name: UpdateEnvBuildStatus :exec
 UPDATE "public"."env_builds"
 SET status = $1,
     finished_at = $2,
-    reason = $3
-WHERE id = $4 AND env_id = $5
+    reason = $3,
+    version = $4
+WHERE id = $5 AND env_id = $6
 `
 
 type UpdateEnvBuildStatusParams struct {
 	Status     string
 	FinishedAt *time.Time
 	Reason     types.BuildReason
+	Version    *string
 	BuildID    uuid.UUID
 	TemplateID string
 }
@@ -34,6 +36,7 @@ func (q *Queries) UpdateEnvBuildStatus(ctx context.Context, arg UpdateEnvBuildSt
 		arg.Status,
 		arg.FinishedAt,
 		arg.Reason,
+		arg.Version,
 		arg.BuildID,
 		arg.TemplateID,
 	)

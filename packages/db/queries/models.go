@@ -93,6 +93,7 @@ type EnvBuild struct {
 	ReadyCmd           *string
 	ClusterNodeID      string
 	Reason             types.BuildReason
+	Version            *string
 }
 
 type Snapshot struct {

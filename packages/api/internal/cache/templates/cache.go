@@ -152,6 +152,7 @@ type TemplateBuildInfo struct {
 	TemplateID  string
 	BuildStatus envbuild.Status
 	Reason      types.BuildReason
+	Version     *string
 
 	ClusterID uuid.UUID
 	NodeID    string
@@ -196,6 +197,7 @@ func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Statu
 		zap.String("from_status", item.BuildStatus.String()),
 		zap.String("reason", reason.Message),
 		zap.String("step", sharedUtils.Sprintp(reason.Step)),
+		zap.String("version", sharedUtils.Sprintp(item.Version)),
 	)
 
 	_ = c.cache.Set(
@@ -205,6 +207,7 @@ func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Statu
 			TemplateID:  item.TemplateID,
 			BuildStatus: status,
 			Reason:      reason,
+			Version:     item.Version,
 
 			ClusterID: item.ClusterID,
 			NodeID:    item.NodeID,
@@ -237,6 +240,7 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 				TemplateID:  result.Env.ID,
 				BuildStatus: envbuild.Status(result.EnvBuild.Status),
 				Reason:      result.EnvBuild.Reason,
+				Version:     result.EnvBuild.Version,
 
 				ClusterID: utils.WithClusterFallback(result.Env.ClusterID),
 				NodeID:    result.EnvBuild.ClusterNodeID,

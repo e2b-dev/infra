@@ -55,6 +55,8 @@ type EnvBuild struct {
 	ClusterNodeID string `json:"cluster_node_id,omitempty"`
 	// Reason holds the value of the "reason" field.
 	Reason schema.BuildReason `json:"reason,omitempty"`
+	// Version holds the value of the "version" field.
+	Version *string `json:"version,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the EnvBuildQuery when eager-loading is set.
 	Edges        EnvBuildEdges `json:"edges"`
@@ -92,7 +94,7 @@ func (*EnvBuild) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case envbuild.FieldVcpu, envbuild.FieldRAMMB, envbuild.FieldFreeDiskSizeMB, envbuild.FieldTotalDiskSizeMB:
 			values[i] = new(sql.NullInt64)
-		case envbuild.FieldEnvID, envbuild.FieldStatus, envbuild.FieldDockerfile, envbuild.FieldStartCmd, envbuild.FieldReadyCmd, envbuild.FieldKernelVersion, envbuild.FieldFirecrackerVersion, envbuild.FieldEnvdVersion, envbuild.FieldClusterNodeID:
+		case envbuild.FieldEnvID, envbuild.FieldStatus, envbuild.FieldDockerfile, envbuild.FieldStartCmd, envbuild.FieldReadyCmd, envbuild.FieldKernelVersion, envbuild.FieldFirecrackerVersion, envbuild.FieldEnvdVersion, envbuild.FieldClusterNodeID, envbuild.FieldVersion:
 			values[i] = new(sql.NullString)
 		case envbuild.FieldCreatedAt, envbuild.FieldUpdatedAt, envbuild.FieldFinishedAt:
 			values[i] = new(sql.NullTime)
@@ -229,6 +231,13 @@ func (eb *EnvBuild) assignValues(columns []string, values []any) error {
 					return fmt.Errorf("unmarshal field reason: %w", err)
 				}
 			}
+		case envbuild.FieldVersion:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field version", values[i])
+			} else if value.Valid {
+				eb.Version = new(string)
+				*eb.Version = value.String
+			}
 		default:
 			eb.selectValues.Set(columns[i], values[i])
 		}
@@ -332,6 +341,11 @@ func (eb *EnvBuild) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("reason=")
 	builder.WriteString(fmt.Sprintf("%v", eb.Reason))
+	builder.WriteString(", ")
+	if v := eb.Version; v != nil {
+		builder.WriteString("version=")
+		builder.WriteString(*v)
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }

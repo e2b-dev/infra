@@ -42,6 +42,7 @@ type RegisterBuildData struct {
 	ReadyCmd      *string
 	CpuCount      *int32
 	MemoryMB      *int32
+	Version       string
 }
 
 type RegisterBuildResponse struct {
@@ -97,6 +98,7 @@ func RegisterBuild(
 		attribute.String("env.team.tier", data.Team.Tier),
 		telemetry.WithBuildID(buildID.String()),
 		attribute.String("env.dockerfile", data.Dockerfile),
+		attribute.String("env.version", data.Version),
 	)
 
 	if data.Alias != nil {
@@ -208,6 +210,7 @@ func RegisterBuild(
 		SetNillableReadyCmd(data.ReadyCmd).
 		SetClusterNodeID(data.BuilderNodeID).
 		SetDockerfile(data.Dockerfile).
+		SetVersion(data.Version).
 		Save(ctx)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when inserting build", err)

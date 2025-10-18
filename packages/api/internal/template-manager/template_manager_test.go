@@ -12,6 +12,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 )
 
+var _ templateManagerClient = (*fakeTemplateManagerClient)(nil)
+
 type fakeTemplateManagerClient struct {
 	setStatusError   error
 	setFinishedError error
