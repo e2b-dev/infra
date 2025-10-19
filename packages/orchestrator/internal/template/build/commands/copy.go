@@ -30,8 +30,10 @@ type Copy struct {
 var _ Command = (*Copy)(nil)
 
 type copyScriptData struct {
-	SourcePath string
-	TargetPath string
+	SourcePath  string
+	TargetPath  string
+	Owner       string
+	Permissions string
 }
 
 var copyScriptTemplate = txtTemplate.Must(txtTemplate.New("copy-script-template").Parse(`
@@ -56,6 +58,24 @@ if [ -z "$entry" ]; then
  echo "Error: sourceFolder is empty"
  exit 1
 fi
+
+{{- if .Owner }}
+# Apply ownership to the source before moving
+if [ -d "$entry" ]; then
+ chown -R "{{ .Owner }}" "$entry"
+else
+ chown "{{ .Owner }}" "$entry"
+fi
+{{- end }}
+
+{{- if .Permissions }}
+# Apply permissions to the source before moving
+if [ -d "$entry" ]; then
+ chmod -R "{{ .Permissions }}" "$entry"
+else
+ chmod "{{ .Permissions }}" "$entry"
+fi
+{{- end }}
 
 if [ -L "$entry" ]; then
  # It's a symlink file – create parent folders and move+rename it to the exact path
@@ -139,7 +159,7 @@ func (c *Copy) Execute(
 	// This is happening because the /tmp is mounted as a tmpfs and deleted on restart.
 	sbxTargetPath := filepath.Join("/tmp", fmt.Sprintf("%s.tar", step.GetFilesHash()))
 	// 2) Copy the tar file to the sandbox
-	err = sandboxtools.CopyFile(ctx, proxy, sandboxID, cmdMetadata.User, tmpFile.Name(), sbxTargetPath)
+	err = sandboxtools.CopyFile(ctx, proxy, sandboxID, "root", tmpFile.Name(), sbxTargetPath)
 	if err != nil {
 		return metadata.Context{}, fmt.Errorf("failed to copy layer tar data to sandbox: %w", err)
 	}
@@ -153,7 +173,7 @@ func (c *Copy) Execute(
 		proxy,
 		sandboxID,
 		fmt.Sprintf(`mkdir -p "%s" && tar -xzvf "%s" -C "%s"`, sbxUnpackPath, sbxTargetPath, sbxUnpackPath),
-		cmdMetadata,
+		cmdMetadata.WithUser("root"),
 	)
 	if err != nil {
 		return metadata.Context{}, fmt.Errorf("failed to extract files: %w", err)
@@ -164,15 +184,36 @@ func (c *Copy) Execute(
 	// Remove all glob patterns, they are handled on the client side already
 	// Add / always at the end to ensure the last file/directory is also included if it doesn't contain a glob pattern
 	sourcePath, _ := doublestar.SplitPattern(ensureTrailingSlash(args[0]))
+
+	// Determine the target owner
+	owner := fmt.Sprintf("%s:%s", cmdMetadata.User, cmdMetadata.User)
+	if len(args) >= 3 && args[2] != "" {
+		// Assumes the format of chown: user:group or just user
+		owner = args[2]
+		if !strings.Contains(owner, ":") {
+			owner = fmt.Sprintf("%s:%s", owner, owner)
+		}
+	}
+
+	// Get optional permissions
+	permissions := ""
+	if len(args) >= 4 {
+		permissions = args[3]
+	}
+
 	var moveScript bytes.Buffer
 	err = copyScriptTemplate.Execute(&moveScript, copyScriptData{
-		SourcePath: filepath.Join(sbxUnpackPath, sourcePath),
-		TargetPath: targetPath,
+		SourcePath:  filepath.Join(sbxUnpackPath, sourcePath),
+		TargetPath:  targetPath,
+		Owner:       owner,
+		Permissions: permissions,
 	})
 	if err != nil {
 		return metadata.Context{}, fmt.Errorf("failed to execute copy script template: %w", err)
 	}
 
+	// Run the move script as root so it can chown files to any user
+	// The script handles both ownership and permissions on the source before moving
 	err = sandboxtools.RunCommandWithLogger(
 		ctx,
 		proxy,
@@ -181,47 +222,10 @@ func (c *Copy) Execute(
 		"unpack",
 		sandboxID,
 		moveScript.String(),
-		cmdMetadata,
+		cmdMetadata.WithUser("root"),
 	)
 	if err != nil {
 		return metadata.Context{}, fmt.Errorf("failed to move files in sandbox: %w", err)
-	}
-
-	// If optional owner is provided, set them
-	if len(args) >= 3 {
-		// Assumes the format of chown
-		owner := args[2]
-		if owner != "" {
-			err = sandboxtools.RunCommand(
-				ctx,
-				proxy,
-				sandboxID,
-				fmt.Sprintf(`chown -R %s "%s"`, owner, targetPath),
-				cmdMetadata,
-			)
-			if err != nil {
-				return metadata.Context{}, fmt.Errorf("failed to set ownership: %w", err)
-			}
-		}
-	}
-
-	// If optional permissions are provided, set them
-	if len(args) >= 4 {
-		// This assumes the format of chmod
-		permissions := args[3]
-
-		if permissions != "" {
-			err = sandboxtools.RunCommand(
-				ctx,
-				proxy,
-				sandboxID,
-				fmt.Sprintf(`chmod -R %s "%s"`, permissions, targetPath),
-				cmdMetadata,
-			)
-			if err != nil {
-				return metadata.Context{}, fmt.Errorf("failed to set permissions: %w", err)
-			}
-		}
 	}
 
 	return cmdMetadata, nil
