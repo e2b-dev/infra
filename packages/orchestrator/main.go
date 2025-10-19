@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/soheilhy/cmux"
@@ -396,8 +397,9 @@ func run(config cfg.Config) (success bool) {
 	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
 
 	// template manager
+	var tmpl *tmplserver.ServerStore
 	if slices.Contains(services, cfg.TemplateManager) {
-		tmpl, err := tmplserver.New(
+		tmpl, err = tmplserver.New(
 			ctx,
 			tel.MeterProvider,
 			globalLogger,
@@ -497,6 +499,20 @@ func run(config cfg.Config) (success bool) {
 	// If service stats was previously changed via API, we don't want to override it.
 	if serviceInfo.GetStatus() == orchestratorinfo.ServiceInfoStatus_Healthy {
 		serviceInfo.SetStatus(orchestratorinfo.ServiceInfoStatus_Draining)
+
+		// Wait for draining state to propagate to all consumers
+		if !env.IsLocal() {
+			time.Sleep(15 * time.Second)
+		}
+	}
+
+	// Wait for services to be drained before closing them
+	if tmpl != nil {
+		err := tmpl.Wait(closeCtx)
+		if err != nil {
+			zap.L().Error("error while waiting for template manager to drain", zap.Error(err))
+			success = false
+		}
 	}
 
 	slices.Reverse(closers)
