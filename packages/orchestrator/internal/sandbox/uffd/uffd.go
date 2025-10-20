@@ -216,12 +216,3 @@ func (u *Uffd) Dirty(ctx context.Context) (*block.Tracker, error) {
 
 	return uffd.Dirty(ctx)
 }
-
-func (u *Uffd) ServePage(ctx context.Context, offset int64) error {
-	uffd, err := u.handler.WaitWithContext(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get uffd: %w", err)
-	}
-
-	return uffd.ServePage(ctx, offset)
-}

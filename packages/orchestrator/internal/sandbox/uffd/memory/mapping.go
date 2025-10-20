@@ -2,8 +2,6 @@ package memory
 
 import (
 	"fmt"
-
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 )
 
 type Mapping struct {
@@ -33,29 +31,6 @@ func (m *Mapping) GetHostVirtAddr(off int64) (int64, uint64, error) {
 	}
 
 	return int64(r.shiftedHostVirtAddr(off)), uint64(r.PageSize), nil
-}
-
-// GetHostVirtRanges returns the host virtual addresses and sizes (ranges) that cover exactly the given [offset, offset+length) range in the host virtual address space.
-func (m *Mapping) GetHostVirtRanges(off int64, size int64) (hostVirtRanges []block.Range, err error) {
-	for n := int64(0); n < size; {
-		currentOff := off + n
-
-		region, err := m.getHostVirtRegion(currentOff)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get host virt mapping: %w", err)
-		}
-
-		start := region.shiftedHostVirtAddr(currentOff)
-		s := min(int64(region.endHostVirtAddr()-start), size-n)
-
-		r := block.NewRange(int64(start), s)
-
-		hostVirtRanges = append(hostVirtRanges, r)
-
-		n += r.Size
-	}
-
-	return hostVirtRanges, nil
 }
 
 // getHostVirtRegion returns the region that contains the given offset.

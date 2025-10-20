@@ -259,25 +259,3 @@ func (u *Userfaultfd) handleWriteProtection(addr uintptr, offset int64, pagesize
 		return nil
 	})
 }
-
-func (u *Userfaultfd) ServePage(ctx context.Context, offset int64) error {
-	addr, pagesize, err := u.ma.GetHostVirtAddr(offset)
-	if err != nil {
-		return fmt.Errorf("failed to get host virt addr: %w", err)
-	}
-
-	// If the page was already faulted it should just return `EAGAIN`.
-	// If there is a hanging WRITE it should be handled by a separate write handle in the serve loop.
-	// TODO: Can we accidentally lose a WRITE if we manually trigger for a page that just now WRITE faulted and would be handled by the serve loop?
-	// - I don't think so as if we fault this page, we will also add WP so we should get WP in the serve loop. We should test this by triggering WRITE and then copying + adding WP for the page, to see if we get the WP triggered in the serve loop.
-	u.handleMissing(
-		ctx,
-		func() error { return nil },
-		uintptr(addr),
-		offset,
-		pagesize,
-		false,
-	)
-
-	return nil
-}
