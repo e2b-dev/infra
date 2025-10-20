@@ -163,6 +163,224 @@ type testCase struct {
 	expectedPaths map[string]string
 }
 
+func TestParseCopyArgs(t *testing.T) {
+	tests := []struct {
+		name          string
+		args          []string
+		defaultUser   string
+		expected      *copyArgs
+		expectedError string
+	}{
+		{
+			name:        "minimum_valid_arguments",
+			args:        []string{"/local/path", "/container/path"},
+			defaultUser: "user",
+			expected: &copyArgs{
+				SourcePath:  "/local/path",
+				TargetPath:  "/container/path",
+				Owner:       "user:user",
+				Permissions: "",
+			},
+		},
+		{
+			name:        "with_owner_specified",
+			args:        []string{"/local/path", "/container/path", "root"},
+			defaultUser: "user",
+			expected: &copyArgs{
+				SourcePath:  "/local/path",
+				TargetPath:  "/container/path",
+				Owner:       "root:root",
+				Permissions: "",
+			},
+		},
+		{
+			name:        "owner_with_group",
+			args:        []string{"/local/path", "/container/path", "www-data:www-data"},
+			defaultUser: "user",
+			expected: &copyArgs{
+				SourcePath:  "/local/path",
+				TargetPath:  "/container/path",
+				Owner:       "www-data:www-data",
+				Permissions: "",
+			},
+		},
+		{
+			name:        "owner_with_different_group",
+			args:        []string{"/local/path", "/container/path", "user:staff"},
+			defaultUser: "defaultuser",
+			expected: &copyArgs{
+				SourcePath:  "/local/path",
+				TargetPath:  "/container/path",
+				Owner:       "user:staff",
+				Permissions: "",
+			},
+		},
+		{
+			name:        "empty_owner_uses_default",
+			args:        []string{"/local/path", "/container/path", ""},
+			defaultUser: "ubuntu",
+			expected: &copyArgs{
+				SourcePath:  "/local/path",
+				TargetPath:  "/container/path",
+				Owner:       "ubuntu:ubuntu",
+				Permissions: "",
+			},
+		},
+		{
+			name:        "with_permissions_755",
+			args:        []string{"/local/path", "/container/path", "root", "755"},
+			defaultUser: "user",
+			expected: &copyArgs{
+				SourcePath:  "/local/path",
+				TargetPath:  "/container/path",
+				Owner:       "root:root",
+				Permissions: "755",
+			},
+		},
+		{
+			name:        "with_permissions_644",
+			args:        []string{"/local/path", "/container/path", "www-data:www-data", "644"},
+			defaultUser: "user",
+			expected: &copyArgs{
+				SourcePath:  "/local/path",
+				TargetPath:  "/container/path",
+				Owner:       "www-data:www-data",
+				Permissions: "644",
+			},
+		},
+		{
+			name:        "glob_pattern_single_asterisk",
+			args:        []string{"/app/*.js", "/dest/"},
+			defaultUser: "user",
+			expected: &copyArgs{
+				SourcePath:  "/app",
+				TargetPath:  "/dest/",
+				Owner:       "user:user",
+				Permissions: "",
+			},
+		},
+		{
+			name:        "glob_pattern_double_asterisk",
+			args:        []string{"/app/**/*.ts", "/dest/"},
+			defaultUser: "user",
+			expected: &copyArgs{
+				SourcePath:  "/app",
+				TargetPath:  "/dest/",
+				Owner:       "user:user",
+				Permissions: "",
+			},
+		},
+		{
+			name:        "glob_pattern_question_mark",
+			args:        []string{"/app/file?.txt", "/dest/"},
+			defaultUser: "user",
+			expected: &copyArgs{
+				SourcePath:  "/app",
+				TargetPath:  "/dest/",
+				Owner:       "user:user",
+				Permissions: "",
+			},
+		},
+		{
+			name:        "glob_pattern_brackets",
+			args:        []string{"/app/[abc].txt", "/dest/"},
+			defaultUser: "user",
+			expected: &copyArgs{
+				SourcePath:  "/app",
+				TargetPath:  "/dest/",
+				Owner:       "user:user",
+				Permissions: "",
+			},
+		},
+		{
+			name:        "no_glob_pattern_with_trailing_slash",
+			args:        []string{"/app/src/", "/dest/"},
+			defaultUser: "user",
+			expected: &copyArgs{
+				SourcePath:  "/app/src",
+				TargetPath:  "/dest/",
+				Owner:       "user:user",
+				Permissions: "",
+			},
+		},
+		{
+			name:        "no_glob_pattern_without_trailing_slash",
+			args:        []string{"/app/src", "/dest/"},
+			defaultUser: "user",
+			expected: &copyArgs{
+				SourcePath:  "/app/src",
+				TargetPath:  "/dest/",
+				Owner:       "user:user",
+				Permissions: "",
+			},
+		},
+		{
+			name:        "relative_paths",
+			args:        []string{"./local/path", "container/path"},
+			defaultUser: "user",
+			expected: &copyArgs{
+				SourcePath:  "./local/path",
+				TargetPath:  "container/path",
+				Owner:       "user:user",
+				Permissions: "",
+			},
+		},
+		{
+			name:        "complex_glob_at_end",
+			args:        []string{"/src/components/**/*.{ts,tsx}", "/dest/"},
+			defaultUser: "developer",
+			expected: &copyArgs{
+				SourcePath:  "/src/components",
+				TargetPath:  "/dest/",
+				Owner:       "developer:developer",
+				Permissions: "",
+			},
+		},
+		{
+			name:        "all_arguments_provided",
+			args:        []string{"/source/*.go", "/target/", "admin:sudo", "700"},
+			defaultUser: "user",
+			expected: &copyArgs{
+				SourcePath:  "/source",
+				TargetPath:  "/target/",
+				Owner:       "admin:sudo",
+				Permissions: "700",
+			},
+		},
+		{
+			name:          "error_no_arguments",
+			args:          []string{},
+			defaultUser:   "user",
+			expectedError: "COPY requires a local path and a container path argument",
+		},
+		{
+			name:          "error_one_argument",
+			args:          []string{"/local/path"},
+			defaultUser:   "user",
+			expectedError: "COPY requires a local path and a container path argument",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := parseCopyArgs(tt.args, tt.defaultUser)
+
+			if tt.expectedError != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+				assert.Nil(t, result)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				assert.Equal(t, tt.expected.SourcePath, result.SourcePath, "SourcePath mismatch")
+				assert.Equal(t, tt.expected.TargetPath, result.TargetPath, "TargetPath mismatch")
+				assert.Equal(t, tt.expected.Owner, result.Owner, "Owner mismatch")
+				assert.Equal(t, tt.expected.Permissions, result.Permissions, "Permissions mismatch")
+			}
+		})
+	}
+}
+
 func TestCopyScriptBehavior(t *testing.T) {
 	uid, gid := getCurrentUser()
 	currentUser := fmt.Sprintf("%d:%d", uid, gid)
