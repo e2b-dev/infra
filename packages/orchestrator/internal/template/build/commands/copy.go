@@ -59,14 +59,12 @@ if [ -z "$entry" ]; then
  exit 1
 fi
 
-{{- if .Owner }}
 # Apply ownership to the source before moving
 if [ -d "$entry" ]; then
  chown -R "{{ .Owner }}" "$entry"
 else
  chown "{{ .Owner }}" "$entry"
 fi
-{{- end }}
 
 {{- if .Permissions }}
 # Apply permissions to the source before moving
