@@ -2,7 +2,6 @@ package header
 
 import (
 	"fmt"
-	"iter"
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/google/uuid"
@@ -48,18 +47,6 @@ func NewHeader(metadata *Metadata, mapping []*BuildMap) (*Header, error) {
 		Mapping:     mapping,
 		startMap:    startMap,
 	}, nil
-}
-
-func (t *Header) FilterMapping(BuildId uuid.UUID) iter.Seq[*BuildMap] {
-	return func(yield func(*BuildMap) bool) {
-		for _, mapping := range t.Mapping {
-			if mapping.BuildId == BuildId {
-				if !yield(mapping) {
-					return
-				}
-			}
-		}
-	}
 }
 
 func (t *Header) GetShiftedMapping(offset int64) (mappedOffset int64, mappedLength int64, buildID *uuid.UUID, err error) {
