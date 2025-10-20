@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 )
 
 type SeedData struct {
@@ -209,6 +210,7 @@ func seed(ctx context.Context, db *db.DB, sqlcDB *client.Client, data SeedData) 
 			SetEnvdVersion("0.2.4").
 			SetNillableCreatedAt(build.createdAt).
 			SetClusterNodeID("integration-test-node").
+			SetVersion(templates.TemplateV1Version).
 			Save(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to create env build: %w", err)
