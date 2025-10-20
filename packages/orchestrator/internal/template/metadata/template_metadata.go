@@ -32,6 +32,11 @@ type Context struct {
 	EnvVars map[string]string `json:"env_vars,omitempty"`
 }
 
+func (c Context) WithUser(user string) Context {
+	c.User = user
+	return c
+}
+
 type FromTemplate struct {
 	Alias   string `json:"alias"`
 	BuildID string `json:"build_id"`
