@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -116,10 +117,9 @@ func (c *Copy) Execute(
 	cmdMetadata metadata.Context,
 ) (metadata.Context, error) {
 	cmdType := strings.ToUpper(step.GetType())
-	args := step.GetArgs()
-	// args: [localPath containerPath optional_owner optional_permissions]
-	if len(args) < 2 {
-		return metadata.Context{}, fmt.Errorf("%s requires a local path and a container path argument", cmdType)
+	args, err := parseCopyArgs(step.GetArgs(), cmdMetadata.User)
+	if err != nil {
+		return metadata.Context{}, err
 	}
 
 	if step.FilesHash == nil || step.GetFilesHash() == "" {
@@ -177,34 +177,13 @@ func (c *Copy) Execute(
 		return metadata.Context{}, fmt.Errorf("failed to extract files: %w", err)
 	}
 
-	// 4) Move the extracted files to the target path in the sandbox
-	targetPath := args[1]
-	// Remove all glob patterns, they are handled on the client side already
-	// Add / always at the end to ensure the last file/directory is also included if it doesn't contain a glob pattern
-	sourcePath, _ := doublestar.SplitPattern(ensureTrailingSlash(args[0]))
-
-	// Determine the target owner
-	owner := fmt.Sprintf("%s:%s", cmdMetadata.User, cmdMetadata.User)
-	if len(args) >= 3 && args[2] != "" {
-		// Assumes the format of chown: user:group or just user
-		owner = args[2]
-		if !strings.Contains(owner, ":") {
-			owner = fmt.Sprintf("%s:%s", owner, owner)
-		}
-	}
-
-	// Get optional permissions
-	permissions := ""
-	if len(args) >= 4 {
-		permissions = args[3]
-	}
-
 	var moveScript bytes.Buffer
 	err = copyScriptTemplate.Execute(&moveScript, copyScriptData{
-		SourcePath:  filepath.Join(sbxUnpackPath, sourcePath),
-		TargetPath:  targetPath,
-		Owner:       owner,
-		Permissions: permissions,
+		SourcePath: filepath.Join(sbxUnpackPath, args.SourcePath),
+		TargetPath: args.TargetPath,
+		Owner:      args.Owner,
+		// Optional permissions
+		Permissions: args.Permissions,
 	})
 	if err != nil {
 		return metadata.Context{}, fmt.Errorf("failed to execute copy script template: %w", err)
@@ -235,4 +214,49 @@ func ensureTrailingSlash(s string) string {
 	}
 
 	return s + "/"
+}
+
+type copyArgs struct {
+	SourcePath  string
+	TargetPath  string
+	Owner       string
+	Permissions string
+}
+
+func parseCopyArgs(args []string, defaultUser string) (*copyArgs, error) {
+	// Validate minimum arguments
+	// args: [localPath containerPath optional_owner optional_permissions]
+	if len(args) < 2 {
+		return nil, errors.New("COPY requires a local path and a container path argument")
+	}
+
+	// Remove all glob patterns, they are handled on the client side already
+	// Add / always at the end to ensure the last file/directory is also included if it doesn't contain a glob pattern
+	sourcePath, _ := doublestar.SplitPattern(ensureTrailingSlash(args[0]))
+
+	// Parse target path
+	targetPath := args[1]
+
+	// Determine owner (default to defaultUser:defaultUser)
+	owner := fmt.Sprintf("%s:%s", defaultUser, defaultUser)
+	if len(args) >= 3 && args[2] != "" {
+		owner = args[2]
+		// If no group specified, use the same as user
+		if !strings.Contains(owner, ":") {
+			owner = fmt.Sprintf("%s:%s", owner, owner)
+		}
+	}
+
+	// Parse optional permissions
+	permissions := ""
+	if len(args) >= 4 {
+		permissions = args[3]
+	}
+
+	return &copyArgs{
+		SourcePath:  sourcePath,
+		TargetPath:  targetPath,
+		Owner:       owner,
+		Permissions: permissions,
+	}, nil
 }
