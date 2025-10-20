@@ -33,6 +33,23 @@ func NewTrackerFromBitSet(b *bitset.BitSet, blockSize int64) *Tracker {
 	}
 }
 
+func NewTrackerFromMapping(mapping []*header.BuildMap, blockSize int64) *Tracker {
+	return NewTrackerFromRanges(slices.Collect(mappingRanges(mapping)), blockSize)
+}
+
+func NewTrackerFromRanges(ranges []Range, blockSize int64) *Tracker {
+	b := bitset.New(0)
+
+	for _, r := range ranges {
+		b.FlipRange(uint(r.Start), uint(r.End()))
+	}
+
+	return &Tracker{
+		b:         b,
+		blockSize: blockSize,
+	}
+}
+
 func (t *Tracker) Offsets() []int64 {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
@@ -110,6 +127,16 @@ func bitsetRanges(b *bitset.BitSet) iter.Seq[Range] {
 			}
 
 			start, ok = b.NextSet(end + 1)
+		}
+	}
+}
+
+func mappingRanges(mapping []*header.BuildMap) iter.Seq[Range] {
+	return func(yield func(Range) bool) {
+		for _, buildMap := range mapping {
+			if !yield(NewRangeFromBuildMap(buildMap)) {
+				return
+			}
 		}
 	}
 }

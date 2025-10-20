@@ -14,6 +14,29 @@ type Range struct {
 	Size int64
 }
 
+// NewRange creates a new range from a start address and size in bytes.
+func NewRange(start, size int64) Range {
+	return Range{
+		Start: start,
+		Size:  size,
+	}
+}
+
+func NewRangeFromBuildMap(b *header.BuildMap) Range {
+	return Range{
+		Start: int64(b.Offset),
+		Size:  int64(b.Length),
+	}
+}
+
+// NewRangeFromBlocks creates a new range from a start index and number of blocks.
+func NewRangeFromBlocks(startIdx, numberOfBlocks, blockSize int64) Range {
+	return Range{
+		Start: header.BlockOffset(startIdx, blockSize),
+		Size:  header.BlockOffset(numberOfBlocks, blockSize),
+	}
+}
+
 // End returns the end address of the range in bytes.
 // The end address is exclusive.
 func (r *Range) End() int64 {
@@ -29,21 +52,5 @@ func (r *Range) Offsets(blockSize int64) iter.Seq[int64] {
 				return
 			}
 		}
-	}
-}
-
-// NewRange creates a new range from a start address and size in bytes.
-func NewRange(start, size int64) Range {
-	return Range{
-		Start: start,
-		Size:  size,
-	}
-}
-
-// NewRangeFromBlocks creates a new range from a start index and number of blocks.
-func NewRangeFromBlocks(startIdx, numberOfBlocks, blockSize int64) Range {
-	return Range{
-		Start: header.BlockOffset(startIdx, blockSize),
-		Size:  header.BlockOffset(numberOfBlocks, blockSize),
 	}
 }
