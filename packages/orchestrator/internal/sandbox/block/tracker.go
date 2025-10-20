@@ -41,7 +41,7 @@ func NewTrackerFromRanges(ranges []Range, blockSize int64) *Tracker {
 	b := bitset.New(0)
 
 	for _, r := range ranges {
-		b.FlipRange(uint(r.Start), uint(r.End()))
+		b.FlipRange(uint(header.BlockIdx(r.Start, blockSize)), uint(header.BlockIdx(r.End(), blockSize)))
 	}
 
 	return &Tracker{
@@ -61,7 +61,7 @@ func (t *Tracker) Ranges() []Range {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
-	return slices.Collect(bitsetRanges(t.b))
+	return slices.Collect(bitsetRanges(t.b, t.blockSize))
 }
 
 func (t *Tracker) Has(off int64) bool {
@@ -91,6 +91,7 @@ func (t *Tracker) Reset() {
 	t.b.ClearAll()
 }
 
+// BitSet returns a clone of the bitset and the block size.
 func (t *Tracker) BitSet() *bitset.BitSet {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
@@ -98,10 +99,17 @@ func (t *Tracker) BitSet() *bitset.BitSet {
 	return t.b.Clone()
 }
 
+func (t *Tracker) BlockSize() int64 {
+	return t.blockSize
+}
+
 func (t *Tracker) Clone() *Tracker {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
 	return &Tracker{
-		b:         t.BitSet(),
-		blockSize: t.blockSize,
+		b:         t.b.Clone(),
+		blockSize: t.BlockSize(),
 	}
 }
 
@@ -112,17 +120,17 @@ func bitsetOffsets(b *bitset.BitSet, blockSize int64) iter.Seq[int64] {
 }
 
 // bitsetRanges returns a sequence of the ranges of the set bits of the bitset.
-func bitsetRanges(b *bitset.BitSet) iter.Seq[Range] {
+func bitsetRanges(b *bitset.BitSet, blockSize int64) iter.Seq[Range] {
 	return func(yield func(Range) bool) {
 		for start, ok := b.NextSet(0); ok; {
 			end, ok := b.NextClear(start)
 			if !ok {
-				yield(NewRange(int64(start), int64(b.Len()-start)))
+				yield(NewRange(header.BlockOffset(int64(start), blockSize), header.BlockOffset(int64(b.Len()-start), blockSize)))
 
 				return
 			}
 
-			if !yield(NewRange(int64(start), int64(end-start))) {
+			if !yield(NewRange(header.BlockOffset(int64(start), blockSize), header.BlockOffset(int64(end-start), blockSize))) {
 				return
 			}
 

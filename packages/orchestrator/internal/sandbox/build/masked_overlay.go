@@ -3,6 +3,7 @@ package build
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -22,7 +23,8 @@ func NewMaskedOverlay(lower, upper block.ReadonlyDevice) (*MaskedOverlay, error)
 		return nil, fmt.Errorf("lower and upper block sizes do not match")
 	}
 
-	mask := block.NewTrackerFromBitSet(upper.Header(), upper.BlockSize())
+	upperMapping := slices.Collect(upper.Header().FilterMapping(upper.Header().Metadata.BuildId))
+	mask := block.NewTrackerFromMapping(upperMapping, upper.BlockSize())
 
 	return &MaskedOverlay{
 		lower: lower,
@@ -44,11 +46,21 @@ func (m *MaskedOverlay) Header() *header.Header {
 }
 
 func (m *MaskedOverlay) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
-	return m.lower.ReadAt(ctx, p, off)
+	// TODO: Implement the selective read at for this
 }
 
 func (m *MaskedOverlay) Size() (int64, error) {
-	return m.lower.Size()
+	lowerSize, err := m.lower.Size()
+	if err != nil {
+		return 0, err
+	}
+
+	upperSize, err := m.upper.Size()
+	if err != nil {
+		return 0, err
+	}
+
+	return max(lowerSize, upperSize), nil
 }
 
 func (m *MaskedOverlay) Slice(ctx context.Context, off, length int64) ([]byte, error) {
@@ -58,3 +70,4 @@ func (m *MaskedOverlay) Slice(ctx context.Context, off, length int64) ([]byte, e
 
 	return m.lower.Slice(ctx, off, length)
 }
+
