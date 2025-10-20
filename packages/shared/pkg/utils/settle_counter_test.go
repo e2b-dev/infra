@@ -170,11 +170,11 @@ func TestSettleCounter_ConcurrentOperations(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Start multiple goroutines that add and then done
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for j := 0; j < operationsPerGoroutine; j++ {
+			for range operationsPerGoroutine {
 				sc.Add()
 				sc.Done()
 			}
@@ -203,7 +203,7 @@ func TestSettleCounter_MultipleWaiters(t *testing.T) {
 	errors := make([]error, numWaiters)
 
 	// Start multiple waiters
-	for i := 0; i < numWaiters; i++ {
+	for i := range numWaiters {
 		wg.Add(1)
 		go func(index int) {
 			defer wg.Done()

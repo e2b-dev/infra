@@ -160,11 +160,10 @@ func (u *Userfaultfd) handleMissing(
 		}
 
 		u.writeRequestCounter.Add()
-	} else {
+	} else if !u.missingRequests.Add(offset) {
 		// TODO: We should be able to add the page to the missing map on the write handle as well.
-		if !u.missingRequests.Add(offset) {
-			return
-		}
+
+		return
 	}
 
 	u.wg.Go(func() error {
@@ -201,7 +200,7 @@ func (u *Userfaultfd) handleMissing(
 		var copyMode CULong
 
 		if !write {
-			copyMode = copyMode | UFFDIO_COPY_MODE_WP
+			copyMode |= UFFDIO_COPY_MODE_WP
 		}
 
 		copyErr := u.copy(addr, b, pagesize, copyMode)
@@ -230,7 +229,6 @@ func (u *Userfaultfd) handleMissing(
 
 		return nil
 	})
-
 }
 
 func (u *Userfaultfd) handleWriteProtection(addr uintptr, offset int64, pagesize uint64) {

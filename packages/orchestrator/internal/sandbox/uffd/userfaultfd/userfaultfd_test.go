@@ -285,12 +285,12 @@ func TestUffdWriteProtection(t *testing.T) {
 			for _, operation := range tt.operations {
 				if operation.mode == operationModeRead {
 					err := h.executeRead(t.Context(), operation)
-					assert.NoError(t, err)
+					require.NoError(t, err)
 				}
 
 				if operation.mode == operationModeWrite {
 					err := h.executeWrite(t.Context(), operation)
-					assert.NoError(t, err)
+					require.NoError(t, err)
 				}
 			}
 
@@ -344,7 +344,7 @@ func (h *testHandler) executeRead(ctx context.Context, op operation) error {
 }
 
 func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
-	bytesToWrite, err := h.data.Slice(ctx, int64(op.offset), int64(h.pagesize))
+	bytesToWrite, err := h.data.Slice(ctx, op.offset, int64(h.pagesize))
 	if err != nil {
 		return err
 	}
@@ -367,6 +367,8 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 }
 
 func configureTest(t *testing.T, tt testConfig) *testHandler {
+	t.Helper()
+
 	data := testutils.RandomPages(tt.pagesize, tt.numberOfPages)
 
 	size, err := data.Size()
@@ -381,7 +383,7 @@ func configureTest(t *testing.T, tt testConfig) *testHandler {
 
 	m := memory.NewMapping([]memory.Region{
 		{
-			BaseHostVirtAddr: uintptr(memoryStart),
+			BaseHostVirtAddr: memoryStart,
 			Size:             uintptr(size),
 			Offset:           uintptr(0),
 			PageSize:         uintptr(tt.pagesize),
