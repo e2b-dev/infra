@@ -216,6 +216,20 @@ func (ebc *EnvBuildCreate) SetNillableReason(sr *schema.BuildReason) *EnvBuildCr
 	return ebc
 }
 
+// SetVersion sets the "version" field.
+func (ebc *EnvBuildCreate) SetVersion(s string) *EnvBuildCreate {
+	ebc.mutation.SetVersion(s)
+	return ebc
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (ebc *EnvBuildCreate) SetNillableVersion(s *string) *EnvBuildCreate {
+	if s != nil {
+		ebc.SetVersion(*s)
+	}
+	return ebc
+}
+
 // SetID sets the "id" field.
 func (ebc *EnvBuildCreate) SetID(u uuid.UUID) *EnvBuildCreate {
 	ebc.mutation.SetID(u)
@@ -427,6 +441,10 @@ func (ebc *EnvBuildCreate) createSpec() (*EnvBuild, *sqlgraph.CreateSpec) {
 	if value, ok := ebc.mutation.Reason(); ok {
 		_spec.SetField(envbuild.FieldReason, field.TypeJSON, value)
 		_node.Reason = value
+	}
+	if value, ok := ebc.mutation.Version(); ok {
+		_spec.SetField(envbuild.FieldVersion, field.TypeString, value)
+		_node.Version = &value
 	}
 	if nodes := ebc.mutation.EnvIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -747,6 +765,24 @@ func (u *EnvBuildUpsert) SetReason(v schema.BuildReason) *EnvBuildUpsert {
 // UpdateReason sets the "reason" field to the value that was provided on create.
 func (u *EnvBuildUpsert) UpdateReason() *EnvBuildUpsert {
 	u.SetExcluded(envbuild.FieldReason)
+	return u
+}
+
+// SetVersion sets the "version" field.
+func (u *EnvBuildUpsert) SetVersion(v string) *EnvBuildUpsert {
+	u.Set(envbuild.FieldVersion, v)
+	return u
+}
+
+// UpdateVersion sets the "version" field to the value that was provided on create.
+func (u *EnvBuildUpsert) UpdateVersion() *EnvBuildUpsert {
+	u.SetExcluded(envbuild.FieldVersion)
+	return u
+}
+
+// ClearVersion clears the value of the "version" field.
+func (u *EnvBuildUpsert) ClearVersion() *EnvBuildUpsert {
+	u.SetNull(envbuild.FieldVersion)
 	return u
 }
 
@@ -1092,6 +1128,27 @@ func (u *EnvBuildUpsertOne) SetReason(v schema.BuildReason) *EnvBuildUpsertOne {
 func (u *EnvBuildUpsertOne) UpdateReason() *EnvBuildUpsertOne {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.UpdateReason()
+	})
+}
+
+// SetVersion sets the "version" field.
+func (u *EnvBuildUpsertOne) SetVersion(v string) *EnvBuildUpsertOne {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.SetVersion(v)
+	})
+}
+
+// UpdateVersion sets the "version" field to the value that was provided on create.
+func (u *EnvBuildUpsertOne) UpdateVersion() *EnvBuildUpsertOne {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.UpdateVersion()
+	})
+}
+
+// ClearVersion clears the value of the "version" field.
+func (u *EnvBuildUpsertOne) ClearVersion() *EnvBuildUpsertOne {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.ClearVersion()
 	})
 }
 
@@ -1604,6 +1661,27 @@ func (u *EnvBuildUpsertBulk) SetReason(v schema.BuildReason) *EnvBuildUpsertBulk
 func (u *EnvBuildUpsertBulk) UpdateReason() *EnvBuildUpsertBulk {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.UpdateReason()
+	})
+}
+
+// SetVersion sets the "version" field.
+func (u *EnvBuildUpsertBulk) SetVersion(v string) *EnvBuildUpsertBulk {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.SetVersion(v)
+	})
+}
+
+// UpdateVersion sets the "version" field to the value that was provided on create.
+func (u *EnvBuildUpsertBulk) UpdateVersion() *EnvBuildUpsertBulk {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.UpdateVersion()
+	})
+}
+
+// ClearVersion clears the value of the "version" field.
+func (u *EnvBuildUpsertBulk) ClearVersion() *EnvBuildUpsertBulk {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.ClearVersion()
 	})
 }
 

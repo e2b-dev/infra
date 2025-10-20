@@ -25,10 +25,10 @@ type K8sServiceDiscovery struct {
 	filterNamespace string
 
 	hostIP bool
-	port   int
+	port   uint16
 }
 
-func NewK8sServiceDiscovery(ctx context.Context, logger *zap.Logger, client *kubernetes.Clientset, port int, podLabels string, podNamespace string, hostIP bool) *K8sServiceDiscovery {
+func NewK8sServiceDiscovery(ctx context.Context, logger *zap.Logger, client *kubernetes.Clientset, port uint16, podLabels string, podNamespace string, hostIP bool) *K8sServiceDiscovery {
 	sd := &K8sServiceDiscovery{
 		logger: logger,
 		client: client,

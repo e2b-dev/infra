@@ -93,30 +93,6 @@ func (f TeamFunc) Mutate(ctx context.Context, m models.Mutation) (models.Value, 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *models.TeamMutation", m)
 }
 
-// The TeamAPIKeyFunc type is an adapter to allow the use of ordinary
-// function as TeamAPIKey mutator.
-type TeamAPIKeyFunc func(context.Context, *models.TeamAPIKeyMutation) (models.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f TeamAPIKeyFunc) Mutate(ctx context.Context, m models.Mutation) (models.Value, error) {
-	if mv, ok := m.(*models.TeamAPIKeyMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *models.TeamAPIKeyMutation", m)
-}
-
-// The TierFunc type is an adapter to allow the use of ordinary
-// function as Tier mutator.
-type TierFunc func(context.Context, *models.TierMutation) (models.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f TierFunc) Mutate(ctx context.Context, m models.Mutation) (models.Value, error) {
-	if mv, ok := m.(*models.TierMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *models.TierMutation", m)
-}
-
 // The UserFunc type is an adapter to allow the use of ordinary
 // function as User mutator.
 type UserFunc func(context.Context, *models.UserMutation) (models.Value, error)

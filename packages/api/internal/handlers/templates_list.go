@@ -4,13 +4,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -19,61 +15,22 @@ import (
 func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 	ctx := c.Request.Context()
 
-	userID := c.Value(auth.UserIDContextKey).(uuid.UUID)
-
-	var team *queries.Team
-	teams, err := a.sqlcDB.GetTeamsWithUsersTeams(ctx, userID)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting teams")
-
-		telemetry.ReportCriticalError(ctx, "error when getting teams", err)
-
+	team, apiErr := a.GetTeamAndLimits(c, params.TeamID)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
 		return
 	}
 
 	if params.TeamID != nil {
-		teamUUID, err := uuid.Parse(*params.TeamID)
-		if err != nil {
-			a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid team ID")
-
-			telemetry.ReportError(ctx, "invalid team ID", err)
-
-			return
-		}
-
-		for _, t := range teams {
-			if t.Team.ID == teamUUID {
-				team = &t.Team
-				break
-			}
-		}
-
-		if team == nil {
-			a.sendAPIStoreError(c, http.StatusNotFound, "Team not found")
-
-			telemetry.ReportError(ctx, "team not found", err)
-
-			return
-		}
-	} else {
-		for _, t := range teams {
-			if t.UsersTeam.IsDefault {
-				team = &t.Team
-				break
-			}
-		}
-
-		if team == nil {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Default team not found")
-
-			telemetry.ReportError(ctx, "default team not found", err)
-
+		if team.ID.String() != *params.TeamID {
+			a.sendAPIStoreError(c, http.StatusBadRequest, "Team ID param mismatch with the API key")
+			telemetry.ReportError(ctx, "team param mismatch with the API key", nil, telemetry.WithTeamID(team.ID.String()))
 			return
 		}
 	}
 
 	telemetry.SetAttributes(ctx,
-		attribute.String("user.id", userID.String()),
 		telemetry.WithTeamID(team.ID.String()),
 	)
 
@@ -88,7 +45,7 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "listed environments", properties)
+	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed environments", properties)
 
 	templates := make([]*api.Template, 0, len(envs))
 	for _, item := range envs {

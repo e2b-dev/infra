@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -12,6 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 
+	"github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
@@ -21,6 +22,7 @@ var (
 	tokenID        = uuid.MustParse("3d98c426-d348-446b-bdf6-5be3ca4123e2")
 	userTokenValue = "89215020937a4c989cde33d7bc647715"
 	teamTokenValue = "53ae1fed82754c17ad8077fbc8bcdd90"
+	userID         = uuid.MustParse("fb69f46f-eb51-4a87-a14e-306f7a3fd89c")
 )
 
 func main() {
@@ -32,11 +34,15 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	if err := os.Setenv(
-		"POSTGRES_CONNECTION_STRING",
-		"postgresql://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable",
-	); err != nil {
-		return fmt.Errorf("failed to set environment variable: %w", err)
+	connectionString := os.Getenv("POSTGRES_CONNECTION_STRING")
+
+	if connectionString == "" {
+		if err := os.Setenv(
+			"POSTGRES_CONNECTION_STRING",
+			"postgresql://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable",
+		); err != nil {
+			return fmt.Errorf("failed to set environment variable: %w", err)
+		}
 	}
 
 	// init database
@@ -44,6 +50,13 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize db: %w", err)
 	}
+	defer database.Close()
+
+	sqlcDB, err := client.NewClient(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+	defer sqlcDB.Close()
 
 	// create user
 	user, err := upsertUser(ctx, database)
@@ -67,35 +80,35 @@ func run(ctx context.Context) error {
 	}
 
 	// create team token
-	if err = upsertTeamToken(ctx, database, team, keys.ApiKeyPrefix, teamTokenValue); err != nil {
+	if err = upsertTeamAPIKey(ctx, sqlcDB, team, keys.ApiKeyPrefix, teamTokenValue); err != nil {
 		return fmt.Errorf("failed to upsert token: %w", err)
 	}
 
 	// create local cluster
 	// if err = upsertLocalCluster(ctx, database); err != nil {
 	//	return fmt.Errorf("failed to upsert local cluster: %w", err)
-	//}
+	// }
 
 	return nil
 }
 
-func upsertTeamToken(ctx context.Context, database *db.DB, team *models.Team, tokenPrefix, token string) error {
+func upsertTeamAPIKey(ctx context.Context, sqlcDB *client.Client, team *models.Team, tokenPrefix, token string) error {
 	tokenHash, tokenMask, err := createTokenHash(tokenPrefix, token)
 	if err != nil {
 		return fmt.Errorf("failed to create token hash: %w", err)
 	}
 
-	if _, err = database.Client.TeamAPIKey.Create().
-		SetID(tokenID).
-		SetName("local dev seed token").
-		SetTeam(team).
-		SetAPIKeyHash(tokenHash).
-		SetAPIKeyLength(tokenMask.ValueLength).
-		SetAPIKeyPrefix(tokenMask.Prefix).
-		SetAPIKeyMaskPrefix(tokenMask.MaskedValuePrefix).
-		SetAPIKeyMaskSuffix(tokenMask.MaskedValueSuffix).
-		Save(ctx); ignoreConstraints(err) != nil {
-		return fmt.Errorf("failed to create token: %w", err)
+	if _, err = sqlcDB.CreateTeamAPIKey(ctx, queries.CreateTeamAPIKeyParams{
+		TeamID:           team.ID,
+		CreatedBy:        &userID,
+		ApiKeyHash:       tokenHash,
+		ApiKeyPrefix:     tokenMask.Prefix,
+		ApiKeyLength:     int32(tokenMask.ValueLength),
+		ApiKeyMaskPrefix: tokenMask.MaskedValuePrefix,
+		ApiKeyMaskSuffix: tokenMask.MaskedValueSuffix,
+		Name:             "local dev seed token",
+	}); err != nil {
+		return fmt.Errorf("failed to create team api key: %w", err)
 	}
 
 	return nil
@@ -106,7 +119,9 @@ func ensureUserIsOnTeam(ctx context.Context, database *db.DB, user *models.User,
 		SetTeamID(team.ID).
 		SetUserID(user.ID).
 		Save(ctx); err != nil {
-		return fmt.Errorf("failed to add user to team: %w", err)
+		if !models.IsConstraintError(err) {
+			return fmt.Errorf("failed to add user to team: %w", err)
+		}
 	}
 
 	return nil
@@ -161,7 +176,7 @@ func upsertTeam(ctx context.Context, database *db.DB) (*models.Team, error) {
 		cmd := database.Client.Team.UpdateOne(team)
 		cmd = updateTeam(cmd)
 		team, err = cmd.Save(ctx)
-	} else if errors.Is(err, sql.ErrNoRows) {
+	} else if models.IsNotFound(err) {
 		cmd := database.Client.Team.Create()
 		cmd = updateTeam(cmd).SetID(teamID)
 		team, err = cmd.Save(ctx)
@@ -173,19 +188,18 @@ func upsertTeam(ctx context.Context, database *db.DB) (*models.Team, error) {
 }
 
 func upsertUser(ctx context.Context, database *db.DB) (*models.User, error) {
-	userID := uuid.MustParse("fb69f46f-eb51-4a87-a14e-306f7a3fd89c")
 	user, err := database.Client.User.Get(ctx, userID)
 	if err == nil {
 		cmd := database.Client.User.UpdateOne(user)
 		cmd = updateUser(cmd)
 		user, err = cmd.Save(ctx)
-	} else if errors.Is(err, sql.ErrNoRows) {
+	} else if models.IsNotFound(err) {
 		cmd := database.Client.User.Create()
 		cmd = updateUser(cmd).SetID(userID)
 		user, err = cmd.Save(ctx)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to create team: %w", err)
+		return nil, fmt.Errorf("failed to upsert user: %w", err)
 	}
 	return user, nil
 }

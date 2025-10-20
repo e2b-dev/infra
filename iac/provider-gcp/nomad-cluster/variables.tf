@@ -100,6 +100,14 @@ variable "api_port" {
   })
 }
 
+variable "ingress_port" {
+  type = object({
+    name        = string
+    port        = number
+    health_path = string
+  })
+}
+
 variable "docker_reverse_proxy_port" {
   type = object({
     name        = string
@@ -318,4 +326,8 @@ variable "api_use_nat" {
 variable "api_nat_ips" {
   type        = list(string)
   description = "List of names for static IP addresses to use for NAT. If empty and api_use_nat is true, IPs will be created automatically."
+}
+
+variable "api_nat_min_ports_per_vm" {
+  type = number
 }

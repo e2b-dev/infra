@@ -59,6 +59,12 @@ variable "api_nat_ips" {
   default     = []
 }
 
+variable "api_nat_min_ports_per_vm" {
+  type        = number
+  description = "The default API NAT minimum ports per VM."
+  default     = 170
+}
+
 variable "api_resources_cpu_count" {
   type    = number
   default = 2
@@ -155,6 +161,11 @@ variable "client_proxy_count" {
   default = 1
 }
 
+variable "ingress_count" {
+  type    = number
+  default = 1
+}
+
 variable "client_proxy_resources_memory_mb" {
   type    = number
   default = 1024
@@ -220,6 +231,19 @@ variable "api_port" {
     name        = "api"
     port        = 50001
     health_path = "/health"
+  }
+}
+
+variable "ingress_port" {
+  type = object({
+    name        = string
+    port        = number
+    health_path = string
+  })
+  default = {
+    name        = "ingress"
+    port        = 8800
+    health_path = "/ping"
   }
 }
 

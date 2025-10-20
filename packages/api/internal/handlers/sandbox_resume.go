@@ -13,7 +13,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -26,7 +26,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	ctx := c.Request.Context()
 
 	// Get team from context, use TeamContextKey
-	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
+	teamInfo := c.Value(auth.TeamContextKey).(*types.Team)
 
 	span := trace.SpanFromContext(ctx)
 	traceID := span.SpanContext().TraceID().String()
@@ -47,8 +47,8 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	if body.Timeout != nil {
 		timeout = time.Duration(*body.Timeout) * time.Second
 
-		if timeout > time.Duration(teamInfo.Tier.MaxLengthHours)*time.Hour {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Tier.MaxLengthHours))
+		if timeout > time.Duration(teamInfo.Limits.MaxLengthHours)*time.Hour {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Limits.MaxLengthHours))
 
 			return
 		}
@@ -147,6 +147,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		autoPause,
 		envdAccessToken,
 		snap.AllowInternetAccess,
+		nil,
 	)
 	if createErr != nil {
 		zap.L().Error("Failed to resume sandbox", zap.Error(createErr.Err))

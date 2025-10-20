@@ -25,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/base"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/finalize"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/steps"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/user"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	buildcache "github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
@@ -34,6 +35,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const progressDelay = 5 * time.Second
@@ -99,7 +102,7 @@ type Result struct {
 //
 // 8. Snapshot
 // 9. Upload template (and all not yet uploaded layers)
-func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, config config.TemplateConfig, logsCore zapcore.Core) (r *Result, e error) {
+func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg config.TemplateConfig, logsCore zapcore.Core) (r *Result, e error) {
 	ctx, childSpan := tracer.Start(ctx, "build")
 	defer childSpan.End()
 
@@ -111,20 +114,20 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 		b.metrics.RecordBuildDuration(ctx, duration, success)
 
 		if success {
-			b.metrics.RecordBuildResult(ctx, config.TeamID, true)
+			b.metrics.RecordBuildResult(ctx, cfg.TeamID, true)
 			b.metrics.RecordRootfsSize(ctx, r.RootfsSizeMB<<constants.ToMBShift)
 		} else if !errors.Is(e, context.Canceled) {
 			// Skip reporting failure metrics only on explicit cancellation
-			b.metrics.RecordBuildResult(ctx, config.TeamID, false)
+			b.metrics.RecordBuildResult(ctx, cfg.TeamID, false)
 		}
 	}()
 
-	cacheScope := config.CacheScope
+	cacheScope := cfg.CacheScope
 
 	// Validate template, update force layers if needed
-	config = forceSteps(config)
+	cfg = forceSteps(cfg)
 
-	isV1Build := config.FromImage == "" && config.FromTemplate == nil
+	isV1Build := utils.IsVersion(cfg.Version, templates.TemplateV1Version) || (cfg.FromImage == "" && cfg.FromTemplate == nil)
 
 	logger := zap.New(logsCore)
 	defer func() {
@@ -141,7 +144,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 
 	defer func() {
 		if r := recover(); r != nil {
-			telemetry.ReportCriticalError(ctx, "recovered from panic in template build", nil, attribute.String("panic", fmt.Sprintf("%v", r)), telemetry.WithTemplateID(config.TemplateID), telemetry.WithBuildID(template.BuildID))
+			telemetry.ReportCriticalError(ctx, "recovered from panic in template build", nil, attribute.String("panic", fmt.Sprintf("%v", r)), telemetry.WithTemplateID(cfg.TemplateID), telemetry.WithBuildID(template.BuildID))
 			e = errors.New("fatal error occurred during template build, please contact us")
 		}
 	}()
@@ -152,7 +155,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 		logger = zap.New(hookedCore)
 	}
 
-	logger.Info(fmt.Sprintf("Building template %s/%s", config.TemplateID, template.BuildID))
+	logger.Info(fmt.Sprintf("Building template %s/%s", cfg.TemplateID, template.BuildID))
 
 	defer func(ctx context.Context) {
 		if e == nil {
@@ -181,12 +184,13 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, con
 	}()
 
 	buildContext := buildcontext.BuildContext{
-		Config:         config,
+		Config:         cfg,
 		Template:       template,
 		UploadErrGroup: &uploadErrGroup,
 		EnvdVersion:    envdVersion,
 		CacheScope:     cacheScope,
 		IsV1Build:      isV1Build,
+		Version:        cfg.Version,
 	}
 
 	return runBuild(ctx, logger, buildContext, b)
@@ -230,6 +234,19 @@ func runBuild(
 		builder.proxy,
 	)
 
+	userBuilder := user.New(
+		bc,
+		builder.sandboxFactory,
+		builder.logger,
+		builder.proxy,
+		layerExecutor,
+		commandExecutor,
+		index,
+		builder.metrics,
+		config.TemplateDefaultUser,
+		bc.Config.Force,
+	)
+
 	stepBuilders := steps.CreateStepPhases(
 		bc,
 		builder.sandboxFactory,
@@ -252,6 +269,14 @@ func runBuild(
 	// Construct the phases/steps to run
 	builders := []phases.BuilderPhase{
 		baseBuilder,
+	}
+	// Default user is only set for version TemplateDefaultUserVersion
+	ok, err := utils.IsGTEVersion(bc.Version, templates.TemplateV2ReleaseVersion)
+	if err != nil {
+		return nil, fmt.Errorf("error checking build version: %w", err)
+	}
+	if ok {
+		builders = append(builders, userBuilder)
 	}
 	builders = append(builders, stepBuilders...)
 	builders = append(builders, postProcessingBuilder)

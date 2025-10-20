@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/dberrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 )
 
 // PostV2Templates triggers a new template build
@@ -30,10 +31,10 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "started environment build")
 
 	// Prepare info for rebuilding env
-	team, tier, apiErr := a.GetTeamAndTier(c, body.TeamID)
+	team, apiErr := a.GetTeamAndLimits(c, body.TeamID)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+		telemetry.ReportCriticalError(ctx, "error when getting team, limits", apiErr.Err)
 		return
 	}
 
@@ -75,10 +76,10 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		TemplateID:    templateID,
 		UserID:        nil,
 		Team:          team,
-		Tier:          tier,
 		Alias:         &body.Alias,
 		CpuCount:      body.CpuCount,
 		MemoryMB:      body.MemoryMB,
+		Version:       templates.TemplateV2LatestVersion,
 	}
 
 	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.db, buildReq)

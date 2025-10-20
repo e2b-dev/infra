@@ -13,8 +13,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
@@ -35,14 +35,14 @@ type RegisterBuildData struct {
 	BuilderNodeID string
 	TemplateID    api.TemplateID
 	UserID        *uuid.UUID
-	Team          *queries.Team
-	Tier          *queries.Tier
+	Team          *types.Team
 	Dockerfile    string
 	Alias         *string
 	StartCmd      *string
 	ReadyCmd      *string
 	CpuCount      *int32
 	MemoryMB      *int32
+	Version       string
 }
 
 type RegisterBuildResponse struct {
@@ -67,14 +67,16 @@ func RegisterBuild(
 	teamBuildsExcludingCurrent := gutils.Filter(teamBuilds, func(item templatecache.TemplateBuildInfo) bool {
 		return item.TemplateID != data.TemplateID
 	})
-	if len(teamBuildsExcludingCurrent) >= int(data.Tier.ConcurrentTemplateBuilds) {
-		telemetry.ReportError(ctx, "team has reached max concurrent template builds", nil, telemetry.WithTeamID(data.Team.ID.String()), attribute.Int64("tier.concurrent_template_builds", data.Tier.ConcurrentTemplateBuilds))
+
+	totalConcurrentTemplateBuilds := data.Team.Limits.BuildConcurrency
+	if len(teamBuildsExcludingCurrent) >= int(totalConcurrentTemplateBuilds) {
+		telemetry.ReportError(ctx, "team has reached max concurrent template builds", nil, telemetry.WithTeamID(data.Team.ID.String()), attribute.Int64("total.concurrent_template_builds", totalConcurrentTemplateBuilds))
 		return nil, &api.APIError{
 			Code: http.StatusTooManyRequests,
 			ClientMsg: fmt.Sprintf(
 				"you have reached the maximum number of concurrent template builds (%d). Please wait for existing builds to complete or contact support if you need more concurrent builds.",
-				data.Tier.ConcurrentTemplateBuilds),
-			Err: fmt.Errorf("team '%s' has reached the maximum number of concurrent template builds (%d)", data.Team.ID, data.Tier.ConcurrentTemplateBuilds),
+				totalConcurrentTemplateBuilds),
+			Err: fmt.Errorf("team '%s' has reached the maximum number of concurrent template builds (%d)", data.Team.ID, totalConcurrentTemplateBuilds),
 		}
 	}
 
@@ -96,6 +98,7 @@ func RegisterBuild(
 		attribute.String("env.team.tier", data.Team.Tier),
 		telemetry.WithBuildID(buildID.String()),
 		attribute.String("env.dockerfile", data.Dockerfile),
+		attribute.String("env.version", data.Version),
 	)
 
 	if data.Alias != nil {
@@ -117,7 +120,7 @@ func RegisterBuild(
 		telemetry.SetAttributes(ctx, attribute.Int("env.memory_mb", int(*data.MemoryMB)))
 	}
 
-	cpuCount, ramMB, apiError := team.LimitResources(data.Tier, data.CpuCount, data.MemoryMB)
+	cpuCount, ramMB, apiError := team.LimitResources(data.Team.Limits, data.CpuCount, data.MemoryMB)
 	if apiError != nil {
 		telemetry.ReportCriticalError(ctx, "error when getting CPU and RAM", apiError.Err)
 		return nil, apiError
@@ -130,7 +133,7 @@ func RegisterBuild(
 			telemetry.ReportCriticalError(ctx, "invalid alias", err)
 			return nil, &api.APIError{
 				Err:       err,
-				ClientMsg: fmt.Sprintf("Invalid alias: %s", alias),
+				ClientMsg: fmt.Sprintf("Invalid alias: %s", *data.Alias),
 				Code:      http.StatusBadRequest,
 			}
 		}
@@ -202,11 +205,12 @@ func RegisterBuild(
 		SetVcpu(cpuCount).
 		SetKernelVersion(schema.DefaultKernelVersion).
 		SetFirecrackerVersion(schema.DefaultFirecrackerVersion).
-		SetFreeDiskSizeMB(data.Tier.DiskMb).
+		SetFreeDiskSizeMB(data.Team.Limits.DiskMb).
 		SetNillableStartCmd(data.StartCmd).
 		SetNillableReadyCmd(data.ReadyCmd).
 		SetClusterNodeID(data.BuilderNodeID).
 		SetDockerfile(data.Dockerfile).
+		SetVersion(data.Version).
 		Save(ctx)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when inserting build", err)

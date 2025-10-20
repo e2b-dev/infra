@@ -78,6 +78,7 @@ job "template-manager-system" {
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
         DOCKERHUB_REMOTE_REPOSITORY_URL  = "${dockerhub_remote_repository_url}"
         GRPC_PORT                     = "${port}"
+        GIN_MODE                      = "release"
 %{ if !update_stanza }
         FORCE_STOP                    = "true"
 %{ endif }

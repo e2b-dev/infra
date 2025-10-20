@@ -39,11 +39,23 @@ variable "api_nat_ips" {
   type = list(string)
 }
 
+variable "api_nat_min_ports_per_vm" {
+  type = number
+}
+
 variable "cloudflare_api_token_secret_name" {
   type = string
 }
 
 variable "api_port" {
+  type = object({
+    name        = string
+    port        = number
+    health_path = string
+  })
+}
+
+variable "ingress_port" {
   type = object({
     name        = string
     port        = number

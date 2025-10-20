@@ -6,14 +6,16 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-func IsGTEVersion(curVersion, minVersion string) (bool, error) {
-	if len(curVersion) > 0 && curVersion[0] != 'v' {
-		curVersion = "v" + curVersion
+func sanitizeVersion(version string) string {
+	if len(version) > 0 && version[0] != 'v' {
+		version = "v" + version
 	}
+	return version
+}
 
-	if len(minVersion) > 0 && minVersion[0] != 'v' {
-		minVersion = "v" + minVersion
-	}
+func IsGTEVersion(curVersion, minVersion string) (bool, error) {
+	curVersion = sanitizeVersion(curVersion)
+	minVersion = sanitizeVersion(minVersion)
 
 	if !semver.IsValid(curVersion) {
 		return false, fmt.Errorf("invalid current version format: %s", curVersion)
@@ -24,4 +26,26 @@ func IsGTEVersion(curVersion, minVersion string) (bool, error) {
 	}
 
 	return semver.Compare(curVersion, minVersion) >= 0, nil
+}
+
+func IsSmallerVersion(curVersion, maxVersionExcluded string) (bool, error) {
+	curVersion = sanitizeVersion(curVersion)
+	maxVersionExcluded = sanitizeVersion(maxVersionExcluded)
+
+	if !semver.IsValid(curVersion) {
+		return false, fmt.Errorf("invalid current version format: %s", curVersion)
+	}
+
+	if !semver.IsValid(maxVersionExcluded) {
+		return false, fmt.Errorf("invalid maximum version format: %s", maxVersionExcluded)
+	}
+
+	return semver.Compare(curVersion, maxVersionExcluded) < 0, nil
+}
+
+func IsVersion(curVersion, eqVersion string) bool {
+	curVersion = sanitizeVersion(curVersion)
+	eqVersion = sanitizeVersion(eqVersion)
+
+	return semver.Compare(curVersion, eqVersion) == 0
 }
