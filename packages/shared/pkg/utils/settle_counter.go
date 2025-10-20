@@ -61,7 +61,7 @@ func (w *SettleCounter) Wait(ctx context.Context) error {
 	return nil
 }
 
-func (w *SettleCounter) Close() {
+func (w *SettleCounter) close() {
 	w.counter.Store(w.settleValue)
 
 	w.cond.Broadcast()

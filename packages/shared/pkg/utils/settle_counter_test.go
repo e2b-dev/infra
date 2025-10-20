@@ -147,7 +147,7 @@ func TestSettleCounter_Close(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Close should settle the counter
-	sc.Close()
+	sc.close()
 
 	// Wait for the wait to complete
 	wg.Wait()
