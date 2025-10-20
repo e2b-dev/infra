@@ -10,18 +10,7 @@ import (
 
 const trackingTable = "_migrations"
 
-func CheckMigrationVersion(connectionString string, expectedMigration int64) error {
-	db, err := sql.Open("postgres", connectionString)
-	if err != nil {
-		return fmt.Errorf("failed to connect: %w", err)
-	}
-	defer func() {
-		dbErr := db.Close()
-		if dbErr != nil {
-			zap.L().Error("Failed to close database connection", zap.Error(dbErr))
-		}
-	}()
-
+func CheckMigrationVersion(db *sql.DB, expectedMigration int64) error {
 	goose.SetTableName(trackingTable)
 
 	version, err := goose.GetDBVersion(db)
