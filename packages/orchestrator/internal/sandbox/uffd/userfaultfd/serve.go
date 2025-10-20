@@ -122,7 +122,6 @@ outerLoop:
 		}
 
 		// Handle write to write protected page (WP+WRITE flag)
-		// TODO: Check if the WP is always with WP+WRITE flag
 		if flags&UFFD_PAGEFAULT_FLAG_WP != 0 && flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
 			u.handleWriteProtection(addr, offset, pagesize)
 
@@ -142,6 +141,8 @@ outerLoop:
 
 			continue
 		}
+
+		u.logger.Warn("UFFD serve unexpected event type", zap.Any("event_type", flags))
 	}
 }
 
