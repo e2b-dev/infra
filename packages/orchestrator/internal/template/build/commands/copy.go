@@ -53,6 +53,7 @@ fi
 
 cd "$sourceFolder" || exit 1
 
+# Get the first entry (file, directory, or symlink)
 entry=$(ls -A | head -n 1)
 
 if [ -z "$entry" ]; then
@@ -60,37 +61,34 @@ if [ -z "$entry" ]; then
  exit 1
 fi
 
-# Apply ownership to the source before moving
-if [ -d "$entry" ]; then
- chown -R "{{ .Owner }}" "$entry"
-else
- chown "{{ .Owner }}" "$entry"
-fi
-
-{{- if .Permissions }}
-# Apply permissions to the source before moving
-if [ -d "$entry" ]; then
- chmod -R "{{ .Permissions }}" "$entry"
-else
- chmod "{{ .Permissions }}" "$entry"
-fi
-{{- end }}
-
+# Check type BEFORE applying ownership/permissions to avoid dereferencing symlinks
 if [ -L "$entry" ]; then
- # It's a symlink file – create parent folders and move+rename it to the exact path
+ # It's a symlink – create parent folders and move+rename it to the exact path
  mkdir -p "$(dirname "$targetPath")"
+ # Change ownership of the symlink itself (not the target)
+ chown -h "{{ .Owner }}" "$entry"
+ # Note: chmod on symlinks affects the target, not the link itself in most systems
+ # We skip chmod for symlinks as it's typically not meaningful
  mv "$entry" "$targetPath"
 elif [ -f "$entry" ]; then
  # It's a file – create parent folders and move+rename it to the exact path
+ chown "{{ .Owner }}" "$entry"
+ {{ if .Permissions -}}
+  chmod "{{ .Permissions }}" "$entry"
+ {{ end -}}
  mkdir -p "$(dirname "$targetPath")"
  mv "$entry" "$targetPath"
 elif [ -d "$entry" ]; then
- # It's a directory – move all its contents into the destination folder
+ # It's a directory – apply ownership/permissions recursively, then move contents
+ chown -R "{{ .Owner }}" "$entry"
+ {{ if .Permissions -}}
+  chmod -R "{{ .Permissions }}" "$entry"
+ {{ end -}}
  mkdir -p "$targetPath"
  # Move all contents including hidden files
  find "$entry" -mindepth 1 -maxdepth 1 -exec mv {} "$targetPath/" \;
 else
- echo "Error: entry is neither file nor directory"
+ echo "Error: entry is neither file, directory, nor symlink"
  exit 1
 fi
 `))

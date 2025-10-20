@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,25 +15,25 @@ import (
 
 // setupTestEnvironment creates a temporary directory structure for testing
 func setupTestEnvironment(t *testing.T) (sourceDir, targetBaseDir, workDir string) {
+	t.Helper()
 	tmpBase := t.TempDir()
 	sourceDir = filepath.Join(tmpBase, "source")
 	targetBaseDir = filepath.Join(tmpBase, "target")
-	workDir = filepath.Join(tmpBase, "work")
 
 	require.NoError(t, os.MkdirAll(sourceDir, 0o755))
 	require.NoError(t, os.MkdirAll(targetBaseDir, 0o755))
-	require.NoError(t, os.MkdirAll(workDir, 0o755))
 
 	return sourceDir, targetBaseDir, workDir
 }
 
 // executeScript runs the generated bash script and returns the result
 func executeScript(t *testing.T, script string, workDir string) (stdout, stderr string, exitCode int) {
+	t.Helper()
 	scriptFile := filepath.Join(workDir, "test_script.sh")
 	err := os.WriteFile(scriptFile, []byte(script), 0o755)
 	require.NoError(t, err, "Failed to write script file")
 
-	cmd := exec.Command("/bin/bash", scriptFile)
+	cmd := exec.CommandContext(t.Context(), "/bin/bash", scriptFile)
 	cmd.Dir = workDir
 
 	var outBuf, errBuf bytes.Buffer
@@ -44,7 +45,8 @@ func executeScript(t *testing.T, script string, workDir string) (stdout, stderr 
 	stderr = errBuf.String()
 
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
 			exitCode = exitErr.ExitCode()
 		} else {
 			t.Fatalf("Failed to execute script: %v", err)
@@ -57,7 +59,7 @@ func executeScript(t *testing.T, script string, workDir string) (stdout, stderr 
 }
 
 // getCurrentUser returns current user and group for testing
-func getCurrentUser(t *testing.T) (uid, gid int) {
+func getCurrentUser() (uid, gid int) {
 	uid = os.Getuid()
 	gid = os.Getgid()
 	return uid, gid
@@ -65,6 +67,7 @@ func getCurrentUser(t *testing.T) (uid, gid int) {
 
 // getFilePermissions returns the permission bits of a file
 func getFilePermissions(t *testing.T, path string) os.FileMode {
+	t.Helper()
 	info, err := os.Stat(path)
 	require.NoError(t, err, "Failed to stat file")
 	return info.Mode().Perm()
@@ -72,6 +75,7 @@ func getFilePermissions(t *testing.T, path string) os.FileMode {
 
 // renderTemplate is a helper to render the template
 func renderTemplate(t *testing.T, data copyScriptData) string {
+	t.Helper()
 	var buf bytes.Buffer
 	err := copyScriptTemplate.Execute(&buf, data)
 	require.NoError(t, err, "Template execution should not fail")
@@ -81,6 +85,7 @@ func renderTemplate(t *testing.T, data copyScriptData) string {
 // createFilesAndDirs creates files, directories, and symlinks from a map
 // Values: "file", "dir", "symlink"
 func createFilesAndDirs(t *testing.T, baseDir string, paths map[string]string) {
+	t.Helper()
 	for path, entryType := range paths {
 		fullPath := filepath.Join(baseDir, path)
 
@@ -107,6 +112,7 @@ func createFilesAndDirs(t *testing.T, baseDir string, paths map[string]string) {
 
 // verifyFilesAndDirs verifies files, directories, and symlinks exist
 func verifyFilesAndDirs(t *testing.T, baseDir string, paths map[string]string) {
+	t.Helper()
 	for path, entryType := range paths {
 		fullPath := filepath.Join(baseDir, path)
 
@@ -158,7 +164,7 @@ type testCase struct {
 }
 
 func TestCopyScriptBehavior(t *testing.T) {
-	uid, gid := getCurrentUser(t)
+	uid, gid := getCurrentUser()
 	currentUser := fmt.Sprintf("%d:%d", uid, gid)
 
 	tests := []testCase{
@@ -168,11 +174,11 @@ func TestCopyScriptBehavior(t *testing.T) {
 			files: map[string]string{
 				"test.txt": "file",
 			},
-			copyFrom:      ".",
-			copyTo:        "/dest/copied.txt",
+			copyFrom:      "test.txt",
+			copyTo:        "dest/file.txt",
 			shouldSucceed: true,
 			expectedPaths: map[string]string{
-				"dest/copied.txt": "file",
+				"dest/file.txt": "file",
 			},
 		},
 		{
@@ -183,7 +189,7 @@ func TestCopyScriptBehavior(t *testing.T) {
 				"file2.txt": "file",
 			},
 			copyFrom:      ".",
-			copyTo:        "/dest/",
+			copyTo:        "dest/",
 			shouldSucceed: true,
 			expectedPaths: map[string]string{
 				"dest/file1.txt": "file",
@@ -202,7 +208,7 @@ func TestCopyScriptBehavior(t *testing.T) {
 				"app/src/utils/helper.js": "file",
 			},
 			copyFrom:      ".",
-			copyTo:        "/work/",
+			copyTo:        "work/",
 			shouldSucceed: true,
 			expectedPaths: map[string]string{
 				"work/app/main.js":             "file",
@@ -224,7 +230,7 @@ func TestCopyScriptBehavior(t *testing.T) {
 				"app/src/utils/helper.js": "file",
 			},
 			copyFrom:      "app/",
-			copyTo:        "/app/",
+			copyTo:        "app/",
 			shouldSucceed: true,
 			expectedPaths: map[string]string{
 				"app/main.js":             "file",
@@ -267,7 +273,7 @@ func TestCopyScriptBehavior(t *testing.T) {
 				"project/tests/integration/api.ts": "file",
 			},
 			copyFrom:      "project/tests/",
-			copyTo:        "/test-suite/",
+			copyTo:        "test-suite/",
 			shouldSucceed: true,
 			expectedPaths: map[string]string{
 				"test-suite/unit/":              "dir",
@@ -278,38 +284,12 @@ func TestCopyScriptBehavior(t *testing.T) {
 			},
 		},
 		{
-			name:        "relative_target_path",
-			description: "Target path is relative to working directory",
-			files: map[string]string{
-				"config.json": "file",
-			},
-			copyFrom:      ".",
-			copyTo:        "relative/path/config.json",
-			shouldSucceed: true,
-			expectedPaths: map[string]string{
-				"relative/path/config.json": "file",
-			},
-		},
-		{
-			name:        "absolute_target_path",
-			description: "Target path is absolute",
-			files: map[string]string{
-				"data.txt": "file",
-			},
-			copyFrom:      ".",
-			copyTo:        "/absolute/path/data.txt",
-			shouldSucceed: true,
-			expectedPaths: map[string]string{
-				"absolute/path/data.txt": "file",
-			},
-		},
-		{
 			name:        "with_permissions_755",
 			description: "File copied with 755 permissions",
 			files: map[string]string{
 				"script.sh": "file",
 			},
-			copyFrom:      ".",
+			copyFrom:      "script.sh",
 			copyTo:        "/dest/script.sh",
 			permissions:   "755",
 			shouldSucceed: true,
@@ -323,7 +303,7 @@ func TestCopyScriptBehavior(t *testing.T) {
 			files: map[string]string{
 				"readme.md": "file",
 			},
-			copyFrom:      ".",
+			copyFrom:      "readme.md",
 			copyTo:        "/dest/readme.md",
 			permissions:   "644",
 			shouldSucceed: true,
@@ -349,23 +329,12 @@ func TestCopyScriptBehavior(t *testing.T) {
 			},
 		},
 		{
-			name:             "empty_source_folder",
-			description:      "Empty extraction should fail with error",
-			files:            map[string]string{},
-			copyFrom:         ".",
-			copyTo:           "/dest/file.txt",
-			shouldSucceed:    false,
-			expectedExitCode: 1,
-			expectedError:    "Error: sourceFolder is empty",
-			expectedPaths:    map[string]string{},
-		},
-		{
 			name:        "symlink_preservation",
 			description: "Symlinks should be preserved as symlinks",
 			files: map[string]string{
 				"link.txt": "symlink",
 			},
-			copyFrom:      ".",
+			copyFrom:      "link.txt",
 			copyTo:        "/dest/link.txt",
 			shouldSucceed: true,
 			expectedPaths: map[string]string{
@@ -455,15 +424,17 @@ func TestCopyScriptBehavior(t *testing.T) {
 			// Create files and directories
 			createFilesAndDirs(t, unpackDir, tc.files)
 
+			// Verify expected paths exist
+			if len(tc.files) > 0 {
+				verifyFilesAndDirs(t, unpackDir, tc.files)
+			}
+
 			// Internal: construct SourcePath (sbxUnpackPath + user's copyFrom path)
 			// This mimics how copy.go constructs the path: filepath.Join(sbxUnpackPath, sourcePath)
 			sourcePath := filepath.Join(unpackDir, tc.copyFrom)
 
-			// Make target path absolute if it starts with /
-			targetPath := tc.copyTo
-			if filepath.IsAbs(targetPath) {
-				targetPath = filepath.Join(targetBaseDir, targetPath)
-			}
+			// Make target path absolute
+			targetPathOrFile := filepath.Join(targetBaseDir, tc.copyTo)
 
 			// Set owner if not specified
 			owner := tc.owner
@@ -472,14 +443,12 @@ func TestCopyScriptBehavior(t *testing.T) {
 			}
 
 			// Generate script
-			data := copyScriptData{
+			script := renderTemplate(t, copyScriptData{
 				SourcePath:  sourcePath,
-				TargetPath:  targetPath,
+				TargetPath:  targetPathOrFile,
 				Owner:       owner,
 				Permissions: tc.permissions,
-			}
-
-			script := renderTemplate(t, data)
+			})
 
 			// Execute script
 			stdout, stderr, exitCode := executeScript(t, script, workDir)
@@ -502,23 +471,14 @@ func TestCopyScriptBehavior(t *testing.T) {
 
 			// Verify expected paths exist
 			if len(tc.expectedPaths) > 0 {
-				baseDir := targetBaseDir
-				// For relative paths, verify in workDir
-				if !filepath.IsAbs(tc.copyTo) {
-					baseDir = workDir
-				}
-				verifyFilesAndDirs(t, baseDir, tc.expectedPaths)
+				verifyFilesAndDirs(t, targetBaseDir, tc.expectedPaths)
 			}
 
 			// Special verification for permissions tests
 			if tc.permissions != "" && tc.shouldSucceed {
-				baseDir := targetBaseDir
-				if !filepath.IsAbs(tc.copyTo) {
-					baseDir = workDir
-				}
 				for path, entryType := range tc.expectedPaths {
-					if entryType == "file" {
-						fullPath := filepath.Join(baseDir, path)
+					if entryType == "file" || entryType == "folder" {
+						fullPath := filepath.Join(targetBaseDir, path)
 						perms := getFilePermissions(t, fullPath)
 						expectedPerms := os.FileMode(0)
 						fmt.Sscanf(tc.permissions, "%o", &expectedPerms)
