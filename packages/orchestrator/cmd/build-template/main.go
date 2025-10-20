@@ -199,6 +199,7 @@ func buildTemplate(
 		sandboxes,
 		templateCache,
 		buildMetrics,
+		featureFlags,
 	)
 
 	logger = logger.

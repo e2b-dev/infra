@@ -20,6 +20,7 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -58,6 +59,7 @@ func New(
 	templatePersistence storage.StorageProvider,
 	limiter *limit.Limiter,
 	info *service.ServiceInfo,
+	flags *featureflags.Client,
 ) (s *ServerStore, e error) {
 	logger.Info("Initializing template manager")
 
@@ -107,6 +109,7 @@ func New(
 		sandboxes,
 		templateCache,
 		buildMetrics,
+		flags,
 	)
 
 	store := &ServerStore{
