@@ -27,10 +27,7 @@ WORKDIR /build
 
 COPY ./clickhouse/pkg ./clickhouse/pkg
 COPY ./shared/pkg ./shared/pkg
-COPY ./db/client ./db/client
-COPY ./db/dberrors ./db/dberrors
-COPY ./db/queries ./db/queries
-COPY ./db/types ./db/types
+COPY ./db/pkg ./db/pkg
 
 COPY ./api/internal ./api/internal
 COPY ./api/main.go ./api/main.go

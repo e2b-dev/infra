@@ -5,10 +5,6 @@ ARG ALPINE_VERSION=3.22
 FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
 
 # Cached golang dependencies
-WORKDIR /build/shared
-COPY ./shared/go.mod ./shared/go.sum ./
-RUN go mod download
-
 WORKDIR /build/db
 COPY ./db/go.mod ./db/go.sum ./
 RUN go mod download
@@ -16,14 +12,12 @@ RUN go mod download
 # Copy source code
 WORKDIR /build
 
-COPY ./shared/pkg ./shared/pkg
-
-COPY ./db/scripts/migrator.go ./db/scripts/migrator.go
+COPY ./db/cmd/migrator/migrator.go ./db/cmd/migrator/migrator.go
 COPY ./db/migrations/ ./db/migrations
 
 WORKDIR /build/db
 
-RUN go build -o ./bin/migrator ./scripts/migrator.go
+RUN go build -o ./bin/migrator ./cmd/migrator/migrator.go
 RUN chmod +x ./bin/migrator
 
 FROM alpine:${ALPINE_VERSION}
