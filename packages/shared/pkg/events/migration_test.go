@@ -13,6 +13,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 			in: SandboxEvent{
 				EventCategory: "lifecycle",
 				EventLabel:    "create",
+				Version:       "v1",
 			},
 			want: SandboxEvent{
 				EventCategory: "lifecycle",
@@ -25,6 +26,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 			in: SandboxEvent{
 				EventCategory: "lifecycle",
 				EventLabel:    "pause",
+				Version:       "v1",
 			},
 			want: SandboxEvent{
 				EventCategory: "lifecycle",
@@ -37,6 +39,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 			in: SandboxEvent{
 				EventCategory: "lifecycle",
 				EventLabel:    "kill",
+				Version:       "v1",
 			},
 			want: SandboxEvent{
 				EventCategory: "lifecycle",
@@ -49,6 +52,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 			in: SandboxEvent{
 				EventCategory: "lifecycle",
 				EventLabel:    "resume",
+				Version:       "v1",
 			},
 			want: SandboxEvent{
 				EventCategory: "lifecycle",
@@ -61,6 +65,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 			in: SandboxEvent{
 				EventCategory: "lifecycle",
 				EventLabel:    "update",
+				Version:       "v1",
 			},
 			want: SandboxEvent{
 				EventCategory: "lifecycle",
