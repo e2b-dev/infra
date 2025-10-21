@@ -168,7 +168,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(sbx)
 	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), events.SandboxEvent{
-		Version:       events.StructureVersionV1,
+		Version:       events.StructureVersionV2,
 		EventCategory: eventType.LegacyCategory,
 		EventLabel:    eventType.LegacyLabel,
 		Type:          eventType.Type,
@@ -210,7 +210,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	eventType := events.SandboxUpdatedEventPair
 
 	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), events.SandboxEvent{
-		Version:       events.StructureVersionV1,
+		Version:       events.StructureVersionV2,
 		EventCategory: eventType.LegacyCategory,
 		EventLabel:    eventType.LegacyLabel,
 		Type:          eventType.Type,
@@ -299,7 +299,7 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	eventType := events.SandboxKilledEventPair
 	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), events.SandboxEvent{
-		Version:       events.StructureVersionV1,
+		Version:       events.StructureVersionV2,
 		EventCategory: eventType.LegacyCategory,
 		EventLabel:    eventType.LegacyLabel,
 		Type:          eventType.Type,
@@ -409,7 +409,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	eventType := events.SandboxPausedEventPair
 	go s.sbxEventsService.HandleEvent(context.WithoutCancel(ctx), events.SandboxEvent{
-		Version:       events.StructureVersionV1,
+		Version:       events.StructureVersionV2,
 		EventCategory: eventType.LegacyCategory,
 		EventLabel:    eventType.LegacyLabel,
 		Type:          eventType.Type,

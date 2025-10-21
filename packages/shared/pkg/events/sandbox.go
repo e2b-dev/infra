@@ -6,7 +6,10 @@ import (
 	"github.com/google/uuid"
 )
 
-const StructureVersionV1 = "v1"
+const (
+	StructureVersionV1 = "v1"
+	StructureVersionV2 = "v2"
+)
 
 const (
 	SandboxCreatedEvent = "sandbox.lifecycle.created"
