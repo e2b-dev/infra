@@ -53,6 +53,7 @@ func New(memfile block.ReadonlyDevice, socketPath string) (*Uffd, error) {
 		fdExit:     fdExit,
 		socketPath: socketPath,
 		memfile:    memfile,
+		handler:    *utils.NewSetOnce[*userfaultfd.Userfaultfd](),
 	}, nil
 }
 
