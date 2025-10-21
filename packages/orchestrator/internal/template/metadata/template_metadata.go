@@ -180,6 +180,7 @@ func deserialize(reader io.Reader) (Template, error) {
 	if err != nil {
 		return Template{}, fmt.Errorf("error unmarshaling template metadata: %w", err)
 	}
+
 	return templateMetadata, nil
 }
 
@@ -190,5 +191,6 @@ func serialize(template Template) (io.Reader, error) {
 	}
 
 	buf := bytes.NewBuffer(marshaled)
+
 	return buf, nil
 }

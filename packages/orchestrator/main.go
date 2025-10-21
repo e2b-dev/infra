@@ -316,6 +316,7 @@ func run(config cfg.Config) (success bool) {
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}
+
 		return err
 	})
 	closers = append(closers, closer{"sandbox proxy", sandboxProxy.Close})
@@ -327,6 +328,7 @@ func run(config cfg.Config) (success bool) {
 	}
 	startService("nbd device pool", func() error {
 		devicePool.Populate(ctx)
+
 		return nil
 	})
 	closers = append(closers, closer{"device pool", devicePool.Close})
@@ -338,6 +340,7 @@ func run(config cfg.Config) (success bool) {
 	}
 	startService("network pool", func() error {
 		networkPool.Populate(ctx)
+
 		return nil
 	})
 	closers = append(closers, closer{"network pool", networkPool.Close})
@@ -375,6 +378,7 @@ func run(config cfg.Config) (success bool) {
 			if err := tmplSbxLoggerExternal.Sync(); err != nil && !errors.Is(err, syscall.EINVAL) {
 				return err
 			}
+
 			return nil
 		},
 	})
@@ -389,6 +393,7 @@ func run(config cfg.Config) (success bool) {
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}
+
 		return err
 	})
 	closers = append(closers, closer{"hyperloop server", hyperloopSrv.Shutdown})
@@ -438,11 +443,13 @@ func run(config cfg.Config) (success bool) {
 		if err != nil && strings.Contains(err.Error(), "use of closed network connection") {
 			return nil
 		}
+
 		return err
 	})
 	closers = append(closers, closer{"cmux server", func(context.Context) error {
 		zap.L().Info("Shutting down cmux server")
 		cmuxServer.Close()
+
 		return nil
 	}})
 
@@ -478,6 +485,7 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{"grpc server", func(context.Context) error {
 		zap.L().Info("Shutting down grpc server")
 		grpcServer.GracefulStop()
+
 		return nil
 	}})
 

@@ -168,6 +168,7 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 	if err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error during auth validation")
 		jsonError(w, http.StatusUnauthorized, err)
+
 		return
 	}
 
@@ -175,6 +176,7 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 	if err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("no user specified")
 		jsonError(w, http.StatusBadRequest, err)
+
 		return
 	}
 

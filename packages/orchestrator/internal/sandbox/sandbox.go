@@ -615,6 +615,7 @@ func (s *Sandbox) Close(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to cleanup sandbox: %w", err)
 	}
+
 	return nil
 }
 
@@ -903,6 +904,7 @@ func getNetworkSlotAsync(
 		ips, err := networkPool.Get(ctx, allowInternet)
 		if err != nil {
 			r <- networkSlotRes{nil, fmt.Errorf("failed to get network slot: %w", err)}
+
 			return
 		}
 
@@ -1031,5 +1033,6 @@ func (f *Factory) GetEnvdInitRequestTimeout(ctx context.Context) time.Duration {
 	if err != nil {
 		zap.L().Warn("failed to get envd timeout from feature flag, using default", zap.Error(err))
 	}
+
 	return time.Duration(envdInitRequestTimeoutMs) * time.Millisecond
 }

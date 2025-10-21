@@ -34,6 +34,7 @@ func NewTemplateSpawnCounter(ctx context.Context, tickerDuration time.Duration, 
 	}
 
 	go counter.processUpdates(ctx)
+
 	return counter
 }
 
@@ -54,9 +55,11 @@ func (t *TemplateSpawnCounter) processUpdates(ctx context.Context) {
 			t.flushCounters(ctx)
 		case <-ctx.Done():
 			t.ticker.Stop()
+
 			return
 		case <-t.done:
 			t.ticker.Stop()
+
 			return
 		}
 	}

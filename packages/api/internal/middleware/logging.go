@@ -56,6 +56,7 @@ func LoggingMiddleware(logger *zap.Logger, conf Config) gin.HandlerFunc {
 				}
 
 				track = false
+
 				break
 			}
 		}

@@ -60,6 +60,7 @@ func (c *TeamAuthCache) GetOrSet(ctx context.Context, key string, dataCallback D
 	if time.Since(templateInfo.lastRefresh) > refreshInterval {
 		go templateInfo.once.Do(key, func() (any, error) { //nolint:contextcheck // TODO: fix this later
 			c.Refresh(key, dataCallback)
+
 			return nil, err
 		})
 	}

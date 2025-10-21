@@ -83,6 +83,7 @@ func (n *Node) Metrics() Metrics {
 	}
 
 	copy(result.HostDisks, n.metrics.HostDisks)
+
 	return result
 }
 

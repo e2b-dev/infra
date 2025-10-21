@@ -22,6 +22,7 @@ func logToEdgeLevel(level *logs.LogLevel) *edgeapi.LogLevel {
 	}
 
 	value := edgeapi.LogLevel(logs.LevelToString(*level))
+
 	return &value
 }
 
@@ -35,6 +36,7 @@ func (c *ClusterPlacementProvider) GetLogs(ctx context.Context, templateID strin
 
 	if res.StatusCode() != 200 || res.JSON200 == nil {
 		zap.L().Error("failed to get build logs in template manager", zap.String("body", string(res.Body)))
+
 		return nil, errors.New("failed to get build logs in template manager")
 	}
 

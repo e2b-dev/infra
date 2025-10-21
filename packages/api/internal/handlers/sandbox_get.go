@@ -87,6 +87,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		}
 
 		c.JSON(http.StatusOK, sandbox)
+
 		return
 	}
 
