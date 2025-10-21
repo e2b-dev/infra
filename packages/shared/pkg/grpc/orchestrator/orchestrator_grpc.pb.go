@@ -28,6 +28,7 @@ type SandboxServiceClient interface {
 	List(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SandboxListResponse, error)
 	Delete(ctx context.Context, in *SandboxDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Pause(ctx context.Context, in *SandboxPauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	Save(ctx context.Context, in *SandboxSaveRequest, opts ...grpc.CallOption) (SandboxService_SaveClient, error)
 	ListCachedBuilds(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SandboxListCachedBuildsResponse, error)
 }
 
@@ -84,6 +85,38 @@ func (c *sandboxServiceClient) Pause(ctx context.Context, in *SandboxPauseReques
 	return out, nil
 }
 
+func (c *sandboxServiceClient) Save(ctx context.Context, in *SandboxSaveRequest, opts ...grpc.CallOption) (SandboxService_SaveClient, error) {
+	stream, err := c.cc.NewStream(ctx, &SandboxService_ServiceDesc.Streams[0], "/SandboxService/Save", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &sandboxServiceSaveClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type SandboxService_SaveClient interface {
+	Recv() (*SandboxSaveResponse, error)
+	grpc.ClientStream
+}
+
+type sandboxServiceSaveClient struct {
+	grpc.ClientStream
+}
+
+func (x *sandboxServiceSaveClient) Recv() (*SandboxSaveResponse, error) {
+	m := new(SandboxSaveResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 func (c *sandboxServiceClient) ListCachedBuilds(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SandboxListCachedBuildsResponse, error) {
 	out := new(SandboxListCachedBuildsResponse)
 	err := c.cc.Invoke(ctx, "/SandboxService/ListCachedBuilds", in, out, opts...)
@@ -102,6 +135,7 @@ type SandboxServiceServer interface {
 	List(context.Context, *emptypb.Empty) (*SandboxListResponse, error)
 	Delete(context.Context, *SandboxDeleteRequest) (*emptypb.Empty, error)
 	Pause(context.Context, *SandboxPauseRequest) (*emptypb.Empty, error)
+	Save(*SandboxSaveRequest, SandboxService_SaveServer) error
 	ListCachedBuilds(context.Context, *emptypb.Empty) (*SandboxListCachedBuildsResponse, error)
 	mustEmbedUnimplementedSandboxServiceServer()
 }
@@ -124,6 +158,9 @@ func (UnimplementedSandboxServiceServer) Delete(context.Context, *SandboxDeleteR
 }
 func (UnimplementedSandboxServiceServer) Pause(context.Context, *SandboxPauseRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Pause not implemented")
+}
+func (UnimplementedSandboxServiceServer) Save(*SandboxSaveRequest, SandboxService_SaveServer) error {
+	return status.Errorf(codes.Unimplemented, "method Save not implemented")
 }
 func (UnimplementedSandboxServiceServer) ListCachedBuilds(context.Context, *emptypb.Empty) (*SandboxListCachedBuildsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListCachedBuilds not implemented")
@@ -231,6 +268,27 @@ func _SandboxService_Pause_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SandboxService_Save_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(SandboxSaveRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(SandboxServiceServer).Save(m, &sandboxServiceSaveServer{stream})
+}
+
+type SandboxService_SaveServer interface {
+	Send(*SandboxSaveResponse) error
+	grpc.ServerStream
+}
+
+type sandboxServiceSaveServer struct {
+	grpc.ServerStream
+}
+
+func (x *sandboxServiceSaveServer) Send(m *SandboxSaveResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 func _SandboxService_ListCachedBuilds_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -281,6 +339,12 @@ var SandboxService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _SandboxService_ListCachedBuilds_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Save",
+			Handler:       _SandboxService_Save_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "orchestrator.proto",
 }

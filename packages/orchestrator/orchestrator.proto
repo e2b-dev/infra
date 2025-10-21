@@ -46,11 +46,36 @@ message SandboxConfig {
   optional bool allow_internet_access = 21;
 }
 
+message StorageConfig {
+  oneof kind {
+    LocalStorageConfig local = 1;
+    ObjectStorageConfig object = 2;
+  }
+}
+
+message LocalStorageConfig {
+  // Local directory path to be used for storage
+  string path = 1;
+}
+
+message ObjectStorageConfig {
+  // Name of the bucket/container, e.g., for S3 or GCS
+  string bucket = 1;
+  // Prefix or path within the bucket
+  string prefix = 2;
+}
+
+message StorageOverlay {
+  StorageConfig storage = 1;
+}
+
 message SandboxCreateRequest {
   SandboxConfig sandbox = 1;
 
   google.protobuf.Timestamp start_time = 2;
   google.protobuf.Timestamp end_time = 3;
+
+  repeated StorageOverlay overlay = 4;
 }
 
 message SandboxCreateResponse {
@@ -94,12 +119,34 @@ message SandboxListCachedBuildsResponse {
   repeated CachedBuildInfo builds = 1;
 }
 
+message SandboxSaveRequest {
+  string sandbox_id = 1;
+
+  StorageConfig storage = 2;
+}
+
+message SandboxSaveResponse {
+  oneof event {
+    SandboxEvent sandbox = 1;
+    StorageEvent storage = 2;
+  }
+
+  message SandboxEvent {
+    bool resumed = 1;
+  }
+
+  message StorageEvent {
+    bool upload_finished = 1;
+  }
+}
+
 service SandboxService {
   rpc Create(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc Update(SandboxUpdateRequest) returns (google.protobuf.Empty);
   rpc List(google.protobuf.Empty) returns (SandboxListResponse);
   rpc Delete(SandboxDeleteRequest) returns (google.protobuf.Empty);
   rpc Pause(SandboxPauseRequest) returns (google.protobuf.Empty);
+  rpc Save(SandboxSaveRequest) returns (stream SandboxSaveResponse);
 
   rpc ListCachedBuilds(google.protobuf.Empty) returns (SandboxListCachedBuildsResponse);
 }
