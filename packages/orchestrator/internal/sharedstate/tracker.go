@@ -36,7 +36,14 @@ func New(selfWriteInterval time.Duration) (*Manager, error) {
 }
 
 func (t *Manager) OnInsert(sandbox *sandbox.Sandbox) {
-	t.selfSandboxResources.Insert(sandbox.Metadata.Runtime.SandboxID, sandbox.Config)
+	metadata := sandbox.Metadata
+	if metadata == nil {
+		zap.L().Warn("Ignoring sandbox without metadata")
+
+		return
+	}
+
+	t.selfSandboxResources.Insert(metadata.Runtime.SandboxID, metadata.Config)
 }
 
 func (t *Manager) OnRemove(sandboxID string) {
