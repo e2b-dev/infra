@@ -99,6 +99,7 @@ func (s *StorageLocal) tryAcquire(ctx context.Context, slotIdx int) (*Slot, bool
 			zap.Error(err),
 			zap.Int("slotIdx", slotIdx),
 		)
+
 		return nil, false
 	}
 
@@ -111,6 +112,7 @@ func (s *StorageLocal) tryAcquire(ctx context.Context, slotIdx int) (*Slot, bool
 			zap.Int("slotIdx", slotIdx),
 			zap.String("slotName", slotName),
 		)
+
 		return nil, false
 	}
 
