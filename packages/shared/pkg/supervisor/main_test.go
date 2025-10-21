@@ -8,25 +8,21 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 )
 
 var ErrSignal = errors.New("oh noes")
 
 func TestHappyPath(t *testing.T) {
 	t.Run("context cancellation will terminate all tasks", func(t *testing.T) {
-		logger := zap.L()
-
-		// create supervisor
-		s := New(logger)
-
 		// setup
 		var counter int
 		var cleanup bool
-		s.AddTask(Task{
+		var tasks []Task
+		tasks = append(tasks, Task{
 			Name: "run something in the background",
 			Cleanup: func(context.Context) error {
 				cleanup = true
+
 				return nil
 			},
 			Background: func(ctx context.Context) error {
@@ -47,29 +43,21 @@ func TestHappyPath(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
 		t.Cleanup(cancel)
 
-		err := s.Run(ctx)
+		err := Run(ctx, Options{Tasks: tasks})
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 
 		// verify that the task only ran twice
 		assert.Equal(t, 2, counter)
-		assert.False(t, cleanup)
-
-		// clean up
-		err = s.Close(ctx)
-		require.NoError(t, err)
 
 		// verify that the cleanup function was called
 		assert.True(t, cleanup)
 	})
 
 	t.Run("exited task will cancel the rest of the tasks", func(t *testing.T) {
-		logger := zap.L()
-
-		// create supervisor
-		s := New(logger)
+		var tasks []Task
 
 		// setup tasks
-		s.AddTask(Task{
+		tasks = append(tasks, Task{
 			Name: "task which will exit",
 			Background: func(ctx context.Context) error {
 				select {
@@ -82,16 +70,18 @@ func TestHappyPath(t *testing.T) {
 		})
 
 		var task, cleanup bool
-		s.AddTask(Task{
+		tasks = append(tasks, Task{
 			Name: "task which will not exit",
 			Background: func(ctx context.Context) error {
 				defer func() { task = true }()
 
 				<-ctx.Done()
+
 				return nil
 			},
 			Cleanup: func(context.Context) error {
 				cleanup = true
+
 				return nil
 			},
 		})
@@ -100,14 +90,11 @@ func TestHappyPath(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
 		t.Cleanup(cancel)
 
-		err := s.Run(ctx)
+		err := Run(ctx, Options{Tasks: tasks})
 		var tee TaskExitedError
 		require.ErrorAs(t, err, &tee)
 		assert.Equal(t, "task which will exit", tee.TaskName)
 		require.NoError(t, tee.TaskError)
-
-		err = s.Close(ctx)
-		require.NoError(t, err)
 		assert.True(t, task)
 		assert.True(t, cleanup)
 	})
