@@ -15,7 +15,6 @@ import (
 	"github.com/soheilhy/cmux"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -72,8 +71,6 @@ func main() {
 }
 
 func run(config cfg.Config) (success bool) {
-	success = true
-
 	services := cfg.GetServices(config)
 
 	// Check if the orchestrator crashed and restarted
@@ -113,32 +110,18 @@ func run(config cfg.Config) (success bool) {
 	serviceInstanceID := uuid.NewString()
 	serviceInfo := service.NewInfoContainer(nodeID, version, commitSHA, serviceInstanceID, config)
 
-	serviceError := make(chan error)
-	defer close(serviceError)
-
-	var g errgroup.Group
-	// defer waiting on the group so that this runs even when
-	// there's a panic.
-	defer func(g *errgroup.Group) {
-		err := g.Wait()
-		if err != nil {
-			log.Printf("error while shutting down: %v", err)
-			success = false
-		}
-	}(&g)
+	// all the tasks that will be started, waited on, and cleaned up
+	var tasks []supervisor.Task
 
 	// Setup telemetry
 	tel, err := telemetry.New(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID)
 	if err != nil {
 		zap.L().Fatal("failed to init telemetry", zap.Error(err))
 	}
-	defer func() {
-		err := tel.Shutdown(ctx)
-		if err != nil {
-			log.Printf("error while shutting down telemetry: %v", err)
-			success = false
-		}
-	}()
+	tasks = append(tasks, supervisor.Task{
+		Name:    "telemetry",
+		Cleanup: tel.Shutdown,
+	})
 
 	globalLogger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName:   serviceName,
@@ -148,8 +131,6 @@ func run(config cfg.Config) (success bool) {
 		EnableConsole: true,
 	}))
 	zap.ReplaceGlobals(globalLogger)
-
-	var tasks []supervisor.Task
 	tasks = append(tasks, supervisor.Task{
 		Name:    "global logger",
 		Cleanup: cleanupLogger(globalLogger),
@@ -185,7 +166,11 @@ func run(config cfg.Config) (success bool) {
 		Cleanup: cleanupLogger(sbxLoggerInternal),
 	})
 
-	globalLogger.Info("Starting orchestrator", zap.String("version", version), zap.String("commit", commitSHA), logger.WithServiceInstanceID(serviceInstanceID))
+	globalLogger.Info("Starting orchestrator",
+		zap.String("version", version),
+		zap.String("commit", commitSHA),
+		logger.WithServiceInstanceID(serviceInstanceID),
+	)
 
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.
@@ -501,15 +486,16 @@ func run(config cfg.Config) (success bool) {
 	}
 
 	// Wait for the shutdown signal or if some service fails
-	if err := supervisor.Run(ctx, supervisor.Options{
+	err = supervisor.Run(ctx, supervisor.Options{
 		ForceStop: config.ForceStop,
 		Tasks:     tasks,
 		Logger:    globalLogger,
-	}); err != nil {
+	})
+	if err != nil {
 		zap.L().Error("failed to run tasks", zap.Error(err))
 	}
 
-	return success
+	return err == nil
 }
 
 func cleanupLogger(logger *zap.Logger) func(context.Context) error {
