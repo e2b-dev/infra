@@ -37,6 +37,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sharedstate"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -347,20 +348,20 @@ func run(config cfg.Config) (success bool) {
 	// sandbox factory
 	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags)
 
-	metricsTracker, err := metrics.NewTracker(config.MetricsWriteInterval)
+	sharedStateManager, err := sharedstate.New(config.SharedStateWriteInterval)
 	if err != nil {
 		zap.L().Fatal("failed to create metrics tracker", zap.Error(err))
 	}
-	sandboxes.Subscribe(metricsTracker)
+	sandboxes.Subscribe(sharedStateManager)
 	g.Go(func() error {
-		if err := metricsTracker.Run(ctx, config.MetricsDirectory); err != nil {
-			zap.L().Error("metrics tracker failed", zap.Error(err))
+		if err := sharedStateManager.Run(ctx, config.SharedStateDirectory); err != nil {
+			zap.L().Error("shared state manager failed", zap.Error(err))
 		}
 
 		return nil
 	})
 
-	sandboxLimiter := server.NewLimiter(config.MaxStartingInstances, featureFlags, metricsTracker)
+	sandboxLimiter := server.NewLimiter(config.MaxStartingInstances, featureFlags, sharedStateManager)
 
 	orchestratorService := server.New(server.ServiceConfig{
 		SandboxFactory:   sandboxFactory,
@@ -441,7 +442,7 @@ func run(config cfg.Config) (success bool) {
 		closers = append(closers, closer{"template server", tmpl.Close})
 	}
 
-	infoService := service.NewInfoService(serviceInfo, metricsTracker)
+	infoService := service.NewInfoService(serviceInfo, sharedStateManager)
 	orchestratorinfo.RegisterInfoServiceServer(grpcServer, infoService)
 
 	grpcHealth := health.NewServer()

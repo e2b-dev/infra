@@ -1,4 +1,4 @@
-package metrics
+package sharedstate
 
 import (
 	"context"
@@ -19,23 +19,15 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
-type Tracker struct {
+type Manager struct {
 	selfSandboxResources *smap.Map[sandbox.Config]
 	selfWriteInterval    time.Duration
 	otherMetrics         map[int]Allocations
 	otherLock            sync.RWMutex
 }
 
-func (t *Tracker) OnInsert(sandbox *sandbox.Sandbox) {
-	t.selfSandboxResources.Insert(sandbox.Metadata.Runtime.SandboxID, sandbox.Config)
-}
-
-func (t *Tracker) OnRemove(sandboxID string) {
-	t.selfSandboxResources.Remove(sandboxID)
-}
-
-func NewTracker(selfWriteInterval time.Duration) (*Tracker, error) {
-	return &Tracker{
+func New(selfWriteInterval time.Duration) (*Manager, error) {
+	return &Manager{
 		otherMetrics: map[int]Allocations{},
 
 		selfWriteInterval:    selfWriteInterval,
@@ -43,7 +35,15 @@ func NewTracker(selfWriteInterval time.Duration) (*Tracker, error) {
 	}, nil
 }
 
-func (t *Tracker) TotalRunningCount() int {
+func (t *Manager) OnInsert(sandbox *sandbox.Sandbox) {
+	t.selfSandboxResources.Insert(sandbox.Metadata.Runtime.SandboxID, sandbox.Config)
+}
+
+func (t *Manager) OnRemove(sandboxID string) {
+	t.selfSandboxResources.Remove(sandboxID)
+}
+
+func (t *Manager) TotalRunningCount() int {
 	count := t.selfSandboxResources.Count()
 
 	t.otherLock.RLock()
@@ -55,7 +55,7 @@ func (t *Tracker) TotalRunningCount() int {
 	return count
 }
 
-func (t *Tracker) getSelfAllocated() Allocations {
+func (t *Manager) getSelfAllocated() Allocations {
 	var allocated Allocations
 	for _, item := range t.selfSandboxResources.Items() {
 		allocated.VCPUs += uint32(item.Vcpu)
@@ -67,20 +67,20 @@ func (t *Tracker) getSelfAllocated() Allocations {
 	return allocated
 }
 
-func (t *Tracker) removeSelfFile(path string) {
+func (t *Manager) removeSelfFile(path string) {
 	if err := os.Remove(path); err != nil {
 		zap.L().Error("Failed to remove self file", zap.Error(err), zap.String("path", path))
 	}
 }
 
-func (t *Tracker) makeSelfPath(directory string) string {
+func (t *Manager) makeSelfPath(directory string) string {
 	filename := fmt.Sprintf("%d.json", os.Getpid())
 	selfPath := filepath.Join(directory, filename)
 
 	return selfPath
 }
 
-func (t *Tracker) Run(ctx context.Context, directory string) error {
+func (t *Manager) Run(ctx context.Context, directory string) error {
 	if err := os.MkdirAll(directory, 0o777); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
@@ -179,7 +179,7 @@ func getPIDFromFilename(path string) (int, bool) {
 	return pid, true
 }
 
-func (t *Tracker) handleOtherRemove(name string) error {
+func (t *Manager) handleOtherRemove(name string) error {
 	pid, ok := getPIDFromFilename(name)
 	if !ok {
 		return errInvalidMetricsFilename
@@ -195,7 +195,7 @@ func (t *Tracker) handleOtherRemove(name string) error {
 
 var errInvalidMetricsFilename = errors.New("invalid metrics filename")
 
-func (t *Tracker) handleOtherWrite(name string) error {
+func (t *Manager) handleOtherWrite(name string) error {
 	pid, ok := getPIDFromFilename(name)
 	if !ok {
 		return errInvalidMetricsFilename
@@ -226,7 +226,7 @@ type Allocations struct {
 	VCPUs       uint32 `json:"vcpus"`
 }
 
-func (t *Tracker) TotalAllocated() Allocations {
+func (t *Manager) TotalAllocated() Allocations {
 	allocated := t.getSelfAllocated()
 
 	t.otherLock.RLock()
@@ -241,7 +241,7 @@ func (t *Tracker) TotalAllocated() Allocations {
 	return allocated
 }
 
-func (t *Tracker) handleWriteSelf(selfPath string) error {
+func (t *Manager) handleWriteSelf(selfPath string) error {
 	selfAllocated := t.getSelfAllocated()
 	data, err := json.Marshal(selfAllocated)
 	if err != nil {

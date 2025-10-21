@@ -7,7 +7,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sharedstate"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -15,19 +15,19 @@ import (
 type Limiter struct {
 	maxStartingSandboxes int64
 
-	featureFlags      *featureflags.Client
-	startingSandboxes *semaphore.Weighted
-	metricsTracker    *metrics.Tracker
+	featureFlags       *featureflags.Client
+	startingSandboxes  *semaphore.Weighted
+	sharedStateManager *sharedstate.Manager
 }
 
 func NewLimiter(
 	maxStartingSandboxes int64,
 	featureFlags *featureflags.Client,
-	metricsTracker *metrics.Tracker,
+	sharedStateManager *sharedstate.Manager,
 ) *Limiter {
 	return &Limiter{
 		featureFlags:         featureFlags,
-		metricsTracker:       metricsTracker,
+		sharedStateManager:   sharedStateManager,
 		maxStartingSandboxes: maxStartingSandboxes,
 		startingSandboxes:    semaphore.NewWeighted(maxStartingSandboxes),
 	}
@@ -59,7 +59,7 @@ func (t *Limiter) AcquireStarting(ctx context.Context) error {
 		zap.L().Error("Failed to get MaxSandboxesPerNode flag", zap.Error(err))
 	}
 
-	runningSandboxes := t.metricsTracker.TotalRunningCount()
+	runningSandboxes := t.sharedStateManager.TotalRunningCount()
 	if runningSandboxes >= maxRunningSandboxesPerNode {
 		telemetry.ReportEvent(ctx, "max number of running sandboxes reached")
 

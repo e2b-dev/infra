@@ -8,20 +8,21 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sharedstate"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
 
 type Server struct {
 	orchestratorinfo.UnimplementedInfoServiceServer
 
-	info    *ServiceInfo
-	tracker *metrics.Tracker
+	info        *ServiceInfo
+	sharedState *sharedstate.Manager
 }
 
-func NewInfoService(info *ServiceInfo, tracker *metrics.Tracker) *Server {
+func NewInfoService(info *ServiceInfo, tracker *sharedstate.Manager) *Server {
 	s := &Server{
-		info:    info,
-		tracker: tracker,
+		info:        info,
+		sharedState: tracker,
 	}
 
 	return s
@@ -50,7 +51,7 @@ func (s *Server) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestrator
 	}
 
 	// Calculate sandbox resource allocation
-	allocated := s.tracker.TotalAllocated()
+	allocated := s.sharedState.TotalAllocated()
 
 	return &orchestratorinfo.ServiceInfoResponse{
 		NodeId:        info.ClientId,

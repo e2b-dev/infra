@@ -32,8 +32,8 @@ type Config struct {
 	RedisClusterURL            string        `env:"REDIS_CLUSTER_URL"`
 	RedisURL                   string        `env:"REDIS_URL"`
 	Services                   []string      `env:"ORCHESTRATOR_SERVICES"        envDefault:"orchestrator"`
-	MetricsDirectory           string        `env:"METRICS_DIRECTORY"            envDefault:"/orchestrator/metrics"`
-	MetricsWriteInterval       time.Duration `env:"METRICS_WRITE_INTERVAL"       envDefault:"1m"`
+	SharedStateDirectory       string        `env:"SHARED_STATE_DIRECTORY"       envDefault:"/orchestrator/state"`
+	SharedStateWriteInterval   time.Duration `env:"SHARED_STATE_WRITE_INTERVAL"  envDefault:"1m"`
 	MaxStartingInstances       int64         `env:"MAX_STARTING_INSTANCES"       envDefault:"3"`
 }
 

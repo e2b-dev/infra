@@ -1,4 +1,4 @@
-package metrics
+package sharedstate
 
 import (
 	"context"
@@ -20,7 +20,7 @@ func TestTracker_CreateMissingDirectory(t *testing.T) {
 
 	selfWriteInterval := time.Millisecond * 100
 
-	tracker, err := NewTracker(selfWriteInterval)
+	tracker, err := New(selfWriteInterval)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(t.Context(), selfWriteInterval*2)
@@ -36,7 +36,7 @@ func TestTrackerRoundTrip(t *testing.T) {
 
 	os.WriteFile(filepath.Join(tempDir, "990.json"), []byte(`{"diskBytes": 0, "memoryBytes": 0, "sandboxes": 0, "vcpus": 1}`), 0o644)
 
-	tracker, err := NewTracker(time.Millisecond * 100)
+	tracker, err := New(time.Millisecond * 100)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -169,7 +169,7 @@ func TestTrackerRoundTrip(t *testing.T) {
 func TestTracker_handleWriteSelf(t *testing.T) {
 	tempDir := t.TempDir()
 
-	tracker, err := NewTracker(10 * time.Second)
+	tracker, err := New(10 * time.Second)
 	require.NoError(t, err)
 
 	tracker.OnInsert(&sandbox.Sandbox{
