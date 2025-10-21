@@ -228,9 +228,7 @@ func (u *Userfaultfd) handleMissing(
 }
 
 func (u *Userfaultfd) handleWriteProtection(addr uintptr, offset int64, pagesize uint64) {
-	if !u.writeRequests.Add(offset) {
-		return
-	}
+	u.writeRequests.Add(offset)
 
 	u.writesInProgress.Add()
 
