@@ -41,20 +41,46 @@ var SandboxKilledEventPair = SandboxEventType{
 // We will receive old event just with event category and label, so we need to map them to new event types that
 // are using new dot namespaced syntax for event names
 func LegacySandboxEventMigrationMapping(e SandboxEvent) SandboxEvent {
-	e.Version = StructureVersionV1
+	// Older events structures did not have version set, so we need to set it to v1 first
+	if e.Version == "" {
+		e.Version = StructureVersionV1
+	}
 
-	if e.EventCategory == "lifecycle" {
-		switch e.EventLabel {
-		case "create":
-			e.Type = SandboxCreatedEventPair.Type
-		case "pause":
-			e.Type = SandboxPausedEventPair.Type
-		case "resume":
-			e.Type = SandboxResumedEventPair.Type
-		case "update":
-			e.Type = SandboxUpdatedEventPair.Type
-		case "kill":
-			e.Type = SandboxKilledEventPair.Type
+	switch e.Version {
+	case StructureVersionV1:
+		// Migrate old event category/label to new event type
+		if e.EventCategory == "lifecycle" {
+			switch e.EventLabel {
+			case "create":
+				e.Type = SandboxCreatedEventPair.Type
+			case "pause":
+				e.Type = SandboxPausedEventPair.Type
+			case "resume":
+				e.Type = SandboxResumedEventPair.Type
+			case "update":
+				e.Type = SandboxUpdatedEventPair.Type
+			case "kill":
+				e.Type = SandboxKilledEventPair.Type
+			}
+		}
+	case StructureVersionV2:
+		// Back compatibility for v2 events that might still have legacy fields set
+		switch e.Type {
+		case SandboxCreatedEvent:
+			e.EventCategory = SandboxCreatedEventPair.LegacyCategory
+			e.EventLabel = SandboxCreatedEventPair.LegacyLabel
+		case SandboxPausedEvent:
+			e.EventCategory = SandboxPausedEventPair.LegacyCategory
+			e.EventLabel = SandboxPausedEventPair.LegacyLabel
+		case SandboxResumedEvent:
+			e.EventCategory = SandboxResumedEventPair.LegacyCategory
+			e.EventLabel = SandboxResumedEventPair.LegacyLabel
+		case SandboxUpdatedEvent:
+			e.EventCategory = SandboxUpdatedEventPair.LegacyCategory
+			e.EventLabel = SandboxUpdatedEventPair.LegacyLabel
+		case SandboxKilledEvent:
+			e.EventCategory = SandboxKilledEventPair.LegacyCategory
+			e.EventLabel = SandboxKilledEventPair.LegacyLabel
 		}
 	}
 

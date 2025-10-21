@@ -9,7 +9,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 		in   SandboxEvent
 		want SandboxEvent
 	}{
-		"created": {
+		"v1-created": {
 			in: SandboxEvent{
 				EventCategory: "lifecycle",
 				EventLabel:    "create",
@@ -21,7 +21,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 				Version:       "v1",
 			},
 		},
-		"paused": {
+		"v1-paused": {
 			in: SandboxEvent{
 				EventCategory: "lifecycle",
 				EventLabel:    "pause",
@@ -33,7 +33,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 				Version:       "v1",
 			},
 		},
-		"killed": {
+		"v1-killed": {
 			in: SandboxEvent{
 				EventCategory: "lifecycle",
 				EventLabel:    "kill",
@@ -45,7 +45,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 				Version:       "v1",
 			},
 		},
-		"resumed": {
+		"v1-resumed": {
 			in: SandboxEvent{
 				EventCategory: "lifecycle",
 				EventLabel:    "resume",
@@ -57,7 +57,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 				Version:       "v1",
 			},
 		},
-		"updated": {
+		"v1-updated": {
 			in: SandboxEvent{
 				EventCategory: "lifecycle",
 				EventLabel:    "update",
@@ -69,7 +69,7 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 				Version:       "v1",
 			},
 		},
-		"custom": {
+		"v1-custom": {
 			in: SandboxEvent{
 				Type:    "sandbox.custom",
 				Version: "v1",
@@ -77,6 +77,66 @@ func TestLegacySandboxEventMigrationMapping(t *testing.T) {
 			want: SandboxEvent{
 				Type:    "sandbox.custom",
 				Version: "v1",
+			},
+		},
+		"v2-created": {
+			in: SandboxEvent{
+				Version: "v2",
+				Type:    "sandbox.lifecycle.created",
+			},
+			want: SandboxEvent{
+				EventCategory: "lifecycle",
+				EventLabel:    "create",
+				Type:          "sandbox.lifecycle.created",
+				Version:       "v2",
+			},
+		},
+		"v2-paused": {
+			in: SandboxEvent{
+				Version: "v2",
+				Type:    "sandbox.lifecycle.paused",
+			},
+			want: SandboxEvent{
+				EventCategory: "lifecycle",
+				EventLabel:    "pause",
+				Type:          "sandbox.lifecycle.paused",
+				Version:       "v2",
+			},
+		},
+		"v2-killed": {
+			in: SandboxEvent{
+				Version: "v2",
+				Type:    "sandbox.lifecycle.killed",
+			},
+			want: SandboxEvent{
+				EventCategory: "lifecycle",
+				EventLabel:    "kill",
+				Type:          "sandbox.lifecycle.killed",
+				Version:       "v2",
+			},
+		},
+		"v2-resumed": {
+			in: SandboxEvent{
+				Version: "v2",
+				Type:    "sandbox.lifecycle.resumed",
+			},
+			want: SandboxEvent{
+				EventCategory: "lifecycle",
+				EventLabel:    "resume",
+				Type:          "sandbox.lifecycle.resumed",
+				Version:       "v2",
+			},
+		},
+		"v2-updated": {
+			in: SandboxEvent{
+				Version: "v2",
+				Type:    "sandbox.lifecycle.updated",
+			},
+			want: SandboxEvent{
+				EventCategory: "lifecycle",
+				EventLabel:    "update",
+				Type:          "sandbox.lifecycle.updated",
+				Version:       "v2",
 			},
 		},
 	}
