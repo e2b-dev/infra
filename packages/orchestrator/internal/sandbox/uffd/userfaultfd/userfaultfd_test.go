@@ -123,7 +123,7 @@ func TestUffdMissing(t *testing.T) {
 				}
 			}
 
-			err := h.uffd.writeRequestCounter.Wait(t.Context())
+			err := h.uffd.writesInProgress.Wait(t.Context())
 			require.NoError(t, err)
 
 			expectedReadOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
@@ -294,7 +294,7 @@ func TestUffdWriteProtection(t *testing.T) {
 				}
 			}
 
-			err := h.uffd.writeRequestCounter.Wait(t.Context())
+			err := h.uffd.writesInProgress.Wait(t.Context())
 			require.NoError(t, err)
 
 			expectedWriteOffsets := getOperationsOffsets(tt.operations, operationModeWrite)
@@ -354,7 +354,7 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 		return fmt.Errorf("copy length mismatch: want %d, got %d", h.pagesize, n)
 	}
 
-	err = h.uffd.writeRequestCounter.Wait(ctx)
+	err = h.uffd.writesInProgress.Wait(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to wait for write requests finish: %w", err)
 	}

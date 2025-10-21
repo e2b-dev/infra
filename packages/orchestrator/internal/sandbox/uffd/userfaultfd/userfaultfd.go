@@ -31,8 +31,8 @@ type Userfaultfd struct {
 	writeRequests   *block.Tracker
 	wpRequests      *block.Tracker
 
-	writeRequestCounter *utils.SettleCounter
-	wg                  errgroup.Group
+	writesInProgress *utils.SettleCounter
+	wg               errgroup.Group
 
 	logger *zap.Logger
 }
@@ -40,16 +40,16 @@ type Userfaultfd struct {
 // NewUserfaultfdFromFd creates a new userfaultfd instance with optional configuration.
 func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, pagesize int64, m *memory.Mapping, logger *zap.Logger) (*Userfaultfd, error) {
 	return &Userfaultfd{
-		fd:                  fd,
-		src:                 src,
-		dirty:               block.NewTracker(pagesize),
-		missingRequests:     block.NewTracker(pagesize),
-		writeRequests:       block.NewTracker(pagesize),
-		wpRequests:          block.NewTracker(pagesize),
-		disabled:            atomic.Bool{},
-		ma:                  m,
-		writeRequestCounter: utils.NewZeroSettleCounter(),
-		logger:              logger,
+		fd:               fd,
+		src:              src,
+		dirty:            block.NewTracker(pagesize),
+		missingRequests:  block.NewTracker(pagesize),
+		writeRequests:    block.NewTracker(pagesize),
+		wpRequests:       block.NewTracker(pagesize),
+		disabled:         atomic.Bool{},
+		ma:               m,
+		writesInProgress: utils.NewZeroSettleCounter(),
+		logger:           logger,
 	}, nil
 }
 
@@ -58,7 +58,7 @@ func (u *Userfaultfd) Disable() {
 }
 
 func (u *Userfaultfd) Dirty(ctx context.Context) (*block.Tracker, error) {
-	err := u.writeRequestCounter.Wait(ctx)
+	err := u.writesInProgress.Wait(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for write requests: %w", err)
 	}

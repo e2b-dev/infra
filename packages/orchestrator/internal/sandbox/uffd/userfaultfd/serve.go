@@ -159,7 +159,7 @@ func (u *Userfaultfd) handleMissing(
 			return
 		}
 
-		u.writeRequestCounter.Add()
+		u.writesInProgress.Add()
 	} else if !u.missingRequests.Add(offset) {
 		// TODO: We should be able to add the page to the missing map on the write handle as well.
 
@@ -175,7 +175,7 @@ func (u *Userfaultfd) handleMissing(
 
 		defer func() {
 			if write {
-				u.writeRequestCounter.Done()
+				u.writesInProgress.Done()
 			}
 		}()
 
@@ -236,7 +236,7 @@ func (u *Userfaultfd) handleWriteProtection(addr uintptr, offset int64, pagesize
 		return
 	}
 
-	u.writeRequestCounter.Add()
+	u.writesInProgress.Add()
 
 	u.wg.Go(func() error {
 		defer func() {
@@ -245,7 +245,7 @@ func (u *Userfaultfd) handleWriteProtection(addr uintptr, offset int64, pagesize
 			}
 		}()
 
-		defer u.writeRequestCounter.Done()
+		defer u.writesInProgress.Done()
 
 		wpErr := u.RemoveWriteProtection(addr, pagesize)
 		if wpErr != nil {
