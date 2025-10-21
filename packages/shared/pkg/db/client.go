@@ -6,8 +6,10 @@ import (
 	"time"
 
 	"entgo.io/ent/dialect"
-	"entgo.io/ent/dialect/sql"
+	entsql "entgo.io/ent/dialect/sql"
+	"github.com/XSAM/otelsql"
 	_ "github.com/lib/pq"
+	semconv "go.opentelemetry.io/otel/semconv/v1.28.0"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 )
@@ -22,16 +24,23 @@ func NewClient(maxConns, maxIdle int) (*DB, error) {
 		return nil, fmt.Errorf("database URL is empty")
 	}
 
-	drv, err := sql.Open(dialect.Postgres, databaseURL)
+	db, err := otelsql.Open(dialect.Postgres, databaseURL, otelsql.WithAttributes(
+		semconv.DBSystemPostgreSQL,
+	))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open db: %w", err)
+	}
+
+	if err = otelsql.RegisterDBStatsMetrics(db, otelsql.WithAttributes(semconv.DBSystemMySQL)); err != nil {
+		return nil, fmt.Errorf("failed to register db stats metrics: %w", err)
 	}
 
 	// Get the underlying sql.DB object of the driver.
-	db := drv.DB()
 	db.SetMaxOpenConns(maxConns)
 	db.SetMaxIdleConns(maxIdle)
 	db.SetConnMaxLifetime(time.Minute * 30)
+
+	drv := entsql.OpenDB(dialect.Postgres, db)
 
 	client := models.NewClient(models.Driver(drv))
 
