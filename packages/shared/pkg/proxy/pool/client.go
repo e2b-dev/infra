@@ -15,7 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/tracking"
 )
 
-type proxyClient struct {
+type ProxyClient struct {
 	httputil.ReverseProxy
 
 	transport *http.Transport
@@ -29,7 +29,7 @@ func newProxyClient(
 	totalConnsCounter *atomic.Uint64,
 	currentConnsCounter *atomic.Int64,
 	logger *log.Logger,
-) *proxyClient {
+) *ProxyClient {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		// Limit the max connection per host to avoid exhausting the number of available ports to one host.
@@ -55,6 +55,7 @@ func newProxyClient(
 
 				if err == nil {
 					totalConnsCounter.Add(1)
+
 					return tracking.NewConnection(conn, currentConnsCounter), nil
 				}
 
@@ -80,7 +81,7 @@ func newProxyClient(
 		DisableCompression: true, // No need to request or manipulate compression
 	}
 
-	return &proxyClient{
+	return &ProxyClient{
 		transport: transport,
 		ReverseProxy: httputil.ReverseProxy{
 			Transport: transport,
@@ -163,6 +164,6 @@ func newProxyClient(
 	}
 }
 
-func (p *proxyClient) closeIdleConnections() {
+func (p *ProxyClient) closeIdleConnections() {
 	p.transport.CloseIdleConnections()
 }

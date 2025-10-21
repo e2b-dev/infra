@@ -22,6 +22,7 @@ func (a *APIStore) V1ServiceDiscoveryNodeKill(c *gin.Context) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
+
 		return
 	}
 
@@ -29,6 +30,7 @@ func (a *APIStore) V1ServiceDiscoveryNodeKill(c *gin.Context) {
 	if body.ServiceInstanceID == a.info.ServiceInstanceID && body.ServiceType == api.ClusterNodeTypeEdge {
 		a.info.SetStatus(api.Unhealthy)
 		c.Status(http.StatusOK)
+
 		return
 	}
 
@@ -39,6 +41,7 @@ func (a *APIStore) V1ServiceDiscoveryNodeKill(c *gin.Context) {
 	err = a.sendNodeRequest(reqTimeout, body.ServiceInstanceID, body.ServiceType, api.Unhealthy)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Error when calling service discovery node")
+
 		return
 	}
 

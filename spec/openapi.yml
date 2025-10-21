@@ -193,6 +193,12 @@ components:
         type: string
         description: Environment variables for the sandbox
 
+    Mcp:
+      type: object
+      description: MCP configuration for the sandbox
+      additionalProperties: {}
+      nullable: true
+
     SandboxLog:
       description: Log entry with timestamp and line
       required:
@@ -456,6 +462,8 @@ components:
           $ref: "#/components/schemas/SandboxMetadata"
         envVars:
           $ref: "#/components/schemas/EnvVars"
+        mcp:
+          $ref: "#/components/schemas/Mcp"
 
     ResumedSandbox:
       properties:

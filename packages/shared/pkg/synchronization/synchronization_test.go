@@ -57,6 +57,7 @@ func (s *testStore) PoolExists(_ context.Context, item string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, ok := s.pool[item]
+
 	return ok
 }
 
@@ -76,6 +77,7 @@ func (s *testStore) PoolRemove(_ context.Context, item string) {
 	for k, v := range s.pool {
 		if v == item {
 			delete(s.pool, k)
+
 			break
 		}
 	}
@@ -85,6 +87,7 @@ func (s *testStore) PoolRemove(_ context.Context, item string) {
 
 func newSynchronizer(store Store[string, string]) *Synchronize[string, string] {
 	zap.ReplaceGlobals(zap.NewNop())
+
 	return &Synchronize[string, string]{
 		store:            store,
 		tracerSpanPrefix: "test synchronization",

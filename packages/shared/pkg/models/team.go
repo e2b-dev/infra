@@ -10,7 +10,6 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/tier"
 	"github.com/google/uuid"
 )
 
@@ -45,15 +44,13 @@ type Team struct {
 type TeamEdges struct {
 	// Users holds the value of the users edge.
 	Users []*User `json:"users,omitempty"`
-	// TeamTier holds the value of the team_tier edge.
-	TeamTier *Tier `json:"team_tier,omitempty"`
 	// Envs holds the value of the envs edge.
 	Envs []*Env `json:"envs,omitempty"`
 	// UsersTeams holds the value of the users_teams edge.
 	UsersTeams []*UsersTeams `json:"users_teams,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [4]bool
+	loadedTypes [3]bool
 }
 
 // UsersOrErr returns the Users value or an error if the edge
@@ -65,23 +62,10 @@ func (e TeamEdges) UsersOrErr() ([]*User, error) {
 	return nil, &NotLoadedError{edge: "users"}
 }
 
-// TeamTierOrErr returns the TeamTier value or an error if the edge
-// was not loaded in eager-loading, or loaded but was not found.
-func (e TeamEdges) TeamTierOrErr() (*Tier, error) {
-	if e.loadedTypes[1] {
-		if e.TeamTier == nil {
-			// Edge was loaded but was not found.
-			return nil, &NotFoundError{label: tier.Label}
-		}
-		return e.TeamTier, nil
-	}
-	return nil, &NotLoadedError{edge: "team_tier"}
-}
-
 // EnvsOrErr returns the Envs value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamEdges) EnvsOrErr() ([]*Env, error) {
-	if e.loadedTypes[2] {
+	if e.loadedTypes[1] {
 		return e.Envs, nil
 	}
 	return nil, &NotLoadedError{edge: "envs"}
@@ -90,7 +74,7 @@ func (e TeamEdges) EnvsOrErr() ([]*Env, error) {
 // UsersTeamsOrErr returns the UsersTeams value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamEdges) UsersTeamsOrErr() ([]*UsersTeams, error) {
-	if e.loadedTypes[3] {
+	if e.loadedTypes[2] {
 		return e.UsersTeams, nil
 	}
 	return nil, &NotLoadedError{edge: "users_teams"}
@@ -198,11 +182,6 @@ func (t *Team) Value(name string) (ent.Value, error) {
 // QueryUsers queries the "users" edge of the Team entity.
 func (t *Team) QueryUsers() *UserQuery {
 	return NewTeamClient(t.config).QueryUsers(t)
-}
-
-// QueryTeamTier queries the "team_tier" edge of the Team entity.
-func (t *Team) QueryTeamTier() *TierQuery {
-	return NewTeamClient(t.config).QueryTeamTier(t)
 }
 
 // QueryEnvs queries the "envs" edge of the Team entity.

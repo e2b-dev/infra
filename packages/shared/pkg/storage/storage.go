@@ -68,6 +68,7 @@ func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (St
 
 	if provider == LocalStorageProvider {
 		basePath := env.GetEnv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", "/tmp/templates")
+
 		return NewFileSystemStorageProvider(basePath)
 	}
 
@@ -89,6 +90,7 @@ func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (
 
 	if provider == LocalStorageProvider {
 		basePath := env.GetEnv("LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache")
+
 		return NewFileSystemStorageProvider(basePath)
 	}
 

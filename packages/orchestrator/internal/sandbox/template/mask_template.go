@@ -57,6 +57,7 @@ func (c *MaskTemplate) Memfile(ctx context.Context) (block.ReadonlyDevice, error
 	if c.memfile != nil {
 		return *c.memfile, nil
 	}
+
 	return c.template.Memfile(ctx)
 }
 

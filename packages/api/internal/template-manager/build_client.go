@@ -24,6 +24,7 @@ func (bc *BuildClient) GetLogs(ctx context.Context, templateID, buildID string, 
 		l, err := provider.GetLogs(ctx, templateID, buildID, offset, level)
 		if err != nil {
 			telemetry.ReportEvent(ctx, "soft error when getting logs for template build", telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID), attribute.String("provider", fmt.Sprintf("%T", provider)))
+
 			continue
 		}
 

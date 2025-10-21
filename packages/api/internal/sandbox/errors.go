@@ -2,18 +2,7 @@ package sandbox
 
 import (
 	"fmt"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
-
-type AlreadyBeingStartedError struct {
-	SandboxID   string
-	StartResult *utils.SetOnce[Sandbox]
-}
-
-func (e *AlreadyBeingStartedError) Error() string {
-	return fmt.Sprintf("sandbox %s is already being started", e.SandboxID)
-}
 
 type LimitExceededError struct {
 	TeamID string

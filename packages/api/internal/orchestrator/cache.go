@@ -38,6 +38,7 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *memory.Sto
 		select {
 		case <-ctx.Done():
 			zap.L().Info("Stopping keepInSync")
+
 			return
 		case <-ticker.C:
 			o.syncNodes(ctx, instanceCache, skipSyncingWithNomad)
@@ -61,6 +62,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *memory.Stor
 		nomadSD, err := o.listNomadNodes(spanCtx)
 		if err != nil {
 			zap.L().Error("Error listing orchestrator nodes", zap.Error(err))
+
 			return
 		}
 
@@ -192,6 +194,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, dis
 	for _, activeNode := range discovered {
 		if node.NomadNodeShortID == activeNode.NomadNodeShortID {
 			found = true
+
 			break
 		}
 	}

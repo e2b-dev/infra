@@ -28,8 +28,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
 	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
@@ -154,7 +154,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 				// Get team from context, use TeamContextKey
 				teamInfo := c.Value(auth.TeamContextKey)
 				if teamInfo != nil {
-					teamID = teamInfo.(authcache.AuthTeamInfo).Team.ID.String()
+					teamID = teamInfo.(*types.Team).ID.String()
 				}
 
 				reqLogger := logger
@@ -293,6 +293,7 @@ func run() int {
 		// this will call os.Exit: defers won't run, but none
 		// need to yet. Change this if this is called later.
 		logger.Error("Error loading swagger spec", zap.Error(err))
+
 		return 1
 	}
 
@@ -330,6 +331,7 @@ func run() int {
 		}
 		if count == 0 {
 			logger.Info("no cleanup operations")
+
 			return
 		}
 		logger.Info("Running cleanup operations", zap.Int("count", count))

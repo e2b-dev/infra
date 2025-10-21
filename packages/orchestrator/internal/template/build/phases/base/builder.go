@@ -244,6 +244,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 			zap.String("result", ext4Check),
 			zap.Error(err),
 		)
+
 		return metadata.Template{}, fmt.Errorf("error checking provisioned filesystem integrity: %w", err)
 	}
 	zap.L().Debug("provisioned filesystem ext4 integrity",
@@ -278,6 +279,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		if err != nil {
 			return metadata.Template{}, fmt.Errorf("error running sync command: %w", err)
 		}
+
 		return meta, nil
 	})
 
@@ -380,6 +382,7 @@ func (bb *BaseBuilder) Layer(
 
 			return notCachedResult, nil
 		}
+
 		return phases.LayerResult{
 			Metadata: meta,
 			Cached:   true,

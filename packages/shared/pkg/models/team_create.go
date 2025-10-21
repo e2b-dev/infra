@@ -14,7 +14,6 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/tier"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
 	"github.com/google/uuid"
@@ -137,17 +136,6 @@ func (tc *TeamCreate) AddUsers(u ...*User) *TeamCreate {
 	return tc.AddUserIDs(ids...)
 }
 
-// SetTeamTierID sets the "team_tier" edge to the Tier entity by ID.
-func (tc *TeamCreate) SetTeamTierID(id string) *TeamCreate {
-	tc.mutation.SetTeamTierID(id)
-	return tc
-}
-
-// SetTeamTier sets the "team_tier" edge to the Tier entity.
-func (tc *TeamCreate) SetTeamTier(t *Tier) *TeamCreate {
-	return tc.SetTeamTierID(t.ID)
-}
-
 // AddEnvIDs adds the "envs" edge to the Env entity by IDs.
 func (tc *TeamCreate) AddEnvIDs(ids ...string) *TeamCreate {
 	tc.mutation.AddEnvIDs(ids...)
@@ -238,9 +226,6 @@ func (tc *TeamCreate) check() error {
 			return &ValidationError{Name: "email", err: fmt.Errorf(`models: validator failed for field "Team.email": %w`, err)}
 		}
 	}
-	if _, ok := tc.mutation.TeamTierID(); !ok {
-		return &ValidationError{Name: "team_tier", err: errors.New(`models: missing required edge "Team.team_tier"`)}
-	}
 	return nil
 }
 
@@ -298,6 +283,10 @@ func (tc *TeamCreate) createSpec() (*Team, *sqlgraph.CreateSpec) {
 		_spec.SetField(team.FieldName, field.TypeString, value)
 		_node.Name = value
 	}
+	if value, ok := tc.mutation.Tier(); ok {
+		_spec.SetField(team.FieldTier, field.TypeString, value)
+		_node.Tier = value
+	}
 	if value, ok := tc.mutation.Email(); ok {
 		_spec.SetField(team.FieldEmail, field.TypeString, value)
 		_node.Email = value
@@ -325,24 +314,6 @@ func (tc *TeamCreate) createSpec() (*Team, *sqlgraph.CreateSpec) {
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
-		_spec.Edges = append(_spec.Edges, edge)
-	}
-	if nodes := tc.mutation.TeamTierIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2O,
-			Inverse: true,
-			Table:   team.TeamTierTable,
-			Columns: []string{team.TeamTierColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(tier.FieldID, field.TypeString),
-			},
-		}
-		edge.Schema = tc.schemaConfig.Team
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_node.Tier = nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	if nodes := tc.mutation.EnvsIDs(); len(nodes) > 0 {

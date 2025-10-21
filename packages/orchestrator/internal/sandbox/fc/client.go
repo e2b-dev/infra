@@ -171,6 +171,7 @@ func (c *apiClient) setBootSource(ctx context.Context, kernelArgs string, kernel
 	}
 
 	_, err := c.client.Operations.PutGuestBootSource(&bootSourceConfig)
+
 	return err
 }
 
@@ -257,6 +258,7 @@ func (c *apiClient) setMachineConfig(
 	if err != nil {
 		return fmt.Errorf("error setting fc machine config: %w", err)
 	}
+
 	return nil
 }
 

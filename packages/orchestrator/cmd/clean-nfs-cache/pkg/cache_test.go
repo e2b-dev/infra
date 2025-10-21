@@ -128,6 +128,7 @@ func buildItemsFromPaths(basePath string, input []string) []cacheEntry {
 			isDir: false,
 		})
 	}
+
 	return items
 }
 

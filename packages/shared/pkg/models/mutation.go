@@ -19,7 +19,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/tier"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
 	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
@@ -42,7 +41,6 @@ const (
 	TypeEnvBuild    = "EnvBuild"
 	TypeSnapshot    = "Snapshot"
 	TypeTeam        = "Team"
-	TypeTier        = "Tier"
 	TypeUser        = "User"
 	TypeUsersTeams  = "UsersTeams"
 )
@@ -3086,6 +3084,7 @@ type EnvBuildMutation struct {
 	envd_version          *string
 	cluster_node_id       *string
 	reason                *schema.BuildReason
+	version               *string
 	clearedFields         map[string]struct{}
 	env                   *string
 	clearedenv            bool
@@ -3969,6 +3968,55 @@ func (m *EnvBuildMutation) ResetReason() {
 	m.reason = nil
 }
 
+// SetVersion sets the "version" field.
+func (m *EnvBuildMutation) SetVersion(s string) {
+	m.version = &s
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *EnvBuildMutation) Version() (r string, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the EnvBuild entity.
+// If the EnvBuild object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnvBuildMutation) OldVersion(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// ClearVersion clears the value of the "version" field.
+func (m *EnvBuildMutation) ClearVersion() {
+	m.version = nil
+	m.clearedFields[envbuild.FieldVersion] = struct{}{}
+}
+
+// VersionCleared returns if the "version" field was cleared in this mutation.
+func (m *EnvBuildMutation) VersionCleared() bool {
+	_, ok := m.clearedFields[envbuild.FieldVersion]
+	return ok
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *EnvBuildMutation) ResetVersion() {
+	m.version = nil
+	delete(m.clearedFields, envbuild.FieldVersion)
+}
+
 // ClearEnv clears the "env" edge to the Env entity.
 func (m *EnvBuildMutation) ClearEnv() {
 	m.clearedenv = true
@@ -4030,7 +4078,7 @@ func (m *EnvBuildMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *EnvBuildMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 18)
 	if m.created_at != nil {
 		fields = append(fields, envbuild.FieldCreatedAt)
 	}
@@ -4082,6 +4130,9 @@ func (m *EnvBuildMutation) Fields() []string {
 	if m.reason != nil {
 		fields = append(fields, envbuild.FieldReason)
 	}
+	if m.version != nil {
+		fields = append(fields, envbuild.FieldVersion)
+	}
 	return fields
 }
 
@@ -4124,6 +4175,8 @@ func (m *EnvBuildMutation) Field(name string) (ent.Value, bool) {
 		return m.ClusterNodeID()
 	case envbuild.FieldReason:
 		return m.Reason()
+	case envbuild.FieldVersion:
+		return m.Version()
 	}
 	return nil, false
 }
@@ -4167,6 +4220,8 @@ func (m *EnvBuildMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldClusterNodeID(ctx)
 	case envbuild.FieldReason:
 		return m.OldReason(ctx)
+	case envbuild.FieldVersion:
+		return m.OldVersion(ctx)
 	}
 	return nil, fmt.Errorf("unknown EnvBuild field %s", name)
 }
@@ -4295,6 +4350,13 @@ func (m *EnvBuildMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetReason(v)
 		return nil
+	case envbuild.FieldVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild field %s", name)
 }
@@ -4394,6 +4456,9 @@ func (m *EnvBuildMutation) ClearedFields() []string {
 	if m.FieldCleared(envbuild.FieldEnvdVersion) {
 		fields = append(fields, envbuild.FieldEnvdVersion)
 	}
+	if m.FieldCleared(envbuild.FieldVersion) {
+		fields = append(fields, envbuild.FieldVersion)
+	}
 	return fields
 }
 
@@ -4425,6 +4490,9 @@ func (m *EnvBuildMutation) ClearField(name string) error {
 		return nil
 	case envbuild.FieldEnvdVersion:
 		m.ClearEnvdVersion()
+		return nil
+	case envbuild.FieldVersion:
+		m.ClearVersion()
 		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild nullable field %s", name)
@@ -4484,6 +4552,9 @@ func (m *EnvBuildMutation) ResetField(name string) error {
 		return nil
 	case envbuild.FieldReason:
 		m.ResetReason()
+		return nil
+	case envbuild.FieldVersion:
+		m.ResetVersion()
 		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild field %s", name)
@@ -5522,14 +5593,13 @@ type TeamMutation struct {
 	is_blocked         *bool
 	blocked_reason     *string
 	name               *string
+	tier               *string
 	email              *string
 	cluster_id         *uuid.UUID
 	clearedFields      map[string]struct{}
 	users              map[uuid.UUID]struct{}
 	removedusers       map[uuid.UUID]struct{}
 	clearedusers       bool
-	team_tier          *string
-	clearedteam_tier   bool
 	envs               map[string]struct{}
 	removedenvs        map[string]struct{}
 	clearedenvs        bool
@@ -5866,12 +5936,12 @@ func (m *TeamMutation) ResetName() {
 
 // SetTier sets the "tier" field.
 func (m *TeamMutation) SetTier(s string) {
-	m.team_tier = &s
+	m.tier = &s
 }
 
 // Tier returns the value of the "tier" field in the mutation.
 func (m *TeamMutation) Tier() (r string, exists bool) {
-	v := m.team_tier
+	v := m.tier
 	if v == nil {
 		return
 	}
@@ -5897,7 +5967,7 @@ func (m *TeamMutation) OldTier(ctx context.Context) (v string, err error) {
 
 // ResetTier resets all changes to the "tier" field.
 func (m *TeamMutation) ResetTier() {
-	m.team_tier = nil
+	m.tier = nil
 }
 
 // SetEmail sets the "email" field.
@@ -6037,46 +6107,6 @@ func (m *TeamMutation) ResetUsers() {
 	m.users = nil
 	m.clearedusers = false
 	m.removedusers = nil
-}
-
-// SetTeamTierID sets the "team_tier" edge to the Tier entity by id.
-func (m *TeamMutation) SetTeamTierID(id string) {
-	m.team_tier = &id
-}
-
-// ClearTeamTier clears the "team_tier" edge to the Tier entity.
-func (m *TeamMutation) ClearTeamTier() {
-	m.clearedteam_tier = true
-	m.clearedFields[team.FieldTier] = struct{}{}
-}
-
-// TeamTierCleared reports if the "team_tier" edge to the Tier entity was cleared.
-func (m *TeamMutation) TeamTierCleared() bool {
-	return m.clearedteam_tier
-}
-
-// TeamTierID returns the "team_tier" edge ID in the mutation.
-func (m *TeamMutation) TeamTierID() (id string, exists bool) {
-	if m.team_tier != nil {
-		return *m.team_tier, true
-	}
-	return
-}
-
-// TeamTierIDs returns the "team_tier" edge IDs in the mutation.
-// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
-// TeamTierID instead. It exists only for internal usage by the builders.
-func (m *TeamMutation) TeamTierIDs() (ids []string) {
-	if id := m.team_tier; id != nil {
-		ids = append(ids, *id)
-	}
-	return
-}
-
-// ResetTeamTier resets all changes to the "team_tier" edge.
-func (m *TeamMutation) ResetTeamTier() {
-	m.team_tier = nil
-	m.clearedteam_tier = false
 }
 
 // AddEnvIDs adds the "envs" edge to the Env entity by ids.
@@ -6237,7 +6267,7 @@ func (m *TeamMutation) Fields() []string {
 	if m.name != nil {
 		fields = append(fields, team.FieldName)
 	}
-	if m.team_tier != nil {
+	if m.tier != nil {
 		fields = append(fields, team.FieldTier)
 	}
 	if m.email != nil {
@@ -6466,12 +6496,9 @@ func (m *TeamMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *TeamMutation) AddedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 3)
 	if m.users != nil {
 		edges = append(edges, team.EdgeUsers)
-	}
-	if m.team_tier != nil {
-		edges = append(edges, team.EdgeTeamTier)
 	}
 	if m.envs != nil {
 		edges = append(edges, team.EdgeEnvs)
@@ -6492,10 +6519,6 @@ func (m *TeamMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
-	case team.EdgeTeamTier:
-		if id := m.team_tier; id != nil {
-			return []ent.Value{*id}
-		}
 	case team.EdgeEnvs:
 		ids := make([]ent.Value, 0, len(m.envs))
 		for id := range m.envs {
@@ -6514,7 +6537,7 @@ func (m *TeamMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *TeamMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 3)
 	if m.removedusers != nil {
 		edges = append(edges, team.EdgeUsers)
 	}
@@ -6555,12 +6578,9 @@ func (m *TeamMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *TeamMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 3)
 	if m.clearedusers {
 		edges = append(edges, team.EdgeUsers)
-	}
-	if m.clearedteam_tier {
-		edges = append(edges, team.EdgeTeamTier)
 	}
 	if m.clearedenvs {
 		edges = append(edges, team.EdgeEnvs)
@@ -6577,8 +6597,6 @@ func (m *TeamMutation) EdgeCleared(name string) bool {
 	switch name {
 	case team.EdgeUsers:
 		return m.clearedusers
-	case team.EdgeTeamTier:
-		return m.clearedteam_tier
 	case team.EdgeEnvs:
 		return m.clearedenvs
 	case team.EdgeUsersTeams:
@@ -6591,9 +6609,6 @@ func (m *TeamMutation) EdgeCleared(name string) bool {
 // if that edge is not defined in the schema.
 func (m *TeamMutation) ClearEdge(name string) error {
 	switch name {
-	case team.EdgeTeamTier:
-		m.ClearTeamTier()
-		return nil
 	}
 	return fmt.Errorf("unknown Team unique edge %s", name)
 }
@@ -6605,9 +6620,6 @@ func (m *TeamMutation) ResetEdge(name string) error {
 	case team.EdgeUsers:
 		m.ResetUsers()
 		return nil
-	case team.EdgeTeamTier:
-		m.ResetTeamTier()
-		return nil
 	case team.EdgeEnvs:
 		m.ResetEnvs()
 		return nil
@@ -6616,782 +6628,6 @@ func (m *TeamMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Team edge %s", name)
-}
-
-// TierMutation represents an operation that mutates the Tier nodes in the graph.
-type TierMutation struct {
-	config
-	op                            Op
-	typ                           string
-	id                            *string
-	name                          *string
-	disk_mb                       *int64
-	adddisk_mb                    *int64
-	concurrent_instances          *int64
-	addconcurrent_instances       *int64
-	concurrent_template_builds    *int64
-	addconcurrent_template_builds *int64
-	max_length_hours              *int64
-	addmax_length_hours           *int64
-	clearedFields                 map[string]struct{}
-	teams                         map[uuid.UUID]struct{}
-	removedteams                  map[uuid.UUID]struct{}
-	clearedteams                  bool
-	done                          bool
-	oldValue                      func(context.Context) (*Tier, error)
-	predicates                    []predicate.Tier
-}
-
-var _ ent.Mutation = (*TierMutation)(nil)
-
-// tierOption allows management of the mutation configuration using functional options.
-type tierOption func(*TierMutation)
-
-// newTierMutation creates new mutation for the Tier entity.
-func newTierMutation(c config, op Op, opts ...tierOption) *TierMutation {
-	m := &TierMutation{
-		config:        c,
-		op:            op,
-		typ:           TypeTier,
-		clearedFields: make(map[string]struct{}),
-	}
-	for _, opt := range opts {
-		opt(m)
-	}
-	return m
-}
-
-// withTierID sets the ID field of the mutation.
-func withTierID(id string) tierOption {
-	return func(m *TierMutation) {
-		var (
-			err   error
-			once  sync.Once
-			value *Tier
-		)
-		m.oldValue = func(ctx context.Context) (*Tier, error) {
-			once.Do(func() {
-				if m.done {
-					err = errors.New("querying old values post mutation is not allowed")
-				} else {
-					value, err = m.Client().Tier.Get(ctx, id)
-				}
-			})
-			return value, err
-		}
-		m.id = &id
-	}
-}
-
-// withTier sets the old Tier of the mutation.
-func withTier(node *Tier) tierOption {
-	return func(m *TierMutation) {
-		m.oldValue = func(context.Context) (*Tier, error) {
-			return node, nil
-		}
-		m.id = &node.ID
-	}
-}
-
-// Client returns a new `ent.Client` from the mutation. If the mutation was
-// executed in a transaction (ent.Tx), a transactional client is returned.
-func (m TierMutation) Client() *Client {
-	client := &Client{config: m.config}
-	client.init()
-	return client
-}
-
-// Tx returns an `ent.Tx` for mutations that were executed in transactions;
-// it returns an error otherwise.
-func (m TierMutation) Tx() (*Tx, error) {
-	if _, ok := m.driver.(*txDriver); !ok {
-		return nil, errors.New("models: mutation is not running in a transaction")
-	}
-	tx := &Tx{config: m.config}
-	tx.init()
-	return tx, nil
-}
-
-// SetID sets the value of the id field. Note that this
-// operation is only accepted on creation of Tier entities.
-func (m *TierMutation) SetID(id string) {
-	m.id = &id
-}
-
-// ID returns the ID value in the mutation. Note that the ID is only available
-// if it was provided to the builder or after it was returned from the database.
-func (m *TierMutation) ID() (id string, exists bool) {
-	if m.id == nil {
-		return
-	}
-	return *m.id, true
-}
-
-// IDs queries the database and returns the entity ids that match the mutation's predicate.
-// That means, if the mutation is applied within a transaction with an isolation level such
-// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
-// or updated by the mutation.
-func (m *TierMutation) IDs(ctx context.Context) ([]string, error) {
-	switch {
-	case m.op.Is(OpUpdateOne | OpDeleteOne):
-		id, exists := m.ID()
-		if exists {
-			return []string{id}, nil
-		}
-		fallthrough
-	case m.op.Is(OpUpdate | OpDelete):
-		return m.Client().Tier.Query().Where(m.predicates...).IDs(ctx)
-	default:
-		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
-	}
-}
-
-// SetName sets the "name" field.
-func (m *TierMutation) SetName(s string) {
-	m.name = &s
-}
-
-// Name returns the value of the "name" field in the mutation.
-func (m *TierMutation) Name() (r string, exists bool) {
-	v := m.name
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldName returns the old "name" field's value of the Tier entity.
-// If the Tier object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TierMutation) OldName(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldName is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldName requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldName: %w", err)
-	}
-	return oldValue.Name, nil
-}
-
-// ResetName resets all changes to the "name" field.
-func (m *TierMutation) ResetName() {
-	m.name = nil
-}
-
-// SetDiskMB sets the "disk_mb" field.
-func (m *TierMutation) SetDiskMB(i int64) {
-	m.disk_mb = &i
-	m.adddisk_mb = nil
-}
-
-// DiskMB returns the value of the "disk_mb" field in the mutation.
-func (m *TierMutation) DiskMB() (r int64, exists bool) {
-	v := m.disk_mb
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldDiskMB returns the old "disk_mb" field's value of the Tier entity.
-// If the Tier object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TierMutation) OldDiskMB(ctx context.Context) (v int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldDiskMB is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldDiskMB requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldDiskMB: %w", err)
-	}
-	return oldValue.DiskMB, nil
-}
-
-// AddDiskMB adds i to the "disk_mb" field.
-func (m *TierMutation) AddDiskMB(i int64) {
-	if m.adddisk_mb != nil {
-		*m.adddisk_mb += i
-	} else {
-		m.adddisk_mb = &i
-	}
-}
-
-// AddedDiskMB returns the value that was added to the "disk_mb" field in this mutation.
-func (m *TierMutation) AddedDiskMB() (r int64, exists bool) {
-	v := m.adddisk_mb
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetDiskMB resets all changes to the "disk_mb" field.
-func (m *TierMutation) ResetDiskMB() {
-	m.disk_mb = nil
-	m.adddisk_mb = nil
-}
-
-// SetConcurrentInstances sets the "concurrent_instances" field.
-func (m *TierMutation) SetConcurrentInstances(i int64) {
-	m.concurrent_instances = &i
-	m.addconcurrent_instances = nil
-}
-
-// ConcurrentInstances returns the value of the "concurrent_instances" field in the mutation.
-func (m *TierMutation) ConcurrentInstances() (r int64, exists bool) {
-	v := m.concurrent_instances
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldConcurrentInstances returns the old "concurrent_instances" field's value of the Tier entity.
-// If the Tier object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TierMutation) OldConcurrentInstances(ctx context.Context) (v int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldConcurrentInstances is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldConcurrentInstances requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldConcurrentInstances: %w", err)
-	}
-	return oldValue.ConcurrentInstances, nil
-}
-
-// AddConcurrentInstances adds i to the "concurrent_instances" field.
-func (m *TierMutation) AddConcurrentInstances(i int64) {
-	if m.addconcurrent_instances != nil {
-		*m.addconcurrent_instances += i
-	} else {
-		m.addconcurrent_instances = &i
-	}
-}
-
-// AddedConcurrentInstances returns the value that was added to the "concurrent_instances" field in this mutation.
-func (m *TierMutation) AddedConcurrentInstances() (r int64, exists bool) {
-	v := m.addconcurrent_instances
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetConcurrentInstances resets all changes to the "concurrent_instances" field.
-func (m *TierMutation) ResetConcurrentInstances() {
-	m.concurrent_instances = nil
-	m.addconcurrent_instances = nil
-}
-
-// SetConcurrentTemplateBuilds sets the "concurrent_template_builds" field.
-func (m *TierMutation) SetConcurrentTemplateBuilds(i int64) {
-	m.concurrent_template_builds = &i
-	m.addconcurrent_template_builds = nil
-}
-
-// ConcurrentTemplateBuilds returns the value of the "concurrent_template_builds" field in the mutation.
-func (m *TierMutation) ConcurrentTemplateBuilds() (r int64, exists bool) {
-	v := m.concurrent_template_builds
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldConcurrentTemplateBuilds returns the old "concurrent_template_builds" field's value of the Tier entity.
-// If the Tier object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TierMutation) OldConcurrentTemplateBuilds(ctx context.Context) (v int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldConcurrentTemplateBuilds is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldConcurrentTemplateBuilds requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldConcurrentTemplateBuilds: %w", err)
-	}
-	return oldValue.ConcurrentTemplateBuilds, nil
-}
-
-// AddConcurrentTemplateBuilds adds i to the "concurrent_template_builds" field.
-func (m *TierMutation) AddConcurrentTemplateBuilds(i int64) {
-	if m.addconcurrent_template_builds != nil {
-		*m.addconcurrent_template_builds += i
-	} else {
-		m.addconcurrent_template_builds = &i
-	}
-}
-
-// AddedConcurrentTemplateBuilds returns the value that was added to the "concurrent_template_builds" field in this mutation.
-func (m *TierMutation) AddedConcurrentTemplateBuilds() (r int64, exists bool) {
-	v := m.addconcurrent_template_builds
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetConcurrentTemplateBuilds resets all changes to the "concurrent_template_builds" field.
-func (m *TierMutation) ResetConcurrentTemplateBuilds() {
-	m.concurrent_template_builds = nil
-	m.addconcurrent_template_builds = nil
-}
-
-// SetMaxLengthHours sets the "max_length_hours" field.
-func (m *TierMutation) SetMaxLengthHours(i int64) {
-	m.max_length_hours = &i
-	m.addmax_length_hours = nil
-}
-
-// MaxLengthHours returns the value of the "max_length_hours" field in the mutation.
-func (m *TierMutation) MaxLengthHours() (r int64, exists bool) {
-	v := m.max_length_hours
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldMaxLengthHours returns the old "max_length_hours" field's value of the Tier entity.
-// If the Tier object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TierMutation) OldMaxLengthHours(ctx context.Context) (v int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldMaxLengthHours is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldMaxLengthHours requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldMaxLengthHours: %w", err)
-	}
-	return oldValue.MaxLengthHours, nil
-}
-
-// AddMaxLengthHours adds i to the "max_length_hours" field.
-func (m *TierMutation) AddMaxLengthHours(i int64) {
-	if m.addmax_length_hours != nil {
-		*m.addmax_length_hours += i
-	} else {
-		m.addmax_length_hours = &i
-	}
-}
-
-// AddedMaxLengthHours returns the value that was added to the "max_length_hours" field in this mutation.
-func (m *TierMutation) AddedMaxLengthHours() (r int64, exists bool) {
-	v := m.addmax_length_hours
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetMaxLengthHours resets all changes to the "max_length_hours" field.
-func (m *TierMutation) ResetMaxLengthHours() {
-	m.max_length_hours = nil
-	m.addmax_length_hours = nil
-}
-
-// AddTeamIDs adds the "teams" edge to the Team entity by ids.
-func (m *TierMutation) AddTeamIDs(ids ...uuid.UUID) {
-	if m.teams == nil {
-		m.teams = make(map[uuid.UUID]struct{})
-	}
-	for i := range ids {
-		m.teams[ids[i]] = struct{}{}
-	}
-}
-
-// ClearTeams clears the "teams" edge to the Team entity.
-func (m *TierMutation) ClearTeams() {
-	m.clearedteams = true
-}
-
-// TeamsCleared reports if the "teams" edge to the Team entity was cleared.
-func (m *TierMutation) TeamsCleared() bool {
-	return m.clearedteams
-}
-
-// RemoveTeamIDs removes the "teams" edge to the Team entity by IDs.
-func (m *TierMutation) RemoveTeamIDs(ids ...uuid.UUID) {
-	if m.removedteams == nil {
-		m.removedteams = make(map[uuid.UUID]struct{})
-	}
-	for i := range ids {
-		delete(m.teams, ids[i])
-		m.removedteams[ids[i]] = struct{}{}
-	}
-}
-
-// RemovedTeams returns the removed IDs of the "teams" edge to the Team entity.
-func (m *TierMutation) RemovedTeamsIDs() (ids []uuid.UUID) {
-	for id := range m.removedteams {
-		ids = append(ids, id)
-	}
-	return
-}
-
-// TeamsIDs returns the "teams" edge IDs in the mutation.
-func (m *TierMutation) TeamsIDs() (ids []uuid.UUID) {
-	for id := range m.teams {
-		ids = append(ids, id)
-	}
-	return
-}
-
-// ResetTeams resets all changes to the "teams" edge.
-func (m *TierMutation) ResetTeams() {
-	m.teams = nil
-	m.clearedteams = false
-	m.removedteams = nil
-}
-
-// Where appends a list predicates to the TierMutation builder.
-func (m *TierMutation) Where(ps ...predicate.Tier) {
-	m.predicates = append(m.predicates, ps...)
-}
-
-// WhereP appends storage-level predicates to the TierMutation builder. Using this method,
-// users can use type-assertion to append predicates that do not depend on any generated package.
-func (m *TierMutation) WhereP(ps ...func(*sql.Selector)) {
-	p := make([]predicate.Tier, len(ps))
-	for i := range ps {
-		p[i] = ps[i]
-	}
-	m.Where(p...)
-}
-
-// Op returns the operation name.
-func (m *TierMutation) Op() Op {
-	return m.op
-}
-
-// SetOp allows setting the mutation operation.
-func (m *TierMutation) SetOp(op Op) {
-	m.op = op
-}
-
-// Type returns the node type of this mutation (Tier).
-func (m *TierMutation) Type() string {
-	return m.typ
-}
-
-// Fields returns all fields that were changed during this mutation. Note that in
-// order to get all numeric fields that were incremented/decremented, call
-// AddedFields().
-func (m *TierMutation) Fields() []string {
-	fields := make([]string, 0, 5)
-	if m.name != nil {
-		fields = append(fields, tier.FieldName)
-	}
-	if m.disk_mb != nil {
-		fields = append(fields, tier.FieldDiskMB)
-	}
-	if m.concurrent_instances != nil {
-		fields = append(fields, tier.FieldConcurrentInstances)
-	}
-	if m.concurrent_template_builds != nil {
-		fields = append(fields, tier.FieldConcurrentTemplateBuilds)
-	}
-	if m.max_length_hours != nil {
-		fields = append(fields, tier.FieldMaxLengthHours)
-	}
-	return fields
-}
-
-// Field returns the value of a field with the given name. The second boolean
-// return value indicates that this field was not set, or was not defined in the
-// schema.
-func (m *TierMutation) Field(name string) (ent.Value, bool) {
-	switch name {
-	case tier.FieldName:
-		return m.Name()
-	case tier.FieldDiskMB:
-		return m.DiskMB()
-	case tier.FieldConcurrentInstances:
-		return m.ConcurrentInstances()
-	case tier.FieldConcurrentTemplateBuilds:
-		return m.ConcurrentTemplateBuilds()
-	case tier.FieldMaxLengthHours:
-		return m.MaxLengthHours()
-	}
-	return nil, false
-}
-
-// OldField returns the old value of the field from the database. An error is
-// returned if the mutation operation is not UpdateOne, or the query to the
-// database failed.
-func (m *TierMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
-	switch name {
-	case tier.FieldName:
-		return m.OldName(ctx)
-	case tier.FieldDiskMB:
-		return m.OldDiskMB(ctx)
-	case tier.FieldConcurrentInstances:
-		return m.OldConcurrentInstances(ctx)
-	case tier.FieldConcurrentTemplateBuilds:
-		return m.OldConcurrentTemplateBuilds(ctx)
-	case tier.FieldMaxLengthHours:
-		return m.OldMaxLengthHours(ctx)
-	}
-	return nil, fmt.Errorf("unknown Tier field %s", name)
-}
-
-// SetField sets the value of a field with the given name. It returns an error if
-// the field is not defined in the schema, or if the type mismatched the field
-// type.
-func (m *TierMutation) SetField(name string, value ent.Value) error {
-	switch name {
-	case tier.FieldName:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetName(v)
-		return nil
-	case tier.FieldDiskMB:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetDiskMB(v)
-		return nil
-	case tier.FieldConcurrentInstances:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetConcurrentInstances(v)
-		return nil
-	case tier.FieldConcurrentTemplateBuilds:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetConcurrentTemplateBuilds(v)
-		return nil
-	case tier.FieldMaxLengthHours:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetMaxLengthHours(v)
-		return nil
-	}
-	return fmt.Errorf("unknown Tier field %s", name)
-}
-
-// AddedFields returns all numeric fields that were incremented/decremented during
-// this mutation.
-func (m *TierMutation) AddedFields() []string {
-	var fields []string
-	if m.adddisk_mb != nil {
-		fields = append(fields, tier.FieldDiskMB)
-	}
-	if m.addconcurrent_instances != nil {
-		fields = append(fields, tier.FieldConcurrentInstances)
-	}
-	if m.addconcurrent_template_builds != nil {
-		fields = append(fields, tier.FieldConcurrentTemplateBuilds)
-	}
-	if m.addmax_length_hours != nil {
-		fields = append(fields, tier.FieldMaxLengthHours)
-	}
-	return fields
-}
-
-// AddedField returns the numeric value that was incremented/decremented on a field
-// with the given name. The second boolean return value indicates that this field
-// was not set, or was not defined in the schema.
-func (m *TierMutation) AddedField(name string) (ent.Value, bool) {
-	switch name {
-	case tier.FieldDiskMB:
-		return m.AddedDiskMB()
-	case tier.FieldConcurrentInstances:
-		return m.AddedConcurrentInstances()
-	case tier.FieldConcurrentTemplateBuilds:
-		return m.AddedConcurrentTemplateBuilds()
-	case tier.FieldMaxLengthHours:
-		return m.AddedMaxLengthHours()
-	}
-	return nil, false
-}
-
-// AddField adds the value to the field with the given name. It returns an error if
-// the field is not defined in the schema, or if the type mismatched the field
-// type.
-func (m *TierMutation) AddField(name string, value ent.Value) error {
-	switch name {
-	case tier.FieldDiskMB:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddDiskMB(v)
-		return nil
-	case tier.FieldConcurrentInstances:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddConcurrentInstances(v)
-		return nil
-	case tier.FieldConcurrentTemplateBuilds:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddConcurrentTemplateBuilds(v)
-		return nil
-	case tier.FieldMaxLengthHours:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddMaxLengthHours(v)
-		return nil
-	}
-	return fmt.Errorf("unknown Tier numeric field %s", name)
-}
-
-// ClearedFields returns all nullable fields that were cleared during this
-// mutation.
-func (m *TierMutation) ClearedFields() []string {
-	return nil
-}
-
-// FieldCleared returns a boolean indicating if a field with the given name was
-// cleared in this mutation.
-func (m *TierMutation) FieldCleared(name string) bool {
-	_, ok := m.clearedFields[name]
-	return ok
-}
-
-// ClearField clears the value of the field with the given name. It returns an
-// error if the field is not defined in the schema.
-func (m *TierMutation) ClearField(name string) error {
-	return fmt.Errorf("unknown Tier nullable field %s", name)
-}
-
-// ResetField resets all changes in the mutation for the field with the given name.
-// It returns an error if the field is not defined in the schema.
-func (m *TierMutation) ResetField(name string) error {
-	switch name {
-	case tier.FieldName:
-		m.ResetName()
-		return nil
-	case tier.FieldDiskMB:
-		m.ResetDiskMB()
-		return nil
-	case tier.FieldConcurrentInstances:
-		m.ResetConcurrentInstances()
-		return nil
-	case tier.FieldConcurrentTemplateBuilds:
-		m.ResetConcurrentTemplateBuilds()
-		return nil
-	case tier.FieldMaxLengthHours:
-		m.ResetMaxLengthHours()
-		return nil
-	}
-	return fmt.Errorf("unknown Tier field %s", name)
-}
-
-// AddedEdges returns all edge names that were set/added in this mutation.
-func (m *TierMutation) AddedEdges() []string {
-	edges := make([]string, 0, 1)
-	if m.teams != nil {
-		edges = append(edges, tier.EdgeTeams)
-	}
-	return edges
-}
-
-// AddedIDs returns all IDs (to other nodes) that were added for the given edge
-// name in this mutation.
-func (m *TierMutation) AddedIDs(name string) []ent.Value {
-	switch name {
-	case tier.EdgeTeams:
-		ids := make([]ent.Value, 0, len(m.teams))
-		for id := range m.teams {
-			ids = append(ids, id)
-		}
-		return ids
-	}
-	return nil
-}
-
-// RemovedEdges returns all edge names that were removed in this mutation.
-func (m *TierMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 1)
-	if m.removedteams != nil {
-		edges = append(edges, tier.EdgeTeams)
-	}
-	return edges
-}
-
-// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
-// the given name in this mutation.
-func (m *TierMutation) RemovedIDs(name string) []ent.Value {
-	switch name {
-	case tier.EdgeTeams:
-		ids := make([]ent.Value, 0, len(m.removedteams))
-		for id := range m.removedteams {
-			ids = append(ids, id)
-		}
-		return ids
-	}
-	return nil
-}
-
-// ClearedEdges returns all edge names that were cleared in this mutation.
-func (m *TierMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 1)
-	if m.clearedteams {
-		edges = append(edges, tier.EdgeTeams)
-	}
-	return edges
-}
-
-// EdgeCleared returns a boolean which indicates if the edge with the given name
-// was cleared in this mutation.
-func (m *TierMutation) EdgeCleared(name string) bool {
-	switch name {
-	case tier.EdgeTeams:
-		return m.clearedteams
-	}
-	return false
-}
-
-// ClearEdge clears the value of the edge with the given name. It returns an error
-// if that edge is not defined in the schema.
-func (m *TierMutation) ClearEdge(name string) error {
-	switch name {
-	}
-	return fmt.Errorf("unknown Tier unique edge %s", name)
-}
-
-// ResetEdge resets all changes to the edge with the given name in this mutation.
-// It returns an error if the edge is not defined in the schema.
-func (m *TierMutation) ResetEdge(name string) error {
-	switch name {
-	case tier.EdgeTeams:
-		m.ResetTeams()
-		return nil
-	}
-	return fmt.Errorf("unknown Tier edge %s", name)
 }
 
 // UserMutation represents an operation that mutates the User nodes in the graph.

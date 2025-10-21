@@ -28,6 +28,7 @@ func (r *RedisPubSub[PayloadT, SubMetaDataT]) ShouldPublish(ctx context.Context,
 	if err != nil {
 		return false, err
 	}
+
 	return exists > 0, nil
 }
 
@@ -45,6 +46,7 @@ func (r *RedisPubSub[PayloadT, SubMetaDataT]) GetSubMetaData(ctx context.Context
 	if err != nil {
 		return metadata, err
 	}
+
 	return metadata, nil
 }
 
@@ -78,6 +80,7 @@ func (r *RedisPubSub[PayloadT, SubMetaDataT]) DeleteSubMetaData(ctx context.Cont
 	if r.redisClient == nil {
 		return fmt.Errorf("redis client is not initialized")
 	}
+
 	return (r.redisClient).Del(ctx, key).Err()
 }
 

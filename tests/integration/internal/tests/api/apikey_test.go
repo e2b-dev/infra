@@ -139,6 +139,7 @@ func TestDeleteAPIKey(t *testing.T) {
 		for _, key := range *listResp.JSON200 {
 			if key.Id == apiKeyID {
 				found = true
+
 				break
 			}
 		}
@@ -158,6 +159,7 @@ func TestDeleteAPIKey(t *testing.T) {
 		for _, key := range *listResp2.JSON200 {
 			if key.Id == apiKeyID {
 				found = true
+
 				break
 			}
 		}
@@ -293,6 +295,7 @@ func TestPatchAPIKey(t *testing.T) {
 			if key.Id == apiKeyID {
 				assert.Equal(t, "legitimate-update", key.Name)
 				found = true
+
 				break
 			}
 		}

@@ -56,6 +56,7 @@ func TestWatcher(t *testing.T) {
 		getResp, err := envdClient.FilesystemClient.GetWatcherEvents(t.Context(), getReq)
 		require.NoError(t, err)
 		events = getResp.Msg.GetEvents()
+
 		return len(events) > 0
 	}, 5*time.Second, 20*time.Millisecond, "Expected to receive file system events")
 	require.NotEmpty(t, events)

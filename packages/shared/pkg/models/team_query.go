@@ -15,7 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/internal"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/tier"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
 	"github.com/google/uuid"
@@ -29,7 +28,6 @@ type TeamQuery struct {
 	inters         []Interceptor
 	predicates     []predicate.Team
 	withUsers      *UserQuery
-	withTeamTier   *TierQuery
 	withEnvs       *EnvQuery
 	withUsersTeams *UsersTeamsQuery
 	modifiers      []func(*sql.Selector)
@@ -88,31 +86,6 @@ func (tq *TeamQuery) QueryUsers() *UserQuery {
 		schemaConfig := tq.schemaConfig
 		step.To.Schema = schemaConfig.User
 		step.Edge.Schema = schemaConfig.UsersTeams
-		fromU = sqlgraph.SetNeighbors(tq.driver.Dialect(), step)
-		return fromU, nil
-	}
-	return query
-}
-
-// QueryTeamTier chains the current query on the "team_tier" edge.
-func (tq *TeamQuery) QueryTeamTier() *TierQuery {
-	query := (&TierClient{config: tq.config}).Query()
-	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
-		if err := tq.prepareQuery(ctx); err != nil {
-			return nil, err
-		}
-		selector := tq.sqlQuery(ctx)
-		if err := selector.Err(); err != nil {
-			return nil, err
-		}
-		step := sqlgraph.NewStep(
-			sqlgraph.From(team.Table, team.FieldID, selector),
-			sqlgraph.To(tier.Table, tier.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, true, team.TeamTierTable, team.TeamTierColumn),
-		)
-		schemaConfig := tq.schemaConfig
-		step.To.Schema = schemaConfig.Tier
-		step.Edge.Schema = schemaConfig.Team
 		fromU = sqlgraph.SetNeighbors(tq.driver.Dialect(), step)
 		return fromU, nil
 	}
@@ -362,7 +335,6 @@ func (tq *TeamQuery) Clone() *TeamQuery {
 		inters:         append([]Interceptor{}, tq.inters...),
 		predicates:     append([]predicate.Team{}, tq.predicates...),
 		withUsers:      tq.withUsers.Clone(),
-		withTeamTier:   tq.withTeamTier.Clone(),
 		withEnvs:       tq.withEnvs.Clone(),
 		withUsersTeams: tq.withUsersTeams.Clone(),
 		// clone intermediate query.
@@ -379,17 +351,6 @@ func (tq *TeamQuery) WithUsers(opts ...func(*UserQuery)) *TeamQuery {
 		opt(query)
 	}
 	tq.withUsers = query
-	return tq
-}
-
-// WithTeamTier tells the query-builder to eager-load the nodes that are connected to
-// the "team_tier" edge. The optional arguments are used to configure the query builder of the edge.
-func (tq *TeamQuery) WithTeamTier(opts ...func(*TierQuery)) *TeamQuery {
-	query := (&TierClient{config: tq.config}).Query()
-	for _, opt := range opts {
-		opt(query)
-	}
-	tq.withTeamTier = query
 	return tq
 }
 
@@ -493,9 +454,8 @@ func (tq *TeamQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Team, e
 	var (
 		nodes       = []*Team{}
 		_spec       = tq.querySpec()
-		loadedTypes = [4]bool{
+		loadedTypes = [3]bool{
 			tq.withUsers != nil,
-			tq.withTeamTier != nil,
 			tq.withEnvs != nil,
 			tq.withUsersTeams != nil,
 		}
@@ -527,12 +487,6 @@ func (tq *TeamQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Team, e
 		if err := tq.loadUsers(ctx, query, nodes,
 			func(n *Team) { n.Edges.Users = []*User{} },
 			func(n *Team, e *User) { n.Edges.Users = append(n.Edges.Users, e) }); err != nil {
-			return nil, err
-		}
-	}
-	if query := tq.withTeamTier; query != nil {
-		if err := tq.loadTeamTier(ctx, query, nodes, nil,
-			func(n *Team, e *Tier) { n.Edges.TeamTier = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -611,35 +565,6 @@ func (tq *TeamQuery) loadUsers(ctx context.Context, query *UserQuery, nodes []*T
 		}
 		for kn := range nodes {
 			assign(kn, n)
-		}
-	}
-	return nil
-}
-func (tq *TeamQuery) loadTeamTier(ctx context.Context, query *TierQuery, nodes []*Team, init func(*Team), assign func(*Team, *Tier)) error {
-	ids := make([]string, 0, len(nodes))
-	nodeids := make(map[string][]*Team)
-	for i := range nodes {
-		fk := nodes[i].Tier
-		if _, ok := nodeids[fk]; !ok {
-			ids = append(ids, fk)
-		}
-		nodeids[fk] = append(nodeids[fk], nodes[i])
-	}
-	if len(ids) == 0 {
-		return nil
-	}
-	query.Where(tier.IDIn(ids...))
-	neighbors, err := query.All(ctx)
-	if err != nil {
-		return err
-	}
-	for _, n := range neighbors {
-		nodes, ok := nodeids[n.ID]
-		if !ok {
-			return fmt.Errorf(`unexpected foreign-key "tier" returned %v`, n.ID)
-		}
-		for i := range nodes {
-			assign(nodes[i], n)
 		}
 	}
 	return nil
@@ -734,9 +659,6 @@ func (tq *TeamQuery) querySpec() *sqlgraph.QuerySpec {
 			if fields[i] != team.FieldID {
 				_spec.Node.Columns = append(_spec.Node.Columns, fields[i])
 			}
-		}
-		if tq.withTeamTier != nil {
-			_spec.Node.AddColumnOnce(team.FieldTier)
 		}
 	}
 	if ps := tq.predicates; len(ps) > 0 {

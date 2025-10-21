@@ -62,6 +62,7 @@ func doRequestWithInfiniteRetries(
 		request, err := http.NewRequestWithContext(reqCtx, method, address, bytes.NewReader(body))
 		if err != nil {
 			cancel()
+
 			return nil, requestCount, err
 		}
 
@@ -123,6 +124,7 @@ func (s *Sandbox) initEnvd(ctx context.Context) error {
 	)
 	if err != nil {
 		envdInitCalls.Add(ctx, count, metric.WithAttributes(attributesFail...))
+
 		return fmt.Errorf("failed to init envd: %w", err)
 	}
 
@@ -147,6 +149,7 @@ func (s *Sandbox) initEnvd(ctx context.Context) error {
 			zap.Int("status_code", response.StatusCode),
 			zap.String("response_body", utils.Truncate(string(body), 100)),
 		)
+
 		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
 	}
 

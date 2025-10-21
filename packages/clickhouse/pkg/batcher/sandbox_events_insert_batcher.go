@@ -31,7 +31,9 @@ const InsertSandboxEventQuery = `INSERT INTO sandbox_events
     sandbox_team_id,
     event_category,
     event_label,
-    event_data
+    event_data,
+    type,
+    version
 )
 VALUES (
     ?,
@@ -40,6 +42,8 @@ VALUES (
     ?,
     ?,
     ?,	
+    ?,
+    ?,
     ?,
     ?,
     ?
@@ -83,6 +87,8 @@ func (b *SandboxEventInsertBatcher) processInsertSandboxEventsBatch(events []cli
 			event.EventCategory,
 			event.EventLabel,
 			event.EventData,
+			event.Type,
+			event.Version,
 		)
 		if err != nil {
 			return fmt.Errorf("error appending %d product usage event to batch: %w", len(events), err)
@@ -105,6 +111,7 @@ func (b *SandboxEventInsertBatcher) Push(event clickhouse.SandboxEvent) error {
 	if !success {
 		return ErrBatcherQueueFull
 	}
+
 	return nil
 }
 
@@ -122,5 +129,6 @@ func (b *SandboxEventInsertBatcher) Close(context.Context) error {
 	if len(errs) > 0 {
 		return errors.Join(errs...)
 	}
+
 	return nil
 }
