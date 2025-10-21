@@ -32,6 +32,11 @@ type Context struct {
 	EnvVars map[string]string `json:"env_vars,omitempty"`
 }
 
+func (c Context) WithUser(user string) Context {
+	c.User = user
+	return c
+}
+
 type FromTemplate struct {
 	Alias   string `json:"alias"`
 	BuildID string `json:"build_id"`
@@ -175,6 +180,7 @@ func deserialize(reader io.Reader) (Template, error) {
 	if err != nil {
 		return Template{}, fmt.Errorf("error unmarshaling template metadata: %w", err)
 	}
+
 	return templateMetadata, nil
 }
 
@@ -185,5 +191,6 @@ func serialize(template Template) (io.Reader, error) {
 	}
 
 	buf := bytes.NewBuffer(marshaled)
+
 	return buf, nil
 }

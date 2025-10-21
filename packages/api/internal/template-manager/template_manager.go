@@ -29,6 +29,8 @@ import (
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/template-manager")
 
+var _ templateManagerClient = (*TemplateManager)(nil)
+
 type processingBuilds struct {
 	templateID string
 }
@@ -103,6 +105,7 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 			if err != nil {
 				zap.L().Error("Error getting running builds for periodical sync", zap.Error(err))
 				dbxCtxCancel()
+
 				continue
 			}
 

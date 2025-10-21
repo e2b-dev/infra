@@ -3084,6 +3084,7 @@ type EnvBuildMutation struct {
 	envd_version          *string
 	cluster_node_id       *string
 	reason                *schema.BuildReason
+	version               *string
 	clearedFields         map[string]struct{}
 	env                   *string
 	clearedenv            bool
@@ -3967,6 +3968,55 @@ func (m *EnvBuildMutation) ResetReason() {
 	m.reason = nil
 }
 
+// SetVersion sets the "version" field.
+func (m *EnvBuildMutation) SetVersion(s string) {
+	m.version = &s
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *EnvBuildMutation) Version() (r string, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the EnvBuild entity.
+// If the EnvBuild object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnvBuildMutation) OldVersion(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// ClearVersion clears the value of the "version" field.
+func (m *EnvBuildMutation) ClearVersion() {
+	m.version = nil
+	m.clearedFields[envbuild.FieldVersion] = struct{}{}
+}
+
+// VersionCleared returns if the "version" field was cleared in this mutation.
+func (m *EnvBuildMutation) VersionCleared() bool {
+	_, ok := m.clearedFields[envbuild.FieldVersion]
+	return ok
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *EnvBuildMutation) ResetVersion() {
+	m.version = nil
+	delete(m.clearedFields, envbuild.FieldVersion)
+}
+
 // ClearEnv clears the "env" edge to the Env entity.
 func (m *EnvBuildMutation) ClearEnv() {
 	m.clearedenv = true
@@ -4028,7 +4078,7 @@ func (m *EnvBuildMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *EnvBuildMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 18)
 	if m.created_at != nil {
 		fields = append(fields, envbuild.FieldCreatedAt)
 	}
@@ -4080,6 +4130,9 @@ func (m *EnvBuildMutation) Fields() []string {
 	if m.reason != nil {
 		fields = append(fields, envbuild.FieldReason)
 	}
+	if m.version != nil {
+		fields = append(fields, envbuild.FieldVersion)
+	}
 	return fields
 }
 
@@ -4122,6 +4175,8 @@ func (m *EnvBuildMutation) Field(name string) (ent.Value, bool) {
 		return m.ClusterNodeID()
 	case envbuild.FieldReason:
 		return m.Reason()
+	case envbuild.FieldVersion:
+		return m.Version()
 	}
 	return nil, false
 }
@@ -4165,6 +4220,8 @@ func (m *EnvBuildMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldClusterNodeID(ctx)
 	case envbuild.FieldReason:
 		return m.OldReason(ctx)
+	case envbuild.FieldVersion:
+		return m.OldVersion(ctx)
 	}
 	return nil, fmt.Errorf("unknown EnvBuild field %s", name)
 }
@@ -4293,6 +4350,13 @@ func (m *EnvBuildMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetReason(v)
 		return nil
+	case envbuild.FieldVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild field %s", name)
 }
@@ -4392,6 +4456,9 @@ func (m *EnvBuildMutation) ClearedFields() []string {
 	if m.FieldCleared(envbuild.FieldEnvdVersion) {
 		fields = append(fields, envbuild.FieldEnvdVersion)
 	}
+	if m.FieldCleared(envbuild.FieldVersion) {
+		fields = append(fields, envbuild.FieldVersion)
+	}
 	return fields
 }
 
@@ -4423,6 +4490,9 @@ func (m *EnvBuildMutation) ClearField(name string) error {
 		return nil
 	case envbuild.FieldEnvdVersion:
 		m.ClearEnvdVersion()
+		return nil
+	case envbuild.FieldVersion:
+		m.ClearVersion()
 		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild nullable field %s", name)
@@ -4482,6 +4552,9 @@ func (m *EnvBuildMutation) ResetField(name string) error {
 		return nil
 	case envbuild.FieldReason:
 		m.ResetReason()
+		return nil
+	case envbuild.FieldVersion:
+		m.ResetVersion()
 		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild field %s", name)

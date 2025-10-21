@@ -12,7 +12,7 @@ import (
 )
 
 const getTemplateBuildWithTemplate = `-- name: GetTemplateBuildWithTemplate :one
-SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason
+SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason, eb.version
 FROM "public"."envs" e
 JOIN "public"."env_builds" eb ON eb.env_id = e.id
 WHERE e.id = $1 AND eb.id = $2
@@ -60,6 +60,7 @@ func (q *Queries) GetTemplateBuildWithTemplate(ctx context.Context, arg GetTempl
 		&i.EnvBuild.ReadyCmd,
 		&i.EnvBuild.ClusterNodeID,
 		&i.EnvBuild.Reason,
+		&i.EnvBuild.Version,
 	)
 	return i, err
 }

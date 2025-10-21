@@ -201,6 +201,7 @@ func (s *Slot) TapMask() int {
 
 func (s *Slot) TapMaskString() string {
 	mask := net.CIDRMask(s.TapMask(), 32)
+
 	return net.IP(mask).String()
 }
 

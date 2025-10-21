@@ -26,6 +26,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 
 		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
+
 		return
 	}
 
@@ -34,6 +35,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing API key ID: %s", err))
 
 		telemetry.ReportCriticalError(ctx, "error when parsing API key ID", err)
+
 		return
 	}
 
@@ -48,11 +50,13 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		c.String(http.StatusNotFound, "id not found")
+
 		return
 	} else if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating team API key name: %s", err))
 
 		telemetry.ReportCriticalError(ctx, "error when updating team API key name", err)
+
 		return
 	}
 
@@ -107,6 +111,7 @@ func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing API key ID: %s", err))
 
 		telemetry.ReportCriticalError(ctx, "error when parsing API key ID", err)
+
 		return
 	}
 
@@ -120,10 +125,12 @@ func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when deleting API key: %s", err))
 
 		telemetry.ReportCriticalError(ctx, "error when deleting API key", err)
+
 		return
 	}
 	if len(ids) == 0 {
 		c.String(http.StatusNotFound, "id not found")
+
 		return
 	}
 

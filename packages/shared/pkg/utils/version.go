@@ -10,6 +10,7 @@ func sanitizeVersion(version string) string {
 	if len(version) > 0 && version[0] != 'v' {
 		version = "v" + version
 	}
+
 	return version
 }
 
@@ -26,6 +27,21 @@ func IsGTEVersion(curVersion, minVersion string) (bool, error) {
 	}
 
 	return semver.Compare(curVersion, minVersion) >= 0, nil
+}
+
+func IsSmallerVersion(curVersion, maxVersionExcluded string) (bool, error) {
+	curVersion = sanitizeVersion(curVersion)
+	maxVersionExcluded = sanitizeVersion(maxVersionExcluded)
+
+	if !semver.IsValid(curVersion) {
+		return false, fmt.Errorf("invalid current version format: %s", curVersion)
+	}
+
+	if !semver.IsValid(maxVersionExcluded) {
+		return false, fmt.Errorf("invalid maximum version format: %s", maxVersionExcluded)
+	}
+
+	return semver.Compare(curVersion, maxVersionExcluded) < 0, nil
 }
 
 func IsVersion(curVersion, eqVersion string) bool {

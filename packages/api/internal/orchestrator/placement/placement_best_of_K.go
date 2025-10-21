@@ -93,6 +93,7 @@ func NewBestOfK(config BestOfKConfig) Algorithm {
 func (b *BestOfK) getConfig() BestOfKConfig {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
+
 	return b.config
 }
 

@@ -55,6 +55,7 @@ func entryInfo(path string) (*rpc.EntryInfo, error) {
 		if os.IsNotExist(err) {
 			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("file not found: %w", err))
 		}
+
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error getting file info: %w", err))
 	}
 

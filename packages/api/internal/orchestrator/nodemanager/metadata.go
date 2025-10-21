@@ -29,6 +29,7 @@ func (n *Node) setMetadata(md NodeMetadata) {
 func (n *Node) Metadata() NodeMetadata {
 	n.mutex.RLock()
 	defer n.mutex.RUnlock()
+
 	return n.meta
 }
 
