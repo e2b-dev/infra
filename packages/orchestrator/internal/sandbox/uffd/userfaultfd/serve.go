@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"syscall"
 	"unsafe"
 
@@ -121,10 +122,11 @@ outerLoop:
 			return fmt.Errorf("failed to map: %w", err)
 		}
 
-		// Handle write to write protected page (WP+WRITE flag)
-		if flags&UFFD_PAGEFAULT_FLAG_WP != 0 && flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
+		// Handle write to write protected page (WP flag)
+		if flags&UFFD_PAGEFAULT_FLAG_WP != 0 {
 			u.handleWriteProtection(addr, offset, pagesize)
 
+			fmt.Fprintf(os.Stderr, "handleWriteProtection: added write request: %d\n", offset)
 			continue
 		}
 
@@ -132,6 +134,7 @@ outerLoop:
 		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
 			u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize, true)
 
+			fmt.Fprintf(os.Stderr, "handleMissing: added write request: %d\n", offset)
 			continue
 		}
 
@@ -139,6 +142,7 @@ outerLoop:
 		if flags == 0 {
 			u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize, false)
 
+			fmt.Fprintf(os.Stderr, "handleMissing: added read request: %d\n", offset)
 			continue
 		}
 
@@ -228,7 +232,10 @@ func (u *Userfaultfd) handleMissing(
 }
 
 func (u *Userfaultfd) handleWriteProtection(addr uintptr, offset int64, pagesize uint64) {
-	u.writeRequests.Add(offset)
+
+	if !u.writeRequests.Add(offset) {
+		return
+	}
 
 	u.writesInProgress.Add()
 

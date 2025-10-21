@@ -146,7 +146,7 @@ func TestUffdWriteProtection(t *testing.T) {
 			},
 		},
 		{
-			name:          "standard 4k page, single read then write on first page",
+			name:          "standard 4k page, single read then write on first page (MISSING then WP)",
 			pagesize:      header.PageSize,
 			numberOfPages: 32,
 			operations: []operation{
@@ -161,7 +161,7 @@ func TestUffdWriteProtection(t *testing.T) {
 			},
 		},
 		{
-			name:          "standard 4k page, single write then read on first page",
+			name:          "standard 4k page, single write then read on first page (WRITE then skipping)",
 			pagesize:      header.PageSize,
 			numberOfPages: 32,
 			operations: []operation{
@@ -176,7 +176,7 @@ func TestUffdWriteProtection(t *testing.T) {
 			},
 		},
 		{
-			name:          "standard 4k page, single read then write on non-first page",
+			name:          "standard 4k page, single read then write on non-first page (MISSING then WP)",
 			pagesize:      header.PageSize,
 			numberOfPages: 32,
 			operations: []operation{
@@ -206,6 +206,59 @@ func TestUffdWriteProtection(t *testing.T) {
 			},
 		},
 		{
+			name:          "standard 4k page, two writes on same page (WRITE then skipping)",
+			pagesize:      header.PageSize,
+			numberOfPages: 32,
+			operations: []operation{
+				{
+					offset: 0,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0,
+					mode:   operationModeWrite,
+				},
+			},
+		},
+		{
+			name:          "standard 4k page, three writes on same page (WRITE then skipping)",
+			pagesize:      header.PageSize,
+			numberOfPages: 32,
+			operations: []operation{
+				{
+					offset: 0,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0,
+					mode:   operationModeWrite,
+				},
+			},
+		},
+		{
+			name:          "standard 4k page, read then two writes on same page (MISSING then WP then WP)",
+			pagesize:      header.PageSize,
+			numberOfPages: 32,
+			operations: []operation{
+				{
+					offset: 0,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 0,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0,
+					mode:   operationModeWrite,
+				},
+			},
+		},
+		{
 			name:          "hugepage, single write",
 			pagesize:      header.HugepageSize,
 			numberOfPages: 8,
@@ -217,7 +270,7 @@ func TestUffdWriteProtection(t *testing.T) {
 			},
 		},
 		{
-			name:          "hugepage, single read then write on first page",
+			name:          "hugepage, single read then write on first page (MISSING then WP)",
 			pagesize:      header.HugepageSize,
 			numberOfPages: 8,
 			operations: []operation{
@@ -232,7 +285,7 @@ func TestUffdWriteProtection(t *testing.T) {
 			},
 		},
 		{
-			name:          "hugepage, single read then write on non-first page",
+			name:          "hugepage, single read then write on non-first page (MISSING then WP)",
 			pagesize:      header.HugepageSize,
 			numberOfPages: 8,
 			operations: []operation{
@@ -247,7 +300,7 @@ func TestUffdWriteProtection(t *testing.T) {
 			},
 		},
 		{
-			name:          "hugepage, single write then read on non-first page",
+			name:          "hugepage, single write then read on non-first page (WRITE then skipping)",
 			pagesize:      header.HugepageSize,
 			numberOfPages: 8,
 			operations: []operation{
@@ -272,6 +325,59 @@ func TestUffdWriteProtection(t *testing.T) {
 				},
 				{
 					offset: 4 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+			},
+		},
+		{
+			name:          "hugepage, two writes on same page (WRITE then skipping)",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 8,
+			operations: []operation{
+				{
+					offset: 0 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+			},
+		},
+		{
+			name:          "hugepage, three writes on same page (WRITE then skipping)",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 8,
+			operations: []operation{
+				{
+					offset: 0 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+			},
+		},
+		{
+			name:          "hugepage, read then two writes on same page (MISSING then WP then WP)",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 8,
+			operations: []operation{
+				{
+					offset: 0 * header.HugepageSize,
+					mode:   operationModeRead,
+				},
+				{
+					offset: 0 * header.HugepageSize,
+					mode:   operationModeWrite,
+				},
+				{
+					offset: 0 * header.HugepageSize,
 					mode:   operationModeWrite,
 				},
 			},
