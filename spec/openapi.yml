@@ -197,6 +197,7 @@ components:
       type: object
       description: MCP configuration for the sandbox
       additionalProperties: {}
+      nullable: true
 
     SandboxLog:
       description: Log entry with timestamp and line
