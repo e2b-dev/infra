@@ -46,7 +46,7 @@ type Options struct {
 	Logger    *zap.Logger
 }
 
-func Run(ctx context.Context, opts Options) (e error) {
+func Run(ctx context.Context, opts Options) error {
 	if opts.Logger == nil {
 		opts.Logger = zap.L()
 	}
@@ -58,33 +58,6 @@ func Run(ctx context.Context, opts Options) (e error) {
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-
-	defer func() {
-		if opts.ForceStop {
-			cancel()
-		}
-
-		var errs []error
-		if e != nil {
-			errs = append(errs, e)
-		}
-
-		for index := len(opts.Tasks) - 1; index >= 0; index-- {
-			task := opts.Tasks[index]
-			taskLogger := baseLogger.Named(task.Name)
-			if task.Cleanup != nil {
-				taskLogger.Info("running cleanup")
-				if err := task.Cleanup(ctx); err != nil {
-					taskLogger.Warn("cleanup failed", zap.Error(err))
-					errs = append(errs, err)
-				}
-			}
-		}
-
-		wg.Wait()
-
-		e = errors.Join(errs...)
-	}()
 
 	startTask := func(ctx context.Context, task Task) {
 		taskLogger := baseLogger.Named(task.Name)
@@ -132,5 +105,28 @@ func Run(ctx context.Context, opts Options) (e error) {
 		reason = TaskExitedError{TaskName: res.name, TaskError: res.err}
 	}
 
-	return reason
+	if opts.ForceStop {
+		cancel()
+	}
+
+	var errs []error
+	if reason != nil {
+		errs = append(errs, reason)
+	}
+
+	for index := len(opts.Tasks) - 1; index >= 0; index-- {
+		task := opts.Tasks[index]
+		taskLogger := baseLogger.Named(task.Name)
+		if task.Cleanup != nil {
+			taskLogger.Info("running cleanup")
+			if err := task.Cleanup(ctx); err != nil {
+				taskLogger.Warn("cleanup failed", zap.Error(err))
+				errs = append(errs, err)
+			}
+		}
+	}
+
+	wg.Wait()
+
+	return errors.Join(errs...)
 }
