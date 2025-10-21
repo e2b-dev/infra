@@ -22,6 +22,7 @@ func apiLevelToLogLevel(level *api.LogLevel) *logs.LogLevel {
 	}
 
 	value := logs.StringToLevel(string(*level))
+
 	return &value
 }
 
@@ -43,6 +44,7 @@ func (a *APIStore) V1TemplateBuildLogs(c *gin.Context, buildID string, params ap
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when fetching template build logs")
 		telemetry.ReportCriticalError(ctx, "error when fetching template build logs", err)
+
 		return
 	}
 

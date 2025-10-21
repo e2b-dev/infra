@@ -59,6 +59,7 @@ func createRetryableClient(config RetryConfig) *retryablehttp.Client {
 			backoff = time.Duration(float64(backoff) * config.BackoffMultiplier)
 			if backoff > maxBackoff {
 				backoff = maxBackoff
+
 				break
 			}
 		}
@@ -73,6 +74,7 @@ func createRetryableClient(config RetryConfig) *retryablehttp.Client {
 		if backoff > 0 {
 			return time.Duration(rand.Int63n(int64(backoff)))
 		}
+
 		return backoff
 	}
 
@@ -167,6 +169,7 @@ func (m *MultipartUploader) InitiateUpload() (string, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+
 		return "", fmt.Errorf("failed to initiate upload (status %d): %s", resp.StatusCode, string(body))
 	}
 
@@ -204,6 +207,7 @@ func (m *MultipartUploader) UploadPart(uploadID string, partNumber int, data []b
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+
 		return "", fmt.Errorf("failed to upload part %d (status %d): %s", partNumber, resp.StatusCode, string(body))
 	}
 
@@ -247,6 +251,7 @@ func (m *MultipartUploader) CompleteUpload(uploadID string, parts []Part) error 
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+
 		return fmt.Errorf("failed to complete upload (status %d): %s", resp.StatusCode, string(body))
 	}
 

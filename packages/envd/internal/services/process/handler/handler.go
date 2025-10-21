@@ -108,6 +108,7 @@ func New(
 	if defaults.EnvVars != nil {
 		defaults.EnvVars.Range(func(key string, value string) bool {
 			formattedVars = append(formattedVars, key+"="+value)
+
 			return true
 		})
 	}

@@ -142,12 +142,14 @@ func newOtelCore(ctx context.Context, opts opts) (zapcore.Core, error) {
 
 	loggerProvider := telemetry.NewLogProvider(logsExporter, resource)
 	otelCore := logger.GetOTELCore(loggerProvider, serviceName)
+
 	return otelCore, nil
 }
 
 func printSummary(r results, opts opts) {
 	if r.deletedFiles == 0 {
 		zap.L().Info("no files deleted")
+
 		return
 	}
 
@@ -177,6 +179,7 @@ func standardDeviation(accessed []time.Duration) time.Duration {
 	}
 
 	sd = math.Sqrt(sd / float64(len(accessed)))
+
 	return time.Duration(sd)
 }
 
@@ -195,6 +198,7 @@ func minDuration(durations []time.Duration) time.Duration {
 func loop[T any](items []T, betterThan func(one, two T) bool) T {
 	if len(items) == 0 {
 		var t T
+
 		return t
 	}
 
@@ -237,6 +241,7 @@ func deleteOldestFiles(cache *pkg.ListingCache, files []pkg.File, opts opts, dis
 				zap.L().Error("failed to delete",
 					zap.String("path", file.Path),
 					zap.Error(err))
+
 				continue
 			}
 		}
@@ -308,6 +313,7 @@ func getFiles(cache *pkg.ListingCache, maxFiles int) ([]pkg.File, error) {
 	}
 
 	reportGetFilesProgress(len(usedFiles), dupeHits)
+
 	return items, nil
 }
 

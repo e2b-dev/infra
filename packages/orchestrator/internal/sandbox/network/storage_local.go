@@ -88,6 +88,7 @@ func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 			if !available {
 				s.foreignNs[slotName] = struct{}{}
 				zap.L().Debug("Skipping slot because not available", zap.String("slot", slotName))
+
 				continue
 			}
 
@@ -156,6 +157,7 @@ func getForeignNamespaces() ([]string, error) {
 
 func getSlotName(slotIdx int) string {
 	slotIdxStr := strconv.Itoa(slotIdx)
+
 	return fmt.Sprintf("ns-%s", slotIdxStr)
 }
 

@@ -122,7 +122,7 @@ func (ppb *PostProcessingBuilder) Build(
 	defaultUser := utils.ToPtr(currentLayer.Metadata.Context.User)
 	defaultWorkdir := currentLayer.Metadata.Context.WorkDir
 
-	ok, err := utils.IsGTEVersion(ppb.Version, templates.TemplateDefaultUserVersion)
+	ok, err := utils.IsGTEVersion(ppb.Version, templates.TemplateV2ReleaseVersion)
 	if err != nil {
 		return phases.LayerResult{}, fmt.Errorf("error checking build version: %w", err)
 	}
@@ -202,6 +202,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer
 			)
 			if err != nil {
 				e = fmt.Errorf("error running sync command: %w", err)
+
 				return
 			}
 		}()
@@ -248,6 +249,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer
 				if err != nil && !errors.Is(err, context.Canceled) {
 					// Cancel the ready command context, so the ready command does not wait anymore if an error occurs.
 					commandsCancel()
+
 					return fmt.Errorf("error running start command: %w", err)
 				}
 

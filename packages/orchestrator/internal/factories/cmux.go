@@ -16,5 +16,6 @@ func NewCMUXServer(ctx context.Context, port uint16) (cmux.CMux, error) {
 	}
 
 	m := cmux.New(lis)
+
 	return m, nil
 }

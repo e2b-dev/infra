@@ -18,6 +18,7 @@ func acquireTimer(timeout time.Duration) *time.Timer {
 	if t.Reset(timeout) {
 		log.Printf("Active timer trapped into AcquireTimer() with timeout %s", timeout)
 	}
+
 	return t
 }
 

@@ -171,6 +171,7 @@ func runCommandWithAllOptions(
 			e := msg.GetEvent()
 			if e == nil {
 				zap.L().Error("received nil command event")
+
 				return nil
 			}
 

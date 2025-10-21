@@ -108,12 +108,14 @@ func run() int {
 	edgeSD, err := servicediscovery.BuildServiceDiscoveryProvider(ctx, config.EdgeServiceDiscovery, config.EdgePort, logger)
 	if err != nil {
 		logger.Error("Failed to build edge discovery config", zap.Error(err))
+
 		return 1
 	}
 
 	orchestratorsSD, err := servicediscovery.BuildServiceDiscoveryProvider(ctx, config.OrchestratorServiceDiscovery, config.OrchestratorPort, logger)
 	if err != nil {
 		logger.Error("Failed to build orchestrator discovery config", zap.Error(err))
+
 		return 1
 	}
 
@@ -153,6 +155,7 @@ func run() int {
 	)
 	if err != nil {
 		logger.Error("Failed to create client proxy", zap.Error(err))
+
 		return 1
 	}
 
@@ -165,12 +168,14 @@ func run() int {
 	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, logger, info, edges, orchestrators, catalog, config)
 	if err != nil {
 		logger.Error("failed to create edge api store", zap.Error(err))
+
 		return 1
 	}
 
 	edgeApiSwagger, err := api.GetSwagger()
 	if err != nil {
 		logger.Error("Failed to get swagger", zap.Error(err))
+
 		return 1
 	}
 
@@ -179,6 +184,7 @@ func run() int {
 	lis, err := lisCfg.Listen(ctx, "tcp", lisAddr)
 	if err != nil {
 		logger.Error("Failed to listen on edge port", zap.Uint16("port", config.EdgePort), zap.Error(err))
+
 		return 1
 	}
 

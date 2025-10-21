@@ -43,6 +43,7 @@ func WithEnvdVersion(envdVersion string) attribute.KeyValue {
 func zapFieldToOTELAttribute(f zap.Field) attribute.KeyValue {
 	e := &ZapFieldToOTELAttributeEncoder{}
 	f.AddTo(e)
+
 	return e.KeyValue
 }
 
@@ -149,6 +150,7 @@ func (z *ZapFieldToOTELAttributeEncoder) AddUintptr(key string, value uintptr) {
 
 func (z *ZapFieldToOTELAttributeEncoder) AddReflected(key string, value any) error {
 	z.KeyValue = attribute.String(key, fmt.Sprintf("%v", value))
+
 	return nil
 }
 

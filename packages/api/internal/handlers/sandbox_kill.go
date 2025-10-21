@@ -91,6 +91,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	if err == nil {
 		if sbx.TeamID != teamID {
 			a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
+
 			return
 		}
 
@@ -102,10 +103,12 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 			zap.L().Debug("Sandbox not found", logger.WithSandboxID(sandboxID))
 		case errors.Is(err, orchestrator.ErrSandboxOperationFailed):
 			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err))
+
 			return
 		default:
 			telemetry.ReportError(ctx, "error killing sandbox", err)
 			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err))
+
 			return
 		}
 	} else {
@@ -119,6 +122,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	case deleteSnapshotErr != nil:
 		telemetry.ReportError(ctx, "error deleting sandbox", deleteSnapshotErr)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error deleting sandbox: %s", deleteSnapshotErr))
+
 		return
 	default:
 		killedOrRemoved = true

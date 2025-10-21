@@ -80,6 +80,7 @@ func TestBatcherPushStop(t *testing.T) {
 	n := 0
 	b, err := NewBatcher[int](func(batch []int) error {
 		n += len(batch)
+
 		return nil
 	}, BatcherOptions{MaxDelay: time.Hour})
 	if err != nil {
@@ -127,6 +128,7 @@ func TestBatcherConcurrentPush(t *testing.T) {
 		for _, v := range batch {
 			atomic.AddUint32(&s, v)
 		}
+
 		return nil
 	}, BatcherOptions{})
 	if err != nil {
@@ -163,6 +165,7 @@ func TestBatcherQueueSize(t *testing.T) {
 	b, err := NewBatcher[int](func(batch []int) error {
 		<-ch
 		n += len(batch)
+
 		return nil
 	}, BatcherOptions{
 		MaxDelay:     time.Hour,
@@ -241,6 +244,7 @@ func testBatcherPushMaxDelay(t *testing.T, itemsCount int, maxDelay time.Duratio
 		lastTime = time.Now()
 		nn += len(batch)
 		n++
+
 		return nil
 	}, BatcherOptions{
 		MaxDelay:     maxDelay,
@@ -291,6 +295,7 @@ func testBatcherPushMaxBatchSize(t *testing.T, itemsCount, batchSize int) {
 		}
 		nn += len(batch)
 		n++
+
 		return nil
 	}, BatcherOptions{
 		MaxDelay:     time.Hour,

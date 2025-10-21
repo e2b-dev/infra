@@ -63,6 +63,7 @@ func (s *Synchronize[SourceItem, PoolItem]) Start(syncInterval time.Duration, sy
 		select {
 		case <-s.cancel:
 			zap.L().Info(s.getLog("Background synchronization ended"))
+
 			return
 		case <-timer.C:
 			syncTimeout, syncCancel := context.WithTimeout(context.Background(), syncRoundTimeout)
@@ -135,6 +136,7 @@ func (s *Synchronize[SourceItem, PoolItem]) syncOutdated(ctx context.Context, so
 			found := s.store.SourceExists(ctx, sourceItems, poolItem)
 			if found {
 				s.store.PoolUpdate(ctx, poolItem)
+
 				return
 			}
 
