@@ -135,7 +135,7 @@ outerLoop:
 			continue
 		}
 
-		// Handle read to missing page (MISSING flag)
+		// Handle read to missing page ("MISSING" flag)
 		if flags == 0 {
 			u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize, false)
 
@@ -155,11 +155,13 @@ func (u *Userfaultfd) handleMissing(
 	write bool,
 ) {
 	if write {
-		u.writeRequests.Add(offset)
+		if !u.writeRequests.Add(offset) {
+			return
+		}
 
 		u.writesInProgress.Add()
-	} else {
-		u.missingRequests.Add(offset)
+	} else if !u.missingRequests.Add(offset) {
+		return
 	}
 
 	u.wg.Go(func() error {
@@ -228,7 +230,7 @@ func (u *Userfaultfd) handleMissing(
 }
 
 func (u *Userfaultfd) handleWriteProtection(addr uintptr, offset int64, pagesize uint64) {
-	if !u.writeRequests.Add(offset) {
+	if !u.wpRequests.Add(offset) {
 		return
 	}
 

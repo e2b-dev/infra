@@ -126,8 +126,8 @@ func TestUffdMissing(t *testing.T) {
 			err := h.uffd.writesInProgress.Wait(t.Context())
 			require.NoError(t, err)
 
-			expectedReadOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
-			assert.Equal(t, expectedReadOffsets, h.getReadOffsets(), "checking which pages were faulted)")
+			expectedAccessedOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
+			assert.Equal(t, expectedAccessedOffsets, h.getAccessedOffsets(), "checking which pages were faulted)")
 		})
 	}
 }
@@ -406,8 +406,8 @@ func TestUffdWriteProtection(t *testing.T) {
 			expectedWriteOffsets := getOperationsOffsets(tt.operations, operationModeWrite)
 			assert.Equal(t, expectedWriteOffsets, h.getWriteOffsets(), "checking which pages were written to")
 
-			expectedReadOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
-			assert.Equal(t, expectedReadOffsets, h.getReadOffsets(), "checking which pages were faulted)")
+			expectedAccessedOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
+			assert.Equal(t, expectedAccessedOffsets, h.getAccessedOffsets(), "checking which pages were faulted)")
 		})
 	}
 }
@@ -420,8 +420,8 @@ type testHandler struct {
 	uffd       *Userfaultfd
 }
 
-func (h *testHandler) getReadOffsets() []uint {
-	return utils.Map(slices.Collect(h.uffd.missingRequests.BitSet().Union(h.uffd.writeRequests.BitSet()).EachSet()), func(offset uint) uint {
+func (h *testHandler) getAccessedOffsets() []uint {
+	return utils.Map(slices.Collect(h.uffd.missingRequests.BitSet().Union(h.uffd.dirty.BitSet()).EachSet()), func(offset uint) uint {
 		return uint(header.BlockOffset(int64(offset), int64(h.pagesize)))
 	})
 }
@@ -454,6 +454,13 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 	if err != nil {
 		return err
 	}
+
+	go func() {
+		n := copy((*h.memoryArea)[op.offset:op.offset+int64(h.pagesize)], bytesToWrite)
+		if n != int(h.pagesize) {
+			panic(fmt.Errorf("copy length mismatch: want %d, got %d", h.pagesize, n))
+		}
+	}()
 
 	n := copy((*h.memoryArea)[op.offset:op.offset+int64(h.pagesize)], bytesToWrite)
 	if n != int(h.pagesize) {
@@ -555,5 +562,3 @@ func getOperationsOffsets(ops []operation, m operationMode) []uint {
 
 	return slices.Collect(b.EachSet())
 }
-
-// TODO: Test write protection double registration (with missing) to simulate the FC situation

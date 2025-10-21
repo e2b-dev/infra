@@ -23,6 +23,9 @@ func NewPageMmap(size, pagesize uint64) ([]byte, uintptr, func() error, error) {
 	return nil, 0, nil, fmt.Errorf("unsupported page size: %d", pagesize)
 }
 
+// Even though UFFD behaves differently with file backend memory (and hugetlbfs file backed), the FC uses MAP_PRIVATE|MAP_ANONYMOUS, so the following stub is correct to test for FC.
+// - https://docs.kernel.org/admin-guide/mm/userfaultfd.html#write-protect-notifications
+// - https://github.com/firecracker-microvm/firecracker/blob/a305f362d0e6f7ba926c73e65452cb51262a44d8/src/vmm/src/persist.rs#L499
 func newMmap(size, pagesize uint64, flags int) ([]byte, uintptr, func() error, error) {
 	l := int(math.Ceil(float64(size)/float64(pagesize)) * float64(pagesize))
 	b, err := syscall.Mmap(
