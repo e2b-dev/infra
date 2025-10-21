@@ -2,6 +2,8 @@ module github.com/e2b-dev/infra/packages/clickhouse
 
 go 1.24.7
 
+replace github.com/e2b-dev/infra/packages/shared => ../shared
+
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.37.2
 	github.com/e2b-dev/infra/packages/shared v0.0.0-20250811171846-d1cdc9527dec

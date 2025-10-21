@@ -314,7 +314,7 @@ type NewSandbox struct {
 	EnvVars   *EnvVars `json:"envVars,omitempty"`
 
 	// Mcp MCP configuration for the sandbox
-	Mcp      *Mcp             `json:"mcp,omitempty"`
+	Mcp      *Mcp             `json:"mcp"`
 	Metadata *SandboxMetadata `json:"metadata,omitempty"`
 
 	// Secure Secure all system communication with sandbox
