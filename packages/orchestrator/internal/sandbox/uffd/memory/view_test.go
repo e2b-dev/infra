@@ -28,7 +28,7 @@ func TestView(t *testing.T) {
 
 	m := NewMapping([]Region{
 		{
-			BaseHostVirtAddr: uintptr(memoryStart),
+			BaseHostVirtAddr: memoryStart,
 			Size:             uintptr(size),
 			Offset:           uintptr(0),
 			PageSize:         uintptr(pagesize),
