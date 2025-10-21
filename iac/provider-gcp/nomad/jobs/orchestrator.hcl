@@ -92,6 +92,7 @@ EOT
         REDIS_CLUSTER_URL            = "${redis_cluster_url}"
         GRPC_PORT                    = "$${NOMAD_PORT_grpc}"
         PROXY_PORT                   = "$${NOMAD_PORT_proxy}"
+        GIN_MODE                     = "release"
 
 %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"

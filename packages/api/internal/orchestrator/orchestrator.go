@@ -78,6 +78,7 @@ func New(
 	)
 	if err != nil {
 		zap.L().Error("Error initializing Analytics client", zap.Error(err))
+
 		return nil, err
 	}
 
@@ -94,12 +95,14 @@ func New(
 	sandboxCounter, err := telemetry.GetUpDownCounter(meter, telemetry.SandboxCountMeterName)
 	if err != nil {
 		zap.L().Error("error getting counter", zap.Error(err))
+
 		return nil, err
 	}
 
 	createdCounter, err := telemetry.GetCounter(meter, telemetry.SandboxCreateMeterName)
 	if err != nil {
 		zap.L().Error("error getting counter", zap.Error(err))
+
 		return nil, err
 	}
 
@@ -151,6 +154,7 @@ func New(
 	teamMetricsObserver, err := metrics.NewTeamObserver(ctx, sandboxStore)
 	if err != nil {
 		zap.L().Error("Failed to create team metrics observer", zap.Error(err))
+
 		return nil, fmt.Errorf("failed to create team metrics observer: %w", err)
 	}
 
@@ -163,6 +167,7 @@ func New(
 
 	if err := o.setupMetrics(tel.MeterProvider); err != nil {
 		zap.L().Error("Failed to setup metrics", zap.Error(err))
+
 		return nil, fmt.Errorf("failed to setup metrics: %w", err)
 	}
 
@@ -247,12 +252,14 @@ func (o *Orchestrator) getPlacementAlgorithm(ctx context.Context) placement.Algo
 	if err != nil {
 		zap.L().Error("Failed to evaluate placement algorithm feature flag, using least-busy",
 			zap.Error(err))
+
 		return o.leastBusyAlgorithm
 	}
 
 	if useBestOfK {
 		return o.bestOfKAlgorithm
 	}
+
 	return o.leastBusyAlgorithm
 }
 

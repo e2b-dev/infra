@@ -208,6 +208,7 @@ func (g *GCPBucketStorageObjectProvider) ReadAt(ctx context.Context, buff []byte
 	}
 
 	timer.End(ctx, int64(n))
+
 	return n, nil
 }
 
@@ -223,6 +224,7 @@ func (g *GCPBucketStorageObjectProvider) Write(ctx context.Context, data []byte)
 	}
 
 	timer.End(ctx, int64(n))
+
 	return n, nil
 }
 
@@ -250,6 +252,7 @@ func (g *GCPBucketStorageObjectProvider) WriteTo(ctx context.Context, dst io.Wri
 	}
 
 	timer.End(ctx, n)
+
 	return n, nil
 }
 
@@ -278,6 +281,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 		}
 
 		timer.End(ctx, int64(len(data)), attribute.String("method", "one-shot"))
+
 		return nil
 	}
 
@@ -320,6 +324,7 @@ func (g *GCPBucketStorageObjectProvider) WriteFromFileSystem(ctx context.Context
 	)
 
 	timer.End(ctx, fileInfo.Size(), attribute.String("method", "multipart"))
+
 	return nil
 }
 

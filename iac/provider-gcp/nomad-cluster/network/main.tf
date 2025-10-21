@@ -726,6 +726,7 @@ resource "google_compute_router_nat" "api_nat" {
   nat_ip_allocate_option             = "MANUAL_ONLY"
   nat_ips                            = length(var.api_nat_ips) > 0 ? var.api_nat_ips : google_compute_address.nat_ips[*].self_link
   source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+  min_ports_per_vm                   = var.api_nat_min_ports_per_vm
 
   log_config {
     enable = true

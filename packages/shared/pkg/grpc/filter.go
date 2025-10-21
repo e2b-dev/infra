@@ -47,5 +47,6 @@ func (s *statsWrapper) TagRPC(ctx context.Context, rti *stats.RPCTagInfo) contex
 		// Add to context we don't want to trace this.
 		return context.WithValue(ctx, noTraceKey{}, noTrace)
 	}
+
 	return s.statsHandler.TagRPC(ctx, rti)
 }

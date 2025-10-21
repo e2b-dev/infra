@@ -28,6 +28,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, discovered nodemanager
 
 	// Update host metrics from service info
 	o.registerNode(orchestratorNode)
+
 	return nil
 }
 
@@ -38,6 +39,7 @@ func (o *Orchestrator) connectToClusterNode(ctx context.Context, cluster *edge.C
 	orchestratorNode, err := nodemanager.NewClusterNode(ctx, clusterGRPC.Client, cluster.ID, cluster.SandboxDomain, i)
 	if err != nil {
 		zap.L().Error("Failed to create node", zap.Error(err))
+
 		return
 	}
 
@@ -70,6 +72,7 @@ func (o *Orchestrator) GetClient(ctx context.Context, clusterID uuid.UUID, nodeI
 	}
 
 	client, ctx := n.GetClient(ctx)
+
 	return client, ctx, nil
 }
 
@@ -159,6 +162,7 @@ func (o *Orchestrator) findPortInNetwork(net *nomadapi.NetworkResource, portLabe
 func (o *Orchestrator) GetNode(clusterID uuid.UUID, nodeID string) *nodemanager.Node {
 	scopedKey := o.scopedNodeID(clusterID, nodeID)
 	n, _ := o.nodes.Get(scopedKey)
+
 	return n
 }
 

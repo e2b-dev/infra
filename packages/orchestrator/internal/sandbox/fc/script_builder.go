@@ -70,6 +70,7 @@ type StartScriptBuilder struct {
 func NewStartScriptBuilder(builderConfig cfg.BuilderConfig) *StartScriptBuilder {
 	templateV1 := txtTemplate.Must(txtTemplate.New("fc-start-v1").Parse(startScriptV1))
 	templateV2 := txtTemplate.Must(txtTemplate.New("fc-start-v2").Parse(startScriptV2))
+
 	return &StartScriptBuilder{
 		builderConfig: builderConfig,
 		templateV1:    templateV1,
@@ -155,6 +156,7 @@ func (sb *StartScriptBuilder) getRootfsPath(args startScriptArgs, rootfsPaths Ro
 	if rootfsPaths.TemplateVersion <= 1 {
 		rootfsPath = filepath.Join(args.DeprecatedSandboxRootfsDir, args.SandboxRootfsFile)
 	}
+
 	return rootfsPath
 }
 

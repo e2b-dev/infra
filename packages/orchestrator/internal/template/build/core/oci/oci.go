@@ -56,6 +56,7 @@ func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRep
 		}
 
 		telemetry.ReportEvent(ctx, "pulled public image")
+
 		return img, nil
 	}
 
@@ -79,6 +80,7 @@ func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRep
 	}
 
 	telemetry.ReportEvent(ctx, "pulled public image")
+
 	return img, nil
 }
 
@@ -92,6 +94,7 @@ func GetImage(ctx context.Context, artifactRegistry artifactsregistry.ArtifactsR
 	}
 
 	telemetry.ReportEvent(childCtx, "pulled image")
+
 	return img, nil
 }
 
@@ -202,6 +205,7 @@ func ParseEnvs(envs []string) map[string]string {
 			envMap[key] = value
 		}
 	}
+
 	return envMap
 }
 
@@ -292,6 +296,7 @@ func copyFiles(ctx context.Context, src, dest string) error {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("while copying files from %s to %s: %w: %s", src, dest, err, string(out))
 	}
+
 	return nil
 }
 
@@ -348,6 +353,7 @@ func createExport(ctx context.Context, logger *zap.Logger, srcImage containerreg
 			if err != nil {
 				return fmt.Errorf("failed to untar layer %d: %w", i, err)
 			}
+
 			return nil
 		})
 	}

@@ -52,10 +52,9 @@ func (o *Orchestrator) CreateSandbox(
 	totalConcurrentInstances := team.Limits.SandboxConcurrency
 
 	// Check if team has reached max instances
-	releaseTeamSandboxReservation, err := o.sandboxStore.Reserve(sandboxID, team.ID, totalConcurrentInstances)
+	finishStart, waitForStart, err := o.sandboxStore.Reserve(team.Team.ID.String(), sandboxID, totalConcurrentInstances)
 	if err != nil {
 		var limitErr *sandbox.LimitExceededError
-		var alreadyErr *sandbox.AlreadyBeingStartedError
 
 		telemetry.ReportCriticalError(ctx, "failed to reserve sandbox for team", err)
 
@@ -68,36 +67,9 @@ func (o *Orchestrator) CreateSandbox(
 						"please contact us at 'https://e2b.dev/docs/getting-help'", totalConcurrentInstances),
 				Err: fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.ID, totalConcurrentInstances),
 			}
-		case errors.As(err, &alreadyErr):
-			if alreadyErr.StartResult != nil {
-				sbx, err = alreadyErr.StartResult.WaitWithContext(ctx)
-				if err != nil {
-					zap.L().Warn("Error waiting for sandbox to start", zap.Error(err), logger.WithSandboxID(sandboxID))
-
-					var apiErr *api.APIError
-					if errors.As(err, &apiErr) {
-						return sandbox.Sandbox{}, apiErr
-					}
-
-					return sandbox.Sandbox{}, &api.APIError{
-						Code:      http.StatusInternalServerError,
-						ClientMsg: "Error waiting for sandbox to start",
-						Err:       err,
-					}
-				}
-
-				return sbx, nil
-			}
-
-			zap.L().Info("Sandbox has been already started", logger.WithSandboxID(sandboxID), zap.Error(err))
-			// TODO: Handle this error better
-			return sandbox.Sandbox{}, &api.APIError{
-				Code:      http.StatusConflict,
-				ClientMsg: fmt.Sprintf("Sandbox %s is already being started", sandboxID),
-				Err:       err,
-			}
 		default:
 			zap.L().Error("failed to reserve sandbox for team", logger.WithSandboxID(sandboxID), zap.Error(err))
+
 			return sandbox.Sandbox{}, &api.APIError{
 				Code:      http.StatusInternalServerError,
 				ClientMsg: fmt.Sprintf("Failed to create sandbox: %s", err),
@@ -106,14 +78,36 @@ func (o *Orchestrator) CreateSandbox(
 		}
 	}
 
+	if waitForStart != nil {
+		zap.L().Info("sandbox is already being started, waiting for it to be ready", logger.WithSandboxID(sandboxID))
+
+		sbx, err = waitForStart(ctx)
+		if err != nil {
+			zap.L().Warn("Error waiting for sandbox to start", zap.Error(err), logger.WithSandboxID(sandboxID))
+
+			var apiErr *api.APIError
+			if errors.As(err, &apiErr) {
+				return sandbox.Sandbox{}, apiErr
+			}
+
+			return sandbox.Sandbox{}, &api.APIError{
+				Code:      http.StatusInternalServerError,
+				ClientMsg: "Error waiting for sandbox to start",
+				Err:       err,
+			}
+		}
+
+		return sbx, nil
+	}
+
 	telemetry.ReportEvent(ctx, "Reserved sandbox for team")
 	defer func() {
 		// Don't change this handling
 		// https://go.dev/play/p/4oy02s7BDMc
 		if apiErr != nil {
-			releaseTeamSandboxReservation(sbx, apiErr)
+			finishStart(sbx, apiErr)
 		} else {
-			releaseTeamSandboxReservation(sbx, nil)
+			finishStart(sbx, nil)
 		}
 	}()
 
@@ -246,5 +240,6 @@ func (o *Orchestrator) CreateSandbox(
 	)
 
 	o.sandboxStore.Add(ctx, sbx, true)
+
 	return sbx, nil
 }

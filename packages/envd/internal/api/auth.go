@@ -38,6 +38,7 @@ func (a *API) WithAuthorization(handler http.Handler) http.Handler {
 
 				err := fmt.Errorf("unauthorized access, please provide a valid access token or method signing if supported")
 				jsonError(w, http.StatusUnauthorized, err)
+
 				return
 			}
 		}
@@ -100,6 +101,7 @@ func (a *API) validateSigning(r *http.Request, signature *string, signatureExpir
 
 	if err != nil {
 		a.logger.Error().Err(err).Msg("error generating signing key")
+
 		return errors.New("invalid signature")
 	}
 

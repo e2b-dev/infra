@@ -56,9 +56,11 @@ func NewCluster(tel *telemetry.Client, endpoint string, endpointTLS bool, secret
 			c.RequestEditors,
 			func(_ context.Context, req *http.Request) error {
 				req.Header.Set(consts.EdgeApiAuthHeader, secret)
+
 				return nil
 			},
 		)
+
 		return nil
 	}
 
@@ -102,6 +104,7 @@ func NewCluster(tel *telemetry.Client, endpoint string, endpointTLS bool, secret
 func (c *Cluster) Close() error {
 	c.synchronization.Close()
 	err := c.grpcClient.Close()
+
 	return err
 }
 

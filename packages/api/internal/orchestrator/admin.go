@@ -43,6 +43,7 @@ func (o *Orchestrator) AdminNodes() []*api.Node {
 		n, ok := apiNodes[sbx.NodeID]
 		if !ok {
 			zap.L().Error("node for sandbox wasn't found", logger.WithNodeID(sbx.NodeID), logger.WithSandboxID(sbx.SandboxID))
+
 			continue
 		}
 
