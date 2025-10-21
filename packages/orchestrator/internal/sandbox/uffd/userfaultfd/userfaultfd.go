@@ -69,3 +69,7 @@ func (u *Userfaultfd) Dirty(ctx context.Context) (*block.Tracker, error) {
 
 	return u.dirty.Clone(), nil
 }
+
+func (u *Userfaultfd) Mapping() *memory.Mapping {
+	return u.ma
+}

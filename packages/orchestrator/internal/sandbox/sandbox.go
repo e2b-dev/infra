@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -702,10 +703,25 @@ func (s *Sandbox) Pause(
 	err = s.process.CreateSnapshot(
 		ctx,
 		snapfile.Path(),
-		memfile.Path(),
+		"/dev/null",
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error creating snapshot: %w", err)
+		// If the snapshot creation with /dev/null fails (the FC is not our custom version),
+		// we try to create a snapshot with the memfile path.
+		createSnapshotFallbackErr := s.process.CreateSnapshot(
+			ctx,
+			snapfile.Path(),
+			memfile.Path(),
+		)
+		if createSnapshotFallbackErr != nil {
+			return nil, fmt.Errorf("error creating snapshot fallback: %w", createSnapshotFallbackErr)
+		}
+
+		// Delete the memfile as it is not used—we always use the process memory view.
+		closeErr := memfile.Close()
+		if closeErr != nil {
+			return nil, fmt.Errorf("error closing memfile: %w", closeErr)
+		}
 	}
 
 	// Gather data for postprocessing
@@ -718,17 +734,32 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
 	}
 
+	pid, err := s.process.Pid()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get process pid: %w", err)
+	}
+
+	memoryMapping, err := s.memory.Mapping(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get memory mapping: %w", err)
+	}
+
+	memoryView, err := memory.NewView(pid, memoryMapping)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create memory view: %w", err)
+	}
+
 	// Start POSTPROCESSING
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
 		ctx,
 		buildID,
 		originalMemfile.Header(),
 		&MemoryDiffCreator{
-			memfile:    memfile,
+			memory:     memoryView,
 			dirtyPages: dirty.BitSet(),
 			blockSize:  originalMemfile.BlockSize(),
 			doneHook: func(context.Context) error {
-				return memfile.Close()
+				return memoryView.Close()
 			},
 		},
 	)
