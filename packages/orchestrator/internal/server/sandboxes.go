@@ -74,7 +74,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			return nil, status.Errorf(codes.ResourceExhausted, "too many sandboxes on node reached (%d>=%d), please retry", tooManyRunning.Current, tooManyRunning.Max)
 		case errors.As(err, &tooManyStarting):
 			telemetry.ReportEvent(ctx, "too many starting sandboxes on node")
-			return nil, status.Errorf(codes.ResourceExhausted, "too many sandboxes starting on this node (%d), please retry", tooManyStarting.Max)
+			return nil, status.Errorf(codes.ResourceExhausted, "too many sandboxes starting on this node, please retry")
 		default:
 			return nil, fmt.Errorf("unexpected error while acquiring starting lock: %w", err)
 		}
