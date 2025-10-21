@@ -15,6 +15,7 @@ func createSource(blockSize int, blocksData []byte) []byte {
 	for i, data := range blocksData {
 		sourceSlice[i*blockSize] = data
 	}
+
 	return sourceSlice
 }
 
@@ -196,5 +197,6 @@ func (r *largeOffsetReader) ReadAt(p []byte, _ int64) (n int, err error) {
 	for i := len(r.data); i < len(p); i++ {
 		p[i] = 0
 	}
+
 	return len(p), nil
 }

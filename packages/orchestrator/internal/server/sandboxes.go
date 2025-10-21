@@ -127,6 +127,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	if err != nil {
 		err := errors.Join(err, context.Cause(ctx))
 		telemetry.ReportCriticalError(ctx, "failed to create sandbox", err)
+
 		return nil, status.Errorf(codes.Internal, "failed to create sandbox: %s", err)
 	}
 

@@ -151,10 +151,12 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 				})
 				if streamErr != nil {
 					cancel(connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending keepalive: %w", streamErr)))
+
 					return
 				}
 			case <-ctx.Done():
 				cancel(ctx.Err())
+
 				return
 			case event, ok := <-data:
 				if !ok {
@@ -168,6 +170,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 				})
 				if streamErr != nil {
 					cancel(connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending data event: %w", streamErr)))
+
 					return
 				}
 

@@ -11,5 +11,6 @@ func GenerateRandomString(length int) string {
 	if err != nil {
 		panic(err)
 	}
+
 	return base64.StdEncoding.EncodeToString(b)
 }

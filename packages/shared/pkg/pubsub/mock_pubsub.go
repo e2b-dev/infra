@@ -36,6 +36,7 @@ func (m *MockPubSub[PayloadT, SubMetaDataT]) GetSubMetaData(_ context.Context, k
 	if meta, exists := m.metadata[key]; exists {
 		return meta, nil
 	}
+
 	return metadata, nil
 }
 
@@ -45,12 +46,14 @@ func (m *MockPubSub[PayloadT, SubMetaDataT]) SetSubMetaData(_ context.Context, k
 		m.metadata = make(map[string]SubMetaDataT)
 	}
 	m.metadata[key] = metaData
+
 	return nil
 }
 
 func (m *MockPubSub[PayloadT, SubMetaDataT]) DeleteSubMetaData(_ context.Context, key string) error {
 	// Mock implementation - deletes metadata
 	delete(m.metadata, key)
+
 	return nil
 }
 

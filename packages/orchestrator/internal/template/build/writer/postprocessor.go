@@ -20,6 +20,7 @@ type postProcessor struct {
 
 func (p *postProcessor) hook(_ zapcore.Entry) error {
 	p.ticker.Reset(p.interval)
+
 	return nil
 }
 
@@ -29,6 +30,7 @@ func (p *postProcessor) run() {
 		select {
 		case <-p.done:
 			p.ticker.Stop()
+
 			return
 		case <-p.ticker.C:
 			p.logger.Info("...")

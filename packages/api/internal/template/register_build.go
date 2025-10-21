@@ -42,6 +42,7 @@ type RegisterBuildData struct {
 	ReadyCmd      *string
 	CpuCount      *int32
 	MemoryMB      *int32
+	Version       string
 }
 
 type RegisterBuildResponse struct {
@@ -70,6 +71,7 @@ func RegisterBuild(
 	totalConcurrentTemplateBuilds := data.Team.Limits.BuildConcurrency
 	if len(teamBuildsExcludingCurrent) >= int(totalConcurrentTemplateBuilds) {
 		telemetry.ReportError(ctx, "team has reached max concurrent template builds", nil, telemetry.WithTeamID(data.Team.ID.String()), attribute.Int64("total.concurrent_template_builds", totalConcurrentTemplateBuilds))
+
 		return nil, &api.APIError{
 			Code: http.StatusTooManyRequests,
 			ClientMsg: fmt.Sprintf(
@@ -83,6 +85,7 @@ func RegisterBuild(
 	buildID, err := uuid.NewRandom()
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when generating build id", err)
+
 		return nil, &api.APIError{
 			Err:       err,
 			ClientMsg: "Failed to generate build id",
@@ -97,6 +100,7 @@ func RegisterBuild(
 		attribute.String("env.team.tier", data.Team.Tier),
 		telemetry.WithBuildID(buildID.String()),
 		attribute.String("env.dockerfile", data.Dockerfile),
+		attribute.String("env.version", data.Version),
 	)
 
 	if data.Alias != nil {
@@ -121,6 +125,7 @@ func RegisterBuild(
 	cpuCount, ramMB, apiError := team.LimitResources(data.Team.Limits, data.CpuCount, data.MemoryMB)
 	if apiError != nil {
 		telemetry.ReportCriticalError(ctx, "error when getting CPU and RAM", apiError.Err)
+
 		return nil, apiError
 	}
 
@@ -129,6 +134,7 @@ func RegisterBuild(
 		alias, err = id.CleanEnvID(*data.Alias)
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "invalid alias", err)
+
 			return nil, &api.APIError{
 				Err:       err,
 				ClientMsg: fmt.Sprintf("Invalid alias: %s", *data.Alias),
@@ -141,6 +147,7 @@ func RegisterBuild(
 	tx, err := db.Client.Tx(ctx)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when starting transaction", err)
+
 		return nil, &api.APIError{
 			Err:       err,
 			ClientMsg: fmt.Sprintf("Error when starting transaction: %s", err),
@@ -171,6 +178,7 @@ func RegisterBuild(
 		Exec(ctx)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when updating env", err)
+
 		return nil, &api.APIError{
 			Err:       err,
 			ClientMsg: fmt.Sprintf("Error when updating template: %s", err),
@@ -186,6 +194,7 @@ func RegisterBuild(
 	).SetStatus(envbuild.StatusFailed).SetFinishedAt(time.Now()).Exec(ctx)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when updating env", err)
+
 		return nil, &api.APIError{
 			Err:       err,
 			ClientMsg: fmt.Sprintf("Error when updating template: %s", err),
@@ -208,9 +217,11 @@ func RegisterBuild(
 		SetNillableReadyCmd(data.ReadyCmd).
 		SetClusterNodeID(data.BuilderNodeID).
 		SetDockerfile(data.Dockerfile).
+		SetVersion(data.Version).
 		Save(ctx)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when inserting build", err)
+
 		return nil, &api.APIError{
 			Err:       err,
 			ClientMsg: fmt.Sprintf("Error when inserting build: %s", err),
@@ -228,6 +239,7 @@ func RegisterBuild(
 			All(ctx)
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error when checking alias", err, attribute.String("alias", alias))
+
 			return nil, &api.APIError{
 				Err:       err,
 				ClientMsg: fmt.Sprintf("Error when querying alias '%s': %s", alias, err),
@@ -239,6 +251,7 @@ func RegisterBuild(
 		if len(envs) > 0 {
 			err := fmt.Errorf("alias '%s' is already used", alias)
 			telemetry.ReportCriticalError(ctx, "conflict of alias", err, attribute.String("alias", alias))
+
 			return nil, &api.APIError{
 				Err:       err,
 				ClientMsg: fmt.Sprintf("Alias '%s' is already used", alias),
@@ -250,6 +263,7 @@ func RegisterBuild(
 		if err != nil {
 			if !models.IsNotFound(err) {
 				telemetry.ReportCriticalError(ctx, "error when checking alias", err, attribute.String("alias", alias))
+
 				return nil, &api.APIError{
 					Err:       err,
 					ClientMsg: fmt.Sprintf("Error when querying for alias: %s", err),
@@ -260,6 +274,7 @@ func RegisterBuild(
 			count, err := tx.EnvAlias.Delete().Where(envalias.EnvID(data.TemplateID), envalias.IsRenamable(true)).Exec(ctx)
 			if err != nil {
 				telemetry.ReportCriticalError(ctx, "error when deleting template alias", err, attribute.String("alias", alias))
+
 				return nil, &api.APIError{
 					Err:       err,
 					ClientMsg: fmt.Sprintf("Error when deleting template alias: %s", err),
@@ -278,6 +293,7 @@ func RegisterBuild(
 				Exec(ctx)
 			if err != nil {
 				telemetry.ReportCriticalError(ctx, "error when inserting alias", err, attribute.String("alias", alias))
+
 				return nil, &api.APIError{
 					Err:       err,
 					ClientMsg: fmt.Sprintf("Error when inserting alias '%s': %s", alias, err),
@@ -288,6 +304,7 @@ func RegisterBuild(
 		} else if aliasDB.EnvID != data.TemplateID {
 			err := fmt.Errorf("alias '%s' already used", alias)
 			telemetry.ReportCriticalError(ctx, "alias already used", err, attribute.String("alias", alias))
+
 			return nil, &api.APIError{
 				Err:       err,
 				ClientMsg: fmt.Sprintf("Alias '%s' already used", alias),
@@ -302,6 +319,7 @@ func RegisterBuild(
 	err = tx.Commit()
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when committing transaction", err)
+
 		return nil, &api.APIError{
 			Err:       err,
 			ClientMsg: fmt.Sprintf("Error when committing transaction: %s", err),

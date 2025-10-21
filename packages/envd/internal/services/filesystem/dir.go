@@ -166,6 +166,7 @@ func walkDir(requestedPath string, dirPath string, depth int) (entries []*rpc.En
 		entryInfo.Path = path
 
 		entries = append(entries, entryInfo)
+
 		return nil
 	})
 	if err != nil {

@@ -86,6 +86,7 @@ func (o *OrchestratorInstance) sync(ctx context.Context) error {
 		status, err := o.client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 		if err != nil {
 			zap.L().Error("failed to check orchestrator health", l.WithNodeID(freshInfo.NodeID), zap.Error(err))
+
 			continue
 		}
 
@@ -124,6 +125,7 @@ func (o *OrchestratorInstance) setInfo(i OrchestratorInstanceInfo) {
 func (o *OrchestratorInstance) GetInfo() OrchestratorInstanceInfo {
 	o.mutex.RLock()
 	defer o.mutex.RUnlock()
+
 	return o.info
 }
 
@@ -157,6 +159,7 @@ func getMappedStatus(s e2bgrpcorchestratorinfo.ServiceInfoStatus) OrchestratorSt
 	}
 
 	zap.L().Error("Unknown service info status", zap.String("status", s.String()))
+
 	return OrchestratorStatusUnhealthy
 }
 

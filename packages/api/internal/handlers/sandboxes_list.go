@@ -54,6 +54,7 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 	}
 
 	sandboxes := snapshotsToPaginatedSandboxes(snapshots)
+
 	return sandboxes, nil
 }
 

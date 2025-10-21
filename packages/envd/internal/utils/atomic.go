@@ -22,5 +22,6 @@ func (a *AtomicMax) SetToGreater(newValue int64) bool {
 	}
 
 	a.val = newValue
+
 	return true
 }
