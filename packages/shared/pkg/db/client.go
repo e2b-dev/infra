@@ -31,7 +31,7 @@ func NewClient(maxConns, maxIdle int) (*DB, error) {
 		return nil, fmt.Errorf("failed to open db: %w", err)
 	}
 
-	if err = otelsql.RegisterDBStatsMetrics(db, otelsql.WithAttributes(semconv.DBSystemMySQL)); err != nil {
+	if err = otelsql.RegisterDBStatsMetrics(db, otelsql.WithAttributes(semconv.DBSystemPostgreSQL)); err != nil {
 		return nil, fmt.Errorf("failed to register db stats metrics: %w", err)
 	}
 
