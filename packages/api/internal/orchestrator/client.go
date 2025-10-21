@@ -91,7 +91,7 @@ func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]nodemanager.NomadS
 
 	result := make([]nodemanager.NomadServiceDiscovery, 0, len(nomadAllocations))
 	for _, alloc := range nomadAllocations {
-		if alloc.DeploymentStatus.Healthy != nil && !*alloc.DeploymentStatus.Healthy {
+		if !isHealthy(alloc) {
 			zap.L().Info("Skipping unhealthy allocation", zap.String("allocation_id", alloc.ID))
 
 			continue
@@ -120,6 +120,28 @@ func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]nodemanager.NomadS
 	}
 
 	return result, nil
+}
+
+func isHealthy(alloc *nomadapi.AllocationListStub) bool {
+	if alloc == nil {
+		zap.L().Warn("Allocation is nil")
+
+		return false
+	}
+
+	if alloc.DeploymentStatus == nil {
+		zap.L().Warn("Allocation deployment status is nil", zap.String("allocation_id", alloc.ID))
+
+		return false
+	}
+
+	if alloc.DeploymentStatus.Healthy == nil {
+		zap.L().Warn("Allocation deployment status healthy is nil", zap.String("allocation_id", alloc.ID))
+
+		return false
+	}
+
+	return *alloc.DeploymentStatus.Healthy
 }
 
 func (o *Orchestrator) findPortInAllocation(allocation *nomadapi.AllocationListStub, portLabel string) (string, int, bool) {
