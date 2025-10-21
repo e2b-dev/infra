@@ -40,6 +40,10 @@ func (m *NoopMemory) Disable(context.Context) error {
 	return nil
 }
 
+func (m *NoopMemory) Enable(context.Context) error {
+	return nil
+}
+
 func (m *NoopMemory) Dirty(context.Context) (*block.Tracker, error) {
 	return m.dirty.Clone(), nil
 }

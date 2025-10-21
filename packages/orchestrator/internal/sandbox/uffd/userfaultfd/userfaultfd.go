@@ -57,6 +57,10 @@ func (u *Userfaultfd) Disable() {
 	u.disabled.Store(true)
 }
 
+func (u *Userfaultfd) Enable() {
+	u.disabled.Store(false)
+}
+
 func (u *Userfaultfd) Dirty(ctx context.Context) (*block.Tracker, error) {
 	err := u.writeRequestCounter.Wait(ctx)
 	if err != nil {

@@ -202,6 +202,17 @@ func (u *Uffd) Disable(ctx context.Context) error {
 	return nil
 }
 
+func (u *Uffd) Enable(ctx context.Context) error {
+	uffd, err := u.handler.WaitWithContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get uffd: %w", err)
+	}
+
+	uffd.Enable()
+
+	return nil
+}
+
 func (u *Uffd) Exit() *utils.ErrorOnce {
 	return u.exit
 }

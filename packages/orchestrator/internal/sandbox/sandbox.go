@@ -654,34 +654,58 @@ func (s *Sandbox) FirecrackerVersions() fc.FirecrackerVersions {
 func (s *Sandbox) Pause(
 	ctx context.Context,
 	m metadata.Template,
-) (*Snapshot, error) {
+) (*Snapshot, func() error, error) {
 	ctx, span := tracer.Start(ctx, "sandbox-snapshot")
 	defer span.End()
 
+	var resumeSteps []func(ctx context.Context) error
+
+	resume := func() error {
+		for _, step := range resumeSteps {
+			if err := step(ctx); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+
 	snapshotTemplateFiles, err := m.Template.CacheFiles()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get template files: %w", err)
+		return nil, nil, fmt.Errorf("failed to get template files: %w", err)
 	}
 
 	buildID, err := uuid.Parse(snapshotTemplateFiles.BuildID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse build id: %w", err)
+		return nil, nil, fmt.Errorf("failed to parse build id: %w", err)
 	}
 
 	// Stop the health check before pausing the VM
 	s.Checks.Stop()
 
+	resumeSteps = append(resumeSteps, func(ctx context.Context) error {
+		return s.Checks.Start()
+	})
+
 	if err := s.process.Pause(ctx); err != nil {
-		return nil, fmt.Errorf("failed to pause VM: %w", err)
+		return nil, nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
+	resumeSteps = append(resumeSteps, func(ctx context.Context) error {
+		return s.process.Resume()
+	})
+
 	if err := s.memory.Disable(ctx); err != nil {
-		return nil, fmt.Errorf("failed to disable uffd: %w", err)
+		return nil, nil, fmt.Errorf("failed to disable uffd: %w", err)
 	}
+
+	resumeSteps = append(resumeSteps, func(ctx context.Context) error {
+		return s.memory.Enable(ctx)
+	})
 
 	dirty, err := s.memory.Dirty(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get dirty pages: %w", err)
+		return nil, nil, fmt.Errorf("failed to get dirty pages: %w", err)
 	}
 
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
@@ -696,7 +720,7 @@ func (s *Sandbox) Pause(
 	*/
 	memfile, err := storage.AcquireTmpMemfile(ctx, buildID.String())
 	if err != nil {
-		return nil, fmt.Errorf("failed to acquire memfile snapshot: %w", err)
+		return nil, nil, fmt.Errorf("failed to acquire memfile snapshot: %w", err)
 	}
 	// Close the file even if an error occurs
 	defer memfile.Close()
@@ -715,39 +739,39 @@ func (s *Sandbox) Pause(
 			memfile.Path(),
 		)
 		if createSnapshotFallbackErr != nil {
-			return nil, fmt.Errorf("error creating snapshot fallback: %w", createSnapshotFallbackErr)
+			return nil, nil, fmt.Errorf("error creating snapshot fallback: %w", createSnapshotFallbackErr)
 		}
 
 		// Delete the memfile as it is not used—we always use the process memory view.
 		closeErr := memfile.Close()
 		if closeErr != nil {
-			return nil, fmt.Errorf("error closing memfile: %w", closeErr)
+			return nil, nil, fmt.Errorf("error closing memfile: %w", closeErr)
 		}
 	}
 
 	// Gather data for postprocessing
 	originalMemfile, err := s.Template.Memfile(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get original memfile: %w", err)
+		return nil, nil, fmt.Errorf("failed to get original memfile: %w", err)
 	}
 	originalRootfs, err := s.Template.Rootfs()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
+		return nil, nil, fmt.Errorf("failed to get original rootfs: %w", err)
 	}
 
 	pid, err := s.process.Pid()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get process pid: %w", err)
+		return nil, nil, fmt.Errorf("failed to get process pid: %w", err)
 	}
 
 	memoryMapping, err := s.memory.Mapping(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get memory mapping: %w", err)
+		return nil, nil, fmt.Errorf("failed to get memory mapping: %w", err)
 	}
 
 	memoryView, err := memory.NewView(pid, memoryMapping)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create memory view: %w", err)
+		return nil, nil, fmt.Errorf("failed to create memory view: %w", err)
 	}
 
 	// Start POSTPROCESSING
@@ -765,7 +789,7 @@ func (s *Sandbox) Pause(
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error while post processing: %w", err)
+		return nil, nil, fmt.Errorf("error while post processing: %w", err)
 	}
 
 	rootfsDiff, rootfsDiffHeader, err := pauseProcessRootfs(
@@ -778,13 +802,13 @@ func (s *Sandbox) Pause(
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error while post processing: %w", err)
+		return nil, nil, fmt.Errorf("error while post processing: %w", err)
 	}
 
 	metadataFileLink := template.NewLocalFileLink(snapshotTemplateFiles.CacheMetadataPath())
 	err = m.ToFile(metadataFileLink.Path())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	return &Snapshot{
@@ -794,7 +818,7 @@ func (s *Sandbox) Pause(
 		MemfileDiffHeader: memfileDiffHeader,
 		RootfsDiff:        rootfsDiff,
 		RootfsDiffHeader:  rootfsDiffHeader,
-	}, nil
+	}, resume, nil
 }
 
 func pauseProcessMemory(

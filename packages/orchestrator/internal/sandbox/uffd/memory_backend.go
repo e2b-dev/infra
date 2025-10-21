@@ -12,6 +12,7 @@ type MemoryBackend interface {
 	Dirty(ctx context.Context) (*block.Tracker, error)
 	// Disable switch the uffd to start serving empty pages.
 	Disable(ctx context.Context) error
+	Enable(ctx context.Context) error
 	Mapping(ctx context.Context) (*memory.Mapping, error)
 
 	Start(ctx context.Context, sandboxId string) error
