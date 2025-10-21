@@ -143,6 +143,7 @@ processors:
           - "client_proxy.*"
           - "Click*"
           - "otelcol.*"
+          - "pgxpool.*"
 
   filter/prometheus:
     metrics:
