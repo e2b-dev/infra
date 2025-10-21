@@ -418,6 +418,7 @@ func configureTest(t *testing.T, tt testConfig) *testHandler {
 	go func() {
 		err := uffd.Serve(t.Context(), fdExit)
 		assert.NoError(t, err)
+		fmt.Println("uffd.Serve returned:", err)
 
 		exitUffd <- struct{}{}
 	}()
