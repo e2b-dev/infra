@@ -42,6 +42,7 @@ func TestTeamMetricsMaxConcurrentSandboxes(t *testing.T) {
 		}
 
 		maxMetric = *response.JSON200
+
 		return maxMetric.Value > 1
 	}, maxDuration, tick, "max concurrent sandboxes metric not available in time")
 
@@ -81,6 +82,7 @@ func TestTeamMetricsMaxSandboxStartRate(t *testing.T) {
 		}
 
 		maxMetric = *response.JSON200
+
 		return maxMetric.Value > 0
 	}, maxDuration, tick, "max sandbox start rate metric not available in time")
 

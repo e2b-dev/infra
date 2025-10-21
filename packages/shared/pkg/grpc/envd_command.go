@@ -31,6 +31,7 @@ func StreamToChannel[Res any](ctx context.Context, stream *connect.ServerStreamF
 
 		if err := stream.Err(); err != nil {
 			errCh <- err
+
 			return
 		}
 	}()

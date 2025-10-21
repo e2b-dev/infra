@@ -38,5 +38,6 @@ type Config struct {
 func Parse() (Config, error) {
 	var config Config
 	err := env.Parse(&config)
+
 	return config, err
 }

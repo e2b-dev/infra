@@ -61,11 +61,13 @@ func (o *EdgeInstance) sync(ctx context.Context) error {
 		res, err := o.client.V1InfoWithResponse(ctx)
 		if err != nil {
 			zap.L().Error("failed to check edge instance status", l.WithNodeID(info.NodeID), zap.Error(err))
+
 			continue
 		}
 
 		if res.JSON200 == nil {
 			zap.L().Error("failed to check edge instance status", l.WithNodeID(info.NodeID), zap.Int("status", res.StatusCode()))
+
 			continue
 		}
 
@@ -92,6 +94,7 @@ func (o *EdgeInstance) GetClient() *api.ClientWithResponses {
 func (o *EdgeInstance) GetInfo() EdgeInstanceInfo {
 	o.mutex.RLock()
 	defer o.mutex.RUnlock()
+
 	return o.info
 }
 
@@ -108,9 +111,11 @@ func newEdgeApiClient(host string, auth authorization.AuthorizationService) (*ap
 			c.RequestEditors,
 			func(_ context.Context, req *http.Request) error {
 				req.Header.Set(consts.EdgeApiAuthHeader, auth.GetSecret())
+
 				return nil
 			},
 		)
+
 		return nil
 	}
 

@@ -293,6 +293,7 @@ func run() int {
 		// this will call os.Exit: defers won't run, but none
 		// need to yet. Change this if this is called later.
 		logger.Error("Error loading swagger spec", zap.Error(err))
+
 		return 1
 	}
 
@@ -330,6 +331,7 @@ func run() int {
 		}
 		if count == 0 {
 			logger.Info("no cleanup operations")
+
 			return
 		}
 		logger.Info("Running cleanup operations", zap.Int("count", count))

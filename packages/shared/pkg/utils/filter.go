@@ -10,5 +10,6 @@ func Filter[T any](input []T, f func(T) bool) []T {
 			output = append(output, v)
 		}
 	}
+
 	return output
 }

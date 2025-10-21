@@ -31,6 +31,7 @@ func (w *PrefixFilteredWriter) writeLine(line []byte) (remaining []byte) {
 	if idx < 0 {
 		// If there are no newlines, buffer the entire string.
 		w.buff.Write(line)
+
 		return nil
 	}
 
@@ -41,6 +42,7 @@ func (w *PrefixFilteredWriter) writeLine(line []byte) (remaining []byte) {
 	// in the buffer, skip the buffer and log directly.
 	if w.buff.Len() == 0 {
 		w.log(line)
+
 		return
 	}
 
@@ -62,6 +64,7 @@ func (w *PrefixFilteredWriter) Sync() error {
 	// because we don't want an extraneous empty message at the end of the
 	// stream -- it's common for files to end with a newline.
 	w.flush(false)
+
 	return nil
 }
 

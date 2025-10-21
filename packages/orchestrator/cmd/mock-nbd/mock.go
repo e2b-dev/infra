@@ -89,6 +89,7 @@ func main() {
 	devicePool, err := nbd.NewDevicePool()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create device pool: %v\n", err)
+
 		return
 	}
 	go func() {
@@ -99,6 +100,7 @@ func main() {
 		err = devicePool.Close(ctx)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to close device pool: %v\n", err)
+
 			return
 		}
 	}()

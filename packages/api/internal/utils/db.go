@@ -36,5 +36,6 @@ func CheckMigrationVersion(connectionString string, expectedMigration int64) err
 	}
 
 	zap.L().Info("Database version", zap.Int64("version", version), zap.Int64("expected_migration", expectedMigration))
+
 	return nil
 }

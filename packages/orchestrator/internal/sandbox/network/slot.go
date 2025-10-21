@@ -209,6 +209,7 @@ func (s *Slot) TapMask() int {
 
 func (s *Slot) TapMaskString() string {
 	mask := net.CIDRMask(s.TapMask(), 32)
+
 	return net.IP(mask).String()
 }
 
@@ -322,6 +323,7 @@ func getHostNetworkCIDR() *net.IPNet {
 	}
 
 	log.Println("Using host network cidr", "cidr", cidr)
+
 	return subnet
 }
 
@@ -334,6 +336,7 @@ func getVrtNetworkCIDR() *net.IPNet {
 	}
 
 	log.Printf("Using vrt network cidr %s", cidr)
+
 	return subnet
 }
 
@@ -349,5 +352,6 @@ func GetVrtSlotsSize() int {
 	totalSlots := (totalIPs / vrtAddressPerSlot) - vrtAddressPerSlot
 
 	log.Printf("Using network slot size: %d", totalSlots)
+
 	return totalSlots
 }

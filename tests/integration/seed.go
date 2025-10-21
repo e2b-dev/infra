@@ -44,12 +44,14 @@ func run(ctx context.Context) int {
 	connectionString := os.Getenv("POSTGRES_CONNECTION_STRING")
 	if connectionString == "" {
 		log.Printf("POSTGRES_CONNECTION_STRING is not set")
+
 		return 1
 	}
 
 	database, err := db.NewClient(1, 1)
 	if err != nil {
 		log.Printf("Failed to connect to database: %v", err)
+
 		return 1
 	}
 	defer database.Close()
@@ -57,6 +59,7 @@ func run(ctx context.Context) int {
 	sqlcDB, err := client.NewClient(ctx)
 	if err != nil {
 		log.Printf("Failed to connect to database: %v", err)
+
 		return 1
 	}
 	defer sqlcDB.Close()
@@ -73,10 +76,12 @@ func run(ctx context.Context) int {
 	err = seed(ctx, database, sqlcDB, data)
 	if err != nil {
 		log.Printf("Failed to execute seed: %v", err)
+
 		return 1
 	}
 
 	fmt.Println("Seed completed successfully.")
+
 	return 0
 }
 

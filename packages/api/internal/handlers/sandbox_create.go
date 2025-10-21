@@ -82,6 +82,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	if checkErr != nil {
 		telemetry.ReportCriticalError(ctx, "error when getting template", checkErr.Err)
 		a.sendAPIStoreError(c, checkErr.Code, checkErr.ClientMsg)
+
 		return
 	}
 	templateSpan.End()
@@ -131,6 +132,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 		if timeout > time.Duration(teamInfo.Limits.MaxLengthHours)*time.Hour {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Limits.MaxLengthHours))
+
 			return
 		}
 	}
@@ -146,6 +148,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		if tokenErr != nil {
 			zap.L().Error("Secure envd access token error", zap.Error(tokenErr.Err), logger.WithSandboxID(sandboxID), logger.WithBuildID(build.ID.String()))
 			a.sendAPIStoreError(c, tokenErr.Code, tokenErr.ClientMsg)
+
 			return
 		}
 
@@ -175,6 +178,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	if createErr != nil {
 		zap.L().Error("Failed to create sandbox", zap.Error(createErr.Err))
 		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
+
 		return
 	}
 
@@ -223,6 +227,7 @@ func setTemplateNameMetric(c *gin.Context, aliases []string) {
 	for _, alias := range aliases {
 		if _, exists := mostUsedTemplates[alias]; exists {
 			c.Set(metricTemplateAlias, alias)
+
 			return
 		}
 	}
@@ -235,5 +240,6 @@ func firstAlias(aliases []string) string {
 	if len(aliases) == 0 {
 		return ""
 	}
+
 	return aliases[0]
 }
