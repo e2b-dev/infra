@@ -392,6 +392,13 @@ func configureTest(t *testing.T, tt testConfig) *testHandler {
 
 	logger := testutils.NewTestLogger(t)
 
+	fdExit, err := fdexit.New()
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		fdExit.Close()
+	})
+
 	uffd, err := newUserfaultfd(syscall.O_CLOEXEC|syscall.O_NONBLOCK, data, int64(tt.pagesize), m, logger)
 	require.NoError(t, err)
 
@@ -405,33 +412,20 @@ func configureTest(t *testing.T, tt testConfig) *testHandler {
 	err = uffd.Register(memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
 	require.NoError(t, err)
 
-	fdExit, err := fdexit.New()
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		fdExit.SignalExit()
-		fdExit.Close()
-	})
-
 	exitUffd := make(chan struct{}, 1)
 
 	go func() {
 		err := uffd.Serve(t.Context(), fdExit)
 		assert.NoError(t, err)
-		fmt.Println("uffd.Serve returned:", err)
 
 		exitUffd <- struct{}{}
 	}()
 
 	t.Cleanup(func() {
 		signalExitErr := fdExit.SignalExit()
-		require.NoError(t, signalExitErr)
+		assert.NoError(t, signalExitErr)
 
-		select {
-		case <-exitUffd:
-		case <-t.Context().Done():
-			t.Log("context done before exit:", t.Context().Err())
-		}
+		<-exitUffd
 	})
 
 	return &testHandler{
