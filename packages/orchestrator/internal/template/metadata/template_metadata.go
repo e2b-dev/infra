@@ -34,6 +34,7 @@ type Context struct {
 
 func (c Context) WithUser(user string) Context {
 	c.User = user
+
 	return c
 }
 

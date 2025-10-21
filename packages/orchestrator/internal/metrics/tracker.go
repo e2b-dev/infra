@@ -63,6 +63,7 @@ func (t *Tracker) getSelfAllocated() Allocations {
 		allocated.DiskBytes += uint64(item.TotalDiskSizeMB) * 1024 * 1024
 		allocated.Sandboxes++
 	}
+
 	return allocated
 }
 
@@ -75,6 +76,7 @@ func (t *Tracker) removeSelfFile(path string) {
 func (t *Tracker) makeSelfPath(directory string) string {
 	filename := fmt.Sprintf("%d.json", os.Getpid())
 	selfPath := filepath.Join(directory, filename)
+
 	return selfPath
 }
 
@@ -97,6 +99,7 @@ func (t *Tracker) Run(ctx context.Context, directory string) error {
 		if err2 := watcher.Close(); err2 != nil {
 			err = errors.Join(err, fmt.Errorf("failed to close watcher: %w", err2))
 		}
+
 		return fmt.Errorf("failed to watch %q: %w", directory, err)
 	}
 
@@ -131,6 +134,7 @@ func (t *Tracker) Run(ctx context.Context, directory string) error {
 			if err2 := watcher.Close(); err2 != nil {
 				err = errors.Join(err, fmt.Errorf("failed to close watcher: %w", err2))
 			}
+
 			return err
 		case event := <-watcher.Events:
 			switch {
@@ -160,6 +164,7 @@ func getPIDFromFilename(path string) (int, bool) {
 	dotIndex := strings.Index(basePath, ".")
 	if dotIndex == -1 {
 		zap.L().Warn("Ignoring file without extension", zap.String("file", path))
+
 		return 0, false
 	}
 
@@ -167,6 +172,7 @@ func getPIDFromFilename(path string) (int, bool) {
 	pid, err := strconv.Atoi(pidStr)
 	if err != nil {
 		zap.L().Error("Filename is not a number", zap.String("path", path), zap.Error(err))
+
 		return 0, false
 	}
 
@@ -244,5 +250,6 @@ func (t *Tracker) handleWriteSelf(selfPath string) error {
 	if err := os.WriteFile(selfPath, data, 0o644); err != nil {
 		return fmt.Errorf("failed to write allocations: %w", err)
 	}
+
 	return nil
 }

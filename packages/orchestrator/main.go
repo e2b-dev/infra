@@ -357,6 +357,7 @@ func run(config cfg.Config) (success bool) {
 		if err := metricsTracker.Run(ctx, config.MetricsDirectory); err != nil {
 			zap.L().Error("metrics tracker failed", zap.Error(err))
 		}
+
 		return nil
 	})
 

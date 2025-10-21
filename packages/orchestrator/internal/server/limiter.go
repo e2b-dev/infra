@@ -70,6 +70,7 @@ func (t *Limiter) AcquireStarting(ctx context.Context) error {
 	acquired := t.startingSandboxes.TryAcquire(1)
 	if !acquired {
 		telemetry.ReportEvent(ctx, "too many starting sandboxes on node")
+
 		return TooManySandboxesStartingError{t.maxStartingSandboxes}
 	}
 

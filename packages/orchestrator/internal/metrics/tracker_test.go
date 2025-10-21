@@ -208,5 +208,6 @@ func toJSON[T any](t *testing.T, model T) []byte {
 
 	data, err := json.Marshal(model)
 	require.NoError(t, err)
+
 	return data
 }
