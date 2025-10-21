@@ -91,10 +91,17 @@ func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]nodemanager.NomadS
 
 	result := make([]nodemanager.NomadServiceDiscovery, 0, len(nomadAllocations))
 	for _, alloc := range nomadAllocations {
+		if alloc.DeploymentStatus.Healthy != nil && !*alloc.DeploymentStatus.Healthy {
+			zap.L().Info("Skipping unhealthy allocation", zap.String("allocation_id", alloc.ID))
+
+			continue
+		}
+
 		ip, port, ok := o.findPortInAllocation(alloc, "grpc")
 		if !ok {
 			zap.L().Warn("Cannot find port in allocation",
 				zap.String("allocation_id", alloc.ID), zap.String("port_name", "grpc"))
+
 			continue
 		}
 
