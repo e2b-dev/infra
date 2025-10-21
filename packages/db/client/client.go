@@ -58,6 +58,8 @@ func NewClient(ctx context.Context, options ...Option) (*Client, error) {
 
 	// expose otel metrics
 	if err := otelpgx.RecordStats(pool); err != nil {
+		pool.Close()
+
 		return nil, fmt.Errorf("failed to record stats: %w", err)
 	}
 	queries := database.New(pool)
