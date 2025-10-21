@@ -49,7 +49,9 @@ SELECT
     sandbox_team_id,
     event_category,
     event_label,
-    event_data
+    event_data,
+    type,
+    version
 FROM sandbox_events
 WHERE sandbox_id = ?
 ORDER BY timestamp %s
@@ -92,7 +94,9 @@ SELECT
     sandbox_team_id,
     event_category,
     event_label,
-    event_data
+    event_data,
+    type,
+    version
 FROM sandbox_events
 WHERE sandbox_team_id = ?
 ORDER BY timestamp %s
