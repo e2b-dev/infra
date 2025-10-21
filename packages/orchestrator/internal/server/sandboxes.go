@@ -83,6 +83,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	acquired := s.startingSandboxes.TryAcquire(1)
 	if !acquired {
 		telemetry.ReportEvent(ctx, "too many starting sandboxes on node")
+
 		return nil, status.Errorf(codes.ResourceExhausted, "too many sandboxes starting on this node, please retry")
 	}
 	defer s.startingSandboxes.Release(1)
@@ -131,6 +132,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	if err != nil {
 		err := errors.Join(err, context.Cause(ctx))
 		telemetry.ReportCriticalError(ctx, "failed to create sandbox", err)
+
 		return nil, status.Errorf(codes.Internal, "failed to create sandbox: %s", err)
 	}
 

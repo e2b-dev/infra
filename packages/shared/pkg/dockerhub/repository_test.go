@@ -60,6 +60,7 @@ func TestRemoveRegistryFromTag(t *testing.T) {
 			got, err := removeRegistryFromTag(tt.tag)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("removeRegistryFromTag() error = %v, wantErr %v", err, tt.wantErr)
+
 				return
 			}
 			if got != tt.want {

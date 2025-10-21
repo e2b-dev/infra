@@ -105,6 +105,7 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 			if err != nil {
 				zap.L().Error("Error getting running builds for periodical sync", zap.Error(err))
 				dbxCtxCancel()
+
 				continue
 			}
 

@@ -230,5 +230,6 @@ func buildTemplate(
 	}
 
 	fmt.Println("Build finished, closing...")
+
 	return nil
 }

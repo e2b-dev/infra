@@ -53,6 +53,7 @@ func (m *NoopMemory) Stop() error {
 func (m *NoopMemory) Ready() chan struct{} {
 	ch := make(chan struct{})
 	ch <- struct{}{}
+
 	return ch
 }
 

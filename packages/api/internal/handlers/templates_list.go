@@ -19,6 +19,7 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+
 		return
 	}
 
@@ -26,6 +27,7 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 		if team.ID.String() != *params.TeamID {
 			a.sendAPIStoreError(c, http.StatusBadRequest, "Team ID param mismatch with the API key")
 			telemetry.ReportError(ctx, "team param mismatch with the API key", nil, telemetry.WithTeamID(team.ID.String()))
+
 			return
 		}
 	}
@@ -38,6 +40,7 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting templates")
 		telemetry.ReportCriticalError(ctx, "error when getting templates", err)
+
 		return
 	}
 

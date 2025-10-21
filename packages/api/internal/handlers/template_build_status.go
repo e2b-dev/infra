@@ -28,6 +28,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	if err != nil {
 		telemetry.ReportError(ctx, "error when parsing build id", err)
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid build id")
+
 		return
 	}
 
@@ -36,11 +37,13 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		var notFoundErr templatecache.TemplateBuildInfoNotFoundError
 		if errors.As(err, &notFoundErr) {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Build '%s' not found", buildUUID))
+
 			return
 		}
 
 		telemetry.ReportError(ctx, "error when getting template", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting template")
+
 		return
 	}
 
@@ -49,12 +52,14 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+
 		return
 	}
 
 	if team.ID != buildInfo.TeamID {
 		telemetry.ReportError(ctx, "user doesn't have access to env", fmt.Errorf("user doesn't have access to env '%s'", templateID), telemetry.WithTemplateID(templateID))
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to this sandbox template (%s)", templateID))
+
 		return
 	}
 
@@ -69,6 +74,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		}
 
 		c.JSON(http.StatusOK, result)
+
 		return
 	}
 
@@ -86,6 +92,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	if err != nil {
 		telemetry.ReportError(ctx, "error when getting build client", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting build client")
+
 		return
 	}
 
@@ -175,5 +182,6 @@ func apiToLogLevel(level *api.LogLevel) *logs.LogLevel {
 	}
 
 	value := logs.StringToLevel(string(*level))
+
 	return &value
 }
