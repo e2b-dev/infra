@@ -2,7 +2,9 @@ package client
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq"
@@ -48,12 +50,19 @@ func NewClient(ctx context.Context, options ...Option) (*Client, error) {
 		option(config)
 	}
 
+	// expose otel traces
+	config.ConnConfig.Tracer = otelpgx.NewTracer()
+
 	// Create the connection pool
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		zap.L().Error("Unable to create connection pool", zap.Error(err))
 	}
 
+	// expose otel metrics
+	if err := otelpgx.RecordStats(pool); err != nil {
+		return nil, fmt.Errorf("failed to record stats: %w", err)
+	}
 	queries := database.New(pool)
 
 	return &Client{Queries: queries, conn: pool}, nil
