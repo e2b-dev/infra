@@ -52,6 +52,7 @@ func ValidateAccessToken(ctx context.Context, db *models.Client, accessToken str
 	exists, err := db.AccessToken.Query().Where(accesstoken.AccessTokenHash(hashedToken)).Exist(ctx)
 	if err != nil {
 		log.Printf("Error while checking access token: %s\n", err.Error())
+
 		return false
 	}
 

@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/dberrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 )
 
 // PostV2Templates triggers a new template build
@@ -34,6 +35,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team, limits", apiErr.Err)
+
 		return
 	}
 
@@ -48,6 +50,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		if templateAlias.TeamID != team.ID {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Alias `%s` is already taken", body.Alias))
 			telemetry.ReportError(ctx, "template alias is already taken", nil, telemetry.WithTemplateID(templateAlias.EnvID), telemetry.WithTeamID(team.ID.String()), attribute.String("alias", body.Alias))
+
 			return
 		}
 
@@ -58,6 +61,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	default:
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting template alias: %s", err))
 		telemetry.ReportCriticalError(ctx, "error when getting template alias", err)
+
 		return
 	}
 	span.End()
@@ -66,6 +70,7 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting available build client")
 		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
+
 		return
 	}
 
@@ -78,12 +83,14 @@ func (a *APIStore) PostV2Templates(c *gin.Context) {
 		Alias:         &body.Alias,
 		CpuCount:      body.CpuCount,
 		MemoryMB:      body.MemoryMB,
+		Version:       templates.TemplateV2LatestVersion,
 	}
 
 	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.db, buildReq)
 	if apiError != nil {
 		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "build template register failed", apiError.Err)
+
 		return
 	}
 

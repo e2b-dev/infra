@@ -17,6 +17,7 @@ func newTempProvider(t *testing.T) *FileSystemStorageProvider {
 	base := t.TempDir()
 	p, err := NewFileSystemStorageProvider(base)
 	require.NoError(t, err)
+
 	return p
 }
 

@@ -81,6 +81,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 				end := off + int64(len(buff))
 				end = min(end, int64(len(fakeData)))
 				copy(buff, fakeData[start:end])
+
 				return int(end - start), nil
 			})
 
@@ -118,6 +119,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 			WriteTo(mock.Anything, mock.Anything).
 			RunAndReturn(func(_ context.Context, dst io.Writer) (int64, error) {
 				num, err := dst.Write(fakeData)
+
 				return int64(num), err
 			})
 

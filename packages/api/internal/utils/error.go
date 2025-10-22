@@ -104,6 +104,7 @@ func MultiErrorHandler(me openapi3.MultiError) error {
 		// Split up the verbose error by lines and return the first one
 		// openapi errors seem to be multi-line with a decent message on the first
 		errorLines := strings.Split(e.Error(), "\n")
+
 		return fmt.Errorf("error in openapi3filter.RequestError: %s", errorLines[0])
 	case *openapi3filter.SecurityRequirementsError:
 		return processCustomErrors(e) // custom implementation
@@ -136,6 +137,7 @@ func processCustomErrors(e *openapi3filter.SecurityRequirementsError) error {
 		}
 
 		err = errW
+
 		break
 	}
 

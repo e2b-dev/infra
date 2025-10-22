@@ -119,17 +119,20 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 		select {
 		case <-ctx.Done():
 			fmt.Fprintf(os.Stderr, "context cancelled while waiting for mmds opts")
+
 			return
 		case <-ticker.C:
 			token, err := getMMDSToken(ctx, httpClient)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error getting mmds token: %v\n", err)
+
 				continue
 			}
 
 			mmdsOpts, err := getMMDSOpts(ctx, httpClient, token)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error getting mmds opts: %v\n", err)
+
 				continue
 			}
 

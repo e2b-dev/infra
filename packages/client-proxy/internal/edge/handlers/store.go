@@ -65,6 +65,7 @@ func NewStore(
 		if env.IsDebug() {
 			zap.L().Info("Skipping orchestrator readiness check in debug mode")
 			store.info.SetStatus(api.Healthy)
+
 			return
 		}
 
@@ -73,6 +74,7 @@ func NewStore(
 		if config.SkipInitialOrchestratorReadinessCheck {
 			time.Sleep(10 * time.Second)
 			store.info.SetStatus(api.Healthy)
+
 			return
 		}
 
@@ -87,6 +89,7 @@ func NewStore(
 				if len(list) > 0 {
 					zap.L().Info("Marking API as healthy, at least one orchestrator is available")
 					store.info.SetStatus(api.Healthy)
+
 					return
 				}
 			}
@@ -124,6 +127,7 @@ func parseBody[B any](ctx context.Context, c *gin.Context) (body B, err error) {
 	if err != nil {
 		bodyErr := fmt.Errorf("error when parsing request: %w", err)
 		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
+
 		return body, bodyErr
 	}
 

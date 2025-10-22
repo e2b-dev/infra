@@ -27,6 +27,7 @@ func NewAdjustableSemaphore(limit int64) (*AdjustableSemaphore, error) {
 
 	as := &AdjustableSemaphore{limit: limit}
 	as.cond = sync.NewCond(&as.mu)
+
 	return as, nil
 }
 
@@ -52,6 +53,7 @@ func (s *AdjustableSemaphore) Acquire(ctx context.Context, n int64) error {
 	}
 
 	s.used += n
+
 	return nil
 }
 
@@ -68,6 +70,7 @@ func (s *AdjustableSemaphore) TryAcquire(n int64) bool {
 	}
 
 	s.used += n
+
 	return true
 }
 

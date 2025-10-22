@@ -36,6 +36,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, sandboxID string, durat
 
 		zap.L().Debug("sandbox ttl updated", logger.WithSandboxID(sbx.SandboxID), zap.Time("end_time", newEndTime))
 		sbx.EndTime = newEndTime
+
 		return sbx, nil
 	}
 

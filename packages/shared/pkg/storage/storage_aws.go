@@ -75,6 +75,7 @@ func (a *AWSBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, 
 	// AWS S3 delete operation requires at least one object to delete.
 	if len(objects) == 0 {
 		zap.L().Warn("No objects found to delete with the given prefix", zap.String("prefix", prefix), zap.String("bucket", a.bucketName))
+
 		return nil
 	}
 
@@ -93,6 +94,7 @@ func (a *AWSBucketStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, 
 		for _, delErr := range output.Errors {
 			errStr += fmt.Sprintf("Key: %s, Code: %s, Message: %s; ", aws.ToString(delErr.Key), aws.ToString(delErr.Code), aws.ToString(delErr.Message))
 		}
+
 		return errors.New("errors occurred during deletion: " + errStr)
 	}
 
@@ -118,6 +120,7 @@ func (a *AWSBucketStorageProvider) UploadSignedURL(ctx context.Context, path str
 	if err != nil {
 		return "", fmt.Errorf("failed to presign PUT URL: %w", err)
 	}
+
 	return resp.URL, nil
 }
 

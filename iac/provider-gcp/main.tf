@@ -118,8 +118,9 @@ module "cluster" {
   loki_node_pool         = var.loki_node_pool
   orchestrator_node_pool = var.orchestrator_node_pool
 
-  api_use_nat = var.api_use_nat
-  api_nat_ips = var.api_nat_ips
+  api_use_nat              = var.api_use_nat
+  api_nat_ips              = var.api_nat_ips
+  api_nat_min_ports_per_vm = var.api_nat_min_ports_per_vm
 
   ingress_port                 = var.ingress_port
   edge_api_port                = var.edge_api_port

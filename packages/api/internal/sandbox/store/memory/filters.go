@@ -9,5 +9,6 @@ func applyFilter(sbx sandbox.Sandbox, filter *sandbox.ItemsFilter) bool {
 	if filter.OnlyExpired && !sbx.IsExpired() {
 		return false
 	}
+
 	return true
 }

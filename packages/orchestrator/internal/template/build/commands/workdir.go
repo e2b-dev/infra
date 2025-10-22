@@ -112,6 +112,7 @@ func saveWorkdirMeta(
 		func(stdout, stderr string) {
 			if stderr != "" {
 				outputErr = fmt.Errorf("error getting absolute path of workdir: %s", stderr)
+
 				return
 			}
 			workdir = strings.TrimSpace(stdout)
@@ -126,5 +127,6 @@ func saveWorkdirMeta(
 	}
 
 	cmdMetadata.WorkDir = &workdir
+
 	return cmdMetadata, nil
 }

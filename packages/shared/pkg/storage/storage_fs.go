@@ -34,6 +34,7 @@ func NewFileSystemStorageProvider(basePath string) (*FileSystemStorageProvider, 
 
 func (fs *FileSystemStorageProvider) DeleteObjectsWithPrefix(_ context.Context, prefix string) error {
 	filePath := fs.getPath(prefix)
+
 	return os.RemoveAll(filePath)
 }
 
@@ -111,6 +112,7 @@ func (f *FileSystemStorageObjectProvider) Write(_ context.Context, data []byte) 
 	defer handle.Close()
 
 	count, err := handle.Write(data)
+
 	return count, err
 }
 

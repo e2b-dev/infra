@@ -83,6 +83,7 @@ func (b *StorageDiff) Init(ctx context.Context) error {
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get object size: %w", err)
 		b.chunker.SetError(errMsg)
+
 		return errMsg
 	}
 
@@ -90,6 +91,7 @@ func (b *StorageDiff) Init(ctx context.Context) error {
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create chunker: %w", err)
 		b.chunker.SetError(errMsg)
+
 		return errMsg
 	}
 

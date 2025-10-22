@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -30,8 +31,10 @@ type Copy struct {
 var _ Command = (*Copy)(nil)
 
 type copyScriptData struct {
-	SourcePath string
-	TargetPath string
+	SourcePath  string
+	TargetPath  string
+	Owner       string
+	Permissions string
 }
 
 var copyScriptTemplate = txtTemplate.Must(txtTemplate.New("copy-script-template").Parse(`
@@ -50,6 +53,7 @@ fi
 
 cd "$sourceFolder" || exit 1
 
+# Get the first entry (file, directory, or symlink)
 entry=$(ls -A | head -n 1)
 
 if [ -z "$entry" ]; then
@@ -57,21 +61,34 @@ if [ -z "$entry" ]; then
  exit 1
 fi
 
+# Check type BEFORE applying ownership/permissions to avoid dereferencing symlinks
 if [ -L "$entry" ]; then
- # It's a symlink file – create parent folders and move+rename it to the exact path
+ # It's a symlink – create parent folders and move+rename it to the exact path
  mkdir -p "$(dirname "$targetPath")"
+ # Change ownership of the symlink itself (not the target)
+ chown -h "{{ .Owner }}" "$entry"
+ # Note: chmod on symlinks affects the target, not the link itself in most systems
+ # We skip chmod for symlinks as it's typically not meaningful
  mv "$entry" "$targetPath"
 elif [ -f "$entry" ]; then
  # It's a file – create parent folders and move+rename it to the exact path
+ chown "{{ .Owner }}" "$entry"
+ {{ if .Permissions -}}
+  chmod "{{ .Permissions }}" "$entry"
+ {{ end -}}
  mkdir -p "$(dirname "$targetPath")"
  mv "$entry" "$targetPath"
 elif [ -d "$entry" ]; then
- # It's a directory – move all its contents into the destination folder
+ # It's a directory – apply ownership/permissions recursively, then move contents
+ chown -R "{{ .Owner }}" "$entry"
+ {{ if .Permissions -}}
+  chmod -R "{{ .Permissions }}" "$entry"
+ {{ end -}}
  mkdir -p "$targetPath"
  # Move all contents including hidden files
  find "$entry" -mindepth 1 -maxdepth 1 -exec mv {} "$targetPath/" \;
 else
- echo "Error: entry is neither file nor directory"
+ echo "Error: entry is neither file, directory, nor symlink"
  exit 1
 fi
 `))
@@ -98,10 +115,9 @@ func (c *Copy) Execute(
 	cmdMetadata metadata.Context,
 ) (metadata.Context, error) {
 	cmdType := strings.ToUpper(step.GetType())
-	args := step.GetArgs()
-	// args: [localPath containerPath optional_owner optional_permissions]
-	if len(args) < 2 {
-		return metadata.Context{}, fmt.Errorf("%s requires a local path and a container path argument", cmdType)
+	args, err := parseCopyArgs(step.GetArgs(), cmdMetadata.User)
+	if err != nil {
+		return metadata.Context{}, err
 	}
 
 	if step.FilesHash == nil || step.GetFilesHash() == "" {
@@ -139,7 +155,7 @@ func (c *Copy) Execute(
 	// This is happening because the /tmp is mounted as a tmpfs and deleted on restart.
 	sbxTargetPath := filepath.Join("/tmp", fmt.Sprintf("%s.tar", step.GetFilesHash()))
 	// 2) Copy the tar file to the sandbox
-	err = sandboxtools.CopyFile(ctx, proxy, sandboxID, cmdMetadata.User, tmpFile.Name(), sbxTargetPath)
+	err = sandboxtools.CopyFile(ctx, proxy, sandboxID, "root", tmpFile.Name(), sbxTargetPath)
 	if err != nil {
 		return metadata.Context{}, fmt.Errorf("failed to copy layer tar data to sandbox: %w", err)
 	}
@@ -153,26 +169,26 @@ func (c *Copy) Execute(
 		proxy,
 		sandboxID,
 		fmt.Sprintf(`mkdir -p "%s" && tar -xzvf "%s" -C "%s"`, sbxUnpackPath, sbxTargetPath, sbxUnpackPath),
-		cmdMetadata,
+		cmdMetadata.WithUser("root"),
 	)
 	if err != nil {
 		return metadata.Context{}, fmt.Errorf("failed to extract files: %w", err)
 	}
 
-	// 4) Move the extracted files to the target path in the sandbox
-	targetPath := args[1]
-	// Remove all glob patterns, they are handled on the client side already
-	// Add / always at the end to ensure the last file/directory is also included if it doesn't contain a glob pattern
-	sourcePath, _ := doublestar.SplitPattern(ensureTrailingSlash(args[0]))
 	var moveScript bytes.Buffer
 	err = copyScriptTemplate.Execute(&moveScript, copyScriptData{
-		SourcePath: filepath.Join(sbxUnpackPath, sourcePath),
-		TargetPath: targetPath,
+		SourcePath: filepath.Join(sbxUnpackPath, args.SourcePath),
+		TargetPath: args.TargetPath,
+		Owner:      args.Owner,
+		// Optional permissions
+		Permissions: args.Permissions,
 	})
 	if err != nil {
 		return metadata.Context{}, fmt.Errorf("failed to execute copy script template: %w", err)
 	}
 
+	// Run the move script as root so it can chown files to any user
+	// The script handles both ownership and permissions on the source before moving
 	err = sandboxtools.RunCommandWithLogger(
 		ctx,
 		proxy,
@@ -181,47 +197,10 @@ func (c *Copy) Execute(
 		"unpack",
 		sandboxID,
 		moveScript.String(),
-		cmdMetadata,
+		cmdMetadata.WithUser("root"),
 	)
 	if err != nil {
 		return metadata.Context{}, fmt.Errorf("failed to move files in sandbox: %w", err)
-	}
-
-	// If optional owner is provided, set them
-	if len(args) >= 3 {
-		// Assumes the format of chown
-		owner := args[2]
-		if owner != "" {
-			err = sandboxtools.RunCommand(
-				ctx,
-				proxy,
-				sandboxID,
-				fmt.Sprintf(`chown -R %s "%s"`, owner, targetPath),
-				cmdMetadata,
-			)
-			if err != nil {
-				return metadata.Context{}, fmt.Errorf("failed to set ownership: %w", err)
-			}
-		}
-	}
-
-	// If optional permissions are provided, set them
-	if len(args) >= 4 {
-		// This assumes the format of chmod
-		permissions := args[3]
-
-		if permissions != "" {
-			err = sandboxtools.RunCommand(
-				ctx,
-				proxy,
-				sandboxID,
-				fmt.Sprintf(`chmod -R %s "%s"`, permissions, targetPath),
-				cmdMetadata,
-			)
-			if err != nil {
-				return metadata.Context{}, fmt.Errorf("failed to set permissions: %w", err)
-			}
-		}
 	}
 
 	return cmdMetadata, nil
@@ -233,4 +212,49 @@ func ensureTrailingSlash(s string) string {
 	}
 
 	return s + "/"
+}
+
+type copyArgs struct {
+	SourcePath  string
+	TargetPath  string
+	Owner       string
+	Permissions string
+}
+
+func parseCopyArgs(args []string, defaultUser string) (*copyArgs, error) {
+	// Validate minimum arguments
+	// args: [localPath containerPath optional_owner optional_permissions]
+	if len(args) < 2 {
+		return nil, errors.New("COPY requires a local path and a container path argument")
+	}
+
+	// Remove all glob patterns, they are handled on the client side already
+	// Add / always at the end to ensure the last file/directory is also included if it doesn't contain a glob pattern
+	sourcePath, _ := doublestar.SplitPattern(ensureTrailingSlash(args[0]))
+
+	// Parse target path
+	targetPath := args[1]
+
+	// Determine owner (default to defaultUser:defaultUser)
+	owner := fmt.Sprintf("%s:%s", defaultUser, defaultUser)
+	if len(args) >= 3 && args[2] != "" {
+		owner = args[2]
+		// If no group specified, use the same as user
+		if !strings.Contains(owner, ":") {
+			owner = fmt.Sprintf("%s:%s", owner, owner)
+		}
+	}
+
+	// Parse optional permissions
+	permissions := ""
+	if len(args) >= 4 {
+		permissions = args[3]
+	}
+
+	return &copyArgs{
+		SourcePath:  sourcePath,
+		TargetPath:  targetPath,
+		Owner:       owner,
+		Permissions: permissions,
+	}, nil
 }
