@@ -151,3 +151,7 @@ func UserContext(userID string) ldcontext.Context {
 func ServiceContext(serviceName string) ldcontext.Context {
 	return ldcontext.NewWithKind(ServiceKind, serviceName)
 }
+
+func TemplateContext(templateID string) ldcontext.Context {
+	return ldcontext.NewWithKind(TemplateKind, templateID)
+}

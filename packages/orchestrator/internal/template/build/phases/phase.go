@@ -31,7 +31,7 @@ type BuilderPhase interface {
 	String(ctx context.Context) (string, error)
 	Metadata() PhaseMeta
 
-	Hash(sourceLayer LayerResult) (string, error)
+	Hash(ctx context.Context, sourceLayer LayerResult) (string, error)
 	Layer(ctx context.Context, sourceLayer LayerResult, hash string) (LayerResult, error)
 	Build(ctx context.Context, userLogger *zap.Logger, prefix string, sourceLayer LayerResult, currentLayer LayerResult) (LayerResult, error)
 }
@@ -83,7 +83,7 @@ func Run(
 		)
 
 		phaseStartTime := time.Now()
-		hash, err := builder.Hash(sourceLayer)
+		hash, err := builder.Hash(ctx, sourceLayer)
 		if err != nil {
 			return LayerResult{}, fmt.Errorf("getting hash: %w", err)
 		}
