@@ -13,7 +13,7 @@ func TestSettleCounter_NewZeroSettleCounter(t *testing.T) {
 	sc := NewZeroSettleCounter()
 
 	// Counter should start at 0 (settle value)
-	require.Equal(t, int64(0), sc.counter.Load(), "Expected counter to start at 0")
+	require.Equal(t, int64(0), sc.counter, "Expected counter to start at 0")
 }
 
 func TestSettleCounter_AddAndDone(t *testing.T) {
@@ -21,17 +21,17 @@ func TestSettleCounter_AddAndDone(t *testing.T) {
 
 	// Test Add
 	sc.Add()
-	require.Equal(t, int64(1), sc.counter.Load(), "Expected counter to be 1 after Add")
+	require.Equal(t, int64(1), sc.counter, "Expected counter to be 1 after Add")
 
 	sc.Add()
-	require.Equal(t, int64(2), sc.counter.Load(), "Expected counter to be 2 after second Add")
+	require.Equal(t, int64(2), sc.counter, "Expected counter to be 2 after second Add")
 
 	// Test Done
 	sc.Done()
-	require.Equal(t, int64(1), sc.counter.Load(), "Expected counter to be 1 after Done")
+	require.Equal(t, int64(1), sc.counter, "Expected counter to be 1 after Done")
 
 	sc.Done()
-	require.Equal(t, int64(0), sc.counter.Load(), "Expected counter to be 0 after second Done")
+	require.Equal(t, int64(0), sc.counter, "Expected counter to be 0 after second Done")
 }
 
 func TestSettleCounter_Wait_AlreadySettled(t *testing.T) {
@@ -155,7 +155,7 @@ func TestSettleCounter_Close(t *testing.T) {
 	require.NoError(t, waitErr, "Expected no error when closing")
 
 	// Counter should be at settle value (0)
-	require.Equal(t, int64(0), sc.counter.Load(), "Expected counter to be 0 after Close")
+	require.Equal(t, int64(0), sc.counter, "Expected counter to be 0 after Close")
 }
 
 func TestSettleCounter_ConcurrentOperations(t *testing.T) {
@@ -185,7 +185,7 @@ func TestSettleCounter_ConcurrentOperations(t *testing.T) {
 	wg.Wait()
 
 	// Counter should be back to 0
-	require.Equal(t, int64(0), sc.counter.Load(), "Expected counter to be 0 after all operations")
+	require.Equal(t, int64(0), sc.counter, "Expected counter to be 0 after all operations")
 }
 
 func TestSettleCounter_MultipleWaiters(t *testing.T) {

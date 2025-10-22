@@ -3,66 +3,72 @@ package utils
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 )
 
 type SettleCounter struct {
-	counter     atomic.Int64
-	cond        sync.Cond
+	mu          sync.Mutex
+	cond        *sync.Cond
+	counter     int64
 	settleValue int64
 }
 
-// NewZeroSettleCounter creates a new SettleCounter that settles when the counter is zero.
 func NewZeroSettleCounter() *SettleCounter {
-	return &SettleCounter{
-		counter:     atomic.Int64{},
-		cond:        *sync.NewCond(&sync.Mutex{}),
-		settleValue: 0,
+	c := &SettleCounter{settleValue: 0}
+
+	c.cond = sync.NewCond(&c.mu)
+
+	return c
+}
+
+func (s *SettleCounter) add(delta int64) {
+	s.mu.Lock()
+
+	s.counter += delta
+
+	if s.counter == s.settleValue {
+		s.cond.Broadcast() // wake up all waiters
 	}
+
+	s.mu.Unlock()
 }
 
-func (w *SettleCounter) add(delta int64) {
-	if w.counter.Add(delta) == w.settleValue {
-		w.cond.Broadcast()
+func (s *SettleCounter) Add() {
+	s.add(1)
+}
+
+func (s *SettleCounter) Done() {
+	s.add(-1)
+}
+
+func (s *SettleCounter) Wait(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// fast path
+	if s.counter == s.settleValue {
+		return nil
 	}
-}
 
-func (w *SettleCounter) Add() {
-	w.add(1)
-}
+	done := make(chan struct{})
+	defer close(done)
 
-func (w *SettleCounter) Done() {
-	w.add(-1)
-}
-
-// Wait waits for the counter to be the settle value.
-func (w *SettleCounter) Wait(ctx context.Context) error {
-	// Ensure we can break out of this Wait when the context is done.
 	go func() {
-		<-ctx.Done()
-
-		w.cond.Broadcast()
-	}()
-
-	for w.counter.Load() != w.settleValue {
 		select {
 		case <-ctx.Done():
+			s.mu.Lock()
+			s.cond.Broadcast() // wake waiters to check ctx
+			s.mu.Unlock()
+		case <-done:
+		}
+	}()
+
+	for s.counter != s.settleValue {
+		if ctx.Err() != nil {
 			return ctx.Err()
-		default:
 		}
 
-		w.cond.L.Lock()
-
-		w.cond.Wait()
-
-		w.cond.L.Unlock()
+		s.cond.Wait()
 	}
 
 	return nil
-}
-
-func (w *SettleCounter) close() {
-	w.counter.Store(w.settleValue)
-
-	w.cond.Broadcast()
 }

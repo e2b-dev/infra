@@ -160,8 +160,10 @@ func (u *Userfaultfd) handleMissing(
 		}
 
 		u.writesInProgress.Add()
-	} else if !u.missingRequests.Add(offset) {
-		return
+	} else {
+		if !u.missingRequests.Add(offset) {
+			return
+		}
 	}
 
 	u.wg.Go(func() error {
@@ -203,8 +205,6 @@ func (u *Userfaultfd) handleMissing(
 
 		copyErr := u.copy(addr, b, pagesize, copyMode)
 		if errors.Is(copyErr, unix.EEXIST) {
-			u.logger.Debug("UFFD serve page already mapped", zap.Any("offset", addr), zap.Any("pagesize", pagesize))
-
 			// Page is already mapped
 
 			return nil

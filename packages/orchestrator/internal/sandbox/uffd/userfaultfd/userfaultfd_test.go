@@ -7,10 +7,12 @@ import (
 	"slices"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
@@ -412,6 +414,104 @@ func TestUffdWriteProtection(t *testing.T) {
 	}
 }
 
+func TestUffdParallelWP(t *testing.T) {
+	parallelOperations := 100_000
+
+	tt := testConfig{
+		pagesize:      header.PageSize,
+		numberOfPages: 2,
+	}
+
+	h := configureTest(t, tt)
+
+	readOp := operation{
+		offset: 0,
+		mode:   operationModeRead,
+	}
+
+	// Single read to add Write protection to the page
+	err := h.executeRead(t.Context(), readOp)
+	require.NoError(t, err)
+
+	writeOp := operation{
+		offset: 0,
+		mode:   operationModeWrite,
+	}
+
+	var verr errgroup.Group
+
+	for range parallelOperations {
+		verr.Go(func() error {
+			return h.executeWrite(t.Context(), writeOp)
+		})
+	}
+
+	err = verr.Wait()
+	require.NoError(t, err)
+
+	assert.Equal(t, []uint{0}, h.getAccessedOffsets(), "pages accessed (page 0)")
+	assert.Equal(t, []uint{0}, h.getWriteOffsets(), "pages written to (page 0)")
+}
+
+func TestUffdParallelWrite(t *testing.T) {
+	parallelOperations := 100_000
+
+	tt := testConfig{
+		pagesize:      header.PageSize,
+		numberOfPages: 2,
+	}
+
+	h := configureTest(t, tt)
+
+	writeOp := operation{
+		offset: 0,
+		mode:   operationModeWrite,
+	}
+
+	var verr errgroup.Group
+
+	for range parallelOperations {
+		verr.Go(func() error {
+			return h.executeWrite(t.Context(), writeOp)
+		})
+	}
+
+	err := verr.Wait()
+	require.NoError(t, err)
+
+	assert.Equal(t, []uint{0}, h.getAccessedOffsets(), "pages accessed (page 0)")
+	assert.Equal(t, []uint{0}, h.getWriteOffsets(), "pages written to (page 0)")
+}
+
+func TestUffdParallelMissing(t *testing.T) {
+	parallelOperations := 100_000
+
+	tt := testConfig{
+		pagesize:      header.PageSize,
+		numberOfPages: 2,
+	}
+
+	h := configureTest(t, tt)
+
+	readOp := operation{
+		offset: 0,
+		mode:   operationModeRead,
+	}
+
+	var verr errgroup.Group
+
+	for range parallelOperations {
+		verr.Go(func() error {
+			return h.executeRead(t.Context(), readOp)
+		})
+	}
+
+	err := verr.Wait()
+	require.NoError(t, err)
+
+	assert.Equal(t, []uint{0}, h.getAccessedOffsets(), "pages accessed (page 0)")
+}
+
 type testHandler struct {
 	memoryArea *[]byte
 	pagesize   uint64
@@ -454,13 +554,6 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 	if err != nil {
 		return err
 	}
-
-	go func() {
-		n := copy((*h.memoryArea)[op.offset:op.offset+int64(h.pagesize)], bytesToWrite)
-		if n != int(h.pagesize) {
-			panic(fmt.Errorf("copy length mismatch: want %d, got %d", h.pagesize, n))
-		}
-	}()
 
 	n := copy((*h.memoryArea)[op.offset:op.offset+int64(h.pagesize)], bytesToWrite)
 	if n != int(h.pagesize) {
@@ -533,6 +626,14 @@ func configureTest(t *testing.T, tt testConfig) *testHandler {
 
 		exitUffd <- struct{}{}
 	}()
+
+	// HACK: Wait for the uffd to be ready.
+	// Without this, handling a lot of parallel requests in tests becomes flaky.
+	//
+	// TODO: Check if something like is not already happening with the FC UFFD too,
+	// as even the missing requests are suffering from this.
+	// Couldn't find a good way to check UFFD readiness though.
+	time.Sleep(20 * time.Millisecond)
 
 	t.Cleanup(func() {
 		signalExitErr := fdExit.SignalExit()
