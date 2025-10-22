@@ -33,7 +33,8 @@ const InsertSandboxEventQuery = `INSERT INTO sandbox_events
     event_label,
     event_data,
     type,
-    version
+    version,
+    id
 )
 VALUES (
     ?,
@@ -42,6 +43,7 @@ VALUES (
     ?,
     ?,
     ?,	
+    ?,
     ?,
     ?,
     ?,
@@ -89,6 +91,7 @@ func (b *SandboxEventInsertBatcher) processInsertSandboxEventsBatch(events []cli
 			event.EventData,
 			event.Type,
 			event.Version,
+			event.ID,
 		)
 		if err != nil {
 			return fmt.Errorf("error appending %d product usage event to batch: %w", len(events), err)
