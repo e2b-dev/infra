@@ -262,6 +262,7 @@ func (a *AWSBucketStorageObjectProvider) Size(ctx context.Context) (int64, error
 
 func (a *AWSBucketStorageObjectProvider) Exists(ctx context.Context) (bool, error) {
 	_, err := a.Size(ctx)
+
 	return err == nil, ignoreNotExists(err)
 }
 

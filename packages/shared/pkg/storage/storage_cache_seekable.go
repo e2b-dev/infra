@@ -48,6 +48,7 @@ func (c CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, o
 	if ignoreEOF(err) == nil {
 		cacheHits.Add(ctx, 1)
 		readTimer.End(ctx, int64(count))
+
 		return count, err // return `err` in case it's io.EOF
 	}
 	cacheMisses.Add(ctx, 1)
@@ -73,6 +74,7 @@ func (c CachedSeekableObjectProvider) ReadAt(ctx context.Context, buff []byte, o
 func (c CachedSeekableObjectProvider) Size(ctx context.Context) (int64, error) {
 	if size, ok := c.readLocalSize(); ok {
 		cacheHits.Add(ctx, 1)
+
 		return size, nil
 	}
 	cacheMisses.Add(ctx, 1)
@@ -129,6 +131,7 @@ func (c CachedSeekableObjectProvider) readLocalSize() (int64, bool) {
 		zap.L().Warn("failed to read cached size, falling back to remote read",
 			zap.String("path", fname),
 			zap.Error(err))
+
 		return 0, false
 	}
 
@@ -138,6 +141,7 @@ func (c CachedSeekableObjectProvider) readLocalSize() (int64, bool) {
 			zap.String("path", fname),
 			zap.String("content", string(content)),
 			zap.Error(err))
+
 		return 0, false
 	}
 
@@ -157,6 +161,7 @@ func (c CachedSeekableObjectProvider) validateReadAtParams(buffSize, offset int6
 	if (offset%c.chunkSize)+buffSize > c.chunkSize {
 		return ErrMultipleChunks
 	}
+
 	return nil
 }
 
@@ -199,6 +204,7 @@ func (c CachedSeekableObjectProvider) writeLocalSize(size int64) {
 		zap.L().Warn("failed to write to temp file",
 			zap.String("path", tempFilename),
 			zap.Error(err))
+
 		return
 	}
 
@@ -208,6 +214,7 @@ func (c CachedSeekableObjectProvider) writeLocalSize(size int64) {
 			zap.String("temp_path", tempFilename),
 			zap.String("final_path", finalFilename),
 			zap.Error(err))
+
 		return
 	}
 }

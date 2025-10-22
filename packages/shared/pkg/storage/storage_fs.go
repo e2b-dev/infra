@@ -131,6 +131,7 @@ func (f *FileSystemStorageObjectProvider) Exists(_ context.Context) (bool, error
 	if os.IsNotExist(err) {
 		return false, nil
 	}
+
 	return err == nil, err
 }
 

@@ -70,6 +70,7 @@ func (c CachedObjectProvider) copyFullFileFromCache(ctx context.Context, dst io.
 				zap.String("path", path),
 				zap.Error(err))
 		}
+
 		return 0, false
 	}
 
@@ -80,10 +81,12 @@ func (c CachedObjectProvider) copyFullFileFromCache(ctx context.Context, dst io.
 		zap.L().Error("failed to read full cached file",
 			zap.String("path", path),
 			zap.Error(err))
+
 		return 0, false
 	}
 
 	cachedRead.End(ctx, count)
+
 	return count, true
 }
 
@@ -104,6 +107,7 @@ func (c CachedObjectProvider) readAndCacheFullRemoteFile(ctx context.Context, ds
 	}()
 
 	written, err := dst.Write(writer.Bytes())
+
 	return int64(written), err
 }
 

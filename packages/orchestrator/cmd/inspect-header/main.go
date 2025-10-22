@@ -31,6 +31,7 @@ func main() {
 		storagePath = template.StorageRootfsHeaderPath()
 	default:
 		log.Fatalf("invalid kind: %s", *kind)
+
 		return
 	}
 
