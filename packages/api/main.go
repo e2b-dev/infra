@@ -28,8 +28,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
 	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
@@ -154,7 +154,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 				// Get team from context, use TeamContextKey
 				teamInfo := c.Value(auth.TeamContextKey)
 				if teamInfo != nil {
-					teamID = teamInfo.(authcache.AuthTeamInfo).Team.ID.String()
+					teamID = teamInfo.(*types.Team).ID.String()
 				}
 
 				reqLogger := logger
@@ -217,23 +217,12 @@ func run() int {
 	flag.StringVar(&debug, "debug", "false", "is debug")
 	flag.Parse()
 
-	config, err := cfg.Parse()
-	if err != nil {
-		zap.L().Fatal("Error parsing config", zap.Error(err))
-	}
-
 	serviceInstanceID := uuid.New().String()
 	nodeID := env.GetNodeID()
 
-	var tel *telemetry.Client
-	if telemetry.OtelCollectorGRPCEndpoint == "" {
-		tel = telemetry.NewNoopClient()
-	} else {
-		var err error
-		tel, err = telemetry.New(ctx, nodeID, serviceName, commitSHA, serviceVersion, serviceInstanceID)
-		if err != nil {
-			zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
-		}
+	tel, err := telemetry.New(ctx, nodeID, serviceName, commitSHA, serviceVersion, serviceInstanceID)
+	if err != nil {
+		zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
 	}
 	defer func() {
 		err := tel.Shutdown(ctx)
@@ -284,6 +273,11 @@ func run() int {
 		expectedMigration = 0
 	}
 
+	config, err := cfg.Parse()
+	if err != nil {
+		zap.L().Fatal("Error parsing config", zap.Error(err))
+	}
+
 	err = utils.CheckMigrationVersion(config.PostgresConnectionString, expectedMigration)
 	if err != nil {
 		logger.Fatal("failed to check migration version", zap.Error(err))
@@ -299,6 +293,7 @@ func run() int {
 		// this will call os.Exit: defers won't run, but none
 		// need to yet. Change this if this is called later.
 		logger.Error("Error loading swagger spec", zap.Error(err))
+
 		return 1
 	}
 
@@ -336,6 +331,7 @@ func run() int {
 		}
 		if count == 0 {
 			logger.Info("no cleanup operations")
+
 			return
 		}
 		logger.Info("Running cleanup operations", zap.Int("count", count))

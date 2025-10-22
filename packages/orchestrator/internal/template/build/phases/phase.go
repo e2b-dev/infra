@@ -33,7 +33,7 @@ type BuilderPhase interface {
 
 	Hash(sourceLayer LayerResult) (string, error)
 	Layer(ctx context.Context, sourceLayer LayerResult, hash string) (LayerResult, error)
-	Build(ctx context.Context, userLogger *zap.Logger, sourceLayer LayerResult, currentLayer LayerResult) (LayerResult, error)
+	Build(ctx context.Context, userLogger *zap.Logger, prefix string, sourceLayer LayerResult, currentLayer LayerResult) (LayerResult, error)
 }
 
 type LayerResult struct {
@@ -52,6 +52,7 @@ func layerInfo(
 	if cached {
 		cachedPrefix = "CACHED "
 	}
+
 	return fmt.Sprintf("%s[%s] %s [%s]", cachedPrefix, prefix, text, hash)
 }
 
@@ -105,6 +106,7 @@ func Run(
 			metrics.RecordPhaseDuration(ctx, phaseDuration, meta.Phase, meta.StepType, true)
 
 			sourceLayer = currentLayer
+
 			continue
 		}
 
@@ -113,7 +115,7 @@ func Run(
 			return LayerResult{}, fmt.Errorf("validating layer: %w", err)
 		}
 
-		res, err := builder.Build(ctx, stepUserLogger, sourceLayer, currentLayer)
+		res, err := builder.Build(ctx, stepUserLogger, prefix, sourceLayer, currentLayer)
 		// Record phase duration
 		phaseDuration := time.Since(phaseStartTime)
 		metrics.RecordPhaseDuration(ctx, phaseDuration, meta.Phase, meta.StepType, false)

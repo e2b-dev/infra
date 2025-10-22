@@ -15,10 +15,10 @@ import (
 	"github.com/creack/pty"
 	"github.com/rs/zerolog"
 
+	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
-	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
 const (
@@ -65,7 +65,7 @@ func New(
 	user *user.User,
 	req *rpc.StartRequest,
 	logger *zerolog.Logger,
-	envVars *utils.Map[string, string],
+	defaults *execcontext.Defaults,
 	cancel context.CancelFunc,
 ) (*Handler, error) {
 	cmd := exec.CommandContext(ctx, req.GetProcess().GetCmd(), req.GetProcess().GetArgs()...)
@@ -83,7 +83,7 @@ func New(
 		NoSetGroups: true,
 	}
 
-	resolvedPath, err := permissions.ExpandAndResolve(req.GetProcess().GetCwd(), user)
+	resolvedPath, err := permissions.ExpandAndResolve(req.GetProcess().GetCwd(), user, defaults.Workdir)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -105,9 +105,10 @@ func New(
 	formattedVars = append(formattedVars, "LOGNAME="+user.Username)
 
 	// Add the environment variables from the global environment
-	if envVars != nil {
-		envVars.Range(func(key string, value string) bool {
+	if defaults.EnvVars != nil {
+		defaults.EnvVars.Range(func(key string, value string) bool {
 			formattedVars = append(formattedVars, key+"="+value)
+
 			return true
 		})
 	}

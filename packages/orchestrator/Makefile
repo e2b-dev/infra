@@ -22,13 +22,7 @@ generate:
 .PHONY: build
 build:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
-	@rm -rf .shared/
-	@cp -r ../shared .shared/
-	@rm -rf .clickhouse/
-	@cp -r ../clickhouse .clickhouse/
-	@docker build --platform linux/amd64 --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" .
-	@rm -rf .shared/
-	@rm -rf .clickhouse/
+	@docker build --platform linux/amd64 --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
 
 .PHONY: build-local
 build-local:
@@ -55,6 +49,16 @@ run-debug:
 	OTEL_COLLECTOR_GRPC_ENDPOINT=$(OTEL_COLLECTOR_GRPC_ENDPOINT) \
 	MAX_PARALLEL_MEMFILE_SNAPSHOTTING=$(MAX_PARALLEL_MEMFILE_SNAPSHOTTING) \
 	./bin/orchestrator
+
+define setup_local_env
+	$(eval include .env.local)
+	$(eval export $(shell sed 's/=.*//' .env.local))
+endef
+
+.PHONY: run-local
+run-local:
+	$(call setup_local_env)
+	NODE_ID=$$(hostname) ./bin/orchestrator --port 3000
 
 .PHONY: upload/clean-nfs-cache
 upload/clean-nfs-cache:

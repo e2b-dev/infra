@@ -89,6 +89,7 @@ message TemplateConfig {
 message TemplateCreateRequest {
   TemplateConfig template = 1;
   optional string cacheScope = 2;
+  optional string version = 3;
 }
 
 enum LogLevel {
@@ -103,6 +104,7 @@ message TemplateStatusRequest {
   string buildID = 2;
   optional int32 offset = 3;
   optional LogLevel level = 4;
+  optional uint32 limit = 5;
 }
 
 // Data required for deleting a template.
@@ -136,11 +138,10 @@ message TemplateBuildStatusReason {
 
 // Logs from template build
 message TemplateBuildStatusResponse {
-  reserved 3;
+  reserved 3, 4;
 
   TemplateBuildState status = 1;
   TemplateBuildMetadata metadata = 2;
-  repeated string logs = 4;
   repeated TemplateBuildLogEntry logEntries = 5;
 
   optional TemplateBuildStatusReason reason = 6;

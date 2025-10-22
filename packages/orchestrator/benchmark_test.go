@@ -21,6 +21,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
@@ -28,14 +29,13 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
+	buildconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -58,6 +58,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		buildID             = "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
 		useHugePages        = false
 		allowInternetAccess = true
+		templateVersion     = "v2.0.0"
 	)
 
 	// cache paths, to speed up test runs. these paths aren't wiped between tests
@@ -109,10 +110,8 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	b.Setenv("SNAPSHOT_CACHE_DIR", abs(filepath.Join(tempDir, "snapshot-cache")))
 	b.Setenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", abs(filepath.Join(persistenceDir, "templates")))
 
-	networkConfig, err := network.ParseConfig()
-	if err != nil {
-		b.Fatalf("error parsing config: %v", err)
-	}
+	config, err := cfg.Parse()
+	require.NoError(b, err)
 
 	// prep directories
 	for _, subdir := range []string{"build", "build-templates" /*"fc-vm",*/, "sandbox", "snapshot-cache", "template"} {
@@ -127,17 +126,23 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	sbxlogger.SetSandboxLoggerInternal(logger)
 	// sbxlogger.SetSandboxLoggerExternal(logger)
 
-	networkPool, err := network.NewPool(
-		b.Context(), noop.MeterProvider{}, 8, 8, clientID, networkConfig,
-	)
+	networkPool, err := network.NewPool(8, 8, clientID, config.NetworkConfig)
 	require.NoError(b, err)
+	go func() {
+		networkPool.Populate(b.Context())
+		logger.Info("network pool populated")
+	}()
 	defer func() {
 		err := networkPool.Close(b.Context())
 		assert.NoError(b, err)
 	}()
 
-	devicePool, err := nbd.NewDevicePool(b.Context(), noop.MeterProvider{})
+	devicePool, err := nbd.NewDevicePool()
 	require.NoError(b, err, "do you have the nbd kernel module installed?")
+	go func() {
+		devicePool.Populate(b.Context())
+		logger.Info("device pool populated")
+	}()
 	defer func() {
 		err := devicePool.Close(b.Context())
 		assert.NoError(b, err)
@@ -159,10 +164,15 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	blockMetrics, err := blockmetrics.NewMetrics(&noop.MeterProvider{})
 	require.NoError(b, err)
 
-	templateCache, err := template.NewCache(b.Context(), featureFlags, persistence, blockMetrics)
+	c, err := cfg.Parse()
+	if err != nil {
+		b.Fatalf("error parsing config: %v", err)
+	}
+
+	templateCache, err := template.NewCache(b.Context(), c, featureFlags, persistence, blockMetrics)
 	require.NoError(b, err)
 
-	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, true)
+	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags)
 
 	dockerhubRepository, err := dockerhub.GetRemoteRepository(b.Context())
 	require.NoError(b, err)
@@ -204,7 +214,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	var proxyPort uint16 = 5007
 
-	sandboxes := smap.New[*sandbox.Sandbox]()
+	sandboxes := sandbox.NewSandboxesMap()
 
 	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes)
 	require.NoError(b, err)
@@ -237,7 +247,8 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	if _, err := os.Stat(buildPath); os.IsNotExist(err) {
 		// build template
 		force := true
-		templateConfig := config.TemplateConfig{
+		templateConfig := buildconfig.TemplateConfig{
+			Version:    templateVersion,
 			TemplateID: templateID,
 			FromImage:  baseImage,
 			Force:      &force,
@@ -312,7 +323,6 @@ func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVer
 		tc.tmpl,
 		tc.sandboxConfig,
 		tc.runtime,
-		uuid.NewString(),
 		time.Now(),
 		time.Now().Add(time.Second*15),
 		nil,
@@ -324,6 +334,7 @@ func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVer
 		err = sbx.Close(ctx)
 		require.NoError(b, err)
 		b.StartTimer()
+
 		return
 	}
 
@@ -347,7 +358,7 @@ func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVer
 	}
 
 	// resume sandbox
-	sbx, err = tc.sandboxFactory.ResumeSandbox(ctx, tc.tmpl, tc.sandboxConfig, tc.runtime, uuid.NewString(), time.Now(), time.Now().Add(time.Second*15), nil)
+	sbx, err = tc.sandboxFactory.ResumeSandbox(ctx, tc.tmpl, tc.sandboxConfig, tc.runtime, time.Now(), time.Now().Add(time.Second*15), nil)
 	require.NoError(b, err)
 
 	// close sandbox

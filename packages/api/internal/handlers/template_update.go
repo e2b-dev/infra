@@ -10,7 +10,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -40,16 +39,6 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 		return
 	}
 
-	// Prepare info for updating env
-	userID, teams, err := a.GetUserAndTeams(c)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when getting default team", err)
-
-		return
-	}
-
 	template, err := a.db.
 		Client.
 		Env.
@@ -75,18 +64,19 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 		return
 	}
 
-	var team *queries.Team
-	for _, t := range teams {
-		if t.Team.ID == template.TeamID {
-			team = &t.Team
-			break
-		}
+	dbTeamID := template.TeamID.String()
+	team, apiErr := a.GetTeamAndLimits(c, &dbTeamID)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+
+		return
 	}
 
-	if team == nil {
-		telemetry.ReportError(ctx, "user doesn't have access to the sandbox template", fmt.Errorf("user '%s' doesn't have access to the sandbox template '%s'", userID, cleanedAliasOrEnvID))
+	if team.ID != template.TeamID {
+		telemetry.ReportError(ctx, "access to the sandbox template denied", fmt.Errorf("access to the sandbox template '%s' denied", cleanedAliasOrEnvID))
 
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You (%s) don't have access to sandbox template '%s'", userID, cleanedAliasOrEnvID))
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", cleanedAliasOrEnvID))
 
 		return
 	}
@@ -101,12 +91,12 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 			telemetry.ReportError(ctx, "error when updating env", dbErr)
 
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when updating env")
+
 			return
 		}
 	}
 
 	telemetry.SetAttributes(ctx,
-		attribute.String("user.id", userID.String()),
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
 		telemetry.WithTemplateID(template.ID),
@@ -118,7 +108,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "updated environment", properties.Set("environment", template.ID))
+	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "updated environment", properties.Set("environment", template.ID))
 
 	zap.L().Info("Updated env", logger.WithTemplateID(template.ID), logger.WithTeamID(team.ID.String()))
 

@@ -47,6 +47,24 @@ variable "api_node_pool" {
   default = "api"
 }
 
+variable "api_use_nat" {
+  type        = bool
+  description = "Whether API nodes should use NAT with dedicated external IPs."
+  default     = false
+}
+
+variable "api_nat_ips" {
+  type        = list(string)
+  description = "List of names for static IP addresses to use for NAT. If empty and api_use_nat is true, IPs will be created automatically."
+  default     = []
+}
+
+variable "api_nat_min_ports_per_vm" {
+  type        = number
+  description = "The default API NAT minimum ports per VM."
+  default     = 170
+}
+
 variable "api_resources_cpu_count" {
   type    = number
   default = 2
@@ -143,6 +161,11 @@ variable "client_proxy_count" {
   default = 1
 }
 
+variable "ingress_count" {
+  type    = number
+  default = 1
+}
+
 variable "client_proxy_resources_memory_mb" {
   type    = number
   default = 1024
@@ -183,30 +206,6 @@ variable "edge_proxy_port" {
   }
 }
 
-variable "logs_proxy_port" {
-  type = object({
-    name = string
-    port = number
-  })
-  default = {
-    name = "logs"
-    port = 30006
-  }
-}
-
-variable "logs_health_proxy_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
-  default = {
-    name        = "logs-health"
-    port        = 44313
-    health_path = "/health"
-  }
-}
-
 variable "loki_cluster_size" {
   type    = number
   default = 0
@@ -232,6 +231,19 @@ variable "api_port" {
     name        = "api"
     port        = 50001
     health_path = "/health"
+  }
+}
+
+variable "ingress_port" {
+  type = object({
+    name        = string
+    port        = number
+    health_path = string
+  })
+  default = {
+    name        = "ingress"
+    port        = 8800
+    health_path = "/ping"
   }
 }
 

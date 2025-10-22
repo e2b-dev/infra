@@ -11,9 +11,12 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 )
 
 type SeedData struct {
@@ -26,16 +29,40 @@ type SeedData struct {
 }
 
 func main() {
+	ctx := context.Background()
+
+	exitCode := run(ctx)
+	if exitCode != 0 {
+		log.Printf("Seed failed with exit code %d", exitCode)
+		os.Exit(exitCode)
+	}
+
+	fmt.Println("Seed completed successfully.")
+}
+
+func run(ctx context.Context) int {
 	connectionString := os.Getenv("POSTGRES_CONNECTION_STRING")
 	if connectionString == "" {
-		log.Fatalf("POSTGRES_CONNECTION_STRING is not set")
+		log.Printf("POSTGRES_CONNECTION_STRING is not set")
+
+		return 1
 	}
 
 	database, err := db.NewClient(1, 1)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Printf("Failed to connect to database: %v", err)
+
+		return 1
 	}
 	defer database.Close()
+
+	sqlcDB, err := client.NewClient(ctx)
+	if err != nil {
+		log.Printf("Failed to connect to database: %v", err)
+
+		return 1
+	}
+	defer sqlcDB.Close()
 
 	data := SeedData{
 		AccessToken: os.Getenv("TESTS_E2B_ACCESS_TOKEN"),
@@ -46,16 +73,19 @@ func main() {
 		UserID:      uuid.MustParse(os.Getenv("TESTS_SANDBOX_USER_ID")),
 	}
 
-	err = seed(database, data)
+	err = seed(ctx, database, sqlcDB, data)
 	if err != nil {
-		log.Fatalf("Failed to execute seed: %v", err) //nolint:gocritic // no harm in exiting after defer here
+		log.Printf("Failed to execute seed: %v", err)
+
+		return 1
 	}
 
 	fmt.Println("Seed completed successfully.")
+
+	return 0
 }
 
-func seed(db *db.DB, data SeedData) error {
-	ctx := context.Background()
+func seed(ctx context.Context, db *db.DB, sqlcDB *client.Client, data SeedData) error {
 	hasher := keys.NewSHA256Hashing()
 
 	// User
@@ -126,15 +156,16 @@ func seed(db *db.DB, data SeedData) error {
 	if err != nil {
 		return fmt.Errorf("failed to mask api key: %w", err)
 	}
-	_, err = db.Client.TeamAPIKey.Create().
-		SetTeam(t).
-		SetAPIKeyHash(apiKeyHash).
-		SetAPIKeyPrefix(apiKeyMask.Prefix).
-		SetAPIKeyLength(apiKeyMask.ValueLength).
-		SetAPIKeyMaskPrefix(apiKeyMask.MaskedValuePrefix).
-		SetAPIKeyMaskSuffix(apiKeyMask.MaskedValueSuffix).
-		SetName("Integration Tests API Key").
-		Save(ctx)
+	_, err = sqlcDB.CreateTeamAPIKey(ctx, queries.CreateTeamAPIKeyParams{
+		TeamID:           t.ID,
+		CreatedBy:        &data.UserID,
+		ApiKeyHash:       apiKeyHash,
+		ApiKeyPrefix:     apiKeyMask.Prefix,
+		ApiKeyLength:     int32(apiKeyMask.ValueLength),
+		ApiKeyMaskPrefix: apiKeyMask.MaskedValuePrefix,
+		ApiKeyMaskSuffix: apiKeyMask.MaskedValueSuffix,
+		Name:             "Integration Tests API Key",
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create team api key: %w", err)
 	}
@@ -184,6 +215,7 @@ func seed(db *db.DB, data SeedData) error {
 			SetEnvdVersion("0.2.4").
 			SetNillableCreatedAt(build.createdAt).
 			SetClusterNodeID("integration-test-node").
+			SetVersion(templates.TemplateV1Version).
 			Save(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to create env build: %w", err)

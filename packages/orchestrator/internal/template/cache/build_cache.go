@@ -19,7 +19,7 @@ const (
 	buildInfoExpiration = time.Minute * 10 // 10 minutes
 )
 
-var CancelledBuildReason = "build was cancelled"
+const CanceledBuildReason = "build was cancelled"
 
 type BuildInfoResult struct {
 	Status   template_manager.TemplateBuildState
@@ -101,6 +101,7 @@ func NewBuildCache(meterProvider metric.MeterProvider) *BuildCache {
 		for teamID, count := range teamCounts {
 			observer.Observe(int64(count), metric.WithAttributes(telemetry.WithTeamID(teamID)))
 		}
+
 		return nil
 	})
 	if err != nil {

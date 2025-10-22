@@ -34,6 +34,7 @@ func (r *RedisStreams[PayloadT, SubMetaDataT]) ShouldPublish(ctx context.Context
 	if err != nil {
 		return false, err
 	}
+
 	return exists > 0, nil
 }
 
@@ -51,6 +52,7 @@ func (r *RedisStreams[PayloadT, SubMetaDataT]) GetSubMetaData(ctx context.Contex
 	if err != nil {
 		return metadata, err
 	}
+
 	return metadata, nil
 }
 
@@ -71,6 +73,7 @@ func (r *RedisStreams[PayloadT, SubMetaDataT]) DeleteSubMetaData(ctx context.Con
 	if r.redisClient == nil {
 		return fmt.Errorf("redis client is not initialized")
 	}
+
 	return (r.redisClient).Del(ctx, key).Err()
 }
 
@@ -140,6 +143,7 @@ func (r *RedisStreams[PayloadT, SubMetaDataT]) ensureConsumerGroup(ctx context.C
 	if err != nil {
 		// Stream doesn't exist, create it with the group
 		_, err = r.redisClient.XGroupCreate(ctx, r.streamName, r.groupName, "0").Result()
+
 		return err
 	}
 
@@ -152,6 +156,7 @@ func (r *RedisStreams[PayloadT, SubMetaDataT]) ensureConsumerGroup(ctx context.C
 
 	// Group doesn't exist, create it
 	_, err = r.redisClient.XGroupCreate(ctx, r.streamName, r.groupName, "0").Result()
+
 	return err
 }
 
@@ -229,6 +234,7 @@ func (r *RedisStreams[PayloadT, SubMetaDataT]) readNewMessages(ctx context.Conte
 			// No messages, continue
 			return nil
 		}
+
 		return err
 	}
 
@@ -287,5 +293,6 @@ func structToMapJSON(obj any) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return result, nil
 }

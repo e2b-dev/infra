@@ -54,6 +54,19 @@ provider "google" {
   zone    = var.gcp_zone
 }
 
+data "google_secret_manager_secret_version" "routing_domains" {
+  secret = module.init.routing_domains_secret_name
+}
+
+locals {
+  // Taking additional domains from local env is there just for backward compatibility
+  additional_domains_from_secret = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
+  additional_domains_from_env = (var.additional_domains != "" ?
+  [for item in split(",", var.additional_domains) : trimspace(item)] : [])
+
+  additional_domains = distinct(concat(local.additional_domains_from_env, local.additional_domains_from_secret))
+}
+
 module "init" {
   source = "./init"
 
@@ -105,9 +118,11 @@ module "cluster" {
   loki_node_pool         = var.loki_node_pool
   orchestrator_node_pool = var.orchestrator_node_pool
 
-  logs_health_proxy_port = var.logs_health_proxy_port
-  logs_proxy_port        = var.logs_proxy_port
+  api_use_nat              = var.api_use_nat
+  api_nat_ips              = var.api_nat_ips
+  api_nat_min_ports_per_vm = var.api_nat_min_ports_per_vm
 
+  ingress_port                 = var.ingress_port
   edge_api_port                = var.edge_api_port
   edge_proxy_port              = var.edge_proxy_port
   api_port                     = var.api_port
@@ -115,9 +130,8 @@ module "cluster" {
   nomad_port                   = var.nomad_port
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
-  additional_domains = (var.additional_domains != "" ?
-  [for item in split(",", var.additional_domains) : trimspace(item)] : [])
 
+  additional_domains = local.additional_domains
   additional_api_services = (var.additional_api_services_json != "" ?
     jsondecode(var.additional_api_services_json) :
   [])
@@ -172,6 +186,10 @@ module "nomad" {
   clickhouse_job_constraint_prefix = var.clickhouse_job_constraint_prefix
   clickhouse_node_pool             = var.clickhouse_node_pool
 
+  # Ingress
+  ingress_port  = var.ingress_port
+  ingress_count = var.ingress_count
+
   # API
   api_resources_cpu_count                   = var.api_resources_cpu_count
   api_resources_memory_mb                   = var.api_resources_memory_mb
@@ -202,10 +220,6 @@ module "nomad" {
   edge_api_secret = random_password.edge_api_secret.result
 
   domain_name = var.domain_name
-
-  # Telemetry
-  logs_health_proxy_port = var.logs_health_proxy_port
-  logs_proxy_port        = var.logs_proxy_port
 
   # Logs
   loki_node_pool           = var.loki_node_pool

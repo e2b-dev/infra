@@ -41,7 +41,6 @@ func CreateTeamWithUser(
 
 	t.Cleanup(func() {
 		db.Client.Team.DeleteOneID(teamID).Exec(t.Context())
-		db.Client.TeamAPIKey.DeleteOneID(teamID).Exec(t.Context())
 	})
 
 	return team.ID

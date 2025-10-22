@@ -12,7 +12,9 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
 const (
@@ -42,7 +44,13 @@ type DiffStore struct {
 	pdDelay time.Duration
 }
 
-func NewDiffStore(ctx context.Context, cachePath string, ttl, delay time.Duration, maxUsedPercentage float64) (*DiffStore, error) {
+func NewDiffStore(
+	ctx context.Context,
+	config cfg.Config,
+	flags *featureflags.Client,
+	cachePath string,
+	ttl, delay time.Duration,
+) (*DiffStore, error) {
 	err := os.MkdirAll(cachePath, 0o755)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
@@ -71,7 +79,7 @@ func NewDiffStore(ctx context.Context, cachePath string, ttl, delay time.Duratio
 	})
 
 	go cache.Start()
-	go ds.startDiskSpaceEviction(ctx, maxUsedPercentage)
+	go ds.startDiskSpaceEviction(ctx, config, flags)
 
 	return ds, nil
 }
@@ -119,7 +127,13 @@ func (s *DiffStore) Has(d Diff) bool {
 	return s.cache.Has(d.CacheKey())
 }
 
-func (s *DiffStore) startDiskSpaceEviction(ctx context.Context, threshold float64) {
+func (s *DiffStore) startDiskSpaceEviction(
+	ctx context.Context,
+	config cfg.Config,
+	flags *featureflags.Client,
+) {
+	services := cfg.GetServices(config)
+
 	getDelay := func(fast bool) time.Duration {
 		if fast {
 			return time.Microsecond
@@ -142,6 +156,7 @@ func (s *DiffStore) startDiskSpaceEviction(ctx context.Context, threshold float6
 			if err != nil {
 				zap.L().Error("failed to get disk usage", zap.Error(err))
 				timer.Reset(getDelay(false))
+
 				continue
 			}
 
@@ -149,8 +164,25 @@ func (s *DiffStore) startDiskSpaceEviction(ctx context.Context, threshold float6
 			used := int64(dUsed) - pUsed
 			percentage := float64(used) / float64(dTotal) * 100
 
-			if percentage <= threshold {
+			threshold := featureflags.BuildCacheMaxUsagePercentage.Fallback()
+			// When multiple services (template manager, orchestrator) are defined, take the lowest threshold
+			// to ensure we don't exceed any of the set limits
+			for _, s := range services {
+				st, err := flags.IntFlag(ctx, featureflags.BuildCacheMaxUsagePercentage, featureflags.ServiceContext(string(s)))
+				if err != nil {
+					zap.L().Warn("failed to get build cache max usage percentage flag", zap.Error(err))
+
+					continue
+				}
+
+				if st < threshold {
+					threshold = st
+				}
+			}
+
+			if percentage <= float64(threshold) {
 				timer.Reset(getDelay(false))
+
 				continue
 			}
 
@@ -158,6 +190,7 @@ func (s *DiffStore) startDiskSpaceEviction(ctx context.Context, threshold float6
 			if err != nil {
 				zap.L().Error("failed to delete oldest item from cache", zap.Error(err))
 				timer.Reset(getDelay(false))
+
 				continue
 			}
 
@@ -175,6 +208,7 @@ func (s *DiffStore) getPendingDeletesSize() int64 {
 	for _, value := range s.pdSizes {
 		pendingSize += value.size
 	}
+
 	return pendingSize
 }
 
@@ -207,6 +241,7 @@ func (s *DiffStore) deleteOldestFromCache(ctx context.Context) (suc bool, e erro
 		s.scheduleDelete(ctx, item.Key(), sfSize)
 
 		success = true
+
 		return false
 	})
 
@@ -233,6 +268,7 @@ func (s *DiffStore) isBeingDeleted(key DiffStoreKey) bool {
 	defer s.pdMu.RUnlock()
 
 	_, f := s.pdSizes[key]
+
 	return f
 }
 

@@ -25,10 +25,10 @@ type K8sServiceDiscovery struct {
 	filterNamespace string
 
 	hostIP bool
-	port   int
+	port   uint16
 }
 
-func NewK8sServiceDiscovery(ctx context.Context, logger *zap.Logger, client *kubernetes.Clientset, port int, podLabels string, podNamespace string, hostIP bool) *K8sServiceDiscovery {
+func NewK8sServiceDiscovery(ctx context.Context, logger *zap.Logger, client *kubernetes.Clientset, port uint16, podLabels string, podNamespace string, hostIP bool) *K8sServiceDiscovery {
 	sd := &K8sServiceDiscovery{
 		logger: logger,
 		client: client,
@@ -69,6 +69,7 @@ func (sd *K8sServiceDiscovery) keepInSync(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			sd.logger.Info("Stopping service discovery keep-in-sync")
+
 			return
 		case <-ticker.C:
 			sd.sync(ctx)
@@ -83,6 +84,7 @@ func (sd *K8sServiceDiscovery) sync(ctx context.Context) {
 	list, err := sd.client.CoreV1().Pods(sd.filterNamespace).List(reqCtx, metav1.ListOptions{LabelSelector: sd.filterLabels})
 	if err != nil {
 		sd.logger.Error("Failed to describe pods", zap.Error(err))
+
 		return
 	}
 

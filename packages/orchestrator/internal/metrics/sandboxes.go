@@ -19,7 +19,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -51,7 +50,7 @@ type SandboxObserver struct {
 	registration   metric.Registration
 	exportInterval time.Duration
 
-	sandboxes *smap.Map[*sandbox.Sandbox]
+	sandboxes *sandbox.Map
 
 	meter       metric.Meter
 	cpuTotal    metric.Int64ObservableGauge
@@ -62,13 +61,14 @@ type SandboxObserver struct {
 	diskUsed    metric.Int64ObservableGauge
 }
 
-func NewSandboxObserver(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID string, sandboxes *smap.Map[*sandbox.Sandbox]) (*SandboxObserver, error) {
+func NewSandboxObserver(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID string, sandboxes *sandbox.Map) (*SandboxObserver, error) {
 	deltaTemporality := otlpmetricgrpc.WithTemporalitySelector(func(kind sdkmetric.InstrumentKind) metricdata.Temporality {
 		// Use delta temporality for gauges and cumulative for all other instrument kinds.
 		// This is used to prevent reporting sandbox metrics indefinitely.
 		if kind == sdkmetric.InstrumentKindGauge {
 			return metricdata.DeltaTemporality
 		}
+
 		return metricdata.CumulativeTemporality
 	})
 
@@ -156,6 +156,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 				ok, err := utils.IsGTEVersion(sbx.Config.Envd.Version, minEnvdVersionForMetrics)
 				if err != nil {
 					zap.L().Error("Failed to check envd version", zap.Error(err), logger.WithSandboxID(sbx.Runtime.SandboxID))
+
 					continue
 				}
 				if !ok {
@@ -253,6 +254,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 							zap.Float32("cpu_threshold_percent", sbxCpuThresholdPct),
 						)
 					}
+
 					return nil
 				})
 			}

@@ -32,10 +32,6 @@ const (
 	FieldClusterID = "cluster_id"
 	// EdgeUsers holds the string denoting the users edge name in mutations.
 	EdgeUsers = "users"
-	// EdgeTeamAPIKeys holds the string denoting the team_api_keys edge name in mutations.
-	EdgeTeamAPIKeys = "team_api_keys"
-	// EdgeTeamTier holds the string denoting the team_tier edge name in mutations.
-	EdgeTeamTier = "team_tier"
 	// EdgeEnvs holds the string denoting the envs edge name in mutations.
 	EdgeEnvs = "envs"
 	// EdgeUsersTeams holds the string denoting the users_teams edge name in mutations.
@@ -47,20 +43,6 @@ const (
 	// UsersInverseTable is the table name for the User entity.
 	// It exists in this package in order to avoid circular dependency with the "user" package.
 	UsersInverseTable = "users"
-	// TeamAPIKeysTable is the table that holds the team_api_keys relation/edge.
-	TeamAPIKeysTable = "team_api_keys"
-	// TeamAPIKeysInverseTable is the table name for the TeamAPIKey entity.
-	// It exists in this package in order to avoid circular dependency with the "teamapikey" package.
-	TeamAPIKeysInverseTable = "team_api_keys"
-	// TeamAPIKeysColumn is the table column denoting the team_api_keys relation/edge.
-	TeamAPIKeysColumn = "team_id"
-	// TeamTierTable is the table that holds the team_tier relation/edge.
-	TeamTierTable = "teams"
-	// TeamTierInverseTable is the table name for the Tier entity.
-	// It exists in this package in order to avoid circular dependency with the "tier" package.
-	TeamTierInverseTable = "tiers"
-	// TeamTierColumn is the table column denoting the team_tier relation/edge.
-	TeamTierColumn = "tier"
 	// EnvsTable is the table that holds the envs relation/edge.
 	EnvsTable = "envs"
 	// EnvsInverseTable is the table name for the Env entity.
@@ -175,27 +157,6 @@ func ByUsers(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
-// ByTeamAPIKeysCount orders the results by team_api_keys count.
-func ByTeamAPIKeysCount(opts ...sql.OrderTermOption) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newTeamAPIKeysStep(), opts...)
-	}
-}
-
-// ByTeamAPIKeys orders the results by team_api_keys terms.
-func ByTeamAPIKeys(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newTeamAPIKeysStep(), append([]sql.OrderTerm{term}, terms...)...)
-	}
-}
-
-// ByTeamTierField orders the results by team_tier field.
-func ByTeamTierField(field string, opts ...sql.OrderTermOption) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newTeamTierStep(), sql.OrderByField(field, opts...))
-	}
-}
-
 // ByEnvsCount orders the results by envs count.
 func ByEnvsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -228,20 +189,6 @@ func newUsersStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UsersInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2M, false, UsersTable, UsersPrimaryKey...),
-	)
-}
-func newTeamAPIKeysStep() *sqlgraph.Step {
-	return sqlgraph.NewStep(
-		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(TeamAPIKeysInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.O2M, false, TeamAPIKeysTable, TeamAPIKeysColumn),
-	)
-}
-func newTeamTierStep() *sqlgraph.Step {
-	return sqlgraph.NewStep(
-		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(TeamTierInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.M2O, true, TeamTierTable, TeamTierColumn),
 	)
 }
 func newEnvsStep() *sqlgraph.Step {

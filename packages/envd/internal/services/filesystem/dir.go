@@ -14,13 +14,13 @@ import (
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
 )
 
-func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequest]) (*connect.Response[rpc.ListDirResponse], error) {
+func (s Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequest]) (*connect.Response[rpc.ListDirResponse], error) {
 	depth := req.Msg.GetDepth()
 	if depth == 0 {
 		depth = 1 // default depth to current directory
 	}
 
-	u, err := permissions.GetAuthUser(ctx)
+	u, err := permissions.GetAuthUser(ctx, s.defaults.User)
 	if err != nil {
 		return nil, err
 	}
@@ -28,7 +28,7 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 	requestedPath := req.Msg.GetPath()
 
 	// Expand the path so we can return absolute paths in the response.
-	requestedPath, err = permissions.ExpandAndResolve(requestedPath, u)
+	requestedPath, err = permissions.ExpandAndResolve(requestedPath, u, s.defaults.Workdir)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -53,13 +53,13 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 	}), nil
 }
 
-func (Service) MakeDir(ctx context.Context, req *connect.Request[rpc.MakeDirRequest]) (*connect.Response[rpc.MakeDirResponse], error) {
-	u, err := permissions.GetAuthUser(ctx)
+func (s Service) MakeDir(ctx context.Context, req *connect.Request[rpc.MakeDirRequest]) (*connect.Response[rpc.MakeDirResponse], error) {
+	u, err := permissions.GetAuthUser(ctx, s.defaults.User)
 	if err != nil {
 		return nil, err
 	}
 
-	dirPath, err := permissions.ExpandAndResolve(req.Msg.GetPath(), u)
+	dirPath, err := permissions.ExpandAndResolve(req.Msg.GetPath(), u, s.defaults.Workdir)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -166,6 +166,7 @@ func walkDir(requestedPath string, dirPath string, depth int) (entries []*rpc.En
 		entryInfo.Path = path
 
 		entries = append(entries, entryInfo)
+
 		return nil
 	})
 	if err != nil {

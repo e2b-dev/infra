@@ -20,6 +20,8 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_SIZE_GB) \
 	$(call tfvar, API_MACHINE_TYPE) \
 	$(call tfvar, API_CLUSTER_SIZE) \
+	$(call tfvar, API_USE_NAT) \
+	$(call tfvar, API_NAT_IPS) \
 	$(call tfvar, BUILD_MACHINE_TYPE) \
 	$(call tfvar, BUILD_CLUSTER_SIZE) \
 	$(call tfvar, BUILD_CLUSTER_ROOT_DISK_SIZE_GB) \
@@ -40,6 +42,7 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
 	$(call tfvar, API_RESOURCES_CPU_COUNT) \
 	$(call tfvar, API_RESOURCES_MEMORY_MB) \
+	$(call tfvar, INGRESS_COUNT) \
 	$(call tfvar, CLIENT_PROXY_COUNT) \
 	$(call tfvar, CLIENT_PROXY_RESOURCES_CPU_COUNT) \
 	$(call tfvar, CLIENT_PROXY_RESOURCES_MEMORY_MB) \

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math"
 	"net"
 	"net/http"
 	"os"
@@ -22,7 +21,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/e2b-dev/infra/packages/proxy/internal"
+	"github.com/e2b-dev/infra/packages/proxy/internal/cfg"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge-pass-through"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/authorization"
@@ -50,14 +49,14 @@ const (
 	version = "1.0.0"
 )
 
-var (
-	commitSHA string
-
-	useProxyCatalogResolution = os.Getenv("USE_CATALOG_RESOLUTION") == "true"
-	useDnsResolution          = os.Getenv("USE_DNS_RESOLUTION") != "false"
-)
+var commitSHA string
 
 func run() int {
+	config, err := cfg.Parse()
+	if err != nil {
+		log.Fatalf("failed to parse config: %v\n", err)
+	}
+
 	ctx, ctxCancel := context.WithCancel(context.Background())
 	defer ctxCancel()
 
@@ -65,17 +64,10 @@ func run() int {
 	nodeID := env.GetNodeID()
 
 	// Setup telemetry
-	var tel *telemetry.Client
-	if telemetry.OtelCollectorGRPCEndpoint == "" {
-		tel = telemetry.NewNoopClient()
-	} else {
-		var err error
-		tel, err = telemetry.New(ctx, nodeID, serviceName, commitSHA, version, instanceID)
-		if err != nil {
-			zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
-		}
+	tel, err := telemetry.New(ctx, nodeID, serviceName, commitSHA, version, instanceID)
+	if err != nil {
+		zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
 	}
-
 	defer func() {
 		err := tel.Shutdown(ctx)
 		if err != nil {
@@ -104,16 +96,6 @@ func run() int {
 
 	zap.ReplaceGlobals(logger)
 
-	proxyPort := internal.GetProxyServicePort()
-	if proxyPort <= 0 || proxyPort > int(math.MaxUint16) {
-		logger.Error("Proxy port is outside the valid uint16 range", zap.Int("value", proxyPort))
-		return 1
-	}
-
-	edgePort := internal.GetEdgeServicePort()
-	edgeSecret := internal.GetEdgeServiceSecret()
-	orchestratorPort := internal.GetOrchestratorServicePort()
-
 	exitCode := atomic.Int32{}
 
 	wg := sync.WaitGroup{}
@@ -123,18 +105,26 @@ func run() int {
 
 	logger.Info("Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
 
-	edgeSD, orchestratorsSD, err := servicediscovery.NewServiceDiscoveryProvider(ctx, edgePort, orchestratorPort, logger)
+	edgeSD, err := servicediscovery.BuildServiceDiscoveryProvider(ctx, config.EdgeServiceDiscovery, config.EdgePort, logger)
 	if err != nil {
-		logger.Error("Failed to resolve service discovery config", zap.Error(err))
+		logger.Error("Failed to build edge discovery config", zap.Error(err))
+
+		return 1
+	}
+
+	orchestratorsSD, err := servicediscovery.BuildServiceDiscoveryProvider(ctx, config.OrchestratorServiceDiscovery, config.OrchestratorPort, logger)
+	if err != nil {
+		logger.Error("Failed to build orchestrator discovery config", zap.Error(err))
+
 		return 1
 	}
 
 	var catalog e2bcatalog.SandboxesCatalog
 
-	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
+	if redisClusterUrl := config.RedisClusterURL; redisClusterUrl != "" {
 		redisClient := redis.NewClusterClient(&redis.ClusterOptions{Addrs: []string{redisClusterUrl}, MinIdleConns: 1})
 		catalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient)
-	} else if redisUrl := os.Getenv("REDIS_URL"); redisUrl != "" {
+	} else if redisUrl := config.RedisURL; redisUrl != "" {
 		redisClient := redis.NewClient(&redis.Options{Addr: redisUrl, MinIdleConns: 1})
 		catalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient)
 	} else {
@@ -150,46 +140,51 @@ func run() int {
 		ServiceVersion:       version,
 		ServiceVersionCommit: commitSHA,
 		ServiceStartup:       time.Now(),
-		Host:                 fmt.Sprintf("%s:%d", env.GetNodeIP(), edgePort),
+		Host:                 fmt.Sprintf("%s:%d", env.GetNodeIP(), config.EdgePort),
 	}
 
 	// service starts in unhealthy state, and we are waiting for initial health check to pass
 	info.SetStatus(api.Unhealthy)
 
-	if !useProxyCatalogResolution {
-		logger.Warn("Skipping proxy catalog resolution, using just DNS resolution instead. This is not recommended for production use, as it may lead to issues with sandbox resolution.")
-	}
-
 	// Proxy sandbox http traffic to orchestrator nodes
-	trafficProxy, err := e2bproxy.NewClientProxy(tel.MeterProvider, serviceName, uint16(proxyPort), catalog, useProxyCatalogResolution, useDnsResolution)
+	trafficProxy, err := e2bproxy.NewClientProxy(
+		tel.MeterProvider,
+		serviceName,
+		config.ProxyPort,
+		catalog,
+	)
 	if err != nil {
 		logger.Error("Failed to create client proxy", zap.Error(err))
+
 		return 1
 	}
 
-	authorizationManager := authorization.NewStaticTokenAuthorizationService(edgeSecret)
+	authorizationManager := authorization.NewStaticTokenAuthorizationService(config.EdgeSecret)
 	edges := e2borchestrators.NewEdgePool(logger, edgeSD, info.Host, authorizationManager)
 
 	var closers []Closeable
 	closers = append(closers, orchestrators, edges)
 
-	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, logger, info, edges, orchestrators, catalog)
+	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, logger, info, edges, orchestrators, catalog, config)
 	if err != nil {
 		logger.Error("failed to create edge api store", zap.Error(err))
+
 		return 1
 	}
 
 	edgeApiSwagger, err := api.GetSwagger()
 	if err != nil {
 		logger.Error("Failed to get swagger", zap.Error(err))
+
 		return 1
 	}
 
-	lisAddr := fmt.Sprintf("0.0.0.0:%d", edgePort)
+	lisAddr := fmt.Sprintf("0.0.0.0:%d", config.EdgePort)
 	var lisCfg net.ListenConfig
 	lis, err := lisCfg.Listen(ctx, "tcp", lisAddr)
 	if err != nil {
-		logger.Error("Failed to listen on edge port", zap.Int("port", edgePort), zap.Error(err))
+		logger.Error("Failed to listen on edge port", zap.Uint16("port", config.EdgePort), zap.Error(err))
+
 		return 1
 	}
 
@@ -248,7 +243,7 @@ func run() int {
 		// signaled.
 		defer sigCancel()
 
-		edgeRunLogger := logger.With(zap.Int("edge_port", edgePort))
+		edgeRunLogger := logger.With(zap.Uint16("edge_port", config.EdgePort))
 		edgeRunLogger.Info("Edge api starting")
 
 		err := muxServer.Serve()
@@ -275,7 +270,7 @@ func run() int {
 		// signaled.
 		defer sigCancel()
 
-		proxyRunLogger := logger.With(zap.Int("proxy_port", proxyPort))
+		proxyRunLogger := logger.With(zap.Uint16("proxy_port", config.ProxyPort))
 		proxyRunLogger.Info("Http proxy starting")
 
 		err := trafficProxy.ListenAndServe(ctx)
@@ -313,7 +308,7 @@ func run() int {
 		defer wg.Done()
 		<-signalCtx.Done()
 
-		shutdownLogger := logger.With(zap.Int("proxy_port", proxyPort), zap.Int("edge_port", edgePort))
+		shutdownLogger := logger.With(zap.Uint16("proxy_port", config.ProxyPort), zap.Uint16("edge_port", config.EdgePort))
 		shutdownLogger.Info("Shutting down services")
 
 		edgeApiStore.SetDraining()

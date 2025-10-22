@@ -17,6 +17,7 @@ import (
 	"github.com/rs/cors"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/api"
+	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
@@ -35,10 +36,14 @@ const (
 	defaultPort = 49983
 
 	portScannerInterval = 1000 * time.Millisecond
+
+	// This is the default user used in the container if not specified otherwise.
+	// It should be always overridden by the user in /init when building the template.
+	defaultUser = "root"
 )
 
 var (
-	Version = "0.3.6"
+	Version = "0.4.1"
 
 	commitSHA string
 
@@ -109,6 +114,7 @@ func withCORS(h http.Handler) http.Handler {
 		),
 		MaxAge: int(maxAge.Seconds()),
 	})
+
 	return middleware.Handler(h)
 }
 
@@ -117,11 +123,13 @@ func main() {
 
 	if versionFlag {
 		fmt.Printf("%s\n", Version)
+
 		return
 	}
 
 	if commitFlag {
 		fmt.Printf("%s\n", commitSHA)
+
 		return
 	}
 
@@ -132,9 +140,12 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error creating E2B run directory: %v\n", err)
 	}
 
-	envVars := utils.NewMap[string, string]()
+	defaults := &execcontext.Defaults{
+		User:    defaultUser,
+		EnvVars: utils.NewMap[string, string](),
+	}
 	isFCBoolStr := strconv.FormatBool(!isNotFC)
-	envVars.Store("E2B_SANDBOX", isFCBoolStr)
+	defaults.EnvVars.Store("E2B_SANDBOX", isFCBoolStr)
 	if err := os.WriteFile(filepath.Join(host.E2BRunDir, ".E2B_SANDBOX"), []byte(isFCBoolStr), 0o444); err != nil {
 		fmt.Fprintf(os.Stderr, "error writing sandbox file: %v\n", err)
 	}
@@ -142,7 +153,7 @@ func main() {
 	mmdsChan := make(chan *host.MMDSOpts, 1)
 	defer close(mmdsChan)
 	if !isNotFC {
-		go host.PollForMMDSOpts(ctx, mmdsChan, envVars)
+		go host.PollForMMDSOpts(ctx, mmdsChan, defaults.EnvVars)
 	}
 
 	l := logs.NewLogger(ctx, isNotFC, mmdsChan)
@@ -151,12 +162,12 @@ func main() {
 
 	envLogger := l.With().Str("logger", "envd").Logger()
 	fsLogger := l.With().Str("logger", "filesystem").Logger()
-	filesystemRpc.Handle(m, &fsLogger)
+	filesystemRpc.Handle(m, &fsLogger, defaults)
 
 	processLogger := l.With().Str("logger", "process").Logger()
-	processService := processRpc.Handle(m, &processLogger, envVars)
+	processService := processRpc.Handle(m, &processLogger, defaults)
 
-	service := api.New(&envLogger, envVars, mmdsChan, isNotFC)
+	service := api.New(&envLogger, defaults, mmdsChan, isNotFC)
 	handler := api.HandlerFromMux(service, m)
 	middleware := authn.NewMiddleware(permissions.AuthenticateUsername)
 

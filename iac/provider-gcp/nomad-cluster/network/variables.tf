@@ -27,12 +27,35 @@ variable "gcp_project_id" {
   type = string
 }
 
+variable "gcp_region" {
+  type = string
+}
+
+variable "api_use_nat" {
+  type = bool
+}
+
+variable "api_nat_ips" {
+  type = list(string)
+}
+
+variable "api_nat_min_ports_per_vm" {
+  type = number
+}
 
 variable "cloudflare_api_token_secret_name" {
   type = string
 }
 
 variable "api_port" {
+  type = object({
+    name        = string
+    port        = number
+    health_path = string
+  })
+}
+
+variable "ingress_port" {
   type = object({
     name        = string
     port        = number
@@ -60,21 +83,6 @@ variable "client_proxy_port" {
   type = object({
     name = string
     port = number
-  })
-}
-
-variable "logs_proxy_port" {
-  type = object({
-    name = string
-    port = number
-  })
-}
-
-variable "logs_health_proxy_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
   })
 }
 

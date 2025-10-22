@@ -10,7 +10,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pojntfx/go-nbd/pkg/backend"
-	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -87,12 +86,24 @@ func main() {
 
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt)
-	devicePool, err := nbd.NewDevicePool(ctx, noop.MeterProvider{})
+	devicePool, err := nbd.NewDevicePool()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create device pool: %v\n", err)
 
 		return
 	}
+	go func() {
+		devicePool.Populate(ctx)
+		fmt.Fprintf(os.Stderr, "device pool done populating\n")
+	}()
+	defer func() {
+		err = devicePool.Close(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to close device pool: %v\n", err)
+
+			return
+		}
+	}()
 
 	go func() {
 		<-done
@@ -145,7 +156,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool
 
 		for {
 			counter++
-			err = devicePool.ReleaseDevice(deviceIndex)
+			err = devicePool.ReleaseDevice(ctx, deviceIndex)
 			if err != nil {
 				if counter%10 == 0 {
 					fmt.Printf("[%d] failed to release device: %v\n", index, err)

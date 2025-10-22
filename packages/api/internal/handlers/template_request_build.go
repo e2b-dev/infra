@@ -10,12 +10,13 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/template"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/dberrors"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 )
 
 func (a *APIStore) PostTemplates(c *gin.Context) {
@@ -28,13 +29,15 @@ func (a *APIStore) PostTemplates(c *gin.Context) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
 		telemetry.ReportCriticalError(ctx, "invalid request body", err)
+
 		return
 	}
 
-	team, tier, apiErr := a.GetTeamAndTier(c, body.TeamID)
+	team, apiErr := a.GetTeamAndLimits(c, body.TeamID)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+		telemetry.ReportCriticalError(ctx, "error when getting team and limits", apiErr.Err)
+
 		return
 	}
 
@@ -43,10 +46,11 @@ func (a *APIStore) PostTemplates(c *gin.Context) {
 	templateID := id.Generate()
 	span.SetAttributes(telemetry.WithTemplateID(templateID))
 
-	template, apiErr := a.buildTemplate(ctx, userID, team, tier, templateID, body)
+	template, apiErr := a.buildTemplate(ctx, userID, team, templateID, body)
 	if apiErr != nil {
 		telemetry.ReportCriticalError(ctx, "error when requesting template build", apiErr.Err, telemetry.WithTemplateID(templateID))
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+
 		return
 	}
 
@@ -76,6 +80,7 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
 		telemetry.ReportCriticalError(ctx, "invalid request body", err)
+
 		return
 	}
 
@@ -83,14 +88,16 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", rawTemplateID))
 		telemetry.ReportCriticalError(c.Request.Context(), "invalid template ID", err)
+
 		return
 	}
 	span.SetAttributes(telemetry.WithTemplateID(templateID))
 
-	team, tier, apiErr := a.GetTeamAndTier(c, body.TeamID)
+	team, apiErr := a.GetTeamAndLimits(c, body.TeamID)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+
 		return
 	}
 
@@ -100,22 +107,26 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 		if templateDB.TeamID != team.ID {
 			a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You do not have access to the template '%s'", templateID))
 			telemetry.ReportError(ctx, "template access forbidden", nil, telemetry.WithTemplateID(templateID), telemetry.WithTeamID(team.ID.String()))
+
 			return
 		}
 	case dberrors.IsNotFoundError(err):
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", templateID))
 		telemetry.ReportError(ctx, "template not found", err, telemetry.WithTemplateID(templateID))
+
 		return
 	default:
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting template: %s", err))
 		telemetry.ReportCriticalError(ctx, "error when getting template", err, telemetry.WithTemplateID(templateID))
+
 		return
 	}
 
-	template, apiErr := a.buildTemplate(ctx, userID, team, tier, templateID, body)
+	template, apiErr := a.buildTemplate(ctx, userID, team, templateID, body)
 	if apiErr != nil {
 		telemetry.ReportCriticalError(ctx, "error when requesting template build", apiErr.Err, telemetry.WithTemplateID(templateID))
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+
 		return
 	}
 
@@ -138,8 +149,7 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 func (a *APIStore) buildTemplate(
 	ctx context.Context,
 	userID uuid.UUID,
-	team *queries.Team,
-	tier *queries.Tier,
+	team *types.Team,
 	templateID api.TemplateID,
 	body api.TemplateBuildRequest,
 ) (*template.RegisterBuildResponse, *api.APIError) {
@@ -159,13 +169,13 @@ func (a *APIStore) buildTemplate(
 		TemplateID:    templateID,
 		UserID:        &userID,
 		Team:          team,
-		Tier:          tier,
 		Dockerfile:    body.Dockerfile,
 		Alias:         body.Alias,
 		StartCmd:      body.StartCmd,
 		ReadyCmd:      body.ReadyCmd,
 		CpuCount:      body.CpuCount,
 		MemoryMB:      body.MemoryMB,
+		Version:       templates.TemplateV1Version,
 	}
 
 	return template.RegisterBuild(ctx, a.templateBuildsCache, a.db, data)

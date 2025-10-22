@@ -4,6 +4,8 @@ go 1.24.7
 
 replace github.com/e2b-dev/infra/packages/shared => ../../packages/shared
 
+replace github.com/e2b-dev/infra/packages/db => ../../packages/db
+
 replace github.com/e2b-dev/infra/packages/clickhouse => ../../packages/clickhouse
 
 tool (
@@ -14,6 +16,7 @@ tool (
 require (
 	connectrpc.com/connect v1.18.1
 	github.com/e2b-dev/infra/packages/clickhouse v0.0.0
+	github.com/e2b-dev/infra/packages/db v0.0.0
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/google/uuid v1.6.0
 	github.com/oapi-codegen/runtime v1.1.1
@@ -29,6 +32,7 @@ require (
 	entgo.io/ent v0.12.5 // indirect
 	github.com/ClickHouse/ch-go v0.66.1 // indirect
 	github.com/ClickHouse/clickhouse-go/v2 v2.37.2 // indirect
+	github.com/XSAM/otelsql v0.40.0 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
@@ -39,6 +43,7 @@ require (
 	github.com/dchest/uniuri v1.2.0 // indirect
 	github.com/dnephin/pflag v1.0.7 // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
+	github.com/exaring/otelpgx v0.9.3 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/getkin/kin-openapi v0.132.0 // indirect
@@ -55,6 +60,10 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.2 // indirect
 	github.com/hashicorp/hcl/v2 v2.19.1 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/pgx/v5 v5.7.4 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/lib/pq v1.10.9 // indirect
@@ -92,6 +101,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.8.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
+	golang.org/x/crypto v0.42.0 // indirect
 	golang.org/x/mod v0.27.0 // indirect
 	golang.org/x/sys v0.36.0 // indirect
 	golang.org/x/term v0.35.0 // indirect

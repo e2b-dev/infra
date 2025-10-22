@@ -42,7 +42,7 @@ func buildTemplate(
 		Alias:    templateAlias,
 		CpuCount: utils.ToPtr[int32](2),
 		MemoryMB: utils.ToPtr[int32](1024),
-	}, setup.WithAPIKey())
+	}, setup.WithAPIKey(), setup.WithTestsUserAgent())
 	require.NoError(tb, err)
 	require.Equal(tb, http.StatusAccepted, resp.StatusCode())
 	require.NotNil(tb, resp.JSON202)
@@ -54,6 +54,7 @@ func buildTemplate(
 		resp.JSON202.BuildID,
 		data,
 		setup.WithAPIKey(),
+		setup.WithTestsUserAgent(),
 	)
 	require.NoError(tb, err)
 	assert.Equal(tb, http.StatusAccepted, startResp.StatusCode())
@@ -75,6 +76,7 @@ func buildTemplate(
 				Level:      &logLevel,
 			},
 			setup.WithAPIKey(),
+			setup.WithTestsUserAgent(),
 		)
 		require.NoError(tb, err)
 		assert.Equal(tb, http.StatusOK, statusResp.StatusCode(), string(statusResp.Body))
@@ -88,9 +90,11 @@ func buildTemplate(
 		switch statusResp.JSON200.Status {
 		case api.TemplateBuildStatusReady:
 			tb.Log("Build completed successfully")
+
 			return true
 		case api.TemplateBuildStatusError:
 			tb.Fatalf("Build failed: %v", safe(statusResp.JSON200.Reason))
+
 			return false
 		}
 
@@ -103,6 +107,7 @@ func safe[T any](item *T) T {
 		return *item
 	}
 	var t T
+
 	return t
 }
 
@@ -308,6 +313,7 @@ func TestTemplateBuildCache(t *testing.T) {
 				return true
 			}
 		}
+
 		return false
 	}, "Expected to contain cached ENV layer")
 }
@@ -419,7 +425,7 @@ func TestTemplateBuildFromTemplateCommandOverride(t *testing.T) {
 					},
 					{
 						Type: "RUN",
-						Args: utils.ToPtr([]string{"echo 'override_expected' > /override_check.txt"}),
+						Args: utils.ToPtr([]string{"echo 'override_expected' > /override_check.txt", "root"}),
 					},
 				}),
 				// Override the base start command - simple success proves override worked
@@ -778,6 +784,7 @@ func TestTemplateBuildStartReadyCommandExecution(t *testing.T) {
 				for _, msg := range logMessages {
 					if strings.Contains(msg, expectedLog) {
 						found = true
+
 						break
 					}
 				}
@@ -856,6 +863,7 @@ func TestTemplateBuildWithDifferentSourceImages(t *testing.T) {
 				for _, msg := range logMessages {
 					if strings.Contains(msg, expectedLog) {
 						found = true
+
 						break
 					}
 				}

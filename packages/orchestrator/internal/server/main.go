@@ -9,27 +9,25 @@ import (
 	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
-	"github.com/e2b-dev/infra/packages/shared/pkg/events/event"
+	event "github.com/e2b-dev/infra/packages/shared/pkg/events"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-type server struct {
+type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 
 	sandboxFactory    *sandbox.Factory
 	info              *service.ServiceInfo
-	sandboxes         *smap.Map[*sandbox.Sandbox]
+	sandboxes         *sandbox.Map
 	proxy             *proxy.SandboxProxy
 	networkPool       *network.Pool
 	templateCache     *template.Cache
@@ -41,16 +39,7 @@ type server struct {
 	startingSandboxes *semaphore.Weighted
 }
 
-type Service struct {
-	info   *service.ServiceInfo
-	server *server
-	proxy  *proxy.SandboxProxy
-
-	persistence storage.StorageProvider
-}
-
 type ServiceConfig struct {
-	GRPC             *grpcserver.GRPCServer
 	Tel              *telemetry.Client
 	NetworkPool      *network.Pool
 	DevicePool       *nbd.DevicePool
@@ -58,22 +47,17 @@ type ServiceConfig struct {
 	Info             *service.ServiceInfo
 	Proxy            *proxy.SandboxProxy
 	SandboxFactory   *sandbox.Factory
-	Sandboxes        *smap.Map[*sandbox.Sandbox]
+	Sandboxes        *sandbox.Map
 	Persistence      storage.StorageProvider
 	FeatureFlags     *featureflags.Client
 	SbxEventsService events.EventsService[event.SandboxEvent]
 }
 
-func New(cfg ServiceConfig) *Service {
-	srv := &Service{
-		info:        cfg.Info,
-		proxy:       cfg.Proxy,
-		persistence: cfg.Persistence,
-	}
-	srv.server = &server{
+func New(cfg ServiceConfig) *Server {
+	server := &Server{
 		sandboxFactory:    cfg.SandboxFactory,
 		info:              cfg.Info,
-		proxy:             srv.proxy,
+		proxy:             cfg.Proxy,
 		sandboxes:         cfg.Sandboxes,
 		networkPool:       cfg.NetworkPool,
 		templateCache:     cfg.TemplateCache,
@@ -86,7 +70,7 @@ func New(cfg ServiceConfig) *Service {
 
 	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")
 	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
-		observer.Observe(int64(srv.server.sandboxes.Count()))
+		observer.Observe(int64(server.sandboxes.Count()))
 
 		return nil
 	})
@@ -94,7 +78,5 @@ func New(cfg ServiceConfig) *Service {
 		zap.L().Error("Error registering sandbox count metric", zap.String("metric_name", string(telemetry.OrchestratorSandboxCountMeterName)), zap.Error(err))
 	}
 
-	orchestrator.RegisterSandboxServiceServer(cfg.GRPC.GRPCServer(), srv.server)
-
-	return srv
+	return server
 }

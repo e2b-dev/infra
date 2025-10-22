@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
@@ -39,6 +40,7 @@ func TestSandboxAutoPausePauseResume(t *testing.T) {
 	require.Eventually(t, func() bool {
 		res, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbxId, setup.WithAPIKey())
 		require.NoError(t, err)
+
 		return res.StatusCode() == http.StatusOK && res.JSON200 != nil && res.JSON200.State == api.Paused
 	}, 10*time.Second, 10*time.Millisecond, "Sandbox is not stopped")
 
@@ -75,6 +77,7 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, res.StatusCode())
 		require.NotNil(t, res.JSON200)
+
 		return res.JSON200.State == api.Paused
 	}, 10*time.Second, 10*time.Millisecond, "Sandbox is not paused")
 
@@ -87,7 +90,7 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 		t.Context(),
 		&envdapi.GetFilesParams{
 			Path:     &path,
-			Username: "user",
+			Username: sharedUtils.ToPtr("user"),
 		},
 		setup.WithSandbox(sbxId),
 	)
@@ -110,6 +113,7 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, res.StatusCode())
 		require.NotNil(t, res.JSON200)
+
 		return res.JSON200.State == api.Paused
 	}, 10*time.Second, 10*time.Millisecond, "Sandbox is not paused")
 
@@ -126,7 +130,7 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 		t.Context(),
 		&envdapi.GetFilesParams{
 			Path:     &path,
-			Username: "user",
+			Username: sharedUtils.ToPtr("user"),
 		},
 		setup.WithSandbox(sbxId),
 	)
@@ -152,6 +156,7 @@ func TestSandboxNotAutoPause(t *testing.T) {
 	require.Eventually(t, func() bool {
 		res, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbxId, setup.WithAPIKey())
 		require.NoError(t, err)
+
 		return res.StatusCode() == http.StatusNotFound
 	}, 10*time.Second, 10*time.Millisecond, "Sandbox is not stopped")
 

@@ -292,6 +292,9 @@ type MaxTeamMetric struct {
 	Value float32 `json:"value"`
 }
 
+// Mcp MCP configuration for the sandbox
+type Mcp map[string]interface{}
+
 // MemoryMB Memory for the sandbox in MiB
 type MemoryMB = int32
 
@@ -307,9 +310,12 @@ type NewSandbox struct {
 	AllowInternetAccess *bool `json:"allow_internet_access,omitempty"`
 
 	// AutoPause Automatically pauses the sandbox after the timeout
-	AutoPause *bool            `json:"autoPause,omitempty"`
-	EnvVars   *EnvVars         `json:"envVars,omitempty"`
-	Metadata  *SandboxMetadata `json:"metadata,omitempty"`
+	AutoPause *bool    `json:"autoPause,omitempty"`
+	EnvVars   *EnvVars `json:"envVars,omitempty"`
+
+	// Mcp MCP configuration for the sandbox
+	Mcp      *Mcp             `json:"mcp"`
+	Metadata *SandboxMetadata `json:"metadata,omitempty"`
 
 	// Secure Secure all system communication with sandbox
 	Secure *bool `json:"secure,omitempty"`

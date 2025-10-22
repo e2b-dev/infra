@@ -9,20 +9,24 @@ import (
 	"os"
 	"os/signal"
 	"slices"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
+	"github.com/soheilhy/cmux"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/batcher"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
+	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -36,21 +40,22 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/events/event"
-	"github.com/e2b-dev/infra/packages/shared/pkg/events/webhooks"
+	event "github.com/e2b-dev/infra/packages/shared/pkg/events"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/pubsub"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-type Closeable interface {
-	Close(ctx context.Context) error
+type closer struct {
+	name  string
+	close func(ctx context.Context) error
 }
 
 const version = "0.1.0"
@@ -75,12 +80,12 @@ func main() {
 func run(config cfg.Config) (success bool) {
 	success = true
 
-	services := service.GetServices(config)
+	services := cfg.GetServices(config)
 
 	// Check if the orchestrator crashed and restarted
 	// Skip this check in development mode
 	// We don't want to lock if the service is running with force stop; the subsequent start would fail.
-	if !env.IsDevelopment() && !config.ForceStop && slices.Contains(services, service.Orchestrator) {
+	if !env.IsDevelopment() && !config.ForceStop && slices.Contains(services, cfg.Orchestrator) {
 		fileLockName := config.OrchestratorLockPath
 		info, err := os.Stat(fileLockName)
 		if err == nil {
@@ -109,11 +114,11 @@ func run(config cfg.Config) (success bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sig, sigCancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	sig, sigCancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
 	defer sigCancel()
 
 	nodeID := env.GetNodeID()
-	serviceName := service.GetServiceName(services)
+	serviceName := cfg.GetServiceName(services)
 	serviceInstanceID := uuid.NewString()
 	serviceInfo := service.NewInfoContainer(nodeID, version, commitSHA, serviceInstanceID, config)
 
@@ -132,15 +137,9 @@ func run(config cfg.Config) (success bool) {
 	}(&g)
 
 	// Setup telemetry
-	var tel *telemetry.Client
-	if telemetry.OtelCollectorGRPCEndpoint == "" {
-		tel = telemetry.NewNoopClient()
-	} else {
-		var err error
-		tel, err = telemetry.New(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID)
-		if err != nil {
-			zap.L().Fatal("failed to init telemetry", zap.Error(err))
-		}
+	tel, err := telemetry.New(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID)
+	if err != nil {
+		zap.L().Fatal("failed to init telemetry", zap.Error(err))
 	}
 	defer func() {
 		err := tel.Shutdown(ctx)
@@ -204,36 +203,46 @@ func run(config cfg.Config) (success bool) {
 
 	globalLogger.Info("Starting orchestrator", zap.String("version", version), zap.String("commit", commitSHA), logger.WithServiceInstanceID(serviceInstanceID))
 
+	startService := func(name string, f func() error) {
+		g.Go(func() error {
+			l := globalLogger.With(zap.String("service", name))
+			l.Info("starting service")
+
+			err := f()
+			if err != nil {
+				l.Error("service returned an error", zap.Error(err))
+			}
+
+			select {
+			case serviceError <- err:
+			default:
+				// Don't block if the serviceError channel is already closed
+				// or if the error is already sent
+			}
+
+			return serviceDoneError{name: name}
+		})
+	}
+
+	var closers []closer
+
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.
-	sandboxes := smap.New[*sandbox.Sandbox]()
+	sandboxes := sandbox.NewSandboxesMap()
 
-	sandboxProxy, err := proxy.NewSandboxProxy(tel.MeterProvider, config.ProxyPort, sandboxes)
-	if err != nil {
-		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
-	}
-
-	networkPool, err := network.NewPool(ctx, tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, nodeID, config.NetworkConfig)
-	if err != nil {
-		zap.L().Fatal("failed to create network pool", zap.Error(err))
-	}
-
-	devicePool, err := nbd.NewDevicePool(ctx, tel.MeterProvider)
-	if err != nil {
-		zap.L().Fatal("failed to create device pool", zap.Error(err))
-	}
-
-	grpcSrv := grpcserver.New(tel.TracerProvider, tel.MeterProvider, serviceInfo)
-
+	// feature flags
 	featureFlags, err := featureflags.NewClient()
 	if err != nil {
 		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
 	}
+	closers = append(closers, closer{"feature flags", featureFlags.Close})
 
+	// gcp concurrent upload limiter
 	limiter, err := limit.New(ctx, featureFlags)
 	if err != nil {
 		zap.L().Fatal("failed to create limiter", zap.Error(err))
 	}
+	closers = append(closers, closer{"limiter", limiter.Close})
 
 	persistence, err := storage.GetTemplateStorageProvider(ctx, limiter)
 	if err != nil {
@@ -245,7 +254,7 @@ func run(config cfg.Config) (success bool) {
 		zap.L().Fatal("failed to create metrics provider", zap.Error(err))
 	}
 
-	templateCache, err := template.NewCache(ctx, featureFlags, persistence, blockMetrics)
+	templateCache, err := template.NewCache(ctx, config, featureFlags, persistence, blockMetrics)
 	if err != nil {
 		zap.L().Fatal("failed to create template cache", zap.Error(err))
 	}
@@ -256,88 +265,90 @@ func run(config cfg.Config) (success bool) {
 	if clickhouseConnectionString == "" {
 		sandboxEventBatcher = batcher.NewNoopBatcher[clickhouse.SandboxEvent]()
 	} else {
-		var err error
 		clickhouseConn, err := clickhouse.NewDriver(clickhouseConnectionString)
 		if err != nil {
 			zap.L().Fatal("failed to create clickhouse driver", zap.Error(err))
 		}
 
-		maxBatchSize := 100
-		if val, err := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherMaxBatchSize); err == nil {
-			maxBatchSize = val
-		}
-
-		maxDelay := 1 * time.Second
-		if val, err := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherMaxDelay); err == nil {
-			maxDelay = time.Duration(val) * time.Millisecond
-		}
-
-		bactherQueueSize := 1000
-		if val, err := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherQueueSize, featureflags.SandboxContext("clickhouse-batcher")); err == nil {
-			bactherQueueSize = val
-		}
-
-		sandboxEventBatcher, err = batcher.NewSandboxEventInsertsBatcher(clickhouseConn, batcher.BatcherOptions{
-			MaxBatchSize: maxBatchSize,
-			MaxDelay:     maxDelay,
-			QueueSize:    bactherQueueSize,
-			ErrorHandler: func(err error) {
-				zap.L().Error("error batching sandbox events", zap.Error(err))
-			},
-		})
+		sandboxEventBatcher, err = factories.NewSandboxInsertsEventBatcher(ctx, clickhouseConn, featureFlags)
 		if err != nil {
 			zap.L().Fatal("failed to create clickhouse batcher", zap.Error(err))
 		}
 	}
+	closers = append(closers, closer{"sandbox event batcher", sandboxEventBatcher.Close})
 
-	var redisClient redis.UniversalClient
-	if redisClusterUrl := config.RedisClusterURL; redisClusterUrl != "" {
-		// For managed Redis Cluster in GCP we should use Cluster Client, because
-		// > Redis node endpoints can change and can be recycled as nodes are added and removed over time.
-		// https://cloud.google.com/memorystore/docs/cluster/cluster-node-specification#cluster_endpoints
-		// https://cloud.google.com/memorystore/docs/cluster/client-library-code-samples#go-redis
-		redisClient = redis.NewClusterClient(&redis.ClusterOptions{
-			Addrs:        []string{redisClusterUrl},
-			MinIdleConns: 1,
-		})
-	} else if rurl := config.RedisURL; rurl != "" {
-		redisClient = redis.NewClient(&redis.Options{
-			Addr:         rurl,
-			MinIdleConns: 1,
-		})
-	} else {
-		zap.L().Warn("REDIS_URL|REDIS_CLUSTER_URL not set, using no-op pubsub")
+	// redis
+	redisClient, err := factories.NewRedisClient(ctx, config)
+	if err != nil && !errors.Is(err, factories.ErrRedisDisabled) {
+		zap.L().Fatal("Could not connect to Redis", zap.Error(err))
+	} else if err == nil {
+		closers = append(closers, closer{"redis client", func(context.Context) error {
+			return factories.CloseCleanly(redisClient)
+		}})
 	}
 
+	// pubsub
+	var redisPubSub pubsub.PubSub[event.SandboxEvent, struct{}]
 	if redisClient != nil {
-		_, err := redisClient.Ping(ctx).Result()
-		if err != nil {
-			zap.L().Fatal("Could not connect to Redis", zap.Error(err))
-		}
-
-		zap.L().Info("Connected to Redis cluster")
-	}
-
-	var redisPubSub pubsub.PubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData]
-	if redisClient != nil {
-		redisPubSub = pubsub.NewRedisPubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData](redisClient, "sandbox-webhooks")
+		redisPubSub = pubsub.NewRedisPubSub[event.SandboxEvent, struct{}](redisClient, "sandbox-webhooks")
 	} else {
-		redisPubSub = pubsub.NewMockPubSub[event.SandboxEvent, webhooks.SandboxWebhooksMetaData]()
+		redisPubSub = pubsub.NewMockPubSub[event.SandboxEvent, struct{}]()
 	}
+	closers = append(closers, closer{"pubsub", redisPubSub.Close})
 
 	sbxEventsService := events.NewSandboxEventsService(featureFlags, redisPubSub, sandboxEventBatcher, globalLogger)
+
+	// sandbox observer
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
+	closers = append(closers, closer{"sandbox observer", sandboxObserver.Close})
 
-	defaultAllowSandboxInternet := config.AllowSandboxInternet
+	// sandbox proxy
+	sandboxProxy, err := proxy.NewSandboxProxy(tel.MeterProvider, config.ProxyPort, sandboxes)
+	if err != nil {
+		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
+	}
+	startService("sandbox proxy", func() error {
+		err := sandboxProxy.Start(ctx)
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
 
-	sandboxFactory := sandbox.NewFactory(networkPool, devicePool, featureFlags, defaultAllowSandboxInternet)
+		return err
+	})
+	closers = append(closers, closer{"sandbox proxy", sandboxProxy.Close})
 
-	server.New(server.ServiceConfig{
+	// device pool
+	devicePool, err := nbd.NewDevicePool()
+	if err != nil {
+		zap.L().Fatal("failed to create device pool", zap.Error(err))
+	}
+	startService("nbd device pool", func() error {
+		devicePool.Populate(ctx)
+
+		return nil
+	})
+	closers = append(closers, closer{"device pool", devicePool.Close})
+
+	// network pool
+	networkPool, err := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, nodeID, config.NetworkConfig)
+	if err != nil {
+		zap.L().Fatal("failed to create network pool", zap.Error(err))
+	}
+	startService("network pool", func() error {
+		networkPool.Populate(ctx)
+
+		return nil
+	})
+	closers = append(closers, closer{"network pool", networkPool.Close})
+
+	// sandbox factory
+	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags)
+
+	orchestratorService := server.New(server.ServiceConfig{
 		SandboxFactory:   sandboxFactory,
-		GRPC:             grpcSrv,
 		Tel:              tel,
 		NetworkPool:      networkPool,
 		DevicePool:       devicePool,
@@ -350,6 +361,7 @@ func run(config cfg.Config) (success bool) {
 		SbxEventsService: sbxEventsService,
 	})
 
+	// template manager sandbox logger
 	tmplSbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
 		tel.LogsProvider,
@@ -359,39 +371,43 @@ func run(config cfg.Config) (success bool) {
 			CollectorAddress: env.LogsCollectorAddress(),
 		},
 	)
-	defer func(l *zap.Logger) {
-		err := l.Sync()
-		if err != nil {
-			log.Printf("error while shutting down template manager sandbox logger: %v", err)
-			success = false
-		}
-	}(tmplSbxLoggerExternal)
+	closers = append(closers, closer{
+		"template manager sandbox logger", func(context.Context) error {
+			// Sync returns EINVAL when path is /dev/stdout (for example)
+			if err := tmplSbxLoggerExternal.Sync(); err != nil && !errors.Is(err, syscall.EINVAL) {
+				return err
+			}
 
+			return nil
+		},
+	})
+
+	// hyperloop server
 	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(ctx, config.NetworkConfig.HyperloopProxyPort, globalLogger, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create hyperloop server", zap.Error(err))
 	}
+	startService("hyperloop server", func() error {
+		err := hyperloopSrv.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
 
-	var closers []Closeable
-	closers = append(closers,
-		grpcSrv,
-		networkPool,
-		devicePool,
-		sandboxProxy,
-		featureFlags,
-		sandboxObserver,
-		limiter,
-		sandboxEventBatcher,
-	)
+		return err
+	})
+	closers = append(closers, closer{"hyperloop server", hyperloopSrv.Shutdown})
 
-	// Initialize the template manager only if the service is enabled
-	if slices.Contains(services, service.TemplateManager) {
-		tmpl, err := tmplserver.New(
+	grpcServer := factories.NewGRPCServer(tel)
+	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
+
+	// template manager
+	var tmpl *tmplserver.ServerStore
+	if slices.Contains(services, cfg.TemplateManager) {
+		tmpl, err = tmplserver.New(
 			ctx,
 			tel.MeterProvider,
 			globalLogger,
 			tmplSbxLoggerExternal,
-			grpcSrv,
 			sandboxFactory,
 			sandboxProxy,
 			sandboxes,
@@ -404,72 +420,73 @@ func run(config cfg.Config) (success bool) {
 			zap.L().Fatal("failed to create template manager", zap.Error(err))
 		}
 
-		closers = append([]Closeable{tmpl}, closers...)
+		templatemanager.RegisterTemplateServiceServer(grpcServer, tmpl)
+
+		closers = append(closers, closer{"template server", tmpl.Close})
 	}
 
-	service.NewInfoService(ctx, grpcSrv.GRPCServer(), serviceInfo, sandboxes)
+	infoService := service.NewInfoService(serviceInfo, sandboxes)
+	orchestratorinfo.RegisterInfoServiceServer(grpcServer, infoService)
 
-	g.Go(func() error {
-		zap.L().Info("Starting session proxy")
-		proxyErr := sandboxProxy.Start(ctx)
-		if proxyErr != nil && !errors.Is(proxyErr, http.ErrServerClosed) {
-			proxyErr = fmt.Errorf("proxy server: %w", proxyErr)
-			zap.L().Error("error starting proxy server", zap.Error(proxyErr))
+	grpcHealth := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcServer, grpcHealth)
 
-			select {
-			case serviceError <- proxyErr:
-			default:
-				// Don't block if the serviceError channel is already closed
-				// or if the error is already sent
-			}
-
-			return proxyErr
+	// cmux server, allows us to reuse the same TCP port between grpc and HTTP requests
+	cmuxServer, err := factories.NewCMUXServer(ctx, config.GRPCPort)
+	if err != nil {
+		zap.L().Fatal("failed to create cmux server", zap.Error(err))
+	}
+	startService("cmux server", func() error {
+		zap.L().Info("Starting network server", zap.Uint16("port", config.GRPCPort))
+		err := cmuxServer.Serve()
+		if err != nil && strings.Contains(err.Error(), "use of closed network connection") {
+			return nil
 		}
 
-		return nil
+		return err
 	})
+	closers = append(closers, closer{"cmux server", func(context.Context) error {
+		zap.L().Info("Shutting down cmux server")
+		cmuxServer.Close()
 
-	g.Go(func() (err error) {
-		// this sets the error declared above so the function
-		// in the defer can check it.
-		hyperloopErr := hyperloopSrv.ListenAndServe()
-		if hyperloopErr != nil {
-			hyperloopErr = fmt.Errorf("hyperloop server: %w", hyperloopErr)
-			zap.L().Error("hyperloop server error", zap.Error(hyperloopErr))
+		return nil
+	}})
 
-			select {
-			case serviceError <- hyperloopErr:
-			default:
-				// Don't block if the serviceError channel is already closed
-				// or if the error is already sent
-			}
+	// http server
+	httpListener := cmuxServer.Match(cmux.HTTP1Fast())
 
-			return hyperloopErr
+	healthcheck, err := e2bhealthcheck.NewHealthcheck(serviceInfo)
+	if err != nil {
+		zap.L().Fatal("failed to create healthcheck", zap.Error(err))
+	}
+
+	httpServer := factories.NewHTTPServer()
+	httpServer.Handler = healthcheck.CreateHandler()
+
+	startService("http server", func() error {
+		err := httpServer.Serve(httpListener)
+		switch {
+		case errors.Is(err, cmux.ErrServerClosed):
+			return nil
+		case errors.Is(err, http.ErrServerClosed):
+			return nil
+		default:
+			return err
 		}
+	})
+	closers = append(closers, closer{"http server", httpServer.Shutdown})
+
+	// grpc server
+	grpcListener := cmuxServer.Match(cmux.Any()) // the rest are GRPC requests
+	startService("grpc server", func() error {
+		return grpcServer.Serve(grpcListener)
+	})
+	closers = append(closers, closer{"grpc server", func(context.Context) error {
+		zap.L().Info("Shutting down grpc server")
+		grpcServer.GracefulStop()
 
 		return nil
-	})
-
-	g.Go(func() (err error) {
-		// this sets the error declared above so the function
-		// in the defer can check it.
-		grpcErr := grpcSrv.Start(ctx, config.GRPCPort)
-		if grpcErr != nil {
-			grpcErr = fmt.Errorf("grpc server: %w", grpcErr)
-			zap.L().Error("grpc server error", zap.Error(grpcErr))
-
-			select {
-			case serviceError <- grpcErr:
-			default:
-				// Don't block if the serviceError channel is already closed
-				// or if the error is already sent
-			}
-
-			return grpcErr
-		}
-
-		return nil
-	})
+	}})
 
 	// Wait for the shutdown signal or if some service fails
 	select {
@@ -487,30 +504,48 @@ func run(config cfg.Config) (success bool) {
 
 	// Mark service draining if not already.
 	// If service stats was previously changed via API, we don't want to override it.
-	if serviceInfo.GetStatus() == orchestrator.ServiceInfoStatus_Healthy {
-		serviceInfo.SetStatus(orchestrator.ServiceInfoStatus_Draining)
+	if serviceInfo.GetStatus() == orchestratorinfo.ServiceInfoStatus_Healthy {
+		serviceInfo.SetStatus(orchestratorinfo.ServiceInfoStatus_Draining)
+
+		// Wait for draining state to propagate to all consumers
+		if !env.IsLocal() {
+			time.Sleep(15 * time.Second)
+		}
 	}
 
-	for _, c := range closers {
-		zap.L().Info(fmt.Sprintf("Closing %T, forced: %v", c, config.ForceStop))
-		if err := c.Close(closeCtx); err != nil {
-			zap.L().Error("error during shutdown", zap.Error(err))
+	// Wait for services to be drained before closing them
+	if tmpl != nil {
+		err := tmpl.Wait(closeCtx)
+		if err != nil {
+			zap.L().Error("error while waiting for template manager to drain", zap.Error(err))
 			success = false
 		}
 	}
 
-	zap.L().Info("Shutting down hyperloop server")
-	err = hyperloopSrv.Shutdown(closeCtx)
-	if err != nil {
-		zap.L().Error("error shutting down hyperloop server", zap.Error(err))
-		success = false
+	slices.Reverse(closers)
+	for _, closer := range closers {
+		clog := globalLogger.With(zap.String("service", closer.name), zap.Bool("forced", config.ForceStop))
+		clog.Info("closing")
+		if err := closer.close(closeCtx); err != nil {
+			clog.Error("error during shutdown", zap.Error(err))
+			success = false
+		}
 	}
 
 	zap.L().Info("Waiting for services to finish")
-	if err := g.Wait(); err != nil {
+	var sde serviceDoneError
+	if err := g.Wait(); err != nil && !errors.As(err, &sde) {
 		zap.L().Error("service group error", zap.Error(err))
 		success = false
 	}
 
 	return success
+}
+
+type serviceDoneError struct {
+	name string
+}
+
+func (e serviceDoneError) Error() string {
+	return fmt.Sprintf("service %s finished", e.name)
 }

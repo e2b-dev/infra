@@ -27,7 +27,6 @@ linters:
     - errchkjson
     - exhaustive
     - exhaustruct
-    - forbidigo  # enable this when we're committed to avoiding os.Getenv
     - funcorder
     - funlen
     - gochecknoglobals
@@ -46,7 +45,6 @@ linters:
     - mnd
     - nestif
     - nilnil
-    - nlreturn
     - noinlineerr
     - nonamedreturns
     - nosprintfhostport
@@ -70,11 +68,12 @@ linters:
     # disabled intentionally
 
   settings:
-    # enable this when we're committed to avoiding os.Getenv
-    #    forbidigo:
-    #      forbid:
-    #        - pattern: os\.Getenv
-    #          msg: Add your field to the configuration model instead.
+    forbidigo:
+      forbid:
+        - pattern: "^new$"
+          msg: "Use &Type{} instead."
+#        - pattern: os\.Getenv
+#          msg: "Add your field to the configuration model instead."
 
     gocritic:
       disabled-checks:
@@ -110,7 +109,6 @@ linters:
         - { disabled: true, name: package-comments }
         - { disabled: true, name: unchecked-type-assertion }
         - { disabled: true, name: unexported-naming }
-        - { disabled: true, name: unexported-return }
         - { disabled: true, name: unhandled-error }  #  todo: enable this
         - { disabled: true, name: unnecessary-format }  # todo: enable this
         - { disabled: true, name: unnecessary-stmt }  # todo: enable this

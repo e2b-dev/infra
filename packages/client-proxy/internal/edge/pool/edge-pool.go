@@ -56,6 +56,7 @@ func NewEdgePool(logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, insta
 
 func (p *EdgePool) Close(context.Context) error {
 	p.synchronization.Close()
+
 	return nil
 }
 
@@ -78,7 +79,7 @@ type edgeInstancesSyncStore struct {
 	pool *EdgePool
 }
 
-func (e *edgeInstancesSyncStore) getHost(ip string, port int) string {
+func (e *edgeInstancesSyncStore) getHost(ip string, port uint16) string {
 	return fmt.Sprintf("%s:%d", ip, port)
 }
 
@@ -102,12 +103,14 @@ func (e *edgeInstancesSyncStore) PoolList(context.Context) []*EdgeInstance {
 	for _, item := range e.pool.instances.Items() {
 		items = append(items, item)
 	}
+
 	return items
 }
 
 func (e *edgeInstancesSyncStore) PoolExists(_ context.Context, source sd.ServiceDiscoveryItem) bool {
 	host := e.getHost(source.NodeIP, source.NodePort)
 	_, found := e.pool.instances.Get(host)
+
 	return found
 }
 
@@ -122,6 +125,7 @@ func (e *edgeInstancesSyncStore) PoolInsert(ctx context.Context, source sd.Servi
 	o, err := NewEdgeInstance(host, e.pool.auth)
 	if err != nil {
 		zap.L().Error("failed to register new edge instance", zap.String("host", host), zap.Error(err))
+
 		return
 	}
 
@@ -133,6 +137,7 @@ func (e *edgeInstancesSyncStore) PoolInsert(ctx context.Context, source sd.Servi
 	err = o.sync(ctx)
 	if err != nil {
 		zap.L().Error("Failed to finish initial edge instance sync", zap.Error(err), l.WithNodeID(o.GetInfo().NodeID))
+
 		return
 	}
 

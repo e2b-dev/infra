@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
@@ -21,6 +22,7 @@ var _ Command = (*Env)(nil)
 func (e *Env) Execute(
 	ctx context.Context,
 	_ *zap.Logger,
+	_ zapcore.Level,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	_ string,
@@ -50,6 +52,7 @@ func (e *Env) Execute(
 	}
 
 	cmdMetadata.EnvVars = envVars
+
 	return cmdMetadata, nil
 }
 

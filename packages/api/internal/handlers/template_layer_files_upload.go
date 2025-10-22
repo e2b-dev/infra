@@ -20,14 +20,16 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))
 		telemetry.ReportCriticalError(ctx, "error when getting env", err, telemetry.WithTemplateID(templateID))
+
 		return
 	}
 
 	dbTeamID := templateDB.TeamID.String()
-	team, _, apiErr := a.GetTeamAndTier(c, &dbTeamID)
+	team, apiErr := a.GetTeamAndLimits(c, &dbTeamID)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+
 		return
 	}
 
@@ -35,6 +37,7 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 	if team.ID != templateDB.TeamID {
 		telemetry.ReportCriticalError(ctx, "error when getting template", err, telemetry.WithTemplateID(templateID))
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))
+
 		return
 	}
 
@@ -42,6 +45,7 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting available build client")
+
 		return
 	}
 
@@ -49,6 +53,7 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when requesting layer files upload", err, telemetry.WithTemplateID(templateID), attribute.String("hash", hash))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when requesting layer files upload")
+
 		return
 	}
 

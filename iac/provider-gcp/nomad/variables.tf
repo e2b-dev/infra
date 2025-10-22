@@ -64,6 +64,18 @@ variable "api_port" {
   })
 }
 
+variable "ingress_port" {
+  type = object({
+    name        = string
+    port        = number
+    health_path = string
+  })
+}
+
+variable "ingress_count" {
+  type = number
+}
+
 variable "api_resources_cpu_count" {
   type = number
 }
@@ -183,6 +195,10 @@ variable "logs_proxy_port" {
     name = string
     port = number
   })
+  default = {
+    name = "logs"
+    port = 30006
+  }
 }
 
 variable "logs_health_proxy_port" {
@@ -191,6 +207,11 @@ variable "logs_health_proxy_port" {
     port        = number
     health_path = string
   })
+  default = {
+    name        = "logs-health"
+    port        = 44313
+    health_path = "/health"
+  }
 }
 
 variable "analytics_collector_host_secret_name" {

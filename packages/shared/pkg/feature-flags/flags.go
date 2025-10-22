@@ -21,6 +21,8 @@ const (
 	ClusterKind ldcontext.Kind = "cluster"
 
 	TierKind ldcontext.Kind = "tier"
+
+	ServiceKind ldcontext.Kind = "service"
 )
 
 // All flags must be defined here: https://app.launchdarkly.com/projects/default/flags/
@@ -38,6 +40,7 @@ func newBoolFlag(name string, fallback bool) BoolFlag {
 	flag := BoolFlag{name: name, fallback: fallback}
 	builder := LaunchDarklyOfflineStore.Flag(flag.name).VariationForAll(fallback)
 	LaunchDarklyOfflineStore.Update(builder)
+
 	return flag
 }
 
@@ -70,6 +73,7 @@ func newIntFlag(name string, fallback int) IntFlag {
 	flag := IntFlag{name: name, fallback: fallback}
 	builder := LaunchDarklyOfflineStore.Flag(flag.name).ValueForAll(ldvalue.Int(fallback))
 	LaunchDarklyOfflineStore.Update(builder)
+
 	return flag
 }
 
@@ -85,4 +89,8 @@ var (
 	BestOfKAlpha                  = newIntFlag("best-of-k-alpha", 50)                        // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
 	PubsubQueueChannelSize        = newIntFlag("pubsub-queue-channel-size", 8*1024)          // size of the channel buffer used to queue incoming sandbox events
 	EnvdInitTimeoutSeconds        = newIntFlag("envd-init-request-timeout-milliseconds", 50) // Timeout for envd init request in milliseconds
+
+	// BuildCacheMaxUsagePercentage the maximum percentage of the cache disk storage
+	// that can be used before the cache starts evicting items.
+	BuildCacheMaxUsagePercentage = newIntFlag("build-cache-max-usage-percentage", 85)
 )

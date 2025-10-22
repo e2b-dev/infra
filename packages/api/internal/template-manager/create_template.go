@@ -52,6 +52,7 @@ func (tm *TemplateManager) CreateTemplate(
 	steps *[]api.TemplateStep,
 	clusterID uuid.UUID,
 	nodeID string,
+	version string,
 ) (e error) {
 	ctx, span := tracer.Start(ctx, "create-template",
 		trace.WithAttributes(
@@ -144,6 +145,7 @@ func (tm *TemplateManager) CreateTemplate(
 		if err != nil {
 			return fmt.Errorf("failed to set build status: %w", err)
 		}
+
 		return nil
 	}
 
@@ -152,6 +154,7 @@ func (tm *TemplateManager) CreateTemplate(
 		reqCtx, &templatemanagergrpc.TemplateCreateRequest{
 			Template:   template,
 			CacheScope: ut.ToPtr(teamID.String()),
+			Version:    &version,
 		},
 	)
 
@@ -211,6 +214,7 @@ func convertTemplateSteps(steps *[]api.TemplateStep) []*templatemanagergrpc.Temp
 			Force:     step.Force,
 		}
 	}
+
 	return result
 }
 
@@ -231,6 +235,7 @@ func convertImageRegistry(registry *api.FromImageRegistry) (*templatemanagergrpc
 		if err != nil {
 			return nil, err
 		}
+
 		return &templatemanagergrpc.FromImageRegistry{
 			Type: &templatemanagergrpc.FromImageRegistry_Aws{
 				Aws: &templatemanagergrpc.AWSRegistry{
@@ -245,6 +250,7 @@ func convertImageRegistry(registry *api.FromImageRegistry) (*templatemanagergrpc
 		if err != nil {
 			return nil, err
 		}
+
 		return &templatemanagergrpc.FromImageRegistry{
 			Type: &templatemanagergrpc.FromImageRegistry_Gcp{
 				Gcp: &templatemanagergrpc.GCPRegistry{
@@ -257,6 +263,7 @@ func convertImageRegistry(registry *api.FromImageRegistry) (*templatemanagergrpc
 		if err != nil {
 			return nil, err
 		}
+
 		return &templatemanagergrpc.FromImageRegistry{
 			Type: &templatemanagergrpc.FromImageRegistry_General{
 				General: &templatemanagergrpc.GeneralRegistry{
@@ -310,5 +317,6 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 			FromImage: *fromImage,
 		}
 	}
+
 	return nil
 }

@@ -15,8 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/team"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -28,6 +26,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 
 		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
+
 		return
 	}
 
@@ -36,6 +35,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing API key ID: %s", err))
 
 		telemetry.ReportCriticalError(ctx, "error when parsing API key ID", err)
+
 		return
 	}
 
@@ -50,11 +50,13 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		c.String(http.StatusNotFound, "id not found")
+
 		return
 	} else if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating team API key name: %s", err))
 
 		telemetry.ReportCriticalError(ctx, "error when updating team API key name", err)
+
 		return
 	}
 
@@ -109,19 +111,26 @@ func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing API key ID: %s", err))
 
 		telemetry.ReportCriticalError(ctx, "error when parsing API key ID", err)
+
 		return
 	}
 
 	teamID := a.GetTeamInfo(c).Team.ID
 
-	err = a.db.Client.TeamAPIKey.DeleteOneID(apiKeyIDParsed).Where(teamapikey.TeamID(teamID)).Exec(ctx)
-	if models.IsNotFound(err) {
-		c.String(http.StatusNotFound, "id not found")
-		return
-	} else if err != nil {
+	ids, err := a.sqlcDB.DeleteTeamAPIKey(ctx, queries.DeleteTeamAPIKeyParams{
+		ID:     apiKeyIDParsed,
+		TeamID: teamID,
+	})
+	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when deleting API key: %s", err))
 
 		telemetry.ReportCriticalError(ctx, "error when deleting API key", err)
+
+		return
+	}
+	if len(ids) == 0 {
+		c.String(http.StatusNotFound, "id not found")
+
 		return
 	}
 
@@ -143,7 +152,7 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 		return
 	}
 
-	apiKey, err := team.CreateAPIKey(ctx, a.db, teamID, userID, body.Name)
+	apiKey, err := team.CreateAPIKey(ctx, a.sqlcDB, teamID, userID, body.Name)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when creating team API key: %s", err))
 
@@ -166,10 +175,10 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 		Name: apiKey.Name,
 		Key:  apiKey.RawAPIKey,
 		Mask: api.IdentifierMaskingDetails{
-			Prefix:            apiKey.APIKeyPrefix,
-			ValueLength:       apiKey.APIKeyLength,
-			MaskedValuePrefix: apiKey.APIKeyMaskPrefix,
-			MaskedValueSuffix: apiKey.APIKeyMaskSuffix,
+			Prefix:            apiKey.ApiKeyPrefix,
+			ValueLength:       int(apiKey.ApiKeyLength),
+			MaskedValuePrefix: apiKey.ApiKeyMaskPrefix,
+			MaskedValueSuffix: apiKey.ApiKeyMaskSuffix,
 		},
 		CreatedBy: &api.TeamUser{
 			Id:    user.ID,

@@ -18,8 +18,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
 const (
@@ -69,7 +73,19 @@ func newDiffWithAsserts(t *testing.T, cachePath, buildId string, diffType DiffTy
 func TestNewDiffStore(t *testing.T) {
 	cachePath := t.TempDir()
 
-	store, err := NewDiffStore(t.Context(), cachePath, 25*time.Hour, 60*time.Second, 90.0)
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+
+	flags := flagsWithMaxBuildCachePercentage(t, 90)
+
+	store, err := NewDiffStore(
+		t.Context(),
+		c,
+		flags,
+		cachePath,
+		25*time.Hour,
+		60*time.Second,
+	)
 	t.Cleanup(store.Close)
 
 	require.NoError(t, err)
@@ -79,9 +95,22 @@ func TestNewDiffStore(t *testing.T) {
 func TestDiffStoreTTLEviction(t *testing.T) {
 	cachePath := t.TempDir()
 
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+
+	flags := flagsWithMaxBuildCachePercentage(t, 100)
+
 	ttl := 1 * time.Second
 	delay := 60 * time.Second
-	store, err := NewDiffStore(t.Context(), cachePath, ttl, delay, 100.0)
+
+	store, err := NewDiffStore(
+		t.Context(),
+		c,
+		flags,
+		cachePath,
+		ttl,
+		delay,
+	)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
@@ -101,9 +130,22 @@ func TestDiffStoreTTLEviction(t *testing.T) {
 func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 	cachePath := t.TempDir()
 
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+
+	flags := flagsWithMaxBuildCachePercentage(t, 100)
+
 	ttl := 1 * time.Second
 	delay := 60 * time.Second
-	store, err := NewDiffStore(t.Context(), cachePath, ttl, delay, 100.0)
+
+	store, err := NewDiffStore(
+		t.Context(),
+		c,
+		flags,
+		cachePath,
+		ttl,
+		delay,
+	)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
@@ -129,9 +171,22 @@ func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 func TestDiffStoreDelayEviction(t *testing.T) {
 	cachePath := t.TempDir()
 
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+
+	flags := flagsWithMaxBuildCachePercentage(t, 0)
+
 	ttl := 60 * time.Second
 	delay := 4 * time.Second
-	store, err := NewDiffStore(t.Context(), cachePath, ttl, delay, 0.0)
+
+	store, err := NewDiffStore(
+		t.Context(),
+		c,
+		flags,
+		cachePath,
+		ttl,
+		delay,
+	)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
@@ -162,9 +217,21 @@ func TestDiffStoreDelayEviction(t *testing.T) {
 func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 	cachePath := t.TempDir()
 
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+
+	flags := flagsWithMaxBuildCachePercentage(t, 0)
+
 	ttl := 60 * time.Second
 	delay := 4 * time.Second
-	store, err := NewDiffStore(t.Context(), cachePath, ttl, delay, 0.0)
+	store, err := NewDiffStore(
+		t.Context(),
+		c,
+		flags,
+		cachePath,
+		ttl,
+		delay,
+	)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
@@ -202,14 +269,20 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 func TestDiffStoreOldestFromCache(t *testing.T) {
 	cachePath := t.TempDir()
 
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+
+	flags := flagsWithMaxBuildCachePercentage(t, 100)
+
 	ttl := 60 * time.Second
 	delay := 4 * time.Second
 	store, err := NewDiffStore(
 		t.Context(),
+		c,
+		flags,
 		cachePath,
 		ttl,
 		delay,
-		100.0,
 	)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
@@ -265,10 +338,23 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 	cachePath := t.TempDir()
 
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+
+	// Set to 0% to trigger disk space evictions
+	flags := flagsWithMaxBuildCachePercentage(t, 0)
+
 	// Use very short TTL and delay to trigger rapid evictions
 	ttl := 10 * time.Millisecond
 	delay := 50 * time.Millisecond
-	store, err := NewDiffStore(t.Context(), cachePath, ttl, delay, 0.0)
+	store, err := NewDiffStore(
+		t.Context(),
+		c,
+		flags,
+		cachePath,
+		ttl,
+		delay,
+	)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
@@ -341,10 +427,22 @@ func TestDiffStoreConcurrentEvictionRace(t *testing.T) {
 func TestDiffStoreResetDeleteRace(t *testing.T) {
 	cachePath := t.TempDir()
 
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+
+	flags := flagsWithMaxBuildCachePercentage(t, 100)
+
 	// Very short TTL to trigger evictions quickly
 	ttl := 5 * time.Millisecond
 	delay := 100 * time.Millisecond
-	store, err := NewDiffStore(t.Context(), cachePath, ttl, delay, 100.0)
+	store, err := NewDiffStore(
+		t.Context(),
+		c,
+		flags,
+		cachePath,
+		ttl,
+		delay,
+	)
 	t.Cleanup(store.Close)
 	require.NoError(t, err)
 
@@ -394,4 +492,24 @@ func TestDiffStoreResetDeleteRace(t *testing.T) {
 
 	// Allow cleanup to complete
 	time.Sleep(delay * 2)
+}
+
+func flagsWithMaxBuildCachePercentage(tb testing.TB, maxBuildCachePercentage int) *featureflags.Client {
+	tb.Helper()
+
+	flags, err := featureflags.NewClient()
+	require.NoError(tb, err)
+
+	tb.Cleanup(func() {
+		defer func() {
+			err := flags.Close(tb.Context())
+			assert.NoError(tb, err)
+		}()
+	})
+
+	featureflags.LaunchDarklyOfflineStore.Update(
+		featureflags.LaunchDarklyOfflineStore.Flag(featureflags.BuildCacheMaxUsagePercentage.String()).ValueForAll(ldvalue.Int(maxBuildCachePercentage)),
+	)
+
+	return flags
 }

@@ -61,6 +61,7 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusBadRequest)
 				}
 				w.Write([]byte(err.Error()))
+
 				return
 			}
 		}
@@ -69,7 +70,7 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	go func() { //nolint:contextcheck // TODO: fix this later
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
-		host.PollForMMDSOpts(ctx, a.mmdsChan, a.envVars)
+		host.PollForMMDSOpts(ctx, a.mmdsChan, a.defaults.EnvVars)
 	}()
 
 	w.Header().Set("Cache-Control", "no-store")
@@ -80,9 +81,8 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) SetData(logger zerolog.Logger, data PostInitJSONBody) error {
 	if data.Timestamp != nil {
-		// Check if the time is before maxTimeInPast or after maxTimeInFuture
-		if data.Timestamp.Before(time.Now().Add(-maxTimeInPast)) ||
-			data.Timestamp.After(time.Now().Add(maxTimeInFuture)) {
+		// Check if current time differs significantly from the received timestamp
+		if shouldSetSystemTime(time.Now(), *data.Timestamp) {
 			logger.Debug().Msgf("Setting sandbox start time to: %v", *data.Timestamp)
 			ts := unix.NsecToTimespec(data.Timestamp.UnixNano())
 			err := unix.ClockSettime(unix.CLOCK_REALTIME, &ts)
@@ -90,7 +90,7 @@ func (a *API) SetData(logger zerolog.Logger, data PostInitJSONBody) error {
 				logger.Error().Msgf("Failed to set system time: %v", err)
 			}
 		} else {
-			logger.Debug().Msgf("Timestamp %v is not far enough in the past or future, not setting system time", *data.Timestamp)
+			logger.Debug().Msgf("Current time is within acceptable range of timestamp %v, not setting system time", *data.Timestamp)
 		}
 	}
 
@@ -99,13 +99,14 @@ func (a *API) SetData(logger zerolog.Logger, data PostInitJSONBody) error {
 
 		for key, value := range *data.EnvVars {
 			logger.Debug().Msgf("Setting env var for %s", key)
-			a.envVars.Store(key, value)
+			a.defaults.EnvVars.Store(key, value)
 		}
 	}
 
 	if data.AccessToken != nil {
 		if a.accessToken != nil && *data.AccessToken != *a.accessToken {
 			logger.Error().Msg("Access token is already set and cannot be changed")
+
 			return ErrAccessTokenAlreadySet
 		}
 
@@ -115,6 +116,16 @@ func (a *API) SetData(logger zerolog.Logger, data PostInitJSONBody) error {
 
 	if data.HyperloopIP != nil {
 		go a.SetupHyperloop(*data.HyperloopIP)
+	}
+
+	if data.DefaultUser != nil && *data.DefaultUser != "" {
+		logger.Debug().Msgf("Setting default user to: %s", *data.DefaultUser)
+		a.defaults.User = *data.DefaultUser
+	}
+
+	if data.DefaultWorkdir != nil && *data.DefaultWorkdir != "" {
+		logger.Debug().Msgf("Setting default workdir to: %s", *data.DefaultWorkdir)
+		a.defaults.Workdir = data.DefaultWorkdir
 	}
 
 	return nil
@@ -127,7 +138,7 @@ func (a *API) SetupHyperloop(address string) {
 	if err := rewriteHostsFile(address, "/etc/hosts"); err != nil {
 		a.logger.Error().Err(err).Msg("failed to modify hosts file")
 	} else {
-		a.envVars.Store("E2B_EVENTS_ADDRESS", fmt.Sprintf("http://%s", address))
+		a.defaults.EnvVars.Store("E2B_EVENTS_ADDRESS", fmt.Sprintf("http://%s", address))
 	}
 }
 
@@ -188,4 +199,11 @@ func getIPFamily(address string) (txeh.IPFamily, error) {
 	default:
 		return txeh.IPFamilyV4, fmt.Errorf("%w: %s", ErrUnknownAddressFormat, address)
 	}
+}
+
+// shouldSetSystemTime returns true if the current time differs significantly from the received timestamp,
+// indicating the system clock should be adjusted. Returns true when the sandboxTime is more than
+// maxTimeInPast before the hostTime or more than maxTimeInFuture after the hostTime.
+func shouldSetSystemTime(sandboxTime, hostTime time.Time) bool {
+	return sandboxTime.Before(hostTime.Add(-maxTimeInPast)) || sandboxTime.After(hostTime.Add(maxTimeInFuture))
 }

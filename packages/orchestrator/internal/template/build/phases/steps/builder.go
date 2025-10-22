@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -37,8 +38,9 @@ type StepBuilder struct {
 	stepNumber int
 	step       *templatemanager.TemplateStep
 
-	logger *zap.Logger
-	proxy  *proxy.SandboxProxy
+	logger              *zap.Logger
+	defaultLoggingLevel zapcore.Level
+	proxy               *proxy.SandboxProxy
 
 	sandboxFactory  *sandbox.Factory
 	layerExecutor   *layer.LayerExecutor
@@ -58,6 +60,7 @@ func New(
 	metrics *metrics.BuildMetrics,
 	step *templatemanager.TemplateStep,
 	stepNumber int,
+	defaultLoggingLevel zapcore.Level,
 ) *StepBuilder {
 	return &StepBuilder{
 		BuildContext: buildContext,
@@ -65,8 +68,9 @@ func New(
 		stepNumber: stepNumber,
 		step:       step,
 
-		logger: logger,
-		proxy:  proxy,
+		logger:              logger,
+		defaultLoggingLevel: defaultLoggingLevel,
+		proxy:               proxy,
 
 		sandboxFactory:  sandboxFactory,
 		layerExecutor:   layerExecutor,
@@ -141,6 +145,7 @@ func (sb *StepBuilder) Layer(
 func (sb *StepBuilder) Build(
 	ctx context.Context,
 	userLogger *zap.Logger,
+	prefix string,
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
 ) (phases.LayerResult, error) {
@@ -151,7 +156,6 @@ func (sb *StepBuilder) Build(
 	))
 	defer span.End()
 
-	prefix := sb.Prefix()
 	step := sb.step
 
 	sbxConfig := sandbox.Config{
@@ -184,6 +188,7 @@ func (sb *StepBuilder) Build(
 		cmdMeta, err := sb.commandExecutor.Execute(
 			ctx,
 			userLogger,
+			sb.defaultLoggingLevel,
 			sbx,
 			prefix,
 			step,
@@ -203,6 +208,7 @@ func (sb *StepBuilder) Build(
 		}
 
 		meta.Context = cmdMeta
+
 		return meta, nil
 	})
 

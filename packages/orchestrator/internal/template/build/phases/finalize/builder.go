@@ -24,6 +24,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 var finalizeTimeout = configurationTimeout + readyCommandTimeout + 5*time.Minute
@@ -108,6 +110,7 @@ func (ppb *PostProcessingBuilder) Layer(
 func (ppb *PostProcessingBuilder) Build(
 	ctx context.Context,
 	userLogger *zap.Logger,
+	_ string,
 	sourceLayer phases.LayerResult,
 	currentLayer phases.LayerResult,
 ) (phases.LayerResult, error) {
@@ -116,6 +119,20 @@ func (ppb *PostProcessingBuilder) Build(
 	))
 	defer span.End()
 
+	defaultUser := utils.ToPtr(currentLayer.Metadata.Context.User)
+	defaultWorkdir := currentLayer.Metadata.Context.WorkDir
+
+	ok, err := utils.IsGTEVersion(ppb.Version, templates.TemplateV2ReleaseVersion)
+	if err != nil {
+		return phases.LayerResult{}, fmt.Errorf("error checking build version: %w", err)
+	}
+	if !ok {
+		// For older builds, always use "user" as the default user
+		// and do not set a default workdir (defaults to the user homedir).
+		defaultUser = utils.ToPtr("user")
+		defaultWorkdir = nil
+	}
+
 	// Configure sandbox for final layer
 	sbxConfig := sandbox.Config{
 		Vcpu:      ppb.Config.VCpuCount,
@@ -123,7 +140,9 @@ func (ppb *PostProcessingBuilder) Build(
 		HugePages: ppb.Config.HugePages,
 
 		Envd: sandbox.EnvdMetadata{
-			Version: ppb.EnvdVersion,
+			Version:        ppb.EnvdVersion,
+			DefaultUser:    defaultUser,
+			DefaultWorkdir: defaultWorkdir,
 		},
 	}
 
@@ -183,6 +202,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer
 			)
 			if err != nil {
 				e = fmt.Errorf("error running sync command: %w", err)
+
 				return
 			}
 		}()
@@ -229,6 +249,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger *zap.Logger) layer
 				if err != nil && !errors.Is(err, context.Canceled) {
 					// Cancel the ready command context, so the ready command does not wait anymore if an error occurs.
 					commandsCancel()
+
 					return fmt.Errorf("error running start command: %w", err)
 				}
 

@@ -24,6 +24,7 @@ require (
 	cloud.google.com/go/storage v1.50.0
 	connectrpc.com/connect v1.18.1
 	entgo.io/ent v0.12.5
+	github.com/XSAM/otelsql v0.40.0
 	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/config v1.29.14
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.74
@@ -31,6 +32,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.79.3
 	github.com/bits-and-blooms/bitset v1.22.0
 	github.com/dchest/uniuri v1.2.0
+	github.com/e2b-dev/infra/packages/db v0.0.0-20251013083250-eb6cd250d671
 	github.com/getkin/kin-openapi v0.132.0
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-openapi/errors v0.22.0
@@ -142,7 +144,7 @@ require (
 	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/docker v28.3.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.3 // indirect
-	github.com/docker/go-connections v0.5.0 // indirect
+	github.com/docker/go-connections v0.6.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/edsrzf/mmap-go v1.2.0 // indirect
@@ -209,6 +211,10 @@ require (
 	github.com/hashicorp/serf v0.10.1 // indirect
 	github.com/huandu/xstrings v1.4.0 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/pgx/v5 v5.7.4 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jessevdk/go-flags v1.5.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect

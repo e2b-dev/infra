@@ -20,12 +20,12 @@ func (s Service) WatchDir(ctx context.Context, req *connect.Request[rpc.WatchDir
 }
 
 func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.WatchDirRequest], stream *connect.ServerStream[rpc.WatchDirResponse]) error {
-	u, err := permissions.GetAuthUser(ctx)
+	u, err := permissions.GetAuthUser(ctx, s.defaults.User)
 	if err != nil {
 		return err
 	}
 
-	watchPath, err := permissions.ExpandAndResolve(req.Msg.GetPath(), u)
+	watchPath, err := permissions.ExpandAndResolve(req.Msg.GetPath(), u, s.defaults.Workdir)
 	if err != nil {
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	}

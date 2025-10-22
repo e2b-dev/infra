@@ -8,6 +8,7 @@ import (
 	"os/user"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 )
@@ -30,6 +31,15 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 	if err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error during auth validation")
 		jsonError(w, http.StatusUnauthorized, err)
+
+		return
+	}
+
+	username, err := execcontext.ResolveDefaultUsername(params.Username, a.defaults.User)
+	if err != nil {
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("no user specified")
+		jsonError(w, http.StatusBadRequest, err)
+
 		return
 	}
 
@@ -39,7 +49,7 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 			Str("method", r.Method+" "+r.URL.Path).
 			Str(string(logs.OperationIDKey), operationID).
 			Str("path", path).
-			Str("username", params.Username)
+			Str("username", username)
 
 		if errMsg != nil {
 			l = l.Int("error_code", errorCode)
@@ -48,16 +58,16 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 		l.Msg("File read")
 	}()
 
-	u, err := user.Lookup(params.Username)
+	u, err := user.Lookup(username)
 	if err != nil {
-		errMsg = fmt.Errorf("error looking up user '%s': %w", params.Username, err)
+		errMsg = fmt.Errorf("error looking up user '%s': %w", username, err)
 		errorCode = http.StatusUnauthorized
 		jsonError(w, errorCode, errMsg)
 
 		return
 	}
 
-	resolvedPath, err := permissions.ExpandAndResolve(path, u)
+	resolvedPath, err := permissions.ExpandAndResolve(path, u, a.defaults.Workdir)
 	if err != nil {
 		errMsg = fmt.Errorf("error expanding and resolving path '%s': %w", path, err)
 		errorCode = http.StatusBadRequest

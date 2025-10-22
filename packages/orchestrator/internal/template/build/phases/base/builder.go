@@ -32,6 +32,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func templatesDirectory() string {
@@ -128,6 +129,7 @@ func (bb *BaseBuilder) Metadata() phases.PhaseMeta {
 func (bb *BaseBuilder) Build(
 	ctx context.Context,
 	userLogger *zap.Logger,
+	_ string,
 	_ phases.LayerResult,
 	currentLayer phases.LayerResult,
 ) (phases.LayerResult, error) {
@@ -242,6 +244,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 			zap.String("result", ext4Check),
 			zap.Error(err),
 		)
+
 		return metadata.Template{}, fmt.Errorf("error checking provisioned filesystem integrity: %w", err)
 	}
 	zap.L().Debug("provisioned filesystem ext4 integrity",
@@ -276,6 +279,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		if err != nil {
 			return metadata.Template{}, fmt.Errorf("error running sync command: %w", err)
 		}
+
 		return meta, nil
 	})
 
@@ -338,8 +342,7 @@ func (bb *BaseBuilder) Layer(
 
 		// This is a compatibility for v1 template builds
 		if bb.IsV1Build {
-			cwd := "/home/user"
-			cmdMeta.WorkDir = &cwd
+			cmdMeta.WorkDir = utils.ToPtr("/home/user")
 		}
 
 		meta := metadata.Template{
@@ -379,6 +382,7 @@ func (bb *BaseBuilder) Layer(
 
 			return notCachedResult, nil
 		}
+
 		return phases.LayerResult{
 			Metadata: meta,
 			Cached:   true,

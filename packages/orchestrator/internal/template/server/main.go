@@ -10,7 +10,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -23,7 +22,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -53,10 +51,9 @@ func New(
 	meterProvider metric.MeterProvider,
 	logger *zap.Logger,
 	buildLogger *zap.Logger,
-	grpc *grpcserver.GRPCServer,
 	sandboxFactory *sandbox.Factory,
 	proxy *proxy.SandboxProxy,
-	sandboxes *smap.Map[*sandbox.Sandbox],
+	sandboxes *sandbox.Map,
 	templateCache *sbxtemplate.Cache,
 	templatePersistence storage.StorageProvider,
 	limiter *limit.Limiter,
@@ -125,8 +122,6 @@ func New(
 		closers:           closers,
 	}
 
-	templatemanager.RegisterTemplateServiceServer(grpc.GRPCServer(), store)
-
 	return store, nil
 }
 
@@ -135,21 +130,6 @@ func (s *ServerStore) Close(ctx context.Context) error {
 	case <-ctx.Done():
 		return errors.New("force exit, not waiting for builds to finish")
 	default:
-		// Wait for draining state to propagate to all consumers
-		if !env.IsLocal() {
-			time.Sleep(15 * time.Second)
-		}
-
-		s.logger.Info("Waiting for all build jobs to finish")
-		s.wg.Wait()
-
-		if !env.IsLocal() {
-			s.logger.Info("Waiting for consumers to check build status")
-			time.Sleep(15 * time.Second)
-		}
-
-		s.logger.Info("Template build queue cleaned")
-
 		var closersErr error
 		for _, closer := range s.closers {
 			err := closer.Close()
@@ -160,6 +140,25 @@ func (s *ServerStore) Close(ctx context.Context) error {
 		if closersErr != nil {
 			return fmt.Errorf("failed to close services: %w", closersErr)
 		}
+
+		return nil
+	}
+}
+
+func (s *ServerStore) Wait(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return errors.New("force exit, not waiting for builds to finish")
+	default:
+		s.logger.Info("Waiting for all build jobs to finish")
+		s.wg.Wait()
+
+		if !env.IsLocal() {
+			s.logger.Info("Waiting for consumers to check build status")
+			time.Sleep(15 * time.Second)
+		}
+
+		s.logger.Info("Template build queue cleaned")
 
 		return nil
 	}

@@ -12,6 +12,7 @@ replace github.com/garyburd/redigo => github.com/gomodule/redigo v1.9.2
 
 require (
 	connectrpc.com/connect v1.18.1
+	github.com/ClickHouse/clickhouse-go/v2 v2.37.2
 	github.com/Merovius/nbd v0.0.0-20240812113926-fd65a54c9949
 	github.com/aws/aws-sdk-go-v2/config v1.29.14
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.67
@@ -78,7 +79,6 @@ require (
 	cloud.google.com/go/storage v1.50.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/ClickHouse/ch-go v0.66.1 // indirect
-	github.com/ClickHouse/clickhouse-go/v2 v2.37.2 // indirect
 	github.com/DataDog/datadog-go/v5 v5.2.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.29.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.49.0 // indirect
@@ -123,7 +123,7 @@ require (
 	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/docker v28.3.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.3 // indirect
-	github.com/docker/go-connections v0.5.0 // indirect
+	github.com/docker/go-connections v0.6.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/ebitengine/purego v0.8.4 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4 // indirect

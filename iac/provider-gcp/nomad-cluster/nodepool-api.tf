@@ -71,6 +71,11 @@ resource "google_compute_instance_group_manager" "api_pool" {
     port = var.docker_reverse_proxy_port.port
   }
 
+  named_port {
+    name = var.ingress_port.name
+    port = var.ingress_port.port
+  }
+
   dynamic "named_port" {
     for_each = local.api_additional_ports
     content {
@@ -146,7 +151,7 @@ resource "google_compute_instance_template" "api" {
     network = var.network_name
 
     dynamic "access_config" {
-      for_each = ["public_ip"]
+      for_each = var.api_use_nat ? [] : ["public_ip"]
       content {}
     }
   }

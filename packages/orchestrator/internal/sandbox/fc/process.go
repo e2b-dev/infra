@@ -17,6 +17,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapio"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -71,6 +72,7 @@ type Process struct {
 func NewProcess(
 	ctx context.Context,
 	execCtx context.Context,
+	config cfg.BuilderConfig,
 	slot *network.Slot,
 	files *storage.SandboxFiles,
 	versions FirecrackerVersions,
@@ -83,7 +85,7 @@ func NewProcess(
 	defer childSpan.End()
 
 	// Build the firecracker start script and get computed paths
-	startBuilder := NewStartScriptBuilder()
+	startBuilder := NewStartScriptBuilder(config)
 	startScript, err := startBuilder.Build(versions, files, rootfsPaths, slot.NamespaceID())
 	if err != nil {
 		return nil, err
@@ -93,12 +95,12 @@ func NewProcess(
 		attribute.String("sandbox.cmd", startScript.Value),
 	)
 
-	_, err = os.Stat(versions.FirecrackerPath())
+	_, err = os.Stat(versions.FirecrackerPath(config))
 	if err != nil {
 		return nil, fmt.Errorf("error stating firecracker binary: %w", err)
 	}
 
-	_, err = os.Stat(versions.HostKernelPath())
+	_, err = os.Stat(versions.HostKernelPath(config))
 	if err != nil {
 		return nil, fmt.Errorf("error stating kernel file: %w", err)
 	}
@@ -211,7 +213,7 @@ func (p *Process) configure(
 
 func (p *Process) Create(
 	ctx context.Context,
-	loggerMetadata sbxlogger.LoggerMetadata,
+	sbxMetadata sbxlogger.LoggerMetadata,
 	vCPUCount int64,
 	memoryMB int64,
 	hugePages bool,
@@ -222,7 +224,7 @@ func (p *Process) Create(
 
 	err := p.configure(
 		ctx,
-		loggerMetadata,
+		sbxMetadata,
 		options.Stdout,
 		options.Stderr,
 	)
@@ -321,22 +323,24 @@ func (p *Process) Create(
 	}
 
 	telemetry.ReportEvent(ctx, "started fc")
+
 	return nil
 }
 
 func (p *Process) Resume(
 	ctx context.Context,
-	mmdsMetadata *MmdsMetadata,
+	sbxMetadata sbxlogger.SandboxMetadata,
 	uffdSocketPath string,
 	snapfile template.File,
 	uffdReady chan struct{},
+	slot *network.Slot,
 ) error {
 	ctx, span := tracer.Start(ctx, "resume-fc")
 	defer span.End()
 
 	err := p.configure(
 		ctx,
-		mmdsMetadata,
+		sbxMetadata,
 		nil,
 		nil,
 	)
@@ -372,7 +376,13 @@ func (p *Process) Resume(
 		return errors.Join(fmt.Errorf("error resuming vm: %w", err), fcStopErr)
 	}
 
-	err = p.client.setMmds(ctx, mmdsMetadata)
+	meta := &MmdsMetadata{
+		SandboxID:            sbxMetadata.SandboxID,
+		TemplateID:           sbxMetadata.TemplateID,
+		LogsCollectorAddress: fmt.Sprintf("http://%s/logs", slot.HyperloopIPString()),
+	}
+
+	err = p.client.setMmds(ctx, meta)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 

@@ -7,15 +7,17 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
 type API struct {
-	isNotFC       bool
-	logger        *zerolog.Logger
-	accessToken   *string
-	envVars       *utils.Map[string, string]
+	isNotFC     bool
+	logger      *zerolog.Logger
+	accessToken *string
+	defaults    *execcontext.Defaults
+
 	mmdsChan      chan *host.MMDSOpts
 	hyperloopLock sync.Mutex
 
@@ -23,8 +25,14 @@ type API struct {
 	initLock    sync.Mutex
 }
 
-func New(l *zerolog.Logger, envVars *utils.Map[string, string], mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
-	return &API{logger: l, envVars: envVars, mmdsChan: mmdsChan, isNotFC: isNotFC, lastSetTime: utils.NewAtomicMax()}
+func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
+	return &API{
+		logger:      l,
+		defaults:    defaults,
+		mmdsChan:    mmdsChan,
+		isNotFC:     isNotFC,
+		lastSetTime: utils.NewAtomicMax(),
+	}
 }
 
 func (a *API) GetHealth(w http.ResponseWriter, r *http.Request) {
@@ -50,6 +58,7 @@ func (a *API) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		a.logger.Error().Err(err).Msg("Failed to get metrics")
 		w.WriteHeader(http.StatusInternalServerError)
+
 		return
 	}
 

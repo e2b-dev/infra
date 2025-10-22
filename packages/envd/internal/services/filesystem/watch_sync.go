@@ -40,6 +40,7 @@ func CreateFileWatcher(ctx context.Context, watchPath string, recursive bool, op
 	if err != nil {
 		_ = w.Close()
 		cancel()
+
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error adding path %s to watcher: %w", watchPath, err))
 	}
 	fw := &FileWatcher{
@@ -57,14 +58,17 @@ func CreateFileWatcher(ctx context.Context, watchPath string, recursive bool, op
 			case chErr, ok := <-w.Errors:
 				if !ok {
 					fw.Error = connect.NewError(connect.CodeInternal, fmt.Errorf("watcher error channel closed"))
+
 					return
 				}
 
 				fw.Error = connect.NewError(connect.CodeInternal, fmt.Errorf("watcher error: %w", chErr))
+
 				return
 			case e, ok := <-w.Events:
 				if !ok {
 					fw.Error = connect.NewError(connect.CodeInternal, fmt.Errorf("watcher event channel closed"))
+
 					return
 				}
 
@@ -95,6 +99,7 @@ func CreateFileWatcher(ctx context.Context, watchPath string, recursive bool, op
 					name, nameErr := filepath.Rel(watchPath, e.Name)
 					if nameErr != nil {
 						fw.Error = connect.NewError(connect.CodeInternal, fmt.Errorf("error getting relative path: %w", nameErr))
+
 						return
 					}
 
@@ -136,12 +141,12 @@ func (fw *FileWatcher) Close() {
 }
 
 func (s Service) CreateWatcher(ctx context.Context, req *connect.Request[rpc.CreateWatcherRequest]) (*connect.Response[rpc.CreateWatcherResponse], error) {
-	u, err := permissions.GetAuthUser(ctx)
+	u, err := permissions.GetAuthUser(ctx, s.defaults.User)
 	if err != nil {
 		return nil, err
 	}
 
-	watchPath, err := permissions.ExpandAndResolve(req.Msg.GetPath(), u)
+	watchPath, err := permissions.ExpandAndResolve(req.Msg.GetPath(), u, s.defaults.Workdir)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}

@@ -76,6 +76,7 @@ func NewDispatch(fp io.ReadWriter, prov Provider) *Dispatch {
 	}
 
 	binary.BigEndian.PutUint32(d.responseHeader, NBDResponseMagic)
+
 	return d
 }
 
@@ -173,6 +174,7 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 					rp += 28
 					if wp-rp < int(request.Length) {
 						rp -= 28
+
 						break process // We don't have enough data yet... Wait for next read
 					}
 					data := make([]byte, request.Length)
@@ -209,6 +211,7 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 		d.pendingResponses.Add(1)
 	} else {
 		d.shuttingDownLock.Unlock()
+
 		return ErrShuttingDown
 	}
 	d.shuttingDownLock.Unlock()
@@ -267,6 +270,7 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 		d.pendingResponses.Add(1)
 	} else {
 		d.shuttingDownLock.Unlock()
+
 		return ErrShuttingDown
 	}
 	d.shuttingDownLock.Unlock()
@@ -309,6 +313,7 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 		}
 		d.pendingResponses.Done()
 	}()
+
 	return nil
 }
 

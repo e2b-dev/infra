@@ -17,7 +17,7 @@ type DnsServiceDiscovery struct {
 	resolver string
 
 	hosts       []string
-	servicePort int
+	servicePort uint16
 }
 
 const (
@@ -32,7 +32,7 @@ var dnsClient = dns.Client{
 	Timeout: time.Second * 2,
 }
 
-func NewDnsServiceDiscovery(ctx context.Context, logger *zap.Logger, hosts []string, resolver string, servicePort int) *DnsServiceDiscovery {
+func NewDnsServiceDiscovery(ctx context.Context, logger *zap.Logger, hosts []string, resolver string, servicePort uint16) *DnsServiceDiscovery {
 	sd := &DnsServiceDiscovery{
 		hosts:       hosts,
 		logger:      logger,
@@ -69,6 +69,7 @@ func (sd *DnsServiceDiscovery) keepInSync(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			sd.logger.Info("Stopping service discovery keep-in-sync")
+
 			return
 		case <-ticker.C:
 			sd.sync(ctx)
@@ -85,17 +86,19 @@ func (sd *DnsServiceDiscovery) sync(ctx context.Context) {
 	select {
 	case <-ctxTimeout.Done():
 		sd.logger.Error("Service discovery sync timed out")
+
 		return
 	default:
 		for _, host := range sd.hosts {
-			msg := new(dns.Msg)
+			var msg dns.Msg
 			msg.SetQuestion(dns.Fqdn(host), dns.TypeA)
 
 			for range dnsMaxRetries {
-				response, _, err := dnsClient.Exchange(msg, sd.resolver)
+				response, _, err := dnsClient.Exchange(&msg, sd.resolver)
 				if err != nil {
 					sd.logger.Error("DNS service discovery failed", zap.Error(err))
 					time.Sleep(dnsRetryWait)
+
 					continue
 				}
 

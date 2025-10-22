@@ -18,6 +18,8 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // Test constants
@@ -222,6 +224,7 @@ func TestMultipartUploader_InitiateUpload_WithRetries(t *testing.T) {
 		count := atomic.AddInt32(&requestCount, 1)
 		if count < 2 {
 			w.WriteHeader(http.StatusInternalServerError)
+
 			return
 		}
 
@@ -357,6 +360,7 @@ func TestMultipartUploader_RandomFailures_ChaosTest(t *testing.T) {
 			// Randomly fail some requests
 			if rand.Float64() < failureRate {
 				w.WriteHeader(http.StatusInternalServerError)
+
 				return
 			}
 
@@ -415,7 +419,7 @@ func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
 			partNumStr := strings.Split(strings.Split(r.URL.RawQuery, "partNumber=")[1], "&")[0]
 
 			// Track attempts per part
-			val, _ := partAttempts.LoadOrStore(partNumStr, new(int32))
+			val, _ := partAttempts.LoadOrStore(partNumStr, utils.ToPtr(int32(0)))
 			attempts := val.(*int32)
 			currentAttempts := atomic.AddInt32(attempts, 1)
 
@@ -423,6 +427,7 @@ func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
 			if currentAttempts < int32(maxAttempts-1) {
 				w.WriteHeader(http.StatusInternalServerError)
 				w.Write([]byte("simulated failure"))
+
 				return
 			}
 
@@ -449,6 +454,7 @@ func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
 	partAttempts.Range(func(key, value any) bool {
 		attempts := atomic.LoadInt32(value.(*int32))
 		require.Equal(t, int32(maxAttempts-1), attempts, "Part %s should have exactly %d attempts", key, maxAttempts-1)
+
 		return true
 	})
 }
@@ -677,7 +683,7 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 			partNumStr := strings.Split(strings.Split(r.URL.RawQuery, "partNumber=")[1], "&")[0]
 
 			// Track retry attempts per part with race-safe operations
-			val, _ := retryAttempts.LoadOrStore(partNumStr, new(int32))
+			val, _ := retryAttempts.LoadOrStore(partNumStr, utils.ToPtr(int32(0)))
 			attempts := val.(*int32)
 			currentAttempt := atomic.AddInt32(attempts, 1)
 
@@ -686,6 +692,7 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 				// Add random delay to increase race condition probability
 				time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
 				w.WriteHeader(http.StatusInternalServerError)
+
 				return
 			}
 
@@ -714,6 +721,7 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 	retryAttempts.Range(func(key, value any) bool {
 		attempts := atomic.LoadInt32(value.(*int32))
 		require.GreaterOrEqual(t, attempts, int32(3), "Part %s should have at least 3 attempts", key)
+
 		return true
 	})
 }

@@ -22,17 +22,15 @@ const (
 )
 
 type MMDSOpts struct {
-	TraceID    string `json:"traceID"`
-	InstanceID string `json:"instanceID"`
-	EnvID      string `json:"envID"`
-	Address    string `json:"address"`
+	SandboxID            string `json:"instanceID"`
+	TemplateID           string `json:"envID"`
+	LogsCollectorAddress string `json:"address"`
 }
 
-func (opts *MMDSOpts) Update(traceID, instanceID, envID, collectorAddress string) {
-	opts.TraceID = traceID
-	opts.InstanceID = instanceID
-	opts.EnvID = envID
-	opts.Address = collectorAddress
+func (opts *MMDSOpts) Update(sandboxID, templateID, collectorAddress string) {
+	opts.SandboxID = sandboxID
+	opts.TemplateID = templateID
+	opts.LogsCollectorAddress = collectorAddress
 }
 
 func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
@@ -43,9 +41,8 @@ func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	parsed["instanceID"] = opts.InstanceID
-	parsed["envID"] = opts.EnvID
-	parsed["traceID"] = opts.TraceID
+	parsed["instanceID"] = opts.SandboxID
+	parsed["envID"] = opts.TemplateID
 
 	data, err := json.Marshal(parsed)
 
@@ -53,7 +50,7 @@ func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
 }
 
 func getMMDSToken(ctx context.Context, client *http.Client) (string, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodPut, "http://"+mmdsDefaultAddress+"/latest/api/token", new(bytes.Buffer))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPut, "http://"+mmdsDefaultAddress+"/latest/api/token", &bytes.Buffer{})
 	if err != nil {
 		return "", err
 	}
@@ -81,7 +78,7 @@ func getMMDSToken(ctx context.Context, client *http.Client) (string, error) {
 }
 
 func getMMDSOpts(ctx context.Context, client *http.Client, token string) (*MMDSOpts, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+mmdsDefaultAddress, new(bytes.Buffer))
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+mmdsDefaultAddress, &bytes.Buffer{})
 	if err != nil {
 		return nil, err
 	}
@@ -122,31 +119,34 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 		select {
 		case <-ctx.Done():
 			fmt.Fprintf(os.Stderr, "context cancelled while waiting for mmds opts")
+
 			return
 		case <-ticker.C:
 			token, err := getMMDSToken(ctx, httpClient)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error getting mmds token: %v\n", err)
+
 				continue
 			}
 
 			mmdsOpts, err := getMMDSOpts(ctx, httpClient, token)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error getting mmds opts: %v\n", err)
+
 				continue
 			}
 
-			envVars.Store("E2B_SANDBOX_ID", mmdsOpts.InstanceID)
-			envVars.Store("E2B_TEMPLATE_ID", mmdsOpts.EnvID)
+			envVars.Store("E2B_SANDBOX_ID", mmdsOpts.SandboxID)
+			envVars.Store("E2B_TEMPLATE_ID", mmdsOpts.TemplateID)
 
-			if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_SANDBOX_ID"), []byte(mmdsOpts.InstanceID), 0o666); err != nil {
+			if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_SANDBOX_ID"), []byte(mmdsOpts.SandboxID), 0o666); err != nil {
 				fmt.Fprintf(os.Stderr, "error writing sandbox ID file: %v\n", err)
 			}
-			if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_TEMPLATE_ID"), []byte(mmdsOpts.EnvID), 0o666); err != nil {
+			if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_TEMPLATE_ID"), []byte(mmdsOpts.TemplateID), 0o666); err != nil {
 				fmt.Fprintf(os.Stderr, "error writing template ID file: %v\n", err)
 			}
 
-			if mmdsOpts.Address != "" {
+			if mmdsOpts.LogsCollectorAddress != "" {
 				mmdsChan <- mmdsOpts
 			}
 

@@ -15,7 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/tracking"
 )
 
-type proxyClient struct {
+type ProxyClient struct {
 	httputil.ReverseProxy
 
 	transport *http.Transport
@@ -24,11 +24,12 @@ type proxyClient struct {
 func newProxyClient(
 	maxIdleConns,
 	maxHostIdleConns int,
+	maxConnectionAttempts int,
 	idleTimeout time.Duration,
 	totalConnsCounter *atomic.Uint64,
 	currentConnsCounter *atomic.Int64,
 	logger *log.Logger,
-) *proxyClient {
+) *ProxyClient {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		// Limit the max connection per host to avoid exhausting the number of available ports to one host.
@@ -39,22 +40,48 @@ func newProxyClient(
 		ResponseHeaderTimeout: 0,
 		// TCP configuration
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			conn, err := (&net.Dialer{
-				Timeout:   30 * time.Second, // Connect timeout (no timeout by default)
-				KeepAlive: 20 * time.Second, // Lower than our http keepalives (50 seconds)
-			}).DialContext(ctx, network, addr)
-			if err != nil {
-				return nil, err
+			var conn net.Conn
+			var err error
+
+			// Retry connection attempts to handle port forwarding delays in sandbox envd.
+			// When a process binds to localhost inside the sandbox, it can take up to 1s (delay is 1s + socat startup delay)
+			// for the port scanner to detect it and start socat forwarding to the host IP.
+			maxAttempts := max(maxConnectionAttempts, 1)
+			for attempt := range maxAttempts {
+				conn, err = (&net.Dialer{
+					Timeout:   30 * time.Second,
+					KeepAlive: 20 * time.Second,
+				}).DialContext(ctx, network, addr)
+
+				if err == nil {
+					totalConnsCounter.Add(1)
+
+					return tracking.NewConnection(conn, currentConnsCounter), nil
+				}
+
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
+
+				// Don't sleep on the last attempt
+				if attempt < maxAttempts-1 {
+					// Linear backoff: 100ms, 200ms, 300ms, 400ms
+					backoff := time.Duration(100*(attempt+1)) * time.Millisecond
+					select {
+					case <-time.After(backoff):
+						// Continue to next attempt
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					}
+				}
 			}
 
-			totalConnsCounter.Add(1)
-
-			return tracking.NewConnection(conn, currentConnsCounter), nil
+			return nil, err
 		},
 		DisableCompression: true, // No need to request or manipulate compression
 	}
 
-	return &proxyClient{
+	return &ProxyClient{
 		transport: transport,
 		ReverseProxy: httputil.ReverseProxy{
 			Transport: transport,
@@ -137,6 +164,6 @@ func newProxyClient(
 	}
 }
 
-func (p *proxyClient) closeIdleConnections() {
+func (p *ProxyClient) closeIdleConnections() {
 	p.transport.CloseIdleConnections()
 }
