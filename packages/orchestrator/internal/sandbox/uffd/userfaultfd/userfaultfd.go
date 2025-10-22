@@ -8,6 +8,7 @@ import (
 
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
@@ -24,12 +25,8 @@ type Userfaultfd struct {
 	dirty    *block.Tracker
 	disabled atomic.Bool
 
-	// The maps prevent serving pages multiple times (as we now add WP only once we don't have to remove entries from any map.)
-	// For normal sized pages with swap on, the behavior seems not to be properly described in docs
-	// and it's not clear if the missing can be legitimately triggered multiple times.
 	missingRequests *block.Tracker
-	writeRequests   *block.Tracker
-	wpRequests      *block.Tracker
+	workerSem       *semaphore.Weighted
 
 	writesInProgress *utils.SettleCounter
 	wg               errgroup.Group
@@ -44,9 +41,8 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, pagesize int64, m *memor
 		src:              src,
 		dirty:            block.NewTracker(pagesize),
 		missingRequests:  block.NewTracker(pagesize),
-		writeRequests:    block.NewTracker(pagesize),
-		wpRequests:       block.NewTracker(pagesize),
 		disabled:         atomic.Bool{},
+		workerSem:        semaphore.NewWeighted(2048),
 		ma:               m,
 		writesInProgress: utils.NewZeroSettleCounter(),
 		logger:           logger,
@@ -64,8 +60,6 @@ func (u *Userfaultfd) Dirty(ctx context.Context) (*block.Tracker, error) {
 	}
 
 	u.missingRequests.Reset()
-	u.writeRequests.Reset()
-	u.wpRequests.Reset()
 
 	return u.dirty.Clone(), nil
 }

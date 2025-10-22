@@ -123,21 +123,30 @@ outerLoop:
 
 		// Handle write to write protected page (WP flag)
 		if flags&UFFD_PAGEFAULT_FLAG_WP != 0 {
-			u.handleWriteProtection(addr, offset, pagesize)
+			err := u.handleWriteProtection(ctx, addr, offset, pagesize)
+			if err != nil {
+				return fmt.Errorf("failed to handle write protection: %w", err)
+			}
 
 			continue
 		}
 
 		// Handle write to missing page (WRITE flag)
 		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
-			u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize, true)
+			err := u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize, true)
+			if err != nil {
+				return fmt.Errorf("failed to handle missing write: %w", err)
+			}
 
 			continue
 		}
 
 		// Handle read to missing page ("MISSING" flag)
 		if flags == 0 {
-			u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize, false)
+			err := u.handleMissing(ctx, fdExit.SignalExit, addr, offset, pagesize, false)
+			if err != nil {
+				return fmt.Errorf("failed to handle missing: %w", err)
+			}
 
 			continue
 		}
@@ -153,20 +162,21 @@ func (u *Userfaultfd) handleMissing(
 	offset int64,
 	pagesize uint64,
 	write bool,
-) {
+) error {
 	if write {
-		if !u.writeRequests.Add(offset) {
-			return
-		}
-
 		u.writesInProgress.Add()
-	} else {
-		if !u.missingRequests.Add(offset) {
-			return
-		}
+	} else if !u.missingRequests.Add(offset) {
+		return nil
+	}
+
+	err := u.workerSem.Acquire(ctx, 1)
+	if err != nil {
+		return fmt.Errorf("failed to acquire semaphore: %w", err)
 	}
 
 	u.wg.Go(func() error {
+		defer u.workerSem.Release(1)
+
 		defer func() {
 			if r := recover(); r != nil {
 				u.logger.Error("UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
@@ -227,16 +237,21 @@ func (u *Userfaultfd) handleMissing(
 
 		return nil
 	})
+
+	return nil
 }
 
-func (u *Userfaultfd) handleWriteProtection(addr uintptr, offset int64, pagesize uint64) {
-	if !u.wpRequests.Add(offset) {
-		return
+func (u *Userfaultfd) handleWriteProtection(ctx context.Context, addr uintptr, offset int64, pagesize uint64) error {
+	err := u.workerSem.Acquire(ctx, 1)
+	if err != nil {
+		return fmt.Errorf("failed to acquire semaphore: %w", err)
 	}
 
 	u.writesInProgress.Add()
 
 	u.wg.Go(func() error {
+		defer u.workerSem.Release(1)
+
 		defer func() {
 			if r := recover(); r != nil {
 				u.logger.Error("UFFD remove write protection panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
@@ -255,4 +270,6 @@ func (u *Userfaultfd) handleWriteProtection(addr uintptr, offset int64, pagesize
 
 		return nil
 	})
+
+	return nil
 }
