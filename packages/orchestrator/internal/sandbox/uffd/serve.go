@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/mapping"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
@@ -34,6 +35,9 @@ func Serve(
 	fdExit *fdexit.FdExit,
 	logger *zap.Logger,
 ) error {
+	ctx, serveSpan := tracer.Start(ctx, "serve uffd")
+	defer serveSpan.End()
+
 	pollFds := []unix.PollFd{
 		{Fd: int32(uffd), Events: unix.POLLIN},
 		{Fd: fdExit.Reader(), Events: unix.POLLIN},
@@ -153,7 +157,10 @@ outerLoop:
 				}
 			}()
 
-			b, err := src.Slice(ctx, offset, pagesize)
+			serveCtx, serveSpan := tracer.Start(ctx, "serve uffd — goroutine")
+			defer serveSpan.End()
+
+			b, err := src.Slice(serveCtx, offset, pagesize)
 			if err != nil {
 				signalErr := fdExit.SignalExit()
 
@@ -163,6 +170,8 @@ outerLoop:
 
 				return fmt.Errorf("failed to read from source: %w", joinedErr)
 			}
+
+			telemetry.ReportEvent(serveCtx, "got memory slice")
 
 			cpy := userfaultfd.NewUffdioCopy(
 				b,
@@ -193,6 +202,8 @@ outerLoop:
 
 				return fmt.Errorf("failed uffdio copy %w", joinedErr)
 			}
+
+			telemetry.ReportEvent(serveCtx, "copied page to UFFD")
 
 			return nil
 		})
