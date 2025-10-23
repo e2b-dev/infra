@@ -50,6 +50,18 @@ func Serve(
 
 	missingPagesBeingHandled := map[int64]struct{}{}
 
+	logPagefault := func(msg string, attrs ...attribute.KeyValue) {
+		select {
+		case _, ok := <-logPagefaults:
+			if !ok {
+				return
+			}
+		default:
+		}
+
+		telemetry.ReportEvent(ctx, msg, attrs...)
+	}
+
 outerLoop:
 	for {
 		if _, err := unix.Poll(
@@ -173,9 +185,7 @@ outerLoop:
 				return fmt.Errorf("failed to read from source: %w", joinedErr)
 			}
 
-			if _, ok := <-logPagefaults; !ok {
-				telemetry.ReportEvent(ctx, "pagefault slice finished", attribute.Int64("duration_ms", time.Since(start).Milliseconds()))
-			}
+			logPagefault("pagefault slice finished", attribute.Int64("duration_ms", time.Since(start).Milliseconds()))
 
 			cpy := userfaultfd.NewUffdioCopy(
 				b,
@@ -209,9 +219,7 @@ outerLoop:
 				return fmt.Errorf("failed uffdio copy %w", joinedErr)
 			}
 
-			if _, ok := <-logPagefaults; !ok {
-				telemetry.ReportEvent(ctx, "uffdio copy finished", attribute.Int64("duration_ms", time.Since(start).Milliseconds()))
-			}
+			logPagefault("uffdio copy finished", attribute.Int64("duration_ms", time.Since(start).Milliseconds()))
 
 			return nil
 		})
