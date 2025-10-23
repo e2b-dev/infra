@@ -5,9 +5,25 @@ job "orchestrator-${latest_orchestrator_job_id}" {
   priority = 90
 
   group "client-orchestrator" {
+    network {
+      mode = "host"
+
+      port "grpc" {
+        // todo: remove this once all API and client-proxy jobs
+        //  can pull the port number from nomad.
+        static = "${port}"
+      }
+
+      port "proxy" {
+        // todo: remove this once all API and client-proxy jobs
+        //  can pull the port number from nomad.
+        static = "${proxy_port}"
+      }
+    }
+
     service {
       name = "orchestrator"
-      port = "${port}"
+      port = "grpc"
 
       check {
         type         = "grpc"
@@ -15,13 +31,13 @@ job "orchestrator-${latest_orchestrator_job_id}" {
         interval     = "20s"
         timeout      = "5s"
         grpc_use_tls = false
-        port         = "${port}"
+        port         = "grpc"
       }
     }
 
     service {
       name = "orchestrator-proxy"
-      port = "${proxy_port}"
+      port = "proxy"
     }
 
     task "check-placement" {
@@ -74,8 +90,8 @@ EOT
         CLICKHOUSE_CONNECTION_STRING = "${clickhouse_connection_string}"
         REDIS_URL                    = "${redis_url}"
         REDIS_CLUSTER_URL            = "${redis_cluster_url}"
-        GRPC_PORT                    = "${port}"
-        PROXY_PORT                   = "${proxy_port}"
+        GRPC_PORT                    = "$${NOMAD_PORT_grpc}"
+        PROXY_PORT                   = "$${NOMAD_PORT_proxy}"
         GIN_MODE                     = "release"
 
 %{ if launch_darkly_api_key != "" }
