@@ -403,6 +403,8 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
 
+	rootfsOverlay.EnableLoggingRequests()
+
 	cleanup.Add(rootfsOverlay.Close)
 
 	telemetry.ReportEvent(ctx, "created rootfs overlay")
@@ -434,7 +436,7 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to serve memory: %w", err)
 	}
 
-	fcUffd.EnableLoggingPagefaults()
+	fcUffd.EnableLoggingRequests()
 
 	telemetry.ReportEvent(ctx, "started serving memory")
 
@@ -576,7 +578,8 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
 
-	fcUffd.DisableLoggingPagefaults()
+	fcUffd.DisableLoggingRequests()
+	rootfsOverlay.DisableLoggingRequests()
 
 	telemetry.ReportEvent(execCtx, "envd initialized")
 

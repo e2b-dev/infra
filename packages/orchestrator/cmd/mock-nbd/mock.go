@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 	"github.com/pojntfx/go-nbd/pkg/backend"
@@ -183,7 +184,9 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool
 		mnt.Close(context.Background()) //nolint:contextcheck // TODO: fix this later
 	}()
 
-	_, err = mnt.Open(ctx)
+	logPagefaultsEnabled := &atomic.Bool{}
+
+	_, err = mnt.Open(ctx, logPagefaultsEnabled)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open: %w", err)
 	}

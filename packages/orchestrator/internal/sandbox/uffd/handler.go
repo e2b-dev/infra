@@ -33,7 +33,7 @@ const (
 type Uffd struct {
 	exit                 *utils.ErrorOnce
 	readyCh              chan struct{}
-	logPagefaultsEnabled *atomic.Bool
+	logRequestsEnabled *atomic.Bool
 
 	fdExit *fdexit.FdExit
 
@@ -62,7 +62,7 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 		fdExit:               fdExit,
 		memfile:              trackedMemfile,
 		socketPath:           socketPath,
-		logPagefaultsEnabled: &atomic.Bool{},
+		logRequestsEnabled: &atomic.Bool{},
 	}, nil
 }
 
@@ -162,7 +162,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		u.memfile,
 		u.fdExit,
 		zap.L().With(logger.WithSandboxID(sandboxId)),
-		u.logPagefaultsEnabled,
+		u.logRequestsEnabled,
 	)
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)
@@ -171,12 +171,12 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 	return nil
 }
 
-func (u *Uffd) EnableLoggingPagefaults() {
-	u.logPagefaultsEnabled.Store(true)
+func (u *Uffd) EnableLoggingRequests() {
+	u.logRequestsEnabled.Store(true)
 }
 
-func (u *Uffd) DisableLoggingPagefaults() {
-	u.logPagefaultsEnabled.Store(false)
+func (u *Uffd) DisableLoggingRequests() {
+	u.logRequestsEnabled.Store(false)
 }
 
 func (u *Uffd) Stop() error {

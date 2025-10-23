@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -57,7 +58,7 @@ func NewDirectPathMount(b block.Device, devicePool *DevicePool) *DirectPathMount
 	}
 }
 
-func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err error) {
+func (d *DirectPathMount) Open(ctx context.Context, logPagefaultsEnabled *atomic.Bool) (retDeviceIndex uint32, err error) {
 	ctx, d.cancelfn = context.WithCancel(ctx)
 
 	defer func() {
@@ -98,7 +99,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			}
 			server.Close()
 
-			dispatch := NewDispatch(serverc, d.Backend)
+			dispatch := NewDispatch(serverc, d.Backend, logPagefaultsEnabled)
 			// Start reading commands on the socket and dispatching them to our provider
 			d.handlersWg.Add(1)
 			go func() {
