@@ -13,12 +13,15 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/tracking"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 type ProxyClient struct {
 	httputil.ReverseProxy
 
 	transport *http.Transport
+
+	activeConnections *smap.Map[*tracking.Connection]
 }
 
 func newProxyClient(
@@ -30,6 +33,8 @@ func newProxyClient(
 	currentConnsCounter *atomic.Int64,
 	logger *log.Logger,
 ) *ProxyClient {
+	activeConnections := smap.New[*tracking.Connection]()
+
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		// Limit the max connection per host to avoid exhausting the number of available ports to one host.
@@ -56,7 +61,7 @@ func newProxyClient(
 				if err == nil {
 					totalConnsCounter.Add(1)
 
-					return tracking.NewConnection(conn, currentConnsCounter), nil
+					return tracking.NewConnection(conn, currentConnsCounter, activeConnections), nil
 				}
 
 				if ctx.Err() != nil {
@@ -82,7 +87,8 @@ func newProxyClient(
 	}
 
 	return &ProxyClient{
-		transport: transport,
+		transport:         transport,
+		activeConnections: activeConnections,
 		ReverseProxy: httputil.ReverseProxy{
 			Transport: transport,
 			Rewrite: func(r *httputil.ProxyRequest) {
@@ -166,4 +172,10 @@ func newProxyClient(
 
 func (p *ProxyClient) closeIdleConnections() {
 	p.transport.CloseIdleConnections()
+}
+
+func (p *ProxyClient) closeAllConnections() {
+	for _, conn := range p.activeConnections.Items() {
+		conn.Close()
+	}
 }

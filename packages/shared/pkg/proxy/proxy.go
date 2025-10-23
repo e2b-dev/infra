@@ -75,7 +75,7 @@ func (p *Proxy) CurrentPoolConnections() int64 {
 }
 
 func (p *Proxy) RemoveFromPool(connectionKey string) {
-	p.pool.Close(connectionKey)
+	p.pool.Close(connectionKey, true)
 }
 
 func (p *Proxy) ListenAndServe(ctx context.Context) error {
