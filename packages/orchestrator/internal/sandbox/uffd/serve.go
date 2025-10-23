@@ -37,7 +37,7 @@ func Serve(
 	src block.Slicer,
 	fdExit *fdexit.FdExit,
 	logger *zap.Logger,
-	logPagefaultsEnabled atomic.Bool,
+	logPagefaultsEnabled *atomic.Bool,
 ) error {
 	ctx, serveSpan := tracer.Start(ctx, "serve uffd")
 	defer serveSpan.End()

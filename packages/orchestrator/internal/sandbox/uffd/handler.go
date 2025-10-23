@@ -33,7 +33,7 @@ const (
 type Uffd struct {
 	exit                 *utils.ErrorOnce
 	readyCh              chan struct{}
-	logPagefaultsEnabled atomic.Bool
+	logPagefaultsEnabled *atomic.Bool
 
 	fdExit *fdexit.FdExit
 
@@ -57,11 +57,12 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 	}
 
 	return &Uffd{
-		exit:       utils.NewErrorOnce(),
-		readyCh:    make(chan struct{}, 1),
-		fdExit:     fdExit,
-		memfile:    trackedMemfile,
-		socketPath: socketPath,
+		exit:                 utils.NewErrorOnce(),
+		readyCh:              make(chan struct{}, 1),
+		fdExit:               fdExit,
+		memfile:              trackedMemfile,
+		socketPath:           socketPath,
+		logPagefaultsEnabled: &atomic.Bool{},
 	}, nil
 }
 
