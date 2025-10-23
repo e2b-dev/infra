@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -30,9 +31,9 @@ const (
 )
 
 type Uffd struct {
-	exit          *utils.ErrorOnce
-	readyCh       chan struct{}
-	logPagefaults chan struct{}
+	exit                 *utils.ErrorOnce
+	readyCh              chan struct{}
+	logPagefaultsEnabled atomic.Bool
 
 	fdExit *fdexit.FdExit
 
@@ -56,12 +57,11 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 	}
 
 	return &Uffd{
-		exit:          utils.NewErrorOnce(),
-		readyCh:       make(chan struct{}, 1),
-		logPagefaults: make(chan struct{}),
-		fdExit:        fdExit,
-		memfile:       trackedMemfile,
-		socketPath:    socketPath,
+		exit:       utils.NewErrorOnce(),
+		readyCh:    make(chan struct{}, 1),
+		fdExit:     fdExit,
+		memfile:    trackedMemfile,
+		socketPath: socketPath,
 	}, nil
 }
 
@@ -161,7 +161,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 		u.memfile,
 		u.fdExit,
 		zap.L().With(logger.WithSandboxID(sandboxId)),
-		u.logPagefaults,
+		u.logPagefaultsEnabled,
 	)
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)
@@ -170,8 +170,12 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string) error {
 	return nil
 }
 
-func (u *Uffd) StopLoggingPagefaults() {
-	close(u.logPagefaults)
+func (u *Uffd) EnableLoggingPagefaults() {
+	u.logPagefaultsEnabled.Store(true)
+}
+
+func (u *Uffd) DisableLoggingPagefaults() {
+	u.logPagefaultsEnabled.Store(false)
 }
 
 func (u *Uffd) Stop() error {

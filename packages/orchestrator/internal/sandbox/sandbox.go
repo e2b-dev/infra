@@ -433,6 +433,8 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to serve memory: %w", err)
 	}
 
+	fcUffd.EnableLoggingPagefaults()
+
 	telemetry.ReportEvent(ctx, "started serving memory")
 
 	// ==== END of resources initialization ====
@@ -573,7 +575,7 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
 
-	fcUffd.StopLoggingPagefaults()
+	fcUffd.DisableLoggingPagefaults()
 
 	telemetry.ReportEvent(execCtx, "envd initialized")
 

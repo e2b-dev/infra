@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -36,7 +37,7 @@ func Serve(
 	src block.Slicer,
 	fdExit *fdexit.FdExit,
 	logger *zap.Logger,
-	logPagefaults chan struct{},
+	logPagefaultsEnabled atomic.Bool,
 ) error {
 	ctx, serveSpan := tracer.Start(ctx, "serve uffd")
 	defer serveSpan.End()
@@ -49,20 +50,6 @@ func Serve(
 	var eg errgroup.Group
 
 	missingPagesBeingHandled := map[int64]struct{}{}
-
-	logPagefault := func(msg string, attrs ...attribute.KeyValue) {
-		select {
-		case _, ok := <-logPagefaults:
-			if !ok {
-				return
-			}
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		telemetry.ReportEvent(ctx, msg, attrs...)
-	}
 
 outerLoop:
 	for {
@@ -174,7 +161,7 @@ outerLoop:
 				}
 			}()
 
-			start := time.Now()
+			sliceStartTime := time.Now()
 
 			b, err := src.Slice(ctx, offset, pagesize)
 			if err != nil {
@@ -187,8 +174,6 @@ outerLoop:
 				return fmt.Errorf("failed to read from source: %w", joinedErr)
 			}
 
-			logPagefault("pagefault slice finished", attribute.Int64("duration_ms", time.Since(start).Milliseconds()))
-
 			cpy := userfaultfd.NewUffdioCopy(
 				b,
 				addr&^userfaultfd.CULong(pagesize-1),
@@ -197,7 +182,7 @@ outerLoop:
 				0,
 			)
 
-			start = time.Now()
+			cpyStartTime := time.Now()
 
 			if _, _, errno := syscall.Syscall(
 				syscall.SYS_IOCTL,
@@ -221,7 +206,13 @@ outerLoop:
 				return fmt.Errorf("failed uffdio copy %w", joinedErr)
 			}
 
-			logPagefault("uffdio copy finished", attribute.Int64("duration_ms", time.Since(start).Milliseconds()))
+			if logPagefaultsEnabled.Load() {
+				telemetry.ReportEvent(ctx,
+					"uffd page served",
+					attribute.Int64("slice_duration_ms", cpyStartTime.Sub(sliceStartTime).Milliseconds()),
+					attribute.Int64("uffd_copy_duration_ms", time.Now().Sub(cpyStartTime).Milliseconds()),
+				)
+			}
 
 			return nil
 		})
