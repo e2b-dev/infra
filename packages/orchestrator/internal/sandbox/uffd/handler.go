@@ -56,11 +56,12 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 	}
 
 	return &Uffd{
-		exit:       utils.NewErrorOnce(),
-		readyCh:    make(chan struct{}, 1),
-		fdExit:     fdExit,
-		memfile:    trackedMemfile,
-		socketPath: socketPath,
+		exit:          utils.NewErrorOnce(),
+		readyCh:       make(chan struct{}, 1),
+		logPagefaults: make(chan struct{}, 1),
+		fdExit:        fdExit,
+		memfile:       trackedMemfile,
+		socketPath:    socketPath,
 	}, nil
 }
 
