@@ -165,7 +165,7 @@ func walkDir(requestedPath string, dirPath string, depth int) (entries []*rpc.En
 				return nil
 			}
 
-			return nil
+			return err
 		}
 
 		// Return the requested path as the base path instead of the symlink-resolved path
