@@ -37,6 +37,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sharedstate"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -238,13 +239,13 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{"feature flags", featureFlags.Close})
 
 	// gcp concurrent upload limiter
-	limiter, err := limit.New(ctx, featureFlags)
+	googleStorageLimiter, err := limit.New(ctx, featureFlags)
 	if err != nil {
 		zap.L().Fatal("failed to create limiter", zap.Error(err))
 	}
-	closers = append(closers, closer{"limiter", limiter.Close})
+	closers = append(closers, closer{"limiter", googleStorageLimiter.Close})
 
-	persistence, err := storage.GetTemplateStorageProvider(ctx, limiter)
+	persistence, err := storage.GetTemplateStorageProvider(ctx, googleStorageLimiter)
 	if err != nil {
 		zap.L().Fatal("failed to create template storage provider", zap.Error(err))
 	}
@@ -347,6 +348,21 @@ func run(config cfg.Config) (success bool) {
 	// sandbox factory
 	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags)
 
+	sharedStateManager, err := sharedstate.New(config.SharedStateWriteInterval)
+	if err != nil {
+		zap.L().Fatal("failed to create metrics tracker", zap.Error(err))
+	}
+	sandboxes.Subscribe(sharedStateManager)
+	g.Go(func() error {
+		if err := sharedStateManager.Run(ctx, config.SharedStateDirectory); err != nil {
+			zap.L().Error("shared state manager failed", zap.Error(err))
+		}
+
+		return nil
+	})
+
+	sandboxLimiter := server.NewLimiter(config.MaxStartingInstances, featureFlags, sharedStateManager)
+
 	orchestratorService := server.New(server.ServiceConfig{
 		SandboxFactory:   sandboxFactory,
 		Tel:              tel,
@@ -359,6 +375,7 @@ func run(config cfg.Config) (success bool) {
 		Persistence:      persistence,
 		FeatureFlags:     featureFlags,
 		SbxEventsService: sbxEventsService,
+		SandboxLimiter:   sandboxLimiter,
 	})
 
 	// template manager sandbox logger
@@ -413,7 +430,7 @@ func run(config cfg.Config) (success bool) {
 			sandboxes,
 			templateCache,
 			persistence,
-			limiter,
+			googleStorageLimiter,
 			serviceInfo,
 		)
 		if err != nil {
@@ -425,7 +442,7 @@ func run(config cfg.Config) (success bool) {
 		closers = append(closers, closer{"template server", tmpl.Close})
 	}
 
-	infoService := service.NewInfoService(serviceInfo, sandboxes)
+	infoService := service.NewInfoService(serviceInfo, sharedStateManager)
 	orchestratorinfo.RegisterInfoServiceServer(grpcServer, infoService)
 
 	grpcHealth := health.NewServer()

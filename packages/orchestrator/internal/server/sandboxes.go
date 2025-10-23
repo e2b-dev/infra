@@ -30,10 +30,7 @@ import (
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/server")
 
-const (
-	requestTimeout              = 60 * time.Second
-	maxStartingInstancesPerNode = 3
-)
+const requestTimeout = 60 * time.Second
 
 func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
 	// set max request timeout for this request
@@ -66,26 +63,26 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			Build(),
 	)
 
-	maxRunningSandboxesPerNode, err := s.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)
-	if err != nil {
-		zap.L().Error("Failed to get MaxSandboxesPerNode flag", zap.Error(err))
-	}
-
-	runningSandboxes := s.sandboxes.Count()
-	if runningSandboxes >= maxRunningSandboxesPerNode {
-		telemetry.ReportEvent(ctx, "max number of running sandboxes reached")
-
-		return nil, status.Errorf(codes.ResourceExhausted, "max number of running sandboxes on node reached (%d), please retry", maxRunningSandboxesPerNode)
-	}
-
 	// Check if we've reached the max number of starting instances on this node
-	acquired := s.startingSandboxes.TryAcquire(1)
-	if !acquired {
-		telemetry.ReportEvent(ctx, "too many starting sandboxes on node")
+	if err := s.sandboxLimiter.AcquireStarting(ctx); err != nil {
+		var tooManyRunning TooManySandboxesRunningError
+		var tooManyStarting TooManySandboxesStartingError
+		switch {
+		case errors.As(err, &tooManyRunning):
+			telemetry.ReportEvent(ctx, "max number of running sandboxes reached")
 
-		return nil, status.Errorf(codes.ResourceExhausted, "too many sandboxes starting on this node, please retry")
+			return nil, status.Errorf(codes.ResourceExhausted, "too many sandboxes on node reached (%d>=%d), please retry", tooManyRunning.Current, tooManyRunning.Max)
+		case errors.As(err, &tooManyStarting):
+			telemetry.ReportEvent(ctx, "too many starting sandboxes on node")
+
+			return nil, status.Errorf(codes.ResourceExhausted, "too many sandboxes starting on this node, please retry")
+		default:
+			return nil, fmt.Errorf("unexpected error while acquiring starting lock: %w", err)
+		}
 	}
-	defer s.startingSandboxes.Release(1)
+	defer func() {
+		s.sandboxLimiter.ReleaseStarting()
+	}()
 
 	template, err := s.templateCache.GetTemplate(
 		ctx,
