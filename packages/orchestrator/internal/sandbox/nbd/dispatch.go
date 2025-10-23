@@ -7,10 +7,14 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
+	"time"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 var ErrShuttingDown = errors.New("shutting down. Cannot serve any new requests")
@@ -54,22 +58,24 @@ type Response struct {
 }
 
 type Dispatch struct {
-	fp               io.ReadWriter
-	responseHeader   []byte
-	writeLock        sync.Mutex
-	prov             Provider
-	pendingResponses sync.WaitGroup
-	shuttingDown     bool
-	shuttingDownLock sync.Mutex
-	fatal            chan error
+	fp                   io.ReadWriter
+	responseHeader       []byte
+	writeLock            sync.Mutex
+	prov                 Provider
+	pendingResponses     sync.WaitGroup
+	shuttingDown         bool
+	shuttingDownLock     sync.Mutex
+	fatal                chan error
+	logPagefaultsEnabled *atomic.Bool
 }
 
-func NewDispatch(fp io.ReadWriter, prov Provider) *Dispatch {
+func NewDispatch(fp io.ReadWriter, prov Provider, logPagefaultsEnabled *atomic.Bool) *Dispatch {
 	d := &Dispatch{
-		responseHeader: make([]byte, 16),
-		fp:             fp,
-		prov:           prov,
-		fatal:          make(chan error, 1),
+		responseHeader:       make([]byte, 16),
+		fp:                   fp,
+		prov:                 prov,
+		fatal:                make(chan error, 1),
+		logPagefaultsEnabled: logPagefaultsEnabled,
 	}
 
 	binary.BigEndian.PutUint32(d.responseHeader, NBDResponseMagic)
@@ -116,6 +122,9 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
  *
  */
 func (d *Dispatch) Handle(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "handle nbd")
+	defer span.End()
+
 	buffer := make([]byte, dispatchBufferSize)
 	wp := 0
 
@@ -214,6 +223,8 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 	d.shuttingDownLock.Unlock()
 
 	performRead := func(handle uint64, from uint64, length uint32) error {
+		readStart := time.Now()
+
 		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
 		data := make([]byte, length)
@@ -233,8 +244,24 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 			}
 		}
 
+		responseStart := time.Now()
+
 		// read was successful
-		return d.writeResponse(0, handle, data)
+		err := d.writeResponse(0, handle, data)
+
+		if err != nil {
+			return err
+		}
+
+		if d.logPagefaultsEnabled.Load() {
+			telemetry.ReportEvent(ctx,
+				"nbd read finished",
+				attribute.Int64("read_duration_ms", responseStart.Sub(readStart).Milliseconds()),
+				attribute.Int64("response_duration_ms", time.Since(responseStart).Milliseconds()),
+			)
+		}
+
+		return nil
 	}
 
 	go func() {
@@ -264,6 +291,8 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 	d.shuttingDownLock.Unlock()
 
 	performWrite := func(handle uint64, from uint64, data []byte) error {
+		writeStart := time.Now()
+
 		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
 		go func() {
@@ -281,8 +310,23 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 			}
 		}
 
+		responseStart := time.Now()
+
 		// write was successful
-		return d.writeResponse(0, handle, []byte{})
+		err := d.writeResponse(0, handle, []byte{})
+		if err != nil {
+			return err
+		}
+
+		if d.logPagefaultsEnabled.Load() {
+			telemetry.ReportEvent(ctx,
+				"nbd write finished",
+				attribute.Int64("write_duration_ms", responseStart.Sub(writeStart).Milliseconds()),
+				attribute.Int64("response_duration_ms", time.Since(responseStart).Milliseconds()),
+			)
+		}
+
+		return nil
 	}
 
 	go func() {

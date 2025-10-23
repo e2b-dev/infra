@@ -11,8 +11,8 @@ import (
 type MemoryBackend interface {
 	Disable() error
 	Dirty() *bitset.BitSet
-	EnableLoggingPagefaults()
-	DisableLoggingPagefaults()
+	EnableLoggingRequests()
+	DisableLoggingRequests()
 
 	Start(ctx context.Context, sandboxId string) error
 	Stop() error

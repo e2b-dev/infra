@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync/atomic"
 	"syscall"
 
 	"go.uber.org/zap"
@@ -23,6 +24,8 @@ type NBDProvider struct {
 	mnt     *nbd.DirectPathMount
 
 	ready *utils.SetOnce[string]
+
+	logRequestsEnabled *atomic.Bool
 
 	blockSize int64
 
@@ -52,18 +55,27 @@ func NewNBDProvider(rootfs block.ReadonlyDevice, cachePath string, devicePool *n
 		overlay:            overlay,
 		ready:              utils.NewSetOnce[string](),
 		finishedOperations: make(chan struct{}, 1),
+		logRequestsEnabled: &atomic.Bool{},
 		blockSize:          blockSize,
 		devicePool:         devicePool,
 	}, nil
 }
 
 func (o *NBDProvider) Start(ctx context.Context) error {
-	deviceIndex, err := o.mnt.Open(ctx)
+	deviceIndex, err := o.mnt.Open(ctx, o.logRequestsEnabled)
 	if err != nil {
 		return o.ready.SetError(fmt.Errorf("error opening overlay file: %w", err))
 	}
 
 	return o.ready.SetValue(nbd.GetDevicePath(deviceIndex))
+}
+
+func (o *NBDProvider) EnableLoggingRequests() {
+	o.logRequestsEnabled.Store(true)
+}
+
+func (o *NBDProvider) DisableLoggingRequests() {
+	o.logRequestsEnabled.Store(false)
 }
 
 func (o *NBDProvider) ExportDiff(

@@ -8,6 +8,8 @@ import (
 )
 
 type Provider interface {
+	EnableLoggingRequests()
+	DisableLoggingRequests()
 	Start(ctx context.Context) error
 	Close(ctx context.Context) error
 	Path() (string, error)

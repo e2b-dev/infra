@@ -51,6 +51,10 @@ func (o *DirectProvider) Start(_ context.Context) error {
 	return nil
 }
 
+func (o *DirectProvider) EnableLoggingRequests() {}
+
+func (o *DirectProvider) DisableLoggingRequests() {}
+
 func (o *DirectProvider) ExportDiff(
 	ctx context.Context,
 	out io.Writer,

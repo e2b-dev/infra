@@ -46,8 +46,8 @@ func (m *NoopMemory) Start(context.Context, string) error {
 	return nil
 }
 
-func (m *NoopMemory) EnableLoggingPagefaults()  {}
-func (m *NoopMemory) DisableLoggingPagefaults() {}
+func (m *NoopMemory) EnableLoggingRequests()  {}
+func (m *NoopMemory) DisableLoggingRequests() {}
 
 func (m *NoopMemory) Stop() error {
 	return m.exit.SetSuccess()
