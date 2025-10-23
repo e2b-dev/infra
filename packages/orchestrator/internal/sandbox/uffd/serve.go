@@ -30,7 +30,7 @@ type GuestRegionUffdMapping struct {
 	PageSize         uintptr `json:"page_size_kib"`
 }
 
-func Serve(
+func serve(
 	ctx context.Context,
 	uffd int,
 	mappings mapping.Mappings,

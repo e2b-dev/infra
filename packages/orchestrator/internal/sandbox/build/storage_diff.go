@@ -6,6 +6,9 @@ import (
 	"io"
 	"path/filepath"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
@@ -59,6 +62,13 @@ func (b *StorageDiff) CacheKey() DiffStoreKey {
 }
 
 func (b *StorageDiff) Init(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "init StorageDiff", trace.WithAttributes(
+		attribute.String("storage_path", b.storagePath),
+		attribute.String("cache_path", b.cachePath),
+		attribute.String("cache_key", string(b.cacheKey)),
+	))
+	defer span.End()
+
 	obj, err := b.persistence.OpenObject(ctx, b.storagePath)
 	if err != nil {
 		return err

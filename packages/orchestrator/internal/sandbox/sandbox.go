@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptrace"
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -46,6 +48,9 @@ var httpClient = http.Client{
 	Timeout: 10 * time.Second,
 	Transport: otelhttp.NewTransport(
 		http.DefaultTransport,
+		otelhttp.WithClientTrace(func(ctx context.Context) *httptrace.ClientTrace {
+			return otelhttptrace.NewClientTrace(ctx)
+		}),
 	),
 }
 
@@ -951,7 +956,8 @@ func serveMemory(
 	ctx context.Context,
 	cleanup *Cleanup,
 	memfile block.ReadonlyDevice,
-	socketPath, sandboxID string,
+	socketPath,
+	sandboxID string,
 ) (uffd.MemoryBackend, error) {
 	ctx, span := tracer.Start(ctx, "serve-memory")
 	defer span.End()
@@ -970,7 +976,7 @@ func serveMemory(
 	telemetry.ReportEvent(ctx, "started uffd")
 
 	cleanup.Add(func(ctx context.Context) error {
-		_, span := tracer.Start(ctx, "uffd-stop")
+		_, span := tracer.Start(ctx, "stop uffd")
 		defer span.End()
 
 		if err := fcUffd.Stop(); err != nil {

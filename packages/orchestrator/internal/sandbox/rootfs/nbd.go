@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"syscall"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
@@ -25,6 +27,7 @@ type NBDProvider struct {
 
 	ready *utils.SetOnce[string]
 
+	cachePath          string
 	logRequestsEnabled *atomic.Bool
 
 	blockSize int64
@@ -33,7 +36,9 @@ type NBDProvider struct {
 	devicePool         *nbd.DevicePool
 }
 
-func NewNBDProvider(rootfs block.ReadonlyDevice, cachePath string, devicePool *nbd.DevicePool) (Provider, error) {
+var _ Provider = &NBDProvider{}
+
+func NewNBDProvider(rootfs block.ReadonlyDevice, cachePath string, devicePool *nbd.DevicePool) (*NBDProvider, error) {
 	size, err := rootfs.Size()
 	if err != nil {
 		return nil, fmt.Errorf("error getting device size: %w", err)
@@ -51,6 +56,7 @@ func NewNBDProvider(rootfs block.ReadonlyDevice, cachePath string, devicePool *n
 	mnt := nbd.NewDirectPathMount(overlay, devicePool)
 
 	return &NBDProvider{
+		cachePath:          cachePath,
 		mnt:                mnt,
 		overlay:            overlay,
 		ready:              utils.NewSetOnce[string](),
@@ -62,6 +68,10 @@ func NewNBDProvider(rootfs block.ReadonlyDevice, cachePath string, devicePool *n
 }
 
 func (o *NBDProvider) Start(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "cow-start", trace.WithAttributes(
+		attribute.String("path", o.cachePath)))
+	defer span.End()
+
 	deviceIndex, err := o.mnt.Open(ctx, o.logRequestsEnabled)
 	if err != nil {
 		return o.ready.SetError(fmt.Errorf("error opening overlay file: %w", err))

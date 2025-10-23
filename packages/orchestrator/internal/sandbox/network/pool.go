@@ -132,8 +132,14 @@ func (p *Pool) Populate(ctx context.Context) {
 	}
 }
 
-func (p *Pool) Get(ctx context.Context, allowInternet bool) (*Slot, error) {
-	var slot *Slot
+func (p *Pool) Get(ctx context.Context, allowInternet bool) (slot *Slot, err error) {
+	ctx, span := tracer.Start(ctx, "get network-slot")
+	defer func() {
+		if err != nil {
+			telemetry.ReportCriticalError(ctx, "failed to get network-slot", err)
+		}
+		span.End()
+	}()
 
 	select {
 	case <-p.done:
@@ -159,15 +165,22 @@ func (p *Pool) Get(ctx context.Context, allowInternet bool) (*Slot, error) {
 		}
 	}
 
-	err := slot.ConfigureInternet(ctx, allowInternet)
-	if err != nil {
+	if err = slot.ConfigureInternet(ctx, allowInternet); err != nil {
 		return nil, fmt.Errorf("error setting slot internet access: %w", err)
 	}
 
 	return slot, nil
 }
 
-func (p *Pool) Return(ctx context.Context, slot *Slot) error {
+func (p *Pool) Return(ctx context.Context, slot *Slot) (err error) {
+	ctx, span := tracer.Start(ctx, "return network-slot")
+	defer func() {
+		if err != nil {
+			telemetry.ReportCriticalError(ctx, "failed to return network-slot", err)
+		}
+		span.End()
+	}()
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -176,7 +189,7 @@ func (p *Pool) Return(ctx context.Context, slot *Slot) error {
 	default:
 	}
 
-	err := slot.ResetInternet(ctx)
+	err = slot.ResetInternet(ctx)
 	if err != nil {
 		// Cleanup the slot if resetting internet fails
 		if cerr := p.cleanup(ctx, slot); cerr != nil {
@@ -222,7 +235,15 @@ func (p *Pool) cleanup(ctx context.Context, slot *Slot) error {
 	return errors.Join(errs...)
 }
 
-func (p *Pool) Close(ctx context.Context) error {
+func (p *Pool) Close(ctx context.Context) (err error) {
+	ctx, span := tracer.Start(ctx, "close network-pool")
+	defer func() {
+		if err != nil {
+			telemetry.ReportCriticalError(ctx, "failed to close network-pool", err)
+		}
+		span.End()
+	}()
+
 	zap.L().Info("Closing network pool")
 
 	p.doneOnce.Do(func() {

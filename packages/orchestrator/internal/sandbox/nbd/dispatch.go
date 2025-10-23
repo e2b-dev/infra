@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -117,10 +119,7 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
 	return nil
 }
 
-/**
- * This dispatches incoming NBD requests sequentially to the provider.
- *
- */
+// Handle dispatches incoming NBD requests sequentially to the provider.
 func (d *Dispatch) Handle(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "handle nbd")
 	defer span.End()
@@ -192,7 +191,7 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 					}
 				case NBDCmdTrim:
 					rp += 28
-					err := d.cmdTrim(request.Handle, request.From, request.Length)
+					err := d.cmdTrim(ctx, request.Handle, request.From, request.Length)
 					if err != nil {
 						return err
 					}
@@ -222,7 +221,7 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 	}
 	d.shuttingDownLock.Unlock()
 
-	performRead := func(handle uint64, from uint64, length uint32) error {
+	performRead := func(ctx context.Context, handle uint64, from uint64, length uint32) (bool, error) {
 		readStart := time.Now()
 
 		// buffered to avoid goroutine leak
@@ -237,10 +236,10 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 		// Wait until either the ReadAt completed, or our context is cancelled...
 		select {
 		case <-ctx.Done():
-			return d.writeResponse(1, handle, []byte{})
+			return false, d.writeResponse(1, handle, []byte{})
 		case err := <-errchan:
 			if err != nil {
-				return d.writeResponse(1, handle, []byte{})
+				return false, d.writeResponse(1, handle, []byte{})
 			}
 		}
 
@@ -248,9 +247,8 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 
 		// read was successful
 		err := d.writeResponse(0, handle, data)
-
 		if err != nil {
-			return err
+			return false, err
 		}
 
 		if d.logPagefaultsEnabled.Load() {
@@ -261,17 +259,26 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 			)
 		}
 
-		return nil
+		return true, nil
 	}
 
 	go func() {
-		err := performRead(cmdHandle, cmdFrom, cmdLength)
+		ctx, span := tracer.Start(ctx, "perform read command", trace.WithAttributes(
+			attribute.Int64("length", int64(cmdLength)),
+			attribute.Int64("offset", int64(cmdFrom)),
+		))
+		defer span.End()
+
+		ok, err := performRead(ctx, cmdHandle, cmdFrom, cmdLength)
 		if err != nil {
 			select {
 			case d.fatal <- err:
 			default:
 				zap.L().Error("nbd error cmd read", zap.Error(err))
 			}
+		}
+		if !ok {
+			span.SetStatus(codes.Error, "read failed")
 		}
 		d.pendingResponses.Done()
 	}()
@@ -290,7 +297,7 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 	}
 	d.shuttingDownLock.Unlock()
 
-	performWrite := func(handle uint64, from uint64, data []byte) error {
+	performWrite := func(ctx context.Context, handle uint64, from uint64, data []byte) error {
 		writeStart := time.Now()
 
 		// buffered to avoid goroutine leak
@@ -330,7 +337,12 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 	}
 
 	go func() {
-		err := performWrite(cmdHandle, cmdFrom, cmdData)
+		ctx, span := tracer.Start(ctx, "perform write command", trace.WithAttributes(
+			attribute.Int64("length", int64(len(cmdData))),
+			attribute.Int64("offset", int64(cmdFrom))))
+		defer span.End()
+
+		err := performWrite(ctx, cmdHandle, cmdFrom, cmdData)
 		if err != nil {
 			select {
 			case d.fatal <- err:
@@ -348,7 +360,10 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
  * cmdTrim
  *
  */
-func (d *Dispatch) cmdTrim(handle uint64, _ uint64, _ uint32) error {
+func (d *Dispatch) cmdTrim(ctx context.Context, handle uint64, _ uint64, _ uint32) error {
+	_, span := tracer.Start(ctx, "dispatch trim-command")
+	defer span.End()
+
 	// TODO: Ask the provider
 	/*
 		e := d.prov.Trim(from, length)
