@@ -2,6 +2,7 @@ package filesystem
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -157,8 +158,14 @@ func walkDir(requestedPath string, dirPath string, depth int) (entries []*rpc.En
 		}
 
 		entryInfo, err := entryInfo(path)
-		if entry == nil {
-			return err
+		if err != nil {
+			var notFoundErr *connect.Error
+			if errors.As(err, &notFoundErr) && notFoundErr.Code() == connect.CodeNotFound {
+				// Skip entries that don't exist anymore
+				return nil
+			}
+
+			return nil
 		}
 
 		// Return the requested path as the base path instead of the symlink-resolved path
