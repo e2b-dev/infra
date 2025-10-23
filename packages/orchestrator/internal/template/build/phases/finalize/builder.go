@@ -75,7 +75,7 @@ func (ppb *PostProcessingBuilder) Metadata() phases.PhaseMeta {
 	}
 }
 
-func (ppb *PostProcessingBuilder) Hash(sourceLayer phases.LayerResult) (string, error) {
+func (ppb *PostProcessingBuilder) Hash(_ context.Context, sourceLayer phases.LayerResult) (string, error) {
 	return cache.HashKeys(sourceLayer.Hash, "config-run-cmd"), nil
 }
 

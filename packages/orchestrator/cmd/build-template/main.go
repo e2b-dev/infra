@@ -190,6 +190,7 @@ func buildTemplate(
 
 	builder := build.NewBuilder(
 		logger,
+		featureFlags,
 		sandboxFactory,
 		persistenceTemplate,
 		persistenceBuild,

@@ -20,6 +20,7 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -48,6 +49,7 @@ type ServerStore struct {
 
 func New(
 	ctx context.Context,
+	featureFlags *featureflags.Client,
 	meterProvider metric.MeterProvider,
 	logger *zap.Logger,
 	buildLogger *zap.Logger,
@@ -98,6 +100,7 @@ func New(
 
 	builder := build.NewBuilder(
 		logger,
+		featureFlags,
 		sandboxFactory,
 		templatePersistence,
 		buildPersistance,

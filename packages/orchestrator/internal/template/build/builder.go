@@ -32,6 +32,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -55,10 +56,12 @@ type Builder struct {
 	sandboxes           *sandbox.Map
 	templateCache       *sbxtemplate.Cache
 	metrics             *metrics.BuildMetrics
+	featureFlags        *featureflags.Client
 }
 
 func NewBuilder(
 	logger *zap.Logger,
+	featureFlags *featureflags.Client,
 	sandboxFactory *sandbox.Factory,
 	templateStorage storage.StorageProvider,
 	buildStorage storage.StorageProvider,
@@ -71,6 +74,7 @@ func NewBuilder(
 ) *Builder {
 	return &Builder{
 		logger:              logger,
+		featureFlags:        featureFlags,
 		sandboxFactory:      sandboxFactory,
 		templateStorage:     templateStorage,
 		buildStorage:        buildStorage,
@@ -217,6 +221,7 @@ func runBuild(
 
 	baseBuilder := base.New(
 		bc,
+		builder.featureFlags,
 		builder.logger,
 		builder.proxy,
 		builder.templateStorage,

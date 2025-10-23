@@ -232,6 +232,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	builder := build.NewBuilder(
 		logger,
+		featureFlags,
 		sandboxFactory,
 		persistenceTemplate,
 		persistenceBuild,
