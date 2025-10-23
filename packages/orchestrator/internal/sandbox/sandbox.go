@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -42,6 +43,9 @@ var (
 
 var httpClient = http.Client{
 	Timeout: 10 * time.Second,
+	Transport: otelhttp.NewTransport(
+		http.DefaultTransport,
+	),
 }
 
 type Config struct {
