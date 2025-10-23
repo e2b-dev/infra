@@ -563,6 +563,8 @@ func (f *Factory) ResumeSandbox(
 		return sbx.Stop(ctx)
 	})
 
+	telemetry.ReportEvent(execCtx, "waiting for envd")
+
 	err = sbx.WaitForEnvd(
 		ctx,
 		f.config.EnvdTimeout,
@@ -570,6 +572,8 @@ func (f *Factory) ResumeSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
+
+	telemetry.ReportEvent(execCtx, "envd initialized")
 
 	go sbx.Checks.Start(execCtx)
 
