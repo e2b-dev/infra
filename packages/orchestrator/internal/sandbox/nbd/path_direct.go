@@ -67,10 +67,14 @@ func (d *DirectPathMount) Open(ctx context.Context, logPagefaultsEnabled *atomic
 		zap.L().Debug("opening direct path mount", zap.Uint32("device_index", d.deviceIndex), zap.Error(err))
 	}()
 
+	telemetry.ReportEvent(ctx, "opening direct path mount")
+
 	size, err := d.Backend.Size()
 	if err != nil {
 		return math.MaxUint32, err
 	}
+
+	telemetry.ReportEvent(ctx, "got backend size")
 
 	deviceIndex := uint32(math.MaxUint32)
 
@@ -79,6 +83,8 @@ func (d *DirectPathMount) Open(ctx context.Context, logPagefaultsEnabled *atomic
 		if err != nil {
 			return math.MaxUint32, err
 		}
+
+		telemetry.ReportEvent(ctx, "got device index")
 
 		d.socksClient = make([]*os.File, 0)
 		d.socksServer = make([]io.Closer, 0)
@@ -170,6 +176,8 @@ func (d *DirectPathMount) Open(ctx context.Context, logPagefaultsEnabled *atomic
 		default:
 		}
 
+		telemetry.ReportEvent(ctx, "waiting for NBD connection")
+
 		s, err := nbdnl.Status(deviceIndex)
 		if err == nil && s.Connected {
 			break
@@ -177,6 +185,8 @@ func (d *DirectPathMount) Open(ctx context.Context, logPagefaultsEnabled *atomic
 
 		time.Sleep(100 * time.Nanosecond)
 	}
+
+	telemetry.ReportEvent(ctx, "connected to NBD")
 
 	return deviceIndex, nil
 }
