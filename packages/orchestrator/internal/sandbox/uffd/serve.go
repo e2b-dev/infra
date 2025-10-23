@@ -56,6 +56,8 @@ func Serve(
 			if !ok {
 				return
 			}
+		case <-ctx.Done():
+			return
 		default:
 		}
 
