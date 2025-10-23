@@ -10,6 +10,7 @@ import (
 	"unsafe"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
@@ -155,9 +156,19 @@ outerLoop:
 		missingPagesBeingHandled[offset] = struct{}{}
 
 		eg.Go(func() error {
+			ctx, span := tracer.Start(ctx, "serve uffd page", trace.WithAttributes(
+				attribute.Int64("offset", offset),
+				attribute.Int64("pagesize", pagesize),
+			))
+			defer span.End()
+
 			defer func() {
 				if r := recover(); r != nil {
-					logger.Error("UFFD serve panic", zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
+					logger.Error("UFFD serve panic",
+						zap.Int64("offset", offset),
+						zap.Int64("pagesize", pagesize),
+						zap.Any("panic", r),
+					)
 				}
 			}()
 

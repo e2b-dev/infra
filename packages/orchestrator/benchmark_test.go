@@ -1,8 +1,9 @@
 // run with something like:
 //
-// sudo `which go` test -benchtime=15s -bench=. -v
 // sudo modprobe nbd
 // echo 1024 | sudo tee /proc/sys/vm/nr_hugepages
+// sudo `which go` test -benchtime=
+// -bench=. -v
 package main
 
 import (
@@ -20,7 +21,9 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/metric/noop"
+	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
@@ -57,7 +60,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		fcVersion           = "v1.10.1_1fcdaec08"
 		templateID          = "fcb33d09-3141-42c4-8d3b-c2df411681db"
 		buildID             = "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
-		useHugePages        = false
+		useHugePages        = true
 		allowInternetAccess = true
 		templateVersion     = "v2.0.0"
 	)
@@ -91,11 +94,30 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 			assert.NoError(b, err)
 		})
 		require.NoError(b, err)
-		spanProcessor := sdktrace.NewSimpleSpanProcessor(spanExporter)
+
+		res, err := resource.New(b.Context(),
+			resource.WithAttributes(
+				semconv.ServiceName("BenchmarkBaseImageLaunch"),
+			),
+		)
+		require.NoError(b, err)
+
+		spanProcessor := sdktrace.NewBatchSpanProcessor(spanExporter)
+		b.Cleanup(func() {
+			ctx := context.WithoutCancel(b.Context())
+			err := spanProcessor.Shutdown(ctx)
+			assert.NoError(b, err)
+		})
 		tracerProvider := sdktrace.NewTracerProvider(
 			sdktrace.WithSampler(sdktrace.AlwaysSample()),
 			sdktrace.WithSpanProcessor(spanProcessor),
+			sdktrace.WithResource(res),
 		)
+		b.Cleanup(func() {
+			ctx := context.WithoutCancel(b.Context())
+			err = tracerProvider.ForceFlush(ctx)
+			assert.NoError(b, err)
+		})
 		otel.SetTracerProvider(tracerProvider)
 	}
 
